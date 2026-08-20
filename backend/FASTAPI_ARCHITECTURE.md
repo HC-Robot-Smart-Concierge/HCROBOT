@@ -39,11 +39,12 @@ FastAPI đóng vai trò là **Bộ Não Trung Tâm (Central Brain)** kết nối
 
 ## 🔬 3. Chi Tiết Các Module FastAPI Áp Dụng Vào Hệ Thống
 
-### A. Tầng Real-Time Gateway (Socket.IO over FastAPI)
+### A. Tầng Real-Time Gateway & WebRTC Signaling (Socket.IO over FastAPI)
 - **Công nghệ**: `python-socketio` tích hợp vào FastAPI ASGI App.
 - **Nhiệm vụ**:
   - **Robot ↔ Server**: Robot gửi event khi nhận diện được khách (`GUEST_DETECTED`), gửi vị trí tọa độ telemetry, gửi trạng thái pin.
   - **Server ↔ Staff Web/App**: Khi Robot trích xuất được yêu cầu dọn phòng/gọi taxi từ giọng nói khách hàng, Server lập tức bắn event Socket.IO `NEW_SERVICE_REQUEST` tới Staff App làm điện thoại nhân viên rung và kêu chuông tức thì.
+  - **WebRTC Video Call Escalation (Human-in-the-Loop)**: FastAPI đóng vai trò **Signaling Server** luân chuyển thông điệp bắt tay SDP Offer / Answer giữa Robot Camera và Web/App Nhân viên. Luồng dữ liệu Video HD sau đó sẽ truyền trực tiếp Peer-to-Peer (P2P), giúp Server đạt tải ~0% cho tính năng Video Call.
   - **App Remote Controller ↔ Robot**: Nhận lệnh joystick từ app Flutter và chuyển tiếp xuống Robot điều khiển động cơ với độ trễ < 50ms.
 
 ### B. Tầng Xử Lý Voice AI & RAG Pipeline (AI Engine)
@@ -99,13 +100,13 @@ backend/
 │   │   └── ai.py
 │   ├── services/               # Tầng xử lý Logic nghiệp vụ & AI
 │   │   ├── ai/                 # Faster-Whisper, RAG ChromaDB, LLM, TTS
-│   │   └── socket/             # Socket.IO Event Handlers & Connection Manager
+│   │   └── socket/             # Socket.IO Event Handlers & WebRTC Signaling Manager
 │   └── main.py                 # FastAPI Application Entrypoint & Middleware Setup
 ├── Alembic/                    # Database Migration Scripts
 ├── Dockerfile                  # Dockerfile đóng gói ứng dụng Backend
 ├── docker-compose.yml          # Triển khai FastAPI + MySQL + ChromaDB 1-click
 ├── requirements.txt            # Danh sách thư viện Python dependencies
-└── FASTAPI_ARCHITECTURE.md     # Tài liệu kiến trúc FastAPI
+└── FASTAPI_ARCHITECTURE.md     # Tài liệu kiến trúc FastAPI & WebRTC Signaling
 ```
 
 ---

@@ -1,25 +1,57 @@
-# Operating System
+# Operating System & IDE
 .DS_Store
 Thumbs.db
-
-# Node.js / Frontend
-frontend/node_modules/
-frontend/dist/
-frontend/.env
-frontend/.env.local
+Desktop.ini
+.vscode/
+.idea/
+*.swp
+*.swo
 
 # Python / Backend
-backend/__pycache__/
-backend/*/__pycache__/
-backend/*/*/__pycache__/
-backend/*/*/*/__pycache__/
-backend/*.pyc
+**/__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+env/
+.pytest_cache/
+.coverage
+htmlcov/
+*.log
 backend/.env
-backend/venv/
-backend/.venv/
-backend/.pytest_cache/
+backend/.env.local
+backend/chroma_db/
+backend/knowledge_vault/.obsidian/
 
-# Flutter / Mobile
+# Frontend / Node.js
+**/node_modules/
+frontend/dist/
+frontend/build/
+frontend/.env
+frontend/.env.local
+frontend/.env.development.local
+frontend/.env.test.local
+frontend/.env.production.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Robot / ROS2 / Hardware / RPLiDAR SDK
+robot/build/
+robot/install/
+robot/log/
+rplidar_sdk_master/obj/
+rplidar_sdk_master/output/
+rplidar_sdk_master/work/
+*.exe
+*.dll
+*.so
+*.dylib
+*.o
+*.a
+
+# Mobile / Flutter
 mobile/.dart_tool/
 mobile/.idea/
 mobile/.packages
@@ -28,7 +60,3 @@ mobile/build/
 mobile/ios/Pods/
 mobile/ios/.symlinks/
 
-# IDE
-.vscode/
-.idea/
-*.swp

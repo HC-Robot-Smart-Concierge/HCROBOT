@@ -1,0 +1,16 @@
+server:
+  # Địa chỉ IP của Laptop Server (Ưu tiên dùng IP Tailscale dạng 100.x.y.z để cố định IP)
+  host: "100.x.y.z" 
+  port: 8000
+  timeout_seconds: 15
+
+robot:
+  id: "hc_pi5_01"
+  name: "HC Smart Concierge Robot"
+
+topics:
+  speech_input: "/speech/text"
+  speech_reply: "/robot/speech_reply"
+  robot_status: "/robot/status"
+  intent_output: "/robot/intent"
+

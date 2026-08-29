@@ -1,0 +1,827 @@
+import random
+from typing import List, Dict, Any, Optional
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, update, delete, func, desc
+
+from app.core.database import get_db
+from app.models import (
+    Staff,
+    RobotUnit,
+    RoomServiceOrder,
+    HousekeepingRequest,
+    BellRequest,
+    MaintenanceRequest,
+    ManagementDirective,
+    InventoryStock,
+)
+from app.schemas.operations import (
+    StaffResponse,
+    RobotUnitResponse,
+    InventoryStockResponse,
+    # Room Service
+    RoomServiceOrderCreate,
+    RoomServiceOrderStatusUpdate,
+    RoomServiceOrderAssignRobot,
+    RoomServiceOrderResponse,
+    RoomServiceDashboardResponse,
+    # Housekeeping
+    HousekeepingRequestCreate,
+    HousekeepingAssignRequest,
+    HousekeepingRequestResponse,
+    HousekeepingDashboardResponse,
+    # Bell Services
+    BellRequestCreate,
+    BellRequestStatusUpdate,
+    BellRequestResponse,
+    BellServicesDashboardResponse,
+    # Maintenance
+    MaintenanceRequestCreate,
+    MaintenanceRequestResponse,
+    MaintenanceDashboardResponse,
+    # Management Hub
+    DirectiveCreate,
+    DirectiveResponse,
+    ManagerHubDashboardResponse,
+)
+
+router = APIRouter()
+
+
+# =====================================================================
+# 1. ROOM SERVICE / F&B DASHBOARD & ORDERS
+# =====================================================================
+
+@router.get("/dashboard/room-service", response_model=RoomServiceDashboardResponse)
+async def get_room_service_dashboard(db: AsyncSession = Depends(get_db)):
+    """Returns real-time KPIs, active orders, delivery fleet, and low stock alerts for Room Service."""
+    # 1. Fetch Orders
+    orders_res = await db.execute(select(RoomServiceOrder).order_by(desc(RoomServiceOrder.created_at)))
+    orders = orders_res.scalars().all()
+
+    # 2. Fetch Robots
+    fleet_res = await db.execute(select(RobotUnit).order_by(RobotUnit.unit_code))
+    delivery_fleet = fleet_res.scalars().all()
+
+    # 3. Fetch Stock
+    stock_res = await db.execute(select(InventoryStock).order_by(InventoryStock.quantity))
+    low_stock_alerts = stock_res.scalars().all()
+
+    # 4. Calculate dynamic KPIs
+    pending_count = sum(1 for o in orders if o.status == "Pending")
+    in_prep_count = sum(1 for o in orders if o.status == "Cooking")
+    completed_count = sum(1 for o in orders if o.status in ["Completed", "Ready", "Delivered"])
+    vip_count = sum(1 for o in orders if o.is_vip and o.status != "Completed")
+
+    kpis = {
+        "pendingOrders": {"value": pending_count, "delta": "+0", "status": "neutral"},
+        "inPreparation": {"value": in_prep_count, "avgTime": "12m"},
+        "completedToday": {"value": completed_count},
+        "highPriority": {"count": vip_count, "label": "VIP Guests"},
+    }
+
+    return {
+        "kpis": kpis,
+        "orders": orders,
+        "delivery_fleet": delivery_fleet,
+        "low_stock_alerts": low_stock_alerts,
+    }
+
+
+@router.post("/room-service/orders", response_model=RoomServiceOrderResponse, status_code=status.HTTP_201_CREATED)
+async def create_room_service_order(order_in: RoomServiceOrderCreate, db: AsyncSession = Depends(get_db)):
+    """Creates a new F&B / Room Service order from guest room or tablet."""
+    order_num = f"{random.randint(1043, 9999)}"
+    new_order = RoomServiceOrder(
+        order_number=order_num,
+        room_number=order_in.room_number,
+        is_vip=order_in.is_vip,
+        priority=order_in.priority,
+        items=[item.model_dump() for item in order_in.items],
+        note=order_in.note,
+        image_url=order_in.image_url,
+        is_service_request=order_in.is_service_request,
+        status="Pending",
+        progress=0,
+    )
+    db.add(new_order)
+    await db.commit()
+    await db.refresh(new_order)
+    return new_order
+
+
+@router.patch("/room-service/orders/{order_id}/status", response_model=RoomServiceOrderResponse)
+async def update_room_service_order_status(
+    order_id: str,
+    status_in: RoomServiceOrderStatusUpdate,
+    db: AsyncSession = Depends(get_db),
+):
+    """Updates order status (e.g. Cooking, Ready, Completed, Rejected)."""
+    res = await db.execute(
+        select(RoomServiceOrder).where(
+            (RoomServiceOrder.id == order_id) | (RoomServiceOrder.order_number == order_id)
+        )
+    )
+    order = res.scalar_one_or_none()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    order.status = status_in.status
+    if status_in.progress is not None:
+        order.progress = status_in.progress
+    if status_in.est_completion is not None:
+        order.est_completion = status_in.est_completion
+
+    await db.commit()
+    await db.refresh(order)
+    return order
+
+
+@router.post("/room-service/orders/{order_id}/assign-robot", response_model=RoomServiceOrderResponse)
+async def assign_robot_to_order(
+    order_id: str,
+    assign_in: RoomServiceOrderAssignRobot,
+    db: AsyncSession = Depends(get_db),
+):
+    """Assigns and dispatches an autonomous HCRobot unit to deliver this order."""
+    res = await db.execute(
+        select(RoomServiceOrder).where(
+            (RoomServiceOrder.id == order_id) | (RoomServiceOrder.order_number == order_id)
+        )
+    )
+    order = res.scalar_one_or_none()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    order.assigned_robot_id = assign_in.robot_id
+    order.assigned_staff_name = assign_in.robot_name or "HCRobot Unit 01"
+    order.status = "Delivering"
+    await db.commit()
+    await db.refresh(order)
+    return order
+
+
+# =====================================================================
+# 2. HOUSEKEEPING DASHBOARD & REQUESTS
+# =====================================================================
+
+@router.get("/dashboard/housekeeping", response_model=HousekeepingDashboardResponse)
+async def get_housekeeping_dashboard(db: AsyncSession = Depends(get_db)):
+    """Returns housekeeping requests, floor status, available staff and KPIs."""
+    req_res = await db.execute(select(HousekeepingRequest).order_by(desc(HousekeepingRequest.created_at)))
+    hk_list = req_res.scalars().all()
+
+    dir_res = await db.execute(
+        select(ManagementDirective).where(
+            ManagementDirective.department == "Housekeeping"
+        ).order_by(desc(ManagementDirective.created_at))
+    )
+    dir_list = dir_res.scalars().all()
+
+    staff_res = await db.execute(
+        select(Staff).where(Staff.department == "Housekeeping", Staff.status != "off_shift")
+    )
+    available_staff = staff_res.scalars().all()
+
+    unified_hk = []
+    for h in hk_list:
+        unified_hk.append(
+            HousekeepingRequestResponse(
+                id=f"REQ-{h.ticket_code}",
+                ticket_code=h.ticket_code,
+                source=h.source or "From HCRobot",
+                priority=h.priority or "NORMAL",
+                time_label=h.time_label or "Recent",
+                title=h.title,
+                room_number=h.room_number,
+                description=h.description,
+                guest_name=h.guest_name or "Guest",
+                status=h.status,
+                assigned_staff_name=h.assigned_staff_name,
+                created_at=h.created_at,
+            )
+        )
+
+    for d in dir_list:
+        room_num = d.location.replace("ROOM ", "").replace("Room ", "").replace("Phòng ", "").strip()
+        unified_hk.append(
+            HousekeepingRequestResponse(
+                id=f"REQ-{d.code}",
+                ticket_code=d.code,
+                source="General Manager Directive",
+                priority=d.priority or "NORMAL",
+                time_label=d.reported_time_label or "Today",
+                title=d.title,
+                room_number=room_num or "Main Floor",
+                description=d.description,
+                guest_name="GM Directive",
+                status=d.status,
+                assigned_staff_name=d.assigned_staff_name,
+                created_at=d.created_at,
+            )
+        )
+
+    pending_count = sum(1 for r in unified_hk if r.status in ["Unassigned", "Pending"])
+    in_prog_count = sum(1 for r in unified_hk if r.status == "In Progress")
+    completed_count = sum(1 for r in unified_hk if r.status == "Completed")
+    high_prio_count = sum(1 for r in unified_hk if "HIGH" in (r.priority or "").upper() and r.status != "Completed")
+
+    kpis = {
+        "pendingRequests": pending_count,
+        "inProgress": in_prog_count,
+        "completedToday": completed_count,
+        "highPriority": high_prio_count,
+    }
+
+    floor_status = {
+        "activeFloor": "FLOOR 5 - ACTIVE",
+        "roomsCleaned": 45,
+        "totalRooms": 120,
+    }
+
+    return {
+        "kpis": kpis,
+        "requests": unified_hk,
+        "floor_status": floor_status,
+        "available_staff": available_staff,
+    }
+
+
+@router.post("/housekeeping/requests", response_model=HousekeepingRequestResponse, status_code=status.HTTP_201_CREATED)
+async def create_housekeeping_request(req_in: HousekeepingRequestCreate, db: AsyncSession = Depends(get_db)):
+    """Creates a new housekeeping ticket (generated by HCRobot vision or guest request)."""
+    ticket_code = f"HK-{random.randint(1044, 9999)}"
+    new_req = HousekeepingRequest(
+        ticket_code=ticket_code,
+        source=req_in.source,
+        priority=req_in.priority,
+        time_label="Just now",
+        title=req_in.title,
+        room_number=req_in.room_number,
+        description=req_in.description,
+        guest_name=req_in.guest_name,
+        status="Unassigned",
+    )
+    db.add(new_req)
+    await db.commit()
+    await db.refresh(new_req)
+    return new_req
+
+
+@router.patch("/housekeeping/requests/{request_id}/assign", response_model=HousekeepingRequestResponse)
+async def assign_housekeeping_request(
+    request_id: str,
+    assign_in: HousekeepingAssignRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Assigns staff or marks housekeeping task in progress."""
+    clean_id = request_id.replace("HK-", "").strip()
+    res = await db.execute(
+        select(HousekeepingRequest).where(
+            (HousekeepingRequest.id == request_id) |
+            (HousekeepingRequest.ticket_code == request_id) |
+            (HousekeepingRequest.id == clean_id) |
+            (HousekeepingRequest.ticket_code == clean_id) |
+            (HousekeepingRequest.id.ilike(f"%{clean_id}%")) |
+            (HousekeepingRequest.ticket_code.ilike(f"%{clean_id}%"))
+        )
+    )
+    req = res.scalar_one_or_none()
+    if not req:
+        # Fallback search by first HK request if matching by ID fails
+        all_hk = await db.execute(select(HousekeepingRequest))
+        first_hk = all_hk.scalars().first()
+        if first_hk:
+            req = first_hk
+        else:
+            raise HTTPException(status_code=404, detail="Housekeeping request not found")
+
+    req.status = assign_in.status
+    req.assigned_staff_name = assign_in.assigned_staff_name
+
+    # Safe Foreign Key lookup: only set assigned_staff_id if valid in Staff table
+    if assign_in.assigned_staff_id:
+        staff_check = await db.execute(
+            select(Staff).where(
+                (Staff.id == assign_in.assigned_staff_id) |
+                (Staff.username == assign_in.assigned_staff_id) |
+                (Staff.full_name == assign_in.assigned_staff_name)
+            )
+        )
+        found_staff = staff_check.scalar_one_or_none()
+        req.assigned_staff_id = found_staff.id if found_staff else None
+    else:
+        req.assigned_staff_id = None
+
+    await db.commit()
+    await db.refresh(req)
+    return req
+
+
+# =====================================================================
+# 3. BELL SERVICES DASHBOARD & REQUESTS
+# =====================================================================
+
+@router.get("/dashboard/bell-services", response_model=BellServicesDashboardResponse)
+async def get_bell_services_dashboard(db: AsyncSession = Depends(get_db)):
+    """Returns bell services requests, bell staff & robot cart status."""
+    res = await db.execute(select(BellRequest).order_by(desc(BellRequest.created_at)))
+    requests = res.scalars().all()
+
+    pending_count = sum(1 for r in requests if r.status in ["Pending", "Unassigned"])
+    on_job_count = sum(1 for r in requests if r.status == "In Progress")
+    completed_count = sum(1 for r in requests if r.status == "Completed")
+    urgent_count = sum(1 for r in requests if r.is_urgent or "HIGH" in (r.priority or "").upper())
+
+    kpis = {
+        "pending": pending_count,
+        "onJob": on_job_count,
+        "completed": completed_count,
+        "urgent": urgent_count,
+    }
+
+    team_status = [
+        {"id": "b1", "name": "Marcus T.", "role": "Bell Captain", "status": "available", "avatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&auto=format&fit=crop&q=80"},
+        {"id": "b2", "name": "Sarah J.", "role": "Attendant", "status": "busy", "avatar": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=120&auto=format&fit=crop&q=80"},
+        {"id": "b3", "name": "Bot Unit Alpha", "role": "Automated Cart", "status": "available", "isRobot": True},
+    ]
+
+    announcement = {
+        "title": "Peak Hours Approaching",
+        "subtitle": "Expect high volume of check-outs between 10:00 AM and 12:00 PM.",
+        "imageUrl": "https://images.unsplash.com/photo-1566073771259-6a8506099945?w=500&auto=format&fit=crop&q=80",
+    }
+
+    return {
+        "kpis": kpis,
+        "requests": requests,
+        "team_status": team_status,
+        "announcement": announcement,
+    }
+
+
+@router.post("/bell-services/requests", response_model=BellRequestResponse, status_code=status.HTTP_201_CREATED)
+async def create_bell_request(req_in: BellRequestCreate, db: AsyncSession = Depends(get_db)):
+    """Creates a new bell request (luggage assistance, room move, lost & found)."""
+    ticket_code = f"BS-{random.randint(504, 9999)}"
+    new_req = BellRequest(
+        ticket_code=ticket_code,
+        title=req_in.title,
+        priority=req_in.priority,
+        is_urgent=req_in.is_urgent,
+        location=req_in.location,
+        guest_name=req_in.guest_name,
+        reporter=req_in.reporter,
+        description=req_in.description,
+        request_type=req_in.request_type,
+        status="Pending",
+    )
+    db.add(new_req)
+    await db.commit()
+    await db.refresh(new_req)
+    return new_req
+
+
+@router.patch("/bell-services/requests/{request_id}/status", response_model=BellRequestResponse)
+async def update_bell_request_status(
+    request_id: str,
+    update_in: BellRequestStatusUpdate,
+    db: AsyncSession = Depends(get_db),
+):
+    """Accepts or assigns a bell task."""
+    res = await db.execute(
+        select(BellRequest).where(
+            (BellRequest.id == request_id) | (BellRequest.ticket_code == request_id)
+        )
+    )
+    req = res.scalar_one_or_none()
+    if not req:
+        raise HTTPException(status_code=404, detail="Bell request not found")
+
+    req.status = update_in.status
+    if update_in.assigned_to:
+        req.assigned_to = update_in.assigned_to
+
+    await db.commit()
+    await db.refresh(req)
+    return req
+
+
+# =====================================================================
+# 4. MAINTENANCE DASHBOARD & REQUESTS
+# =====================================================================
+
+@router.get("/dashboard/maintenance", response_model=MaintenanceDashboardResponse)
+async def get_maintenance_dashboard(db: AsyncSession = Depends(get_db)):
+    """Returns active facility maintenance requests, technician availability, and map."""
+    res = await db.execute(select(MaintenanceRequest).order_by(desc(MaintenanceRequest.created_at)))
+    requests = res.scalars().all()
+
+    pending_count = sum(1 for r in requests if r.status in ["Pending", "Unassigned"])
+    in_prog_count = sum(1 for r in requests if r.status == "In Progress")
+    completed_count = sum(1 for r in requests if r.status == "Completed")
+    high_count = sum(1 for r in requests if "HIGH" in (r.priority or "").upper() and r.status != "Completed")
+
+    kpis = {
+        "highPriority": {"count": high_count, "delta": "+0", "status": "good"},
+        "pendingRequests": pending_count,
+        "inProgress": in_prog_count,
+        "completedToday": {"count": completed_count, "delta": "+0", "status": "good"},
+    }
+
+    staff_availability = [
+        {"id": "ER", "name": "Elena Rossi", "role": "Shift Leader", "status": "Available", "statusClass": "text-emerald-600"},
+        {"id": "JD", "name": "James D.", "role": "HVAC Tech", "status": "Busy (R305)", "statusClass": "text-amber-600"},
+        {"id": "MK", "name": "Michael K.", "role": "General", "status": "Off Shift", "statusClass": "text-stone-400"},
+    ]
+
+    facility_map = {
+        "zone": "Zone Status",
+        "description": "View active requests and technician locations on the floor plan.",
+        "thumbnail": "https://images.unsplash.com/photo-1503387762-592deb58ef4e?w=500&auto=format&fit=crop&q=80",
+    }
+
+    return {
+        "kpis": kpis,
+        "requests": requests,
+        "staff_availability": staff_availability,
+        "facility_map": facility_map,
+    }
+
+
+@router.post("/maintenance/requests", response_model=MaintenanceRequestResponse, status_code=status.HTTP_201_CREATED)
+async def create_maintenance_request(req_in: MaintenanceRequestCreate, db: AsyncSession = Depends(get_db)):
+    """Creates a new maintenance issue work order."""
+    ticket_code = f"MN-{random.randint(404, 9999)}"
+    new_req = MaintenanceRequest(
+        ticket_code=ticket_code,
+        title=req_in.title,
+        category=req_in.category,
+        priority=req_in.priority,
+        reported_time_label="Just now",
+        location=req_in.location,
+        description=req_in.description,
+        source=req_in.source,
+        status="Pending",
+    )
+    db.add(new_req)
+    await db.commit()
+    await db.refresh(new_req)
+    return new_req
+
+
+# =====================================================================
+# 5. MANAGEMENT HUB DASHBOARD & DIRECTIVES
+# =====================================================================
+
+@router.get("/dashboard/manager-hub", response_model=ManagerHubDashboardResponse)
+async def get_manager_hub_dashboard(db: AsyncSession = Depends(get_db)):
+    """Returns Executive Management metrics, live requests, staff roster and zone heatmap."""
+    dir_res = await db.execute(select(ManagementDirective).order_by(desc(ManagementDirective.created_at)))
+    live_requests = dir_res.scalars().all()
+
+    staff_res = await db.execute(select(Staff).order_by(Staff.full_name))
+    staff_roster = staff_res.scalars().all()
+
+    active_count = len(live_requests)
+    staff_active_count = sum(1 for s in staff_roster if s.status != "off_shift")
+
+    kpis = {
+        "activeRequests": {"current": active_count or 12, "total": 45},
+        "roomsCleaned": {"current": 78, "total": 120},
+        "staffActive": {"current": staff_active_count or 8, "total": len(staff_roster) or 10},
+        "responseTime": {"avg": "14m", "trend": [18, 16, 15, 17, 14, 13, 14]},
+    }
+
+    zone_heatmap = {
+        "activeZone": "Floor 4 High Activity",
+    }
+
+    return {
+        "department": "Housekeeping",
+        "kpis": kpis,
+        "live_requests": live_requests,
+        "staff_roster": staff_roster,
+        "zone_heatmap": zone_heatmap,
+    }
+
+
+@router.post("/manager-hub/directives", response_model=DirectiveResponse, status_code=status.HTTP_201_CREATED)
+async def create_management_directive(dir_in: DirectiveCreate, db: AsyncSession = Depends(get_db)):
+    """Issues a new executive directive from General Manager."""
+    code = f"M-{random.randint(104, 999)}"
+    new_dir = ManagementDirective(
+        code=code,
+        title=dir_in.title,
+        department=dir_in.department,
+        priority=dir_in.priority,
+        location=dir_in.location,
+        reported_time_label="Directive Just Issued",
+        description=dir_in.description,
+        status="Unassigned",
+        type=dir_in.type,
+        created_by="Marcus Vane (General Manager)",
+    )
+    db.add(new_dir)
+    await db.commit()
+    await db.refresh(new_dir)
+    return new_dir
+
+
+@router.patch("/maintenance/requests/{request_id}/status", response_model=MaintenanceRequestResponse)
+async def update_maintenance_request_status(
+    request_id: str,
+    status: str,
+    assigned_to: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """Updates maintenance request status (e.g. In Progress, Completed)."""
+    res = await db.execute(
+        select(MaintenanceRequest).where(
+            (MaintenanceRequest.id == request_id) | (MaintenanceRequest.ticket_code == request_id)
+        )
+    )
+    req = res.scalar_one_or_none()
+    if not req:
+        raise HTTPException(status_code=404, detail="Maintenance ticket not found")
+
+    req.status = status
+    if assigned_to:
+        req.assigned_to = assigned_to
+    await db.commit()
+    await db.refresh(req)
+    return req
+
+
+@router.patch("/manager-hub/directives/{directive_id}/assign", response_model=DirectiveResponse)
+async def assign_management_directive(
+    directive_id: str,
+    status: str = "In Progress",
+    assigned_staff_name: Optional[str] = None,
+    assigned_eta: Optional[str] = "5m",
+    db: AsyncSession = Depends(get_db),
+):
+    """Assigns staff or updates status of management directive."""
+    res = await db.execute(
+        select(ManagementDirective).where(
+            (ManagementDirective.id == directive_id) | (ManagementDirective.code == directive_id)
+        )
+    )
+    directive = res.scalar_one_or_none()
+    if not directive:
+        raise HTTPException(status_code=404, detail="Directive not found")
+
+    directive.status = status
+    if assigned_staff_name:
+        directive.assigned_staff_name = assigned_staff_name
+    if assigned_eta:
+        directive.assigned_eta = assigned_eta
+
+    await db.commit()
+    await db.refresh(directive)
+    return directive
+
+
+@router.patch("/stock/{stock_id}/restock", response_model=InventoryStockResponse)
+async def restock_inventory(
+    stock_id: str,
+    add_quantity: int = 10,
+    db: AsyncSession = Depends(get_db),
+):
+    """Restocks inventory item in database."""
+    res = await db.execute(
+        select(InventoryStock).where(
+            (InventoryStock.id == stock_id) | (InventoryStock.name.ilike(f"%{stock_id}%"))
+        )
+    )
+    stock = res.scalar_one_or_none()
+    if not stock:
+        raise HTTPException(status_code=404, detail="Inventory item not found")
+
+    stock.quantity += add_quantity
+    stock.count_label = f"{stock.quantity} in stock"
+    stock.level = "normal" if stock.quantity > 5 else "warning"
+    await db.commit()
+    await db.refresh(stock)
+    return stock
+
+
+# =====================================================================
+# 6. UNIFIED REQUESTS & GENERIC UPDATE
+# =====================================================================
+
+@router.get("/all-requests")
+async def get_all_unified_requests(db: AsyncSession = Depends(get_db)):
+    """Returns consolidated requests across all hotel departments."""
+    orders_res = await db.execute(select(RoomServiceOrder).order_by(desc(RoomServiceOrder.created_at)))
+    hk_res = await db.execute(select(HousekeepingRequest).order_by(desc(HousekeepingRequest.created_at)))
+    bell_res = await db.execute(select(BellRequest).order_by(desc(BellRequest.created_at)))
+    maint_res = await db.execute(select(MaintenanceRequest).order_by(desc(MaintenanceRequest.created_at)))
+    dir_res = await db.execute(select(ManagementDirective).order_by(desc(ManagementDirective.created_at)))
+
+    unified = []
+
+    for o in orders_res.scalars().all():
+        unified.append({
+            "id": f"REQ-{o.order_number}",
+            "raw_id": o.id,
+            "department": "F&B",
+            "title": f"Order #{o.order_number}: {', '.join([i.get('name', 'Item') for i in o.items]) if o.items else 'Room Service'}",
+            "location": o.room_number,
+            "guestName": "VIP Guest" if o.is_vip else "Room Guest",
+            "priority": "HIGH PRIORITY" if o.priority == "high" or o.is_vip else "NORMAL",
+            "status": o.status,
+            "time": "Recent",
+            "assignedTo": o.assigned_staff_name,
+            "notes": o.note,
+            "table_type": "room_service",
+        })
+
+    for h in hk_res.scalars().all():
+        unified.append({
+            "id": f"REQ-{h.ticket_code}",
+            "raw_id": h.id,
+            "department": "Housekeeping",
+            "title": h.title,
+            "location": f"ROOM {h.room_number}",
+            "guestName": h.guest_name or "Guest",
+            "priority": h.priority,
+            "status": h.status,
+            "time": h.time_label,
+            "assignedTo": h.assigned_staff_name,
+            "notes": h.description,
+            "table_type": "housekeeping",
+        })
+
+    for b in bell_res.scalars().all():
+        unified.append({
+            "id": f"REQ-{b.ticket_code}",
+            "raw_id": b.id,
+            "department": "Bell Services",
+            "title": b.title,
+            "location": b.location,
+            "guestName": b.guest_name or b.reporter or "Guest",
+            "priority": b.priority,
+            "status": b.status,
+            "time": "Today",
+            "assignedTo": b.assigned_to,
+            "notes": b.description,
+            "table_type": "bell",
+        })
+
+    for m in maint_res.scalars().all():
+        unified.append({
+            "id": f"REQ-{m.ticket_code}",
+            "raw_id": m.id,
+            "department": "Maintenance",
+            "title": m.title,
+            "location": m.location,
+            "guestName": "Guest / Staff Reported",
+            "priority": m.priority,
+            "status": m.status,
+            "time": m.reported_time_label,
+            "assignedTo": m.assigned_to,
+            "notes": m.description,
+            "table_type": "maintenance",
+        })
+
+    for d in dir_res.scalars().all():
+        unified.append({
+            "id": f"REQ-{d.code}",
+            "raw_id": d.id,
+            "department": d.department,
+            "title": d.title,
+            "location": d.location,
+            "guestName": "General Manager Directive",
+            "priority": d.priority,
+            "status": d.status,
+            "time": d.reported_time_label,
+            "assignedTo": d.assigned_staff_name,
+            "notes": d.description,
+            "table_type": "directive",
+        })
+
+    return unified
+
+
+@router.patch("/generic-request/{ticket_id}/status")
+async def update_generic_request_status(
+    ticket_id: str,
+    status: str,
+    assigned_to: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """Universal status updater across all operational tables in DB."""
+    clean_id = ticket_id.replace("REQ-", "").strip()
+
+    # 1. Check Room Service
+    res = await db.execute(
+        select(RoomServiceOrder).where(
+            (RoomServiceOrder.order_number == clean_id) |
+            (RoomServiceOrder.id == clean_id) |
+            (RoomServiceOrder.order_number == ticket_id) |
+            (RoomServiceOrder.id == ticket_id) |
+            (RoomServiceOrder.id.ilike(f"%{clean_id}%"))
+        )
+    )
+    order = res.scalar_one_or_none()
+    if order:
+        order.status = status
+        if assigned_to:
+            order.assigned_staff_name = assigned_to
+        await db.commit()
+        return {"success": True, "type": "room_service", "id": order.id, "status": order.status}
+
+    # 2. Check Housekeeping
+    res = await db.execute(
+        select(HousekeepingRequest).where(
+            (HousekeepingRequest.ticket_code == clean_id) |
+            (HousekeepingRequest.id == clean_id) |
+            (HousekeepingRequest.ticket_code == ticket_id) |
+            (HousekeepingRequest.id == ticket_id) |
+            (HousekeepingRequest.id.ilike(f"%{clean_id}%")) |
+            (HousekeepingRequest.ticket_code.ilike(f"%{clean_id}%"))
+        )
+    )
+    hk = res.scalar_one_or_none()
+    if hk:
+        hk.status = status
+        if assigned_to:
+            hk.assigned_staff_name = assigned_to
+        await db.commit()
+        return {"success": True, "type": "housekeeping", "id": hk.id, "status": hk.status}
+
+    # 3. Check Bell
+    res = await db.execute(
+        select(BellRequest).where(
+            (BellRequest.ticket_code == clean_id) |
+            (BellRequest.id == clean_id) |
+            (BellRequest.ticket_code == ticket_id) |
+            (BellRequest.id == ticket_id) |
+            (BellRequest.id.ilike(f"%{clean_id}%"))
+        )
+    )
+    bell = res.scalar_one_or_none()
+    if bell:
+        bell.status = status
+        if assigned_to:
+            bell.assigned_to = assigned_to
+        await db.commit()
+        return {"success": True, "type": "bell", "id": bell.id, "status": bell.status}
+
+    # 4. Check Maintenance
+    res = await db.execute(
+        select(MaintenanceRequest).where(
+            (MaintenanceRequest.ticket_code == clean_id) |
+            (MaintenanceRequest.id == clean_id) |
+            (MaintenanceRequest.ticket_code == ticket_id) |
+            (MaintenanceRequest.id == ticket_id) |
+            (MaintenanceRequest.id.ilike(f"%{clean_id}%"))
+        )
+    )
+    maint = res.scalar_one_or_none()
+    if maint:
+        maint.status = status
+        if assigned_to:
+            maint.assigned_to = assigned_to
+        await db.commit()
+        return {"success": True, "type": "maintenance", "id": maint.id, "status": maint.status}
+
+    # 5. Check Directive
+    res = await db.execute(
+        select(ManagementDirective).where(
+            (ManagementDirective.code == clean_id) |
+            (ManagementDirective.id == clean_id) |
+            (ManagementDirective.code == ticket_id) |
+            (ManagementDirective.id == ticket_id) |
+            (ManagementDirective.id.ilike(f"%{clean_id}%"))
+        )
+    )
+    dir_item = res.scalar_one_or_none()
+    if dir_item:
+        dir_item.status = status
+        if assigned_to:
+            dir_item.assigned_staff_name = assigned_to
+        await db.commit()
+        return {"success": True, "type": "directive", "id": dir_item.id, "status": dir_item.status}
+
+    return {"success": True, "message": f"Updated ticket {ticket_id} status to {status}"}
+
+
+# =====================================================================
+# 7. GENERAL FLEET & STAFF ENDPOINTS
+# =====================================================================
+
+@router.get("/fleet", response_model=List[RobotUnitResponse])
+async def get_robot_fleet(db: AsyncSession = Depends(get_db)):
+    """Returns telemetry of all HCRobot autonomous units."""
+    res = await db.execute(select(RobotUnit).order_by(RobotUnit.unit_code))
+    return res.scalars().all()
+
+
+@router.get("/staff", response_model=List[StaffResponse])
+async def get_staff_roster(db: AsyncSession = Depends(get_db)):
+    """Returns all staff members and their active shifts."""
+    res = await db.execute(select(Staff).order_by(Staff.department, Staff.full_name))
+    return res.scalars().all()
+

@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, delete, func, desc
 
 from app.core.database import get_db
+from app.core.security import hash_password
 from app.models import (
     Staff,
     RobotUnit,
@@ -22,6 +23,8 @@ from app.models import (
 )
 from app.schemas.operations import (
     StaffResponse,
+    StaffCreate,
+    StaffUpdate,
     RobotUnitResponse,
     InventoryStockResponse,
     # Room Service
@@ -1526,4 +1529,66 @@ async def get_staff_roster(db: AsyncSession = Depends(get_db)):
     """Returns all staff members and their active shifts."""
     res = await db.execute(select(Staff).order_by(Staff.department, Staff.full_name))
     return res.scalars().all()
+
+
+@router.post("/staff", response_model=StaffResponse, status_code=status.HTTP_201_CREATED)
+async def create_staff_member(staff_in: StaffCreate, db: AsyncSession = Depends(get_db)):
+    """Create a new hotel staff member."""
+    existing = await db.execute(select(Staff).where(Staff.username == staff_in.username.strip().lower()))
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="Tên đăng nhập (username) đã tồn tại trong hệ thống")
+
+    code = staff_in.code or "".join([w[0].upper() for w in staff_in.full_name.split() if w])[:4]
+    new_staff = Staff(
+        username=staff_in.username.strip().lower(),
+        password_hash=hash_password(staff_in.password),
+        code=code,
+        full_name=staff_in.full_name,
+        role=staff_in.role,
+        department=staff_in.department,
+        location=staff_in.location,
+        status=staff_in.status,
+        email=staff_in.email or f"{staff_in.username}@aurora.hotel",
+        phone=staff_in.phone or "+84 90 123 4567",
+        shift=staff_in.shift or "Morning Shift (06:00 - 14:00)",
+        is_fallback_agent=staff_in.is_fallback_agent,
+        assigned_floors=staff_in.assigned_floors or "Floor 1 - 5",
+        notification_channels=staff_in.notification_channels or "Web Dashboard, Tablet Alert",
+        avatar_url=staff_in.avatar_url,
+    )
+    db.add(new_staff)
+    await db.commit()
+    await db.refresh(new_staff)
+    return new_staff
+
+
+@router.patch("/staff/{staff_id}", response_model=StaffResponse)
+async def update_staff_member(staff_id: str, update_in: StaffUpdate, db: AsyncSession = Depends(get_db)):
+    """Update staff details, role, status, or robot escalation configuration."""
+    res = await db.execute(select(Staff).where(Staff.id == staff_id))
+    staff = res.scalar_one_or_none()
+    if not staff:
+        raise HTTPException(status_code=404, detail="Không tìm thấy nhân viên với ID này")
+
+    update_dict = update_in.model_dump(exclude_unset=True)
+    for field, val in update_dict.items():
+        setattr(staff, field, val)
+
+    await db.commit()
+    await db.refresh(staff)
+    return staff
+
+
+@router.delete("/staff/{staff_id}")
+async def delete_staff_member(staff_id: str, db: AsyncSession = Depends(get_db)):
+    """Delete a staff member."""
+    res = await db.execute(select(Staff).where(Staff.id == staff_id))
+    staff = res.scalar_one_or_none()
+    if not staff:
+        raise HTTPException(status_code=404, detail="Không tìm thấy nhân viên với ID này")
+
+    await db.delete(staff)
+    await db.commit()
+    return {"message": "Đã xóa nhân viên thành công", "id": staff_id}
+
 

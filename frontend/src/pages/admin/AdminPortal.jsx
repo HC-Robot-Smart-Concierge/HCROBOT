@@ -20,6 +20,7 @@ import {
 import { AdminDashboardTab } from './tabs/AdminDashboardTab';
 import { AdminOperationsTab } from './tabs/AdminOperationsTab';
 import { AdminKnowledgePage } from './tabs/AdminKnowledgePage';
+import { AdminStaffTab } from './tabs/AdminStaffTab';
 import { AdminLidarPage } from './AdminLidarPage';
 
 export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () => {} }) => {
@@ -290,8 +291,12 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
             <AdminKnowledgePage activeSubView={knowledgeSubTab} />
           )}
 
-          {/* Placeholders for Hotel Content, Staff, Analytics, Logs, Settings */}
-          {['Hotel Content', 'Staff', 'Analytics', 'Logs', 'Settings'].includes(
+          {activeMenu === 'Staff' && (
+            <AdminStaffTab currentUser={currentUser} />
+          )}
+
+          {/* Placeholders for Hotel Content, Analytics, Logs, Settings */}
+          {['Hotel Content', 'Analytics', 'Logs', 'Settings'].includes(
 
             activeMenu
           ) && (

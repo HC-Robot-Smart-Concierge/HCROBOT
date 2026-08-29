@@ -15,6 +15,12 @@ class StaffBase(BaseModel):
     status: str = "available"
     current_tasks_count: int = 0
     avatar_url: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    shift: Optional[str] = "Morning Shift (06:00 - 14:00)"
+    is_fallback_agent: bool = False
+    assigned_floors: Optional[str] = "Floor 1 - 5"
+    notification_channels: Optional[str] = "Web Dashboard, Tablet Alert"
     is_active: bool = True
 
 class StaffResponse(StaffBase):
@@ -23,6 +29,40 @@ class StaffResponse(StaffBase):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class StaffCreate(BaseModel):
+    username: str
+    password: str = "123456"
+    full_name: str
+    role: str
+    department: str
+    code: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = "+84 90 123 4567"
+    shift: Optional[str] = "Morning Shift (06:00 - 14:00)"
+    location: str = "Main Hotel"
+    status: str = "available"
+    avatar_url: Optional[str] = None
+    is_fallback_agent: bool = False
+    assigned_floors: Optional[str] = "Floor 1 - 5"
+    notification_channels: Optional[str] = "Web Dashboard, Tablet Alert"
+
+
+class StaffUpdate(BaseModel):
+    full_name: Optional[str] = None
+    role: Optional[str] = None
+    department: Optional[str] = None
+    status: Optional[str] = None
+    location: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    shift: Optional[str] = None
+    avatar_url: Optional[str] = None
+    is_fallback_agent: Optional[bool] = None
+    assigned_floors: Optional[str] = None
+    notification_channels: Optional[str] = None
+
 
 
 class RobotUnitBase(BaseModel):

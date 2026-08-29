@@ -191,6 +191,7 @@ export function App() {
   };
 
   const isDashboardView = STAFF_DASHBOARDS.includes(activeView);
+  const usesReferenceLayout = ['housekeeping', 'bell_services'].includes(activeView);
 
   const isAdmin = isAdminUser(currentUser);
 
@@ -208,7 +209,7 @@ export function App() {
   return (
     <div className="w-full h-screen overflow-hidden bg-[#FAF8F5] text-[#1A1917] flex flex-col font-sans select-none relative">
       {/* Top Floating Header Pill (Only on Dashboard, Robot Display & LiDAR Map) */}
-      {activeView !== 'landing' && activeView !== 'login' && activeView !== 'housekeeping' && (
+      {activeView !== 'landing' && activeView !== 'login' && !usesReferenceLayout && (
         <div className="absolute top-2.5 right-6 z-50 flex items-center gap-2">
           {/* If logged in as staff: Strict Role Badge & Logout */}
           {currentUser ? (
@@ -317,7 +318,7 @@ export function App() {
         <div className="w-full h-full flex overflow-hidden">
           {/* Left Sidebar */}
           <AuroraSidebar
-            referenceLayout={activeView === 'housekeeping'}
+            referenceLayout={usesReferenceLayout}
             activeMenu={activeMenu}
             onSelectMenu={(menu) => {
               setActiveMenu(menu);
@@ -332,11 +333,11 @@ export function App() {
           <div className="flex-1 flex flex-col h-full overflow-hidden bg-[#FAF8F5]">
             {/* Top Header */}
             <AuroraHeader
-              referenceLayout={activeView === 'housekeeping'}
+              referenceLayout={usesReferenceLayout}
               hotelName="Aurora Grand Hotel"
               systemName="HCROBOT"
               subtitle={
-                activeView === 'housekeeping'
+                usesReferenceLayout
                   ? 'Front Desk Operations'
                   : `${currentUser?.department || 'Staff'} Operations Portal`
               }

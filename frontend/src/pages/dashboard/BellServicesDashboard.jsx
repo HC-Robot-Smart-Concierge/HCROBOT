@@ -1,339 +1,348 @@
-import React, { useState, useEffect } from 'react';
-import { MetricCard } from '../../components/dashboard/MetricCard';
+import React, { useEffect, useState } from 'react';
+import {
+  BedDouble,
+  Bot,
+  Briefcase,
+  CheckCircle2,
+  FileSearch,
+  Footprints,
+  Hourglass,
+  AlertTriangle,
+} from 'lucide-react';
 import { INITIAL_BELL_SERVICES_DATA } from '../../data/mockHotelData';
 import {
   fetchBellServicesDashboard,
   updateBellRequestStatus,
 } from '../../services/operationsApi';
-import {
-  Hourglass,
-  Footprints,
-  CheckCircle2,
-  AlertTriangle,
-  Briefcase,
-  ArrowRightLeft,
-  Search,
-  Bot,
-  Users,
-  Info,
-  CheckCheck,
-} from 'lucide-react';
+
+const normalizeRequest = (request) => ({
+  ...request,
+  id: request.ticket_code || request.id,
+  type: request.request_type || request.type,
+  guestName: request.guest_name || request.guestName,
+  assignedTo: request.assigned_to || request.assignedTo,
+});
+
+const getStatusLabel = (status) => {
+  const normalized = (status || '').toLowerCase();
+  if (normalized === 'in progress') return 'In Progress';
+  if (normalized === 'completed') return 'Completed';
+  return 'Pending';
+};
+
+const requestIcon = {
+  luggage: Briefcase,
+  room_move: BedDouble,
+  lost_found: FileSearch,
+};
 
 export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
   const staffName = currentUser?.full_name || currentUser?.name || 'Marcus T.';
-  const staffId = currentUser?.id || currentUser?.username || 'user';
+  const [data, setData] = useState({
+    ...INITIAL_BELL_SERVICES_DATA,
+    requests: INITIAL_BELL_SERVICES_DATA.requests.map(normalizeRequest),
+  });
 
-  const [data, setData] = useState(INITIAL_BELL_SERVICES_DATA);
-  const [filter, setFilter] = useState('All');
-  const [activeDetailTask, setActiveDetailTask] = useState(null);
-
-  // Load live data from PostgreSQL on mount
   useEffect(() => {
     const loadData = async () => {
-      const res = await fetchBellServicesDashboard();
-      if (res && res.requests) {
-        setData((prev) => ({
-          ...prev,
-          kpis: res.kpis || prev.kpis,
-          requests: res.requests.length > 0 ? res.requests : prev.requests,
-          teamStatus: res.team_status?.length > 0 ? res.team_status : prev.teamStatus,
-        }));
-      }
+      const response = await fetchBellServicesDashboard();
+      if (!response?.requests) return;
+
+      setData((previous) => ({
+        ...previous,
+        kpis: response.kpis || previous.kpis,
+        requests:
+          response.requests.length > 0
+            ? response.requests.map(normalizeRequest)
+            : previous.requests,
+        teamStatus:
+          response.team_status?.length > 0
+            ? response.team_status
+            : previous.teamStatus,
+        announcement: response.announcement || previous.announcement,
+      }));
     };
+
     loadData();
   }, []);
 
-  const filteredRequests = (data.requests || []).filter((req) => {
-    if (filter === 'All') return true;
-    const s = (req.status || '').toLowerCase().trim();
-    const type = (req.type || '').toLowerCase().trim();
-    const p = (req.priority || '').toUpperCase().trim();
-
-    if (filter === 'Pending') return s === 'pending' || s === 'unassigned';
-    if (filter === 'In Progress') return s === 'in progress' || s === 'in_progress';
-    if (filter === 'Completed') return s === 'completed' || s === 'done';
-    if (filter === 'Luggage') return type === 'luggage' || (req.title || '').toLowerCase().includes('hành lý');
-    if (filter === 'Room Move') return type === 'room_move' || type === 'room-move' || (req.title || '').toLowerCase().includes('chuyển phòng');
-    if (filter === 'High Priority') return p.includes('HIGH') || p.includes('URGENT') || p.includes('VIP');
-    return true;
-  });
-
-  // Action: Self-Claim Task -> Persists in PostgreSQL with Staff Identity
-  const handleClaim = async (taskId) => {
-    setData((prev) => ({
-      ...prev,
-      requests: prev.requests.map((r) =>
-        (r.id === taskId || r.ticket_code === taskId)
-          ? { ...r, status: 'In Progress', assignedTo: staffName }
-          : r
+  const updateRequestLocally = (requestId, status, assignedTo) => {
+    setData((previous) => ({
+      ...previous,
+      requests: previous.requests.map((request) =>
+        request.id === requestId
+          ? { ...request, status, assignedTo: assignedTo || request.assignedTo }
+          : request
       ),
-      kpis: {
-        ...prev.kpis,
-        pendingDispatch: Math.max(0, prev.kpis.pendingDispatch - 1),
-        activeRuns: prev.kpis.activeRuns + 1,
-      },
     }));
+  };
 
-    await updateBellRequestStatus(taskId, {
+  const handleAccept = async (requestId) => {
+    updateRequestLocally(requestId, 'In Progress', staffName);
+    await updateBellRequestStatus(requestId, {
       status: 'In Progress',
       assigned_to: staffName,
-      assigned_staff_id: staffId,
     });
-    onNotify(`Bạn (${staffName}) đã nhận xử lý phiếu hành lý #${taskId}`);
+    onNotify(`Đã nhận xử lý yêu cầu ${requestId}`);
   };
 
-  // Action: Mark Completed -> Persists in PostgreSQL
-  const handleComplete = async (taskId) => {
-    setData((prev) => ({
-      ...prev,
-      requests: prev.requests.map((r) =>
-        (r.id === taskId || r.ticket_code === taskId)
-          ? { ...r, status: 'Completed' }
-          : r
-      ),
-      kpis: {
-        ...prev.kpis,
-        activeRuns: Math.max(0, prev.kpis.activeRuns - 1),
-        completedToday: prev.kpis.completedToday + 1,
-      },
-    }));
+  const handleAssignToBot = async (requestId) => {
+    updateRequestLocally(requestId, 'In Progress', 'Bot Unit Alpha');
+    await updateBellRequestStatus(requestId, {
+      status: 'In Progress',
+      assigned_to: 'Bot Unit Alpha',
+    });
+    onNotify(`Đã giao yêu cầu ${requestId} cho Bot Unit Alpha`);
+  };
 
-    await updateBellRequestStatus(taskId, {
+  const handleComplete = async (requestId) => {
+    updateRequestLocally(requestId, 'Completed', staffName);
+    await updateBellRequestStatus(requestId, {
       status: 'Completed',
       assigned_to: staffName,
-      assigned_staff_id: staffId,
     });
-    onNotify(`Đã hoàn tất xử lý phiếu hành lý #${taskId}`);
+    onNotify(`Đã hoàn tất yêu cầu ${requestId}`);
   };
 
+  const metrics = [
+    {
+      label: 'PENDING',
+      value: data.kpis?.pending ?? 0,
+      icon: Hourglass,
+    },
+    {
+      label: 'ON JOB',
+      value: data.kpis?.onJob ?? 0,
+      icon: Footprints,
+    },
+    {
+      label: 'COMPLETED',
+      value: data.kpis?.completed ?? 0,
+      icon: CheckCircle2,
+    },
+    {
+      label: 'URGENT',
+      value: data.kpis?.urgent ?? 0,
+      icon: AlertTriangle,
+      urgent: true,
+    },
+  ];
+
   return (
-    <div className="flex-1 overflow-y-auto custom-scrollbar p-8 bg-[#FAF8F5] font-sans">
-      <div className="max-w-7xl mx-auto space-y-6">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <h2 className="text-xl font-bold text-[#1A1917]">Bell Services Operations</h2>
-            <p className="text-xs text-[#78716C] mt-1">
-              Hàng đợi yêu cầu hành lý từ HCRobot • Nhân viên nhận trực tiếp theo cơ chế First-Claim
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2 text-xs font-bold text-stone-700 bg-white px-4 py-2 rounded-full border border-[#DDD8CE] shadow-sm">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-            <span>Trực ca: {staffName}</span>
-          </div>
+    <main className="flex-1 overflow-y-auto custom-scrollbar bg-[#FCFAF7] font-sans">
+      <div className="w-full max-w-[1180px] mx-auto px-8 pt-4 pb-8">
+        <div className="flex items-center gap-4 min-h-10">
+          <h2 className="text-[15px] font-medium text-[#1A1917]">Bell Services</h2>
+          <span className="rounded-full bg-[#F0EEEB] px-3.5 py-1.5 text-[11px] font-semibold tracking-[0.14em] text-[#77736E]">
+            ACTIVE OPERATIONS
+          </span>
         </div>
 
-        {/* 4 Metric Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <MetricCard
-            title="CHỜ TIẾP NHẬN"
-            value={data.kpis.pendingDispatch}
-            icon={Hourglass}
-          />
-          <MetricCard
-            title="ĐANG THỰC HIỆN"
-            value={data.kpis.activeRuns}
-            icon={Footprints}
-          />
-          <MetricCard
-            title="HOÀN TẤT HÔM NAY"
-            value={data.kpis.completedToday}
-            icon={CheckCircle2}
-          />
-          <MetricCard
-            title="CHẬM TRỄ / CẦN GẤP"
-            value={data.kpis.delayedRuns}
-            variant="danger-solid"
-            icon={AlertTriangle}
-          />
-        </div>
-
-        {/* Main Section */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 pt-2">
-          {/* Left Column: Live Queue */}
-          <div className="lg:col-span-8 space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <h3 className="text-sm font-bold text-[#1A1917] shrink-0">Hàng Đợi Yêu Cầu Hành Lý & Chuyển Phòng</h3>
-              <div className="flex items-center gap-1 bg-[#EFECE6] p-1 rounded-full border border-[#DDD8CE] overflow-x-auto no-scrollbar max-w-full">
-                {['All', 'Pending', 'In Progress', 'Completed', 'Luggage', 'Room Move', 'High Priority'].map((tab) => (
-                  <button
-                    key={tab}
-                    onClick={() => {
-                      setFilter(tab);
-                      onNotify(`Đã lọc danh sách hành lý theo: ${tab}`);
-                    }}
-                    className={`px-3 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
-                      filter === tab
-                        ? 'bg-[#18181B] text-white shadow-sm'
-                        : 'text-[#78716C] hover:text-[#1A1917]'
-                    }`}
-                  >
-                    {tab}
-                  </button>
-                ))}
+        <section className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-7">
+          {metrics.map(({ label, value, icon: Icon, urgent }) => (
+            <article
+              key={label}
+              className={`h-[98px] rounded-[14px] px-5 py-4 flex flex-col justify-between shadow-[0_2px_7px_rgba(43,38,32,0.03)] ${
+                urgent
+                  ? 'bg-gradient-to-br from-[#FFE4E1] to-[#F8B9BA] text-[#B92329]'
+                  : 'bg-[#F0EEEB] text-[#57534E]'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[12px] font-medium tracking-[0.08em]">{label}</span>
+                <Icon
+                  className={`h-[18px] w-[18px] ${urgent ? 'text-[#D52930]' : 'text-[#827F7A]'}`}
+                  strokeWidth={1.8}
+                />
               </div>
+              <span className={`text-[14px] font-medium ${urgent ? 'text-[#B92329]' : 'text-[#4D4945]'}`}>
+                {value}
+              </span>
+            </article>
+          ))}
+        </section>
+
+        <section className="grid grid-cols-1 lg:grid-cols-[minmax(0,2.08fr)_minmax(220px,1fr)] gap-5 mt-11">
+          <div className="min-w-0">
+            <div className="h-9 flex items-start justify-between">
+              <h3 className="text-[13px] font-medium text-[#403D39]">Active Requests</h3>
+              <button
+                type="button"
+                onClick={() => onNotify('Đã gửi thông báo phân công tới đội Bell Services')}
+                className="-mt-3 rounded-[10px] bg-black px-6 py-3 text-[12px] font-medium text-white transition-colors hover:bg-[#252525]"
+              >
+                Assign Team
+              </button>
             </div>
 
-            {/* Request Cards */}
-            <div className="space-y-4">
-              {filteredRequests.length === 0 ? (
-                <div className="p-12 text-center bg-white rounded-2xl border border-[#E5E1D8] text-xs text-stone-500">
-                  Không có yêu cầu nào trong danh mục "{filter}".
-                </div>
-              ) : (
-                filteredRequests.map((req) => {
-                const isUrgent = (req.priority || '').includes('HIGH');
-                const isPending = req.status === 'Pending' || req.status === 'Unassigned';
-                const isInProgress = req.status === 'In Progress';
-                const isCompleted = req.status === 'Completed';
-                const handlerName = req.assignedTo || req.assigned_to;
+            <div className="space-y-3">
+              {(data.requests || []).map((request) => {
+                const Icon = requestIcon[request.type] || Briefcase;
+                const status = getStatusLabel(request.status);
+                const isUrgent =
+                  request.is_urgent ||
+                  request.urgentBadge ||
+                  (request.priority || '').toUpperCase().includes('HIGH');
+                const isPending = status === 'Pending';
+                const isInProgress = status === 'In Progress';
 
                 return (
-                  <div
-                    key={req.id}
-                    className={`bg-white rounded-2xl border border-[#E5E1D8] p-5 shadow-sm space-y-4 transition-all hover:shadow-md ${
-                      isInProgress ? 'border-l-4 border-l-sky-500' : ''
-                    } ${isCompleted ? 'border-l-4 border-l-emerald-500 bg-emerald-50/5' : ''}`}
+                  <article
+                    key={request.id}
+                    className="rounded-[18px] bg-[#F0EFEC] px-5 py-[18px] shadow-[0_3px_12px_rgba(55,48,42,0.035)]"
                   >
-                    {/* Header */}
-                    <div className="flex items-center justify-between text-xs">
-                      <div className="flex items-center gap-2">
-                        <span className="w-8 h-8 rounded-xl bg-[#F0ECE3] flex items-center justify-center text-stone-700">
-                          {req.type === 'luggage' ? (
-                            <Briefcase className="w-4 h-4" />
+                    <div className="flex items-start gap-4">
+                      <div
+                        className={`mt-0.5 h-12 w-12 shrink-0 rounded-full flex items-center justify-center ${
+                          isUrgent ? 'bg-[#FFD9D7] text-[#C92329]' : 'bg-[#E7E5E3] text-[#54514E]'
+                        }`}
+                      >
+                        <Icon className="h-5 w-5" strokeWidth={1.8} />
+                      </div>
+
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <h4 className="text-[13px] font-medium leading-5 text-[#3F3B38]">
+                              {request.title}
+                            </h4>
+                            <p className="text-[12px] leading-5 text-[#66615C]">
+                              {request.location}
+                              {request.guestName && ` • Guest: ${request.guestName}`}
+                              {request.reporter && ` • Reporter: ${request.reporter}`}
+                            </p>
+                          </div>
+
+                          {isUrgent ? (
+                            <span className="shrink-0 rounded-full bg-[#C91F25] px-3 py-1 text-[10px] font-semibold tracking-[0.08em] text-white">
+                              HIGH PRIORITY
+                            </span>
                           ) : (
-                            <ArrowRightLeft className="w-4 h-4" />
+                            <span className="shrink-0 flex items-center gap-1 text-[11px] text-[#696561]">
+                              <span className={`h-1.5 w-1.5 rounded-full ${isInProgress ? 'bg-black' : 'bg-[#77736E]'}`} />
+                              {status}
+                            </span>
                           )}
-                        </span>
-                        <div>
-                          <span className="font-mono font-bold text-stone-900 block">{req.id}</span>
-                          <span className="text-[10px] text-stone-500">{req.guestName}</span>
+                        </div>
+
+                        <p className="mt-3 max-w-[94%] text-[12px] leading-[1.45] text-[#66615C]">
+                          {request.description}
+                        </p>
+
+                        <div className="mt-4 flex items-center gap-3">
+                          {isPending && (
+                            <>
+                              {isUrgent ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAccept(request.id)}
+                                    className="rounded-[9px] bg-black px-4 py-2.5 text-[11px] font-medium text-white transition-colors hover:bg-[#252525]"
+                                  >
+                                    Accept Task
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleAssignToBot(request.id)}
+                                    className="rounded-[9px] border border-[#D7D3CF] bg-[#F8F7F5] px-4 py-2.5 text-[11px] font-medium text-[#625E59] transition-colors hover:bg-white"
+                                  >
+                                    Assign to Bot
+                                  </button>
+                                </>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => onNotify(`Chi tiết yêu cầu ${request.id}`)}
+                                  className="text-[11px] font-medium text-[#4D4945] hover:text-black"
+                                >
+                                  View Details
+                                </button>
+                              )}
+                            </>
+                          )}
+
+                          {isInProgress && (
+                            <button
+                              type="button"
+                              onClick={() => handleComplete(request.id)}
+                              className="text-[11px] font-medium text-[#4D4945] hover:text-black"
+                            >
+                              Update Status
+                            </button>
+                          )}
+
+                          {status === 'Completed' && (
+                            <span className="text-[11px] font-medium text-[#5E6E65]">Completed</span>
+                          )}
                         </div>
                       </div>
-
-                      <div className="flex items-center gap-2">
-                        {isUrgent && (
-                          <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-bold text-[10px]">
-                            HIGH PRIORITY
-                          </span>
-                        )}
-                        <span className="text-stone-400">{req.time}</span>
-                      </div>
                     </div>
-
-                    {/* Content */}
-                    <div>
-                      <h4 className="text-sm font-bold text-[#1A1917]">{req.title}</h4>
-                      <p className="text-xs text-[#78716C] mt-1">{req.description}</p>
-                      <p className="text-xs font-semibold text-stone-800 mt-2">
-                        Lộ trình di chuyển: <span className="text-amber-800 font-bold">{req.location}</span>
-                      </p>
-                    </div>
-
-                    {/* Footer Actions */}
-                    <div className="pt-3 border-t border-[#F5F2EB] flex items-center justify-between">
-                      <div className="flex items-center gap-2 text-xs">
-                        {isPending ? (
-                          <span className="text-amber-700 bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-200 font-bold text-[11px]">
-                            Chờ Bellman tiếp nhận
-                          </span>
-                        ) : isInProgress ? (
-                          <span className="text-sky-800 bg-sky-50 px-2.5 py-0.5 rounded-full border border-sky-200 font-bold text-[11px]">
-                            Đang xử lý bởi: <span className="underline">{handlerName || staffName}</span>
-                          </span>
-                        ) : (
-                          <span className="text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200 font-bold text-[11px] flex items-center gap-1">
-                            <CheckCheck className="w-3 h-3 text-emerald-600" />
-                            Hoàn tất bởi: {handlerName || staffName}
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        {isPending && (
-                          <button
-                            onClick={() => handleClaim(req.id)}
-                            className="px-5 py-2 rounded-full bg-[#18181B] hover:bg-black text-white text-xs font-bold transition-all shadow-md cursor-pointer active:scale-95"
-                          >
-                            <span>✋ Nhận Xử Lý</span>
-                          </button>
-                        )}
-
-                        {isInProgress && (
-                          <button
-                            onClick={() => handleComplete(req.id)}
-                            className="px-5 py-2 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all shadow-md flex items-center gap-1.5 cursor-pointer active:scale-95"
-                          >
-                            <CheckCircle2 className="w-3.5 h-3.5" />
-                            <span>Hoàn Thành</span>
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
+                  </article>
                 );
-              }))}
+              })}
             </div>
           </div>
 
-          {/* Right Column: Fleet & Shift Team */}
-          <div className="lg:col-span-4 space-y-4">
-            {/* Robot Transport Fleet */}
-            <div className="bg-white rounded-2xl border border-[#E5E1D8] p-5 shadow-sm space-y-3">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-[#1A1917]">
-                Xe Đẩy Robot Tự Hành (Bot Fleet)
-              </h3>
+          <aside className="min-w-0">
+            <h3 className="h-9 text-[13px] font-medium text-[#403D39]">Team Status</h3>
 
-              <div className="p-3.5 rounded-xl bg-[#FAF8F5] border border-[#E0DCD3] space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Bot className="w-4 h-4 text-sky-600" />
-                    <span className="text-xs font-bold text-stone-900">Bot Unit Alpha</span>
-                  </div>
-                  <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                </div>
-                <p className="text-[11px] text-stone-600">Trạng thái: Sẵn sàng tại sảnh Lobby • Pin: 92%</p>
-              </div>
-            </div>
-
-            {/* Team Roster */}
-            <div className="bg-white rounded-2xl border border-[#E5E1D8] p-5 shadow-sm space-y-3">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-[#1A1917]">
-                Đồng Đội Bellman Trong Ca
-              </h3>
-              <p className="text-[11px] text-stone-500">
-                Tất cả thành viên trong ca đều nhận thông báo đồng thời từ Robot.
-              </p>
-
-              <div className="space-y-2.5 pt-1">
-                {(data.teamStatus || []).map((t) => (
-                  <div
-                    key={t.id || t.name}
-                    className="flex items-center justify-between p-2 rounded-xl bg-[#FAF8F5] border border-[#EAE6DE]"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <img
-                        src={
-                          t.avatar ||
-                          'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&auto=format&fit=crop&q=80'
-                        }
-                        alt={t.name}
-                        className="w-7 h-7 rounded-full object-cover"
-                      />
-                      <div>
-                        <p className="text-xs font-bold text-stone-800">{t.name}</p>
-                        <p className="text-[10px] text-stone-500">{t.location || 'Sảnh chính'}</p>
-                      </div>
+            <div className="rounded-[18px] bg-[#F2F1EE] px-4 py-2 shadow-[0_3px_12px_rgba(55,48,42,0.035)]">
+              {(data.teamStatus || []).slice(0, 3).map((member, index, members) => (
+                <div
+                  key={member.id || member.name}
+                  className={`flex min-h-[68px] items-center gap-3 ${
+                    index < members.length - 1 ? 'border-b border-[#E1DEDA]' : ''
+                  }`}
+                >
+                  {member.isRobot ? (
+                    <div className="h-9 w-9 shrink-0 rounded-full bg-[#E5E3E0] flex items-center justify-center text-[#68645F]">
+                      <Bot className="h-[17px] w-[17px]" strokeWidth={1.8} />
                     </div>
-                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                  ) : member.avatar ? (
+                    <img
+                      src={member.avatar}
+                      alt={member.name}
+                      className="h-9 w-9 shrink-0 rounded-full object-cover"
+                    />
+                  ) : (
+                    <div className="h-9 w-9 shrink-0 rounded-full bg-[#E5E3E0] flex items-center justify-center text-[11px] font-semibold text-[#68645F]">
+                      {(member.name || 'BS')
+                        .split(' ')
+                        .slice(0, 2)
+                        .map((part) => part[0])
+                        .join('')}
+                    </div>
+                  )}
+
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[12px] font-medium text-[#494541]">{member.name}</p>
+                    <p className="truncate text-[11px] text-[#716D68]">{member.role}</p>
                   </div>
-                ))}
+
+                  <span
+                    className={`h-2.5 w-2.5 shrink-0 rounded-full ${
+                      (member.status || '').toLowerCase() === 'busy'
+                        ? 'bg-[#FFAA00]'
+                        : 'bg-[#20C96B]'
+                    }`}
+                  />
+                </div>
+              ))}
+            </div>
+
+            <div
+              className="relative mt-8 h-[184px] overflow-hidden rounded-[18px] bg-[#E5E1DC] bg-cover bg-center shadow-[0_3px_12px_rgba(55,48,42,0.06)]"
+              style={{ backgroundImage: `url(${data.announcement?.imageUrl})` }}
+            >
+              <div className="absolute inset-0 bg-gradient-to-t from-[#E8E5E0]/95 via-[#EFEDE8]/35 to-transparent" />
+              <div className="absolute inset-x-0 bottom-0 p-4 text-[#504C48]">
+                <p className="text-[12px] font-medium">{data.announcement?.title}</p>
+                <p className="mt-1 text-[11px] leading-[1.45]">{data.announcement?.subtitle}</p>
               </div>
             </div>
-          </div>
-        </div>
+          </aside>
+        </section>
       </div>
-    </div>
+    </main>
   );
 };

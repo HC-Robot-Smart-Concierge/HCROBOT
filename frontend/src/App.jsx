@@ -13,6 +13,7 @@ import { BellServicesDashboard } from './pages/dashboard/BellServicesDashboard';
 import { MaintenanceDashboard } from './pages/dashboard/MaintenanceDashboard';
 import { RobotScreenPage } from './pages/robot/RobotScreenPage';
 import { AdminLidarPage } from './pages/admin/AdminLidarPage';
+import { AdminPortal } from './pages/admin/AdminPortal';
 
 // 5 Sidebar Staff Pages
 import { RequestsPage } from './pages/staff/RequestsPage';
@@ -51,13 +52,19 @@ const isAdminUser = (user) =>
   user?.username === 'admin' || user?.role === 'Operations Admin';
 
 const normalizeLegacyView = (view, user) => {
-  if (view !== 'manager_hub') return view;
-  return isAdminUser(user) ? 'admin_map' : 'landing';
+  if (isAdminUser(user)) {
+    if (!view || view === 'manager_hub' || view === 'landing' || view === 'room_service') {
+      return 'admin_portal';
+    }
+    return view;
+  }
+  if (view === 'manager_hub') return 'landing';
+  return view;
 };
 
 export function App() {
   // activeView:
-  // 'landing' | 'login' | 'reception' | 'room_service' | 'housekeeping' | 'bell_services' | 'maintenance' | 'robot_display' | 'admin_map'
+  // 'landing' | 'login' | 'reception' | 'room_service' | 'housekeeping' | 'bell_services' | 'maintenance' | 'robot_display' | 'admin_map' | 'admin_portal'
   const [currentUser, setCurrentUser] = useState(() => getStoredUser());
 
   const [activeView, setActiveView] = useState(() => {
@@ -118,18 +125,23 @@ export function App() {
 
     if (!currentUser) {
       // If logged out, only allow landing, login, robot_display, admin_map
-      if (!['landing', 'login', 'robot_display', 'admin_map'].includes(activeView)) {
+      if (!['landing', 'login', 'robot_display', 'admin_map', 'admin_portal'].includes(activeView)) {
         setActiveView('landing');
       }
       return;
     }
 
     if (activeView === 'manager_hub') {
-      setActiveView(isAdminUser(currentUser) ? 'admin_map' : 'landing');
+      setActiveView(isAdminUser(currentUser) ? 'admin_portal' : 'landing');
       return;
     }
 
-    if (isAdminUser(currentUser)) return; // Admin has universal access
+    if (isAdminUser(currentUser)) {
+      if (activeView === 'login') {
+        setActiveView('admin_portal');
+      }
+      return; // Admin has universal access
+    }
 
     const targetRoleDashboard = normalizeLegacyView(
       currentUser.default_dashboard || currentUser.defaultDashboard || 'room_service',
@@ -170,12 +182,14 @@ export function App() {
     }
 
     setCurrentUser(user);
-    const destination = normalizeLegacyView(
-      targetDashboard || user.default_dashboard || user.defaultDashboard || 'room_service',
-      user
-    );
-    setActiveView(destination);
-    localStorage.setItem('aurora_active_view', destination);
+    const resolvedDashboard = isAdminUser(user)
+      ? 'admin_portal'
+      : normalizeLegacyView(
+          targetDashboard || user.default_dashboard || user.defaultDashboard || 'room_service',
+          user
+        );
+    setActiveView(resolvedDashboard);
+    localStorage.setItem('aurora_active_view', resolvedDashboard);
     setActiveMenu('Dashboard');
     localStorage.setItem('aurora_active_menu', 'Dashboard');
     showNotification(`Đăng nhập thành công! Vai trò: ${user.role || user.department}`);
@@ -204,8 +218,8 @@ export function App() {
   const isAdmin = isAdminUser(currentUser);
 
   const viewOptions = [
+    { id: 'admin_portal', label: '👑 Admin Command Portal' },
     { id: 'landing', label: '🏠 Trang Chủ (Landing)' },
-    { id: 'login', label: '🔐 Đăng Nhập (Login)' },
     { id: 'reception', label: '0. Reception (Staff)' },
     { id: 'room_service', label: '1. Room Service (Staff)' },
     { id: 'housekeeping', label: '2. Housekeeping (Staff)' },
@@ -218,7 +232,7 @@ export function App() {
   return (
     <div className="w-full h-screen overflow-hidden bg-[#FAF8F5] text-[#1A1917] flex flex-col font-sans select-none relative">
       {/* Top Floating Header Pill (Only on Dashboard, Robot Display & LiDAR Map) */}
-      {activeView !== 'landing' && activeView !== 'login' && !usesReferenceLayout && (
+      {activeView !== 'landing' && activeView !== 'login' && activeView !== 'admin_portal' && !usesReferenceLayout && (
         <div className="absolute top-2.5 right-6 z-50 flex items-center gap-2">
           {/* If logged in as staff: Strict Role Badge & Logout */}
           {currentUser ? (
@@ -320,6 +334,15 @@ export function App() {
         <div className="w-full h-full relative">
           <AdminLidarPage />
         </div>
+      )}
+
+      {/* Admin Command Portal (RoboConcierge V2.4.1) */}
+      {activeView === 'admin_portal' && (
+        <AdminPortal
+          currentUser={currentUser}
+          onLogout={handleLogout}
+          onNotify={showNotification}
+        />
       )}
 
       {/* 4. Bộ Dashboard Nghiệp Vụ Khách Sạn (Aurora OS) */}
@@ -428,7 +451,7 @@ export function App() {
       )}
 
       {/* 5. Fallback Safety Render in case activeView is desynchronized */}
-      {!['landing', 'login', 'robot_display', 'admin_map'].includes(activeView) && !isDashboardView && (
+      {!['landing', 'login', 'robot_display', 'admin_map', 'admin_portal'].includes(activeView) && !isDashboardView && (
         <LandingHomePage
           currentUser={currentUser}
           onNavigateToLogin={() => {

@@ -280,3 +280,68 @@ export const fetchRobotFleet = async () => {
 export const fetchStaffRoster = async () => {
   return await fetchWithFallback(`${BASE_URL}/staff`, {}, []);
 };
+
+// ---------------------------------------------------------
+// 9. Admin Central Operations API Helpers
+// ---------------------------------------------------------
+export const fetchAdminSummary = async () => {
+  return await fetchWithFallback(`${BASE_URL}/admin/summary`, {}, {
+    total_active: 0,
+    all_count: 0,
+    reception_count: 0,
+    housekeeping_count: 0,
+    room_service_count: 0,
+    bell_services_count: 0,
+    maintenance_count: 0,
+    directives_count: 0,
+  });
+};
+
+export const fetchAdminTasks = async (params = {}) => {
+  const query = new URLSearchParams();
+  if (params.department && params.department !== 'All') query.append('department', params.department);
+  if (params.status && params.status !== 'All') query.append('status', params.status);
+  if (params.search) query.append('search', params.search);
+  if (params.limit) query.append('limit', params.limit);
+  if (params.offset) query.append('offset', params.offset);
+
+  const qs = query.toString() ? `?${query.toString()}` : '';
+  return await fetchWithFallback(`${BASE_URL}/admin/tasks${qs}`, {}, []);
+};
+
+export const dispatchAdminTask = async (taskData) => {
+  return await fetchWithFallback(
+    `${BASE_URL}/admin/dispatch`,
+    {
+      method: 'POST',
+      body: JSON.stringify(taskData),
+    },
+    null
+  );
+};
+
+export const updateAdminTask = async (ticketId, updateData) => {
+  return await fetchWithFallback(
+    `${BASE_URL}/admin/tasks/${encodeURIComponent(ticketId)}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(updateData),
+    },
+    { success: true, id: ticketId, ...updateData }
+  );
+};
+
+export const fetchAdminConversations = async (status = 'all') => {
+  const qs = status && status !== 'all' ? `?status=${encodeURIComponent(status)}` : '';
+  return await fetchWithFallback(`${BASE_URL}/admin/conversations${qs}`, {}, []);
+};
+
+export const fetchAdminConversationDetail = async (sessionId) => {
+  return await fetchWithFallback(
+    `${BASE_URL}/admin/conversations/${encodeURIComponent(sessionId)}`,
+    {},
+    null
+  );
+};
+
+

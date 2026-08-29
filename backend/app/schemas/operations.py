@@ -359,3 +359,88 @@ class RestaurantDashboardResponse(BaseModel):
     kpis: Dict[str, Any]
     reservations: List[RestaurantReservationResponse]
     pre_orders: List[RestaurantPreOrderResponse]
+
+
+# ---------------------------------------------------------
+# Admin Central Operations Schemas
+# ---------------------------------------------------------
+class UnifiedOperationTask(BaseModel):
+    id: str
+    raw_id: str
+    department: str
+    table_type: str
+    title: str
+    location: str
+    guest_name: str
+    priority: str
+    status: str
+    time: str
+    assigned_to: Optional[str] = None
+    assigned_robot: Optional[str] = None
+    notes: Optional[str] = None
+    source: str = "Robot / Staff"
+    created_at: Optional[datetime] = None
+
+
+class AdminTaskDispatchCreate(BaseModel):
+    department: str  # 'Reception', 'Housekeeping', 'F&B', 'Bell Services', 'Maintenance', 'Directive'
+    title: str
+    room_number: str = Field(..., description="Số phòng hoặc vị trí ví dụ 'Room 412', 'Lobby'")
+    guest_name: Optional[str] = "Hotel Guest"
+    priority: str = Field("NORMAL", description="'HIGH PRIORITY', 'NORMAL', 'LOW'")
+    description: Optional[str] = None
+    assigned_staff_name: Optional[str] = None
+    assigned_robot_code: Optional[str] = None
+
+
+class AdminTaskStatusUpdate(BaseModel):
+    status: str = Field(..., description="'Pending', 'In Progress', 'Completed', 'Cancelled'")
+    assigned_to: Optional[str] = None
+    assigned_robot: Optional[str] = None
+    note: Optional[str] = None
+
+
+class AdminOperationsSummary(BaseModel):
+    total_active: int = 0
+    all_count: int = 0
+    reception_count: int = 0
+    housekeeping_count: int = 0
+    room_service_count: int = 0
+    bell_services_count: int = 0
+    maintenance_count: int = 0
+    directives_count: int = 0
+
+
+# ---------------------------------------------------------
+# Human Support & Multilingual Conversations Schemas
+# ---------------------------------------------------------
+class SupportMessageSchema(BaseModel):
+    id: str
+    speaker: str  # 'guest' | 'robot' | 'staff' | 'system'
+    speaker_name: str
+    raw_transcript: str
+    languages_detected: List[str] = ["en"]
+    translations: Dict[str, str] = Field(default_factory=dict)
+    sentiment: Optional[str] = None
+    confidence: Optional[float] = None
+    timestamp: str
+
+
+class HumanSupportSessionResponse(BaseModel):
+    id: str
+    session_code: str
+    room_number: str
+    guest_name: str
+    is_vip: bool = False
+    category: str
+    origin_robot_code: str
+    sentiment: str
+    wait_time_label: str
+    status: str
+    linked_request_id: Optional[str] = None
+    messages: List[Dict[str, Any]] = Field(default_factory=list)
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+

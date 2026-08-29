@@ -18,6 +18,7 @@ from app.models import (
     RestaurantReservation,
     RestaurantPreOrder,
     ReceptionRequest,
+    HumanSupportSession,
 )
 from app.schemas.operations import (
     StaffResponse,
@@ -56,6 +57,12 @@ from app.schemas.operations import (
     ReceptionRequestUpdate,
     ReceptionRequestResponse,
     ReceptionDashboardResponse,
+    # Admin Operations
+    UnifiedOperationTask,
+    AdminTaskDispatchCreate,
+    AdminTaskStatusUpdate,
+    AdminOperationsSummary,
+    HumanSupportSessionResponse,
 )
 
 router = APIRouter()
@@ -708,12 +715,11 @@ async def restock_inventory(
 
 
 # =====================================================================
-# 6. UNIFIED REQUESTS & GENERIC UPDATE
+# 6. ADMIN CENTRAL OPERATIONS & UNIFIED REQUESTS
 # =====================================================================
 
-@router.get("/all-requests", tags=TAG_OPS)
-async def get_all_unified_requests(db: AsyncSession = Depends(get_db)):
-    """Returns consolidated requests across all hotel departments."""
+async def _fetch_all_raw_requests(db: AsyncSession) -> List[Dict[str, Any]]:
+    """Helper to collect and normalize tasks across all 6 operational tables."""
     orders_res = await db.execute(select(RoomServiceOrder).order_by(desc(RoomServiceOrder.created_at)))
     hk_res = await db.execute(select(HousekeepingRequest).order_by(desc(HousekeepingRequest.created_at)))
     bell_res = await db.execute(select(BellRequest).order_by(desc(BellRequest.created_at)))
@@ -728,15 +734,18 @@ async def get_all_unified_requests(db: AsyncSession = Depends(get_db)):
             "id": f"REQ-{o.order_number}",
             "raw_id": o.id,
             "department": "F&B",
+            "table_type": "room_service",
             "title": f"Order #{o.order_number}: {', '.join([i.get('name', 'Item') for i in o.items]) if o.items else 'Room Service'}",
             "location": o.room_number,
             "guestName": "VIP Guest" if o.is_vip else "Room Guest",
-            "priority": "HIGH PRIORITY" if o.priority == "high" or o.is_vip else "NORMAL",
+            "priority": "HIGH PRIORITY" if (o.priority == "high" or o.is_vip) else "NORMAL",
             "status": o.status,
             "time": "Recent",
             "assignedTo": o.assigned_staff_name,
+            "assigned_robot": o.assigned_robot_id,
             "notes": o.note,
-            "table_type": "room_service",
+            "source": "Guest / Robot App",
+            "created_at": o.created_at,
         })
 
     for h in hk_res.scalars().all():
@@ -744,15 +753,18 @@ async def get_all_unified_requests(db: AsyncSession = Depends(get_db)):
             "id": f"REQ-{h.ticket_code}",
             "raw_id": h.id,
             "department": "Housekeeping",
+            "table_type": "housekeeping",
             "title": h.title,
-            "location": f"ROOM {h.room_number}",
+            "location": f"ROOM {h.room_number}" if not str(h.room_number).upper().startswith("ROOM") else h.room_number,
             "guestName": h.guest_name or "Guest",
             "priority": h.priority,
             "status": h.status,
             "time": h.time_label,
             "assignedTo": h.assigned_staff_name,
+            "assigned_robot": None,
             "notes": h.description,
-            "table_type": "housekeeping",
+            "source": h.source or "HCRobot",
+            "created_at": h.created_at,
         })
 
     for b in bell_res.scalars().all():
@@ -760,6 +772,7 @@ async def get_all_unified_requests(db: AsyncSession = Depends(get_db)):
             "id": f"REQ-{b.ticket_code}",
             "raw_id": b.id,
             "department": "Bell Services",
+            "table_type": "bell",
             "title": b.title,
             "location": b.location,
             "guestName": b.guest_name or b.reporter or "Guest",
@@ -767,8 +780,10 @@ async def get_all_unified_requests(db: AsyncSession = Depends(get_db)):
             "status": b.status,
             "time": "Today",
             "assignedTo": b.assigned_to,
+            "assigned_robot": b.assigned_robot_id,
             "notes": b.description,
-            "table_type": "bell",
+            "source": "Front Desk / Robot",
+            "created_at": b.created_at,
         })
 
     for m in maint_res.scalars().all():
@@ -776,6 +791,7 @@ async def get_all_unified_requests(db: AsyncSession = Depends(get_db)):
             "id": f"REQ-{m.ticket_code}",
             "raw_id": m.id,
             "department": "Maintenance",
+            "table_type": "maintenance",
             "title": m.title,
             "location": m.location,
             "guestName": "Guest / Staff Reported",
@@ -783,31 +799,37 @@ async def get_all_unified_requests(db: AsyncSession = Depends(get_db)):
             "status": m.status,
             "time": m.reported_time_label,
             "assignedTo": m.assigned_to,
+            "assigned_robot": None,
             "notes": m.description,
-            "table_type": "maintenance",
+            "source": m.source or "HCRobot",
+            "created_at": m.created_at,
         })
 
-    for reception_request in reception_res.scalars().all():
+    for r in reception_res.scalars().all():
         unified.append({
-            "id": reception_request.ticket_code,
-            "raw_id": reception_request.id,
+            "id": r.ticket_code if str(r.ticket_code).startswith("REQ-") else f"REQ-{r.ticket_code}",
+            "raw_id": r.id,
             "department": "Reception",
-            "title": reception_request.title,
-            "location": reception_request.location,
-            "guestName": reception_request.guest_name or "Guest",
-            "priority": reception_request.priority,
-            "status": reception_request.status,
-            "time": reception_request.created_label,
-            "assignedTo": reception_request.assigned_to,
-            "notes": reception_request.description,
             "table_type": "reception",
+            "title": r.title,
+            "location": r.location,
+            "guestName": r.guest_name or "Guest",
+            "priority": r.priority,
+            "status": r.status,
+            "time": r.created_label,
+            "assignedTo": r.assigned_to,
+            "assigned_robot": None,
+            "notes": r.description,
+            "source": "Front Desk",
+            "created_at": r.created_at,
         })
 
     for d in dir_res.scalars().all():
         unified.append({
             "id": f"REQ-{d.code}",
             "raw_id": d.id,
-            "department": d.department,
+            "department": d.department or "Directive",
+            "table_type": "directive",
             "title": d.title,
             "location": d.location,
             "guestName": "Operations Directive",
@@ -815,143 +837,569 @@ async def get_all_unified_requests(db: AsyncSession = Depends(get_db)):
             "status": d.status,
             "time": d.reported_time_label,
             "assignedTo": d.assigned_staff_name,
+            "assigned_robot": None,
             "notes": d.description,
-            "table_type": "directive",
+            "source": f"Admin ({d.created_by})",
+            "created_at": d.created_at,
         })
 
     return unified
 
 
-@router.patch("/generic-request/{ticket_id}/status", tags=TAG_OPS)
+@router.get("/admin/tasks", response_model=List[UnifiedOperationTask], tags=TAG_OPS, summary="Admin: Danh sách tất cả các Task dịch vụ toàn khách sạn")
+async def get_admin_tasks(
+    department: Optional[str] = None,
+    status: Optional[str] = None,
+    search: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Truy vấn danh sách công việc tập trung của toàn khách sạn cho Admin Operations.
+    Hỗ trợ lọc theo phòng ban (department), trạng thái (status), tìm kiếm (search: phòng/khách/mã ticket).
+    """
+    raw_list = await _fetch_all_raw_requests(db)
+
+    # Filter by department
+    if department and department.lower() != "all":
+        dep_clean = department.lower().strip()
+        dept_mapping = {
+            "f&b": ["f&b", "room service", "phục vụ phòng"],
+            "room service": ["f&b", "room service"],
+            "housekeeping": ["housekeeping", "buồng phòng"],
+            "bell services": ["bell services", "bellman", "hành lý"],
+            "maintenance": ["maintenance", "kỹ thuật", "bảo trì"],
+            "reception": ["reception", "lễ tân"],
+            "directive": ["directive", "executive", "chỉ thị"],
+        }
+        valid_matches = dept_mapping.get(dep_clean, [dep_clean])
+        raw_list = [t for t in raw_list if any(m in t["department"].lower() for m in valid_matches)]
+
+    # Filter by status
+    if status and status.lower() != "all":
+        st_clean = status.lower().strip()
+        raw_list = [t for t in raw_list if st_clean in t["status"].lower()]
+
+    # Filter by search term
+    if search and search.strip():
+        q = search.lower().strip()
+        raw_list = [
+            t for t in raw_list
+            if (
+                q in t["id"].lower()
+                or q in t["title"].lower()
+                or q in t["location"].lower()
+                or q in t["guestName"].lower()
+                or (t["notes"] and q in t["notes"].lower())
+            )
+        ]
+
+    # Pagination
+    paged = raw_list[offset : offset + limit]
+
+    return [
+        UnifiedOperationTask(
+            id=item["id"],
+            raw_id=item["raw_id"],
+            department=item["department"],
+            table_type=item["table_type"],
+            title=item["title"],
+            location=item["location"],
+            guest_name=item["guestName"],
+            priority=item["priority"],
+            status=item["status"],
+            time=item["time"],
+            assigned_to=item.get("assignedTo"),
+            assigned_robot=item.get("assigned_robot"),
+            notes=item.get("notes"),
+            source=item.get("source", "Robot / Staff"),
+            created_at=item.get("created_at"),
+        )
+        for item in paged
+    ]
+
+
+@router.get("/admin/summary", response_model=AdminOperationsSummary, tags=TAG_OPS, summary="Admin: Thống kê số lượng ticket theo bộ phận")
+async def get_admin_operations_summary(db: AsyncSession = Depends(get_db)):
+    """Trả về số lượng ticket theo từng bộ phận và tổng số công việc đang xử lý."""
+    raw_list = await _fetch_all_raw_requests(db)
+
+    summary = AdminOperationsSummary(all_count=len(raw_list))
+
+    for t in raw_list:
+        dept = t["department"].lower()
+        st = t["status"].lower()
+        if st not in ["completed", "cancelled", "rejected"]:
+            summary.total_active += 1
+
+        if "reception" in dept:
+            summary.reception_count += 1
+        elif "housekeeping" in dept:
+            summary.housekeeping_count += 1
+        elif "f&b" in dept or "room service" in dept:
+            summary.room_service_count += 1
+        elif "bell" in dept:
+            summary.bell_services_count += 1
+        elif "maintenance" in dept:
+            summary.maintenance_count += 1
+        else:
+            summary.directives_count += 1
+
+    return summary
+
+
+@router.post("/admin/dispatch", response_model=UnifiedOperationTask, tags=TAG_OPS, summary="Admin: Phát lệnh điều phối tạo Task mới")
+async def admin_dispatch_task(
+    task_in: AdminTaskDispatchCreate,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Admin chủ động tạo yêu cầu dịch vụ hoặc chỉ thị điều phối.
+    Dữ liệu sẽ tự động lưu vào đúng bảng CSDL của bộ phận tương ứng.
+    """
+    dep = task_in.department.lower().strip()
+    rand_suffix = random.randint(1000, 9999)
+
+    if "housekeeping" in dep or "buồng phòng" in dep:
+        code = f"HK-{rand_suffix}"
+        room = task_in.room_number.upper().replace("ROOM", "").strip()
+        item = HousekeepingRequest(
+            ticket_code=code,
+            source="From Admin Portal",
+            priority=task_in.priority,
+            time_label="Just now",
+            title=task_in.title,
+            room_number=room,
+            description=task_in.description,
+            guest_name=task_in.guest_name,
+            status="In Progress" if task_in.assigned_staff_name or task_in.assigned_robot_code else "Unassigned",
+            assigned_staff_name=task_in.assigned_staff_name or task_in.assigned_robot_code,
+        )
+        db.add(item)
+        await db.commit()
+        await db.refresh(item)
+        return UnifiedOperationTask(
+            id=f"REQ-{code}",
+            raw_id=item.id,
+            department="Housekeeping",
+            table_type="housekeeping",
+            title=item.title,
+            location=f"ROOM {item.room_number}",
+            guest_name=item.guest_name or "Guest",
+            priority=item.priority,
+            status=item.status,
+            time="Just now",
+            assigned_to=item.assigned_staff_name,
+            assigned_robot=task_in.assigned_robot_code,
+            notes=item.description,
+            source=item.source,
+            created_at=item.created_at,
+        )
+
+    elif "f&b" in dep or "room service" in dep:
+        code = str(rand_suffix)
+        order = RoomServiceOrder(
+            order_number=code,
+            room_number=task_in.room_number,
+            is_vip="vip" in (task_in.guest_name or "").lower(),
+            status="Delivering" if task_in.assigned_robot_code else "Pending",
+            priority=task_in.priority.lower(),
+            items=[{"name": task_in.title, "qty": 1}],
+            note=task_in.description,
+            assigned_staff_name=task_in.assigned_staff_name,
+        )
+        db.add(order)
+        await db.commit()
+        await db.refresh(order)
+        return UnifiedOperationTask(
+            id=f"REQ-{code}",
+            raw_id=order.id,
+            department="F&B",
+            table_type="room_service",
+            title=task_in.title,
+            location=order.room_number,
+            guest_name=task_in.guest_name or "Room Guest",
+            priority=task_in.priority,
+            status=order.status,
+            time="Just now",
+            assigned_to=order.assigned_staff_name,
+            assigned_robot=task_in.assigned_robot_code,
+            notes=order.note,
+            source="From Admin Portal",
+            created_at=order.created_at,
+        )
+
+    elif "bell" in dep:
+        code = f"BS-{random.randint(500, 999)}"
+        bell = BellRequest(
+            ticket_code=code,
+            title=task_in.title,
+            priority=task_in.priority,
+            is_urgent="high" in task_in.priority.lower(),
+            location=task_in.room_number,
+            guest_name=task_in.guest_name,
+            reporter="Admin Dispatch",
+            description=task_in.description,
+            status="In Progress" if task_in.assigned_staff_name or task_in.assigned_robot_code else "Pending",
+            assigned_to=task_in.assigned_staff_name or task_in.assigned_robot_code,
+        )
+        db.add(bell)
+        await db.commit()
+        await db.refresh(bell)
+        return UnifiedOperationTask(
+            id=f"REQ-{code}",
+            raw_id=bell.id,
+            department="Bell Services",
+            table_type="bell",
+            title=bell.title,
+            location=bell.location,
+            guest_name=bell.guest_name or "Guest",
+            priority=bell.priority,
+            status=bell.status,
+            time="Just now",
+            assigned_to=bell.assigned_to,
+            assigned_robot=task_in.assigned_robot_code,
+            notes=bell.description,
+            source="From Admin Portal",
+            created_at=bell.created_at,
+        )
+
+    elif "maintenance" in dep or "bảo trì" in dep:
+        code = f"MN-{random.randint(400, 999)}"
+        maint = MaintenanceRequest(
+            ticket_code=code,
+            title=task_in.title,
+            priority=task_in.priority,
+            reported_time_label="Just now",
+            location=task_in.room_number,
+            description=task_in.description,
+            source="Admin Dispatch",
+            status="In Progress" if task_in.assigned_staff_name else "Pending",
+            assigned_to=task_in.assigned_staff_name,
+        )
+        db.add(maint)
+        await db.commit()
+        await db.refresh(maint)
+        return UnifiedOperationTask(
+            id=f"REQ-{code}",
+            raw_id=maint.id,
+            department="Maintenance",
+            table_type="maintenance",
+            title=maint.title,
+            location=maint.location,
+            guest_name="Staff Reported",
+            priority=maint.priority,
+            status=maint.status,
+            time="Just now",
+            assigned_to=maint.assigned_to,
+            assigned_robot=None,
+            notes=maint.description,
+            source="From Admin Portal",
+            created_at=maint.created_at,
+        )
+
+    elif "reception" in dep or "lễ tân" in dep:
+        code = f"REC-{random.randint(100, 999)}"
+        rec = ReceptionRequest(
+            ticket_code=code,
+            title=task_in.title,
+            created_label="Just now",
+            location=task_in.room_number,
+            guest_name=task_in.guest_name or "Hotel Guest",
+            priority=task_in.priority,
+            status="Pending Action",
+            description=task_in.description or "",
+            assigned_to=task_in.assigned_staff_name,
+        )
+        db.add(rec)
+        await db.commit()
+        await db.refresh(rec)
+        return UnifiedOperationTask(
+            id=f"REQ-{code}",
+            raw_id=rec.id,
+            department="Reception",
+            table_type="reception",
+            title=rec.title,
+            location=rec.location,
+            guest_name=rec.guest_name,
+            priority=rec.priority,
+            status=rec.status,
+            time="Just now",
+            assigned_to=rec.assigned_to,
+            assigned_robot=None,
+            notes=rec.description,
+            source="From Admin Portal",
+            created_at=rec.created_at,
+        )
+
+    else:
+        code = f"OP-{random.randint(100, 999)}"
+        d = ManagementDirective(
+            code=code,
+            title=task_in.title,
+            department=task_in.department,
+            priority=task_in.priority,
+            location=task_in.room_number,
+            reported_time_label="Just now",
+            description=task_in.description,
+            status="In Progress" if task_in.assigned_staff_name else "Unassigned",
+            assigned_staff_name=task_in.assigned_staff_name or task_in.assigned_robot_code,
+            created_by="Admin Portal",
+        )
+        db.add(d)
+        await db.commit()
+        await db.refresh(d)
+        return UnifiedOperationTask(
+            id=f"REQ-{code}",
+            raw_id=d.id,
+            department=d.department,
+            table_type="directive",
+            title=d.title,
+            location=d.location,
+            guest_name="Operations Directive",
+            priority=d.priority,
+            status=d.status,
+            time="Just now",
+            assigned_to=d.assigned_staff_name,
+            assigned_robot=task_in.assigned_robot_code,
+            notes=d.description,
+            source=f"Admin ({d.created_by})",
+            created_at=d.created_at,
+        )
+
+
+@router.get("/admin/tasks/{ticket_id}", response_model=UnifiedOperationTask, tags=TAG_OPS, summary="Admin: Xem chi tiết 1 Task")
+async def get_admin_task_detail(ticket_id: str, db: AsyncSession = Depends(get_db)):
+    """Lấy chi tiết đầy đủ của một Task qua mã ticket (ví dụ: 'REQ-1042', 'HK-1042', hoặc ID CSDL)."""
+    clean_id = ticket_id.replace("REQ-", "").strip()
+    raw_list = await _fetch_all_raw_requests(db)
+
+    for item in raw_list:
+        if (
+            item["id"] == ticket_id
+            or item["id"] == f"REQ-{clean_id}"
+            or item["raw_id"] == clean_id
+            or clean_id in item["id"]
+        ):
+            return UnifiedOperationTask(
+                id=item["id"],
+                raw_id=item["raw_id"],
+                department=item["department"],
+                table_type=item["table_type"],
+                title=item["title"],
+                location=item["location"],
+                guest_name=item["guestName"],
+                priority=item["priority"],
+                status=item["status"],
+                time=item["time"],
+                assigned_to=item.get("assignedTo"),
+                assigned_robot=item.get("assigned_robot"),
+                notes=item.get("notes"),
+                source=item.get("source", "Robot / Staff"),
+                created_at=item.get("created_at"),
+            )
+
+    raise HTTPException(status_code=404, detail=f"Task with ID {ticket_id} not found")
+
+
+@router.patch("/admin/tasks/{ticket_id}", tags=TAG_OPS, summary="Admin: Cập nhật trạng thái và điều phối Task")
+async def update_admin_task(
+    ticket_id: str,
+    update_in: AdminTaskStatusUpdate,
+    db: AsyncSession = Depends(get_db),
+):
+    """Cập nhật trạng thái, người phụ trách hoặc Robot cho bất kỳ Task nào trong hệ thống."""
+    clean_id = ticket_id.replace("REQ-", "").strip()
+
+    # 1. Room Service
+    res = await db.execute(
+        select(RoomServiceOrder).where(
+            (RoomServiceOrder.order_number == clean_id)
+            | (RoomServiceOrder.id == clean_id)
+            | (RoomServiceOrder.order_number == ticket_id)
+            | (RoomServiceOrder.id == ticket_id)
+            | (RoomServiceOrder.id.ilike(f"%{clean_id}%"))
+        )
+    )
+    order = res.scalar_one_or_none()
+    if order:
+        order.status = update_in.status
+        if update_in.assigned_to:
+            order.assigned_staff_name = update_in.assigned_to
+        if update_in.note:
+            order.note = update_in.note
+        await db.commit()
+        return {"success": True, "type": "room_service", "id": order.id, "status": order.status}
+
+    # 2. Housekeeping
+    res = await db.execute(
+        select(HousekeepingRequest).where(
+            (HousekeepingRequest.ticket_code == clean_id)
+            | (HousekeepingRequest.id == clean_id)
+            | (HousekeepingRequest.ticket_code == ticket_id)
+            | (HousekeepingRequest.id == ticket_id)
+            | (HousekeepingRequest.id.ilike(f"%{clean_id}%"))
+            | (HousekeepingRequest.ticket_code.ilike(f"%{clean_id}%"))
+        )
+    )
+    hk = res.scalar_one_or_none()
+    if hk:
+        hk.status = update_in.status
+        if update_in.assigned_to:
+            hk.assigned_staff_name = update_in.assigned_to
+        if update_in.note:
+            hk.description = f"{hk.description or ''} | Note: {update_in.note}"
+        await db.commit()
+        return {"success": True, "type": "housekeeping", "id": hk.id, "status": hk.status}
+
+    # 3. Bell Services
+    res = await db.execute(
+        select(BellRequest).where(
+            (BellRequest.ticket_code == clean_id)
+            | (BellRequest.id == clean_id)
+            | (BellRequest.ticket_code == ticket_id)
+            | (BellRequest.id == ticket_id)
+            | (BellRequest.id.ilike(f"%{clean_id}%"))
+        )
+    )
+    bell = res.scalar_one_or_none()
+    if bell:
+        bell.status = update_in.status
+        if update_in.assigned_to:
+            bell.assigned_to = update_in.assigned_to
+        await db.commit()
+        return {"success": True, "type": "bell", "id": bell.id, "status": bell.status}
+
+    # 4. Maintenance
+    res = await db.execute(
+        select(MaintenanceRequest).where(
+            (MaintenanceRequest.ticket_code == clean_id)
+            | (MaintenanceRequest.id == clean_id)
+            | (MaintenanceRequest.ticket_code == ticket_id)
+            | (MaintenanceRequest.id == ticket_id)
+            | (MaintenanceRequest.id.ilike(f"%{clean_id}%"))
+        )
+    )
+    maint = res.scalar_one_or_none()
+    if maint:
+        maint.status = update_in.status
+        if update_in.assigned_to:
+            maint.assigned_to = update_in.assigned_to
+        await db.commit()
+        return {"success": True, "type": "maintenance", "id": maint.id, "status": maint.status}
+
+    # 5. Reception
+    res = await db.execute(
+        select(ReceptionRequest).where(
+            (ReceptionRequest.ticket_code == clean_id)
+            | (ReceptionRequest.id == clean_id)
+            | (ReceptionRequest.ticket_code == ticket_id)
+            | (ReceptionRequest.id == ticket_id)
+            | (ReceptionRequest.id.ilike(f"%{clean_id}%"))
+        )
+    )
+    rec = res.scalar_one_or_none()
+    if rec:
+        rec.status = update_in.status
+        if update_in.assigned_to:
+            rec.assigned_to = update_in.assigned_to
+        await db.commit()
+        return {"success": True, "type": "reception", "id": rec.id, "status": rec.status}
+
+    # 6. Directive
+    res = await db.execute(
+        select(ManagementDirective).where(
+            (ManagementDirective.code == clean_id)
+            | (ManagementDirective.id == clean_id)
+            | (ManagementDirective.code == ticket_id)
+            | (ManagementDirective.id == ticket_id)
+            | (ManagementDirective.id.ilike(f"%{clean_id}%"))
+        )
+    )
+    dir_item = res.scalar_one_or_none()
+    if dir_item:
+        dir_item.status = update_in.status
+        if update_in.assigned_to:
+            dir_item.assigned_staff_name = update_in.assigned_to
+        await db.commit()
+        return {"success": True, "type": "directive", "id": dir_item.id, "status": dir_item.status}
+
+    raise HTTPException(status_code=404, detail=f"Ticket {ticket_id} not found")
+
+
+# Backwards compatibility endpoints
+@router.get("/all-requests", tags=TAG_OPS, summary="Legacy: Lấy tất cả request")
+async def get_all_unified_requests(db: AsyncSession = Depends(get_db)):
+    return await _fetch_all_raw_requests(db)
+
+
+@router.patch("/generic-request/{ticket_id}/status", tags=TAG_OPS, summary="Legacy: Cập nhật status request")
 async def update_generic_request_status(
     ticket_id: str,
     status: str,
     assigned_to: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
 ):
-    """Universal status updater across all operational tables in DB."""
-    clean_id = ticket_id.replace("REQ-", "").strip()
+    update_data = AdminTaskStatusUpdate(status=status, assigned_to=assigned_to)
+# ---------------------------------------------------------
+# Human Support Sessions & Multilingual Conversation Logs
+# ---------------------------------------------------------
 
-    # 1. Check Room Service
+@router.get(
+    "/admin/conversations",
+    response_model=List[HumanSupportSessionResponse],
+    tags=TAG_OPS,
+    summary="Admin: Xem danh sách các phiên đàm thoại giọng nói Robot với khách",
+)
+async def get_admin_conversations(
+    status: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Trả về danh sách các phiên hỗ trợ / hội thoại giữa Robot Concierge và khách hàng.
+    Hỗ trợ chế độ chỉ xem (View-only) cho Admin giám sát.
+    """
+    stmt = select(HumanSupportSession).order_by(desc(HumanSupportSession.created_at))
+    if status and status.lower() != "all":
+        stmt = stmt.where(HumanSupportSession.status.ilike(f"%{status}%"))
+
+    res = await db.execute(stmt)
+    sessions = res.scalars().all()
+    return sessions
+
+
+@router.get(
+    "/admin/conversations/{session_id}",
+    response_model=HumanSupportSessionResponse,
+    tags=TAG_OPS,
+    summary="Admin: Xem chi tiết toàn bộ lịch sử đàm thoại song ngữ của 1 phiên",
+)
+async def get_admin_conversation_detail(
+    session_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Lấy chi tiết toàn bộ các lượt nói (turns), văn bản gốc đa ngữ,
+    và bản dịch song ngữ Tiếng Việt / Tiếng Anh của phiên hỗ trợ.
+    """
     res = await db.execute(
-        select(RoomServiceOrder).where(
-            (RoomServiceOrder.order_number == clean_id) |
-            (RoomServiceOrder.id == clean_id) |
-            (RoomServiceOrder.order_number == ticket_id) |
-            (RoomServiceOrder.id == ticket_id) |
-            (RoomServiceOrder.id.ilike(f"%{clean_id}%"))
+        select(HumanSupportSession).where(
+            (HumanSupportSession.id == session_id)
+            | (HumanSupportSession.session_code == session_id)
+            | (HumanSupportSession.room_number.ilike(f"%{session_id}%"))
         )
     )
-    order = res.scalar_one_or_none()
-    if order:
-        order.status = status
-        if assigned_to:
-            order.assigned_staff_name = assigned_to
-        await db.commit()
-        return {"success": True, "type": "room_service", "id": order.id, "status": order.status}
-
-    # 2. Check Housekeeping
-    res = await db.execute(
-        select(HousekeepingRequest).where(
-            (HousekeepingRequest.ticket_code == clean_id) |
-            (HousekeepingRequest.id == clean_id) |
-            (HousekeepingRequest.ticket_code == ticket_id) |
-            (HousekeepingRequest.id == ticket_id) |
-            (HousekeepingRequest.id.ilike(f"%{clean_id}%")) |
-            (HousekeepingRequest.ticket_code.ilike(f"%{clean_id}%"))
-        )
-    )
-    hk = res.scalar_one_or_none()
-    if hk:
-        hk.status = status
-        if assigned_to:
-            hk.assigned_staff_name = assigned_to
-        await db.commit()
-        return {"success": True, "type": "housekeeping", "id": hk.id, "status": hk.status}
-
-    # 3. Check Bell
-    res = await db.execute(
-        select(BellRequest).where(
-            (BellRequest.ticket_code == clean_id) |
-            (BellRequest.id == clean_id) |
-            (BellRequest.ticket_code == ticket_id) |
-            (BellRequest.id == ticket_id) |
-            (BellRequest.id.ilike(f"%{clean_id}%"))
-        )
-    )
-    bell = res.scalar_one_or_none()
-    if bell:
-        bell.status = status
-        if assigned_to:
-            bell.assigned_to = assigned_to
-        await db.commit()
-        return {"success": True, "type": "bell", "id": bell.id, "status": bell.status}
-
-    # 4. Check Maintenance
-    res = await db.execute(
-        select(MaintenanceRequest).where(
-            (MaintenanceRequest.ticket_code == clean_id) |
-            (MaintenanceRequest.id == clean_id) |
-            (MaintenanceRequest.ticket_code == ticket_id) |
-            (MaintenanceRequest.id == ticket_id) |
-            (MaintenanceRequest.id.ilike(f"%{clean_id}%"))
-        )
-    )
-    maint = res.scalar_one_or_none()
-    if maint:
-        maint.status = status
-        if assigned_to:
-            maint.assigned_to = assigned_to
-        await db.commit()
-        return {"success": True, "type": "maintenance", "id": maint.id, "status": maint.status}
-
-    # 5. Check Reception
-    res = await db.execute(
-        select(ReceptionRequest).where(
-            (ReceptionRequest.ticket_code == clean_id) |
-            (ReceptionRequest.id == clean_id) |
-            (ReceptionRequest.ticket_code == ticket_id) |
-            (ReceptionRequest.id == ticket_id) |
-            (ReceptionRequest.id.ilike(f"%{clean_id}%"))
-        )
-    )
-    reception_request = res.scalar_one_or_none()
-    if reception_request:
-        reception_request.status = status
-        if assigned_to:
-            reception_request.assigned_to = assigned_to
-        await db.commit()
-        return {
-            "success": True,
-            "type": "reception",
-            "id": reception_request.id,
-            "status": reception_request.status,
-        }
-
-    # 6. Check Directive
-    res = await db.execute(
-        select(ManagementDirective).where(
-            (ManagementDirective.code == clean_id) |
-            (ManagementDirective.id == clean_id) |
-            (ManagementDirective.code == ticket_id) |
-            (ManagementDirective.id == ticket_id) |
-            (ManagementDirective.id.ilike(f"%{clean_id}%"))
-        )
-    )
-    dir_item = res.scalar_one_or_none()
-    if dir_item:
-        dir_item.status = status
-        if assigned_to:
-            dir_item.assigned_staff_name = assigned_to
-        await db.commit()
-        return {"success": True, "type": "directive", "id": dir_item.id, "status": dir_item.status}
-
-    return {"success": True, "message": f"Updated ticket {ticket_id} status to {status}"}
+    session_item = res.scalar_one_or_none()
+    if not session_item:
+        raise HTTPException(status_code=404, detail=f"Conversation session {session_id} not found")
+    return session_item
 
 
 # =====================================================================
 # 10. RESTAURANT DASHBOARD, TABLE RESERVATIONS & PRE-ORDERS
 # =====================================================================
+
 
 @router.get("/dashboard/restaurant", response_model=RestaurantDashboardResponse, tags=TAG_REST)
 async def get_restaurant_dashboard(db: AsyncSession = Depends(get_db)):

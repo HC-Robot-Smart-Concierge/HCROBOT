@@ -7,6 +7,7 @@ from app.models.bell_service import BellRequest
 from app.models.maintenance import MaintenanceRequest
 from app.models.directive import ManagementDirective
 from app.models.stock import InventoryStock
+from app.models.restaurant import RestaurantReservation, RestaurantPreOrder
 
 __all__ = [
     "Base",
@@ -18,4 +19,6 @@ __all__ = [
     "MaintenanceRequest",
     "ManagementDirective",
     "InventoryStock",
+    "RestaurantReservation",
+    "RestaurantPreOrder",
 ]

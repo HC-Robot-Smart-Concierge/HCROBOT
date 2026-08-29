@@ -269,12 +269,18 @@ ros2 run hc_robot_client telemetry_node
 
 ## 📡 5. GIAO TIẾP REAL-TIME, APIS & ROS 2 TOPICS
 
-### 🌐 Endpoints RESTful API Chính
-- `/api/v1/auth`: Đăng nhập, xác thực JWT, phân quyền RBAC.
-- `/api/v1/hotel`: Quản lý thông tin phòng nghỉ, cơ sở vật chất, ưu đãi.
-- `/api/v1/requests`: Tạo ticket yêu cầu dịch vụ khách hàng, cập nhật trạng thái.
-- `/api/v1/rag`: Quản trị tài liệu tri thức RAG Knowledge Base.
-- `/api/v1/analytics`: Thống kê tần suất dịch vụ & đánh giá chất lượng.
+### 🌐 Endpoints RESTful API Chính (Phân loại theo Bộ phận)
+- `/api/v1/auth`: Đăng nhập, xác thực JWT, phân quyền RBAC theo bộ phận.
+- `/api/v1/rag`: Lễ tân & Reception tra cứu tri thức khách sạn (ChromaDB Vector Base).
+- `/api/v1/ai`: Engine trí tuệ nhân tạo Ollama Local Conversational AI.
+- `/api/v1/map`: Định vị bản đồ 2D SLAM LiDAR & điều hướng Robot.
+- `/api/v1/operations/restaurant/reservations`: **Bộ phận Nhà hàng - Robot / Khách đặt bàn trước**.
+- `/api/v1/operations/restaurant/pre-orders`: **Bộ phận Nhà hàng - Robot / Khách đặt món ăn trước**.
+- `/api/v1/operations/room-service/*`: Phục vụ đồ ăn thức uống tại phòng (F&B).
+- `/api/v1/operations/housekeeping/*`: Quản lý yêu cầu vệ sinh & buồng phòng.
+- `/api/v1/operations/bell-services/*`: Quản lý yêu cầu vận chuyển hành lý Bellman.
+- `/api/v1/operations/maintenance/*`: Tiếp nhận ticket sự cố & kỹ thuật bảo trì.
+- `/api/v1/operations/manager-hub/*`: Ban Giám đốc quản lý chỉ thị & điều hành chung.
 
 ### ⚡ Socket.IO Events Reference
 | Event Name | Direction | Payload Description |

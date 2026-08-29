@@ -405,8 +405,50 @@ async def seed_initial_data(session: AsyncSession):
         ]
         session.add_all(stocks)
 
+        # 9. Seed Restaurant Reservations & Pre-Orders
+        res_sample = [
+            RestaurantReservation(
+                reservation_code="RES-1024",
+                guest_name="Mr. David Miller",
+                room_number="Room 502",
+                party_size=4,
+                reservation_time="19:30 Today",
+                table_number="Table 05 (Window View)",
+                special_note="Kỷ niệm ngày cưới. Cần chuẩn bị nến và hoa hồng trên bàn.",
+                status="Confirmed",
+            ),
+            RestaurantReservation(
+                reservation_code="RES-1025",
+                guest_name="Mrs. Sophia Chen",
+                room_number="Room 312",
+                party_size=2,
+                reservation_time="20:00 Today",
+                table_number="Table 02",
+                special_note="Khách dị ứng với hải sản.",
+                status="Confirmed",
+            ),
+        ]
+        session.add_all(res_sample)
+
+        pre_sample = [
+            RestaurantPreOrder(
+                order_code="ORD-5012",
+                reservation_code="RES-1024",
+                guest_name="Mr. David Miller",
+                room_number="Room 502",
+                items=[
+                    {"name": "Ribeye Steak Prime 350g", "quantity": 2, "price": 550000},
+                    {"name": "Rượu Vang Đỏ Chateau Margaux", "quantity": 1, "price": 1200000},
+                ],
+                total_price=2300000.0,
+                note="Phục vụ rượu vang lúc 19:45.",
+                status="Pending",
+            )
+        ]
+        session.add_all(pre_sample)
+
         await session.commit()
-        logger.info("🎉 Initial 5-star hotel operational data seeded successfully!")
+        logger.info("🎉 Initial 5-star hotel operational & restaurant data seeded successfully!")
 
     except Exception as e:
         await session.rollback()

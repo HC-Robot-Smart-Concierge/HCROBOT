@@ -173,30 +173,38 @@ HC-Robot/
    OPENAI_API_KEY=your_openai_api_key_here
    ```
 
-5. **Chạy script kiểm tra tự động kết nối PostgreSQL & ChromaDB**:
+5. **Seeding Tài Khoản CSDL PostgreSQL Các Bộ Phận**:
+   Khởi tạo và đồng bộ bảng CSDL cùng danh sách tài khoản theo các bộ phận chức năng (Mật khẩu mặc định cho tất cả tài khoản: `123456`):
    ```powershell
-   python test_db_connection.py
+   python scripts/seed_robot_accounts.py
    ```
-   *Kết quả thành công:*
-   ```text
-   ============================================================
-   DATABASE TEST SUMMARY
-   ============================================================
-   1. PostgreSQL (Async Engine) : SUCCESS
-   2. ChromaDB (Vector Store)   : SUCCESS
-   ============================================================
-   ALL DATABASE TESTS PASSED! Backend is ready for development.
+   Hoặc khởi tạo lại CSDL từ đầu:
+   ```powershell
+   python -c "import asyncio; from app.db.init_db import init_db; asyncio.run(init_db())"
    ```
+
+   **📋 Danh Sách Tài Khoản Hệ Thống Theo Bộ Phận:**
+   | Tên Đăng Nhập (Username) | Mật Khẩu | Tên Bộ Phận / Chức Danh | Phân Hệ Dashboard |
+   | :--- | :--- | :--- | :--- |
+   | `reception` | `123456` | Nhân viên Lễ tân (Reception) | Manager Hub |
+   | `roomservice` | `123456` | Nhân viên Phục vụ phòng (F&B) | Room Service |
+   | `housekeeping` | `123456` | Nhân viên Buồng phòng (Housekeeping) | Housekeeping |
+   | `bellman` | `123456` | Nhân viên Vận chuyển hành lý (Bellman) | Bell Services |
+   | `maintenance` | `123456` | Nhân viên Kỹ thuật & Bảo trì | Maintenance |
+   | `manager` | `123456` | Ban Quản lý Khách sạn (Manager) | Manager Hub |
+   | `admin` | `123456` | Quản trị Hệ thống (Admin) | Tất cả Dashboards |
+   | `robot_01` | `123456` | Robot Kiosk Unit 01 | Màn hình Robot |
+   | `robot_02` | `123456` | Robot Kiosk Unit 02 | Màn hình Robot |
 
 6. **Khởi chạy Backend Server**:
    ```powershell
    uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
    ```
-   - Swagger UI API Docs: `http://localhost:8000/docs`
+   - **Swagger UI API Docs (Phân loại theo Bộ phận):** `http://localhost:8000/docs`
 
 ---
 
-### Bước 3: Cài Đặt & Khởi Chạy Frontend (React)
+### Bước 3: Cài Đặt & Khởi Chạy Frontend Web & PWA (React)
 
 1. **Di chuyển vào thư mục frontend**:
    ```powershell
@@ -212,7 +220,7 @@ HC-Robot/
    ```powershell
    npm run dev
    ```
-   - Truy cập giao diện Web tại: `http://localhost:3000` (hoặc port do Vite cấp).
+   - Truy cập giao diện Web / PWA tại: `http://localhost:3000` (hoặc port do Vite cấp).
 
 ---
 
@@ -222,26 +230,7 @@ Tại thư mục gốc dự án, double click vào file `start_all.bat` hoặc c
 ```powershell
 .\start_all.bat
 ```
-Kịch bản sẽ tự động mở 2 cửa sổ Terminal riêng biệt chạy đồng thời **Backend FastAPI (Port 8000)** và **Frontend React (Port 3000)**.
-
----
-
-### Bước 5: Cài Đặt & Khởi Chạy Mobile App (Flutter)
-
-1. **Di chuyển vào thư mục mobile**:
-   ```powershell
-   cd f:\DoAn\HC-Robot\mobile
-   ```
-
-2. **Lấy các gói phụ thuộc Flutter**:
-   ```powershell
-   flutter pub get
-   ```
-
-3. **Chạy ứng dụng trên thiết bị ảo / thật**:
-   ```powershell
-   flutter run
-   ```
+Kịch bản sẽ tự động mở 2 cửa sổ Terminal riêng biệt chạy đồng thời **Backend FastAPI (Port 8000)** và **Frontend React PWA (Port 3000)**.
 
 ---
 

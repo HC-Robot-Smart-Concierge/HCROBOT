@@ -6,72 +6,78 @@ const AUTH_URL = '/api/v1/auth';
 const TOKEN_KEY = 'aurora_jwt_token';
 const USER_KEY = 'aurora_user_profile';
 
-// Mock users for offline demo fallback with strict role isolation
+// Standardized Staff & Robot Accounts by Department (No fake mock names)
 export const DEMO_STAFF_ACCOUNTS = [
   {
+    username: 'reception',
+    password: '123456',
+    name: 'Nhân viên Lễ tân (Reception)',
+    role: 'Front Desk / Receptionist',
+    department: 'Reception',
+    defaultDashboard: 'manager_hub',
+    allowedDashboards: ['manager_hub', 'bell_services', 'room_service'],
+    avatar: null,
+    badge: 'Lễ tân / Reception',
+  },
+  {
     username: 'roomservice',
-    password: 'password123',
-    name: 'Elena Rossi',
-    role: 'Shift Leader / F&B Lead',
+    password: '123456',
+    name: 'Nhân viên Phục vụ phòng (F&B)',
+    role: 'F&B Room Service Staff',
     department: 'F&B',
     defaultDashboard: 'room_service',
     allowedDashboards: ['room_service'],
     avatar: null,
-    badge: '1. Room Service / F&B',
-    icon: '🍽️',
+    badge: 'Phục vụ phòng / F&B',
   },
   {
     username: 'housekeeping',
-    password: 'password123',
-    name: 'Maria Santos',
-    role: 'Housekeeping Lead',
+    password: '123456',
+    name: 'Nhân viên Buồng phòng (Housekeeping)',
+    role: 'Housekeeping Staff',
     department: 'Housekeeping',
     defaultDashboard: 'housekeeping',
     allowedDashboards: ['housekeeping'],
-    avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=100&auto=format&fit=crop&q=80',
-    badge: '2. Housekeeping Staff',
-    icon: '🧹',
+    avatar: null,
+    badge: 'Buồng phòng / Housekeeping',
   },
   {
     username: 'bellman',
-    password: 'password123',
-    name: 'Marcus T.',
-    role: 'Bell Captain',
+    password: '123456',
+    name: 'Nhân viên Vận chuyển hành lý (Bellman)',
+    role: 'Bellman / Luggage Staff',
     department: 'Bell Services',
     defaultDashboard: 'bell_services',
     allowedDashboards: ['bell_services'],
-    avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&auto=format&fit=crop&q=80',
-    badge: '3. Bell Services',
-    icon: '🧳',
+    avatar: null,
+    badge: 'Vận chuyển hành lý / Bellman',
   },
   {
     username: 'maintenance',
-    password: 'password123',
-    name: 'James Doe',
-    role: 'HVAC Tech & Maintenance',
+    password: '123456',
+    name: 'Nhân viên Kỹ thuật & Bảo trì',
+    role: 'Maintenance Technician',
     department: 'Maintenance',
     defaultDashboard: 'maintenance',
     allowedDashboards: ['maintenance'],
-    avatar: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=100&auto=format&fit=crop&q=80',
-    badge: '4. Maintenance Staff',
-    icon: '🔧',
+    avatar: null,
+    badge: 'Kỹ thuật & Bảo trì',
   },
   {
     username: 'manager',
-    password: 'password123',
-    name: 'Marcus Vane',
+    password: '123456',
+    name: 'Ban Quản lý Khách sạn (Manager)',
     role: 'General Manager',
     department: 'Executive',
     defaultDashboard: 'manager_hub',
     allowedDashboards: ['manager_hub'],
-    avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&auto=format&fit=crop&q=80',
-    badge: '5. Management Hub',
-    icon: '👔',
+    avatar: null,
+    badge: 'Ban Quản lý / Manager',
   },
   {
     username: 'admin',
-    password: 'password123',
-    name: 'System Administrator',
+    password: '123456',
+    name: 'Quản trị Hệ thống (Admin)',
     role: 'Operations Admin',
     department: 'Executive',
     defaultDashboard: 'manager_hub',
@@ -85,32 +91,29 @@ export const DEMO_STAFF_ACCOUNTS = [
       'admin_map',
     ],
     avatar: null,
-    badge: '👑 Admin (All Roles)',
-    icon: '👑',
+    badge: 'Quản trị / System Admin',
   },
   {
     username: 'robot_01',
     password: '123456',
-    name: 'HCRobot Unit 01',
+    name: 'Robot Kiosk Unit 01',
     role: 'Robot Kiosk',
     department: 'Robot Node',
     defaultDashboard: 'robot_display',
     allowedDashboards: ['robot_display'],
     avatar: null,
-    badge: '🤖 Robot Unit 01',
-    icon: '🤖',
+    badge: 'Robot Kiosk Unit 01',
   },
   {
     username: 'robot_02',
     password: '123456',
-    name: 'HCRobot Unit 02',
+    name: 'Robot Kiosk Unit 02',
     role: 'Robot Kiosk',
     department: 'Robot Node',
     defaultDashboard: 'robot_display',
     allowedDashboards: ['robot_display'],
     avatar: null,
-    badge: '🤖 Robot Unit 02',
-    icon: '🤖',
+    badge: 'Robot Kiosk Unit 02',
   },
 ];
 
@@ -139,7 +142,7 @@ export async function loginUser(username, password) {
       };
     }
   } catch (error) {
-    console.warn('[AuthApi] Backend server offline, checking demo fallback accounts...', error);
+    console.warn('[AuthApi] Backend server offline or DB error, checking demo fallback accounts...', error);
   }
 
   // Fallback demo authentication if backend is offline or demo accounts used
@@ -180,7 +183,7 @@ export function getStoredUser() {
   try {
     const raw = localStorage.getItem(USER_KEY);
     return raw ? JSON.parse(raw) : null;
-  } catch {
+  } catch (e) {
     return null;
   }
 }

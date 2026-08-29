@@ -47,12 +47,13 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
     const loadData = async () => {
       const response = await fetchBellServicesDashboard();
       if (!response?.requests) return;
+      const hasLiveRequests = response.requests.length > 0;
 
       setData((previous) => ({
         ...previous,
-        kpis: response.kpis || previous.kpis,
+        kpis: hasLiveRequests && response.kpis ? response.kpis : previous.kpis,
         requests:
-          response.requests.length > 0
+          hasLiveRequests
             ? response.requests.map(normalizeRequest)
             : previous.requests,
         teamStatus:

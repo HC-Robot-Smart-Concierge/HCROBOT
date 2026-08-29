@@ -179,6 +179,10 @@ HC-Robot/
    ```powershell
    python scripts/seed_robot_accounts.py
    ```
+   Tạo dữ liệu mẫu cho dashboard lễ tân:
+   ```powershell
+   python scripts/seed_reception_data.py
+   ```
    Chỉ tạo các bảng còn thiếu, không tự seed tài khoản:
    ```powershell
    python -c "import asyncio; from app.db.init_db import init_db; asyncio.run(init_db())"
@@ -187,6 +191,7 @@ HC-Robot/
    **Danh Sách Tài Khoản Hệ Thống Theo Bộ Phận:**
    | Tên Đăng Nhập (Username) | Mật Khẩu | Tên Bộ Phận / Chức Danh | Phân Hệ Dashboard |
    | :--- | :--- | :--- | :--- |
+   | `reception` | `123456` | Nhân viên Lễ tân | Reception |
    | `roomservice` | `123456` | Nhân viên Phục vụ phòng (F&B) | Room Service |
    | `housekeeping` | `123456` | Nhân viên Buồng phòng (Housekeeping) | Housekeeping |
    | `bellman` | `123456` | Nhân viên Vận chuyển hành lý (Bellman) | Bell Services |
@@ -274,6 +279,7 @@ ros2 run hc_robot_client telemetry_node
 - `/api/v1/ai`: 2. Engine trí tuệ nhân tạo Ollama Local Conversational AI.
 - `/api/v1/map`: 3. Định vị bản đồ 2D SLAM LiDAR & điều hướng Robot.
 - `/api/v1/rag`: 4. Bộ phận Lễ tân & Reception tra cứu tri thức khách sạn (ChromaDB Vector Base).
+- `/api/v1/operations/dashboard/reception` và `/reception/*`: Phiếu hỗ trợ khách và điều phối tác vụ của Reception.
 - `/api/v1/operations/room-service/*`: 5. Phục vụ đồ ăn thức uống tại phòng (F&B / Room Service).
 - `/api/v1/operations/housekeeping/*`: 6. Quản lý yêu cầu vệ sinh & buồng phòng (Housekeeping).
 - `/api/v1/operations/bell-services/*`: 7. Quản lý yêu cầu vận chuyển hành lý (Bellman Services).

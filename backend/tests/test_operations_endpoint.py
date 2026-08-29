@@ -1,17 +1,24 @@
 import pytest
 from httpx import AsyncClient, ASGITransport
 from app.main import app
+from app.db.init_db import init_db
 
 
 @pytest.mark.asyncio
 async def test_all_operations_dashboards_and_endpoints():
+    await init_db()
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         # 1. Root health check
         root_res = await ac.get("/")
         assert root_res.status_code == 200
         assert root_res.json()["status"] == "online"
 
-        # 2. Room Service Dashboard
+        # 2. Reception Dashboard
+        reception_res = await ac.get("/api/v1/operations/dashboard/reception")
+        assert reception_res.status_code == 200
+        assert "current_request" in reception_res.json()
+
+        # 3. Room Service Dashboard
         rs_res = await ac.get("/api/v1/operations/dashboard/room-service")
         assert rs_res.status_code == 200
         rs_data = rs_res.json()
@@ -52,5 +59,12 @@ async def test_all_operations_dashboards_and_endpoints():
         staff_res = await ac.get("/api/v1/operations/staff")
         assert staff_res.status_code == 200
         assert isinstance(staff_res.json(), list)
+
+        # 8. Reception requests participate in the shared staff workflow
+        unified_res = await ac.get("/api/v1/operations/all-requests")
+        assert unified_res.status_code == 200
+        unified_data = unified_res.json()
+        assert isinstance(unified_data, list)
+        assert all("department" in request for request in unified_data)
 
 

@@ -18,6 +18,18 @@ DEFAULT_PASSWORD = "123456"
 
 SEED_ACCOUNTS = [
     {
+        "username": "reception",
+        "code": "RCP",
+        "full_name": "Front Desk Receptionist",
+        "role": "Front Desk Receptionist",
+        "department": "Reception",
+        "default_dashboard": "reception",
+        "location": "Main Lobby Front Desk",
+        "status": "available",
+        "current_tasks_count": 0,
+        "avatar_url": None,
+    },
+    {
         "username": "roomservice",
         "code": "ER",
         "full_name": "Elena Rossi",

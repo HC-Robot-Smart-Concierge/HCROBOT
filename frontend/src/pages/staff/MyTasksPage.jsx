@@ -58,6 +58,14 @@ export const MyTasksPage = ({ currentUser, onNotify = () => {} }) => {
         { id: `c_${req.id}_4`, text: 'Chạy thử kiểm tra áp lực / nguồn điện và thu dọn hiện trường', done: false },
       ];
     }
+    if (dept === 'Reception') {
+      return [
+        { id: `c_${req.id}_1`, text: `Review the guest request at ${req.location}: ${req.title}`, done: true },
+        { id: `c_${req.id}_2`, text: 'Confirm the issue details and guest preference', done: true },
+        { id: `c_${req.id}_3`, text: 'Coordinate and assign the correct hotel department', done: false },
+        { id: `c_${req.id}_4`, text: 'Follow up with the guest and close the request', done: false },
+      ];
+    }
     // Default F&B
     return [
       { id: `c_${req.id}_1`, text: `Tiếp nhận đơn gọi món tại ${req.location}: ${req.title}`, done: true },

@@ -45,6 +45,48 @@ class RobotUnitResponse(RobotUnitBase):
 
 
 # ---------------------------------------------------------
+# Reception / Front Desk Schemas
+# ---------------------------------------------------------
+class ReceptionRequestUpdate(BaseModel):
+    status: Optional[str] = None
+    assistance_status: Optional[str] = None
+    assigned_to: Optional[str] = None
+    assigned_role: Optional[str] = None
+    note: Optional[str] = None
+    escalated: Optional[bool] = None
+
+
+class ReceptionRequestResponse(BaseModel):
+    id: str
+    ticket_code: str
+    title: str
+    created_label: str
+    location: str
+    location_details: Dict[str, Any]
+    guest_name: str
+    guest_tier: str
+    guest_stay_details: str
+    priority: str
+    status: str
+    description: str
+    attached_media: List[Dict[str, Any]]
+    transcript: List[Dict[str, Any]]
+    assistance_status: str
+    assigned_to: Optional[str]
+    assigned_role: Optional[str]
+    notes: List[Dict[str, Any]]
+    activity_log: List[Dict[str, Any]]
+    escalated: bool
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ReceptionDashboardResponse(BaseModel):
+    current_request: Optional[ReceptionRequestResponse] = None
+
+
+# ---------------------------------------------------------
 # Room Service / F&B Schemas
 # ---------------------------------------------------------
 class OrderItem(BaseModel):
@@ -64,6 +106,7 @@ class RoomServiceOrderStatusUpdate(BaseModel):
     status: str # 'Pending', 'Cooking', 'Ready', 'Delivering', 'Completed', 'Rejected'
     progress: Optional[int] = None
     est_completion: Optional[str] = None
+    assigned_staff_name: Optional[str] = None
 
 class RoomServiceOrderAssignRobot(BaseModel):
     robot_id: Optional[str] = None

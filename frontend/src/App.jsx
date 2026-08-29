@@ -6,6 +6,7 @@ import { ToastNotification } from './components/dashboard/ToastNotification';
 // Pages
 import { LandingHomePage } from './pages/home/LandingHomePage';
 import { LoginPage } from './pages/auth/LoginPage';
+import { ReceptionDashboard } from './pages/dashboard/ReceptionDashboard';
 import { RoomServiceDashboard } from './pages/dashboard/RoomServiceDashboard';
 import { HousekeepingDashboard } from './pages/dashboard/HousekeepingDashboard';
 import { BellServicesDashboard } from './pages/dashboard/BellServicesDashboard';
@@ -39,6 +40,7 @@ import {
 } from 'lucide-react';
 
 const STAFF_DASHBOARDS = [
+  'reception',
   'room_service',
   'housekeeping',
   'bell_services',
@@ -55,7 +57,7 @@ const normalizeLegacyView = (view, user) => {
 
 export function App() {
   // activeView:
-  // 'landing' | 'login' | 'room_service' | 'housekeeping' | 'bell_services' | 'maintenance' | 'robot_display' | 'admin_map'
+  // 'landing' | 'login' | 'reception' | 'room_service' | 'housekeeping' | 'bell_services' | 'maintenance' | 'robot_display' | 'admin_map'
   const [currentUser, setCurrentUser] = useState(() => getStoredUser());
 
   const [activeView, setActiveView] = useState(() => {
@@ -191,13 +193,20 @@ export function App() {
   };
 
   const isDashboardView = STAFF_DASHBOARDS.includes(activeView);
-  const usesReferenceLayout = ['housekeeping', 'bell_services'].includes(activeView);
+  const usesReferenceLayout = [
+    'reception',
+    'room_service',
+    'housekeeping',
+    'bell_services',
+    'maintenance',
+  ].includes(activeView);
 
   const isAdmin = isAdminUser(currentUser);
 
   const viewOptions = [
     { id: 'landing', label: '🏠 Trang Chủ (Landing)' },
     { id: 'login', label: '🔐 Đăng Nhập (Login)' },
+    { id: 'reception', label: '0. Reception (Staff)' },
     { id: 'room_service', label: '1. Room Service (Staff)' },
     { id: 'housekeeping', label: '2. Housekeeping (Staff)' },
     { id: 'bell_services', label: '3. Bell Services (Staff)' },
@@ -352,6 +361,12 @@ export function App() {
             {/* Dynamic View rendering based on activeMenu */}
             {activeMenu === 'Dashboard' && (
               <>
+                {activeView === 'reception' && (
+                  <ReceptionDashboard
+                    currentUser={currentUser}
+                    onNotify={showNotification}
+                  />
+                )}
                 {activeView === 'room_service' && (
                   <RoomServiceDashboard
                     currentUser={currentUser}

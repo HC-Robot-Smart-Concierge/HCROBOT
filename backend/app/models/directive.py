@@ -11,7 +11,7 @@ class ManagementDirective(Base):
     __tablename__ = "management_directives"
 
     id: Mapped[str] = mapped_column(String(50), primary_key=True, default=lambda: f"DIR-{uuid.uuid4().hex[:8]}")
-    code: Mapped[str] = mapped_column(String(20), unique=True, index=True) # e.g. 'M-101', 'M-102'
+    code: Mapped[str] = mapped_column(String(20), unique=True, index=True) # e.g. 'OP-101', 'OP-102'
     title: Mapped[str] = mapped_column(String(200), nullable=False) # e.g. 'Spill in Lobby'
     department: Mapped[str] = mapped_column(String(50), default="Housekeeping")
     priority: Mapped[str] = mapped_column(String(50), default="URGENT") # 'URGENT', 'PENDING', 'IN PROGRESS'
@@ -26,7 +26,7 @@ class ManagementDirective(Base):
     assigned_staff_avatar: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     
     type: Mapped[str] = mapped_column(String(50), default="spill") # 'spill', 'room_service', 'towels', 'directive'
-    created_by: Mapped[str] = mapped_column(String(100), default="Marcus Vane (General Manager)")
+    created_by: Mapped[str] = mapped_column(String(100), default="System Administrator")
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

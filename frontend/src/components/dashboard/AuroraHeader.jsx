@@ -8,7 +8,6 @@ export const AuroraHeader = ({
   unreadCount = 2,
   language = 'EN',
   onToggleLanguage = () => {},
-  managerUser = null, // { name: 'Marcus Vane', role: 'General Manager', avatar: '...' }
   referenceLayout = false,
 }) => {
   return (
@@ -47,31 +46,6 @@ export const AuroraHeader = ({
             <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-[#EF4444] ring-2 ring-[#FAF8F5]"></span>
           )}
         </button>
-
-        {/* Manager User Info (if present) */}
-        {managerUser && (
-          <div className="flex items-center gap-2.5 pl-3 border-l border-[#DDD8CE]">
-            {managerUser.avatar_url || managerUser.avatar ? (
-              <img
-                src={managerUser.avatar_url || managerUser.avatar}
-                alt={managerUser.full_name || managerUser.name || 'Manager'}
-                className="w-8 h-8 rounded-full object-cover border border-white"
-              />
-            ) : (
-              <div className="w-8 h-8 rounded-full bg-[#18181B] text-white flex items-center justify-center font-bold text-xs">
-                {(managerUser.full_name || managerUser.name || 'M').charAt(0)}
-              </div>
-            )}
-            <div className="text-left hidden sm:block">
-              <p className="text-xs font-bold text-[#1A1917] leading-tight">
-                {managerUser.full_name || managerUser.name || 'Marcus Vane'}
-              </p>
-              <p className="text-[10px] font-medium text-[#78716C]">
-                {managerUser.role || 'General Manager'}
-              </p>
-            </div>
-          </div>
-        )}
       </div>
     </header>
   );

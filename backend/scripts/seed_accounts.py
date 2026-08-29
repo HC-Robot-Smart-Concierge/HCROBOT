@@ -3,7 +3,7 @@ import asyncio
 import os
 import sys
 
-from sqlalchemy import select
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -28,18 +28,6 @@ SEED_ACCOUNTS = [
         "status": "available",
         "current_tasks_count": 0,
         "avatar_url": None,
-    },
-    {
-        "username": "manager",
-        "code": "MV",
-        "full_name": "Marcus Vane",
-        "role": "General Manager",
-        "department": "Executive",
-        "default_dashboard": "manager_hub",
-        "location": "Executive Office",
-        "status": "available",
-        "current_tasks_count": 0,
-        "avatar_url": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&auto=format&fit=crop&q=80",
     },
     {
         "username": "housekeeping",
@@ -82,8 +70,8 @@ SEED_ACCOUNTS = [
         "code": "ADM",
         "full_name": "System Administrator",
         "role": "Operations Admin",
-        "department": "Executive",
-        "default_dashboard": "manager_hub",
+        "department": "Administration",
+        "default_dashboard": "admin_map",
         "location": "Command Center",
         "status": "available",
         "current_tasks_count": 0,
@@ -104,8 +92,24 @@ SEED_ACCOUNTS = [
 ]
 
 
-async def seed_accounts(session: AsyncSession, password: str = DEFAULT_PASSWORD) -> tuple[int, int]:
-    """Insert missing staff accounts without modifying existing accounts."""
+async def seed_accounts(
+    session: AsyncSession, password: str = DEFAULT_PASSWORD
+) -> tuple[int, int, int, int]:
+    """Reconcile supported staff accounts and remove the retired manager role."""
+    removed_result = await session.execute(
+        delete(Staff).where(Staff.username == "manager")
+    )
+    redirected_result = await session.execute(
+        update(Staff)
+        .where(Staff.default_dashboard == "manager_hub")
+        .values(default_dashboard="admin_map")
+    )
+    await session.execute(
+        update(Staff)
+        .where(Staff.username == "admin")
+        .values(department="Administration", default_dashboard="admin_map")
+    )
+
     existing_result = await session.execute(select(Staff.username))
     existing_usernames = set(existing_result.scalars().all())
     password_hash = hash_password(password)
@@ -118,17 +122,27 @@ async def seed_accounts(session: AsyncSession, password: str = DEFAULT_PASSWORD)
 
     if missing_accounts:
         session.add_all(missing_accounts)
-        await session.commit()
+    await session.commit()
 
-    return len(missing_accounts), len(SEED_ACCOUNTS) - len(missing_accounts)
+    return (
+        len(missing_accounts),
+        len(SEED_ACCOUNTS) - len(missing_accounts),
+        removed_result.rowcount or 0,
+        redirected_result.rowcount or 0,
+    )
 
 
 async def main(password: str):
     await init_db()
     async with AsyncSessionLocal() as session:
-        created, skipped = await seed_accounts(session, password)
+        created, skipped, removed, redirected = await seed_accounts(session, password)
 
-    print(f"Seed accounts completed: {created} created, {skipped} already existed.")
+    print(
+        "Seed accounts completed: "
+        f"{created} created, {skipped} already existed, "
+        f"{removed} retired manager account(s) removed, "
+        f"{redirected} legacy dashboard assignment(s) updated."
+    )
 
 
 if __name__ == "__main__":

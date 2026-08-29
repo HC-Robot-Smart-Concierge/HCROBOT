@@ -74,7 +74,7 @@ export const LoginPage = ({ onLoginSuccess = () => {}, onBackToHome = () => {} }
               </label>
               <input
                 type="text"
-                placeholder="Ví dụ: roomservice, housekeeping, manager, robot_01"
+                placeholder="Ví dụ: roomservice, housekeeping, admin, robot_01"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 required

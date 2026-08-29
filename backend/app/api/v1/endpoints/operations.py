@@ -41,10 +41,9 @@ from app.schemas.operations import (
     MaintenanceRequestCreate,
     MaintenanceRequestResponse,
     MaintenanceDashboardResponse,
-    # Management Hub
+    # Operational Directives
     DirectiveCreate,
     DirectiveResponse,
-    ManagerHubDashboardResponse,
     # Restaurant
     RestaurantReservationCreate,
     RestaurantReservationResponse,
@@ -64,9 +63,8 @@ TAG_FB = ["5. Bộ phận Phục vụ phòng (F&B / Room Service)"]
 TAG_HK = ["6. Bộ phận Buồng phòng (Housekeeping)"]
 TAG_BELL = ["7. Bộ phận Vận chuyển hành lý (Bellman Services)"]
 TAG_MNT = ["8. Bộ phận Kỹ thuật & Bảo trì (Facility Maintenance)"]
-TAG_MGR = ["9. Ban Quản lý Khách sạn (Manager Hub)"]
+TAG_OPS = ["9. Điều phối Vận hành (Operations)"]
 TAG_REST = ["10. Bộ phận Nhà hàng (Restaurant - Đặt bàn & Đặt món trước)"]
-TAG_OPS = ["9. Ban Quản lý Khách sạn (Manager Hub)"]
 
 
 @router.get("/dashboard/room-service", response_model=RoomServiceDashboardResponse, tags=TAG_FB)
@@ -225,13 +223,13 @@ async def get_housekeeping_dashboard(db: AsyncSession = Depends(get_db)):
             HousekeepingRequestResponse(
                 id=f"REQ-{d.code}",
                 ticket_code=d.code,
-                source="General Manager Directive",
+                source="Operations Directive",
                 priority=d.priority or "NORMAL",
                 time_label=d.reported_time_label or "Today",
                 title=d.title,
                 room_number=room_num or "Main Floor",
                 description=d.description,
-                guest_name="GM Directive",
+                guest_name="Operations Admin",
                 status=d.status,
                 assigned_staff_name=d.assigned_staff_name,
                 created_at=d.created_at,
@@ -507,45 +505,13 @@ async def create_maintenance_request(req_in: MaintenanceRequestCreate, db: Async
 
 
 # =====================================================================
-# 5. MANAGEMENT HUB DASHBOARD & DIRECTIVES
+# 5. OPERATIONAL DIRECTIVES
 # =====================================================================
 
-@router.get("/dashboard/manager-hub", response_model=ManagerHubDashboardResponse, tags=TAG_MGR)
-async def get_manager_hub_dashboard(db: AsyncSession = Depends(get_db)):
-    """Returns Executive Management metrics, live requests, staff roster and zone heatmap."""
-    dir_res = await db.execute(select(ManagementDirective).order_by(desc(ManagementDirective.created_at)))
-    live_requests = dir_res.scalars().all()
-
-    staff_res = await db.execute(select(Staff).order_by(Staff.full_name))
-    staff_roster = staff_res.scalars().all()
-
-    active_count = len(live_requests)
-    staff_active_count = sum(1 for s in staff_roster if s.status != "off_shift")
-
-    kpis = {
-        "activeRequests": {"current": active_count or 12, "total": 45},
-        "roomsCleaned": {"current": 78, "total": 120},
-        "staffActive": {"current": staff_active_count or 8, "total": len(staff_roster) or 10},
-        "responseTime": {"avg": "14m", "trend": [18, 16, 15, 17, 14, 13, 14]},
-    }
-
-    zone_heatmap = {
-        "activeZone": "Floor 4 High Activity",
-    }
-
-    return {
-        "department": "Housekeeping",
-        "kpis": kpis,
-        "live_requests": live_requests,
-        "staff_roster": staff_roster,
-        "zone_heatmap": zone_heatmap,
-    }
-
-
-@router.post("/manager-hub/directives", response_model=DirectiveResponse, status_code=status.HTTP_201_CREATED, tags=TAG_MGR)
-async def create_management_directive(dir_in: DirectiveCreate, db: AsyncSession = Depends(get_db)):
-    """Issues a new executive directive from General Manager."""
-    code = f"M-{random.randint(104, 999)}"
+@router.post("/directives", response_model=DirectiveResponse, status_code=status.HTTP_201_CREATED, tags=TAG_OPS)
+async def create_operational_directive(dir_in: DirectiveCreate, db: AsyncSession = Depends(get_db)):
+    """Creates a cross-department operational request."""
+    code = f"OP-{random.randint(104, 999)}"
     new_dir = ManagementDirective(
         code=code,
         title=dir_in.title,
@@ -556,7 +522,7 @@ async def create_management_directive(dir_in: DirectiveCreate, db: AsyncSession 
         description=dir_in.description,
         status="Unassigned",
         type=dir_in.type,
-        created_by="Marcus Vane (General Manager)",
+        created_by="System Administrator",
     )
     db.add(new_dir)
     await db.commit()
@@ -587,35 +553,6 @@ async def update_maintenance_request_status(
     await db.commit()
     await db.refresh(req)
     return req
-
-
-@router.patch("/manager-hub/directives/{directive_id}/assign", response_model=DirectiveResponse, tags=TAG_MGR)
-async def assign_management_directive(
-    directive_id: str,
-    status: str = "In Progress",
-    assigned_staff_name: Optional[str] = None,
-    assigned_eta: Optional[str] = "5m",
-    db: AsyncSession = Depends(get_db),
-):
-    """Assigns staff or updates status of management directive."""
-    res = await db.execute(
-        select(ManagementDirective).where(
-            (ManagementDirective.id == directive_id) | (ManagementDirective.code == directive_id)
-        )
-    )
-    directive = res.scalar_one_or_none()
-    if not directive:
-        raise HTTPException(status_code=404, detail="Directive not found")
-
-    directive.status = status
-    if assigned_staff_name:
-        directive.assigned_staff_name = assigned_staff_name
-    if assigned_eta:
-        directive.assigned_eta = assigned_eta
-
-    await db.commit()
-    await db.refresh(directive)
-    return directive
 
 
 @router.patch("/stock/{stock_id}/restock", response_model=InventoryStockResponse, tags=TAG_OPS)
@@ -728,7 +665,7 @@ async def get_all_unified_requests(db: AsyncSession = Depends(get_db)):
             "department": d.department,
             "title": d.title,
             "location": d.location,
-            "guestName": "General Manager Directive",
+            "guestName": "Operations Directive",
             "priority": d.priority,
             "status": d.status,
             "time": d.reported_time_label,

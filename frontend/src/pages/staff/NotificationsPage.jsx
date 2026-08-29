@@ -48,7 +48,7 @@ export const NotificationsPage = ({ onNotify = () => {} }) => {
     },
     {
       id: 'NOTIF-04',
-      title: 'Chỉ thị điều hành mới từ Tổng Quản Lý Marcus Vane',
+      title: 'Chỉ thị điều hành mới từ quản trị hệ thống',
       description: 'Chỉ thị #M-101: Tăng cường nhân sự hỗ trợ khu vực sảnh Lobby trong khung giờ 10:00 - 12:00.',
       time: '1 giờ trước',
       type: 'Directive',

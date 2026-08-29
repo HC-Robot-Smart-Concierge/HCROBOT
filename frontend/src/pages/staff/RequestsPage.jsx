@@ -5,7 +5,7 @@ import {
   updateGenericRequestStatus,
   createHousekeepingRequest,
   createMaintenanceRequest,
-  createManagementDirective,
+  createOperationalDirective,
 } from '../../services/operationsApi';
 
 export const RequestsPage = ({ currentUser, onNotify = () => {} }) => {
@@ -89,7 +89,6 @@ export const RequestsPage = ({ currentUser, onNotify = () => {} }) => {
   // Department Role Filtering
   const isExecutive =
     currentUser?.department === 'Executive' ||
-    currentUser?.username === 'manager' ||
     currentUser?.username === 'admin';
 
   // Base list scoped to department
@@ -298,7 +297,7 @@ export const RequestsPage = ({ currentUser, onNotify = () => {} }) => {
         description: newReq.notes,
       });
     } else {
-      await createManagementDirective({
+      await createOperationalDirective({
         title: newReq.title,
         department: newReq.department,
         location: newReq.location || 'Main Floor',

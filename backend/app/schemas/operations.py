@@ -258,13 +258,6 @@ class MaintenanceDashboardResponse(BaseModel):
     staff_availability: List[Dict[str, Any]]
     facility_map: Dict[str, Any]
 
-class ManagerHubDashboardResponse(BaseModel):
-    department: str
-    kpis: Dict[str, Any]
-    live_requests: List[DirectiveResponse]
-    staff_roster: List[StaffResponse]
-    zone_heatmap: Dict[str, Any]
-
 
 # ---------------------------------------------------------
 # Restaurant Table Reservation & Pre-Order Schemas
@@ -323,4 +316,3 @@ class RestaurantDashboardResponse(BaseModel):
     kpis: Dict[str, Any]
     reservations: List[RestaurantReservationResponse]
     pre_orders: List[RestaurantPreOrderResponse]
-

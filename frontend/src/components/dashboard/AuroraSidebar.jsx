@@ -6,16 +6,11 @@ import {
   History,
   Bell,
   User,
-  Users,
-  Building2,
-  BarChart3,
-  Bot,
   LogOut,
   Home,
 } from 'lucide-react';
 
 export const AuroraSidebar = ({
-  variant = 'staff', // 'staff' | 'manager'
   activeMenu = 'Dashboard',
   onSelectMenu = () => {},
   currentUser = { name: 'Elena Rossi', role: 'Online', avatar: null },
@@ -23,31 +18,12 @@ export const AuroraSidebar = ({
   onBackToHome = () => {},
   referenceLayout = false,
 }) => {
-  const isManager = variant === 'manager';
-
   const staffNavItems = [
     { id: 'Dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'Requests', label: 'Requests', icon: Inbox },
     { id: 'My Tasks', label: 'My Tasks', icon: CheckSquare },
     { id: 'History', label: 'History', icon: History },
     { id: 'Notifications', label: 'Notifications', icon: Bell },
-    { id: 'Profile', label: 'Profile', icon: User },
-  ];
-
-  const managerCoreItems = [
-    { id: 'Dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'Requests', label: 'Requests', icon: Inbox },
-    { id: 'My Tasks', label: 'My Tasks', icon: CheckSquare },
-  ];
-
-  const managerAdminItems = [
-    { id: 'Staff Management', label: 'Staff Management', icon: Users },
-    { id: 'Department Overview', label: 'Department Overview', icon: Building2 },
-    { id: 'Analytics', label: 'Analytics', icon: BarChart3 },
-  ];
-
-  const managerBottomItems = [
-    { id: 'History', label: 'History', icon: History },
     { id: 'Profile', label: 'Profile', icon: User },
   ];
 
@@ -66,7 +42,7 @@ export const AuroraSidebar = ({
           <div>
             <h1 className="text-sm font-bold tracking-tight text-[#1A1917]">Aurora OS</h1>
             <p className="text-[10px] font-semibold tracking-wider text-[#8C857B] uppercase mt-0.5">
-              {isManager ? 'MANAGEMENT HUB' : 'STAFF INTERFACE'}
+              STAFF INTERFACE
             </p>
           </div>
 
@@ -82,121 +58,41 @@ export const AuroraSidebar = ({
         <div className={`h-px bg-[#E3DFD5]/80 w-full ${referenceLayout ? 'hidden' : ''}`} />
 
         {/* Navigation Items */}
-        {!isManager ? (
-          <nav className={`flex flex-col ${referenceLayout ? 'space-y-1.5' : 'space-y-1.5'}`}>
-            {staffNavItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = activeMenu === item.id;
-              return (
-                <React.Fragment key={item.id}>
-                  {referenceLayout && item.id === 'Notifications' && (
-                    <div className="h-px bg-[#ECE9E4] mt-2 mb-2" />
-                  )}
-                  <button
-                    onClick={() => onSelectMenu(item.id)}
-                    className={`flex items-center gap-3 transition-all text-left ${
-                      referenceLayout
-                        ? `h-10 px-3 rounded-[10px] text-[14px] font-normal ${
-                            isActive ? 'bg-black text-white' : 'text-[#555] hover:bg-[#F3F1ED]'
-                          }`
-                        : `px-3.5 py-2.5 rounded-full text-xs font-semibold ${
-                            isActive
-                              ? 'bg-[#18181B] text-white shadow-sm'
-                              : 'text-[#44403C] hover:bg-[#EAE5DC] hover:text-[#1A1917]'
-                          }`
+        <nav className="flex flex-col space-y-1.5">
+          {staffNavItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = activeMenu === item.id;
+            return (
+              <React.Fragment key={item.id}>
+                {referenceLayout && item.id === 'Notifications' && (
+                  <div className="h-px bg-[#ECE9E4] mt-2 mb-2" />
+                )}
+                <button
+                  onClick={() => onSelectMenu(item.id)}
+                  className={`flex items-center gap-3 transition-all text-left ${
+                    referenceLayout
+                      ? `h-10 px-3 rounded-[10px] text-[14px] font-normal ${
+                          isActive ? 'bg-black text-white' : 'text-[#555] hover:bg-[#F3F1ED]'
+                        }`
+                      : `px-3.5 py-2.5 rounded-full text-xs font-semibold ${
+                          isActive
+                            ? 'bg-[#18181B] text-white shadow-sm'
+                            : 'text-[#44403C] hover:bg-[#EAE5DC] hover:text-[#1A1917]'
+                        }`
+                  }`}
+                >
+                  <Icon
+                    className={`${referenceLayout ? 'w-[18px] h-[18px]' : 'w-4 h-4'} ${
+                      isActive ? 'text-white' : 'text-[#78716C]'
                     }`}
-                  >
-                    <Icon
-                      className={`${referenceLayout ? 'w-[18px] h-[18px]' : 'w-4 h-4'} ${
-                        isActive ? 'text-white' : 'text-[#78716C]'
-                      }`}
-                      strokeWidth={referenceLayout ? 1.8 : 2}
-                    />
-                    <span>{item.label}</span>
-                  </button>
-                </React.Fragment>
-              );
-            })}
-          </nav>
-        ) : (
-          <nav className="flex flex-col space-y-4">
-            {/* Core Section */}
-            <div>
-              <p className="px-3 text-[10px] font-bold tracking-wider text-[#A8A29E] uppercase mb-1.5">
-                CORE
-              </p>
-              <div className="flex flex-col space-y-1">
-                {managerCoreItems.map((item) => {
-                  const Icon = item.icon;
-                  const isActive = activeMenu === item.id;
-                  return (
-                    <button
-                      key={item.id}
-                      onClick={() => onSelectMenu(item.id)}
-                      className={`flex items-center gap-3 px-3.5 py-2 rounded-full text-xs font-semibold transition-all text-left ${
-                        isActive
-                          ? 'bg-[#18181B] text-white shadow-sm'
-                          : 'text-[#44403C] hover:bg-[#EAE5DC] hover:text-[#1A1917]'
-                      }`}
-                    >
-                      <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-[#78716C]'}`} />
-                      <span>{item.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Management Section */}
-            <div>
-              <p className="px-3 text-[10px] font-bold tracking-wider text-[#A8A29E] uppercase mb-1.5">
-                MANAGEMENT
-              </p>
-              <div className="flex flex-col space-y-1">
-                {managerAdminItems.map((item) => {
-                  const Icon = item.icon;
-                  const isActive = activeMenu === item.id;
-                  return (
-                    <button
-                      key={item.id}
-                      onClick={() => onSelectMenu(item.id)}
-                      className={`flex items-center gap-3 px-3.5 py-2 rounded-full text-xs font-semibold transition-all text-left ${
-                        isActive
-                          ? 'bg-[#18181B] text-white shadow-sm'
-                          : 'text-[#44403C] hover:bg-[#EAE5DC] hover:text-[#1A1917]'
-                      }`}
-                    >
-                      <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-[#78716C]'}`} />
-                      <span>{item.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Bottom items */}
-            <div className="pt-1 border-t border-[#E3DFD5]/60 flex flex-col space-y-1">
-              {managerBottomItems.map((item) => {
-                const Icon = item.icon;
-                const isActive = activeMenu === item.id;
-                return (
-                  <button
-                    key={item.id}
-                    onClick={() => onSelectMenu(item.id)}
-                    className={`flex items-center gap-3 px-3.5 py-2 rounded-full text-xs font-semibold transition-all text-left ${
-                      isActive
-                        ? 'bg-[#18181B] text-white shadow-sm'
-                        : 'text-[#44403C] hover:bg-[#EAE5DC] hover:text-[#1A1917]'
-                    }`}
-                  >
-                    <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-[#78716C]'}`} />
-                    <span>{item.label}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </nav>
-        )}
+                    strokeWidth={referenceLayout ? 1.8 : 2}
+                  />
+                  <span>{item.label}</span>
+                </button>
+              </React.Fragment>
+            );
+          })}
+        </nav>
       </div>
 
       {/* Bottom User Card with Logout */}

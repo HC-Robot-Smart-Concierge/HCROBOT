@@ -10,7 +10,6 @@ import { RoomServiceDashboard } from './pages/dashboard/RoomServiceDashboard';
 import { HousekeepingDashboard } from './pages/dashboard/HousekeepingDashboard';
 import { BellServicesDashboard } from './pages/dashboard/BellServicesDashboard';
 import { MaintenanceDashboard } from './pages/dashboard/MaintenanceDashboard';
-import { HousekeepingManagerDashboard } from './pages/dashboard/HousekeepingManagerDashboard';
 import { RobotScreenPage } from './pages/robot/RobotScreenPage';
 import { AdminLidarPage } from './pages/admin/AdminLidarPage';
 
@@ -39,26 +38,46 @@ import {
   Layers,
 } from 'lucide-react';
 
+const STAFF_DASHBOARDS = [
+  'room_service',
+  'housekeeping',
+  'bell_services',
+  'maintenance',
+];
+
+const isAdminUser = (user) =>
+  user?.username === 'admin' || user?.role === 'Operations Admin';
+
+const normalizeLegacyView = (view, user) => {
+  if (view !== 'manager_hub') return view;
+  return isAdminUser(user) ? 'admin_map' : 'landing';
+};
+
 export function App() {
   // activeView:
-  // 'landing' | 'login' | 'room_service' | 'housekeeping' | 'bell_services' | 'maintenance' | 'manager_hub' | 'robot_display' | 'admin_map'
+  // 'landing' | 'login' | 'room_service' | 'housekeeping' | 'bell_services' | 'maintenance' | 'robot_display' | 'admin_map'
   const [currentUser, setCurrentUser] = useState(() => getStoredUser());
 
   const [activeView, setActiveView] = useState(() => {
     const user = getStoredUser();
     if (user) {
       const savedView = localStorage.getItem('aurora_active_view');
-      const targetRoleDashboard = user.default_dashboard || user.defaultDashboard || 'room_service';
+      const targetRoleDashboard = normalizeLegacyView(
+        user.default_dashboard || user.defaultDashboard || 'room_service',
+        user
+      );
       const allowed = user.allowedDashboards || [targetRoleDashboard];
+      const normalizedSavedView = normalizeLegacyView(savedView, user);
       if (
-        savedView &&
-        (allowed.includes(savedView) || ['landing', 'robot_display', 'admin_map'].includes(savedView))
+        normalizedSavedView &&
+        (allowed.includes(normalizedSavedView) ||
+          ['landing', 'robot_display', 'admin_map'].includes(normalizedSavedView))
       ) {
-        return savedView;
+        return normalizedSavedView;
       }
       return targetRoleDashboard;
     }
-    return localStorage.getItem('aurora_active_view') || 'landing';
+    return normalizeLegacyView(localStorage.getItem('aurora_active_view') || 'landing');
   });
 
   const [activeMenu, setActiveMenu] = useState(() => {
@@ -84,6 +103,17 @@ export function App() {
 
   // Role Guard: Ensure user cannot access unassigned role dashboards
   useEffect(() => {
+    if (currentUser?.username === 'manager') {
+      logoutUser();
+      setCurrentUser(null);
+      setActiveView('landing');
+      setActiveMenu('Dashboard');
+      localStorage.setItem('aurora_active_view', 'landing');
+      localStorage.setItem('aurora_active_menu', 'Dashboard');
+      showNotification('Tài khoản Housekeeping Manager đã được gỡ khỏi hệ thống.');
+      return;
+    }
+
     if (!currentUser) {
       // If logged out, only allow landing, login, robot_display, admin_map
       if (!['landing', 'login', 'robot_display', 'admin_map'].includes(activeView)) {
@@ -92,10 +122,17 @@ export function App() {
       return;
     }
 
-    const isAdmin = currentUser.username === 'admin' || currentUser.role === 'Operations Admin';
-    if (isAdmin) return; // Admin has universal access
+    if (activeView === 'manager_hub') {
+      setActiveView(isAdminUser(currentUser) ? 'admin_map' : 'landing');
+      return;
+    }
 
-    const targetRoleDashboard = currentUser.default_dashboard || currentUser.defaultDashboard || 'room_service';
+    if (isAdminUser(currentUser)) return; // Admin has universal access
+
+    const targetRoleDashboard = normalizeLegacyView(
+      currentUser.default_dashboard || currentUser.defaultDashboard || 'room_service',
+      currentUser
+    );
     const allowed = currentUser.allowedDashboards || [targetRoleDashboard];
 
     // If currently on login page while already authenticated, redirect to staff dashboard
@@ -105,13 +142,7 @@ export function App() {
     }
 
     // If activeView is a dashboard view and is not allowed for this staff
-    const isDashboard = [
-      'room_service',
-      'housekeeping',
-      'bell_services',
-      'maintenance',
-      'manager_hub',
-    ].includes(activeView);
+    const isDashboard = STAFF_DASHBOARDS.includes(activeView);
 
     if (isDashboard && !allowed.includes(activeView)) {
       setActiveView(targetRoleDashboard);
@@ -126,10 +157,21 @@ export function App() {
     }, 3500);
   };
 
-  // Login Success Callback -> Auto-Redirect to role dashboard (1 to 5)
+  // Login Success Callback -> Auto-Redirect to the assigned staff dashboard
   const handleLoginSuccess = (user, targetDashboard) => {
+    if (user?.username === 'manager') {
+      logoutUser();
+      setCurrentUser(null);
+      setActiveView('landing');
+      showNotification('Tài khoản Housekeeping Manager không còn được hỗ trợ.');
+      return;
+    }
+
     setCurrentUser(user);
-    const destination = targetDashboard || user.default_dashboard || user.defaultDashboard || 'room_service';
+    const destination = normalizeLegacyView(
+      targetDashboard || user.default_dashboard || user.defaultDashboard || 'room_service',
+      user
+    );
     setActiveView(destination);
     localStorage.setItem('aurora_active_view', destination);
     setActiveMenu('Dashboard');
@@ -148,16 +190,9 @@ export function App() {
     showNotification('Đã đăng xuất khỏi phiên làm việc.');
   };
 
-  const isManagerMode = activeView === 'manager_hub';
-  const isDashboardView = [
-    'room_service',
-    'housekeeping',
-    'bell_services',
-    'maintenance',
-    'manager_hub',
-  ].includes(activeView);
+  const isDashboardView = STAFF_DASHBOARDS.includes(activeView);
 
-  const isAdmin = currentUser?.username === 'admin' || currentUser?.role === 'Operations Admin';
+  const isAdmin = isAdminUser(currentUser);
 
   const viewOptions = [
     { id: 'landing', label: '🏠 Trang Chủ (Landing)' },
@@ -166,7 +201,6 @@ export function App() {
     { id: 'housekeeping', label: '2. Housekeeping (Staff)' },
     { id: 'bell_services', label: '3. Bell Services (Staff)' },
     { id: 'maintenance', label: '4. Maintenance (Staff)' },
-    { id: 'manager_hub', label: '5. Management Hub (GM)' },
     { id: 'robot_display', label: '🤖 Màn Hình Robot' },
     { id: 'admin_map', label: '🗺️ LiDAR SLAM Map' },
   ];
@@ -278,28 +312,18 @@ export function App() {
         </div>
       )}
 
-      {/* 4. Bộ 5 Dashboard Nghiệp Vụ Khách Sạn (Aurora OS) */}
+      {/* 4. Bộ Dashboard Nghiệp Vụ Khách Sạn (Aurora OS) */}
       {isDashboardView && (
         <div className="w-full h-full flex overflow-hidden">
           {/* Left Sidebar */}
           <AuroraSidebar
-            variant={isManagerMode ? 'manager' : 'staff'}
             referenceLayout={activeView === 'housekeeping'}
             activeMenu={activeMenu}
             onSelectMenu={(menu) => {
               setActiveMenu(menu);
               showNotification(`Đã chuyển mục: ${menu}`);
             }}
-            currentUser={
-              currentUser ||
-              (isManagerMode
-                ? {
-                    name: 'Marcus Vane',
-                    role: 'General Manager',
-                    avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&auto=format&fit=crop&q=80',
-                  }
-                : { name: 'Elena Rossi', role: 'Online', avatar: null })
-            }
+            currentUser={currentUser || { name: 'Elena Rossi', role: 'Online', avatar: null }}
             onLogout={handleLogout}
             onBackToHome={() => setActiveView('landing')}
           />
@@ -310,12 +334,10 @@ export function App() {
             <AuroraHeader
               referenceLayout={activeView === 'housekeeping'}
               hotelName="Aurora Grand Hotel"
-              systemName={isManagerMode ? 'HCROBOT ADMIN' : 'HCROBOT'}
+              systemName="HCROBOT"
               subtitle={
                 activeView === 'housekeeping'
                   ? 'Front Desk Operations'
-                  : isManagerMode
-                  ? 'Executive Management Hub • General Manager'
                   : `${currentUser?.department || 'Staff'} Operations Portal`
               }
               language={language}
@@ -324,15 +346,6 @@ export function App() {
                 setLanguage(nextLang);
                 showNotification(`Đã chuyển ngôn ngữ sang ${nextLang}`);
               }}
-              managerUser={
-                isManagerMode
-                  ? currentUser || {
-                      name: 'Marcus Vane',
-                      role: 'General Manager',
-                      avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&auto=format&fit=crop&q=80',
-                    }
-                  : null
-              }
             />
 
             {/* Dynamic View rendering based on activeMenu */}
@@ -362,17 +375,11 @@ export function App() {
                     onNotify={showNotification}
                   />
                 )}
-                {activeView === 'manager_hub' && (
-                  <HousekeepingManagerDashboard
-                    currentUser={currentUser}
-                    onNotify={showNotification}
-                  />
-                )}
               </>
             )}
 
             {/* Requests Page (Role-Filtered) */}
-            {(activeMenu === 'Requests' || activeMenu === 'Staff Management') && (
+            {activeMenu === 'Requests' && (
               <RequestsPage currentUser={currentUser} onNotify={showNotification} />
             )}
 
@@ -382,9 +389,7 @@ export function App() {
             )}
 
             {/* History Page */}
-            {(activeMenu === 'History' ||
-              activeMenu === 'Department Overview' ||
-              activeMenu === 'Analytics') && (
+            {activeMenu === 'History' && (
               <HistoryPage currentUser={currentUser} onNotify={showNotification} />
             )}
 

@@ -40,12 +40,9 @@ async def test_all_operations_dashboards_and_endpoints():
         assert "kpis" in mn_data
         assert "requests" in mn_data
 
-        # 6. Manager Hub Dashboard
+        # 6. Retired Manager Hub route stays unavailable
         mgr_res = await ac.get("/api/v1/operations/dashboard/manager-hub")
-        assert mgr_res.status_code == 200
-        mgr_data = mgr_res.json()
-        assert "kpis" in mgr_data
-        assert "live_requests" in mgr_data
+        assert mgr_res.status_code == 404
 
         # 7. Fleet & Staff
         fleet_res = await ac.get("/api/v1/operations/fleet")

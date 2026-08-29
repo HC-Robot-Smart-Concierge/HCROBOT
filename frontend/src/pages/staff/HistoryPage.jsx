@@ -28,7 +28,6 @@ export const HistoryPage = ({ currentUser, onNotify = () => {} }) => {
   const userDept = currentUser?.department || 'Housekeeping';
   const isExecutive =
     userDept === 'Executive' ||
-    currentUser?.username === 'manager' ||
     currentUser?.username === 'admin';
 
   const defaultHistoryLogs = [

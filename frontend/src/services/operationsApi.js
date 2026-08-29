@@ -8,7 +8,6 @@ import {
   INITIAL_HOUSEKEEPING_DATA,
   INITIAL_BELL_SERVICES_DATA,
   INITIAL_MAINTENANCE_DATA,
-  INITIAL_MANAGER_DATA,
 } from '../data/mockHotelData';
 
 const BASE_URL = '/api/v1/operations';
@@ -169,32 +168,16 @@ export const updateMaintenanceStatus = async (requestId, status, assignedTo = nu
 };
 
 // ---------------------------------------------------------
-// 5. Management Hub
+// 5. Operational Directives
 // ---------------------------------------------------------
-export const fetchManagerHubDashboard = async () => {
-  return await fetchWithFallback(`${BASE_URL}/dashboard/manager-hub`, {}, INITIAL_MANAGER_DATA);
-};
-
-export const createManagementDirective = async (directiveData) => {
+export const createOperationalDirective = async (directiveData) => {
   return await fetchWithFallback(
-    `${BASE_URL}/manager-hub/directives`,
+    `${BASE_URL}/directives`,
     {
       method: 'POST',
       body: JSON.stringify(directiveData),
     },
     { id: `DIR-${Date.now()}`, ...directiveData, status: 'Unassigned' }
-  );
-};
-
-export const assignManagementDirective = async (directiveId, status = 'In Progress', assignedStaffName = null) => {
-  return await fetchWithFallback(
-    `${BASE_URL}/manager-hub/directives/${directiveId}/assign?status=${encodeURIComponent(
-      status
-    )}${assignedStaffName ? `&assigned_staff_name=${encodeURIComponent(assignedStaffName)}` : ''}`,
-    {
-      method: 'PATCH',
-    },
-    { id: directiveId, status, assigned_staff_name: assignedStaffName }
   );
 };
 
@@ -272,5 +255,5 @@ export const fetchRobotFleet = async () => {
 };
 
 export const fetchStaffRoster = async () => {
-  return await fetchWithFallback(`${BASE_URL}/staff`, {}, INITIAL_MANAGER_DATA.staffRoster);
+  return await fetchWithFallback(`${BASE_URL}/staff`, {}, []);
 };

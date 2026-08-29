@@ -15,9 +15,9 @@ class Staff(Base):
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False, default="")
     code: Mapped[str] = mapped_column(String(20), unique=True, index=True) # e.g. 'MS', 'JD', 'ER', 'MV'
     full_name: Mapped[str] = mapped_column(String(100), nullable=False)
-    role: Mapped[str] = mapped_column(String(100), nullable=False) # e.g. 'Shift Leader', 'General Manager', 'Bell Captain'
+    role: Mapped[str] = mapped_column(String(100), nullable=False) # e.g. 'Shift Leader', 'Housekeeping Lead', 'Bell Captain'
     department: Mapped[str] = mapped_column(String(50), nullable=False) # 'Housekeeping', 'Bell Services', 'Maintenance', 'F&B', 'Executive'
-    default_dashboard: Mapped[str] = mapped_column(String(50), default="room_service") # 'room_service', 'housekeeping', 'bell_services', 'maintenance', 'manager_hub'
+    default_dashboard: Mapped[str] = mapped_column(String(50), default="room_service") # 'room_service', 'housekeeping', 'bell_services', 'maintenance', 'admin_map'
     location: Mapped[str] = mapped_column(String(100), default="Main Hotel") # e.g. 'Floor 3', 'Lobby', 'Floor 5'
     status: Mapped[str] = mapped_column(String(50), default="available") # 'available', 'busy', 'off_shift'
     current_tasks_count: Mapped[int] = mapped_column(Integer, default=0)

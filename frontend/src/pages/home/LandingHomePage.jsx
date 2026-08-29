@@ -1,22 +1,5 @@
-import React from 'react';
-import {
-  Sparkles,
-  Bot,
-  Map,
-  ShieldCheck,
-  UtensilsCrossed,
-  Luggage,
-  Wrench,
-  ChevronRight,
-  ArrowUpRight,
-  Cpu,
-  Layers,
-  CheckCircle2,
-  Lock,
-  Compass,
-  Radio,
-  Sliders,
-} from 'lucide-react';
+import React, { useState } from 'react';
+import { loginUser } from '../../services/authApi';
 
 export const LandingHomePage = ({
   currentUser = null,
@@ -24,294 +7,204 @@ export const LandingHomePage = ({
   onNavigateToRobotDisplay = () => {},
   onNavigateToLidarMap = () => {},
 }) => {
-  const departments = [
-    {
-      id: 'room_service',
-      num: '01',
-      title: 'Room Service / F&B',
-      desc: 'Quản lý hàng đợi nhà bếp, tiếp nhận đơn gọi món VIP, theo dõi tiến độ nấu nướng và điều phối Robot HCRobot giao thức ăn tận phòng.',
-      icon: UtensilsCrossed,
-      color: 'from-amber-500/10 to-orange-500/10',
-      borderColor: 'hover:border-amber-400',
-      badge: 'Bếp & Phục vụ Phòng',
-    },
-    {
-      id: 'housekeeping',
-      num: '02',
-      title: 'Housekeeping Staff',
-      desc: 'Tự động tiếp nhận sự cố tràn nước/vết bẩn từ camera AI của Robot, theo dõi tiến độ làm sạch buồng phòng trên mô hình sàn 3D.',
-      icon: Sparkles,
-      color: 'from-emerald-500/10 to-teal-500/10',
-      borderColor: 'hover:border-emerald-400',
-      badge: 'Dịch vụ Buồng phòng',
-    },
-    {
-      id: 'bell_services',
-      num: '03',
-      title: 'Bell Services',
-      desc: 'Quản lý hành lý khách VIP khẩn cấp, hỗ trợ chuyển phòng lưu trú, truy vết đồ thất lạc và liên kết xe đẩy tự hành Bot Unit Alpha.',
-      icon: Luggage,
-      color: 'from-blue-500/10 to-indigo-500/10',
-      borderColor: 'hover:border-blue-400',
-      badge: 'Đội ngũ Bellman',
-    },
-    {
-      id: 'maintenance',
-      num: '04',
-      title: 'Maintenance & Facility',
-      desc: 'Theo dõi sự cố kỹ thuật điều hòa HVAC, rò rỉ nước, đèn chiếu sáng, phân công kỹ thuật viên theo ca trực và bản đồ sự cố mặt bằng.',
-      icon: Wrench,
-      color: 'from-rose-500/10 to-red-500/10',
-      borderColor: 'hover:border-rose-400',
-      badge: 'Bảo trì Cơ sở',
-    },
-    {
-      id: 'manager_hub',
-      num: '05',
-      title: 'Management Hub',
-      desc: 'Trung tâm chỉ huy tổng thể của General Manager, phát lệnh chỉ đạo khẩn cấp, giám sát KPI thời gian phản hồi và bản đồ nhiệt Zone Heatmap.',
-      icon: ShieldCheck,
-      color: 'from-stone-500/10 to-zinc-500/10',
-      borderColor: 'hover:border-stone-600',
-      badge: 'Ban Điều hành GM',
-    },
-  ];
+  // State cho Modal Đăng Nhập Robot
+  const [showRobotModal, setShowRobotModal] = useState(false);
+  const [robotUsername, setRobotUsername] = useState('robot_01');
+  const [robotPassword, setRobotPassword] = useState('123456');
+  const [isLoading, setIsLoading] = useState(false);
+  const [robotError, setRobotError] = useState(null);
+
+  const scrollToAbout = () => {
+    const el = document.getElementById('about');
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
+
+  // Xử lý Đăng Nhập Tài Khoản Robot
+  const handleRobotLoginSubmit = async (e) => {
+    if (e) e.preventDefault();
+    setIsLoading(true);
+    setRobotError(null);
+
+    const res = await loginUser(robotUsername, robotPassword);
+    setIsLoading(false);
+
+    if (res.success) {
+      setShowRobotModal(false);
+      onNavigateToRobotDisplay();
+    } else {
+      setRobotError(res.error || 'Mật khẩu Robot không chính xác. Thử lại (Mặc định: 123456)');
+    }
+  };
 
   return (
-    <div className="w-full h-full overflow-y-auto custom-scrollbar bg-[#FAF8F5] text-[#1A1917] font-sans">
-      {/* Top Navbar */}
-      <header className="sticky top-0 z-40 bg-[#FAF8F5]/90 backdrop-blur-md border-b border-[#E8E4DB]">
-        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-          {/* Logo & Hotel Brand */}
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-2xl bg-[#18181B] text-white flex items-center justify-center font-bold text-sm shadow-md">
-              <Bot className="w-5 h-5 text-amber-300" />
-            </div>
-            <div>
-              <h1 className="text-sm font-extrabold tracking-tight text-[#1A1917] leading-none">
-                AURORA GRAND HOTEL
-              </h1>
-              <p className="text-[10px] font-bold tracking-widest text-[#78716C] uppercase mt-0.5">
-                HC-ROBOT SMART CONCIERGE OS
-              </p>
-            </div>
+    <div className="w-full h-full min-h-screen bg-[#FAF8F5] text-[#1A1917] font-sans flex flex-col justify-between overflow-y-auto custom-scrollbar select-none relative">
+      {/* 1. Header Minimalist */}
+      <header className="w-full bg-white/80 backdrop-blur-md border-b border-[#E8E4DB] sticky top-0 z-30">
+        <div className="max-w-5xl mx-auto px-6 h-16 flex items-center justify-between">
+          {/* Brand Title */}
+          <div>
+            <h1 className="text-sm font-extrabold tracking-tight text-[#1A1917]">
+              HC-ROBOT
+            </h1>
+            <p className="text-[10px] font-medium tracking-widest text-stone-500 uppercase">
+              Smart Hotel Concierge System
+            </p>
           </div>
 
-          {/* Right Action Buttons */}
-          <div className="flex items-center gap-3">
+          {/* Header Action Buttons: Chỉ để About và Đăng Nhập */}
+          <div className="flex items-center gap-2">
             <button
-              onClick={onNavigateToRobotDisplay}
-              className="px-3.5 py-1.5 rounded-full text-xs font-semibold text-stone-700 bg-[#EFECE6] border border-[#DDD8CE] hover:bg-[#E5E0D5] transition-all flex items-center gap-1.5 cursor-pointer"
+              onClick={scrollToAbout}
+              className="px-4 py-1.5 rounded-full text-xs font-semibold text-stone-700 bg-[#EFECE6] border border-[#DDD8CE] hover:bg-[#E5E0D5] transition-all cursor-pointer"
             >
-              <Cpu className="w-3.5 h-3.5 text-sky-600" />
-              <span className="hidden sm:inline">Màn hình</span> Robot AI
-            </button>
-
-            <button
-              onClick={onNavigateToLidarMap}
-              className="px-3.5 py-1.5 rounded-full text-xs font-semibold text-stone-700 bg-[#EFECE6] border border-[#DDD8CE] hover:bg-[#E5E0D5] transition-all flex items-center gap-1.5 cursor-pointer"
-            >
-              <Map className="w-3.5 h-3.5 text-emerald-600" />
-              <span className="hidden sm:inline">LiDAR</span> SLAM Map
+              About
             </button>
 
             <button
               onClick={onNavigateToLogin}
-              className="px-5 py-2 rounded-full text-xs font-bold text-white bg-[#18181B] hover:bg-black transition-all shadow-md flex items-center gap-2 cursor-pointer ml-1"
+              className="px-4 py-1.5 rounded-full text-xs font-bold text-stone-800 bg-[#E5E1D8] hover:bg-[#DCD7CB] border border-[#DDD8CE] transition-all cursor-pointer ml-1"
             >
-              {currentUser ? (
-                <>
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                  <span>Vào Dashboard ({currentUser.full_name || currentUser.name})</span>
-                </>
-              ) : (
-                <>
-                  <Lock className="w-3.5 h-3.5 text-amber-300" />
-                  <span>Đăng nhập Nhân viên</span>
-                </>
-              )}
+              {currentUser ? (currentUser.full_name || currentUser.name) : 'Đăng Nhập'}
             </button>
           </div>
         </div>
       </header>
 
-      {/* Hero Section */}
-      <section className="relative px-6 pt-12 pb-16 max-w-7xl mx-auto">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
-          {/* Hero Left Content */}
-          <div className="lg:col-span-7 space-y-6">
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#EFECE6] border border-[#DDD8CE] text-xs font-bold text-stone-700">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span>Aurora OS 2.0 • Code-First Hospitality System</span>
+      {/* 2. Hero Section Minimalist */}
+      <main className="max-w-3xl w-full mx-auto px-6 py-12 flex-1 flex flex-col justify-center items-center text-center">
+        {/* Title & Subtitle */}
+        <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight text-[#1A1917] leading-tight">
+          HC-Robot Autonomous Concierge
+        </h2>
+
+        <p className="text-xs sm:text-sm text-stone-600 max-w-xl mt-3.5 leading-relaxed font-medium">
+          Nền tảng trợ lý Robot tự hành tích hợp AI Voice Conversational, RAG Knowledge Base, Socket.IO Real-time & 2D SLAM LiDAR Navigation.
+        </p>
+
+        {/* NÚT ĐĂNG NHẬP VÀO HỆ THỐNG (1 NÚT MÀU XÁM, KHÔNG DÙNG ICON) */}
+        <div className="mt-8">
+          <button
+            onClick={onNavigateToLogin}
+            className="px-8 py-3.5 rounded-2xl bg-[#E5E1D8] hover:bg-[#DCD7CB] text-stone-900 text-sm font-bold transition-all border border-[#CFCABF] cursor-pointer shadow-sm"
+          >
+            Đăng nhập vào hệ thống
+          </button>
+        </div>
+
+        {/* ĐOẠN VĂN BẢN GIỚI THIỆU SẢN PHẨM HC-ROBOT (ABOUT SECTION) */}
+        <div id="about" className="w-full mt-12 pt-8 border-t border-[#E8E4DB] text-center space-y-3 scroll-mt-20">
+          <h3 className="text-xs font-bold uppercase tracking-widest text-stone-500">
+            Giới Thiệu Sản Phẩm HC-Robot
+          </h3>
+          <p className="text-xs sm:text-sm text-stone-600 leading-relaxed font-medium max-w-2xl mx-auto">
+            HC-Robot là giải pháp Robot trợ lý thông minh toàn diện phục vụ trong môi trường khách sạn cao cấp. Hệ thống tự động tiếp nhận và điều phối các nghiệp vụ giao thức ăn tận phòng, buồng phòng, vận chuyển hành lý, bảo trì cơ sở hạ tầng và tương tác giọng nói tự nhiên với khách hàng thông qua trí tuệ nhân tạo local LLM.
+          </p>
+        </div>
+      </main>
+
+      {/* 3. Footer Minimalist */}
+      <footer className="w-full bg-[#F5F2EB] border-t border-[#E8E4DB] py-6 text-center text-xs text-stone-500">
+        <p className="font-bold text-stone-800">
+          Aurora Grand Hotel • HC-Robot Autonomous Concierge Platform
+        </p>
+        <p className="text-[11px] text-stone-500 mt-1">
+          Hệ thống Trợ lý Robot Khách sạn Thông minh • Bản quyền © 2026 HC-Robot
+        </p>
+      </footer>
+
+      {/* MODAL ĐĂNG NHẬP TÀI KHOẢN ROBOT */}
+      {showRobotModal && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-md flex items-center justify-center p-4 animate-fadeIn">
+          <div className="bg-white border border-[#E3DFD5] text-[#1A1917] rounded-3xl p-7 max-w-md w-full shadow-2xl space-y-5 relative">
+            <button
+              onClick={() => setShowRobotModal(false)}
+              className="absolute top-4 right-4 px-2 py-1 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-500 text-xs font-bold transition-colors cursor-pointer"
+            >
+              Đóng
+            </button>
+
+            <div className="border-b border-[#EAE6DE] pb-3">
+              <h3 className="text-base font-extrabold text-[#1A1917]">Đăng Nhập Tài Khoản Robot</h3>
+              <p className="text-[11px] text-stone-500">Khởi chạy phiên làm việc Kiosk trên thân Robot</p>
             </div>
 
-            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-[#1A1917] leading-[1.15]">
-              Hệ Thống Quản Trị Khách Sạn & Trợ Lý Robot Tự Hành
-            </h2>
-
-            <p className="text-sm sm:text-base text-[#78716C] max-w-xl leading-relaxed">
-              Nền tảng tích hợp toàn diện kết nối trực tiếp Robot trợ lý thông minh (HCRobot) với 5 phân hệ vận hành: F&B Room Service, Buồng phòng, Bellman, Bảo trì kỹ thuật và Ban Quản trị.
-            </p>
-
-            <div className="flex flex-wrap items-center gap-3.5 pt-2">
-              <button
-                onClick={onNavigateToLogin}
-                className="px-7 py-3.5 rounded-full text-sm font-bold text-white bg-[#18181B] hover:bg-black transition-all shadow-lg hover:shadow-xl flex items-center gap-2.5 cursor-pointer"
-              >
-                <span>Vào Cổng Đăng Nhập Staff</span>
-                <ChevronRight className="w-4 h-4 text-amber-300" />
-              </button>
-
-              <button
-                onClick={onNavigateToRobotDisplay}
-                className="px-6 py-3.5 rounded-full text-sm font-bold text-stone-800 bg-white border border-[#DDD8CE] hover:bg-[#F5F2EB] transition-all shadow-sm flex items-center gap-2 cursor-pointer"
-              >
-                <Bot className="w-4 h-4 text-sky-600" />
-                <span>Trải Nghiệm Robot AI</span>
-              </button>
-            </div>
-
-            {/* Live stats summary */}
-            <div className="grid grid-cols-3 gap-4 pt-6 border-t border-[#EAE6DE] max-w-lg">
-              <div>
-                <p className="text-2xl font-black text-[#1A1917]">5 / 5</p>
-                <p className="text-xs text-[#78716C] font-medium mt-0.5">Khối nghiệp vụ</p>
+            {robotError && (
+              <div className="p-3 rounded-2xl bg-red-50 border border-red-200 text-xs font-bold text-red-700">
+                {robotError}
               </div>
+            )}
+
+            <form onSubmit={handleRobotLoginSubmit} className="space-y-4">
               <div>
-                <p className="text-2xl font-black text-emerald-600">100%</p>
-                <p className="text-xs text-[#78716C] font-medium mt-0.5">Tự động điều phối</p>
-              </div>
-              <div>
-                <p className="text-2xl font-black text-sky-600">4 Units</p>
-                <p className="text-xs text-[#78716C] font-medium mt-0.5">Đội Robot HCRobot</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Hero Right Visual Card */}
-          <div className="lg:col-span-5">
-            <div className="relative rounded-3xl bg-gradient-to-br from-stone-900 via-stone-800 to-stone-950 p-6 text-white shadow-2xl border border-stone-700 overflow-hidden">
-              <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
-              <div className="absolute bottom-0 left-0 w-64 h-64 bg-sky-500/10 rounded-full blur-3xl pointer-events-none" />
-
-              <div className="relative z-10 space-y-4">
-                <div className="flex items-center justify-between border-b border-stone-700/80 pb-3">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
-                    <span className="text-xs font-mono font-bold tracking-wider text-stone-200">
-                      LIVE FLEET TELEMETRY
-                    </span>
-                  </div>
-                  <span className="px-2 py-0.5 rounded-full bg-stone-800 text-[10px] font-mono text-stone-300 border border-stone-700">
-                    SLAM ACTIVE
-                  </span>
-                </div>
-
-                {/* Simulated telemetry cards */}
-                <div className="space-y-2.5">
-                  <div className="p-3 rounded-2xl bg-stone-800/80 border border-stone-700 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-xl bg-sky-500/20 text-sky-400 flex items-center justify-center font-bold text-xs">
-                        U1
-                      </div>
-                      <div>
-                        <p className="text-xs font-bold text-white">HCRobot Unit 01</p>
-                        <p className="text-[10px] text-emerald-400">Available • Dock 1</p>
-                      </div>
-                    </div>
-                    <span className="text-xs font-mono font-bold text-stone-300">96% PIN</span>
-                  </div>
-
-                  <div className="p-3 rounded-2xl bg-stone-800/80 border border-stone-700 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold text-xs">
-                        U2
-                      </div>
-                      <div>
-                        <p className="text-xs font-bold text-white">HCRobot Unit 02</p>
-                        <p className="text-[10px] text-sky-400">Delivering • Room 412</p>
-                      </div>
-                    </div>
-                    <span className="text-xs font-mono font-bold text-stone-300">74% PIN</span>
-                  </div>
-                </div>
-
-                <div className="pt-2">
+                <label className="block text-xs font-bold text-stone-600 uppercase tracking-wider mb-1.5">
+                  Chọn Robot Unit (Username)
+                </label>
+                <div className="grid grid-cols-2 gap-2">
                   <button
-                    onClick={onNavigateToLogin}
-                    className="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-500 hover:to-amber-600 text-stone-950 font-bold text-xs transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
+                    type="button"
+                    onClick={() => setRobotUsername('robot_01')}
+                    className={`py-2.5 px-3 rounded-2xl border text-xs font-bold transition-all cursor-pointer ${
+                      robotUsername === 'robot_01'
+                        ? 'bg-[#18181B] text-white border-black shadow-md'
+                        : 'bg-[#FAF8F5] text-stone-700 border-[#DDD8CE] hover:bg-[#F2EFE9]'
+                    }`}
                   >
-                    <span>Truy Cập Trung Tâm Điều Hành Staff</span>
-                    <ArrowUpRight className="w-4 h-4" />
+                    robot_01 (Unit 01)
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setRobotUsername('robot_02')}
+                    className={`py-2.5 px-3 rounded-2xl border text-xs font-bold transition-all cursor-pointer ${
+                      robotUsername === 'robot_02'
+                        ? 'bg-[#18181B] text-white border-black shadow-md'
+                        : 'bg-[#FAF8F5] text-stone-700 border-[#DDD8CE] hover:bg-[#F2EFE9]'
+                    }`}
+                  >
+                    robot_02 (Unit 02)
                   </button>
                 </div>
               </div>
-            </div>
+
+              <div>
+                <label className="block text-xs font-bold text-stone-600 uppercase tracking-wider mb-1.5">
+                  Mật khẩu Robot (Password)
+                </label>
+                <input
+                  type="password"
+                  placeholder="Mật khẩu (Mặc định: 123456)"
+                  value={robotPassword}
+                  onChange={(e) => setRobotPassword(e.target.value)}
+                  required
+                  className="w-full px-4 py-2.5 rounded-2xl bg-[#FAF8F5] border border-[#E0DCD3] text-xs font-bold text-stone-900 outline-none focus:border-stone-600 transition-colors"
+                />
+                <p className="text-[11px] text-stone-500 mt-1.5">
+                  Mật khẩu khởi tạo tài khoản Robot: <code className="text-stone-800 font-bold bg-stone-100 px-1.5 py-0.5 rounded border border-stone-300">123456</code>
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowRobotModal(false)}
+                  className="flex-1 py-3 rounded-2xl bg-[#FAF8F5] hover:bg-[#EAE6DE] text-stone-700 font-bold text-xs transition-colors cursor-pointer border border-[#DDD8CE]"
+                >
+                  Hủy bỏ
+                </button>
+                <button
+                  type="submit"
+                  disabled={isLoading}
+                  className="flex-1 py-3 rounded-2xl bg-[#E5E1D8] hover:bg-[#DCD7CB] text-stone-900 border border-[#CFCABF] font-bold text-xs transition-all cursor-pointer disabled:opacity-60"
+                >
+                  {isLoading ? 'Đang đăng nhập...' : 'Xác Nhận Đăng Nhập'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
-      </section>
-
-      {/* 5 Operational Dashboards Showcase Section */}
-      <section className="px-6 py-14 max-w-7xl mx-auto border-t border-[#EAE6DE]">
-        <div className="text-center max-w-2xl mx-auto mb-12">
-          <p className="text-xs font-bold uppercase tracking-widest text-[#78716C]">
-            5 PHÂN HỆ VẬN HÀNH CHUYÊN BIỆT
-          </p>
-          <h3 className="text-2xl sm:text-3xl font-extrabold text-[#1A1917] mt-1.5">
-            Giao Diện Tương Ứng Với Từng Vị Trí Nhân Sự
-          </h3>
-          <p className="text-xs text-[#78716C] mt-2">
-            Hệ thống tự động nhận diện vai trò khi đăng nhập bằng mã JWT và phân luồng nhân viên vào đúng màn hình tác vụ tương ứng.
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-          {departments.map((dept) => {
-            const Icon = dept.icon;
-            return (
-              <div
-                key={dept.id}
-                onClick={onNavigateToLogin}
-                className={`p-6 rounded-3xl bg-white border border-[#E5E1D8] shadow-sm transition-all hover:shadow-md cursor-pointer flex flex-col justify-between group ${dept.borderColor}`}
-              >
-                <div>
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="w-10 h-10 rounded-2xl bg-[#FAF8F5] border border-[#EAE6DE] flex items-center justify-center text-stone-800 group-hover:bg-[#18181B] group-hover:text-white transition-colors">
-                      <Icon className="w-5 h-5" />
-                    </div>
-                    <span className="text-xs font-mono font-bold text-stone-400">{dept.num}</span>
-                  </div>
-
-                  <span className="px-2.5 py-0.5 rounded-full bg-[#EFECE6] text-[#44403C] text-[10px] font-bold uppercase tracking-wider">
-                    {dept.badge}
-                  </span>
-
-                  <h4 className="text-base font-bold text-[#1A1917] mt-2 group-hover:text-black">
-                    {dept.title}
-                  </h4>
-
-                  <p className="text-xs text-[#78716C] mt-2 leading-relaxed">{dept.desc}</p>
-                </div>
-
-                <div className="mt-5 pt-3 border-t border-[#F5F2EB] flex items-center justify-between text-xs font-bold text-stone-700 group-hover:text-black">
-                  <span>Đăng nhập để vào Dashboard</span>
-                  <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </section>
-
-      {/* Footer */}
-      <footer className="bg-[#FAF8F5] border-t border-[#E8E4DB] py-8 text-center text-xs text-[#78716C]">
-        <p className="font-semibold text-stone-800">
-          Aurora Grand Hotel • HCRobot Autonomous Concierge & Operations Platform
-        </p>
-        <p className="text-[11px] text-stone-500 mt-1">
-          SEP490 Capstone Project • Powered by FastAPI, PostgreSQL, Ollama Local LLM & React
-        </p>
-      </footer>
+      )}
     </div>
   );
 };

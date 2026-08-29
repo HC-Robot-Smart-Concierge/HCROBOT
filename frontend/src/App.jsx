@@ -268,7 +268,7 @@ export function App() {
       {/* 3. Màn hình Robot AI & LiDAR Map */}
       {activeView === 'robot_display' && (
         <div className="w-full h-full relative">
-          <RobotScreenPage />
+          <RobotScreenPage onLogout={handleLogout} />
         </div>
       )}
 

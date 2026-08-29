@@ -88,6 +88,30 @@ export const DEMO_STAFF_ACCOUNTS = [
     badge: '👑 Admin (All Roles)',
     icon: '👑',
   },
+  {
+    username: 'robot_01',
+    password: '123456',
+    name: 'HCRobot Unit 01',
+    role: 'Robot Kiosk',
+    department: 'Robot Node',
+    defaultDashboard: 'robot_display',
+    allowedDashboards: ['robot_display'],
+    avatar: null,
+    badge: '🤖 Robot Unit 01',
+    icon: '🤖',
+  },
+  {
+    username: 'robot_02',
+    password: '123456',
+    name: 'HCRobot Unit 02',
+    role: 'Robot Kiosk',
+    department: 'Robot Node',
+    defaultDashboard: 'robot_display',
+    allowedDashboards: ['robot_display'],
+    avatar: null,
+    badge: '🤖 Robot Unit 02',
+    icon: '🤖',
+  },
 ];
 
 /**

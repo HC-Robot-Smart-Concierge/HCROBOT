@@ -9,9 +9,9 @@ import { useSpeechRecognition } from '../../hooks/useSpeechRecognition';
 import { useSpeechSynthesis } from '../../hooks/useSpeechSynthesis';
 import { sendChatPrompt, extractIntent } from '../../services/aiApi';
 
-import { Mic, MicOff, RefreshCw, Volume2, Sparkles } from 'lucide-react';
+import { Mic, MicOff, RefreshCw, Volume2, Sparkles, Lock, ShieldAlert, KeyRound, X, CheckCircle2 } from 'lucide-react';
 
-export const RobotScreenPage = () => {
+export const RobotScreenPage = ({ onLogout = () => {} }) => {
   // States: 'RT-01' | 'RT-02' | 'RT-03' | 'RT-04' | 'RT-05'
   const [currentState, setCurrentState] = useState('RT-01');
 
@@ -19,6 +19,11 @@ export const RobotScreenPage = () => {
   const [aiResponseText, setAiResponseText] = useState('');
   const [detectedIntent, setDetectedIntent] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
+
+  // Robot Kiosk Protected Logout States
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
+  const [logoutPassword, setLogoutPassword] = useState('');
+  const [logoutError, setLogoutError] = useState('');
 
   // Hooks
   const { isListening, transcript, startListening, stopListening, resetTranscript, hasSupport } = useSpeechRecognition();
@@ -113,6 +118,19 @@ export const RobotScreenPage = () => {
     }
   }, [isListening]);
 
+  const handleProtectedLogoutSubmit = (e) => {
+    if (e) e.preventDefault();
+    const validPasswords = ['123456', 'robot123', 'password123', 'admin', 'aurora2026'];
+    if (validPasswords.includes(logoutPassword.trim())) {
+      setShowLogoutModal(false);
+      setLogoutPassword('');
+      setLogoutError('');
+      onLogout();
+    } else {
+      setLogoutError('Mật khẩu không chính xác! Vui lòng thử lại.');
+    }
+  };
+
   const resetToIdle = () => {
     stopSpeaking();
     stopListening();
@@ -122,6 +140,19 @@ export const RobotScreenPage = () => {
 
   return (
     <div className="w-full h-screen bg-aurora-canvas flex flex-col justify-start items-center overflow-hidden font-sans select-none relative">
+      {/* Nút Khóa / Đăng xuất Robot Bảo Mật */}
+      <button
+        onClick={() => {
+          setLogoutPassword('');
+          setLogoutError('');
+          setShowLogoutModal(true);
+        }}
+        className="absolute top-4 right-4 z-40 px-4 py-2 rounded-full bg-slate-900/90 text-white border border-slate-700/80 shadow-xl hover:bg-black transition-all flex items-center gap-2 text-xs font-bold cursor-pointer backdrop-blur-md"
+      >
+        <Lock className="w-3.5 h-3.5 text-amber-400" />
+        <span>Đăng Xuất Robot</span>
+      </button>
+
       {/* Camera Preview góc trên bên trái */}
       <CameraPreview 
         onGuestApproached={handleGuestApproached} 
@@ -318,6 +349,77 @@ export const RobotScreenPage = () => {
           </button>
         ))}
       </footer>
+
+      {/* Modal Bảo Mật Nhập Mật Khẩu Đăng Xuất Robot */}
+      {showLogoutModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 animate-fadeIn">
+          <div className="bg-stone-900 border border-stone-700 text-white rounded-3xl p-7 max-w-md w-full shadow-2xl space-y-5 relative">
+            <button
+              onClick={() => setShowLogoutModal(false)}
+              className="absolute top-4 right-4 p-1.5 rounded-full hover:bg-stone-800 text-stone-400 hover:text-white transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 border-b border-stone-800 pb-3">
+              <div className="w-11 h-11 rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center font-bold">
+                <Lock className="w-6 h-6 text-amber-400" />
+              </div>
+              <div>
+                <h3 className="text-base font-extrabold text-white">Mật Khẩu Đăng Xuất Robot</h3>
+                <p className="text-[11px] text-stone-400">Ngăn người dùng tự ý thoát khỏi màn hình Kiosk</p>
+              </div>
+            </div>
+
+            {logoutError && (
+              <div className="p-3.5 rounded-2xl bg-rose-950/80 border border-rose-800 text-rose-200 text-xs font-bold flex items-center gap-2.5">
+                <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0" />
+                <span>{logoutError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleProtectedLogoutSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-stone-300 mb-1.5 uppercase tracking-wider">
+                  Mật khẩu Bảo vệ (Password)
+                </label>
+                <div className="relative">
+                  <KeyRound className="w-4 h-4 text-stone-400 absolute left-3.5 top-3" />
+                  <input
+                    type="password"
+                    placeholder="Nhập mật khẩu (Mặc định: 123456)"
+                    value={logoutPassword}
+                    onChange={(e) => setLogoutPassword(e.target.value)}
+                    autoFocus
+                    required
+                    className="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-stone-950 border border-stone-700 text-sm font-medium text-white outline-none focus:border-amber-400 transition-colors"
+                  />
+                </div>
+                <p className="text-[11px] text-stone-400 mt-2">
+                  🔑 Mật khẩu mẫu: <code className="text-amber-300 font-bold">123456</code> hoặc <code className="text-amber-300 font-bold">robot123</code>
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowLogoutModal(false)}
+                  className="flex-1 py-3 rounded-2xl bg-stone-800 hover:bg-stone-700 text-stone-300 font-bold text-xs transition-colors cursor-pointer"
+                >
+                  Hủy bỏ
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-3 rounded-2xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-500 hover:to-amber-600 text-stone-950 font-extrabold text-xs transition-all shadow-lg flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Xác Nhận Đăng Xuất</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

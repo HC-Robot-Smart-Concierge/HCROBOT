@@ -140,6 +140,32 @@ async def seed_initial_data(session: AsyncSession):
                 current_tasks_count=1,
                 avatar_url="https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&auto=format&fit=crop&q=80",
             ),
+            Staff(
+                username="robot_01",
+                password_hash=default_pwd_hash,
+                code="R01",
+                full_name="HCRobot Unit 01",
+                role="Robot Kiosk",
+                department="Robot Node",
+                default_dashboard="robot_display",
+                location="Main Lobby Kiosk",
+                status="available",
+                current_tasks_count=0,
+                avatar_url=None,
+            ),
+            Staff(
+                username="robot_02",
+                password_hash=default_pwd_hash,
+                code="R02",
+                full_name="HCRobot Unit 02",
+                role="Robot Kiosk",
+                department="Robot Node",
+                default_dashboard="robot_display",
+                location="Floor 4 Kiosk",
+                status="available",
+                current_tasks_count=0,
+                avatar_url=None,
+            ),
         ]
         session.add_all(staff_members)
 

@@ -66,6 +66,7 @@ TAG_BELL = ["7. Bộ phận Vận chuyển hành lý (Bellman Services)"]
 TAG_MNT = ["8. Bộ phận Kỹ thuật & Bảo trì (Facility Maintenance)"]
 TAG_MGR = ["9. Ban Quản lý Khách sạn (Manager Hub)"]
 TAG_REST = ["10. Bộ phận Nhà hàng (Restaurant - Đặt bàn & Đặt món trước)"]
+TAG_OPS = ["9. Ban Quản lý Khách sạn (Manager Hub)"]
 
 
 @router.get("/dashboard/room-service", response_model=RoomServiceDashboardResponse, tags=TAG_FB)

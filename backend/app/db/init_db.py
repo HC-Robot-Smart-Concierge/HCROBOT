@@ -50,14 +50,27 @@ async def seed_initial_data(session: AsyncSession):
 
         staff_members = [
             Staff(
+                username="reception",
+                password_hash=default_pwd_hash,
+                code="RCP",
+                full_name="Nhân viên Lễ tân (Reception)",
+                role="Front Desk / Receptionist",
+                department="Reception",
+                default_dashboard="manager_hub",
+                location="Main Lobby Reception",
+                status="available",
+                current_tasks_count=0,
+                avatar_url=None,
+            ),
+            Staff(
                 username="roomservice",
                 password_hash=default_pwd_hash,
-                code="ER",
-                full_name="Elena Rossi",
-                role="Shift Leader / F&B Lead",
+                code="FB",
+                full_name="Nhân viên Phục vụ phòng (F&B)",
+                role="F&B Room Service Staff",
                 department="F&B",
                 default_dashboard="room_service",
-                location="Main Hotel",
+                location="Main Hotel Kitchen",
                 status="available",
                 current_tasks_count=0,
                 avatar_url=None,
@@ -65,60 +78,60 @@ async def seed_initial_data(session: AsyncSession):
             Staff(
                 username="manager",
                 password_hash=default_pwd_hash,
-                code="MV",
-                full_name="Marcus Vane",
+                code="MGR",
+                full_name="Ban Quản lý Khách sạn (Manager)",
                 role="General Manager",
                 department="Executive",
                 default_dashboard="manager_hub",
                 location="Executive Office",
                 status="available",
                 current_tasks_count=0,
-                avatar_url="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&auto=format&fit=crop&q=80",
+                avatar_url=None,
             ),
             Staff(
                 username="housekeeping",
                 password_hash=default_pwd_hash,
-                code="MS",
-                full_name="Maria Santos",
-                role="Housekeeping Lead",
+                code="HK",
+                full_name="Nhân viên Buồng phòng (Housekeeping)",
+                role="Housekeeping Staff",
                 department="Housekeeping",
                 default_dashboard="housekeeping",
                 location="Floor 3",
                 status="available",
                 current_tasks_count=0,
-                avatar_url="https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=100&auto=format&fit=crop&q=80",
+                avatar_url=None,
             ),
             Staff(
                 username="maintenance",
                 password_hash=default_pwd_hash,
-                code="JD",
-                full_name="James Doe",
-                role="HVAC Tech & Maintenance",
+                code="MNT",
+                full_name="Nhân viên Kỹ thuật & Bảo trì",
+                role="Maintenance Technician",
                 department="Maintenance",
                 default_dashboard="maintenance",
                 location="Floor 5",
-                status="busy",
-                current_tasks_count=1,
-                avatar_url="https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=100&auto=format&fit=crop&q=80",
+                status="available",
+                current_tasks_count=0,
+                avatar_url=None,
             ),
             Staff(
                 username="bellman",
                 password_hash=default_pwd_hash,
-                code="MT",
-                full_name="Marcus T.",
-                role="Bell Captain",
+                code="BEL",
+                full_name="Nhân viên Vận chuyển hành lý (Bellman)",
+                role="Bellman / Luggage Staff",
                 department="Bell Services",
                 default_dashboard="bell_services",
                 location="Lobby",
                 status="available",
                 current_tasks_count=0,
-                avatar_url="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&auto=format&fit=crop&q=80",
+                avatar_url=None,
             ),
             Staff(
                 username="admin",
                 password_hash=default_pwd_hash,
                 code="ADM",
-                full_name="System Administrator",
+                full_name="Quản trị Hệ thống (Admin)",
                 role="Operations Admin",
                 department="Executive",
                 default_dashboard="manager_hub",
@@ -128,23 +141,10 @@ async def seed_initial_data(session: AsyncSession):
                 avatar_url=None,
             ),
             Staff(
-                username="sarah_j",
-                password_hash=default_pwd_hash,
-                code="SJ",
-                full_name="Sarah J.",
-                role="Attendant",
-                department="Bell Services",
-                default_dashboard="bell_services",
-                location="Lobby",
-                status="busy",
-                current_tasks_count=1,
-                avatar_url="https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&auto=format&fit=crop&q=80",
-            ),
-            Staff(
                 username="robot_01",
                 password_hash=default_pwd_hash,
                 code="R01",
-                full_name="HCRobot Unit 01",
+                full_name="Robot Kiosk Unit 01",
                 role="Robot Kiosk",
                 department="Robot Node",
                 default_dashboard="robot_display",
@@ -157,7 +157,7 @@ async def seed_initial_data(session: AsyncSession):
                 username="robot_02",
                 password_hash=default_pwd_hash,
                 code="R02",
-                full_name="HCRobot Unit 02",
+                full_name="Robot Kiosk Unit 02",
                 role="Robot Kiosk",
                 department="Robot Node",
                 default_dashboard="robot_display",
@@ -405,8 +405,50 @@ async def seed_initial_data(session: AsyncSession):
         ]
         session.add_all(stocks)
 
+        # 9. Seed Restaurant Reservations & Pre-Orders
+        res_sample = [
+            RestaurantReservation(
+                reservation_code="RES-1024",
+                guest_name="Mr. David Miller",
+                room_number="Room 502",
+                party_size=4,
+                reservation_time="19:30 Today",
+                table_number="Table 05 (Window View)",
+                special_note="Kỷ niệm ngày cưới. Cần chuẩn bị nến và hoa hồng trên bàn.",
+                status="Confirmed",
+            ),
+            RestaurantReservation(
+                reservation_code="RES-1025",
+                guest_name="Mrs. Sophia Chen",
+                room_number="Room 312",
+                party_size=2,
+                reservation_time="20:00 Today",
+                table_number="Table 02",
+                special_note="Khách dị ứng với hải sản.",
+                status="Confirmed",
+            ),
+        ]
+        session.add_all(res_sample)
+
+        pre_sample = [
+            RestaurantPreOrder(
+                order_code="ORD-5012",
+                reservation_code="RES-1024",
+                guest_name="Mr. David Miller",
+                room_number="Room 502",
+                items=[
+                    {"name": "Ribeye Steak Prime 350g", "quantity": 2, "price": 550000},
+                    {"name": "Rượu Vang Đỏ Chateau Margaux", "quantity": 1, "price": 1200000},
+                ],
+                total_price=2300000.0,
+                note="Phục vụ rượu vang lúc 19:45.",
+                status="Pending",
+            )
+        ]
+        session.add_all(pre_sample)
+
         await session.commit()
-        logger.info("🎉 Initial 5-star hotel operational data seeded successfully!")
+        logger.info("🎉 Initial 5-star hotel operational & restaurant data seeded successfully!")
 
     except Exception as e:
         await session.rollback()

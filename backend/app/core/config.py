@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     
     # PostgreSQL Configuration
     POSTGRES_USER: str = "postgres"
-    POSTGRES_PASSWORD: str = "postgres"
+    POSTGRES_PASSWORD: str = "Kha170205"
     POSTGRES_HOST: str = "localhost"
     POSTGRES_PORT: int = 5432
     POSTGRES_DB: str = "hc_robot_db"

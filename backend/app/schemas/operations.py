@@ -264,3 +264,63 @@ class ManagerHubDashboardResponse(BaseModel):
     live_requests: List[DirectiveResponse]
     staff_roster: List[StaffResponse]
     zone_heatmap: Dict[str, Any]
+
+
+# ---------------------------------------------------------
+# Restaurant Table Reservation & Pre-Order Schemas
+# ---------------------------------------------------------
+class RestaurantReservationCreate(BaseModel):
+    guest_name: str
+    room_number: Optional[str] = None
+    party_size: int = 2
+    reservation_time: str
+    table_number: Optional[str] = "Table 01"
+    special_note: Optional[str] = None
+
+class RestaurantReservationResponse(BaseModel):
+    id: str
+    reservation_code: str
+    guest_name: str
+    room_number: Optional[str]
+    party_size: int
+    reservation_time: str
+    table_number: Optional[str]
+    special_note: Optional[str]
+    status: str
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PreOrderItem(BaseModel):
+    name: str
+    quantity: int = 1
+    price: float = 0.0
+
+class RestaurantPreOrderCreate(BaseModel):
+    guest_name: str
+    room_number: Optional[str] = None
+    reservation_code: Optional[str] = None
+    items: List[PreOrderItem]
+    total_price: float = 0.0
+    note: Optional[str] = None
+
+class RestaurantPreOrderResponse(BaseModel):
+    id: str
+    order_code: str
+    reservation_code: Optional[str]
+    guest_name: str
+    room_number: Optional[str]
+    items: List[Dict[str, Any]]
+    total_price: float
+    note: Optional[str]
+    status: str
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+class RestaurantDashboardResponse(BaseModel):
+    kpis: Dict[str, Any]
+    reservations: List[RestaurantReservationResponse]
+    pre_orders: List[RestaurantPreOrderResponse]
+

@@ -365,8 +365,16 @@ async def get_bell_services_dashboard(db: AsyncSession = Depends(get_db)):
     if not team_status:
         team_status = [
             {"id": "b1", "name": "Nhân viên Vận chuyển hành lý (Bellman)", "role": "Bellman / Luggage Staff", "status": "available", "avatar": None},
-            {"id": "b2", "name": "Robot Kiosk Unit 01", "role": "Automated Cart / Kiosk", "status": "available", "isRobot": True},
         ]
+    team_status.append(
+        {
+            "id": "bot-alpha",
+            "name": "Bot Unit Alpha",
+            "role": "Automated Cart",
+            "status": "available",
+            "isRobot": True,
+        }
+    )
 
     announcement = {
         "title": "Peak Hours Approaching",

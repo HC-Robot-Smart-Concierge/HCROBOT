@@ -16,62 +16,13 @@ from app.schemas.auth import (
 router = APIRouter()
 
 
-DEMO_BACKEND_USERS = {
-    "reception": ("Nhân viên Lễ tân (Reception)", "Front Desk / Receptionist", "Reception", "manager_hub", "STF-RCP-01"),
-    "roomservice": ("Nhân viên Phục vụ phòng (F&B)", "F&B Room Service Staff", "F&B", "room_service", "STF-FB-01"),
-    "housekeeping": ("Nhân viên Buồng phòng (Housekeeping)", "Housekeeping Staff", "Housekeeping", "housekeeping", "STF-HK-01"),
-    "bellman": ("Nhân viên Vận chuyển hành lý (Bellman)", "Bellman / Luggage Staff", "Bell Services", "bell_services", "STF-BEL-01"),
-    "maintenance": ("Nhân viên Kỹ thuật & Bảo trì", "Maintenance Technician", "Maintenance", "maintenance", "STF-MNT-01"),
-    "manager": ("Ban Quản lý Khách sạn (Manager)", "General Manager", "Executive", "manager_hub", "STF-GM-01"),
-    "admin": ("Quản trị Hệ thống (Admin)", "Operations Admin", "Executive", "manager_hub", "STF-ADM-01"),
-    "robot_01": ("Robot Kiosk Unit 01", "Robot Kiosk", "Robot Node", "robot_display", "BOT-01"),
-    "robot_02": ("Robot Kiosk Unit 02", "Robot Kiosk", "Robot Node", "robot_display", "BOT-02"),
-}
-
-
 @router.post("/login", response_model=TokenResponse)
 async def login(login_in: LoginRequest, db: AsyncSession = Depends(get_db)):
     """Authenticates staff member with username & password, returns JWT token with assigned role & dashboard."""
     username_clean = login_in.username.strip().lower()
-    staff = None
-    
     # 1. Query staff by username from PostgreSQL DB
-    try:
-        res = await db.execute(select(Staff).where(Staff.username == username_clean))
-        staff = res.scalar_one_or_none()
-    except Exception as db_err:
-        # Fallback if PostgreSQL is unreachable or password auth fails
-        if username_clean in DEMO_BACKEND_USERS and login_in.password in ["123456", "password123", "robot123"]:
-            name, role, dept, dash, stf_id = DEMO_BACKEND_USERS[username_clean]
-            token_payload = {
-                "sub": stf_id,
-                "username": username_clean,
-                "role": role,
-                "department": dept,
-                "default_dashboard": dash,
-            }
-            token = create_access_token(data=token_payload)
-            user_profile = UserAuthProfile(
-                id=stf_id,
-                username=username_clean,
-                code=f"DEMO-{username_clean.upper()}",
-                full_name=name,
-                role=role,
-                department=dept,
-                default_dashboard=dash,
-                status="Active",
-            )
-            return TokenResponse(
-                access_token=token,
-                user=user_profile,
-                target_dashboard=dash,
-            )
-        
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Không thể kết nối CSDL PostgreSQL hoặc Tên đăng nhập / Mật khẩu không đúng.",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+    res = await db.execute(select(Staff).where(Staff.username == username_clean))
+    staff = res.scalar_one_or_none()
 
     # 2. Check credentials against DB
     if not staff or not verify_password(login_in.password, staff.password_hash):

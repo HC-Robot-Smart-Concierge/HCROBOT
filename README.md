@@ -170,12 +170,16 @@ HC-Robot/
    OPENAI_API_KEY=your_openai_api_key_here
    ```
 
-5. **Seeding Tài Khoản CSDL PostgreSQL Các Bộ Phận**:
-   Khởi tạo và đồng bộ bảng CSDL cùng danh sách tài khoản theo các bộ phận chức năng (Mật khẩu mặc định cho tất cả tài khoản: `123456`):
+5. **Seed tài khoản PostgreSQL**:
+   Tạo tài khoản nhân viên bằng file seed riêng (mật khẩu mặc định: `123456`):
+   ```powershell
+   python scripts/seed_accounts.py
+   ```
+   Tạo riêng tài khoản Robot Kiosk:
    ```powershell
    python scripts/seed_robot_accounts.py
    ```
-   Hoặc khởi tạo lại CSDL từ đầu:
+   Chỉ tạo các bảng còn thiếu, không tự seed tài khoản:
    ```powershell
    python -c "import asyncio; from app.db.init_db import init_db; asyncio.run(init_db())"
    ```
@@ -183,13 +187,12 @@ HC-Robot/
    **Danh Sách Tài Khoản Hệ Thống Theo Bộ Phận:**
    | Tên Đăng Nhập (Username) | Mật Khẩu | Tên Bộ Phận / Chức Danh | Phân Hệ Dashboard |
    | :--- | :--- | :--- | :--- |
-   | `reception` | `123456` | Nhân viên Lễ tân (Reception) | Manager Hub |
    | `roomservice` | `123456` | Nhân viên Phục vụ phòng (F&B) | Room Service |
    | `housekeeping` | `123456` | Nhân viên Buồng phòng (Housekeeping) | Housekeeping |
    | `bellman` | `123456` | Nhân viên Vận chuyển hành lý (Bellman) | Bell Services |
    | `maintenance` | `123456` | Nhân viên Kỹ thuật & Bảo trì | Maintenance |
-   | `manager` | `123456` | Ban Quản lý Khách sạn (Manager) | Manager Hub |
-   | `admin` | `123456` | Quản trị Hệ thống (Admin) | Tất cả Dashboards |
+   | `admin` | `123456` | Quản trị Hệ thống (Admin) | LiDAR Admin Map |
+   | `sarah_j` | `123456` | Nhân viên Bell Services | Bell Services |
    | `robot_01` | `123456` | Robot Kiosk Unit 01 | Màn hình Robot |
    | `robot_02` | `123456` | Robot Kiosk Unit 02 | Màn hình Robot |
 
@@ -275,7 +278,7 @@ ros2 run hc_robot_client telemetry_node
 - `/api/v1/operations/housekeeping/*`: 6. Quản lý yêu cầu vệ sinh & buồng phòng (Housekeeping).
 - `/api/v1/operations/bell-services/*`: 7. Quản lý yêu cầu vận chuyển hành lý (Bellman Services).
 - `/api/v1/operations/maintenance/*`: 8. Tiếp nhận ticket sự cố & kỹ thuật bảo trì (Maintenance).
-- `/api/v1/operations/manager-hub/*`: 9. Ban Giám đốc quản lý chỉ thị & điều hành chung (Executive).
+- `/api/v1/operations/directives`: 9. Tạo yêu cầu điều phối vận hành liên bộ phận.
 - `/api/v1/operations/restaurant/*`: 10. Bộ phận Nhà hàng (Restaurant - Robot đặt bàn & đặt món trước).
 
 ### Socket.IO Events Reference

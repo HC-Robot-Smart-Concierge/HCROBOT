@@ -13,14 +13,21 @@ Desktop.ini
 *$py.class
 .venv/
 venv/
+**/venv/
 ENV/
 env/
 .pytest_cache/
 .coverage
 htmlcov/
 *.log
+scratch/
+**/scratch/
+.env
+*.env
 backend/.env
 backend/.env.local
+chroma_db/
+**/chroma_db/
 backend/chroma_db/
 backend/knowledge_vault/.obsidian/
 
@@ -56,7 +63,15 @@ mobile/.dart_tool/
 mobile/.idea/
 mobile/.packages
 mobile/.pub/
+mobile/.flutter-plugins
+mobile/.flutter-plugins-dependencies
 mobile/build/
+mobile/android/local.properties
+mobile/android/.gradle/
 mobile/ios/Pods/
 mobile/ios/.symlinks/
+mobile/ios/Flutter/Generated.xcconfig
+mobile/ios/Flutter/flutter_export_environment.sh
+mobile/ios/Runner/GeneratedPluginRegistrant.*
+
 

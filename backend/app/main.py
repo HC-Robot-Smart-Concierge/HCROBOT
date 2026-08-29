@@ -44,13 +44,11 @@ async def watch_obsidian_vault():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from app.services.hardware.rplidar_service import rplidar_service
-    from app.core.database import AsyncSessionLocal
     from app.db.init_db import init_db
 
-    # 1. Initialize DB tables & seed data (Code-First)
+    # 1. Initialize tables only. Seed data is loaded explicitly from scripts/.
     try:
-        async with AsyncSessionLocal() as session:
-            await init_db(session)
+        await init_db()
     except Exception as e:
         logger.warning(f"⚠️ Could not auto-initialize DB on startup (is PostgreSQL running?): {e}")
 

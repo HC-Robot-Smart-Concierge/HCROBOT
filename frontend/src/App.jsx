@@ -174,7 +174,7 @@ export function App() {
   return (
     <div className="w-full h-screen overflow-hidden bg-[#FAF8F5] text-[#1A1917] flex flex-col font-sans select-none relative">
       {/* Top Floating Header Pill (Only on Dashboard, Robot Display & LiDAR Map) */}
-      {activeView !== 'landing' && activeView !== 'login' && (
+      {activeView !== 'landing' && activeView !== 'login' && activeView !== 'housekeeping' && (
         <div className="absolute top-2.5 right-6 z-50 flex items-center gap-2">
           {/* If logged in as staff: Strict Role Badge & Logout */}
           {currentUser ? (
@@ -284,6 +284,7 @@ export function App() {
           {/* Left Sidebar */}
           <AuroraSidebar
             variant={isManagerMode ? 'manager' : 'staff'}
+            referenceLayout={activeView === 'housekeeping'}
             activeMenu={activeMenu}
             onSelectMenu={(menu) => {
               setActiveMenu(menu);
@@ -307,10 +308,13 @@ export function App() {
           <div className="flex-1 flex flex-col h-full overflow-hidden bg-[#FAF8F5]">
             {/* Top Header */}
             <AuroraHeader
+              referenceLayout={activeView === 'housekeeping'}
               hotelName="Aurora Grand Hotel"
               systemName={isManagerMode ? 'HCROBOT ADMIN' : 'HCROBOT'}
               subtitle={
-                isManagerMode
+                activeView === 'housekeeping'
+                  ? 'Front Desk Operations'
+                  : isManagerMode
                   ? 'Executive Management Hub • General Manager'
                   : `${currentUser?.department || 'Staff'} Operations Portal`
               }

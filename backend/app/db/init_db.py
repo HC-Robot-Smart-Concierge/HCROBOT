@@ -4,7 +4,6 @@ from sqlalchemy import select
 
 from app.core.database import engine, Base
 from app.models import (
-    Staff,
     RobotUnit,
     RoomServiceOrder,
     HousekeepingRequest,
@@ -12,164 +11,32 @@ from app.models import (
     MaintenanceRequest,
     ManagementDirective,
     InventoryStock,
+    RestaurantReservation,
+    RestaurantPreOrder,
 )
 
 logger = logging.getLogger(__name__)
 
 
-async def init_db(session: AsyncSession = None):
-    """
-    Creates all database tables defined in SQLAlchemy ORM and seeds default 5-star hotel data
-    if tables are currently empty.
-    """
-    # 1. Create tables
+async def init_db():
+    """Create missing database tables without inserting application data."""
     async with engine.begin() as conn:
         logger.info("🛠️ Creating all database tables if not exist (Code-First Migration)...")
         await conn.run_sync(Base.metadata.create_all)
         logger.info("✅ Database tables verified/created successfully.")
 
-    # 2. Seed initial data if needed
-    if session:
-        await seed_initial_data(session)
-
 
 async def seed_initial_data(session: AsyncSession):
-    """Populates initial operational data corresponding to Aurora Grand Hotel & HCRobot dashboards."""
+    """Populate demo operational data. Run this only from an explicit seed script."""
     try:
-        # Check if staff table has data
-        staff_check = await session.execute(select(Staff).limit(1))
-        if staff_check.scalar_one_or_none() is not None:
-            logger.info("ℹ️ Database already contains seed data. Skipping initial population.")
+        operations_check = await session.execute(select(RobotUnit).limit(1))
+        if operations_check.scalar_one_or_none() is not None:
+            logger.info("ℹ️ Database already contains operational seed data. Skipping population.")
             return
 
         logger.info("🌱 Seeding initial 5-star hotel operational data for Aurora OS...")
 
-        # 1. Seed Staff with Authentication Credentials (Default password: '123456')
-        from app.core.security import hash_password
-        default_pwd_hash = hash_password("123456")
-
-        staff_members = [
-            Staff(
-                username="reception",
-                password_hash=default_pwd_hash,
-                code="RCP",
-                full_name="Nhân viên Lễ tân (Reception)",
-                role="Front Desk / Receptionist",
-                department="Reception",
-                default_dashboard="manager_hub",
-                location="Main Lobby Reception",
-                status="available",
-                current_tasks_count=0,
-                avatar_url=None,
-            ),
-            Staff(
-                username="roomservice",
-                password_hash=default_pwd_hash,
-                code="FB",
-                full_name="Nhân viên Phục vụ phòng (F&B)",
-                role="F&B Room Service Staff",
-                department="F&B",
-                default_dashboard="room_service",
-                location="Main Hotel Kitchen",
-                status="available",
-                current_tasks_count=0,
-                avatar_url=None,
-            ),
-            Staff(
-                username="manager",
-                password_hash=default_pwd_hash,
-                code="MGR",
-                full_name="Ban Quản lý Khách sạn (Manager)",
-                role="General Manager",
-                department="Executive",
-                default_dashboard="manager_hub",
-                location="Executive Office",
-                status="available",
-                current_tasks_count=0,
-                avatar_url=None,
-            ),
-            Staff(
-                username="housekeeping",
-                password_hash=default_pwd_hash,
-                code="HK",
-                full_name="Nhân viên Buồng phòng (Housekeeping)",
-                role="Housekeeping Staff",
-                department="Housekeeping",
-                default_dashboard="housekeeping",
-                location="Floor 3",
-                status="available",
-                current_tasks_count=0,
-                avatar_url=None,
-            ),
-            Staff(
-                username="maintenance",
-                password_hash=default_pwd_hash,
-                code="MNT",
-                full_name="Nhân viên Kỹ thuật & Bảo trì",
-                role="Maintenance Technician",
-                department="Maintenance",
-                default_dashboard="maintenance",
-                location="Floor 5",
-                status="available",
-                current_tasks_count=0,
-                avatar_url=None,
-            ),
-            Staff(
-                username="bellman",
-                password_hash=default_pwd_hash,
-                code="BEL",
-                full_name="Nhân viên Vận chuyển hành lý (Bellman)",
-                role="Bellman / Luggage Staff",
-                department="Bell Services",
-                default_dashboard="bell_services",
-                location="Lobby",
-                status="available",
-                current_tasks_count=0,
-                avatar_url=None,
-            ),
-            Staff(
-                username="admin",
-                password_hash=default_pwd_hash,
-                code="ADM",
-                full_name="Quản trị Hệ thống (Admin)",
-                role="Operations Admin",
-                department="Executive",
-                default_dashboard="manager_hub",
-                location="Command Center",
-                status="available",
-                current_tasks_count=0,
-                avatar_url=None,
-            ),
-            Staff(
-                username="robot_01",
-                password_hash=default_pwd_hash,
-                code="R01",
-                full_name="Robot Kiosk Unit 01",
-                role="Robot Kiosk",
-                department="Robot Node",
-                default_dashboard="robot_display",
-                location="Main Lobby Kiosk",
-                status="available",
-                current_tasks_count=0,
-                avatar_url=None,
-            ),
-            Staff(
-                username="robot_02",
-                password_hash=default_pwd_hash,
-                code="R02",
-                full_name="Robot Kiosk Unit 02",
-                role="Robot Kiosk",
-                department="Robot Node",
-                default_dashboard="robot_display",
-                location="Floor 4 Kiosk",
-                status="available",
-                current_tasks_count=0,
-                avatar_url=None,
-            ),
-        ]
-        session.add_all(staff_members)
-
-        # 2. Seed Robot Units
+        # 1. Seed Robot Units
         robot_units = [
             RobotUnit(
                 unit_code="U1",
@@ -210,7 +77,7 @@ async def seed_initial_data(session: AsyncSession):
         ]
         session.add_all(robot_units)
 
-        # 3. Seed Room Service Orders
+        # 2. Seed Room Service Orders
         orders = [
             RoomServiceOrder(
                 order_number="1042",
@@ -255,7 +122,7 @@ async def seed_initial_data(session: AsyncSession):
         ]
         session.add_all(orders)
 
-        # 4. Seed Housekeeping Requests
+        # 3. Seed Housekeeping Requests
         hk_requests = [
             HousekeepingRequest(
                 ticket_code="HK-1042",
@@ -282,7 +149,7 @@ async def seed_initial_data(session: AsyncSession):
         ]
         session.add_all(hk_requests)
 
-        # 5. Seed Bell Requests
+        # 4. Seed Bell Requests
         bell_requests = [
             BellRequest(
                 ticket_code="BS-501",
@@ -320,7 +187,7 @@ async def seed_initial_data(session: AsyncSession):
         ]
         session.add_all(bell_requests)
 
-        # 6. Seed Maintenance Requests
+        # 5. Seed Maintenance Requests
         maintenance_requests = [
             MaintenanceRequest(
                 ticket_code="MN-401",
@@ -359,7 +226,7 @@ async def seed_initial_data(session: AsyncSession):
         ]
         session.add_all(maintenance_requests)
 
-        # 7. Seed Management Directives
+        # 6. Seed Management Directives
         directives = [
             ManagementDirective(
                 code="M-101",
@@ -397,7 +264,7 @@ async def seed_initial_data(session: AsyncSession):
         ]
         session.add_all(directives)
 
-        # 8. Seed Inventory Stocks
+        # 7. Seed Inventory Stocks
         stocks = [
             InventoryStock(name="Artisan Cola", category="beverage", count_label="6 left", quantity=6, level="danger"),
             InventoryStock(name="Sparkling Water (L)", category="beverage", count_label="2 left", quantity=2, level="danger"),
@@ -405,7 +272,7 @@ async def seed_initial_data(session: AsyncSession):
         ]
         session.add_all(stocks)
 
-        # 9. Seed Restaurant Reservations & Pre-Orders
+        # 8. Seed Restaurant Reservations & Pre-Orders
         res_sample = [
             RestaurantReservation(
                 reservation_code="RES-1024",
@@ -448,7 +315,7 @@ async def seed_initial_data(session: AsyncSession):
         session.add_all(pre_sample)
 
         await session.commit()
-        logger.info("🎉 Initial 5-star hotel operational & restaurant data seeded successfully!")
+        logger.info("🎉 Initial hotel operational & restaurant data seeded successfully!")
 
     except Exception as e:
         await session.rollback()

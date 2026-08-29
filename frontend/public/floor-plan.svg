@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360">
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#343330"/>
+      <stop offset="0.52" stop-color="#77736b"/>
+      <stop offset="1" stop-color="#bebbb4"/>
+    </linearGradient>
+    <linearGradient id="floor" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#d9d2c5"/>
+      <stop offset="1" stop-color="#aaa397"/>
+    </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="18" stdDeviation="16" flood-color="#111" flood-opacity=".55"/>
+    </filter>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="5" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect width="640" height="360" fill="url(#background)"/>
+  <g transform="translate(320 174) rotate(-7) skewX(-29) scale(1 .72) translate(-250 -120)" filter="url(#shadow)">
+    <rect x="15" y="18" width="470" height="214" rx="4" fill="#5f5b54" stroke="#ded8cd" stroke-width="8"/>
+    <rect x="35" y="38" width="430" height="174" fill="url(#floor)" stroke="#898278" stroke-width="4"/>
+    <path d="M35 92h430M35 158h430M112 38v174M192 38v174M280 38v174M369 38v174" fill="none" stroke="#68635b" stroke-width="6"/>
+    <rect x="118" y="98" width="68" height="54" fill="#817b72" stroke="#efe6d7" stroke-width="3"/>
+    <rect x="198" y="98" width="76" height="54" fill="#5c5852" stroke="#efe6d7" stroke-width="3"/>
+    <rect x="286" y="98" width="77" height="54" fill="#746e66" stroke="#efe6d7" stroke-width="3"/>
+    <rect x="376" y="98" width="83" height="54" fill="#5d5953" stroke="#efe6d7" stroke-width="3"/>
+    <path d="M68 60h24v12H68zm78 0h24v12h-24zm80 0h24v12h-24zm90 0h24v12h-24zm88 0h24v12h-24zM68 180h24v12H68zm78 0h24v12h-24zm80 0h24v12h-24zm90 0h24v12h-24zm88 0h24v12h-24z" fill="#eee8dd"/>
+    <g fill="#d5a956" filter="url(#glow)">
+      <circle cx="80" cy="68" r="5"/><circle cx="158" cy="68" r="5"/><circle cx="238" cy="68" r="5"/>
+      <circle cx="328" cy="68" r="5"/><circle cx="416" cy="68" r="5"/><circle cx="80" cy="188" r="5"/>
+      <circle cx="158" cy="188" r="5"/><circle cx="238" cy="188" r="5"/><circle cx="328" cy="188" r="5"/>
+    </g>
+  </g>
+  <rect width="640" height="360" fill="url(#background)" opacity=".09"/>
+</svg>

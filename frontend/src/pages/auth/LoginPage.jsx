@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { loginUser, DEMO_STAFF_ACCOUNTS } from '../../services/authApi';
+import { loginUser } from '../../services/authApi';
 
 export const LoginPage = ({ onLoginSuccess = () => {}, onBackToHome = () => {} }) => {
   const [username, setUsername] = useState('');
@@ -27,22 +27,6 @@ export const LoginPage = ({ onLoginSuccess = () => {}, onBackToHome = () => {} }
     }
   };
 
-  // Quick 1-click login helper
-  const handleQuickLogin = async (demoAccount) => {
-    setUsername(demoAccount.username);
-    setPassword(demoAccount.password || '123456');
-    setIsLoading(true);
-    setErrorMessage(null);
-
-    const result = await loginUser(demoAccount.username, demoAccount.password || '123456');
-    setIsLoading(false);
-
-    if (result.success) {
-      onLoginSuccess(result.user, result.targetDashboard);
-    } else {
-      setErrorMessage(result.error || 'Đăng nhập mẫu thất bại.');
-    }
-  };
 
   return (
     <div className="w-full h-full min-h-screen bg-[#FAF8F5] flex flex-col justify-between font-sans select-none overflow-y-auto custom-scrollbar p-6 text-[#1A1917]">
@@ -121,28 +105,6 @@ export const LoginPage = ({ onLoginSuccess = () => {}, onBackToHome = () => {} }
             </button>
           </form>
 
-          {/* Quick Demo Dropdown Section (Không icon, không emoji) */}
-          <div className="pt-4 border-t border-[#EAE6DE] space-y-2.5">
-            <label className="block text-[11px] font-bold text-stone-600 uppercase tracking-wider">
-              Chọn nhanh tài khoản mẫu (Demo)
-            </label>
-
-            <select
-              onChange={(e) => {
-                const selected = DEMO_STAFF_ACCOUNTS.find((acc) => acc.username === e.target.value);
-                if (selected) handleQuickLogin(selected);
-              }}
-              defaultValue=""
-              className="w-full px-4 py-2.5 rounded-2xl bg-[#FAF8F5] border border-[#E0DCD3] text-xs font-bold text-stone-800 outline-none focus:border-stone-600 transition-colors cursor-pointer"
-            >
-              <option value="" disabled>-- Chọn tài khoản để đăng nhập nhanh --</option>
-              {DEMO_STAFF_ACCOUNTS.map((acc) => (
-                <option key={acc.username} value={acc.username}>
-                  {acc.name} ({acc.role}) - Username: {acc.username}
-                </option>
-              ))}
-            </select>
-          </div>
         </div>
       </div>
 

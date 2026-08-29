@@ -14,7 +14,7 @@ export const RequestsPage = ({ currentUser, onNotify = () => {} }) => {
   const staffId = currentUser?.id || currentUser?.username || 'user';
 
   const [statusFilter, setStatusFilter] = useState('All'); // 'All' | 'Pending' | 'In Progress' | 'Completed'
-  const [deptFilter, setDeptFilter] = useState('All'); // 'All' | 'F&B' | 'Housekeeping' | 'Bell Services' | 'Maintenance'
+  const [deptFilter, setDeptFilter] = useState('All'); // 'All' | 'Reception' | 'F&B' | 'Housekeeping' | 'Bell Services' | 'Maintenance'
   const [searchQuery, setSearchQuery] = useState('');
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -102,7 +102,7 @@ export const RequestsPage = ({ currentUser, onNotify = () => {} }) => {
   // Calculate live badge counts
   const pendingCount = deptScopedRequests.filter((r) => {
     const s = (r.status || '').toLowerCase().trim();
-    return s === 'pending' || s === 'unassigned' || s === 'waiting';
+    return s === 'pending' || s === 'pending action' || s === 'unassigned' || s === 'waiting';
   }).length;
 
   const inProgressCount = deptScopedRequests.filter((r) => {
@@ -130,7 +130,7 @@ export const RequestsPage = ({ currentUser, onNotify = () => {} }) => {
   const getRequestPriorityScore = (req) => {
     const s = (req.status || '').toLowerCase().trim();
     const p = (req.priority || '').toUpperCase().trim();
-    const isPending = s === 'pending' || s === 'unassigned' || s === 'waiting';
+    const isPending = s === 'pending' || s === 'pending action' || s === 'unassigned' || s === 'waiting';
     const isInProgress =
       s === 'in progress' ||
       s === 'in_progress' ||
@@ -155,7 +155,7 @@ export const RequestsPage = ({ currentUser, onNotify = () => {} }) => {
     const matchStatus = (() => {
       if (statusFilter === 'All') return true;
       if (statusFilter === 'Pending') {
-        return s === 'pending' || s === 'unassigned' || s === 'waiting';
+        return s === 'pending' || s === 'pending action' || s === 'unassigned' || s === 'waiting';
       }
       if (statusFilter === 'In Progress') {
         return (
@@ -446,7 +446,8 @@ export const RequestsPage = ({ currentUser, onNotify = () => {} }) => {
               const priorityStr = (req.priority || 'NORMAL').toUpperCase();
               const isUrgent = priorityStr.includes('HIGH') || priorityStr.includes('URGENT');
               const statusStr = (req.status || 'Pending').toLowerCase();
-              const isPending = statusStr === 'pending' || statusStr === 'unassigned';
+              const isPending =
+                statusStr === 'pending' || statusStr === 'pending action' || statusStr === 'unassigned';
               const isInProgress = statusStr === 'in progress' || statusStr === 'cooking' || statusStr === 'delivering';
               const isCompleted = statusStr === 'completed' || statusStr === 'ready';
               const handlerName = req.assignedTo || req.assigned_staff_name;

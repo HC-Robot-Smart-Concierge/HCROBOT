@@ -1,4 +1,5 @@
 import random
+from datetime import datetime
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,6 +17,7 @@ from app.models import (
     InventoryStock,
     RestaurantReservation,
     RestaurantPreOrder,
+    ReceptionRequest,
 )
 from app.schemas.operations import (
     StaffResponse,
@@ -50,6 +52,10 @@ from app.schemas.operations import (
     RestaurantPreOrderCreate,
     RestaurantPreOrderResponse,
     RestaurantDashboardResponse,
+    # Reception
+    ReceptionRequestUpdate,
+    ReceptionRequestResponse,
+    ReceptionDashboardResponse,
 )
 
 router = APIRouter()
@@ -59,12 +65,108 @@ router = APIRouter()
 # 1. ROOM SERVICE / F&B DASHBOARD & ORDERS
 # =====================================================================
 
+TAG_REC = ["4. Bộ phận Lễ tân (Reception Operations)"]
 TAG_FB = ["5. Bộ phận Phục vụ phòng (F&B / Room Service)"]
 TAG_HK = ["6. Bộ phận Buồng phòng (Housekeeping)"]
 TAG_BELL = ["7. Bộ phận Vận chuyển hành lý (Bellman Services)"]
 TAG_MNT = ["8. Bộ phận Kỹ thuật & Bảo trì (Facility Maintenance)"]
 TAG_OPS = ["9. Điều phối Vận hành (Operations)"]
 TAG_REST = ["10. Bộ phận Nhà hàng (Restaurant - Đặt bàn & Đặt món trước)"]
+
+
+# =====================================================================
+# 0. RECEPTION / FRONT DESK REQUEST DETAIL
+# =====================================================================
+
+@router.get("/dashboard/reception", response_model=ReceptionDashboardResponse, tags=TAG_REC)
+async def get_reception_dashboard(db: AsyncSession = Depends(get_db)):
+    """Returns the most recent guest request handled by Front Desk staff."""
+    result = await db.execute(
+        select(ReceptionRequest).order_by(desc(ReceptionRequest.created_at)).limit(1)
+    )
+    return {"current_request": result.scalar_one_or_none()}
+
+
+@router.patch(
+    "/reception/requests/{request_id}",
+    response_model=ReceptionRequestResponse,
+    tags=TAG_REC,
+)
+async def update_reception_request(
+    request_id: str,
+    update_in: ReceptionRequestUpdate,
+    db: AsyncSession = Depends(get_db),
+):
+    """Updates status, assistance, assignment, notes, or escalation for a Front Desk request."""
+    result = await db.execute(
+        select(ReceptionRequest).where(
+            (ReceptionRequest.id == request_id)
+            | (ReceptionRequest.ticket_code == request_id)
+        )
+    )
+    request = result.scalar_one_or_none()
+    if not request:
+        raise HTTPException(status_code=404, detail="Reception request not found")
+
+    timestamp = datetime.now().strftime("%I:%M %p").lstrip("0")
+    new_activity = list(request.activity_log or [])
+
+    if update_in.status is not None and update_in.status != request.status:
+        request.status = update_in.status
+        new_activity.insert(
+            0,
+            {
+                "title": f"Status changed to {update_in.status}",
+                "detail": "Updated by Front Desk staff",
+                "time": timestamp,
+            },
+        )
+    if update_in.assistance_status is not None:
+        request.assistance_status = update_in.assistance_status
+        new_activity.insert(
+            0,
+            {
+                "title": f"Live assistance {update_in.assistance_status.lower()}",
+                "detail": "Front Desk video assistance session",
+                "time": timestamp,
+            },
+        )
+    if update_in.assigned_to is not None:
+        request.assigned_to = update_in.assigned_to
+        request.assigned_role = update_in.assigned_role or request.assigned_role
+        new_activity.insert(
+            0,
+            {
+                "title": "Task Assigned",
+                "detail": f"System assigned to {update_in.assigned_to}",
+                "time": timestamp,
+            },
+        )
+    if update_in.note:
+        request.notes = [
+            {"message": update_in.note, "time": timestamp},
+            *(request.notes or []),
+        ]
+        new_activity.insert(
+            0,
+            {"title": "Note Added", "detail": update_in.note, "time": timestamp},
+        )
+    if update_in.escalated is not None:
+        request.escalated = update_in.escalated
+        if update_in.escalated:
+            new_activity.insert(
+                0,
+                {
+                    "title": "Request Escalated",
+                    "detail": "Priority escalation sent to Operations",
+                    "time": timestamp,
+                },
+            )
+
+    request.activity_log = new_activity
+    await db.commit()
+    await db.refresh(request)
+    return request
 
 
 @router.get("/dashboard/room-service", response_model=RoomServiceDashboardResponse, tags=TAG_FB)
@@ -75,7 +177,11 @@ async def get_room_service_dashboard(db: AsyncSession = Depends(get_db)):
     orders = orders_res.scalars().all()
 
     # 2. Fetch Robots
-    fleet_res = await db.execute(select(RobotUnit).order_by(RobotUnit.unit_code))
+    fleet_res = await db.execute(
+        select(RobotUnit)
+        .where(RobotUnit.model_type == "delivery")
+        .order_by(RobotUnit.unit_code)
+    )
     delivery_fleet = fleet_res.scalars().all()
 
     # 3. Fetch Stock
@@ -146,6 +252,8 @@ async def update_room_service_order_status(
         order.progress = status_in.progress
     if status_in.est_completion is not None:
         order.est_completion = status_in.est_completion
+    if status_in.assigned_staff_name is not None:
+        order.assigned_staff_name = status_in.assigned_staff_name
 
     await db.commit()
     await db.refresh(order)
@@ -168,8 +276,20 @@ async def assign_robot_to_order(
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
 
-    order.assigned_robot_id = assign_in.robot_id
-    order.assigned_staff_name = assign_in.robot_name or "HCRobot Unit 01"
+    robot = None
+    if assign_in.robot_id:
+        robot_res = await db.execute(
+            select(RobotUnit).where(
+                (RobotUnit.id == assign_in.robot_id) |
+                (RobotUnit.unit_code == assign_in.robot_id)
+            )
+        )
+        robot = robot_res.scalar_one_or_none()
+        if not robot:
+            raise HTTPException(status_code=404, detail="Robot unit not found")
+
+    order.assigned_robot_id = robot.id if robot else None
+    order.assigned_staff_name = assign_in.robot_name or (robot.name if robot else "HCRobot Unit 01")
     order.status = "Delivering"
     await db.commit()
     await db.refresh(order)
@@ -598,6 +718,7 @@ async def get_all_unified_requests(db: AsyncSession = Depends(get_db)):
     hk_res = await db.execute(select(HousekeepingRequest).order_by(desc(HousekeepingRequest.created_at)))
     bell_res = await db.execute(select(BellRequest).order_by(desc(BellRequest.created_at)))
     maint_res = await db.execute(select(MaintenanceRequest).order_by(desc(MaintenanceRequest.created_at)))
+    reception_res = await db.execute(select(ReceptionRequest).order_by(desc(ReceptionRequest.created_at)))
     dir_res = await db.execute(select(ManagementDirective).order_by(desc(ManagementDirective.created_at)))
 
     unified = []
@@ -664,6 +785,22 @@ async def get_all_unified_requests(db: AsyncSession = Depends(get_db)):
             "assignedTo": m.assigned_to,
             "notes": m.description,
             "table_type": "maintenance",
+        })
+
+    for reception_request in reception_res.scalars().all():
+        unified.append({
+            "id": reception_request.ticket_code,
+            "raw_id": reception_request.id,
+            "department": "Reception",
+            "title": reception_request.title,
+            "location": reception_request.location,
+            "guestName": reception_request.guest_name or "Guest",
+            "priority": reception_request.priority,
+            "status": reception_request.status,
+            "time": reception_request.created_label,
+            "assignedTo": reception_request.assigned_to,
+            "notes": reception_request.description,
+            "table_type": "reception",
         })
 
     for d in dir_res.scalars().all():
@@ -768,7 +905,30 @@ async def update_generic_request_status(
         await db.commit()
         return {"success": True, "type": "maintenance", "id": maint.id, "status": maint.status}
 
-    # 5. Check Directive
+    # 5. Check Reception
+    res = await db.execute(
+        select(ReceptionRequest).where(
+            (ReceptionRequest.ticket_code == clean_id) |
+            (ReceptionRequest.id == clean_id) |
+            (ReceptionRequest.ticket_code == ticket_id) |
+            (ReceptionRequest.id == ticket_id) |
+            (ReceptionRequest.id.ilike(f"%{clean_id}%"))
+        )
+    )
+    reception_request = res.scalar_one_or_none()
+    if reception_request:
+        reception_request.status = status
+        if assigned_to:
+            reception_request.assigned_to = assigned_to
+        await db.commit()
+        return {
+            "success": True,
+            "type": "reception",
+            "id": reception_request.id,
+            "status": reception_request.status,
+        }
+
+    # 6. Check Directive
     res = await db.execute(
         select(ManagementDirective).where(
             (ManagementDirective.code == clean_id) |

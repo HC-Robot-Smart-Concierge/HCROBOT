@@ -13,6 +13,7 @@ from app.core.config import settings
 from app.core.database import engine, AsyncSessionLocal
 from app.db.init_db import init_db, seed_initial_data
 from scripts.seed_accounts import seed_accounts
+from scripts.seed_reception_data import seed_reception_data
 
 
 def ensure_postgres_db():
@@ -60,6 +61,7 @@ async def main():
         async with AsyncSessionLocal() as session:
             await seed_accounts(session)
             await seed_initial_data(session)
+            await seed_reception_data(session)
             print("[SUCCESS] All tables created and seed data initialized successfully!")
     except Exception as e:
         print(f"[FAIL] Error initializing database: {e}")

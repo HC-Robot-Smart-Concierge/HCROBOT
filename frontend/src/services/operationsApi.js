@@ -4,6 +4,7 @@
 // =====================================================================
 
 import {
+  INITIAL_RECEPTION_DATA,
   INITIAL_ROOM_SERVICE_DATA,
   INITIAL_HOUSEKEEPING_DATA,
   INITIAL_BELL_SERVICES_DATA,
@@ -38,6 +39,28 @@ async function fetchWithFallback(url, options = {}, fallbackData = null) {
     return fallbackData;
   }
 }
+
+// ---------------------------------------------------------
+// 0. Reception / Front Desk
+// ---------------------------------------------------------
+export const fetchReceptionDashboard = async () => {
+  return await fetchWithFallback(
+    `${BASE_URL}/dashboard/reception`,
+    {},
+    { current_request: INITIAL_RECEPTION_DATA }
+  );
+};
+
+export const updateReceptionRequest = async (requestId, updateData) => {
+  return await fetchWithFallback(
+    `${BASE_URL}/reception/requests/${encodeURIComponent(requestId)}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(updateData),
+    },
+    { ...INITIAL_RECEPTION_DATA, ...updateData }
+  );
+};
 
 // ---------------------------------------------------------
 // 1. Room Service / F&B

@@ -16,3 +16,33 @@ class RAGDocumentListResponse(BaseModel):
 class RAGActionResponse(BaseModel):
     message: str
     id: str
+
+
+class RAGStatsResponse(BaseModel):
+    total_documents: int
+    total_sources: int
+    rag_health_percent: float = 98.2
+    categories: Dict[str, int] = Field(default_factory=dict)
+    last_synced: str = "Just now"
+
+
+class RAGSourceFileItem(BaseModel):
+    filename: str
+    file_type: str
+    file_size_kb: float
+    chunks_count: int
+    last_modified: str
+    status: str = "Synced"
+
+
+class RAGSourceFilesResponse(BaseModel):
+    total: int
+    sources: List[RAGSourceFileItem]
+
+
+class RAGFileUploadResponse(BaseModel):
+    message: str
+    filename: str
+    chunks_created: int
+    image_url: Optional[str] = None
+

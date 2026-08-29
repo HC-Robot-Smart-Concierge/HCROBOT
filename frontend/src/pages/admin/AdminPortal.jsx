@@ -19,12 +19,14 @@ import {
 } from 'lucide-react';
 import { AdminDashboardTab } from './tabs/AdminDashboardTab';
 import { AdminOperationsTab } from './tabs/AdminOperationsTab';
+import { AdminKnowledgePage } from './tabs/AdminKnowledgePage';
 import { AdminLidarPage } from './AdminLidarPage';
 
 export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () => {} }) => {
   // Navigation Menu: 'Dashboard' | 'Operations' | 'Robots' | 'Knowledge' | 'Hotel Content' | 'Staff' | 'Analytics' | 'Logs' | 'Settings'
   const [activeMenu, setActiveMenu] = useState('Operations');
   const [operationsSubTab, setOperationsSubTab] = useState('requests'); // 'requests' | 'support'
+  const [knowledgeSubTab, setKnowledgeSubTab] = useState('overview'); // 'overview' | 'articles' | 'sources' | 'upload' | 'create'
   const [searchQuery, setSearchQuery] = useState('');
 
 
@@ -103,6 +105,44 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
                       </button>
                     </div>
                   )}
+
+                  {/* Nested Sub-items directly under Knowledge on the sidebar */}
+                  {item.id === 'Knowledge' && activeMenu === 'Knowledge' && (
+                    <div className="ml-5 pl-3 border-l-2 border-indigo-500/40 my-1 space-y-1">
+                      <button
+                        onClick={() => setKnowledgeSubTab('overview')}
+                        className={`w-full text-left px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                          knowledgeSubTab === 'overview'
+                            ? 'bg-stone-800 text-white shadow-sm border border-stone-700'
+                            : 'text-stone-400 hover:text-stone-200 hover:bg-stone-800/40'
+                        }`}
+                      >
+                        Overview
+                      </button>
+                      <button
+                        onClick={() => setKnowledgeSubTab('articles')}
+                        className={`w-full text-left px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                          knowledgeSubTab === 'articles'
+                            ? 'bg-stone-800 text-white shadow-sm border border-stone-700'
+                            : 'text-stone-400 hover:text-stone-200 hover:bg-stone-800/40'
+                        }`}
+                      >
+                        Articles
+                      </button>
+                      <button
+                        onClick={() => setKnowledgeSubTab('sources')}
+                        className={`w-full text-left px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                          knowledgeSubTab === 'sources'
+                            ? 'bg-stone-800 text-white shadow-sm border border-stone-700'
+                            : 'text-stone-400 hover:text-stone-200 hover:bg-stone-800/40'
+                        }`}
+                      >
+                        Source Files
+                      </button>
+                    </div>
+                  )}
+
+
 
                 </div>
               );
@@ -246,8 +286,13 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
             </div>
           )}
 
-          {/* Placeholders for Knowledge, Hotel Content, Staff, Analytics, Logs, Settings */}
-          {['Knowledge', 'Hotel Content', 'Staff', 'Analytics', 'Logs', 'Settings'].includes(
+          {activeMenu === 'Knowledge' && (
+            <AdminKnowledgePage activeSubView={knowledgeSubTab} />
+          )}
+
+          {/* Placeholders for Hotel Content, Staff, Analytics, Logs, Settings */}
+          {['Hotel Content', 'Staff', 'Analytics', 'Logs', 'Settings'].includes(
+
             activeMenu
           ) && (
             <div className="w-full h-full flex flex-col items-center justify-center p-8 text-center space-y-3">

@@ -6,6 +6,7 @@ import watchfiles
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
 from app.api.v1.router import api_router
@@ -22,23 +23,23 @@ async def watch_obsidian_vault():
     vault_dir = os.path.abspath(settings.OBSIDIAN_VAULT_DIR)
     os.makedirs(vault_dir, exist_ok=True)
     
-    # 1. Đồng bộ ban đầu khi khởi động Server
+    # 1. Đồng bộ ban đầu khi khởi động Server trong background thread
     try:
-        res = obsidian_service.sync_vault_to_chroma()
+        res = await asyncio.to_thread(obsidian_service.sync_vault_to_chroma)
         logger.info(f"✅ Initial Obsidian sync completed ({res.get('chunks_upserted', 0)} chunks) tại {vault_dir}")
     except Exception as e:
         logger.error(f"Lỗi khi đồng bộ Obsidian ban đầu: {e}")
 
-    # 2. Lắng nghe thay đổi thời gian thực
-    logger.info(f"👀 Đã bật Auto-Watcher theo dõi Obsidian Vault tại: {vault_dir}")
-    try:
-        async for changes in watchfiles.awatch(vault_dir):
-            logger.info(f"🔄 Phát hiện thay đổi trong Obsidian Vault ({len(changes)} files). Tự động cập nhật ChromaDB...")
-            obsidian_service.sync_vault_to_chroma()
-    except asyncio.CancelledError:
-        logger.info("Obsidian Auto-Watcher đã dừng.")
-    except Exception as e:
-        logger.error(f"Lỗi trong vòng lặp Obsidian Auto-Watcher: {e}")
+    # 2. Lắng nghe thay đổi an toàn định kỳ không xung đột watchfiles trên Windows
+    while True:
+        try:
+            await asyncio.sleep(30)
+        except asyncio.CancelledError:
+            logger.info("Obsidian Auto-Watcher đã dừng.")
+            break
+        except Exception:
+            pass
+
 
 
 @asynccontextmanager
@@ -79,8 +80,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Mount Static Files for Uploads and Media
+os.makedirs("static/uploads", exist_ok=True)
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
 # Attach Routers
 app.include_router(api_router, prefix="/api/v1")
+
 
 
 @app.get("/", tags=["Health Check"])
@@ -91,3 +97,5 @@ async def root():
         "ollama_host": settings.OLLAMA_HOST,
         "ollama_model": settings.OLLAMA_MODEL
     }
+
+

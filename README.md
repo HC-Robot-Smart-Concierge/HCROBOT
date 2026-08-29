@@ -66,19 +66,13 @@
   4. **Database Layer**: SQLAlchemy 2.0 Async kết nối PostgreSQL & ChromaDB Vector Database.
   5. **Auto OpenAPI Docs**: Swagger UI tích hợp sẵn tại `/docs`.
 
-### B. Frontend Web Console (ReactJS + Vite + Tailwind CSS)
-- **Role**: Cung cấp giao diện web linh hoạt cho 3 đối tượng sử dụng:
-  1. **Robot Screen Display**: Màn hình cảm ứng trên thân Robot với avatar biểu cảm Lottie linh hoạt (Listening, Speaking, Thinking, Idle), menu dịch vụ nhanh.
+### B. Frontend Web & PWA Console (ReactJS + Vite + Tailwind CSS)
+- **Role**: Cung cấp giao diện web & PWA đa nền tảng (hỗ trợ màn hình Robot, Laptop Admin, Smartphone của Staff/Guest):
+  1. **Robot Screen Display & PWA Face**: Màn hình cảm ứng trên thân Robot (hoặc Điện thoại PWA) với avatar biểu cảm Lottie linh hoạt (Listening, Speaking, Thinking, Idle), menu dịch vụ nhanh.
   2. **Staff Dashboard**: Web console cho nhân viên nhận thông báo và xử lý Ticket dịch vụ, phản hồi WebRTC Call khi Robot báo động.
-  3. **Admin Console**: Quản trị người dùng, quản lý tài liệu RAG Knowledge Base, xem bản đồ LiDAR và biểu đồ thống kê tương tác.
+  3. **Admin Console & Teleop**: Quản trị người dùng, quản lý tài liệu RAG Knowledge Base, xem bản đồ LiDAR 2D SLAM và bộ điều khiển di chuyển Robot từ xa (Manual Nudge Teleop).
 
-### C. Mobile Application (Flutter)
-- **Role**: Ứng dụng di động đa năng xây dựng theo mô hình Clean Architecture + BLoC/Cubit:
-  1. **Khách hàng (Guest)**: Xem thông tin phòng, mượn đồ, gọi dịch vụ, theo dõi tiến độ xử lý và đánh giá chất lượng.
-  2. **Nhân viên (Staff)**: Nhận chuông báo đẩy (Push Notification / Socket.IO) khi có yêu cầu khẩn cấp.
-  3. **Bảng Điều Khiển Thủ Công (Joystick Remote Controller)**: Cho phép kỹ thuật viên lái Robot di chuyển bằng Joystick ảo qua Socket.IO độ trễ < 50ms.
-
-### D. Robot Edge Node (ROS 2 on Raspberry Pi 5)
+### C. Robot Edge Node (ROS 2 on Raspberry Pi 5)
 - **Role**: Nút phần cứng điều khiển nhúng trên Raspberry Pi 5 (Ubuntu 22.04/24.04 + ROS 2 Humble/Jazzy).
 - **Package `hc_robot_client`**:
   - `ai_bridge_node`: Giao tiếp âm thanh/văn bản 2 chiều giữa ROS 2 Topics và FastAPI Backend.
@@ -108,8 +102,8 @@ HC-Robot/
 │   ├── .env.example            # File mẫu cấu hình biến môi trường Backend
 │   ├── FASTAPI_ARCHITECTURE.md # (Đã gộp vào Master README này)
 │   └── requirements.txt        # Danh sách thư viện Python Backend
-├── frontend/                   # Web App (React + Vite + Tailwind CSS)
-│   ├── public/                 # Favicon, static assets
+├── frontend/                   # Web & PWA App (React + Vite + Tailwind CSS)
+│   ├── public/                 # Manifest PWA, Service Worker, Favicon
 │   ├── src/
 │   │   ├── assets/             # Icons, images, Lottie face animations
 │   │   ├── components/         # common/, admin/, staff/, robot/
@@ -118,19 +112,10 @@ HC-Robot/
 │   │   ├── pages/              # admin/, staff/, robot/
 │   │   ├── services/           # axiosInstance.js, socketService.js
 │   │   ├── App.jsx             # Root React Router Component
-│   │   └── main.jsx            # Entry point Vite
+│   │   └── main.jsx            # Entry point Vite (SW registered)
 │   ├── package.json            # Node.js dependencies & scripts
 │   ├── tailwind.config.js      # Configuration Tailwind CSS
-│   └── vite.config.js          # Vite build & proxy settings
-├── mobile/                     # App Mobile (Flutter)
-│   ├── android/ & ios/         # Native configurations
-│   ├── lib/
-│   │   ├── core/               # Constants, network, theme
-│   │   ├── data/               # Models, providers, repositories
-│   │   ├── logic/              # BLoC / Cubit State Management
-│   │   ├── presentation/       # Screens & Reusable Widgets (Joystick, Badges)
-│   │   └── main.dart           # Flutter Entry point
-│   └── pubspec.yaml            # Flutter packages setup
+│   └── vite.config.js          # Vite build & PWA allowedHosts settings
 ├── robot/                      # ROS 2 Workspace (Raspberry Pi 5)
 │   └── src/
 │       └── hc_robot_client/    # ROS 2 Package (nodes, launch, config)

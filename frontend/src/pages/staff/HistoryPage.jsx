@@ -17,18 +17,26 @@ import {
 } from 'lucide-react';
 import { MetricCard } from '../../components/dashboard/MetricCard';
 import { fetchUnifiedRequests } from '../../services/operationsApi';
+import { Pagination } from '../../components/common/Pagination';
 
 export const HistoryPage = ({ currentUser, onNotify = () => {} }) => {
   const [timeRange, setTimeRange] = useState('Today'); // 'Today' | '7Days' | 'Month'
   const [deptFilter, setDeptFilter] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [dbLogs, setDbLogs] = useState([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 20;
 
   const staffName = currentUser?.full_name || currentUser?.name || 'Maria Santos';
   const userDept = currentUser?.department || 'Housekeeping';
   const isExecutive =
     userDept === 'Executive' ||
     currentUser?.username === 'admin';
+
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [timeRange, deptFilter, searchQuery]);
 
   const defaultHistoryLogs = [
     // Housekeeping Logs
@@ -178,6 +186,12 @@ export const HistoryPage = ({ currentUser, onNotify = () => {} }) => {
     return true;
   });
 
+  // Paginated Slicing (20 items per page)
+  const paginatedLogs = scopedLogs.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize
+  );
+
   return (
     <div className="flex-1 overflow-y-auto custom-scrollbar p-8 bg-[#FAF8F5] font-sans">
       <div className="max-w-7xl mx-auto space-y-6">
@@ -303,12 +317,12 @@ export const HistoryPage = ({ currentUser, onNotify = () => {} }) => {
           <h3 className="text-sm font-bold text-[#1A1917]">Nhật Ký Dòng Thời Gian</h3>
 
           <div className="space-y-3">
-            {scopedLogs.length === 0 ? (
+            {paginatedLogs.length === 0 ? (
               <div className="p-12 text-center bg-white rounded-2xl border border-[#E5E1D8] text-xs text-stone-500">
                 Không tìm thấy nhật ký hoạt động nào cho bộ phận {userDept}.
               </div>
             ) : (
-              scopedLogs.map((log) => {
+              paginatedLogs.map((log) => {
                 const LogIcon = log.icon;
                 return (
                   <div
@@ -361,7 +375,19 @@ export const HistoryPage = ({ currentUser, onNotify = () => {} }) => {
             )}
           </div>
         </div>
+
+        {/* Pagination Footer */}
+        {scopedLogs.length > 0 && (
+          <Pagination
+            currentPage={currentPage}
+            totalItems={scopedLogs.length}
+            pageSize={pageSize}
+            onPageChange={setCurrentPage}
+            className="rounded-2xl border border-[#E5E1D8] shadow-sm bg-white"
+          />
+        )}
       </div>
     </div>
   );
 };
+

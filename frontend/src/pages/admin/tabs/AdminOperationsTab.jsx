@@ -20,6 +20,7 @@ import {
   updateAdminTask,
 } from '../../../services/operationsApi';
 import { AdminHumanSupportView } from './AdminHumanSupportView';
+import { Pagination } from '../../../components/common/Pagination';
 
 export const AdminOperationsTab = ({
   currentUser,
@@ -49,6 +50,15 @@ export const AdminOperationsTab = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 20;
+
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [deptFilter, statusFilter, searchQuery]);
+
+  const paginatedTasks = tasks.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   // Form Dispatch State
   const [dispatchForm, setDispatchForm] = useState({
@@ -258,7 +268,7 @@ export const AdminOperationsTab = ({
               <RefreshCw className="w-8 h-8 animate-spin text-indigo-500" />
               <p className="text-sm font-semibold">Đang tải danh sách yêu cầu toàn khách sạn...</p>
             </div>
-          ) : tasks.length === 0 ? (
+          ) : paginatedTasks.length === 0 ? (
             <div className="py-16 text-center bg-white rounded-2xl border border-dashed border-stone-300 text-stone-400 space-y-2">
               <Building2 className="w-10 h-10 mx-auto text-stone-300" />
               <p className="text-sm font-bold text-stone-700">Không tìm thấy phiếu yêu cầu nào</p>
@@ -266,7 +276,7 @@ export const AdminOperationsTab = ({
             </div>
           ) : (
             <div className="space-y-3.5">
-              {tasks.map((t) => {
+              {paginatedTasks.map((t) => {
                 const isHigh =
                   (t.priority || '').toUpperCase().includes('HIGH') ||
                   (t.priority || '').toUpperCase().includes('URGENT');
@@ -397,6 +407,15 @@ export const AdminOperationsTab = ({
               })}
             </div>
           )}
+
+          {/* Pagination Footer */}
+          <Pagination
+            currentPage={currentPage}
+            totalItems={tasks.length}
+            pageSize={pageSize}
+            onPageChange={setCurrentPage}
+            className="rounded-2xl border border-stone-200 shadow-sm mt-4 bg-white"
+          />
         </div>
 
       {/* MODAL: DISPATCH NEW TASK POPUP */}

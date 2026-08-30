@@ -23,6 +23,7 @@ import { AdminKnowledgePage } from './tabs/AdminKnowledgePage';
 import { AdminStaffTab } from './tabs/AdminStaffTab';
 import { AdminAnalyticsTab } from './tabs/AdminAnalyticsTab';
 import { AdminSettingsTab } from './tabs/AdminSettingsTab';
+import { AdminLogsTab } from './tabs/AdminLogsTab';
 import { AdminLidarPage } from './AdminLidarPage';
 
 export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () => {} }) => {
@@ -305,10 +306,12 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
             <AdminSettingsTab currentUser={currentUser} />
           )}
 
-          {/* Placeholders for Hotel Content, Logs */}
-          {['Hotel Content', 'Logs'].includes(
-            activeMenu
-          ) && (
+          {activeMenu === 'Logs' && (
+            <AdminLogsTab currentUser={currentUser} />
+          )}
+
+          {/* Placeholders for Hotel Content */}
+          {activeMenu === 'Hotel Content' && (
             <div className="w-full h-full flex flex-col items-center justify-center p-8 text-center space-y-3">
               <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center shadow-sm">
                 <Sparkles className="w-6 h-6" />

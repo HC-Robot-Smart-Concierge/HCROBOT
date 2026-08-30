@@ -1214,8 +1214,106 @@ async def update_admin_task(
 ):
     """Cập nhật trạng thái, người phụ trách hoặc Robot cho bất kỳ Task nào trong hệ thống."""
     clean_id = ticket_id.replace("REQ-", "").strip()
+    upper_id = ticket_id.upper()
 
-    # 1. Room Service
+    # 1. Housekeeping check if HK in ticket_id
+    if "HK" in upper_id:
+        res = await db.execute(
+            select(HousekeepingRequest).where(
+                (HousekeepingRequest.ticket_code == clean_id)
+                | (HousekeepingRequest.id == clean_id)
+                | (HousekeepingRequest.ticket_code == ticket_id)
+                | (HousekeepingRequest.id == ticket_id)
+                | (HousekeepingRequest.ticket_code.ilike(f"%{clean_id}%"))
+            )
+        )
+        hk = res.scalar_one_or_none()
+        if hk:
+            hk.status = update_in.status
+            if update_in.assigned_to:
+                hk.assigned_staff_name = update_in.assigned_to
+            if update_in.note:
+                hk.description = f"{hk.description or ''} | Note: {update_in.note}"
+            await db.commit()
+            return {"success": True, "type": "housekeeping", "id": hk.id, "status": hk.status}
+
+    # 2. Bell Services check if BS in ticket_id
+    if "BS" in upper_id or "BELL" in upper_id:
+        res = await db.execute(
+            select(BellRequest).where(
+                (BellRequest.ticket_code == clean_id)
+                | (BellRequest.id == clean_id)
+                | (BellRequest.ticket_code == ticket_id)
+                | (BellRequest.id == ticket_id)
+                | (BellRequest.ticket_code.ilike(f"%{clean_id}%"))
+            )
+        )
+        bell = res.scalar_one_or_none()
+        if bell:
+            bell.status = update_in.status
+            if update_in.assigned_to:
+                bell.assigned_to = update_in.assigned_to
+            await db.commit()
+            return {"success": True, "type": "bell", "id": bell.id, "status": bell.status}
+
+    # 3. Maintenance check if MN in ticket_id
+    if "MN" in upper_id or "MAINT" in upper_id:
+        res = await db.execute(
+            select(MaintenanceRequest).where(
+                (MaintenanceRequest.ticket_code == clean_id)
+                | (MaintenanceRequest.id == clean_id)
+                | (MaintenanceRequest.ticket_code == ticket_id)
+                | (MaintenanceRequest.id == ticket_id)
+                | (MaintenanceRequest.ticket_code.ilike(f"%{clean_id}%"))
+            )
+        )
+        maint = res.scalar_one_or_none()
+        if maint:
+            maint.status = update_in.status
+            if update_in.assigned_to:
+                maint.assigned_to = update_in.assigned_to
+            await db.commit()
+            return {"success": True, "type": "maintenance", "id": maint.id, "status": maint.status}
+
+    # 4. Reception check if RC in ticket_id
+    if "RC" in upper_id or "REC" in upper_id:
+        res = await db.execute(
+            select(ReceptionRequest).where(
+                (ReceptionRequest.ticket_code == clean_id)
+                | (ReceptionRequest.id == clean_id)
+                | (ReceptionRequest.ticket_code == ticket_id)
+                | (ReceptionRequest.id == ticket_id)
+                | (ReceptionRequest.ticket_code.ilike(f"%{clean_id}%"))
+            )
+        )
+        rec = res.scalar_one_or_none()
+        if rec:
+            rec.status = update_in.status
+            if update_in.assigned_to:
+                rec.assigned_to = update_in.assigned_to
+            await db.commit()
+            return {"success": True, "type": "reception", "id": rec.id, "status": rec.status}
+
+    # 5. Directive check if DIR in ticket_id
+    if "DIR" in upper_id:
+        res = await db.execute(
+            select(ManagementDirective).where(
+                (ManagementDirective.code == clean_id)
+                | (ManagementDirective.id == clean_id)
+                | (ManagementDirective.code == ticket_id)
+                | (ManagementDirective.id == ticket_id)
+                | (ManagementDirective.code.ilike(f"%{clean_id}%"))
+            )
+        )
+        dir_item = res.scalar_one_or_none()
+        if dir_item:
+            dir_item.status = update_in.status
+            if update_in.assigned_to:
+                dir_item.assigned_staff_name = update_in.assigned_to
+            await db.commit()
+            return {"success": True, "type": "directive", "id": dir_item.id, "status": dir_item.status}
+
+    # 6. Room Service (Default for orders or numeric IDs like REQ-1042)
     res = await db.execute(
         select(RoomServiceOrder).where(
             (RoomServiceOrder.order_number == clean_id)
@@ -1235,98 +1333,30 @@ async def update_admin_task(
         await db.commit()
         return {"success": True, "type": "room_service", "id": order.id, "status": order.status}
 
-    # 2. Housekeeping
-    res = await db.execute(
-        select(HousekeepingRequest).where(
-            (HousekeepingRequest.ticket_code == clean_id)
-            | (HousekeepingRequest.id == clean_id)
-            | (HousekeepingRequest.ticket_code == ticket_id)
-            | (HousekeepingRequest.id == ticket_id)
-            | (HousekeepingRequest.id.ilike(f"%{clean_id}%"))
-            | (HousekeepingRequest.ticket_code.ilike(f"%{clean_id}%"))
+    # Fallback search across all other tables if no prefix matched
+    for model, type_name, id_col, staff_col in [
+        (HousekeepingRequest, "housekeeping", HousekeepingRequest.ticket_code, "assigned_staff_name"),
+        (BellRequest, "bell", BellRequest.ticket_code, "assigned_to"),
+        (MaintenanceRequest, "maintenance", MaintenanceRequest.ticket_code, "assigned_to"),
+        (ReceptionRequest, "reception", ReceptionRequest.ticket_code, "assigned_to"),
+        (ManagementDirective, "directive", ManagementDirective.code, "assigned_staff_name"),
+    ]:
+        res = await db.execute(
+            select(model).where(
+                (id_col == clean_id)
+                | (model.id == clean_id)
+                | (id_col == ticket_id)
+                | (model.id == ticket_id)
+                | (id_col.ilike(f"%{clean_id}%"))
+            )
         )
-    )
-    hk = res.scalar_one_or_none()
-    if hk:
-        hk.status = update_in.status
-        if update_in.assigned_to:
-            hk.assigned_staff_name = update_in.assigned_to
-        if update_in.note:
-            hk.description = f"{hk.description or ''} | Note: {update_in.note}"
-        await db.commit()
-        return {"success": True, "type": "housekeeping", "id": hk.id, "status": hk.status}
-
-    # 3. Bell Services
-    res = await db.execute(
-        select(BellRequest).where(
-            (BellRequest.ticket_code == clean_id)
-            | (BellRequest.id == clean_id)
-            | (BellRequest.ticket_code == ticket_id)
-            | (BellRequest.id == ticket_id)
-            | (BellRequest.id.ilike(f"%{clean_id}%"))
-        )
-    )
-    bell = res.scalar_one_or_none()
-    if bell:
-        bell.status = update_in.status
-        if update_in.assigned_to:
-            bell.assigned_to = update_in.assigned_to
-        await db.commit()
-        return {"success": True, "type": "bell", "id": bell.id, "status": bell.status}
-
-    # 4. Maintenance
-    res = await db.execute(
-        select(MaintenanceRequest).where(
-            (MaintenanceRequest.ticket_code == clean_id)
-            | (MaintenanceRequest.id == clean_id)
-            | (MaintenanceRequest.ticket_code == ticket_id)
-            | (MaintenanceRequest.id == ticket_id)
-            | (MaintenanceRequest.id.ilike(f"%{clean_id}%"))
-        )
-    )
-    maint = res.scalar_one_or_none()
-    if maint:
-        maint.status = update_in.status
-        if update_in.assigned_to:
-            maint.assigned_to = update_in.assigned_to
-        await db.commit()
-        return {"success": True, "type": "maintenance", "id": maint.id, "status": maint.status}
-
-    # 5. Reception
-    res = await db.execute(
-        select(ReceptionRequest).where(
-            (ReceptionRequest.ticket_code == clean_id)
-            | (ReceptionRequest.id == clean_id)
-            | (ReceptionRequest.ticket_code == ticket_id)
-            | (ReceptionRequest.id == ticket_id)
-            | (ReceptionRequest.id.ilike(f"%{clean_id}%"))
-        )
-    )
-    rec = res.scalar_one_or_none()
-    if rec:
-        rec.status = update_in.status
-        if update_in.assigned_to:
-            rec.assigned_to = update_in.assigned_to
-        await db.commit()
-        return {"success": True, "type": "reception", "id": rec.id, "status": rec.status}
-
-    # 6. Directive
-    res = await db.execute(
-        select(ManagementDirective).where(
-            (ManagementDirective.code == clean_id)
-            | (ManagementDirective.id == clean_id)
-            | (ManagementDirective.code == ticket_id)
-            | (ManagementDirective.id == ticket_id)
-            | (ManagementDirective.id.ilike(f"%{clean_id}%"))
-        )
-    )
-    dir_item = res.scalar_one_or_none()
-    if dir_item:
-        dir_item.status = update_in.status
-        if update_in.assigned_to:
-            dir_item.assigned_staff_name = update_in.assigned_to
-        await db.commit()
-        return {"success": True, "type": "directive", "id": dir_item.id, "status": dir_item.status}
+        item = res.scalar_one_or_none()
+        if item:
+            item.status = update_in.status
+            if update_in.assigned_to:
+                setattr(item, staff_col, update_in.assigned_to)
+            await db.commit()
+            return {"success": True, "type": type_name, "id": item.id, "status": item.status}
 
     raise HTTPException(status_code=404, detail=f"Ticket {ticket_id} not found")
 
@@ -1345,6 +1375,7 @@ async def update_generic_request_status(
     db: AsyncSession = Depends(get_db),
 ):
     update_data = AdminTaskStatusUpdate(status=status, assigned_to=assigned_to)
+    return await update_admin_task(ticket_id=ticket_id, update_in=update_data, db=db)
 # ---------------------------------------------------------
 # Human Support Sessions & Multilingual Conversation Logs
 # ---------------------------------------------------------

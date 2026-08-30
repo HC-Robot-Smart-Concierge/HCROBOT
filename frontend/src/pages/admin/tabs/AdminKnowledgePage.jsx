@@ -35,6 +35,7 @@ import {
   syncObsidianVault,
   uploadRAGFile,
 } from '../../../services/knowledgeApi';
+import { Pagination } from '../../../components/common/Pagination';
 
 
 export const AdminKnowledgePage = ({ activeSubView = 'overview' }) => {
@@ -56,6 +57,8 @@ export const AdminKnowledgePage = ({ activeSubView = 'overview' }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [actionMessage, setActionMessage] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 20;
 
   // Upload State
   const [uploadFileObj, setUploadFileObj] = useState(null);
@@ -212,6 +215,13 @@ export const AdminKnowledgePage = ({ activeSubView = 'overview' }) => {
     const matchesCat = categoryFilter === 'All' || category.toLowerCase() === categoryFilter.toLowerCase();
     return matchesSearch && matchesCat;
   });
+
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [categoryFilter, searchQuery]);
+
+  const paginatedDocuments = filteredDocuments.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   const getCategoryIcon = (category = '') => {
     const cat = category.toLowerCase();
@@ -505,14 +515,14 @@ export const AdminKnowledgePage = ({ activeSubView = 'overview' }) => {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-stone-100 text-xs">
-                      {filteredDocuments.length === 0 ? (
+                      {paginatedDocuments.length === 0 ? (
                         <tr>
                           <td colSpan={6} className="py-8 text-center text-stone-400 font-medium">
                             Không tìm thấy bài viết nào phù hợp.
                           </td>
                         </tr>
                       ) : (
-                        filteredDocuments.map((doc) => {
+                        paginatedDocuments.map((doc) => {
                           const meta = doc.metadata || {};
                           const title = meta.title || doc.id;
                           const category = meta.category || 'General';
@@ -574,6 +584,14 @@ export const AdminKnowledgePage = ({ activeSubView = 'overview' }) => {
                     </tbody>
                   </table>
                 </div>
+
+                {/* Pagination Footer */}
+                <Pagination
+                  currentPage={currentPage}
+                  totalItems={filteredDocuments.length}
+                  pageSize={pageSize}
+                  onPageChange={setCurrentPage}
+                />
               </div>
             </div>
           ) : (

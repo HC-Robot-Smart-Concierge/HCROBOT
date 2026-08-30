@@ -24,6 +24,7 @@ import {
   HeartPulse,
   Wrench,
 } from 'lucide-react';
+import { Pagination } from '../../../components/common/Pagination';
 import {
   fetchStaffRoster,
   createStaffMember,
@@ -39,6 +40,8 @@ export const AdminStaffTab = ({ currentUser = {} }) => {
   const [departmentFilter, setDepartmentFilter] = useState('All');
   const [statusFilter, setStatusFilter] = useState('All');
   const [notification, setNotification] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 20;
 
   // Modals
   const [selectedStaff, setSelectedStaff] = useState(null); // for detail/edit modal
@@ -189,6 +192,13 @@ export const AdminStaffTab = ({ currentUser = {} }) => {
     return matchesSearch && matchesDept && matchesStatus;
   });
 
+  // Reset to page 1 on filter change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, departmentFilter, statusFilter]);
+
+  const paginatedStaff = filteredStaff.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
   const getDeptColor = (dept = '') => {
     const d = dept.toLowerCase();
     if (d.includes('reception') || d.includes('front')) return 'bg-indigo-50 text-indigo-700 border-indigo-200';
@@ -316,14 +326,14 @@ export const AdminStaffTab = ({ currentUser = {} }) => {
               </tr>
             </thead>
             <tbody className="divide-y divide-stone-100 text-xs">
-              {filteredStaff.length === 0 ? (
+              {paginatedStaff.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="py-8 text-center text-stone-400 font-medium">
                     Không tìm thấy nhân viên nào phù hợp.
                   </td>
                 </tr>
               ) : (
-                filteredStaff.map((staff) => {
+                paginatedStaff.map((staff) => {
                   const avatar =
                     staff.avatar_url ||
                     `https://api.dicebear.com/7.x/bottts/svg?seed=${staff.code || staff.id}`;
@@ -411,6 +421,14 @@ export const AdminStaffTab = ({ currentUser = {} }) => {
             </tbody>
           </table>
         </div>
+
+        {/* Pagination Footer */}
+        <Pagination
+          currentPage={currentPage}
+          totalItems={filteredStaff.length}
+          pageSize={pageSize}
+          onPageChange={setCurrentPage}
+        />
       </div>
 
       {/* 4. MODAL: STAFF DETAIL & ROBOT ESCALATION CONFIGURATION (Matching Right Screen Figma) */}

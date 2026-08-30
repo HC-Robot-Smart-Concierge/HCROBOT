@@ -6,9 +6,15 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from app.core.database import engine, AsyncSessionLocal, Base
 from app.db.init_db import seed_initial_data
-from app.models import Staff, RobotUnit, RoomServiceOrder, HousekeepingRequest, BellRequest, MaintenanceRequest, ManagementDirective, InventoryStock
+from app.models import (
+    Staff, RobotUnit, RoomServiceOrder, HousekeepingRequest, BellRequest,
+    MaintenanceRequest, ManagementDirective, InventoryStock,
+    RestaurantReservation, RestaurantPreOrder, ReceptionRequest, HumanSupportSession
+)
 from scripts.seed_accounts import seed_accounts
+from scripts.seed_robot_accounts import seed_robot_accounts
 from scripts.seed_reception_data import seed_reception_data
+from scripts.seed_support_data import seed_support_data
 
 
 async def reinit():
@@ -21,8 +27,11 @@ async def reinit():
         await seed_accounts(session)
         await seed_initial_data(session)
         await seed_reception_data(session)
+    await seed_robot_accounts()
+    await seed_support_data()
     print("[SUCCESS] Reinitialization complete!")
 
 
 if __name__ == "__main__":
     asyncio.run(reinit())
+

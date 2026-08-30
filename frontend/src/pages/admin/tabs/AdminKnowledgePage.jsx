@@ -223,7 +223,7 @@ export const AdminKnowledgePage = ({ activeSubView = 'overview' }) => {
   };
 
   return (
-    <div className="w-full h-full flex flex-col p-6 space-y-6 overflow-y-auto custom-scrollbar">
+    <div className="w-full min-h-full flex flex-col p-6 space-y-6 pb-16">
       {/* Toast Notification */}
       {actionMessage && (
         <div className="fixed top-5 right-5 z-50 bg-stone-900 text-white px-5 py-3 rounded-2xl shadow-2xl border border-stone-700 flex items-center gap-3 animate-in fade-in slide-in-from-top-4 duration-200">

@@ -160,7 +160,7 @@ export const AdminOperationsTab = ({
   }
 
   return (
-    <div className="w-full h-full flex flex-col p-6 space-y-6 overflow-y-auto custom-scrollbar">
+    <div className="w-full min-h-full flex flex-col p-6 space-y-6 pb-16">
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-stone-200 pb-4">
         <div>

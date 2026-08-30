@@ -53,7 +53,7 @@ export const AdminDashboardTab = ({ onNavigateToOperations = () => {}, onNavigat
   }, []);
 
   return (
-    <div className="w-full h-full p-6 space-y-6 overflow-y-auto custom-scrollbar">
+    <div className="w-full min-h-full p-6 space-y-6 pb-16">
       {/* Title & Action Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-stone-200 pb-4">
         <div>

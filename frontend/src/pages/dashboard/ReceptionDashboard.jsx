@@ -23,18 +23,21 @@ import {
   updateReceptionRequest,
 } from '../../services/operationsApi';
 
-const normalizeRequest = (request) => ({
+const normalizeRequest = (request = {}) => ({
   ...request,
-  ticketCode: request.ticket_code || request.ticketCode,
-  createdLabel: request.created_label || request.createdLabel,
-  locationDetails: request.location_details || request.locationDetails || {},
-  guestName: request.guest_name || request.guestName,
-  guestTier: request.guest_tier || request.guestTier,
-  guestStayDetails: request.guest_stay_details || request.guestStayDetails,
+  ticketCode: request.ticket_code || request.ticketCode || 'REQ-8942A',
+  createdLabel: request.created_label || request.createdLabel || 'Recently',
+  location: request.location || 'Room 402',
+  locationDetails: request.location_details || request.locationDetails || { floor: 'West Wing', category: 'Standard Room' },
+  guestName: request.guest_name || request.guestName || 'Standard Guest',
+  guestTier: request.guest_tier || request.guestTier || 'Standard',
+  guestStayDetails: request.guest_stay_details || request.guestStayDetails || 'Standard Check-in',
+  description: request.description || '',
   attachedMedia: request.attached_media || request.attachedMedia || [],
-  assistanceStatus: request.assistance_status || request.assistanceStatus,
-  assignedTo: request.assigned_to || request.assignedTo,
-  assignedRole: request.assigned_role || request.assignedRole,
+  transcript: request.transcript || [],
+  assistanceStatus: request.assistance_status || request.assistanceStatus || 'Connected',
+  assignedTo: request.assigned_to || request.assignedTo || 'Javier Morales',
+  assignedRole: request.assigned_role || request.assignedRole || 'Staff Tech',
   activityLog: request.activity_log || request.activityLog || [],
 });
 
@@ -170,12 +173,12 @@ export const ReceptionDashboard = ({ currentUser, onNotify = () => {} }) => {
                     <MapPin className="h-[18px] w-[18px]" strokeWidth={1.7} />
                   </div>
                   <div>
-                    <p className="text-[10px] font-medium tracking-[0.12em] text-[#77726D]">LOCATION</p>
+                    <p className="mt-1 text-[10px] font-medium tracking-[0.12em] text-[#77726D]">LOCATION</p>
                     <p className="mt-1 text-[12px] font-medium text-[#44403C]">{request.location}</p>
                     <p className="mt-1 text-[11px] leading-[1.45] text-[#6F6A65]">
-                      {request.locationDetails.floor}
+                      {request.locationDetails?.floor || 'West Wing'}
                       <br />
-                      {request.locationDetails.category}
+                      {request.locationDetails?.category || 'Standard Room'}
                     </p>
                   </div>
                 </div>
@@ -191,7 +194,7 @@ export const ReceptionDashboard = ({ currentUser, onNotify = () => {} }) => {
                     <div className="mt-1 flex items-center gap-2">
                       <p className="truncate text-[12px] font-medium text-[#44403C]">{request.guestName}</p>
                       <span className="rounded-full bg-black px-2 py-0.5 text-[9px] font-medium text-white">
-                        {request.guestTier}
+                        {request.guestTier || 'Standard'}
                       </span>
                     </div>
                     <p className="mt-1 text-[11px] leading-[1.45] text-[#6F6A65]">
@@ -207,14 +210,14 @@ export const ReceptionDashboard = ({ currentUser, onNotify = () => {} }) => {
               <p className="mt-4 text-[12px] leading-[1.65] text-[#625D58]">{request.description}</p>
 
               <p className="mt-5 text-[10px] font-medium tracking-[0.08em] text-[#77726D]">
-                ATTACHED MEDIA ({request.attachedMedia.length})
+                ATTACHED MEDIA ({(request.attachedMedia || []).length})
               </p>
               <div className="mt-2 flex gap-3">
-                {request.attachedMedia.map((media) => (
+                {(request.attachedMedia || []).map((media) => (
                   <img
                     key={media.url}
                     src={media.url}
-                    alt={media.alt}
+                    alt={media.alt || 'Media'}
                     className="h-[96px] w-[112px] rounded-[9px] object-cover"
                   />
                 ))}
@@ -235,7 +238,7 @@ export const ReceptionDashboard = ({ currentUser, onNotify = () => {} }) => {
               </div>
 
               <div className="mt-4 space-y-3">
-                {request.transcript.map((entry, index) => {
+                {(request.transcript || []).map((entry, index) => {
                   const isAssistant = entry.speaker === 'assistant';
                   return (
                     <div key={`${entry.time}-${index}`} className="flex items-start gap-2.5">
@@ -434,7 +437,7 @@ export const ReceptionDashboard = ({ currentUser, onNotify = () => {} }) => {
             <section className="rounded-[17px] bg-[#F0EFEC] px-4 py-5">
               <h3 className="text-[10px] font-medium tracking-[0.08em] text-[#77726D]">ACTIVITY LOG</h3>
               <div className="mt-4 space-y-4">
-                {request.activityLog.map((activity, index) => (
+                {(request.activityLog || []).map((activity, index) => (
                   <div key={`${activity.title}-${index}`} className="relative pl-4 text-[10px] leading-[1.45] text-[#67625D]">
                     <span className="absolute left-0 top-1 h-2 w-2 rounded-full bg-[#8D8984]" />
                     <p className="font-medium text-[#4F4A45]">{activity.title}</p>

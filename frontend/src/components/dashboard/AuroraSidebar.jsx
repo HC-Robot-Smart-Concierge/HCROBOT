@@ -27,6 +27,8 @@ export const AuroraSidebar = ({
     { id: 'Profile', label: 'Profile', icon: User },
   ];
 
+  const user = currentUser || { name: 'Elena Rossi', role: 'Online', avatar: null };
+
   return (
     <aside
       className={`h-full border-r flex flex-col justify-between select-none shrink-0 font-sans ${
@@ -98,10 +100,10 @@ export const AuroraSidebar = ({
       {/* Bottom User Card with Logout */}
       <div className={`${referenceLayout ? '' : 'pt-4 border-t border-[#E3DFD5]'} space-y-2`}>
         <div className={`group flex items-center gap-3 transition-all ${referenceLayout ? 'mx-2 p-3 rounded-[13px] bg-[#F3F1ED]' : 'p-2 rounded-2xl bg-[#EBE7DE]/70 border border-[#E0DCD3]/60 hover:bg-[#E6E1D7]'}`}>
-          {currentUser.avatar_url || currentUser.avatar ? (
+          {user?.avatar_url || user?.avatar ? (
             <img
-              src={currentUser.avatar_url || currentUser.avatar}
-              alt={currentUser.name || currentUser.full_name}
+              src={user.avatar_url || user.avatar}
+              alt={user.name || user.full_name || 'User'}
               className={`${referenceLayout ? 'w-7 h-7' : 'w-8 h-8'} rounded-full object-cover border border-white/50`}
             />
           ) : (
@@ -111,12 +113,12 @@ export const AuroraSidebar = ({
           )}
           <div className="flex-1 min-w-0">
             <p className="text-xs font-bold text-[#1A1917] truncate">
-              {currentUser.name || currentUser.full_name}
+              {user?.name || user?.full_name || 'Staff Member'}
             </p>
             <div className="flex items-center gap-1.5 mt-0.5">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
               <span className="text-[11px] font-medium text-[#78716C] truncate">
-                {referenceLayout ? 'Online' : currentUser.role || 'Online'}
+                {referenceLayout ? 'Online' : user?.role || 'Online'}
               </span>
             </div>
           </div>

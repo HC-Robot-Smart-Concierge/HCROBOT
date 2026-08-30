@@ -18,7 +18,6 @@ import {
 
 const FILTER_OPTIONS = [
   { value: 'All', label: 'All Types' },
-  { value: 'High Priority', label: 'High Priority' },
   { value: 'Spill Cleanup', label: 'Spill Cleanup' },
   { value: 'Towels', label: 'Towels' },
   { value: 'Room Cleaning', label: 'Room Cleaning' },
@@ -28,10 +27,6 @@ const normalizeStatus = (status = '') => status.toLowerCase().trim().replace('_'
 const isPendingRequest = (request) => ['unassigned', 'pending', 'waiting'].includes(normalizeStatus(request.status));
 const isInProgressRequest = (request) => normalizeStatus(request.status) === 'in progress';
 const isCompletedRequest = (request) => ['completed', 'ready', 'done'].includes(normalizeStatus(request.status));
-const isHighPriorityRequest = (request) => {
-  const priority = (request.priority || '').toUpperCase();
-  return priority.includes('HIGH') || priority.includes('URGENT') || priority.includes('VIP');
-};
 
 const requestKey = (request) => request.ticket_code || request.id;
 const displayRequestId = (request) => String(request.ticket_code || request.id || '').replace(/^REQ-/, '');
@@ -113,13 +108,13 @@ export const HousekeepingDashboard = ({ currentUser, onNotify = () => {} }) => {
     pendingRequests: allRequests.filter(isPendingRequest).length,
     inProgress: allRequests.filter(isInProgressRequest).length,
     completedToday: allRequests.filter(isCompletedRequest).length,
-    highPriority: allRequests.filter((request) => isHighPriorityRequest(request) && !isCompletedRequest(request)).length,
+    staffOnDuty: 4,
   };
   const kpis = {
     pendingRequests: data.kpis?.pendingRequests ?? computedKpis.pendingRequests,
     inProgress: data.kpis?.inProgress ?? computedKpis.inProgress,
     completedToday: data.kpis?.completedToday ?? computedKpis.completedToday,
-    highPriority: data.kpis?.highPriority ?? computedKpis.highPriority,
+    staffOnDuty: data.kpis?.staffOnDuty ?? computedKpis.staffOnDuty,
   };
 
   const filteredRequests = useMemo(() => {
@@ -130,7 +125,6 @@ export const HousekeepingDashboard = ({ currentUser, onNotify = () => {} }) => {
       const description = (request.description || '').toLowerCase();
       const type = (request.type || request.category || '').toLowerCase();
 
-      if (filter === 'High Priority') return isHighPriorityRequest(request);
       if (filter === 'Spill Cleanup') return type.includes('spill') || title.includes('spill') || description.includes('spill');
       if (filter === 'Towels') return type.includes('towel') || title.includes('towel') || description.includes('towel');
       if (filter === 'Room Cleaning') return type.includes('clean') || title.includes('clean') || description.includes('clean');
@@ -139,11 +133,10 @@ export const HousekeepingDashboard = ({ currentUser, onNotify = () => {} }) => {
 
     return [...filtered].sort((a, b) => {
       const score = (request) => {
-        if (isPendingRequest(request) && isHighPriorityRequest(request)) return 1;
-        if (isPendingRequest(request)) return 2;
-        if (isInProgressRequest(request)) return 3;
-        if (isCompletedRequest(request)) return 4;
-        return 5;
+        if (isPendingRequest(request)) return 1;
+        if (isInProgressRequest(request)) return 2;
+        if (isCompletedRequest(request)) return 3;
+        return 4;
       };
       return score(a) - score(b);
     });
@@ -186,10 +179,7 @@ export const HousekeepingDashboard = ({ currentUser, onNotify = () => {} }) => {
               ? Math.max(0, kpis.inProgress - 1)
               : kpis.inProgress,
         completedToday: status === 'Completed' ? kpis.completedToday + 1 : kpis.completedToday,
-        highPriority:
-          status === 'Completed' && currentRequest && isHighPriorityRequest(currentRequest)
-            ? Math.max(0, kpis.highPriority - 1)
-            : kpis.highPriority,
+        staffOnDuty: previous.kpis?.staffOnDuty ?? 4,
       },
     }));
     saveRequests(updatedRequests);
@@ -239,7 +229,7 @@ export const HousekeepingDashboard = ({ currentUser, onNotify = () => {} }) => {
           <KpiCard label="Pending Requests" value={kpis.pendingRequests} icon={ClipboardList} />
           <KpiCard label="In Progress" value={kpis.inProgress} icon={RefreshCw} />
           <KpiCard label="Completed Today" value={kpis.completedToday} icon={CheckCircle2} tone="success" />
-          <KpiCard label="High Priority" value={kpis.highPriority} icon={AlertTriangle} tone="danger" />
+          <KpiCard label="Staff on Duty" value={kpis.staffOnDuty ?? availableStaff.length} icon={Bot} />
         </section>
 
         <section className="grid grid-cols-1 lg:grid-cols-[minmax(0,2.08fr)_minmax(220px,0.98fr)] gap-6 items-start">
@@ -272,7 +262,6 @@ export const HousekeepingDashboard = ({ currentUser, onNotify = () => {} }) => {
               ) : (
                 filteredRequests.map((request) => {
                   const requestId = requestKey(request);
-                  const highPriority = isHighPriorityRequest(request);
                   const pending = isPendingRequest(request);
                   const inProgress = isInProgressRequest(request);
                   const completed = isCompletedRequest(request);
@@ -289,10 +278,6 @@ export const HousekeepingDashboard = ({ currentUser, onNotify = () => {} }) => {
                           <span className="text-[#999] whitespace-nowrap">ID: {displayRequestId(request)}</span>
                         </div>
                         <div className="flex items-center gap-3 whitespace-nowrap">
-                          <span className={`flex items-center gap-1.5 ${highPriority ? 'text-[#D01818]' : 'text-[#555]'}`}>
-                            <span className={`w-1.5 h-1.5 rounded-full ${highPriority ? 'bg-[#D01818]' : 'bg-[#858585]'}`} />
-                            {highPriority ? 'HIGH PRIORITY' : request.priority || 'NORMAL'}
-                          </span>
                           <time className="text-[#4E4E4E]">{request.time || request.time_label || 'Recent'}</time>
                         </div>
                       </div>

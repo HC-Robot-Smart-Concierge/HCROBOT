@@ -14,4 +14,6 @@ pyserial>=3.5
 PyJWT>=2.8.0
 edge-tts>=7.2.8
 pipecat-ai>=0.0.40
+python-multipart>=0.0.7
+pypdf>=3.0.0
 

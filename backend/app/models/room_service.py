@@ -13,9 +13,7 @@ class RoomServiceOrder(Base):
     id: Mapped[str] = mapped_column(String(50), primary_key=True, default=lambda: f"ORD-{uuid.uuid4().hex[:8]}")
     order_number: Mapped[str] = mapped_column(String(20), unique=True, index=True) # e.g. '1042', '1041', '1040'
     room_number: Mapped[str] = mapped_column(String(50), nullable=False) # e.g. 'ROOM 412', 'ROOM 208'
-    is_vip: Mapped[bool] = mapped_column(Boolean, default=False)
     status: Mapped[str] = mapped_column(String(50), default="Pending") # 'Pending', 'Cooking', 'Ready', 'Delivering', 'Completed', 'Rejected'
-    priority: Mapped[str] = mapped_column(String(20), default="normal") # 'high', 'normal', 'low'
     
     # Store items list as JSON: [{"name": "Club Sandwich & Truffle Fries", "qty": 2}, ...]
     items: Mapped[List[Dict[str, Any]]] = mapped_column(JSON, default=list)

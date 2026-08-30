@@ -33,9 +33,8 @@ async def seed_reception_data(session: AsyncSession) -> bool:
                 "category": "Premium Ocean View",
             },
             guest_name="Mr. A. Sterling",
-            guest_tier="VIP",
+            guest_tier="Standard",
             guest_stay_details="Check-out: Tomorrow, 11:00 AM",
-            priority="High",
             status="Pending Action",
             description=(
                 "Guest reported a persistent dripping sound coming from the master bathroom "

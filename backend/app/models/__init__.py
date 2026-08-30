@@ -11,6 +11,7 @@ from app.models.restaurant import RestaurantReservation, RestaurantPreOrder
 from app.models.reception import ReceptionRequest
 from app.models.support import HumanSupportSession
 from app.models.chat_session import ChatSession, ChatMessage
+from app.models.logging import LogEvent, AuditLog, LogLevelEnum, LogCategoryEnum, ActorTypeEnum
 
 __all__ = [
     "Base",
@@ -28,5 +29,10 @@ __all__ = [
     "HumanSupportSession",
     "ChatSession",
     "ChatMessage",
+    "LogEvent",
+    "AuditLog",
+    "LogLevelEnum",
+    "LogCategoryEnum",
+    "ActorTypeEnum",
 ]
 

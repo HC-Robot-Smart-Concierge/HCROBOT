@@ -82,9 +82,7 @@ async def seed_initial_data(session: AsyncSession):
             RoomServiceOrder(
                 order_number="1042",
                 room_number="ROOM 412",
-                is_vip=True,
                 status="Pending",
-                priority="high",
                 items=[
                     {"name": "Club Sandwich & Truffle Fries", "qty": 2},
                     {"name": "Artisan Cola (Ice)", "qty": 2},
@@ -96,9 +94,7 @@ async def seed_initial_data(session: AsyncSession):
             RoomServiceOrder(
                 order_number="1041",
                 room_number="ROOM 208",
-                is_vip=False,
                 status="Cooking",
-                priority="normal",
                 items=[
                     {"name": "Grand Breakfast Set for Two", "qty": 1},
                 ],
@@ -109,9 +105,7 @@ async def seed_initial_data(session: AsyncSession):
             RoomServiceOrder(
                 order_number="1040",
                 room_number="ROOM 512",
-                is_vip=False,
                 status="Pending",
-                priority="normal",
                 items=[
                     {"name": "Extra Tableware & Wine Glasses", "qty": "Set of 4"},
                 ],
@@ -127,7 +121,6 @@ async def seed_initial_data(session: AsyncSession):
             HousekeepingRequest(
                 ticket_code="HK-1042",
                 source="From HCRobot",
-                priority="HIGH PRIORITY",
                 time_label="10:15 AM",
                 title="Spill cleanup required",
                 room_number="502",
@@ -138,7 +131,6 @@ async def seed_initial_data(session: AsyncSession):
             HousekeepingRequest(
                 ticket_code="HK-1043",
                 source="From HCRobot",
-                priority="NORMAL",
                 time_label="10:22 AM",
                 title="Extra Towels",
                 room_number="314",
@@ -153,31 +145,25 @@ async def seed_initial_data(session: AsyncSession):
         bell_requests = [
             BellRequest(
                 ticket_code="BS-501",
-                title="Luggage Pickup (Urgent)",
-                priority="HIGH PRIORITY",
-                is_urgent=True,
-                location="Suite 402",
+                title="Luggage Pickup",
+                location="Room 402",
                 guest_name="Mr. Aris Thorne",
-                description="Guest is departing early for an international flight. Requires immediate assistance with 4 large suitcases and 2 garment bags. VIP status.",
+                description="Guest is departing early for an international flight. Requires immediate assistance with 4 large suitcases and 2 garment bags.",
                 status="Pending",
                 request_type="luggage",
             ),
             BellRequest(
                 ticket_code="BS-502",
                 title="Room Move Assistance",
-                priority="Pending",
-                is_urgent=False,
                 location="Room 215 to 510",
                 guest_name="Mrs. Elena Rostova",
-                description="Guest requested an upgrade. Need to move luggage from current room to the new suite. Coordinate with housekeeping for final check of Room 215.",
+                description="Guest requested an upgrade. Need to move luggage from current room to the new room. Coordinate with housekeeping for final check of Room 215.",
                 status="Pending",
                 request_type="room_move",
             ),
             BellRequest(
                 ticket_code="BS-503",
                 title="Lost & Found Retrieval",
-                priority="In Progress",
-                is_urgent=False,
                 location="Lobby Lounge",
                 reporter="Staff (J. Doe)",
                 description="A leather briefcase was left near the grand piano. Retrieve, log into system, and secure in the main Lost & Found locker.",
@@ -193,7 +179,6 @@ async def seed_initial_data(session: AsyncSession):
                 ticket_code="MN-401",
                 title="Plumbing Leak",
                 category="plumbing",
-                priority="HIGH PRIORITY",
                 reported_time_label="10 mins ago",
                 location="Room 412",
                 description="Guest reported water pooling near bathroom sink.",
@@ -204,7 +189,6 @@ async def seed_initial_data(session: AsyncSession):
                 ticket_code="MN-402",
                 title="Air Conditioner Issue",
                 category="hvac",
-                priority="In Progress",
                 reported_time_label="45 mins ago",
                 location="Room 305",
                 description="Unit making loud rattling noise when fan is on high.",
@@ -216,7 +200,6 @@ async def seed_initial_data(session: AsyncSession):
                 ticket_code="MN-403",
                 title="Light Bulb Replacement",
                 category="electrical",
-                priority="Completed",
                 reported_time_label="2 hrs ago",
                 location="Corridor 2B",
                 description="Fading overhead light near elevator bay.",

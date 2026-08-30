@@ -14,7 +14,6 @@ class MaintenanceRequest(Base):
     ticket_code: Mapped[str] = mapped_column(String(20), unique=True, index=True) # e.g. 'MN-401', 'MN-402'
     title: Mapped[str] = mapped_column(String(200), nullable=False) # e.g. 'Plumbing Leak', 'Air Conditioner Issue'
     category: Mapped[str] = mapped_column(String(50), default="general") # 'plumbing', 'hvac', 'electrical', 'general'
-    priority: Mapped[str] = mapped_column(String(50), default="Pending") # 'HIGH PRIORITY', 'In Progress', 'Completed'
     reported_time_label: Mapped[str] = mapped_column(String(50), default="10 mins ago")
     
     location: Mapped[str] = mapped_column(String(100), nullable=False) # e.g. 'Room 412', 'Room 305'

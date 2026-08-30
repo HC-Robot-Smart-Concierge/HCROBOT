@@ -122,10 +122,9 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
       icon: CheckCircle2,
     },
     {
-      label: 'URGENT',
-      value: data.kpis?.urgent ?? 0,
-      icon: AlertTriangle,
-      urgent: true,
+      label: 'ACTIVE FLEET / STAFF',
+      value: data.kpis?.activeFleet ?? data.teamStatus?.length ?? 2,
+      icon: Bot,
     },
   ];
 
@@ -180,10 +179,6 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
               {(data.requests || []).map((request) => {
                 const Icon = requestIcon[request.type] || Briefcase;
                 const status = getStatusLabel(request.status);
-                const isUrgent =
-                  request.is_urgent ||
-                  request.urgentBadge ||
-                  (request.priority || '').toUpperCase().includes('HIGH');
                 const isPending = status === 'Pending';
                 const isInProgress = status === 'In Progress';
 
@@ -193,11 +188,7 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
                     className="rounded-[18px] bg-[#F0EFEC] px-5 py-[18px] shadow-[0_3px_12px_rgba(55,48,42,0.035)]"
                   >
                     <div className="flex items-start gap-4">
-                      <div
-                        className={`mt-0.5 h-12 w-12 shrink-0 rounded-full flex items-center justify-center ${
-                          isUrgent ? 'bg-[#FFD9D7] text-[#C92329]' : 'bg-[#E7E5E3] text-[#54514E]'
-                        }`}
-                      >
+                      <div className="mt-0.5 h-12 w-12 shrink-0 rounded-full flex items-center justify-center bg-[#E7E5E3] text-[#54514E]">
                         <Icon className="h-5 w-5" strokeWidth={1.8} />
                       </div>
 
@@ -214,16 +205,10 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
                             </p>
                           </div>
 
-                          {isUrgent ? (
-                            <span className="shrink-0 rounded-full bg-[#C91F25] px-3 py-1 text-[10px] font-semibold tracking-[0.08em] text-white">
-                              HIGH PRIORITY
-                            </span>
-                          ) : (
-                            <span className="shrink-0 flex items-center gap-1 text-[11px] text-[#696561]">
-                              <span className={`h-1.5 w-1.5 rounded-full ${isInProgress ? 'bg-black' : 'bg-[#77736E]'}`} />
-                              {status}
-                            </span>
-                          )}
+                          <span className="shrink-0 flex items-center gap-1 text-[11px] text-[#696561]">
+                            <span className={`h-1.5 w-1.5 rounded-full ${isInProgress ? 'bg-black' : 'bg-[#77736E]'}`} />
+                            {status}
+                          </span>
                         </div>
 
                         <p className="mt-3 max-w-[94%] text-[12px] leading-[1.45] text-[#66615C]">
@@ -232,48 +217,39 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
 
                         <div className="mt-4 flex items-center gap-3">
                           {isPending && (
-                            <>
-                              {isUrgent ? (
-                                <>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleAccept(request.id)}
-                                    className="rounded-[9px] bg-black px-4 py-2.5 text-[11px] font-medium text-white transition-colors hover:bg-[#252525]"
-                                  >
-                                    Accept Task
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleAssignToBot(request.id)}
-                                    className="rounded-[9px] border border-[#D7D3CF] bg-[#F8F7F5] px-4 py-2.5 text-[11px] font-medium text-[#625E59] transition-colors hover:bg-white"
-                                  >
-                                    Assign to Bot
-                                  </button>
-                                </>
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={() => onNotify(`Chi tiết yêu cầu ${request.id}`)}
-                                  className="text-[11px] font-medium text-[#4D4945] hover:text-black"
-                                >
-                                  View Details
-                                </button>
-                              )}
-                            </>
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => handleAccept(request.id)}
+                                className="rounded-[9px] bg-black px-4 py-2 text-[11px] font-medium text-white transition-colors hover:bg-[#252525]"
+                              >
+                                Accept Task
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleAssignToBot(request.id)}
+                                className="rounded-[9px] border border-[#D7D3CF] bg-[#F8F7F5] px-4 py-2 text-[11px] font-medium text-[#625E59] transition-colors hover:bg-white"
+                              >
+                                Assign to Bot
+                              </button>
+                            </div>
                           )}
 
                           {isInProgress && (
                             <button
                               type="button"
                               onClick={() => handleComplete(request.id)}
-                              className="text-[11px] font-medium text-[#4D4945] hover:text-black"
+                              className="rounded-[9px] border border-[#D7D3CF] bg-white px-4 py-2 text-[11px] font-medium text-[#4D4945] hover:text-black hover:bg-[#FAF8F5]"
                             >
                               Update Status
                             </button>
                           )}
 
                           {status === 'Completed' && (
-                            <span className="text-[11px] font-medium text-[#5E6E65]">Completed</span>
+                            <span className="text-[11px] font-medium text-[#5E6E65] flex items-center gap-1">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                              Completed
+                            </span>
                           )}
                         </div>
                       </div>

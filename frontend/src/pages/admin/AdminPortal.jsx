@@ -21,6 +21,9 @@ import { AdminDashboardTab } from './tabs/AdminDashboardTab';
 import { AdminOperationsTab } from './tabs/AdminOperationsTab';
 import { AdminKnowledgePage } from './tabs/AdminKnowledgePage';
 import { AdminStaffTab } from './tabs/AdminStaffTab';
+import { AdminAnalyticsTab } from './tabs/AdminAnalyticsTab';
+import { AdminSettingsTab } from './tabs/AdminSettingsTab';
+import { AdminLogsTab } from './tabs/AdminLogsTab';
 import { AdminLidarPage } from './AdminLidarPage';
 
 export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () => {} }) => {
@@ -177,7 +180,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
       </aside>
 
       {/* 2. MAIN CONTENT AREA */}
-      <div className="flex-1 flex flex-col h-full overflow-hidden">
+      <div className="flex-1 flex flex-col h-full min-h-0 overflow-hidden">
         {/* Top Header Bar (Matching Figma Topbar) */}
         <header className="h-16 bg-white border-b border-stone-200 px-6 flex items-center justify-between shrink-0 z-20 shadow-sm">
           {/* Left Title */}
@@ -250,7 +253,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
         </header>
 
         {/* 3. DYNAMIC TAB VIEW BODY */}
-        <main className="flex-1 overflow-hidden">
+        <main className={`flex-1 min-h-0 ${activeMenu === 'Robots' ? 'overflow-hidden' : 'overflow-y-auto custom-scrollbar'} relative`}>
           {activeMenu === 'Dashboard' && (
             <AdminDashboardTab
               onNavigateToOperations={() => setActiveMenu('Operations')}
@@ -295,11 +298,20 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
             <AdminStaffTab currentUser={currentUser} />
           )}
 
-          {/* Placeholders for Hotel Content, Analytics, Logs, Settings */}
-          {['Hotel Content', 'Analytics', 'Logs', 'Settings'].includes(
+          {activeMenu === 'Analytics' && (
+            <AdminAnalyticsTab currentUser={currentUser} />
+          )}
 
-            activeMenu
-          ) && (
+          {activeMenu === 'Settings' && (
+            <AdminSettingsTab currentUser={currentUser} />
+          )}
+
+          {activeMenu === 'Logs' && (
+            <AdminLogsTab currentUser={currentUser} />
+          )}
+
+          {/* Placeholders for Hotel Content */}
+          {activeMenu === 'Hotel Content' && (
             <div className="w-full h-full flex flex-col items-center justify-center p-8 text-center space-y-3">
               <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center shadow-sm">
                 <Sparkles className="w-6 h-6" />

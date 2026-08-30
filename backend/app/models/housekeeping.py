@@ -13,7 +13,6 @@ class HousekeepingRequest(Base):
     id: Mapped[str] = mapped_column(String(50), primary_key=True, default=lambda: f"HK-{uuid.uuid4().hex[:8]}")
     ticket_code: Mapped[str] = mapped_column(String(20), unique=True, index=True) # e.g. 'HK-1042', 'HK-1043'
     source: Mapped[str] = mapped_column(String(50), default="From HCRobot") # 'From HCRobot', 'Front Desk', 'Guest App'
-    priority: Mapped[str] = mapped_column(String(50), default="NORMAL") # 'HIGH PRIORITY', 'NORMAL', 'LOW'
     time_label: Mapped[str] = mapped_column(String(20), default="10:00 AM")
     
     title: Mapped[str] = mapped_column(String(200), nullable=False) # e.g. 'Spill cleanup required', 'Extra Towels'

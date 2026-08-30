@@ -61,4 +61,41 @@ export function getStoredToken() {
 export function logoutUser() {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USER_KEY);
+  localStorage.removeItem('aurora_user');
+}
+
+export function updateStoredUser(updatedUser) {
+  try {
+    localStorage.setItem(USER_KEY, JSON.stringify(updatedUser));
+    localStorage.setItem('aurora_user', JSON.stringify(updatedUser));
+  } catch (e) {
+    console.error('Failed to save user to localStorage', e);
+  }
+}
+
+/**
+ * Fetch latest user profile from FastAPI backend using stored JWT token.
+ */
+export async function fetchCurrentUser() {
+  const token = getStoredToken();
+  if (!token) return null;
+
+  try {
+    const response = await fetch(`${AUTH_URL}/me`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) return null;
+
+    const user = await response.json();
+    if (user) {
+      updateStoredUser(user);
+      return user;
+    }
+  } catch (err) {
+    console.warn('[AuthApi] Failed to fetch current user from backend:', err);
+  }
+  return null;
 }

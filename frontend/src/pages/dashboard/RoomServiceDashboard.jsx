@@ -29,7 +29,6 @@ const normalizeOrder = (order) => {
     id: orderNumber,
     rawId: order.id,
     room: order.room_number || order.room || initialOrder.room,
-    isVip: order.is_vip ?? order.isVip ?? initialOrder.isVip ?? false,
     imageUrl: order.image_url || order.imageUrl || initialOrder.imageUrl,
     isServiceRequest:
       order.is_service_request ?? order.isServiceRequest ?? initialOrder.isServiceRequest ?? false,
@@ -276,17 +275,16 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
             icon={CookingPot}
           />
           <KpiCard
+            label="Delivering"
+            value={kpis.delivering?.value ?? 0}
+            detail={kpis.delivering?.label || 'In Transit'}
+            icon={Bot}
+          />
+          <KpiCard
             label="Completed Today"
             value={kpis.completedToday?.value ?? 0}
             icon={CheckCircle2}
             tone="dark"
-          />
-          <KpiCard
-            label="High Priority"
-            value={kpis.highPriority?.count ?? 0}
-            detail={kpis.highPriority?.label}
-            icon={AlertCircle}
-            tone="danger"
           />
         </section>
 
@@ -327,22 +325,14 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
                   return (
                     <article
                       key={order.rawId || order.id}
-                      className={`relative overflow-hidden rounded-[18px] bg-[#F0EFEC] px-5 py-5 ${
-                        order.isVip ? 'border-l-[4px] border-l-[#E64045]' : ''
-                      }`}
+                      className="relative overflow-hidden rounded-[18px] bg-[#F0EFEC] px-5 py-5"
                     >
                       <div className="flex items-start justify-between gap-4">
                         <div>
                           <div className="flex flex-wrap items-center gap-2">
                             <span className="text-[11px] font-medium text-[#4F4A45]">#{order.id}</span>
-                            <span
-                              className={`rounded-[5px] px-2 py-1 text-[9px] font-medium tracking-[0.03em] ${
-                                order.isVip
-                                  ? 'bg-[#FFD9D8] text-[#CB3D43]'
-                                  : 'bg-[#E0DEDA] text-[#5F5B56]'
-                              }`}
-                            >
-                              {order.isVip ? `VIP · ${order.room}` : order.room}
+                            <span className="rounded-[5px] bg-[#E0DEDA] px-2 py-1 text-[9px] font-medium tracking-[0.03em] text-[#5F5B56]">
+                              {order.room}
                             </span>
                           </div>
                           <p className="mt-2 text-[10px] text-[#77726D]">Ordered {order.orderedAt}</p>

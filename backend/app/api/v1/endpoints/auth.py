@@ -5,6 +5,7 @@ from sqlalchemy import select
 from app.core.database import get_db
 from app.core.security import verify_password, hash_password, create_access_token, decode_access_token
 from app.models.staff import Staff
+from app.services.logger_service import audit, log_event, LogLevelEnum, LogCategoryEnum, ActorTypeEnum
 from app.schemas.auth import (
     LoginRequest,
     TokenResponse,
@@ -16,22 +17,77 @@ from app.schemas.auth import (
 router = APIRouter()
 
 
+USERNAME_ALIASES = {
+    "room_service": "roomservice",
+    "room-service": "roomservice",
+    "room service": "roomservice",
+    "f&b": "roomservice",
+    "fb": "roomservice",
+    "bellservices": "bellman",
+    "bell_services": "bellman",
+    "bell-services": "bellman",
+    "bell services": "bellman",
+    "bellservice": "bellman",
+    "bell": "bellman",
+    "house_keeping": "housekeeping",
+    "house-keeping": "housekeeping",
+    "house keeping": "housekeeping",
+    "buongphong": "housekeeping",
+    "receptionist": "reception",
+    "frontdesk": "reception",
+    "front_desk": "reception",
+    "maintain": "maintenance",
+    "kythuat": "maintenance",
+    "ky_thuat": "maintenance",
+    "administrator": "admin",
+}
+
+
 @router.post("/login", response_model=TokenResponse)
 async def login(login_in: LoginRequest, db: AsyncSession = Depends(get_db)):
     """Authenticates staff member with username & password, returns JWT token with assigned role & dashboard."""
     username_clean = login_in.username.strip().lower()
-    
-    # 1. Query staff by username
+    username_clean = USERNAME_ALIASES.get(username_clean, username_clean)
+
+    # 1. Query staff by username from PostgreSQL DB
     res = await db.execute(select(Staff).where(Staff.username == username_clean))
     staff = res.scalar_one_or_none()
 
-    # 2. Check credentials
+    # 2. Check credentials against DB
     if not staff or not verify_password(login_in.password, staff.password_hash):
+        log_event(
+            level=LogLevelEnum.WARNING,
+            category=LogCategoryEnum.AUDIT,
+            event_type="LOGIN_FAILED",
+            module="app.api.v1.auth",
+            message=f"Failed login attempt for username '{username_clean}'",
+            actor_type=ActorTypeEnum.SYSTEM,
+            actor_id=username_clean,
+            metadata={"username": username_clean, "reason": "Invalid credentials"},
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Tên đăng nhập hoặc mật khẩu không chính xác.",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+    # 2.1 Check if staff account is active
+    if staff.is_active is False or (staff.status and staff.status.lower() in ["inactive", "deleted"]):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Tài khoản này đã bị vô hiệu hóa (xóa mềm). Vui lòng liên hệ Quản trị viên.",
+        )
+
+    # Record successful login audit
+    audit(
+        action="LOGIN",
+        resource_type="SESSION",
+        resource_id=f"user_{staff.id}",
+        actor_type=ActorTypeEnum.ADMIN if staff.role == "Admin" else ActorTypeEnum.STAFF,
+        actor_id=staff.username,
+        actor_name=staff.full_name,
+        after_state={"role": staff.role, "department": staff.department},
+    )
 
     # 3. Create JWT Token
     token_payload = {

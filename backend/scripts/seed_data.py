@@ -11,7 +11,9 @@ from sqlalchemy import text
 
 from app.core.config import settings
 from app.core.database import engine, AsyncSessionLocal
-from app.db.init_db import init_db
+from app.db.init_db import init_db, seed_initial_data
+from scripts.seed_accounts import seed_accounts
+from scripts.seed_reception_data import seed_reception_data
 
 
 def ensure_postgres_db():
@@ -52,11 +54,14 @@ async def main():
     # 1. Ensure DB exists
     ensure_postgres_db()
     
-    # 2. Run Code-First table creation & seeding
+    # 2. Create tables, then run the explicit account and operational seeds
     print("\n[*] Initializing tables and seeding hotel operations data...")
     try:
+        await init_db()
         async with AsyncSessionLocal() as session:
-            await init_db(session)
+            await seed_accounts(session)
+            await seed_initial_data(session)
+            await seed_reception_data(session)
             print("[SUCCESS] All tables created and seed data initialized successfully!")
     except Exception as e:
         print(f"[FAIL] Error initializing database: {e}")

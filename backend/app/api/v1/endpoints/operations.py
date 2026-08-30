@@ -1,10 +1,12 @@
 import random
+from datetime import datetime
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, delete, func, desc
 
 from app.core.database import get_db
+from app.core.security import hash_password
 from app.models import (
     Staff,
     RobotUnit,
@@ -14,9 +16,16 @@ from app.models import (
     MaintenanceRequest,
     ManagementDirective,
     InventoryStock,
+    RestaurantReservation,
+    RestaurantPreOrder,
+    ReceptionRequest,
+    HumanSupportSession,
+    Notification,
 )
 from app.schemas.operations import (
     StaffResponse,
+    StaffCreate,
+    StaffUpdate,
     RobotUnitResponse,
     InventoryStockResponse,
     # Room Service
@@ -39,20 +48,167 @@ from app.schemas.operations import (
     MaintenanceRequestCreate,
     MaintenanceRequestResponse,
     MaintenanceDashboardResponse,
-    # Management Hub
+    # Operational Directives
     DirectiveCreate,
     DirectiveResponse,
-    ManagerHubDashboardResponse,
+    # Restaurant
+    RestaurantReservationCreate,
+    RestaurantReservationResponse,
+    RestaurantPreOrderCreate,
+    RestaurantPreOrderResponse,
+    RestaurantDashboardResponse,
+    # Reception
+    ReceptionRequestUpdate,
+    ReceptionRequestResponse,
+    ReceptionDashboardResponse,
+    # Admin Operations
+    UnifiedOperationTask,
+    AdminTaskDispatchCreate,
+    AdminTaskStatusUpdate,
+    AdminOperationsSummary,
+    HumanSupportSessionResponse,
+    # Notifications
+    NotificationCreate,
+    NotificationResponse,
 )
 
 router = APIRouter()
 
 
+async def create_department_notification(
+    db: AsyncSession,
+    department: str,
+    title: str,
+    description: str,
+    request_id: Optional[str] = None,
+    request_type: Optional[str] = None,
+    type: str = "Request",
+) -> Notification:
+    """Creates a persistent department-scoped notification for all department staff."""
+    notif = Notification(
+        department=department,
+        title=title,
+        description=description,
+        request_id=request_id,
+        request_type=request_type,
+        type=type,
+        is_read=False,
+    )
+    db.add(notif)
+    return notif
+
+
 # =====================================================================
-# 1. ROOM SERVICE / F&B DASHBOARD & ORDERS
+# TAG CONSTANTS FOR SWAGGER UI DOCS
 # =====================================================================
 
-@router.get("/dashboard/room-service", response_model=RoomServiceDashboardResponse)
+TAG_REC = ["05. Bộ phận Lễ tân & Tiền sảnh (Reception Operations)"]
+TAG_FB = ["06. Bộ phận Phục vụ phòng (F&B / Room Service)"]
+TAG_HK = ["07. Bộ phận Buồng phòng (Housekeeping Operations)"]
+TAG_BELL = ["08. Bộ phận Hành lý & Tiền sảnh (Bell Services)"]
+TAG_MNT = ["09. Bộ phận Kỹ thuật & Bảo trì (Facility Maintenance)"]
+TAG_REST = ["10. Bộ phận Nhà hàng (Restaurant - Đặt bàn & Đặt món)"]
+TAG_OPS = ["11. Quản lý Chung & Điều phối Nghiệp vụ (Operations & Directives)"]
+TAG_ADMIN = ["12. Trung tâm Điều hành & Quản trị (Admin & Human Support)"]
+TAG_NOTIF = ["13. Thông báo Hệ thống (Notifications)"]
+
+
+# =====================================================================
+# 0. RECEPTION / FRONT DESK REQUEST DETAIL
+# =====================================================================
+
+@router.get("/dashboard/reception", response_model=ReceptionDashboardResponse, tags=TAG_REC)
+async def get_reception_dashboard(db: AsyncSession = Depends(get_db)):
+    """Returns the most recent guest request handled by Front Desk staff."""
+    result = await db.execute(
+        select(ReceptionRequest).order_by(desc(ReceptionRequest.created_at)).limit(1)
+    )
+    return {"current_request": result.scalar_one_or_none()}
+
+
+@router.patch(
+    "/reception/requests/{request_id}",
+    response_model=ReceptionRequestResponse,
+    tags=TAG_REC,
+)
+async def update_reception_request(
+    request_id: str,
+    update_in: ReceptionRequestUpdate,
+    db: AsyncSession = Depends(get_db),
+):
+    """Updates status, assistance, assignment, notes, or escalation for a Front Desk request."""
+    result = await db.execute(
+        select(ReceptionRequest).where(
+            (ReceptionRequest.id == request_id)
+            | (ReceptionRequest.ticket_code == request_id)
+        )
+    )
+    request = result.scalar_one_or_none()
+    if not request:
+        raise HTTPException(status_code=404, detail="Reception request not found")
+
+    timestamp = datetime.now().strftime("%I:%M %p").lstrip("0")
+    new_activity = list(request.activity_log or [])
+
+    if update_in.status is not None and update_in.status != request.status:
+        request.status = update_in.status
+        new_activity.insert(
+            0,
+            {
+                "title": f"Status changed to {update_in.status}",
+                "detail": "Updated by Front Desk staff",
+                "time": timestamp,
+            },
+        )
+    if update_in.assistance_status is not None:
+        request.assistance_status = update_in.assistance_status
+        new_activity.insert(
+            0,
+            {
+                "title": f"Live assistance {update_in.assistance_status.lower()}",
+                "detail": "Front Desk video assistance session",
+                "time": timestamp,
+            },
+        )
+    if update_in.assigned_to is not None:
+        request.assigned_to = update_in.assigned_to
+        request.assigned_role = update_in.assigned_role or request.assigned_role
+        new_activity.insert(
+            0,
+            {
+                "title": "Task Assigned",
+                "detail": f"System assigned to {update_in.assigned_to}",
+                "time": timestamp,
+            },
+        )
+    if update_in.note:
+        request.notes = [
+            {"message": update_in.note, "time": timestamp},
+            *(request.notes or []),
+        ]
+        new_activity.insert(
+            0,
+            {"title": "Note Added", "detail": update_in.note, "time": timestamp},
+        )
+    if update_in.escalated is not None:
+        request.escalated = update_in.escalated
+        if update_in.escalated:
+            new_activity.insert(
+                0,
+                {
+                    "title": "Request Escalated",
+                    "detail": "Priority escalation sent to Operations",
+                    "time": timestamp,
+                },
+            )
+
+    request.activity_log = new_activity
+    await db.commit()
+    await db.refresh(request)
+    return request
+
+
+@router.get("/dashboard/room-service", response_model=RoomServiceDashboardResponse, tags=TAG_FB)
 async def get_room_service_dashboard(db: AsyncSession = Depends(get_db)):
     """Returns real-time KPIs, active orders, delivery fleet, and low stock alerts for Room Service."""
     # 1. Fetch Orders
@@ -60,7 +216,11 @@ async def get_room_service_dashboard(db: AsyncSession = Depends(get_db)):
     orders = orders_res.scalars().all()
 
     # 2. Fetch Robots
-    fleet_res = await db.execute(select(RobotUnit).order_by(RobotUnit.unit_code))
+    fleet_res = await db.execute(
+        select(RobotUnit)
+        .where(RobotUnit.model_type == "delivery")
+        .order_by(RobotUnit.unit_code)
+    )
     delivery_fleet = fleet_res.scalars().all()
 
     # 3. Fetch Stock
@@ -70,14 +230,14 @@ async def get_room_service_dashboard(db: AsyncSession = Depends(get_db)):
     # 4. Calculate dynamic KPIs
     pending_count = sum(1 for o in orders if o.status == "Pending")
     in_prep_count = sum(1 for o in orders if o.status == "Cooking")
-    completed_count = sum(1 for o in orders if o.status in ["Completed", "Ready", "Delivered"])
-    vip_count = sum(1 for o in orders if o.is_vip and o.status != "Completed")
+    delivering_count = sum(1 for o in orders if o.status in ["Delivering", "Ready"])
+    completed_count = sum(1 for o in orders if o.status in ["Completed", "Delivered"])
 
     kpis = {
         "pendingOrders": {"value": pending_count, "delta": "+0", "status": "neutral"},
         "inPreparation": {"value": in_prep_count, "avgTime": "12m"},
+        "delivering": {"value": delivering_count, "label": "In Transit"},
         "completedToday": {"value": completed_count},
-        "highPriority": {"count": vip_count, "label": "VIP Guests"},
     }
 
     return {
@@ -88,15 +248,13 @@ async def get_room_service_dashboard(db: AsyncSession = Depends(get_db)):
     }
 
 
-@router.post("/room-service/orders", response_model=RoomServiceOrderResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/room-service/orders", response_model=RoomServiceOrderResponse, status_code=status.HTTP_201_CREATED, tags=TAG_FB)
 async def create_room_service_order(order_in: RoomServiceOrderCreate, db: AsyncSession = Depends(get_db)):
     """Creates a new F&B / Room Service order from guest room or tablet."""
     order_num = f"{random.randint(1043, 9999)}"
     new_order = RoomServiceOrder(
         order_number=order_num,
         room_number=order_in.room_number,
-        is_vip=order_in.is_vip,
-        priority=order_in.priority,
         items=[item.model_dump() for item in order_in.items],
         note=order_in.note,
         image_url=order_in.image_url,
@@ -105,12 +263,22 @@ async def create_room_service_order(order_in: RoomServiceOrderCreate, db: AsyncS
         progress=0,
     )
     db.add(new_order)
+    items_desc = ", ".join([f"{it.get('qty', 1)}x {it.get('name', 'Món')}" for it in (order_in.items or [])])
+    await create_department_notification(
+        db=db,
+        department="F&B",
+        title=f"Đơn Room Service mới #{order_num}",
+        description=f"{order_in.room_number}: {items_desc or order_in.note or 'Yêu cầu phục vụ phòng mới'}",
+        request_id=new_order.id,
+        request_type="room_service",
+        type="Request",
+    )
     await db.commit()
     await db.refresh(new_order)
     return new_order
 
 
-@router.patch("/room-service/orders/{order_id}/status", response_model=RoomServiceOrderResponse)
+@router.patch("/room-service/orders/{order_id}/status", response_model=RoomServiceOrderResponse, tags=TAG_FB)
 async def update_room_service_order_status(
     order_id: str,
     status_in: RoomServiceOrderStatusUpdate,
@@ -131,13 +299,15 @@ async def update_room_service_order_status(
         order.progress = status_in.progress
     if status_in.est_completion is not None:
         order.est_completion = status_in.est_completion
+    if status_in.assigned_staff_name is not None:
+        order.assigned_staff_name = status_in.assigned_staff_name
 
     await db.commit()
     await db.refresh(order)
     return order
 
 
-@router.post("/room-service/orders/{order_id}/assign-robot", response_model=RoomServiceOrderResponse)
+@router.post("/room-service/orders/{order_id}/assign-robot", response_model=RoomServiceOrderResponse, tags=TAG_FB)
 async def assign_robot_to_order(
     order_id: str,
     assign_in: RoomServiceOrderAssignRobot,
@@ -153,8 +323,20 @@ async def assign_robot_to_order(
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
 
-    order.assigned_robot_id = assign_in.robot_id
-    order.assigned_staff_name = assign_in.robot_name or "HCRobot Unit 01"
+    robot = None
+    if assign_in.robot_id:
+        robot_res = await db.execute(
+            select(RobotUnit).where(
+                (RobotUnit.id == assign_in.robot_id) |
+                (RobotUnit.unit_code == assign_in.robot_id)
+            )
+        )
+        robot = robot_res.scalar_one_or_none()
+        if not robot:
+            raise HTTPException(status_code=404, detail="Robot unit not found")
+
+    order.assigned_robot_id = robot.id if robot else None
+    order.assigned_staff_name = assign_in.robot_name or (robot.name if robot else "HCRobot Unit 01")
     order.status = "Delivering"
     await db.commit()
     await db.refresh(order)
@@ -165,7 +347,7 @@ async def assign_robot_to_order(
 # 2. HOUSEKEEPING DASHBOARD & REQUESTS
 # =====================================================================
 
-@router.get("/dashboard/housekeeping", response_model=HousekeepingDashboardResponse)
+@router.get("/dashboard/housekeeping", response_model=HousekeepingDashboardResponse, tags=TAG_HK)
 async def get_housekeeping_dashboard(db: AsyncSession = Depends(get_db)):
     """Returns housekeeping requests, floor status, available staff and KPIs."""
     req_res = await db.execute(select(HousekeepingRequest).order_by(desc(HousekeepingRequest.created_at)))
@@ -190,7 +372,6 @@ async def get_housekeeping_dashboard(db: AsyncSession = Depends(get_db)):
                 id=f"REQ-{h.ticket_code}",
                 ticket_code=h.ticket_code,
                 source=h.source or "From HCRobot",
-                priority=h.priority or "NORMAL",
                 time_label=h.time_label or "Recent",
                 title=h.title,
                 room_number=h.room_number,
@@ -208,13 +389,12 @@ async def get_housekeeping_dashboard(db: AsyncSession = Depends(get_db)):
             HousekeepingRequestResponse(
                 id=f"REQ-{d.code}",
                 ticket_code=d.code,
-                source="General Manager Directive",
-                priority=d.priority or "NORMAL",
+                source="Operations Directive",
                 time_label=d.reported_time_label or "Today",
                 title=d.title,
                 room_number=room_num or "Main Floor",
                 description=d.description,
-                guest_name="GM Directive",
+                guest_name="Operations Admin",
                 status=d.status,
                 assigned_staff_name=d.assigned_staff_name,
                 created_at=d.created_at,
@@ -224,13 +404,13 @@ async def get_housekeeping_dashboard(db: AsyncSession = Depends(get_db)):
     pending_count = sum(1 for r in unified_hk if r.status in ["Unassigned", "Pending"])
     in_prog_count = sum(1 for r in unified_hk if r.status == "In Progress")
     completed_count = sum(1 for r in unified_hk if r.status == "Completed")
-    high_prio_count = sum(1 for r in unified_hk if "HIGH" in (r.priority or "").upper() and r.status != "Completed")
+    staff_on_duty_count = len(available_staff)
 
     kpis = {
         "pendingRequests": pending_count,
         "inProgress": in_prog_count,
         "completedToday": completed_count,
-        "highPriority": high_prio_count,
+        "staffOnDuty": staff_on_duty_count,
     }
 
     floor_status = {
@@ -247,14 +427,13 @@ async def get_housekeeping_dashboard(db: AsyncSession = Depends(get_db)):
     }
 
 
-@router.post("/housekeeping/requests", response_model=HousekeepingRequestResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/housekeeping/requests", response_model=HousekeepingRequestResponse, status_code=status.HTTP_201_CREATED, tags=TAG_HK)
 async def create_housekeeping_request(req_in: HousekeepingRequestCreate, db: AsyncSession = Depends(get_db)):
     """Creates a new housekeeping ticket (generated by HCRobot vision or guest request)."""
     ticket_code = f"HK-{random.randint(1044, 9999)}"
     new_req = HousekeepingRequest(
         ticket_code=ticket_code,
         source=req_in.source,
-        priority=req_in.priority,
         time_label="Just now",
         title=req_in.title,
         room_number=req_in.room_number,
@@ -263,12 +442,21 @@ async def create_housekeeping_request(req_in: HousekeepingRequestCreate, db: Asy
         status="Unassigned",
     )
     db.add(new_req)
+    await create_department_notification(
+        db=db,
+        department="Housekeeping",
+        title=f"Yêu cầu Buồng phòng mới #{ticket_code}",
+        description=f"Phòng {req_in.room_number}: {req_in.title} - {req_in.description or 'Yêu cầu dọn dẹp'}",
+        request_id=new_req.id,
+        request_type="housekeeping",
+        type="Request",
+    )
     await db.commit()
     await db.refresh(new_req)
     return new_req
 
 
-@router.patch("/housekeeping/requests/{request_id}/assign", response_model=HousekeepingRequestResponse)
+@router.patch("/housekeeping/requests/{request_id}/assign", response_model=HousekeepingRequestResponse, tags=TAG_HK)
 async def assign_housekeeping_request(
     request_id: str,
     assign_in: HousekeepingAssignRequest,
@@ -322,7 +510,7 @@ async def assign_housekeeping_request(
 # 3. BELL SERVICES DASHBOARD & REQUESTS
 # =====================================================================
 
-@router.get("/dashboard/bell-services", response_model=BellServicesDashboardResponse)
+@router.get("/dashboard/bell-services", response_model=BellServicesDashboardResponse, tags=TAG_BELL)
 async def get_bell_services_dashboard(db: AsyncSession = Depends(get_db)):
     """Returns bell services requests, bell staff & robot cart status."""
     res = await db.execute(select(BellRequest).order_by(desc(BellRequest.created_at)))
@@ -331,20 +519,36 @@ async def get_bell_services_dashboard(db: AsyncSession = Depends(get_db)):
     pending_count = sum(1 for r in requests if r.status in ["Pending", "Unassigned"])
     on_job_count = sum(1 for r in requests if r.status == "In Progress")
     completed_count = sum(1 for r in requests if r.status == "Completed")
-    urgent_count = sum(1 for r in requests if r.is_urgent or "HIGH" in (r.priority or "").upper())
+
+    staff_res = await db.execute(select(Staff).where(Staff.department == "Bell Services"))
+    bell_staff = staff_res.scalars().all()
+
+    team_status = [
+        {"id": s.id, "name": s.full_name, "role": s.role, "status": s.status, "avatar": s.avatar_url}
+        for s in bell_staff
+    ]
+    if not team_status:
+        team_status = [
+            {"id": "b1", "name": "Nhân viên Vận chuyển hành lý (Bellman)", "role": "Bellman / Luggage Staff", "status": "available", "avatar": None},
+        ]
+    team_status.append(
+        {
+            "id": "bot-alpha",
+            "name": "Bot Unit Alpha",
+            "role": "Automated Cart",
+            "status": "available",
+            "isRobot": True,
+        }
+    )
+
+    available_fleet_count = sum(1 for s in team_status if s.get("status") == "available")
 
     kpis = {
         "pending": pending_count,
         "onJob": on_job_count,
         "completed": completed_count,
-        "urgent": urgent_count,
+        "activeFleet": available_fleet_count,
     }
-
-    team_status = [
-        {"id": "b1", "name": "Marcus T.", "role": "Bell Captain", "status": "available", "avatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&auto=format&fit=crop&q=80"},
-        {"id": "b2", "name": "Sarah J.", "role": "Attendant", "status": "busy", "avatar": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=120&auto=format&fit=crop&q=80"},
-        {"id": "b3", "name": "Bot Unit Alpha", "role": "Automated Cart", "status": "available", "isRobot": True},
-    ]
 
     announcement = {
         "title": "Peak Hours Approaching",
@@ -360,15 +564,13 @@ async def get_bell_services_dashboard(db: AsyncSession = Depends(get_db)):
     }
 
 
-@router.post("/bell-services/requests", response_model=BellRequestResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/bell-services/requests", response_model=BellRequestResponse, status_code=status.HTTP_201_CREATED, tags=TAG_BELL)
 async def create_bell_request(req_in: BellRequestCreate, db: AsyncSession = Depends(get_db)):
     """Creates a new bell request (luggage assistance, room move, lost & found)."""
     ticket_code = f"BS-{random.randint(504, 9999)}"
     new_req = BellRequest(
         ticket_code=ticket_code,
         title=req_in.title,
-        priority=req_in.priority,
-        is_urgent=req_in.is_urgent,
         location=req_in.location,
         guest_name=req_in.guest_name,
         reporter=req_in.reporter,
@@ -377,12 +579,21 @@ async def create_bell_request(req_in: BellRequestCreate, db: AsyncSession = Depe
         status="Pending",
     )
     db.add(new_req)
+    await create_department_notification(
+        db=db,
+        department="Bell Services",
+        title=f"Yêu cầu Bellman mới: {req_in.title}",
+        description=f"{req_in.location}: {req_in.description or req_in.guest_name or 'Yêu cầu hỗ trợ hành lý'}",
+        request_id=new_req.id,
+        request_type="bell_service",
+        type="Request",
+    )
     await db.commit()
     await db.refresh(new_req)
     return new_req
 
 
-@router.patch("/bell-services/requests/{request_id}/status", response_model=BellRequestResponse)
+@router.patch("/bell-services/requests/{request_id}/status", response_model=BellRequestResponse, tags=TAG_BELL)
 async def update_bell_request_status(
     request_id: str,
     update_in: BellRequestStatusUpdate,
@@ -411,7 +622,7 @@ async def update_bell_request_status(
 # 4. MAINTENANCE DASHBOARD & REQUESTS
 # =====================================================================
 
-@router.get("/dashboard/maintenance", response_model=MaintenanceDashboardResponse)
+@router.get("/dashboard/maintenance", response_model=MaintenanceDashboardResponse, tags=TAG_MNT)
 async def get_maintenance_dashboard(db: AsyncSession = Depends(get_db)):
     """Returns active facility maintenance requests, technician availability, and map."""
     res = await db.execute(select(MaintenanceRequest).order_by(desc(MaintenanceRequest.created_at)))
@@ -420,20 +631,33 @@ async def get_maintenance_dashboard(db: AsyncSession = Depends(get_db)):
     pending_count = sum(1 for r in requests if r.status in ["Pending", "Unassigned"])
     in_prog_count = sum(1 for r in requests if r.status == "In Progress")
     completed_count = sum(1 for r in requests if r.status == "Completed")
-    high_count = sum(1 for r in requests if "HIGH" in (r.priority or "").upper() and r.status != "Completed")
+
+    staff_res = await db.execute(select(Staff).where(Staff.department == "Maintenance"))
+    maint_staff = staff_res.scalars().all()
+
+    staff_availability = [
+        {
+            "id": s.id,
+            "name": s.full_name,
+            "role": s.role,
+            "status": "Available" if s.status == "available" else "Busy",
+            "statusClass": "text-emerald-600" if s.status == "available" else "text-amber-600",
+        }
+        for s in maint_staff
+    ]
+    if not staff_availability:
+        staff_availability = [
+            {"id": "MNT", "name": "Nhân viên Kỹ thuật & Bảo trì", "role": "Maintenance Technician", "status": "Available", "statusClass": "text-emerald-600"}
+        ]
+
+    active_techs_count = sum(1 for s in staff_availability if s.get("status") == "Available")
 
     kpis = {
-        "highPriority": {"count": high_count, "delta": "+0", "status": "good"},
+        "availableTechs": {"count": active_techs_count, "delta": "+0", "status": "good"},
         "pendingRequests": pending_count,
         "inProgress": in_prog_count,
         "completedToday": {"count": completed_count, "delta": "+0", "status": "good"},
     }
-
-    staff_availability = [
-        {"id": "ER", "name": "Elena Rossi", "role": "Shift Leader", "status": "Available", "statusClass": "text-emerald-600"},
-        {"id": "JD", "name": "James D.", "role": "HVAC Tech", "status": "Busy (R305)", "statusClass": "text-amber-600"},
-        {"id": "MK", "name": "Michael K.", "role": "General", "status": "Off Shift", "statusClass": "text-stone-400"},
-    ]
 
     facility_map = {
         "zone": "Zone Status",
@@ -449,7 +673,7 @@ async def get_maintenance_dashboard(db: AsyncSession = Depends(get_db)):
     }
 
 
-@router.post("/maintenance/requests", response_model=MaintenanceRequestResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/maintenance/requests", response_model=MaintenanceRequestResponse, status_code=status.HTTP_201_CREATED, tags=TAG_MNT)
 async def create_maintenance_request(req_in: MaintenanceRequestCreate, db: AsyncSession = Depends(get_db)):
     """Creates a new maintenance issue work order."""
     ticket_code = f"MN-{random.randint(404, 9999)}"
@@ -457,7 +681,6 @@ async def create_maintenance_request(req_in: MaintenanceRequestCreate, db: Async
         ticket_code=ticket_code,
         title=req_in.title,
         category=req_in.category,
-        priority=req_in.priority,
         reported_time_label="Just now",
         location=req_in.location,
         description=req_in.description,
@@ -465,51 +688,28 @@ async def create_maintenance_request(req_in: MaintenanceRequestCreate, db: Async
         status="Pending",
     )
     db.add(new_req)
+    await create_department_notification(
+        db=db,
+        department="Maintenance",
+        title=f"Yêu cầu Kỹ thuật mới: {req_in.title}",
+        description=f"{req_in.location}: {req_in.description or 'Cần bảo trì kỹ thuật'}",
+        request_id=new_req.id,
+        request_type="maintenance",
+        type="Request",
+    )
     await db.commit()
     await db.refresh(new_req)
     return new_req
 
 
 # =====================================================================
-# 5. MANAGEMENT HUB DASHBOARD & DIRECTIVES
+# 5. OPERATIONAL DIRECTIVES
 # =====================================================================
 
-@router.get("/dashboard/manager-hub", response_model=ManagerHubDashboardResponse)
-async def get_manager_hub_dashboard(db: AsyncSession = Depends(get_db)):
-    """Returns Executive Management metrics, live requests, staff roster and zone heatmap."""
-    dir_res = await db.execute(select(ManagementDirective).order_by(desc(ManagementDirective.created_at)))
-    live_requests = dir_res.scalars().all()
-
-    staff_res = await db.execute(select(Staff).order_by(Staff.full_name))
-    staff_roster = staff_res.scalars().all()
-
-    active_count = len(live_requests)
-    staff_active_count = sum(1 for s in staff_roster if s.status != "off_shift")
-
-    kpis = {
-        "activeRequests": {"current": active_count or 12, "total": 45},
-        "roomsCleaned": {"current": 78, "total": 120},
-        "staffActive": {"current": staff_active_count or 8, "total": len(staff_roster) or 10},
-        "responseTime": {"avg": "14m", "trend": [18, 16, 15, 17, 14, 13, 14]},
-    }
-
-    zone_heatmap = {
-        "activeZone": "Floor 4 High Activity",
-    }
-
-    return {
-        "department": "Housekeeping",
-        "kpis": kpis,
-        "live_requests": live_requests,
-        "staff_roster": staff_roster,
-        "zone_heatmap": zone_heatmap,
-    }
-
-
-@router.post("/manager-hub/directives", response_model=DirectiveResponse, status_code=status.HTTP_201_CREATED)
-async def create_management_directive(dir_in: DirectiveCreate, db: AsyncSession = Depends(get_db)):
-    """Issues a new executive directive from General Manager."""
-    code = f"M-{random.randint(104, 999)}"
+@router.post("/directives", response_model=DirectiveResponse, status_code=status.HTTP_201_CREATED, tags=TAG_OPS)
+async def create_operational_directive(dir_in: DirectiveCreate, db: AsyncSession = Depends(get_db)):
+    """Creates a cross-department operational request."""
+    code = f"OP-{random.randint(104, 999)}"
     new_dir = ManagementDirective(
         code=code,
         title=dir_in.title,
@@ -520,7 +720,7 @@ async def create_management_directive(dir_in: DirectiveCreate, db: AsyncSession 
         description=dir_in.description,
         status="Unassigned",
         type=dir_in.type,
-        created_by="Marcus Vane (General Manager)",
+        created_by="System Administrator",
     )
     db.add(new_dir)
     await db.commit()
@@ -528,7 +728,7 @@ async def create_management_directive(dir_in: DirectiveCreate, db: AsyncSession 
     return new_dir
 
 
-@router.patch("/maintenance/requests/{request_id}/status", response_model=MaintenanceRequestResponse)
+@router.patch("/maintenance/requests/{request_id}/status", response_model=MaintenanceRequestResponse, tags=TAG_MNT)
 async def update_maintenance_request_status(
     request_id: str,
     status: str,
@@ -553,36 +753,7 @@ async def update_maintenance_request_status(
     return req
 
 
-@router.patch("/manager-hub/directives/{directive_id}/assign", response_model=DirectiveResponse)
-async def assign_management_directive(
-    directive_id: str,
-    status: str = "In Progress",
-    assigned_staff_name: Optional[str] = None,
-    assigned_eta: Optional[str] = "5m",
-    db: AsyncSession = Depends(get_db),
-):
-    """Assigns staff or updates status of management directive."""
-    res = await db.execute(
-        select(ManagementDirective).where(
-            (ManagementDirective.id == directive_id) | (ManagementDirective.code == directive_id)
-        )
-    )
-    directive = res.scalar_one_or_none()
-    if not directive:
-        raise HTTPException(status_code=404, detail="Directive not found")
-
-    directive.status = status
-    if assigned_staff_name:
-        directive.assigned_staff_name = assigned_staff_name
-    if assigned_eta:
-        directive.assigned_eta = assigned_eta
-
-    await db.commit()
-    await db.refresh(directive)
-    return directive
-
-
-@router.patch("/stock/{stock_id}/restock", response_model=InventoryStockResponse)
+@router.patch("/stock/{stock_id}/restock", response_model=InventoryStockResponse, tags=TAG_OPS)
 async def restock_inventory(
     stock_id: str,
     add_quantity: int = 10,
@@ -607,16 +778,16 @@ async def restock_inventory(
 
 
 # =====================================================================
-# 6. UNIFIED REQUESTS & GENERIC UPDATE
+# 6. ADMIN CENTRAL OPERATIONS & UNIFIED REQUESTS
 # =====================================================================
 
-@router.get("/all-requests")
-async def get_all_unified_requests(db: AsyncSession = Depends(get_db)):
-    """Returns consolidated requests across all hotel departments."""
+async def _fetch_all_raw_requests(db: AsyncSession) -> List[Dict[str, Any]]:
+    """Helper to collect and normalize tasks across all 6 operational tables."""
     orders_res = await db.execute(select(RoomServiceOrder).order_by(desc(RoomServiceOrder.created_at)))
     hk_res = await db.execute(select(HousekeepingRequest).order_by(desc(HousekeepingRequest.created_at)))
     bell_res = await db.execute(select(BellRequest).order_by(desc(BellRequest.created_at)))
     maint_res = await db.execute(select(MaintenanceRequest).order_by(desc(MaintenanceRequest.created_at)))
+    reception_res = await db.execute(select(ReceptionRequest).order_by(desc(ReceptionRequest.created_at)))
     dir_res = await db.execute(select(ManagementDirective).order_by(desc(ManagementDirective.created_at)))
 
     unified = []
@@ -626,15 +797,18 @@ async def get_all_unified_requests(db: AsyncSession = Depends(get_db)):
             "id": f"REQ-{o.order_number}",
             "raw_id": o.id,
             "department": "F&B",
+            "table_type": "room_service",
             "title": f"Order #{o.order_number}: {', '.join([i.get('name', 'Item') for i in o.items]) if o.items else 'Room Service'}",
             "location": o.room_number,
-            "guestName": "VIP Guest" if o.is_vip else "Room Guest",
-            "priority": "HIGH PRIORITY" if o.priority == "high" or o.is_vip else "NORMAL",
+            "guestName": "Room Guest",
+            "priority": "NORMAL",
             "status": o.status,
             "time": "Recent",
             "assignedTo": o.assigned_staff_name,
+            "assigned_robot": o.assigned_robot_id,
             "notes": o.note,
-            "table_type": "room_service",
+            "source": "Guest / Robot App",
+            "created_at": o.created_at,
         })
 
     for h in hk_res.scalars().all():
@@ -642,15 +816,18 @@ async def get_all_unified_requests(db: AsyncSession = Depends(get_db)):
             "id": f"REQ-{h.ticket_code}",
             "raw_id": h.id,
             "department": "Housekeeping",
+            "table_type": "housekeeping",
             "title": h.title,
-            "location": f"ROOM {h.room_number}",
+            "location": f"ROOM {h.room_number}" if not str(h.room_number).upper().startswith("ROOM") else h.room_number,
             "guestName": h.guest_name or "Guest",
-            "priority": h.priority,
+            "priority": "NORMAL",
             "status": h.status,
             "time": h.time_label,
             "assignedTo": h.assigned_staff_name,
+            "assigned_robot": None,
             "notes": h.description,
-            "table_type": "housekeeping",
+            "source": h.source or "HCRobot",
+            "created_at": h.created_at,
         })
 
     for b in bell_res.scalars().all():
@@ -658,15 +835,18 @@ async def get_all_unified_requests(db: AsyncSession = Depends(get_db)):
             "id": f"REQ-{b.ticket_code}",
             "raw_id": b.id,
             "department": "Bell Services",
+            "table_type": "bell",
             "title": b.title,
             "location": b.location,
             "guestName": b.guest_name or b.reporter or "Guest",
-            "priority": b.priority,
+            "priority": "NORMAL",
             "status": b.status,
             "time": "Today",
             "assignedTo": b.assigned_to,
+            "assigned_robot": b.assigned_robot_id,
             "notes": b.description,
-            "table_type": "bell",
+            "source": "Front Desk / Robot",
+            "created_at": b.created_at,
         })
 
     for m in maint_res.scalars().all():
@@ -674,154 +854,1020 @@ async def get_all_unified_requests(db: AsyncSession = Depends(get_db)):
             "id": f"REQ-{m.ticket_code}",
             "raw_id": m.id,
             "department": "Maintenance",
+            "table_type": "maintenance",
             "title": m.title,
             "location": m.location,
             "guestName": "Guest / Staff Reported",
-            "priority": m.priority,
+            "priority": "NORMAL",
             "status": m.status,
             "time": m.reported_time_label,
             "assignedTo": m.assigned_to,
+            "assigned_robot": None,
             "notes": m.description,
-            "table_type": "maintenance",
+            "source": m.source or "HCRobot",
+            "created_at": m.created_at,
+        })
+
+    for r in reception_res.scalars().all():
+        unified.append({
+            "id": r.ticket_code if str(r.ticket_code).startswith("REQ-") else f"REQ-{r.ticket_code}",
+            "raw_id": r.id,
+            "department": "Reception",
+            "table_type": "reception",
+            "title": r.title,
+            "location": r.location,
+            "guestName": r.guest_name or "Guest",
+            "priority": "NORMAL",
+            "status": r.status,
+            "time": r.created_label,
+            "assignedTo": r.assigned_to,
+            "assigned_robot": None,
+            "notes": r.description,
+            "source": "Front Desk",
+            "created_at": r.created_at,
         })
 
     for d in dir_res.scalars().all():
         unified.append({
             "id": f"REQ-{d.code}",
             "raw_id": d.id,
-            "department": d.department,
+            "department": d.department or "Directive",
+            "table_type": "directive",
             "title": d.title,
             "location": d.location,
-            "guestName": "General Manager Directive",
-            "priority": d.priority,
+            "guestName": "Operations Directive",
+            "priority": "NORMAL",
             "status": d.status,
             "time": d.reported_time_label,
             "assignedTo": d.assigned_staff_name,
+            "assigned_robot": None,
             "notes": d.description,
-            "table_type": "directive",
+            "source": f"Admin ({d.created_by})",
+            "created_at": d.created_at,
         })
 
     return unified
 
 
-@router.patch("/generic-request/{ticket_id}/status")
+@router.get("/admin/tasks", response_model=List[UnifiedOperationTask], tags=TAG_ADMIN, summary="Admin: Danh sách tất cả các Task dịch vụ toàn khách sạn")
+async def get_admin_tasks(
+    department: Optional[str] = None,
+    status: Optional[str] = None,
+    search: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Truy vấn danh sách công việc tập trung của toàn khách sạn cho Admin Operations.
+    Hỗ trợ lọc theo phòng ban (department), trạng thái (status), tìm kiếm (search: phòng/khách/mã ticket).
+    """
+    raw_list = await _fetch_all_raw_requests(db)
+
+    # Filter by department
+    if department and department.lower() != "all":
+        dep_clean = department.lower().strip()
+        dept_mapping = {
+            "f&b": ["f&b", "room service", "phục vụ phòng"],
+            "room service": ["f&b", "room service"],
+            "housekeeping": ["housekeeping", "buồng phòng"],
+            "bell services": ["bell services", "bellman", "hành lý"],
+            "maintenance": ["maintenance", "kỹ thuật", "bảo trì"],
+            "reception": ["reception", "lễ tân"],
+            "directive": ["directive", "executive", "chỉ thị"],
+        }
+        valid_matches = dept_mapping.get(dep_clean, [dep_clean])
+        raw_list = [t for t in raw_list if any(m in t["department"].lower() for m in valid_matches)]
+
+    # Filter by status
+    if status and status.lower() != "all":
+        st_clean = status.lower().strip()
+        raw_list = [t for t in raw_list if st_clean in t["status"].lower()]
+
+    # Filter by search term
+    if search and search.strip():
+        q = search.lower().strip()
+        raw_list = [
+            t for t in raw_list
+            if (
+                q in t["id"].lower()
+                or q in t["title"].lower()
+                or q in t["location"].lower()
+                or q in t["guestName"].lower()
+                or (t["notes"] and q in t["notes"].lower())
+            )
+        ]
+
+    # Pagination
+    paged = raw_list[offset : offset + limit]
+
+    return [
+        UnifiedOperationTask(
+            id=item["id"],
+            raw_id=item["raw_id"],
+            department=item["department"],
+            table_type=item["table_type"],
+            title=item["title"],
+            location=item["location"],
+            guest_name=item["guestName"],
+            priority=item["priority"],
+            status=item["status"],
+            time=item["time"],
+            assigned_to=item.get("assignedTo"),
+            assigned_robot=item.get("assigned_robot"),
+            notes=item.get("notes"),
+            source=item.get("source", "Robot / Staff"),
+            created_at=item.get("created_at"),
+        )
+        for item in paged
+    ]
+
+
+@router.get("/admin/summary", response_model=AdminOperationsSummary, tags=TAG_ADMIN, summary="Admin: Thống kê số lượng ticket theo bộ phận")
+async def get_admin_operations_summary(db: AsyncSession = Depends(get_db)):
+    """Trả về số lượng ticket theo từng bộ phận và tổng số công việc đang xử lý."""
+    raw_list = await _fetch_all_raw_requests(db)
+
+    summary = AdminOperationsSummary(all_count=len(raw_list))
+
+    for t in raw_list:
+        dept = t["department"].lower()
+        st = t["status"].lower()
+        if st not in ["completed", "cancelled", "rejected"]:
+            summary.total_active += 1
+
+        if "reception" in dept:
+            summary.reception_count += 1
+        elif "housekeeping" in dept:
+            summary.housekeeping_count += 1
+        elif "f&b" in dept or "room service" in dept:
+            summary.room_service_count += 1
+        elif "bell" in dept:
+            summary.bell_services_count += 1
+        elif "maintenance" in dept:
+            summary.maintenance_count += 1
+        else:
+            summary.directives_count += 1
+
+    return summary
+
+
+@router.post("/admin/dispatch", response_model=UnifiedOperationTask, tags=TAG_ADMIN, summary="Admin: Phát lệnh điều phối tạo Task mới")
+async def admin_dispatch_task(
+    task_in: AdminTaskDispatchCreate,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Admin chủ động tạo yêu cầu dịch vụ hoặc chỉ thị điều phối.
+    Dữ liệu sẽ tự động lưu vào đúng bảng CSDL của bộ phận tương ứng.
+    """
+    dep = task_in.department.lower().strip()
+    rand_suffix = random.randint(1000, 9999)
+
+    if "housekeeping" in dep or "buồng phòng" in dep:
+        code = f"HK-{rand_suffix}"
+        room = task_in.room_number.upper().replace("ROOM", "").strip()
+        item = HousekeepingRequest(
+            ticket_code=code,
+            source="From Admin Portal",
+            time_label="Just now",
+            title=task_in.title,
+            room_number=room,
+            description=task_in.description,
+            guest_name=task_in.guest_name,
+            status="In Progress" if task_in.assigned_staff_name or task_in.assigned_robot_code else "Unassigned",
+            assigned_staff_name=task_in.assigned_staff_name or task_in.assigned_robot_code,
+        )
+        db.add(item)
+        await create_department_notification(
+            db=db,
+            department="Housekeeping",
+            title=f"Yêu cầu Buồng phòng mới: {item.title}",
+            description=f"{task_in.room_number}: {task_in.description or 'Chỉ thị từ quản trị viên'}",
+            request_id=item.id,
+            request_type="housekeeping",
+            type="Request",
+        )
+        await db.commit()
+        await db.refresh(item)
+        return UnifiedOperationTask(
+            id=f"REQ-{code}",
+            raw_id=item.id,
+            department="Housekeeping",
+            table_type="housekeeping",
+            title=item.title,
+            location=f"ROOM {item.room_number}",
+            guest_name=item.guest_name or "Guest",
+            priority="NORMAL",
+            status=item.status,
+            time="Just now",
+            assigned_to=item.assigned_staff_name,
+            assigned_robot=task_in.assigned_robot_code,
+            notes=item.description,
+            source=item.source,
+            created_at=item.created_at,
+        )
+
+    elif "f&b" in dep or "room service" in dep:
+        code = str(rand_suffix)
+        order = RoomServiceOrder(
+            order_number=code,
+            room_number=task_in.room_number,
+            status="Delivering" if task_in.assigned_robot_code else "Pending",
+            items=[{"name": task_in.title, "qty": 1}],
+            note=task_in.description,
+            assigned_staff_name=task_in.assigned_staff_name,
+        )
+        db.add(order)
+        await create_department_notification(
+            db=db,
+            department="F&B",
+            title=f"Đơn Room Service mới #{code}",
+            description=f"{task_in.room_number}: {task_in.title}",
+            request_id=order.id,
+            request_type="room_service",
+            type="Request",
+        )
+        await db.commit()
+        await db.refresh(order)
+        return UnifiedOperationTask(
+            id=f"REQ-{code}",
+            raw_id=order.id,
+            department="F&B",
+            table_type="room_service",
+            title=task_in.title,
+            location=order.room_number,
+            guest_name=task_in.guest_name or "Room Guest",
+            priority="NORMAL",
+            status=order.status,
+            time="Just now",
+            assigned_to=order.assigned_staff_name,
+            assigned_robot=task_in.assigned_robot_code,
+            notes=order.note,
+            source="From Admin Portal",
+            created_at=order.created_at,
+        )
+
+    elif "bell" in dep:
+        code = f"BS-{random.randint(500, 999)}"
+        bell = BellRequest(
+            ticket_code=code,
+            title=task_in.title,
+            location=task_in.room_number,
+            guest_name=task_in.guest_name,
+            reporter="Admin Dispatch",
+            description=task_in.description,
+            status="In Progress" if task_in.assigned_staff_name or task_in.assigned_robot_code else "Pending",
+            assigned_to=task_in.assigned_staff_name or task_in.assigned_robot_code,
+        )
+        db.add(bell)
+        await create_department_notification(
+            db=db,
+            department="Bell Services",
+            title=f"Yêu cầu Bellman mới: {bell.title}",
+            description=f"{bell.location}: {bell.description or 'Yêu cầu điều phối từ Quản trị'}",
+            request_id=bell.id,
+            request_type="bell_service",
+            type="Request",
+        )
+        await db.commit()
+        await db.refresh(bell)
+        return UnifiedOperationTask(
+            id=f"REQ-{code}",
+            raw_id=bell.id,
+            department="Bell Services",
+            table_type="bell",
+            title=bell.title,
+            location=bell.location,
+            guest_name=bell.guest_name or "Guest",
+            priority="NORMAL",
+            status=bell.status,
+            time="Just now",
+            assigned_to=bell.assigned_to,
+            assigned_robot=task_in.assigned_robot_code,
+            notes=bell.description,
+            source="From Admin Portal",
+            created_at=bell.created_at,
+        )
+
+    elif "maintenance" in dep or "bảo trì" in dep:
+        code = f"MN-{random.randint(400, 999)}"
+        maint = MaintenanceRequest(
+            ticket_code=code,
+            title=task_in.title,
+            reported_time_label="Just now",
+            location=task_in.room_number,
+            description=task_in.description,
+            source="Admin Dispatch",
+            status="In Progress" if task_in.assigned_staff_name else "Pending",
+            assigned_to=task_in.assigned_staff_name,
+        )
+        db.add(maint)
+        await create_department_notification(
+            db=db,
+            department="Maintenance",
+            title=f"Yêu cầu Kỹ thuật mới: {maint.title}",
+            description=f"{maint.location}: {maint.description or 'Yêu cầu bảo trì từ Quản trị'}",
+            request_id=maint.id,
+            request_type="maintenance",
+            type="Request",
+        )
+        await db.commit()
+        await db.refresh(maint)
+        return UnifiedOperationTask(
+            id=f"REQ-{code}",
+            raw_id=maint.id,
+            department="Maintenance",
+            table_type="maintenance",
+            title=maint.title,
+            location=maint.location,
+            guest_name="Staff Reported",
+            priority="NORMAL",
+            status=maint.status,
+            time="Just now",
+            assigned_to=maint.assigned_to,
+            assigned_robot=None,
+            notes=maint.description,
+            source="From Admin Portal",
+            created_at=maint.created_at,
+        )
+
+    elif "reception" in dep or "lễ tân" in dep:
+        code = f"REC-{random.randint(100, 999)}"
+        rec = ReceptionRequest(
+            ticket_code=code,
+            title=task_in.title,
+            created_label="Just now",
+            location=task_in.room_number,
+            guest_name=task_in.guest_name or "Hotel Guest",
+            status="Pending Action",
+            description=task_in.description or "",
+            assigned_to=task_in.assigned_staff_name,
+        )
+        db.add(rec)
+        await create_department_notification(
+            db=db,
+            department="Reception",
+            title=f"Yêu cầu Lễ tân mới: {rec.title}",
+            description=f"{rec.location}: {rec.description or 'Yêu cầu hỗ trợ từ Quản trị'}",
+            request_id=rec.id,
+            request_type="reception",
+            type="Request",
+        )
+        await db.commit()
+        await db.refresh(rec)
+        return UnifiedOperationTask(
+            id=f"REQ-{code}",
+            raw_id=rec.id,
+            department="Reception",
+            table_type="reception",
+            title=rec.title,
+            location=rec.location,
+            guest_name=rec.guest_name,
+            priority="NORMAL",
+            status=rec.status,
+            time="Just now",
+            assigned_to=rec.assigned_to,
+            assigned_robot=None,
+            notes=rec.description,
+            source="From Admin Portal",
+            created_at=rec.created_at,
+        )
+
+    else:
+        code = f"OP-{random.randint(100, 999)}"
+        d = ManagementDirective(
+            code=code,
+            title=task_in.title,
+            department=task_in.department,
+            priority=task_in.priority,
+            location=task_in.room_number,
+            reported_time_label="Just now",
+            description=task_in.description,
+            status="In Progress" if task_in.assigned_staff_name else "Unassigned",
+            assigned_staff_name=task_in.assigned_staff_name or task_in.assigned_robot_code,
+            created_by="Admin Portal",
+        )
+        db.add(d)
+        await create_department_notification(
+            db=db,
+            department=task_in.department or "All",
+            title=f"Chỉ thị điều hành mới: {d.title}",
+            description=f"{d.location}: {d.description or 'Chỉ thị công việc từ Quản lý'}",
+            request_id=d.id,
+            request_type="directive",
+            type="Directive",
+        )
+        await db.commit()
+        await db.refresh(d)
+        return UnifiedOperationTask(
+            id=f"REQ-{code}",
+            raw_id=d.id,
+            department=d.department,
+            table_type="directive",
+            title=d.title,
+            location=d.location,
+            guest_name="Operations Directive",
+            priority=d.priority,
+            status=d.status,
+            time="Just now",
+            assigned_to=d.assigned_staff_name,
+            assigned_robot=task_in.assigned_robot_code,
+            notes=d.description,
+            source=f"Admin ({d.created_by})",
+            created_at=d.created_at,
+        )
+
+
+@router.get("/admin/tasks/{ticket_id}", response_model=UnifiedOperationTask, tags=TAG_OPS, summary="Admin: Xem chi tiết 1 Task")
+async def get_admin_task_detail(ticket_id: str, db: AsyncSession = Depends(get_db)):
+    """Lấy chi tiết đầy đủ của một Task qua mã ticket (ví dụ: 'REQ-1042', 'HK-1042', hoặc ID CSDL)."""
+    clean_id = ticket_id.replace("REQ-", "").strip()
+    raw_list = await _fetch_all_raw_requests(db)
+
+    for item in raw_list:
+        if (
+            item["id"] == ticket_id
+            or item["id"] == f"REQ-{clean_id}"
+            or item["raw_id"] == clean_id
+            or clean_id in item["id"]
+        ):
+            return UnifiedOperationTask(
+                id=item["id"],
+                raw_id=item["raw_id"],
+                department=item["department"],
+                table_type=item["table_type"],
+                title=item["title"],
+                location=item["location"],
+                guest_name=item["guestName"],
+                priority=item["priority"],
+                status=item["status"],
+                time=item["time"],
+                assigned_to=item.get("assignedTo"),
+                assigned_robot=item.get("assigned_robot"),
+                notes=item.get("notes"),
+                source=item.get("source", "Robot / Staff"),
+                created_at=item.get("created_at"),
+            )
+
+    raise HTTPException(status_code=404, detail=f"Task with ID {ticket_id} not found")
+
+
+@router.patch("/admin/tasks/{ticket_id}", tags=TAG_OPS, summary="Admin: Cập nhật trạng thái và điều phối Task")
+async def update_admin_task(
+    ticket_id: str,
+    update_in: AdminTaskStatusUpdate,
+    db: AsyncSession = Depends(get_db),
+):
+    """Cập nhật trạng thái, người phụ trách hoặc Robot cho bất kỳ Task nào trong hệ thống."""
+    clean_id = ticket_id.replace("REQ-", "").strip()
+    upper_id = ticket_id.upper()
+
+    # 1. Housekeeping check if HK in ticket_id
+    if "HK" in upper_id:
+        res = await db.execute(
+            select(HousekeepingRequest).where(
+                (HousekeepingRequest.ticket_code == clean_id)
+                | (HousekeepingRequest.id == clean_id)
+                | (HousekeepingRequest.ticket_code == ticket_id)
+                | (HousekeepingRequest.id == ticket_id)
+                | (HousekeepingRequest.ticket_code.ilike(f"%{clean_id}%"))
+            )
+        )
+        hk = res.scalar_one_or_none()
+        if hk:
+            hk.status = update_in.status
+            if update_in.assigned_to:
+                hk.assigned_staff_name = update_in.assigned_to
+            if update_in.note:
+                hk.description = f"{hk.description or ''} | Note: {update_in.note}"
+            await db.commit()
+            return {"success": True, "type": "housekeeping", "id": hk.id, "status": hk.status}
+
+    # 2. Bell Services check if BS in ticket_id
+    if "BS" in upper_id or "BELL" in upper_id:
+        res = await db.execute(
+            select(BellRequest).where(
+                (BellRequest.ticket_code == clean_id)
+                | (BellRequest.id == clean_id)
+                | (BellRequest.ticket_code == ticket_id)
+                | (BellRequest.id == ticket_id)
+                | (BellRequest.ticket_code.ilike(f"%{clean_id}%"))
+            )
+        )
+        bell = res.scalar_one_or_none()
+        if bell:
+            bell.status = update_in.status
+            if update_in.assigned_to:
+                bell.assigned_to = update_in.assigned_to
+            await db.commit()
+            return {"success": True, "type": "bell", "id": bell.id, "status": bell.status}
+
+    # 3. Maintenance check if MN in ticket_id
+    if "MN" in upper_id or "MAINT" in upper_id:
+        res = await db.execute(
+            select(MaintenanceRequest).where(
+                (MaintenanceRequest.ticket_code == clean_id)
+                | (MaintenanceRequest.id == clean_id)
+                | (MaintenanceRequest.ticket_code == ticket_id)
+                | (MaintenanceRequest.id == ticket_id)
+                | (MaintenanceRequest.ticket_code.ilike(f"%{clean_id}%"))
+            )
+        )
+        maint = res.scalar_one_or_none()
+        if maint:
+            maint.status = update_in.status
+            if update_in.assigned_to:
+                maint.assigned_to = update_in.assigned_to
+            await db.commit()
+            return {"success": True, "type": "maintenance", "id": maint.id, "status": maint.status}
+
+    # 4. Reception check if RC in ticket_id
+    if "RC" in upper_id or "REC" in upper_id:
+        res = await db.execute(
+            select(ReceptionRequest).where(
+                (ReceptionRequest.ticket_code == clean_id)
+                | (ReceptionRequest.id == clean_id)
+                | (ReceptionRequest.ticket_code == ticket_id)
+                | (ReceptionRequest.id == ticket_id)
+                | (ReceptionRequest.ticket_code.ilike(f"%{clean_id}%"))
+            )
+        )
+        rec = res.scalar_one_or_none()
+        if rec:
+            rec.status = update_in.status
+            if update_in.assigned_to:
+                rec.assigned_to = update_in.assigned_to
+            await db.commit()
+            return {"success": True, "type": "reception", "id": rec.id, "status": rec.status}
+
+    # 5. Directive check if DIR in ticket_id
+    if "DIR" in upper_id:
+        res = await db.execute(
+            select(ManagementDirective).where(
+                (ManagementDirective.code == clean_id)
+                | (ManagementDirective.id == clean_id)
+                | (ManagementDirective.code == ticket_id)
+                | (ManagementDirective.id == ticket_id)
+                | (ManagementDirective.code.ilike(f"%{clean_id}%"))
+            )
+        )
+        dir_item = res.scalar_one_or_none()
+        if dir_item:
+            dir_item.status = update_in.status
+            if update_in.assigned_to:
+                dir_item.assigned_staff_name = update_in.assigned_to
+            await db.commit()
+            return {"success": True, "type": "directive", "id": dir_item.id, "status": dir_item.status}
+
+    # 6. Room Service (Default for orders or numeric IDs like REQ-1042)
+    res = await db.execute(
+        select(RoomServiceOrder).where(
+            (RoomServiceOrder.order_number == clean_id)
+            | (RoomServiceOrder.id == clean_id)
+            | (RoomServiceOrder.order_number == ticket_id)
+            | (RoomServiceOrder.id == ticket_id)
+            | (RoomServiceOrder.id.ilike(f"%{clean_id}%"))
+        )
+    )
+    order = res.scalar_one_or_none()
+    if order:
+        order.status = update_in.status
+        if update_in.assigned_to:
+            order.assigned_staff_name = update_in.assigned_to
+        if update_in.note:
+            order.note = update_in.note
+        await db.commit()
+        return {"success": True, "type": "room_service", "id": order.id, "status": order.status}
+
+    # Fallback search across all other tables if no prefix matched
+    for model, type_name, id_col, staff_col in [
+        (HousekeepingRequest, "housekeeping", HousekeepingRequest.ticket_code, "assigned_staff_name"),
+        (BellRequest, "bell", BellRequest.ticket_code, "assigned_to"),
+        (MaintenanceRequest, "maintenance", MaintenanceRequest.ticket_code, "assigned_to"),
+        (ReceptionRequest, "reception", ReceptionRequest.ticket_code, "assigned_to"),
+        (ManagementDirective, "directive", ManagementDirective.code, "assigned_staff_name"),
+    ]:
+        res = await db.execute(
+            select(model).where(
+                (id_col == clean_id)
+                | (model.id == clean_id)
+                | (id_col == ticket_id)
+                | (model.id == ticket_id)
+                | (id_col.ilike(f"%{clean_id}%"))
+            )
+        )
+        item = res.scalar_one_or_none()
+        if item:
+            item.status = update_in.status
+            if update_in.assigned_to:
+                setattr(item, staff_col, update_in.assigned_to)
+            await db.commit()
+            return {"success": True, "type": type_name, "id": item.id, "status": item.status}
+
+    raise HTTPException(status_code=404, detail=f"Ticket {ticket_id} not found")
+
+
+# Backwards compatibility endpoints
+@router.get("/all-requests", tags=TAG_OPS, summary="Legacy: Lấy tất cả request")
+async def get_all_unified_requests(db: AsyncSession = Depends(get_db)):
+    return await _fetch_all_raw_requests(db)
+
+
+@router.patch("/generic-request/{ticket_id}/status", tags=TAG_OPS, summary="Legacy: Cập nhật status request")
 async def update_generic_request_status(
     ticket_id: str,
     status: str,
     assigned_to: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
 ):
-    """Universal status updater across all operational tables in DB."""
-    clean_id = ticket_id.replace("REQ-", "").strip()
+    update_data = AdminTaskStatusUpdate(status=status, assigned_to=assigned_to)
+    return await update_admin_task(ticket_id=ticket_id, update_in=update_data, db=db)
+# ---------------------------------------------------------
+# Human Support Sessions & Multilingual Conversation Logs
+# ---------------------------------------------------------
 
-    # 1. Check Room Service
+@router.get(
+    "/admin/conversations",
+    response_model=List[HumanSupportSessionResponse],
+    tags=TAG_ADMIN,
+    summary="Admin: Xem danh sách các phiên đàm thoại giọng nói Robot với khách",
+)
+async def get_admin_conversations(
+    status: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Trả về danh sách các phiên hỗ trợ / hội thoại giữa Robot Concierge và khách hàng.
+    Hỗ trợ chế độ chỉ xem (View-only) cho Admin giám sát.
+    """
+    stmt = select(HumanSupportSession).order_by(desc(HumanSupportSession.created_at))
+    if status and status.lower() != "all":
+        stmt = stmt.where(HumanSupportSession.status.ilike(f"%{status}%"))
+
+    res = await db.execute(stmt)
+    sessions = res.scalars().all()
+    return sessions
+
+
+@router.get(
+    "/admin/conversations/{session_id}",
+    response_model=HumanSupportSessionResponse,
+    tags=TAG_ADMIN,
+    summary="Admin: Xem chi tiết toàn bộ lịch sử đàm thoại song ngữ của 1 phiên",
+)
+async def get_admin_conversation_detail(
+    session_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Lấy chi tiết toàn bộ các lượt nói (turns), văn bản gốc đa ngữ,
+    và bản dịch song ngữ Tiếng Việt / Tiếng Anh của phiên hỗ trợ.
+    """
     res = await db.execute(
-        select(RoomServiceOrder).where(
-            (RoomServiceOrder.order_number == clean_id) |
-            (RoomServiceOrder.id == clean_id) |
-            (RoomServiceOrder.order_number == ticket_id) |
-            (RoomServiceOrder.id == ticket_id) |
-            (RoomServiceOrder.id.ilike(f"%{clean_id}%"))
+        select(HumanSupportSession).where(
+            (HumanSupportSession.id == session_id)
+            | (HumanSupportSession.session_code == session_id)
+            | (HumanSupportSession.room_number.ilike(f"%{session_id}%"))
         )
     )
-    order = res.scalar_one_or_none()
-    if order:
-        order.status = status
-        if assigned_to:
-            order.assigned_staff_name = assigned_to
-        await db.commit()
-        return {"success": True, "type": "room_service", "id": order.id, "status": order.status}
-
-    # 2. Check Housekeeping
-    res = await db.execute(
-        select(HousekeepingRequest).where(
-            (HousekeepingRequest.ticket_code == clean_id) |
-            (HousekeepingRequest.id == clean_id) |
-            (HousekeepingRequest.ticket_code == ticket_id) |
-            (HousekeepingRequest.id == ticket_id) |
-            (HousekeepingRequest.id.ilike(f"%{clean_id}%")) |
-            (HousekeepingRequest.ticket_code.ilike(f"%{clean_id}%"))
-        )
-    )
-    hk = res.scalar_one_or_none()
-    if hk:
-        hk.status = status
-        if assigned_to:
-            hk.assigned_staff_name = assigned_to
-        await db.commit()
-        return {"success": True, "type": "housekeeping", "id": hk.id, "status": hk.status}
-
-    # 3. Check Bell
-    res = await db.execute(
-        select(BellRequest).where(
-            (BellRequest.ticket_code == clean_id) |
-            (BellRequest.id == clean_id) |
-            (BellRequest.ticket_code == ticket_id) |
-            (BellRequest.id == ticket_id) |
-            (BellRequest.id.ilike(f"%{clean_id}%"))
-        )
-    )
-    bell = res.scalar_one_or_none()
-    if bell:
-        bell.status = status
-        if assigned_to:
-            bell.assigned_to = assigned_to
-        await db.commit()
-        return {"success": True, "type": "bell", "id": bell.id, "status": bell.status}
-
-    # 4. Check Maintenance
-    res = await db.execute(
-        select(MaintenanceRequest).where(
-            (MaintenanceRequest.ticket_code == clean_id) |
-            (MaintenanceRequest.id == clean_id) |
-            (MaintenanceRequest.ticket_code == ticket_id) |
-            (MaintenanceRequest.id == ticket_id) |
-            (MaintenanceRequest.id.ilike(f"%{clean_id}%"))
-        )
-    )
-    maint = res.scalar_one_or_none()
-    if maint:
-        maint.status = status
-        if assigned_to:
-            maint.assigned_to = assigned_to
-        await db.commit()
-        return {"success": True, "type": "maintenance", "id": maint.id, "status": maint.status}
-
-    # 5. Check Directive
-    res = await db.execute(
-        select(ManagementDirective).where(
-            (ManagementDirective.code == clean_id) |
-            (ManagementDirective.id == clean_id) |
-            (ManagementDirective.code == ticket_id) |
-            (ManagementDirective.id == ticket_id) |
-            (ManagementDirective.id.ilike(f"%{clean_id}%"))
-        )
-    )
-    dir_item = res.scalar_one_or_none()
-    if dir_item:
-        dir_item.status = status
-        if assigned_to:
-            dir_item.assigned_staff_name = assigned_to
-        await db.commit()
-        return {"success": True, "type": "directive", "id": dir_item.id, "status": dir_item.status}
-
-    return {"success": True, "message": f"Updated ticket {ticket_id} status to {status}"}
+    session_item = res.scalar_one_or_none()
+    if not session_item:
+        raise HTTPException(status_code=404, detail=f"Conversation session {session_id} not found")
+    return session_item
 
 
 # =====================================================================
-# 7. GENERAL FLEET & STAFF ENDPOINTS
+# 10. RESTAURANT DASHBOARD, TABLE RESERVATIONS & PRE-ORDERS
 # =====================================================================
 
-@router.get("/fleet", response_model=List[RobotUnitResponse])
+
+@router.get("/dashboard/restaurant", response_model=RestaurantDashboardResponse, tags=TAG_REST)
+async def get_restaurant_dashboard(db: AsyncSession = Depends(get_db)):
+    """Returns real-time KPIs, active table reservations, and pre-ordered dishes for the Restaurant."""
+    res_db = await db.execute(select(RestaurantReservation).order_by(desc(RestaurantReservation.created_at)))
+    reservations = res_db.scalars().all()
+
+    pre_db = await db.execute(select(RestaurantPreOrder).order_by(desc(RestaurantPreOrder.created_at)))
+    pre_orders = pre_db.scalars().all()
+
+    kpis = {
+        "totalReservations": len(reservations),
+        "totalPreOrders": len(pre_orders),
+        "seatedGuests": sum(r.party_size for r in reservations if r.status == "Seated"),
+        "pendingPreOrders": sum(1 for p in pre_orders if p.status == "Pending"),
+    }
+
+    return {
+        "kpis": kpis,
+        "reservations": reservations,
+        "pre_orders": pre_orders,
+    }
+
+
+@router.post("/restaurant/reservations", response_model=RestaurantReservationResponse, status_code=status.HTTP_201_CREATED, tags=TAG_REST)
+async def create_restaurant_reservation(
+    res_in: RestaurantReservationCreate,
+    db: AsyncSession = Depends(get_db),
+):
+    """Creates a new Restaurant Table Reservation (from HCRobot Kiosk or Reception)."""
+    res_code = f"RES-{random.randint(1024, 9999)}"
+    new_res = RestaurantReservation(
+        reservation_code=res_code,
+        guest_name=res_in.guest_name,
+        room_number=res_in.room_number,
+        party_size=res_in.party_size,
+        reservation_time=res_in.reservation_time,
+        table_number=res_in.table_number or f"Table {random.randint(1, 20):02d}",
+        special_note=res_in.special_note,
+        status="Confirmed",
+    )
+    db.add(new_res)
+    await db.commit()
+    await db.refresh(new_res)
+    return new_res
+
+
+@router.get("/restaurant/reservations", response_model=List[RestaurantReservationResponse], tags=TAG_REST)
+async def get_restaurant_reservations(db: AsyncSession = Depends(get_db)):
+    """Returns list of all table reservations."""
+    res = await db.execute(select(RestaurantReservation).order_by(desc(RestaurantReservation.created_at)))
+    return res.scalars().all()
+
+
+@router.post("/restaurant/pre-orders", response_model=RestaurantPreOrderResponse, status_code=status.HTTP_201_CREATED, tags=TAG_REST)
+async def create_restaurant_pre_order(
+    order_in: RestaurantPreOrderCreate,
+    db: AsyncSession = Depends(get_db),
+):
+    """Creates a new Food/Dish Pre-Order for a restaurant table from HCRobot Kiosk."""
+    order_code = f"ORD-{random.randint(5012, 9999)}"
+    items_data = [item.model_dump() for item in order_in.items]
+    calc_total = order_in.total_price or sum(item.quantity * item.price for item in order_in.items)
+
+    new_pre_order = RestaurantPreOrder(
+        order_code=order_code,
+        reservation_code=order_in.reservation_code,
+        guest_name=order_in.guest_name,
+        room_number=order_in.room_number,
+        items=items_data,
+        total_price=calc_total,
+        note=order_in.note,
+        status="Pending",
+    )
+    db.add(new_pre_order)
+    await db.commit()
+    await db.refresh(new_pre_order)
+    return new_pre_order
+
+
+@router.get("/restaurant/pre-orders", response_model=List[RestaurantPreOrderResponse], tags=TAG_REST)
+async def get_restaurant_pre_orders(db: AsyncSession = Depends(get_db)):
+    """Returns list of all dish pre-orders."""
+    res = await db.execute(select(RestaurantPreOrder).order_by(desc(RestaurantPreOrder.created_at)))
+    return res.scalars().all()
+
+
+@router.patch("/restaurant/reservations/{reservation_id}/status", response_model=RestaurantReservationResponse, tags=TAG_REST)
+async def update_restaurant_reservation_status(
+    reservation_id: str,
+    status: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Updates reservation status (e.g. Confirmed, Seated, Completed, Cancelled)."""
+    res = await db.execute(
+        select(RestaurantReservation).where(
+            (RestaurantReservation.id == reservation_id) |
+            (RestaurantReservation.reservation_code == reservation_id)
+        )
+    )
+    res_obj = res.scalar_one_or_none()
+    if not res_obj:
+        raise HTTPException(status_code=404, detail="Reservation not found")
+
+    res_obj.status = status
+    await db.commit()
+    await db.refresh(res_obj)
+    return res_obj
+
+
+# =====================================================================
+# 11. GENERAL FLEET & STAFF ENDPOINTS
+# =====================================================================
+
+@router.get("/fleet", response_model=List[RobotUnitResponse], tags=TAG_OPS, summary="Danh sách trạng thái đội Robot HCRobot")
 async def get_robot_fleet(db: AsyncSession = Depends(get_db)):
-    """Returns telemetry of all HCRobot autonomous units."""
+    """Returns status of all active HCRobot autonomous units."""
     res = await db.execute(select(RobotUnit).order_by(RobotUnit.unit_code))
     return res.scalars().all()
 
 
-@router.get("/staff", response_model=List[StaffResponse])
-async def get_staff_roster(db: AsyncSession = Depends(get_db)):
-    """Returns all staff members and their active shifts."""
-    res = await db.execute(select(Staff).order_by(Staff.department, Staff.full_name))
+@router.get("/staff", response_model=List[StaffResponse], tags=TAG_OPS, summary="Danh sách hồ sơ và ca trực của nhân viên")
+async def get_staff_roster(include_inactive: bool = False, db: AsyncSession = Depends(get_db)):
+    """Returns all active staff members and their active shifts."""
+    stmt = select(Staff)
+    if not include_inactive:
+        stmt = stmt.where(Staff.is_active == True, Staff.status != "deleted", Staff.status != "inactive")
+    stmt = stmt.order_by(Staff.department, Staff.full_name)
+    res = await db.execute(stmt)
     return res.scalars().all()
+
+
+@router.post("/staff", response_model=StaffResponse, status_code=status.HTTP_201_CREATED, tags=TAG_OPS, summary="Thêm mới hồ sơ nhân sự khách sạn")
+async def create_staff_member(staff_in: StaffCreate, db: AsyncSession = Depends(get_db)):
+    """Create a new hotel staff member."""
+    existing = await db.execute(select(Staff).where(Staff.username == staff_in.username.strip().lower()))
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="Tên đăng nhập (username) đã tồn tại trong hệ thống")
+
+    code = staff_in.code or "".join([w[0].upper() for w in staff_in.full_name.split() if w])[:4]
+    new_staff = Staff(
+        username=staff_in.username.strip().lower(),
+        password_hash=hash_password(staff_in.password),
+        code=code,
+        full_name=staff_in.full_name,
+        role=staff_in.role,
+        department=staff_in.department,
+        location=staff_in.location,
+        status=staff_in.status,
+        email=staff_in.email or f"{staff_in.username}@aurora.hotel",
+        phone=staff_in.phone or "+84 90 123 4567",
+        shift=staff_in.shift or "Morning Shift (06:00 - 14:00)",
+        is_fallback_agent=staff_in.is_fallback_agent,
+        assigned_floors=staff_in.assigned_floors or "Floor 1 - 5",
+        notification_channels=staff_in.notification_channels or "Web Dashboard, Tablet Alert",
+        avatar_url=staff_in.avatar_url,
+    )
+    db.add(new_staff)
+    await db.commit()
+    await db.refresh(new_staff)
+    return new_staff
+
+
+@router.patch("/staff/{staff_id}", response_model=StaffResponse, tags=TAG_OPS, summary="Cập nhật thông tin và quyền hạn nhân viên")
+async def update_staff_member(staff_id: str, update_in: StaffUpdate, db: AsyncSession = Depends(get_db)):
+    """Update staff details, role, status, or robot escalation configuration."""
+    res = await db.execute(select(Staff).where(Staff.id == staff_id))
+    staff = res.scalar_one_or_none()
+    if not staff:
+        raise HTTPException(status_code=404, detail="Không tìm thấy nhân viên với ID này")
+
+    update_dict = update_in.model_dump(exclude_unset=True)
+    for field, val in update_dict.items():
+        setattr(staff, field, val)
+
+    staff.updated_at = datetime.utcnow()
+    await db.commit()
+    await db.refresh(staff)
+    return staff
+
+
+@router.delete("/staff/{staff_id}", tags=TAG_OPS, summary="Xóa mềm (vô hiệu hóa) tài khoản nhân viên")
+async def delete_staff_member(staff_id: str, db: AsyncSession = Depends(get_db)):
+    """
+    Xóa mềm (Soft Delete) tài khoản nhân viên:
+    Không xóa hẳn bản ghi khỏi CSDL để bảo toàn dữ liệu lịch sử và quan hệ khóa ngoại.
+    Thay đổi trạng thái is_active=False và status='inactive'.
+    """
+    res = await db.execute(select(Staff).where(Staff.id == staff_id))
+    staff = res.scalar_one_or_none()
+    if not staff:
+        raise HTTPException(status_code=404, detail="Không tìm thấy nhân viên với ID này")
+
+    staff.is_active = False
+    staff.status = "inactive"
+    staff.updated_at = datetime.utcnow()
+    await db.commit()
+    await db.refresh(staff)
+    return {
+        "message": f"Đã vô hiệu hóa (xóa mềm) tài khoản nhân viên {staff.full_name} thành công",
+        "id": staff_id,
+        "is_active": staff.is_active,
+        "status": staff.status,
+    }
+
+
+# =====================================================================
+# 13. NOTIFICATION CENTER (Phòng ban & Toàn hệ thống)
+# =====================================================================
+
+@router.get("/notifications", response_model=List[NotificationResponse], tags=TAG_NOTIF)
+async def get_notifications(
+    department: Optional[str] = None,
+    limit: int = 50,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Lấy danh sách thông báo được phân tách theo phòng ban.
+    - Nhân viên phòng ban nào sẽ nhận thông báo phòng ban đó + thông báo chung 'All'.
+    - Quản trị viên/Executive nhận toàn bộ thông báo.
+    """
+    query = select(Notification)
+    if department and department.strip().lower() not in ["all", "admin", "executive", "operations admin", "toàn bộ"]:
+        dep_clean = department.strip().lower()
+        dept_aliases = [dep_clean]
+        if "f&b" in dep_clean or "room" in dep_clean or "ẩm thực" in dep_clean:
+            dept_aliases.extend(["f&b", "room service", "room_service", "ẩm thực & f&b"])
+        elif "housekeeping" in dep_clean or "buồng" in dep_clean:
+            dept_aliases.extend(["housekeeping", "buồng phòng"])
+        elif "bell" in dep_clean or "hành lý" in dep_clean:
+            dept_aliases.extend(["bell services", "bellman", "bell_services", "vận chuyển hành lý"])
+        elif "maint" in dep_clean or "kỹ thuật" in dep_clean or "bảo trì" in dep_clean:
+            dept_aliases.extend(["maintenance", "kỹ thuật & bảo trì", "kỹ thuật"])
+        elif "reception" in dep_clean or "lễ tân" in dep_clean or "front" in dep_clean:
+            dept_aliases.extend(["reception", "lễ tân", "front desk"])
+
+        query = query.where(
+            (func.lower(Notification.department).in_(dept_aliases))
+            | (Notification.department == "All")
+        )
+
+    query = query.order_by(desc(Notification.created_at)).limit(limit)
+    result = await db.execute(query)
+    return result.scalars().all()
+
+
+@router.post("/notifications", response_model=NotificationResponse, status_code=status.HTTP_201_CREATED, tags=TAG_NOTIF)
+async def create_notification_endpoint(
+    notif_in: NotificationCreate,
+    db: AsyncSession = Depends(get_db),
+):
+    """Tạo thông báo mới cho phòng ban."""
+    notif = await create_department_notification(
+        db=db,
+        department=notif_in.department,
+        title=notif_in.title,
+        description=notif_in.description,
+        request_id=notif_in.request_id,
+        request_type=notif_in.request_type,
+        type=notif_in.type,
+    )
+    await db.commit()
+    await db.refresh(notif)
+    return notif
+
+
+@router.patch("/notifications/{notification_id}/read", response_model=NotificationResponse, tags=TAG_NOTIF)
+async def toggle_notification_read(
+    notification_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Đánh dấu thông báo đã đọc hoặc chưa đọc."""
+    res = await db.execute(select(Notification).where(Notification.id == notification_id))
+    notif = res.scalar_one_or_none()
+    if not notif:
+        raise HTTPException(status_code=404, detail="Không tìm thấy thông báo")
+
+    notif.is_read = not notif.is_read
+    await db.commit()
+    await db.refresh(notif)
+    return notif
+
+
+@router.post("/notifications/mark-all-read", tags=TAG_NOTIF)
+async def mark_all_notifications_read(
+    department: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """Đánh dấu toàn bộ thông báo của phòng ban là đã đọc."""
+    query = update(Notification).values(is_read=True)
+    if department and department.strip().lower() not in ["all", "admin", "executive", "operations admin", "toàn bộ"]:
+        dep_clean = department.strip().lower()
+        dept_aliases = [dep_clean]
+        if "f&b" in dep_clean or "room" in dep_clean:
+            dept_aliases.extend(["f&b", "room service", "room_service"])
+        elif "housekeeping" in dep_clean:
+            dept_aliases.extend(["housekeeping", "buồng phòng"])
+        elif "bell" in dep_clean:
+            dept_aliases.extend(["bell services", "bellman", "bell_services"])
+        elif "maint" in dep_clean:
+            dept_aliases.extend(["maintenance", "kỹ thuật & bảo trì"])
+        elif "reception" in dep_clean:
+            dept_aliases.extend(["reception", "lễ tân"])
+
+        query = query.where(
+            (func.lower(Notification.department).in_(dept_aliases))
+            | (Notification.department == "All")
+        )
+
+    await db.execute(query)
+    await db.commit()
+    return {"message": "Đã đánh dấu tất cả thông báo là đã đọc", "department": department}
+
+
+@router.delete("/notifications/{notification_id}", tags=TAG_NOTIF)
+async def delete_notification_item(
+    notification_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Xóa thông báo khỏi hệ thống."""
+    res = await db.execute(select(Notification).where(Notification.id == notification_id))
+    notif = res.scalar_one_or_none()
+    if not notif:
+        raise HTTPException(status_code=404, detail="Không tìm thấy thông báo")
+
+    await db.delete(notif)
+    await db.commit()
+    return {"message": "Đã xóa thông báo thành công", "id": notification_id}
+
 

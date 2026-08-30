@@ -2,18 +2,80 @@
 // AURORA OS - HCROBOT CONCIERGE & OPERATIONS CODE-FIRST SCHEMA & MOCK DATA
 // =======================================================================
 
+export const INITIAL_RECEPTION_DATA = {
+  id: 'REC-DEMO',
+  ticketCode: 'REQ-8942A',
+  title: 'Leaking Faucet in Bathroom',
+  createdLabel: 'Created 14 mins ago',
+  location: 'Room 402',
+  locationDetails: { floor: 'West Wing', category: 'Standard Room' },
+  guestName: 'Mr. A. Sterling',
+  guestTier: 'Standard',
+  guestStayDetails: 'Check-out: Tomorrow, 11:00 AM',
+  status: 'Pending Action',
+  description:
+    'Guest reported a persistent dripping sound coming from the bathroom dual sink vanity. The left faucet is leaking approximately one drop every two seconds, causing noise disruption and minor water pooling on the counter. Guest requested maintenance while they are out for lunch (expected return: 2:30 PM).',
+  attachedMedia: [
+    {
+      url: 'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=500&auto=format&fit=crop&q=80',
+      alt: 'Close-up of bathroom faucet',
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1620626011761-996317b8d101?w=500&auto=format&fit=crop&q=80',
+      alt: 'Guest bathroom interior',
+    },
+  ],
+  transcript: [
+    {
+      speaker: 'guest',
+      time: '11:42 AM',
+      message: "Aurora, the sink in the bathroom is dripping. It's driving me crazy. Can you send someone to fix it?",
+    },
+    {
+      speaker: 'assistant',
+      time: '11:42 AM',
+      message: 'I apologize for the inconvenience, Mr. Sterling. I have logged a maintenance request for the dripping sink. I will dispatch our technician right away.',
+    },
+    {
+      speaker: 'guest',
+      time: '11:43 AM',
+      message: "We're heading out to lunch now, so they can fix it while we're gone.",
+    },
+    {
+      speaker: 'assistant',
+      time: '11:43 AM',
+      message: 'Understood. I will note that the room is vacant until your return. Enjoy your lunch.',
+    },
+  ],
+  assistanceStatus: 'Connected',
+  assignedTo: 'Javier Morales',
+  assignedRole: 'Maintenance Tech II',
+  notes: [],
+  escalated: false,
+  activityLog: [
+    { title: 'Video Call Ended', detail: 'Staff: Elena Rossi (Duration: 03:42)', time: '11:46 AM' },
+    { title: 'Video call started', detail: '', time: '11:42 AM' },
+    {
+      title: 'Human assistance requested',
+      detail: 'Reason: Guest requires clarification on bathroom maintenance.',
+      time: '11:41 AM',
+    },
+    { title: 'Task Assigned', detail: 'System assigned to J. Morales', time: '11:45 AM' },
+    { title: 'Request Created', detail: 'Via In-Room HCRobot', time: '11:43 AM' },
+  ],
+};
+
 export const INITIAL_ROOM_SERVICE_DATA = {
   kpis: {
     pendingOrders: { value: 8, delta: '+2', status: 'increase' },
     inPreparation: { value: 4, avgTime: '12m' },
+    delivering: { value: 3, label: 'In Transit' },
     completedToday: { value: 42 },
-    highPriority: { count: 2, label: 'VIP Guests' },
   },
   orders: [
     {
       id: '1042',
       room: 'ROOM 412',
-      isVip: true,
       status: 'Pending', // 'Pending' | 'Cooking' | 'Ready' | 'Delivering' | 'Completed' | 'Rejected'
       orderedAt: '4 mins ago',
       items: [
@@ -22,12 +84,10 @@ export const INITIAL_ROOM_SERVICE_DATA = {
       ],
       note: 'No mayo on one sandwich, please.',
       imageUrl: 'https://images.unsplash.com/photo-1528735602780-2552fd46c7af?w=500&auto=format&fit=crop&q=80',
-      priority: 'high',
     },
     {
       id: '1041',
       room: 'ROOM 208',
-      isVip: false,
       status: 'Cooking',
       orderedAt: '15 mins ago',
       items: [
@@ -36,12 +96,10 @@ export const INITIAL_ROOM_SERVICE_DATA = {
       estCompletion: '4 mins',
       progress: 60,
       imageUrl: 'https://images.unsplash.com/photo-1533089860892-a7c6f0a88666?w=500&auto=format&fit=crop&q=80',
-      priority: 'normal',
     },
     {
       id: '1040',
       room: 'ROOM 512',
-      isVip: false,
       status: 'Pending',
       orderedAt: '1 min ago',
       items: [
@@ -49,7 +107,6 @@ export const INITIAL_ROOM_SERVICE_DATA = {
       ],
       note: 'Service Request - No food prep required',
       isServiceRequest: true,
-      priority: 'normal',
     },
   ],
   deliveryFleet: [
@@ -69,17 +126,16 @@ export const INITIAL_HOUSEKEEPING_DATA = {
     pendingRequests: 12,
     inProgress: 5,
     completedToday: 28,
-    highPriority: 3,
+    staffOnDuty: 4,
   },
   requests: [
     {
       id: 'HK-1042',
       source: 'From HCRobot',
-      priority: 'HIGH PRIORITY',
       time: '10:15 AM',
       title: 'Spill cleanup required',
       room: '502',
-      description: 'Wine spill on carpet. Guest requested immediate attention.',
+      description: 'Wine spill on carpet. Guest requested attention.',
       guestName: 'Mr. John Smith',
       status: 'Unassigned', // 'Unassigned' | 'In Progress' | 'Completed'
       assignedStaff: null,
@@ -87,7 +143,6 @@ export const INITIAL_HOUSEKEEPING_DATA = {
     {
       id: 'HK-1043',
       source: 'From HCRobot',
-      priority: 'NORMAL',
       time: '10:22 AM',
       title: 'Extra Towels',
       room: '314',
@@ -99,7 +154,6 @@ export const INITIAL_HOUSEKEEPING_DATA = {
     {
       id: 'HK-1040',
       source: 'Front Desk',
-      priority: 'NORMAL',
       time: '09:50 AM',
       title: 'Full Room Turnover',
       room: '408',
@@ -126,34 +180,30 @@ export const INITIAL_BELL_SERVICES_DATA = {
     pending: 6,
     onJob: 3,
     completed: 24,
-    urgent: 1,
+    activeFleet: 2,
   },
   requests: [
     {
       id: 'BS-501',
-      title: 'Luggage Pickup (Urgent)',
-      priority: 'HIGH PRIORITY',
-      location: 'Suite 402',
+      title: 'Luggage Pickup',
+      location: 'Room 402',
       guestName: 'Mr. Aris Thorne',
-      description: 'Guest is departing early for an international flight. Requires immediate assistance with 4 large suitcases and 2 garment bags. VIP status.',
+      description: 'Guest is departing early for an international flight. Requires assistance with 4 large suitcases and 2 garment bags.',
       status: 'Pending',
       type: 'luggage',
-      urgentBadge: true,
     },
     {
       id: 'BS-502',
       title: 'Room Move Assistance',
-      priority: 'Pending',
       location: 'Room 215 to 510',
       guestName: 'Mrs. Elena Rostova',
-      description: 'Guest requested an upgrade. Need to move luggage from current room to the new suite. Coordinate with housekeeping for final check of Room 215.',
+      description: 'Guest requested a room change. Need to move luggage from current room to the new room. Coordinate with housekeeping for final check of Room 215.',
       status: 'Pending',
       type: 'room_move',
     },
     {
       id: 'BS-503',
       title: 'Lost & Found Retrieval',
-      priority: 'In Progress',
       location: 'Lobby Lounge',
       reporter: 'Staff (J. Doe)',
       description: 'A leather briefcase was left near the grand piano. Retrieve, log into system, and secure in the main Lost & Found locker.',
@@ -175,7 +225,7 @@ export const INITIAL_BELL_SERVICES_DATA = {
 
 export const INITIAL_MAINTENANCE_DATA = {
   kpis: {
-    highPriority: { count: 1, delta: '-2 from yesterday', status: 'good' },
+    availableTechs: { count: 3, delta: '+0', status: 'good' },
     pendingRequests: 4,
     inProgress: 2,
     completedToday: { count: 15, delta: '+3 from yesterday', status: 'good' },
@@ -184,7 +234,6 @@ export const INITIAL_MAINTENANCE_DATA = {
     {
       id: 'MN-401',
       title: 'Plumbing Leak',
-      priority: 'HIGH PRIORITY',
       reportedTime: '10 mins ago',
       status: 'Pending',
       location: 'Room 412',
@@ -195,7 +244,6 @@ export const INITIAL_MAINTENANCE_DATA = {
     {
       id: 'MN-402',
       title: 'Air Conditioner Issue',
-      priority: 'In Progress',
       reportedTime: '45 mins ago',
       status: 'In Progress',
       location: 'Room 305',
@@ -207,7 +255,6 @@ export const INITIAL_MAINTENANCE_DATA = {
     {
       id: 'MN-403',
       title: 'Light Bulb Replacement',
-      priority: 'Completed',
       reportedTime: '2 hrs ago',
       status: 'Completed',
       location: 'Corridor 2B',
@@ -225,58 +272,5 @@ export const INITIAL_MAINTENANCE_DATA = {
     zone: 'Zone Status',
     description: 'View active requests and technician locations on the floor plan.',
     thumbnail: 'https://images.unsplash.com/photo-1503387762-592deb58ef4e?w=500&auto=format&fit=crop&q=80',
-  }
-};
-
-export const INITIAL_MANAGER_DATA = {
-  department: 'Housekeeping',
-  kpis: {
-    activeRequests: { current: 12, total: 45 },
-    roomsCleaned: { current: 78, total: 120 },
-    staffActive: { current: 8, total: 10 },
-    responseTime: { avg: '14m', trend: [18, 16, 15, 17, 14, 13, 14] },
-  },
-  liveRequests: [
-    {
-      id: 'M-101',
-      title: 'Spill in Lobby',
-      priority: 'URGENT',
-      location: 'Main Entrance',
-      reportedTime: 'Reported 2m ago',
-      status: 'Unassigned',
-      type: 'spill',
-    },
-    {
-      id: 'M-102',
-      title: 'Room Make-up',
-      priority: 'PENDING',
-      location: 'Suite 402',
-      reportedTime: 'Guest Requested',
-      status: 'Unassigned',
-      type: 'room_service',
-    },
-    {
-      id: 'M-103',
-      title: 'Extra Towels',
-      priority: 'IN PROGRESS',
-      location: 'Room 214',
-      reportedTime: 'Scheduled',
-      status: 'In Progress',
-      assignedTo: {
-        name: 'Maria S.',
-        eta: '5m',
-        avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=100&auto=format&fit=crop&q=80'
-      },
-      type: 'towels',
-    },
-  ],
-  staffRoster: [
-    { id: 'st1', name: 'Maria S.', location: 'Floor 2', tasks: '0 Tasks', status: 'available', avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=100&auto=format&fit=crop&q=80' },
-    { id: 'st2', name: 'David C.', location: 'Floor 4', tasks: '2 Tasks', status: 'Busy (15m)', avatar: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=100&auto=format&fit=crop&q=80' },
-    { id: 'st3', name: 'Sarah J.', location: 'Lobby', tasks: '1 Task', status: 'active', avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&auto=format&fit=crop&q=80' },
-    { id: 'st4', name: 'Elena R.', location: 'Off Shift', tasks: '0 Tasks', status: 'off_shift', avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80' },
-  ],
-  zoneHeatmap: {
-    activeZone: 'Floor 4 High Activity',
   }
 };

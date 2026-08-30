@@ -1,313 +1,263 @@
-import React, { useState, useEffect } from 'react';
-import { MetricCard } from '../../components/dashboard/MetricCard';
-import { InteractiveMapModal } from '../../components/dashboard/Modals';
+import React, { useEffect, useMemo, useState } from 'react';
+import { AssignStaffModal, InteractiveMapModal } from '../../components/dashboard/Modals';
 import { INITIAL_HOUSEKEEPING_DATA } from '../../data/mockHotelData';
 import {
-  fetchHousekeepingDashboard,
   assignHousekeepingStaff,
+  fetchHousekeepingDashboard,
   updateGenericRequestStatus,
 } from '../../services/operationsApi';
+import { useLanguage } from '../../context/LanguageContext';
 import {
-  Inbox,
-  RefreshCw,
-  CheckCircle2,
   AlertTriangle,
   Bot,
-  User,
-  Layers,
+  CheckCircle2,
   ChevronDown,
-  Sparkles,
-  CheckCheck,
+  ClipboardList,
+  RefreshCw,
+  UserX,
 } from 'lucide-react';
 
+const FILTER_OPTIONS = [
+  { value: 'All', label: 'All Types' },
+  { value: 'Spill Cleanup', label: 'Spill Cleanup' },
+  { value: 'Towels', label: 'Towels' },
+  { value: 'Room Cleaning', label: 'Room Cleaning' },
+];
+
+const normalizeStatus = (status = '') => status.toLowerCase().trim().replace('_', ' ');
+const isPendingRequest = (request) => ['unassigned', 'pending', 'waiting'].includes(normalizeStatus(request.status));
+const isInProgressRequest = (request) => normalizeStatus(request.status) === 'in progress';
+const isCompletedRequest = (request) => ['completed', 'ready', 'done'].includes(normalizeStatus(request.status));
+const isUrgentRequest = (request) => String(request?.urgency || request?.priority || '').toLowerCase() === 'high' || Boolean(request?.is_urgent);
+
+const requestKey = (request) => request.ticket_code || request.id;
+const displayRequestId = (request) => String(request.ticket_code || request.id || '').replace(/^REQ-/, '');
+const requestMatches = (request, id) => {
+  const values = [request.id, request.ticket_code, displayRequestId(request)].filter(Boolean).map(String);
+  return values.some((value) => value === String(id) || value.includes(String(id)) || String(id).includes(value));
+};
+
+const KpiCard = ({ label, value, icon: Icon, tone = 'neutral' }) => {
+  const toneClasses = {
+    neutral: 'bg-gradient-to-br from-[#F7F4EF] to-[#F2F0EC] text-[#151515]',
+    success: 'bg-gradient-to-br from-[#F6F6F1] to-[#EEF3EB] text-[#151515]',
+    danger: 'bg-gradient-to-br from-[#C91C1C] to-[#C51616] text-white',
+  };
+
+  return (
+    <div className={`h-[93px] rounded-[15px] px-5 py-[18px] flex flex-col justify-between ${toneClasses[tone]}`}>
+      <div className={`flex items-center justify-between text-[13px] ${tone === 'danger' ? 'text-red-50' : 'text-[#575757]'}`}>
+        <span>{label}</span>
+        <Icon className={`w-[18px] h-[18px] ${tone === 'danger' ? 'text-red-50' : tone === 'success' ? 'text-[#7D998D]' : 'text-[#777777]'}`} strokeWidth={1.8} />
+      </div>
+      <span className="text-[14px] font-medium leading-none">{value}</span>
+    </div>
+  );
+};
+
 export const HousekeepingDashboard = ({ currentUser, onNotify = () => {} }) => {
+  const { t } = useLanguage();
   const staffName = currentUser?.full_name || currentUser?.name || 'Maria Santos';
   const staffId = currentUser?.id || currentUser?.username || 'user';
+  const storageKey = `aurora_hk_claimed_${staffName}`;
 
   const [data, setData] = useState(INITIAL_HOUSEKEEPING_DATA);
   const [filter, setFilter] = useState('All');
   const [isMapModalOpen, setIsMapModalOpen] = useState(false);
+  const [requestToAssign, setRequestToAssign] = useState(null);
 
-  const filteredRequests = (data.requests || []).filter((req) => {
-    if (filter === 'All') return true;
-    const title = (req.title || '').toLowerCase();
-    const desc = (req.description || '').toLowerCase();
-    const reqType = (req.type || req.category || '').toLowerCase();
-    const status = (req.status || '').toLowerCase();
-    const priority = (req.priority || '').toUpperCase();
-
-    if (filter === 'Pending') {
-      return status === 'unassigned' || status === 'pending' || status === 'waiting';
-    }
-    if (filter === 'In Progress') {
-      return status === 'in progress' || status === 'in_progress';
-    }
-    if (filter === 'Completed') {
-      return status === 'completed' || status === 'ready' || status === 'done';
-    }
-    if (filter === 'High Priority') {
-      return priority.includes('HIGH') || priority.includes('URGENT') || priority.includes('VIP');
-    }
-    if (filter === 'Spill Cleanup') {
-      return reqType.includes('spill') || title.includes('spill') || title.includes('tràn') || desc.includes('spill');
-    }
-    if (filter === 'Towels') {
-      return reqType.includes('towel') || title.includes('towel') || title.includes('khăn') || desc.includes('towel');
-    }
-    if (filter === 'Room Cleaning') {
-      return reqType.includes('room_service') || reqType.includes('clean') || title.includes('clean') || title.includes('dọn') || desc.includes('clean');
-    }
-    return true;
-  });
-
-  // 4-Tier Priority Sorting Function:
-  // 1. Ưu tiên cao chưa ai nhận (High Priority + Unassigned/Pending)
-  // 2. Những yêu cầu chưa ai nhận (Normal/Low + Unassigned/Pending)
-  // 3. Những yêu cầu đã có người nhận / Đang xử lý (In Progress)
-  // 4. Những yêu cầu đã hoàn thành (Completed)
-  const getRequestPriorityScore = (req) => {
-    const s = (req.status || '').toLowerCase().trim();
-    const p = (req.priority || '').toUpperCase().trim();
-    const isPending = s === 'pending' || s === 'unassigned' || s === 'waiting';
-    const isInProgress = s === 'in progress' || s === 'in_progress';
-    const isCompleted = s === 'completed' || s === 'ready' || s === 'delivered' || s === 'done';
-    const isHighPriority = p.includes('HIGH') || p.includes('URGENT') || p.includes('VIP');
-
-    if (isPending && isHighPriority) return 1;
-    if (isPending && !isHighPriority) return 2;
-    if (isInProgress) return 3;
-    if (isCompleted) return 4;
-    return 5;
-  };
-
-  const sortedRequests = [...filteredRequests].sort((a, b) => {
-    const scoreA = getRequestPriorityScore(a);
-    const scoreB = getRequestPriorityScore(b);
-    if (scoreA !== scoreB) {
-      return scoreA - scoreB;
-    }
-    return (b.id || '').localeCompare(a.id || '');
-  });
-
-  // Calculate live dynamic KPI metrics directly from requests array
-  const allHkRequests = data.requests || [];
-  const pendingRequestsCount = allHkRequests.filter(
-    (r) => (r.status || '').toLowerCase() === 'unassigned' || (r.status || '').toLowerCase() === 'pending'
-  ).length;
-  const inProgressCount = allHkRequests.filter(
-    (r) => (r.status || '').toLowerCase() === 'in progress'
-  ).length;
-  const completedTodayCount = allHkRequests.filter(
-    (r) => (r.status || '').toLowerCase() === 'completed'
-  ).length;
-  const highPriorityCount = allHkRequests.filter(
-    (r) => (r.priority || '').toUpperCase().includes('HIGH') && (r.status || '').toLowerCase() !== 'completed'
-  ).length;
-
-  // Active Task Check: Mỗi nhân viên chỉ được nhận 1 yêu cầu tại một thời điểm
-  const activeTask = allHkRequests.find((r) => {
-    const s = (r.status || '').toLowerCase().trim();
-    const isInProg = s === 'in progress' || s === 'in_progress';
-    const isAssignedToMe =
-      r.assignedStaff === staffName ||
-      r.assigned_staff_name === staffName ||
-      r.assignedTo === staffName;
-    return isInProg && isAssignedToMe;
-  });
-  const hasActiveTask = Boolean(activeTask);
-
-  const STORAGE_KEY_HK = `aurora_hk_claimed_${staffName}`;
-
-  // Load live data from PostgreSQL on mount
   useEffect(() => {
     const loadData = async () => {
-      const res = await fetchHousekeepingDashboard();
+      const response = await fetchHousekeepingDashboard();
       let cachedRequests = [];
-      try {
-        const cached = localStorage.getItem(STORAGE_KEY_HK);
-        if (cached) cachedRequests = JSON.parse(cached);
-      } catch (e) {}
 
-      if (res && res.requests && res.requests.length > 0) {
-        const mergedRequests = res.requests.map((r) => {
-          const local = cachedRequests.find(
-            (c) =>
-              c.id === r.id ||
-              c.ticket_code === r.ticket_code ||
-              (r.id && c.id && (r.id.includes(c.id) || c.id.includes(r.id)))
-          );
-          if (local && (local.status === 'In Progress' || local.status === 'Completed')) {
-            return {
-              ...r,
-              status: r.status === 'Completed' ? 'Completed' : local.status,
-              assignedStaff: r.assigned_staff_name || local.assignedStaff || local.assigned_staff_name || staffName,
-              assigned_staff_name: r.assigned_staff_name || local.assigned_staff_name || local.assignedStaff || staffName,
-            };
-          }
+      try {
+        const cached = localStorage.getItem(storageKey);
+        if (cached) cachedRequests = JSON.parse(cached);
+      } catch {
+        cachedRequests = [];
+      }
+
+      if (response?.requests?.length > 0) {
+        const mergedRequests = response.requests.map((request) => {
+          const cached = cachedRequests.find((item) => requestMatches(item, requestKey(request)));
+          const cachedStatusCanOverride = cached && ['In Progress', 'Completed'].includes(cached.status);
+
           return {
-            ...r,
-            assignedStaff: r.assigned_staff_name || r.assignedStaff,
+            ...request,
+            status: cachedStatusCanOverride && request.status !== 'Completed' ? cached.status : request.status,
+            assignedStaff:
+              request.assigned_staff_name || cached?.assignedStaff || cached?.assigned_staff_name || request.assignedStaff,
           };
         });
 
-        setData((prev) => ({
-          ...prev,
-          kpis: res.kpis || prev.kpis,
+        setData((previous) => ({
+          ...previous,
+          kpis: response.kpis || previous.kpis,
           requests: mergedRequests,
-          availableStaff: res.available_staff?.length > 0 ? res.available_staff : prev.availableStaff,
+          floorStatus: response.floor_status || previous.floorStatus,
+          availableStaff: response.available_staff?.length > 0 ? response.available_staff : previous.availableStaff,
         }));
       } else if (cachedRequests.length > 0) {
-        setData((prev) => ({
-          ...prev,
-          requests: cachedRequests,
-        }));
+        setData((previous) => ({ ...previous, requests: cachedRequests }));
       }
     };
-    loadData();
-  }, [staffName]);
 
-  // Action: Self-Claim Request -> Persists in PostgreSQL with Staff Identity & local storage
+    loadData();
+  }, [storageKey]);
+
+  const allRequests = data.requests || [];
+  const computedKpis = {
+    pendingRequests: allRequests.filter(isPendingRequest).length,
+    inProgress: allRequests.filter(isInProgressRequest).length,
+    completedToday: allRequests.filter(isCompletedRequest).length,
+    staffOnDuty: 4,
+  };
+  const kpis = {
+    pendingRequests: data.kpis?.pendingRequests ?? computedKpis.pendingRequests,
+    inProgress: data.kpis?.inProgress ?? computedKpis.inProgress,
+    completedToday: data.kpis?.completedToday ?? computedKpis.completedToday,
+    staffOnDuty: data.kpis?.staffOnDuty ?? computedKpis.staffOnDuty,
+  };
+
+  const filteredRequests = useMemo(() => {
+    const filtered = allRequests.filter((request) => {
+      if (filter === 'All') return true;
+      if (filter === 'Pending') return isPendingRequest(request);
+      if (filter === 'In Progress') return isInProgressRequest(request);
+      if (filter === 'Completed') return isCompletedRequest(request);
+      return true;
+    });
+
+    return [...filtered].sort((a, b) => {
+      const score = (request) => {
+        if (isPendingRequest(request)) return 1;
+        if (isInProgressRequest(request)) return 2;
+        if (isCompletedRequest(request)) return 3;
+        return 4;
+      };
+      return score(a) - score(b);
+    });
+  }, [allRequests, filter]);
+
+  const saveRequests = (requests) => {
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(requests));
+    } catch {
+      // Local persistence is best-effort; PostgreSQL remains the source of truth.
+    }
+  };
+
+  const transitionRequest = async (requestId, status, assignedName) => {
+    const currentRequest = allRequests.find((request) => requestMatches(request, requestId));
+    const wasPending = currentRequest ? isPendingRequest(currentRequest) : false;
+    const wasInProgress = currentRequest ? isInProgressRequest(currentRequest) : false;
+
+    const updatedRequests = allRequests.map((request) =>
+      requestMatches(request, requestId)
+        ? {
+            ...request,
+            status,
+            assignedStaff: assignedName || request.assignedStaff || request.assigned_staff_name,
+            assigned_staff_name: assignedName || request.assigned_staff_name || request.assignedStaff,
+          }
+        : request
+    );
+
+    setData((previous) => ({
+      ...previous,
+      requests: updatedRequests,
+      kpis: {
+        ...previous.kpis,
+        pendingRequests: wasPending ? Math.max(0, kpis.pendingRequests - 1) : kpis.pendingRequests,
+        inProgress:
+          status === 'In Progress' && !wasInProgress
+            ? kpis.inProgress + 1
+            : status === 'Completed' && wasInProgress
+              ? Math.max(0, kpis.inProgress - 1)
+              : kpis.inProgress,
+        completedToday: status === 'Completed' ? kpis.completedToday + 1 : kpis.completedToday,
+        staffOnDuty: previous.kpis?.staffOnDuty ?? 4,
+      },
+    }));
+    saveRequests(updatedRequests);
+
+    await assignHousekeepingStaff(requestId, {
+      status,
+      assigned_staff_name: assignedName || staffName,
+      assigned_staff_id: staffId,
+    });
+    await updateGenericRequestStatus(requestId, status, assignedName || staffName);
+  };
+
   const handleClaimRequest = async (requestId) => {
-    if (hasActiveTask) {
+    const activeTask = allRequests.find(
+      (r) =>
+        isInProgressRequest(r) &&
+        (r.assignedStaff === staffName ||
+          r.assigned_staff_name === staffName ||
+          r.assignedTo === staffName)
+    );
+    if (activeTask) {
       onNotify(
-        `⚠️ Bạn đang phụ trách phiếu #${activeTask.id}. Vui lòng bấm [Hoàn Thành] trước khi nhận thêm yêu cầu mới!`
+        `⚠️ Bạn đang có nhiệm vụ đang xử lý (${activeTask.title || activeTask.id}). Vui lòng hoàn thành công việc hiện tại trước khi nhận thêm nhiệm vụ mới!`
       );
       return;
     }
 
-    const updatedRequests = (data.requests || []).map((r) =>
-      r.id === requestId || r.ticket_code === requestId || (r.id && r.id.includes(requestId))
-        ? {
-            ...r,
-            status: 'In Progress',
-            assignedStaff: staffName,
-            assigned_staff_name: staffName,
-          }
-        : r
-    );
-
-    setData((prev) => ({
-      ...prev,
-      requests: updatedRequests,
-    }));
-
-    try {
-      localStorage.setItem(STORAGE_KEY_HK, JSON.stringify(updatedRequests));
-    } catch (e) {}
-
-    // Persist to PostgreSQL backend via dual endpoints
-    await assignHousekeepingStaff(requestId, {
-      status: 'In Progress',
-      assigned_staff_name: staffName,
-      assigned_staff_id: staffId,
-    });
-    await updateGenericRequestStatus(requestId, 'In Progress', staffName);
-    onNotify(`Bạn (${staffName}) đã nhận xử lý phiếu #${requestId}`);
+    await transitionRequest(requestId, 'In Progress', staffName);
+    onNotify(`${staffName} accepted request ${requestId}.`);
   };
 
-  // Action: Mark Completed -> Persists in PostgreSQL & local storage
   const handleCompleteRequest = async (requestId) => {
-    const updatedRequests = (data.requests || []).map((r) =>
-      r.id === requestId || r.ticket_code === requestId || (r.id && r.id.includes(requestId))
-        ? { ...r, status: 'Completed' }
-        : r
-    );
-
-    setData((prev) => ({
-      ...prev,
-      requests: updatedRequests,
-    }));
-
-    try {
-      localStorage.setItem(STORAGE_KEY_HK, JSON.stringify(updatedRequests));
-    } catch (e) {}
-
-    await assignHousekeepingStaff(requestId, {
-      status: 'Completed',
-      assigned_staff_name: staffName,
-      assigned_staff_id: staffId,
-    });
-    await updateGenericRequestStatus(requestId, 'Completed', staffName);
-    onNotify(`Đã hoàn tất xử lý phiếu #${requestId}`);
+    await transitionRequest(requestId, 'Completed', staffName);
+    onNotify(`Request ${requestId} was completed.`);
   };
+
+  const handleAssignRequest = async (requestId, assignment) => {
+    await transitionRequest(requestId, 'In Progress', assignment.name);
+    onNotify(`Request ${requestId} was assigned to ${assignment.name}.`);
+  };
+
+  const floorStatus = data.floorStatus || INITIAL_HOUSEKEEPING_DATA.floorStatus;
+  const roomsCleaned = floorStatus.roomsCleaned ?? 45;
+  const totalRooms = floorStatus.totalRooms ?? 120;
+  const roomsCleanedPercent = Math.min(100, Math.round((roomsCleaned / Math.max(1, totalRooms)) * 100));
+  const availableStaff = (data.availableStaff || []).map((staff) => ({
+    ...staff,
+    name: staff.name || staff.full_name,
+    id: staff.id || staff.code || staff.username,
+  }));
 
   return (
-    <div className="flex-1 overflow-y-auto custom-scrollbar p-8 bg-[#FAF8F5] font-sans">
-      <div className="max-w-7xl mx-auto space-y-6">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <h2 className="text-xl font-bold text-[#1A1917]">Housekeeping Operations</h2>
-            <p className="text-xs text-[#78716C] mt-1">
-              Hàng đợi yêu cầu từ Robot HCRobot • Nhân viên nhận trực tiếp theo cơ chế First-Claim
-            </p>
-          </div>
+    <main className="flex-1 overflow-y-auto custom-scrollbar bg-[#FCFAF7] px-8 pt-[34px] pb-10 font-sans">
+      <div className="w-full max-w-[1120px] mx-auto">
+        <section className="mb-10">
+          <h1 className="text-[14px] font-medium leading-5 text-[#171717]">Housekeeping</h1>
+          <p className="mt-1 text-[14px] leading-5 text-[#707070]">Live operations dashboard</p>
+        </section>
 
-          <div className="flex items-center gap-2 text-xs font-bold text-stone-700 bg-white px-4 py-2 rounded-full border border-[#DDD8CE] shadow-sm">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-            <span>Trực ca: {staffName}</span>
-          </div>
-        </div>
+        <section className="grid grid-cols-2 lg:grid-cols-4 gap-[18px] mb-10">
+          <KpiCard label="Pending Requests" value={kpis.pendingRequests} icon={ClipboardList} />
+          <KpiCard label="In Progress" value={kpis.inProgress} icon={RefreshCw} />
+          <KpiCard label="Completed Today" value={kpis.completedToday} icon={CheckCircle2} tone="success" />
+          <KpiCard label="Staff on Duty" value={kpis.staffOnDuty ?? availableStaff.length} icon={Bot} />
+        </section>
 
-        {/* 4 KPI Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <MetricCard
-            title="CHỜ TIẾP NHẬN"
-            value={pendingRequestsCount}
-            icon={Inbox}
-          />
-          <MetricCard
-            title="ĐANG XỬ LÝ"
-            value={inProgressCount}
-            icon={RefreshCw}
-          />
-          <MetricCard
-            title="ĐÃ HOÀN TẤT HÔM NAY"
-            value={completedTodayCount}
-            icon={CheckCircle2}
-          />
-          <MetricCard
-            title="ƯU TIÊN CAO"
-            value={highPriorityCount}
-            variant="danger-solid"
-            icon={AlertTriangle}
-          />
-        </div>
-
-        {/* Main Section */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 pt-2">
-          {/* Left Column: Incoming Requests */}
-          <div className="lg:col-span-8 space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <h3 className="text-sm font-bold text-[#1A1917]">Hàng Đợi Yêu Cầu Từ Robot</h3>
-                <span className="px-2 py-0.5 rounded-full bg-stone-200 text-stone-700 text-[11px] font-bold">
-                  {filteredRequests.length} phiếu
-                </span>
-              </div>
-
-              {/* Horizontal Filter Pill Bar matching Maintenance */}
-              <div className="flex items-center gap-1 bg-[#EFECE6] p-1 rounded-full border border-[#DDD8CE] overflow-x-auto no-scrollbar max-w-full">
-                {[
-                  'All',
-                  'Pending',
-                  'In Progress',
-                  'Completed',
-                  'High Priority',
-                  'Spill Cleanup',
-                  'Towels',
-                  'Room Cleaning',
-                ].map((tab) => (
+        <section className="grid grid-cols-1 lg:grid-cols-[minmax(0,2.08fr)_minmax(220px,0.98fr)] gap-6 items-start">
+          <div className="min-w-0">
+            <div className="h-6 mb-4 flex items-center justify-between gap-4">
+              <h2 className="text-[14px] font-medium text-[#171717]">Incoming Requests</h2>
+              <div className="flex items-center gap-1 flex-wrap">
+                {['All', 'Pending', 'In Progress', 'Completed'].map((tab) => (
                   <button
                     key={tab}
-                    onClick={() => {
-                      setFilter(tab);
-                      onNotify(`Đã lọc danh sách buồng phòng theo: ${tab}`);
-                    }}
-                    className={`px-3 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
+                    type="button"
+                    onClick={() => setFilter(tab)}
+                    className={`rounded-[9px] px-3.5 py-1.5 text-[11px] font-medium transition-colors cursor-pointer ${
                       filter === tab
-                        ? 'bg-[#18181B] text-white shadow-sm'
-                        : 'text-[#78716C] hover:text-[#1A1917]'
+                        ? 'bg-[#EAE8E4] text-[#494540] shadow-xs'
+                        : 'text-[#77726D] hover:bg-[#F0EEEA]'
                     }`}
                   >
                     {tab}
@@ -316,241 +266,179 @@ export const HousekeepingDashboard = ({ currentUser, onNotify = () => {} }) => {
               </div>
             </div>
 
-            {/* Active Task Banner if currently busy */}
-            {hasActiveTask && (
-              <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-amber-900 animate-in fade-in duration-200">
-                <div className="flex items-center gap-2.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping shrink-0" />
-                  <div>
-                    <span className="font-bold text-amber-950">Bạn đang phụ trách 1 yêu cầu: </span>
-                    <span className="font-mono font-bold text-amber-800">#{activeTask.id}</span> - {activeTask.title} (Phòng {activeTask.room_number || activeTask.room || '502'})
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 self-end sm:self-auto">
-                  <span className="text-[11px] font-bold text-amber-800 bg-amber-100 px-3 py-1 rounded-full border border-amber-300">
-                    🔒 Giới hạn: 1 yêu cầu / lần
-                  </span>
-                  <button
-                    onClick={() => handleCompleteRequest(activeTask.id)}
-                    className="px-3.5 py-1 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition-all shadow-sm cursor-pointer"
-                  >
-                    ✓ Hoàn Thành Ngay
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Request Cards */}
-            <div className="space-y-4">
-              {sortedRequests.length === 0 ? (
-                <div className="p-8 text-center bg-white rounded-2xl border border-[#E5E1D8] text-stone-500 text-xs font-medium">
-                  Không có yêu cầu nào phù hợp với bộ lọc "{typeFilter}".
+            <div className="space-y-[14px]">
+              {filteredRequests.length === 0 ? (
+                <div className="rounded-[20px] bg-white px-6 py-14 text-center text-[13px] text-[#777]">
+                  {t('noDataMatch')}
                 </div>
               ) : (
-                sortedRequests.map((req) => {
-                  const isHighPriority = (req.priority || '').includes('HIGH');
-                  const isUnassigned = (req.status || '').toLowerCase() === 'unassigned' || req.status === 'Pending';
-                  const isInProgress = req.status === 'In Progress';
-                  const isCompleted = req.status === 'Completed';
-                  const handlerName = req.assignedStaff || req.assigned_staff_name;
+                filteredRequests.map((request) => {
+                  const requestId = requestKey(request);
+                  const pending = isPendingRequest(request);
+                  const inProgress = isInProgressRequest(request);
+                  const completed = isCompletedRequest(request);
+                  const urgencyLabel = isUrgentRequest(request) ? 'High' : 'Normal';
+                  const assignee = request.assignedStaff || request.assigned_staff_name;
 
                   return (
-                    <div
-                      key={req.id}
-                      className={`bg-white rounded-2xl border border-[#E5E1D8] p-5 shadow-sm space-y-3 transition-all hover:shadow-md ${
-                        isInProgress ? 'border-l-4 border-l-sky-500' : ''
-                      } ${isCompleted ? 'border-l-4 border-l-emerald-500 bg-emerald-50/5' : ''} ${
-                        isHighPriority && isUnassigned ? 'border-l-4 border-l-red-500' : ''
-                      }`}
-                    >
-                      {/* Header */}
-                      <div className="flex items-center justify-between text-xs">
-                        <div className="flex items-center gap-2">
-                          <span className="px-2.5 py-0.5 rounded-md bg-[#F0ECE3] text-[#44403C] font-semibold flex items-center gap-1">
-                            <Bot className="w-3.5 h-3.5 text-sky-700" />
-                            <span>{req.source || 'PHÁT TỪ HCROBOT'}</span>
+                    <article key={requestId} className="rounded-[20px] bg-white px-5 py-5 shadow-[0_1px_1px_rgba(32,28,24,0.02)]">
+                      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-[13px]">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <span className="inline-flex items-center gap-1 rounded-full bg-[#ECEAE7] px-2.5 py-1 text-[#555] whitespace-nowrap">
+                            <Bot className="w-3 h-3 text-[#202020]" strokeWidth={2} />
+                            {request.source || 'From HCRobot'}
                           </span>
-                          <span className="font-mono font-bold text-stone-600">ID: {req.id}</span>
+                          <span className="text-[#999] whitespace-nowrap">ID: {displayRequestId(request)}</span>
                         </div>
-                        <div className="flex items-center gap-2 font-semibold">
-                          <span
-                            className={`flex items-center gap-1 ${
-                              isHighPriority ? 'text-red-600 font-bold' : 'text-stone-500'
-                            }`}
-                          >
-                            <span
-                              className={`w-2 h-2 rounded-full ${
-                                isHighPriority ? 'bg-red-600 animate-ping' : 'bg-stone-400'
-                              }`}
-                            />
-                            <span>{req.priority}</span>
-                          </span>
-                          <span className="text-stone-400 font-normal">{req.time || 'Vừa xong'}</span>
+                        <div className="flex items-center gap-3 whitespace-nowrap">
+                          <time className="text-[#4E4E4E]">{request.time || request.time_label || 'Recent'}</time>
                         </div>
                       </div>
 
-                      {/* Content */}
-                      <div className="pt-1">
-                        <div className="flex items-start justify-between">
-                          <div>
-                            <h4 className="text-sm font-bold text-[#1A1917]">{req.title}</h4>
-                            <p className="text-xs text-[#78716C] mt-1">{req.description}</p>
-                            <p className="text-xs font-semibold text-stone-800 mt-2">
-                              Khách báo:{' '}
-                              <span className="text-stone-600 font-normal">{req.guestName || 'Khách lưu trú'}</span>
+                      <div className="mt-4 flex items-start justify-between gap-5">
+                        <div className="min-w-0">
+                          <h3 className="text-[14px] font-medium text-[#171717]">{request.title}</h3>
+                          <p className="mt-1 text-[14px] leading-5 text-[#4E4E4E]">{request.description}</p>
+                          {(request.guestName || request.guest_name) && (
+                            <p className="mt-1.5 text-[14px] text-[#171717]">
+                              Guest: <span className="ml-1 text-[#555]">{request.guestName || request.guest_name}</span>
                             </p>
-                          </div>
-                          <div className="text-right pl-4">
-                            <span className="text-[11px] font-semibold text-[#78716C] block">Phòng</span>
-                            <span className="text-base font-extrabold text-[#1A1917]">
-                              {req.room || req.room_number || '502'}
+                          )}
+                        </div>
+
+                        <div className="min-w-[48px] text-right text-[13px] text-[#555]">
+                          <span className="block">Room</span>
+                          <strong className="block mt-0.5 text-[14px] font-medium text-[#171717]">
+                            {request.room || request.room_number || '—'}
+                          </strong>
+                        </div>
+                      </div>
+
+                      <div className="mt-5 flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-[#F2EFEB]">
+                        <div className="flex items-center gap-2 text-[12px] text-[#757575]">
+                          {pending && (
+                            <>
+                              <span className="h-5 w-5 rounded-full bg-[#EBEBEB] flex items-center justify-center">
+                                <UserX className="w-3.5 h-3.5 text-[#8A8A8A]" />
+                              </span>
+                              <span>{t('unassigned')}</span>
+                            </>
+                          )}
+                          {inProgress && (
+                            <>
+                              <span className="w-2 h-2 rounded-full bg-[#1B87C9]" />
+                              <span>{t('inProgress')}: {assignee || staffName}</span>
+                            </>
+                          )}
+                          {completed && (
+                            <>
+                              <CheckCircle2 className="w-4 h-4 text-[#3E8D69]" />
+                              <span>{t('taskCompleted')}: {assignee || staffName}</span>
+                            </>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-2.5 ml-auto">
+                          {pending && (
+                            <button
+                              type="button"
+                              onClick={() => handleClaimRequest(requestId)}
+                              className="h-9 min-w-[130px] px-5 rounded-[11px] bg-black text-white text-[13px] font-bold hover:bg-[#242424] transition-colors cursor-pointer shadow-sm"
+                            >
+                              {t('claimTask')}
+                            </button>
+                          )}
+                          {inProgress && (
+                            <button
+                              type="button"
+                              onClick={() => handleCompleteRequest(requestId)}
+                              className="h-9 px-5 rounded-[11px] bg-emerald-600 text-white text-[13px] font-bold hover:bg-emerald-700 transition-colors cursor-pointer shadow-sm flex items-center gap-1.5"
+                            >
+                              <CheckCircle2 className="w-4 h-4" />
+                              <span>{t('completeTask')}</span>
+                            </button>
+                          )}
+                          {completed && (
+                            <span className="text-[12px] font-bold text-emerald-700 bg-emerald-100 px-3.5 py-1.5 rounded-full border border-emerald-200 flex items-center gap-1">
+                              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                              {t('taskCompleted')}
                             </span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Footer / Actions: Self-Claim & Complete */}
-                      <div className="pt-3 border-t border-[#F5F2EB] flex items-center justify-between">
-                        <div className="flex items-center gap-1.5 text-xs text-stone-500 font-medium">
-                          {isUnassigned ? (
-                            <div className="flex items-center gap-1.5 text-amber-700 bg-amber-50 px-2.5 py-1 rounded-full border border-amber-200">
-                              <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-                              <span className="font-semibold text-[11px]">Chờ nhân viên tiếp nhận</span>
-                            </div>
-                          ) : isInProgress ? (
-                            <div className="flex items-center gap-1.5 text-sky-800 bg-sky-50 px-2.5 py-1 rounded-full border border-sky-200">
-                              <span className="w-2 h-2 rounded-full bg-sky-500" />
-                              <span className="font-bold text-[11px]">
-                                Đang xử lý bởi: <span className="underline">{handlerName || staffName}</span>
-                              </span>
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-1.5 text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
-                              <CheckCheck className="w-3.5 h-3.5 text-emerald-600" />
-                              <span className="font-bold text-[11px]">
-                                Hoàn tất bởi: {handlerName || staffName}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Action Buttons */}
-                        <div className="flex items-center gap-2">
-                          {isUnassigned && (
-                            <button
-                              onClick={() => handleClaimRequest(req.id)}
-                              className={`px-5 py-2 rounded-full text-xs font-bold transition-all shadow-md flex items-center gap-1.5 cursor-pointer active:scale-95 ${
-                                hasActiveTask
-                                  ? 'bg-stone-200 text-stone-500 hover:bg-stone-300 border border-stone-300'
-                                  : 'bg-[#18181B] hover:bg-black text-white'
-                              }`}
-                              title={
-                                hasActiveTask
-                                  ? `Bạn đang xử lý phiếu #${activeTask.id}. Hãy hoàn thành trước khi nhận thêm!`
-                                  : 'Bấm để nhận xử lý yêu cầu'
-                              }
-                            >
-                              <span>✋ Nhận Xử Lý</span>
-                              {hasActiveTask && (
-                                <span className="text-[10px] bg-stone-300 text-stone-700 px-1.5 py-0.5 rounded-full font-normal">
-                                  Đang bận
-                                </span>
-                              )}
-                            </button>
-                          )}
-
-                          {isInProgress && (
-                            <button
-                              onClick={() => handleCompleteRequest(req.id)}
-                              className="px-5 py-2 rounded-full text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 transition-all shadow-md flex items-center gap-1.5 cursor-pointer active:scale-95"
-                            >
-                              <CheckCircle2 className="w-3.5 h-3.5" />
-                              <span>Hoàn Thành</span>
-                            </button>
                           )}
                         </div>
                       </div>
-                    </div>
+                    </article>
                   );
                 })
               )}
             </div>
           </div>
 
-          {/* Right Column: Floor Status & Available Staff */}
-          <div className="lg:col-span-4 space-y-4">
-            {/* Floor Status Card */}
-            <div className="bg-white rounded-2xl border border-[#E5E1D8] p-5 shadow-sm space-y-4">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-[#1A1917]">
-                Trạng Thái Tầng & Khu Vực
-              </h3>
+          <aside className="space-y-[18px]">
+            <section className="rounded-[20px] bg-[#F7F5F2] px-5 pt-5 pb-[18px]">
+              <h2 className="text-[14px] font-medium text-[#171717]">Floor Status</h2>
+              <button
+                type="button"
+                onClick={() => setIsMapModalOpen(true)}
+                className="relative mt-3 w-full h-[110px] overflow-hidden rounded-[10px] text-left group"
+              >
+                <img src="/floor-plan.svg" alt="Floor 5 hotel plan" className="absolute inset-0 w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.02]" />
+                <span className="absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-black/45 to-transparent" />
+                <span className="absolute left-3 bottom-3 text-[13px] tracking-[0.16em] text-[#262626]">{floorStatus.activeFloor || 'FLOOR 5 - ACTIVE'}</span>
+              </button>
 
-              <div className="space-y-3">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-stone-600">Tầng 4 & 5 (Khu Vực Trực)</span>
-                  <span className="font-bold text-[#1A1917]">4 / 6 phòng sạch</span>
+              <div className="mt-5">
+                <div className="flex items-center justify-between text-[13px]">
+                  <span className="text-[#4D4D4D]">Rooms Cleaned</span>
+                  <span className="text-[#202020]">{roomsCleaned} / {totalRooms}</span>
                 </div>
-                <div className="w-full h-2 rounded-full bg-[#EFECE6] overflow-hidden">
-                  <div className="h-full bg-emerald-500 rounded-full" style={{ width: '66%' }} />
+                <div className="mt-2 h-1 rounded-full bg-[#E0DED9] overflow-hidden">
+                  <div className="h-full rounded-full bg-black" style={{ width: `${roomsCleanedPercent}%` }} />
                 </div>
               </div>
+            </section>
 
-              <div className="pt-2 border-t border-[#F5F2EB]">
-                <button
-                  onClick={() => setIsMapModalOpen(true)}
-                  className="w-full py-2.5 rounded-xl border border-[#E0DCD3] hover:bg-[#FAF8F5] text-xs font-bold text-stone-800 transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-sm"
-                >
-                  <Layers className="w-4 h-4 text-stone-600" />
-                  <span>Mở Sơ Đồ Buồng Phòng Trực Quan</span>
-                </button>
-              </div>
-            </div>
+            <section className="rounded-[20px] bg-[#F7F5F2] px-5 py-5">
+              <h2 className="text-[13px] font-medium text-[#171717]">Available Staff</h2>
+              <div className="mt-5 space-y-[18px]">
+                {availableStaff.slice(0, 2).map((staff) => {
+                  const initials = (staff.code || staff.name || 'ST')
+                    .split(' ')
+                    .map((part) => part[0])
+                    .join('')
+                    .slice(0, 2)
+                    .toUpperCase();
 
-            {/* Shift Team Status */}
-            <div className="bg-white rounded-2xl border border-[#E5E1D8] p-5 shadow-sm space-y-3">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-[#1A1917]">
-                Đồng Đội Trong Ca Trực
-              </h3>
-              <p className="text-[11px] text-stone-500">
-                Tất cả thành viên trong ca đều nhận thông báo đồng thời từ Robot.
-              </p>
-
-              <div className="space-y-2.5 pt-1">
-                {(data.availableStaff || []).map((st) => (
-                  <div
-                    key={st.id || st.name}
-                    className="flex items-center justify-between p-2 rounded-xl bg-[#FAF8F5] border border-[#EAE6DE]"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <img
-                        src={
-                          st.avatar ||
-                          st.avatar_url ||
-                          'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=100&auto=format&fit=crop&q=80'
-                        }
-                        alt={st.name}
-                        className="w-7 h-7 rounded-full object-cover"
-                      />
-                      <div>
-                        <p className="text-xs font-bold text-stone-800">{st.name}</p>
-                        <p className="text-[10px] text-stone-500">{st.location || 'Khu vực tầng 4-5'}</p>
+                  return (
+                    <div key={staff.id || staff.name} className="flex items-center gap-3">
+                      <div className="w-8 h-8 shrink-0 rounded-full bg-[#EAE8E4] flex items-center justify-center text-[12px] text-[#333]">
+                        {initials}
                       </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[13px] font-medium text-[#171717]">{staff.name}</p>
+                        <p className="mt-0.5 text-[13px] text-[#555]">{staff.location || 'On duty'}</p>
+                      </div>
+                      <span className="w-2 h-2 rounded-full bg-[#22C55E]" aria-label="Online" />
                     </div>
-                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                  </div>
-                ))}
+                  );
+                })}
               </div>
-            </div>
-          </div>
-        </div>
+            </section>
+          </aside>
+        </section>
       </div>
 
-      {/* Map Modal */}
+      <AssignStaffModal
+        isOpen={Boolean(requestToAssign)}
+        onClose={() => setRequestToAssign(null)}
+        task={requestToAssign ? { ...requestToAssign, id: requestKey(requestToAssign) } : null}
+        staffList={availableStaff}
+        onAssign={handleAssignRequest}
+      />
       <InteractiveMapModal
         isOpen={isMapModalOpen}
         onClose={() => setIsMapModalOpen(false)}
-        title="Bản Đồ Phân Bổ Buồng Phòng & Robot"
+        title="Floor 5 Housekeeping Status"
       />
-    </div>
+    </main>
   );
 };

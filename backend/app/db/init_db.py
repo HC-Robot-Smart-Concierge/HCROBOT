@@ -4,7 +4,6 @@ from sqlalchemy import select
 
 from app.core.database import engine, Base
 from app.models import (
-    Staff,
     RobotUnit,
     RoomServiceOrder,
     HousekeepingRequest,
@@ -12,138 +11,32 @@ from app.models import (
     MaintenanceRequest,
     ManagementDirective,
     InventoryStock,
+    RestaurantReservation,
+    RestaurantPreOrder,
 )
 
 logger = logging.getLogger(__name__)
 
 
-async def init_db(session: AsyncSession = None):
-    """
-    Creates all database tables defined in SQLAlchemy ORM and seeds default 5-star hotel data
-    if tables are currently empty.
-    """
-    # 1. Create tables
+async def init_db():
+    """Create missing database tables without inserting application data."""
     async with engine.begin() as conn:
         logger.info("🛠️ Creating all database tables if not exist (Code-First Migration)...")
         await conn.run_sync(Base.metadata.create_all)
         logger.info("✅ Database tables verified/created successfully.")
 
-    # 2. Seed initial data if needed
-    if session:
-        await seed_initial_data(session)
-
 
 async def seed_initial_data(session: AsyncSession):
-    """Populates initial operational data corresponding to Aurora Grand Hotel & HCRobot dashboards."""
+    """Populate demo operational data. Run this only from an explicit seed script."""
     try:
-        # Check if staff table has data
-        staff_check = await session.execute(select(Staff).limit(1))
-        if staff_check.scalar_one_or_none() is not None:
-            logger.info("ℹ️ Database already contains seed data. Skipping initial population.")
+        operations_check = await session.execute(select(RobotUnit).limit(1))
+        if operations_check.scalar_one_or_none() is not None:
+            logger.info("ℹ️ Database already contains operational seed data. Skipping population.")
             return
 
         logger.info("🌱 Seeding initial 5-star hotel operational data for Aurora OS...")
 
-        # 1. Seed Staff with Authentication Credentials (Default password: '123456')
-        from app.core.security import hash_password
-        default_pwd_hash = hash_password("123456")
-
-        staff_members = [
-            Staff(
-                username="roomservice",
-                password_hash=default_pwd_hash,
-                code="ER",
-                full_name="Elena Rossi",
-                role="Shift Leader / F&B Lead",
-                department="F&B",
-                default_dashboard="room_service",
-                location="Main Hotel",
-                status="available",
-                current_tasks_count=0,
-                avatar_url=None,
-            ),
-            Staff(
-                username="manager",
-                password_hash=default_pwd_hash,
-                code="MV",
-                full_name="Marcus Vane",
-                role="General Manager",
-                department="Executive",
-                default_dashboard="manager_hub",
-                location="Executive Office",
-                status="available",
-                current_tasks_count=0,
-                avatar_url="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&auto=format&fit=crop&q=80",
-            ),
-            Staff(
-                username="housekeeping",
-                password_hash=default_pwd_hash,
-                code="MS",
-                full_name="Maria Santos",
-                role="Housekeeping Lead",
-                department="Housekeeping",
-                default_dashboard="housekeeping",
-                location="Floor 3",
-                status="available",
-                current_tasks_count=0,
-                avatar_url="https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=100&auto=format&fit=crop&q=80",
-            ),
-            Staff(
-                username="maintenance",
-                password_hash=default_pwd_hash,
-                code="JD",
-                full_name="James Doe",
-                role="HVAC Tech & Maintenance",
-                department="Maintenance",
-                default_dashboard="maintenance",
-                location="Floor 5",
-                status="busy",
-                current_tasks_count=1,
-                avatar_url="https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=100&auto=format&fit=crop&q=80",
-            ),
-            Staff(
-                username="bellman",
-                password_hash=default_pwd_hash,
-                code="MT",
-                full_name="Marcus T.",
-                role="Bell Captain",
-                department="Bell Services",
-                default_dashboard="bell_services",
-                location="Lobby",
-                status="available",
-                current_tasks_count=0,
-                avatar_url="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&auto=format&fit=crop&q=80",
-            ),
-            Staff(
-                username="admin",
-                password_hash=default_pwd_hash,
-                code="ADM",
-                full_name="System Administrator",
-                role="Operations Admin",
-                department="Executive",
-                default_dashboard="manager_hub",
-                location="Command Center",
-                status="available",
-                current_tasks_count=0,
-                avatar_url=None,
-            ),
-            Staff(
-                username="sarah_j",
-                password_hash=default_pwd_hash,
-                code="SJ",
-                full_name="Sarah J.",
-                role="Attendant",
-                department="Bell Services",
-                default_dashboard="bell_services",
-                location="Lobby",
-                status="busy",
-                current_tasks_count=1,
-                avatar_url="https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&auto=format&fit=crop&q=80",
-            ),
-        ]
-        session.add_all(staff_members)
-
-        # 2. Seed Robot Units
+        # 1. Seed Robot Units
         robot_units = [
             RobotUnit(
                 unit_code="U1",
@@ -184,14 +77,12 @@ async def seed_initial_data(session: AsyncSession):
         ]
         session.add_all(robot_units)
 
-        # 3. Seed Room Service Orders
+        # 2. Seed Room Service Orders
         orders = [
             RoomServiceOrder(
                 order_number="1042",
                 room_number="ROOM 412",
-                is_vip=True,
                 status="Pending",
-                priority="high",
                 items=[
                     {"name": "Club Sandwich & Truffle Fries", "qty": 2},
                     {"name": "Artisan Cola (Ice)", "qty": 2},
@@ -203,9 +94,7 @@ async def seed_initial_data(session: AsyncSession):
             RoomServiceOrder(
                 order_number="1041",
                 room_number="ROOM 208",
-                is_vip=False,
                 status="Cooking",
-                priority="normal",
                 items=[
                     {"name": "Grand Breakfast Set for Two", "qty": 1},
                 ],
@@ -216,9 +105,7 @@ async def seed_initial_data(session: AsyncSession):
             RoomServiceOrder(
                 order_number="1040",
                 room_number="ROOM 512",
-                is_vip=False,
                 status="Pending",
-                priority="normal",
                 items=[
                     {"name": "Extra Tableware & Wine Glasses", "qty": "Set of 4"},
                 ],
@@ -229,12 +116,11 @@ async def seed_initial_data(session: AsyncSession):
         ]
         session.add_all(orders)
 
-        # 4. Seed Housekeeping Requests
+        # 3. Seed Housekeeping Requests
         hk_requests = [
             HousekeepingRequest(
                 ticket_code="HK-1042",
                 source="From HCRobot",
-                priority="HIGH PRIORITY",
                 time_label="10:15 AM",
                 title="Spill cleanup required",
                 room_number="502",
@@ -245,7 +131,6 @@ async def seed_initial_data(session: AsyncSession):
             HousekeepingRequest(
                 ticket_code="HK-1043",
                 source="From HCRobot",
-                priority="NORMAL",
                 time_label="10:22 AM",
                 title="Extra Towels",
                 room_number="314",
@@ -256,35 +141,29 @@ async def seed_initial_data(session: AsyncSession):
         ]
         session.add_all(hk_requests)
 
-        # 5. Seed Bell Requests
+        # 4. Seed Bell Requests
         bell_requests = [
             BellRequest(
                 ticket_code="BS-501",
-                title="Luggage Pickup (Urgent)",
-                priority="HIGH PRIORITY",
-                is_urgent=True,
-                location="Suite 402",
+                title="Luggage Pickup",
+                location="Room 402",
                 guest_name="Mr. Aris Thorne",
-                description="Guest is departing early for an international flight. Requires immediate assistance with 4 large suitcases and 2 garment bags. VIP status.",
+                description="Guest is departing early for an international flight. Requires immediate assistance with 4 large suitcases and 2 garment bags.",
                 status="Pending",
                 request_type="luggage",
             ),
             BellRequest(
                 ticket_code="BS-502",
                 title="Room Move Assistance",
-                priority="Pending",
-                is_urgent=False,
                 location="Room 215 to 510",
                 guest_name="Mrs. Elena Rostova",
-                description="Guest requested an upgrade. Need to move luggage from current room to the new suite. Coordinate with housekeeping for final check of Room 215.",
+                description="Guest requested an upgrade. Need to move luggage from current room to the new room. Coordinate with housekeeping for final check of Room 215.",
                 status="Pending",
                 request_type="room_move",
             ),
             BellRequest(
                 ticket_code="BS-503",
                 title="Lost & Found Retrieval",
-                priority="In Progress",
-                is_urgent=False,
                 location="Lobby Lounge",
                 reporter="Staff (J. Doe)",
                 description="A leather briefcase was left near the grand piano. Retrieve, log into system, and secure in the main Lost & Found locker.",
@@ -294,13 +173,12 @@ async def seed_initial_data(session: AsyncSession):
         ]
         session.add_all(bell_requests)
 
-        # 6. Seed Maintenance Requests
+        # 5. Seed Maintenance Requests
         maintenance_requests = [
             MaintenanceRequest(
                 ticket_code="MN-401",
                 title="Plumbing Leak",
                 category="plumbing",
-                priority="HIGH PRIORITY",
                 reported_time_label="10 mins ago",
                 location="Room 412",
                 description="Guest reported water pooling near bathroom sink.",
@@ -311,7 +189,6 @@ async def seed_initial_data(session: AsyncSession):
                 ticket_code="MN-402",
                 title="Air Conditioner Issue",
                 category="hvac",
-                priority="In Progress",
                 reported_time_label="45 mins ago",
                 location="Room 305",
                 description="Unit making loud rattling noise when fan is on high.",
@@ -323,7 +200,6 @@ async def seed_initial_data(session: AsyncSession):
                 ticket_code="MN-403",
                 title="Light Bulb Replacement",
                 category="electrical",
-                priority="Completed",
                 reported_time_label="2 hrs ago",
                 location="Corridor 2B",
                 description="Fading overhead light near elevator bay.",
@@ -333,7 +209,7 @@ async def seed_initial_data(session: AsyncSession):
         ]
         session.add_all(maintenance_requests)
 
-        # 7. Seed Management Directives
+        # 6. Seed Management Directives
         directives = [
             ManagementDirective(
                 code="M-101",
@@ -371,7 +247,7 @@ async def seed_initial_data(session: AsyncSession):
         ]
         session.add_all(directives)
 
-        # 8. Seed Inventory Stocks
+        # 7. Seed Inventory Stocks
         stocks = [
             InventoryStock(name="Artisan Cola", category="beverage", count_label="6 left", quantity=6, level="danger"),
             InventoryStock(name="Sparkling Water (L)", category="beverage", count_label="2 left", quantity=2, level="danger"),
@@ -379,8 +255,50 @@ async def seed_initial_data(session: AsyncSession):
         ]
         session.add_all(stocks)
 
+        # 8. Seed Restaurant Reservations & Pre-Orders
+        res_sample = [
+            RestaurantReservation(
+                reservation_code="RES-1024",
+                guest_name="Mr. David Miller",
+                room_number="Room 502",
+                party_size=4,
+                reservation_time="19:30 Today",
+                table_number="Table 05 (Window View)",
+                special_note="Kỷ niệm ngày cưới. Cần chuẩn bị nến và hoa hồng trên bàn.",
+                status="Confirmed",
+            ),
+            RestaurantReservation(
+                reservation_code="RES-1025",
+                guest_name="Mrs. Sophia Chen",
+                room_number="Room 312",
+                party_size=2,
+                reservation_time="20:00 Today",
+                table_number="Table 02",
+                special_note="Khách dị ứng với hải sản.",
+                status="Confirmed",
+            ),
+        ]
+        session.add_all(res_sample)
+
+        pre_sample = [
+            RestaurantPreOrder(
+                order_code="ORD-5012",
+                reservation_code="RES-1024",
+                guest_name="Mr. David Miller",
+                room_number="Room 502",
+                items=[
+                    {"name": "Ribeye Steak Prime 350g", "quantity": 2, "price": 550000},
+                    {"name": "Rượu Vang Đỏ Chateau Margaux", "quantity": 1, "price": 1200000},
+                ],
+                total_price=2300000.0,
+                note="Phục vụ rượu vang lúc 19:45.",
+                status="Pending",
+            )
+        ]
+        session.add_all(pre_sample)
+
         await session.commit()
-        logger.info("🎉 Initial 5-star hotel operational data seeded successfully!")
+        logger.info("🎉 Initial hotel operational & restaurant data seeded successfully!")
 
     except Exception as e:
         await session.rollback()

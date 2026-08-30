@@ -17,19 +17,40 @@ import {
 } from 'lucide-react';
 import { MetricCard } from '../../components/dashboard/MetricCard';
 import { fetchUnifiedRequests } from '../../services/operationsApi';
+import { Pagination } from '../../components/common/Pagination';
 
 export const HistoryPage = ({ currentUser, onNotify = () => {} }) => {
   const [timeRange, setTimeRange] = useState('Today'); // 'Today' | '7Days' | 'Month'
   const [deptFilter, setDeptFilter] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [dbLogs, setDbLogs] = useState([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 20;
 
-  const staffName = currentUser?.full_name || currentUser?.name || 'Maria Santos';
-  const userDept = currentUser?.department || 'Housekeeping';
+  const staffName = currentUser?.full_name || currentUser?.name || 'Hotel Staff';
+  const userDept = currentUser?.department || 'Staff';
   const isExecutive =
     userDept === 'Executive' ||
-    currentUser?.username === 'manager' ||
+    userDept === 'Administration' ||
     currentUser?.username === 'admin';
+
+  const isDeptMatch = (logDept, uDept) => {
+    if (!logDept || !uDept) return true;
+    const lD = logDept.toLowerCase().trim();
+    const uD = uDept.toLowerCase().trim();
+    if (lD === uD) return true;
+    if ((uD.includes('f&b') || uD.includes('room')) && (lD.includes('f&b') || lD.includes('room') || lD.includes('ẩm thực'))) return true;
+    if ((uD.includes('housekeeping') || uD.includes('buồng')) && (lD.includes('housekeeping') || lD.includes('buồng'))) return true;
+    if ((uD.includes('bell') || uD.includes('hành lý')) && (lD.includes('bell') || lD.includes('hành lý'))) return true;
+    if ((uD.includes('maint') || uD.includes('bảo trì') || uD.includes('kỹ thuật')) && (lD.includes('maint') || lD.includes('bảo trì') || lD.includes('kỹ thuật'))) return true;
+    if ((uD.includes('reception') || uD.includes('lễ tân')) && (lD.includes('reception') || lD.includes('lễ tân'))) return true;
+    return false;
+  };
+
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [timeRange, deptFilter, searchQuery]);
 
   const defaultHistoryLogs = [
     // Housekeeping Logs
@@ -114,7 +135,7 @@ export const HistoryPage = ({ currentUser, onNotify = () => {} }) => {
         const formatted = completedReqs.map((r, idx) => ({
           id: `LOG-${(r.id || '').replace('REQ-', '')}`,
           time: r.time || 'Vừa xong',
-          department: r.department || 'Housekeeping',
+          department: r.department || 'F&B',
           title: `Hoàn tất: ${r.title}`,
           location: r.location || 'Phòng lưu trú',
           operator: r.assignedTo || r.assigned_staff_name || staffName,
@@ -123,7 +144,7 @@ export const HistoryPage = ({ currentUser, onNotify = () => {} }) => {
           icon:
             (r.department || '').toLowerCase().includes('housekeeping')
               ? Sparkles
-              : (r.department || '').toLowerCase().includes('f&b')
+              : (r.department || '').toLowerCase().includes('f&b') || (r.department || '').toLowerCase().includes('room')
               ? UtensilsCrossed
               : (r.department || '').toLowerCase().includes('bell')
               ? Luggage
@@ -131,7 +152,7 @@ export const HistoryPage = ({ currentUser, onNotify = () => {} }) => {
           color:
             (r.department || '').toLowerCase().includes('housekeeping')
               ? 'bg-emerald-100 text-emerald-800'
-              : (r.department || '').toLowerCase().includes('f&b')
+              : (r.department || '').toLowerCase().includes('f&b') || (r.department || '').toLowerCase().includes('room')
               ? 'bg-amber-100 text-amber-800'
               : (r.department || '').toLowerCase().includes('bell')
               ? 'bg-blue-100 text-blue-800'
@@ -144,7 +165,7 @@ export const HistoryPage = ({ currentUser, onNotify = () => {} }) => {
       }
     };
     loadDbLogs();
-  }, [staffName]);
+  }, [staffName, userDept]);
 
   // Combine DB completed logs with defaults
   const combinedLogs = [
@@ -159,9 +180,7 @@ export const HistoryPage = ({ currentUser, onNotify = () => {} }) => {
         return false;
       }
     } else {
-      const userDeptNorm = userDept.toLowerCase().trim();
-      const logDeptNorm = (log.department || '').toLowerCase().trim();
-      if (!logDeptNorm.includes(userDeptNorm) && !userDeptNorm.includes(logDeptNorm)) {
+      if (!isDeptMatch(log.department, userDept)) {
         return false;
       }
     }
@@ -178,6 +197,12 @@ export const HistoryPage = ({ currentUser, onNotify = () => {} }) => {
 
     return true;
   });
+
+  // Paginated Slicing (20 items per page)
+  const paginatedLogs = scopedLogs.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize
+  );
 
   return (
     <div className="flex-1 overflow-y-auto custom-scrollbar p-8 bg-[#FAF8F5] font-sans">
@@ -304,12 +329,12 @@ export const HistoryPage = ({ currentUser, onNotify = () => {} }) => {
           <h3 className="text-sm font-bold text-[#1A1917]">Nhật Ký Dòng Thời Gian</h3>
 
           <div className="space-y-3">
-            {scopedLogs.length === 0 ? (
+            {paginatedLogs.length === 0 ? (
               <div className="p-12 text-center bg-white rounded-2xl border border-[#E5E1D8] text-xs text-stone-500">
                 Không tìm thấy nhật ký hoạt động nào cho bộ phận {userDept}.
               </div>
             ) : (
-              scopedLogs.map((log) => {
+              paginatedLogs.map((log) => {
                 const LogIcon = log.icon;
                 return (
                   <div
@@ -362,7 +387,19 @@ export const HistoryPage = ({ currentUser, onNotify = () => {} }) => {
             )}
           </div>
         </div>
+
+        {/* Pagination Footer */}
+        {scopedLogs.length > 0 && (
+          <Pagination
+            currentPage={currentPage}
+            totalItems={scopedLogs.length}
+            pageSize={pageSize}
+            onPageChange={setCurrentPage}
+            className="rounded-2xl border border-[#E5E1D8] shadow-sm bg-white"
+          />
+        )}
       </div>
     </div>
   );
 };
+

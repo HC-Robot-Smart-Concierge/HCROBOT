@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { AuroraSidebar } from './components/dashboard/AuroraSidebar';
 import { AuroraHeader } from './components/dashboard/AuroraHeader';
 import { ToastNotification } from './components/dashboard/ToastNotification';
@@ -6,13 +6,14 @@ import { ToastNotification } from './components/dashboard/ToastNotification';
 // Pages
 import { LandingHomePage } from './pages/home/LandingHomePage';
 import { LoginPage } from './pages/auth/LoginPage';
+import { ReceptionDashboard } from './pages/dashboard/ReceptionDashboard';
 import { RoomServiceDashboard } from './pages/dashboard/RoomServiceDashboard';
 import { HousekeepingDashboard } from './pages/dashboard/HousekeepingDashboard';
 import { BellServicesDashboard } from './pages/dashboard/BellServicesDashboard';
 import { MaintenanceDashboard } from './pages/dashboard/MaintenanceDashboard';
-import { HousekeepingManagerDashboard } from './pages/dashboard/HousekeepingManagerDashboard';
 import { RobotScreenPage } from './pages/robot/RobotScreenPage';
 import { AdminLidarPage } from './pages/admin/AdminLidarPage';
+import { AdminPortal } from './pages/admin/AdminPortal';
 
 // 5 Sidebar Staff Pages
 import { RequestsPage } from './pages/staff/RequestsPage';
@@ -20,9 +21,16 @@ import { MyTasksPage } from './pages/staff/MyTasksPage';
 import { HistoryPage } from './pages/staff/HistoryPage';
 import { NotificationsPage } from './pages/staff/NotificationsPage';
 import { ProfilePage } from './pages/staff/ProfilePage';
+import { useLanguage } from './context/LanguageContext';
 
 // Auth Api
-import { getStoredUser, logoutUser } from './services/authApi';
+import { getStoredUser, logoutUser, fetchCurrentUser } from './services/authApi';
+import {
+  fetchNotifications,
+  toggleNotificationRead,
+  markAllNotificationsRead,
+  deleteNotification,
+} from './services/operationsApi';
 
 import {
   UtensilsCrossed,
@@ -39,33 +47,89 @@ import {
   Layers,
 } from 'lucide-react';
 
+const STAFF_DASHBOARDS = [
+  'reception',
+  'room_service',
+  'housekeeping',
+  'bell_services',
+  'maintenance',
+];
+
+const isAdminUser = (user) =>
+  user?.username === 'admin' || user?.role === 'Operations Admin';
+
+const normalizeLegacyView = (view, user) => {
+  if (isAdminUser(user)) {
+    if (!view || view === 'manager_hub' || view === 'landing' || STAFF_DASHBOARDS.includes(view)) {
+      return 'admin_portal';
+    }
+    return view;
+  }
+  if (!view || view === 'manager_hub' || view === 'admin_portal') {
+    return user ? 'room_service' : 'landing';
+  }
+  const clean = String(view).toLowerCase().trim().replace(/[\s-]+/g, '_');
+  if (['f&b', 'fb', 'food_beverage', 'roomservice', 'f_and_b', 'room_service'].includes(clean)) {
+    return 'room_service';
+  }
+  if (['bellman', 'bell', 'bell_service', 'bell_services'].includes(clean)) {
+    return 'bell_services';
+  }
+  if (['housekeeping', 'clean'].includes(clean)) {
+    return 'housekeeping';
+  }
+  if (['maintenance', 'tech', 'technician'].includes(clean)) {
+    return 'maintenance';
+  }
+  if (['reception', 'front_desk', 'frontdesk'].includes(clean)) {
+    return 'reception';
+  }
+  return clean;
+};
+
 export function App() {
   // activeView:
-  // 'landing' | 'login' | 'room_service' | 'housekeeping' | 'bell_services' | 'maintenance' | 'manager_hub' | 'robot_display' | 'admin_map'
+  // 'landing' | 'login' | 'reception' | 'room_service' | 'housekeeping' | 'bell_services' | 'maintenance' | 'robot_display' | 'admin_map' | 'admin_portal'
   const [currentUser, setCurrentUser] = useState(() => getStoredUser());
+
+  // Live sync user profile with database on mount / reload
+  useEffect(() => {
+    async function syncProfile() {
+      const freshUser = await fetchCurrentUser();
+      if (freshUser) {
+        setCurrentUser(freshUser);
+      }
+    }
+    syncProfile();
+  }, []);
 
   const [activeView, setActiveView] = useState(() => {
     const user = getStoredUser();
     if (user) {
       const savedView = localStorage.getItem('aurora_active_view');
-      const targetRoleDashboard = user.default_dashboard || user.defaultDashboard || 'room_service';
+      const targetRoleDashboard = normalizeLegacyView(
+        user.default_dashboard || user.defaultDashboard || 'room_service',
+        user
+      );
       const allowed = user.allowedDashboards || [targetRoleDashboard];
+      const normalizedSavedView = normalizeLegacyView(savedView, user);
       if (
-        savedView &&
-        (allowed.includes(savedView) || ['landing', 'robot_display', 'admin_map'].includes(savedView))
+        normalizedSavedView &&
+        (allowed.includes(normalizedSavedView) ||
+          ['landing', 'robot_display', 'admin_map'].includes(normalizedSavedView))
       ) {
-        return savedView;
+        return normalizedSavedView;
       }
       return targetRoleDashboard;
     }
-    return localStorage.getItem('aurora_active_view') || 'landing';
+    return normalizeLegacyView(localStorage.getItem('aurora_active_view') || 'landing');
   });
 
   const [activeMenu, setActiveMenu] = useState(() => {
     return localStorage.getItem('aurora_active_menu') || 'Dashboard';
   });
 
-  const [language, setLanguage] = useState('EN');
+  const { language, toggleLanguage, t } = useLanguage();
   const [toastMessage, setToastMessage] = useState(null);
 
   // Sync activeView to localStorage
@@ -84,18 +148,41 @@ export function App() {
 
   // Role Guard: Ensure user cannot access unassigned role dashboards
   useEffect(() => {
+    if (currentUser?.username === 'manager') {
+      logoutUser();
+      setCurrentUser(null);
+      setActiveView('landing');
+      setActiveMenu('Dashboard');
+      localStorage.setItem('aurora_active_view', 'landing');
+      localStorage.setItem('aurora_active_menu', 'Dashboard');
+      showNotification('Tài khoản Housekeeping Manager đã được gỡ khỏi hệ thống.');
+      return;
+    }
+
     if (!currentUser) {
       // If logged out, only allow landing, login, robot_display, admin_map
-      if (!['landing', 'login', 'robot_display', 'admin_map'].includes(activeView)) {
+      if (!['landing', 'login', 'robot_display', 'admin_map', 'admin_portal'].includes(activeView)) {
         setActiveView('landing');
       }
       return;
     }
 
-    const isAdmin = currentUser.username === 'admin' || currentUser.role === 'Operations Admin';
-    if (isAdmin) return; // Admin has universal access
+    if (activeView === 'manager_hub') {
+      setActiveView(isAdminUser(currentUser) ? 'admin_portal' : 'landing');
+      return;
+    }
 
-    const targetRoleDashboard = currentUser.default_dashboard || currentUser.defaultDashboard || 'room_service';
+    if (isAdminUser(currentUser)) {
+      if (activeView === 'login') {
+        setActiveView('admin_portal');
+      }
+      return; // Admin has universal access
+    }
+
+    const targetRoleDashboard = normalizeLegacyView(
+      currentUser.default_dashboard || currentUser.defaultDashboard || 'room_service',
+      currentUser
+    );
     const allowed = currentUser.allowedDashboards || [targetRoleDashboard];
 
     // If currently on login page while already authenticated, redirect to staff dashboard
@@ -105,13 +192,7 @@ export function App() {
     }
 
     // If activeView is a dashboard view and is not allowed for this staff
-    const isDashboard = [
-      'room_service',
-      'housekeeping',
-      'bell_services',
-      'maintenance',
-      'manager_hub',
-    ].includes(activeView);
+    const isDashboard = STAFF_DASHBOARDS.includes(activeView);
 
     if (isDashboard && !allowed.includes(activeView)) {
       setActiveView(targetRoleDashboard);
@@ -126,12 +207,82 @@ export function App() {
     }, 3500);
   };
 
-  // Login Success Callback -> Auto-Redirect to role dashboard (1 to 5)
+  // ---------------------------------------------------------
+  // Department Notifications State & Live Polling (5s)
+  // ---------------------------------------------------------
+  const [notifications, setNotifications] = useState([]);
+  const seenNotificationIdsRef = useRef(new Set());
+  const isInitialNotifLoadRef = useRef(true);
+
+  const loadNotifications = useCallback(async () => {
+    if (!currentUser) return;
+    const dept = isAdminUser(currentUser) ? 'All' : (currentUser.department || 'Staff');
+    const data = await fetchNotifications(dept);
+    if (Array.isArray(data)) {
+      // Check for incoming new unread notifications to alert the staff
+      if (!isInitialNotifLoadRef.current) {
+        data.forEach((n) => {
+          if (!seenNotificationIdsRef.current.has(n.id) && (n.is_read === false || n.isRead === false)) {
+            showNotification(`🔔 [${n.department}] ${n.title}`);
+          }
+        });
+      }
+
+      data.forEach((n) => seenNotificationIdsRef.current.add(n.id));
+      isInitialNotifLoadRef.current = false;
+      setNotifications(data);
+    }
+  }, [currentUser]);
+
+  useEffect(() => {
+    loadNotifications();
+    const interval = setInterval(loadNotifications, 5000);
+    return () => clearInterval(interval);
+  }, [loadNotifications]);
+
+  const handleToggleNotificationRead = async (id) => {
+    setNotifications((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, is_read: !n.is_read, isRead: !n.isRead } : n))
+    );
+    await toggleNotificationRead(id);
+  };
+
+  const handleMarkAllNotificationsRead = async () => {
+    setNotifications((prev) =>
+      prev.map((n) => ({ ...n, is_read: true, isRead: true }))
+    );
+    const dept = isAdminUser(currentUser) ? 'All' : (currentUser?.department || 'Staff');
+    await markAllNotificationsRead(dept);
+  };
+
+  const handleDeleteNotification = async (id) => {
+    setNotifications((prev) => prev.filter((n) => n.id !== id));
+    await deleteNotification(id);
+  };
+
+  const unreadNotifCount = notifications.filter(
+    (n) => n.is_read === false || n.isRead === false
+  ).length;
+
+  // Login Success Callback -> Auto-Redirect to the assigned staff dashboard
   const handleLoginSuccess = (user, targetDashboard) => {
+    if (user?.username === 'manager') {
+      logoutUser();
+      setCurrentUser(null);
+      setActiveView('landing');
+      showNotification('Tài khoản Housekeeping Manager không còn được hỗ trợ.');
+      return;
+    }
+
     setCurrentUser(user);
-    const destination = targetDashboard || user.default_dashboard || user.defaultDashboard || 'room_service';
-    setActiveView(destination);
-    localStorage.setItem('aurora_active_view', destination);
+    const resolvedDashboard = isAdminUser(user)
+      ? 'admin_portal'
+      : normalizeLegacyView(
+          targetDashboard || user.default_dashboard || user.defaultDashboard || 'room_service',
+          user
+        );
+    setActiveView(resolvedDashboard);
+    localStorage.setItem('aurora_active_view', resolvedDashboard);
     setActiveMenu('Dashboard');
     localStorage.setItem('aurora_active_menu', 'Dashboard');
     showNotification(`Đăng nhập thành công! Vai trò: ${user.role || user.department}`);
@@ -148,25 +299,25 @@ export function App() {
     showNotification('Đã đăng xuất khỏi phiên làm việc.');
   };
 
-  const isManagerMode = activeView === 'manager_hub';
-  const isDashboardView = [
+  const isDashboardView = STAFF_DASHBOARDS.includes(activeView);
+  const usesReferenceLayout = [
+    'reception',
     'room_service',
     'housekeeping',
     'bell_services',
     'maintenance',
-    'manager_hub',
   ].includes(activeView);
 
-  const isAdmin = currentUser?.username === 'admin' || currentUser?.role === 'Operations Admin';
+  const isAdmin = isAdminUser(currentUser);
 
   const viewOptions = [
+    { id: 'admin_portal', label: '👑 Admin Command Portal' },
     { id: 'landing', label: '🏠 Trang Chủ (Landing)' },
-    { id: 'login', label: '🔐 Đăng Nhập (Login)' },
+    { id: 'reception', label: '0. Reception (Staff)' },
     { id: 'room_service', label: '1. Room Service (Staff)' },
     { id: 'housekeeping', label: '2. Housekeeping (Staff)' },
     { id: 'bell_services', label: '3. Bell Services (Staff)' },
     { id: 'maintenance', label: '4. Maintenance (Staff)' },
-    { id: 'manager_hub', label: '5. Management Hub (GM)' },
     { id: 'robot_display', label: '🤖 Màn Hình Robot' },
     { id: 'admin_map', label: '🗺️ LiDAR SLAM Map' },
   ];
@@ -174,7 +325,7 @@ export function App() {
   return (
     <div className="w-full h-screen overflow-hidden bg-[#FAF8F5] text-[#1A1917] flex flex-col font-sans select-none relative">
       {/* Top Floating Header Pill (Only on Dashboard, Robot Display & LiDAR Map) */}
-      {activeView !== 'landing' && activeView !== 'login' && (
+      {activeView !== 'landing' && activeView !== 'login' && activeView !== 'admin_portal' && !usesReferenceLayout && (
         <div className="absolute top-2.5 right-6 z-50 flex items-center gap-2">
           {/* If logged in as staff: Strict Role Badge & Logout */}
           {currentUser ? (
@@ -268,7 +419,7 @@ export function App() {
       {/* 3. Màn hình Robot AI & LiDAR Map */}
       {activeView === 'robot_display' && (
         <div className="w-full h-full relative">
-          <RobotScreenPage />
+          <RobotScreenPage onLogout={handleLogout} />
         </div>
       )}
 
@@ -278,62 +429,70 @@ export function App() {
         </div>
       )}
 
-      {/* 4. Bộ 5 Dashboard Nghiệp Vụ Khách Sạn (Aurora OS) */}
+      {/* Admin Command Portal (RoboConcierge V2.4.1) */}
+      {activeView === 'admin_portal' && (
+        <AdminPortal
+          currentUser={currentUser}
+          onLogout={handleLogout}
+          onNotify={showNotification}
+        />
+      )}
+
+      {/* 4. Bộ Dashboard Nghiệp Vụ Khách Sạn (Aurora OS) */}
       {isDashboardView && (
         <div className="w-full h-full flex overflow-hidden">
           {/* Left Sidebar */}
           <AuroraSidebar
-            variant={isManagerMode ? 'manager' : 'staff'}
+            referenceLayout={usesReferenceLayout}
             activeMenu={activeMenu}
             onSelectMenu={(menu) => {
               setActiveMenu(menu);
               showNotification(`Đã chuyển mục: ${menu}`);
             }}
-            currentUser={
-              currentUser ||
-              (isManagerMode
-                ? {
-                    name: 'Marcus Vane',
-                    role: 'General Manager',
-                    avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&auto=format&fit=crop&q=80',
-                  }
-                : { name: 'Elena Rossi', role: 'Online', avatar: null })
-            }
+            currentUser={currentUser || { name: 'Elena Rossi', role: 'Online', avatar: null }}
             onLogout={handleLogout}
             onBackToHome={() => setActiveView('landing')}
+            unreadNotifCount={unreadNotifCount}
           />
 
           {/* Main Content Area */}
           <div className="flex-1 flex flex-col h-full overflow-hidden bg-[#FAF8F5]">
-            {/* Top Header */}
+            {/* Top Header with Interactive Notification Dropdown */}
             <AuroraHeader
-              hotelName="Aurora Grand Hotel"
-              systemName={isManagerMode ? 'HCROBOT ADMIN' : 'HCROBOT'}
+              referenceLayout={usesReferenceLayout}
+              hotelName={t('hotelName')}
+              systemName="HCROBOT"
               subtitle={
-                isManagerMode
-                  ? 'Executive Management Hub • General Manager'
-                  : `${currentUser?.department || 'Staff'} Operations Portal`
+                usesReferenceLayout
+                  ? t('frontDeskSubtitle')
+                  : `${currentUser?.department || 'Staff'} ${t('portalSubtitle')}`
               }
               language={language}
               onToggleLanguage={() => {
-                const nextLang = language === 'EN' ? 'VI' : 'EN';
-                setLanguage(nextLang);
-                showNotification(`Đã chuyển ngôn ngữ sang ${nextLang}`);
+                toggleLanguage();
+                showNotification(
+                  language === 'EN'
+                    ? 'Đã chuyển ngôn ngữ sang Tiếng Việt'
+                    : 'Language switched to English'
+                );
               }}
-              managerUser={
-                isManagerMode
-                  ? currentUser || {
-                      name: 'Marcus Vane',
-                      role: 'General Manager',
-                      avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&auto=format&fit=crop&q=80',
-                    }
-                  : null
-              }
+              notifications={notifications}
+              unreadCount={unreadNotifCount}
+              onOpenNotificationsPage={() => setActiveMenu('Notifications')}
+              onToggleRead={handleToggleNotificationRead}
+              onMarkAllRead={handleMarkAllNotificationsRead}
+              departmentName={currentUser?.department || 'Staff'}
             />
 
             {/* Dynamic View rendering based on activeMenu */}
             {activeMenu === 'Dashboard' && (
               <>
+                {activeView === 'reception' && (
+                  <ReceptionDashboard
+                    currentUser={currentUser}
+                    onNotify={showNotification}
+                  />
+                )}
                 {activeView === 'room_service' && (
                   <RoomServiceDashboard
                     currentUser={currentUser}
@@ -358,17 +517,11 @@ export function App() {
                     onNotify={showNotification}
                   />
                 )}
-                {activeView === 'manager_hub' && (
-                  <HousekeepingManagerDashboard
-                    currentUser={currentUser}
-                    onNotify={showNotification}
-                  />
-                )}
               </>
             )}
 
             {/* Requests Page (Role-Filtered) */}
-            {(activeMenu === 'Requests' || activeMenu === 'Staff Management') && (
+            {activeMenu === 'Requests' && (
               <RequestsPage currentUser={currentUser} onNotify={showNotification} />
             )}
 
@@ -378,15 +531,21 @@ export function App() {
             )}
 
             {/* History Page */}
-            {(activeMenu === 'History' ||
-              activeMenu === 'Department Overview' ||
-              activeMenu === 'Analytics') && (
+            {activeMenu === 'History' && (
               <HistoryPage currentUser={currentUser} onNotify={showNotification} />
             )}
 
-            {/* Notifications Page */}
+            {/* Notifications Page (Department-Filtered & Live Polled) */}
             {activeMenu === 'Notifications' && (
-              <NotificationsPage onNotify={showNotification} />
+              <NotificationsPage
+                currentUser={currentUser}
+                notifications={notifications}
+                onNotify={showNotification}
+                onToggleRead={handleToggleNotificationRead}
+                onMarkAllRead={handleMarkAllNotificationsRead}
+                onDeleteNotification={handleDeleteNotification}
+                onRefresh={loadNotifications}
+              />
             )}
 
             {/* Profile Page */}
@@ -398,17 +557,25 @@ export function App() {
                 onNotify={showNotification}
               />
             )}
+            {/* Default Dashboard Fallback if activeMenu is unrecognized */}
+            {!['Dashboard', 'Requests', 'My Tasks', 'History', 'Notifications', 'Profile'].includes(activeMenu) && (
+              <RequestsPage currentUser={currentUser} onNotify={showNotification} />
+            )}
           </div>
         </div>
       )}
 
       {/* 5. Fallback Safety Render in case activeView is desynchronized */}
-      {!['landing', 'login', 'robot_display', 'admin_map'].includes(activeView) && !isDashboardView && (
+      {!['landing', 'login', 'robot_display', 'admin_map', 'admin_portal'].includes(activeView) && !isDashboardView && (
         <LandingHomePage
           currentUser={currentUser}
           onNavigateToLogin={() => {
             if (currentUser) {
-              setActiveView(currentUser.default_dashboard || 'housekeeping');
+              const target = normalizeLegacyView(
+                currentUser.default_dashboard || currentUser.defaultDashboard || 'room_service',
+                currentUser
+              );
+              setActiveView(target);
               setActiveMenu('Dashboard');
             } else {
               setActiveView('login');

@@ -18,11 +18,12 @@ import {
   fetchUnifiedRequests,
   updateGenericRequestStatus,
 } from '../../services/operationsApi';
+import { useLanguage } from '../../context/LanguageContext';
 
 export const MyTasksPage = ({ currentUser, onNotify = () => {} }) => {
-  const staffName = currentUser?.full_name || currentUser?.name || 'Elena Rossi';
-  const staffRole = currentUser?.role || 'Shift Leader / F&B Lead';
-  const staffDept = currentUser?.department || 'F&B';
+  const staffName = currentUser?.full_name || currentUser?.name || 'Staff Member';
+  const staffRole = currentUser?.role || 'Hotel Operations Staff';
+  const staffDept = currentUser?.department || 'Staff';
   const staffId = currentUser?.id || currentUser?.username || 'user';
 
   const STORAGE_KEY = `aurora_staff_tasks_${staffId}_${staffDept}`;
@@ -33,8 +34,8 @@ export const MyTasksPage = ({ currentUser, onNotify = () => {} }) => {
 
   // Generate standardized checklist based on request type
   const generateChecklistForRequest = (req) => {
-    const dept = req.department || staffDept;
-    if (dept === 'Housekeeping') {
+    const dept = (req.department || staffDept || '').toLowerCase();
+    if (dept.includes('housekeeping') || dept.includes('buồng phòng')) {
       return [
         { id: `c_${req.id}_1`, text: `Tiếp nhận xử lý tại ${req.location}: ${req.title}`, done: true },
         { id: `c_${req.id}_2`, text: 'Chuẩn bị dụng cụ và hóa chất sinh học chuyên dụng', done: true },
@@ -42,7 +43,7 @@ export const MyTasksPage = ({ currentUser, onNotify = () => {} }) => {
         { id: `c_${req.id}_4`, text: 'Khử khuẩn khu vực và xác nhận hoàn tất trên HCRobot', done: false },
       ];
     }
-    if (dept === 'Bell Services') {
+    if (dept.includes('bell') || dept.includes('luggage') || dept.includes('hành lý')) {
       return [
         { id: `c_${req.id}_1`, text: `Tiếp nhận yêu cầu tại ${req.location}: ${req.title}`, done: true },
         { id: `c_${req.id}_2`, text: 'Điều xe đẩy tự hành Bot Unit Alpha hỗ trợ di chuyển', done: true },
@@ -50,7 +51,7 @@ export const MyTasksPage = ({ currentUser, onNotify = () => {} }) => {
         { id: `c_${req.id}_4`, text: 'Bàn giao tận tay khách và chốt phiếu dịch vụ', done: false },
       ];
     }
-    if (dept === 'Maintenance') {
+    if (dept.includes('maint') || dept.includes('kỹ thuật') || dept.includes('bảo trì')) {
       return [
         { id: `c_${req.id}_1`, text: `Tiếp nhận sự cố kỹ thuật tại ${req.location}: ${req.title}`, done: true },
         { id: `c_${req.id}_2`, text: 'Kiểm tra hiện trường và ngắt nguồn / khóa van an toàn', done: true },
@@ -58,7 +59,15 @@ export const MyTasksPage = ({ currentUser, onNotify = () => {} }) => {
         { id: `c_${req.id}_4`, text: 'Chạy thử kiểm tra áp lực / nguồn điện và thu dọn hiện trường', done: false },
       ];
     }
-    // Default F&B
+    if (dept.includes('reception') || dept.includes('lễ tân') || dept.includes('front desk')) {
+      return [
+        { id: `c_${req.id}_1`, text: `Tiếp nhận yêu cầu hỗ trợ tại ${req.location}: ${req.title}`, done: true },
+        { id: `c_${req.id}_2`, text: 'Xác nhận thông tin khách hàng và bộ phận chuyên trách', done: true },
+        { id: `c_${req.id}_3`, text: 'Điều phối nhân sự hoặc robot hỗ trợ khách phòng', done: false },
+        { id: `c_${req.id}_4`, text: 'Xác nhận mức độ hài lòng của khách và đóng phiếu', done: false },
+      ];
+    }
+    // Default F&B / Room Service
     return [
       { id: `c_${req.id}_1`, text: `Tiếp nhận đơn gọi món tại ${req.location}: ${req.title}`, done: true },
       { id: `c_${req.id}_2`, text: 'Chế biến món ăn và chuẩn bị đồ uống kèm đá lạnh', done: true },
@@ -67,23 +76,60 @@ export const MyTasksPage = ({ currentUser, onNotify = () => {} }) => {
     ];
   };
 
-  // Default core shift duties
-  const getDefaultShiftDuties = () => {
-    return [
-      {
-        id: `SHIFT-DUTY-${staffDept.toUpperCase().slice(0, 3)}-01`,
-        title: `Kiểm tra dụng cụ & trang thiết bị đầu ca trực (${staffDept})`,
-        location: 'Khu vực quầy nghiệp vụ',
-        priority: 'NORMAL',
-        status: 'In Progress',
-        dueTime: 'Trước 10:00 AM',
-        isShiftDuty: true,
-        checklist: [
-          { id: 'sd1', text: 'Bàn giao sổ trực ca và kiểm tra danh sách phòng VIP', done: false },
-          { id: 'sd2', text: 'Kiểm tra trạm sạc và dung lượng pin của HCRobot', done: false },
-        ],
-      },
-    ];
+  const isTaskAssignedToMe = (r) => {
+    if (!r) return false;
+
+    // 1. Department match check
+    const reqDept = String(r.department || '').toLowerCase().trim();
+    const myDept = String(staffDept || '').toLowerCase().trim();
+    const isDeptMatch =
+      reqDept === myDept ||
+      (myDept.includes('housekeeping') && (reqDept.includes('housekeeping') || reqDept.includes('buồng phòng'))) ||
+      ((myDept.includes('f&b') || myDept.includes('room service') || myDept.includes('room_service')) && (reqDept.includes('f&b') || reqDept.includes('room service') || reqDept.includes('ẩm thực') || reqDept.includes('room_service'))) ||
+      ((myDept.includes('bell') || myDept.includes('luggage')) && (reqDept.includes('bell') || reqDept.includes('luggage') || reqDept.includes('hành lý'))) ||
+      ((myDept.includes('maint') || myDept.includes('kỹ thuật') || myDept.includes('bảo trì')) && (reqDept.includes('maint') || reqDept.includes('kỹ thuật') || reqDept.includes('bảo trì'))) ||
+      ((myDept.includes('reception') || myDept.includes('lễ tân') || myDept.includes('front desk')) && (reqDept.includes('reception') || reqDept.includes('lễ tân') || reqDept.includes('front desk')));
+
+    if (!isDeptMatch) return false;
+
+    // 2. Status match check: ONLY In Progress / Cooking / Delivering / Completed tasks belong to My Tasks
+    const s = String(r.status || '').toLowerCase().trim();
+    const isTaskActiveOrDone =
+      s === 'in progress' ||
+      s === 'in_progress' ||
+      s === 'completed' ||
+      s === 'ready' ||
+      s === 'cooking' ||
+      s === 'delivering';
+    if (!isTaskActiveOrDone) return false;
+
+    // 3. Assignee match check
+    const staffNameNorm = String(staffName).toLowerCase().trim();
+    const assignedNorm = String(
+      r.assignedTo ||
+      r.assigned_to ||
+      r.assigned_staff_name ||
+      r.assignedStaff ||
+      r.staffName ||
+      r.staff_name ||
+      ''
+    ).toLowerCase().trim();
+    const curNameNorm = String(currentUser?.name || '').toLowerCase().trim();
+    const curFullNameNorm = String(currentUser?.full_name || '').toLowerCase().trim();
+    const curUserNorm = String(currentUser?.username || '').toLowerCase().trim();
+
+    const isExplicitlyAssigned =
+      Boolean(assignedNorm) &&
+      (assignedNorm === staffNameNorm ||
+        (curNameNorm && assignedNorm === curNameNorm) ||
+        (curFullNameNorm && assignedNorm === curFullNameNorm) ||
+        (curUserNorm && assignedNorm === curUserNorm) ||
+        (curUserNorm && assignedNorm.includes(curUserNorm)) ||
+        (curNameNorm && assignedNorm.includes(curNameNorm)) ||
+        (staffNameNorm && assignedNorm.includes(staffNameNorm)));
+
+    // Return true if explicitly assigned to current staff, or if active/completed in this department without assigned name
+    return isExplicitlyAssigned || (!assignedNorm && (s === 'cooking' || s === 'in progress' || s === 'completed'));
   };
 
   const [tasks, setTasks] = useState([]);
@@ -95,13 +141,7 @@ export const MyTasksPage = ({ currentUser, onNotify = () => {} }) => {
       // 1. Fetch live requests from PostgreSQL
       const allRequests = await fetchUnifiedRequests();
       const claimedRequests = Array.isArray(allRequests)
-        ? allRequests.filter(
-            (r) =>
-              (r.assignedTo === staffName ||
-                r.assigned_staff_name === staffName ||
-                (r.department?.toLowerCase() === staffDept.toLowerCase() &&
-                  r.status === 'In Progress'))
-          )
+        ? allRequests.filter(isTaskAssignedToMe)
         : [];
 
       // 2. Load cached local task state (preserving checklist checks)
@@ -117,45 +157,31 @@ export const MyTasksPage = ({ currentUser, onNotify = () => {} }) => {
         const isReqCompleted =
           req.status?.toLowerCase() === 'completed' || req.status?.toLowerCase() === 'ready';
 
+        const defaultChecklist = generateChecklistForRequest(req);
+        let checklist = existingLocal?.checklist || defaultChecklist;
+        if (isReqCompleted) {
+          checklist = checklist.map((c) => ({ ...c, done: true }));
+        }
+
+        const allDone = checklist.length > 0 && checklist.every((c) => c.done);
+        const status = isReqCompleted || allDone ? 'Completed' : 'In Progress';
+
         return {
           id: req.id,
           raw_id: req.raw_id,
+          department: req.department || staffDept,
           title: req.title,
           location: req.location || 'Tại phòng khách',
-          priority: req.priority || 'HIGH PRIORITY',
-          status: isReqCompleted ? 'Completed' : existingLocal?.status || 'In Progress',
+          priority: 'NORMAL',
+          status,
           dueTime: req.time || '15 phút nữa',
           isClaimedFromRobot: true,
-          checklist:
-            existingLocal?.checklist || generateChecklistForRequest(req),
+          checklist,
         };
       });
 
-      // 4. Combine with shift duties
-      const shiftDuties = savedLocalTasks.filter((t) => t.isShiftDuty) || getDefaultShiftDuties();
-      const combined = [...syncedClaimedTasks, ...shiftDuties];
-
-      if (combined.length === 0) {
-        const defaultStarters = [
-          {
-            id: `TASK-STARTER-${staffDept.slice(0, 2).toUpperCase()}-01`,
-            title: `Tiếp nhận yêu cầu dịch vụ đầu ca (${staffDept})`,
-            location: 'Trực ca phòng ban',
-            priority: 'NORMAL',
-            status: 'In Progress',
-            dueTime: 'Trong ca trực',
-            checklist: [
-              { id: 'st1', text: 'Bật thông báo ứng dụng tiếp nhận yêu cầu từ HCRobot', done: true },
-              { id: 'st2', text: 'Sẵn sàng bấm "Nhận Xử Lý" khi có yêu cầu mới', done: false },
-            ],
-          },
-        ];
-        setTasks(defaultStarters);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(defaultStarters));
-      } else {
-        setTasks(combined);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(combined));
-      }
+      setTasks(syncedClaimedTasks);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(syncedClaimedTasks));
     } catch (err) {
       console.error('Error syncing My Tasks with database:', err);
     }
@@ -177,20 +203,27 @@ export const MyTasksPage = ({ currentUser, onNotify = () => {} }) => {
   };
 
   // Toggle checklist item
-  const handleToggleChecklist = (taskId, checkId) => {
+  const handleToggleChecklist = async (taskId, checkId) => {
+    let nextStatus = null;
     const updated = tasks.map((task) => {
       if (task.id !== taskId) return task;
       const nextChecklist = task.checklist.map((item) =>
         item.id === checkId ? { ...item, done: !item.done } : item
       );
-      const allDone = nextChecklist.every((item) => item.done);
+      const allDone = nextChecklist.length > 0 && nextChecklist.every((item) => item.done);
+      const newStatus = allDone ? 'Completed' : 'In Progress';
+      nextStatus = newStatus;
       return {
         ...task,
         checklist: nextChecklist,
-        status: allDone ? 'Completed' : task.status === 'Completed' ? 'In Progress' : task.status,
+        status: newStatus,
       };
     });
     saveTasksState(updated);
+
+    if (nextStatus) {
+      await updateGenericRequestStatus(taskId, nextStatus, staffName);
+    }
   };
 
   // Mark task done -> Persists to localStorage & PostgreSQL Database
@@ -232,17 +265,19 @@ export const MyTasksPage = ({ currentUser, onNotify = () => {} }) => {
   const completedCount = tasks.filter((t) => t.status === 'Completed').length;
   const totalTasksCount = tasks.length;
   const completionRate =
-    totalTasksCount > 0 ? Math.round((completedCount / totalTasksCount) * 100) : 100;
+    totalTasksCount > 0 ? Math.round((completedCount / totalTasksCount) * 100) : 0;
+
+  const { t } = useLanguage();
 
   return (
-    <div className="flex-1 overflow-y-auto custom-scrollbar p-8 bg-[#FAF8F5] font-sans">
+    <div className="flex-1 overflow-y-auto custom-scrollbar p-8 bg-[#FAF8F5] font-sans select-none">
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h2 className="text-xl font-bold text-[#1A1917]">Nhiệm Vụ Của Tôi (My Tasks)</h2>
+            <h2 className="text-xl font-bold text-[#1A1917]">{t('myTasksTitle')}</h2>
             <p className="text-xs text-[#78716C] mt-1">
-              Nhân viên: <span className="font-bold text-stone-800">{staffName}</span> • {staffRole} (Bộ phận {staffDept})
+              {staffName} • {staffRole} ({staffDept})
             </p>
           </div>
         </div>
@@ -250,23 +285,23 @@ export const MyTasksPage = ({ currentUser, onNotify = () => {} }) => {
         {/* 3 Task KPI Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <MetricCard
-            title="ĐANG THỰC HIỆN"
+            title={t('kpiMyInProgress')}
             value={inProgressCount}
-            subText="Cần ưu tiên xử lý"
+            subText={t('inProgress')}
             icon={Play}
           />
           <MetricCard
-            title="ĐÃ HOÀN THÀNH"
+            title={t('kpiMyCompleted')}
             value={completedCount}
             variant="dark"
-            subText="Nhiệm vụ xong"
+            subText={t('completed')}
             icon={CheckCircle2}
           />
           <MetricCard
-            title="HIỆU SUẤT CA"
+            title={t('kpiShiftEfficiency')}
             value={`${completionRate}%`}
             variant="danger-gradient"
-            subText="Tỷ lệ hoàn thành"
+            subText={`${completedCount}/${totalTasksCount}`}
             icon={Sparkles}
           />
         </div>
@@ -278,7 +313,7 @@ export const MyTasksPage = ({ currentUser, onNotify = () => {} }) => {
             <Search className="w-4 h-4 text-stone-400 absolute left-3.5 top-2.5" />
             <input
               type="text"
-              placeholder="Tìm theo mã nhiệm vụ, phòng, nội dung..."
+              placeholder={t('searchPlaceholder')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-10 pr-4 py-1.5 rounded-xl bg-[#FAF8F5] border border-[#E0DCD3] text-xs font-medium text-stone-900 outline-none focus:border-stone-400"
@@ -288,9 +323,9 @@ export const MyTasksPage = ({ currentUser, onNotify = () => {} }) => {
           {/* Status Filter Tabs */}
           <div className="flex items-center gap-1 bg-[#EFECE6] p-1 rounded-full border border-[#DDD8CE]">
             {[
-              { id: 'All', label: 'Tất Cả', count: tasks.length },
-              { id: 'In Progress', label: 'Đang Làm', count: inProgressCount },
-              { id: 'Completed', label: 'Đã Xong', count: completedCount },
+              { id: 'All', label: t('tabAll'), count: totalTasksCount },
+              { id: 'In Progress', label: t('tabInProgress'), count: inProgressCount },
+              { id: 'Completed', label: t('tabCompleted'), count: completedCount },
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -329,12 +364,13 @@ export const MyTasksPage = ({ currentUser, onNotify = () => {} }) => {
 
           <div className="space-y-4">
             {filteredTasks.length === 0 ? (
-              <div className="p-12 text-center bg-white rounded-3xl border border-[#E5E1D8] text-xs text-stone-500">
-                Không tìm thấy nhiệm vụ nào phù hợp với bộ lọc hiện tại.
+              <div className="p-12 text-center bg-white rounded-3xl border border-[#E5E1D8] text-xs text-stone-500 space-y-2">
+                <CheckSquare className="w-8 h-8 mx-auto text-stone-300" />
+                <p className="font-semibold text-stone-700">Hiện không có nhiệm vụ nào trong mục này.</p>
+                <p className="text-stone-400">Khi bạn tiếp nhận yêu cầu từ mục Requests hoặc Dashboard, nhiệm vụ sẽ xuất hiện tại đây.</p>
               </div>
             ) : (
               filteredTasks.map((task) => {
-                const isUrgent = (task.priority || '').includes('HIGH');
                 const isCompleted = task.status === 'Completed';
                 const isInProgress = task.status === 'In Progress';
                 const completedChecklistCount = (task.checklist || []).filter((c) => c.done).length;
@@ -357,12 +393,6 @@ export const MyTasksPage = ({ currentUser, onNotify = () => {} }) => {
                           <span className="px-2.5 py-0.5 rounded-full bg-sky-100 text-sky-800 text-[10px] font-bold flex items-center gap-1 border border-sky-200">
                             <Bot className="w-3 h-3 text-sky-600" />
                             <span>Nhận Từ HCRobot</span>
-                          </span>
-                        )}
-                        {isUrgent && (
-                          <span className="px-2.5 py-0.5 rounded-full bg-red-100 text-red-700 text-[10px] font-bold flex items-center gap-1">
-                            <span className="w-1.5 h-1.5 rounded-full bg-red-600 animate-ping" />
-                            HIGH PRIORITY
                           </span>
                         )}
                       </div>

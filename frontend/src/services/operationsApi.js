@@ -4,11 +4,11 @@
 // =====================================================================
 
 import {
+  INITIAL_RECEPTION_DATA,
   INITIAL_ROOM_SERVICE_DATA,
   INITIAL_HOUSEKEEPING_DATA,
   INITIAL_BELL_SERVICES_DATA,
   INITIAL_MAINTENANCE_DATA,
-  INITIAL_MANAGER_DATA,
 } from '../data/mockHotelData';
 
 const BASE_URL = '/api/v1/operations';
@@ -39,6 +39,28 @@ async function fetchWithFallback(url, options = {}, fallbackData = null) {
     return fallbackData;
   }
 }
+
+// ---------------------------------------------------------
+// 0. Reception / Front Desk
+// ---------------------------------------------------------
+export const fetchReceptionDashboard = async () => {
+  return await fetchWithFallback(
+    `${BASE_URL}/dashboard/reception`,
+    {},
+    { current_request: INITIAL_RECEPTION_DATA }
+  );
+};
+
+export const updateReceptionRequest = async (requestId, updateData) => {
+  return await fetchWithFallback(
+    `${BASE_URL}/reception/requests/${encodeURIComponent(requestId)}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(updateData),
+    },
+    { ...INITIAL_RECEPTION_DATA, ...updateData }
+  );
+};
 
 // ---------------------------------------------------------
 // 1. Room Service / F&B
@@ -169,32 +191,16 @@ export const updateMaintenanceStatus = async (requestId, status, assignedTo = nu
 };
 
 // ---------------------------------------------------------
-// 5. Management Hub
+// 5. Operational Directives
 // ---------------------------------------------------------
-export const fetchManagerHubDashboard = async () => {
-  return await fetchWithFallback(`${BASE_URL}/dashboard/manager-hub`, {}, INITIAL_MANAGER_DATA);
-};
-
-export const createManagementDirective = async (directiveData) => {
+export const createOperationalDirective = async (directiveData) => {
   return await fetchWithFallback(
-    `${BASE_URL}/manager-hub/directives`,
+    `${BASE_URL}/directives`,
     {
       method: 'POST',
       body: JSON.stringify(directiveData),
     },
     { id: `DIR-${Date.now()}`, ...directiveData, status: 'Unassigned' }
-  );
-};
-
-export const assignManagementDirective = async (directiveId, status = 'In Progress', assignedStaffName = null) => {
-  return await fetchWithFallback(
-    `${BASE_URL}/manager-hub/directives/${directiveId}/assign?status=${encodeURIComponent(
-      status
-    )}${assignedStaffName ? `&assigned_staff_name=${encodeURIComponent(assignedStaffName)}` : ''}`,
-    {
-      method: 'PATCH',
-    },
-    { id: directiveId, status, assigned_staff_name: assignedStaffName }
   );
 };
 
@@ -246,7 +252,7 @@ export const changeStaffPassword = async (currentPassword, newPassword, username
 };
 
 export const updateStaffProfile = async (profileData) => {
-  const token = localStorage.getItem('aurora_token');
+  const token = localStorage.getItem('aurora_jwt_token') || localStorage.getItem('aurora_token');
   const headers = {
     'Content-Type': 'application/json',
   };
@@ -272,5 +278,133 @@ export const fetchRobotFleet = async () => {
 };
 
 export const fetchStaffRoster = async () => {
-  return await fetchWithFallback(`${BASE_URL}/staff`, {}, INITIAL_MANAGER_DATA.staffRoster);
+  return await fetchWithFallback(`${BASE_URL}/staff`, {}, []);
 };
+
+// ---------------------------------------------------------
+// 9. Admin Central Operations API Helpers
+// ---------------------------------------------------------
+export const fetchAdminSummary = async () => {
+  return await fetchWithFallback(`${BASE_URL}/admin/summary`, {}, {
+    total_active: 0,
+    all_count: 0,
+    reception_count: 0,
+    housekeeping_count: 0,
+    room_service_count: 0,
+    bell_services_count: 0,
+    maintenance_count: 0,
+    directives_count: 0,
+  });
+};
+
+export const fetchAdminTasks = async (params = {}) => {
+  const query = new URLSearchParams();
+  if (params.department && params.department !== 'All') query.append('department', params.department);
+  if (params.status && params.status !== 'All') query.append('status', params.status);
+  if (params.search) query.append('search', params.search);
+  if (params.limit) query.append('limit', params.limit);
+  if (params.offset) query.append('offset', params.offset);
+
+  const qs = query.toString() ? `?${query.toString()}` : '';
+  return await fetchWithFallback(`${BASE_URL}/admin/tasks${qs}`, {}, []);
+};
+
+export const dispatchAdminTask = async (taskData) => {
+  return await fetchWithFallback(
+    `${BASE_URL}/admin/dispatch`,
+    {
+      method: 'POST',
+      body: JSON.stringify(taskData),
+    },
+    null
+  );
+};
+
+export const updateAdminTask = async (ticketId, updateData) => {
+  return await fetchWithFallback(
+    `${BASE_URL}/admin/tasks/${encodeURIComponent(ticketId)}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(updateData),
+    },
+    { success: true, id: ticketId, ...updateData }
+  );
+};
+
+export const fetchAdminConversations = async (status = 'all') => {
+  const qs = status && status !== 'all' ? `?status=${encodeURIComponent(status)}` : '';
+  return await fetchWithFallback(`${BASE_URL}/admin/conversations${qs}`, {}, []);
+};
+
+export const fetchAdminConversationDetail = async (sessionId) => {
+  return await fetchWithFallback(
+    `${BASE_URL}/admin/conversations/${encodeURIComponent(sessionId)}`,
+    {},
+    null
+  );
+};
+
+// ---------------------------------------------------------
+// 10. Department & System Notification Center
+// ---------------------------------------------------------
+export const fetchNotifications = async (department = null, limit = 50) => {
+  const params = new URLSearchParams();
+  if (department && department !== 'All' && department !== 'admin') {
+    params.append('department', department);
+  }
+  if (limit) params.append('limit', limit);
+  const qs = params.toString() ? `?${params.toString()}` : '';
+  return await fetchWithFallback(`${BASE_URL}/notifications${qs}`, {}, []);
+};
+
+export const createNotification = async (notifData) => {
+  return await fetchWithFallback(
+    `${BASE_URL}/notifications`,
+    {
+      method: 'POST',
+      body: JSON.stringify(notifData),
+    },
+    { id: `NOTIF-${Date.now()}`, ...notifData, is_read: false, created_at: new Date().toISOString() }
+  );
+};
+
+export const toggleNotificationRead = async (notificationId) => {
+  return await fetchWithFallback(
+    `${BASE_URL}/notifications/${encodeURIComponent(notificationId)}/read`,
+    {
+      method: 'PATCH',
+    },
+    { success: true, id: notificationId }
+  );
+};
+
+export const markAllNotificationsRead = async (department = null) => {
+  const params = new URLSearchParams();
+  if (department && department !== 'All') {
+    params.append('department', department);
+  }
+  const qs = params.toString() ? `?${params.toString()}` : '';
+  return await fetchWithFallback(
+    `${BASE_URL}/notifications/mark-all-read${qs}`,
+    {
+      method: 'POST',
+    },
+    { success: true, department }
+  );
+};
+
+export const deleteNotification = async (notificationId) => {
+  return await fetchWithFallback(
+    `${BASE_URL}/notifications/${encodeURIComponent(notificationId)}`,
+    {
+      method: 'DELETE',
+    },
+    { success: true, id: notificationId }
+  );
+};
+
+
+
+
+
+

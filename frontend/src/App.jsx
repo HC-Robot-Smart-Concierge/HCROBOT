@@ -23,7 +23,7 @@ import { NotificationsPage } from './pages/staff/NotificationsPage';
 import { ProfilePage } from './pages/staff/ProfilePage';
 
 // Auth Api
-import { getStoredUser, logoutUser } from './services/authApi';
+import { getStoredUser, logoutUser, fetchCurrentUser } from './services/authApi';
 
 import {
   UtensilsCrossed,
@@ -53,19 +53,48 @@ const isAdminUser = (user) =>
 
 const normalizeLegacyView = (view, user) => {
   if (isAdminUser(user)) {
-    if (!view || view === 'manager_hub' || view === 'landing' || view === 'room_service') {
+    if (!view || view === 'manager_hub' || view === 'landing' || STAFF_DASHBOARDS.includes(view)) {
       return 'admin_portal';
     }
     return view;
   }
-  if (view === 'manager_hub') return 'landing';
-  return view;
+  if (!view || view === 'manager_hub' || view === 'admin_portal') {
+    return user ? 'room_service' : 'landing';
+  }
+  const clean = String(view).toLowerCase().trim().replace(/[\s-]+/g, '_');
+  if (['f&b', 'fb', 'food_beverage', 'roomservice', 'f_and_b', 'room_service'].includes(clean)) {
+    return 'room_service';
+  }
+  if (['bellman', 'bell', 'bell_service', 'bell_services'].includes(clean)) {
+    return 'bell_services';
+  }
+  if (['housekeeping', 'clean'].includes(clean)) {
+    return 'housekeeping';
+  }
+  if (['maintenance', 'tech', 'technician'].includes(clean)) {
+    return 'maintenance';
+  }
+  if (['reception', 'front_desk', 'frontdesk'].includes(clean)) {
+    return 'reception';
+  }
+  return clean;
 };
 
 export function App() {
   // activeView:
   // 'landing' | 'login' | 'reception' | 'room_service' | 'housekeeping' | 'bell_services' | 'maintenance' | 'robot_display' | 'admin_map' | 'admin_portal'
   const [currentUser, setCurrentUser] = useState(() => getStoredUser());
+
+  // Live sync user profile with database on mount / reload
+  useEffect(() => {
+    async function syncProfile() {
+      const freshUser = await fetchCurrentUser();
+      if (freshUser) {
+        setCurrentUser(freshUser);
+      }
+    }
+    syncProfile();
+  }, []);
 
   const [activeView, setActiveView] = useState(() => {
     const user = getStoredUser();
@@ -446,6 +475,10 @@ export function App() {
                 onNotify={showNotification}
               />
             )}
+            {/* Default Dashboard Fallback if activeMenu is unrecognized */}
+            {!['Dashboard', 'Requests', 'My Tasks', 'History', 'Notifications', 'Profile'].includes(activeMenu) && (
+              <RequestsPage currentUser={currentUser} onNotify={showNotification} />
+            )}
           </div>
         </div>
       )}
@@ -456,7 +489,11 @@ export function App() {
           currentUser={currentUser}
           onNavigateToLogin={() => {
             if (currentUser) {
-              setActiveView(currentUser.default_dashboard || 'housekeeping');
+              const target = normalizeLegacyView(
+                currentUser.default_dashboard || currentUser.defaultDashboard || 'room_service',
+                currentUser
+              );
+              setActiveView(target);
               setActiveMenu('Dashboard');
             } else {
               setActiveView('login');

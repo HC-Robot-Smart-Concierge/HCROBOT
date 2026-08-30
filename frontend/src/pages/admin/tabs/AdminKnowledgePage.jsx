@@ -35,6 +35,7 @@ import {
   syncObsidianVault,
   uploadRAGFile,
 } from '../../../services/knowledgeApi';
+import { Pagination } from '../../../components/common/Pagination';
 
 
 export const AdminKnowledgePage = ({ activeSubView = 'overview' }) => {
@@ -56,6 +57,8 @@ export const AdminKnowledgePage = ({ activeSubView = 'overview' }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [actionMessage, setActionMessage] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 20;
 
   // Upload State
   const [uploadFileObj, setUploadFileObj] = useState(null);
@@ -213,6 +216,13 @@ export const AdminKnowledgePage = ({ activeSubView = 'overview' }) => {
     return matchesSearch && matchesCat;
   });
 
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [categoryFilter, searchQuery]);
+
+  const paginatedDocuments = filteredDocuments.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
   const getCategoryIcon = (category = '') => {
     const cat = category.toLowerCase();
     if (cat.includes('dining') || cat.includes('ăn')) return <Utensils className="w-3.5 h-3.5" />;
@@ -223,7 +233,7 @@ export const AdminKnowledgePage = ({ activeSubView = 'overview' }) => {
   };
 
   return (
-    <div className="w-full h-full flex flex-col p-6 space-y-6 overflow-y-auto custom-scrollbar">
+    <div className="w-full min-h-full flex flex-col p-6 space-y-6 pb-16">
       {/* Toast Notification */}
       {actionMessage && (
         <div className="fixed top-5 right-5 z-50 bg-stone-900 text-white px-5 py-3 rounded-2xl shadow-2xl border border-stone-700 flex items-center gap-3 animate-in fade-in slide-in-from-top-4 duration-200">
@@ -505,14 +515,14 @@ export const AdminKnowledgePage = ({ activeSubView = 'overview' }) => {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-stone-100 text-xs">
-                      {filteredDocuments.length === 0 ? (
+                      {paginatedDocuments.length === 0 ? (
                         <tr>
                           <td colSpan={6} className="py-8 text-center text-stone-400 font-medium">
                             Không tìm thấy bài viết nào phù hợp.
                           </td>
                         </tr>
                       ) : (
-                        filteredDocuments.map((doc) => {
+                        paginatedDocuments.map((doc) => {
                           const meta = doc.metadata || {};
                           const title = meta.title || doc.id;
                           const category = meta.category || 'General';
@@ -574,6 +584,14 @@ export const AdminKnowledgePage = ({ activeSubView = 'overview' }) => {
                     </tbody>
                   </table>
                 </div>
+
+                {/* Pagination Footer */}
+                <Pagination
+                  currentPage={currentPage}
+                  totalItems={filteredDocuments.length}
+                  pageSize={pageSize}
+                  onPageChange={setCurrentPage}
+                />
               </div>
             </div>
           ) : (

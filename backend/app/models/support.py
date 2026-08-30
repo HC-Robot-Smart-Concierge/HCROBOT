@@ -16,7 +16,6 @@ class HumanSupportSession(Base):
     session_code: Mapped[str] = mapped_column(String(30), unique=True, index=True)
     room_number: Mapped[str] = mapped_column(String(50), nullable=False) # e.g. 'Room 302', 'Room 402'
     guest_name: Mapped[str] = mapped_column(String(100), default="Hotel Guest")
-    is_vip: Mapped[bool] = mapped_column(Boolean, default=False)
     
     category: Mapped[str] = mapped_column(String(50), default="Escort Request") # 'Escort Request', 'Maintenance', 'Housekeeping', 'Luggage Assist'
     origin_robot_code: Mapped[str] = mapped_column(String(50), default="RC-001 (Main Lobby)")

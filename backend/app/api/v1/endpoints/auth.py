@@ -5,6 +5,7 @@ from sqlalchemy import select
 from app.core.database import get_db
 from app.core.security import verify_password, hash_password, create_access_token, decode_access_token
 from app.models.staff import Staff
+from app.services.logger_service import audit, log_event, LogLevelEnum, LogCategoryEnum, ActorTypeEnum
 from app.schemas.auth import (
     LoginRequest,
     TokenResponse,
@@ -26,11 +27,32 @@ async def login(login_in: LoginRequest, db: AsyncSession = Depends(get_db)):
 
     # 2. Check credentials against DB
     if not staff or not verify_password(login_in.password, staff.password_hash):
+        log_event(
+            level=LogLevelEnum.WARNING,
+            category=LogCategoryEnum.AUDIT,
+            event_type="LOGIN_FAILED",
+            module="app.api.v1.auth",
+            message=f"Failed login attempt for username '{username_clean}'",
+            actor_type=ActorTypeEnum.SYSTEM,
+            actor_id=username_clean,
+            metadata={"username": username_clean, "reason": "Invalid credentials"},
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Tên đăng nhập hoặc mật khẩu không chính xác.",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+    # Record successful login audit
+    audit(
+        action="LOGIN",
+        resource_type="SESSION",
+        resource_id=f"user_{staff.id}",
+        actor_type=ActorTypeEnum.ADMIN if staff.role == "Admin" else ActorTypeEnum.STAFF,
+        actor_id=staff.username,
+        actor_name=staff.full_name,
+        after_state={"role": staff.role, "department": staff.department},
+    )
 
     # 3. Create JWT Token
     token_payload = {

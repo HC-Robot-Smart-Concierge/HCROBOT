@@ -23,8 +23,6 @@ class ReceptionRequest(Base):
     guest_name: Mapped[str] = mapped_column(String(120), default="Hotel Guest")
     guest_tier: Mapped[str] = mapped_column(String(30), default="Standard")
     guest_stay_details: Mapped[str] = mapped_column(String(250), default="Current stay")
-
-    priority: Mapped[str] = mapped_column(String(30), default="High")
     status: Mapped[str] = mapped_column(String(50), default="Pending Action")
     description: Mapped[str] = mapped_column(String(2000), default="")
     attached_media: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)

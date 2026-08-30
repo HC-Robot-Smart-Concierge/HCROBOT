@@ -342,7 +342,6 @@ export const MyTasksPage = ({ currentUser, onNotify = () => {} }) => {
               </div>
             ) : (
               filteredTasks.map((task) => {
-                const isUrgent = (task.priority || '').includes('HIGH');
                 const isCompleted = task.status === 'Completed';
                 const isInProgress = task.status === 'In Progress';
                 const completedChecklistCount = (task.checklist || []).filter((c) => c.done).length;
@@ -365,12 +364,6 @@ export const MyTasksPage = ({ currentUser, onNotify = () => {} }) => {
                           <span className="px-2.5 py-0.5 rounded-full bg-sky-100 text-sky-800 text-[10px] font-bold flex items-center gap-1 border border-sky-200">
                             <Bot className="w-3 h-3 text-sky-600" />
                             <span>Nhận Từ HCRobot</span>
-                          </span>
-                        )}
-                        {isUrgent && (
-                          <span className="px-2.5 py-0.5 rounded-full bg-red-100 text-red-700 text-[10px] font-bold flex items-center gap-1">
-                            <span className="w-1.5 h-1.5 rounded-full bg-red-600 animate-ping" />
-                            HIGH PRIORITY
                           </span>
                         )}
                       </div>

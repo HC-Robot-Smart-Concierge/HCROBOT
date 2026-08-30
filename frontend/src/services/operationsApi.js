@@ -252,7 +252,7 @@ export const changeStaffPassword = async (currentPassword, newPassword, username
 };
 
 export const updateStaffProfile = async (profileData) => {
-  const token = localStorage.getItem('aurora_token');
+  const token = localStorage.getItem('aurora_jwt_token') || localStorage.getItem('aurora_token');
   const headers = {
     'Content-Type': 'application/json',
   };

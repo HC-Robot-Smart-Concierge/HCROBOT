@@ -14,7 +14,6 @@ SAMPLE_SUPPORT_SESSIONS = [
         "session_code": "SES-302",
         "room_number": "Room 302",
         "guest_name": "Alexander Chen",
-        "is_vip": True,
         "category": "Luggage Assist",
         "origin_robot_code": "RC-001 (Main Lobby)",
         "sentiment": "Impatient",
@@ -58,11 +57,11 @@ SAMPLE_SUPPORT_SESSIONS = [
                 "languages_detected": ["en"],
                 "translations": {
                     "vi": "Nhân viên hỗ trợ đã tham gia phiên đàm thoại",
-                    "en": "Staff member joined the conversation"
+                    "en": "Staff member (You) joined the conversation"
                 },
                 "sentiment": "Neutral",
                 "confidence": 1.0,
-                "timestamp": "10:50 AM"
+                "timestamp": "10:43 AM"
             },
             {
                 "id": "msg-302-4",
@@ -84,7 +83,6 @@ SAMPLE_SUPPORT_SESSIONS = [
         "session_code": "SES-402",
         "room_number": "Room 402",
         "guest_name": "Elena Rossi",
-        "is_vip": False,
         "category": "Maintenance",
         "origin_robot_code": "RC-001 (Floor 4)",
         "sentiment": "Neutral",
@@ -126,7 +124,6 @@ SAMPLE_SUPPORT_SESSIONS = [
         "session_code": "SES-105",
         "room_number": "Room 105",
         "guest_name": "Mark Thompson",
-        "is_vip": False,
         "category": "Housekeeping",
         "origin_robot_code": "RC-001 (Main Lobby)",
         "sentiment": "Positive",
@@ -183,7 +180,6 @@ async def seed_support_data():
                     session_code=s_data["session_code"],
                     room_number=s_data["room_number"],
                     guest_name=s_data["guest_name"],
-                    is_vip=s_data["is_vip"],
                     category=s_data["category"],
                     origin_robot_code=s_data["origin_robot_code"],
                     sentiment=s_data["sentiment"],

@@ -141,11 +141,11 @@ export const MaintenanceDashboard = ({ currentUser, onNotify = () => {} }) => {
 
   const metrics = [
     {
-      label: 'HIGH PRIORITY',
-      value: data.kpis?.highPriority?.count ?? 0,
-      delta: data.kpis?.highPriority?.delta,
-      deltaColor: 'text-[#D83A3F]',
-      DeltaIcon: TrendingDown,
+      label: 'TECHNICIANS\nON DUTY',
+      value: data.kpis?.availableTechs?.count ?? 3,
+      delta: data.kpis?.availableTechs?.delta,
+      deltaColor: 'text-[#20A75B]',
+      DeltaIcon: TrendingUp,
     },
     {
       label: 'PENDING\nREQUESTS',
@@ -238,7 +238,6 @@ export const MaintenanceDashboard = ({ currentUser, onNotify = () => {} }) => {
                 const Icon = categoryIcons[request.category] || Wrench;
                 const status = request.status || 'Pending';
                 const meta = statusMeta[status] || statusMeta.Pending;
-                const isHigh = (request.priority || '').toUpperCase().includes('HIGH');
                 const isPending = status === 'Pending' || status === 'Unassigned';
                 const isInProgress = status === 'In Progress';
                 const isCompleted = status === 'Completed';
@@ -246,16 +245,10 @@ export const MaintenanceDashboard = ({ currentUser, onNotify = () => {} }) => {
                 return (
                   <article
                     key={request.id}
-                    className={`relative overflow-hidden rounded-[18px] bg-white px-5 py-[18px] shadow-[0_4px_18px_rgba(55,48,42,0.045)] ${
-                      isHigh ? 'before:absolute before:inset-y-0 before:left-0 before:w-[3px] before:bg-[#E5262D]' : ''
-                    }`}
+                    className="relative overflow-hidden rounded-[18px] bg-white px-5 py-[18px] shadow-[0_4px_18px_rgba(55,48,42,0.045)]"
                   >
                     <div className="flex items-start gap-4">
-                      <div
-                        className={`h-10 w-10 shrink-0 rounded-[13px] flex items-center justify-center ${
-                          isHigh ? 'bg-[#FFDAD8] text-[#D6272D]' : 'bg-[#EFEEEB] text-[#5F5B56]'
-                        }`}
-                      >
+                      <div className="h-10 w-10 shrink-0 rounded-[13px] flex items-center justify-center bg-[#EFEEEB] text-[#5F5B56]">
                         <Icon className="h-[18px] w-[18px]" strokeWidth={1.8} />
                       </div>
 
@@ -264,11 +257,6 @@ export const MaintenanceDashboard = ({ currentUser, onNotify = () => {} }) => {
                           <div className="min-w-0">
                             <div className="flex flex-wrap items-center gap-2">
                               <h4 className="text-[13px] font-medium text-[#3F3B38]">{request.title}</h4>
-                              {isHigh && (
-                                <span className="rounded-full bg-[#FFE0DF] px-2.5 py-1 text-[10px] font-medium tracking-[0.04em] text-[#D42B31]">
-                                  HIGH PRIORITY
-                                </span>
-                              )}
                             </div>
                             <p className="mt-1 text-[12px] leading-[1.45] text-[#706B66]">
                               {request.location} • {request.description}

@@ -6,6 +6,7 @@ import {
   fetchHousekeepingDashboard,
   updateGenericRequestStatus,
 } from '../../services/operationsApi';
+import { useLanguage } from '../../context/LanguageContext';
 import {
   AlertTriangle,
   Bot,
@@ -27,6 +28,7 @@ const normalizeStatus = (status = '') => status.toLowerCase().trim().replace('_'
 const isPendingRequest = (request) => ['unassigned', 'pending', 'waiting'].includes(normalizeStatus(request.status));
 const isInProgressRequest = (request) => normalizeStatus(request.status) === 'in progress';
 const isCompletedRequest = (request) => ['completed', 'ready', 'done'].includes(normalizeStatus(request.status));
+const isUrgentRequest = (request) => String(request?.urgency || request?.priority || '').toLowerCase() === 'high' || Boolean(request?.is_urgent);
 
 const requestKey = (request) => request.ticket_code || request.id;
 const displayRequestId = (request) => String(request.ticket_code || request.id || '').replace(/^REQ-/, '');
@@ -54,6 +56,7 @@ const KpiCard = ({ label, value, icon: Icon, tone = 'neutral' }) => {
 };
 
 export const HousekeepingDashboard = ({ currentUser, onNotify = () => {} }) => {
+  const { t } = useLanguage();
   const staffName = currentUser?.full_name || currentUser?.name || 'Maria Santos';
   const staffId = currentUser?.id || currentUser?.username || 'user';
   const storageKey = `aurora_hk_claimed_${staffName}`;
@@ -120,14 +123,9 @@ export const HousekeepingDashboard = ({ currentUser, onNotify = () => {} }) => {
   const filteredRequests = useMemo(() => {
     const filtered = allRequests.filter((request) => {
       if (filter === 'All') return true;
-
-      const title = (request.title || '').toLowerCase();
-      const description = (request.description || '').toLowerCase();
-      const type = (request.type || request.category || '').toLowerCase();
-
-      if (filter === 'Spill Cleanup') return type.includes('spill') || title.includes('spill') || description.includes('spill');
-      if (filter === 'Towels') return type.includes('towel') || title.includes('towel') || description.includes('towel');
-      if (filter === 'Room Cleaning') return type.includes('clean') || title.includes('clean') || description.includes('clean');
+      if (filter === 'Pending') return isPendingRequest(request);
+      if (filter === 'In Progress') return isInProgressRequest(request);
+      if (filter === 'Completed') return isCompletedRequest(request);
       return true;
     });
 
@@ -193,6 +191,20 @@ export const HousekeepingDashboard = ({ currentUser, onNotify = () => {} }) => {
   };
 
   const handleClaimRequest = async (requestId) => {
+    const activeTask = allRequests.find(
+      (r) =>
+        isInProgressRequest(r) &&
+        (r.assignedStaff === staffName ||
+          r.assigned_staff_name === staffName ||
+          r.assignedTo === staffName)
+    );
+    if (activeTask) {
+      onNotify(
+        `⚠️ Bạn đang có nhiệm vụ đang xử lý (${activeTask.title || activeTask.id}). Vui lòng hoàn thành công việc hiện tại trước khi nhận thêm nhiệm vụ mới!`
+      );
+      return;
+    }
+
     await transitionRequest(requestId, 'In Progress', staffName);
     onNotify(`${staffName} accepted request ${requestId}.`);
   };
@@ -236,28 +248,28 @@ export const HousekeepingDashboard = ({ currentUser, onNotify = () => {} }) => {
           <div className="min-w-0">
             <div className="h-6 mb-4 flex items-center justify-between gap-4">
               <h2 className="text-[14px] font-medium text-[#171717]">Incoming Requests</h2>
-              <label className="flex items-center gap-2 text-[13px] text-[#646464] uppercase tracking-[0.04em]">
-                <span>Filter:</span>
-                <span className="relative normal-case tracking-normal text-[#202020]">
-                  <select
-                    value={filter}
-                    onChange={(event) => setFilter(event.target.value)}
-                    className="appearance-none bg-transparent pr-5 outline-none cursor-pointer text-[13px]"
-                    aria-label="Filter housekeeping requests"
+              <div className="flex items-center gap-1 flex-wrap">
+                {['All', 'Pending', 'In Progress', 'Completed'].map((tab) => (
+                  <button
+                    key={tab}
+                    type="button"
+                    onClick={() => setFilter(tab)}
+                    className={`rounded-[9px] px-3.5 py-1.5 text-[11px] font-medium transition-colors cursor-pointer ${
+                      filter === tab
+                        ? 'bg-[#EAE8E4] text-[#494540] shadow-xs'
+                        : 'text-[#77726D] hover:bg-[#F0EEEA]'
+                    }`}
                   >
-                    {FILTER_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>{option.label}</option>
-                    ))}
-                  </select>
-                  <ChevronDown className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 pointer-events-none" />
-                </span>
-              </label>
+                    {tab}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <div className="space-y-[14px]">
               {filteredRequests.length === 0 ? (
                 <div className="rounded-[20px] bg-white px-6 py-14 text-center text-[13px] text-[#777]">
-                  No housekeeping requests match this filter.
+                  {t('noDataMatch')}
                 </div>
               ) : (
                 filteredRequests.map((request) => {
@@ -265,6 +277,7 @@ export const HousekeepingDashboard = ({ currentUser, onNotify = () => {} }) => {
                   const pending = isPendingRequest(request);
                   const inProgress = isInProgressRequest(request);
                   const completed = isCompletedRequest(request);
+                  const urgencyLabel = isUrgentRequest(request) ? 'High' : 'Normal';
                   const assignee = request.assignedStaff || request.assigned_staff_name;
 
                   return (
@@ -286,10 +299,13 @@ export const HousekeepingDashboard = ({ currentUser, onNotify = () => {} }) => {
                         <div className="min-w-0">
                           <h3 className="text-[14px] font-medium text-[#171717]">{request.title}</h3>
                           <p className="mt-1 text-[14px] leading-5 text-[#4E4E4E]">{request.description}</p>
-                          <p className="mt-1.5 text-[14px] text-[#171717]">
-                            Guest: <span className="ml-1 text-[#555]">{request.guestName || request.guest_name || 'Hotel guest'}</span>
-                          </p>
+                          {(request.guestName || request.guest_name) && (
+                            <p className="mt-1.5 text-[14px] text-[#171717]">
+                              Guest: <span className="ml-1 text-[#555]">{request.guestName || request.guest_name}</span>
+                            </p>
+                          )}
                         </div>
+
                         <div className="min-w-[48px] text-right text-[13px] text-[#555]">
                           <span className="block">Room</span>
                           <strong className="block mt-0.5 text-[14px] font-medium text-[#171717]">
@@ -298,57 +314,55 @@ export const HousekeepingDashboard = ({ currentUser, onNotify = () => {} }) => {
                         </div>
                       </div>
 
-                      <div className="mt-5 pt-[19px] border-t border-[#EAE8E4] flex flex-wrap items-center justify-between gap-3">
-                        <div className="flex items-center gap-2 text-[13px] text-[#555]">
+                      <div className="mt-5 flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-[#F2EFEB]">
+                        <div className="flex items-center gap-2 text-[12px] text-[#757575]">
                           {pending && (
                             <>
-                              <span className="w-7 h-7 rounded-full bg-[#F1F0ED] flex items-center justify-center">
+                              <span className="h-5 w-5 rounded-full bg-[#EBEBEB] flex items-center justify-center">
                                 <UserX className="w-3.5 h-3.5 text-[#8A8A8A]" />
                               </span>
-                              <span>Unassigned</span>
+                              <span>{t('unassigned')}</span>
                             </>
                           )}
                           {inProgress && (
                             <>
                               <span className="w-2 h-2 rounded-full bg-[#1B87C9]" />
-                              <span>In progress with {assignee || staffName}</span>
+                              <span>{t('inProgress')}: {assignee || staffName}</span>
                             </>
                           )}
                           {completed && (
                             <>
                               <CheckCircle2 className="w-4 h-4 text-[#3E8D69]" />
-                              <span>Completed by {assignee || staffName}</span>
+                              <span>{t('taskCompleted')}: {assignee || staffName}</span>
                             </>
                           )}
                         </div>
 
                         <div className="flex items-center gap-2.5 ml-auto">
                           {pending && (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => setRequestToAssign(request)}
-                                className="h-9 min-w-[117px] px-5 rounded-[11px] border border-[#D2D2D2] bg-white text-[13px] text-[#282828] hover:bg-[#F7F7F7] transition-colors"
-                              >
-                                Assign Staff
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleClaimRequest(requestId)}
-                                className="h-9 min-w-[130px] px-5 rounded-[11px] bg-black text-white text-[13px] hover:bg-[#242424] transition-colors"
-                              >
-                                Accept &amp; Start
-                              </button>
-                            </>
+                            <button
+                              type="button"
+                              onClick={() => handleClaimRequest(requestId)}
+                              className="h-9 min-w-[130px] px-5 rounded-[11px] bg-black text-white text-[13px] font-bold hover:bg-[#242424] transition-colors cursor-pointer shadow-sm"
+                            >
+                              {t('claimTask')}
+                            </button>
                           )}
                           {inProgress && (
                             <button
                               type="button"
                               onClick={() => handleCompleteRequest(requestId)}
-                              className="h-9 px-5 rounded-[11px] bg-black text-white text-[13px] hover:bg-[#242424] transition-colors"
+                              className="h-9 px-5 rounded-[11px] bg-emerald-600 text-white text-[13px] font-bold hover:bg-emerald-700 transition-colors cursor-pointer shadow-sm flex items-center gap-1.5"
                             >
-                              Mark Completed
+                              <CheckCircle2 className="w-4 h-4" />
+                              <span>{t('completeTask')}</span>
                             </button>
+                          )}
+                          {completed && (
+                            <span className="text-[12px] font-bold text-emerald-700 bg-emerald-100 px-3.5 py-1.5 rounded-full border border-emerald-200 flex items-center gap-1">
+                              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                              {t('taskCompleted')}
+                            </span>
                           )}
                         </div>
                       </div>

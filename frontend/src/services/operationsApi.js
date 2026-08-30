@@ -344,6 +344,65 @@ export const fetchAdminConversationDetail = async (sessionId) => {
   );
 };
 
+// ---------------------------------------------------------
+// 10. Department & System Notification Center
+// ---------------------------------------------------------
+export const fetchNotifications = async (department = null, limit = 50) => {
+  const params = new URLSearchParams();
+  if (department && department !== 'All' && department !== 'admin') {
+    params.append('department', department);
+  }
+  if (limit) params.append('limit', limit);
+  const qs = params.toString() ? `?${params.toString()}` : '';
+  return await fetchWithFallback(`${BASE_URL}/notifications${qs}`, {}, []);
+};
+
+export const createNotification = async (notifData) => {
+  return await fetchWithFallback(
+    `${BASE_URL}/notifications`,
+    {
+      method: 'POST',
+      body: JSON.stringify(notifData),
+    },
+    { id: `NOTIF-${Date.now()}`, ...notifData, is_read: false, created_at: new Date().toISOString() }
+  );
+};
+
+export const toggleNotificationRead = async (notificationId) => {
+  return await fetchWithFallback(
+    `${BASE_URL}/notifications/${encodeURIComponent(notificationId)}/read`,
+    {
+      method: 'PATCH',
+    },
+    { success: true, id: notificationId }
+  );
+};
+
+export const markAllNotificationsRead = async (department = null) => {
+  const params = new URLSearchParams();
+  if (department && department !== 'All') {
+    params.append('department', department);
+  }
+  const qs = params.toString() ? `?${params.toString()}` : '';
+  return await fetchWithFallback(
+    `${BASE_URL}/notifications/mark-all-read${qs}`,
+    {
+      method: 'POST',
+    },
+    { success: true, department }
+  );
+};
+
+export const deleteNotification = async (notificationId) => {
+  return await fetchWithFallback(
+    `${BASE_URL}/notifications/${encodeURIComponent(notificationId)}`,
+    {
+      method: 'DELETE',
+    },
+    { success: true, id: notificationId }
+  );
+};
+
 
 
 

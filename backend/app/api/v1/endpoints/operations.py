@@ -20,6 +20,7 @@ from app.models import (
     RestaurantPreOrder,
     ReceptionRequest,
     HumanSupportSession,
+    Notification,
 )
 from app.schemas.operations import (
     StaffResponse,
@@ -66,22 +67,50 @@ from app.schemas.operations import (
     AdminTaskStatusUpdate,
     AdminOperationsSummary,
     HumanSupportSessionResponse,
+    # Notifications
+    NotificationCreate,
+    NotificationResponse,
 )
 
 router = APIRouter()
 
 
+async def create_department_notification(
+    db: AsyncSession,
+    department: str,
+    title: str,
+    description: str,
+    request_id: Optional[str] = None,
+    request_type: Optional[str] = None,
+    type: str = "Request",
+) -> Notification:
+    """Creates a persistent department-scoped notification for all department staff."""
+    notif = Notification(
+        department=department,
+        title=title,
+        description=description,
+        request_id=request_id,
+        request_type=request_type,
+        type=type,
+        is_read=False,
+    )
+    db.add(notif)
+    return notif
+
+
 # =====================================================================
-# 1. ROOM SERVICE / F&B DASHBOARD & ORDERS
+# TAG CONSTANTS FOR SWAGGER UI DOCS
 # =====================================================================
 
-TAG_REC = ["4. Bộ phận Lễ tân (Reception Operations)"]
-TAG_FB = ["5. Bộ phận Phục vụ phòng (F&B / Room Service)"]
-TAG_HK = ["6. Bộ phận Buồng phòng (Housekeeping)"]
-TAG_BELL = ["7. Bộ phận Vận chuyển hành lý (Bellman Services)"]
-TAG_MNT = ["8. Bộ phận Kỹ thuật & Bảo trì (Facility Maintenance)"]
-TAG_OPS = ["9. Điều phối Vận hành (Operations)"]
-TAG_REST = ["10. Bộ phận Nhà hàng (Restaurant - Đặt bàn & Đặt món trước)"]
+TAG_REC = ["05. Bộ phận Lễ tân & Tiền sảnh (Reception Operations)"]
+TAG_FB = ["06. Bộ phận Phục vụ phòng (F&B / Room Service)"]
+TAG_HK = ["07. Bộ phận Buồng phòng (Housekeeping Operations)"]
+TAG_BELL = ["08. Bộ phận Hành lý & Tiền sảnh (Bell Services)"]
+TAG_MNT = ["09. Bộ phận Kỹ thuật & Bảo trì (Facility Maintenance)"]
+TAG_REST = ["10. Bộ phận Nhà hàng (Restaurant - Đặt bàn & Đặt món)"]
+TAG_OPS = ["11. Quản lý Chung & Điều phối Nghiệp vụ (Operations & Directives)"]
+TAG_ADMIN = ["12. Trung tâm Điều hành & Quản trị (Admin & Human Support)"]
+TAG_NOTIF = ["13. Thông báo Hệ thống (Notifications)"]
 
 
 # =====================================================================
@@ -234,6 +263,16 @@ async def create_room_service_order(order_in: RoomServiceOrderCreate, db: AsyncS
         progress=0,
     )
     db.add(new_order)
+    items_desc = ", ".join([f"{it.get('qty', 1)}x {it.get('name', 'Món')}" for it in (order_in.items or [])])
+    await create_department_notification(
+        db=db,
+        department="F&B",
+        title=f"Đơn Room Service mới #{order_num}",
+        description=f"{order_in.room_number}: {items_desc or order_in.note or 'Yêu cầu phục vụ phòng mới'}",
+        request_id=new_order.id,
+        request_type="room_service",
+        type="Request",
+    )
     await db.commit()
     await db.refresh(new_order)
     return new_order
@@ -403,6 +442,15 @@ async def create_housekeeping_request(req_in: HousekeepingRequestCreate, db: Asy
         status="Unassigned",
     )
     db.add(new_req)
+    await create_department_notification(
+        db=db,
+        department="Housekeeping",
+        title=f"Yêu cầu Buồng phòng mới #{ticket_code}",
+        description=f"Phòng {req_in.room_number}: {req_in.title} - {req_in.description or 'Yêu cầu dọn dẹp'}",
+        request_id=new_req.id,
+        request_type="housekeeping",
+        type="Request",
+    )
     await db.commit()
     await db.refresh(new_req)
     return new_req
@@ -531,6 +579,15 @@ async def create_bell_request(req_in: BellRequestCreate, db: AsyncSession = Depe
         status="Pending",
     )
     db.add(new_req)
+    await create_department_notification(
+        db=db,
+        department="Bell Services",
+        title=f"Yêu cầu Bellman mới: {req_in.title}",
+        description=f"{req_in.location}: {req_in.description or req_in.guest_name or 'Yêu cầu hỗ trợ hành lý'}",
+        request_id=new_req.id,
+        request_type="bell_service",
+        type="Request",
+    )
     await db.commit()
     await db.refresh(new_req)
     return new_req
@@ -631,6 +688,15 @@ async def create_maintenance_request(req_in: MaintenanceRequestCreate, db: Async
         status="Pending",
     )
     db.add(new_req)
+    await create_department_notification(
+        db=db,
+        department="Maintenance",
+        title=f"Yêu cầu Kỹ thuật mới: {req_in.title}",
+        description=f"{req_in.location}: {req_in.description or 'Cần bảo trì kỹ thuật'}",
+        request_id=new_req.id,
+        request_type="maintenance",
+        type="Request",
+    )
     await db.commit()
     await db.refresh(new_req)
     return new_req
@@ -843,7 +909,7 @@ async def _fetch_all_raw_requests(db: AsyncSession) -> List[Dict[str, Any]]:
     return unified
 
 
-@router.get("/admin/tasks", response_model=List[UnifiedOperationTask], tags=TAG_OPS, summary="Admin: Danh sách tất cả các Task dịch vụ toàn khách sạn")
+@router.get("/admin/tasks", response_model=List[UnifiedOperationTask], tags=TAG_ADMIN, summary="Admin: Danh sách tất cả các Task dịch vụ toàn khách sạn")
 async def get_admin_tasks(
     department: Optional[str] = None,
     status: Optional[str] = None,
@@ -917,7 +983,7 @@ async def get_admin_tasks(
     ]
 
 
-@router.get("/admin/summary", response_model=AdminOperationsSummary, tags=TAG_OPS, summary="Admin: Thống kê số lượng ticket theo bộ phận")
+@router.get("/admin/summary", response_model=AdminOperationsSummary, tags=TAG_ADMIN, summary="Admin: Thống kê số lượng ticket theo bộ phận")
 async def get_admin_operations_summary(db: AsyncSession = Depends(get_db)):
     """Trả về số lượng ticket theo từng bộ phận và tổng số công việc đang xử lý."""
     raw_list = await _fetch_all_raw_requests(db)
@@ -946,7 +1012,7 @@ async def get_admin_operations_summary(db: AsyncSession = Depends(get_db)):
     return summary
 
 
-@router.post("/admin/dispatch", response_model=UnifiedOperationTask, tags=TAG_OPS, summary="Admin: Phát lệnh điều phối tạo Task mới")
+@router.post("/admin/dispatch", response_model=UnifiedOperationTask, tags=TAG_ADMIN, summary="Admin: Phát lệnh điều phối tạo Task mới")
 async def admin_dispatch_task(
     task_in: AdminTaskDispatchCreate,
     db: AsyncSession = Depends(get_db),
@@ -973,6 +1039,15 @@ async def admin_dispatch_task(
             assigned_staff_name=task_in.assigned_staff_name or task_in.assigned_robot_code,
         )
         db.add(item)
+        await create_department_notification(
+            db=db,
+            department="Housekeeping",
+            title=f"Yêu cầu Buồng phòng mới: {item.title}",
+            description=f"{task_in.room_number}: {task_in.description or 'Chỉ thị từ quản trị viên'}",
+            request_id=item.id,
+            request_type="housekeeping",
+            type="Request",
+        )
         await db.commit()
         await db.refresh(item)
         return UnifiedOperationTask(
@@ -1004,6 +1079,15 @@ async def admin_dispatch_task(
             assigned_staff_name=task_in.assigned_staff_name,
         )
         db.add(order)
+        await create_department_notification(
+            db=db,
+            department="F&B",
+            title=f"Đơn Room Service mới #{code}",
+            description=f"{task_in.room_number}: {task_in.title}",
+            request_id=order.id,
+            request_type="room_service",
+            type="Request",
+        )
         await db.commit()
         await db.refresh(order)
         return UnifiedOperationTask(
@@ -1037,6 +1121,15 @@ async def admin_dispatch_task(
             assigned_to=task_in.assigned_staff_name or task_in.assigned_robot_code,
         )
         db.add(bell)
+        await create_department_notification(
+            db=db,
+            department="Bell Services",
+            title=f"Yêu cầu Bellman mới: {bell.title}",
+            description=f"{bell.location}: {bell.description or 'Yêu cầu điều phối từ Quản trị'}",
+            request_id=bell.id,
+            request_type="bell_service",
+            type="Request",
+        )
         await db.commit()
         await db.refresh(bell)
         return UnifiedOperationTask(
@@ -1070,6 +1163,15 @@ async def admin_dispatch_task(
             assigned_to=task_in.assigned_staff_name,
         )
         db.add(maint)
+        await create_department_notification(
+            db=db,
+            department="Maintenance",
+            title=f"Yêu cầu Kỹ thuật mới: {maint.title}",
+            description=f"{maint.location}: {maint.description or 'Yêu cầu bảo trì từ Quản trị'}",
+            request_id=maint.id,
+            request_type="maintenance",
+            type="Request",
+        )
         await db.commit()
         await db.refresh(maint)
         return UnifiedOperationTask(
@@ -1103,6 +1205,15 @@ async def admin_dispatch_task(
             assigned_to=task_in.assigned_staff_name,
         )
         db.add(rec)
+        await create_department_notification(
+            db=db,
+            department="Reception",
+            title=f"Yêu cầu Lễ tân mới: {rec.title}",
+            description=f"{rec.location}: {rec.description or 'Yêu cầu hỗ trợ từ Quản trị'}",
+            request_id=rec.id,
+            request_type="reception",
+            type="Request",
+        )
         await db.commit()
         await db.refresh(rec)
         return UnifiedOperationTask(
@@ -1138,6 +1249,15 @@ async def admin_dispatch_task(
             created_by="Admin Portal",
         )
         db.add(d)
+        await create_department_notification(
+            db=db,
+            department=task_in.department or "All",
+            title=f"Chỉ thị điều hành mới: {d.title}",
+            description=f"{d.location}: {d.description or 'Chỉ thị công việc từ Quản lý'}",
+            request_id=d.id,
+            request_type="directive",
+            type="Directive",
+        )
         await db.commit()
         await db.refresh(d)
         return UnifiedOperationTask(
@@ -1370,7 +1490,7 @@ async def update_generic_request_status(
 @router.get(
     "/admin/conversations",
     response_model=List[HumanSupportSessionResponse],
-    tags=TAG_OPS,
+    tags=TAG_ADMIN,
     summary="Admin: Xem danh sách các phiên đàm thoại giọng nói Robot với khách",
 )
 async def get_admin_conversations(
@@ -1393,7 +1513,7 @@ async def get_admin_conversations(
 @router.get(
     "/admin/conversations/{session_id}",
     response_model=HumanSupportSessionResponse,
-    tags=TAG_OPS,
+    tags=TAG_ADMIN,
     summary="Admin: Xem chi tiết toàn bộ lịch sử đàm thoại song ngữ của 1 phiên",
 )
 async def get_admin_conversation_detail(
@@ -1535,21 +1655,25 @@ async def update_restaurant_reservation_status(
 # 11. GENERAL FLEET & STAFF ENDPOINTS
 # =====================================================================
 
-@router.get("/fleet", response_model=List[RobotUnitResponse])
+@router.get("/fleet", response_model=List[RobotUnitResponse], tags=TAG_OPS, summary="Danh sách trạng thái đội Robot HCRobot")
 async def get_robot_fleet(db: AsyncSession = Depends(get_db)):
     """Returns status of all active HCRobot autonomous units."""
     res = await db.execute(select(RobotUnit).order_by(RobotUnit.unit_code))
     return res.scalars().all()
 
 
-@router.get("/staff", response_model=List[StaffResponse])
-async def get_staff_roster(db: AsyncSession = Depends(get_db)):
-    """Returns all staff members and their active shifts."""
-    res = await db.execute(select(Staff).order_by(Staff.department, Staff.full_name))
+@router.get("/staff", response_model=List[StaffResponse], tags=TAG_OPS, summary="Danh sách hồ sơ và ca trực của nhân viên")
+async def get_staff_roster(include_inactive: bool = False, db: AsyncSession = Depends(get_db)):
+    """Returns all active staff members and their active shifts."""
+    stmt = select(Staff)
+    if not include_inactive:
+        stmt = stmt.where(Staff.is_active == True, Staff.status != "deleted", Staff.status != "inactive")
+    stmt = stmt.order_by(Staff.department, Staff.full_name)
+    res = await db.execute(stmt)
     return res.scalars().all()
 
 
-@router.post("/staff", response_model=StaffResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/staff", response_model=StaffResponse, status_code=status.HTTP_201_CREATED, tags=TAG_OPS, summary="Thêm mới hồ sơ nhân sự khách sạn")
 async def create_staff_member(staff_in: StaffCreate, db: AsyncSession = Depends(get_db)):
     """Create a new hotel staff member."""
     existing = await db.execute(select(Staff).where(Staff.username == staff_in.username.strip().lower()))
@@ -1580,7 +1704,7 @@ async def create_staff_member(staff_in: StaffCreate, db: AsyncSession = Depends(
     return new_staff
 
 
-@router.patch("/staff/{staff_id}", response_model=StaffResponse)
+@router.patch("/staff/{staff_id}", response_model=StaffResponse, tags=TAG_OPS, summary="Cập nhật thông tin và quyền hạn nhân viên")
 async def update_staff_member(staff_id: str, update_in: StaffUpdate, db: AsyncSession = Depends(get_db)):
     """Update staff details, role, status, or robot escalation configuration."""
     res = await db.execute(select(Staff).where(Staff.id == staff_id))
@@ -1592,21 +1716,158 @@ async def update_staff_member(staff_id: str, update_in: StaffUpdate, db: AsyncSe
     for field, val in update_dict.items():
         setattr(staff, field, val)
 
+    staff.updated_at = datetime.utcnow()
     await db.commit()
     await db.refresh(staff)
     return staff
 
 
-@router.delete("/staff/{staff_id}")
+@router.delete("/staff/{staff_id}", tags=TAG_OPS, summary="Xóa mềm (vô hiệu hóa) tài khoản nhân viên")
 async def delete_staff_member(staff_id: str, db: AsyncSession = Depends(get_db)):
-    """Delete a staff member."""
+    """
+    Xóa mềm (Soft Delete) tài khoản nhân viên:
+    Không xóa hẳn bản ghi khỏi CSDL để bảo toàn dữ liệu lịch sử và quan hệ khóa ngoại.
+    Thay đổi trạng thái is_active=False và status='inactive'.
+    """
     res = await db.execute(select(Staff).where(Staff.id == staff_id))
     staff = res.scalar_one_or_none()
     if not staff:
         raise HTTPException(status_code=404, detail="Không tìm thấy nhân viên với ID này")
 
-    await db.delete(staff)
+    staff.is_active = False
+    staff.status = "inactive"
+    staff.updated_at = datetime.utcnow()
     await db.commit()
-    return {"message": "Đã xóa nhân viên thành công", "id": staff_id}
+    await db.refresh(staff)
+    return {
+        "message": f"Đã vô hiệu hóa (xóa mềm) tài khoản nhân viên {staff.full_name} thành công",
+        "id": staff_id,
+        "is_active": staff.is_active,
+        "status": staff.status,
+    }
+
+
+# =====================================================================
+# 13. NOTIFICATION CENTER (Phòng ban & Toàn hệ thống)
+# =====================================================================
+
+@router.get("/notifications", response_model=List[NotificationResponse], tags=TAG_NOTIF)
+async def get_notifications(
+    department: Optional[str] = None,
+    limit: int = 50,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Lấy danh sách thông báo được phân tách theo phòng ban.
+    - Nhân viên phòng ban nào sẽ nhận thông báo phòng ban đó + thông báo chung 'All'.
+    - Quản trị viên/Executive nhận toàn bộ thông báo.
+    """
+    query = select(Notification)
+    if department and department.strip().lower() not in ["all", "admin", "executive", "operations admin", "toàn bộ"]:
+        dep_clean = department.strip().lower()
+        dept_aliases = [dep_clean]
+        if "f&b" in dep_clean or "room" in dep_clean or "ẩm thực" in dep_clean:
+            dept_aliases.extend(["f&b", "room service", "room_service", "ẩm thực & f&b"])
+        elif "housekeeping" in dep_clean or "buồng" in dep_clean:
+            dept_aliases.extend(["housekeeping", "buồng phòng"])
+        elif "bell" in dep_clean or "hành lý" in dep_clean:
+            dept_aliases.extend(["bell services", "bellman", "bell_services", "vận chuyển hành lý"])
+        elif "maint" in dep_clean or "kỹ thuật" in dep_clean or "bảo trì" in dep_clean:
+            dept_aliases.extend(["maintenance", "kỹ thuật & bảo trì", "kỹ thuật"])
+        elif "reception" in dep_clean or "lễ tân" in dep_clean or "front" in dep_clean:
+            dept_aliases.extend(["reception", "lễ tân", "front desk"])
+
+        query = query.where(
+            (func.lower(Notification.department).in_(dept_aliases))
+            | (Notification.department == "All")
+        )
+
+    query = query.order_by(desc(Notification.created_at)).limit(limit)
+    result = await db.execute(query)
+    return result.scalars().all()
+
+
+@router.post("/notifications", response_model=NotificationResponse, status_code=status.HTTP_201_CREATED, tags=TAG_NOTIF)
+async def create_notification_endpoint(
+    notif_in: NotificationCreate,
+    db: AsyncSession = Depends(get_db),
+):
+    """Tạo thông báo mới cho phòng ban."""
+    notif = await create_department_notification(
+        db=db,
+        department=notif_in.department,
+        title=notif_in.title,
+        description=notif_in.description,
+        request_id=notif_in.request_id,
+        request_type=notif_in.request_type,
+        type=notif_in.type,
+    )
+    await db.commit()
+    await db.refresh(notif)
+    return notif
+
+
+@router.patch("/notifications/{notification_id}/read", response_model=NotificationResponse, tags=TAG_NOTIF)
+async def toggle_notification_read(
+    notification_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Đánh dấu thông báo đã đọc hoặc chưa đọc."""
+    res = await db.execute(select(Notification).where(Notification.id == notification_id))
+    notif = res.scalar_one_or_none()
+    if not notif:
+        raise HTTPException(status_code=404, detail="Không tìm thấy thông báo")
+
+    notif.is_read = not notif.is_read
+    await db.commit()
+    await db.refresh(notif)
+    return notif
+
+
+@router.post("/notifications/mark-all-read", tags=TAG_NOTIF)
+async def mark_all_notifications_read(
+    department: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """Đánh dấu toàn bộ thông báo của phòng ban là đã đọc."""
+    query = update(Notification).values(is_read=True)
+    if department and department.strip().lower() not in ["all", "admin", "executive", "operations admin", "toàn bộ"]:
+        dep_clean = department.strip().lower()
+        dept_aliases = [dep_clean]
+        if "f&b" in dep_clean or "room" in dep_clean:
+            dept_aliases.extend(["f&b", "room service", "room_service"])
+        elif "housekeeping" in dep_clean:
+            dept_aliases.extend(["housekeeping", "buồng phòng"])
+        elif "bell" in dep_clean:
+            dept_aliases.extend(["bell services", "bellman", "bell_services"])
+        elif "maint" in dep_clean:
+            dept_aliases.extend(["maintenance", "kỹ thuật & bảo trì"])
+        elif "reception" in dep_clean:
+            dept_aliases.extend(["reception", "lễ tân"])
+
+        query = query.where(
+            (func.lower(Notification.department).in_(dept_aliases))
+            | (Notification.department == "All")
+        )
+
+    await db.execute(query)
+    await db.commit()
+    return {"message": "Đã đánh dấu tất cả thông báo là đã đọc", "department": department}
+
+
+@router.delete("/notifications/{notification_id}", tags=TAG_NOTIF)
+async def delete_notification_item(
+    notification_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Xóa thông báo khỏi hệ thống."""
+    res = await db.execute(select(Notification).where(Notification.id == notification_id))
+    notif = res.scalar_one_or_none()
+    if not notif:
+        raise HTTPException(status_code=404, detail="Không tìm thấy thông báo")
+
+    await db.delete(notif)
+    await db.commit()
+    return {"message": "Đã xóa thông báo thành công", "id": notification_id}
 
 

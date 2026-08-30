@@ -9,6 +9,7 @@ import {
   LogOut,
   Home,
 } from 'lucide-react';
+import { useLanguage } from '../../context/LanguageContext';
 
 export const AuroraSidebar = ({
   activeMenu = 'Dashboard',
@@ -17,14 +18,17 @@ export const AuroraSidebar = ({
   onLogout = () => {},
   onBackToHome = () => {},
   referenceLayout = false,
+  unreadNotifCount = 0,
 }) => {
+  const { t } = useLanguage();
+
   const staffNavItems = [
-    { id: 'Dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'Requests', label: 'Requests', icon: Inbox },
-    { id: 'My Tasks', label: 'My Tasks', icon: CheckSquare },
-    { id: 'History', label: 'History', icon: History },
-    { id: 'Notifications', label: 'Notifications', icon: Bell },
-    { id: 'Profile', label: 'Profile', icon: User },
+    { id: 'Dashboard', label: t('menuDashboard'), icon: LayoutDashboard },
+    { id: 'Requests', label: t('menuRequests'), icon: Inbox },
+    { id: 'My Tasks', label: t('menuMyTasks'), icon: CheckSquare },
+    { id: 'History', label: t('menuHistory'), icon: History },
+    { id: 'Notifications', label: t('menuNotifications'), icon: Bell },
+    { id: 'Profile', label: t('menuProfile'), icon: User },
   ];
 
   const user = currentUser || { name: 'Elena Rossi', role: 'Online', avatar: null };
@@ -71,7 +75,7 @@ export const AuroraSidebar = ({
                 )}
                 <button
                   onClick={() => onSelectMenu(item.id)}
-                  className={`flex items-center gap-3 transition-all text-left ${
+                  className={`flex items-center justify-between transition-all text-left ${
                     referenceLayout
                       ? `h-10 px-3 rounded-[10px] text-[14px] font-normal ${
                           isActive ? 'bg-black text-white' : 'text-[#555] hover:bg-[#F3F1ED]'
@@ -83,13 +87,23 @@ export const AuroraSidebar = ({
                         }`
                   }`}
                 >
-                  <Icon
-                    className={`${referenceLayout ? 'w-[18px] h-[18px]' : 'w-4 h-4'} ${
-                      isActive ? 'text-white' : 'text-[#78716C]'
-                    }`}
-                    strokeWidth={referenceLayout ? 1.8 : 2}
-                  />
-                  <span>{item.label}</span>
+                  <div className="flex items-center gap-3">
+                    <Icon
+                      className={`${referenceLayout ? 'w-[18px] h-[18px]' : 'w-4 h-4'} ${
+                        isActive ? 'text-white' : 'text-[#78716C]'
+                      }`}
+                      strokeWidth={referenceLayout ? 1.8 : 2}
+                    />
+                    <span>{item.label}</span>
+                  </div>
+
+                  {item.id === 'Notifications' && unreadNotifCount > 0 && (
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                      isActive ? 'bg-red-500 text-white' : 'bg-red-100 text-red-700'
+                    }`}>
+                      {unreadNotifCount}
+                    </span>
+                  )}
                 </button>
               </React.Fragment>
             );

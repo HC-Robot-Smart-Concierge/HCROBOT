@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Briefcase,
+  CheckCircle2,
   Filter,
   Home,
   Lightbulb,
@@ -18,6 +19,7 @@ import {
   fetchMaintenanceDashboard,
   updateMaintenanceStatus,
 } from '../../services/operationsApi';
+import { useLanguage } from '../../context/LanguageContext';
 
 const normalizeRequest = (request) => ({
   ...request,
@@ -74,9 +76,14 @@ export const MaintenanceDashboard = ({ currentUser, onNotify = () => {} }) => {
   }, []);
 
   const visibleRequests = useMemo(() => {
-    const filtered = (data.requests || []).filter((request) =>
-      filter === 'All' ? true : request.status === filter
-    );
+    const filtered = (data.requests || []).filter((request) => {
+      if (filter === 'All') return true;
+      const s = (request.status || '').toLowerCase();
+      if (filter === 'Pending') return s === 'pending' || s === 'unassigned';
+      if (filter === 'In Progress') return s === 'in progress' || s === 'in_progress';
+      if (filter === 'Completed') return s === 'completed';
+      return request.status === filter;
+    });
     return sortNewestFirst ? filtered : [...filtered].reverse();
   }, [data.requests, filter, sortNewestFirst]);
 
@@ -92,6 +99,18 @@ export const MaintenanceDashboard = ({ currentUser, onNotify = () => {} }) => {
   };
 
   const handleClaim = async (requestId) => {
+    const activeTask = (data.requests || []).find(
+      (r) =>
+        r.status === 'In Progress' &&
+        (r.assignedTo === staffName || r.assigned_to === staffName)
+    );
+    if (activeTask) {
+      onNotify(
+        `⚠️ Bạn đang có nhiệm vụ đang xử lý (${activeTask.title || activeTask.id}). Vui lòng hoàn thành công việc hiện tại trước khi nhận thêm nhiệm vụ mới!`
+      );
+      return;
+    }
+
     updateRequestLocally(requestId, 'In Progress', staffName);
     await updateMaintenanceStatus(requestId, 'In Progress', staffName);
     onNotify(`Đã nhận xử lý yêu cầu ${requestId}`);
@@ -139,24 +158,26 @@ export const MaintenanceDashboard = ({ currentUser, onNotify = () => {} }) => {
     onNotify(`Đã tạo yêu cầu bảo trì ${requestId}`);
   };
 
+  const { t } = useLanguage();
+
   const metrics = [
     {
-      label: 'TECHNICIANS\nON DUTY',
+      label: t('kpiTechsOnDuty'),
       value: data.kpis?.availableTechs?.count ?? 3,
       delta: data.kpis?.availableTechs?.delta,
       deltaColor: 'text-[#20A75B]',
       DeltaIcon: TrendingUp,
     },
     {
-      label: 'PENDING\nREQUESTS',
+      label: t('kpiPendingRequests'),
       value: data.kpis?.pendingRequests ?? 0,
     },
     {
-      label: 'IN PROGRESS',
+      label: t('inProgress'),
       value: data.kpis?.inProgress ?? 0,
     },
     {
-      label: 'COMPLETED\nTODAY',
+      label: t('kpiCompletedToday'),
       value: data.kpis?.completedToday?.count ?? 0,
       delta: data.kpis?.completedToday?.delta,
       deltaColor: 'text-[#20A75B]',
@@ -169,20 +190,11 @@ export const MaintenanceDashboard = ({ currentUser, onNotify = () => {} }) => {
       <div className="w-full max-w-[1180px] mx-auto px-8 pt-3 pb-8">
         <section className="flex items-start justify-between gap-6">
           <div>
-            <h2 className="text-[15px] font-medium text-[#282522]">Maintenance Dashboard</h2>
+            <h2 className="text-[15px] font-medium text-[#282522]">{t('mnTitle')}</h2>
             <p className="mt-1 text-[12px] text-[#69645F]">
-              Manage and track all facility repair and upkeep requests.
+              {t('mnSubtitle')}
             </p>
           </div>
-
-          <button
-            type="button"
-            onClick={() => setIsNewRequestModalOpen(true)}
-            className="flex items-center gap-2 rounded-[10px] bg-black px-5 py-3 text-[12px] font-medium text-white shadow-[0_8px_18px_rgba(0,0,0,0.12)] transition-colors hover:bg-[#252525]"
-          >
-            <Plus className="h-4 w-4" strokeWidth={1.8} />
-            New Request
-          </button>
         </section>
 
         <section className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-[52px]">
@@ -209,27 +221,29 @@ export const MaintenanceDashboard = ({ currentUser, onNotify = () => {} }) => {
 
         <section className="grid grid-cols-1 lg:grid-cols-[minmax(0,2.08fr)_minmax(225px,1fr)] gap-5 mt-[50px]">
           <div className="min-w-0">
-            <div className="h-11 flex items-start justify-between">
-              <h3 className="pt-2 text-[13px] font-medium text-[#403D39]">Active Requests</h3>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  title="Filter pending requests"
-                  onClick={() => setFilter((current) => (current === 'Pending' ? 'All' : 'Pending'))}
-                  className={`h-9 w-9 rounded-full flex items-center justify-center transition-colors ${
-                    filter === 'Pending' ? 'bg-black text-white' : 'bg-[#F1EFEC] text-[#77736E] hover:bg-[#E9E6E2]'
-                  }`}
-                >
-                  <Filter className="h-4 w-4" strokeWidth={1.7} />
-                </button>
-                <button
-                  type="button"
-                  title="Reverse request order"
-                  onClick={() => setSortNewestFirst((current) => !current)}
-                  className="h-9 w-9 rounded-full bg-[#F1EFEC] flex items-center justify-center text-[#77736E] transition-colors hover:bg-[#E9E6E2]"
-                >
-                  <ListFilter className="h-4 w-4" strokeWidth={1.7} />
-                </button>
+            <div className="h-9 mb-4 flex items-center justify-between gap-4">
+              <h3 className="text-[13px] font-medium text-[#403D39]">{t('activeRequests')}</h3>
+              <div className="flex items-center gap-1 flex-wrap">
+                {['All', 'Pending', 'In Progress', 'Completed'].map((tab) => (
+                  <button
+                    key={tab}
+                    type="button"
+                    onClick={() => setFilter(tab)}
+                    className={`rounded-[9px] px-3.5 py-1.5 text-[11px] font-medium transition-colors cursor-pointer ${
+                      filter === tab
+                        ? 'bg-[#EAE8E4] text-[#494540] shadow-xs'
+                        : 'text-[#77726D] hover:bg-[#F0EEEA]'
+                    }`}
+                  >
+                    {tab === 'All'
+                      ? t('all')
+                      : tab === 'Pending'
+                      ? t('pending')
+                      : tab === 'In Progress'
+                      ? t('inProgress')
+                      : t('completed')}
+                  </button>
+                ))}
               </div>
             </div>
 
@@ -267,7 +281,7 @@ export const MaintenanceDashboard = ({ currentUser, onNotify = () => {} }) => {
                             <p className="text-[11px] text-[#69645F]">{request.reportedTime}</p>
                             <span className="mt-1 inline-flex items-center gap-1.5 rounded-[7px] bg-[#F0EFEC] px-2 py-1 text-[11px] text-[#69645F]">
                               <span className={`h-1.5 w-1.5 rounded-full ${meta.dot}`} />
-                              {meta.label}
+                              {isCompleted ? t('completed') : isInProgress ? t('inProgress') : t('pending')}
                             </span>
                           </div>
                         </div>
@@ -285,16 +299,16 @@ export const MaintenanceDashboard = ({ currentUser, onNotify = () => {} }) => {
                           <button
                             type="button"
                             onClick={() => handleDecline(request.id)}
-                            className="rounded-[9px] border border-[#D8D4CF] bg-white px-4 py-2.5 text-[11px] font-medium text-[#5F5B56] hover:bg-[#F7F5F2]"
+                            className="rounded-[9px] border border-[#D8D4CF] bg-white px-4 py-2.5 text-[11px] font-medium text-[#5F5B56] hover:bg-[#F7F5F2] cursor-pointer"
                           >
-                            Decline
+                            {t('decline')}
                           </button>
                           <button
                             type="button"
                             onClick={() => handleClaim(request.id)}
-                            className="rounded-[9px] bg-black px-4 py-2.5 text-[11px] font-medium text-white hover:bg-[#252525]"
+                            className="rounded-[9px] bg-black px-5 py-2.5 text-[11px] font-bold text-white hover:bg-[#252525] cursor-pointer shadow-sm"
                           >
-                            Accept Task
+                            {t('claimTask')}
                           </button>
                         </div>
                       )}
@@ -309,26 +323,24 @@ export const MaintenanceDashboard = ({ currentUser, onNotify = () => {} }) => {
                                 .slice(0, 2)
                                 .join('')}
                             </span>
-                            <span>Assigned to: {request.assignedTo || staffName}</span>
+                            <span>{request.assignedTo || staffName}</span>
                           </div>
                           <button
                             type="button"
                             onClick={() => handleComplete(request.id)}
-                            className="rounded-[9px] border border-[#D8D4CF] bg-white px-4 py-2.5 text-[11px] font-medium text-[#5F5B56] hover:bg-[#F7F5F2]"
+                            className="rounded-[9px] bg-emerald-600 px-5 py-2.5 text-[11px] font-bold text-white hover:bg-emerald-700 cursor-pointer shadow-sm flex items-center gap-1.5"
                           >
-                            Update Status
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>{t('completeTask')}</span>
                           </button>
                         </div>
                       )}
 
                       {isCompleted && (
-                        <button
-                          type="button"
-                          onClick={() => onNotify(`Báo cáo yêu cầu ${request.id}`)}
-                          className="shrink-0 text-[11px] text-[#77726D] underline decoration-[#C5C0BA] underline-offset-2 hover:text-black"
-                        >
-                          View Report
-                        </button>
+                        <span className="text-[11px] font-bold text-emerald-700 bg-emerald-100 px-3.5 py-1.5 rounded-full border border-emerald-200 flex items-center gap-1">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                          {t('taskCompleted')}
+                        </span>
                       )}
                     </div>
                   </article>
@@ -337,7 +349,7 @@ export const MaintenanceDashboard = ({ currentUser, onNotify = () => {} }) => {
 
               {visibleRequests.length === 0 && (
                 <div className="rounded-[18px] bg-white px-6 py-12 text-center text-[12px] text-[#77726D]">
-                  No requests match this filter.
+                  {t('noDataMatch')}
                 </div>
               )}
             </div>
@@ -345,7 +357,7 @@ export const MaintenanceDashboard = ({ currentUser, onNotify = () => {} }) => {
 
           <aside className="min-w-0 space-y-7">
             <section className="rounded-[18px] bg-[#F5F3F0] px-5 py-5 shadow-[0_4px_18px_rgba(55,48,42,0.035)]">
-              <h3 className="text-[13px] font-medium text-[#403D39]">Staff Availability</h3>
+              <h3 className="text-[13px] font-medium text-[#403D39]">{t('mnStaffAvailability')}</h3>
 
               <div className="mt-3">
                 {(data.staffAvailability || []).slice(0, 3).map((staff, index, staffList) => {
@@ -414,12 +426,6 @@ export const MaintenanceDashboard = ({ currentUser, onNotify = () => {} }) => {
           </aside>
         </section>
       </div>
-
-      <NewDirectiveModal
-        isOpen={isNewRequestModalOpen}
-        onClose={() => setIsNewRequestModalOpen(false)}
-        onSubmit={handleCreateNew}
-      />
 
       <InteractiveMapModal
         isOpen={isMapModalOpen}

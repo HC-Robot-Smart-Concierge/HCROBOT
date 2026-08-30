@@ -29,7 +29,6 @@ export const LoginPage = ({ onLoginSuccess = () => {}, onBackToHome = () => {} }
     }
   };
 
-
   return (
     <div className="w-full h-full min-h-screen bg-[#FAF8F5] flex flex-col justify-between font-sans select-none overflow-y-auto custom-scrollbar p-6 text-[#1A1917]">
       {/* Top Header */}
@@ -117,7 +116,6 @@ export const LoginPage = ({ onLoginSuccess = () => {}, onBackToHome = () => {} }
               {isLoading ? 'Đang xác thực...' : 'Đăng Nhập'}
             </button>
           </form>
-
         </div>
       </div>
 

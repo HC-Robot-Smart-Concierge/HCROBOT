@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { AuroraSidebar } from './components/dashboard/AuroraSidebar';
 import { AuroraHeader } from './components/dashboard/AuroraHeader';
 import { ToastNotification } from './components/dashboard/ToastNotification';
@@ -21,9 +21,16 @@ import { MyTasksPage } from './pages/staff/MyTasksPage';
 import { HistoryPage } from './pages/staff/HistoryPage';
 import { NotificationsPage } from './pages/staff/NotificationsPage';
 import { ProfilePage } from './pages/staff/ProfilePage';
+import { useLanguage } from './context/LanguageContext';
 
 // Auth Api
 import { getStoredUser, logoutUser, fetchCurrentUser } from './services/authApi';
+import {
+  fetchNotifications,
+  toggleNotificationRead,
+  markAllNotificationsRead,
+  deleteNotification,
+} from './services/operationsApi';
 
 import {
   UtensilsCrossed,
@@ -122,7 +129,7 @@ export function App() {
     return localStorage.getItem('aurora_active_menu') || 'Dashboard';
   });
 
-  const [language, setLanguage] = useState('EN');
+  const { language, toggleLanguage, t } = useLanguage();
   const [toastMessage, setToastMessage] = useState(null);
 
   // Sync activeView to localStorage
@@ -199,6 +206,63 @@ export function App() {
       setToastMessage((prev) => (prev === msg ? null : prev));
     }, 3500);
   };
+
+  // ---------------------------------------------------------
+  // Department Notifications State & Live Polling (5s)
+  // ---------------------------------------------------------
+  const [notifications, setNotifications] = useState([]);
+  const seenNotificationIdsRef = useRef(new Set());
+  const isInitialNotifLoadRef = useRef(true);
+
+  const loadNotifications = useCallback(async () => {
+    if (!currentUser) return;
+    const dept = isAdminUser(currentUser) ? 'All' : (currentUser.department || 'Staff');
+    const data = await fetchNotifications(dept);
+    if (Array.isArray(data)) {
+      // Check for incoming new unread notifications to alert the staff
+      if (!isInitialNotifLoadRef.current) {
+        data.forEach((n) => {
+          if (!seenNotificationIdsRef.current.has(n.id) && (n.is_read === false || n.isRead === false)) {
+            showNotification(`🔔 [${n.department}] ${n.title}`);
+          }
+        });
+      }
+
+      data.forEach((n) => seenNotificationIdsRef.current.add(n.id));
+      isInitialNotifLoadRef.current = false;
+      setNotifications(data);
+    }
+  }, [currentUser]);
+
+  useEffect(() => {
+    loadNotifications();
+    const interval = setInterval(loadNotifications, 5000);
+    return () => clearInterval(interval);
+  }, [loadNotifications]);
+
+  const handleToggleNotificationRead = async (id) => {
+    setNotifications((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, is_read: !n.is_read, isRead: !n.isRead } : n))
+    );
+    await toggleNotificationRead(id);
+  };
+
+  const handleMarkAllNotificationsRead = async () => {
+    setNotifications((prev) =>
+      prev.map((n) => ({ ...n, is_read: true, isRead: true }))
+    );
+    const dept = isAdminUser(currentUser) ? 'All' : (currentUser?.department || 'Staff');
+    await markAllNotificationsRead(dept);
+  };
+
+  const handleDeleteNotification = async (id) => {
+    setNotifications((prev) => prev.filter((n) => n.id !== id));
+    await deleteNotification(id);
+  };
+
+  const unreadNotifCount = notifications.filter(
+    (n) => n.is_read === false || n.isRead === false
+  ).length;
 
   // Login Success Callback -> Auto-Redirect to the assigned staff dashboard
   const handleLoginSuccess = (user, targetDashboard) => {
@@ -388,26 +452,36 @@ export function App() {
             currentUser={currentUser || { name: 'Elena Rossi', role: 'Online', avatar: null }}
             onLogout={handleLogout}
             onBackToHome={() => setActiveView('landing')}
+            unreadNotifCount={unreadNotifCount}
           />
 
           {/* Main Content Area */}
           <div className="flex-1 flex flex-col h-full overflow-hidden bg-[#FAF8F5]">
-            {/* Top Header */}
+            {/* Top Header with Interactive Notification Dropdown */}
             <AuroraHeader
               referenceLayout={usesReferenceLayout}
-              hotelName="Aurora Grand Hotel"
+              hotelName={t('hotelName')}
               systemName="HCROBOT"
               subtitle={
                 usesReferenceLayout
-                  ? 'Front Desk Operations'
-                  : `${currentUser?.department || 'Staff'} Operations Portal`
+                  ? t('frontDeskSubtitle')
+                  : `${currentUser?.department || 'Staff'} ${t('portalSubtitle')}`
               }
               language={language}
               onToggleLanguage={() => {
-                const nextLang = language === 'EN' ? 'VI' : 'EN';
-                setLanguage(nextLang);
-                showNotification(`Đã chuyển ngôn ngữ sang ${nextLang}`);
+                toggleLanguage();
+                showNotification(
+                  language === 'EN'
+                    ? 'Đã chuyển ngôn ngữ sang Tiếng Việt'
+                    : 'Language switched to English'
+                );
               }}
+              notifications={notifications}
+              unreadCount={unreadNotifCount}
+              onOpenNotificationsPage={() => setActiveMenu('Notifications')}
+              onToggleRead={handleToggleNotificationRead}
+              onMarkAllRead={handleMarkAllNotificationsRead}
+              departmentName={currentUser?.department || 'Staff'}
             />
 
             {/* Dynamic View rendering based on activeMenu */}
@@ -461,9 +535,17 @@ export function App() {
               <HistoryPage currentUser={currentUser} onNotify={showNotification} />
             )}
 
-            {/* Notifications Page */}
+            {/* Notifications Page (Department-Filtered & Live Polled) */}
             {activeMenu === 'Notifications' && (
-              <NotificationsPage onNotify={showNotification} />
+              <NotificationsPage
+                currentUser={currentUser}
+                notifications={notifications}
+                onNotify={showNotification}
+                onToggleRead={handleToggleNotificationRead}
+                onMarkAllRead={handleMarkAllNotificationsRead}
+                onDeleteNotification={handleDeleteNotification}
+                onRefresh={loadNotifications}
+              />
             )}
 
             {/* Profile Page */}

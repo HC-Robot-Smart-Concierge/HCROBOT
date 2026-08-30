@@ -16,7 +16,7 @@ from app.services.logger_service import (
     get_trace_by_correlation_id_async,
 )
 
-router = APIRouter(prefix="/logs", tags=["Logs & Audit Trail"])
+router = APIRouter(prefix="/logs")
 
 def serialize_log(log: LogEvent) -> dict:
     return {
@@ -167,7 +167,7 @@ async def get_audit_trail(
 
 @router.get("/export")
 async def export_logs(
-    format: str = Query("csv", regex="^(csv|json)$"),
+    format: str = Query("csv", pattern="^(csv|json)$"),
     level: Optional[str] = None,
     category: Optional[str] = None,
     actor_type: Optional[str] = None,

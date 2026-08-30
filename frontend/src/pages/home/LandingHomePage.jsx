@@ -53,18 +53,20 @@ export const LandingHomePage = ({
             </p>
           </div>
 
-          {/* Header Action Buttons: Chỉ để About và Đăng Nhập */}
-          <div className="flex items-center gap-2">
+          {/* Header Action Links: Chữ thuần túy phân cách bằng | */}
+          <div className="flex items-center gap-3 text-xs font-medium text-stone-600">
             <button
               onClick={scrollToAbout}
-              className="px-4 py-1.5 rounded-full text-xs font-semibold text-stone-700 bg-[#EFECE6] border border-[#DDD8CE] hover:bg-[#E5E0D5] transition-all cursor-pointer"
+              className="hover:text-stone-900 transition-colors cursor-pointer"
             >
               About
             </button>
 
+            <span className="text-stone-300 select-none">|</span>
+
             <button
               onClick={onNavigateToLogin}
-              className="px-4 py-1.5 rounded-full text-xs font-bold text-stone-800 bg-[#E5E1D8] hover:bg-[#DCD7CB] border border-[#DDD8CE] transition-all cursor-pointer ml-1"
+              className="hover:text-stone-900 font-semibold transition-colors cursor-pointer"
             >
               {currentUser ? (currentUser.full_name || currentUser.name) : 'Đăng Nhập'}
             </button>

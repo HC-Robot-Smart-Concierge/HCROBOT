@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Header } from '../../components/robot/Header';
 import { RobotFace } from '../../components/robot/RobotFace';
 import { AudioWave } from '../../components/robot/AudioWave';
@@ -7,9 +7,11 @@ import { CameraPreview } from '../../components/robot/CameraPreview';
 
 import { useSpeechRecognition } from '../../hooks/useSpeechRecognition';
 import { useSpeechSynthesis } from '../../hooks/useSpeechSynthesis';
-import { sendChatPrompt, extractIntent } from '../../services/aiApi';
+import { sendChatPrompt, extractIntent, resetSession } from '../../services/aiApi';
 
-import { Mic, MicOff, RefreshCw, Volume2, Sparkles, Lock, ShieldAlert, KeyRound, X, CheckCircle2 } from 'lucide-react';
+import { RefreshCw, Volume2, Sparkles, LogOut } from 'lucide-react';
+
+const anyKeywordMatch = (text, keywords) => keywords.some((k) => text.includes(k));
 
 export const RobotScreenPage = ({ onLogout = () => {} }) => {
   // States: 'RT-01' | 'RT-02' | 'RT-03' | 'RT-04' | 'RT-05'
@@ -20,6 +22,15 @@ export const RobotScreenPage = ({ onLogout = () => {} }) => {
   const [detectedIntent, setDetectedIntent] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
 
+  // Auto-Listen Hands-Free State
+  const [isAutoListen, setIsAutoListen] = useState(true);
+  const silenceTimerRef = useRef(null);
+  const wasSpeakingRef = useRef(false);
+
+  // Session Memory & Room Number States
+  const [sessionId] = useState(() => 'session_kiosk_' + Math.random().toString(36).substring(2, 9));
+  const [activeRoomNumber, setActiveRoomNumber] = useState(null);
+
   // Robot Kiosk Protected Logout States
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [logoutPassword, setLogoutPassword] = useState('');
@@ -27,7 +38,7 @@ export const RobotScreenPage = ({ onLogout = () => {} }) => {
 
   // Hooks
   const { isListening, transcript, startListening, stopListening, resetTranscript, hasSupport } = useSpeechRecognition();
-  const { speak, cancel: stopSpeaking, isSpeaking } = useSpeechSynthesis();
+  const { speak, prime, cancel: stopSpeaking, isSpeaking } = useSpeechSynthesis();
 
   const toggleLanguage = () => {
     setLanguage((prev) => (prev === 'English' ? 'Tiếng Việt' : 'English'));
@@ -35,22 +46,60 @@ export const RobotScreenPage = ({ onLogout = () => {} }) => {
 
   const [guestEmotion, setGuestEmotion] = useState('neutral');
 
-  // Khi Camera phát hiện người lại gần (YOLO / Vision Sensor) -> Robot MỞ MẮT mỉm cười (im lặng chờ khách nói)
+  // Xóa bộ nhớ phiên (Dùng cho nút Khách Mới / Đổi Phòng)
+  const handleManualResetSession = async () => {
+    stopSpeaking();
+    stopListening();
+    resetTranscript();
+    setActiveRoomNumber(null);
+    setAiResponseText('');
+    setDetectedIntent(null);
+    await resetSession(sessionId);
+    setCurrentState('RT-02');
+  };
+
+  // Khi người dùng lại gần Camera -> Mở mắt & Chào hỏi chủ động theo thời gian thực
   const handleGuestApproached = () => {
-    if (currentState === 'RT-01') {
-      setCurrentState('RT-02'); // Mở mắt, hiển thị "Tôi có thể giúp gì?"
+    if (currentState === 'RT-01' || currentState === 'RT-02') {
+      setCurrentState('RT-02');
+      const hour = new Date().getHours();
+      let greeting = "Dạ em chào quý khách! Em là trợ lý Robot Concierge của khách sạn Aurora. Quý khách cần em hỗ trợ gì ạ?";
+      if (hour >= 5 && hour < 11) {
+        greeting = "Dạ em chào buổi sáng quý khách! Chúc quý khách một ngày mới nhiều năng lượng. Quý khách cần em hỗ trợ gì ạ?";
+      } else if (hour >= 11 && hour < 18) {
+        greeting = "Dạ em chào quý khách! Chúc quý khách một buổi chiều vui vẻ tại Aurora. Quý khách cần em hỗ trợ gì ạ?";
+      } else {
+        greeting = "Dạ em chào buổi tối quý khách! Chúc quý khách một buổi tối thư thái tại Aurora. Quý khách cần em hỗ trợ gì ạ?";
+      }
+
+      speak(
+        greeting, 
+        'vi-VN', 
+        () => {
+          setCurrentState('RT-03');
+          if (isAutoListen) {
+            handleStartTalk();
+          }
+        },
+        () => {
+          setAiResponseText(greeting);
+        }
+      );
     }
   };
 
-  // Khi người dùng đi xa khỏi Camera -> Robot nhắm mắt ngủ nghỉ (Chỉ khi Robot không đang bận nói/xử lý)
+  // Khi người dùng đi xa khỏi Camera -> Nhắm mắt & Reset
   const handleGuestLeft = () => {
-    if (!isSpeaking && currentState === 'RT-02') {
+    if (!isSpeaking && !isProcessing && currentState === 'RT-02' && !aiResponseText) {
+      handleManualResetSession();
+      setAiResponseText('');
       setCurrentState('RT-01');
     }
   };
 
-  // 1. Khi ấn nút PRESS TO TALK -> Bật Micro thật
+  // 1. Khi kích hoạt lắng nghe (Bấm nút hoặc Tự động)
   const handleStartTalk = () => {
+    prime();
     stopSpeaking();
     resetTranscript();
     setAiResponseText('');
@@ -58,8 +107,9 @@ export const RobotScreenPage = ({ onLogout = () => {} }) => {
     startListening(language);
   };
 
-  // 2. Khi dừng nói -> Tự động gửi tới Ollama RAG Backend kèm Cảm xúckhuôn mặt (guestEmotion)
+  // 2. Gửi tới Ollama RAG Backend
   const handleStopTalkAndProcess = async (userText) => {
+    if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
     stopListening();
     const query = userText || transcript;
     
@@ -68,48 +118,116 @@ export const RobotScreenPage = ({ onLogout = () => {} }) => {
       return;
     }
 
+    const lowerQuery = query.toLowerCase().strip ? query.toLowerCase().strip() : query.toLowerCase();
+    const isFastPath = [
+      'xin chào', 'chào em', 'chào robot', 'chào', 'hi', 'hello',
+      'cảm ơn', 'cảm ơn em', 'thank you', 'thanks',
+      'hồ bơi', 'wifi', 'mật khẩu wifi', 'giờ trả phòng'
+    ].some(k => lowerQuery.includes(k));
+
+    if (!isFastPath) {
+      // Phản hồi giọng nói tức thì < 50ms giúp cảm giác không bị chờ đợt
+      speak("Dạ, quý khách chờ em một tí nhé...", "vi-VN");
+    }
+
     setCurrentState('RT-04');
     setIsProcessing(true);
 
     try {
-      // Gọi song song Ollama RAG Chat & Intent Extraction (Chế độ tự động phát hiện ngôn ngữ & cảm xúc)
-      const [chatRes, intentRes] = await Promise.all([
-        sendChatPrompt(query, null, "auto", guestEmotion),
-        extractIntent(query)
-      ]);
+      const needsIntentCheck = anyKeywordMatch(lowerQuery, ["khăn", "nước", "dọn", "phòng", "đồ ăn", "hỏng", "sửa", "bàn", "towel", "clean", "food", "room"]);
 
-      const replyText = chatRes.response || 'Dạ, tôi đã ghi nhận yêu cầu của ông chủ.';
+      const chatRes = await sendChatPrompt(query, null, "auto", guestEmotion, sessionId, activeRoomNumber);
+      let intentRes = { action: 'faq' };
+
+      if (needsIntentCheck) {
+        intentRes = await extractIntent(query, sessionId, activeRoomNumber);
+      }
+
+      let replyText = chatRes.response || 'Dạ, tôi đã ghi nhận yêu cầu của quý khách.';
+      if (intentRes && intentRes.suggested_reply) {
+        replyText = intentRes.suggested_reply;
+      }
+
       const detectedLang = chatRes.detected_language || 'Tiếng Việt';
       const langCode = chatRes.lang_code || 'vi-VN';
 
-      // Tự động đồng bộ ngôn ngữ được nhận dạng lên Header
+      const updatedRoom = (intentRes && intentRes.room_number) || chatRes.current_room_number;
+      if (updatedRoom) {
+        setActiveRoomNumber(updatedRoom);
+      }
+
       setLanguage(detectedLang);
-      setAiResponseText(replyText);
       setDetectedIntent(intentRes);
       setIsProcessing(false);
 
-      // Kiểm tra nếu nội dung liên quan tới di chuyển / vị trí -> Mở bản đồ RT-05
-      const lowerQuery = query.toLowerCase();
       if (lowerQuery.includes('hồ bơi') || lowerQuery.includes('pool') || lowerQuery.includes('ở đâu') || lowerQuery.includes('tầng') || lowerQuery.includes('where')) {
         setCurrentState('RT-05');
-      } else {
-        setCurrentState('RT-02');
       }
 
-      // Phát giọng nói AI qua Loa (TTS) bằng mã giọng đọc tự động (langCode)
-      speak(replyText, langCode);
+      // Đồng bộ 100% thời điểm phát tiếng nói và hiển thị chữ lên màn hình (Zero Lag Sync)
+      speak(
+        replyText, 
+        langCode, 
+        // onEndCallback: Khi loa phát xong -> Xóa bảng chữ, hiện lại mắt xám nháy & Tự động nghe câu tiếp theo
+        () => {
+          setAiResponseText('');
+          setCurrentState('RT-03');
+          if (isAutoListen) {
+            setTimeout(() => {
+              handleStartTalk();
+            }, 300);
+          }
+        }, 
+        // onStartCallback: Khi tiếng cất lên -> Hiện bảng chữ ở trung tâm
+        () => {
+          setAiResponseText(replyText);
+        }
+      );
 
     } catch (error) {
       setIsProcessing(false);
-      const fallbackText = 'Xin lỗi ông chủ, không thể kết nối tới Ollama AI Server.';
-      setAiResponseText(fallbackText);
+      const fallbackText = 'Xin lỗi quý khách, không thể kết nối tới AI Server.';
       setCurrentState('RT-02');
-      speak(fallbackText, language);
+      speak(
+        fallbackText, 
+        language, 
+        () => {
+          setAiResponseText('');
+          setCurrentState('RT-03');
+          if (isAutoListen) handleStartTalk();
+        }, 
+        () => {
+          setAiResponseText(fallbackText);
+        }
+      );
     }
   };
 
+  // Tự động gửi AI khi người dùng ngừng nói 650ms (VAD Silence Detection Tốc độ cao)
+  useEffect(() => {
+    if (currentState === 'RT-03' && transcript.trim().length > 0) {
+      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = setTimeout(() => {
+        handleStopTalkAndProcess(transcript);
+      }, 650);
+    }
+    return () => {
+      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+    };
+  }, [transcript, currentState]);
 
-
+  // Tự động bật nghe câu hỏi tiếp theo sau khi Robot nói xong (TTS completed)
+  useEffect(() => {
+    if (wasSpeakingRef.current && !isSpeaking && isAutoListen && !isProcessing) {
+      const timer = setTimeout(() => {
+        if (currentState === 'RT-02' || currentState === 'RT-05') {
+          handleStartTalk();
+        }
+      }, 800);
+      return () => clearTimeout(timer);
+    }
+    wasSpeakingRef.current = isSpeaking;
+  }, [isSpeaking, isAutoListen, isProcessing, currentState]);
 
   // Tự động xử lý khi Micro dừng lắng nghe
   useEffect(() => {
@@ -139,29 +257,21 @@ export const RobotScreenPage = ({ onLogout = () => {} }) => {
   };
 
   return (
-    <div className="w-full h-screen bg-aurora-canvas flex flex-col justify-start items-center overflow-hidden font-sans select-none relative">
-      {/* Nút Khóa / Đăng xuất Robot Bảo Mật */}
-      <button
-        onClick={() => {
-          setLogoutPassword('');
-          setLogoutError('');
-          setShowLogoutModal(true);
-        }}
-        className="absolute top-4 right-4 z-40 px-4 py-2 rounded-full bg-slate-900/90 text-white border border-slate-700/80 shadow-xl hover:bg-black transition-all flex items-center gap-2 text-xs font-bold cursor-pointer backdrop-blur-md"
-      >
-        <Lock className="w-3.5 h-3.5 text-amber-400" />
-        <span>Đăng Xuất Robot</span>
-      </button>
-
-      {/* Camera Preview góc trên bên trái */}
+    <div 
+      onClick={() => {
+        prime();
+        if ((currentState === 'RT-02' || currentState === 'RT-01') && !isSpeaking && !isProcessing) {
+          handleStartTalk();
+        }
+      }}
+      className="w-full h-screen bg-aurora-canvas flex flex-col justify-start items-center overflow-hidden font-sans select-none relative cursor-pointer"
+    >
+      {/* Camera Preview Control góc trên bên trái */}
       <CameraPreview 
         onGuestApproached={handleGuestApproached} 
         onGuestLeft={handleGuestLeft} 
         onEmotionChange={(emotion) => setGuestEmotion(emotion)}
       />
-
-      {/* 1. Header */}
-      <Header currentLanguage={language} onLanguageToggle={toggleLanguage} />
 
       {/* 2. Main Body Container */}
       <main className="w-full flex-1 px-16 py-[54px] flex items-center justify-center gap-16 overflow-hidden">
@@ -218,185 +328,127 @@ export const RobotScreenPage = ({ onLogout = () => {} }) => {
             </div>
           </div>
         ) : (
-          /* Render RT-01, RT-02, RT-03, RT-04 Layout (Robot Face + Message) */
-          <>
-            {/* Left Column: Robot Face Avatar */}
-            <RobotFace 
-              mode={
-                currentState === 'RT-01' ? 'sleeping' :
-                currentState === 'RT-03' ? 'listening' :
-                currentState === 'RT-04' ? 'processing' : 'welcome'
-              } 
-            />
-
-            {/* Right Column: Dynamic Detection Message & Controls */}
-            <div className="w-[590px] h-[480px] flex flex-col justify-center items-start gap-4 text-aurora-primary">
-              <div className="w-full flex items-center justify-between">
-                <span className="text-sm font-semibold tracking-wider opacity-80 uppercase flex items-center gap-2">
-                  <span>AURORA GRAND CONCIERGE</span>
-                  {isSpeaking && <Volume2 className="w-4 h-4 text-emerald-600 animate-pulse" />}
-                </span>
-
-                {/* Huy Hiệu Đồng Cảm Khi Khách Giận / Không Hài Lòng */}
-                {(guestEmotion === 'annoyed' || guestEmotion === 'angry') && (
-                  <span className="px-3 py-1 bg-rose-100 border border-rose-300 rounded-full text-rose-800 font-extrabold text-[11px] flex items-center gap-1.5 shadow-sm animate-pulse">
-                    <span>😠 KHÁCH HÀNG GIẬN • AI DỰNG THÁI ĐỘ XOA DỊU</span>
+          /* Render Robot Display Mode (Khi trả lời -> Chỉ hiện bảng chữ ở trung tâm, không hiện mắt) */
+          <div className="w-full h-full flex items-center justify-center relative">
+            
+            {aiResponseText ? (
+              /* Khi Robot phát giọng trả lời -> HIỆN BẢNG CHỮ Ở TRUNG TÂM (KHÔNG HIỆN MẮT) */
+              <div className="w-[580px] p-8 bg-white/95 backdrop-blur-xl border border-stone-200/80 rounded-3xl shadow-2xl flex flex-col gap-5 animate-fadeIn transform transition-all duration-300">
+                <div className="flex items-center justify-between border-b border-stone-100 pb-3.5">
+                  <span className="text-xs font-extrabold tracking-wider uppercase text-emerald-800 flex items-center gap-2">
+                    <Volume2 className={`w-4 h-4 text-emerald-600 ${isSpeaking ? 'animate-pulse' : ''}`} />
+                    <span>{isSpeaking ? "Robot Đang Phát Giọng Nói..." : "Câu Trả Lời Của Robot"}</span>
                   </span>
-                )}
-                {guestEmotion === 'happy' && (
-                  <span className="px-3 py-1 bg-emerald-100 border border-emerald-300 rounded-full text-emerald-800 font-extrabold text-[11px] flex items-center gap-1.5 shadow-sm">
-                    <span>😊 KHÁCH HÀNG VUI VẺ</span>
+                  <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 uppercase">
+                    {language}
                   </span>
-                )}
-              </div>
+                </div>
 
-
-              {/* Dynamic Headlines */}
-              <h2 className="text-5xl font-bold leading-none tracking-tight">
-                {currentState === 'RT-01' && "Xin chào ông chủ!"}
-                {currentState === 'RT-02' && (language === 'English' ? "How may I help?" : "Tôi có thể giúp gì?")}
-                {currentState === 'RT-03' && "Tôi đang lắng nghe…"}
-                {currentState === 'RT-04' && "Đang suy luận RAG…"}
-              </h2>
-
-              {/* Dynamic Descriptions */}
-              <p className="text-xl font-normal leading-relaxed text-aurora-primary opacity-90 max-w-[570px]">
-                {currentState === 'RT-01' && "Chào mừng đến với Aurora Grand Hotel. Tôi là HCRobot trợ lý khách sạn thông minh."}
-                {currentState === 'RT-02' && "Nhấn nút Micro và nói tự nhiên. Bạn có thể hỏi vị trí, dịch vụ hoặc quy định khách sạn."}
-                {currentState === 'RT-03' && "Hãy nói vào Micro. Tôi đang nhận dạng giọng nói của bạn..."}
-                {currentState === 'RT-04' && "Đang truy vấn dữ liệu tri thức ChromaDB và sinh câu trả lời bằng Ollama LLM..."}
-              </p>
-
-              {/* Live AI Response Text Display */}
-              {aiResponseText && currentState === 'RT-02' && (
-                <div className="w-[520px] p-4 bg-emerald-100/80 border border-emerald-300 rounded-2xl text-emerald-950 font-medium text-base shadow-sm">
-                  <strong className="block text-xs text-emerald-800 font-bold uppercase mb-1">Robot trả lời:</strong>
+                <div className="text-lg font-semibold text-stone-900 leading-relaxed max-h-[260px] overflow-y-auto custom-scrollbar">
                   {aiResponseText}
                 </div>
-              )}
 
-              {/* Status / Transcript Boxes */}
-              {currentState === 'RT-02' && (
-                <>
-                  <div className="w-[520px] h-14 px-5 bg-aurora-surface rounded-2xl flex items-center gap-4 shadow-sm">
+                <div className="pt-3 border-t border-stone-100 flex items-center justify-between text-xs text-stone-500 font-medium">
+                  <span className="flex items-center gap-2">
                     <AudioWave isActive={isSpeaking} />
-                    <span className="text-sm font-semibold">
-                      {isSpeaking ? "Robot đang phát giọng nói qua loa…" : "Sẵn sàng nhận giọng nói từ Micro thật."}
-                    </span>
-                  </div>
-
-                  {/* Primary Press to Talk Button with Real Mic */}
-                  <button 
-                    onClick={handleStartTalk}
-                    className="w-[520px] h-[86px] px-6 bg-aurora-inverse text-aurora-textInverse rounded-2xl flex items-center justify-center gap-4 hover:bg-black active:scale-[0.98] transition-all cursor-pointer shadow-xl group"
-                  >
-                    <div className="w-12 h-12 rounded-full bg-aurora-surface/20 flex items-center justify-center group-hover:scale-110 transition-transform">
-                      <Mic className="w-7 h-7 text-aurora-textInverse" />
-                    </div>
-                    <span className="text-xl font-semibold tracking-wider uppercase">NHẤN ĐỂ NÓI (MIC THẬT)</span>
-                  </button>
-                </>
-              )}
-
-              {currentState === 'RT-03' && (
-                <div className="w-[520px] flex flex-col gap-3">
-                  <div className="w-[520px] h-20 px-5 bg-aurora-surface rounded-2xl flex items-center gap-4 shadow-inner border-2 border-emerald-500">
-                    <AudioWave isActive={true} />
-                    <span className="text-lg font-semibold italic text-emerald-900">
-                      “{transcript || "Đang chờ bạn nói..."}”
-                    </span>
-                  </div>
-
-                  <button
-                    onClick={() => handleStopTalkAndProcess(transcript)}
-                    className="w-[520px] py-3 bg-emerald-600 text-white font-bold rounded-xl shadow hover:bg-emerald-700 transition-colors flex items-center justify-center gap-2 cursor-pointer"
-                  >
-                    <MicOff className="w-5 h-5" />
-                    <span>HOÀN TẤT NÓI & GỬI AI</span>
-                  </button>
+                    <span>{isSpeaking ? "Đang phát qua loa..." : "Đã hoàn tất trả lời"}</span>
+                  </span>
+                  <span className="text-xs text-emerald-700 font-semibold flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    <span>Tự động nghe câu tiếp theo</span>
+                  </span>
                 </div>
-              )}
+              </div>
+            ) : (
+              /* Khi sẵn sàng nghe / suy nghĩ / nghỉ -> HIỆN MẮT ROBOT Ở TRUNG TÂM */
+              <div className="transition-all duration-500 flex flex-col items-center justify-center scale-105">
+                <RobotFace 
+                  mode={
+                    currentState === 'RT-01' ? 'sleeping' :
+                    currentState === 'RT-03' ? 'listening' :
+                    currentState === 'RT-04' ? 'processing' : 'welcome'
+                  } 
+                />
+              </div>
+            )}
 
-              {currentState === 'RT-04' && (
-                <div className="w-[520px] h-20 px-5 bg-aurora-surface rounded-2xl flex items-center justify-center gap-4 shadow-sm border border-aurora-border">
-                  <div className="flex gap-2">
-                    <div className="w-3 h-3 bg-aurora-primary rounded-full animate-ping" />
-                    <div className="w-3 h-3 bg-aurora-primary rounded-full animate-ping [animation-delay:0.2s]" />
-                    <div className="w-3 h-3 bg-aurora-primary rounded-full animate-ping [animation-delay:0.4s]" />
-                  </div>
-                  <span className="text-base font-bold tracking-wider">ĐANG XỬ LÝ AI OLLAMA & RAG • VUI LÒNG CHỜ</span>
-                </div>
-              )}
-            </div>
-          </>
+          </div>
         )}
       </main>
 
-      {/* 3. Bottom Dev State Switcher */}
-      <footer className="absolute bottom-3 bg-aurora-inverse/90 text-aurora-textInverse px-4 py-2 rounded-full text-xs flex items-center gap-3 shadow-2xl backdrop-blur-md">
-        <span className="font-bold text-aurora-border">DEV SIMULATOR:</span>
-        {['RT-01', 'RT-02', 'RT-03', 'RT-04', 'RT-05'].map((st) => (
-          <button
-            key={st}
-            onClick={() => setCurrentState(st)}
-            className={`px-3 py-1 rounded-full font-semibold transition-all ${
-              currentState === st 
-                ? 'bg-aurora-canvas text-aurora-inverse scale-105' 
-                : 'hover:bg-white/20 text-aurora-border'
-            }`}
-          >
-            {st}
-          </button>
-        ))}
+      {/* 3. Bottom Dev State Switcher (Chỉ là các hình tròn nhỏ màu sắc đại diện cho State, không chữ) */}
+      <footer className="absolute bottom-4 bg-stone-900/80 px-3.5 py-2 rounded-full flex items-center gap-3 shadow-2xl backdrop-blur-md border border-stone-800/80 z-40">
+        {[
+          { id: 'RT-01', name: 'Sleeping', activeColor: 'bg-slate-400 ring-2 ring-slate-300 shadow-[0_0_10px_rgba(203,213,225,0.8)] scale-125', idleColor: 'bg-slate-600/70 hover:bg-slate-500' },
+          { id: 'RT-02', name: 'Welcome', activeColor: 'bg-stone-100 ring-2 ring-white shadow-[0_0_10px_rgba(255,255,255,0.9)] scale-125', idleColor: 'bg-stone-500/70 hover:bg-stone-400' },
+          { id: 'RT-03', name: 'Listening', activeColor: 'bg-slate-300 ring-2 ring-slate-200 shadow-[0_0_10px_rgba(148,163,184,0.9)] scale-125 animate-pulse', idleColor: 'bg-slate-500/70 hover:bg-slate-400' },
+          { id: 'RT-04', name: 'Processing', activeColor: 'bg-sky-400 ring-2 ring-sky-300 shadow-[0_0_12px_rgba(56,189,248,0.9)] scale-125 animate-pulse', idleColor: 'bg-sky-700/70 hover:bg-sky-600' },
+          { id: 'RT-05', name: 'Route Guidance', activeColor: 'bg-emerald-400 ring-2 ring-emerald-300 shadow-[0_0_12px_rgba(52,211,153,0.9)] scale-125', idleColor: 'bg-emerald-700/70 hover:bg-emerald-600' },
+        ].map((st) => {
+          const isActive = currentState === st.id;
+          return (
+            <button
+              key={st.id}
+              onClick={() => setCurrentState(st.id)}
+              className={`w-3.5 h-3.5 rounded-full transition-all cursor-pointer ${isActive ? st.activeColor : st.idleColor}`}
+              title={`${st.id}: ${st.name}`}
+            />
+          );
+        })}
       </footer>
 
-      {/* Modal Bảo Mật Nhập Mật Khẩu Đăng Xuất Robot */}
+      {/* Nút Đăng Xuất hình tròn màu xám bên góc bên phải dưới cùng */}
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          setLogoutError('');
+          setLogoutPassword('');
+          setShowLogoutModal(true);
+        }}
+        title="Đăng xuất Robot"
+        className="absolute bottom-4 right-4 z-40 w-12 h-12 rounded-full bg-stone-700/80 hover:bg-stone-600 border border-stone-600/80 text-stone-200 hover:text-white flex items-center justify-center shadow-2xl backdrop-blur-md transition-all active:scale-95 cursor-pointer"
+      >
+        <LogOut className="w-5 h-5" />
+      </button>
+
+      {/* Modal Bảo Mật Nhập Mật Khẩu Đăng Xuất Robot (Phong cách Trang Chủ - Màu xám / Kem, Không Icon / Emoji) */}
       {showLogoutModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 animate-fadeIn">
-          <div className="bg-stone-900 border border-stone-700 text-white rounded-3xl p-7 max-w-md w-full shadow-2xl space-y-5 relative">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">
+          <div className="bg-white border border-[#E3DFD5] text-[#1A1917] rounded-3xl p-7 max-w-md w-full shadow-2xl space-y-5 relative">
             <button
               onClick={() => setShowLogoutModal(false)}
-              className="absolute top-4 right-4 p-1.5 rounded-full hover:bg-stone-800 text-stone-400 hover:text-white transition-colors cursor-pointer"
+              className="absolute top-4 right-4 text-xs font-bold text-stone-400 hover:text-stone-700 transition-colors cursor-pointer px-2 py-1"
             >
-              <X className="w-5 h-5" />
+              Đóng
             </button>
 
-            <div className="flex items-center gap-3 border-b border-stone-800 pb-3">
-              <div className="w-11 h-11 rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center font-bold">
-                <Lock className="w-6 h-6 text-amber-400" />
-              </div>
-              <div>
-                <h3 className="text-base font-extrabold text-white">Mật Khẩu Đăng Xuất Robot</h3>
-                <p className="text-[11px] text-stone-400">Ngăn người dùng tự ý thoát khỏi màn hình Kiosk</p>
-              </div>
+            <div className="space-y-1 border-b border-[#E3DFD5] pb-4">
+              <h3 className="text-base font-black text-[#1A1917] tracking-tight">Mật Khẩu Đăng Xuất Robot</h3>
+              <p className="text-xs text-stone-500 font-medium">Ngăn người dùng tự ý thoát khỏi màn hình Kiosk</p>
             </div>
 
             {logoutError && (
-              <div className="p-3.5 rounded-2xl bg-rose-950/80 border border-rose-800 text-rose-200 text-xs font-bold flex items-center gap-2.5">
-                <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0" />
-                <span>{logoutError}</span>
+              <div className="p-3.5 rounded-2xl bg-red-50 border border-red-200 text-xs font-bold text-red-700">
+                {logoutError}
               </div>
             )}
 
             <form onSubmit={handleProtectedLogoutSubmit} className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-stone-300 mb-1.5 uppercase tracking-wider">
+                <label className="block text-[11px] font-bold text-stone-600 uppercase tracking-wider mb-1.5">
                   Mật khẩu Bảo vệ (Password)
                 </label>
-                <div className="relative">
-                  <KeyRound className="w-4 h-4 text-stone-400 absolute left-3.5 top-3" />
-                  <input
-                    type="password"
-                    placeholder="Nhập mật khẩu (Mặc định: 123456)"
-                    value={logoutPassword}
-                    onChange={(e) => setLogoutPassword(e.target.value)}
-                    autoFocus
-                    required
-                    className="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-stone-950 border border-stone-700 text-sm font-medium text-white outline-none focus:border-amber-400 transition-colors"
-                  />
-                </div>
-                <p className="text-[11px] text-stone-400 mt-2">
-                  🔑 Mật khẩu mẫu: <code className="text-amber-300 font-bold">123456</code> hoặc <code className="text-amber-300 font-bold">robot123</code>
+                <input
+                  type="password"
+                  placeholder="Nhập mật khẩu (Mặc định: 123456)"
+                  value={logoutPassword}
+                  onChange={(e) => setLogoutPassword(e.target.value)}
+                  autoFocus
+                  required
+                  className="w-full px-4 py-2.5 rounded-2xl bg-[#FAF8F5] border border-[#E0DCD3] text-xs font-bold text-stone-900 outline-none focus:border-stone-600 transition-colors"
+                />
+                <p className="text-[11px] text-stone-500 font-medium mt-2">
+                  Mật khẩu mẫu: <code className="text-stone-800 font-bold">123456</code> hoặc <code className="text-stone-800 font-bold">robot123</code>
                 </p>
               </div>
 
@@ -404,16 +456,15 @@ export const RobotScreenPage = ({ onLogout = () => {} }) => {
                 <button
                   type="button"
                   onClick={() => setShowLogoutModal(false)}
-                  className="flex-1 py-3 rounded-2xl bg-stone-800 hover:bg-stone-700 text-stone-300 font-bold text-xs transition-colors cursor-pointer"
+                  className="flex-1 py-3 rounded-2xl bg-[#FAF8F5] hover:bg-[#E5E1D8] text-stone-700 border border-[#E0DCD3] font-bold text-xs transition-colors cursor-pointer"
                 >
                   Hủy bỏ
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-3 rounded-2xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-500 hover:to-amber-600 text-stone-950 font-extrabold text-xs transition-all shadow-lg flex items-center justify-center gap-2 cursor-pointer"
+                  className="flex-1 py-3 rounded-2xl bg-[#E5E1D8] hover:bg-[#DCD7CB] text-stone-900 border border-[#CFCABF] font-bold text-xs transition-all shadow-sm cursor-pointer"
                 >
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>Xác Nhận Đăng Xuất</span>
+                  Xác Nhận Đăng Xuất
                 </button>
               </div>
             </form>

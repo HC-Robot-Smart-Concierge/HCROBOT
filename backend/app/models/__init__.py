@@ -9,6 +9,7 @@ from app.models.directive import ManagementDirective
 from app.models.stock import InventoryStock
 from app.models.restaurant import RestaurantReservation, RestaurantPreOrder
 from app.models.reception import ReceptionRequest
+from app.models.support import HumanSupportSession
 
 __all__ = [
     "Base",
@@ -23,4 +24,6 @@ __all__ = [
     "RestaurantReservation",
     "RestaurantPreOrder",
     "ReceptionRequest",
+    "HumanSupportSession",
 ]
+

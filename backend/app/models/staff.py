@@ -22,8 +22,15 @@ class Staff(Base):
     status: Mapped[str] = mapped_column(String(50), default="available") # 'available', 'busy', 'off_shift'
     current_tasks_count: Mapped[int] = mapped_column(Integer, default=0)
     avatar_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    email: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    phone: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, default="+84 90 123 4567")
+    shift: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, default="Morning Shift (06:00 - 14:00)")
+    is_fallback_agent: Mapped[bool] = mapped_column(Boolean, default=False)
+    assigned_floors: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, default="Floor 1 - 5")
+    notification_channels: Mapped[Optional[str]] = mapped_column(String(200), nullable=True, default="Web Dashboard, Tablet Alert")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
 

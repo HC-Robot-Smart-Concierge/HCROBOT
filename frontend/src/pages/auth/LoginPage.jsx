@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
+import { Eye, EyeOff } from 'lucide-react';
 import { loginUser } from '../../services/authApi';
 
 export const LoginPage = ({ onLoginSuccess = () => {}, onBackToHome = () => {} }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState(null);
 
@@ -50,13 +52,10 @@ export const LoginPage = ({ onLoginSuccess = () => {}, onBackToHome = () => {} }
       <div className="max-w-md w-full mx-auto my-8">
         <div className="bg-white rounded-3xl border border-[#E3DFD5] shadow-xl p-8 space-y-6">
           {/* Brand Header */}
-          <div className="text-center space-y-1.5">
+          <div className="text-center">
             <h2 className="text-xl font-black text-[#1A1917] tracking-tight">
               Đăng Nhập Hệ Thống
             </h2>
-            <p className="text-xs text-stone-500 font-medium">
-              Xác thực mã JWT và phân luồng vào màn hình tương ứng
-            </p>
           </div>
 
           {/* Error Banner */}
@@ -66,7 +65,7 @@ export const LoginPage = ({ onLoginSuccess = () => {}, onBackToHome = () => {} }
             </div>
           )}
 
-          {/* Form mà không có icon, nút màu xám */}
+          {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-[11px] font-bold text-stone-600 uppercase tracking-wider mb-1.5">
@@ -86,14 +85,28 @@ export const LoginPage = ({ onLoginSuccess = () => {}, onBackToHome = () => {} }
               <label className="block text-[11px] font-bold text-stone-600 uppercase tracking-wider mb-1.5">
                 Mật khẩu (Password)
               </label>
-              <input
-                type="password"
-                placeholder="Nhập mật khẩu (Mặc định: 123456)"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                className="w-full px-4 py-2.5 rounded-2xl bg-[#FAF8F5] border border-[#E0DCD3] text-xs font-bold text-stone-900 outline-none focus:border-stone-600 transition-colors"
-              />
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="Nhập mật khẩu (Mặc định: 123456)"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  className="w-full pl-4 pr-11 py-2.5 rounded-2xl bg-[#FAF8F5] border border-[#E0DCD3] text-xs font-bold text-stone-900 outline-none focus:border-stone-600 transition-colors"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-700 p-1 cursor-pointer transition-colors"
+                  title={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                >
+                  {showPassword ? (
+                    <EyeOff className="w-4 h-4" />
+                  ) : (
+                    <Eye className="w-4 h-4" />
+                  )}
+                </button>
+              </div>
             </div>
 
             <button

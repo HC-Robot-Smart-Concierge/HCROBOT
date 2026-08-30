@@ -201,14 +201,14 @@ async def get_room_service_dashboard(db: AsyncSession = Depends(get_db)):
     # 4. Calculate dynamic KPIs
     pending_count = sum(1 for o in orders if o.status == "Pending")
     in_prep_count = sum(1 for o in orders if o.status == "Cooking")
-    completed_count = sum(1 for o in orders if o.status in ["Completed", "Ready", "Delivered"])
-    vip_count = sum(1 for o in orders if o.is_vip and o.status != "Completed")
+    delivering_count = sum(1 for o in orders if o.status in ["Delivering", "Ready"])
+    completed_count = sum(1 for o in orders if o.status in ["Completed", "Delivered"])
 
     kpis = {
         "pendingOrders": {"value": pending_count, "delta": "+0", "status": "neutral"},
         "inPreparation": {"value": in_prep_count, "avgTime": "12m"},
+        "delivering": {"value": delivering_count, "label": "In Transit"},
         "completedToday": {"value": completed_count},
-        "highPriority": {"count": vip_count, "label": "VIP Guests"},
     }
 
     return {
@@ -226,8 +226,6 @@ async def create_room_service_order(order_in: RoomServiceOrderCreate, db: AsyncS
     new_order = RoomServiceOrder(
         order_number=order_num,
         room_number=order_in.room_number,
-        is_vip=order_in.is_vip,
-        priority=order_in.priority,
         items=[item.model_dump() for item in order_in.items],
         note=order_in.note,
         image_url=order_in.image_url,
@@ -335,7 +333,6 @@ async def get_housekeeping_dashboard(db: AsyncSession = Depends(get_db)):
                 id=f"REQ-{h.ticket_code}",
                 ticket_code=h.ticket_code,
                 source=h.source or "From HCRobot",
-                priority=h.priority or "NORMAL",
                 time_label=h.time_label or "Recent",
                 title=h.title,
                 room_number=h.room_number,
@@ -354,7 +351,6 @@ async def get_housekeeping_dashboard(db: AsyncSession = Depends(get_db)):
                 id=f"REQ-{d.code}",
                 ticket_code=d.code,
                 source="Operations Directive",
-                priority=d.priority or "NORMAL",
                 time_label=d.reported_time_label or "Today",
                 title=d.title,
                 room_number=room_num or "Main Floor",
@@ -369,13 +365,13 @@ async def get_housekeeping_dashboard(db: AsyncSession = Depends(get_db)):
     pending_count = sum(1 for r in unified_hk if r.status in ["Unassigned", "Pending"])
     in_prog_count = sum(1 for r in unified_hk if r.status == "In Progress")
     completed_count = sum(1 for r in unified_hk if r.status == "Completed")
-    high_prio_count = sum(1 for r in unified_hk if "HIGH" in (r.priority or "").upper() and r.status != "Completed")
+    staff_on_duty_count = len(available_staff)
 
     kpis = {
         "pendingRequests": pending_count,
         "inProgress": in_prog_count,
         "completedToday": completed_count,
-        "highPriority": high_prio_count,
+        "staffOnDuty": staff_on_duty_count,
     }
 
     floor_status = {
@@ -399,7 +395,6 @@ async def create_housekeeping_request(req_in: HousekeepingRequestCreate, db: Asy
     new_req = HousekeepingRequest(
         ticket_code=ticket_code,
         source=req_in.source,
-        priority=req_in.priority,
         time_label="Just now",
         title=req_in.title,
         room_number=req_in.room_number,
@@ -476,14 +471,6 @@ async def get_bell_services_dashboard(db: AsyncSession = Depends(get_db)):
     pending_count = sum(1 for r in requests if r.status in ["Pending", "Unassigned"])
     on_job_count = sum(1 for r in requests if r.status == "In Progress")
     completed_count = sum(1 for r in requests if r.status == "Completed")
-    urgent_count = sum(1 for r in requests if r.is_urgent or "HIGH" in (r.priority or "").upper())
-
-    kpis = {
-        "pending": pending_count,
-        "onJob": on_job_count,
-        "completed": completed_count,
-        "urgent": urgent_count,
-    }
 
     staff_res = await db.execute(select(Staff).where(Staff.department == "Bell Services"))
     bell_staff = staff_res.scalars().all()
@@ -506,6 +493,15 @@ async def get_bell_services_dashboard(db: AsyncSession = Depends(get_db)):
         }
     )
 
+    available_fleet_count = sum(1 for s in team_status if s.get("status") == "available")
+
+    kpis = {
+        "pending": pending_count,
+        "onJob": on_job_count,
+        "completed": completed_count,
+        "activeFleet": available_fleet_count,
+    }
+
     announcement = {
         "title": "Peak Hours Approaching",
         "subtitle": "Expect high volume of check-outs between 10:00 AM and 12:00 PM.",
@@ -527,8 +523,6 @@ async def create_bell_request(req_in: BellRequestCreate, db: AsyncSession = Depe
     new_req = BellRequest(
         ticket_code=ticket_code,
         title=req_in.title,
-        priority=req_in.priority,
-        is_urgent=req_in.is_urgent,
         location=req_in.location,
         guest_name=req_in.guest_name,
         reporter=req_in.reporter,
@@ -580,14 +574,6 @@ async def get_maintenance_dashboard(db: AsyncSession = Depends(get_db)):
     pending_count = sum(1 for r in requests if r.status in ["Pending", "Unassigned"])
     in_prog_count = sum(1 for r in requests if r.status == "In Progress")
     completed_count = sum(1 for r in requests if r.status == "Completed")
-    high_count = sum(1 for r in requests if "HIGH" in (r.priority or "").upper() and r.status != "Completed")
-
-    kpis = {
-        "highPriority": {"count": high_count, "delta": "+0", "status": "good"},
-        "pendingRequests": pending_count,
-        "inProgress": in_prog_count,
-        "completedToday": {"count": completed_count, "delta": "+0", "status": "good"},
-    }
 
     staff_res = await db.execute(select(Staff).where(Staff.department == "Maintenance"))
     maint_staff = staff_res.scalars().all()
@@ -606,6 +592,15 @@ async def get_maintenance_dashboard(db: AsyncSession = Depends(get_db)):
         staff_availability = [
             {"id": "MNT", "name": "Nhân viên Kỹ thuật & Bảo trì", "role": "Maintenance Technician", "status": "Available", "statusClass": "text-emerald-600"}
         ]
+
+    active_techs_count = sum(1 for s in staff_availability if s.get("status") == "Available")
+
+    kpis = {
+        "availableTechs": {"count": active_techs_count, "delta": "+0", "status": "good"},
+        "pendingRequests": pending_count,
+        "inProgress": in_prog_count,
+        "completedToday": {"count": completed_count, "delta": "+0", "status": "good"},
+    }
 
     facility_map = {
         "zone": "Zone Status",
@@ -629,7 +624,6 @@ async def create_maintenance_request(req_in: MaintenanceRequestCreate, db: Async
         ticket_code=ticket_code,
         title=req_in.title,
         category=req_in.category,
-        priority=req_in.priority,
         reported_time_label="Just now",
         location=req_in.location,
         description=req_in.description,
@@ -740,8 +734,8 @@ async def _fetch_all_raw_requests(db: AsyncSession) -> List[Dict[str, Any]]:
             "table_type": "room_service",
             "title": f"Order #{o.order_number}: {', '.join([i.get('name', 'Item') for i in o.items]) if o.items else 'Room Service'}",
             "location": o.room_number,
-            "guestName": "VIP Guest" if o.is_vip else "Room Guest",
-            "priority": "HIGH PRIORITY" if (o.priority == "high" or o.is_vip) else "NORMAL",
+            "guestName": "Room Guest",
+            "priority": "NORMAL",
             "status": o.status,
             "time": "Recent",
             "assignedTo": o.assigned_staff_name,
@@ -760,7 +754,7 @@ async def _fetch_all_raw_requests(db: AsyncSession) -> List[Dict[str, Any]]:
             "title": h.title,
             "location": f"ROOM {h.room_number}" if not str(h.room_number).upper().startswith("ROOM") else h.room_number,
             "guestName": h.guest_name or "Guest",
-            "priority": h.priority,
+            "priority": "NORMAL",
             "status": h.status,
             "time": h.time_label,
             "assignedTo": h.assigned_staff_name,
@@ -779,7 +773,7 @@ async def _fetch_all_raw_requests(db: AsyncSession) -> List[Dict[str, Any]]:
             "title": b.title,
             "location": b.location,
             "guestName": b.guest_name or b.reporter or "Guest",
-            "priority": b.priority,
+            "priority": "NORMAL",
             "status": b.status,
             "time": "Today",
             "assignedTo": b.assigned_to,
@@ -798,7 +792,7 @@ async def _fetch_all_raw_requests(db: AsyncSession) -> List[Dict[str, Any]]:
             "title": m.title,
             "location": m.location,
             "guestName": "Guest / Staff Reported",
-            "priority": m.priority,
+            "priority": "NORMAL",
             "status": m.status,
             "time": m.reported_time_label,
             "assignedTo": m.assigned_to,
@@ -817,7 +811,7 @@ async def _fetch_all_raw_requests(db: AsyncSession) -> List[Dict[str, Any]]:
             "title": r.title,
             "location": r.location,
             "guestName": r.guest_name or "Guest",
-            "priority": r.priority,
+            "priority": "NORMAL",
             "status": r.status,
             "time": r.created_label,
             "assignedTo": r.assigned_to,
@@ -836,7 +830,7 @@ async def _fetch_all_raw_requests(db: AsyncSession) -> List[Dict[str, Any]]:
             "title": d.title,
             "location": d.location,
             "guestName": "Operations Directive",
-            "priority": d.priority,
+            "priority": "NORMAL",
             "status": d.status,
             "time": d.reported_time_label,
             "assignedTo": d.assigned_staff_name,
@@ -970,7 +964,6 @@ async def admin_dispatch_task(
         item = HousekeepingRequest(
             ticket_code=code,
             source="From Admin Portal",
-            priority=task_in.priority,
             time_label="Just now",
             title=task_in.title,
             room_number=room,
@@ -990,7 +983,7 @@ async def admin_dispatch_task(
             title=item.title,
             location=f"ROOM {item.room_number}",
             guest_name=item.guest_name or "Guest",
-            priority=item.priority,
+            priority="NORMAL",
             status=item.status,
             time="Just now",
             assigned_to=item.assigned_staff_name,
@@ -1005,9 +998,7 @@ async def admin_dispatch_task(
         order = RoomServiceOrder(
             order_number=code,
             room_number=task_in.room_number,
-            is_vip="vip" in (task_in.guest_name or "").lower(),
             status="Delivering" if task_in.assigned_robot_code else "Pending",
-            priority=task_in.priority.lower(),
             items=[{"name": task_in.title, "qty": 1}],
             note=task_in.description,
             assigned_staff_name=task_in.assigned_staff_name,
@@ -1023,7 +1014,7 @@ async def admin_dispatch_task(
             title=task_in.title,
             location=order.room_number,
             guest_name=task_in.guest_name or "Room Guest",
-            priority=task_in.priority,
+            priority="NORMAL",
             status=order.status,
             time="Just now",
             assigned_to=order.assigned_staff_name,
@@ -1038,8 +1029,6 @@ async def admin_dispatch_task(
         bell = BellRequest(
             ticket_code=code,
             title=task_in.title,
-            priority=task_in.priority,
-            is_urgent="high" in task_in.priority.lower(),
             location=task_in.room_number,
             guest_name=task_in.guest_name,
             reporter="Admin Dispatch",
@@ -1058,7 +1047,7 @@ async def admin_dispatch_task(
             title=bell.title,
             location=bell.location,
             guest_name=bell.guest_name or "Guest",
-            priority=bell.priority,
+            priority="NORMAL",
             status=bell.status,
             time="Just now",
             assigned_to=bell.assigned_to,
@@ -1073,7 +1062,6 @@ async def admin_dispatch_task(
         maint = MaintenanceRequest(
             ticket_code=code,
             title=task_in.title,
-            priority=task_in.priority,
             reported_time_label="Just now",
             location=task_in.room_number,
             description=task_in.description,
@@ -1092,7 +1080,7 @@ async def admin_dispatch_task(
             title=maint.title,
             location=maint.location,
             guest_name="Staff Reported",
-            priority=maint.priority,
+            priority="NORMAL",
             status=maint.status,
             time="Just now",
             assigned_to=maint.assigned_to,
@@ -1110,7 +1098,6 @@ async def admin_dispatch_task(
             created_label="Just now",
             location=task_in.room_number,
             guest_name=task_in.guest_name or "Hotel Guest",
-            priority=task_in.priority,
             status="Pending Action",
             description=task_in.description or "",
             assigned_to=task_in.assigned_staff_name,
@@ -1126,7 +1113,7 @@ async def admin_dispatch_task(
             title=rec.title,
             location=rec.location,
             guest_name=rec.guest_name,
-            priority=rec.priority,
+            priority="NORMAL",
             status=rec.status,
             time="Just now",
             assigned_to=rec.assigned_to,

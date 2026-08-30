@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   User,
   Shield,
@@ -17,8 +17,48 @@ import {
   MapPin,
   Briefcase,
   Hash,
+  Upload,
+  Image,
+  Trash2,
+  Check,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import { changeStaffPassword, updateStaffProfile } from '../../services/operationsApi';
+import { updateStoredUser } from '../../services/authApi';
+
+const AVATAR_PRESETS = [
+  {
+    id: 'p1',
+    label: 'Nữ 1',
+    url: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=200&auto=format&fit=crop&q=80',
+  },
+  {
+    id: 'p2',
+    label: 'Nam 1',
+    url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&auto=format&fit=crop&q=80',
+  },
+  {
+    id: 'p3',
+    label: 'Nữ 2',
+    url: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200&auto=format&fit=crop&q=80',
+  },
+  {
+    id: 'p4',
+    label: 'Nam 2',
+    url: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200&auto=format&fit=crop&q=80',
+  },
+  {
+    id: 'p5',
+    label: 'Nữ 3',
+    url: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=200&auto=format&fit=crop&q=80',
+  },
+  {
+    id: 'p6',
+    label: 'Nam 3',
+    url: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=200&auto=format&fit=crop&q=80',
+  },
+];
 
 export const ProfilePage = ({
   currentUser,
@@ -28,6 +68,7 @@ export const ProfilePage = ({
 }) => {
   const staffUsername = currentUser?.username || 'housekeeping';
   const staffDept = currentUser?.department || 'Housekeeping';
+  const fileInputRef = useRef(null);
 
   // Personal info form state
   const [fullName, setFullName] = useState(currentUser?.full_name || currentUser?.name || 'Maria Santos');
@@ -48,6 +89,9 @@ export const ProfilePage = ({
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isSavingPassword, setIsSavingPassword] = useState(false);
 
   // Sync state if currentUser changes
@@ -57,14 +101,52 @@ export const ProfilePage = ({
       setRole(currentUser.role || '');
       setCode(currentUser.code || '');
       setLocation(currentUser.location || 'Tầng 4 & 5');
-      if (currentUser.avatar_url || currentUser.avatar) {
-        setAvatarUrl(currentUser.avatar_url || currentUser.avatar);
-      }
+      setAvatarUrl(currentUser.avatar_url || currentUser.avatar || '');
       if (currentUser.status) {
         setShiftStatus(currentUser.status);
       }
     }
   }, [currentUser]);
+
+  // Cancel edit and reset all draft fields back to saved currentUser
+  const handleCancelEdit = () => {
+    if (currentUser) {
+      setFullName(currentUser.full_name || currentUser.name || '');
+      setRole(currentUser.role || '');
+      setCode(currentUser.code || '');
+      setLocation(currentUser.location || 'Tầng 4 & 5');
+      setAvatarUrl(currentUser.avatar_url || currentUser.avatar || '');
+      setShiftStatus(currentUser.status || 'available');
+    }
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+    setIsEditingProfile(false);
+  };
+
+  // Handle local file selection
+  const handleFileChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      onNotify('Vui lòng chọn tệp hình ảnh hợp lệ (PNG, JPG, WEBP, GIF)!');
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      onNotify('Kích thước ảnh tối đa là 5MB!');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64 = event.target.result;
+      setAvatarUrl(base64);
+      onNotify('Đã tải ảnh lên! Hãy nhấn "Lưu Thay Đổi Thông Tin" để hoàn tất.');
+    };
+    reader.readAsDataURL(file);
+  };
 
   // Action: Save Personal Info
   const handleSaveProfile = async (e) => {
@@ -81,7 +163,7 @@ export const ProfilePage = ({
       role: role.trim(),
       code: code.trim(),
       location: location.trim(),
-      avatar_url: avatarUrl.trim(),
+      avatar_url: avatarUrl ? avatarUrl.trim() : '',
       status: shiftStatus,
       department: staffDept,
     };
@@ -92,15 +174,16 @@ export const ProfilePage = ({
 
     const updatedUser = {
       ...currentUser,
+      ...(res && typeof res === 'object' ? res : {}),
       ...profilePayload,
+      full_name: fullName.trim(),
       name: fullName.trim(),
-      avatar: avatarUrl.trim(),
+      avatar_url: avatarUrl ? avatarUrl.trim() : '',
+      avatar: avatarUrl ? avatarUrl.trim() : '',
     };
 
-    // Update global state and localStorage
-    try {
-      localStorage.setItem('aurora_user', JSON.stringify(updatedUser));
-    } catch (err) {}
+    // Update global state and localStorage across all storage keys
+    updateStoredUser(updatedUser);
     onUpdateUser(updatedUser);
 
     onNotify('Đã cập nhật thông tin cá nhân thành công!');
@@ -211,7 +294,21 @@ export const ProfilePage = ({
                 </span>
 
                 <button
-                  onClick={() => setIsEditingProfile(!isEditingProfile)}
+                  onClick={() => {
+                    if (isEditingProfile) {
+                      handleCancelEdit();
+                    } else {
+                      if (currentUser) {
+                        setFullName(currentUser.full_name || currentUser.name || '');
+                        setRole(currentUser.role || '');
+                        setCode(currentUser.code || '');
+                        setLocation(currentUser.location || 'Tầng 4 & 5');
+                        setAvatarUrl(currentUser.avatar_url || currentUser.avatar || '');
+                        setShiftStatus(currentUser.status || 'available');
+                      }
+                      setIsEditingProfile(true);
+                    }
+                  }}
                   className={`px-3.5 py-1 rounded-full text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer active:scale-95 ${
                     isEditingProfile
                       ? 'bg-stone-200 text-stone-800 hover:bg-stone-300'
@@ -247,7 +344,7 @@ export const ProfilePage = ({
                 <h4 className="text-sm font-bold text-[#1A1917]">Chỉnh Sửa Thông Tin Cá Nhân</h4>
               </div>
               <button
-                onClick={() => setIsEditingProfile(false)}
+                onClick={handleCancelEdit}
                 className="text-stone-400 hover:text-stone-800 text-xs font-bold cursor-pointer"
               >
                 ✕ Đóng
@@ -317,19 +414,114 @@ export const ProfilePage = ({
                   />
                 </div>
 
-                {/* Link Avatar */}
-                <div className="sm:col-span-2">
-                  <label className="block text-[11px] font-bold text-[#78716C] uppercase mb-1 flex items-center gap-1">
+                {/* Chọn Ảnh Đại Diện */}
+                <div className="sm:col-span-2 space-y-3">
+                  <label className="block text-[11px] font-bold text-[#78716C] uppercase flex items-center gap-1">
                     <Camera className="w-3.5 h-3.5 text-stone-500" />
-                    <span>Đường Dẫn Ảnh Đại Diện (Avatar URL)</span>
+                    <span>Ảnh Đại Diện (Chọn tệp từ thiết bị hoặc chọn mẫu)</span>
                   </label>
-                  <input
-                    type="url"
-                    placeholder="https://images.unsplash.com/..."
-                    value={avatarUrl}
-                    onChange={(e) => setAvatarUrl(e.target.value)}
-                    className="w-full px-4 py-2 rounded-xl bg-[#FAF8F5] border border-[#E0DCD3] text-xs text-stone-800 outline-none focus:border-stone-400"
-                  />
+
+                  <div className="p-4 rounded-2xl bg-[#FAF8F5] border border-[#E0DCD3] space-y-3">
+                    <div className="flex flex-col sm:flex-row items-center gap-4">
+                      {/* Avatar Live Preview */}
+                      <div className="relative group shrink-0">
+                        {avatarUrl ? (
+                          <img
+                            src={avatarUrl}
+                            alt="Avatar Preview"
+                            className="w-16 h-16 rounded-2xl object-cover border-2 border-stone-300 shadow-sm"
+                          />
+                        ) : (
+                          <div className="w-16 h-16 rounded-2xl bg-stone-900 text-white flex items-center justify-center text-xl font-bold">
+                            {fullName.charAt(0) || 'U'}
+                          </div>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          className="absolute inset-0 bg-black/40 text-white rounded-2xl opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity cursor-pointer"
+                          title="Bấm để đổi ảnh"
+                        >
+                          <Camera className="w-5 h-5" />
+                        </button>
+                      </div>
+
+                      {/* Upload Controls */}
+                      <div className="flex-1 text-center sm:text-left space-y-1.5">
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={handleFileChange}
+                        />
+                        <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
+                          <button
+                            type="button"
+                            onClick={() => fileInputRef.current?.click()}
+                            className="px-4 py-1.5 rounded-full bg-stone-900 hover:bg-black text-white text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer active:scale-95"
+                          >
+                            <Upload className="w-3.5 h-3.5 text-amber-300" />
+                            <span>Chọn Ảnh Từ Máy Tính</span>
+                          </button>
+
+                          {avatarUrl && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setAvatarUrl('');
+                                onNotify('Đã gỡ ảnh đại diện.');
+                              }}
+                              className="px-3.5 py-1.5 rounded-full bg-white hover:bg-red-50 text-red-600 border border-red-200 text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>Gỡ Ảnh</span>
+                            </button>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-stone-500">
+                          Hỗ trợ định dạng JPG, PNG, WEBP hoặc GIF (Tối đa 5MB)
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Presets Gallery */}
+                    <div className="pt-2.5 border-t border-stone-200/70">
+                      <p className="text-[11px] font-bold text-stone-600 mb-2">Hoặc chọn nhanh từ bộ ảnh mẫu:</p>
+                      <div className="flex flex-wrap items-center gap-2.5">
+                        {AVATAR_PRESETS.map((preset) => {
+                          const isSelected = avatarUrl === preset.url;
+                          return (
+                            <button
+                              key={preset.id}
+                              type="button"
+                              onClick={() => {
+                                setAvatarUrl(preset.url);
+                                onNotify(`Đã chọn ảnh mẫu ${preset.label}`);
+                              }}
+                              className={`relative w-11 h-11 rounded-xl overflow-hidden border-2 transition-all cursor-pointer ${
+                                isSelected
+                                  ? 'border-indigo-600 scale-105 shadow-md ring-2 ring-indigo-200'
+                                  : 'border-stone-200 hover:border-stone-400 opacity-80 hover:opacity-100'
+                              }`}
+                              title={`Chọn ${preset.label}`}
+                            >
+                              <img
+                                src={preset.url}
+                                alt={preset.label}
+                                className="w-full h-full object-cover"
+                              />
+                              {isSelected && (
+                                <div className="absolute inset-0 bg-indigo-600/30 flex items-center justify-center">
+                                  <Check className="w-4 h-4 text-white drop-shadow" />
+                                </div>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Trạng thái ca trực */}
@@ -363,7 +555,7 @@ export const ProfilePage = ({
               <div className="flex items-center justify-end gap-2 pt-2">
                 <button
                   type="button"
-                  onClick={() => setIsEditingProfile(false)}
+                  onClick={handleCancelEdit}
                   className="px-5 py-2.5 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-bold transition-all cursor-pointer"
                 >
                   ✕ Hủy Bỏ
@@ -486,14 +678,24 @@ export const ProfilePage = ({
                   <label className="block text-[11px] font-bold text-[#78716C] uppercase mb-1">
                     Mật khẩu hiện tại
                   </label>
-                  <input
-                    type="password"
-                    placeholder="Nhập mật khẩu hiện tại"
-                    value={currentPassword}
-                    onChange={(e) => setCurrentPassword(e.target.value)}
-                    className="w-full px-4 py-2 rounded-xl bg-[#FAF8F5] border border-[#E0DCD3] text-xs outline-none focus:border-stone-400"
-                    required
-                  />
+                  <div className="relative">
+                    <input
+                      type={showCurrentPassword ? 'text' : 'password'}
+                      placeholder="Nhập mật khẩu hiện tại"
+                      value={currentPassword}
+                      onChange={(e) => setCurrentPassword(e.target.value)}
+                      className="w-full pl-4 pr-10 py-2 rounded-xl bg-[#FAF8F5] border border-[#E0DCD3] text-xs outline-none focus:border-stone-400"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-700 p-1 cursor-pointer transition-colors"
+                      title={showCurrentPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                    >
+                      {showCurrentPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
                 </div>
 
                 {/* 2. Mật khẩu mới */}
@@ -501,14 +703,24 @@ export const ProfilePage = ({
                   <label className="block text-[11px] font-bold text-[#78716C] uppercase mb-1">
                     Mật khẩu mới
                   </label>
-                  <input
-                    type="password"
-                    placeholder="Mật khẩu mới (tối thiểu 6 ký tự)"
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    className="w-full px-4 py-2 rounded-xl bg-[#FAF8F5] border border-[#E0DCD3] text-xs outline-none focus:border-stone-400"
-                    required
-                  />
+                  <div className="relative">
+                    <input
+                      type={showNewPassword ? 'text' : 'password'}
+                      placeholder="Mật khẩu mới (tối thiểu 6 ký tự)"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      className="w-full pl-4 pr-10 py-2 rounded-xl bg-[#FAF8F5] border border-[#E0DCD3] text-xs outline-none focus:border-stone-400"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowNewPassword(!showNewPassword)}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-700 p-1 cursor-pointer transition-colors"
+                      title={showNewPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                    >
+                      {showNewPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
                 </div>
 
                 {/* 3. Xác nhận mật khẩu mới */}
@@ -516,14 +728,24 @@ export const ProfilePage = ({
                   <label className="block text-[11px] font-bold text-[#78716C] uppercase mb-1">
                     Xác nhận mật khẩu mới
                   </label>
-                  <input
-                    type="password"
-                    placeholder="Nhập lại mật khẩu mới"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    className="w-full px-4 py-2 rounded-xl bg-[#FAF8F5] border border-[#E0DCD3] text-xs outline-none focus:border-stone-400"
-                    required
-                  />
+                  <div className="relative">
+                    <input
+                      type={showConfirmPassword ? 'text' : 'password'}
+                      placeholder="Nhập lại mật khẩu mới"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      className="w-full pl-4 pr-10 py-2 rounded-xl bg-[#FAF8F5] border border-[#E0DCD3] text-xs outline-none focus:border-stone-400"
+                      required
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-700 p-1 cursor-pointer transition-colors"
+                      title={showConfirmPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                    >
+                      {showConfirmPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
                 </div>
               </div>
 

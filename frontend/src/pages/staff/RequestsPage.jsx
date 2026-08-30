@@ -31,8 +31,8 @@ export const RequestsPage = ({ currentUser, onNotify = () => {} }) => {
       department: 'F&B',
       title: 'Club Sandwich & Truffle Fries (x2), Artisan Cola (x2)',
       location: 'ROOM 412',
-      guestName: 'Mr. John Smith (VIP)',
-      priority: 'HIGH PRIORITY',
+      guestName: 'Mr. John Smith',
+      priority: 'NORMAL',
       status: 'Pending',
       time: '4 mins ago',
       assignedTo: null,
@@ -44,19 +44,19 @@ export const RequestsPage = ({ currentUser, onNotify = () => {} }) => {
       title: 'Spill cleanup required (Wine spill on carpet)',
       location: 'ROOM 502',
       guestName: 'Mr. John Smith',
-      priority: 'HIGH PRIORITY',
+      priority: 'NORMAL',
       status: 'Pending',
       time: '10:15 AM',
       assignedTo: null,
-      notes: 'Guest requested immediate carpet cleaning.',
+      notes: 'Guest requested carpet cleaning.',
     },
     {
       id: 'REQ-BS-501',
       department: 'Bell Services',
-      title: 'Luggage Pickup (Urgent International Flight)',
-      location: 'SUITE 402',
+      title: 'Luggage Pickup',
+      location: 'ROOM 402',
       guestName: 'Mr. Aris Thorne',
-      priority: 'HIGH PRIORITY',
+      priority: 'NORMAL',
       status: 'Pending',
       time: '09:30 AM',
       assignedTo: null,
@@ -102,7 +102,13 @@ export const RequestsPage = ({ currentUser, onNotify = () => {} }) => {
 
   // Helper to check if task is assigned to current user
   const isTaskAssignedToMe = (r) => {
-    const assigned = r.assignedTo || r.assigned_staff_name || r.assignedStaff;
+    const assigned =
+      r.assignedTo ||
+      r.assigned_to ||
+      r.assigned_staff_name ||
+      r.assignedStaff ||
+      r.staffName ||
+      r.staff_name;
     if (!assigned) return false;
     const assignedNorm = String(assigned).toLowerCase().trim();
     const staffNameNorm = String(staffName || '').toLowerCase().trim();
@@ -115,6 +121,22 @@ export const RequestsPage = ({ currentUser, onNotify = () => {} }) => {
       (curNameNorm && assignedNorm === curNameNorm) ||
       (curFullNameNorm && assignedNorm === curFullNameNorm) ||
       (curUserNorm && assignedNorm === curUserNorm)
+    );
+  };
+
+  // Helper to get unified handler name for both list view and detail modal
+  const getTaskHandlerName = (r) => {
+    if (!r) return staffName;
+    return (
+      r.assignedTo ||
+      r.assigned_to ||
+      r.assigned_staff_name ||
+      r.assignedStaff ||
+      r.staffName ||
+      r.staff_name ||
+      r.completedBy ||
+      r.completed_by ||
+      staffName
     );
   };
 
@@ -168,23 +190,19 @@ export const RequestsPage = ({ currentUser, onNotify = () => {} }) => {
   const inProgressCount = deptScopedRequests.filter(isTaskInProgress).length;
   const completedCount = deptScopedRequests.filter(isTaskCompleted).length;
 
-  // 4-Tier Priority Sorting Function:
-  // 1. Ưu tiên cao chưa ai nhận (High Priority + Unassigned/Pending)
-  // 2. Những yêu cầu chưa ai nhận (Normal/Low + Unassigned/Pending)
-  // 3. Những yêu cầu đã có người nhận / Đang xử lý (In Progress)
-  // 4. Những yêu cầu đã hoàn thành (Completed)
+  // Sorting logic based on progress workflow:
+  // 1. Pending (chờ tiếp nhận)
+  // 2. In Progress (đang xử lý)
+  // 3. Completed (hoàn thành)
   const getRequestPriorityScore = (req) => {
-    const p = (req.priority || '').toUpperCase().trim();
     const isPending = isTaskPending(req);
     const isInProgress = isTaskInProgress(req);
     const isCompleted = isTaskCompleted(req);
-    const isHighPriority = p.includes('HIGH') || p.includes('URGENT') || p.includes('VIP');
 
-    if (isPending && isHighPriority) return 1;
-    if (isPending && !isHighPriority) return 2;
-    if (isInProgress) return 3;
-    if (isCompleted) return 4;
-    return 5;
+    if (isPending) return 1;
+    if (isInProgress) return 2;
+    if (isCompleted) return 3;
+    return 4;
   };
 
   // Filter requests
@@ -240,7 +258,15 @@ export const RequestsPage = ({ currentUser, onNotify = () => {} }) => {
     // 1. Optimistic UI update
     setRequests((prev) =>
       prev.map((r) =>
-        r.id === reqId ? { ...r, status: 'In Progress', assignedTo: staffName, assigned_staff_name: staffName } : r
+        r.id === reqId
+          ? {
+              ...r,
+              status: 'In Progress',
+              assignedTo: staffName,
+              assigned_to: staffName,
+              assigned_staff_name: staffName,
+            }
+          : r
       )
     );
 
@@ -251,7 +277,13 @@ export const RequestsPage = ({ currentUser, onNotify = () => {} }) => {
       let list = cached ? JSON.parse(cached) : [];
       const updatedList = list.map((r) =>
         r.id === reqId || r.ticket_code === reqId || (r.id && r.id.includes(reqId))
-          ? { ...r, status: 'In Progress', assignedStaff: staffName, assigned_staff_name: staffName }
+          ? {
+              ...r,
+              status: 'In Progress',
+              assignedStaff: staffName,
+              assigned_staff_name: staffName,
+              assigned_to: staffName,
+            }
           : r
       );
       localStorage.setItem(storageKey, JSON.stringify(updatedList));
@@ -266,7 +298,18 @@ export const RequestsPage = ({ currentUser, onNotify = () => {} }) => {
   const handleMarkCompleted = async (reqId) => {
     // 1. Optimistic UI update
     setRequests((prev) =>
-      prev.map((r) => (r.id === reqId ? { ...r, status: 'Completed', assignedTo: r.assignedTo || staffName } : r))
+      prev.map((r) =>
+        r.id === reqId
+          ? {
+              ...r,
+              status: 'Completed',
+              assignedTo: r.assignedTo || r.assigned_to || staffName,
+              assigned_to: r.assigned_to || r.assignedTo || staffName,
+              assigned_staff_name: r.assigned_staff_name || staffName,
+              completed_by: staffName,
+            }
+          : r
+      )
     );
 
     // 2. Persist to local cache for Dashboard synchronization
@@ -357,12 +400,14 @@ export const RequestsPage = ({ currentUser, onNotify = () => {} }) => {
               <span>Trực ca: {staffName}</span>
             </div>
 
-            <button
-              onClick={() => setIsNewModalOpen(true)}
-              className="px-5 py-2 rounded-full bg-[#18181B] hover:bg-black text-white text-xs font-bold transition-all shadow-sm flex items-center gap-2 cursor-pointer"
-            >
-              <span>Tạo Yêu Cầu Mới</span>
-            </button>
+            {isExecutive && (
+              <button
+                onClick={() => setIsNewModalOpen(true)}
+                className="px-5 py-2 rounded-full bg-[#18181B] hover:bg-black text-white text-xs font-bold transition-all shadow-sm flex items-center gap-2 cursor-pointer"
+              >
+                <span>Tạo Yêu Cầu Mới</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -481,22 +526,18 @@ export const RequestsPage = ({ currentUser, onNotify = () => {} }) => {
               </div>
             ) : (
               paginatedRequests.map((req) => {
-                const priorityStr = (req.priority || 'NORMAL').toUpperCase();
-                const isUrgent = priorityStr.includes('HIGH') || priorityStr.includes('URGENT');
                 const isPending = isTaskPending(req);
                 const isInProgress = isTaskInProgress(req);
                 const isCompleted = isTaskCompleted(req);
                 const isMine = isTaskAssignedToMe(req);
-                const handlerName = req.assignedTo || req.assigned_staff_name || req.assignedStaff;
+                const handlerName = getTaskHandlerName(req);
 
                 return (
                   <div
                     key={req.id}
                     className={`bg-white rounded-2xl border border-[#E5E1D8] p-5 shadow-sm space-y-3 transition-all hover:shadow-md ${
                       isInProgress ? 'border-l-4 border-l-sky-500' : ''
-                    } ${isCompleted ? 'border-l-4 border-l-emerald-500 bg-emerald-50/5' : ''} ${
-                      isUrgent && isPending ? 'border-l-4 border-l-red-500' : ''
-                    }`}
+                    } ${isCompleted ? 'border-l-4 border-l-emerald-500 bg-emerald-50/5' : ''}`}
                   >
                     <div className="flex items-start justify-between gap-4">
                       {/* Title */}
@@ -510,11 +551,6 @@ export const RequestsPage = ({ currentUser, onNotify = () => {} }) => {
                             <span className="px-2.5 py-0.5 rounded-full bg-[#18181B] text-white text-[10px] font-bold">
                               {req.location}
                             </span>
-                            {isUrgent && (
-                              <span className="px-2.5 py-0.5 rounded-full bg-red-100 text-red-700 text-[10px] font-bold">
-                                HIGH PRIORITY
-                              </span>
-                            )}
                           </div>
 
                           <h4 className="text-sm font-bold text-[#1A1917]">{req.title}</h4>
@@ -552,11 +588,11 @@ export const RequestsPage = ({ currentUser, onNotify = () => {} }) => {
                           </span>
                         ) : isInProgress ? (
                           <div className="flex items-center gap-1.5 text-sky-800 bg-sky-50 px-3 py-1 rounded-full border border-sky-200 font-bold text-[11px]">
-                            <span>Đang xử lý bởi: <span className="underline">{handlerName || staffName}</span></span>
+                            <span>Đang xử lý bởi: <span className="underline">{handlerName}</span></span>
                           </div>
                         ) : (
                           <div className="flex items-center gap-1.5 text-emerald-800 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200 font-bold text-[11px]">
-                            <span>Hoàn tất bởi: <strong className="text-emerald-950 font-semibold">{handlerName || staffName}</strong></span>
+                            <span>Hoàn tất bởi: <strong className="text-emerald-950 font-semibold">{handlerName}</strong></span>
                           </div>
                         )}
                       </div>
@@ -720,10 +756,7 @@ export const RequestsPage = ({ currentUser, onNotify = () => {} }) => {
                   <div>
                     <span className="text-stone-500 text-[11px] block">Nhân viên thực hiện:</span>
                     <span className="font-bold text-stone-900 text-xs">
-                      {selectedDetailReq.assignedTo ||
-                        selectedDetailReq.assigned_staff_name ||
-                        selectedDetailReq.assignedStaff ||
-                        'Nhân viên ca trực'}
+                      {getTaskHandlerName(selectedDetailReq)}
                     </span>
                   </div>
                   <div>

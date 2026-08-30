@@ -106,7 +106,6 @@ class ReceptionRequestResponse(BaseModel):
     guest_name: str
     guest_tier: str
     guest_stay_details: str
-    priority: str
     status: str
     description: str
     attached_media: List[Dict[str, Any]]
@@ -135,8 +134,6 @@ class OrderItem(BaseModel):
 
 class RoomServiceOrderCreate(BaseModel):
     room_number: str
-    is_vip: bool = False
-    priority: str = "normal"
     items: List[OrderItem]
     note: Optional[str] = None
     image_url: Optional[str] = None
@@ -156,9 +153,7 @@ class RoomServiceOrderResponse(BaseModel):
     id: str
     order_number: str
     room_number: str
-    is_vip: bool
     status: str
-    priority: str
     items: List[Dict[str, Any]]
     note: Optional[str]
     image_url: Optional[str]
@@ -177,7 +172,6 @@ class RoomServiceOrderResponse(BaseModel):
 # ---------------------------------------------------------
 class HousekeepingRequestCreate(BaseModel):
     source: str = "From HCRobot"
-    priority: str = "NORMAL"
     title: str
     room_number: str
     description: Optional[str] = None
@@ -192,7 +186,6 @@ class HousekeepingRequestResponse(BaseModel):
     id: str
     ticket_code: str
     source: str
-    priority: str
     time_label: str
     title: str
     room_number: str
@@ -210,8 +203,6 @@ class HousekeepingRequestResponse(BaseModel):
 # ---------------------------------------------------------
 class BellRequestCreate(BaseModel):
     title: str
-    priority: str = "HIGH PRIORITY"
-    is_urgent: bool = False
     location: str
     guest_name: Optional[str] = None
     reporter: Optional[str] = None
@@ -226,8 +217,6 @@ class BellRequestResponse(BaseModel):
     id: str
     ticket_code: str
     title: str
-    priority: str
-    is_urgent: bool
     location: str
     guest_name: Optional[str]
     reporter: Optional[str]
@@ -246,7 +235,6 @@ class BellRequestResponse(BaseModel):
 class MaintenanceRequestCreate(BaseModel):
     title: str
     category: str = "general"
-    priority: str = "HIGH PRIORITY"
     location: str
     description: Optional[str] = None
     source: str = "MANUAL DISPATCH"
@@ -256,7 +244,6 @@ class MaintenanceRequestResponse(BaseModel):
     ticket_code: str
     title: str
     category: str
-    priority: str
     reported_time_label: str
     location: str
     description: Optional[str]
@@ -471,7 +458,6 @@ class HumanSupportSessionResponse(BaseModel):
     session_code: str
     room_number: str
     guest_name: str
-    is_vip: bool = False
     category: str
     origin_robot_code: str
     sentiment: str

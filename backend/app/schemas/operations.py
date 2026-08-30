@@ -470,3 +470,30 @@ class HumanSupportSessionResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+# ---------------------------------------------------------
+# Notification Schemas
+# ---------------------------------------------------------
+class NotificationCreate(BaseModel):
+    department: str = Field(..., description="'F&B', 'Housekeeping', 'Bell Services', 'Maintenance', 'Reception', 'All'")
+    title: str
+    description: str
+    request_id: Optional[str] = None
+    request_type: Optional[str] = None
+    type: str = "Request"
+
+
+class NotificationResponse(BaseModel):
+    id: str
+    department: str
+    title: str
+    description: str
+    request_id: Optional[str] = None
+    request_type: Optional[str] = None
+    type: str
+    is_read: bool
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+

@@ -27,11 +27,25 @@ export const HistoryPage = ({ currentUser, onNotify = () => {} }) => {
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 20;
 
-  const staffName = currentUser?.full_name || currentUser?.name || 'Maria Santos';
-  const userDept = currentUser?.department || 'Housekeeping';
+  const staffName = currentUser?.full_name || currentUser?.name || 'Hotel Staff';
+  const userDept = currentUser?.department || 'Staff';
   const isExecutive =
     userDept === 'Executive' ||
+    userDept === 'Administration' ||
     currentUser?.username === 'admin';
+
+  const isDeptMatch = (logDept, uDept) => {
+    if (!logDept || !uDept) return true;
+    const lD = logDept.toLowerCase().trim();
+    const uD = uDept.toLowerCase().trim();
+    if (lD === uD) return true;
+    if ((uD.includes('f&b') || uD.includes('room')) && (lD.includes('f&b') || lD.includes('room') || lD.includes('ẩm thực'))) return true;
+    if ((uD.includes('housekeeping') || uD.includes('buồng')) && (lD.includes('housekeeping') || lD.includes('buồng'))) return true;
+    if ((uD.includes('bell') || uD.includes('hành lý')) && (lD.includes('bell') || lD.includes('hành lý'))) return true;
+    if ((uD.includes('maint') || uD.includes('bảo trì') || uD.includes('kỹ thuật')) && (lD.includes('maint') || lD.includes('bảo trì') || lD.includes('kỹ thuật'))) return true;
+    if ((uD.includes('reception') || uD.includes('lễ tân')) && (lD.includes('reception') || lD.includes('lễ tân'))) return true;
+    return false;
+  };
 
   // Reset page when filters change
   useEffect(() => {
@@ -121,7 +135,7 @@ export const HistoryPage = ({ currentUser, onNotify = () => {} }) => {
         const formatted = completedReqs.map((r, idx) => ({
           id: `LOG-${(r.id || '').replace('REQ-', '')}`,
           time: r.time || 'Vừa xong',
-          department: r.department || 'Housekeeping',
+          department: r.department || 'F&B',
           title: `Hoàn tất: ${r.title}`,
           location: r.location || 'Phòng lưu trú',
           operator: r.assignedTo || r.assigned_staff_name || staffName,
@@ -130,7 +144,7 @@ export const HistoryPage = ({ currentUser, onNotify = () => {} }) => {
           icon:
             (r.department || '').toLowerCase().includes('housekeeping')
               ? Sparkles
-              : (r.department || '').toLowerCase().includes('f&b')
+              : (r.department || '').toLowerCase().includes('f&b') || (r.department || '').toLowerCase().includes('room')
               ? UtensilsCrossed
               : (r.department || '').toLowerCase().includes('bell')
               ? Luggage
@@ -138,7 +152,7 @@ export const HistoryPage = ({ currentUser, onNotify = () => {} }) => {
           color:
             (r.department || '').toLowerCase().includes('housekeeping')
               ? 'bg-emerald-100 text-emerald-800'
-              : (r.department || '').toLowerCase().includes('f&b')
+              : (r.department || '').toLowerCase().includes('f&b') || (r.department || '').toLowerCase().includes('room')
               ? 'bg-amber-100 text-amber-800'
               : (r.department || '').toLowerCase().includes('bell')
               ? 'bg-blue-100 text-blue-800'
@@ -151,7 +165,7 @@ export const HistoryPage = ({ currentUser, onNotify = () => {} }) => {
       }
     };
     loadDbLogs();
-  }, [staffName]);
+  }, [staffName, userDept]);
 
   // Combine DB completed logs with defaults
   const combinedLogs = [
@@ -166,9 +180,7 @@ export const HistoryPage = ({ currentUser, onNotify = () => {} }) => {
         return false;
       }
     } else {
-      const userDeptNorm = userDept.toLowerCase().trim();
-      const logDeptNorm = (log.department || '').toLowerCase().trim();
-      if (!logDeptNorm.includes(userDeptNorm) && !userDeptNorm.includes(logDeptNorm)) {
+      if (!isDeptMatch(log.department, userDept)) {
         return false;
       }
     }

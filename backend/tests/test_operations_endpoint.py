@@ -67,4 +67,31 @@ async def test_all_operations_dashboards_and_endpoints():
         assert isinstance(unified_data, list)
         assert all("department" in request for request in unified_data)
 
+        # 9. Test Staff Soft Delete
+        create_staff_res = await ac.post("/api/v1/operations/staff", json={
+            "username": "test_soft_delete_staff",
+            "password": "secret_password",
+            "full_name": "Test Soft Delete Staff",
+            "role": "Cleaner",
+            "department": "Housekeeping",
+        })
+        assert create_staff_res.status_code == 201
+        created_id = create_staff_res.json()["id"]
+
+        del_res = await ac.delete(f"/api/v1/operations/staff/{created_id}")
+        assert del_res.status_code == 200
+        del_data = del_res.json()
+        assert del_data["is_active"] is False
+        assert del_data["status"] == "inactive"
+
+        # Verify not returned in active staff roster
+        roster_res = await ac.get("/api/v1/operations/staff")
+        active_ids = [s["id"] for s in roster_res.json()]
+        assert created_id not in active_ids
+
+        # Verify returned when include_inactive=true
+        all_roster_res = await ac.get("/api/v1/operations/staff?include_inactive=true")
+        all_ids = [s["id"] for s in all_roster_res.json()]
+        assert created_id in all_ids
+
 

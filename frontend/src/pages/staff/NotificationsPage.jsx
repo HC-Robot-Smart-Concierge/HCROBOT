@@ -1,204 +1,265 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Bell,
   CheckCheck,
-  Trash2,
   AlertTriangle,
   Bot,
   CookingPot,
   Sparkles,
   ShieldAlert,
-  Info,
-  Clock,
+  Briefcase,
+  Wrench,
+  RefreshCw,
+  Inbox,
+  CheckCircle2,
 } from 'lucide-react';
+import { Pagination } from '../../components/common/Pagination';
 
-export const NotificationsPage = ({ onNotify = () => {} }) => {
-  const [filter, setFilter] = useState('All'); // 'All' | 'Unread' | 'Urgent' | 'Robot'
+export const NotificationsPage = ({
+  currentUser = null,
+  notifications = [],
+  onNotify = () => {},
+  onToggleRead = () => {},
+  onMarkAllRead = () => {},
+  onRefresh = () => {},
+}) => {
+  const [filter, setFilter] = useState('All'); // 'All' | 'Unread' | 'Robot' | 'Warning'
+  const [searchQuery, setSearchQuery] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
 
-  const [notifications, setNotifications] = useState([
-    {
-      id: 'NOTIF-01',
-      title: 'Sự cố tràn nước khẩn cấp tại Phòng 502',
-      description: 'Phát hiện sự cố tràn rượu vang trên thảm qua hệ thống Camera AI của HCRobot.',
-      time: '2 phút trước',
-      type: 'Urgent',
-      isRead: false,
-      icon: AlertTriangle,
-      iconColor: 'bg-red-100 text-red-600',
-    },
-    {
-      id: 'NOTIF-02',
-      title: 'Cảnh báo mức tồn kho thấp: Artisan Cola còn 6 lon',
-      description: 'Mặt hàng nước giải khát F&B sắp hết trong kho tầng 2, cần nhập hàng bổ sung.',
-      time: '12 phút trước',
-      type: 'Warning',
-      isRead: false,
-      icon: CookingPot,
-      iconColor: 'bg-amber-100 text-amber-700',
-    },
-    {
-      id: 'NOTIF-03',
-      title: 'HCRobot Unit 02 hoàn tất giao hàng tại Phòng 412',
-      description: 'Khách hàng đã nhận đơn ăn nhẹ và xác nhận mã PIN mở khoang thành công.',
-      time: '25 phút trước',
-      type: 'Robot',
-      isRead: true,
-      icon: Bot,
-      iconColor: 'bg-sky-100 text-sky-700',
-    },
-    {
-      id: 'NOTIF-04',
-      title: 'Chỉ thị điều hành mới từ quản trị hệ thống',
-      description: 'Chỉ thị #M-101: Tăng cường nhân sự hỗ trợ khu vực sảnh Lobby trong khung giờ 10:00 - 12:00.',
-      time: '1 giờ trước',
-      type: 'Directive',
-      isRead: true,
-      icon: ShieldAlert,
-      iconColor: 'bg-stone-100 text-stone-700',
-    },
-    {
-      id: 'NOTIF-05',
-      title: 'HCRobot Unit 03 đã kết nối trạm sạc Dock 2',
-      description: 'Dung lượng pin đạt 84%, tự động kích hoạt chế độ sạc nhanh và chờ lệnh tiếp theo.',
-      time: '2 giờ trước',
-      type: 'Robot',
-      isRead: true,
-      icon: Bot,
-      iconColor: 'bg-emerald-100 text-emerald-700',
-    },
-  ]);
+  const userDept = currentUser?.department || 'Staff';
+
+  // Reset page when filter or search changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filter, searchQuery]);
+
+  const getNotifIcon = (notif) => {
+    const type = (notif.type || notif.request_type || '').toLowerCase();
+    if (type.includes('urgent') || type.includes('warning')) {
+      return { Icon: AlertTriangle, color: 'bg-red-100 text-red-600' };
+    }
+    if (type.includes('robot')) {
+      return { Icon: Bot, color: 'bg-sky-100 text-sky-600' };
+    }
+    if (type.includes('room_service') || type.includes('f&b')) {
+      return { Icon: CookingPot, color: 'bg-amber-100 text-amber-700' };
+    }
+    if (type.includes('bell')) {
+      return { Icon: Briefcase, color: 'bg-stone-100 text-stone-700' };
+    }
+    if (type.includes('maint')) {
+      return { Icon: Wrench, color: 'bg-orange-100 text-orange-700' };
+    }
+    if (type.includes('directive')) {
+      return { Icon: ShieldAlert, color: 'bg-purple-100 text-purple-700' };
+    }
+    return { Icon: Sparkles, color: 'bg-emerald-100 text-emerald-700' };
+  };
 
   const filtered = notifications.filter((n) => {
-    if (filter === 'Unread') return !n.isRead;
-    if (filter === 'Urgent') return n.type === 'Urgent';
-    if (filter === 'Robot') return n.type === 'Robot';
+    const isUnread = n.is_read === false || n.isRead === false;
+    const type = (n.type || n.request_type || '').toLowerCase();
+
+    if (filter === 'Unread' && !isUnread) return false;
+    if (filter === 'Robot' && !type.includes('robot')) return false;
+    if (filter === 'Warning' && !type.includes('warning') && !type.includes('urgent')) return false;
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      const matchTitle = (n.title || '').toLowerCase().includes(q);
+      const matchDesc = (n.description || '').toLowerCase().includes(q);
+      const matchDept = (n.department || '').toLowerCase().includes(q);
+      if (!matchTitle && !matchDesc && !matchDept) return false;
+    }
+
     return true;
   });
 
-  const handleMarkAllRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
-    onNotify('Đã đánh dấu tất cả thông báo là đã đọc');
-  };
+  const unreadCount = notifications.filter((n) => n.is_read === false || n.isRead === false).length;
 
-  const handleToggleRead = (id) => {
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, isRead: !n.isRead } : n))
-    );
-  };
-
-  const handleDelete = (id) => {
-    setNotifications((prev) => prev.filter((n) => n.id !== id));
-    onNotify('Đã xóa thông báo');
-  };
-
-  const unreadCount = notifications.filter((n) => !n.isRead).length;
+  const paginatedNotifications = filtered.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize
+  );
 
   return (
-    <div className="flex-1 overflow-y-auto custom-scrollbar p-8 bg-[#FAF8F5] font-sans">
+    <div className="flex-1 overflow-y-auto custom-scrollbar p-8 bg-[#FAF8F5] font-sans select-none">
       <div className="max-w-5xl mx-auto space-y-6">
-        {/* Header */}
+        {/* Top Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2.5">
-              <h2 className="text-xl font-bold text-[#1A1917]">Trung Tâm Thông Báo & Cảnh Báo</h2>
+              <h2 className="text-xl font-bold text-[#1A1917]">Trung Tâm Thông Báo &amp; Cảnh Báo</h2>
+              <span className="px-3 py-1 rounded-full bg-[#18181B] text-white text-xs font-bold">
+                {userDept}
+              </span>
               {unreadCount > 0 && (
-                <span className="px-2.5 py-0.5 rounded-full bg-red-600 text-white text-xs font-bold">
-                  {unreadCount} mới
+                <span className="px-2.5 py-0.5 rounded-full bg-red-600 text-white text-xs font-bold animate-pulse">
+                  {unreadCount} chưa đọc
                 </span>
               )}
             </div>
             <p className="text-xs text-[#78716C] mt-1">
-              Cập nhật cảnh báo thời gian thực từ robot tự hành và các bộ phận nghiệp vụ.
+              Thông báo và chỉ thị điều phối thời gian thực dành riêng cho bộ phận <strong className="text-stone-800">{userDept}</strong>.
             </p>
           </div>
 
           <div className="flex items-center gap-2">
             <button
-              onClick={handleMarkAllRead}
-              className="px-4 py-2 rounded-full bg-white border border-[#DDD8CE] text-xs font-bold text-stone-700 hover:bg-[#F5F2EB] transition-all flex items-center gap-1.5 shadow-sm cursor-pointer"
+              type="button"
+              onClick={onRefresh}
+              className="p-2 rounded-full bg-white border border-[#DDD8CE] text-stone-700 hover:bg-[#F5F2EB] transition-all shadow-sm cursor-pointer"
+              title="Làm mới thông báo"
             >
-              <CheckCheck className="w-3.5 h-3.5" />
-              <span>Đọc Tất Cả</span>
+              <RefreshCw className="w-4 h-4" />
             </button>
+
+            {unreadCount > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  onMarkAllRead();
+                  onNotify('Đã đánh dấu tất cả thông báo của phòng ban là đã đọc');
+                }}
+                className="px-4 py-2 rounded-full bg-white border border-[#DDD8CE] text-xs font-bold text-stone-700 hover:bg-[#F5F2EB] transition-all flex items-center gap-1.5 shadow-sm cursor-pointer"
+              >
+                <CheckCheck className="w-3.5 h-3.5" />
+                <span>Đọc Tất Cả</span>
+              </button>
+            )}
           </div>
         </div>
 
-        {/* Filter Pills */}
-        <div className="flex items-center gap-2 bg-[#EFECE6] p-1 rounded-full border border-[#DDD8CE] w-fit">
-          {[
-            { id: 'All', label: 'Tất Cả' },
-            { id: 'Unread', label: `Chưa Đọc (${unreadCount})` },
-            { id: 'Urgent', label: 'Khẩn Cấp' },
-            { id: 'Robot', label: 'Robot Telemetry' },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setFilter(tab.id)}
-              className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${
-                filter === tab.id
-                  ? 'bg-white text-[#1A1917] shadow-sm'
-                  : 'text-[#78716C] hover:text-[#1A1917]'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
+        {/* Search & Filter Pills */}
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-2 bg-[#EFECE6] p-1 rounded-full border border-[#DDD8CE] w-fit">
+            {[
+              { id: 'All', label: 'Tất Cả' },
+              { id: 'Unread', label: `Chưa Đọc (${unreadCount})` },
+              { id: 'Robot', label: 'Robot Telemetry' },
+              { id: 'Warning', label: 'Cảnh Báo' },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setFilter(tab.id)}
+                className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${
+                  filter === tab.id
+                    ? 'bg-white text-[#1A1917] shadow-sm'
+                    : 'text-[#78716C] hover:text-[#1A1917]'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          <div className="w-64">
+            <input
+              type="text"
+              placeholder="Tìm kiếm thông báo..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full px-4 py-2 rounded-full bg-white border border-[#DDD8CE] text-xs font-medium text-stone-900 outline-none focus:border-stone-500 shadow-sm"
+            />
+          </div>
         </div>
 
-        {/* Notifications List */}
-        <div className="space-y-3">
+        {/* Notifications List Container */}
+        <div className="bg-white rounded-3xl border border-[#E5E1D8] shadow-sm overflow-hidden divide-y divide-[#F0ECE3]">
           {filtered.length === 0 ? (
-            <div className="p-12 text-center bg-white rounded-2xl border border-[#E5E1D8] text-xs text-stone-500">
-              Không có thông báo nào trong mục này.
+            <div className="p-12 text-center text-xs text-stone-500 space-y-2">
+              <Inbox className="w-8 h-8 mx-auto text-stone-300" />
+              <p className="font-semibold text-stone-700">Không có thông báo nào trong mục này.</p>
+              <p className="text-stone-400">Khi có yêu cầu hoặc chỉ thị mới gửi đến phòng ban, hệ thống sẽ tự động cập nhật ngay tại đây.</p>
             </div>
           ) : (
-            filtered.map((notif) => {
-              const Icon = notif.icon || Bell;
+            paginatedNotifications.map((notif) => {
+              const { Icon, color } = getNotifIcon(notif);
+              const isUnread = notif.is_read === false || notif.isRead === false;
+
               return (
                 <div
                   key={notif.id}
-                  className={`p-5 rounded-2xl border transition-all flex items-start justify-between gap-4 ${
-                    !notif.isRead
-                      ? 'bg-white border-stone-300 shadow-sm border-l-4 border-l-red-500'
-                      : 'bg-[#FAF8F5]/80 border-[#EAE6DE] opacity-80'
+                  onClick={() => onToggleRead(notif.id)}
+                  className={`p-5 transition-all flex items-start justify-between gap-4 cursor-pointer hover:bg-[#FAF8F5] ${
+                    isUnread
+                      ? 'bg-amber-50/25 border-l-4 border-l-stone-900'
+                      : 'opacity-75'
                   }`}
                 >
                   <div className="flex items-start gap-4">
-                    <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 ${notif.iconColor}`}>
+                    <div className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 ${color}`}>
                       <Icon className="w-5 h-5" />
                     </div>
 
                     <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <h4 className="text-sm font-bold text-[#1A1917]">{notif.title}</h4>
-                        {!notif.isRead && (
-                          <span className="w-2 h-2 rounded-full bg-red-600 animate-ping" />
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-mono text-[11px] font-bold text-stone-600">{notif.id}</span>
+                        <span className="px-2.5 py-0.5 rounded-full bg-[#EFECE6] text-stone-800 text-[10px] font-bold">
+                          {notif.department}
+                        </span>
+                        <h4 className={`text-sm ${isUnread ? 'font-bold text-[#1A1917]' : 'font-semibold text-stone-700'}`}>
+                          {notif.title}
+                        </h4>
+                        {isUnread ? (
+                          <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-[10px] font-bold">
+                            Chưa đọc
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-full bg-stone-100 text-stone-500 text-[10px] font-medium">
+                            Đã đọc
+                          </span>
                         )}
                       </div>
-                      <p className="text-xs text-[#78716C] leading-relaxed">{notif.description}</p>
-                      <p className="text-[11px] text-stone-400 font-medium pt-1">{notif.time}</p>
+
+                      <p className="text-xs text-[#78716C] leading-relaxed max-w-3xl">{notif.description}</p>
+                      
+                      <div className="flex items-center gap-4 text-[11px] text-stone-400 font-medium pt-1">
+                        <span>
+                          {notif.time || (notif.created_at ? new Date(notif.created_at).toLocaleString('vi-VN') : 'Vừa xong')}
+                        </span>
+                        {notif.request_id && (
+                          <span className="text-stone-500 font-mono">Mã yêu cầu: {notif.request_id}</span>
+                        )}
+                      </div>
                     </div>
                   </div>
 
+                  {/* Action: Only mark read/unread allowed for staff */}
                   <div className="flex items-center gap-2 shrink-0">
                     <button
-                      onClick={() => handleToggleRead(notif.id)}
-                      className="p-1.5 rounded-lg hover:bg-stone-200 text-stone-500 hover:text-stone-800 transition-colors"
-                      title={notif.isRead ? 'Đánh dấu chưa đọc' : 'Đánh dấu đã đọc'}
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onToggleRead(notif.id);
+                        onNotify(isUnread ? 'Đã đánh dấu đã đọc' : 'Đã đánh dấu chưa đọc');
+                      }}
+                      className={`p-2 rounded-xl border transition-all cursor-pointer ${
+                        isUnread
+                          ? 'bg-stone-900 text-white border-stone-900 hover:bg-stone-800'
+                          : 'bg-white text-stone-400 border-[#DDD8CE] hover:bg-stone-100 hover:text-stone-700'
+                      }`}
+                      title={isUnread ? 'Đánh dấu đã đọc' : 'Đánh dấu chưa đọc'}
                     >
                       <CheckCheck className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(notif.id)}
-                      className="p-1.5 rounded-lg hover:bg-red-50 text-stone-400 hover:text-red-600 transition-colors"
-                      title="Xóa thông báo"
-                    >
-                      <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
                 </div>
               );
             })
+          )}
+
+          {/* Pagination Footer */}
+          {filtered.length > 0 && (
+            <Pagination
+              currentPage={currentPage}
+              totalItems={filtered.length}
+              pageSize={pageSize}
+              onPageChange={setCurrentPage}
+            />
           )}
         </div>
       </div>

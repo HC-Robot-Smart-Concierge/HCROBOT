@@ -11,6 +11,7 @@ from app.models.restaurant import RestaurantReservation, RestaurantPreOrder
 from app.models.reception import ReceptionRequest
 from app.models.support import HumanSupportSession
 from app.models.logging import LogEvent, AuditLog, LogLevelEnum, LogCategoryEnum, ActorTypeEnum
+from app.models.notification import Notification
 
 __all__ = [
     "Base",
@@ -31,5 +32,6 @@ __all__ = [
     "LogLevelEnum",
     "LogCategoryEnum",
     "ActorTypeEnum",
+    "Notification",
 ]
 

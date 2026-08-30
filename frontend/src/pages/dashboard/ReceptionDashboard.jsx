@@ -76,7 +76,10 @@ export const ReceptionDashboard = ({ currentUser, onNotify = () => {} }) => {
   };
 
   const handleStartTask = async () => {
-    await persistUpdate({ status: 'In Progress' }, { status: 'In Progress' });
+    await persistUpdate(
+      { status: 'In Progress', assigned_to: staffName },
+      { status: 'In Progress', assignedTo: staffName }
+    );
     onNotify(`Đã bắt đầu xử lý ${request.ticketCode}`);
   };
 
@@ -115,7 +118,10 @@ export const ReceptionDashboard = ({ currentUser, onNotify = () => {} }) => {
   };
 
   const handleComplete = async () => {
-    await persistUpdate({ status: 'Completed' }, { status: 'Completed' });
+    await persistUpdate(
+      { status: 'Completed', assigned_to: staffName },
+      { status: 'Completed', assignedTo: staffName }
+    );
     onNotify(`Đã hoàn tất ${request.ticketCode}`);
   };
 

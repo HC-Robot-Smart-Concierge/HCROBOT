@@ -10,6 +10,7 @@ from app.models.stock import InventoryStock
 from app.models.restaurant import RestaurantReservation, RestaurantPreOrder
 from app.models.reception import ReceptionRequest
 from app.models.support import HumanSupportSession
+from app.models.chat_session import ChatSession, ChatMessage
 
 __all__ = [
     "Base",
@@ -25,5 +26,7 @@ __all__ = [
     "RestaurantPreOrder",
     "ReceptionRequest",
     "HumanSupportSession",
+    "ChatSession",
+    "ChatMessage",
 ]
 

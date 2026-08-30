@@ -1,14 +1,13 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { Camera, CameraOff, Eye, EyeOff, UserCheck, UserX, Smile, Frown, Meh, AlertCircle, Power } from 'lucide-react';
 
 export const CameraPreview = ({ onGuestApproached, onGuestLeft, onEmotionChange }) => {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const [isCameraActive, setIsCameraActive] = useState(false);
-  const [isMinimized, setIsMinimized] = useState(false);
+  const [isMinimized, setIsMinimized] = useState(true);
   const [stream, setStream] = useState(null);
   const [isFaceDetected, setIsFaceDetected] = useState(false);
-  const [currentEmotion, setCurrentEmotion] = useState('neutral'); // 'neutral' | 'happy' | 'annoyed' | 'angry' | 'surprised'
+  const [currentEmotion, setCurrentEmotion] = useState('neutral');
 
   const startCamera = async () => {
     try {
@@ -32,7 +31,6 @@ export const CameraPreview = ({ onGuestApproached, onGuestLeft, onEmotionChange 
     setIsFaceDetected(false);
   };
 
-
   const handleEmotionSelect = (emotion) => {
     setCurrentEmotion(emotion);
     if (onEmotionChange) {
@@ -40,7 +38,6 @@ export const CameraPreview = ({ onGuestApproached, onGuestLeft, onEmotionChange 
     }
   };
 
-  // Nút kích hoạt thủ công người lại gần / rời đi
   const triggerApproach = () => {
     setIsFaceDetected(true);
     if (onGuestApproached) {
@@ -69,9 +66,8 @@ export const CameraPreview = ({ onGuestApproached, onGuestLeft, onEmotionChange 
     if (stream && videoRef.current) {
       videoRef.current.srcObject = stream;
     }
-  }, [stream, isCameraActive]);
+  }, [stream, isCameraActive, isMinimized]);
 
-  // Vòng lặp Real Face / Presence Detector qua Video Frame Sampling & Native FaceDetector
   useEffect(() => {
     if (!isCameraActive) return;
 
@@ -79,7 +75,6 @@ export const CameraPreview = ({ onGuestApproached, onGuestLeft, onEmotionChange 
     const intervalId = setInterval(async () => {
       if (!videoRef.current || videoRef.current.readyState !== 4) return;
 
-      // 1. Thử dùng Native Browser FaceDetector API nếu trình duyệt hỗ trợ
       if ('FaceDetector' in window) {
         try {
           const detector = new window.FaceDetector();
@@ -93,11 +88,10 @@ export const CameraPreview = ({ onGuestApproached, onGuestLeft, onEmotionChange 
             return;
           }
         } catch (e) {
-          // Fallback sang Canvas Pixel Analysis bên dưới
+          // Fallback
         }
       }
 
-      // 2. Canvas Real-time Skin Tone & Motion Pixel Analysis Detector
       const canvas = canvasRef.current;
       if (!canvas) return;
       const ctx = canvas.getContext('2d');
@@ -119,7 +113,7 @@ export const CameraPreview = ({ onGuestApproached, onGuestLeft, onEmotionChange 
         }
       }
 
-      if (skinPixels > 180) {
+      if (skinPixels > 70) {
         noFaceCount = 0;
         if (!isFaceDetected) {
           setIsFaceDetected(true);
@@ -127,7 +121,7 @@ export const CameraPreview = ({ onGuestApproached, onGuestLeft, onEmotionChange 
         }
       } else {
         noFaceCount++;
-        if (noFaceCount >= 4 && isFaceDetected) {
+        if (noFaceCount >= 15 && isFaceDetected) {
           setIsFaceDetected(false);
           if (onGuestLeft) onGuestLeft();
         }
@@ -138,152 +132,62 @@ export const CameraPreview = ({ onGuestApproached, onGuestLeft, onEmotionChange 
     return () => clearInterval(intervalId);
   }, [isCameraActive, isFaceDetected, onGuestApproached, onGuestLeft]);
 
-  if (isMinimized) {
-    return (
-      <button
-        onClick={() => setIsMinimized(false)}
-        className="absolute top-4 left-4 z-50 bg-aurora-inverse/95 text-aurora-textInverse px-3.5 py-2 rounded-2xl border border-aurora-border shadow-2xl backdrop-blur-md flex items-center gap-2 text-xs font-bold hover:bg-black hover:scale-105 active:scale-95 transition-all cursor-pointer group"
-        title="Bấm để hiện lại giao diện Camera"
-      >
-        <Camera className="w-4 h-4 text-emerald-400 group-hover:scale-110 transition-transform" />
-        <span>Hiện Camera</span>
-        {isCameraActive ? (
-          <span className="relative flex h-2 w-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-          </span>
-        ) : (
-          <span className="w-2 h-2 rounded-full bg-rose-500" />
-        )}
-      </button>
-    );
-  }
-
   return (
-    <div className="absolute top-4 left-4 z-50 bg-aurora-inverse/95 text-aurora-textInverse p-2 rounded-2xl border border-aurora-border shadow-2xl backdrop-blur-md flex flex-col items-center gap-1 w-[190px]">
+    <>
+      {/* Background Hidden Video for 24/7 Continuous Background Vision Detection */}
+      <video 
+        ref={videoRef} 
+        autoPlay 
+        playsInline 
+        muted 
+        className="hidden" 
+      />
       <canvas ref={canvasRef} className="hidden" />
 
-      <div className="w-full flex justify-between items-center px-1 text-[10px] font-bold text-aurora-border">
-        <span className="flex items-center gap-1 text-emerald-400">
-          <Eye className="w-3 h-3 animate-pulse" />
-          FACE VISION
-        </span>
-        <div className="flex items-center gap-1">
-          <span className={`px-1.5 py-0.5 rounded text-[9px] ${isCameraActive ? (isFaceDetected ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-300') : 'bg-rose-500/20 text-rose-300'}`}>
-            {isCameraActive ? (isFaceDetected ? 'DETECTED' : 'SCANNING') : 'OFFLINE'}
-          </span>
-
-          {/* Nút Tắt Phần Cứng Camera */}
-          {isCameraActive && (
-            <button
-              onClick={stopCamera}
-              className="p-0.5 rounded hover:bg-rose-500/30 text-rose-400 hover:text-rose-200 transition-colors cursor-pointer"
-              title="Tắt Camera"
-            >
-              <Power className="w-3 h-3" />
-            </button>
+      {isMinimized ? (
+        <button
+          onClick={() => setIsMinimized(false)}
+          className="absolute top-3 left-4 z-40 bg-stone-900/95 text-stone-200 px-3.5 py-1.5 rounded-full border border-stone-700/80 shadow-xl backdrop-blur-md flex items-center gap-2 text-xs font-semibold hover:bg-stone-800 transition-all cursor-pointer"
+          title="Bấm để xem khung hình Camera"
+        >
+          <span>Camera Control</span>
+          {isCameraActive ? (
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          ) : (
+            <span className="w-2 h-2 rounded-full bg-stone-500" />
           )}
-
-          {/* Nút Tắt / Ẩn Giao Diện Camera */}
-          <button
+        </button>
+      ) : (
+        <div className="absolute top-3 left-4 z-40">
+          <div 
             onClick={() => setIsMinimized(true)}
-            className="p-0.5 rounded hover:bg-white/20 text-aurora-border hover:text-white transition-colors cursor-pointer"
-            title="Tắt giao diện Camera"
+            className="w-[180px] h-[120px] bg-black rounded-2xl overflow-hidden relative border-2 border-stone-700/80 shadow-2xl backdrop-blur-md cursor-pointer hover:border-emerald-500/80 transition-all flex items-center justify-center group"
+            title="Bấm vào khung hình để thu nhỏ"
           >
-            <EyeOff className="w-3 h-3" />
-          </button>
-        </div>
-      </div>
+            <video 
+              ref={(node) => {
+                if (node && stream) node.srcObject = stream;
+              }} 
+              autoPlay 
+              playsInline 
+              muted 
+              className={`w-full h-full object-cover scale-x-[-1] ${isCameraActive ? 'block' : 'hidden'}`} 
+            />
 
-      {/* Video Viewport / Bounding Box Overlay */}
-      <div className="w-[174px] h-[105px] bg-black rounded-xl overflow-hidden relative border border-aurora-border/40 flex items-center justify-center">
-        <video 
-          ref={videoRef} 
-          autoPlay 
-          playsInline 
-          muted 
-          className={`w-full h-full object-cover scale-x-[-1] ${isCameraActive ? 'block' : 'hidden'}`} 
-        />
-
-        {!isCameraActive && (
-          <button 
-            onClick={startCamera}
-            className="flex flex-col items-center gap-1 text-aurora-border hover:text-white transition-colors cursor-pointer p-2 text-center"
-          >
-            <Camera className="w-6 h-6 text-emerald-400 animate-pulse" />
-            <span className="text-[9px] font-semibold">Bấm để bật Camera</span>
-          </button>
-        )}
-
-        {/* YOLO & Emotion Overlay */}
-        {isCameraActive && isFaceDetected && (
-          <div className="absolute inset-2 border-2 border-emerald-400/80 rounded-lg flex flex-col justify-between p-1 pointer-events-none animate-pulse">
-            <div className="bg-emerald-500 text-black font-extrabold text-[8px] px-1 py-0.5 rounded w-fit flex items-center gap-1">
-              <UserCheck className="w-2.5 h-2.5" />
-              <span>GUEST 98%</span>
-            </div>
-            <div className="bg-black/80 backdrop-blur-md text-amber-300 font-bold text-[8px] px-1.5 py-0.5 rounded border border-amber-400/40 w-fit self-end flex items-center gap-1">
-              {currentEmotion === 'happy' && <Smile className="w-2.5 h-2.5 text-emerald-400" />}
-              {currentEmotion === 'annoyed' && <Frown className="w-2.5 h-2.5 text-rose-400 animate-bounce" />}
-              {currentEmotion === 'angry' && <AlertCircle className="w-2.5 h-2.5 text-rose-500 animate-bounce" />}
-              {currentEmotion === 'neutral' && <Meh className="w-2.5 h-2.5 text-slate-300" />}
-              <span className="uppercase">{currentEmotion}</span>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Bộ Chọn Cảm Xúc Khuôn Mặt Khách (Simulated Emotion Detector) */}
-      {isCameraActive && (
-        <div className="w-full flex flex-col gap-1 mt-1">
-          <span className="text-[8px] font-bold text-aurora-border text-center uppercase tracking-wider">Cảm xúc nhận diện (Emotion):</span>
-          
-          <div className="w-full grid grid-cols-3 gap-1">
-            <button
-              onClick={() => handleEmotionSelect('happy')}
-              className={`py-0.5 px-1 rounded text-[8px] font-bold flex items-center justify-center gap-0.5 transition-all cursor-pointer ${currentEmotion === 'happy' ? 'bg-emerald-600 text-white shadow' : 'bg-white/10 text-emerald-300 hover:bg-white/20'}`}
-            >
-              <Smile className="w-2.5 h-2.5" />
-              <span>Vui</span>
-            </button>
-            <button
-              onClick={() => handleEmotionSelect('neutral')}
-              className={`py-0.5 px-1 rounded text-[8px] font-bold flex items-center justify-center gap-0.5 transition-all cursor-pointer ${currentEmotion === 'neutral' ? 'bg-slate-600 text-white shadow' : 'bg-white/10 text-slate-300 hover:bg-white/20'}`}
-            >
-              <Meh className="w-2.5 h-2.5" />
-              <span>Bình thường</span>
-            </button>
-            <button
-              onClick={() => handleEmotionSelect('annoyed')}
-              className={`py-0.5 px-1 rounded text-[8px] font-bold flex items-center justify-center gap-0.5 transition-all cursor-pointer ${currentEmotion === 'annoyed' || currentEmotion === 'angry' ? 'bg-rose-600 text-white shadow' : 'bg-white/10 text-rose-300 hover:bg-white/20'}`}
-            >
-              <Frown className="w-2.5 h-2.5" />
-              <span>Giận</span>
-            </button>
-          </div>
-
-          <div className="w-full flex gap-1 mt-0.5">
-            <button
-              onClick={triggerApproach}
-              className={`flex-1 py-0.5 px-1 rounded text-[8px] font-bold transition-all cursor-pointer flex items-center justify-center gap-0.5 ${isFaceDetected ? 'bg-emerald-700 text-white' : 'bg-white/10 text-aurora-border hover:bg-white/20'}`}
-            >
-              <UserCheck className="w-2.5 h-2.5" />
-              <span>Có Người</span>
-            </button>
-            <button
-              onClick={triggerLeave}
-              className={`flex-1 py-0.5 px-1 rounded text-[8px] font-bold transition-all cursor-pointer flex items-center justify-center gap-0.5 ${!isFaceDetected ? 'bg-rose-700 text-white' : 'bg-white/10 text-aurora-border hover:bg-white/20'}`}
-            >
-              <UserX className="w-2.5 h-2.5" />
-              <span>Rời Đi</span>
-            </button>
+            {!isCameraActive && (
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  startCamera();
+                }}
+                className="text-stone-300 hover:text-white transition-colors p-2 text-center text-[10px] font-semibold cursor-pointer"
+              >
+                Bấm để bật Camera
+              </button>
+            )}
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 };
-
-
-
-

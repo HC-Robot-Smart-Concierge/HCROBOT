@@ -231,8 +231,8 @@ export function App() {
 
   return (
     <div className="w-full h-screen overflow-hidden bg-[#FAF8F5] text-[#1A1917] flex flex-col font-sans select-none relative">
-      {/* Top Floating Header Pill (Only on Dashboard, Robot Display & LiDAR Map) */}
-      {activeView !== 'landing' && activeView !== 'login' && activeView !== 'admin_portal' && !usesReferenceLayout && (
+      {/* Top Floating Header Pill (Only on Staff Dashboards & LiDAR Map) */}
+      {activeView !== 'landing' && activeView !== 'login' && activeView !== 'admin_portal' && activeView !== 'robot_display' && !usesReferenceLayout && (
         <div className="absolute top-2.5 right-6 z-50 flex items-center gap-2">
           {/* If logged in as staff: Strict Role Badge & Logout */}
           {currentUser ? (

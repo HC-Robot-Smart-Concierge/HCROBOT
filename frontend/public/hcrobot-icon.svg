@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="HCROBOT">
+  <rect width="512" height="512" rx="112" fill="#171716"/>
+  <rect x="82" y="118" width="348" height="276" rx="92" fill="#f5f2eb"/>
+  <rect x="133" y="218" width="96" height="52" rx="26" fill="#171716"/>
+  <rect x="283" y="218" width="96" height="52" rx="26" fill="#171716"/>
+  <path d="M181 326h150" stroke="#8c857b" stroke-width="18" stroke-linecap="round"/>
+</svg>

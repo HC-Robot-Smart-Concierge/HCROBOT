@@ -20,12 +20,33 @@
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
     background: #BFBFBD;
   }
-  .no-scrollbar::-webkit-scrollbar {
-    display: none;
-  }
   .no-scrollbar {
     -ms-overflow-style: none;
     scrollbar-width: none;
+  }
+  .pt-safe-top {
+    padding-top: max(2.75rem, env(safe-area-inset-top, 2.75rem));
+  }
+}
+
+@media screen and (max-width: 767px) {
+  .mobile-safe-header {
+    padding-top: max(3rem, env(safe-area-inset-top, 3rem)) !important;
+  }
+}
+
+/* Force Robot Screen to display in Landscape Mode on Portrait Mobile Devices */
+@media screen and (max-width: 896px) and (orientation: portrait) {
+  .force-robot-landscape {
+    position: fixed !important;
+    top: 50% !important;
+    left: 50% !important;
+    width: 100vh !important;
+    height: 100vw !important;
+    transform: translate(-50%, -50%) rotate(90deg) !important;
+    transform-origin: center center !important;
+    overflow: hidden !important;
+    z-index: 9999 !important;
   }
 }
 

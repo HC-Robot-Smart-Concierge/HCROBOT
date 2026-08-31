@@ -256,6 +256,18 @@ export const RobotScreenPage = ({ onLogout = () => {} }) => {
     setCurrentState('RT-02');
   };
 
+  // Auto Lock Screen Orientation to Landscape on Mobile/Kiosk Devices
+  useEffect(() => {
+    if (window.screen && window.screen.orientation && window.screen.orientation.lock) {
+      window.screen.orientation.lock('landscape').catch(() => {});
+    }
+    return () => {
+      if (window.screen && window.screen.orientation && window.screen.orientation.unlock) {
+        window.screen.orientation.unlock().catch(() => {});
+      }
+    };
+  }, []);
+
   return (
     <div 
       onClick={() => {
@@ -264,7 +276,7 @@ export const RobotScreenPage = ({ onLogout = () => {} }) => {
           handleStartTalk();
         }
       }}
-      className="w-full h-screen bg-aurora-canvas flex flex-col justify-start items-center overflow-hidden font-sans select-none relative cursor-pointer"
+      className="w-full h-screen bg-aurora-canvas flex flex-col justify-start items-center overflow-hidden font-sans select-none relative cursor-pointer force-robot-landscape"
     >
       {/* Camera Preview Control góc trên bên trái */}
       <CameraPreview 

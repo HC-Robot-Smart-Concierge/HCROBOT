@@ -30,15 +30,16 @@ async def watch_obsidian_vault():
     except Exception as e:
         logger.error(f"Lỗi khi đồng bộ Obsidian ban đầu: {e}")
 
-    # 2. Lắng nghe thay đổi an toàn định kỳ không xung đột watchfiles trên Windows
+    # 2. Lắng nghe và đồng bộ định kỳ mỗi 10 giây
     while True:
         try:
-            await asyncio.sleep(30)
+            await asyncio.sleep(10)
+            await asyncio.to_thread(obsidian_service.sync_vault_to_chroma)
         except asyncio.CancelledError:
             logger.info("Obsidian Auto-Watcher đã dừng.")
             break
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error(f"Lỗi khi auto-sync Obsidian: {e}")
 
 
 

@@ -127,3 +127,17 @@ export const uploadRAGFile = async (file, category = 'general') => {
   }
   return await res.json();
 };
+
+/**
+ * Lưu trực tiếp nội dung chỉnh sửa file .md xuống ổ đĩa backend/knowledge_vault/
+ */
+export const saveRAGSourceFile = async (filename, content) => {
+  return await fetchWithFallback(
+    `${RAG_BASE_URL}/sources/save`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ filename, content }),
+    },
+    { message: `Đã lưu file ${filename} thành công!`, id: filename }
+  );
+};

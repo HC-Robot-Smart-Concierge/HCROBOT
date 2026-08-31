@@ -73,6 +73,15 @@ def get_rag_sources():
             fsize = os.path.getsize(fpath) / 1024.0
             mtime = datetime.fromtimestamp(os.path.getmtime(fpath)).strftime("%Y-%m-%d %H:%M")
             ext = os.path.splitext(fname)[1].lower().replace(".", "")
+
+            raw_text = None
+            if ext in ["md", "txt"]:
+                try:
+                    with open(fpath, "r", encoding="utf-8", errors="replace") as f:
+                        raw_text = f.read()
+                except Exception:
+                    pass
+
             sources.append(
                 RAGSourceFileItem(
                     filename=fname,
@@ -81,6 +90,7 @@ def get_rag_sources():
                     chunks_count=5,
                     last_modified=mtime,
                     status="Synced",
+                    content=raw_text,
                 )
             )
 
@@ -91,6 +101,15 @@ def get_rag_sources():
             fsize = os.path.getsize(fpath) / 1024.0
             mtime = datetime.fromtimestamp(os.path.getmtime(fpath)).strftime("%Y-%m-%d %H:%M")
             ext = os.path.splitext(fname)[1].lower().replace(".", "")
+
+            raw_text = None
+            if ext in ["md", "txt"]:
+                try:
+                    with open(fpath, "r", encoding="utf-8", errors="replace") as f:
+                        raw_text = f.read()
+                except Exception:
+                    pass
+
             sources.append(
                 RAGSourceFileItem(
                     filename=fname,
@@ -99,6 +118,7 @@ def get_rag_sources():
                     chunks_count=1 if ext in ["jpg", "png", "webp"] else 3,
                     last_modified=mtime,
                     status="Active",
+                    content=raw_text,
                 )
             )
 
@@ -107,6 +127,38 @@ def get_rag_sources():
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Lỗi khi đọc file nguồn: {str(e)}",
+        )
+
+
+@router.post("/sources/save", response_model=RAGActionResponse, summary="Lưu trực tiếp nội dung file Markdown xuống ổ đĩa và tái đồng bộ ChromaDB")
+def save_source_file(payload: dict):
+    """
+    Lưu nội dung chỉnh sửa của file .md trực tiếp vào backend/knowledge_vault/ và tự động sync RAG.
+    """
+    try:
+        filename = payload.get("filename")
+        content = payload.get("content", "")
+        if not filename:
+            raise HTTPException(status_code=400, detail="Thiếu filename")
+
+        os.makedirs(settings.OBSIDIAN_VAULT_DIR, exist_ok=True)
+        file_path = os.path.join(settings.OBSIDIAN_VAULT_DIR, filename)
+
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(content)
+
+        # Tái đồng bộ Obsidian Vault ngay lập tức
+        from app.services.rag.obsidian_service import obsidian_service
+        obsidian_service.sync_vault_to_chroma()
+
+        return RAGActionResponse(
+            message=f"Đã lưu file {filename} xuống đĩa và tái đồng bộ ChromaDB thành công!",
+            id=filename,
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Lỗi khi lưu file nguồn: {str(e)}",
         )
 
 

@@ -2,7 +2,6 @@ import React from 'react';
 import {
   LayoutDashboard,
   Inbox,
-  CheckSquare,
   History,
   Bell,
   User,
@@ -25,7 +24,6 @@ export const AuroraSidebar = ({
   const staffNavItems = [
     { id: 'Dashboard', label: t('menuDashboard'), icon: LayoutDashboard },
     { id: 'Requests', label: t('menuRequests'), icon: Inbox },
-    { id: 'My Tasks', label: t('menuMyTasks'), icon: CheckSquare },
     { id: 'History', label: t('menuHistory'), icon: History },
     { id: 'Notifications', label: t('menuNotifications'), icon: Bell },
     { id: 'Profile', label: t('menuProfile'), icon: User },
@@ -78,11 +76,11 @@ export const AuroraSidebar = ({
                   className={`flex items-center justify-between transition-all text-left ${
                     referenceLayout
                       ? `h-10 px-3 rounded-[10px] text-[14px] font-normal ${
-                          isActive ? 'bg-black text-white' : 'text-[#555] hover:bg-[#F3F1ED]'
+                          isActive ? 'bg-[#3F3F46] text-white' : 'text-[#555] hover:bg-[#F3F1ED]'
                         }`
                       : `px-3.5 py-2.5 rounded-full text-xs font-semibold ${
                           isActive
-                            ? 'bg-[#18181B] text-white shadow-sm'
+                            ? 'bg-[#3F3F46] text-white shadow-sm'
                             : 'text-[#44403C] hover:bg-[#EAE5DC] hover:text-[#1A1917]'
                         }`
                   }`}

@@ -25,7 +25,9 @@ from app.models import (
     BellRequest,
     MaintenanceRequest,
     RestaurantPreOrder,
+    ReceptionRequest,
 )
+from app.api.v1.endpoints.operations import create_department_notification
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -77,6 +79,21 @@ async def chat_with_robot(request: ChatRequest, db: AsyncSession = Depends(get_d
         session_manager.add_turn(sid, "assistant", reply)
         await session_manager.save_turn_to_db(db, sid, "user", request.prompt, language=lang_code, room_number=current_room)
         await session_manager.save_turn_to_db(db, sid, "assistant", reply, language=lang_code, room_number=current_room)
+
+        # TỰ ĐỘNG BÓC TÁCH INTENT & TẠO YÊU CẦU DỊCH VỤ BÁO CHO RECEPTIONIST / STAFF
+        try:
+            intent_res = await ollama_service.extract_intent(request.prompt)
+            act = intent_res.get("action", "unknown")
+            prompt_lower = request.prompt.lower()
+            request_keywords = ["cần", "xin", "cho", "gửi", "gọi", "đặt", "sửa", "dọn", "nước", "khăn", "lễ tân", "yêu cầu", "phòng", "hỗ trợ", "bàn", "chăn", "gối", "vali", "hành lý"]
+            
+            if act in ["room_service", "housekeeping", "bellman", "maintenance", "restaurant", "reception", "receptionist", "front_desk"] or any(kw in prompt_lower for kw in request_keywords):
+                target_action = act if act != "unknown" else "reception"
+                items_desc = intent_res.get("items") or request.prompt
+                created_ticket_code = await _auto_create_ticket(db, target_action, current_room or "402", items_desc)
+                logger.info(f"[AI Chat Auto-Ticket] Created request #{created_ticket_code} for Receptionist / Staff from guest prompt: '{request.prompt}'")
+        except Exception as ex_ticket:
+            logger.warning(f"[AI Chat Ticket Warning] Could not auto-create ticket from chat: {ex_ticket}")
 
         return ChatResponse(
             response=reply,
@@ -318,72 +335,171 @@ async def get_session_messages(session_id: str, db: AsyncSession = Depends(get_d
 
 
 async def _auto_create_ticket(db: AsyncSession, action: str, room_number: str, items: str) -> str:
-    """Tự động chèn Ticket dịch vụ vào PostgreSQL Database tương ứng."""
+    """Tự động chèn Ticket dịch vụ vào PostgreSQL Database tương ứng và gửi Notification cho Lễ tân / Staff."""
     code = f"AUTO-{random.randint(1000, 9999)}"
+    rm = room_number or "402"
 
     try:
         if action == "room_service":
             order = RoomServiceOrder(
                 order_number=str(random.randint(1043, 9999)),
-                room_number=room_number,
+                room_number=rm,
                 is_vip=False,
                 priority="normal",
                 items=[{"name": items, "qty": 1}],
-                note="Tạo tự động từ HCRobot Voice Concierge",
+                note="Yêu cầu gửi từ HCRobot Concierge AI Chat",
                 status="Pending",
                 progress=0,
             )
             db.add(order)
+            await create_department_notification(
+                db=db,
+                department="F&B",
+                title=f"Robot AI: Yêu cầu F&B mới từ Phòng {rm}",
+                description=f"{items}",
+                request_id=order.id,
+                request_type="room_service",
+                type="Request",
+            )
+            await create_department_notification(
+                db=db,
+                department="Reception",
+                title=f"Robot AI: Đơn F&B mới từ Khách Phòng {rm}",
+                description=f"Robot đã tiếp nhận đơn #{order.order_number}: {items}",
+                request_id=order.id,
+                request_type="room_service",
+                type="Request",
+            )
             await db.commit()
             return order.order_number
 
         elif action == "housekeeping":
             req = HousekeepingRequest(
                 ticket_code=f"HK-{random.randint(1044, 9999)}",
-                source="HCRobot Voice Concierge",
+                source="HCRobot Concierge AI Chat",
                 priority="NORMAL",
                 time_label="Recently",
-                title=f"Khách phòng {room_number} yêu cầu: {items}",
-                room_number=room_number,
+                title=f"Yêu cầu Buồng phòng (Phòng {rm}): {items}",
+                room_number=rm,
                 description=items,
-                guest_name=f"Guest (Room {room_number})",
+                guest_name=f"Guest (Room {rm})",
                 status="Unassigned",
             )
             db.add(req)
+            await create_department_notification(
+                db=db,
+                department="Housekeeping",
+                title=f"Robot AI: Yêu cầu Buồng phòng mới #{req.ticket_code}",
+                description=f"Phòng {rm}: {items}",
+                request_id=req.id,
+                request_type="housekeeping",
+                type="Request",
+            )
+            await create_department_notification(
+                db=db,
+                department="Reception",
+                title=f"Robot AI: Yêu cầu Buồng phòng từ Khách Phòng {rm}",
+                description=f"Phiếu #{req.ticket_code}: {items}",
+                request_id=req.id,
+                request_type="housekeeping",
+                type="Request",
+            )
             await db.commit()
             return req.ticket_code
 
         elif action == "bellman":
             req = BellRequest(
                 ticket_code=f"BS-{random.randint(1044, 9999)}",
-                title=f"Khách phòng {room_number} hỗ trợ hành lý: {items}",
+                title=f"Khách phòng {rm} hỗ trợ hành lý: {items}",
                 priority="NORMAL",
                 is_urgent=False,
-                location=f"Phòng {room_number}",
-                guest_name=f"Guest (Room {room_number})",
+                location=f"Phòng {rm}",
+                guest_name=f"Guest (Room {rm})",
                 description=items,
                 request_type="luggage",
                 status="Pending",
             )
             db.add(req)
+            await create_department_notification(
+                db=db,
+                department="Bell Services",
+                title=f"Robot AI: Yêu cầu Hành lý mới #{req.ticket_code}",
+                description=f"Phòng {rm}: {items}",
+                request_id=req.id,
+                request_type="bell_service",
+                type="Request",
+            )
+            await create_department_notification(
+                db=db,
+                department="Reception",
+                title=f"Robot AI: Yêu cầu Bellman từ Khách Phòng {rm}",
+                description=f"Phiếu #{req.ticket_code}: {items}",
+                request_id=req.id,
+                request_type="bell_service",
+                type="Request",
+            )
             await db.commit()
             return req.ticket_code
 
         elif action == "maintenance":
             req = MaintenanceRequest(
                 ticket_code=f"MN-{random.randint(1044, 9999)}",
-                title=f"Sự cố kỹ thuật Phòng {room_number}: {items}",
+                title=f"Sự cố kỹ thuật Phòng {rm}: {items}",
                 category="general",
                 priority="NORMAL",
                 reported_time_label="Just Now",
-                location=f"Phòng {room_number}",
+                location=f"Phòng {rm}",
                 description=items,
-                source="HCRobot Voice Concierge",
+                source="HCRobot Concierge AI Chat",
                 status="Pending",
             )
             db.add(req)
+            await create_department_notification(
+                db=db,
+                department="Maintenance",
+                title=f"Robot AI: Yêu cầu Kỹ thuật mới #{req.ticket_code}",
+                description=f"Phòng {rm}: {items}",
+                request_id=req.id,
+                request_type="maintenance",
+                type="Request",
+            )
+            await create_department_notification(
+                db=db,
+                department="Reception",
+                title=f"Robot AI: Yêu cầu Bảo trì từ Khách Phòng {rm}",
+                description=f"Phiếu #{req.ticket_code}: {items}",
+                request_id=req.id,
+                request_type="maintenance",
+                type="Request",
+            )
             await db.commit()
             return req.ticket_code
+
+        else:
+            # Default Reception & General Service Request
+            ticket_code = f"REC-{random.randint(1044, 9999)}"
+            req = ReceptionRequest(
+                ticket_code=ticket_code,
+                title=f"Yêu cầu từ Khách từ Robot AI (Phòng {rm}): {items}",
+                created_label="Just now",
+                location=f"Phòng {rm}",
+                guest_name=f"Guest (Room {rm})",
+                status="Pending Action",
+                description=items,
+                assistance_status="Connected",
+            )
+            db.add(req)
+            await create_department_notification(
+                db=db,
+                department="Reception",
+                title=f"Robot AI: Yêu cầu Lễ tân mới #{ticket_code}",
+                description=f"Phòng {rm}: {items}",
+                request_id=req.id,
+                request_type="reception",
+                type="Request",
+            )
+            await db.commit()
+            return ticket_code
 
     except Exception as e:
         logger.error(f"Lỗi khi tự động tạo ticket dịch vụ CSDL: {e}")

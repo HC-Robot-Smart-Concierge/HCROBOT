@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { AuroraSidebar } from './components/dashboard/AuroraSidebar';
 import { AuroraHeader } from './components/dashboard/AuroraHeader';
+import { MobileBottomNav } from './components/common/MobileBottomNav';
 import { ToastNotification } from './components/dashboard/ToastNotification';
 
 // Pages
@@ -11,13 +12,13 @@ import { RoomServiceDashboard } from './pages/dashboard/RoomServiceDashboard';
 import { HousekeepingDashboard } from './pages/dashboard/HousekeepingDashboard';
 import { BellServicesDashboard } from './pages/dashboard/BellServicesDashboard';
 import { MaintenanceDashboard } from './pages/dashboard/MaintenanceDashboard';
+import { StaffOverviewDashboard } from './pages/dashboard/StaffOverviewDashboard';
 import { RobotScreenPage } from './pages/robot/RobotScreenPage';
 import { AdminLidarPage } from './pages/admin/AdminLidarPage';
 import { AdminPortal } from './pages/admin/AdminPortal';
 
-// 5 Sidebar Staff Pages
+// 4 Sidebar Staff Pages
 import { RequestsPage } from './pages/staff/RequestsPage';
-import { MyTasksPage } from './pages/staff/MyTasksPage';
 import { HistoryPage } from './pages/staff/HistoryPage';
 import { NotificationsPage } from './pages/staff/NotificationsPage';
 import { ProfilePage } from './pages/staff/ProfilePage';
@@ -438,25 +439,27 @@ export function App() {
         />
       )}
 
-      {/* 4. Bộ Dashboard Nghiệp Vụ Khách Sạn (Aurora OS) */}
+      {/* 4. Bộ Dashboard Nghiệp Vụ Khách Sạn (Aurora OS PWA Mobile) */}
       {isDashboardView && (
-        <div className="w-full h-full flex overflow-hidden">
-          {/* Left Sidebar */}
-          <AuroraSidebar
-            referenceLayout={usesReferenceLayout}
-            activeMenu={activeMenu}
-            onSelectMenu={(menu) => {
-              setActiveMenu(menu);
-              showNotification(`Đã chuyển mục: ${menu}`);
-            }}
-            currentUser={currentUser || { name: 'Elena Rossi', role: 'Online', avatar: null }}
-            onLogout={handleLogout}
-            onBackToHome={() => setActiveView('landing')}
-            unreadNotifCount={unreadNotifCount}
-          />
+        <div className="w-full h-full flex flex-col md:flex-row overflow-hidden relative">
+          {/* Left Sidebar (Hidden on mobile screens < 768px) */}
+          <div className="hidden md:flex h-full shrink-0">
+            <AuroraSidebar
+              referenceLayout={usesReferenceLayout}
+              activeMenu={activeMenu}
+              onSelectMenu={(menu) => {
+                setActiveMenu(menu);
+                showNotification(`Đã chuyển mục: ${menu}`);
+              }}
+              currentUser={currentUser || { name: 'Elena Rossi', role: 'Online', avatar: null }}
+              onLogout={handleLogout}
+              onBackToHome={() => setActiveView('landing')}
+              unreadNotifCount={unreadNotifCount}
+            />
+          </div>
 
-          {/* Main Content Area */}
-          <div className="flex-1 flex flex-col h-full overflow-hidden bg-[#FAF8F5]">
+          {/* Main Content Area (With bottom padding pb-16 on mobile for bottom nav) */}
+          <div className="flex-1 flex flex-col h-full overflow-hidden bg-[#FAF8F5] pb-16 md:pb-0">
             {/* Top Header with Interactive Notification Dropdown */}
             <AuroraHeader
               referenceLayout={usesReferenceLayout}
@@ -486,48 +489,15 @@ export function App() {
 
             {/* Dynamic View rendering based on activeMenu */}
             {activeMenu === 'Dashboard' && (
-              <>
-                {activeView === 'reception' && (
-                  <ReceptionDashboard
-                    currentUser={currentUser}
-                    onNotify={showNotification}
-                  />
-                )}
-                {activeView === 'room_service' && (
-                  <RoomServiceDashboard
-                    currentUser={currentUser}
-                    onNotify={showNotification}
-                  />
-                )}
-                {activeView === 'housekeeping' && (
-                  <HousekeepingDashboard
-                    currentUser={currentUser}
-                    onNotify={showNotification}
-                  />
-                )}
-                {activeView === 'bell_services' && (
-                  <BellServicesDashboard
-                    currentUser={currentUser}
-                    onNotify={showNotification}
-                  />
-                )}
-                {activeView === 'maintenance' && (
-                  <MaintenanceDashboard
-                    currentUser={currentUser}
-                    onNotify={showNotification}
-                  />
-                )}
-              </>
+              <StaffOverviewDashboard
+                currentUser={currentUser}
+                onNotify={showNotification}
+              />
             )}
 
             {/* Requests Page (Role-Filtered) */}
             {activeMenu === 'Requests' && (
               <RequestsPage currentUser={currentUser} onNotify={showNotification} />
-            )}
-
-            {/* My Tasks Page (Role-Filtered) */}
-            {activeMenu === 'My Tasks' && (
-              <MyTasksPage currentUser={currentUser} onNotify={showNotification} />
             )}
 
             {/* History Page */}
@@ -558,10 +528,20 @@ export function App() {
               />
             )}
             {/* Default Dashboard Fallback if activeMenu is unrecognized */}
-            {!['Dashboard', 'Requests', 'My Tasks', 'History', 'Notifications', 'Profile'].includes(activeMenu) && (
+            {!['Dashboard', 'Requests', 'History', 'Notifications', 'Profile'].includes(activeMenu) && (
               <RequestsPage currentUser={currentUser} onNotify={showNotification} />
             )}
           </div>
+
+          {/* Horizontal Mobile Bottom Navigation Bar (Visible only on mobile screens < 768px) */}
+          <MobileBottomNav
+            activeMenu={activeMenu}
+            onSelectMenu={(menu) => {
+              setActiveMenu(menu);
+              showNotification(`Đã chuyển mục: ${menu}`);
+            }}
+            unreadNotifCount={unreadNotifCount}
+          />
         </div>
       )}
 

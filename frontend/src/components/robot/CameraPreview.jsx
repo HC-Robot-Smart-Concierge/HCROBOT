@@ -12,13 +12,24 @@ export const CameraPreview = ({ onGuestApproached, onGuestLeft, onEmotionChange 
   const startCamera = async () => {
     try {
       const mediaStream = await navigator.mediaDevices.getUserMedia({ 
-        video: { width: 320, height: 240, facingMode: 'user' } 
+        video: {
+          width: { ideal: 1280, min: 640 },
+          height: { ideal: 720, min: 360 },
+          aspectRatio: { ideal: 1.7777777778 },
+          facingMode: 'user'
+        } 
       });
       setStream(mediaStream);
       setIsCameraActive(true);
     } catch (err) {
       console.warn("Camera access error:", err);
-      setIsCameraActive(false);
+      try {
+        const fallbackStream = await navigator.mediaDevices.getUserMedia({ video: true });
+        setStream(fallbackStream);
+        setIsCameraActive(true);
+      } catch (fbErr) {
+        setIsCameraActive(false);
+      }
     }
   };
 
@@ -147,7 +158,7 @@ export const CameraPreview = ({ onGuestApproached, onGuestLeft, onEmotionChange 
       {isMinimized ? (
         <button
           onClick={() => setIsMinimized(false)}
-          className="absolute top-3 left-4 z-40 bg-stone-900/95 text-stone-200 px-3.5 py-1.5 rounded-full border border-stone-700/80 shadow-xl backdrop-blur-md flex items-center gap-2 text-xs font-semibold hover:bg-stone-800 transition-all cursor-pointer"
+          className="absolute top-5 left-5 md:top-3 md:left-4 z-40 bg-stone-900/95 text-stone-200 px-3.5 py-1.5 rounded-full border border-stone-700/80 shadow-xl backdrop-blur-md flex items-center gap-2 text-xs font-semibold hover:bg-stone-800 transition-all cursor-pointer"
           title="Bấm để xem khung hình Camera"
         >
           <span>Camera Control</span>
@@ -158,12 +169,17 @@ export const CameraPreview = ({ onGuestApproached, onGuestLeft, onEmotionChange 
           )}
         </button>
       ) : (
-        <div className="absolute top-3 left-4 z-40">
+        <div className="absolute top-5 left-5 md:top-3 md:left-4 z-40">
           <div 
             onClick={() => setIsMinimized(true)}
-            className="w-[180px] h-[120px] bg-black rounded-2xl overflow-hidden relative border-2 border-stone-700/80 shadow-2xl backdrop-blur-md cursor-pointer hover:border-emerald-500/80 transition-all flex items-center justify-center group"
+            className="w-[220px] aspect-video bg-black rounded-2xl overflow-hidden relative border-2 border-stone-700/80 shadow-2xl backdrop-blur-md cursor-pointer hover:border-emerald-500/80 transition-all flex flex-col items-center justify-center group"
             title="Bấm vào khung hình để thu nhỏ"
           >
+            <div className="absolute top-2 left-2 z-10 px-2 py-0.5 rounded-full bg-black/70 backdrop-blur-md text-white text-[9px] font-mono font-bold border border-white/20 flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span>CAM 16:9 LANDSCAPE</span>
+            </div>
+
             <video 
               ref={(node) => {
                 if (node && stream) node.srcObject = stream;
@@ -171,7 +187,7 @@ export const CameraPreview = ({ onGuestApproached, onGuestLeft, onEmotionChange 
               autoPlay 
               playsInline 
               muted 
-              className={`w-full h-full object-cover scale-x-[-1] ${isCameraActive ? 'block' : 'hidden'}`} 
+              className={`w-full h-full object-cover aspect-video scale-x-[-1] ${isCameraActive ? 'block' : 'hidden'}`} 
             />
 
             {!isCameraActive && (

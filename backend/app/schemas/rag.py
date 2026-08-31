@@ -33,6 +33,7 @@ class RAGSourceFileItem(BaseModel):
     chunks_count: int
     last_modified: str
     status: str = "Synced"
+    content: Optional[str] = None
 
 
 class RAGSourceFilesResponse(BaseModel):

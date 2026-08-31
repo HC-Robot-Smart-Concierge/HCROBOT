@@ -34,11 +34,12 @@ import {
   deleteRAGDocument,
   syncObsidianVault,
   uploadRAGFile,
+  saveRAGSourceFile,
 } from '../../../services/knowledgeApi';
 import { Pagination } from '../../../components/common/Pagination';
 
 
-export const AdminKnowledgePage = ({ activeSubView = 'overview' }) => {
+export const AdminKnowledgePage = ({ activeSubView = 'sources' }) => {
   const [currentView, setCurrentView] = useState(activeSubView);
   const [stats, setStats] = useState({
     total_documents: 0,
@@ -52,6 +53,12 @@ export const AdminKnowledgePage = ({ activeSubView = 'overview' }) => {
   const [selectedArticle, setSelectedArticle] = useState(null);
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
 
+  // Markdown File Editor State
+  const [editingSourceFile, setEditingSourceFile] = useState(null);
+  const [sourceMarkdownContent, setSourceMarkdownContent] = useState('');
+  const [editorModeTab, setEditorModeTab] = useState('edit');
+  const [isSavingSource, setIsSavingSource] = useState(false);
+
   // Filters & Search
   const [categoryFilter, setCategoryFilter] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
@@ -59,6 +66,29 @@ export const AdminKnowledgePage = ({ activeSubView = 'overview' }) => {
   const [actionMessage, setActionMessage] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 20;
+
+  // Open Markdown Editor Handler (Real Disk Content)
+  const handleOpenSourceEditor = (src) => {
+    setEditingSourceFile(src);
+    setSourceMarkdownContent(src.content || `# ${src.filename}\n\nChưa có nội dung.`);
+    setEditorModeTab('edit');
+  };
+
+  // Save Markdown Editor Handler (Saves to backend/knowledge_vault/ and syncs ChromaDB)
+  const handleSaveSourceMarkdown = async () => {
+    if (!editingSourceFile) return;
+    try {
+      setIsSavingSource(true);
+      await saveRAGSourceFile(editingSourceFile.filename, sourceMarkdownContent);
+      showNotification(`Đã lưu file "${editingSourceFile.filename}" xuống đĩa & tự động tái đồng bộ RAG!`);
+      setEditingSourceFile(null);
+      await loadAllData();
+    } catch (err) {
+      showNotification('Lỗi khi lưu file: ' + err.message);
+    } finally {
+      setIsSavingSource(false);
+    }
+  };
 
   // Upload State
   const [uploadFileObj, setUploadFileObj] = useState(null);
@@ -783,12 +813,13 @@ export const AdminKnowledgePage = ({ activeSubView = 'overview' }) => {
                     <th className="py-3.5 px-4">SỐ ĐOẠN CHUNKS</th>
                     <th className="py-3.5 px-4">CẬP NHẬT LẦN CUỐI</th>
                     <th className="py-3.5 px-4">TRẠNG THÁI</th>
+                    <th className="py-3.5 px-4 text-right">THAO TÁC</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-stone-100 text-xs">
                   {sources.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="py-8 text-center text-stone-400 font-medium">
+                      <td colSpan={7} className="py-8 text-center text-stone-400 font-medium">
                         Chưa có file nguồn nào trong thư mục Vault.
                       </td>
                     </tr>
@@ -796,11 +827,11 @@ export const AdminKnowledgePage = ({ activeSubView = 'overview' }) => {
                     sources.map((src, idx) => (
                       <tr key={idx} className="hover:bg-stone-50/60 transition-colors">
                         <td className="py-3.5 px-4 font-bold text-stone-900 flex items-center gap-2">
-                          <FileText className="w-4 h-4 text-indigo-600" />
+                          <FileText className="w-4 h-4 text-stone-700" />
                           <span>{src.filename}</span>
                         </td>
                         <td className="py-3.5 px-4">
-                          <span className="px-2 py-0.5 rounded text-[10px] font-black bg-stone-100 text-stone-700">
+                          <span className="px-2 py-0.5 rounded text-[10px] font-black bg-stone-100 text-stone-700 uppercase">
                             {src.file_type}
                           </span>
                         </td>
@@ -812,6 +843,15 @@ export const AdminKnowledgePage = ({ activeSubView = 'overview' }) => {
                             <CheckCircle2 className="w-3.5 h-3.5" />
                             <span>{src.status}</span>
                           </span>
+                        </td>
+                        <td className="py-3.5 px-4 text-right">
+                          <button
+                            onClick={() => handleOpenSourceEditor(src)}
+                            className="px-3 py-1.5 rounded-xl bg-[#18181B] hover:bg-black text-white font-bold text-xs shadow-sm inline-flex items-center gap-1.5 cursor-pointer transition-all"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                            <span>Xem & Sửa File .md</span>
+                          </button>
                         </td>
                       </tr>
                     ))
@@ -1056,6 +1096,83 @@ export const AdminKnowledgePage = ({ activeSubView = 'overview' }) => {
         </div>
       )}
 
+      {/* MARKDOWN FILE VIEWER & EDITOR MODAL */}
+      {editingSourceFile && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 sm:p-6 animate-fadeIn">
+          <div className="bg-white rounded-3xl border border-[#E5E1D8] shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden space-y-4 p-6">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-[#E5E1D8] pb-4">
+              <div className="flex items-center gap-2">
+                <FileCode className="w-5 h-5 text-stone-800" />
+                <h3 className="text-base font-bold text-stone-900">
+                  Chỉnh Sửa File Markdown: <span className="font-mono text-stone-700">{editingSourceFile.filename}</span>
+                </h3>
+              </div>
+
+              {/* Tab Toggle: Edit vs Preview */}
+              <div className="flex items-center gap-1 bg-[#FAF8F5] p-1 rounded-xl border border-[#DDD8CE]">
+                <button
+                  onClick={() => setEditorModeTab('edit')}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    editorModeTab === 'edit' ? 'bg-[#18181B] text-white shadow-sm' : 'text-stone-600 hover:text-stone-900'
+                  }`}
+                >
+                  Chỉnh Sửa (Editor)
+                </button>
+                <button
+                  onClick={() => setEditorModeTab('preview')}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    editorModeTab === 'preview' ? 'bg-[#18181B] text-white shadow-sm' : 'text-stone-600 hover:text-stone-900'
+                  }`}
+                >
+                  Xem Trước (Preview)
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Content */}
+            <div className="flex-1 min-h-[350px] max-h-[50vh] overflow-y-auto">
+              {editorModeTab === 'edit' ? (
+                <textarea
+                  value={sourceMarkdownContent}
+                  onChange={(e) => setSourceMarkdownContent(e.target.value)}
+                  placeholder="Nhập nội dung tài liệu Markdown..."
+                  className="w-full h-full min-h-[350px] p-4 bg-[#FAF8F5] border border-[#DDD8CE] rounded-2xl font-mono text-xs text-stone-900 leading-relaxed outline-none focus:border-stone-600 resize-none shadow-inner"
+                />
+              ) : (
+                <div className="w-full h-full min-h-[350px] p-6 bg-[#FAF8F5] border border-[#DDD8CE] rounded-2xl text-xs text-stone-900 leading-relaxed font-sans space-y-3 whitespace-pre-wrap">
+                  {sourceMarkdownContent}
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer Actions */}
+            <div className="flex flex-col sm:flex-row items-center justify-between border-t border-[#E5E1D8] pt-4 gap-3">
+              <span className="text-xs text-stone-500 font-medium">
+                Tài liệu sẽ tự động được Vector hóa và nạp vào ChromaDB RAG.
+              </span>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setEditingSourceFile(null)}
+                  className="px-4 py-2 rounded-xl bg-[#FAF8F5] hover:bg-[#EFECE6] border border-[#DDD8CE] text-stone-800 text-xs font-bold transition-all cursor-pointer"
+                >
+                  ✕ Hủy Bỏ
+                </button>
+
+                <button
+                  onClick={handleSaveSourceMarkdown}
+                  disabled={isSavingSource}
+                  className="px-5 py-2 rounded-xl bg-[#18181B] hover:bg-black text-white text-xs font-bold shadow-md flex items-center gap-2 transition-all cursor-pointer"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>{isSavingSource ? 'Đang Lưu & Vector Hóa...' : 'Lưu Thay Đổi & Nạp Vào Robot'}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

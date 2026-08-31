@@ -1,6 +1,12 @@
 import React, { useRef, useEffect, useState } from 'react';
 
-export const CameraPreview = ({ onGuestApproached, onGuestLeft, onEmotionChange }) => {
+export const CameraPreview = ({
+  onGuestApproached,
+  onGuestLeft,
+  onEmotionChange,
+  autoStart = true,
+  controlsClassName = '',
+}) => {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const [isCameraActive, setIsCameraActive] = useState(false);
@@ -64,14 +70,14 @@ export const CameraPreview = ({ onGuestApproached, onGuestLeft, onEmotionChange 
   };
 
   useEffect(() => {
-    startCamera();
+    if (autoStart) startCamera();
 
     return () => {
       if (stream) {
         stream.getTracks().forEach((track) => track.stop());
       }
     };
-  }, []);
+  }, [autoStart]);
 
   useEffect(() => {
     if (stream && videoRef.current) {
@@ -158,7 +164,7 @@ export const CameraPreview = ({ onGuestApproached, onGuestLeft, onEmotionChange 
       {isMinimized ? (
         <button
           onClick={() => setIsMinimized(false)}
-          className="absolute top-5 left-5 md:top-3 md:left-4 z-40 bg-stone-900/95 text-stone-200 px-3.5 py-1.5 rounded-full border border-stone-700/80 shadow-xl backdrop-blur-md flex items-center gap-2 text-xs font-semibold hover:bg-stone-800 transition-all cursor-pointer"
+          className={`absolute top-5 left-5 md:top-3 md:left-4 z-40 bg-stone-900/95 text-stone-200 px-3.5 py-1.5 rounded-full border border-stone-700/80 shadow-xl backdrop-blur-md flex items-center gap-2 text-xs font-semibold hover:bg-stone-800 transition-all cursor-pointer ${controlsClassName}`}
           title="Bấm để xem khung hình Camera"
         >
           <span>Camera Control</span>
@@ -169,7 +175,7 @@ export const CameraPreview = ({ onGuestApproached, onGuestLeft, onEmotionChange 
           )}
         </button>
       ) : (
-        <div className="absolute top-5 left-5 md:top-3 md:left-4 z-40">
+        <div className={`absolute top-5 left-5 md:top-3 md:left-4 z-40 ${controlsClassName}`}>
           <div 
             onClick={() => setIsMinimized(true)}
             className="w-[220px] aspect-video bg-black rounded-2xl overflow-hidden relative border-2 border-stone-700/80 shadow-2xl backdrop-blur-md cursor-pointer hover:border-emerald-500/80 transition-all flex flex-col items-center justify-center group"

@@ -12,7 +12,10 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name] if os.path.exists('resource/' + package_name) else []),
         ('share/' + package_name, ['package.xml']),
+        ('share/' + package_name + '/config',
+            ['../../config/settings.yaml'] if os.path.exists('../../config/settings.yaml') else []),
     ],
+
     install_requires=['setuptools', 'httpx', 'pyyaml'],
     zip_safe=true,
     maintainer='HC-Robot Team',

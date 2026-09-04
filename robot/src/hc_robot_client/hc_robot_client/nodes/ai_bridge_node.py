@@ -55,12 +55,29 @@ class AIBridgeNode(Node):
         self.get_logger().info(f"AIBridgeNode đã khởi chạy. Backend URL: http://{server_host}:{server_port}")
         self.get_logger().info(f"Lắng nghe topic '{speech_in_topic}', Publish tới '{speech_out_topic}'")
 
-    def get_config_path() -> str:
+    def get_config_path(self) -> str:
         """
-        Lấy đường dẫn tương đối hoặc tuyệt đối của config/settings.yaml
+        Lấy đường dẫn file config/settings.yaml linh hoạt từ ROS 2 share dir hoặc đường dẫn tương đối.
         """
-        base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../../../'))
-        return os.path.join(base_dir, 'config', 'settings.yaml')
+        try:
+            from ament_index_python.packages import get_package_share_directory
+            share_config = os.path.join(get_package_share_directory('hc_robot_client'), 'config', 'settings.yaml')
+            if os.path.exists(share_config):
+                return share_config
+        except Exception:
+            pass
+
+        curr_dir = os.path.dirname(os.path.abspath(__file__))
+        candidates = [
+            os.path.abspath(os.path.join(curr_dir, '../../../../config/settings.yaml')),
+            os.path.abspath(os.path.join(curr_dir, '../../../../../robot/config/settings.yaml')),
+            os.path.abspath(os.path.join(curr_dir, '../../../../../config/settings.yaml')),
+        ]
+        for path in candidates:
+            if os.path.exists(path):
+                return path
+        return candidates[0]
+
 
     def on_speech_received(self, msg: String):
         """

@@ -74,9 +74,28 @@ class MotorDriverNode(Node):
         )
 
     def _get_config_path(self) -> str:
-        """Đường dẫn tới file config/settings.yaml"""
-        base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../../../'))
-        return os.path.join(base_dir, 'config', 'settings.yaml')
+        """
+        Lấy đường dẫn file config/settings.yaml linh hoạt từ ROS 2 share dir hoặc đường dẫn tương đối.
+        """
+        try:
+            from ament_index_python.packages import get_package_share_directory
+            share_config = os.path.join(get_package_share_directory('hc_robot_client'), 'config', 'settings.yaml')
+            if os.path.exists(share_config):
+                return share_config
+        except Exception:
+            pass
+
+        curr_dir = os.path.dirname(os.path.abspath(__file__))
+        candidates = [
+            os.path.abspath(os.path.join(curr_dir, '../../../../config/settings.yaml')),
+            os.path.abspath(os.path.join(curr_dir, '../../../../../robot/config/settings.yaml')),
+            os.path.abspath(os.path.join(curr_dir, '../../../../../config/settings.yaml')),
+        ]
+        for path in candidates:
+            if os.path.exists(path):
+                return path
+        return candidates[0]
+
 
     def on_twist_received(self, msg: Twist):
         """Callback xử lý tin nhắn vận tốc dạng Twist."""

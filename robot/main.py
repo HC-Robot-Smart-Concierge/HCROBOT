@@ -32,6 +32,45 @@ def load_config() -> dict:
     return {}
 
 
+def run_hardware_test(controller: MotorController):
+    """Tự động quay thử từng động cơ 2 giây để kiểm tra phần cứng đấu nối."""
+    logger.info("=" * 60)
+    logger.info("  BẮT ĐẦU KIỂM TRẢ TỰ ĐỘNG PHẦN CỨNG 2 ĐỘNG CƠ L298N")
+    logger.info("=" * 60)
+
+    try:
+        logger.info("1. Đang thử TIẾN (Cả 2 bánh quay tiến 2 giây)...")
+        controller.move_forward()
+        time.sleep(2.0)
+        controller.stop()
+        time.sleep(1.0)
+
+        logger.info("2. Đang thử LÙI (Cả 2 bánh quay lùi 2 giây)...")
+        controller.move_backward()
+        time.sleep(2.0)
+        controller.stop()
+        time.sleep(1.0)
+
+        logger.info("3. Đang thử RẼ TRÁI (2 giây)...")
+        controller.turn_left()
+        time.sleep(2.0)
+        controller.stop()
+        time.sleep(1.0)
+
+        logger.info("4. Đang thử RẼ PHẢI (2 giây)...")
+        controller.turn_right()
+        time.sleep(2.0)
+        controller.stop()
+
+        logger.info("=" * 60)
+        logger.info("  HOÀN THÀNH TEST PHẦN CỨNG! ĐÃ TẮT TOÀN BỘ ĐỘNG CƠ.")
+        logger.info("=" * 60)
+    except KeyboardInterrupt:
+        logger.info("Đã hủy test giữa chừng.")
+    finally:
+        controller.stop()
+
+
 def run_ros2_node(controller: MotorController, cmd_vel_topic: str, cmd_text_topic: str):
     """Khởi chạy dưới dạng ROS 2 Node (nếu có rclpy)."""
     import rclpy
@@ -50,15 +89,20 @@ def run_ros2_node(controller: MotorController, cmd_vel_topic: str, cmd_text_topi
             self.sub_text = self.create_subscription(
                 String, cmd_text_topic, self.on_text, 10
             )
-            self.get_logger().info(
-                f"ROS 2 Node đang chạy! Subscribed: '{cmd_vel_topic}' & '{cmd_text_topic}'"
-            )
+            self.get_logger().info("=" * 60)
+            self.get_logger().info(f"ROS 2 Node ĐANG LẮNG NGHE LỆNH!")
+            self.get_logger().info(f"- Topic Vận tốc Twist: '{cmd_vel_topic}'")
+            self.get_logger().info(f"- Topic Lệnh Chữ:      '{cmd_text_topic}'")
+            self.get_logger().info("Gợi ý test từ Terminal khác:")
+            self.get_logger().info("  ros2 topic pub /robot/cmd_text std_msgs/msg/String \"{data: 'tien'}\" --once")
+            self.get_logger().info("=" * 60)
 
         def on_twist(self, msg: Twist):
             self.ctrl.set_drive_cmd(msg.linear.x, msg.angular.z)
 
         def on_text(self, msg: String):
             cmd = msg.data.strip().lower()
+            self.get_logger().info(f"Nhận lệnh di chuyển: '{cmd}'")
             if cmd in ["forward", "tien", "tiến", "up", "w"]:
                 self.ctrl.move_forward()
             elif cmd in ["backward", "lui", "lùi", "down", "s"]:
@@ -83,11 +127,11 @@ def run_ros2_node(controller: MotorController, cmd_vel_topic: str, cmd_text_topi
 
 def run_interactive_cli(controller: MotorController):
     """Chế độ điều khiển trực tiếp bằng bàn phím CLI (Không cần ROS 2)."""
-    logger.info("=" * 50)
-    logger.info("  CHẾ ĐỘ ĐIỀU KHIỂN BÀN PHÍM TRỰC TIẾP (STANDALONE)")
+    logger.info("=" * 60)
+    logger.info("  CHẾ ĐỘ ĐIỀU KHIỂN BÀN PHÍM TRỰC TIẾP")
     logger.info("  [W]: Tiến   | [S]: Lùi   | [A]: Rẽ Trái | [D]: Rẽ Phải")
     logger.info("  [X] hoặc [Space]: Dừng    | [Q]: Thoát chương trình")
-    logger.info("=" * 50)
+    logger.info("=" * 60)
 
     try:
         while True:
@@ -125,29 +169,44 @@ def main():
     cmd_text_topic = topics_cfg.get('cmd_text', '/robot/cmd_text')
 
     logger.info("Khởi tạo Robot Motor Controller...")
-    logger.info(f"Sơ đồ chân: Left(Fwd:{left_forward}, Bwd:{left_backward}) | Right(Fwd:{right_forward}, Bwd:{right_backward})")
+    logger.info(f"Sơ đồ chân BCM: Left(Fwd:{left_forward}, Bwd:{left_backward}) | Right(Fwd:{right_forward}, Bwd:{right_backward})")
 
+    # Kiểm tra xem có cần dùng sudo trên Linux không
+    force_mock = '--mock' in sys.argv
     controller = MotorController(
         left_forward_pin=left_forward,
         left_backward_pin=left_backward,
         right_forward_pin=right_forward,
-        right_backward_pin=right_backward
+        right_backward_pin=right_backward,
+        force_mock=force_mock
     )
 
-    # Tự động phát hiện ROS 2
-    has_ros2 = False
-    try:
-        import rclpy
-        has_ros2 = True
-    except ImportError:
-        has_ros2 = False
+    if controller.is_mock and not force_mock:
+        logger.warning("=" * 60)
+        logger.warning("CẢNH BÁO: Code đang chạy ở chế độ MOCK (Giả lập).")
+        logger.warning("Nếu đang ở trên Pi 5, ông chủ cần chạy lệnh bằng: sudo python3 main.py")
+        logger.warning("hoặc cài thư viện: sudo apt install python3-gpiozero python3-lgpio")
+        logger.warning("=" * 60)
 
     try:
-        if has_ros2 and '--cli' not in sys.argv:
-            logger.info("Phát hiện ROS 2! Khởi chạy dưới dạng ROS 2 Node...")
-            run_ros2_node(controller, cmd_vel_topic, cmd_text_topic)
-        else:
+        if '--test' in sys.argv:
+            run_hardware_test(controller)
+        elif '--cli' in sys.argv:
             run_interactive_cli(controller)
+        else:
+            # Tự động phát hiện ROS 2
+            has_ros2 = False
+            try:
+                import rclpy
+                has_ros2 = True
+            except ImportError:
+                has_ros2 = False
+
+            if has_ros2:
+                logger.info("Phát hiện ROS 2! Khởi chạy dưới dạng ROS 2 Node...")
+                run_ros2_node(controller, cmd_vel_topic, cmd_text_topic)
+            else:
+                run_interactive_cli(controller)
     finally:
         controller.cleanup()
         logger.info("Đã tắt an toàn toàn bộ động cơ.")

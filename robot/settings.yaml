@@ -4,10 +4,13 @@ robot:
   id: "hc_pi5_01"
   name: "HC Smart Concierge Robot"
   gpio:
-    left_forward: 17     # IN1 & IN3 Mạch 1 (Pin 11)
-    left_backward: 27    # IN2 & IN4 Mạch 1 (Pin 13)
-    right_forward: 22    # IN1 & IN3 Mạch 2 (Pin 15)
-    right_backward: 23   # IN2 & IN4 Mạch 2 (Pin 16)
+    # Mạch 1 (Bên Trái - Động cơ nối cọc OUT1 & OUT2):
+    left_forward: 17     # Cắm trực tiếp duy nhất vào cọc IN1 Mạch 1 (Rút dây IN3 ra)
+    left_backward: 27    # Cắm trực tiếp duy nhất vào cọc IN2 Mạch 1 (Rút dây IN4 ra)
+
+    # Mạch 2 (Bên Phải - Động cơ nối cọc OUT1 & OUT2):
+    right_forward: 22    # Cắm trực tiếp duy nhất vào cọc IN1 Mạch 2 (Rút dây IN3 ra)
+    right_backward: 23   # Cắm trực tiếp duy nhất vào cọc IN2 Mạch 2 (Rút dây IN4 ra)
 
 topics:
   cmd_vel: "/cmd_vel"

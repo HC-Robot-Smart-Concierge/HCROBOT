@@ -24,6 +24,8 @@ setup(
         'console_scripts': [
             'ai_bridge_node = hc_robot_client.nodes.ai_bridge_node:main',
             'telemetry_node = hc_robot_client.nodes.telemetry_node:main',
+            'motor_driver_node = hc_robot_client.nodes.motor_driver_node:main',
         ],
     },
+
 )

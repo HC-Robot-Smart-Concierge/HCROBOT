@@ -3,12 +3,72 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-# Tự động phát hiện gpiozero trên Raspberry Pi
+# 1. Thử import lgpio (Thư viện chuẩn nhất cho Raspberry Pi 5 / RP1 chip)
+HAS_LGPIO = False
+try:
+    import lgpio
+    HAS_LGPIO = True
+except ImportError:
+    HAS_LGPIO = False
+
+# 2. Thử import gpiozero
+HAS_GPIOZERO = False
 try:
     from gpiozero import DigitalOutputDevice
     HAS_GPIOZERO = True
 except (ImportError, Exception):
     HAS_GPIOZERO = False
+
+
+class LGPIOOutputDevice:
+    """Điều khiển trực tiếp chân GPIO trên Raspberry Pi 5 bằng lgpio (trực tiếp qua RP1 chip)."""
+    def __init__(self, pin: int):
+        self.pin = pin
+        self.handle = None
+        # Trên Pi 5, RP1 GPIO chip thường là chip 4, trên một số bản OS khác là chip 0
+        for chip_num in [4, 0]:
+            try:
+                h = lgpio.gpiochip_open(chip_num)
+                lgpio.gpio_claim_output(h, self.pin, 0)
+                self.handle = h
+                self.chip_num = chip_num
+                break
+            except Exception:
+                if self.handle is not None:
+                    try:
+                        lgpio.gpiochip_close(self.handle)
+                    except Exception:
+                        pass
+                self.handle = None
+
+        if self.handle is None:
+            raise RuntimeError(f"Không mở được GPIO {self.pin} bằng lgpio qua chip 4 hoặc 0.")
+
+        self.value = 0
+
+    def on(self):
+        if self.handle is not None:
+            lgpio.gpio_write(self.handle, self.pin, 1)
+            self.value = 1
+
+    def off(self):
+        if self.handle is not None:
+            lgpio.gpio_write(self.handle, self.pin, 0)
+            self.value = 0
+
+    def close(self):
+        if self.handle is not None:
+            try:
+                self.off()
+                lgpio.gpio_free(self.handle, self.pin)
+                lgpio.gpiochip_close(self.handle)
+            except Exception:
+                pass
+            self.handle = None
+
+    @property
+    def is_active(self) -> bool:
+        return self.value == 1
 
 
 class MockDigitalOutputDevice:
@@ -50,7 +110,7 @@ class MotorController:
         self.left_backward_pin = left_backward_pin
         self.right_forward_pin = right_forward_pin
         self.right_backward_pin = right_backward_pin
-        self.is_mock = force_mock or not HAS_GPIOZERO
+        self.is_mock = force_mock
 
         self.left_forward_dev = None
         self.left_backward_dev = None
@@ -60,26 +120,44 @@ class MotorController:
         self._init_devices()
 
     def _init_devices(self):
-        try:
-            if not self.is_mock:
+        if self.is_mock:
+            self._init_mock("Yêu cầu chế độ Mock cưỡng chế (--mock)")
+            return
+
+        # 1. Thử dùng LGPIO (Ưu tiên số 1 cho Pi 5)
+        if HAS_LGPIO:
+            try:
+                self.left_forward_dev = LGPIOOutputDevice(self.left_forward_pin)
+                self.left_backward_dev = LGPIOOutputDevice(self.left_backward_pin)
+                self.right_forward_dev = LGPIOOutputDevice(self.right_forward_pin)
+                self.right_backward_dev = LGPIOOutputDevice(self.right_backward_pin)
+                logger.info("MotorController khởi chạy THÀNH CÔNG trên Raspberry Pi 5 (Native lgpio RP1 Driver).")
+                return
+            except Exception as e:
+                logger.warning(f"Thử LGPIO thất bại: {e}")
+
+        # 2. Thử dùng gpiozero
+        if HAS_GPIOZERO:
+            try:
                 self.left_forward_dev = DigitalOutputDevice(self.left_forward_pin)
                 self.left_backward_dev = DigitalOutputDevice(self.left_backward_pin)
                 self.right_forward_dev = DigitalOutputDevice(self.right_forward_pin)
                 self.right_backward_dev = DigitalOutputDevice(self.right_backward_pin)
-                logger.info("MotorController khởi chạy thành công trên phần cứng GPIO Pi 5.")
-            else:
-                self._init_mock()
-        except Exception as e:
-            logger.warning(f"Không nhận diện được GPIO hardware ({e}). Chuyển sang MOCK Mode.")
-            self.is_mock = True
-            self._init_mock()
+                logger.info("MotorController khởi chạy THÀNH CÔNG với gpiozero.")
+                return
+            except Exception as e:
+                logger.warning(f"Thử gpiozero thất bại: {e}")
 
-    def _init_mock(self):
+        # 3. Fallback Mock
+        self._init_mock("Không kết nối được thư viện GPIO (lgpio/gpiozero)")
+
+    def _init_mock(self, reason: str = ""):
+        self.is_mock = True
         self.left_forward_dev = MockDigitalOutputDevice(self.left_forward_pin)
         self.left_backward_dev = MockDigitalOutputDevice(self.left_backward_pin)
         self.right_forward_dev = MockDigitalOutputDevice(self.right_forward_pin)
         self.right_backward_dev = MockDigitalOutputDevice(self.right_backward_pin)
-        logger.info("MotorController chạy ở chế độ MOCK (Giả lập).")
+        logger.info(f"MotorController chạy ở chế độ MOCK (Giả lập). Lý do: {reason}")
 
     def move_forward(self):
         """Tiến về phía trước."""
@@ -87,7 +165,7 @@ class MotorController:
         self.left_backward_dev.off()
         self.right_forward_dev.on()
         self.right_backward_dev.off()
-        logger.info("ROBOT: TIẾN (FORWARD)")
+        logger.info("ROBOT: TIẾN (FORWARD) -> GPIO 17=ON, 27=OFF, 22=ON, 23=OFF")
 
     def move_backward(self):
         """Lùi về phía sau."""
@@ -95,7 +173,7 @@ class MotorController:
         self.left_backward_dev.on()
         self.right_forward_dev.off()
         self.right_backward_dev.on()
-        logger.info("ROBOT: LÙI (BACKWARD)")
+        logger.info("ROBOT: LÙI (BACKWARD) -> GPIO 17=OFF, 27=ON, 22=OFF, 23=ON")
 
     def turn_left(self):
         """Rẽ trái."""
@@ -103,7 +181,7 @@ class MotorController:
         self.left_backward_dev.on()
         self.right_forward_dev.on()
         self.right_backward_dev.off()
-        logger.info("ROBOT: RẼ TRÁI (LEFT)")
+        logger.info("ROBOT: RẼ TRÁI (LEFT) -> GPIO 17=OFF, 27=ON, 22=ON, 23=OFF")
 
     def turn_right(self):
         """Rẽ phải."""
@@ -111,7 +189,7 @@ class MotorController:
         self.left_backward_dev.off()
         self.right_forward_dev.off()
         self.right_backward_dev.on()
-        logger.info("ROBOT: RẼ PHẢI (RIGHT)")
+        logger.info("ROBOT: RẼ PHẢI (RIGHT) -> GPIO 17=ON, 27=OFF, 22=OFF, 23=ON")
 
     def stop(self):
         """Dừng tất cả động cơ."""
@@ -123,7 +201,7 @@ class MotorController:
             self.right_forward_dev.off()
         if self.right_backward_dev:
             self.right_backward_dev.off()
-        logger.info("ROBOT: DỪNG (STOP)")
+        logger.info("ROBOT: DỪNG (STOP) -> All GPIO OFF")
 
     def set_drive_cmd(self, linear_x: float, angular_z: float):
         """Chuyển đổi tín hiệu vận tốc Twist sang hướng chạy."""

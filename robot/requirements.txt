@@ -1,3 +1,4 @@
+rpi-lgpio>=0.6
 gpiozero>=2.0
 pyyaml>=6.0
 pytest>=7.4.0

@@ -35,18 +35,49 @@
   }
 }
 
-/* Force Robot Screen to display in Landscape Mode on Portrait Mobile Devices */
-@media screen and (max-width: 896px) and (orientation: portrait) {
-  .force-robot-landscape {
-    position: fixed !important;
-    top: 50% !important;
-    left: 50% !important;
-    width: 100vh !important;
-    height: 100vw !important;
-    transform: translate(-50%, -50%) rotate(90deg) !important;
-    transform-origin: center center !important;
-    overflow: hidden !important;
-    z-index: 9999 !important;
+.robot-mobile-ui,
+.robot-portrait-guard {
+  display: none;
+}
+
+.robot-desktop-ui {
+  display: flex;
+}
+
+.robot-safe-x {
+  padding-left: max(1rem, env(safe-area-inset-left, 0px));
+  padding-right: max(1rem, env(safe-area-inset-right, 0px));
+}
+
+.robot-safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+@media screen and (max-width: 767px),
+  screen and (max-width: 1024px) and (max-height: 600px) {
+  .robot-mobile-ui {
+    display: flex;
+  }
+
+  .robot-desktop-ui,
+  .robot-camera-control {
+    display: none !important;
+  }
+}
+
+@media screen and (max-width: 767px) and (orientation: portrait) {
+  .robot-portrait-guard {
+    display: flex;
+  }
+
+  .robot-landscape-content {
+    visibility: hidden;
+  }
+}
+
+@media (display-mode: standalone) {
+  .robot-mobile-ui {
+    overscroll-behavior: none;
   }
 }
 

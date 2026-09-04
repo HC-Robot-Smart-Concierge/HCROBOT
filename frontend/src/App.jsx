@@ -105,6 +105,9 @@ export function App() {
   }, []);
 
   const [activeView, setActiveView] = useState(() => {
+    const requestedView = new URLSearchParams(window.location.search).get('view');
+    if (requestedView === 'robot_display') return 'robot_display';
+
     const user = getStoredUser();
     if (user) {
       const savedView = localStorage.getItem('aurora_active_view');

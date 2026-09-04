@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Header } from '../../components/robot/Header';
 import { RobotFace } from '../../components/robot/RobotFace';
 import { AudioWave } from '../../components/robot/AudioWave';
 import { FloorMap } from '../../components/robot/FloorMap';
 import { CameraPreview } from '../../components/robot/CameraPreview';
+import { MobileRobotScreen } from '../../components/robot/MobileRobotScreen';
 
 import { useSpeechRecognition } from '../../hooks/useSpeechRecognition';
 import { useSpeechSynthesis } from '../../hooks/useSpeechSynthesis';
@@ -35,9 +35,12 @@ export const RobotScreenPage = ({ onLogout = () => {} }) => {
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [logoutPassword, setLogoutPassword] = useState('');
   const [logoutError, setLogoutError] = useState('');
+  const [isPhoneLayout, setIsPhoneLayout] = useState(() => (
+    window.matchMedia('(max-width: 767px), (max-height: 600px) and (max-width: 1024px)').matches
+  ));
 
   // Hooks
-  const { isListening, transcript, startListening, stopListening, resetTranscript, hasSupport } = useSpeechRecognition();
+  const { isListening, transcript, error: speechError, startListening, stopListening, resetTranscript, hasSupport } = useSpeechRecognition();
   const { speak, prime, cancel: stopSpeaking, isSpeaking } = useSpeechSynthesis();
 
   const toggleLanguage = () => {
@@ -256,6 +259,13 @@ export const RobotScreenPage = ({ onLogout = () => {} }) => {
     setCurrentState('RT-02');
   };
 
+  useEffect(() => {
+    const phoneMedia = window.matchMedia('(max-width: 767px), (max-height: 600px) and (max-width: 1024px)');
+    const updateLayout = (event) => setIsPhoneLayout(event.matches);
+    phoneMedia.addEventListener?.('change', updateLayout);
+    return () => phoneMedia.removeEventListener?.('change', updateLayout);
+  }, []);
+
   // Auto Lock Screen Orientation to Landscape on Mobile/Kiosk Devices
   useEffect(() => {
     if (window.screen && window.screen.orientation && window.screen.orientation.lock) {
@@ -269,21 +279,50 @@ export const RobotScreenPage = ({ onLogout = () => {} }) => {
   }, []);
 
   return (
-    <div 
-      onClick={() => {
-        prime();
-        if ((currentState === 'RT-02' || currentState === 'RT-01') && !isSpeaking && !isProcessing) {
-          handleStartTalk();
-        }
-      }}
-      className="w-full h-screen bg-aurora-canvas flex flex-col justify-start items-center overflow-hidden font-sans select-none relative cursor-pointer force-robot-landscape"
-    >
+    <div className="w-full h-[100dvh] bg-aurora-canvas overflow-hidden font-sans select-none relative">
       {/* Camera Preview Control góc trên bên trái */}
       <CameraPreview 
+        autoStart={!isPhoneLayout}
+        controlsClassName="robot-camera-control"
         onGuestApproached={handleGuestApproached} 
         onGuestLeft={handleGuestLeft} 
         onEmotionChange={(emotion) => setGuestEmotion(emotion)}
       />
+
+      <MobileRobotScreen
+        activeRoomNumber={activeRoomNumber}
+        aiResponseText={aiResponseText}
+        currentState={currentState}
+        hasSpeechSupport={hasSupport}
+        isAutoListen={isAutoListen}
+        isListening={isListening}
+        isProcessing={isProcessing}
+        isSpeaking={isSpeaking}
+        language={language}
+        onLogout={() => {
+          setLogoutError('');
+          setLogoutPassword('');
+          setShowLogoutModal(true);
+        }}
+        onResetSession={handleManualResetSession}
+        onResetToIdle={resetToIdle}
+        onStartTalk={handleStartTalk}
+        onSubmitTalk={() => handleStopTalkAndProcess(transcript)}
+        onToggleAutoListen={() => setIsAutoListen((value) => !value)}
+        onToggleLanguage={toggleLanguage}
+        speechError={speechError}
+        transcript={transcript}
+      />
+
+      <div
+        onClick={() => {
+          prime();
+          if ((currentState === 'RT-02' || currentState === 'RT-01') && !isSpeaking && !isProcessing) {
+            handleStartTalk();
+          }
+        }}
+        className="robot-desktop-ui w-full h-full flex-col justify-start items-center relative cursor-pointer"
+      >
 
       {/* 2. Main Body Container */}
       <main className="w-full flex-1 px-16 py-[54px] flex items-center justify-center gap-16 overflow-hidden">
@@ -422,6 +461,7 @@ export const RobotScreenPage = ({ onLogout = () => {} }) => {
       >
         <LogOut className="w-5 h-5" />
       </button>
+      </div>
 
       {/* Modal Bảo Mật Nhập Mật Khẩu Đăng Xuất Robot (Phong cách Trang Chủ - Màu xám / Kem, Không Icon / Emoji) */}
       {showLogoutModal && (

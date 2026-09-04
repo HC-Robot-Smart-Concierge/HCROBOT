@@ -1,0 +1,14 @@
+# Cấu hình Robot HC-Robot trên Raspberry Pi 5
+
+robot:
+  id: "hc_pi5_01"
+  name: "HC Smart Concierge Robot"
+  gpio:
+    left_forward: 17     # IN1 & IN3 Mạch 1 (Pin 11)
+    left_backward: 27    # IN2 & IN4 Mạch 1 (Pin 13)
+    right_forward: 22    # IN1 & IN3 Mạch 2 (Pin 15)
+    right_backward: 23   # IN2 & IN4 Mạch 2 (Pin 16)
+
+topics:
+  cmd_vel: "/cmd_vel"
+  cmd_text: "/robot/cmd_text"

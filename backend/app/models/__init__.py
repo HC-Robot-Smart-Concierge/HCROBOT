@@ -10,6 +10,7 @@ from app.models.stock import InventoryStock
 from app.models.restaurant import RestaurantReservation, RestaurantPreOrder
 from app.models.reception import ReceptionRequest
 from app.models.support import HumanSupportSession
+from app.models.chat_session import ChatSession, ChatMessage
 from app.models.logging import LogEvent, AuditLog, LogLevelEnum, LogCategoryEnum, ActorTypeEnum
 from app.models.notification import Notification
 
@@ -27,6 +28,8 @@ __all__ = [
     "RestaurantPreOrder",
     "ReceptionRequest",
     "HumanSupportSession",
+    "ChatSession",
+    "ChatMessage",
     "LogEvent",
     "AuditLog",
     "LogLevelEnum",

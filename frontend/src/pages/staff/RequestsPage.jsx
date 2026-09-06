@@ -388,7 +388,7 @@ export const RequestsPage = ({ currentUser, onNotify = () => {} }) => {
   };
 
   return (
-    <div className="flex-1 overflow-y-auto custom-scrollbar p-8 bg-[#FAF8F5] font-sans">
+    <div className="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-8 bg-[#FAF8F5] font-sans">
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Header & New Request Button */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -467,38 +467,22 @@ export const RequestsPage = ({ currentUser, onNotify = () => {} }) => {
             </div>
           )}
 
-          {/* Status Filter Tabs */}
-          <div className="flex items-center gap-1 bg-[#EFECE6] p-1 rounded-full border border-[#DDD8CE]">
-            {[
-              { id: 'All', label: 'Tất Cả', count: deptScopedRequests.length },
-              { id: 'Pending', label: 'Chờ Tiếp Nhận', count: pendingCount },
-              { id: 'In Progress', label: 'Đang Xử Lý', count: inProgressCount },
-              { id: 'Completed', label: 'Đã Hoàn Tất', count: completedCount },
-            ].map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => {
-                  setStatusFilter(tab.id);
-                  onNotify(`Đã lọc: ${tab.label}`);
-                }}
-                className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                  statusFilter === tab.id
-                    ? 'bg-[#18181B] text-white shadow-md'
-                    : 'text-stone-600 hover:text-black hover:bg-stone-200/50'
-                }`}
-              >
-                <span>{tab.label}</span>
-                <span
-                  className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${
-                    statusFilter === tab.id
-                      ? 'bg-stone-800 text-amber-300'
-                      : 'bg-[#DDD8CE] text-stone-700'
-                  }`}
-                >
-                  {tab.count}
-                </span>
-              </button>
-            ))}
+          {/* Status Filter Dropdown (Gray select) */}
+          <div className="flex items-center gap-2 w-full md:w-auto">
+            <label className="text-xs font-bold text-stone-500 shrink-0">Trạng thái:</label>
+            <select
+              value={statusFilter}
+              onChange={(e) => {
+                setStatusFilter(e.target.value);
+                onNotify(`Đã lọc: ${e.target.value}`);
+              }}
+              className="w-full md:w-56 px-3.5 py-1.5 rounded-xl bg-[#FAF8F5] border border-[#E0DCD3] text-xs font-semibold text-stone-900 outline-none cursor-pointer focus:border-stone-400"
+            >
+              <option value="All">Tất Cả ({deptScopedRequests.length})</option>
+              <option value="Pending">Chờ Tiếp Nhận ({pendingCount})</option>
+              <option value="In Progress">Đang Xử Lý ({inProgressCount})</option>
+              <option value="Completed">Đã Hoàn Tất ({completedCount})</option>
+            </select>
           </div>
         </div>
 
@@ -548,74 +532,60 @@ export const RequestsPage = ({ currentUser, onNotify = () => {} }) => {
                 return (
                   <div
                     key={req.id}
-                    className={`bg-white rounded-2xl border border-[#E5E1D8] p-5 shadow-sm space-y-3 transition-all hover:shadow-md ${
+                    className={`bg-white rounded-2xl border border-[#E5E1D8] p-4 md:p-5 shadow-sm space-y-3 transition-all hover:shadow-md ${
                       isInProgress ? 'border-l-4 border-l-sky-500' : ''
                     } ${isCompleted ? 'border-l-4 border-l-emerald-500 bg-emerald-50/5' : ''}`}
                   >
-                    <div className="flex items-start justify-between gap-4">
-                      {/* Title */}
-                      <div className="flex items-start flex-1 min-w-0">
-                        <div className="flex-1 min-w-0 space-y-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-mono text-xs font-bold text-[#1A1917]">{req.id}</span>
-                            <span className="px-2.5 py-0.5 rounded-full bg-[#EFECE6] text-stone-800 text-[10px] font-bold">
-                              {req.department}
-                            </span>
-                            <span className="px-2.5 py-0.5 rounded-full bg-[#18181B] text-white text-[10px] font-bold">
-                              {req.location}
-                            </span>
-                          </div>
-
-                          <h4 className="text-sm font-bold text-[#1A1917]">{req.title}</h4>
-
-                          <p className="text-xs text-[#78716C]">
-                            <span className="font-semibold text-stone-800">{req.guestName || 'Khách lưu trú'}</span>
-                            {req.notes && ` • Ghi chú: ${req.notes}`}
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* Status & Time */}
-                      <div className="text-right shrink-0">
-                        <span className="text-[11px] text-[#78716C] block">{req.time || 'Vừa xong'}</span>
-                        <span
-                          className={`inline-block mt-1 px-3 py-0.5 rounded-full text-[11px] font-bold ${
-                            isPending
-                              ? 'bg-amber-100 text-amber-800'
-                              : isCompleted
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : 'bg-sky-100 text-sky-800'
-                          }`}
-                        >
-                          {req.status}
+                    {/* Top Bar: ID, Location, Department & Status */}
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-mono text-xs font-bold text-[#1A1917]">{req.id}</span>
+                        <span className="px-2 py-0.5 rounded-full bg-[#18181B] text-white text-[10px] font-bold">
+                          {req.location}
+                        </span>
+                        <span className="px-2 py-0.5 rounded-full bg-[#EFECE6] text-stone-800 text-[10px] font-bold">
+                          {req.department}
                         </span>
                       </div>
+
+                      <span
+                        className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold shrink-0 ${
+                          isPending
+                            ? 'bg-amber-100 text-amber-800'
+                            : isCompleted
+                            ? 'bg-emerald-100 text-emerald-800'
+                            : 'bg-sky-100 text-sky-800'
+                        }`}
+                      >
+                        {req.status}
+                      </span>
                     </div>
 
-                    {/* Footer & Actions */}
-                    <div className="pt-3 border-t border-[#F5F2EB] flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-                      <div className="flex items-center gap-2 text-stone-600">
-                        {isPending ? (
-                          <span className="text-amber-700 bg-amber-50 px-3 py-1 rounded-full border border-amber-200 font-semibold text-[11px]">
-                            Chờ nhân viên tiếp nhận
-                          </span>
-                        ) : isInProgress ? (
-                          <div className="flex items-center gap-1.5 text-sky-800 bg-sky-50 px-3 py-1 rounded-full border border-sky-200 font-bold text-[11px]">
-                            <span>Đang xử lý bởi: <span className="underline">{handlerName}</span></span>
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-1.5 text-emerald-800 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200 font-bold text-[11px]">
-                            <span>Hoàn tất bởi: <strong className="text-emerald-950 font-semibold">{handlerName}</strong></span>
-                          </div>
-                        )}
-                      </div>
+                    {/* Request Title (Bold & Clean) */}
+                    <h4 className="text-sm font-bold text-[#1A1917] leading-snug">{req.title}</h4>
 
-                      <div className="flex items-center gap-2 self-end sm:self-auto">
+                    {/* Desktop Extra Detail (Hidden on mobile for ultra-clean UI) */}
+                    <div className="hidden md:block text-xs text-[#78716C]">
+                      <span className="font-semibold text-stone-800">{req.guestName || 'Khách lưu trú'}</span>
+                      {req.notes && ` • Ghi chú: ${req.notes}`}
+                    </div>
+
+                    {/* Bottom Action Bar: Compact & Responsive */}
+                    <div className="pt-2 border-t border-[#F5F2EB] flex items-center justify-between gap-2 text-xs">
+                      <span className="text-[11px] text-[#78716C] font-medium hidden md:inline">
+                        {isPending
+                          ? 'Chờ tiếp nhận'
+                          : isInProgress
+                          ? `Đang xử lý: ${handlerName}`
+                          : `Hoàn tất bởi: ${handlerName}`}
+                      </span>
+
+                      <div className="flex items-center gap-2 w-full md:w-auto justify-end">
                         {/* 1. Pending: Claim button */}
                         {isPending && (
                           <button
                             onClick={() => handleClaim(req.id)}
-                            className={`px-5 py-2 rounded-full text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer active:scale-95 ${
+                            className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all shadow-sm cursor-pointer active:scale-95 ${
                               hasActiveTask
                                 ? 'bg-stone-200 text-stone-500 hover:bg-stone-300 border border-stone-300'
                                 : 'bg-[#18181B] hover:bg-black text-white'
@@ -626,42 +596,28 @@ export const RequestsPage = ({ currentUser, onNotify = () => {} }) => {
                                 : 'Bấm để nhận xử lý yêu cầu'
                             }
                           >
-                            <span>Nhận Xử Lý</span>
-                            {hasActiveTask && (
-                              <span className="text-[10px] bg-stone-300 text-stone-700 px-1.5 py-0.5 rounded-full font-normal">
-                                Đang bận
-                              </span>
-                            )}
+                            <span>Nhận Việc</span>
                           </button>
                         )}
 
-                        {/* 2. In Progress: Only assignee (or executive) can complete */}
+                        {/* 2. In Progress: Complete button */}
                         {isInProgress && (isMine || isExecutive) && (
                           <button
                             onClick={() => handleMarkCompleted(req.id)}
-                            className="px-5 py-2 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all shadow-sm cursor-pointer active:scale-95 flex items-center gap-1.5"
+                            className="px-4 py-1.5 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all shadow-sm cursor-pointer active:scale-95"
                           >
                             <span>Hoàn Thành</span>
                           </button>
                         )}
 
-                        {/* 3. Completed: Everyone can view details (Read-only) */}
-                        {isCompleted && (
-                          <div className="flex items-center gap-2">
-                            <span className="text-emerald-700 font-bold text-xs flex items-center gap-1 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200">
-                              <span>Đã hoàn tất</span>
-                            </span>
-
-                            <button
-                              onClick={() => setSelectedDetailReq(req)}
-                              className="px-4 py-1.5 rounded-full bg-stone-900 hover:bg-stone-800 text-white text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
-                              title="Bấm để xem chi tiết người thực hiện (Chỉ xem)"
-                            >
-                              <Eye className="w-3.5 h-3.5 text-indigo-300" />
-                              <span>Xem Chi Tiết</span>
-                            </button>
-                          </div>
-                        )}
+                        {/* 3. Xem Chi Tiết button (always visible) */}
+                        <button
+                          onClick={() => setSelectedDetailReq(req)}
+                          className="px-4 py-1.5 rounded-full bg-[#FAF8F5] hover:bg-[#EFECE6] text-stone-900 border border-[#E0DCD3] text-xs font-bold transition-all shadow-sm cursor-pointer"
+                          title="Bấm để xem chi tiết yêu cầu"
+                        >
+                          <span>Xem Chi Tiết</span>
+                        </button>
                       </div>
                     </div>
                   </div>

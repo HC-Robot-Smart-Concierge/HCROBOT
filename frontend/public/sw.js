@@ -1,5 +1,5 @@
 // Service Worker for HC-Robot PWA
-const CACHE_NAME = 'hc-robot-v1';
+const CACHE_NAME = 'hc-robot-v2';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
@@ -31,12 +31,24 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // Pass network requests directly, fallback to cache if offline
   if (event.request.method !== 'GET') return;
-  
+  const url = new URL(event.request.url);
+  if (url.origin !== self.location.origin || url.pathname.startsWith('/api/')) return;
+
   event.respondWith(
-    fetch(event.request).catch(() => {
-      return caches.match(event.request);
-    })
+    fetch(event.request)
+      .then((response) => {
+        if (response.ok) {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+        }
+        return response;
+      })
+      .catch(async () => {
+        const cached = await caches.match(event.request);
+        if (cached) return cached;
+        if (event.request.mode === 'navigate') return caches.match('/index.html');
+        return Response.error();
+      })
   );
 });

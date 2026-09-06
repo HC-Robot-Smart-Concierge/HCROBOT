@@ -181,19 +181,11 @@ export const AdminOperationsTab = ({
             Trung tâm tiếp nhận, điều phối và phân công yêu cầu dịch vụ trên toàn khách sạn.
           </p>
         </div>
-
-        <button
-          onClick={() => setIsCreateModalOpen(true)}
-          className="px-4 py-2.5 rounded-xl bg-stone-900 hover:bg-stone-800 text-white text-xs font-bold shadow-md flex items-center gap-2 transition-all cursor-pointer"
-        >
-          <PlusCircle className="w-4 h-4 text-indigo-400" />
-          <span>Tạo Yêu Cầu Mới</span>
-        </button>
       </div>
 
       {/* SERVICE REQUESTS LIST */}
       <div className="space-y-6">
-          {/* Controls Bar: Search & Department Tabs */}
+          {/* Controls Bar: Search & Status Filters & Department Select */}
           <div className="bg-white p-4 rounded-2xl border border-stone-200 shadow-sm space-y-4">
             {/* Search Input & Status Filters */}
             <div className="flex flex-col lg:flex-row items-center justify-between gap-3">
@@ -204,7 +196,7 @@ export const AdminOperationsTab = ({
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Tìm theo mã phiếu, số phòng, tên khách..."
-                  className="w-full pl-9 pr-4 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs text-stone-800 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                  className="w-full pl-9 pr-4 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs text-stone-800 placeholder-stone-400 focus:outline-none focus:border-stone-500"
                 />
               </form>
 
@@ -234,45 +226,36 @@ export const AdminOperationsTab = ({
               </div>
             </div>
 
-            {/* Department Pills */}
-            <div className="flex items-center gap-2 overflow-x-auto pt-2 border-t border-stone-100">
-              <span className="text-xs font-bold text-stone-400 uppercase tracking-wider mr-1">
-                BỘ PHẬN:
-              </span>
-              {deptList.map((dept) => (
-                <button
-                  key={dept.id}
-                  onClick={() => setDeptFilter(dept.id)}
-                  className={`px-3 py-1 rounded-full text-xs font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
-                    deptFilter === dept.id
-                      ? 'bg-indigo-600 text-white shadow-sm'
-                      : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
-                  }`}
-                >
-                  <span>{dept.label}</span>
-                  <span
-                    className={`px-1.5 py-0.2 rounded-full text-[10px] ${
-                      deptFilter === dept.id ? 'bg-indigo-700 text-white' : 'bg-stone-200 text-stone-600'
-                    }`}
-                  >
-                    {dept.count}
-                  </span>
-                </button>
-              ))}
+            {/* Department Dropdown Select */}
+            <div className="flex items-center gap-3 pt-2 border-t border-stone-100">
+              <label className="text-xs font-bold text-stone-500 uppercase tracking-wider shrink-0">
+                LỌC BỘ PHẬN:
+              </label>
+              <select
+                value={deptFilter}
+                onChange={(e) => setDeptFilter(e.target.value)}
+                className="px-3.5 py-1.5 rounded-xl bg-[#FAF8F5] border border-[#DDD8CE] text-xs font-bold text-stone-900 outline-none focus:border-stone-600 cursor-pointer shadow-sm"
+              >
+                {deptList.map((dept) => (
+                  <option key={dept.id} value={dept.id}>
+                    {dept.label} ({dept.count})
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 
           {/* Cards List */}
           {isLoading ? (
             <div className="py-20 text-center text-stone-400 flex flex-col items-center justify-center space-y-2">
-              <RefreshCw className="w-8 h-8 animate-spin text-indigo-500" />
+              <RefreshCw className="w-8 h-8 animate-spin text-stone-700" />
               <p className="text-sm font-semibold">Đang tải danh sách yêu cầu toàn khách sạn...</p>
             </div>
           ) : paginatedTasks.length === 0 ? (
             <div className="py-16 text-center bg-white rounded-2xl border border-dashed border-stone-300 text-stone-400 space-y-2">
               <Building2 className="w-10 h-10 mx-auto text-stone-300" />
               <p className="text-sm font-bold text-stone-700">Không tìm thấy phiếu yêu cầu nào</p>
-              <p className="text-xs text-stone-400">Hãy thử đổi bộ lọc hoặc tạo phiếu mới.</p>
+              <p className="text-xs text-stone-400">Hãy thử đổi bộ lọc tìm kiếm.</p>
             </div>
           ) : (
             <div className="space-y-3.5">
@@ -298,14 +281,8 @@ export const AdminOperationsTab = ({
                           {t.id}
                         </span>
 
-                        {/* Department Badge */}
-                        <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100">
-                          {t.department}
-                        </span>
-
-                        {/* Location / Room */}
-                        <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-stone-900 text-white flex items-center gap-1">
-                          <MapPin className="w-3 h-3 text-amber-400" />
+                        {/* Location / Room (Soft Gray without Icon) */}
+                        <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-[#EFECE6] text-stone-800 border border-[#DDD8CE]">
                           {t.location}
                         </span>
 
@@ -318,8 +295,8 @@ export const AdminOperationsTab = ({
 
                         {/* Robot Indicator */}
                         {t.assigned_robot && (
-                          <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 border border-sky-200 flex items-center gap-1">
-                            <Bot className="w-3 h-3 text-sky-500" />
+                          <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-stone-100 text-stone-700 border border-stone-200 flex items-center gap-1">
+                            <Bot className="w-3 h-3 text-stone-600" />
                             {t.assigned_robot}
                           </span>
                         )}

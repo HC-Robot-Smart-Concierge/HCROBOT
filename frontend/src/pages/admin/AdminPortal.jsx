@@ -30,7 +30,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
   // Navigation Menu: 'Dashboard' | 'Operations' | 'Robots' | 'Knowledge' | 'Hotel Content' | 'Staff' | 'Analytics' | 'Logs' | 'Settings'
   const [activeMenu, setActiveMenu] = useState('Operations');
   const [operationsSubTab, setOperationsSubTab] = useState('requests'); // 'requests' | 'support'
-  const [knowledgeSubTab, setKnowledgeSubTab] = useState('overview'); // 'overview' | 'articles' | 'sources' | 'upload' | 'create'
+  const [knowledgeSubTab, setKnowledgeSubTab] = useState('sources'); // 'sources' | 'upload' | 'create'
   const [searchQuery, setSearchQuery] = useState('');
 
 
@@ -46,20 +46,20 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
   ];
 
   return (
-    <div className="w-full h-screen overflow-hidden bg-[#F8F9FA] text-[#1A1917] flex font-sans select-none">
-      {/* 1. LEFT SIDEBAR (Matching Figma 'RoboConcierge V2.4.1 Admin') */}
-      <aside className="w-64 h-full bg-[#18181B] text-white flex flex-col justify-between shrink-0 border-r border-stone-800 z-30 shadow-2xl">
+    <div className="w-full h-screen overflow-hidden bg-[#FCFAF7] text-[#1A1917] flex font-sans select-none">
+      {/* 1. LEFT SIDEBAR (White & Gray Theme Matching System) */}
+      <aside className="w-64 h-full bg-[#FAF8F5] text-[#1A1917] flex flex-col justify-between shrink-0 border-r border-[#E5E1D8] z-30 shadow-sm">
         {/* Brand Header */}
         <div>
-          <div className="p-6 border-b border-stone-800/80 flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-500 text-white font-black text-lg flex items-center justify-center shadow-md shadow-indigo-500/25">
+          <div className="p-5 border-b border-[#E5E1D8] flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-[#18181B] text-white font-black text-lg flex items-center justify-center shadow-sm">
               R
             </div>
             <div>
-              <div className="font-black text-sm tracking-tight text-white flex items-center gap-1.5">
+              <div className="font-black text-sm tracking-tight text-[#1A1917] flex items-center gap-1.5">
                 <span>RoboConcierge</span>
               </div>
-              <div className="text-[10px] font-bold text-indigo-400 tracking-wider">
+              <div className="text-[10px] font-bold text-stone-500 tracking-wider">
                 V2.4.1 ADMIN PORTAL
               </div>
             </div>
@@ -76,69 +76,39 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
                     onClick={() => setActiveMenu(item.id)}
                     className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                       isActive
-                        ? 'bg-indigo-600/90 text-white shadow-lg shadow-indigo-600/30'
-                        : 'text-stone-400 hover:text-white hover:bg-stone-800/60'
+                        ? 'bg-[#18181B] text-white shadow-md'
+                        : 'text-stone-600 hover:text-stone-900 hover:bg-[#EFECE6]'
                     }`}
                   >
-                    <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-stone-400'}`} />
+                    <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-stone-500'}`} />
                     <span>{item.label}</span>
                   </button>
 
-                  {/* Nested Sub-items directly under Operations on the sidebar (Matching Figma) */}
+                  {/* Nested Sub-items directly under Operations on the sidebar */}
                   {item.id === 'Operations' && activeMenu === 'Operations' && (
-                    <div className="ml-5 pl-3 border-l-2 border-indigo-500/40 my-1 space-y-1">
-                      <button
-                        onClick={() => setOperationsSubTab('requests')}
-                        className={`w-full text-left px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
-                          operationsSubTab === 'requests'
-                            ? 'bg-stone-800 text-white shadow-sm border border-stone-700'
-                            : 'text-stone-400 hover:text-stone-200 hover:bg-stone-800/40'
-                        }`}
-                      >
-                        Service Requests
-                      </button>
+                    <div className="ml-5 pl-3 border-l-2 border-stone-800 my-1 space-y-1">
                       <button
                         onClick={() => setOperationsSubTab('support')}
                         className={`w-full text-left px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
-                          operationsSubTab === 'support'
-                            ? 'bg-stone-800 text-white shadow-sm border border-stone-700'
-                            : 'text-stone-400 hover:text-stone-200 hover:bg-stone-800/40'
+                          operationsSubTab === 'support' || operationsSubTab === 'requests'
+                            ? 'bg-[#18181B] text-white shadow-sm border border-stone-800'
+                            : 'text-stone-600 hover:text-stone-900 hover:bg-[#EFECE6]'
                         }`}
                       >
-                        Human Support
+                        Technical Support Requests
                       </button>
                     </div>
                   )}
 
                   {/* Nested Sub-items directly under Knowledge on the sidebar */}
                   {item.id === 'Knowledge' && activeMenu === 'Knowledge' && (
-                    <div className="ml-5 pl-3 border-l-2 border-indigo-500/40 my-1 space-y-1">
-                      <button
-                        onClick={() => setKnowledgeSubTab('overview')}
-                        className={`w-full text-left px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
-                          knowledgeSubTab === 'overview'
-                            ? 'bg-stone-800 text-white shadow-sm border border-stone-700'
-                            : 'text-stone-400 hover:text-stone-200 hover:bg-stone-800/40'
-                        }`}
-                      >
-                        Overview
-                      </button>
-                      <button
-                        onClick={() => setKnowledgeSubTab('articles')}
-                        className={`w-full text-left px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
-                          knowledgeSubTab === 'articles'
-                            ? 'bg-stone-800 text-white shadow-sm border border-stone-700'
-                            : 'text-stone-400 hover:text-stone-200 hover:bg-stone-800/40'
-                        }`}
-                      >
-                        Articles
-                      </button>
+                    <div className="ml-5 pl-3 border-l-2 border-stone-800 my-1 space-y-1">
                       <button
                         onClick={() => setKnowledgeSubTab('sources')}
                         className={`w-full text-left px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
                           knowledgeSubTab === 'sources'
-                            ? 'bg-stone-800 text-white shadow-sm border border-stone-700'
-                            : 'text-stone-400 hover:text-stone-200 hover:bg-stone-800/40'
+                            ? 'bg-[#18181B] text-white shadow-sm border border-stone-800'
+                            : 'text-stone-600 hover:text-stone-900 hover:bg-[#EFECE6]'
                         }`}
                       >
                         Source Files
@@ -146,23 +116,20 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
                     </div>
                   )}
 
-
-
                 </div>
               );
             })}
           </nav>
         </div>
 
-
         {/* Bottom Settings & Logout */}
-        <div className="p-3 border-t border-stone-800/80 space-y-1">
+        <div className="p-3 border-t border-[#E5E1D8] space-y-1">
           <button
             onClick={() => setActiveMenu('Settings')}
             className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
               activeMenu === 'Settings'
-                ? 'bg-indigo-600 text-white shadow-md'
-                : 'text-stone-400 hover:text-white hover:bg-stone-800/60'
+                ? 'bg-[#18181B] text-white shadow-md'
+                : 'text-stone-600 hover:text-stone-900 hover:bg-[#EFECE6]'
             }`}
           >
             <Settings className="w-4 h-4" />
@@ -171,7 +138,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
 
           <button
             onClick={onLogout}
-            className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold text-rose-400 hover:bg-rose-500/10 hover:text-rose-300 transition-all cursor-pointer"
+            className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold text-rose-600 hover:bg-rose-50 hover:text-rose-700 transition-all cursor-pointer"
           >
             <LogOut className="w-4 h-4" />
             <span>Đăng xuất</span>
@@ -181,15 +148,15 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
 
       {/* 2. MAIN CONTENT AREA */}
       <div className="flex-1 flex flex-col h-full min-h-0 overflow-hidden">
-        {/* Top Header Bar (Matching Figma Topbar) */}
-        <header className="h-16 bg-white border-b border-stone-200 px-6 flex items-center justify-between shrink-0 z-20 shadow-sm">
+        {/* Top Header Bar */}
+        <header className="h-16 bg-[#FAF8F5] border-b border-[#E5E1D8] px-6 flex items-center justify-between shrink-0 z-20 shadow-sm mobile-safe-header pt-10 md:pt-0">
           {/* Left Title */}
           <div className="flex items-center gap-3">
             <h1 className="text-base font-black text-stone-900 tracking-tight">
               Hotel Concierge Admin
             </h1>
             <span className="text-stone-300">|</span>
-            <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full">
+            <span className="text-xs font-bold text-white bg-[#18181B] px-2.5 py-0.5 rounded-full">
               {activeMenu}
             </span>
           </div>
@@ -202,7 +169,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search operations, robots..."
-              className="w-full pl-9 pr-4 py-1.5 bg-stone-100/80 border border-stone-200 rounded-xl text-xs text-stone-800 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+              className="w-full pl-9 pr-4 py-1.5 bg-white border border-[#E0DCD3] rounded-xl text-xs text-stone-800 placeholder-stone-400 focus:outline-none focus:border-stone-600"
             />
           </div>
 
@@ -212,39 +179,31 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
             <div className="relative">
               <button
                 title="3 cảnh báo hoạt động"
-                className="p-2 rounded-xl text-stone-500 hover:text-stone-900 hover:bg-stone-100 transition-all cursor-pointer"
+                className="p-2 rounded-xl text-stone-600 hover:text-stone-900 hover:bg-[#EFECE6] transition-all cursor-pointer"
               >
                 <Bell className="w-4 h-4" />
               </button>
               <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-rose-500 ring-2 ring-white" />
             </div>
 
-            {/* Alert Status Icon */}
-            <button
-              title="Trạng thái hệ thống bình thường"
-              className="p-2 rounded-xl text-amber-500 hover:bg-stone-100 transition-all cursor-pointer"
-            >
-              <AlertTriangle className="w-4 h-4" />
-            </button>
-
             {/* Help Icon */}
             <button
               title="Trợ giúp"
-              className="p-2 rounded-xl text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-all cursor-pointer"
+              className="p-2 rounded-xl text-stone-500 hover:text-stone-700 hover:bg-[#EFECE6] transition-all cursor-pointer"
             >
               <HelpCircle className="w-4 h-4" />
             </button>
 
             {/* User Avatar & Name */}
-            <div className="flex items-center gap-2 pl-2 border-l border-stone-200">
-              <div className="w-8 h-8 rounded-full bg-stone-900 text-white font-bold text-xs flex items-center justify-center ring-2 ring-indigo-500/30">
+            <div className="flex items-center gap-2 pl-2 border-l border-[#E5E1D8]">
+              <div className="w-8 h-8 rounded-full bg-[#18181B] text-white font-bold text-xs flex items-center justify-center ring-2 ring-stone-300">
                 AD
               </div>
               <div className="hidden xl:block text-left">
                 <div className="text-xs font-bold text-stone-900 leading-tight">
                   {currentUser?.full_name || 'System Administrator'}
                 </div>
-                <div className="text-[10px] text-stone-400 font-semibold">
+                <div className="text-[10px] text-stone-500 font-semibold">
                   {currentUser?.role || 'Operations Admin'}
                 </div>
               </div>
@@ -272,21 +231,8 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
 
 
           {activeMenu === 'Robots' && (
-            <div className="w-full h-full flex flex-col">
-              <div className="bg-white border-b border-stone-200 px-6 py-3 flex items-center justify-between shrink-0">
-                <div className="flex items-center gap-2">
-                  <Bot className="w-5 h-5 text-indigo-600" />
-                  <h3 className="text-sm font-black text-stone-900">
-                    Bản Đồ SLAM LiDAR & Điều Hướng Robot Concierge
-                  </h3>
-                </div>
-                <span className="text-xs text-stone-500">
-                  Cổng RPLiDAR COM9 • Tọa độ thời gian thực
-                </span>
-              </div>
-              <div className="flex-1 overflow-hidden">
-                <AdminLidarPage />
-              </div>
+            <div className="w-full h-full flex flex-col overflow-hidden">
+              <AdminLidarPage />
             </div>
           )}
 

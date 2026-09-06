@@ -97,7 +97,7 @@ export const LidarCanvas = ({
     setScale((prev) => Math.min(Math.max(prev * zoomFactor, 15.0), 200.0));
   };
 
-  // Canvas Render Loop (Real-time 60 FPS Canvas rendering)
+  // Canvas Render Loop (Light Monochrome Theme)
   useEffect(() => {
     let animId;
 
@@ -112,13 +112,13 @@ export const LidarCanvas = ({
       canvas.width = width;
       canvas.height = height;
 
-      // 1. Pitch Black Background
-      ctx.fillStyle = '#050505';
+      // 1. Light Gray Canvas Background
+      ctx.fillStyle = '#FCFAF7';
       ctx.fillRect(0, 0, width, height);
 
       const origin = worldToCanvas(0, 0, width, height);
 
-      // 2. Render Real 2D SLAM Occupancy Grid Map (Trắng - Đen - Xám)
+      // 2. Render Real 2D SLAM Occupancy Grid Map (White & Dark Gray)
       if (showGridMap && gridData && gridData.length > 0) {
         const gWidth = gridMetadata.width || 200;
         const gHeight = gridMetadata.height || 200;
@@ -133,10 +133,10 @@ export const LidarCanvas = ({
             const idx = gy * gWidth + gx;
             const val = gridData[idx];
 
-            if (val === -1) continue; // Unexplored -> Giữ màu nền đen
+            if (val === -1) continue; // Unexplored
 
-            let fillColor = 'rgba(255, 255, 255, 0.12)'; // Free space (0): Xám sáng mờ
-            if (val === 100) fillColor = '#FFFFFF';      // Obstacle/Wall (100): Trắng sáng
+            let fillColor = 'rgba(232, 229, 216, 0.4)'; // Free space (0): Soft warm gray
+            if (val === 100) fillColor = '#18181B';       // Obstacle/Wall (100): Dark charcoal
 
             const worldX = ox + gx * gRes;
             const worldY = oy + gy * gRes;
@@ -148,11 +148,11 @@ export const LidarCanvas = ({
         }
       }
 
-      // 3. Polar Radar Circles (Vòng tròn bán kính 1m, 2m, 3m, 4m, 5m, 6m)
+      // 3. Polar Radar Circles
       if (showGridLines) {
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+        ctx.strokeStyle = 'rgba(120, 113, 108, 0.15)';
         ctx.lineWidth = 1;
-        ctx.fillStyle = '#737373';
+        ctx.fillStyle = '#78716C';
         ctx.font = '10px Inter, sans-serif';
 
         for (let r = 1; r <= 8; r++) {
@@ -164,8 +164,8 @@ export const LidarCanvas = ({
           ctx.fillText(`${r}.0m`, origin.px + 6, origin.py - radiusPx + 12);
         }
 
-        // Trục N-S-E-W
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+        // Axes N-S-E-W
+        ctx.strokeStyle = 'rgba(120, 113, 108, 0.25)';
         ctx.beginPath();
         ctx.moveTo(origin.px, 0);
         ctx.lineTo(origin.px, height);
@@ -173,7 +173,7 @@ export const LidarCanvas = ({
         ctx.lineTo(width, origin.py);
         ctx.stroke();
 
-        ctx.fillStyle = '#A3A3A3';
+        ctx.fillStyle = '#1A1917';
         ctx.font = 'bold 11px Inter, sans-serif';
         ctx.fillText('N', origin.px - 4, 18);
         ctx.fillText('S', origin.px - 4, height - 10);
@@ -181,14 +181,14 @@ export const LidarCanvas = ({
         ctx.fillText('W', 10, origin.py + 4);
       }
 
-      // 4. Render Real LiDAR Scan Points & Laser Rays (Tia laser sáng trắng)
+      // 4. Render Real LiDAR Scan Points & Laser Rays (Dark points)
       const currentPose = robotPose || { x: 0, y: 0, yaw: 0 };
       const robotCanvasPos = worldToCanvas(currentPose.x, currentPose.y, width, height);
 
       if (scanPoints && scanPoints.length > 0) {
         // Laser Rays
         if (showScanRays) {
-          ctx.strokeStyle = 'rgba(255, 255, 255, 0.18)';
+          ctx.strokeStyle = 'rgba(24, 24, 27, 0.15)';
           ctx.lineWidth = 1;
           scanPoints.forEach((pt) => {
             const ptCanvas = worldToCanvas(pt.x, pt.y, width, height);
@@ -202,12 +202,12 @@ export const LidarCanvas = ({
         // Laser Scan Point Cloud
         scanPoints.forEach((pt) => {
           const ptCanvas = worldToCanvas(pt.x, pt.y, width, height);
-          ctx.fillStyle = '#FFFFFF';
+          ctx.fillStyle = '#18181B';
           ctx.beginPath();
           ctx.arc(ptCanvas.px, ptCanvas.py, 2.2, 0, Math.PI * 2);
           ctx.fill();
 
-          ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+          ctx.fillStyle = 'rgba(24, 24, 27, 0.2)';
           ctx.beginPath();
           ctx.arc(ptCanvas.px, ptCanvas.py, 4.0, 0, Math.PI * 2);
           ctx.fill();
@@ -219,15 +219,15 @@ export const LidarCanvas = ({
         waypoints.forEach((wp) => {
           const wpPos = worldToCanvas(wp.x, wp.y, width, height);
 
-          ctx.fillStyle = '#E5E5E5';
+          ctx.fillStyle = '#18181B';
           ctx.beginPath();
           ctx.arc(wpPos.px, wpPos.py, 5, 0, Math.PI * 2);
           ctx.fill();
-          ctx.strokeStyle = '#262626';
+          ctx.strokeStyle = '#FFFFFF';
           ctx.lineWidth = 2;
           ctx.stroke();
 
-          ctx.fillStyle = '#D4D4D4';
+          ctx.fillStyle = '#1A1917';
           ctx.font = 'bold 11px Inter, sans-serif';
           ctx.fillText(wp.name, wpPos.px + 8, wpPos.py + 4);
         });
@@ -236,8 +236,8 @@ export const LidarCanvas = ({
       // 6. Selected Goal Crosshair Ring
       if (selectedGoal) {
         const goalCanvas = worldToCanvas(selectedGoal.x, selectedGoal.y, width, height);
-        ctx.strokeStyle = '#FFFFFF';
-        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = '#18181B';
+        ctx.lineWidth = 1.8;
         ctx.beginPath();
         ctx.arc(goalCanvas.px, goalCanvas.py, 10, 0, Math.PI * 2);
         ctx.stroke();
@@ -253,13 +253,13 @@ export const LidarCanvas = ({
       // 7. Robot Position Marker
       const radYaw = (currentPose.yaw * Math.PI) / 180;
 
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
-      ctx.lineWidth = 1;
+      ctx.strokeStyle = 'rgba(24, 24, 27, 0.3)';
+      ctx.lineWidth = 1.5;
       ctx.beginPath();
       ctx.arc(robotCanvasPos.px, robotCanvasPos.py, 14, 0, Math.PI * 2);
       ctx.stroke();
 
-      ctx.fillStyle = '#FFFFFF';
+      ctx.fillStyle = '#18181B';
       ctx.beginPath();
       ctx.arc(robotCanvasPos.px, robotCanvasPos.py, 6, 0, Math.PI * 2);
       ctx.fill();
@@ -268,8 +268,8 @@ export const LidarCanvas = ({
       const headX = robotCanvasPos.px + headLen * Math.cos(radYaw);
       const headY = robotCanvasPos.py - headLen * Math.sin(radYaw);
 
-      ctx.strokeStyle = '#FFFFFF';
-      ctx.lineWidth = 2;
+      ctx.strokeStyle = '#18181B';
+      ctx.lineWidth = 2.5;
       ctx.beginPath();
       ctx.moveTo(robotCanvasPos.px, robotCanvasPos.py);
       ctx.lineTo(headX, headY);
@@ -301,44 +301,44 @@ export const LidarCanvas = ({
   };
 
   return (
-    <div className="relative w-full h-full bg-black rounded-2xl overflow-hidden border border-neutral-800 shadow-2xl flex flex-col">
+    <div className="relative w-full h-full bg-[#FAF8F5] rounded-2xl overflow-hidden border border-[#E5E1D8] shadow-sm flex flex-col">
       {/* Top Toolbar Controls */}
-      <div className="absolute top-4 left-4 z-10 flex items-center gap-2 bg-neutral-900/90 backdrop-blur-md px-3 py-2 rounded-xl border border-neutral-700/60 text-white text-xs shadow-xl">
+      <div className="absolute top-4 left-4 z-10 flex items-center gap-2 bg-white/95 backdrop-blur-md px-3 py-2 rounded-xl border border-[#E5E1D8] text-stone-900 text-xs shadow-md">
         <button
           onClick={() => setScale((prev) => Math.min(prev * 1.2, 200.0))}
-          className="p-1.5 hover:bg-neutral-800 rounded-lg transition-colors cursor-pointer"
+          className="p-1.5 hover:bg-[#EFECE6] rounded-lg transition-colors cursor-pointer text-stone-800"
           title="Zoom In"
         >
-          <ZoomIn className="w-4 h-4 text-neutral-200" />
+          <ZoomIn className="w-4 h-4" />
         </button>
         <button
           onClick={() => setScale((prev) => Math.max(prev * 0.8, 15.0))}
-          className="p-1.5 hover:bg-neutral-800 rounded-lg transition-colors cursor-pointer"
+          className="p-1.5 hover:bg-[#EFECE6] rounded-lg transition-colors cursor-pointer text-stone-800"
           title="Zoom Out"
         >
-          <ZoomOut className="w-4 h-4 text-neutral-200" />
+          <ZoomOut className="w-4 h-4" />
         </button>
         <button
           onClick={resetView}
-          className="p-1.5 hover:bg-neutral-800 rounded-lg transition-colors cursor-pointer"
+          className="p-1.5 hover:bg-[#EFECE6] rounded-lg transition-colors cursor-pointer text-stone-800"
           title="Reset View"
         >
-          <RotateCcw className="w-4 h-4 text-neutral-200" />
+          <RotateCcw className="w-4 h-4" />
         </button>
 
-        <div className="h-4 w-px bg-neutral-700 my-auto mx-1" />
+        <div className="h-4 w-px bg-[#DDD8CE] my-auto mx-1" />
 
-        <span className="text-[11px] font-mono text-neutral-300 font-semibold">
+        <span className="text-[11px] font-mono text-stone-700 font-bold">
           SCALE: {scale.toFixed(0)} px/m
         </span>
       </div>
 
       {/* Selected Target HUD */}
       {selectedGoal && (
-        <div className="absolute top-4 right-4 z-10 flex items-center gap-2 bg-neutral-900/90 border border-neutral-600 backdrop-blur-md px-3.5 py-2 rounded-xl text-neutral-100 text-xs shadow-xl animate-fadeIn">
-          <Crosshair className="w-4 h-4 text-white animate-spin" />
+        <div className="absolute top-4 right-4 z-10 flex items-center gap-2 bg-white/95 border border-[#E5E1D8] backdrop-blur-md px-3.5 py-2 rounded-xl text-stone-900 text-xs shadow-md animate-fadeIn">
+          <Crosshair className="w-4 h-4 text-stone-900 animate-spin" />
           <span>
-            TARGET: <strong>X={selectedGoal.x}m</strong>, <strong>Y={selectedGoal.y}m</strong>
+            MỤC TIÊU: <strong>X={selectedGoal.x}m</strong>, <strong>Y={selectedGoal.y}m</strong>
           </span>
         </div>
       )}
@@ -355,17 +355,17 @@ export const LidarCanvas = ({
       />
 
       {/* Bottom Minimal Legend */}
-      <div className="absolute bottom-3 left-4 z-10 flex items-center gap-4 bg-neutral-900/90 backdrop-blur-md px-4 py-1.5 rounded-lg border border-neutral-800 text-[11px] text-neutral-300">
+      <div className="absolute bottom-3 left-4 z-10 flex items-center gap-4 bg-white/95 backdrop-blur-md px-4 py-1.5 rounded-lg border border-[#E5E1D8] text-[11px] text-stone-700 shadow-sm">
         <div className="flex items-center gap-1.5">
-          <div className="w-2.5 h-2.5 rounded-full bg-white shadow-sm" />
+          <div className="w-2.5 h-2.5 rounded-full bg-[#18181B]" />
           <span>Point Cloud</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <div className="w-2.5 h-2.5 rounded bg-neutral-200" />
+          <div className="w-2.5 h-2.5 rounded bg-[#E5E1D8]" />
           <span>SLAM 2D Floor Map</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <div className="w-2.5 h-2.5 rounded-full bg-neutral-400" />
+          <div className="w-2.5 h-2.5 rounded-full bg-stone-400" />
           <span>Radar Rings</span>
         </div>
       </div>

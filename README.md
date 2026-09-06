@@ -191,13 +191,13 @@ HC-Robot/
    **Danh Sách Tài Khoản Hệ Thống Theo Bộ Phận:**
    | Tên Đăng Nhập (Username) | Mật Khẩu | Tên Bộ Phận / Chức Danh | Phân Hệ Dashboard |
    | :--- | :--- | :--- | :--- |
-   | `reception` | `123456` | Nhân viên Lễ tân | Reception |
+   | `reception` | `123456` | Nhân viên Lễ tân (Reception) | Lễ tân Hub / Executive |
    | `roomservice` | `123456` | Nhân viên Phục vụ phòng (F&B) | Room Service |
    | `housekeeping` | `123456` | Nhân viên Buồng phòng (Housekeeping) | Housekeeping |
    | `bellman` | `123456` | Nhân viên Vận chuyển hành lý (Bellman) | Bell Services |
    | `maintenance` | `123456` | Nhân viên Kỹ thuật & Bảo trì | Maintenance |
-   | `admin` | `123456` | Quản trị Hệ thống (Admin) | LiDAR Admin Map |
-   | `sarah_j` | `123456` | Nhân viên Bell Services | Bell Services |
+   | `manager` | `123456` | Ban Quản lý Khách sạn (Manager) | Executive Hub |
+   | `admin` | `123456` | Quản trị Hệ thống (Admin) | Tất cả Dashboards |
    | `robot_01` | `123456` | Robot Kiosk Unit 01 | Màn hình Robot |
    | `robot_02` | `123456` | Robot Kiosk Unit 02 | Màn hình Robot |
 

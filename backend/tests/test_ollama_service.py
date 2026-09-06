@@ -17,7 +17,7 @@ async def test_generate_response_success():
 
         service = OllamaService()
         reply, lang_name, lang_code = await service.generate_response(
-            prompt="Xin chào robot",
+            prompt="Khách sạn có dịch vụ giặt ủi không?",
             rag_context="Khách sạn có dịch vụ ăn sáng từ 6h-10h"
         )
 

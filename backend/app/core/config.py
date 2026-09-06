@@ -20,8 +20,19 @@ class Settings(BaseSettings):
 
     # Ollama Configuration
     OLLAMA_HOST: str = "http://localhost:11434"
-    OLLAMA_MODEL: str = "qwen2.5:7b-instruct"
+    OLLAMA_MODEL: str = "qwen2.5:3b-instruct"
     OLLAMA_EMBED_MODEL: str = "bge-m3"
+
+    # AI Voice Concierge TTS Configuration
+    TTS_PROVIDER: str = "edge"  # Options: 'edge', 'elevenlabs', 'openai', 'browser'
+    ELEVENLABS_API_KEY: Optional[str] = None
+    ELEVENLABS_VOICE_ID: Optional[str] = "21m00Tcm4TlvDq8ikWAM"
+    OPENAI_API_KEY: Optional[str] = None
+    OPENAI_TTS_VOICE: str = "alloy"
+
+    # Pipecat Realtime Audio Pipeline Configuration
+    ENABLE_PIPECAT: bool = True
+    PIPECAT_SAMPLE_RATE: int = 16000
 
     model_config = SettingsConfigDict(
         env_file=(".env", "backend/.env"), 

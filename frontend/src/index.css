@@ -20,12 +20,64 @@
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
     background: #BFBFBD;
   }
-  .no-scrollbar::-webkit-scrollbar {
-    display: none;
-  }
   .no-scrollbar {
     -ms-overflow-style: none;
     scrollbar-width: none;
+  }
+  .pt-safe-top {
+    padding-top: max(2.75rem, env(safe-area-inset-top, 2.75rem));
+  }
+}
+
+@media screen and (max-width: 767px) {
+  .mobile-safe-header {
+    padding-top: max(3rem, env(safe-area-inset-top, 3rem)) !important;
+  }
+}
+
+.robot-mobile-ui,
+.robot-portrait-guard {
+  display: none;
+}
+
+.robot-desktop-ui {
+  display: flex;
+}
+
+.robot-safe-x {
+  padding-left: max(1rem, env(safe-area-inset-left, 0px));
+  padding-right: max(1rem, env(safe-area-inset-right, 0px));
+}
+
+.robot-safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+@media screen and (max-width: 767px),
+  screen and (max-width: 1024px) and (max-height: 600px) {
+  .robot-mobile-ui {
+    display: flex;
+  }
+
+  .robot-desktop-ui,
+  .robot-camera-control {
+    display: none !important;
+  }
+}
+
+@media screen and (max-width: 767px) and (orientation: portrait) {
+  .robot-portrait-guard {
+    display: flex;
+  }
+
+  .robot-landscape-content {
+    visibility: hidden;
+  }
+}
+
+@media (display-mode: standalone) {
+  .robot-mobile-ui {
+    overscroll-behavior: none;
   }
 }
 

@@ -1,12 +1,4 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import {
-  AlertCircle,
-  Bot,
-  CheckCircle2,
-  CookingPot,
-  FileText,
-  UtensilsCrossed,
-} from 'lucide-react';
 import { InteractiveMapModal } from '../../components/dashboard/Modals';
 import { INITIAL_ROOM_SERVICE_DATA } from '../../data/mockHotelData';
 import {
@@ -54,55 +46,13 @@ const normalizeStock = (item) => ({
 
 const matchesOrder = (order, orderId) => order.id === orderId || order.rawId === orderId;
 
-const statusDotClass = (status) => {
-  const normalized = (status || '').toLowerCase();
-  if (normalized === 'cooking') return 'bg-[#408BEE]';
-  if (['ready', 'completed', 'delivered'].includes(normalized)) return 'bg-[#42C67A]';
-  if (normalized === 'delivering') return 'bg-[#7454D6]';
-  return 'bg-[#888580]';
-};
-
-const KpiCard = ({ label, value, detail, icon: Icon, tone = 'light' }) => {
-  const isDark = tone === 'dark';
-  const isDanger = tone === 'danger';
-
+const KpiCard = ({ label, value, detail }) => {
   return (
-    <article
-      className={`min-h-[126px] rounded-[17px] px-5 py-5 flex flex-col justify-between ${
-        isDark
-          ? 'bg-black text-white shadow-[0_4px_12px_rgba(0,0,0,0.16)]'
-          : isDanger
-          ? 'bg-[#FFD2D2] text-[#C52F35]'
-          : 'bg-[#F0EFEC] text-[#4D4945]'
-      }`}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <p
-          className={`max-w-[110px] text-[11px] font-medium leading-[1.45] tracking-[0.09em] uppercase ${
-            isDark ? 'text-[#C9C5C0]' : isDanger ? 'text-[#BE3036]' : 'text-[#716D68]'
-          }`}
-        >
-          {label}
-        </p>
-        <Icon
-          className={`h-4 w-4 shrink-0 ${
-            isDark ? 'text-[#908C87]' : isDanger ? 'text-[#C93037]' : 'text-[#AAA6A1]'
-          }`}
-          strokeWidth={1.7}
-        />
-      </div>
-
-      <div className="flex items-end gap-3">
-        <span className="text-[14px] font-medium leading-none">{value}</span>
-        {detail && (
-          <span
-            className={`text-[10px] leading-none ${
-              isDark ? 'text-[#B1ACA6]' : isDanger ? 'text-[#D3555B]' : 'text-[#77726D]'
-            }`}
-          >
-            {detail}
-          </span>
-        )}
+    <article className="rounded-xl bg-white p-4 border border-[#E8E5E0]">
+      <span className="text-[11px] font-semibold uppercase tracking-wider text-[#777]">{label}</span>
+      <div className="mt-2 flex items-baseline gap-2">
+        <span className="text-[18px] font-bold text-[#222]">{value}</span>
+        {detail && <span className="text-[10px] text-[#777]">{detail}</span>}
       </div>
     </article>
   );
@@ -240,31 +190,10 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
     onNotify(`Started preparation for order #${order.id}`);
   };
 
-  const handleMarkReady = async (order) => {
-    updateOrderLocally(order.id, { status: 'Ready', progress: 100 });
-    await updateRoomServiceOrderStatus(order.rawId || order.id, {
-      status: 'Ready',
-      progress: 100,
-    });
-    onNotify(`Order #${order.id} is ready for delivery`);
-  };
-
   const handleReject = async (order) => {
     updateOrderLocally(order.id, { status: 'Rejected' });
     await updateRoomServiceOrderStatus(order.rawId || order.id, { status: 'Rejected' });
     onNotify(`Rejected order #${order.id}`);
-  };
-
-  const handleAssignRobot = async (order) => {
-    const robot =
-      data.deliveryFleet.find((unit) => unit.status === 'Available') || data.deliveryFleet[0];
-    const robotName = robot?.name || 'HCRobot Unit 01';
-    updateOrderLocally(order.id, { status: 'Delivering', assignedTo: robotName });
-    await assignRobotToOrder(order.rawId || order.id, {
-      robot_id: robot?.rawId || robot?.id || null,
-      robot_name: robotName,
-    });
-    onNotify(`${robotName} assigned to order #${order.id}`);
   };
 
   const handleCompleteOrder = async (order) => {
@@ -281,54 +210,47 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
 
   return (
     <main className="flex-1 overflow-y-auto custom-scrollbar bg-[#FCFAF7] font-sans">
-      <div className="w-full max-w-[1180px] mx-auto px-8 pt-3 pb-8">
+      <div className="w-full max-w-[1180px] mx-auto px-4 md:px-8 pt-3 pb-8">
         <header>
-          <h2 className="text-[15px] font-medium text-[#2C2926]">{t('rsTitle')}</h2>
-          <p className="mt-1 max-w-[610px] text-[11px] leading-[1.55] text-[#77726D]">
+          <h2 className="text-[15px] font-semibold text-[#2C2926]">{t('rsTitle')}</h2>
+          <p className="mt-0.5 text-[12px] text-[#77726D]">
             {t('rsSubtitle')}
           </p>
         </header>
 
-        <section className="mt-7 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+        <section className="mt-6 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
           <KpiCard
             label={t('kpiPendingOrders')}
             value={kpis.pendingOrders?.value ?? 0}
-            detail={kpis.pendingOrders?.delta}
-            icon={FileText}
           />
           <KpiCard
             label={t('kpiInPreparation')}
             value={kpis.inPreparation?.value ?? 0}
             detail={`avg ${kpis.inPreparation?.avgTime || '12m'}`}
-            icon={CookingPot}
           />
           <KpiCard
             label={t('delivering')}
             value={kpis.delivering?.value ?? 0}
-            detail={kpis.delivering?.label || 'In Transit'}
-            icon={Bot}
           />
           <KpiCard
             label={t('kpiCompletedToday')}
             value={kpis.completedToday?.value ?? 0}
-            icon={CheckCircle2}
-            tone="dark"
           />
         </section>
 
         <section className="mt-8 grid grid-cols-1 xl:grid-cols-[minmax(0,2.12fr)_minmax(225px,0.9fr)] gap-5">
           <div className="min-w-0">
-            <div className="mb-4 flex items-center justify-between gap-4">
-              <h3 className="text-[12px] font-medium text-[#36322F]">{t('activeOrders')}</h3>
+            <div className="mb-3 flex items-center justify-between gap-4">
+              <h3 className="text-[13px] font-semibold text-[#36322F]">{t('activeOrders')}</h3>
               <div className="flex items-center gap-1 flex-wrap">
                 {['All', 'Pending', 'Cooking', 'Delivering', 'Completed'].map((tab) => (
                   <button
                     key={tab}
                     type="button"
                     onClick={() => setFilter(tab)}
-                    className={`rounded-[9px] px-3.5 py-2 text-[10px] font-medium transition-colors cursor-pointer ${
+                    className={`rounded-lg px-3 py-1 text-[11px] font-semibold transition-colors cursor-pointer ${
                       filter === tab
-                        ? 'bg-[#EAE8E4] text-[#494540] shadow-xs'
+                        ? 'bg-[#EAE8E4] text-[#494540]'
                         : 'text-[#77726D] hover:bg-[#F0EEEA]'
                     }`}
                   >
@@ -346,9 +268,9 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
               </div>
             </div>
 
-            <div className="space-y-4">
+            <div className="space-y-3">
               {filteredOrders.length === 0 ? (
-                <div className="rounded-[18px] bg-[#F0EFEC] px-5 py-12 text-center text-[11px] text-[#77726D]">
+                <div className="rounded-xl bg-white px-5 py-10 text-center text-[12px] text-[#777] border border-[#E8E5E0]">
                   {t('noDataMatch')}
                 </div>
               ) : (
@@ -361,84 +283,54 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
                   return (
                     <article
                       key={order.id}
-                      className="rounded-[18px] bg-[#F0EFEC] px-5 py-5 shadow-[0_3px_12px_rgba(55,48,42,0.035)]"
+                      className="rounded-xl bg-white p-4 border border-[#E8E5E0]"
                     >
                       <div className="flex items-center justify-between gap-4">
-                        <div className="flex items-center gap-2 text-[11px] font-medium text-[#3A3530]">
+                        <div className="flex items-center gap-2 text-[11px] font-bold text-[#3A3530]">
                           <span>#{order.id}</span>
-                          <span className="rounded-[4px] bg-[#E3E0DB] px-2 py-0.5 text-[9px] text-[#69645E]">
+                          <span className="rounded bg-[#E3E0DB] px-1.5 py-0.5 text-[10px] text-[#69645E]">
                             {order.room}
                           </span>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={`h-1.5 w-1.5 rounded-full ${
-                              isCompleted
-                                ? 'bg-emerald-500'
-                                : isCooking
-                                ? 'bg-amber-500'
-                                : 'bg-[#6F6963]'
-                            }`}
-                          />
-                          <span className="text-[10px] font-medium text-[#6F6963]">
-                            {isCompleted
-                              ? t('completed')
-                              : isCooking
-                              ? t('inProgress')
-                              : t('pending')}
-                          </span>
-                        </div>
+                        <span className="text-[11px] font-semibold text-[#666]">
+                          {isCompleted
+                            ? t('completed')
+                            : isCooking
+                            ? t('inProgress')
+                            : t('pending')}
+                        </span>
                       </div>
 
-                      <p className="mt-1 text-[9px] text-[#7B756F]">
+                      <p className="mt-1 text-[10px] text-[#888]">
                         {order.orderedAt || 'Ordered recently'}
                       </p>
 
-                      <div className="mt-4 flex items-center justify-between gap-4">
-                        <div className="flex items-center gap-3">
-                          {order.image ? (
-                            <img
-                              src={order.image}
-                              alt={order.name}
-                              className="h-14 w-14 rounded-[12px] object-cover"
-                            />
-                          ) : (
-                            <div className="h-14 w-14 rounded-[12px] bg-[#E2DFD9] flex items-center justify-center text-[#736E67]">
-                              {order.isServiceRequest ? (
-                                <UtensilsCrossed className="h-5 w-5" strokeWidth={1.8} />
-                              ) : (
-                                <CookingPot className="h-5 w-5" strokeWidth={1.8} />
-                              )}
-                            </div>
-                          )}
-
-                          <div>
-                            <h4 className="text-[11px] font-medium text-[#322F2C]">
-                              {order.name}
-                            </h4>
-                            <p className="text-[10px] text-[#746F69]">
-                              {order.notes || 'No special requests'}
-                            </p>
-                          </div>
+                      <div className="mt-3 flex items-center justify-between gap-4">
+                        <div>
+                          <h4 className="text-[12px] font-semibold text-[#322F2C]">
+                            {order.name}
+                          </h4>
+                          <p className="text-[11px] text-[#746F69]">
+                            {order.notes || 'No special requests'}
+                          </p>
                         </div>
-
-                        <span className="text-[10px] text-[#635E58]">{order.qty || 1}</span>
+                        <span className="text-[11px] font-bold text-[#444]">x{order.qty || 1}</span>
                       </div>
 
-                      <div className="mt-5 flex justify-end gap-2.5">
+                      <div className="mt-4 pt-3 border-t border-[#F0ECE6] flex justify-end gap-2">
                         {isPending && !order.isServiceRequest && (
                           <>
                             <button
                               type="button"
                               onClick={() => handleReject(order)}
-                              className="rounded-[9px] border border-[#D4D0CB] bg-[#F8F7F5] px-5 py-2.5 text-[10px] text-[#4D4844] hover:bg-white cursor-pointer"
+                              className="rounded-lg border border-[#D4D0CB] bg-white px-3 py-1.5 text-[11px] text-[#444] hover:bg-[#F7F5F2] cursor-pointer"
                             >
                               {t('reject')}
                             </button>
                             <button
                               type="button"
                               onClick={() => handleStartPreparation(order)}
-                              className="rounded-[9px] bg-black px-5 py-2.5 text-[10px] font-bold text-white hover:bg-[#252525] cursor-pointer shadow-sm"
+                              className="rounded-lg bg-black px-4 py-1.5 text-[11px] font-bold text-white hover:bg-[#252525] cursor-pointer"
                             >
                               {t('startPrep')}
                             </button>
@@ -449,17 +341,15 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
                           <button
                             type="button"
                             onClick={() => handleCompleteOrder(order)}
-                            className="rounded-[9px] bg-emerald-600 px-5 py-2.5 text-[10px] font-bold text-white hover:bg-emerald-700 shadow-sm cursor-pointer flex items-center gap-1.5"
+                            className="rounded-lg bg-emerald-600 px-4 py-1.5 text-[11px] font-bold text-white hover:bg-emerald-700 cursor-pointer"
                           >
-                            <CheckCircle2 className="w-3.5 h-3.5" />
-                            <span>{t('completeOrder')}</span>
+                            {t('completeOrder')}
                           </button>
                         )}
 
                         {isCompleted && (
-                          <span className="rounded-[9px] bg-emerald-100 text-emerald-800 px-4 py-2 text-[10px] font-bold flex items-center gap-1.5 border border-emerald-200">
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                            <span>{t('orderCompleted')}</span>
+                          <span className="rounded bg-emerald-50 text-emerald-800 px-3 py-1 text-[11px] font-bold border border-emerald-200">
+                            {t('orderCompleted')}
                           </span>
                         )}
                       </div>
@@ -471,56 +361,35 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
           </div>
 
           <aside className="space-y-4">
-            {/* Single HCRobot Unit Card */}
-            <article className="rounded-[18px] bg-[#F0EFEC] px-5 py-5 border border-[#E3E0DB]">
-              <div className="flex items-center justify-between">
-                <h3 className="text-[11px] font-bold text-[#3E3A36] uppercase tracking-wider">{t('rsRobotChannel')}</h3>
-                <span className="flex h-2 w-2 relative">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            <article className="rounded-xl bg-[#F4F3F0] p-4 border border-[#E8E5E0]">
+              <h3 className="text-[11px] font-bold uppercase tracking-wider text-[#3E3A36]">{t('rsRobotChannel')}</h3>
+
+              <div className="mt-3 p-3 rounded-lg bg-white border border-[#E0DDD8] flex items-center justify-between">
+                <div>
+                  <p className="text-[12px] font-bold text-[#2C2926]">HCRobot Unit 01</p>
+                  <p className="text-[10px] text-emerald-700 font-semibold">{t('rsRobotOnline')}</p>
+                </div>
+                <span className="text-[11px] font-mono font-bold text-stone-700 bg-stone-100 px-2 py-0.5 rounded">
+                  96%
                 </span>
               </div>
-
-              <div className="mt-4 p-3 rounded-xl bg-white/70 border border-[#E0DDD8] flex items-center gap-3">
-                <div className="h-9 w-9 shrink-0 rounded-full bg-[#18181B] flex items-center justify-center text-white">
-                  <Bot className="h-5 w-5" strokeWidth={1.8} />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-[11px] font-bold text-[#2C2926]">HCRobot Unit 01</p>
-                  <p className="text-[9px] text-[#32A862] font-semibold">{t('rsRobotOnline')}</p>
-                </div>
-                <span className="text-[10px] font-mono font-bold text-stone-600 bg-stone-100 px-2 py-0.5 rounded">
-                  96% 🔋
-                </span>
-              </div>
-
-              <p className="mt-3 text-[10px] leading-relaxed text-[#77726D]">
-                {t('rsRobotDesc')}
-              </p>
 
               <button
                 type="button"
                 onClick={() => setIsMapModalOpen(true)}
-                className="mt-4 w-full rounded-[9px] border border-[#D3CFCA] bg-[#F7F6F4] py-2 text-[10px] font-medium text-[#494540] hover:bg-white cursor-pointer transition-all"
+                className="mt-3 w-full rounded-lg border border-[#D3CFCA] bg-white py-2 text-[11px] font-semibold text-[#444] hover:bg-[#FAF9F7] cursor-pointer"
               >
                 {t('rsViewMap')}
               </button>
             </article>
 
-            {/* Low Stock Alerts */}
-            <article className="rounded-[18px] bg-[#E9E7E3] px-5 py-5">
-              <h3 className="text-[11px] font-medium text-[#3E3A36]">{t('rsLowStockAlerts')}</h3>
-              <div className="mt-5 space-y-4">
+            <article className="rounded-xl bg-[#F4F3F0] p-4 border border-[#E8E5E0]">
+              <h3 className="text-[11px] font-bold uppercase tracking-wider text-[#3E3A36]">{t('rsLowStockAlerts')}</h3>
+              <div className="mt-3 space-y-2">
                 {(data.lowStockAlerts || []).map((item) => (
-                  <div key={item.id} className="flex items-center justify-between gap-4">
-                    <span className="text-[10px] text-[#494540]">{item.name}</span>
-                    <span
-                      className={`rounded-[4px] px-2 py-1 text-[9px] ${
-                        item.level === 'danger'
-                          ? 'bg-[#FFD8D5] text-[#D3464B]'
-                          : 'bg-[#FFE1C6] text-[#D08032]'
-                      }`}
-                    >
+                  <div key={item.id} className="flex items-center justify-between text-[11px] py-1 border-b border-[#E0DDD8] last:border-0">
+                    <span className="text-[#444]">{item.name}</span>
+                    <span className="font-semibold text-amber-700">
                       {item.count}
                     </span>
                   </div>
@@ -539,3 +408,4 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
     </main>
   );
 };
+

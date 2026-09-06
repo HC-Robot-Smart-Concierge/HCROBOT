@@ -73,20 +73,18 @@ export const AuroraHeader = ({
 
   return (
     <header
-      className={`w-full flex items-center justify-between px-8 select-none shrink-0 sticky top-0 z-30 font-sans ${
-        referenceLayout
-          ? 'h-[70px] bg-[#FCFAF7] border-0'
-          : 'py-2.5 border-b border-[#EAE6DE]/70 bg-[#FAF8F5]/80 backdrop-blur-md'
+      className={`w-full flex items-center justify-between px-4 md:px-8 select-none shrink-0 sticky top-0 z-30 font-sans mobile-safe-header pt-10 md:pt-2.5 pb-2.5 border-b border-[#EAE6DE]/70 bg-[#FAF8F5]/95 backdrop-blur-md ${
+        referenceLayout ? 'bg-[#FCFAF7]' : ''
       }`}
     >
       {/* Hotel & System Breadcrumb */}
-      <div>
-        <div className={`flex items-center gap-2 text-[#1A1917] ${referenceLayout ? 'text-[14px] font-medium' : 'text-xs font-semibold'}`}>
-          <span>{hotelName}</span>
-          <span className="text-[#A8A29E]">|</span>
-          <span className={referenceLayout ? 'font-normal text-[#555]' : 'font-bold tracking-wide'}>{systemName}</span>
+      <div className="min-w-0 flex-1 pr-2">
+        <div className="flex items-center gap-1.5 text-[#1A1917] text-xs font-semibold truncate">
+          <span className="truncate">{hotelName}</span>
+          <span className="text-[#A8A29E] shrink-0">|</span>
+          <span className="font-bold tracking-wide shrink-0">{systemName}</span>
         </div>
-        <p className={`${referenceLayout ? 'text-[14px] mt-0.5 font-normal' : 'text-[11px] font-medium'} text-[#78716C]`}>{subtitle}</p>
+        <p className="text-[10px] md:text-[11px] font-medium text-[#78716C] truncate">{subtitle}</p>
       </div>
 
       {/* Right Controls */}

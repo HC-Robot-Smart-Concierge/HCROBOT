@@ -7,22 +7,6 @@ import {
   updateGenericRequestStatus,
 } from '../../services/operationsApi';
 import { useLanguage } from '../../context/LanguageContext';
-import {
-  AlertTriangle,
-  Bot,
-  CheckCircle2,
-  ChevronDown,
-  ClipboardList,
-  RefreshCw,
-  UserX,
-} from 'lucide-react';
-
-const FILTER_OPTIONS = [
-  { value: 'All', label: 'All Types' },
-  { value: 'Spill Cleanup', label: 'Spill Cleanup' },
-  { value: 'Towels', label: 'Towels' },
-  { value: 'Room Cleaning', label: 'Room Cleaning' },
-];
 
 const normalizeStatus = (status = '') => status.toLowerCase().trim().replace('_', ' ');
 const isPendingRequest = (request) => ['unassigned', 'pending', 'waiting'].includes(normalizeStatus(request.status));
@@ -37,20 +21,13 @@ const requestMatches = (request, id) => {
   return values.some((value) => value === String(id) || value.includes(String(id)) || String(id).includes(value));
 };
 
-const KpiCard = ({ label, value, icon: Icon, tone = 'neutral' }) => {
-  const toneClasses = {
-    neutral: 'bg-gradient-to-br from-[#F7F4EF] to-[#F2F0EC] text-[#151515]',
-    success: 'bg-gradient-to-br from-[#F6F6F1] to-[#EEF3EB] text-[#151515]',
-    danger: 'bg-gradient-to-br from-[#C91C1C] to-[#C51616] text-white',
-  };
-
+const KpiCard = ({ label, value }) => {
   return (
-    <div className={`h-[93px] rounded-[15px] px-5 py-[18px] flex flex-col justify-between ${toneClasses[tone]}`}>
-      <div className={`flex items-center justify-between text-[13px] ${tone === 'danger' ? 'text-red-50' : 'text-[#575757]'}`}>
-        <span>{label}</span>
-        <Icon className={`w-[18px] h-[18px] ${tone === 'danger' ? 'text-red-50' : tone === 'success' ? 'text-[#7D998D]' : 'text-[#777777]'}`} strokeWidth={1.8} />
+    <div className="rounded-xl bg-white p-4 border border-[#E8E5E0]">
+      <div className="text-[11px] font-semibold text-[#666]">
+        {label}
       </div>
-      <span className="text-[14px] font-medium leading-none">{value}</span>
+      <div className="mt-2 text-[18px] font-bold text-[#222]">{value}</div>
     </div>
   );
 };
@@ -144,7 +121,7 @@ export const HousekeepingDashboard = ({ currentUser, onNotify = () => {} }) => {
     try {
       localStorage.setItem(storageKey, JSON.stringify(requests));
     } catch {
-      // Local persistence is best-effort; PostgreSQL remains the source of truth.
+      // Local persistence is best-effort
     }
   };
 
@@ -230,33 +207,33 @@ export const HousekeepingDashboard = ({ currentUser, onNotify = () => {} }) => {
   }));
 
   return (
-    <main className="flex-1 overflow-y-auto custom-scrollbar bg-[#FCFAF7] px-8 pt-[34px] pb-10 font-sans">
-      <div className="w-full max-w-[1120px] mx-auto">
-        <section className="mb-10">
-          <h1 className="text-[14px] font-medium leading-5 text-[#171717]">Housekeeping</h1>
-          <p className="mt-1 text-[14px] leading-5 text-[#707070]">Live operations dashboard</p>
+    <main className="flex-1 overflow-y-auto custom-scrollbar bg-[#FCFAF7] px-4 md:px-8 pt-3 pb-8 font-sans">
+      <div className="w-full max-w-[1180px] mx-auto">
+        <section className="mb-6">
+          <h1 className="text-[15px] font-semibold text-[#171717]">Housekeeping</h1>
+          <p className="mt-0.5 text-[12px] text-[#707070]">Live operations dashboard</p>
         </section>
 
-        <section className="grid grid-cols-2 lg:grid-cols-4 gap-[18px] mb-10">
-          <KpiCard label="Pending Requests" value={kpis.pendingRequests} icon={ClipboardList} />
-          <KpiCard label="In Progress" value={kpis.inProgress} icon={RefreshCw} />
-          <KpiCard label="Completed Today" value={kpis.completedToday} icon={CheckCircle2} tone="success" />
-          <KpiCard label="Staff on Duty" value={kpis.staffOnDuty ?? availableStaff.length} icon={Bot} />
+        <section className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          <KpiCard label="Pending Requests" value={kpis.pendingRequests} />
+          <KpiCard label="In Progress" value={kpis.inProgress} />
+          <KpiCard label="Completed Today" value={kpis.completedToday} />
+          <KpiCard label="Staff on Duty" value={kpis.staffOnDuty ?? availableStaff.length} />
         </section>
 
-        <section className="grid grid-cols-1 lg:grid-cols-[minmax(0,2.08fr)_minmax(220px,0.98fr)] gap-6 items-start">
+        <section className="grid grid-cols-1 lg:grid-cols-[minmax(0,2.08fr)_minmax(220px,0.98fr)] gap-5 items-start">
           <div className="min-w-0">
-            <div className="h-6 mb-4 flex items-center justify-between gap-4">
-              <h2 className="text-[14px] font-medium text-[#171717]">Incoming Requests</h2>
+            <div className="h-8 mb-3 flex items-center justify-between gap-4">
+              <h2 className="text-[13px] font-semibold text-[#171717]">Incoming Requests</h2>
               <div className="flex items-center gap-1 flex-wrap">
                 {['All', 'Pending', 'In Progress', 'Completed'].map((tab) => (
                   <button
                     key={tab}
                     type="button"
                     onClick={() => setFilter(tab)}
-                    className={`rounded-[9px] px-3.5 py-1.5 text-[11px] font-medium transition-colors cursor-pointer ${
+                    className={`rounded-lg px-3 py-1 text-[11px] font-semibold transition-colors cursor-pointer ${
                       filter === tab
-                        ? 'bg-[#EAE8E4] text-[#494540] shadow-xs'
+                        ? 'bg-[#EAE8E4] text-[#494540]'
                         : 'text-[#77726D] hover:bg-[#F0EEEA]'
                     }`}
                   >
@@ -266,9 +243,9 @@ export const HousekeepingDashboard = ({ currentUser, onNotify = () => {} }) => {
               </div>
             </div>
 
-            <div className="space-y-[14px]">
+            <div className="space-y-3">
               {filteredRequests.length === 0 ? (
-                <div className="rounded-[20px] bg-white px-6 py-14 text-center text-[13px] text-[#777]">
+                <div className="rounded-xl bg-white px-6 py-10 text-center text-[12px] text-[#777] border border-[#E8E5E0]">
                   {t('noDataMatch')}
                 </div>
               ) : (
@@ -277,73 +254,49 @@ export const HousekeepingDashboard = ({ currentUser, onNotify = () => {} }) => {
                   const pending = isPendingRequest(request);
                   const inProgress = isInProgressRequest(request);
                   const completed = isCompletedRequest(request);
-                  const urgencyLabel = isUrgentRequest(request) ? 'High' : 'Normal';
                   const assignee = request.assignedStaff || request.assigned_staff_name;
 
                   return (
-                    <article key={requestId} className="rounded-[20px] bg-white px-5 py-5 shadow-[0_1px_1px_rgba(32,28,24,0.02)]">
-                      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-[13px]">
-                        <div className="flex min-w-0 items-center gap-2">
-                          <span className="inline-flex items-center gap-1 rounded-full bg-[#ECEAE7] px-2.5 py-1 text-[#555] whitespace-nowrap">
-                            <Bot className="w-3 h-3 text-[#202020]" strokeWidth={2} />
-                            {request.source || 'From HCRobot'}
-                          </span>
-                          <span className="text-[#999] whitespace-nowrap">ID: {displayRequestId(request)}</span>
-                        </div>
-                        <div className="flex items-center gap-3 whitespace-nowrap">
-                          <time className="text-[#4E4E4E]">{request.time || request.time_label || 'Recent'}</time>
-                        </div>
+                    <article key={requestId} className="rounded-xl bg-white p-4 border border-[#E8E5E0]">
+                      <div className="flex items-center justify-between text-[11px] text-[#666]">
+                        <span className="font-semibold text-[#333]">
+                          {request.source || 'HCRobot'} • ID: {displayRequestId(request)}
+                        </span>
+                        <span>{request.time || request.time_label || 'Recent'}</span>
                       </div>
 
-                      <div className="mt-4 flex items-start justify-between gap-5">
+                      <div className="mt-2 flex items-start justify-between gap-4">
                         <div className="min-w-0">
-                          <h3 className="text-[14px] font-medium text-[#171717]">{request.title}</h3>
-                          <p className="mt-1 text-[14px] leading-5 text-[#4E4E4E]">{request.description}</p>
+                          <h3 className="text-[13px] font-semibold text-[#171717]">{request.title}</h3>
+                          <p className="mt-0.5 text-[12px] leading-relaxed text-[#555]">{request.description}</p>
                           {(request.guestName || request.guest_name) && (
-                            <p className="mt-1.5 text-[14px] text-[#171717]">
-                              Guest: <span className="ml-1 text-[#555]">{request.guestName || request.guest_name}</span>
+                            <p className="mt-1 text-[11px] text-[#777]">
+                              Guest: {request.guestName || request.guest_name}
                             </p>
                           )}
                         </div>
 
-                        <div className="min-w-[48px] text-right text-[13px] text-[#555]">
-                          <span className="block">Room</span>
-                          <strong className="block mt-0.5 text-[14px] font-medium text-[#171717]">
+                        <div className="text-right text-[11px]">
+                          <span className="block text-[#888]">Room</span>
+                          <strong className="block text-[13px] font-bold text-[#171717]">
                             {request.room || request.room_number || '—'}
                           </strong>
                         </div>
                       </div>
 
-                      <div className="mt-5 flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-[#F2EFEB]">
-                        <div className="flex items-center gap-2 text-[12px] text-[#757575]">
-                          {pending && (
-                            <>
-                              <span className="h-5 w-5 rounded-full bg-[#EBEBEB] flex items-center justify-center">
-                                <UserX className="w-3.5 h-3.5 text-[#8A8A8A]" />
-                              </span>
-                              <span>{t('unassigned')}</span>
-                            </>
-                          )}
-                          {inProgress && (
-                            <>
-                              <span className="w-2 h-2 rounded-full bg-[#1B87C9]" />
-                              <span>{t('inProgress')}: {assignee || staffName}</span>
-                            </>
-                          )}
-                          {completed && (
-                            <>
-                              <CheckCircle2 className="w-4 h-4 text-[#3E8D69]" />
-                              <span>{t('taskCompleted')}: {assignee || staffName}</span>
-                            </>
-                          )}
-                        </div>
+                      <div className="mt-3 flex items-center justify-between pt-3 border-t border-[#F2EFEB]">
+                        <span className="text-[11px] text-[#666]">
+                          {pending && t('unassigned')}
+                          {inProgress && `${t('inProgress')}: ${assignee || staffName}`}
+                          {completed && `${t('taskCompleted')}: ${assignee || staffName}`}
+                        </span>
 
-                        <div className="flex items-center gap-2.5 ml-auto">
+                        <div className="flex items-center gap-2">
                           {pending && (
                             <button
                               type="button"
                               onClick={() => handleClaimRequest(requestId)}
-                              className="h-9 min-w-[130px] px-5 rounded-[11px] bg-black text-white text-[13px] font-bold hover:bg-[#242424] transition-colors cursor-pointer shadow-sm"
+                              className="h-8 px-4 rounded-lg bg-black text-white text-[11px] font-bold hover:bg-[#242424] cursor-pointer"
                             >
                               {t('claimTask')}
                             </button>
@@ -352,15 +305,13 @@ export const HousekeepingDashboard = ({ currentUser, onNotify = () => {} }) => {
                             <button
                               type="button"
                               onClick={() => handleCompleteRequest(requestId)}
-                              className="h-9 px-5 rounded-[11px] bg-emerald-600 text-white text-[13px] font-bold hover:bg-emerald-700 transition-colors cursor-pointer shadow-sm flex items-center gap-1.5"
+                              className="h-8 px-4 rounded-lg bg-emerald-600 text-white text-[11px] font-bold hover:bg-emerald-700 cursor-pointer"
                             >
-                              <CheckCircle2 className="w-4 h-4" />
-                              <span>{t('completeTask')}</span>
+                              {t('completeTask')}
                             </button>
                           )}
                           {completed && (
-                            <span className="text-[12px] font-bold text-emerald-700 bg-emerald-100 px-3.5 py-1.5 rounded-full border border-emerald-200 flex items-center gap-1">
-                              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                            <span className="text-[11px] font-bold text-emerald-700 bg-emerald-50 px-3 py-1 rounded border border-emerald-200">
                               {t('taskCompleted')}
                             </span>
                           )}
@@ -373,54 +324,42 @@ export const HousekeepingDashboard = ({ currentUser, onNotify = () => {} }) => {
             </div>
           </div>
 
-          <aside className="space-y-[18px]">
-            <section className="rounded-[20px] bg-[#F7F5F2] px-5 pt-5 pb-[18px]">
-              <h2 className="text-[14px] font-medium text-[#171717]">Floor Status</h2>
+          <aside className="space-y-4">
+            <section className="rounded-xl bg-[#F4F3F0] p-4 border border-[#E8E5E0]">
+              <h2 className="text-[11px] font-bold uppercase tracking-wider text-[#171717]">Floor Status</h2>
               <button
                 type="button"
                 onClick={() => setIsMapModalOpen(true)}
-                className="relative mt-3 w-full h-[110px] overflow-hidden rounded-[10px] text-left group"
+                className="mt-2 w-full rounded-lg bg-white p-3 text-left border border-[#E0DDD8] cursor-pointer hover:bg-[#FAF9F7]"
               >
-                <img src="/floor-plan.svg" alt="Floor 5 hotel plan" className="absolute inset-0 w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.02]" />
-                <span className="absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-black/45 to-transparent" />
-                <span className="absolute left-3 bottom-3 text-[13px] tracking-[0.16em] text-[#262626]">{floorStatus.activeFloor || 'FLOOR 5 - ACTIVE'}</span>
+                <span className="text-[12px] font-semibold text-[#222]">
+                  {floorStatus.activeFloor || 'FLOOR 5 - ACTIVE'}
+                </span>
               </button>
 
-              <div className="mt-5">
-                <div className="flex items-center justify-between text-[13px]">
-                  <span className="text-[#4D4D4D]">Rooms Cleaned</span>
-                  <span className="text-[#202020]">{roomsCleaned} / {totalRooms}</span>
+              <div className="mt-3">
+                <div className="flex items-center justify-between text-[11px] text-[#555]">
+                  <span>Rooms Cleaned</span>
+                  <span className="font-semibold text-[#222]">{roomsCleaned} / {totalRooms}</span>
                 </div>
-                <div className="mt-2 h-1 rounded-full bg-[#E0DED9] overflow-hidden">
+                <div className="mt-1.5 h-1.5 rounded-full bg-[#E0DED9] overflow-hidden">
                   <div className="h-full rounded-full bg-black" style={{ width: `${roomsCleanedPercent}%` }} />
                 </div>
               </div>
             </section>
 
-            <section className="rounded-[20px] bg-[#F7F5F2] px-5 py-5">
-              <h2 className="text-[13px] font-medium text-[#171717]">Available Staff</h2>
-              <div className="mt-5 space-y-[18px]">
-                {availableStaff.slice(0, 2).map((staff) => {
-                  const initials = (staff.code || staff.name || 'ST')
-                    .split(' ')
-                    .map((part) => part[0])
-                    .join('')
-                    .slice(0, 2)
-                    .toUpperCase();
-
-                  return (
-                    <div key={staff.id || staff.name} className="flex items-center gap-3">
-                      <div className="w-8 h-8 shrink-0 rounded-full bg-[#EAE8E4] flex items-center justify-center text-[12px] text-[#333]">
-                        {initials}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-[13px] font-medium text-[#171717]">{staff.name}</p>
-                        <p className="mt-0.5 text-[13px] text-[#555]">{staff.location || 'On duty'}</p>
-                      </div>
-                      <span className="w-2 h-2 rounded-full bg-[#22C55E]" aria-label="Online" />
+            <section className="rounded-xl bg-[#F4F3F0] p-4 border border-[#E8E5E0]">
+              <h2 className="text-[11px] font-bold uppercase tracking-wider text-[#171717]">Available Staff</h2>
+              <div className="mt-3 space-y-2">
+                {availableStaff.slice(0, 3).map((staff) => (
+                  <div key={staff.id || staff.name} className="flex items-center justify-between text-[11px] py-1 border-b border-[#E0DDD8] last:border-0">
+                    <div>
+                      <p className="font-semibold text-[#222]">{staff.name}</p>
+                      <p className="text-[10px] text-[#666]">{staff.location || 'On duty'}</p>
                     </div>
-                  );
-                })}
+                    <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                  </div>
+                ))}
               </div>
             </section>
           </aside>
@@ -442,3 +381,4 @@ export const HousekeepingDashboard = ({ currentUser, onNotify = () => {} }) => {
     </main>
   );
 };
+

@@ -1,12 +1,17 @@
 {
-  "name": "HC-Robot Concierge PWA",
+  "id": "/hcrobot-mobile",
+  "name": "HCROBOT Mobile Concierge",
   "short_name": "HCRobot",
-  "description": "Hệ thống Trợ lý Robot Dịch vụ Khách sạn Thông minh",
-  "start_url": "/",
+  "description": "Trợ lý Robot dịch vụ khách sạn Aurora",
+  "lang": "vi",
+  "start_url": "/?view=robot_display",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#090d16",
-  "theme_color": "#090d16",
-  "orientation": "any",
+  "display_override": ["fullscreen", "standalone"],
+  "background_color": "#F5F2EB",
+  "theme_color": "#171716",
+  "orientation": "landscape",
+  "categories": ["travel", "utilities"],
   "icons": [
     {
       "src": "/icon-192.png",

@@ -41,8 +41,8 @@ export const LandingHomePage = ({
   return (
     <div className="w-full h-full min-h-screen bg-[#FAF8F5] text-[#1A1917] font-sans flex flex-col justify-between overflow-y-auto custom-scrollbar select-none relative">
       {/* 1. Header Minimalist */}
-      <header className="w-full bg-white/80 backdrop-blur-md border-b border-[#E8E4DB] sticky top-0 z-30">
-        <div className="max-w-5xl mx-auto px-6 h-16 flex items-center justify-between">
+      <header className="w-full bg-white/95 backdrop-blur-md border-b border-[#E8E4DB] sticky top-0 z-30 mobile-safe-header pt-10 md:pt-0">
+        <div className="max-w-5xl mx-auto px-4 md:px-6 h-14 md:h-16 flex items-center justify-between">
           {/* Brand Title */}
           <div>
             <h1 className="text-sm font-extrabold tracking-tight text-[#1A1917]">
@@ -53,18 +53,20 @@ export const LandingHomePage = ({
             </p>
           </div>
 
-          {/* Header Action Buttons: Chỉ để About và Đăng Nhập */}
-          <div className="flex items-center gap-2">
+          {/* Header Action Links: Chữ thuần túy phân cách bằng | */}
+          <div className="flex items-center gap-3 text-xs font-medium text-stone-600">
             <button
               onClick={scrollToAbout}
-              className="px-4 py-1.5 rounded-full text-xs font-semibold text-stone-700 bg-[#EFECE6] border border-[#DDD8CE] hover:bg-[#E5E0D5] transition-all cursor-pointer"
+              className="hover:text-stone-900 transition-colors cursor-pointer"
             >
               About
             </button>
 
+            <span className="text-stone-300 select-none">|</span>
+
             <button
               onClick={onNavigateToLogin}
-              className="px-4 py-1.5 rounded-full text-xs font-bold text-stone-800 bg-[#E5E1D8] hover:bg-[#DCD7CB] border border-[#DDD8CE] transition-all cursor-pointer ml-1"
+              className="hover:text-stone-900 font-semibold transition-colors cursor-pointer"
             >
               {currentUser ? (currentUser.full_name || currentUser.name) : 'Đăng Nhập'}
             </button>

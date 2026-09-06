@@ -1,0 +1,17 @@
+# Cấu hình Robot HC-Robot trên Raspberry Pi 5
+
+robot:
+  id: "hc_pi5_01"
+  name: "HC Smart Concierge Robot"
+  gpio:
+    # Mạch 1 (Bên Trái - Động cơ nối cọc OUT1 & OUT2):
+    left_forward: 17     # Cắm trực tiếp duy nhất vào cọc IN1 Mạch 1 (Rút dây IN3 ra)
+    left_backward: 27    # Cắm trực tiếp duy nhất vào cọc IN2 Mạch 1 (Rút dây IN4 ra)
+
+    # Mạch 2 (Bên Phải - Động cơ nối cọc OUT1 & OUT2):
+    right_forward: 22    # Cắm trực tiếp duy nhất vào cọc IN1 Mạch 2 (Rút dây IN3 ra)
+    right_backward: 23   # Cắm trực tiếp duy nhất vào cọc IN2 Mạch 2 (Rút dây IN4 ra)
+
+topics:
+  cmd_vel: "/cmd_vel"
+  cmd_text: "/robot/cmd_text"

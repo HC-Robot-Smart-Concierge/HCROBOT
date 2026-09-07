@@ -1,0 +1,135 @@
+<?xml version="1.0" ?>
+<sdf version="1.6">
+  <model name="reception_high_chair">
+    <static>true</static>
+    <link name="chair_link">
+      <!-- 1. Đế tròn kim loại dưới sàn -->
+      <collision name="base_collision">
+        <pose>0 0 0.015 0 0 0</pose>
+        <geometry>
+          <cylinder>
+            <radius>0.24</radius>
+            <length>0.03</length>
+          </cylinder>
+        </geometry>
+      </collision>
+      <visual name="base_visual">
+        <pose>0 0 0.015 0 0 0</pose>
+        <geometry>
+          <cylinder>
+            <radius>0.24</radius>
+            <length>0.03</length>
+          </cylinder>
+        </geometry>
+        <material>
+          <script>
+            <uri>file://media/materials/scripts/gazebo.material</uri>
+            <name>Gazebo/Grey</name>
+          </script>
+        </material>
+      </visual>
+
+      <!-- 2. Trụ đỡ inox cao -->
+      <collision name="pillar_collision">
+        <pose>0 0 0.36 0 0 0</pose>
+        <geometry>
+          <cylinder>
+            <radius>0.035</radius>
+            <length>0.70</length>
+          </cylinder>
+        </geometry>
+      </collision>
+      <visual name="pillar_visual">
+        <pose>0 0 0.36 0 0 0</pose>
+        <geometry>
+          <cylinder>
+            <radius>0.035</radius>
+            <length>0.70</length>
+          </cylinder>
+        </geometry>
+        <material>
+          <script>
+            <uri>file://media/materials/scripts/gazebo.material</uri>
+            <name>Gazebo/Grey</name>
+          </script>
+        </material>
+      </visual>
+
+      <!-- 3. Vòng kim loại gác chân -->
+      <collision name="footrest_collision">
+        <pose>0 0 0.25 0 0 0</pose>
+        <geometry>
+          <cylinder>
+            <radius>0.16</radius>
+            <length>0.02</length>
+          </cylinder>
+        </geometry>
+      </collision>
+      <visual name="footrest_visual">
+        <pose>0 0 0.25 0 0 0</pose>
+        <geometry>
+          <cylinder>
+            <radius>0.16</radius>
+            <length>0.02</length>
+          </cylinder>
+        </geometry>
+        <material>
+          <script>
+            <uri>file://media/materials/scripts/gazebo.material</uri>
+            <name>Gazebo/Grey</name>
+          </script>
+        </material>
+      </visual>
+
+      <!-- 4. Đệm ngồi da êm ái cao 72cm -->
+      <collision name="seat_collision">
+        <pose>0 0 0.72 0 0 0</pose>
+        <geometry>
+          <cylinder>
+            <radius>0.22</radius>
+            <length>0.08</length>
+          </cylinder>
+        </geometry>
+      </collision>
+      <visual name="seat_visual">
+        <pose>0 0 0.72 0 0 0</pose>
+        <geometry>
+          <cylinder>
+            <radius>0.22</radius>
+            <length>0.08</length>
+          </cylinder>
+        </geometry>
+        <material>
+          <script>
+            <uri>file://media/materials/scripts/gazebo.material</uri>
+            <name>Gazebo/DarkGrey</name>
+          </script>
+        </material>
+      </visual>
+
+      <!-- 5. Tựa lưng ghế cao -->
+      <collision name="backrest_collision">
+        <pose>-0.16 0 0.88 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.04 0.36 0.26</size>
+          </box>
+        </geometry>
+      </collision>
+      <visual name="backrest_visual">
+        <pose>-0.16 0 0.88 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.04 0.36 0.26</size>
+          </box>
+        </geometry>
+        <material>
+          <script>
+            <uri>file://media/materials/scripts/gazebo.material</uri>
+            <name>Gazebo/DarkGrey</name>
+          </script>
+        </material>
+      </visual>
+    </link>
+  </model>
+</sdf>

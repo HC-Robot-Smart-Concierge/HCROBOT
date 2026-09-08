@@ -187,21 +187,35 @@ class MotorController:
         self.right_backward_dev.on()
         logger.info("ROBOT: LÙI -> Trái Lùi (23)=ON | Phải Lùi (27)=ON")
 
-    def turn_left(self):
-        """Rẽ trái."""
-        self.left_forward_dev.off()
-        self.left_backward_dev.on()
-        self.right_forward_dev.on()
-        self.right_backward_dev.off()
-        logger.info("ROBOT: RẼ TRÁI -> Trái Lùi (23)=ON | Phải Tiến (17)=ON")
+    def turn_left(self, soft: bool = True):
+        """Rẽ/Quẹo trái. Mặc định soft=True giúp bẻ lái nhẹ nhàng không bị khựng động cơ do ma sát sàn."""
+        if soft:
+            self.left_forward_dev.off()
+            self.left_backward_dev.off()
+            self.right_forward_dev.on()
+            self.right_backward_dev.off()
+            logger.info("ROBOT: QUẸO TRÁI (A) -> Trái DỪNG | Phải TIẾN (Bẻ lái mượt)")
+        else:
+            self.left_forward_dev.off()
+            self.left_backward_dev.on()
+            self.right_forward_dev.on()
+            self.right_backward_dev.off()
+            logger.info("ROBOT: XOAY TRÁI TẠI CHỖ -> Trái LÙI (23)=ON | Phải TIẾN (17)=ON")
 
-    def turn_right(self):
-        """Rẽ phải."""
-        self.left_forward_dev.on()
-        self.left_backward_dev.off()
-        self.right_forward_dev.off()
-        self.right_backward_dev.on()
-        logger.info("ROBOT: RẼ PHẢI -> Trái Tiến (22)=ON | Phải Lùi (27)=ON")
+    def turn_right(self, soft: bool = True):
+        """Rẽ/Quẹo phải. Mặc định soft=True giúp bẻ lái nhẹ nhàng không bị khựng động cơ do ma sát sàn."""
+        if soft:
+            self.left_forward_dev.on()
+            self.left_backward_dev.off()
+            self.right_forward_dev.off()
+            self.right_backward_dev.off()
+            logger.info("ROBOT: QUẸO PHẢI (D) -> Trái TIẾN | Phải DỪNG (Bẻ lái mượt)")
+        else:
+            self.left_forward_dev.on()
+            self.left_backward_dev.off()
+            self.right_forward_dev.off()
+            self.right_backward_dev.on()
+            logger.info("ROBOT: XOAY PHẢI TẠI CHỖ -> Trái TIẾN (22)=ON | Phải LÙI (27)=ON")
 
     def stop(self):
         """Dừng tất cả động cơ."""

@@ -1,0 +1,262 @@
+<?xml version="1.0" ?>
+<sdf version="1.6">
+  <model name="bookshelf_with_books">
+    <static>true</static>
+    <link name="bookshelf_link">
+      <!-- Vách lưng tủ sách -->
+      <collision name="col_back">
+        <pose>-0.12 0 0.60 0 0 0</pose>
+        <geometry>
+          <box><size>0.02 0.70 1.20</size></box>
+        </geometry>
+      </collision>
+      <visual name="vis_back">
+        <pose>-0.12 0 0.60 0 0 0</pose>
+        <geometry>
+          <box><size>0.02 0.70 1.20</size></box>
+        </geometry>
+        <material>
+          <script>
+            <uri>file://media/materials/scripts/gazebo.material</uri>
+            <name>Gazebo/Wood</name>
+          </script>
+        </material>
+      </visual>
+
+      <!-- Vách hông trái -->
+      <collision name="col_left">
+        <pose>0 0.34 0.60 0 0 0</pose>
+        <geometry>
+          <box><size>0.26 0.02 1.20</size></box>
+        </geometry>
+      </collision>
+      <visual name="vis_left">
+        <pose>0 0.34 0.60 0 0 0</pose>
+        <geometry>
+          <box><size>0.26 0.02 1.20</size></box>
+        </geometry>
+        <material>
+          <script>
+            <uri>file://media/materials/scripts/gazebo.material</uri>
+            <name>Gazebo/Wood</name>
+          </script>
+        </material>
+      </visual>
+
+      <!-- Vách hông phải -->
+      <collision name="col_right">
+        <pose>0 -0.34 0.60 0 0 0</pose>
+        <geometry>
+          <box><size>0.26 0.02 1.20</size></box>
+        </geometry>
+      </collision>
+      <visual name="vis_right">
+        <pose>0 -0.34 0.60 0 0 0</pose>
+        <geometry>
+          <box><size>0.26 0.02 1.20</size></box>
+        </geometry>
+        <material>
+          <script>
+            <uri>file://media/materials/scripts/gazebo.material</uri>
+            <name>Gazebo/Wood</name>
+          </script>
+        </material>
+      </visual>
+
+      <!-- Đáy tủ -->
+      <collision name="col_shelf_base">
+        <pose>0 0 0.02 0 0 0</pose>
+        <geometry>
+          <box><size>0.26 0.70 0.03</size></box>
+        </geometry>
+      </collision>
+      <visual name="vis_shelf_base">
+        <pose>0 0 0.02 0 0 0</pose>
+        <geometry>
+          <box><size>0.26 0.70 0.03</size></box>
+        </geometry>
+        <material>
+          <script>
+            <uri>file://media/materials/scripts/gazebo.material</uri>
+            <name>Gazebo/Wood</name>
+          </script>
+        </material>
+      </visual>
+
+      <!-- Ngăn đợt 1 (giữa dưới) -->
+      <collision name="col_shelf_1">
+        <pose>0 0 0.42 0 0 0</pose>
+        <geometry>
+          <box><size>0.24 0.66 0.02</size></box>
+        </geometry>
+      </collision>
+      <visual name="vis_shelf_1">
+        <pose>0 0 0.42 0 0 0</pose>
+        <geometry>
+          <box><size>0.24 0.66 0.02</size></box>
+        </geometry>
+        <material>
+          <script>
+            <uri>file://media/materials/scripts/gazebo.material</uri>
+            <name>Gazebo/Wood</name>
+          </script>
+        </material>
+      </visual>
+
+      <!-- Ngăn đợt 2 (giữa trên) -->
+      <collision name="col_shelf_2">
+        <pose>0 0 0.80 0 0 0</pose>
+        <geometry>
+          <box><size>0.24 0.66 0.02</size></box>
+        </geometry>
+      </collision>
+      <visual name="vis_shelf_2">
+        <pose>0 0 0.80 0 0 0</pose>
+        <geometry>
+          <box><size>0.24 0.66 0.02</size></box>
+        </geometry>
+        <material>
+          <script>
+            <uri>file://media/materials/scripts/gazebo.material</uri>
+            <name>Gazebo/Wood</name>
+          </script>
+        </material>
+      </visual>
+
+      <!-- Nóc tủ -->
+      <collision name="col_shelf_top">
+        <pose>0 0 1.19 0 0 0</pose>
+        <geometry>
+          <box><size>0.26 0.70 0.02</size></box>
+        </geometry>
+      </collision>
+      <visual name="vis_shelf_top">
+        <pose>0 0 1.19 0 0 0</pose>
+        <geometry>
+          <box><size>0.26 0.70 0.02</size></box>
+        </geometry>
+        <material>
+          <script>
+            <uri>file://media/materials/scripts/gazebo.material</uri>
+            <name>Gazebo/Wood</name>
+          </script>
+        </material>
+      </visual>
+
+      <!-- ========================================= -->
+      <!-- CÁC QUYỂN SÁCH Ở NGĂN TRÊN (SHELF 2)      -->
+      <!-- ========================================= -->
+      <visual name="vis_book_top_1">
+        <pose>-0.02 -0.24 0.93 0 0 0</pose>
+        <geometry><box><size>0.18 0.035 0.24</size></box></geometry>
+        <material><script><uri>file://media/materials/scripts/gazebo.material</uri><name>Gazebo/Red</name></script></material>
+      </visual>
+      <visual name="vis_book_top_2">
+        <pose>-0.02 -0.20 0.935 0 0 0</pose>
+        <geometry><box><size>0.18 0.040 0.25</size></box></geometry>
+        <material><script><uri>file://media/materials/scripts/gazebo.material</uri><name>Gazebo/Blue</name></script></material>
+      </visual>
+      <visual name="vis_book_top_3">
+        <pose>-0.02 -0.16 0.925 0 0 0</pose>
+        <geometry><box><size>0.18 0.032 0.23</size></box></geometry>
+        <material><script><uri>file://media/materials/scripts/gazebo.material</uri><name>Gazebo/Green</name></script></material>
+      </visual>
+      <visual name="vis_book_top_4">
+        <pose>-0.02 -0.12 0.94 0 0 0</pose>
+        <geometry><box><size>0.18 0.042 0.26</size></box></geometry>
+        <material><script><uri>file://media/materials/scripts/gazebo.material</uri><name>Gazebo/Yellow</name></script></material>
+      </visual>
+      <visual name="vis_book_top_5">
+        <pose>-0.02 -0.08 0.925 0 0 0</pose>
+        <geometry><box><size>0.18 0.035 0.23</size></box></geometry>
+        <material><script><uri>file://media/materials/scripts/gazebo.material</uri><name>Gazebo/Orange</name></script></material>
+      </visual>
+      <visual name="vis_book_top_6">
+        <pose>-0.02 -0.04 0.93 0 0 0</pose>
+        <geometry><box><size>0.18 0.038 0.24</size></box></geometry>
+        <material><script><uri>file://media/materials/scripts/gazebo.material</uri><name>Gazebo/DarkGrey</name></script></material>
+      </visual>
+      <visual name="vis_book_top_7">
+        <pose>-0.02 0.00 0.935 0 0 0</pose>
+        <geometry><box><size>0.18 0.040 0.25</size></box></geometry>
+        <material><script><uri>file://media/materials/scripts/gazebo.material</uri><name>Gazebo/Purple</name></script></material>
+      </visual>
+      <visual name="vis_book_top_8">
+        <pose>-0.02 0.04 0.92 0 0 0</pose>
+        <geometry><box><size>0.18 0.035 0.22</size></box></geometry>
+        <material><script><uri>file://media/materials/scripts/gazebo.material</uri><name>Gazebo/Turquoise</name></script></material>
+      </visual>
+
+      <!-- ========================================= -->
+      <!-- CÁC QUYỂN SÁCH Ở NGĂN GIỮA (SHELF 1)      -->
+      <!-- ========================================= -->
+      <!-- Chồng 3 quyển sách nằm ngang -->
+      <visual name="vis_stack_1">
+        <pose>-0.01 -0.18 0.445 0 0 0</pose>
+        <geometry><box><size>0.20 0.16 0.035</size></box></geometry>
+        <material><script><uri>file://media/materials/scripts/gazebo.material</uri><name>Gazebo/DarkGrey</name></script></material>
+      </visual>
+      <visual name="vis_stack_2">
+        <pose>-0.01 -0.18 0.48 0 0 0.05</pose>
+        <geometry><box><size>0.19 0.15 0.032</size></box></geometry>
+        <material><script><uri>file://media/materials/scripts/gazebo.material</uri><name>Gazebo/Red</name></script></material>
+      </visual>
+      <visual name="vis_stack_3">
+        <pose>-0.01 -0.18 0.51 0 0 -0.03</pose>
+        <geometry><box><size>0.18 0.14 0.028</size></box></geometry>
+        <material><script><uri>file://media/materials/scripts/gazebo.material</uri><name>Gazebo/Blue</name></script></material>
+      </visual>
+
+      <!-- Dãy sách đứng bên phải ngăn giữa -->
+      <visual name="vis_book_mid_1">
+        <pose>-0.02 0.08 0.55 0 0 0</pose>
+        <geometry><box><size>0.18 0.035 0.24</size></box></geometry>
+        <material><script><uri>file://media/materials/scripts/gazebo.material</uri><name>Gazebo/Green</name></script></material>
+      </visual>
+      <visual name="vis_book_mid_2">
+        <pose>-0.02 0.12 0.555 0 0 0</pose>
+        <geometry><box><size>0.18 0.040 0.25</size></box></geometry>
+        <material><script><uri>file://media/materials/scripts/gazebo.material</uri><name>Gazebo/Yellow</name></script></material>
+      </visual>
+      <visual name="vis_book_mid_3">
+        <pose>-0.02 0.16 0.545 0 0 0</pose>
+        <geometry><box><size>0.18 0.035 0.23</size></box></geometry>
+        <material><script><uri>file://media/materials/scripts/gazebo.material</uri><name>Gazebo/Orange</name></script></material>
+      </visual>
+      <visual name="vis_book_mid_4">
+        <pose>-0.02 0.20 0.56 0 0 0</pose>
+        <geometry><box><size>0.18 0.042 0.26</size></box></geometry>
+        <material><script><uri>file://media/materials/scripts/gazebo.material</uri><name>Gazebo/Red</name></script></material>
+      </visual>
+
+      <!-- ========================================= -->
+      <!-- CÁC TẬP HỒ SƠ / BINDER Ở NGĂN DƯỚI        -->
+      <!-- ========================================= -->
+      <visual name="vis_binder_1">
+        <pose>0 -0.22 0.20 0 0 0</pose>
+        <geometry><box><size>0.22 0.06 0.32</size></box></geometry>
+        <material><script><uri>file://media/materials/scripts/gazebo.material</uri><name>Gazebo/Blue</name></script></material>
+      </visual>
+      <visual name="vis_binder_2">
+        <pose>0 -0.15 0.20 0 0 0</pose>
+        <geometry><box><size>0.22 0.06 0.32</size></box></geometry>
+        <material><script><uri>file://media/materials/scripts/gazebo.material</uri><name>Gazebo/Blue</name></script></material>
+      </visual>
+      <visual name="vis_binder_3">
+        <pose>0 -0.08 0.20 0 0 0</pose>
+        <geometry><box><size>0.22 0.06 0.32</size></box></geometry>
+        <material><script><uri>file://media/materials/scripts/gazebo.material</uri><name>Gazebo/DarkGrey</name></script></material>
+      </visual>
+      <visual name="vis_binder_4">
+        <pose>0 -0.01 0.20 0 0 0</pose>
+        <geometry><box><size>0.22 0.06 0.32</size></box></geometry>
+        <material><script><uri>file://media/materials/scripts/gazebo.material</uri><name>Gazebo/Red</name></script></material>
+      </visual>
+      <visual name="vis_binder_5">
+        <pose>0 0.06 0.20 0 0 0</pose>
+        <geometry><box><size>0.22 0.06 0.32</size></box></geometry>
+        <material><script><uri>file://media/materials/scripts/gazebo.material</uri><name>Gazebo/Red</name></script></material>
+      </visual>
+    </link>
+  </model>
+</sdf>

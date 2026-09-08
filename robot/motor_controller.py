@@ -209,11 +209,11 @@ class MotorController:
         self.right_backward_dev.on()
         logger.info("ROBOT: LÙI -> Trái Lùi (23)=ON | Phải Lùi (27)=ON")
 
-    def turn_left(self, speed_ratio: float = 0.30):
+    def turn_left(self, speed_ratio: float = 0.55):
         """
         Quẹo Trái có vận tốc tiến (Curve Turn).
         - Bánh Phải: Tiến 100%
-        - Bánh Trái: Tiến 30% (Giúp xe có đà vận tốc tiến tới mở cua mượt mà)
+        - Bánh Trái: Tiến 55% (Đủ mô-men xoắn đẩy khung xe nặng mở cua mượt mà)
         """
         self.left_backward_dev.off()
         self.right_backward_dev.off()
@@ -228,13 +228,13 @@ class MotorController:
         else:
             self.right_forward_dev.on()
 
-        logger.info(f"ROBOT: QUẸO TRÁI (A) -> Trái TIẾN {int(speed_ratio*100)}% | Phải TIẾN 100% (Vừa tiến vừa quẹo)")
+        logger.info(f"ROBOT: QUẸO TRÁI (A) -> Trái TIẾN {int(speed_ratio*100)}% | Phải TIẾN 100% (Cho xe nặng)")
 
-    def turn_right(self, speed_ratio: float = 0.30):
+    def turn_right(self, speed_ratio: float = 0.55):
         """
         Quẹo Phải có vận tốc tiến (Curve Turn).
         - Bánh Trái: Tiến 100%
-        - Bánh Phải: Tiến 30% (Giúp xe có đà vận tốc tiến tới mở cua mượt mà)
+        - Bánh Phải: Tiến 55% (Đủ mô-men xoắn đẩy khung xe nặng mở cua mượt mà)
         """
         self.left_backward_dev.off()
         self.right_backward_dev.off()
@@ -249,7 +249,7 @@ class MotorController:
         else:
             self.right_forward_dev.off()
 
-        logger.info(f"ROBOT: QUẸO PHẢI (D) -> Trái TIẾN 100% | Phải TIẾN {int(speed_ratio*100)}% (Vừa tiến vừa quẹo)")
+        logger.info(f"ROBOT: QUẸO PHẢI (D) -> Trái TIẾN 100% | Phải TIẾN {int(speed_ratio*100)}% (Cho xe nặng)")
 
     def stop(self):
         """Dừng tất cả động cơ."""

@@ -61,13 +61,32 @@ class LGPIOOutputDevice:
 
     def on(self):
         if self.handle is not None:
-            lgpio.gpio_write(self.handle, self.pin, 1)
+            try:
+                lgpio.tx_pwm(self.handle, self.pin, 100, 100)
+            except Exception:
+                lgpio.gpio_write(self.handle, self.pin, 1)
             self.value = 1
 
     def off(self):
         if self.handle is not None:
-            lgpio.gpio_write(self.handle, self.pin, 0)
+            try:
+                lgpio.tx_pwm(self.handle, self.pin, 100, 0)
+            except Exception:
+                lgpio.gpio_write(self.handle, self.pin, 0)
             self.value = 0
+
+    def set_pwm(self, duty_cycle: float):
+        """Đặt tốc độ PWM từ 0.0 (0%) đến 1.0 (100%)."""
+        if self.handle is not None:
+            try:
+                percent = max(0.0, min(100.0, duty_cycle * 100.0))
+                lgpio.tx_pwm(self.handle, self.pin, 100, percent)
+                self.value = 1 if percent > 0 else 0
+            except Exception:
+                if duty_cycle > 0.1:
+                    self.on()
+                else:
+                    self.off()
 
     def close(self):
         if self.handle is not None:
@@ -95,6 +114,9 @@ class MockDigitalOutputDevice:
 
     def off(self):
         self.value = 0
+
+    def set_pwm(self, duty_cycle: float):
+        self.value = 1 if duty_cycle > 0.1 else 0
 
     def close(self):
         self.value = 0
@@ -187,35 +209,47 @@ class MotorController:
         self.right_backward_dev.on()
         logger.info("ROBOT: LÙI -> Trái Lùi (23)=ON | Phải Lùi (27)=ON")
 
-    def turn_left(self, soft: bool = True):
-        """Rẽ/Quẹo trái. Mặc định soft=True giúp bẻ lái nhẹ nhàng không bị khựng động cơ do ma sát sàn."""
-        if soft:
-            self.left_forward_dev.off()
-            self.left_backward_dev.off()
-            self.right_forward_dev.on()
-            self.right_backward_dev.off()
-            logger.info("ROBOT: QUẸO TRÁI (A) -> Trái DỪNG | Phải TIẾN (Bẻ lái mượt)")
-        else:
-            self.left_forward_dev.off()
-            self.left_backward_dev.on()
-            self.right_forward_dev.on()
-            self.right_backward_dev.off()
-            logger.info("ROBOT: XOAY TRÁI TẠI CHỖ -> Trái LÙI (23)=ON | Phải TIẾN (17)=ON")
+    def turn_left(self, speed_ratio: float = 0.30):
+        """
+        Quẹo Trái có vận tốc tiến (Curve Turn).
+        - Bánh Phải: Tiến 100%
+        - Bánh Trái: Tiến 30% (Giúp xe có đà vận tốc tiến tới mở cua mượt mà)
+        """
+        self.left_backward_dev.off()
+        self.right_backward_dev.off()
 
-    def turn_right(self, soft: bool = True):
-        """Rẽ/Quẹo phải. Mặc định soft=True giúp bẻ lái nhẹ nhàng không bị khựng động cơ do ma sát sàn."""
-        if soft:
-            self.left_forward_dev.on()
-            self.left_backward_dev.off()
-            self.right_forward_dev.off()
-            self.right_backward_dev.off()
-            logger.info("ROBOT: QUẸO PHẢI (D) -> Trái TIẾN | Phải DỪNG (Bẻ lái mượt)")
+        if hasattr(self.left_forward_dev, 'set_pwm'):
+            self.left_forward_dev.set_pwm(speed_ratio)
+        else:
+            self.left_forward_dev.off()
+
+        if hasattr(self.right_forward_dev, 'set_pwm'):
+            self.right_forward_dev.set_pwm(1.0)
+        else:
+            self.right_forward_dev.on()
+
+        logger.info(f"ROBOT: QUẸO TRÁI (A) -> Trái TIẾN {int(speed_ratio*100)}% | Phải TIẾN 100% (Vừa tiến vừa quẹo)")
+
+    def turn_right(self, speed_ratio: float = 0.30):
+        """
+        Quẹo Phải có vận tốc tiến (Curve Turn).
+        - Bánh Trái: Tiến 100%
+        - Bánh Phải: Tiến 30% (Giúp xe có đà vận tốc tiến tới mở cua mượt mà)
+        """
+        self.left_backward_dev.off()
+        self.right_backward_dev.off()
+
+        if hasattr(self.left_forward_dev, 'set_pwm'):
+            self.left_forward_dev.set_pwm(1.0)
         else:
             self.left_forward_dev.on()
-            self.left_backward_dev.off()
+
+        if hasattr(self.right_forward_dev, 'set_pwm'):
+            self.right_forward_dev.set_pwm(speed_ratio)
+        else:
             self.right_forward_dev.off()
-            self.right_backward_dev.on()
-            logger.info("ROBOT: XOAY PHẢI TẠI CHỖ -> Trái TIẾN (22)=ON | Phải LÙI (27)=ON")
+
+        logger.info(f"ROBOT: QUẸO PHẢI (D) -> Trái TIẾN 100% | Phải TIẾN {int(speed_ratio*100)}% (Vừa tiến vừa quẹo)")
 
     def stop(self):
         """Dừng tất cả động cơ."""

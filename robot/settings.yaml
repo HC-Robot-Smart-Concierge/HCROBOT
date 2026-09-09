@@ -4,6 +4,9 @@ robot:
   id: "hc_pi5_01"
   name: "HC Smart Concierge Robot"
   gpio:
+    # Tự phát hiện gpiochip RP1. Chỉ bỏ comment khi cần ép chip cụ thể:
+    # chip: 4
+
     # Mạch 1 (Bên Trái - Động cơ nối cọc OUT1 & OUT2):
     left_forward: 17     # Cắm trực tiếp duy nhất vào cọc IN1 Mạch 1 (Rút dây IN3 ra)
     left_backward: 27    # Cắm trực tiếp duy nhất vào cọc IN2 Mạch 1 (Rút dây IN4 ra)

@@ -2,4 +2,4 @@ import sys
 from motor_controller import main as run_controller
 
 if __name__ == '__main__':
-    run_controller()
+    raise SystemExit(run_controller())

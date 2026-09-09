@@ -1,7 +1,10 @@
+import glob
+import getpass
+import logging
 import os
+import re
 import sys
 import time
-import logging
 from typing import Optional
 
 if hasattr(sys.stdout, 'reconfigure'):
@@ -34,29 +37,113 @@ except (ImportError, Exception):
     HAS_GPIOZERO = False
 
 
-class LGPIOOutputDevice:
-    """Điều khiển trực tiếp chân GPIO trên Raspberry Pi 5 bằng lgpio (trực tiếp qua RP1 chip)."""
-    def __init__(self, pin: int):
-        self.pin = pin
-        self.handle = None
-        for chip_num in [4, 0]:
-            try:
-                h = lgpio.gpiochip_open(chip_num)
-                lgpio.gpio_claim_output(h, self.pin, 0)
-                self.handle = h
-                self.chip_num = chip_num
-                break
-            except Exception:
-                if self.handle is not None:
+def _gpio_chip_candidates(preferred_chip: Optional[int] = None):
+    """Trả về danh sách gpiochip cần thử, ưu tiên chip điều khiển header 40 chân."""
+    candidates = []
+
+    configured_chip = preferred_chip
+    if configured_chip is None:
+        configured = os.environ.get("HCROBOT_GPIOCHIP", "").strip()
+        if configured:
+            match = re.fullmatch(r"(?:/dev/)?gpiochip(\d+)|(\d+)", configured)
+            if not match:
+                raise ValueError(
+                    "HCROBOT_GPIOCHIP phải là số chip (ví dụ 0, 4) "
+                    "hoặc đường dẫn /dev/gpiochipN."
+                )
+            configured_chip = int(match.group(1) or match.group(2))
+
+    if configured_chip is not None:
+        candidates.append(int(configured_chip))
+
+    detected = []
+    for device_path in glob.glob("/dev/gpiochip*"):
+        match = re.fullmatch(r"gpiochip(\d+)", os.path.basename(device_path))
+        if not match:
+            continue
+        chip_num = int(match.group(1))
+        label_path = f"/sys/class/gpio/gpiochip{chip_num}/label"
+        try:
+            with open(label_path, "r", encoding="utf-8") as label_file:
+                label = label_file.read().strip().lower()
+        except OSError:
+            label = ""
+
+        # RP1 cung cấp GPIO của header trên Pi 5; các Pi cũ thường có nhãn pinctrl.
+        if "rp1" in label or "pinctrl" in label:
+            priority = 0 if "rp1" in label else 1
+            detected.append((priority, chip_num))
+
+    candidates.extend(chip_num for _, chip_num in sorted(detected))
+
+    # Kernel Pi 5 cũ thường là gpiochip4; kernel mới có thể đánh lại thành gpiochip0.
+    candidates.extend([4, 0])
+    return list(dict.fromkeys(candidates))
+
+
+def _gpio_access_hint() -> str:
+    device_paths = sorted(glob.glob("/dev/gpiochip*"))
+    if not device_paths:
+        return (
+            "Không tìm thấy /dev/gpiochip*. Hãy kiểm tra chương trình đang chạy "
+            "trực tiếp trên Raspberry Pi và kernel đã nạp driver GPIO."
+        )
+
+    accessible = [
+        path for path in device_paths
+        if os.access(path, os.R_OK | os.W_OK)
+    ]
+    if not accessible:
+        username = getpass.getuser()
+        return (
+            f"User '{username}' không có quyền đọc/ghi {', '.join(device_paths)}. "
+            f"Chạy: sudo usermod -aG gpio {username} ; sau đó đăng xuất/đăng nhập lại "
+            "(hoặc reboot) rồi chạy lại python3 main.py."
+        )
+
+    return (
+        f"Đã thấy {', '.join(accessible)} nhưng không claim được chân GPIO; "
+        "hãy kiểm tra chân có đang bị tiến trình khác sử dụng bằng: gpioinfo"
+    )
+
+
+def _open_lgpio_chip(pins, preferred_chip: Optional[int] = None):
+    """Mở và claim toàn bộ chân trên cùng một gpiochip, dọn sạch nếu có lỗi."""
+    errors = []
+    for chip_num in _gpio_chip_candidates(preferred_chip):
+        handle = None
+        claimed_pins = []
+        try:
+            handle = lgpio.gpiochip_open(chip_num)
+            if handle is None or handle < 0:
+                raise RuntimeError(f"gpiochip_open trả về handle không hợp lệ: {handle}")
+
+            for pin in dict.fromkeys(pins):
+                lgpio.gpio_claim_output(handle, pin, 0)
+                claimed_pins.append(pin)
+            return handle, chip_num
+        except Exception as exc:
+            errors.append(f"gpiochip{chip_num}: {exc}")
+            if handle is not None and handle >= 0:
+                for pin in reversed(claimed_pins):
                     try:
-                        lgpio.gpiochip_close(self.handle)
+                        lgpio.gpio_free(handle, pin)
                     except Exception:
                         pass
-                self.handle = None
+                try:
+                    lgpio.gpiochip_close(handle)
+                except Exception:
+                    pass
 
-        if self.handle is None:
-            raise RuntimeError(f"Không mở được GPIO {self.pin} bằng lgpio qua chip 4 hoặc 0.")
+    detail = "; ".join(errors) if errors else "không có gpiochip để thử"
+    raise RuntimeError(f"Không khởi tạo được lgpio ({detail}). {_gpio_access_hint()}")
 
+
+class LGPIOOutputDevice:
+    """Một chân output dùng chung handle lgpio của MotorController."""
+    def __init__(self, pin: int, handle: int):
+        self.pin = pin
+        self.handle = handle
         self.value = 0
 
     def on(self):
@@ -93,7 +180,6 @@ class LGPIOOutputDevice:
             try:
                 self.off()
                 lgpio.gpio_free(self.handle, self.pin)
-                lgpio.gpiochip_close(self.handle)
             except Exception:
                 pass
             self.handle = None
@@ -141,12 +227,16 @@ class MotorController:
         left_backward_pin: int = 23,
         right_forward_pin: int = 17,
         right_backward_pin: int = 27,
-        force_mock: bool = False
+        force_mock: bool = False,
+        gpio_chip: Optional[int] = None
     ):
         self.left_forward_pin = left_forward_pin
         self.left_backward_pin = left_backward_pin
         self.right_forward_pin = right_forward_pin
         self.right_backward_pin = right_backward_pin
+        self.preferred_gpio_chip = gpio_chip
+        self.gpio_chip_num = None
+        self._lgpio_handle = None
         self.is_mock = force_mock
 
         self.left_forward_dev = None
@@ -163,16 +253,38 @@ class MotorController:
 
         if HAS_LGPIO:
             try:
-                self.left_forward_dev = LGPIOOutputDevice(self.left_forward_pin)
-                self.left_backward_dev = LGPIOOutputDevice(self.left_backward_pin)
-                self.right_forward_dev = LGPIOOutputDevice(self.right_forward_pin)
-                self.right_backward_dev = LGPIOOutputDevice(self.right_backward_pin)
-                logger.info("MotorController khởi chạy THÀNH CÔNG trên Raspberry Pi 5 (Native lgpio RP1 Driver).")
+                pins = [
+                    self.left_forward_pin,
+                    self.left_backward_pin,
+                    self.right_forward_pin,
+                    self.right_backward_pin,
+                ]
+                self._lgpio_handle, self.gpio_chip_num = _open_lgpio_chip(
+                    pins, self.preferred_gpio_chip
+                )
+                self.left_forward_dev = LGPIOOutputDevice(
+                    self.left_forward_pin, self._lgpio_handle
+                )
+                self.left_backward_dev = LGPIOOutputDevice(
+                    self.left_backward_pin, self._lgpio_handle
+                )
+                self.right_forward_dev = LGPIOOutputDevice(
+                    self.right_forward_pin, self._lgpio_handle
+                )
+                self.right_backward_dev = LGPIOOutputDevice(
+                    self.right_backward_pin, self._lgpio_handle
+                )
+                logger.info(
+                    "MotorController khởi chạy THÀNH CÔNG trên Raspberry Pi 5 "
+                    f"(lgpio, /dev/gpiochip{self.gpio_chip_num})."
+                )
                 return
             except Exception as e:
                 logger.warning(f"Thử LGPIO thất bại: {e}")
 
-        if HAS_GPIOZERO:
+        # Nếu lgpio đã import được nhưng không mở/claim được chip thì gpiozero cũng
+        # sẽ dùng cùng kernel device và chỉ tạo thêm một loạt cảnh báo fallback.
+        if HAS_GPIOZERO and not HAS_LGPIO:
             try:
                 self.left_forward_dev = DigitalOutputDevice(self.left_forward_pin)
                 self.left_backward_dev = DigitalOutputDevice(self.left_backward_pin)
@@ -183,7 +295,13 @@ class MotorController:
             except Exception as e:
                 logger.warning(f"Thử gpiozero thất bại: {e}")
 
-        self._init_mock("Không kết nối được thư viện GPIO (lgpio/gpiozero)")
+        if HAS_LGPIO:
+            reason = "lgpio không mở/claim được gpiochip; xem cảnh báo ngay phía trên"
+        elif HAS_GPIOZERO:
+            reason = "gpiozero không mở được GPIO; kiểm tra quyền user thuộc group gpio"
+        else:
+            reason = "chưa cài lgpio/gpiozero"
+        self._init_mock(reason)
 
     def _init_mock(self, reason: str = ""):
         self.is_mock = True
@@ -288,6 +406,12 @@ class MotorController:
         for dev in [self.left_forward_dev, self.left_backward_dev, self.right_forward_dev, self.right_backward_dev]:
             if dev and hasattr(dev, 'close'):
                 dev.close()
+        if self._lgpio_handle is not None:
+            try:
+                lgpio.gpiochip_close(self._lgpio_handle)
+            except Exception:
+                pass
+            self._lgpio_handle = None
         logger.info("Đã dọn dẹp tài nguyên GPIO an toàn.")
 
 
@@ -515,6 +639,7 @@ def main():
     left_backward = gpio_cfg.get('left_backward', 23)
     right_forward = gpio_cfg.get('right_forward', 17)
     right_backward = gpio_cfg.get('right_backward', 27)
+    gpio_chip = gpio_cfg.get('chip')
 
     force_mock = '--mock' in sys.argv
     controller = MotorController(
@@ -522,8 +647,17 @@ def main():
         left_backward_pin=left_backward,
         right_forward_pin=right_forward,
         right_backward_pin=right_backward,
-        force_mock=force_mock
+        force_mock=force_mock,
+        gpio_chip=gpio_chip
     )
+
+    if controller.is_mock and not force_mock:
+        logger.error(
+            "Không có GPIO thật nên đã hủy chế độ điều khiển motor. "
+            "Sau khi sửa quyền GPIO, hãy chạy lại; chỉ dùng --mock khi muốn giả lập."
+        )
+        controller.cleanup()
+        return 2
 
     if '--remote' in sys.argv or '-r' in sys.argv or '--server' in sys.argv:
         port = 9999
@@ -539,7 +673,9 @@ def main():
     else:
         run_wasd_controller(controller)
 
+    return 0
+
 
 if __name__ == '__main__':
-    main()
+    raise SystemExit(main())
 

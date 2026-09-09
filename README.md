@@ -260,6 +260,11 @@ Kịch bản sẽ tự động mở 2 cửa sổ Terminal riêng biệt chạy �
 ```bash
 cd ~/HC-Robot/robot
 pip install -r requirements.txt
+
+# Cấp quyền GPIO cho tài khoản hiện tại (chỉ cần thực hiện một lần)
+sudo usermod -aG gpio "$USER"
+# Sau lệnh trên, đăng xuất/đăng nhập lại hoặc reboot Pi trước khi chạy robot
+
 colcon build --symlink-install
 source install/setup.bash
 

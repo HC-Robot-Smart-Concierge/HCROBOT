@@ -97,8 +97,8 @@ def _gpio_access_hint() -> str:
         username = getpass.getuser()
         return (
             f"User '{username}' không có quyền đọc/ghi {', '.join(device_paths)}. "
-            f"Chạy: sudo usermod -aG gpio {username} ; sau đó đăng xuất/đăng nhập lại "
-            "(hoặc reboot) rồi chạy lại python3 main.py."
+            "Chạy: bash scripts/setup_gpio_permissions.sh ; sau đó reboot "
+            "rồi chạy lại python3 main.py."
         )
 
     return (

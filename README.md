@@ -261,9 +261,9 @@ Kịch bản sẽ tự động mở 2 cửa sổ Terminal riêng biệt chạy �
 cd ~/HC-Robot/robot
 pip install -r requirements.txt
 
-# Cấp quyền GPIO cho tài khoản hiện tại (chỉ cần thực hiện một lần)
-sudo usermod -aG gpio "$USER"
-# Sau lệnh trên, đăng xuất/đăng nhập lại hoặc reboot Pi trước khi chạy robot
+# Tạo group gpio (nếu Ubuntu chưa có), cài udev rule và cấp quyền cho user
+bash scripts/setup_gpio_permissions.sh
+sudo reboot
 
 colcon build --symlink-install
 source install/setup.bash

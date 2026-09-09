@@ -268,12 +268,22 @@ export const RobotScreenPage = ({ onLogout = () => {} }) => {
 
   // Auto Lock Screen Orientation to Landscape on Mobile/Kiosk Devices
   useEffect(() => {
-    if (window.screen && window.screen.orientation && window.screen.orientation.lock) {
-      window.screen.orientation.lock('landscape').catch(() => {});
+    try {
+      const lockPromise = window.screen?.orientation?.lock?.('landscape');
+      if (lockPromise && typeof lockPromise.catch === 'function') {
+        lockPromise.catch(() => {});
+      }
+    } catch {
+      // Ignore orientation lock errors
     }
     return () => {
-      if (window.screen && window.screen.orientation && window.screen.orientation.unlock) {
-        window.screen.orientation.unlock().catch(() => {});
+      try {
+        const unlockResult = window.screen?.orientation?.unlock?.();
+        if (unlockResult && typeof unlockResult.catch === 'function') {
+          unlockResult.catch(() => {});
+        }
+      } catch {
+        // Ignore orientation unlock errors
       }
     };
   }, []);

@@ -81,7 +81,12 @@ class TTSService:
         """EdgeTTS Neural Engine."""
         try:
             import edge_tts
-            communicate = edge_tts.Communicate(text, voice)
+            # Loại bỏ markdown symbols (*, #, _, `, [ ], ( )) làm lỗi cú pháp đọc của EdgeTTS
+            clean_text = re.sub(r'[*#_`\[\]()]', '', text).strip()
+            if not clean_text:
+                return None
+
+            communicate = edge_tts.Communicate(clean_text, voice)
             audio_bytes = b""
             async for chunk in communicate.stream():
                 if chunk["type"] == "audio":

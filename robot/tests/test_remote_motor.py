@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from motor_controller import MotorController
-from main import run_auto_forward, run_direct_motor_test
+from main import run_auto_drive, run_auto_forward, run_direct_motor_test
 
 
 class FakeAutoSafety:
@@ -118,6 +118,15 @@ class TestMotorControllerRemote(unittest.TestCase):
         self.assertEqual(safety.commands, ["forward"])
         self.assertEqual(safety.enforce_count, 1)
         self.assertEqual(safety.motion, "stop")
+
+    def test_auto_backward_uses_rear_direction(self):
+        safety = FakeAutoSafety()
+        with patch("main.time.sleep", return_value=None):
+            result = run_auto_drive(safety, "backward", countdown=0)
+
+        self.assertEqual(result, 0)
+        self.assertEqual(safety.commands, ["backward"])
+        self.assertEqual(safety.enforce_count, 1)
 
     def test_auto_forward_does_not_move_when_initially_unsafe(self):
         safety = FakeAutoSafety(can_start=False)

@@ -64,28 +64,43 @@ def run_direct_motor_test(motor, direction, duration_seconds=10.0, countdown=3):
     return 0
 
 
-def run_auto_forward(safety, countdown=3):
-    """Tự chạy về FRONT và kết thúc ngay khi obstacle safety ra lệnh dừng."""
+def run_auto_drive(safety, direction, countdown=3):
+    """Tự chạy tiến/lùi và kết thúc ngay khi obstacle safety ra lệnh dừng."""
+    sensor_name = {"forward": "front", "backward": "rear"}.get(direction)
+    if sensor_name is None:
+        raise ValueError("Auto drive chỉ hỗ trợ forward hoặc backward")
+
+    label = direction.upper()
+    sensor_label = sensor_name.upper()
     logger.warning(
-        "AUTO FORWARD: robot chỉ chạy về FRONT và sẽ dừng khi front <= ngưỡng, "
-        "sensor lỗi hoặc mất Serial. Nhấn Ctrl+C để dừng thủ công."
+        "AUTO %s: robot sẽ dừng khi %s <= ngưỡng, sensor lỗi hoặc mất Serial. "
+        "Nhấn Ctrl+C để dừng thủ công.",
+        label,
+        sensor_name,
     )
     for remaining in range(int(countdown), 0, -1):
-        print(f"Robot sẽ tự chạy về FRONT sau {remaining}...")
+        print(f"Robot sẽ tự chạy {label} về phía {sensor_label} sau {remaining}...")
         time.sleep(1.0)
 
     safety.update()
-    if not safety.command("forward"):
-        logger.error("AUTO FORWARD không khởi động vì điều kiện ban đầu không an toàn.")
+    if not safety.command(direction):
+        logger.error(
+            "AUTO %s không khởi động vì điều kiện ban đầu không an toàn.", label
+        )
         return 4
 
-    logger.info("AUTO FORWARD đang chạy; chờ vật cản phía FRONT...")
-    while safety.motion == "forward":
+    logger.info("AUTO %s đang chạy; chờ vật cản phía %s...", label, sensor_label)
+    while safety.motion == direction:
         if not safety.enforce():
-            logger.info("AUTO FORWARD đã dừng an toàn và sẽ không tự chạy lại.")
+            logger.info("AUTO %s đã dừng an toàn và sẽ không tự chạy lại.", label)
             break
         time.sleep(0.01)
     return 0
+
+
+def run_auto_forward(safety, countdown=3):
+    """Alias tương thích với lệnh --auto-forward cũ."""
+    return run_auto_drive(safety, "forward", countdown=countdown)
 
 
 def _print_controls(port, thresholds, stale_timeout, turn_clearance):
@@ -137,7 +152,8 @@ def build_argument_parser():
     )
     parser.add_argument("--gpio-chip", type=int, help="Ép gpiochip; thường tự phát hiện")
     parser.add_argument("--mock", action="store_true", help="Giả lập motor nhưng vẫn đọc sensor")
-    parser.add_argument(
+    mode_group = parser.add_mutually_exclusive_group()
+    mode_group.add_argument(
         "--drive-test",
         choices=("forward", "backward", "left", "right"),
         help="Chạy motor trực tiếp theo hướng chọn, bỏ qua toàn bộ sensor",
@@ -148,12 +164,17 @@ def build_argument_parser():
         default=10.0,
         help="Thời gian direct motor test; đặt 0 để chạy tới khi nhấn Ctrl+C",
     )
-    parser.add_argument(
+    mode_group.add_argument(
         "--auto-forward",
         action="store_true",
-        help="Tự chạy về FRONT và dừng hẳn khi gặp vật cản hoặc sensor lỗi",
+        help="Alias cũ của --auto-drive forward",
     )
-    parser.add_argument(
+    mode_group.add_argument(
+        "--auto-drive",
+        choices=("forward", "backward"),
+        help="Tự chạy tiến/lùi và dừng hẳn bằng sensor FRONT/REAR tương ứng",
+    )
+    mode_group.add_argument(
         "--motor-only",
         action="store_true",
         help="Test motor không dùng sensor (không có obstacle fail-safe)",
@@ -210,8 +231,8 @@ def main(argv=None):
         _value(args.sensor_timeout, safety_cfg, "stale_timeout_seconds", 0.4)
     )
     thresholds = {
-        "forward": float(_value(args.front_stop, safety_cfg, "front_stop_cm", 35.0)),
-        "backward": float(_value(args.rear_stop, safety_cfg, "rear_stop_cm", 30.0)),
+        "forward": float(_value(args.front_stop, safety_cfg, "front_stop_cm", 50.0)),
+        "backward": float(_value(args.rear_stop, safety_cfg, "rear_stop_cm", 45.0)),
         "left": float(_value(args.left_stop, safety_cfg, "left_stop_cm", 25.0)),
         "right": float(_value(args.right_stop, safety_cfg, "right_stop_cm", 25.0)),
     }
@@ -267,8 +288,9 @@ def main(argv=None):
     last_status_sequence = 0
 
     try:
-        if args.auto_forward:
-            return run_auto_forward(safety)
+        auto_direction = args.auto_drive or ("forward" if args.auto_forward else None)
+        if auto_direction:
+            return run_auto_drive(safety, auto_direction)
 
         while True:
             safety.enforce()

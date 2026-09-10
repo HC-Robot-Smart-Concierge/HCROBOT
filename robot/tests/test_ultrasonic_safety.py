@@ -118,11 +118,11 @@ class TestObstacleSafety(unittest.TestCase):
         self.assertFalse(self.safety.enforce())
 
         for sequence in (3, 4):
-            self.reader.snapshot = snapshot(sequence=sequence, front=50.0)
+            self.reader.snapshot = snapshot(sequence=sequence, front=70.0)
             self.safety.enforce()
         self.assertFalse(self.safety.command("forward"))
 
-        self.reader.snapshot = snapshot(sequence=5, front=50.0)
+        self.reader.snapshot = snapshot(sequence=5, front=70.0)
         self.safety.enforce()
         self.assertTrue(self.safety.command("forward"))
         self.assertEqual(self.motor.motion, "forward")

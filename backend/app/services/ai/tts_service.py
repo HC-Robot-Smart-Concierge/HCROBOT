@@ -1,7 +1,9 @@
 import base64
+import hashlib
 import logging
+import os
 import re
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Dict
 
 import httpx
 
@@ -13,12 +15,23 @@ logger = logging.getLogger(__name__)
 class TTSService:
     """
     AI Voice Concierge Speech Synthesis Service.
-    Supports EdgeTTS Neural, ElevenLabs, and OpenAI TTS with seamless fallback.
+    Supports EdgeTTS Neural, ElevenLabs, and OpenAI TTS with multi-tier Audio Caching (Memory + Disk).
     """
 
     def __init__(self):
         self.default_vi_voice = "vi-VN-HoaiMyNeural"
         self.default_en_voice = "en-US-JennyNeural"
+        
+        # 1. Memory LRU/Cache
+        self._memory_cache: Dict[str, str] = {}
+        
+        # 2. Disk Cache Directory: backend/static/audio_cache
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        self._cache_dir = os.path.join(current_dir, "..", "..", "..", "static", "audio_cache")
+        try:
+            os.makedirs(self._cache_dir, exist_ok=True)
+        except Exception as e:
+            logger.warning(f"[TTSService] Cannot create audio_cache dir: {e}")
 
     @staticmethod
     def is_vietnamese(text: str) -> bool:
@@ -30,6 +43,39 @@ class TTSService:
         vi_words = [r'\bdạ\b', r'\bem\b', r'\banh\b', r'\bchị\b', r'\bquý khách\b', r'\bphòng\b', r'\bkhách sạn\b', r'\bạ\b']
         return any(re.search(w, text, re.IGNORECASE) for w in vi_words)
 
+    def _get_cache_key(self, text: str, provider: str, voice: str) -> str:
+        clean = text.strip()
+        raw = f"{provider}:{voice}:{clean}"
+        return hashlib.md5(raw.encode("utf-8")).hexdigest()
+
+    def _get_from_cache(self, cache_key: str) -> Optional[str]:
+        # 1. Kiểm tra RAM cache trước (< 0.1ms)
+        if cache_key in self._memory_cache:
+            return self._memory_cache[cache_key]
+        
+        # 2. Kiểm tra Disk cache (< 2ms)
+        disk_path = os.path.join(self._cache_dir, f"{cache_key}.mp3")
+        if os.path.isfile(disk_path):
+            try:
+                with open(disk_path, "rb") as f:
+                    data = f.read()
+                    b64 = base64.b64encode(data).decode("utf-8")
+                    self._memory_cache[cache_key] = b64
+                    return b64
+            except Exception as e:
+                logger.warning(f"[TTSService] Failed to read disk cache: {e}")
+        return None
+
+    def _save_to_cache(self, cache_key: str, audio_b64: str):
+        self._memory_cache[cache_key] = audio_b64
+        # Lưu vào Disk cache chạy nhanh
+        disk_path = os.path.join(self._cache_dir, f"{cache_key}.mp3")
+        try:
+            with open(disk_path, "wb") as f:
+                f.write(base64.b64decode(audio_b64))
+        except Exception as e:
+            logger.warning(f"[TTSService] Failed to write disk cache: {e}")
+
     async def synthesize(
         self,
         text: str,
@@ -38,7 +84,7 @@ class TTSService:
         language: Optional[str] = None,
     ) -> Tuple[str, str, str]:
         """
-        Tổng hợp giọng đọc từ văn bản.
+        Tổng hợp giọng đọc từ văn bản kèm bộ đệm âm thanh siêu tốc.
         Trả về: (audio_base64, mime_type, provider_used)
         """
         if not text or not text.strip():
@@ -46,12 +92,21 @@ class TTSService:
 
         selected_provider = (provider or settings.TTS_PROVIDER or "edge").lower()
         is_vi = self.is_vietnamese(text) or (language and "vi" in language.lower())
+        target_voice = self.default_vi_voice if is_vi else (voice or self.default_en_voice)
+
+        # 0. KIỂM TRA AUDIO CACHE TRƯỚC (< 1ms)
+        cache_key = self._get_cache_key(text, selected_provider, target_voice)
+        cached_audio = self._get_from_cache(cache_key)
+        if cached_audio:
+            logger.info(f"[TTSService Cache Hit] Phục vụ âm thanh từ bộ nhớ đệm (0ms) cho text: '{text[:25]}...'")
+            return cached_audio, "audio/mp3", f"{selected_provider}_cached"
 
         # 1. Thử nghiệm provider ElevenLabs
         if selected_provider == "elevenlabs" and settings.ELEVENLABS_API_KEY:
             try:
                 audio_b64 = await self._synthesize_elevenlabs(text, voice)
                 if audio_b64:
+                    self._save_to_cache(cache_key, audio_b64)
                     return audio_b64, "audio/mp3", "elevenlabs"
             except Exception as e:
                 logger.warning(f"[TTSService] ElevenLabs synthesis failed: {e}. Fallback to EdgeTTS.")
@@ -61,15 +116,16 @@ class TTSService:
             try:
                 audio_b64 = await self._synthesize_openai(text, voice)
                 if audio_b64:
+                    self._save_to_cache(cache_key, audio_b64)
                     return audio_b64, "audio/mp3", "openai"
             except Exception as e:
                 logger.warning(f"[TTSService] OpenAI TTS synthesis failed: {e}. Fallback to EdgeTTS.")
 
         # 3. Mặc định dùng EdgeTTS Neural (Siêu tự nhiên & Miễn phí)
         try:
-            target_voice = self.default_vi_voice if is_vi else (voice or self.default_en_voice)
             audio_b64 = await self._synthesize_edge_tts(text, target_voice)
             if audio_b64:
+                self._save_to_cache(cache_key, audio_b64)
                 return audio_b64, "audio/mp3", "edge"
         except Exception as e:
             logger.warning(f"[TTSService] EdgeTTS synthesis failed: {e}")
@@ -81,7 +137,6 @@ class TTSService:
         """EdgeTTS Neural Engine."""
         try:
             import edge_tts
-            # Loại bỏ markdown symbols (*, #, _, `, [ ], ( )) làm lỗi cú pháp đọc của EdgeTTS
             clean_text = re.sub(r'[*#_`\[\]()]', '', text).strip()
             if not clean_text:
                 return None
@@ -94,7 +149,7 @@ class TTSService:
             if audio_bytes:
                 return base64.b64encode(audio_bytes).decode("utf-8")
         except ImportError:
-            logger.info("[TTSService] edge_tts library not installed. Attempting HTTP endpoint synthesis.")
+            logger.info("[TTSService] edge_tts library not installed.")
         except Exception as e:
             logger.warning(f"[TTSService] EdgeTTS error: {e}")
         return None

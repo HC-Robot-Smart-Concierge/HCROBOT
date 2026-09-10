@@ -117,7 +117,7 @@ export const useSpeechSynthesis = () => {
     }
   };
 
-  const speak = async (text, language = 'vi-VN', onEndCallback = null, onStartCallback = null) => {
+  const speak = async (text, language = 'vi-VN', onEndCallback = null, onStartCallback = null, preloadedAudioBase64 = null) => {
     cancel();
 
     if (!text || !text.trim()) {
@@ -126,9 +126,38 @@ export const useSpeechSynthesis = () => {
       return;
     }
 
+    // 0. ƯU TIÊN PHÁT NGAY LẬP TỨC AUDIO PRELOADED TỪ /chat (0ms Network delay)
+    if (preloadedAudioBase64 && preloadedAudioBase64.length > 100) {
+      try {
+        const audioSrc = `data:audio/mp3;base64,${preloadedAudioBase64}`;
+        const audio = new Audio(audioSrc);
+        audioRef.current = audio;
+
+        audio.onplay = () => {
+          setIsSpeaking(true);
+          if (onStartCallback) onStartCallback();
+        };
+
+        audio.onended = () => {
+          setIsSpeaking(false);
+          if (onEndCallback) onEndCallback();
+        };
+
+        audio.onerror = () => {
+          setIsSpeaking(false);
+          speakWebSpeech(text, language, onEndCallback, onStartCallback);
+        };
+
+        await audio.play();
+        return;
+      } catch (playErr) {
+        console.warn("[TTS Hook] Cannot play preloaded audio directly, fallback to network/speech:", playErr);
+      }
+    }
+
     try {
-      // 1. Thử gọi Backend TTS Engine (EdgeTTS giọng Hoài My tự nhiên). Cho phép tối đa 3.5s để stream giọng đọc mượt mà
-      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('TTS Timeout')), 3500));
+      // 1. Thử gọi Backend TTS Engine (EdgeTTS giọng Hoài My tự nhiên). Đã có Disk Cache 0ms
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('TTS Timeout')), 12000));
       const res = await Promise.race([
         synthesizeSpeech(text, 'edge', null, language),
         timeoutPromise

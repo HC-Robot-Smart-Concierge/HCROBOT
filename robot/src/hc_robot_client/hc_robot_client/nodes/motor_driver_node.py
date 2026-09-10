@@ -13,7 +13,7 @@ from hc_robot_client.utils.motor_controller import MotorController
 class MotorDriverNode(Node):
     """
     ROS 2 Node tiếp nhận các lệnh vận tốc / hướng từ topic /cmd_vel (Twist hoặc String)
-    và điều khiển các chân GPIO của 2 mạch L298N trên Raspberry Pi 5.
+    và điều khiển hai channel của một L298N trên Raspberry Pi 5.
     """
 
     def __init__(self):

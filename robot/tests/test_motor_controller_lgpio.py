@@ -15,6 +15,8 @@ class FakeLGPIO:
         self.claimed = []
         self.freed = []
         self.closed = []
+        self.writes = []
+        self.pwm_calls = []
 
     def gpiochip_open(self, chip_num):
         self.opened.append(chip_num)
@@ -26,10 +28,10 @@ class FakeLGPIO:
         self.claimed.append((handle, pin, value))
 
     def gpio_write(self, handle, pin, value):
-        pass
+        self.writes.append((handle, pin, value))
 
     def tx_pwm(self, handle, pin, frequency, duty_cycle):
-        pass
+        self.pwm_calls.append((handle, pin, frequency, duty_cycle))
 
     def gpio_free(self, handle, pin):
         self.freed.append((handle, pin))
@@ -63,6 +65,10 @@ class TestLGPIOBackend(unittest.TestCase):
                 (107, 22, 0),
                 (107, 23, 0),
             ])
+
+            controller.forward()
+            self.assertEqual(fake_lgpio.pwm_calls, [])
+            self.assertEqual(fake_lgpio.writes[-2:], [(107, 17, 1), (107, 22, 1)])
 
             controller.cleanup()
             self.assertEqual(fake_lgpio.closed, [107])

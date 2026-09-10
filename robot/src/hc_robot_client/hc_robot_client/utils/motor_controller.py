@@ -33,9 +33,9 @@ class MockDigitalOutputDevice:
 
 class MotorController:
     """
-    Quản lý điều khiển 2 mạch L298N kết nối với Raspberry Pi 5.
-    - Mạch 1 (Bên Trái): Tiến = GPIO 17 (IN1+IN3), Lùi = GPIO 27 (IN2+IN4)
-    - Mạch 2 (Bên Phải): Tiến = GPIO 22 (IN1+IN3), Lùi = GPIO 23 (IN2+IN4)
+    Quản lý một L298N kết nối với Raspberry Pi 5.
+    - Channel A / hai motor trái: IN1 = GPIO17, IN2 = GPIO27
+    - Channel B / hai motor phải: IN3 = GPIO22, IN4 = GPIO23
     """
 
     def __init__(

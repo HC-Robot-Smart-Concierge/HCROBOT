@@ -241,6 +241,8 @@ Kịch bản sẽ tự động mở 2 cửa sổ Terminal riêng biệt chạy �
 
 ### Bước 5: Cấu Hình & Khởi Chạy Robot Node (Raspberry Pi 5 + ROS 2)
 
+Hướng dẫn riêng cho Raspberry Pi 5 + ESP32 + L298N + 4 HC-SR04: [`robot/ULTRASONIC_SETUP.md`](robot/ULTRASONIC_SETUP.md).
+
 #### 1. Cấu hình mạng VPN Tailscale (Khuyên dùng)
 Để Pi 5 và Laptop Backend kết nối cố định không phụ thuộc vào địa chỉ Wi-Fi local:
 - **Trên Laptop Windows**: Cài Tailscale, đăng nhập và lấy IP Tailscale (Ví dụ: `100.105.12.34`).

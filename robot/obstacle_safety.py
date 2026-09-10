@@ -11,8 +11,8 @@ logger = logging.getLogger("ObstacleSafety")
 SENSOR_NAMES = ("front", "rear", "left", "right")
 
 DEFAULT_THRESHOLDS_CM = {
-    "forward": 45.0,
-    "backward": 45.0,
+    "forward": 65.0,
+    "backward": 65.0,
     "left": 25.0,
     "right": 25.0,
 }

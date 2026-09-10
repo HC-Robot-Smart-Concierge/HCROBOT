@@ -231,8 +231,8 @@ def main(argv=None):
         _value(args.sensor_timeout, safety_cfg, "stale_timeout_seconds", 0.4)
     )
     thresholds = {
-        "forward": float(_value(args.front_stop, safety_cfg, "front_stop_cm", 45.0)),
-        "backward": float(_value(args.rear_stop, safety_cfg, "rear_stop_cm", 45.0)),
+        "forward": float(_value(args.front_stop, safety_cfg, "front_stop_cm", 65.0)),
+        "backward": float(_value(args.rear_stop, safety_cfg, "rear_stop_cm", 65.0)),
         "left": float(_value(args.left_stop, safety_cfg, "left_stop_cm", 25.0)),
         "right": float(_value(args.right_stop, safety_cfg, "right_stop_cm", 25.0)),
     }

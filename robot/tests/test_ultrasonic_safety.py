@@ -78,7 +78,7 @@ class TestObstacleSafety(unittest.TestCase):
         self.safety = ObstacleSafetyController(self.motor, self.reader)
 
     def test_direction_uses_corresponding_sensor(self):
-        self.reader.snapshot = snapshot(front=10.0, rear=50.0)
+        self.reader.snapshot = snapshot(front=10.0, rear=80.0)
         self.assertFalse(self.safety.command("forward"))
         self.assertEqual(self.motor.motion, "stop")
         self.assertTrue(self.safety.command("backward"))
@@ -118,11 +118,11 @@ class TestObstacleSafety(unittest.TestCase):
         self.assertFalse(self.safety.enforce())
 
         for sequence in (3, 4):
-            self.reader.snapshot = snapshot(sequence=sequence, front=70.0)
+            self.reader.snapshot = snapshot(sequence=sequence, front=90.0)
             self.safety.enforce()
         self.assertFalse(self.safety.command("forward"))
 
-        self.reader.snapshot = snapshot(sequence=5, front=70.0)
+        self.reader.snapshot = snapshot(sequence=5, front=90.0)
         self.safety.enforce()
         self.assertTrue(self.safety.command("forward"))
         self.assertEqual(self.motor.motion, "forward")

@@ -5,7 +5,31 @@ from unittest.mock import patch
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from motor_controller import MotorController
-from main import run_direct_motor_test
+from main import run_auto_forward, run_direct_motor_test
+
+
+class FakeAutoSafety:
+    def __init__(self, can_start=True):
+        self.can_start = can_start
+        self.motion = "stop"
+        self.commands = []
+        self.update_count = 0
+        self.enforce_count = 0
+
+    def update(self):
+        self.update_count += 1
+
+    def command(self, motion):
+        self.commands.append(motion)
+        if not self.can_start:
+            return False
+        self.motion = motion
+        return True
+
+    def enforce(self):
+        self.enforce_count += 1
+        self.motion = "stop"
+        return False
 
 
 class TestMotorControllerRemote(unittest.TestCase):
@@ -84,6 +108,25 @@ class TestMotorControllerRemote(unittest.TestCase):
         self.assertEqual(controller.motion, "stop")
         self.assertFalse(controller.left_forward_dev.is_active)
         self.assertFalse(controller.right_forward_dev.is_active)
+
+    def test_auto_forward_starts_once_and_exits_after_safety_stop(self):
+        safety = FakeAutoSafety()
+        with patch("main.time.sleep", return_value=None):
+            result = run_auto_forward(safety, countdown=0)
+
+        self.assertEqual(result, 0)
+        self.assertEqual(safety.commands, ["forward"])
+        self.assertEqual(safety.enforce_count, 1)
+        self.assertEqual(safety.motion, "stop")
+
+    def test_auto_forward_does_not_move_when_initially_unsafe(self):
+        safety = FakeAutoSafety(can_start=False)
+        with patch("main.time.sleep", return_value=None):
+            result = run_auto_forward(safety, countdown=0)
+
+        self.assertEqual(result, 4)
+        self.assertEqual(safety.commands, ["forward"])
+        self.assertEqual(safety.enforce_count, 0)
 
 
 if __name__ == '__main__':

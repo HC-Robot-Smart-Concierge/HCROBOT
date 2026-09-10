@@ -64,6 +64,30 @@ def run_direct_motor_test(motor, direction, duration_seconds=10.0, countdown=3):
     return 0
 
 
+def run_auto_forward(safety, countdown=3):
+    """Tự chạy về FRONT và kết thúc ngay khi obstacle safety ra lệnh dừng."""
+    logger.warning(
+        "AUTO FORWARD: robot chỉ chạy về FRONT và sẽ dừng khi front <= ngưỡng, "
+        "sensor lỗi hoặc mất Serial. Nhấn Ctrl+C để dừng thủ công."
+    )
+    for remaining in range(int(countdown), 0, -1):
+        print(f"Robot sẽ tự chạy về FRONT sau {remaining}...")
+        time.sleep(1.0)
+
+    safety.update()
+    if not safety.command("forward"):
+        logger.error("AUTO FORWARD không khởi động vì điều kiện ban đầu không an toàn.")
+        return 4
+
+    logger.info("AUTO FORWARD đang chạy; chờ vật cản phía FRONT...")
+    while safety.motion == "forward":
+        if not safety.enforce():
+            logger.info("AUTO FORWARD đã dừng an toàn và sẽ không tự chạy lại.")
+            break
+        time.sleep(0.01)
+    return 0
+
+
 def _print_controls(port, thresholds, stale_timeout, turn_clearance):
     print("\n" + "=" * 68)
     print(" HCROBOT: MOTOR + 4 HC-SR04 QUA ESP32 USB SERIAL")
@@ -123,6 +147,11 @@ def build_argument_parser():
         type=float,
         default=10.0,
         help="Thời gian direct motor test; đặt 0 để chạy tới khi nhấn Ctrl+C",
+    )
+    parser.add_argument(
+        "--auto-forward",
+        action="store_true",
+        help="Tự chạy về FRONT và dừng hẳn khi gặp vật cản hoặc sensor lỗi",
     )
     parser.add_argument(
         "--motor-only",
@@ -238,6 +267,9 @@ def main(argv=None):
     last_status_sequence = 0
 
     try:
+        if args.auto_forward:
+            return run_auto_forward(safety)
+
         while True:
             safety.enforce()
 

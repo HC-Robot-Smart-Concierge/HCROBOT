@@ -129,6 +129,9 @@ python3 main.py --port /dev/ttyUSB0 --front-stop 35 --rear-stop 30 \
 
 # Xem toàn bộ packet debug
 python3 main.py --debug
+
+# Tự chạy về FRONT và dừng hẳn khi gặp vật cản
+python3 main.py --port /dev/ttyUSB0 --auto-forward
 ```
 
 ## 10. Test theo từng stage
@@ -183,7 +186,17 @@ python3 main.py --drive-test forward --drive-test-seconds 0
 
 `--drive-test` bỏ qua toàn bộ obstacle safety, vì vậy chỉ dùng khi đã kê bánh khỏi mặt đất.
 
-### e. Sensor tự stop motor
+### e. Tự chạy thẳng tới vật cản
+
+Chế độ này không cần bấm W. Robot đếm ngược ba giây, chạy về phía cảm biến FRONT,
+dừng khi khoảng cách chạm ngưỡng `front_stop_cm` (mặc định 35cm), sensor lỗi hoặc
+mất Serial. Sau khi dừng, robot không tự chạy lại.
+
+```bash
+python3 main.py --port /dev/ttyUSB0 --auto-forward
+```
+
+### f. Sensor tự stop motor
 
 Test logic với motor giả trước:
 

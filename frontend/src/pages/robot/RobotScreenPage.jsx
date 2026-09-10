@@ -128,39 +128,24 @@ export const RobotScreenPage = ({ onLogout = () => {} }) => {
       'hồ bơi', 'wifi', 'mật khẩu wifi', 'giờ trả phòng'
     ].some(k => lowerQuery.includes(k));
 
-    if (!isFastPath) {
-      // Phản hồi giọng nói tức thì < 50ms giúp cảm giác không bị chờ đợt
-      speak("Dạ, quý khách chờ em một tí nhé...", "vi-VN");
-    }
 
     setCurrentState('RT-04');
     setIsProcessing(true);
 
     try {
-      const needsIntentCheck = anyKeywordMatch(lowerQuery, ["khăn", "nước", "dọn", "phòng", "đồ ăn", "hỏng", "sửa", "bàn", "towel", "clean", "food", "room"]);
-
+      // Gọi Chat AI - Backend đã tự động xử lý Intent & Ticket trong nền ngầm không gây nghẽn
       const chatRes = await sendChatPrompt(query, null, "auto", guestEmotion, sessionId, activeRoomNumber);
-      let intentRes = { action: 'faq' };
-
-      if (needsIntentCheck) {
-        intentRes = await extractIntent(query, sessionId, activeRoomNumber);
-      }
 
       let replyText = chatRes.response || 'Dạ, tôi đã ghi nhận yêu cầu của quý khách.';
-      if (intentRes && intentRes.suggested_reply) {
-        replyText = intentRes.suggested_reply;
-      }
-
       const detectedLang = chatRes.detected_language || 'Tiếng Việt';
       const langCode = chatRes.lang_code || 'vi-VN';
 
-      const updatedRoom = (intentRes && intentRes.room_number) || chatRes.current_room_number;
+      const updatedRoom = chatRes.current_room_number;
       if (updatedRoom) {
         setActiveRoomNumber(updatedRoom);
       }
 
       setLanguage(detectedLang);
-      setDetectedIntent(intentRes);
       setIsProcessing(false);
 
       if (lowerQuery.includes('hồ bơi') || lowerQuery.includes('pool') || lowerQuery.includes('ở đâu') || lowerQuery.includes('tầng') || lowerQuery.includes('where')) {

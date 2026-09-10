@@ -13,7 +13,7 @@ export const sendChatPrompt = async (
   roomNumber = null
 ) => {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 4500);
+  const timeoutId = setTimeout(() => controller.abort(), 20000);
 
   try {
     const response = await fetch(`${API_BASE_URL}/chat`, {
@@ -51,7 +51,7 @@ export const sendChatPrompt = async (
 
 export const extractIntent = async (userSpeech, sessionId = 'default_session', roomNumber = null) => {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 3000);
+  const timeoutId = setTimeout(() => controller.abort(), 10000);
 
   try {
     const response = await fetch(`${API_BASE_URL}/intent`, {

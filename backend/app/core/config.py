@@ -19,7 +19,7 @@ class Settings(BaseSettings):
 
 
     # Ollama Configuration
-    OLLAMA_HOST: str = "http://localhost:11434"
+    OLLAMA_HOST: str = "http://127.0.0.1:11434"
     OLLAMA_MODEL: str = "qwen2.5:3b-instruct"
     OLLAMA_EMBED_MODEL: str = "bge-m3"
 

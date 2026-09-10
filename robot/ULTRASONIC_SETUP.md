@@ -171,6 +171,18 @@ python3 main.py --motor-only
 
 Xác nhận W/S/A/D đúng chiều. Nếu sai một bên, ngắt nguồn motor trước khi đảo hai dây OUT của bên đó.
 
+Chạy ngay một hướng, không cần bấm WASD và không mở ESP32 Serial:
+
+```bash
+# Tự dừng sau 10 giây
+python3 main.py --drive-test forward
+
+# Chạy liên tục cho tới khi nhấn Ctrl+C
+python3 main.py --drive-test forward --drive-test-seconds 0
+```
+
+`--drive-test` bỏ qua toàn bộ obstacle safety, vì vậy chỉ dùng khi đã kê bánh khỏi mặt đất.
+
 ### e. Sensor tự stop motor
 
 Test logic với motor giả trước:

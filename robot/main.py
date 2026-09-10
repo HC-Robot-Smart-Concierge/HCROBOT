@@ -16,6 +16,54 @@ def _value(cli_value, config, key, default):
     return cli_value if cli_value is not None else config.get(key, default)
 
 
+def run_direct_motor_test(motor, direction, duration_seconds=10.0, countdown=3):
+    """Chạy motor trực tiếp, không mở Serial và không áp dụng obstacle safety."""
+    actions = {
+        "forward": motor.forward,
+        "backward": motor.backward,
+        "left": motor.turn_left,
+        "right": motor.turn_right,
+    }
+    if direction not in actions:
+        raise ValueError(f"Hướng test không hợp lệ: {direction}")
+
+    duration_seconds = float(duration_seconds)
+    if duration_seconds < 0:
+        raise ValueError("Thời gian test không được âm")
+
+    logger.warning(
+        "DIRECT MOTOR TEST: bỏ qua toàn bộ ESP32/sensor. "
+        "Kê bánh khỏi mặt đất và nhấn Ctrl+C để dừng khẩn cấp."
+    )
+    try:
+        for remaining in range(int(countdown), 0, -1):
+            print(f"Motor sẽ chạy {direction.upper()} sau {remaining}...")
+            time.sleep(1.0)
+
+        actions[direction]()
+        if duration_seconds == 0:
+            print(f"Đang chạy {direction.upper()} liên tục; nhấn Ctrl+C để DỪNG.")
+            while True:
+                time.sleep(0.1)
+        else:
+            print(
+                f"Đang chạy {direction.upper()} trong {duration_seconds:.1f} giây; "
+                "nhấn Ctrl+C để dừng sớm."
+            )
+            deadline = time.monotonic() + duration_seconds
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+                time.sleep(min(0.1, remaining))
+    except KeyboardInterrupt:
+        logger.info("Đã nhận Ctrl+C trong direct motor test")
+    finally:
+        motor.cleanup()
+
+    return 0
+
+
 def _print_controls(port, thresholds, stale_timeout, turn_clearance):
     print("\n" + "=" * 68)
     print(" HCROBOT: MOTOR + 4 HC-SR04 QUA ESP32 USB SERIAL")
@@ -66,6 +114,17 @@ def build_argument_parser():
     parser.add_argument("--gpio-chip", type=int, help="Ép gpiochip; thường tự phát hiện")
     parser.add_argument("--mock", action="store_true", help="Giả lập motor nhưng vẫn đọc sensor")
     parser.add_argument(
+        "--drive-test",
+        choices=("forward", "backward", "left", "right"),
+        help="Chạy motor trực tiếp theo hướng chọn, bỏ qua toàn bộ sensor",
+    )
+    parser.add_argument(
+        "--drive-test-seconds",
+        type=float,
+        default=10.0,
+        help="Thời gian direct motor test; đặt 0 để chạy tới khi nhấn Ctrl+C",
+    )
+    parser.add_argument(
         "--motor-only",
         action="store_true",
         help="Test motor không dùng sensor (không có obstacle fail-safe)",
@@ -101,6 +160,13 @@ def main(argv=None):
         )
         motor.cleanup()
         return 2
+
+    if args.drive_test:
+        return run_direct_motor_test(
+            motor,
+            args.drive_test,
+            duration_seconds=args.drive_test_seconds,
+        )
 
     if args.motor_only:
         logger.warning(

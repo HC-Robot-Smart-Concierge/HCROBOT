@@ -1,9 +1,11 @@
 import os
 import sys
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from motor_controller import MotorController
+from main import run_direct_motor_test
 
 
 class TestMotorControllerRemote(unittest.TestCase):
@@ -67,6 +69,21 @@ class TestMotorControllerRemote(unittest.TestCase):
             self.assertTrue(controller.right_backward_dev.is_active)
         finally:
             controller.cleanup()
+
+    def test_direct_motor_test_runs_selected_direction_and_cleans_up(self):
+        controller = MotorController(force_mock=True)
+        with patch("main.time.sleep", return_value=None):
+            result = run_direct_motor_test(
+                controller,
+                "forward",
+                duration_seconds=0.01,
+                countdown=0,
+            )
+
+        self.assertEqual(result, 0)
+        self.assertEqual(controller.motion, "stop")
+        self.assertFalse(controller.left_forward_dev.is_active)
+        self.assertFalse(controller.right_forward_dev.is_active)
 
 
 if __name__ == '__main__':

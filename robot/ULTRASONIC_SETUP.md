@@ -88,7 +88,7 @@ Nếu thay đổi cách lắp motor, có thể bật/tắt hai tùy chọn đả
 Code tích hợp đầy đủ ở [`main.py`](main.py), logic fail-safe ở [`obstacle_safety.py`](obstacle_safety.py).
 
 - Forward kiểm tra FRONT; backward kiểm tra REAR. Khi quay, code kiểm tra cảm biến bên quay và cả FRONT/REAR vì đầu và đuôi xe quét theo vòng cung.
-- Ngưỡng mặc định đã bù quán tính: FRONT 50cm, REAR 45cm, LEFT/RIGHT 25cm; khoảng trống FRONT/REAR khi quay là 25cm.
+- Ngưỡng mặc định đã bù quán tính: FRONT/REAR 45cm, LEFT/RIGHT 25cm; khoảng trống FRONT/REAR khi quay là 25cm.
 - Cho phép giữ số đo hợp lệ gần nhất qua đúng một packet `null`, tối đa 0.2s. Hai packet `null` liên tiếp, packet quá 0.4s hoặc khoảng cách chạm ngưỡng đều dừng motor.
 - Sau một lần bị safety chặn, hướng đó chỉ mở khóa khi có ba packet hợp lệ liên tiếp cao hơn ngưỡng dừng 10cm. Robot không tự chạy lại; người điều khiển phải bấm lệnh mới.
 - Trong lúc motor đang chạy, safety được kiểm tra liên tục, không chỉ lúc bấm phím.
@@ -124,7 +124,7 @@ source .venv/bin/activate
 python3 main.py
 
 # Hoặc ép cổng/ngưỡng
-python3 main.py --port /dev/ttyUSB0 --front-stop 50 --rear-stop 45 \
+python3 main.py --port /dev/ttyUSB0 --front-stop 45 --rear-stop 45 \
   --left-stop 25 --right-stop 25 --sensor-timeout 0.4
 
 # Xem toàn bộ packet debug
@@ -190,8 +190,8 @@ python3 main.py --drive-test forward --drive-test-seconds 0
 ### e. Tự chạy tiến/lùi tới vật cản
 
 Chế độ này không cần bấm W/S. Robot đếm ngược ba giây rồi chạy theo hướng đã chọn.
-`forward` dùng FRONT và dừng mặc định ở 50cm; `backward` dùng REAR và dừng mặc định
-ở 45cm. Sensor lỗi hoặc mất Serial cũng làm robot dừng. Robot không tự chạy lại.
+`forward` dùng FRONT và `backward` dùng REAR; cả hai dừng mặc định ở 45cm.
+Sensor lỗi hoặc mất Serial cũng làm robot dừng. Robot không tự chạy lại.
 
 ```bash
 python3 main.py --port /dev/ttyUSB0 --auto-drive forward
@@ -212,7 +212,7 @@ Sau đó test motor thật khi bánh vẫn được kê:
 python3 main.py --port auto --debug
 ```
 
-Bấm W rồi đưa vật vào FRONT tới 50cm: phải có `SAFETY STOP FORWARD`. Lặp với S/REAR ở 45cm và A/D ở 25cm. Khi đang chạy, rút USB ESP32: motor phải dừng sau tối đa khoảng 0.4s cộng thời gian một vòng kiểm tra.
+Bấm W rồi đưa vật vào FRONT tới 45cm: phải có `SAFETY STOP FORWARD`. Lặp với S/REAR cũng ở 45cm và A/D ở 25cm. Khi đang chạy, rút USB ESP32: motor phải dừng sau tối đa khoảng 0.4s cộng thời gian một vòng kiểm tra.
 
 ## 11. Logging/debug
 

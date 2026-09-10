@@ -26,7 +26,7 @@ robot:
 
   safety:
     # Ngưỡng ban đầu an toàn cho xe chạy full-speed (ENA/ENB đang gắn jumper).
-    front_stop_cm: 50
+    front_stop_cm: 45
     rear_stop_cm: 45
     left_stop_cm: 25
     right_stop_cm: 25

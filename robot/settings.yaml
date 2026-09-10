@@ -20,11 +20,22 @@ robot:
     baudrate: 115200
 
   safety:
-    front_stop_cm: 20
-    rear_stop_cm: 20
-    left_stop_cm: 15
-    right_stop_cm: 15
-    stale_timeout_seconds: 0.75
+    # Ngưỡng ban đầu an toàn cho xe chạy full-speed (ENA/ENB đang gắn jumper).
+    front_stop_cm: 35
+    rear_stop_cm: 30
+    left_stop_cm: 25
+    right_stop_cm: 25
+    # Khi quay tại chỗ, cả đầu và đuôi xe đều quét theo vòng cung.
+    turn_clearance_cm: 25
+
+    # Cho phép đúng 1 packet null nếu số đo hợp lệ gần nhất chưa quá 0.2 giây.
+    allowed_null_packets: 1
+    invalid_grace_seconds: 0.2
+    stale_timeout_seconds: 0.4
+
+    # Sau khi bị chặn, phải có 3 packet sạch cao hơn ngưỡng dừng 10 cm.
+    resume_margin_cm: 10
+    resume_valid_packets: 3
 
 topics:
   cmd_vel: "/cmd_vel"

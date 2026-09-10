@@ -38,10 +38,15 @@ class FakeMotor:
         self.motion = "stop"
 
 
-def snapshot(**overrides):
+def snapshot(sequence=1, received_at=None, **overrides):
     distances = {"front": 100.0, "rear": 100.0, "left": 100.0, "right": 100.0}
     distances.update(overrides)
-    return SensorSnapshot(distances, time.monotonic(), "/dev/ttyUSB0", 1)
+    return SensorSnapshot(
+        distances,
+        time.monotonic() if received_at is None else received_at,
+        "/dev/ttyUSB0",
+        sequence,
+    )
 
 
 class TestSerialPacketParser(unittest.TestCase):
@@ -81,9 +86,52 @@ class TestObstacleSafety(unittest.TestCase):
 
     def test_running_motor_stops_when_obstacle_appears(self):
         self.assertTrue(self.safety.command("forward"))
-        self.reader.snapshot = snapshot(front=8.0)
+        self.reader.snapshot = snapshot(sequence=2, front=8.0)
         self.assertFalse(self.safety.enforce())
         self.assertEqual(self.motor.motion, "stop")
+
+    def test_turn_checks_side_front_and_rear(self):
+        self.reader.snapshot = snapshot(front=20.0, left=100.0, rear=100.0)
+        self.assertEqual(self.safety.evaluate("left").sensor, "front")
+        self.assertFalse(self.safety.command("left"))
+
+        self.reader.snapshot = snapshot(
+            sequence=2, front=100.0, left=100.0, rear=20.0
+        )
+        self.assertEqual(self.safety.evaluate("right").sensor, "rear")
+        self.assertFalse(self.safety.command("right"))
+
+    def test_one_null_packet_uses_recent_valid_value_then_stops(self):
+        self.assertTrue(self.safety.command("forward"))
+
+        self.reader.snapshot = snapshot(sequence=2, front=None)
+        self.assertTrue(self.safety.enforce())
+        self.assertEqual(self.motor.motion, "forward")
+
+        self.reader.snapshot = snapshot(sequence=3, front=None)
+        self.assertFalse(self.safety.enforce())
+        self.assertEqual(self.motor.motion, "stop")
+
+    def test_safety_lock_requires_three_clear_packets_and_new_command(self):
+        self.assertTrue(self.safety.command("forward"))
+        self.reader.snapshot = snapshot(sequence=2, front=20.0)
+        self.assertFalse(self.safety.enforce())
+
+        for sequence in (3, 4):
+            self.reader.snapshot = snapshot(sequence=sequence, front=50.0)
+            self.safety.enforce()
+        self.assertFalse(self.safety.command("forward"))
+
+        self.reader.snapshot = snapshot(sequence=5, front=50.0)
+        self.safety.enforce()
+        self.assertTrue(self.safety.command("forward"))
+        self.assertEqual(self.motor.motion, "forward")
+
+    def test_forward_block_does_not_prevent_safe_reverse(self):
+        self.reader.snapshot = snapshot(front=20.0, rear=100.0)
+        self.assertFalse(self.safety.command("forward"))
+        self.assertTrue(self.safety.command("backward"))
+        self.assertEqual(self.motor.motion, "backward")
 
     def test_missing_or_stale_serial_is_fail_safe(self):
         self.reader.snapshot = None

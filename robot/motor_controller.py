@@ -207,13 +207,17 @@ class MotorController:
         right_forward_pin: int = 22,
         right_backward_pin: int = 23,
         force_mock: bool = False,
-        gpio_chip: Optional[int] = None
+        gpio_chip: Optional[int] = None,
+        invert_left_direction: bool = False,
+        invert_right_direction: bool = False,
     ):
         self.left_forward_pin = left_forward_pin
         self.left_backward_pin = left_backward_pin
         self.right_forward_pin = right_forward_pin
         self.right_backward_pin = right_backward_pin
         self.preferred_gpio_chip = gpio_chip
+        self.invert_left_direction = bool(invert_left_direction)
+        self.invert_right_direction = bool(invert_right_direction)
         self.gpio_chip_num = None
         self._lgpio_handle = None
         self.is_mock = force_mock
@@ -225,6 +229,12 @@ class MotorController:
         self.right_backward_dev = None
 
         self._init_devices()
+        if self.invert_left_direction or self.invert_right_direction:
+            logger.info(
+                "Đảo chiều motor theo cấu hình: left=%s, right=%s",
+                self.invert_left_direction,
+                self.invert_right_direction,
+            )
 
     def _init_devices(self):
         if self.is_mock:
@@ -302,22 +312,36 @@ class MotorController:
         for device in devices:
             device.off()
 
-        states = (left_forward, left_backward, right_forward, right_backward)
+        states = [left_forward, left_backward, right_forward, right_backward]
+        if self.invert_left_direction:
+            states[0], states[1] = states[1], states[0]
+        if self.invert_right_direction:
+            states[2], states[3] = states[3], states[2]
+
         for device, active in zip(devices, states):
             if active:
                 device.on()
+        return tuple(states)
+
+    def _log_motion_outputs(self, label, states):
+        logger.info(
+            "MOTOR %s: GPIO%d=%d GPIO%d=%d | GPIO%d=%d GPIO%d=%d",
+            label,
+            self.left_forward_pin,
+            states[0],
+            self.left_backward_pin,
+            states[1],
+            self.right_forward_pin,
+            states[2],
+            self.right_backward_pin,
+            states[3],
+        )
 
     def forward(self):
         """Cho cả hai bên quay theo chiều tiến."""
-        self._set_outputs(True, False, True, False)
+        states = self._set_outputs(True, False, True, False)
         self.motion = "forward"
-        logger.info(
-            "MOTOR FORWARD: GPIO%d=1 GPIO%d=0 | GPIO%d=1 GPIO%d=0",
-            self.left_forward_pin,
-            self.left_backward_pin,
-            self.right_forward_pin,
-            self.right_backward_pin,
-        )
+        self._log_motion_outputs("FORWARD", states)
 
     def move_forward(self):
         """Alias tương thích với code ROS 2 cũ."""
@@ -325,15 +349,9 @@ class MotorController:
 
     def backward(self):
         """Cho cả hai bên quay theo chiều lùi."""
-        self._set_outputs(False, True, False, True)
+        states = self._set_outputs(False, True, False, True)
         self.motion = "backward"
-        logger.info(
-            "MOTOR BACKWARD: GPIO%d=0 GPIO%d=1 | GPIO%d=0 GPIO%d=1",
-            self.left_forward_pin,
-            self.left_backward_pin,
-            self.right_forward_pin,
-            self.right_backward_pin,
-        )
+        self._log_motion_outputs("BACKWARD", states)
 
     def move_backward(self):
         """Alias tương thích với code ROS 2 cũ."""
@@ -341,15 +359,15 @@ class MotorController:
 
     def turn_left(self):
         """Xoay trái tại chỗ: bên trái lùi, bên phải tiến."""
-        self._set_outputs(False, True, True, False)
+        states = self._set_outputs(False, True, True, False)
         self.motion = "left"
-        logger.info("MOTOR TURN_LEFT: trái lùi | phải tiến")
+        self._log_motion_outputs("TURN_LEFT", states)
 
     def turn_right(self):
         """Xoay phải tại chỗ: bên trái tiến, bên phải lùi."""
-        self._set_outputs(True, False, False, True)
+        states = self._set_outputs(True, False, False, True)
         self.motion = "right"
-        logger.info("MOTOR TURN_RIGHT: trái tiến | phải lùi")
+        self._log_motion_outputs("TURN_RIGHT", states)
 
     def stop(self):
         """Dừng tất cả động cơ."""
@@ -626,6 +644,8 @@ def main():
     right_forward = gpio_cfg.get('right_forward', 22)
     right_backward = gpio_cfg.get('right_backward', 23)
     gpio_chip = gpio_cfg.get('chip')
+    invert_left_direction = gpio_cfg.get('invert_left_direction', False)
+    invert_right_direction = gpio_cfg.get('invert_right_direction', False)
 
     force_mock = '--mock' in sys.argv
     controller = MotorController(
@@ -634,7 +654,9 @@ def main():
         right_forward_pin=right_forward,
         right_backward_pin=right_backward,
         force_mock=force_mock,
-        gpio_chip=gpio_chip
+        gpio_chip=gpio_chip,
+        invert_left_direction=invert_left_direction,
+        invert_right_direction=invert_right_direction,
     )
 
     if controller.is_mock and not force_mock:

@@ -47,6 +47,27 @@ class TestMotorControllerRemote(unittest.TestCase):
         self.assertFalse(self.controller.left_forward_dev.is_active)
         self.assertFalse(self.controller.right_forward_dev.is_active)
 
+    def test_direction_can_be_inverted_for_physical_motor_orientation(self):
+        controller = MotorController(
+            force_mock=True,
+            invert_left_direction=True,
+            invert_right_direction=True,
+        )
+        try:
+            controller.move_forward()
+            self.assertFalse(controller.left_forward_dev.is_active)
+            self.assertTrue(controller.left_backward_dev.is_active)
+            self.assertFalse(controller.right_forward_dev.is_active)
+            self.assertTrue(controller.right_backward_dev.is_active)
+
+            controller.turn_left()
+            self.assertTrue(controller.left_forward_dev.is_active)
+            self.assertFalse(controller.left_backward_dev.is_active)
+            self.assertFalse(controller.right_forward_dev.is_active)
+            self.assertTrue(controller.right_backward_dev.is_active)
+        finally:
+            controller.cleanup()
+
 
 if __name__ == '__main__':
     unittest.main()

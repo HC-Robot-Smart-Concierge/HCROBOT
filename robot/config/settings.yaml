@@ -12,6 +12,8 @@ robot:
     left_backward: 27
     right_forward: 22
     right_backward: 23
+    invert_left_direction: true
+    invert_right_direction: true
 
 topics:
   speech_input: "/speech/text"

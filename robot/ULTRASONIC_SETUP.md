@@ -79,8 +79,9 @@ Code đầy đủ ở [`motor_controller.py`](motor_controller.py). Mapping cố
 - Phải/channel B: GPIO22→IN3, GPIO23→IN4.
 - `forward()`, `backward()`, `turn_left()`, `turn_right()`, `stop()` chỉ ghi digital direction. Không PWM vì ENA/ENB vẫn có jumper.
 - Xoay trái dùng trái lùi/phải tiến; xoay phải dùng trái tiến/phải lùi.
+- Robot hiện tại có cả hai phía motor ngược với đầu được đánh dấu FRONT, nên `invert_left_direction` và `invert_right_direction` trong `settings.yaml` được bật. W đi về FRONT, S đi về REAR; fail-safe vẫn kiểm tra đúng sensor theo hướng thực tế.
 
-Nếu một bên quay ngược do cách lắp motor, dừng nguồn rồi đảo cặp dây OUT của đúng bên đó; không đổi GPIO sensor.
+Nếu thay đổi cách lắp motor, có thể bật/tắt hai tùy chọn đảo chiều độc lập cho từng bên; không đổi GPIO sensor.
 
 ## 7. Main + obstacle safety
 

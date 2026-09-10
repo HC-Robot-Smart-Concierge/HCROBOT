@@ -15,6 +15,11 @@ robot:
     right_forward: 22    # GPIO22 -> IN3
     right_backward: 23   # GPIO23 -> IN4
 
+    # Motor thực tế đang quay ngược với đầu xe được đánh dấu FRONT.
+    # Đảo cả hai bên để W đi về FRONT và S đi về REAR mà không cần đổi dây.
+    invert_left_direction: true
+    invert_right_direction: true
+
   ultrasonic_serial:
     port: "auto"          # Hoặc /dev/ttyUSB0, /dev/ttyACM0
     baudrate: 115200

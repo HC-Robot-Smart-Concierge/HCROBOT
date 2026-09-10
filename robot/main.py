@@ -91,6 +91,8 @@ def main(argv=None):
         right_backward_pin=gpio_cfg.get("right_backward", 23),
         force_mock=args.mock,
         gpio_chip=_value(args.gpio_chip, gpio_cfg, "chip", None),
+        invert_left_direction=gpio_cfg.get("invert_left_direction", False),
+        invert_right_direction=gpio_cfg.get("invert_right_direction", False),
     )
 
     if motor.is_mock and not args.mock:

@@ -27,6 +27,45 @@ def start_camera_stream(device=None):
         logger.error(f"Camera stream failed to start: {e}")
 
 
+def start_udp_control_listener(safety, port=9999):
+    """Khởi động UDP Remote Listener trên background thread để nhận lệnh điều khiển từ xa."""
+    import socket
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        sock.bind(("0.0.0.0", port))
+        sock.settimeout(0.2)
+        logger.info("📡 UDP Remote Control Listener started on 0.0.0.0:%d", port)
+    except Exception as e:
+        logger.warning("Không thể khởi chạy UDP port %d: %s", port, e)
+        return
+
+    motion_map = {
+        "w": "forward", "forward": "forward",
+        "s": "backward", "backward": "backward",
+        "a": "left", "left": "left",
+        "d": "right", "right": "right",
+        "x": "stop", "stop": "stop", " ": "stop"
+    }
+
+    try:
+        while True:
+            try:
+                data, _ = sock.recvfrom(1024)
+                cmd = data.decode("utf-8", errors="ignore").strip().lower()
+                if cmd in motion_map:
+                    target_motion = motion_map[cmd]
+                    if target_motion == "stop":
+                        safety.stop()
+                    else:
+                        safety.command(target_motion)
+            except socket.timeout:
+                pass
+            except Exception as e:
+                logger.debug("UDP listener error: %s", e)
+    finally:
+        sock.close()
+
+
 def _value(cli_value, config, key, default):
     return cli_value if cli_value is not None else config.get(key, default)
 
@@ -311,6 +350,15 @@ def main(argv=None):
         )
 
     _print_controls(port, thresholds, stale_timeout, turn_clearance)
+
+    # Bật UDP Remote Control Listener trên background thread (port 9999)
+    udp_thread = threading.Thread(
+        target=start_udp_control_listener,
+        args=(safety, 9999),
+        daemon=True,
+    )
+    udp_thread.start()
+
     key_to_motion = {
         "w": "forward",
         "s": "backward",

@@ -11,10 +11,16 @@ import {
   Camera,
   Circle,
   Download,
+  ChevronUp,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Square,
+  Gamepad2,
+  Navigation,
 } from 'lucide-react';
 
-const DEFAULT_STREAM_URL = 'http://localhost:8554/stream';
-const HEALTH_CHECK_URL = 'http://localhost:8554/health';
+const DEFAULT_STREAM_URL = 'http://100.73.245.66:8554/stream';
 const HEALTH_CHECK_INTERVAL_MS = 5000;
 
 export const AdminCameraTab = ({ currentUser }) => {
@@ -30,9 +36,81 @@ export const AdminCameraTab = ({ currentUser }) => {
   const [customUrl, setCustomUrl] = useState(streamUrl);
   const [snapshotUrl, setSnapshotUrl] = useState(null);
 
+  // Teleop Motion state
+  const [activeMotion, setActiveMotion] = useState('stop');
+  const [controlIp, setControlIp] = useState('100.73.245.66');
+
   const imgRef = useRef(null);
   const containerRef = useRef(null);
   const canvasRef = useRef(null);
+
+  const sendControlCommand = useCallback(
+    async (cmd) => {
+      setActiveMotion(cmd);
+      try {
+        await fetch('/api/v1/operations/robot/control', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            command: cmd,
+            target_ip: controlIp,
+            port: 9999,
+          }),
+        });
+      } catch (err) {
+        console.warn('Control command error:', err);
+      }
+    },
+    [controlIp]
+  );
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (
+        ['input', 'textarea'].includes(
+          document.activeElement?.tagName?.toLowerCase()
+        )
+      )
+        return;
+      const key = e.key.toLowerCase();
+      if (key === 'w' || key === 'arrowup') sendControlCommand('w');
+      else if (key === 's' || key === 'arrowdown') sendControlCommand('s');
+      else if (key === 'a' || key === 'arrowleft') sendControlCommand('a');
+      else if (key === 'd' || key === 'arrowright') sendControlCommand('d');
+      else if (key === ' ' || key === 'x') sendControlCommand('stop');
+    };
+
+    const handleKeyUp = (e) => {
+      if (
+        ['input', 'textarea'].includes(
+          document.activeElement?.tagName?.toLowerCase()
+        )
+      )
+        return;
+      const key = e.key.toLowerCase();
+      if (
+        [
+          'w',
+          's',
+          'a',
+          'd',
+          'arrowup',
+          'arrowdown',
+          'arrowleft',
+          'arrowright',
+        ].includes(key)
+      ) {
+        sendControlCommand('stop');
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, [sendControlCommand]);
 
   const checkHealth = useCallback(async () => {
     try {
@@ -290,6 +368,91 @@ export const AdminCameraTab = ({ currentUser }) => {
             }`}
           />
         ) : null}
+
+        {/* On-Screen D-Pad Teleop Controller Overlay */}
+        <div className="absolute bottom-4 right-4 z-10 p-3 bg-black/65 backdrop-blur-md rounded-2xl border border-white/10 shadow-2xl flex flex-col items-center gap-1.5 select-none">
+          <div className="flex items-center gap-1 text-[9px] font-bold text-white/70 uppercase tracking-wider mb-0.5">
+            <Gamepad2 className="w-3.5 h-3.5 text-emerald-400" />
+            <span>WASD Teleop Control</span>
+          </div>
+
+          {/* Up (W) */}
+          <button
+            onMouseDown={() => sendControlCommand('w')}
+            onMouseUp={() => sendControlCommand('stop')}
+            onTouchStart={() => sendControlCommand('w')}
+            onTouchEnd={() => sendControlCommand('stop')}
+            className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all cursor-pointer border ${
+              activeMotion === 'w'
+                ? 'bg-emerald-500 text-white border-emerald-400 scale-95'
+                : 'bg-stone-800/80 text-stone-200 border-white/10 hover:bg-stone-700'
+            }`}
+            title="Tiến (W / ArrowUp)"
+          >
+            <ChevronUp className="w-5 h-5" />
+          </button>
+
+          {/* Left - Stop - Right */}
+          <div className="flex items-center gap-1.5">
+            <button
+              onMouseDown={() => sendControlCommand('a')}
+              onMouseUp={() => sendControlCommand('stop')}
+              onTouchStart={() => sendControlCommand('a')}
+              onTouchEnd={() => sendControlCommand('stop')}
+              className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all cursor-pointer border ${
+                activeMotion === 'a'
+                  ? 'bg-emerald-500 text-white border-emerald-400 scale-95'
+                  : 'bg-stone-800/80 text-stone-200 border-white/10 hover:bg-stone-700'
+              }`}
+              title="Quẹo Trái (A / ArrowLeft)"
+            >
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+
+            <button
+              onClick={() => sendControlCommand('stop')}
+              className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all cursor-pointer border ${
+                activeMotion === 'stop'
+                  ? 'bg-red-600/80 text-white border-red-500'
+                  : 'bg-stone-800/80 text-red-400 border-white/10 hover:bg-red-900/50'
+              }`}
+              title="Dừng Khẩn Cấp (Space / X)"
+            >
+              <Square className="w-4 h-4 fill-current" />
+            </button>
+
+            <button
+              onMouseDown={() => sendControlCommand('d')}
+              onMouseUp={() => sendControlCommand('stop')}
+              onTouchStart={() => sendControlCommand('d')}
+              onTouchEnd={() => sendControlCommand('stop')}
+              className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all cursor-pointer border ${
+                activeMotion === 'd'
+                  ? 'bg-emerald-500 text-white border-emerald-400 scale-95'
+                  : 'bg-stone-800/80 text-stone-200 border-white/10 hover:bg-stone-700'
+              }`}
+              title="Quẹo Phải (D / ArrowRight)"
+            >
+              <ChevronRight className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Down (S) */}
+          <button
+            onMouseDown={() => sendControlCommand('s')}
+            onMouseUp={() => sendControlCommand('stop')}
+            onTouchStart={() => sendControlCommand('s')}
+            onTouchEnd={() => sendControlCommand('stop')}
+            className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all cursor-pointer border ${
+              activeMotion === 's'
+                ? 'bg-emerald-500 text-white border-emerald-400 scale-95'
+                : 'bg-stone-800/80 text-stone-200 border-white/10 hover:bg-stone-700'
+            }`}
+            title="Lùi (S / ArrowDown)"
+          >
+            <ChevronDown className="w-5 h-5" />
+          </button>
+        </div>
 
         {/* Offline / Error Overlay */}
         {(!isStreaming || streamError) && (

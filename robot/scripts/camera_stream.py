@@ -31,6 +31,19 @@ DEFAULT_WIDTH = 1920
 DEFAULT_HEIGHT = 1080
 
 
+def suppress_c_stderr():
+    """Chuyển hướng C-level stderr (fd 2) sang /dev/null để ẩn các thông báo Corrupt JPEG data từ libjpeg."""
+    import os
+    import sys
+    if sys.platform != "win32":
+        try:
+            devnull = os.open(os.devnull, os.O_WRONLY)
+            os.dup2(devnull, 2)
+            os.close(devnull)
+        except Exception:
+            pass
+
+
 class CameraBackend:
     """Abstract camera backend interface."""
 
@@ -122,9 +135,10 @@ class OpenCVBackend(CameraBackend):
     def start(self):
         import cv2
 
-        # Mộc/tắt log warning rác từ OpenCV (GStreamer / obsensor / V4L2) khi quét thiết bị
+        # Mộc/tắt log warning rác từ OpenCV (GStreamer / obsensor / V4L2 / libjpeg Corrupt JPEG data) khi quét thiết bị
         try:
             cv2.setLogLevel(cv2.LOG_LEVEL_ERROR)
+            suppress_c_stderr()
         except Exception:
             pass
 

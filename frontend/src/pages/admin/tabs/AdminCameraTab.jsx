@@ -186,8 +186,8 @@ export const AdminCameraTab = ({ currentUser }) => {
     try {
       const canvas = canvasRef.current;
       if (!canvas) return;
-      canvas.width = imgRef.current.naturalWidth || 1280;
-      canvas.height = imgRef.current.naturalHeight || 720;
+      canvas.width = imgRef.current.naturalWidth || 1920;
+      canvas.height = imgRef.current.naturalHeight || 1080;
       const ctx = canvas.getContext('2d');
       ctx.drawImage(imgRef.current, 0, 0);
       const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
@@ -315,7 +315,7 @@ export const AdminCameraTab = ({ currentUser }) => {
               </span>
             </div>
             <div className="px-2 py-0.5 rounded-full bg-black/60 backdrop-blur-md text-white/70 text-[9px] font-mono font-bold border border-white/10">
-              PI5 MJPEG 720p
+              PI5 MJPEG 1080p (Full HD)
             </div>
           </div>
 

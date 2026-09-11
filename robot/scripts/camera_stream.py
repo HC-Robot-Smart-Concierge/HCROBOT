@@ -27,8 +27,8 @@ logger = logging.getLogger("pi5-camera")
 
 DEFAULT_PORT = 8554
 DEFAULT_FPS = 15
-DEFAULT_WIDTH = 1280
-DEFAULT_HEIGHT = 720
+DEFAULT_WIDTH = 1920
+DEFAULT_HEIGHT = 1080
 
 
 class CameraBackend:

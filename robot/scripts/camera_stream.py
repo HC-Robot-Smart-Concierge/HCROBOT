@@ -81,6 +81,21 @@ class Picamera2Backend(CameraBackend):
             self._camera = None
 
 
+def get_v4l2_video_devices():
+    """Lấy danh sách các video device index thực sự có trên hệ thống Linux."""
+    import glob
+    import re
+
+    dev_paths = glob.glob("/dev/video*")
+    indices = []
+    for p in dev_paths:
+        m = re.search(r"/dev/video(\d+)$", p)
+        if m:
+            indices.append(int(m.group(1)))
+    indices.sort()
+    return indices
+
+
 class OpenCVBackend(CameraBackend):
     """Fallback backend sử dụng OpenCV (USB webcam hoặc V4L2)."""
 
@@ -94,11 +109,23 @@ class OpenCVBackend(CameraBackend):
         import cv2
 
         self._cv2 = cv2
-        candidates = [self.device] if self.device is not None else [0, 1, 2, 3, 4]
+        if self.device is not None:
+            # Nếu người dùng truyền chuỗi dạng số (vd '16'), convert sang int
+            if isinstance(self.device, str) and self.device.isdigit():
+                candidates = [int(self.device)]
+            else:
+                candidates = [self.device]
+        else:
+            system_devs = get_v4l2_video_devices()
+            if system_devs:
+                candidates = system_devs
+            else:
+                candidates = [0, 1, 2, 4, 10, 14, 16, 18, 20]
+
         opened = False
 
         for dev in candidates:
-            logger.info(f"Đang thử kết nối USB camera index {dev}...")
+            logger.info(f"Đang thử kết nối USB camera index/device {dev}...")
             cap = None
             try:
                 # Ưu tiên backend V4L2 trên Linux để tối ưu latency
@@ -134,7 +161,7 @@ class OpenCVBackend(CameraBackend):
                     actual_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
                     actual_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
                     logger.info(
-                        f"✅ USB Camera kết nối thành công tại index {dev}: "
+                        f"✅ USB Camera kết nối thành công tại device {dev}: "
                         f"{actual_w}x{actual_h} @ {self.fps}fps"
                     )
                     break
@@ -285,7 +312,7 @@ def parse_args():
         "--height", type=int, default=DEFAULT_HEIGHT, help=f"Frame height (default: {DEFAULT_HEIGHT})"
     )
     parser.add_argument(
-        "--device", type=int, default=None, help="Device index cho USB camera (mặc định: auto scan)"
+        "--device", default=None, help="Device index hoặc path cho USB camera (ví dụ: 0, 16 hoặc /dev/video16)"
     )
     return parser.parse_args()
 

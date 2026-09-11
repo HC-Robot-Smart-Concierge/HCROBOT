@@ -17,7 +17,7 @@ from main import build_argument_parser
 def test_main_argument_parser_camera_device():
     parser = build_argument_parser()
     args = parser.parse_args(["--camera-device", "2"])
-    assert args.camera_device == 2
+    assert args.camera_device == "2"
     assert not args.no_camera
 
 

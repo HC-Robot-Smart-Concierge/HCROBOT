@@ -170,9 +170,8 @@ def build_argument_parser():
     parser.add_argument("--no-camera", action="store_true", help="Không khởi động camera stream")
     parser.add_argument(
         "--camera-device",
-        type=int,
         default=None,
-        help="Device index cho USB camera (mặc định: auto scan)",
+        help="Device index hoặc path cho USB camera (ví dụ: 0, 16 hoặc /dev/video16)",
     )
     mode_group = parser.add_mutually_exclusive_group()
     mode_group.add_argument(

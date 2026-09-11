@@ -82,16 +82,30 @@ class Picamera2Backend(CameraBackend):
 
 
 def get_v4l2_video_devices():
-    """Lấy danh sách các video device index thực sự có trên hệ thống Linux."""
+    """Lấy danh sách các video device index thực sự là camera trên hệ thống Linux (lọc bỏ ISP/codec node nội bộ)."""
     import glob
+    import os
     import re
 
     dev_paths = glob.glob("/dev/video*")
     indices = []
+    # Các từ khóa đại diện cho node ISP/Codec phần cứng nội bộ của Raspberry Pi 5 cần loại bỏ
+    skip_keywords = ["pispbe", "rpi-hevc", "codec", "unicam-image"]
+
     for p in dev_paths:
         m = re.search(r"/dev/video(\d+)$", p)
         if m:
-            indices.append(int(m.group(1)))
+            idx = int(m.group(1))
+            name_file = f"/sys/class/video4linux/video{idx}/name"
+            if os.path.exists(name_file):
+                try:
+                    with open(name_file, "r") as f:
+                        dev_name = f.read().strip().lower()
+                    if any(kw in dev_name for kw in skip_keywords):
+                        continue
+                except Exception:
+                    pass
+            indices.append(idx)
     indices.sort()
     return indices
 
@@ -107,6 +121,12 @@ class OpenCVBackend(CameraBackend):
 
     def start(self):
         import cv2
+
+        # Mộc/tắt log warning rác từ OpenCV (GStreamer / obsensor / V4L2) khi quét thiết bị
+        try:
+            cv2.setLogLevel(cv2.LOG_LEVEL_ERROR)
+        except Exception:
+            pass
 
         self._cv2 = cv2
         if self.device is not None:

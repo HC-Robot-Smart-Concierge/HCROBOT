@@ -13,7 +13,7 @@ from hc_robot_client.utils.motor_controller import MotorController
 class MotorDriverNode(Node):
     """
     ROS 2 Node tiếp nhận các lệnh vận tốc / hướng từ topic /cmd_vel (Twist hoặc String)
-    và điều khiển các chân GPIO của 2 mạch L298N trên Raspberry Pi 5.
+    và điều khiển hai channel của một L298N trên Raspberry Pi 5.
     """
 
     def __init__(self):
@@ -25,6 +25,8 @@ class MotorDriverNode(Node):
         left_backward = 27
         right_forward = 22
         right_backward = 23
+        invert_left_direction = False
+        invert_right_direction = False
         cmd_vel_topic = "/cmd_vel"
 
         if os.path.exists(config_path):
@@ -36,6 +38,12 @@ class MotorDriverNode(Node):
                     left_backward = gpio_cfg.get('left_backward', left_backward)
                     right_forward = gpio_cfg.get('right_forward', right_forward)
                     right_backward = gpio_cfg.get('right_backward', right_backward)
+                    invert_left_direction = gpio_cfg.get(
+                        'invert_left_direction', invert_left_direction
+                    )
+                    invert_right_direction = gpio_cfg.get(
+                        'invert_right_direction', invert_right_direction
+                    )
                     
                     topics_cfg = config.get('topics', {})
                     cmd_vel_topic = topics_cfg.get('cmd_vel', cmd_vel_topic)
@@ -47,7 +55,9 @@ class MotorDriverNode(Node):
             left_forward_pin=left_forward,
             left_backward_pin=left_backward,
             right_forward_pin=right_forward,
-            right_backward_pin=right_backward
+            right_backward_pin=right_backward,
+            invert_left_direction=invert_left_direction,
+            invert_right_direction=invert_right_direction,
         )
 
         # Topic Subscribers

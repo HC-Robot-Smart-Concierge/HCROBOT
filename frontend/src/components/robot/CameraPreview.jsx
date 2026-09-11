@@ -5,23 +5,33 @@ import {
   getDetectorStatus,
 } from '../../services/personDetector';
 
+const PI5_STREAM_DEFAULT_URL = 'http://localhost:8554/stream';
+
 export const CameraPreview = ({
   onGuestApproached,
   onGuestLeft,
   onEmotionChange,
   autoStart = true,
   controlsClassName = '',
+  source = 'local',
+  streamUrl = PI5_STREAM_DEFAULT_URL,
 }) => {
+  const isPi5 = source === 'pi5';
+
   const offscreenVideoRef = useRef(null);
   const previewVideoRef = useRef(null);
   const overlayCanvasRef = useRef(null);
   const hiddenCanvasRef = useRef(null);
+  const pi5ImgRef = useRef(null);
+  const pi5PreviewImgRef = useRef(null);
+
   const isTriggeredRef = useRef(false);
   const negativeFramesRef = useRef(0);
 
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false); // Mặc định mở camera để người dùng thấy rõ AI Bounding Box
   const [stream, setStream] = useState(null);
+  const [pi5StreamError, setPi5StreamError] = useState(false);
 
   // Model & Detection States
   const [modelLoaded, setModelLoaded] = useState(false);
@@ -54,7 +64,13 @@ export const CameraPreview = ({
     };
   }, []);
 
-  const startCamera = async () => {
+  const startCamera = useCallback(async () => {
+    if (isPi5) {
+      setPi5StreamError(false);
+      setIsCameraActive(true);
+      return;
+    }
+
     try {
       const mediaStream = await navigator.mediaDevices.getUserMedia({
         video: {
@@ -79,16 +95,17 @@ export const CameraPreview = ({
         setIsCameraActive(false);
       }
     }
-  };
+  }, [isPi5]);
 
-  const stopCamera = () => {
-    if (stream) {
+  const stopCamera = useCallback(() => {
+    if (!isPi5 && stream) {
       stream.getTracks().forEach((track) => track.stop());
       setStream(null);
     }
     setIsCameraActive(false);
     setIsPersonDetected(false);
     setLatestDetection(null);
+    setPi5StreamError(false);
     if (isTriggeredRef.current) {
       isTriggeredRef.current = false;
       if (onGuestLeft) onGuestLeft();
@@ -100,24 +117,7 @@ export const CameraPreview = ({
       const ctx = canvas.getContext('2d');
       if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
     }
-  };
-
-  const triggerApproach = () => {
-    isTriggeredRef.current = true;
-    setIsPersonDetected(true);
-    if (onGuestApproached) {
-      onGuestApproached();
-    }
-  };
-
-  const triggerLeave = () => {
-    isTriggeredRef.current = false;
-    setIsPersonDetected(false);
-    setLatestDetection(null);
-    if (onGuestLeft) {
-      onGuestLeft();
-    }
-  };
+  }, [isPi5, stream, onGuestLeft]);
 
   // Tự động bật camera nếu autoStart = true
   useEffect(() => {
@@ -128,11 +128,11 @@ export const CameraPreview = ({
         stream.getTracks().forEach((track) => track.stop());
       }
     };
-  }, [autoStart]);
+  }, [autoStart, startCamera]);
 
   // Gán stream cho các thẻ video và bắt buộc gọi play()
   useEffect(() => {
-    if (stream) {
+    if (!isPi5 && stream) {
       if (offscreenVideoRef.current) {
         offscreenVideoRef.current.srcObject = stream;
         offscreenVideoRef.current.play().catch(() => {});
@@ -142,10 +142,22 @@ export const CameraPreview = ({
         previewVideoRef.current.play().catch(() => {});
       }
     }
-  }, [stream, isCameraActive, isMinimized]);
+  }, [stream, isCameraActive, isMinimized, isPi5]);
 
-  // Lấy video element đang hoạt động và có sẵn frame hình
-  const getActiveVideo = useCallback(() => {
+  // Lấy media element đang hoạt động và có sẵn frame hình (hỗ trợ cả video webcam và img stream từ Pi5)
+  const getActiveSource = useCallback(() => {
+    if (isPi5) {
+      const pi5Preview = pi5PreviewImgRef.current;
+      if (pi5Preview && pi5Preview.complete && pi5Preview.naturalWidth > 0) {
+        return pi5Preview;
+      }
+      const pi5Hidden = pi5ImgRef.current;
+      if (pi5Hidden && pi5Hidden.complete && pi5Hidden.naturalWidth > 0) {
+        return pi5Hidden;
+      }
+      return null;
+    }
+
     const previewEl = previewVideoRef.current;
     if (previewEl && previewEl.readyState >= 2 && previewEl.videoWidth > 0) {
       return previewEl;
@@ -155,18 +167,18 @@ export const CameraPreview = ({
       return offscreenEl;
     }
     return null;
-  }, []);
+  }, [isPi5]);
 
   // Vẽ Bounding Box & nhãn thông tin lên Overlay Canvas
-  const drawBoundingBox = useCallback((detection, videoEl) => {
+  const drawBoundingBox = useCallback((detection, sourceEl) => {
     const canvas = overlayCanvasRef.current;
-    if (!canvas || !videoEl) return;
+    if (!canvas || !sourceEl) return;
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const vW = videoEl.videoWidth || 640;
-    const vH = videoEl.videoHeight || 480;
+    const vW = sourceEl.videoWidth || sourceEl.naturalWidth || 640;
+    const vH = sourceEl.videoHeight || sourceEl.naturalHeight || 480;
 
     if (canvas.width !== vW || canvas.height !== vH) {
       canvas.width = vW;
@@ -251,19 +263,16 @@ export const CameraPreview = ({
   useEffect(() => {
     if (!isCameraActive) return;
 
-    let negativeFrames = 0;
-    let isCurrentlyTriggered = false;
-
     const intervalId = setInterval(async () => {
-      const video = getActiveVideo();
-      if (!video) return;
+      const sourceEl = getActiveSource();
+      if (!sourceEl) return;
 
       try {
         let result = null;
 
         // TẦNG 1: Thử nhận diện bằng mô hình AI COCO-SSD (ngưỡng 0.28 tối ưu cho cả cự ly gần và xa)
         try {
-          result = await detectPerson(video, { minConfidence: 0.28 });
+          result = await detectPerson(sourceEl, { minConfidence: 0.28 });
         } catch (aiErr) {
           console.warn('[CameraPreview] Lỗi tạm thời khi chạy COCO-SSD:', aiErr);
         }
@@ -272,7 +281,7 @@ export const CameraPreview = ({
         if ((!result || !result.detected) && 'FaceDetector' in window) {
           try {
             const detector = new window.FaceDetector({ fastMode: true });
-            const faces = await detector.detect(video);
+            const faces = await detector.detect(sourceEl);
             if (faces && faces.length > 0) {
               const face = faces[0];
               const box = face.boundingBox;
@@ -308,51 +317,55 @@ export const CameraPreview = ({
             const ctx = canvas.getContext('2d', { willReadFrequently: true });
             canvas.width = 80;
             canvas.height = 60;
-            ctx.drawImage(video, 0, 0, 80, 60);
+            try {
+              ctx.drawImage(sourceEl, 0, 0, 80, 60);
 
-            const frame = ctx.getImageData(0, 0, 80, 60);
-            const data = frame.data;
-            let skinPixels = 0;
+              const frame = ctx.getImageData(0, 0, 80, 60);
+              const data = frame.data;
+              let skinPixels = 0;
 
-            for (let i = 0; i < data.length; i += 4) {
-              const r = data[i];
-              const g = data[i + 1];
-              const b = data[i + 2];
-              if (
-                r > 80 &&
-                g > 35 &&
-                b > 15 &&
-                r > g &&
-                r > b &&
-                Math.max(r, g, b) - Math.min(r, g, b) > 12 &&
-                Math.abs(r - g) > 12
-              ) {
-                skinPixels++;
+              for (let i = 0; i < data.length; i += 4) {
+                const r = data[i];
+                const g = data[i + 1];
+                const b = data[i + 2];
+                if (
+                  r > 80 &&
+                  g > 35 &&
+                  b > 15 &&
+                  r > g &&
+                  r > b &&
+                  Math.max(r, g, b) - Math.min(r, g, b) > 12 &&
+                  Math.abs(r - g) > 12
+                ) {
+                  skinPixels++;
+                }
               }
-            }
 
-            if (skinPixels > 55) {
-              const vW = video.videoWidth || 640;
-              const vH = video.videoHeight || 480;
-              result = {
-                detected: true,
-                class: 'person',
-                score: Math.min(99, Math.round(skinPixels * 0.9)),
-                bbox: [
-                  Math.round(vW * 0.15),
-                  Math.round(vH * 0.1),
-                  Math.round(vW * 0.7),
-                  Math.round(vH * 0.8),
-                ],
-                center: {
-                  x: Math.round(vW / 2),
-                  y: Math.round(vH / 2),
-                  relativeX: 0,
-                },
-                distance: 'CLOSE',
-                distanceRatio: 0.7,
-                allPersonsCount: 1,
-              };
+              if (skinPixels > 55) {
+                const vW = sourceEl.videoWidth || sourceEl.naturalWidth || 640;
+                const vH = sourceEl.videoHeight || sourceEl.naturalHeight || 480;
+                result = {
+                  detected: true,
+                  class: 'person',
+                  score: Math.min(99, Math.round(skinPixels * 0.9)),
+                  bbox: [
+                    Math.round(vW * 0.15),
+                    Math.round(vH * 0.1),
+                    Math.round(vW * 0.7),
+                    Math.round(vH * 0.8),
+                  ],
+                  center: {
+                    x: Math.round(vW / 2),
+                    y: Math.round(vH / 2),
+                    relativeX: 0,
+                  },
+                  distance: 'CLOSE',
+                  distanceRatio: 0.7,
+                  allPersonsCount: 1,
+                };
+              }
+            } catch (drawErr) {
+              // Bỏ qua nếu có lỗi đọc pixel (ví dụ cors stream)
             }
           }
         }
@@ -361,7 +374,7 @@ export const CameraPreview = ({
         if (result && result.detected) {
           negativeFramesRef.current = 0;
           setLatestDetection(result);
-          drawBoundingBox(result, video);
+          drawBoundingBox(result, sourceEl);
           setIsPersonDetected(true);
 
           // Kích hoạt Robot mở mắt ngay lập tức khi phát hiện có người
@@ -375,7 +388,7 @@ export const CameraPreview = ({
           negativeFramesRef.current++;
 
           if (negativeFramesRef.current >= 2) {
-            drawBoundingBox(null, video);
+            drawBoundingBox(null, sourceEl);
           }
 
           // Cần 4 frame liên tiếp không thấy ai (đúng 2.0 giây) để xác nhận khách đã rời đi
@@ -398,26 +411,38 @@ export const CameraPreview = ({
     return () => {
       clearInterval(intervalId);
     };
-  }, [isCameraActive, onGuestApproached, onGuestLeft, drawBoundingBox, getActiveVideo]);
+  }, [isCameraActive, onGuestApproached, onGuestLeft, drawBoundingBox, getActiveSource]);
 
   return (
     <>
-      {/* Video offscreen luôn decode khung hình ở background (không dùng display:none) */}
-      <video
-        ref={offscreenVideoRef}
-        autoPlay
-        playsInline
-        muted
-        style={{
-          position: 'fixed',
-          top: -9999,
-          left: -9999,
-          width: '640px',
-          height: '480px',
-          opacity: 0,
-          pointerEvents: 'none',
-        }}
-      />
+      {/* Media ngầm luôn decode khung hình ở background */}
+      {isPi5 ? (
+        <img
+          ref={pi5ImgRef}
+          src={isCameraActive && !pi5StreamError ? streamUrl : undefined}
+          crossOrigin="anonymous"
+          onError={() => setPi5StreamError(true)}
+          onLoad={() => setPi5StreamError(false)}
+          className="hidden"
+          alt=""
+        />
+      ) : (
+        <video
+          ref={offscreenVideoRef}
+          autoPlay
+          playsInline
+          muted
+          style={{
+            position: 'fixed',
+            top: -9999,
+            left: -9999,
+            width: '640px',
+            height: '480px',
+            opacity: 0,
+            pointerEvents: 'none',
+          }}
+        />
+      )}
       <canvas ref={hiddenCanvasRef} className="hidden" />
 
       {isMinimized ? (
@@ -429,6 +454,7 @@ export const CameraPreview = ({
         >
           <span className="flex items-center gap-1.5">
             <span>AI Camera</span>
+            {isPi5 && <span className="text-[8px] text-cyan-400 font-mono">PI5</span>}
             {latestDetection?.detected && (
               <span className="text-[10px] text-emerald-400 font-mono font-bold">
                 [{latestDetection.distance}]
@@ -437,7 +463,9 @@ export const CameraPreview = ({
           </span>
 
           {isCameraActive ? (
-            isPersonDetected ? (
+            pi5StreamError ? (
+              <span className="w-2 h-2 rounded-full bg-red-400 animate-pulse" />
+            ) : isPersonDetected ? (
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
             ) : (
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
@@ -459,7 +487,9 @@ export const CameraPreview = ({
               <div className="px-2 py-0.5 rounded-full bg-black/75 backdrop-blur-md text-white text-[9px] font-mono font-bold border border-white/20 flex items-center gap-1.5">
                 <span
                   className={`w-1.5 h-1.5 rounded-full ${
-                    isPersonDetected
+                    pi5StreamError
+                      ? 'bg-red-400'
+                      : isPersonDetected
                       ? 'bg-emerald-400 animate-ping'
                       : isCameraActive
                       ? 'bg-cyan-400 animate-pulse'
@@ -469,27 +499,62 @@ export const CameraPreview = ({
                 <span>
                   {modelLoading
                     ? 'LOADING AI...'
+                    : pi5StreamError
+                    ? 'STREAM ERROR'
                     : isPersonDetected
                     ? `GUEST: ${latestDetection?.distance || 'DETECTED'}`
+                    : isPi5
+                    ? 'PI5 STREAM'
                     : 'SCANNING GUEST'}
                 </span>
               </div>
 
               <div className="px-1.5 py-0.5 rounded bg-black/75 text-[8px] font-mono text-stone-300 border border-white/10">
-                COCO-SSD
+                {isPi5 ? 'PI5 MJPEG' : 'COCO-SSD'}
               </div>
             </div>
 
-            {/* Video Preview */}
-            <video
-              ref={previewVideoRef}
-              autoPlay
-              playsInline
-              muted
-              className={`w-full h-full object-cover aspect-video scale-x-[-1] ${
-                isCameraActive ? 'block' : 'hidden'
-              }`}
-            />
+            {/* Video or Image Preview */}
+            {isPi5 ? (
+              <>
+                <img
+                  ref={pi5PreviewImgRef}
+                  src={isCameraActive && !pi5StreamError ? streamUrl : undefined}
+                  alt="Pi5 Camera Stream"
+                  crossOrigin="anonymous"
+                  onError={() => setPi5StreamError(true)}
+                  onLoad={() => setPi5StreamError(false)}
+                  className={`w-full h-full object-cover aspect-video scale-x-[-1] ${
+                    isCameraActive && !pi5StreamError ? 'block' : 'hidden'
+                  }`}
+                />
+                {pi5StreamError && isCameraActive && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 text-stone-300 text-[10px] font-semibold gap-1 p-2 text-center">
+                    <span className="text-red-400 font-bold">Stream Error</span>
+                    <span>Không kết nối được Pi5 Camera</span>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setPi5StreamError(false);
+                      }}
+                      className="mt-1 px-2 py-0.5 bg-stone-700 rounded text-[9px] hover:bg-stone-600 cursor-pointer"
+                    >
+                      Thử lại
+                    </button>
+                  </div>
+                )}
+              </>
+            ) : (
+              <video
+                ref={previewVideoRef}
+                autoPlay
+                playsInline
+                muted
+                className={`w-full h-full object-cover aspect-video scale-x-[-1] ${
+                  isCameraActive ? 'block' : 'hidden'
+                }`}
+              />
+            )}
 
             {/* Canvas vẽ Bounding Box bao quanh người (được mirror cùng video) */}
             <canvas

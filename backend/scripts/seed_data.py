@@ -51,8 +51,11 @@ async def main():
     print("AURORA OS - HCROBOT DATABASE INITIALIZATION & SEEDING")
     print("=" * 60)
     
-    # 1. Ensure DB exists
-    ensure_postgres_db()
+    # 1. Ensure DB exists (skip for cloud DB like Supabase)
+    if settings.IS_CLOUD_DB:
+        print("[INFO] Cloud DB detected (Supabase). Skipping DB creation check.")
+    else:
+        ensure_postgres_db()
     
     # 2. Create tables, then run the explicit account and operational seeds
     print("\n[*] Initializing tables and seeding hotel operations data...")

@@ -4,13 +4,43 @@ robot:
   id: "hc_pi5_01"
   name: "HC Smart Concierge Robot"
   gpio:
-    # Mạch 1 (Bên Trái - Động cơ nối cọc OUT1 & OUT2):
-    left_forward: 17     # Cắm trực tiếp duy nhất vào cọc IN1 Mạch 1 (Rút dây IN3 ra)
-    left_backward: 27    # Cắm trực tiếp duy nhất vào cọc IN2 Mạch 1 (Rút dây IN4 ra)
+    # Tự phát hiện gpiochip RP1. Chỉ bỏ comment khi cần ép chip cụ thể:
+    # chip: 4
 
-    # Mạch 2 (Bên Phải - Động cơ nối cọc OUT1 & OUT2):
-    right_forward: 22    # Cắm trực tiếp duy nhất vào cọc IN1 Mạch 2 (Rút dây IN3 ra)
-    right_backward: 23   # Cắm trực tiếp duy nhất vào cọc IN2 Mạch 2 (Rút dây IN4 ra)
+    # L298N Channel A (hai motor trái mắc song song vào OUT1 & OUT2):
+    left_forward: 17     # GPIO17 -> IN1
+    left_backward: 27    # GPIO27 -> IN2
+
+    # L298N Channel B (hai motor phải mắc song song vào OUT3 & OUT4):
+    right_forward: 22    # GPIO22 -> IN3
+    right_backward: 23   # GPIO23 -> IN4
+
+    # Motor thực tế đang quay ngược với đầu xe được đánh dấu FRONT.
+    # Đảo cả hai bên để W đi về FRONT và S đi về REAR mà không cần đổi dây.
+    invert_left_direction: true
+    invert_right_direction: true
+
+  ultrasonic_serial:
+    port: "auto"          # Hoặc /dev/ttyUSB0, /dev/ttyACM0
+    baudrate: 115200
+
+  safety:
+    # Ngưỡng ban đầu an toàn cho xe chạy full-speed (ENA/ENB đang gắn jumper).
+    front_stop_cm: 65
+    rear_stop_cm: 65
+    left_stop_cm: 25
+    right_stop_cm: 25
+    # Khi quay tại chỗ, cả đầu và đuôi xe đều quét theo vòng cung.
+    turn_clearance_cm: 25
+
+    # Cho phép đúng 1 packet null nếu số đo hợp lệ gần nhất chưa quá 0.2 giây.
+    allowed_null_packets: 1
+    invalid_grace_seconds: 0.2
+    stale_timeout_seconds: 0.4
+
+    # Sau khi bị chặn, phải có 3 packet sạch cao hơn ngưỡng dừng 10 cm.
+    resume_margin_cm: 10
+    resume_valid_packets: 3
 
 topics:
   cmd_vel: "/cmd_vel"

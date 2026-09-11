@@ -1,6 +1,7 @@
 import logging
 import asyncio
 import random
+from typing import Optional, Dict, Any, List
 from fastapi import APIRouter, HTTPException, Depends, status, WebSocket, WebSocketDisconnect
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -49,51 +50,45 @@ async def chat_with_robot(request: ChatRequest, db: AsyncSession = Depends(get_d
         current_room = session_manager.get_room_number(sid)
         history = session_manager.get_history(sid)
 
-        # Nếu chưa truyền RAG context -> Tự động tìm kiếm tài liệu liên quan trong ChromaDB
-        if not rag_ctx:
-            try:
-                from app.db.chroma import get_concierge_collection
-                collection = get_concierge_collection("concierge_kb")
-                results = await asyncio.to_thread(
-                    collection.query,
-                    query_texts=[request.prompt],
-                    n_results=3
-                )
-                if results and results.get("documents") and results["documents"][0]:
-                    rag_ctx = "\n---\n".join(results["documents"][0])
-            except Exception as ex:
-                logger.warning(f"Không thể truy vấn RAG context từ ChromaDB: {ex}")
+        # 1. Kiểm tra Fast-Path trước để phản hồi siêu tốc (< 1ms) không cần ChromaDB hay Ollama
+        fast_hit = ollama_service.check_fast_path(request.prompt, request.language)
+        if fast_hit:
+            reply, detected_lang, lang_code = fast_hit
+        else:
+            # 2. Nếu không khớp Fast-Path -> Truy vấn tài liệu RAG trong ChromaDB (lấy 2 đoạn liên quan nhất)
+            if not rag_ctx:
+                try:
+                    from app.db.chroma import get_concierge_collection
+                    collection = get_concierge_collection("concierge_kb")
+                    results = await asyncio.to_thread(
+                        collection.query,
+                        query_texts=[request.prompt],
+                        n_results=2
+                    )
+                    if results and results.get("documents") and results["documents"][0]:
+                        rag_ctx = "\n---\n".join(results["documents"][0])
+                except Exception as ex:
+                    logger.warning(f"Không thể truy vấn RAG context từ ChromaDB: {ex}")
 
-        # Sinh câu trả lời qua Ollama kèm lịch sử phiên & số phòng đã lưu
-        reply, detected_lang, lang_code = await ollama_service.generate_response(
-            prompt=request.prompt,
-            rag_context=rag_ctx,
-            language=request.language or "auto",
-            emotion=request.emotion or "neutral",
-            chat_history=history,
-            stored_room_number=current_room,
-        )
+            # 3. Sinh câu trả lời qua Ollama Qwen 2.5 3B
+            reply, detected_lang, lang_code = await ollama_service.generate_response(
+                prompt=request.prompt,
+                rag_context=rag_ctx,
+                language=request.language or "auto",
+                emotion=request.emotion or "neutral",
+                chat_history=history,
+                stored_room_number=current_room,
+            )
 
         # Thêm lượt nói vào bộ nhớ phiên & Lưu bền vững vào PostgreSQL Database (bảng chat_sessions & chat_messages)
         session_manager.add_turn(sid, "user", request.prompt)
         session_manager.add_turn(sid, "assistant", reply)
-        await session_manager.save_turn_to_db(db, sid, "user", request.prompt, language=lang_code, room_number=current_room)
-        await session_manager.save_turn_to_db(db, sid, "assistant", reply, language=lang_code, room_number=current_room)
+        # Lưu hội thoại vào PostgreSQL NGẦM để không chặn thời gian phản hồi của Robot
+        asyncio.create_task(_background_save_chat(sid, request.prompt, reply, lang_code, current_room))
 
-        # TỰ ĐỘNG BÓC TÁCH INTENT & TẠO YÊU CẦU DỊCH VỤ BÁO CHO RECEPTIONIST / STAFF
-        try:
-            intent_res = await ollama_service.extract_intent(request.prompt)
-            act = intent_res.get("action", "unknown")
-            prompt_lower = request.prompt.lower()
-            request_keywords = ["cần", "xin", "cho", "gửi", "gọi", "đặt", "sửa", "dọn", "nước", "khăn", "lễ tân", "yêu cầu", "phòng", "hỗ trợ", "bàn", "chăn", "gối", "vali", "hành lý"]
-            
-            if act in ["room_service", "housekeeping", "bellman", "maintenance", "restaurant", "reception", "receptionist", "front_desk"] or any(kw in prompt_lower for kw in request_keywords):
-                target_action = act if act != "unknown" else "reception"
-                items_desc = intent_res.get("items") or request.prompt
-                created_ticket_code = await _auto_create_ticket(db, target_action, current_room or "402", items_desc)
-                logger.info(f"[AI Chat Auto-Ticket] Created request #{created_ticket_code} for Receptionist / Staff from guest prompt: '{request.prompt}'")
-        except Exception as ex_ticket:
-            logger.warning(f"[AI Chat Ticket Warning] Could not auto-create ticket from chat: {ex_ticket}")
+        # TỰ ĐỘNG BÓC TÁCH INTENT & TẠO YÊU CẦU DỊCH VỤ TRONG NỀN (Non-blocking Background Task)
+        # Giúp Robot trả lời ngay lập tức, tiết kiệm 3-5 giây chờ đợi cho khách hàng
+        asyncio.create_task(_background_extract_and_create_ticket(request.prompt, current_room))
 
         return ChatResponse(
             response=reply,
@@ -344,8 +339,6 @@ async def _auto_create_ticket(db: AsyncSession, action: str, room_number: str, i
             order = RoomServiceOrder(
                 order_number=str(random.randint(1043, 9999)),
                 room_number=rm,
-                is_vip=False,
-                priority="normal",
                 items=[{"name": items, "qty": 1}],
                 note="Yêu cầu gửi từ HCRobot Concierge AI Chat",
                 status="Pending",
@@ -506,3 +499,33 @@ async def _auto_create_ticket(db: AsyncSession, action: str, room_number: str, i
         await db.rollback()
 
     return code
+
+
+async def _background_save_chat(session_id: str, user_turn: str, ai_turn: str, lang_code: str, room_number: Optional[str]):
+    """Lưu lượt hội thoại vào PostgreSQL trong nền, không chặn thời gian phản hồi của Robot."""
+    try:
+        from app.core.database import AsyncSessionLocal
+        async with AsyncSessionLocal() as bg_db:
+            await session_manager.save_turn_to_db(bg_db, session_id, "user", user_turn, language=lang_code, room_number=room_number)
+            await session_manager.save_turn_to_db(bg_db, session_id, "assistant", ai_turn, language=lang_code, room_number=room_number)
+    except Exception as e:
+        logger.warning(f"[AIChat Background Save Error] {e}")
+
+
+async def _background_extract_and_create_ticket(prompt: str, room_number: Optional[str]):
+    """Chạy bóc tách intent và tạo ticket ngầm dưới nền, không block thời gian phản hồi của Robot."""
+    try:
+        from app.core.database import AsyncSessionLocal
+        intent_res = await ollama_service.extract_intent(prompt)
+        act = intent_res.get("action", "unknown")
+        prompt_lower = prompt.lower()
+        request_keywords = ["cần", "xin", "cho", "gửi", "gọi", "đặt", "sửa", "dọn", "nước", "khăn", "lễ tân", "yêu cầu", "phòng", "hỗ trợ", "bàn", "chăn", "gối", "vali", "hành lý"]
+        
+        if act in ["room_service", "housekeeping", "bellman", "maintenance", "restaurant", "reception", "receptionist", "front_desk"] or any(kw in prompt_lower for kw in request_keywords):
+            target_action = act if act != "unknown" else "reception"
+            items_desc = intent_res.get("items") or prompt
+            async with AsyncSessionLocal() as bg_db:
+                created_ticket_code = await _auto_create_ticket(bg_db, target_action, room_number or "402", items_desc)
+                logger.info(f"[AI Chat Background Auto-Ticket] Created ticket #{created_ticket_code} for {target_action} from prompt: '{prompt}'")
+    except Exception as ex_ticket:
+        logger.warning(f"[AI Chat Background Ticket Warning] Could not auto-create ticket: {ex_ticket}")

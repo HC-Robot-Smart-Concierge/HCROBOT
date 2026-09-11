@@ -1,5 +1,420 @@
-import sys
-from motor_controller import main as run_controller
+"""Điều khiển WASD tích hợp ESP32 ultrasonic fail-safe + Camera Stream cho HCROBOT."""
 
-if __name__ == '__main__':
-    run_controller()
+import argparse
+import logging
+import threading
+import time
+
+from motor_controller import MotorController, get_char, load_config, run_wasd_controller
+from obstacle_safety import ObstacleSafetyController
+from ultrasonic_serial import UltrasonicSerialReader
+
+
+logger = logging.getLogger("RobotMain")
+
+
+def start_camera_stream(device=None, width=1920, height=1080, fps=15):
+    """Khởi động MJPEG Camera Stream Server độ phân giải Full HD 1080p trên background thread."""
+    try:
+        from scripts.camera_stream import create_camera_backend, ThreadedHTTPServer, MJPEGHandler
+        import scripts.camera_stream as cam_module
+
+        cam_module.camera_backend = create_camera_backend(width, height, fps, device=device)
+        server = ThreadedHTTPServer(("0.0.0.0", 8554), MJPEGHandler)
+        logger.info("📹 Camera stream started: http://0.0.0.0:8554/stream (1080p Full HD)")
+        server.serve_forever()
+    except Exception as e:
+        logger.error(f"Camera stream failed to start: {e}")
+
+
+def start_udp_control_listener(safety, port=9999):
+    """Khởi động UDP Remote Listener trên background thread để nhận lệnh điều khiển từ xa."""
+    import socket
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        sock.bind(("0.0.0.0", port))
+        sock.settimeout(0.2)
+        logger.info("📡 UDP Remote Control Listener started on 0.0.0.0:%d", port)
+    except Exception as e:
+        logger.warning("Không thể khởi chạy UDP port %d: %s", port, e)
+        return
+
+    motion_map = {
+        "w": "forward", "forward": "forward",
+        "s": "backward", "backward": "backward",
+        "a": "left", "left": "left",
+        "d": "right", "right": "right",
+        "x": "stop", "stop": "stop", " ": "stop"
+    }
+
+    try:
+        while True:
+            try:
+                data, _ = sock.recvfrom(1024)
+                cmd = data.decode("utf-8", errors="ignore").strip().lower()
+                if cmd in motion_map:
+                    target_motion = motion_map[cmd]
+                    if target_motion == "stop":
+                        safety.stop()
+                    else:
+                        safety.command(target_motion)
+            except socket.timeout:
+                pass
+            except Exception as e:
+                logger.debug("UDP listener error: %s", e)
+    finally:
+        sock.close()
+
+
+def _value(cli_value, config, key, default):
+    return cli_value if cli_value is not None else config.get(key, default)
+
+
+def run_direct_motor_test(motor, direction, duration_seconds=10.0, countdown=3):
+    """Chạy motor trực tiếp, không mở Serial và không áp dụng obstacle safety."""
+    actions = {
+        "forward": motor.forward,
+        "backward": motor.backward,
+        "left": motor.turn_left,
+        "right": motor.turn_right,
+    }
+    if direction not in actions:
+        raise ValueError(f"Hướng test không hợp lệ: {direction}")
+
+    duration_seconds = float(duration_seconds)
+    if duration_seconds < 0:
+        raise ValueError("Thời gian test không được âm")
+
+    logger.warning(
+        "DIRECT MOTOR TEST: bỏ qua toàn bộ ESP32/sensor. "
+        "Kê bánh khỏi mặt đất và nhấn Ctrl+C để dừng khẩn cấp."
+    )
+    try:
+        for remaining in range(int(countdown), 0, -1):
+            print(f"Motor sẽ chạy {direction.upper()} sau {remaining}...")
+            time.sleep(1.0)
+
+        actions[direction]()
+        if duration_seconds == 0:
+            print(f"Đang chạy {direction.upper()} liên tục; nhấn Ctrl+C để DỪNG.")
+            while True:
+                time.sleep(0.1)
+        else:
+            print(
+                f"Đang chạy {direction.upper()} trong {duration_seconds:.1f} giây; "
+                "nhấn Ctrl+C để dừng sớm."
+            )
+            deadline = time.monotonic() + duration_seconds
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+                time.sleep(min(0.1, remaining))
+    except KeyboardInterrupt:
+        logger.info("Đã nhận Ctrl+C trong direct motor test")
+    finally:
+        motor.cleanup()
+
+    return 0
+
+
+def run_auto_drive(safety, direction, countdown=3):
+    """Tự chạy tiến/lùi và kết thúc ngay khi obstacle safety ra lệnh dừng."""
+    sensor_name = {"forward": "front", "backward": "rear"}.get(direction)
+    if sensor_name is None:
+        raise ValueError("Auto drive chỉ hỗ trợ forward hoặc backward")
+
+    label = direction.upper()
+    sensor_label = sensor_name.upper()
+    logger.warning(
+        "AUTO %s: robot sẽ dừng khi %s <= ngưỡng, sensor lỗi hoặc mất Serial. "
+        "Nhấn Ctrl+C để dừng thủ công.",
+        label,
+        sensor_name,
+    )
+    for remaining in range(int(countdown), 0, -1):
+        print(f"Robot sẽ tự chạy {label} về phía {sensor_label} sau {remaining}...")
+        time.sleep(1.0)
+
+    safety.update()
+    if not safety.command(direction):
+        logger.error(
+            "AUTO %s không khởi động vì điều kiện ban đầu không an toàn.", label
+        )
+        return 4
+
+    logger.info("AUTO %s đang chạy; chờ vật cản phía %s...", label, sensor_label)
+    while safety.motion == direction:
+        if not safety.enforce():
+            logger.info("AUTO %s đã dừng an toàn và sẽ không tự chạy lại.", label)
+            break
+        time.sleep(0.01)
+    return 0
+
+
+def run_auto_forward(safety, countdown=3):
+    """Alias tương thích với lệnh --auto-forward cũ."""
+    return run_auto_drive(safety, "forward", countdown=countdown)
+
+
+def _print_controls(port, thresholds, stale_timeout, turn_clearance):
+    print("\n" + "=" * 68)
+    print(" HCROBOT: MOTOR + 4 HC-SR04 QUA ESP32 USB SERIAL")
+    print("=" * 68)
+    print(" [W/↑] tiến   [S/↓] lùi   [A/←] trái   [D/→] phải")
+    print(" [X/Space] dừng            [Q] thoát")
+    print(f" Serial: {port} | stale timeout: {stale_timeout:.2f}s")
+    print(
+        " Ngưỡng: front={forward:.1f} rear={backward:.1f} "
+        "left={left:.1f} right={right:.1f} cm".format(**thresholds)
+    )
+    print(f" Khi quay: kiểm tra bên quay + front/rear > {turn_clearance:.1f}cm")
+    print(" Mất Serial hoặc sensor lỗi liên tiếp => STOP; hết vật cản phải bấm lệnh lại")
+    print("=" * 68 + "\n")
+
+
+def build_argument_parser():
+    parser = argparse.ArgumentParser(
+        description="Điều khiển motor L298N với ultrasonic fail-safe từ ESP32"
+    )
+    parser.add_argument("--port", help="Cổng ESP32, ví dụ /dev/ttyUSB0; mặc định auto")
+    parser.add_argument("--baud", type=int, help="Baud rate ESP32")
+    parser.add_argument("--front-stop", type=float, help="Ngưỡng dừng phía trước (cm)")
+    parser.add_argument("--rear-stop", type=float, help="Ngưỡng dừng phía sau (cm)")
+    parser.add_argument("--left-stop", type=float, help="Ngưỡng chặn xoay trái (cm)")
+    parser.add_argument("--right-stop", type=float, help="Ngưỡng chặn xoay phải (cm)")
+    parser.add_argument("--sensor-timeout", type=float, help="Tuổi packet tối đa (giây)")
+    parser.add_argument(
+        "--null-grace",
+        type=float,
+        help="Thời gian giữ 1 số đo trước khi null (giây)",
+    )
+    parser.add_argument(
+        "--turn-clearance",
+        type=float,
+        help="Khoảng trống front/rear khi quay (cm)",
+    )
+    parser.add_argument(
+        "--resume-margin",
+        type=float,
+        help="Biên mở khóa cao hơn ngưỡng dừng (cm)",
+    )
+    parser.add_argument(
+        "--resume-packets",
+        type=int,
+        help="Số packet sạch liên tiếp để mở khóa",
+    )
+    parser.add_argument("--gpio-chip", type=int, help="Ép gpiochip; thường tự phát hiện")
+    parser.add_argument("--mock", action="store_true", help="Giả lập motor nhưng vẫn đọc sensor")
+    parser.add_argument("--no-camera", action="store_true", help="Không khởi động camera stream")
+    parser.add_argument(
+        "--camera-device",
+        default=None,
+        help="Device index hoặc path cho USB camera (ví dụ: 0, 16 hoặc /dev/video16)",
+    )
+    mode_group = parser.add_mutually_exclusive_group()
+    mode_group.add_argument(
+        "--drive-test",
+        choices=("forward", "backward", "left", "right"),
+        help="Chạy motor trực tiếp theo hướng chọn, bỏ qua toàn bộ sensor",
+    )
+    parser.add_argument(
+        "--drive-test-seconds",
+        type=float,
+        default=10.0,
+        help="Thời gian direct motor test; đặt 0 để chạy tới khi nhấn Ctrl+C",
+    )
+    mode_group.add_argument(
+        "--auto-forward",
+        action="store_true",
+        help="Alias cũ của --auto-drive forward",
+    )
+    mode_group.add_argument(
+        "--auto-drive",
+        choices=("forward", "backward"),
+        help="Tự chạy tiến/lùi và dừng hẳn bằng sensor FRONT/REAR tương ứng",
+    )
+    mode_group.add_argument(
+        "--motor-only",
+        action="store_true",
+        help="Test motor không dùng sensor (không có obstacle fail-safe)",
+    )
+    parser.add_argument("--debug", action="store_true", help="Bật log từng packet")
+    return parser
+
+
+def main(argv=None):
+    args = build_argument_parser().parse_args(argv)
+    logging.basicConfig(
+        level=logging.DEBUG if args.debug else logging.INFO,
+        format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+    )
+
+    # Bật Camera Stream Server trên background thread (trừ khi --no-camera)
+    if not args.no_camera:
+        camera_thread = threading.Thread(
+            target=start_camera_stream,
+            args=(args.camera_device,),
+            daemon=True,
+        )
+        camera_thread.start()
+
+    config = load_config()
+    robot_cfg = config.get("robot", {})
+    gpio_cfg = robot_cfg.get("gpio", {})
+    serial_cfg = robot_cfg.get("ultrasonic_serial", {})
+    safety_cfg = robot_cfg.get("safety", {})
+
+    motor = MotorController(
+        left_forward_pin=gpio_cfg.get("left_forward", 17),
+        left_backward_pin=gpio_cfg.get("left_backward", 27),
+        right_forward_pin=gpio_cfg.get("right_forward", 22),
+        right_backward_pin=gpio_cfg.get("right_backward", 23),
+        force_mock=args.mock,
+        gpio_chip=_value(args.gpio_chip, gpio_cfg, "chip", None),
+        invert_left_direction=gpio_cfg.get("invert_left_direction", False),
+        invert_right_direction=gpio_cfg.get("invert_right_direction", False),
+    )
+
+    if motor.is_mock and not args.mock:
+        logger.error(
+            "Không có GPIO thật; hủy chạy motor. Dùng --mock chỉ khi muốn giả lập."
+        )
+        motor.cleanup()
+        return 2
+
+    if args.drive_test:
+        return run_direct_motor_test(
+            motor,
+            args.drive_test,
+            duration_seconds=args.drive_test_seconds,
+        )
+
+    if args.motor_only:
+        logger.warning(
+            "MOTOR-ONLY: ultrasonic fail-safe đã bị tắt. Hãy kê bánh khỏi mặt đất khi test."
+        )
+        run_wasd_controller(motor)
+        return 0
+
+    port = _value(args.port, serial_cfg, "port", "auto")
+    baudrate = int(_value(args.baud, serial_cfg, "baudrate", 115200))
+    stale_timeout = float(
+        _value(args.sensor_timeout, safety_cfg, "stale_timeout_seconds", 0.4)
+    )
+    thresholds = {
+        "forward": float(_value(args.front_stop, safety_cfg, "front_stop_cm", 65.0)),
+        "backward": float(_value(args.rear_stop, safety_cfg, "rear_stop_cm", 65.0)),
+        "left": float(_value(args.left_stop, safety_cfg, "left_stop_cm", 25.0)),
+        "right": float(_value(args.right_stop, safety_cfg, "right_stop_cm", 25.0)),
+    }
+    invalid_grace = float(
+        _value(args.null_grace, safety_cfg, "invalid_grace_seconds", 0.2)
+    )
+    allowed_null_packets = int(safety_cfg.get("allowed_null_packets", 1))
+    resume_margin = float(
+        _value(args.resume_margin, safety_cfg, "resume_margin_cm", 10.0)
+    )
+    resume_packets = int(
+        _value(args.resume_packets, safety_cfg, "resume_valid_packets", 3)
+    )
+    turn_clearance = float(
+        _value(args.turn_clearance, safety_cfg, "turn_clearance_cm", 25.0)
+    )
+
+    reader = UltrasonicSerialReader(port=port, baudrate=baudrate)
+    safety = ObstacleSafetyController(
+        motor=motor,
+        sensor_reader=reader,
+        thresholds_cm=thresholds,
+        stale_timeout=stale_timeout,
+        invalid_grace=invalid_grace,
+        allowed_null_packets=allowed_null_packets,
+        resume_margin_cm=resume_margin,
+        resume_valid_packets=resume_packets,
+        turn_clearance_cm=turn_clearance,
+    )
+
+    try:
+        reader.start()
+    except RuntimeError as exc:
+        logger.error("Không khởi động được Serial reader: %s", exc)
+        motor.cleanup()
+        return 3
+
+    if reader.wait_for_packet(timeout=3.0):
+        logger.info("Đã nhận packet ultrasonic đầu tiên; khóa fail-safe sẵn sàng.")
+    else:
+        logger.warning(
+            "Chưa nhận được packet sau 3 giây; mọi lệnh chạy bị khóa cho tới khi có dữ liệu."
+        )
+
+    _print_controls(port, thresholds, stale_timeout, turn_clearance)
+
+    # Bật UDP Remote Control Listener trên background thread (port 9999)
+    udp_thread = threading.Thread(
+        target=start_udp_control_listener,
+        args=(safety, 9999),
+        daemon=True,
+    )
+    udp_thread.start()
+
+    key_to_motion = {
+        "w": "forward",
+        "s": "backward",
+        "a": "left",
+        "d": "right",
+    }
+    last_status_at = 0.0
+    last_status_sequence = 0
+
+    try:
+        auto_direction = args.auto_drive or ("forward" if args.auto_forward else None)
+        if auto_direction:
+            return run_auto_drive(safety, auto_direction)
+
+        while True:
+            safety.enforce()
+
+            snapshot = reader.latest()
+            now = time.monotonic()
+            if (
+                snapshot
+                and snapshot.sequence != last_status_sequence
+                and now - last_status_at >= 1.0
+            ):
+                last_status_at = now
+                last_status_sequence = snapshot.sequence
+                logger.info(
+                    "DIST cm: front=%s rear=%s left=%s right=%s age=%.2fs",
+                    snapshot.distance("front"),
+                    snapshot.distance("rear"),
+                    snapshot.distance("left"),
+                    snapshot.distance("right"),
+                    snapshot.age_seconds(now),
+                )
+
+            char = get_char()
+            if not char:
+                time.sleep(0.01)
+                continue
+            key = char.lower()
+            if key in key_to_motion:
+                safety.command(key_to_motion[key])
+            elif key in ("x", " ", "\r", "\n"):
+                safety.stop()
+            elif key == "q" or char == "\x03":
+                logger.info("Nhận lệnh thoát")
+                break
+    except KeyboardInterrupt:
+        logger.info("Đã ngắt bằng Ctrl+C")
+    finally:
+        safety.stop()
+        reader.stop()
+        motor.cleanup()
+
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

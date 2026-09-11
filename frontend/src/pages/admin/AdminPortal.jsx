@@ -16,6 +16,7 @@ import {
   HelpCircle,
   Map as MapIcon,
   Sparkles,
+  Video,
 } from 'lucide-react';
 import { AdminDashboardTab } from './tabs/AdminDashboardTab';
 import { AdminOperationsTab } from './tabs/AdminOperationsTab';
@@ -25,6 +26,7 @@ import { AdminAnalyticsTab } from './tabs/AdminAnalyticsTab';
 import { AdminSettingsTab } from './tabs/AdminSettingsTab';
 import { AdminLogsTab } from './tabs/AdminLogsTab';
 import { AdminLidarPage } from './AdminLidarPage';
+import { AdminCameraTab } from './tabs/AdminCameraTab';
 
 export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () => {} }) => {
   // Navigation Menu: 'Dashboard' | 'Operations' | 'Robots' | 'Knowledge' | 'Hotel Content' | 'Staff' | 'Analytics' | 'Logs' | 'Settings'
@@ -43,6 +45,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
     { id: 'Staff', label: 'Staff', icon: Users },
     { id: 'Analytics', label: 'Analytics', icon: BarChart2 },
     { id: 'Logs', label: 'Logs', icon: FileText },
+    { id: 'Camera', label: 'Camera', icon: Video },
   ];
 
   return (
@@ -254,6 +257,10 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
 
           {activeMenu === 'Logs' && (
             <AdminLogsTab currentUser={currentUser} />
+          )}
+
+          {activeMenu === 'Camera' && (
+            <AdminCameraTab currentUser={currentUser} />
           )}
 
           {/* Placeholders for Hotel Content */}

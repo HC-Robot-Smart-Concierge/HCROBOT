@@ -69,15 +69,12 @@ export const useSpeechSynthesis = () => {
       const availableVoices = voices.length > 0 ? voices : window.speechSynthesis.getVoices();
       
       if (langTag.startsWith('vi')) {
-        const viVoice = availableVoices.find(
-          (v) =>
-            v.lang.toLowerCase().startsWith('vi') ||
-            v.name.toLowerCase().includes('vietnamese') ||
-            v.name.toLowerCase().includes('hoaimy') ||
-            v.name.toLowerCase().includes('namminh') ||
-            v.name.toLowerCase().includes('google tiếng việt') ||
-            v.name.toLowerCase().includes('tiếng việt')
-        );
+        // Ưu tiên các giọng đọc tự nhiên (Natural / Neural / Hoài My / Nam Minh) trước khi lấy giọng máy mặc định
+        const viVoice = availableVoices.find((v) => v.name.toLowerCase().includes('hoaimy') || v.name.toLowerCase().includes('hoài my')) ||
+          availableVoices.find((v) => v.name.toLowerCase().includes('namminh') || v.name.toLowerCase().includes('nam minh')) ||
+          availableVoices.find((v) => v.name.toLowerCase().includes('natural') && v.lang.toLowerCase().startsWith('vi')) ||
+          availableVoices.find((v) => v.name.toLowerCase().includes('google') && v.lang.toLowerCase().startsWith('vi')) ||
+          availableVoices.find((v) => v.lang.toLowerCase().startsWith('vi') || v.name.toLowerCase().includes('vietnamese'));
         if (viVoice) {
           utterance.voice = viVoice;
         }
@@ -130,8 +127,13 @@ export const useSpeechSynthesis = () => {
     }
 
     try {
-      // 1. Gọi tới Backend TTS Engine (EdgeTTS / ElevenLabs / OpenAI)
-      const res = await synthesizeSpeech(text, 'edge', null, language);
+      // 1. Thử gọi Backend TTS Engine (EdgeTTS giọng Hoài My tự nhiên). Cho phép tối đa 3.5s để stream giọng đọc mượt mà
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('TTS Timeout')), 3500));
+      const res = await Promise.race([
+        synthesizeSpeech(text, 'edge', null, language),
+        timeoutPromise
+      ]);
+
       if (res && res.audio_base64 && res.audio_base64.length > 100) {
         const audioSrc = `data:${res.mime_type || 'audio/mp3'};base64,${res.audio_base64}`;
         const audio = new Audio(audioSrc);
@@ -156,10 +158,10 @@ export const useSpeechSynthesis = () => {
         return;
       }
     } catch (err) {
-      console.info("Backend TTS Stream unavailable, using Web Speech API fallback:", err);
+      // Backend TTS lâu hoặc lỗi mạng -> ngay lập tức nói bằng Web Speech API trình duyệt không trễ 1 mili-giây
     }
 
-    // 2. Fallback sang Web Speech API trình duyệt
+    // 2. Fallback sang Web Speech API trình duyệt (0ms delay)
     speakWebSpeech(text, language, onEndCallback, onStartCallback);
   };
 

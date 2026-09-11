@@ -123,6 +123,24 @@ def get_v4l2_video_devices():
     return indices
 
 
+def normalize_video_device(device):
+    """Convert numeric values and /dev/videoN paths to a V4L2 index."""
+    import re
+
+    if not isinstance(device, str):
+        return device
+
+    value = device.strip()
+    if value.isdigit():
+        return int(value)
+
+    match = re.fullmatch(r"/dev/video(\d+)", value)
+    if match:
+        return int(match.group(1))
+
+    return value
+
+
 class OpenCVBackend(CameraBackend):
     """Fallback backend sử dụng OpenCV (USB webcam hoặc V4L2)."""
 
@@ -145,10 +163,7 @@ class OpenCVBackend(CameraBackend):
         self._cv2 = cv2
         if self.device is not None:
             # Nếu người dùng truyền chuỗi dạng số (vd '16'), convert sang int
-            if isinstance(self.device, str) and self.device.isdigit():
-                candidates = [int(self.device)]
-            else:
-                candidates = [self.device]
+            candidates = [normalize_video_device(self.device)]
         else:
             system_devs = get_v4l2_video_devices()
             if system_devs:

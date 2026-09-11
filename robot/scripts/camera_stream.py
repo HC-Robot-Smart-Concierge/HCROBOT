@@ -84,29 +84,73 @@ class Picamera2Backend(CameraBackend):
 class OpenCVBackend(CameraBackend):
     """Fallback backend sử dụng OpenCV (USB webcam hoặc V4L2)."""
 
-    def __init__(self, width, height, fps):
+    def __init__(self, width, height, fps, device=None):
         super().__init__(width, height, fps)
+        self.device = device
         self._cap = None
+        self._cv2 = None
 
     def start(self):
         import cv2
 
         self._cv2 = cv2
-        self._cap = cv2.VideoCapture(0)
-        self._cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
-        self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
-        self._cap.set(cv2.CAP_PROP_FPS, self.fps)
+        candidates = [self.device] if self.device is not None else [0, 1, 2, 3, 4]
+        opened = False
 
-        if not self._cap.isOpened():
-            raise RuntimeError("Cannot open camera via OpenCV")
+        for dev in candidates:
+            logger.info(f"Đang thử kết nối USB camera index {dev}...")
+            cap = None
+            try:
+                # Ưu tiên backend V4L2 trên Linux để tối ưu latency
+                cap = cv2.VideoCapture(dev, cv2.CAP_V4L2)
+                if not cap.isOpened():
+                    cap.release()
+                    cap = cv2.VideoCapture(dev)
+            except Exception:
+                cap = cv2.VideoCapture(dev)
 
-        logger.info(
-            f"OpenCV camera started: {self.width}x{self.height} @ {self.fps}fps"
-        )
+            if cap and cap.isOpened():
+                # Dùng codec MJPG phần cứng từ camera USB nếu được
+                try:
+                    fourcc = cv2.VideoWriter_fourcc(*"MJPG")
+                    cap.set(cv2.CAP_PROP_FOURCC, fourcc)
+                except Exception:
+                    pass
+
+                cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
+                cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
+                cap.set(cv2.CAP_PROP_FPS, self.fps)
+                # Giữ buffer size = 1 để tránh lag / delay hình ảnh khi live stream
+                try:
+                    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+                except Exception:
+                    pass
+
+                # Đọc thử 1 frame để kiểm tra tính hợp lệ
+                ret, frame = cap.read()
+                if ret and frame is not None:
+                    self._cap = cap
+                    opened = True
+                    actual_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                    actual_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                    logger.info(
+                        f"✅ USB Camera kết nối thành công tại index {dev}: "
+                        f"{actual_w}x{actual_h} @ {self.fps}fps"
+                    )
+                    break
+                else:
+                    cap.release()
+
+        if not opened:
+            raise RuntimeError(
+                f"Không thể mở USB camera qua OpenCV (đã thử index {candidates})"
+            )
 
     def capture_jpeg(self):
+        if not self._cap or not self._cap.isOpened():
+            raise RuntimeError("Camera is not opened")
         ret, frame = self._cap.read()
-        if not ret:
+        if not ret or frame is None:
             raise RuntimeError("Failed to read frame from camera")
         _, jpeg = self._cv2.imencode(
             ".jpg", frame, [self._cv2.IMWRITE_JPEG_QUALITY, 80]
@@ -119,17 +163,17 @@ class OpenCVBackend(CameraBackend):
             self._cap = None
 
 
-def create_camera_backend(width, height, fps):
+def create_camera_backend(width, height, fps, device=None):
     """Tự động chọn backend phù hợp: Picamera2 -> OpenCV."""
     try:
         backend = Picamera2Backend(width, height, fps)
         backend.start()
         return backend
     except (ImportError, RuntimeError) as e:
-        logger.warning(f"Picamera2 không khả dụng ({e}), thử OpenCV fallback...")
+        logger.warning(f"Picamera2 không khả dụng ({e}), chuyển sang OpenCV USB backend...")
 
     try:
-        backend = OpenCVBackend(width, height, fps)
+        backend = OpenCVBackend(width, height, fps, device=device)
         backend.start()
         return backend
     except (ImportError, RuntimeError) as e:
@@ -240,6 +284,9 @@ def parse_args():
     parser.add_argument(
         "--height", type=int, default=DEFAULT_HEIGHT, help=f"Frame height (default: {DEFAULT_HEIGHT})"
     )
+    parser.add_argument(
+        "--device", type=int, default=None, help="Device index cho USB camera (mặc định: auto scan)"
+    )
     return parser.parse_args()
 
 
@@ -252,7 +299,9 @@ def main():
         format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
     )
 
-    camera_backend = create_camera_backend(args.width, args.height, args.fps)
+    camera_backend = create_camera_backend(
+        args.width, args.height, args.fps, device=args.device
+    )
 
     server = ThreadedHTTPServer(("0.0.0.0", args.port), MJPEGHandler)
 

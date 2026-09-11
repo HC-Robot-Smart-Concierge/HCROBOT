@@ -13,13 +13,13 @@ from ultrasonic_serial import UltrasonicSerialReader
 logger = logging.getLogger("RobotMain")
 
 
-def start_camera_stream():
+def start_camera_stream(device=None):
     """Khởi động MJPEG Camera Stream Server trên background thread."""
     try:
         from scripts.camera_stream import create_camera_backend, ThreadedHTTPServer, MJPEGHandler
         import scripts.camera_stream as cam_module
 
-        cam_module.camera_backend = create_camera_backend(1280, 720, 15)
+        cam_module.camera_backend = create_camera_backend(1280, 720, 15, device=device)
         server = ThreadedHTTPServer(("0.0.0.0", 8554), MJPEGHandler)
         logger.info("📹 Camera stream started: http://0.0.0.0:8554/stream")
         server.serve_forever()
@@ -168,6 +168,12 @@ def build_argument_parser():
     parser.add_argument("--gpio-chip", type=int, help="Ép gpiochip; thường tự phát hiện")
     parser.add_argument("--mock", action="store_true", help="Giả lập motor nhưng vẫn đọc sensor")
     parser.add_argument("--no-camera", action="store_true", help="Không khởi động camera stream")
+    parser.add_argument(
+        "--camera-device",
+        type=int,
+        default=None,
+        help="Device index cho USB camera (mặc định: auto scan)",
+    )
     mode_group = parser.add_mutually_exclusive_group()
     mode_group.add_argument(
         "--drive-test",
@@ -208,7 +214,11 @@ def main(argv=None):
 
     # Bật Camera Stream Server trên background thread (trừ khi --no-camera)
     if not args.no_camera:
-        camera_thread = threading.Thread(target=start_camera_stream, daemon=True)
+        camera_thread = threading.Thread(
+            target=start_camera_stream,
+            args=(args.camera_device,),
+            daemon=True,
+        )
         camera_thread.start()
 
     config = load_config()

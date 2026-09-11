@@ -19,6 +19,7 @@
    - [Bước 3: Cài Đặt & Khởi Chạy Frontend (React)](#bước-3-cài-đặt--khởi-chạy-frontend-react)
    - [Bước 4: Khởi Chạy Nhanh Trên Windows (1-Click Batch)](#bước-4-khởi-chạy-nhanh-trên-windows-1-click-batch)
    - [Bước 5: Cấu Hình & Khởi Chạy Robot Node (Raspberry Pi 5 + ROS 2)](#bước-5-cấu-hình--khởi-chạy-robot-node-raspberry-pi-5--ros-2)
+   - [Bước 6: Cấu Hình & Mở Camera Stream (Pi 5 ⇄ Laptop)](#bước-6-cấu-hình--mở-camera-stream-raspberry-pi-5--laptop)
 5. [Giao Tiếp Real-time, APIs & ROS 2 Topics](#5-giao-tiếp-real-time-apis--ros-2-topics)
 6. [Triển Khai Production Với Docker Compose](#6-triển-khai-production-với-docker-compose)
 
@@ -114,7 +115,11 @@ HC-Robot/
 │   ├── package.json            # Node.js dependencies & scripts
 │   ├── tailwind.config.js      # Configuration Tailwind CSS
 │   └── vite.config.js          # Vite build & PWA allowedHosts settings
-├── robot/                      # ROS 2 Workspace (Raspberry Pi 5)
+├── robot/                      # Robot Edge Controller & ROS 2 (Raspberry Pi 5)
+│   ├── main.py                 # Điều khiển động cơ, cảm biến & auto-start camera stream
+│   ├── scripts/
+│   │   ├── camera_stream.py    # MJPEG HTTP Server đa luồng cho camera (OpenCV / Picamera2)
+│   │   └── setup_gpio_permissions.sh # Script phân quyền GPIO trên Pi
 │   └── src/
 │       └── hc_robot_client/    # ROS 2 Package (nodes, launch, config)
 │           ├── hc_robot_client/# Python nodes (ai_bridge_node, telemetry_node)
@@ -276,6 +281,121 @@ ros2 run hc_robot_client ai_bridge_node
 # Khởi chạy Telemetry Node (trong terminal khác)
 ros2 run hc_robot_client telemetry_node
 ```
+
+---
+
+### Bước 6: Cấu Hình & Mở Camera Stream (Raspberry Pi 5 ⇄ Laptop)
+
+Hệ thống hỗ trợ truyền hình ảnh thời gian thực (MJPEG Video Stream) từ camera gắn trên Raspberry Pi 5 (USB Webcam hoặc CSI Camera) về màn hình Robot Kiosk (`/robot`) và trang Admin Monitor (`/admin` -> tab Camera).
+
+#### 1. Khởi chạy Camera trên Raspberry Pi 5
+
+##### A. Cài đặt thư viện phụ thuộc
+```bash
+# Đối với USB Camera/Webcam (Khuyên dùng):
+pip3 install opencv-python-headless
+
+# Hoặc nếu dùng CSI Ribbon Camera (Raspberry Pi Camera Module v3):
+pip3 install picamera2
+```
+
+##### B. Cách khởi chạy Camera
+- **Cách 1: Tự động mở kèm Robot Controller (`main.py` - Khuyên dùng):**
+  Khi chạy bộ điều khiển động cơ và cảm biến robot, Camera Stream sẽ tự khởi chạy ở chế độ background daemon thread trên port `8554`:
+  ```bash
+  cd ~/HC-Robot/robot
+  python3 main.py
+  ```
+  *(Mẹo: Thêm cờ `--no-camera` nếu chỉ muốn test động cơ/cảm biến mà không cần bật cam: `python3 main.py --no-camera`)*
+
+- **Cách 2: Chạy độc lập kịch bản Camera Stream (`camera_stream.py`):**
+  Nếu chỉ muốn stream camera riêng biệt phục vụ kiểm thử:
+  ```bash
+  cd ~/HC-Robot/robot
+  python3 scripts/camera_stream.py --port 8554 --width 640 --height 480 --fps 30
+  ```
+
+- **Kiểm tra trạng thái luồng camera ngay trên Pi 5:**
+  ```bash
+  curl http://localhost:8554/health
+  # Phản hồi mẫu: {"status": "ok", "backend": "opencv", "clients": 0, "fps": 30}
+  ```
+
+#### 2. Kết nối Camera từ Pi 5 về Laptop Windows
+
+##### Cách A: Dùng SSH Tunnel (Port Forwarding - Tiện lợi nhất khi Dev)
+Mở một cửa sổ PowerShell hoặc Command Prompt riêng trên Laptop Windows và chạy:
+```powershell
+ssh -L 8554:localhost:8554 pi@<IP_PI5> -N
+```
+> Thay `<IP_PI5>` bằng địa chỉ IP của Pi 5 (ví dụ: `192.168.1.50` hoặc IP Tailscale `100.x.y.z`).  
+> Lệnh này sẽ ánh xạ cổng `8554` của Pi 5 về trực tiếp `localhost:8554` trên Laptop. Giữ cửa sổ terminal này mở trong suốt quá trình sử dụng.
+
+##### Cách B: Kết nối trực tiếp qua IP Mạng LAN / Tailscale
+Nếu Laptop và Pi 5 cùng lớp mạng Wi-Fi hoặc đã kết nối VPN Tailscale, bạn có thể trỏ thẳng vào IP của Pi 5 mà không cần SSH tunnel:  
+`http://<IP_PI5>:8554/stream`
+
+#### 3. Cấu hình & Xem Camera trên Laptop
+
+##### A. Cấu hình biến môi trường Frontend (`frontend/.env`)
+Tạo hoặc cập nhật file `frontend/.env` (tham khảo `frontend/.env.example`):
+```env
+# Nguồn camera: 'pi5' (từ Raspberry Pi 5) hoặc 'local' (webcam tích hợp trên laptop)
+VITE_CAMERA_SOURCE=pi5
+
+# Đường dẫn luồng video MJPEG từ Pi 5:
+# - Nếu dùng SSH Tunnel hoặc chạy local:
+VITE_PI5_CAMERA_URL=http://localhost:8554/stream
+
+# - Nếu kết nối trực tiếp qua IP mạng LAN/Tailscale:
+# VITE_PI5_CAMERA_URL=http://<IP_PI5>:8554/stream
+```
+
+##### B. Các giao diện xem Camera trên Laptop
+1. **Trang Giám sát Quản trị viên (Admin Camera Portal):**
+   - Đăng nhập tài khoản `admin` (mật khẩu: `123456`) tại `http://localhost:3000`.
+   - Vào **Admin Portal** (`/admin`), chọn tab **"Camera"** (icon Video) trên thanh sidebar trái.
+   - Các tính năng hỗ trợ:
+     - 🔴 **Live Stream**: Hiển thị hình ảnh từ Pi 5 thời gian thực với độ trễ cực thấp.
+     - 📸 **Snapshot & Download**: Chụp lại khung hình ngay lập tức và tải ảnh `.jpg` về máy.
+     - ⛶ **Toàn màn hình (Fullscreen)**: Mở rộng khung nhìn toàn màn hình.
+     - ⚙️ **Tùy chỉnh Stream URL**: Thay đổi nhanh địa chỉ luồng camera trực tiếp trên giao diện mà không cần restart frontend.
+     - 💓 **Health Check Monitor**: Tự động kiểm tra endpoint `/health` mỗi 5s để báo trạng thái kết nối (ONLINE/OFFLINE).
+2. **Màn hình Kiosk Robot (`/robot`):**
+   - Đăng nhập tài khoản `robot_01` hoặc chuyển sang màn hình Robot Kiosk.
+   - Khung Camera Preview góc trên màn hình sẽ nhận luồng video từ Pi 5 phục vụ phát hiện khuôn mặt và giao tiếp với khách hàng.
+3. **Xem trực tiếp trên Trình duyệt Web:**
+   - Mở trình duyệt bất kỳ gõ `http://localhost:8554` (trang dashboard test) hoặc `http://localhost:8554/stream` (luồng hình ảnh thuần).
+
+#### 4. (Tùy chọn) Cài đặt Camera tự khởi động cùng Raspberry Pi (systemd)
+Nếu muốn camera tự khởi chạy mỗi khi Pi 5 bật nguồn:
+1. Tạo file service:
+   ```bash
+   sudo nano /etc/systemd/system/hc-camera.service
+   ```
+2. Thêm nội dung cấu hình:
+   ```ini
+   [Unit]
+   Description=HC-Robot Camera MJPEG Stream Service
+   After=network.target
+
+   [Service]
+   Type=simple
+   User=pi
+   WorkingDirectory=/home/pi/HC-Robot/robot
+   ExecStart=/usr/bin/python3 /home/pi/HC-Robot/robot/scripts/camera_stream.py --port 8554
+   Restart=always
+   RestartSec=5
+
+   [Install]
+   WantedBy=multi-user.target
+   ```
+3. Kích hoạt và khởi chạy service:
+   ```bash
+   sudo systemctl daemon-reload
+   sudo systemctl enable hc-camera.service
+   sudo systemctl start hc-camera.service
+   ```
 
 ---
 

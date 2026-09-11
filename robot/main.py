@@ -1,7 +1,8 @@
-"""Điều khiển WASD tích hợp ESP32 ultrasonic fail-safe cho HCROBOT."""
+"""Điều khiển WASD tích hợp ESP32 ultrasonic fail-safe + Camera Stream cho HCROBOT."""
 
 import argparse
 import logging
+import threading
 import time
 
 from motor_controller import MotorController, get_char, load_config, run_wasd_controller
@@ -10,6 +11,20 @@ from ultrasonic_serial import UltrasonicSerialReader
 
 
 logger = logging.getLogger("RobotMain")
+
+
+def start_camera_stream():
+    """Khởi động MJPEG Camera Stream Server trên background thread."""
+    try:
+        from scripts.camera_stream import create_camera_backend, ThreadedHTTPServer, MJPEGHandler
+        import scripts.camera_stream as cam_module
+
+        cam_module.camera_backend = create_camera_backend(1280, 720, 15)
+        server = ThreadedHTTPServer(("0.0.0.0", 8554), MJPEGHandler)
+        logger.info("📹 Camera stream started: http://0.0.0.0:8554/stream")
+        server.serve_forever()
+    except Exception as e:
+        logger.error(f"Camera stream failed to start: {e}")
 
 
 def _value(cli_value, config, key, default):
@@ -152,6 +167,7 @@ def build_argument_parser():
     )
     parser.add_argument("--gpio-chip", type=int, help="Ép gpiochip; thường tự phát hiện")
     parser.add_argument("--mock", action="store_true", help="Giả lập motor nhưng vẫn đọc sensor")
+    parser.add_argument("--no-camera", action="store_true", help="Không khởi động camera stream")
     mode_group = parser.add_mutually_exclusive_group()
     mode_group.add_argument(
         "--drive-test",
@@ -185,7 +201,15 @@ def build_argument_parser():
 
 def main(argv=None):
     args = build_argument_parser().parse_args(argv)
-    logging.getLogger().setLevel(logging.DEBUG if args.debug else logging.INFO)
+    logging.basicConfig(
+        level=logging.DEBUG if args.debug else logging.INFO,
+        format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
+    )
+
+    # Bật Camera Stream Server trên background thread (trừ khi --no-camera)
+    if not args.no_camera:
+        camera_thread = threading.Thread(target=start_camera_stream, daemon=True)
+        camera_thread.start()
 
     config = load_config()
     robot_cfg = config.get("robot", {})

@@ -282,6 +282,8 @@ export const RobotScreenPage = ({ onLogout = () => {} }) => {
         onGuestApproached={handleGuestApproached} 
         onGuestLeft={handleGuestLeft} 
         onEmotionChange={(emotion) => setGuestEmotion(emotion)}
+        source={import.meta.env.VITE_CAMERA_SOURCE || 'local'}
+        streamUrl={import.meta.env.VITE_PI5_CAMERA_URL || 'http://localhost:8554/stream'}
       />
 
       <MobileRobotScreen

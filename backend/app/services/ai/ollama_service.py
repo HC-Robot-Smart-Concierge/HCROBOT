@@ -211,6 +211,14 @@ class OllamaService:
                 "items": clean_items or user_speech,
             }
 
+        # Fast-Path: Nếu chỉ là chào hỏi, cảm ơn, tạm biệt -> Trả về unknown tức thì, không cần gọi Ollama LLM
+        if any(re.search(p, lower_speech) for p in [r"^(xin chào|chào|hi|hello|helo|alo)\b", r"\b(cảm ơn|thanks|thank you)\b", r"\b(tạm biệt|bye|goodbye)\b", r"\b(bạn là ai|mày là ai|bạn tên gì)\b"]):
+            return {
+                "action": "unknown",
+                "room_number": extracted_room_regex,
+                "items": None,
+            }
+
         system_prompt = (
             "Bạn là hệ thống trích xuất dữ liệu tự động cho dịch vụ khách sạn. "
             "Hãy phân tích câu nói của khách và trả về kết quả dưới định dạng JSON duy nhất với các field sau:\n"
@@ -229,9 +237,15 @@ class OllamaService:
                         {"role": "user", "content": user_speech}
                     ],
                     format="json",
-                    options={"temperature": 0.0, "num_predict": 35, "num_ctx": 512}
+                    options={
+                        "temperature": 0.0,
+                        "num_predict": 35,
+                        "num_ctx": 512,
+                        "num_thread": 8,
+                    },
+                    keep_alive=-1
                 ),
-                timeout=3.0
+                timeout=20.0
             )
             content = response["message"]["content"].strip()
             parsed_json = json.loads(content)
@@ -241,7 +255,8 @@ class OllamaService:
 
             return parsed_json
         except Exception as e:
-            logger.warning(f"[OllamaService Warning] Lỗi hoặc Timeout khi bóc tách intent: {str(e)}")
+            err_msg = repr(e) if not str(e) else str(e)
+            logger.warning(f"[OllamaService Warning] Lỗi hoặc Timeout khi bóc tách intent: {err_msg}")
             
             # Keyword-based Intent Fallback khi LLM offline/timeout
             fallback_action = "unknown"

@@ -68,16 +68,25 @@ export const estimateDistance = (bboxHeight, videoHeight) => {
 };
 
 /**
- * Phát hiện người trong khung hình video
- * @param {HTMLVideoElement} videoElement
+ * Phát hiện người trong khung hình video hoặc ảnh stream
+ * @param {HTMLVideoElement|HTMLImageElement} mediaElement
  * @param {object} options
  * @param {number} [options.minConfidence=0.28] - Ngưỡng độ tin cậy tối thiểu (hỗ trợ cả góc nhìn webcam cận cảnh)
  * @returns {Promise<object|null>}
  */
-export const detectPerson = async (videoElement, options = {}) => {
+export const detectPerson = async (mediaElement, options = {}) => {
   const minConfidence = options.minConfidence ?? 0.28;
 
-  if (!videoElement || videoElement.readyState < 2 || !videoElement.videoWidth) {
+  if (!mediaElement) return null;
+
+  const width = mediaElement.videoWidth || mediaElement.naturalWidth || mediaElement.width;
+  const height = mediaElement.videoHeight || mediaElement.naturalHeight || mediaElement.height;
+  if (!width || !height) return null;
+
+  if (mediaElement.readyState !== undefined && mediaElement.readyState < 2) {
+    return null;
+  }
+  if (mediaElement.complete !== undefined && !mediaElement.complete) {
     return null;
   }
 
@@ -86,9 +95,9 @@ export const detectPerson = async (videoElement, options = {}) => {
 
   try {
     // Gọi model.detect với minScore = 0.25 để không bị COCO-SSD lọc mất góc cận cảnh
-    const predictions = await model.detect(videoElement, 6, 0.25);
-    const videoWidth = videoElement.videoWidth || 640;
-    const videoHeight = videoElement.videoHeight || 480;
+    const predictions = await model.detect(mediaElement, 6, 0.25);
+    const videoWidth = width;
+    const videoHeight = height;
 
     // Lọc đối tượng class 'person'
     const personPredictions = predictions.filter(

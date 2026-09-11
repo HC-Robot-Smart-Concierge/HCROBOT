@@ -2,7 +2,6 @@ import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
-import watchfiles
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware

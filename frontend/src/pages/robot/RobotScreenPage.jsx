@@ -143,39 +143,24 @@ export const RobotScreenPage = ({ onLogout = () => {} }) => {
       'hồ bơi', 'wifi', 'mật khẩu wifi', 'giờ trả phòng'
     ].some(k => lowerQuery.includes(k));
 
-    if (!isFastPath) {
-      // Phản hồi giọng nói tức thì < 50ms giúp cảm giác không bị chờ đợt
-      speak("Dạ, quý khách chờ em một tí nhé...", "vi-VN");
-    }
 
     setCurrentState('RT-04');
     setIsProcessing(true);
 
     try {
-      const needsIntentCheck = anyKeywordMatch(lowerQuery, ["khăn", "nước", "dọn", "phòng", "đồ ăn", "hỏng", "sửa", "bàn", "towel", "clean", "food", "room"]);
-
+      // Gọi Chat AI - Backend đã tự động xử lý Intent & Ticket trong nền ngầm không gây nghẽn
       const chatRes = await sendChatPrompt(query, null, "auto", guestEmotion, sessionId, activeRoomNumber);
-      let intentRes = { action: 'faq' };
-
-      if (needsIntentCheck) {
-        intentRes = await extractIntent(query, sessionId, activeRoomNumber);
-      }
 
       let replyText = chatRes.response || 'Dạ, tôi đã ghi nhận yêu cầu của quý khách.';
-      if (intentRes && intentRes.suggested_reply) {
-        replyText = intentRes.suggested_reply;
-      }
-
       const detectedLang = chatRes.detected_language || 'Tiếng Việt';
       const langCode = chatRes.lang_code || 'vi-VN';
 
-      const updatedRoom = (intentRes && intentRes.room_number) || chatRes.current_room_number;
+      const updatedRoom = chatRes.current_room_number;
       if (updatedRoom) {
         setActiveRoomNumber(updatedRoom);
       }
 
       setLanguage(detectedLang);
-      setDetectedIntent(intentRes);
       setIsProcessing(false);
 
       if (lowerQuery.includes('hồ bơi') || lowerQuery.includes('pool') || lowerQuery.includes('ở đâu') || lowerQuery.includes('tầng') || lowerQuery.includes('where')) {
@@ -283,12 +268,22 @@ export const RobotScreenPage = ({ onLogout = () => {} }) => {
 
   // Auto Lock Screen Orientation to Landscape on Mobile/Kiosk Devices
   useEffect(() => {
-    if (window.screen && window.screen.orientation && window.screen.orientation.lock) {
-      window.screen.orientation.lock('landscape').catch(() => {});
+    try {
+      const lockPromise = window.screen?.orientation?.lock?.('landscape');
+      if (lockPromise && typeof lockPromise.catch === 'function') {
+        lockPromise.catch(() => {});
+      }
+    } catch {
+      // Ignore orientation lock errors
     }
     return () => {
-      if (window.screen && window.screen.orientation && window.screen.orientation.unlock) {
-        window.screen.orientation.unlock().catch(() => {});
+      try {
+        const unlockResult = window.screen?.orientation?.unlock?.();
+        if (unlockResult && typeof unlockResult.catch === 'function') {
+          unlockResult.catch(() => {});
+        }
+      } catch {
+        // Ignore orientation unlock errors
       }
     };
   }, []);
@@ -302,6 +297,8 @@ export const RobotScreenPage = ({ onLogout = () => {} }) => {
         onGuestApproached={handleGuestApproached} 
         onGuestLeft={handleGuestLeft} 
         onEmotionChange={(emotion) => setGuestEmotion(emotion)}
+        source={import.meta.env.VITE_CAMERA_SOURCE || 'local'}
+        streamUrl={import.meta.env.VITE_PI5_CAMERA_URL || 'http://localhost:8554/stream'}
       />
 
       <MobileRobotScreen

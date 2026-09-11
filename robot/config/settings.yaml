@@ -7,10 +7,17 @@ server:
 robot:
   id: "hc_pi5_01"
   name: "HC Smart Concierge Robot"
+  gpio:
+    left_forward: 17
+    left_backward: 27
+    right_forward: 22
+    right_backward: 23
 
 topics:
   speech_input: "/speech/text"
   speech_reply: "/robot/speech_reply"
   robot_status: "/robot/status"
   intent_output: "/robot/intent"
+  cmd_vel: "/cmd_vel"
+
 

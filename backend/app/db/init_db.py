@@ -14,6 +14,7 @@ from app.models import (
     RestaurantReservation,
     RestaurantPreOrder,
 )
+from app.models.workflow import RobotWaypoint
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +77,17 @@ async def seed_initial_data(session: AsyncSession):
             ),
         ]
         session.add_all(robot_units)
+
+        # 1b. Seed Default Waypoints
+        wps_check = await session.execute(select(RobotWaypoint).limit(1))
+        if wps_check.scalar_one_or_none() is None:
+            default_waypoints = [
+                RobotWaypoint(id="wp-reception", name="Quầy Lễ Tân", x=0.0, y=0.0, yaw=0.0, floor="Sảnh Tầng 1", type="DOCKING_TARGET", description="Điểm dừng tiếp đón khách và làm thủ tục check-in sảnh chính"),
+                RobotWaypoint(id="wp-lounge", name="Sảnh Lounge & Coffee", x=2.5, y=4.0, yaw=90.0, floor="Sảnh Tầng 1", type="SERVICE_STATION", description="Khu vực nghỉ chờ và thưởng thức đồ uống sảnh chính"),
+                RobotWaypoint(id="wp-vip-table", name="Bàn Tiếp Khách VIP 01", x=5.0, y=2.5, yaw=45.0, floor="Sảnh Tầng 1", type="GUEST_TABLE", description="Khu vực bàn tiếp đón khách VIP tại sảnh Tầng 1"),
+                RobotWaypoint(id="wp-elevator", name="Sảnh Thang Máy A", x=-3.0, y=5.0, yaw=180.0, floor="Sảnh Tầng 1", type="WAYPOINT", description="Điểm mốc điều hướng robot tại hành lang thang máy sảnh Tầng 1"),
+            ]
+            session.add_all(default_waypoints)
 
         # 2. Seed Room Service Orders
         orders = [

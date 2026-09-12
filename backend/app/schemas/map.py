@@ -14,8 +14,21 @@ class Waypoint(BaseModel):
     x: float
     y: float
     yaw: float = 0.0
-    floor: str = "Tầng 1"
-    type: str = Field("WAYPOINT", description="Mẫu Endpoint Otto: WAYPOINT, PARKING_SPOT, CHARGER, DOCKING_TARGET, PICKUP_DROPOFF, SERVICE_STATION")
+    floor: str = "Sảnh Tầng 1"
+    type: str = Field("WAYPOINT", description="Mẫu Endpoint Concierge: WAYPOINT, PARKING_SPOT, DOCKING_TARGET, SERVICE_STATION, GUEST_TABLE")
+    description: Optional[str] = None
+
+
+class ZoneSchema(BaseModel):
+    id: str = Field(..., description="ID duy nhất của vùng chức năng")
+    name: str = Field(..., description="Tên vùng (vd: Cầu Thang Bộ, Khu Giảm Tốc Sảnh)")
+    type: str = Field("KEEP_OUT", description="Loại vùng: KEEP_OUT, SLOW_SPEED, SILENT_ZONE, GREETING_ZONE, SERVICE_PRIORITY")
+    x: float = Field(0.0, description="Tọa độ X tâm vùng")
+    y: float = Field(0.0, description="Tọa độ Y tâm vùng")
+    width: float = Field(2.0, description="Chiều rộng vùng (mét)")
+    height: float = Field(2.0, description="Chiều cao vùng (mét)")
+    speed_limit: Optional[float] = Field(0.3, description="Tốc độ tối đa cho phép (m/s) nếu là SLOW_SPEED")
+    floor: str = "Sảnh Tầng 1"
     description: Optional[str] = None
 
 
@@ -31,6 +44,7 @@ class OccupancyGridResponse(BaseModel):
     metadata: MapMetaData
     robot_pose: Pose2D
     waypoints: List[Waypoint]
+    zones: List[ZoneSchema] = Field(default_factory=list, description="Danh sách các vùng chức năng")
     grid_data: List[int] = Field(..., description="Mảng 1D đại diện cho ma trận 2D (-1: chưa rõ, 0: trống, 100: vật cản)")
 
 
@@ -46,3 +60,4 @@ class NavigationResponse(BaseModel):
     message: str
     target_x: float
     target_y: float
+

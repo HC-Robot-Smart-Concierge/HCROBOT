@@ -105,16 +105,20 @@ class OllamaService:
             time_greeting = "Dạ em chào buổi tối quý khách! Chúc quý khách một buổi tối thư thái tại khách sạn Aurora. Quý khách cần em hỗ trợ gì ạ?"
 
         prompt_lower = prompt.lower().strip()
+        # Chuẩn hóa các biến thể nhận diện giọng nói STT (Google STT thường sinh 'wi-fi' có dấu gạch ngang)
+        normalized = prompt_lower.replace("wi-fi", "wifi").replace("wi fi", "wifi")
+        normalized = re.sub(r'[\?\.\,\!\_\:\;]', ' ', normalized)
+        normalized = re.sub(r'\s+', ' ', normalized).strip()
 
         fast_path_cache = [
             # 1. Chào hỏi & Xã giao
             (r"^(xin chào|chào em|chào robot|chào bạn|chào|hi|hello|helo|alo)\b", time_greeting),
             (r"\b(cảm ơn|cảm ơn em|cảm ơn robot|thank you|thanks)\b", "Dạ không có gì ạ! Chúc quý khách một kỳ nghỉ thật tuyệt vời tại khách sạn Aurora. Quý khách cần em hỗ trợ gì nữa không ạ?"),
             (r"\b(tạm biệt|bye|goodbye|hẹn gặp lại)\b", "Dạ tạm biệt quý khách! Chúc quý khách một ngày tốt lành và hẹn sớm gặp lại ạ."),
-            (r"\b(bạn là ai|mày là ai|bạn tên gì|tên bạn là gì|giới thiệu về bạn)\b", "Dạ em là HCRobot, trợ lý lễ tân thông minh tại khách sạn Aurora Grand. Em có thể hỗ trợ quý khách chỉ đường, gọi món, đặt phòng và tra cứu tiện ích khách sạn ạ."),
+            (r"\b(bạn là ai|mày là ai|bạn tên gì|tên bạn là gì|giới thiệu về bạn|hiểu về bạn|tìm hiểu về bạn|biết gì về bạn)\b", "Dạ em là HCRobot, trợ lý lễ tân thông minh tại khách sạn Aurora Grand. Em có thể hỗ trợ quý khách chỉ đường, gọi món, đặt phòng và tra cứu tiện ích khách sạn ạ."),
 
             # 2. Tiện ích nổi bật (Bể bơi, Gym, Spa, Bar)
-            (r"\b(hồ bơi|bể bơi|swimming pool|hồ bơi ở đâu|bể bơi ở đâu)\b", "Dạ hồ bơi vô cực nằm ở Tầng 4 của khách sạn, mở cửa từ 6 giờ sáng đến 10 giờ tối ạ. Quý khách có cần em gọi nước uống lên hồ bơi không ạ?"),
+            (r"\b(hồ bơi|bể bơi|swimming pool|vô cực|cực mở cửa|hồ bơi ở đâu|bể bơi ở đâu|bơi)\b", "Dạ hồ bơi vô cực nằm ở Tầng 4 của khách sạn, mở cửa từ 6 giờ sáng đến 10 giờ tối ạ. Quý khách có cần em gọi nước uống lên hồ bơi không ạ?"),
             (r"\b(gym|phòng gym|phòng tập|thể hình|thể dục|fitness)\b", "Dạ phòng tập thể hình Fitness Center nằm tại Tầng 3 của khách sạn, mở cửa 24/7 và hoàn toàn miễn phí cho khách lưu trú ạ."),
             (r"\b(spa|massage|mát xa|xông hơi|chăm sóc da)\b", "Dạ Aurora Spa nằm tại Tầng 5, mở cửa từ 9 giờ sáng đến 10 giờ tối. Quý khách có muốn em đặt lịch hẹn trước với chuyên viên không ạ?"),
             (r"\b(bar|quầy bar|rooftop|sky bar|quán bar)\b", "Dạ Sky Lounge Bar nằm tại Tầng 19 sân thượng, mở cửa từ 16 giờ đến nửa đêm với tầm nhìn toàn cảnh thành phố cực đẹp ạ."),
@@ -123,8 +127,8 @@ class OllamaService:
             (r"\b(ăn sáng|nhà hàng|bữa sáng|breakfast|buffet)\b", "Dạ nhà hàng buffet sáng Aurora nằm ở Tầng 2, phục vụ từ 6 giờ đến 10 giờ sáng hàng ngày ạ."),
             (r"\b(thực đơn|menu|món ăn|đồ ăn|gọi món)\b", "Dạ quý khách có thể xem thực đơn chi tiết và đặt món trực tiếp trên màn hình của em để bộ phận Bếp chuẩn bị ngay ạ."),
 
-            # 4. Wifi & Internet
-            (r"\b(wifi|mật khẩu wifi|pass wifi|mạng internet|mật khẩu mạng)\b", "Dạ wifi miễn phí tại sảnh và các phòng là 'Aurora_Guest', mật khẩu kết nối là 'aurora2026' ạ."),
+            # 4. Wifi & Internet (bắt cả wifi lẫn wi-fi)
+            (r"\b(wifi|wi fi|mật khẩu wifi|pass wifi|mạng internet|mật khẩu mạng|mạng wifi)\b", "Dạ wifi miễn phí tại sảnh và các phòng là 'Aurora_Guest', mật khẩu kết nối là 'aurora2026' ạ."),
 
             # 5. Thủ tục Check-in / Check-out
             (r"\b(giờ trả phòng|trả phòng|check out|checkout)\b", "Dạ giờ trả phòng chuẩn của khách sạn là 12 giờ trưa. Quý khách có muốn em đặt xe đưa đón sân bay giúp mình không ạ?"),
@@ -141,7 +145,7 @@ class OllamaService:
         ]
 
         for pattern, fast_reply in fast_path_cache:
-            if re.search(pattern, prompt_lower, re.IGNORECASE):
+            if re.search(pattern, normalized, re.IGNORECASE) or re.search(pattern, prompt_lower, re.IGNORECASE):
                 logger.info(f"[OllamaService Fast-Path Hit] Matched pattern '{pattern}' in < 1ms!")
                 return fast_reply, lang_name, lang_code
 

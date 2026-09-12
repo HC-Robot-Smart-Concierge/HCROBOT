@@ -68,11 +68,11 @@ export const RobotScreenPage = ({ onLogout = () => {} }) => {
       const hour = new Date().getHours();
       let greeting = "Dạ em chào quý khách! Em là trợ lý Robot Concierge của khách sạn Aurora. Quý khách cần em hỗ trợ gì ạ?";
       if (hour >= 5 && hour < 11) {
-        greeting = "Dạ em chào buổi sáng quý khách! Chúc quý khách một ngày mới nhiều năng lượng. Quý khách cần em hỗ trợ gì ạ?";
+        greeting = "Dạ em chào buổi sáng quý khách! Chúc quý khách một ngày mới tràn đầy năng lượng tại khách sạn Aurora. Quý khách cần em hỗ trợ gì ạ?";
       } else if (hour >= 11 && hour < 18) {
-        greeting = "Dạ em chào quý khách! Chúc quý khách một buổi chiều vui vẻ tại Aurora. Quý khách cần em hỗ trợ gì ạ?";
+        greeting = "Dạ em chào quý khách! Chúc quý khách một buổi chiều thật vui vẻ tại khách sạn Aurora. Quý khách cần em hỗ trợ gì ạ?";
       } else {
-        greeting = "Dạ em chào buổi tối quý khách! Chúc quý khách một buổi tối thư thái tại Aurora. Quý khách cần em hỗ trợ gì ạ?";
+        greeting = "Dạ em chào buổi tối quý khách! Chúc quý khách một buổi tối thư thái tại khách sạn Aurora. Quý khách cần em hỗ trợ gì ạ?";
       }
 
       speak(
@@ -162,6 +162,8 @@ export const RobotScreenPage = ({ onLogout = () => {} }) => {
 
       setLanguage(detectedLang);
       setIsProcessing(false);
+      // Hiển thị câu trả lời lên màn hình ngay lập tức (Zero Latency Visual Feedback)
+      setAiResponseText(replyText);
 
       if (lowerQuery.includes('hồ bơi') || lowerQuery.includes('pool') || lowerQuery.includes('ở đâu') || lowerQuery.includes('tầng') || lowerQuery.includes('where')) {
         setCurrentState('RT-05');
@@ -184,7 +186,8 @@ export const RobotScreenPage = ({ onLogout = () => {} }) => {
         // onStartCallback: Khi tiếng cất lên -> Hiện bảng chữ ở trung tâm
         () => {
           setAiResponseText(replyText);
-        }
+        },
+        chatRes.audio_base64
       );
 
     } catch (error) {
@@ -206,13 +209,13 @@ export const RobotScreenPage = ({ onLogout = () => {} }) => {
     }
   };
 
-  // Tự động gửi AI khi người dùng ngừng nói 650ms (VAD Silence Detection Tốc độ cao)
+  // Tự động gửi AI khi người dùng ngừng nói 420ms (VAD Silence Detection Tốc độ cao)
   useEffect(() => {
     if (currentState === 'RT-03' && transcript.trim().length > 0) {
       if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
       silenceTimerRef.current = setTimeout(() => {
         handleStopTalkAndProcess(transcript);
-      }, 650);
+      }, 420);
     }
     return () => {
       if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);

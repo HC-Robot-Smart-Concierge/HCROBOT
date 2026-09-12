@@ -19,6 +19,8 @@ class ChatResponse(BaseModel):
     session_id: Optional[str] = Field("default_session", description="ID phiên làm việc")
     current_room_number: Optional[str] = Field(None, description="Số phòng đang được ghi nhớ trong session")
     missing_room_number: bool = Field(False, description="True nếu đang cần hỏi thêm số phòng từ khách")
+    audio_base64: Optional[str] = Field(None, description="Âm thanh giọng đọc phát tức thì từ backend cache")
+    mime_type: Optional[str] = Field("audio/mp3", description="Định dạng âm thanh")
 
 
 class IntentRequest(BaseModel):

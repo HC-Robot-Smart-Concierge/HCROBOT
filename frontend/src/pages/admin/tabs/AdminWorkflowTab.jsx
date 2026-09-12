@@ -296,7 +296,7 @@ export const AdminWorkflowTab = () => {
               className="px-2 py-0.5 rounded text-[10px] font-bold border"
               style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD', color: '#262626' }}
             >
-              OTTO MOTORS CONCEPT
+              HOTEL CONCIERGE CONCEPT
             </span>
           </div>
           <p className="text-[11px] font-normal mt-0.5" style={{ color: '#8C8C8C' }}>
@@ -626,7 +626,7 @@ export const AdminWorkflowTab = () => {
                               >
                                 {waypoints.map((w) => (
                                   <option key={w.id} value={w.id}>
-                                    {w.name} ({w.floor} • X:{w.x}m, Y:{w.y}m)
+                                    {w.name} (X:{w.x}m, Y:{w.y}m)
                                   </option>
                                 ))}
                               </select>

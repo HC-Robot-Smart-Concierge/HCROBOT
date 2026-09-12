@@ -100,3 +100,50 @@ export async function executeWorkflow(workflowId, payload = {}) {
   if (!res.ok) throw new Error('Lỗi khi chạy Workflow');
   return res.json();
 }
+
+/**
+ * Fetch all persistent functional zones from database
+ */
+export async function fetchZones() {
+  const res = await fetch(`${API_BASE}/map/zones`);
+  if (!res.ok) throw new Error('Không thể tải danh sách Vùng Chức Năng');
+  return res.json();
+}
+
+/**
+ * Save (create or upsert) a functional zone
+ */
+export async function saveZone(zone) {
+  const res = await fetch(`${API_BASE}/map/zones`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(zone),
+  });
+  if (!res.ok) throw new Error('Lỗi khi lưu Vùng Chức Năng');
+  return res.json();
+}
+
+/**
+ * Update an existing zone by ID
+ */
+export async function updateZone(zoneId, zone) {
+  const res = await fetch(`${API_BASE}/map/zones/${zoneId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(zone),
+  });
+  if (!res.ok) throw new Error('Lỗi khi cập nhật Vùng Chức Năng');
+  return res.json();
+}
+
+/**
+ * Delete a zone by ID
+ */
+export async function deleteZone(zoneId) {
+  const res = await fetch(`${API_BASE}/map/zones/${zoneId}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) throw new Error('Lỗi khi xóa Vùng Chức Năng');
+  return res.json();
+}
+

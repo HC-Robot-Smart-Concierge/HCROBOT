@@ -373,7 +373,7 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
 
         {/* Right Column: Telemetry, Waypoints & Controls (4 Cols) */}
         <div className="col-span-4 flex flex-col gap-3 h-full overflow-y-auto pr-1">
-          {/* Card 1: Waypoints Mapping (Otto Motors Concepts) */}
+          {/* Card 1: Waypoints Mapping (Hotel Concierge Concepts) */}
           <div className="border rounded-xl p-4 flex flex-col gap-3" style={{ background: '#FFFFFF', borderColor: '#BFBFBD' }}>
             <div className="flex items-center justify-between border-b pb-2" style={{ borderColor: '#BFBFBD' }}>
               <div className="flex items-center gap-1.5">
@@ -412,7 +412,7 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
                     <div>
                       <div className="font-bold text-xs" style={{ color: '#262626' }}>{wp.name}</div>
                       <div className="text-[10px] font-mono" style={{ color: '#8C8C8C' }}>
-                        {wp.floor} • X: {Number(wp.x).toFixed(1)}m, Y: {Number(wp.y).toFixed(1)}m
+                        X: {Number(wp.x).toFixed(1)}m, Y: {Number(wp.y).toFixed(1)}m
                       </div>
                     </div>
                     <div className="flex items-center gap-1">
@@ -552,42 +552,22 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-[11px] font-semibold mb-1" style={{ color: '#8C8C8C' }}>
-                    TẦNG
-                  </label>
-                  <select
-                    value={newWpData.floor}
-                    onChange={(e) => setNewWpData({ ...newWpData, floor: e.target.value })}
-                    className="w-full px-3 py-2 rounded-lg text-xs border focus:outline-none"
-                    style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD', color: '#262626' }}
-                  >
-                    <option value="Tầng 1">Tầng 1</option>
-                    <option value="Tầng 2">Tầng 2</option>
-                    <option value="Tầng 3">Tầng 3</option>
-                    <option value="Tầng 4">Tầng 4</option>
-                    <option value="Sảnh Chính">Sảnh Chính</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-semibold mb-1" style={{ color: '#8C8C8C' }}>
-                    LOẠI ĐIỂM
-                  </label>
-                  <select
-                    value={newWpData.type}
-                    onChange={(e) => setNewWpData({ ...newWpData, type: e.target.value })}
-                    className="w-full px-3 py-2 rounded-lg text-xs border focus:outline-none"
-                    style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD', color: '#262626' }}
-                  >
-                    <option value="service">Dịch vụ / Tiện ích</option>
-                    <option value="dock">Trạm sạc / Dock</option>
-                    <option value="room">Phòng nghỉ</option>
-                    <option value="elevator">Thang máy</option>
-                    <option value="standby">Điểm chờ</option>
-                  </select>
-                </div>
+              <div>
+                <label className="block text-[11px] font-semibold mb-1" style={{ color: '#8C8C8C' }}>
+                  LOẠI ĐIỂM
+                </label>
+                <select
+                  value={newWpData.type}
+                  onChange={(e) => setNewWpData({ ...newWpData, type: e.target.value })}
+                  className="w-full px-3 py-2 rounded-lg text-xs border focus:outline-none"
+                  style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD', color: '#262626' }}
+                >
+                  <option value="service">Dịch vụ / Tiện ích</option>
+                  <option value="dock">Trạm sạc / Dock</option>
+                  <option value="room">Phòng nghỉ</option>
+                  <option value="elevator">Thang máy</option>
+                  <option value="standby">Điểm chờ</option>
+                </select>
               </div>
 
               <div className="p-3 rounded-lg border text-xs font-mono" style={{ backgroundColor: '#F2EFE9', borderColor: '#BFBFBD' }}>

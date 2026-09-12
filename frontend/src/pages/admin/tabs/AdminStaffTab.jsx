@@ -1,29 +1,4 @@
-import React, { useState, useEffect } from 'react';
-import {
-  Users,
-  Search,
-  PlusCircle,
-  CheckCircle2,
-  Clock,
-  Phone,
-  Mail,
-  MapPin,
-  Bot,
-  Shield,
-  Trash2,
-  Edit3,
-  Sparkles,
-  Sliders,
-  Bell,
-  Radio,
-  ExternalLink,
-  ChevronDown,
-  Building2,
-  Utensils,
-  BedDouble,
-  HeartPulse,
-  Wrench,
-} from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Pagination } from '../../../components/common/Pagination';
 import {
   fetchStaffRoster,
@@ -32,54 +7,89 @@ import {
   deleteStaffMember,
 } from '../../../services/staffApi';
 
+const DEFAULT_DEPARTMENTS = [
+  'Reception',
+  'Housekeeping',
+  'F&B',
+  'Bell Services',
+  'Maintenance',
+  'Administration',
+  'Lễ tân',
+  'Buồng phòng',
+  'Ẩm thực (F&B)',
+  'Kỹ thuật / Bảo trì',
+  'CNTT & Vận hành Robot',
+  'An ninh',
+];
 
-export const AdminStaffTab = ({ currentUser = {} }) => {
+export const AdminStaffTab = () => {
   const [staffList, setStaffList] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [departmentFilter, setDepartmentFilter] = useState('All');
-  const [statusFilter, setStatusFilter] = useState('All');
+  const [fallbackFilter, setFallbackFilter] = useState('All');
   const [notification, setNotification] = useState(null);
-  const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 20;
+
+  const [currentPage, setCurrentPage] = useState(() => {
+    try {
+      const p = parseInt(new URLSearchParams(window.location.search).get('page'), 10);
+      return !isNaN(p) && p > 0 ? p : 1;
+    } catch {
+      return 1;
+    }
+  });
+  const pageSize = 7;
+
+  const handlePageChange = (newPage) => {
+    setCurrentPage(newPage);
+    try {
+      const params = new URLSearchParams(window.location.search);
+      params.set('tab', 'Staff');
+      params.set('page', newPage.toString());
+      window.history.pushState(null, '', `${window.location.pathname}?${params.toString()}`);
+    } catch {}
+  };
+
+  useEffect(() => {
+    const onPopState = () => {
+      try {
+        const p = parseInt(new URLSearchParams(window.location.search).get('page'), 10);
+        if (!isNaN(p) && p > 0) setCurrentPage(p);
+      } catch {}
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
 
   // Modals
-  const [selectedStaff, setSelectedStaff] = useState(null); // for detail/edit modal
+  const [selectedStaff, setSelectedStaff] = useState(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
 
-  // Edit Staff State
+  // Forms
   const [editForm, setEditForm] = useState({
     full_name: '',
-    role: '',
     department: 'Reception',
-    status: 'available',
-    phone: '',
-    email: '',
-    shift: 'Morning Shift (06:00 - 14:00)',
-    location: 'Main Hotel',
     is_fallback_agent: false,
-    assigned_floors: 'Floor 1 - 5',
-    notification_channels: 'Web Dashboard, Tablet Alert',
   });
 
-  // Add Staff State
   const [addForm, setAddForm] = useState({
     username: '',
     password: '123456',
     full_name: '',
-    role: 'Front Desk Agent',
     department: 'Reception',
-    phone: '+84 90 123 4567',
-    email: '',
-    shift: 'Morning Shift (06:00 - 14:00)',
-    location: 'Main Lobby Front Desk',
     is_fallback_agent: false,
-    assigned_floors: 'Floor 1 - 5',
   });
+
+  const allDepartments = Array.from(
+    new Set([
+      ...DEFAULT_DEPARTMENTS,
+      ...staffList.map((s) => s.department).filter(Boolean),
+    ])
+  );
 
   const showNotification = (msg) => {
     setNotification(msg);
-    setTimeout(() => setNotification(null), 4000);
+    setTimeout(() => setNotification(null), 3500);
   };
 
   const loadStaff = async () => {
@@ -87,8 +97,8 @@ export const AdminStaffTab = ({ currentUser = {} }) => {
     try {
       const data = await fetchStaffRoster();
       setStaffList(data || []);
-    } catch (err) {
-      console.error('Lỗi khi tải danh sách nhân viên:', err);
+    } catch {
+      showNotification('Không thể tải danh sách nhân sự');
     } finally {
       setIsLoading(false);
     }
@@ -98,20 +108,12 @@ export const AdminStaffTab = ({ currentUser = {} }) => {
     loadStaff();
   }, []);
 
-  const handleOpenDetailModal = (staff) => {
+  const handleOpenEditModal = (staff) => {
     setSelectedStaff(staff);
     setEditForm({
       full_name: staff.full_name || '',
-      role: staff.role || '',
       department: staff.department || 'Reception',
-      status: staff.status || 'available',
-      phone: staff.phone || '+84 90 123 4567',
-      email: staff.email || `${staff.username || 'staff'}@aurora.hotel`,
-      shift: staff.shift || 'Morning Shift (06:00 - 14:00)',
-      location: staff.location || 'Main Hotel',
       is_fallback_agent: !!staff.is_fallback_agent,
-      assigned_floors: staff.assigned_floors || 'Floor 1 - 5',
-      notification_channels: staff.notification_channels || 'Web Dashboard, Tablet Alert',
     });
   };
 
@@ -120,12 +122,16 @@ export const AdminStaffTab = ({ currentUser = {} }) => {
     if (!selectedStaff) return;
     try {
       setIsLoading(true);
-      await updateStaffMember(selectedStaff.id, editForm);
-      showNotification(`Đã cập nhật cấu hình cho ${editForm.full_name}!`);
+      await updateStaffMember(selectedStaff.id, {
+        full_name: editForm.full_name,
+        department: editForm.department,
+        is_fallback_agent: editForm.is_fallback_agent,
+      });
+      showNotification(`Đã cập nhật nhân sự ${editForm.full_name}`);
       setSelectedStaff(null);
       await loadStaff();
     } catch (err) {
-      showNotification('Lỗi khi cập nhật nhân viên: ' + err.message);
+      showNotification('Lỗi khi cập nhật: ' + err.message);
     } finally {
       setIsLoading(false);
     }
@@ -136,287 +142,308 @@ export const AdminStaffTab = ({ currentUser = {} }) => {
     try {
       setIsLoading(true);
       await createStaffMember({
-        ...addForm,
-        email: addForm.email || `${addForm.username}@aurora.hotel`,
+        username: addForm.username.trim(),
+        password: addForm.password,
+        full_name: addForm.full_name.trim(),
+        department: addForm.department,
+        role: addForm.department,
+        is_fallback_agent: addForm.is_fallback_agent,
+        status: 'available',
+        shift: 'All Shifts',
+        location: 'On Site',
       });
-      showNotification(`Đã tạo tài khoản nhân viên ${addForm.full_name} thành công!`);
+      showNotification(`Đã tạo nhân sự ${addForm.full_name}`);
       setIsAddModalOpen(false);
       setAddForm({
         username: '',
         password: '123456',
         full_name: '',
-        role: 'Front Desk Agent',
         department: 'Reception',
-        phone: '+84 90 123 4567',
-        email: '',
-        shift: 'Morning Shift (06:00 - 14:00)',
-        location: 'Main Lobby Front Desk',
         is_fallback_agent: false,
-        assigned_floors: 'Floor 1 - 5',
       });
       await loadStaff();
     } catch (err) {
-      showNotification('Lỗi tạo nhân viên: ' + err.message);
+      showNotification('Lỗi khi tạo nhân sự: ' + err.message);
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleDelete = async (staffId, name) => {
-    if (!window.confirm(`Bạn có chắc chắn muốn xóa nhân sự ${name}?`)) return;
+    if (!window.confirm(`Xác nhận xóa nhân sự ${name}?`)) return;
     try {
+      setIsLoading(true);
       await deleteStaffMember(staffId);
-      showNotification(`Đã xóa nhân viên ${name}!`);
+      showNotification(`Đã xóa nhân sự ${name}`);
       if (selectedStaff?.id === staffId) setSelectedStaff(null);
       await loadStaff();
     } catch (err) {
       showNotification('Lỗi khi xóa: ' + err.message);
+    } finally {
+      setIsLoading(false);
     }
   };
 
   // Filters
   const filteredStaff = staffList.filter((s) => {
+    const q = searchQuery.toLowerCase();
     const matchesSearch =
-      (s.full_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (s.role || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (s.email || '').toLowerCase().includes(searchQuery.toLowerCase());
+      !q ||
+      (s.full_name || '').toLowerCase().includes(q) ||
+      (s.username || '').toLowerCase().includes(q) ||
+      (s.code || '').toLowerCase().includes(q);
 
     const matchesDept =
       departmentFilter === 'All' ||
       (s.department || '').toLowerCase() === departmentFilter.toLowerCase();
 
-    const matchesStatus =
-      statusFilter === 'All' ||
-      (s.status || '').toLowerCase() === statusFilter.toLowerCase();
+    const matchesFallback =
+      fallbackFilter === 'All' ||
+      (fallbackFilter === 'fallback' && !!s.is_fallback_agent) ||
+      (fallbackFilter === 'standard' && !s.is_fallback_agent);
 
-    return matchesSearch && matchesDept && matchesStatus;
+    return matchesSearch && matchesDept && matchesFallback;
   });
 
-  // Reset to page 1 on filter change
+  const isFirstRender = useRef(true);
   useEffect(() => {
-    setCurrentPage(1);
-  }, [searchQuery, departmentFilter, statusFilter]);
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    handlePageChange(1);
+  }, [searchQuery, departmentFilter, fallbackFilter]);
 
   const paginatedStaff = filteredStaff.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
-  const getDeptColor = (dept = '') => {
-    const d = dept.toLowerCase();
-    if (d.includes('reception') || d.includes('front')) return 'bg-indigo-50 text-indigo-700 border-indigo-200';
-    if (d.includes('housekeep')) return 'bg-emerald-50 text-emerald-700 border-emerald-200';
-    if (d.includes('f&b') || d.includes('room')) return 'bg-amber-50 text-amber-700 border-amber-200';
-    if (d.includes('bell')) return 'bg-sky-50 text-sky-700 border-sky-200';
-    if (d.includes('maint')) return 'bg-orange-50 text-orange-700 border-orange-200';
-    return 'bg-stone-100 text-stone-700 border-stone-200';
-  };
-
-  const getStatusBadge = (status = '') => {
-    const s = status.toLowerCase();
-    if (s === 'available' || s === 'on duty') {
-      return (
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-          <span>Available</span>
-        </span>
-      );
-    }
-    if (s === 'busy') {
-      return (
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
-          <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-          <span>Busy (1 Active)</span>
-        </span>
-      );
-    }
-    return (
-      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-stone-100 text-stone-600 border border-stone-200">
-        <span className="w-1.5 h-1.5 rounded-full bg-stone-400"></span>
-        <span>Off Duty</span>
-      </span>
-    );
-  };
-
   return (
-    <div className="w-full min-h-full flex flex-col p-6 space-y-6 pb-16">
+    <div className="w-full flex flex-col p-4 space-y-3 pb-2" style={{ color: '#262626' }}>
       {/* Toast Notification */}
       {notification && (
-        <div className="fixed top-5 right-5 z-50 bg-stone-900 text-white px-5 py-3 rounded-2xl shadow-2xl border border-stone-700 flex items-center gap-3 animate-in fade-in slide-in-from-top-4 duration-200">
-          <Sparkles className="w-4 h-4 text-emerald-400" />
-          <span className="text-xs font-bold">{notification}</span>
+        <div
+          className="fixed top-5 right-5 z-50 px-4 py-2 rounded-lg border text-xs font-semibold shadow-lg"
+          style={{
+            backgroundColor: '#262626',
+            color: '#F2EFE9',
+            borderColor: '#BFBFBD',
+          }}
+        >
+          {notification}
         </div>
       )}
 
-      {/* 1. Header (Matching Figma Left Screen) */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-stone-200 pb-4">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b pb-2.5" style={{ borderColor: '#BFBFBD' }}>
         <div>
-          <h2 className="text-2xl font-black text-stone-900 tracking-tight">
-            Danh Bạ & Phân Công Nhân Sự (Staff Directory)
+          <h2 className="text-base font-bold tracking-tight" style={{ color: '#262626' }}>
+            Nhân Sự Tiếp Nhận & Hỗ Trợ Robot
           </h2>
-          <p className="text-sm text-stone-500 font-medium">
-            Quản lý đội ngũ nhân sự 5 phòng ban, ca trực và cấu hình điều phối khi Robot chuyển tiếp cuộc gọi
+          <p className="text-[11px] font-normal" style={{ color: '#8C8C8C' }}>
+            Danh sách nhân sự theo bộ phận để robot chuyển tiếp yêu cầu hoặc gọi hỗ trợ khi cần thiết
           </p>
         </div>
 
         <button
           onClick={() => setIsAddModalOpen(true)}
-          className="px-4 py-2.5 rounded-xl bg-stone-900 hover:bg-stone-800 text-white text-xs font-bold flex items-center gap-2 transition-all shadow-md cursor-pointer"
+          className="px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer border transition-colors whitespace-nowrap self-start sm:self-auto"
+          style={{
+            backgroundColor: '#262626',
+            color: '#F2EFE9',
+            borderColor: '#262626',
+          }}
         >
-          <PlusCircle className="w-4 h-4 text-indigo-400" />
-          <span>+ Add Staff Member</span>
+          + Thêm nhân sự
         </button>
       </div>
 
-      {/* 2. Controls: Search & Dropdown Filters (Matching Figma) */}
-      <div className="bg-white p-4 rounded-2xl border border-stone-200 shadow-sm flex flex-col md:flex-row items-center justify-between gap-3">
+      {/* Controls: Search & Filters */}
+      <div
+        className="p-2.5 rounded-xl border flex flex-col sm:flex-row items-center justify-between gap-2.5"
+        style={{
+          backgroundColor: '#E9E5DC',
+          borderColor: '#BFBFBD',
+        }}
+      >
         {/* Search */}
-        <div className="relative w-full md:w-80">
-          <Search className="w-4 h-4 text-stone-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+        <div className="w-full sm:w-72">
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search staff by name, email or role..."
-            className="w-full pl-10 pr-4 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs text-stone-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+            placeholder="Tìm theo họ tên, username hoặc mã..."
+            className="w-full px-3 py-1.5 rounded-lg text-xs font-normal border focus:outline-none"
+            style={{
+              backgroundColor: '#FFFFFF',
+              borderColor: '#BFBFBD',
+              color: '#262626',
+            }}
           />
         </div>
 
-        {/* Filter Dropdowns */}
-        <div className="flex items-center gap-2 w-full md:w-auto">
+        {/* Filters */}
+        <div className="flex items-center gap-2 w-full sm:w-auto">
           {/* Department Filter */}
           <select
             value={departmentFilter}
             onChange={(e) => setDepartmentFilter(e.target.value)}
-            className="px-3.5 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs font-bold text-stone-800 focus:outline-none cursor-pointer"
+            className="px-2.5 py-1.5 rounded-lg text-xs font-medium border focus:outline-none cursor-pointer"
+            style={{
+              backgroundColor: '#FFFFFF',
+              borderColor: '#BFBFBD',
+              color: '#262626',
+            }}
           >
-            <option value="All">All Departments</option>
-            <option value="Reception">Front Desk (Reception)</option>
-            <option value="Housekeeping">Housekeeping</option>
-            <option value="F&B">F&B / Room Service</option>
-            <option value="Bell Services">Bell Services</option>
-            <option value="Maintenance">Maintenance</option>
-            <option value="Administration">Administration</option>
+            <option value="All">Tất cả bộ phận</option>
+            {allDepartments.map((dept) => (
+              <option key={dept} value={dept}>
+                {dept}
+              </option>
+            ))}
           </select>
 
-          {/* Status Filter */}
+          {/* Fallback Filter */}
           <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-3.5 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs font-bold text-stone-800 focus:outline-none cursor-pointer"
+            value={fallbackFilter}
+            onChange={(e) => setFallbackFilter(e.target.value)}
+            className="px-2.5 py-1.5 rounded-lg text-xs font-medium border focus:outline-none cursor-pointer"
+            style={{
+              backgroundColor: '#FFFFFF',
+              borderColor: '#BFBFBD',
+              color: '#262626',
+            }}
           >
-            <option value="All">All Statuses</option>
-            <option value="available">Available (Sẵn sàng)</option>
-            <option value="busy">Busy (Đang bận)</option>
-            <option value="off_shift">Off Duty (Hết ca)</option>
+            <option value="All">Tất cả loại phân công</option>
+            <option value="fallback">Hỗ trợ Robot (Fallback)</option>
+            <option value="standard">Tiêu chuẩn</option>
           </select>
         </div>
       </div>
 
-      {/* 3. Staff Table (Matching Figma Left Screen) */}
-      <div className="bg-white rounded-2xl border border-stone-200 shadow-sm overflow-hidden">
+      {/* Staff Table */}
+      <div
+        className="rounded-xl border overflow-hidden shadow-none"
+        style={{
+          backgroundColor: '#FFFFFF',
+          borderColor: '#BFBFBD',
+        }}
+      >
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
+          <table className="w-full table-fixed text-left border-collapse">
             <thead>
-              <tr className="bg-stone-50/80 border-b border-stone-200 text-[11px] font-black text-stone-500 uppercase tracking-wider">
-                <th className="py-3.5 px-4">STAFF MEMBER</th>
-                <th className="py-3.5 px-4">DEPARTMENT</th>
-                <th className="py-3.5 px-4">ROLE</th>
-                <th className="py-3.5 px-4">AVAILABILITY</th>
-                <th className="py-3.5 px-4">ROBOT ESCALATION</th>
-                <th className="py-3.5 px-4">ASSIGNED TASKS</th>
-                <th className="py-3.5 px-4 text-right">ACTIONS</th>
+              <tr
+                className="border-b text-[11px] font-semibold uppercase tracking-wider"
+                style={{
+                  backgroundColor: '#E9E5DC',
+                  borderColor: '#BFBFBD',
+                  color: '#262626',
+                }}
+              >
+                <th className="w-1/4 py-2 px-4 text-left">Nhân sự</th>
+                <th className="w-1/4 py-2 px-4 text-center">Bộ phận</th>
+                <th className="w-1/4 py-2 px-4 text-center">Hỗ trợ Robot</th>
+                <th className="w-1/4 py-2 px-4 text-center">Thao tác</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-stone-100 text-xs">
-              {paginatedStaff.length === 0 ? (
+            <tbody className="divide-y text-xs" style={{ borderColor: '#E9E5DC' }}>
+              {isLoading && paginatedStaff.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-8 text-center text-stone-400 font-medium">
-                    Không tìm thấy nhân viên nào phù hợp.
+                  <td colSpan={4} className="py-6 text-center" style={{ color: '#8C8C8C' }}>
+                    Đang tải dữ liệu...
+                  </td>
+                </tr>
+              ) : paginatedStaff.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="py-6 text-center" style={{ color: '#8C8C8C' }}>
+                    Không tìm thấy nhân sự phù hợp.
                   </td>
                 </tr>
               ) : (
-                paginatedStaff.map((staff) => {
-                  const avatar =
-                    staff.avatar_url ||
-                    `https://api.dicebear.com/7.x/bottts/svg?seed=${staff.code || staff.id}`;
-                  const email = staff.email || `${staff.username || 'staff'}@aurora.hotel`;
+                paginatedStaff.map((staff) => (
+                  <tr
+                    key={staff.id}
+                    className="transition-colors hover:bg-[#F2EFE9]/40"
+                    style={{ borderBottom: '1px solid #E9E5DC' }}
+                  >
+                    {/* Column 1: Staff Name & ID (25%) */}
+                    <td className="w-1/4 py-2 px-4 text-left">
+                      <div className="font-semibold text-xs truncate" style={{ color: '#262626' }}>
+                        {staff.full_name}
+                      </div>
+                      <div className="text-[11px] font-mono truncate" style={{ color: '#8C8C8C' }}>
+                        {staff.username ? `@${staff.username}` : staff.code || staff.id}
+                      </div>
+                    </td>
 
-                  return (
-                    <tr key={staff.id} className="hover:bg-stone-50/60 transition-colors">
-                      {/* Member Info */}
-                      <td className="py-3.5 px-4">
-                        <div className="flex items-center gap-3">
-                          <img
-                            src={avatar}
-                            alt={staff.full_name}
-                            className="w-9 h-9 rounded-full object-cover border border-stone-200 shadow-sm"
-                          />
-                          <div>
-                            <div className="font-bold text-stone-900 flex items-center gap-1.5">
-                              <span>{staff.full_name}</span>
-                              <span className="text-[10px] text-stone-400 font-mono font-normal">
-                                ({staff.code || 'STF'})
-                              </span>
-                            </div>
-                            <div className="text-[11px] text-stone-500">{email}</div>
-                          </div>
-                        </div>
-                      </td>
+                    {/* Column 2: Department (25%) */}
+                    <td className="w-1/4 py-2 px-4 text-center">
+                      <span
+                        className="inline-flex items-center justify-center w-40 px-2 py-1 rounded text-[11px] font-medium border text-center truncate"
+                        style={{
+                          backgroundColor: '#E9E5DC',
+                          borderColor: '#BFBFBD',
+                          color: '#262626',
+                        }}
+                      >
+                        {staff.department || 'Chưa phân bộ phận'}
+                      </span>
+                    </td>
 
-                      {/* Department */}
-                      <td className="py-3.5 px-4">
+                    {/* Column 3: Robot Escalation (25%) */}
+                    <td className="w-1/4 py-2 px-4 text-center">
+                      {staff.is_fallback_agent ? (
                         <span
-                          className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-[11px] font-bold border ${getDeptColor(
-                            staff.department
-                          )}`}
+                          className="inline-flex items-center justify-center w-40 px-2 py-1 rounded text-[11px] font-semibold border text-center truncate"
+                          style={{
+                            backgroundColor: '#262626',
+                            color: '#F2EFE9',
+                            borderColor: '#262626',
+                          }}
                         >
-                          <span>{staff.department}</span>
+                          Hỗ trợ Robot (Fallback)
                         </span>
-                      </td>
-
-                      {/* Role */}
-                      <td className="py-3.5 px-4 font-medium text-stone-700">{staff.role}</td>
-
-                      {/* Availability */}
-                      <td className="py-3.5 px-4">{getStatusBadge(staff.status)}</td>
-
-                      {/* Robot Escalation Status */}
-                      <td className="py-3.5 px-4">
-                        {staff.is_fallback_agent ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
-                            <Bot className="w-3 h-3 text-indigo-600" />
-                            <span>Fallback Agent</span>
-                          </span>
-                        ) : (
-                          <span className="text-[11px] text-stone-400 font-medium">Standard</span>
-                        )}
-                      </td>
-
-                      {/* Tasks */}
-                      <td className="py-3.5 px-4">
-                        <span className="font-mono font-bold text-stone-700">
-                          {staff.current_tasks_count || 0} Active
+                      ) : (
+                        <span
+                          className="inline-flex items-center justify-center w-40 px-2 py-1 rounded text-[11px] font-medium border text-center truncate"
+                          style={{
+                            backgroundColor: '#FFFFFF',
+                            borderColor: '#BFBFBD',
+                            color: '#8C8C8C',
+                          }}
+                        >
+                          Tiêu chuẩn
                         </span>
-                      </td>
+                      )}
+                    </td>
 
-                      {/* Actions */}
-                      <td className="py-3.5 px-4 text-right space-x-1">
+                    {/* Column 4: Actions (25%) */}
+                    <td className="w-1/4 py-2 px-4 text-center">
+                      <div className="flex items-center justify-center gap-1.5">
                         <button
-                          onClick={() => handleOpenDetailModal(staff)}
-                          className="px-3 py-1.5 rounded-lg bg-stone-100 hover:bg-indigo-50 text-stone-700 hover:text-indigo-600 font-bold text-xs transition-all cursor-pointer inline-flex items-center gap-1"
+                          onClick={() => handleOpenEditModal(staff)}
+                          className="px-2.5 py-1 rounded text-[11px] font-medium border cursor-pointer hover:opacity-80 transition-all whitespace-nowrap"
+                          style={{
+                            backgroundColor: '#FFFFFF',
+                            borderColor: '#BFBFBD',
+                            color: '#262626',
+                          }}
                         >
-                          <Sliders className="w-3.5 h-3.5" />
-                          <span>Configure</span>
+                          Chỉnh sửa
                         </button>
                         <button
                           onClick={() => handleDelete(staff.id, staff.full_name)}
-                          className="p-1.5 rounded-lg text-stone-400 hover:text-rose-600 hover:bg-rose-50 transition-all cursor-pointer inline-flex items-center"
-                          title="Xóa nhân viên"
+                          className="px-2.5 py-1 rounded text-[11px] font-medium border cursor-pointer hover:bg-red-50 hover:border-red-300 hover:text-red-700 transition-all whitespace-nowrap"
+                          style={{
+                            backgroundColor: '#FFFFFF',
+                            borderColor: '#BFBFBD',
+                            color: '#8C8C8C',
+                          }}
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          Xóa
                         </button>
-                      </td>
-                    </tr>
-                  );
-                })
+                      </div>
+                    </td>
+                  </tr>
+                ))
               )}
             </tbody>
           </table>
@@ -427,209 +454,127 @@ export const AdminStaffTab = ({ currentUser = {} }) => {
           currentPage={currentPage}
           totalItems={filteredStaff.length}
           pageSize={pageSize}
-          onPageChange={setCurrentPage}
+          onPageChange={handlePageChange}
+          itemName="nhân sự"
         />
       </div>
 
-      {/* 4. MODAL: STAFF DETAIL & ROBOT ESCALATION CONFIGURATION (Matching Right Screen Figma) */}
+      {/* MODAL: EDIT STAFF */}
       {selectedStaff && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="max-w-2xl w-full bg-white rounded-3xl border border-stone-200 shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
-            {/* Modal Header */}
-            <div className="p-6 border-b border-stone-100 flex items-center justify-between bg-stone-50/50">
-              <div className="flex items-center gap-4">
-                <img
-                  src={
-                    selectedStaff.avatar_url ||
-                    `https://api.dicebear.com/7.x/bottts/svg?seed=${selectedStaff.code}`
-                  }
-                  alt={selectedStaff.full_name}
-                  className="w-14 h-14 rounded-2xl object-cover border border-stone-200 shadow-sm"
-                />
-                <div>
-                  <h3 className="text-lg font-black text-stone-900 flex items-center gap-2">
-                    <span>{selectedStaff.full_name}</span>
-                    <span className="text-xs text-stone-400 font-mono font-normal">
-                      ({selectedStaff.code || selectedStaff.id})
-                    </span>
-                  </h3>
-                  <p className="text-xs text-indigo-600 font-bold mt-0.5">
-                    {selectedStaff.role} • {selectedStaff.department}
-                  </p>
-                </div>
-              </div>
-
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div
+            className="max-w-md w-full rounded-2xl border p-6 space-y-4 shadow-xl"
+            style={{
+              backgroundColor: '#FFFFFF',
+              borderColor: '#BFBFBD',
+            }}
+          >
+            <div className="flex items-center justify-between border-b pb-3" style={{ borderColor: '#BFBFBD' }}>
+              <h3 className="text-sm font-bold" style={{ color: '#262626' }}>
+                Cập nhật nhân sự hỗ trợ
+              </h3>
               <button
                 onClick={() => setSelectedStaff(null)}
-                className="w-8 h-8 rounded-full bg-white border border-stone-200 text-stone-500 hover:bg-stone-100 flex items-center justify-center font-bold text-xs cursor-pointer shadow-sm"
+                className="text-xs font-bold px-2 py-1 rounded border cursor-pointer"
+                style={{
+                  backgroundColor: '#E9E5DC',
+                  borderColor: '#BFBFBD',
+                  color: '#262626',
+                }}
               >
-                ✕
+                Đóng
               </button>
             </div>
 
-            {/* Modal Body */}
-            <form onSubmit={handleSaveEdit} className="p-6 space-y-6 overflow-y-auto custom-scrollbar flex-1">
-              {/* SECTION 1: Employment Overview (Figma) */}
-              <div className="space-y-3">
-                <h4 className="text-[11px] font-black text-stone-500 uppercase tracking-wider flex items-center gap-1.5 border-b border-stone-100 pb-2">
-                  <Users className="w-3.5 h-3.5 text-indigo-600" />
-                  <span>1. Employment Overview</span>
-                </h4>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-                  <div>
-                    <label className="block text-[11px] font-bold text-stone-600 mb-1">
-                      DEPARTMENT:
-                    </label>
-                    <select
-                      value={editForm.department}
-                      onChange={(e) => setEditForm({ ...editForm, department: e.target.value })}
-                      className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl font-bold text-stone-800 focus:outline-none"
-                    >
-                      <option value="Reception">Front Desk (Reception)</option>
-                      <option value="Housekeeping">Housekeeping</option>
-                      <option value="F&B">F&B / Room Service</option>
-                      <option value="Bell Services">Bell Services</option>
-                      <option value="Maintenance">Maintenance</option>
-                      <option value="Administration">Administration</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] font-bold text-stone-600 mb-1">
-                      WORKING SHIFT:
-                    </label>
-                    <input
-                      type="text"
-                      value={editForm.shift}
-                      onChange={(e) => setEditForm({ ...editForm, shift: e.target.value })}
-                      className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-stone-800 focus:outline-none font-medium"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] font-bold text-stone-600 mb-1">PHONE:</label>
-                    <input
-                      type="text"
-                      value={editForm.phone}
-                      onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
-                      className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-stone-800 focus:outline-none font-medium"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] font-bold text-stone-600 mb-1">EMAIL:</label>
-                    <input
-                      type="email"
-                      value={editForm.email}
-                      onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
-                      className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-stone-800 focus:outline-none font-medium"
-                    />
-                  </div>
-                </div>
+            <form onSubmit={handleSaveEdit} className="space-y-4 text-xs">
+              <div>
+                <label className="block text-[11px] font-semibold mb-1" style={{ color: '#8C8C8C' }}>
+                  HỌ VÀ TÊN:
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editForm.full_name}
+                  onChange={(e) => setEditForm({ ...editForm, full_name: e.target.value })}
+                  className="w-full px-3 py-2 rounded-lg border focus:outline-none"
+                  style={{
+                    backgroundColor: '#FFFFFF',
+                    borderColor: '#BFBFBD',
+                    color: '#262626',
+                  }}
+                />
               </div>
 
-              {/* SECTION 2: Robot Escalation Configuration (Figma Right Screen) */}
-              <div className="space-y-4 pt-2">
-                <h4 className="text-[11px] font-black text-stone-500 uppercase tracking-wider flex items-center gap-1.5 border-b border-stone-100 pb-2">
-                  <Bot className="w-3.5 h-3.5 text-indigo-600" />
-                  <span>2. Robot Escalation Configuration</span>
-                </h4>
-
-                {/* Fallback Agent Toggle */}
-                <div className="p-4 bg-indigo-50/50 border border-indigo-100 rounded-2xl flex items-center justify-between">
-                  <div className="space-y-0.5 pr-4">
-                    <p className="text-xs font-black text-stone-900 flex items-center gap-1.5">
-                      <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
-                      <span>FALLBACK RECEPTION AGENT</span>
-                    </p>
-                    <p className="text-[11px] text-stone-500 leading-tight">
-                      Khi Robot Concierge cần sự hỗ trợ của con người, hệ thống sẽ tự động định tuyến
-                      thông báo và cuộc gọi tới nhân viên này.
-                    </p>
-                  </div>
-
-                  <label className="relative inline-flex items-center cursor-pointer shrink-0">
-                    <input
-                      type="checkbox"
-                      checked={editForm.is_fallback_agent}
-                      onChange={(e) =>
-                        setEditForm({ ...editForm, is_fallback_agent: e.target.checked })
-                      }
-                      className="sr-only peer"
-                    />
-                    <div className="w-11 h-6 bg-stone-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-stone-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
-                  </label>
-                </div>
-
-                {/* Assigned Floors & Notification Channels */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-                  <div>
-                    <label className="block text-[11px] font-bold text-stone-600 mb-1">
-                      ASSIGNED FLOORS / SUITES:
-                    </label>
-                    <input
-                      type="text"
-                      value={editForm.assigned_floors}
-                      onChange={(e) => setEditForm({ ...editForm, assigned_floors: e.target.value })}
-                      placeholder="Floor 1 - 5 (Lobby & Lower Suites)"
-                      className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-stone-800 focus:outline-none font-medium"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] font-bold text-stone-600 mb-1">
-                      NOTIFICATION CHANNELS:
-                    </label>
-                    <input
-                      type="text"
-                      value={editForm.notification_channels}
-                      onChange={(e) =>
-                        setEditForm({ ...editForm, notification_channels: e.target.value })
-                      }
-                      placeholder="Web Dashboard, Tablet Alert, Radio"
-                      className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-stone-800 focus:outline-none font-medium"
-                    />
-                  </div>
-                </div>
+              <div>
+                <label className="block text-[11px] font-semibold mb-1" style={{ color: '#8C8C8C' }}>
+                  BỘ PHẬN:
+                </label>
+                <select
+                  value={editForm.department}
+                  onChange={(e) => setEditForm({ ...editForm, department: e.target.value })}
+                  className="w-full px-3 py-2 rounded-lg border focus:outline-none cursor-pointer"
+                  style={{
+                    backgroundColor: '#FFFFFF',
+                    borderColor: '#BFBFBD',
+                    color: '#262626',
+                  }}
+                >
+                  {allDepartments.map((dept) => (
+                    <option key={dept} value={dept}>
+                      {dept}
+                    </option>
+                  ))}
+                </select>
               </div>
 
-              {/* SECTION 3: Active Task History (Figma) */}
-              <div className="space-y-3 pt-2">
-                <h4 className="text-[11px] font-black text-stone-500 uppercase tracking-wider flex items-center gap-1.5 border-b border-stone-100 pb-2">
-                  <Clock className="w-3.5 h-3.5 text-stone-500" />
-                  <span>3. Active Tasks History</span>
-                </h4>
-
-                <div className="p-3 bg-stone-50 rounded-xl border border-stone-200 text-xs text-stone-600 space-y-1.5">
-                  <div className="flex items-center justify-between font-bold text-stone-900">
-                    <span>Late Check-in Guest Escort (Room 302)</span>
-                    <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded">
-                      In Progress
-                    </span>
+              <div
+                className="p-3 rounded-lg border flex items-center justify-between"
+                style={{
+                  backgroundColor: '#E9E5DC',
+                  borderColor: '#BFBFBD',
+                }}
+              >
+                <div className="pr-3">
+                  <div className="font-semibold text-xs" style={{ color: '#262626' }}>
+                    Tiếp nhận hỗ trợ Robot
                   </div>
-                  <p className="text-[11px] text-stone-400">
-                    Chỉ định từ Robot Concierge RC-001 • Nhận lúc 21:40
-                  </p>
+                  <div className="text-[11px]" style={{ color: '#8C8C8C' }}>
+                    Chuyển tiếp yêu cầu khi Robot Concierge cần hỗ trợ
+                  </div>
                 </div>
+
+                <input
+                  type="checkbox"
+                  checked={editForm.is_fallback_agent}
+                  onChange={(e) => setEditForm({ ...editForm, is_fallback_agent: e.target.checked })}
+                  className="w-4 h-4 cursor-pointer"
+                />
               </div>
 
-              {/* Action Buttons */}
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-stone-100">
+              <div className="flex items-center justify-end gap-2 pt-2 border-t" style={{ borderColor: '#BFBFBD' }}>
                 <button
                   type="button"
                   onClick={() => setSelectedStaff(null)}
-                  className="px-4 py-2 rounded-xl text-xs font-bold text-stone-600 hover:bg-stone-100 transition-all cursor-pointer"
+                  className="px-3 py-1.5 rounded-lg border font-medium cursor-pointer"
+                  style={{
+                    backgroundColor: '#E9E5DC',
+                    borderColor: '#BFBFBD',
+                    color: '#262626',
+                  }}
                 >
-                  Cancel
+                  Hủy
                 </button>
                 <button
                   type="submit"
                   disabled={isLoading}
-                  className="px-6 py-2 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
+                  className="px-4 py-1.5 rounded-lg border font-semibold cursor-pointer"
+                  style={{
+                    backgroundColor: '#262626',
+                    borderColor: '#262626',
+                    color: '#F2EFE9',
+                  }}
                 >
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>{isLoading ? 'Saving...' : 'Save Changes'}</span>
+                  {isLoading ? 'Đang lưu...' : 'Lưu thay đổi'}
                 </button>
               </div>
             </form>
@@ -637,41 +582,56 @@ export const AdminStaffTab = ({ currentUser = {} }) => {
         </div>
       )}
 
-      {/* 5. MODAL: ADD NEW STAFF MEMBER */}
+      {/* MODAL: ADD NEW STAFF */}
       {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="max-w-md w-full bg-white rounded-3xl border border-stone-200 shadow-2xl p-6 space-y-5 animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between border-b border-stone-100 pb-3">
-              <h3 className="text-base font-black text-stone-900 flex items-center gap-2">
-                <PlusCircle className="w-5 h-5 text-indigo-600" />
-                <span>Thêm Nhân Sự Khách Sạn Mới</span>
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div
+            className="max-w-md w-full rounded-2xl border p-6 space-y-4 shadow-xl"
+            style={{
+              backgroundColor: '#FFFFFF',
+              borderColor: '#BFBFBD',
+            }}
+          >
+            <div className="flex items-center justify-between border-b pb-3" style={{ borderColor: '#BFBFBD' }}>
+              <h3 className="text-sm font-bold" style={{ color: '#262626' }}>
+                Thêm nhân sự mới
               </h3>
               <button
                 onClick={() => setIsAddModalOpen(false)}
-                className="w-8 h-8 rounded-full bg-stone-100 text-stone-500 hover:bg-stone-200 flex items-center justify-center font-bold text-xs cursor-pointer"
+                className="text-xs font-bold px-2 py-1 rounded border cursor-pointer"
+                style={{
+                  backgroundColor: '#E9E5DC',
+                  borderColor: '#BFBFBD',
+                  color: '#262626',
+                }}
               >
-                ✕
+                Đóng
               </button>
             </div>
 
-            <form onSubmit={handleCreateStaff} className="space-y-3.5 text-xs">
+            <form onSubmit={handleCreateStaff} className="space-y-3 text-xs">
               <div>
-                <label className="block text-[11px] font-bold text-stone-600 mb-1">
-                  HỌ VÀ TÊN NHÂN VIÊN:
+                <label className="block text-[11px] font-semibold mb-1" style={{ color: '#8C8C8C' }}>
+                  HỌ VÀ TÊN:
                 </label>
                 <input
                   type="text"
                   required
                   value={addForm.full_name}
                   onChange={(e) => setAddForm({ ...addForm, full_name: e.target.value })}
-                  placeholder="Ví dụ: Sarah Jenkins, Nguyễn Văn An..."
-                  className="w-full px-3.5 py-2 bg-stone-50 border border-stone-200 rounded-xl text-stone-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-bold"
+                  placeholder="Ví dụ: Nguyễn Văn An"
+                  className="w-full px-3 py-2 rounded-lg border focus:outline-none"
+                  style={{
+                    backgroundColor: '#FFFFFF',
+                    borderColor: '#BFBFBD',
+                    color: '#262626',
+                  }}
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[11px] font-bold text-stone-600 mb-1">
+                  <label className="block text-[11px] font-semibold mb-1" style={{ color: '#8C8C8C' }}>
                     TÊN ĐĂNG NHẬP:
                   </label>
                   <input
@@ -679,102 +639,105 @@ export const AdminStaffTab = ({ currentUser = {} }) => {
                     required
                     value={addForm.username}
                     onChange={(e) => setAddForm({ ...addForm, username: e.target.value })}
-                    placeholder="sarah_j"
-                    className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-stone-900 focus:outline-none font-mono"
+                    placeholder="nguyen_an"
+                    className="w-full px-3 py-2 rounded-lg border focus:outline-none font-mono"
+                    style={{
+                      backgroundColor: '#FFFFFF',
+                      borderColor: '#BFBFBD',
+                      color: '#262626',
+                    }}
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-bold text-stone-600 mb-1">
-                    MẬT KHẨU BAN ĐẦU:
+                  <label className="block text-[11px] font-semibold mb-1" style={{ color: '#8C8C8C' }}>
+                    MẬT KHẨU:
                   </label>
                   <input
                     type="password"
                     required
                     value={addForm.password}
                     onChange={(e) => setAddForm({ ...addForm, password: e.target.value })}
-                    placeholder="123456"
-                    className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-stone-900 focus:outline-none font-mono"
+                    className="w-full px-3 py-2 rounded-lg border focus:outline-none font-mono"
+                    style={{
+                      backgroundColor: '#FFFFFF',
+                      borderColor: '#BFBFBD',
+                      color: '#262626',
+                    }}
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[11px] font-bold text-stone-600 mb-1">
-                    PHÒNG BAN:
-                  </label>
-                  <select
-                    value={addForm.department}
-                    onChange={(e) => setAddForm({ ...addForm, department: e.target.value })}
-                    className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-stone-800 font-bold focus:outline-none cursor-pointer"
-                  >
-                    <option value="Reception">Front Desk (Lễ tân)</option>
-                    <option value="Housekeeping">Housekeeping (Buồng phòng)</option>
-                    <option value="F&B">F&B / Room Service</option>
-                    <option value="Bell Services">Bell Services (Hành lý)</option>
-                    <option value="Maintenance">Maintenance (Kỹ thuật)</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold text-stone-600 mb-1">
-                    VỊ TRÍ / CHỨC DANH:
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={addForm.role}
-                    onChange={(e) => setAddForm({ ...addForm, role: e.target.value })}
-                    placeholder="Senior Agent / Lead"
-                    className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-stone-900 focus:outline-none"
-                  />
-                </div>
+              <div>
+                <label className="block text-[11px] font-semibold mb-1" style={{ color: '#8C8C8C' }}>
+                  BỘ PHẬN:
+                </label>
+                <select
+                  value={addForm.department}
+                  onChange={(e) => setAddForm({ ...addForm, department: e.target.value })}
+                  className="w-full px-3 py-2 rounded-lg border focus:outline-none cursor-pointer"
+                  style={{
+                    backgroundColor: '#FFFFFF',
+                    borderColor: '#BFBFBD',
+                    color: '#262626',
+                  }}
+                >
+                  {allDepartments.map((dept) => (
+                    <option key={dept} value={dept}>
+                      {dept}
+                    </option>
+                  ))}
+                </select>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[11px] font-bold text-stone-600 mb-1">
-                    SỐ ĐIỆN THOẠI:
-                  </label>
-                  <input
-                    type="text"
-                    value={addForm.phone}
-                    onChange={(e) => setAddForm({ ...addForm, phone: e.target.value })}
-                    placeholder="+84 90 123 4567"
-                    className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-stone-900 focus:outline-none"
-                  />
+              <div
+                className="p-3 rounded-lg border flex items-center justify-between"
+                style={{
+                  backgroundColor: '#E9E5DC',
+                  borderColor: '#BFBFBD',
+                }}
+              >
+                <div className="pr-3">
+                  <div className="font-semibold text-xs" style={{ color: '#262626' }}>
+                    Tiếp nhận hỗ trợ Robot
+                  </div>
+                  <div className="text-[11px]" style={{ color: '#8C8C8C' }}>
+                    Đặt làm nhân sự tiếp nhận khi Robot cần hỗ trợ
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block text-[11px] font-bold text-stone-600 mb-1">
-                    CA TRỰC:
-                  </label>
-                  <input
-                    type="text"
-                    value={addForm.shift}
-                    onChange={(e) => setAddForm({ ...addForm, shift: e.target.value })}
-                    placeholder="Ca Sáng (06:00 - 14:00)"
-                    className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-stone-900 focus:outline-none"
-                  />
-                </div>
+                <input
+                  type="checkbox"
+                  checked={addForm.is_fallback_agent}
+                  onChange={(e) => setAddForm({ ...addForm, is_fallback_agent: e.target.checked })}
+                  className="w-4 h-4 cursor-pointer"
+                />
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-stone-100">
+              <div className="flex items-center justify-end gap-2 pt-2 border-t" style={{ borderColor: '#BFBFBD' }}>
                 <button
                   type="button"
                   onClick={() => setIsAddModalOpen(false)}
-                  className="px-4 py-2 rounded-xl text-xs font-bold text-stone-600 hover:bg-stone-100 transition-all cursor-pointer"
+                  className="px-3 py-1.5 rounded-lg border font-medium cursor-pointer"
+                  style={{
+                    backgroundColor: '#E9E5DC',
+                    borderColor: '#BFBFBD',
+                    color: '#262626',
+                  }}
                 >
-                  Đóng
+                  Hủy
                 </button>
                 <button
                   type="submit"
                   disabled={isLoading}
-                  className="px-5 py-2 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
+                  className="px-4 py-1.5 rounded-lg border font-semibold cursor-pointer"
+                  style={{
+                    backgroundColor: '#262626',
+                    borderColor: '#262626',
+                    color: '#F2EFE9',
+                  }}
                 >
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>{isLoading ? 'Đang tạo...' : 'Tạo Nhân Sự'}</span>
+                  {isLoading ? 'Đang tạo...' : 'Tạo nhân sự'}
                 </button>
               </div>
             </form>

@@ -403,6 +403,32 @@ export const deleteNotification = async (notificationId) => {
   );
 };
 
+export const fetchAnalyticsSummary = async () => {
+  return await fetchWithFallback(`${BASE_URL}/analytics/summary`, {}, {
+    total_tasks: 0,
+    active_tasks: 0,
+    completed_tasks: 0,
+    completion_rate: 0,
+    robot_assigned_tasks: 0,
+    human_tasks: 0,
+    robot_rate: 0,
+    total_sessions: 0,
+    total_messages: 0,
+    total_staff: 0,
+    fallback_staff: 0,
+    total_robots: 1,
+    dept_distribution: {
+      Reception: 0,
+      Housekeeping: 0,
+      'F&B': 0,
+      'Bell Services': 0,
+      Maintenance: 0,
+    },
+    recent_activities: [],
+  });
+};
+
+
 
 
 

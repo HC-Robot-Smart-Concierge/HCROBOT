@@ -1,212 +1,256 @@
-import React, { useState } from 'react';
-import {
-  LayoutGrid,
-  Sliders,
-  Bot,
-  BookOpen,
-  Hotel,
-  Users,
-  BarChart2,
-  FileText,
-  Settings,
-  LogOut,
-  Search,
-  Bell,
-  AlertTriangle,
-  HelpCircle,
-  Map as MapIcon,
-  Sparkles,
-  Video,
-} from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Settings, LogOut, Sparkles } from 'lucide-react';
 import { AdminDashboardTab } from './tabs/AdminDashboardTab';
 import { AdminOperationsTab } from './tabs/AdminOperationsTab';
+import { AdminRobotControlTab } from './tabs/AdminRobotControlTab';
 import { AdminKnowledgePage } from './tabs/AdminKnowledgePage';
 import { AdminStaffTab } from './tabs/AdminStaffTab';
 import { AdminAnalyticsTab } from './tabs/AdminAnalyticsTab';
 import { AdminSettingsTab } from './tabs/AdminSettingsTab';
 import { AdminLogsTab } from './tabs/AdminLogsTab';
-import { AdminLidarPage } from './AdminLidarPage';
-import { AdminCameraTab } from './tabs/AdminCameraTab';
+
+// Color tokens
+// --bg-primary:    #F2EFE9  (main page background)
+// --bg-secondary:  #E9E5DC  (sidebar, cards)
+// --border:        #BFBFBD  (borders, dividers)
+// --text-muted:    #8C8C8C  (labels, secondary text)
+// --text-primary:  #262626  (headings, body text)
+// --accent:        #262626  (active nav, CTA buttons)
 
 export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () => {} }) => {
-  // Navigation Menu: 'Dashboard' | 'Operations' | 'Robots' | 'Knowledge' | 'Hotel Content' | 'Staff' | 'Analytics' | 'Logs' | 'Settings'
-  const [activeMenu, setActiveMenu] = useState('Operations');
-  const [operationsSubTab, setOperationsSubTab] = useState('requests'); // 'requests' | 'support'
-  const [knowledgeSubTab, setKnowledgeSubTab] = useState('sources'); // 'sources' | 'upload' | 'create'
+  const getInitialTab = () => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const tab = params.get('tab');
+      const validTabs = [
+        'Dashboard',
+        'Operations',
+        'Robot Control',
+        'Knowledge',
+        'Hotel Content',
+        'Staff',
+        'Analytics',
+        'Logs',
+        'Settings',
+      ];
+      return validTabs.includes(tab) ? tab : 'Operations';
+    } catch {
+      return 'Operations';
+    }
+  };
+
+  const [activeMenu, setActiveMenu] = useState(getInitialTab);
+  const [operationsSubTab, setOperationsSubTab] = useState('requests');
+  const [robotSubTab, setRobotSubTab] = useState('lidar');
+  const [knowledgeSubTab, setKnowledgeSubTab] = useState('sources');
   const [searchQuery, setSearchQuery] = useState('');
 
+  const handleSelectTab = (tabId) => {
+    setActiveMenu(tabId);
+    try {
+      const params = new URLSearchParams(window.location.search);
+      params.set('tab', tabId);
+      params.delete('page');
+      window.history.pushState(null, '', `${window.location.pathname}?${params.toString()}`);
+    } catch {}
+  };
+
+  useEffect(() => {
+    const onPopState = () => {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const tab = params.get('tab');
+        if (tab) setActiveMenu(tab);
+      } catch {}
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
 
   const menuItems = [
-    { id: 'Dashboard', label: 'Dashboard', icon: LayoutGrid },
-    { id: 'Operations', label: 'Operations', icon: Sliders },
-    { id: 'Robots', label: 'Robots', icon: Bot },
-    { id: 'Knowledge', label: 'Knowledge', icon: BookOpen },
-    { id: 'Hotel Content', label: 'Hotel Content', icon: Hotel },
-    { id: 'Staff', label: 'Staff', icon: Users },
-    { id: 'Analytics', label: 'Analytics', icon: BarChart2 },
-    { id: 'Logs', label: 'Logs', icon: FileText },
-    { id: 'Camera', label: 'Camera', icon: Video },
+    { id: 'Dashboard',     label: 'Dashboard' },
+    { id: 'Operations',    label: 'Operations' },
+    { id: 'Robot Control', label: 'Robot Control' },
+    { id: 'Knowledge',     label: 'Knowledge' },
+    { id: 'Hotel Content', label: 'Hotel Content' },
+    { id: 'Staff',         label: 'Staff' },
+    { id: 'Analytics',     label: 'Analytics' },
+    { id: 'Logs',          label: 'Logs' },
   ];
 
   return (
-    <div className="w-full h-screen overflow-hidden bg-[#FCFAF7] text-[#1A1917] flex font-sans select-none">
-      {/* 1. LEFT SIDEBAR (White & Gray Theme Matching System) */}
-      <aside className="w-64 h-full bg-[#FAF8F5] text-[#1A1917] flex flex-col justify-between shrink-0 border-r border-[#E5E1D8] z-30 shadow-sm">
-        {/* Brand Header */}
+    <div className="w-full h-screen overflow-hidden text-[#262626] flex font-sans select-none" style={{ background: '#F2EFE9' }}>
+
+      {/* SIDEBAR */}
+      <aside className="w-56 h-full flex flex-col justify-between shrink-0 border-r z-30"
+        style={{ background: '#E9E5DC', borderColor: '#BFBFBD' }}>
+
+        {/* Brand */}
         <div>
-          <div className="p-5 border-b border-[#E5E1D8] flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-[#18181B] text-white font-black text-lg flex items-center justify-center shadow-sm">
-              R
+          <div className="px-5 py-4 border-b" style={{ borderColor: '#BFBFBD' }}>
+            <div className="text-sm font-black tracking-tight" style={{ color: '#262626' }}>
+              RoboConcierge
             </div>
-            <div>
-              <div className="font-black text-sm tracking-tight text-[#1A1917] flex items-center gap-1.5">
-                <span>RoboConcierge</span>
-              </div>
-              <div className="text-[10px] font-bold text-stone-500 tracking-wider">
-                V2.4.1 ADMIN PORTAL
-              </div>
+            <div className="text-[10px] font-semibold tracking-widest mt-0.5" style={{ color: '#8C8C8C' }}>
+              V2.4.1 — ADMIN PORTAL
             </div>
           </div>
 
-          {/* Navigation Items */}
-          <nav className="p-3 space-y-1">
+          {/* Nav Items */}
+          <nav className="p-3 space-y-0.5">
             {menuItems.map((item) => {
-              const Icon = item.icon;
               const isActive = activeMenu === item.id;
               return (
-                <div key={item.id} className="space-y-1">
+                <div key={item.id} className="space-y-0.5">
                   <button
-                    onClick={() => setActiveMenu(item.id)}
-                    className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                      isActive
-                        ? 'bg-[#18181B] text-white shadow-md'
-                        : 'text-stone-600 hover:text-stone-900 hover:bg-[#EFECE6]'
-                    }`}
+                    onClick={() => handleSelectTab(item.id)}
+                    className="w-full text-left px-3 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer"
+                    style={{
+                      background: isActive ? '#262626' : 'transparent',
+                      color: isActive ? '#FFFFFF' : '#8C8C8C',
+                    }}
+                    onMouseEnter={e => { if (!isActive) { e.currentTarget.style.background = '#BFBFBD'; e.currentTarget.style.color = '#262626'; } }}
+                    onMouseLeave={e => { if (!isActive) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#8C8C8C'; } }}
                   >
-                    <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-stone-500'}`} />
-                    <span>{item.label}</span>
+                    {item.label}
                   </button>
 
-                  {/* Nested Sub-items directly under Operations on the sidebar */}
+                  {/* Operations sub-items */}
                   {item.id === 'Operations' && activeMenu === 'Operations' && (
-                    <div className="ml-5 pl-3 border-l-2 border-stone-800 my-1 space-y-1">
+                    <div className="ml-3 pl-3 border-l my-0.5 space-y-0.5" style={{ borderColor: '#262626' }}>
                       <button
                         onClick={() => setOperationsSubTab('support')}
-                        className={`w-full text-left px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
-                          operationsSubTab === 'support' || operationsSubTab === 'requests'
-                            ? 'bg-[#18181B] text-white shadow-sm border border-stone-800'
-                            : 'text-stone-600 hover:text-stone-900 hover:bg-[#EFECE6]'
-                        }`}
+                        className="w-full text-left px-2 py-1.5 rounded text-[11px] font-semibold transition-all cursor-pointer"
+                        style={{
+                          background: operationsSubTab === 'support' || operationsSubTab === 'requests' ? '#262626' : 'transparent',
+                          color: operationsSubTab === 'support' || operationsSubTab === 'requests' ? '#FFFFFF' : '#8C8C8C',
+                        }}
                       >
                         Technical Support Requests
                       </button>
                     </div>
                   )}
 
-                  {/* Nested Sub-items directly under Knowledge on the sidebar */}
+                  {/* Robot Control sub-items */}
+                  {item.id === 'Robot Control' && activeMenu === 'Robot Control' && (
+                    <div className="ml-3 pl-3 border-l my-0.5 space-y-0.5" style={{ borderColor: '#262626' }}>
+                      <button
+                        onClick={() => setRobotSubTab('studio')}
+                        className="w-full text-left px-2 py-1.5 rounded text-[11px] font-semibold transition-all cursor-pointer"
+                        style={{
+                          background: robotSubTab === 'studio' || robotSubTab === 'lidar' || robotSubTab === 'workflows' ? '#262626' : 'transparent',
+                          color: robotSubTab === 'studio' || robotSubTab === 'lidar' || robotSubTab === 'workflows' ? '#FFFFFF' : '#8C8C8C',
+                        }}
+                      >
+                        Bản Đồ &amp; Step Workflows
+                      </button>
+                      <button
+                        onClick={() => setRobotSubTab('camera')}
+                        className="w-full text-left px-2 py-1.5 rounded text-[11px] font-semibold transition-all cursor-pointer"
+                        style={{
+                          background: robotSubTab === 'camera' ? '#262626' : 'transparent',
+                          color: robotSubTab === 'camera' ? '#FFFFFF' : '#8C8C8C',
+                        }}
+                      >
+                        Live Camera FPV
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Knowledge sub-items */}
                   {item.id === 'Knowledge' && activeMenu === 'Knowledge' && (
-                    <div className="ml-5 pl-3 border-l-2 border-stone-800 my-1 space-y-1">
+                    <div className="ml-3 pl-3 border-l my-0.5 space-y-0.5" style={{ borderColor: '#262626' }}>
                       <button
                         onClick={() => setKnowledgeSubTab('sources')}
-                        className={`w-full text-left px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
-                          knowledgeSubTab === 'sources'
-                            ? 'bg-[#18181B] text-white shadow-sm border border-stone-800'
-                            : 'text-stone-600 hover:text-stone-900 hover:bg-[#EFECE6]'
-                        }`}
+                        className="w-full text-left px-2 py-1.5 rounded text-[11px] font-semibold transition-all cursor-pointer"
+                        style={{
+                          background: knowledgeSubTab === 'sources' ? '#262626' : 'transparent',
+                          color: knowledgeSubTab === 'sources' ? '#FFFFFF' : '#8C8C8C',
+                        }}
                       >
                         Source Files
                       </button>
                     </div>
                   )}
-
                 </div>
               );
             })}
           </nav>
         </div>
 
-        {/* Bottom Settings & Logout */}
-        <div className="p-3 border-t border-[#E5E1D8] space-y-1">
+        {/* Bottom: Settings & Logout */}
+        <div className="p-3 border-t space-y-0.5" style={{ borderColor: '#BFBFBD' }}>
           <button
-            onClick={() => setActiveMenu('Settings')}
-            className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-              activeMenu === 'Settings'
-                ? 'bg-[#18181B] text-white shadow-md'
-                : 'text-stone-600 hover:text-stone-900 hover:bg-[#EFECE6]'
-            }`}
+            onClick={() => handleSelectTab('Settings')}
+            className="w-full text-left flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer"
+            style={{
+              background: activeMenu === 'Settings' ? '#262626' : 'transparent',
+              color: activeMenu === 'Settings' ? '#FFFFFF' : '#8C8C8C',
+            }}
           >
-            <Settings className="w-4 h-4" />
+            <Settings className="w-3.5 h-3.5 shrink-0" />
             <span>Settings</span>
           </button>
-
           <button
             onClick={onLogout}
-            className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold text-rose-600 hover:bg-rose-50 hover:text-rose-700 transition-all cursor-pointer"
+            className="w-full text-left flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer"
+            style={{ color: '#8C8C8C' }}
+            onMouseEnter={e => { e.currentTarget.style.background = '#BFBFBD'; e.currentTarget.style.color = '#262626'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#8C8C8C'; }}
           >
-            <LogOut className="w-4 h-4" />
-            <span>Đăng xuất</span>
+            <LogOut className="w-3.5 h-3.5 shrink-0" />
+            <span>Dang xuat</span>
           </button>
         </div>
       </aside>
 
-      {/* 2. MAIN CONTENT AREA */}
+      {/* MAIN CONTENT */}
       <div className="flex-1 flex flex-col h-full min-h-0 overflow-hidden">
+
         {/* Top Header Bar */}
-        <header className="h-16 bg-[#FAF8F5] border-b border-[#E5E1D8] px-6 flex items-center justify-between shrink-0 z-20 shadow-sm mobile-safe-header pt-10 md:pt-0">
-          {/* Left Title */}
+        <header className="h-14 border-b px-6 flex items-center justify-between shrink-0 z-20 mobile-safe-header pt-10 md:pt-0"
+          style={{ background: '#F2EFE9', borderColor: '#BFBFBD' }}>
+
+          {/* Left */}
           <div className="flex items-center gap-3">
-            <h1 className="text-base font-black text-stone-900 tracking-tight">
+            <span className="text-sm font-black tracking-tight" style={{ color: '#262626' }}>
               Hotel Concierge Admin
-            </h1>
-            <span className="text-stone-300">|</span>
-            <span className="text-xs font-bold text-white bg-[#18181B] px-2.5 py-0.5 rounded-full">
+            </span>
+            <span style={{ color: '#BFBFBD' }}>|</span>
+            <span className="text-[11px] font-bold px-2.5 py-0.5 rounded"
+              style={{ background: '#262626', color: '#FFFFFF' }}>
               {activeMenu}
             </span>
           </div>
 
-          {/* Center Search Input */}
-          <div className="hidden md:flex items-center relative w-80">
-            <Search className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
+          {/* Center Search */}
+          <div className="hidden md:flex items-center relative w-72">
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search operations, robots..."
-              className="w-full pl-9 pr-4 py-1.5 bg-white border border-[#E0DCD3] rounded-xl text-xs text-stone-800 placeholder-stone-400 focus:outline-none focus:border-stone-600"
+              placeholder="Search..."
+              className="w-full px-3 py-1.5 rounded-lg text-xs focus:outline-none"
+              style={{
+                background: '#FFFFFF',
+                border: '1px solid #BFBFBD',
+                color: '#262626',
+              }}
             />
           </div>
 
-          {/* Right Action Icons & Profile */}
+          {/* Right: User Info */}
           <div className="flex items-center gap-3">
-            {/* Notification Bell with Badge */}
-            <div className="relative">
-              <button
-                title="3 cảnh báo hoạt động"
-                className="p-2 rounded-xl text-stone-600 hover:text-stone-900 hover:bg-[#EFECE6] transition-all cursor-pointer"
-              >
-                <Bell className="w-4 h-4" />
-              </button>
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-rose-500 ring-2 ring-white" />
-            </div>
-
-            {/* Help Icon */}
-            <button
-              title="Trợ giúp"
-              className="p-2 rounded-xl text-stone-500 hover:text-stone-700 hover:bg-[#EFECE6] transition-all cursor-pointer"
-            >
-              <HelpCircle className="w-4 h-4" />
-            </button>
-
-            {/* User Avatar & Name */}
-            <div className="flex items-center gap-2 pl-2 border-l border-[#E5E1D8]">
-              <div className="w-8 h-8 rounded-full bg-[#18181B] text-white font-bold text-xs flex items-center justify-center ring-2 ring-stone-300">
-                AD
+            <div className="flex items-center gap-2 pl-3 border-l" style={{ borderColor: '#BFBFBD' }}>
+              <div className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-black"
+                style={{ background: '#262626', color: '#FFFFFF' }}>
+                {(currentUser?.full_name || 'A').charAt(0).toUpperCase()}
               </div>
-              <div className="hidden xl:block text-left">
-                <div className="text-xs font-bold text-stone-900 leading-tight">
+              <div className="hidden xl:block">
+                <div className="text-xs font-bold leading-tight" style={{ color: '#262626' }}>
                   {currentUser?.full_name || 'System Administrator'}
                 </div>
-                <div className="text-[10px] text-stone-500 font-semibold">
+                <div className="text-[10px] font-semibold" style={{ color: '#8C8C8C' }}>
                   {currentUser?.role || 'Operations Admin'}
                 </div>
               </div>
@@ -214,12 +258,13 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
           </div>
         </header>
 
-        {/* 3. DYNAMIC TAB VIEW BODY */}
-        <main className={`flex-1 min-h-0 ${activeMenu === 'Robots' ? 'overflow-hidden' : 'overflow-y-auto custom-scrollbar'} relative`}>
+        {/* Dynamic Tab Body */}
+        <main className={`flex-1 min-h-0 ${activeMenu === 'Robot Control' ? 'overflow-hidden' : 'overflow-y-auto custom-scrollbar'} relative`}>
+
           {activeMenu === 'Dashboard' && (
             <AdminDashboardTab
               onNavigateToOperations={() => setActiveMenu('Operations')}
-              onNavigateToRobots={() => setActiveMenu('Robots')}
+              onNavigateToRobots={() => { setActiveMenu('Robot Control'); setRobotSubTab('lidar'); }}
             />
           )}
 
@@ -232,11 +277,12 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
             />
           )}
 
-
-          {activeMenu === 'Robots' && (
-            <div className="w-full h-full flex flex-col overflow-hidden">
-              <AdminLidarPage />
-            </div>
+          {activeMenu === 'Robot Control' && (
+            <AdminRobotControlTab
+              currentUser={currentUser}
+              subTabProp={robotSubTab}
+              onSelectSubTab={setRobotSubTab}
+            />
           )}
 
           {activeMenu === 'Knowledge' && (
@@ -259,25 +305,20 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
             <AdminLogsTab currentUser={currentUser} />
           )}
 
-          {activeMenu === 'Camera' && (
-            <AdminCameraTab currentUser={currentUser} />
-          )}
-
-          {/* Placeholders for Hotel Content */}
           {activeMenu === 'Hotel Content' && (
             <div className="w-full h-full flex flex-col items-center justify-center p-8 text-center space-y-3">
-              <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center shadow-sm">
-                <Sparkles className="w-6 h-6" />
-              </div>
-              <h3 className="text-xl font-extrabold text-stone-900">Phân Hệ {activeMenu}</h3>
-              <p className="text-xs text-stone-500 max-w-md">
-                Module này đã được chuẩn bị sẵn cấu trúc trong bản thiết kế Figma của bạn và sẽ được kết nối tiếp theo.
+              <h3 className="text-lg font-extrabold" style={{ color: '#262626' }}>
+                {activeMenu}
+              </h3>
+              <p className="text-xs max-w-md" style={{ color: '#8C8C8C' }}>
+                Module nay se duoc trien khai trong phien ban tiep theo.
               </p>
               <button
                 onClick={() => setActiveMenu('Operations')}
-                className="px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-500 transition-all cursor-pointer"
+                className="px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer"
+                style={{ background: '#262626', color: '#FFFFFF' }}
               >
-                ← Quay lại Operations
+                Quay lai Operations
               </button>
             </div>
           )}

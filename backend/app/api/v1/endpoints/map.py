@@ -3,7 +3,12 @@ import json
 import logging
 from typing import List
 
-from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, status
+from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, status, Depends
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+
+from app.core.database import get_db
+from app.models.workflow import RobotWaypoint
 from app.schemas.map import (
     MapMetaData,
     NavigationRequest,
@@ -17,18 +22,52 @@ from app.services.hardware.rplidar_service import rplidar_service
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-DEFAULT_WAYPOINTS: List[Waypoint] = [
-    Waypoint(id="wp-reception", name="Quầy Lễ Tân", x=0.0, y=0.0, yaw=0.0, floor="Tầng 1"),
-    Waypoint(id="wp-elevator", name="Cụm Thang Máy A", x=2.5, y=4.0, yaw=90.0, floor="Tầng 1"),
-    Waypoint(id="wp-pool", name="Hồ Bơi Vô Cực", x=6.0, y=8.5, yaw=45.0, floor="Tầng 4"),
-    Waypoint(id="wp-room101", name="Phòng 101 (Deluxe)", x=-3.0, y=5.0, yaw=180.0, floor="Tầng 1"),
+DEFAULT_WAYPOINTS: List[dict] = [
+    {"id": "wp-reception", "name": "Quầy Lễ Tân", "x": 0.0, "y": 0.0, "yaw": 0.0, "floor": "Tầng 1", "type": "DOCKING_TARGET", "description": "Điểm dừng tiếp đón khách và làm thủ tục check-in"},
+    {"id": "wp-elevator", "name": "Cụm Thang Máy A", "x": 2.5, "y": 4.0, "yaw": 90.0, "floor": "Tầng 1", "type": "WAYPOINT", "description": "Điểm mốc giao lộ hành lang thang máy"},
+    {"id": "wp-pool", "name": "Hồ Bơi Vô Cực", "x": 6.0, "y": 8.5, "yaw": 45.0, "floor": "Tầng 4", "type": "SERVICE_STATION", "description": "Khu vực tiện ích hồ bơi tầng 4"},
+    {"id": "wp-room101", "name": "Phòng 101 (Deluxe)", "x": -3.0, "y": 5.0, "yaw": 180.0, "floor": "Tầng 1", "type": "PICKUP_DROPOFF", "description": "Điểm giao nhận đồ buồng phòng 101"},
 ]
 
 current_robot_pose = Pose2D(x=0.0, y=0.0, yaw=0.0)
 
 
+async def ensure_default_waypoints(db: AsyncSession):
+    res = await db.execute(select(RobotWaypoint).limit(1))
+    if res.scalar_one_or_none() is None:
+        for wp in DEFAULT_WAYPOINTS:
+            db.add(RobotWaypoint(
+                id=wp["id"],
+                name=wp["name"],
+                x=wp["x"],
+                y=wp["y"],
+                yaw=wp["yaw"],
+                floor=wp["floor"],
+                type=wp.get("type", "WAYPOINT"),
+                description=wp.get("description", ""),
+            ))
+        await db.commit()
+
+
 @router.get("/current", response_model=OccupancyGridResponse, summary="Lấy dữ liệu bản đồ SLAM Occupancy Grid 2D thực tế")
-async def get_current_map():
+async def get_current_map(db: AsyncSession = Depends(get_db)):
+    await ensure_default_waypoints(db)
+    wps_res = await db.execute(select(RobotWaypoint))
+    wps_db = wps_res.scalars().all()
+    waypoints = [
+        Waypoint(
+            id=w.id,
+            name=w.name,
+            x=w.x,
+            y=w.y,
+            yaw=w.yaw,
+            floor=w.floor,
+            type=w.type or "WAYPOINT",
+            description=w.description
+        )
+        for w in wps_db
+    ]
+
     map_info = rplidar_service.get_grid_map_data()
     metadata = MapMetaData(
         width=map_info["width"],
@@ -41,14 +80,122 @@ async def get_current_map():
     return OccupancyGridResponse(
         metadata=metadata,
         robot_pose=current_robot_pose,
-        waypoints=[],
+        waypoints=waypoints,
         grid_data=map_info["grid_data"],
     )
 
 
-@router.get("/waypoints", response_model=List[Waypoint], summary="Lấy danh sách các điểm Waypoints")
-async def get_waypoints():
-    return []
+@router.get("/waypoints", response_model=List[Waypoint], summary="Lấy danh sách các điểm Waypoints / Endpoints")
+async def get_waypoints(db: AsyncSession = Depends(get_db)):
+    await ensure_default_waypoints(db)
+    res = await db.execute(select(RobotWaypoint).order_by(RobotWaypoint.created_at))
+    wps = res.scalars().all()
+    return [
+        Waypoint(
+            id=w.id,
+            name=w.name,
+            x=w.x,
+            y=w.y,
+            yaw=w.yaw,
+            floor=w.floor,
+            type=w.type or "WAYPOINT",
+            description=w.description
+        )
+        for w in wps
+    ]
+
+
+@router.post("/waypoints", response_model=Waypoint, summary="Tạo mới hoặc cập nhật tọa độ Waypoint / Endpoint")
+async def save_waypoint(wp: Waypoint, db: AsyncSession = Depends(get_db)):
+    res = await db.execute(select(RobotWaypoint).where(RobotWaypoint.id == wp.id))
+    existing = res.scalar_one_or_none()
+
+    if existing:
+        existing.name = wp.name
+        existing.x = wp.x
+        existing.y = wp.y
+        existing.yaw = wp.yaw
+        existing.floor = wp.floor
+        existing.type = wp.type or existing.type or "WAYPOINT"
+        existing.description = wp.description
+        await db.commit()
+        await db.refresh(existing)
+        return Waypoint(
+            id=existing.id,
+            name=existing.name,
+            x=existing.x,
+            y=existing.y,
+            yaw=existing.yaw,
+            floor=existing.floor,
+            type=existing.type,
+            description=existing.description
+        )
+    else:
+        new_wp = RobotWaypoint(
+            id=wp.id,
+            name=wp.name,
+            x=wp.x,
+            y=wp.y,
+            yaw=wp.yaw,
+            floor=wp.floor,
+            type=wp.type or "WAYPOINT",
+            description=wp.description,
+        )
+        db.add(new_wp)
+        await db.commit()
+        await db.refresh(new_wp)
+        return Waypoint(
+            id=new_wp.id,
+            name=new_wp.name,
+            x=new_wp.x,
+            y=new_wp.y,
+            yaw=new_wp.yaw,
+            floor=new_wp.floor,
+            type=new_wp.type,
+            description=new_wp.description
+        )
+
+
+@router.put("/waypoints/{waypoint_id}", response_model=Waypoint, summary="Chỉnh sửa Endpoint đã có")
+async def update_waypoint(waypoint_id: str, wp: Waypoint, db: AsyncSession = Depends(get_db)):
+    res = await db.execute(select(RobotWaypoint).where(RobotWaypoint.id == waypoint_id))
+    existing = res.scalar_one_or_none()
+    if not existing:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy Waypoint")
+
+    existing.name = wp.name
+    existing.x = wp.x
+    existing.y = wp.y
+    existing.yaw = wp.yaw
+    existing.floor = wp.floor
+    existing.type = wp.type or existing.type or "WAYPOINT"
+    existing.description = wp.description
+
+    await db.commit()
+    await db.refresh(existing)
+    return Waypoint(
+        id=existing.id,
+        name=existing.name,
+        x=existing.x,
+        y=existing.y,
+        yaw=existing.yaw,
+        floor=existing.floor,
+        type=existing.type,
+        description=existing.description
+    )
+
+
+@router.delete("/waypoints/{waypoint_id}", summary="Xóa điểm Waypoint / Endpoint")
+async def delete_waypoint(waypoint_id: str, db: AsyncSession = Depends(get_db)):
+    res = await db.execute(select(RobotWaypoint).where(RobotWaypoint.id == waypoint_id))
+    existing = res.scalar_one_or_none()
+    if not existing:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy Waypoint")
+
+    await db.delete(existing)
+    await db.commit()
+    return {"status": "SUCCESS", "message": f"Đã xóa waypoint {waypoint_id}"}
+
 
 
 @router.get("/lidar_status", summary="Kiểm tra trạng thái phần cứng RPLiDAR COM9 thực tế")

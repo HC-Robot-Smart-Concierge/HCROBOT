@@ -13,6 +13,7 @@ from app.models.support import HumanSupportSession
 from app.models.chat_session import ChatSession, ChatMessage
 from app.models.logging import LogEvent, AuditLog, LogLevelEnum, LogCategoryEnum, ActorTypeEnum
 from app.models.notification import Notification
+from app.models.workflow import RobotWaypoint, RobotWorkflow
 
 __all__ = [
     "Base",
@@ -36,5 +37,7 @@ __all__ = [
     "LogCategoryEnum",
     "ActorTypeEnum",
     "Notification",
+    "RobotWaypoint",
+    "RobotWorkflow",
 ]
 

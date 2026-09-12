@@ -9,12 +9,14 @@ class Pose2D(BaseModel):
 
 
 class Waypoint(BaseModel):
-    id: str = Field(..., description="ID duy nhất của waypoint")
-    name: str = Field(..., description="Tên điểm (vd: Lễ Tân, Hồ Bơi, Phòng 101)")
+    id: str = Field(..., description="ID duy nhất của waypoint/endpoint")
+    name: str = Field(..., description="Tên điểm (vd: Quầy Lễ Tân, Trạm Sạc Fast Charger, Bàn VIP)")
     x: float
     y: float
     yaw: float = 0.0
     floor: str = "Tầng 1"
+    type: str = Field("WAYPOINT", description="Mẫu Endpoint Otto: WAYPOINT, PARKING_SPOT, CHARGER, DOCKING_TARGET, PICKUP_DROPOFF, SERVICE_STATION")
+    description: Optional[str] = None
 
 
 class MapMetaData(BaseModel):

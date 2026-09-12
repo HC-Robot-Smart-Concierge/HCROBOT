@@ -46,11 +46,29 @@ htmlcov/
 scratch/
 **/scratch/
 
-# Vector Stores & Obsidian Cache
+# Vector Stores & Obsidian Vault
 chroma_db/
 **/chroma_db/
 backend/chroma_db/
-backend/knowledge_vault/.obsidian/
+
+# Obsidian metadata & plugin cache (không commit)
+**/.obsidian/
+**/.obsidian/workspace.json
+**/.obsidian/workspace-mobile.json
+**/.obsidian/plugins/
+**/.obsidian/themes/
+**/.obsidian/snippets/
+**/.obsidian/cache
+**/.trash/
+
+# Obsidian Sync & mobile
+.obsidian-mobile.json
+.obsidian-sync.json
+
+# Markdown auto-generated / Obsidian export cache
+**/*.canvas
+**/Untitled*.md
+**/Untitled *.md
 
 # ==============================================================================
 # 4. Frontend / Node.js

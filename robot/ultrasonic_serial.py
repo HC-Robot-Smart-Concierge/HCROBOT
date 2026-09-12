@@ -1,4 +1,4 @@
-"""Đọc JSON Lines từ ESP32 qua USB Serial với reconnect và parse fail-safe."""
+"""Đọc JSON Lines ultrasonic + MPU từ ESP32 với reconnect và parse fail-safe."""
 
 import argparse
 from dataclasses import dataclass
@@ -15,6 +15,8 @@ logger = logging.getLogger("UltrasonicSerial")
 SENSOR_NAMES = ("front", "rear", "left", "right")
 MIN_DISTANCE_CM = 2.0
 MAX_DISTANCE_CM = 400.0
+MAX_ACCEL_G = 32.0
+MAX_GYRO_DPS = 4000.0
 
 try:
     import serial
@@ -24,8 +26,16 @@ except ImportError:
     list_ports = None
 
 
-def parse_sensor_packet(raw_line) -> Dict[str, Optional[float]]:
-    """Parse một JSON packet; field lỗi được đổi thành None thay vì làm crash."""
+@dataclass(frozen=True)
+class ParsedSensorPacket:
+    distances: Dict[str, Optional[float]]
+    mpu_available: bool = False
+    accel: Optional[Dict[str, float]] = None
+    gyro: Optional[Dict[str, float]] = None
+    yaw_rate_dps: Optional[float] = None
+
+
+def _decode_payload(raw_line):
     if isinstance(raw_line, bytes):
         try:
             raw_line = raw_line.decode("utf-8")
@@ -42,7 +52,11 @@ def parse_sensor_packet(raw_line) -> Dict[str, Optional[float]]:
         raise ValueError("JSON không hợp lệ") from exc
     if not isinstance(payload, dict):
         raise ValueError("packet JSON phải là object")
+    return payload
 
+
+def _parse_distances(payload) -> Dict[str, Optional[float]]:
+    """Validate ultrasonic fields without allowing one bad field to drop a packet."""
     distances = {}
     for name in SENSOR_NAMES:
         value = payload.get(name)
@@ -58,18 +72,88 @@ def parse_sensor_packet(raw_line) -> Dict[str, Optional[float]]:
     return distances
 
 
+def _parse_vector(value, max_abs):
+    if not isinstance(value, dict):
+        return None
+
+    vector = {}
+    for axis in ("x", "y", "z"):
+        component = value.get(axis)
+        if (
+            component is None
+            or isinstance(component, bool)
+            or not isinstance(component, (int, float))
+        ):
+            return None
+        component = float(component)
+        if not math.isfinite(component) or abs(component) > max_abs:
+            return None
+        vector[axis] = component
+    return vector
+
+
+def _parse_scalar(value, max_abs):
+    if value is None or isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    value = float(value)
+    if not math.isfinite(value) or abs(value) > max_abs:
+        return None
+    return value
+
+
+def parse_telemetry_packet(raw_line) -> ParsedSensorPacket:
+    """Parse ultrasonic and optional MPU telemetry from one ESP32 JSON line."""
+    payload = _decode_payload(raw_line)
+    mpu_available = payload.get("mpu_available") is True
+    accel = _parse_vector(payload.get("accel"), MAX_ACCEL_G) if mpu_available else None
+    gyro = _parse_vector(payload.get("gyro"), MAX_GYRO_DPS) if mpu_available else None
+    yaw_rate = (
+        _parse_scalar(payload.get("yaw_rate_dps"), MAX_GYRO_DPS)
+        if mpu_available
+        else None
+    )
+    return ParsedSensorPacket(
+        distances=_parse_distances(payload),
+        mpu_available=mpu_available,
+        accel=accel,
+        gyro=gyro,
+        yaw_rate_dps=yaw_rate,
+    )
+
+
+def parse_sensor_packet(raw_line) -> Dict[str, Optional[float]]:
+    """Backward-compatible parser returning only the four ultrasonic fields."""
+    return parse_telemetry_packet(raw_line).distances
+
+
 @dataclass(frozen=True)
 class SensorSnapshot:
     distances: Dict[str, Optional[float]]
     received_at: float
     port: str
     sequence: int
+    mpu_available: bool = False
+    accel: Optional[Dict[str, float]] = None
+    gyro: Optional[Dict[str, float]] = None
+    yaw_rate_dps: Optional[float] = None
 
     def distance(self, direction: str) -> Optional[float]:
         return self.distances.get(direction)
 
     def age_seconds(self, now: Optional[float] = None) -> float:
         return (time.monotonic() if now is None else now) - self.received_at
+
+    def as_dict(self):
+        packet = dict(self.distances)
+        packet.update(
+            {
+                "mpu_available": self.mpu_available,
+                "accel": dict(self.accel) if self.accel is not None else None,
+                "gyro": dict(self.gyro) if self.gyro is not None else None,
+                "yaw_rate_dps": self.yaw_rate_dps,
+            }
+        )
+        return packet
 
 
 def _port_score(port_info) -> int:
@@ -106,7 +190,7 @@ def detect_esp32_port() -> Optional[str]:
 
 
 class UltrasonicSerialReader:
-    """Background reader giữ packet hợp lệ mới nhất và tự reconnect khi mất USB."""
+    """Reader tương thích cũ, nay expose cả khoảng cách và dữ liệu IMU."""
 
     def __init__(self, port="auto", baudrate=115200, reconnect_delay=1.0):
         self.configured_port = port or "auto"
@@ -135,6 +219,10 @@ class UltrasonicSerialReader:
                 received_at=snapshot.received_at,
                 port=snapshot.port,
                 sequence=snapshot.sequence,
+                mpu_available=snapshot.mpu_available,
+                accel=dict(snapshot.accel) if snapshot.accel is not None else None,
+                gyro=dict(snapshot.gyro) if snapshot.gyro is not None else None,
+                yaw_rate_dps=snapshot.yaw_rate_dps,
             )
 
     def start(self):
@@ -208,7 +296,7 @@ class UltrasonicSerialReader:
                     if not raw_line:
                         continue
                     try:
-                        distances = parse_sensor_packet(raw_line)
+                        packet = parse_telemetry_packet(raw_line)
                     except ValueError as exc:
                         # REPL/debug lines hoặc packet hỏng không làm chết reader.
                         self._warn_throttled(
@@ -221,12 +309,24 @@ class UltrasonicSerialReader:
                     with self._lock:
                         self._sequence += 1
                         self._snapshot = SensorSnapshot(
-                            distances=distances,
+                            distances=packet.distances,
                             received_at=time.monotonic(),
                             port=port,
                             sequence=self._sequence,
+                            mpu_available=packet.mpu_available,
+                            accel=packet.accel,
+                            gyro=packet.gyro,
+                            yaw_rate_dps=packet.yaw_rate_dps,
                         )
-                    logger.debug("Ultrasonic #%d: %s", self._sequence, distances)
+                    logger.debug(
+                        "Sensor #%d: ultrasonic=%s mpu_available=%s accel=%s gyro=%s yaw_rate_dps=%s",
+                        self._sequence,
+                        packet.distances,
+                        packet.mpu_available,
+                        packet.accel,
+                        packet.gyro,
+                        packet.yaw_rate_dps,
+                    )
             except Exception as exc:
                 if not self._stop_event.is_set():
                     self._warn_throttled(
@@ -248,7 +348,7 @@ class UltrasonicSerialReader:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Xem JSON khoảng cách từ ESP32")
+    parser = argparse.ArgumentParser(description="Xem JSON ultrasonic + MPU từ ESP32")
     parser.add_argument("--port", default="auto")
     parser.add_argument("--baud", type=int, default=115200)
     parser.add_argument("--debug", action="store_true")
@@ -267,7 +367,7 @@ def main():
             snapshot = reader.latest()
             if snapshot and snapshot.sequence != last_sequence:
                 last_sequence = snapshot.sequence
-                print(json.dumps(snapshot.distances, ensure_ascii=False))
+                print(json.dumps(snapshot.as_dict(), ensure_ascii=False))
             time.sleep(0.02)
     except KeyboardInterrupt:
         logger.info("Dừng chương trình đọc ultrasonic")

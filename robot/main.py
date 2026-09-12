@@ -393,6 +393,13 @@ def main(argv=None):
                     snapshot.distance("right"),
                     snapshot.age_seconds(now),
                 )
+                if snapshot.mpu_available:
+                    logger.info(
+                        "IMU: accel_g=%s gyro_dps=%s yaw_rate=%s dps",
+                        snapshot.accel,
+                        snapshot.gyro,
+                        snapshot.yaw_rate_dps,
+                    )
 
             char = get_char()
             if not char:

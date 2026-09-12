@@ -7,7 +7,11 @@ import unittest
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from obstacle_safety import ObstacleSafetyController
-from ultrasonic_serial import SensorSnapshot, parse_sensor_packet
+from ultrasonic_serial import (
+    SensorSnapshot,
+    parse_sensor_packet,
+    parse_telemetry_packet,
+)
 
 
 class FakeReader:
@@ -69,6 +73,40 @@ class TestSerialPacketParser(unittest.TestCase):
     def test_invalid_json_is_rejected(self):
         with self.assertRaises(ValueError):
             parse_sensor_packet("not-json")
+
+    def test_combined_packet_parses_mpu_without_changing_ultrasonic(self):
+        packet = parse_telemetry_packet(
+            '{"front":42.3,"rear":105.1,"left":31.8,"right":78.4,'
+            '"mpu_available":true,'
+            '"accel":{"x":0.01,"y":-0.02,"z":0.99},'
+            '"gyro":{"x":0.3,"y":-0.1,"z":12.4},'
+            '"yaw_rate_dps":12.4}'
+        )
+        self.assertEqual(packet.distances["front"], 42.3)
+        self.assertTrue(packet.mpu_available)
+        self.assertEqual(packet.accel, {"x": 0.01, "y": -0.02, "z": 0.99})
+        self.assertEqual(packet.gyro["z"], 12.4)
+        self.assertEqual(packet.yaw_rate_dps, 12.4)
+
+    def test_bad_mpu_data_becomes_none_without_losing_ultrasonic(self):
+        packet = parse_telemetry_packet(
+            '{"front":80,"rear":90,"left":100,"right":110,'
+            '"mpu_available":true,'
+            '"accel":{"x":"bad","y":0,"z":1},'
+            '"gyro":null,"yaw_rate_dps":null}'
+        )
+        self.assertEqual(packet.distances["front"], 80.0)
+        self.assertTrue(packet.mpu_available)
+        self.assertIsNone(packet.accel)
+        self.assertIsNone(packet.gyro)
+        self.assertIsNone(packet.yaw_rate_dps)
+
+    def test_legacy_ultrasonic_packet_reports_mpu_unavailable(self):
+        packet = parse_telemetry_packet(
+            '{"front":80,"rear":90,"left":100,"right":110}'
+        )
+        self.assertFalse(packet.mpu_available)
+        self.assertIsNone(packet.accel)
 
 
 class TestObstacleSafety(unittest.TestCase):

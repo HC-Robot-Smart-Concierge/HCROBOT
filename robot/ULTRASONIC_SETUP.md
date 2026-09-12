@@ -1,9 +1,9 @@
-# Raspberry Pi 5 + ESP32 + L298N + 4 HC-SR04
+# Raspberry Pi 5 + ESP32 + L298N + 4 HC-SR04 + MPU-9250/6500
 
 ## 1. Architecture
 
 - Raspberry Pi 5 là controller chính: nhận lệnh lái, đọc khoảng cách JSON qua USB Serial, áp dụng fail-safe và điều khiển L298N.
-- ESP32 chỉ đọc tuần tự bốn HC-SR04, lọc median và gửi một JSON object trên mỗi dòng.
+- ESP32 đọc tuần tự bốn HC-SR04 và đọc MPU-9250/6500 qua I2C, sau đó gửi một JSON object trên mỗi dòng.
 - ESP32 không điều khiển ENA/ENB hoặc motor. Raspberry Pi không đo pulse ECHO.
 
 ## 2. GPIO conflict check
@@ -15,8 +15,11 @@
 | ESP32 | REAR TRIG/ECHO | 19 / 35 |
 | ESP32 | LEFT TRIG/ECHO | 21 / 32 |
 | ESP32 | RIGHT TRIG/ECHO | 22 / 33 |
+| ESP32 | MPU SDA / SCL | 25 / 26 |
 
-Không có conflict: GPIO22 của Pi và GPIO22 của ESP32 thuộc hai chip độc lập. GPIO34/35 ESP32 là input-only và chỉ được dùng cho ECHO. GPIO1/3 UART0 của ESP32 không bị sử dụng nên USB-UART/REPL vẫn hoạt động.
+Không có conflict: I2C MPU dùng GPIO25/26, tách khỏi GPIO21/22 đang trigger LEFT/RIGHT. GPIO22 của Pi và GPIO22 của ESP32 thuộc hai chip độc lập. GPIO34/35 ESP32 là input-only và chỉ được dùng cho ECHO. GPIO1/3 UART0 của ESP32 không bị sử dụng nên USB-UART/REPL vẫn hoạt động.
+
+MPU dùng `VCC=3.3V`, GND chung, `AD0=GND` (địa chỉ `0x68`) và `NCS=3.3V` để giữ giao tiếp I2C. Không cấp 5V cho MPU.
 
 Lưu ý điện áp có lý do kỹ thuật: divider 1kΩ phía trên và 2.2kΩ xuống GND cho điện áp danh định `5 × 2.2 / (1 + 2.2) = 3.44V`. Mức này cao hơn rail 3.3V danh định và có ít margin khi tính sai số điện trở/xung nhiễu. Wiring hiện tại không bị thay đổi trong code, nhưng phương án bền hơn là 1kΩ + 2kΩ (3.33V) hoặc 1.2kΩ + 2.2kΩ (3.24V), mỗi ECHO một divider riêng.
 
@@ -35,17 +38,18 @@ esptool --chip esp32 --port PORT --baud 460800 write_flash 0x1000 FIRMWARE.bin
 
 Nếu flash lỗi ở 460800, bỏ `--baud 460800`; nếu board không tự vào bootloader, giữ nút BOOT trong lúc bắt đầu lệnh.
 
-Upload code trước dưới tên module để test:
+Upload ba module cảm biến:
 
 ```bash
 cd ~/HCROBOT/robot
-mpremote connect PORT fs cp esp32/esp32_ultrasonic.py :esp32_ultrasonic.py
+mpremote connect PORT fs cp esp32/mpu.py :mpu.py
+mpremote connect PORT fs cp esp32/ultrasonic.py :ultrasonic.py
 ```
 
 Sau khi test xong, cài tự chạy:
 
 ```bash
-mpremote connect PORT fs cp esp32/esp32_ultrasonic.py :main.py
+mpremote connect PORT fs cp esp32/main.py :main.py
 mpremote connect PORT reset
 ```
 
@@ -53,12 +57,15 @@ mpremote connect PORT reset
 
 ## 4. ESP32 MicroPython
 
-Firmware đầy đủ ở [`esp32/esp32_ultrasonic.py`](esp32/esp32_ultrasonic.py). Các đặc điểm:
+Firmware mới gồm [`esp32/main.py`](esp32/main.py), [`esp32/mpu.py`](esp32/mpu.py) và [`esp32/ultrasonic.py`](esp32/ultrasonic.py). File `esp32_ultrasonic.py` được giữ làm firmware ultrasonic-only cũ. Các đặc điểm:
 
 - Dùng `machine.Pin` và `machine.time_pulse_us` với timeout 30ms.
 - Đọc FRONT → REAR → LEFT → RIGHT, nghỉ 18ms giữa sensor để giảm cross-talk.
 - Median trượt ba mẫu hợp lệ gần nhất.
 - Timeout/out-of-range xuất `null`; loop tiếp tục chạy.
+- I2C dùng SDA=25, SCL=26; tự dò MPU tại `0x68/0x69` và đọc `WHO_AM_I`.
+- MPU cấu hình accel ±4g, gyro ±500dps, hiệu chuẩn gyro lúc startup và xuất yaw rate từ trục Z robot.
+- MPU mất kết nối không làm dừng ultrasonic; các trường MPU chuyển thành `null`.
 - Xuất JSON Lines khoảng 5–8 packet hoàn chỉnh/giây.
 
 ## 5. Raspberry Pi Serial reader
@@ -68,8 +75,10 @@ Code đầy đủ ở [`ultrasonic_serial.py`](ultrasonic_serial.py). Reader ch�
 Packet hợp lệ:
 
 ```json
-{"front":42.3,"rear":105.1,"left":31.8,"right":78.4}
+{"front":42.3,"rear":105.1,"left":31.8,"right":78.4,"mpu_available":true,"accel":{"x":0.01,"y":-0.02,"z":0.99},"gyro":{"x":0.3,"y":-0.1,"z":12.4},"yaw_rate_dps":12.4}
 ```
+
+`ultrasonic_serial.py` vẫn giữ API khoảng cách cũ cho obstacle safety, đồng thời expose `snapshot.accel`, `snapshot.gyro`, `snapshot.yaw_rate_dps` và `snapshot.mpu_available` cho ROS 2 sau này.
 
 ## 6. L298N motor controller
 
@@ -137,26 +146,45 @@ python3 main.py --port /dev/ttyUSB0 --auto-drive backward
 
 ## 10. Test theo từng stage
 
-### a. Từng ultrasonic
+### a. I2C scan và WHO_AM_I
+
+```bash
+mpremote connect PORT exec "from machine import Pin,I2C; i=I2C(0,sda=Pin(25),scl=Pin(26),freq=400000); print([hex(a) for a in i.scan()])"
+mpremote connect PORT exec "from machine import Pin,I2C; i=I2C(0,sda=Pin(25),scl=Pin(26),freq=400000); print('WHO_AM_I=',hex(i.readfrom_mem(0x68,0x75,1)[0]))"
+```
+
+Scan phải có `0x68` (AD0 nối GND). WHO_AM_I thường là `0x70` với MPU-6500, `0x71` với MPU-9250, `0x73` với MPU-9255; một số board tương thích báo `0x68`.
+
+### b. Accel, gyro và yaw rate
+
+Sau khi copy `mpu.py`, đặt robot nằm phẳng và đứng yên trong lúc calibration:
+
+```bash
+mpremote connect PORT exec "from machine import Pin,I2C; from mpu import detect_mpu; i=I2C(0,sda=Pin(25),scl=Pin(26),freq=400000); m=detect_mpu(i); print(m.device_name,hex(m.who_am_i)); m.calibrate_gyro(300,5); print(m.read_all())"
+```
+
+Khi nằm phẳng, accel Z gần `+1g` hoặc `-1g`, X/Y gần `0g`; gyro gần `0dps` sau calibration. Xoay robot trái/phải để kiểm tra `yaw_rate_dps` thay đổi rõ. Nếu trục không đúng quy ước X=right, Y=forward, Z=up, chỉ sửa `ROBOT_AXIS_MAP` trong `esp32/mpu.py`.
+
+### c. Từng ultrasonic
 
 Chưa copy firmware thành `main.py`. Test lần lượt và đưa vật phẳng trước từng sensor:
 
 ```bash
-mpremote connect PORT exec "import esp32_ultrasonic as u; u.test_sensor('front',18,34)"
-mpremote connect PORT exec "import esp32_ultrasonic as u; u.test_sensor('rear',19,35)"
-mpremote connect PORT exec "import esp32_ultrasonic as u; u.test_sensor('left',21,32)"
-mpremote connect PORT exec "import esp32_ultrasonic as u; u.test_sensor('right',22,33)"
+mpremote connect PORT exec "import ultrasonic as u; u.test_sensor('front',18,34)"
+mpremote connect PORT exec "import ultrasonic as u; u.test_sensor('rear',19,35)"
+mpremote connect PORT exec "import ultrasonic as u; u.test_sensor('left',21,32)"
+mpremote connect PORT exec "import ultrasonic as u; u.test_sensor('right',22,33)"
 ```
 
-### b. Cả bốn ultrasonic
+### d. Cả bốn ultrasonic
 
 ```bash
-mpremote connect PORT exec "import esp32_ultrasonic as u; u.test_all(30)"
+mpremote connect PORT exec "import ultrasonic as u; u.test_all(30)"
 ```
 
 Phải thấy 30 JSON lines; từng sensor lỗi là `null`, loop không dừng.
 
-### c. USB Serial ESP32 → Pi
+### e. Combined + USB Serial ESP32 → Pi
 
 Sau khi copy firmware thành `main.py` và reset ESP32:
 
@@ -165,7 +193,7 @@ python3 -m serial.tools.list_ports -v
 python3 ultrasonic_serial.py --port auto --debug
 ```
 
-### d. Motor không sensor
+### f. Motor không sensor
 
 Kê bốn bánh khỏi mặt đất, tháo tải nguy hiểm và chuẩn bị nhấn Space/X:
 
@@ -187,7 +215,7 @@ python3 main.py --drive-test forward --drive-test-seconds 0
 
 `--drive-test` bỏ qua toàn bộ obstacle safety, vì vậy chỉ dùng khi đã kê bánh khỏi mặt đất.
 
-### e. Tự chạy tiến/lùi tới vật cản
+### g. Tự chạy tiến/lùi tới vật cản
 
 Chế độ này không cần bấm W/S. Robot đếm ngược ba giây rồi chạy theo hướng đã chọn.
 `forward` dùng FRONT và `backward` dùng REAR; cả hai dừng mặc định ở 65cm.
@@ -198,7 +226,7 @@ python3 main.py --port /dev/ttyUSB0 --auto-drive forward
 python3 main.py --port /dev/ttyUSB0 --auto-drive backward
 ```
 
-### f. Sensor tự stop motor
+### h. Sensor tự stop motor
 
 Test logic với motor giả trước:
 
@@ -217,8 +245,19 @@ Bấm W rồi đưa vật vào FRONT tới 65cm: phải có `SAFETY STOP FORWARD
 ## 11. Logging/debug
 
 - `DIST cm`: snapshot khoảng cách mới nhất.
+- `IMU`: accel theo đơn vị g, gyro/yaw rate theo deg/s trong robot frame.
 - `SAFETY ALLOW`: hướng được phép chạy.
 - `SAFETY BLOCK`: lệnh bị chặn trước khi motor chạy.
 - `SAFETY STOP`: motor đang chạy bị dừng do vật cản, `null`, packet stale hoặc mất Serial.
 - `Bỏ qua Serial packet lỗi`: dòng không phải JSON bị bỏ qua.
 - `Mất kết nối ESP32 ... sẽ thử lại`: reader tự reconnect, motor giữ trạng thái fail-safe STOP.
+
+## 12. Lỗi MPU thường gặp
+
+- I2C scan trả `[]`: kiểm tra VCC=3.3V, GND chung, SDA=GPIO25, SCL=GPIO26 và pull-up trên breakout.
+- Scan ra `0x69` thay vì `0x68`: AD0 đang HIGH; driver vẫn tự nhận `0x69`.
+- Có `0x68` nhưng WHO_AM_I không được hỗ trợ: xem log `MPU probe failed`; kiểm tra đúng module hoặc chip clone.
+- Gyro không gần 0 khi đứng yên: reset ESP32 và giữ robot hoàn toàn đứng yên khoảng hai giây lúc hiện `Keep robot still`.
+- Xoay trái/phải nhưng `gyro.z` không đổi đúng: chỉnh duy nhất `ROBOT_AXIS_MAP` trong `esp32/mpu.py` theo chiều in trên breakout.
+- MPU tạm mất I2C: packet chuyển `mpu_available=false`; ultrasonic vẫn chạy và firmware thử kết nối MPU lại sau 5 giây.
+- `device or resource busy` trên Pi: dừng `mpremote` trước khi chạy `ultrasonic_serial.py` hoặc `main.py`.

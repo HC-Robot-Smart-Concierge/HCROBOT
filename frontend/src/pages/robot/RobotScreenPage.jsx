@@ -7,7 +7,7 @@ import { MobileRobotScreen } from '../../components/robot/MobileRobotScreen';
 
 import { useSpeechRecognition } from '../../hooks/useSpeechRecognition';
 import { useSpeechSynthesis } from '../../hooks/useSpeechSynthesis';
-import { sendChatPrompt, extractIntent, resetSession } from '../../services/aiApi';
+import { sendChatPrompt, extractIntent, resetSession, flushSession } from '../../services/aiApi';
 
 import { RefreshCw, Volume2, Sparkles, LogOut } from 'lucide-react';
 
@@ -91,11 +91,17 @@ export const RobotScreenPage = ({ onLogout = () => {} }) => {
     }
   };
 
-  // Khi người dùng đi xa khỏi Camera -> Nhắm mắt & Reset
-  const handleGuestLeft = () => {
-    if (!isSpeaking && !isProcessing && currentState === 'RT-02' && !aiResponseText) {
-      handleManualResetSession();
+  // Khi người dùng đi xa khỏi Camera -> Đóng gói lưu DB & chuyển sang ngủ nhẹ (RT-01)
+  const handleGuestLeft = async () => {
+    if (!isSpeaking && !isProcessing) {
+      try {
+        await flushSession(sessionId);
+      } catch (err) {
+        console.warn('Auto-flush session on guest left:', err);
+      }
+      setActiveRoomNumber(null);
       setAiResponseText('');
+      setDetectedIntent(null);
       setCurrentState('RT-01');
     }
   };
@@ -290,6 +296,7 @@ export const RobotScreenPage = ({ onLogout = () => {} }) => {
 
       <MobileRobotScreen
         activeRoomNumber={activeRoomNumber}
+        guestEmotion={guestEmotion}
         aiResponseText={aiResponseText}
         currentState={currentState}
         hasSpeechSupport={hasSupport}

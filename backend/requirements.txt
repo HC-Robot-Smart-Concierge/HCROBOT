@@ -17,4 +17,5 @@ pipecat-ai>=0.0.40
 python-multipart>=0.0.7
 pypdf>=3.0.0
 langgraph>=1.2.0
+alembic>=1.13.0
 

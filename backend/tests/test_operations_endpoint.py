@@ -1,7 +1,7 @@
 import pytest
 from httpx import AsyncClient, ASGITransport
 from app.main import app
-from app.db.init_db import init_db
+from app.core.database import init_db
 
 
 @pytest.mark.asyncio
@@ -66,12 +66,14 @@ async def test_all_operations_dashboards_and_endpoints():
         unified_data = unified_res.json()
         assert isinstance(unified_data, list)
         assert all("department" in request for request in unified_data)
-
         # 9. Test Staff Soft Delete
+        import uuid
+        unique_user = f"test_staff_{uuid.uuid4().hex[:6]}"
         create_staff_res = await ac.post("/api/v1/operations/staff", json={
-            "username": "test_soft_delete_staff",
+            "username": unique_user,
+            "code": f"C{uuid.uuid4().hex[:4].upper()}",
             "password": "secret_password",
-            "full_name": "Test Soft Delete Staff",
+            "full_name": f"Test Soft Delete Staff {uuid.uuid4().hex[:4]}",
             "role": "Cleaner",
             "department": "Housekeeping",
         })

@@ -45,7 +45,7 @@ async def watch_obsidian_vault():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from app.services.hardware.rplidar_service import rplidar_service
-    from app.db.init_db import init_db
+    from app.core.database import init_db
 
     # 1. Initialize tables only. Seed data is loaded explicitly from scripts/.
     try:

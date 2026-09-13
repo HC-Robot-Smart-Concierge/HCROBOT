@@ -26,7 +26,6 @@ from app.models import (
     HousekeepingRequest,
     BellRequest,
     MaintenanceRequest,
-    RestaurantPreOrder,
     ReceptionRequest,
 )
 from app.api.v1.endpoints.operations import create_department_notification
@@ -377,7 +376,6 @@ async def _auto_create_ticket(db: AsyncSession, action: str, room_number: str, i
             req = HousekeepingRequest(
                 ticket_code=f"HK-{random.randint(1044, 9999)}",
                 source="HCRobot Concierge AI Chat",
-                priority="NORMAL",
                 time_label="Recently",
                 title=f"Yêu cầu Buồng phòng (Phòng {rm}): {items}",
                 room_number=rm,
@@ -411,8 +409,6 @@ async def _auto_create_ticket(db: AsyncSession, action: str, room_number: str, i
             req = BellRequest(
                 ticket_code=f"BS-{random.randint(1044, 9999)}",
                 title=f"Khách phòng {rm} hỗ trợ hành lý: {items}",
-                priority="NORMAL",
-                is_urgent=False,
                 location=f"Phòng {rm}",
                 guest_name=f"Guest (Room {rm})",
                 description=items,
@@ -446,7 +442,6 @@ async def _auto_create_ticket(db: AsyncSession, action: str, room_number: str, i
                 ticket_code=f"MN-{random.randint(1044, 9999)}",
                 title=f"Sự cố kỹ thuật Phòng {rm}: {items}",
                 category="general",
-                priority="NORMAL",
                 reported_time_label="Just Now",
                 location=f"Phòng {rm}",
                 description=items,

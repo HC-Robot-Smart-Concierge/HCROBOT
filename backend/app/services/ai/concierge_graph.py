@@ -146,7 +146,7 @@ async def retrieval_node(state: ConciergeState) -> Dict[str, Any]:
     prompt = state.get("prompt", "")
     rag_context = ""
     try:
-        from app.db.chroma import get_concierge_collection
+        from app.services.rag.chroma import get_concierge_collection
         collection = get_concierge_collection("concierge_kb")
         results = await asyncio.to_thread(
             collection.query,

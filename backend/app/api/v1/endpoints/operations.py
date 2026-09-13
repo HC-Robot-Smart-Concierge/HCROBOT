@@ -1,7 +1,8 @@
+import asyncio
 import random
 from datetime import datetime
 from typing import List, Dict, Any, Optional
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, WebSocket, WebSocketDisconnect, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, delete, func, desc
 
@@ -9,24 +10,21 @@ from app.core.database import get_db
 from app.core.security import hash_password
 from app.models import (
     Staff,
-    RobotUnit,
     RoomServiceOrder,
     HousekeepingRequest,
     BellRequest,
     MaintenanceRequest,
     ManagementDirective,
     InventoryStock,
-    RestaurantReservation,
-    RestaurantPreOrder,
     ReceptionRequest,
     HumanSupportSession,
     Notification,
 )
+from app.services.notification_manager import notification_manager
 from app.schemas.operations import (
     StaffResponse,
     StaffCreate,
     StaffUpdate,
-    RobotUnitResponse,
     InventoryStockResponse,
     # Room Service
     RoomServiceOrderCreate,
@@ -84,7 +82,7 @@ async def create_department_notification(
     request_type: Optional[str] = None,
     type: str = "Request",
 ) -> Notification:
-    """Creates a persistent department-scoped notification for all department staff."""
+    """Creates a persistent department-scoped notification and broadcasts real-time via WebSocket."""
     notif = Notification(
         department=department,
         title=title,
@@ -95,6 +93,26 @@ async def create_department_notification(
         is_read=False,
     )
     db.add(notif)
+    try:
+        await db.flush()
+    except Exception:
+        pass
+
+    # Broadcast real-time qua WebSocket Hub (không chặn tiến trình DB)
+    notif_data = {
+        "id": str(notif.id) if notif.id else f"NOTIF-{random.randint(1000, 9999)}",
+        "department": notif.department,
+        "title": notif.title,
+        "description": notif.description,
+        "request_id": notif.request_id,
+        "request_type": notif.request_type,
+        "type": notif.type,
+        "is_read": False,
+        "created_at": datetime.utcnow().isoformat(),
+    }
+    asyncio.create_task(
+        notification_manager.broadcast_notification(notif_data, department=department)
+    )
     return notif
 
 
@@ -215,13 +233,8 @@ async def get_room_service_dashboard(db: AsyncSession = Depends(get_db)):
     orders_res = await db.execute(select(RoomServiceOrder).order_by(desc(RoomServiceOrder.created_at)))
     orders = orders_res.scalars().all()
 
-    # 2. Fetch Robots
-    fleet_res = await db.execute(
-        select(RobotUnit)
-        .where(RobotUnit.model_type == "delivery")
-        .order_by(RobotUnit.unit_code)
-    )
-    delivery_fleet = fleet_res.scalars().all()
+    # 2. Fetch Robots (Deprecated - returning empty list)
+    delivery_fleet = []
 
     # 3. Fetch Stock
     stock_res = await db.execute(select(InventoryStock).order_by(InventoryStock.quantity))
@@ -323,20 +336,8 @@ async def assign_robot_to_order(
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
 
-    robot = None
-    if assign_in.robot_id:
-        robot_res = await db.execute(
-            select(RobotUnit).where(
-                (RobotUnit.id == assign_in.robot_id) |
-                (RobotUnit.unit_code == assign_in.robot_id)
-            )
-        )
-        robot = robot_res.scalar_one_or_none()
-        if not robot:
-            raise HTTPException(status_code=404, detail="Robot unit not found")
-
-    order.assigned_robot_id = robot.id if robot else None
-    order.assigned_staff_name = assign_in.robot_name or (robot.name if robot else "HCRobot Unit 01")
+    order.assigned_robot_id = assign_in.robot_id
+    order.assigned_staff_name = assign_in.robot_name or assign_in.robot_id or "HCRobot Unit 01"
     order.status = "Delivering"
     await db.commit()
     await db.refresh(order)
@@ -1655,11 +1656,10 @@ async def update_restaurant_reservation_status(
 # 11. GENERAL FLEET & STAFF ENDPOINTS
 # =====================================================================
 
-@router.get("/fleet", response_model=List[RobotUnitResponse], tags=TAG_OPS, summary="Danh sách trạng thái đội Robot HCRobot")
-async def get_robot_fleet(db: AsyncSession = Depends(get_db)):
+@router.get("/fleet", response_model=List[Dict[str, Any]], tags=TAG_OPS, summary="Danh sách trạng thái đội Robot HCRobot")
+async def get_robot_fleet():
     """Returns status of all active HCRobot autonomous units."""
-    res = await db.execute(select(RobotUnit).order_by(RobotUnit.unit_code))
-    return res.scalars().all()
+    return []
 
 
 @router.get("/staff", response_model=List[StaffResponse], tags=TAG_OPS, summary="Danh sách hồ sơ và ca trực của nhân viên")
@@ -1869,5 +1869,32 @@ async def delete_notification_item(
     await db.delete(notif)
     await db.commit()
     return {"message": "Đã xóa thông báo thành công", "id": notification_id}
+
+
+# =====================================================================
+# 14. REALTIME NOTIFICATION WEBSOCKET HUB
+# =====================================================================
+
+@router.websocket("/ws/notifications")
+async def notification_websocket_endpoint(
+    websocket: WebSocket,
+    department: Optional[str] = Query("All"),
+):
+    """
+    Kênh WebSocket kết nối Real-time cho Trung tâm Thông báo Phòng ban & Điều phối Nghiệp vụ.
+    Param: ?department=Housekeeping / F%26B / Bell%20Services / Maintenance / Reception / All
+    """
+    dept_val = department or "All"
+    await notification_manager.connect(websocket, department=dept_val)
+    try:
+        while True:
+            # Lắng nghe keep-alive ping từ client hoặc yêu cầu đổi phòng ban
+            msg = await websocket.receive_text()
+            if msg == "ping":
+                await websocket.send_text("pong")
+    except WebSocketDisconnect:
+        notification_manager.disconnect(websocket, department=dept_val)
+    except Exception:
+        notification_manager.disconnect(websocket, department=dept_val)
 
 

@@ -52,6 +52,10 @@ chroma_db/
 backend/chroma_db/
 backend/knowledge_vault/.obsidian/
 
+# Audio Cache (Dynamic TTS)
+backend/static/audio_cache/*.mp3
+!backend/static/audio_cache/.gitkeep
+
 # ==============================================================================
 # 4. Frontend / Node.js
 # ==============================================================================

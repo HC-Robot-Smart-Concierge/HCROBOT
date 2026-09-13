@@ -34,3 +34,10 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             yield session
         finally:
             await session.close()
+
+
+async def init_db() -> None:
+    """Create missing database tables without inserting application data."""
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+

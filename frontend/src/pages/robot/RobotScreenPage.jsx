@@ -66,13 +66,13 @@ export const RobotScreenPage = ({ onLogout = () => {} }) => {
     if (currentState === 'RT-01' || currentState === 'RT-02') {
       setCurrentState('RT-02');
       const hour = new Date().getHours();
-      let greeting = "Dạ em chào quý khách! Em là trợ lý Robot Concierge của khách sạn Aurora. Quý khách cần em hỗ trợ gì ạ?";
+      let greeting = "Dạ em chào quý khách! Em là Rora, trợ lý Robot Concierge của khách sạn Aurora. Quý khách cần em hỗ trợ gì ạ?";
       if (hour >= 5 && hour < 11) {
-        greeting = "Dạ em chào buổi sáng quý khách! Chúc quý khách một ngày mới tràn đầy năng lượng tại khách sạn Aurora. Quý khách cần em hỗ trợ gì ạ?";
+        greeting = "Dạ em chào buổi sáng quý khách! Em là Rora. Chúc quý khách một ngày mới tràn đầy năng lượng tại khách sạn Aurora. Quý khách cần em hỗ trợ gì ạ?";
       } else if (hour >= 11 && hour < 18) {
-        greeting = "Dạ em chào quý khách! Chúc quý khách một buổi chiều thật vui vẻ tại khách sạn Aurora. Quý khách cần em hỗ trợ gì ạ?";
+        greeting = "Dạ em chào quý khách! Em là Rora. Chúc quý khách một buổi chiều thật vui vẻ tại khách sạn Aurora. Quý khách cần em hỗ trợ gì ạ?";
       } else {
-        greeting = "Dạ em chào buổi tối quý khách! Chúc quý khách một buổi tối thư thái tại khách sạn Aurora. Quý khách cần em hỗ trợ gì ạ?";
+        greeting = "Dạ em chào buổi tối quý khách! Em là Rora. Chúc quý khách một buổi tối thư thái tại khách sạn Aurora. Quý khách cần em hỗ trợ gì ạ?";
       }
 
       speak(
@@ -123,6 +123,7 @@ export const RobotScreenPage = ({ onLogout = () => {} }) => {
 
     const lowerQuery = query.toLowerCase().strip ? query.toLowerCase().strip() : query.toLowerCase();
     const isFastPath = [
+      'rora', 'rora ơi', 'chào rora', 'hey rora', 'hello rora',
       'xin chào', 'chào em', 'chào robot', 'chào', 'hi', 'hello',
       'cảm ơn', 'cảm ơn em', 'thank you', 'thanks',
       'hồ bơi', 'wifi', 'mật khẩu wifi', 'giờ trả phòng'

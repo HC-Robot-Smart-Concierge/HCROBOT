@@ -23,6 +23,7 @@ import { HistoryPage } from './pages/staff/HistoryPage';
 import { NotificationsPage } from './pages/staff/NotificationsPage';
 import { ProfilePage } from './pages/staff/ProfilePage';
 import { useLanguage } from './context/LanguageContext';
+import { useNotificationWebSocket } from './hooks/useNotificationWebSocket';
 
 // Auth Api
 import { getStoredUser, logoutUser, fetchCurrentUser } from './services/authApi';
@@ -212,18 +213,37 @@ export function App() {
   };
 
   // ---------------------------------------------------------
-  // Department Notifications State & Live Polling (5s)
+  // Department Notifications State & Real-Time WebSocket
   // ---------------------------------------------------------
   const [notifications, setNotifications] = useState([]);
   const seenNotificationIdsRef = useRef(new Set());
   const isInitialNotifLoadRef = useRef(true);
+
+  const activeDepartment = currentUser
+    ? (isAdminUser(currentUser) ? 'All' : (currentUser.department || 'Staff'))
+    : 'All';
+
+  // Kết nối WebSocket Real-time Hub (< 30ms latency)
+  useNotificationWebSocket({
+    department: activeDepartment,
+    enabled: !!currentUser,
+    onNotificationReceived: useCallback((newNotif) => {
+      if (!newNotif || !newNotif.id) return;
+      if (seenNotificationIdsRef.current.has(newNotif.id)) return;
+      seenNotificationIdsRef.current.add(newNotif.id);
+
+      // Thêm thông báo mới nhất ngay lập tức vào đầu danh sách (Real-time 0ms)
+      setNotifications((prev) => [newNotif, ...prev.filter((n) => n.id !== newNotif.id)]);
+      showNotification(`🔔 [${newNotif.department}] ${newNotif.title}`);
+    }, []),
+  });
 
   const loadNotifications = useCallback(async () => {
     if (!currentUser) return;
     const dept = isAdminUser(currentUser) ? 'All' : (currentUser.department || 'Staff');
     const data = await fetchNotifications(dept);
     if (Array.isArray(data)) {
-      // Check for incoming new unread notifications to alert the staff
+      // Check for incoming new unread notifications to alert the staff (fallback)
       if (!isInitialNotifLoadRef.current) {
         data.forEach((n) => {
           if (!seenNotificationIdsRef.current.has(n.id) && (n.is_read === false || n.isRead === false)) {
@@ -240,7 +260,8 @@ export function App() {
 
   useEffect(() => {
     loadNotifications();
-    const interval = setInterval(loadNotifications, 5000);
+    // Giãn khoảng cách polling xuống 30s làm fallback dự phòng khi đã có WebSocket
+    const interval = setInterval(loadNotifications, 30000);
     return () => clearInterval(interval);
   }, [loadNotifications]);
 

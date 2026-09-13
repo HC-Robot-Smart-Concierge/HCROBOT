@@ -84,10 +84,12 @@ async def intent_router_node(state: ConciergeState) -> Dict[str, Any]:
     """
     import re
     prompt = state.get("prompt", "")
-    prompt_lower = prompt.lower().strip()
+    # Làm sạch wake-up word Rora ở đầu câu (nếu khách nói kèm mệnh lệnh)
+    clean_prompt = re.sub(r'^(?:hey rora|chào rora|chao rora|rora ơi|rora oi|hello rora|hi rora|rora)[\,\.\!\s]*', '', prompt, flags=re.IGNORECASE).strip() or prompt
+    prompt_lower = clean_prompt.lower().strip()
 
     # 1. Bóc tách nhanh số phòng nếu có
-    room_match = re.search(r'(?:phòng|p\.|p|phong)\s*([0-9]{3,4})|^(?:tôi ở|ở)\s*([0-9]{3,4})$', prompt, re.IGNORECASE)
+    room_match = re.search(r'(?:phòng|p\.|p|phong)\s*([0-9]{3,4})|^(?:tôi ở|ở)\s*([0-9]{3,4})$', clean_prompt, re.IGNORECASE)
     extracted_room = (room_match.group(1) or room_match.group(2)) if room_match else None
     
     current_room = state.get("room_number")
@@ -196,9 +198,9 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
 
     # Đã có đủ số phòng
     if lang_code == "en-US":
-        confirm_reply = f"I have noted your request for Room {current_room}. Our team will attend to it shortly!"
+        confirm_reply = f"Rora has noted your request for Room {current_room}. Our team will attend to it shortly!"
     else:
-        confirm_reply = f"Dạ em đã ghi nhận yêu cầu cho Phòng {current_room} rồi ạ! Bộ phận chuyên trách sẽ hỗ trợ quý khách ngay."
+        confirm_reply = f"Dạ Rora đã ghi nhận yêu cầu cho Phòng {current_room} rồi ạ! Bộ phận chuyên trách sẽ hỗ trợ quý khách ngay."
 
     return {
         "missing_room_number": False,

@@ -28,7 +28,7 @@ from app.schemas.operations import (
     RoomServiceOrderResponse,
     HousekeepingRequestResponse,
 )
-from .shared import TAG_ADMIN, TAG_OPS, _fetch_all_raw_requests
+from .shared import TAG_ADMIN, TAG_OPS, _fetch_all_raw_requests, create_department_notification
 
 router = APIRouter()
 

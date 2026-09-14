@@ -1,4 +1,5 @@
 import pytest
+import random
 from httpx import AsyncClient, ASGITransport
 from app.main import app
 from app.db.init_db import init_db
@@ -68,8 +69,9 @@ async def test_all_operations_dashboards_and_endpoints():
         assert all("department" in request for request in unified_data)
 
         # 9. Test Staff Soft Delete
+        unique_username = f"test_soft_delete_staff_{random.randint(1000, 9999)}"
         create_staff_res = await ac.post("/api/v1/operations/staff", json={
-            "username": "test_soft_delete_staff",
+            "username": unique_username,
             "password": "secret_password",
             "full_name": "Test Soft Delete Staff",
             "role": "Cleaner",

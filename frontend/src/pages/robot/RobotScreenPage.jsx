@@ -105,16 +105,6 @@ export const RobotScreenPage = ({ onLogout = () => {} }) => {
     }
   };
 
-  // Tự động chuyển về RT-01 nhắm mắt ngủ nếu không có ai nói chuyện trong 10 giây ở chế độ RT-03
-  useEffect(() => {
-    if (currentState === 'RT-03' && !isSpeaking && !isProcessing && transcript.trim().length === 0) {
-      const idleTimer = setTimeout(() => {
-        handleGuestLeft();
-      }, 10000);
-      return () => clearTimeout(idleTimer);
-    }
-  }, [currentState, isSpeaking, isProcessing, transcript]);
-
   // 1. Khi kích hoạt lắng nghe (Bấm nút hoặc Tự động)
   const handleStartTalk = () => {
     prime();

@@ -1,6 +1,10 @@
+# ==============================================================================
+# Cấu hình Robot Client (hc_robot_client) — Raspberry Pi 5 & ROS 2 Humble
+# ==============================================================================
+
 server:
   # Địa chỉ IP của Laptop Server (Ưu tiên dùng IP Tailscale dạng 100.x.y.z để cố định IP)
-  host: "100.x.y.z" 
+  host: "100.x.y.z"
   port: 8000
   timeout_seconds: 15
 
@@ -15,11 +19,57 @@ robot:
     invert_left_direction: true
     invert_right_direction: true
 
+# Tầng Thị giác & Nhận thức (Pure Perception)
+vision:
+  camera_type: "usb"            # "csi" (Picamera2) hoặc "usb" (OpenCV V4L2)
+  device_index: 0
+  width: 640
+  height: 480
+  fps: 15
+  camera_hfov_deg: 70.0         # Góc mở ngang (Horizontal FOV) của ống kính
+  model_path: "yolov8n.pt"      # File trọng số YOLOv8n
+  confidence_threshold: 0.40
+
+# Tầng Dung hợp Cảm biến & Máy trạng thái Cự ly (Sensor Fusion & Tracking)
+fusion:
+  approach_distance_m: 2.5      # FAR -> APPROACHING (Khách tiến lại gần)
+  near_distance_m: 1.5          # APPROACHING -> NEAR (Khách trong tầm tiếp đón -> GUEST_APPROACH)
+  too_close_distance_m: 0.8     # NEAR -> TOO_CLOSE (Quá gần -> vùng đệm an toàn)
+  hysteresis_margin_m: 0.15     # Vùng trễ chống chớp tắt trạng thái
+  corridor_half_width_m: 0.35   # Nửa bề rộng hành lang di chuyển của xe (mét)
+  guest_leave_timeout_s: 2.0    # Thời gian không thấy người để phát GUEST_DEPART
+
+# Tầng Trọng tài An toàn Cục bộ (Local-First Safety Arbitration)
+safety:
+  emergency_stop_distance_m: 0.50  # Phanh khẩn cấp lập tức (< 50ms)
+  warning_distance_m: 0.80         # Giảm tốc an toàn
+  front_cone_deg: 35.0             # Góc quét chùm tia laser phía trước xe
+
+# Dịch vụ Video Streaming Độc lập (Phục vụ Web Preview / Debugging)
+stream:
+  protocol: "HTTP"
+  format: "multipart/x-mixed-replace; boundary=frame"
+  port: 8554
+  endpoint: "/stream"
+
+# Danh mục ROS 2 Topics chuẩn hóa
 topics:
+  # Cầu nối AI & Giọng nói
   speech_input: "/speech/text"
   speech_reply: "/robot/speech_reply"
-  robot_status: "/robot/status"
   intent_output: "/robot/intent"
+  robot_status: "/robot/status"
+
+  # Thị giác (Perception)
+  person_detections: "/robot/person_detections"
+  vision_status: "/robot/vision_status"
+
+  # Dung hợp & Theo dõi (Fusion & Tracking)
+  person_tracking: "/robot/person_tracking"
+  guest_events: "/robot/guest_events"
+  lidar_scan: "/scan"
+
+  # Điều khiển & An toàn (Motion & Safety)
+  cmd_vel_in: "/cmd_vel_in"
   cmd_vel: "/cmd_vel"
-
-
+  safety_state: "/robot/safety_state"

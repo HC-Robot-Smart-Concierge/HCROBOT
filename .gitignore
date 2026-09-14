@@ -8,6 +8,10 @@ Desktop.ini
 .idea/
 *.swp
 *.swo
+*~
+*.bak
+*.tmp
+*.temp
 
 # ==============================================================================
 # 2. Environment Variables & Secrets
@@ -39,12 +43,27 @@ ENV/
 env/
 .pytest_cache/
 **/.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 .coverage
 htmlcov/
 *.log
 **/*.log
 scratch/
 **/scratch/
+.ipynb_checkpoints/
+
+# TTS Audio Cache & Media (Do TTSService sinh ra)
+**/audio_cache/
+backend/static/audio_cache/
+static/audio_cache/
+
+# Uploads directory (chỉ giữ file mẫu hoặc .gitkeep, không commit file upload runtime)
+backend/static/uploads/*
+!backend/static/uploads/.gitkeep
+!backend/static/uploads/De_Xuat_Tinh_Nang_Robot_Concierge.pdf
+static/uploads/*
+!static/uploads/.gitkeep
 
 # Vector Stores & Obsidian Vault
 chroma_db/
@@ -78,29 +97,68 @@ frontend/dist/
 frontend/build/
 dist/
 build/
+.vite/
+**/.vite/
+.eslintcache
+.stylelintcache
+coverage/
+.turbo/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
 # ==============================================================================
-# 5. Robot / ROS 2 / Hardware / RPLiDAR SDK
+# 5. Robot / ROS 2 / Hardware / RPLiDAR SDK / AI Models
 # ==============================================================================
 robot/build/
 robot/install/
 robot/log/
+install/
+**/install/
+log/
+**/log/
+.colcon/
 rplidar_sdk_master/obj/
 rplidar_sdk_master/output/
 rplidar_sdk_master/work/
+
+# ROS 2 Bags & Crash Dumps
+*.bag
+rosbag2_*/
+**/rosbag2_*/
+core
+core.*
+*.dmp
+
+# AI / Deep Learning Weights & Ultralytics Runs (Tránh commit model nặng hàng trăm MB)
+*.pt
+*.pth
+*.onnx
+*.engine
+*.tflite
+*.weights
+*.safetensors
+runs/
+**/runs/
+.ultralytics/
+
+# Compiled Binaries & Libraries
 *.exe
 *.dll
 *.so
 *.dylib
 *.o
+*.obj
 *.a
+*.lib
+*.pdb
+*.idb
+*.ilk
+*.exp
 
 # ==============================================================================
-# 6. Mobile / Flutter
+# 6. Mobile / Flutter & Android / iOS Security
 # ==============================================================================
 mobile/.dart_tool/
 mobile/.idea/
@@ -115,4 +173,15 @@ mobile/ios/Pods/
 mobile/ios/.symlinks/
 mobile/ios/Flutter/Generated.xcconfig
 mobile/ios/Flutter/flutter_export_environment.sh
+mobile/ios/Flutter/ephemeral/
+mobile/macos/Flutter/ephemeral/
+mobile/windows/flutter/ephemeral/
+mobile/linux/flutter/ephemeral/
 mobile/ios/Runner/GeneratedPluginRegistrant.*
+
+# Keystores & Signing Keys (Bảo mật tuyệt đối, không đẩy lên Git)
+*.keystore
+*.jks
+key.properties
+**/key.properties
+

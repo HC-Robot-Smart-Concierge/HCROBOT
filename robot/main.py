@@ -70,6 +70,44 @@ def start_udp_control_listener(safety, port=9999):
         sock.close()
 
 
+class DirectMotorSafetyWrapper:
+    """Wrapper cho phép điều khiển motor trực tiếp khi chạy mode không cảm biến (--motor-only hoặc --no-safety)."""
+    def __init__(self, motor):
+        self.motor = motor
+        self.motion = "stop"
+        self.actions = {
+            "forward": motor.forward,
+            "backward": motor.backward,
+            "left": motor.turn_left,
+            "right": motor.turn_right,
+            "forward_left": motor.turn_forward_left,
+            "forward_right": motor.turn_forward_right,
+            "backward_left": motor.turn_backward_left,
+            "backward_right": motor.turn_backward_right,
+        }
+
+    def command(self, motion: str) -> bool:
+        if motion == "stop":
+            self.stop()
+            return True
+        action = self.actions.get(motion)
+        if action:
+            action()
+            self.motion = motion
+            return True
+        return False
+
+    def stop(self):
+        self.motor.stop()
+        self.motion = "stop"
+
+    def update(self):
+        pass
+
+    def enforce(self) -> bool:
+        return True
+
+
 def _value(cli_value, config, key, default):
     return cli_value if cli_value is not None else config.get(key, default)
 
@@ -165,19 +203,22 @@ def run_auto_forward(safety, countdown=3):
     return run_auto_drive(safety, "forward", countdown=countdown)
 
 
-def _print_controls(port, thresholds, stale_timeout, turn_clearance):
+def _print_controls(port, thresholds=None, stale_timeout=0.0, turn_clearance=0.0):
     print("\n" + "=" * 68)
     print(" HCROBOT: MOTOR + 4 HC-SR04 QUA ESP32 USB SERIAL")
     print("=" * 68)
     print(" [W/↑] tiến   [S/↓] lùi   [A/←] trái   [D/→] phải")
     print(" [X/Space] dừng            [Q] thoát")
-    print(f" Serial: {port} | stale timeout: {stale_timeout:.2f}s")
-    print(
-        " Ngưỡng: front={forward:.1f} rear={backward:.1f} "
-        "left={left:.1f} right={right:.1f} cm".format(**thresholds)
-    )
-    print(f" Khi quay: kiểm tra bên quay + front/rear > {turn_clearance:.1f}cm")
-    print(" Mất Serial hoặc sensor lỗi liên tiếp => STOP; hết vật cản phải bấm lệnh lại")
+    if thresholds:
+        print(f" Serial: {port} | stale timeout: {stale_timeout:.2f}s")
+        print(
+            " Ngưỡng: front={forward:.1f} rear={backward:.1f} "
+            "left={left:.1f} right={right:.1f} cm".format(**thresholds)
+        )
+        print(f" Khi quay: kiểm tra bên quay + front/rear > {turn_clearance:.1f}cm")
+        print(" Mất Serial hoặc sensor lỗi liên tiếp => STOP; hết vật cản phải bấm lệnh lại")
+    else:
+        print(f" Chế độ: {port}")
     print("=" * 68 + "\n")
 
 
@@ -247,6 +288,11 @@ def build_argument_parser():
         action="store_true",
         help="Test motor không dùng sensor (không có obstacle fail-safe)",
     )
+    parser.add_argument(
+        "--no-safety",
+        action="store_true",
+        help="Bỏ qua khóa fail-safe cảm biến siêu âm (cho phép điều khiển trực tiếp qua Web/phím)",
+    )
     parser.add_argument("--debug", action="store_true", help="Bật log từng packet")
     return parser
 
@@ -302,70 +348,94 @@ def main(argv=None):
         logger.warning(
             "MOTOR-ONLY: ultrasonic fail-safe đã bị tắt. Hãy kê bánh khỏi mặt đất khi test."
         )
+        safety = DirectMotorSafetyWrapper(motor)
+        udp_thread = threading.Thread(
+            target=start_udp_control_listener,
+            args=(safety, 9999),
+            daemon=True,
+        )
+        udp_thread.start()
         run_wasd_controller(motor)
         return 0
 
-    port = _value(args.port, serial_cfg, "port", "auto")
-    baudrate = int(_value(args.baud, serial_cfg, "baudrate", 115200))
-    stale_timeout = float(
-        _value(args.sensor_timeout, safety_cfg, "stale_timeout_seconds", 0.4)
-    )
-    thresholds = {
-        "forward": float(_value(args.front_stop, safety_cfg, "front_stop_cm", 65.0)),
-        "backward": float(_value(args.rear_stop, safety_cfg, "rear_stop_cm", 65.0)),
-        "left": float(_value(args.left_stop, safety_cfg, "left_stop_cm", 25.0)),
-        "right": float(_value(args.right_stop, safety_cfg, "right_stop_cm", 25.0)),
-    }
-    invalid_grace = float(
-        _value(args.null_grace, safety_cfg, "invalid_grace_seconds", 0.2)
-    )
-    allowed_null_packets = int(safety_cfg.get("allowed_null_packets", 1))
-    resume_margin = float(
-        _value(args.resume_margin, safety_cfg, "resume_margin_cm", 10.0)
-    )
-    resume_packets = int(
-        _value(args.resume_packets, safety_cfg, "resume_valid_packets", 3)
-    )
-    turn_clearance = float(
-        _value(args.turn_clearance, safety_cfg, "turn_clearance_cm", 25.0)
-    )
-
-    reader = UltrasonicSerialReader(port=port, baudrate=baudrate)
-    safety = ObstacleSafetyController(
-        motor=motor,
-        sensor_reader=reader,
-        thresholds_cm=thresholds,
-        stale_timeout=stale_timeout,
-        invalid_grace=invalid_grace,
-        allowed_null_packets=allowed_null_packets,
-        resume_margin_cm=resume_margin,
-        resume_valid_packets=resume_packets,
-        turn_clearance_cm=turn_clearance,
-    )
-
-    try:
-        reader.start()
-    except RuntimeError as exc:
-        logger.error("Không khởi động được Serial reader: %s", exc)
-        motor.cleanup()
-        return 3
-
-    if reader.wait_for_packet(timeout=3.0):
-        logger.info("Đã nhận packet ultrasonic đầu tiên; khóa fail-safe sẵn sàng.")
-    else:
+    if args.no_safety:
         logger.warning(
-            "Chưa nhận được packet sau 3 giây; mọi lệnh chạy bị khóa cho tới khi có dữ liệu."
+            "⚠️ NO-SAFETY: Đã tắt khóa an toàn cảm biến siêu âm. Điều khiển Web và bàn phím sẽ tác động trực tiếp tới motor."
+        )
+        safety = DirectMotorSafetyWrapper(motor)
+        # Bật UDP Remote Control Listener trên background thread (port 9999)
+        udp_thread = threading.Thread(
+            target=start_udp_control_listener,
+            args=(safety, 9999),
+            daemon=True,
+        )
+        udp_thread.start()
+        _print_controls("disabled (--no-safety)", {}, 0.0, 0.0)
+    else:
+        port = _value(args.port, serial_cfg, "port", "auto")
+        baudrate = int(_value(args.baud, serial_cfg, "baudrate", 115200))
+        stale_timeout = float(
+            _value(args.sensor_timeout, safety_cfg, "stale_timeout_seconds", 0.4)
+        )
+        thresholds = {
+            "forward": float(_value(args.front_stop, safety_cfg, "front_stop_cm", 65.0)),
+            "backward": float(_value(args.rear_stop, safety_cfg, "rear_stop_cm", 65.0)),
+            "left": float(_value(args.left_stop, safety_cfg, "left_stop_cm", 25.0)),
+            "right": float(_value(args.right_stop, safety_cfg, "right_stop_cm", 25.0)),
+        }
+        invalid_grace = float(
+            _value(args.null_grace, safety_cfg, "invalid_grace_seconds", 0.2)
+        )
+        allowed_null_packets = int(safety_cfg.get("allowed_null_packets", 1))
+        resume_margin = float(
+            _value(args.resume_margin, safety_cfg, "resume_margin_cm", 10.0)
+        )
+        resume_packets = int(
+            _value(args.resume_packets, safety_cfg, "resume_valid_packets", 3)
+        )
+        turn_clearance = float(
+            _value(args.turn_clearance, safety_cfg, "turn_clearance_cm", 25.0)
         )
 
-    _print_controls(port, thresholds, stale_timeout, turn_clearance)
+        reader = UltrasonicSerialReader(port=port, baudrate=baudrate)
+        safety = ObstacleSafetyController(
+            motor=motor,
+            sensor_reader=reader,
+            thresholds_cm=thresholds,
+            stale_timeout=stale_timeout,
+            invalid_grace=invalid_grace,
+            allowed_null_packets=allowed_null_packets,
+            resume_margin_cm=resume_margin,
+            resume_valid_packets=resume_packets,
+            turn_clearance_cm=turn_clearance,
+        )
 
-    # Bật UDP Remote Control Listener trên background thread (port 9999)
-    udp_thread = threading.Thread(
-        target=start_udp_control_listener,
-        args=(safety, 9999),
-        daemon=True,
-    )
-    udp_thread.start()
+        try:
+            reader.start()
+        except RuntimeError as exc:
+            logger.error("Không khởi động được Serial reader: %s", exc)
+            motor.cleanup()
+            return 3
+
+        if reader.wait_for_packet(timeout=3.0):
+            logger.info("Đã nhận packet ultrasonic đầu tiên; khóa fail-safe sẵn sàng.")
+        else:
+            logger.warning(
+                "Chưa nhận được packet sau 3 giây; mọi lệnh chạy bị khóa cho tới khi có dữ liệu từ ESP32."
+            )
+            logger.warning(
+                "💡 MẸO: Để điều khiển xe ngay mà không cần ESP32, hãy thêm cờ: sudo python3 main.py --no-safety"
+            )
+
+        _print_controls(port, thresholds, stale_timeout, turn_clearance)
+
+        # Bật UDP Remote Control Listener trên background thread (port 9999)
+        udp_thread = threading.Thread(
+            target=start_udp_control_listener,
+            args=(safety, 9999),
+            daemon=True,
+        )
+        udp_thread.start()
 
     key_to_motion = {
         "w": "forward",

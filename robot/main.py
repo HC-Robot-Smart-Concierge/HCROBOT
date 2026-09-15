@@ -40,10 +40,14 @@ def start_udp_control_listener(safety, port=9999):
         return
 
     motion_map = {
-        "w": "forward", "forward": "forward",
-        "s": "backward", "backward": "backward",
+        "w": "forward", "forward": "forward", "up": "forward",
+        "s": "backward", "backward": "backward", "down": "backward",
         "a": "left", "left": "left",
         "d": "right", "right": "right",
+        "wa": "forward_left", "aw": "forward_left", "forward_left": "forward_left", "up_left": "forward_left",
+        "wd": "forward_right", "dw": "forward_right", "forward_right": "forward_right", "up_right": "forward_right",
+        "sa": "backward_left", "as": "backward_left", "backward_left": "backward_left", "down_left": "backward_left",
+        "sd": "backward_right", "ds": "backward_right", "backward_right": "backward_right", "down_right": "backward_right",
         "x": "stop", "stop": "stop", " ": "stop"
     }
 
@@ -77,6 +81,10 @@ def run_direct_motor_test(motor, direction, duration_seconds=10.0, countdown=3):
         "backward": motor.backward,
         "left": motor.turn_left,
         "right": motor.turn_right,
+        "forward_left": motor.turn_forward_left,
+        "forward_right": motor.turn_forward_right,
+        "backward_left": motor.turn_backward_left,
+        "backward_right": motor.turn_backward_right,
     }
     if direction not in actions:
         raise ValueError(f"Hướng test không hợp lệ: {direction}")

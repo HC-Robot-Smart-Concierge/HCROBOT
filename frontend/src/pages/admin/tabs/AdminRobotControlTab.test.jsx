@@ -71,4 +71,33 @@ describe('AdminRobotControlTab Sub-view Logic', () => {
     expect(lidarStopPayload.target_ip).toBe('100.73.245.66');
     expect(lidarStopPayload.port).toBe(9999);
   });
+
+  it('should compute combined multi-key teleop commands accurately', () => {
+    const computeMotionCommand = (keysSet) => {
+      const isUp = keysSet.has('w') || keysSet.has('arrowup');
+      const isDown = keysSet.has('s') || keysSet.has('arrowdown');
+      const isLeft = keysSet.has('a') || keysSet.has('arrowleft');
+      const isRight = keysSet.has('d') || keysSet.has('arrowright');
+
+      if (isUp && isLeft) return 'wa';
+      if (isUp && isRight) return 'wd';
+      if (isDown && isLeft) return 'sa';
+      if (isDown && isRight) return 'sd';
+      if (isUp) return 'w';
+      if (isDown) return 's';
+      if (isLeft) return 'a';
+      if (isRight) return 'd';
+      return 'stop';
+    };
+
+    expect(computeMotionCommand(new Set(['w', 'a']))).toBe('wa');
+    expect(computeMotionCommand(new Set(['arrowup', 'arrowright']))).toBe('wd');
+    expect(computeMotionCommand(new Set(['s', 'a']))).toBe('sa');
+    expect(computeMotionCommand(new Set(['arrowdown', 'd']))).toBe('sd');
+    expect(computeMotionCommand(new Set(['w']))).toBe('w');
+    expect(computeMotionCommand(new Set(['s']))).toBe('s');
+    expect(computeMotionCommand(new Set(['a']))).toBe('a');
+    expect(computeMotionCommand(new Set(['d']))).toBe('d');
+    expect(computeMotionCommand(new Set())).toBe('stop');
+  });
 });

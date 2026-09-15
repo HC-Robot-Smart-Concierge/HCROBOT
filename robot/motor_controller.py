@@ -369,6 +369,46 @@ class MotorController:
         self.motion = "right"
         self._log_motion_outputs("TURN_RIGHT", states)
 
+    def turn_forward_left(self):
+        """Vừa tiến vừa rẽ trái (arc turn): Bánh trái dừng, bánh phải tiến."""
+        states = self._set_outputs(False, False, True, False)
+        self.motion = "forward_left"
+        self._log_motion_outputs("TURN_FORWARD_LEFT", states)
+
+    def forward_left(self):
+        """Alias cho turn_forward_left."""
+        self.turn_forward_left()
+
+    def turn_forward_right(self):
+        """Vừa tiến vừa rẽ phải (arc turn): Bánh trái tiến, bánh phải dừng."""
+        states = self._set_outputs(True, False, False, False)
+        self.motion = "forward_right"
+        self._log_motion_outputs("TURN_FORWARD_RIGHT", states)
+
+    def forward_right(self):
+        """Alias cho turn_forward_right."""
+        self.turn_forward_right()
+
+    def turn_backward_left(self):
+        """Vừa lùi vừa rẽ trái (arc turn): Bánh trái dừng, bánh phải lùi."""
+        states = self._set_outputs(False, False, False, True)
+        self.motion = "backward_left"
+        self._log_motion_outputs("TURN_BACKWARD_LEFT", states)
+
+    def backward_left(self):
+        """Alias cho turn_backward_left."""
+        self.turn_backward_left()
+
+    def turn_backward_right(self):
+        """Vừa lùi vừa rẽ phải (arc turn): Bánh trái lùi, bánh phải dừng."""
+        states = self._set_outputs(False, True, False, False)
+        self.motion = "backward_right"
+        self._log_motion_outputs("TURN_BACKWARD_RIGHT", states)
+
+    def backward_right(self):
+        """Alias cho turn_backward_right."""
+        self.turn_backward_right()
+
     def stop(self):
         """Dừng tất cả động cơ."""
         devices = (
@@ -389,13 +429,18 @@ class MotorController:
         """Chuyển đổi tín hiệu vận tốc Twist / Analog Joystick sang hướng chạy."""
         if linear_x > 0.1:
             if angular_z > 0.2:
-                self.turn_left()
+                self.turn_forward_left()
             elif angular_z < -0.2:
-                self.turn_right()
+                self.turn_forward_right()
             else:
                 self.move_forward()
         elif linear_x < -0.1:
-            self.move_backward()
+            if angular_z > 0.2:
+                self.turn_backward_left()
+            elif angular_z < -0.2:
+                self.turn_backward_right()
+            else:
+                self.move_backward()
         else:
             if angular_z > 0.2:
                 self.turn_left()
@@ -603,6 +648,14 @@ def run_udp_server_controller(controller: MotorController, host: str = '0.0.0.0'
                             controller.turn_left()
                         elif cmd == 'd':
                             controller.turn_right()
+                        elif cmd in ['wa', 'aw', 'forward_left', 'up_left']:
+                            controller.turn_forward_left()
+                        elif cmd in ['wd', 'dw', 'forward_right', 'up_right']:
+                            controller.turn_forward_right()
+                        elif cmd in ['sa', 'as', 'backward_left', 'down_left']:
+                            controller.turn_backward_left()
+                        elif cmd in ['sd', 'ds', 'backward_right', 'down_right']:
+                            controller.turn_backward_right()
                         elif cmd in ['x', 'stop']:
                             controller.stop()
             except socket.timeout:

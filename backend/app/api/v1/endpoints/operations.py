@@ -1891,6 +1891,10 @@ async def control_robot_movement(cmd: RobotMoveCommand):
             "backward": "s", "s": "s", "down": "s", "arrowdown": "s",
             "left": "a", "a": "a", "arrowleft": "a",
             "right": "d", "d": "d", "arrowright": "d",
+            "forward_left": "wa", "wa": "wa", "aw": "wa", "up_left": "wa",
+            "forward_right": "wd", "wd": "wd", "dw": "wd", "up_right": "wd",
+            "backward_left": "sa", "sa": "sa", "as": "sa", "down_left": "sa",
+            "backward_right": "sd", "sd": "sd", "ds": "sd", "down_right": "sd",
             "stop": "stop", "x": "stop", "space": "stop", "": "stop"
         }
         cmd_str = motion_map.get(cmd.command.lower().strip(), "stop")

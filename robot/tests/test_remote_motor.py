@@ -67,6 +67,44 @@ class TestMotorControllerRemote(unittest.TestCase):
         self.assertFalse(self.controller.right_forward_dev.is_active)
         self.assertTrue(self.controller.right_backward_dev.is_active)
 
+    def test_turn_forward_left(self):
+        self.controller.turn_forward_left()
+        self.assertFalse(self.controller.left_forward_dev.is_active)
+        self.assertFalse(self.controller.left_backward_dev.is_active)
+        self.assertTrue(self.controller.right_forward_dev.is_active)
+        self.assertFalse(self.controller.right_backward_dev.is_active)
+
+    def test_turn_forward_right(self):
+        self.controller.turn_forward_right()
+        self.assertTrue(self.controller.left_forward_dev.is_active)
+        self.assertFalse(self.controller.left_backward_dev.is_active)
+        self.assertFalse(self.controller.right_forward_dev.is_active)
+        self.assertFalse(self.controller.right_backward_dev.is_active)
+
+    def test_turn_backward_left(self):
+        self.controller.turn_backward_left()
+        self.assertFalse(self.controller.left_forward_dev.is_active)
+        self.assertFalse(self.controller.left_backward_dev.is_active)
+        self.assertFalse(self.controller.right_forward_dev.is_active)
+        self.assertTrue(self.controller.right_backward_dev.is_active)
+
+    def test_turn_backward_right(self):
+        self.controller.turn_backward_right()
+        self.assertFalse(self.controller.left_forward_dev.is_active)
+        self.assertTrue(self.controller.left_backward_dev.is_active)
+        self.assertFalse(self.controller.right_forward_dev.is_active)
+        self.assertFalse(self.controller.right_backward_dev.is_active)
+
+    def test_set_drive_cmd_arc_steering(self):
+        self.controller.set_drive_cmd(linear_x=0.5, angular_z=0.5)
+        self.assertEqual(self.controller.motion, "forward_left")
+        self.controller.set_drive_cmd(linear_x=0.5, angular_z=-0.5)
+        self.assertEqual(self.controller.motion, "forward_right")
+        self.controller.set_drive_cmd(linear_x=-0.5, angular_z=0.5)
+        self.assertEqual(self.controller.motion, "backward_left")
+        self.controller.set_drive_cmd(linear_x=-0.5, angular_z=-0.5)
+        self.assertEqual(self.controller.motion, "backward_right")
+
     def test_stop(self):
         self.controller.move_forward()
         self.controller.stop()

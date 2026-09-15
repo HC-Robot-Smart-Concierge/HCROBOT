@@ -50,6 +50,7 @@ scratch/
 chroma_db/
 **/chroma_db/
 backend/chroma_db/
+backend/static/audio_cache/
 
 # Obsidian metadata & plugin cache (không commit)
 **/.obsidian/

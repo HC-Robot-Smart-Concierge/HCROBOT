@@ -73,7 +73,17 @@ class ObstacleSafetyController:
         self._last_snapshot_key = None
         self._blocked_motions = set()
         self._clear_streak = {
-            motion: 0 for motion in ("forward", "backward", "left", "right")
+            motion: 0
+            for motion in (
+                "forward",
+                "backward",
+                "left",
+                "right",
+                "forward_left",
+                "forward_right",
+                "backward_left",
+                "backward_right",
+            )
         }
 
     def _requirements(self, motion):
@@ -92,6 +102,26 @@ class ObstacleSafetyController:
                 ("right", self.thresholds_cm["right"]),
                 ("front", self.turn_clearance_cm),
                 ("rear", self.turn_clearance_cm),
+            )
+        if motion == "forward_left":
+            return (
+                ("front", self.thresholds_cm["forward"]),
+                ("left", self.thresholds_cm["left"]),
+            )
+        if motion == "forward_right":
+            return (
+                ("front", self.thresholds_cm["forward"]),
+                ("right", self.thresholds_cm["right"]),
+            )
+        if motion == "backward_left":
+            return (
+                ("rear", self.thresholds_cm["backward"]),
+                ("left", self.thresholds_cm["left"]),
+            )
+        if motion == "backward_right":
+            return (
+                ("rear", self.thresholds_cm["backward"]),
+                ("right", self.thresholds_cm["right"]),
             )
         return ()
 
@@ -249,6 +279,10 @@ class ObstacleSafetyController:
             "backward": self.motor.backward,
             "left": self.motor.turn_left,
             "right": self.motor.turn_right,
+            "forward_left": self.motor.turn_forward_left,
+            "forward_right": self.motor.turn_forward_right,
+            "backward_left": self.motor.turn_backward_left,
+            "backward_right": self.motor.turn_backward_right,
         }
         actions[motion]()
         self.motion = motion

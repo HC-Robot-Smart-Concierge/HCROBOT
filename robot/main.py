@@ -207,8 +207,10 @@ def _print_controls(port, thresholds=None, stale_timeout=0.0, turn_clearance=0.0
     print("\n" + "=" * 68)
     print(" HCROBOT: MOTOR + 4 HC-SR04 QUA ESP32 USB SERIAL")
     print("=" * 68)
-    print(" [W/↑] tiến   [S/↓] lùi   [A/←] trái   [D/→] phải")
-    print(" [X/Space] dừng            [Q] thoát")
+    print(" [Q/7] tiến-trái    [W/8/↑] tiến      [E/9] tiến-phải")
+    print(" [A/4/←] xoay-trái  [X/5/Space] dừng  [D/6/→] xoay-phải")
+    print(" [Z/1] lùi-trái     [S/2/↓] lùi       [C/3] lùi-phải")
+    print(" [P/Ctrl+C] thoát")
     if thresholds:
         print(f" Serial: {port} | stale timeout: {stale_timeout:.2f}s")
         print(
@@ -439,10 +441,25 @@ def main(argv=None):
         udp_thread.start()
 
     key_to_motion = {
+        # 4 hướng cơ bản:
         "w": "forward",
         "s": "backward",
         "a": "left",
         "d": "right",
+        # 4 hướng chéo (bẻ lái vòng cung QWERTY):
+        "q": "forward_left",
+        "e": "forward_right",
+        "z": "backward_left",
+        "c": "backward_right",
+        # Bàn phím số Numpad:
+        "7": "forward_left",
+        "8": "forward",
+        "9": "forward_right",
+        "4": "left",
+        "6": "right",
+        "1": "backward_left",
+        "2": "backward",
+        "3": "backward_right",
     }
     last_status_at = 0.0
     last_status_sequence = 0
@@ -487,9 +504,9 @@ def main(argv=None):
             key = char.lower()
             if key in key_to_motion:
                 safety.command(key_to_motion[key])
-            elif key in ("x", " ", "\r", "\n"):
+            elif key in ("x", "5", " ", "\r", "\n"):
                 safety.stop()
-            elif key == "q" or char == "\x03":
+            elif key == "p" or char == "\x03":
                 logger.info("Nhận lệnh thoát")
                 break
     except KeyboardInterrupt:

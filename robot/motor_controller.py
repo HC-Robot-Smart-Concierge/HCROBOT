@@ -511,14 +511,12 @@ def run_wasd_controller(controller: MotorController):
     print("\n" + "=" * 60)
     print("  BỘ ĐIỀU KHIỂN ROBOT RASPBERRY PI 5 (WASD / PHÍM MŨI TÊN)")
     print("=" * 60)
-    print("  [W] hoặc [Mũi tên Lên]   : ĐI THẲNG (Forward)")
-    print("  [S] hoặc [Mũi tên Xuống] : LÙI (Backward)")
-    print("  [A] hoặc [Mũi tên Trái]  : QUẸO TRÁI (Turn Left)")
-    print("  [D] hoặc [Mũi tên Phải]  : QUẸO PHẢI (Turn Right)")
-    print("  [X] hoặc [Space]         : DỪNG (Stop)")
-    print("  [Q]                     : THOÁT (Quit)")
+    print("  [Q/7] TIẾN - TRÁI       [W/8/↑] TIẾN        [E/9] TIẾN - PHẢI")
+    print("  [A/4/←] XOAY TRÁI       [X/5/Space] DỪNG    [D/6/→] XOAY PHẢI")
+    print("  [Z/1] LÙI - TRÁI        [S/2/↓] LÙI         [C/3] LÙI - PHẢI")
+    print("  [P/Ctrl+C] THOÁT")
     print("=" * 60)
-    print("Bắt đầu bấm phím WASD / Mũi tên để điều khiển ngay...\n")
+    print("Bắt đầu bấm phím để điều khiển xe ngay...\n")
 
     try:
         while True:
@@ -528,17 +526,25 @@ def run_wasd_controller(controller: MotorController):
                 continue
             key = char.lower()
 
-            if key == 'w':
+            if key in ('w', '8'):
                 controller.move_forward()
-            elif key == 's':
+            elif key in ('s', '2'):
                 controller.move_backward()
-            elif key == 'a':
+            elif key in ('a', '4'):
                 controller.turn_left()
-            elif key == 'd':
+            elif key in ('d', '6'):
                 controller.turn_right()
-            elif key in ['x', ' ', '\r', '\n']:
+            elif key in ('q', '7'):
+                controller.turn_forward_left()
+            elif key in ('e', '9'):
+                controller.turn_forward_right()
+            elif key in ('z', '1'):
+                controller.turn_backward_left()
+            elif key in ('c', '3'):
+                controller.turn_backward_right()
+            elif key in ['x', '5', ' ', '\r', '\n']:
                 controller.stop()
-            elif key == 'q' or ord(char) == 3:
+            elif key == 'p' or ord(char) == 3:
                 print("\nThoát chương trình...")
                 break
     except KeyboardInterrupt:

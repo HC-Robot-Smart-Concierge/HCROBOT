@@ -25,13 +25,13 @@ robot:
     baudrate: 115200
 
   safety:
-    # Ngưỡng ban đầu an toàn cho xe chạy full-speed (ENA/ENB đang gắn jumper).
-    front_stop_cm: 65
-    rear_stop_cm: 65
-    left_stop_cm: 25
-    right_stop_cm: 25
-    # Khi quay tại chỗ, cả đầu và đuôi xe đều quét theo vòng cung.
-    turn_clearance_cm: 25
+    # Ngưỡng khoảng cách phanh dừng trong nhà/phòng hẹp (cm)
+    front_stop_cm: 35
+    rear_stop_cm: 35
+    left_stop_cm: 20
+    right_stop_cm: 20
+    # Khi quay tại chỗ:
+    turn_clearance_cm: 20
 
     # Cho phép đúng 1 packet null nếu số đo hợp lệ gần nhất chưa quá 0.2 giây.
     allowed_null_packets: 1

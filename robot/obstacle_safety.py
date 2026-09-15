@@ -130,6 +130,8 @@ class ObstacleSafetyController:
         for sensor_name, stop_threshold in self._requirements(motion):
             distance = snapshot.distance(sensor_name)
             if distance is None:
+                if sensor_name in ("left", "right") and self._sensor_states[sensor_name].last_valid_distance is None:
+                    continue
                 return False
             if distance <= stop_threshold + self.resume_margin_cm:
                 return False
@@ -165,6 +167,8 @@ class ObstacleSafetyController:
 
         state = self._sensor_states[sensor_name]
         if state.last_valid_distance is None or state.last_valid_at is None:
+            if sensor_name in ("left", "right"):
+                return None, False, None
             return None, False, f"sensor {sensor_name} chưa có số đo hợp lệ"
 
         valid_age = now - state.last_valid_at
@@ -243,16 +247,19 @@ class ObstacleSafetyController:
                     sensor=sensor_name,
                     threshold_cm=threshold,
                 )
-            if distance <= threshold:
-                return SafetyDecision(
-                    False,
-                    f"vật cản {sensor_name}={distance:.1f}cm <= {threshold:.1f}cm",
-                    sensor=sensor_name,
-                    distance_cm=distance,
-                    threshold_cm=threshold,
-                )
-            suffix = " (giữ tạm)" if held else ""
-            readings.append(f"{sensor_name}={distance:.1f}cm{suffix}")
+            if distance is not None:
+                if distance <= threshold:
+                    return SafetyDecision(
+                        False,
+                        f"vật cản {sensor_name}={distance:.1f}cm <= {threshold:.1f}cm",
+                        sensor=sensor_name,
+                        distance_cm=distance,
+                        threshold_cm=threshold,
+                    )
+                suffix = " (giữ tạm)" if held else ""
+                readings.append(f"{sensor_name}={distance:.1f}cm{suffix}")
+            else:
+                readings.append(f"{sensor_name}=bỏ qua (chưa kết nối)")
 
         return SafetyDecision(True, ", ".join(readings))
 

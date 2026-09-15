@@ -33,14 +33,14 @@ robot:
     # Khi quay tại chỗ:
     turn_clearance_cm: 20
 
-    # Cho phép đúng 1 packet null nếu số đo hợp lệ gần nhất chưa quá 0.2 giây.
-    allowed_null_packets: 1
-    invalid_grace_seconds: 0.2
-    stale_timeout_seconds: 0.4
+    # Cho phép tối đa 4 packet null nếu số đo hợp lệ gần nhất chưa quá 0.6 giây.
+    allowed_null_packets: 4
+    invalid_grace_seconds: 0.6
+    stale_timeout_seconds: 0.8
 
-    # Sau khi bị chặn, phải có 3 packet sạch cao hơn ngưỡng dừng 10 cm.
-    resume_margin_cm: 10
-    resume_valid_packets: 3
+    # Sau khi bị chặn, chỉ cần 2 packet sạch cao hơn ngưỡng dừng 5 cm.
+    resume_margin_cm: 5
+    resume_valid_packets: 2
 
 topics:
   cmd_vel: "/cmd_vel"

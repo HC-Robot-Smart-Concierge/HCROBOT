@@ -130,7 +130,7 @@ class ObstacleSafetyController:
         for sensor_name, stop_threshold in self._requirements(motion):
             distance = snapshot.distance(sensor_name)
             if distance is None:
-                if sensor_name in ("left", "right") and self._sensor_states[sensor_name].last_valid_distance is None:
+                if sensor_name in ("left", "right"):
                     continue
                 return False
             if distance <= stop_threshold + self.resume_margin_cm:
@@ -165,10 +165,12 @@ class ObstacleSafetyController:
         if current is not None:
             return current, False, None
 
+        if sensor_name in ("left", "right"):
+            # Cảm biến sườn nếu không có số đo (không cắm hoặc out of range) thì không chặn xe
+            return None, False, None
+
         state = self._sensor_states[sensor_name]
         if state.last_valid_distance is None or state.last_valid_at is None:
-            if sensor_name in ("left", "right"):
-                return None, False, None
             return None, False, f"sensor {sensor_name} chưa có số đo hợp lệ"
 
         valid_age = now - state.last_valid_at

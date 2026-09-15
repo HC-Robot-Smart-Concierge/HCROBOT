@@ -211,6 +211,21 @@ class TestObstacleSafety(unittest.TestCase):
         )
         self.assertFalse(self.safety.command("right"))
 
+    def test_null_side_sensor_does_not_block_arc_or_turn(self):
+        # Ban đầu có đọc được 1 lần:
+        self.reader.snapshot = snapshot(sequence=1, front=100.0, rear=100.0, left=90.0, right=90.0)
+        self.safety.update()
+
+        # Sau đó left trở thành None (không cắm hoặc out of range):
+        self.reader.snapshot = snapshot(sequence=2, front=100.0, rear=100.0, left=None, right=90.0)
+        self.assertTrue(self.safety.command("forward_left"))
+        self.assertEqual(self.motor.motion, "forward_left")
+
+        # Có thể quay trái bình thường:
+        self.assertTrue(self.safety.command("left"))
+        self.assertEqual(self.motor.motion, "left")
+
 
 if __name__ == "__main__":
     unittest.main()
+

@@ -22,6 +22,7 @@ import {
   Square,
   Gamepad2,
   Navigation,
+  Gauge,
 } from 'lucide-react';
 
 const DEFAULT_STREAM_URL = 'http://100.73.245.66:8554/stream';
@@ -43,6 +44,8 @@ export const AdminCameraTab = ({ currentUser }) => {
   // Teleop Motion state
   const [activeMotion, setActiveMotion] = useState('stop');
   const [controlIp, setControlIp] = useState('100.73.245.66');
+  const [speed, setSpeed] = useState(75);
+  const speedRef = useRef(75);
 
   const imgRef = useRef(null);
   const containerRef = useRef(null);
@@ -50,6 +53,29 @@ export const AdminCameraTab = ({ currentUser }) => {
 
   const pressedKeysRef = useRef(new Set());
   const activeMotionRef = useRef('stop');
+
+  const handleSpeedChange = useCallback(
+    async (newSpeed) => {
+      const clamped = Math.max(20, Math.min(100, newSpeed));
+      setSpeed(clamped);
+      speedRef.current = clamped;
+      try {
+        await fetch('/api/v1/operations/robot/control', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            command: `speed:${clamped}`,
+            target_ip: controlIp,
+            port: 9999,
+            speed: clamped,
+          }),
+        });
+      } catch (err) {
+        console.warn('Speed set error:', err);
+      }
+    },
+    [controlIp]
+  );
 
   const computeMotionCommand = useCallback((keysSet) => {
     const isUp = keysSet.has('w') || keysSet.has('arrowup');
@@ -80,6 +106,7 @@ export const AdminCameraTab = ({ currentUser }) => {
             command: cmd,
             target_ip: controlIp,
             port: 9999,
+            speed: speedRef.current,
           }),
         });
       } catch (err) {
@@ -106,6 +133,26 @@ export const AdminCameraTab = ({ currentUser }) => {
       if (key === ' ' || key === 'x') {
         pressedKeysRef.current.clear();
         sendControlCommand('stop');
+        return;
+      }
+      if (key === '1') {
+        handleSpeedChange(50);
+        return;
+      }
+      if (key === '2') {
+        handleSpeedChange(75);
+        return;
+      }
+      if (key === '3') {
+        handleSpeedChange(100);
+        return;
+      }
+      if (key === '+' || key === '=') {
+        handleSpeedChange(speedRef.current + 10);
+        return;
+      }
+      if (key === '-' || key === '_') {
+        handleSpeedChange(speedRef.current - 10);
         return;
       }
       if (validKeys.has(key)) {
@@ -428,6 +475,34 @@ export const AdminCameraTab = ({ currentUser }) => {
             >
               {activeMotion.toUpperCase()}
             </span>
+          </div>
+
+          {/* Speed Presets Selector */}
+          <div className="flex items-center justify-between w-full bg-stone-900/90 px-2 py-1 rounded-xl border border-white/10 text-[10px]">
+            <div className="flex items-center gap-1 text-stone-400 font-medium">
+              <Gauge className="w-3 h-3 text-amber-400" />
+              <span>Tốc độ:</span>
+            </div>
+            <div className="flex items-center gap-1">
+              {[
+                { val: 50, label: '50%' },
+                { val: 75, label: '75%' },
+                { val: 100, label: '100%' },
+              ].map((lvl) => (
+                <button
+                  key={lvl.val}
+                  onClick={() => handleSpeedChange(lvl.val)}
+                  className={`px-1.5 py-0.5 rounded-lg font-mono text-[9px] font-bold transition-all cursor-pointer ${
+                    speed === lvl.val
+                      ? 'bg-amber-500 text-stone-950 shadow-sm shadow-amber-500/30'
+                      : 'text-stone-300 hover:text-white hover:bg-white/10'
+                  }`}
+                  title={`Cài đặt vận tốc ${lvl.label} (Phím tắt: ${lvl.val === 50 ? '1' : lvl.val === 75 ? '2' : '3'})`}
+                >
+                  {lvl.label}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Lưới 3x3: Tiến-Trái, Tiến, Tiến-Phải / Trái, Dừng, Phải / Lùi-Trái, Lùi, Lùi-Phải */}

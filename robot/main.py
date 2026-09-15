@@ -56,6 +56,16 @@ def start_udp_control_listener(safety, port=9999):
             try:
                 data, _ = sock.recvfrom(1024)
                 cmd = data.decode("utf-8", errors="ignore").strip().lower()
+                if cmd.startswith("speed:") or cmd.startswith("speed_"):
+                    val_str = cmd.replace("speed:", "").replace("speed_", "").strip()
+                    try:
+                        spd = int(val_str)
+                        if hasattr(safety, "set_speed"):
+                            safety.set_speed(spd)
+                    except ValueError:
+                        pass
+                    continue
+
                 if cmd in motion_map:
                     target_motion = motion_map[cmd]
                     if target_motion == "stop":
@@ -100,6 +110,15 @@ class DirectMotorSafetyWrapper:
     def stop(self):
         self.motor.stop()
         self.motion = "stop"
+
+    def set_speed(self, speed_percent: int) -> int:
+        if hasattr(self.motor, "set_speed"):
+            return self.motor.set_speed(speed_percent)
+        return 100
+
+    @property
+    def speed(self) -> int:
+        return getattr(self.motor, "speed", 100)
 
     def update(self):
         pass
@@ -210,6 +229,7 @@ def _print_controls(port, thresholds=None, stale_timeout=0.0, turn_clearance=0.0
     print(" [Q/7] tiến-trái    [W/8/↑] tiến      [E/9] tiến-phải")
     print(" [A/4/←] xoay-trái  [X/5/Space] dừng  [D/6/→] xoay-phải")
     print(" [Z/1] lùi-trái     [S/2/↓] lùi       [C/3] lùi-phải")
+    print(" [[] Chậm (50%)     [\\] Vừa (75%)     []] Nhanh (100%)  [+/-] Tăng/giảm 10%")
     print(" [P/Ctrl+C] thoát")
     if thresholds:
         print(f" Serial: {port} | stale timeout: {stale_timeout:.2f}s")
@@ -506,6 +526,21 @@ def main(argv=None):
                 safety.command(key_to_motion[key])
             elif key in ("x", "5", " ", "\r", "\n"):
                 safety.stop()
+            elif key in ("+", "="):
+                new_spd = safety.set_speed(safety.speed + 10)
+                logger.info("Vận tốc: %d%%", new_spd)
+            elif key in ("-", "_"):
+                new_spd = safety.set_speed(safety.speed - 10)
+                logger.info("Vận tốc: %d%%", new_spd)
+            elif key == "[":
+                new_spd = safety.set_speed(50)
+                logger.info("Vận tốc Cấp 1 (Chậm): %d%%", new_spd)
+            elif key == "\\":
+                new_spd = safety.set_speed(75)
+                logger.info("Vận tốc Cấp 2 (Vừa): %d%%", new_spd)
+            elif key == "]":
+                new_spd = safety.set_speed(100)
+                logger.info("Vận tốc Cấp 3 (Nhanh): %d%%", new_spd)
             elif key == "p" or char == "\x03":
                 logger.info("Nhận lệnh thoát")
                 break

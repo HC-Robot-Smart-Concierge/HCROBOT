@@ -319,3 +319,14 @@ class ObstacleSafetyController:
     def stop(self):
         self.motor.stop()
         self.motion = "stop"
+
+    def set_speed(self, speed_percent: int) -> int:
+        """Cài đặt mức vận tốc xuống motor."""
+        if hasattr(self.motor, "set_speed"):
+            return self.motor.set_speed(speed_percent)
+        return 100
+
+    @property
+    def speed(self) -> int:
+        return getattr(self.motor, "speed", 100)
+

@@ -77,17 +77,37 @@ class TestLGPIOBackend(unittest.TestCase):
                 [17, 22, 23, 27],
             )
 
-    def test_tries_next_chip_after_open_failure(self):
-        fake_lgpio = FakeLGPIO(failing_chips={4})
-        with patch.object(motor_controller, "lgpio", fake_lgpio, create=True):
-            handle, chip_num = motor_controller._open_lgpio_chip(
-                [17, 27, 22, 23], preferred_chip=4
+    def test_speed_control_activates_pwm(self):
+        fake_lgpio = FakeLGPIO()
+        with (
+            patch.object(motor_controller, "lgpio", fake_lgpio, create=True),
+            patch.object(motor_controller, "HAS_LGPIO", True),
+            patch.object(motor_controller, "HAS_GPIOZERO", False),
+        ):
+            controller = motor_controller.MotorController(
+                left_forward_pin=17,
+                left_backward_pin=27,
+                right_forward_pin=22,
+                right_backward_pin=23,
+                gpio_chip=0,
+                default_speed=50,
             )
+            self.assertEqual(controller.speed, 50)
+            controller.forward()
+            # Ở 50% PWM, hàm tx_pwm phải được gọi với duty=50
+            self.assertIn((100, 17, 100, 50), fake_lgpio.pwm_calls)
+            self.assertIn((100, 22, 100, 50), fake_lgpio.pwm_calls)
 
-        self.assertEqual(chip_num, 0)
-        self.assertEqual(handle, 100)
-        self.assertEqual(fake_lgpio.opened, [4, 0])
+            # Đổi sang 75%
+            controller.set_speed(75)
+            self.assertEqual(controller.speed, 75)
+            self.assertIn((100, 17, 100, 75), fake_lgpio.pwm_calls)
+            self.assertIn((100, 22, 100, 75), fake_lgpio.pwm_calls)
+
+            controller.stop()
+            controller.cleanup()
 
 
 if __name__ == "__main__":
     unittest.main()
+

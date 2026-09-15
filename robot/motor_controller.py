@@ -140,19 +140,39 @@ def _open_lgpio_chip(pins, preferred_chip: Optional[int] = None):
 
 
 class LGPIOOutputDevice:
-    """Một chân output dùng chung handle lgpio của MotorController."""
+    """Một chân output dùng chung handle lgpio của MotorController, hỗ trợ PWM."""
     def __init__(self, pin: int, handle: int):
         self.pin = pin
         self.handle = handle
         self.value = 0
+        self._pwm_active = False
 
-    def on(self):
+    def on(self, duty_cycle: int = 100):
         if self.handle is not None:
-            lgpio.gpio_write(self.handle, self.pin, 1)
-            self.value = 1
+            if duty_cycle >= 100:
+                if self._pwm_active:
+                    try:
+                        lgpio.tx_pwm(self.handle, self.pin, 100, 0)
+                    except Exception:
+                        pass
+                    self._pwm_active = False
+                lgpio.gpio_write(self.handle, self.pin, 1)
+                self.value = 1
+            elif duty_cycle <= 0:
+                self.off()
+            else:
+                lgpio.tx_pwm(self.handle, self.pin, 100, int(duty_cycle))
+                self._pwm_active = True
+                self.value = duty_cycle / 100.0
 
     def off(self):
         if self.handle is not None:
+            if self._pwm_active:
+                try:
+                    lgpio.tx_pwm(self.handle, self.pin, 100, 0)
+                except Exception:
+                    pass
+                self._pwm_active = False
             lgpio.gpio_write(self.handle, self.pin, 0)
             self.value = 0
 
@@ -167,7 +187,7 @@ class LGPIOOutputDevice:
 
     @property
     def is_active(self) -> bool:
-        return self.value == 1
+        return self.value > 0
 
 
 class MockDigitalOutputDevice:
@@ -176,8 +196,8 @@ class MockDigitalOutputDevice:
         self.pin = pin
         self.value = 0
 
-    def on(self):
-        self.value = 1
+    def on(self, duty_cycle: int = 100):
+        self.value = max(0, min(100, duty_cycle)) / 100.0
 
     def off(self):
         self.value = 0
@@ -187,7 +207,7 @@ class MockDigitalOutputDevice:
 
     @property
     def is_active(self) -> bool:
-        return self.value == 1
+        return self.value > 0
 
 
 class MotorController:
@@ -196,8 +216,7 @@ class MotorController:
     - Channel A / hai motor trái: IN1=GPIO17, IN2=GPIO27
     - Channel B / hai motor phải: IN3=GPIO22, IN4=GPIO23
 
-    ENA và ENB đang gắn jumper nên bốn chân trên chỉ điều khiển hướng,
-    không phát PWM.
+    Hỗ trợ điều khiển vận tốc cố định qua băm xung PWM trực tiếp trên các chân IN.
     """
 
     def __init__(
@@ -210,6 +229,7 @@ class MotorController:
         gpio_chip: Optional[int] = None,
         invert_left_direction: bool = False,
         invert_right_direction: bool = False,
+        default_speed: int = 100,
     ):
         self.left_forward_pin = left_forward_pin
         self.left_backward_pin = left_backward_pin
@@ -222,6 +242,7 @@ class MotorController:
         self._lgpio_handle = None
         self.is_mock = force_mock
         self.motion = "stop"
+        self.speed = max(20, min(100, int(default_speed)))
 
         self.left_forward_dev = None
         self.left_backward_dev = None
@@ -301,7 +322,15 @@ class MotorController:
         self.right_backward_dev = MockDigitalOutputDevice(self.right_backward_pin)
         logger.info(f"MotorController chạy ở chế độ MOCK (Giả lập). Lý do: {reason}")
 
-    def _set_outputs(self, left_forward, left_backward, right_forward, right_backward):
+    def _set_outputs(
+        self,
+        left_forward,
+        left_backward,
+        right_forward,
+        right_backward,
+        left_speed=None,
+        right_speed=None,
+    ):
         """Đổi hướng an toàn: hạ cả bốn IN trước khi bật trạng thái mới."""
         devices = (
             self.left_forward_dev,
@@ -313,20 +342,47 @@ class MotorController:
             device.off()
 
         states = [left_forward, left_backward, right_forward, right_backward]
+        l_spd = self.speed if left_speed is None else left_speed
+        r_spd = self.speed if right_speed is None else right_speed
+        speeds = [l_spd, l_spd, r_spd, r_spd]
+
         if self.invert_left_direction:
             states[0], states[1] = states[1], states[0]
+            speeds[0], speeds[1] = speeds[1], speeds[0]
         if self.invert_right_direction:
             states[2], states[3] = states[3], states[2]
+            speeds[2], speeds[3] = speeds[3], speeds[2]
 
-        for device, active in zip(devices, states):
+        for device, active, spd in zip(devices, states, speeds):
             if active:
-                device.on()
+                device.on(spd)
         return tuple(states)
+
+    def set_speed(self, speed_percent: int) -> int:
+        """Cài đặt vận tốc động cơ (20% đến 100%)."""
+        self.speed = max(20, min(100, int(speed_percent)))
+        logger.info("Đã đổi vận tốc Motor sang: %d%%", self.speed)
+        if self.motion != "stop":
+            action_map = {
+                "forward": self.forward,
+                "backward": self.backward,
+                "left": self.turn_left,
+                "right": self.turn_right,
+                "forward_left": self.turn_forward_left,
+                "forward_right": self.turn_forward_right,
+                "backward_left": self.turn_backward_left,
+                "backward_right": self.turn_backward_right,
+            }
+            fn = action_map.get(self.motion)
+            if fn:
+                fn()
+        return self.speed
 
     def _log_motion_outputs(self, label, states):
         logger.info(
-            "MOTOR %s: GPIO%d=%d GPIO%d=%d | GPIO%d=%d GPIO%d=%d",
+            "MOTOR %s (%d%%): GPIO%d=%d GPIO%d=%d | GPIO%d=%d GPIO%d=%d",
             label,
+            self.speed,
             self.left_forward_pin,
             states[0],
             self.left_backward_pin,

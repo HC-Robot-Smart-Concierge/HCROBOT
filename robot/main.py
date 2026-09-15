@@ -358,6 +358,7 @@ def main(argv=None):
         run_wasd_controller(motor)
         return 0
 
+    reader = None
     if args.no_safety:
         logger.warning(
             "⚠️ NO-SAFETY: Đã tắt khóa an toàn cảm biến siêu âm. Điều khiển Web và bàn phím sẽ tác động trực tiếp tới motor."
@@ -454,7 +455,7 @@ def main(argv=None):
         while True:
             safety.enforce()
 
-            snapshot = reader.latest()
+            snapshot = reader.latest() if reader else None
             now = time.monotonic()
             if (
                 snapshot
@@ -495,7 +496,8 @@ def main(argv=None):
         logger.info("Đã ngắt bằng Ctrl+C")
     finally:
         safety.stop()
-        reader.stop()
+        if reader:
+            reader.stop()
         motor.cleanup()
 
     return 0

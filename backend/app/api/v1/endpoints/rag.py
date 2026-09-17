@@ -15,7 +15,7 @@ from app.schemas.rag import (
     RAGSourceFilesResponse,
     RAGFileUploadResponse,
 )
-from app.db.chroma import get_concierge_collection
+from app.services.rag.chroma import get_concierge_collection
 from app.core.config import settings
 
 router = APIRouter()

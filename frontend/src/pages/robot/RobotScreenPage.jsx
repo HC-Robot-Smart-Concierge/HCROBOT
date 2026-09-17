@@ -7,7 +7,7 @@ import { MobileRobotScreen } from '../../components/robot/MobileRobotScreen';
 
 import { useSpeechRecognition } from '../../hooks/useSpeechRecognition';
 import { useSpeechSynthesis } from '../../hooks/useSpeechSynthesis';
-import { sendChatPrompt, extractIntent, resetSession } from '../../services/aiApi';
+import { sendChatPrompt, extractIntent, resetSession, flushSession } from '../../services/aiApi';
 
 import { RefreshCw, Volume2, Sparkles, LogOut } from 'lucide-react';
 
@@ -66,13 +66,13 @@ export const RobotScreenPage = ({ onLogout = () => {} }) => {
     if (currentState === 'RT-01' || currentState === 'RT-02') {
       setCurrentState('RT-02');
       const hour = new Date().getHours();
-      let greeting = "Dạ em chào quý khách! Em là trợ lý Robot Concierge của khách sạn Aurora. Quý khách cần em hỗ trợ gì ạ?";
+      let greeting = "Dạ em chào quý khách! Em là Rora, trợ lý Robot Concierge của khách sạn Aurora. Quý khách cần em hỗ trợ gì ạ?";
       if (hour >= 5 && hour < 11) {
-        greeting = "Dạ em chào buổi sáng quý khách! Chúc quý khách một ngày mới tràn đầy năng lượng tại khách sạn Aurora. Quý khách cần em hỗ trợ gì ạ?";
+        greeting = "Dạ em chào buổi sáng quý khách! Em là Rora. Chúc quý khách một ngày mới tràn đầy năng lượng tại khách sạn Aurora. Quý khách cần em hỗ trợ gì ạ?";
       } else if (hour >= 11 && hour < 18) {
-        greeting = "Dạ em chào quý khách! Chúc quý khách một buổi chiều thật vui vẻ tại khách sạn Aurora. Quý khách cần em hỗ trợ gì ạ?";
+        greeting = "Dạ em chào quý khách! Em là Rora. Chúc quý khách một buổi chiều thật vui vẻ tại khách sạn Aurora. Quý khách cần em hỗ trợ gì ạ?";
       } else {
-        greeting = "Dạ em chào buổi tối quý khách! Chúc quý khách một buổi tối thư thái tại khách sạn Aurora. Quý khách cần em hỗ trợ gì ạ?";
+        greeting = "Dạ em chào buổi tối quý khách! Em là Rora. Chúc quý khách một buổi tối thư thái tại khách sạn Aurora. Quý khách cần em hỗ trợ gì ạ?";
       }
 
       speak(
@@ -91,12 +91,17 @@ export const RobotScreenPage = ({ onLogout = () => {} }) => {
     }
   };
 
-  // Khi người dùng đi xa khỏi Camera -> Nhắm mắt ngủ & Reset về RT-01
-  const handleGuestLeft = () => {
+  // Khi người dùng đi xa khỏi Camera -> Đóng gói lưu DB, dọn dẹp âm thanh & chuyển sang ngủ nhẹ (RT-01)
+  const handleGuestLeft = async () => {
     if (!isProcessing) {
       stopSpeaking();
       stopListening();
       resetTranscript();
+      try {
+        await flushSession(sessionId);
+      } catch (err) {
+        console.warn('Auto-flush session on guest left:', err);
+      }
       setActiveRoomNumber(null);
       setAiResponseText('');
       setDetectedIntent(null);
@@ -138,6 +143,7 @@ export const RobotScreenPage = ({ onLogout = () => {} }) => {
 
     const lowerQuery = query.toLowerCase().strip ? query.toLowerCase().strip() : query.toLowerCase();
     const isFastPath = [
+      'rora', 'rora ơi', 'chào rora', 'hey rora', 'hello rora',
       'xin chào', 'chào em', 'chào robot', 'chào', 'hi', 'hello',
       'cảm ơn', 'cảm ơn em', 'thank you', 'thanks',
       'hồ bơi', 'wifi', 'mật khẩu wifi', 'giờ trả phòng'
@@ -306,6 +312,7 @@ export const RobotScreenPage = ({ onLogout = () => {} }) => {
 
       <MobileRobotScreen
         activeRoomNumber={activeRoomNumber}
+        guestEmotion={guestEmotion}
         aiResponseText={aiResponseText}
         currentState={currentState}
         hasSpeechSupport={hasSupport}

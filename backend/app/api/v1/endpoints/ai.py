@@ -26,7 +26,6 @@ from app.models import (
     HousekeepingRequest,
     BellRequest,
     MaintenanceRequest,
-    RestaurantPreOrder,
     ReceptionRequest,
 )
 from app.api.v1.endpoints.operations import create_department_notification
@@ -74,11 +73,12 @@ async def chat_with_robot(request: ChatRequest, db: AsyncSession = Depends(get_d
             session_manager.set_room_number(sid, updated_room)
             current_room = updated_room
 
-        # Thêm lượt nói vào bộ nhớ phiên & Lưu bền vững vào PostgreSQL Database (bảng chat_sessions & chat_messages)
-        session_manager.add_turn(sid, "user", request.prompt)
-        session_manager.add_turn(sid, "assistant", reply)
-        # Lưu hội thoại vào PostgreSQL NGẦM để không chặn thời gian phản hồi của Robot
-        asyncio.create_task(_background_save_chat(sid, request.prompt, reply, lang_code, current_room))
+        act = graph_result.get("action")
+        items = graph_result.get("items")
+
+        # Thêm lượt nói vào bộ nhớ RAM của phiên (In-Memory Buffer - Không lưu lẻ từng dòng vào DB)
+        session_manager.add_turn(sid, "user", request.prompt, language=lang_code)
+        session_manager.add_turn(sid, "assistant", reply, language=lang_code, intent_action=act)
 
         # Lấy audio_base64 trực tiếp từ Audio Cache (0.07ms) hoặc EdgeTTS (tối đa 12s để luôn giữ giọng Hoài My)
         try:
@@ -212,13 +212,23 @@ async def extract_service_intent(request: IntentRequest, db: AsyncSession = Depe
         )
 
 
-@router.post("/session/reset", summary="Reset bộ nhớ phiên (Dùng cho nút Khách Mới / Đổi Phòng)")
-async def reset_session_memory(request: SessionResetRequest):
+@router.post("/session/reset", summary="Reset bộ nhớ phiên & Đóng gói lưu CSDL một lần duy nhất")
+async def reset_session_memory(request: SessionResetRequest, db: AsyncSession = Depends(get_db)):
     """
-    Xóa sạch lịch sử hội thoại, số phòng và đơn hàng dở dang của session.
+    Đóng gói toàn bộ lịch sử hội thoại trong RAM lưu xuống PostgreSQL 1 lần duy nhất, sau đó xóa sạch bộ nhớ phiên.
     """
+    await session_manager.flush_session_to_db(db, request.session_id)
     session_manager.reset_session(request.session_id)
-    return {"success": True, "message": f"Session '{request.session_id}' reset successfully."}
+    return {"success": True, "message": f"Session '{request.session_id}' flushed to DB and reset successfully."}
+
+
+@router.post("/session/flush", summary="Đóng gói và lưu toàn bộ phiên hội thoại vào CSDL (End-of-Session Bulk Persistence)")
+async def flush_session_endpoint(request: SessionResetRequest, db: AsyncSession = Depends(get_db)):
+    """
+    Chủ động đóng gói toàn bộ hội thoại trong RAM của session và lưu xuống PostgreSQL một lần duy nhất.
+    """
+    saved = await session_manager.flush_session_to_db(db, request.session_id)
+    return {"success": True, "saved": saved, "session_id": request.session_id}
 
 
 @router.post("/tts", response_model=TTSResponse, summary="Chuyển văn bản thành âm thanh thoại MP3 (EdgeTTS / ElevenLabs / OpenAI TTS)")
@@ -377,7 +387,6 @@ async def _auto_create_ticket(db: AsyncSession, action: str, room_number: str, i
             req = HousekeepingRequest(
                 ticket_code=f"HK-{random.randint(1044, 9999)}",
                 source="HCRobot Concierge AI Chat",
-                priority="NORMAL",
                 time_label="Recently",
                 title=f"Yêu cầu Buồng phòng (Phòng {rm}): {items}",
                 room_number=rm,
@@ -411,8 +420,6 @@ async def _auto_create_ticket(db: AsyncSession, action: str, room_number: str, i
             req = BellRequest(
                 ticket_code=f"BS-{random.randint(1044, 9999)}",
                 title=f"Khách phòng {rm} hỗ trợ hành lý: {items}",
-                priority="NORMAL",
-                is_urgent=False,
                 location=f"Phòng {rm}",
                 guest_name=f"Guest (Room {rm})",
                 description=items,
@@ -446,7 +453,6 @@ async def _auto_create_ticket(db: AsyncSession, action: str, room_number: str, i
                 ticket_code=f"MN-{random.randint(1044, 9999)}",
                 title=f"Sự cố kỹ thuật Phòng {rm}: {items}",
                 category="general",
-                priority="NORMAL",
                 reported_time_label="Just Now",
                 location=f"Phòng {rm}",
                 description=items,

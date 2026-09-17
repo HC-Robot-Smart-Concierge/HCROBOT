@@ -24,7 +24,7 @@ class RoomServiceOrder(Base):
     progress: Mapped[int] = mapped_column(Integer, default=0) # 0 - 100%
     est_completion: Mapped[Optional[str]] = mapped_column(String(50), nullable=True) # e.g. '4 mins'
     
-    assigned_robot_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("robot_units.id"), nullable=True)
+    assigned_robot_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     assigned_staff_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

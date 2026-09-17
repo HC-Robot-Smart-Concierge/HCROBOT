@@ -2,7 +2,7 @@
 
 robot:
   id: "hc_pi5_01"
-  name: "HC Smart Concierge Robot"
+  name: "Rora Smart Concierge Robot"
   gpio:
     # Tự phát hiện gpiochip RP1. Chỉ bỏ comment khi cần ép chip cụ thể:
     # chip: 4

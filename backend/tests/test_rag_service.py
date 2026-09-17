@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import patch, MagicMock
-from app.db.chroma import get_concierge_collection
+from app.services.rag.chroma import get_concierge_collection
 
 
 def test_chroma_upsert_and_get():
@@ -12,7 +12,7 @@ def test_chroma_upsert_and_get():
         "metadatas": [{"category": "test"}]
     }
 
-    with patch("app.db.chroma.get_concierge_collection", return_value=mock_collection):
+    with patch("app.services.rag.chroma.get_concierge_collection", return_value=mock_collection):
         collection = get_concierge_collection("test")
         collection.upsert(ids=["test_001"], documents=["Nội dung test"], metadatas=[{"category": "test"}])
         

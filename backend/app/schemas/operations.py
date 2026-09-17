@@ -65,23 +65,7 @@ class StaffUpdate(BaseModel):
 
 
 
-class RobotUnitBase(BaseModel):
-    unit_code: str
-    name: str
-    model_type: str = "delivery"
-    status: str = "Available"
-    status_color: str = "emerald"
-    location: str = "Dock 1"
-    battery_level: int = 100
-    current_payload: Optional[str] = None
-    is_online: bool = True
 
-class RobotUnitResponse(RobotUnitBase):
-    id: str
-    created_at: datetime
-    updated_at: datetime
-
-    model_config = ConfigDict(from_attributes=True)
 
 
 # ---------------------------------------------------------
@@ -307,7 +291,7 @@ class InventoryStockResponse(BaseModel):
 class RoomServiceDashboardResponse(BaseModel):
     kpis: Dict[str, Any]
     orders: List[RoomServiceOrderResponse]
-    delivery_fleet: List[RobotUnitResponse]
+    delivery_fleet: List[Dict[str, Any]] = []
     low_stock_alerts: List[InventoryStockResponse]
 
 class HousekeepingDashboardResponse(BaseModel):

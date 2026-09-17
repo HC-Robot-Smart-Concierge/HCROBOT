@@ -47,17 +47,99 @@ class SessionMemoryManager:
 
         return self._sessions[session_id]
 
-    def add_turn(self, session_id: str, role: str, content: str):
-        """Thêm 1 lượt nói (user/assistant) vào lịch sử phiên."""
+    def add_turn(self, session_id: str, role: str, content: str, language: str = "vi-VN", intent_action: Optional[str] = None):
+        """Thêm 1 lượt nói (user/assistant) vào lịch sử phiên trong RAM."""
         session = self.get_session(session_id)
-        session["chat_history"].append({"role": role, "content": content})
+        session["chat_history"].append({
+            "role": role,
+            "content": content,
+            "language": language,
+            "intent_action": intent_action,
+        })
 
-        # Giữ tối đa 16 lượt nói gần nhất (8 cặp câu hỏi-đáp)
-        if len(session["chat_history"]) > 16:
-            session["chat_history"] = session["chat_history"][-16:]
+        # Giữ tối đa 20 lượt nói gần nhất (10 cặp câu hỏi-đáp)
+        if len(session["chat_history"]) > 20:
+            session["chat_history"] = session["chat_history"][-20:]
+
+    async def flush_session_to_db(self, db, session_id: str) -> bool:
+        """
+        Đóng gói toàn bộ hội thoại trong RAM của session và ghi xuống PostgreSQL một lần duy nhất (End-of-Session Bulk Persistence).
+        Tiết kiệm tài nguyên DB, không gây độ trễ trong lúc robot đang hội thoại trực tiếp.
+        """
+        session = self._sessions.get(session_id)
+        if not session:
+            logger.info(f"[SessionMemory DB Flush] No active RAM session for '{session_id}', skipping flush.")
+            return False
+
+        chat_history = session.get("chat_history", [])
+        if not chat_history:
+            logger.info(f"[SessionMemory DB Flush] Session '{session_id}' has empty chat history, skipping flush.")
+            return False
+
+        try:
+            from app.models.chat_session import ChatSession, ChatMessage
+            from sqlalchemy.future import select
+
+            result = await db.execute(select(ChatSession).where(ChatSession.id == session_id))
+            db_session = result.scalars().first()
+
+            room_num = session.get("room_number")
+            guest_name = session.get("guest_name")
+
+            if not db_session:
+                db_session = ChatSession(
+                    id=session_id,
+                    room_number=room_num,
+                    guest_name=guest_name,
+                    is_active=False,
+                )
+                db.add(db_session)
+                await db.flush()
+            else:
+                if room_num:
+                    db_session.room_number = room_num
+                if guest_name:
+                    db_session.guest_name = guest_name
+                db_session.is_active = False
+
+            # Lấy danh sách tin nhắn hiện có của session để tránh trùng lặp
+            existing_res = await db.execute(select(ChatMessage.text, ChatMessage.sender).where(ChatMessage.session_id == session_id))
+            existing_pairs = set(existing_res.all())
+
+            new_db_messages = []
+            for item in chat_history:
+                role = item.get("role", "user")
+                content = item.get("content", "")
+                lang = item.get("language", "vi-VN")
+                intent = item.get("intent_action")
+
+                if (content, role) not in existing_pairs:
+                    new_db_messages.append(
+                        ChatMessage(
+                            session_id=session_id,
+                            sender=role,
+                            text=content,
+                            language=lang,
+                            intent_action=intent,
+                        )
+                    )
+
+            if new_db_messages:
+                db.add_all(new_db_messages)
+                await db.commit()
+                logger.info(f"[SessionMemory DB Flush] Successfully bulk saved {len(new_db_messages)} messages for session '{session_id}' to PostgreSQL.")
+            else:
+                await db.commit()
+                logger.info(f"[SessionMemory DB Flush] All messages for session '{session_id}' were already synced.")
+
+            return True
+        except Exception as e:
+            logger.error(f"[SessionMemory DB Flush Error] Failed to persist session '{session_id}': {e}")
+            await db.rollback()
+            return False
 
     async def save_turn_to_db(self, db, session_id: str, role: str, content: str, language: str = "vi-VN", room_number: Optional[str] = None):
-        """Lưu 1 lượt hội thoại vào PostgreSQL Database (bảng chat_sessions & chat_messages)."""
+        """[Deprecated] Lưu lẻ 1 lượt hội thoại vào DB. Nên dùng flush_session_to_db khi kết thúc phiên."""
         try:
             from app.models.chat_session import ChatSession, ChatMessage
             from sqlalchemy.future import select

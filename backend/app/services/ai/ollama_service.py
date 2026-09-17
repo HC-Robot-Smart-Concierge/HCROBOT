@@ -111,11 +111,14 @@ class OllamaService:
         normalized = re.sub(r'\s+', ' ', normalized).strip()
 
         fast_path_cache = [
+            # 0. Wake-Up Word Kích hoạt Robot (Rora) - Chỉ kích hoạt khi khách chỉ gọi tên/đánh thức
+            (r"^(hey rora|chào rora|chao rora|rora ơi|rora oi|hello rora|hi rora|rora)[\?\.\!\s]*$", "Dạ, Rora nghe đây ạ! Em có thể hỗ trợ gì cho quý khách?"),
+
             # 1. Chào hỏi & Xã giao
             (r"^(xin chào|chào em|chào robot|chào bạn|chào|hi|hello|helo|alo)\b", time_greeting),
             (r"\b(cảm ơn|cảm ơn em|cảm ơn robot|thank you|thanks)\b", "Dạ không có gì ạ! Chúc quý khách một kỳ nghỉ thật tuyệt vời tại khách sạn Aurora. Quý khách cần em hỗ trợ gì nữa không ạ?"),
             (r"\b(tạm biệt|bye|goodbye|hẹn gặp lại)\b", "Dạ tạm biệt quý khách! Chúc quý khách một ngày tốt lành và hẹn sớm gặp lại ạ."),
-            (r"\b(bạn là ai|mày là ai|bạn tên gì|tên bạn là gì|giới thiệu về bạn|hiểu về bạn|tìm hiểu về bạn|biết gì về bạn)\b", "Dạ em là HCRobot, trợ lý lễ tân thông minh tại khách sạn Aurora Grand. Em có thể hỗ trợ quý khách chỉ đường, gọi món, đặt phòng và tra cứu tiện ích khách sạn ạ."),
+            (r"\b(bạn là ai|mày là ai|bạn tên gì|bạn tên là gì|tên bạn là gì|em tên là gì|em tên gì|tên em là gì|giới thiệu về bạn|giới thiệu về em|hiểu về bạn|who are you|what is your name)\b", "Dạ em là Rora, trợ lý Robot Concierge thông minh tại khách sạn Aurora Grand. Em có thể hỗ trợ quý khách chỉ đường, gọi món, đặt phòng, dọn phòng, xách hành lý và tra cứu mọi tiện ích khách sạn ạ."),
 
             # 2. Tiện ích nổi bật (Bể bơi, Gym, Spa, Bar)
             (r"\b(hồ bơi|bể bơi|swimming pool|vô cực|cực mở cửa|hồ bơi ở đâu|bể bơi ở đâu|bơi)\b", "Dạ hồ bơi vô cực nằm ở Tầng 4 của khách sạn, mở cửa từ 6 giờ sáng đến 10 giờ tối ạ. Quý khách có cần em gọi nước uống lên hồ bơi không ạ?"),
@@ -177,16 +180,16 @@ class OllamaService:
 
         if lang_code == "en-US":
             system_prompt = (
-                "You are HCRobot - an intelligent, polite, and friendly hotel concierge assistant at Aurora Grand Hotel. "
+                "You are Rora - an intelligent, polite, and friendly hotel concierge assistant at Aurora Grand Hotel. "
                 "STRICT REQUIREMENT: Answer in fluent English based on the hotel context provided. "
                 "Keep your response concise and direct in 1 to 2 short sentences (max 30 words) for voice playback. "
                 "Do not use emojis or markdown formatting."
             )
         else:
             system_prompt = (
-                "Bạn là HCRobot - Trợ lý Robot Concierge thông minh, tinh tế và lịch sự tại khách sạn Aurora Grand Hotel.\n"
+                "Bạn là Rora - Trợ lý Robot Concierge thông minh, tinh tế và lịch sự tại khách sạn Aurora Grand Hotel.\n"
                 "QUY TẮC PHẢN HỒI GIAO TIẾP:\n"
-                "1. Luôn xưng 'Dạ em' hoặc 'Em' và gọi người dùng là 'Quý khách' hoặc 'Anh/chị'.\n"
+                "1. Luôn xưng 'Dạ em' hoặc 'Rora' và gọi người dùng là 'Quý khách' hoặc 'Anh/chị'.\n"
                 "2. Trả lời trực diện, ấm áp, súc tích trong 1 đến 2 câu ngắn (tối đa 30 từ) để phát ngay ra loa thoại.\n"
                 "3. Tuyệt đối KHÔNG dùng biểu tượng cảm xúc (emoji), dấu gạch ngang markdown, hoặc chêm từ tiếng Anh."
             )
@@ -247,6 +250,9 @@ class OllamaService:
         """
         Bóc tách Ý định (Intent) & Thực thể (Entities) từ câu nói của khách hàng ra JSON chuẩn.
         """
+        # Làm sạch wake-up word 'Rora' nếu có ở đầu câu nói
+        user_speech = re.sub(r'^(?:hey rora|chào rora|chao rora|rora ơi|rora oi|hello rora|hi rora|rora)[\,\.\!\s]*', '', user_speech, flags=re.IGNORECASE).strip() or user_speech
+
         # Regex kiểm tra nhanh số phòng trực tiếp (Ví dụ: "phòng 502", "p.304", "502", "tôi ở 402")
         room_match = re.search(r'(?:phòng|p\.|p|phong)\s*([0-9]{3,4})|^(?:tôi ở|ở)\s*([0-9]{3,4})$', user_speech, re.IGNORECASE)
         extracted_room_regex = None

@@ -101,6 +101,23 @@ export const resetSession = async (sessionId = 'default_session') => {
   }
 };
 
+export const flushSession = async (sessionId = 'default_session') => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/session/flush`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        session_id: sessionId,
+      }),
+    });
+    return await response.json();
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+};
+
 export const synthesizeSpeech = async (text, provider = 'edge', voice = null, language = 'vi-VN') => {
   try {
     const response = await fetch(`${API_BASE_URL}/tts`, {

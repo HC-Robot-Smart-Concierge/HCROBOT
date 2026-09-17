@@ -3,6 +3,7 @@ import random
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, WebSocket, WebSocketDisconnect, Query
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, delete, func, desc
 
@@ -19,6 +20,8 @@ from app.models import (
     ReceptionRequest,
     HumanSupportSession,
     Notification,
+    ChatSession,
+    ChatMessage,
 )
 from app.services.notification_manager import notification_manager
 from app.schemas.operations import (
@@ -893,7 +896,6 @@ async def _fetch_all_raw_requests(db: AsyncSession) -> List[Dict[str, Any]]:
             "id": f"REQ-{d.code}",
             "raw_id": d.id,
             "department": d.department or "Directive",
-            "table_type": "directive",
             "title": d.title,
             "location": d.location,
             "guestName": "Operations Directive",
@@ -1897,4 +1899,266 @@ async def notification_websocket_endpoint(
     except Exception:
         notification_manager.disconnect(websocket, department=dept_val)
 
+class RobotMoveCommand(BaseModel):
+    command: str
+    target_ip: Optional[str] = "100.73.245.66"
+    port: Optional[int] = 9999
+    speed: Optional[int] = None
+
+
+@router.post("/robot/control", tags=[TAG_OPS], summary="Điều khiển di chuyển HCRobot (UDP Remote)")
+async def control_robot_movement(cmd: RobotMoveCommand):
+    """Gửi lệnh di chuyển qua UDP tới Raspberry Pi 5 tích hợp fail-safe siêu âm và PWM speed."""
+    import socket
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.settimeout(0.5)
+        target_host = cmd.target_ip or "100.73.245.66"
+        target_port = cmd.port or 9999
+
+        raw_cmd = cmd.command.lower().strip()
+
+        # Nếu truyền kèm tham số speed:
+        if cmd.speed is not None:
+            spd_val = max(20, min(100, int(cmd.speed)))
+            sock.sendto(f"speed:{spd_val}".encode("utf-8"), (target_host, target_port))
+
+        if raw_cmd.startswith("speed:") or raw_cmd.startswith("speed_"):
+            sock.sendto(raw_cmd.encode("utf-8"), (target_host, target_port))
+            sock.close()
+            return {"status": "ok", "speed_set": raw_cmd, "target": f"{target_host}:{target_port}"}
+
+        motion_map = {
+            "forward": "w", "w": "w", "up": "w", "arrowup": "w",
+            "backward": "s", "s": "s", "down": "s", "arrowdown": "s",
+            "left": "a", "a": "a", "arrowleft": "a",
+            "right": "d", "d": "d", "arrowright": "d",
+            "forward_left": "wa", "wa": "wa", "aw": "wa", "up_left": "wa",
+            "forward_right": "wd", "wd": "wd", "dw": "wd", "up_right": "wd",
+            "backward_left": "sa", "sa": "sa", "as": "sa", "down_left": "sa",
+            "backward_right": "sd", "sd": "sd", "ds": "sd", "down_right": "sd",
+            "stop": "stop", "x": "stop", "space": "stop", "": "stop"
+        }
+        cmd_str = motion_map.get(raw_cmd, "stop")
+        sock.sendto(cmd_str.encode('utf-8'), (target_host, target_port))
+        sock.close()
+        return {
+            "status": "ok",
+            "command_sent": cmd_str,
+            "speed": cmd.speed,
+            "target": f"{target_host}:{target_port}",
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Không thể gửi lệnh di chuyển tới Pi 5: {e}")
+
+
+# =====================================================================
+# STAFF DIRECTORY — CRUD (Admin Staff Tab)
+# GET    /staff              — Lấy danh sách nhân viên (có filter)
+# POST   /staff              — Thêm nhân viên mới
+# PATCH  /staff/{staff_id}  — Cập nhật thông tin nhân viên
+# DELETE /staff/{staff_id}  — Xóa nhân viên
+# =====================================================================
+
+TAG_STAFF = ["14. Nhân sự & Quản lý Đội ngũ (Staff Directory)"]
+
+
+@router.get("/staff", response_model=List[StaffResponse], tags=TAG_STAFF, summary="Lấy danh sách toàn bộ nhân viên")
+async def list_staff(
+    department: Optional[str] = None,
+    status: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """Trả về danh sách nhân viên, có thể filter theo department và status."""
+    query = select(Staff).where(Staff.is_active == True)
+    if department and department not in ("All", ""):
+        query = query.where(Staff.department == department)
+    if status and status not in ("All", ""):
+        query = query.where(Staff.status == status)
+    query = query.order_by(Staff.department, Staff.full_name)
+    result = await db.execute(query)
+    return result.scalars().all()
+
+
+@router.post("/staff", response_model=StaffResponse, status_code=status.HTTP_201_CREATED, tags=TAG_STAFF, summary="Thêm nhân viên mới")
+async def create_staff(
+    staff_in: StaffCreate,
+    db: AsyncSession = Depends(get_db),
+):
+    """Tạo mới một nhân viên trong hệ thống."""
+    import uuid
+
+    # Auto-generate code if not provided (initials from full_name)
+    code = staff_in.code
+    if not code:
+        parts = staff_in.full_name.strip().split()
+        code = "".join(p[0].upper() for p in parts[:3]) if parts else f"ST{uuid.uuid4().hex[:4].upper()}"
+
+    new_staff = Staff(
+        username=staff_in.username,
+        password_hash=hash_password(staff_in.password),
+        code=code,
+        full_name=staff_in.full_name,
+        role=staff_in.role,
+        department=staff_in.department,
+        email=staff_in.email,
+        phone=staff_in.phone,
+        shift=staff_in.shift,
+        location=staff_in.location,
+        status=staff_in.status,
+        avatar_url=staff_in.avatar_url,
+        is_fallback_agent=staff_in.is_fallback_agent,
+        assigned_floors=staff_in.assigned_floors,
+        notification_channels=staff_in.notification_channels,
+        is_active=True,
+    )
+    db.add(new_staff)
+    try:
+        await db.commit()
+        await db.refresh(new_staff)
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail=f"Không thể tạo nhân viên: {e}")
+    return new_staff
+
+
+@router.patch("/staff/{staff_id}", response_model=StaffResponse, tags=TAG_STAFF, summary="Cập nhật thông tin nhân viên")
+async def update_staff(
+    staff_id: str,
+    update_in: StaffUpdate,
+    db: AsyncSession = Depends(get_db),
+):
+    """Cập nhật thông tin nhân viên theo ID."""
+    result = await db.execute(select(Staff).where(Staff.id == staff_id))
+    staff = result.scalar_one_or_none()
+    if not staff:
+        raise HTTPException(status_code=404, detail=f"Không tìm thấy nhân viên ID: {staff_id}")
+
+    update_data = update_in.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(staff, field, value)
+    staff.updated_at = datetime.utcnow()
+
+    await db.commit()
+    await db.refresh(staff)
+    return staff
+
+
+@router.delete("/staff/{staff_id}", tags=TAG_STAFF, summary="Xóa nhân viên (soft delete)")
+async def delete_staff(
+    staff_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Soft-delete nhân viên (đánh dấu is_active=False)."""
+    result = await db.execute(select(Staff).where(Staff.id == staff_id))
+    staff = result.scalar_one_or_none()
+    if not staff:
+        raise HTTPException(status_code=404, detail=f"Không tìm thấy nhân viên ID: {staff_id}")
+
+    staff.is_active = False
+    staff.updated_at = datetime.utcnow()
+    await db.commit()
+    return {"success": True, "id": staff_id, "message": f"Đã xóa nhân viên {staff.full_name}"}
+
+
+@router.get("/analytics/summary", tags=TAG_ADMIN, summary="Admin: Thống kê phân tích số liệu thực tế từ Database")
+async def get_analytics_summary(db: AsyncSession = Depends(get_db)):
+    """Trả về số liệu phân tích vận hành thực tế 100% từ cơ sở dữ liệu."""
+    raw_list = await _fetch_all_raw_requests(db)
+    total_tasks = len(raw_list)
+    active_tasks = sum(1 for t in raw_list if t["status"].lower() not in ["completed", "cancelled", "rejected"])
+    completed_tasks = sum(1 for t in raw_list if t["status"].lower() == "completed")
+
+    # Robot vs Human allocation
+    robot_assigned_tasks = sum(1 for t in raw_list if t.get("assigned_robot"))
+    human_tasks = total_tasks - robot_assigned_tasks
+
+    # Department breakdown
+    dept_distribution = {
+        "Reception": 0,
+        "Housekeeping": 0,
+        "F&B": 0,
+        "Bell Services": 0,
+        "Maintenance": 0,
+    }
+    for t in raw_list:
+        d = t["department"].lower()
+        if "reception" in d:
+            dept_distribution["Reception"] += 1
+        elif "housekeeping" in d:
+            dept_distribution["Housekeeping"] += 1
+        elif "f&b" in d or "room service" in d:
+            dept_distribution["F&B"] += 1
+        elif "bell" in d:
+            dept_distribution["Bell Services"] += 1
+        elif "maintenance" in d:
+            dept_distribution["Maintenance"] += 1
+
+    # Sessions & Messages
+    try:
+        session_res = await db.execute(select(func.count(ChatSession.id)))
+        total_sessions = session_res.scalar() or 0
+    except Exception:
+        total_sessions = 0
+
+    try:
+        msg_res = await db.execute(select(func.count(ChatMessage.id)))
+        total_messages = msg_res.scalar() or 0
+    except Exception:
+        total_messages = 0
+
+    # Staff
+    try:
+        staff_res = await db.execute(select(func.count(Staff.id)).where(Staff.is_active == True))
+        total_staff = staff_res.scalar() or 0
+    except Exception:
+        total_staff = 0
+
+    try:
+        fallback_res = await db.execute(
+            select(func.count(Staff.id)).where(Staff.is_active == True, Staff.is_fallback_agent == True)
+        )
+        fallback_staff = fallback_res.scalar() or 0
+    except Exception:
+        fallback_staff = 0
+
+    # Robot units
+    try:
+        units_res = await db.execute(select(func.count(RobotUnit.id)))
+        total_robots = units_res.scalar() or 1
+    except Exception:
+        total_robots = 1
+
+    # Recent 5 activities from real tasks
+    recent_activities = []
+    for item in raw_list[:5]:
+        recent_activities.append({
+            "id": item["id"],
+            "title": item["title"],
+            "department": item["department"],
+            "location": item["location"],
+            "status": item["status"],
+            "assigned_to": item.get("assigned_robot") or item.get("assignedTo") or "Chưa gán",
+            "time": item.get("time") or "Gần đây",
+        })
+
+    completion_rate = round((completed_tasks / total_tasks * 100), 1) if total_tasks > 0 else 100.0
+    robot_rate = round((robot_assigned_tasks / total_tasks * 100), 1) if total_tasks > 0 else 0.0
+
+    return {
+        "total_tasks": total_tasks,
+        "active_tasks": active_tasks,
+        "completed_tasks": completed_tasks,
+        "completion_rate": completion_rate,
+        "robot_assigned_tasks": robot_assigned_tasks,
+        "human_tasks": human_tasks,
+        "robot_rate": robot_rate,
+        "total_sessions": total_sessions,
+        "total_messages": total_messages,
+        "total_staff": total_staff,
+        "fallback_staff": fallback_staff,
+        "total_robots": total_robots,
+        "dept_distribution": dept_distribution,
+        "recent_activities": recent_activities,
+    }
 

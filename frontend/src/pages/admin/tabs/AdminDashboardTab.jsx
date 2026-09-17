@@ -1,17 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import {
-  Bot,
-  Bell,
-  AlertTriangle,
-  Database,
-  TrendingUp,
-  RefreshCw,
-  Plus,
-  Battery,
-  Wifi,
-  ArrowUpRight,
-  CheckCircle2,
-} from 'lucide-react';
 import { fetchAdminSummary, fetchAdminTasks } from '../../../services/operationsApi';
 
 export const AdminDashboardTab = ({ onNavigateToOperations = () => {}, onNavigateToRobots = () => {} }) => {
@@ -36,9 +23,9 @@ export const AdminDashboardTab = ({ onNavigateToOperations = () => {}, onNavigat
         fetchAdminTasks({ limit: 5 }),
       ]);
       if (sum) setSummary(sum);
-      if (Array.isArray(tasks)) setRecentTasks(tasks.slice(0, 4));
-    } catch (e) {
-      console.warn('Dashboard load error:', e);
+      if (Array.isArray(tasks)) setRecentTasks(tasks.slice(0, 3));
+    } catch {
+      // Fallback to initial mock data
     } finally {
       setIsLoading(false);
     }
@@ -49,325 +36,293 @@ export const AdminDashboardTab = ({ onNavigateToOperations = () => {}, onNavigat
   }, []);
 
   return (
-    <div className="w-full min-h-full p-4 md:p-6 space-y-6 pb-16 bg-[#FCFAF7] font-sans">
+    <div className="w-full flex flex-col p-4 space-y-3 pb-2" style={{ color: '#262626' }}>
       {/* Title & Action Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#E5E1D8] pb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b pb-2.5" style={{ borderColor: '#BFBFBD' }}>
         <div>
-          <h2 className="text-xl font-bold text-[#1A1917] tracking-tight">System Overview</h2>
-          <p className="text-xs text-[#78716C] font-medium mt-0.5">
-            Dữ liệu vận hành thời gian thực từ các bộ phận & Robot Concierge.
+          <h2 className="text-base font-bold tracking-tight" style={{ color: '#262626' }}>
+            Tổng Quan Vận Hành Robot (System Overview)
+          </h2>
+          <p className="text-[11px] font-normal" style={{ color: '#8C8C8C' }}>
+            Dữ liệu vận hành thời gian thực từ các bộ phận và Robot Concierge
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            onClick={loadDashboardData}
-            className="px-3.5 py-2 rounded-xl bg-white hover:bg-[#EFECE6] border border-[#DDD8CE] text-xs font-bold text-stone-800 shadow-sm flex items-center gap-1.5 transition-all cursor-pointer"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-            <span>Làm Mới Dữ Liệu</span>
-          </button>
-        </div>
+        <button
+          onClick={loadDashboardData}
+          disabled={isLoading}
+          className="px-3 py-1.5 rounded-lg border text-xs font-semibold cursor-pointer transition-colors self-start sm:self-auto"
+          style={{
+            backgroundColor: '#FFFFFF',
+            borderColor: '#BFBFBD',
+            color: '#262626',
+          }}
+        >
+          {isLoading ? 'Đang tải...' : 'Làm mới dữ liệu'}
+        </button>
       </div>
 
-      {/* 4 Top Metric Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* 4 Top Metric Cards (Compact Single Row) */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
         {/* Card 1: Online Robots */}
-        <div className="bg-white p-5 rounded-2xl border border-[#E5E1D8] shadow-sm space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-stone-500 uppercase tracking-wider">
-              ONLINE ROBOTS
-            </span>
-            <div className="w-7 h-7 rounded-lg bg-[#EFECE6] text-stone-900 flex items-center justify-center font-bold">
-              <Bot className="w-4 h-4 text-stone-800" />
-            </div>
+        <div
+          className="p-3 rounded-xl border flex flex-col justify-between"
+          style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD' }}
+        >
+          <div className="flex items-center justify-between text-[11px] font-semibold" style={{ color: '#8C8C8C' }}>
+            <span>ROBOT TRỰC TUYẾN</span>
+            <span className="w-2 h-2 rounded-full bg-emerald-600" />
           </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-3xl font-black text-[#1A1917]">1</span>
-            <span className="text-xs font-bold text-stone-500">/ 1 Unit</span>
+          <div className="flex items-baseline gap-1.5 my-1">
+            <span className="text-2xl font-bold" style={{ color: '#262626' }}>1</span>
+            <span className="text-xs" style={{ color: '#8C8C8C' }}>/ 1 Unit</span>
           </div>
-          <div className="flex items-center gap-1.5 text-[11px] font-bold text-emerald-800 pt-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse" />
-            <span>~100% SLA (Trực sảnh chính)</span>
+          <div className="text-[10px] font-medium" style={{ color: '#8C8C8C' }}>
+            Trực sảnh chính (SLA 100%)
           </div>
         </div>
 
         {/* Card 2: Active Requests */}
-        <div className="bg-white p-5 rounded-2xl border border-[#E5E1D8] shadow-sm space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-stone-500 uppercase tracking-wider">
-              ACTIVE REQUESTS
-            </span>
-            <div className="w-7 h-7 rounded-lg bg-[#EFECE6] text-stone-900 flex items-center justify-center font-bold">
-              <Bell className="w-4 h-4 text-stone-800" />
-            </div>
+        <div
+          className="p-3 rounded-xl border flex flex-col justify-between"
+          style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD' }}
+        >
+          <div className="text-[11px] font-semibold" style={{ color: '#8C8C8C' }}>
+            YÊU CẦU ĐANG XỬ LÝ
           </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-3xl font-black text-[#1A1917]">{summary.total_active || 12}</span>
-            <span className="text-xs font-bold text-stone-500">trên 5 bộ phận</span>
+          <div className="flex items-baseline gap-1.5 my-1">
+            <span className="text-2xl font-bold" style={{ color: '#262626' }}>{summary.total_active || 12}</span>
+            <span className="text-xs" style={{ color: '#8C8C8C' }}>phiếu hoạt động</span>
           </div>
-          <div className="flex items-center gap-1 text-[11px] font-bold text-stone-700 pt-1">
-            <TrendingUp className="w-3.5 h-3.5 text-stone-700" />
-            <span>+3 yêu cầu mới từ Robot STT</span>
+          <div className="text-[10px] font-medium" style={{ color: '#8C8C8C' }}>
+            Phân bổ trên 5 phòng ban
           </div>
         </div>
 
-        {/* Card 3: Escalations */}
-        <div className="bg-white p-5 rounded-2xl border border-[#E5E1D8] shadow-sm space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-stone-600 uppercase tracking-wider">
-              CẦN XỬ LÝ
-            </span>
-            <div className="w-7 h-7 rounded-lg bg-[#F5F2EB] text-stone-800 flex items-center justify-center border border-[#DDD8CE]">
-              <AlertTriangle className="w-4 h-4 text-stone-700" />
-            </div>
+        {/* Card 3: Attention Needed */}
+        <div
+          className="p-3 rounded-xl border flex flex-col justify-between"
+          style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD' }}
+        >
+          <div className="text-[11px] font-semibold" style={{ color: '#8C8C8C' }}>
+            CẦN CHÚ Ý
           </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-3xl font-black text-stone-900">3</span>
-            <span className="text-xs font-bold text-stone-500">cần chú ý</span>
+          <div className="flex items-baseline gap-1.5 my-1">
+            <span className="text-2xl font-bold" style={{ color: '#262626' }}>3</span>
+            <span className="text-xs" style={{ color: '#8C8C8C' }}>cảnh báo</span>
           </div>
-          <div className="text-[11px] font-bold text-stone-600 pt-1">
-            <span>Vật cản đường & Mức pin thấp</span>
+          <div className="text-[10px] font-medium" style={{ color: '#8C8C8C' }}>
+            Vật cản đường & Mức pin thấp
           </div>
         </div>
 
         {/* Card 4: Knowledge Health */}
-        <div className="bg-white p-5 rounded-2xl border border-[#E5E1D8] shadow-sm space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-stone-500 uppercase tracking-wider">
-              KNOWLEDGE HEALTH
-            </span>
-            <div className="w-7 h-7 rounded-lg bg-[#EFECE6] text-stone-900 flex items-center justify-center">
-              <Database className="w-4 h-4 text-stone-800" />
-            </div>
+        <div
+          className="p-3 rounded-xl border flex flex-col justify-between"
+          style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD' }}
+        >
+          <div className="text-[11px] font-semibold" style={{ color: '#8C8C8C' }}>
+            KNOWLEDGE RAG HEALTH
           </div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-3xl font-black text-[#1A1917]">98.2<span className="text-lg">%</span></span>
+          <div className="flex items-baseline gap-1.5 my-1">
+            <span className="text-2xl font-bold" style={{ color: '#262626' }}>98.2%</span>
           </div>
-          <div className="text-[11px] font-bold text-stone-500 pt-1">
-            <span>Đồng bộ gần nhất: 2m ago (RAG DB)</span>
+          <div className="text-[10px] font-medium" style={{ color: '#8C8C8C' }}>
+            Đồng bộ ChromaDB & Vault
           </div>
         </div>
       </div>
 
-      {/* Row 2: Live Alerts (Left) & Active Robot Status (Right) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Live Alerts (5 cols) */}
-        <div className="lg:col-span-5 bg-white p-5 md:p-6 rounded-3xl border border-[#E5E1D8] shadow-sm space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <h3 className="text-base font-bold text-[#1A1917]">Cảnh Báo Hoạt Động</h3>
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#18181B] text-white">
-                3 Đang hoạt động
-              </span>
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            {/* Alert 1 */}
-            <div className="p-3.5 rounded-2xl bg-[#FAF8F5] border border-[#E5E1D8] space-y-1">
-              <div className="flex items-center gap-1.5 text-xs font-bold text-stone-900">
-                <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-stone-700" />
-                <span>Phát hiện vật cản: Hành lang 4A</span>
-              </div>
-              <p className="text-[11px] text-stone-600 pl-5">
-                Robot RC-001 cần hỗ trợ can thiệp thủ công.
-              </p>
-              <div className="text-[10px] font-semibold text-stone-400 pl-5 pt-0.5">
-                2 phút trước
-              </div>
-            </div>
-
-            {/* Alert 2 */}
-            <div className="p-3.5 rounded-2xl bg-[#FAF8F5] border border-[#E5E1D8] space-y-1">
-              <div className="flex items-center gap-1.5 text-xs font-bold text-stone-900">
-                <Battery className="w-3.5 h-3.5 shrink-0 text-stone-700" />
-                <span>Pin Thấp: Cần về trạm sạc</span>
-              </div>
-              <p className="text-[11px] text-stone-600 pl-5">
-                Mức pin Robot 15%, trạm sạc khả dụng trong 2 mét.
-              </p>
-              <div className="text-[10px] font-semibold text-stone-400 pl-5 pt-0.5">
-                12 phút trước
-              </div>
-            </div>
-
-            {/* Alert 3 */}
-            <div className="p-3.5 rounded-2xl bg-[#FAF8F5] border border-[#E5E1D8] space-y-1">
-              <div className="flex items-center gap-1.5 text-xs font-bold text-stone-900">
-                <Wifi className="w-3.5 h-3.5 shrink-0 text-stone-700" />
-                <span>Kết Nối Mạng Ổn Định</span>
-              </div>
-              <p className="text-[11px] text-stone-600 pl-5">
-                Tailscale P2P tunnel kết nối tốt, độ trễ 12ms.
-              </p>
-              <div className="text-[10px] font-semibold text-stone-400 pl-5 pt-0.5">
-                1 giờ trước
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Active Robot Concierge Status (7 cols) */}
-        <div className="lg:col-span-7 bg-white p-5 md:p-6 rounded-3xl border border-[#E5E1D8] shadow-sm flex flex-col justify-between space-y-5">
-          <div className="flex items-center justify-between border-b border-[#F0ECE6] pb-3">
-            <div>
-              <h3 className="text-base font-bold text-[#1A1917]">Trạng Thái Robot Concierge</h3>
-              <p className="text-xs text-stone-500 font-medium">Phần cứng & Bản đồ điều hướng LiDAR</p>
-            </div>
-            <button
-              onClick={onNavigateToRobots}
-              className="text-xs font-bold text-stone-900 hover:underline flex items-center gap-1 cursor-pointer"
-            >
-              <span>Xem Bản Đồ SLAM</span>
-              <ArrowUpRight className="w-3.5 h-3.5" />
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* Unit Info Box (Soft Gray Theme) */}
-            <div className="p-4 rounded-2xl bg-[#FAF8F5] border border-[#E5E1D8] text-[#1A1917] space-y-3 shadow-sm">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-stone-500 uppercase tracking-wider">UNIT RC-001</span>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                  ONLINE
-                </span>
-              </div>
-              <div className="text-base font-black tracking-tight text-[#1A1917]">
-                Concierge Bot Alpha
-              </div>
-              <div className="space-y-1 text-xs text-stone-600">
-                <div className="flex justify-between">
-                  <span className="text-stone-500">Vị trí:</span>
-                  <span className="font-semibold text-stone-900">Quầy Lễ Tân (Lobby)</span>
+      {/* Main Grid: Left (Robot & Requests) | Right (Alerts & Satisfaction) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-2.5">
+        {/* Left Column (7 cols) */}
+        <div className="lg:col-span-7 space-y-2.5">
+          {/* Active Robot Concierge Box */}
+          <div
+            className="p-3.5 rounded-xl border flex flex-col justify-between space-y-2.5"
+            style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD' }}
+          >
+            <div className="flex items-center justify-between border-b pb-2" style={{ borderColor: '#E9E5DC' }}>
+              <div>
+                <div className="text-xs font-bold" style={{ color: '#262626' }}>
+                  Robot Concierge Unit RC-001 (Bot Alpha)
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-stone-500">Tọa độ:</span>
-                  <span className="font-mono text-[11px] text-stone-700">x: 0.00, y: 0.00</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-stone-500">LiDAR COM9:</span>
-                  <span className="font-semibold text-emerald-800">Đã kết nối (Hoạt động)</span>
+                <div className="text-[11px]" style={{ color: '#8C8C8C' }}>
+                  Vị trí: Quầy Lễ Tân (Lobby) • LiDAR Pi5: Đã kết nối
                 </div>
               </div>
+              <button
+                onClick={onNavigateToRobots}
+                className="text-xs font-semibold px-2.5 py-1 rounded border cursor-pointer hover:opacity-80"
+                style={{
+                  backgroundColor: '#E9E5DC',
+                  borderColor: '#BFBFBD',
+                  color: '#262626',
+                }}
+              >
+                Xem SLAM Map →
+              </button>
             </div>
 
-            {/* Status Breakdown */}
-            <div className="flex flex-col justify-between space-y-2">
-              <div className="p-3 rounded-xl bg-[#FAF8F5] border border-[#E5E1D8] flex items-center justify-between">
-                <span className="text-xs font-bold text-stone-700">Chế Độ Hoạt Động</span>
-                <span className="text-xs font-bold text-stone-900">Trực Sảnh & Chào Khách</span>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+              <div className="p-2 rounded border" style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD' }}>
+                <div className="text-[10px]" style={{ color: '#8C8C8C' }}>Chế độ</div>
+                <div className="font-semibold text-[11px]" style={{ color: '#262626' }}>Trực sảnh chính</div>
               </div>
-
-              <div className="p-3 rounded-xl bg-[#FAF8F5] border border-[#E5E1D8] flex items-center justify-between">
-                <span className="text-xs font-bold text-stone-700">Mức Pin</span>
-                <span className="text-xs font-bold text-emerald-800">92% (Tự động về trạm 15%)</span>
+              <div className="p-2 rounded border" style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD' }}>
+                <div className="text-[10px]" style={{ color: '#8C8C8C' }}>Mức pin</div>
+                <div className="font-semibold text-[11px]" style={{ color: '#262626' }}>92% (Tự về dock: 15%)</div>
               </div>
-
-              <div className="flex gap-2 pt-1">
+              <div className="col-span-2 sm:col-span-1 flex gap-1.5 items-center">
                 <button
-                  onClick={() => alert('Đã gửi lệnh dừng khẩn cấp tới Robot Concierge!')}
-                  className="flex-1 py-2 rounded-xl bg-[#18181B] hover:bg-black text-white text-xs font-bold transition-all shadow-sm cursor-pointer text-center"
+                  onClick={() => alert('Đã gửi lệnh dừng khẩn cấp!')}
+                  className="flex-1 py-2 rounded text-[11px] font-semibold border cursor-pointer"
+                  style={{
+                    backgroundColor: '#262626',
+                    borderColor: '#262626',
+                    color: '#F2EFE9',
+                  }}
                 >
-                  Dừng Khẩn Cấp
+                  Dừng khẩn cấp
                 </button>
                 <button
                   onClick={() => alert('Robot đang di chuyển về Dock sạc!')}
-                  className="flex-1 py-2 rounded-xl bg-[#FAF8F5] hover:bg-[#EFECE6] border border-[#DDD8CE] text-stone-900 text-xs font-bold transition-all cursor-pointer text-center"
+                  className="flex-1 py-2 rounded text-[11px] font-medium border cursor-pointer"
+                  style={{
+                    backgroundColor: '#FFFFFF',
+                    borderColor: '#BFBFBD',
+                    color: '#262626',
+                  }}
                 >
-                  Về Trạm Sạc
+                  Về sạc
                 </button>
               </div>
             </div>
           </div>
-        </div>
-      </div>
 
-      {/* Row 3: Recent Service Requests (Left) & Guest Satisfaction (Right) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Recent Service Requests Table (8 cols) */}
-        <div className="lg:col-span-8 bg-white p-5 md:p-6 rounded-3xl border border-[#E5E1D8] shadow-sm space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-base font-bold text-[#1A1917]">Yêu Cầu Phục Vụ Gần Đây</h3>
-            <button
-              onClick={onNavigateToOperations}
-              className="text-xs font-bold text-stone-900 hover:underline cursor-pointer"
-            >
-              Xem tất cả ({summary.all_count}) →
-            </button>
-          </div>
+          {/* Recent Requests Table */}
+          <div
+            className="p-3.5 rounded-xl border"
+            style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD' }}
+          >
+            <div className="flex items-center justify-between pb-2 border-b" style={{ borderColor: '#E9E5DC' }}>
+              <span className="text-xs font-bold" style={{ color: '#262626' }}>
+                Yêu cầu phục vụ gần đây
+              </span>
+              <button
+                onClick={onNavigateToOperations}
+                className="text-[11px] font-semibold hover:underline cursor-pointer"
+                style={{ color: '#262626' }}
+              >
+                Xem tất cả ({summary.all_count}) →
+              </button>
+            </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs border-collapse">
-              <thead>
-                <tr className="border-b border-[#E8E5E0] text-stone-500 font-bold uppercase text-[10px]">
-                  <th className="pb-2.5">Mã Phiếu</th>
-                  <th className="pb-2.5">Nội Dung</th>
-                  <th className="pb-2.5">Vị Trí</th>
-                  <th className="pb-2.5">Gán Cho</th>
-                  <th className="pb-2.5 text-right">Trạng Thái</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#F0ECE6] font-medium text-stone-800">
-                {(recentTasks.length > 0 ? recentTasks : [
-                  { id: 'REQ-992', title: 'Mang Khăn Tắm', location: 'Phòng 412', assigned_robot: 'RC-001', status: 'Đang Xử Lý' },
-                  { id: 'REQ-991', title: 'Giao Thức Ăn F&B', location: 'Phòng 1004', assigned_robot: 'RC-001', status: 'Đang Xử Lý' },
-                  { id: 'REQ-990', title: 'Hỗ Trợ Hành Lý', location: 'Sảnh Chính', assigned_robot: 'Bot Alpha', status: 'Chờ Tiếp Nhận' },
-                ]).map((r) => (
-                  <tr key={r.id} className="hover:bg-[#FAF8F5] transition-colors">
-                    <td className="py-3 font-mono font-bold text-stone-900">{r.id}</td>
-                    <td className="py-3 font-bold text-stone-900">{r.title}</td>
-                    <td className="py-3 text-stone-600">{r.location}</td>
-                    <td className="py-3 font-semibold text-stone-800">
-                      {r.assigned_robot || r.assigned_to || 'Chờ phân công'}
-                    </td>
-                    <td className="py-3 text-right">
-                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-[#EFECE6] text-stone-900 border border-[#DDD8CE]">
-                        {r.status}
-                      </span>
-                    </td>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="text-[10px] font-semibold uppercase" style={{ color: '#8C8C8C' }}>
+                    <th className="py-2">Mã</th>
+                    <th className="py-2">Nội dung</th>
+                    <th className="py-2">Vị trí</th>
+                    <th className="py-2 text-right">Trạng thái</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y text-[11px]" style={{ borderColor: '#E9E5DC' }}>
+                  {(recentTasks.length > 0 ? recentTasks : [
+                    { id: 'REQ-992', title: 'Mang khăn tắm', location: 'Phòng 412', status: 'Đang xử lý' },
+                    { id: 'REQ-991', title: 'Giao món F&B', location: 'Phòng 1004', status: 'Đang xử lý' },
+                    { id: 'REQ-990', title: 'Hỗ trợ hành lý', location: 'Sảnh chính', status: 'Chờ tiếp nhận' },
+                  ]).slice(0, 3).map((r) => (
+                    <tr key={r.id} className="hover:bg-[#F2EFE9]/40 transition-colors">
+                      <td className="py-1.5 font-mono font-semibold" style={{ color: '#262626' }}>{r.id}</td>
+                      <td className="py-1.5 font-medium" style={{ color: '#262626' }}>{r.title}</td>
+                      <td className="py-1.5" style={{ color: '#8C8C8C' }}>{r.location}</td>
+                      <td className="py-1.5 text-right">
+                        <span
+                          className="px-2 py-0.5 rounded text-[10px] font-medium border"
+                          style={{
+                            backgroundColor: '#E9E5DC',
+                            borderColor: '#BFBFBD',
+                            color: '#262626',
+                          }}
+                        >
+                          {r.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
 
-        {/* Guest Satisfaction Widget (4 cols) */}
-        <div className="lg:col-span-4 bg-white p-5 md:p-6 rounded-3xl border border-[#E5E1D8] shadow-sm flex flex-col justify-between space-y-4">
-          <div>
-            <h3 className="text-base font-bold text-[#1A1917]">Đánh Giá Từ Khách Hàng</h3>
-            <p className="text-xs text-stone-500 font-medium">Báo cáo đánh giá trải nghiệm Robot hàng tuần</p>
-          </div>
+        {/* Right Column (5 cols) */}
+        <div className="lg:col-span-5 space-y-2.5">
+          {/* Live Alerts */}
+          <div
+            className="p-3.5 rounded-xl border space-y-2"
+            style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD' }}
+          >
+            <div className="flex items-center justify-between border-b pb-2" style={{ borderColor: '#E9E5DC' }}>
+              <span className="text-xs font-bold" style={{ color: '#262626' }}>
+                Cảnh báo hoạt động
+              </span>
+              <span
+                className="px-2 py-0.5 rounded text-[10px] font-semibold border"
+                style={{
+                  backgroundColor: '#262626',
+                  color: '#F2EFE9',
+                  borderColor: '#262626',
+                }}
+              >
+                3 cảnh báo
+              </span>
+            </div>
 
-          {/* Bar Chart Mockup */}
-          <div className="flex items-end justify-between h-28 px-2 pt-4">
-            {[
-              { day: 'T2', h: '40%' },
-              { day: 'T3', h: '60%' },
-              { day: 'T4', h: '55%' },
-              { day: 'T5', h: '75%' },
-              { day: 'T6', h: '95%' },
-              { day: 'T7', h: '90%' },
-              { day: 'CN', h: '100%', highlight: true },
-            ].map((bar, i) => (
-              <div key={i} className="flex flex-col items-center gap-1.5 h-full justify-end">
-                <div
-                  style={{ height: bar.h }}
-                  className={`w-6 rounded-t-lg transition-all ${
-                    bar.highlight ? 'bg-[#18181B]' : 'bg-[#E5E1D8]'
-                  }`}
-                />
-                <span className="text-[10px] font-bold text-stone-500">{bar.day}</span>
+            <div className="space-y-1.5 text-xs">
+              <div className="p-2 rounded border" style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD' }}>
+                <div className="font-semibold text-[11px]" style={{ color: '#262626' }}>
+                  Vật cản: Hành lang 4A
+                </div>
+                <div className="text-[10px]" style={{ color: '#8C8C8C' }}>
+                  Robot RC-001 cần hỗ trợ can thiệp • 2 phút trước
+                </div>
               </div>
-            ))}
+
+              <div className="p-2 rounded border" style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD' }}>
+                <div className="font-semibold text-[11px]" style={{ color: '#262626' }}>
+                  Mức pin thấp: Cần về trạm sạc
+                </div>
+                <div className="text-[10px]" style={{ color: '#8C8C8C' }}>
+                  Pin 15%, dock khả dụng trong 2 mét • 12 phút trước
+                </div>
+              </div>
+
+              <div className="p-2 rounded border" style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD' }}>
+                <div className="font-semibold text-[11px]" style={{ color: '#262626' }}>
+                  Kết nối Tailscale P2P ổn định
+                </div>
+                <div className="text-[10px]" style={{ color: '#8C8C8C' }}>
+                  Độ trễ 12ms tới Pi5 • 1 giờ trước
+                </div>
+              </div>
+            </div>
           </div>
 
-          <div className="flex items-center justify-between border-t border-[#F0ECE6] pt-3">
-            <span className="text-xs font-bold text-stone-500">Trung bình tuần</span>
-            <div className="flex items-center gap-1 text-lg font-black text-stone-900">
-              <span>4.8</span>
-              <span className="text-stone-700 text-sm font-bold">/ 5.0</span>
+          {/* Guest Satisfaction Summary */}
+          <div
+            className="p-3.5 rounded-xl border flex items-center justify-between"
+            style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD' }}
+          >
+            <div>
+              <div className="text-xs font-bold" style={{ color: '#262626' }}>Đánh giá trung bình</div>
+              <div className="text-[10px]" style={{ color: '#8C8C8C' }}>Trải nghiệm Robot Concierge tuần này</div>
+            </div>
+            <div className="text-right">
+              <span className="text-2xl font-bold" style={{ color: '#262626' }}>4.8</span>
+              <span className="text-xs" style={{ color: '#8C8C8C' }}> / 5.0</span>
             </div>
           </div>
         </div>

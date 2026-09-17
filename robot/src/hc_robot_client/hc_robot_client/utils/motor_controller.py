@@ -33,9 +33,9 @@ class MockDigitalOutputDevice:
 
 class MotorController:
     """
-    Quản lý điều khiển 2 mạch L298N kết nối với Raspberry Pi 5.
-    - Mạch 1 (Bên Trái): Tiến = GPIO 17 (IN1+IN3), Lùi = GPIO 27 (IN2+IN4)
-    - Mạch 2 (Bên Phải): Tiến = GPIO 22 (IN1+IN3), Lùi = GPIO 23 (IN2+IN4)
+    Quản lý một L298N kết nối với Raspberry Pi 5.
+    - Channel A / hai motor trái: IN1 = GPIO17, IN2 = GPIO27
+    - Channel B / hai motor phải: IN3 = GPIO22, IN4 = GPIO23
     """
 
     def __init__(
@@ -44,12 +44,16 @@ class MotorController:
         left_backward_pin: int = 27,
         right_forward_pin: int = 22,
         right_backward_pin: int = 23,
-        force_mock: bool = False
+        force_mock: bool = False,
+        invert_left_direction: bool = False,
+        invert_right_direction: bool = False,
     ):
         self.left_forward_pin = left_forward_pin
         self.left_backward_pin = left_backward_pin
         self.right_forward_pin = right_forward_pin
         self.right_backward_pin = right_backward_pin
+        self.invert_left_direction = bool(invert_left_direction)
+        self.invert_right_direction = bool(invert_right_direction)
         self.is_mock = force_mock or not HAS_GPIOZERO
 
         self.left_forward_dev = None
@@ -83,13 +87,30 @@ class MotorController:
         self.right_backward_dev = MockDigitalOutputDevice(self.right_backward_pin)
         logger.info("MotorController hoạt động ở chế độ MOCK (Virtual GPIO).")
 
+    def _set_outputs(self, left_forward, left_backward, right_forward, right_backward):
+        devices = (
+            self.left_forward_dev,
+            self.left_backward_dev,
+            self.right_forward_dev,
+            self.right_backward_dev,
+        )
+        for device in devices:
+            device.off()
+
+        states = [left_forward, left_backward, right_forward, right_backward]
+        if self.invert_left_direction:
+            states[0], states[1] = states[1], states[0]
+        if self.invert_right_direction:
+            states[2], states[3] = states[3], states[2]
+
+        for device, active in zip(devices, states):
+            if active:
+                device.on()
+
     def move_forward(self):
         """Tiến về phía trước."""
         try:
-            self.left_forward_dev.on()
-            self.left_backward_dev.off()
-            self.right_forward_dev.on()
-            self.right_backward_dev.off()
+            self._set_outputs(True, False, True, False)
             logger.debug("Motor State: FORWARD")
         except Exception as e:
             logger.error(f"Lỗi khi điều khiển Tiến: {e}")
@@ -97,10 +118,7 @@ class MotorController:
     def move_backward(self):
         """Lùi về phía sau."""
         try:
-            self.left_forward_dev.off()
-            self.left_backward_dev.on()
-            self.right_forward_dev.off()
-            self.right_backward_dev.on()
+            self._set_outputs(False, True, False, True)
             logger.debug("Motor State: BACKWARD")
         except Exception as e:
             logger.error(f"Lỗi khi điều khiển Lùi: {e}")
@@ -108,10 +126,7 @@ class MotorController:
     def turn_left(self):
         """Xoay rẽ trái."""
         try:
-            self.left_forward_dev.off()
-            self.left_backward_dev.on()
-            self.right_forward_dev.on()
-            self.right_backward_dev.off()
+            self._set_outputs(False, True, True, False)
             logger.debug("Motor State: TURN_LEFT")
         except Exception as e:
             logger.error(f"Lỗi khi điều khiển Rẽ Trái: {e}")
@@ -119,10 +134,7 @@ class MotorController:
     def turn_right(self):
         """Xoay rẽ phải."""
         try:
-            self.left_forward_dev.on()
-            self.left_backward_dev.off()
-            self.right_forward_dev.off()
-            self.right_backward_dev.on()
+            self._set_outputs(True, False, False, True)
             logger.debug("Motor State: TURN_RIGHT")
         except Exception as e:
             logger.error(f"Lỗi khi điều khiển Rẽ Phải: {e}")

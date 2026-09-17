@@ -1,7 +1,10 @@
+import glob
+import getpass
+import logging
 import os
+import re
 import sys
 import time
-import logging
 from typing import Optional
 
 if hasattr(sys.stdout, 'reconfigure'):
@@ -34,73 +37,157 @@ except (ImportError, Exception):
     HAS_GPIOZERO = False
 
 
-class LGPIOOutputDevice:
-    """Điều khiển trực tiếp chân GPIO trên Raspberry Pi 5 bằng lgpio (trực tiếp qua RP1 chip)."""
-    def __init__(self, pin: int):
-        self.pin = pin
-        self.handle = None
-        for chip_num in [4, 0]:
-            try:
-                h = lgpio.gpiochip_open(chip_num)
-                lgpio.gpio_claim_output(h, self.pin, 0)
-                self.handle = h
-                self.chip_num = chip_num
-                break
-            except Exception:
-                if self.handle is not None:
+def _gpio_chip_candidates(preferred_chip: Optional[int] = None):
+    """Trả về danh sách gpiochip cần thử, ưu tiên chip điều khiển header 40 chân."""
+    candidates = []
+
+    configured_chip = preferred_chip
+    if configured_chip is None:
+        configured = os.environ.get("HCROBOT_GPIOCHIP", "").strip()
+        if configured:
+            match = re.fullmatch(r"(?:/dev/)?gpiochip(\d+)|(\d+)", configured)
+            if not match:
+                raise ValueError(
+                    "HCROBOT_GPIOCHIP phải là số chip (ví dụ 0, 4) "
+                    "hoặc đường dẫn /dev/gpiochipN."
+                )
+            configured_chip = int(match.group(1) or match.group(2))
+
+    if configured_chip is not None:
+        candidates.append(int(configured_chip))
+
+    detected = []
+    for device_path in glob.glob("/dev/gpiochip*"):
+        match = re.fullmatch(r"gpiochip(\d+)", os.path.basename(device_path))
+        if not match:
+            continue
+        chip_num = int(match.group(1))
+        label_path = f"/sys/class/gpio/gpiochip{chip_num}/label"
+        try:
+            with open(label_path, "r", encoding="utf-8") as label_file:
+                label = label_file.read().strip().lower()
+        except OSError:
+            label = ""
+
+        # RP1 cung cấp GPIO của header trên Pi 5; các Pi cũ thường có nhãn pinctrl.
+        if "rp1" in label or "pinctrl" in label:
+            priority = 0 if "rp1" in label else 1
+            detected.append((priority, chip_num))
+
+    candidates.extend(chip_num for _, chip_num in sorted(detected))
+
+    # Kernel Pi 5 cũ thường là gpiochip4; kernel mới có thể đánh lại thành gpiochip0.
+    candidates.extend([4, 0])
+    return list(dict.fromkeys(candidates))
+
+
+def _gpio_access_hint() -> str:
+    device_paths = sorted(glob.glob("/dev/gpiochip*"))
+    if not device_paths:
+        return (
+            "Không tìm thấy /dev/gpiochip*. Hãy kiểm tra chương trình đang chạy "
+            "trực tiếp trên Raspberry Pi và kernel đã nạp driver GPIO."
+        )
+
+    accessible = [
+        path for path in device_paths
+        if os.access(path, os.R_OK | os.W_OK)
+    ]
+    if not accessible:
+        username = getpass.getuser()
+        return (
+            f"User '{username}' không có quyền đọc/ghi {', '.join(device_paths)}. "
+            "Chạy: bash scripts/setup_gpio_permissions.sh ; sau đó reboot "
+            "rồi chạy lại python3 main.py."
+        )
+
+    return (
+        f"Đã thấy {', '.join(accessible)} nhưng không claim được chân GPIO; "
+        "hãy kiểm tra chân có đang bị tiến trình khác sử dụng bằng: gpioinfo"
+    )
+
+
+def _open_lgpio_chip(pins, preferred_chip: Optional[int] = None):
+    """Mở và claim toàn bộ chân trên cùng một gpiochip, dọn sạch nếu có lỗi."""
+    errors = []
+    for chip_num in _gpio_chip_candidates(preferred_chip):
+        handle = None
+        claimed_pins = []
+        try:
+            handle = lgpio.gpiochip_open(chip_num)
+            if handle is None or handle < 0:
+                raise RuntimeError(f"gpiochip_open trả về handle không hợp lệ: {handle}")
+
+            for pin in dict.fromkeys(pins):
+                lgpio.gpio_claim_output(handle, pin, 0)
+                claimed_pins.append(pin)
+            return handle, chip_num
+        except Exception as exc:
+            errors.append(f"gpiochip{chip_num}: {exc}")
+            if handle is not None and handle >= 0:
+                for pin in reversed(claimed_pins):
                     try:
-                        lgpio.gpiochip_close(self.handle)
+                        lgpio.gpio_free(handle, pin)
                     except Exception:
                         pass
-                self.handle = None
+                try:
+                    lgpio.gpiochip_close(handle)
+                except Exception:
+                    pass
 
-        if self.handle is None:
-            raise RuntimeError(f"Không mở được GPIO {self.pin} bằng lgpio qua chip 4 hoặc 0.")
+    detail = "; ".join(errors) if errors else "không có gpiochip để thử"
+    raise RuntimeError(f"Không khởi tạo được lgpio ({detail}). {_gpio_access_hint()}")
 
+
+class LGPIOOutputDevice:
+    """Một chân output dùng chung handle lgpio của MotorController, hỗ trợ PWM."""
+    def __init__(self, pin: int, handle: int):
+        self.pin = pin
+        self.handle = handle
         self.value = 0
+        self._pwm_active = False
 
-    def on(self):
+    def on(self, duty_cycle: int = 100):
         if self.handle is not None:
-            try:
-                lgpio.tx_pwm(self.handle, self.pin, 100, 100)
-            except Exception:
+            if duty_cycle >= 100:
+                if self._pwm_active:
+                    try:
+                        lgpio.tx_pwm(self.handle, self.pin, 100, 0)
+                    except Exception:
+                        pass
+                    self._pwm_active = False
                 lgpio.gpio_write(self.handle, self.pin, 1)
-            self.value = 1
+                self.value = 1
+            elif duty_cycle <= 0:
+                self.off()
+            else:
+                lgpio.tx_pwm(self.handle, self.pin, 100, int(duty_cycle))
+                self._pwm_active = True
+                self.value = duty_cycle / 100.0
 
     def off(self):
         if self.handle is not None:
-            try:
-                lgpio.tx_pwm(self.handle, self.pin, 100, 0)
-            except Exception:
-                lgpio.gpio_write(self.handle, self.pin, 0)
+            if self._pwm_active:
+                try:
+                    lgpio.tx_pwm(self.handle, self.pin, 100, 0)
+                except Exception:
+                    pass
+                self._pwm_active = False
+            lgpio.gpio_write(self.handle, self.pin, 0)
             self.value = 0
-
-    def set_pwm(self, duty_cycle: float):
-        """Đặt tốc độ PWM từ 0.0 (0%) đến 1.0 (100%)."""
-        if self.handle is not None:
-            try:
-                percent = max(0.0, min(100.0, duty_cycle * 100.0))
-                lgpio.tx_pwm(self.handle, self.pin, 100, percent)
-                self.value = 1 if percent > 0 else 0
-            except Exception:
-                if duty_cycle > 0.1:
-                    self.on()
-                else:
-                    self.off()
 
     def close(self):
         if self.handle is not None:
             try:
                 self.off()
                 lgpio.gpio_free(self.handle, self.pin)
-                lgpio.gpiochip_close(self.handle)
             except Exception:
                 pass
             self.handle = None
 
     @property
     def is_active(self) -> bool:
-        return self.value == 1
+        return self.value > 0
 
 
 class MockDigitalOutputDevice:
@@ -109,45 +196,53 @@ class MockDigitalOutputDevice:
         self.pin = pin
         self.value = 0
 
-    def on(self):
-        self.value = 1
+    def on(self, duty_cycle: int = 100):
+        self.value = max(0, min(100, duty_cycle)) / 100.0
 
     def off(self):
         self.value = 0
-
-    def set_pwm(self, duty_cycle: float):
-        self.value = 1 if duty_cycle > 0.1 else 0
 
     def close(self):
         self.value = 0
 
     @property
     def is_active(self) -> bool:
-        return self.value == 1
+        return self.value > 0
 
 
 class MotorController:
     """
     Điều khiển động cơ L298N trên Raspberry Pi 5 theo sơ đồ chân BCM:
-    - IN1 (GPIO 17) -> Bánh Phải Tiến
-    - IN2 (GPIO 27) -> Bánh Phải Lùi
-    - IN3 (GPIO 22) -> Bánh Trái Tiến
-    - IN4 (GPIO 23) -> Bánh Trái Lùi
+    - Channel A / hai motor trái: IN1=GPIO17, IN2=GPIO27
+    - Channel B / hai motor phải: IN3=GPIO22, IN4=GPIO23
+
+    Hỗ trợ điều khiển vận tốc cố định qua băm xung PWM trực tiếp trên các chân IN.
     """
 
     def __init__(
         self,
-        left_forward_pin: int = 22,
-        left_backward_pin: int = 23,
-        right_forward_pin: int = 17,
-        right_backward_pin: int = 27,
-        force_mock: bool = False
+        left_forward_pin: int = 17,
+        left_backward_pin: int = 27,
+        right_forward_pin: int = 22,
+        right_backward_pin: int = 23,
+        force_mock: bool = False,
+        gpio_chip: Optional[int] = None,
+        invert_left_direction: bool = False,
+        invert_right_direction: bool = False,
+        default_speed: int = 100,
     ):
         self.left_forward_pin = left_forward_pin
         self.left_backward_pin = left_backward_pin
         self.right_forward_pin = right_forward_pin
         self.right_backward_pin = right_backward_pin
+        self.preferred_gpio_chip = gpio_chip
+        self.invert_left_direction = bool(invert_left_direction)
+        self.invert_right_direction = bool(invert_right_direction)
+        self.gpio_chip_num = None
+        self._lgpio_handle = None
         self.is_mock = force_mock
+        self.motion = "stop"
+        self.speed = max(20, min(100, int(default_speed)))
 
         self.left_forward_dev = None
         self.left_backward_dev = None
@@ -155,6 +250,12 @@ class MotorController:
         self.right_backward_dev = None
 
         self._init_devices()
+        if self.invert_left_direction or self.invert_right_direction:
+            logger.info(
+                "Đảo chiều motor theo cấu hình: left=%s, right=%s",
+                self.invert_left_direction,
+                self.invert_right_direction,
+            )
 
     def _init_devices(self):
         if self.is_mock:
@@ -163,16 +264,38 @@ class MotorController:
 
         if HAS_LGPIO:
             try:
-                self.left_forward_dev = LGPIOOutputDevice(self.left_forward_pin)
-                self.left_backward_dev = LGPIOOutputDevice(self.left_backward_pin)
-                self.right_forward_dev = LGPIOOutputDevice(self.right_forward_pin)
-                self.right_backward_dev = LGPIOOutputDevice(self.right_backward_pin)
-                logger.info("MotorController khởi chạy THÀNH CÔNG trên Raspberry Pi 5 (Native lgpio RP1 Driver).")
+                pins = [
+                    self.left_forward_pin,
+                    self.left_backward_pin,
+                    self.right_forward_pin,
+                    self.right_backward_pin,
+                ]
+                self._lgpio_handle, self.gpio_chip_num = _open_lgpio_chip(
+                    pins, self.preferred_gpio_chip
+                )
+                self.left_forward_dev = LGPIOOutputDevice(
+                    self.left_forward_pin, self._lgpio_handle
+                )
+                self.left_backward_dev = LGPIOOutputDevice(
+                    self.left_backward_pin, self._lgpio_handle
+                )
+                self.right_forward_dev = LGPIOOutputDevice(
+                    self.right_forward_pin, self._lgpio_handle
+                )
+                self.right_backward_dev = LGPIOOutputDevice(
+                    self.right_backward_pin, self._lgpio_handle
+                )
+                logger.info(
+                    "MotorController khởi chạy THÀNH CÔNG trên Raspberry Pi 5 "
+                    f"(lgpio, /dev/gpiochip{self.gpio_chip_num})."
+                )
                 return
             except Exception as e:
                 logger.warning(f"Thử LGPIO thất bại: {e}")
 
-        if HAS_GPIOZERO:
+        # Nếu lgpio đã import được nhưng không mở/claim được chip thì gpiozero cũng
+        # sẽ dùng cùng kernel device và chỉ tạo thêm một loạt cảnh báo fallback.
+        if HAS_GPIOZERO and not HAS_LGPIO:
             try:
                 self.left_forward_dev = DigitalOutputDevice(self.left_forward_pin)
                 self.left_backward_dev = DigitalOutputDevice(self.left_backward_pin)
@@ -183,7 +306,13 @@ class MotorController:
             except Exception as e:
                 logger.warning(f"Thử gpiozero thất bại: {e}")
 
-        self._init_mock("Không kết nối được thư viện GPIO (lgpio/gpiozero)")
+        if HAS_LGPIO:
+            reason = "lgpio không mở/claim được gpiochip; xem cảnh báo ngay phía trên"
+        elif HAS_GPIOZERO:
+            reason = "gpiozero không mở được GPIO; kiểm tra quyền user thuộc group gpio"
+        else:
+            reason = "chưa cài lgpio/gpiozero"
+        self._init_mock(reason)
 
     def _init_mock(self, reason: str = ""):
         self.is_mock = True
@@ -193,87 +322,181 @@ class MotorController:
         self.right_backward_dev = MockDigitalOutputDevice(self.right_backward_pin)
         logger.info(f"MotorController chạy ở chế độ MOCK (Giả lập). Lý do: {reason}")
 
+    def _set_outputs(
+        self,
+        left_forward,
+        left_backward,
+        right_forward,
+        right_backward,
+        left_speed=None,
+        right_speed=None,
+    ):
+        """Đổi hướng an toàn: hạ cả bốn IN trước khi bật trạng thái mới."""
+        devices = (
+            self.left_forward_dev,
+            self.left_backward_dev,
+            self.right_forward_dev,
+            self.right_backward_dev,
+        )
+        for device in devices:
+            device.off()
+
+        states = [left_forward, left_backward, right_forward, right_backward]
+        l_spd = self.speed if left_speed is None else left_speed
+        r_spd = self.speed if right_speed is None else right_speed
+        speeds = [l_spd, l_spd, r_spd, r_spd]
+
+        if self.invert_left_direction:
+            states[0], states[1] = states[1], states[0]
+            speeds[0], speeds[1] = speeds[1], speeds[0]
+        if self.invert_right_direction:
+            states[2], states[3] = states[3], states[2]
+            speeds[2], speeds[3] = speeds[3], speeds[2]
+
+        for device, active, spd in zip(devices, states, speeds):
+            if active:
+                device.on(spd)
+        return tuple(states)
+
+    def set_speed(self, speed_percent: int) -> int:
+        """Cài đặt vận tốc động cơ (20% đến 100%)."""
+        self.speed = max(20, min(100, int(speed_percent)))
+        logger.info("Đã đổi vận tốc Motor sang: %d%%", self.speed)
+        if self.motion != "stop":
+            action_map = {
+                "forward": self.forward,
+                "backward": self.backward,
+                "left": self.turn_left,
+                "right": self.turn_right,
+                "forward_left": self.turn_forward_left,
+                "forward_right": self.turn_forward_right,
+                "backward_left": self.turn_backward_left,
+                "backward_right": self.turn_backward_right,
+            }
+            fn = action_map.get(self.motion)
+            if fn:
+                fn()
+        return self.speed
+
+    def _log_motion_outputs(self, label, states):
+        logger.info(
+            "MOTOR %s (%d%%): GPIO%d=%d GPIO%d=%d | GPIO%d=%d GPIO%d=%d",
+            label,
+            self.speed,
+            self.left_forward_pin,
+            states[0],
+            self.left_backward_pin,
+            states[1],
+            self.right_forward_pin,
+            states[2],
+            self.right_backward_pin,
+            states[3],
+        )
+
+    def forward(self):
+        """Cho cả hai bên quay theo chiều tiến."""
+        states = self._set_outputs(True, False, True, False)
+        self.motion = "forward"
+        self._log_motion_outputs("FORWARD", states)
+
     def move_forward(self):
-        """Tiến về phía trước."""
-        self.left_forward_dev.on()
-        self.left_backward_dev.off()
-        self.right_forward_dev.on()
-        self.right_backward_dev.off()
-        logger.info("ROBOT: TIẾN -> Trái Tiến (22)=ON | Phải Tiến (17)=ON")
+        """Alias tương thích với code ROS 2 cũ."""
+        self.forward()
+
+    def backward(self):
+        """Cho cả hai bên quay theo chiều lùi."""
+        states = self._set_outputs(False, True, False, True)
+        self.motion = "backward"
+        self._log_motion_outputs("BACKWARD", states)
 
     def move_backward(self):
-        """Lùi về phía sau."""
-        self.left_forward_dev.off()
-        self.left_backward_dev.on()
-        self.right_forward_dev.off()
-        self.right_backward_dev.on()
-        logger.info("ROBOT: LÙI -> Trái Lùi (23)=ON | Phải Lùi (27)=ON")
+        """Alias tương thích với code ROS 2 cũ."""
+        self.backward()
 
-    def turn_left(self, speed_ratio: float = 0.55):
-        """
-        Quẹo Trái có vận tốc tiến (Curve Turn).
-        - Bánh Phải: Tiến 100%
-        - Bánh Trái: Tiến 55% (Đủ mô-men xoắn đẩy khung xe nặng mở cua mượt mà)
-        """
-        self.left_backward_dev.off()
-        self.right_backward_dev.off()
+    def turn_left(self):
+        """Xoay trái tại chỗ: bên trái lùi, bên phải tiến."""
+        states = self._set_outputs(False, True, True, False)
+        self.motion = "left"
+        self._log_motion_outputs("TURN_LEFT", states)
 
-        if hasattr(self.left_forward_dev, 'set_pwm'):
-            self.left_forward_dev.set_pwm(speed_ratio)
-        else:
-            self.left_forward_dev.off()
+    def turn_right(self):
+        """Xoay phải tại chỗ: bên trái tiến, bên phải lùi."""
+        states = self._set_outputs(True, False, False, True)
+        self.motion = "right"
+        self._log_motion_outputs("TURN_RIGHT", states)
 
-        if hasattr(self.right_forward_dev, 'set_pwm'):
-            self.right_forward_dev.set_pwm(1.0)
-        else:
-            self.right_forward_dev.on()
+    def turn_forward_left(self):
+        """Vừa tiến vừa rẽ trái (arc turn): Bánh trái dừng, bánh phải tiến."""
+        states = self._set_outputs(False, False, True, False)
+        self.motion = "forward_left"
+        self._log_motion_outputs("TURN_FORWARD_LEFT", states)
 
-        logger.info(f"ROBOT: QUẸO TRÁI (A) -> Trái TIẾN {int(speed_ratio*100)}% | Phải TIẾN 100% (Cho xe nặng)")
+    def forward_left(self):
+        """Alias cho turn_forward_left."""
+        self.turn_forward_left()
 
-    def turn_right(self, speed_ratio: float = 0.55):
-        """
-        Quẹo Phải có vận tốc tiến (Curve Turn).
-        - Bánh Trái: Tiến 100%
-        - Bánh Phải: Tiến 55% (Đủ mô-men xoắn đẩy khung xe nặng mở cua mượt mà)
-        """
-        self.left_backward_dev.off()
-        self.right_backward_dev.off()
+    def turn_forward_right(self):
+        """Vừa tiến vừa rẽ phải (arc turn): Bánh trái tiến, bánh phải dừng."""
+        states = self._set_outputs(True, False, False, False)
+        self.motion = "forward_right"
+        self._log_motion_outputs("TURN_FORWARD_RIGHT", states)
 
-        if hasattr(self.left_forward_dev, 'set_pwm'):
-            self.left_forward_dev.set_pwm(1.0)
-        else:
-            self.left_forward_dev.on()
+    def forward_right(self):
+        """Alias cho turn_forward_right."""
+        self.turn_forward_right()
 
-        if hasattr(self.right_forward_dev, 'set_pwm'):
-            self.right_forward_dev.set_pwm(speed_ratio)
-        else:
-            self.right_forward_dev.off()
+    def turn_backward_left(self):
+        """Vừa lùi vừa rẽ trái (arc turn): Bánh trái dừng, bánh phải lùi."""
+        states = self._set_outputs(False, False, False, True)
+        self.motion = "backward_left"
+        self._log_motion_outputs("TURN_BACKWARD_LEFT", states)
 
-        logger.info(f"ROBOT: QUẸO PHẢI (D) -> Trái TIẾN 100% | Phải TIẾN {int(speed_ratio*100)}% (Cho xe nặng)")
+    def backward_left(self):
+        """Alias cho turn_backward_left."""
+        self.turn_backward_left()
+
+    def turn_backward_right(self):
+        """Vừa lùi vừa rẽ phải (arc turn): Bánh trái lùi, bánh phải dừng."""
+        states = self._set_outputs(False, True, False, False)
+        self.motion = "backward_right"
+        self._log_motion_outputs("TURN_BACKWARD_RIGHT", states)
+
+    def backward_right(self):
+        """Alias cho turn_backward_right."""
+        self.turn_backward_right()
 
     def stop(self):
         """Dừng tất cả động cơ."""
-        if self.left_forward_dev:
-            self.left_forward_dev.off()
-        if self.left_backward_dev:
-            self.left_backward_dev.off()
-        if self.right_forward_dev:
-            self.right_forward_dev.off()
-        if self.right_backward_dev:
-            self.right_backward_dev.off()
-        logger.info("ROBOT: DỪNG -> All GPIO OFF")
+        devices = (
+            self.left_forward_dev,
+            self.left_backward_dev,
+            self.right_forward_dev,
+            self.right_backward_dev,
+        )
+        for device in devices:
+            if device:
+                device.off()
+        was_moving = self.motion != "stop"
+        self.motion = "stop"
+        if was_moving:
+            logger.info("MOTOR STOP: toàn bộ GPIO direction = 0")
 
     def set_drive_cmd(self, linear_x: float, angular_z: float):
         """Chuyển đổi tín hiệu vận tốc Twist / Analog Joystick sang hướng chạy."""
         if linear_x > 0.1:
             if angular_z > 0.2:
-                self.turn_left()
+                self.turn_forward_left()
             elif angular_z < -0.2:
-                self.turn_right()
+                self.turn_forward_right()
             else:
                 self.move_forward()
         elif linear_x < -0.1:
-            self.move_backward()
+            if angular_z > 0.2:
+                self.turn_backward_left()
+            elif angular_z < -0.2:
+                self.turn_backward_right()
+            else:
+                self.move_backward()
         else:
             if angular_z > 0.2:
                 self.turn_left()
@@ -288,6 +511,12 @@ class MotorController:
         for dev in [self.left_forward_dev, self.left_backward_dev, self.right_forward_dev, self.right_backward_dev]:
             if dev and hasattr(dev, 'close'):
                 dev.close()
+        if self._lgpio_handle is not None:
+            try:
+                lgpio.gpiochip_close(self._lgpio_handle)
+            except Exception:
+                pass
+            self._lgpio_handle = None
         logger.info("Đã dọn dẹp tài nguyên GPIO an toàn.")
 
 
@@ -338,14 +567,12 @@ def run_wasd_controller(controller: MotorController):
     print("\n" + "=" * 60)
     print("  BỘ ĐIỀU KHIỂN ROBOT RASPBERRY PI 5 (WASD / PHÍM MŨI TÊN)")
     print("=" * 60)
-    print("  [W] hoặc [Mũi tên Lên]   : ĐI THẲNG (Forward)")
-    print("  [S] hoặc [Mũi tên Xuống] : LÙI (Backward)")
-    print("  [A] hoặc [Mũi tên Trái]  : QUẸO TRÁI (Turn Left)")
-    print("  [D] hoặc [Mũi tên Phải]  : QUẸO PHẢI (Turn Right)")
-    print("  [X] hoặc [Space]         : DỪNG (Stop)")
-    print("  [Q]                     : THOÁT (Quit)")
+    print("  [Q/7] TIẾN - TRÁI       [W/8/↑] TIẾN        [E/9] TIẾN - PHẢI")
+    print("  [A/4/←] XOAY TRÁI       [X/5/Space] DỪNG    [D/6/→] XOAY PHẢI")
+    print("  [Z/1] LÙI - TRÁI        [S/2/↓] LÙI         [C/3] LÙI - PHẢI")
+    print("  [P/Ctrl+C] THOÁT")
     print("=" * 60)
-    print("Bắt đầu bấm phím WASD / Mũi tên để điều khiển ngay...\n")
+    print("Bắt đầu bấm phím để điều khiển xe ngay...\n")
 
     try:
         while True:
@@ -355,17 +582,25 @@ def run_wasd_controller(controller: MotorController):
                 continue
             key = char.lower()
 
-            if key == 'w':
+            if key in ('w', '8'):
                 controller.move_forward()
-            elif key == 's':
+            elif key in ('s', '2'):
                 controller.move_backward()
-            elif key == 'a':
+            elif key in ('a', '4'):
                 controller.turn_left()
-            elif key == 'd':
+            elif key in ('d', '6'):
                 controller.turn_right()
-            elif key in ['x', ' ', '\r', '\n']:
+            elif key in ('q', '7'):
+                controller.turn_forward_left()
+            elif key in ('e', '9'):
+                controller.turn_forward_right()
+            elif key in ('z', '1'):
+                controller.turn_backward_left()
+            elif key in ('c', '3'):
+                controller.turn_backward_right()
+            elif key in ['x', '5', ' ', '\r', '\n']:
                 controller.stop()
-            elif key == 'q' or ord(char) == 3:
+            elif key == 'p' or ord(char) == 3:
                 print("\nThoát chương trình...")
                 break
     except KeyboardInterrupt:
@@ -475,6 +710,14 @@ def run_udp_server_controller(controller: MotorController, host: str = '0.0.0.0'
                             controller.turn_left()
                         elif cmd == 'd':
                             controller.turn_right()
+                        elif cmd in ['wa', 'aw', 'forward_left', 'up_left']:
+                            controller.turn_forward_left()
+                        elif cmd in ['wd', 'dw', 'forward_right', 'up_right']:
+                            controller.turn_forward_right()
+                        elif cmd in ['sa', 'as', 'backward_left', 'down_left']:
+                            controller.turn_backward_left()
+                        elif cmd in ['sd', 'ds', 'backward_right', 'down_right']:
+                            controller.turn_backward_right()
                         elif cmd in ['x', 'stop']:
                             controller.stop()
             except socket.timeout:
@@ -511,10 +754,13 @@ def main():
     config = load_config()
     gpio_cfg = config.get('robot', {}).get('gpio', {})
 
-    left_forward = gpio_cfg.get('left_forward', 22)
-    left_backward = gpio_cfg.get('left_backward', 23)
-    right_forward = gpio_cfg.get('right_forward', 17)
-    right_backward = gpio_cfg.get('right_backward', 27)
+    left_forward = gpio_cfg.get('left_forward', 17)
+    left_backward = gpio_cfg.get('left_backward', 27)
+    right_forward = gpio_cfg.get('right_forward', 22)
+    right_backward = gpio_cfg.get('right_backward', 23)
+    gpio_chip = gpio_cfg.get('chip')
+    invert_left_direction = gpio_cfg.get('invert_left_direction', False)
+    invert_right_direction = gpio_cfg.get('invert_right_direction', False)
 
     force_mock = '--mock' in sys.argv
     controller = MotorController(
@@ -522,8 +768,19 @@ def main():
         left_backward_pin=left_backward,
         right_forward_pin=right_forward,
         right_backward_pin=right_backward,
-        force_mock=force_mock
+        force_mock=force_mock,
+        gpio_chip=gpio_chip,
+        invert_left_direction=invert_left_direction,
+        invert_right_direction=invert_right_direction,
     )
+
+    if controller.is_mock and not force_mock:
+        logger.error(
+            "Không có GPIO thật nên đã hủy chế độ điều khiển motor. "
+            "Sau khi sửa quyền GPIO, hãy chạy lại; chỉ dùng --mock khi muốn giả lập."
+        )
+        controller.cleanup()
+        return 2
 
     if '--remote' in sys.argv or '-r' in sys.argv or '--server' in sys.argv:
         port = 9999
@@ -539,7 +796,9 @@ def main():
     else:
         run_wasd_controller(controller)
 
+    return 0
+
 
 if __name__ == '__main__':
-    main()
+    raise SystemExit(main())
 

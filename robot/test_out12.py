@@ -2,16 +2,16 @@ import time
 import sys
 
 print("=" * 65)
-print("  CHƯƠNG TRÌNH KIỂM TRA CHUYÊN SÂU CẶP CHÂN OUT1 & OUT2 L298N")
+print("  CHƯƠNG TRÌNH KIỂM TRA CHANNEL A/B CỦA MỘT L298N")
 print("=" * 65)
 
 # Khai báo các chân GPIO theo sơ đồ của ông chủ:
-# Mạch 1 (Trái): IN1/IN3 = GPIO 17, IN2/IN4 = GPIO 27
-# Mạch 2 (Phải): IN1/IN3 = GPIO 22, IN2/IN4 = GPIO 23
-M1_IN1 = 17  # Nối IN1 (+IN3) Mạch 1
-M1_IN2 = 27  # Nối IN2 (+IN4) Mạch 1
-M2_IN1 = 22  # Nối IN1 (+IN3) Mạch 2
-M2_IN2 = 23  # Nối IN2 (+IN4) Mạch 2
+# Channel A (trái): IN1 = GPIO17, IN2 = GPIO27, motor ở OUT1/OUT2
+# Channel B (phải): IN3 = GPIO22, IN4 = GPIO23, motor ở OUT3/OUT4
+M1_IN1 = 17  # L298N IN1 / Channel A
+M1_IN2 = 27  # L298N IN2 / Channel A
+M2_IN1 = 22  # L298N IN3 / Channel B
+M2_IN2 = 23  # L298N IN4 / Channel B
 
 lgpio = None
 gpiozero = None
@@ -84,7 +84,7 @@ def stop_all():
 
 
 def test_mach1_out12():
-    print("\n---> ĐANG TEST MẠCH 1 (BÊN TRÁI) - CẶP OUT1 & OUT2 <---")
+    print("\n---> ĐANG TEST CHANNEL A (BÊN TRÁI) - OUT1 & OUT2 <---")
     print("1.1 Bật OUT1 dương (+V), OUT2 âm (GND) trong 3 giây...")
     set_pin(M1_IN1, 1)  # IN1 = HIGH
     set_pin(M1_IN2, 0)  # IN2 = LOW
@@ -96,32 +96,32 @@ def test_mach1_out12():
     time.sleep(3.0)
 
     stop_all()
-    print("--> Đã dừng Mạch 1.")
+    print("--> Đã dừng Channel A.")
 
 
 def test_mach2_out12():
-    print("\n---> ĐANG TEST MẠCH 2 (BÊN PHẢI) - CẶP OUT1 & OUT2 <---")
-    print("2.1 Bật OUT1 dương (+V), OUT2 âm (GND) trong 3 giây...")
+    print("\n---> ĐANG TEST CHANNEL B (BÊN PHẢI) - OUT3 & OUT4 <---")
+    print("2.1 Bật OUT3 dương (+V), OUT4 âm (GND) trong 3 giây...")
     set_pin(M2_IN1, 1)  # IN1 = HIGH
     set_pin(M2_IN2, 0)  # IN2 = LOW
     time.sleep(3.0)
 
-    print("2.2 Đảo chiều: OUT1 âm (GND), OUT2 dương (+V) trong 3 giây...")
+    print("2.2 Đảo chiều: OUT3 âm (GND), OUT4 dương (+V) trong 3 giây...")
     set_pin(M2_IN1, 0)  # IN1 = LOW
     set_pin(M2_IN2, 1)  # IN2 = HIGH
     time.sleep(3.0)
 
     stop_all()
-    print("--> Đã dừng Mạch 2.")
+    print("--> Đã dừng Channel B.")
 
 
 def main():
     try:
         stop_all()
-        print("\nHƯỚNG DẪN TEST CẶP CHÂN OUT1, OUT2:")
-        print(" [1] Test OUT1, OUT2 Mạch 1 (Bên Trái)")
-        print(" [2] Test OUT1, OUT2 Mạch 2 (Bên Phải)")
-        print(" [3] Chạy tự động test cả 2 Mạch lần lượt")
+        print("\nHƯỚNG DẪN TEST HAI CHANNEL L298N:")
+        print(" [1] Test OUT1, OUT2 Channel A (Bên Trái)")
+        print(" [2] Test OUT3, OUT4 Channel B (Bên Phải)")
+        print(" [3] Chạy tự động test cả 2 channel lần lượt")
         print(" [Q] Thoát")
 
         while True:

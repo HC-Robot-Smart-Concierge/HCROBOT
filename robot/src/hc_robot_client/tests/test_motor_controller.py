@@ -81,6 +81,21 @@ def test_motor_stop():
     controller.cleanup()
 
 
+def test_motor_direction_inversion():
+    controller = MotorController(
+        force_mock=True,
+        invert_left_direction=True,
+        invert_right_direction=True,
+    )
+    controller.move_forward()
+
+    assert controller.left_forward_dev.is_active is False
+    assert controller.left_backward_dev.is_active is True
+    assert controller.right_forward_dev.is_active is False
+    assert controller.right_backward_dev.is_active is True
+    controller.cleanup()
+
+
 def test_set_drive_cmd_twist():
     """Kiểm tra việc chuyển đổi vận tốc Twist sang lệnh điều khiển motor."""
     controller = MotorController(force_mock=True)

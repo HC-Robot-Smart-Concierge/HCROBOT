@@ -10,6 +10,7 @@ export const Pagination = ({
   totalItems = 0,
   pageSize = 20,
   onPageChange = () => {},
+  itemName = 'mục',
   className = '',
 }) => {
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
@@ -20,7 +21,7 @@ export const Pagination = ({
   }, [currentPage]);
 
   const handleJump = (e) => {
-    if (e) e.preventDefault();
+    if (e && e.preventDefault) e.preventDefault();
     const target = parseInt(jumpPage, 10);
     if (!isNaN(target) && target >= 1 && target <= totalPages) {
       onPageChange(target);
@@ -53,17 +54,22 @@ export const Pagination = ({
 
   return (
     <div
-      className={`p-4 border-t border-stone-100 flex flex-col sm:flex-row items-center justify-between gap-4 bg-stone-50/40 text-xs ${className}`}
+      className={`py-2 px-4 border-t flex flex-col sm:flex-row items-center justify-between gap-2 text-xs select-none ${className}`}
+      style={{
+        backgroundColor: '#E9E5DC',
+        borderColor: '#BFBFBD',
+        color: '#262626',
+      }}
     >
       {/* Left: Range text */}
-      <div className="text-stone-500 font-medium">
-        Hiển thị <span className="font-bold text-stone-900">{startItem}</span> -{' '}
-        <span className="font-bold text-stone-900">{endItem}</span> trong tổng số{' '}
-        <span className="font-bold text-stone-900">{totalItems}</span> bản ghi (20 mục / trang)
+      <div className="text-[11px]" style={{ color: '#8C8C8C' }}>
+        Hiển thị <span className="font-bold" style={{ color: '#262626' }}>{startItem}</span> -{' '}
+        <span className="font-bold" style={{ color: '#262626' }}>{endItem}</span> /{' '}
+        <span className="font-bold" style={{ color: '#262626' }}>{totalItems}</span> {itemName} ({pageSize} / trang)
       </div>
 
       {/* Right: Pagination buttons and Jump Input */}
-      <div className="flex items-center gap-4 flex-wrap justify-center sm:justify-end">
+      <div className="flex items-center gap-3 flex-wrap justify-center sm:justify-end">
         {/* Page Buttons List */}
         <div className="flex items-center gap-1">
           {/* Previous Button */}
@@ -71,10 +77,15 @@ export const Pagination = ({
             type="button"
             onClick={() => onPageChange(Math.max(1, currentPage - 1))}
             disabled={currentPage <= 1}
-            className="w-8 h-8 rounded-xl border border-stone-200 bg-white hover:bg-stone-100 text-stone-700 disabled:opacity-40 disabled:pointer-events-none flex items-center justify-center transition-all cursor-pointer shadow-xs"
+            className="w-6 h-6 rounded border flex items-center justify-center text-xs font-bold disabled:opacity-40 disabled:pointer-events-none cursor-pointer hover:bg-stone-100 transition-colors"
+            style={{
+              backgroundColor: '#FFFFFF',
+              borderColor: '#BFBFBD',
+              color: '#262626',
+            }}
             title="Trang trước"
           >
-            <ChevronLeft className="w-4 h-4" />
+            ‹
           </button>
 
           {/* Numbered Buttons */}
@@ -83,7 +94,8 @@ export const Pagination = ({
               return (
                 <span
                   key={`ellipsis-${idx}`}
-                  className="w-8 h-8 flex items-center justify-center text-stone-400 font-bold text-xs select-none"
+                  className="w-6 h-6 flex items-center justify-center text-xs select-none"
+                  style={{ color: '#8C8C8C' }}
                 >
                   ...
                 </span>
@@ -96,11 +108,12 @@ export const Pagination = ({
                 key={`page-${p}`}
                 type="button"
                 onClick={() => onPageChange(p)}
-                className={`w-8 h-8 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center ${
-                  isCurrent
-                    ? 'bg-stone-900 text-white shadow-md scale-105'
-                    : 'bg-white hover:bg-stone-100 text-stone-700 border border-stone-200 shadow-xs'
-                }`}
+                className="w-6 h-6 rounded text-xs font-semibold flex items-center justify-center border cursor-pointer transition-colors"
+                style={{
+                  backgroundColor: isCurrent ? '#262626' : '#FFFFFF',
+                  color: isCurrent ? '#F2EFE9' : '#262626',
+                  borderColor: isCurrent ? '#262626' : '#BFBFBD',
+                }}
               >
                 {p}
               </button>
@@ -112,31 +125,53 @@ export const Pagination = ({
             type="button"
             onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
             disabled={currentPage >= totalPages}
-            className="w-8 h-8 rounded-xl border border-stone-200 bg-white hover:bg-stone-100 text-stone-700 disabled:opacity-40 disabled:pointer-events-none flex items-center justify-center transition-all cursor-pointer shadow-xs"
+            className="w-6 h-6 rounded border flex items-center justify-center text-xs font-bold disabled:opacity-40 disabled:pointer-events-none cursor-pointer hover:bg-stone-100 transition-colors"
+            style={{
+              backgroundColor: '#FFFFFF',
+              borderColor: '#BFBFBD',
+              color: '#262626',
+            }}
             title="Trang tiếp theo"
           >
-            <ChevronRight className="w-4 h-4" />
+            ›
           </button>
         </div>
 
-        {/* Jump-to-page input box (Matching design in screenshot) */}
-        <form onSubmit={handleJump} className="flex items-center gap-1.5 pl-2 border-l border-stone-200">
+        {/* Jump-to-page input box without form wrapper */}
+        <div className="flex items-center gap-1 pl-2 border-l" style={{ borderColor: '#BFBFBD' }}>
           <input
             type="number"
             min={1}
             max={totalPages}
             value={jumpPage}
             onChange={(e) => setJumpPage(e.target.value)}
-            className="w-14 py-1.5 px-1.5 text-center font-mono font-bold text-xs bg-white border border-stone-200 rounded-xl text-stone-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 shadow-xs"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                handleJump(e);
+              }
+            }}
+            className="w-10 py-0.5 px-1 text-center font-mono text-xs rounded border focus:outline-none"
+            style={{
+              backgroundColor: '#FFFFFF',
+              borderColor: '#BFBFBD',
+              color: '#262626',
+            }}
           />
-          <span className="text-stone-400 font-bold text-xs select-none">/ {totalPages}</span>
+          <span className="text-[11px] select-none" style={{ color: '#8C8C8C' }}>/ {totalPages}</span>
           <button
-            type="submit"
-            className="px-3 py-1.5 bg-stone-900 hover:bg-stone-800 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer ml-1"
+            type="button"
+            onClick={handleJump}
+            className="px-2 py-0.5 rounded text-[11px] font-semibold border cursor-pointer hover:opacity-80 transition-opacity"
+            style={{
+              backgroundColor: '#262626',
+              borderColor: '#262626',
+              color: '#F2EFE9',
+            }}
           >
-            Đi đến
+            Đến
           </button>
-        </form>
+        </div>
       </div>
     </div>
   );

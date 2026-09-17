@@ -7,7 +7,15 @@ export const LidarCanvas = ({
   gridMetadata = { width: 200, height: 200, resolution: 0.05, origin_x: -5.0, origin_y: -5.0 },
   robotPose = { x: 0, y: 0, yaw: 0 },
   waypoints = [],
+  workflowSteps = [],
+  highlightedWaypointId = null,
+  keepOutZones = [],
+  selectedZoneId = null,
   onCanvasClickGoal,
+  onCanvasClickWaypointPin,
+  onSelectWaypoint,
+  onSelectZone,
+  isPinMode = false,
   showGridMap = true,
   showGridLines = true,
   showScanRays = true,
@@ -84,10 +92,41 @@ export const LidarCanvas = ({
     );
 
     const goalPos = { x: Number(worldX.toFixed(2)), y: Number(worldY.toFixed(2)) };
-    setSelectedGoal(goalPos);
 
-    if (onCanvasClickGoal) {
-      onCanvasClickGoal(goalPos.x, goalPos.y);
+    // 1. Check if clicking on an existing waypoint
+    if (!isPinMode && waypoints && waypoints.length > 0 && onSelectWaypoint) {
+      for (const wp of waypoints) {
+        const wpCanvas = worldToCanvas(wp.x, wp.y, canvasRef.current.width, canvasRef.current.height);
+        const dist = Math.hypot(px - wpCanvas.px, py - wpCanvas.py);
+        if (dist <= 18) {
+          onSelectWaypoint(wp);
+          return;
+        }
+      }
+    }
+
+    // 2. Check if clicking inside a Zone bounding box
+    if (!isPinMode && keepOutZones && keepOutZones.length > 0 && onSelectZone) {
+      for (const zone of keepOutZones) {
+        const topLeft = worldToCanvas(zone.x - zone.width / 2, zone.y + zone.height / 2, canvasRef.current.width, canvasRef.current.height);
+        const wPx = zone.width * scale;
+        const hPx = zone.height * scale;
+        if (px >= topLeft.px && px <= topLeft.px + wPx && py >= topLeft.py && py <= topLeft.py + hPx) {
+          onSelectZone(zone);
+          return;
+        }
+      }
+    }
+
+    if (isPinMode) {
+      if (onCanvasClickWaypointPin) {
+        onCanvasClickWaypointPin(goalPos.x, goalPos.y);
+      }
+    } else {
+      setSelectedGoal(goalPos);
+      if (onCanvasClickGoal) {
+        onCanvasClickGoal(goalPos.x, goalPos.y);
+      }
     }
   };
 
@@ -214,26 +253,159 @@ export const LidarCanvas = ({
         });
       }
 
-      // 5. Render Waypoints Overlay
+      // 5. Render Functional Zones & Virtual Walls (Hotel Concierge Standard)
+      if (keepOutZones && keepOutZones.length > 0) {
+        const getZoneStyle = (type) => {
+          switch (type) {
+            case 'SLOW_SPEED':
+              return { fill: 'rgba(245, 158, 11, 0.14)', stroke: '#D97706', text: '#B45309', icon: '⚠️' };
+            case 'SILENT_ZONE':
+              return { fill: 'rgba(99, 102, 241, 0.14)', stroke: '#6366F1', text: '#4338CA', icon: '🔇' };
+            case 'GREETING_ZONE':
+              return { fill: 'rgba(16, 185, 129, 0.14)', stroke: '#10B981', text: '#047857', icon: '👋' };
+            case 'SERVICE_PRIORITY':
+              return { fill: 'rgba(2, 132, 199, 0.14)', stroke: '#0284C7', text: '#0369A1', icon: '🛎️' };
+            case 'KEEP_OUT':
+            default:
+              return { fill: 'rgba(239, 68, 68, 0.14)', stroke: '#DC2626', text: '#B91C1C', icon: '🚫' };
+          }
+        };
+
+        keepOutZones.forEach((zone) => {
+          const topLeft = worldToCanvas(zone.x - zone.width / 2, zone.y + zone.height / 2, width, height);
+          const wPx = zone.width * scale;
+          const hPx = zone.height * scale;
+          const style = getZoneStyle(zone.type);
+          const isSelected = zone.id === selectedZoneId;
+
+          // Background Fill
+          ctx.fillStyle = style.fill;
+          ctx.fillRect(topLeft.px, topLeft.py, wPx, hPx);
+
+          // Border Dash & Stroke
+          ctx.strokeStyle = isSelected ? '#18181B' : style.stroke;
+          ctx.lineWidth = isSelected ? 2.5 : 1.5;
+          ctx.setLineDash(isSelected ? [] : [5, 4]);
+          ctx.strokeRect(topLeft.px, topLeft.py, wPx, hPx);
+          ctx.setLineDash([]);
+
+          // Selection Outline Overlay
+          if (isSelected) {
+            ctx.strokeStyle = style.stroke;
+            ctx.lineWidth = 1;
+            ctx.strokeRect(topLeft.px - 3, topLeft.py - 3, wPx + 6, hPx + 6);
+          }
+
+          // Label Text & Icon
+          ctx.fillStyle = style.text;
+          ctx.font = 'bold 9px Inter, sans-serif';
+          const label = `${style.icon} ${zone.name || 'VÙNG CHỨC NĂNG'}`;
+          ctx.fillText(label, topLeft.px + 4, topLeft.py + 12);
+
+          if (zone.type === 'SLOW_SPEED' && zone.speed_limit) {
+            ctx.font = '8px monospace';
+            ctx.fillText(`MAX: ${zone.speed_limit}m/s`, topLeft.px + 4, topLeft.py + 24);
+          }
+        });
+      }
+
+      // 6. Render Workflow Trajectory Polyline (Otto style path connecting steps)
+      if (workflowSteps && workflowSteps.length > 0 && waypoints.length > 0) {
+        const moveSteps = workflowSteps.filter((s) => s.type === 'MOVE');
+        if (moveSteps.length > 0) {
+          ctx.save();
+          ctx.strokeStyle = '#8B5CF6'; // Otto purple trajectory
+          ctx.lineWidth = 2.5;
+          ctx.setLineDash([6, 4]);
+
+          ctx.beginPath();
+          ctx.moveTo(robotCanvasPos.px, robotCanvasPos.py);
+
+          moveSteps.forEach((st) => {
+            const targetWp = waypoints.find(
+              (w) =>
+                w.id === st.params?.target_waypoint_id ||
+                (w.x === st.params?.target_x && w.y === st.params?.target_y)
+            );
+            if (targetWp) {
+              const p = worldToCanvas(targetWp.x, targetWp.y, width, height);
+              ctx.lineTo(p.px, p.py);
+            }
+          });
+
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
+
+      // 7. Render Waypoints / Endpoints Overlay (Otto Motors Style)
       if (showWaypoints && waypoints.length > 0) {
+        const getEndpointColor = (type) => {
+          switch (type) {
+            case 'DOCKING_TARGET':
+              return '#0284C7'; // Sky / Quầy neo tiếp khách
+            case 'PICKUP_DROPOFF':
+              return '#059669'; // Emerald / Giao nhận đồ
+            case 'SERVICE_STATION':
+              return '#6366F1'; // Indigo / Trạm dịch vụ
+            case 'PARKING_SPOT':
+              return '#64748B'; // Slate / Bãi đỗ
+            default:
+              return '#8B5CF6'; // Violet / Waypoint
+          }
+        };
+
         waypoints.forEach((wp) => {
           const wpPos = worldToCanvas(wp.x, wp.y, width, height);
+          const isHighlighted = wp.id === highlightedWaypointId;
+          const nodeColor = getEndpointColor(wp.type);
 
-          ctx.fillStyle = '#18181B';
+          // Otto Motors halo ring for active/selected waypoint
+          if (isHighlighted) {
+            ctx.strokeStyle = nodeColor;
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(wpPos.px, wpPos.py, 15, 0, Math.PI * 2);
+            ctx.stroke();
+
+            ctx.fillStyle = `${nodeColor}33`; // 20% opacity
+            ctx.beginPath();
+            ctx.arc(wpPos.px, wpPos.py, 15, 0, Math.PI * 2);
+            ctx.fill();
+          }
+
+          // Main node circle with template color
+          ctx.fillStyle = nodeColor;
           ctx.beginPath();
-          ctx.arc(wpPos.px, wpPos.py, 5, 0, Math.PI * 2);
+          ctx.arc(wpPos.px, wpPos.py, 7, 0, Math.PI * 2);
           ctx.fill();
           ctx.strokeStyle = '#FFFFFF';
           ctx.lineWidth = 2;
           ctx.stroke();
 
-          ctx.fillStyle = '#1A1917';
-          ctx.font = 'bold 11px Inter, sans-serif';
-          ctx.fillText(wp.name, wpPos.px + 8, wpPos.py + 4);
+          // Orientation Heading indicator (if yaw is defined)
+          if (wp.yaw !== undefined && wp.yaw !== null) {
+            const rad = (wp.yaw * Math.PI) / 180;
+            const arrowLen = 14;
+            const arrowX = wpPos.px + arrowLen * Math.cos(rad);
+            const arrowY = wpPos.py - arrowLen * Math.sin(rad);
+
+            ctx.strokeStyle = nodeColor;
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            ctx.moveTo(wpPos.px, wpPos.py);
+            ctx.lineTo(arrowX, arrowY);
+            ctx.stroke();
+          }
+
+          // Label badge with Name
+          ctx.fillStyle = isHighlighted ? '#18181B' : '#262626';
+          ctx.font = isHighlighted ? 'bold 12px Inter, sans-serif' : 'bold 11px Inter, sans-serif';
+          ctx.fillText(wp.name, wpPos.px + 10, wpPos.py + 4);
         });
       }
 
-      // 6. Selected Goal Crosshair Ring
+      // 8. Selected Goal Crosshair Ring
       if (selectedGoal) {
         const goalCanvas = worldToCanvas(selectedGoal.x, selectedGoal.y, width, height);
         ctx.strokeStyle = '#18181B';
@@ -333,8 +505,13 @@ export const LidarCanvas = ({
         </span>
       </div>
 
-      {/* Selected Target HUD */}
-      {selectedGoal && (
+      {/* Selected Target HUD or Pin Mode HUD */}
+      {isPinMode ? (
+        <div className="absolute top-4 right-4 z-10 flex items-center gap-2 bg-[#262626] text-[#F2EFE9] border border-[#262626] px-3.5 py-2 rounded-xl text-xs font-bold shadow-md animate-pulse">
+          <Crosshair className="w-4 h-4 text-emerald-400" />
+          <span>CHẾ ĐỘ GHIM WAYPOINT: Click trên bản đồ để chọn tọa độ</span>
+        </div>
+      ) : selectedGoal && (
         <div className="absolute top-4 right-4 z-10 flex items-center gap-2 bg-white/95 border border-[#E5E1D8] backdrop-blur-md px-3.5 py-2 rounded-xl text-stone-900 text-xs shadow-md animate-fadeIn">
           <Crosshair className="w-4 h-4 text-stone-900 animate-spin" />
           <span>

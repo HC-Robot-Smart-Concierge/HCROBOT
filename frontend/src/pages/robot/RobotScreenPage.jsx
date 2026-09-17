@@ -91,9 +91,12 @@ export const RobotScreenPage = ({ onLogout = () => {} }) => {
     }
   };
 
-  // Khi người dùng đi xa khỏi Camera -> Đóng gói lưu DB & chuyển sang ngủ nhẹ (RT-01)
+  // Khi người dùng đi xa khỏi Camera -> Đóng gói lưu DB, dọn dẹp âm thanh & chuyển sang ngủ nhẹ (RT-01)
   const handleGuestLeft = async () => {
-    if (!isSpeaking && !isProcessing) {
+    if (!isProcessing) {
+      stopSpeaking();
+      stopListening();
+      resetTranscript();
       try {
         await flushSession(sessionId);
       } catch (err) {
@@ -102,9 +105,20 @@ export const RobotScreenPage = ({ onLogout = () => {} }) => {
       setActiveRoomNumber(null);
       setAiResponseText('');
       setDetectedIntent(null);
+      resetSession(sessionId);
       setCurrentState('RT-01');
     }
   };
+
+  // Tự động chuyển về RT-01 nhắm mắt ngủ nếu không có ai nói chuyện trong 10 giây ở chế độ RT-03
+  useEffect(() => {
+    if (currentState === 'RT-03' && !isSpeaking && !isProcessing && transcript.trim().length === 0) {
+      const idleTimer = setTimeout(() => {
+        handleGuestLeft();
+      }, 10000);
+      return () => clearTimeout(idleTimer);
+    }
+  }, [currentState, isSpeaking, isProcessing, transcript]);
 
   // 1. Khi kích hoạt lắng nghe (Bấm nút hoặc Tự động)
   const handleStartTalk = () => {
@@ -292,6 +306,8 @@ export const RobotScreenPage = ({ onLogout = () => {} }) => {
         onGuestApproached={handleGuestApproached} 
         onGuestLeft={handleGuestLeft} 
         onEmotionChange={(emotion) => setGuestEmotion(emotion)}
+        source={import.meta.env.VITE_CAMERA_SOURCE || 'local'}
+        streamUrl={import.meta.env.VITE_PI5_CAMERA_URL || 'http://localhost:8554/stream'}
       />
 
       <MobileRobotScreen

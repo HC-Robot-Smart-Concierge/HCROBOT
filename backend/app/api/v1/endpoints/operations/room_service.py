@@ -5,14 +5,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc
 
 from app.core.database import get_db
-from app.models import Staff, RobotUnit, RoomServiceOrder, InventoryStock
+from app.models import Staff, RoomServiceOrder, InventoryStock
 from app.schemas.operations import (
     RoomServiceOrderCreate,
     RoomServiceOrderStatusUpdate,
     RoomServiceOrderAssignRobot,
     RoomServiceOrderResponse,
     RoomServiceDashboardResponse,
-    RobotUnitResponse,
 )
 from .shared import TAG_FB, create_department_notification
 
@@ -26,13 +25,8 @@ async def get_room_service_dashboard(db: AsyncSession = Depends(get_db)):
     orders_res = await db.execute(select(RoomServiceOrder).order_by(desc(RoomServiceOrder.created_at)))
     orders = orders_res.scalars().all()
 
-    # 2. Fetch Robots
-    fleet_res = await db.execute(
-        select(RobotUnit)
-        .where(RobotUnit.model_type == "delivery")
-        .order_by(RobotUnit.unit_code)
-    )
-    delivery_fleet = fleet_res.scalars().all()
+    # 2. Fetch Robots (Deprecated - returning empty list)
+    delivery_fleet = []
 
     # 3. Fetch Stock
     stock_res = await db.execute(select(InventoryStock).order_by(InventoryStock.quantity))
@@ -134,20 +128,8 @@ async def assign_robot_to_order(
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
 
-    robot = None
-    if assign_in.robot_id:
-        robot_res = await db.execute(
-            select(RobotUnit).where(
-                (RobotUnit.id == assign_in.robot_id) |
-                (RobotUnit.unit_code == assign_in.robot_id)
-            )
-        )
-        robot = robot_res.scalar_one_or_none()
-        if not robot:
-            raise HTTPException(status_code=404, detail="Robot unit not found")
-
-    order.assigned_robot_id = robot.id if robot else None
-    order.assigned_staff_name = assign_in.robot_name or (robot.name if robot else "HCRobot Unit 01")
+    order.assigned_robot_id = assign_in.robot_id
+    order.assigned_staff_name = assign_in.robot_name or assign_in.robot_id or "HCRobot Unit 01"
     order.status = "Delivering"
     await db.commit()
     await db.refresh(order)

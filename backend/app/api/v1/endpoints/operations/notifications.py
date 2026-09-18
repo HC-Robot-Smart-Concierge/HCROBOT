@@ -1,6 +1,7 @@
 from datetime import datetime
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, WebSocket, WebSocketDisconnect, Query
+from app.services.notification_manager import notification_manager
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, desc
 
@@ -132,6 +133,34 @@ async def delete_notification_item(
     await db.delete(notif)
     await db.commit()
     return {"message": "Đã xóa thông báo thành công", "id": notification_id}
+
+
+# =====================================================================
+# REALTIME NOTIFICATION WEBSOCKET HUB
+# =====================================================================
+
+@router.websocket("/ws/notifications")
+async def notification_websocket_endpoint(
+    websocket: WebSocket,
+    department: Optional[str] = Query("All"),
+):
+    """
+    Kênh WebSocket kết nối Real-time cho Trung tâm Thông báo Phòng ban & Điều phối Nghiệp vụ.
+    Param: ?department=Housekeeping / F%26B / Bell%20Services / Maintenance / Reception / All
+    """
+    dept_val = department or "All"
+    await notification_manager.connect(websocket, department=dept_val)
+    try:
+        while True:
+            # Lắng nghe keep-alive ping từ client hoặc yêu cầu đổi phòng ban
+            msg = await websocket.receive_text()
+            if msg == "ping":
+                await websocket.send_text("pong")
+    except WebSocketDisconnect:
+        notification_manager.disconnect(websocket, department=dept_val)
+    except Exception:
+        notification_manager.disconnect(websocket, department=dept_val)
+
 
 
 

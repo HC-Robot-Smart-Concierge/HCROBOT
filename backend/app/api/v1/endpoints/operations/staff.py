@@ -7,23 +7,21 @@ from sqlalchemy import select
 
 from app.core.database import get_db
 from app.core.security import hash_password
-from app.models import Staff, RobotUnit
+from app.models import Staff
 from app.schemas.operations import (
     StaffResponse,
     StaffCreate,
     StaffUpdate,
-    RobotUnitResponse,
 )
 from .shared import TAG_OPS, TAG_STAFF
 
 router = APIRouter()
 
 
-@router.get("/fleet", response_model=List[RobotUnitResponse], tags=TAG_OPS, summary="Danh sách trạng thái đội Robot HCRobot")
-async def get_robot_fleet(db: AsyncSession = Depends(get_db)):
+@router.get("/fleet", response_model=List[dict], tags=TAG_OPS, summary="Danh sách trạng thái đội Robot HCRobot")
+async def get_robot_fleet():
     """Returns status of all active HCRobot autonomous units."""
-    res = await db.execute(select(RobotUnit).order_by(RobotUnit.unit_code))
-    return res.scalars().all()
+    return []
 
 
 @router.get("/staff", response_model=List[StaffResponse], tags=TAG_STAFF, summary="Lấy danh sách toàn bộ nhân viên")

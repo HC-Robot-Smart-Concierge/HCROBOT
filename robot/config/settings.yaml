@@ -10,7 +10,7 @@ server:
 
 robot:
   id: "hc_pi5_01"
-  name: "HC Smart Concierge Robot"
+  name: "Rora Smart Concierge Robot"
   gpio:
     left_forward: 17
     left_backward: 27

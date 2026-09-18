@@ -73,7 +73,17 @@ class ObstacleSafetyController:
         self._last_snapshot_key = None
         self._blocked_motions = set()
         self._clear_streak = {
-            motion: 0 for motion in ("forward", "backward", "left", "right")
+            motion: 0
+            for motion in (
+                "forward",
+                "backward",
+                "left",
+                "right",
+                "forward_left",
+                "forward_right",
+                "backward_left",
+                "backward_right",
+            )
         }
 
     def _requirements(self, motion):
@@ -93,6 +103,26 @@ class ObstacleSafetyController:
                 ("front", self.turn_clearance_cm),
                 ("rear", self.turn_clearance_cm),
             )
+        if motion == "forward_left":
+            return (
+                ("front", self.thresholds_cm["forward"]),
+                ("left", self.thresholds_cm["left"]),
+            )
+        if motion == "forward_right":
+            return (
+                ("front", self.thresholds_cm["forward"]),
+                ("right", self.thresholds_cm["right"]),
+            )
+        if motion == "backward_left":
+            return (
+                ("rear", self.thresholds_cm["backward"]),
+                ("left", self.thresholds_cm["left"]),
+            )
+        if motion == "backward_right":
+            return (
+                ("rear", self.thresholds_cm["backward"]),
+                ("right", self.thresholds_cm["right"]),
+            )
         return ()
 
     def _packet_is_clear_for_resume(self, snapshot, motion):
@@ -100,6 +130,8 @@ class ObstacleSafetyController:
         for sensor_name, stop_threshold in self._requirements(motion):
             distance = snapshot.distance(sensor_name)
             if distance is None:
+                if sensor_name in ("left", "right"):
+                    continue
                 return False
             if distance <= stop_threshold + self.resume_margin_cm:
                 return False
@@ -132,6 +164,10 @@ class ObstacleSafetyController:
         current = snapshot.distance(sensor_name)
         if current is not None:
             return current, False, None
+
+        if sensor_name in ("left", "right"):
+            # Cảm biến sườn nếu không có số đo (không cắm hoặc out of range) thì không chặn xe
+            return None, False, None
 
         state = self._sensor_states[sensor_name]
         if state.last_valid_distance is None or state.last_valid_at is None:
@@ -213,16 +249,19 @@ class ObstacleSafetyController:
                     sensor=sensor_name,
                     threshold_cm=threshold,
                 )
-            if distance <= threshold:
-                return SafetyDecision(
-                    False,
-                    f"vật cản {sensor_name}={distance:.1f}cm <= {threshold:.1f}cm",
-                    sensor=sensor_name,
-                    distance_cm=distance,
-                    threshold_cm=threshold,
-                )
-            suffix = " (giữ tạm)" if held else ""
-            readings.append(f"{sensor_name}={distance:.1f}cm{suffix}")
+            if distance is not None:
+                if distance <= threshold:
+                    return SafetyDecision(
+                        False,
+                        f"vật cản {sensor_name}={distance:.1f}cm <= {threshold:.1f}cm",
+                        sensor=sensor_name,
+                        distance_cm=distance,
+                        threshold_cm=threshold,
+                    )
+                suffix = " (giữ tạm)" if held else ""
+                readings.append(f"{sensor_name}={distance:.1f}cm{suffix}")
+            else:
+                readings.append(f"{sensor_name}=bỏ qua (chưa kết nối)")
 
         return SafetyDecision(True, ", ".join(readings))
 
@@ -249,6 +288,10 @@ class ObstacleSafetyController:
             "backward": self.motor.backward,
             "left": self.motor.turn_left,
             "right": self.motor.turn_right,
+            "forward_left": self.motor.turn_forward_left,
+            "forward_right": self.motor.turn_forward_right,
+            "backward_left": self.motor.turn_backward_left,
+            "backward_right": self.motor.turn_backward_right,
         }
         actions[motion]()
         self.motion = motion
@@ -276,3 +319,14 @@ class ObstacleSafetyController:
     def stop(self):
         self.motor.stop()
         self.motion = "stop"
+
+    def set_speed(self, speed_percent: int) -> int:
+        """Cài đặt mức vận tốc xuống motor."""
+        if hasattr(self.motor, "set_speed"):
+            return self.motor.set_speed(speed_percent)
+        return 100
+
+    @property
+    def speed(self) -> int:
+        return getattr(self.motor, "speed", 100)
+

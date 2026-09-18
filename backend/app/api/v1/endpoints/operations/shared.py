@@ -1,6 +1,10 @@
+import asyncio
+import random
+from datetime import datetime
 from typing import List, Dict, Any, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
+from app.services.notification_manager import notification_manager
 from app.models import (
     Staff,
     RoomServiceOrder,
@@ -48,6 +52,26 @@ async def create_department_notification(
         is_read=False,
     )
     db.add(notif)
+    try:
+        await db.flush()
+    except Exception:
+        pass
+
+    # Broadcast real-time qua WebSocket Hub (không chặn tiến trình DB)
+    notif_data = {
+        "id": str(notif.id) if notif.id else f"NOTIF-{random.randint(1000, 9999)}",
+        "department": notif.department,
+        "title": notif.title,
+        "description": notif.description,
+        "request_id": notif.request_id,
+        "request_type": notif.request_type,
+        "type": notif.type,
+        "is_read": False,
+        "created_at": datetime.utcnow().isoformat(),
+    }
+    asyncio.create_task(
+        notification_manager.broadcast_notification(notif_data, department=department)
+    )
     return notif
 
 

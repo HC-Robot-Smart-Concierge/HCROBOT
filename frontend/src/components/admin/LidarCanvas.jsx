@@ -10,9 +10,11 @@ export const LidarCanvas = ({
   workflowSteps = [],
   highlightedWaypointId = null,
   keepOutZones = [],
+  selectedZoneId = null,
   onCanvasClickGoal,
   onCanvasClickWaypointPin,
   onSelectWaypoint,
+  onSelectZone,
   isPinMode = false,
   showGridMap = true,
   showGridLines = true,
@@ -98,6 +100,19 @@ export const LidarCanvas = ({
         const dist = Math.hypot(px - wpCanvas.px, py - wpCanvas.py);
         if (dist <= 18) {
           onSelectWaypoint(wp);
+          return;
+        }
+      }
+    }
+
+    // 2. Check if clicking inside a Zone bounding box
+    if (!isPinMode && keepOutZones && keepOutZones.length > 0 && onSelectZone) {
+      for (const zone of keepOutZones) {
+        const topLeft = worldToCanvas(zone.x - zone.width / 2, zone.y + zone.height / 2, canvasRef.current.width, canvasRef.current.height);
+        const wPx = zone.width * scale;
+        const hPx = zone.height * scale;
+        if (px >= topLeft.px && px <= topLeft.px + wPx && py >= topLeft.py && py <= topLeft.py + hPx) {
+          onSelectZone(zone);
           return;
         }
       }
@@ -238,25 +253,59 @@ export const LidarCanvas = ({
         });
       }
 
-      // 5. Render Keep-out Zones / Virtual Walls
+      // 5. Render Functional Zones & Virtual Walls (Hotel Concierge Standard)
       if (keepOutZones && keepOutZones.length > 0) {
+        const getZoneStyle = (type) => {
+          switch (type) {
+            case 'SLOW_SPEED':
+              return { fill: 'rgba(245, 158, 11, 0.14)', stroke: '#D97706', text: '#B45309', icon: '⚠️' };
+            case 'SILENT_ZONE':
+              return { fill: 'rgba(99, 102, 241, 0.14)', stroke: '#6366F1', text: '#4338CA', icon: '🔇' };
+            case 'GREETING_ZONE':
+              return { fill: 'rgba(16, 185, 129, 0.14)', stroke: '#10B981', text: '#047857', icon: '👋' };
+            case 'SERVICE_PRIORITY':
+              return { fill: 'rgba(2, 132, 199, 0.14)', stroke: '#0284C7', text: '#0369A1', icon: '🛎️' };
+            case 'KEEP_OUT':
+            default:
+              return { fill: 'rgba(239, 68, 68, 0.14)', stroke: '#DC2626', text: '#B91C1C', icon: '🚫' };
+          }
+        };
+
         keepOutZones.forEach((zone) => {
           const topLeft = worldToCanvas(zone.x - zone.width / 2, zone.y + zone.height / 2, width, height);
           const wPx = zone.width * scale;
           const hPx = zone.height * scale;
+          const style = getZoneStyle(zone.type);
+          const isSelected = zone.id === selectedZoneId;
 
-          ctx.fillStyle = 'rgba(239, 68, 68, 0.12)';
+          // Background Fill
+          ctx.fillStyle = style.fill;
           ctx.fillRect(topLeft.px, topLeft.py, wPx, hPx);
 
-          ctx.strokeStyle = 'rgba(239, 68, 68, 0.7)';
-          ctx.lineWidth = 1.5;
-          ctx.setLineDash([4, 4]);
+          // Border Dash & Stroke
+          ctx.strokeStyle = isSelected ? '#18181B' : style.stroke;
+          ctx.lineWidth = isSelected ? 2.5 : 1.5;
+          ctx.setLineDash(isSelected ? [] : [5, 4]);
           ctx.strokeRect(topLeft.px, topLeft.py, wPx, hPx);
           ctx.setLineDash([]);
 
-          ctx.fillStyle = '#DC2626';
+          // Selection Outline Overlay
+          if (isSelected) {
+            ctx.strokeStyle = style.stroke;
+            ctx.lineWidth = 1;
+            ctx.strokeRect(topLeft.px - 3, topLeft.py - 3, wPx + 6, hPx + 6);
+          }
+
+          // Label Text & Icon
+          ctx.fillStyle = style.text;
           ctx.font = 'bold 9px Inter, sans-serif';
-          ctx.fillText(zone.name || 'VÙNG CẤM', topLeft.px + 4, topLeft.py + 12);
+          const label = `${style.icon} ${zone.name || 'VÙNG CHỨC NĂNG'}`;
+          ctx.fillText(label, topLeft.px + 4, topLeft.py + 12);
+
+          if (zone.type === 'SLOW_SPEED' && zone.speed_limit) {
+            ctx.font = '8px monospace';
+            ctx.fillText(`MAX: ${zone.speed_limit}m/s`, topLeft.px + 4, topLeft.py + 24);
+          }
         });
       }
 

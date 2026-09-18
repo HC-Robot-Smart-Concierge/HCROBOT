@@ -13,7 +13,7 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != 'utf-8':
 # Add backend directory to sys.path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.db.chroma import get_chroma_client
+from app.services.rag.chroma import get_chroma_client
 
 
 def inspect_chromadb():

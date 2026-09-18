@@ -290,7 +290,11 @@ class MJPEGHandler(BaseHTTPRequestHandler):
 
         try:
             while True:
-                frame = camera_backend.capture_jpeg()
+                try:
+                    frame = camera_backend.capture_jpeg()
+                except RuntimeError:
+                    time.sleep(interval)
+                    continue
                 self.wfile.write(b"--frame\r\n")
                 self.wfile.write(b"Content-Type: image/jpeg\r\n")
                 self.wfile.write(

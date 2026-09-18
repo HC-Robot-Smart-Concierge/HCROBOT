@@ -8,7 +8,6 @@ from sqlalchemy import select, func, desc
 from app.core.database import get_db
 from app.models import (
     Staff,
-    RobotUnit,
     RoomServiceOrder,
     HousekeepingRequest,
     BellRequest,
@@ -724,11 +723,7 @@ async def get_analytics_summary(db: AsyncSession = Depends(get_db)):
         fallback_staff = 0
 
     # Robot units
-    try:
-        units_res = await db.execute(select(func.count(RobotUnit.id)))
-        total_robots = units_res.scalar() or 1
-    except Exception:
-        total_robots = 1
+    total_robots = 1
 
     # Recent 5 activities from real tasks
     recent_activities = []

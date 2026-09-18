@@ -18,7 +18,7 @@ from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 
 from app.core.config import settings
 from app.core.database import engine
-from app.db.chroma import get_concierge_collection, get_chroma_client
+from app.services.rag.chroma import get_concierge_collection, get_chroma_client
 
 
 def ensure_postgres_db_exists():

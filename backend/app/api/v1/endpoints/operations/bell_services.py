@@ -5,13 +5,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc
 
 from app.core.database import get_db
-from app.models import Staff, RobotUnit, BellRequest
+from app.models import Staff, BellRequest
 from app.schemas.operations import (
     BellRequestCreate,
     BellRequestStatusUpdate,
     BellRequestResponse,
     BellServicesDashboardResponse,
-    RobotUnitResponse,
     StaffResponse,
 )
 from .shared import TAG_BELL, create_department_notification

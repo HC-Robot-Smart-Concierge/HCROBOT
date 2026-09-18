@@ -7,7 +7,11 @@ import unittest
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from obstacle_safety import ObstacleSafetyController
-from ultrasonic_serial import SensorSnapshot, parse_sensor_packet
+from ultrasonic_serial import (
+    SensorSnapshot,
+    parse_sensor_packet,
+    parse_telemetry_packet,
+)
 
 
 class FakeReader:
@@ -33,6 +37,18 @@ class FakeMotor:
 
     def turn_right(self):
         self.motion = "right"
+
+    def turn_forward_left(self):
+        self.motion = "forward_left"
+
+    def turn_forward_right(self):
+        self.motion = "forward_right"
+
+    def turn_backward_left(self):
+        self.motion = "backward_left"
+
+    def turn_backward_right(self):
+        self.motion = "backward_right"
 
     def stop(self):
         self.motion = "stop"
@@ -70,6 +86,40 @@ class TestSerialPacketParser(unittest.TestCase):
         with self.assertRaises(ValueError):
             parse_sensor_packet("not-json")
 
+    def test_combined_packet_parses_mpu_without_changing_ultrasonic(self):
+        packet = parse_telemetry_packet(
+            '{"front":42.3,"rear":105.1,"left":31.8,"right":78.4,'
+            '"mpu_available":true,'
+            '"accel":{"x":0.01,"y":-0.02,"z":0.99},'
+            '"gyro":{"x":0.3,"y":-0.1,"z":12.4},'
+            '"yaw_rate_dps":12.4}'
+        )
+        self.assertEqual(packet.distances["front"], 42.3)
+        self.assertTrue(packet.mpu_available)
+        self.assertEqual(packet.accel, {"x": 0.01, "y": -0.02, "z": 0.99})
+        self.assertEqual(packet.gyro["z"], 12.4)
+        self.assertEqual(packet.yaw_rate_dps, 12.4)
+
+    def test_bad_mpu_data_becomes_none_without_losing_ultrasonic(self):
+        packet = parse_telemetry_packet(
+            '{"front":80,"rear":90,"left":100,"right":110,'
+            '"mpu_available":true,'
+            '"accel":{"x":"bad","y":0,"z":1},'
+            '"gyro":null,"yaw_rate_dps":null}'
+        )
+        self.assertEqual(packet.distances["front"], 80.0)
+        self.assertTrue(packet.mpu_available)
+        self.assertIsNone(packet.accel)
+        self.assertIsNone(packet.gyro)
+        self.assertIsNone(packet.yaw_rate_dps)
+
+    def test_legacy_ultrasonic_packet_reports_mpu_unavailable(self):
+        packet = parse_telemetry_packet(
+            '{"front":80,"rear":90,"left":100,"right":110}'
+        )
+        self.assertFalse(packet.mpu_available)
+        self.assertIsNone(packet.accel)
+
 
 class TestObstacleSafety(unittest.TestCase):
     def setUp(self):
@@ -100,6 +150,22 @@ class TestObstacleSafety(unittest.TestCase):
         )
         self.assertEqual(self.safety.evaluate("right").sensor, "rear")
         self.assertFalse(self.safety.command("right"))
+
+    def test_arc_turn_checks_directional_and_side_sensors(self):
+        # Vật cản phía trước -> chặn vừa tiến vừa rẽ trái
+        self.reader.snapshot = snapshot(front=20.0, left=100.0, right=100.0)
+        self.assertEqual(self.safety.evaluate("forward_left").sensor, "front")
+        self.assertFalse(self.safety.command("forward_left"))
+
+        # Vật cản bên phải -> chặn vừa tiến vừa rẽ phải
+        self.reader.snapshot = snapshot(sequence=2, front=100.0, left=100.0, right=15.0)
+        self.assertEqual(self.safety.evaluate("forward_right").sensor, "right")
+        self.assertFalse(self.safety.command("forward_right"))
+
+        # Thông thoáng cả trước và trái -> cho phép lùi rẽ trái
+        self.reader.snapshot = snapshot(sequence=3, front=100.0, rear=100.0, left=100.0, right=100.0)
+        self.assertTrue(self.safety.command("backward_left"))
+        self.assertEqual(self.motor.motion, "backward_left")
 
     def test_one_null_packet_uses_recent_valid_value_then_stops(self):
         self.assertTrue(self.safety.command("forward"))
@@ -145,6 +211,21 @@ class TestObstacleSafety(unittest.TestCase):
         )
         self.assertFalse(self.safety.command("right"))
 
+    def test_null_side_sensor_does_not_block_arc_or_turn(self):
+        # Ban đầu có đọc được 1 lần:
+        self.reader.snapshot = snapshot(sequence=1, front=100.0, rear=100.0, left=90.0, right=90.0)
+        self.safety.update()
+
+        # Sau đó left trở thành None (không cắm hoặc out of range):
+        self.reader.snapshot = snapshot(sequence=2, front=100.0, rear=100.0, left=None, right=90.0)
+        self.assertTrue(self.safety.command("forward_left"))
+        self.assertEqual(self.motor.motion, "forward_left")
+
+        # Có thể quay trái bình thường:
+        self.assertTrue(self.safety.command("left"))
+        self.assertEqual(self.motor.motion, "left")
+
 
 if __name__ == "__main__":
     unittest.main()
+

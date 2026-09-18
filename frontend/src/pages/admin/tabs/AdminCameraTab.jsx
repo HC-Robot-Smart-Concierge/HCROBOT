@@ -15,9 +15,14 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ArrowUpLeft,
+  ArrowUpRight,
+  ArrowDownLeft,
+  ArrowDownRight,
   Square,
   Gamepad2,
   Navigation,
+  Gauge,
 } from 'lucide-react';
 
 const DEFAULT_STREAM_URL = 'http://100.73.245.66:8554/stream';
@@ -39,14 +44,60 @@ export const AdminCameraTab = ({ currentUser }) => {
   // Teleop Motion state
   const [activeMotion, setActiveMotion] = useState('stop');
   const [controlIp, setControlIp] = useState('100.73.245.66');
+  const [speed, setSpeed] = useState(75);
+  const speedRef = useRef(75);
 
   const imgRef = useRef(null);
   const containerRef = useRef(null);
   const canvasRef = useRef(null);
 
+  const pressedKeysRef = useRef(new Set());
+  const activeMotionRef = useRef('stop');
+
+  const handleSpeedChange = useCallback(
+    async (newSpeed) => {
+      const clamped = Math.max(20, Math.min(100, newSpeed));
+      setSpeed(clamped);
+      speedRef.current = clamped;
+      try {
+        await fetch('/api/v1/operations/robot/control', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            command: `speed:${clamped}`,
+            target_ip: controlIp,
+            port: 9999,
+            speed: clamped,
+          }),
+        });
+      } catch (err) {
+        console.warn('Speed set error:', err);
+      }
+    },
+    [controlIp]
+  );
+
+  const computeMotionCommand = useCallback((keysSet) => {
+    const isUp = keysSet.has('w') || keysSet.has('arrowup');
+    const isDown = keysSet.has('s') || keysSet.has('arrowdown');
+    const isLeft = keysSet.has('a') || keysSet.has('arrowleft');
+    const isRight = keysSet.has('d') || keysSet.has('arrowright');
+
+    if (isUp && isLeft) return 'wa';
+    if (isUp && isRight) return 'wd';
+    if (isDown && isLeft) return 'sa';
+    if (isDown && isRight) return 'sd';
+    if (isUp) return 'w';
+    if (isDown) return 's';
+    if (isLeft) return 'a';
+    if (isRight) return 'd';
+    return 'stop';
+  }, []);
+
   const sendControlCommand = useCallback(
     async (cmd) => {
       setActiveMotion(cmd);
+      activeMotionRef.current = cmd;
       try {
         await fetch('/api/v1/operations/robot/control', {
           method: 'POST',
@@ -55,6 +106,7 @@ export const AdminCameraTab = ({ currentUser }) => {
             command: cmd,
             target_ip: controlIp,
             port: 9999,
+            speed: speedRef.current,
           }),
         });
       } catch (err) {
@@ -65,6 +117,11 @@ export const AdminCameraTab = ({ currentUser }) => {
   );
 
   useEffect(() => {
+    const validKeys = new Set([
+      'w', 's', 'a', 'd',
+      'arrowup', 'arrowdown', 'arrowleft', 'arrowright'
+    ]);
+
     const handleKeyDown = (e) => {
       if (
         ['input', 'textarea'].includes(
@@ -73,11 +130,40 @@ export const AdminCameraTab = ({ currentUser }) => {
       )
         return;
       const key = e.key.toLowerCase();
-      if (key === 'w' || key === 'arrowup') sendControlCommand('w');
-      else if (key === 's' || key === 'arrowdown') sendControlCommand('s');
-      else if (key === 'a' || key === 'arrowleft') sendControlCommand('a');
-      else if (key === 'd' || key === 'arrowright') sendControlCommand('d');
-      else if (key === ' ' || key === 'x') sendControlCommand('stop');
+      if (key === ' ' || key === 'x') {
+        pressedKeysRef.current.clear();
+        sendControlCommand('stop');
+        return;
+      }
+      if (key === '1') {
+        handleSpeedChange(50);
+        return;
+      }
+      if (key === '2') {
+        handleSpeedChange(75);
+        return;
+      }
+      if (key === '3') {
+        handleSpeedChange(100);
+        return;
+      }
+      if (key === '+' || key === '=') {
+        handleSpeedChange(speedRef.current + 10);
+        return;
+      }
+      if (key === '-' || key === '_') {
+        handleSpeedChange(speedRef.current - 10);
+        return;
+      }
+      if (validKeys.has(key)) {
+        if (!pressedKeysRef.current.has(key)) {
+          pressedKeysRef.current.add(key);
+          const nextCmd = computeMotionCommand(pressedKeysRef.current);
+          if (nextCmd !== activeMotionRef.current) {
+            sendControlCommand(nextCmd);
+          }
+        }
+      }
     };
 
     const handleKeyUp = (e) => {
@@ -88,29 +174,33 @@ export const AdminCameraTab = ({ currentUser }) => {
       )
         return;
       const key = e.key.toLowerCase();
-      if (
-        [
-          'w',
-          's',
-          'a',
-          'd',
-          'arrowup',
-          'arrowdown',
-          'arrowleft',
-          'arrowright',
-        ].includes(key)
-      ) {
+      if (validKeys.has(key)) {
+        if (pressedKeysRef.current.has(key)) {
+          pressedKeysRef.current.delete(key);
+          const nextCmd = computeMotionCommand(pressedKeysRef.current);
+          if (nextCmd !== activeMotionRef.current) {
+            sendControlCommand(nextCmd);
+          }
+        }
+      }
+    };
+
+    const handleBlur = () => {
+      if (pressedKeysRef.current.size > 0) {
+        pressedKeysRef.current.clear();
         sendControlCommand('stop');
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('blur', handleBlur);
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('blur', handleBlur);
     };
-  }, [sendControlCommand]);
+  }, [computeMotionCommand, sendControlCommand]);
 
   const checkHealth = useCallback(async () => {
     try {
@@ -369,31 +459,101 @@ export const AdminCameraTab = ({ currentUser }) => {
           />
         ) : null}
 
-        {/* On-Screen D-Pad Teleop Controller Overlay */}
-        <div className="absolute bottom-4 right-4 z-10 p-3 bg-black/65 backdrop-blur-md rounded-2xl border border-white/10 shadow-2xl flex flex-col items-center gap-1.5 select-none">
-          <div className="flex items-center gap-1 text-[9px] font-bold text-white/70 uppercase tracking-wider mb-0.5">
-            <Gamepad2 className="w-3.5 h-3.5 text-emerald-400" />
-            <span>WASD Teleop Control</span>
+        {/* On-Screen D-Pad Teleop Controller Overlay (8 Hướng + Dừng khẩn) */}
+        <div className="absolute bottom-4 right-4 z-10 p-3 bg-black/75 backdrop-blur-md rounded-2xl border border-white/10 shadow-2xl flex flex-col items-center gap-2 select-none">
+          <div className="flex items-center justify-between w-full px-1 text-[9px] font-bold text-white/70 uppercase tracking-wider">
+            <div className="flex items-center gap-1">
+              <Gamepad2 className="w-3.5 h-3.5 text-emerald-400" />
+              <span>WASD Teleop Control</span>
+            </div>
+            <span
+              className={`px-1.5 py-0.5 rounded text-[8px] font-mono font-semibold ${
+                activeMotion !== 'stop'
+                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                  : 'bg-white/5 text-stone-400'
+              }`}
+            >
+              {activeMotion.toUpperCase()}
+            </span>
           </div>
 
-          {/* Up (W) */}
-          <button
-            onMouseDown={() => sendControlCommand('w')}
-            onMouseUp={() => sendControlCommand('stop')}
-            onTouchStart={() => sendControlCommand('w')}
-            onTouchEnd={() => sendControlCommand('stop')}
-            className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all cursor-pointer border ${
-              activeMotion === 'w'
-                ? 'bg-emerald-500 text-white border-emerald-400 scale-95'
-                : 'bg-stone-800/80 text-stone-200 border-white/10 hover:bg-stone-700'
-            }`}
-            title="Tiến (W / ArrowUp)"
-          >
-            <ChevronUp className="w-5 h-5" />
-          </button>
+          {/* Speed Presets Selector */}
+          <div className="flex items-center justify-between w-full bg-stone-900/90 px-2 py-1 rounded-xl border border-white/10 text-[10px]">
+            <div className="flex items-center gap-1 text-stone-400 font-medium">
+              <Gauge className="w-3 h-3 text-amber-400" />
+              <span>Tốc độ:</span>
+            </div>
+            <div className="flex items-center gap-1">
+              {[
+                { val: 50, label: '50%' },
+                { val: 75, label: '75%' },
+                { val: 100, label: '100%' },
+              ].map((lvl) => (
+                <button
+                  key={lvl.val}
+                  onClick={() => handleSpeedChange(lvl.val)}
+                  className={`px-1.5 py-0.5 rounded-lg font-mono text-[9px] font-bold transition-all cursor-pointer ${
+                    speed === lvl.val
+                      ? 'bg-amber-500 text-stone-950 shadow-sm shadow-amber-500/30'
+                      : 'text-stone-300 hover:text-white hover:bg-white/10'
+                  }`}
+                  title={`Cài đặt vận tốc ${lvl.label} (Phím tắt: ${lvl.val === 50 ? '1' : lvl.val === 75 ? '2' : '3'})`}
+                >
+                  {lvl.label}
+                </button>
+              ))}
+            </div>
+          </div>
 
-          {/* Left - Stop - Right */}
-          <div className="flex items-center gap-1.5">
+          {/* Lưới 3x3: Tiến-Trái, Tiến, Tiến-Phải / Trái, Dừng, Phải / Lùi-Trái, Lùi, Lùi-Phải */}
+          <div className="grid grid-cols-3 gap-1.5">
+            {/* Hàng 1: WA, W, WD */}
+            <button
+              onMouseDown={() => sendControlCommand('wa')}
+              onMouseUp={() => sendControlCommand('stop')}
+              onTouchStart={() => sendControlCommand('wa')}
+              onTouchEnd={() => sendControlCommand('stop')}
+              className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all cursor-pointer border ${
+                activeMotion === 'wa'
+                  ? 'bg-emerald-500 text-white border-emerald-400 scale-95 shadow-lg shadow-emerald-500/30'
+                  : 'bg-stone-800/80 text-stone-300 border-white/10 hover:bg-stone-700'
+              }`}
+              title="Tiến - Quẹo Trái (W+A)"
+            >
+              <ArrowUpLeft className="w-4 h-4" />
+            </button>
+
+            <button
+              onMouseDown={() => sendControlCommand('w')}
+              onMouseUp={() => sendControlCommand('stop')}
+              onTouchStart={() => sendControlCommand('w')}
+              onTouchEnd={() => sendControlCommand('stop')}
+              className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all cursor-pointer border ${
+                activeMotion === 'w'
+                  ? 'bg-emerald-500 text-white border-emerald-400 scale-95 shadow-lg shadow-emerald-500/30'
+                  : 'bg-stone-800/80 text-stone-200 border-white/10 hover:bg-stone-700'
+              }`}
+              title="Tiến (W / ArrowUp)"
+            >
+              <ChevronUp className="w-5 h-5" />
+            </button>
+
+            <button
+              onMouseDown={() => sendControlCommand('wd')}
+              onMouseUp={() => sendControlCommand('stop')}
+              onTouchStart={() => sendControlCommand('wd')}
+              onTouchEnd={() => sendControlCommand('stop')}
+              className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all cursor-pointer border ${
+                activeMotion === 'wd'
+                  ? 'bg-emerald-500 text-white border-emerald-400 scale-95 shadow-lg shadow-emerald-500/30'
+                  : 'bg-stone-800/80 text-stone-300 border-white/10 hover:bg-stone-700'
+              }`}
+              title="Tiến - Quẹo Phải (W+D)"
+            >
+              <ArrowUpRight className="w-4 h-4" />
+            </button>
+
+            {/* Hàng 2: A, Stop, D */}
             <button
               onMouseDown={() => sendControlCommand('a')}
               onMouseUp={() => sendControlCommand('stop')}
@@ -401,10 +561,10 @@ export const AdminCameraTab = ({ currentUser }) => {
               onTouchEnd={() => sendControlCommand('stop')}
               className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all cursor-pointer border ${
                 activeMotion === 'a'
-                  ? 'bg-emerald-500 text-white border-emerald-400 scale-95'
+                  ? 'bg-emerald-500 text-white border-emerald-400 scale-95 shadow-lg shadow-emerald-500/30'
                   : 'bg-stone-800/80 text-stone-200 border-white/10 hover:bg-stone-700'
               }`}
-              title="Quẹo Trái (A / ArrowLeft)"
+              title="Xoay Trái tại chỗ (A / ArrowLeft)"
             >
               <ChevronLeft className="w-5 h-5" />
             </button>
@@ -413,7 +573,7 @@ export const AdminCameraTab = ({ currentUser }) => {
               onClick={() => sendControlCommand('stop')}
               className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all cursor-pointer border ${
                 activeMotion === 'stop'
-                  ? 'bg-red-600/80 text-white border-red-500'
+                  ? 'bg-red-600/90 text-white border-red-500 shadow-lg shadow-red-500/20'
                   : 'bg-stone-800/80 text-red-400 border-white/10 hover:bg-red-900/50'
               }`}
               title="Dừng Khẩn Cấp (Space / X)"
@@ -428,30 +588,60 @@ export const AdminCameraTab = ({ currentUser }) => {
               onTouchEnd={() => sendControlCommand('stop')}
               className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all cursor-pointer border ${
                 activeMotion === 'd'
-                  ? 'bg-emerald-500 text-white border-emerald-400 scale-95'
+                  ? 'bg-emerald-500 text-white border-emerald-400 scale-95 shadow-lg shadow-emerald-500/30'
                   : 'bg-stone-800/80 text-stone-200 border-white/10 hover:bg-stone-700'
               }`}
-              title="Quẹo Phải (D / ArrowRight)"
+              title="Xoay Phải tại chỗ (D / ArrowRight)"
             >
               <ChevronRight className="w-5 h-5" />
             </button>
-          </div>
 
-          {/* Down (S) */}
-          <button
-            onMouseDown={() => sendControlCommand('s')}
-            onMouseUp={() => sendControlCommand('stop')}
-            onTouchStart={() => sendControlCommand('s')}
-            onTouchEnd={() => sendControlCommand('stop')}
-            className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all cursor-pointer border ${
-              activeMotion === 's'
-                ? 'bg-emerald-500 text-white border-emerald-400 scale-95'
-                : 'bg-stone-800/80 text-stone-200 border-white/10 hover:bg-stone-700'
-            }`}
-            title="Lùi (S / ArrowDown)"
-          >
-            <ChevronDown className="w-5 h-5" />
-          </button>
+            {/* Hàng 3: SA, S, SD */}
+            <button
+              onMouseDown={() => sendControlCommand('sa')}
+              onMouseUp={() => sendControlCommand('stop')}
+              onTouchStart={() => sendControlCommand('sa')}
+              onTouchEnd={() => sendControlCommand('stop')}
+              className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all cursor-pointer border ${
+                activeMotion === 'sa'
+                  ? 'bg-emerald-500 text-white border-emerald-400 scale-95 shadow-lg shadow-emerald-500/30'
+                  : 'bg-stone-800/80 text-stone-300 border-white/10 hover:bg-stone-700'
+              }`}
+              title="Lùi - Quẹo Trái (S+A)"
+            >
+              <ArrowDownLeft className="w-4 h-4" />
+            </button>
+
+            <button
+              onMouseDown={() => sendControlCommand('s')}
+              onMouseUp={() => sendControlCommand('stop')}
+              onTouchStart={() => sendControlCommand('s')}
+              onTouchEnd={() => sendControlCommand('stop')}
+              className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all cursor-pointer border ${
+                activeMotion === 's'
+                  ? 'bg-emerald-500 text-white border-emerald-400 scale-95 shadow-lg shadow-emerald-500/30'
+                  : 'bg-stone-800/80 text-stone-200 border-white/10 hover:bg-stone-700'
+              }`}
+              title="Lùi (S / ArrowDown)"
+            >
+              <ChevronDown className="w-5 h-5" />
+            </button>
+
+            <button
+              onMouseDown={() => sendControlCommand('sd')}
+              onMouseUp={() => sendControlCommand('stop')}
+              onTouchStart={() => sendControlCommand('sd')}
+              onTouchEnd={() => sendControlCommand('stop')}
+              className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all cursor-pointer border ${
+                activeMotion === 'sd'
+                  ? 'bg-emerald-500 text-white border-emerald-400 scale-95 shadow-lg shadow-emerald-500/30'
+                  : 'bg-stone-800/80 text-stone-300 border-white/10 hover:bg-stone-700'
+              }`}
+              title="Lùi - Quẹo Phải (S+D)"
+            >
+              <ArrowDownRight className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         {/* Offline / Error Overlay */}

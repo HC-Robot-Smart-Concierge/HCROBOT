@@ -21,6 +21,7 @@ const getStatusCopy = (state, isSpeaking, language) => {
 
 export const MobileRobotScreen = ({
   activeRoomNumber,
+  guestEmotion = 'neutral',
   aiResponseText,
   currentState,
   hasSpeechSupport,
@@ -83,6 +84,20 @@ export const MobileRobotScreen = ({
             <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-500' : 'bg-red-500'}`} title={isOnline ? 'Đã kết nối' : 'Ngoại tuyến'} />
           </div>
           <div className="flex items-center gap-2">
+            {guestEmotion && (
+              <span 
+                className={`text-[10px] font-bold px-2 py-0.5 rounded-full border flex items-center gap-1 transition-all ${
+                  guestEmotion === 'happy'
+                    ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                    : guestEmotion === 'unhappy'
+                    ? 'bg-rose-50 text-rose-700 border-rose-300'
+                    : 'bg-stone-100 text-stone-700 border-stone-300'
+                }`}
+                title="Cảm xúc khuôn mặt nhận diện từ Camera Laptop"
+              >
+                <span>{guestEmotion === 'happy' ? '😊 Vui vẻ' : guestEmotion === 'unhappy' ? '😠 Khó chịu' : '😐 Bình thường'}</span>
+              </span>
+            )}
             {activeRoomNumber && <span className="text-[10px] font-bold text-stone-600">Phòng {activeRoomNumber}</span>}
             {!isStandalone && (canInstall || isIos) && (
               <button onClick={handleInstall} className="h-8 px-3 rounded-full bg-white border border-stone-300 text-[10px] font-bold active:scale-95">Cài ứng dụng</button>

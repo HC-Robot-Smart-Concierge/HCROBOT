@@ -207,57 +207,6 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
       {/* MAIN CONTENT */}
       <div className="flex-1 flex flex-col h-full min-h-0 overflow-hidden">
 
-        {/* Top Header Bar */}
-        <header className="h-14 border-b px-6 flex items-center justify-between shrink-0 z-20 mobile-safe-header pt-10 md:pt-0"
-          style={{ background: '#F2EFE9', borderColor: '#BFBFBD' }}>
-
-          {/* Left */}
-          <div className="flex items-center gap-3">
-            <span className="text-sm font-black tracking-tight" style={{ color: '#262626' }}>
-              Hotel Concierge Admin
-            </span>
-            <span style={{ color: '#BFBFBD' }}>|</span>
-            <span className="text-[11px] font-bold px-2.5 py-0.5 rounded"
-              style={{ background: '#262626', color: '#FFFFFF' }}>
-              {activeMenu}
-            </span>
-          </div>
-
-          {/* Center Search */}
-          <div className="hidden md:flex items-center relative w-72">
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search..."
-              className="w-full px-3 py-1.5 rounded-lg text-xs focus:outline-none"
-              style={{
-                background: '#FFFFFF',
-                border: '1px solid #BFBFBD',
-                color: '#262626',
-              }}
-            />
-          </div>
-
-          {/* Right: User Info */}
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 pl-3 border-l" style={{ borderColor: '#BFBFBD' }}>
-              <div className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-black"
-                style={{ background: '#262626', color: '#FFFFFF' }}>
-                {(currentUser?.full_name || 'A').charAt(0).toUpperCase()}
-              </div>
-              <div className="hidden xl:block">
-                <div className="text-xs font-bold leading-tight" style={{ color: '#262626' }}>
-                  {currentUser?.full_name || 'System Administrator'}
-                </div>
-                <div className="text-[10px] font-semibold" style={{ color: '#8C8C8C' }}>
-                  {currentUser?.role || 'Operations Admin'}
-                </div>
-              </div>
-            </div>
-          </div>
-        </header>
-
         {/* Dynamic Tab Body */}
         <main className={`flex-1 min-h-0 ${activeMenu === 'Robot Control' ? 'overflow-hidden' : 'overflow-y-auto custom-scrollbar'} relative`}>
 

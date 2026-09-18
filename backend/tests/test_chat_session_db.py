@@ -1,8 +1,7 @@
 import pytest
 from httpx import AsyncClient, ASGITransport
 from app.main import app
-from app.db.init_db import init_db
-from app.core.database import AsyncSessionLocal
+from app.core.database import AsyncSessionLocal, init_db
 from app.services.ai.session_manager import SessionMemoryManager, session_manager
 from app.models.chat_session import ChatSession, ChatMessage
 from sqlalchemy.future import select

@@ -140,19 +140,39 @@ def _open_lgpio_chip(pins, preferred_chip: Optional[int] = None):
 
 
 class LGPIOOutputDevice:
-    """Một chân output dùng chung handle lgpio của MotorController."""
+    """Một chân output dùng chung handle lgpio của MotorController, hỗ trợ PWM."""
     def __init__(self, pin: int, handle: int):
         self.pin = pin
         self.handle = handle
         self.value = 0
+        self._pwm_active = False
 
-    def on(self):
+    def on(self, duty_cycle: int = 100):
         if self.handle is not None:
-            lgpio.gpio_write(self.handle, self.pin, 1)
-            self.value = 1
+            if duty_cycle >= 100:
+                if self._pwm_active:
+                    try:
+                        lgpio.tx_pwm(self.handle, self.pin, 100, 0)
+                    except Exception:
+                        pass
+                    self._pwm_active = False
+                lgpio.gpio_write(self.handle, self.pin, 1)
+                self.value = 1
+            elif duty_cycle <= 0:
+                self.off()
+            else:
+                lgpio.tx_pwm(self.handle, self.pin, 100, int(duty_cycle))
+                self._pwm_active = True
+                self.value = duty_cycle / 100.0
 
     def off(self):
         if self.handle is not None:
+            if self._pwm_active:
+                try:
+                    lgpio.tx_pwm(self.handle, self.pin, 100, 0)
+                except Exception:
+                    pass
+                self._pwm_active = False
             lgpio.gpio_write(self.handle, self.pin, 0)
             self.value = 0
 
@@ -167,7 +187,7 @@ class LGPIOOutputDevice:
 
     @property
     def is_active(self) -> bool:
-        return self.value == 1
+        return self.value > 0
 
 
 class MockDigitalOutputDevice:
@@ -176,8 +196,8 @@ class MockDigitalOutputDevice:
         self.pin = pin
         self.value = 0
 
-    def on(self):
-        self.value = 1
+    def on(self, duty_cycle: int = 100):
+        self.value = max(0, min(100, duty_cycle)) / 100.0
 
     def off(self):
         self.value = 0
@@ -187,7 +207,7 @@ class MockDigitalOutputDevice:
 
     @property
     def is_active(self) -> bool:
-        return self.value == 1
+        return self.value > 0
 
 
 class MotorController:
@@ -196,8 +216,7 @@ class MotorController:
     - Channel A / hai motor trái: IN1=GPIO17, IN2=GPIO27
     - Channel B / hai motor phải: IN3=GPIO22, IN4=GPIO23
 
-    ENA và ENB đang gắn jumper nên bốn chân trên chỉ điều khiển hướng,
-    không phát PWM.
+    Hỗ trợ điều khiển vận tốc cố định qua băm xung PWM trực tiếp trên các chân IN.
     """
 
     def __init__(
@@ -210,6 +229,7 @@ class MotorController:
         gpio_chip: Optional[int] = None,
         invert_left_direction: bool = False,
         invert_right_direction: bool = False,
+        default_speed: int = 100,
     ):
         self.left_forward_pin = left_forward_pin
         self.left_backward_pin = left_backward_pin
@@ -222,6 +242,7 @@ class MotorController:
         self._lgpio_handle = None
         self.is_mock = force_mock
         self.motion = "stop"
+        self.speed = max(20, min(100, int(default_speed)))
 
         self.left_forward_dev = None
         self.left_backward_dev = None
@@ -301,7 +322,15 @@ class MotorController:
         self.right_backward_dev = MockDigitalOutputDevice(self.right_backward_pin)
         logger.info(f"MotorController chạy ở chế độ MOCK (Giả lập). Lý do: {reason}")
 
-    def _set_outputs(self, left_forward, left_backward, right_forward, right_backward):
+    def _set_outputs(
+        self,
+        left_forward,
+        left_backward,
+        right_forward,
+        right_backward,
+        left_speed=None,
+        right_speed=None,
+    ):
         """Đổi hướng an toàn: hạ cả bốn IN trước khi bật trạng thái mới."""
         devices = (
             self.left_forward_dev,
@@ -313,20 +342,47 @@ class MotorController:
             device.off()
 
         states = [left_forward, left_backward, right_forward, right_backward]
+        l_spd = self.speed if left_speed is None else left_speed
+        r_spd = self.speed if right_speed is None else right_speed
+        speeds = [l_spd, l_spd, r_spd, r_spd]
+
         if self.invert_left_direction:
             states[0], states[1] = states[1], states[0]
+            speeds[0], speeds[1] = speeds[1], speeds[0]
         if self.invert_right_direction:
             states[2], states[3] = states[3], states[2]
+            speeds[2], speeds[3] = speeds[3], speeds[2]
 
-        for device, active in zip(devices, states):
+        for device, active, spd in zip(devices, states, speeds):
             if active:
-                device.on()
+                device.on(spd)
         return tuple(states)
+
+    def set_speed(self, speed_percent: int) -> int:
+        """Cài đặt vận tốc động cơ (20% đến 100%)."""
+        self.speed = max(20, min(100, int(speed_percent)))
+        logger.info("Đã đổi vận tốc Motor sang: %d%%", self.speed)
+        if self.motion != "stop":
+            action_map = {
+                "forward": self.forward,
+                "backward": self.backward,
+                "left": self.turn_left,
+                "right": self.turn_right,
+                "forward_left": self.turn_forward_left,
+                "forward_right": self.turn_forward_right,
+                "backward_left": self.turn_backward_left,
+                "backward_right": self.turn_backward_right,
+            }
+            fn = action_map.get(self.motion)
+            if fn:
+                fn()
+        return self.speed
 
     def _log_motion_outputs(self, label, states):
         logger.info(
-            "MOTOR %s: GPIO%d=%d GPIO%d=%d | GPIO%d=%d GPIO%d=%d",
+            "MOTOR %s (%d%%): GPIO%d=%d GPIO%d=%d | GPIO%d=%d GPIO%d=%d",
             label,
+            self.speed,
             self.left_forward_pin,
             states[0],
             self.left_backward_pin,
@@ -369,6 +425,46 @@ class MotorController:
         self.motion = "right"
         self._log_motion_outputs("TURN_RIGHT", states)
 
+    def turn_forward_left(self):
+        """Vừa tiến vừa rẽ trái (arc turn): Bánh trái dừng, bánh phải tiến."""
+        states = self._set_outputs(False, False, True, False)
+        self.motion = "forward_left"
+        self._log_motion_outputs("TURN_FORWARD_LEFT", states)
+
+    def forward_left(self):
+        """Alias cho turn_forward_left."""
+        self.turn_forward_left()
+
+    def turn_forward_right(self):
+        """Vừa tiến vừa rẽ phải (arc turn): Bánh trái tiến, bánh phải dừng."""
+        states = self._set_outputs(True, False, False, False)
+        self.motion = "forward_right"
+        self._log_motion_outputs("TURN_FORWARD_RIGHT", states)
+
+    def forward_right(self):
+        """Alias cho turn_forward_right."""
+        self.turn_forward_right()
+
+    def turn_backward_left(self):
+        """Vừa lùi vừa rẽ trái (arc turn): Bánh trái dừng, bánh phải lùi."""
+        states = self._set_outputs(False, False, False, True)
+        self.motion = "backward_left"
+        self._log_motion_outputs("TURN_BACKWARD_LEFT", states)
+
+    def backward_left(self):
+        """Alias cho turn_backward_left."""
+        self.turn_backward_left()
+
+    def turn_backward_right(self):
+        """Vừa lùi vừa rẽ phải (arc turn): Bánh trái lùi, bánh phải dừng."""
+        states = self._set_outputs(False, True, False, False)
+        self.motion = "backward_right"
+        self._log_motion_outputs("TURN_BACKWARD_RIGHT", states)
+
+    def backward_right(self):
+        """Alias cho turn_backward_right."""
+        self.turn_backward_right()
+
     def stop(self):
         """Dừng tất cả động cơ."""
         devices = (
@@ -389,13 +485,18 @@ class MotorController:
         """Chuyển đổi tín hiệu vận tốc Twist / Analog Joystick sang hướng chạy."""
         if linear_x > 0.1:
             if angular_z > 0.2:
-                self.turn_left()
+                self.turn_forward_left()
             elif angular_z < -0.2:
-                self.turn_right()
+                self.turn_forward_right()
             else:
                 self.move_forward()
         elif linear_x < -0.1:
-            self.move_backward()
+            if angular_z > 0.2:
+                self.turn_backward_left()
+            elif angular_z < -0.2:
+                self.turn_backward_right()
+            else:
+                self.move_backward()
         else:
             if angular_z > 0.2:
                 self.turn_left()
@@ -466,14 +567,12 @@ def run_wasd_controller(controller: MotorController):
     print("\n" + "=" * 60)
     print("  BỘ ĐIỀU KHIỂN ROBOT RASPBERRY PI 5 (WASD / PHÍM MŨI TÊN)")
     print("=" * 60)
-    print("  [W] hoặc [Mũi tên Lên]   : ĐI THẲNG (Forward)")
-    print("  [S] hoặc [Mũi tên Xuống] : LÙI (Backward)")
-    print("  [A] hoặc [Mũi tên Trái]  : QUẸO TRÁI (Turn Left)")
-    print("  [D] hoặc [Mũi tên Phải]  : QUẸO PHẢI (Turn Right)")
-    print("  [X] hoặc [Space]         : DỪNG (Stop)")
-    print("  [Q]                     : THOÁT (Quit)")
+    print("  [Q/7] TIẾN - TRÁI       [W/8/↑] TIẾN        [E/9] TIẾN - PHẢI")
+    print("  [A/4/←] XOAY TRÁI       [X/5/Space] DỪNG    [D/6/→] XOAY PHẢI")
+    print("  [Z/1] LÙI - TRÁI        [S/2/↓] LÙI         [C/3] LÙI - PHẢI")
+    print("  [P/Ctrl+C] THOÁT")
     print("=" * 60)
-    print("Bắt đầu bấm phím WASD / Mũi tên để điều khiển ngay...\n")
+    print("Bắt đầu bấm phím để điều khiển xe ngay...\n")
 
     try:
         while True:
@@ -483,17 +582,25 @@ def run_wasd_controller(controller: MotorController):
                 continue
             key = char.lower()
 
-            if key == 'w':
+            if key in ('w', '8'):
                 controller.move_forward()
-            elif key == 's':
+            elif key in ('s', '2'):
                 controller.move_backward()
-            elif key == 'a':
+            elif key in ('a', '4'):
                 controller.turn_left()
-            elif key == 'd':
+            elif key in ('d', '6'):
                 controller.turn_right()
-            elif key in ['x', ' ', '\r', '\n']:
+            elif key in ('q', '7'):
+                controller.turn_forward_left()
+            elif key in ('e', '9'):
+                controller.turn_forward_right()
+            elif key in ('z', '1'):
+                controller.turn_backward_left()
+            elif key in ('c', '3'):
+                controller.turn_backward_right()
+            elif key in ['x', '5', ' ', '\r', '\n']:
                 controller.stop()
-            elif key == 'q' or ord(char) == 3:
+            elif key == 'p' or ord(char) == 3:
                 print("\nThoát chương trình...")
                 break
     except KeyboardInterrupt:
@@ -603,6 +710,14 @@ def run_udp_server_controller(controller: MotorController, host: str = '0.0.0.0'
                             controller.turn_left()
                         elif cmd == 'd':
                             controller.turn_right()
+                        elif cmd in ['wa', 'aw', 'forward_left', 'up_left']:
+                            controller.turn_forward_left()
+                        elif cmd in ['wd', 'dw', 'forward_right', 'up_right']:
+                            controller.turn_forward_right()
+                        elif cmd in ['sa', 'as', 'backward_left', 'down_left']:
+                            controller.turn_backward_left()
+                        elif cmd in ['sd', 'ds', 'backward_right', 'down_right']:
+                            controller.turn_backward_right()
                         elif cmd in ['x', 'stop']:
                             controller.stop()
             except socket.timeout:

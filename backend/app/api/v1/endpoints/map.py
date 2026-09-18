@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.core.database import get_db
-from app.models.workflow import RobotWaypoint
+from app.models.workflow import RobotWaypoint, RobotZone
 from app.schemas.map import (
     MapMetaData,
     NavigationRequest,
@@ -16,6 +16,7 @@ from app.schemas.map import (
     OccupancyGridResponse,
     Pose2D,
     Waypoint,
+    ZoneSchema,
 )
 from app.services.hardware.rplidar_service import rplidar_service
 
@@ -23,10 +24,17 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 DEFAULT_WAYPOINTS: List[dict] = [
-    {"id": "wp-reception", "name": "Quầy Lễ Tân", "x": 0.0, "y": 0.0, "yaw": 0.0, "floor": "Tầng 1", "type": "DOCKING_TARGET", "description": "Điểm dừng tiếp đón khách và làm thủ tục check-in"},
-    {"id": "wp-elevator", "name": "Cụm Thang Máy A", "x": 2.5, "y": 4.0, "yaw": 90.0, "floor": "Tầng 1", "type": "WAYPOINT", "description": "Điểm mốc giao lộ hành lang thang máy"},
-    {"id": "wp-pool", "name": "Hồ Bơi Vô Cực", "x": 6.0, "y": 8.5, "yaw": 45.0, "floor": "Tầng 4", "type": "SERVICE_STATION", "description": "Khu vực tiện ích hồ bơi tầng 4"},
-    {"id": "wp-room101", "name": "Phòng 101 (Deluxe)", "x": -3.0, "y": 5.0, "yaw": 180.0, "floor": "Tầng 1", "type": "PICKUP_DROPOFF", "description": "Điểm giao nhận đồ buồng phòng 101"},
+    {"id": "wp-reception", "name": "Quầy Lễ Tân", "x": 0.0, "y": 0.0, "yaw": 0.0, "floor": "Sảnh Tầng 1", "type": "DOCKING_TARGET", "description": "Điểm dừng tiếp đón khách và làm thủ tục check-in sảnh chính"},
+    {"id": "wp-lounge", "name": "Sảnh Lounge & Coffee", "x": 2.5, "y": 4.0, "yaw": 90.0, "floor": "Sảnh Tầng 1", "type": "SERVICE_STATION", "description": "Khu vực nghỉ chờ và thưởng thức đồ uống sảnh chính"},
+    {"id": "wp-vip-table", "name": "Bàn Tiếp Khách VIP 01", "x": 5.0, "y": 2.5, "yaw": 45.0, "floor": "Sảnh Tầng 1", "type": "GUEST_TABLE", "description": "Khu vực bàn tiếp đón khách VIP tại sảnh Tầng 1"},
+    {"id": "wp-elevator", "name": "Sảnh Thang Máy A", "x": -3.0, "y": 5.0, "yaw": 180.0, "floor": "Sảnh Tầng 1", "type": "WAYPOINT", "description": "Điểm mốc điều hướng robot tại hành lang thang máy sảnh Tầng 1"},
+]
+
+DEFAULT_ZONES: List[dict] = [
+    {"id": "zone-stairs", "name": "CẦU THANG BỘ (CHỐNG NGÃ)", "type": "KEEP_OUT", "x": 4.5, "y": -2.0, "width": 1.8, "height": 2.2, "speed_limit": 0.0, "floor": "Sảnh Tầng 1", "description": "Khu vực cầu thang bộ nguy hiểm - robot tuyệt đối không đi vào"},
+    {"id": "zone-entrance", "name": "CỬA RA VÀO SẢNH CHÍNH", "type": "SLOW_SPEED", "x": 0.0, "y": 2.0, "width": 3.0, "height": 2.0, "speed_limit": 0.3, "floor": "Sảnh Tầng 1", "description": "Khu vực đông người qua lại - giới hạn vận tốc 0.3 m/s"},
+    {"id": "zone-vip-lounge", "name": "PHÒNG NGHỈ YÊN LẶNG VIP", "type": "SILENT_ZONE", "x": 5.0, "y": 5.0, "width": 3.5, "height": 3.0, "speed_limit": 0.5, "floor": "Sảnh Tầng 1", "description": "Khu vực hội nghị & VIP Lounge - robot tự động tắt tiếng/loa"},
+    {"id": "zone-greeting-hall", "name": "SẢNH ĐÓN KHÁCH TỰ ĐỘNG AI", "type": "GREETING_ZONE", "x": 1.5, "y": 0.0, "width": 4.0, "height": 3.0, "speed_limit": 0.6, "floor": "Sảnh Tầng 1", "description": "Khu vực sảnh chính - robot kích hoạt AI Person Detector chủ động đón khách"},
 ]
 
 current_robot_pose = Pose2D(x=0.0, y=0.0, yaw=0.0)
@@ -49,9 +57,27 @@ async def ensure_default_waypoints(db: AsyncSession):
         await db.commit()
 
 
+async def ensure_default_zones(db: AsyncSession):
+    res = await db.execute(select(RobotZone).limit(1))
+    if res.scalar_one_or_none() is None:
+        for z in DEFAULT_ZONES:
+            db.add(RobotZone(
+                id=z["id"],
+                name=z["name"],
+                type=z["type"],
+                x=z["x"],
+                y=z["y"],
+                width=z["width"],
+                height=z["height"],
+                speed_limit=z.get("speed_limit", 0.3),
+                floor=z.get("floor", "Sảnh Tầng 1"),
+                description=z.get("description", ""),
+            ))
+        await db.commit()
+
+
 @router.get("/current", response_model=OccupancyGridResponse, summary="Lấy dữ liệu bản đồ SLAM Occupancy Grid 2D thực tế")
 async def get_current_map(db: AsyncSession = Depends(get_db)):
-    await ensure_default_waypoints(db)
     wps_res = await db.execute(select(RobotWaypoint))
     wps_db = wps_res.scalars().all()
     waypoints = [
@@ -68,6 +94,24 @@ async def get_current_map(db: AsyncSession = Depends(get_db)):
         for w in wps_db
     ]
 
+    zones_res = await db.execute(select(RobotZone))
+    zones_db = zones_res.scalars().all()
+    zones = [
+        ZoneSchema(
+            id=z.id,
+            name=z.name,
+            type=z.type or "KEEP_OUT",
+            x=z.x,
+            y=z.y,
+            width=z.width,
+            height=z.height,
+            speed_limit=z.speed_limit,
+            floor=z.floor,
+            description=z.description
+        )
+        for z in zones_db
+    ]
+
     map_info = rplidar_service.get_grid_map_data()
     metadata = MapMetaData(
         width=map_info["width"],
@@ -81,13 +125,13 @@ async def get_current_map(db: AsyncSession = Depends(get_db)):
         metadata=metadata,
         robot_pose=current_robot_pose,
         waypoints=waypoints,
+        zones=zones,
         grid_data=map_info["grid_data"],
     )
 
 
 @router.get("/waypoints", response_model=List[Waypoint], summary="Lấy danh sách các điểm Waypoints / Endpoints")
 async def get_waypoints(db: AsyncSession = Depends(get_db)):
-    await ensure_default_waypoints(db)
     res = await db.execute(select(RobotWaypoint).order_by(RobotWaypoint.created_at))
     wps = res.scalars().all()
     return [
@@ -195,6 +239,132 @@ async def delete_waypoint(waypoint_id: str, db: AsyncSession = Depends(get_db)):
     await db.delete(existing)
     await db.commit()
     return {"status": "SUCCESS", "message": f"Đã xóa waypoint {waypoint_id}"}
+
+
+@router.get("/zones", response_model=List[ZoneSchema], summary="Lấy danh sách các Vùng Chức Năng (Zones)")
+async def get_zones(db: AsyncSession = Depends(get_db)):
+    res = await db.execute(select(RobotZone).order_by(RobotZone.created_at))
+    zones = res.scalars().all()
+    return [
+        ZoneSchema(
+            id=z.id,
+            name=z.name,
+            type=z.type or "KEEP_OUT",
+            x=z.x,
+            y=z.y,
+            width=z.width,
+            height=z.height,
+            speed_limit=z.speed_limit,
+            floor=z.floor,
+            description=z.description
+        )
+        for z in zones
+    ]
+
+
+@router.post("/zones", response_model=ZoneSchema, summary="Tạo mới hoặc cập nhật Vùng Chức Năng (Zone)")
+async def save_zone(zone: ZoneSchema, db: AsyncSession = Depends(get_db)):
+    res = await db.execute(select(RobotZone).where(RobotZone.id == zone.id))
+    existing = res.scalar_one_or_none()
+
+    if existing:
+        existing.name = zone.name
+        existing.type = zone.type or "KEEP_OUT"
+        existing.x = zone.x
+        existing.y = zone.y
+        existing.width = zone.width
+        existing.height = zone.height
+        existing.speed_limit = zone.speed_limit
+        existing.floor = zone.floor
+        existing.description = zone.description
+        await db.commit()
+        await db.refresh(existing)
+        return ZoneSchema(
+            id=existing.id,
+            name=existing.name,
+            type=existing.type,
+            x=existing.x,
+            y=existing.y,
+            width=existing.width,
+            height=existing.height,
+            speed_limit=existing.speed_limit,
+            floor=existing.floor,
+            description=existing.description
+        )
+    else:
+        new_z = RobotZone(
+            id=zone.id,
+            name=zone.name,
+            type=zone.type or "KEEP_OUT",
+            x=zone.x,
+            y=zone.y,
+            width=zone.width,
+            height=zone.height,
+            speed_limit=zone.speed_limit,
+            floor=zone.floor,
+            description=zone.description
+        )
+        db.add(new_z)
+        await db.commit()
+        await db.refresh(new_z)
+        return ZoneSchema(
+            id=new_z.id,
+            name=new_z.name,
+            type=new_z.type,
+            x=new_z.x,
+            y=new_z.y,
+            width=new_z.width,
+            height=new_z.height,
+            speed_limit=new_z.speed_limit,
+            floor=new_z.floor,
+            description=new_z.description
+        )
+
+
+@router.put("/zones/{zone_id}", response_model=ZoneSchema, summary="Cập nhật Vùng Chức Năng theo ID")
+async def update_zone(zone_id: str, zone: ZoneSchema, db: AsyncSession = Depends(get_db)):
+    res = await db.execute(select(RobotZone).where(RobotZone.id == zone_id))
+    existing = res.scalar_one_or_none()
+    if not existing:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy Vùng Chức Năng")
+
+    existing.name = zone.name
+    existing.type = zone.type or "KEEP_OUT"
+    existing.x = zone.x
+    existing.y = zone.y
+    existing.width = zone.width
+    existing.height = zone.height
+    existing.speed_limit = zone.speed_limit
+    existing.floor = zone.floor
+    existing.description = zone.description
+
+    await db.commit()
+    await db.refresh(existing)
+    return ZoneSchema(
+        id=existing.id,
+        name=existing.name,
+        type=existing.type,
+        x=existing.x,
+        y=existing.y,
+        width=existing.width,
+        height=existing.height,
+        speed_limit=existing.speed_limit,
+        floor=existing.floor,
+        description=existing.description
+    )
+
+
+@router.delete("/zones/{zone_id}", summary="Xóa Vùng Chức Năng")
+async def delete_zone(zone_id: str, db: AsyncSession = Depends(get_db)):
+    res = await db.execute(select(RobotZone).where(RobotZone.id == zone_id))
+    existing = res.scalar_one_or_none()
+    if not existing:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy Vùng Chức Năng")
+
+    await db.delete(existing)
+    await db.commit()
+    return {"status": "SUCCESS", "message": f"Đã xóa vùng {zone_id}"}
+
 
 
 

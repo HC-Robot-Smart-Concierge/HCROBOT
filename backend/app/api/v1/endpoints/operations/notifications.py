@@ -3,12 +3,12 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, WebSocket, WebSocketDisconnect, Query
 from app.services.notification_manager import notification_manager
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, desc
+from sqlalchemy import select, update, desc, func
 
 from app.core.database import get_db
 from app.models import Notification
 from app.schemas.operations import NotificationCreate, NotificationResponse
-from .shared import TAG_NOTIF
+from .shared import TAG_NOTIF, create_department_notification
 
 router = APIRouter()
 

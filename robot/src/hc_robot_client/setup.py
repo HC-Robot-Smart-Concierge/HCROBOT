@@ -17,7 +17,7 @@ setup(
     ],
 
     install_requires=['setuptools', 'httpx', 'pyyaml'],
-    zip_safe=true,
+    zip_safe=True,
     maintainer='HC-Robot Team',
     maintainer_email='admin@hcrobot.com',
     description='ROS 2 Python client package for Raspberry Pi 5 connecting to HC-Robot Laptop Backend',
@@ -28,7 +28,9 @@ setup(
             'ai_bridge_node = hc_robot_client.nodes.ai_bridge_node:main',
             'telemetry_node = hc_robot_client.nodes.telemetry_node:main',
             'motor_driver_node = hc_robot_client.nodes.motor_driver_node:main',
+            'person_detection_node = hc_robot_client.nodes.person_detection_node:main',
+            'person_fusion_tracker = hc_robot_client.nodes.person_fusion_tracker:main',
+            'safety_controller_node = hc_robot_client.nodes.safety_controller_node:main',
         ],
     },
-
 )

@@ -1,4 +1,5 @@
 import pytest
+import random
 from httpx import AsyncClient, ASGITransport
 from app.main import app
 from app.core.database import init_db

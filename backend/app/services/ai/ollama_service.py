@@ -231,7 +231,7 @@ class OllamaService:
                     },
                     keep_alive=-1              # Giữ model thường trực vĩnh viễn trong RAM, không bị nạp lại giữa các lượt hỏi
                 ),
-                timeout=25.0
+                timeout=45.0
             )
 
             reply = response["message"]["content"].strip()
@@ -242,7 +242,8 @@ class OllamaService:
             final_lang_name, final_lang_code = self.detect_language(reply)
             return reply, final_lang_name, final_lang_code
         except Exception as e:
-            logger.error(f"[OllamaService Error] Lỗi khi sinh câu trả lời LLM: {str(e)}")
+            err_msg = repr(e) if not str(e) else str(e)
+            logger.error(f"[OllamaService Error] Lỗi khi sinh câu trả lời LLM: {err_msg}")
             fallback = "Xin lỗi quý khách, hiện không thể kết nối tới AI Server." if lang_code == "vi-VN" else "Sorry, cannot connect to AI Server."
             return fallback, lang_name, lang_code
 

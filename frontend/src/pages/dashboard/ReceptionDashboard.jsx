@@ -3,6 +3,7 @@ import { INITIAL_RECEPTION_DATA } from '../../data/mockHotelData';
 import {
   fetchReceptionDashboard,
   updateReceptionRequest,
+  fetchBellServicesDashboard,
 } from '../../services/operationsApi';
 
 const normalizeRequest = (request = {}) => ({
@@ -31,12 +32,23 @@ const staffOptions = [
 export const ReceptionDashboard = ({ currentUser, onNotify = () => {} }) => {
   const staffName = currentUser?.full_name || currentUser?.name || 'Front Desk Receptionist';
   const [request, setRequest] = useState(normalizeRequest(INITIAL_RECEPTION_DATA));
+  const [bellRequests, setBellRequests] = useState([]);
 
   useEffect(() => {
     const loadData = async () => {
-      const response = await fetchReceptionDashboard();
-      if (response?.current_request) {
-        setRequest(normalizeRequest(response.current_request));
+      try {
+        const [response, bellData] = await Promise.all([
+          fetchReceptionDashboard(),
+          fetchBellServicesDashboard(),
+        ]);
+        if (response?.current_request) {
+          setRequest(normalizeRequest(response.current_request));
+        }
+        if (bellData?.requests) {
+          setBellRequests(bellData.requests);
+        }
+      } catch (err) {
+        console.error('Error loading reception/bell data:', err);
       }
     };
 
@@ -183,6 +195,96 @@ export const ReceptionDashboard = ({ currentUser, onNotify = () => {} }) => {
                 </div>
               );
             })}
+          </div>
+        </article>
+
+        {/* Bell & Luggage Service Requests (Kiêm nhiệm tiếp nhận hành lý) */}
+        <article className="mt-4 rounded-xl bg-white p-5 border border-[#E8E5E0]">
+          <div className="flex items-center justify-between border-b border-[#F0ECE6] pb-3">
+            <div>
+              <h3 className="text-[12px] font-bold uppercase tracking-wider text-[#211F1D]">
+                🧳 Yêu Cầu Hỗ Trợ Hành Lý & Tiếp Đón (Bell & Luggage Desk)
+              </h3>
+              <p className="text-[11px] text-[#77726D] mt-0.5">
+                Tiếp nhận và điều phối vận chuyển hành lý, nhận phòng và đồ thất lạc
+              </p>
+            </div>
+            <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-[#EFEEEB] text-[#555]">
+              {bellRequests.length} Yêu cầu
+            </span>
+          </div>
+
+          <div className="mt-3 space-y-3">
+            {bellRequests.length === 0 ? (
+              <p className="text-xs text-stone-500 py-2">Hiện không có yêu cầu hành lý nào đang chờ xử lý.</p>
+            ) : (
+              bellRequests.map((bReq) => {
+                const isPending = (bReq.status || '').toLowerCase() === 'pending';
+                return (
+                  <div
+                    key={bReq.id}
+                    className="p-3.5 rounded-xl border border-[#EAE6DE] bg-[#FCFAF7] flex flex-col md:flex-row md:items-center justify-between gap-3"
+                  >
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-black text-white">
+                          {bReq.id}
+                        </span>
+                        <span className="text-xs font-bold text-stone-900">{bReq.title}</span>
+                        <span className="text-[10px] font-bold text-stone-500">
+                          • {bReq.location}
+                        </span>
+                        <span
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                            isPending
+                              ? 'bg-amber-100 text-amber-800'
+                              : 'bg-emerald-100 text-emerald-800'
+                          }`}
+                        >
+                          {bReq.status}
+                        </span>
+                      </div>
+                      <p className="text-xs text-[#57524D]">{bReq.description}</p>
+                      {bReq.guestName && (
+                        <p className="text-[10px] text-[#888]">
+                          Khách hàng: <span className="font-semibold text-[#444]">{bReq.guestName}</span>
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      {isPending ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setBellRequests((prev) =>
+                              prev.map((r) => (r.id === bReq.id ? { ...r, status: 'In Progress' } : r))
+                            );
+                            onNotify(`Lễ tân đã tiếp nhận hỗ trợ hành lý: ${bReq.id}`);
+                          }}
+                          className="px-3 py-1.5 rounded-lg bg-black text-white text-[11px] font-bold hover:bg-stone-800 transition-colors cursor-pointer"
+                        >
+                          Tiếp Nhận
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setBellRequests((prev) =>
+                              prev.map((r) => (r.id === bReq.id ? { ...r, status: 'Completed' } : r))
+                            );
+                            onNotify(`Đã hoàn tất hỗ trợ hành lý: ${bReq.id}`);
+                          }}
+                          className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-[11px] font-bold hover:bg-emerald-700 transition-colors cursor-pointer"
+                        >
+                          Hoàn Tất
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
           </div>
         </article>
       </div>

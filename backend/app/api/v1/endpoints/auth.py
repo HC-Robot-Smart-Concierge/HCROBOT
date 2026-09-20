@@ -23,24 +23,12 @@ USERNAME_ALIASES = {
     "room service": "roomservice",
     "f&b": "roomservice",
     "fb": "roomservice",
-    "bellservices": "bellman",
-    "bell_services": "bellman",
-    "bell-services": "bellman",
-    "bell services": "bellman",
-    "bellservice": "bellman",
-    "bell": "bellman",
-    "house_keeping": "housekeeping",
-    "house-keeping": "housekeeping",
-    "house keeping": "housekeeping",
-    "buongphong": "housekeeping",
     "receptionist": "reception",
     "frontdesk": "reception",
     "front_desk": "reception",
-    "maintain": "maintenance",
-    "kythuat": "maintenance",
-    "ky_thuat": "maintenance",
     "administrator": "admin",
 }
+
 
 
 @router.post("/login", response_model=TokenResponse)

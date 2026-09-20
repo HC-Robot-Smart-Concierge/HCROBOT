@@ -11,12 +11,12 @@ import {
 } from '../../services/operationsApi';
 
 export const RequestsPage = ({ currentUser, onNotify = () => {} }) => {
-  const staffName = currentUser?.full_name || currentUser?.name || 'Elena Rossi';
-  const staffDept = currentUser?.department || 'F&B';
+  const staffName = currentUser?.full_name || currentUser?.name || 'Nhân viên Khách sạn';
+  const staffDept = currentUser?.department || 'Room Service';
   const staffId = currentUser?.id || currentUser?.username || 'user';
 
   const [statusFilter, setStatusFilter] = useState('All'); // 'All' | 'Pending' | 'In Progress' | 'Completed'
-  const [deptFilter, setDeptFilter] = useState('All'); // 'All' | 'Reception' | 'F&B' | 'Housekeeping' | 'Bell Services' | 'Maintenance'
+  const [deptFilter, setDeptFilter] = useState('All'); // 'All' | 'Room Service' | 'Reception'
   const [searchQuery, setSearchQuery] = useState('');
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
   const [selectedDetailReq, setSelectedDetailReq] = useState(null); // Read-only completed detail modal
@@ -28,7 +28,7 @@ export const RequestsPage = ({ currentUser, onNotify = () => {} }) => {
   const [requests, setRequests] = useState([
     {
       id: 'REQ-1042',
-      department: 'F&B',
+      department: 'Room Service',
       title: 'Club Sandwich & Truffle Fries (x2), Artisan Cola (x2)',
       location: 'ROOM 412',
       guestName: 'Mr. John Smith',
@@ -40,7 +40,7 @@ export const RequestsPage = ({ currentUser, onNotify = () => {} }) => {
     },
     {
       id: 'REQ-HK-1042',
-      department: 'Housekeeping',
+      department: 'Room Service',
       title: 'Spill cleanup required (Wine spill on carpet)',
       location: 'ROOM 502',
       guestName: 'Mr. John Smith',
@@ -52,7 +52,7 @@ export const RequestsPage = ({ currentUser, onNotify = () => {} }) => {
     },
     {
       id: 'REQ-BS-501',
-      department: 'Bell Services',
+      department: 'Reception',
       title: 'Luggage Pickup',
       location: 'ROOM 402',
       guestName: 'Mr. Aris Thorne',
@@ -64,7 +64,7 @@ export const RequestsPage = ({ currentUser, onNotify = () => {} }) => {
     },
     {
       id: 'REQ-MN-401',
-      department: 'Maintenance',
+      department: 'Reception',
       title: 'Plumbing Leak near bathroom sink',
       location: 'ROOM 412',
       guestName: 'Guest in 412',
@@ -173,11 +173,8 @@ export const RequestsPage = ({ currentUser, onNotify = () => {} }) => {
     const rD = reqDept.toLowerCase().trim();
     const uD = userDept.toLowerCase().trim();
     if (rD === uD) return true;
-    if ((uD.includes('f&b') || uD.includes('room')) && (rD.includes('f&b') || rD.includes('room') || rD.includes('ẩm thực'))) return true;
-    if ((uD.includes('housekeeping') || uD.includes('buồng')) && (rD.includes('housekeeping') || rD.includes('buồng'))) return true;
-    if ((uD.includes('bell') || uD.includes('hành lý')) && (rD.includes('bell') || rD.includes('hành lý'))) return true;
-    if ((uD.includes('maint') || uD.includes('bảo trì') || uD.includes('kỹ thuật')) && (rD.includes('maint') || rD.includes('bảo trì') || rD.includes('kỹ thuật'))) return true;
-    if ((uD.includes('reception') || uD.includes('lễ tân')) && (rD.includes('reception') || rD.includes('lễ tân'))) return true;
+    if ((uD.includes('f&b') || uD.includes('room') || uD.includes('service')) && (rD.includes('f&b') || rD.includes('room') || rD.includes('ẩm thực') || rD.includes('housekeeping') || rD.includes('buồng'))) return true;
+    if ((uD.includes('reception') || uD.includes('lễ tân')) && (rD.includes('reception') || rD.includes('lễ tân') || rD.includes('bell') || rD.includes('hành lý') || rD.includes('luggage') || rD.includes('maint') || rD.includes('bảo trì') || rD.includes('kỹ thuật'))) return true;
     return false;
   };
 
@@ -239,12 +236,17 @@ export const RequestsPage = ({ currentUser, onNotify = () => {} }) => {
     return matchStatus && matchDept && matchSearch;
   });
 
-  // Apply Priority Sorting
+  // Apply Priority Sorting: 1. Status priority -> 2. Newest created_at -> 3. ID
   const sortedRequests = [...filtered].sort((a, b) => {
     const scoreA = getRequestPriorityScore(a);
     const scoreB = getRequestPriorityScore(b);
     if (scoreA !== scoreB) {
       return scoreA - scoreB;
+    }
+    const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
+    const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
+    if (timeA !== timeB) {
+      return timeB - timeA;
     }
     return (b.id || '').localeCompare(a.id || '');
   });
@@ -451,7 +453,7 @@ export const RequestsPage = ({ currentUser, onNotify = () => {} }) => {
           {isExecutive && (
             <div className="flex flex-wrap items-center gap-1.5 w-full md:w-auto">
               <span className="text-[11px] font-bold text-stone-500 uppercase mr-1">Bộ phận:</span>
-              {['All', 'F&B', 'Housekeeping', 'Bell Services', 'Maintenance'].map((dept) => (
+              {['All', 'Room Service', 'Reception'].map((dept) => (
                 <button
                   key={dept}
                   onClick={() => setDeptFilter(dept)}

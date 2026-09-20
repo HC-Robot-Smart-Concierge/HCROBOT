@@ -78,10 +78,10 @@ STAFF_ACCOUNTS = [
         "shift": "All Shifts",
     },
     {
-        "username": "reception_lead",
+        "username": "reception",
         "code": "REC",
         "full_name": "Nguyen Thu Trang",
-        "role": "Front Desk Supervisor",
+        "role": "Front Desk & Concierge Lead",
         "department": "Reception",
         "default_dashboard": "reception",
         "location": "Front Desk",
@@ -89,50 +89,17 @@ STAFF_ACCOUNTS = [
         "shift": "Morning Shift (06:00 - 14:00)",
     },
     {
-        "username": "fnb_lead",
-        "code": "FNB",
+        "username": "roomservice",
+        "code": "RSV",
         "full_name": "Tran Van Hai",
-        "role": "F&B Manager",
-        "department": "F&B",
+        "role": "Room Service & Clean Lead",
+        "department": "Room Service",
         "default_dashboard": "room_service",
-        "location": "Main Kitchen",
+        "location": "Main Service Hub",
         "status": "available",
         "shift": "Morning Shift (06:00 - 14:00)",
     },
-    {
-        "username": "hk_lead",
-        "code": "HKL",
-        "full_name": "Pham Thi Mai",
-        "role": "Housekeeping Lead",
-        "department": "Housekeeping",
-        "default_dashboard": "housekeeping",
-        "location": "Floor 3 Storage",
-        "status": "available",
-        "shift": "Morning Shift (06:00 - 14:00)",
-    },
-    {
-        "username": "bell_captain",
-        "code": "BEL",
-        "full_name": "Le Hoang Nam",
-        "role": "Bell Captain",
-        "department": "Bell Services",
-        "default_dashboard": "bell_services",
-        "location": "Main Lobby",
-        "status": "available",
-        "shift": "Morning Shift (06:00 - 14:00)",
-    },
-    {
-        "username": "maint_lead",
-        "code": "MNT",
-        "full_name": "Doan Minh Quan",
-        "role": "Chief Engineer",
-        "department": "Maintenance",
-        "default_dashboard": "maintenance",
-        "location": "B1 Tech Room",
-        "status": "available",
-        "shift": "Morning Shift (06:00 - 14:00)",
-    },
-    # Robot Kiosk Accounts
+    # Single Robot Kiosk Account
     {
         "username": "robot_01",
         "code": "R01",
@@ -143,22 +110,19 @@ STAFF_ACCOUNTS = [
         "location": "Main Lobby Kiosk",
         "status": "available",
     },
-    {
-        "username": "robot_02",
-        "code": "R02",
-        "full_name": "Robot Kiosk Unit 02",
-        "role": "Robot Kiosk",
-        "department": "Robot Node",
-        "default_dashboard": "robot_display",
-        "location": "Floor 4 Kiosk",
-        "status": "available",
-    },
 ]
 
 
 async def seed_accounts(session):
     logger.info("👤 [1/7] Seeding Staff & Robot Kiosk accounts...")
     pwd_hash = hash_password(DEFAULT_PASSWORD)
+
+    # Permanently remove any staff accounts not in the official 4 accounts
+    valid_usernames = [acc["username"] for acc in STAFF_ACCOUNTS]
+    await session.execute(
+        delete(Staff).where(Staff.username.not_in(valid_usernames))
+    )
+
     created = 0
     for acc in STAFF_ACCOUNTS:
         res = await session.execute(
@@ -480,8 +444,8 @@ async def seed_notifications(session):
 
     notifs = [
         Notification(
-            department="Bell Services",
-            title="Yêu cầu Bellman mới: Luggage Pickup",
+            department="Reception",
+            title="Yêu cầu Hành lý (Bell): Luggage Pickup",
             description="Mr. Aris Thorne tại Room 402 yêu cầu vận chuyển hành lý.",
             request_id="BS-501",
             request_type="bell_service",
@@ -489,7 +453,7 @@ async def seed_notifications(session):
             is_read=False,
         ),
         Notification(
-            department="F&B",
+            department="Room Service",
             title="Đơn Room Service mới #1042",
             description="ROOM 412: 2x Club Sandwich & Truffle Fries, 2x Artisan Cola.",
             request_id="1042",
@@ -498,8 +462,8 @@ async def seed_notifications(session):
             is_read=False,
         ),
         Notification(
-            department="Maintenance",
-            title="Sự cố Kỹ thuật #MN-401",
+            department="Reception",
+            title="Sự cố Kỹ thuật #MN-401 (Chuyển Lễ tân)",
             description="Phòng 412 rò rỉ nước bồn rửa mặt.",
             request_id="MN-401",
             request_type="maintenance",
@@ -507,7 +471,7 @@ async def seed_notifications(session):
             is_read=False,
         ),
         Notification(
-            department="Housekeeping",
+            department="Room Service",
             title="Yêu cầu dọn vết tràn sảnh chính #M-101",
             description="Khu vực sảnh chính có vết tràn cần xử lý gấp.",
             request_id="M-101",

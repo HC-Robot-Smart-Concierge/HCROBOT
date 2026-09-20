@@ -8,18 +8,10 @@ import {
 } from '../../../services/staffApi';
 
 const DEFAULT_DEPARTMENTS = [
+  'Executive',
   'Reception',
-  'Housekeeping',
-  'F&B',
-  'Bell Services',
-  'Maintenance',
-  'Administration',
-  'Lễ tân',
-  'Buồng phòng',
-  'Ẩm thực (F&B)',
-  'Kỹ thuật / Bảo trì',
-  'CNTT & Vận hành Robot',
-  'An ninh',
+  'Room Service',
+  'Robot Node',
 ];
 
 export const AdminStaffTab = () => {

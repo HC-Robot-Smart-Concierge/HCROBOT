@@ -52,9 +52,6 @@ import {
 const STAFF_DASHBOARDS = [
   'reception',
   'room_service',
-  'housekeeping',
-  'bell_services',
-  'maintenance',
 ];
 
 const isAdminUser = (user) =>
@@ -71,19 +68,10 @@ const normalizeLegacyView = (view, user) => {
     return user ? 'room_service' : 'landing';
   }
   const clean = String(view).toLowerCase().trim().replace(/[\s-]+/g, '_');
-  if (['f&b', 'fb', 'food_beverage', 'roomservice', 'f_and_b', 'room_service'].includes(clean)) {
+  if (['f&b', 'fb', 'food_beverage', 'roomservice', 'f_and_b', 'room_service', 'housekeeping', 'clean', 'buongphong'].includes(clean)) {
     return 'room_service';
   }
-  if (['bellman', 'bell', 'bell_service', 'bell_services'].includes(clean)) {
-    return 'bell_services';
-  }
-  if (['housekeeping', 'clean'].includes(clean)) {
-    return 'housekeeping';
-  }
-  if (['maintenance', 'tech', 'technician'].includes(clean)) {
-    return 'maintenance';
-  }
-  if (['reception', 'front_desk', 'frontdesk'].includes(clean)) {
+  if (['bellman', 'bell', 'bell_service', 'bell_services', 'maintenance', 'tech', 'technician', 'reception', 'front_desk', 'frontdesk'].includes(clean)) {
     return 'reception';
   }
   return clean;
@@ -328,9 +316,6 @@ export function App() {
   const usesReferenceLayout = [
     'reception',
     'room_service',
-    'housekeeping',
-    'bell_services',
-    'maintenance',
   ].includes(activeView);
 
   const isAdmin = isAdminUser(currentUser);
@@ -338,11 +323,8 @@ export function App() {
   const viewOptions = [
     { id: 'admin_portal', label: '👑 Admin Command Portal' },
     { id: 'landing', label: '🏠 Trang Chủ (Landing)' },
-    { id: 'reception', label: '0. Reception (Staff)' },
-    { id: 'room_service', label: '1. Room Service (Staff)' },
-    { id: 'housekeeping', label: '2. Housekeeping (Staff)' },
-    { id: 'bell_services', label: '3. Bell Services (Staff)' },
-    { id: 'maintenance', label: '4. Maintenance (Staff)' },
+    { id: 'reception', label: '0. Reception & Bell (Staff)' },
+    { id: 'room_service', label: '1. Room Service & Clean (Staff)' },
     { id: 'robot_display', label: '🤖 Màn Hình Robot' },
     { id: 'admin_map', label: '🗺️ LiDAR SLAM Map' },
   ];

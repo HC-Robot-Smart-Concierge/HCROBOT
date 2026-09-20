@@ -90,7 +90,7 @@ async def _fetch_all_raw_requests(db: AsyncSession) -> List[Dict[str, Any]]:
         unified.append({
             "id": f"REQ-{o.order_number}",
             "raw_id": o.id,
-            "department": "F&B",
+            "department": "Room Service",
             "table_type": "room_service",
             "title": f"Order #{o.order_number}: {', '.join([i.get('name', 'Item') for i in o.items]) if o.items else 'Room Service'}",
             "location": o.room_number,
@@ -109,7 +109,7 @@ async def _fetch_all_raw_requests(db: AsyncSession) -> List[Dict[str, Any]]:
         unified.append({
             "id": f"REQ-{h.ticket_code}",
             "raw_id": h.id,
-            "department": "Housekeeping",
+            "department": "Room Service",
             "table_type": "housekeeping",
             "title": h.title,
             "location": f"ROOM {h.room_number}" if not str(h.room_number).upper().startswith("ROOM") else h.room_number,
@@ -128,7 +128,7 @@ async def _fetch_all_raw_requests(db: AsyncSession) -> List[Dict[str, Any]]:
         unified.append({
             "id": f"REQ-{b.ticket_code}",
             "raw_id": b.id,
-            "department": "Bell Services",
+            "department": "Reception",
             "table_type": "bell",
             "title": b.title,
             "location": b.location,
@@ -147,7 +147,7 @@ async def _fetch_all_raw_requests(db: AsyncSession) -> List[Dict[str, Any]]:
         unified.append({
             "id": f"REQ-{m.ticket_code}",
             "raw_id": m.id,
-            "department": "Maintenance",
+            "department": "Reception",
             "table_type": "maintenance",
             "title": m.title,
             "location": m.location,
@@ -199,4 +199,18 @@ async def _fetch_all_raw_requests(db: AsyncSession) -> List[Dict[str, Any]]:
             "created_at": d.created_at,
         })
 
+    def _get_sort_key(item):
+        cat = item.get("created_at")
+        if cat is not None:
+            if hasattr(cat, "timestamp"):
+                return cat.timestamp()
+            if isinstance(cat, str):
+                try:
+                    from datetime import datetime
+                    return datetime.fromisoformat(cat.replace("Z", "+00:00")).timestamp()
+                except Exception:
+                    return 0
+        return 0
+
+    unified.sort(key=_get_sort_key, reverse=True)
     return unified

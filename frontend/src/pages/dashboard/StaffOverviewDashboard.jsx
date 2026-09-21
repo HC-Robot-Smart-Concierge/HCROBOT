@@ -79,16 +79,34 @@ export const StaffOverviewDashboard = ({ currentUser, onNotify = () => {} }) => 
       if (Array.isArray(fleetData) && fleetData.length > 0) {
         setRobotFleet(fleetData);
       } else {
-        // Fallback standard fleet data (Single HCRobot Unit)
+        // Fallback standard fleet data
         setRobotFleet([
           {
             id: 'unit_01',
             unit_code: 'HCRobot Unit 01',
-            status: 'Standby / Ready',
-            battery_level: 95,
-            location: 'Trạm Sạc Tự Động - Sảnh Chính',
+            status: 'Delivering',
+            battery_level: 92,
+            location: 'Tầng 4 - Hành lang phòng 402',
             status_color: 'bg-emerald-500',
             ip: '192.168.1.120',
+          },
+          {
+            id: 'unit_02',
+            unit_code: 'HCRobot Unit 02',
+            status: 'Standby / Ready',
+            battery_level: 85,
+            location: 'Trạm Sạc Tự Động - Sảnh Chính',
+            status_color: 'bg-sky-500',
+            ip: '192.168.1.121',
+          },
+          {
+            id: 'unit_03',
+            unit_code: 'Bot Unit Alpha',
+            status: 'Docked & Charging',
+            battery_level: 98,
+            location: 'Khu Vực Hỗ Trợ Hành Lý Bellman',
+            status_color: 'bg-indigo-500',
+            ip: '192.168.1.122',
           },
         ]);
       }
@@ -110,8 +128,11 @@ export const StaffOverviewDashboard = ({ currentUser, onNotify = () => {} }) => 
     const rD = reqDept.toLowerCase().trim();
     const uD = staffDept.toLowerCase().trim();
     if (rD === uD) return true;
-    if ((uD.includes('f&b') || uD.includes('room') || uD.includes('service')) && (rD.includes('f&b') || rD.includes('room') || rD.includes('ẩm thực') || rD.includes('housekeeping') || rD.includes('buồng'))) return true;
-    if ((uD.includes('reception') || uD.includes('lễ tân')) && (rD.includes('reception') || rD.includes('lễ tân') || rD.includes('bell') || rD.includes('hành lý') || rD.includes('luggage') || rD.includes('maint') || rD.includes('bảo trì') || rD.includes('kỹ thuật'))) return true;
+    if ((uD.includes('f&b') || uD.includes('room')) && (rD.includes('f&b') || rD.includes('room') || rD.includes('ẩm thực'))) return true;
+    if ((uD.includes('housekeeping') || uD.includes('buồng')) && (rD.includes('housekeeping') || rD.includes('buồng'))) return true;
+    if ((uD.includes('bell') || uD.includes('hành lý')) && (rD.includes('bell') || rD.includes('hành lý'))) return true;
+    if ((uD.includes('maint') || uD.includes('bảo trì') || uD.includes('kỹ thuật')) && (rD.includes('maint') || rD.includes('bảo trì') || rD.includes('kỹ thuật'))) return true;
+    if ((uD.includes('reception') || uD.includes('lễ tân')) && (rD.includes('reception') || rD.includes('lễ tân'))) return true;
     return false;
   };
 
@@ -149,23 +170,6 @@ export const StaffOverviewDashboard = ({ currentUser, onNotify = () => {} }) => 
       (r.location || '').toLowerCase().includes(searchQuery.toLowerCase());
 
     return matchStatus && matchSearch;
-  });
-
-  // Apply Priority & Time Sorting (matches RequestsPage)
-  const sortedRequests = [...filteredRequests].sort((a, b) => {
-    const getScore = (r) => {
-      const s = (r.status || '').toLowerCase();
-      if (s === 'pending' || s === 'unassigned' || s === 'waiting') return 1;
-      if (s === 'in progress' || s === 'in_progress' || s === 'cooking' || s === 'delivering') return 2;
-      if (s === 'completed' || s === 'ready' || s === 'delivered') return 3;
-      return 4;
-    };
-    const diff = getScore(a) - getScore(b);
-    if (diff !== 0) return diff;
-    const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
-    const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
-    if (timeA !== timeB) return timeB - timeA;
-    return (b.id || '').localeCompare(a.id || '');
   });
 
   const handleUpdateStatus = async (reqId, nextStatus) => {
@@ -322,7 +326,7 @@ export const StaffOverviewDashboard = ({ currentUser, onNotify = () => {} }) => 
                       </td>
                     </tr>
                   ) : (
-                    sortedRequests.slice(0, 5).map((r) => {
+                    filteredRequests.slice(0, 5).map((r) => {
                       const isPending =
                         (r.status || '').toLowerCase() === 'pending' ||
                         (r.status || '').toLowerCase() === 'unassigned';
@@ -390,7 +394,7 @@ export const StaffOverviewDashboard = ({ currentUser, onNotify = () => {} }) => 
                   Không có yêu cầu nào phù hợp.
                 </div>
               ) : (
-                sortedRequests.slice(0, 5).map((r) => {
+                filteredRequests.slice(0, 5).map((r) => {
                   const isPending =
                     (r.status || '').toLowerCase() === 'pending' ||
                     (r.status || '').toLowerCase() === 'unassigned';

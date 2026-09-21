@@ -84,8 +84,11 @@ export const MyTasksPage = ({ currentUser, onNotify = () => {} }) => {
     const myDept = String(staffDept || '').toLowerCase().trim();
     const isDeptMatch =
       reqDept === myDept ||
-      ((myDept.includes('f&b') || myDept.includes('room') || myDept.includes('service')) && (reqDept.includes('f&b') || reqDept.includes('room') || reqDept.includes('ẩm thực') || reqDept.includes('housekeeping') || reqDept.includes('buồng'))) ||
-      ((myDept.includes('reception') || myDept.includes('lễ tân') || myDept.includes('front desk')) && (reqDept.includes('reception') || reqDept.includes('lễ tân') || reqDept.includes('front desk') || reqDept.includes('bell') || reqDept.includes('luggage') || reqDept.includes('hành lý') || reqDept.includes('maint') || reqDept.includes('kỹ thuật') || reqDept.includes('bảo trì')));
+      (myDept.includes('housekeeping') && (reqDept.includes('housekeeping') || reqDept.includes('buồng phòng'))) ||
+      ((myDept.includes('f&b') || myDept.includes('room service') || myDept.includes('room_service')) && (reqDept.includes('f&b') || reqDept.includes('room service') || reqDept.includes('ẩm thực') || reqDept.includes('room_service'))) ||
+      ((myDept.includes('bell') || myDept.includes('luggage')) && (reqDept.includes('bell') || reqDept.includes('luggage') || reqDept.includes('hành lý'))) ||
+      ((myDept.includes('maint') || myDept.includes('kỹ thuật') || myDept.includes('bảo trì')) && (reqDept.includes('maint') || reqDept.includes('kỹ thuật') || reqDept.includes('bảo trì'))) ||
+      ((myDept.includes('reception') || myDept.includes('lễ tân') || myDept.includes('front desk')) && (reqDept.includes('reception') || reqDept.includes('lễ tân') || reqDept.includes('front desk')));
 
     if (!isDeptMatch) return false;
 

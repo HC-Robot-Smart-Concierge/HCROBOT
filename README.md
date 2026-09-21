@@ -175,20 +175,36 @@ HC-Robot/
    OPENAI_API_KEY=your_openai_api_key_here
    ```
 
-5. **Khởi tạo cơ sở dữ liệu & Seed dữ liệu mẫu (Unified Database Seeding Engine)**:
-   Chạy file seed hợp nhất để tạo tài khoản chuẩn và dữ liệu nghiệp vụ 5 sao:
+5. **Seed tài khoản PostgreSQL**:
+   Tạo tài khoản nhân viên bằng file seed riêng (mật khẩu mặc định: `123456`):
    ```powershell
-   python scripts/seed.py
+   python scripts/seed_accounts.py
    ```
-   *(Tùy chọn: `python scripts/seed.py --reset` để xóa sạch và nạp lại toàn bộ DB từ đầu)*
+   Tạo riêng tài khoản Robot Kiosk:
+   ```powershell
+   python scripts/seed_robot_accounts.py
+   ```
+   Tạo dữ liệu mẫu cho dashboard lễ tân:
+   ```powershell
+   python scripts/seed_reception_data.py
+   ```
+   Chỉ tạo các bảng còn thiếu, không tự seed tài khoản:
+   ```powershell
+   python -c "import asyncio; from app.db.init_db import init_db; asyncio.run(init_db())"
+   ```
 
-   **Danh Sách Tài Khoản Hệ Thống Chuẩn Hóa:**
+   **Danh Sách Tài Khoản Hệ Thống Theo Bộ Phận:**
    | Tên Đăng Nhập (Username) | Mật Khẩu | Tên Bộ Phận / Chức Danh | Phân Hệ Dashboard |
    | :--- | :--- | :--- | :--- |
-   | `admin` | `123456` | Quản trị Hệ thống (Admin) | Toàn quyền kiểm soát / Tất cả Dashboards |
-   | `reception` | `123456` | Lễ tân & Tiếp đón (Reception, Bell & Maint) | Reception & Bell Desk |
-   | `roomservice` | `123456` | Dịch vụ phòng (Room Service & Housekeeping) | Room Service & Clean Hub |
-   | `robot_01` | `123456` | Robot Kiosk Unit 01 (HCRobot Concierge) | Màn hình Robot |
+   | `reception` | `123456` | Nhân viên Lễ tân (Reception) | Lễ tân Hub / Executive |
+   | `roomservice` | `123456` | Nhân viên Phục vụ phòng (F&B) | Room Service |
+   | `housekeeping` | `123456` | Nhân viên Buồng phòng (Housekeeping) | Housekeeping |
+   | `bellman` | `123456` | Nhân viên Vận chuyển hành lý (Bellman) | Bell Services |
+   | `maintenance` | `123456` | Nhân viên Kỹ thuật & Bảo trì | Maintenance |
+   | `manager` | `123456` | Ban Quản lý Khách sạn (Manager) | Executive Hub |
+   | `admin` | `123456` | Quản trị Hệ thống (Admin) | Tất cả Dashboards |
+   | `robot_01` | `123456` | Robot Kiosk Unit 01 | Màn hình Robot |
+   | `robot_02` | `123456` | Robot Kiosk Unit 02 | Màn hình Robot |
 
 6. **Khởi chạy Backend Server**:
    ```powershell

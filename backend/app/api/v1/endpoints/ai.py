@@ -397,9 +397,18 @@ async def _auto_create_ticket(db: AsyncSession, action: str, room_number: str, i
             db.add(req)
             await create_department_notification(
                 db=db,
-                department="Room Service",
-                title=f"Robot AI: Yêu cầu Dịch vụ Buồng phòng mới #{req.ticket_code}",
+                department="Housekeeping",
+                title=f"Robot AI: Yêu cầu Buồng phòng mới #{req.ticket_code}",
                 description=f"Phòng {rm}: {items}",
+                request_id=req.id,
+                request_type="housekeeping",
+                type="Request",
+            )
+            await create_department_notification(
+                db=db,
+                department="Reception",
+                title=f"Robot AI: Yêu cầu Buồng phòng từ Khách Phòng {rm}",
+                description=f"Phiếu #{req.ticket_code}: {items}",
                 request_id=req.id,
                 request_type="housekeeping",
                 type="Request",
@@ -420,9 +429,18 @@ async def _auto_create_ticket(db: AsyncSession, action: str, room_number: str, i
             db.add(req)
             await create_department_notification(
                 db=db,
-                department="Reception",
-                title=f"Robot AI: Yêu cầu Hành lý (Bell) từ Khách Phòng {rm} #{req.ticket_code}",
+                department="Bell Services",
+                title=f"Robot AI: Yêu cầu Hành lý mới #{req.ticket_code}",
                 description=f"Phòng {rm}: {items}",
+                request_id=req.id,
+                request_type="bell_service",
+                type="Request",
+            )
+            await create_department_notification(
+                db=db,
+                department="Reception",
+                title=f"Robot AI: Yêu cầu Bellman từ Khách Phòng {rm}",
+                description=f"Phiếu #{req.ticket_code}: {items}",
                 request_id=req.id,
                 request_type="bell_service",
                 type="Request",
@@ -444,9 +462,18 @@ async def _auto_create_ticket(db: AsyncSession, action: str, room_number: str, i
             db.add(req)
             await create_department_notification(
                 db=db,
-                department="Reception",
-                title=f"Robot AI: Báo cáo Sự cố Kỹ thuật Phòng {rm} #{req.ticket_code}",
+                department="Maintenance",
+                title=f"Robot AI: Yêu cầu Kỹ thuật mới #{req.ticket_code}",
                 description=f"Phòng {rm}: {items}",
+                request_id=req.id,
+                request_type="maintenance",
+                type="Request",
+            )
+            await create_department_notification(
+                db=db,
+                department="Reception",
+                title=f"Robot AI: Yêu cầu Bảo trì từ Khách Phòng {rm}",
+                description=f"Phiếu #{req.ticket_code}: {items}",
                 request_id=req.id,
                 request_type="maintenance",
                 type="Request",

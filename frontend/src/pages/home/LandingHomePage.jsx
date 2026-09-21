@@ -142,19 +142,32 @@ export const LandingHomePage = ({
             <form onSubmit={handleRobotLoginSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-bold text-stone-600 uppercase tracking-wider mb-1.5">
-                  Đơn vị Robot duy nhất (Robot Unit)
+                  Chọn Robot Unit (Username)
                 </label>
-                <div className="p-3 rounded-2xl bg-[#FAF8F5] border border-[#DDD8CE] flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                    <div>
-                      <span className="text-xs font-bold text-stone-900 block">robot_01 (Unit 01)</span>
-                      <span className="text-[11px] text-stone-500">HCRobot Smart Concierge • Sảnh chính</span>
-                    </div>
-                  </div>
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
-                    Online
-                  </span>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setRobotUsername('robot_01')}
+                    className={`py-2.5 px-3 rounded-2xl border text-xs font-bold transition-all cursor-pointer ${
+                      robotUsername === 'robot_01'
+                        ? 'bg-[#18181B] text-white border-black shadow-md'
+                        : 'bg-[#FAF8F5] text-stone-700 border-[#DDD8CE] hover:bg-[#F2EFE9]'
+                    }`}
+                  >
+                    robot_01 (Unit 01)
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setRobotUsername('robot_02')}
+                    className={`py-2.5 px-3 rounded-2xl border text-xs font-bold transition-all cursor-pointer ${
+                      robotUsername === 'robot_02'
+                        ? 'bg-[#18181B] text-white border-black shadow-md'
+                        : 'bg-[#FAF8F5] text-stone-700 border-[#DDD8CE] hover:bg-[#F2EFE9]'
+                    }`}
+                  >
+                    robot_02 (Unit 02)
+                  </button>
                 </div>
               </div>
 

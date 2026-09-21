@@ -4,12 +4,16 @@ import { AudioWave } from '../../components/robot/AudioWave';
 import { FloorMap } from '../../components/robot/FloorMap';
 import { CameraPreview } from '../../components/robot/CameraPreview';
 import { MobileRobotScreen } from '../../components/robot/MobileRobotScreen';
+import { useWorkflowRunner } from '../../hooks/useWorkflowRunner';
+import { KioskDisplayPreview } from '../admin/tabs/workflow/KioskDisplayPreview';
+import { fetchWorkflows } from '../../services/workflowApi';
+import { useNotificationWebSocket } from '../../hooks/useNotificationWebSocket';
 
 import { useSpeechRecognition } from '../../hooks/useSpeechRecognition';
 import { useSpeechSynthesis } from '../../hooks/useSpeechSynthesis';
 import { sendChatPrompt, extractIntent, resetSession, flushSession } from '../../services/aiApi';
 
-import { RefreshCw, Volume2, Sparkles, LogOut } from 'lucide-react';
+import { RefreshCw, Volume2, Sparkles, LogOut, Zap } from 'lucide-react';
 
 const anyKeywordMatch = (text, keywords) => keywords.some((k) => text.includes(k));
 
@@ -48,6 +52,58 @@ export const RobotScreenPage = ({ onLogout = () => {} }) => {
   };
 
   const [guestEmotion, setGuestEmotion] = useState('neutral');
+
+  // Workflow Native Runner Hook
+  const {
+    activeWorkflow,
+    isWorkflowRunning,
+    currentStepIndex,
+    activeStep,
+    totalSteps,
+    startWorkflow,
+    stopWorkflow,
+    nextStep,
+  } = useWorkflowRunner({ speak, stopSpeaking });
+
+  const [availableWorkflows, setAvailableWorkflows] = useState([]);
+  const [showWorkflowMenu, setShowWorkflowMenu] = useState(false);
+
+  useEffect(() => {
+    fetchWorkflows()
+      .then((res) => {
+        if (Array.isArray(res)) setAvailableWorkflows(res);
+      })
+      .catch(() => {});
+  }, []);
+
+  // Listen to BroadcastChannel for zero-latency local dispatch
+  useEffect(() => {
+    let bc;
+    try {
+      bc = new BroadcastChannel('hcrobot_workflow_channel');
+      bc.onmessage = (event) => {
+        if (event.data?.type === 'EXECUTE_WORKFLOW' && event.data?.workflow) {
+          startWorkflow(event.data.workflow);
+        }
+      };
+    } catch {
+      // BroadcastChannel fallback
+    }
+    return () => {
+      if (bc) bc.close();
+    };
+  }, [startWorkflow]);
+
+  // Listen to WebSocket Hub for remote LAN dispatch
+  useNotificationWebSocket({
+    department: 'All',
+    onNotificationReceived: (notif) => {
+      if (notif?.type === 'WORKFLOW_DISPATCH' && notif?.workflow) {
+        startWorkflow(notif.workflow);
+      }
+    },
+    enabled: true,
+  });
 
   // Xóa bộ nhớ phiên (Dùng cho nút Khách Mới / Đổi Phòng)
   const handleManualResetSession = async () => {
@@ -300,6 +356,49 @@ export const RobotScreenPage = ({ onLogout = () => {} }) => {
         streamUrl={import.meta.env.VITE_PI5_CAMERA_URL || 'http://localhost:8554/stream'}
       />
 
+      {/* Quick Workflow Trigger for Guest & Staff */}
+      <div className="absolute top-4 right-20 z-40 flex items-center gap-2">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setShowWorkflowMenu(!showWorkflowMenu);
+          }}
+          className="px-3.5 py-1.5 rounded-full bg-stone-900/85 hover:bg-stone-800 text-cyan-300 border border-cyan-500/40 text-xs font-black flex items-center gap-1.5 shadow-2xl backdrop-blur-md cursor-pointer transition-transform hover:scale-105"
+        >
+          <Sparkles className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
+          <span>⚡ Kịch Bản ({availableWorkflows.length})</span>
+        </button>
+
+        {showWorkflowMenu && (
+          <div className="absolute top-10 right-0 w-72 rounded-2xl bg-stone-900/95 border border-stone-700 shadow-2xl p-2.5 space-y-1.5 backdrop-blur-xl z-50 text-left animate-in fade-in zoom-in-95">
+            <div className="text-[10px] font-black uppercase text-stone-400 px-2 py-1 border-b border-stone-800 flex items-center justify-between">
+              <span>Chọn Kịch Bản Chạy Trên Robot</span>
+              <span className="text-cyan-400 font-mono">{availableWorkflows.length} Workflows</span>
+            </div>
+            <div className="max-h-60 overflow-y-auto space-y-1">
+              {availableWorkflows.map((wf) => (
+                <button
+                  key={wf.id}
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    startWorkflow(wf);
+                    setShowWorkflowMenu(false);
+                  }}
+                  className="w-full p-2 rounded-xl text-left text-xs font-semibold text-stone-200 hover:bg-cyan-500/20 hover:text-cyan-200 border border-transparent hover:border-cyan-500/30 transition-all cursor-pointer flex items-center justify-between"
+                >
+                  <span className="truncate">{wf.name}</span>
+                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-stone-800 text-stone-400 font-mono">
+                    {wf.steps?.length || 0}s
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
       <MobileRobotScreen
         activeRoomNumber={activeRoomNumber}
         guestEmotion={guestEmotion}
@@ -336,11 +435,48 @@ export const RobotScreenPage = ({ onLogout = () => {} }) => {
         className="robot-desktop-ui w-full h-full flex-col justify-start items-center relative cursor-pointer"
       >
 
+      {/* Aurora Workflow Floating Status Banner */}
+      {isWorkflowRunning && (
+        <div className="absolute top-5 left-1/2 -translate-x-1/2 z-40 px-5 py-2 rounded-full bg-white/95 border border-stone-200 shadow-xl backdrop-blur-md flex items-center gap-3 animate-fadeIn">
+          <span className="w-2.5 h-2.5 rounded-full bg-cyan-500 animate-pulse" />
+          <span className="text-xs font-black text-stone-800 tracking-wide uppercase">
+            {activeWorkflow?.name}
+          </span>
+          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-cyan-50 text-cyan-800 border border-cyan-200">
+            BƯỚC {currentStepIndex + 1}/{totalSteps}: {activeStep?.type}
+          </span>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              nextStep();
+            }}
+            className="px-2.5 py-1 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-700 text-[10px] font-bold cursor-pointer transition-colors"
+          >
+            Tiếp
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              stopWorkflow();
+            }}
+            className="px-2.5 py-1 rounded-full bg-red-50 hover:bg-red-100 text-red-600 text-[10px] font-bold cursor-pointer transition-colors"
+          >
+            Dừng
+          </button>
+        </div>
+      )}
+
       {/* 2. Main Body Container */}
       <main className="w-full flex-1 px-16 py-[54px] flex items-center justify-center gap-16 overflow-hidden">
         
-        {/* Render RT-05: Multi-floor Indoor Route Guidance */}
-        {currentState === 'RT-05' ? (
+        {/* Render Workflow Kiosk Interface trực tiếp tại trung tâm màn hình robot */}
+        {isWorkflowRunning && (activeStep?.type === 'SHOW' || activeStep?.type === 'FEEDBACK' || activeStep?.type === 'MOVE') ? (
+          <div className="w-[660px] max-h-[580px] bg-white/95 backdrop-blur-2xl border border-stone-200/80 rounded-3xl shadow-2xl p-4 flex flex-col overflow-hidden animate-fadeIn">
+            <KioskDisplayPreview activeStep={activeStep} />
+          </div>
+        ) : currentState === 'RT-05' ? (
           <div className="w-full flex justify-between items-center gap-8 animate-fadeIn">
             {/* Left: 2D Floor Map */}
             <FloorMap 
@@ -394,7 +530,7 @@ export const RobotScreenPage = ({ onLogout = () => {} }) => {
           /* Render Robot Display Mode (Khi trả lời -> Chỉ hiện bảng chữ ở trung tâm, không hiện mắt) */
           <div className="w-full h-full flex items-center justify-center relative">
             
-            {aiResponseText ? (
+            {(aiResponseText || (isWorkflowRunning && (activeStep?.type === 'GREET' || activeStep?.type === 'SPEAK') && (activeStep.params?.speech_text || activeStep.params?.greeting_text || activeStep.params?.text))) ? (
               /* Khi Robot phát giọng trả lời -> HIỆN BẢNG CHỮ Ở TRUNG TÂM (KHÔNG HIỆN MẮT) */
               <div className="w-[580px] p-8 bg-white/95 backdrop-blur-xl border border-stone-200/80 rounded-3xl shadow-2xl flex flex-col gap-5 animate-fadeIn transform transition-all duration-300">
                 <div className="flex items-center justify-between border-b border-stone-100 pb-3.5">
@@ -408,7 +544,7 @@ export const RobotScreenPage = ({ onLogout = () => {} }) => {
                 </div>
 
                 <div className="text-lg font-semibold text-stone-900 leading-relaxed max-h-[260px] overflow-y-auto custom-scrollbar">
-                  {aiResponseText}
+                  {aiResponseText || (activeStep?.params?.speech_text || activeStep?.params?.greeting_text || activeStep?.params?.text)}
                 </div>
 
                 <div className="pt-3 border-t border-stone-100 flex items-center justify-between text-xs text-stone-500 font-medium">
@@ -427,6 +563,8 @@ export const RobotScreenPage = ({ onLogout = () => {} }) => {
               <div className="transition-all duration-500 flex flex-col items-center justify-center scale-105">
                 <RobotFace 
                   mode={
+                    (isWorkflowRunning && activeStep?.type === 'LISTEN') ? 'listening' :
+                    (isWorkflowRunning && activeStep?.type === 'GREET') ? 'welcome' :
                     currentState === 'RT-01' ? 'sleeping' :
                     currentState === 'RT-03' ? 'listening' :
                     currentState === 'RT-04' ? 'processing' : 'welcome'

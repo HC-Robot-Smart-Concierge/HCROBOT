@@ -21,9 +21,21 @@ router = APIRouter()
 
 from app.api.v1.endpoints.default_workflows import CORE_WORKFLOWS
 
+_workflows_seeded = False
+
 
 async def ensure_default_workflow(db: AsyncSession):
     """Seed all 7 standard Core Workflows from Stepflow.md if database is empty or missing."""
+    global _workflows_seeded
+    if _workflows_seeded:
+        return
+
+    # Check if table already contains workflows to skip 7 sequential queries
+    check_res = await db.execute(select(RobotWorkflow.id).limit(1))
+    if check_res.scalar_one_or_none() is not None:
+        _workflows_seeded = True
+        return
+
     for wf_data in CORE_WORKFLOWS:
         res = await db.execute(select(RobotWorkflow).where(RobotWorkflow.id == wf_data["id"]))
         if res.scalar_one_or_none() is None:
@@ -37,6 +49,7 @@ async def ensure_default_workflow(db: AsyncSession):
             )
             db.add(new_wf)
     await db.commit()
+    _workflows_seeded = True
 
 
 @router.get("", response_model=List[WorkflowResponse], summary="Lấy danh sách các Step Workflows của Robot")

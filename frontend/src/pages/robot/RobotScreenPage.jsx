@@ -53,7 +53,7 @@ export const RobotScreenPage = ({ onLogout = () => {} }) => {
 
   const [guestEmotion, setGuestEmotion] = useState('neutral');
 
-  // Workflow Native Runner Hook
+  // Workflow Native Runner Hook (tích hợp Micro & Loa máy tính)
   const {
     activeWorkflow,
     isWorkflowRunning,
@@ -63,7 +63,15 @@ export const RobotScreenPage = ({ onLogout = () => {} }) => {
     startWorkflow,
     stopWorkflow,
     nextStep,
-  } = useWorkflowRunner({ speak, stopSpeaking });
+  } = useWorkflowRunner({
+    speak,
+    stopSpeaking,
+    startListening,
+    stopListening,
+    transcript,
+    resetTranscript,
+    isListening,
+  });
 
   const [availableWorkflows, setAvailableWorkflows] = useState([]);
   const [showWorkflowMenu, setShowWorkflowMenu] = useState(false);
@@ -472,9 +480,14 @@ export const RobotScreenPage = ({ onLogout = () => {} }) => {
       <main className="w-full flex-1 px-16 py-[54px] flex items-center justify-center gap-16 overflow-hidden">
         
         {/* Render Workflow Kiosk Interface trực tiếp tại trung tâm màn hình robot */}
-        {isWorkflowRunning && (activeStep?.type === 'SHOW' || activeStep?.type === 'FEEDBACK' || activeStep?.type === 'MOVE') ? (
-          <div className="w-[660px] max-h-[580px] bg-white/95 backdrop-blur-2xl border border-stone-200/80 rounded-3xl shadow-2xl p-4 flex flex-col overflow-hidden animate-fadeIn">
-            <KioskDisplayPreview activeStep={activeStep} />
+        {isWorkflowRunning && (activeStep?.type === 'SHOW' || activeStep?.type === 'FEEDBACK' || activeStep?.type === 'MOVE' || activeStep?.type === 'LISTEN' || activeStep?.type === 'RECOMMEND' || activeStep?.type === 'CREATE_REQUEST') ? (
+          <div className="w-[700px] max-h-[610px] bg-white/98 backdrop-blur-2xl border-2 border-stone-200/90 rounded-3xl shadow-2xl p-4 sm:p-5 flex flex-col overflow-hidden animate-fadeIn">
+            <KioskDisplayPreview
+              activeStep={activeStep}
+              transcript={transcript}
+              isListening={isListening}
+              onNextStep={nextStep}
+            />
           </div>
         ) : currentState === 'RT-05' ? (
           <div className="w-full flex justify-between items-center gap-8 animate-fadeIn">

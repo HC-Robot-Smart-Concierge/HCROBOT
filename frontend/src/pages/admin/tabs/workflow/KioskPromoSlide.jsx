@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Sparkles, Tag, QrCode, Clock, Gift, Flame, ArrowRight } from 'lucide-react';
+import { Tag, QrCode, Clock, Gift, Flame, ArrowRight, Sparkles, Percent } from 'lucide-react';
 
 export const KioskPromoSlide = ({ activeStep }) => {
   const params = activeStep?.params || {};
@@ -13,71 +13,79 @@ export const KioskPromoSlide = ({ activeStep }) => {
   }, []);
 
   return (
-    <div className="space-y-2.5 animate-in fade-in zoom-in-95 duration-300">
-      {/* Billboard Hero Card */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-amber-600/30 via-purple-900/40 to-stone-900 border border-amber-400/40 p-4 shadow-2xl">
-        {/* Glow Ambient */}
-        <div className="absolute -top-12 -right-12 w-32 h-32 bg-amber-500/20 rounded-full blur-2xl pointer-events-none" />
-        <div className="absolute -bottom-10 -left-10 w-28 h-28 bg-purple-500/20 rounded-full blur-2xl pointer-events-none" />
+    <div className="space-y-3 animate-in fade-in zoom-in-95 duration-300">
+      {/* Radiant Resort Billboard Hero Card */}
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-amber-50 via-orange-50/70 to-rose-50 border-2 border-amber-300/80 p-4 sm:p-5 shadow-lg">
+        {/* Decorative Ambient Radial Glows */}
+        <div className="absolute -top-10 -right-10 w-40 h-40 bg-amber-400/20 rounded-full blur-2xl pointer-events-none" />
+        <div className="absolute -bottom-10 -left-10 w-36 h-36 bg-rose-400/20 rounded-full blur-2xl pointer-events-none" />
 
-        {/* Promo Header */}
-        <div className="flex items-center justify-between relative z-10 mb-2">
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-400 text-stone-950 text-[10px] font-black uppercase tracking-wider shadow">
-            <Flame className="w-3.5 h-3.5 fill-red-600 text-red-600" />
+        {/* Promo Header Badge & Live Countdown */}
+        <div className="flex items-center justify-between relative z-10 mb-2.5">
+          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-gradient-to-r from-amber-500 to-orange-500 text-white text-[10px] font-black uppercase tracking-wider shadow-sm">
+            <Flame className="w-3.5 h-3.5 fill-white text-white" />
             <span>Ưu Đãi Đặc Biệt Mùa Hè</span>
           </div>
-          <span className="text-[10px] font-mono text-stone-400 flex items-center gap-1">
-            <Clock className="w-3 h-3 text-amber-400" /> Đổi slide sau {countdown}s
+          <span className="text-[10px] font-mono font-bold text-amber-900 bg-amber-100/90 px-2.5 py-1 rounded-full border border-amber-300 flex items-center gap-1 shadow-sm">
+            <Clock className="w-3 h-3 text-amber-700" /> Đổi slide sau {countdown}s
           </span>
         </div>
 
         {/* Big Offer Banner */}
-        <div className="relative z-10 space-y-1">
-          <h3 className="text-sm font-black text-white tracking-wide flex items-center gap-2">
-            <span>☀️</span>
-            <span>{params.display_banner || 'AURORA SUMMER ESCAPE: GIẢM 20% DỊCH VỤ SPA & ẨM THỰC'}</span>
-          </h3>
-          <p className="text-[10px] text-stone-300 leading-relaxed">
-            Thưởng thức ẩm thực cao cấp tại Nhà hàng Tầng 1 và thư giãn với liệu trình Massage Thảo Mộc tại tầng 3.
+        <div className="relative z-10 space-y-1.5">
+          <div className="flex items-center gap-2">
+            <span className="p-1 rounded-lg bg-amber-500 text-white text-xs font-black">
+              <Percent className="w-3.5 h-3.5" />
+            </span>
+            <h3 className="text-sm sm:text-base font-black text-stone-900 tracking-tight leading-snug">
+              {params.display_banner || 'AURORA SUMMER ESCAPE: GIẢM 20% DỊCH VỤ SPA & ẨM THỰC'}
+            </h3>
+          </div>
+          <p className="text-xs text-stone-600 leading-relaxed font-medium">
+            Tận hưởng trọn vẹn kỳ nghỉ dưỡng 5 sao với đặc quyền ẩm thực Á - Âu tại tầng 1 và gói trị liệu thư giãn thảo mộc tự nhiên tại tầng 3.
           </p>
         </div>
 
-        {/* Perks Grid */}
-        <div className="grid grid-cols-2 gap-2 mt-3 relative z-10">
-          <div className="p-2.5 rounded-xl bg-stone-950/70 border border-stone-800 space-y-1">
-            <div className="flex items-center gap-1 text-[10px] font-bold text-amber-300">
-              <Gift className="w-3 h-3 text-amber-400" /> Spa & Trị Liệu
+        {/* 2 Crisp Perks Cards */}
+        <div className="grid grid-cols-2 gap-2.5 pt-3 relative z-10">
+          <div className="p-2.5 rounded-xl bg-white/90 backdrop-blur-sm border border-amber-200/90 shadow-sm flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+              <Gift className="w-4 h-4" />
             </div>
-            <div className="text-xs font-black text-white">Giảm 20% Toàn Menu</div>
-            <div className="text-[9px] text-stone-400">Áp dụng 09:00 - 17:00 hàng ngày</div>
+            <div>
+              <span className="text-[11px] font-extrabold text-stone-900 block">Tặng Set Trà Chiều</span>
+              <span className="text-[9px] text-stone-500 block">Dành cho bàn từ 2 khách</span>
+            </div>
           </div>
 
-          <div className="p-2.5 rounded-xl bg-stone-950/70 border border-stone-800 space-y-1">
-            <div className="flex items-center gap-1 text-[10px] font-bold text-cyan-300">
-              <Tag className="w-3 h-3 text-cyan-400" /> Buffet Hải Sản Tối
+          <div className="p-2.5 rounded-xl bg-white/90 backdrop-blur-sm border border-rose-200/90 shadow-sm flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-rose-100 text-rose-700 flex items-center justify-center shrink-0">
+              <Sparkles className="w-4 h-4" />
             </div>
-            <div className="text-xs font-black text-white">Tặng 1 Ly Cocktail VIP</div>
-            <div className="text-[9px] text-stone-400">Dành riêng cho khách lưu trú</div>
+            <div>
+              <span className="text-[11px] font-extrabold text-stone-900 block">Tặng Voucher Spa 200k</span>
+              <span className="text-[9px] text-stone-500 block">Áp dụng liệu trình từ 60 phút</span>
+            </div>
           </div>
         </div>
 
-        {/* QR & Voucher Action */}
-        <div className="mt-3 p-2.5 rounded-xl bg-stone-900/90 border border-amber-500/30 flex items-center justify-between relative z-10">
+        {/* QR Code Action Footer */}
+        <div className="mt-3 pt-3 border-t border-amber-200/70 flex items-center justify-between relative z-10">
           <div className="flex items-center gap-2">
-            <div className="w-9 h-9 rounded-lg bg-white text-stone-950 flex items-center justify-center shadow">
-              <QrCode className="w-7 h-7" />
+            <div className="w-9 h-9 rounded-xl bg-white border border-stone-200 shadow-sm flex items-center justify-center text-stone-900 font-bold">
+              <QrCode className="w-5 h-5 text-stone-800" />
             </div>
             <div>
-              <div className="text-[10px] font-bold text-stone-200">Quét mã nhận Voucher điện tử</div>
-              <div className="text-[9px] text-amber-400 font-mono font-black">CODE: AURORA-SUMMER26</div>
+              <span className="text-[11px] font-black text-stone-900 block">Quét QR nhận mã ưu đãi</span>
+              <span className="text-[9px] text-stone-500 block">Áp dụng trực tiếp tại quầy thanh toán</span>
             </div>
           </div>
           <button
             type="button"
-            className="px-2.5 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-stone-950 text-[10px] font-black flex items-center gap-1 cursor-pointer transition-colors shadow"
+            className="px-3.5 py-1.5 rounded-xl bg-stone-900 hover:bg-stone-800 text-white text-[11px] font-bold shadow-sm transition-all cursor-pointer flex items-center gap-1"
           >
             <span>Nhận ngay</span>
-            <ArrowRight className="w-3 h-3" />
+            <ArrowRight className="w-3.5 h-3.5" />
           </button>
         </div>
       </div>

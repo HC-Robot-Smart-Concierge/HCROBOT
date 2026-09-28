@@ -40,6 +40,7 @@ class LogEvent(Base):
     # Actor Information
     actor_type = Column(SQLEnum(ActorTypeEnum), default=ActorTypeEnum.SYSTEM, nullable=False, index=True)
     actor_id = Column(String(100), nullable=True, index=True)
+    account_id = Column(String(50), ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True, index=True)
 
     # Target & Scope Entities
     robot_id = Column(String(50), default="RC-001", nullable=True, index=True)
@@ -67,6 +68,7 @@ class LogEvent(Base):
         Index("idx_log_category_timestamp", "category", "timestamp"),
         Index("idx_log_level_timestamp", "level", "timestamp"),
         Index("idx_log_robot_timestamp", "robot_id", "timestamp"),
+        Index("idx_log_account_timestamp", "account_id", "timestamp"),
         Index("idx_log_service_request_timestamp", "service_request_id", "timestamp"),
     )
 
@@ -77,9 +79,10 @@ class AuditLog(Base):
     timestamp = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
     actor_type = Column(SQLEnum(ActorTypeEnum), nullable=False, index=True)
     actor_id = Column(String(100), nullable=False, index=True)
+    account_id = Column(String(50), ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True, index=True)
     actor_name = Column(String(150), nullable=True)
     action = Column(String(100), nullable=False, index=True) # LOGIN, LOGOUT, CREATE, UPDATE, DELETE, CONFIG_CHANGED, KB_UPDATED
-    resource_type = Column(String(100), nullable=False, index=True) # STAFF, KNOWLEDGE_DOCUMENT, SETTING, SERVICE_REQUEST
+    resource_type = Column(String(100), nullable=False, index=True) # STAFF, ACCOUNT, KNOWLEDGE_DOCUMENT, SETTING, SERVICE_REQUEST
     resource_id = Column(String(100), nullable=True, index=True)
     
     before_state = Column(JSONB, nullable=True)

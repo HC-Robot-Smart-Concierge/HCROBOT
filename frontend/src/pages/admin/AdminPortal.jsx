@@ -138,11 +138,21 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
                         onClick={() => setRobotSubTab('studio')}
                         className="w-full text-left px-2 py-1.5 rounded text-[11px] font-semibold transition-all cursor-pointer"
                         style={{
-                          background: robotSubTab === 'studio' || robotSubTab === 'lidar' || robotSubTab === 'workflows' ? '#262626' : 'transparent',
-                          color: robotSubTab === 'studio' || robotSubTab === 'lidar' || robotSubTab === 'workflows' ? '#FFFFFF' : '#8C8C8C',
+                          background: robotSubTab === 'studio' || robotSubTab === 'lidar' ? '#262626' : 'transparent',
+                          color: robotSubTab === 'studio' || robotSubTab === 'lidar' ? '#FFFFFF' : '#8C8C8C',
                         }}
                       >
-                        Bản Đồ &amp; Step Workflows
+                        Bản Đồ LiDAR Studio
+                      </button>
+                      <button
+                        onClick={() => setRobotSubTab('workflows')}
+                        className="w-full text-left px-2 py-1.5 rounded text-[11px] font-semibold transition-all cursor-pointer"
+                        style={{
+                          background: robotSubTab === 'workflows' ? '#262626' : 'transparent',
+                          color: robotSubTab === 'workflows' ? '#FFFFFF' : '#8C8C8C',
+                        }}
+                      >
+                        Quản Lý Step Workflows
                       </button>
                       <button
                         onClick={() => setRobotSubTab('camera')}

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Video } from 'lucide-react';
 import { AdminUnifiedStudioTab } from './AdminUnifiedStudioTab';
 import { AdminCameraTab } from './AdminCameraTab';
+import { AdminWorkflowTab } from './AdminWorkflowTab';
 
 export const AdminRobotControlTab = ({
   currentUser,
@@ -10,12 +11,18 @@ export const AdminRobotControlTab = ({
 }) => {
   const [localSubTab, setLocalSubTab] = useState(() => {
     if (subTabProp === 'camera') return 'camera';
+    if (subTabProp === 'workflows') return 'workflows';
     return 'studio';
   });
 
   useEffect(() => {
     if (subTabProp) {
-      const target = subTabProp === 'camera' ? 'camera' : 'studio';
+      const target =
+        subTabProp === 'camera'
+          ? 'camera'
+          : subTabProp === 'workflows'
+          ? 'workflows'
+          : 'studio';
       if (target !== localSubTab) {
         setLocalSubTab(target);
       }
@@ -37,6 +44,10 @@ export const AdminRobotControlTab = ({
           <div className="w-full h-full overflow-hidden">
             <AdminUnifiedStudioTab onSwitchToCamera={() => handleSwitchTab('camera')} />
           </div>
+        ) : localSubTab === 'workflows' ? (
+          <div className="w-full h-full overflow-y-auto custom-scrollbar">
+            <AdminWorkflowTab />
+          </div>
         ) : (
           <div className="w-full h-full overflow-y-auto custom-scrollbar">
             <AdminCameraTab currentUser={currentUser} />
@@ -46,3 +57,4 @@ export const AdminRobotControlTab = ({
     </div>
   );
 };
+

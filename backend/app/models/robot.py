@@ -26,4 +26,4 @@ class Robot(Base):
 
     # Relationships
     jobs: Mapped[List["Job"]] = relationship("Job", back_populates="robot")
-    telemetries: Mapped[List["Telemetry"]] = relationship("Telemetry", back_populates="robot", cascade="all, delete-orphan")
+

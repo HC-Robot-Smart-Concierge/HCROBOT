@@ -282,6 +282,19 @@ ros2 run hc_robot_client ai_bridge_node
 ros2 run hc_robot_client telemetry_node
 ```
 
+#### 3. Tối ưu bộ nhớ RAM cho Pi 5 (Tắt GUI Desktop)
+Để giải phóng khoảng 700MB - 1GB RAM trên Ubuntu Desktop giúp các tiến trình ROS 2 và SLAM hoạt động ổn định:
+- **Lệnh tắt GUI Desktop khi khởi động (chuyển sang CLI mode):**
+  ```bash
+  sudo systemctl set-default multi-user.target
+  sudo reboot
+  ```
+- **Lệnh bật lại GUI Desktop (khi cần cắm màn hình rời để dùng):**
+  ```bash
+  sudo systemctl set-default graphical.target
+  sudo reboot
+  ```
+
 ---
 
 ### Bước 6: Cấu Hình & Mở Camera Stream (Raspberry Pi 5 ⇄ Laptop)

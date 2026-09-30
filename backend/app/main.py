@@ -122,6 +122,10 @@ tags_metadata = [
         "name": "14. Nhật ký Vận hành & Audit Trail (Logging & Trace)",
         "description": "Tra cứu nhật ký phân tích sự kiện, kiểm toán bảo mật hành vi và xuất báo cáo CSV/JSON.",
     },
+    {
+        "name": "15. Quản lý Phòng ban & Nhân sự (Departments & Staff)",
+        "description": "Quản lý cơ cấu phòng ban chuẩn khách sạn (Housekeeping, Bellman, Taxi, Maintenance, Reception, F&B), danh mục loại hình dịch vụ (Service Types) và hồ sơ nhân sự khách sạn.",
+    },
 ]
 
 

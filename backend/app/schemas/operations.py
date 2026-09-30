@@ -4,64 +4,107 @@ from pydantic import BaseModel, Field, ConfigDict
 
 
 # ---------------------------------------------------------
+# Department & Organization Schemas
+# ---------------------------------------------------------
+class ServiceTypeResponse(BaseModel):
+    id: str = Field(..., description="ID định danh duy nhất của loại dịch vụ (vd: 'ST-HOUSEKEEPING', 'ST-TAXI')", json_schema_extra={"example": "ST-TAXI"})
+    code: str = Field(..., description="Mã code chuẩn của loại dịch vụ (vd: 'TAXI', 'HOUSEKEEPING', 'BELL_SERVICE', 'MAINTENANCE', 'RECEPTION', 'ROOM_SERVICE')", json_schema_extra={"example": "TAXI"})
+    name: str = Field(..., description="Tên hiển thị của dịch vụ", json_schema_extra={"example": "Dịch vụ Đặt xe & Taxi"})
+    department_id: str = Field(..., description="Mã ID phòng ban phụ trách", json_schema_extra={"example": "DEP-TAXI"})
+    department_name: Optional[str] = Field(None, description="Tên phòng ban phụ trách", json_schema_extra={"example": "Taxi & Transportation"})
+    description: Optional[str] = Field(None, description="Mô tả chi tiết nội dung và phạm vi dịch vụ", json_schema_extra={"example": "Hỗ trợ khách gọi xe di chuyển, taxi ra sân bay hoặc điểm tham quan"})
+    default_priority: str = Field("NORMAL", description="Mức độ ưu tiên mặc định ('LOW', 'NORMAL', 'HIGH', 'URGENT')", json_schema_extra={"example": "NORMAL"})
+    is_active: bool = Field(True, description="Trạng thái dịch vụ có đang mở phục vụ khách hay không", json_schema_extra={"example": True})
+    created_at: Optional[datetime] = Field(None, description="Thời gian tạo bản ghi")
+    updated_at: Optional[datetime] = Field(None, description="Thời gian cập nhật gần nhất")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DepartmentResponse(BaseModel):
+    id: str = Field(..., description="ID định danh duy nhất của phòng ban (vd: 'DEP-HOUSEKEEPING')", json_schema_extra={"example": "DEP-HOUSEKEEPING"})
+    code: str = Field(..., description="Mã code chuẩn của phòng ban (vd: 'HOUSEKEEPING', 'BELL', 'TAXI', 'MAINTENANCE', 'RECEPTION', 'FB')", json_schema_extra={"example": "HOUSEKEEPING"})
+    name: str = Field(..., description="Tên phòng ban hiển thị", json_schema_extra={"example": "Housekeeping"})
+    description: Optional[str] = Field(None, description="Mô tả chức năng nhiệm vụ của phòng ban", json_schema_extra={"example": "Bộ phận buồng phòng, vệ sinh và tiện ích phòng ở"})
+    is_active: bool = Field(True, description="Trạng thái hoạt động của phòng ban", json_schema_extra={"example": True})
+    created_at: Optional[datetime] = Field(None, description="Thời gian tạo phòng ban")
+    updated_at: Optional[datetime] = Field(None, description="Thời gian cập nhật phòng ban")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DepartmentDetailResponse(DepartmentResponse):
+    service_types: List[ServiceTypeResponse] = Field(default_factory=list, description="Danh sách các loại dịch vụ trực thuộc phòng ban")
+    staff_count: int = Field(0, description="Tổng số nhân viên đang trực thuộc phòng ban", json_schema_extra={"example": 3})
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ---------------------------------------------------------
 # Staff & Robot Fleet Schemas
 # ---------------------------------------------------------
 class StaffBase(BaseModel):
-    code: str
-    full_name: str
-    role: str
-    department: str
-    location: str = "Main Hotel"
-    status: str = "available"
-    current_tasks_count: int = 0
-    avatar_url: Optional[str] = None
-    email: Optional[str] = None
-    phone: Optional[str] = None
-    shift: Optional[str] = "Morning Shift (06:00 - 14:00)"
-    is_fallback_agent: bool = False
-    assigned_floors: Optional[str] = "Floor 1 - 5"
-    notification_channels: Optional[str] = "Web Dashboard, Tablet Alert"
-    is_active: bool = True
+    code: str = Field(..., description="Mã viết tắt / huy hiệu nhân viên (vd: 'MS', 'JD')", json_schema_extra={"example": "MS"})
+    full_name: str = Field(..., description="Họ và tên đầy đủ của nhân viên", json_schema_extra={"example": "Maria Santos"})
+    role: str = Field(..., description="Chức danh / Vai trò chuyên môn", json_schema_extra={"example": "Housekeeping Lead"})
+    department: str = Field(..., description="Tên phòng ban hiển thị", json_schema_extra={"example": "Housekeeping"})
+    department_id: Optional[str] = Field(None, description="Mã phòng ban chuẩn (vd: 'DEP-HOUSEKEEPING')", json_schema_extra={"example": "DEP-HOUSEKEEPING"})
+    location: str = Field("Main Hotel", description="Khu vực làm việc chính", json_schema_extra={"example": "Floor 3 & 4"})
+    status: str = Field("available", description="Trạng thái trực: 'available' (sẵn sàng), 'busy' (đang bận), 'off_shift' (hết ca)", json_schema_extra={"example": "available"})
+    current_tasks_count: int = Field(0, description="Số lượng công việc đang xử lý đồng thời", json_schema_extra={"example": 1})
+    avatar_url: Optional[str] = Field(None, description="URL ảnh đại diện nhân viên", json_schema_extra={"example": "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2"})
+    email: Optional[str] = Field(None, description="Địa chỉ email liên hệ", json_schema_extra={"example": "housekeeping@aurora.hotel"})
+    phone: Optional[str] = Field(None, description="Số điện thoại di động", json_schema_extra={"example": "+84 90 123 4567"})
+    shift: Optional[str] = Field("Morning Shift (06:00 - 14:00)", description="Ca làm việc phân công", json_schema_extra={"example": "Morning Shift (06:00 - 14:00)"})
+    is_fallback_agent: bool = Field(False, description="Cờ kích hoạt làm nhân viên tiếp nhận cuộc gọi khẩn / chuyển tiếp từ Robot", json_schema_extra={"example": True})
+    assigned_floors: Optional[str] = Field("Floor 1 - 5", description="Phạm vi tầng phục vụ phụ trách", json_schema_extra={"example": "Floor 1 - 5"})
+    notification_channels: Optional[str] = Field("Web Dashboard, Tablet Alert", description="Các kênh nhận thông báo công việc", json_schema_extra={"example": "Web Dashboard, Tablet Alert"})
+    is_active: bool = Field(True, description="Trạng thái tài khoản (True = Đang hoạt động, False = Đã khóa/xóa mềm)", json_schema_extra={"example": True})
+
 
 class StaffResponse(StaffBase):
-    id: str
-    created_at: datetime
-    updated_at: datetime
+    id: str = Field(..., description="ID định danh duy nhất của tài khoản (vd: 'STF-f9ab1b15')", json_schema_extra={"example": "STF-f9ab1b15"})
+    username: Optional[str] = Field(None, description="Tên đăng nhập hệ thống", json_schema_extra={"example": "housekeeping"})
+    department_name: Optional[str] = Field(None, description="Tên phòng ban chính thức từ bảng Department", json_schema_extra={"example": "Housekeeping"})
+    created_at: datetime = Field(..., description="Thời gian tạo tài khoản")
+    updated_at: datetime = Field(..., description="Thời gian cập nhật thông tin gần nhất")
 
     model_config = ConfigDict(from_attributes=True)
 
 
 class StaffCreate(BaseModel):
-    username: str
-    password: str = "123456"
-    full_name: str
-    role: str
-    department: str
-    code: Optional[str] = None
-    email: Optional[str] = None
-    phone: Optional[str] = "+84 90 123 4567"
-    shift: Optional[str] = "Morning Shift (06:00 - 14:00)"
-    location: str = "Main Hotel"
-    status: str = "available"
-    avatar_url: Optional[str] = None
-    is_fallback_agent: bool = False
-    assigned_floors: Optional[str] = "Floor 1 - 5"
-    notification_channels: Optional[str] = "Web Dashboard, Tablet Alert"
+    username: str = Field(..., description="Tên đăng nhập hệ thống (duy nhất, viết thường không dấu)", json_schema_extra={"example": "alex_turner"})
+    password: str = Field("123456", description="Mật khẩu khởi tạo tài khoản", json_schema_extra={"example": "123456"})
+    full_name: str = Field(..., description="Họ và tên đầy đủ của nhân viên", json_schema_extra={"example": "Alex Turner"})
+    role: str = Field(..., description="Chức danh / Vai trò chuyên môn", json_schema_extra={"example": "Maintenance Technician"})
+    department: Optional[str] = Field(None, description="Tên phòng ban (Nếu để trống hệ thống sẽ tự suy từ department_id)", json_schema_extra={"example": "Maintenance"})
+    department_id: Optional[str] = Field(None, description="Mã phòng ban chuẩn (vd: 'DEP-MAINTENANCE'). Nếu để trống hệ thống sẽ tự tìm theo department", json_schema_extra={"example": "DEP-MAINTENANCE"})
+    code: Optional[str] = Field(None, description="Mã viết tắt / huy hiệu nhân viên (vd: 'AT'). Nếu để trống hệ thống tự sinh ngẫu nhiên", json_schema_extra={"example": "AT"})
+    email: Optional[str] = Field(None, description="Địa chỉ email nhân viên", json_schema_extra={"example": "alex.turner@aurora.hotel"})
+    phone: Optional[str] = Field("+84 90 123 4567", description="Số điện thoại di động", json_schema_extra={"example": "+84 90 123 4567"})
+    shift: Optional[str] = Field("Morning Shift (06:00 - 14:00)", description="Ca làm việc", json_schema_extra={"example": "Morning Shift (06:00 - 14:00)"})
+    location: str = Field("Main Hotel", description="Khu vực phụ trách", json_schema_extra={"example": "Basement & Engineering Rooms"})
+    status: str = Field("available", description="Trạng thái trực ban đầu ('available', 'busy', 'off_shift')", json_schema_extra={"example": "available"})
+    avatar_url: Optional[str] = Field(None, description="URL ảnh đại diện", json_schema_extra={"example": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d"})
+    is_fallback_agent: bool = Field(False, description="Tiếp nhận hỗ trợ khi Robot yêu cầu can thiệp người thật", json_schema_extra={"example": False})
+    assigned_floors: Optional[str] = Field("Floor 1 - 5", description="Phạm vi tầng phân công", json_schema_extra={"example": "All Floors"})
+    notification_channels: Optional[str] = Field("Web Dashboard, Tablet Alert", description="Kênh nhận thông báo", json_schema_extra={"example": "Web Dashboard, Tablet Alert"})
 
 
 class StaffUpdate(BaseModel):
-    full_name: Optional[str] = None
-    role: Optional[str] = None
-    department: Optional[str] = None
-    status: Optional[str] = None
-    location: Optional[str] = None
-    email: Optional[str] = None
-    phone: Optional[str] = None
-    shift: Optional[str] = None
-    avatar_url: Optional[str] = None
-    is_fallback_agent: Optional[bool] = None
-    assigned_floors: Optional[str] = None
-    notification_channels: Optional[str] = None
+    full_name: Optional[str] = Field(None, description="Họ và tên nhân viên cập nhật", json_schema_extra={"example": "Alex Turner Updated"})
+    role: Optional[str] = Field(None, description="Vai trò / Chức danh mới", json_schema_extra={"example": "Lead Engineer"})
+    department: Optional[str] = Field(None, description="Tên phòng ban mới", json_schema_extra={"example": "Maintenance & Engineering"})
+    department_id: Optional[str] = Field(None, description="Mã ID phòng ban chuẩn mới (vd: 'DEP-MAINTENANCE')", json_schema_extra={"example": "DEP-MAINTENANCE"})
+    status: Optional[str] = Field(None, description="Trạng thái làm việc ('available', 'busy', 'off_shift', 'inactive')", json_schema_extra={"example": "available"})
+    location: Optional[str] = Field(None, description="Vị trí làm việc mới", json_schema_extra={"example": "Floor 1 - 3"})
+    email: Optional[str] = Field(None, description="Địa chỉ email mới", json_schema_extra={"example": "alex.lead@aurora.hotel"})
+    phone: Optional[str] = Field(None, description="Số điện thoại mới", json_schema_extra={"example": "+84 90 987 6543"})
+    shift: Optional[str] = Field(None, description="Ca trực mới", json_schema_extra={"example": "Afternoon Shift (14:00 - 22:00)"})
+    avatar_url: Optional[str] = Field(None, description="URL ảnh đại diện mới")
+    is_fallback_agent: Optional[bool] = Field(None, description="Cấu hình tiếp nhận escalation từ Robot")
+    assigned_floors: Optional[str] = Field(None, description="Tầng phân công mới", json_schema_extra={"example": "Floor 1 - 7"})
+    notification_channels: Optional[str] = Field(None, description="Kênh thông báo mới", json_schema_extra={"example": "Web Dashboard, SMS Alert"})
 
 
 
@@ -394,9 +437,9 @@ class UnifiedOperationTask(BaseModel):
 
 
 class AdminTaskDispatchCreate(BaseModel):
-    department: str  # 'Reception', 'Housekeeping', 'F&B', 'Bell Services', 'Maintenance', 'Directive'
+    department: str  # 'Reception', 'Housekeeping', 'F&B', 'Bell Services', 'Maintenance', 'Taxi', 'Directive'
     title: str
-    room_number: str = Field(..., description="Số phòng hoặc vị trí ví dụ 'Room 412', 'Lobby'")
+    room_number: Optional[str] = Field(None, description="Số phòng hoặc vị trí ví dụ 'Room 412', 'Lobby', hoặc None")
     guest_name: Optional[str] = "Hotel Guest"
     priority: str = Field("NORMAL", description="'HIGH PRIORITY', 'NORMAL', 'LOW'")
     description: Optional[str] = None
@@ -419,6 +462,7 @@ class AdminOperationsSummary(BaseModel):
     room_service_count: int = 0
     bell_services_count: int = 0
     maintenance_count: int = 0
+    taxi_count: int = 0
     directives_count: int = 0
 
 

@@ -11,11 +11,13 @@ class RoomServiceOrder(Base):
     __tablename__ = "room_service_orders"
 
     id: Mapped[str] = mapped_column(String(50), primary_key=True, default=lambda: f"ORD-{uuid.uuid4().hex[:8]}")
-    order_number: Mapped[str] = mapped_column(String(20), unique=True, index=True) # e.g. '1042', '1041', '1040'
-    room_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("rooms.id", ondelete="SET NULL"), nullable=True, index=True)
+    # TODO (Phase sau): Kích hoạt khi chạy migration thêm 2 cột này vào bảng room_service_orders trong DB
+    # room_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("rooms.id", ondelete="SET NULL"), nullable=True, index=True)
     room_number: Mapped[str] = mapped_column(String(50), nullable=False) # e.g. 'ROOM 412', 'ROOM 208'
-    account_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True, index=True)
+    # account_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True, index=True)
+    is_vip: Mapped[bool] = mapped_column(Boolean, default=False)
     status: Mapped[str] = mapped_column(String(50), default="Pending") # 'Pending', 'Cooking', 'Ready', 'Delivering', 'Completed', 'Rejected'
+    priority: Mapped[str] = mapped_column(String(20), default="NORMAL")
     
     # Store items list as JSON: [{"name": "Club Sandwich & Truffle Fries", "qty": 2}, ...]
     items: Mapped[List[Dict[str, Any]]] = mapped_column(JSON, default=list)
@@ -29,14 +31,16 @@ class RoomServiceOrder(Base):
     assigned_robot_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     assigned_staff_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
 
-    total_amount: Mapped[float] = mapped_column(Float, default=0.0) # Tổng tiền đơn hàng (VND)
+    # TODO (Phase sau): Kích hoạt khi chạy migration thêm total_amount vào DB
+    # total_amount: Mapped[float] = mapped_column(Float, default=0.0) # Tổng tiền đơn hàng (VND)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
-    room: Mapped[Optional["Room"]] = relationship("Room", back_populates="room_service_orders")
-    account: Mapped[Optional["Account"]] = relationship("Account")
+    # TODO (Phase sau): Kích hoạt quan hệ khi DB đã có các foreign key trên
+    # room: Mapped[Optional["Room"]] = relationship("Room", back_populates="room_service_orders")
+    # account: Mapped[Optional["Account"]] = relationship("Account")
     order_items: Mapped[List["OrderItem"]] = relationship("OrderItem", back_populates="order", cascade="all, delete-orphan")
 
 

@@ -22,7 +22,7 @@ class SupportRequest(Base):
     
     # Location & Context
     room_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("rooms.id", ondelete="SET NULL"), nullable=True, index=True)
-    room_number: Mapped[str] = mapped_column(String(50), nullable=False, index=True) # e.g. 'Room 412', 'Room 305'
+    room_number: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, index=True) # e.g. 'Room 412', 'Lobby', or None
     guest_name: Mapped[str] = mapped_column(String(100), default="Hotel Guest")
     source: Mapped[str] = mapped_column(String(50), default="From HCRobot") # 'From HCRobot', 'Front Desk', 'Guest App'
     priority: Mapped[str] = mapped_column(String(20), default="NORMAL") # 'LOW', 'NORMAL', 'HIGH', 'URGENT'

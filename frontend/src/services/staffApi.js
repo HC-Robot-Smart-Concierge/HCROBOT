@@ -78,3 +78,11 @@ export const deleteStaffMember = async (staffId) => {
     { success: true, id: staffId }
   );
 };
+
+/**
+ * Lấy danh sách các phòng ban khách sạn chuẩn từ database (bảng departments)
+ */
+export const fetchDepartments = async () => {
+  return await fetchWithFallback('/api/v1/operations/departments', {}, []);
+};
+

@@ -159,7 +159,7 @@ class PipecatPipelineService:
             current_room = room_number or extracted_room
 
             SERVICE_KEYWORDS = {
-                "housekeeping": ["khăn", "tắm", "dọn phòng", "gối", "chăn", "nệm", "dọn dẹp", "vệ sinh", "towel", "clean"],
+                "housekeeping": ["khăn", "dọn phòng", "gối", "chăn", "nệm", "dọn dẹp", "dọn vệ sinh", "vệ sinh phòng", "làm vệ sinh", "towel", "clean room", "cleaning"],
                 "room_service": ["cơm", "nước", "ăn", "uống", "đồ ăn", "trà", "cà phê", "pizza", "phở", "bánh", "food", "drink"],
                 "bellman": ["hành lý", "vali", "túi", "chuyển phòng", "mang đồ", "xách đồ", "luggage", "bag"],
                 "maintenance": ["hỏng", "sửa", "điều hòa", "bóng đèn", "nước rò", "máy lạnh", "tủ lạnh", "kẹt", "fix", "repair"],
@@ -169,26 +169,33 @@ class PipecatPipelineService:
                 "reception": ["lễ tân", "check out", "check in", "đổi phòng", "trả phòng", "front desk", "reception"],
             }
 
-            action = None
-            for act, kws in SERVICE_KEYWORDS.items():
-                if any(k in prompt_lower for k in kws):
-                    action = act
-                    break
+            # Phân loại category & FAQ keywords
+            faq_keywords = [
+                "ở đâu", "mấy giờ", "bao nhiêu", "giá", "thế nào", "có không", 
+                "where", "when", "how", "what", "giờ nào", "tầng mấy", "bao xa", 
+                "chỉ đường", "đường nào", "hướng nào", "đi vệ sinh", "nhà vệ sinh", 
+                "toilet", "wc", "restroom", "washroom", "phòng vệ sinh"
+            ]
+            is_asking_info = any(kw in prompt_lower for kw in faq_keywords)
 
-            # Phân loại category
+            action = None
+            if not is_asking_info:
+                for act, kws in SERVICE_KEYWORDS.items():
+                    if any(k in prompt_lower for k in kws):
+                        action = act
+                        break
+
             if action:
                 category = "service"
+            elif is_asking_info:
+                category = "faq"
+                action = "faq"
             elif extracted_room and not action:
                 action = "provide_room_number"
                 category = "service"
             else:
-                faq_keywords = ["ở đâu", "mấy giờ", "bao nhiêu", "giá", "thế nào", "có không", "where", "when", "how", "what", "giờ nào", "tầng mấy", "bao xa"]
-                if any(kw in prompt_lower for kw in faq_keywords):
-                    category = "faq"
-                    action = "faq"
-                else:
-                    category = "chitchat"
-                    action = "chitchat"
+                category = "chitchat"
+                action = "chitchat"
 
             logger.info(f"[StreamPipeline] category='{category}', action='{action}', room='{current_room}'")
 

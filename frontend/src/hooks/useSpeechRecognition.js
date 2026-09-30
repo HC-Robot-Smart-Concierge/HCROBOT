@@ -16,12 +16,12 @@ export const useSpeechRecognition = () => {
       recognition.interimResults = true;
 
       recognition.onresult = (event) => {
-        let currentTranscript = '';
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          currentTranscript += event.results[i][0].transcript;
+        let fullTranscript = '';
+        for (let i = 0; i < event.results.length; i++) {
+          fullTranscript += event.results[i][0].transcript;
         }
-        if (currentTranscript.trim()) {
-          setTranscript(currentTranscript);
+        if (fullTranscript.trim()) {
+          setTranscript(fullTranscript);
         }
       };
 

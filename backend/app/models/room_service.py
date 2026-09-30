@@ -1,11 +1,16 @@
 import uuid
 import random
 from datetime import datetime
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, TYPE_CHECKING
 from sqlalchemy import String, Integer, Float, DateTime, Boolean, JSON, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+
+if TYPE_CHECKING:
+    from app.models.menu import MenuItem
+    from app.models.hotel import Room
+    from app.models.account import Account
 
 
 class RoomServiceOrder(Base):

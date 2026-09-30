@@ -1,10 +1,17 @@
 import uuid
 from datetime import datetime
-from typing import Optional, List, Dict, Any
+from typing import TYPE_CHECKING, Optional, List, Dict, Any
 from sqlalchemy import String, Integer, DateTime, Text, JSON, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+
+if TYPE_CHECKING:
+    from app.models.account import Account
+    from app.models.chat_session import ChatSession
+    from app.models.robot import Robot
+    from app.models.schedule import Schedule
+    from app.models.workflow import RobotWorkflow
 
 
 class Job(Base):
@@ -18,6 +25,8 @@ class Job(Base):
     workflow_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("robot_workflows.id", ondelete="SET NULL"), nullable=True, index=True)
     chat_session_id: Mapped[Optional[str]] = mapped_column(String(64), ForeignKey("chat_sessions.id", ondelete="SET NULL"), nullable=True, index=True)
     robot_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("robots.id", ondelete="SET NULL"), nullable=True, index=True)
+    schedule_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("schedules.id", ondelete="SET NULL"), nullable=True, index=True)
+    account_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True, index=True)
     
     trigger_type: Mapped[str] = mapped_column(String(50), default="MANUAL") # 'MANUAL', 'SCHEDULE', 'AUTO_DETECT', 'GUEST_TAP', 'VOICE'
     status: Mapped[str] = mapped_column(String(50), default="PENDING") # 'PENDING', 'RUNNING', 'PAUSED', 'COMPLETED', 'FAILED', 'CANCELLED'
@@ -36,6 +45,8 @@ class Job(Base):
     robot: Mapped[Optional["Robot"]] = relationship("Robot", back_populates="jobs")
     workflow: Mapped[Optional["RobotWorkflow"]] = relationship("RobotWorkflow")
     chat_session: Mapped[Optional["ChatSession"]] = relationship("ChatSession")
+    schedule: Mapped[Optional["Schedule"]] = relationship("Schedule", back_populates="jobs")
+    account: Mapped[Optional["Account"]] = relationship("Account")
     job_steps: Mapped[List["JobStep"]] = relationship("JobStep", back_populates="job", cascade="all, delete-orphan", order_by="JobStep.step_index")
     job_events: Mapped[List["JobEvent"]] = relationship("JobEvent", back_populates="job", cascade="all, delete-orphan", order_by="JobEvent.id")
 

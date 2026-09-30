@@ -1,10 +1,13 @@
 import uuid
 from datetime import datetime
-from typing import Optional, List
+from typing import TYPE_CHECKING, Optional, List
 from sqlalchemy import String, Integer, DateTime, Boolean
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+
+if TYPE_CHECKING:
+    from app.models.job import Job
 
 
 class Robot(Base):
@@ -26,4 +29,4 @@ class Robot(Base):
 
     # Relationships
     jobs: Mapped[List["Job"]] = relationship("Job", back_populates="robot")
-    telemetries: Mapped[List["Telemetry"]] = relationship("Telemetry", back_populates="robot", cascade="all, delete-orphan")
+

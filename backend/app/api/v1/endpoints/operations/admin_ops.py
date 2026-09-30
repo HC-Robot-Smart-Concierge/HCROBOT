@@ -17,6 +17,9 @@ from app.models import (
     HumanSupportSession,
     ChatSession,
     ChatMessage,
+    SupportRequest,
+    ServiceType,
+    Department,
 )
 from app.schemas.operations import (
     UnifiedOperationTask,
@@ -54,7 +57,9 @@ async def get_admin_tasks(
             "room service": ["f&b", "room service"],
             "housekeeping": ["housekeeping", "buồng phòng"],
             "bell services": ["bell services", "bellman", "hành lý"],
+            "taxi": ["taxi", "transport", "xe", "đặt xe"],
             "maintenance": ["maintenance", "kỹ thuật", "bảo trì"],
+            "concierge": ["concierge", "trợ lý", "live call", "live support"],
             "reception": ["reception", "lễ tân"],
             "directive": ["directive", "executive", "chỉ thị"],
         }
@@ -118,7 +123,9 @@ async def get_admin_operations_summary(db: AsyncSession = Depends(get_db)):
         if st not in ["completed", "cancelled", "rejected"]:
             summary.total_active += 1
 
-        if "reception" in dept:
+        if "concierge" in dept or "live support" in dept:
+            summary.concierge_count += 1
+        elif "reception" in dept:
             summary.reception_count += 1
         elif "housekeeping" in dept:
             summary.housekeeping_count += 1
@@ -126,6 +133,8 @@ async def get_admin_operations_summary(db: AsyncSession = Depends(get_db)):
             summary.room_service_count += 1
         elif "bell" in dept:
             summary.bell_services_count += 1
+        elif "taxi" in dept:
+            summary.taxi_count += 1
         elif "maintenance" in dept:
             summary.maintenance_count += 1
         else:
@@ -146,55 +155,13 @@ async def admin_dispatch_task(
     dep = task_in.department.lower().strip()
     rand_suffix = random.randint(1000, 9999)
 
-    if "housekeeping" in dep or "buồng phòng" in dep:
-        code = f"HK-{rand_suffix}"
-        room = task_in.room_number.upper().replace("ROOM", "").strip()
-        item = HousekeepingRequest(
-            ticket_code=code,
-            source="From Admin Portal",
-            time_label="Just now",
-            title=task_in.title,
-            room_number=room,
-            description=task_in.description,
-            guest_name=task_in.guest_name,
-            status="In Progress" if task_in.assigned_staff_name or task_in.assigned_robot_code else "Unassigned",
-            assigned_staff_name=task_in.assigned_staff_name or task_in.assigned_robot_code,
-        )
-        db.add(item)
-        await create_department_notification(
-            db=db,
-            department="Housekeeping",
-            title=f"Yêu cầu Buồng phòng mới: {item.title}",
-            description=f"{task_in.room_number}: {task_in.description or 'Chỉ thị từ quản trị viên'}",
-            request_id=item.id,
-            request_type="housekeeping",
-            type="Request",
-        )
-        await db.commit()
-        await db.refresh(item)
-        return UnifiedOperationTask(
-            id=f"REQ-{code}",
-            raw_id=item.id,
-            department="Housekeeping",
-            table_type="housekeeping",
-            title=item.title,
-            location=f"ROOM {item.room_number}",
-            guest_name=item.guest_name or "Guest",
-            priority="NORMAL",
-            status=item.status,
-            time="Just now",
-            assigned_to=item.assigned_staff_name,
-            assigned_robot=task_in.assigned_robot_code,
-            notes=item.description,
-            source=item.source,
-            created_at=item.created_at,
-        )
+    # F&B / Room Service Orders: Giữ nguyên quy trình riêng của RoomServiceOrder
+    if "f&b" in dep or "room service" in dep:
 
-    elif "f&b" in dep or "room service" in dep:
         code = str(rand_suffix)
         order = RoomServiceOrder(
             order_number=code,
-            room_number=task_in.room_number,
+            room_number=task_in.room_number or "Room N/A",
             status="Delivering" if task_in.assigned_robot_code else "Pending",
             items=[{"name": task_in.title, "qty": 1}],
             note=task_in.description,
@@ -205,7 +172,7 @@ async def admin_dispatch_task(
             db=db,
             department="F&B",
             title=f"Đơn Room Service mới #{code}",
-            description=f"{task_in.room_number}: {task_in.title}",
+            description=f"{task_in.room_number or 'Room N/A'}: {task_in.title}",
             request_id=order.id,
             request_type="room_service",
             type="Request",
@@ -230,140 +197,16 @@ async def admin_dispatch_task(
             created_at=order.created_at,
         )
 
-    elif "bell" in dep:
-        code = f"BS-{random.randint(500, 999)}"
-        bell = BellRequest(
-            ticket_code=code,
-            title=task_in.title,
-            location=task_in.room_number,
-            guest_name=task_in.guest_name,
-            reporter="Admin Dispatch",
-            description=task_in.description,
-            status="In Progress" if task_in.assigned_staff_name or task_in.assigned_robot_code else "Pending",
-            assigned_to=task_in.assigned_staff_name or task_in.assigned_robot_code,
-        )
-        db.add(bell)
-        await create_department_notification(
-            db=db,
-            department="Bell Services",
-            title=f"Yêu cầu Bellman mới: {bell.title}",
-            description=f"{bell.location}: {bell.description or 'Yêu cầu điều phối từ Quản trị'}",
-            request_id=bell.id,
-            request_type="bell_service",
-            type="Request",
-        )
-        await db.commit()
-        await db.refresh(bell)
-        return UnifiedOperationTask(
-            id=f"REQ-{code}",
-            raw_id=bell.id,
-            department="Bell Services",
-            table_type="bell",
-            title=bell.title,
-            location=bell.location,
-            guest_name=bell.guest_name or "Guest",
-            priority="NORMAL",
-            status=bell.status,
-            time="Just now",
-            assigned_to=bell.assigned_to,
-            assigned_robot=task_in.assigned_robot_code,
-            notes=bell.description,
-            source="From Admin Portal",
-            created_at=bell.created_at,
-        )
+    # Management Directives: Giữ nguyên cho chỉ thị vận hành cấp quản trị
+    elif "directive" in dep or "chỉ thị" in dep or "executive" in dep:
 
-    elif "maintenance" in dep or "bảo trì" in dep:
-        code = f"MN-{random.randint(400, 999)}"
-        maint = MaintenanceRequest(
-            ticket_code=code,
-            title=task_in.title,
-            reported_time_label="Just now",
-            location=task_in.room_number,
-            description=task_in.description,
-            source="Admin Dispatch",
-            status="In Progress" if task_in.assigned_staff_name else "Pending",
-            assigned_to=task_in.assigned_staff_name,
-        )
-        db.add(maint)
-        await create_department_notification(
-            db=db,
-            department="Maintenance",
-            title=f"Yêu cầu Kỹ thuật mới: {maint.title}",
-            description=f"{maint.location}: {maint.description or 'Yêu cầu bảo trì từ Quản trị'}",
-            request_id=maint.id,
-            request_type="maintenance",
-            type="Request",
-        )
-        await db.commit()
-        await db.refresh(maint)
-        return UnifiedOperationTask(
-            id=f"REQ-{code}",
-            raw_id=maint.id,
-            department="Maintenance",
-            table_type="maintenance",
-            title=maint.title,
-            location=maint.location,
-            guest_name="Staff Reported",
-            priority="NORMAL",
-            status=maint.status,
-            time="Just now",
-            assigned_to=maint.assigned_to,
-            assigned_robot=None,
-            notes=maint.description,
-            source="From Admin Portal",
-            created_at=maint.created_at,
-        )
-
-    elif "reception" in dep or "lễ tân" in dep:
-        code = f"REC-{random.randint(100, 999)}"
-        rec = ReceptionRequest(
-            ticket_code=code,
-            title=task_in.title,
-            created_label="Just now",
-            location=task_in.room_number,
-            guest_name=task_in.guest_name or "Hotel Guest",
-            status="Pending Action",
-            description=task_in.description or "",
-            assigned_to=task_in.assigned_staff_name,
-        )
-        db.add(rec)
-        await create_department_notification(
-            db=db,
-            department="Reception",
-            title=f"Yêu cầu Lễ tân mới: {rec.title}",
-            description=f"{rec.location}: {rec.description or 'Yêu cầu hỗ trợ từ Quản trị'}",
-            request_id=rec.id,
-            request_type="reception",
-            type="Request",
-        )
-        await db.commit()
-        await db.refresh(rec)
-        return UnifiedOperationTask(
-            id=f"REQ-{code}",
-            raw_id=rec.id,
-            department="Reception",
-            table_type="reception",
-            title=rec.title,
-            location=rec.location,
-            guest_name=rec.guest_name,
-            priority="NORMAL",
-            status=rec.status,
-            time="Just now",
-            assigned_to=rec.assigned_to,
-            assigned_robot=None,
-            notes=rec.description,
-            source="From Admin Portal",
-            created_at=rec.created_at,
-        )
-
-    else:
         code = f"OP-{random.randint(100, 999)}"
         d = ManagementDirective(
             code=code,
             title=task_in.title,
             department=task_in.department,
-            priority=task_in.priority,
-            location=task_in.room_number,
+            priority=task_in.priority or "NORMAL",
+            location=task_in.room_number or "Main Hotel",
             reported_time_label="Just now",
             description=task_in.description,
             status="In Progress" if task_in.assigned_staff_name else "Unassigned",
@@ -398,6 +241,89 @@ async def admin_dispatch_task(
             notes=d.description,
             source=f"Admin ({d.created_by})",
             created_at=d.created_at,
+        )
+
+    # 5 Canonical Concierge Service Categories -> Lưu vào SupportRequest
+    else:
+        if "housekeeping" in dep or "buồng phòng" in dep:
+            code = f"HK-{rand_suffix}"
+            st_id = "ST-HOUSEKEEPING"
+            dep_id = "DEP-HOUSEKEEPING"
+            dept_label = "Housekeeping"
+        elif "bell" in dep or "hành lý" in dep:
+            code = f"BS-{rand_suffix}"
+            st_id = "ST-BELL"
+            dep_id = "DEP-BELL"
+            dept_label = "Bell Services"
+        elif "taxi" in dep or "xe" in dep or "transport" in dep:
+            code = f"TX-{rand_suffix}"
+            st_id = "ST-TAXI"
+            dep_id = "DEP-TAXI"
+            dept_label = "Taxi"
+        elif "maintenance" in dep or "bảo trì" in dep or "kỹ thuật" in dep:
+            code = f"MN-{rand_suffix}"
+            st_id = "ST-MAINTENANCE"
+            dep_id = "DEP-MAINTENANCE"
+            dept_label = "Maintenance"
+        elif "concierge" in dep or "live support" in dep or "trợ lý" in dep:
+            code = f"CCG-{rand_suffix}"
+            st_id = "ST-CONCIERGE"
+            dep_id = "DEP-CONCIERGE"
+            dept_label = "Concierge"
+        elif "reception" in dep or "lễ tân" in dep:
+            code = f"REC-{rand_suffix}"
+            st_id = "ST-RECEPTION"
+            dep_id = "DEP-RECEPTION"
+            dept_label = "Reception"
+        else:
+            # Fallback nếu phòng ban chưa xác định -> Gán tạm Reception
+            code = f"REQ-{rand_suffix}"
+            st_id = "ST-RECEPTION"
+            dep_id = "DEP-RECEPTION"
+            dept_label = task_in.department or "Reception"
+
+        sr = SupportRequest(
+            ticket_code=code,
+            title=task_in.title,
+            description=task_in.description,
+            service_type_id=st_id,
+            department_id=dep_id,
+            room_number=task_in.room_number,
+            guest_name=task_in.guest_name or "Hotel Guest",
+            source="From Admin Portal",
+            priority=task_in.priority or "NORMAL",
+            status="In Progress" if (task_in.assigned_staff_name or task_in.assigned_robot_code) else "Pending",
+            assigned_staff_name=task_in.assigned_staff_name,
+            assigned_robot_id=task_in.assigned_robot_code,
+        )
+        db.add(sr)
+        await create_department_notification(
+            db=db,
+            department=dept_label,
+            title=f"Yêu cầu {dept_label} mới: {sr.title}",
+            description=f"{sr.room_number or 'Lobby'}: {sr.description or 'Chỉ thị từ quản trị viên'}",
+            request_id=sr.id,
+            request_type="support_request",
+            type="Request",
+        )
+        await db.commit()
+        await db.refresh(sr)
+        return UnifiedOperationTask(
+            id=f"REQ-{code}",
+            raw_id=sr.id,
+            department=dept_label,
+            table_type="support_request",
+            title=sr.title,
+            location=sr.room_number or "Lobby",
+            guest_name=sr.guest_name or "Hotel Guest",
+            priority=sr.priority,
+            status=sr.status,
+            time="Just now",
+            assigned_to=sr.assigned_staff_name,
+            assigned_robot=sr.assigned_robot_id,
+            notes=sr.description,
+            source=sr.source,
+            created_at=sr.created_at,
         )
 
 
@@ -444,6 +370,29 @@ async def update_admin_task(
     """Cập nhật trạng thái, người phụ trách hoặc Robot cho bất kỳ Task nào trong hệ thống."""
     clean_id = ticket_id.replace("REQ-", "").strip()
     upper_id = ticket_id.upper()
+
+    # 0. Check new unified SupportRequest table (handles REQ-*, HK-*, BS-*, TX-*, MN-*, REC-*, or UUIDs)
+    sr_res = await db.execute(
+        select(SupportRequest).where(
+            (SupportRequest.ticket_code == clean_id)
+            | (SupportRequest.id == clean_id)
+            | (SupportRequest.ticket_code == ticket_id)
+            | (SupportRequest.id == ticket_id)
+            | (SupportRequest.ticket_code.ilike(f"%{clean_id}%"))
+            | (SupportRequest.id.ilike(f"%{clean_id}%"))
+        )
+    )
+    sr = sr_res.scalar_one_or_none()
+    if sr:
+        sr.status = update_in.status
+        if update_in.assigned_to:
+            sr.assigned_staff_name = update_in.assigned_to
+        if update_in.assigned_robot:
+            sr.assigned_robot_id = update_in.assigned_robot
+        if update_in.note:
+            sr.description = f"{sr.description or ''} | Note: {update_in.note}"
+        await db.commit()
+        return {"success": True, "type": "support_request", "id": sr.id, "status": sr.status}
 
     # 1. Housekeeping check if HK in ticket_id
     if "HK" in upper_id:
@@ -676,14 +625,18 @@ async def get_analytics_summary(db: AsyncSession = Depends(get_db)):
     # Department breakdown
     dept_distribution = {
         "Reception": 0,
+        "Concierge": 0,
         "Housekeeping": 0,
         "F&B": 0,
         "Bell Services": 0,
         "Maintenance": 0,
+        "Taxi": 0,
     }
     for t in raw_list:
         d = t["department"].lower()
-        if "reception" in d:
+        if "concierge" in d or "live support" in d:
+            dept_distribution["Concierge"] += 1
+        elif "reception" in d:
             dept_distribution["Reception"] += 1
         elif "housekeeping" in d:
             dept_distribution["Housekeeping"] += 1
@@ -691,6 +644,8 @@ async def get_analytics_summary(db: AsyncSession = Depends(get_db)):
             dept_distribution["F&B"] += 1
         elif "bell" in d:
             dept_distribution["Bell Services"] += 1
+        elif "taxi" in d:
+            dept_distribution["Taxi"] += 1
         elif "maintenance" in d:
             dept_distribution["Maintenance"] += 1
 

@@ -3,14 +3,21 @@ import random
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
+from app.models import Menu, MenuItem
 from app.schemas.operations import (
     RestaurantReservationCreate,
     RestaurantReservationResponse,
     RestaurantPreOrderCreate,
     RestaurantPreOrderResponse,
     RestaurantDashboardResponse,
+    MenuCreate,
+    MenuResponse,
+    MenuItemCreate,
+    MenuItemResponse,
 )
 from .shared import TAG_REST
 
@@ -112,3 +119,77 @@ async def update_restaurant_reservation_status(
         status=status,
         created_at=datetime.utcnow(),
     )
+
+
+# =====================================================================
+# MENUS & MENU ITEMS
+# =====================================================================
+
+@router.get("/restaurant/menus", response_model=List[MenuResponse], tags=TAG_REST)
+async def get_restaurant_menus(
+    category: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """Returns active restaurant menus with all items."""
+    stmt = select(Menu).options(selectinload(Menu.items)).where(Menu.is_active == True)
+    if category:
+        stmt = stmt.where(Menu.category == category)
+    res = await db.execute(stmt)
+    return res.scalars().all()
+
+
+@router.post("/restaurant/menus", response_model=MenuResponse, status_code=status.HTTP_201_CREATED, tags=TAG_REST)
+async def create_restaurant_menu(
+    menu_in: MenuCreate,
+    db: AsyncSession = Depends(get_db),
+):
+    """Creates a new menu in the restaurant system."""
+    new_menu = Menu(
+        name=menu_in.name,
+        category=menu_in.category,
+        description=menu_in.description,
+        is_active=menu_in.is_active,
+    )
+    db.add(new_menu)
+    await db.commit()
+    await db.refresh(new_menu)
+    return new_menu
+
+
+@router.get("/restaurant/menu-items", response_model=List[MenuItemResponse], tags=TAG_REST)
+async def get_restaurant_menu_items(
+    menu_id: Optional[str] = None,
+    category: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """Returns all restaurant menu items, optionally filtered by menu or category."""
+    stmt = select(MenuItem).where(MenuItem.is_available == True)
+    if menu_id:
+        stmt = stmt.where(MenuItem.menu_id == menu_id)
+    if category:
+        stmt = stmt.where(MenuItem.category == category)
+    res = await db.execute(stmt)
+    return res.scalars().all()
+
+
+@router.post("/restaurant/menu-items", response_model=MenuItemResponse, status_code=status.HTTP_201_CREATED, tags=TAG_REST)
+async def create_restaurant_menu_item(
+    item_in: MenuItemCreate,
+    db: AsyncSession = Depends(get_db),
+):
+    """Creates a new dish / menu item under a menu."""
+    new_item = MenuItem(
+        menu_id=item_in.menu_id,
+        name=item_in.name,
+        price=item_in.price,
+        currency=item_in.currency,
+        image_url=item_in.image_url,
+        category=item_in.category,
+        is_available=item_in.is_available,
+        prep_time_minutes=item_in.prep_time_minutes,
+        description=item_in.description,
+    )
+    db.add(new_item)
+    await db.commit()
+    await db.refresh(new_item)
+    return new_item

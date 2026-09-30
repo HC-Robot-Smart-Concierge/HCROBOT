@@ -103,6 +103,9 @@ async def intent_router_node(state: ConciergeState) -> Dict[str, Any]:
         "bellman": ["hành lý", "vali", "túi", "chuyển phòng", "mang đồ", "xách đồ", "luggage", "bag"],
         "maintenance": ["hỏng", "sửa", "điều hòa", "bóng đèn", "nước rò", "máy lạnh", "tủ lạnh", "kẹt", "fix", "repair"],
         "restaurant": ["đặt bàn", "bàn ăn", "nhà hàng", "table", "restaurant"],
+        "taxi": ["taxi", "đặt xe", "gọi xe", "sân bay", "cab", "ride", "xe đón"],
+        "concierge": ["concierge", "gặp người", "trợ giúp trực tiếp", "nhân viên hỗ trợ", "live call", "video call", "tổng đài"],
+        "reception": ["lễ tân", "check out", "check in", "đổi phòng", "trả phòng", "front desk", "reception"],
     }
 
     action = None
@@ -187,6 +190,9 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
                 "bellman": "hỗ trợ hành lý",
                 "maintenance": "kỹ thuật bảo trì",
                 "restaurant": "đặt bàn nhà hàng",
+                "taxi": "đặt xe taxi và di chuyển",
+                "concierge": "kết nối tổng đài Concierge",
+                "reception": "dịch vụ lễ tân tiền sảnh",
             }
             action_vn = action_vn_map.get(action, "dịch vụ")
             ask_reply = f"Dạ em sẽ hỗ trợ {action_vn} cho quý khách ngay ạ! Quý khách vui lòng cho em xin số phòng của mình là bao nhiêu ạ?"

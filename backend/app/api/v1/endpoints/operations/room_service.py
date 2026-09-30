@@ -1,4 +1,5 @@
 import random
+import uuid
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -6,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc
 
 from app.core.database import get_db
-from app.models import Staff, RoomServiceOrder, InventoryStock
+from app.models import Staff, RoomServiceOrder, OrderItem, MenuItem, Room, InventoryStock
 from app.schemas.operations import (
     RoomServiceOrderCreate,
     RoomServiceOrderStatusUpdate,
@@ -58,8 +59,22 @@ async def get_room_service_dashboard(db: AsyncSession = Depends(get_db)):
 async def create_room_service_order(order_in: RoomServiceOrderCreate, db: AsyncSession = Depends(get_db)):
     """Creates a new F&B / Room Service order from guest room or tablet."""
     order_num = f"{random.randint(1043, 9999)}"
+    
+    # Try looking up room in database
+    clean_room = order_in.room_number.upper().replace("ROOM", "").strip()
+    room_res = await db.execute(
+        select(Room).where(
+            (Room.room_number == order_in.room_number) | (Room.room_number == clean_room)
+        )
+    )
+    room = room_res.scalar_one_or_none()
+    room_id = room.id if room else None
+
+    order_id = f"ORD-{uuid.uuid4().hex[:8]}"
     new_order = RoomServiceOrder(
+        id=order_id,
         order_number=order_num,
+        room_id=room_id,
         room_number=order_in.room_number,
         items=[item.model_dump() for item in order_in.items],
         note=order_in.note,
@@ -67,9 +82,33 @@ async def create_room_service_order(order_in: RoomServiceOrderCreate, db: AsyncS
         is_service_request=order_in.is_service_request,
         status="Pending",
         progress=0,
+        total_amount=0.0,
     )
     db.add(new_order)
-    items_desc = ", ".join([f"{it.get('qty', 1)}x {it.get('name', 'Món')}" for it in (order_in.items or [])])
+
+    total_amount = 0.0
+    for it in order_in.items:
+        m_item_res = await db.execute(
+            select(MenuItem).where(MenuItem.name.ilike(f"%{it.name}%"))
+        )
+        m_item = m_item_res.scalars().first()
+        price = m_item.price if m_item else 0.0
+        qty = int(it.qty) if str(it.qty).isdigit() else 1
+        subtotal = price * qty
+        total_amount += subtotal
+
+        order_item = OrderItem(
+            order=new_order,
+            menu_item_id=m_item.id if m_item else None,
+            item_name=it.name,
+            quantity=qty,
+            unit_price=price,
+            subtotal=subtotal,
+        )
+        db.add(order_item)
+
+    new_order.total_amount = total_amount
+    items_desc = ", ".join([f"{it.qty}x {it.name}" for it in (order_in.items or [])])
     await create_department_notification(
         db=db,
         department="F&B",

@@ -1,10 +1,14 @@
 import uuid
 from datetime import datetime
-from typing import Any, Dict, List, Optional
-from sqlalchemy import Boolean, DateTime, JSON, String
-from sqlalchemy.orm import Mapped, mapped_column
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from sqlalchemy import Boolean, DateTime, JSON, String, ForeignKey
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+
+if TYPE_CHECKING:
+    from app.models.account import Account
+    from app.models.chat_session import ChatSession
 
 
 class HumanSupportSession(Base):
@@ -23,6 +27,8 @@ class HumanSupportSession(Base):
     wait_time_label: Mapped[str] = mapped_column(String(30), default="02m 14s")
     status: Mapped[str] = mapped_column(String(50), default="Active") # 'Active', 'Resolved', 'Queued'
     linked_request_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True) # e.g. 'REQ-1042'
+    chat_session_id: Mapped[Optional[str]] = mapped_column(String(64), ForeignKey("chat_sessions.id", ondelete="SET NULL"), nullable=True, index=True)
+    account_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True, index=True)
     
     # Dual-track multilingual message history
     # Each item: { "id", "speaker", "speaker_name", "raw_transcript", "languages_detected": [...], "translations": { "vi", "en" }, "timestamp", "intent_payload" }
@@ -32,3 +38,7 @@ class HumanSupportSession(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
     )
+
+    # Relationships
+    chat_session: Mapped[Optional["ChatSession"]] = relationship("ChatSession")
+    assigned_account: Mapped[Optional["Account"]] = relationship("Account")

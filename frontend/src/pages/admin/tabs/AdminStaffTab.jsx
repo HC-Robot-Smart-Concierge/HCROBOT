@@ -80,18 +80,12 @@ export const AdminStaffTab = () => {
     is_fallback_agent: false,
   });
 
-  // Tạo danh sách phòng ban chuẩn duy nhất, loại bỏ trùng lặp và mock thừa
-  const allDepartments = Array.from(
-    new Set([
-      ...(departments.length > 0
-        ? departments.map((d) => d.name || d.code)
-        : STANDARD_DEPARTMENTS),
-      ...staffList.map((s) => s.department).filter(Boolean),
-    ])
-  ).filter((dept) => {
-    const lower = (dept || '').trim().toLowerCase();
-    return !['lễ tân', 'buồng phòng', 'ẩm thực (f&b)', 'kỹ thuật / bảo trì', 'cntt & vận hành robot', 'an ninh', 'administration'].includes(lower);
-  });
+  // Bảng departments là nguồn dữ liệu chuẩn duy nhất (Single Source of Truth)
+  const allDepartments = (
+    departments.length > 0
+      ? Array.from(new Set(departments.map((d) => d.name).filter(Boolean)))
+      : STANDARD_DEPARTMENTS
+  );
 
   const showNotification = (msg) => {
     setNotification(msg);
@@ -236,11 +230,11 @@ export const AdminStaffTab = () => {
   const paginatedStaff = filteredStaff.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   return (
-    <div className="w-full flex flex-col p-4 space-y-3 pb-2" style={{ color: '#262626' }}>
+    <div className="w-full flex flex-col min-h-full pb-4" style={{ color: '#262626' }}>
       {/* Toast Notification */}
       {notification && (
         <div
-          className="fixed top-5 right-5 z-50 px-4 py-2 rounded-lg border text-xs font-semibold shadow-lg"
+          className="fixed bottom-6 right-6 z-50 px-4 py-2.5 rounded-xl border text-xs font-semibold shadow-2xl animate-in fade-in slide-in-from-bottom-3"
           style={{
             backgroundColor: '#262626',
             color: '#F2EFE9',
@@ -251,20 +245,23 @@ export const AdminStaffTab = () => {
         </div>
       )}
 
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b pb-2.5" style={{ borderColor: '#BFBFBD' }}>
-        <div>
-          <h2 className="text-base font-bold tracking-tight" style={{ color: '#262626' }}>
+      {/* Header Bar - seamlessly aligned with sidebar brand header */}
+      <div
+        className="h-16 px-5 border-b flex items-center justify-between gap-4 shrink-0 sticky top-0 z-20"
+        style={{ borderColor: '#BFBFBD', backgroundColor: '#F2EFE9' }}
+      >
+        <div className="min-w-0">
+          <h2 className="text-sm sm:text-base font-bold tracking-tight leading-tight truncate" style={{ color: '#262626' }}>
             Nhân Sự Tiếp Nhận & Hỗ Trợ Robot
           </h2>
-          <p className="text-[11px] font-normal" style={{ color: '#8C8C8C' }}>
+          <p className="text-[10px] sm:text-[11px] font-normal truncate mt-0.5" style={{ color: '#8C8C8C' }}>
             Danh sách nhân sự theo bộ phận để robot chuyển tiếp yêu cầu hoặc gọi hỗ trợ khi cần thiết
           </p>
         </div>
 
         <button
           onClick={() => setIsAddModalOpen(true)}
-          className="px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer border transition-colors whitespace-nowrap self-start sm:self-auto"
+          className="px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer border transition-colors whitespace-nowrap shrink-0 hover:bg-[#262626]/90"
           style={{
             backgroundColor: '#262626',
             color: '#F2EFE9',
@@ -274,6 +271,9 @@ export const AdminStaffTab = () => {
           + Thêm nhân sự
         </button>
       </div>
+
+      {/* Content Body */}
+      <div className="p-4 space-y-3">
 
       {/* Controls: Search & Filters */}
       <div
@@ -476,6 +476,7 @@ export const AdminStaffTab = () => {
           onPageChange={handlePageChange}
           itemName="nhân sự"
         />
+      </div>
       </div>
 
       {/* MODAL: EDIT STAFF */}

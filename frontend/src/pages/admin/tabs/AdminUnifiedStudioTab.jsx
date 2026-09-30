@@ -640,10 +640,10 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
 
   return (
     <div className="w-full h-full flex flex-col overflow-hidden select-none" style={{ backgroundColor: '#F2EFE9', color: '#262626' }}>
-      {/* 1. COMPACT STUDIO HEADER */}
+      {/* 1. COMPACT STUDIO HEADER - seamlessly aligned with sidebar brand header */}
       <div
-        className="h-9 border-b px-4 shrink-0 flex items-center justify-between gap-3 text-xs"
-        style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD' }}
+        className="h-16 border-b px-5 shrink-0 flex items-center justify-between gap-3 text-xs"
+        style={{ backgroundColor: '#F2EFE9', borderColor: '#BFBFBD' }}
       >
         {/* Left Status */}
         <div className="flex items-center gap-2">

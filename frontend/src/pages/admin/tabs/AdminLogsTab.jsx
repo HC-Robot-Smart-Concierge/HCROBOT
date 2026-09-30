@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { RotateCw } from 'lucide-react';
 import { Pagination } from '../../../components/common/Pagination';
 import {
   fetchLogs,
@@ -46,7 +47,7 @@ export const AdminLogsTab = () => {
       params.set('tab', 'Logs');
       params.set('page', newPage.toString());
       window.history.pushState(null, '', `${window.location.pathname}?${params.toString()}`);
-    } catch {}
+    } catch { }
   };
 
   useEffect(() => {
@@ -54,7 +55,7 @@ export const AdminLogsTab = () => {
       try {
         const p = parseInt(new URLSearchParams(window.location.search).get('page'), 10);
         if (!isNaN(p) && p > 0) setCurrentPage(p);
-      } catch {}
+      } catch { }
     };
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
@@ -119,6 +120,18 @@ export const AdminLogsTab = () => {
       }
     } catch {
       // Fallback
+    }
+  };
+
+  const handleManualRefresh = async () => {
+    setIsLoading(true);
+    try {
+      await Promise.all([loadLogsData(), loadStats()]);
+      showToast('Đã làm mới dữ liệu nhật ký mới nhất.');
+    } catch {
+      showToast('Không thể làm mới dữ liệu.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -213,11 +226,11 @@ export const AdminLogsTab = () => {
   };
 
   return (
-    <div className="w-full flex flex-col p-4 space-y-3 pb-2" style={{ color: '#262626' }}>
-      {/* Toast Notification */}
+    <div className="w-full flex flex-col min-h-full pb-4" style={{ color: '#262626' }}>
+      {/* Toast Notification (Placed at bottom-right so it never covers the header) */}
       {toastMessage && (
         <div
-          className="fixed top-5 right-5 z-50 px-4 py-2 rounded-lg border text-xs font-semibold shadow-lg"
+          className="fixed bottom-6 right-6 z-50 px-4 py-2.5 rounded-xl border text-xs font-semibold shadow-2xl animate-in fade-in slide-in-from-bottom-3"
           style={{
             backgroundColor: '#262626',
             color: '#F2EFE9',
@@ -228,66 +241,42 @@ export const AdminLogsTab = () => {
         </div>
       )}
 
-      {/* Header */}
+      {/* Header Bar - aligns seamlessly with sidebar brand box line */}
       <div
-        className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b pb-2.5"
-        style={{ borderColor: '#BFBFBD' }}
+        className="h-16 px-5 border-b flex items-center justify-between gap-4 shrink-0 sticky top-0 z-20"
+        style={{ borderColor: '#BFBFBD', backgroundColor: '#F2EFE9' }}
       >
-        <div>
-          <h2 className="text-base font-bold tracking-tight" style={{ color: '#262626' }}>
+        <div className="min-w-0">
+          <h2 className="text-sm sm:text-base font-bold tracking-tight leading-tight truncate" style={{ color: '#262626' }}>
             Nhật Ký Hệ Thống & Kiểm Toán (System Logs & Audit Trail)
           </h2>
-          <p className="text-[11px] font-normal" style={{ color: '#8C8C8C' }}>
+          <p className="text-[10px] sm:text-[11px] font-normal truncate mt-0.5" style={{ color: '#8C8C8C' }}>
             Truy vết trực tiếp từ cơ sở dữ liệu về sự kiện hội thoại AI, điều phối và kiểm toán bảo mật Robot
           </p>
         </div>
 
-        <div className="flex items-center gap-2 self-start sm:self-auto">
+        <div className="flex items-center gap-2 shrink-0">
           {/* Toggle Operational vs Audit */}
           <div className="flex rounded-lg border p-0.5" style={{ borderColor: '#BFBFBD', backgroundColor: '#E9E5DC' }}>
             <button
               onClick={() => { setActiveView('operational'); setCurrentPage(1); }}
-              className={`px-2.5 py-1 rounded text-xs font-bold transition-all cursor-pointer ${
-                activeView === 'operational' ? 'bg-[#262626] text-white' : 'text-stone-600 hover:text-stone-900'
-              }`}
+              className={`px-2.5 py-1 rounded text-xs font-bold transition-all cursor-pointer ${activeView === 'operational' ? 'bg-[#262626] text-white' : 'text-stone-600 hover:text-stone-900'
+                }`}
             >
               Nhật Ký Vận Hành
             </button>
             <button
               onClick={() => { setActiveView('audit'); setCurrentPage(1); }}
-              className={`px-2.5 py-1 rounded text-xs font-bold transition-all cursor-pointer ${
-                activeView === 'audit' ? 'bg-[#262626] text-white' : 'text-stone-600 hover:text-stone-900'
-              }`}
+              className={`px-2.5 py-1 rounded text-xs font-bold transition-all cursor-pointer ${activeView === 'audit' ? 'bg-[#262626] text-white' : 'text-stone-600 hover:text-stone-900'
+                }`}
             >
               Kiểm Toán Bảo Mật
             </button>
           </div>
 
           <button
-            onClick={() => setIsLiveStreaming(!isLiveStreaming)}
-            className="px-3 py-1.5 rounded-lg border text-xs font-semibold cursor-pointer transition-colors"
-            style={{
-              backgroundColor: isLiveStreaming ? '#262626' : '#FFFFFF',
-              borderColor: isLiveStreaming ? '#262626' : '#BFBFBD',
-              color: isLiveStreaming ? '#F2EFE9' : '#262626',
-            }}
-          >
-            {isLiveStreaming ? '● Đang truyền trực tiếp' : '○ Tạm dừng'}
-          </button>
-          <button
-            onClick={() => { loadLogsData(); loadStats(); }}
-            className="px-3 py-1.5 rounded-lg border text-xs font-medium cursor-pointer"
-            style={{
-              backgroundColor: '#FFFFFF',
-              borderColor: '#BFBFBD',
-              color: '#262626',
-            }}
-          >
-            Làm mới
-          </button>
-          <button
             onClick={() => handleExportLogs('csv')}
-            className="px-3 py-1.5 rounded-lg border text-xs font-medium cursor-pointer"
+            className="px-3 py-1.5 rounded-lg border text-xs font-medium cursor-pointer transition-all hover:bg-[#E9E5DC]/80"
             style={{
               backgroundColor: '#E9E5DC',
               borderColor: '#BFBFBD',
@@ -298,7 +287,7 @@ export const AdminLogsTab = () => {
           </button>
           <button
             onClick={() => handleExportLogs('json')}
-            className="px-3 py-1.5 rounded-lg border text-xs font-medium cursor-pointer"
+            className="px-3 py-1.5 rounded-lg border text-xs font-medium cursor-pointer transition-all hover:bg-[#E9E5DC]/80"
             style={{
               backgroundColor: '#E9E5DC',
               borderColor: '#BFBFBD',
@@ -310,6 +299,9 @@ export const AdminLogsTab = () => {
         </div>
       </div>
 
+      {/* Content Body */}
+      <div className="p-4 space-y-3">
+
       {/* 4 Metric Cards (Single Compact Row) */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
         <div className="p-3 rounded-xl border flex flex-col justify-between" style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD' }}>
@@ -320,7 +312,7 @@ export const AdminLogsTab = () => {
             </span>
             <span className="text-xs" style={{ color: '#8C8C8C' }}>sự kiện</span>
           </div>
-          <div className="text-[10px] font-medium" style={{ color: '#8C8C8C' }}>Ghi nhận từ database</div>
+          <div className="text-[10px] font-medium" style={{ color: '#8C8C8C' }}></div>
         </div>
 
         <div className="p-3 rounded-xl border flex flex-col justify-between" style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD' }}>
@@ -329,7 +321,7 @@ export const AdminLogsTab = () => {
             <span className="text-2xl font-bold" style={{ color: '#262626' }}>{statistics.warnings || 0}</span>
             <span className="text-xs" style={{ color: '#8C8C8C' }}>cần chú ý</span>
           </div>
-          <div className="text-[10px] font-medium" style={{ color: '#8C8C8C' }}>Vật cản đường & pin thấp</div>
+          <div className="text-[10px] font-medium" style={{ color: '#8C8C8C' }}></div>
         </div>
 
         <div className="p-3 rounded-xl border flex flex-col justify-between" style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD' }}>
@@ -338,7 +330,7 @@ export const AdminLogsTab = () => {
             <span className="text-2xl font-bold" style={{ color: '#262626' }}>{(statistics.errors || 0) + (statistics.critical || 0)}</span>
             <span className="text-xs" style={{ color: '#8C8C8C' }}>lỗi</span>
           </div>
-          <div className="text-[10px] font-medium" style={{ color: '#8C8C8C' }}>Phát hiện từ Robot / AI</div>
+          <div className="text-[10px] font-medium" style={{ color: '#8C8C8C' }}></div>
         </div>
 
         <div className="p-3 rounded-xl border flex flex-col justify-between" style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD' }}>
@@ -346,7 +338,6 @@ export const AdminLogsTab = () => {
           <div className="flex items-baseline gap-1.5 my-1">
             <span className="text-2xl font-bold" style={{ color: '#262626' }}>{isLiveStreaming ? 'Tự động' : 'Thủ công'}</span>
           </div>
-          <div className="text-[10px] font-medium" style={{ color: '#8C8C8C' }}>{isLiveStreaming ? 'Cập nhật mỗi 5 giây' : 'Chế độ xem tĩnh'}</div>
         </div>
       </div>
 
@@ -376,6 +367,22 @@ export const AdminLogsTab = () => {
             </form>
 
             <div className="flex items-center gap-2 w-full sm:w-auto">
+              {/* Nút làm mới icon xoay đặt bên trái Tất cả mức độ */}
+              <button
+                type="button"
+                onClick={handleManualRefresh}
+                disabled={isLoading}
+                title="Làm mới nhật ký"
+                className="p-2 rounded-lg border text-xs font-medium cursor-pointer transition-all hover:bg-[#E9E5DC] active:scale-95 flex items-center justify-center shrink-0"
+                style={{
+                  backgroundColor: '#FFFFFF',
+                  borderColor: '#BFBFBD',
+                  color: '#262626',
+                }}
+              >
+                <RotateCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+              </button>
+
               <select
                 value={selectedLevel}
                 onChange={(e) => setSelectedLevel(e.target.value)}
@@ -616,6 +623,7 @@ export const AdminLogsTab = () => {
           />
         </div>
       )}
+      </div>
 
       {/* MODAL: LOG DETAILS */}
       {selectedLog && (

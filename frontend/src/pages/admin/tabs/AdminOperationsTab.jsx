@@ -235,26 +235,36 @@ export const AdminOperationsTab = ({
   }
 
   return (
-    <div className="w-full min-h-full flex flex-col p-6 space-y-6 pb-16">
-      {/* Header with Dispatch Button */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-stone-200 pb-4">
-        <div>
-          <h2 className="text-2xl font-black text-stone-900 tracking-tight">
+    <div className="w-full min-h-full flex flex-col pb-4" style={{ color: '#262626' }}>
+      {/* Header Bar - seamlessly aligned with sidebar brand header */}
+      <div
+        className="h-16 px-5 border-b flex items-center justify-between gap-4 shrink-0 sticky top-0 z-20"
+        style={{ borderColor: '#BFBFBD', backgroundColor: '#F2EFE9' }}
+      >
+        <div className="min-w-0">
+          <h2 className="text-sm sm:text-base font-bold tracking-tight leading-tight truncate" style={{ color: '#262626' }}>
             Quản Lý Yêu Cầu Toàn Khách Sạn (Service Requests)
           </h2>
-          <p className="text-sm text-stone-500 font-medium">
-            Trung tâm tiếp nhận, điều phối và phân công yêu cầu dịch vụ trên toàn khách sạn.
+          <p className="text-[10px] sm:text-[11px] font-normal truncate mt-0.5" style={{ color: '#8C8C8C' }}>
+            Trung tâm tiếp nhận, điều phối và phân công yêu cầu dịch vụ trên toàn khách sạn
           </p>
         </div>
 
         <button
           onClick={() => setIsCreateModalOpen(true)}
-          className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-all shadow-md flex items-center gap-2 cursor-pointer self-start md:self-auto shrink-0"
+          className="px-3.5 py-1.5 rounded-lg border text-xs font-semibold cursor-pointer transition-colors whitespace-nowrap shrink-0 hover:bg-[#262626]/90 flex items-center gap-1.5"
+          style={{
+            backgroundColor: '#262626',
+            color: '#F2EFE9',
+            borderColor: '#262626',
+          }}
         >
-          <PlusCircle className="w-4 h-4" />
-          <span>Tạo Lệnh Điều Phối Mới</span>
+          <PlusCircle className="w-3.5 h-3.5" />
+          <span>Tạo Lệnh Điều Phối</span>
         </button>
       </div>
+
+      <div className="p-4 space-y-4">
 
       {/* SERVICE REQUESTS LIST */}
       <div className="space-y-6">
@@ -480,6 +490,7 @@ export const AdminOperationsTab = ({
           onPageChange={setCurrentPage}
           className="rounded-2xl border border-stone-200 shadow-sm mt-4 bg-white"
         />
+      </div>
       </div>
 
       {/* MODAL: TASK DETAIL & ASSIGNMENT */}

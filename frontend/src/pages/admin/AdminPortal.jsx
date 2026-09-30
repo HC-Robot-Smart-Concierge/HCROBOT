@@ -175,7 +175,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
 
         {/* Brand */}
         <div>
-          <div className="px-5 py-4 border-b" style={{ borderColor: '#BFBFBD' }}>
+          <div className="h-16 px-5 border-b flex flex-col justify-center shrink-0" style={{ borderColor: '#BFBFBD' }}>
             <div className="text-sm font-black tracking-tight" style={{ color: '#262626' }}>
               RoboConcierge
             </div>
@@ -276,8 +276,37 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
           </nav>
         </div>
 
-        {/* Bottom: Settings & Logout */}
-        <div className="p-3 border-t space-y-0.5" style={{ borderColor: '#BFBFBD' }}>
+        {/* Bottom Sidebar: Notifications, Settings & Admin Profile */}
+        <div className="p-3 border-t space-y-1.5 relative" style={{ borderColor: '#BFBFBD' }}>
+          {/* Notifications Nav Item */}
+          <button
+            onClick={() => setIsNotifOpen(!isNotifOpen)}
+            className="w-full text-left flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer"
+            style={{
+              background: isNotifOpen ? '#262626' : 'transparent',
+              color: isNotifOpen ? '#FFFFFF' : '#8C8C8C',
+            }}
+            onMouseEnter={e => { if (!isNotifOpen) { e.currentTarget.style.background = '#BFBFBD'; e.currentTarget.style.color = '#262626'; } }}
+            onMouseLeave={e => { if (!isNotifOpen) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#8C8C8C'; } }}
+          >
+            <div className="flex items-center gap-2">
+              <Bell className="w-3.5 h-3.5 shrink-0" />
+              <span>Notifications</span>
+            </div>
+            {unreadCount > 0 && (
+              <span
+                className="px-1.5 py-0.2 rounded-full text-[10px] font-bold"
+                style={{
+                  backgroundColor: isNotifOpen ? '#FFFFFF' : '#262626',
+                  color: isNotifOpen ? '#262626' : '#F2EFE9',
+                }}
+              >
+                {unreadCount > 9 ? '9+' : unreadCount}
+              </span>
+            )}
+          </button>
+
+          {/* Settings Nav */}
           <button
             onClick={() => handleSelectTab('Settings')}
             className="w-full text-left flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer"
@@ -285,161 +314,136 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
               background: activeMenu === 'Settings' ? '#262626' : 'transparent',
               color: activeMenu === 'Settings' ? '#FFFFFF' : '#8C8C8C',
             }}
+            onMouseEnter={e => { if (activeMenu !== 'Settings') { e.currentTarget.style.background = '#BFBFBD'; e.currentTarget.style.color = '#262626'; } }}
+            onMouseLeave={e => { if (activeMenu !== 'Settings') { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#8C8C8C'; } }}
           >
             <Settings className="w-3.5 h-3.5 shrink-0" />
             <span>Settings</span>
           </button>
-          <button
-            onClick={onLogout}
-            className="w-full text-left flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer"
-            style={{ color: '#8C8C8C' }}
-            onMouseEnter={e => { e.currentTarget.style.background = '#BFBFBD'; e.currentTarget.style.color = '#262626'; }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#8C8C8C'; }}
+
+          {/* User Profile Card with Logout */}
+          <div
+            className="p-2 rounded-xl border flex items-center justify-between gap-1.5 shadow-sm mt-1"
+            style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD' }}
           >
-            <LogOut className="w-3.5 h-3.5 shrink-0" />
-            <span>Đăng xuất</span>
-          </button>
+            {/* User Avatar & Info */}
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              <div
+                className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
+                style={{ backgroundColor: '#262626', color: '#F2EFE9' }}
+              >
+                {currentUser?.full_name ? currentUser.full_name.charAt(0).toUpperCase() : 'A'}
+              </div>
+              <div className="min-w-0 leading-tight">
+                <div className="text-xs font-bold truncate" style={{ color: '#262626' }}>
+                  {currentUser?.full_name || 'System Admin'}
+                </div>
+                <div className="text-[10px] font-medium truncate" style={{ color: '#8C8C8C' }}>
+                  {currentUser?.role || 'Admin'}
+                </div>
+              </div>
+            </div>
+
+            {/* Logout button */}
+            <button
+              onClick={onLogout}
+              title="Đăng xuất"
+              className="p-1.5 rounded-lg border hover:bg-red-50 hover:border-red-300 hover:text-red-700 transition-all cursor-pointer shrink-0"
+              style={{ borderColor: '#BFBFBD', color: '#8C8C8C', backgroundColor: '#F2EFE9' }}
+            >
+              <LogOut className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          {/* Notification Drawer Popover (Opens to the right of the sidebar, fixed bottom) */}
+          {isNotifOpen && (
+            <div
+              className="fixed left-58 bottom-4 w-80 sm:w-96 rounded-2xl border shadow-2xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+              style={{ background: '#FFFFFF', borderColor: '#BFBFBD' }}
+            >
+              <div className="p-3 border-b flex items-center justify-between" style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD' }}>
+                <div className="flex items-center gap-2">
+                  <Bell className="w-4 h-4" style={{ color: '#262626' }} />
+                  <span className="text-xs font-bold" style={{ color: '#262626' }}>Trung Tâm Thông Báo</span>
+                  <span className="px-1.5 py-0.2 rounded-full text-[10px] font-extrabold" style={{ backgroundColor: '#262626', color: '#F2EFE9' }}>
+                    {unreadCount} chưa đọc
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-1">
+                  {unreadCount > 0 && (
+                    <button
+                      onClick={handleMarkAllRead}
+                      className="text-[10px] font-bold hover:underline p-1 flex items-center gap-0.5 cursor-pointer"
+                      style={{ color: '#262626' }}
+                      title="Đọc tất cả"
+                    >
+                      <CheckCheck className="w-3 h-3" />
+                      <span>Đọc hết</span>
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setIsNotifOpen(false)}
+                    className="p-1 cursor-pointer transition-colors"
+                    style={{ color: '#8C8C8C' }}
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="max-h-80 overflow-y-auto custom-scrollbar divide-y text-xs" style={{ borderColor: '#E9E5DC' }}>
+                {notifications.length === 0 ? (
+                  <div className="py-8 text-center text-xs" style={{ color: '#8C8C8C' }}>
+                    Không có thông báo mới
+                  </div>
+                ) : (
+                  notifications.map((item) => (
+                    <div
+                      key={item.id}
+                      className={`p-3 transition-colors flex items-start justify-between gap-2 ${
+                        item.is_read ? 'bg-white opacity-70' : 'bg-[#E9E5DC]/30 font-medium'
+                      }`}
+                    >
+                      <div
+                        onClick={() => handleToggleRead(item.id)}
+                        className="flex-1 cursor-pointer space-y-0.5"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="text-[9px] font-bold px-1.5 py-0.2 rounded font-mono border" style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD', color: '#262626' }}>
+                            {item.department || 'All'}
+                          </span>
+                          <span className="text-xs font-bold truncate" style={{ color: '#262626' }}>
+                            {item.title}
+                          </span>
+                        </div>
+                        <p className="text-[11px] line-clamp-2" style={{ color: '#8C8C8C' }}>
+                          {item.description}
+                        </p>
+                        <span className="text-[10px]" style={{ color: '#8C8C8C' }}>
+                          {item.created_at ? new Date(item.created_at).toLocaleTimeString('vi-VN') : 'Vừa xong'}
+                        </span>
+                      </div>
+
+                      <button
+                        onClick={() => handleDeleteNotif(item.id)}
+                        className="p-1 cursor-pointer transition-colors hover:text-red-600"
+                        style={{ color: '#8C8C8C' }}
+                        title="Xóa thông báo"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </aside>
 
       {/* MAIN CONTENT AREA */}
       <div className="flex-1 flex flex-col h-full min-h-0 overflow-hidden">
-        {/* Top Header Bar */}
-        <header
-          className="h-12 border-b flex items-center justify-between px-6 shrink-0 z-20"
-          style={{ background: '#E9E5DC', borderColor: '#BFBFBD' }}
-        >
-          {/* Breadcrumb */}
-          <div className="flex items-center gap-2 text-xs">
-            <span style={{ color: '#8C8C8C' }}>Admin Portal</span>
-            <span style={{ color: '#8C8C8C' }}>/</span>
-            <span className="font-bold text-stone-900">{activeMenu}</span>
-          </div>
-
-          {/* Right Header Controls */}
-          <div className="flex items-center gap-3">
-            {/* Realtime Status Indicator */}
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white border border-stone-200 text-[11px] font-semibold">
-              <span className={`w-2 h-2 rounded-full ${wsConnected ? 'bg-emerald-500' : 'bg-amber-500'} animate-pulse`} />
-              <span className="text-stone-700">{wsConnected ? 'WebSocket Live' : 'Polling Sync'}</span>
-            </div>
-
-            {/* Notification Bell Button */}
-            <div className="relative">
-              <button
-                onClick={() => setIsNotifOpen(!isNotifOpen)}
-                className="p-1.5 rounded-lg border bg-white hover:bg-stone-50 transition-all cursor-pointer relative"
-                style={{ borderColor: '#BFBFBD', color: '#262626' }}
-                title="Thông báo toàn hệ thống"
-              >
-                <Bell className="w-4 h-4" />
-                {unreadCount > 0 && (
-                  <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-rose-600 text-white text-[9px] font-black flex items-center justify-center animate-pulse">
-                    {unreadCount > 9 ? '9+' : unreadCount}
-                  </span>
-                )}
-              </button>
-
-              {/* Notification Popover Drawer */}
-              {isNotifOpen && (
-                <div
-                  className="absolute right-0 top-10 w-80 sm:w-96 rounded-2xl border shadow-2xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-150"
-                  style={{ background: '#FFFFFF', borderColor: '#BFBFBD' }}
-                >
-                  <div className="p-3 border-b flex items-center justify-between bg-stone-50" style={{ borderColor: '#E9E5DC' }}>
-                    <div className="flex items-center gap-2">
-                      <Bell className="w-4 h-4 text-stone-800" />
-                      <span className="text-xs font-bold text-stone-900">Trung Tâm Thông Báo</span>
-                      <span className="px-1.5 py-0.2 rounded-full text-[10px] font-extrabold bg-indigo-100 text-indigo-700">
-                        {unreadCount} chưa đọc
-                      </span>
-                    </div>
-
-                    <div className="flex items-center gap-1">
-                      {unreadCount > 0 && (
-                        <button
-                          onClick={handleMarkAllRead}
-                          className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 p-1 flex items-center gap-0.5 cursor-pointer"
-                          title="Đọc tất cả"
-                        >
-                          <CheckCheck className="w-3 h-3" />
-                          <span>Đọc hết</span>
-                        </button>
-                      )}
-                      <button
-                        onClick={() => setIsNotifOpen(false)}
-                        className="text-stone-400 hover:text-stone-700 p-1 cursor-pointer"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="max-h-80 overflow-y-auto custom-scrollbar divide-y divide-stone-100 text-xs">
-                    {notifications.length === 0 ? (
-                      <div className="py-8 text-center text-stone-400 text-xs">
-                        Không có thông báo mới
-                      </div>
-                    ) : (
-                      notifications.map((item) => (
-                        <div
-                          key={item.id}
-                          className={`p-3 transition-colors flex items-start justify-between gap-2 ${
-                            item.is_read ? 'bg-white opacity-70' : 'bg-stone-50/70 font-medium'
-                          }`}
-                        >
-                          <div
-                            onClick={() => handleToggleRead(item.id)}
-                            className="flex-1 cursor-pointer space-y-0.5"
-                          >
-                            <div className="flex items-center gap-2">
-                              <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-stone-200 text-stone-800 font-mono">
-                                {item.department || 'All'}
-                              </span>
-                              <span className="text-xs font-bold text-stone-900 truncate">
-                                {item.title}
-                              </span>
-                            </div>
-                            <p className="text-[11px] text-stone-600 line-clamp-2">
-                              {item.description}
-                            </p>
-                            <span className="text-[10px] text-stone-400">
-                              {item.created_at ? new Date(item.created_at).toLocaleTimeString('vi-VN') : 'Vừa xong'}
-                            </span>
-                          </div>
-
-                          <button
-                            onClick={() => handleDeleteNotif(item.id)}
-                            className="text-stone-300 hover:text-rose-600 p-1 cursor-pointer transition-colors"
-                            title="Xóa thông báo"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Current User Pill */}
-            <div className="flex items-center gap-2 pl-2 border-l border-stone-300">
-              <div className="w-7 h-7 rounded-full bg-[#262626] text-white flex items-center justify-center text-xs font-bold">
-                {currentUser?.full_name ? currentUser.full_name.charAt(0).toUpperCase() : 'A'}
-              </div>
-              <div className="hidden sm:block text-left leading-tight">
-                <div className="text-xs font-bold text-stone-900">
-                  {currentUser?.full_name || 'Quản trị viên'}
-                </div>
-                <div className="text-[10px] text-stone-500 font-medium">
-                  {currentUser?.role || 'Admin'}
-                </div>
-              </div>
-            </div>
-          </div>
-        </header>
-
         {/* Dynamic Tab Body */}
         <main className={`flex-1 min-h-0 ${activeMenu === 'Robot Control' ? 'overflow-hidden' : 'overflow-y-auto custom-scrollbar'} relative`}>
 

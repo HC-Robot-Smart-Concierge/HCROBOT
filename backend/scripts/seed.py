@@ -174,14 +174,15 @@ STAFF_ACCOUNTS = [
 async def seed_departments_and_services(session):
     logger.info("🏢 [0/7] Seeding Hotel Departments & Service Types...")
     deps = [
-        ("DEP-RECEPTION", "RECEPTION", "Front Desk & Reception", "Bộ phận Lễ tân & Tiền sảnh, thủ tục check-in/out, đặt phòng và thông tin lưu trú"),
-        ("DEP-CONCIERGE", "CONCIERGE", "Concierge & Live Support", "Bộ phận Trợ lý Concierge, tổng đài hỗ trợ trực tuyến và live call video từ Robot"),
+        ("DEP-RECEPTION", "RECEPTION", "Reception", "Bộ phận Lễ tân & Tiền sảnh, thủ tục check-in/out, đặt phòng và thông tin lưu trú"),
+        ("DEP-CONCIERGE", "CONCIERGE", "Concierge", "Bộ phận Trợ lý Concierge, tổng đài hỗ trợ trực tuyến và live call video từ Robot"),
         ("DEP-HOUSEKEEPING", "HOUSEKEEPING", "Housekeeping", "Dịch vụ buồng phòng và dọn dẹp"),
         ("DEP-BELL", "BELL", "Bell Services", "Vận chuyển hành lý và hỗ trợ sảnh"),
-        ("DEP-TAXI", "TAXI", "Taxi & Transportation", "Điều phối taxi và đưa đón di chuyển"),
+        ("DEP-TAXI", "TAXI", "Taxi", "Điều phối taxi và đưa đón di chuyển"),
         ("DEP-FB", "FB", "Food & Beverage", "Ẩm thực và phục vụ phòng Room Service"),
-        ("DEP-MAINTENANCE", "MAINTENANCE", "Maintenance & Engineering", "Kỹ thuật và bảo trì trang thiết bị"),
-        ("DEP-EXECUTIVE", "EXECUTIVE", "Executive & Management", "Ban quản trị và điều hành khách sạn"),
+        ("DEP-MAINTENANCE", "MAINTENANCE", "Maintenance", "Kỹ thuật và bảo trì trang thiết bị"),
+        ("DEP-EXECUTIVE", "EXECUTIVE", "Executive", "Ban quản trị và điều hành khách sạn"),
+        ("DEP-RESTAURANT", "RESTAURANT", "Restaurant", "Bộ phận Nhà hàng, Đặt bàn & Gọi món trước"),
     ]
     for d_id, d_code, d_name, d_desc in deps:
         d = await session.get(Department, d_id)

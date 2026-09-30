@@ -55,17 +55,18 @@ export const AdminHumanSupportView = () => {
       {/* 1. LEFT COLUMN: Active Queue */}
       <div className="w-full lg:w-80 h-72 lg:h-full bg-white border-r border-stone-200 flex flex-col shrink-0">
         {/* Header */}
-        <div className="p-4 border-b border-stone-200 flex items-center justify-between">
+        <div className="h-16 px-5 border-b flex items-center justify-between shrink-0" style={{ borderColor: '#BFBFBD', backgroundColor: '#F2EFE9' }}>
           <div className="flex items-center gap-2">
-            <h3 className="text-sm font-black text-stone-900 tracking-tight">Active Queue</h3>
-            <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-indigo-50 text-indigo-600 border border-indigo-100">
+            <h3 className="text-sm font-bold tracking-tight" style={{ color: '#262626' }}>Active Queue</h3>
+            <span className="px-2 py-0.5 rounded-full text-xs font-bold border" style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD', color: '#262626' }}>
               {sessions.length}
             </span>
           </div>
           <button
             onClick={loadSessions}
             title="Làm mới hàng chờ"
-            className="p-1.5 rounded-lg text-stone-400 hover:text-stone-700 hover:bg-stone-100 transition-all cursor-pointer"
+            className="p-1.5 rounded-lg border transition-all cursor-pointer hover:bg-stone-100"
+            style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD', color: '#8C8C8C' }}
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
           </button>
@@ -114,34 +115,36 @@ export const AdminHumanSupportView = () => {
         {activeSession ? (
           <>
             {/* Chat Top Header */}
-            <div className="p-4 border-b border-stone-200 flex items-center justify-between bg-white shrink-0">
+            <div className="h-16 px-5 border-b flex items-center justify-between shrink-0" style={{ borderColor: '#BFBFBD', backgroundColor: '#F2EFE9' }}>
               <div className="flex items-center gap-3">
                 <div>
                   <div className="flex items-center gap-2">
-                    <h3 className="text-sm font-black text-stone-900 tracking-tight">
+                    <h3 className="text-sm font-bold tracking-tight" style={{ color: '#262626' }}>
                       {activeSession.guest_name}
                     </h3>
                   </div>
-                  <div className="text-xs text-stone-500 font-medium">
+                  <div className="text-[11px] font-normal" style={{ color: '#8C8C8C' }}>
                     {activeSession.room_number} • {activeSession.category}
                   </div>
                 </div>
               </div>
 
-              <div className="flex items-center gap-3">
-                <span className="hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-bold bg-stone-100 text-stone-600 border border-stone-200">
-                  <Eye className="w-3.5 h-3.5 text-stone-500" />
+              <div className="flex items-center gap-2">
+                <span className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border" style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD', color: '#262626' }}>
+                  <Eye className="w-3.5 h-3.5" style={{ color: '#8C8C8C' }} />
                   <span>Admin View-Only</span>
                 </span>
                 <button
                   title="Gọi thoại trực tiếp"
-                  className="p-2 rounded-xl text-stone-600 hover:bg-stone-100 transition-all cursor-pointer"
+                  className="p-2 rounded-lg border transition-all cursor-pointer hover:bg-stone-100"
+                  style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD', color: '#262626' }}
                 >
                   <Phone className="w-4 h-4" />
                 </button>
                 <button
                   title="Tùy chọn khác"
-                  className="p-2 rounded-xl text-stone-400 hover:bg-stone-100 transition-all cursor-pointer"
+                  className="p-2 rounded-lg border transition-all cursor-pointer hover:bg-stone-100"
+                  style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD', color: '#8C8C8C' }}
                 >
                   <MoreVertical className="w-4 h-4" />
                 </button>

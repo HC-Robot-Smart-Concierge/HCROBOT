@@ -1,7 +1,10 @@
 import asyncio
+import logging
 import random
 from datetime import datetime
 from typing import List, Dict, Any, Optional
+
+logger = logging.getLogger(__name__)
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
 from app.services.notification_manager import notification_manager

@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc, or_
 
 from app.core.database import get_db
-from app.models import SupportRequest
+from app.models import SupportRequest, ReceptionRequest
 from app.schemas.operations import (
     ReceptionRequestCreate,
     ReceptionRequestUpdate,

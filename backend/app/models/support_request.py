@@ -1,10 +1,16 @@
 import uuid
 from datetime import datetime
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 from sqlalchemy import String, DateTime, Text, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+
+if TYPE_CHECKING:
+    from app.models.account import Account
+    from app.models.department import Department
+    from app.models.hotel import Room
+    from app.models.service_type import ServiceType
 
 
 class SupportRequest(Base):

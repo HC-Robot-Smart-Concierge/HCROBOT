@@ -1,10 +1,17 @@
 import uuid
 from datetime import datetime
-from typing import Optional, List, Dict, Any
+from typing import TYPE_CHECKING, Optional, List, Dict, Any
 from sqlalchemy import String, Integer, DateTime, Text, JSON, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+
+if TYPE_CHECKING:
+    from app.models.account import Account
+    from app.models.chat_session import ChatSession
+    from app.models.robot import Robot
+    from app.models.schedule import Schedule
+    from app.models.workflow import RobotWorkflow
 
 
 class Job(Base):

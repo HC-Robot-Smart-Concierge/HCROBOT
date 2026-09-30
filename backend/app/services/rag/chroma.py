@@ -20,9 +20,26 @@ def get_chroma_client() -> chromadb.PersistentClient:
 
 
 def get_concierge_collection(collection_name: str = "concierge_kb"):
-    """Gets or creates the Concierge RAG Knowledge Base collection."""
+    """Gets or creates the Concierge RAG Knowledge Base collection with auto-healing against corrupted HNSW segments."""
     client = get_chroma_client()
-    return client.get_or_create_collection(
-        name=collection_name,
-        metadata={"description": "Hotel Concierge Knowledge Base Vector Store"}
-    )
+    try:
+        col = client.get_or_create_collection(
+            name=collection_name,
+            metadata={"description": "Hotel Concierge Knowledge Base Vector Store"}
+        )
+        # Verify collection readability
+        col.count()
+        return col
+    except Exception as e:
+        err_msg = str(e).lower()
+        if "hnsw" in err_msg or "corrupt" in err_msg or "segment reader" in err_msg:
+            # Auto-healing: Remove corrupted collection and recreate freshly
+            try:
+                client.delete_collection(collection_name)
+            except Exception:
+                pass
+            return client.get_or_create_collection(
+                name=collection_name,
+                metadata={"description": "Hotel Concierge Knowledge Base Vector Store"}
+            )
+        raise e

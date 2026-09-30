@@ -141,6 +141,8 @@ class ObsidianRAGService:
                 logger.error(f"Lỗi khi đọc file Obsidian {md_file}: {e}")
 
         if all_ids:
+            from app.services.rag.chroma import get_chroma_client
+            client = get_chroma_client()
             collection = get_concierge_collection(collection_name)
             
             # Xóa các tài liệu cũ trong collection để đảm bảo khi xóa file .md trên Obsidian thì ChromaDB cũng sạch
@@ -149,7 +151,15 @@ class ObsidianRAGService:
                 if existing and existing.get("ids") and len(existing["ids"]) > 0:
                     collection.delete(ids=existing["ids"])
             except Exception as e:
-                logger.warning(f"Không thể dọn dẹp tài liệu cũ trước khi sync: {e}")
+                logger.warning(f"Không thể dọn dẹp tài liệu cũ trước khi sync ({e}), tiến hành khởi tạo lại collection sạch...")
+                try:
+                    client.delete_collection(collection_name)
+                    collection = client.create_collection(
+                        name=collection_name,
+                        metadata={"description": "Hotel Concierge Knowledge Base Vector Store"}
+                    )
+                except Exception as inner_e:
+                    logger.error(f"Khởi tạo lại collection thất bại: {inner_e}")
 
             collection.upsert(
                 ids=all_ids,

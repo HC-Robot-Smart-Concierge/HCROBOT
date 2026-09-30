@@ -37,6 +37,10 @@ class RoomServiceOrder(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    @property
+    def order_number(self) -> str:
+        return self.id.replace("ORD-", "") if self.id else "101"
+
     # Relationships
     # TODO (Phase sau): Kích hoạt quan hệ khi DB đã có các foreign key trên
     # room: Mapped[Optional["Room"]] = relationship("Room", back_populates="room_service_orders")

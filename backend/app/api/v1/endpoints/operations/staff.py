@@ -50,10 +50,11 @@ async def list_departments(
 
     ### Các bộ phận chuẩn trong hệ thống:
     - **DEP-HOUSEKEEPING**: Bộ phận Buồng phòng & Tiện ích vệ sinh phòng
-    - **DEP-BELL**: Bộ phận Tiền sảnh, Chuông hành lý & Concierge
+    - **DEP-BELL**: Bộ phận Tiền sảnh, Chuông hành lý & Bellman
     - **DEP-TAXI**: Bộ phận Điều phối Taxi & Đưa đón di chuyển
     - **DEP-MAINTENANCE**: Bộ phận Kỹ thuật, Bảo trì điện nước & Điều hòa
-    - **DEP-RECEPTION**: Bộ phận Lễ tân & Đón tiếp khách hàng
+    - **DEP-RECEPTION**: Bộ phận Lễ tân & Đặt phòng (Front Desk & Room Booking)
+    - **DEP-CONCIERGE**: Bộ phận Trợ lý Concierge, Live Call & Tổng đài hỗ trợ
     - **DEP-FB**: Bộ phận Ẩm thực & Dịch vụ Room Service
 
     ### Tham số đầu vào:
@@ -162,7 +163,8 @@ async def list_service_types(
     - **ST-HOUSEKEEPING** (`HOUSEKEEPING`): Dịch vụ Buồng phòng & Đồ dùng -> Thuộc `DEP-HOUSEKEEPING`
     - **ST-BELL** (`BELL_SERVICE`): Dịch vụ Bellman & Vận chuyển hành lý -> Thuộc `DEP-BELL`
     - **ST-MAINTENANCE** (`MAINTENANCE`): Dịch vụ Kỹ thuật, Điện nước & Điều hòa -> Thuộc `DEP-MAINTENANCE`
-    - **ST-RECEPTION** (`RECEPTION`): Dịch vụ Lễ tân, Check-in/out & Tư vấn -> Thuộc `DEP-RECEPTION`
+    - **ST-RECEPTION** (`RECEPTION`): Dịch vụ Lễ tân & Đặt phòng -> Thuộc `DEP-RECEPTION`
+    - **ST-CONCIERGE** (`CONCIERGE`): Dịch vụ Concierge & Live Call Hỗ trợ -> Thuộc `DEP-CONCIERGE`
     - **ST-ROOM-SERVICE** (`ROOM_SERVICE`): Dịch vụ Ẩm thực & Phục vụ phòng -> Thuộc `DEP-FB`
     """
     query = select(ServiceType).options(selectinload(ServiceType.department))
@@ -314,6 +316,7 @@ async def create_staff(
        - Nếu chỉ truyền `department` (vd: `Housekeeping`): Tự động tìm kiếm phòng ban tương ứng trong database để gán `department_id`.
     3. **Tự động gán Dashboard mặc định**:
        - `DEP-RECEPTION` -> `reception`
+       - `DEP-CONCIERGE` -> `concierge`
        - `DEP-FB` -> `room_service`
        - `DEP-HOUSEKEEPING` -> `housekeeping`
        - `DEP-BELL` hoặc `DEP-TAXI` -> `bell_services`
@@ -340,7 +343,7 @@ async def create_staff(
         if not dept:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Mã phòng ban (department_id) '{resolved_dept_id}' không tồn tại. Vui lòng chọn trong: DEP-HOUSEKEEPING, DEP-BELL, DEP-TAXI, DEP-MAINTENANCE, DEP-RECEPTION, DEP-FB.",
+                detail=f"Mã phòng ban (department_id) '{resolved_dept_id}' không tồn tại. Vui lòng chọn trong: DEP-HOUSEKEEPING, DEP-BELL, DEP-TAXI, DEP-MAINTENANCE, DEP-RECEPTION, DEP-CONCIERGE, DEP-FB.",
             )
         resolved_dept_name = dept.name
     elif staff_in.department:
@@ -362,6 +365,7 @@ async def create_staff(
     # 2. Tự động sinh dashboard phù hợp
     dashboard_map = {
         "DEP-RECEPTION": "reception",
+        "DEP-CONCIERGE": "concierge",
         "DEP-FB": "room_service",
         "DEP-HOUSEKEEPING": "housekeeping",
         "DEP-BELL": "bell_services",

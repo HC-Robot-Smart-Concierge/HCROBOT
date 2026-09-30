@@ -23,7 +23,7 @@ from app.models import (
 # TAG CONSTANTS FOR SWAGGER UI DOCS
 # =====================================================================
 
-TAG_REC = ["05. Bộ phận Lễ tân & Tiền sảnh (Reception Operations)"]
+TAG_REC = ["05. Bộ phận Lễ tân & Đặt phòng (Front Desk & Reception)"]
 TAG_FB = ["06. Bộ phận Phục vụ phòng (F&B / Room Service)"]
 TAG_HK = ["07. Bộ phận Buồng phòng (Housekeeping Operations)"]
 TAG_BELL = ["08. Bộ phận Hành lý & Tiền sảnh (Bell Services)"]
@@ -33,6 +33,8 @@ TAG_OPS = ["11. Quản lý Chung & Điều phối Nghiệp vụ (Operations & Di
 TAG_ADMIN = ["12. Trung tâm Điều hành & Quản trị (Admin & Human Support)"]
 TAG_NOTIF = ["13. Thông báo Hệ thống (Notifications)"]
 TAG_STAFF = ["15. Quản lý Phòng ban & Nhân sự (Departments & Staff)"]
+TAG_TAXI = ["16. Bộ phận Đặt xe & Vận chuyển (Taxi & Transportation)"]
+TAG_CONCIERGE = ["17. Bộ phận Trợ lý Concierge & Live Call (Concierge & Live Support)"]
 
 
 async def create_department_notification(
@@ -101,6 +103,8 @@ async def _fetch_all_raw_requests(db: AsyncSession) -> List[Dict[str, Any]]:
                 dept_label = "Taxi"
             elif "MAINTENANCE" in dep_code:
                 dept_label = "Maintenance"
+            elif "CONCIERGE" in dep_code:
+                dept_label = "Concierge"
             elif "RECEPTION" in dep_code:
                 dept_label = "Reception"
             elif "FB" in dep_code or "ROOM_SERVICE" in dep_code:
@@ -180,98 +184,7 @@ async def _fetch_all_raw_requests(db: AsyncSession) -> List[Dict[str, Any]]:
     except Exception:
         pass
 
-    # 4. Backward-compatibility: Legacy operational tables (if any rows exist)
-    try:
-        hk_res = await db.execute(select(HousekeepingRequest).order_by(desc(HousekeepingRequest.created_at)))
-        for h in hk_res.scalars().all():
-            unified.append({
-                "id": f"REQ-{h.ticket_code}",
-                "raw_id": h.id,
-                "department": "Housekeeping",
-                "table_type": "housekeeping",
-                "title": h.title,
-                "location": f"ROOM {h.room_number}" if not str(h.room_number).upper().startswith("ROOM") else h.room_number,
-                "guestName": h.guest_name or "Guest",
-                "priority": "NORMAL",
-                "status": h.status,
-                "time": h.time_label,
-                "assignedTo": h.assigned_staff_name,
-                "assigned_robot": None,
-                "notes": h.description,
-                "source": h.source or "HCRobot",
-                "created_at": h.created_at,
-            })
-    except Exception:
-        pass
 
-    try:
-        bell_res = await db.execute(select(BellRequest).order_by(desc(BellRequest.created_at)))
-        for b in bell_res.scalars().all():
-            unified.append({
-                "id": f"REQ-{b.ticket_code}",
-                "raw_id": b.id,
-                "department": "Bell Services",
-                "table_type": "bell",
-                "title": b.title,
-                "location": b.location,
-                "guestName": b.guest_name or b.reporter or "Guest",
-                "priority": "NORMAL",
-                "status": b.status,
-                "time": "Today",
-                "assignedTo": b.assigned_to,
-                "assigned_robot": b.assigned_robot_id,
-                "notes": b.description,
-                "source": "Front Desk / Robot",
-                "created_at": b.created_at,
-            })
-    except Exception:
-        pass
-
-    try:
-        maint_res = await db.execute(select(MaintenanceRequest).order_by(desc(MaintenanceRequest.created_at)))
-        for m in maint_res.scalars().all():
-            unified.append({
-                "id": f"REQ-{m.ticket_code}",
-                "raw_id": m.id,
-                "department": "Maintenance",
-                "table_type": "maintenance",
-                "title": m.title,
-                "location": m.location,
-                "guestName": "Guest / Staff Reported",
-                "priority": "NORMAL",
-                "status": m.status,
-                "time": m.reported_time_label,
-                "assignedTo": m.assigned_to,
-                "assigned_robot": None,
-                "notes": m.description,
-                "source": m.source or "HCRobot",
-                "created_at": m.created_at,
-            })
-    except Exception:
-        pass
-
-    try:
-        reception_res = await db.execute(select(ReceptionRequest).order_by(desc(ReceptionRequest.created_at)))
-        for r in reception_res.scalars().all():
-            unified.append({
-                "id": r.ticket_code if str(r.ticket_code).startswith("REQ-") else f"REQ-{r.ticket_code}",
-                "raw_id": r.id,
-                "department": "Reception",
-                "table_type": "reception",
-                "title": r.title,
-                "location": r.location,
-                "guestName": r.guest_name or "Guest",
-                "priority": "NORMAL",
-                "status": r.status,
-                "time": r.created_label,
-                "assignedTo": r.assigned_to,
-                "assigned_robot": None,
-                "notes": r.description,
-                "source": "Front Desk",
-                "created_at": r.created_at,
-            })
-    except Exception:
-        pass
 
     # Sort all by created_at descending (latest first)
     unified.sort(key=lambda x: x.get("created_at") or datetime.min, reverse=True)

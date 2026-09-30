@@ -112,8 +112,16 @@ class StaffUpdate(BaseModel):
 
 
 # ---------------------------------------------------------
-# Reception / Front Desk Schemas
+# Reception / Front Desk Schemas (Lễ tân & Đặt phòng)
 # ---------------------------------------------------------
+class ReceptionRequestCreate(BaseModel):
+    title: str = Field(..., description="Tiêu đề yêu cầu lễ tân (vd: 'Hỗ trợ đặt phòng Suite', 'Thủ tục gia hạn lưu trú')", json_schema_extra={"example": "Hỗ trợ đặt phòng Executive Suite"})
+    room_number: Optional[str] = Field("Lobby Desk", description="Số phòng hoặc vị trí tiếp nhận", json_schema_extra={"example": "Lobby Desk"})
+    guest_name: Optional[str] = Field("Hotel Guest", description="Tên khách hàng", json_schema_extra={"example": "Nguyễn Văn An"})
+    description: Optional[str] = Field(None, description="Chi tiết yêu cầu lễ tân / đặt phòng", json_schema_extra={"example": "Khách muốn đặt thêm 1 phòng hướng biển 2 đêm từ ngày mai"})
+    priority: Optional[str] = Field("NORMAL", description="Độ ưu tiên: 'LOW', 'NORMAL', 'HIGH', 'URGENT'", json_schema_extra={"example": "NORMAL"})
+
+
 class ReceptionRequestUpdate(BaseModel):
     status: Optional[str] = None
     assistance_status: Optional[str] = None
@@ -134,7 +142,7 @@ class ReceptionRequestResponse(BaseModel):
     guest_tier: str
     guest_stay_details: str
     status: str
-    description: str
+    description: Optional[str] = ""
     attached_media: List[Dict[str, Any]]
     transcript: List[Dict[str, Any]]
     assistance_status: str
@@ -150,6 +158,58 @@ class ReceptionRequestResponse(BaseModel):
 
 class ReceptionDashboardResponse(BaseModel):
     current_request: Optional[ReceptionRequestResponse] = None
+    recent_requests: List[ReceptionRequestResponse] = []
+
+
+# ---------------------------------------------------------
+# Concierge & Live Support Schemas (Trợ lý Concierge & Live Call)
+# ---------------------------------------------------------
+class ConciergeLiveRequestCreate(BaseModel):
+    title: str = Field("Cuộc gọi video hỗ trợ trực tiếp từ Robot", description="Tiêu đề cuộc gọi trợ giúp Concierge", json_schema_extra={"example": "Yêu cầu video call hỗ trợ khách từ Robot Kiosk Sảnh"})
+    room_number: Optional[str] = Field("Main Lobby Kiosk", description="Vị trí robot / phòng khách", json_schema_extra={"example": "Main Lobby Kiosk"})
+    guest_name: Optional[str] = Field("Hotel Guest", description="Tên khách hàng", json_schema_extra={"example": "Mr. A. Sterling"})
+    description: Optional[str] = Field(None, description="Lý do can thiệp hoặc câu hỏi chưa giải đáp được", json_schema_extra={"example": "Khách cần hướng dẫn chi tiết quy trình thuê xe riêng sang trọng"})
+    assistance_status: Optional[str] = Field("Connected", description="Trạng thái kết nối video: 'Connected', 'Pending', 'Ended'", json_schema_extra={"example": "Connected"})
+    transcript: Optional[List[Dict[str, Any]]] = Field(default_factory=list, description="Đoạn hội thoại đã diễn ra giữa Robot và khách")
+
+
+class ConciergeLiveRequestUpdate(BaseModel):
+    status: Optional[str] = None
+    assistance_status: Optional[str] = None
+    assigned_to: Optional[str] = None
+    assigned_role: Optional[str] = None
+    note: Optional[str] = None
+    escalated: Optional[bool] = None
+
+
+class ConciergeLiveRequestResponse(BaseModel):
+    id: str
+    ticket_code: str
+    title: str
+    created_label: str
+    location: str
+    location_details: Dict[str, Any]
+    guest_name: str
+    guest_tier: str
+    guest_stay_details: str
+    status: str
+    description: Optional[str] = ""
+    attached_media: List[Dict[str, Any]]
+    transcript: List[Dict[str, Any]]
+    assistance_status: str
+    assigned_to: Optional[str]
+    assigned_role: Optional[str]
+    notes: List[Dict[str, Any]]
+    activity_log: List[Dict[str, Any]]
+    escalated: bool
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ConciergeDashboardResponse(BaseModel):
+    current_request: Optional[ConciergeLiveRequestResponse] = None
+    active_sessions_count: int = 0
 
 
 # ---------------------------------------------------------
@@ -523,5 +583,51 @@ class NotificationResponse(BaseModel):
     updated_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# ---------------------------------------------------------
+# Taxi & Transportation Schemas
+# ---------------------------------------------------------
+class TaxiRequestCreate(BaseModel):
+    guest_name: str = Field("Hotel Guest", description="Tên khách hàng yêu cầu xe", json_schema_extra={"example": "Mr. David Miller"})
+    pickup_location: str = Field("Main Lobby", description="Điểm đón khách (vd: 'Main Lobby', 'Cổng trước', 'Room 502')", json_schema_extra={"example": "Main Lobby & Front Entrance"})
+    destination: str = Field(..., description="Điểm đến (vd: 'Sân bay Quốc tế Đà Nẵng', 'Bà Nà Hills')", json_schema_extra={"example": "Sân bay Quốc tế Đà Nẵng (DAD)"})
+    pickup_time: Optional[str] = Field("Immediate", description="Thời gian đón (vd: 'Immediate', '14:30 Today')", json_schema_extra={"example": "Immediate (Càng sớm càng tốt)"})
+    party_size: int = Field(2, description="Số lượng hành khách", json_schema_extra={"example": 2})
+    vehicle_type: str = Field("4-Seater Sedan", description="Loại phương tiện mong muốn: '4-Seater Sedan', '7-Seater SUV', 'Luxury Van'", json_schema_extra={"example": "4-Seater Sedan"})
+    description: Optional[str] = Field(None, description="Ghi chú thêm về hành lý hoặc yêu cầu đặc biệt", json_schema_extra={"example": "Có 2 vali lớn, cần cốp xe rộng"})
+
+
+class TaxiRequestStatusUpdate(BaseModel):
+    status: str = Field(..., description="Trạng thái chuyến xe: 'Pending', 'Driver Assigned', 'On The Way', 'Completed', 'Cancelled'", json_schema_extra={"example": "Driver Assigned"})
+    assigned_driver: Optional[str] = Field(None, description="Tên tài xế phụ trách", json_schema_extra={"example": "Nguyễn Văn Hùng"})
+    license_plate: Optional[str] = Field(None, description="Biển số xe taxi", json_schema_extra={"example": "43A-888.99"})
+    note: Optional[str] = Field(None, description="Ghi chú cập nhật", json_schema_extra={"example": "Xe đã đến sảnh chính đón khách"})
+
+
+class TaxiRequestResponse(BaseModel):
+    id: str = Field(..., description="Mã ID duy nhất của yêu cầu")
+    ticket_code: str = Field(..., description="Mã vé / Mã chuyến xe (vd: 'TX-102')")
+    guest_name: str = Field(..., description="Tên khách hàng")
+    pickup_location: str = Field(..., description="Điểm đón khách")
+    destination: str = Field(..., description="Điểm đến")
+    pickup_time: str = Field(..., description="Thời gian đón")
+    party_size: int = Field(..., description="Số lượng khách")
+    vehicle_type: str = Field(..., description="Loại xe")
+    status: str = Field(..., description="Trạng thái chuyến xe")
+    assigned_driver: Optional[str] = Field(None, description="Tài xế phân công")
+    license_plate: Optional[str] = Field(None, description="Biển số xe")
+    notes: Optional[str] = Field(None, description="Ghi chú chuyến đi")
+    created_at: datetime = Field(..., description="Thời gian tạo yêu cầu")
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TaxiDashboardResponse(BaseModel):
+    kpis: Dict[str, Any] = Field(..., description="Các chỉ số KPI hoạt động vận chuyển")
+    requests: List[TaxiRequestResponse] = Field(default_factory=list, description="Danh sách các cuốc xe đang điều phối")
+    fleet_status: List[Dict[str, Any]] = Field(default_factory=list, description="Trạng thái đội xe đối tác và xe khách sạn")
+    announcement: Dict[str, Any] = Field(default_factory=dict, description="Thông báo tình trạng giao thông / điều phối")
+
 
 

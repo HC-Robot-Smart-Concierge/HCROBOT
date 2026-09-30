@@ -40,3 +40,104 @@ class SupportRequest(Base):
     department: Mapped[Optional["Department"]] = relationship("Department")
     assigned_account: Mapped[Optional["Account"]] = relationship("Account")
     room: Mapped[Optional["Room"]] = relationship("Room", back_populates="support_requests")
+
+    # Backward Compatibility Properties for Legacy Dashboard Schemas
+    @property
+    def location(self) -> str:
+        return self.room_number or "Main Hotel"
+
+    @property
+    def assigned_to(self) -> Optional[str]:
+        return self.assigned_staff_name
+
+    @property
+    def time_label(self) -> str:
+        return self.created_at.strftime("%I:%M %p") if self.created_at else "Just now"
+
+    @property
+    def reporter(self) -> Optional[str]:
+        return self.source or "Staff / Guest"
+
+    @property
+    def request_type(self) -> str:
+        if self.service_type_id:
+            st = str(self.service_type_id).upper()
+            if "BELL" in st:
+                return "luggage"
+            elif "HOUSEKEEPING" in st:
+                return "cleaning"
+            elif "TAXI" in st:
+                return "taxi"
+            elif "MAINTENANCE" in st:
+                return "repair"
+            elif "CONCIERGE" in st:
+                return "concierge"
+            elif "RECEPTION" in st:
+                return "booking"
+        return "general"
+
+    @property
+    def category(self) -> str:
+        if self.service_type_id:
+            st = str(self.service_type_id).upper()
+            if "BELL" in st:
+                return "Bell Services"
+            elif "HOUSEKEEPING" in st:
+                return "Housekeeping"
+            elif "TAXI" in st:
+                return "Taxi & Transportation"
+            elif "MAINTENANCE" in st:
+                return "Maintenance"
+            elif "CONCIERGE" in st:
+                return "Concierge & Live Support"
+            elif "RECEPTION" in st:
+                return "Front Desk & Reception"
+        return "General"
+
+    @property
+    def reported_time_label(self) -> str:
+        return self.time_label
+
+    @property
+    def created_label(self) -> str:
+        return self.time_label
+
+    @property
+    def location_details(self) -> dict:
+        return {"room": self.room_number or "Lobby", "floor": "Floor 1"}
+
+    @property
+    def guest_tier(self) -> str:
+        return "Standard"
+
+    @property
+    def guest_stay_details(self) -> str:
+        return f"Room {self.room_number or 'Lobby'}"
+
+    @property
+    def attached_media(self) -> list:
+        return []
+
+    @property
+    def transcript(self) -> list:
+        return []
+
+    @property
+    def assistance_status(self) -> str:
+        return "Idle"
+
+    @property
+    def assigned_role(self) -> Optional[str]:
+        return "Staff"
+
+    @property
+    def notes(self) -> list:
+        return []
+
+    @property
+    def activity_log(self) -> list:
+        return []
+
+    @property
+    def escalated(self) -> bool:
+        return False

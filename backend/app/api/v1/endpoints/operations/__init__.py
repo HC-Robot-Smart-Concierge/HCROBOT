@@ -11,6 +11,8 @@ from .shared import (
     TAG_ADMIN,
     TAG_NOTIF,
     TAG_STAFF,
+    TAG_TAXI,
+    TAG_CONCIERGE,
     create_department_notification,
     _fetch_all_raw_requests,
 )
@@ -24,6 +26,8 @@ from .admin_ops import router as admin_ops_router
 from .staff import router as staff_router
 from .notifications import router as notifications_router
 from .robot_control import router as robot_control_router
+from .taxi import router as taxi_router
+from .concierge import router as concierge_router
 
 router = APIRouter()
 
@@ -37,6 +41,8 @@ router.include_router(admin_ops_router)
 router.include_router(staff_router)
 router.include_router(notifications_router)
 router.include_router(robot_control_router)
+router.include_router(taxi_router)
+router.include_router(concierge_router)
 
 __all__ = [
     "router",
@@ -52,4 +58,6 @@ __all__ = [
     "TAG_ADMIN",
     "TAG_NOTIF",
     "TAG_STAFF",
+    "TAG_TAXI",
+    "TAG_CONCIERGE",
 ]

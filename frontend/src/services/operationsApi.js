@@ -62,6 +62,17 @@ export const updateReceptionRequest = async (requestId, updateData) => {
   );
 };
 
+export const createReceptionRequest = async (requestData) => {
+  return await fetchWithFallback(
+    `${BASE_URL}/reception/requests`,
+    {
+      method: 'POST',
+      body: JSON.stringify(requestData),
+    },
+    { id: `REC-${Date.now()}`, ...requestData, status: 'Pending' }
+  );
+};
+
 // ---------------------------------------------------------
 // 1. Room Service / F&B
 // ---------------------------------------------------------
@@ -449,6 +460,30 @@ export const sendRobotControlCommand = async (command, speed = 60, targetIp = '1
     },
     { success: true, command }
   );
+};
+
+// ---------------------------------------------------------
+// 11. Departments & Service Types Directory
+// ---------------------------------------------------------
+export const fetchDepartments = async () => {
+  return await fetchWithFallback(`${BASE_URL}/departments`, {}, []);
+};
+
+export const fetchDepartmentDetail = async (departmentId) => {
+  return await fetchWithFallback(
+    `${BASE_URL}/departments/${encodeURIComponent(departmentId)}`,
+    {},
+    null
+  );
+};
+
+export const fetchServiceTypes = async (departmentId = null) => {
+  const query = departmentId ? `?department_id=${encodeURIComponent(departmentId)}` : '';
+  return await fetchWithFallback(`${BASE_URL}/service-types${query}`, {}, []);
+};
+
+export const fetchStaffDepartments = async () => {
+  return await fetchWithFallback(`${BASE_URL}/staff/departments`, {}, []);
 };
 
 

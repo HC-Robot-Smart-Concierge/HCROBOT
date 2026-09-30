@@ -1,0 +1,974 @@
+[
+  {
+    "method": "GET",
+    "path": "/",
+    "tags": [
+      "00. Trạng thái Máy chủ (System Health)"
+    ],
+    "summary": "Kiểm tra trạng thái máy chủ",
+    "operationId": "health_check__get"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/ai/chat",
+    "tags": [
+      "02. Trợ lý Giọng nói AI (Ollama Voice Engine)"
+    ],
+    "summary": "Sinh câu trả lời hội thoại cho Concierge Robot",
+    "operationId": "chat_with_robot_api_v1_ai_chat_post"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/ai/feedback",
+    "tags": [
+      "02. Trợ lý Giọng nói AI (Ollama Voice Engine)"
+    ],
+    "summary": "Xem danh sách phản hồi và đánh giá của khách hàng",
+    "operationId": "get_all_feedbacks_api_v1_ai_feedback_get"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/ai/feedback",
+    "tags": [
+      "02. Trợ lý Giọng nói AI (Ollama Voice Engine)"
+    ],
+    "summary": "Gửi phản hồi và đánh giá dịch vụ từ khách",
+    "operationId": "submit_feedback_api_v1_ai_feedback_post"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/ai/intent",
+    "tags": [
+      "02. Trợ lý Giọng nói AI (Ollama Voice Engine)"
+    ],
+    "summary": "Phân tích ý định & bóc tách JSON yêu cầu dịch vụ (kèm Slot-Filling Số Phòng)",
+    "operationId": "extract_service_intent_api_v1_ai_intent_post"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/ai/session/flush",
+    "tags": [
+      "02. Trợ lý Giọng nói AI (Ollama Voice Engine)"
+    ],
+    "summary": "Đóng gói và lưu toàn bộ phiên hội thoại vào CSDL (End-of-Session Bulk Persistence)",
+    "operationId": "flush_session_endpoint_api_v1_ai_session_flush_post"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/ai/session/reset",
+    "tags": [
+      "02. Trợ lý Giọng nói AI (Ollama Voice Engine)"
+    ],
+    "summary": "Reset bộ nhớ phiên & Đóng gói lưu CSDL một lần duy nhất",
+    "operationId": "reset_session_memory_api_v1_ai_session_reset_post"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/ai/sessions",
+    "tags": [
+      "02. Trợ lý Giọng nói AI (Ollama Voice Engine)"
+    ],
+    "summary": "Get All Chat Sessions",
+    "operationId": "get_all_chat_sessions_api_v1_ai_sessions_get"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/ai/sessions/{session_id}/messages",
+    "tags": [
+      "02. Trợ lý Giọng nói AI (Ollama Voice Engine)"
+    ],
+    "summary": "Get Session Messages",
+    "operationId": "get_session_messages_api_v1_ai_sessions__session_id__messages_get"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/ai/tts",
+    "tags": [
+      "02. Trợ lý Giọng nói AI (Ollama Voice Engine)"
+    ],
+    "summary": "Chuyển văn bản thành âm thanh thoại MP3 (EdgeTTS / ElevenLabs / OpenAI TTS)",
+    "operationId": "synthesize_voice_speech_api_v1_ai_tts_post"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/auth/change-password",
+    "tags": [
+      "01. Xác thực Hệ thống & JWT (Authentication)"
+    ],
+    "summary": "Change Password",
+    "operationId": "change_password_api_v1_auth_change_password_post"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/auth/login",
+    "tags": [
+      "01. Xác thực Hệ thống & JWT (Authentication)"
+    ],
+    "summary": "Login",
+    "operationId": "login_api_v1_auth_login_post"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/auth/me",
+    "tags": [
+      "01. Xác thực Hệ thống & JWT (Authentication)"
+    ],
+    "summary": "Get Current User",
+    "operationId": "get_current_user_api_v1_auth_me_get"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/v1/auth/profile",
+    "tags": [
+      "01. Xác thực Hệ thống & JWT (Authentication)"
+    ],
+    "summary": "Update Profile",
+    "operationId": "update_profile_api_v1_auth_profile_patch"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/logs",
+    "tags": [
+      "14. Nhật ký Vận hành & Audit Trail (Logging & Trace)"
+    ],
+    "summary": "Get Logs",
+    "operationId": "get_logs_api_v1_logs_get"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/logs/audit-logs",
+    "tags": [
+      "14. Nhật ký Vận hành & Audit Trail (Logging & Trace)"
+    ],
+    "summary": "Get Audit Trail",
+    "operationId": "get_audit_trail_api_v1_logs_audit_logs_get"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/logs/export",
+    "tags": [
+      "14. Nhật ký Vận hành & Audit Trail (Logging & Trace)"
+    ],
+    "summary": "Export Logs",
+    "operationId": "export_logs_api_v1_logs_export_get"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/logs/statistics",
+    "tags": [
+      "14. Nhật ký Vận hành & Audit Trail (Logging & Trace)"
+    ],
+    "summary": "Get Statistics",
+    "operationId": "get_statistics_api_v1_logs_statistics_get"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/logs/trace/{correlation_id}",
+    "tags": [
+      "14. Nhật ký Vận hành & Audit Trail (Logging & Trace)"
+    ],
+    "summary": "Get Trace",
+    "operationId": "get_trace_api_v1_logs_trace__correlation_id__get"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/map/connect_lidar",
+    "tags": [
+      "03. Định vị & Bản đồ LiDAR SLAM (Robot Navigation)"
+    ],
+    "summary": "Kích hoạt kết nối với cổng COM9 của RPLiDAR",
+    "operationId": "connect_lidar_hardware_api_v1_map_connect_lidar_post"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/map/current",
+    "tags": [
+      "03. Định vị & Bản đồ LiDAR SLAM (Robot Navigation)"
+    ],
+    "summary": "Lấy dữ liệu bản đồ SLAM Occupancy Grid 2D thực tế",
+    "operationId": "get_current_map_api_v1_map_current_get"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/map/lidar_status",
+    "tags": [
+      "03. Định vị & Bản đồ LiDAR SLAM (Robot Navigation)"
+    ],
+    "summary": "Kiểm tra trạng thái phần cứng RPLiDAR COM9 thực tế",
+    "operationId": "get_lidar_status_api_v1_map_lidar_status_get"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/map/navigate",
+    "tags": [
+      "03. Định vị & Bản đồ LiDAR SLAM (Robot Navigation)"
+    ],
+    "summary": "Gửi mục tiêu di chuyển Robot",
+    "operationId": "navigate_to_target_api_v1_map_navigate_post"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/map/reset_map",
+    "tags": [
+      "03. Định vị & Bản đồ LiDAR SLAM (Robot Navigation)"
+    ],
+    "summary": "Xóa trắng bản đồ 2D để tiến hành quét SLAM lại từ đầu",
+    "operationId": "reset_map_api_v1_map_reset_map_post"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/map/waypoints",
+    "tags": [
+      "03. Định vị & Bản đồ LiDAR SLAM (Robot Navigation)"
+    ],
+    "summary": "Lấy danh sách các điểm Waypoints / Endpoints",
+    "operationId": "get_waypoints_api_v1_map_waypoints_get"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/map/waypoints",
+    "tags": [
+      "03. Định vị & Bản đồ LiDAR SLAM (Robot Navigation)"
+    ],
+    "summary": "Tạo mới hoặc cập nhật tọa độ Waypoint / Endpoint",
+    "operationId": "save_waypoint_api_v1_map_waypoints_post"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/map/waypoints/{waypoint_id}",
+    "tags": [
+      "03. Định vị & Bản đồ LiDAR SLAM (Robot Navigation)"
+    ],
+    "summary": "Xóa điểm Waypoint / Endpoint",
+    "operationId": "delete_waypoint_api_v1_map_waypoints__waypoint_id__delete"
+  },
+  {
+    "method": "PUT",
+    "path": "/api/v1/map/waypoints/{waypoint_id}",
+    "tags": [
+      "03. Định vị & Bản đồ LiDAR SLAM (Robot Navigation)"
+    ],
+    "summary": "Chỉnh sửa Endpoint đã có",
+    "operationId": "update_waypoint_api_v1_map_waypoints__waypoint_id__put"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/map/zones",
+    "tags": [
+      "03. Định vị & Bản đồ LiDAR SLAM (Robot Navigation)"
+    ],
+    "summary": "Lấy danh sách các Vùng Chức Năng (Zones)",
+    "operationId": "get_zones_api_v1_map_zones_get"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/map/zones",
+    "tags": [
+      "03. Định vị & Bản đồ LiDAR SLAM (Robot Navigation)"
+    ],
+    "summary": "Tạo mới hoặc cập nhật Vùng Chức Năng (Zone)",
+    "operationId": "save_zone_api_v1_map_zones_post"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/map/zones/{zone_id}",
+    "tags": [
+      "03. Định vị & Bản đồ LiDAR SLAM (Robot Navigation)"
+    ],
+    "summary": "Xóa Vùng Chức Năng",
+    "operationId": "delete_zone_api_v1_map_zones__zone_id__delete"
+  },
+  {
+    "method": "PUT",
+    "path": "/api/v1/map/zones/{zone_id}",
+    "tags": [
+      "03. Định vị & Bản đồ LiDAR SLAM (Robot Navigation)"
+    ],
+    "summary": "Cập nhật Vùng Chức Năng theo ID",
+    "operationId": "update_zone_api_v1_map_zones__zone_id__put"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/admin/conversations",
+    "tags": [
+      "12. Trung tâm Điều hành & Quản trị (Admin & Human Support)"
+    ],
+    "summary": "Admin: Xem danh sách các phiên đàm thoại giọng nói Robot với khách",
+    "operationId": "get_admin_conversations_api_v1_operations_admin_conversations_get"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/admin/conversations/{session_id}",
+    "tags": [
+      "12. Trung tâm Điều hành & Quản trị (Admin & Human Support)"
+    ],
+    "summary": "Admin: Xem chi tiết toàn bộ lịch sử đàm thoại song ngữ của 1 phiên",
+    "operationId": "get_admin_conversation_detail_api_v1_operations_admin_conversations__session_id__get"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/operations/admin/dispatch",
+    "tags": [
+      "12. Trung tâm Điều hành & Quản trị (Admin & Human Support)"
+    ],
+    "summary": "Admin: Phát lệnh điều phối tạo Task mới",
+    "operationId": "admin_dispatch_task_api_v1_operations_admin_dispatch_post"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/admin/summary",
+    "tags": [
+      "12. Trung tâm Điều hành & Quản trị (Admin & Human Support)"
+    ],
+    "summary": "Admin: Thống kê số lượng ticket theo bộ phận",
+    "operationId": "get_admin_operations_summary_api_v1_operations_admin_summary_get"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/admin/tasks",
+    "tags": [
+      "12. Trung tâm Điều hành & Quản trị (Admin & Human Support)"
+    ],
+    "summary": "Admin: Danh sách tất cả các Task dịch vụ toàn khách sạn",
+    "operationId": "get_admin_tasks_api_v1_operations_admin_tasks_get"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/admin/tasks/{ticket_id}",
+    "tags": [
+      "11. Quản lý Chung & Điều phối Nghiệp vụ (Operations & Directives)"
+    ],
+    "summary": "Admin: Xem chi tiết 1 Task",
+    "operationId": "get_admin_task_detail_api_v1_operations_admin_tasks__ticket_id__get"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/v1/operations/admin/tasks/{ticket_id}",
+    "tags": [
+      "11. Quản lý Chung & Điều phối Nghiệp vụ (Operations & Directives)"
+    ],
+    "summary": "Admin: Cập nhật trạng thái và điều phối Task",
+    "operationId": "update_admin_task_api_v1_operations_admin_tasks__ticket_id__patch"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/all-requests",
+    "tags": [
+      "11. Quản lý Chung & Điều phối Nghiệp vụ (Operations & Directives)"
+    ],
+    "summary": "Legacy: Lấy tất cả request",
+    "operationId": "get_all_unified_requests_api_v1_operations_all_requests_get"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/analytics/summary",
+    "tags": [
+      "12. Trung tâm Điều hành & Quản trị (Admin & Human Support)"
+    ],
+    "summary": "Admin: Thống kê phân tích số liệu thực tế từ Database",
+    "operationId": "get_analytics_summary_api_v1_operations_analytics_summary_get"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/operations/bell-services/requests",
+    "tags": [
+      "08. Bộ phận Hành lý & Tiền sảnh (Bell Services)"
+    ],
+    "summary": "Tạo mới yêu cầu hỗ trợ hành lý / Bellman",
+    "operationId": "create_bell_request_api_v1_operations_bell_services_requests_post"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/v1/operations/bell-services/requests/{request_id}/status",
+    "tags": [
+      "08. Bộ phận Hành lý & Tiền sảnh (Bell Services)"
+    ],
+    "summary": "Cập nhật trạng thái và tiếp nhận nhiệm vụ Bellman",
+    "operationId": "update_bell_request_status_api_v1_operations_bell_services_requests__request_id__status_patch"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/operations/concierge/requests",
+    "tags": [
+      "17. Bộ phận Trợ lý Concierge & Live Call (Concierge & Live Support)"
+    ],
+    "summary": "Khởi tạo phiên hỗ trợ Live Call / Video Call từ Robot Kiosk",
+    "operationId": "create_concierge_live_request_api_v1_operations_concierge_requests_post"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/v1/operations/concierge/requests/{request_id}",
+    "tags": [
+      "17. Bộ phận Trợ lý Concierge & Live Call (Concierge & Live Support)"
+    ],
+    "summary": "Cập nhật trạng thái cuộc gọi, phân công hoặc đóng phiên Live Call Concierge",
+    "operationId": "update_concierge_request_api_v1_operations_concierge_requests__request_id__patch"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/dashboard/bell-services",
+    "tags": [
+      "08. Bộ phận Hành lý & Tiền sảnh (Bell Services)"
+    ],
+    "summary": "Dashboard vận hành bộ phận Bellman & Hành lý",
+    "operationId": "get_bell_services_dashboard_api_v1_operations_dashboard_bell_services_get"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/dashboard/concierge",
+    "tags": [
+      "17. Bộ phận Trợ lý Concierge & Live Call (Concierge & Live Support)"
+    ],
+    "summary": "Dashboard Concierge: Phiên hỗ trợ Live Call và trợ giúp khách hàng mới nhất",
+    "operationId": "get_concierge_dashboard_api_v1_operations_dashboard_concierge_get"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/dashboard/housekeeping",
+    "tags": [
+      "07. Bộ phận Buồng phòng (Housekeeping Operations)"
+    ],
+    "summary": "Dashboard vận hành bộ phận Buồng phòng",
+    "operationId": "get_housekeeping_dashboard_api_v1_operations_dashboard_housekeeping_get"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/dashboard/maintenance",
+    "tags": [
+      "09. Bộ phận Kỹ thuật & Bảo trì (Facility Maintenance)"
+    ],
+    "summary": "Dashboard vận hành bộ phận Kỹ thuật & Bảo trì",
+    "operationId": "get_maintenance_dashboard_api_v1_operations_dashboard_maintenance_get"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/dashboard/reception",
+    "tags": [
+      "05. Bộ phận Lễ tân & Đặt phòng (Front Desk & Reception)"
+    ],
+    "summary": "Dashboard Lễ tân: Danh sách yêu cầu đặt phòng và hỗ trợ tiền sảnh",
+    "operationId": "get_reception_dashboard_api_v1_operations_dashboard_reception_get"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/dashboard/restaurant",
+    "tags": [
+      "10. Bộ phận Nhà hàng (Restaurant - Đặt bàn & Đặt món)"
+    ],
+    "summary": "Get Restaurant Dashboard",
+    "operationId": "get_restaurant_dashboard_api_v1_operations_dashboard_restaurant_get"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/dashboard/room-service",
+    "tags": [
+      "06. Bộ phận Phục vụ phòng (F&B / Room Service)"
+    ],
+    "summary": "Get Room Service Dashboard",
+    "operationId": "get_room_service_dashboard_api_v1_operations_dashboard_room_service_get"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/dashboard/taxi",
+    "tags": [
+      "16. Bộ phận Đặt xe & Vận chuyển (Taxi & Transportation)"
+    ],
+    "summary": "Dashboard điều phối Đặt xe & Vận chuyển (Taxi & Transportation)",
+    "operationId": "get_taxi_dashboard_api_v1_operations_dashboard_taxi_get"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/departments",
+    "tags": [
+      "15. Quản lý Phòng ban & Nhân sự (Departments & Staff)"
+    ],
+    "summary": "Danh sách các phòng ban khách sạn",
+    "operationId": "list_departments_api_v1_operations_departments_get"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/departments/{department_id}",
+    "tags": [
+      "15. Quản lý Phòng ban & Nhân sự (Departments & Staff)"
+    ],
+    "summary": "Chi tiết phòng ban kèm danh sách dịch vụ và nhân sự trực thuộc",
+    "operationId": "get_department_detail_api_v1_operations_departments__department_id__get"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/operations/directives",
+    "tags": [
+      "11. Quản lý Chung & Điều phối Nghiệp vụ (Operations & Directives)"
+    ],
+    "summary": "Phát chỉ thị điều hành quản lý liên bộ phận",
+    "operationId": "create_operational_directive_api_v1_operations_directives_post"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/fleet",
+    "tags": [
+      "11. Quản lý Chung & Điều phối Nghiệp vụ (Operations & Directives)"
+    ],
+    "summary": "Danh sách trạng thái đội Robot HCRobot",
+    "operationId": "get_robot_fleet_api_v1_operations_fleet_get"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/v1/operations/generic-request/{ticket_id}/status",
+    "tags": [
+      "11. Quản lý Chung & Điều phối Nghiệp vụ (Operations & Directives)"
+    ],
+    "summary": "Legacy: Cập nhật status request",
+    "operationId": "update_generic_request_status_api_v1_operations_generic_request__ticket_id__status_patch"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/operations/housekeeping/requests",
+    "tags": [
+      "07. Bộ phận Buồng phòng (Housekeeping Operations)"
+    ],
+    "summary": "Tạo mới yêu cầu dịch vụ buồng phòng",
+    "operationId": "create_housekeeping_request_api_v1_operations_housekeeping_requests_post"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/v1/operations/housekeeping/requests/{request_id}/assign",
+    "tags": [
+      "07. Bộ phận Buồng phòng (Housekeeping Operations)"
+    ],
+    "summary": "Phân công nhân viên xử lý yêu cầu buồng phòng",
+    "operationId": "assign_housekeeping_request_api_v1_operations_housekeeping_requests__request_id__assign_patch"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/operations/maintenance/requests",
+    "tags": [
+      "09. Bộ phận Kỹ thuật & Bảo trì (Facility Maintenance)"
+    ],
+    "summary": "Tạo mới phiếu yêu cầu bảo trì / sửa chữa thiết bị",
+    "operationId": "create_maintenance_request_api_v1_operations_maintenance_requests_post"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/v1/operations/maintenance/requests/{request_id}/status",
+    "tags": [
+      "09. Bộ phận Kỹ thuật & Bảo trì (Facility Maintenance)"
+    ],
+    "summary": "Cập nhật trạng thái xử lý sự cố kỹ thuật",
+    "operationId": "update_maintenance_request_status_api_v1_operations_maintenance_requests__request_id__status_patch"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/notifications",
+    "tags": [
+      "13. Thông báo Hệ thống (Notifications)"
+    ],
+    "summary": "Get Notifications",
+    "operationId": "get_notifications_api_v1_operations_notifications_get"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/operations/notifications",
+    "tags": [
+      "13. Thông báo Hệ thống (Notifications)"
+    ],
+    "summary": "Create Notification Endpoint",
+    "operationId": "create_notification_endpoint_api_v1_operations_notifications_post"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/operations/notifications/mark-all-read",
+    "tags": [
+      "13. Thông báo Hệ thống (Notifications)"
+    ],
+    "summary": "Mark All Notifications Read",
+    "operationId": "mark_all_notifications_read_api_v1_operations_notifications_mark_all_read_post"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/operations/notifications/{notification_id}",
+    "tags": [
+      "13. Thông báo Hệ thống (Notifications)"
+    ],
+    "summary": "Delete Notification Item",
+    "operationId": "delete_notification_item_api_v1_operations_notifications__notification_id__delete"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/v1/operations/notifications/{notification_id}/read",
+    "tags": [
+      "13. Thông báo Hệ thống (Notifications)"
+    ],
+    "summary": "Toggle Notification Read",
+    "operationId": "toggle_notification_read_api_v1_operations_notifications__notification_id__read_patch"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/operations/reception/requests",
+    "tags": [
+      "05. Bộ phận Lễ tân & Đặt phòng (Front Desk & Reception)"
+    ],
+    "summary": "Create Reception Request",
+    "operationId": "create_reception_request_api_v1_operations_reception_requests_post"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/v1/operations/reception/requests/{request_id}",
+    "tags": [
+      "05. Bộ phận Lễ tân & Đặt phòng (Front Desk & Reception)"
+    ],
+    "summary": "Cập nhật trạng thái và phân công xử lý yêu cầu Lễ tân",
+    "operationId": "update_reception_request_api_v1_operations_reception_requests__request_id__patch"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/restaurant/menu-items",
+    "tags": [
+      "10. Bộ phận Nhà hàng (Restaurant - Đặt bàn & Đặt món)"
+    ],
+    "summary": "Get Restaurant Menu Items",
+    "operationId": "get_restaurant_menu_items_api_v1_operations_restaurant_menu_items_get"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/operations/restaurant/menu-items",
+    "tags": [
+      "10. Bộ phận Nhà hàng (Restaurant - Đặt bàn & Đặt món)"
+    ],
+    "summary": "Create Restaurant Menu Item",
+    "operationId": "create_restaurant_menu_item_api_v1_operations_restaurant_menu_items_post"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/restaurant/menus",
+    "tags": [
+      "10. Bộ phận Nhà hàng (Restaurant - Đặt bàn & Đặt món)"
+    ],
+    "summary": "Get Restaurant Menus",
+    "operationId": "get_restaurant_menus_api_v1_operations_restaurant_menus_get"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/operations/restaurant/menus",
+    "tags": [
+      "10. Bộ phận Nhà hàng (Restaurant - Đặt bàn & Đặt món)"
+    ],
+    "summary": "Create Restaurant Menu",
+    "operationId": "create_restaurant_menu_api_v1_operations_restaurant_menus_post"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/restaurant/pre-orders",
+    "tags": [
+      "10. Bộ phận Nhà hàng (Restaurant - Đặt bàn & Đặt món)"
+    ],
+    "summary": "Get Restaurant Pre Orders",
+    "operationId": "get_restaurant_pre_orders_api_v1_operations_restaurant_pre_orders_get"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/operations/restaurant/pre-orders",
+    "tags": [
+      "10. Bộ phận Nhà hàng (Restaurant - Đặt bàn & Đặt món)"
+    ],
+    "summary": "Create Restaurant Pre Order",
+    "operationId": "create_restaurant_pre_order_api_v1_operations_restaurant_pre_orders_post"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/restaurant/reservations",
+    "tags": [
+      "10. Bộ phận Nhà hàng (Restaurant - Đặt bàn & Đặt món)"
+    ],
+    "summary": "Get Restaurant Reservations",
+    "operationId": "get_restaurant_reservations_api_v1_operations_restaurant_reservations_get"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/operations/restaurant/reservations",
+    "tags": [
+      "10. Bộ phận Nhà hàng (Restaurant - Đặt bàn & Đặt món)"
+    ],
+    "summary": "Create Restaurant Reservation",
+    "operationId": "create_restaurant_reservation_api_v1_operations_restaurant_reservations_post"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/v1/operations/restaurant/reservations/{reservation_id}/status",
+    "tags": [
+      "10. Bộ phận Nhà hàng (Restaurant - Đặt bàn & Đặt món)"
+    ],
+    "summary": "Update Restaurant Reservation Status",
+    "operationId": "update_restaurant_reservation_status_api_v1_operations_restaurant_reservations__reservation_id__status_patch"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/operations/robot/control",
+    "tags": [
+      "11. Quản lý Chung & Điều phối Nghiệp vụ (Operations & Directives)"
+    ],
+    "summary": "Điều khiển di chuyển HCRobot (UDP Remote)",
+    "operationId": "control_robot_movement_api_v1_operations_robot_control_post"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/operations/room-service/orders",
+    "tags": [
+      "06. Bộ phận Phục vụ phòng (F&B / Room Service)"
+    ],
+    "summary": "Create Room Service Order",
+    "operationId": "create_room_service_order_api_v1_operations_room_service_orders_post"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/operations/room-service/orders/{order_id}/assign-robot",
+    "tags": [
+      "06. Bộ phận Phục vụ phòng (F&B / Room Service)"
+    ],
+    "summary": "Assign Robot To Order",
+    "operationId": "assign_robot_to_order_api_v1_operations_room_service_orders__order_id__assign_robot_post"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/v1/operations/room-service/orders/{order_id}/status",
+    "tags": [
+      "06. Bộ phận Phục vụ phòng (F&B / Room Service)"
+    ],
+    "summary": "Update Room Service Order Status",
+    "operationId": "update_room_service_order_status_api_v1_operations_room_service_orders__order_id__status_patch"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/service-types",
+    "tags": [
+      "15. Quản lý Phòng ban & Nhân sự (Departments & Staff)"
+    ],
+    "summary": "Danh mục các loại hình dịch vụ khách sạn (Service Types)",
+    "operationId": "list_service_types_api_v1_operations_service_types_get"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/staff",
+    "tags": [
+      "15. Quản lý Phòng ban & Nhân sự (Departments & Staff)"
+    ],
+    "summary": "Danh sách nhân sự khách sạn (hỗ trợ lọc theo phòng ban & trạng thái)",
+    "operationId": "list_staff_api_v1_operations_staff_get"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/operations/staff",
+    "tags": [
+      "15. Quản lý Phòng ban & Nhân sự (Departments & Staff)"
+    ],
+    "summary": "Thêm mới nhân viên vào hệ thống",
+    "operationId": "create_staff_api_v1_operations_staff_post"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/staff/departments",
+    "tags": [
+      "15. Quản lý Phòng ban & Nhân sự (Departments & Staff)"
+    ],
+    "summary": "Danh sách các phòng ban khách sạn",
+    "operationId": "list_staff_departments_api_v1_operations_staff_departments_get"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/operations/staff/{staff_id}",
+    "tags": [
+      "15. Quản lý Phòng ban & Nhân sự (Departments & Staff)"
+    ],
+    "summary": "Vô hiệu hóa tài khoản nhân viên (Soft Delete)",
+    "operationId": "delete_staff_api_v1_operations_staff__staff_id__delete"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/staff/{staff_id}",
+    "tags": [
+      "15. Quản lý Phòng ban & Nhân sự (Departments & Staff)"
+    ],
+    "summary": "Xem thông tin chi tiết một nhân viên theo ID",
+    "operationId": "get_staff_detail_api_v1_operations_staff__staff_id__get"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/v1/operations/staff/{staff_id}",
+    "tags": [
+      "15. Quản lý Phòng ban & Nhân sự (Departments & Staff)"
+    ],
+    "summary": "Cập nhật thông tin hồ sơ nhân viên",
+    "operationId": "update_staff_api_v1_operations_staff__staff_id__patch"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/v1/operations/stock/{stock_id}/restock",
+    "tags": [
+      "11. Quản lý Chung & Điều phối Nghiệp vụ (Operations & Directives)"
+    ],
+    "summary": "Nhập bổ sung kho vật tư kỹ thuật & tiện ích",
+    "operationId": "restock_inventory_api_v1_operations_stock__stock_id__restock_patch"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/taxi/requests",
+    "tags": [
+      "16. Bộ phận Đặt xe & Vận chuyển (Taxi & Transportation)"
+    ],
+    "summary": "Danh sách toàn bộ các yêu cầu đặt xe taxi",
+    "operationId": "list_taxi_requests_api_v1_operations_taxi_requests_get"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/operations/taxi/requests",
+    "tags": [
+      "16. Bộ phận Đặt xe & Vận chuyển (Taxi & Transportation)"
+    ],
+    "summary": "Tạo mới yêu cầu gọi xe taxi / đưa đón sân bay",
+    "operationId": "create_taxi_request_api_v1_operations_taxi_requests_post"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/v1/operations/taxi/requests/{request_id}/status",
+    "tags": [
+      "16. Bộ phận Đặt xe & Vận chuyển (Taxi & Transportation)"
+    ],
+    "summary": "Cập nhật trạng thái chuyến xe và điều phối tài xế",
+    "operationId": "update_taxi_request_status_api_v1_operations_taxi_requests__request_id__status_patch"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/rag/documents",
+    "tags": [
+      "04. Cơ sở Tri thức & RAG Lễ tân (Knowledge Base & RAG)"
+    ],
+    "summary": "Xem tất cả tài liệu tri thức trong ChromaDB",
+    "operationId": "list_rag_documents_api_v1_rag_documents_get"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/rag/documents",
+    "tags": [
+      "04. Cơ sở Tri thức & RAG Lễ tân (Knowledge Base & RAG)"
+    ],
+    "summary": "Thêm hoặc Cập nhật (Upsert) tài liệu tri thức",
+    "operationId": "upsert_rag_document_api_v1_rag_documents_post"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/rag/documents/{doc_id}",
+    "tags": [
+      "04. Cơ sở Tri thức & RAG Lễ tân (Knowledge Base & RAG)"
+    ],
+    "summary": "Xóa tài liệu tri thức theo ID",
+    "operationId": "delete_rag_document_api_v1_rag_documents__doc_id__delete"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/rag/sources",
+    "tags": [
+      "04. Cơ sở Tri thức & RAG Lễ tân (Knowledge Base & RAG)"
+    ],
+    "summary": "Danh sách các file nguồn đã nạp vào Robot",
+    "operationId": "get_rag_sources_api_v1_rag_sources_get"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/rag/sources/save",
+    "tags": [
+      "04. Cơ sở Tri thức & RAG Lễ tân (Knowledge Base & RAG)"
+    ],
+    "summary": "Lưu trực tiếp nội dung file Markdown xuống ổ đĩa và tái đồng bộ ChromaDB",
+    "operationId": "save_source_file_api_v1_rag_sources_save_post"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/rag/stats",
+    "tags": [
+      "04. Cơ sở Tri thức & RAG Lễ tân (Knowledge Base & RAG)"
+    ],
+    "summary": "Thống kê tổng quan tri thức RAG",
+    "operationId": "get_rag_stats_api_v1_rag_stats_get"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/rag/sync-obsidian",
+    "tags": [
+      "04. Cơ sở Tri thức & RAG Lễ tân (Knowledge Base & RAG)"
+    ],
+    "summary": "Đồng bộ tự động tất cả ghi chú Obsidian Vault vào ChromaDB",
+    "operationId": "sync_obsidian_vault_api_v1_rag_sync_obsidian_post"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/rag/upload-file",
+    "tags": [
+      "04. Cơ sở Tri thức & RAG Lễ tân (Knowledge Base & RAG)"
+    ],
+    "summary": "Tải file PDF, DOCX, Markdown hoặc Ảnh nạp vào Robot",
+    "operationId": "upload_rag_file_api_v1_rag_upload_file_post"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/workflows",
+    "tags": [
+      "03. Định vị & Bản đồ LiDAR SLAM (Robot Navigation)"
+    ],
+    "summary": "Lấy danh sách các Step Workflows của Robot",
+    "operationId": "get_all_workflows_api_v1_workflows_get"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/workflows",
+    "tags": [
+      "03. Định vị & Bản đồ LiDAR SLAM (Robot Navigation)"
+    ],
+    "summary": "Tạo mới hoặc cập nhật kịch bản Workflow",
+    "operationId": "create_or_save_workflow_api_v1_workflows_post"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/workflows/{workflow_id}",
+    "tags": [
+      "03. Định vị & Bản đồ LiDAR SLAM (Robot Navigation)"
+    ],
+    "summary": "Xóa Workflow",
+    "operationId": "delete_workflow_api_v1_workflows__workflow_id__delete"
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/workflows/{workflow_id}",
+    "tags": [
+      "03. Định vị & Bản đồ LiDAR SLAM (Robot Navigation)"
+    ],
+    "summary": "Lấy chi tiết kịch bản Workflow",
+    "operationId": "get_workflow_by_id_api_v1_workflows__workflow_id__get"
+  },
+  {
+    "method": "PUT",
+    "path": "/api/v1/workflows/{workflow_id}",
+    "tags": [
+      "03. Định vị & Bản đồ LiDAR SLAM (Robot Navigation)"
+    ],
+    "summary": "Cập nhật Workflow",
+    "operationId": "update_workflow_api_v1_workflows__workflow_id__put"
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/workflows/{workflow_id}/execute",
+    "tags": [
+      "03. Định vị & Bản đồ LiDAR SLAM (Robot Navigation)"
+    ],
+    "summary": "Chạy thử kịch bản Workflow trên Robot",
+    "operationId": "execute_workflow_api_v1_workflows__workflow_id__execute_post"
+  },
+  {
+    "method": "GET",
+    "path": "/health",
+    "tags": [
+      "00. Trạng thái Máy chủ (System Health)"
+    ],
+    "summary": "Kiểm tra trạng thái kết nối máy chủ (Health)",
+    "operationId": "health_check_health_get"
+  }
+]

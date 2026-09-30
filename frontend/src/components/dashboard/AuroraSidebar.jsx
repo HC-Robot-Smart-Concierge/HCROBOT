@@ -18,18 +18,27 @@ export const AuroraSidebar = ({
   onBackToHome = () => {},
   referenceLayout = false,
   unreadNotifCount = 0,
+  activeView = '',
 }) => {
   const { t } = useLanguage();
+  const user = currentUser || { name: 'Elena Rossi', role: 'Online', avatar: null };
+
+  const deptLower = (user?.department || '').toLowerCase();
+  const roleLower = (user?.role || '').toLowerCase();
+  const defaultDashLower = (user?.default_dashboard || user?.defaultDashboard || '').toLowerCase();
+  const isConcierge =
+    activeView === 'concierge' ||
+    deptLower.includes('concierge') ||
+    roleLower.includes('concierge') ||
+    defaultDashLower === 'concierge';
 
   const staffNavItems = [
     { id: 'Dashboard', label: t('menuDashboard'), icon: LayoutDashboard },
     { id: 'Requests', label: t('menuRequests'), icon: Inbox },
-    { id: 'History', label: t('menuHistory'), icon: History },
+    ...(isConcierge ? [{ id: 'History', label: t('menuHistory'), icon: History }] : []),
     { id: 'Notifications', label: t('menuNotifications'), icon: Bell },
     { id: 'Profile', label: t('menuProfile'), icon: User },
   ];
-
-  const user = currentUser || { name: 'Elena Rossi', role: 'Online', avatar: null };
 
   return (
     <aside

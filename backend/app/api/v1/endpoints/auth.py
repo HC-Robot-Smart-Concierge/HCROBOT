@@ -40,6 +40,17 @@ USERNAME_ALIASES = {
     "kythuat": "maintenance",
     "ky_thuat": "maintenance",
     "administrator": "admin",
+    "nhahang": "restaurant",
+    "nha_hang": "restaurant",
+    "nha hang": "restaurant",
+    "datxe": "taxi",
+    "dat_xe": "taxi",
+    "dat xe": "taxi",
+    "transport": "taxi",
+    "transportation": "taxi",
+    "livecall": "concierge",
+    "live_call": "concierge",
+    "troly": "concierge",
 }
 
 

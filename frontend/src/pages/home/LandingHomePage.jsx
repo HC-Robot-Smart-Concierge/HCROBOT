@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { loginUser } from '../../services/authApi';
+import { FeedbackModal } from '../../components/common/FeedbackModal';
+import { QuickRequestModal } from '../../components/common/QuickRequestModal';
 
 export const LandingHomePage = ({
   currentUser = null,
@@ -9,6 +11,8 @@ export const LandingHomePage = ({
 }) => {
   // State cho Modal Đăng Nhập Robot
   const [showRobotModal, setShowRobotModal] = useState(false);
+  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
+  const [showQuickRequest, setShowQuickRequest] = useState(false);
   const [robotUsername, setRobotUsername] = useState('robot_01');
   const [robotPassword, setRobotPassword] = useState('123456');
   const [isLoading, setIsLoading] = useState(false);
@@ -60,6 +64,24 @@ export const LandingHomePage = ({
               className="hover:text-stone-900 transition-colors cursor-pointer"
             >
               About
+            </button>
+
+            <span className="text-stone-300 select-none">|</span>
+
+            <button
+              onClick={() => setShowFeedbackModal(true)}
+              className="hover:text-stone-900 transition-colors cursor-pointer"
+            >
+              Đánh giá dịch vụ
+            </button>
+
+            <span className="text-stone-300 select-none">|</span>
+
+            <button
+              onClick={() => setShowQuickRequest(true)}
+              className="hover:text-stone-900 transition-colors cursor-pointer"
+            >
+              Yêu cầu dịch vụ
             </button>
 
             <span className="text-stone-300 select-none">|</span>
@@ -209,6 +231,16 @@ export const LandingHomePage = ({
         </div>
       )}
 
+      <FeedbackModal
+        isOpen={showFeedbackModal}
+        onClose={() => setShowFeedbackModal(false)}
+        sessionId="landing_guest"
+      />
+
+      <QuickRequestModal
+        isOpen={showQuickRequest}
+        onClose={() => setShowQuickRequest(false)}
+      />
     </div>
   );
 };

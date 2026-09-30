@@ -99,3 +99,82 @@ export async function fetchCurrentUser() {
   }
   return null;
 }
+
+/**
+ * Đổi mật khẩu tài khoản nhân viên qua backend (/api/v1/auth/change-password)
+ */
+export async function changePassword(currentPassword, newPassword, username = null) {
+  const token = getStoredToken();
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  try {
+    const response = await fetch(`${AUTH_URL}/change-password`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        current_password: currentPassword,
+        new_password: newPassword,
+        username,
+      }),
+    });
+
+    const data = await response.json().catch(() => null);
+    if (!response.ok) {
+      return {
+        success: false,
+        error: data?.detail || 'Không thể đổi mật khẩu.',
+      };
+    }
+
+    return {
+      success: true,
+      message: data?.message || 'Mật khẩu đã được cập nhật thành công!',
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: 'Lỗi mạng khi kết nối tới máy chủ.',
+    };
+  }
+}
+
+/**
+ * Cập nhật thông tin profile cá nhân qua backend (/api/v1/auth/profile)
+ */
+export async function updateUserProfile(profileData) {
+  const token = getStoredToken();
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  try {
+    const response = await fetch(`${AUTH_URL}/profile`, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify(profileData),
+    });
+
+    const data = await response.json().catch(() => null);
+    if (!response.ok) {
+      return {
+        success: false,
+        error: data?.detail || 'Không thể cập nhật hồ sơ.',
+      };
+    }
+
+    if (data) {
+      updateStoredUser(data);
+    }
+
+    return {
+      success: true,
+      user: data,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: 'Lỗi mạng khi cập nhật hồ sơ.',
+    };
+  }
+}
+

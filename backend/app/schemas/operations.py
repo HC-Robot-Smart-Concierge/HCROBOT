@@ -511,11 +511,23 @@ class MenuItemResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class MenuItemInMenuCreate(BaseModel):
+    name: str
+    price: float = 0.0
+    currency: str = "VND"
+    image_url: Optional[str] = None
+    category: str = "Món chính"
+    is_available: bool = True
+    prep_time_minutes: int = 15
+    description: Optional[str] = None
+
+
 class MenuCreate(BaseModel):
     name: str
     category: str = "Food"
     description: Optional[str] = None
     is_active: bool = True
+    items: Optional[List[MenuItemInMenuCreate]] = []
 
 
 class MenuResponse(BaseModel):

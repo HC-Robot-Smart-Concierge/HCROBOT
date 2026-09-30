@@ -3,7 +3,7 @@ import random
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
@@ -143,17 +143,63 @@ async def create_restaurant_menu(
     menu_in: MenuCreate,
     db: AsyncSession = Depends(get_db),
 ):
-    """Creates a new menu in the restaurant system."""
-    new_menu = Menu(
-        name=menu_in.name,
-        category=menu_in.category,
-        description=menu_in.description,
-        is_active=menu_in.is_active,
-    )
-    db.add(new_menu)
+    """Creates a new menu or reuses an existing one, and adds items only if they do not exist yet."""
+    clean_menu_name = menu_in.name.strip()
+    if not clean_menu_name:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Tên thực đơn không được để trống.",
+        )
+
+    # 1. Tìm menu theo tên (không phân biệt hoa thường)
+    stmt_menu = select(Menu).where(func.lower(Menu.name) == clean_menu_name.lower())
+    res_menu = await db.execute(stmt_menu)
+    target_menu = res_menu.scalars().first()
+
+    if not target_menu:
+        target_menu = Menu(
+            name=clean_menu_name,
+            category=menu_in.category,
+            description=menu_in.description,
+            is_active=menu_in.is_active,
+        )
+        db.add(target_menu)
+        await db.flush()
+
+    # 2. Xử lý các món ăn trong menu: nếu món chưa có thì mới tạo, có rồi thì không làm gì (skip)
+    if menu_in.items:
+        stmt_existing = select(MenuItem.name).where(MenuItem.menu_id == target_menu.id)
+        existing_res = await db.execute(stmt_existing)
+        existing_item_names = {name.strip().lower() for name in existing_res.scalars().all() if name}
+
+        for it in menu_in.items:
+            clean_item_name = it.name.strip()
+            if not clean_item_name:
+                continue
+            item_key = clean_item_name.lower()
+            if item_key in existing_item_names:
+                # Đã có món này trong menu rồi -> bỏ qua
+                continue
+
+            item = MenuItem(
+                menu_id=target_menu.id,
+                name=clean_item_name,
+                price=it.price,
+                currency=it.currency,
+                image_url=it.image_url,
+                category=it.category,
+                is_available=it.is_available,
+                prep_time_minutes=it.prep_time_minutes,
+                description=it.description,
+            )
+            db.add(item)
+            existing_item_names.add(item_key)
+
     await db.commit()
-    await db.refresh(new_menu)
-    return new_menu
+    # Eager load items for response_model
+    stmt = select(Menu).options(selectinload(Menu.items)).where(Menu.id == target_menu.id)
+    res = await db.execute(stmt)
+    return res.scalar_one()
 
 
 @router.get("/restaurant/menu-items", response_model=List[MenuItemResponse], tags=TAG_REST)
@@ -177,10 +223,36 @@ async def create_restaurant_menu_item(
     item_in: MenuItemCreate,
     db: AsyncSession = Depends(get_db),
 ):
-    """Creates a new dish / menu item under a menu."""
+    """Creates a new dish / menu item under a menu. If it already exists, returns the existing item without duplicating."""
+    clean_name = item_in.name.strip()
+    if not clean_name:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Tên món ăn không được để trống.",
+        )
+
+    # Kiểm tra menu có tồn tại không
+    menu = await db.get(Menu, item_in.menu_id)
+    if not menu:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Thực đơn với ID {item_in.menu_id} không tồn tại.",
+        )
+
+    # Kiểm tra món ăn đã có trong menu chưa
+    stmt = select(MenuItem).where(
+        MenuItem.menu_id == item_in.menu_id,
+        func.lower(MenuItem.name) == clean_name.lower(),
+    )
+    res = await db.execute(stmt)
+    existing_item = res.scalars().first()
+    if existing_item:
+        # Nếu đã có rồi thì trả về món hiện tại mà không tạo thêm
+        return existing_item
+
     new_item = MenuItem(
         menu_id=item_in.menu_id,
-        name=item_in.name,
+        name=clean_name,
         price=item_in.price,
         currency=item_in.currency,
         image_url=item_in.image_url,

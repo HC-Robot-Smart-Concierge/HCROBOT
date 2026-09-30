@@ -1,4 +1,5 @@
 import uuid
+import random
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 from sqlalchemy import String, Integer, Float, DateTime, Boolean, JSON, ForeignKey
@@ -11,6 +12,7 @@ class RoomServiceOrder(Base):
     __tablename__ = "room_service_orders"
 
     id: Mapped[str] = mapped_column(String(50), primary_key=True, default=lambda: f"ORD-{uuid.uuid4().hex[:8]}")
+    order_number: Mapped[str] = mapped_column(String(50), nullable=False, default=lambda: str(random.randint(1000, 99999))) # e.g. '1042', '1043'
     # TODO (Phase sau): Kích hoạt khi chạy migration thêm 2 cột này vào bảng room_service_orders trong DB
     # room_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("rooms.id", ondelete="SET NULL"), nullable=True, index=True)
     room_number: Mapped[str] = mapped_column(String(50), nullable=False) # e.g. 'ROOM 412', 'ROOM 208'
@@ -36,10 +38,6 @@ class RoomServiceOrder(Base):
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-    @property
-    def order_number(self) -> str:
-        return self.id.replace("ORD-", "") if self.id else "101"
 
     # Relationships
     # TODO (Phase sau): Kích hoạt quan hệ khi DB đã có các foreign key trên

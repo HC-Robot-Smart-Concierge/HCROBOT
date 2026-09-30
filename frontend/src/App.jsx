@@ -12,10 +12,16 @@ import { RoomServiceDashboard } from './pages/dashboard/RoomServiceDashboard';
 import { HousekeepingDashboard } from './pages/dashboard/HousekeepingDashboard';
 import { BellServicesDashboard } from './pages/dashboard/BellServicesDashboard';
 import { MaintenanceDashboard } from './pages/dashboard/MaintenanceDashboard';
+import { RestaurantDashboard } from './pages/dashboard/RestaurantDashboard';
+import { ConciergeDashboard } from './pages/dashboard/ConciergeDashboard';
 import { StaffOverviewDashboard } from './pages/dashboard/StaffOverviewDashboard';
 import { RobotScreenPage } from './pages/robot/RobotScreenPage';
 import { AdminLidarPage } from './pages/admin/AdminLidarPage';
 import { AdminPortal } from './pages/admin/AdminPortal';
+import { FeedbackModal } from './components/common/FeedbackModal';
+import { NotificationCenterModal } from './components/common/NotificationCenterModal';
+import { QuickRequestModal } from './components/common/QuickRequestModal';
+import { UserProfileModal } from './components/common/UserProfileModal';
 
 // 4 Sidebar Staff Pages
 import { RequestsPage } from './pages/staff/RequestsPage';
@@ -47,6 +53,9 @@ import {
   LogOut,
   Shield,
   Layers,
+  Bell,
+  PlusCircle,
+  User,
 } from 'lucide-react';
 
 const STAFF_DASHBOARDS = [
@@ -55,27 +64,49 @@ const STAFF_DASHBOARDS = [
   'housekeeping',
   'bell_services',
   'maintenance',
+  'restaurant',
+  'concierge',
 ];
+
+const isRobotUser = (user) => {
+  if (!user) return false;
+  const username = String(user.username || '').toLowerCase();
+  const role = String(user.role || '').toLowerCase();
+  const defaultDash = String(user.default_dashboard || user.defaultDashboard || '').toLowerCase();
+  return (
+    username === 'robot_01' ||
+    username.startsWith('robot') ||
+    role.includes('robot') ||
+    defaultDash === 'robot_display'
+  );
+};
 
 const isAdminUser = (user) => {
   if (!user) return false;
+  if (isRobotUser(user)) return false; // Tài khoản Robot Kiosk không phải Quản trị viên
   const username = String(user.username || '').toLowerCase();
   const role = String(user.role || '').toLowerCase();
   const dept = String(user.department || '').toLowerCase();
   return (
     username === 'admin' ||
     role.includes('admin') ||
-    dept === 'executive' ||
+    (dept === 'executive' && !role.includes('robot')) ||
     dept === 'operations'
   );
 };
 
 const normalizeLegacyView = (view, user) => {
+  if (isRobotUser(user)) {
+    return 'robot_display';
+  }
   if (isAdminUser(user)) {
     if (!view || view === 'manager_hub' || view === 'landing' || STAFF_DASHBOARDS.includes(view)) {
       return 'admin_portal';
     }
     return view;
+  }
+  if (view === 'robot_display') {
+    return 'robot_display';
   }
   if (!view || view === 'manager_hub' || view === 'admin_portal' || view === 'admin_map') {
     return user ? (user.default_dashboard || 'room_service') : 'landing';
@@ -95,6 +126,15 @@ const normalizeLegacyView = (view, user) => {
   }
   if (['reception', 'front_desk', 'frontdesk'].includes(clean)) {
     return 'reception';
+  }
+  if (['restaurant', 'nhahang', 'nha_hang'].includes(clean)) {
+    return 'restaurant';
+  }
+  if (['taxi', 'datxe', 'dat_xe', 'transport', 'transportation'].includes(clean)) {
+    return 'concierge';
+  }
+  if (['concierge', 'livecall', 'live_call', 'troly'].includes(clean)) {
+    return 'concierge';
   }
   return clean;
 };
@@ -121,6 +161,10 @@ export function App() {
 
     const user = getStoredUser();
     if (user) {
+      if (isRobotUser(user)) {
+        return 'robot_display';
+      }
+
       if (isAdminUser(user)) {
         // For admin: if URL specifically requested a view, allow it; otherwise ALWAYS enter Admin Dashboard (admin_portal)
         if (requestedView && ['admin_portal', 'admin_map', 'robot_display'].includes(requestedView)) {
@@ -155,6 +199,9 @@ export function App() {
 
   const { language, toggleLanguage, t } = useLanguage();
   const [toastMessage, setToastMessage] = useState(null);
+  const [showNotifModal, setShowNotifModal] = useState(false);
+  const [showQuickRequestModal, setShowQuickRequestModal] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
 
   // Sync activeView to localStorage
   useEffect(() => {
@@ -169,6 +216,24 @@ export function App() {
       localStorage.setItem('aurora_active_menu', activeMenu);
     }
   }, [activeMenu]);
+
+  // Tab History chỉ dành riêng cho bộ phận Concierge
+  useEffect(() => {
+    if (activeMenu === 'History') {
+      const deptLower = (currentUser?.department || '').toLowerCase();
+      const roleLower = (currentUser?.role || '').toLowerCase();
+      const defaultDashLower = (currentUser?.default_dashboard || currentUser?.defaultDashboard || '').toLowerCase();
+      const isConcierge =
+        activeView === 'concierge' ||
+        deptLower.includes('concierge') ||
+        roleLower.includes('concierge') ||
+        defaultDashLower === 'concierge';
+
+      if (!isConcierge) {
+        setActiveMenu('Dashboard');
+      }
+    }
+  }, [activeMenu, activeView, currentUser]);
 
   // STRICT PROTECTED ROUTE GUARD
   useEffect(() => {
@@ -193,6 +258,15 @@ export function App() {
       localStorage.setItem('aurora_active_view', 'landing');
       localStorage.setItem('aurora_active_menu', 'Dashboard');
       showNotification('Tài khoản Housekeeping Manager đã được gỡ khỏi hệ thống.');
+      return;
+    }
+
+    // C0. Logged in as Robot Kiosk -> Chuyển thẳng vào Robot Screen
+    if (isRobotUser(currentUser)) {
+      if (activeView !== 'robot_display') {
+        setActiveView('robot_display');
+        localStorage.setItem('aurora_active_view', 'robot_display');
+      }
       return;
     }
 
@@ -332,12 +406,17 @@ export function App() {
     }
 
     setCurrentUser(user);
-    const resolvedDashboard = isAdminUser(user)
-      ? 'admin_portal'
-      : normalizeLegacyView(
-          targetDashboard || user.default_dashboard || user.defaultDashboard || 'room_service',
-          user
-        );
+    let resolvedDashboard;
+    if (isRobotUser(user)) {
+      resolvedDashboard = 'robot_display';
+    } else if (isAdminUser(user)) {
+      resolvedDashboard = 'admin_portal';
+    } else {
+      resolvedDashboard = normalizeLegacyView(
+        targetDashboard || user.default_dashboard || user.defaultDashboard || 'room_service',
+        user
+      );
+    }
     setActiveView(resolvedDashboard);
     localStorage.setItem('aurora_active_view', resolvedDashboard);
     setActiveMenu('Dashboard');
@@ -363,20 +442,24 @@ export function App() {
     'housekeeping',
     'bell_services',
     'maintenance',
+    'restaurant',
+    'concierge',
   ].includes(activeView);
 
   const isAdmin = isAdminUser(currentUser);
 
   const viewOptions = [
-    { id: 'admin_portal', label: '👑 Admin Command Portal' },
-    { id: 'landing', label: '🏠 Trang Chủ (Landing)' },
+    { id: 'admin_portal', label: 'Admin Command Portal' },
+    { id: 'landing', label: 'Trang Chu (Landing)' },
     { id: 'reception', label: '0. Reception (Staff)' },
     { id: 'room_service', label: '1. Room Service (Staff)' },
     { id: 'housekeeping', label: '2. Housekeeping (Staff)' },
     { id: 'bell_services', label: '3. Bell Services (Staff)' },
     { id: 'maintenance', label: '4. Maintenance (Staff)' },
-    { id: 'robot_display', label: '🤖 Màn Hình Robot' },
-    { id: 'admin_map', label: '🗺️ LiDAR SLAM Map' },
+    { id: 'restaurant', label: '5. Restaurant (Staff)' },
+    { id: 'concierge', label: '6. Concierge & Transport (Staff)' },
+    { id: 'robot_display', label: 'Man Hinh Robot' },
+    { id: 'admin_map', label: 'LiDAR SLAM Map' },
   ];
 
   return (
@@ -384,18 +467,45 @@ export function App() {
       {/* Top Floating Header Pill (Only on Staff Dashboards & LiDAR Map) */}
       {activeView !== 'landing' && activeView !== 'login' && activeView !== 'admin_portal' && activeView !== 'robot_display' && !usesReferenceLayout && (
         <div className="absolute top-2.5 right-6 z-50 flex items-center gap-2">
-          {/* If logged in as staff: Strict Role Badge & Logout */}
+          {/* If logged in as staff: Strict Role Badge & Action Tools */}
           {currentUser ? (
             <div className="flex items-center gap-2 bg-[#18181B]/95 text-white border border-stone-700/80 backdrop-blur-md px-3.5 py-1.5 rounded-full shadow-2xl">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <div className="flex items-center gap-1.5 text-xs font-bold">
+              <button
+                onClick={() => setShowProfileModal(true)}
+                title="Xem hồ sơ & Đổi mật khẩu"
+                className="flex items-center gap-1.5 text-xs font-bold hover:opacity-80 transition cursor-pointer"
+              >
                 <span className="text-amber-300">
                   {currentUser.full_name || currentUser.name}
                 </span>
                 <span className="text-stone-400 text-[10px]">
                   ({currentUser.role || currentUser.department})
                 </span>
-              </div>
+              </button>
+
+              {/* Nút Tạo yêu cầu nhanh */}
+              <button
+                onClick={() => setShowQuickRequestModal(true)}
+                title="Tạo yêu cầu dịch vụ nhanh"
+                className="p-1 rounded-full text-stone-300 hover:text-white hover:bg-stone-800 transition cursor-pointer"
+              >
+                <PlusCircle className="w-4 h-4" />
+              </button>
+
+              {/* Nút Chuông thông báo kèm badge */}
+              <button
+                onClick={() => setShowNotifModal(true)}
+                title="Trung tâm thông báo"
+                className="relative p-1 rounded-full text-stone-300 hover:text-white hover:bg-stone-800 transition cursor-pointer"
+              >
+                <Bell className="w-4 h-4" />
+                {unreadNotifCount > 0 && (
+                  <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-600 text-white text-[9px] font-bold flex items-center justify-center">
+                    {unreadNotifCount > 9 ? '9+' : unreadNotifCount}
+                  </span>
+                )}
+              </button>
 
               {/* If Admin: Allow role switcher */}
               {isAdmin && (
@@ -522,6 +632,7 @@ export function App() {
               onLogout={handleLogout}
               onBackToHome={() => setActiveView('landing')}
               unreadNotifCount={unreadNotifCount}
+              activeView={activeView}
             />
           </div>
 
@@ -556,10 +667,16 @@ export function App() {
 
             {/* Dynamic View rendering based on activeMenu */}
             {activeMenu === 'Dashboard' && (
-              <StaffOverviewDashboard
-                currentUser={currentUser}
-                onNotify={showNotification}
-              />
+              activeView === 'restaurant' ? (
+                <RestaurantDashboard currentUser={currentUser} onNotify={showNotification} />
+              ) : activeView === 'concierge' || activeView === 'taxi' ? (
+                <ConciergeDashboard currentUser={currentUser} onNotify={showNotification} />
+              ) : (
+                <StaffOverviewDashboard
+                  currentUser={currentUser}
+                  onNotify={showNotification}
+                />
+              )
             )}
 
             {/* Requests Page (Role-Filtered) */}
@@ -608,6 +725,8 @@ export function App() {
               showNotification(`Đã chuyển mục: ${menu}`);
             }}
             unreadNotifCount={unreadNotifCount}
+            currentUser={currentUser}
+            activeView={activeView}
           />
         </div>
       )}
@@ -635,6 +754,30 @@ export function App() {
 
       {/* Floating Toast Notification */}
       <ToastNotification message={toastMessage} onClose={() => setToastMessage(null)} />
+
+      {/* 6. System Modals (Notification Center, Quick Request, Profile & Password) */}
+      <NotificationCenterModal
+        isOpen={showNotifModal}
+        onClose={() => setShowNotifModal(false)}
+        currentDepartment={currentUser?.department || 'All'}
+      />
+
+      <QuickRequestModal
+        isOpen={showQuickRequestModal}
+        onClose={() => setShowQuickRequestModal(false)}
+        onCreated={(res) => {
+          showNotification('Đã tạo và điều phối yêu cầu thành công!');
+        }}
+      />
+
+      <UserProfileModal
+        isOpen={showProfileModal}
+        onClose={() => setShowProfileModal(false)}
+        onUserUpdated={(updated) => {
+          setCurrentUser(updated);
+          showNotification('Hồ sơ nhân sự đã được cập nhật thành công!');
+        }}
+      />
     </div>
   );
 }

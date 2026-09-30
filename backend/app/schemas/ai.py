@@ -1,5 +1,5 @@
 from typing import Optional, Dict, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ChatRequest(BaseModel):
@@ -74,6 +74,5 @@ class FeedbackResponse(BaseModel):
     guest_name: Optional[str] = None
     room_number: Optional[str] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 

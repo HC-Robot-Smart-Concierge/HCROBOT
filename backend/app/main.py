@@ -11,7 +11,11 @@ from app.core.config import settings
 from app.api.v1.router import api_router
 from app.services.rag.obsidian_service import obsidian_service
 
-logger = logging.getLogger(__name__)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+)
+logger = logging.getLogger("app.main")
 
 
 async def watch_obsidian_vault():
@@ -25,9 +29,9 @@ async def watch_obsidian_vault():
     # 1. Đồng bộ ban đầu khi khởi động Server trong background thread
     try:
         res = await asyncio.to_thread(obsidian_service.sync_vault_to_chroma)
-        logger.info(f"✅ Initial Obsidian sync completed ({res.get('chunks_upserted', 0)} chunks) tại {vault_dir}")
+        logger.info(f"[OK] Initial Obsidian sync completed ({res.get('chunks_upserted', 0)} chunks) tai {vault_dir}")
     except Exception as e:
-        logger.error(f"Lỗi khi đồng bộ Obsidian ban đầu: {e}")
+        logger.error(f"Loi khi dong bo Obsidian ban dau: {e}")
 
     # 2. Lắng nghe và đồng bộ định kỳ mỗi 10 giây
     while True:
@@ -35,10 +39,10 @@ async def watch_obsidian_vault():
             await asyncio.sleep(10)
             await asyncio.to_thread(obsidian_service.sync_vault_to_chroma)
         except asyncio.CancelledError:
-            logger.info("Obsidian Auto-Watcher đã dừng.")
+            logger.info("Obsidian Auto-Watcher da dung.")
             break
         except Exception as e:
-            logger.error(f"Lỗi khi auto-sync Obsidian: {e}")
+            logger.error(f"Loi khi auto-sync Obsidian: {e}")
 
 
 
@@ -50,11 +54,21 @@ async def lifespan(app: FastAPI):
     # 1. Initialize tables only. Seed data is loaded explicitly from scripts/.
     try:
         await init_db()
+        logger.info("[OK] Database connection & schema verified.")
     except Exception as e:
-        logger.warning(f"⚠️ Could not auto-initialize DB on startup (is PostgreSQL running?): {e}")
+        logger.warning(f"[WARN] Could not auto-initialize DB on startup (is PostgreSQL running?): {e}")
 
     # 2. Start Obsidian watcher
     watcher_task = asyncio.create_task(watch_obsidian_vault())
+
+    # 3. Thông báo sẵn sàng kèm link truy cập Swagger / Redoc
+    logger.info("=" * 60)
+    logger.info("[INFO] %s DA KHOI DONG THANH CONG!", settings.PROJECT_NAME)
+    logger.info("Swagger UI (Test API): http://localhost:8000/docs")
+    logger.info("ReDoc (Tai lieu):     http://localhost:8000/redoc")
+    logger.info("Health Check:          http://localhost:8000/health")
+    logger.info("=" * 60)
+
     yield
     watcher_task.cancel()
     rplidar_service.stop()

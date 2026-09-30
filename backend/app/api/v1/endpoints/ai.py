@@ -287,7 +287,9 @@ async def synthesize_voice_speech(request: TTSRequest):
 async def pipecat_audio_websocket(websocket: WebSocket, session_id: str = "pipecat_kiosk"):
     """
     WebSocket Realtime Audio Streaming & Barge-in Interruption Endpoint (Pipecat Pipeline).
-    Stream 16kHz PCM audio frames 2 chiều với độ trễ cực thấp (< 200ms).
+    Hỗ trợ 2 chế độ:
+    - event="speech": (Legacy) Chờ full response rồi trả JSON + Base64 audio
+    - event="speech_stream": (Streaming) Gửi text_chunk JSON + Binary audio chunks tức thì
     """
     await websocket.accept()
     pipecat_service.create_pipeline_session(session_id)
@@ -299,7 +301,6 @@ async def pipecat_audio_websocket(websocket: WebSocket, session_id: str = "pipec
             event_type = data.get("event")
 
             if event_type == "barge_in":
-                # Sự kiện người dùng cất tiếng nói ngắt lời Robot -> Hủy luồng audio phát
                 pipecat_service.handle_barge_in(session_id)
                 await websocket.send_json({"event": "interrupted", "session_id": session_id})
 
@@ -312,6 +313,45 @@ async def pipecat_audio_websocket(websocket: WebSocket, session_id: str = "pipec
                     "session_id": session_id,
                     "payload": result
                 })
+
+            elif event_type == "speech_stream":
+                text = data.get("text", "")
+                room = data.get("room_number")
+                lang = data.get("language", "auto")
+
+                async for chunk in pipecat_service.process_user_speech_stream(
+                    session_id, text, room_number=room, language=lang
+                ):
+                    chunk_type = chunk.get("type")
+
+                    if chunk_type == "audio_chunk":
+                        await websocket.send_bytes(chunk["data"])
+                    elif chunk_type in ("text", "text_chunk"):
+                        await websocket.send_json({
+                            "event": chunk_type,
+                            "session_id": session_id,
+                            "text": chunk.get("text", ""),
+                            "lang_code": chunk.get("lang_code", "vi-VN"),
+                        })
+                    elif chunk_type == "done":
+                        await websocket.send_json({
+                            "event": "stream_done",
+                            "session_id": session_id,
+                            "full_text": chunk.get("full_text", ""),
+                            "lang_code": chunk.get("lang_code", "vi-VN"),
+                        })
+                    elif chunk_type == "interrupted":
+                        await websocket.send_json({
+                            "event": "interrupted",
+                            "session_id": session_id,
+                            "full_text": chunk.get("full_text", ""),
+                        })
+                    elif chunk_type == "error":
+                        await websocket.send_json({
+                            "event": "error",
+                            "session_id": session_id,
+                            "message": chunk.get("message", ""),
+                        })
 
     except WebSocketDisconnect:
         logger.info(f"[Pipecat WS] WebSocket disconnected for session '{session_id}'")

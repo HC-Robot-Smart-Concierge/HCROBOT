@@ -154,7 +154,48 @@ class TTSService:
             logger.warning(f"[TTSService] EdgeTTS error: {e}")
         return None
 
+    async def synthesize_chunk(self, text: str, voice: str = None, language: str = None) -> bytes:
+        """
+        Tổng hợp giọng nói cho đoạn text ngắn (1 mệnh đề) → trả raw audio bytes.
+        Tối ưu cho Streaming Pipeline: không encode Base64, gửi thẳng qua WebSocket Binary Frame.
+        """
+        if not text or not text.strip():
+            return b""
+
+        try:
+            import edge_tts
+            is_vi = self.is_vietnamese(text) or (language and "vi" in language.lower())
+            target_voice = voice or (self.default_vi_voice if is_vi else self.default_en_voice)
+            clean_text = re.sub(r'[*#_`\[\]()]', '', text).strip()
+            if not clean_text:
+                return b""
+
+            cache_key = self._get_cache_key(clean_text, "edge_chunk", target_voice)
+            disk_path = os.path.join(self._cache_dir, f"{cache_key}.mp3")
+            if os.path.isfile(disk_path):
+                with open(disk_path, "rb") as f:
+                    return f.read()
+
+            communicate = edge_tts.Communicate(clean_text, target_voice)
+            audio_bytes = b""
+            async for chunk in communicate.stream():
+                if chunk["type"] == "audio":
+                    audio_bytes += chunk["data"]
+
+            if audio_bytes:
+                try:
+                    with open(disk_path, "wb") as f:
+                        f.write(audio_bytes)
+                except Exception:
+                    pass
+
+            return audio_bytes
+        except Exception as e:
+            logger.warning(f"[TTSService] synthesize_chunk error: {e}")
+            return b""
+
     async def _synthesize_elevenlabs(self, text: str, voice: Optional[str]) -> Optional[str]:
+
         """ElevenLabs Text-to-Speech API."""
         voice_id = voice or settings.ELEVENLABS_VOICE_ID or "21m00Tcm4TlvDq8ikWAM"
         url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"

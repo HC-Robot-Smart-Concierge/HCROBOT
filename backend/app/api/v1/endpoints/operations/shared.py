@@ -195,7 +195,6 @@ async def _fetch_all_raw_requests(db: AsyncSession) -> List[Dict[str, Any]]:
                 "source": f"Admin ({d.created_by})",
                 "created_at": d.created_at,
             })
-    except Exception as e:
         logger.error(f"Error fetching ManagementDirectives: {e}")
 
 

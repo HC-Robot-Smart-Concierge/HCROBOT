@@ -427,10 +427,29 @@ export const fetchAnalyticsSummary = async () => {
     recent_activities: [],
   });
 };
+export const fetchAdminTaskDetail = async (ticketId) => {
+  return await fetchWithFallback(
+    `${BASE_URL}/admin/tasks/${encodeURIComponent(ticketId)}`,
+    {},
+    null
+  );
+};
 
-
-
-
+export const sendRobotControlCommand = async (command, speed = 60, targetIp = '100.73.245.66', port = 9999) => {
+  return await fetchWithFallback(
+    `${BASE_URL}/robot/control`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        command,
+        speed,
+        target_ip: targetIp,
+        port,
+      }),
+    },
+    { success: true, command }
+  );
+};
 
 
 

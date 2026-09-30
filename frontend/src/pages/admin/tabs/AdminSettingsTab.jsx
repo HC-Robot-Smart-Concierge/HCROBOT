@@ -122,6 +122,7 @@ export const AdminSettingsTab = ({ currentUser = {} }) => {
           settings={settings}
           setSettings={setSettings}
           showToast={showToast}
+          currentUser={currentUser}
         />
       )}
 

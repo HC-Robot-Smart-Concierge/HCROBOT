@@ -151,12 +151,13 @@ async def admin_dispatch_task(
         room = task_in.room_number.upper().replace("ROOM", "").strip()
         item = HousekeepingRequest(
             ticket_code=code,
-            source="From Admin Portal",
-            time_label="Just now",
             title=task_in.title,
+            department_id="DEP-HOUSEKEEPING",
+            service_type_id="ST-ROOM-CLEAN",
             room_number=room,
             description=task_in.description,
             guest_name=task_in.guest_name,
+            source="From Admin Portal",
             status="In Progress" if task_in.assigned_staff_name or task_in.assigned_robot_code else "Unassigned",
             assigned_staff_name=task_in.assigned_staff_name or task_in.assigned_robot_code,
         )
@@ -235,12 +236,14 @@ async def admin_dispatch_task(
         bell = BellRequest(
             ticket_code=code,
             title=task_in.title,
-            location=task_in.room_number,
+            department_id="DEP-BELL",
+            service_type_id="ST-LUGGAGE",
+            room_number=task_in.room_number,
             guest_name=task_in.guest_name,
-            reporter="Admin Dispatch",
+            source="Admin Dispatch",
             description=task_in.description,
             status="In Progress" if task_in.assigned_staff_name or task_in.assigned_robot_code else "Pending",
-            assigned_to=task_in.assigned_staff_name or task_in.assigned_robot_code,
+            assigned_staff_name=task_in.assigned_staff_name or task_in.assigned_robot_code,
         )
         db.add(bell)
         await create_department_notification(
@@ -277,12 +280,13 @@ async def admin_dispatch_task(
         maint = MaintenanceRequest(
             ticket_code=code,
             title=task_in.title,
-            reported_time_label="Just now",
-            location=task_in.room_number,
+            department_id="DEP-MAINTENANCE",
+            service_type_id="ST-AC-REPAIR",
+            room_number=task_in.room_number,
             description=task_in.description,
             source="Admin Dispatch",
             status="In Progress" if task_in.assigned_staff_name else "Pending",
-            assigned_to=task_in.assigned_staff_name,
+            assigned_staff_name=task_in.assigned_staff_name,
         )
         db.add(maint)
         await create_department_notification(
@@ -319,12 +323,14 @@ async def admin_dispatch_task(
         rec = ReceptionRequest(
             ticket_code=code,
             title=task_in.title,
-            created_label="Just now",
-            location=task_in.room_number,
+            department_id="DEP-RECEPTION",
+            service_type_id="ST-RECEPTION-INQUIRY",
+            room_number=task_in.room_number,
             guest_name=task_in.guest_name or "Hotel Guest",
             status="Pending Action",
             description=task_in.description or "",
-            assigned_to=task_in.assigned_staff_name,
+            source="From Admin Portal",
+            assigned_staff_name=task_in.assigned_staff_name,
         )
         db.add(rec)
         await create_department_notification(

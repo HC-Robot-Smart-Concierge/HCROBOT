@@ -18,6 +18,8 @@ class Job(Base):
     workflow_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("robot_workflows.id", ondelete="SET NULL"), nullable=True, index=True)
     chat_session_id: Mapped[Optional[str]] = mapped_column(String(64), ForeignKey("chat_sessions.id", ondelete="SET NULL"), nullable=True, index=True)
     robot_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("robots.id", ondelete="SET NULL"), nullable=True, index=True)
+    schedule_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("schedules.id", ondelete="SET NULL"), nullable=True, index=True)
+    account_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True, index=True)
     
     trigger_type: Mapped[str] = mapped_column(String(50), default="MANUAL") # 'MANUAL', 'SCHEDULE', 'AUTO_DETECT', 'GUEST_TAP', 'VOICE'
     status: Mapped[str] = mapped_column(String(50), default="PENDING") # 'PENDING', 'RUNNING', 'PAUSED', 'COMPLETED', 'FAILED', 'CANCELLED'
@@ -36,6 +38,8 @@ class Job(Base):
     robot: Mapped[Optional["Robot"]] = relationship("Robot", back_populates="jobs")
     workflow: Mapped[Optional["RobotWorkflow"]] = relationship("RobotWorkflow")
     chat_session: Mapped[Optional["ChatSession"]] = relationship("ChatSession")
+    schedule: Mapped[Optional["Schedule"]] = relationship("Schedule", back_populates="jobs")
+    account: Mapped[Optional["Account"]] = relationship("Account")
     job_steps: Mapped[List["JobStep"]] = relationship("JobStep", back_populates="job", cascade="all, delete-orphan", order_by="JobStep.step_index")
     job_events: Mapped[List["JobEvent"]] = relationship("JobEvent", back_populates="job", cascade="all, delete-orphan", order_by="JobEvent.id")
 

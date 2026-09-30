@@ -122,6 +122,10 @@ tags_metadata = [
         "name": "14. Nhật ký Vận hành & Audit Trail (Logging & Trace)",
         "description": "Tra cứu nhật ký phân tích sự kiện, kiểm toán bảo mật hành vi và xuất báo cáo CSV/JSON.",
     },
+    {
+        "name": "15. Quản lý Nhân sự & Đội ngũ (Staff Directory)",
+        "description": "Quản lý hồ sơ nhân viên khách sạn, phòng ban, ca trực và phân công hỗ trợ.",
+    },
 ]
 
 
@@ -154,12 +158,13 @@ app.include_router(api_router, prefix="/api/v1")
 
 
 @app.get("/", tags=["00. Trạng thái Máy chủ (System Health)"], summary="Kiểm tra trạng thái máy chủ")
-async def root():
+@app.get("/health", tags=["00. Trạng thái Máy chủ (System Health)"], summary="Kiểm tra trạng thái kết nối máy chủ (Health)")
+async def health_check():
     return {
         "status": "online",
         "system": settings.PROJECT_NAME,
         "ollama_host": settings.OLLAMA_HOST,
-        "ollama_model": settings.OLLAMA_MODEL
+        "ollama_model": settings.OLLAMA_MODEL,
     }
 
 

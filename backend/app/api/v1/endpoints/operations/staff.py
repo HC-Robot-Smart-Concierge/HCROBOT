@@ -89,6 +89,15 @@ async def create_staff(
     return new_staff
 
 
+@router.get("/staff/departments", tags=TAG_STAFF, summary="Danh sách các phòng ban khách sạn")
+async def list_departments(db: AsyncSession = Depends(get_db)):
+    """Lấy danh sách các phòng ban trực thuộc khách sạn."""
+    from app.models.department import Department
+    res = await db.execute(select(Department).where(Department.is_active == True))
+    deps = res.scalars().all()
+    return [{"id": d.id, "code": d.code, "name": d.name, "description": d.description} for d in deps]
+
+
 @router.patch("/staff/{staff_id}", response_model=StaffResponse, tags=TAG_STAFF, summary="Cập nhật thông tin nhân viên")
 async def update_staff(
     staff_id: str,

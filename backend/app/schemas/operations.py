@@ -71,6 +71,15 @@ class StaffUpdate(BaseModel):
 # ---------------------------------------------------------
 # Reception / Front Desk Schemas
 # ---------------------------------------------------------
+class ReceptionRequestCreate(BaseModel):
+    title: str = "Yêu cầu Lễ tân"
+    location: str = "Lobby"
+    guest_name: str = "Khách vãng lai"
+    description: Optional[str] = None
+    priority: str = "NORMAL"
+    source: str = "Front Desk"
+
+
 class ReceptionRequestUpdate(BaseModel):
     status: Optional[str] = None
     assistance_status: Optional[str] = None
@@ -91,7 +100,7 @@ class ReceptionRequestResponse(BaseModel):
     guest_tier: str
     guest_stay_details: str
     status: str
-    description: str
+    description: Optional[str] = ""
     attached_media: List[Dict[str, Any]]
     transcript: List[Dict[str, Any]]
     assistance_status: str
@@ -136,7 +145,9 @@ class RoomServiceOrderAssignRobot(BaseModel):
 class RoomServiceOrderResponse(BaseModel):
     id: str
     order_number: str
+    room_id: Optional[str] = None
     room_number: str
+    account_id: Optional[str] = None
     status: str
     items: List[Dict[str, Any]]
     note: Optional[str]
@@ -146,6 +157,7 @@ class RoomServiceOrderResponse(BaseModel):
     est_completion: Optional[str]
     assigned_robot_id: Optional[str]
     assigned_staff_name: Optional[str]
+    total_amount: Optional[float] = 0.0
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
@@ -370,6 +382,56 @@ class RestaurantDashboardResponse(BaseModel):
     kpis: Dict[str, Any]
     reservations: List[RestaurantReservationResponse]
     pre_orders: List[RestaurantPreOrderResponse]
+
+
+# ---------------------------------------------------------
+# Restaurant Menu & Menu Items Schemas
+# ---------------------------------------------------------
+class MenuItemCreate(BaseModel):
+    menu_id: str
+    name: str
+    price: float = 0.0
+    currency: str = "VND"
+    image_url: Optional[str] = None
+    category: str = "Món chính"
+    is_available: bool = True
+    prep_time_minutes: int = 15
+    description: Optional[str] = None
+
+
+class MenuItemResponse(BaseModel):
+    id: str
+    menu_id: str
+    name: str
+    price: float
+    currency: str
+    image_url: Optional[str]
+    category: str
+    is_available: bool
+    prep_time_minutes: int
+    description: Optional[str]
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class MenuCreate(BaseModel):
+    name: str
+    category: str = "Food"
+    description: Optional[str] = None
+    is_active: bool = True
+
+
+class MenuResponse(BaseModel):
+    id: str
+    name: str
+    category: str
+    description: Optional[str]
+    is_active: bool
+    items: List[MenuItemResponse] = []
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ---------------------------------------------------------

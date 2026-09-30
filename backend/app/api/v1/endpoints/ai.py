@@ -14,6 +14,8 @@ from app.schemas.ai import (
     SessionResetRequest,
     TTSRequest,
     TTSResponse,
+    FeedbackCreate,
+    FeedbackResponse,
 )
 from app.services.ai.ollama_service import ollama_service
 from app.services.ai.session_manager import session_manager
@@ -27,6 +29,7 @@ from app.models import (
     BellRequest,
     MaintenanceRequest,
     ReceptionRequest,
+    Feedback,
 )
 from app.api.v1.endpoints.operations import create_department_notification
 
@@ -386,12 +389,13 @@ async def _auto_create_ticket(db: AsyncSession, action: str, room_number: str, i
         elif action == "housekeeping":
             req = HousekeepingRequest(
                 ticket_code=f"HK-{random.randint(1044, 9999)}",
-                source="HCRobot Concierge AI Chat",
-                time_label="Recently",
                 title=f"Yêu cầu Buồng phòng (Phòng {rm}): {items}",
+                department_id="DEP-HOUSEKEEPING",
+                service_type_id="ST-ROOM-CLEAN",
                 room_number=rm,
                 description=items,
                 guest_name=f"Guest (Room {rm})",
+                source="HCRobot Concierge AI Chat",
                 status="Unassigned",
             )
             db.add(req)
@@ -420,10 +424,12 @@ async def _auto_create_ticket(db: AsyncSession, action: str, room_number: str, i
             req = BellRequest(
                 ticket_code=f"BS-{random.randint(1044, 9999)}",
                 title=f"Khách phòng {rm} hỗ trợ hành lý: {items}",
-                location=f"Phòng {rm}",
+                department_id="DEP-BELL",
+                service_type_id="ST-LUGGAGE",
+                room_number=rm,
                 guest_name=f"Guest (Room {rm})",
                 description=items,
-                request_type="luggage",
+                source="HCRobot Concierge AI Chat",
                 status="Pending",
             )
             db.add(req)
@@ -452,9 +458,9 @@ async def _auto_create_ticket(db: AsyncSession, action: str, room_number: str, i
             req = MaintenanceRequest(
                 ticket_code=f"MN-{random.randint(1044, 9999)}",
                 title=f"Sự cố kỹ thuật Phòng {rm}: {items}",
-                category="general",
-                reported_time_label="Just Now",
-                location=f"Phòng {rm}",
+                department_id="DEP-MAINTENANCE",
+                service_type_id="ST-AC-REPAIR",
+                room_number=rm,
                 description=items,
                 source="HCRobot Concierge AI Chat",
                 status="Pending",
@@ -487,12 +493,13 @@ async def _auto_create_ticket(db: AsyncSession, action: str, room_number: str, i
             req = ReceptionRequest(
                 ticket_code=ticket_code,
                 title=f"Yêu cầu từ Khách từ Robot AI (Phòng {rm}): {items}",
-                created_label="Just now",
-                location=f"Phòng {rm}",
+                department_id="DEP-RECEPTION",
+                service_type_id="ST-RECEPTION-INQUIRY",
+                room_number=rm,
                 guest_name=f"Guest (Room {rm})",
                 status="Pending Action",
                 description=items,
-                assistance_status="Connected",
+                source="HCRobot Concierge AI Chat",
             )
             db.add(req)
             await create_department_notification(
@@ -512,6 +519,38 @@ async def _auto_create_ticket(db: AsyncSession, action: str, room_number: str, i
         await db.rollback()
 
     return code
+
+
+@router.post("/feedback", response_model=FeedbackResponse, status_code=status.HTTP_201_CREATED, summary="Gửi phản hồi và đánh giá dịch vụ từ khách")
+async def submit_feedback(fb_in: FeedbackCreate, db: AsyncSession = Depends(get_db)):
+    """Lưu đánh giá và nhận xét của khách hàng vào bảng feedbacks trong cơ sở dữ liệu."""
+    new_fb = Feedback(
+        chat_session_id=fb_in.chat_session_id,
+        rating=fb_in.rating,
+        category=fb_in.category,
+        comment=fb_in.comment,
+        guest_name=fb_in.guest_name,
+        room_number=fb_in.room_number,
+    )
+    db.add(new_fb)
+    await db.commit()
+    await db.refresh(new_fb)
+    return new_fb
+
+
+@router.get("/feedback", response_model=List[FeedbackResponse], summary="Xem danh sách phản hồi và đánh giá của khách hàng")
+async def get_all_feedbacks(
+    category: Optional[str] = None,
+    limit: int = 50,
+    db: AsyncSession = Depends(get_db),
+):
+    """Lấy danh sách đánh giá của khách hàng."""
+    from sqlalchemy.future import select
+    stmt = select(Feedback).order_by(Feedback.created_at.desc()).limit(limit)
+    if category:
+        stmt = stmt.where(Feedback.category == category)
+    res = await db.execute(stmt)
+    return res.scalars().all()
 
 
 async def _background_save_chat(session_id: str, user_turn: str, ai_turn: str, lang_code: str, room_number: Optional[str]):

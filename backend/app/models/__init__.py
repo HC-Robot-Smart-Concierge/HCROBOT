@@ -21,6 +21,8 @@ from app.models.hotel import Hotel, Room, Facility, Event
 from app.models.map import Map, Zone, Endpoint, EndpointGroup, EndpointGroupMember
 from app.models.menu import Menu, MenuItem
 from app.models.room_service import RoomServiceOrder, OrderItem
+from app.models.feedback import Feedback
+from app.models.schedule import Schedule
 from app.models.workflow import RobotWaypoint, RobotWorkflow, RobotZone
 
 __all__ = [
@@ -62,6 +64,8 @@ __all__ = [
     "EndpointGroupMember",
     "Menu",
     "MenuItem",
+    "Feedback",
+    "Schedule",
     "RobotWaypoint",
     "RobotWorkflow",
     "RobotZone",

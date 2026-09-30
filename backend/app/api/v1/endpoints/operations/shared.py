@@ -29,7 +29,7 @@ TAG_REST = ["10. Bộ phận Nhà hàng (Restaurant - Đặt bàn & Đặt món)
 TAG_OPS = ["11. Quản lý Chung & Điều phối Nghiệp vụ (Operations & Directives)"]
 TAG_ADMIN = ["12. Trung tâm Điều hành & Quản trị (Admin & Human Support)"]
 TAG_NOTIF = ["13. Thông báo Hệ thống (Notifications)"]
-TAG_STAFF = ["14. Nhân sự & Quản lý Đội ngũ (Staff Directory)"]
+TAG_STAFF = ["15. Quản lý Nhân sự & Đội ngũ (Staff Directory)"]
 
 
 async def create_department_notification(
@@ -76,16 +76,15 @@ async def create_department_notification(
 
 
 async def _fetch_all_raw_requests(db: AsyncSession) -> List[Dict[str, Any]]:
-    """Helper to collect and normalize tasks across all 6 operational tables."""
+    """Helper to collect and normalize tasks across all unified operational tables."""
     orders_res = await db.execute(select(RoomServiceOrder).order_by(desc(RoomServiceOrder.created_at)))
-    hk_res = await db.execute(select(HousekeepingRequest).order_by(desc(HousekeepingRequest.created_at)))
-    bell_res = await db.execute(select(BellRequest).order_by(desc(BellRequest.created_at)))
-    maint_res = await db.execute(select(MaintenanceRequest).order_by(desc(MaintenanceRequest.created_at)))
-    reception_res = await db.execute(select(ReceptionRequest).order_by(desc(ReceptionRequest.created_at)))
+    from app.models.support_request import SupportRequest
+    sr_res = await db.execute(select(SupportRequest).order_by(desc(SupportRequest.created_at)))
     dir_res = await db.execute(select(ManagementDirective).order_by(desc(ManagementDirective.created_at)))
 
     unified = []
 
+    # 1. F&B Orders
     for o in orders_res.scalars().all():
         unified.append({
             "id": f"REQ-{o.order_number}",
@@ -97,7 +96,7 @@ async def _fetch_all_raw_requests(db: AsyncSession) -> List[Dict[str, Any]]:
             "guestName": "Room Guest",
             "priority": "NORMAL",
             "status": o.status,
-            "time": "Recent",
+            "time": o.created_at.strftime("%I:%M %p").lstrip("0") if o.created_at else "Recent",
             "assignedTo": o.assigned_staff_name,
             "assigned_robot": o.assigned_robot_id,
             "notes": o.note,
@@ -105,93 +104,64 @@ async def _fetch_all_raw_requests(db: AsyncSession) -> List[Dict[str, Any]]:
             "created_at": o.created_at,
         })
 
-    for h in hk_res.scalars().all():
+    # 2. Unified Support Requests (Housekeeping, Bell Services, Maintenance, Reception)
+    for s in sr_res.scalars().all():
+        dept_id = (s.department_id or "").upper()
+        code = (s.ticket_code or "").upper()
+
+        if "HOUSEKEEPING" in dept_id or code.startswith("HK"):
+            dept_name = "Housekeeping"
+            tbl_type = "housekeeping"
+        elif "BELL" in dept_id or code.startswith("BS"):
+            dept_name = "Bell Services"
+            tbl_type = "bell"
+        elif "MAINTENANCE" in dept_id or code.startswith("MN"):
+            dept_name = "Maintenance"
+            tbl_type = "maintenance"
+        elif "RECEPTION" in dept_id or code.startswith("REC") or code.startswith("REQ"):
+            dept_name = "Reception"
+            tbl_type = "reception"
+        else:
+            dept_name = s.department_id or "Operations"
+            tbl_type = "support_request"
+
+        room_str = s.room_number or "Main Lobby"
+        if room_str.isdigit():
+            loc_label = f"ROOM {room_str}"
+        else:
+            loc_label = room_str
+
         unified.append({
-            "id": f"REQ-{h.ticket_code}",
-            "raw_id": h.id,
-            "department": "Housekeeping",
-            "table_type": "housekeeping",
-            "title": h.title,
-            "location": f"ROOM {h.room_number}" if not str(h.room_number).upper().startswith("ROOM") else h.room_number,
-            "guestName": h.guest_name or "Guest",
-            "priority": "NORMAL",
-            "status": h.status,
-            "time": h.time_label,
-            "assignedTo": h.assigned_staff_name,
-            "assigned_robot": None,
-            "notes": h.description,
-            "source": h.source or "HCRobot",
-            "created_at": h.created_at,
+            "id": s.ticket_code if str(s.ticket_code).startswith("REQ-") else f"REQ-{s.ticket_code}",
+            "raw_id": s.id,
+            "department": dept_name,
+            "table_type": tbl_type,
+            "title": s.title,
+            "location": loc_label,
+            "guestName": s.guest_name or "Guest",
+            "priority": s.priority or "NORMAL",
+            "status": s.status or "Pending",
+            "time": s.created_at.strftime("%I:%M %p").lstrip("0") if s.created_at else "Recent",
+            "assignedTo": s.assigned_staff_name,
+            "assigned_robot": s.assigned_robot_id,
+            "notes": s.description,
+            "source": s.source or "HCRobot",
+            "created_at": s.created_at,
         })
 
-    for b in bell_res.scalars().all():
-        unified.append({
-            "id": f"REQ-{b.ticket_code}",
-            "raw_id": b.id,
-            "department": "Bell Services",
-            "table_type": "bell",
-            "title": b.title,
-            "location": b.location,
-            "guestName": b.guest_name or b.reporter or "Guest",
-            "priority": "NORMAL",
-            "status": b.status,
-            "time": "Today",
-            "assignedTo": b.assigned_to,
-            "assigned_robot": b.assigned_robot_id,
-            "notes": b.description,
-            "source": "Front Desk / Robot",
-            "created_at": b.created_at,
-        })
-
-    for m in maint_res.scalars().all():
-        unified.append({
-            "id": f"REQ-{m.ticket_code}",
-            "raw_id": m.id,
-            "department": "Maintenance",
-            "table_type": "maintenance",
-            "title": m.title,
-            "location": m.location,
-            "guestName": "Guest / Staff Reported",
-            "priority": "NORMAL",
-            "status": m.status,
-            "time": m.reported_time_label,
-            "assignedTo": m.assigned_to,
-            "assigned_robot": None,
-            "notes": m.description,
-            "source": m.source or "HCRobot",
-            "created_at": m.created_at,
-        })
-
-    for r in reception_res.scalars().all():
-        unified.append({
-            "id": r.ticket_code if str(r.ticket_code).startswith("REQ-") else f"REQ-{r.ticket_code}",
-            "raw_id": r.id,
-            "department": "Reception",
-            "table_type": "reception",
-            "title": r.title,
-            "location": r.location,
-            "guestName": r.guest_name or "Guest",
-            "priority": "NORMAL",
-            "status": r.status,
-            "time": r.created_label,
-            "assignedTo": r.assigned_to,
-            "assigned_robot": None,
-            "notes": r.description,
-            "source": "Front Desk",
-            "created_at": r.created_at,
-        })
-
+    # 3. Management Directives
     for d in dir_res.scalars().all():
         unified.append({
             "id": f"REQ-{d.code}",
             "raw_id": d.id,
             "department": d.department or "Directive",
+            "table_type": "directive",
             "title": d.title,
-            "location": d.location,
+            "location": d.location or "Main Hotel",
             "guestName": "Operations Directive",
-            "priority": "NORMAL",
-            "status": d.status,
-            "time": d.reported_time_label,
+            "priority": d.priority or "NORMAL",
+            "status": d.status or "Unassigned",
+            "time": d.reported_time_label or (d.created_at.strftime("%I:%M %p").lstrip("0") if d.created_at else "Recent"),
             "assignedTo": d.assigned_staff_name,
             "assigned_robot": None,
             "notes": d.description,
@@ -200,3 +170,4 @@ async def _fetch_all_raw_requests(db: AsyncSession) -> List[Dict[str, Any]]:
         })
 
     return unified
+

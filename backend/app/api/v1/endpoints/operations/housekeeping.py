@@ -24,7 +24,12 @@ router = APIRouter()
 @router.get("/dashboard/housekeeping", response_model=HousekeepingDashboardResponse, tags=TAG_HK)
 async def get_housekeeping_dashboard(db: AsyncSession = Depends(get_db)):
     """Returns housekeeping requests, floor status, available staff and KPIs."""
-    req_res = await db.execute(select(HousekeepingRequest).order_by(desc(HousekeepingRequest.created_at)))
+    req_res = await db.execute(
+        select(HousekeepingRequest).where(
+            (HousekeepingRequest.department_id == "DEP-HOUSEKEEPING") |
+            (HousekeepingRequest.ticket_code.startswith("HK"))
+        ).order_by(desc(HousekeepingRequest.created_at))
+    )
     hk_list = req_res.scalars().all()
 
     dir_res = await db.execute(
@@ -108,11 +113,12 @@ async def create_housekeeping_request(req_in: HousekeepingRequestCreate, db: Asy
     new_req = HousekeepingRequest(
         ticket_code=ticket_code,
         source=req_in.source,
-        time_label="Just now",
         title=req_in.title,
         room_number=req_in.room_number,
         description=req_in.description,
         guest_name=req_in.guest_name,
+        department_id="DEP-HOUSEKEEPING",
+        service_type_id="ST-ROOM-CLEAN",
         status="Unassigned",
     )
     db.add(new_req)
@@ -151,7 +157,12 @@ async def assign_housekeeping_request(
     req = res.scalar_one_or_none()
     if not req:
         # Fallback search by first HK request if matching by ID fails
-        all_hk = await db.execute(select(HousekeepingRequest))
+        all_hk = await db.execute(
+            select(HousekeepingRequest).where(
+                (HousekeepingRequest.department_id == "DEP-HOUSEKEEPING") |
+                (HousekeepingRequest.ticket_code.startswith("HK"))
+            )
+        )
         first_hk = all_hk.scalars().first()
         if first_hk:
             req = first_hk
@@ -161,8 +172,8 @@ async def assign_housekeeping_request(
     req.status = assign_in.status
     req.assigned_staff_name = assign_in.assigned_staff_name
 
-    # Safe Foreign Key lookup: only set assigned_staff_id if valid in Staff table
-    if assign_in.assigned_staff_id:
+    # Safe Foreign Key lookup for Account
+    if assign_in.assigned_staff_id or assign_in.assigned_staff_name:
         staff_check = await db.execute(
             select(Staff).where(
                 (Staff.id == assign_in.assigned_staff_id) |
@@ -171,12 +182,13 @@ async def assign_housekeeping_request(
             )
         )
         found_staff = staff_check.scalar_one_or_none()
-        req.assigned_staff_id = found_staff.id if found_staff else None
+        req.account_id = found_staff.id if found_staff else None
     else:
-        req.assigned_staff_id = None
+        req.account_id = None
 
     await db.commit()
     await db.refresh(req)
     return req
+
 
 

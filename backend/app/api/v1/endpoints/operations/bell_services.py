@@ -24,7 +24,12 @@ router = APIRouter()
 @router.get("/dashboard/bell-services", response_model=BellServicesDashboardResponse, tags=TAG_BELL)
 async def get_bell_services_dashboard(db: AsyncSession = Depends(get_db)):
     """Returns bell services requests, bell staff & robot cart status."""
-    res = await db.execute(select(BellRequest).order_by(desc(BellRequest.created_at)))
+    res = await db.execute(
+        select(BellRequest).where(
+            (BellRequest.department_id == "DEP-BELL") |
+            (BellRequest.ticket_code.startswith("BS"))
+        ).order_by(desc(BellRequest.created_at))
+    )
     requests = res.scalars().all()
 
     pending_count = sum(1 for r in requests if r.status in ["Pending", "Unassigned"])
@@ -82,11 +87,12 @@ async def create_bell_request(req_in: BellRequestCreate, db: AsyncSession = Depe
     new_req = BellRequest(
         ticket_code=ticket_code,
         title=req_in.title,
-        location=req_in.location,
+        room_number=req_in.location,
         guest_name=req_in.guest_name,
-        reporter=req_in.reporter,
+        source=req_in.reporter or "Front Desk",
         description=req_in.description,
-        request_type=req_in.request_type,
+        department_id="DEP-BELL",
+        service_type_id="ST-LUGGAGE",
         status="Pending",
     )
     db.add(new_req)
@@ -122,10 +128,11 @@ async def update_bell_request_status(
 
     req.status = update_in.status
     if update_in.assigned_to:
-        req.assigned_to = update_in.assigned_to
+        req.assigned_staff_name = update_in.assigned_to
 
     await db.commit()
     await db.refresh(req)
     return req
+
 
 

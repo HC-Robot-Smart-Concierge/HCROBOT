@@ -1,3 +1,4 @@
+import random
 from datetime import datetime
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -7,6 +8,7 @@ from sqlalchemy import select, desc
 from app.core.database import get_db
 from app.models import ReceptionRequest
 from app.schemas.operations import (
+    ReceptionRequestCreate,
     ReceptionRequestUpdate,
     ReceptionRequestResponse,
     ReceptionDashboardResponse,
@@ -22,9 +24,47 @@ router = APIRouter()
 async def get_reception_dashboard(db: AsyncSession = Depends(get_db)):
     """Returns the most recent guest request handled by Front Desk staff."""
     result = await db.execute(
-        select(ReceptionRequest).order_by(desc(ReceptionRequest.created_at)).limit(1)
+        select(ReceptionRequest)
+        .where(
+            (ReceptionRequest.department_id == "DEP-RECEPTION")
+            | (ReceptionRequest.ticket_code.like("REC%"))
+            | (ReceptionRequest.ticket_code.like("REQ%"))
+        )
+        .order_by(desc(ReceptionRequest.created_at))
+        .limit(1)
     )
     return {"current_request": result.scalar_one_or_none()}
+
+
+@router.post("/reception/requests", response_model=ReceptionRequestResponse, status_code=status.HTTP_201_CREATED, tags=TAG_REC)
+async def create_reception_request(req_in: ReceptionRequestCreate, db: AsyncSession = Depends(get_db)):
+    """Creates a new front desk reception ticket."""
+    ticket_code = f"REC-{random.randint(100, 9999)}"
+    new_req = ReceptionRequest(
+        ticket_code=ticket_code,
+        title=req_in.title,
+        description=req_in.description,
+        department_id="DEP-RECEPTION",
+        service_type_id="ST-RECEPTION-INQUIRY",
+        room_number=req_in.location,
+        guest_name=req_in.guest_name,
+        source=req_in.source,
+        priority=req_in.priority,
+        status="Pending",
+    )
+    db.add(new_req)
+    await create_department_notification(
+        db=db,
+        department="Reception",
+        title=f"Yêu cầu Lễ tân: {req_in.title}",
+        description=f"{req_in.location} ({req_in.guest_name}): {req_in.description or 'Cần hỗ trợ lễ tân'}",
+        request_id=new_req.id,
+        request_type="reception",
+        type="Request",
+    )
+    await db.commit()
+    await db.refresh(new_req)
+    return new_req
 
 
 @router.patch(
@@ -48,62 +88,15 @@ async def update_reception_request(
     if not request:
         raise HTTPException(status_code=404, detail="Reception request not found")
 
-    timestamp = datetime.now().strftime("%I:%M %p").lstrip("0")
-    new_activity = list(request.activity_log or [])
-
-    if update_in.status is not None and update_in.status != request.status:
+    if update_in.status is not None:
         request.status = update_in.status
-        new_activity.insert(
-            0,
-            {
-                "title": f"Status changed to {update_in.status}",
-                "detail": "Updated by Front Desk staff",
-                "time": timestamp,
-            },
-        )
-    if update_in.assistance_status is not None:
-        request.assistance_status = update_in.assistance_status
-        new_activity.insert(
-            0,
-            {
-                "title": f"Live assistance {update_in.assistance_status.lower()}",
-                "detail": "Front Desk video assistance session",
-                "time": timestamp,
-            },
-        )
     if update_in.assigned_to is not None:
-        request.assigned_to = update_in.assigned_to
-        request.assigned_role = update_in.assigned_role or request.assigned_role
-        new_activity.insert(
-            0,
-            {
-                "title": "Task Assigned",
-                "detail": f"System assigned to {update_in.assigned_to}",
-                "time": timestamp,
-            },
-        )
+        request.assigned_staff_name = update_in.assigned_to
     if update_in.note:
-        request.notes = [
-            {"message": update_in.note, "time": timestamp},
-            *(request.notes or []),
-        ]
-        new_activity.insert(
-            0,
-            {"title": "Note Added", "detail": update_in.note, "time": timestamp},
-        )
-    if update_in.escalated is not None:
-        request.escalated = update_in.escalated
-        if update_in.escalated:
-            new_activity.insert(
-                0,
-                {
-                    "title": "Request Escalated",
-                    "detail": "Priority escalation sent to Operations",
-                    "time": timestamp,
-                },
-            )
+        request.description = f"{request.description or ''} | Note: {update_in.note}".strip(" |")
+    if update_in.escalated:
+        request.priority = "HIGH"
 
-    request.activity_log = new_activity
     await db.commit()
     await db.refresh(request)
     return request

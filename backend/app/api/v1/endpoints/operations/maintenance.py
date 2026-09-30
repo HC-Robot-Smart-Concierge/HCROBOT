@@ -25,14 +25,25 @@ router = APIRouter()
 @router.get("/dashboard/maintenance", response_model=MaintenanceDashboardResponse, tags=TAG_MNT)
 async def get_maintenance_dashboard(db: AsyncSession = Depends(get_db)):
     """Returns active facility maintenance requests, technician availability, and map."""
-    res = await db.execute(select(MaintenanceRequest).order_by(desc(MaintenanceRequest.created_at)))
+    res = await db.execute(
+        select(MaintenanceRequest)
+        .where(
+            (MaintenanceRequest.department_id == "DEP-MAINTENANCE")
+            | (MaintenanceRequest.ticket_code.like("MN%"))
+        )
+        .order_by(desc(MaintenanceRequest.created_at))
+    )
     requests = res.scalars().all()
 
     pending_count = sum(1 for r in requests if r.status in ["Pending", "Unassigned"])
     in_prog_count = sum(1 for r in requests if r.status == "In Progress")
     completed_count = sum(1 for r in requests if r.status == "Completed")
 
-    staff_res = await db.execute(select(Staff).where(Staff.department == "Maintenance"))
+    staff_res = await db.execute(
+        select(Staff).where(
+            (Staff.department == "Maintenance") | (Staff.department_id == "DEP-MAINTENANCE")
+        )
+    )
     maint_staff = staff_res.scalars().all()
 
     staff_availability = [
@@ -44,11 +55,9 @@ async def get_maintenance_dashboard(db: AsyncSession = Depends(get_db)):
             "statusClass": "text-emerald-600" if s.status == "available" else "text-amber-600",
         }
         for s in maint_staff
+    ] or [
+        {"id": "MNT", "name": "Nhân viên Kỹ thuật & Bảo trì", "role": "Maintenance Technician", "status": "Available", "statusClass": "text-emerald-600"}
     ]
-    if not staff_availability:
-        staff_availability = [
-            {"id": "MNT", "name": "Nhân viên Kỹ thuật & Bảo trì", "role": "Maintenance Technician", "status": "Available", "statusClass": "text-emerald-600"}
-        ]
 
     active_techs_count = sum(1 for s in staff_availability if s.get("status") == "Available")
 
@@ -77,14 +86,18 @@ async def get_maintenance_dashboard(db: AsyncSession = Depends(get_db)):
 async def create_maintenance_request(req_in: MaintenanceRequestCreate, db: AsyncSession = Depends(get_db)):
     """Creates a new maintenance issue work order."""
     ticket_code = f"MN-{random.randint(404, 9999)}"
+    cat_lower = (req_in.category or "").lower()
+    service_type = "ST-PLUMBING" if ("plumb" in cat_lower or "ống" in cat_lower or "nước" in cat_lower) else "ST-AC-REPAIR"
+    
     new_req = MaintenanceRequest(
         ticket_code=ticket_code,
         title=req_in.title,
-        category=req_in.category,
-        reported_time_label="Just now",
-        location=req_in.location,
         description=req_in.description,
-        source=req_in.source,
+        department_id="DEP-MAINTENANCE",
+        service_type_id=service_type,
+        room_number=req_in.location,
+        source=req_in.source or "Staff",
+        priority="HIGH" if req_in.category == "High" else "NORMAL",
         status="Pending",
     )
     db.add(new_req)
@@ -147,6 +160,7 @@ async def update_maintenance_request_status(
 
     req.status = status
     if assigned_to:
+        req.assigned_staff_name = assigned_to
         req.assigned_to = assigned_to
     await db.commit()
     await db.refresh(req)

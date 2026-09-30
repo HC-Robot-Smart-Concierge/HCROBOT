@@ -22,7 +22,7 @@ class SupportRequest(Base):
     
     # Location & Context
     room_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("rooms.id", ondelete="SET NULL"), nullable=True, index=True)
-    room_number: Mapped[str] = mapped_column(String(50), nullable=False, index=True) # e.g. 'Room 412', 'Room 305'
+    room_number: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, index=True) # e.g. 'Room 412', 'Lobby', or None
     guest_name: Mapped[str] = mapped_column(String(100), default="Hotel Guest")
     source: Mapped[str] = mapped_column(String(50), default="From HCRobot") # 'From HCRobot', 'Front Desk', 'Guest App'
     priority: Mapped[str] = mapped_column(String(20), default="NORMAL") # 'LOW', 'NORMAL', 'HIGH', 'URGENT'
@@ -50,10 +50,15 @@ class SupportRequest(Base):
                 if new_k not in kwargs:
                     kwargs[new_k] = val
 
+        if "category" in kwargs:
+            self._category = kwargs.pop("category")
+        if "request_type" in kwargs:
+            self._request_type = kwargs.pop("request_type")
+
         # Strip presentation/client-only labels
         for k in (
-            "time_label", "reported_time_label", "created_label", "category",
-            "request_type", "location_details", "guest_tier", "guest_stay_details",
+            "time_label", "reported_time_label", "created_label",
+            "location_details", "guest_tier", "guest_stay_details",
             "attached_media", "transcript", "assistance_status", "assigned_role",
             "notes", "activity_log", "escalated"
         ):
@@ -66,7 +71,7 @@ class SupportRequest(Base):
     # -------------------------------------------------------------
     @property
     def location(self) -> str:
-        return self.room_number or ""
+        return self.room_number or "Main Hotel"
 
     @location.setter
     def location(self, val: str):
@@ -82,7 +87,7 @@ class SupportRequest(Base):
 
     @property
     def reporter(self) -> Optional[str]:
-        return self.guest_name or self.source
+        return self.guest_name or self.source or "Staff / Guest"
 
     @reporter.setter
     def reporter(self, val: Optional[str]):
@@ -90,7 +95,55 @@ class SupportRequest(Base):
 
     @property
     def time_label(self) -> str:
-        return self.created_at.strftime("%I:%M %p").lstrip("0") if self.created_at else "Recent"
+        return self.created_at.strftime("%I:%M %p").lstrip("0") if self.created_at else "Just now"
+
+    @property
+    def request_type(self) -> str:
+        if getattr(self, "_request_type", None):
+            return self._request_type
+        if self.service_type_id:
+            st = str(self.service_type_id).upper()
+            if "BELL" in st:
+                return "luggage"
+            elif "HOUSEKEEPING" in st:
+                return "cleaning"
+            elif "TAXI" in st:
+                return "taxi"
+            elif "MAINTENANCE" in st:
+                return "repair"
+            elif "CONCIERGE" in st:
+                return "concierge"
+            elif "RECEPTION" in st:
+                return "booking"
+        return "general"
+
+    @request_type.setter
+    def request_type(self, val: str):
+        self._request_type = val
+
+    @property
+    def category(self) -> str:
+        if getattr(self, "_category", None):
+            return self._category
+        if self.service_type_id:
+            st = str(self.service_type_id).upper()
+            if "BELL" in st:
+                return "Bell Services"
+            elif "HOUSEKEEPING" in st:
+                return "Housekeeping"
+            elif "TAXI" in st:
+                return "Taxi & Transportation"
+            elif "MAINTENANCE" in st:
+                return "Maintenance"
+            elif "CONCIERGE" in st:
+                return "Concierge & Live Support"
+            elif "RECEPTION" in st:
+                return "Front Desk & Reception"
+        return "General"
+
+    @category.setter
+    def category(self, val: str):
+        self._category = val
 
     @property
     def reported_time_label(self) -> str:
@@ -101,22 +154,6 @@ class SupportRequest(Base):
         return self.time_label
 
     @property
-    def category(self) -> str:
-        return getattr(self, "_category", None) or (self.service_type_id.replace("ST-", "") if self.service_type_id else "General")
-
-    @category.setter
-    def category(self, val: str):
-        self._category = val
-
-    @property
-    def request_type(self) -> str:
-        return getattr(self, "_request_type", None) or (self.service_type_id.replace("ST-", "").lower() if self.service_type_id else "general")
-
-    @request_type.setter
-    def request_type(self, val: str):
-        self._request_type = val
-
-    @property
     def location_details(self) -> dict:
         return {"floor": "Floor 3", "room": self.room_number or "Lobby"}
 
@@ -124,7 +161,7 @@ class SupportRequest(Base):
     @property
     def guest_tier(self) -> str: return "Standard Guest"
     @property
-    def guest_stay_details(self) -> str: return f"Phòng {self.room_number}"
+    def guest_stay_details(self) -> str: return f"Phòng {self.room_number or 'Lobby'}"
     @property
     def attached_media(self) -> list: return []
     @property
@@ -139,4 +176,3 @@ class SupportRequest(Base):
     def activity_log(self) -> list: return []
     @property
     def escalated(self) -> bool: return self.priority in ["HIGH", "URGENT"]
-

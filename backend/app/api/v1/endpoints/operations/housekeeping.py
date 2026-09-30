@@ -3,33 +3,52 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, desc
+from sqlalchemy import select, desc, or_
 
 from app.core.database import get_db
-from app.models import Staff, HousekeepingRequest, ManagementDirective
+from app.models import Staff, SupportRequest, ManagementDirective
 from app.schemas.operations import (
     HousekeepingRequestCreate,
     HousekeepingAssignRequest,
     HousekeepingRequestResponse,
     HousekeepingDashboardResponse,
-    StaffResponse,
 )
 from .shared import TAG_HK, create_department_notification
 
 router = APIRouter()
 
-# 2. HOUSEKEEPING DASHBOARD & REQUESTS
+
+# =====================================================================
+# 2. HOUSEKEEPING DASHBOARD & REQUESTS (BUỒNG PHÒNG)
 # =====================================================================
 
-@router.get("/dashboard/housekeeping", response_model=HousekeepingDashboardResponse, tags=TAG_HK)
+@router.get(
+    "/dashboard/housekeeping",
+    response_model=HousekeepingDashboardResponse,
+    tags=TAG_HK,
+    summary="Dashboard vận hành bộ phận Buồng phòng",
+    responses={
+        200: {"description": "Lấy dữ liệu Dashboard Buồng phòng kèm KPI, danh sách yêu cầu, chỉ thị và nhân sự trực."}
+    },
+)
 async def get_housekeeping_dashboard(db: AsyncSession = Depends(get_db)):
-    """Returns housekeeping requests, floor status, available staff and KPIs."""
-    req_res = await db.execute(
-        select(HousekeepingRequest).where(
-            (HousekeepingRequest.department_id == "DEP-HOUSEKEEPING") |
-            (HousekeepingRequest.ticket_code.startswith("HK"))
-        ).order_by(desc(HousekeepingRequest.created_at))
+    """
+    ### Mô tả nghiệp vụ:
+    Truy vấn bảng điều khiển của bộ phận **Buồng phòng (Housekeeping)**.
+    Dữ liệu được truy vấn trực tiếp từ bảng chuẩn hóa `support_requests` có `service_type_id = 'ST-HOUSEKEEPING'` hoặc `department_id = 'DEP-HOUSEKEEPING'`.
+    """
+    stmt = (
+        select(SupportRequest)
+        .where(
+            or_(
+                SupportRequest.department_id == "DEP-HOUSEKEEPING",
+                SupportRequest.service_type_id == "ST-HOUSEKEEPING",
+            )
+        )
+        .order_by(desc(SupportRequest.created_at))
     )
+    req_res = await db.execute(stmt)
+
     hk_list = req_res.scalars().all()
 
     dir_res = await db.execute(
@@ -40,7 +59,11 @@ async def get_housekeeping_dashboard(db: AsyncSession = Depends(get_db)):
     dir_list = dir_res.scalars().all()
 
     staff_res = await db.execute(
-        select(Staff).where(Staff.department == "Housekeeping", Staff.status != "off_shift")
+        select(Staff).where(
+            or_(Staff.department_id == "DEP-HOUSEKEEPING", Staff.department == "Housekeeping"),
+            Staff.status != "off_shift",
+            Staff.is_active == True,
+        )
     )
     available_staff = staff_res.scalars().all()
 
@@ -48,12 +71,12 @@ async def get_housekeeping_dashboard(db: AsyncSession = Depends(get_db)):
     for h in hk_list:
         unified_hk.append(
             HousekeepingRequestResponse(
-                id=f"REQ-{h.ticket_code}",
+                id=f"REQ-{h.ticket_code}" if not str(h.ticket_code).startswith("REQ-") else h.ticket_code,
                 ticket_code=h.ticket_code,
                 source=h.source or "From HCRobot",
-                time_label=h.time_label or "Recent",
+                time_label=h.time_label,
                 title=h.title,
-                room_number=h.room_number,
+                room_number=h.room_number or "Room 000",
                 description=h.description,
                 guest_name=h.guest_name or "Guest",
                 status=h.status,
@@ -66,7 +89,7 @@ async def get_housekeeping_dashboard(db: AsyncSession = Depends(get_db)):
         room_num = d.location.replace("ROOM ", "").replace("Room ", "").replace("Phòng ", "").strip()
         unified_hk.append(
             HousekeepingRequestResponse(
-                id=f"REQ-{d.code}",
+                id=f"REQ-{d.code}" if not str(d.code).startswith("REQ-") else d.code,
                 ticket_code=d.code,
                 source="Operations Directive",
                 time_label=d.reported_time_label or "Today",
@@ -106,20 +129,35 @@ async def get_housekeeping_dashboard(db: AsyncSession = Depends(get_db)):
     }
 
 
-@router.post("/housekeeping/requests", response_model=HousekeepingRequestResponse, status_code=status.HTTP_201_CREATED, tags=TAG_HK)
+@router.post(
+    "/housekeeping/requests",
+    response_model=HousekeepingRequestResponse,
+    status_code=status.HTTP_201_CREATED,
+    tags=TAG_HK,
+    summary="Tạo mới yêu cầu dịch vụ buồng phòng",
+    responses={
+        201: {"description": "Tạo ticket buồng phòng thành công và lưu vào bảng support_requests."}
+    },
+)
 async def create_housekeeping_request(req_in: HousekeepingRequestCreate, db: AsyncSession = Depends(get_db)):
-    """Creates a new housekeeping ticket (generated by HCRobot vision or guest request)."""
+    """
+    ### Mô tả nghiệp vụ:
+    Tiếp nhận yêu cầu dọn phòng, giặt ủi, cấp thêm khăn/nước.
+    Bản ghi được tự động lưu vào bảng `support_requests` với `department_id = 'DEP-HOUSEKEEPING'` và `service_type_id = 'ST-HOUSEKEEPING'`.
+    """
     ticket_code = f"HK-{random.randint(1044, 9999)}"
-    new_req = HousekeepingRequest(
+    new_req = SupportRequest(
         ticket_code=ticket_code,
-        source=req_in.source,
+        source=req_in.source or "From HCRobot",
         title=req_in.title,
         room_number=req_in.room_number,
         description=req_in.description,
-        guest_name=req_in.guest_name,
+        guest_name=req_in.guest_name or "Hotel Guest",
         department_id="DEP-HOUSEKEEPING",
-        service_type_id="ST-ROOM-CLEAN",
+        service_type_id="ST-HOUSEKEEPING",
+
         status="Unassigned",
+        priority="NORMAL",
     )
     db.add(new_req)
     await create_department_notification(
@@ -136,49 +174,52 @@ async def create_housekeeping_request(req_in: HousekeepingRequestCreate, db: Asy
     return new_req
 
 
-@router.patch("/housekeeping/requests/{request_id}/assign", response_model=HousekeepingRequestResponse, tags=TAG_HK)
+@router.patch(
+    "/housekeeping/requests/{request_id}/assign",
+    response_model=HousekeepingRequestResponse,
+    tags=TAG_HK,
+    summary="Phân công nhân viên xử lý yêu cầu buồng phòng",
+    responses={
+        200: {"description": "Phân công hoặc cập nhật tiến độ công việc buồng phòng thành công."},
+        404: {"description": "Không tìm thấy yêu cầu buồng phòng."}
+    },
+)
 async def assign_housekeeping_request(
     request_id: str,
     assign_in: HousekeepingAssignRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    """Assigns staff or marks housekeeping task in progress."""
-    clean_id = request_id.replace("HK-", "").strip()
+    """
+    ### Mô tả nghiệp vụ:
+    Điều phối viên hoặc nhân viên Buồng phòng bấm **Nhận việc / Phân công nhân viên** xử lý yêu cầu.
+    """
+    clean_id = request_id.replace("REQ-", "").replace("HK-", "").strip()
     res = await db.execute(
-        select(HousekeepingRequest).where(
-            (HousekeepingRequest.id == request_id) |
-            (HousekeepingRequest.ticket_code == request_id) |
-            (HousekeepingRequest.id == clean_id) |
-            (HousekeepingRequest.ticket_code == clean_id) |
-            (HousekeepingRequest.id.ilike(f"%{clean_id}%")) |
-            (HousekeepingRequest.ticket_code.ilike(f"%{clean_id}%"))
+        select(SupportRequest).where(
+            or_(
+                SupportRequest.id == request_id,
+                SupportRequest.ticket_code == request_id,
+                SupportRequest.id == clean_id,
+                SupportRequest.ticket_code == clean_id,
+                SupportRequest.ticket_code == f"HK-{clean_id}",
+            )
         )
     )
     req = res.scalar_one_or_none()
     if not req:
-        # Fallback search by first HK request if matching by ID fails
-        all_hk = await db.execute(
-            select(HousekeepingRequest).where(
-                (HousekeepingRequest.department_id == "DEP-HOUSEKEEPING") |
-                (HousekeepingRequest.ticket_code.startswith("HK"))
-            )
-        )
-        first_hk = all_hk.scalars().first()
-        if first_hk:
-            req = first_hk
-        else:
-            raise HTTPException(status_code=404, detail="Housekeeping request not found")
+        raise HTTPException(status_code=404, detail="Không tìm thấy yêu cầu Buồng phòng")
 
     req.status = assign_in.status
     req.assigned_staff_name = assign_in.assigned_staff_name
 
-    # Safe Foreign Key lookup for Account
     if assign_in.assigned_staff_id or assign_in.assigned_staff_name:
         staff_check = await db.execute(
             select(Staff).where(
-                (Staff.id == assign_in.assigned_staff_id) |
-                (Staff.username == assign_in.assigned_staff_id) |
-                (Staff.full_name == assign_in.assigned_staff_name)
+                or_(
+                    Staff.id == assign_in.assigned_staff_id,
+                    Staff.username == assign_in.assigned_staff_id,
+                    Staff.full_name == assign_in.assigned_staff_name,
+                )
             )
         )
         found_staff = staff_check.scalar_one_or_none()
@@ -186,9 +227,7 @@ async def assign_housekeeping_request(
     else:
         req.account_id = None
 
+    req.updated_at = datetime.utcnow()
     await db.commit()
     await db.refresh(req)
     return req
-
-
-

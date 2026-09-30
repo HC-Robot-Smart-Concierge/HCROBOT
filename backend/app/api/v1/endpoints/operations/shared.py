@@ -14,13 +14,16 @@ from app.models import (
     ManagementDirective,
     ReceptionRequest,
     Notification,
+    SupportRequest,
+    ServiceType,
+    Department,
 )
 
 # =====================================================================
 # TAG CONSTANTS FOR SWAGGER UI DOCS
 # =====================================================================
 
-TAG_REC = ["05. Bộ phận Lễ tân & Tiền sảnh (Reception Operations)"]
+TAG_REC = ["05. Bộ phận Lễ tân & Đặt phòng (Front Desk & Reception)"]
 TAG_FB = ["06. Bộ phận Phục vụ phòng (F&B / Room Service)"]
 TAG_HK = ["07. Bộ phận Buồng phòng (Housekeeping Operations)"]
 TAG_BELL = ["08. Bộ phận Hành lý & Tiền sảnh (Bell Services)"]
@@ -29,7 +32,10 @@ TAG_REST = ["10. Bộ phận Nhà hàng (Restaurant - Đặt bàn & Đặt món)
 TAG_OPS = ["11. Quản lý Chung & Điều phối Nghiệp vụ (Operations & Directives)"]
 TAG_ADMIN = ["12. Trung tâm Điều hành & Quản trị (Admin & Human Support)"]
 TAG_NOTIF = ["13. Thông báo Hệ thống (Notifications)"]
-TAG_STAFF = ["15. Quản lý Nhân sự & Đội ngũ (Staff Directory)"]
+TAG_STAFF = ["15. Quản lý Phòng ban & Nhân sự (Departments & Staff)"]
+TAG_TAXI = ["16. Bộ phận Đặt xe & Vận chuyển (Taxi & Transportation)"]
+TAG_CONCIERGE = ["17. Bộ phận Trợ lý Concierge & Live Call (Concierge & Live Support)"]
+
 
 
 async def create_department_notification(
@@ -76,98 +82,121 @@ async def create_department_notification(
 
 
 async def _fetch_all_raw_requests(db: AsyncSession) -> List[Dict[str, Any]]:
-    """Helper to collect and normalize tasks across all unified operational tables."""
-    orders_res = await db.execute(select(RoomServiceOrder).order_by(desc(RoomServiceOrder.created_at)))
-    from app.models.support_request import SupportRequest
-    sr_res = await db.execute(select(SupportRequest).order_by(desc(SupportRequest.created_at)))
-    dir_res = await db.execute(select(ManagementDirective).order_by(desc(ManagementDirective.created_at)))
-
+    """Helper to collect and normalize tasks across all operational tables including SupportRequest."""
     unified = []
 
-    # 1. F&B Orders
-    for o in orders_res.scalars().all():
-        unified.append({
-            "id": f"REQ-{o.order_number}",
-            "raw_id": o.id,
-            "department": "F&B",
-            "table_type": "room_service",
-            "title": f"Order #{o.order_number}: {', '.join([i.get('name', 'Item') for i in o.items]) if o.items else 'Room Service'}",
-            "location": o.room_number,
-            "guestName": "Room Guest",
-            "priority": "NORMAL",
-            "status": o.status,
-            "time": o.created_at.strftime("%I:%M %p").lstrip("0") if o.created_at else "Recent",
-            "assignedTo": o.assigned_staff_name,
-            "assigned_robot": o.assigned_robot_id,
-            "notes": o.note,
-            "source": "Guest / Robot App",
-            "created_at": o.created_at,
-        })
+    # 1. Fetch from SupportRequest table (HK, Bell, Taxi, Maintenance, Concierge, Reception)
+    try:
+        sr_stmt = (
+            select(SupportRequest, ServiceType, Department)
+            .outerjoin(ServiceType, SupportRequest.service_type_id == ServiceType.id)
+            .outerjoin(Department, SupportRequest.department_id == Department.id)
+            .order_by(desc(SupportRequest.created_at))
+        )
+        sr_res = await db.execute(sr_stmt)
+        for sr, st, dep in sr_res.all():
+            dep_code = (dep.code if dep else (st.code if st else "")).upper()
+            if "HOUSEKEEPING" in dep_code:
+                dept_label = "Housekeeping"
+                tbl_type = "housekeeping"
+            elif "BELL" in dep_code:
+                dept_label = "Bell Services"
+                tbl_type = "bell"
+            elif "TAXI" in dep_code:
+                dept_label = "Taxi"
+                tbl_type = "taxi"
+            elif "MAINTENANCE" in dep_code:
+                dept_label = "Maintenance"
+                tbl_type = "maintenance"
+            elif "CONCIERGE" in dep_code:
+                dept_label = "Concierge"
+                tbl_type = "concierge"
+            elif "RECEPTION" in dep_code:
+                dept_label = "Reception"
+                tbl_type = "reception"
+            elif "FB" in dep_code or "ROOM_SERVICE" in dep_code:
+                dept_label = "F&B"
+                tbl_type = "room_service"
+            else:
+                dept_label = dep.name if dep else (st.name if st else "General")
+                tbl_type = "support_request"
 
-    # 2. Unified Support Requests (Housekeeping, Bell Services, Maintenance, Reception)
-    for s in sr_res.scalars().all():
-        dept_id = (s.department_id or "").upper()
-        code = (s.ticket_code or "").upper()
+            raw_ticket = sr.ticket_code or sr.id
+            ticket_display = f"REQ-{raw_ticket}" if not str(raw_ticket).startswith("REQ-") else raw_ticket
 
-        if "HOUSEKEEPING" in dept_id or code.startswith("HK"):
-            dept_name = "Housekeeping"
-            tbl_type = "housekeeping"
-        elif "BELL" in dept_id or code.startswith("BS"):
-            dept_name = "Bell Services"
-            tbl_type = "bell"
-        elif "MAINTENANCE" in dept_id or code.startswith("MN"):
-            dept_name = "Maintenance"
-            tbl_type = "maintenance"
-        elif "RECEPTION" in dept_id or code.startswith("REC") or code.startswith("REQ"):
-            dept_name = "Reception"
-            tbl_type = "reception"
-        else:
-            dept_name = s.department_id or "Operations"
-            tbl_type = "support_request"
+            room_str = sr.room_number or "Main Lobby"
+            loc_label = f"ROOM {room_str}" if room_str.isdigit() else room_str
 
-        room_str = s.room_number or "Main Lobby"
-        if room_str.isdigit():
-            loc_label = f"ROOM {room_str}"
-        else:
-            loc_label = room_str
+            unified.append({
+                "id": ticket_display,
+                "raw_id": sr.id,
+                "department": dept_label,
+                "table_type": tbl_type,
+                "title": sr.title,
+                "location": loc_label,
+                "guestName": sr.guest_name or "Hotel Guest",
+                "priority": sr.priority or (st.default_priority if st else "NORMAL"),
+                "status": sr.status or "Pending",
+                "time": sr.created_at.strftime("%I:%M %p").lstrip("0") if sr.created_at else "Recent",
+                "assignedTo": sr.assigned_staff_name,
+                "assigned_robot": sr.assigned_robot_id,
+                "notes": sr.description,
+                "source": sr.source or "From HCRobot",
+                "created_at": sr.created_at,
+            })
+    except Exception as e:
+        logger.error(f"Error fetching SupportRequests: {e}")
 
-        unified.append({
-            "id": s.ticket_code if str(s.ticket_code).startswith("REQ-") else f"REQ-{s.ticket_code}",
-            "raw_id": s.id,
-            "department": dept_name,
-            "table_type": tbl_type,
-            "title": s.title,
-            "location": loc_label,
-            "guestName": s.guest_name or "Guest",
-            "priority": s.priority or "NORMAL",
-            "status": s.status or "Pending",
-            "time": s.created_at.strftime("%I:%M %p").lstrip("0") if s.created_at else "Recent",
-            "assignedTo": s.assigned_staff_name,
-            "assigned_robot": s.assigned_robot_id,
-            "notes": s.description,
-            "source": s.source or "HCRobot",
-            "created_at": s.created_at,
-        })
+    # 2. Orders from RoomServiceOrder (F&B / ẩm thực phòng)
+    try:
+        orders_res = await db.execute(select(RoomServiceOrder).order_by(desc(RoomServiceOrder.created_at)))
+        for o in orders_res.scalars().all():
+            unified.append({
+                "id": f"REQ-{o.order_number}",
+                "raw_id": o.id,
+                "department": "F&B",
+                "table_type": "room_service",
+                "title": f"Order #{o.order_number}: {', '.join([i.get('name', 'Item') for i in o.items]) if o.items else 'Room Service'}",
+                "location": o.room_number,
+                "guestName": "Room Guest",
+                "priority": "NORMAL",
+                "status": o.status,
+                "time": o.created_at.strftime("%I:%M %p").lstrip("0") if o.created_at else "Recent",
+                "assignedTo": o.assigned_staff_name,
+                "assigned_robot": o.assigned_robot_id,
+                "notes": o.note,
+                "source": "Guest / Robot App",
+                "created_at": o.created_at,
+            })
+    except Exception as e:
+        logger.error(f"Error fetching RoomServiceOrders: {e}")
 
-    # 3. Management Directives
-    for d in dir_res.scalars().all():
-        unified.append({
-            "id": f"REQ-{d.code}",
-            "raw_id": d.id,
-            "department": d.department or "Directive",
-            "table_type": "directive",
-            "title": d.title,
-            "location": d.location or "Main Hotel",
-            "guestName": "Operations Directive",
-            "priority": d.priority or "NORMAL",
-            "status": d.status or "Unassigned",
-            "time": d.reported_time_label or (d.created_at.strftime("%I:%M %p").lstrip("0") if d.created_at else "Recent"),
-            "assignedTo": d.assigned_staff_name,
-            "assigned_robot": None,
-            "notes": d.description,
-            "source": f"Admin ({d.created_by})",
-            "created_at": d.created_at,
-        })
+    # 3. Directives from ManagementDirective (Chỉ thị vận hành)
+    try:
+        dir_res = await db.execute(select(ManagementDirective).order_by(desc(ManagementDirective.created_at)))
+        for d in dir_res.scalars().all():
+            unified.append({
+                "id": f"REQ-{d.code}",
+                "raw_id": d.id,
+                "department": d.department or "Directive",
+                "table_type": "directive",
+                "title": d.title,
+                "location": d.location or "Main Hotel",
+                "guestName": "Operations Directive",
+                "priority": d.priority or "NORMAL",
+                "status": d.status,
+                "time": d.reported_time_label or (d.created_at.strftime("%I:%M %p").lstrip("0") if d.created_at else "Recent"),
+                "assignedTo": d.assigned_staff_name,
+                "assigned_robot": None,
+                "notes": d.description,
+                "source": f"Admin ({d.created_by})",
+                "created_at": d.created_at,
+            })
+    except Exception as e:
+        logger.error(f"Error fetching ManagementDirectives: {e}")
 
+
+    # Sort all by created_at descending (latest first)
+    unified.sort(key=lambda x: x.get("created_at") or datetime.min, reverse=True)
     return unified
 

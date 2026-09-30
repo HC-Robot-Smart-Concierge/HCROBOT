@@ -24,3 +24,7 @@ class ServiceType(Base):
     # Relationships
     department: Mapped["Department"] = relationship("Department", back_populates="service_types")
     support_requests: Mapped[List["SupportRequest"]] = relationship("SupportRequest", back_populates="service_type")
+
+    @property
+    def department_name(self) -> Optional[str]:
+        return self.department.name if self.department else None

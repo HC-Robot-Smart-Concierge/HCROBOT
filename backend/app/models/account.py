@@ -40,9 +40,26 @@ class Account(Base):
     # Relationships
     department_rel: Mapped[Optional["Department"]] = relationship("Department", back_populates="accounts")
     notifications: Mapped[List["Notification"]] = relationship("Notification", back_populates="account")
-    directives_assigned: Mapped[List["ManagementDirective"]] = relationship(
-        "ManagementDirective", foreign_keys="ManagementDirective.assigned_account_id", back_populates="assigned_account"
-    )
-    directives_created: Mapped[List["ManagementDirective"]] = relationship(
-        "ManagementDirective", foreign_keys="ManagementDirective.created_by_account_id", back_populates="created_by_account"
-    )
+
+    @property
+    def department_name(self) -> Optional[str]:
+        if self.department_id:
+            dept_map = {
+                "DEP-HOUSEKEEPING": "Housekeeping",
+                "DEP-BELL": "Bell Services",
+                "DEP-TAXI": "Taxi & Transportation",
+                "DEP-MAINTENANCE": "Maintenance & Engineering",
+                "DEP-RECEPTION": "Front Desk & Reception",
+                "DEP-CONCIERGE": "Concierge & Live Support",
+                "DEP-FB": "Food & Beverage",
+            }
+            if self.department_id in dept_map:
+                return dept_map[self.department_id]
+        return self.department or "General"
+    # TODO (Phase sau): Kích hoạt khi chạy migration thêm assigned_account_id/created_by_account_id vào management_directives trong DB
+    # directives_assigned: Mapped[List["ManagementDirective"]] = relationship(
+    #     "ManagementDirective", foreign_keys="ManagementDirective.assigned_account_id", back_populates="assigned_account"
+    # )
+    # directives_created: Mapped[List["ManagementDirective"]] = relationship(
+    #     "ManagementDirective", foreign_keys="ManagementDirective.created_by_account_id", back_populates="created_by_account"
+    # )

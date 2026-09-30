@@ -272,6 +272,12 @@ class OllamaService:
             fast_action = "maintenance"
         elif any(k in lower_speech for k in ["đặt bàn", "dat ban", "đặt món", "dat mon", "bàn ăn", "ban an", "nhà hàng", "nha hang", "table", "restaurant"]):
             fast_action = "restaurant"
+        elif any(k in lower_speech for k in ["taxi", "đặt xe", "dat xe", "gọi xe", "goi xe", "sân bay", "san bay", "cab", "ride"]):
+            fast_action = "taxi"
+        elif any(k in lower_speech for k in ["concierge", "gặp người", "gap nguoi", "nhân viên hỗ trợ", "live call", "video call", "tổng đài", "tong dai", "trợ giúp trực tiếp"]):
+            fast_action = "concierge"
+        elif any(k in lower_speech for k in ["lễ tân", "le tan", "check out", "checkout", "check in", "checkin", "đổi phòng", "doi phong", "trả phòng", "tra phong", "front desk", "reception"]):
+            fast_action = "reception"
 
         if fast_action:
             clean_items = user_speech
@@ -294,7 +300,7 @@ class OllamaService:
         system_prompt = (
             "Bạn là hệ thống trích xuất dữ liệu tự động cho dịch vụ khách sạn. "
             "Hãy phân tích câu nói của khách và trả về kết quả dưới định dạng JSON duy nhất với các field sau:\n"
-            "- action: một trong các giá trị ['housekeeping', 'room_service', 'bellman', 'maintenance', 'restaurant', 'provide_room_number', 'faq', 'unknown']\n"
+            "- action: một trong các giá trị ['housekeeping', 'room_service', 'bellman', 'maintenance', 'taxi', 'concierge', 'reception', 'restaurant', 'provide_room_number', 'faq', 'unknown']\n"
             "- room_number: số phòng nếu được nhắc tới (VD: '302', '502'), nếu không có để null\n"
             "- items: chi tiết món đồ/món ăn/dịch vụ yêu cầu (VD: '2 cái khăn tắm', '1 dĩa cơm chiên'), nếu không có để null\n\n"
             "Chỉ trả về JSON thuần túy, không kèm bất kỳ câu giải thích nào."
@@ -343,6 +349,12 @@ class OllamaService:
                 fallback_action = "maintenance"
             elif any(k in lower_speech for k in ["đặt bàn", "đặt món trước", "bàn ăn", "nhà hàng", "table", "restaurant"]):
                 fallback_action = "restaurant"
+            elif any(k in lower_speech for k in ["taxi", "đặt xe", "gọi xe", "sân bay", "cab", "ride"]):
+                fallback_action = "taxi"
+            elif any(k in lower_speech for k in ["concierge", "gặp người", "nhân viên hỗ trợ", "live call", "video call", "tổng đài"]):
+                fallback_action = "concierge"
+            elif any(k in lower_speech for k in ["lễ tân", "check out", "check in", "đổi phòng", "trả phòng", "front desk", "reception"]):
+                fallback_action = "reception"
             elif extracted_room_regex:
                 fallback_action = "provide_room_number"
 

@@ -83,8 +83,8 @@ tags_metadata = [
         "description": "Tra cứu vector ChromaDB, đồng bộ tự động Obsidian Vault và tài liệu nghiệp vụ khách sạn.",
     },
     {
-        "name": "05. Bộ phận Lễ tân & Tiền sảnh (Reception Operations)",
-        "description": "Quản lý Dashboard Lễ tân, theo dõi yêu cầu khách hàng và cuộc gọi hỗ trợ trực tuyến.",
+        "name": "05. Bộ phận Lễ tân & Đặt phòng (Front Desk & Reception)",
+        "description": "Quản lý Dashboard Lễ tân, xử lý yêu cầu đặt phòng (Room Booking), check-in, check-out và thủ tục lưu trú.",
     },
     {
         "name": "06. Bộ phận Phục vụ phòng (F&B / Room Service)",
@@ -123,8 +123,17 @@ tags_metadata = [
         "description": "Tra cứu nhật ký phân tích sự kiện, kiểm toán bảo mật hành vi và xuất báo cáo CSV/JSON.",
     },
     {
-        "name": "15. Quản lý Nhân sự & Đội ngũ (Staff Directory)",
-        "description": "Quản lý hồ sơ nhân viên khách sạn, phòng ban, ca trực và phân công hỗ trợ.",
+        "name": "15. Quản lý Phòng ban & Nhân sự (Departments & Staff)",
+        "description": "Quản lý cơ cấu phòng ban chuẩn khách sạn (Housekeeping, Bellman, Taxi, Maintenance, Reception, Concierge, F&B), danh mục loại hình dịch vụ (Service Types) và hồ sơ nhân sự khách sạn.",
+    },
+    {
+        "name": "16. Bộ phận Đặt xe & Vận chuyển (Taxi & Transportation)",
+        "description": "Dashboard Đặt xe, điều phối taxi sân bay, lịch trình đưa đón khách và quản lý phương tiện di chuyển.",
+    },
+    {
+        "name": "17. Bộ phận Trợ lý Concierge & Live Call (Concierge & Live Support)",
+        "description": "Dashboard Concierge, tiếp nhận cuộc gọi video trực tuyến, can thiệp hỗ trợ tức thì khi khách tương tác với Robot Kiosk.",
+
     },
 ]
 

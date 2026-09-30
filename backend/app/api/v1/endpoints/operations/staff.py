@@ -374,7 +374,7 @@ async def create_staff(
     }
     default_dashboard = dashboard_map.get(resolved_dept_id, "room_service")
     if "admin" in (staff_in.role or "").lower():
-        default_dashboard = "admin_map"
+        default_dashboard = "admin_portal"
 
     # 3. Tự động sinh mã nhân viên nếu chưa có
     code = staff_in.code

@@ -57,8 +57,18 @@ const STAFF_DASHBOARDS = [
   'maintenance',
 ];
 
-const isAdminUser = (user) =>
-  user?.username === 'admin' || user?.role === 'Operations Admin';
+const isAdminUser = (user) => {
+  if (!user) return false;
+  const username = String(user.username || '').toLowerCase();
+  const role = String(user.role || '').toLowerCase();
+  const dept = String(user.department || '').toLowerCase();
+  return (
+    username === 'admin' ||
+    role.includes('admin') ||
+    dept === 'executive' ||
+    dept === 'operations'
+  );
+};
 
 const normalizeLegacyView = (view, user) => {
   if (isAdminUser(user)) {
@@ -67,8 +77,8 @@ const normalizeLegacyView = (view, user) => {
     }
     return view;
   }
-  if (!view || view === 'manager_hub' || view === 'admin_portal') {
-    return user ? 'room_service' : 'landing';
+  if (!view || view === 'manager_hub' || view === 'admin_portal' || view === 'admin_map') {
+    return user ? (user.default_dashboard || 'room_service') : 'landing';
   }
   const clean = String(view).toLowerCase().trim().replace(/[\s-]+/g, '_');
   if (['f&b', 'fb', 'food_beverage', 'roomservice', 'f_and_b', 'room_service'].includes(clean)) {
@@ -111,6 +121,15 @@ export function App() {
 
     const user = getStoredUser();
     if (user) {
+      if (isAdminUser(user)) {
+        // For admin: if URL specifically requested a view, allow it; otherwise ALWAYS enter Admin Dashboard (admin_portal)
+        if (requestedView && ['admin_portal', 'admin_map', 'robot_display'].includes(requestedView)) {
+          return requestedView;
+        }
+        return 'admin_portal';
+      }
+
+      // Regular staff
       const savedView = localStorage.getItem('aurora_active_view');
       const targetRoleDashboard = normalizeLegacyView(
         user.default_dashboard || user.defaultDashboard || 'room_service',
@@ -118,16 +137,16 @@ export function App() {
       );
       const allowed = user.allowedDashboards || [targetRoleDashboard];
       const normalizedSavedView = normalizeLegacyView(savedView, user);
-      if (
-        normalizedSavedView &&
-        (allowed.includes(normalizedSavedView) ||
-          ['landing', 'robot_display', 'admin_map'].includes(normalizedSavedView))
-      ) {
+      if (normalizedSavedView && allowed.includes(normalizedSavedView)) {
         return normalizedSavedView;
       }
       return targetRoleDashboard;
     }
-    return normalizeLegacyView(localStorage.getItem('aurora_active_view') || 'landing');
+
+    // Guest / Not logged in
+    const savedView = localStorage.getItem('aurora_active_view');
+    if (savedView === 'login') return 'login';
+    return 'landing';
   });
 
   const [activeMenu, setActiveMenu] = useState(() => {
@@ -151,8 +170,21 @@ export function App() {
     }
   }, [activeMenu]);
 
-  // Role Guard: Ensure user cannot access unassigned role dashboards
+  // STRICT PROTECTED ROUTE GUARD
   useEffect(() => {
+    // A. User not logged in (Guest)
+    if (!currentUser) {
+      const isPublicRoute = ['landing', 'login', 'robot_display'].includes(activeView);
+      if (!isPublicRoute) {
+        // Any attempt to view admin or staff dashboards requires login
+        setActiveView('login');
+        localStorage.setItem('aurora_active_view', 'login');
+        showNotification('Vui lòng đăng nhập để truy cập trang này.');
+      }
+      return;
+    }
+
+    // B. Legacy manager account deprecation
     if (currentUser?.username === 'manager') {
       logoutUser();
       setCurrentUser(null);
@@ -164,43 +196,43 @@ export function App() {
       return;
     }
 
-    if (!currentUser) {
-      // If logged out, only allow landing, login, robot_display, admin_map
-      if (!['landing', 'login', 'robot_display', 'admin_map', 'admin_portal'].includes(activeView)) {
-        setActiveView('landing');
-      }
-      return;
-    }
-
-    if (activeView === 'manager_hub') {
-      setActiveView(isAdminUser(currentUser) ? 'admin_portal' : 'landing');
-      return;
-    }
-
+    // C. Logged in as Admin
     if (isAdminUser(currentUser)) {
-      if (activeView === 'login') {
+      // If admin visits login or landing or old manager_hub, route to admin_portal
+      if (activeView === 'login' || activeView === 'landing' || activeView === 'manager_hub') {
         setActiveView('admin_portal');
+        localStorage.setItem('aurora_active_view', 'admin_portal');
       }
-      return; // Admin has universal access
+      return; // Admin has full access to all admin tools
     }
 
+    // D. Logged in as Staff (Protected staff dashboards)
     const targetRoleDashboard = normalizeLegacyView(
       currentUser.default_dashboard || currentUser.defaultDashboard || 'room_service',
       currentUser
     );
     const allowed = currentUser.allowedDashboards || [targetRoleDashboard];
 
-    // If currently on login page while already authenticated, redirect to staff dashboard
-    if (activeView === 'login') {
+    // Staff CANNOT access Admin Portal or Admin LiDAR Map
+    if (activeView === 'admin_portal' || activeView === 'admin_map') {
       setActiveView(targetRoleDashboard);
+      localStorage.setItem('aurora_active_view', targetRoleDashboard);
+      showNotification('Bạn không có quyền truy cập khu vực Quản trị viên (Admin)!');
       return;
     }
 
-    // If activeView is a dashboard view and is not allowed for this staff
-    const isDashboard = STAFF_DASHBOARDS.includes(activeView);
+    // If staff visits login or landing or manager_hub, route to their assigned dashboard
+    if (activeView === 'login' || activeView === 'landing' || activeView === 'manager_hub') {
+      setActiveView(targetRoleDashboard);
+      localStorage.setItem('aurora_active_view', targetRoleDashboard);
+      return;
+    }
 
+    // If staff attempts to navigate to another staff dashboard they don't have permission for
+    const isDashboard = STAFF_DASHBOARDS.includes(activeView);
     if (isDashboard && !allowed.includes(activeView)) {
       setActiveView(targetRoleDashboard);
+      localStorage.setItem('aurora_active_view', targetRoleDashboard);
       showNotification('Bạn chỉ có quyền truy cập vai trò nghiệp vụ được phân công!');
     }
   }, [activeView, currentUser]);
@@ -422,14 +454,25 @@ export function App() {
           currentUser={currentUser}
           onNavigateToLogin={() => {
             if (currentUser) {
-              setActiveView(currentUser.default_dashboard || 'housekeeping');
+              if (isAdminUser(currentUser)) {
+                setActiveView('admin_portal');
+              } else {
+                setActiveView(currentUser.default_dashboard || 'room_service');
+              }
               setActiveMenu('Dashboard');
             } else {
               setActiveView('login');
             }
           }}
           onNavigateToRobotDisplay={() => setActiveView('robot_display')}
-          onNavigateToLidarMap={() => setActiveView('admin_map')}
+          onNavigateToLidarMap={() => {
+            if (isAdminUser(currentUser)) {
+              setActiveView('admin_map');
+            } else {
+              setActiveView('login');
+              showNotification('Vui lòng đăng nhập quyền Quản trị viên để truy cập LiDAR Map.');
+            }
+          }}
         />
       )}
 

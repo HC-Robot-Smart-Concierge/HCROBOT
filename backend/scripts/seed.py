@@ -75,7 +75,7 @@ STAFF_ACCOUNTS = [
         "full_name": "System Administrator",
         "role": "Administrator",
         "department": "Executive",
-        "default_dashboard": "admin_map",
+        "default_dashboard": "admin_portal",
         "location": "Executive Suite",
         "status": "available",
         "shift": "All Shifts",

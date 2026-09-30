@@ -31,9 +31,9 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
         'Logs',
         'Settings',
       ];
-      return validTabs.includes(tab) ? tab : 'Operations';
+      return validTabs.includes(tab) ? tab : 'Dashboard';
     } catch {
-      return 'Operations';
+      return 'Dashboard';
     }
   };
 

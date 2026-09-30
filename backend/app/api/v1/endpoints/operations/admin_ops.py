@@ -59,6 +59,7 @@ async def get_admin_tasks(
             "bell services": ["bell services", "bellman", "hành lý"],
             "taxi": ["taxi", "transport", "xe", "đặt xe"],
             "maintenance": ["maintenance", "kỹ thuật", "bảo trì"],
+            "concierge": ["concierge", "trợ lý", "live call", "live support"],
             "reception": ["reception", "lễ tân"],
             "directive": ["directive", "executive", "chỉ thị"],
         }
@@ -122,7 +123,9 @@ async def get_admin_operations_summary(db: AsyncSession = Depends(get_db)):
         if st not in ["completed", "cancelled", "rejected"]:
             summary.total_active += 1
 
-        if "reception" in dept:
+        if "concierge" in dept or "live support" in dept:
+            summary.concierge_count += 1
+        elif "reception" in dept:
             summary.reception_count += 1
         elif "housekeeping" in dept:
             summary.housekeeping_count += 1
@@ -260,6 +263,11 @@ async def admin_dispatch_task(
             st_id = "ST-MAINTENANCE"
             dep_id = "DEP-MAINTENANCE"
             dept_label = "Maintenance"
+        elif "concierge" in dep or "live support" in dep or "trợ lý" in dep:
+            code = f"CCG-{rand_suffix}"
+            st_id = "ST-CONCIERGE"
+            dep_id = "DEP-CONCIERGE"
+            dept_label = "Concierge"
         elif "reception" in dep or "lễ tân" in dep:
             code = f"REC-{rand_suffix}"
             st_id = "ST-RECEPTION"
@@ -615,6 +623,7 @@ async def get_analytics_summary(db: AsyncSession = Depends(get_db)):
     # Department breakdown
     dept_distribution = {
         "Reception": 0,
+        "Concierge": 0,
         "Housekeeping": 0,
         "F&B": 0,
         "Bell Services": 0,
@@ -623,7 +632,9 @@ async def get_analytics_summary(db: AsyncSession = Depends(get_db)):
     }
     for t in raw_list:
         d = t["department"].lower()
-        if "reception" in d:
+        if "concierge" in d or "live support" in d:
+            dept_distribution["Concierge"] += 1
+        elif "reception" in d:
             dept_distribution["Reception"] += 1
         elif "housekeeping" in d:
             dept_distribution["Housekeeping"] += 1

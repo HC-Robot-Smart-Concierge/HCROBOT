@@ -497,7 +497,7 @@ class UnifiedOperationTask(BaseModel):
 
 
 class AdminTaskDispatchCreate(BaseModel):
-    department: str  # 'Reception', 'Housekeeping', 'F&B', 'Bell Services', 'Maintenance', 'Taxi', 'Directive'
+    department: str  # 'Reception', 'Concierge', 'Housekeeping', 'F&B', 'Bell Services', 'Maintenance', 'Taxi', 'Directive'
     title: str
     room_number: Optional[str] = Field(None, description="Số phòng hoặc vị trí ví dụ 'Room 412', 'Lobby', hoặc None")
     guest_name: Optional[str] = "Hotel Guest"
@@ -518,6 +518,7 @@ class AdminOperationsSummary(BaseModel):
     total_active: int = 0
     all_count: int = 0
     reception_count: int = 0
+    concierge_count: int = 0
     housekeeping_count: int = 0
     room_service_count: int = 0
     bell_services_count: int = 0

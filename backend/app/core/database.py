@@ -46,5 +46,13 @@ async def init_db() -> None:
             await conn.execute(text("ALTER TABLE room_service_orders ADD COLUMN IF NOT EXISTS is_vip BOOLEAN DEFAULT FALSE;"))
         except Exception:
             pass
+        try:
+            await conn.execute(text("ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS food_item_id VARCHAR(50);"))
+            await conn.execute(text("ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS display_order INT DEFAULT 0;"))
+            await conn.execute(text("ALTER TABLE menu_items ALTER COLUMN name DROP NOT NULL;"))
+            await conn.execute(text("ALTER TABLE menu_items ALTER COLUMN category DROP NOT NULL;"))
+            await conn.execute(text("ALTER TABLE order_items ADD COLUMN IF NOT EXISTS food_item_id VARCHAR(50);"))
+        except Exception:
+            pass
 
 

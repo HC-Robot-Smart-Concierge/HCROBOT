@@ -19,7 +19,7 @@ from app.models.logging import LogEvent, AuditLog, LogLevelEnum, LogCategoryEnum
 from app.models.notification import Notification
 from app.models.hotel import Hotel, Room, Facility, Event
 from app.models.map import Map, Zone, Endpoint, EndpointGroup, EndpointGroupMember
-from app.models.menu import Menu, MenuItem
+from app.models.menu import Menu, MenuItem, FoodItem
 from app.models.room_service import RoomServiceOrder, OrderItem
 from app.models.feedback import Feedback
 from app.models.schedule import Schedule
@@ -64,6 +64,7 @@ __all__ = [
     "EndpointGroupMember",
     "Menu",
     "MenuItem",
+    "FoodItem",
     "Feedback",
     "Schedule",
     "RobotWaypoint",

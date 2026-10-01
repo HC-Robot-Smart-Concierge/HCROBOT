@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc
 
 from app.core.database import get_db
-from app.models import Staff, RoomServiceOrder, OrderItem, MenuItem, Room, InventoryStock
+from app.models import Staff, RoomServiceOrder, OrderItem, MenuItem, FoodItem, Room, InventoryStock
 from app.schemas.operations import (
     RoomServiceOrderCreate,
     RoomServiceOrderStatusUpdate,
@@ -74,7 +74,6 @@ async def create_room_service_order(order_in: RoomServiceOrderCreate, db: AsyncS
     new_order = RoomServiceOrder(
         id=order_id,
         order_number=order_num,
-        room_id=room_id,
         room_number=order_in.room_number,
         items=[item.model_dump() for item in order_in.items],
         note=order_in.note,
@@ -88,17 +87,37 @@ async def create_room_service_order(order_in: RoomServiceOrderCreate, db: AsyncS
 
     total_amount = 0.0
     for it in order_in.items:
-        m_item_res = await db.execute(
-            select(MenuItem).where(MenuItem.name.ilike(f"%{it.name}%"))
+        # 1. Tìm món ăn trong Master Food Item Catalog
+        f_res = await db.execute(
+            select(FoodItem).where(FoodItem.name.ilike(f"%{it.name}%"))
         )
-        m_item = m_item_res.scalars().first()
-        price = m_item.price if m_item else 0.0
+        food_item = f_res.scalars().first()
+
+        # 2. Tìm MenuItem liên kết để lấy giá bán theo thực đơn nếu có
+        m_item = None
+        price = 0.0
+        if food_item:
+            m_res = await db.execute(
+                select(MenuItem).where(MenuItem.food_item_id == food_item.id, MenuItem.is_available == True)
+            )
+            m_item = m_res.scalars().first()
+            price = m_item.price if (m_item and m_item.price > 0) else food_item.base_price
+        else:
+            # Fallback legacy lookup by MenuItem name
+            m_item_res = await db.execute(
+                select(MenuItem).where(MenuItem.name.ilike(f"%{it.name}%"))
+            )
+            m_item = m_item_res.scalars().first()
+            if m_item:
+                price = m_item.price
+
         qty = int(it.qty) if str(it.qty).isdigit() else 1
         subtotal = price * qty
         total_amount += subtotal
 
         order_item = OrderItem(
             order=new_order,
+            food_item_id=food_item.id if food_item else None,
             menu_item_id=m_item.id if m_item else None,
             item_name=it.name,
             quantity=qty,

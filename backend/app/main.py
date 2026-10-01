@@ -180,7 +180,6 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 app.include_router(api_router, prefix="/api/v1")
 
 
-@app.get("/", tags=["00. Trạng thái Máy chủ (System Health)"], summary="Kiểm tra trạng thái máy chủ")
 @app.get("/health", tags=["00. Trạng thái Máy chủ (System Health)"], summary="Kiểm tra trạng thái kết nối máy chủ (Health)")
 async def health_check():
     return {

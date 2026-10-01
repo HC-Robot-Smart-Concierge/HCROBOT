@@ -8,7 +8,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import Base
 
 if TYPE_CHECKING:
-    from app.models.menu import MenuItem
+    from app.models.menu import MenuItem, FoodItem
     from app.models.hotel import Room
     from app.models.account import Account
 
@@ -38,8 +38,7 @@ class RoomServiceOrder(Base):
     assigned_robot_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     assigned_staff_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
 
-    # TODO (Phase sau): Kích hoạt khi chạy migration thêm total_amount vào DB
-    # total_amount: Mapped[float] = mapped_column(Float, default=0.0) # Tổng tiền đơn hàng (VND)
+    total_amount: Mapped[float] = mapped_column(Float, default=0.0) # Tổng tiền đơn hàng (VND)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -57,6 +56,7 @@ class OrderItem(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     order_id: Mapped[str] = mapped_column(String(50), ForeignKey("room_service_orders.id", ondelete="CASCADE"), nullable=False, index=True)
     menu_item_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("menu_items.id", ondelete="SET NULL"), nullable=True, index=True)
+    food_item_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("food_items.id", ondelete="SET NULL"), nullable=True, index=True)
     item_name: Mapped[str] = mapped_column(String(150), nullable=False) # e.g. "Club Sandwich & Truffle Fries"
     quantity: Mapped[int] = mapped_column(Integer, default=1)
     unit_price: Mapped[float] = mapped_column(Float, default=0.0) # Đơn giá tại thời điểm đặt (VND)
@@ -68,4 +68,5 @@ class OrderItem(Base):
     # Relationships
     order: Mapped["RoomServiceOrder"] = relationship("RoomServiceOrder", back_populates="order_items")
     menu_item: Mapped[Optional["MenuItem"]] = relationship("MenuItem", back_populates="order_items")
+    food_item: Mapped[Optional["FoodItem"]] = relationship("FoodItem", back_populates="order_items")
 

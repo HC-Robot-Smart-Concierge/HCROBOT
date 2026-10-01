@@ -23,69 +23,59 @@ class OllamaService:
     def detect_language(text: str) -> Tuple[str, str]:
         """
         Tự động phân tích câu nói của khách để nhận diện ngôn ngữ và mã lang_code cho TTS.
-        Mặc định ưu tiên Tiếng Việt (vi-VN) cho mọi tương tác.
-        Chỉ chuyển sang Tiếng Anh nếu khách sử dụng câu thoại tiếng Anh rõ ràng.
+        Nhận biết chính xác Tiếng Việt (vi-VN), Tiếng Anh (en-US), Tiếng Trung (zh-CN), Tiếng Nhật (ja-JP).
         """
-        if not text:
+        if not text or not text.strip():
             return "Tiếng Việt", "vi-VN"
 
-        # 1. Ký tự có dấu tiếng Việt đặc trưng HOẶC từ vựng Tiếng Việt phổ biến -> Ưu tiên Tiếng Việt 100%
-        if re.search(r'[àáảãạâầấẩẫậăằắẳẵặèéẻẽẹêềếểễệìíỉĩịòóỏõõôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ]', text, re.IGNORECASE):
+        # 1. Ký tự có dấu tiếng Việt đặc trưng -> 100% Tiếng Việt
+        if re.search(r'[àáảãạâầấẩẫậăằắẳẵặèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ]', text, re.IGNORECASE):
             return "Tiếng Việt", "vi-VN"
 
-        vi_keywords = [
-            r'\bphong\b', r'\bphồng\b', r'\btoi\b', r'\bmuon\b', r'\bcan\b', r'\bkhan\b', r'\btam\b',
-            r'\bdon\b', r'\ban\b', r'\buong\b', r'\bgiup\b', r'\bo dau\b', r'\bkhach\b', r'\bsan\b',
-            r'\ble tan\b', r'\bbao tri\b', r'\bsua\b', r'\bnuoc\b', r'\bcom\b', r'\bban\b'
-        ]
-        lower_text = text.lower()
-        if any(re.search(pattern, lower_text) for pattern in vi_keywords):
-            return "Tiếng Việt", "vi-VN"
+        lower_text = text.lower().strip()
 
-        # 2. Chỉ coi là Tiếng Trung nếu toàn bộ hoặc đa số văn bản là chữ Hán (Tránh rò rỉ 1-2 ký tự rác của Qwen)
+        # 2. Tiếng Trung (Chữ Hán)
         cjk_chars = re.findall(r'[\u4e00-\u9fff]', text)
         latin_chars = re.findall(r'[a-zA-Z]', text)
         if len(cjk_chars) > 0 and len(cjk_chars) > len(latin_chars):
             return "Tiếng Trung", "zh-CN"
 
-        # 3. Chữ Hiragana / Katakana / Tiếng Nhật
+        # 3. Tiếng Nhật (Hiragana / Katakana)
         if re.search(r'[\u3040-\u30ff]', text):
             return "Tiếng Nhật", "ja-JP"
 
-        # 4. Kiểm tra cấu trúc câu tiếng Anh giao tiếp rõ ràng
-        english_phrases = [
-            r'\bwhere is\b', r'\bwhat time\b', r'\bhow to\b', r'\bhow can\b',
-            r'\bcan i\b', r'\bcould you\b', r'\bi want\b', r'\bi need\b', r'\bi would like\b',
-            r'\bis there\b', r'\bare there\b', r'\bwhen does\b', r'\bwhat is\b', r'\bthank you\b',
-            r'\bgood morning\b', r'\bgood evening\b', r'\bhello robot\b'
+        # 4. Tiếng Việt không dấu (các cụm từ / từ vựng đặc trưng tránh trùng với tiếng Anh)
+        vi_phrases = [
+            r'\bphong\s*[0-9]', r'\bphong\b', r'\btoi\b', r'\bmuon\b', r'\bkhan\s*tam\b',
+            r'\bdon\s*phong\b', r'\bo\s*dau\b', r'\bkhach\s*san\b', r'\ble\s*tan\b',
+            r'\bbao\s*tri\b', r'\bcam\s*on\b', r'\bchao\s*em\b', r'\bxin\s*chao\b',
+            r'\bquy\s*khach\b', r'\btra\s*phong\b', r'\bnhan\s*phong\b',
+            r'\bgoi\s*xe\b', r'\bthang\s*may\b', r'\bho\s*boi\b', r'\bbe\s*boi\b'
         ]
-        if any(re.search(pattern, lower_text) for pattern in english_phrases):
+        if any(re.search(pattern, lower_text) for pattern in vi_phrases):
+            return "Tiếng Việt", "vi-VN"
+
+        # 5. Tiếng Anh: kiểm tra các mẫu câu và tập từ vựng tiếng Anh thông dụng
+        english_patterns = [
+            r'\b(where|what|when|why|who|how|which|whose)\b',
+            r'\b(can|could|would|should|will|do|does|did|is|are|was|were|have|has|had)\b',
+            r'\b(i|you|he|she|it|we|they|my|your|his|her|its|our|their|me|him|them|us)\b',
+            r'\b(hello|hi|hey|good\s+morning|good\s+afternoon|good\s+evening|goodbye|bye)\b',
+            r'\b(thank\s+you|thanks|please|excuse\s+me|sorry|pardon)\b',
+            r'\b(hotel|room|pool|swimming|wifi|password|breakfast|checkout|checkin|gym|spa)\b',
+            r'\b(luggage|baggage|towel|water|food|drink|restaurant|taxi|airport|service|help|need|want)\b'
+        ]
+        if any(re.search(pattern, lower_text) for pattern in english_patterns):
             return "English", "en-US"
 
-        # Mặc định tất cả các trường hợp khác đều trả về Tiếng Việt
+        # Mặc định tất cả các trường hợp còn lại trả về Tiếng Việt
         return "Tiếng Việt", "vi-VN"
 
-    async def generate_response(
-        self,
-        prompt: str,
-        rag_context: Optional[str] = None,
-        language: Optional[str] = None,
-        emotion: Optional[str] = None,
-        chat_history: Optional[List[Dict[str, str]]] = None,
-        stored_room_number: Optional[str] = None,
-    ) -> Tuple[str, str, str]:
-        """
-        Sinh câu trả lời thoại cho Concierge Robot dựa trên câu hỏi của khách, lịch sử phiên và ngữ cảnh RAG.
-        Tự động phát hiện ngôn ngữ nếu language không được chỉ định hoặc là 'auto'.
-        """
-        if not language or language.lower() in ["auto", ""]:
-            lang_name, lang_code = self.detect_language(prompt)
-        else:
-            lang_name = language
     def check_fast_path(self, prompt: str, language: Optional[str] = None) -> Optional[Tuple[str, str, str]]:
         """
         Kiểm tra nhanh các câu hỏi phổ biến và lời chào để phản hồi tức thì (< 1ms).
         Bỏ qua hoàn toàn việc nhúng vector ChromaDB và tính toán LLM.
+        Hỗ trợ phản hồi song ngữ Anh - Việt tương ứng với ngôn ngữ được phát hiện.
         """
         if not prompt:
             return None
@@ -98,11 +88,14 @@ class OllamaService:
 
         hour = datetime.datetime.now().hour
         if 5 <= hour < 11:
-            time_greeting = "Dạ em chào buổi sáng quý khách! Chúc quý khách một ngày mới tràn đầy năng lượng tại khách sạn Aurora. Quý khách cần em hỗ trợ gì ạ?"
+            time_greeting_vi = "Dạ em chào buổi sáng quý khách! Chúc quý khách một ngày mới tràn đầy năng lượng tại khách sạn Aurora. Quý khách cần em hỗ trợ gì ạ?"
+            time_greeting_en = "Good morning! Welcome to Aurora Grand Hotel. How may I assist you today?"
         elif 11 <= hour < 18:
-            time_greeting = "Dạ em chào quý khách! Chúc quý khách một buổi chiều thật vui vẻ tại khách sạn Aurora. Quý khách cần em hỗ trợ gì ạ?"
+            time_greeting_vi = "Dạ em chào quý khách! Chúc quý khách một buổi chiều thật vui vẻ tại khách sạn Aurora. Quý khách cần em hỗ trợ gì ạ?"
+            time_greeting_en = "Good afternoon! Welcome to Aurora Grand Hotel. How may I assist you today?"
         else:
-            time_greeting = "Dạ em chào buổi tối quý khách! Chúc quý khách một buổi tối thư thái tại khách sạn Aurora. Quý khách cần em hỗ trợ gì ạ?"
+            time_greeting_vi = "Dạ em chào buổi tối quý khách! Chúc quý khách một buổi tối thư thái tại khách sạn Aurora. Quý khách cần em hỗ trợ gì ạ?"
+            time_greeting_en = "Good evening! Welcome to Aurora Grand Hotel. How may I assist you tonight?"
 
         prompt_lower = prompt.lower().strip()
 
@@ -124,53 +117,77 @@ class OllamaService:
             logger.info(f"[OllamaService Fast-Path Bypass] Service intent detected, skipping fast-path for: '{prompt[:40]}'")
             return None
 
-        # Chuẩn hóa các biến thể nhận diện giọng nói STT (Google STT thường sinh 'wi-fi' có dấu gạch ngang)
+        # Chuẩn hóa các biến thể nhận diện giọng nói STT
         normalized = prompt_lower.replace("wi-fi", "wifi").replace("wi fi", "wifi")
-
         normalized = re.sub(r'[\?\.\,\!\_\:\;]', ' ', normalized)
         normalized = re.sub(r'\s+', ' ', normalized).strip()
 
         fast_path_cache = [
-            # 0. Wake-Up Word Kích hoạt Robot (Rora) - Chỉ kích hoạt khi khách chỉ gọi tên/đánh thức
-            (r"^(hey rora|chào rora|chao rora|rora ơi|rora oi|hello rora|hi rora|rora)[\?\.\!\s]*$", "Dạ, Rora nghe đây ạ! Em có thể hỗ trợ gì cho quý khách?"),
+            # 0. Wake-Up Word (Rora)
+            (
+                r"^(hey rora|chào rora|chao rora|rora ơi|rora oi|hello rora|hi rora|rora)[\?\.\!\s]*$",
+                "Dạ, Rora nghe đây ạ! Em có thể hỗ trợ gì cho quý khách?",
+                "Yes, Rora is here! How can I help you, guest?"
+            ),
 
             # 1. Chào hỏi & Xã giao
-            (r"^(xin chào|chào em|chào robot|chào bạn|chào|hi|hello|helo|alo)\b", time_greeting),
-            (r"\b(cảm ơn|cảm ơn em|cảm ơn robot|thank you|thanks)\b", "Dạ không có gì ạ! Chúc quý khách một kỳ nghỉ thật tuyệt vời tại khách sạn Aurora. Quý khách cần em hỗ trợ gì nữa không ạ?"),
-            (r"\b(tạm biệt|bye|goodbye|hẹn gặp lại)\b", "Dạ tạm biệt quý khách! Chúc quý khách một ngày tốt lành và hẹn sớm gặp lại ạ."),
-            (r"\b(bạn là ai|mày là ai|bạn tên gì|bạn tên là gì|tên bạn là gì|em tên là gì|em tên gì|tên em là gì|giới thiệu về bạn|giới thiệu về em|hiểu về bạn|who are you|what is your name)\b", "Dạ em là Rora, trợ lý Robot Concierge thông minh tại khách sạn Aurora Grand. Em có thể hỗ trợ quý khách chỉ đường, gọi món, đặt phòng, dọn phòng, xách hành lý và tra cứu mọi tiện ích khách sạn ạ."),
+            (
+                r"^(xin chào|chào em|chào robot|chào bạn|chào|hi|hello|helo|alo)\b",
+                time_greeting_vi,
+                time_greeting_en
+            ),
+            (
+                r"\b(cảm ơn|cảm ơn em|cảm ơn robot|thank you|thanks)\b",
+                "Dạ không có gì ạ! Chúc quý khách một kỳ nghỉ thật tuyệt vời tại khách sạn Aurora. Quý khách cần em hỗ trợ gì nữa không ạ?",
+                "You're very welcome! Have a wonderful stay at Aurora Grand Hotel. Is there anything else I can assist you with?"
+            ),
+            (
+                r"\b(tạm biệt|bye|goodbye|hẹn gặp lại)\b",
+                "Dạ tạm biệt quý khách! Chúc quý khách một ngày tốt lành và hẹn sớm gặp lại ạ.",
+                "Goodbye! Wishing you a wonderful day and looking forward to seeing you again."
+            ),
+            (
+                r"\b(bạn là ai|mày là ai|bạn tên gì|bạn tên là gì|tên bạn là gì|em tên là gì|em tên gì|tên em là gì|giới thiệu về bạn|giới thiệu về em|hiểu về bạn|who are you|what is your name)\b",
+                "Dạ em là Rora, trợ lý Robot Concierge thông minh tại khách sạn Aurora Grand. Em có thể hỗ trợ quý khách chỉ đường, gọi món, đặt phòng, dọn phòng, xách hành lý và tra cứu mọi tiện ích khách sạn ạ.",
+                "I am Rora, your AI Concierge Assistant at Aurora Grand Hotel. I can assist you with directions, dining, housekeeping, luggage, and hotel amenities."
+            ),
 
-            # 2. Tiện ích nổi bật (Bể bơi, Gym, Spa, Bar)
-            (r"\b(hồ bơi|bể bơi|swimming pool|vô cực|cực mở cửa|hồ bơi ở đâu|bể bơi ở đâu|bơi)\b", "Dạ hồ bơi vô cực nằm ở Tầng 4 của khách sạn, mở cửa từ 6 giờ sáng đến 10 giờ tối ạ. Quý khách có cần em gọi nước uống lên hồ bơi không ạ?"),
-            (r"\b(gym|phòng gym|phòng tập|thể hình|thể dục|fitness)\b", "Dạ phòng tập thể hình Fitness Center nằm tại Tầng 3 của khách sạn, mở cửa 24/7 và hoàn toàn miễn phí cho khách lưu trú ạ."),
-            (r"\b(spa|massage|mát xa|xông hơi|chăm sóc da)\b", "Dạ Aurora Spa nằm tại Tầng 5, mở cửa từ 9 giờ sáng đến 10 giờ tối. Quý khách có muốn em đặt lịch hẹn trước với chuyên viên không ạ?"),
-            (r"\b(bar|quầy bar|rooftop|sky bar|quán bar)\b", "Dạ Sky Lounge Bar nằm tại Tầng 19 sân thượng, mở cửa từ 16 giờ đến nửa đêm với tầm nhìn toàn cảnh thành phố cực đẹp ạ."),
+            # 2. Wifi & Internet
+            (
+                r"\b(wifi|wi fi|mật khẩu wifi|pass wifi|mạng internet|mật khẩu mạng|mạng wifi|wifi password)\b",
+                "Dạ wifi miễn phí tại sảnh và các phòng là 'Aurora_Guest', mật khẩu kết nối là 'aurora2026' ạ.",
+                "Complimentary Wi-Fi in the lobby and rooms is 'Aurora_Guest', with the password 'aurora2026'."
+            ),
 
-            # 3. Ẩm thực & Bữa sáng
-            (r"\b(ăn sáng|nhà hàng|bữa sáng|breakfast|buffet)\b", "Dạ nhà hàng buffet sáng Aurora nằm ở Tầng 2, phục vụ từ 6 giờ đến 10 giờ sáng hàng ngày ạ."),
-            (r"\b(thực đơn|menu|món ăn|đồ ăn|gọi món)\b", "Dạ quý khách có thể xem thực đơn chi tiết và đặt món trực tiếp trên màn hình của em để bộ phận Bếp chuẩn bị ngay ạ."),
+            # 3. Thủ tục Check-in / Check-out tiêu chuẩn
+            (
+                r"\b(giờ trả phòng|trả phòng|check out|checkout)\b",
+                "Dạ giờ trả phòng chuẩn của khách sạn là 12 giờ trưa. Quý khách có muốn em đặt xe đưa đón sân bay giúp mình không ạ?",
+                "Standard check-out time is 12:00 PM noon. Would you like me to arrange an airport shuttle for you?"
+            ),
+            (
+                r"\b(nhận phòng|check in|checkin|giờ nhận phòng)\b",
+                "Dạ giờ nhận phòng tiêu chuẩn là từ 14 giờ chiều. Nếu đến sớm, quý khách có thể gửi hành lý tại quầy lễ tân hoàn toàn miễn phí ạ.",
+                "Standard check-in time is from 2:00 PM. If arriving early, you are welcome to store your luggage at the front desk for free."
+            ),
 
-            # 4. Wifi & Internet (bắt cả wifi lẫn wi-fi)
-            (r"\b(wifi|wi fi|mật khẩu wifi|pass wifi|mạng internet|mật khẩu mạng|mạng wifi)\b", "Dạ wifi miễn phí tại sảnh và các phòng là 'Aurora_Guest', mật khẩu kết nối là 'aurora2026' ạ."),
-
-            # 5. Thủ tục Check-in / Check-out
-            (r"\b(giờ trả phòng|trả phòng|check out|checkout)\b", "Dạ giờ trả phòng chuẩn của khách sạn là 12 giờ trưa. Quý khách có muốn em đặt xe đưa đón sân bay giúp mình không ạ?"),
-            (r"\b(nhận phòng|check in|checkin|giờ nhận phòng)\b", "Dạ giờ nhận phòng tiêu chuẩn là từ 14 giờ chiều. Nếu đến sớm, quý khách có thể gửi hành lý tại quầy lễ tân hoàn toàn miễn phí ạ."),
-
-            # 6. Dịch vụ phòng & Hỗ trợ
-            (r"\b(thang máy|thang may)\b", "Dạ sảnh thang máy chính nằm ngay phía sau quầy lễ tân bên tay phải của quý khách ạ."),
-            (r"\b(nhà vệ sinh|toilet|wc|ve sinh)\b", "Dạ nhà vệ sinh sảnh tầng trệt nằm ở cuối hành lang bên tay trái, cạnh quầy Lounge ạ."),
-            (r"\b(gửi hành lý|giữ hành lý|gửi đồ|giữ đồ|vali)\b", "Dạ quý khách có thể gửi hành lý hoàn toàn miễn phí tại quầy lễ tân ngay sảnh chính ạ."),
-            (r"\b(bàn ủi|bàn là|ban ui|ban la)\b", "Dạ bàn ủi và cầu là có sẵn trong tủ quần áo của phòng. Nếu cần thêm, em sẽ báo bộ phận Buồng phòng mang lên ngay ạ."),
-            (r"\b(taxi|đặt xe|xe đưa đón|san bay|sân bay)\b", "Dạ quý khách có muốn em hỗ trợ liên hệ xe taxi hoặc xe đưa đón sân bay của khách sạn ngay bây giờ không ạ?"),
-            (r"\b(số điện thoại lễ tân|gọi lễ tân|hotline|số lễ tân)\b", "Dạ từ điện thoại bàn trong phòng, quý khách chỉ cần bấm phím số 0 để kết nối trực tiếp đến Lễ tân 24/7 ạ."),
-            (r"\b(dọn phòng|dọn dẹp|vệ sinh phòng|thay khăn)\b", "Dạ em đã ghi nhận, em sẽ thông báo ngay cho bộ phận Buồng phòng đến hỗ trợ dọn phòng cho quý khách ạ."),
+            # 4. Hotline & Tổng đài Lễ tân
+            (
+                r"\b(số điện thoại lễ tân|gọi lễ tân|hotline|số lễ tân|front desk phone|operator)\b",
+                "Dạ từ điện thoại bàn trong phòng, quý khách chỉ cần bấm phím số 0 để kết nối trực tiếp đến Lễ tân 24/7 ạ.",
+                "From your in-room telephone, simply dial '0' to connect directly to the 24/7 Front Desk."
+            ),
         ]
 
-        for pattern, fast_reply in fast_path_cache:
+        is_en = (lang_code == "en-US")
+        for item in fast_path_cache:
+            pattern = item[0]
+            reply_vi = item[1]
+            reply_en = item[2] if len(item) > 2 else reply_vi
             if re.search(pattern, normalized, re.IGNORECASE) or re.search(pattern, prompt_lower, re.IGNORECASE):
                 logger.info(f"[OllamaService Fast-Path Hit] Matched pattern '{pattern}' in < 1ms!")
-                return fast_reply, lang_name, lang_code
+                reply = reply_en if is_en else reply_vi
+                return reply, lang_name, lang_code
 
         return None
 

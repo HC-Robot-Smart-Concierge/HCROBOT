@@ -175,12 +175,19 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
 
         {/* Brand */}
         <div>
-          <div className="h-16 px-5 border-b flex flex-col justify-center shrink-0" style={{ borderColor: '#BFBFBD' }}>
-            <div className="text-sm font-black tracking-tight" style={{ color: '#262626' }}>
-              RoboConcierge
-            </div>
-            <div className="text-[10px] font-semibold tracking-widest mt-0.5" style={{ color: '#8C8C8C' }}>
-              V2.4.1 — ADMIN PORTAL
+          <div className="h-16 px-4 border-b flex items-center gap-2.5 shrink-0" style={{ borderColor: '#BFBFBD' }}>
+            <img
+              src="/hc-robot-logo.png"
+              alt="HC-Robot Logo"
+              className="w-8 h-8 object-contain shrink-0 drop-shadow-xs"
+            />
+            <div className="min-w-0">
+              <div className="text-sm font-black tracking-tight truncate" style={{ color: '#262626' }}>
+                HC-ROBOT
+              </div>
+              <div className="text-[10px] font-semibold tracking-widest truncate" style={{ color: '#8C8C8C' }}>
+                ADMIN PORTAL
+              </div>
             </div>
           </div>
 

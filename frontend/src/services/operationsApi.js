@@ -446,7 +446,7 @@ export const fetchAdminTaskDetail = async (ticketId) => {
   );
 };
 
-export const sendRobotControlCommand = async (command, speed = 60, targetIp = '100.73.245.66', port = 9999) => {
+export const sendRobotControlCommand = async (command, speed = 60, targetIp = (import.meta.env.VITE_PI5_IP || '100.99.72.51'), port = 9999) => {
   return await fetchWithFallback(
     `${BASE_URL}/robot/control`,
     {

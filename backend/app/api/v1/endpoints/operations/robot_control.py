@@ -10,7 +10,7 @@ router = APIRouter()
 
 class RobotMoveCommand(BaseModel):
     command: str
-    target_ip: Optional[str] = "100.73.245.66"
+    target_ip: Optional[str] = "100.99.72.51"
     port: Optional[int] = 9999
     speed: Optional[int] = None
 
@@ -22,7 +22,7 @@ async def control_robot_movement(cmd: RobotMoveCommand):
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.settimeout(0.5)
-        target_host = cmd.target_ip or "100.73.245.66"
+        target_host = cmd.target_ip or "100.99.72.51"
         target_port = cmd.port or 9999
 
         raw_cmd = cmd.command.lower().strip()

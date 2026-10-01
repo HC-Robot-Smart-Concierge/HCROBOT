@@ -48,13 +48,20 @@ export const LandingHomePage = ({
       <header className="hc-header mobile-safe-header pt-10 md:pt-0">
         <div className="max-w-5xl mx-auto px-4 md:px-6 h-14 md:h-16 flex items-center justify-between">
           {/* Brand Title */}
-          <div>
-            <h1 className="text-sm font-extrabold tracking-tight text-[#1A1917]">
-              HC-ROBOT
-            </h1>
-            <p className="text-[10px] font-medium tracking-widest text-stone-500 uppercase">
-              Smart Hotel Concierge System
-            </p>
+          <div className="flex items-center gap-2.5">
+            <img
+              src="/hc-robot-logo.png"
+              alt="HC-Robot Logo"
+              className="w-9 h-9 object-contain shrink-0 drop-shadow-xs"
+            />
+            <div>
+              <h1 className="text-sm font-extrabold tracking-tight text-[#1A1917]">
+                HC-ROBOT
+              </h1>
+              <p className="text-[10px] font-medium tracking-widest text-stone-500 uppercase">
+                Smart Hotel Concierge System
+              </p>
+            </div>
           </div>
 
           {/* Header Action Links: Chữ thuần túy phân cách bằng | */}
@@ -97,7 +104,14 @@ export const LandingHomePage = ({
       </header>
 
       {/* 2. Hero Section Minimalist */}
-      <main className="max-w-3xl w-full mx-auto px-6 py-12 flex-1 flex flex-col justify-center items-center text-center">
+      <main className="max-w-3xl w-full mx-auto px-6 py-10 flex-1 flex flex-col justify-center items-center text-center">
+        {/* Logo Badge */}
+        <div className="mb-5 flex justify-center">
+          <div className="w-24 h-24 md:w-28 md:h-28 flex items-center justify-center transition-transform hover:scale-105 duration-300">
+            <img src="/hc-robot-logo.png" alt="HC-Robot Logo" className="w-full h-full object-contain drop-shadow-sm" />
+          </div>
+        </div>
+
         {/* Title & Subtitle */}
         <h2 className="hc-heading-hero">
           HC-Robot Autonomous Concierge
@@ -150,9 +164,16 @@ export const LandingHomePage = ({
               Đóng
             </button>
 
-            <div className="border-b border-[#EAE6DE] pb-3">
-              <h3 className="text-base font-extrabold text-[#1A1917]">Đăng Nhập Tài Khoản Robot</h3>
-              <p className="text-[11px] text-stone-500">Khởi chạy phiên làm việc Kiosk trên thân Robot</p>
+            <div className="border-b border-[#EAE6DE] pb-3 flex items-center gap-3">
+              <img
+                src="/hc-robot-logo.png"
+                alt="HC-Robot Logo"
+                className="w-10 h-10 object-contain shrink-0 drop-shadow-xs"
+              />
+              <div>
+                <h3 className="text-base font-extrabold text-[#1A1917]">Đăng Nhập Tài Khoản Robot</h3>
+                <p className="text-[11px] text-stone-500">Khởi chạy phiên làm việc Kiosk trên thân Robot</p>
+              </div>
             </div>
 
             {robotError && (

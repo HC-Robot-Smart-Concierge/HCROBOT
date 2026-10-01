@@ -134,7 +134,7 @@ export const getEndpointTemplateInfo = (type) => {
 };
 
 // Pi5 Connection
-const PI5_IP = import.meta.env.VITE_PI5_IP || '100.73.245.66';
+const PI5_IP = import.meta.env.VITE_PI5_IP || '100.99.72.51';
 const PI5_API = `http://${PI5_IP}:8000/api/v1`;
 const PI5_WS = `ws://${PI5_IP}:8000/api/v1`;
 

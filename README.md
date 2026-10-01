@@ -126,6 +126,7 @@ HC-Robot/
 │           ├── config/         # settings.yaml (IP Tailscale Server)
 │           └── package.xml     # ROS 2 package dependencies
 ├── start_all.bat               # Windows Batch Script khởi chạy nhanh Backend & Frontend
+├── LIDAR_SLAM_GUIDE.md         # Hướng dẫn kiến trúc & quy trình LiDAR SLAM phân tán (Laptop Off-board)
 ├── .gitignore                  # Git Ignore rule cho toàn dự án
 └── README.md                   # Tài liệu hướng dẫn Master HCRobot System (File này)
 ```

@@ -24,7 +24,7 @@ import {
 } from 'lucide-react';
 
 // Pi5 connection endpoints (mirrors AdminCameraTab pattern)
-const PI5_IP = import.meta.env.VITE_PI5_IP || '100.73.245.66';
+const PI5_IP = import.meta.env.VITE_PI5_IP || '100.99.72.51';
 const PI5_API  = `http://${PI5_IP}:8000/api/v1`;
 const PI5_WS   = `ws://${PI5_IP}:8000/api/v1`;
 
@@ -266,7 +266,7 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           command: 'stop',
-          target_ip: '100.73.245.66',
+          target_ip: PI5_IP,
           port: 9999,
         }),
       });

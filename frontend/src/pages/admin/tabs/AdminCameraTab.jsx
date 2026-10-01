@@ -25,7 +25,7 @@ import {
   Gauge,
 } from 'lucide-react';
 
-const DEFAULT_STREAM_URL = 'http://100.73.245.66:8554/stream';
+const DEFAULT_STREAM_URL = 'http://100.99.72.51:8554/stream';
 const HEALTH_CHECK_INTERVAL_MS = 5000;
 
 export const AdminCameraTab = ({ currentUser }) => {
@@ -43,7 +43,7 @@ export const AdminCameraTab = ({ currentUser }) => {
 
   // Teleop Motion state
   const [activeMotion, setActiveMotion] = useState('stop');
-  const [controlIp, setControlIp] = useState('100.73.245.66');
+  const [controlIp, setControlIp] = useState(() => import.meta.env.VITE_PI5_IP || '100.99.72.51');
   const [speed, setSpeed] = useState(75);
   const speedRef = useRef(75);
 

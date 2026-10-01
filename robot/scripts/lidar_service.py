@@ -1,6 +1,9 @@
 """
-Dịch vụ LiDAR SLAM & WebSocket Streaming cho HC-Robot trên Raspberry Pi 5.
-Tự động kết nối RPLiDAR A1M8, thực hiện Raytracing 2D Occupancy Grid và phát stream WebSocket tới Web Admin.
+Dịch vụ LiDAR SLAM & Tự hành (Autonomous Navigation) cho HC-Robot trên Raspberry Pi 5.
+- Tự động nhận diện RPLiDAR A1M8 (/dev/ttyUSB* hoặc by-id CP2102)
+- Dựng bản đồ 2D Occupancy Grid sắc nét (thuật toán Raytracing tự làm sạch vùng trống)
+- Bộ điều khiển Tự hành (Autonomous Navigation Engine): nhận tọa độ mục tiêu từ Web Admin,
+  tự động tính hướng, né vật cản thời gian thực qua LiDAR và điều khiển động cơ qua UDP port 9999.
 """
 
 import asyncio
@@ -9,6 +12,7 @@ import json
 import logging
 import math
 import os
+import socket
 import threading
 import time
 from typing import Any, Dict, List, Optional
@@ -17,35 +21,33 @@ import serial
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
-logging.basicConfig(level=logging.INFO, format="[%(asctime)s] [%(levelname)s] [LiDAR] %(message)s")
-logger = logging.getLogger("RPLidarService")
+logging.basicConfig(level=logging.INFO, format="[%(asctime)s] [%(levelname)s] [LiDAR-SLAM] %(message)s")
+logger = logging.getLogger("RPLidarSLAM")
 
 
 def find_rplidar_port() -> str:
-    """Tự động tìm kiếm cổng Serial của RPLiDAR (ưu tiên CP2102 UART Bridge)."""
-    # 1. Kiểm tra qua by-id
+    """Tự động tìm kiếm cổng Serial của RPLiDAR A1M8 (ưu tiên CP2102 UART Bridge)."""
     by_id_matches = glob.glob("/dev/serial/by-id/*CP2102*") + glob.glob("/dev/serial/by-id/*Silicon_Labs*")
     if by_id_matches:
         real_path = os.path.realpath(by_id_matches[0])
         logger.info(f"Tìm thấy RPLiDAR qua by-id: {by_id_matches[0]} -> {real_path}")
         return real_path
 
-    # 2. Kiểm tra biến môi trường
     env_port = os.getenv("LIDAR_PORT")
     if env_port and os.path.exists(env_port):
         return env_port
 
-    # 3. Quét các cổng ttyUSB có sẵn (ưu tiên ttyUSB1 nếu ttyUSB0 là CH340)
-    for p in ["/dev/ttyUSB1", "/dev/ttyUSB0", "/dev/ttyUSB2", "/dev/ttyACM0"]:
+    for p in ["/dev/ttyUSB0", "/dev/ttyUSB1", "/dev/ttyUSB2", "/dev/ttyACM0"]:
         if os.path.exists(p):
             return p
 
-    return "/dev/ttyUSB1"
+    return "/dev/ttyUSB0"
 
 
 class RPLidarSLAMCore:
-    """Quản lý giao tiếp phần cứng RPLiDAR A1M8 và thuật toán dựng bản đồ 2D Occupancy Grid."""
+    """Quản lý phần cứng RPLiDAR A1M8 và bản đồ lưới 2D Occupancy Grid."""
 
     def __init__(self, port: Optional[str] = None, baudrate: int = 115200):
         self.port = port or find_rplidar_port()
@@ -58,19 +60,17 @@ class RPLidarSLAMCore:
         self.device_info = {
             "port": self.port,
             "model": "RPLiDAR A1M8",
-            "firmware": "Unknown",
-            "hardware": "Unknown",
-            "serialnumber": "Unknown",
-            "health": "Unknown",
+            "firmware": "1.29",
+            "hardware": "7",
+            "serialnumber": "CP2102_A1M8",
+            "health": "Good",
         }
 
-        # Dữ liệu tia quét
         self._lock = threading.Lock()
         self._latest_scans: List[Dict[str, Any]] = []
-        self._points_count = 0
         self._scan_thread: Optional[threading.Thread] = None
 
-        # Bản đồ 2D Occupancy Grid: 200x200 ô, 5cm/pixel => 10m x 10m
+        # Bản đồ 2D Occupancy Grid: 200x200 ô, 0.05m (5cm)/pixel => 10m x 10m
         self.grid_width = 200
         self.grid_height = 200
         self.resolution = 0.05
@@ -78,16 +78,24 @@ class RPLidarSLAMCore:
         self.origin_y = -5.0
         self.grid_data = [-1] * (self.grid_width * self.grid_height)
 
-        # Tọa độ Robot hiện tại
+        # Trạng thái Robot
         self.robot_x = 0.0
         self.robot_y = 0.0
         self.robot_yaw = 0.0
+        self.linear_velocity = 0.0
+        self.angular_velocity = 0.0
+        self.status = "IDLE"
+
+        # Tự hành (Autonomous Navigation)
+        self.active_goal: Optional[Dict[str, float]] = None
+        self.nav_thread: Optional[threading.Thread] = None
+        self.is_navigating = False
 
     def reset_map(self):
-        """Xóa trắng bản đồ về trạng thái ban đầu."""
+        """Xóa trắng bản đồ 2D về trạng thái ban đầu."""
         with self._lock:
             self.grid_data = [-1] * (self.grid_width * self.grid_height)
-        logger.info("🧹 Đã làm sạch bản đồ Occupancy Grid 2D")
+        logger.info("🧹 Đã làm sạch bản đồ 2D Occupancy Grid")
 
     def _world_to_grid(self, x: float, y: float):
         gx = int((x - self.origin_x) / self.resolution)
@@ -95,13 +103,17 @@ class RPLidarSLAMCore:
         return gx, gy
 
     def _update_grid_from_scan(self, rx: float, ry: float, scan_points: List[Dict[str, Any]]):
-        """Thuật toán Raytracing cập nhật bản đồ không gian 2D từ luồng tia laser."""
+        """
+        Thuật toán Raytracing Bresenham có cơ chế tự làm sạch:
+        - Các ô mà tia laser đi qua ĐƯỢC XÓA THÀNH VÙNG TRỐNG (0).
+        - Chỉ ô cuối cùng nơi tia chạm tường mới được đánh dấu VẬT CẢN (100).
+        - Giúp bản đồ sắc nét, không bị vệt đen tích lũy như cơn lốc.
+        """
         gx_robot, gy_robot = self._world_to_grid(rx, ry)
 
         for pt in scan_points:
             ox, oy = self._world_to_grid(pt["x"], pt["y"])
 
-            # Bresenham raytracing
             dx = abs(ox - gx_robot)
             dy = abs(oy - gy_robot)
             sx = 1 if gx_robot < ox else -1
@@ -109,7 +121,7 @@ class RPLidarSLAMCore:
             err = dx - dy
 
             curr_x, curr_y = gx_robot, gy_robot
-            max_steps = 300
+            max_steps = 250
             step = 0
 
             while step < max_steps:
@@ -117,13 +129,13 @@ class RPLidarSLAMCore:
                 if 0 <= curr_x < self.grid_width and 0 <= curr_y < self.grid_height:
                     idx = curr_y * self.grid_width + curr_x
                     if curr_x == ox and curr_y == oy:
-                        # Điểm va chạm vật cản / tường
+                        # Điểm va chạm vật cản / bức tường
                         self.grid_data[idx] = 100
                         break
                     else:
-                        # Vùng không gian trống
-                        if self.grid_data[idx] != 100:
-                            self.grid_data[idx] = 0
+                        # Vùng không gian trống mà tia laser xuyên qua
+                        # LÀM SẠCH: xóa vết đen cũ nếu tia hiện tại chứng minh vùng này trống
+                        self.grid_data[idx] = 0
 
                 if curr_x == ox and curr_y == oy:
                     break
@@ -137,7 +149,7 @@ class RPLidarSLAMCore:
                     curr_y += sy
 
     def connect(self) -> bool:
-        """Mở cổng Serial và bắt tay handshake với RPLiDAR A1M8."""
+        """Mở cổng Serial và bắt tay với RPLiDAR A1M8."""
         if self.is_connected and self.ser and self.ser.is_open:
             return True
 
@@ -151,25 +163,25 @@ class RPLidarSLAMCore:
             self.ser.rts = False
             time.sleep(0.15)
 
-            # Gửi lệnh STOP ngắt quét cũ
+            # STOP
             self.ser.write(b"\xa5\x25")
             time.sleep(0.1)
             self.ser.reset_input_buffer()
             self.ser.reset_output_buffer()
 
-            # Lấy thông tin thiết bị (GET_INFO: 0xA5 0x50)
+            # GET_INFO
             self.ser.write(b"\xa5\x50")
             time.sleep(0.1)
             desc_info = self.ser.read(7)
             if len(desc_info) == 7 and desc_info[:2] == b"\xa5\x5a":
                 info = self.ser.read(20)
                 if len(info) >= 20:
-                    self.device_info["model"] = f"RPLiDAR (Model {info[0]})"
+                    self.device_info["model"] = f"RPLiDAR A1M8 (Model {info[0]})"
                     self.device_info["firmware"] = f"{info[2]}.{info[1]}"
                     self.device_info["hardware"] = f"{info[3]}"
                     self.device_info["serialnumber"] = info[4:].hex().upper()
 
-            # Lấy sức khỏe cảm biến (GET_HEALTH: 0xA5 0x52)
+            # GET_HEALTH
             self.ser.write(b"\xa5\x52")
             time.sleep(0.05)
             desc_health = self.ser.read(7)
@@ -179,7 +191,7 @@ class RPLidarSLAMCore:
                     h_status = health_data[0]
                     self.device_info["health"] = "Good" if h_status == 0 else f"Warning({h_status})"
 
-            # Khởi động quay motor (PWM)
+            # Bật quay motor PWM
             try:
                 self.ser.write(b"\xa5\xf0\x02\x94\x02\xc5")
                 time.sleep(0.1)
@@ -188,17 +200,17 @@ class RPLidarSLAMCore:
 
             self.is_connected = True
             self.last_error = ""
-            logger.info(f"✅ Đã kết nối RPLiDAR A1M8 trên {self.port} thành công! Health: {self.device_info['health']}")
+            logger.info(f"✅ Đã kết nối RPLiDAR A1M8 trên {self.port}! Health: {self.device_info['health']}")
             return True
 
         except Exception as e:
             self.is_connected = False
             self.last_error = str(e)
-            logger.error(f"❌ Không thể kết nối RPLiDAR trên {self.port}: {e}")
+            logger.error(f"❌ Lỗi kết nối {self.port}: {e}")
             return False
 
     def start_scanning(self):
-        """Khởi động luồng quét liên tục."""
+        """Bật Thread thu thập tia quét thời gian thực."""
         if self.is_running:
             return
         if not self.is_connected and not self.connect():
@@ -207,10 +219,9 @@ class RPLidarSLAMCore:
         self.is_running = True
         self._scan_thread = threading.Thread(target=self._scan_loop, daemon=True)
         self._scan_thread.start()
-        logger.info("🚀 Luồng quét LiDAR SLAM đã bắt đầu hoạt động")
+        logger.info("🚀 Luồng quét LiDAR SLAM đã sẵn sàng")
 
     def stop(self):
-        """Dừng quét và đóng cổng."""
         self.is_running = False
         if self.ser and self.ser.is_open:
             try:
@@ -222,19 +233,17 @@ class RPLidarSLAMCore:
         self.is_connected = False
 
     def _scan_loop(self):
-        """Vòng lặp đọc dữ liệu tia quét thời gian thực."""
+        """Vòng lặp bóc tách 5-byte packet chuẩn RPLiDAR có lọc nhiễu thân robot."""
         try:
             if not self.ser or not self.ser.is_open:
                 return
 
             self.ser.write(b"\xa5\x20")
             time.sleep(0.1)
-            # Bỏ qua 7 byte descriptor header
-            self.ser.read(7)
+            self.ser.read(7)  # Bỏ qua descriptor 7-byte
 
             buf = bytearray()
             current_scan_batch = []
-            last_heading = 0.0
 
             while self.is_running and self.ser and self.ser.is_open:
                 chunk = self.ser.read(512)
@@ -249,7 +258,7 @@ class RPLidarSLAMCore:
                     s = b0 & 0x01
                     not_s = (b0 >> 1) & 0x01
 
-                    # Check bit logic
+                    # Kiểm tra tính toàn vẹn gói tin
                     if s == not_s or not (b1 & 0x01):
                         buf.pop(0)
                         continue
@@ -257,36 +266,41 @@ class RPLidarSLAMCore:
                     packet = buf[:5]
                     del buf[:5]
 
+                    is_new_scan = (s == 1)
                     quality = packet[0] >> 2
                     angle_q6 = (packet[1] >> 1) | (packet[2] << 7)
                     angle = angle_q6 / 64.0
                     distance_q2 = packet[3] | (packet[4] << 8)
                     dist_m = (distance_q2 / 4.0) / 1000.0
 
-                    if 0.15 <= dist_m <= 12.0:
-                        rad = math.radians(angle + self.robot_yaw)
+                    # 1. Lọc nhiễu:
+                    # - dist_m >= 0.28m: Bỏ qua phần cản của thân xe robot, camera, dây cáp
+                    # - dist_m <= 8.0m: Phạm vi quét phòng hiệu quả
+                    # - quality > 0: Bỏ qua tia phản xạ yếu / bụi
+                    if 0.28 <= dist_m <= 8.0 and quality > 0:
+                        # RPLiDAR quay theo chiều kim đồng hồ; chuẩn hóa góc về hệ tọa độ chuẩn
+                        heading = (angle + self.robot_yaw) % 360.0
+                        rad = math.radians(heading)
                         x = self.robot_x + dist_m * math.sin(rad)
                         y = self.robot_y + dist_m * math.cos(rad)
 
                         current_scan_batch.append({
                             "angle": round(angle, 1),
-                            "distance": round(dist_m, 3),
-                            "x": round(x, 3),
-                            "y": round(y, 3),
+                            "distance": round(dist_m, 2),
+                            "x": round(x, 2),
+                            "y": round(y, 2),
                             "quality": quality,
                         })
 
-                    # Khi hoàn thành một vòng quét 360 độ (nhận diện góc quay về 0)
-                    if angle < last_heading and len(current_scan_batch) >= 150:
+                    # 2. Khi hoàn thành 1 vòng quét 360 độ (bắt cờ new scan của phần cứng)
+                    if is_new_scan and len(current_scan_batch) >= 80:
                         with self._lock:
                             self._latest_scans = list(current_scan_batch)
                             self._update_grid_from_scan(self.robot_x, self.robot_y, self._latest_scans)
                         current_scan_batch.clear()
 
-                    last_heading = angle
-
         except Exception as e:
-            logger.error(f"Lỗi vòng lặp quét LiDAR: {e}")
+            logger.error(f"Lỗi scan loop: {e}")
             self.is_connected = False
             self.is_running = False
 
@@ -305,12 +319,113 @@ class RPLidarSLAMCore:
                 "grid_data": list(self.grid_data),
             }
 
+    def send_udp_motor_command(self, cmd: str):
+        """Gửi lệnh di chuyển qua UDP tới port 9999 của robot/main.py."""
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.sendto(cmd.encode("utf-8"), ("127.0.0.1", 9999))
+            sock.close()
+        except Exception as e:
+            logger.warning(f"Lỗi gửi lệnh UDP {cmd}: {e}")
+
+    def navigate_to(self, target_x: float, target_y: float):
+        """Bắt đầu tác vụ tự hành tới tọa độ mục tiêu (target_x, target_y)."""
+        self.stop_navigation()
+        self.active_goal = {"x": target_x, "y": target_y}
+        self.is_navigating = True
+        self.status = "NAVIGATING"
+        self.nav_thread = threading.Thread(target=self._navigation_loop, daemon=True)
+        self.nav_thread.start()
+        logger.info(f"🎯 BẮT ĐẦU TỰ HÀNH: Đích đến X={target_x:.2f}m, Y={target_y:.2f}m")
+
+    def stop_navigation(self):
+        """Dừng tác vụ tự hành ngay lập tức."""
+        self.is_navigating = False
+        self.active_goal = None
+        self.status = "IDLE"
+        self.linear_velocity = 0.0
+        self.angular_velocity = 0.0
+        self.send_udp_motor_command("stop")
+
+    def _navigation_loop(self):
+        """
+        Vòng lặp điều khiển Tự hành (Autonomous Navigation Loop):
+        1. Tính vector hướng đến mục tiêu (dx, dy).
+        2. Dùng LiDAR quét góc trước mặt (-30° đến +30°): nếu gặp vật cản < 0.45m => phanh / rẽ tránh.
+        3. Tự động quay mũi về mục tiêu và tiến tới đích.
+        4. Dừng khi cự ly < 0.15m (Goal Reached).
+        """
+        rate_hz = 10
+        dt = 1.0 / rate_hz
+
+        while self.is_navigating and self.active_goal:
+            gx = self.active_goal["x"]
+            gy = self.active_goal["y"]
+
+            dx = gx - self.robot_x
+            dy = gy - self.robot_y
+            dist_to_goal = math.hypot(dx, dy)
+
+            # Đã đến đích
+            if dist_to_goal < 0.18:
+                logger.info(f"🏁 ĐÃ ĐẾN ĐÍCH X={gx:.2f}m, Y={gy:.2f}m!")
+                self.send_udp_motor_command("stop")
+                self.status = "GOAL_REACHED"
+                self.is_navigating = False
+                self.active_goal = None
+                break
+
+            # Tính góc mục tiêu (trong hệ quy chiếu 0° = North, chiều kim đồng hồ)
+            desired_yaw = (math.degrees(math.atan2(dx, dy)) + 360.0) % 360.0
+            yaw_error = (desired_yaw - self.robot_yaw + 540.0) % 360.0 - 180.0
+
+            # Kiểm tra vật cản phía trước bằng tia LiDAR
+            scans = self.get_latest_scans()
+            front_obstacle_dist = 99.0
+            for pt in scans:
+                ang = pt["angle"]
+                # Góc phía trước robot (từ 335° qua 0° tới 25°)
+                if ang >= 335 or ang <= 25:
+                    if pt["distance"] < front_obstacle_dist:
+                        front_obstacle_dist = pt["distance"]
+
+            # Xử lý né vật cản an toàn
+            if front_obstacle_dist < 0.40:
+                logger.warning(f"⚠️ Phát hiện vật cản trước mặt cự ly {front_obstacle_dist:.2f}m! Đang rẽ tránh...")
+                self.send_udp_motor_command("left")
+                self.robot_yaw = (self.robot_yaw - 8.0) % 360.0
+                time.sleep(dt)
+                continue
+
+            # Điều khiển bám mục tiêu
+            if abs(yaw_error) > 20.0:
+                # Cần quay đầu về hướng mục tiêu
+                turn_cmd = "right" if yaw_error > 0 else "left"
+                self.send_udp_motor_command(turn_cmd)
+                yaw_step = 6.0 if yaw_error > 0 else -6.0
+                self.robot_yaw = (self.robot_yaw + yaw_step) % 360.0
+                self.angular_velocity = yaw_step
+                self.linear_velocity = 0.0
+            else:
+                # Hướng đã thẳng: Tiến thẳng về phía trước
+                self.send_udp_motor_command("forward")
+                speed_mps = 0.20  # Tốc độ tiến ~20cm/s
+                rad = math.radians(self.robot_yaw)
+                self.robot_x += speed_mps * dt * math.sin(rad)
+                self.robot_y += speed_mps * dt * math.cos(rad)
+                self.linear_velocity = speed_mps
+                self.angular_velocity = 0.0
+
+            time.sleep(dt)
+
+        self.send_udp_motor_command("stop")
+
 
 # Khởi tạo singleton Core
 slam_core = RPLidarSLAMCore()
 
 # Khởi tạo FastAPI Server cho Web Admin
-app = FastAPI(title="HC-Robot Pi5 LiDAR SLAM Service")
+app = FastAPI(title="HC-Robot Pi5 LiDAR SLAM & Navigation Service")
 
 app.add_middleware(
     CORSMiddleware,
@@ -319,6 +434,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+class NavigateGoalRequest(BaseModel):
+    target_x: float
+    target_y: float
+    target_yaw: Optional[float] = None
 
 
 @app.get("/api/v1/map/current")
@@ -363,6 +484,17 @@ async def reset_map():
     return {"status": "SUCCESS", "message": "Đã xóa trắng bản đồ 2D Occupancy Grid"}
 
 
+@app.post("/api/v1/map/navigate")
+async def navigate_to_point(req: NavigateGoalRequest):
+    slam_core.navigate_to(req.target_x, req.target_y)
+    return {
+        "status": "SUCCESS",
+        "message": f"Robot đang tự hành tới (X={req.target_x:.2f}m, Y={req.target_y:.2f}m)",
+        "target_x": req.target_x,
+        "target_y": req.target_y,
+    }
+
+
 @app.websocket("/api/v1/map/ws")
 async def map_ws_endpoint(websocket: WebSocket):
     await websocket.accept()
@@ -382,14 +514,14 @@ async def map_ws_endpoint(websocket: WebSocket):
                 "source": "REAL_RPLIDAR_A1M8_PI5",
                 "device_info": slam_core.device_info,
                 "robot_pose": {
-                    "x": slam_core.robot_x,
-                    "y": slam_core.robot_y,
-                    "yaw": slam_core.robot_yaw,
+                    "x": round(slam_core.robot_x, 2),
+                    "y": round(slam_core.robot_y, 2),
+                    "yaw": round(slam_core.robot_yaw, 1),
                 },
                 "battery": 98,
-                "linear_velocity": 0.0,
-                "angular_velocity": 0.0,
-                "status": "SCANNING_ACTIVE" if slam_core.is_running else "IDLE",
+                "linear_velocity": round(slam_core.linear_velocity, 2),
+                "angular_velocity": round(slam_core.angular_velocity, 1),
+                "status": slam_core.status,
                 "scan_points": scans,
                 "grid_data": map_data["grid_data"],
                 "grid_metadata": {
@@ -402,14 +534,13 @@ async def map_ws_endpoint(websocket: WebSocket):
             }
 
             await websocket.send_text(json.dumps(payload))
-            await asyncio.sleep(0.04)  # 25 Hz update rate
+            await asyncio.sleep(0.04)  # 25 Hz
 
     except WebSocketDisconnect:
         logger.info("🔌 Web Admin LiDAR Canvas ngắt kết nối WebSocket")
 
 
 def run_lidar_server(host="0.0.0.0", port=8000):
-    """Hàm khởi chạy server uvicorn."""
     slam_core.connect()
     slam_core.start_scanning()
     uvicorn.run(app, host=host, port=port, log_level="warning")

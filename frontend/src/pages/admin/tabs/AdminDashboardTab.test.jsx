@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 
-describe('AdminAnalyticsTab Real Data Processing', () => {
+describe('AdminDashboardTab Real Data Processing', () => {
   const sampleAnalyticsPayload = {
     total_tasks: 33,
     active_tasks: 33,

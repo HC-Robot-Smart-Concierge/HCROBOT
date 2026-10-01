@@ -5,7 +5,6 @@ import { AdminOperationsTab } from './tabs/AdminOperationsTab';
 import { AdminRobotControlTab } from './tabs/AdminRobotControlTab';
 import { AdminKnowledgePage } from './tabs/AdminKnowledgePage';
 import { AdminStaffTab } from './tabs/AdminStaffTab';
-import { AdminAnalyticsTab } from './tabs/AdminAnalyticsTab';
 import { AdminSettingsTab } from './tabs/AdminSettingsTab';
 import { AdminLogsTab } from './tabs/AdminLogsTab';
 import {
@@ -27,10 +26,10 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
         'Knowledge',
         'Hotel Content',
         'Staff',
-        'Analytics',
         'Logs',
         'Settings',
       ];
+      if (tab === 'Analytics') return 'Dashboard';
       return validTabs.includes(tab) ? tab : 'Dashboard';
     } catch {
       return 'Dashboard';
@@ -162,7 +161,6 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
     { id: 'Knowledge',     label: 'Knowledge' },
     { id: 'Hotel Content', label: 'Hotel Content' },
     { id: 'Staff',         label: 'Staff' },
-    { id: 'Analytics',     label: 'Analytics' },
     { id: 'Logs',          label: 'Logs' },
   ];
 
@@ -484,10 +482,6 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
 
           {activeMenu === 'Staff' && (
             <AdminStaffTab currentUser={currentUser} />
-          )}
-
-          {activeMenu === 'Analytics' && (
-            <AdminAnalyticsTab currentUser={currentUser} />
           )}
 
           {activeMenu === 'Settings' && (

@@ -280,11 +280,8 @@ class RPLidarSLAMCore:
                     distance_q2 = packet[3] | (packet[4] << 8)
                     dist_m = (distance_q2 / 4.0) / 1000.0
 
-                    # 1. Lọc nhiễu:
-                    # - dist_m >= 0.28m: Bỏ qua phần cản của thân xe robot, camera, dây cáp
-                    # - dist_m <= 8.0m: Phạm vi quét phòng hiệu quả
-                    # - quality > 0: Bỏ qua tia phản xạ yếu / bụi
-                    if 0.28 <= dist_m <= 8.0 and quality > 0:
+                    # 1. Lọc tia khoảng cách hợp lệ (từ 12cm đến 12m)
+                    if 0.12 <= dist_m <= 12.0:
                         # RPLiDAR quay theo chiều kim đồng hồ; chuẩn hóa góc về hệ tọa độ chuẩn
                         heading = (angle + self.robot_yaw) % 360.0
                         rad = math.radians(heading)
@@ -299,8 +296,8 @@ class RPLidarSLAMCore:
                             "quality": quality,
                         })
 
-                    # 2. Khi hoàn thành 1 vòng quét 360 độ (bắt cờ new scan của phần cứng)
-                    if is_new_scan and len(current_scan_batch) >= 80:
+                    # 2. Cập nhật khi hoàn thành vòng quét hoặc đủ đợt 60 điểm
+                    if (is_new_scan and len(current_scan_batch) >= 15) or len(current_scan_batch) >= 60:
                         with self._lock:
                             self._latest_scans = list(current_scan_batch)
                             self._update_grid_from_scan(self.robot_x, self.robot_y, self._latest_scans)

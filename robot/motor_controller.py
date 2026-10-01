@@ -559,7 +559,11 @@ def get_char() -> str:
                 return ch
             return ''
         except Exception:
-            return input("\nNhập phím (w/a/s/d/x/q): ").strip()
+            try:
+                return input("\nNhập phím (w/a/s/d/x/q): ").strip()
+            except (EOFError, Exception):
+                time.sleep(0.1)
+                return ''
 
 
 def run_wasd_controller(controller: MotorController):

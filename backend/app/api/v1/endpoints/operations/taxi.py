@@ -250,6 +250,12 @@ async def create_taxi_request(req_in: TaxiRequestCreate, db: AsyncSession = Depe
         404: {"description": "Không tìm thấy yêu cầu đặt xe."}
     },
 )
+@router.patch(
+    "/taxi/requests/{request_id}",
+    response_model=TaxiRequestResponse,
+    tags=TAG_TAXI,
+    include_in_schema=False,
+)
 async def update_taxi_request_status(
     request_id: str,
     update_in: TaxiRequestStatusUpdate,

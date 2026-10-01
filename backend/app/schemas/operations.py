@@ -173,12 +173,14 @@ class ConciergeLiveRequestCreate(BaseModel):
     description: Optional[str] = Field(None, description="Lý do can thiệp hoặc câu hỏi chưa giải đáp được", json_schema_extra={"example": "Khách cần hướng dẫn chi tiết quy trình thuê xe riêng sang trọng"})
     assistance_status: Optional[str] = Field("Connected", description="Trạng thái kết nối video: 'Connected', 'Pending', 'Ended'", json_schema_extra={"example": "Connected"})
     transcript: Optional[List[Dict[str, Any]]] = Field(default_factory=list, description="Đoạn hội thoại đã diễn ra giữa Robot và khách")
+    category: Optional[str] = Field(None, description="Phân loại yêu cầu hỗ trợ")
 
 
 class ConciergeLiveRequestUpdate(BaseModel):
     status: Optional[str] = None
     assistance_status: Optional[str] = None
     assigned_to: Optional[str] = None
+    assigned_staff_name: Optional[str] = None
     assigned_role: Optional[str] = None
     note: Optional[str] = None
     escalated: Optional[bool] = None
@@ -270,8 +272,9 @@ class HousekeepingRequestCreate(BaseModel):
     guest_name: Optional[str] = None
 
 class HousekeepingAssignRequest(BaseModel):
-    status: str = "In Progress"
-    assigned_staff_name: str
+    status: Optional[str] = "In Progress"
+    assigned_staff_name: Optional[str] = None
+    assigned_staff: Optional[str] = None
     assigned_staff_id: Optional[str] = None
 
 class HousekeepingRequestResponse(BaseModel):
@@ -302,8 +305,9 @@ class BellRequestCreate(BaseModel):
     request_type: str = "luggage"
 
 class BellRequestStatusUpdate(BaseModel):
-    status: str # 'Pending', 'In Progress', 'Completed'
+    status: Optional[str] = None # 'Pending', 'In Progress', 'Completed'
     assigned_to: Optional[str] = None
+    assigned_staff: Optional[str] = None
 
 class BellRequestResponse(BaseModel):
     id: str
@@ -330,6 +334,11 @@ class MaintenanceRequestCreate(BaseModel):
     location: str
     description: Optional[str] = None
     source: str = "MANUAL DISPATCH"
+
+class MaintenanceRequestStatusUpdate(BaseModel):
+    status: Optional[str] = None
+    assigned_to: Optional[str] = None
+    assigned_technician: Optional[str] = None
 
 class MaintenanceRequestResponse(BaseModel):
     id: str
@@ -545,42 +554,6 @@ class MenuResponse(BaseModel):
 # ---------------------------------------------------------
 # Admin Central Operations Schemas
 # ---------------------------------------------------------
-class UnifiedOperationTask(BaseModel):
-    id: str
-    raw_id: str
-    department: str
-    table_type: str
-    title: str
-    location: str
-    guest_name: str
-    priority: str
-    status: str
-    time: str
-    assigned_to: Optional[str] = None
-    assigned_robot: Optional[str] = None
-    notes: Optional[str] = None
-    source: str = "Robot / Staff"
-    created_at: Optional[datetime] = None
-
-
-class AdminTaskDispatchCreate(BaseModel):
-    department: str  # 'Reception', 'Concierge', 'Housekeeping', 'F&B', 'Bell Services', 'Maintenance', 'Taxi', 'Directive'
-    title: str
-    room_number: Optional[str] = Field(None, description="Số phòng hoặc vị trí ví dụ 'Room 412', 'Lobby', hoặc None")
-    guest_name: Optional[str] = "Hotel Guest"
-    priority: str = Field("NORMAL", description="'HIGH PRIORITY', 'NORMAL', 'LOW'")
-    description: Optional[str] = None
-    assigned_staff_name: Optional[str] = None
-    assigned_robot_code: Optional[str] = None
-
-
-class AdminTaskStatusUpdate(BaseModel):
-    status: str = Field(..., description="'Pending', 'In Progress', 'Completed', 'Cancelled'")
-    assigned_to: Optional[str] = None
-    assigned_robot: Optional[str] = None
-    note: Optional[str] = None
-
-
 class AdminOperationsSummary(BaseModel):
     total_active: int = 0
     all_count: int = 0

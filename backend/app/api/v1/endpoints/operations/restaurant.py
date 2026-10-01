@@ -126,6 +126,7 @@ async def update_restaurant_reservation_status(
 # =====================================================================
 
 @router.get("/restaurant/menus", response_model=List[MenuResponse], tags=TAG_REST)
+@router.get("/restaurant/menu", response_model=List[MenuResponse], tags=TAG_REST, include_in_schema=False)
 async def get_restaurant_menus(
     category: Optional[str] = None,
     db: AsyncSession = Depends(get_db),

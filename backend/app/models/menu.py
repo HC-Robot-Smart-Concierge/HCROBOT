@@ -42,4 +42,4 @@ class MenuItem(Base):
 
     # Relationships
     menu: Mapped["Menu"] = relationship("Menu", back_populates="items")
-    order_items: Mapped[List["OrderItem"]] = relationship("OrderItem", back_populates="menu_item")
+

@@ -391,6 +391,7 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
               waypoints={waypoints}
               onCanvasClickGoal={handleSetGoal}
               onCanvasClickWaypointPin={handleCanvasClickPin}
+              onResetMap={handleResetGridMap}
               isPinMode={isPinMode}
               showGridMap={showGridMap}
               showGridLines={showGridLines}

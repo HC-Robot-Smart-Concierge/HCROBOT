@@ -14,6 +14,7 @@ import {
   deleteZone,
 } from '../../../services/workflowApi';
 import { OTTO_STEP_TYPES } from './AdminWorkflowTab';
+import { Trash2 } from 'lucide-react';
 
 // Hotel Concierge Standard: Zone Templates (5 Loại Vùng Chức Năng)
 export const CONCIERGE_ZONE_TEMPLATES = [
@@ -255,6 +256,23 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
       if (ws.readyState === WebSocket.OPEN) ws.close();
     };
   }, []);
+
+  // Reset SLAM Grid Map
+  const handleResetGridMap = async () => {
+    try {
+      showNotification('Đang xóa sạch bản đồ SLAM...');
+      const res = await fetch(`${PI5_API}/map/reset_map`, { method: 'POST' });
+      const data = await res.json();
+      if (data.status === 'SUCCESS') {
+        showNotification('Bản đồ đã được xóa sạch. Vị trí robot đã đặt về (0,0).');
+        setGridData(new Array(200 * 200).fill(-1));
+        setScanPoints([]);
+        setRobotPose((prev) => ({ ...prev, x: 0, y: 0, yaw: 0 }));
+      }
+    } catch (err) {
+      showNotification('Lỗi khi xóa bản đồ: ' + err.message);
+    }
+  };
 
   // Map Click to Set Goal or Pin Waypoint
   const handleCanvasClickGoal = async (targetX, targetY) => {
@@ -669,6 +687,22 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
 
         {/* Right Quick Tools */}
         <div className="flex items-center gap-1.5">
+          {/* Reset Map Button */}
+          <button
+            type="button"
+            onClick={handleResetGridMap}
+            className="px-2.5 py-1 rounded text-xs font-bold border transition-colors cursor-pointer flex items-center gap-1.5 hover:bg-red-50 hover:text-red-700 hover:border-red-300"
+            style={{
+              backgroundColor: '#FFFFFF',
+              color: '#DC2626',
+              borderColor: '#BFBFBD',
+            }}
+            title="Xóa sạch bản đồ SLAM hiện tại và đặt lại robot về gốc (0,0)"
+          >
+            <Trash2 className="w-3.5 h-3.5 text-red-500" />
+            <span>Xóa Map</span>
+          </button>
+
           {/* Pin Waypoint Tool */}
           <button
             type="button"
@@ -752,6 +786,7 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
               onCanvasClickWaypointPin={handleCanvasClickPin}
               onSelectWaypoint={handleSelectWaypointFromMap}
               onSelectZone={handleSelectZoneFromMap}
+              onResetMap={handleResetGridMap}
               isPinMode={isPinMode}
               showGridMap={true}
               showGridLines={true}

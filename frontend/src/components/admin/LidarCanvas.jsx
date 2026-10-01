@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { ZoomIn, ZoomOut, RotateCcw, Crosshair } from 'lucide-react';
+import { ZoomIn, ZoomOut, RotateCcw, Crosshair, Trash2 } from 'lucide-react';
 
 export const LidarCanvas = ({
   scanPoints = [],
@@ -15,6 +15,7 @@ export const LidarCanvas = ({
   onCanvasClickWaypointPin,
   onSelectWaypoint,
   onSelectZone,
+  onResetMap,
   isPinMode = false,
   showGridMap = true,
   showGridLines = true,
@@ -503,6 +504,20 @@ export const LidarCanvas = ({
         <span className="text-[11px] font-mono text-stone-700 font-bold">
           SCALE: {scale.toFixed(0)} px/m
         </span>
+
+        {onResetMap && (
+          <>
+            <div className="h-4 w-px bg-[#DDD8CE] my-auto mx-1" />
+            <button
+              onClick={onResetMap}
+              className="px-2.5 py-1 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg transition-colors cursor-pointer flex items-center gap-1 font-bold text-[11px] border border-red-200 shadow-2xs"
+              title="Xóa sạch toàn bộ bản đồ SLAM hiện tại"
+            >
+              <Trash2 className="w-3.5 h-3.5 text-red-500" />
+              <span>Xóa Map</span>
+            </button>
+          </>
+        )}
       </div>
 
       {/* Selected Target HUD or Pin Mode HUD */}

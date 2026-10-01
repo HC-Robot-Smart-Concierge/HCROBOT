@@ -278,6 +278,12 @@ def build_argument_parser():
     parser.add_argument("--gpio-chip", type=int, help="Ép gpiochip; thường tự phát hiện")
     parser.add_argument("--mock", action="store_true", help="Giả lập motor nhưng vẫn đọc sensor")
     parser.add_argument("--no-camera", action="store_true", help="Không khởi động camera stream")
+    parser.add_argument("--no-lidar", action="store_true", help="Không khởi động LiDAR SLAM stream")
+    parser.add_argument(
+        "--lidar-port",
+        default=None,
+        help="Cổng Serial cho RPLiDAR (mặc định tự dò hoặc /dev/ttyUSB1)",
+    )
     parser.add_argument(
         "--camera-device",
         default=None,
@@ -334,6 +340,22 @@ def main(argv=None):
             daemon=True,
         )
         camera_thread.start()
+
+    # Bật LiDAR SLAM & WebSocket Server trên background thread (trừ khi --no-lidar)
+    if not args.no_lidar:
+        try:
+            from scripts.lidar_service import run_lidar_server, slam_core
+            if args.lidar_port:
+                slam_core.port = args.lidar_port
+            lidar_thread = threading.Thread(
+                target=run_lidar_server,
+                kwargs={"host": "0.0.0.0", "port": 8000},
+                daemon=True,
+            )
+            lidar_thread.start()
+            logger.info("📡 LiDAR SLAM Server đang chạy tại ws://0.0.0.0:8000/api/v1/map/ws")
+        except Exception as e:
+            logger.warning("Không thể khởi chạy LiDAR SLAM Server: %s", e)
 
     config = load_config()
     robot_cfg = config.get("robot", {})

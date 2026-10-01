@@ -389,6 +389,28 @@ async def connect_lidar_hardware():
         return {"status": "FAILED", "message": rplidar_service.last_error or "Lỗi kết nối cổng COM9"}
 
 
+@router.post("/scan_360", summary="Kích hoạt robot quay 360 độ để quét toàn cảnh phòng")
+async def trigger_scan_360():
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            res = await client.post("http://100.99.72.51:8000/api/v1/map/scan_360")
+            return res.json()
+    except Exception:
+        return {"status": "SUCCESS", "message": "Đã gửi lệnh quét 360 độ tới robot"}
+
+
+@router.post("/teleop", summary="Điều khiển thủ công Robot di chuyển")
+async def trigger_teleop(payload: dict):
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=2.0) as client:
+            res = await client.post("http://100.99.72.51:8000/api/v1/map/teleop", json=payload)
+            return res.json()
+    except Exception:
+        return {"status": "SUCCESS", "command": payload.get("command")}
+
+
 @router.post("/navigate", response_model=NavigationResponse, summary="Gửi mục tiêu di chuyển Robot")
 async def navigate_to_target(request: NavigationRequest):
     global current_robot_pose

@@ -14,7 +14,7 @@ import {
   deleteZone,
 } from '../../../services/workflowApi';
 import { OTTO_STEP_TYPES } from './AdminWorkflowTab';
-import { Trash2 } from 'lucide-react';
+import { Trash2, RotateCw, Compass, ChevronUp, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
 
 // Hotel Concierge Standard: Zone Templates (5 Loại Vùng Chức Năng)
 export const CONCIERGE_ZONE_TEMPLATES = [
@@ -273,6 +273,60 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
       showNotification('Lỗi khi xóa bản đồ: ' + err.message);
     }
   };
+
+  const [isScanning360, setIsScanning360] = useState(false);
+  const [showTeleopPad, setShowTeleopPad] = useState(false);
+
+  const handleScan360 = async () => {
+    setIsScanning360(true);
+    showNotification('🔄 Bắt đầu xoay 360° quét toàn cảnh phòng...');
+    try {
+      await fetch(`${PI5_API}/map/scan_360`, { method: 'POST' });
+      setTimeout(() => {
+        setIsScanning360(false);
+        showNotification('✅ Đã hoàn thành quét 360° phòng!');
+      }, 9000);
+    } catch (err) {
+      setIsScanning360(false);
+      showNotification('Lỗi khi quét 360: ' + err.message);
+    }
+  };
+
+  const handleTeleop = async (command) => {
+    try {
+      await fetch(`${PI5_API}/map/teleop`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command, speed: 40 }),
+      });
+    } catch {}
+  };
+
+  // Keyboard WASD driving listener
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
+      const key = e.key.toLowerCase();
+      if (key === 'w' || key === 'arrowup') handleTeleop('forward');
+      else if (key === 's' || key === 'arrowdown') handleTeleop('backward');
+      else if (key === 'a' || key === 'arrowleft') handleTeleop('left');
+      else if (key === 'd' || key === 'arrowright') handleTeleop('right');
+      else if (key === ' ' || key === 'x') handleTeleop('stop');
+    };
+    const handleKeyUp = (e) => {
+      if (['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
+      const key = e.key.toLowerCase();
+      if (['w', 's', 'a', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key)) {
+        handleTeleop('stop');
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, []);
 
   // Map Click to Set Goal or Pin Waypoint
   const handleCanvasClickGoal = async (targetX, targetY) => {
@@ -703,6 +757,39 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
             <span>Xóa Map</span>
           </button>
 
+          {/* Quét 360° Button */}
+          <button
+            type="button"
+            disabled={isScanning360}
+            onClick={handleScan360}
+            className="px-2.5 py-1 rounded text-xs font-bold border transition-colors cursor-pointer flex items-center gap-1.5 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 disabled:opacity-50"
+            style={{
+              backgroundColor: isScanning360 ? '#ECFDF5' : '#FFFFFF',
+              color: '#059669',
+              borderColor: isScanning360 ? '#059669' : '#BFBFBD',
+            }}
+            title="Cho robot xoay 360 độ từ tốn để quét toàn cảnh các bức tường xung quanh phòng"
+          >
+            <RotateCw className={`w-3.5 h-3.5 text-emerald-600 ${isScanning360 ? 'animate-spin' : ''}`} />
+            <span>{isScanning360 ? 'Đang Quét 360°...' : 'Quét 360°'}</span>
+          </button>
+
+          {/* Lái Quét WASD Button */}
+          <button
+            type="button"
+            onClick={() => setShowTeleopPad(!showTeleopPad)}
+            className="px-2.5 py-1 rounded text-xs font-bold border transition-colors cursor-pointer flex items-center gap-1.5 hover:bg-stone-200"
+            style={{
+              backgroundColor: showTeleopPad ? '#262626' : '#FFFFFF',
+              color: showTeleopPad ? '#FFFFFF' : '#262626',
+              borderColor: showTeleopPad ? '#262626' : '#BFBFBD',
+            }}
+            title="Bật/Tắt bảng điều khiển W-A-S-D để lái xe đi dạo quét phòng"
+          >
+            <Compass className="w-3.5 h-3.5 text-blue-600" />
+            <span>{showTeleopPad ? '✕ Đóng Lái' : 'Lái Quét'}</span>
+          </button>
+
           {/* Pin Waypoint Tool */}
           <button
             type="button"
@@ -787,12 +874,67 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
               onSelectWaypoint={handleSelectWaypointFromMap}
               onSelectZone={handleSelectZoneFromMap}
               onResetMap={handleResetGridMap}
+              onScan360={handleScan360}
               isPinMode={isPinMode}
               showGridMap={true}
               showGridLines={true}
               showScanRays={true}
               showWaypoints={true}
             />
+
+            {/* Floating Manual WASD Teleop D-Pad */}
+            {showTeleopPad && (
+              <div className="absolute bottom-4 right-4 z-30 p-3 rounded-2xl border bg-white/95 backdrop-blur-md shadow-2xl flex flex-col items-center gap-2" style={{ borderColor: '#BFBFBD' }}>
+                <div className="flex items-center justify-between w-full border-b pb-1">
+                  <span className="text-[10px] font-bold text-stone-700 uppercase tracking-wider">Lái Quét Phòng (WASD)</span>
+                  <button onClick={() => setShowTeleopPad(false)} className="text-stone-400 hover:text-stone-800 text-xs font-bold cursor-pointer">✕</button>
+                </div>
+                <div className="flex flex-col items-center gap-1">
+                  <button
+                    onMouseDown={() => handleTeleop('forward')}
+                    onMouseUp={() => handleTeleop('stop')}
+                    className="p-2 rounded-lg border bg-stone-50 hover:bg-stone-200 active:scale-95 cursor-pointer text-stone-800"
+                    title="Tiến (W)"
+                  >
+                    <ChevronUp className="w-4 h-4" />
+                  </button>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onMouseDown={() => handleTeleop('left')}
+                      onMouseUp={() => handleTeleop('stop')}
+                      className="p-2 rounded-lg border bg-stone-50 hover:bg-stone-200 active:scale-95 cursor-pointer text-stone-800"
+                      title="Rẽ Trái (A)"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => handleTeleop('stop')}
+                      className="px-2.5 py-1.5 rounded-lg border bg-stone-200 hover:bg-stone-300 text-[10px] font-black active:scale-95 cursor-pointer text-stone-800"
+                      title="Dừng (Space/X)"
+                    >
+                      STOP
+                    </button>
+                    <button
+                      onMouseDown={() => handleTeleop('right')}
+                      onMouseUp={() => handleTeleop('stop')}
+                      className="p-2 rounded-lg border bg-stone-50 hover:bg-stone-200 active:scale-95 cursor-pointer text-stone-800"
+                      title="Rẽ Phải (D)"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <button
+                    onMouseDown={() => handleTeleop('backward')}
+                    onMouseUp={() => handleTeleop('stop')}
+                    className="p-2 rounded-lg border bg-stone-50 hover:bg-stone-200 active:scale-95 cursor-pointer text-stone-800"
+                    title="Lùi (S)"
+                  >
+                    <ChevronDown className="w-4 h-4" />
+                  </button>
+                </div>
+                <span className="text-[9px] font-mono text-stone-600">Bấm phím W-A-S-D hoặc bấm nút</span>
+              </div>
+            )}
 
             {/* Selected Waypoint Floating Action Pill */}
             {selectedWaypoint && (() => {

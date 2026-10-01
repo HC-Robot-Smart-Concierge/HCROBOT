@@ -21,6 +21,11 @@ import {
   Video,
   MapPin,
   Plus,
+  ChevronUp,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  RotateCw,
 } from 'lucide-react';
 
 // Pi5 connection endpoints (mirrors AdminCameraTab pattern)
@@ -220,18 +225,66 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
   // Reset SLAM grid map
   const handleResetGridMap = async () => {
     try {
-      setNavNotification('Clearing SLAM map...');
+      setNavNotification('Đang xóa sạch bản đồ SLAM...');
       const res = await fetch(`${PI5_API}/map/reset_map`, { method: 'POST' });
       const data = await res.json();
       if (data.status === 'SUCCESS') {
-        setNavNotification('SLAM map cleared. Ready for new scan.');
+        setNavNotification('Bản đồ đã xóa sạch. Vị trí robot đã đặt về (0,0).');
         setGridData(new Array(200 * 200).fill(-1));
+        setTelemetry((prev) => ({ ...prev, x: 0, y: 0, yaw: 0 }));
       }
     } catch (err) {
       console.error('Reset map error:', err);
     }
     setTimeout(() => setNavNotification(''), 4000);
   };
+
+  const handleScan360 = async () => {
+    setNavNotification('🔄 Bắt đầu xoay 360° quét toàn cảnh các bức tường phòng...');
+    try {
+      await fetch(`${PI5_API}/map/scan_360`, { method: 'POST' });
+    } catch (err) {
+      console.error('Lỗi quét 360:', err);
+    }
+  };
+
+  const handleTeleop = async (command) => {
+    try {
+      await fetch(`${PI5_API}/map/teleop`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command, speed: 40 }),
+      });
+    } catch (err) {
+      console.error('Teleop error:', err);
+    }
+  };
+
+  // Keyboard Teleop: W-A-S-D hoặc Phím Mũi Tên
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
+      const key = e.key.toLowerCase();
+      if (key === 'w' || key === 'arrowup') handleTeleop('forward');
+      else if (key === 's' || key === 'arrowdown') handleTeleop('backward');
+      else if (key === 'a' || key === 'arrowleft') handleTeleop('left');
+      else if (key === 'd' || key === 'arrowright') handleTeleop('right');
+      else if (key === ' ' || key === 'x') handleTeleop('stop');
+    };
+    const handleKeyUp = (e) => {
+      if (['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
+      const key = e.key.toLowerCase();
+      if (['w', 's', 'a', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key)) {
+        handleTeleop('stop');
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, []);
 
   const handleSetGoal = async (targetX, targetY) => {
     setActiveNavGoal({ x: targetX, y: targetY });
@@ -293,7 +346,27 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
           </span>
           <span style={{ color: '#8C8C8C' }}>RAW: <strong style={{ color: '#262626' }}>{scanPoints.length} PTS</strong></span>
         </div>
-        <span className="text-[11px]" style={{ color: '#8C8C8C' }}>WS: {PI5_IP}:8000</span>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleScan360}
+            className="px-2.5 py-1 text-[11px] font-bold rounded-md border flex items-center gap-1.5 transition-all cursor-pointer hover:bg-stone-200"
+            style={{ background: '#FAF8F5', borderColor: '#BFBFBD', color: '#262626' }}
+            title="Cho robot xoay tại chỗ 360 độ để quét toàn cảnh các bức tường xung quanh phòng"
+          >
+            <RotateCw className="w-3 h-3 text-emerald-600 animate-spin-slow" />
+            <span>QUÉT 360° PHÒNG</span>
+          </button>
+          <button
+            onClick={handleResetGridMap}
+            className="px-2.5 py-1 text-[11px] font-bold rounded-md border flex items-center gap-1.5 transition-all cursor-pointer hover:bg-red-50 hover:text-red-700 hover:border-red-300"
+            style={{ background: '#FAF8F5', borderColor: '#BFBFBD', color: '#8C8C8C' }}
+            title="Xóa sạch toàn bộ lưới bản đồ SLAM và đặt lại vị trí Robot về (0,0)"
+          >
+            <Trash2 className="w-3 h-3 text-red-500" />
+            <span>XÓA BẢN ĐỒ</span>
+          </button>
+          <span className="text-[11px] ml-2" style={{ color: '#8C8C8C' }}>WS: {PI5_IP}:8000</span>
+        </div>
       </div>
 
       {/* Nav Notification Alert */}
@@ -493,6 +566,54 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
                 Click on the SLAM map to set a navigation goal.
               </div>
             )}
+
+            {/* Manual WASD D-Pad Teleop */}
+            <div className="flex flex-col items-center gap-1.5 p-2 rounded-lg border bg-[#FAF8F5]" style={{ borderColor: '#BFBFBD' }}>
+              <span className="text-[10px] font-bold text-stone-600">LÁI THỦ CÔNG ĐỂ QUÉT PHÒNG (W-A-S-D)</span>
+              <div className="flex flex-col items-center gap-1">
+                <button
+                  onMouseDown={() => handleTeleop('forward')}
+                  onMouseUp={() => handleTeleop('stop')}
+                  className="p-2 rounded-lg border bg-white shadow-sm hover:bg-stone-100 active:scale-95 cursor-pointer text-stone-800"
+                  title="Tiến (W)"
+                >
+                  <ChevronUp className="w-4 h-4" />
+                </button>
+                <div className="flex items-center gap-1">
+                  <button
+                    onMouseDown={() => handleTeleop('left')}
+                    onMouseUp={() => handleTeleop('stop')}
+                    className="p-2 rounded-lg border bg-white shadow-sm hover:bg-stone-100 active:scale-95 cursor-pointer text-stone-800"
+                    title="Rẽ Trái (A)"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => handleTeleop('stop')}
+                    className="px-2 py-1.5 rounded-lg border bg-stone-200 text-[10px] font-bold shadow-sm hover:bg-stone-300 active:scale-95 cursor-pointer text-stone-800"
+                    title="Dừng (Space/X)"
+                  >
+                    STOP
+                  </button>
+                  <button
+                    onMouseDown={() => handleTeleop('right')}
+                    onMouseUp={() => handleTeleop('stop')}
+                    className="p-2 rounded-lg border bg-white shadow-sm hover:bg-stone-100 active:scale-95 cursor-pointer text-stone-800"
+                    title="Rẽ Phải (D)"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+                <button
+                  onMouseDown={() => handleTeleop('backward')}
+                  onMouseUp={() => handleTeleop('stop')}
+                  className="p-2 rounded-lg border bg-white shadow-sm hover:bg-stone-100 active:scale-95 cursor-pointer text-stone-800"
+                  title="Lùi (S)"
+                >
+                  <ChevronDown className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
 
             <button
               onClick={handleEmergencyStop}

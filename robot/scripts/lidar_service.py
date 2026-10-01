@@ -92,10 +92,17 @@ class RPLidarSLAMCore:
         self.is_navigating = False
 
     def reset_map(self):
-        """Xóa trắng bản đồ 2D về trạng thái ban đầu."""
+        """Xóa trắng bản đồ 2D về trạng thái ban đầu và đưa vị trí robot về gốc."""
         with self._lock:
             self.grid_data = [-1] * (self.grid_width * self.grid_height)
-        logger.info("🧹 Đã làm sạch bản đồ 2D Occupancy Grid")
+            self.robot_x = 0.0
+            self.robot_y = 0.0
+            self.robot_yaw = 0.0
+            self.status = "IDLE"
+            self.linear_velocity = 0.0
+            self.angular_velocity = 0.0
+        self.stop_navigation()
+        logger.info("🧹 Đã làm sạch bản đồ 2D Occupancy Grid và đặt lại vị trí Robot về (0,0)")
 
     def _world_to_grid(self, x: float, y: float):
         gx = int((x - self.origin_x) / self.resolution)
@@ -392,33 +399,66 @@ class RPLidarSLAMCore:
             # Xử lý né vật cản an toàn
             if front_obstacle_dist < 0.40:
                 logger.warning(f"⚠️ Phát hiện vật cản trước mặt cự ly {front_obstacle_dist:.2f}m! Đang rẽ tránh...")
+                self.send_udp_motor_command("speed:35")
                 self.send_udp_motor_command("left")
+                time.sleep(0.08)
+                self.send_udp_motor_command("stop")
                 self.robot_yaw = (self.robot_yaw - 8.0) % 360.0
-                time.sleep(dt)
+                time.sleep(0.05)
                 continue
 
             # Điều khiển bám mục tiêu
-            if abs(yaw_error) > 20.0:
-                # Cần quay đầu về hướng mục tiêu
+            if abs(yaw_error) > 15.0:
+                # Cần quay đầu về hướng mục tiêu (quay nhẹ nhàng bằng xung 35% công suất)
                 turn_cmd = "right" if yaw_error > 0 else "left"
+                self.send_udp_motor_command("speed:35")
                 self.send_udp_motor_command(turn_cmd)
-                yaw_step = 6.0 if yaw_error > 0 else -6.0
+                time.sleep(0.07)
+                self.send_udp_motor_command("stop")
+
+                yaw_step = 7.0 if yaw_error > 0 else -7.0
                 self.robot_yaw = (self.robot_yaw + yaw_step) % 360.0
                 self.angular_velocity = yaw_step
                 self.linear_velocity = 0.0
+                time.sleep(0.04)
             else:
-                # Hướng đã thẳng: Tiến thẳng về phía trước
+                # Hướng đã thẳng: Tiến thẳng về phía trước ở tốc độ ổn định
+                self.send_udp_motor_command("speed:45")
                 self.send_udp_motor_command("forward")
-                speed_mps = 0.20  # Tốc độ tiến ~20cm/s
+                speed_mps = 0.18  # Tốc độ tiến ~18cm/s
                 rad = math.radians(self.robot_yaw)
                 self.robot_x += speed_mps * dt * math.sin(rad)
                 self.robot_y += speed_mps * dt * math.cos(rad)
                 self.linear_velocity = speed_mps
                 self.angular_velocity = 0.0
-
-            time.sleep(dt)
+                time.sleep(dt)
 
         self.send_udp_motor_command("stop")
+
+    def scan_room_360(self):
+        """Quay tròn 360 độ từ tốn để quét toàn cảnh các bức tường xung quanh phòng."""
+        def _scan_worker():
+            self.stop_navigation()
+            self.status = "SCANNING_360"
+            logger.info("🔄 BẮT ĐẦU QUÉT TOÀN PHÒNG 360 ĐỘ...")
+            self.send_udp_motor_command("speed:30")
+
+            steps = 36  # 36 bước, mỗi bước ~10 độ
+            for i in range(steps):
+                if self.status != "SCANNING_360":
+                    break
+                self.send_udp_motor_command("right")
+                time.sleep(0.08)
+                self.send_udp_motor_command("stop")
+                self.robot_yaw = (self.robot_yaw + 10.0) % 360.0
+                time.sleep(0.12)  # Dừng để LiDAR quét bức tường sắc nét
+
+            self.status = "IDLE"
+            self.send_udp_motor_command("stop")
+            logger.info("✅ HOÀN THÀNH QUÉT 360 ĐỘ TOÀN PHÒNG!")
+
+        t = threading.Thread(target=_scan_worker, daemon=True)
+        t.start()
 
 
 # Khởi tạo singleton Core
@@ -482,6 +522,42 @@ async def connect_lidar():
 async def reset_map():
     slam_core.reset_map()
     return {"status": "SUCCESS", "message": "Đã xóa trắng bản đồ 2D Occupancy Grid"}
+
+
+@app.post("/api/v1/map/scan_360")
+async def start_scan_360():
+    slam_core.scan_room_360()
+    return {"status": "SUCCESS", "message": "Robot đang quay 360 độ để quét toàn cảnh phòng"}
+
+
+class TeleopCommandRequest(BaseModel):
+    command: str  # forward, backward, left, right, stop
+    speed: Optional[int] = 45
+
+
+@app.post("/api/v1/map/teleop")
+async def teleop_control(req: TeleopCommandRequest):
+    slam_core.stop_navigation()
+    cmd = req.command.lower()
+    if cmd == "stop":
+        slam_core.send_udp_motor_command("stop")
+        slam_core.linear_velocity = 0.0
+        slam_core.angular_velocity = 0.0
+    elif cmd in ["left", "right"]:
+        spd = req.speed or 35
+        slam_core.send_udp_motor_command(f"speed:{spd}")
+        slam_core.send_udp_motor_command(cmd)
+        yaw_step = 8.0 if cmd == "right" else -8.0
+        slam_core.robot_yaw = (slam_core.robot_yaw + yaw_step) % 360.0
+    elif cmd in ["forward", "backward"]:
+        spd = req.speed or 45
+        slam_core.send_udp_motor_command(f"speed:{spd}")
+        slam_core.send_udp_motor_command(cmd)
+        step_m = 0.08 if cmd == "forward" else -0.08
+        rad = math.radians(slam_core.robot_yaw)
+        slam_core.robot_x += step_m * math.sin(rad)
+        slam_core.robot_y += step_m * math.cos(rad)
+    return {"status": "SUCCESS", "command": cmd}
 
 
 @app.post("/api/v1/map/navigate")

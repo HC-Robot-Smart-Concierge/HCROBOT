@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
-from typing import TYPE_CHECKING, Optional
-from sqlalchemy import String, DateTime, Text, ForeignKey
+from typing import TYPE_CHECKING, Optional, List, Dict, Any
+from sqlalchemy import String, DateTime, Text, ForeignKey, JSON, Float, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -38,6 +38,13 @@ class SupportRequest(Base):
     assigned_staff_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     assigned_robot_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
 
+    # Specialized request attributes (Room Service / F&B, Taxi, Custom orders)
+    items: Mapped[Optional[List[Dict[str, Any]]]] = mapped_column(JSON, default=list, nullable=True) # e.g. [{"name": "Club Sandwich", "qty": 2, "price": 120000}]
+    total_amount: Mapped[float] = mapped_column(Float, default=0.0) # Total monetary value (VND)
+    progress: Mapped[int] = mapped_column(Integer, default=0) # 0 - 100%
+    est_completion: Mapped[Optional[str]] = mapped_column(String(50), nullable=True) # e.g. '12m', '4 mins'
+    extra_data: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSON, default=dict, nullable=True) # For taxi details, custom payloads
+
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -49,7 +56,13 @@ class SupportRequest(Base):
 
     def __init__(self, **kwargs):
         # Normalize legacy field aliases
-        aliases = {"location": "room_number", "assigned_to": "assigned_staff_name", "reporter": "guest_name"}
+        aliases = {
+            "location": "room_number",
+            "assigned_to": "assigned_staff_name",
+            "reporter": "guest_name",
+            "order_number": "ticket_code",
+            "note": "description",
+        }
         for old_k, new_k in aliases.items():
             if old_k in kwargs:
                 val = kwargs.pop(old_k)
@@ -60,6 +73,15 @@ class SupportRequest(Base):
             self._category = kwargs.pop("category")
         if "request_type" in kwargs:
             self._request_type = kwargs.pop("request_type")
+
+        # Handle specialized flags like is_service_request or image_url
+        extra = kwargs.get("extra_data") or {}
+        if "is_service_request" in kwargs:
+            extra["is_service_request"] = kwargs.pop("is_service_request")
+        if "image_url" in kwargs:
+            extra["image_url"] = kwargs.pop("image_url")
+        if extra:
+            kwargs["extra_data"] = extra
 
         # Strip presentation/client-only labels
         for k in (
@@ -75,6 +97,54 @@ class SupportRequest(Base):
     # -------------------------------------------------------------
     # Compatibility properties for Swagger UI & API Responses
     # -------------------------------------------------------------
+    @property
+    def order_number(self) -> str:
+        """Alias for ticket_code (used in Room Service / F&B orders)."""
+        if self.ticket_code and self.ticket_code.startswith("ORD-"):
+            return self.ticket_code[4:]
+        return self.ticket_code or self.id
+
+    @order_number.setter
+    def order_number(self, val: str):
+        self.ticket_code = val
+
+    @property
+    def note(self) -> Optional[str]:
+        """Alias for description."""
+        return self.description
+
+    @note.setter
+    def note(self, val: Optional[str]):
+        self.description = val
+
+    @property
+    def is_service_request(self) -> bool:
+        if self.extra_data and "is_service_request" in self.extra_data:
+            return bool(self.extra_data["is_service_request"])
+        return False
+
+    @is_service_request.setter
+    def is_service_request(self, val: bool):
+        if not self.extra_data:
+            self.extra_data = {}
+        self.extra_data["is_service_request"] = val
+
+    @property
+    def image_url(self) -> Optional[str]:
+        if self.extra_data:
+            return self.extra_data.get("image_url")
+        return None
+
+    @image_url.setter
+    def image_url(self, val: Optional[str]):
+        if not self.extra_data:
+            self.extra_data = {}
+        self.extra_data["image_url"] = val
+
+    @property
+    def is_vip(self) -> bool:
+        return self.priority in ["HIGH", "URGENT"]
+
     @property
     def location(self) -> str:
         return self.room_number or "Main Hotel"
@@ -121,6 +191,8 @@ class SupportRequest(Base):
                 return "concierge"
             elif "RECEPTION" in st:
                 return "booking"
+            elif "ROOM" in st or "FB" in st:
+                return "room_service"
         return "general"
 
     @request_type.setter
@@ -145,6 +217,8 @@ class SupportRequest(Base):
                 return "Concierge & Live Support"
             elif "RECEPTION" in st:
                 return "Front Desk & Reception"
+            elif "ROOM" in st or "FB" in st:
+                return "Food & Beverage / Room Service"
         return "General"
 
     @category.setter
@@ -182,3 +256,11 @@ class SupportRequest(Base):
     def activity_log(self) -> list: return []
     @property
     def escalated(self) -> bool: return self.priority in ["HIGH", "URGENT"]
+
+# Backward compatibility aliases
+HousekeepingRequest = SupportRequest
+BellRequest = SupportRequest
+MaintenanceRequest = SupportRequest
+ReceptionRequest = SupportRequest
+RoomServiceOrder = SupportRequest
+

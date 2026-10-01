@@ -10,12 +10,7 @@ from sqlalchemy import select, desc
 from app.services.notification_manager import notification_manager
 from app.models import (
     Staff,
-    RoomServiceOrder,
-    HousekeepingRequest,
-    BellRequest,
-    MaintenanceRequest,
     ManagementDirective,
-    ReceptionRequest,
     Notification,
     SupportRequest,
     ServiceType,
@@ -150,31 +145,7 @@ async def _fetch_all_raw_requests(db: AsyncSession) -> List[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Error fetching SupportRequests: {e}")
 
-    # 2. Orders from RoomServiceOrder (F&B / ẩm thực phòng)
-    try:
-        orders_res = await db.execute(select(RoomServiceOrder).order_by(desc(RoomServiceOrder.created_at)))
-        for o in orders_res.scalars().all():
-            unified.append({
-                "id": f"REQ-{o.order_number}",
-                "raw_id": o.id,
-                "department": "F&B",
-                "table_type": "room_service",
-                "title": f"Order #{o.order_number}: {', '.join([i.get('name', 'Item') for i in o.items]) if o.items else 'Room Service'}",
-                "location": o.room_number,
-                "guestName": "Room Guest",
-                "priority": "NORMAL",
-                "status": o.status,
-                "time": o.created_at.strftime("%I:%M %p").lstrip("0") if o.created_at else "Recent",
-                "assignedTo": o.assigned_staff_name,
-                "assigned_robot": o.assigned_robot_id,
-                "notes": o.note,
-                "source": "Guest / Robot App",
-                "created_at": o.created_at,
-            })
-    except Exception as e:
-        logger.error(f"Error fetching RoomServiceOrders: {e}")
-
-    # 3. Directives from ManagementDirective (Chỉ thị vận hành)
+    # 2. Directives from ManagementDirective (Chỉ thị vận hành)
     try:
         dir_res = await db.execute(select(ManagementDirective).order_by(desc(ManagementDirective.created_at)))
         for d in dir_res.scalars().all():

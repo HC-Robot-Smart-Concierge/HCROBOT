@@ -41,9 +41,13 @@ async def init_db() -> None:
     from sqlalchemy import text
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        # An toàn cho database cũ: bổ sung cột thiếu nếu bảng đã tồn tại
         try:
-            await conn.execute(text("ALTER TABLE room_service_orders ADD COLUMN IF NOT EXISTS is_vip BOOLEAN DEFAULT FALSE;"))
+            await conn.execute(text("ALTER TABLE support_requests ADD COLUMN IF NOT EXISTS items JSON DEFAULT '[]'::json;"))
+            await conn.execute(text("ALTER TABLE support_requests ADD COLUMN IF NOT EXISTS total_amount DOUBLE PRECISION DEFAULT 0.0;"))
+            await conn.execute(text("ALTER TABLE support_requests ADD COLUMN IF NOT EXISTS progress INTEGER DEFAULT 0;"))
+            await conn.execute(text("ALTER TABLE support_requests ADD COLUMN IF NOT EXISTS est_completion VARCHAR(50);"))
+            await conn.execute(text("ALTER TABLE support_requests ADD COLUMN IF NOT EXISTS extra_data JSON DEFAULT '{}'::json;"))
+            await conn.execute(text("ALTER TABLE chat_sessions ADD COLUMN IF NOT EXISTS account_id VARCHAR(50);"))
         except Exception:
             pass
         try:

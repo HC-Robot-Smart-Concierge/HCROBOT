@@ -6,8 +6,6 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 
-if TYPE_CHECKING:
-    from app.models.room_service import OrderItem
 
 
 class FoodItem(Base):
@@ -32,7 +30,6 @@ class FoodItem(Base):
 
     # Relationships
     menu_items: Mapped[List["MenuItem"]] = relationship("MenuItem", back_populates="food_item", cascade="all, delete-orphan")
-    order_items: Mapped[List["OrderItem"]] = relationship("OrderItem", back_populates="food_item")
 
 
 class Menu(Base):
@@ -85,4 +82,3 @@ class MenuItem(Base):
     # Relationships
     menu: Mapped["Menu"] = relationship("Menu", back_populates="items")
     food_item: Mapped["FoodItem"] = relationship("FoodItem", back_populates="menu_items", lazy="joined")
-    order_items: Mapped[List["OrderItem"]] = relationship("OrderItem", back_populates="menu_item")

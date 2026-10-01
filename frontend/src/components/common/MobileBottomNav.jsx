@@ -12,13 +12,24 @@ export const MobileBottomNav = ({
   activeMenu = 'Dashboard',
   onSelectMenu = () => {},
   unreadNotifCount = 0,
+  currentUser = null,
+  activeView = '',
 }) => {
   const { t } = useLanguage();
+
+  const deptLower = (currentUser?.department || '').toLowerCase();
+  const roleLower = (currentUser?.role || '').toLowerCase();
+  const defaultDashLower = (currentUser?.default_dashboard || currentUser?.defaultDashboard || '').toLowerCase();
+  const isConcierge =
+    activeView === 'concierge' ||
+    deptLower.includes('concierge') ||
+    roleLower.includes('concierge') ||
+    defaultDashLower === 'concierge';
 
   const navItems = [
     { id: 'Dashboard', label: t('menuDashboard') || 'Tổng Quan', icon: LayoutDashboard },
     { id: 'Requests', label: t('menuRequests') || 'Yêu Cầu', icon: Inbox },
-    { id: 'History', label: t('menuHistory') || 'Lịch Sử', icon: History },
+    ...(isConcierge ? [{ id: 'History', label: t('menuHistory') || 'Lịch Sử', icon: History }] : []),
     { id: 'Notifications', label: t('menuNotifications') || 'Thông Báo', icon: Bell },
     { id: 'Profile', label: t('menuProfile') || 'Hồ Sơ', icon: User },
   ];

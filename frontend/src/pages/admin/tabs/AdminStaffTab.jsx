@@ -2,28 +2,28 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Pagination } from '../../../components/common/Pagination';
 import {
   fetchStaffRoster,
+  fetchDepartments,
   createStaffMember,
   updateStaffMember,
   deleteStaffMember,
 } from '../../../services/staffApi';
 
-const DEFAULT_DEPARTMENTS = [
+// Danh sách phòng ban khách sạn chuẩn
+const STANDARD_DEPARTMENTS = [
   'Reception',
   'Housekeeping',
-  'F&B',
+  'Food & Beverage',
   'Bell Services',
   'Maintenance',
-  'Administration',
-  'Lễ tân',
-  'Buồng phòng',
-  'Ẩm thực (F&B)',
-  'Kỹ thuật / Bảo trì',
-  'CNTT & Vận hành Robot',
-  'An ninh',
+  'Restaurant',
+  'Taxi',
+  'Concierge',
+  'Executive',
 ];
 
 export const AdminStaffTab = () => {
   const [staffList, setStaffList] = useState([]);
+  const [departments, setDepartments] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [departmentFilter, setDepartmentFilter] = useState('All');
@@ -80,11 +80,11 @@ export const AdminStaffTab = () => {
     is_fallback_agent: false,
   });
 
-  const allDepartments = Array.from(
-    new Set([
-      ...DEFAULT_DEPARTMENTS,
-      ...staffList.map((s) => s.department).filter(Boolean),
-    ])
+  // Bảng departments là nguồn dữ liệu chuẩn duy nhất (Single Source of Truth)
+  const allDepartments = (
+    departments.length > 0
+      ? Array.from(new Set(departments.map((d) => d.name).filter(Boolean)))
+      : STANDARD_DEPARTMENTS
   );
 
   const showNotification = (msg) => {
@@ -92,11 +92,17 @@ export const AdminStaffTab = () => {
     setTimeout(() => setNotification(null), 3500);
   };
 
-  const loadStaff = async () => {
+  const loadData = async () => {
     setIsLoading(true);
     try {
-      const data = await fetchStaffRoster();
-      setStaffList(data || []);
+      const [staffData, deptData] = await Promise.all([
+        fetchStaffRoster(),
+        fetchDepartments(),
+      ]);
+      setStaffList(staffData || []);
+      if (Array.isArray(deptData) && deptData.length > 0) {
+        setDepartments(deptData);
+      }
     } catch {
       showNotification('Không thể tải danh sách nhân sự');
     } finally {
@@ -105,7 +111,7 @@ export const AdminStaffTab = () => {
   };
 
   useEffect(() => {
-    loadStaff();
+    loadData();
   }, []);
 
   const handleOpenEditModal = (staff) => {
@@ -193,9 +199,16 @@ export const AdminStaffTab = () => {
       (s.username || '').toLowerCase().includes(q) ||
       (s.code || '').toLowerCase().includes(q);
 
+    const staffDept = (s.department || '').toLowerCase();
+    const filterDept = departmentFilter.toLowerCase();
     const matchesDept =
       departmentFilter === 'All' ||
-      (s.department || '').toLowerCase() === departmentFilter.toLowerCase();
+      staffDept === filterDept ||
+      (filterDept.includes('food') && staffDept.includes('food')) ||
+      (filterDept.includes('reception') && staffDept.includes('reception')) ||
+      (filterDept.includes('housekeeping') && staffDept.includes('housekeeping')) ||
+      (filterDept.includes('bell') && staffDept.includes('bell')) ||
+      (filterDept.includes('maintenance') && staffDept.includes('maintenance'));
 
     const matchesFallback =
       fallbackFilter === 'All' ||
@@ -217,11 +230,11 @@ export const AdminStaffTab = () => {
   const paginatedStaff = filteredStaff.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   return (
-    <div className="w-full flex flex-col p-4 space-y-3 pb-2" style={{ color: '#262626' }}>
+    <div className="w-full flex flex-col min-h-full pb-4" style={{ color: '#262626' }}>
       {/* Toast Notification */}
       {notification && (
         <div
-          className="fixed top-5 right-5 z-50 px-4 py-2 rounded-lg border text-xs font-semibold shadow-lg"
+          className="fixed bottom-6 right-6 z-50 px-4 py-2.5 rounded-xl border text-xs font-semibold shadow-2xl animate-in fade-in slide-in-from-bottom-3"
           style={{
             backgroundColor: '#262626',
             color: '#F2EFE9',
@@ -232,20 +245,23 @@ export const AdminStaffTab = () => {
         </div>
       )}
 
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b pb-2.5" style={{ borderColor: '#BFBFBD' }}>
-        <div>
-          <h2 className="text-base font-bold tracking-tight" style={{ color: '#262626' }}>
+      {/* Header Bar - seamlessly aligned with sidebar brand header */}
+      <div
+        className="h-16 px-5 border-b flex items-center justify-between gap-4 shrink-0 sticky top-0 z-20"
+        style={{ borderColor: '#BFBFBD', backgroundColor: '#F2EFE9' }}
+      >
+        <div className="min-w-0">
+          <h2 className="text-sm sm:text-base font-bold tracking-tight leading-tight truncate" style={{ color: '#262626' }}>
             Nhân Sự Tiếp Nhận & Hỗ Trợ Robot
           </h2>
-          <p className="text-[11px] font-normal" style={{ color: '#8C8C8C' }}>
+          <p className="text-[10px] sm:text-[11px] font-normal truncate mt-0.5" style={{ color: '#8C8C8C' }}>
             Danh sách nhân sự theo bộ phận để robot chuyển tiếp yêu cầu hoặc gọi hỗ trợ khi cần thiết
           </p>
         </div>
 
         <button
           onClick={() => setIsAddModalOpen(true)}
-          className="px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer border transition-colors whitespace-nowrap self-start sm:self-auto"
+          className="px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer border transition-colors whitespace-nowrap shrink-0 hover:bg-[#262626]/90"
           style={{
             backgroundColor: '#262626',
             color: '#F2EFE9',
@@ -255,6 +271,9 @@ export const AdminStaffTab = () => {
           + Thêm nhân sự
         </button>
       </div>
+
+      {/* Content Body */}
+      <div className="p-4 space-y-3">
 
       {/* Controls: Search & Filters */}
       <div
@@ -457,6 +476,7 @@ export const AdminStaffTab = () => {
           onPageChange={handlePageChange}
           itemName="nhân sự"
         />
+      </div>
       </div>
 
       {/* MODAL: EDIT STAFF */}

@@ -1,10 +1,14 @@
 import uuid
 from datetime import datetime
-from typing import Optional, List
+from typing import TYPE_CHECKING, Optional, List
 from sqlalchemy import String, Integer, DateTime, Boolean, Text, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+
+if TYPE_CHECKING:
+    from app.models.map import Map
+    from app.models.support_request import SupportRequest
 
 
 class Hotel(Base):
@@ -48,7 +52,8 @@ class Room(Base):
     # Relationships
     hotel: Mapped["Hotel"] = relationship("Hotel", back_populates="rooms")
     support_requests: Mapped[List["SupportRequest"]] = relationship("SupportRequest", back_populates="room")
-    room_service_orders: Mapped[List["RoomServiceOrder"]] = relationship("RoomServiceOrder", back_populates="room")
+    # TODO (Phase sau): Kích hoạt khi chạy migration thêm cột room_id vào bảng room_service_orders trong DB
+    # room_service_orders: Mapped[List["RoomServiceOrder"]] = relationship("RoomServiceOrder", back_populates="room")
 
 
 class Facility(Base):

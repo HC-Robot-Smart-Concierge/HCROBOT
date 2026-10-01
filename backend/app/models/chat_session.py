@@ -13,6 +13,7 @@ class ChatSession(Base):
     __tablename__ = "chat_sessions"
 
     id = Column(String(64), primary_key=True, default=lambda: str(uuid.uuid4()))
+    account_id = Column(String(50), ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True, index=True)
     room_number = Column(String(20), nullable=True, index=True)
     guest_name = Column(String(100), nullable=True)
     is_active = Column(Boolean, default=True)
@@ -21,6 +22,8 @@ class ChatSession(Base):
 
     # Relationships
     messages = relationship("ChatMessage", back_populates="session", cascade="all, delete-orphan", order_by="ChatMessage.id")
+    feedbacks = relationship("Feedback", back_populates="chat_session", cascade="all, delete-orphan")
+    account = relationship("Account")
 
 
 class ChatMessage(Base):

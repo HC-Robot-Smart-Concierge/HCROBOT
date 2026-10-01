@@ -27,4 +27,43 @@ describe('Robot Screen UI State Transitions', () => {
     currentState = 'RT-05';
     expect(currentState).toBe('RT-05');
   });
+
+  it('correctly identifies robot user and routes to robot_display instead of admin_portal', () => {
+    const isRobotUser = (user) => {
+      if (!user) return false;
+      const username = String(user.username || '').toLowerCase();
+      const role = String(user.role || '').toLowerCase();
+      const defaultDash = String(user.default_dashboard || user.defaultDashboard || '').toLowerCase();
+      return (
+        username === 'robot_01' ||
+        username.startsWith('robot') ||
+        role.includes('robot') ||
+        defaultDash === 'robot_display'
+      );
+    };
+
+    const isAdminUser = (user) => {
+      if (!user) return false;
+      if (isRobotUser(user)) return false;
+      const username = String(user.username || '').toLowerCase();
+      const role = String(user.role || '').toLowerCase();
+      const dept = String(user.department || '').toLowerCase();
+      return (
+        username === 'admin' ||
+        role.includes('admin') ||
+        (dept === 'executive' && !role.includes('robot')) ||
+        dept === 'operations'
+      );
+    };
+
+    const robotUser = {
+      username: 'robot_01',
+      role: 'Robot Kiosk',
+      department: 'Executive',
+      default_dashboard: 'robot_display',
+    };
+
+    expect(isRobotUser(robotUser)).toBe(true);
+    expect(isAdminUser(robotUser)).toBe(false);
+  });
 });

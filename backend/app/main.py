@@ -11,7 +11,11 @@ from app.core.config import settings
 from app.api.v1.router import api_router
 from app.services.rag.obsidian_service import obsidian_service
 
-logger = logging.getLogger(__name__)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+)
+logger = logging.getLogger("app.main")
 
 
 async def watch_obsidian_vault():
@@ -25,9 +29,9 @@ async def watch_obsidian_vault():
     # 1. Đồng bộ ban đầu khi khởi động Server trong background thread
     try:
         res = await asyncio.to_thread(obsidian_service.sync_vault_to_chroma)
-        logger.info(f"✅ Initial Obsidian sync completed ({res.get('chunks_upserted', 0)} chunks) tại {vault_dir}")
+        logger.info(f"[OK] Initial Obsidian sync completed ({res.get('chunks_upserted', 0)} chunks) tai {vault_dir}")
     except Exception as e:
-        logger.error(f"Lỗi khi đồng bộ Obsidian ban đầu: {e}")
+        logger.error(f"Loi khi dong bo Obsidian ban dau: {e}")
 
     # 2. Lắng nghe và đồng bộ định kỳ mỗi 10 giây
     while True:
@@ -35,10 +39,10 @@ async def watch_obsidian_vault():
             await asyncio.sleep(10)
             await asyncio.to_thread(obsidian_service.sync_vault_to_chroma)
         except asyncio.CancelledError:
-            logger.info("Obsidian Auto-Watcher đã dừng.")
+            logger.info("Obsidian Auto-Watcher da dung.")
             break
         except Exception as e:
-            logger.error(f"Lỗi khi auto-sync Obsidian: {e}")
+            logger.error(f"Loi khi auto-sync Obsidian: {e}")
 
 
 
@@ -50,11 +54,21 @@ async def lifespan(app: FastAPI):
     # 1. Initialize tables only. Seed data is loaded explicitly from scripts/.
     try:
         await init_db()
+        logger.info("[OK] Database connection & schema verified.")
     except Exception as e:
-        logger.warning(f"⚠️ Could not auto-initialize DB on startup (is PostgreSQL running?): {e}")
+        logger.warning(f"[WARN] Could not auto-initialize DB on startup (is PostgreSQL running?): {e}")
 
     # 2. Start Obsidian watcher
     watcher_task = asyncio.create_task(watch_obsidian_vault())
+
+    # 3. Thông báo sẵn sàng kèm link truy cập Swagger / Redoc
+    logger.info("=" * 60)
+    logger.info("[INFO] %s DA KHOI DONG THANH CONG!", settings.PROJECT_NAME)
+    logger.info("Swagger UI (Test API): http://localhost:8000/docs")
+    logger.info("ReDoc (Tai lieu):     http://localhost:8000/redoc")
+    logger.info("Health Check:          http://localhost:8000/health")
+    logger.info("=" * 60)
+
     yield
     watcher_task.cancel()
     rplidar_service.stop()
@@ -83,8 +97,8 @@ tags_metadata = [
         "description": "Tra cứu vector ChromaDB, đồng bộ tự động Obsidian Vault và tài liệu nghiệp vụ khách sạn.",
     },
     {
-        "name": "05. Bộ phận Lễ tân & Tiền sảnh (Reception Operations)",
-        "description": "Quản lý Dashboard Lễ tân, theo dõi yêu cầu khách hàng và cuộc gọi hỗ trợ trực tuyến.",
+        "name": "05. Bộ phận Lễ tân & Đặt phòng (Front Desk & Reception)",
+        "description": "Quản lý Dashboard Lễ tân, xử lý yêu cầu đặt phòng (Room Booking), check-in, check-out và thủ tục lưu trú.",
     },
     {
         "name": "06. Bộ phận Phục vụ phòng (F&B / Room Service)",
@@ -122,6 +136,19 @@ tags_metadata = [
         "name": "14. Nhật ký Vận hành & Audit Trail (Logging & Trace)",
         "description": "Tra cứu nhật ký phân tích sự kiện, kiểm toán bảo mật hành vi và xuất báo cáo CSV/JSON.",
     },
+    {
+        "name": "15. Quản lý Phòng ban & Nhân sự (Departments & Staff)",
+        "description": "Quản lý cơ cấu phòng ban chuẩn khách sạn (Housekeeping, Bellman, Taxi, Maintenance, Reception, Concierge, F&B), danh mục loại hình dịch vụ (Service Types) và hồ sơ nhân sự khách sạn.",
+    },
+    {
+        "name": "16. Bộ phận Đặt xe & Vận chuyển (Taxi & Transportation)",
+        "description": "Dashboard Đặt xe, điều phối taxi sân bay, lịch trình đưa đón khách và quản lý phương tiện di chuyển.",
+    },
+    {
+        "name": "17. Bộ phận Trợ lý Concierge & Live Call (Concierge & Live Support)",
+        "description": "Dashboard Concierge, tiếp nhận cuộc gọi video trực tuyến, can thiệp hỗ trợ tức thì khi khách tương tác với Robot Kiosk.",
+
+    },
 ]
 
 
@@ -154,12 +181,13 @@ app.include_router(api_router, prefix="/api/v1")
 
 
 @app.get("/", tags=["00. Trạng thái Máy chủ (System Health)"], summary="Kiểm tra trạng thái máy chủ")
-async def root():
+@app.get("/health", tags=["00. Trạng thái Máy chủ (System Health)"], summary="Kiểm tra trạng thái kết nối máy chủ (Health)")
+async def health_check():
     return {
         "status": "online",
         "system": settings.PROJECT_NAME,
         "ollama_host": settings.OLLAMA_HOST,
-        "ollama_model": settings.OLLAMA_MODEL
+        "ollama_model": settings.OLLAMA_MODEL,
     }
 
 

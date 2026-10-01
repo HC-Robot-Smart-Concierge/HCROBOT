@@ -71,24 +71,31 @@ export const AdminSettingsTab = ({ currentUser = {} }) => {
   };
 
   return (
-    <div className="w-full min-h-full flex flex-col p-6 space-y-6 pb-16 font-sans select-none">
+    <div className="w-full min-h-full flex flex-col pb-4 font-sans select-none" style={{ color: '#262626' }}>
       {/* Toast Notification */}
       {toastMessage && (
-        <div className="fixed top-5 right-5 z-50 bg-stone-900 text-white px-5 py-3 rounded-2xl shadow-2xl border border-stone-700 flex items-center gap-3 animate-in fade-in slide-in-from-top-4 duration-200">
+        <div className="fixed bottom-6 right-6 z-50 bg-[#262626] text-[#F2EFE9] px-4 py-2.5 rounded-xl shadow-2xl border border-[#BFBFBD] flex items-center gap-2 animate-in fade-in slide-in-from-bottom-3 duration-200">
           <Sparkles className="w-4 h-4 text-emerald-400" />
           <span className="text-xs font-bold">{toastMessage}</span>
         </div>
       )}
 
-      {/* 1. Header Section */}
-      <div className="border-b border-stone-200 pb-4">
-        <h2 className="text-2xl font-black text-stone-900 tracking-tight flex items-center gap-2">
-          <span>System Settings</span>
-        </h2>
-        <p className="text-sm text-stone-500 font-medium mt-0.5">
-          Manage global configurations, hotel profiles, and robot fleet defaults.
-        </p>
+      {/* 1. Header Section - seamlessly aligned with sidebar brand header */}
+      <div
+        className="h-16 px-5 border-b flex items-center justify-between gap-4 shrink-0 sticky top-0 z-20"
+        style={{ borderColor: '#BFBFBD', backgroundColor: '#F2EFE9' }}
+      >
+        <div className="min-w-0">
+          <h2 className="text-sm sm:text-base font-bold tracking-tight leading-tight truncate" style={{ color: '#262626' }}>
+            System Settings
+          </h2>
+          <p className="text-[10px] sm:text-[11px] font-normal truncate mt-0.5" style={{ color: '#8C8C8C' }}>
+            Manage global configurations, hotel profiles, and robot fleet defaults
+          </p>
+        </div>
       </div>
+
+      <div className="p-4 space-y-4">
 
       {/* 2. Top Sub-Tabs Navigation (Matching the 5 sub-tabs from Figma design) */}
       <div className="border-b border-stone-200 flex items-center gap-1 overflow-x-auto">
@@ -122,6 +129,7 @@ export const AdminSettingsTab = ({ currentUser = {} }) => {
           settings={settings}
           setSettings={setSettings}
           showToast={showToast}
+          currentUser={currentUser}
         />
       )}
 
@@ -177,6 +185,7 @@ export const AdminSettingsTab = ({ currentUser = {} }) => {
         setShowResetModal={setShowResetModal}
         handleFactoryReset={handleFactoryReset}
       />
+      </div>
     </div>
   );
 };

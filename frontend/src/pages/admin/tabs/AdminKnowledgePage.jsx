@@ -139,11 +139,11 @@ export const AdminKnowledgePage = ({ activeSubView = 'sources' }) => {
   const paginatedDocuments = filteredDocuments.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   return (
-    <div className="w-full flex flex-col p-4 space-y-3 pb-2" style={{ color: '#262626' }}>
+    <div className="w-full flex flex-col min-h-full pb-4" style={{ color: '#262626' }}>
       {/* Toast Notification */}
       {actionMessage && (
         <div
-          className="fixed top-5 right-5 z-50 px-4 py-2 rounded-lg border text-xs font-semibold shadow-lg"
+          className="fixed bottom-6 right-6 z-50 px-4 py-2.5 rounded-xl border text-xs font-semibold shadow-2xl animate-in fade-in slide-in-from-bottom-3"
           style={{
             backgroundColor: '#262626',
             color: '#F2EFE9',
@@ -156,19 +156,22 @@ export const AdminKnowledgePage = ({ activeSubView = 'sources' }) => {
 
       {/* VIEW: SYNCED SOURCE FILES (Default / Main Knowledge View) */}
       {(currentView === 'sources' || !currentView) && (
-        <div className="space-y-3">
-          {/* Header */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b pb-2.5" style={{ borderColor: '#BFBFBD' }}>
-            <div>
-              <h2 className="text-base font-bold tracking-tight" style={{ color: '#262626' }}>
+        <div className="w-full flex flex-col">
+          {/* Header Bar - seamlessly aligned with sidebar brand header */}
+          <div
+            className="h-16 px-5 border-b flex items-center justify-between gap-4 shrink-0 sticky top-0 z-20"
+            style={{ borderColor: '#BFBFBD', backgroundColor: '#F2EFE9' }}
+          >
+            <div className="min-w-0">
+              <h2 className="text-sm sm:text-base font-bold tracking-tight leading-tight truncate" style={{ color: '#262626' }}>
                 Nguồn Dữ Liệu Đồng Bộ (Source Documents)
               </h2>
-              <p className="text-[11px] font-normal" style={{ color: '#8C8C8C' }}>
+              <p className="text-[10px] sm:text-[11px] font-normal truncate mt-0.5" style={{ color: '#8C8C8C' }}>
                 Quản lý các file Markdown trong Obsidian Vault và tài liệu PDF đã nạp vào Vector Store
               </p>
             </div>
 
-            <div className="flex items-center gap-2 self-start sm:self-auto">
+            <div className="flex items-center gap-2 shrink-0">
               <button
                 onClick={handleSyncObsidian}
                 disabled={isLoading}
@@ -183,6 +186,8 @@ export const AdminKnowledgePage = ({ activeSubView = 'sources' }) => {
               </button>
             </div>
           </div>
+
+          <div className="p-4 space-y-3">
 
           {/* Sources Table */}
           <div
@@ -295,27 +300,32 @@ export const AdminKnowledgePage = ({ activeSubView = 'sources' }) => {
               </table>
             </div>
           </div>
+          </div>
         </div>
       )}
 
       {/* VIEW: OVERVIEW */}
       {currentView === 'overview' && (
-        <div className="space-y-3">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b pb-2.5" style={{ borderColor: '#BFBFBD' }}>
-            <div>
-              <h2 className="text-base font-bold tracking-tight" style={{ color: '#262626' }}>
+        <div className="w-full flex flex-col">
+          {/* Header Bar - seamlessly aligned with sidebar brand header */}
+          <div
+            className="h-16 px-5 border-b flex items-center justify-between gap-4 shrink-0 sticky top-0 z-20"
+            style={{ borderColor: '#BFBFBD', backgroundColor: '#F2EFE9' }}
+          >
+            <div className="min-w-0">
+              <h2 className="text-sm sm:text-base font-bold tracking-tight leading-tight truncate" style={{ color: '#262626' }}>
                 Tổng Quan Tri Thức AI (Knowledge Overview)
               </h2>
-              <p className="text-[11px] font-normal" style={{ color: '#8C8C8C' }}>
+              <p className="text-[10px] sm:text-[11px] font-normal truncate mt-0.5" style={{ color: '#8C8C8C' }}>
                 Kho tri thức khách sạn Vector RAG phục vụ tra cứu tức thì cho Robot Concierge
               </p>
             </div>
 
-            <div className="flex items-center gap-2 self-start sm:self-auto">
+            <div className="flex items-center gap-2 shrink-0">
               <button
                 onClick={handleSyncObsidian}
                 disabled={isLoading}
-                className="px-3 py-1.5 rounded-lg border text-xs font-semibold cursor-pointer"
+                className="px-3.5 py-1.5 rounded-lg border text-xs font-semibold cursor-pointer"
                 style={{
                   backgroundColor: '#262626',
                   color: '#F2EFE9',
@@ -337,6 +347,8 @@ export const AdminKnowledgePage = ({ activeSubView = 'sources' }) => {
               </button>
             </div>
           </div>
+
+          <div className="p-4 space-y-3">
 
           {/* 4 Metric Cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
@@ -375,24 +387,29 @@ export const AdminKnowledgePage = ({ activeSubView = 'sources' }) => {
             </div>
           </div>
         </div>
+        </div>
       )}
 
       {/* VIEW: ARTICLES */}
       {currentView === 'articles' && (
-        <div className="space-y-3">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b pb-2.5" style={{ borderColor: '#BFBFBD' }}>
-            <div>
-              <h2 className="text-base font-bold tracking-tight" style={{ color: '#262626' }}>
+        <div className="w-full flex flex-col">
+          {/* Header Bar - seamlessly aligned with sidebar brand header */}
+          <div
+            className="h-16 px-5 border-b flex items-center justify-between gap-4 shrink-0 sticky top-0 z-20"
+            style={{ borderColor: '#BFBFBD', backgroundColor: '#F2EFE9' }}
+          >
+            <div className="min-w-0">
+              <h2 className="text-sm sm:text-base font-bold tracking-tight leading-tight truncate" style={{ color: '#262626' }}>
                 Danh Sách Bài Viết Tri Thức (Knowledge Articles)
               </h2>
-              <p className="text-[11px] font-normal" style={{ color: '#8C8C8C' }}>
+              <p className="text-[10px] sm:text-[11px] font-normal truncate mt-0.5" style={{ color: '#8C8C8C' }}>
                 Mẩu kiến thức thực tế trong ChromaDB đang được Robot sử dụng để trả lời khách
               </p>
             </div>
 
             <button
               onClick={() => setCurrentView('sources')}
-              className="px-3 py-1.5 rounded-lg border text-xs font-medium cursor-pointer"
+              className="px-3 py-1.5 rounded-lg border text-xs font-medium cursor-pointer shrink-0 transition-all hover:bg-[#E9E5DC]/80"
               style={{
                 backgroundColor: '#FFFFFF',
                 borderColor: '#BFBFBD',
@@ -402,6 +419,8 @@ export const AdminKnowledgePage = ({ activeSubView = 'sources' }) => {
               Xem file nguồn ({sources.length})
             </button>
           </div>
+
+          <div className="p-4 space-y-3">
 
           {/* Search & Filter */}
           <div
@@ -530,6 +549,7 @@ export const AdminKnowledgePage = ({ activeSubView = 'sources' }) => {
               itemName="tài liệu"
             />
           </div>
+        </div>
         </div>
       )}
 

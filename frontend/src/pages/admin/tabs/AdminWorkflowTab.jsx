@@ -199,32 +199,35 @@ export const AdminWorkflowTab = () => {
   };
 
   return (
-    <div className="w-full flex flex-col p-4 space-y-4 pb-12" style={{ color: '#262626' }}>
+    <div className="w-full flex flex-col min-h-full pb-4" style={{ color: '#262626' }}>
       {/* Toast Notification */}
       {notification && (
         <div
-          className="fixed top-5 right-5 z-50 px-4 py-2 rounded-lg border text-xs font-semibold shadow-lg"
+          className="fixed bottom-6 right-6 z-50 px-4 py-2.5 rounded-xl border text-xs font-semibold shadow-2xl animate-in fade-in slide-in-from-bottom-3"
           style={{ backgroundColor: '#262626', color: '#F2EFE9', borderColor: '#BFBFBD' }}
         >
           {notification}
         </div>
       )}
 
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b pb-2.5" style={{ borderColor: '#BFBFBD' }}>
-        <div>
+      {/* Header Bar - seamlessly aligned with sidebar brand header */}
+      <div
+        className="h-16 px-5 border-b flex items-center justify-between gap-4 shrink-0 sticky top-0 z-20"
+        style={{ borderColor: '#BFBFBD', backgroundColor: '#F2EFE9' }}
+      >
+        <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <h2 className="text-base font-bold tracking-tight" style={{ color: '#262626' }}>
+            <h2 className="text-sm sm:text-base font-bold tracking-tight leading-tight truncate" style={{ color: '#262626' }}>
               Quản Lý Chu Trình Nhiệm Vụ Robot (Step Workflows)
             </h2>
             <span
-              className="px-2 py-0.5 rounded text-[10px] font-bold border"
+              className="px-2 py-0.5 rounded text-[10px] font-bold border shrink-0"
               style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD', color: '#262626' }}
             >
               HOTEL CONCIERGE CONCEPT
             </span>
           </div>
-          <p className="text-[11px] font-normal mt-0.5" style={{ color: '#8C8C8C' }}>
+          <p className="text-[10px] sm:text-[11px] font-normal truncate mt-0.5" style={{ color: '#8C8C8C' }}>
             Thiết lập kịch bản tự động tuần tự 8 bước: Move, Greet, Speak, Show, Listen, Recommend, Create Request, Feedback
           </p>
         </div>
@@ -232,12 +235,15 @@ export const AdminWorkflowTab = () => {
         <button
           type="button"
           onClick={handleOpenCreate}
-          className="px-3.5 py-1.5 rounded-lg text-xs font-bold border cursor-pointer transition-colors whitespace-nowrap self-start sm:self-auto hover:opacity-90"
+          className="px-3.5 py-1.5 rounded-lg text-xs font-bold border cursor-pointer transition-colors whitespace-nowrap shrink-0 hover:opacity-90"
           style={{ backgroundColor: '#262626', color: '#F2EFE9', borderColor: '#262626' }}
         >
           + Tạo kịch bản mới
         </button>
       </div>
+
+      {/* Content Body */}
+      <div className="p-4 space-y-4">
 
       {/* Workflow Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -356,6 +362,7 @@ export const AdminWorkflowTab = () => {
             </div>
           ))
         )}
+      </div>
       </div>
 
       {/* MODAL 1: WORKFLOW BUILDER (Scratch-style block editor) */}

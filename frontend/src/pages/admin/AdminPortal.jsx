@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Settings, LogOut, Sparkles } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Settings, LogOut, Sparkles, Bell, CheckCheck, Trash2, X, Activity, User } from 'lucide-react';
 import { AdminDashboardTab } from './tabs/AdminDashboardTab';
 import { AdminOperationsTab } from './tabs/AdminOperationsTab';
 import { AdminRobotControlTab } from './tabs/AdminRobotControlTab';
@@ -8,14 +8,12 @@ import { AdminStaffTab } from './tabs/AdminStaffTab';
 import { AdminAnalyticsTab } from './tabs/AdminAnalyticsTab';
 import { AdminSettingsTab } from './tabs/AdminSettingsTab';
 import { AdminLogsTab } from './tabs/AdminLogsTab';
-
-// Color tokens
-// --bg-primary:    #F2EFE9  (main page background)
-// --bg-secondary:  #E9E5DC  (sidebar, cards)
-// --border:        #BFBFBD  (borders, dividers)
-// --text-muted:    #8C8C8C  (labels, secondary text)
-// --text-primary:  #262626  (headings, body text)
-// --accent:        #262626  (active nav, CTA buttons)
+import {
+  fetchNotifications,
+  toggleNotificationRead,
+  markAllNotificationsRead,
+  deleteNotification,
+} from '../../services/operationsApi';
 
 export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () => {} }) => {
   const getInitialTab = () => {
@@ -33,9 +31,9 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
         'Logs',
         'Settings',
       ];
-      return validTabs.includes(tab) ? tab : 'Operations';
+      return validTabs.includes(tab) ? tab : 'Dashboard';
     } catch {
-      return 'Operations';
+      return 'Dashboard';
     }
   };
 
@@ -43,7 +41,97 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
   const [operationsSubTab, setOperationsSubTab] = useState('requests');
   const [robotSubTab, setRobotSubTab] = useState('lidar');
   const [knowledgeSubTab, setKnowledgeSubTab] = useState('sources');
-  const [searchQuery, setSearchQuery] = useState('');
+
+  // Real-time Notifications Center State
+  const [notifications, setNotifications] = useState([]);
+  const [isNotifOpen, setIsNotifOpen] = useState(false);
+  const [wsConnected, setWsConnected] = useState(false);
+  const wsRef = useRef(null);
+
+  const unreadCount = notifications.filter((n) => !n.is_read).length;
+
+  const loadNotifications = async () => {
+    try {
+      const data = await fetchNotifications('All', 40);
+      if (Array.isArray(data)) {
+        setNotifications(data);
+      }
+    } catch (e) {
+      console.warn('Failed to load notifications:', e);
+    }
+  };
+
+  // WebSocket for Real-time Notifications
+  useEffect(() => {
+    loadNotifications();
+
+    let ws = null;
+    try {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const host = window.location.hostname === 'localhost' ? 'localhost:8000' : window.location.host;
+      ws = new WebSocket(`${protocol}//${host}/api/v1/operations/ws/notifications?department=All`);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        setWsConnected(true);
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          if (event.data === 'pong') return;
+          const newNotif = JSON.parse(event.data);
+          if (newNotif && newNotif.id) {
+            setNotifications((prev) => [newNotif, ...prev.filter((n) => n.id !== newNotif.id)]);
+            onNotify(`🔔 [${newNotif.department || 'All'}] ${newNotif.title}`);
+          }
+        } catch {}
+      };
+
+      ws.onerror = () => {
+        setWsConnected(false);
+      };
+
+      ws.onclose = () => {
+        setWsConnected(false);
+      };
+    } catch {
+      setWsConnected(false);
+    }
+
+    // Fallback polling every 10s
+    const pollInterval = setInterval(() => {
+      loadNotifications();
+    }, 10000);
+
+    return () => {
+      if (ws) ws.close();
+      clearInterval(pollInterval);
+    };
+  }, []);
+
+  const handleToggleRead = async (notifId) => {
+    try {
+      await toggleNotificationRead(notifId);
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === notifId ? { ...n, is_read: !n.is_read } : n))
+      );
+    } catch {}
+  };
+
+  const handleMarkAllRead = async () => {
+    try {
+      await markAllNotificationsRead('All');
+      setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
+      onNotify('Đã đánh dấu tất cả thông báo là đã đọc.');
+    } catch {}
+  };
+
+  const handleDeleteNotif = async (notifId) => {
+    try {
+      await deleteNotification(notifId);
+      setNotifications((prev) => prev.filter((n) => n.id !== notifId));
+    } catch {}
+  };
 
   const handleSelectTab = (tabId) => {
     setActiveMenu(tabId);
@@ -87,7 +175,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
 
         {/* Brand */}
         <div>
-          <div className="px-5 py-4 border-b" style={{ borderColor: '#BFBFBD' }}>
+          <div className="h-16 px-5 border-b flex flex-col justify-center shrink-0" style={{ borderColor: '#BFBFBD' }}>
             <div className="text-sm font-black tracking-tight" style={{ color: '#262626' }}>
               RoboConcierge
             </div>
@@ -188,8 +276,37 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
           </nav>
         </div>
 
-        {/* Bottom: Settings & Logout */}
-        <div className="p-3 border-t space-y-0.5" style={{ borderColor: '#BFBFBD' }}>
+        {/* Bottom Sidebar: Notifications, Settings & Admin Profile */}
+        <div className="p-3 border-t space-y-1.5 relative" style={{ borderColor: '#BFBFBD' }}>
+          {/* Notifications Nav Item */}
+          <button
+            onClick={() => setIsNotifOpen(!isNotifOpen)}
+            className="w-full text-left flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer"
+            style={{
+              background: isNotifOpen ? '#262626' : 'transparent',
+              color: isNotifOpen ? '#FFFFFF' : '#8C8C8C',
+            }}
+            onMouseEnter={e => { if (!isNotifOpen) { e.currentTarget.style.background = '#BFBFBD'; e.currentTarget.style.color = '#262626'; } }}
+            onMouseLeave={e => { if (!isNotifOpen) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#8C8C8C'; } }}
+          >
+            <div className="flex items-center gap-2">
+              <Bell className="w-3.5 h-3.5 shrink-0" />
+              <span>Notifications</span>
+            </div>
+            {unreadCount > 0 && (
+              <span
+                className="px-1.5 py-0.2 rounded-full text-[10px] font-bold"
+                style={{
+                  backgroundColor: isNotifOpen ? '#FFFFFF' : '#262626',
+                  color: isNotifOpen ? '#262626' : '#F2EFE9',
+                }}
+              >
+                {unreadCount > 9 ? '9+' : unreadCount}
+              </span>
+            )}
+          </button>
+
+          {/* Settings Nav */}
           <button
             onClick={() => handleSelectTab('Settings')}
             className="w-full text-left flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer"
@@ -197,26 +314,136 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
               background: activeMenu === 'Settings' ? '#262626' : 'transparent',
               color: activeMenu === 'Settings' ? '#FFFFFF' : '#8C8C8C',
             }}
+            onMouseEnter={e => { if (activeMenu !== 'Settings') { e.currentTarget.style.background = '#BFBFBD'; e.currentTarget.style.color = '#262626'; } }}
+            onMouseLeave={e => { if (activeMenu !== 'Settings') { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#8C8C8C'; } }}
           >
             <Settings className="w-3.5 h-3.5 shrink-0" />
             <span>Settings</span>
           </button>
-          <button
-            onClick={onLogout}
-            className="w-full text-left flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer"
-            style={{ color: '#8C8C8C' }}
-            onMouseEnter={e => { e.currentTarget.style.background = '#BFBFBD'; e.currentTarget.style.color = '#262626'; }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#8C8C8C'; }}
+
+          {/* User Profile Card with Logout */}
+          <div
+            className="p-2 rounded-xl border flex items-center justify-between gap-1.5 shadow-sm mt-1"
+            style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD' }}
           >
-            <LogOut className="w-3.5 h-3.5 shrink-0" />
-            <span>Dang xuat</span>
-          </button>
+            {/* User Avatar & Info */}
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              <div
+                className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
+                style={{ backgroundColor: '#262626', color: '#F2EFE9' }}
+              >
+                {currentUser?.full_name ? currentUser.full_name.charAt(0).toUpperCase() : 'A'}
+              </div>
+              <div className="min-w-0 leading-tight">
+                <div className="text-xs font-bold truncate" style={{ color: '#262626' }}>
+                  {currentUser?.full_name || 'System Admin'}
+                </div>
+                <div className="text-[10px] font-medium truncate" style={{ color: '#8C8C8C' }}>
+                  {currentUser?.role || 'Admin'}
+                </div>
+              </div>
+            </div>
+
+            {/* Logout button */}
+            <button
+              onClick={onLogout}
+              title="Đăng xuất"
+              className="p-1.5 rounded-lg border hover:bg-red-50 hover:border-red-300 hover:text-red-700 transition-all cursor-pointer shrink-0"
+              style={{ borderColor: '#BFBFBD', color: '#8C8C8C', backgroundColor: '#F2EFE9' }}
+            >
+              <LogOut className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          {/* Notification Drawer Popover (Opens to the right of the sidebar, fixed bottom) */}
+          {isNotifOpen && (
+            <div
+              className="fixed left-58 bottom-4 w-80 sm:w-96 rounded-2xl border shadow-2xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+              style={{ background: '#FFFFFF', borderColor: '#BFBFBD' }}
+            >
+              <div className="p-3 border-b flex items-center justify-between" style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD' }}>
+                <div className="flex items-center gap-2">
+                  <Bell className="w-4 h-4" style={{ color: '#262626' }} />
+                  <span className="text-xs font-bold" style={{ color: '#262626' }}>Trung Tâm Thông Báo</span>
+                  <span className="px-1.5 py-0.2 rounded-full text-[10px] font-extrabold" style={{ backgroundColor: '#262626', color: '#F2EFE9' }}>
+                    {unreadCount} chưa đọc
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-1">
+                  {unreadCount > 0 && (
+                    <button
+                      onClick={handleMarkAllRead}
+                      className="text-[10px] font-bold hover:underline p-1 flex items-center gap-0.5 cursor-pointer"
+                      style={{ color: '#262626' }}
+                      title="Đọc tất cả"
+                    >
+                      <CheckCheck className="w-3 h-3" />
+                      <span>Đọc hết</span>
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setIsNotifOpen(false)}
+                    className="p-1 cursor-pointer transition-colors"
+                    style={{ color: '#8C8C8C' }}
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="max-h-80 overflow-y-auto custom-scrollbar divide-y text-xs" style={{ borderColor: '#E9E5DC' }}>
+                {notifications.length === 0 ? (
+                  <div className="py-8 text-center text-xs" style={{ color: '#8C8C8C' }}>
+                    Không có thông báo mới
+                  </div>
+                ) : (
+                  notifications.map((item) => (
+                    <div
+                      key={item.id}
+                      className={`p-3 transition-colors flex items-start justify-between gap-2 ${
+                        item.is_read ? 'bg-white opacity-70' : 'bg-[#E9E5DC]/30 font-medium'
+                      }`}
+                    >
+                      <div
+                        onClick={() => handleToggleRead(item.id)}
+                        className="flex-1 cursor-pointer space-y-0.5"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="text-[9px] font-bold px-1.5 py-0.2 rounded font-mono border" style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD', color: '#262626' }}>
+                            {item.department || 'All'}
+                          </span>
+                          <span className="text-xs font-bold truncate" style={{ color: '#262626' }}>
+                            {item.title}
+                          </span>
+                        </div>
+                        <p className="text-[11px] line-clamp-2" style={{ color: '#8C8C8C' }}>
+                          {item.description}
+                        </p>
+                        <span className="text-[10px]" style={{ color: '#8C8C8C' }}>
+                          {item.created_at ? new Date(item.created_at).toLocaleTimeString('vi-VN') : 'Vừa xong'}
+                        </span>
+                      </div>
+
+                      <button
+                        onClick={() => handleDeleteNotif(item.id)}
+                        className="p-1 cursor-pointer transition-colors hover:text-red-600"
+                        style={{ color: '#8C8C8C' }}
+                        title="Xóa thông báo"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </aside>
 
-      {/* MAIN CONTENT */}
+      {/* MAIN CONTENT AREA */}
       <div className="flex-1 flex flex-col h-full min-h-0 overflow-hidden">
-
         {/* Dynamic Tab Body */}
         <main className={`flex-1 min-h-0 ${activeMenu === 'Robot Control' ? 'overflow-hidden' : 'overflow-y-auto custom-scrollbar'} relative`}>
 
@@ -270,14 +497,14 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
                 {activeMenu}
               </h3>
               <p className="text-xs max-w-md" style={{ color: '#8C8C8C' }}>
-                Module nay se duoc trien khai trong phien ban tiep theo.
+                Module này sẽ được triển khai trong phiên bản tiếp theo.
               </p>
               <button
                 onClick={() => setActiveMenu('Operations')}
                 className="px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer"
                 style={{ background: '#262626', color: '#FFFFFF' }}
               >
-                Quay lai Operations
+                Quay lại Operations
               </button>
             </div>
           )}

@@ -1,5 +1,5 @@
 from typing import Optional, Dict, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ChatRequest(BaseModel):
@@ -54,4 +54,25 @@ class TTSResponse(BaseModel):
     audio_base64: str = Field(..., description="Dữ liệu âm thanh MP3 mã hóa Base64")
     mime_type: str = Field("audio/mp3", description="MIME type của âm thanh")
     provider_used: str = Field("edge", description="Provider TTS đã được sử dụng thực tế (edge, elevenlabs, openai, browser)")
+
+
+class FeedbackCreate(BaseModel):
+    chat_session_id: Optional[str] = None
+    rating: int = Field(5, ge=1, le=5, description="Số sao đánh giá từ 1 đến 5")
+    category: str = Field("Service", description="Danh mục: Service, Robot, Cleanliness, F&B")
+    comment: Optional[str] = None
+    guest_name: Optional[str] = None
+    room_number: Optional[str] = None
+
+
+class FeedbackResponse(BaseModel):
+    id: str
+    chat_session_id: Optional[str] = None
+    rating: int
+    category: str
+    comment: Optional[str] = None
+    guest_name: Optional[str] = None
+    room_number: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
 

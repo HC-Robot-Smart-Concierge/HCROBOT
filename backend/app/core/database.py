@@ -37,7 +37,14 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def init_db() -> None:
-    """Create missing database tables without inserting application data."""
+    """Create missing database tables and apply backward-compatible schema patches."""
+    from sqlalchemy import text
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # An toàn cho database cũ: bổ sung cột thiếu nếu bảng đã tồn tại
+        try:
+            await conn.execute(text("ALTER TABLE room_service_orders ADD COLUMN IF NOT EXISTS is_vip BOOLEAN DEFAULT FALSE;"))
+        except Exception:
+            pass
+
 

@@ -15,7 +15,7 @@ class RobotMoveCommand(BaseModel):
     speed: Optional[int] = None
 
 
-@router.post("/robot/control", tags=[TAG_OPS], summary="Điều khiển di chuyển HCRobot (UDP Remote)")
+@router.post("/robot/control", tags=TAG_OPS, summary="Điều khiển di chuyển HCRobot (UDP Remote)")
 async def control_robot_movement(cmd: RobotMoveCommand):
     """Gửi lệnh di chuyển qua UDP tới Raspberry Pi 5 tích hợp fail-safe siêu âm và PWM speed."""
     import socket

@@ -36,6 +36,9 @@ from app.core.database import engine, AsyncSessionLocal, Base, init_db
 from app.core.security import hash_password
 from app.models import (
     Staff,
+    Department,
+    ServiceType,
+    SupportRequest,
     RoomServiceOrder,
     HousekeepingRequest,
     BellRequest,
@@ -72,7 +75,7 @@ STAFF_ACCOUNTS = [
         "full_name": "System Administrator",
         "role": "Administrator",
         "department": "Executive",
-        "default_dashboard": "admin_map",
+        "default_dashboard": "admin_portal",
         "location": "Executive Suite",
         "status": "available",
         "shift": "All Shifts",
@@ -132,6 +135,18 @@ STAFF_ACCOUNTS = [
         "status": "available",
         "shift": "Morning Shift (06:00 - 14:00)",
     },
+    {
+        "username": "concierge_lead",
+        "code": "CCG",
+        "full_name": "Elena Rossi",
+        "role": "Concierge Specialist",
+        "department": "Concierge & Live Support",
+        "department_id": "DEP-CONCIERGE",
+        "default_dashboard": "concierge",
+        "location": "Concierge Lounge",
+        "status": "available",
+        "shift": "Morning Shift (06:00 - 14:00)",
+    },
     # Robot Kiosk Accounts
     {
         "username": "robot_01",
@@ -156,6 +171,49 @@ STAFF_ACCOUNTS = [
 ]
 
 
+async def seed_departments_and_services(session):
+    logger.info("🏢 [0/7] Seeding Hotel Departments & Service Types...")
+    deps = [
+        ("DEP-RECEPTION", "RECEPTION", "Reception", "Bộ phận Lễ tân & Tiền sảnh, thủ tục check-in/out, đặt phòng và thông tin lưu trú"),
+        ("DEP-CONCIERGE", "CONCIERGE", "Concierge", "Bộ phận Trợ lý Concierge, tổng đài hỗ trợ trực tuyến và live call video từ Robot"),
+        ("DEP-HOUSEKEEPING", "HOUSEKEEPING", "Housekeeping", "Dịch vụ buồng phòng và dọn dẹp"),
+        ("DEP-BELL", "BELL", "Bell Services", "Vận chuyển hành lý và hỗ trợ sảnh"),
+        ("DEP-TAXI", "TAXI", "Taxi", "Điều phối taxi và đưa đón di chuyển"),
+        ("DEP-FB", "FB", "Food & Beverage", "Ẩm thực và phục vụ phòng Room Service"),
+        ("DEP-MAINTENANCE", "MAINTENANCE", "Maintenance", "Kỹ thuật và bảo trì trang thiết bị"),
+        ("DEP-EXECUTIVE", "EXECUTIVE", "Executive", "Ban quản trị và điều hành khách sạn"),
+        ("DEP-RESTAURANT", "RESTAURANT", "Restaurant", "Bộ phận Nhà hàng, Đặt bàn & Gọi món trước"),
+    ]
+    for d_id, d_code, d_name, d_desc in deps:
+        d = await session.get(Department, d_id)
+        if not d:
+            session.add(Department(id=d_id, code=d_code, name=d_name, description=d_desc, is_active=True))
+        else:
+            d.name = d_name
+            d.description = d_desc
+
+    services = [
+        ("ST-RECEPTION", "RECEPTION", "Dịch vụ Lễ tân & Đặt phòng", "DEP-RECEPTION", "Hỗ trợ đặt phòng, check-in, check-out, đổi phòng và thủ tục tiền sảnh", "NORMAL"),
+        ("ST-CONCIERGE", "CONCIERGE", "Dịch vụ Concierge & Live Call Hỗ trợ", "DEP-CONCIERGE", "Tiếp nhận cuộc gọi trực tiếp, giải cứu robot và hỗ trợ khách hàng từ xa", "HIGH"),
+        ("ST-HOUSEKEEPING", "HOUSEKEEPING", "Dịch vụ Buồng phòng", "DEP-HOUSEKEEPING", "Dọn dẹp phòng nghỉ hoặc xử lý vết tràn đổ", "NORMAL"),
+        ("ST-BELL", "BELL_SERVICE", "Dịch vụ Bellman & Hành lý", "DEP-BELL", "Khuân vác hành lý check-in / check-out", "NORMAL"),
+        ("ST-TAXI", "TAXI", "Dịch vụ Đặt xe & Taxi", "DEP-TAXI", "Gọi xe taxi hoặc đưa đón sân bay", "NORMAL"),
+        ("ST-MAINTENANCE", "MAINTENANCE", "Dịch vụ Kỹ thuật & Bảo trì", "DEP-MAINTENANCE", "Bảo trì điều hòa nhiệt độ, điện nước", "HIGH"),
+        ("ST-ROOM-SERVICE", "ROOM_SERVICE", "Dịch vụ Ẩm thực & Phục vụ phòng", "DEP-FB", "Phục vụ đồ ăn thức uống tại phòng", "NORMAL"),
+    ]
+    for s_id, s_code, s_name, s_dep, s_desc, s_prio in services:
+        s = await session.get(ServiceType, s_id)
+        if not s:
+            session.add(ServiceType(id=s_id, code=s_code, name=s_name, department_id=s_dep, description=s_desc, default_priority=s_prio, is_active=True))
+        else:
+            s.name = s_name
+            s.department_id = s_dep
+            s.description = s_desc
+
+    await session.commit()
+    logger.info("   ✅ Departments & Service Types seeded successfully.")
+
+
 async def seed_accounts(session):
     logger.info("👤 [1/7] Seeding Staff & Robot Kiosk accounts...")
     pwd_hash = hash_password(DEFAULT_PASSWORD)
@@ -173,6 +231,7 @@ async def seed_accounts(session):
                 full_name=acc["full_name"],
                 role=acc["role"],
                 department=acc["department"],
+                department_id=acc.get("department_id"),
                 default_dashboard=acc.get("default_dashboard", "room_service"),
                 location=acc.get("location", "Main Hotel"),
                 status=acc.get("status", "available"),
@@ -355,39 +414,45 @@ async def seed_operations(session):
 # 3. RECEPTION TICKETS
 # ==============================================================================
 async def seed_reception(session):
-    logger.info("🏢 [3/7] Seeding Reception Front Desk Requests...")
-    ticket_code = "REQ-8942A"
-    res = await session.execute(select(ReceptionRequest).where(ReceptionRequest.ticket_code == ticket_code))
-    if res.scalar_one_or_none():
-        logger.info("   ℹ️ Reception sample already exists. Skipping.")
-        return
+    logger.info("🏢 [3/7] Seeding Reception & Concierge Requests...")
+    ticket_code = "REC-8942"
+    res = await session.execute(select(SupportRequest).where(SupportRequest.ticket_code == ticket_code))
+    if not res.scalar_one_or_none():
+        req = SupportRequest(
+            ticket_code=ticket_code,
+            title="Yêu cầu Đổi Phòng & Đặt Phòng Hướng Biển",
+            room_number="Room 402",
+            guest_name="Mr. Alexander Wright",
+            status="Pending",
+            description="Khách yêu cầu hỗ trợ đổi sang phòng Executive Suite có ban công hướng biển và gia hạn lưu trú thêm 2 ngày.",
+            department_id="DEP-RECEPTION",
+            service_type_id="ST-RECEPTION",
+            source="From HCRobot",
+            priority="HIGH",
+            assigned_staff_name="Nguyen Thu Trang",
+        )
+        session.add(req)
 
-    req = ReceptionRequest(
-        ticket_code=ticket_code,
-        title="Yêu cầu Đổi Phòng & Đặt Xe Sân Bay",
-        created_label="10 mins ago",
-        location="Front Desk / Room 402",
-        location_details={"source": "Robot Concierge Terminal 01", "floor": "Floor 4"},
-        guest_name="Mr. Alexander Wright",
-        guest_tier="VIP Diamond",
-        guest_stay_details="Room 402 • 3 nights • Checkout 14:00 Today",
-        status="Pending Action",
-        description="Khách yêu cầu hỗ trợ đổi sang phòng có ban công view biển và đặt xe limousine tiễn sân bay lúc 15:30.",
-        attached_media=[{"name": "passport_scan.jpg", "type": "image", "size": "1.2MB"}],
-        transcript=[
-            {"speaker": "guest", "text": "Can I arrange an airport transfer for 3:30 PM?", "time": "10:12 AM"},
-            {"speaker": "robot", "text": "Dạ em đã kết nối ngay tới Lễ tân để điều xe limousine hỗ trợ quý khách ạ!", "time": "10:12 AM"},
-        ],
-        assistance_status="Connected",
-        assigned_to="Nguyen Thu Trang",
-        assigned_role="Front Desk Supervisor",
-        notes=[{"author": "Robot Concierge", "text": "Khách cần xe khoang hành lý rộng.", "time": "10:13 AM"}],
-        activity_log=[{"event": "Ticket Created", "timestamp": "10:12 AM", "by": "Robot Terminal"}],
-        escalated=False,
-    )
-    session.add(req)
+    ccg_code = "CCG-881"
+    res_ccg = await session.execute(select(SupportRequest).where(SupportRequest.ticket_code == ccg_code))
+    if not res_ccg.scalar_one_or_none():
+        ccg_req = SupportRequest(
+            ticket_code=ccg_code,
+            title="Cuộc gọi video hỗ trợ trực tiếp từ Robot",
+            room_number="Main Lobby Kiosk",
+            guest_name="Mr. A. Sterling",
+            status="Pending",
+            description="Khách cần nhân viên Concierge tư vấn trực tiếp về dịch vụ tour du thuyền và tiện ích VIP.",
+            department_id="DEP-CONCIERGE",
+            service_type_id="ST-CONCIERGE",
+            source="Robot Voice Assistant",
+            priority="HIGH",
+            assigned_staff_name="Elena Rossi",
+        )
+        session.add(ccg_req)
+
     await session.commit()
-    logger.info("   ✅ Reception ticket seed completed.")
+    logger.info("   ✅ Reception & Concierge requests seed completed.")
 
 
 # ==============================================================================
@@ -657,6 +722,7 @@ async def main():
         await init_db()
 
     async with AsyncSessionLocal() as session:
+        await seed_departments_and_services(session)
         await seed_accounts(session)
         await seed_operations(session)
         await seed_reception(session)

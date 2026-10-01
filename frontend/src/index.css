@@ -17,11 +17,11 @@
     background: transparent;
   }
   .custom-scrollbar::-webkit-scrollbar-thumb {
-    background: #D8D4CB;
+    background: var(--palette-silver);
     border-radius: 9999px;
   }
   .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: #BFBFBD;
+    background: var(--palette-slate);
   }
   .no-scrollbar {
     -ms-overflow-style: none;

@@ -1,10 +1,14 @@
 import uuid
 from datetime import datetime
-from typing import Optional, List
+from typing import TYPE_CHECKING, Optional, List
 from sqlalchemy import String, DateTime, Boolean, Text, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+
+if TYPE_CHECKING:
+    from app.models.department import Department
+    from app.models.support_request import SupportRequest
 
 
 class ServiceType(Base):
@@ -24,3 +28,7 @@ class ServiceType(Base):
     # Relationships
     department: Mapped["Department"] = relationship("Department", back_populates="service_types")
     support_requests: Mapped[List["SupportRequest"]] = relationship("SupportRequest", back_populates="service_type")
+
+    @property
+    def department_name(self) -> Optional[str]:
+        return self.department.name if self.department else None

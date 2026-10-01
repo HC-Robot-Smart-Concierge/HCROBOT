@@ -105,8 +105,28 @@ class OllamaService:
             time_greeting = "Dạ em chào buổi tối quý khách! Chúc quý khách một buổi tối thư thái tại khách sạn Aurora. Quý khách cần em hỗ trợ gì ạ?"
 
         prompt_lower = prompt.lower().strip()
+
+        # PRE-CHECK: Nếu câu nói chứa từ khóa HÀNH ĐỘNG dịch vụ → Bỏ qua fast-path,
+        # để Intent Router + Service FSM xử lý đúng (đặt bàn, gọi xe, sửa phòng...)
+        service_action_verbs = ["đặt", "cần", "muốn", "yêu cầu", "gọi cho", "book", "order", "reserve", "need"]
+        service_nouns = [
+            "nhà hàng", "nha hang", "bàn ăn", "ban an", "đặt bàn", "đặt món",
+            "taxi", "xe", "sân bay",
+            "dọn phòng", "don phong", "khăn", "gối", "chăn",
+            "sửa", "hỏng", "bảo trì", "điều hòa", "máy lạnh",
+            "hành lý", "vali", "chuyển phòng",
+            "concierge", "video call", "live call", "gọi video", "nhân viên",
+            "lễ tân", "check in", "check out", "trả phòng",
+        ]
+        has_action_verb = any(v in prompt_lower for v in service_action_verbs)
+        has_service_noun = any(n in prompt_lower for n in service_nouns)
+        if has_action_verb and has_service_noun:
+            logger.info(f"[OllamaService Fast-Path Bypass] Service intent detected, skipping fast-path for: '{prompt[:40]}'")
+            return None
+
         # Chuẩn hóa các biến thể nhận diện giọng nói STT (Google STT thường sinh 'wi-fi' có dấu gạch ngang)
         normalized = prompt_lower.replace("wi-fi", "wifi").replace("wi fi", "wifi")
+
         normalized = re.sub(r'[\?\.\,\!\_\:\;]', ' ', normalized)
         normalized = re.sub(r'\s+', ' ', normalized).strip()
 
@@ -153,6 +173,85 @@ class OllamaService:
                 return fast_reply, lang_name, lang_code
 
         return None
+
+    async def generate_response_stream(
+        self,
+        prompt: str,
+        rag_context: Optional[str] = None,
+        language: Optional[str] = None,
+        emotion: Optional[str] = None,
+        chat_history: Optional[List[Dict[str, str]]] = None,
+        stored_room_number: Optional[str] = None,
+    ):
+        """
+        Async Generator sinh token theo thời gian thực từ Ollama (stream=True).
+        Yield từng token ngay khi Ollama sinh ra, TTFT ~200-300ms.
+        """
+        if not language or language.lower() in ["auto", ""]:
+            lang_name, lang_code = self.detect_language(prompt)
+        else:
+            lang_name = language
+            lang_code = "en-US" if language.lower() in ["english", "en"] else "vi-VN"
+
+        if lang_code == "en-US":
+            system_prompt = (
+                "You are Rora - an intelligent, polite, and friendly hotel concierge assistant at Aurora Grand Hotel. "
+                "STRICT REQUIREMENT: Answer in fluent English based on the hotel context provided. "
+                "Keep your response concise and direct in 1 to 2 short sentences (max 30 words) for voice playback. "
+                "Do not use emojis or markdown formatting."
+            )
+        else:
+            system_prompt = (
+                "Bạn là Rora - Trợ lý Robot Concierge thông minh, tinh tế và lịch sự tại khách sạn Aurora Grand Hotel.\n"
+                "QUY TẮC PHẢN HỒI GIAO TIẾP:\n"
+                "1. Luôn xưng 'Dạ em' hoặc 'Rora' và gọi người dùng là 'Quý khách' hoặc 'Anh/chị'.\n"
+                "2. Trả lời trực diện, ấm áp, súc tích trong 1 đến 2 câu ngắn (tối đa 30 từ) để phát ngay ra loa thoại.\n"
+                "3. Tuyệt đối KHÔNG dùng biểu tượng cảm xúc (emoji), dấu gạch ngang markdown, hoặc chêm từ tiếng Anh."
+            )
+
+        if stored_room_number:
+            system_prompt += f"\n\n[SỐ PHÒNG ĐÃ GHI NHỚ TRONG SESSION]: Khách hàng đang ở Phòng {stored_room_number}."
+
+        emotion_str = (emotion or "").lower()
+        if emotion_str in ["annoyed", "angry", "upset"]:
+            system_prompt += "\n\n[LƯU Ý CẢM XÚC KHÁCH HÀNG]: Khách hàng đang KHÔNG HÀI LÒNG. Hãy phản hồi với thái độ CỰC KỲ XIN LỖI, THÂN THIỆN VÀ XOA DỊU."
+        elif emotion_str in ["happy", "pleased"]:
+            system_prompt += "\n\n[LƯU Ý CẢM XÚC KHÁCH HÀNG]: Khách hàng đang VUI VẺ. Hãy phản hồi với thái độ TƯƠI VUI VÀ NĂNG LƯỢNG."
+
+        if rag_context:
+            system_prompt += f"\n\n[Thông tin tra cứu từ hệ thống khách sạn / Hotel Context]:\n{rag_context}"
+
+        messages = [{"role": "system", "content": system_prompt}]
+        if chat_history:
+            for turn in chat_history:
+                if turn.get("role") in ["user", "assistant"] and turn.get("content"):
+                    messages.append({"role": turn["role"], "content": turn["content"]})
+        messages.append({"role": "user", "content": prompt})
+
+        try:
+            response_stream = await self._client.chat(
+                model=self.model,
+                messages=messages,
+                stream=True,
+                options={
+                    "temperature": 0.5,
+                    "top_p": 0.9,
+                    "num_predict": 40,
+                    "num_ctx": 768,
+                    "num_thread": 8,
+                    "repeat_penalty": 1.15,
+                },
+                keep_alive=-1
+            )
+
+            async for chunk in response_stream:
+                token = chunk.get("message", {}).get("content", "")
+                if token:
+                    yield token
+        except Exception as e:
+            logger.error(f"[OllamaService StreamError] Lỗi streaming LLM: {str(e)}")
+            fallback = "Xin lỗi quý khách, hiện không thể kết nối tới AI Server." if lang_code == "vi-VN" else "Sorry, cannot connect to AI Server."
+            yield fallback
 
     async def generate_response(
         self,
@@ -272,6 +371,12 @@ class OllamaService:
             fast_action = "maintenance"
         elif any(k in lower_speech for k in ["đặt bàn", "dat ban", "đặt món", "dat mon", "bàn ăn", "ban an", "nhà hàng", "nha hang", "table", "restaurant"]):
             fast_action = "restaurant"
+        elif any(k in lower_speech for k in ["taxi", "đặt xe", "dat xe", "gọi xe", "goi xe", "sân bay", "san bay", "cab", "ride"]):
+            fast_action = "taxi"
+        elif any(k in lower_speech for k in ["concierge", "gặp người", "gap nguoi", "nhân viên hỗ trợ", "live call", "video call", "tổng đài", "tong dai", "trợ giúp trực tiếp"]):
+            fast_action = "concierge"
+        elif any(k in lower_speech for k in ["lễ tân", "le tan", "check out", "checkout", "check in", "checkin", "đổi phòng", "doi phong", "trả phòng", "tra phong", "front desk", "reception"]):
+            fast_action = "reception"
 
         if fast_action:
             clean_items = user_speech
@@ -294,7 +399,7 @@ class OllamaService:
         system_prompt = (
             "Bạn là hệ thống trích xuất dữ liệu tự động cho dịch vụ khách sạn. "
             "Hãy phân tích câu nói của khách và trả về kết quả dưới định dạng JSON duy nhất với các field sau:\n"
-            "- action: một trong các giá trị ['housekeeping', 'room_service', 'bellman', 'maintenance', 'restaurant', 'provide_room_number', 'faq', 'unknown']\n"
+            "- action: một trong các giá trị ['housekeeping', 'room_service', 'bellman', 'maintenance', 'taxi', 'concierge', 'reception', 'restaurant', 'provide_room_number', 'faq', 'unknown']\n"
             "- room_number: số phòng nếu được nhắc tới (VD: '302', '502'), nếu không có để null\n"
             "- items: chi tiết món đồ/món ăn/dịch vụ yêu cầu (VD: '2 cái khăn tắm', '1 dĩa cơm chiên'), nếu không có để null\n\n"
             "Chỉ trả về JSON thuần túy, không kèm bất kỳ câu giải thích nào."
@@ -343,6 +448,12 @@ class OllamaService:
                 fallback_action = "maintenance"
             elif any(k in lower_speech for k in ["đặt bàn", "đặt món trước", "bàn ăn", "nhà hàng", "table", "restaurant"]):
                 fallback_action = "restaurant"
+            elif any(k in lower_speech for k in ["taxi", "đặt xe", "gọi xe", "sân bay", "cab", "ride"]):
+                fallback_action = "taxi"
+            elif any(k in lower_speech for k in ["concierge", "gặp người", "nhân viên hỗ trợ", "live call", "video call", "tổng đài"]):
+                fallback_action = "concierge"
+            elif any(k in lower_speech for k in ["lễ tân", "check out", "check in", "đổi phòng", "trả phòng", "front desk", "reception"]):
+                fallback_action = "reception"
             elif extracted_room_regex:
                 fallback_action = "provide_room_number"
 

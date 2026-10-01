@@ -37,7 +37,14 @@ export default {
           amber: {
             DEFAULT: '#D97706',
             light: '#FEF3C7',
-          }
+          },
+        },
+        palette: {
+          cream: '#F2EFE9',
+          stone: '#E9E5DC',
+          silver: '#BFBFBD',
+          slate: '#8C8C8C',
+          charcoal: '#262626',
         },
       },
       fontFamily: {

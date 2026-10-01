@@ -4,6 +4,10 @@ import {
   fetchWaypoints,
   saveWaypoint,
   deleteWaypoint,
+  saveCurrentLidarMap,
+  loadSavedLidarMap,
+  toggleLidarMapLock,
+  getMapWebSocketUrl,
 } from '../../services/workflowApi';
 import {
   Activity,
@@ -21,16 +25,21 @@ import {
   Video,
   MapPin,
   Plus,
+  Save,
+  Lock,
+  Unlock,
+  FolderOpen,
 } from 'lucide-react';
 
 // Pi5 connection endpoints (mirrors AdminCameraTab pattern)
-const PI5_IP = import.meta.env.VITE_PI5_IP || '100.73.245.66';
-const PI5_API  = `http://${PI5_IP}:8000/api/v1`;
+const PI5_IP = import.meta.env.VITE_PI5_IP || 'localhost';
+const PI5_API  = '/api/v1';
 const PI5_WS   = `ws://${PI5_IP}:8000/api/v1`;
 
 export const AdminLidarPage = ({ onSwitchToCamera }) => {
   const [hardwareInfo, setHardwareInfo] = useState(null);
   const [isWsConnected, setIsWsConnected] = useState(false);
+  const [isMapLocked, setIsMapLocked] = useState(true);
 
   // Layer Toggles
   const [showGridMap, setShowGridMap] = useState(true);
@@ -151,53 +160,116 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
 
   // WebSocket to Pi5 backend — mirrors camera connection pattern
   useEffect(() => {
-    const ws = new WebSocket(`${PI5_WS}/map/ws`);
-    wsRef.current = ws;
+    let ws = null;
+    let reconnectTimer = null;
 
-    ws.onopen = () => {
-      setIsWsConnected(true);
-    };
-
-    ws.onmessage = (event) => {
+    const connectWs = () => {
       try {
-        const data = JSON.parse(event.data);
-        if (data.type === 'telemetry_update') {
-          if (data.device_info) {
-            setHardwareInfo((prev) => ({
-              ...prev,
-              is_connected: true,
-              device_info: data.device_info,
-            }));
+        const wsUrl = getMapWebSocketUrl();
+        ws = new WebSocket(wsUrl);
+        wsRef.current = ws;
+
+        ws.onopen = () => {
+          setIsWsConnected(true);
+        };
+
+        ws.onclose = () => {
+          setIsWsConnected(false);
+          reconnectTimer = setTimeout(connectWs, 3000);
+        };
+
+        ws.onerror = () => {
+          setIsWsConnected(false);
+        };
+
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.type === 'telemetry_update') {
+              if (data.device_info) {
+                setHardwareInfo((prev) => ({
+                  ...prev,
+                  is_connected: true,
+                  device_info: data.device_info,
+                }));
+              }
+              if (data.robot_pose) {
+                setTelemetry((prev) => ({
+                  ...prev,
+                  x: data.robot_pose.x,
+                  y: data.robot_pose.y,
+                  yaw: data.robot_pose.yaw,
+                  battery: data.battery ?? prev.battery,
+                  linearVelocity: data.linear_velocity ?? prev.linearVelocity,
+                  angularVelocity: data.angular_velocity ?? prev.angularVelocity,
+                  status: data.status ?? prev.status,
+                  source: data.source ?? prev.source,
+                }));
+              }
+              if (data.scan_points) setScanPoints(data.scan_points);
+              if (data.grid_data && data.grid_data.length > 0) setGridData(data.grid_data);
+              if (data.grid_metadata) setGridMetadata(data.grid_metadata);
+              if (data.is_map_locked !== undefined) setIsMapLocked(data.is_map_locked);
+            }
+          } catch (err) {
+            console.error('WebSocket parse error:', err);
           }
-          if (data.robot_pose) {
-            setTelemetry((prev) => ({
-              ...prev,
-              x: data.robot_pose.x,
-              y: data.robot_pose.y,
-              yaw: data.robot_pose.yaw,
-              battery: data.battery ?? prev.battery,
-              linearVelocity: data.linear_velocity ?? prev.linearVelocity,
-              angularVelocity: data.angular_velocity ?? prev.angularVelocity,
-              status: data.status ?? prev.status,
-              source: data.source ?? prev.source,
-            }));
-          }
-          if (data.scan_points) setScanPoints(data.scan_points);
-          if (data.grid_data) setGridData(data.grid_data);
-          if (data.grid_metadata) setGridMetadata(data.grid_metadata);
-        }
+        };
       } catch (err) {
-        console.error('WebSocket parse error:', err);
+        setIsWsConnected(false);
       }
     };
 
-    ws.onerror = () => setIsWsConnected(false);
-    ws.onclose = () => setIsWsConnected(false);
+    connectWs();
 
     return () => {
-      if (ws.readyState === WebSocket.OPEN) ws.close();
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      if (ws && ws.readyState === WebSocket.OPEN) ws.close();
     };
   }, []);
+
+  // Lưu bản đồ hiện tại vào Database làm bản đồ tĩnh cố định
+  const handleSaveFixedMap = async () => {
+    try {
+      setNavNotification('💾 Đang lưu bản đồ cố định vào CSDL...');
+      const res = await saveCurrentLidarMap('MAP-LOBBY-01', 'Bản đồ Sảnh Tầng 1 Main Lobby', 'Sảnh Tầng 1');
+      if (res.status === 'SUCCESS') {
+        setIsMapLocked(true);
+        setNavNotification(`✅ ${res.message}`);
+      }
+    } catch (err) {
+      setNavNotification(`❌ Lỗi khi lưu bản đồ: ${err.message}`);
+    }
+    setTimeout(() => setNavNotification(''), 4500);
+  };
+
+  // Khóa / Mở khóa bản đồ
+  const handleToggleLock = async () => {
+    try {
+      const res = await toggleLidarMapLock();
+      setIsMapLocked(res.is_map_locked);
+      setNavNotification(`🔒 ${res.message}`);
+    } catch (err) {
+      setNavNotification(`❌ Lỗi: ${err.message}`);
+    }
+    setTimeout(() => setNavNotification(''), 4500);
+  };
+
+  // Nạp lại bản đồ cố định đã lưu từ CSDL
+  const handleLoadSavedMap = async () => {
+    try {
+      setNavNotification('📂 Đang nạp bản đồ cố định từ CSDL...');
+      const res = await loadSavedLidarMap('MAP-LOBBY-01');
+      if (res.status === 'SUCCESS') {
+        setIsMapLocked(true);
+        setNavNotification(`✅ ${res.message}`);
+        fetchHardwareStatus();
+      }
+    } catch (err) {
+      setNavNotification(`❌ Lỗi tải map: ${err.message}`);
+    }
+    setTimeout(() => setNavNotification(''), 4500);
+  };
 
   // Reconnect to Pi5 backend (useful if Pi5 reboots)
   const handleReconnectPi5 = async () => {
@@ -224,8 +296,10 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
       const res = await fetch(`${PI5_API}/map/reset_map`, { method: 'POST' });
       const data = await res.json();
       if (data.status === 'SUCCESS') {
-        setNavNotification('SLAM map cleared. Ready for new scan.');
-        setGridData(new Array(200 * 200).fill(-1));
+        setNavNotification(data.message || 'SLAM map cleared. Ready for new scan.');
+        if (!isMapLocked) {
+          setGridData(new Array(200 * 200).fill(-1));
+        }
       }
     } catch (err) {
       console.error('Reset map error:', err);
@@ -349,10 +423,11 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
             )}
           </div>
 
-          {/* Layers Control Bar */}
-          <div className="w-full h-10 border rounded-lg px-4 flex items-center justify-between text-xs shrink-0"
+          {/* Layers & Map Persistence Toolbar */}
+          <div className="w-full border rounded-lg px-3 py-1.5 flex flex-wrap items-center justify-between gap-2 text-xs shrink-0"
             style={{ background: '#E9E5DC', borderColor: '#BFBFBD' }}>
-            <div className="flex items-center gap-4 font-medium" style={{ color: '#8C8C8C' }}>
+            {/* Left: Layer Checkboxes */}
+            <div className="flex items-center gap-3 font-medium" style={{ color: '#8C8C8C' }}>
               <span className="font-bold text-[10px] tracking-wider" style={{ color: '#262626' }}>LAYERS:</span>
               <label className="flex items-center gap-1.5 cursor-pointer">
                 <input type="checkbox" checked={showGridMap} onChange={(e) => setShowGridMap(e.target.checked)} className="focus:ring-0" />
@@ -360,14 +435,70 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
               </label>
               <label className="flex items-center gap-1.5 cursor-pointer">
                 <input type="checkbox" checked={showGridLines} onChange={(e) => setShowGridLines(e.target.checked)} className="focus:ring-0" />
-                <span>Radar Rings</span>
+                <span>Rings</span>
               </label>
               <label className="flex items-center gap-1.5 cursor-pointer">
                 <input type="checkbox" checked={showScanRays} onChange={(e) => setShowScanRays(e.target.checked)} className="focus:ring-0" />
-                <span>Point Cloud ({scanPoints.length})</span>
+                <span>Tia ({scanPoints.length})</span>
               </label>
             </div>
-            <span className="text-[10px] font-mono font-bold" style={{ color: '#8C8C8C' }}>REAL-TIME SLAM</span>
+
+            {/* Right: Map DB Persistence Tools */}
+            <div className="flex items-center gap-1.5">
+              <span
+                className="px-2 py-0.5 rounded text-[10px] font-mono font-bold border flex items-center gap-1"
+                style={isMapLocked
+                  ? { backgroundColor: '#10B981', color: '#FFFFFF', borderColor: '#059669' }
+                  : { backgroundColor: '#F59E0B', color: '#FFFFFF', borderColor: '#D97706' }}
+              >
+                {isMapLocked ? <Lock className="w-3 h-3" /> : <Unlock className="w-3 h-3" />}
+                <span>{isMapLocked ? 'BẢN ĐỒ CỐ ĐỊNH' : 'QUÉT TỰ DO'}</span>
+              </span>
+
+              <button
+                type="button"
+                onClick={handleSaveFixedMap}
+                className="px-2.5 py-1 rounded text-[11px] font-bold border flex items-center gap-1 cursor-pointer transition-colors shadow-xs"
+                style={{ backgroundColor: '#262626', color: '#FFFFFF', borderColor: '#262626' }}
+                title="Lưu toàn bộ bản đồ 2D hiện tại vào Database"
+              >
+                <Save className="w-3 h-3" />
+                <span>Lưu Map</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleToggleLock}
+                className="px-2 py-1 rounded text-[11px] font-bold border flex items-center gap-1 cursor-pointer transition-colors"
+                style={{ backgroundColor: '#FFFFFF', color: '#262626', borderColor: '#BFBFBD' }}
+                title={isMapLocked ? "Mở khóa để quét bổ sung vật cản mới" : "Khóa bản đồ đứng yên cố định"}
+              >
+                {isMapLocked ? <Unlock className="w-3 h-3" /> : <Lock className="w-3 h-3" />}
+                <span>{isMapLocked ? 'Mở Khóa' : 'Khóa'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleLoadSavedMap}
+                className="px-2 py-1 rounded text-[11px] font-bold border flex items-center gap-1 cursor-pointer transition-colors"
+                style={{ backgroundColor: '#FFFFFF', color: '#262626', borderColor: '#BFBFBD' }}
+                title="Tải lại bản đồ cố định đã lưu từ CSDL"
+              >
+                <FolderOpen className="w-3 h-3" />
+                <span>Nạp Map</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleResetGridMap}
+                className="px-2 py-1 rounded text-[11px] font-bold border flex items-center gap-1 cursor-pointer transition-colors"
+                style={{ backgroundColor: '#FFFFFF', color: '#DC2626', borderColor: '#FCA5A5' }}
+                title="Xóa trắng để quét lại từ đầu"
+              >
+                <RefreshCw className="w-3 h-3" />
+                <span>Làm Mới</span>
+              </button>
+            </div>
           </div>
         </div>
 

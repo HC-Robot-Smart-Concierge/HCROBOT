@@ -12,6 +12,11 @@ import {
   saveZone,
   updateZone,
   deleteZone,
+  fetchCurrentMap,
+  saveCurrentLidarMap,
+  loadSavedLidarMap,
+  toggleLidarMapLock,
+  getMapWebSocketUrl,
 } from '../../../services/workflowApi';
 import { OTTO_STEP_TYPES } from './AdminWorkflowTab';
 
@@ -134,8 +139,8 @@ export const getEndpointTemplateInfo = (type) => {
 };
 
 // Pi5 Connection
-const PI5_IP = import.meta.env.VITE_PI5_IP || '100.73.245.66';
-const PI5_API = `http://${PI5_IP}:8000/api/v1`;
+const PI5_IP = import.meta.env.VITE_PI5_IP || 'localhost';
+const PI5_API = '/api/v1';
 const PI5_WS = `ws://${PI5_IP}:8000/api/v1`;
 
 export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
@@ -206,15 +211,40 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
     setTimeout(() => setNotification(''), 4000);
   };
 
-  // Load Workflows, Waypoints & Functional Zones
+  // Load Workflows, Waypoints, Functional Zones & SLAM Occupancy Grid Map
   const loadAll = async () => {
     try {
-      const [wfs, wps, zs] = await Promise.all([fetchWorkflows(), fetchWaypoints(), fetchZones()]);
-      setWorkflows(wfs || []);
-      setWaypoints(wps || []);
-      setKeepOutZones(zs || []);
-      if (wfs && wfs.length > 0 && !activeWf) {
-        setActiveWf(wfs[0]);
+      const [wfs, wps, zs, mapRes] = await Promise.allSettled([
+        fetchWorkflows(),
+        fetchWaypoints(),
+        fetchZones(),
+        fetchCurrentMap(),
+      ]);
+
+      if (wfs.status === 'fulfilled') {
+        setWorkflows(wfs.value || []);
+        if (wfs.value && wfs.value.length > 0 && !activeWf) {
+          setActiveWf(wfs.value[0]);
+        }
+      }
+      if (wps.status === 'fulfilled') setWaypoints(wps.value || []);
+      if (zs.status === 'fulfilled') setKeepOutZones(zs.value || []);
+
+      if (mapRes.status === 'fulfilled' && mapRes.value) {
+        if (mapRes.value.grid_data && mapRes.value.grid_data.length > 0) {
+          setGridData(mapRes.value.grid_data);
+        }
+        if (mapRes.value.metadata) {
+          setGridMetadata(mapRes.value.metadata);
+        }
+        if (mapRes.value.robot_pose) {
+          setRobotPose((prev) => ({
+            ...prev,
+            x: mapRes.value.robot_pose.x,
+            y: mapRes.value.robot_pose.y,
+            yaw: mapRes.value.robot_pose.yaw,
+          }));
+        }
       }
     } catch {
       showNotification('Không thể tải danh sách Workflows, Waypoints hoặc Vùng Chức Năng');
@@ -227,32 +257,55 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
 
   // WebSocket for real LiDAR SLAM
   useEffect(() => {
-    const ws = new WebSocket(`${PI5_WS}/map/ws`);
-    ws.onopen = () => setIsWsConnected(true);
-    ws.onclose = () => setIsWsConnected(false);
-    ws.onerror = () => setIsWsConnected(false);
+    let ws = null;
+    let reconnectTimer = null;
 
-    ws.onmessage = (event) => {
+    const connectWs = () => {
       try {
-        const data = JSON.parse(event.data);
-        if (data.type === 'telemetry_update') {
-          if (data.robot_pose) {
-            setRobotPose({
-              x: data.robot_pose.x,
-              y: data.robot_pose.y,
-              yaw: data.robot_pose.yaw,
-              battery: data.battery ?? 98,
-            });
-          }
-          if (data.scan_points) setScanPoints(data.scan_points);
-          if (data.grid_data) setGridData(data.grid_data);
-          if (data.grid_metadata) setGridMetadata(data.grid_metadata);
-        }
-      } catch {}
+        const wsUrl = getMapWebSocketUrl();
+        ws = new WebSocket(wsUrl);
+
+        ws.onopen = () => {
+          setIsWsConnected(true);
+        };
+
+        ws.onclose = () => {
+          setIsWsConnected(false);
+          reconnectTimer = setTimeout(connectWs, 3000);
+        };
+
+        ws.onerror = () => {
+          setIsWsConnected(false);
+        };
+
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.type === 'telemetry_update') {
+              if (data.robot_pose) {
+                setRobotPose({
+                  x: data.robot_pose.x,
+                  y: data.robot_pose.y,
+                  yaw: data.robot_pose.yaw,
+                  battery: data.battery ?? 98,
+                });
+              }
+              if (data.scan_points) setScanPoints(data.scan_points);
+              if (data.grid_data && data.grid_data.length > 0) setGridData(data.grid_data);
+              if (data.grid_metadata) setGridMetadata(data.grid_metadata);
+            }
+          } catch {}
+        };
+      } catch (err) {
+        setIsWsConnected(false);
+      }
     };
 
+    connectWs();
+
     return () => {
-      if (ws.readyState === WebSocket.OPEN) ws.close();
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      if (ws && ws.readyState === WebSocket.OPEN) ws.close();
     };
   }, []);
 

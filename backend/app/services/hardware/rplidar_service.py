@@ -1,12 +1,21 @@
+import json
 import math
 import os
 import threading
 import time
 import logging
 import serial
+from datetime import datetime
 from typing import Dict, List, Any, Optional
 
 logger = logging.getLogger(__name__)
+
+# Thư mục lưu trữ các bản đồ 2D Occupancy Grid tĩnh
+MAPS_DIR = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "..", "..", "static", "maps")
+)
+os.makedirs(MAPS_DIR, exist_ok=True)
+
 
 class RPLidarService:
     def __init__(self, port: str = "COM9", baudrate: int = 115200):
@@ -29,11 +38,162 @@ class RPLidarService:
         self.origin_y = -5.0
         self.grid_data = [-1] * (self.grid_width * self.grid_height)
 
-    def reset_grid_map(self):
-        """Xóa trắng bản đồ 2D để tiến hành quét SLAM lại từ đầu"""
+        # Chế độ Khóa Bản Đồ Cố Định (Lock Static Map) & Lưu trữ CSDL
+        self.is_map_locked = True
+        self.saved_map_id = "MAP-LOBBY-01"
+        self.static_grid_data: Optional[List[int]] = None
+        self.last_saved_time: Optional[str] = None
+
+        # Tự động nạp bản đồ cố định khi khởi tạo
+        self.load_default_saved_map()
+
+    def _create_default_hotel_lobby_grid(self) -> List[int]:
+        """Tạo lưới Occupancy Grid chuẩn cố định cho Sảnh Tầng 1 Khách Sạn (phòng 8.4m x 8.4m với tường, cửa và quầy lễ tân)"""
+        grid = [0] * (self.grid_width * self.grid_height)
+
+        # Tọa độ các bức tường bao quanh phòng (-4.2m đến +4.2m)
+        min_gx, min_gy = self._world_to_grid(-4.2, -4.2)
+        max_gx, max_gy = self._world_to_grid(4.2, 4.2)
+
+        # Vẽ 4 bức tường xung quanh (dày 2 cells)
+        for x in range(min_gx, max_gx + 1):
+            if 0 <= x < self.grid_width:
+                for dy in (0, 1):
+                    if 0 <= min_gy + dy < self.grid_height:
+                        grid[(min_gy + dy) * self.grid_width + x] = 100
+                    if 0 <= max_gy - dy < self.grid_height:
+                        grid[(max_gy - dy) * self.grid_width + x] = 100
+
+        for y in range(min_gy, max_gy + 1):
+            if 0 <= y < self.grid_height:
+                for dx in (0, 1):
+                    if 0 <= min_gx + dx < self.grid_width:
+                        grid[y * self.grid_width + (min_gx + dx)] = 100
+                    if 0 <= max_gx - dx < self.grid_width:
+                        grid[y * self.grid_width + (max_gx - dx)] = 100
+
+        # Mở lối vào Sảnh Chính ở phía dưới (x từ -1.5m đến +1.5m)
+        door_x1, _ = self._world_to_grid(-1.5, 0)
+        door_x2, _ = self._world_to_grid(1.5, 0)
+        for x in range(door_x1, door_x2 + 1):
+            if 0 <= x < self.grid_width:
+                for dy in (0, 1):
+                    if 0 <= min_gy + dy < self.grid_height:
+                        grid[(min_gy + dy) * self.grid_width + x] = 0
+
+        # Vẽ vật cản Quầy Lễ Tân (x từ -1.5m đến +1.5m, y từ -2.2m đến -1.8m)
+        desk_x1, desk_y1 = self._world_to_grid(-1.5, -2.2)
+        desk_x2, desk_y2 = self._world_to_grid(1.5, -1.8)
+        for x in range(desk_x1, desk_x2 + 1):
+            for y in range(desk_y1, desk_y2 + 1):
+                if 0 <= x < self.grid_width and 0 <= y < self.grid_height:
+                    grid[y * self.grid_width + x] = 100
+
+        # Hai cột trụ chịu lực sảnh (x = -2.5m và +2.5m, y = 1.5m)
+        for cx, cy in [(-2.5, 1.5), (2.5, 1.5)]:
+            cgx, cgy = self._world_to_grid(cx, cy)
+            for dx in (-1, 0, 1):
+                for dy in (-1, 0, 1):
+                    px, py = cgx + dx, cgy + dy
+                    if 0 <= px < self.grid_width and 0 <= py < self.grid_height:
+                        grid[py * self.grid_width + px] = 100
+
+        return grid
+
+    def load_default_saved_map(self) -> bool:
+        """Nạp bản đồ sảnh cố định mặc định từ ổ đĩa/CSDL hoặc tạo mới nếu chưa có"""
+        map_path = os.path.join(MAPS_DIR, f"{self.saved_map_id}.json")
+        if os.path.exists(map_path):
+            return self.load_map_from_storage(self.saved_map_id, lock=True)
+        else:
+            # Tạo bản đồ sảnh mẫu đẹp mắt và lưu lại vĩnh viễn
+            template_grid = self._create_default_hotel_lobby_grid()
+            with self._lock:
+                self.grid_data = list(template_grid)
+                self.static_grid_data = list(template_grid)
+                self.is_map_locked = True
+            self.save_map_to_storage(self.saved_map_id, name="Bản đồ Sảnh Tầng 1 Main Lobby")
+            logger.info("🗺️ Đã tạo và nạp bản đồ sảnh cố định mặc định (Lobby Map Template)")
+            return True
+
+    def save_map_to_storage(self, map_id: str = "MAP-LOBBY-01", name: str = "Bản đồ Sảnh Tầng 1 Main Lobby", floor: str = "Sảnh Tầng 1") -> Dict[str, Any]:
+        """Lưu toàn bộ ma trận Occupancy Grid 2D hiện tại thành file bản đồ cố định vĩnh viễn"""
         with self._lock:
-            self.grid_data = [-1] * (self.grid_width * self.grid_height)
-        logger.info("🧹 Đã xóa trắng bản đồ 2D Occupancy Grid")
+            self.saved_map_id = map_id
+            self.static_grid_data = list(self.grid_data)
+            self.is_map_locked = True
+            now_iso = datetime.utcnow().isoformat()
+            self.last_saved_time = now_iso
+
+            map_payload = {
+                "map_id": map_id,
+                "name": name,
+                "floor": floor,
+                "resolution": self.resolution,
+                "width": self.grid_width,
+                "height": self.grid_height,
+                "origin_x": self.origin_x,
+                "origin_y": self.origin_y,
+                "grid_data": list(self.grid_data),
+                "saved_at": now_iso
+            }
+
+        map_path = os.path.join(MAPS_DIR, f"{map_id}.json")
+        try:
+            with open(map_path, "w", encoding="utf-8") as f:
+                json.dump(map_payload, f)
+            logger.info(f"💾 Đã lưu bản đồ cố định '{map_id}' thành công vào {map_path}")
+            return {"status": "SUCCESS", "map_id": map_id, "saved_at": now_iso, "file": map_path}
+        except Exception as e:
+            logger.error(f"Lỗi khi lưu file bản đồ: {e}")
+            return {"status": "ERROR", "message": str(e)}
+
+    def load_map_from_storage(self, map_id: str = "MAP-LOBBY-01", lock: bool = True) -> bool:
+        """Nạp bản đồ đã lưu từ file vào hệ thống và đóng băng cố định"""
+        map_path = os.path.join(MAPS_DIR, f"{map_id}.json")
+        if not os.path.exists(map_path):
+            logger.warning(f"⚠️ Không tìm thấy file bản đồ: {map_path}")
+            return False
+
+        try:
+            with open(map_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            with self._lock:
+                self.saved_map_id = data.get("map_id", map_id)
+                self.grid_width = data.get("width", self.grid_width)
+                self.grid_height = data.get("height", self.grid_height)
+                self.resolution = data.get("resolution", self.resolution)
+                self.origin_x = data.get("origin_x", self.origin_x)
+                self.origin_y = data.get("origin_y", self.origin_y)
+                self.grid_data = list(data["grid_data"])
+                self.static_grid_data = list(data["grid_data"])
+                self.is_map_locked = lock
+                self.last_saved_time = data.get("saved_at")
+            logger.info(f"📂 Đã nạp thành công bản đồ cố định '{map_id}' (Locked: {lock})")
+            return True
+        except Exception as e:
+            logger.error(f"Lỗi khi nạp bản đồ: {e}")
+            return False
+
+    def set_map_lock(self, locked: bool) -> bool:
+        """Bật/tắt chế độ khóa bản đồ tĩnh"""
+        with self._lock:
+            self.is_map_locked = locked
+            if locked and self.static_grid_data:
+                # Phục hồi nguyên trạng bản đồ tĩnh đã lưu khi khóa lại
+                self.grid_data = list(self.static_grid_data)
+        logger.info(f"🔒 Trạng thái Khóa Bản Đồ: {self.is_map_locked}")
+        return self.is_map_locked
+
+    def reset_grid_map(self):
+        """Xóa trắng bản đồ để quét lại từ đầu (nếu mở khóa), hoặc phục hồi bản đồ đã lưu (nếu đang khóa)"""
+        with self._lock:
+            if self.is_map_locked and self.static_grid_data:
+                self.grid_data = list(self.static_grid_data)
+                logger.info("🔄 Đã phục hồi bản đồ tĩnh đã lưu")
+            else:
+                self.grid_data = [-1] * (self.grid_width * self.grid_height)
+                logger.info("🧹 Đã xóa trắng bản đồ 2D Occupancy Grid để quét lại từ đầu")
 
     def _world_to_grid(self, x: float, y: float):
         gx = int((x - self.origin_x) / self.resolution)
@@ -42,6 +202,10 @@ class RPLidarService:
 
     def _update_grid_from_scan(self, robot_x: float, robot_y: float, scan_points: List[Dict[str, Any]]):
         """Thuật toán Raytracing cập nhật bản đồ không gian 2D từ luồng tia laser"""
+        if self.is_map_locked:
+            # Bản đồ đang ở chế độ KHÓA CỐ ĐỊNH: Không vẽ đè làm biến dạng bản đồ tĩnh
+            return
+
         rx, ry = self._world_to_grid(robot_x, robot_y)
 
         for pt in scan_points:
@@ -256,7 +420,10 @@ class RPLidarService:
             "source": source,
             "scan_point_count": len(self.get_latest_scans()),
             "device_info": self.device_info,
-            "last_error": self.last_error
+            "last_error": self.last_error,
+            "is_map_locked": self.is_map_locked,
+            "saved_map_id": self.saved_map_id,
+            "last_saved_time": self.last_saved_time,
         }
 
     def stop(self):

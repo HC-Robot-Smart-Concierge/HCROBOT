@@ -164,25 +164,31 @@ export const LidarCanvas = ({
         const gRes = gridMetadata.resolution || 0.05;
         const ox = gridMetadata.origin_x || -5.0;
         const oy = gridMetadata.origin_y || -5.0;
+        const cellPx = Math.max(gRes * scale, 1.5);
 
-        const cellPx = gRes * scale;
-
+        // Pass 1: Free space (Soft warm lobby floor)
+        ctx.fillStyle = 'rgba(238, 235, 225, 0.45)';
         for (let gy = 0; gy < gHeight; gy++) {
           for (let gx = 0; gx < gWidth; gx++) {
-            const idx = gy * gWidth + gx;
-            const val = gridData[idx];
+            if (gridData[gy * gWidth + gx] === 0) {
+              const worldX = ox + gx * gRes;
+              const worldY = oy + gy * gRes;
+              const cellCanvas = worldToCanvas(worldX, worldY, width, height);
+              ctx.fillRect(cellCanvas.px, cellCanvas.py - cellPx, cellPx + 0.6, cellPx + 0.6);
+            }
+          }
+        }
 
-            if (val === -1) continue; // Unexplored
-
-            let fillColor = 'rgba(232, 229, 216, 0.4)'; // Free space (0): Soft warm gray
-            if (val === 100) fillColor = '#18181B';       // Obstacle/Wall (100): Dark charcoal
-
-            const worldX = ox + gx * gRes;
-            const worldY = oy + gy * gRes;
-            const cellCanvas = worldToCanvas(worldX, worldY, width, height);
-
-            ctx.fillStyle = fillColor;
-            ctx.fillRect(cellCanvas.px, cellCanvas.py - cellPx, cellPx + 0.5, cellPx + 0.5);
+        // Pass 2: Obstacles & Walls (Crisp Dark Charcoal)
+        ctx.fillStyle = '#18181B';
+        for (let gy = 0; gy < gHeight; gy++) {
+          for (let gx = 0; gx < gWidth; gx++) {
+            if (gridData[gy * gWidth + gx] === 100) {
+              const worldX = ox + gx * gRes;
+              const worldY = oy + gy * gRes;
+              const cellCanvas = worldToCanvas(worldX, worldY, width, height);
+              ctx.fillRect(cellCanvas.px, cellCanvas.py - cellPx, cellPx + 0.8, cellPx + 0.8);
+            }
           }
         }
       }

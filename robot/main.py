@@ -422,7 +422,34 @@ def main(argv=None):
         udp_thread.start()
         _print_controls("disabled (--no-safety)", {}, 0.0, 0.0)
     else:
+        active_lidar_port = None
+        if not args.no_lidar:
+            try:
+                from scripts.lidar_service import slam_core
+                active_lidar_port = slam_core.port
+            except Exception:
+                pass
+
         port = _value(args.port, serial_cfg, "port", "auto")
+        exclude = [active_lidar_port] if active_lidar_port else []
+
+        from ultrasonic_serial import detect_esp32_port
+        if port == "auto" and not detect_esp32_port(exclude_ports=exclude):
+            logger.warning(
+                f"⚠️ Không tìm thấy cổng USB riêng cho ESP32 (cổng {active_lidar_port} đang dùng cho RPLiDAR). "
+                "Tự động chuyển sang chế độ --no-safety để điều khiển xe bình thường."
+            )
+            safety = DirectMotorSafetyWrapper(motor)
+            udp_thread = threading.Thread(
+                target=start_udp_control_listener,
+                args=(safety, 9999),
+                daemon=True,
+            )
+            udp_thread.start()
+            _print_controls("disabled (auto fallback: no ESP32 found)", {}, 0.0, 0.0)
+            run_wasd_controller(motor)
+            return 0
+
         baudrate = int(_value(args.baud, serial_cfg, "baudrate", 115200))
         stale_timeout = float(
             _value(args.sensor_timeout, safety_cfg, "stale_timeout_seconds", 0.4)
@@ -447,7 +474,7 @@ def main(argv=None):
             _value(args.turn_clearance, safety_cfg, "turn_clearance_cm", 25.0)
         )
 
-        reader = UltrasonicSerialReader(port=port, baudrate=baudrate)
+        reader = UltrasonicSerialReader(port=port, baudrate=baudrate, exclude_ports=exclude)
         safety = ObstacleSafetyController(
             motor=motor,
             sensor_reader=reader,

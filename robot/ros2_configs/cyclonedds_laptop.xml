@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<CycloneDDS xmlns="https://cdds.io/config">
+    <Domain>
+        <General>
+            <Interfaces>
+                <!-- WSL2 mirrored mode or eth0, Tailscale peer unicast -->
+                <NetworkInterface name="tailscale0" />
+            </Interfaces>
+            <AllowMulticast>false</AllowMulticast>
+        </General>
+        <Discovery>
+            <Peers>
+                <Peer address="100.99.72.51"/>
+                <Peer address="100.92.82.61"/>
+            </Peers>
+        </Discovery>
+    </Domain>
+</CycloneDDS>

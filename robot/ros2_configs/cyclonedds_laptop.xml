@@ -3,8 +3,7 @@
     <Domain>
         <General>
             <Interfaces>
-                <!-- WSL2 mirrored mode or eth0, Tailscale peer unicast -->
-                <NetworkInterface name="tailscale0" />
+                <NetworkInterface address="100.92.82.61" />
             </Interfaces>
             <AllowMulticast>false</AllowMulticast>
         </General>

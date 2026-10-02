@@ -11,7 +11,7 @@ cat << 'EOF' > "$CONFIG_DIR/cyclonedds.xml"
     <Domain>
         <General>
             <Interfaces>
-                <NetworkInterface name="tailscale0" />
+                <NetworkInterface address="100.99.72.51" />
             </Interfaces>
             <AllowMulticast>false</AllowMulticast>
         </General>

@@ -425,8 +425,8 @@ export function App() {
   };
 
   // Logout Callback -> Return to Landing Page
-  const handleLogout = () => {
-    logoutUser();
+  const handleLogout = async () => {
+    await logoutUser();
     setCurrentUser(null);
     setActiveView('landing');
     localStorage.setItem('aurora_active_view', 'landing');

@@ -10,8 +10,8 @@ async def test_all_operations_dashboards_and_endpoints():
     await init_db()
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-            # 1. Root health check
-            root_res = await ac.get("/")
+            # 1. Health check
+            root_res = await ac.get("/health")
             assert root_res.status_code == 200
             assert root_res.json()["status"] == "online"
 

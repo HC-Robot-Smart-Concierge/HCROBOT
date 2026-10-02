@@ -1,12 +1,12 @@
 import random
 from datetime import datetime
-from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, status
+from typing import Optional, List
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc, or_
 
 from app.core.database import get_db
-from app.models import SupportRequest, ReceptionRequest
+from app.models import SupportRequest
 from app.schemas.operations import (
     ReceptionRequestCreate,
     ReceptionRequestUpdate,
@@ -94,9 +94,9 @@ async def create_reception_request(
         description=request_in.description,
         department_id="DEP-RECEPTION",
         service_type_id="ST-RECEPTION",
-        room_number=request_in.room_number or "Lobby Desk",
+        room_number=request_in.room_number or request_in.location or "Lobby Desk",
         guest_name=request_in.guest_name or "Hotel Guest",
-        source="Front Desk / Robot Kiosk",
+        source=request_in.source or "Front Desk / Robot Kiosk",
         priority=request_in.priority or "NORMAL",
         status="Pending",
     )
@@ -118,35 +118,31 @@ async def create_reception_request(
     return new_request
 
 
-@router.post("/reception/requests", response_model=ReceptionRequestResponse, status_code=status.HTTP_201_CREATED, tags=TAG_REC)
-async def create_reception_request(req_in: ReceptionRequestCreate, db: AsyncSession = Depends(get_db)):
-    """Creates a new front desk reception ticket."""
-    ticket_code = f"REC-{random.randint(100, 9999)}"
-    new_req = ReceptionRequest(
-        ticket_code=ticket_code,
-        title=req_in.title,
-        description=req_in.description,
-        department_id="DEP-RECEPTION",
-        service_type_id="ST-RECEPTION-INQUIRY",
-        room_number=req_in.location,
-        guest_name=req_in.guest_name,
-        source=req_in.source,
-        priority=req_in.priority,
-        status="Pending",
+@router.get(
+    "/reception/requests",
+    response_model=List[ReceptionRequestResponse],
+    tags=TAG_REC,
+    summary="Danh sách toàn bộ yêu cầu Lễ tân & Đặt phòng",
+)
+async def list_reception_requests(
+    status: Optional[str] = Query(None, description="Lọc theo trạng thái yêu cầu"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Lấy danh sách các yêu cầu tiếp nhận tại bộ phận Lễ tân."""
+    stmt = (
+        select(SupportRequest)
+        .where(
+            or_(
+                SupportRequest.department_id == "DEP-RECEPTION",
+                SupportRequest.service_type_id == "ST-RECEPTION",
+            )
+        )
+        .order_by(desc(SupportRequest.created_at))
     )
-    db.add(new_req)
-    await create_department_notification(
-        db=db,
-        department="Reception",
-        title=f"Yêu cầu Lễ tân: {req_in.title}",
-        description=f"{req_in.location} ({req_in.guest_name}): {req_in.description or 'Cần hỗ trợ lễ tân'}",
-        request_id=new_req.id,
-        request_type="reception",
-        type="Request",
-    )
-    await db.commit()
-    await db.refresh(new_req)
-    return new_req
+    if status and status not in ("All", ""):
+        stmt = stmt.where(SupportRequest.status == status)
+    res = await db.execute(stmt)
+    return res.scalars().all()
 
 
 @router.patch(

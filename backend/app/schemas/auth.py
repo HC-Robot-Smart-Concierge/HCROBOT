@@ -44,3 +44,8 @@ class ProfileUpdateRequest(BaseModel):
     avatar_url: Optional[str] = None
     status: Optional[str] = None
     location: Optional[str] = None
+
+
+class LogoutResponse(BaseModel):
+    message: str = "Đăng xuất thành công."
+    success: bool = True

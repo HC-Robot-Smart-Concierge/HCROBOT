@@ -306,15 +306,6 @@
     "operationId": "get_admin_conversation_detail_api_v1_operations_admin_conversations__session_id__get"
   },
   {
-    "method": "POST",
-    "path": "/api/v1/operations/admin/dispatch",
-    "tags": [
-      "12. Trung tâm Điều hành & Quản trị (Admin & Human Support)"
-    ],
-    "summary": "Admin: Phát lệnh điều phối tạo Task mới",
-    "operationId": "admin_dispatch_task_api_v1_operations_admin_dispatch_post"
-  },
-  {
     "method": "GET",
     "path": "/api/v1/operations/admin/summary",
     "tags": [
@@ -322,33 +313,6 @@
     ],
     "summary": "Admin: Thống kê số lượng ticket theo bộ phận",
     "operationId": "get_admin_operations_summary_api_v1_operations_admin_summary_get"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/operations/admin/tasks",
-    "tags": [
-      "12. Trung tâm Điều hành & Quản trị (Admin & Human Support)"
-    ],
-    "summary": "Admin: Danh sách tất cả các Task dịch vụ toàn khách sạn",
-    "operationId": "get_admin_tasks_api_v1_operations_admin_tasks_get"
-  },
-  {
-    "method": "GET",
-    "path": "/api/v1/operations/admin/tasks/{ticket_id}",
-    "tags": [
-      "11. Quản lý Chung & Điều phối Nghiệp vụ (Operations & Directives)"
-    ],
-    "summary": "Admin: Xem chi tiết 1 Task",
-    "operationId": "get_admin_task_detail_api_v1_operations_admin_tasks__ticket_id__get"
-  },
-  {
-    "method": "PATCH",
-    "path": "/api/v1/operations/admin/tasks/{ticket_id}",
-    "tags": [
-      "11. Quản lý Chung & Điều phối Nghiệp vụ (Operations & Directives)"
-    ],
-    "summary": "Admin: Cập nhật trạng thái và điều phối Task",
-    "operationId": "update_admin_task_api_v1_operations_admin_tasks__ticket_id__patch"
   },
   {
     "method": "GET",

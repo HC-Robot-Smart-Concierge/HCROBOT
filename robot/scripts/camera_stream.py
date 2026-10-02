@@ -306,17 +306,19 @@ class MJPEGHandler(BaseHTTPRequestHandler):
     """HTTP handler phát MJPEG stream và health check."""
 
     def do_GET(self):
-        if self.path == "/stream":
+        clean_path = self.path.split("?")[0]
+        if clean_path == "/stream":
             self._handle_stream()
-        elif self.path == "/health":
+        elif clean_path == "/health":
             self._handle_health()
-        elif self.path == "/":
+        elif clean_path == "/":
             self._handle_index()
         else:
             self.send_response(404)
             self.end_headers()
 
     def _handle_stream(self):
+        global camera_backend
         self.send_response(200)
         self.send_header(
             "Content-Type", "multipart/x-mixed-replace; boundary=frame"
@@ -328,7 +330,6 @@ class MJPEGHandler(BaseHTTPRequestHandler):
 
         interval = 1.0 / (camera_backend.fps if camera_backend else 15)
 
-        global camera_backend
         last_backend_try = 0.0
 
         try:

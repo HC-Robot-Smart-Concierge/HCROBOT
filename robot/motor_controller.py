@@ -522,6 +522,10 @@ class MotorController:
 
 def get_char() -> str:
     """Đọc 1 ký tự từ bàn phím ngay lập tức (hỗ trợ cả WASD và phím mũi tên trên SSH)."""
+    if not sys.stdin.isatty():
+        time.sleep(0.1)
+        return ""
+
     try:
         import tty
         import termios

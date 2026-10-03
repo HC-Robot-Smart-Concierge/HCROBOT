@@ -60,13 +60,13 @@ MOTOR_CONFIG = {
 DEFAULT_ENCODER_CPR = 330.0  # <--- USER CONFIGURABLE: Enter actual CPR here
 
 ENCODER_CONFIG = {
-    # Motor 1 Encoder
-    "m1": {"pin_a": 4,  "pin_b": 5,  "cpr": DEFAULT_ENCODER_CPR, "invert": False},
-    # Motor 2 Encoder
-    "m2": {"pin_a": 13, "pin_b": 14, "cpr": DEFAULT_ENCODER_CPR, "invert": False},
-    # Motor 3 Encoder
+    # Motor 1 Encoder (Left) - Inverted to match forward convention
+    "m1": {"pin_a": 4,  "pin_b": 5,  "cpr": DEFAULT_ENCODER_CPR, "invert": True},
+    # Motor 2 Encoder (Left) - Inverted to match forward convention
+    "m2": {"pin_a": 13, "pin_b": 14, "cpr": DEFAULT_ENCODER_CPR, "invert": True},
+    # Motor 3 Encoder (Right)
     "m3": {"pin_a": 16, "pin_b": 17, "cpr": DEFAULT_ENCODER_CPR, "invert": False},
-    # Motor 4 Encoder
+    # Motor 4 Encoder (Right)
     "m4": {"pin_a": 23, "pin_b": 27, "cpr": DEFAULT_ENCODER_CPR, "invert": False},
 }
 

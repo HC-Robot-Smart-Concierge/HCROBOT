@@ -12,10 +12,10 @@ SENSOR_PINS = (
 )
 
 MIN_DISTANCE_CM = 2.0
-MAX_DISTANCE_CM = 400.0
-ECHO_TIMEOUT_US = 30_000
-SENSOR_GAP_MS = 18
-MEDIAN_WINDOW = 3
+MAX_DISTANCE_CM = 250.0
+ECHO_TIMEOUT_US = 15_000  # 15ms (~250cm) giảm độ trễ timeout xuống 50%
+SENSOR_GAP_MS = 4         # 4ms nghỉ giữa các cảm biến (thay vì 18ms)
+MEDIAN_WINDOW = 2
 
 
 def median(values):
@@ -57,6 +57,12 @@ class HCSR04:
         current = self.read_once_cm()
         if current is None:
             return None
+
+        # Phản xạ siêu nhanh (Fast Attack): Nếu vật cản < 65cm, bỏ qua bộ lọc trượt
+        # để kích hoạt phanh dừng NGAY LẬP TỨC trong chu kỳ đầu tiên (< 20ms)
+        if current <= 65.0:
+            self.history = [current]
+            return round(current, 1)
 
         self.history.append(current)
         if len(self.history) > MEDIAN_WINDOW:

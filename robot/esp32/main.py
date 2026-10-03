@@ -75,7 +75,7 @@ ENCODER_CONFIG = {
 # ==============================================================================
 DEBUG = False  # Set to True for verbose periodic console debug logs
 COMMAND_TIMEOUT_MS = 1000  # Safety watchdog: Stop motors if no command within 1.0s
-UPDATE_PERIOD_MS = 125     # Telemetry rate: 8 Hz (125ms per packet)
+UPDATE_PERIOD_MS = 50      # Telemetry rate: 20 Hz (50ms per packet, phản xạ tức thì)
 GYRO_CALIBRATION_SAMPLES = 300
 GYRO_CALIBRATION_DELAY_MS = 5
 MPU_RETRY_MS = 5_000

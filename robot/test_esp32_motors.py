@@ -133,7 +133,7 @@ def run_interactive_suite(port: str, baud: int = 115200, enable_control: bool = 
 
                     # In thông số hiển thị
                     encs = data.get("encoders")
-                    if encs and (time.time() - last_print_time >= 0.12):
+                    if encs and (time.time() - last_print_time >= 0.05):
                         last_print_time = time.time()
                         m1 = encs.get("m1", {})
                         m2 = encs.get("m2", {})

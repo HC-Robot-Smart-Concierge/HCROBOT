@@ -145,14 +145,14 @@ def run_interactive_suite(port: str, baud: int = 115200, enable_control: bool = 
                         s3 = f"{m3.get('rpm', 0.0):>4.1f}R ({m3.get('ticks', 0):>5d})"
                         s4 = f"{m4.get('rpm', 0.0):>4.1f}R ({m4.get('ticks', 0):>5d})"
 
-                        f_str = f"{dist_front:>4.1f}" if dist_front is not None else " ---"
-                        r_str = f"{dist_rear:>4.1f}" if dist_rear is not None else " ---"
-                        l_str = f"{dist_left:>4.1f}" if dist_left is not None else " ---"
-                        rg_str = f"{dist_right:>4.1f}" if dist_right is not None else " ---"
-                        dist_summary = f"F:{f_str} R:{r_str} L:{l_str} R:{rg_str}"
+                        f_str = f"{dist_front:>5.1f}cm" if dist_front is not None else "   ---  "
+                        r_str = f"{dist_rear:>5.1f}cm" if dist_rear is not None else "   ---  "
+                        l_str = f"{dist_left:>5.1f}cm" if dist_left is not None else "   ---  "
+                        rg_str = f"{dist_right:>5.1f}cm" if dist_right is not None else "   ---  "
+                        dist_summary = f"[Front: {f_str} | Rear: {r_str} | Left: {l_str} | Right: {rg_str}]"
 
-                        status_suffix = f" [{current_action}]" if pi_motor else ""
-                        sys.stdout.write(f"\r{s1:<18} | {s2:<18} | {s3:<18} | {s4:<18} | {dist_summary}{status_suffix}   ")
+                        status_suffix = f" -> {current_action}" if pi_motor else ""
+                        sys.stdout.write(f"\r{s1:<16} | {s2:<16} | {s3:<16} | {s4:<16} | {dist_summary}{status_suffix}   ")
                         sys.stdout.flush()
                 except Exception:
                     pass

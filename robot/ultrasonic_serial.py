@@ -33,6 +33,7 @@ class ParsedSensorPacket:
     accel: Optional[Dict[str, float]] = None
     gyro: Optional[Dict[str, float]] = None
     yaw_rate_dps: Optional[float] = None
+    encoders: Optional[Dict[str, Dict]] = None
 
 
 def _decode_payload(raw_line):
@@ -112,12 +113,14 @@ def parse_telemetry_packet(raw_line) -> ParsedSensorPacket:
         if mpu_available
         else None
     )
+    encoders = payload.get("encoders") if isinstance(payload.get("encoders"), dict) else None
     return ParsedSensorPacket(
         distances=_parse_distances(payload),
         mpu_available=mpu_available,
         accel=accel,
         gyro=gyro,
         yaw_rate_dps=yaw_rate,
+        encoders=encoders,
     )
 
 
@@ -136,6 +139,7 @@ class SensorSnapshot:
     accel: Optional[Dict[str, float]] = None
     gyro: Optional[Dict[str, float]] = None
     yaw_rate_dps: Optional[float] = None
+    encoders: Optional[Dict[str, Dict]] = None
 
     def distance(self, direction: str) -> Optional[float]:
         return self.distances.get(direction)
@@ -151,6 +155,7 @@ class SensorSnapshot:
                 "accel": dict(self.accel) if self.accel is not None else None,
                 "gyro": dict(self.gyro) if self.gyro is not None else None,
                 "yaw_rate_dps": self.yaw_rate_dps,
+                "encoders": self.encoders,
             }
         )
         return packet
@@ -299,6 +304,9 @@ class UltrasonicSerialReader:
                 logger.info("Đã kết nối ESP32 tại %s @ %d baud", port, self.baudrate)
 
                 while not self._stop_event.is_set():
+                    if connection.in_waiting > 256:
+                        connection.reset_input_buffer()
+                        connection.readline(512)
                     raw_line = connection.readline(512)
                     if not raw_line:
                         continue
@@ -324,6 +332,7 @@ class UltrasonicSerialReader:
                             accel=packet.accel,
                             gyro=packet.gyro,
                             yaw_rate_dps=packet.yaw_rate_dps,
+                            encoders=packet.encoders,
                         )
                     logger.debug(
                         "Sensor #%d: ultrasonic=%s mpu_available=%s accel=%s gyro=%s yaw_rate_dps=%s",

@@ -28,8 +28,8 @@ from ultrasonic import create_sensors, read_ultrasonic_packet
 
 # --- EXISTING OCCUPIED HARDWARE (DO NOT MODIFY OR REASSIGN) ---
 # Ultrasonic (HC-SR04):
-#   FRONT: Trig=GPIO18, Echo=GPIO34 (Input only)
-#   REAR:  Trig=GPIO19, Echo=GPIO35 (Input only)
+#   FRONT: Trig=GPIO19, Echo=GPIO35 (Input only)
+#   REAR:  Trig=GPIO18, Echo=GPIO34 (Input only)
 #   LEFT:  Trig=GPIO21, Echo=GPIO32
 #   RIGHT: Trig=GPIO22, Echo=GPIO33
 # MPU-9250 / 6500:

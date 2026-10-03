@@ -106,13 +106,15 @@ def run_interactive_suite(port: str, baud: int = 115200, enable_control: bool = 
             # 1. Đọc dữ liệu cảm biến & encoder từ ESP32
             # Drain toàn bộ hàng đợi tồn đọng để luôn xử lý gói tin MỚI NHẤT tức thì (<10ms)
             latest_json_line = None
-            if ser.in_waiting > 128:
-                # Nếu buffer bị dồn ứ, xả hết chỉ giữ dòng cuối cùng
-                raw_all = ser.read(ser.in_waiting).decode('utf-8', errors='ignore')
-                for line_part in raw_all.splitlines():
-                    line_part = line_part.strip()
-                    if line_part.startswith("{") and line_part.endswith("}"):
-                        latest_json_line = line_part
+            if ser.in_waiting > 0:
+                # Nếu buffer bị tích tụ quá nhiều (> 256 bytes), flush sạch và đọc lại dòng mới nhất
+                if ser.in_waiting > 256:
+                    ser.reset_input_buffer()
+                    ser.readline()  # Bỏ qua mẩu tin dở dang đầu tiên nếu có
+                while ser.in_waiting > 0:
+                    line = ser.readline().decode('utf-8', errors='ignore').strip()
+                    if line.startswith("{") and line.endswith("}"):
+                        latest_json_line = line
             else:
                 line = ser.readline().decode('utf-8', errors='ignore').strip()
                 if line.startswith("{") and line.endswith("}"):

@@ -5,8 +5,8 @@ from machine import Pin, time_pulse_us
 
 
 SENSOR_PINS = (
-    ("front", 18, 34),
-    ("rear", 19, 35),
+    ("front", 19, 35),
+    ("rear", 18, 34),
     ("left", 21, 32),
     ("right", 22, 33),
 )

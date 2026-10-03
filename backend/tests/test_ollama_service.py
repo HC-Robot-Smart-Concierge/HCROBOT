@@ -46,3 +46,50 @@ async def test_extract_intent_json_parsing():
         assert intent["action"] == "housekeeping"
         assert intent["room_number"] == "302"
         assert intent["items"] == "2 cái khăn tắm"
+
+
+def test_detect_language_vietnamese_and_english():
+    """Unit test kiểm tra khả năng tự động phân biệt tiếng Anh và tiếng Việt"""
+    service = OllamaService()
+
+    # Tiếng Việt có dấu
+    name, code = service.detect_language("Chào em, hồ bơi ở đâu vậy?")
+    assert name == "Tiếng Việt" and code == "vi-VN"
+
+    # Tiếng Việt không dấu
+    name, code = service.detect_language("phong 302 can don dep ngay")
+    assert name == "Tiếng Việt" and code == "vi-VN"
+
+    # Tiếng Anh câu hỏi vị trí & tiện ích
+    name, code = service.detect_language("Where is the swimming pool?")
+    assert name == "English" and code == "en-US"
+
+    # Tiếng Anh câu hỏi dịch vụ / wifi
+    name, code = service.detect_language("Do you have free wifi password?")
+    assert name == "English" and code == "en-US"
+
+    # Tiếng Anh câu chào
+    name, code = service.detect_language("Good morning robot, how are you?")
+    assert name == "English" and code == "en-US"
+
+
+def test_bilingual_fast_path_responses():
+    """Unit test kiểm tra Fast-Path phản hồi song ngữ Anh - Việt chính xác"""
+    service = OllamaService()
+
+    # Fast-path tiếng Việt
+    vi_hit = service.check_fast_path("pass wifi là gì")
+    assert vi_hit is not None
+    vi_reply, vi_name, vi_code = vi_hit
+    assert vi_code == "vi-VN"
+    assert "Aurora_Guest" in vi_reply
+    assert "Dạ" in vi_reply
+
+    # Fast-path tiếng Anh
+    en_hit = service.check_fast_path("wifi password")
+    assert en_hit is not None
+    en_reply, en_name, en_code = en_hit
+    assert en_code == "en-US"
+    assert "Aurora_Guest" in en_reply
+    assert "Complimentary Wi-Fi" in en_reply
+

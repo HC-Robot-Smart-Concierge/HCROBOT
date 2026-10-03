@@ -78,13 +78,20 @@ export const AuroraHeader = ({
       }`}
     >
       {/* Hotel & System Breadcrumb */}
-      <div className="min-w-0 flex-1 pr-2">
-        <div className="flex items-center gap-1.5 text-[#1A1917] text-xs font-semibold truncate">
-          <span className="truncate">{hotelName}</span>
-          <span className="text-[#A8A29E] shrink-0">|</span>
-          <span className="font-bold tracking-wide shrink-0">{systemName}</span>
+      <div className="min-w-0 flex-1 pr-2 flex items-center gap-2.5">
+        <img
+          src="/hc-robot-logo.png"
+          alt="HC-Robot Logo"
+          className="w-7 h-7 object-contain shrink-0 drop-shadow-xs"
+        />
+        <div className="min-w-0">
+          <div className="flex items-center gap-1.5 text-[#1A1917] text-xs font-semibold truncate">
+            <span className="truncate">{hotelName}</span>
+            <span className="text-[#A8A29E] shrink-0">|</span>
+            <span className="font-bold tracking-wide shrink-0">{systemName}</span>
+          </div>
+          <p className="text-[10px] md:text-[11px] font-medium text-[#78716C] truncate">{subtitle}</p>
         </div>
-        <p className="text-[10px] md:text-[11px] font-medium text-[#78716C] truncate">{subtitle}</p>
       </div>
 
       {/* Right Controls */}

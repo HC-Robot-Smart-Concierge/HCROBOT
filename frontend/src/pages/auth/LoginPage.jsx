@@ -49,7 +49,16 @@ export const LoginPage = ({ onLoginSuccess = () => {}, onBackToHome = () => {} }
       <div className="max-w-md w-full mx-auto my-auto py-4">
         <div className="bg-white rounded-3xl border border-[#E3DFD5] shadow-xl p-5 md:p-8 space-y-5">
           {/* Brand Header */}
-          <div className="text-center space-y-1">
+          <div className="text-center space-y-2">
+            <div className="flex justify-center mb-1">
+              <div className="w-16 h-16 flex items-center justify-center">
+                <img
+                  src="/hc-robot-logo.png"
+                  alt="HC-Robot Logo"
+                  className="w-full h-full object-contain drop-shadow-sm"
+                />
+              </div>
+            </div>
             <h2 className="text-xl font-black text-[#1A1917] tracking-tight">
               Đăng Nhập Hệ Thống
             </h2>

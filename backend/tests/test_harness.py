@@ -56,3 +56,82 @@ async def test_service_fsm_with_room():
     assert result["room_number"] == "402"
     assert result["missing_room_number"] is False
     assert "402" in result["response"]
+
+
+@pytest.mark.asyncio
+async def test_facilities_routed_to_rag_not_fastpath():
+    """Kiểm tra câu hỏi tiện ích (Hồ bơi) không bị Fast-Path chặn mà đi qua FAQ Retrieval (ChromaDB RAG)."""
+    initial_state = {
+        "session_id": "test_facility_session",
+        "prompt": "Hồ bơi của khách sạn ở tầng mấy và mở cửa mấy giờ?",
+        "language": "Tiếng Việt",
+        "room_number": None,
+        "chat_history": [],
+    }
+    config = {"configurable": {"thread_id": "test_facility_session"}}
+    result = await concierge_graph.ainvoke(initial_state, config=config)
+
+    # Đảm bảo không bị Fast-Path chặn
+    assert result["fast_path_hit"] is False
+    assert result["intent_category"] == "faq"
+    # Đảm bảo Node 3 đã tìm kiếm được context từ Obsidian ChromaDB
+    assert result.get("rag_context") is not None
+    assert len(result["rag_context"]) > 0
+    assert "hồ bơi" in result["rag_context"].lower() or "pool" in result["rag_context"].lower()
+
+
+@pytest.mark.asyncio
+async def test_room_location_rag_retrieval():
+    """Kiểm tra câu hỏi vị trí phòng (Phòng 406) được RAG Obsidian bóc tách đúng context."""
+    initial_state = {
+        "session_id": "test_room_location_session",
+        "prompt": "Cho tôi hỏi phòng 406 ở đâu và tầng mấy?",
+        "language": "Tiếng Việt",
+        "room_number": None,
+        "chat_history": [],
+    }
+    config = {"configurable": {"thread_id": "test_room_location_session"}}
+    result = await concierge_graph.ainvoke(initial_state, config=config)
+
+    assert result["fast_path_hit"] is False
+    assert result["intent_category"] == "faq"
+    assert result.get("rag_context") is not None
+    assert "406" in result["rag_context"]
+    assert "tầng 4" in result["rag_context"].lower()
+
+
+@pytest.mark.asyncio
+async def test_restroom_vs_housekeeping_classification():
+    """Kiểm tra phân biệt chính xác giữa nhu cầu đi vệ sinh (FAQ/RAG) và dọn vệ sinh buồng phòng (Housekeeping)."""
+    from app.services.ai.concierge_graph import intent_router_node
+
+    # 1. Nhu cầu đi vệ sinh -> Phải là FAQ (không hỏi số phòng)
+    state_wc_1 = {"prompt": "tôi cần đi vệ sinh", "room_number": None}
+    res_wc_1 = await intent_router_node(state_wc_1)
+    assert res_wc_1["intent_category"] == "faq"
+    assert res_wc_1["action"] == "faq"
+
+    state_wc_2 = {"prompt": "nhà vệ sinh ở đâu vậy em?", "room_number": None}
+    res_wc_2 = await intent_router_node(state_wc_2)
+    assert res_wc_2["intent_category"] == "faq"
+    assert res_wc_2["action"] == "faq"
+
+    state_wc_3 = {"prompt": "where is the restroom?", "room_number": None}
+    res_wc_3 = await intent_router_node(state_wc_3)
+    assert res_wc_3["intent_category"] == "faq"
+    assert res_wc_3["action"] == "faq"
+
+    # 2. Yêu cầu dọn dẹp vệ sinh phòng -> Phải là Housekeeping Service
+    state_hk_1 = {"prompt": "dọn vệ sinh phòng giúp tôi", "room_number": None}
+    res_hk_1 = await intent_router_node(state_hk_1)
+    assert res_hk_1["intent_category"] == "service"
+    assert res_hk_1["action"] == "housekeeping"
+
+    state_hk_2 = {"prompt": "vệ sinh phòng 201 nhé", "room_number": None}
+    res_hk_2 = await intent_router_node(state_hk_2)
+    assert res_hk_2["intent_category"] == "service"
+    assert res_hk_2["action"] == "housekeeping"
+    assert res_hk_2["room_number"] == "201"
+
+
+

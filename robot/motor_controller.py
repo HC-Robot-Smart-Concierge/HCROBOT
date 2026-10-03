@@ -522,6 +522,10 @@ class MotorController:
 
 def get_char() -> str:
     """Đọc 1 ký tự từ bàn phím ngay lập tức (hỗ trợ cả WASD và phím mũi tên trên SSH)."""
+    if not sys.stdin.isatty():
+        time.sleep(0.1)
+        return ""
+
     try:
         import tty
         import termios
@@ -559,7 +563,11 @@ def get_char() -> str:
                 return ch
             return ''
         except Exception:
-            return input("\nNhập phím (w/a/s/d/x/q): ").strip()
+            try:
+                return input("\nNhập phím (w/a/s/d/x/q): ").strip()
+            except (EOFError, Exception):
+                time.sleep(0.1)
+                return ''
 
 
 def run_wasd_controller(controller: MotorController):

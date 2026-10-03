@@ -17,9 +17,10 @@
    - [Bước 1: Yêu cầu Tiền đề (Prerequisites)](#bước-1-yêu-cầu-tiền-đề-prerequisites)
    - [Bước 2: Cài Đặt & Khởi Chạy Backend (FastAPI & DB)](#bước-2-cài-đặt--khởi-chạy-backend-fastapi--db)
    - [Bước 3: Cài Đặt & Khởi Chạy Frontend (React)](#bước-3-cài-đặt--khởi-chạy-frontend-react)
-   - [Bước 4: Khởi Chạy Nhanh Trên Windows (1-Click Batch)](#bước-4-khởi-chạy-nhanh-trên-windows-1-click-batch)
+   - [Bước 4: Hướng Dẫn Khởi Chạy Toàn Bộ Hệ Thống (Mở Từng Cái & 1-Click Batch)](#bước-4-hướng-dẫn-khởi-chạy-toàn-bộ-hệ-thống-mở-từng-cái--1-click-batch)
    - [Bước 5: Cấu Hình & Khởi Chạy Robot Node (Raspberry Pi 5 + ROS 2)](#bước-5-cấu-hình--khởi-chạy-robot-node-raspberry-pi-5--ros-2)
-   - [Bước 6: Cấu Hình & Mở Camera Stream (Pi 5 ⇄ Laptop)](#bước-6-cấu-hình--mở-camera-stream-raspberry-pi-5--laptop)
+   - [Bước 6: Cấu Hình & Mở Camera Stream (Pi 5 <-> Laptop)](#bước-6-cấu-hình--mở-camera-stream-pi-5--laptop)
+   - [Bước 7: Quy Trình Tạo Map SLAM & Điều Hướng Nav2 (Pi 5 <-> Laptop WSL2 <-> Web Admin)](#bước-7-quy-trình-tạo-map-slam--điều-hướng-nav2-pi-5--laptop-wsl2--web-admin)
 5. [Giao Tiếp Real-time, APIs & ROS 2 Topics](#5-giao-tiếp-real-time-apis--ros-2-topics)
 6. [Triển Khai Production Với Docker Compose](#6-triển-khai-production-với-docker-compose)
 
@@ -126,6 +127,7 @@ HC-Robot/
 │           ├── config/         # settings.yaml (IP Tailscale Server)
 │           └── package.xml     # ROS 2 package dependencies
 ├── start_all.bat               # Windows Batch Script khởi chạy nhanh Backend & Frontend
+├── LIDAR_SLAM_GUIDE.md         # Hướng dẫn kiến trúc & quy trình LiDAR SLAM phân tán (Laptop Off-board)
 ├── .gitignore                  # Git Ignore rule cho toàn dự án
 └── README.md                   # Tài liệu hướng dẫn Master HCRobot System (File này)
 ```
@@ -234,13 +236,90 @@ HC-Robot/
 
 ---
 
-### Bước 4: Khởi Chạy Nhanh Trên Windows (1-Click Batch)
+### Bước 4: Hướng Dẫn Khởi Chạy Toàn Bộ Hệ Thống (Mở Từng Cái & 1-Click Batch)
 
-Tại thư mục gốc dự án, double click vào file `start_all.bat` hoặc chạy từ PowerShell:
+Toàn bộ hệ thống HC-Robot bao gồm 4 tiến trình chính kết nối với nhau qua mạng an toàn **Tailscale Mesh VPN**. Tùy thuộc vào nhu cầu phát triển hoặc vận hành, bạn có thể lựa chọn 1 trong 2 cách sau:
+
+---
+
+#### CÁCH 1: MỞ THỦ CÔNG TỪNG CÁI (DÀNH CHO LẬP TRÌNH & DEBUG TỪNG PHÂN HỆ)
+
+Mở 4 cửa sổ Terminal riêng biệt theo đúng thứ tự sau:
+
+##### Terminal 1 (Laptop - Backend FastAPI Server)
+Mở PowerShell trên Windows và chạy:
 ```powershell
-.\start_all.bat
+cd f:\DoAn\HC-Robot\backend
+.\venv\Scripts\activate
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
-Kịch bản sẽ tự động mở 2 cửa sổ Terminal riêng biệt chạy đồng thời **Backend FastAPI (Port 8000)** và **Frontend React PWA (Port 3000)**.
+- **Nhiệm vụ:** Bộ não trung tâm AI RAG, Database PostgreSQL, WebSocket Voice & RESTful API.
+- **Kiểm tra:** Mở trình duyệt vào `http://localhost:8000/docs`.
+
+##### Terminal 2 (Laptop - Frontend React Web Admin)
+Mở cửa sổ PowerShell thứ 2 trên Windows và chạy:
+```powershell
+cd f:\DoAn\HC-Robot\frontend
+npm run dev
+```
+- **Nhiệm vụ:** Giao diện Quản trị viên (`/admin`), Màn hình mặt Robot Kiosk (`/robot`) và Canvas hiển thị LiDAR 2D.
+- **Kiểm tra:** Mở trình duyệt vào `http://localhost:3000`.
+
+##### Terminal 3 (Laptop - WSL2 Ubuntu-24.04 ROS 2 SLAM Stack)
+Mở cửa sổ PowerShell thứ 3 trên Windows để vào môi trường Linux WSL2:
+```powershell
+wsl -d Ubuntu-24.04
+```
+Sau khi vào shell `kha@...:~$`, khởi chạy SLAM Toolbox và Rosbridge:
+```bash
+bash /mnt/f/DoAn/HC-Robot/robot/ros2_configs/start_wsl_slam.sh
+```
+- **Nhiệm vụ:**
+  - Khởi động `rosbridge_server` mở cổng WebSocket `9090` truyền dữ liệu lên Web Admin.
+  - Chạy cầu nối `lidar_ws_to_ros2.py` tự động hút tia quét từ Pi 5 về Laptop qua Tailscale.
+  - Chạy `slam_toolbox` tính toán ma trận lưới Occupancy Grid và xuất topic `/map`.
+
+##### Terminal 4 (SSH từ Laptop vào Raspberry Pi 5 - Khởi chạy Phần Cứng Robot)
+Mở cửa sổ PowerShell thứ 4 trên Windows và **SSH trực tiếp vào Raspberry Pi 5** qua địa chỉ IP Tailscale (Ví dụ: `100.99.72.51`):
+```powershell
+ssh pi@100.99.72.51
+```
+*(Nhập mật khẩu SSH của Pi 5)*.
+
+Sau khi đã đăng nhập thành công vào Pi 5 (`pi@raspberrypi:~$`), chạy bộ điều khiển All-in-One:
+```bash
+cd ~/HC-Robot/robot
+sudo python3 main.py
+```
+> **Giải thích cơ chế:** Lệnh `sudo python3 main.py` đã tự động gộp và chạy ngầm toàn bộ 4 thành phần phần cứng quan trọng:
+> 1. **Động cơ bánh xe (L298N):** Nhận lệnh lái bàn phím WASD hoặc nhận lệnh điều khiển từ xa qua UDP port `9999`.
+> 2. **Camera Stream HD:** Tự động mở luồng video MJPEG tại port `8554` cho Web Admin giám sát.
+> 3. **Cảm biến siêu âm (ESP32):** Tự động đo khoảng cách 4 góc và khóa an toàn nếu sắp đụng tường.
+> 4. **Cảm biến LiDAR (RPLiDAR A1M8):** Tự quay mô tơ 360° và stream dữ liệu tia quét qua WebSocket port `8000` để Terminal 3 (WSL2) nhận và vẽ bản đồ.
+
+---
+
+#### CÁCH 2: KHỞI CHẠY 1-CLICK TỰ ĐỘNG HÓA (CẮT GIẢM TỐI ĐA THAO TÁC)
+
+Nếu không muốn mở nhiều cửa sổ terminal thủ công:
+
+1. **Trên Laptop (1-Click bật cả Backend, Frontend và WSL2 SLAM):**
+   - Tại thư mục gốc `f:\DoAn\HC-Robot`, nhấp đúp chuột vào file:
+     ```text
+     start_all.bat
+     ```
+   - Kịch bản sẽ tự động mở đồng thời Backend (:8000), Frontend (:3000), WSL2 SLAM (:9090) và tự mở luôn trang Web Admin trên trình duyệt!
+   - Khi muốn dừng tất cả: Nhấp đúp chuột vào file `stop_all.bat`.
+
+2. **Trên Raspberry Pi 5:**
+   - **Tùy chọn A (Chạy thủ công nhanh - 1 lệnh duy nhất):**
+     SSH vào Pi 5: `ssh pi@100.99.72.51` và gõ `sudo python3 ~/HC-Robot/robot/main.py`.
+   - **Tùy chọn B (Tự động chạy ngầm khi cắm điện - 0 Cần SSH):**
+     SSH vào Pi 5 chạy đúng 1 lần duy nhất lệnh cài đặt dịch vụ systemd:
+     ```bash
+     bash ~/HC-Robot/robot/setup_autostart_service.sh
+     ```
+     Từ nay về sau, mỗi khi cắm nguồn Pi 5, robot sẽ tự khởi động ngầm Động cơ + Camera + LiDAR mà bạn không cần phải SSH hay mở bất kỳ terminal nào trên Pi 5 nữa!
 
 ---
 
@@ -369,11 +448,11 @@ VITE_PI5_CAMERA_URL=http://localhost:8554/stream
    - Đăng nhập tài khoản `admin` (mật khẩu: `123456`) tại `http://localhost:3000`.
    - Vào **Admin Portal** (`/admin`), chọn tab **"Camera"** (icon Video) trên thanh sidebar trái.
    - Các tính năng hỗ trợ:
-     - 🔴 **Live Stream**: Hiển thị hình ảnh từ Pi 5 thời gian thực với độ trễ cực thấp.
-     - 📸 **Snapshot & Download**: Chụp lại khung hình ngay lập tức và tải ảnh `.jpg` về máy.
-     - ⛶ **Toàn màn hình (Fullscreen)**: Mở rộng khung nhìn toàn màn hình.
-     - ⚙️ **Tùy chỉnh Stream URL**: Thay đổi nhanh địa chỉ luồng camera trực tiếp trên giao diện mà không cần restart frontend.
-     - 💓 **Health Check Monitor**: Tự động kiểm tra endpoint `/health` mỗi 5s để báo trạng thái kết nối (ONLINE/OFFLINE).
+     - **Live Stream**: Hiển thị hình ảnh từ Pi 5 thời gian thực với độ trễ cực thấp.
+     - **Snapshot & Download**: Chụp lại khung hình ngay lập tức và tải ảnh `.jpg` về máy.
+     - **Toàn màn hình (Fullscreen)**: Mở rộng khung nhìn toàn màn hình.
+     - **Tùy chỉnh Stream URL**: Thay đổi nhanh địa chỉ luồng camera trực tiếp trên giao diện mà không cần restart frontend.
+     - **Health Check Monitor**: Tự động kiểm tra endpoint `/health` mỗi 5s để báo trạng thái kết nối (ONLINE/OFFLINE).
 2. **Màn hình Kiosk Robot (`/robot`):**
    - Đăng nhập tài khoản `robot_01` hoặc chuyển sang màn hình Robot Kiosk.
    - Khung Camera Preview góc trên màn hình sẽ nhận luồng video từ Pi 5 phục vụ phát hiện khuôn mặt và giao tiếp với khách hàng.
@@ -409,6 +488,114 @@ Nếu muốn camera tự khởi chạy mỗi khi Pi 5 bật nguồn:
    sudo systemctl enable hc-camera.service
    sudo systemctl start hc-camera.service
    ```
+
+---
+
+### Bước 7: Quy Trình Tạo Map SLAM & Điều Hướng Nav2 (Pi 5 <-> Laptop WSL2 <-> Web Admin)
+
+Hệ thống áp dụng mô hình **Distributed Robotics Computing** kết hợp mạng an toàn **Tailscale Mesh VPN**:
+- **Raspberry Pi 5 (Edge Sensor Node):** Thu thập dữ liệu thô từ LiDAR (RPLiDAR A1M8/A2) qua USB/Serial, stream tia quét sang Laptop. CPU Pi 5 chỉ chiếm < 5%, tiết kiệm pin tối đa.
+- **Laptop WSL2 (Compute & SLAM Master):** Nhận stream tia quét, chạy **SLAM Toolbox** dựng bản đồ lưới 2D Occupancy Grid (`/map`), chạy **Nav2** tự hành và mở **Rosbridge WebSocket** (Port `9090`).
+- **Web Admin Console (React UI):** Kết nối WebSocket (`ws://<IP_TAILSCALE>:9090` hoặc backend API), hiển thị bản đồ trực tiếp trên thẻ HTML5 Canvas (`LidarCanvas.jsx`) và hỗ trợ click ghim Waypoint/Goal điều hướng.
+
+```mermaid
+flowchart LR
+    subgraph Pi5 ["Raspberry Pi 5 (Edge Sensor)"]
+        Lidar["RPLiDAR Hardware"] -->|Serial / USB| LidarDriver["LiDAR Node"]
+        LidarDriver --> StreamOut["LiDAR Stream (Tailscale IP: 100.99.72.51)"]
+    end
+
+    subgraph WSL2 ["Laptop WSL 2 (SLAM & Nav2 Master)"]
+        StreamIn["Bridge Node / Scan Topic"] --> SLAM["SLAM Toolbox (Online Async)"]
+        SLAM -->|Topic /map| Rosbridge["Rosbridge Server (:9090)"]
+        Rosbridge -.-> Nav2["Nav2 Stack (Planner & Controller)"]
+        Nav2 -->|Topic /cmd_vel| MotorPi["Động cơ Robot"]
+    end
+
+    subgraph Web ["Web Admin Console (React + Vite)"]
+        Roslib["WebSocket Client"] --> Canvas["HTML5 Canvas (LidarCanvas)"]
+        Canvas --> GoalPose["Click Goal / Waypoints"]
+    end
+
+    StreamOut ==>|WireGuard Encrypted Tunnel| StreamIn
+    Rosbridge ==>|WebSocket JSON| Roslib
+    GoalPose -.->|Topic /goal_pose| Rosbridge
+```
+
+#### Chu Trình Vận Hành Cốt Lõi:
+```text
+[1. Khởi động SLAM] -> [2. Lái Robot chạy chậm 1 vòng] -> [3. Lưu Map ra file] -> [4. TẮT SLAM, BẬT NAV2]
+```
+
+---
+
+#### 1. Khởi động SLAM
+- **Trên Raspberry Pi 5:** Khởi động bộ điều khiển:
+  ```bash
+  cd ~/HC-Robot/robot
+  sudo python3 main.py
+  ```
+- **Trên Laptop WSL2:** Khởi chạy toàn bộ stack SLAM (Rosbridge WebSocket + Lidar Bridge + SLAM Toolbox):
+  ```bash
+  bash /mnt/f/DoAn/HC-Robot/robot/ros2_configs/start_wsl_slam.sh
+  ```
+  *(Nếu test mô phỏng trên Gazebo mà không có robot thật: `ros2 launch nav2_bringup tb3_simulation_launch.py slam:=True`)*
+- **Trên Web Admin:** Truy cập `/admin` -> chuyển sang tab **Bản đồ LiDAR**. Kết nối WebSocket sẽ tự động kích hoạt và hiển thị lưới tọa độ sẵn sàng.
+
+---
+
+#### 2. Lái Robot chạy chậm 1 vòng quét phòng (Mapping Phase)
+- Sử dụng công cụ điều khiển phím WASD trên terminal hoặc D-Pad trên Web Admin để lái robot:
+  ```bash
+  # Chạy script điều khiển bàn phím WASD từ Laptop:
+  python3 /mnt/f/DoAn/HC-Robot/robot/laptop_teleop_wasd.py
+  ```
+- **Quy tắc di chuyển:**
+  - Lái robot di chuyển với vận tốc chậm (0.15 - 0.25 m/s) bám theo mép tường căn phòng.
+  - Quan sát trực quan trên **Web Admin Canvas**: các ô lưới chưa quét (`-1`, màu xám) sẽ chuyển thành vùng trống di chuyển được (`0`, màu trắng) và mép tường vật cản (`100`, màu đen).
+  - Khi robot hoàn thành 1 vòng khép kín quanh phòng, thuật toán **Loop Closure** trong SLAM Toolbox sẽ tự động triệt tiêu sai số trôi dạt (drift), nối khớp các bức tường hoàn hảo.
+
+---
+
+#### 3. Lưu Map ra file (Save Map)
+Khi bản đồ căn phòng đã hiển thị đầy đủ và sắc nét trên Web, mở một terminal WSL2 mới và chạy lệnh lưu bản đồ:
+```bash
+# Tạo thư mục lưu trữ (nếu chưa có)
+mkdir -p ~/HC-Robot/maps
+
+# Lưu map (xuất ra file my_hotel_map.yaml và my_hotel_map.pgm)
+ros2 run nav2_map_server map_saver_cli -f ~/HC-Robot/maps/my_hotel_map
+```
+- File `.pgm`: Ảnh nhị phân trực quan của mặt bằng sàn phòng.
+- File `.yaml`: Tọa độ gốc `origin`, độ phân giải `resolution: 0.05` (5cm/pixel) và ngưỡng chiếm chỗ.
+
+---
+
+#### 4. TẮT SLAM, BẬT NAV2 (Navigation & Service Phase)
+Sau khi đã có bản đồ hoàn chỉnh, robot chuyển sang chế độ tự hành thương mại (không tốn tài nguyên chạy SLAM nữa):
+
+1. **Tắt tiến trình SLAM:**
+   - Tại terminal chạy script `start_wsl_slam.sh`, nhấn `Ctrl + C` để dừng `slam_toolbox`.
+2. **Khởi chạy Nav2 Stack nạp bản đồ đã lưu:**
+   ```bash
+   ros2 launch nav2_bringup bringup_launch.py \
+     use_sim_time:=False \
+     map:=$HOME/HC-Robot/maps/my_hotel_map.yaml
+   ```
+3. **Cơ chế hoạt động khi tự hành:**
+   - **AMCL Localization:** Cảm biến LiDAR trên Pi 5 lúc này chỉ làm nhiệm vụ so khớp tia quét với bản đồ tĩnh đã nạp để định vị chính xác vị trí robot đang đứng.
+   - **Costmap & Obstacle Avoidance:** Tự động phát hiện chướng ngại vật động (khách đi lại, vali) để vẽ chướng ngại vật tức thời và tránh va chạm.
+   - **Điều hướng từ Web Admin:** Khi Admin nhấp chuột chọn điểm đến (Goal Pose) hoặc chọn Waypoint trên Web, Web Admin bắn tin nhắn `/goal_pose` (`geometry_msgs/PoseStamped`) tới Nav2 để robot tự động di chuyển phục vụ khách.
+
+---
+
+#### 5. Checklist Kỹ Thuật Tối Ưu SLAM & Nav2
+| Hạng mục | Tham số / Lưu ý kỹ thuật |
+| :--- | :--- |
+| **Mạng Tailscale** | Kiểm tra IP ảo `100.x.y.z` của Pi (`100.99.72.51`) và Laptop. Chạy `tailscale ping` đảm bảo độ trễ < 10ms. |
+| **CycloneDDS Unicast** | Sử dụng file [cyclonedds_laptop.xml](robot/ros2_configs/cyclonedds_laptop.xml) cấu hình IP Unicast Peers để ROS 2 xuyên qua Tailscale. |
+| **Độ phân giải bản đồ** | Đặt `resolution: 0.05` (5cm/ô lưới) trong [slam_toolbox_params.yaml](robot/ros2_configs/slam_toolbox_params.yaml) - cân bằng tối ưu giữa độ chi tiết và tốc độ truyền Web. |
+| **Nguồn điện LiDAR** | Đảm bảo cấp nguồn 5V/3A chuẩn cho Pi 5 tránh sụt áp cổng USB khi motor LiDAR quay quét liên tục. |
 
 ---
 

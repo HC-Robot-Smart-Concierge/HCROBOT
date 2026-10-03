@@ -44,7 +44,7 @@ export const MobileRobotScreen = ({
   const [installMessage, setInstallMessage] = useState('');
   const { canInstall, isIos, isStandalone, promptInstall } = usePwaInstall();
   const [statusTitle, statusSubtitle] = getStatusCopy(currentState, isSpeaking, language);
-  const isBusy = isProcessing || currentState === 'RT-04' || isSpeaking;
+  const isBusy = isProcessing || currentState === 'RT-04';
 
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);

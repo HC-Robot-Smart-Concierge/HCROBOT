@@ -1,14 +1,18 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { LidarCanvas } from '../../components/admin/LidarCanvas';
 import {
   fetchWaypoints,
   saveWaypoint,
   deleteWaypoint,
-  saveCurrentLidarMap,
-  loadSavedLidarMap,
-  toggleLidarMapLock,
-  getMapWebSocketUrl,
 } from '../../services/workflowApi';
+import {
+  RosbridgeClient,
+  ROS_TOPICS,
+  ROS_MSG_TYPES,
+  parseOccupancyGrid,
+  parseLaserScan,
+  quaternionToYaw,
+} from '../../services/rosbridgeService';
 import {
   Activity,
   BatteryCharging,
@@ -25,21 +29,26 @@ import {
   Video,
   MapPin,
   Plus,
-  Save,
-  Lock,
-  Unlock,
-  FolderOpen,
+  ChevronUp,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  RotateCw,
+  Server,
+  Compass,
 } from 'lucide-react';
 
 // Pi5 connection endpoints (mirrors AdminCameraTab pattern)
-const PI5_IP = import.meta.env.VITE_PI5_IP || 'localhost';
-const PI5_API  = '/api/v1';
-const PI5_WS   = `ws://${PI5_IP}:8000/api/v1`;
+const PI5_IP = import.meta.env.VITE_PI5_IP || '100.99.72.51';
+const PI5_API = `http://${PI5_IP}:8000/api/v1`;
+const PI5_WS = `ws://${PI5_IP}:8000/api/v1`;
+const ROSBRIDGE_DEFAULT_URL = import.meta.env.VITE_ROSBRIDGE_URL || 'ws://127.0.0.1:9090';
 
 export const AdminLidarPage = ({ onSwitchToCamera }) => {
   const [hardwareInfo, setHardwareInfo] = useState(null);
   const [isWsConnected, setIsWsConnected] = useState(false);
-  const [isMapLocked, setIsMapLocked] = useState(true);
+  const [connectionMode, setConnectionMode] = useState('ros2'); // 'ros2' | 'pi5'
+  const [rosbridgeUrl, setRosbridgeUrl] = useState(ROSBRIDGE_DEFAULT_URL);
 
   // Layer Toggles
   const [showGridMap, setShowGridMap] = useState(true);
@@ -73,6 +82,7 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
   const [newWpData, setNewWpData] = useState({ name: '', floor: 'Tầng 1', x: 0, y: 0, type: 'service' });
 
   const wsRef = useRef(null);
+  const rosClientRef = useRef(null);
 
   const loadWaypoints = async () => {
     try {
@@ -134,6 +144,7 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
 
   // Fetch initial status from Pi5 backend
   const fetchHardwareStatus = async () => {
+    if (connectionMode !== 'pi5') return;
     try {
       const [mapRes, lidarStatusRes] = await Promise.all([
         fetch(`${PI5_API}/map/current`),
@@ -156,135 +167,175 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
 
   useEffect(() => {
     fetchHardwareStatus();
-  }, []);
+  }, [connectionMode]);
 
-  // WebSocket to Pi5 backend — mirrors camera connection pattern
+  // Dual Connection Effect: ROS 2 Rosbridge (port 9090) hoặc Pi 5 (port 8000)
   useEffect(() => {
-    let ws = null;
-    let reconnectTimer = null;
+    setIsWsConnected(false);
 
-    const connectWs = () => {
-      try {
-        const wsUrl = getMapWebSocketUrl();
-        ws = new WebSocket(wsUrl);
-        wsRef.current = ws;
-
-        ws.onopen = () => {
+    if (connectionMode === 'ros2') {
+      const client = new RosbridgeClient(rosbridgeUrl, {
+        autoReconnect: true,
+        onOpen: () => {
           setIsWsConnected(true);
-        };
-
-        ws.onclose = () => {
+          setHardwareInfo({
+            is_connected: true,
+            device_info: {
+              model: 'ROS 2 SLAM Toolbox & Nav2',
+              port: rosbridgeUrl,
+              health: 'Active',
+            },
+          });
+          setTelemetry((prev) => ({
+            ...prev,
+            status: 'ROS2_CONNECTED',
+            source: 'ROS2_SLAM_NAV2',
+          }));
+          setNavNotification(`[ROS 2] Đã kết nối Rosbridge (${rosbridgeUrl})`);
+        },
+        onClose: () => {
           setIsWsConnected(false);
-          reconnectTimer = setTimeout(connectWs, 3000);
-        };
-
-        ws.onerror = () => {
+        },
+        onError: () => {
           setIsWsConnected(false);
-        };
+        },
+      });
 
-        ws.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data);
-            if (data.type === 'telemetry_update') {
-              if (data.device_info) {
-                setHardwareInfo((prev) => ({
-                  ...prev,
-                  is_connected: true,
-                  device_info: data.device_info,
-                }));
-              }
-              if (data.robot_pose) {
-                setTelemetry((prev) => ({
-                  ...prev,
-                  x: data.robot_pose.x,
-                  y: data.robot_pose.y,
-                  yaw: data.robot_pose.yaw,
-                  battery: data.battery ?? prev.battery,
-                  linearVelocity: data.linear_velocity ?? prev.linearVelocity,
-                  angularVelocity: data.angular_velocity ?? prev.angularVelocity,
-                  status: data.status ?? prev.status,
-                  source: data.source ?? prev.source,
-                }));
-              }
-              if (data.scan_points) setScanPoints(data.scan_points);
-              if (data.grid_data && data.grid_data.length > 0) setGridData(data.grid_data);
-              if (data.grid_metadata) setGridMetadata(data.grid_metadata);
-              if (data.is_map_locked !== undefined) setIsMapLocked(data.is_map_locked);
+      rosClientRef.current = client;
+      client.connect();
+
+      // 1. Subscribe Occupancy Grid Map (/map)
+      const unsubMap = client.subscribe(ROS_TOPICS.MAP, ROS_MSG_TYPES.OCCUPANCY_GRID, (msg) => {
+        const parsed = parseOccupancyGrid(msg);
+        if (parsed) {
+          setGridData(parsed.gridData);
+          setGridMetadata(parsed.metadata);
+        }
+      });
+
+      // 2. Subscribe 2D Laser Scan (/scan)
+      const unsubScan = client.subscribe(ROS_TOPICS.SCAN, ROS_MSG_TYPES.LASER_SCAN, (msg) => {
+        const points = parseLaserScan(msg);
+        setScanPoints(points);
+      });
+
+      // 3. Subscribe Odometry (/odom)
+      const unsubOdom = client.subscribe(ROS_TOPICS.ODOM, ROS_MSG_TYPES.ODOMETRY, (msg) => {
+        const pos = msg.pose?.pose?.position;
+        const ori = msg.pose?.pose?.orientation;
+        if (pos) {
+          const yaw = ori ? quaternionToYaw(ori.z, ori.w) : 0;
+          setTelemetry((prev) => ({
+            ...prev,
+            x: Number(pos.x.toFixed(2)),
+            y: Number(pos.y.toFixed(2)),
+            yaw: Number((yaw * (180 / Math.PI)).toFixed(1)),
+            linearVelocity: Number(msg.twist?.twist?.linear?.x?.toFixed(2) || 0),
+            angularVelocity: Number(msg.twist?.twist?.angular?.z?.toFixed(2) || 0),
+            source: 'ROS2_SLAM_NAV2',
+          }));
+        }
+      });
+
+      // 4. Subscribe AMCL Robot Pose (/amcl_pose)
+      const unsubAmcl = client.subscribe(ROS_TOPICS.AMCL_POSE, ROS_MSG_TYPES.POSE_WITH_COVARIANCE, (msg) => {
+        const pos = msg.pose?.pose?.position;
+        const ori = msg.pose?.pose?.orientation;
+        if (pos) {
+          const yaw = ori ? quaternionToYaw(ori.z, ori.w) : 0;
+          setTelemetry((prev) => ({
+            ...prev,
+            x: Number(pos.x.toFixed(2)),
+            y: Number(pos.y.toFixed(2)),
+            yaw: Number((yaw * (180 / Math.PI)).toFixed(1)),
+            status: 'AMCL_LOCALIZED',
+            source: 'ROS2_SLAM_NAV2',
+          }));
+        }
+      });
+
+      return () => {
+        unsubMap();
+        unsubScan();
+        unsubOdom();
+        unsubAmcl();
+        client.disconnect();
+      };
+    } else {
+      // Chế độ kết nối trực tiếp Pi 5 WebSocket (port 8000)
+      const ws = new WebSocket(`${PI5_WS}/map/ws`);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        setIsWsConnected(true);
+        setNavNotification(`[Pi 5] Đã kết nối trực tiếp Pi 5 (${PI5_WS})`);
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === 'telemetry_update') {
+            if (data.device_info) {
+              setHardwareInfo((prev) => ({
+                ...prev,
+                is_connected: true,
+                device_info: data.device_info,
+              }));
             }
-          } catch (err) {
-            console.error('WebSocket parse error:', err);
+            if (data.robot_pose) {
+              setTelemetry((prev) => ({
+                ...prev,
+                x: data.robot_pose.x,
+                y: data.robot_pose.y,
+                yaw: data.robot_pose.yaw,
+                battery: data.battery ?? prev.battery,
+                linearVelocity: data.linear_velocity ?? prev.linearVelocity,
+                angularVelocity: data.angular_velocity ?? prev.angularVelocity,
+                status: data.status ?? prev.status,
+                source: data.source ?? prev.source,
+              }));
+            }
+            if (data.scan_points) setScanPoints(data.scan_points);
+            if (data.grid_data) setGridData(data.grid_data);
+            if (data.grid_metadata) setGridMetadata(data.grid_metadata);
           }
-        };
-      } catch (err) {
-        setIsWsConnected(false);
-      }
-    };
+        } catch (err) {
+          console.error('WebSocket parse error:', err);
+        }
+      };
 
-    connectWs();
+      ws.onerror = () => setIsWsConnected(false);
+      ws.onclose = () => setIsWsConnected(false);
 
-    return () => {
-      if (reconnectTimer) clearTimeout(reconnectTimer);
-      if (ws && ws.readyState === WebSocket.OPEN) ws.close();
-    };
-  }, []);
-
-  // Lưu bản đồ hiện tại vào Database làm bản đồ tĩnh cố định
-  const handleSaveFixedMap = async () => {
-    try {
-      setNavNotification('💾 Đang lưu bản đồ cố định vào CSDL...');
-      const res = await saveCurrentLidarMap('MAP-LOBBY-01', 'Bản đồ Sảnh Tầng 1 Main Lobby', 'Sảnh Tầng 1');
-      if (res.status === 'SUCCESS') {
-        setIsMapLocked(true);
-        setNavNotification(`✅ ${res.message}`);
-      }
-    } catch (err) {
-      setNavNotification(`❌ Lỗi khi lưu bản đồ: ${err.message}`);
+      return () => {
+        if (ws.readyState === WebSocket.OPEN) ws.close();
+      };
     }
-    setTimeout(() => setNavNotification(''), 4500);
-  };
+  }, [connectionMode, rosbridgeUrl]);
 
-  // Khóa / Mở khóa bản đồ
-  const handleToggleLock = async () => {
-    try {
-      const res = await toggleLidarMapLock();
-      setIsMapLocked(res.is_map_locked);
-      setNavNotification(`🔒 ${res.message}`);
-    } catch (err) {
-      setNavNotification(`❌ Lỗi: ${err.message}`);
-    }
-    setTimeout(() => setNavNotification(''), 4500);
-  };
-
-  // Nạp lại bản đồ cố định đã lưu từ CSDL
-  const handleLoadSavedMap = async () => {
-    try {
-      setNavNotification('📂 Đang nạp bản đồ cố định từ CSDL...');
-      const res = await loadSavedLidarMap('MAP-LOBBY-01');
-      if (res.status === 'SUCCESS') {
-        setIsMapLocked(true);
-        setNavNotification(`✅ ${res.message}`);
-        fetchHardwareStatus();
+  // Reconnect logic
+  const handleReconnect = async () => {
+    if (connectionMode === 'ros2') {
+      setNavNotification(`Đang kết nối lại ROS 2 Rosbridge (${rosbridgeUrl})...`);
+      if (rosClientRef.current) {
+        rosClientRef.current.disconnect();
+        rosClientRef.current.autoReconnect = true;
+        rosClientRef.current.connect();
       }
-    } catch (err) {
-      setNavNotification(`❌ Lỗi tải map: ${err.message}`);
-    }
-    setTimeout(() => setNavNotification(''), 4500);
-  };
-
-  // Reconnect to Pi5 backend (useful if Pi5 reboots)
-  const handleReconnectPi5 = async () => {
-    setNavNotification('Reconnecting to Pi5 backend...');
-    try {
-      const res = await fetch(`${PI5_API}/map/connect_lidar`, { method: 'POST' });
-      const data = await res.json();
-      if (data.status === 'SUCCESS') {
-        setNavNotification(data.message);
-        fetchHardwareStatus();
-      } else {
-        setNavNotification(`[FAILED] ${data.message}`);
+    } else {
+      setNavNotification('Đang kết nối lại Pi 5 backend...');
+      try {
+        const res = await fetch(`${PI5_API}/map/connect_lidar`, { method: 'POST' });
+        const data = await res.json();
+        if (data.status === 'SUCCESS') {
+          setNavNotification(data.message);
+          fetchHardwareStatus();
+        } else {
+          setNavNotification(`[FAILED] ${data.message}`);
+        }
+      } catch {
+        setNavNotification('[ERROR] Không thể kết nối Pi 5 — kiểm tra Tailscale hoặc IP');
       }
-    } catch {
-      setNavNotification('[ERROR] Cannot reach Pi5 — check SSH tunnel or IP');
     }
     setTimeout(() => setNavNotification(''), 4000);
   };
@@ -292,14 +343,13 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
   // Reset SLAM grid map
   const handleResetGridMap = async () => {
     try {
-      setNavNotification('Clearing SLAM map...');
+      setNavNotification('Đang xóa sạch bản đồ SLAM...');
       const res = await fetch(`${PI5_API}/map/reset_map`, { method: 'POST' });
       const data = await res.json();
       if (data.status === 'SUCCESS') {
-        setNavNotification(data.message || 'SLAM map cleared. Ready for new scan.');
-        if (!isMapLocked) {
-          setGridData(new Array(200 * 200).fill(-1));
-        }
+        setNavNotification('Bản đồ đã xóa sạch. Vị trí robot đã đặt về (0,0).');
+        setGridData(new Array(200 * 200).fill(-1));
+        setTelemetry((prev) => ({ ...prev, x: 0, y: 0, yaw: 0 }));
       }
     } catch (err) {
       console.error('Reset map error:', err);
@@ -307,18 +357,81 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
     setTimeout(() => setNavNotification(''), 4000);
   };
 
-  const handleSetGoal = async (targetX, targetY) => {
-    setActiveNavGoal({ x: targetX, y: targetY });
-    setNavNotification(`NAV GOAL SET — X: ${targetX.toFixed(2)}m, Y: ${targetY.toFixed(2)}m`);
+  const handleScan360 = async () => {
+    setNavNotification('🔄 Bắt đầu xoay 360° quét toàn cảnh các bức tường phòng...');
+    try {
+      await fetch(`${PI5_API}/map/scan_360`, { method: 'POST' });
+    } catch (err) {
+      console.error('Lỗi quét 360:', err);
+    }
+  };
+
+  const handleTeleop = async (command) => {
+    if (connectionMode === 'ros2' && rosClientRef.current?.isConnected) {
+      let lin = 0.0;
+      let ang = 0.0;
+      if (command === 'forward') lin = 0.25;
+      else if (command === 'backward') lin = -0.25;
+      else if (command === 'left') ang = 0.6;
+      else if (command === 'right') ang = -0.6;
+      rosClientRef.current.publishCmdVel(lin, ang);
+      return;
+    }
 
     try {
-      await fetch(`${PI5_API}/map/navigate`, {
+      await fetch(`${PI5_API}/map/teleop`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ target_x: targetX, target_y: targetY }),
+        body: JSON.stringify({ command, speed: 40 }),
       });
     } catch (err) {
-      console.error('Navigate command failed:', err);
+      console.error('Teleop error:', err);
+    }
+  };
+
+  // Keyboard Teleop: W-A-S-D hoặc Phím Mũi Tên
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
+      const key = e.key.toLowerCase();
+      if (key === 'w' || key === 'arrowup') handleTeleop('forward');
+      else if (key === 's' || key === 'arrowdown') handleTeleop('backward');
+      else if (key === 'a' || key === 'arrowleft') handleTeleop('left');
+      else if (key === 'd' || key === 'arrowright') handleTeleop('right');
+      else if (key === ' ' || key === 'x') handleTeleop('stop');
+    };
+    const handleKeyUp = (e) => {
+      if (['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
+      const key = e.key.toLowerCase();
+      if (['w', 's', 'a', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key)) {
+        handleTeleop('stop');
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, [connectionMode]);
+
+  const handleSetGoal = async (targetX, targetY) => {
+    setActiveNavGoal({ x: targetX, y: targetY });
+
+    if (connectionMode === 'ros2' && rosClientRef.current?.isConnected) {
+      rosClientRef.current.publishGoal(targetX, targetY, 0);
+      setNavNotification(`[NAV2] Đã gửi mục tiêu /goal_pose ➔ X: ${targetX.toFixed(2)}m, Y: ${targetY.toFixed(2)}m`);
+    } else {
+      setNavNotification(`NAV GOAL SET — X: ${targetX.toFixed(2)}m, Y: ${targetY.toFixed(2)}m`);
+      try {
+        await fetch(`${PI5_API}/map/navigate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ target_x: targetX, target_y: targetY }),
+        });
+      } catch (err) {
+        console.error('Navigate command failed:', err);
+      }
     }
 
     setTimeout(() => setNavNotification(''), 4000);
@@ -334,13 +447,17 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
       angularVelocity: 0,
     }));
 
+    if (connectionMode === 'ros2' && rosClientRef.current?.isConnected) {
+      rosClientRef.current.publishCmdVel(0, 0);
+    }
+
     try {
       await fetch('/api/v1/operations/robot/control', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           command: 'stop',
-          target_ip: '100.73.245.66',
+          target_ip: PI5_IP,
           port: 9999,
         }),
       });
@@ -355,19 +472,81 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
 
   return (
     <div className="w-full h-full flex flex-col overflow-hidden font-sans select-none" style={{ background: '#F2EFE9', color: '#262626' }}>
-      {/* Status Banner — Pi5 connection */}
+      {/* Status Banner — Dual Connection */}
       <div className="w-full border-b px-6 py-2 flex items-center justify-between text-xs font-mono"
         style={{ background: '#E9E5DC', borderColor: '#BFBFBD', color: '#8C8C8C' }}>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
+          {/* Mode Switcher */}
+          <div className="flex items-center border rounded-md p-0.5 bg-[#FAF8F5]" style={{ borderColor: '#BFBFBD' }}>
+            <button
+              onClick={() => setConnectionMode('ros2')}
+              className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer ${
+                connectionMode === 'ros2'
+                  ? 'bg-[#262626] text-white shadow-xs'
+                  : 'text-stone-600 hover:text-stone-900'
+              }`}
+            >
+              ROS 2 (WSL2 :9090)
+            </button>
+            <button
+              onClick={() => setConnectionMode('pi5')}
+              className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer ${
+                connectionMode === 'pi5'
+                  ? 'bg-[#262626] text-white shadow-xs'
+                  : 'text-stone-600 hover:text-stone-900'
+              }`}
+            >
+              Pi 5 Direct (:8000)
+            </button>
+          </div>
+
           <span className="font-bold px-2 py-0.5 rounded border text-[10px]"
             style={isWsConnected
               ? { background: '#262626', color: '#FFFFFF', borderColor: '#262626' }
               : { background: '#F2EFE9', color: '#8C8C8C', borderColor: '#BFBFBD' }}>
-            {isWsConnected ? `PI5 CONNECTED — ${PI5_IP}` : `PI5 OFFLINE — ${PI5_IP}`}
+            {connectionMode === 'ros2'
+              ? (isWsConnected ? `ROS 2 CONNECTED — ${rosbridgeUrl}` : `ROS 2 OFFLINE — ${rosbridgeUrl}`)
+              : (isWsConnected ? `PI5 CONNECTED — ${PI5_IP}` : `PI5 OFFLINE — ${PI5_IP}`)}
           </span>
+
+          {connectionMode === 'ros2' && isWsConnected && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold hidden sm:inline-block">
+              TOPICS: /map & /goal_pose
+            </span>
+          )}
+
           <span style={{ color: '#8C8C8C' }}>RAW: <strong style={{ color: '#262626' }}>{scanPoints.length} PTS</strong></span>
         </div>
-        <span className="text-[11px]" style={{ color: '#8C8C8C' }}>WS: {PI5_IP}:8000</span>
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleScan360}
+            className="px-2.5 py-1 text-[11px] font-bold rounded-md border flex items-center gap-1.5 transition-all cursor-pointer hover:bg-stone-200"
+            style={{ background: '#FAF8F5', borderColor: '#BFBFBD', color: '#262626' }}
+            title="Cho robot xoay tại chỗ 360 độ để quét toàn cảnh các bức tường xung quanh phòng"
+          >
+            <RotateCw className="w-3 h-3 text-emerald-600 animate-spin-slow" />
+            <span>QUÉT 360° PHÒNG</span>
+          </button>
+          <button
+            onClick={handleResetGridMap}
+            className="px-2.5 py-1 text-[11px] font-bold rounded-md border flex items-center gap-1.5 transition-all cursor-pointer hover:bg-red-50 hover:text-red-700 hover:border-red-300"
+            style={{ background: '#FAF8F5', borderColor: '#BFBFBD', color: '#8C8C8C' }}
+            title="Xóa sạch toàn bộ lưới bản đồ SLAM và đặt lại vị trí Robot về (0,0)"
+          >
+            <Trash2 className="w-3 h-3 text-red-500" />
+            <span>XÓA BẢN ĐỒ</span>
+          </button>
+          <button
+            onClick={handleReconnect}
+            className="px-2 py-1 text-[11px] font-bold rounded-md border flex items-center gap-1 transition-all cursor-pointer hover:bg-stone-200"
+            style={{ background: '#FAF8F5', borderColor: '#BFBFBD', color: '#262626' }}
+            title="Thử kết nối lại"
+          >
+            <RefreshCw className="w-3 h-3 text-stone-600" />
+            <span>KẾT NỐI LẠI</span>
+          </button>
+        </div>
       </div>
 
       {/* Nav Notification Alert */}
@@ -392,6 +571,7 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
               waypoints={waypoints}
               onCanvasClickGoal={handleSetGoal}
               onCanvasClickWaypointPin={handleCanvasClickPin}
+              onResetMap={handleResetGridMap}
               isPinMode={isPinMode}
               showGridMap={showGridMap}
               showGridLines={showGridLines}
@@ -399,35 +579,38 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
               showWaypoints={true}
             />
 
-            {/* Waiting for Pi5 data overlay */}
+            {/* Waiting for data overlay */}
             {scanPoints.length === 0 && (
               <div className="absolute inset-0 z-10 backdrop-blur-sm flex flex-col items-center justify-center gap-4 text-center p-6 rounded-2xl"
                 style={{ background: 'rgba(242,239,233,0.97)', border: '1px solid #BFBFBD' }}>
                 <Cpu className="w-8 h-8 animate-pulse" style={{ color: '#8C8C8C' }} />
                 <div>
                   <h3 className="text-sm font-bold mb-1" style={{ color: '#262626' }}>
-                    NO DATA FROM PI5 — {PI5_IP}
+                    {connectionMode === 'ros2'
+                      ? `CHƯA CÓ DỮ LIỆU TỪ ROS 2 — ${rosbridgeUrl}`
+                      : `NO DATA FROM PI5 — ${PI5_IP}`}
                   </h3>
                   <p className="text-xs max-w-md leading-relaxed" style={{ color: '#8C8C8C' }}>
-                    WebSocket waiting for SLAM data from Pi5. Make sure the Pi5 backend is running and reachable via Tailscale.
+                    {connectionMode === 'ros2'
+                      ? 'Đang chờ topic /map hoặc /scan từ Rosbridge Server. Hãy chắc chắn script start_wsl_slam.sh hoặc Gazebo đang chạy.'
+                      : 'WebSocket waiting for SLAM data from Pi5. Make sure the Pi5 backend is running and reachable via Tailscale.'}
                   </p>
                 </div>
                 <button
-                  onClick={handleReconnectPi5}
-                  className="px-5 py-2.5 text-xs font-bold rounded-lg transition-all cursor-pointer"
+                  onClick={handleReconnect}
+                  className="px-5 py-2.5 text-xs font-bold rounded-lg transition-all cursor-pointer uppercase"
                   style={{ background: '#262626', color: '#FFFFFF' }}
                 >
-                  RECONNECT TO PI5
+                  {connectionMode === 'ros2' ? 'KẾT NỐI LẠI ROSBRIDGE (:9090)' : 'RECONNECT TO PI5 (:8000)'}
                 </button>
               </div>
             )}
           </div>
 
-          {/* Layers & Map Persistence Toolbar */}
-          <div className="w-full border rounded-lg px-3 py-1.5 flex flex-wrap items-center justify-between gap-2 text-xs shrink-0"
+          {/* Layers Control Bar */}
+          <div className="w-full h-10 border rounded-lg px-4 flex items-center justify-between text-xs shrink-0"
             style={{ background: '#E9E5DC', borderColor: '#BFBFBD' }}>
-            {/* Left: Layer Checkboxes */}
-            <div className="flex items-center gap-3 font-medium" style={{ color: '#8C8C8C' }}>
+            <div className="flex items-center gap-4 font-medium" style={{ color: '#8C8C8C' }}>
               <span className="font-bold text-[10px] tracking-wider" style={{ color: '#262626' }}>LAYERS:</span>
               <label className="flex items-center gap-1.5 cursor-pointer">
                 <input type="checkbox" checked={showGridMap} onChange={(e) => setShowGridMap(e.target.checked)} className="focus:ring-0" />
@@ -435,70 +618,14 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
               </label>
               <label className="flex items-center gap-1.5 cursor-pointer">
                 <input type="checkbox" checked={showGridLines} onChange={(e) => setShowGridLines(e.target.checked)} className="focus:ring-0" />
-                <span>Rings</span>
+                <span>Radar Rings</span>
               </label>
               <label className="flex items-center gap-1.5 cursor-pointer">
                 <input type="checkbox" checked={showScanRays} onChange={(e) => setShowScanRays(e.target.checked)} className="focus:ring-0" />
-                <span>Tia ({scanPoints.length})</span>
+                <span>Point Cloud ({scanPoints.length})</span>
               </label>
             </div>
-
-            {/* Right: Map DB Persistence Tools */}
-            <div className="flex items-center gap-1.5">
-              <span
-                className="px-2 py-0.5 rounded text-[10px] font-mono font-bold border flex items-center gap-1"
-                style={isMapLocked
-                  ? { backgroundColor: '#10B981', color: '#FFFFFF', borderColor: '#059669' }
-                  : { backgroundColor: '#F59E0B', color: '#FFFFFF', borderColor: '#D97706' }}
-              >
-                {isMapLocked ? <Lock className="w-3 h-3" /> : <Unlock className="w-3 h-3" />}
-                <span>{isMapLocked ? 'BẢN ĐỒ CỐ ĐỊNH' : 'QUÉT TỰ DO'}</span>
-              </span>
-
-              <button
-                type="button"
-                onClick={handleSaveFixedMap}
-                className="px-2.5 py-1 rounded text-[11px] font-bold border flex items-center gap-1 cursor-pointer transition-colors shadow-xs"
-                style={{ backgroundColor: '#262626', color: '#FFFFFF', borderColor: '#262626' }}
-                title="Lưu toàn bộ bản đồ 2D hiện tại vào Database"
-              >
-                <Save className="w-3 h-3" />
-                <span>Lưu Map</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleToggleLock}
-                className="px-2 py-1 rounded text-[11px] font-bold border flex items-center gap-1 cursor-pointer transition-colors"
-                style={{ backgroundColor: '#FFFFFF', color: '#262626', borderColor: '#BFBFBD' }}
-                title={isMapLocked ? "Mở khóa để quét bổ sung vật cản mới" : "Khóa bản đồ đứng yên cố định"}
-              >
-                {isMapLocked ? <Unlock className="w-3 h-3" /> : <Lock className="w-3 h-3" />}
-                <span>{isMapLocked ? 'Mở Khóa' : 'Khóa'}</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleLoadSavedMap}
-                className="px-2 py-1 rounded text-[11px] font-bold border flex items-center gap-1 cursor-pointer transition-colors"
-                style={{ backgroundColor: '#FFFFFF', color: '#262626', borderColor: '#BFBFBD' }}
-                title="Tải lại bản đồ cố định đã lưu từ CSDL"
-              >
-                <FolderOpen className="w-3 h-3" />
-                <span>Nạp Map</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleResetGridMap}
-                className="px-2 py-1 rounded text-[11px] font-bold border flex items-center gap-1 cursor-pointer transition-colors"
-                style={{ backgroundColor: '#FFFFFF', color: '#DC2626', borderColor: '#FCA5A5' }}
-                title="Xóa trắng để quét lại từ đầu"
-              >
-                <RefreshCw className="w-3 h-3" />
-                <span>Làm Mới</span>
-              </button>
-            </div>
+            <span className="text-[10px] font-mono font-bold" style={{ color: '#8C8C8C' }}>REAL-TIME SLAM</span>
           </div>
         </div>
 
@@ -624,6 +751,54 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
                 Click on the SLAM map to set a navigation goal.
               </div>
             )}
+
+            {/* Manual WASD D-Pad Teleop */}
+            <div className="flex flex-col items-center gap-1.5 p-2 rounded-lg border bg-[#FAF8F5]" style={{ borderColor: '#BFBFBD' }}>
+              <span className="text-[10px] font-bold text-stone-600">LÁI THỦ CÔNG ĐỂ QUÉT PHÒNG (W-A-S-D)</span>
+              <div className="flex flex-col items-center gap-1">
+                <button
+                  onMouseDown={() => handleTeleop('forward')}
+                  onMouseUp={() => handleTeleop('stop')}
+                  className="p-2 rounded-lg border bg-white shadow-sm hover:bg-stone-100 active:scale-95 cursor-pointer text-stone-800"
+                  title="Tiến (W)"
+                >
+                  <ChevronUp className="w-4 h-4" />
+                </button>
+                <div className="flex items-center gap-1">
+                  <button
+                    onMouseDown={() => handleTeleop('left')}
+                    onMouseUp={() => handleTeleop('stop')}
+                    className="p-2 rounded-lg border bg-white shadow-sm hover:bg-stone-100 active:scale-95 cursor-pointer text-stone-800"
+                    title="Rẽ Trái (A)"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => handleTeleop('stop')}
+                    className="px-2 py-1.5 rounded-lg border bg-stone-200 text-[10px] font-bold shadow-sm hover:bg-stone-300 active:scale-95 cursor-pointer text-stone-800"
+                    title="Dừng (Space/X)"
+                  >
+                    STOP
+                  </button>
+                  <button
+                    onMouseDown={() => handleTeleop('right')}
+                    onMouseUp={() => handleTeleop('stop')}
+                    className="p-2 rounded-lg border bg-white shadow-sm hover:bg-stone-100 active:scale-95 cursor-pointer text-stone-800"
+                    title="Rẽ Phải (D)"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+                <button
+                  onMouseDown={() => handleTeleop('backward')}
+                  onMouseUp={() => handleTeleop('stop')}
+                  className="p-2 rounded-lg border bg-white shadow-sm hover:bg-stone-100 active:scale-95 cursor-pointer text-stone-800"
+                  title="Lùi (S)"
+                >
+                  <ChevronDown className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
 
             <button
               onClick={handleEmergencyStop}

@@ -269,13 +269,13 @@ export const RobotScreenPage = ({ onLogout = () => {} }) => {
     }
   };
 
-  // Tự động gửi AI khi người dùng ngừng nói 420ms (VAD Silence Detection Tốc độ cao)
+  // Tự động gửi AI khi người dùng ngừng nói 900ms (VAD Silence Detection tự nhiên, không cướp lời)
   useEffect(() => {
     if (currentState === 'RT-03' && transcript.trim().length > 0) {
       if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
       silenceTimerRef.current = setTimeout(() => {
         handleStopTalkAndProcess(transcript);
-      }, 420);
+      }, 900);
     }
     return () => {
       if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
@@ -295,10 +295,13 @@ export const RobotScreenPage = ({ onLogout = () => {} }) => {
     wasSpeakingRef.current = isSpeaking;
   }, [isSpeaking, isAutoListen, isProcessing, currentState]);
 
-  // Tự động xử lý khi Micro dừng lắng nghe
+  // Xử lý an toàn khi Micro dừng hẳn (chờ thêm 600ms tránh ngắt quãng tạm thời)
   useEffect(() => {
-    if (!isListening && currentState === 'RT-03' && transcript.length > 0) {
-      handleStopTalkAndProcess(transcript);
+    if (!isListening && currentState === 'RT-03' && transcript.trim().length > 0) {
+      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = setTimeout(() => {
+        handleStopTalkAndProcess(transcript);
+      }, 600);
     }
   }, [isListening]);
 
@@ -436,6 +439,11 @@ export const RobotScreenPage = ({ onLogout = () => {} }) => {
       <div
         onClick={() => {
           prime();
+          if (isSpeaking) {
+            stopSpeaking();
+            handleStartTalk();
+            return;
+          }
           if ((currentState === 'RT-02' || currentState === 'RT-01') && !isSpeaking && !isProcessing) {
             handleStartTalk();
           }

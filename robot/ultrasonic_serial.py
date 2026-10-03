@@ -33,6 +33,7 @@ class ParsedSensorPacket:
     accel: Optional[Dict[str, float]] = None
     gyro: Optional[Dict[str, float]] = None
     yaw_rate_dps: Optional[float] = None
+    encoders: Optional[Dict[str, Dict]] = None
 
 
 def _decode_payload(raw_line):
@@ -112,12 +113,14 @@ def parse_telemetry_packet(raw_line) -> ParsedSensorPacket:
         if mpu_available
         else None
     )
+    encoders = payload.get("encoders") if isinstance(payload.get("encoders"), dict) else None
     return ParsedSensorPacket(
         distances=_parse_distances(payload),
         mpu_available=mpu_available,
         accel=accel,
         gyro=gyro,
         yaw_rate_dps=yaw_rate,
+        encoders=encoders,
     )
 
 
@@ -136,6 +139,7 @@ class SensorSnapshot:
     accel: Optional[Dict[str, float]] = None
     gyro: Optional[Dict[str, float]] = None
     yaw_rate_dps: Optional[float] = None
+    encoders: Optional[Dict[str, Dict]] = None
 
     def distance(self, direction: str) -> Optional[float]:
         return self.distances.get(direction)
@@ -151,6 +155,7 @@ class SensorSnapshot:
                 "accel": dict(self.accel) if self.accel is not None else None,
                 "gyro": dict(self.gyro) if self.gyro is not None else None,
                 "yaw_rate_dps": self.yaw_rate_dps,
+                "encoders": self.encoders,
             }
         )
         return packet
@@ -176,26 +181,33 @@ def _port_score(port_info) -> int:
     return 0
 
 
-def detect_esp32_port() -> Optional[str]:
-    """Tự tìm cổng ESP32, sau đó fallback về ttyUSB/ttyACM đầu tiên."""
+def detect_esp32_port(exclude_ports=None) -> Optional[str]:
+    """Tự tìm cổng ESP32, loại trừ các cổng đang được sử dụng (ví dụ RPLiDAR)."""
+    exclude = set(exclude_ports or [])
     if list_ports is not None:
         ports = list(list_ports.comports())
         if ports:
-            ports.sort(key=lambda item: (-_port_score(item), item.device))
-            if _port_score(ports[0]) > 0:
-                return ports[0].device
+            filtered = [p for p in ports if p.device not in exclude]
+            if filtered:
+                filtered.sort(key=lambda item: (-_port_score(item), item.device))
+                if _port_score(filtered[0]) > 0:
+                    return filtered[0].device
 
-    candidates = sorted(glob.glob("/dev/ttyUSB*") + glob.glob("/dev/ttyACM*"))
+    candidates = [
+        p for p in sorted(glob.glob("/dev/ttyUSB*") + glob.glob("/dev/ttyACM*"))
+        if p not in exclude
+    ]
     return candidates[0] if candidates else None
 
 
 class UltrasonicSerialReader:
     """Reader tương thích cũ, nay expose cả khoảng cách và dữ liệu IMU."""
 
-    def __init__(self, port="auto", baudrate=115200, reconnect_delay=1.0):
+    def __init__(self, port="auto", baudrate=115200, reconnect_delay=1.0, exclude_ports=None):
         self.configured_port = port or "auto"
         self.baudrate = int(baudrate)
         self.reconnect_delay = float(reconnect_delay)
+        self.exclude_ports = exclude_ports or []
         self._snapshot = None
         self._connection = None
         self._sequence = 0
@@ -261,7 +273,7 @@ class UltrasonicSerialReader:
     def _selected_port(self) -> Optional[str]:
         if str(self.configured_port).lower() != "auto":
             return str(self.configured_port)
-        return detect_esp32_port()
+        return detect_esp32_port(exclude_ports=self.exclude_ports)
 
     def _warn_throttled(self, key, message, interval=5.0):
         now = time.monotonic()
@@ -292,6 +304,9 @@ class UltrasonicSerialReader:
                 logger.info("Đã kết nối ESP32 tại %s @ %d baud", port, self.baudrate)
 
                 while not self._stop_event.is_set():
+                    if connection.in_waiting > 256:
+                        connection.reset_input_buffer()
+                        connection.readline(512)
                     raw_line = connection.readline(512)
                     if not raw_line:
                         continue
@@ -317,6 +332,7 @@ class UltrasonicSerialReader:
                             accel=packet.accel,
                             gyro=packet.gyro,
                             yaw_rate_dps=packet.yaw_rate_dps,
+                            encoders=packet.encoders,
                         )
                     logger.debug(
                         "Sensor #%d: ultrasonic=%s mpu_available=%s accel=%s gyro=%s yaw_rate_dps=%s",

@@ -12,13 +12,9 @@ import {
   saveZone,
   updateZone,
   deleteZone,
-  fetchCurrentMap,
-  saveCurrentLidarMap,
-  loadSavedLidarMap,
-  toggleLidarMapLock,
-  getMapWebSocketUrl,
 } from '../../../services/workflowApi';
 import { OTTO_STEP_TYPES } from './AdminWorkflowTab';
+import { Trash2, RotateCw, Compass, ChevronUp, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
 
 // Hotel Concierge Standard: Zone Templates (5 Loại Vùng Chức Năng)
 export const CONCIERGE_ZONE_TEMPLATES = [
@@ -139,8 +135,8 @@ export const getEndpointTemplateInfo = (type) => {
 };
 
 // Pi5 Connection
-const PI5_IP = import.meta.env.VITE_PI5_IP || 'localhost';
-const PI5_API = '/api/v1';
+const PI5_IP = import.meta.env.VITE_PI5_IP || '100.99.72.51';
+const PI5_API = `http://${PI5_IP}:8000/api/v1`;
 const PI5_WS = `ws://${PI5_IP}:8000/api/v1`;
 
 export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
@@ -211,40 +207,15 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
     setTimeout(() => setNotification(''), 4000);
   };
 
-  // Load Workflows, Waypoints, Functional Zones & SLAM Occupancy Grid Map
+  // Load Workflows, Waypoints & Functional Zones
   const loadAll = async () => {
     try {
-      const [wfs, wps, zs, mapRes] = await Promise.allSettled([
-        fetchWorkflows(),
-        fetchWaypoints(),
-        fetchZones(),
-        fetchCurrentMap(),
-      ]);
-
-      if (wfs.status === 'fulfilled') {
-        setWorkflows(wfs.value || []);
-        if (wfs.value && wfs.value.length > 0 && !activeWf) {
-          setActiveWf(wfs.value[0]);
-        }
-      }
-      if (wps.status === 'fulfilled') setWaypoints(wps.value || []);
-      if (zs.status === 'fulfilled') setKeepOutZones(zs.value || []);
-
-      if (mapRes.status === 'fulfilled' && mapRes.value) {
-        if (mapRes.value.grid_data && mapRes.value.grid_data.length > 0) {
-          setGridData(mapRes.value.grid_data);
-        }
-        if (mapRes.value.metadata) {
-          setGridMetadata(mapRes.value.metadata);
-        }
-        if (mapRes.value.robot_pose) {
-          setRobotPose((prev) => ({
-            ...prev,
-            x: mapRes.value.robot_pose.x,
-            y: mapRes.value.robot_pose.y,
-            yaw: mapRes.value.robot_pose.yaw,
-          }));
-        }
+      const [wfs, wps, zs] = await Promise.all([fetchWorkflows(), fetchWaypoints(), fetchZones()]);
+      setWorkflows(wfs || []);
+      setWaypoints(wps || []);
+      setKeepOutZones(zs || []);
+      if (wfs && wfs.length > 0 && !activeWf) {
+        setActiveWf(wfs[0]);
       }
     } catch {
       showNotification('Không thể tải danh sách Workflows, Waypoints hoặc Vùng Chức Năng');
@@ -257,55 +228,103 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
 
   // WebSocket for real LiDAR SLAM
   useEffect(() => {
-    let ws = null;
-    let reconnectTimer = null;
+    const ws = new WebSocket(`${PI5_WS}/map/ws`);
+    ws.onopen = () => setIsWsConnected(true);
+    ws.onclose = () => setIsWsConnected(false);
+    ws.onerror = () => setIsWsConnected(false);
 
-    const connectWs = () => {
+    ws.onmessage = (event) => {
       try {
-        const wsUrl = getMapWebSocketUrl();
-        ws = new WebSocket(wsUrl);
-
-        ws.onopen = () => {
-          setIsWsConnected(true);
-        };
-
-        ws.onclose = () => {
-          setIsWsConnected(false);
-          reconnectTimer = setTimeout(connectWs, 3000);
-        };
-
-        ws.onerror = () => {
-          setIsWsConnected(false);
-        };
-
-        ws.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data);
-            if (data.type === 'telemetry_update') {
-              if (data.robot_pose) {
-                setRobotPose({
-                  x: data.robot_pose.x,
-                  y: data.robot_pose.y,
-                  yaw: data.robot_pose.yaw,
-                  battery: data.battery ?? 98,
-                });
-              }
-              if (data.scan_points) setScanPoints(data.scan_points);
-              if (data.grid_data && data.grid_data.length > 0) setGridData(data.grid_data);
-              if (data.grid_metadata) setGridMetadata(data.grid_metadata);
-            }
-          } catch {}
-        };
-      } catch (err) {
-        setIsWsConnected(false);
-      }
+        const data = JSON.parse(event.data);
+        if (data.type === 'telemetry_update') {
+          if (data.robot_pose) {
+            setRobotPose({
+              x: data.robot_pose.x,
+              y: data.robot_pose.y,
+              yaw: data.robot_pose.yaw,
+              battery: data.battery ?? 98,
+            });
+          }
+          if (data.scan_points) setScanPoints(data.scan_points);
+          if (data.grid_data) setGridData(data.grid_data);
+          if (data.grid_metadata) setGridMetadata(data.grid_metadata);
+        }
+      } catch {}
     };
 
-    connectWs();
-
     return () => {
-      if (reconnectTimer) clearTimeout(reconnectTimer);
-      if (ws && ws.readyState === WebSocket.OPEN) ws.close();
+      if (ws.readyState === WebSocket.OPEN) ws.close();
+    };
+  }, []);
+
+  // Reset SLAM Grid Map
+  const handleResetGridMap = async () => {
+    try {
+      showNotification('Đang xóa sạch bản đồ SLAM...');
+      const res = await fetch(`${PI5_API}/map/reset_map`, { method: 'POST' });
+      const data = await res.json();
+      if (data.status === 'SUCCESS') {
+        showNotification('Bản đồ đã được xóa sạch. Vị trí robot đã đặt về (0,0).');
+        setGridData(new Array(200 * 200).fill(-1));
+        setScanPoints([]);
+        setRobotPose((prev) => ({ ...prev, x: 0, y: 0, yaw: 0 }));
+      }
+    } catch (err) {
+      showNotification('Lỗi khi xóa bản đồ: ' + err.message);
+    }
+  };
+
+  const [isScanning360, setIsScanning360] = useState(false);
+  const [showTeleopPad, setShowTeleopPad] = useState(false);
+
+  const handleScan360 = async () => {
+    setIsScanning360(true);
+    showNotification('🔄 Bắt đầu xoay 360° quét toàn cảnh phòng...');
+    try {
+      await fetch(`${PI5_API}/map/scan_360`, { method: 'POST' });
+      setTimeout(() => {
+        setIsScanning360(false);
+        showNotification('✅ Đã hoàn thành quét 360° phòng!');
+      }, 9000);
+    } catch (err) {
+      setIsScanning360(false);
+      showNotification('Lỗi khi quét 360: ' + err.message);
+    }
+  };
+
+  const handleTeleop = async (command) => {
+    try {
+      await fetch(`${PI5_API}/map/teleop`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command, speed: 40 }),
+      });
+    } catch {}
+  };
+
+  // Keyboard WASD driving listener
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
+      const key = e.key.toLowerCase();
+      if (key === 'w' || key === 'arrowup') handleTeleop('forward');
+      else if (key === 's' || key === 'arrowdown') handleTeleop('backward');
+      else if (key === 'a' || key === 'arrowleft') handleTeleop('left');
+      else if (key === 'd' || key === 'arrowright') handleTeleop('right');
+      else if (key === ' ' || key === 'x') handleTeleop('stop');
+    };
+    const handleKeyUp = (e) => {
+      if (['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
+      const key = e.key.toLowerCase();
+      if (['w', 's', 'a', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key)) {
+        handleTeleop('stop');
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
     };
   }, []);
 
@@ -722,6 +741,55 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
 
         {/* Right Quick Tools */}
         <div className="flex items-center gap-1.5">
+          {/* Reset Map Button */}
+          <button
+            type="button"
+            onClick={handleResetGridMap}
+            className="px-2.5 py-1 rounded text-xs font-bold border transition-colors cursor-pointer flex items-center gap-1.5 hover:bg-red-50 hover:text-red-700 hover:border-red-300"
+            style={{
+              backgroundColor: '#FFFFFF',
+              color: '#DC2626',
+              borderColor: '#BFBFBD',
+            }}
+            title="Xóa sạch bản đồ SLAM hiện tại và đặt lại robot về gốc (0,0)"
+          >
+            <Trash2 className="w-3.5 h-3.5 text-red-500" />
+            <span>Xóa Map</span>
+          </button>
+
+          {/* Quét 360° Button */}
+          <button
+            type="button"
+            disabled={isScanning360}
+            onClick={handleScan360}
+            className="px-2.5 py-1 rounded text-xs font-bold border transition-colors cursor-pointer flex items-center gap-1.5 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 disabled:opacity-50"
+            style={{
+              backgroundColor: isScanning360 ? '#ECFDF5' : '#FFFFFF',
+              color: '#059669',
+              borderColor: isScanning360 ? '#059669' : '#BFBFBD',
+            }}
+            title="Cho robot xoay 360 độ từ tốn để quét toàn cảnh các bức tường xung quanh phòng"
+          >
+            <RotateCw className={`w-3.5 h-3.5 text-emerald-600 ${isScanning360 ? 'animate-spin' : ''}`} />
+            <span>{isScanning360 ? 'Đang Quét 360°...' : 'Quét 360°'}</span>
+          </button>
+
+          {/* Lái Quét WASD Button */}
+          <button
+            type="button"
+            onClick={() => setShowTeleopPad(!showTeleopPad)}
+            className="px-2.5 py-1 rounded text-xs font-bold border transition-colors cursor-pointer flex items-center gap-1.5 hover:bg-stone-200"
+            style={{
+              backgroundColor: showTeleopPad ? '#262626' : '#FFFFFF',
+              color: showTeleopPad ? '#FFFFFF' : '#262626',
+              borderColor: showTeleopPad ? '#262626' : '#BFBFBD',
+            }}
+            title="Bật/Tắt bảng điều khiển W-A-S-D để lái xe đi dạo quét phòng"
+          >
+            <Compass className="w-3.5 h-3.5 text-blue-600" />
+            <span>{showTeleopPad ? '✕ Đóng Lái' : 'Lái Quét'}</span>
+          </button>
+
           {/* Pin Waypoint Tool */}
           <button
             type="button"
@@ -805,12 +873,68 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
               onCanvasClickWaypointPin={handleCanvasClickPin}
               onSelectWaypoint={handleSelectWaypointFromMap}
               onSelectZone={handleSelectZoneFromMap}
+              onResetMap={handleResetGridMap}
+              onScan360={handleScan360}
               isPinMode={isPinMode}
               showGridMap={true}
               showGridLines={true}
               showScanRays={true}
               showWaypoints={true}
             />
+
+            {/* Floating Manual WASD Teleop D-Pad */}
+            {showTeleopPad && (
+              <div className="absolute bottom-4 right-4 z-30 p-3 rounded-2xl border bg-white/95 backdrop-blur-md shadow-2xl flex flex-col items-center gap-2" style={{ borderColor: '#BFBFBD' }}>
+                <div className="flex items-center justify-between w-full border-b pb-1">
+                  <span className="text-[10px] font-bold text-stone-700 uppercase tracking-wider">Lái Quét Phòng (WASD)</span>
+                  <button onClick={() => setShowTeleopPad(false)} className="text-stone-400 hover:text-stone-800 text-xs font-bold cursor-pointer">✕</button>
+                </div>
+                <div className="flex flex-col items-center gap-1">
+                  <button
+                    onMouseDown={() => handleTeleop('forward')}
+                    onMouseUp={() => handleTeleop('stop')}
+                    className="p-2 rounded-lg border bg-stone-50 hover:bg-stone-200 active:scale-95 cursor-pointer text-stone-800"
+                    title="Tiến (W)"
+                  >
+                    <ChevronUp className="w-4 h-4" />
+                  </button>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onMouseDown={() => handleTeleop('left')}
+                      onMouseUp={() => handleTeleop('stop')}
+                      className="p-2 rounded-lg border bg-stone-50 hover:bg-stone-200 active:scale-95 cursor-pointer text-stone-800"
+                      title="Rẽ Trái (A)"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => handleTeleop('stop')}
+                      className="px-2.5 py-1.5 rounded-lg border bg-stone-200 hover:bg-stone-300 text-[10px] font-black active:scale-95 cursor-pointer text-stone-800"
+                      title="Dừng (Space/X)"
+                    >
+                      STOP
+                    </button>
+                    <button
+                      onMouseDown={() => handleTeleop('right')}
+                      onMouseUp={() => handleTeleop('stop')}
+                      className="p-2 rounded-lg border bg-stone-50 hover:bg-stone-200 active:scale-95 cursor-pointer text-stone-800"
+                      title="Rẽ Phải (D)"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <button
+                    onMouseDown={() => handleTeleop('backward')}
+                    onMouseUp={() => handleTeleop('stop')}
+                    className="p-2 rounded-lg border bg-stone-50 hover:bg-stone-200 active:scale-95 cursor-pointer text-stone-800"
+                    title="Lùi (S)"
+                  >
+                    <ChevronDown className="w-4 h-4" />
+                  </button>
+                </div>
+                <span className="text-[9px] font-mono text-stone-600">Bấm phím W-A-S-D hoặc bấm nút</span>
+              </div>
+            )}
 
             {/* Selected Waypoint Floating Action Pill */}
             {selectedWaypoint && (() => {

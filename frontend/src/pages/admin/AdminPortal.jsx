@@ -5,7 +5,6 @@ import { AdminOperationsTab } from './tabs/AdminOperationsTab';
 import { AdminRobotControlTab } from './tabs/AdminRobotControlTab';
 import { AdminKnowledgePage } from './tabs/AdminKnowledgePage';
 import { AdminStaffTab } from './tabs/AdminStaffTab';
-import { AdminAnalyticsTab } from './tabs/AdminAnalyticsTab';
 import { AdminSettingsTab } from './tabs/AdminSettingsTab';
 import { AdminLogsTab } from './tabs/AdminLogsTab';
 import {
@@ -27,10 +26,10 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
         'Knowledge',
         'Hotel Content',
         'Staff',
-        'Analytics',
         'Logs',
         'Settings',
       ];
+      if (tab === 'Analytics') return 'Dashboard';
       return validTabs.includes(tab) ? tab : 'Dashboard';
     } catch {
       return 'Dashboard';
@@ -162,7 +161,6 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
     { id: 'Knowledge',     label: 'Knowledge' },
     { id: 'Hotel Content', label: 'Hotel Content' },
     { id: 'Staff',         label: 'Staff' },
-    { id: 'Analytics',     label: 'Analytics' },
     { id: 'Logs',          label: 'Logs' },
   ];
 
@@ -175,12 +173,19 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
 
         {/* Brand */}
         <div>
-          <div className="h-16 px-5 border-b flex flex-col justify-center shrink-0" style={{ borderColor: '#BFBFBD' }}>
-            <div className="text-sm font-black tracking-tight" style={{ color: '#262626' }}>
-              RoboConcierge
-            </div>
-            <div className="text-[10px] font-semibold tracking-widest mt-0.5" style={{ color: '#8C8C8C' }}>
-              V2.4.1 — ADMIN PORTAL
+          <div className="h-16 px-4 border-b flex items-center gap-2.5 shrink-0" style={{ borderColor: '#BFBFBD' }}>
+            <img
+              src="/hc-robot-logo.png"
+              alt="HC-Robot Logo"
+              className="w-8 h-8 object-contain shrink-0 drop-shadow-xs"
+            />
+            <div className="min-w-0">
+              <div className="text-sm font-black tracking-tight truncate" style={{ color: '#262626' }}>
+                HC-ROBOT
+              </div>
+              <div className="text-[10px] font-semibold tracking-widest truncate" style={{ color: '#8C8C8C' }}>
+                ADMIN PORTAL
+              </div>
             </div>
           </div>
 
@@ -477,10 +482,6 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
 
           {activeMenu === 'Staff' && (
             <AdminStaffTab currentUser={currentUser} />
-          )}
-
-          {activeMenu === 'Analytics' && (
-            <AdminAnalyticsTab currentUser={currentUser} />
           )}
 
           {activeMenu === 'Settings' && (

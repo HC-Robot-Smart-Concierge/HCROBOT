@@ -142,100 +142,120 @@ def normalize_video_device(device):
 
 
 class OpenCVBackend(CameraBackend):
-    """Fallback backend sử dụng OpenCV (USB webcam hoặc V4L2)."""
+    """Fallback backend sử dụng OpenCV (USB webcam hoặc V4L2) với cơ chế tự động kết nối lại (Auto-reconnect)."""
 
     def __init__(self, width, height, fps, device=None):
         super().__init__(width, height, fps)
         self.device = device
         self._cap = None
         self._cv2 = None
+        self._fail_count = 0
+        self._last_reconnect_time = 0.0
+        self._lock = threading.Lock()
 
     def start(self):
-        import cv2
+        with self._lock:
+            import cv2
 
-        # Mộc/tắt log warning rác từ OpenCV (GStreamer / obsensor / V4L2 / libjpeg Corrupt JPEG data) khi quét thiết bị
-        try:
-            cv2.setLogLevel(cv2.LOG_LEVEL_ERROR)
-            suppress_c_stderr()
-        except Exception:
-            pass
-
-        self._cv2 = cv2
-        if self.device is not None:
-            # Nếu người dùng truyền chuỗi dạng số (vd '16'), convert sang int
-            candidates = [normalize_video_device(self.device)]
-        else:
-            system_devs = get_v4l2_video_devices()
-            if system_devs:
-                candidates = system_devs
-            else:
-                candidates = [0, 1, 2, 4, 10, 14, 16, 18, 20]
-
-        opened = False
-
-        for dev in candidates:
-            logger.info(f"Đang thử kết nối USB camera index/device {dev}...")
-            cap = None
             try:
-                # Ưu tiên backend V4L2 trên Linux để tối ưu latency
-                cap = cv2.VideoCapture(dev, cv2.CAP_V4L2)
-                if not cap.isOpened():
-                    cap.release()
-                    cap = cv2.VideoCapture(dev)
+                cv2.setLogLevel(cv2.LOG_LEVEL_ERROR)
+                suppress_c_stderr()
             except Exception:
-                cap = cv2.VideoCapture(dev)
+                pass
 
-            if cap and cap.isOpened():
-                # Dùng codec MJPG phần cứng từ camera USB nếu được
+            self._cv2 = cv2
+            if self.device is not None:
+                candidates = [normalize_video_device(self.device)]
+            else:
+                system_devs = get_v4l2_video_devices()
+                candidates = system_devs if system_devs else [0, 1, 2, 4, 10, 14, 16, 18, 20]
+
+            opened = False
+            for dev in candidates:
+                logger.info(f"Đang thử kết nối USB camera index/device {dev}...")
+                cap = None
                 try:
-                    fourcc = cv2.VideoWriter_fourcc(*"MJPG")
-                    cap.set(cv2.CAP_PROP_FOURCC, fourcc)
+                    cap = cv2.VideoCapture(dev, cv2.CAP_V4L2)
+                    if not cap.isOpened():
+                        cap.release()
+                        cap = cv2.VideoCapture(dev)
                 except Exception:
-                    pass
+                    cap = cv2.VideoCapture(dev)
 
-                cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
-                cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
-                cap.set(cv2.CAP_PROP_FPS, self.fps)
-                # Giữ buffer size = 1 để tránh lag / delay hình ảnh khi live stream
-                try:
-                    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-                except Exception:
-                    pass
+                if cap and cap.isOpened():
+                    try:
+                        fourcc = cv2.VideoWriter_fourcc(*"MJPG")
+                        cap.set(cv2.CAP_PROP_FOURCC, fourcc)
+                    except Exception:
+                        pass
 
-                # Đọc thử 1 frame để kiểm tra tính hợp lệ
-                ret, frame = cap.read()
-                if ret and frame is not None:
-                    self._cap = cap
-                    opened = True
-                    actual_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-                    actual_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-                    logger.info(
-                        f"✅ USB Camera kết nối thành công tại device {dev}: "
-                        f"{actual_w}x{actual_h} @ {self.fps}fps"
-                    )
-                    break
-                else:
-                    cap.release()
+                    cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
+                    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
+                    cap.set(cv2.CAP_PROP_FPS, self.fps)
+                    try:
+                        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+                    except Exception:
+                        pass
 
-        if not opened:
-            raise RuntimeError(
-                f"Không thể mở USB camera qua OpenCV (đã thử index {candidates})"
-            )
+                    ret, frame = cap.read()
+                    if ret and frame is not None:
+                        self._cap = cap
+                        opened = True
+                        actual_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                        actual_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                        self._fail_count = 0
+                        logger.info(
+                            f"✅ USB Camera kết nối thành công tại device {dev}: "
+                            f"{actual_w}x{actual_h} @ {self.fps}fps"
+                        )
+                        break
+                    else:
+                        cap.release()
+
+            if not opened:
+                raise RuntimeError(
+                    f"Không thể mở USB camera qua OpenCV (đã thử index {candidates})"
+                )
+
+    def _attempt_reconnect(self):
+        now = time.time()
+        if now - self._last_reconnect_time < 2.0:
+            return
+        self._last_reconnect_time = now
+        logger.warning("🔄 Camera mất tín hiệu hoặc đổi cổng, đang quét và tự động kết nối lại...")
+        self.stop()
+        try:
+            self.start()
+            self._fail_count = 0
+            logger.info("✅ Camera đã tự động kết nối lại thành công!")
+        except Exception as e:
+            logger.debug(f"Thử kết nối lại camera chưa thành công: {e}")
 
     def capture_jpeg(self):
-        if not self._cap or not self._cap.isOpened():
-            raise RuntimeError("Camera is not opened")
-        ret, frame = self._cap.read()
-        if not ret or frame is None:
-            raise RuntimeError("Failed to read frame from camera")
-        _, jpeg = self._cv2.imencode(
-            ".jpg", frame, [self._cv2.IMWRITE_JPEG_QUALITY, 80]
-        )
-        return jpeg.tobytes()
+        with self._lock:
+            if not self._cap or not self._cap.isOpened():
+                self._attempt_reconnect()
+                raise RuntimeError("Camera is not opened")
+
+            ret, frame = self._cap.read()
+            if not ret or frame is None:
+                self._fail_count += 1
+                if self._fail_count >= 3:
+                    self._attempt_reconnect()
+                raise RuntimeError("Failed to read frame from camera")
+
+            self._fail_count = 0
+            _, jpeg = self._cv2.imencode(
+                ".jpg", frame, [self._cv2.IMWRITE_JPEG_QUALITY, 80]
+            )
+            return jpeg.tobytes()
 
     def stop(self):
         if self._cap:
-            self._cap.release()
+            try:
+                self._cap.release()
+            except Exception:
+                pass
             self._cap = None
 
 
@@ -262,21 +282,43 @@ def create_camera_backend(width, height, fps, device=None):
 camera_backend = None
 
 
+def generate_placeholder_jpeg(text="CAMERA DISCONNECTED / RECONNECTING..."):
+    """Tạo một JPEG frame thông báo trạng thái khi camera đang kết nối lại để không bị màn hình đen."""
+    try:
+        import numpy as np
+        import cv2
+
+        img = np.zeros((480, 640, 3), dtype=np.uint8)
+        # Ve border & title
+        cv2.rectangle(img, (10, 10), (630, 470), (40, 40, 40), 2)
+        cv2.putText(img, "HC-ROBOT VIDEO FEED", (160, 200), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 200, 255), 2)
+        cv2.putText(img, text, (100, 260), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        cv2.putText(img, timestamp, (230, 310), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (180, 180, 180), 1)
+        _, jpeg = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 70])
+        return jpeg.tobytes()
+    except Exception:
+        # Fallback minimal 1x1 black JPEG byte array
+        return b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x01\x00H\x00H\x00\x00\xff\xdb\x00C\x00\x08\x06\x06\x07\x06\x05\x08\x07\x07\x07\t\t\x08\n\x0c\x14\r\x0c\x0b\x0b\x0c\x19\x12\x13\x0f\x14\x1d\x1a\x1f\x1e\x1d\x1a\x1c\x1c $.' \",#\x1c\x1c(7),01444\x1f'9=82<.342\xff\xc0\x00\x0b\x08\x00\x01\x00\x01\x01\x01\x11\x00\xff\xc4\x00\x1f\x00\x00\x01\x05\x01\x01\x01\x01\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x01\x02\x03\x04\x05\x06\x07\x08\t\n\x0b\xff\xda\x00\x08\x01\x01\x00\x00?\x00\xbf\x00\xff\xd9"
+
+
 class MJPEGHandler(BaseHTTPRequestHandler):
     """HTTP handler phát MJPEG stream và health check."""
 
     def do_GET(self):
-        if self.path == "/stream":
+        clean_path = self.path.split("?")[0]
+        if clean_path == "/stream":
             self._handle_stream()
-        elif self.path == "/health":
+        elif clean_path == "/health":
             self._handle_health()
-        elif self.path == "/":
+        elif clean_path == "/":
             self._handle_index()
         else:
             self.send_response(404)
             self.end_headers()
 
     def _handle_stream(self):
+        global camera_backend
         self.send_response(200)
         self.send_header(
             "Content-Type", "multipart/x-mixed-replace; boundary=frame"
@@ -286,15 +328,31 @@ class MJPEGHandler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
 
-        interval = 1.0 / camera_backend.fps
+        interval = 1.0 / (camera_backend.fps if camera_backend else 15)
+
+        last_backend_try = 0.0
 
         try:
             while True:
-                try:
-                    frame = camera_backend.capture_jpeg()
-                except RuntimeError:
-                    time.sleep(interval)
-                    continue
+                frame = None
+                now = time.time()
+                if camera_backend is None and (now - last_backend_try > 2.0):
+                    last_backend_try = now
+                    try:
+                        camera_backend = create_camera_backend(640, 480, 15)
+                    except Exception:
+                        camera_backend = None
+
+                if camera_backend:
+                    try:
+                        frame = camera_backend.capture_jpeg()
+                    except RuntimeError:
+                        frame = None
+
+                if frame is None:
+                    frame = generate_placeholder_jpeg("RECONNECTING CAMERA SENSOR...")
+                    time.sleep(0.5)
+
                 self.wfile.write(b"--frame\r\n")
                 self.wfile.write(b"Content-Type: image/jpeg\r\n")
                 self.wfile.write(

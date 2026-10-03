@@ -52,11 +52,18 @@ export const AuroraSidebar = ({
       <div className={`flex flex-col ${referenceLayout ? 'space-y-[48px]' : 'space-y-6'}`}>
         {/* Brand Header */}
         <div className="px-2 pt-1 flex items-center justify-between">
-          <div>
-            <h1 className="text-sm font-bold tracking-tight text-[#1A1917]">Aurora OS</h1>
-            <p className="text-[10px] font-semibold tracking-wider text-[#8C857B] uppercase mt-0.5">
-              STAFF INTERFACE
-            </p>
+          <div className="flex items-center gap-2.5">
+            <img
+              src="/hc-robot-logo.png"
+              alt="HC-Robot Logo"
+              className="w-8 h-8 object-contain shrink-0 drop-shadow-xs"
+            />
+            <div>
+              <h1 className="text-sm font-bold tracking-tight text-[#1A1917]">HC-ROBOT</h1>
+              <p className="text-[10px] font-semibold tracking-wider text-[#8C857B] uppercase mt-0.5">
+                STAFF INTERFACE
+              </p>
+            </div>
           </div>
 
           <button

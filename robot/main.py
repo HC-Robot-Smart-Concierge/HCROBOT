@@ -14,14 +14,19 @@ logger = logging.getLogger("RobotMain")
 
 
 def start_camera_stream(device=None, width=1920, height=1080, fps=15):
-    """Khởi động MJPEG Camera Stream Server độ phân giải Full HD 1080p trên background thread."""
+    """Khởi động MJPEG Camera Stream Server trên background thread với cơ chế tự phục hồi."""
     try:
         from scripts.camera_stream import create_camera_backend, ThreadedHTTPServer, MJPEGHandler
         import scripts.camera_stream as cam_module
 
-        cam_module.camera_backend = create_camera_backend(width, height, fps, device=device)
+        try:
+            cam_module.camera_backend = create_camera_backend(width, height, fps, device=device)
+        except Exception as e:
+            logger.warning(f"Camera backend chua san sang luc khoi dong ({e}), se tu dong ket noi lai khi co request...")
+            cam_module.camera_backend = None
+
         server = ThreadedHTTPServer(("0.0.0.0", 8554), MJPEGHandler)
-        logger.info("📹 Camera stream started: http://0.0.0.0:8554/stream (1080p Full HD)")
+        logger.info("📹 Camera stream started: http://0.0.0.0:8554/stream (Auto-reconnect)")
         server.serve_forever()
     except Exception as e:
         logger.error(f"Camera stream failed to start: {e}")
@@ -278,6 +283,12 @@ def build_argument_parser():
     parser.add_argument("--gpio-chip", type=int, help="Ép gpiochip; thường tự phát hiện")
     parser.add_argument("--mock", action="store_true", help="Giả lập motor nhưng vẫn đọc sensor")
     parser.add_argument("--no-camera", action="store_true", help="Không khởi động camera stream")
+    parser.add_argument("--no-lidar", action="store_true", help="Không khởi động LiDAR SLAM stream")
+    parser.add_argument(
+        "--lidar-port",
+        default=None,
+        help="Cổng Serial cho RPLiDAR (mặc định tự dò hoặc /dev/ttyUSB1)",
+    )
     parser.add_argument(
         "--camera-device",
         default=None,
@@ -334,6 +345,22 @@ def main(argv=None):
             daemon=True,
         )
         camera_thread.start()
+
+    # Bật LiDAR SLAM & WebSocket Server trên background thread (trừ khi --no-lidar)
+    if not args.no_lidar:
+        try:
+            from scripts.lidar_service import run_lidar_server, slam_core
+            if args.lidar_port:
+                slam_core.port = args.lidar_port
+            lidar_thread = threading.Thread(
+                target=run_lidar_server,
+                kwargs={"host": "0.0.0.0", "port": 8000},
+                daemon=True,
+            )
+            lidar_thread.start()
+            logger.info("📡 LiDAR SLAM Server đang chạy tại ws://0.0.0.0:8000/api/v1/map/ws")
+        except Exception as e:
+            logger.warning("Không thể khởi chạy LiDAR SLAM Server: %s", e)
 
     config = load_config()
     robot_cfg = config.get("robot", {})
@@ -395,7 +422,34 @@ def main(argv=None):
         udp_thread.start()
         _print_controls("disabled (--no-safety)", {}, 0.0, 0.0)
     else:
+        active_lidar_port = None
+        if not args.no_lidar:
+            try:
+                from scripts.lidar_service import slam_core
+                active_lidar_port = slam_core.port
+            except Exception:
+                pass
+
         port = _value(args.port, serial_cfg, "port", "auto")
+        exclude = [active_lidar_port] if active_lidar_port else []
+
+        from ultrasonic_serial import detect_esp32_port
+        if port == "auto" and not detect_esp32_port(exclude_ports=exclude):
+            logger.warning(
+                f"⚠️ Không tìm thấy cổng USB riêng cho ESP32 (cổng {active_lidar_port} đang dùng cho RPLiDAR). "
+                "Tự động chuyển sang chế độ --no-safety để điều khiển xe bình thường."
+            )
+            safety = DirectMotorSafetyWrapper(motor)
+            udp_thread = threading.Thread(
+                target=start_udp_control_listener,
+                args=(safety, 9999),
+                daemon=True,
+            )
+            udp_thread.start()
+            _print_controls("disabled (auto fallback: no ESP32 found)", {}, 0.0, 0.0)
+            run_wasd_controller(motor)
+            return 0
+
         baudrate = int(_value(args.baud, serial_cfg, "baudrate", 115200))
         stale_timeout = float(
             _value(args.sensor_timeout, safety_cfg, "stale_timeout_seconds", 0.4)
@@ -420,7 +474,7 @@ def main(argv=None):
             _value(args.turn_clearance, safety_cfg, "turn_clearance_cm", 25.0)
         )
 
-        reader = UltrasonicSerialReader(port=port, baudrate=baudrate)
+        reader = UltrasonicSerialReader(port=port, baudrate=baudrate, exclude_ports=exclude)
         safety = ObstacleSafetyController(
             motor=motor,
             sensor_reader=reader,

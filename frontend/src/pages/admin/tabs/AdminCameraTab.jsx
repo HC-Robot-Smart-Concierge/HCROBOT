@@ -25,7 +25,7 @@ import {
   Gauge,
 } from 'lucide-react';
 
-const DEFAULT_STREAM_URL = 'http://100.73.245.66:8554/stream';
+const DEFAULT_STREAM_URL = 'http://100.99.72.51:8554/stream';
 const HEALTH_CHECK_INTERVAL_MS = 5000;
 
 export const AdminCameraTab = ({ currentUser }) => {
@@ -40,10 +40,17 @@ export const AdminCameraTab = ({ currentUser }) => {
   const [showSettings, setShowSettings] = useState(false);
   const [customUrl, setCustomUrl] = useState(streamUrl);
   const [snapshotUrl, setSnapshotUrl] = useState(null);
+  const [streamKey, setStreamKey] = useState(() => Date.now());
+
+  const reloadStream = () => {
+    setStreamKey(Date.now());
+    setStreamError(false);
+    setIsStreaming(true);
+  };
 
   // Teleop Motion state
   const [activeMotion, setActiveMotion] = useState('stop');
-  const [controlIp, setControlIp] = useState('100.73.245.66');
+  const [controlIp, setControlIp] = useState(() => import.meta.env.VITE_PI5_IP || '100.99.72.51');
   const [speed, setSpeed] = useState(75);
   const speedRef = useRef(75);
 
@@ -329,6 +336,15 @@ export const AdminCameraTab = ({ currentUser }) => {
             <span>{isConnected ? 'Connected' : 'Disconnected'}</span>
           </div>
 
+          {/* Reload Stream Button */}
+          <button
+            onClick={reloadStream}
+            className="p-2 rounded-xl text-stone-500 hover:text-stone-900 hover:bg-[#EFECE6] transition-all cursor-pointer"
+            title="Tải lại luồng camera (Reload Stream)"
+          >
+            <RefreshCw className="w-4 h-4" />
+          </button>
+
           {/* Settings Toggle */}
           <button
             onClick={() => setShowSettings(!showSettings)}
@@ -412,6 +428,13 @@ export const AdminCameraTab = ({ currentUser }) => {
           {/* Right: Action Buttons */}
           <div className="flex items-center gap-1.5">
             <button
+              onClick={reloadStream}
+              className="p-1.5 rounded-lg bg-black/60 backdrop-blur-md text-white/80 hover:text-white border border-white/10 transition-all cursor-pointer"
+              title="Tải lại kết nối luồng camera"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+            </button>
+            <button
               onClick={takeSnapshot}
               disabled={!isStreaming || streamError}
               className="p-1.5 rounded-lg bg-black/60 backdrop-blur-md text-white/80 hover:text-white border border-white/10 transition-all cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
@@ -447,8 +470,9 @@ export const AdminCameraTab = ({ currentUser }) => {
         {/* MJPEG Stream Image */}
         {isStreaming ? (
           <img
+            key={streamKey}
             ref={imgRef}
-            src={streamUrl}
+            src={`${streamUrl}${streamUrl.includes('?') ? '&' : '?'}t=${streamKey}`}
             alt="Pi5 Camera Stream"
             crossOrigin="anonymous"
             onError={handleStreamError}

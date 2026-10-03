@@ -91,8 +91,13 @@ class TTSService:
             return "", "audio/mp3", "none"
 
         selected_provider = (provider or settings.TTS_PROVIDER or "edge").lower()
-        is_vi = self.is_vietnamese(text) or (language and "vi" in language.lower())
-        target_voice = self.default_vi_voice if is_vi else (voice or self.default_en_voice)
+        if language and any(en in language.lower() for en in ["en", "english"]):
+            target_voice = voice or self.default_en_voice
+        elif language and any(vi in language.lower() for vi in ["vi", "vietnamese"]):
+            target_voice = voice or self.default_vi_voice
+        else:
+            is_vi = self.is_vietnamese(text)
+            target_voice = (voice or self.default_vi_voice) if is_vi else (voice or self.default_en_voice)
 
         # 0. KIỂM TRA AUDIO CACHE TRƯỚC (< 1ms)
         cache_key = self._get_cache_key(text, selected_provider, target_voice)
@@ -141,7 +146,7 @@ class TTSService:
             if not clean_text:
                 return None
 
-            communicate = edge_tts.Communicate(clean_text, voice)
+            communicate = edge_tts.Communicate(clean_text, voice, rate="+10%")
             audio_bytes = b""
             async for chunk in communicate.stream():
                 if chunk["type"] == "audio":
@@ -164,8 +169,13 @@ class TTSService:
 
         try:
             import edge_tts
-            is_vi = self.is_vietnamese(text) or (language and "vi" in language.lower())
-            target_voice = voice or (self.default_vi_voice if is_vi else self.default_en_voice)
+            if language and any(en in language.lower() for en in ["en", "english"]):
+                target_voice = voice or self.default_en_voice
+            elif language and any(vi in language.lower() for vi in ["vi", "vietnamese"]):
+                target_voice = voice or self.default_vi_voice
+            else:
+                is_vi = self.is_vietnamese(text)
+                target_voice = (voice or self.default_vi_voice) if is_vi else (voice or self.default_en_voice)
             clean_text = re.sub(r'[*#_`\[\]()]', '', text).strip()
             if not clean_text:
                 return b""
@@ -176,7 +186,7 @@ class TTSService:
                 with open(disk_path, "rb") as f:
                     return f.read()
 
-            communicate = edge_tts.Communicate(clean_text, target_voice)
+            communicate = edge_tts.Communicate(clean_text, target_voice, rate="+10%")
             audio_bytes = b""
             async for chunk in communicate.stream():
                 if chunk["type"] == "audio":

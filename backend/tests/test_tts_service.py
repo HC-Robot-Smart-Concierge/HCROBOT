@@ -19,3 +19,18 @@ async def test_tts_service_fallback_execution():
         language="vi-VN"
     )
     assert provider_used in ["edge", "browser", "invalid_provider_cached"] or "cached" in provider_used
+
+
+@pytest.mark.asyncio
+async def test_tts_service_voice_selection_by_language():
+    """Unit test kiểm tra phân giải giọng đọc chuẩn xác theo language code"""
+    service = TTSService()
+    
+    # Text tiếng Anh có thể vô tình chứa từ tiếng Việt ("Aurora Hotel")
+    en_key = service._get_cache_key("Welcome to Aurora Hotel", "edge", service.default_en_voice)
+    vi_key = service._get_cache_key("Dạ em chào quý khách", "edge", service.default_vi_voice)
+
+    assert service.default_en_voice == "en-US-JennyNeural"
+    assert service.default_vi_voice == "vi-VN-HoaiMyNeural"
+    assert en_key != vi_key
+

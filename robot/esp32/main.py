@@ -1,30 +1,94 @@
-"""ESP32 MicroPython entry point: four HC-SR04 sensors plus MPU-6500/9250."""
+"""ESP32 MicroPython Production Firmware:
+- 4x Independent L298N Motor Control (PWM + Direction)
+- 4x Independent Quadrature Motor Encoders (Ticks + Direction + RPM)
+- 4x Sequential HC-SR04 Ultrasonic Sensors
+- 1x MPU-9250 / MPU-6500 IMU (I2C)
+- Safety Watchdog: Auto-stops motors if Pi communication is lost
+- Bidirectional Non-blocking Serial Protocol (JSON Lines Telemetry + Commands)
+"""
 
 try:
     import ujson as json
 except ImportError:
     import json
 
+import sys
 import time
+import uselect
 from machine import I2C, Pin
 
+from encoder import EncoderManager, QuadratureEncoder
+from motor import DCMotor, FourWheelDrive
 from mpu import ROBOT_AXIS_MAP, detect_mpu
 from ultrasonic import create_sensors, read_ultrasonic_packet
 
+# ==============================================================================
+# 1. GPIO PIN DEFINITIONS & HARDWARE ASSIGNMENTS
+# ==============================================================================
 
+# --- EXISTING OCCUPIED HARDWARE (DO NOT MODIFY OR REASSIGN) ---
+# Ultrasonic (HC-SR04):
+#   FRONT: Trig=GPIO18, Echo=GPIO34 (Input only)
+#   REAR:  Trig=GPIO19, Echo=GPIO35 (Input only)
+#   LEFT:  Trig=GPIO21, Echo=GPIO32
+#   RIGHT: Trig=GPIO22, Echo=GPIO33
+# MPU-9250 / 6500:
+#   I2C SDA=GPIO25, SCL=GPIO26
 I2C_ID = 0
 I2C_SDA_PIN = 25
 I2C_SCL_PIN = 26
 I2C_FREQUENCY_HZ = 400_000
 I2C_FALLBACK_FREQUENCY_HZ = 100_000
 
+# --- USER MOTOR CONFIGURATION (L298N) ---
+# Configure your physical wiring below.
+# Set en_pin to None if you keep jumpers on ENA/ENB and control speed via IN1/IN2.
+MOTOR_CONFIG = {
+    # Motor 1 (e.g., Front-Left)
+    "m1": {"in1": 13, "in2": 12, "en": 14, "invert": False},
+    # Motor 2 (e.g., Front-Right)
+    "m2": {"in1": 27, "in2": 4,  "en": 5,  "invert": False},
+    # Motor 3 (e.g., Rear-Left)
+    "m3": {"in1": 15, "in2": 2,  "en": 16, "invert": False},
+    # Motor 4 (e.g., Rear-Right)
+    "m4": {"in1": 17, "in2": 23, "en": 0,  "invert": False},
+}
+
+# --- USER ENCODER CONFIGURATION (JGA25-370 Quadrature A/B) ---
+# IMPORTANT: Enter your actual physical wired GPIOs for each motor encoder.
+# If your ESP32 board uses Sensor_VP (GPIO36) or Sensor_VN (GPIO39), they can only be inputs.
+#
+# CPR (Counts Per Revolution):
+# Formula: CPR = Motor_Base_PPR (typically 11 for JGA25-370) * 4 * Gear_Ratio
+# Example: 11 * 4 * 34 = 1496 CPR.
+DEFAULT_ENCODER_CPR = 330.0  # <--- USER CONFIGURABLE: Enter actual CPR here
+
+ENCODER_CONFIG = {
+    # Motor 1 Encoder
+    "m1": {"pin_a": 36, "pin_b": 39, "cpr": DEFAULT_ENCODER_CPR, "invert": False},
+    # Motor 2 Encoder
+    "m2": {"pin_a": 34, "pin_b": 35, "cpr": DEFAULT_ENCODER_CPR, "invert": False},
+    # Motor 3 Encoder
+    "m3": {"pin_a": 32, "pin_b": 33, "cpr": DEFAULT_ENCODER_CPR, "invert": False},
+    # Motor 4 Encoder
+    "m4": {"pin_a": 27, "pin_b": 14, "cpr": DEFAULT_ENCODER_CPR, "invert": False},
+}
+
+# ==============================================================================
+# 2. SYSTEM PARAMETERS
+# ==============================================================================
+DEBUG = False  # Set to True for verbose periodic console debug logs
+COMMAND_TIMEOUT_MS = 1000  # Safety watchdog: Stop motors if no command within 1.0s
+UPDATE_PERIOD_MS = 125     # Telemetry rate: 8 Hz (125ms per packet)
 GYRO_CALIBRATION_SAMPLES = 300
 GYRO_CALIBRATION_DELAY_MS = 5
 MPU_RETRY_MS = 5_000
 MPU_FAILURE_LIMIT = 3
-UPDATE_PERIOD_MS = 125
 
 
+# ==============================================================================
+# 3. MPU I2C DRIVER HELPER
+# ==============================================================================
 def create_i2c(frequency=I2C_FREQUENCY_HZ):
     return I2C(
         I2C_ID,
@@ -34,32 +98,19 @@ def create_i2c(frequency=I2C_FREQUENCY_HZ):
     )
 
 
-def scan_i2c(i2c):
-    addresses = i2c.scan()
-    print("# I2C scan: {}".format(["0x{:02X}".format(a) for a in addresses]))
-    return addresses
-
-
 def start_mpu(i2c):
-    scan_i2c(i2c)
-    mpu = detect_mpu(i2c, axis_map=ROBOT_AXIS_MAP)
-    if mpu is None:
-        print("# WARN MPU not found at 0x68 or 0x69; ultrasonic remains active")
-        return None
-
-    print(
-        "# MPU detected: {} address=0x{:02X} WHO_AM_I=0x{:02X} magnetometer={}".format(
-            mpu.device_name,
-            mpu.address,
-            mpu.who_am_i,
-            mpu.has_magnetometer,
+    try:
+        mpu = detect_mpu(i2c, axis_map=ROBOT_AXIS_MAP)
+        if mpu is None:
+            return None
+        mpu.calibrate_gyro(
+            samples=GYRO_CALIBRATION_SAMPLES,
+            delay_ms=GYRO_CALIBRATION_DELAY_MS,
         )
-    )
-    mpu.calibrate_gyro(
-        samples=GYRO_CALIBRATION_SAMPLES,
-        delay_ms=GYRO_CALIBRATION_DELAY_MS,
-    )
-    return mpu
+        return mpu
+    except Exception as exc:
+        print("# WARN MPU init error:", exc)
+        return None
 
 
 def empty_mpu_payload():
@@ -79,29 +130,163 @@ def initialize_mpu_bus():
             mpu = start_mpu(last_i2c)
             if mpu is not None:
                 return last_i2c, mpu
-            if frequency == I2C_FREQUENCY_HZ:
-                print("# MPU absent at 400kHz; retrying I2C at 100kHz")
         except Exception as exc:
-            print(
-                "# WARN MPU startup at {}Hz failed: {}".format(frequency, exc)
-            )
+            print("# WARN I2C init failed:", exc)
     return last_i2c, None
 
 
+# ==============================================================================
+# 4. HARDWARE INITIALIZATION
+# ==============================================================================
+def init_motors():
+    """Initialize all 4 DC Motors with safety stop on startup."""
+    m1 = DCMotor(MOTOR_CONFIG["m1"]["in1"], MOTOR_CONFIG["m1"]["in2"], MOTOR_CONFIG["m1"]["en"], invert=MOTOR_CONFIG["m1"]["invert"])
+    m2 = DCMotor(MOTOR_CONFIG["m2"]["in1"], MOTOR_CONFIG["m2"]["in2"], MOTOR_CONFIG["m2"]["en"], invert=MOTOR_CONFIG["m2"]["invert"])
+    m3 = DCMotor(MOTOR_CONFIG["m3"]["in1"], MOTOR_CONFIG["m3"]["in2"], MOTOR_CONFIG["m3"]["en"], invert=MOTOR_CONFIG["m3"]["invert"])
+    m4 = DCMotor(MOTOR_CONFIG["m4"]["in1"], MOTOR_CONFIG["m4"]["in2"], MOTOR_CONFIG["m4"]["en"], invert=MOTOR_CONFIG["m4"]["invert"])
+    drive = FourWheelDrive(m1, m2, m3, m4)
+    drive.stopAll()
+    return drive
+
+
+def init_encoders():
+    """Initialize all 4 Quadrature Encoders."""
+    e1 = QuadratureEncoder(ENCODER_CONFIG["m1"]["pin_a"], ENCODER_CONFIG["m1"]["pin_b"], ENCODER_CONFIG["m1"]["cpr"], ENCODER_CONFIG["m1"]["invert"])
+    e2 = QuadratureEncoder(ENCODER_CONFIG["m2"]["pin_a"], ENCODER_CONFIG["m2"]["pin_b"], ENCODER_CONFIG["m2"]["cpr"], ENCODER_CONFIG["m2"]["invert"])
+    e3 = QuadratureEncoder(ENCODER_CONFIG["m3"]["pin_a"], ENCODER_CONFIG["m3"]["pin_b"], ENCODER_CONFIG["m3"]["cpr"], ENCODER_CONFIG["m3"]["invert"])
+    e4 = QuadratureEncoder(ENCODER_CONFIG["m4"]["pin_a"], ENCODER_CONFIG["m4"]["pin_b"], ENCODER_CONFIG["m4"]["cpr"], ENCODER_CONFIG["m4"]["invert"])
+    return EncoderManager(e1, e2, e3, e4)
+
+
+# ==============================================================================
+# 5. NON-BLOCKING SERIAL COMMAND PARSER
+# ==============================================================================
+class SerialCommandParser:
+    """Non-blocking stream parser reading commands from Raspberry Pi."""
+
+    def __init__(self, drive: FourWheelDrive):
+        self.drive = drive
+        self.poll = uselect.poll()
+        self.poll.register(sys.stdin, uselect.POLLIN)
+        self.buffer = ""
+        self.debug_mode = DEBUG
+
+    def check_commands(self) -> bool:
+        """Polls serial input. Returns True if a valid motor command was executed."""
+        command_received = False
+
+        while self.poll.poll(0):
+            char = sys.stdin.read(1)
+            if not char:
+                break
+            if char in ("\n", "\r"):
+                line = self.buffer.strip()
+                self.buffer = ""
+                if line:
+                    if self._execute_line(line):
+                        command_received = True
+            else:
+                self.buffer += char
+                if len(self.buffer) > 128:  # Overflow guard
+                    self.buffer = ""
+
+        return command_received
+
+    def _execute_line(self, line: str) -> bool:
+        upper = line.upper()
+
+        if upper == "STOP":
+            self.drive.stopAll()
+            if self.debug_mode:
+                print("# [RECV] STOP -> All motors stopped")
+            return True
+
+        if upper.startswith("DEBUG:"):
+            val = upper.split(":")[1].strip()
+            self.debug_mode = (val in ("1", "TRUE", "ON"))
+            print("# Debug mode set to:", self.debug_mode)
+            return False
+
+        # Protocol: M:s1,s2,s3,s4
+        if upper.startswith("M:"):
+            parts = line[2:].split(",")
+            if len(parts) == 4:
+                try:
+                    s1 = int(parts[0].strip())
+                    s2 = int(parts[1].strip())
+                    s3 = int(parts[2].strip())
+                    s4 = int(parts[3].strip())
+                    self.drive.setAllSpeeds(s1, s2, s3, s4)
+                    if self.debug_mode:
+                        print("# [RECV] M: {}, {}, {}, {}".format(s1, s2, s3, s4))
+                    return True
+                except ValueError:
+                    if self.debug_mode:
+                        print("# [WARN] Bad M command syntax:", line)
+            return False
+
+        # Protocol: M1:speed, M2:speed, etc.
+        for motor_id in (1, 2, 3, 4):
+            prefix = "M{}:".format(motor_id)
+            if upper.startswith(prefix):
+                try:
+                    speed = int(line[len(prefix):].strip())
+                    self.drive.setMotorSpeed(motor_id, speed)
+                    if self.debug_mode:
+                        print("# [RECV] M{}: {}".format(motor_id, speed))
+                    return True
+                except ValueError:
+                    pass
+
+        return False
+
+
+# ==============================================================================
+# 6. MAIN SYSTEM LOOP
+# ==============================================================================
 def run():
+    print("# ESP32 4-Wheel Robot Firmware Starting...")
+
+    # Hardware init
+    drive = init_motors()
+    encoders = init_encoders()
     sensors = create_sensors()
-    time.sleep_ms(100)
+    time.sleep_ms(50)
 
     i2c, mpu = initialize_mpu_bus()
+    cmd_parser = SerialCommandParser(drive)
 
-    failure_count = 0
+    last_command_time = time.ticks_ms()
     last_retry_ms = time.ticks_ms()
+    failure_count = 0
+    motors_active = False
+
+    print("# System initialized. Motors STOPPED until command received.")
 
     while True:
         cycle_started = time.ticks_ms()
+
+        # 1. Process incoming commands from Raspberry Pi (non-blocking)
+        received = cmd_parser.check_commands()
+        if received:
+            last_command_time = cycle_started
+            motors_active = True
+
+        # 2. Safety Watchdog Check
+        if motors_active and time.ticks_diff(cycle_started, last_command_time) >= COMMAND_TIMEOUT_MS:
+            drive.stopAll()
+            motors_active = False
+            if cmd_parser.debug_mode:
+                print("# [WATCHDOG] Communication timeout! Motors STOPPED.")
+
+        # 3. Update Encoder RPM and Ticks
+        encoders.updateAll()
+
+        # 4. Read Ultrasonic Sensors
         packet = read_ultrasonic_packet(sensors)
         packet.update(empty_mpu_payload())
 
+        # 5. Read MPU-9250 / 6500 IMU
         if mpu is not None:
             try:
                 reading = mpu.read_all()
@@ -112,20 +297,28 @@ def run():
                 failure_count = 0
             except (OSError, RuntimeError, ValueError) as exc:
                 failure_count += 1
-                print("# WARN MPU read failed ({}/{}): {}".format(
-                    failure_count, MPU_FAILURE_LIMIT, exc
-                ))
                 if failure_count >= MPU_FAILURE_LIMIT:
                     mpu = None
                     last_retry_ms = time.ticks_ms()
-
         elif time.ticks_diff(time.ticks_ms(), last_retry_ms) >= MPU_RETRY_MS:
             last_retry_ms = time.ticks_ms()
             i2c, mpu = initialize_mpu_bus()
             failure_count = 0
 
+        # 6. Attach Encoder Telemetry to Output Packet
+        packet["encoders"] = encoders.getAllSnapshot()
+
+        # 7. Print Received Debug Information if enabled
+        if cmd_parser.debug_mode:
+            print("# M1 RPM: {:6.1f} | Ticks: {:6d}".format(encoders.getMotorRPM(1), encoders.getEncoderTicks(1)))
+            print("# M2 RPM: {:6.1f} | Ticks: {:6d}".format(encoders.getMotorRPM(2), encoders.getEncoderTicks(2)))
+            print("# M3 RPM: {:6.1f} | Ticks: {:6d}".format(encoders.getMotorRPM(3), encoders.getEncoderTicks(3)))
+            print("# M4 RPM: {:6.1f} | Ticks: {:6d}".format(encoders.getMotorRPM(4), encoders.getEncoderTicks(4)))
+
+        # 8. Transmit JSON Line to Raspberry Pi
         print(json.dumps(packet))
 
+        # 9. Maintain update cycle rate
         elapsed_ms = time.ticks_diff(time.ticks_ms(), cycle_started)
         remaining_ms = UPDATE_PERIOD_MS - elapsed_ms
         if remaining_ms > 0:
@@ -136,4 +329,4 @@ if __name__ == "__main__":
     try:
         run()
     except KeyboardInterrupt:
-        print("# Sensor loop stopped")
+        print("# Firmware stopped safely.")

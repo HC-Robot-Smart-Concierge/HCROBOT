@@ -20,10 +20,10 @@
 
 // --- EXISTING OCCUPIED HARDWARE (DO NOT MODIFY OR REASSIGN) ---
 // Ultrasonic Sensors (HC-SR04):
-#define PIN_TRIG_FRONT 19
-#define PIN_ECHO_FRONT 35 // Input only
-#define PIN_TRIG_REAR  18
-#define PIN_ECHO_REAR  34 // Input only
+#define PIN_TRIG_FRONT 18
+#define PIN_ECHO_FRONT 34 // Input only
+#define PIN_TRIG_REAR  19
+#define PIN_ECHO_REAR  35 // Input only
 #define PIN_TRIG_LEFT  21
 #define PIN_ECHO_LEFT  32
 #define PIN_TRIG_RIGHT 22

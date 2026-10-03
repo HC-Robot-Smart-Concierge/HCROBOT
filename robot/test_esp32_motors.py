@@ -1,8 +1,12 @@
-"""Script kiểm tra động cơ và encoder ESP32 từ Raspberry Pi qua Serial.
+"""Script kiểm tra encoder & telemetry ESP32 từ Raspberry Pi.
+
+Hỗ trợ:
+1. Chế độ MONITOR (mặc định): Đọc và hiển thị xung Encoder M1..M4, Ultrasonic, MPU từ ESP32 theo thời gian thực.
+2. Chế độ DRIVE TEST (--drive-pi): Bật motor chạy từ chân GPIO Pi (L298N) và đọc xung phản hồi từ ESP32.
 
 Chạy trên Raspberry Pi:
-    python3 test_esp32_motors.py --port auto
     python3 test_esp32_motors.py --port /dev/ttyUSB0
+    python3 test_esp32_motors.py --port /dev/ttyUSB0 --drive-pi
 """
 
 import argparse
@@ -12,105 +16,106 @@ import sys
 import serial
 from ultrasonic_serial import detect_esp32_port
 
+try:
+    from motor_controller import MotorController
+    HAS_PI_MOTOR = True
+except Exception:
+    HAS_PI_MOTOR = False
 
-def test_motor_suite(port: str, baud: int = 115200):
-    print("=" * 65)
-    print(f"  KIỂM TRA 4 ĐỘNG CƠ & ENCODER ESP32 ({port} @ {baud})")
-    print("=" * 65)
+
+def monitor_encoders(port: str, baud: int = 115200, drive_pi: bool = False):
+    print("=" * 70)
+    print(f"  GIÁM SÁT 4 ENCODER ESP32 ({port} @ {baud})")
+    print("  M1: GPIO 4/5 | M2: GPIO 13/14 | M3: GPIO 16/17 | M4: GPIO 23/27")
+    print("=" * 70)
 
     try:
         ser = serial.Serial(port, baud, timeout=0.2)
-        time.sleep(1.0) # Chờ ESP32 khởi động lại khi mở cổng DTR
+        time.sleep(1.0)
     except Exception as e:
         print(f"[LỖI] Không thể mở cổng Serial {port}: {e}")
         return
 
-    # Bật chế độ DEBUG trên ESP32
+    # Bật debug mode
     ser.write(b"DEBUG:1\n")
-    time.sleep(0.1)
 
-    def read_responses(duration_sec=1.0):
-        deadline = time.time() + duration_sec
-        while time.time() < deadline:
-            line = ser.readline().decode('utf-8', errors='ignore').strip()
-            if line:
-                if line.startswith("#"):
-                    print(f"  [ESP32] {line}")
-                elif line.startswith("{"):
-                    try:
-                        data = json.loads(line)
-                        encs = data.get("encoders", {})
-                        if encs:
-                            print(f"  [ENCODERS] M1: {encs.get('m1', {}).get('rpm')} RPM (ticks: {encs.get('m1', {}).get('ticks')}) | "
-                                  f"M2: {encs.get('m2', {}).get('rpm')} RPM (ticks: {encs.get('m2', {}).get('ticks')}) | "
-                                  f"M3: {encs.get('m3', {}).get('rpm')} RPM (ticks: {encs.get('m3', {}).get('ticks')}) | "
-                                  f"M4: {encs.get('m4', {}).get('rpm')} RPM (ticks: {encs.get('m4', {}).get('ticks')})")
-                    except Exception:
-                        pass
+    pi_motor = None
+    if drive_pi and HAS_PI_MOTOR:
+        print("[INFO] Khởi tạo MotorController trên Raspberry Pi (BCM 17, 27, 22, 23)...")
+        try:
+            pi_motor = MotorController(left_forward_pin=17, left_backward_pin=27,
+                                       right_forward_pin=22, right_backward_pin=23)
+            print("[OK] Đã kết nối phần cứng Motor L298N trên Pi.")
+        except Exception as e:
+            print(f"[!] Không khởi tạo được motor trên Pi: {e}")
+            pi_motor = None
+
+    print("\n[HƯỚNG DẪN] Bạn hãy dùng tay XOAY TỪNG BÁNH XE để thấy số ticks và RPM thay đổi!")
+    print("Nhấn CTRL+C để dừng chương trình bất cứ lúc nào.\n")
+    print(f"{'MOTOR 1 (4,5)':<20} | {'MOTOR 2 (13,14)':<20} | {'MOTOR 3 (16,17)':<20} | {'MOTOR 4 (23,27)':<20}")
+    print("-" * 88)
+
+    last_print_time = 0
 
     try:
-        # 1. Test Motor 1
-        print("\n--> [1/5] Kiểm tra Motor 1 (Tiến speed=180 trong 2s)...")
-        for _ in range(10): # Giữ watchdog bằng cách gửi liên tục
-            ser.write(b"M1:180\n")
-            read_responses(0.2)
-        ser.write(b"STOP\n")
-        read_responses(0.5)
+        if pi_motor:
+            print("\n--> [TEST PI MOTOR] Cho motor chạy TIẾN trong 3 giây...")
+            pi_motor.move_forward()
 
-        # 2. Test Motor 2
-        print("\n--> [2/5] Kiểm tra Motor 2 (Tiến speed=180 trong 2s)...")
-        for _ in range(10):
-            ser.write(b"M2:180\n")
-            read_responses(0.2)
-        ser.write(b"STOP\n")
-        read_responses(0.5)
+        start_time = time.time()
+        while True:
+            # Nếu đang chạy test drive pi, tự dừng sau 3s
+            if pi_motor and (time.time() - start_time > 3.0):
+                pi_motor.stop()
+                print("\n--> [TEST PI MOTOR] Đã dừng motor.")
+                pi_motor = None
 
-        # 3. Test Motor 3
-        print("\n--> [3/5] Kiểm tra Motor 3 (Tiến speed=180 trong 2s)...")
-        for _ in range(10):
-            ser.write(b"M3:180\n")
-            read_responses(0.2)
-        ser.write(b"STOP\n")
-        read_responses(0.5)
+            line = ser.readline().decode('utf-8', errors='ignore').strip()
+            if not line:
+                continue
 
-        # 4. Test Motor 4
-        print("\n--> [4/5] Kiểm tra Motor 4 (Tiến speed=180 trong 2s)...")
-        for _ in range(10):
-            ser.write(b"M4:180\n")
-            read_responses(0.2)
-        ser.write(b"STOP\n")
-        read_responses(0.5)
+            if line.startswith("{"):
+                try:
+                    data = json.loads(line)
+                    encs = data.get("encoders")
+                    if encs and (time.time() - last_print_time >= 0.15):
+                        last_print_time = time.time()
+                        m1 = encs.get("m1", {})
+                        m2 = encs.get("m2", {})
+                        m3 = encs.get("m3", {})
+                        m4 = encs.get("m4", {})
 
-        # 5. Test cả 4 motor đồng thời
-        print("\n--> [5/5] Kiểm tra CẢ 4 MOTOR TIẾN (M:180,180,180,180 trong 3s)...")
-        for _ in range(15):
-            ser.write(b"M:180,180,180,180\n")
-            read_responses(0.2)
+                        s1 = f"{m1.get('rpm', 0.0):>5.1f} RPM ({m1.get('ticks', 0):>6d})"
+                        s2 = f"{m2.get('rpm', 0.0):>5.1f} RPM ({m2.get('ticks', 0):>6d})"
+                        s3 = f"{m3.get('rpm', 0.0):>5.1f} RPM ({m3.get('ticks', 0):>6d})"
+                        s4 = f"{m4.get('rpm', 0.0):>5.1f} RPM ({m4.get('ticks', 0):>6d})"
 
-        print("\n--> Dừng tất cả motor (STOP)...")
-        ser.write(b"STOP\n")
-        read_responses(1.0)
-
-        print("\n[THÀNH CÔNG] Hoàn tất kiểm tra!")
+                        sys.stdout.write(f"\r{s1:<20} | {s2:<20} | {s3:<20} | {s4:<20}")
+                        sys.stdout.flush()
+                except Exception:
+                    pass
 
     except KeyboardInterrupt:
-        print("\n[!] Người dùng bấm dừng test. Gửi lệnh STOP khẩn cấp...")
-        ser.write(b"STOP\n")
+        print("\n\n[!] Dừng giám sát.")
     finally:
+        if pi_motor:
+            pi_motor.stop()
+            pi_motor.cleanup()
         ser.close()
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Test 4 motors and encoders via ESP32")
+    parser = argparse.ArgumentParser(description="Monitor 4 encoders from ESP32")
     parser.add_argument("--port", default="auto", help="Serial port (auto or /dev/ttyUSB0)")
     parser.add_argument("--baud", type=int, default=115200, help="Baud rate (default 115200)")
+    parser.add_argument("--drive-pi", action="store_true", help="Bật motor từ Raspberry Pi trong 3 giây để test encoder")
     args = parser.parse_args()
 
     port = args.port
     if port == "auto":
         port = detect_esp32_port()
         if not port:
-            print("[LỖI] Không tìm thấy ESP32 tự động. Vui lòng cắm cáp USB hoặc chỉ định --port.")
+            print("[LỖI] Không tìm thấy ESP32 tự động. Vui lòng chỉ định --port /dev/ttyUSB0.")
             sys.exit(1)
 
-    test_motor_suite(port, args.baud)
+    monitor_encoders(port, args.baud, args.drive_pi)

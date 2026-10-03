@@ -40,38 +40,34 @@ I2C_SCL_PIN = 26
 I2C_FREQUENCY_HZ = 400_000
 I2C_FALLBACK_FREQUENCY_HZ = 100_000
 
-# --- USER MOTOR CONFIGURATION (L298N) ---
-# Configure your physical wiring below.
-# Set en_pin to None if you keep jumpers on ENA/ENB and control speed via IN1/IN2.
+# --- MOTOR CONTROLLER MODE ---
+# L298N IN1/IN2/IN3/IN4 are plugged directly into Raspberry Pi GPIO.
+# Set ENABLE_ESP32_MOTOR_OUTPUT = False so ESP32 does NOT claim or interfere with any motor pins.
+ENABLE_ESP32_MOTOR_OUTPUT = False
+
 MOTOR_CONFIG = {
-    # Motor 1 (e.g., Front-Left)
-    "m1": {"in1": 13, "in2": 12, "en": 14, "invert": False},
-    # Motor 2 (e.g., Front-Right)
-    "m2": {"in1": 27, "in2": 4,  "en": 5,  "invert": False},
-    # Motor 3 (e.g., Rear-Left)
-    "m3": {"in1": 15, "in2": 2,  "en": 16, "invert": False},
-    # Motor 4 (e.g., Rear-Right)
-    "m4": {"in1": 17, "in2": 23, "en": 0,  "invert": False},
+    "m1": {"in1": None, "in2": None, "en": None, "invert": False},
+    "m2": {"in1": None, "in2": None, "en": None, "invert": False},
+    "m3": {"in1": None, "in2": None, "en": None, "invert": False},
+    "m4": {"in1": None, "in2": None, "en": None, "invert": False},
 }
 
-# --- USER ENCODER CONFIGURATION (JGA25-370 Quadrature A/B) ---
-# IMPORTANT: Enter your actual physical wired GPIOs for each motor encoder.
-# If your ESP32 board uses Sensor_VP (GPIO36) or Sensor_VN (GPIO39), they can only be inputs.
-#
-# CPR (Counts Per Revolution):
-# Formula: CPR = Motor_Base_PPR (typically 11 for JGA25-370) * 4 * Gear_Ratio
-# Example: 11 * 4 * 34 = 1496 CPR.
+# --- EXACT PHYSICAL ENCODER CONFIGURATION (JGA25-370 Quadrature A/B) ---
+# Motor 1: Phase A = GPIO 4,  Phase B = GPIO 5
+# Motor 2: Phase A = GPIO 13, Phase B = GPIO 14
+# Motor 3: Phase A = GPIO 16, Phase B = GPIO 17
+# Motor 4: Phase A = GPIO 23, Phase B = GPIO 27
 DEFAULT_ENCODER_CPR = 330.0  # <--- USER CONFIGURABLE: Enter actual CPR here
 
 ENCODER_CONFIG = {
     # Motor 1 Encoder
-    "m1": {"pin_a": 36, "pin_b": 39, "cpr": DEFAULT_ENCODER_CPR, "invert": False},
+    "m1": {"pin_a": 4,  "pin_b": 5,  "cpr": DEFAULT_ENCODER_CPR, "invert": False},
     # Motor 2 Encoder
-    "m2": {"pin_a": 34, "pin_b": 35, "cpr": DEFAULT_ENCODER_CPR, "invert": False},
+    "m2": {"pin_a": 13, "pin_b": 14, "cpr": DEFAULT_ENCODER_CPR, "invert": False},
     # Motor 3 Encoder
-    "m3": {"pin_a": 32, "pin_b": 33, "cpr": DEFAULT_ENCODER_CPR, "invert": False},
+    "m3": {"pin_a": 16, "pin_b": 17, "cpr": DEFAULT_ENCODER_CPR, "invert": False},
     # Motor 4 Encoder
-    "m4": {"pin_a": 27, "pin_b": 14, "cpr": DEFAULT_ENCODER_CPR, "invert": False},
+    "m4": {"pin_a": 23, "pin_b": 27, "cpr": DEFAULT_ENCODER_CPR, "invert": False},
 }
 
 # ==============================================================================
@@ -140,6 +136,10 @@ def initialize_mpu_bus():
 # ==============================================================================
 def init_motors():
     """Initialize all 4 DC Motors with safety stop on startup."""
+    if not ENABLE_ESP32_MOTOR_OUTPUT:
+        print("# Note: ESP32 motor outputs disabled (L298N driven by Raspberry Pi)")
+        return None
+
     m1 = DCMotor(MOTOR_CONFIG["m1"]["in1"], MOTOR_CONFIG["m1"]["in2"], MOTOR_CONFIG["m1"]["en"], invert=MOTOR_CONFIG["m1"]["invert"])
     m2 = DCMotor(MOTOR_CONFIG["m2"]["in1"], MOTOR_CONFIG["m2"]["in2"], MOTOR_CONFIG["m2"]["en"], invert=MOTOR_CONFIG["m2"]["invert"])
     m3 = DCMotor(MOTOR_CONFIG["m3"]["in1"], MOTOR_CONFIG["m3"]["in2"], MOTOR_CONFIG["m3"]["en"], invert=MOTOR_CONFIG["m3"]["invert"])
@@ -164,7 +164,7 @@ def init_encoders():
 class SerialCommandParser:
     """Non-blocking stream parser reading commands from Raspberry Pi."""
 
-    def __init__(self, drive: FourWheelDrive):
+    def __init__(self, drive):
         self.drive = drive
         self.poll = uselect.poll()
         self.poll.register(sys.stdin, uselect.POLLIN)
@@ -196,7 +196,8 @@ class SerialCommandParser:
         upper = line.upper()
 
         if upper == "STOP":
-            self.drive.stopAll()
+            if self.drive:
+                self.drive.stopAll()
             if self.debug_mode:
                 print("# [RECV] STOP -> All motors stopped")
             return True
@@ -216,7 +217,8 @@ class SerialCommandParser:
                     s2 = int(parts[1].strip())
                     s3 = int(parts[2].strip())
                     s4 = int(parts[3].strip())
-                    self.drive.setAllSpeeds(s1, s2, s3, s4)
+                    if self.drive:
+                        self.drive.setAllSpeeds(s1, s2, s3, s4)
                     if self.debug_mode:
                         print("# [RECV] M: {}, {}, {}, {}".format(s1, s2, s3, s4))
                     return True
@@ -231,7 +233,8 @@ class SerialCommandParser:
             if upper.startswith(prefix):
                 try:
                     speed = int(line[len(prefix):].strip())
-                    self.drive.setMotorSpeed(motor_id, speed)
+                    if self.drive:
+                        self.drive.setMotorSpeed(motor_id, speed)
                     if self.debug_mode:
                         print("# [RECV] M{}: {}".format(motor_id, speed))
                     return True
@@ -274,7 +277,8 @@ def run():
 
         # 2. Safety Watchdog Check
         if motors_active and time.ticks_diff(cycle_started, last_command_time) >= COMMAND_TIMEOUT_MS:
-            drive.stopAll()
+            if drive:
+                drive.stopAll()
             motors_active = False
             if cmd_parser.debug_mode:
                 print("# [WATCHDOG] Communication timeout! Motors STOPPED.")

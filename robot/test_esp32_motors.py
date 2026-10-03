@@ -34,14 +34,15 @@ def run_interactive_suite(port: str, baud: int = 115200, enable_control: bool = 
     print("=" * 80)
 
     try:
-        ser = serial.Serial(port, baud, timeout=0.1)
+        ser = serial.Serial(port, baud, timeout=0.05)
         time.sleep(0.5)
+        ser.reset_input_buffer()
     except Exception as e:
         print(f"[LỖI] Không thể mở cổng Serial {port}: {e}")
         return
 
-    # Bật debug mode trên ESP32
-    ser.write(b"DEBUG:1\n")
+    # Tắt spam comment debug, chỉ nhận JSON siêu tốc
+    ser.write(b"DEBUG:0\n")
 
     config = load_config() if load_config else {}
     gpio_cfg = config.get("robot", {}).get("gpio", {})
@@ -103,11 +104,23 @@ def run_interactive_suite(port: str, baud: int = 115200, enable_control: bool = 
     try:
         while True:
             # 1. Đọc dữ liệu cảm biến & encoder từ ESP32
-            line = ser.readline().decode('utf-8', errors='ignore').strip()
+            # Drain toàn bộ hàng đợi tồn đọng để luôn xử lý gói tin MỚI NHẤT tức thì (<10ms)
+            latest_json_line = None
+            if ser.in_waiting > 128:
+                # Nếu buffer bị dồn ứ, xả hết chỉ giữ dòng cuối cùng
+                raw_all = ser.read(ser.in_waiting).decode('utf-8', errors='ignore')
+                for line_part in raw_all.splitlines():
+                    line_part = line_part.strip()
+                    if line_part.startswith("{") and line_part.endswith("}"):
+                        latest_json_line = line_part
+            else:
+                line = ser.readline().decode('utf-8', errors='ignore').strip()
+                if line.startswith("{") and line.endswith("}"):
+                    latest_json_line = line
 
-            if line and line.startswith("{"):
+            if latest_json_line:
                 try:
-                    data = json.loads(line)
+                    data = json.loads(latest_json_line)
                     dist_front = data.get("front")
                     dist_rear = data.get("rear")
                     dist_left = data.get("left")

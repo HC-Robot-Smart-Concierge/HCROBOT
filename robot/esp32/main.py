@@ -312,14 +312,7 @@ def run():
         # 6. Attach Encoder Telemetry to Output Packet
         packet["encoders"] = encoders.getAllSnapshot()
 
-        # 7. Print Received Debug Information if enabled
-        if cmd_parser.debug_mode:
-            print("# M1 RPM: {:6.1f} | Ticks: {:6d}".format(encoders.getMotorRPM(1), encoders.getEncoderTicks(1)))
-            print("# M2 RPM: {:6.1f} | Ticks: {:6d}".format(encoders.getMotorRPM(2), encoders.getEncoderTicks(2)))
-            print("# M3 RPM: {:6.1f} | Ticks: {:6d}".format(encoders.getMotorRPM(3), encoders.getEncoderTicks(3)))
-            print("# M4 RPM: {:6.1f} | Ticks: {:6d}".format(encoders.getMotorRPM(4), encoders.getEncoderTicks(4)))
-
-        # 8. Transmit JSON Line to Raspberry Pi
+        # 7. Transmit JSON Line to Raspberry Pi (Clean high-speed telemetry)
         print(json.dumps(packet))
 
         # 9. Maintain update cycle rate

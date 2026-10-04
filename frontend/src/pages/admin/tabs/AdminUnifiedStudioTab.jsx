@@ -25,7 +25,7 @@ export const CONCIERGE_ZONE_TEMPLATES = [
     color: '#DC2626',
     bgColor: '#FEF2F2',
     borderColor: '#FCA5A5',
-    icon: '🚫',
+    icon: '',
     description: 'Cầu thang bộ, khu vực bảo trì, bếp. Robot tuyệt đối không đi vào hay qua.',
   },
   {
@@ -35,7 +35,7 @@ export const CONCIERGE_ZONE_TEMPLATES = [
     color: '#D97706',
     bgColor: '#FFFBEB',
     borderColor: '#FDE68A',
-    icon: '⚠️',
+    icon: '',
     description: 'Khu vực đông người qua lại sảnh. Tự động hạ vận tốc tối đa (0.3 m/s).',
   },
   {
@@ -45,7 +45,7 @@ export const CONCIERGE_ZONE_TEMPLATES = [
     color: '#6366F1',
     bgColor: '#EEF2FF',
     borderColor: '#C7D2FE',
-    icon: '🔇',
+    icon: '',
     description: 'Phòng hội nghị, VIP Lounge. Robot tự động tắt tiếng/loa thoại.',
   },
   {
@@ -55,7 +55,7 @@ export const CONCIERGE_ZONE_TEMPLATES = [
     color: '#059669',
     bgColor: '#ECFDF5',
     borderColor: '#A7F3D0',
-    icon: '👋',
+    icon: '',
     description: 'Sảnh đón khách chính. Bật AI Person Detector chủ động tiếp cận chào khách.',
   },
   {
@@ -65,7 +65,7 @@ export const CONCIERGE_ZONE_TEMPLATES = [
     color: '#0284C7',
     bgColor: '#F0F9FF',
     borderColor: '#BAE6FD',
-    icon: '🛎️',
+    icon: '',
     description: 'Hành lang ưu tiên di chuyển phục vụ đồ uống và thông báo.',
   },
 ];
@@ -733,7 +733,7 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
             {isWsConnected ? 'RPLIDAR ONLINE' : 'SIMULATION MODE'}
           </span>
           {notification && (
-            <span className="text-[11px] font-semibold text-emerald-700 animate-pulse pl-2 border-l" style={{ borderColor: '#BFBFBD' }}>
+            <span className="text-[11px] font-semibold text-[#262626] animate-pulse pl-2 border-l" style={{ borderColor: '#BFBFBD' }}>
               {notification}
             </span>
           )}
@@ -745,15 +745,15 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
           <button
             type="button"
             onClick={handleResetGridMap}
-            className="px-2.5 py-1 rounded text-xs font-bold border transition-colors cursor-pointer flex items-center gap-1.5 hover:bg-red-50 hover:text-red-700 hover:border-red-300"
+            className="px-2.5 py-1 rounded text-xs font-bold border transition-colors cursor-pointer flex items-center gap-1.5 hover:bg-[#E9E5DC]"
             style={{
               backgroundColor: '#FFFFFF',
-              color: '#DC2626',
+              color: '#262626',
               borderColor: '#BFBFBD',
             }}
             title="Xóa sạch bản đồ SLAM hiện tại và đặt lại robot về gốc (0,0)"
           >
-            <Trash2 className="w-3.5 h-3.5 text-red-500" />
+            <Trash2 className="w-3.5 h-3.5 text-[#262626]" />
             <span>Xóa Map</span>
           </button>
 
@@ -762,15 +762,15 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
             type="button"
             disabled={isScanning360}
             onClick={handleScan360}
-            className="px-2.5 py-1 rounded text-xs font-bold border transition-colors cursor-pointer flex items-center gap-1.5 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 disabled:opacity-50"
+            className="px-2.5 py-1 rounded text-xs font-bold border transition-colors cursor-pointer flex items-center gap-1.5 hover:bg-[#E9E5DC] disabled:opacity-50"
             style={{
-              backgroundColor: isScanning360 ? '#ECFDF5' : '#FFFFFF',
-              color: '#059669',
-              borderColor: isScanning360 ? '#059669' : '#BFBFBD',
+              backgroundColor: isScanning360 ? '#262626' : '#FFFFFF',
+              color: isScanning360 ? '#F2EFE9' : '#262626',
+              borderColor: isScanning360 ? '#262626' : '#BFBFBD',
             }}
             title="Cho robot xoay 360 độ từ tốn để quét toàn cảnh các bức tường xung quanh phòng"
           >
-            <RotateCw className={`w-3.5 h-3.5 text-emerald-600 ${isScanning360 ? 'animate-spin' : ''}`} />
+            <RotateCw className={`w-3.5 h-3.5 ${isScanning360 ? 'animate-spin text-[#F2EFE9]' : 'text-[#262626]'}`} />
             <span>{isScanning360 ? 'Đang Quét 360°...' : 'Quét 360°'}</span>
           </button>
 
@@ -778,15 +778,15 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
           <button
             type="button"
             onClick={() => setShowTeleopPad(!showTeleopPad)}
-            className="px-2.5 py-1 rounded text-xs font-bold border transition-colors cursor-pointer flex items-center gap-1.5 hover:bg-stone-200"
+            className="px-2.5 py-1 rounded text-xs font-bold border transition-colors cursor-pointer flex items-center gap-1.5 hover:bg-[#E9E5DC]"
             style={{
               backgroundColor: showTeleopPad ? '#262626' : '#FFFFFF',
-              color: showTeleopPad ? '#FFFFFF' : '#262626',
+              color: showTeleopPad ? '#F2EFE9' : '#262626',
               borderColor: showTeleopPad ? '#262626' : '#BFBFBD',
             }}
             title="Bật/Tắt bảng điều khiển W-A-S-D để lái xe đi dạo quét phòng"
           >
-            <Compass className="w-3.5 h-3.5 text-blue-600" />
+            <Compass className={`w-3.5 h-3.5 ${showTeleopPad ? 'text-[#F2EFE9]' : 'text-[#262626]'}`} />
             <span>{showTeleopPad ? '✕ Đóng Lái' : 'Lái Quét'}</span>
           </button>
 
@@ -794,7 +794,7 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
           <button
             type="button"
             onClick={() => setIsPinMode(!isPinMode)}
-            className="px-2.5 py-1 rounded text-xs font-bold border transition-colors cursor-pointer"
+            className="px-2.5 py-1 rounded text-xs font-bold border transition-colors cursor-pointer hover:bg-[#E9E5DC]"
             style={{
               backgroundColor: isPinMode ? '#262626' : '#FFFFFF',
               color: isPinMode ? '#F2EFE9' : '#262626',
@@ -808,8 +808,8 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
           <button
             type="button"
             onClick={() => handleOpenAddZoneModal()}
-            className="px-2.5 py-1 rounded text-xs font-bold border transition-colors cursor-pointer"
-            style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD', color: '#D97706' }}
+            className="px-2.5 py-1 rounded text-xs font-bold border transition-colors cursor-pointer hover:bg-[#E9E5DC]"
+            style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD', color: '#262626' }}
             title="Thêm mới Vùng Chức Năng (Vùng cấm, giảm tốc, yên lặng VIP, đón khách AI)"
           >
             + Vùng Chức Năng
@@ -820,17 +820,17 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
             type="button"
             disabled={isSimulating}
             onClick={handleStartSimulation}
-            className="px-3 py-1 rounded text-xs font-bold transition-opacity cursor-pointer disabled:opacity-50"
+            className="px-3 py-1 rounded text-xs font-bold transition-opacity cursor-pointer disabled:opacity-50 hover:opacity-90"
             style={{ backgroundColor: '#262626', color: '#F2EFE9' }}
           >
             {isSimulating ? 'Đang chạy...' : '▶ Mô Phỏng'}
           </button>
 
-          {/* Toggle Workflow Studio Pop-up Button (Không dùng icon ⚡) */}
+          {/* Toggle Workflow Studio Pop-up Button */}
           <button
             type="button"
             onClick={() => setIsPanelOpen(!isPanelOpen)}
-            className="px-2.5 py-1 rounded text-xs font-bold border transition-all cursor-pointer flex items-center gap-1.5 shadow-xs"
+            className="px-2.5 py-1 rounded text-xs font-bold border transition-all cursor-pointer flex items-center gap-1.5 shadow-xs hover:bg-[#E9E5DC]"
             style={{
               backgroundColor: isPanelOpen ? '#262626' : '#FFFFFF',
               color: isPanelOpen ? '#F2EFE9' : '#262626',
@@ -843,7 +843,7 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
               <span
                 className="px-1.5 py-0.2 rounded-full text-[9px] font-bold"
                 style={{
-                  backgroundColor: isPanelOpen ? '#8B5CF6' : '#262626',
+                  backgroundColor: isPanelOpen ? '#8C8C8C' : '#262626',
                   color: '#FFFFFF',
                 }}
               >

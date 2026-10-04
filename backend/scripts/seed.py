@@ -634,20 +634,8 @@ def seed_chroma():
 # 6b. WAYPOINTS & WORKFLOWS
 # ==============================================================================
 async def seed_waypoints_and_workflows(session):
-    logger.info("📍 [6b/7] Seeding Default Robot Waypoints...")
-    wp_check = await session.execute(select(RobotWaypoint).limit(1))
-    if wp_check.scalar_one_or_none() is None:
-        default_waypoints = [
-            RobotWaypoint(id="wp-reception", name="Quầy Lễ Tân", x=0.0, y=0.0, yaw=0.0, floor="Sảnh Tầng 1", type="DOCKING_TARGET", description="Điểm dừng tiếp đón khách và làm thủ tục check-in sảnh chính"),
-            RobotWaypoint(id="wp-lounge", name="Sảnh Lounge & Coffee", x=2.5, y=4.0, yaw=90.0, floor="Sảnh Tầng 1", type="SERVICE_STATION", description="Khu vực nghỉ chờ và thưởng thức đồ uống sảnh chính"),
-            RobotWaypoint(id="wp-vip-table", name="Bàn Tiếp Khách VIP 01", x=5.0, y=2.5, yaw=45.0, floor="Sảnh Tầng 1", type="GUEST_TABLE", description="Khu vực bàn tiếp đón khách VIP tại sảnh Tầng 1"),
-            RobotWaypoint(id="wp-elevator", name="Sảnh Thang Máy A", x=-3.0, y=5.0, yaw=180.0, floor="Sảnh Tầng 1", type="WAYPOINT", description="Điểm mốc điều hướng robot tại hành lang thang máy sảnh Tầng 1"),
-        ]
-        session.add_all(default_waypoints)
-        await session.commit()
-        logger.info("   ✅ Seeded 4 default waypoints.")
-    else:
-        logger.info("   ℹ️ Waypoints already exist, skipping.")
+    logger.info("📍 [6b/7] Skipping default map waypoints (Clean slate for custom mapping).")
+
 
 
 # ==============================================================================

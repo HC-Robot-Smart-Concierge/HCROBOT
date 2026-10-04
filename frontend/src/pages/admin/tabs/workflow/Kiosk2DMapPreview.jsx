@@ -84,7 +84,7 @@ export const Kiosk2DMapPreview = ({ activeStep }) => {
           <text x="295" y="65" fill="#94a3b8" fontSize="8" fontWeight="bold" textAnchor="middle">THANG MÁY A</text>
 
           <rect x="230" y="115" width="120" height="75" rx="10" fill="rgba(6, 182, 212, 0.12)" stroke="#22d3ee" strokeWidth="1" strokeDasharray="3,3" />
-          <text x="290" y="155" fill="#38bdf8" fontSize="9" fontWeight="bold" textAnchor="middle">🍽️ NHÀ HÀNG TẦNG 1</text>
+          <text x="290" y="155" fill="#38bdf8" fontSize="9" fontWeight="bold" textAnchor="middle">NHÀ HÀNG TẦNG 1</text>
 
           {/* All Waypoint Dots */}
           {Object.entries(WAYPOINT_POSITIONS).map(([key, wp]) => {
@@ -138,7 +138,7 @@ export const Kiosk2DMapPreview = ({ activeStep }) => {
             <circle cx="0" cy="0" r="10" fill="rgba(6, 182, 212, 0.4)" />
             <circle cx="0" cy="0" r="5.5" fill="#06b6d4" stroke="#ffffff" strokeWidth="2" />
             <text x="0" y="17" fill="#7dd3fc" fontSize="8" fontWeight="bold" textAnchor="middle">
-              🤖 RC-001
+              RC-001
             </text>
           </g>
         </svg>

@@ -189,24 +189,39 @@ export const LidarCanvas = ({
         }
       }
 
-      // 3. Polar Radar Circles
+      // 3. Professional Cartesian Coordinate Grid Mesh (1m x 1m)
       if (showGridLines) {
-        ctx.strokeStyle = 'rgba(120, 113, 108, 0.15)';
+        // Calculate visible range in world meters
+        const xMin = Math.floor((0 - origin.px) / scale) - 1;
+        const xMax = Math.ceil((width - origin.px) / scale) + 1;
+        const yMin = Math.floor((origin.py - height) / scale) - 1;
+        const yMax = Math.ceil((origin.py - 0) / scale) + 1;
+
+        // Minor Grid Lines (1m intervals)
+        ctx.strokeStyle = 'rgba(140, 133, 123, 0.15)';
         ctx.lineWidth = 1;
-        ctx.fillStyle = '#78716C';
-        ctx.font = '10px Inter, sans-serif';
 
-        for (let r = 1; r <= 8; r++) {
-          const radiusPx = r * scale;
+        for (let x = xMin; x <= xMax; x++) {
+          if (x === 0) continue;
+          const p = worldToCanvas(x, 0, width, height);
           ctx.beginPath();
-          ctx.arc(origin.px, origin.py, radiusPx, 0, Math.PI * 2);
+          ctx.moveTo(p.px, 0);
+          ctx.lineTo(p.px, height);
           ctx.stroke();
-
-          ctx.fillText(`${r}.0m`, origin.px + 6, origin.py - radiusPx + 12);
         }
 
-        // Axes N-S-E-W
-        ctx.strokeStyle = 'rgba(120, 113, 108, 0.25)';
+        for (let y = yMin; y <= yMax; y++) {
+          if (y === 0) continue;
+          const p = worldToCanvas(0, y, width, height);
+          ctx.beginPath();
+          ctx.moveTo(0, p.py);
+          ctx.lineTo(width, p.py);
+          ctx.stroke();
+        }
+
+        // Major Coordinate Axes at Origin (0,0)
+        ctx.strokeStyle = 'rgba(38, 38, 38, 0.35)';
+        ctx.lineWidth = 1.5;
         ctx.beginPath();
         ctx.moveTo(origin.px, 0);
         ctx.lineTo(origin.px, height);
@@ -214,12 +229,45 @@ export const LidarCanvas = ({
         ctx.lineTo(width, origin.py);
         ctx.stroke();
 
-        ctx.fillStyle = '#1A1917';
-        ctx.font = 'bold 11px Inter, sans-serif';
-        ctx.fillText('N', origin.px - 4, 18);
-        ctx.fillText('S', origin.px - 4, height - 10);
-        ctx.fillText('E', width - 18, origin.py + 4);
-        ctx.fillText('W', 10, origin.py + 4);
+        // Meter labels along axes
+        ctx.fillStyle = '#8C8C8C';
+        ctx.font = '10px Inter, monospace';
+        for (let x = xMin; x <= xMax; x++) {
+          if (x !== 0 && x % 2 === 0) {
+            const p = worldToCanvas(x, 0, width, height);
+            ctx.fillText(`${x > 0 ? '+' : ''}${x}m`, p.px + 2, origin.py + 12);
+          }
+        }
+        for (let y = yMin; y <= yMax; y++) {
+          if (y !== 0 && y % 2 === 0) {
+            const p = worldToCanvas(0, y, width, height);
+            ctx.fillText(`${y > 0 ? '+' : ''}${y}m`, origin.px + 4, p.py - 2);
+          }
+        }
+
+        // ROS 2 Coordinate Triad at Origin (0,0) - Minimalist Palette
+        const axisLen = Math.max(scale * 0.6, 24);
+
+        // +X Axis (Forward / Primary Charcoal #262626)
+        ctx.strokeStyle = '#262626';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(origin.px, origin.py);
+        ctx.lineTo(origin.px + axisLen, origin.py);
+        ctx.stroke();
+        ctx.fillStyle = '#262626';
+        ctx.font = 'bold 9px Inter, sans-serif';
+        ctx.fillText('+X', origin.px + axisLen + 3, origin.py + 3);
+
+        // +Y Axis (Left / Neutral Slate #8C8C8C)
+        ctx.strokeStyle = '#8C8C8C';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(origin.px, origin.py);
+        ctx.lineTo(origin.px, origin.py - axisLen);
+        ctx.stroke();
+        ctx.fillStyle = '#8C8C8C';
+        ctx.fillText('+Y', origin.px - 6, origin.py - axisLen - 4);
       }
 
       // 4. Render Real LiDAR Scan Points & Laser Rays (Dark points)
@@ -229,7 +277,7 @@ export const LidarCanvas = ({
       if (scanPoints && scanPoints.length > 0) {
         // Laser Rays
         if (showScanRays) {
-          ctx.strokeStyle = 'rgba(24, 24, 27, 0.15)';
+          ctx.strokeStyle = 'rgba(38, 38, 38, 0.12)';
           ctx.lineWidth = 1;
           scanPoints.forEach((pt) => {
             const ptCanvas = worldToCanvas(pt.x, pt.y, width, height);
@@ -243,33 +291,33 @@ export const LidarCanvas = ({
         // Laser Scan Point Cloud
         scanPoints.forEach((pt) => {
           const ptCanvas = worldToCanvas(pt.x, pt.y, width, height);
-          ctx.fillStyle = '#18181B';
+          ctx.fillStyle = '#262626';
           ctx.beginPath();
           ctx.arc(ptCanvas.px, ptCanvas.py, 2.2, 0, Math.PI * 2);
           ctx.fill();
 
-          ctx.fillStyle = 'rgba(24, 24, 27, 0.2)';
+          ctx.fillStyle = 'rgba(38, 38, 38, 0.18)';
           ctx.beginPath();
           ctx.arc(ptCanvas.px, ptCanvas.py, 4.0, 0, Math.PI * 2);
           ctx.fill();
         });
       }
 
-      // 5. Render Functional Zones & Virtual Walls (Hotel Concierge Standard)
+      // 5. Render Functional Zones & Virtual Walls (Hotel Concierge Standard - Palette Tones)
       if (keepOutZones && keepOutZones.length > 0) {
         const getZoneStyle = (type) => {
           switch (type) {
             case 'SLOW_SPEED':
-              return { fill: 'rgba(245, 158, 11, 0.14)', stroke: '#D97706', text: '#B45309', icon: '⚠️' };
+              return { fill: 'rgba(191, 191, 189, 0.25)', stroke: '#8C8C8C', text: '#262626', tag: '[GIẢM TỐC]' };
             case 'SILENT_ZONE':
-              return { fill: 'rgba(99, 102, 241, 0.14)', stroke: '#6366F1', text: '#4338CA', icon: '🔇' };
+              return { fill: 'rgba(233, 229, 220, 0.45)', stroke: '#8C8C8C', text: '#262626', tag: '[YÊN LẶNG]' };
             case 'GREETING_ZONE':
-              return { fill: 'rgba(16, 185, 129, 0.14)', stroke: '#10B981', text: '#047857', icon: '👋' };
+              return { fill: 'rgba(242, 239, 233, 0.60)', stroke: '#262626', text: '#262626', tag: '[ĐÓN KHÁCH]' };
             case 'SERVICE_PRIORITY':
-              return { fill: 'rgba(2, 132, 199, 0.14)', stroke: '#0284C7', text: '#0369A1', icon: '🛎️' };
+              return { fill: 'rgba(191, 191, 189, 0.35)', stroke: '#262626', text: '#262626', tag: '[DỊCH VỤ]' };
             case 'KEEP_OUT':
             default:
-              return { fill: 'rgba(239, 68, 68, 0.14)', stroke: '#DC2626', text: '#B91C1C', icon: '🚫' };
+              return { fill: 'rgba(38, 38, 38, 0.12)', stroke: '#262626', text: '#262626', tag: '[VÙNG CẤM]' };
           }
         };
 
@@ -285,23 +333,23 @@ export const LidarCanvas = ({
           ctx.fillRect(topLeft.px, topLeft.py, wPx, hPx);
 
           // Border Dash & Stroke
-          ctx.strokeStyle = isSelected ? '#18181B' : style.stroke;
-          ctx.lineWidth = isSelected ? 2.5 : 1.5;
+          ctx.strokeStyle = isSelected ? '#262626' : style.stroke;
+          ctx.lineWidth = isSelected ? 2 : 1.2;
           ctx.setLineDash(isSelected ? [] : [5, 4]);
           ctx.strokeRect(topLeft.px, topLeft.py, wPx, hPx);
           ctx.setLineDash([]);
 
           // Selection Outline Overlay
           if (isSelected) {
-            ctx.strokeStyle = style.stroke;
+            ctx.strokeStyle = '#262626';
             ctx.lineWidth = 1;
             ctx.strokeRect(topLeft.px - 3, topLeft.py - 3, wPx + 6, hPx + 6);
           }
 
-          // Label Text & Icon
+          // Label Text (No emoji)
           ctx.fillStyle = style.text;
           ctx.font = 'bold 9px Inter, sans-serif';
-          const label = `${style.icon} ${zone.name || 'VÙNG CHỨC NĂNG'}`;
+          const label = `${zone.name || 'VÙNG CHỨC NĂNG'} ${style.tag}`;
           ctx.fillText(label, topLeft.px + 4, topLeft.py + 12);
 
           if (zone.type === 'SLOW_SPEED' && zone.speed_limit) {
@@ -311,14 +359,14 @@ export const LidarCanvas = ({
         });
       }
 
-      // 6. Render Workflow Trajectory Polyline (Otto style path connecting steps)
+      // 6. Render Workflow Trajectory Polyline (Palette style path connecting steps)
       if (workflowSteps && workflowSteps.length > 0 && waypoints.length > 0) {
         const moveSteps = workflowSteps.filter((s) => s.type === 'MOVE');
         if (moveSteps.length > 0) {
           ctx.save();
-          ctx.strokeStyle = '#8B5CF6'; // Otto purple trajectory
-          ctx.lineWidth = 2.5;
-          ctx.setLineDash([6, 4]);
+          ctx.strokeStyle = '#8C8C8C';
+          ctx.lineWidth = 2;
+          ctx.setLineDash([5, 4]);
 
           ctx.beginPath();
           ctx.moveTo(robotCanvasPos.px, robotCanvasPos.py);
@@ -340,20 +388,20 @@ export const LidarCanvas = ({
         }
       }
 
-      // 7. Render Waypoints / Endpoints Overlay (Otto Motors Style)
+      // 7. Render Waypoints / Endpoints Overlay (Hotel Concierge Palette Style)
       if (showWaypoints && waypoints.length > 0) {
         const getEndpointColor = (type) => {
           switch (type) {
             case 'DOCKING_TARGET':
-              return '#0284C7'; // Sky / Quầy neo tiếp khách
+              return '#262626';
             case 'PICKUP_DROPOFF':
-              return '#059669'; // Emerald / Giao nhận đồ
+              return '#404040';
             case 'SERVICE_STATION':
-              return '#6366F1'; // Indigo / Trạm dịch vụ
+              return '#595959';
             case 'PARKING_SPOT':
-              return '#64748B'; // Slate / Bãi đỗ
+              return '#8C8C8C';
             default:
-              return '#8B5CF6'; // Violet / Waypoint
+              return '#262626';
           }
         };
 
@@ -362,17 +410,17 @@ export const LidarCanvas = ({
           const isHighlighted = wp.id === highlightedWaypointId;
           const nodeColor = getEndpointColor(wp.type);
 
-          // Otto Motors halo ring for active/selected waypoint
+          // Halo ring for active/selected waypoint
           if (isHighlighted) {
-            ctx.strokeStyle = nodeColor;
-            ctx.lineWidth = 3;
+            ctx.strokeStyle = '#262626';
+            ctx.lineWidth = 2;
             ctx.beginPath();
-            ctx.arc(wpPos.px, wpPos.py, 15, 0, Math.PI * 2);
+            ctx.arc(wpPos.px, wpPos.py, 14, 0, Math.PI * 2);
             ctx.stroke();
 
-            ctx.fillStyle = `${nodeColor}33`; // 20% opacity
+            ctx.fillStyle = 'rgba(38, 38, 38, 0.12)';
             ctx.beginPath();
-            ctx.arc(wpPos.px, wpPos.py, 15, 0, Math.PI * 2);
+            ctx.arc(wpPos.px, wpPos.py, 14, 0, Math.PI * 2);
             ctx.fill();
           }
 
@@ -502,48 +550,22 @@ export const LidarCanvas = ({
 
         <div className="h-4 w-px bg-[#DDD8CE] my-auto mx-1" />
 
-        <span className="text-[11px] font-mono text-stone-700 font-bold">
-          SCALE: {scale.toFixed(0)} px/m
-        </span>
-
-        {onResetMap && (
-          <>
-            <div className="h-4 w-px bg-[#DDD8CE] my-auto mx-1" />
-            <button
-              onClick={onResetMap}
-              className="px-2.5 py-1 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg transition-colors cursor-pointer flex items-center gap-1 font-bold text-[11px] border border-red-200 shadow-2xs"
-              title="Xóa sạch toàn bộ bản đồ SLAM hiện tại"
-            >
-              <Trash2 className="w-3.5 h-3.5 text-red-500" />
-              <span>Xóa Map</span>
-            </button>
-          </>
-        )}
-
-        {onScan360 && (
-          <>
-            <div className="h-4 w-px bg-[#DDD8CE] my-auto mx-1" />
-            <button
-              onClick={onScan360}
-              className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 font-bold text-[11px] border border-emerald-300 shadow-2xs"
-              title="Robot quay 360 độ quét toàn cảnh các bức tường xung quanh phòng"
-            >
-              <RotateCw className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Quét 360°</span>
-            </button>
-          </>
-        )}
+        {/* Dynamic Physical Scale Ruler (1 Meter) */}
+        <div className="flex items-center gap-1.5 pl-1 font-mono text-[11px] text-stone-700 select-none" title="Thước đo tỉ lệ thực tế 1 mét">
+          <div className="h-1.5 border-b border-l border-r border-stone-800" style={{ width: `${Math.max(15, Math.round(scale))}px` }} />
+          <span>1m</span>
+        </div>
       </div>
 
       {/* Selected Target HUD or Pin Mode HUD */}
       {isPinMode ? (
-        <div className="absolute top-4 right-4 z-10 flex items-center gap-2 bg-[#262626] text-[#F2EFE9] border border-[#262626] px-3.5 py-2 rounded-xl text-xs font-bold shadow-md animate-pulse">
-          <Crosshair className="w-4 h-4 text-emerald-400" />
+        <div className="absolute top-4 right-4 z-10 flex items-center gap-2 bg-[#262626] text-[#F2EFE9] border border-[#262626] px-3.5 py-2 rounded-xl text-xs font-bold shadow-md">
+          <Crosshair className="w-4 h-4 text-[#F2EFE9]" />
           <span>CHẾ ĐỘ GHIM WAYPOINT: Click trên bản đồ để chọn tọa độ</span>
         </div>
       ) : selectedGoal && (
-        <div className="absolute top-4 right-4 z-10 flex items-center gap-2 bg-white/95 border border-[#E5E1D8] backdrop-blur-md px-3.5 py-2 rounded-xl text-stone-900 text-xs shadow-md animate-fadeIn">
-          <Crosshair className="w-4 h-4 text-stone-900 animate-spin" />
+        <div className="absolute top-4 right-4 z-10 flex items-center gap-2 bg-white/95 border border-[#BFBFBD] backdrop-blur-md px-3.5 py-2 rounded-xl text-[#262626] text-xs shadow-md animate-fadeIn">
+          <Crosshair className="w-4 h-4 text-[#262626] animate-spin" />
           <span>
             MỤC TIÊU: <strong>X={selectedGoal.x}m</strong>, <strong>Y={selectedGoal.y}m</strong>
           </span>
@@ -562,18 +584,18 @@ export const LidarCanvas = ({
       />
 
       {/* Bottom Minimal Legend */}
-      <div className="absolute bottom-3 left-4 z-10 flex items-center gap-4 bg-white/95 backdrop-blur-md px-4 py-1.5 rounded-lg border border-[#E5E1D8] text-[11px] text-stone-700 shadow-sm">
+      <div className="absolute bottom-3 left-4 z-10 flex items-center gap-4 bg-white/95 backdrop-blur-md px-4 py-1.5 rounded-lg border border-[#BFBFBD] text-[11px] text-[#262626] shadow-xs">
         <div className="flex items-center gap-1.5">
-          <div className="w-2.5 h-2.5 rounded-full bg-[#18181B]" />
-          <span>Point Cloud</span>
+          <div className="w-2.5 h-2.5 rounded-full bg-[#262626]" />
+          <span>Laser Point Cloud</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <div className="w-2.5 h-2.5 rounded bg-[#E5E1D8]" />
-          <span>SLAM 2D Floor Map</span>
+          <div className="w-2.5 h-2.5 rounded bg-[#E9E5DC] border border-[#BFBFBD]" />
+          <span>Bản Đồ SLAM</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <div className="w-2.5 h-2.5 rounded-full bg-stone-400" />
-          <span>Radar Rings</span>
+          <div className="w-2.5 h-2.5 border border-[#8C8C8C] bg-[#F2EFE9]" />
+          <span>Lưới Ô Vuông (1m Grid)</span>
         </div>
       </div>
     </div>

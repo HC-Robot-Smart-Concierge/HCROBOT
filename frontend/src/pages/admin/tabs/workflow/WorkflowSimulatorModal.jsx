@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Pause, SkipForward, Volume2, VolumeX, Square } from 'lucide-react';
+import { Play, Pause, SkipForward, Volume2, VolumeX, Square, Bot } from 'lucide-react';
 import { RobotFace } from '../../../../components/robot/RobotFace';
 import { AudioWave } from '../../../../components/robot/AudioWave';
 import { useSpeechSynthesis } from '../../../../hooks/useSpeechSynthesis';
@@ -138,7 +138,7 @@ export const WorkflowSimulatorModal = ({ workflow, isOpen, onClose }) => {
         <div className="px-5 py-3 border-b border-stone-700 flex items-center justify-between bg-[#27272A]">
           <div>
             <h3 className="font-extrabold text-sm text-stone-100 flex items-center gap-2 uppercase tracking-wide">
-              <span>🤖</span>
+              <Bot className="w-4 h-4 text-stone-300" />
               <span>Giả Lập Thực Thi Robot: {workflow.name}</span>
             </h3>
             <span className="text-[10px] text-stone-400 font-mono">
@@ -168,7 +168,7 @@ export const WorkflowSimulatorModal = ({ workflow, isOpen, onClose }) => {
               type="button"
               onClick={() => setIsMuted(!isMuted)}
               className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer ${
-                isMuted ? 'bg-red-500/20 text-red-300' : 'bg-emerald-500/20 text-emerald-300'
+                isMuted ? 'bg-stone-800 text-stone-400 border border-stone-700' : 'bg-stone-600 text-white'
               }`}
             >
               {isMuted ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
@@ -238,7 +238,7 @@ export const WorkflowSimulatorModal = ({ workflow, isOpen, onClose }) => {
             <div className="p-4 flex flex-col items-center justify-center border-b border-stone-800 bg-[#1A1A1E]">
               {speechText && (
                 <div className="mb-2 px-3 py-1.5 rounded-xl bg-white text-gray-900 text-xs font-bold shadow animate-in fade-in">
-                  💬 "{speechText}"
+                  "{speechText}"
                 </div>
               )}
               <RobotFace mode={getRobotMode()} compact={true} />

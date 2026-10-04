@@ -72,6 +72,13 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
     source: 'NO_HARDWARE_CONNECTED',
   });
 
+  const [encoders, setEncoders] = useState({
+    m1: { ticks: 0, rpm: 0.0, dir: 0 },
+    m2: { ticks: 0, rpm: 0.0, dir: 0 },
+    m3: { ticks: 0, rpm: 0.0, dir: 0 },
+    m4: { ticks: 0, rpm: 0.0, dir: 0 },
+  });
+
   const [activeNavGoal, setActiveNavGoal] = useState(null);
   const [navNotification, setNavNotification] = useState('');
 
@@ -254,11 +261,29 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
         }
       });
 
+      // 5. Subscribe Encoder Telemetry (/robot/encoder_telemetry)
+      const unsubTelemetry = client.subscribe('/robot/encoder_telemetry', 'std_msgs/String', (msg) => {
+        try {
+          const encData = typeof msg.data === 'string' ? JSON.parse(msg.data) : msg.data;
+          if (encData && encData.m1) {
+            setEncoders({
+              m1: encData.m1,
+              m2: encData.m2,
+              m3: encData.m3,
+              m4: encData.m4,
+            });
+          }
+        } catch {
+          // ignore parsing error
+        }
+      });
+
       return () => {
         unsubMap();
         unsubScan();
         unsubOdom();
         unsubAmcl();
+        unsubTelemetry();
         client.disconnect();
       };
     } else {
@@ -281,6 +306,9 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
                 is_connected: true,
                 device_info: data.device_info,
               }));
+            }
+            if (data.encoders) {
+              setEncoders(data.encoders);
             }
             if (data.robot_pose) {
               setTelemetry((prev) => ({
@@ -358,7 +386,7 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
   };
 
   const handleScan360 = async () => {
-    setNavNotification('🔄 Bắt đầu xoay 360° quét toàn cảnh các bức tường phòng...');
+    setNavNotification('Bắt đầu xoay 360 độ quét toàn cảnh các bức tường phòng...');
     try {
       await fetch(`${PI5_API}/map/scan_360`, { method: 'POST' });
     } catch (err) {
@@ -420,7 +448,7 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
 
     if (connectionMode === 'ros2' && rosClientRef.current?.isConnected) {
       rosClientRef.current.publishGoal(targetX, targetY, 0);
-      setNavNotification(`[NAV2] Đã gửi mục tiêu /goal_pose ➔ X: ${targetX.toFixed(2)}m, Y: ${targetY.toFixed(2)}m`);
+      setNavNotification(`[NAV2] Đã gửi mục tiêu /goal_pose -> X: ${targetX.toFixed(2)}m, Y: ${targetY.toFixed(2)}m`);
     } else {
       setNavNotification(`NAV GOAL SET — X: ${targetX.toFixed(2)}m, Y: ${targetY.toFixed(2)}m`);
       try {
@@ -697,10 +725,10 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
             </div>
           </div>
 
-          {/* Card 2: Telemetry */}
+          {/* Card 2: Telemetry & Odometry */}
           <div className="border rounded-xl p-4 flex flex-col gap-3" style={{ background: '#FFFFFF', borderColor: '#BFBFBD' }}>
             <div className="flex items-center justify-between border-b pb-2" style={{ borderColor: '#BFBFBD' }}>
-              <span className="text-[10px] font-bold tracking-widest uppercase" style={{ color: '#8C8C8C' }}>TELEMETRY</span>
+              <span className="text-[10px] font-bold tracking-widest uppercase" style={{ color: '#8C8C8C' }}>TELEMETRY & ODOMETRY</span>
               <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded border"
                 style={{ background: '#F2EFE9', color: '#8C8C8C', borderColor: '#BFBFBD' }}>
                 {telemetry.source}
@@ -715,6 +743,48 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
                   <div className="text-base font-mono font-black" style={{ color: '#262626' }}>{val}{unit}</div>
                 </div>
               ))}
+            </div>
+
+            {/* Speeds from Odometry */}
+            <div className="grid grid-cols-2 gap-2">
+              <div className="p-2 rounded-lg border" style={{ background: '#FAF8F5', borderColor: '#E3DFD5' }}>
+                <div className="text-[9px] font-bold tracking-wider mb-0.5" style={{ color: '#8C8C8C' }}>VẬN TỐC DÀI (Vx)</div>
+                <div className="text-xs font-mono font-bold" style={{ color: '#262626' }}>{telemetry.linearVelocity} m/s</div>
+              </div>
+              <div className="p-2 rounded-lg border" style={{ background: '#FAF8F5', borderColor: '#E3DFD5' }}>
+                <div className="text-[9px] font-bold tracking-wider mb-0.5" style={{ color: '#8C8C8C' }}>VẬN TỐC GÓC (Wz)</div>
+                <div className="text-xs font-mono font-bold" style={{ color: '#262626' }}>{telemetry.angularVelocity} rad/s</div>
+              </div>
+            </div>
+
+            {/* 4-Wheel Encoder Telemetry (ESP32 JGA25-370) */}
+            <div className="p-2.5 rounded-lg border flex flex-col gap-2" style={{ background: '#FAF8F5', borderColor: '#BFBFBD' }}>
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold tracking-wider uppercase" style={{ color: '#262626' }}>
+                  4 BÁNH ENCODER (ESP32)
+                </span>
+                <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded border" style={{ background: '#E9E5DC', borderColor: '#BFBFBD', color: '#262626' }}>
+                  CPR 330
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-1.5 text-[10px] font-mono">
+                <div className="p-1.5 rounded border" style={{ background: '#FFFFFF', borderColor: '#E3DFD5' }}>
+                  <div className="font-bold text-[9px]" style={{ color: '#8C8C8C' }}>M1 (TRÁI TRƯỚC)</div>
+                  <div className="font-bold text-stone-900">{encoders.m1?.rpm || 0} RPM | {encoders.m1?.ticks || 0} T</div>
+                </div>
+                <div className="p-1.5 rounded border" style={{ background: '#FFFFFF', borderColor: '#E3DFD5' }}>
+                  <div className="font-bold text-[9px]" style={{ color: '#8C8C8C' }}>M3 (PHẢI TRƯỚC)</div>
+                  <div className="font-bold text-stone-900">{encoders.m3?.rpm || 0} RPM | {encoders.m3?.ticks || 0} T</div>
+                </div>
+                <div className="p-1.5 rounded border" style={{ background: '#FFFFFF', borderColor: '#E3DFD5' }}>
+                  <div className="font-bold text-[9px]" style={{ color: '#8C8C8C' }}>M2 (TRÁI SAU)</div>
+                  <div className="font-bold text-stone-900">{encoders.m2?.rpm || 0} RPM | {encoders.m2?.ticks || 0} T</div>
+                </div>
+                <div className="p-1.5 rounded border" style={{ background: '#FFFFFF', borderColor: '#E3DFD5' }}>
+                  <div className="font-bold text-[9px]" style={{ color: '#8C8C8C' }}>M4 (PHẢI SAU)</div>
+                  <div className="font-bold text-stone-900">{encoders.m4?.rpm || 0} RPM | {encoders.m4?.ticks || 0} T</div>
+                </div>
+              </div>
             </div>
 
             {/* Battery */}

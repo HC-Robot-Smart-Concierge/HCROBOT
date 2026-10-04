@@ -1,18 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { Video } from 'lucide-react';
+import { AdminLidarPage } from '../AdminLidarPage';
 import { AdminUnifiedStudioTab } from './AdminUnifiedStudioTab';
 import { AdminCameraTab } from './AdminCameraTab';
 import { AdminWorkflowTab } from './AdminWorkflowTab';
 
 export const AdminRobotControlTab = ({
   currentUser,
-  subTabProp = 'studio',
+  subTabProp = 'teleop_odom',
   onSelectSubTab,
 }) => {
   const [localSubTab, setLocalSubTab] = useState(() => {
     if (subTabProp === 'camera') return 'camera';
     if (subTabProp === 'workflows') return 'workflows';
-    return 'studio';
+    if (subTabProp === 'studio') return 'studio';
+    return 'teleop_odom';
   });
 
   useEffect(() => {
@@ -22,7 +23,9 @@ export const AdminRobotControlTab = ({
           ? 'camera'
           : subTabProp === 'workflows'
           ? 'workflows'
-          : 'studio';
+          : subTabProp === 'studio'
+          ? 'studio'
+          : 'teleop_odom';
       if (target !== localSubTab) {
         setLocalSubTab(target);
       }
@@ -40,7 +43,11 @@ export const AdminRobotControlTab = ({
     <div className="w-full h-full flex flex-col overflow-hidden" style={{ background: '#F2EFE9' }}>
       {/* Sub-View Body */}
       <div className="flex-1 min-h-0 overflow-hidden relative">
-        {localSubTab === 'studio' ? (
+        {localSubTab === 'teleop_odom' || localSubTab === 'lidar' ? (
+          <div className="w-full h-full overflow-hidden">
+            <AdminLidarPage onSwitchToCamera={() => handleSwitchTab('camera')} />
+          </div>
+        ) : localSubTab === 'studio' ? (
           <div className="w-full h-full overflow-hidden">
             <AdminUnifiedStudioTab onSwitchToCamera={() => handleSwitchTab('camera')} />
           </div>

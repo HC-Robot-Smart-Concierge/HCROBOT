@@ -89,15 +89,15 @@ export const OTTO_STEP_TYPES = [
 ];
 
 /**
- * Scratch Theme Definitions for Otto Steps
+ * Flat Solid Palette Definitions for Otto Steps (No Gradient)
  */
 export const STEP_SCRATCH_THEMES = {
   MOVE: { label: 'Motion', bg: '#2563EB', border: '#1D4ED8', icon: Move },
   GREET: { label: 'Looks', bg: '#7C3AED', border: '#6D28D9', icon: Smile },
-  SPEAK: { label: 'Sound', bg: '#DB2777', border: '#BE185D', icon: Volume2 },
-  SHOW: { label: 'Display', bg: '#4F46E5', border: '#4338CA', icon: Monitor },
+  SPEAK: { label: 'Voice', bg: '#BE185D', border: '#9D174D', icon: Volume2 },
+  SHOW: { label: 'Display', bg: '#1E40AF', border: '#1E3A8A', icon: Monitor },
   LISTEN: { label: 'Sensing', bg: '#D97706', border: '#B45309', icon: Mic },
   RECOMMEND: { label: 'Logic', bg: '#059669', border: '#047857', icon: Sparkles },
-  CREATE_REQUEST: { label: 'Dispatch', bg: '#EA580C', border: '#C2410C', icon: Send },
-  FEEDBACK: { label: 'Feedback', bg: '#0891B2', border: '#0E7490', icon: Star },
+  CREATE_REQUEST: { label: 'Dispatch', bg: '#C2410C', border: '#9A3412', icon: Send },
+  FEEDBACK: { label: 'Feedback', bg: '#374151', border: '#1F2937', icon: Star },
 };

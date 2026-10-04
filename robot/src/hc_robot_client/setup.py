@@ -31,6 +31,7 @@ setup(
             'person_detection_node = hc_robot_client.nodes.person_detection_node:main',
             'person_fusion_tracker = hc_robot_client.nodes.person_fusion_tracker:main',
             'safety_controller_node = hc_robot_client.nodes.safety_controller_node:main',
+            'odom_encoder_node = hc_robot_client.nodes.odom_encoder_node:main',
         ],
     },
 )

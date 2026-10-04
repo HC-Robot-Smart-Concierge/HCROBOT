@@ -23,24 +23,15 @@ from app.services.hardware.rplidar_service import rplidar_service
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-DEFAULT_WAYPOINTS: List[dict] = [
-    {"id": "wp-reception", "name": "Quầy Lễ Tân", "x": 0.0, "y": 0.0, "yaw": 0.0, "floor": "Sảnh Tầng 1", "type": "DOCKING_TARGET", "description": "Điểm dừng tiếp đón khách và làm thủ tục check-in sảnh chính"},
-    {"id": "wp-lounge", "name": "Sảnh Lounge & Coffee", "x": 2.5, "y": 4.0, "yaw": 90.0, "floor": "Sảnh Tầng 1", "type": "SERVICE_STATION", "description": "Khu vực nghỉ chờ và thưởng thức đồ uống sảnh chính"},
-    {"id": "wp-vip-table", "name": "Bàn Tiếp Khách VIP 01", "x": 5.0, "y": 2.5, "yaw": 45.0, "floor": "Sảnh Tầng 1", "type": "GUEST_TABLE", "description": "Khu vực bàn tiếp đón khách VIP tại sảnh Tầng 1"},
-    {"id": "wp-elevator", "name": "Sảnh Thang Máy A", "x": -3.0, "y": 5.0, "yaw": 180.0, "floor": "Sảnh Tầng 1", "type": "WAYPOINT", "description": "Điểm mốc điều hướng robot tại hành lang thang máy sảnh Tầng 1"},
-]
-
-DEFAULT_ZONES: List[dict] = [
-    {"id": "zone-stairs", "name": "CẦU THANG BỘ (CHỐNG NGÃ)", "type": "KEEP_OUT", "x": 4.5, "y": -2.0, "width": 1.8, "height": 2.2, "speed_limit": 0.0, "floor": "Sảnh Tầng 1", "description": "Khu vực cầu thang bộ nguy hiểm - robot tuyệt đối không đi vào"},
-    {"id": "zone-entrance", "name": "CỬA RA VÀO SẢNH CHÍNH", "type": "SLOW_SPEED", "x": 0.0, "y": 2.0, "width": 3.0, "height": 2.0, "speed_limit": 0.3, "floor": "Sảnh Tầng 1", "description": "Khu vực đông người qua lại - giới hạn vận tốc 0.3 m/s"},
-    {"id": "zone-vip-lounge", "name": "PHÒNG NGHỈ YÊN LẶNG VIP", "type": "SILENT_ZONE", "x": 5.0, "y": 5.0, "width": 3.5, "height": 3.0, "speed_limit": 0.5, "floor": "Sảnh Tầng 1", "description": "Khu vực hội nghị & VIP Lounge - robot tự động tắt tiếng/loa"},
-    {"id": "zone-greeting-hall", "name": "SẢNH ĐÓN KHÁCH TỰ ĐỘNG AI", "type": "GREETING_ZONE", "x": 1.5, "y": 0.0, "width": 4.0, "height": 3.0, "speed_limit": 0.6, "floor": "Sảnh Tầng 1", "description": "Khu vực sảnh chính - robot kích hoạt AI Person Detector chủ động đón khách"},
-]
+DEFAULT_WAYPOINTS: List[dict] = []
+DEFAULT_ZONES: List[dict] = []
 
 current_robot_pose = Pose2D(x=0.0, y=0.0, yaw=0.0)
 
 
 async def ensure_default_waypoints(db: AsyncSession):
+    if not DEFAULT_WAYPOINTS:
+        return
     res = await db.execute(select(RobotWaypoint).limit(1))
     if res.scalar_one_or_none() is None:
         for wp in DEFAULT_WAYPOINTS:
@@ -58,6 +49,8 @@ async def ensure_default_waypoints(db: AsyncSession):
 
 
 async def ensure_default_zones(db: AsyncSession):
+    if not DEFAULT_ZONES:
+        return
     res = await db.execute(select(RobotZone).limit(1))
     if res.scalar_one_or_none() is None:
         for z in DEFAULT_ZONES:

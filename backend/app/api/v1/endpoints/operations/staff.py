@@ -55,7 +55,8 @@ async def list_departments(
     - **DEP-MAINTENANCE**: Bộ phận Kỹ thuật, Bảo trì điện nước & Điều hòa
     - **DEP-RECEPTION**: Bộ phận Lễ tân & Đặt phòng (Front Desk & Room Booking)
     - **DEP-CONCIERGE**: Bộ phận Trợ lý Concierge, Live Call & Tổng đài hỗ trợ
-    - **DEP-FB**: Bộ phận Ẩm thực & Dịch vụ Room Service
+    - **DEP-ROOMSERVICE**: Bộ phận Phục vụ phòng (Room Service)
+    - **DEP-KITCHEN**: Bộ phận Bếp & Ẩm thực (Kitchen Operations)
 
     ### Tham số đầu vào:
     - `is_active` (query, boolean, tùy chọn): Mặc định `true`.
@@ -165,7 +166,7 @@ async def list_service_types(
     - **ST-MAINTENANCE** (`MAINTENANCE`): Dịch vụ Kỹ thuật, Điện nước & Điều hòa -> Thuộc `DEP-MAINTENANCE`
     - **ST-RECEPTION** (`RECEPTION`): Dịch vụ Lễ tân & Đặt phòng -> Thuộc `DEP-RECEPTION`
     - **ST-CONCIERGE** (`CONCIERGE`): Dịch vụ Concierge & Live Call Hỗ trợ -> Thuộc `DEP-CONCIERGE`
-    - **ST-ROOM-SERVICE** (`ROOM_SERVICE`): Dịch vụ Ẩm thực & Phục vụ phòng -> Thuộc `DEP-FB`
+    - **ST-ROOM-SERVICE** (`ROOM_SERVICE`): Dịch vụ Ẩm thực & Phục vụ phòng -> Thuộc `DEP-ROOMSERVICE`
     """
     query = select(ServiceType).options(selectinload(ServiceType.department))
     if department_id:
@@ -195,7 +196,7 @@ async def list_service_types(
 async def list_staff(
     department_id: Optional[str] = Query(
         None,
-        description="Lọc theo mã phòng ban chuẩn (vd: `DEP-HOUSEKEEPING`, `DEP-BELL`, `DEP-TAXI`, `DEP-MAINTENANCE`, `DEP-RECEPTION`, `DEP-FB`)",
+        description="Lọc theo mã phòng ban chuẩn (vd: `DEP-HOUSEKEEPING`, `DEP-BELL`, `DEP-TAXI`, `DEP-MAINTENANCE`, `DEP-RECEPTION`, `DEP-ROOMSERVICE`, `DEP-KITCHEN`)",
         examples=["DEP-HOUSEKEEPING", "DEP-BELL"],
     ),
     department: Optional[str] = Query(
@@ -317,7 +318,8 @@ async def create_staff(
     3. **Tự động gán Dashboard mặc định**:
        - `DEP-RECEPTION` -> `reception`
        - `DEP-CONCIERGE` -> `concierge`
-       - `DEP-FB` -> `room_service`
+       - `DEP-ROOMSERVICE` -> `room_service`
+       - `DEP-KITCHEN` -> `restaurant`
        - `DEP-HOUSEKEEPING` -> `housekeeping`
        - `DEP-BELL` hoặc `DEP-TAXI` -> `bell_services`
        - `DEP-MAINTENANCE` -> `maintenance`
@@ -343,7 +345,7 @@ async def create_staff(
         if not dept:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Mã phòng ban (department_id) '{resolved_dept_id}' không tồn tại. Vui lòng chọn trong: DEP-HOUSEKEEPING, DEP-BELL, DEP-TAXI, DEP-MAINTENANCE, DEP-RECEPTION, DEP-CONCIERGE, DEP-FB.",
+                detail=f"Mã phòng ban (department_id) '{resolved_dept_id}' không tồn tại. Vui lòng chọn trong: DEP-HOUSEKEEPING, DEP-BELL, DEP-TAXI, DEP-MAINTENANCE, DEP-RECEPTION, DEP-CONCIERGE, DEP-ROOMSERVICE, DEP-KITCHEN.",
             )
         resolved_dept_name = dept.name
     elif staff_in.department:
@@ -366,7 +368,10 @@ async def create_staff(
     dashboard_map = {
         "DEP-RECEPTION": "reception",
         "DEP-CONCIERGE": "concierge",
+        "DEP-ROOMSERVICE": "room_service",
+        "DEP-KITCHEN": "restaurant",
         "DEP-FB": "room_service",
+        "DEP-RESTAURANT": "restaurant",
         "DEP-HOUSEKEEPING": "housekeeping",
         "DEP-BELL": "bell_services",
         "DEP-TAXI": "bell_services",

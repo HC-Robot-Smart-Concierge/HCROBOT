@@ -3,8 +3,8 @@
 // Connects React Frontend with FastAPI Backend (/api/v1/operations/restaurant)
 // =====================================================================
 
-const BASE_URL = '/api/v1/operations/restaurant';
-const DASHBOARD_URL = '/api/v1/operations/dashboard/restaurant';
+const BASE_URL = '/api/v1/operations/kitchen';
+const DASHBOARD_URL = '/api/v1/operations/dashboard/kitchen';
 
 async function fetchWithFallback(url, options = {}, fallbackData = null) {
   try {

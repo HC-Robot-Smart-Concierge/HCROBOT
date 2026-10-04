@@ -127,7 +127,7 @@ const normalizeLegacyView = (view, user) => {
   if (['reception', 'front_desk', 'frontdesk'].includes(clean)) {
     return 'reception';
   }
-  if (['restaurant', 'nhahang', 'nha_hang'].includes(clean)) {
+  if (['restaurant', 'nhahang', 'nha_hang', 'kitchen', 'bep'].includes(clean)) {
     return 'restaurant';
   }
   if (['taxi', 'datxe', 'dat_xe', 'transport', 'transportation'].includes(clean)) {
@@ -456,7 +456,7 @@ export function App() {
     { id: 'housekeeping', label: '2. Housekeeping (Staff)' },
     { id: 'bell_services', label: '3. Bell Services (Staff)' },
     { id: 'maintenance', label: '4. Maintenance (Staff)' },
-    { id: 'restaurant', label: '5. Restaurant (Staff)' },
+    { id: 'restaurant', label: '5. Kitchen / Bếp (Staff)' },
     { id: 'concierge', label: '6. Concierge & Transport (Staff)' },
     { id: 'robot_display', label: 'Man Hinh Robot' },
     { id: 'admin_map', label: 'LiDAR SLAM Map' },

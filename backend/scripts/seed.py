@@ -179,10 +179,10 @@ async def seed_departments_and_services(session):
         ("DEP-HOUSEKEEPING", "HOUSEKEEPING", "Housekeeping", "Dịch vụ buồng phòng và dọn dẹp"),
         ("DEP-BELL", "BELL", "Bell Services", "Vận chuyển hành lý và hỗ trợ sảnh"),
         ("DEP-TAXI", "TAXI", "Taxi", "Điều phối taxi và đưa đón di chuyển"),
-        ("DEP-FB", "FB", "Food & Beverage", "Ẩm thực và phục vụ phòng Room Service"),
+        ("DEP-ROOMSERVICE", "ROOMSERVICE", "Room Service", "Bộ phận Phục vụ phòng (Room Service)"),
         ("DEP-MAINTENANCE", "MAINTENANCE", "Maintenance", "Kỹ thuật và bảo trì trang thiết bị"),
         ("DEP-EXECUTIVE", "EXECUTIVE", "Executive", "Ban quản trị và điều hành khách sạn"),
-        ("DEP-RESTAURANT", "RESTAURANT", "Restaurant", "Bộ phận Nhà hàng, Đặt bàn & Gọi món trước"),
+        ("DEP-KITCHEN", "KITCHEN", "Kitchen", "Bộ phận Bếp & Chế biến ẩm thực (Kitchen Operations)"),
     ]
     for d_id, d_code, d_name, d_desc in deps:
         d = await session.get(Department, d_id)
@@ -199,7 +199,7 @@ async def seed_departments_and_services(session):
         ("ST-BELL", "BELL_SERVICE", "Dịch vụ Bellman & Hành lý", "DEP-BELL", "Khuân vác hành lý check-in / check-out", "NORMAL"),
         ("ST-TAXI", "TAXI", "Dịch vụ Đặt xe & Taxi", "DEP-TAXI", "Gọi xe taxi hoặc đưa đón sân bay", "NORMAL"),
         ("ST-MAINTENANCE", "MAINTENANCE", "Dịch vụ Kỹ thuật & Bảo trì", "DEP-MAINTENANCE", "Bảo trì điều hòa nhiệt độ, điện nước", "HIGH"),
-        ("ST-ROOM-SERVICE", "ROOM_SERVICE", "Dịch vụ Ẩm thực & Phục vụ phòng", "DEP-FB", "Phục vụ đồ ăn thức uống tại phòng", "NORMAL"),
+        ("ST-ROOM-SERVICE", "ROOM_SERVICE", "Dịch vụ Ẩm thực & Phục vụ phòng", "DEP-ROOMSERVICE", "Phục vụ đồ ăn thức uống tại phòng", "NORMAL"),
     ]
     for s_id, s_code, s_name, s_dep, s_desc, s_prio in services:
         s = await session.get(ServiceType, s_id)

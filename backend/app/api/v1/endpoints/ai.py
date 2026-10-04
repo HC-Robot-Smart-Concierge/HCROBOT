@@ -426,7 +426,7 @@ async def _auto_create_ticket(db: AsyncSession, action: str, room_number: str, i
                 room_number=rm,
                 description=items or "Yêu cầu gửi từ HCRobot Concierge AI Chat",
                 guest_name=f"Guest (Room {rm})",
-                department_id="DEP-FB",
+                department_id="DEP-ROOMSERVICE",
                 service_type_id="ST-ROOM-SERVICE",
                 items=[{"name": items, "qty": 1}],
                 source="HCRobot Concierge AI Chat",

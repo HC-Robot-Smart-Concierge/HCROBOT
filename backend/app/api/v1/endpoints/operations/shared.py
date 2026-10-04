@@ -22,11 +22,18 @@ from app.models import (
 # =====================================================================
 
 TAG_REC = ["05. Bộ phận Lễ tân & Đặt phòng (Front Desk & Reception)"]
-TAG_FB = ["06. Bộ phận Phục vụ phòng (F&B / Room Service)"]
-TAG_HK = ["07. Bộ phận Buồng phòng (Housekeeping Operations)"]
-TAG_BELL = ["08. Bộ phận Hành lý & Tiền sảnh (Bell Services)"]
-TAG_MNT = ["09. Bộ phận Kỹ thuật & Bảo trì (Facility Maintenance)"]
-TAG_REST = ["10. Bộ phận Nhà hàng (Restaurant - Đặt bàn & Đặt món)"]
+TAG_HK = ["06. Bộ phận Buồng phòng (Housekeeping Operations)"]
+TAG_BELL = ["07. Bộ phận Hành lý & Tiền sảnh (Bell Services)"]
+TAG_MNT = ["08. Bộ phận Kỹ thuật & Bảo trì (Facility Maintenance)"]
+TAG_ROOM_SERVICE = ["09. Bộ phận Phục vụ phòng (Room Service)"]
+TAG_FB = TAG_ROOM_SERVICE  # Backward compatibility alias
+TAG_KITCHEN_FOOD_CATALOG = ["10A. Bếp & Ẩm thực - Danh mục Món ăn gốc (Master Food Catalog)"]
+TAG_KITCHEN_MENU = ["10B. Bếp & Ẩm thực - Quản lý Thực đơn & Món ăn (Menus & Menu Items)"]
+TAG_KITCHEN_BOOKING = TAG_KITCHEN_FOOD_CATALOG
+TAG_REST_BOOKING = TAG_KITCHEN_BOOKING
+TAG_REST_FOOD_CATALOG = TAG_KITCHEN_FOOD_CATALOG
+TAG_REST_MENU = TAG_KITCHEN_MENU
+TAG_REST = TAG_KITCHEN_FOOD_CATALOG  # Backward compatibility alias
 TAG_OPS = ["11. Quản lý Chung & Điều phối Nghiệp vụ (Operations & Directives)"]
 TAG_ADMIN = ["12. Trung tâm Điều hành & Quản trị (Admin & Human Support)"]
 TAG_NOTIF = ["13. Thông báo Hệ thống (Notifications)"]

@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     from app.models.department import Department
     from app.models.hotel import Room
     from app.models.service_type import ServiceType
+    from app.models.room_service import RoomServiceOrder
 
 
 class SupportRequest(Base):
@@ -53,6 +54,7 @@ class SupportRequest(Base):
     department: Mapped[Optional["Department"]] = relationship("Department")
     assigned_account: Mapped[Optional["Account"]] = relationship("Account")
     room: Mapped[Optional["Room"]] = relationship("Room", back_populates="support_requests")
+    room_service_order: Mapped[Optional["RoomServiceOrder"]] = relationship("RoomServiceOrder", back_populates="support_request", uselist=False)
 
     def __init__(self, **kwargs):
         # Normalize legacy field aliases
@@ -262,5 +264,5 @@ HousekeepingRequest = SupportRequest
 BellRequest = SupportRequest
 MaintenanceRequest = SupportRequest
 ReceptionRequest = SupportRequest
-RoomServiceOrder = SupportRequest
+from app.models.room_service import RoomServiceOrder, OrderItem
 

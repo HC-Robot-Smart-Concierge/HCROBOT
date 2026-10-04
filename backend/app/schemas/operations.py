@@ -222,6 +222,23 @@ class ConciergeDashboardResponse(BaseModel):
 class OrderItem(BaseModel):
     name: str
     qty: Any # string or number, e.g. 2 or "Set of 4"
+    menu_item_id: Optional[str] = None
+    food_item_id: Optional[str] = None
+    notes: Optional[str] = None
+
+class OrderItemResponse(BaseModel):
+    id: Optional[int] = None
+    order_id: Optional[str] = None
+    menu_item_id: Optional[str] = None
+    food_item_id: Optional[str] = None
+    item_name: str
+    quantity: int = 1
+    unit_price: float = 0.0
+    subtotal: float = 0.0
+    notes: Optional[str] = None
+    created_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
 
 class RoomServiceOrderCreate(BaseModel):
     room_number: str
@@ -236,9 +253,6 @@ class RoomServiceOrderStatusUpdate(BaseModel):
     est_completion: Optional[str] = None
     assigned_staff_name: Optional[str] = None
 
-class RoomServiceOrderAssignRobot(BaseModel):
-    robot_id: Optional[str] = None
-    robot_name: Optional[str] = None
 
 class RoomServiceOrderResponse(BaseModel):
     id: str
@@ -488,6 +502,13 @@ class RestaurantDashboardResponse(BaseModel):
     reservations: List[RestaurantReservationResponse]
     pre_orders: List[RestaurantPreOrderResponse]
 
+# Aliases for Kitchen naming
+KitchenReservationCreate = RestaurantReservationCreate
+KitchenReservationResponse = RestaurantReservationResponse
+KitchenPreOrderCreate = RestaurantPreOrderCreate
+KitchenPreOrderResponse = RestaurantPreOrderResponse
+KitchenDashboardResponse = RestaurantDashboardResponse
+
 
 # ---------------------------------------------------------
 # Food Item (Master Dish Catalog) & Menu Schemas (Diagram 2)
@@ -615,6 +636,13 @@ class MenuCreate(BaseModel):
     items: Optional[List[MenuItemInMenuCreate]] = []
 
 
+class MenuUpdate(BaseModel):
+    name: Optional[str] = Field(None, description="Tên thực đơn")
+    category: Optional[str] = Field(None, description="Phân loại: Food, Beverage, Dessert, Combo...")
+    description: Optional[str] = Field(None, description="Mô tả thực đơn")
+    is_active: Optional[bool] = Field(None, description="Bật/Tắt hoạt động của thực đơn")
+
+
 class MenuResponse(BaseModel):
     id: str
     name: str
@@ -632,6 +660,12 @@ class AssignFoodToMenuRequest(BaseModel):
     price: Optional[float] = None
     display_order: int = 0
     is_available: bool = True
+
+
+class MenuItemUpdate(BaseModel):
+    price: Optional[float] = Field(None, description="Đơn giá áp dụng riêng tại thực đơn này (VND)")
+    display_order: Optional[int] = Field(None, description="Thứ tự hiển thị trong thực đơn")
+    is_available: Optional[bool] = Field(None, description="Có đang phục vụ tại thực đơn này không")
 
 
 # ---------------------------------------------------------

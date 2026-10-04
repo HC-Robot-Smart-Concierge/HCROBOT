@@ -102,17 +102,6 @@ export const updateRoomServiceOrderStatus = async (orderId, statusData) => {
   );
 };
 
-export const assignRobotToOrder = async (orderId, robotData) => {
-  return await fetchWithFallback(
-    `${BASE_URL}/room-service/orders/${orderId}/assign-robot`,
-    {
-      method: 'POST',
-      body: JSON.stringify(robotData),
-    },
-    { id: orderId, status: 'Delivering', assigned_staff_name: robotData.robot_name }
-  );
-};
-
 // ---------------------------------------------------------
 // 2. Housekeeping
 // ---------------------------------------------------------

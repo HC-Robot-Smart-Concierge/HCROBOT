@@ -27,10 +27,31 @@ class Hotel(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
+    floors: Mapped[List["Floor"]] = relationship("Floor", back_populates="hotel", cascade="all, delete-orphan")
     rooms: Mapped[List["Room"]] = relationship("Room", back_populates="hotel", cascade="all, delete-orphan")
-    facilities: Mapped[List["Facility"]] = relationship("Facility", back_populates="hotel", cascade="all, delete-orphan")
+    amenities: Mapped[List["Amenity"]] = relationship("Amenity", back_populates="hotel", cascade="all, delete-orphan")
+    facilities: Mapped[List["Amenity"]] = relationship("Amenity", back_populates="hotel", viewonly=True)
     events: Mapped[List["Event"]] = relationship("Event", back_populates="hotel", cascade="all, delete-orphan")
     maps: Mapped[List["Map"]] = relationship("Map", back_populates="hotel", cascade="all, delete-orphan")
+
+
+class Floor(Base):
+    __tablename__ = "floors"
+
+    id: Mapped[str] = mapped_column(String(50), primary_key=True, default=lambda: f"FLR-{uuid.uuid4().hex[:6].upper()}")
+    hotel_id: Mapped[str] = mapped_column(String(50), ForeignKey("hotels.id", ondelete="CASCADE"), nullable=False, index=True)
+    floor_number: Mapped[int] = mapped_column(Integer, nullable=False, index=True) # 1, 2, 3, 4, 5...
+    name: Mapped[str] = mapped_column(String(100), nullable=False) # e.g. "Tầng 1 - Sảnh chính"
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    hotel: Mapped["Hotel"] = relationship("Hotel", back_populates="floors")
+    rooms: Mapped[List["Room"]] = relationship("Room", back_populates="floor_rel")
+    maps: Mapped[List["Map"]] = relationship("Map", back_populates="floor_rel")
+    amenities: Mapped[List["Amenity"]] = relationship("Amenity", back_populates="floor_rel")
 
 
 class Room(Base):
@@ -38,8 +59,9 @@ class Room(Base):
 
     id: Mapped[str] = mapped_column(String(50), primary_key=True, default=lambda: f"ROOM-{uuid.uuid4().hex[:6].upper()}")
     hotel_id: Mapped[str] = mapped_column(String(50), ForeignKey("hotels.id", ondelete="CASCADE"), nullable=False, index=True)
+    floor_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("floors.id", ondelete="SET NULL"), nullable=True, index=True)
     room_number: Mapped[str] = mapped_column(String(20), unique=True, index=True) # e.g. "402", "305", "502"
-    floor: Mapped[str] = mapped_column(String(50), default="Tầng 4")
+    floor: Mapped[str] = mapped_column(String(50), default="Tầng 4") # compatibility label
     room_type: Mapped[str] = mapped_column(String(50), default="Deluxe Suite") # 'Standard', 'Deluxe', 'Suite', 'Presidential'
     status: Mapped[str] = mapped_column(String(50), default="AVAILABLE") # 'AVAILABLE', 'OCCUPIED', 'CLEANING', 'MAINTENANCE'
     current_guest_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
@@ -51,16 +73,16 @@ class Room(Base):
 
     # Relationships
     hotel: Mapped["Hotel"] = relationship("Hotel", back_populates="rooms")
+    floor_rel: Mapped[Optional["Floor"]] = relationship("Floor", back_populates="rooms")
     support_requests: Mapped[List["SupportRequest"]] = relationship("SupportRequest", back_populates="room")
-    # TODO (Phase sau): Kích hoạt khi chạy migration thêm cột room_id vào bảng room_service_orders trong DB
-    # room_service_orders: Mapped[List["RoomServiceOrder"]] = relationship("RoomServiceOrder", back_populates="room")
 
 
-class Facility(Base):
-    __tablename__ = "facilities"
+class Amenity(Base):
+    __tablename__ = "amenities"
 
-    id: Mapped[str] = mapped_column(String(50), primary_key=True, default=lambda: f"FAC-{uuid.uuid4().hex[:6].upper()}")
+    id: Mapped[str] = mapped_column(String(50), primary_key=True, default=lambda: f"AMN-{uuid.uuid4().hex[:6].upper()}")
     hotel_id: Mapped[str] = mapped_column(String(50), ForeignKey("hotels.id", ondelete="CASCADE"), nullable=False, index=True)
+    floor_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("floors.id", ondelete="SET NULL"), nullable=True, index=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False) # e.g. "Bể bơi vô cực Tầng 5", "Phòng Gym Tầng 3"
     category: Mapped[str] = mapped_column(String(50), default="Recreation") # 'Dining', 'Wellness', 'Recreation', 'Business'
     location: Mapped[str] = mapped_column(String(100), default="Tầng 5")
@@ -73,7 +95,12 @@ class Facility(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
-    hotel: Mapped["Hotel"] = relationship("Hotel", back_populates="facilities")
+    hotel: Mapped["Hotel"] = relationship("Hotel", back_populates="amenities")
+    floor_rel: Mapped[Optional["Floor"]] = relationship("Floor", back_populates="amenities")
+
+
+# Backward compatibility alias
+Facility = Amenity
 
 
 class Event(Base):

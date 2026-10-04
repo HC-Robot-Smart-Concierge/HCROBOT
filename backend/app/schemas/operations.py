@@ -1,6 +1,6 @@
 from typing import Optional, List, Dict, Any
 from datetime import datetime
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, model_validator
 
 
 # ---------------------------------------------------------
@@ -173,12 +173,14 @@ class ConciergeLiveRequestCreate(BaseModel):
     description: Optional[str] = Field(None, description="Lý do can thiệp hoặc câu hỏi chưa giải đáp được", json_schema_extra={"example": "Khách cần hướng dẫn chi tiết quy trình thuê xe riêng sang trọng"})
     assistance_status: Optional[str] = Field("Connected", description="Trạng thái kết nối video: 'Connected', 'Pending', 'Ended'", json_schema_extra={"example": "Connected"})
     transcript: Optional[List[Dict[str, Any]]] = Field(default_factory=list, description="Đoạn hội thoại đã diễn ra giữa Robot và khách")
+    category: Optional[str] = Field(None, description="Phân loại yêu cầu hỗ trợ")
 
 
 class ConciergeLiveRequestUpdate(BaseModel):
     status: Optional[str] = None
     assistance_status: Optional[str] = None
     assigned_to: Optional[str] = None
+    assigned_staff_name: Optional[str] = None
     assigned_role: Optional[str] = None
     note: Optional[str] = None
     escalated: Optional[bool] = None
@@ -270,8 +272,9 @@ class HousekeepingRequestCreate(BaseModel):
     guest_name: Optional[str] = None
 
 class HousekeepingAssignRequest(BaseModel):
-    status: str = "In Progress"
-    assigned_staff_name: str
+    status: Optional[str] = "In Progress"
+    assigned_staff_name: Optional[str] = None
+    assigned_staff: Optional[str] = None
     assigned_staff_id: Optional[str] = None
 
 class HousekeepingRequestResponse(BaseModel):
@@ -302,8 +305,9 @@ class BellRequestCreate(BaseModel):
     request_type: str = "luggage"
 
 class BellRequestStatusUpdate(BaseModel):
-    status: str # 'Pending', 'In Progress', 'Completed'
+    status: Optional[str] = None # 'Pending', 'In Progress', 'Completed'
     assigned_to: Optional[str] = None
+    assigned_staff: Optional[str] = None
 
 class BellRequestResponse(BaseModel):
     id: str
@@ -330,6 +334,11 @@ class MaintenanceRequestCreate(BaseModel):
     location: str
     description: Optional[str] = None
     source: str = "MANUAL DISPATCH"
+
+class MaintenanceRequestStatusUpdate(BaseModel):
+    status: Optional[str] = None
+    assigned_to: Optional[str] = None
+    assigned_technician: Optional[str] = None
 
 class MaintenanceRequestResponse(BaseModel):
     id: str
@@ -481,38 +490,113 @@ class RestaurantDashboardResponse(BaseModel):
 
 
 # ---------------------------------------------------------
-# Restaurant Menu & Menu Items Schemas
+# Food Item (Master Dish Catalog) & Menu Schemas (Diagram 2)
 # ---------------------------------------------------------
+class FoodItemCreate(BaseModel):
+    name: str = Field(..., description="Tên món ăn hoặc thức uống")
+    category: str = Field("Món chính", description="Phân loại: Khai vị, Món chính, Đồ uống, Tráng miệng, Ăn nhẹ")
+    description: Optional[str] = Field(None, description="Mô tả món ăn, hương vị hoặc thành phần dị ứng")
+    image_url: Optional[str] = Field(None, description="Đường dẫn ảnh món ăn")
+    base_price: float = Field(0.0, description="Đơn giá niêm yết chuẩn (VND)")
+    currency: str = Field("VND", description="Đơn vị tiền tệ")
+    prep_time_minutes: int = Field(15, description="Thời gian chuẩn bị dự kiến của bếp (phút)")
+    is_available: bool = Field(True, description="Bếp tổng có phục vụ món này không")
+
+
+class FoodItemUpdate(BaseModel):
+    name: Optional[str] = None
+    category: Optional[str] = None
+    description: Optional[str] = None
+    image_url: Optional[str] = None
+    base_price: Optional[float] = None
+    currency: Optional[str] = None
+    prep_time_minutes: Optional[int] = None
+    is_available: Optional[bool] = None
+
+
+class FoodItemResponse(BaseModel):
+    id: str
+    name: str
+    category: str
+    description: Optional[str] = None
+    image_url: Optional[str] = None
+    base_price: float
+    currency: str
+    prep_time_minutes: int
+    is_available: bool
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class MenuItemCreate(BaseModel):
     menu_id: str
-    name: str
-    price: float = 0.0
-    currency: str = "VND"
-    image_url: Optional[str] = None
-    category: str = "Món chính"
+    food_item_id: Optional[str] = None
+    price: Optional[float] = None
+    display_order: int = 0
     is_available: bool = True
-    prep_time_minutes: int = 15
+    
+    # Hỗ trợ tạo nhanh món chưa có trong catalog
+    name: Optional[str] = None
+    currency: Optional[str] = "VND"
+    image_url: Optional[str] = None
+    category: Optional[str] = "Món chính"
+    prep_time_minutes: Optional[int] = 15
     description: Optional[str] = None
 
 
 class MenuItemResponse(BaseModel):
     id: str
     menu_id: str
-    name: str
+    food_item_id: Optional[str] = None
     price: float
-    currency: str
-    image_url: Optional[str]
-    category: str
+    display_order: int = 0
     is_available: bool
-    prep_time_minutes: int
-    description: Optional[str]
-    created_at: datetime
+    name: str = ""
+    currency: str = "VND"
+    image_url: Optional[str] = None
+    category: str = "Món chính"
+    prep_time_minutes: int = 15
+    description: Optional[str] = None
+    food_item: Optional[FoodItemResponse] = None
+    created_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
 
+    @model_validator(mode='before')
+    @classmethod
+    def resolve_fields(cls, data: Any) -> Any:
+        if hasattr(data, '__dict__'):
+            fi = data.__dict__.get('food_item', None)
+            name = getattr(data, 'name', None) or (getattr(fi, 'name', '') if fi else "")
+            category = getattr(data, 'category', None) or (getattr(fi, 'category', 'Món chính') if fi else "Món chính")
+            image_url = getattr(data, 'image_url', None) or (getattr(fi, 'image_url', None) if fi else None)
+            description = getattr(data, 'description', None) or (getattr(fi, 'description', None) if fi else None)
+            prep_time = getattr(data, 'prep_time_minutes', None) or (getattr(fi, 'prep_time_minutes', 15) if fi else 15)
+            currency = getattr(data, 'currency', None) or (getattr(fi, 'currency', 'VND') if fi else "VND")
+            return {
+                "id": getattr(data, 'id', ''),
+                "menu_id": getattr(data, 'menu_id', ''),
+                "food_item_id": getattr(data, 'food_item_id', None),
+                "price": getattr(data, 'price', 0.0),
+                "display_order": getattr(data, 'display_order', 0) or 0,
+                "is_available": getattr(data, 'is_available', True),
+                "name": name,
+                "category": category,
+                "image_url": image_url,
+                "description": description,
+                "prep_time_minutes": prep_time,
+                "currency": currency,
+                "food_item": fi,
+                "created_at": getattr(data, 'created_at', None),
+            }
+        return data
+
 
 class MenuItemInMenuCreate(BaseModel):
-    name: str
+    food_item_id: Optional[str] = None
+    name: Optional[str] = None
     price: float = 0.0
     currency: str = "VND"
     image_url: Optional[str] = None
@@ -520,6 +604,7 @@ class MenuItemInMenuCreate(BaseModel):
     is_available: bool = True
     prep_time_minutes: int = 15
     description: Optional[str] = None
+    display_order: int = 0
 
 
 class MenuCreate(BaseModel):
@@ -534,7 +619,7 @@ class MenuResponse(BaseModel):
     id: str
     name: str
     category: str
-    description: Optional[str]
+    description: Optional[str] = None
     is_active: bool
     items: List[MenuItemResponse] = []
     created_at: datetime
@@ -542,45 +627,16 @@ class MenuResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class AssignFoodToMenuRequest(BaseModel):
+    food_item_id: str
+    price: Optional[float] = None
+    display_order: int = 0
+    is_available: bool = True
+
+
 # ---------------------------------------------------------
 # Admin Central Operations Schemas
 # ---------------------------------------------------------
-class UnifiedOperationTask(BaseModel):
-    id: str
-    raw_id: str
-    department: str
-    table_type: str
-    title: str
-    location: str
-    guest_name: str
-    priority: str
-    status: str
-    time: str
-    assigned_to: Optional[str] = None
-    assigned_robot: Optional[str] = None
-    notes: Optional[str] = None
-    source: str = "Robot / Staff"
-    created_at: Optional[datetime] = None
-
-
-class AdminTaskDispatchCreate(BaseModel):
-    department: str  # 'Reception', 'Concierge', 'Housekeeping', 'F&B', 'Bell Services', 'Maintenance', 'Taxi', 'Directive'
-    title: str
-    room_number: Optional[str] = Field(None, description="Số phòng hoặc vị trí ví dụ 'Room 412', 'Lobby', hoặc None")
-    guest_name: Optional[str] = "Hotel Guest"
-    priority: str = Field("NORMAL", description="'HIGH PRIORITY', 'NORMAL', 'LOW'")
-    description: Optional[str] = None
-    assigned_staff_name: Optional[str] = None
-    assigned_robot_code: Optional[str] = None
-
-
-class AdminTaskStatusUpdate(BaseModel):
-    status: str = Field(..., description="'Pending', 'In Progress', 'Completed', 'Cancelled'")
-    assigned_to: Optional[str] = None
-    assigned_robot: Optional[str] = None
-    note: Optional[str] = None
-
-
 class AdminOperationsSummary(BaseModel):
     total_active: int = 0
     all_count: int = 0

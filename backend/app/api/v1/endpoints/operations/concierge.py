@@ -84,6 +84,13 @@ async def get_concierge_dashboard(db: AsyncSession = Depends(get_db)):
         400: {"description": "Dữ liệu không hợp lệ."},
     },
 )
+@router.post(
+    "/concierge/calls",
+    response_model=ConciergeLiveRequestResponse,
+    status_code=status.HTTP_201_CREATED,
+    tags=TAG_CONCIERGE,
+    include_in_schema=False,
+)
 async def create_concierge_live_request(
     request_in: ConciergeLiveRequestCreate,
     db: AsyncSession = Depends(get_db),
@@ -139,6 +146,12 @@ async def create_concierge_live_request(
         404: {"description": "Không tìm thấy phiên hỗ trợ."}
     },
 )
+@router.patch(
+    "/concierge/calls/{request_id}",
+    response_model=ConciergeLiveRequestResponse,
+    tags=TAG_CONCIERGE,
+    include_in_schema=False,
+)
 async def update_concierge_request(
     request_id: str,
     update_in: ConciergeLiveRequestUpdate,
@@ -167,6 +180,8 @@ async def update_concierge_request(
         request.status = update_in.status
     if update_in.assigned_to is not None:
         request.assigned_staff_name = update_in.assigned_to
+    elif update_in.assigned_staff_name is not None:
+        request.assigned_staff_name = update_in.assigned_staff_name
 
     request.updated_at = datetime.utcnow()
     await db.commit()

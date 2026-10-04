@@ -62,6 +62,7 @@ async def init_db() -> None:
             await conn.execute(text("ALTER TABLE amenities ADD COLUMN IF NOT EXISTS floor_id VARCHAR(50);"))
             await conn.execute(text("ALTER TABLE room_service_orders ADD COLUMN IF NOT EXISTS support_request_id VARCHAR(50);"))
             await conn.execute(text("ALTER TABLE management_directives ADD COLUMN IF NOT EXISTS account_id VARCHAR(50);"))
+            await conn.execute(text("INSERT INTO service_types (id, code, name, department_id, description, default_priority, is_active) VALUES ('ST-ROOM-SERVICE', 'ROOM_SERVICE', 'Dịch vụ phục vụ phòng (Room Service)', 'DEP-ROOMSERVICE', 'Dịch vụ đặt món phòng', 'NORMAL', true) ON CONFLICT (id) DO NOTHING;"))
         except Exception:
             pass
 

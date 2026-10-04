@@ -37,16 +37,9 @@ router = APIRouter()
 )
 async def get_room_service_dashboard(db: AsyncSession = Depends(get_db)):
     """Returns real-time KPIs, active orders, delivery fleet, and low stock alerts for Room Service."""
-    # 1. Fetch Orders from unified SupportRequest table
+    # 1. Fetch Orders directly from RoomServiceOrder table (ERD Entity ROOM_SERVICE_ORDER)
     orders_res = await db.execute(
-        select(SupportRequest)
-        .where(
-            or_(
-                SupportRequest.department_id.in_(["DEP-ROOMSERVICE", "DEP-FB"]),
-                SupportRequest.service_type_id == "ST-ROOM-SERVICE",
-            )
-        )
-        .order_by(desc(SupportRequest.created_at))
+        select(RoomServiceOrder).order_by(desc(RoomServiceOrder.created_at))
     )
     orders = orders_res.scalars().all()
 
@@ -259,19 +252,10 @@ async def list_room_service_orders(
     status: Optional[str] = Query(None, description="Lọc theo trạng thái đơn hàng"),
     db: AsyncSession = Depends(get_db),
 ):
-    """Lấy danh sách các đơn đặt món Room Service."""
-    stmt = (
-        select(SupportRequest)
-        .where(
-            or_(
-                SupportRequest.department_id.in_(["DEP-ROOMSERVICE", "DEP-FB"]),
-                SupportRequest.service_type_id == "ST-ROOM-SERVICE",
-            )
-        )
-        .order_by(desc(SupportRequest.created_at))
-    )
+    """Lấy danh sách các đơn đặt món Room Service (bảng room_service_orders)."""
+    stmt = select(RoomServiceOrder).order_by(desc(RoomServiceOrder.created_at))
     if status and status not in ("All", ""):
-        stmt = stmt.where(SupportRequest.status == status)
+        stmt = stmt.where(RoomServiceOrder.status == status)
     res = await db.execute(stmt)
     return res.scalars().all()
 
@@ -289,11 +273,11 @@ async def get_room_service_order(
     """Lấy thông tin chi tiết một đơn đặt món Room Service theo ID hoặc mã đơn."""
     clean_id = order_id.replace("ORD-", "")
     res = await db.execute(
-        select(SupportRequest).where(
-            (SupportRequest.id == order_id)
-            | (SupportRequest.ticket_code == order_id)
-            | (SupportRequest.ticket_code == f"ORD-{clean_id}")
-            | (SupportRequest.ticket_code == clean_id)
+        select(RoomServiceOrder).where(
+            (RoomServiceOrder.id == order_id)
+            | (RoomServiceOrder.order_number == order_id)
+            | (RoomServiceOrder.order_number == clean_id)
+            | (RoomServiceOrder.support_request_id == order_id)
         )
     )
     order = res.scalar_one_or_none()

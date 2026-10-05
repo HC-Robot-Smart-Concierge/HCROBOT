@@ -8,7 +8,6 @@ from app.models import (
     SupportRequest,
     FoodItem,
     MenuItem,
-    InventoryStock,
     ServiceType,
     Department,
 )
@@ -35,21 +34,6 @@ async def sync():
             session.add(st)
             await session.commit()
             logger.info("ST-ROOM-SERVICE added.")
-
-        # 2. Seed Inventory Stocks nếu trống
-        stock_count = await session.scalar(select(func.count(InventoryStock.id)))
-        if stock_count == 0:
-            logger.info("Seeding inventory stocks...")
-            stocks = [
-                InventoryStock(name="Artisan Cola", category="beverage", count_label="6 lon", quantity=6, level="danger"),
-                InventoryStock(name="Sparkling Water (L)", category="beverage", count_label="2 chai", quantity=2, level="danger"),
-                InventoryStock(name="Truffle Oil", category="condiment", count_label="1 chai", quantity=1, level="warning"),
-                InventoryStock(name="Bộ dao nĩa cao cấp", category="cutlery", count_label="5 bộ", quantity=5, level="warning"),
-                InventoryStock(name="Khăn ăn vải trắng", category="linen", count_label="20 cái", quantity=20, level="normal"),
-            ]
-            session.add_all(stocks)
-            await session.commit()
-            logger.info(f"Added {len(stocks)} inventory stocks.")
 
         # 3. Đồng bộ OrderItems và SupportRequests cho toàn bộ RoomServiceOrder
         rso_res = await session.execute(select(RoomServiceOrder))

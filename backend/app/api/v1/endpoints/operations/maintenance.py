@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc, or_
 
 from app.core.database import get_db
-from app.models import Staff, SupportRequest, ManagementDirective, InventoryStock
+from app.models import Staff, SupportRequest, ManagementDirective
 from app.schemas.operations import (
     MaintenanceRequestCreate,
     MaintenanceRequestStatusUpdate,
@@ -14,7 +14,6 @@ from app.schemas.operations import (
     MaintenanceDashboardResponse,
     DirectiveCreate,
     DirectiveResponse,
-    InventoryStockResponse,
 )
 from .shared import TAG_MNT, TAG_OPS, create_department_notification
 
@@ -307,33 +306,3 @@ async def create_operational_directive(dir_in: DirectiveCreate, db: AsyncSession
     await db.refresh(new_dir)
     return new_dir
 
-
-@router.patch(
-    "/stock/{stock_id}/restock",
-    response_model=InventoryStockResponse,
-    tags=TAG_OPS,
-    summary="Nhập bổ sung kho vật tư kỹ thuật & tiện ích",
-)
-
-async def restock_inventory(
-    stock_id: str,
-    add_quantity: int = 10,
-    db: AsyncSession = Depends(get_db),
-):
-    """Cập nhật số lượng tồn kho vật tư."""
-    res = await db.execute(select(InventoryStock).where(InventoryStock.id == stock_id))
-    stock = res.scalar_one_or_none()
-    if not stock:
-        raise HTTPException(status_code=404, detail="Vật tư không tồn tại")
-
-    stock.quantity += add_quantity
-    if stock.quantity > stock.min_threshold:
-        stock.level = "normal"
-    elif stock.quantity > 5:
-        stock.level = "low"
-    else:
-        stock.level = "critical"
-
-    await db.commit()
-    await db.refresh(stock)
-    return stock

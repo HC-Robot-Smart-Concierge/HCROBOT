@@ -8,7 +8,6 @@ from app.models.room_service import RoomServiceOrder, OrderItem
 from app.models.robot import Robot
 from app.models.job import Job, JobStep, JobEvent
 from app.models.directive import ManagementDirective, ManageDirective
-from app.models.stock import InventoryStock
 from app.models.support import HumanSupportSession
 from app.models.chat_session import ChatSession, ChatMessage
 from app.models.logging import LogEvent, AuditLog, LogLevelEnum, LogCategoryEnum, ActorTypeEnum
@@ -39,7 +38,6 @@ __all__ = [
     "JobEvent",
     "ManagementDirective",
     "ManageDirective",
-    "InventoryStock",
     "HumanSupportSession",
     "ChatSession",
     "ChatMessage",

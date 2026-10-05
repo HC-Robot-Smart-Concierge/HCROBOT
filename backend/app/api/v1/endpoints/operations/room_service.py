@@ -13,7 +13,6 @@ from app.models import (
     MenuItem,
     FoodItem,
     Room,
-    InventoryStock,
     RoomServiceOrder,
     OrderItem as OrderItemModel,
 )
@@ -48,9 +47,8 @@ async def get_room_service_dashboard(db: AsyncSession = Depends(get_db)):
     # 2. Fetch Robots (Deprecated - returning empty list)
     delivery_fleet = []
 
-    # 3. Fetch Stock
-    stock_res = await db.execute(select(InventoryStock).order_by(InventoryStock.quantity))
-    low_stock_alerts = stock_res.scalars().all()
+    # 3. Stock (Table dropped per schema cleanup)
+    low_stock_alerts = []
 
     # 4. Calculate dynamic KPIs
     pending_count = sum(1 for o in orders if o.status == "Pending")

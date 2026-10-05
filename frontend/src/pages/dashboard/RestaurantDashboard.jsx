@@ -74,7 +74,6 @@ export const RestaurantDashboard = ({ currentUser, onNotify = () => {} }) => {
     price: 150000,
     currency: 'VND',
     category: 'Món chính',
-    prep_time_minutes: 15,
     description: '',
     is_available: true,
   });
@@ -82,8 +81,6 @@ export const RestaurantDashboard = ({ currentUser, onNotify = () => {} }) => {
   const [foodForm, setFoodForm] = useState({
     name: '',
     category: 'Món chính',
-    base_price: 150000,
-    currency: 'VND',
     prep_time_minutes: 15,
     description: '',
     image_url: '',
@@ -202,7 +199,6 @@ export const RestaurantDashboard = ({ currentUser, onNotify = () => {} }) => {
           price: 150000,
           currency: 'VND',
           category: 'Món chính',
-          prep_time_minutes: 15,
           description: '',
           is_available: true,
         });
@@ -224,8 +220,6 @@ export const RestaurantDashboard = ({ currentUser, onNotify = () => {} }) => {
       setFoodForm({
         name: '',
         category: 'Món chính',
-        base_price: 150000,
-        currency: 'VND',
         prep_time_minutes: 15,
         description: '',
         image_url: '',
@@ -595,7 +589,7 @@ export const RestaurantDashboard = ({ currentUser, onNotify = () => {} }) => {
                           <p className="text-xs text-palette-slate mt-0.5 line-clamp-2">{item.description || item.food_item?.description}</p>
                         </div>
                         <div className="mt-4 pt-3 border-t border-palette-silver/50 flex items-center justify-between text-[11px] text-palette-slate">
-                          <span>Chuẩn bị: {item.prep_time_minutes || item.food_item?.prep_time_minutes || 15} phút</span>
+                          <span>Chuẩn bị: {item.food_item?.prep_time_minutes || 15} phút</span>
                           <div className="flex items-center gap-2">
                             <span className={item.is_available ? 'text-emerald-600 font-semibold' : 'text-palette-slate'}>
                               {item.is_available ? 'Đang phục vụ' : 'Hết món'}
@@ -631,8 +625,8 @@ export const RestaurantDashboard = ({ currentUser, onNotify = () => {} }) => {
                           <span className="text-[10px] font-bold uppercase tracking-wider text-palette-charcoal bg-palette-stone border border-palette-silver px-2 py-0.5 rounded">
                             {food.category}
                           </span>
-                          <span className="text-xs font-mono font-bold text-palette-charcoal bg-palette-stone border border-palette-silver px-2 py-1 rounded">
-                            Giá gốc: {food.base_price?.toLocaleString('vi-VN')} {food.currency}
+                          <span className="text-[11px] font-medium text-palette-slate bg-palette-stone border border-palette-silver px-2 py-0.5 rounded">
+                            Món gốc (chưa gán giá)
                           </span>
                         </div>
                         <h3 className="font-bold text-palette-charcoal text-sm mt-2">{food.name}</h3>
@@ -644,7 +638,6 @@ export const RestaurantDashboard = ({ currentUser, onNotify = () => {} }) => {
                           onClick={() => {
                             setItemMode('existing');
                             setSelectedFoodId(food.id);
-                            setItemForm((prev) => ({ ...prev, price: food.base_price }));
                             setIsItemModalOpen(true);
                           }}
                           className="px-2 py-1 rounded bg-palette-stone hover:bg-palette-silver text-palette-charcoal text-[11px] font-semibold border border-palette-silver transition-all"
@@ -808,15 +801,13 @@ export const RestaurantDashboard = ({ currentUser, onNotify = () => {} }) => {
                     onChange={(e) => {
                       const fId = e.target.value;
                       setSelectedFoodId(fId);
-                      const f = foodItems.find((x) => x.id === fId);
-                      if (f) setItemForm((prev) => ({ ...prev, price: f.base_price }));
                     }}
                     className="w-full mt-1 px-3 py-1.5 border border-palette-silver rounded-lg text-xs outline-none focus:border-palette-charcoal bg-white font-medium"
                   >
                     <option value="">-- Chọn món ăn --</option>
                     {foodItems.map((f) => (
                       <option key={f.id} value={f.id}>
-                        {f.name} - [{f.category}] - Giá gốc: {f.base_price?.toLocaleString('vi-VN')} {f.currency}
+                        {f.name} - [{f.category}]
                       </option>
                     ))}
                   </select>
@@ -901,15 +892,6 @@ export const RestaurantDashboard = ({ currentUser, onNotify = () => {} }) => {
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="text-xs font-semibold text-palette-charcoal">Giá niêm yết gốc (VND)</label>
-                  <input
-                    type="number"
-                    value={foodForm.base_price}
-                    onChange={(e) => setFoodForm({ ...foodForm, base_price: parseFloat(e.target.value) || 0 })}
-                    className="w-full mt-1 px-3 py-1.5 border border-palette-silver rounded-lg text-xs outline-none focus:border-palette-charcoal"
-                  />
-                </div>
-                <div>
                   <label className="text-xs font-semibold text-palette-charcoal">Phân loại món</label>
                   <select
                     value={foodForm.category}
@@ -923,17 +905,17 @@ export const RestaurantDashboard = ({ currentUser, onNotify = () => {} }) => {
                     <option value="Ăn nhẹ">Ăn nhẹ</option>
                   </select>
                 </div>
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-palette-charcoal">Thời gian bếp chuẩn bị (phút)</label>
-                <input
-                  type="number"
-                  min="1"
-                  max="120"
-                  value={foodForm.prep_time_minutes}
-                  onChange={(e) => setFoodForm({ ...foodForm, prep_time_minutes: parseInt(e.target.value) || 15 })}
-                  className="w-full mt-1 px-3 py-1.5 border border-palette-silver rounded-lg text-xs outline-none focus:border-palette-charcoal"
-                />
+                <div>
+                  <label className="text-xs font-semibold text-palette-charcoal">Thời gian bếp chuẩn bị (phút)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="120"
+                    value={foodForm.prep_time_minutes}
+                    onChange={(e) => setFoodForm({ ...foodForm, prep_time_minutes: parseInt(e.target.value) || 15 })}
+                    className="w-full mt-1 px-3 py-1.5 border border-palette-silver rounded-lg text-xs outline-none focus:border-palette-charcoal"
+                  />
+                </div>
               </div>
               <div>
                 <label className="text-xs font-semibold text-palette-charcoal">Mô tả nguyên liệu / hương vị</label>

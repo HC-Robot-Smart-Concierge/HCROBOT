@@ -275,6 +275,22 @@ class RoomServiceOrderResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class RoomOrderedItemSummary(BaseModel):
+    item_name: str = Field(..., description="Tên món ăn / đồ uống đã đặt")
+    total_quantity: int = Field(1, description="Tổng số lượng đã đặt của món này")
+    unit_price: Optional[float] = Field(0.0, description="Đơn giá tham khảo (VNĐ)")
+    total_price: Optional[float] = Field(0.0, description="Tổng tiền tính cho món này (VNĐ)")
+    last_ordered_at: Optional[datetime] = Field(None, description="Thời điểm đặt gần nhất")
+
+
+class RoomOrdersHistoryResponse(BaseModel):
+    room_number: str = Field(..., description="Số phòng tra cứu (vd: '402', 'ROOM 201')")
+    total_orders: int = Field(0, description="Tổng số đơn hàng Room Service của phòng")
+    total_amount: float = Field(0.0, description="Tổng số tiền các đơn của phòng (VNĐ)")
+    ordered_items_summary: List[RoomOrderedItemSummary] = Field(default_factory=list, description="Danh sách tổng hợp các món ăn phòng đó đã đặt")
+    orders: List[RoomServiceOrderResponse] = Field(default_factory=list, description="Danh sách chi tiết từng đơn hàng của phòng")
+
+
 # ---------------------------------------------------------
 # Housekeeping Schemas
 # ---------------------------------------------------------
@@ -518,8 +534,6 @@ class FoodItemCreate(BaseModel):
     category: str = Field("Món chính", description="Phân loại: Khai vị, Món chính, Đồ uống, Tráng miệng, Ăn nhẹ")
     description: Optional[str] = Field(None, description="Mô tả món ăn, hương vị hoặc thành phần dị ứng")
     image_url: Optional[str] = Field(None, description="Đường dẫn ảnh món ăn")
-    base_price: float = Field(0.0, description="Đơn giá niêm yết chuẩn (VND)")
-    currency: str = Field("VND", description="Đơn vị tiền tệ")
     prep_time_minutes: int = Field(15, description="Thời gian chuẩn bị dự kiến của bếp (phút)")
     is_available: bool = Field(True, description="Bếp tổng có phục vụ món này không")
 
@@ -529,8 +543,6 @@ class FoodItemUpdate(BaseModel):
     category: Optional[str] = None
     description: Optional[str] = None
     image_url: Optional[str] = None
-    base_price: Optional[float] = None
-    currency: Optional[str] = None
     prep_time_minutes: Optional[int] = None
     is_available: Optional[bool] = None
 
@@ -541,14 +553,13 @@ class FoodItemResponse(BaseModel):
     category: str
     description: Optional[str] = None
     image_url: Optional[str] = None
-    base_price: float
-    currency: str
     prep_time_minutes: int
     is_available: bool
     created_at: datetime
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
 
 
 class MenuItemCreate(BaseModel):
@@ -563,7 +574,6 @@ class MenuItemCreate(BaseModel):
     currency: Optional[str] = "VND"
     image_url: Optional[str] = None
     category: Optional[str] = "Món chính"
-    prep_time_minutes: Optional[int] = 15
     description: Optional[str] = None
 
 
@@ -578,7 +588,6 @@ class MenuItemResponse(BaseModel):
     currency: str = "VND"
     image_url: Optional[str] = None
     category: str = "Món chính"
-    prep_time_minutes: int = 15
     description: Optional[str] = None
     food_item: Optional[FoodItemResponse] = None
     created_at: Optional[datetime] = None
@@ -594,7 +603,6 @@ class MenuItemResponse(BaseModel):
             category = getattr(data, 'category', None) or (getattr(fi, 'category', 'Món chính') if fi else "Món chính")
             image_url = getattr(data, 'image_url', None) or (getattr(fi, 'image_url', None) if fi else None)
             description = getattr(data, 'description', None) or (getattr(fi, 'description', None) if fi else None)
-            prep_time = getattr(data, 'prep_time_minutes', None) or (getattr(fi, 'prep_time_minutes', 15) if fi else 15)
             currency = getattr(data, 'currency', None) or (getattr(fi, 'currency', 'VND') if fi else "VND")
             return {
                 "id": getattr(data, 'id', ''),
@@ -607,7 +615,6 @@ class MenuItemResponse(BaseModel):
                 "category": category,
                 "image_url": image_url,
                 "description": description,
-                "prep_time_minutes": prep_time,
                 "currency": currency,
                 "food_item": fi,
                 "created_at": getattr(data, 'created_at', None),
@@ -623,7 +630,6 @@ class MenuItemInMenuCreate(BaseModel):
     image_url: Optional[str] = None
     category: str = "Món chính"
     is_available: bool = True
-    prep_time_minutes: int = 15
     description: Optional[str] = None
     display_order: int = 0
 

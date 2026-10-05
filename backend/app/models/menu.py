@@ -20,8 +20,6 @@ class FoodItem(Base):
     category: Mapped[str] = mapped_column(String(50), default="Món chính", index=True) # 'Khai vị', 'Món chính', 'Đồ uống', 'Tráng miệng', 'Ăn nhẹ'
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     image_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
-    base_price: Mapped[float] = mapped_column(Float, default=0.0) # Đơn giá gốc chuẩn (VND)
-    currency: Mapped[str] = mapped_column(String(10), default="VND")
     prep_time_minutes: Mapped[int] = mapped_column(Integer, default=15)
     is_available: Mapped[bool] = mapped_column(Boolean, default=True) # Bếp tổng còn phục vụ món này không
 
@@ -73,7 +71,6 @@ class MenuItem(Base):
     currency: Mapped[Optional[str]] = mapped_column(String(10), nullable=True, default="VND")
     image_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     category: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
-    prep_time_minutes: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, default=15)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

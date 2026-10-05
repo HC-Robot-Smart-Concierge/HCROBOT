@@ -85,8 +85,6 @@ async def create_kitchen_food_item(
         category=food_in.category,
         description=food_in.description,
         image_url=food_in.image_url,
-        base_price=food_in.base_price,
-        currency=food_in.currency,
         prep_time_minutes=food_in.prep_time_minutes,
         is_available=food_in.is_available,
     )
@@ -251,9 +249,7 @@ async def create_kitchen_menu(
                         category=it.category or "Món chính",
                         description=it.description,
                         image_url=it.image_url,
-                        base_price=it.price or 0.0,
-                        currency=it.currency or "VND",
-                        prep_time_minutes=it.prep_time_minutes or 15,
+                        prep_time_minutes=getattr(it, 'prep_time_minutes', 15) or 15,
                         is_available=it.is_available,
                     )
                     db.add(target_food)
@@ -262,7 +258,7 @@ async def create_kitchen_menu(
             if not target_food or target_food.id in existing_food_ids:
                 continue
 
-            item_price = it.price if it.price and it.price > 0 else target_food.base_price
+            item_price = it.price if it.price and it.price > 0 else 0.0
             menu_item = MenuItem(
                 menu_id=target_menu.id,
                 food_item_id=target_food.id,
@@ -273,8 +269,7 @@ async def create_kitchen_menu(
                 category=target_food.category,
                 image_url=target_food.image_url,
                 description=target_food.description,
-                prep_time_minutes=target_food.prep_time_minutes,
-                currency=target_food.currency,
+                currency="VND",
             )
             db.add(menu_item)
             existing_food_ids.add(target_food.id)
@@ -437,9 +432,7 @@ async def create_kitchen_menu_item(
                 category=item_in.category or "Món chính",
                 description=item_in.description,
                 image_url=item_in.image_url,
-                base_price=item_in.price or 0.0,
-                currency=item_in.currency or "VND",
-                prep_time_minutes=item_in.prep_time_minutes or 15,
+                prep_time_minutes=getattr(item_in, 'prep_time_minutes', 15) or 15,
                 is_available=item_in.is_available,
             )
             db.add(target_food)
@@ -463,7 +456,7 @@ async def create_kitchen_menu_item(
             await db.refresh(existing_item)
         return existing_item
 
-    effective_price = item_in.price if (item_in.price is not None and item_in.price > 0) else target_food.base_price
+    effective_price = item_in.price if (item_in.price is not None and item_in.price > 0) else 0.0
     new_item = MenuItem(
         menu_id=item_in.menu_id,
         food_item_id=target_food.id,
@@ -474,8 +467,7 @@ async def create_kitchen_menu_item(
         category=target_food.category,
         image_url=target_food.image_url,
         description=target_food.description,
-        prep_time_minutes=target_food.prep_time_minutes,
-        currency=target_food.currency,
+        currency="VND",
     )
     db.add(new_item)
     await db.commit()
@@ -522,7 +514,7 @@ async def assign_kitchen_food_item_to_menu(
         await db.refresh(existing)
         return existing
 
-    price = assign_in.price if (assign_in.price is not None and assign_in.price > 0) else food.base_price
+    price = assign_in.price if (assign_in.price is not None and assign_in.price > 0) else 0.0
     menu_item = MenuItem(
         menu_id=menu_id,
         food_item_id=food.id,
@@ -533,8 +525,7 @@ async def assign_kitchen_food_item_to_menu(
         category=food.category,
         image_url=food.image_url,
         description=food.description,
-        prep_time_minutes=food.prep_time_minutes,
-        currency=food.currency,
+        currency="VND",
     )
     db.add(menu_item)
     await db.commit()

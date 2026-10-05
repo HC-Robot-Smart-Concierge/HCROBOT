@@ -71,6 +71,35 @@ async def get_all_unified_requests(db: AsyncSession = Depends(get_db)):
     return await _fetch_all_raw_requests(db)
 
 
+@router.get(
+    "/rooms/{room_number}/all-requests",
+    tags=TAG_OPS,
+    summary="Tra cứu toàn bộ yêu cầu & dịch vụ của một phòng trên toàn hệ thống (All Departments)",
+)
+async def get_room_all_requests(
+    room_number: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Tra cứu tổng hợp tất cả các đơn hàng, yêu cầu dịch vụ (Room Service, Buồng phòng, Bellman, Taxi, Kỹ thuật...)
+    mà khách tại một phòng cụ thể đã phát sinh.
+    """
+    clean_room = room_number.upper().replace("ROOM", "").replace("PHÒNG", "").strip()
+    all_reqs = await _fetch_all_raw_requests(db)
+    
+    room_reqs = [
+        r for r in all_reqs
+        if clean_room in str(r.get("location", "")).upper()
+        or clean_room in str(r.get("room_number", "")).upper()
+    ]
+    return {
+        "room_number": room_number,
+        "total_requests": len(room_reqs),
+        "requests": room_reqs,
+    }
+
+
+
 # ---------------------------------------------------------
 # Human Support Sessions & Multilingual Conversation Logs
 # ---------------------------------------------------------

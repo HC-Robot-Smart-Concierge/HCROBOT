@@ -118,6 +118,19 @@ export const fetchRoomServiceOrderById = async (orderId) => {
   );
 };
 
+export const fetchRoomOrdersHistory = async (roomNumber) => {
+  return await fetchWithFallback(
+    `${BASE_URL}/room-service/rooms/${encodeURIComponent(roomNumber)}/orders`,
+    {},
+    { room_number: roomNumber, total_orders: 0, total_amount: 0, ordered_items_summary: [], orders: [] }
+  );
+};
+
+export const fetchRoomOrderedItemsSummary = async (roomNumber) => {
+  const history = await fetchRoomOrdersHistory(roomNumber);
+  return history?.ordered_items_summary || [];
+};
+
 // ---------------------------------------------------------
 // 2. Housekeeping
 // ---------------------------------------------------------
@@ -249,6 +262,14 @@ export const createOperationalDirective = async (directiveData) => {
 // ---------------------------------------------------------
 export const fetchUnifiedRequests = async () => {
   return await fetchWithFallback(`${BASE_URL}/all-requests`, {}, null);
+};
+
+export const fetchRoomAllRequests = async (roomNumber) => {
+  return await fetchWithFallback(
+    `${BASE_URL}/rooms/${encodeURIComponent(roomNumber)}/all-requests`,
+    {},
+    { room_number: roomNumber, total_requests: 0, requests: [] }
+  );
 };
 
 export const updateGenericRequestStatus = async (ticketId, status, assignedTo = null) => {

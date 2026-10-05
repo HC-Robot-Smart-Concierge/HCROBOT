@@ -23,6 +23,8 @@ from app.schemas.operations import (
     RoomServiceOrderResponse,
     RoomServiceDashboardResponse,
     OrderItemResponse,
+    RoomOrderedItemSummary,
+    RoomOrdersHistoryResponse,
 )
 from .shared import TAG_ROOM_SERVICE, TAG_FB, create_department_notification
 
@@ -132,11 +134,9 @@ async def create_room_service_order(order_in: RoomServiceOrderCreate, db: AsyncS
             if m_item and m_item.food_item_id:
                 food_item = await db.get(FoodItem, m_item.food_item_id)
 
-        # Xác định đơn giá
+        # Xác định đơn giá từ MenuItem trong thực đơn
         if m_item and m_item.price > 0:
             price = m_item.price
-        elif food_item and food_item.base_price > 0:
-            price = food_item.base_price
         else:
             price = 0.0
 
@@ -249,15 +249,115 @@ async def create_room_service_order(order_in: RoomServiceOrderCreate, db: AsyncS
     summary="Danh sách toàn bộ đơn hàng Room Service",
 )
 async def list_room_service_orders(
-    status: Optional[str] = Query(None, description="Lọc theo trạng thái đơn hàng"),
+    status: Optional[str] = Query(None, description="Lọc theo trạng thái đơn hàng ('Pending', 'Cooking', 'Delivering', 'Completed')"),
+    room_number: Optional[str] = Query(None, description="Lọc theo số phòng (vd: '402', 'ROOM 201')"),
     db: AsyncSession = Depends(get_db),
 ):
     """Lấy danh sách các đơn đặt món Room Service (bảng room_service_orders)."""
     stmt = select(RoomServiceOrder).order_by(desc(RoomServiceOrder.created_at))
     if status and status not in ("All", ""):
         stmt = stmt.where(RoomServiceOrder.status == status)
+    if room_number and room_number not in ("All", ""):
+        clean_room = room_number.upper().replace("ROOM", "").replace("PHÒNG", "").strip()
+        stmt = stmt.where(
+            or_(
+                RoomServiceOrder.room_number == room_number,
+                RoomServiceOrder.room_number.ilike(f"%{clean_room}%"),
+                RoomServiceOrder.room_number == f"ROOM {clean_room}",
+                RoomServiceOrder.room_number == f"Room {clean_room}",
+            )
+        )
     res = await db.execute(stmt)
     return res.scalars().all()
+
+
+@router.get(
+    "/room-service/rooms/{room_number}/orders",
+    response_model=RoomOrdersHistoryResponse,
+    tags=TAG_FB,
+    summary="Tra cứu toàn bộ đơn hàng và món ăn phòng đó đã đặt",
+    responses={
+        200: {"description": "Lấy thông tin tổng hợp các món và danh sách đơn của phòng thành công."}
+    },
+)
+@router.get(
+    "/room-service/orders/by-room/{room_number}",
+    response_model=RoomOrdersHistoryResponse,
+    tags=TAG_FB,
+    include_in_schema=False,
+)
+async def get_room_orders_history(
+    room_number: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    ### Mô tả nghiệp vụ:
+    Tra cứu chi tiết lịch sử đặt món ăn / dịch vụ phòng theo số phòng (vd: `402`, `ROOM 201`, `304`):
+    - **Tổng số đơn hàng**: Tổng số lần phòng này đã đặt Room Service
+    - **Tổng số tiền**: Tổng chi phí các đơn đã đặt
+    - **Danh sách tổng hợp các món đã đặt**: Tên món, tổng số lượng, đơn giá và thời điểm đặt gần nhất
+    - **Danh sách chi tiết các đơn hàng**: Chi tiết từng đơn (mã đơn, trạng thái, danh sách món, ghi chú)
+    """
+    clean_room = room_number.upper().replace("ROOM", "").replace("PHÒNG", "").strip()
+    stmt = (
+        select(RoomServiceOrder)
+        .where(
+            or_(
+                RoomServiceOrder.room_number == room_number,
+                RoomServiceOrder.room_number.ilike(f"%{clean_room}%"),
+                RoomServiceOrder.room_number == f"ROOM {clean_room}",
+                RoomServiceOrder.room_number == f"Room {clean_room}",
+            )
+        )
+        .order_by(desc(RoomServiceOrder.created_at))
+    )
+    res = await db.execute(stmt)
+    orders = res.scalars().all()
+
+    total_amount = sum(float(o.total_amount or 0.0) for o in orders)
+
+    # Gom nhóm và tính toán tổng số lượng từng món phòng đã đặt
+    items_map: Dict[str, Dict[str, Any]] = {}
+    for o in orders:
+        if o.items and isinstance(o.items, list):
+            for item in o.items:
+                if isinstance(item, dict):
+                    name = item.get("name") or item.get("item_name") or "Món ăn"
+                    raw_qty = item.get("qty") or item.get("quantity") or 1
+                    try:
+                        qty = int(raw_qty)
+                    except (ValueError, TypeError):
+                        qty = 1
+
+                    price = float(item.get("unit_price") or item.get("price") or 0.0)
+                    subtotal = float(item.get("subtotal") or (price * qty))
+
+                    if name not in items_map:
+                        items_map[name] = {
+                            "item_name": name,
+                            "total_quantity": 0,
+                            "unit_price": price,
+                            "total_price": 0.0,
+                            "last_ordered_at": o.created_at,
+                        }
+                    items_map[name]["total_quantity"] += qty
+                    items_map[name]["total_price"] += subtotal
+                    if o.created_at and (not items_map[name]["last_ordered_at"] or o.created_at > items_map[name]["last_ordered_at"]):
+                        items_map[name]["last_ordered_at"] = o.created_at
+                        if price > 0:
+                            items_map[name]["unit_price"] = price
+
+    ordered_items_summary = [
+        RoomOrderedItemSummary(**data) for data in items_map.values()
+    ]
+
+    return RoomOrdersHistoryResponse(
+        room_number=room_number,
+        total_orders=len(orders),
+        total_amount=total_amount,
+        ordered_items_summary=ordered_items_summary,
+        orders=orders,
+    )
 
 
 @router.get(

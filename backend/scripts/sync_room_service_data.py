@@ -74,7 +74,7 @@ async def sync():
                         m_res = await session.execute(select(MenuItem).where(MenuItem.food_item_id == food.id))
                         m_item = m_res.scalars().first()
                         if price == 0:
-                            price = m_item.price if m_item else food.base_price
+                            price = m_item.price if m_item else 95000.0
 
                     if price == 0:
                         price = 95000.0 # Giá mặc định mẫu

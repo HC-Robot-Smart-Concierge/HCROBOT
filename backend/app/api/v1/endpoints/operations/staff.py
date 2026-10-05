@@ -186,7 +186,7 @@ async def list_service_types(
     "/staff",
     response_model=List[StaffResponse],
     tags=TAG_STAFF,
-    summary="Danh sách nhân sự khách sạn (hỗ trợ lọc theo phòng ban & trạng thái)",
+    summary="Xem tất cả staff",
     responses={
         200: {
             "description": "Lấy danh sách nhân sự thành công.",
@@ -251,6 +251,7 @@ async def list_staff(
     query = query.order_by(Staff.department_id, Staff.department, Staff.full_name)
     result = await db.execute(query)
     return result.scalars().all()
+
 
 
 @router.get(
@@ -423,13 +424,6 @@ async def create_staff(
     return new_staff
 
 
-@router.get("/staff/departments", tags=TAG_STAFF, summary="Danh sách các phòng ban khách sạn")
-async def list_staff_departments(db: AsyncSession = Depends(get_db)):
-    """Lấy danh sách các phòng ban trực thuộc khách sạn."""
-    from app.models.department import Department
-    res = await db.execute(select(Department).where(Department.is_active == True))
-    deps = res.scalars().all()
-    return [{"id": d.id, "code": d.code, "name": d.name, "description": d.description} for d in deps]
 
 
 

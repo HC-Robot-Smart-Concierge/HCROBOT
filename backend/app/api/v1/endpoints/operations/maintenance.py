@@ -179,6 +179,42 @@ async def create_maintenance_request(req_in: MaintenanceRequestCreate, db: Async
     return new_req
 
 
+@router.get(
+    "/maintenance/requests/{request_id}",
+    response_model=MaintenanceRequestResponse,
+    tags=TAG_MNT,
+    summary="Xem chi tiết một yêu cầu Kỹ thuật & Bảo trì",
+    responses={
+        200: {"description": "Lấy chi tiết yêu cầu sự cố kỹ thuật thành công."},
+        404: {"description": "Không tìm thấy yêu cầu kỹ thuật."},
+    },
+)
+async def get_maintenance_request(
+    request_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    ### Mô tả nghiệp vụ:
+    Tra cứu chi tiết một sự cố hoặc yêu cầu kỹ thuật theo `request_id` (ID hệ thống hoặc mã `ticket_code` như `MN-101`).
+    """
+    clean_id = request_id.replace("REQ-", "").replace("MN-", "").strip()
+    res = await db.execute(
+        select(SupportRequest).where(
+            or_(
+                SupportRequest.id == request_id,
+                SupportRequest.ticket_code == request_id,
+                SupportRequest.id == clean_id,
+                SupportRequest.ticket_code == clean_id,
+                SupportRequest.ticket_code == f"MN-{clean_id}",
+            )
+        )
+    )
+    req = res.scalar_one_or_none()
+    if not req:
+        raise HTTPException(status_code=404, detail="Không tìm thấy yêu cầu kỹ thuật")
+    return req
+
+
 @router.patch(
     "/maintenance/requests/{request_id}/status",
     response_model=MaintenanceRequestResponse,

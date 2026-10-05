@@ -73,6 +73,14 @@ export const createReceptionRequest = async (requestData) => {
   );
 };
 
+export const fetchReceptionRequestById = async (requestId) => {
+  return await fetchWithFallback(
+    `${BASE_URL}/reception/requests/${encodeURIComponent(requestId)}`,
+    {},
+    null
+  );
+};
+
 // ---------------------------------------------------------
 // 1. Room Service / F&B
 // ---------------------------------------------------------
@@ -99,6 +107,14 @@ export const updateRoomServiceOrderStatus = async (orderId, statusData) => {
       body: JSON.stringify(statusData),
     },
     { id: orderId, ...statusData }
+  );
+};
+
+export const fetchRoomServiceOrderById = async (orderId) => {
+  return await fetchWithFallback(
+    `${BASE_URL}/room-service/orders/${encodeURIComponent(orderId)}`,
+    {},
+    null
   );
 };
 
@@ -131,6 +147,14 @@ export const assignHousekeepingStaff = async (requestId, assignData) => {
   );
 };
 
+export const fetchHousekeepingRequestById = async (requestId) => {
+  return await fetchWithFallback(
+    `${BASE_URL}/housekeeping/requests/${encodeURIComponent(requestId)}`,
+    {},
+    null
+  );
+};
+
 // ---------------------------------------------------------
 // 3. Bell Services
 // ---------------------------------------------------------
@@ -157,6 +181,14 @@ export const updateBellRequestStatus = async (requestId, statusData) => {
       body: JSON.stringify(statusData),
     },
     { id: requestId, ...statusData }
+  );
+};
+
+export const fetchBellRequestById = async (requestId) => {
+  return await fetchWithFallback(
+    `${BASE_URL}/bell-services/requests/${encodeURIComponent(requestId)}`,
+    {},
+    null
   );
 };
 
@@ -187,6 +219,14 @@ export const updateMaintenanceStatus = async (requestId, status, assignedTo = nu
       method: 'PATCH',
     },
     { id: requestId, status, assigned_to: assignedTo }
+  );
+};
+
+export const fetchMaintenanceRequestById = async (requestId) => {
+  return await fetchWithFallback(
+    `${BASE_URL}/maintenance/requests/${encodeURIComponent(requestId)}`,
+    {},
+    null
   );
 };
 
@@ -472,7 +512,7 @@ export const fetchServiceTypes = async (departmentId = null) => {
 };
 
 export const fetchStaffDepartments = async () => {
-  return await fetchWithFallback(`${BASE_URL}/staff/departments`, {}, []);
+  return await fetchWithFallback(`${BASE_URL}/departments`, {}, []);
 };
 
 

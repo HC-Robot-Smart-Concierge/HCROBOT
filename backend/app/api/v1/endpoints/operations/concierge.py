@@ -1,7 +1,7 @@
 import random
 from datetime import datetime
-from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, status
+from typing import Optional, List
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc, or_, func
 
@@ -134,6 +134,75 @@ async def create_concierge_live_request(
     await db.commit()
     await db.refresh(new_request)
     return new_request
+
+
+@router.get(
+    "/concierge/requests",
+    response_model=List[ConciergeLiveRequestResponse],
+    tags=TAG_CONCIERGE,
+    summary="Danh sách toàn bộ yêu cầu hỗ trợ Concierge & Live Call",
+)
+async def list_concierge_requests(
+    status: Optional[str] = Query(None, description="Lọc theo trạng thái yêu cầu"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Lấy danh sách các phiên hỗ trợ và yêu cầu can thiệp từ khách hàng tại bộ phận Concierge."""
+    stmt = (
+        select(SupportRequest)
+        .where(
+            or_(
+                SupportRequest.department_id == "DEP-CONCIERGE",
+                SupportRequest.service_type_id == "ST-CONCIERGE",
+            )
+        )
+        .order_by(desc(SupportRequest.created_at))
+    )
+    if status and status not in ("All", ""):
+        stmt = stmt.where(SupportRequest.status == status)
+    res = await db.execute(stmt)
+    return res.scalars().all()
+
+
+@router.get(
+    "/concierge/requests/{request_id}",
+    response_model=ConciergeLiveRequestResponse,
+    tags=TAG_CONCIERGE,
+    summary="Xem chi tiết một phiên yêu cầu hỗ trợ Concierge",
+    responses={
+        200: {"description": "Lấy thông tin phiên hỗ trợ Concierge thành công."},
+        404: {"description": "Không tìm thấy phiên hỗ trợ Concierge."},
+    },
+)
+@router.get(
+    "/concierge/calls/{request_id}",
+    response_model=ConciergeLiveRequestResponse,
+    tags=TAG_CONCIERGE,
+    include_in_schema=False,
+)
+async def get_concierge_request(
+    request_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    ### Mô tả nghiệp vụ:
+    Tra cứu chi tiết một phiên gọi hỗ trợ trực tiếp Concierge / Robot Kiosk theo `request_id` (ID hệ thống hoặc mã `ticket_code` như `CCG-12345`).
+    """
+    clean_id = request_id.replace("REQ-", "").replace("CCG-", "").strip()
+    result = await db.execute(
+        select(SupportRequest).where(
+            or_(
+                SupportRequest.id == request_id,
+                SupportRequest.ticket_code == request_id,
+                SupportRequest.id == clean_id,
+                SupportRequest.ticket_code == clean_id,
+                SupportRequest.ticket_code == f"CCG-{clean_id}",
+            )
+        )
+    )
+    request = result.scalar_one_or_none()
+    if not request:
+        raise HTTPException(status_code=404, detail="Không tìm thấy phiên hỗ trợ Concierge")
+    return request
 
 
 @router.patch(

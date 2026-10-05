@@ -75,3 +75,21 @@ export async function updateConciergeRequest(requestId, updateData) {
     }
   );
 }
+
+/**
+ * 4. Lay danh sach tat ca cac phien yeu cau Concierge
+ */
+export async function fetchConciergeRequests(params = {}) {
+  const query = new URLSearchParams();
+  if (params.status && params.status !== 'All') query.append('status', params.status);
+  const qs = query.toString() ? `?${query.toString()}` : '';
+  return await fetchWithFallback(`${BASE_URL}/requests${qs}`, {}, []);
+}
+
+/**
+ * 5. Xem chi tiet mot phien yeu cau Concierge
+ */
+export async function fetchConciergeRequestById(requestId) {
+  return await fetchWithFallback(`${BASE_URL}/requests/${encodeURIComponent(requestId)}`, {}, null);
+}
+

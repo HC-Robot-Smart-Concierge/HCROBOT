@@ -35,18 +35,21 @@ from .concierge import router as concierge_router
 
 router = APIRouter()
 
+# 1. Các bộ phận nghiệp vụ khách sạn (Hotel Operational Departments)
 router.include_router(reception_router)
 router.include_router(housekeeping_router)
 router.include_router(bell_services_router)
 router.include_router(maintenance_router)
 router.include_router(room_service_router)
 router.include_router(kitchen_router)
-router.include_router(admin_ops_router)
-router.include_router(staff_router)
-router.include_router(notifications_router)
-router.include_router(robot_control_router)
 router.include_router(taxi_router)
 router.include_router(concierge_router)
+router.include_router(staff_router)
+
+# 2. Điều phối nghiệp vụ, Robot, Quản trị & Thông báo (Operations Management & Notifications)
+router.include_router(admin_ops_router)
+router.include_router(robot_control_router)
+router.include_router(notifications_router)
 
 __all__ = [
     "router",

@@ -86,13 +86,13 @@ tags_metadata = [
     {"name": "08. Bộ phận Kỹ thuật & Bảo trì (Facility Maintenance)"},
     {"name": "09. Bộ phận Phục vụ phòng (Room Service)"},
     {"name": "10. Bộ phận Bếp & Ẩm thực (Kitchen Operations & Menus)"},
-    {"name": "11. Quản lý Chung & Điều phối Nghiệp vụ (Operations & Directives)"},
-    {"name": "12. Trung tâm Điều hành & Quản trị (Admin & Human Support)"},
-    {"name": "13. Thông báo Hệ thống (Notifications)"},
-    {"name": "14. Nhật ký Vận hành & Audit Trail (Logging & Trace)"},
-    {"name": "15. Quản lý Phòng ban & Nhân sự (Departments & Staff)"},
-    {"name": "16. Bộ phận Đặt xe & Vận chuyển (Taxi & Transportation)"},
-    {"name": "17. Bộ phận Trợ lý Concierge & Live Call (Concierge & Live Support)"},
+    {"name": "11. Bộ phận Đặt xe & Vận chuyển (Taxi & Transportation)"},
+    {"name": "12. Bộ phận Trợ lý Concierge & Live Call (Concierge & Live Support)"},
+    {"name": "13. Quản lý Phòng ban & Nhân sự (Departments & Staff)"},
+    {"name": "14. Quản lý Chung & Điều phối Nghiệp vụ (Operations & Directives)"},
+    {"name": "15. Trung tâm Điều hành & Quản trị (Admin & Human Support)"},
+    {"name": "16. Thông báo Hệ thống (Notifications)"},
+    {"name": "17. Nhật ký Vận hành & Audit Trail (Logging & Trace)"},
 ]
 
 

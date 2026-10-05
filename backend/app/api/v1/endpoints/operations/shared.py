@@ -35,12 +35,12 @@ TAG_REST_BOOKING = TAG_KITCHEN
 TAG_REST_FOOD_CATALOG = TAG_KITCHEN
 TAG_REST_MENU = TAG_KITCHEN
 TAG_REST = TAG_KITCHEN  # Backward compatibility alias
-TAG_OPS = ["11. Quản lý Chung & Điều phối Nghiệp vụ (Operations & Directives)"]
-TAG_ADMIN = ["12. Trung tâm Điều hành & Quản trị (Admin & Human Support)"]
-TAG_NOTIF = ["13. Thông báo Hệ thống (Notifications)"]
-TAG_STAFF = ["15. Quản lý Phòng ban & Nhân sự (Departments & Staff)"]
-TAG_TAXI = ["16. Bộ phận Đặt xe & Vận chuyển (Taxi & Transportation)"]
-TAG_CONCIERGE = ["17. Bộ phận Trợ lý Concierge & Live Call (Concierge & Live Support)"]
+TAG_TAXI = ["11. Bộ phận Đặt xe & Vận chuyển (Taxi & Transportation)"]
+TAG_CONCIERGE = ["12. Bộ phận Trợ lý Concierge & Live Call (Concierge & Live Support)"]
+TAG_STAFF = ["13. Quản lý Phòng ban & Nhân sự (Departments & Staff)"]
+TAG_OPS = ["14. Quản lý Chung & Điều phối Nghiệp vụ (Operations & Directives)"]
+TAG_ADMIN = ["15. Trung tâm Điều hành & Quản trị (Admin & Human Support)"]
+TAG_NOTIF = ["16. Thông báo Hệ thống (Notifications)"]
 
 
 

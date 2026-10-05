@@ -216,6 +216,54 @@ async def create_housekeeping_request(req_in: HousekeepingRequestCreate, db: Asy
     return new_req
 
 
+@router.get(
+    "/housekeeping/requests/{request_id}",
+    response_model=HousekeepingRequestResponse,
+    tags=TAG_HK,
+    summary="Xem chi tiết một yêu cầu Buồng phòng",
+    responses={
+        200: {"description": "Lấy chi tiết yêu cầu buồng phòng thành công."},
+        404: {"description": "Không tìm thấy yêu cầu buồng phòng."},
+    },
+)
+async def get_housekeeping_request(
+    request_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    ### Mô tả nghiệp vụ:
+    Tra cứu chi tiết một yêu cầu dịch vụ buồng phòng theo `request_id` (ID hệ thống hoặc mã `ticket_code` như `HK-1044`).
+    """
+    clean_id = request_id.replace("REQ-", "").replace("HK-", "").strip()
+    res = await db.execute(
+        select(SupportRequest).where(
+            or_(
+                SupportRequest.id == request_id,
+                SupportRequest.ticket_code == request_id,
+                SupportRequest.id == clean_id,
+                SupportRequest.ticket_code == clean_id,
+                SupportRequest.ticket_code == f"HK-{clean_id}",
+            )
+        )
+    )
+    req = res.scalar_one_or_none()
+    if not req:
+        raise HTTPException(status_code=404, detail="Không tìm thấy yêu cầu Buồng phòng")
+    return HousekeepingRequestResponse(
+        id=f"REQ-{req.ticket_code}" if not str(req.ticket_code).startswith("REQ-") else req.ticket_code,
+        ticket_code=req.ticket_code,
+        source=req.source or "From HCRobot",
+        time_label=req.created_at.strftime("%H:%M") if req.created_at else "Recent",
+        title=req.title,
+        room_number=req.room_number or "Room 000",
+        description=req.description,
+        guest_name=req.guest_name or "Guest",
+        status=req.status,
+        assigned_staff_name=req.assigned_staff_name,
+        created_at=req.created_at,
+    )
+
+
 @router.patch(
     "/housekeeping/requests/{request_id}/assign",
     response_model=HousekeepingRequestResponse,

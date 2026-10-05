@@ -240,6 +240,42 @@ async def create_taxi_request(req_in: TaxiRequestCreate, db: AsyncSession = Depe
     return _format_taxi_request(new_req)
 
 
+@router.get(
+    "/taxi/requests/{request_id}",
+    response_model=TaxiRequestResponse,
+    tags=TAG_TAXI,
+    summary="Xem chi tiết một yêu cầu đặt xe Taxi",
+    responses={
+        200: {"description": "Lấy chi tiết yêu cầu đặt xe thành công."},
+        404: {"description": "Không tìm thấy yêu cầu đặt xe Taxi."},
+    },
+)
+async def get_taxi_request(
+    request_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    ### Mô tả nghiệp vụ:
+    Tra cứu chi tiết một cuốc xe / yêu cầu di chuyển taxi theo `request_id` (ID hệ thống hoặc mã `ticket_code` như `TX-12345`).
+    """
+    clean_id = request_id.replace("REQ-", "").replace("TX-", "").strip()
+    res = await db.execute(
+        select(SupportRequest).where(
+            or_(
+                SupportRequest.id == request_id,
+                SupportRequest.ticket_code == request_id,
+                SupportRequest.id == clean_id,
+                SupportRequest.ticket_code == clean_id,
+                SupportRequest.ticket_code == f"TX-{clean_id}",
+            )
+        )
+    )
+    req = res.scalar_one_or_none()
+    if not req:
+        raise HTTPException(status_code=404, detail="Không tìm thấy yêu cầu đặt xe Taxi")
+    return _format_taxi_request(req)
+
+
 @router.patch(
     "/taxi/requests/{request_id}/status",
     response_model=TaxiRequestResponse,

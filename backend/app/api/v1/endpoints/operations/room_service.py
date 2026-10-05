@@ -266,6 +266,12 @@ async def list_room_service_orders(
     tags=TAG_FB,
     summary="Chi tiết một đơn hàng Room Service",
 )
+@router.get(
+    "/room-service/requests/{order_id}",
+    response_model=RoomServiceOrderResponse,
+    tags=TAG_FB,
+    include_in_schema=False,
+)
 async def get_room_service_order(
     order_id: str,
     db: AsyncSession = Depends(get_db),

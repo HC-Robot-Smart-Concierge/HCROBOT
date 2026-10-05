@@ -145,6 +145,42 @@ async def list_reception_requests(
     return res.scalars().all()
 
 
+@router.get(
+    "/reception/requests/{request_id}",
+    response_model=ReceptionRequestResponse,
+    tags=TAG_REC,
+    summary="Xem chi tiết một yêu cầu Lễ tân & Đặt phòng",
+    responses={
+        200: {"description": "Lấy chi tiết yêu cầu Lễ tân thành công."},
+        404: {"description": "Không tìm thấy yêu cầu Lễ tân."},
+    },
+)
+async def get_reception_request(
+    request_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    ### Mô tả nghiệp vụ:
+    Tra cứu chi tiết một yêu cầu Lễ tân & Đặt phòng theo `request_id` (ID hệ thống hoặc mã `ticket_code` như `REC-12345`).
+    """
+    clean_id = request_id.replace("REQ-", "").replace("REC-", "").strip()
+    result = await db.execute(
+        select(SupportRequest).where(
+            or_(
+                SupportRequest.id == request_id,
+                SupportRequest.ticket_code == request_id,
+                SupportRequest.id == clean_id,
+                SupportRequest.ticket_code == clean_id,
+                SupportRequest.ticket_code == f"REC-{clean_id}",
+            )
+        )
+    )
+    request = result.scalar_one_or_none()
+    if not request:
+        raise HTTPException(status_code=404, detail="Không tìm thấy yêu cầu Lễ tân")
+    return request
+
+
 @router.patch(
     "/reception/requests/{request_id}",
     response_model=ReceptionRequestResponse,

@@ -60,6 +60,5 @@ async def test_chat_session_db_persistence_and_api():
             msgs_data = msgs_res.json()
             assert len(msgs_data) == 2
             assert msgs_data[0]["text"] == "Khách sạn có hồ bơi không?"
-    finally:
-        from app.core.database import engine
-        await engine.dispose()
+    except Exception as e:
+        raise e

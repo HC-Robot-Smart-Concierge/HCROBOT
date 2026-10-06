@@ -86,10 +86,10 @@ jobs:
       - name: 🧪 Run Pytest Unit Tests
         working-directory: ./backend
         env:
-          DATABASE_URL: postgresql+asyncpg://postgres:password@localhost:5432/hc_robot_test
+          DATABASE_URL: postgresql+asyncpg://postgres:password@127.0.0.1:5432/hc_robot_test
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: password
           POSTGRES_DB: hc_robot_test
-          POSTGRES_HOST: localhost
+          POSTGRES_HOST: 127.0.0.1
           POSTGRES_PORT: 5432
         run: pytest -v tests/

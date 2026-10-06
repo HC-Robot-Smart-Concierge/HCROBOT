@@ -1,15 +1,26 @@
+import os
+import sys
 from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.pool import NullPool
 
 from app.core.config import settings
+
+# In tests or CI, use NullPool so connections aren't tied to closed event loops
+engine_kwargs = {
+    "echo": False,
+    "future": True,
+}
+if os.getenv("TESTING") == "1" or "pytest" in sys.modules:
+    engine_kwargs["poolclass"] = NullPool
+else:
+    engine_kwargs["pool_pre_ping"] = True
 
 # Create Async SQLAlchemy Engine
 engine = create_async_engine(
     settings.async_database_url,
-    echo=False,
-    future=True,
-    pool_pre_ping=True,
+    **engine_kwargs
 )
 
 # Async Session Factory

@@ -960,16 +960,16 @@ export const RobotFoodMenuScreen = ({
         </div>
       </div>
 
-      {/* CỘT BÊN TRÁI (LEFT SIDEBAR): DANH MỤC THU GỌN, KHÔNG HIỂN THỊ SỐ ĐẾM */}
-      <aside className="w-36 sm:w-40 shrink-0 bg-[#EFECE4] border-r border-[#E3DFD5] flex flex-col h-full select-none overscroll-contain touch-none">
+      {/* CỘT BÊN TRÁI (LEFT SIDEBAR): GIỮ NGUYÊN CHIỀU NGANG, NỚI THOÁNG CHIỀU DỌC */}
+      <aside className="w-44 sm:w-48 shrink-0 bg-[#EFECE4] border-r border-[#E3DFD5] flex flex-col h-full select-none overscroll-contain touch-none">
         {/* Tiêu đề Danh mục */}
-        <div className="h-12 shrink-0 px-3 border-b border-[#E3DFD5] flex items-center bg-white/40 touch-none">
-          <span className="text-[10px] sm:text-[11px] font-black uppercase text-stone-700 tracking-wider truncate">
+        <div className="h-11 sm:h-12 shrink-0 px-3 border-b border-[#E3DFD5] flex items-center bg-white/40 touch-none">
+          <span className="text-[10px] sm:text-[11px] font-black uppercase text-stone-700 tracking-wider">
             Danh Mục Món Ăn
           </span>
         </div>
 
-        {/* Danh mục thực đơn (Categories - Gọn gàng không có số đếm để nhường diện tích cho ảnh món) */}
+        {/* Danh mục thực đơn (Phóng to nhẹ chiều dọc, hiển thị đầy đủ và thoáng mắt) */}
         <nav
           ref={sidebarNavRef}
           className={`flex-1 min-h-0 p-1.5 sm:p-2 space-y-1 ${
@@ -985,7 +985,7 @@ export const RobotFoodMenuScreen = ({
                 id={`sidebar-cat-${cat.id}`}
                 type="button"
                 onClick={() => handleCategoryClick(cat.id)}
-                className={`w-full px-2.5 py-2.5 rounded-xl text-left text-xs font-bold transition-all cursor-pointer active:scale-95 ${
+                className={`w-full px-2.5 py-2 sm:py-2.5 rounded-xl text-left text-[11px] sm:text-xs font-bold transition-all cursor-pointer active:scale-95 ${
                   isActive
                     ? 'bg-[#1A1917] text-white shadow-md'
                     : 'text-stone-700 hover:bg-white/70 hover:text-stone-900'
@@ -1091,7 +1091,7 @@ export const RobotFoodMenuScreen = ({
                       </h2>
                     </div>
 
-                    {/* Lưới các món ăn trong danh mục (1 hàng 2 món ăn, hiển thị ảnh và thông tin to rõ ràng) */}
+                    {/* Lưới các món ăn trong danh mục (1 hàng 2 món ăn, chiều dọc phóng to toàn diện vừa vặn) */}
                     <div className="grid grid-cols-2 gap-3.5">
                       {group.items.map((item) => {
                         const quantityInCart = cart[item.id]?.qty || 0;
@@ -1099,10 +1099,10 @@ export const RobotFoodMenuScreen = ({
                         return (
                           <div
                             key={item.id}
-                            className="bg-white rounded-2xl border border-[#E3DFD5] p-2 sm:p-2.5 shadow-xs hover:shadow-md transition-all flex gap-2.5 sm:gap-3 group hover:border-stone-400 min-h-[112px]"
+                            className="bg-white rounded-2xl border border-[#E3DFD5] p-2.5 sm:p-3 shadow-xs hover:shadow-md transition-all flex gap-3 group hover:border-stone-400 h-[134px] sm:h-[142px]"
                           >
-                            {/* Ảnh món ăn bên trái (to hơn, sát viền trên dưới không bị khoảng trống) */}
-                            <div className="relative w-32 sm:w-36 md:w-40 shrink-0 self-stretch rounded-xl overflow-hidden bg-stone-100">
+                            {/* Ảnh món ăn bên trái (giữ nguyên chiều ngang, chiều dọc phóng to theo thẻ) */}
+                            <div className="relative w-32 sm:w-36 md:w-40 shrink-0 h-full rounded-xl overflow-hidden bg-stone-100">
                               <img
                                 src={item.image_url}
                                 alt={item.name}
@@ -1115,10 +1115,10 @@ export const RobotFoodMenuScreen = ({
                               />
                             </div>
 
-                            {/* Thông tin món ăn bên phải */}
-                            <div className="flex-1 min-w-0 flex flex-col justify-between py-0.5">
+                            {/* Thông tin món ăn bên phải (nhiều không gian chiều dọc hơn, thoáng đãng) */}
+                            <div className="flex-1 min-w-0 h-full flex flex-col justify-between py-0.5">
                               <div>
-                                <h3 className="text-xs sm:text-sm font-black text-stone-900 line-clamp-2 leading-snug group-hover:text-stone-950">
+                                <h3 className="text-xs sm:text-sm font-black text-stone-900 line-clamp-1 group-hover:text-stone-950">
                                   {item.name}
                                 </h3>
                                 <p className="text-[10px] sm:text-[11px] text-stone-500 line-clamp-2 mt-1 leading-snug">
@@ -1127,7 +1127,7 @@ export const RobotFoodMenuScreen = ({
                               </div>
 
                               {/* Hàng giá tiền & Nút cộng/trừ món */}
-                              <div className="mt-2 pt-1.5 border-t border-stone-100 flex items-center justify-between gap-1.5">
+                              <div className="mt-1.5 pt-1.5 border-t border-stone-100 flex items-center justify-between gap-1.5">
                                 <div className="min-w-0">
                                   <span className="text-xs sm:text-sm font-black text-stone-900 whitespace-nowrap block leading-none">
                                     {formatCurrency(item.price)} đ
@@ -1138,7 +1138,7 @@ export const RobotFoodMenuScreen = ({
                                   <button
                                     type="button"
                                     onClick={() => addToCart(item)}
-                                    className="w-6 h-6 sm:w-6.5 sm:h-6.5 rounded-full bg-[#1A1917] hover:bg-stone-800 text-white flex items-center justify-center font-bold text-xs sm:text-sm shadow-xs active:scale-90 transition-all cursor-pointer shrink-0"
+                                    className="w-6.5 h-6.5 sm:w-7 sm:h-7 rounded-full bg-[#1A1917] hover:bg-stone-800 text-white flex items-center justify-center font-bold text-xs sm:text-sm shadow-xs active:scale-90 transition-all cursor-pointer shrink-0"
                                     title="Thêm vào danh sách chọn"
                                   >
                                     +
@@ -1148,7 +1148,7 @@ export const RobotFoodMenuScreen = ({
                                     <button
                                       type="button"
                                       onClick={() => removeFromCart(item.id)}
-                                      className="w-4.5 h-4.5 sm:w-5 sm:h-5 rounded-full bg-white hover:bg-stone-200 text-stone-800 font-bold text-[10px] flex items-center justify-center shadow-xs cursor-pointer active:scale-95"
+                                      className="w-5 h-5 sm:w-5.5 sm:h-5.5 rounded-full bg-white hover:bg-stone-200 text-stone-800 font-bold text-[10px] flex items-center justify-center shadow-xs cursor-pointer active:scale-95"
                                       title="Bớt 1 món"
                                     >
                                       -
@@ -1159,7 +1159,7 @@ export const RobotFoodMenuScreen = ({
                                     <button
                                       type="button"
                                       onClick={() => addToCart(item)}
-                                      className="w-4.5 h-4.5 sm:w-5 sm:h-5 rounded-full bg-[#1A1917] hover:bg-stone-800 text-white font-bold text-[10px] flex items-center justify-center shadow-xs cursor-pointer active:scale-95"
+                                      className="w-5 h-5 sm:w-5.5 sm:h-5.5 rounded-full bg-[#1A1917] hover:bg-stone-800 text-white font-bold text-[10px] flex items-center justify-center shadow-xs cursor-pointer active:scale-95"
                                       title="Thêm 1 món"
                                     >
                                       +

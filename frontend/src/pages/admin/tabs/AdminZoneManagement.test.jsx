@@ -15,11 +15,13 @@ describe('Hotel Concierge Zone Management Logic', () => {
   it('should retrieve correct template info for SLOW_SPEED and SILENT_ZONE', () => {
     const slowSpeed = getZoneTemplateInfo('SLOW_SPEED');
     expect(slowSpeed.badge).toBe('SLOW SPEED');
-    expect(slowSpeed.icon).toBe('⚠️');
+    expect(slowSpeed.color).toBe('#D97706');
+    expect(slowSpeed.icon).toBeUndefined();
 
     const silentZone = getZoneTemplateInfo('SILENT_ZONE');
     expect(silentZone.badge).toBe('SILENT ZONE');
-    expect(silentZone.icon).toBe('🔇');
+    expect(silentZone.color).toBe('#6366F1');
+    expect(silentZone.icon).toBeUndefined();
   });
 
   it('should validate and construct payload for creating a functional Zone', () => {

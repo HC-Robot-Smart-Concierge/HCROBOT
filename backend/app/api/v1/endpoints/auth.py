@@ -1,3 +1,4 @@
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -12,6 +13,7 @@ from app.schemas.auth import (
     UserAuthProfile,
     ChangePasswordRequest,
     ProfileUpdateRequest,
+    LogoutResponse,
 )
 
 router = APIRouter()
@@ -236,3 +238,49 @@ async def update_profile(
     await db.commit()
     await db.refresh(staff)
     return UserAuthProfile.model_validate(staff)
+
+
+@router.post("/logout", response_model=LogoutResponse)
+async def logout(
+    authorization: Optional[str] = Header(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Logs out the current staff user.
+    Records audit trail and session termination event in database.
+    Always succeeds gracefully so the client can clear its local session cleanly.
+    """
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization.split(" ")[1]
+        payload = decode_access_token(token)
+        if payload and "sub" in payload:
+            user_id = payload["sub"]
+            res = await db.execute(select(Staff).where(Staff.id == user_id))
+            staff = res.scalar_one_or_none()
+            if staff:
+                # 1. Ghi log audit hệ thống
+                audit(
+                    action="LOGOUT",
+                    resource_type="SESSION",
+                    resource_id=f"user_{staff.id}",
+                    actor_type=ActorTypeEnum.ADMIN if staff.role == "Admin" else ActorTypeEnum.STAFF,
+                    actor_id=staff.username,
+                    actor_name=staff.full_name,
+                    after_state={"status": "logged_out"},
+                )
+                log_event(
+                    level=LogLevelEnum.INFO,
+                    category=LogCategoryEnum.AUDIT,
+                    event_type="LOGOUT_SUCCESS",
+                    module="app.api.v1.auth",
+                    message=f"Nhân viên '{staff.username}' ({staff.full_name}) đã đăng xuất thành công khỏi hệ thống.",
+                    actor_type=ActorTypeEnum.ADMIN if staff.role == "Admin" else ActorTypeEnum.STAFF,
+                    actor_id=staff.username,
+                    metadata={"user_id": staff.id, "username": staff.username, "department": staff.department},
+                )
+                return LogoutResponse(
+                    message=f"Đăng xuất tài khoản {staff.username} thành công.",
+                    success=True,
+                )
+
+    return LogoutResponse(message="Đăng xuất phiên làm việc thành công.", success=True)

@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { InteractiveMapModal } from '../../components/dashboard/Modals';
 import { INITIAL_ROOM_SERVICE_DATA } from '../../data/mockHotelData';
 import {
-  assignRobotToOrder,
   fetchRoomServiceDashboard,
   updateRoomServiceOrderStatus,
 } from '../../services/operationsApi';

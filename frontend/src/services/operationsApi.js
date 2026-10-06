@@ -73,6 +73,14 @@ export const createReceptionRequest = async (requestData) => {
   );
 };
 
+export const fetchReceptionRequestById = async (requestId) => {
+  return await fetchWithFallback(
+    `${BASE_URL}/reception/requests/${encodeURIComponent(requestId)}`,
+    {},
+    null
+  );
+};
+
 // ---------------------------------------------------------
 // 1. Room Service / F&B
 // ---------------------------------------------------------
@@ -102,15 +110,25 @@ export const updateRoomServiceOrderStatus = async (orderId, statusData) => {
   );
 };
 
-export const assignRobotToOrder = async (orderId, robotData) => {
+export const fetchRoomServiceOrderById = async (orderId) => {
   return await fetchWithFallback(
-    `${BASE_URL}/room-service/orders/${orderId}/assign-robot`,
-    {
-      method: 'POST',
-      body: JSON.stringify(robotData),
-    },
-    { id: orderId, status: 'Delivering', assigned_staff_name: robotData.robot_name }
+    `${BASE_URL}/room-service/orders/${encodeURIComponent(orderId)}`,
+    {},
+    null
   );
+};
+
+export const fetchRoomOrdersHistory = async (roomNumber) => {
+  return await fetchWithFallback(
+    `${BASE_URL}/room-service/rooms/${encodeURIComponent(roomNumber)}/orders`,
+    {},
+    { room_number: roomNumber, total_orders: 0, total_amount: 0, ordered_items_summary: [], orders: [] }
+  );
+};
+
+export const fetchRoomOrderedItemsSummary = async (roomNumber) => {
+  const history = await fetchRoomOrdersHistory(roomNumber);
+  return history?.ordered_items_summary || [];
 };
 
 // ---------------------------------------------------------
@@ -142,6 +160,14 @@ export const assignHousekeepingStaff = async (requestId, assignData) => {
   );
 };
 
+export const fetchHousekeepingRequestById = async (requestId) => {
+  return await fetchWithFallback(
+    `${BASE_URL}/housekeeping/requests/${encodeURIComponent(requestId)}`,
+    {},
+    null
+  );
+};
+
 // ---------------------------------------------------------
 // 3. Bell Services
 // ---------------------------------------------------------
@@ -168,6 +194,14 @@ export const updateBellRequestStatus = async (requestId, statusData) => {
       body: JSON.stringify(statusData),
     },
     { id: requestId, ...statusData }
+  );
+};
+
+export const fetchBellRequestById = async (requestId) => {
+  return await fetchWithFallback(
+    `${BASE_URL}/bell-services/requests/${encodeURIComponent(requestId)}`,
+    {},
+    null
   );
 };
 
@@ -201,6 +235,14 @@ export const updateMaintenanceStatus = async (requestId, status, assignedTo = nu
   );
 };
 
+export const fetchMaintenanceRequestById = async (requestId) => {
+  return await fetchWithFallback(
+    `${BASE_URL}/maintenance/requests/${encodeURIComponent(requestId)}`,
+    {},
+    null
+  );
+};
+
 // ---------------------------------------------------------
 // 5. Operational Directives
 // ---------------------------------------------------------
@@ -220,6 +262,14 @@ export const createOperationalDirective = async (directiveData) => {
 // ---------------------------------------------------------
 export const fetchUnifiedRequests = async () => {
   return await fetchWithFallback(`${BASE_URL}/all-requests`, {}, null);
+};
+
+export const fetchRoomAllRequests = async (roomNumber) => {
+  return await fetchWithFallback(
+    `${BASE_URL}/rooms/${encodeURIComponent(roomNumber)}/all-requests`,
+    {},
+    { room_number: roomNumber, total_requests: 0, requests: [] }
+  );
 };
 
 export const updateGenericRequestStatus = async (ticketId, status, assignedTo = null) => {
@@ -483,7 +533,7 @@ export const fetchServiceTypes = async (departmentId = null) => {
 };
 
 export const fetchStaffDepartments = async () => {
-  return await fetchWithFallback(`${BASE_URL}/staff/departments`, {}, []);
+  return await fetchWithFallback(`${BASE_URL}/departments`, {}, []);
 };
 
 

@@ -24,7 +24,6 @@ from app.services.ai.pipecat_service import pipecat_service
 from app.services.ai.concierge_graph import concierge_graph
 from app.core.config import settings
 from app.models import (
-    RoomServiceOrder,
     SupportRequest,
     Feedback,
 )
@@ -419,12 +418,20 @@ async def _auto_create_ticket(db: AsyncSession, action: str, room_number: str, i
 
     try:
         if action in ["room_service", "restaurant"]:
-            order = RoomServiceOrder(
-                order_number=str(random.randint(1043, 9999)),
+            order_num = str(random.randint(1043, 9999))
+            ticket_code = f"ORD-{order_num}"
+            order = SupportRequest(
+                ticket_code=ticket_code,
+                title=f"Đơn Room Service (Phòng {rm}): {items}",
                 room_number=rm,
+                description=items or "Yêu cầu gửi từ HCRobot Concierge AI Chat",
+                guest_name=f"Guest (Room {rm})",
+                department_id="DEP-ROOMSERVICE",
+                service_type_id="ST-ROOM-SERVICE",
                 items=[{"name": items, "qty": 1}],
-                note="Yêu cầu gửi từ HCRobot Concierge AI Chat",
+                source="HCRobot Concierge AI Chat",
                 status="Pending",
+                priority="NORMAL",
                 progress=0,
             )
             db.add(order)
@@ -441,13 +448,13 @@ async def _auto_create_ticket(db: AsyncSession, action: str, room_number: str, i
                 db=db,
                 department="Reception",
                 title=f"Robot AI: Đơn F&B mới từ Khách Phòng {rm}",
-                description=f"Robot đã tiếp nhận đơn #{order.order_number}: {items}",
+                description=f"Robot đã tiếp nhận đơn #{ticket_code}: {items}",
                 request_id=order.id,
                 request_type="room_service",
                 type="Request",
             )
             await db.commit()
-            return order.order_number
+            return ticket_code
 
         elif action == "housekeeping":
             ticket_code = f"HK-{random.randint(1000, 99999)}"

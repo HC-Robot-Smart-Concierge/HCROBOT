@@ -7,7 +7,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import Base
 
 if TYPE_CHECKING:
-    from app.models.hotel import Hotel
+    from app.models.hotel import Hotel, Floor
 
 
 class Map(Base):
@@ -15,6 +15,7 @@ class Map(Base):
 
     id: Mapped[str] = mapped_column(String(50), primary_key=True, default=lambda: f"MAP-{uuid.uuid4().hex[:6].upper()}")
     hotel_id: Mapped[str] = mapped_column(String(50), ForeignKey("hotels.id", ondelete="CASCADE"), nullable=False, index=True)
+    floor_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("floors.id", ondelete="SET NULL"), nullable=True, index=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False) # e.g. "Bản đồ Sảnh Tầng 1 Main Lobby"
     floor: Mapped[str] = mapped_column(String(50), default="Sảnh Tầng 1")
     resolution: Mapped[float] = mapped_column(Float, default=0.05) # meter per pixel
@@ -30,6 +31,7 @@ class Map(Base):
 
     # Relationships
     hotel: Mapped["Hotel"] = relationship("Hotel", back_populates="maps")
+    floor_rel: Mapped[Optional["Floor"]] = relationship("Floor", back_populates="maps")
     zones: Mapped[List["Zone"]] = relationship("Zone", back_populates="map_rel", cascade="all, delete-orphan")
     endpoints: Mapped[List["Endpoint"]] = relationship("Endpoint", back_populates="map_rel", cascade="all, delete-orphan")
 

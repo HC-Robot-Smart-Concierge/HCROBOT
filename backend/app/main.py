@@ -74,81 +74,25 @@ async def lifespan(app: FastAPI):
     rplidar_service.stop()
 
 
-
 tags_metadata = [
-    {
-        "name": "00. Trạng thái Máy chủ (System Health)",
-        "description": "Kiểm tra tình trạng hoạt động và kết nối giữa Backend Server và Ollama AI Engine.",
-    },
-    {
-        "name": "01. Xác thực Hệ thống & JWT (Authentication)",
-        "description": "Đăng nhập nhân sự, giải mã JWT token, xem thông tin tài khoản và đổi mật khẩu.",
-    },
-    {
-        "name": "02. Trợ lý Giọng nói AI (Ollama Voice Engine)",
-        "description": "Hội thoại thông minh đa ngôn ngữ, nhận diện ý định (Intent Extraction) cho Concierge Robot.",
-    },
-    {
-        "name": "03. Định vị & Bản đồ LiDAR SLAM (Robot Navigation)",
-        "description": "Dữ liệu Occupancy Grid Map 2D, danh sách tọa độ Waypoints và lệnh điều hướng robot tự hành.",
-    },
-    {
-        "name": "04. Cơ sở Tri thức & RAG Lễ tân (Knowledge Base & RAG)",
-        "description": "Tra cứu vector ChromaDB, đồng bộ tự động Obsidian Vault và tài liệu nghiệp vụ khách sạn.",
-    },
-    {
-        "name": "05. Bộ phận Lễ tân & Đặt phòng (Front Desk & Reception)",
-        "description": "Quản lý Dashboard Lễ tân, xử lý yêu cầu đặt phòng (Room Booking), check-in, check-out và thủ tục lưu trú.",
-    },
-    {
-        "name": "06. Bộ phận Phục vụ phòng (F&B / Room Service)",
-        "description": "Dashboard Bếp & Ẩm thực, danh sách đơn gọi món, cập nhật chế biến và giao đồ bằng Robot.",
-    },
-    {
-        "name": "07. Bộ phận Buồng phòng (Housekeeping Operations)",
-        "description": "Dashboard Buồng phòng, quản lý yêu cầu dọn phòng, giặt ủi, vật tư và phân công nhân viên.",
-    },
-    {
-        "name": "08. Bộ phận Hành lý & Tiền sảnh (Bell Services)",
-        "description": "Dashboard Bellman, tiếp nhận yêu cầu chuyển hành lý, hỗ trợ đổi phòng và tìm đồ thất lạc.",
-    },
-    {
-        "name": "09. Bộ phận Kỹ thuật & Bảo trì (Facility Maintenance)",
-        "description": "Dashboard Kỹ thuật, xử lý sự cố HVAC điều hòa, điện, nước và sửa chữa hạ tầng phòng.",
-    },
-    {
-        "name": "10. Bộ phận Nhà hàng (Restaurant - Đặt bàn & Đặt món)",
-        "description": "Quản lý đặt bàn ăn trước, thực đơn gọi món và chuẩn bị nguyên liệu nhà hàng.",
-    },
-    {
-        "name": "11. Quản lý Chung & Điều phối Nghiệp vụ (Operations & Directives)",
-        "description": "Cập nhật trạng thái tác vụ tổng hợp, phát chỉ thị quản lý, theo dõi kho vật tư và danh sách nhân sự.",
-    },
-    {
-        "name": "12. Trung tâm Điều hành & Quản trị (Admin & Human Support)",
-        "description": "Cổng quản trị tối cao (Admin Portal), thống kê tổng quan, điều phối tác vụ và giám sát hội thoại robot.",
-    },
-    {
-        "name": "13. Thông báo Hệ thống (Notifications)",
-        "description": "Quản lý thông báo thời gian thực theo từng bộ phận nghiệp vụ và đánh dấu đã đọc.",
-    },
-    {
-        "name": "14. Nhật ký Vận hành & Audit Trail (Logging & Trace)",
-        "description": "Tra cứu nhật ký phân tích sự kiện, kiểm toán bảo mật hành vi và xuất báo cáo CSV/JSON.",
-    },
-    {
-        "name": "15. Quản lý Phòng ban & Nhân sự (Departments & Staff)",
-        "description": "Quản lý cơ cấu phòng ban chuẩn khách sạn (Housekeeping, Bellman, Taxi, Maintenance, Reception, Concierge, F&B), danh mục loại hình dịch vụ (Service Types) và hồ sơ nhân sự khách sạn.",
-    },
-    {
-        "name": "16. Bộ phận Đặt xe & Vận chuyển (Taxi & Transportation)",
-        "description": "Dashboard Đặt xe, điều phối taxi sân bay, lịch trình đưa đón khách và quản lý phương tiện di chuyển.",
-    },
-    {
-        "name": "17. Bộ phận Trợ lý Concierge & Live Call (Concierge & Live Support)",
-        "description": "Dashboard Concierge, tiếp nhận cuộc gọi video trực tuyến, can thiệp hỗ trợ tức thì khi khách tương tác với Robot Kiosk.",
-
-    },
+    {"name": "00. Trạng thái Máy chủ (System Health)"},
+    {"name": "01. Xác thực Hệ thống & JWT (Authentication)"},
+    {"name": "02. Trợ lý Giọng nói AI (Ollama Voice Engine)"},
+    {"name": "03. Định vị & Bản đồ LiDAR SLAM (Robot Navigation)"},
+    {"name": "04. Cơ sở Tri thức & RAG Lễ tân (Knowledge Base & RAG)"},
+    {"name": "05. Bộ phận Lễ tân & Đặt phòng (Front Desk & Reception)"},
+    {"name": "06. Bộ phận Buồng phòng (Housekeeping Operations)"},
+    {"name": "07. Bộ phận Hành lý & Tiền sảnh (Bell Services)"},
+    {"name": "08. Bộ phận Kỹ thuật & Bảo trì (Facility Maintenance)"},
+    {"name": "09. Bộ phận Phục vụ phòng (Room Service)"},
+    {"name": "10. Bộ phận Bếp & Ẩm thực (Kitchen Operations & Menus)"},
+    {"name": "11. Bộ phận Đặt xe & Vận chuyển (Taxi & Transportation)"},
+    {"name": "12. Bộ phận Trợ lý Concierge & Live Call (Concierge & Live Support)"},
+    {"name": "13. Quản lý Phòng ban & Nhân sự (Departments & Staff)"},
+    {"name": "14. Quản lý Chung & Điều phối Nghiệp vụ (Operations & Directives)"},
+    {"name": "15. Trung tâm Điều hành & Quản trị (Admin & Human Support)"},
+    {"name": "16. Thông báo Hệ thống (Notifications)"},
+    {"name": "17. Nhật ký Vận hành & Audit Trail (Logging & Trace)"},
 ]
 
 
@@ -180,7 +124,6 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 app.include_router(api_router, prefix="/api/v1")
 
 
-@app.get("/", tags=["00. Trạng thái Máy chủ (System Health)"], summary="Kiểm tra trạng thái máy chủ")
 @app.get("/health", tags=["00. Trạng thái Máy chủ (System Health)"], summary="Kiểm tra trạng thái kết nối máy chủ (Health)")
 async def health_check():
     return {

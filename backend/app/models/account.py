@@ -55,7 +55,10 @@ class Account(Base):
                 "DEP-MAINTENANCE": "Maintenance & Engineering",
                 "DEP-RECEPTION": "Front Desk & Reception",
                 "DEP-CONCIERGE": "Concierge & Live Support",
-                "DEP-FB": "Food & Beverage",
+                "DEP-ROOMSERVICE": "Room Service",
+                "DEP-KITCHEN": "Kitchen",
+                "DEP-FB": "Room Service",
+                "DEP-RESTAURANT": "Kitchen",
             }
             if self.department_id in dept_map:
                 return dept_map[self.department_id]

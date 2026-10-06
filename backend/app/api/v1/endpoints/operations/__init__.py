@@ -6,6 +6,10 @@ from .shared import (
     TAG_HK,
     TAG_BELL,
     TAG_MNT,
+    TAG_KITCHEN,
+    TAG_REST_BOOKING,
+    TAG_REST_FOOD_CATALOG,
+    TAG_REST_MENU,
     TAG_REST,
     TAG_OPS,
     TAG_ADMIN,
@@ -21,7 +25,7 @@ from .room_service import router as room_service_router
 from .housekeeping import router as housekeeping_router
 from .bell_services import router as bell_services_router
 from .maintenance import router as maintenance_router
-from .restaurant import router as restaurant_router
+from .kitchen import router as kitchen_router
 from .admin_ops import router as admin_ops_router
 from .staff import router as staff_router
 from .notifications import router as notifications_router
@@ -31,18 +35,21 @@ from .concierge import router as concierge_router
 
 router = APIRouter()
 
+# 1. Các bộ phận nghiệp vụ khách sạn (Hotel Operational Departments)
 router.include_router(reception_router)
-router.include_router(room_service_router)
 router.include_router(housekeeping_router)
 router.include_router(bell_services_router)
 router.include_router(maintenance_router)
-router.include_router(restaurant_router)
-router.include_router(admin_ops_router)
-router.include_router(staff_router)
-router.include_router(notifications_router)
-router.include_router(robot_control_router)
+router.include_router(room_service_router)
+router.include_router(kitchen_router)
 router.include_router(taxi_router)
 router.include_router(concierge_router)
+router.include_router(staff_router)
+
+# 2. Điều phối nghiệp vụ, Robot, Quản trị & Thông báo (Operations Management & Notifications)
+router.include_router(admin_ops_router)
+router.include_router(robot_control_router)
+router.include_router(notifications_router)
 
 __all__ = [
     "router",
@@ -53,6 +60,9 @@ __all__ = [
     "TAG_HK",
     "TAG_BELL",
     "TAG_MNT",
+    "TAG_REST_BOOKING",
+    "TAG_REST_FOOD_CATALOG",
+    "TAG_REST_MENU",
     "TAG_REST",
     "TAG_OPS",
     "TAG_ADMIN",

@@ -58,10 +58,26 @@ export function getStoredToken() {
   return localStorage.getItem(TOKEN_KEY);
 }
 
-export function logoutUser() {
+export async function logoutUser() {
+  const token = getStoredToken();
+  if (token) {
+    try {
+      await fetch(`${AUTH_URL}/logout`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+    } catch (e) {
+      console.warn('[AuthApi] Backend logout notification warning:', e);
+    }
+  }
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USER_KEY);
   localStorage.removeItem('aurora_user');
+  localStorage.removeItem('aurora_active_view');
+  localStorage.removeItem('aurora_active_menu');
 }
 
 export function updateStoredUser(updatedUser) {

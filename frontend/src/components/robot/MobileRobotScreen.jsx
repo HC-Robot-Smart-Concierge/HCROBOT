@@ -39,6 +39,8 @@ export const MobileRobotScreen = ({
   onToggleLanguage,
   speechError,
   transcript,
+  workflowTrigger,
+  onOpenFoodMenu,
 }) => {
   const [isOnline, setIsOnline] = useState(() => navigator.onLine);
   const [installMessage, setInstallMessage] = useState('');
@@ -84,6 +86,18 @@ export const MobileRobotScreen = ({
             <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-500' : 'bg-red-500'}`} title={isOnline ? 'Đã kết nối' : 'Ngoại tuyến'} />
           </div>
           <div className="flex items-center gap-2">
+            {workflowTrigger}
+            {onOpenFoodMenu && (
+              <button
+                type="button"
+                onClick={onOpenFoodMenu}
+                className="h-8 px-3 rounded-full bg-white hover:bg-stone-50 border border-stone-300 text-stone-900 text-[10px] font-bold flex items-center gap-1 active:scale-95 shadow-xs cursor-pointer transition-transform hover:scale-105 shrink-0"
+                title="Mở thực đơn chọn món"
+              >
+                <span>🍽️</span>
+                <span>Chọn món</span>
+              </button>
+            )}
             {guestEmotion && (
               <span 
                 className={`text-[10px] font-bold px-2 py-0.5 rounded-full border flex items-center gap-1 transition-all ${

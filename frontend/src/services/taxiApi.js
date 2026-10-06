@@ -96,3 +96,10 @@ export async function updateTaxiRequestStatus(requestId, status, assignedDriver 
     }
   );
 }
+
+/**
+ * 5. Xem chi tiet mot yeu cau dat xe taxi
+ */
+export async function fetchTaxiRequestById(requestId) {
+  return await fetchWithFallback(`${BASE_URL}/requests/${encodeURIComponent(requestId)}`, {}, null);
+}

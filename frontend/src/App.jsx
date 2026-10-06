@@ -16,6 +16,7 @@ import { RestaurantDashboard } from './pages/dashboard/RestaurantDashboard';
 import { ConciergeDashboard } from './pages/dashboard/ConciergeDashboard';
 import { StaffOverviewDashboard } from './pages/dashboard/StaffOverviewDashboard';
 import { RobotScreenPage } from './pages/robot/RobotScreenPage';
+import { RobotFoodMenuScreen } from './components/robot/RobotFoodMenuScreen';
 import { AdminLidarPage } from './pages/admin/AdminLidarPage';
 import { AdminPortal } from './pages/admin/AdminPortal';
 import { FeedbackModal } from './components/common/FeedbackModal';
@@ -127,7 +128,7 @@ const normalizeLegacyView = (view, user) => {
   if (['reception', 'front_desk', 'frontdesk'].includes(clean)) {
     return 'reception';
   }
-  if (['restaurant', 'nhahang', 'nha_hang'].includes(clean)) {
+  if (['restaurant', 'nhahang', 'nha_hang', 'kitchen', 'bep'].includes(clean)) {
     return 'restaurant';
   }
   if (['taxi', 'datxe', 'dat_xe', 'transport', 'transportation'].includes(clean)) {
@@ -158,6 +159,7 @@ export function App() {
   const [activeView, setActiveView] = useState(() => {
     const requestedView = new URLSearchParams(window.location.search).get('view');
     if (requestedView === 'robot_display') return 'robot_display';
+    if (requestedView === 'food_menu' || requestedView === 'order_food') return 'food_menu';
 
     const user = getStoredUser();
     if (user) {
@@ -425,8 +427,8 @@ export function App() {
   };
 
   // Logout Callback -> Return to Landing Page
-  const handleLogout = () => {
-    logoutUser();
+  const handleLogout = async () => {
+    await logoutUser();
     setCurrentUser(null);
     setActiveView('landing');
     localStorage.setItem('aurora_active_view', 'landing');
@@ -456,7 +458,7 @@ export function App() {
     { id: 'housekeeping', label: '2. Housekeeping (Staff)' },
     { id: 'bell_services', label: '3. Bell Services (Staff)' },
     { id: 'maintenance', label: '4. Maintenance (Staff)' },
-    { id: 'restaurant', label: '5. Restaurant (Staff)' },
+    { id: 'restaurant', label: '5. Kitchen / Bếp (Staff)' },
     { id: 'concierge', label: '6. Concierge & Transport (Staff)' },
     { id: 'robot_display', label: 'Man Hinh Robot' },
     { id: 'admin_map', label: 'LiDAR SLAM Map' },
@@ -598,6 +600,13 @@ export function App() {
       {activeView === 'robot_display' && (
         <div className="w-full h-full relative">
           <RobotScreenPage onLogout={handleLogout} />
+        </div>
+      )}
+
+      {/* 3b. Màn hình Chọn Món Robot (Food Menu & Room Service) */}
+      {activeView === 'food_menu' && (
+        <div className="w-full h-full relative">
+          <RobotFoodMenuScreen onClose={() => setActiveView('robot_display')} />
         </div>
       )}
 

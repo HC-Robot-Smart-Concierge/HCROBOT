@@ -43,7 +43,14 @@ async def init_db() -> None:
         await conn.run_sync(Base.metadata.create_all)
         # An toàn cho database cũ: bổ sung cột thiếu nếu bảng đã tồn tại
         try:
-            await conn.execute(text("ALTER TABLE room_service_orders ADD COLUMN IF NOT EXISTS is_vip BOOLEAN DEFAULT FALSE;"))
+            await conn.execute(text("ALTER TABLE human_support_sessions ADD COLUMN IF NOT EXISTS chat_session_id VARCHAR(64);"))
+            await conn.execute(text("ALTER TABLE human_support_sessions ADD COLUMN IF NOT EXISTS account_id VARCHAR(50);"))
+            await conn.execute(text("ALTER TABLE human_support_sessions ADD COLUMN IF NOT EXISTS recording_url TEXT;"))
+            await conn.execute(text("ALTER TABLE human_support_sessions ADD COLUMN IF NOT EXISTS recording_public_id VARCHAR(150);"))
+            await conn.execute(text("ALTER TABLE human_support_sessions ADD COLUMN IF NOT EXISTS recording_duration INTEGER;"))
+            await conn.execute(text("ALTER TABLE human_support_sessions ADD COLUMN IF NOT EXISTS thumbnail_url TEXT;"))
+            await conn.execute(text("ALTER TABLE human_support_sessions ADD COLUMN IF NOT EXISTS call_started_at TIMESTAMP;"))
+            await conn.execute(text("ALTER TABLE human_support_sessions ADD COLUMN IF NOT EXISTS call_ended_at TIMESTAMP;"))
         except Exception:
             pass
 

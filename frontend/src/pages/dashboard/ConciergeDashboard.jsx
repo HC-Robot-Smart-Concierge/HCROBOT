@@ -13,12 +13,19 @@ import {
   UserCheck,
   Check,
   Users,
+  Disc,
+  Play,
+  Film,
+  ExternalLink,
+  Cloud,
 } from 'lucide-react';
 import {
   fetchConciergeDashboard,
   createConciergeRequest,
   updateConciergeRequest,
+  fetchHumanSupportSessions,
 } from '../../services/conciergeApi';
+import { MessengerVideoCallModal } from '../../components/video/MessengerVideoCallModal';
 import {
   fetchTaxiDashboard,
   fetchTaxiRequests,
@@ -34,6 +41,9 @@ export const ConciergeDashboard = ({ currentUser, onNotify = () => {} }) => {
   const [activeSession, setActiveSession] = useState(null);
   const [activeCount, setActiveCount] = useState(0);
   const [isTestModalOpen, setIsTestModalOpen] = useState(false);
+  const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
+  const [recordedSessions, setRecordedSessions] = useState([]);
+  const [playingVideo, setPlayingVideo] = useState(null);
   const [testForm, setTestForm] = useState({
     room_number: 'Lobby Kiosk Unit 01',
     guest_name: 'Mr. Tanaka Kenji',
@@ -65,15 +75,19 @@ export const ConciergeDashboard = ({ currentUser, onNotify = () => {} }) => {
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const [conciergeData, taxiDashData, taxiReqsData] = await Promise.all([
+      const [conciergeData, taxiDashData, taxiReqsData, sessionsData] = await Promise.all([
         fetchConciergeDashboard(),
         fetchTaxiDashboard(),
         fetchTaxiRequests(),
+        fetchHumanSupportSessions(),
       ]);
 
       if (conciergeData) {
         setActiveSession(conciergeData.current_request || null);
         setActiveCount(conciergeData.active_sessions_count || 0);
+      }
+      if (Array.isArray(sessionsData)) {
+        setRecordedSessions(sessionsData);
       }
 
       if (taxiDashData?.kpis) {
@@ -227,6 +241,23 @@ export const ConciergeDashboard = ({ currentUser, onNotify = () => {} }) => {
           </button>
 
           <button
+            onClick={() => setActiveSubTab('recordings')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
+              activeSubTab === 'recordings'
+                ? 'bg-palette-charcoal text-palette-cream shadow-sm'
+                : 'text-palette-slate hover:bg-palette-stone hover:text-palette-charcoal'
+            }`}
+          >
+            <Film className="w-3.5 h-3.5" />
+            <span>Bản Ghi Cuộc Gọi (Cloudinary)</span>
+            {recordedSessions.filter((s) => s.recording_url).length > 0 && (
+              <span className="bg-sky-500 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold">
+                {recordedSessions.filter((s) => s.recording_url).length}
+              </span>
+            )}
+          </button>
+
+          <button
             onClick={() => setActiveSubTab('taxi')}
             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
               activeSubTab === 'taxi'
@@ -312,11 +343,24 @@ export const ConciergeDashboard = ({ currentUser, onNotify = () => {} }) => {
                 <div className="flex items-center justify-end gap-3 pt-4 border-t border-palette-silver/50">
                   {activeSession.status !== 'Connected' && activeSession.status !== 'Closed' && (
                     <button
-                      onClick={() => handleUpdateStatus('Connected')}
-                      className="px-4 py-2 rounded-lg bg-palette-charcoal hover:bg-neutral-800 text-palette-cream text-xs font-bold flex items-center gap-2 shadow-sm transition-all"
+                      onClick={async () => {
+                        await handleUpdateStatus('Connected');
+                        setIsVideoModalOpen(true);
+                      }}
+                      className="px-4 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold flex items-center gap-2 shadow-sm transition-all"
                     >
                       <Video className="w-4 h-4" />
                       Tiếp nhận cuộc gọi Video
+                    </button>
+                  )}
+
+                  {activeSession.status === 'Connected' && (
+                    <button
+                      onClick={() => setIsVideoModalOpen(true)}
+                      className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-2 shadow-sm transition-all"
+                    >
+                      <Video className="w-4 h-4" />
+                      Mở Màn Hình Cuộc Gọi
                     </button>
                   )}
 
@@ -353,6 +397,108 @@ export const ConciergeDashboard = ({ currentUser, onNotify = () => {} }) => {
                 </button>
               </div>
             )}
+          </div>
+        )}
+
+        {/* SUBTAB: CLOUDINARY CALL RECORDINGS */}
+        {activeSubTab === 'recordings' && (
+          <div className="space-y-6">
+            <div className="bg-white rounded-xl border border-palette-silver shadow-sm overflow-hidden">
+              <div className="p-4 border-b border-palette-silver/50 flex items-center justify-between">
+                <div>
+                  <h3 className="text-xs font-bold text-palette-charcoal flex items-center gap-2">
+                    <Film className="w-4 h-4 text-sky-600" />
+                    Lịch Sử Cuộc Gọi & Bản Ghi Cloudinary (Human Support Sessions)
+                  </h3>
+                  <p className="text-[11px] text-palette-slate mt-0.5">
+                    Các cuộc gọi video hỗ trợ trực tiếp giữa Robot Kiosk và Nhân viên được ghi hình tự động.
+                  </p>
+                </div>
+                <button
+                  onClick={loadData}
+                  className="px-2.5 py-1 text-xs rounded-lg border border-palette-silver hover:bg-palette-stone flex items-center gap-1 text-palette-charcoal transition-all"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+                  Làm mới
+                </button>
+              </div>
+
+              {recordedSessions.length === 0 ? (
+                <div className="p-12 text-center text-xs text-palette-slate">
+                  Chưa có bản ghi cuộc gọi nào. Khi khách gọi qua Robot Kiosk, video sẽ tự động xuất hiện ở đây.
+                </div>
+              ) : (
+                <div className="divide-y divide-palette-silver/30">
+                  {recordedSessions.map((session) => (
+                    <div
+                      key={session.id}
+                      className="p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3 hover:bg-palette-cream/40 transition-all"
+                    >
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-mono font-bold bg-palette-stone text-palette-charcoal px-2 py-0.5 rounded border border-palette-silver">
+                            {session.session_code || session.id}
+                          </span>
+                          <span className="text-xs font-bold text-palette-charcoal">{session.guest_name}</span>
+                          <span className="text-[11px] text-palette-slate">({session.room_number})</span>
+                          <span
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                              session.status === 'Resolved'
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : 'bg-sky-100 text-sky-800'
+                            }`}
+                          >
+                            {session.status}
+                          </span>
+                        </div>
+
+                        <div className="text-xs text-palette-slate flex flex-wrap items-center gap-4 pt-1">
+                          <span className="flex items-center gap-1">
+                            <Clock className="w-3.5 h-3.5" />
+                            {session.created_at ? new Date(session.created_at).toLocaleString('vi-VN') : 'Vừa xong'}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <Disc className="w-3.5 h-3.5 text-red-500" />
+                            Thời lượng: <strong className="font-semibold text-palette-charcoal">{session.recording_duration || 0}s</strong>
+                          </span>
+                          {session.recording_url && (
+                            <span className="flex items-center gap-1 text-sky-700 font-semibold text-[11px]">
+                              <Cloud className="w-3.5 h-3.5" />
+                              Cloudinary Cloud Storage
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        {session.recording_url ? (
+                          <>
+                            <button
+                              onClick={() => setPlayingVideo(session)}
+                              className="px-3 py-1.5 rounded-lg bg-palette-charcoal hover:bg-neutral-800 text-palette-cream text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-all"
+                            >
+                              <Play className="w-3.5 h-3.5 fill-current" />
+                              Xem Bản Ghi
+                            </button>
+                            <a
+                              href={session.recording_url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="p-1.5 rounded-lg border border-palette-silver hover:bg-palette-stone text-palette-slate hover:text-palette-charcoal transition-all"
+                              title="Mở tab Cloudinary mới"
+                            >
+                              <ExternalLink className="w-4 h-4" />
+                            </a>
+                          </>
+                        ) : (
+                          <span className="text-xs text-palette-slate italic">Đang diễn ra hoặc chưa lưu video</span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -697,6 +843,113 @@ export const ConciergeDashboard = ({ currentUser, onNotify = () => {} }) => {
           </div>
         </div>
       )}
+      {/* MODAL XEM LẠI VIDEO GHI HÌNH TỪ CLOUDINARY */}
+      {playingVideo && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-neutral-900 border border-neutral-800 rounded-2xl max-w-3xl w-full overflow-hidden shadow-2xl">
+            <div className="p-4 bg-neutral-900 flex items-center justify-between border-b border-neutral-800">
+              <div className="flex items-center gap-2 text-white text-xs font-bold">
+                <Film className="w-4 h-4 text-emerald-400" />
+                <span>Bản Ghi Cuộc Gọi: {playingVideo.session_code || playingVideo.id}</span>
+                <span className="text-neutral-400 font-normal">({playingVideo.guest_name} - {playingVideo.room_number})</span>
+              </div>
+              <button
+                onClick={() => setPlayingVideo(null)}
+                className="text-neutral-400 hover:text-white text-xs font-bold px-2 py-1 rounded-lg hover:bg-neutral-800 transition-all"
+              >
+                Đóng
+              </button>
+            </div>
+            <div className="bg-black aspect-video flex items-center justify-center">
+              <video
+                src={playingVideo.recording_url}
+                controls
+                autoPlay
+                className="w-full h-full object-contain"
+              />
+            </div>
+            <div className="p-3 bg-neutral-900/90 text-[11px] text-neutral-400 flex items-center justify-between border-t border-neutral-800">
+              <span className="truncate">URL: {playingVideo.recording_url}</span>
+              <a
+                href={playingVideo.recording_url}
+                target="_blank"
+                rel="noreferrer"
+                className="text-emerald-400 hover:underline shrink-0 ml-3 flex items-center gap-1 font-semibold"
+              >
+                <ExternalLink className="w-3.5 h-3.5" /> Mở gốc
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* INCOMING CALL RINGING MODAL FOR STAFF (FACE-TIME / MESSENGER STYLE) */}
+      {activeSession && activeSession.status === 'Pending' && !isVideoModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-neutral-900 border border-emerald-500/50 rounded-3xl p-6 max-w-sm w-full text-center space-y-5 shadow-2xl text-white">
+            <div className="relative mx-auto w-20 h-20 rounded-full bg-emerald-600/20 border-2 border-emerald-500 flex items-center justify-center animate-pulse">
+              <PhoneCall className="w-10 h-10 text-emerald-400 animate-bounce" />
+            </div>
+
+            <div className="space-y-1">
+              <span className="text-[10px] font-mono font-bold tracking-widest text-emerald-400 uppercase bg-emerald-950/80 px-2 py-0.5 rounded-full border border-emerald-800">
+                CUỘC GỌI ĐẾN TỪ ROBOT KIOSK
+              </span>
+              <h3 className="text-lg font-black text-white pt-1">
+                {activeSession.guest_name || 'Khách tại Sảnh'}
+              </h3>
+              <p className="text-xs text-neutral-400 font-medium">
+                Vị trí: {activeSession.room_number || 'Main Lobby Kiosk'} • Mã: {activeSession.ticket_code}
+              </p>
+            </div>
+
+            <p className="text-xs text-neutral-300 bg-neutral-800/80 p-3 rounded-2xl border border-neutral-700 italic">
+              "{activeSession.description || 'Khách bấm gọi hỗ trợ trực tiếp từ màn hình Robot Concierge'}"
+            </p>
+
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => handleUpdateStatus('Closed')}
+                className="flex-1 py-3 rounded-2xl bg-neutral-800 hover:bg-neutral-700 text-neutral-300 font-bold text-xs transition-colors cursor-pointer"
+              >
+                Từ chối
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  await handleUpdateStatus('Connected');
+                  setIsVideoModalOpen(true);
+                }}
+                className="flex-1 py-3 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-neutral-950 font-black text-xs transition-all shadow-lg shadow-emerald-500/30 flex items-center justify-center gap-2 cursor-pointer active:scale-95 animate-pulse"
+              >
+                <PhoneCall className="w-4 h-4" />
+                <span>Trả Lời Ngay</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MESSENGER VIDEO CALL MODAL (STAFF CALLEE ROLE) */}
+      <MessengerVideoCallModal
+        isOpen={isVideoModalOpen}
+        sessionId={activeSession?.id || activeSession?.ticket_code || 'SUP-STAFF'}
+        role="staff"
+        callerName={activeSession?.guest_name || 'Khách tại Kiosk'}
+        calleeName={currentUser?.full_name || 'Tổng Đài Viên Concierge'}
+        roomNumber={activeSession?.room_number || 'Sảnh S1'}
+        ticketCode={activeSession?.ticket_code}
+        onClose={() => {
+          setIsVideoModalOpen(false);
+          loadData();
+        }}
+        onCallEnded={(recordRes) => {
+          console.log('[ConciergeDashboard] Staff call ended, video uploaded:', recordRes);
+          setIsVideoModalOpen(false);
+          loadData();
+        }}
+      />
     </div>
   );
 };

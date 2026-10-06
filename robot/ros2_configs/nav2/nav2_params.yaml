@@ -15,7 +15,7 @@ amcl:
     lambda_short: 0.1
     laser_likelihood_max_dist: 2.0
     laser_max_range: 12.0
-    laser_min_range: 0.3
+    laser_min_range: 0.12
     laser_model_type: likelihood_field
     max_beams: 60
     max_particles: 2000
@@ -152,9 +152,9 @@ local_costmap:
           marking: true
           data_type: LaserScan
           raytrace_max_range: 12.0
-          raytrace_min_range: 0.3
+          raytrace_min_range: 0.12
           obstacle_max_range: 10.0
-          obstacle_min_range: 0.3
+          obstacle_min_range: 0.12
           inf_is_valid: true
         plugin: nav2_costmap_2d::ObstacleLayer
 global_costmap:
@@ -183,9 +183,9 @@ global_costmap:
           marking: true
           data_type: LaserScan
           raytrace_max_range: 12.0
-          raytrace_min_range: 0.3
+          raytrace_min_range: 0.12
           obstacle_max_range: 10.0
-          obstacle_min_range: 0.3
+          obstacle_min_range: 0.12
           inf_is_valid: true
       static_layer:
         plugin: nav2_costmap_2d::StaticLayer

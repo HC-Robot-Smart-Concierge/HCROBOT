@@ -16,6 +16,7 @@ import { RestaurantDashboard } from './pages/dashboard/RestaurantDashboard';
 import { ConciergeDashboard } from './pages/dashboard/ConciergeDashboard';
 import { StaffOverviewDashboard } from './pages/dashboard/StaffOverviewDashboard';
 import { RobotScreenPage } from './pages/robot/RobotScreenPage';
+import { RobotFoodMenuScreen } from './components/robot/RobotFoodMenuScreen';
 import { AdminLidarPage } from './pages/admin/AdminLidarPage';
 import { AdminPortal } from './pages/admin/AdminPortal';
 import { FeedbackModal } from './components/common/FeedbackModal';
@@ -158,6 +159,7 @@ export function App() {
   const [activeView, setActiveView] = useState(() => {
     const requestedView = new URLSearchParams(window.location.search).get('view');
     if (requestedView === 'robot_display') return 'robot_display';
+    if (requestedView === 'food_menu' || requestedView === 'order_food') return 'food_menu';
 
     const user = getStoredUser();
     if (user) {
@@ -598,6 +600,13 @@ export function App() {
       {activeView === 'robot_display' && (
         <div className="w-full h-full relative">
           <RobotScreenPage onLogout={handleLogout} />
+        </div>
+      )}
+
+      {/* 3b. Màn hình Chọn Món Robot (Food Menu & Room Service) */}
+      {activeView === 'food_menu' && (
+        <div className="w-full h-full relative">
+          <RobotFoodMenuScreen onClose={() => setActiveView('robot_display')} />
         </div>
       )}
 

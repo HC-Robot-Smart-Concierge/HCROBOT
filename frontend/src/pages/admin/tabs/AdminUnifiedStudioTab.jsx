@@ -25,7 +25,7 @@ export const CONCIERGE_ZONE_TEMPLATES = [
     color: '#DC2626',
     bgColor: '#FEF2F2',
     borderColor: '#FCA5A5',
-    icon: '',
+    icon: '⛔',
     description: 'Cầu thang bộ, khu vực bảo trì, bếp. Robot tuyệt đối không đi vào hay qua.',
   },
   {
@@ -35,7 +35,7 @@ export const CONCIERGE_ZONE_TEMPLATES = [
     color: '#D97706',
     bgColor: '#FFFBEB',
     borderColor: '#FDE68A',
-    icon: '',
+    icon: '⚠️',
     description: 'Khu vực đông người qua lại sảnh. Tự động hạ vận tốc tối đa (0.3 m/s).',
   },
   {
@@ -45,7 +45,7 @@ export const CONCIERGE_ZONE_TEMPLATES = [
     color: '#6366F1',
     bgColor: '#EEF2FF',
     borderColor: '#C7D2FE',
-    icon: '',
+    icon: '🔇',
     description: 'Phòng hội nghị, VIP Lounge. Robot tự động tắt tiếng/loa thoại.',
   },
   {
@@ -55,7 +55,7 @@ export const CONCIERGE_ZONE_TEMPLATES = [
     color: '#059669',
     bgColor: '#ECFDF5',
     borderColor: '#A7F3D0',
-    icon: '',
+    icon: '👋',
     description: 'Sảnh đón khách chính. Bật AI Person Detector chủ động tiếp cận chào khách.',
   },
   {
@@ -65,7 +65,7 @@ export const CONCIERGE_ZONE_TEMPLATES = [
     color: '#0284C7',
     bgColor: '#F0F9FF',
     borderColor: '#BAE6FD',
-    icon: '',
+    icon: '⚡',
     description: 'Hành lang ưu tiên di chuyển phục vụ đồ uống và thông báo.',
   },
 ];

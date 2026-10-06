@@ -44,11 +44,26 @@ jobs:
         run: npm run build
 
   # -----------------------------------------------------------------
-  # JOB 2: Backend CI (Python 3.11, Pytest & Syntax Check)
+  # JOB 2: Backend CI (Python 3.11, Pytest & PostgreSQL Service)
   # -----------------------------------------------------------------
   backend-ci:
     name: ⚡ Backend Test & Code Audit
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: hc_robot_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
       - name: 📥 Checkout Repository
@@ -70,4 +85,11 @@ jobs:
 
       - name: 🧪 Run Pytest Unit Tests
         working-directory: ./backend
+        env:
+          DATABASE_URL: postgresql+asyncpg://postgres:password@localhost:5432/hc_robot_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: hc_robot_test
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: 5432
         run: pytest -v tests/

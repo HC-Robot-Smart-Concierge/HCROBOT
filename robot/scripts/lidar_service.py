@@ -153,6 +153,7 @@ class RPLidarSLAMCore:
         self.rear_safety_distance = 0.30    # Ngưỡng phanh khẩn cấp phía sau: <= 30cm
         self.current_motion_cmd = "stop"
         self._safety_thread: Optional[threading.Thread] = None
+        self.last_safety_alert: str = ""
 
     def reset_map(self):
         """Xóa trắng bản đồ 2D về trạng thái ban đầu và đưa vị trí robot về gốc."""
@@ -582,6 +583,7 @@ free_thresh: 0.25
                             self.pi_motor.stop()
                         self.current_motion_cmd = "stop"
                         self.status = "OBSTACLE_STOP"
+                        self.last_safety_alert = f"🚨 PHANH KHẨN CẤP: Vật cản trước mặt {front_d*100:.1f}cm (< 35cm)!"
 
                 elif cmd in ("backward", "s", "backward_left", "backward_right", "sa", "sd"):
                     rear_d = self.get_rear_distance()
@@ -594,6 +596,7 @@ free_thresh: 0.25
                             self.pi_motor.stop()
                         self.current_motion_cmd = "stop"
                         self.status = "OBSTACLE_STOP"
+                        self.last_safety_alert = f"🚨 PHANH KHẨN CẤP: Vật cản sau xe {rear_d*100:.1f}cm (< 30cm)!"
             except Exception as e:
                 logger.error(f"Lỗi safety watchdog: {e}")
             time.sleep(0.04)
@@ -1596,6 +1599,13 @@ async def map_ws_endpoint(websocket: WebSocket):
                 "overlay_active": slam_core._overlay_active,
                 "overlay_waypoints": slam_core._overlay_waypoints if slam_core._overlay_active else [],
                 "scan_points": scans,
+                "safety": {
+                    "front_cm": round(slam_core.get_front_distance() * 100, 1) if slam_core.get_front_distance() < 90 else None,
+                    "rear_cm": round(slam_core.get_rear_distance() * 100, 1) if slam_core.get_rear_distance() < 90 else None,
+                    "left_cm": round(slam_core.get_left_distance() * 100, 1) if slam_core.get_left_distance() < 90 else None,
+                    "right_cm": round(slam_core.get_right_distance() * 100, 1) if slam_core.get_right_distance() < 90 else None,
+                    "alert": getattr(slam_core, "last_safety_alert", ""),
+                },
                 "grid_data": slam_core.merge_maps() if slam_core._overlay_active else map_data["grid_data"],
                 "grid_metadata": {
                     "width": map_data["width"],

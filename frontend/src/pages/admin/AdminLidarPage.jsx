@@ -126,6 +126,9 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
   const [isOverlayModalOpen, setIsOverlayModalOpen] = useState(false);
   const [overlayMapName, setOverlayMapName] = useState('floor_plan_overlay');
 
+  // Real-time LiDAR Safety & Obstacle Clearances
+  const [safetyInfo, setSafetyInfo] = useState({ front_cm: null, rear_cm: null, left_cm: null, right_cm: null, alert: '' });
+
   const wsRef = useRef(null);
   const rosClientRef = useRef(null);
 
@@ -370,6 +373,13 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
             if (data.workflow_progress) setWorkflowProgress(data.workflow_progress);
             if (data.overlay_active !== undefined) setOverlayActive(data.overlay_active);
             if (data.overlay_waypoints) setOverlayWaypoints(data.overlay_waypoints);
+            if (data.safety) {
+              setSafetyInfo(data.safety);
+              if (data.safety.alert) {
+                setNavNotification(data.safety.alert);
+                setTimeout(() => setNavNotification(''), 4000);
+              }
+            }
           }
         } catch (err) {
           console.error('WebSocket parse error:', err);
@@ -1084,6 +1094,37 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
                 style={{ background: '#F2EFE9', color: '#8C8C8C', borderColor: '#BFBFBD' }}>
                 {telemetry.source}
               </span>
+            </div>
+
+            {/* Real-time LiDAR Obstacle Clearances */}
+            <div className="p-2.5 rounded-lg border flex flex-col gap-1.5" style={{ background: '#FAF8F5', borderColor: '#BFBFBD' }}>
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold tracking-wider uppercase text-stone-700 flex items-center gap-1">
+                  <ShieldAlert className="w-3.5 h-3.5 text-amber-600" />
+                  KHOẢNG CÁCH VẬT CẢN (LiDAR)
+                </span>
+                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${safetyInfo.front_cm && safetyInfo.front_cm < 35 ? 'bg-red-100 text-red-700 animate-pulse' : 'bg-emerald-100 text-emerald-800'}`}>
+                  {safetyInfo.front_cm && safetyInfo.front_cm < 35 ? 'NGUY HIỂM (<35cm)' : 'AN TOÀN'}
+                </span>
+              </div>
+              <div className="grid grid-cols-4 gap-1 text-[10px] text-center font-mono">
+                <div className={`p-1.5 rounded border ${safetyInfo.front_cm && safetyInfo.front_cm < 35 ? 'bg-red-50 border-red-300 text-red-700 font-bold' : 'bg-white border-stone-200 text-stone-800'}`}>
+                  <div className="text-[8px] text-stone-500 font-sans">TRƯỚC</div>
+                  <div>{safetyInfo.front_cm !== null && safetyInfo.front_cm !== undefined ? `${safetyInfo.front_cm}cm` : '---'}</div>
+                </div>
+                <div className={`p-1.5 rounded border ${safetyInfo.rear_cm && safetyInfo.rear_cm < 30 ? 'bg-red-50 border-red-300 text-red-700 font-bold' : 'bg-white border-stone-200 text-stone-800'}`}>
+                  <div className="text-[8px] text-stone-500 font-sans">SAU</div>
+                  <div>{safetyInfo.rear_cm !== null && safetyInfo.rear_cm !== undefined ? `${safetyInfo.rear_cm}cm` : '---'}</div>
+                </div>
+                <div className="p-1.5 rounded border bg-white border-stone-200 text-stone-800">
+                  <div className="text-[8px] text-stone-500 font-sans">TRÁI</div>
+                  <div>{safetyInfo.left_cm !== null && safetyInfo.left_cm !== undefined ? `${safetyInfo.left_cm}cm` : '---'}</div>
+                </div>
+                <div className="p-1.5 rounded border bg-white border-stone-200 text-stone-800">
+                  <div className="text-[8px] text-stone-500 font-sans">PHẢI</div>
+                  <div>{safetyInfo.right_cm !== null && safetyInfo.right_cm !== undefined ? `${safetyInfo.right_cm}cm` : '---'}</div>
+                </div>
+              </div>
             </div>
 
             {/* Position Grid */}

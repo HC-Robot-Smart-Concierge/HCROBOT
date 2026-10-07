@@ -146,6 +146,14 @@ class RPLidarSLAMCore:
         except Exception as e:
             logger.warning(f"⚠️ [LiDAR-SLAM] Không khởi tạo được MotorController trực tiếp ({e}), sử dụng fallback UDP 9999")
 
+        # Hệ thống An toàn Vật cản LiDAR (360-degree Continuous Distance Buffer & Fail-Safe)
+        self.angle_distances: List[float] = [99.0] * 360
+        self.angle_timestamps: List[float] = [0.0] * 360
+        self.front_safety_distance = 0.35   # Ngưỡng phanh khẩn cấp phía trước: <= 35cm
+        self.rear_safety_distance = 0.30    # Ngưỡng phanh khẩn cấp phía sau: <= 30cm
+        self.current_motion_cmd = "stop"
+        self._safety_thread: Optional[threading.Thread] = None
+
     def reset_map(self):
         """Xóa trắng bản đồ 2D về trạng thái ban đầu và đưa vị trí robot về gốc."""
         with self._lock:
@@ -433,7 +441,9 @@ free_thresh: 0.25
         self.is_running = True
         self._scan_thread = threading.Thread(target=self._scan_loop, daemon=True)
         self._scan_thread.start()
-        logger.info("🚀 Luồng quét LiDAR SLAM đã sẵn sàng")
+        self._safety_thread = threading.Thread(target=self._safety_watchdog_loop, daemon=True)
+        self._safety_thread.start()
+        logger.info("🚀 Luồng quét LiDAR SLAM & Safety Watchdog đã sẵn sàng")
 
     def stop(self):
         self.is_running = False
@@ -489,6 +499,12 @@ free_thresh: 0.25
 
                     # 1. Lọc tia khoảng cách hợp lệ (từ 12cm đến 12m)
                     if 0.12 <= dist_m <= 12.0:
+                        # Cập nhật liên tục mảng khoảng cách 360 độ theo thời gian thực
+                        deg = int(round(angle)) % 360
+                        now = time.time()
+                        self.angle_distances[deg] = dist_m
+                        self.angle_timestamps[deg] = now
+
                         # RPLiDAR quay theo chiều kim đồng hồ; chuẩn hóa góc về hệ tọa độ chuẩn
                         heading = (angle + self.robot_yaw) % 360.0
                         rad = math.radians(heading)
@@ -503,8 +519,8 @@ free_thresh: 0.25
                             "quality": quality,
                         })
 
-                    # 2. Cập nhật khi hoàn thành vòng quét hoặc đủ đợt 60 điểm
-                    if (is_new_scan and len(current_scan_batch) >= 15) or len(current_scan_batch) >= 60:
+                    # 2. Cập nhật khi hoàn thành nguyên 1 vòng quét 360 độ
+                    if (is_new_scan and len(current_scan_batch) >= 60) or len(current_scan_batch) >= 720:
                         with self._lock:
                             self._latest_scans = list(current_scan_batch)
                             self._update_grid_from_scan(self.robot_x, self.robot_y, self._latest_scans)
@@ -514,6 +530,73 @@ free_thresh: 0.25
             logger.error(f"Lỗi scan loop: {e}")
             self.is_connected = False
             self.is_running = False
+
+    def get_obstacle_distance(self, angle_min: int, angle_max: int, max_age: float = 0.8) -> float:
+        """
+        Tìm khoảng cách vật cản gần nhất trong cung góc [angle_min, angle_max] (hỗ trợ qua mốc 0°).
+        Chỉ tính các tia quét tươi trong vòng max_age giây.
+        """
+        now = time.time()
+        min_d = 99.0
+        if angle_min <= angle_max:
+            deg_range = range(angle_min, angle_max + 1)
+        else:
+            deg_range = list(range(angle_min, 360)) + list(range(0, angle_max + 1))
+
+        for deg in deg_range:
+            if now - self.angle_timestamps[deg] <= max_age:
+                d = self.angle_distances[deg]
+                if 0.10 <= d < min_d:
+                    min_d = d
+        return min_d
+
+    def get_front_distance(self) -> float:
+        """Khoảng cách vật cản phía trước mặt (góc mở ±45°: từ 315° qua 0° tới 45°)."""
+        return self.get_obstacle_distance(315, 45)
+
+    def get_rear_distance(self) -> float:
+        """Khoảng cách vật cản phía sau xe (góc mở ±45°: từ 135° tới 225°)."""
+        return self.get_obstacle_distance(135, 225)
+
+    def get_left_distance(self) -> float:
+        """Khoảng cách vật cản bên trái xe (45° tới 135°)."""
+        return self.get_obstacle_distance(45, 135)
+
+    def get_right_distance(self) -> float:
+        """Khoảng cách vật cản bên phải xe (225° tới 315°)."""
+        return self.get_obstacle_distance(225, 315)
+
+    def _safety_watchdog_loop(self):
+        """Thread giám sát an toàn phần cứng (25Hz): Tự động ngắt motor nếu có vật cản gần."""
+        while self.is_running:
+            try:
+                cmd = self.current_motion_cmd
+                if cmd in ("forward", "w", "forward_left", "forward_right", "wa", "wd"):
+                    front_d = self.get_front_distance()
+                    if front_d < self.front_safety_distance:
+                        logger.warning(
+                            f"🚨 [WATCHDOG PHANH KHẨN CẤP] Vật cản trước mặt cách {front_d*100:.1f}cm "
+                            f"(< {self.front_safety_distance*100:.0f}cm)! DỪNG MOTOR NGAY!"
+                        )
+                        if self.pi_motor is not None:
+                            self.pi_motor.stop()
+                        self.current_motion_cmd = "stop"
+                        self.status = "OBSTACLE_STOP"
+
+                elif cmd in ("backward", "s", "backward_left", "backward_right", "sa", "sd"):
+                    rear_d = self.get_rear_distance()
+                    if rear_d < self.rear_safety_distance:
+                        logger.warning(
+                            f"🚨 [WATCHDOG PHANH KHẨN CẤP] Vật cản sau xe cách {rear_d*100:.1f}cm "
+                            f"(< {self.rear_safety_distance*100:.0f}cm)! DỪNG MOTOR NGAY!"
+                        )
+                        if self.pi_motor is not None:
+                            self.pi_motor.stop()
+                        self.current_motion_cmd = "stop"
+                        self.status = "OBSTACLE_STOP"
+            except Exception as e:
+                logger.error(f"Lỗi safety watchdog: {e}")
+            time.sleep(0.04)
 
     def get_latest_scans(self) -> List[Dict[str, Any]]:
         with self._lock:
@@ -530,13 +613,43 @@ free_thresh: 0.25
                 "grid_data": list(self.grid_data),
             }
 
-    def send_udp_motor_command(self, cmd: str):
+    def send_udp_motor_command(self, cmd: str, force: bool = False):
         """
-        Điều khiển động cơ:
-        1. Trực tiếp qua MotorController (L298N GPIO) nếu đang chạy trên Pi 5.
-        2. Đồng thời gửi UDP tới 127.0.0.1:9999 nếu main.py đang chạy để đồng bộ.
+        Điều khiển động cơ kèm cơ chế bảo vệ an toàn vật cản (Fail-Safe Interlock):
+        1. Kiểm tra an toàn hướng di chuyển trước khi cấp lệnh cho motor.
+        2. Trực tiếp qua MotorController (L298N GPIO) nếu đang chạy trên Pi 5.
+        3. Đồng thời gửi UDP tới 127.0.0.1:9999 nếu main.py đang chạy để đồng bộ.
         """
         cmd_clean = cmd.strip().lower()
+
+        # PRE-FLIGHT SAFETY INTERLOCK
+        if not force and cmd_clean in ("forward", "w", "forward_left", "forward_right", "wa", "wd"):
+            front_d = self.get_front_distance()
+            if front_d < self.front_safety_distance:
+                logger.warning(
+                    f"🛑 [SAFETY INTERLOCK] Khóa tiến! Phía trước có vật cản cách {front_d*100:.1f}cm "
+                    f"(< {self.front_safety_distance*100:.0f}cm)"
+                )
+                if self.pi_motor is not None:
+                    self.pi_motor.stop()
+                self.current_motion_cmd = "stop"
+                self.status = "OBSTACLE_STOP"
+                return
+
+        if not force and cmd_clean in ("backward", "s", "backward_left", "backward_right", "sa", "sd"):
+            rear_d = self.get_rear_distance()
+            if rear_d < self.rear_safety_distance:
+                logger.warning(
+                    f"🛑 [SAFETY INTERLOCK] Khóa lùi! Phía sau có vật cản cách {rear_d*100:.1f}cm "
+                    f"(< {self.rear_safety_distance*100:.0f}cm)"
+                )
+                if self.pi_motor is not None:
+                    self.pi_motor.stop()
+                self.current_motion_cmd = "stop"
+                self.status = "OBSTACLE_STOP"
+                return
+
+        self.current_motion_cmd = cmd_clean
 
         # 1. Direct hardware execution
         if self.pi_motor is not None:
@@ -621,24 +734,22 @@ free_thresh: 0.25
             desired_yaw = (math.degrees(math.atan2(dx, dy)) + 360.0) % 360.0
             yaw_error = (desired_yaw - self.robot_yaw + 540.0) % 360.0 - 180.0
 
-            # Kiểm tra vật cản phía trước bằng tia LiDAR
-            scans = self.get_latest_scans()
-            front_obstacle_dist = 99.0
-            for pt in scans:
-                ang = pt["angle"]
-                # Góc phía trước robot (từ 335° qua 0° tới 25°)
-                if ang >= 335 or ang <= 25:
-                    if pt["distance"] < front_obstacle_dist:
-                        front_obstacle_dist = pt["distance"]
+            # Kiểm tra vật cản phía trước bằng tia LiDAR thời gian thực
+            front_obstacle_dist = self.get_front_distance()
 
             # Xử lý né vật cản an toàn
             if front_obstacle_dist < 0.40:
-                logger.warning(f"⚠️ Phát hiện vật cản trước mặt cự ly {front_obstacle_dist:.2f}m! Đang rẽ tránh...")
+                logger.warning(f"⚠️ Phát hiện vật cản trước mặt cự ly {front_obstacle_dist:.2f}m! Đang dừng & rẽ tránh...")
+                self.send_udp_motor_command("stop", force=True)
+                left_dist = self.get_left_distance()
+                right_dist = self.get_right_distance()
+                turn_cmd = "left" if left_dist > right_dist else "right"
+                yaw_step = -10.0 if turn_cmd == "left" else 10.0
                 self.send_udp_motor_command("speed:35")
-                self.send_udp_motor_command("left")
-                time.sleep(0.08)
-                self.send_udp_motor_command("stop")
-                self.robot_yaw = (self.robot_yaw - 8.0) % 360.0
+                self.send_udp_motor_command(turn_cmd, force=True)
+                time.sleep(0.12)
+                self.send_udp_motor_command("stop", force=True)
+                self.robot_yaw = (self.robot_yaw + yaw_step) % 360.0
                 time.sleep(0.05)
                 continue
 
@@ -810,25 +921,20 @@ free_thresh: 0.25
             desired_yaw = (math.degrees(math.atan2(dx, dy)) + 360.0) % 360.0
             yaw_error = (desired_yaw - self.robot_yaw + 540.0) % 360.0 - 180.0
 
-            # Kiểm tra vật cản
-            scans = self.get_latest_scans()
-            front_dist = 99.0
-            for pt in scans:
-                ang = pt["angle"]
-                if ang >= 335 or ang <= 25:
-                    if pt["distance"] < front_dist:
-                        front_dist = pt["distance"]
+            # Kiểm tra vật cản phía trước
+            front_dist = self.get_front_distance()
 
-            if front_dist < 0.35:
-                # Rẽ tránh: chọn phía trống hơn
-                left_dist = min((p["distance"] for p in scans if 45 <= p["angle"] <= 90), default=99.0)
-                right_dist = min((p["distance"] for p in scans if 270 <= p["angle"] <= 315), default=99.0)
+            if front_dist < 0.40:
+                logger.warning(f"⚠️ Frontier navigation: Vật cản phía trước cách {front_dist:.2f}m! Dừng & rẽ tránh...")
+                self.send_udp_motor_command("stop", force=True)
+                left_dist = self.get_left_distance()
+                right_dist = self.get_right_distance()
                 turn_cmd = "left" if left_dist > right_dist else "right"
-                yaw_step = -10.0 if turn_cmd == "left" else 10.0
+                yaw_step = -12.0 if turn_cmd == "left" else 12.0
                 self.send_udp_motor_command("speed:30")
-                self.send_udp_motor_command(turn_cmd)
-                time.sleep(0.08)
-                self.send_udp_motor_command("stop")
+                self.send_udp_motor_command(turn_cmd, force=True)
+                time.sleep(0.10)
+                self.send_udp_motor_command("stop", force=True)
                 self.robot_yaw = (self.robot_yaw + yaw_step) % 360.0
                 time.sleep(0.05)
                 continue

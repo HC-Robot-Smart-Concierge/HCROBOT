@@ -1300,13 +1300,29 @@ async def stop_exploration():
 @app.post("/api/v1/map/overlay/load")
 async def load_overlay(req: OverlayLoadRequest):
     safe_name = "".join(c for c in req.map_name if c.isalnum() or c in ("_", "-")).strip()
-    overlay_path = os.path.join(MAPS_DIR, f"{safe_name}.json")
+    candidates = [
+        os.path.join(MAPS_DIR, f"{safe_name}.json"),
+        os.path.join(MAPS_DIR, f"{safe_name}_overlay.json"),
+    ]
+    if safe_name.endswith("_overlay"):
+        base_name = safe_name[:-8]
+        candidates.append(os.path.join(MAPS_DIR, f"{base_name}.json"))
+    
+    overlay_path = None
+    for c in candidates:
+        if os.path.exists(c):
+            overlay_path = c
+            break
+
+    if not overlay_path:
+        return {"status": "FAILED", "message": f"Không tìm thấy overlay map '{safe_name}' (đã tìm trong {MAPS_DIR})"}
+
     ok = slam_core.load_overlay_map(overlay_path)
     if ok:
-        return {"status": "SUCCESS", "message": f"Đã nạp overlay map '{safe_name}'",
+        return {"status": "SUCCESS", "message": f"Đã nạp overlay map từ '{os.path.basename(overlay_path)}'",
                 "waypoints": slam_core._overlay_waypoints,
                 "zones": slam_core._overlay_zones}
-    return {"status": "FAILED", "message": f"Không tìm thấy overlay map '{safe_name}'"}
+    return {"status": "FAILED", "message": f"Không thể giải mã file overlay '{safe_name}'"}
 
 
 @app.post("/api/v1/map/overlay/disable")

@@ -17,6 +17,8 @@ import threading
 import time
 from typing import Any, Dict, List, Optional
 
+import serial
+
 try:
     import uvicorn
     from fastapi import FastAPI, WebSocket, WebSocketDisconnect

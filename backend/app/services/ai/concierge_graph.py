@@ -35,6 +35,7 @@ class ConciergeState(TypedDict):
     rag_context: Optional[str]
     missing_room_number: bool
     ticket_code: Optional[str]
+    trigger_video_call: Optional[bool]
     response: str
 
 
@@ -104,7 +105,18 @@ async def intent_router_node(state: ConciergeState) -> Dict[str, Any]:
         "maintenance": ["hỏng", "sửa", "điều hòa", "bóng đèn", "nước rò", "máy lạnh", "tủ lạnh", "kẹt", "fix", "repair"],
         "restaurant": ["đặt bàn", "bàn ăn", "nhà hàng", "table", "restaurant"],
         "taxi": ["taxi", "đặt xe", "gọi xe", "sân bay", "cab", "ride", "xe đón"],
-        "concierge": ["concierge", "gặp người", "trợ giúp trực tiếp", "nhân viên hỗ trợ", "live call", "video call", "tổng đài"],
+        "concierge": [
+            "concierge", "gặp người", "trợ giúp trực tiếp", "nhân viên hỗ trợ", 
+            "live call", "video call", "tổng đài", "gọi cho nhân viên", 
+            "gọi nhân viên", "gặp nhân viên", "kết nối nhân viên", "nói chuyện với nhân viên",
+            "cho tôi gặp nhân viên", "gặp người thật", "nói chuyện với người thật", "kết nối người thật",
+            "gọi tổng đài", "gọi hỗ trợ", "hỗ trợ viên", "gọi video",
+            "gọi cho lễ tân", "gặp trực tiếp", "kết nối trực tiếp", "human support",
+            "nhân viên tư vấn", "cho tôi gặp lễ tân", "gặp trực ban", "gọi trực ban", "gọi can thiệp",
+            "call staff", "call human", "talk to human", "speak to human", 
+            "connect staff", "video call support", "talk to staff", "call receptionist",
+            "human agent", "live agent", "talk to a person", "speak to a person", "live support"
+        ],
         "reception": ["lễ tân", "check out", "check in", "đổi phòng", "trả phòng", "front desk", "reception"],
     }
 
@@ -185,6 +197,21 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
     current_room = state.get("room_number")
     items = state.get("items") or "dịch vụ"
     lang_code = state.get("lang_code", "vi-VN")
+
+    # Trường hợp đặc biệt: Khách yêu cầu Live Video Call với Concierge / Nhân viên
+    if action == "concierge":
+        effective_room = current_room or "Main Lobby Kiosk"
+        if lang_code == "en-US":
+            call_reply = "Certainly! I am connecting you to a live Concierge specialist via video call right away, please hold on for a moment!"
+        else:
+            call_reply = "Dạ em đang kết nối cuộc gọi video trực tiếp tới nhân viên Concierge cho quý khách ngay đây ạ, quý khách vui lòng đợi trong giây lát!"
+
+        return {
+            "missing_room_number": False,
+            "room_number": effective_room,
+            "response": call_reply,
+            "trigger_video_call": True,
+        }
 
     # Kiểm tra thiếu số phòng (Missing Room Number Slot)
     if not current_room:

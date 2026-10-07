@@ -77,19 +77,56 @@ export async function updateConciergeRequest(requestId, updateData) {
 }
 
 /**
- * 4. Lay danh sach tat ca cac phien yeu cau Concierge
+ * 4. Lay danh sach tat ca cac phien HumanSupportSession va video record Cloudinary
  */
-export async function fetchConciergeRequests(params = {}) {
-  const query = new URLSearchParams();
-  if (params.status && params.status !== 'All') query.append('status', params.status);
-  const qs = query.toString() ? `?${query.toString()}` : '';
-  return await fetchWithFallback(`${BASE_URL}/requests${qs}`, {}, []);
+export async function fetchHumanSupportSessions(statusFilter = null) {
+  const query = statusFilter ? `?status_filter=${encodeURIComponent(statusFilter)}` : '';
+  return await fetchWithFallback(`${BASE_URL}/sessions${query}`, {}, []);
 }
 
 /**
- * 5. Xem chi tiet mot phien yeu cau Concierge
+ * 5. Upload video ghi hinh cuoc goi (WebM/MP4) len Cloudinary qua Backend
  */
-export async function fetchConciergeRequestById(requestId) {
-  return await fetchWithFallback(`${BASE_URL}/requests/${encodeURIComponent(requestId)}`, {}, null);
+export async function uploadCallRecording(sessionId, videoBlob, duration = 0, startedAt = null, endedAt = null) {
+  try {
+    const formData = new FormData();
+    formData.append('video_file', videoBlob, `call_${sessionId}.webm`);
+    formData.append('duration', Math.round(duration || 0));
+    if (startedAt) formData.append('call_started_at', startedAt);
+    if (endedAt) formData.append('call_ended_at', endedAt);
+
+    const token = localStorage.getItem('aurora_jwt_token');
+    const response = await fetch(`${BASE_URL}/recordings/${encodeURIComponent(sessionId)}`, {
+      method: 'POST',
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: formData,
+    });
+
+    if (!response.ok) {
+      throw new Error(`Upload recording failed! status: ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('[ConciergeAPI] Upload call recording error:', error);
+    return {
+      session_id: sessionId,
+      recording_url: '',
+      duration: duration || 0,
+      storage_provider: 'failed',
+      message: error.message,
+    };
+  }
+}
+
+/**
+ * 6. Helper tao URL WebSocket Signaling cho cuoc goi WebRTC
+ */
+export function getCallSignalingWsUrl(sessionId, role = 'guest', name = 'Guest') {
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const host = window.location.host;
+  return `${protocol}//${host}${BASE_URL}/ws/video-call/${encodeURIComponent(sessionId)}?role=${encodeURIComponent(role)}&name=${encodeURIComponent(name)}`;
 }
 

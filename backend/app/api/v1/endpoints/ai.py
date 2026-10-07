@@ -23,10 +23,12 @@ from app.services.ai.tts_service import tts_service
 from app.services.ai.pipecat_service import pipecat_service
 from app.services.ai.concierge_graph import concierge_graph
 from app.core.config import settings
+from datetime import datetime
 from app.models import (
     SupportRequest,
     Feedback,
 )
+from app.models.support import HumanSupportSession
 from app.api.v1.endpoints.operations import create_department_notification
 
 logger = logging.getLogger(__name__)
@@ -89,10 +91,67 @@ async def chat_with_robot(request: ChatRequest, db: AsyncSession = Depends(get_d
             logger.warning(f"[AIChat] TTS online timeout/error, fallback to frontend WebSpeech: {e_tts}")
             audio_b64, mime_type = None, "audio/mp3"
 
-        # TỰ ĐỘNG TẠO TICKET DỊCH VỤ TRONG NỀN TẬN DỤNG INTENT ĐÃ CÓ TỪ LANGGRAPH (Không gọi lại Ollama 5s)
+        # Xử lý Intent phân loại tác vụ dịch vụ / cuộc gọi
         act = graph_result.get("action")
         items = graph_result.get("items")
-        asyncio.create_task(_background_extract_and_create_ticket(request.prompt, current_room, act, items))
+        is_video_call = bool(graph_result.get("trigger_video_call") or act == "concierge")
+        support_session_id = None
+        call_ticket_code = None
+
+        if is_video_call:
+            try:
+                code_num = random.randint(1000, 99999)
+                call_ticket_code = f"CCG-{code_num}"
+                room_loc = current_room or "Main Lobby Kiosk"
+
+                req = SupportRequest(
+                    ticket_code=call_ticket_code,
+                    source="Robot Voice Assistant",
+                    title=f"Live Call Concierge ({room_loc})",
+                    room_number=room_loc,
+                    description=request.prompt or "Yêu cầu cuộc gọi video trực tiếp từ khách",
+                    guest_name=f"Guest ({room_loc})",
+                    department_id="DEP-CONCIERGE",
+                    service_type_id="ST-CONCIERGE",
+                    priority="HIGH",
+                    status="Pending",
+                )
+                db.add(req)
+                await db.flush()
+
+                human_session = HumanSupportSession(
+                    session_code=f"LIVE-{code_num}",
+                    room_number=room_loc,
+                    guest_name=f"Guest ({room_loc})",
+                    category="Live Call Support",
+                    origin_robot_code="RC-001 (Main Lobby)",
+                    sentiment="Neutral",
+                    status="Active",
+                    linked_request_id=req.id,
+                    call_started_at=datetime.utcnow(),
+                    messages=[{"speaker": "guest", "text": request.prompt}],
+                )
+                db.add(human_session)
+                await db.flush()
+                support_session_id = human_session.id
+
+                await create_department_notification(
+                    db=db,
+                    department="Concierge",
+                    title=f"Cuộc gọi Video Call mới: {call_ticket_code}",
+                    description=f"Khách tại {room_loc} đang gọi video tới Concierge",
+                    request_id=req.id,
+                    request_type="concierge",
+                    type="LiveAssistance",
+                )
+                await db.commit()
+                logger.info(f"[AIChat] Live video call created: session='{support_session_id}', ticket='{call_ticket_code}'")
+            except Exception as e_vc:
+                logger.error(f"[AIChat VideoCall Setup Error] {e_vc}")
+                await db.rollback()
+        else:
+            # TỰ ĐỘNG TẠO TICKET DỊCH VỤ TRONG NỀN TẬN DỤNG INTENT ĐÃ CÓ TỪ LANGGRAPH (Không gọi lại Ollama 5s)
+            asyncio.create_task(_background_extract_and_create_ticket(request.prompt, current_room, act, items))
 
         return ChatResponse(
             response=reply,
@@ -102,6 +161,9 @@ async def chat_with_robot(request: ChatRequest, db: AsyncSession = Depends(get_d
             session_id=sid,
             current_room_number=current_room,
             missing_room_number=missing_room,
+            trigger_video_call=is_video_call,
+            support_session_id=support_session_id,
+            ticket_code=call_ticket_code,
             audio_base64=audio_b64,
             mime_type=mime_type or "audio/mp3",
         )

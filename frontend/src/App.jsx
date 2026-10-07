@@ -541,17 +541,15 @@ export function App() {
             <div className="flex items-center gap-2 bg-[#18181B]/95 text-white border border-stone-700/80 backdrop-blur-md px-3 py-1.5 rounded-full shadow-2xl">
               <button
                 onClick={() => setActiveView('landing')}
-                className={`px-3 py-1 rounded-full text-xs font-bold transition-all cursor-pointer ${
-                  activeView === 'landing' ? 'bg-amber-400 text-stone-950 shadow-sm' : 'text-stone-300 hover:text-white'
-                }`}
+                className={`px-3 py-1 rounded-full text-xs font-bold transition-all cursor-pointer ${activeView === 'landing' ? 'bg-amber-400 text-stone-950 shadow-sm' : 'text-stone-300 hover:text-white'
+                  }`}
               >
                 Trang Chủ
               </button>
               <button
                 onClick={() => setActiveView('login')}
-                className={`px-3 py-1 rounded-full text-xs font-bold transition-all cursor-pointer ${
-                  activeView === 'login' ? 'bg-amber-400 text-stone-950 shadow-sm' : 'text-stone-300 hover:text-white'
-                }`}
+                className={`px-3 py-1 rounded-full text-xs font-bold transition-all cursor-pointer ${activeView === 'login' ? 'bg-amber-400 text-stone-950 shadow-sm' : 'text-stone-300 hover:text-white'
+                  }`}
               >
                 Đăng Nhập
               </button>

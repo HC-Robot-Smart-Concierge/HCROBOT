@@ -19,6 +19,9 @@ class ChatResponse(BaseModel):
     session_id: Optional[str] = Field("default_session", description="ID phiên làm việc")
     current_room_number: Optional[str] = Field(None, description="Số phòng đang được ghi nhớ trong session")
     missing_room_number: bool = Field(False, description="True nếu đang cần hỏi thêm số phòng từ khách")
+    trigger_video_call: Optional[bool] = Field(False, description="True nếu nhận diện được yêu cầu kết nối Live Call với nhân viên")
+    support_session_id: Optional[str] = Field(None, description="Mã phiên HumanSupportSession tạo cho cuộc gọi")
+    ticket_code: Optional[str] = Field(None, description="Mã ticket CCG được tạo cho cuộc gọi")
     audio_base64: Optional[str] = Field(None, description="Âm thanh giọng đọc phát tức thì từ backend cache")
     mime_type: Optional[str] = Field("audio/mp3", description="Định dạng âm thanh")
 

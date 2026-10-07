@@ -153,6 +153,35 @@ async def chat_with_robot(request: ChatRequest, db: AsyncSession = Depends(get_d
             # TỰ ĐỘNG TẠO TICKET DỊCH VỤ TRONG NỀN TẬN DỤNG INTENT ĐÃ CÓ TỪ LANGGRAPH (Không gọi lại Ollama 5s)
             asyncio.create_task(_background_extract_and_create_ticket(request.prompt, current_room, act, items))
 
+        # TỰ ĐỘNG NHẬN DIỆN MÃ ĐIỂM ĐẾN POI ĐỂ ĐỒNG BỘ BẢN ĐỒ 8 TẦNG (0ms Sync)
+        destination_key = graph_result.get("destination_key")
+        if not destination_key:
+            p_lower = request.prompt.lower()
+            if any(k in p_lower for k in ["hồ bơi", "ho boi", "pool", "bơi"]):
+                destination_key = "infinity_pool"
+            elif any(k in p_lower for k in ["nhà hàng", "nha hang", "buffet", "ăn sáng"]):
+                destination_key = "restaurant"
+            elif any(k in p_lower for k in ["rooftop", "cafe", "cà phê", "coffee"]):
+                destination_key = "rooftop_coffee"
+            elif any(k in p_lower for k in ["quầy bar", "quay bar", "bar", "sky lounge"]):
+                destination_key = "bar"
+            elif any(k in p_lower for k in ["karaoke", "hát"]):
+                destination_key = "karaoke"
+            elif any(k in p_lower for k in ["gym", "thể hình", "the hinh", "fitness"]):
+                destination_key = "gym"
+            elif any(k in p_lower for k in ["spa", "massage", "xông hơi"]):
+                destination_key = "spa"
+            elif any(k in p_lower for k in ["401", "phòng 401"]):
+                destination_key = "room_401"
+            elif any(k in p_lower for k in ["402", "phòng 402"]):
+                destination_key = "room_402"
+            elif any(k in p_lower for k in ["bãi xe", "đỗ xe", "gửi xe", "parking", "ô tô", "hầm"]):
+                destination_key = "parking_car"
+            elif any(k in p_lower for k in ["lễ tân", "tiếp tân", "front desk"]):
+                destination_key = "front_desk"
+            elif any(k in p_lower for k in ["chỉ đường", "bản đồ", "sơ đồ", "đường đi"]) and ("tầng" in reply.lower() or "thang máy" in reply.lower()):
+                destination_key = "infinity_pool"
+
         return ChatResponse(
             response=reply,
             model_used=settings.OLLAMA_MODEL,
@@ -166,6 +195,7 @@ async def chat_with_robot(request: ChatRequest, db: AsyncSession = Depends(get_d
             ticket_code=call_ticket_code,
             audio_base64=audio_b64,
             mime_type=mime_type or "audio/mp3",
+            destination_key=destination_key,
         )
 
     except Exception as e:

@@ -133,7 +133,9 @@ export const useSpeechSynthesis = () => {
         const audio = new Audio(audioSrc);
         audioRef.current = audio;
 
+        let hasStartedPlaying = false;
         audio.onplay = () => {
+          hasStartedPlaying = true;
           setIsSpeaking(true);
           if (onStartCallback) onStartCallback();
         };
@@ -145,7 +147,11 @@ export const useSpeechSynthesis = () => {
 
         audio.onerror = () => {
           setIsSpeaking(false);
-          speakWebSpeech(text, language, onEndCallback, onStartCallback);
+          if (!hasStartedPlaying) {
+            speakWebSpeech(text, language, onEndCallback, onStartCallback);
+          } else {
+            if (onEndCallback) onEndCallback();
+          }
         };
 
         await audio.play();
@@ -168,7 +174,9 @@ export const useSpeechSynthesis = () => {
         const audio = new Audio(audioSrc);
         audioRef.current = audio;
 
+        let hasNetworkAudioStarted = false;
         audio.onplay = () => {
+          hasNetworkAudioStarted = true;
           setIsSpeaking(true);
           if (onStartCallback) onStartCallback();
         };
@@ -180,7 +188,11 @@ export const useSpeechSynthesis = () => {
 
         audio.onerror = () => {
           setIsSpeaking(false);
-          speakWebSpeech(text, language, onEndCallback, onStartCallback);
+          if (!hasNetworkAudioStarted) {
+            speakWebSpeech(text, language, onEndCallback, onStartCallback);
+          } else {
+            if (onEndCallback) onEndCallback();
+          }
         };
 
         await audio.play();

@@ -19,6 +19,42 @@ class OllamaService:
         self.embed_model = settings.OLLAMA_EMBED_MODEL
         self._client = ollama.AsyncClient(host=self.host)
 
+    async def _call_groq(self, messages: List[Dict[str, str]], json_mode: bool = False, max_tokens: int = 60) -> Optional[str]:
+        """
+        Gọi Groq Cloud API qua HTTP POST (OpenAI format).
+        Chỉ kích hoạt khi AI_PROVIDER='groq' hoặc tự động fallback khi Ollama cục bộ offline.
+        """
+        if not settings.GROQ_API_KEY:
+            return None
+        import httpx
+        url = "https://api.groq.com/openai/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {settings.GROQ_API_KEY}",
+            "Content-Type": "application/json",
+            "User-Agent": "HC-Robot-Concierge/1.0",
+        }
+        payload = {
+            "model": settings.GROQ_MODEL or "qwen/qwen3.8-27b",
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": 0.0 if json_mode else 0.4,
+        }
+        if json_mode:
+            payload["response_format"] = {"type": "json_object"}
+
+        try:
+            async with httpx.AsyncClient(timeout=12.0) as client:
+                res = await client.post(url, headers=headers, json=payload)
+                if res.status_code == 200:
+                    data = res.json()
+                    return data["choices"][0]["message"]["content"]
+                else:
+                    logger.warning(f"[Groq API Warning] status={res.status_code}: {res.text[:120]}")
+                    return None
+        except Exception as e:
+            logger.warning(f"[Groq API Error]: {str(e)}")
+            return None
+
     @staticmethod
     def detect_language(text: str) -> Tuple[str, str]:
         """
@@ -335,6 +371,19 @@ class OllamaService:
 
         messages.append({"role": "user", "content": prompt})
 
+        # 1. Chế độ Test máy yếu đặc thù qua Groq Cloud (chỉ kích hoạt khi AI_PROVIDER='groq')
+        use_groq = (settings.AI_PROVIDER == "groq" and bool(settings.GROQ_API_KEY))
+        if use_groq:
+            logger.info(f"[OllamaService -> Groq Cloud] Chế độ máy yếu: gọi Groq model {settings.GROQ_MODEL}")
+            groq_reply = await self._call_groq(messages, json_mode=False, max_tokens=60)
+            if groq_reply:
+                reply = groq_reply.strip()
+                if lang_code != "zh-CN":
+                    reply = re.sub(r'[\u4e00-\u9fff\u3400-\u4dbf]+', '', reply).strip()
+                final_lang_name, final_lang_code = self.detect_language(reply)
+                return reply, final_lang_name, final_lang_code
+
+        # 2. Mặc định cho toàn bộ dự án: Chạy Ollama cục bộ nguyên bản
         try:
             response = await asyncio.wait_for(
                 self._client.chat(
@@ -361,7 +410,19 @@ class OllamaService:
             final_lang_name, final_lang_code = self.detect_language(reply)
             return reply, final_lang_name, final_lang_code
         except Exception as e:
-            logger.error(f"[OllamaService Error] Lỗi khi sinh câu trả lời LLM: {str(e)}")
+            logger.warning(f"[OllamaService Warning] Lỗi Ollama cục bộ: {str(e)}")
+
+            # Fallback an toàn sang Groq nếu có API key (phòng ngừa máy yếu hết RAM không bật được Ollama)
+            if settings.GROQ_API_KEY:
+                logger.info("[OllamaService Fallback] Tự động chuyển tiếp sang Groq Cloud...")
+                groq_reply = await self._call_groq(messages, json_mode=False, max_tokens=60)
+                if groq_reply:
+                    reply = groq_reply.strip()
+                    if lang_code != "zh-CN":
+                        reply = re.sub(r'[\u4e00-\u9fff\u3400-\u4dbf]+', '', reply).strip()
+                    final_lang_name, final_lang_code = self.detect_language(reply)
+                    return reply, final_lang_name, final_lang_code
+
             fallback = "Xin lỗi quý khách, hiện không thể kết nối tới AI Server." if lang_code == "vi-VN" else "Sorry, cannot connect to AI Server."
             return fallback, lang_name, lang_code
 
@@ -425,14 +486,30 @@ class OllamaService:
             "Chỉ trả về JSON thuần túy, không kèm bất kỳ câu giải thích nào."
         )
 
+        intent_messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_speech}
+        ]
+
+        # 1. Chế độ Test máy yếu đặc thù qua Groq Cloud
+        use_groq = (settings.AI_PROVIDER == "groq" and bool(settings.GROQ_API_KEY))
+        if use_groq:
+            groq_content = await self._call_groq(intent_messages, json_mode=True, max_tokens=60)
+            if groq_content:
+                try:
+                    parsed_json = json.loads(groq_content.strip())
+                    if extracted_room_regex and not parsed_json.get("room_number"):
+                        parsed_json["room_number"] = extracted_room_regex
+                    return parsed_json
+                except Exception as je:
+                    logger.warning(f"[Groq JSON parse warning]: {je}")
+
+        # 2. Mặc định cho toàn bộ dự án: Chạy Ollama cục bộ nguyên bản
         try:
             response = await asyncio.wait_for(
                 self._client.chat(
                     model=self.model,
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_speech}
-                    ],
+                    messages=intent_messages,
                     format="json",
                     options={
                         "temperature": 0.0,
@@ -453,8 +530,20 @@ class OllamaService:
             return parsed_json
         except Exception as e:
             err_msg = repr(e) if not str(e) else str(e)
-            logger.warning(f"[OllamaService Warning] Lỗi hoặc Timeout khi bóc tách intent: {err_msg}")
+            logger.warning(f"[OllamaService Warning] Lỗi Ollama khi bóc tách intent: {err_msg}")
             
+            # Fallback an toàn sang Groq nếu có API key
+            if settings.GROQ_API_KEY:
+                groq_content = await self._call_groq(intent_messages, json_mode=True, max_tokens=60)
+                if groq_content:
+                    try:
+                        parsed_json = json.loads(groq_content.strip())
+                        if extracted_room_regex and not parsed_json.get("room_number"):
+                            parsed_json["room_number"] = extracted_room_regex
+                        return parsed_json
+                    except Exception:
+                        pass
+
             # Keyword-based Intent Fallback khi LLM offline/timeout
             fallback_action = "unknown"
             lower_speech = user_speech.lower()

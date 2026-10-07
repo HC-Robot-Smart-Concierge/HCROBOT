@@ -12,29 +12,29 @@ Dưới đây là bảng tổng hợp thông tin vị trí, thời gian hoạt �
 
 | STT | Tên Cơ Sở Vật Chất / Tiện Ích            | Vị Trí / Tầng         | Giờ Mở Cửa                | Chi Phí / Giá Vé                           | Ghi Chú & Dịch Vụ Đi Kèm                                                                            |
 | :-: | :--------------------------------------- | :-------------------- | :------------------------ | :----------------------------------------- | :-------------------------------------------------------------------------------------------------- |
-|  1  | **Hồ Bơi Vô Cực (Infinity Pool)**        | Tầng 4 (Khu Wellness) | 9:00 - 22:00              | Miễn phí cho khách lưu trú                 | Khăn tắm & nước khoáng miễn phí tại quầy hồ bơi. Trẻ em dưới 12t cần người lớn đi kèm.              |
-|  2  | **Nhà Hàng Buffet**                      | Tầng 2                | 06:30 - 10:00 (Sáng)      | Đã bao gồm vé phòng hoặc 350.000 VNĐ/người | Phục vụ buffet sáng Á - Âu, phở nóng, nước ép tươi. Trẻ em dưới 10t giá 175.000 VNĐ.                |
-|  3  | **Aurora Serenity Spa & Massage**        | Tầng 4                | 09:00 - 22:00             | Từ 500.000 VNĐ / liệu trình                | Giảm 15% cho khách lưu trú. Cung cấp xông hơi đá muối Himalaya, massage đá nóng.                    |
-|  4  | **Phòng Tập Gym & Fitness Center**       | Tầng 3                | 24/7 (Cả ngày)            | Miễn phí cho khách lưu trú                 | Trang bị máy chạy bộ Technogym, tạ đơn, thảm Yoga. Có huấn luyện viên hỗ trợ từ 08:00 - 17:00.      |
-|  5  | **Khu Vui Chơi Trẻ Em (Kids Club)**      | Tầng 1 (Góc Sảnh)     | 08:00 - 20:00             | Miễn phí cho khách lưu trú                 | Dành cho trẻ từ 2 - 10 tuổi. Có bảo mẫu giám sát, nhà bóng, tô tượng và trò chơi trí tuệ.           |
-|  6  | **Phòng Hội Nghị & Sự Kiện (Ballroom)**  | Tầng 5                | 07:00 - 22:00 (Đặt trước) | Theo hợp đồng sự kiện                      | Sức chứa tới 500 khách. Trang bị màn hình LED 4K, hệ thống âm thanh ánh sáng hiện đại.              |
-|  7  | **Bar Trên Mái (Skyline Lounge & Bar)**  | Tầng 6 (Rooftop)      | 16:30 - 01:00 (Đêm)       | Theo menu đồ uống                          | Ngắm toàn cảnh thành phố về đêm. Phục vụ Cocktail, Mocktail, rượu vang và nhạc Live Jazz cuối tuần. |
-|  8  | **Bãi Đỗ Xe Ngầm (Basement Parking)**    | Tầng Hầm B1 & B2      | 24/7 (Cả ngày)            | Miễn phí cho khách lưu trú                 | Đỗ xe ô tô và xe máy an toàn. Có sẵn 4 trạm sạc nhanh xe điện EV 22kW.                              |
-|  9  | **Dịch Vụ Giặt Ủi & Giặt Hấp (Laundry)** | Tầng Hầm B1           | 07:00 - 19:00             | Theo bảng giá niêm yết                     | Trả đồ trong vòng 12h. Có dịch vụ giặt hấp lấy nhanh trong 4h.                                      |
-| 10  | **Nhà Vệ Sinh (Restroom)**               | Tầng 1 (Sảnh Chính)   | 24/7 (Cả ngày)            | Miễn phí                                   | Nằm ở cuối hành lang bên tay trái sảnh chính, cạnh quầy Lounge.                                    |
-| 11  | **Mạng Không Dây (Wi-Fi)**               | Toàn bộ khách sạn     | 24/7 (Cả ngày)            | Miễn phí cho khách lưu trú                 | Tên mạng (SSID): Aurora_Guest, mật khẩu truy cập: aurora2026. Tốc độ cao 100Mbps.                  |
+|  1  | **Hồ Bơi Vô Cực (Infinity Pool)**        | Tầng 5                | 06:00 - 22:00 hàng ngày   | Miễn phí cho khách lưu trú                 | Khăn tắm & nước khoáng miễn phí tại quầy hồ bơi. Đi thang máy A lên Tầng 5, rẽ trái qua cửa kính.    |
+|  2  | **Nhà Hàng Buffet Á - Âu**               | Tầng 2                | 06:30 - 22:00             | Đã bao gồm vé phòng hoặc 350.000 VNĐ/người | Phục vụ buffet sáng Á - Âu, ăn trưa và tối. Đi thang máy A lên Tầng 2, rẽ vào sảnh chính nhà hàng.   |
+|  3  | **Thảo Mộc Spa & Massage**               | Tầng 5                | 09:00 - 22:00             | Từ 500.000 VNĐ / liệu trình                | Giảm 15% cho khách lưu trú. Xông hơi đá muối, massage. Đi thang máy A lên Tầng 5, rẽ trái 15m.      |
+|  4  | **Phòng Tập Gym & Fitness Center**       | Tầng 5                | 24/7 (Cả ngày)            | Miễn phí cho khách lưu trú                 | Máy chạy bộ Technogym, tạ đơn. Đi thang máy A lên Tầng 5, đi thẳng vào phòng Gym.                   |
+|  5  | **Rooftop Coffee & View**                | Tầng 6                | 07:00 - 23:00             | Theo menu thức uống                        | Ngắm toàn cảnh thành phố. Đi thang máy A lên Tầng 6, rẽ trái theo hành lang sang khu vực cafe.       |
+|  6  | **Sky Lounge Bar**                       | Tầng 6                | 16:30 - 01:00 (Đêm)       | Theo menu đồ uống                          | Phục vụ Cocktail, rượu vang. Đi thang máy A lên Tầng 6, rẽ trái 10m là đến Quầy Bar.                |
+|  7  | **Phòng VIP Karaoke**                    | Tầng 6                | 14:00 - 00:00             | Theo giờ phòng                             | Dàn âm thanh chuẩn quốc tế. Đi thang máy A lên Tầng 6, đi thẳng cuối hành lang.                      |
+|  8  | **Phòng Nghỉ 401 - 406**                 | Tầng 4                | 24/7                      | Theo đặt phòng                             | Đi thang máy A lên Tầng 4, đi dọc hành lang tới các phòng 401-406.                                  |
+|  9  | **Phòng Nghỉ 301 - 306**                 | Tầng 3                | 24/7                      | Theo đặt phòng                             | Đi thang máy A lên Tầng 3, đi dọc hành lang tới các phòng 301-306.                                  |
+| 10  | **Quầy Lễ Tân (Front Desk)**             | Tầng Trệt (Ground)    | 24/7                      | Miễn phí                                   | Đi thẳng qua cửa kính sảnh chính, quầy lễ tân nằm ngay bên tay phải.                                |
+| 11  | **Bãi Đỗ Xe Ô Tô (Car Parking)**         | Hầm B2                | 24/7 (Cả ngày)            | Miễn phí cho khách lưu trú                 | Đỗ xe ô tô an toàn. Đi thang máy A bấm xuống Hầm B2, rẽ trái vào bãi xe.                             |
+| 12  | **Bãi Xe Máy & Giặt Ủi**                 | Hầm B1                | 24/7 (Cả ngày)            | Miễn phí cho khách lưu trú                 | Bãi giữ xe máy và khu tiếp nhận giặt ủi. Đi thang máy A bấm xuống Hầm B1.                           |
+| 13  | **Mạng Không Dây (Wi-Fi)**               | Toàn bộ khách sạn     | 24/7 (Cả ngày)            | Miễn phí cho khách lưu trú                 | Tên mạng (SSID): Aurora_Guest, mật khẩu truy cập: aurora2026. Tốc độ cao 100Mbps.                  |
 
 ## 2. Chi Tiết Hướng Dẫn Di Chuyển Tới Các Khu Vực
 
-- **Từ Sảnh Chính (Tầng 1) tới Sảnh Thang Máy Chính:** Nằm ngay phía sau quầy lễ tân bên tay phải của quý khách.
-- **Từ Sảnh Chính (Tầng 1) tới Nhà Vệ Sinh:** Đi về phía cuối hành lang bên tay trái sảnh trệt, cạnh quầy Lounge.
-- **Từ Sảnh Chính (Tầng 1) tới các Phòng Tầng 1 (101 - 106):** Rẽ phải từ sảnh chính vào hành lang cánh Đông, các phòng xếp theo số thứ tự từ 101 đến 106.
-- **Từ Sảnh Chính lên các Phòng Tầng 2 (201 - 206):** Đi thang máy B lên Tầng 2, rẽ trái theo hành lang phòng lưu trú.
-- **Từ Sảnh Chính lên các Phòng Tầng 3 (301 - 306):** Đi thang máy A hoặc B bấm Tầng 3, bước ra hành lang rẽ phải.
-- **Từ Sảnh Chính lên các Phòng Tầng 4 (401 - 406):** Sử dụng Thang Máy A bấm Tầng 4, bước ra thang máy rẽ trái theo hành lang phòng VIP.
-- **Từ Sảnh Chính (Tầng 1) lên Tầng 4 (Hồ bơi / Spa):** Đi thẳng 20m qua sảnh Lounge, sử dụng Thang Máy A bấm Tầng 4, bước ra thang máy rẽ phải theo hành lang chỉ dẫn.
-- **Từ Sảnh Chính (Tầng 1) lên Tầng 2 (Ăn Sáng):** Đi thang máy B hoặc cầu thang bộ cuốn tại sảnh trung tâm lên thẳng Tầng 2.
-- **Từ Sảnh Chính xuống Bãi Xe Hầm B1/B2:** Dùng Thang Máy C (Thang dịch vụ/bãi xe) nằm cạnh quầy Lễ Tân bấm xuống B1 hoặc B2.
+- **Từ Sảnh Trệt tới Quầy Lễ Tân:** Đi thẳng qua sảnh chính, quầy lễ tân nằm ngay bên tay phải bạn.
+- **Từ Sảnh Trệt tới Thang Máy A:** Đi thẳng qua khu vực sảnh tiếp tân hướng về cụm thang máy trung tâm.
+- **Lên Tầng 2 (Nhà Hàng Buffet):** Đi Thang máy A lên Tầng 2, bước ra cửa thang máy rẽ vào sảnh chính nhà hàng.
+- **Lên Tầng 3 & 4 (Phòng Nghỉ 301 - 406):** Đi Thang máy A lên Tầng 3 hoặc Tầng 4, rẽ vào hành lang phòng lưu trú.
+- **Lên Tầng 5 (Hồ Bơi Vô Cực, Spa, Gym):** Đi Thang máy A lên Tầng 5, bước ra cửa thang máy rẽ trái qua cửa kính là đến Hồ bơi vô cực; đi thẳng vào Gym; rẽ trái 15m vào Spa.
+- **Lên Tầng 6 (Rooftop Coffee, Sky Bar, Karaoke):** Đi Thang máy A lên Tầng 6, rẽ trái sang khu Rooftop Coffee & Quầy Bar; đi thẳng cuối hành lang vào Phòng Karaoke.
+- **Xuống Hầm B1 (Bãi Xe Máy) & Hầm B2 (Bãi Ô Tô):** Đi Thang máy A bấm xuống Hầm B1 hoặc Hầm B2 theo nhu cầu.
 
 ## 3. Danh Sách Phòng Lưu Trú (Phòng 101 đến 406)
 

@@ -16,11 +16,12 @@ export const useSpeechRecognition = () => {
       recognition.interimResults = true;
 
       recognition.onresult = (event) => {
+        if (!shouldListenRef.current) return;
         let fullTranscript = '';
         for (let i = 0; i < event.results.length; i++) {
           fullTranscript += event.results[i][0].transcript;
         }
-        if (fullTranscript.trim()) {
+        if (fullTranscript.trim() && shouldListenRef.current) {
           setTranscript(fullTranscript);
         }
       };
@@ -79,9 +80,11 @@ export const useSpeechRecognition = () => {
     shouldListenRef.current = false;
     if (recognitionRef.current) {
       try {
-        recognitionRef.current.stop();
+        recognitionRef.current.abort();
       } catch (err) {
-        // Ignored
+        try {
+          recognitionRef.current.stop();
+        } catch (e) {}
       }
       setIsListening(false);
       isListeningRef.current = false;

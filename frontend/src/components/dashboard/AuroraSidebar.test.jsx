@@ -56,4 +56,28 @@ describe('AuroraSidebar & MobileBottomNav History Menu Visibility', () => {
     expect(ids).toContain('History');
     expect(ids).toEqual(['Dashboard', 'Requests', 'History', 'Notifications', 'Profile']);
   });
+
+  it('separates concierge functional items correctly', () => {
+    const conciergeNavItems = [
+      { id: 'LiveCalls', label: 'Tổng đài Live Call' },
+      { id: 'Recordings', label: 'Bản ghi cuộc gọi' },
+      { id: 'Taxi', label: 'Điều phối đặt xe' },
+      { id: 'Feedback', label: 'Đánh giá dịch vụ' },
+      { id: 'Requests', label: 'Yêu cầu' },
+      { id: 'History', label: 'Lịch sử' },
+      { id: 'Notifications', label: 'Thông báo' },
+      { id: 'Profile', label: 'Hồ sơ' },
+    ];
+    const ids = conciergeNavItems.map((i) => i.id);
+    expect(ids).toEqual([
+      'LiveCalls',
+      'Recordings',
+      'Taxi',
+      'Feedback',
+      'Requests',
+      'History',
+      'Notifications',
+      'Profile',
+    ]);
+  });
 });

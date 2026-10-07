@@ -72,6 +72,7 @@
 ### B. Frontend Web & PWA Console (ReactJS + Vite + Tailwind CSS)
 - **Role**: Cung cấp giao diện web & PWA đa nền tảng (hỗ trợ màn hình Robot, Laptop Admin, Smartphone của Staff/Guest):
   1. **Robot Screen Display & PWA Face**: Màn hình cảm ứng trên thân Robot (hoặc Điện thoại PWA) với avatar biểu cảm Lottie linh hoạt (Listening, Speaking, Thinking, Idle), menu dịch vụ nhanh.
+     - **Bảo mật Kiosk chuyên nghiệp (Zero-Exposure UI)**: Ẩn hoàn toàn nút đăng xuất khỏi tầm mắt khách hàng. Nhân viên & Kỹ thuật viên thoát ứng dụng bằng cử chỉ **Secret Multi-Tap** (Gõ 5 lần liên tiếp trong 2 giây vào Logo hoặc góc màn hình trên cả Web Kiosk và App PWA) hoặc phím tắt `Ctrl + Shift + L`, kết hợp nhập mật khẩu bảo vệ 2 lớp.
   2. **Staff Dashboard**: Web console cho nhân viên nhận thông báo và xử lý Ticket dịch vụ, phản hồi WebRTC Call khi Robot báo động.
   3. **Admin Console & Teleop**: Quản trị người dùng, quản lý tài liệu RAG Knowledge Base, xem bản đồ LiDAR 2D SLAM và bộ điều khiển di chuyển Robot từ xa (Manual Nudge Teleop).
 
@@ -730,6 +731,8 @@ Toàn bộ tài liệu chuyên sâu được phân loại và quản lý tập t
 * 🧠 **Trí Tuệ Nhân Tạo (AI Core)**:
   * [Tối Ưu Hóa AI & Audio Pipeline](docs/guides/ai_optimization.md)
   * [Test Harness & Đánh Giá LangGraph](docs/guides/langgraph_harness.md)
+  * [Kiến Trúc Thu Thập Đánh Giá Feedback 5 Sao](docs/guides/robot_feedback_architecture.md)
+  * [Cơ Chế Bảo Mật Thoát Kiosk (Secret Multi-Tap Gesture)](docs/guides/kiosk_security_exit.md)
 * ⚙️ **Kịch Bản & Nghiệp Vụ (Workflows)**:
   * [Đặc Tả 7 Core Workflows (Stepflow)](docs/workflows/stepflow.md)
   * [Báo Cáo Tiến Độ & Bàn Giao Workflow](docs/workflows/workflow_handover.md)

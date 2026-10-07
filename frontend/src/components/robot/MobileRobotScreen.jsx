@@ -1,10 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { AudioWave } from './AudioWave';
 import { RobotFace } from './RobotFace';
 import { usePwaInstall } from '../../hooks/usePwaInstall';
 
-const getRobotMode = (state) => {
+const getRobotMode = (state, isSpeaking = false) => {
   if (state === 'RT-01') return 'sleeping';
+  if (isSpeaking) return 'speaking';
   if (state === 'RT-03') return 'listening';
   if (state === 'RT-04') return 'processing';
   return 'welcome';
@@ -48,6 +49,28 @@ export const MobileRobotScreen = ({
   const [statusTitle, statusSubtitle] = getStatusCopy(currentState, isSpeaking, language);
   const isBusy = isProcessing || currentState === 'RT-04';
 
+  // Secret Multi-Tap Gesture (Chạm 5 lần liên tiếp trong 2s để mở đăng xuất chuẩn Kiosk)
+  const tapCountRef = useRef(0);
+  const tapTimerRef = useRef(null);
+
+  const handleSecretTap = useCallback((e) => {
+    e?.stopPropagation?.();
+    tapCountRef.current += 1;
+    if (tapTimerRef.current) clearTimeout(tapTimerRef.current);
+
+    if (tapCountRef.current >= 5) {
+      tapCountRef.current = 0;
+      if (typeof onLogout === 'function') {
+        onLogout();
+      }
+      return;
+    }
+
+    tapTimerRef.current = setTimeout(() => {
+      tapCountRef.current = 0;
+    }, 2000);
+  }, [onLogout]);
+
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
@@ -80,7 +103,7 @@ export const MobileRobotScreen = ({
 
       <div className="robot-landscape-content h-full w-full flex flex-col">
         <header className="h-12 shrink-0 flex items-center justify-between gap-3 border-b border-stone-200 px-4 robot-safe-x">
-          <div className="flex items-center gap-3 min-w-0">
+          <div onClick={handleSecretTap} className="flex items-center gap-3 min-w-0 cursor-default select-none" title="">
             <strong className="text-sm tracking-tight">HCROBOT</strong>
             <span className="hidden min-[680px]:inline text-[10px] font-semibold text-stone-500">Aurora Grand Hotel</span>
             <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-500' : 'bg-red-500'}`} title={isOnline ? 'Đã kết nối' : 'Ngoại tuyến'} />
@@ -91,25 +114,24 @@ export const MobileRobotScreen = ({
               <button
                 type="button"
                 onClick={onOpenFoodMenu}
-                className="h-8 px-3 rounded-full bg-white hover:bg-stone-50 border border-stone-300 text-stone-900 text-[10px] font-bold flex items-center gap-1 active:scale-95 shadow-xs cursor-pointer transition-transform hover:scale-105 shrink-0"
+                className="h-8 px-3 rounded-full bg-stone-900/90 hover:bg-stone-800 border border-stone-700 text-stone-200 text-[10px] font-bold flex items-center active:scale-95 shadow-xs cursor-pointer transition-transform hover:scale-105 shrink-0"
                 title="Mở thực đơn chọn món"
               >
-                <span>🍽️</span>
                 <span>Chọn món</span>
               </button>
             )}
             {guestEmotion && (
               <span 
-                className={`text-[10px] font-bold px-2 py-0.5 rounded-full border flex items-center gap-1 transition-all ${
+                className={`text-[10px] font-bold px-2 py-0.5 rounded-full border flex items-center transition-all ${
                   guestEmotion === 'happy'
-                    ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                    ? 'bg-stone-800 text-stone-200 border-stone-700'
                     : guestEmotion === 'unhappy'
-                    ? 'bg-rose-50 text-rose-700 border-rose-300'
-                    : 'bg-stone-100 text-stone-700 border-stone-300'
+                    ? 'bg-stone-800 text-stone-300 border-stone-700'
+                    : 'bg-stone-900 text-stone-400 border-stone-800'
                 }`}
                 title="Cảm xúc khuôn mặt nhận diện từ Camera Laptop"
               >
-                <span>{guestEmotion === 'happy' ? '😊 Vui vẻ' : guestEmotion === 'unhappy' ? '😠 Khó chịu' : '😐 Bình thường'}</span>
+                <span>{guestEmotion === 'happy' ? 'Vui vẻ' : guestEmotion === 'unhappy' ? 'Khó chịu' : 'Bình thường'}</span>
               </span>
             )}
             {activeRoomNumber && <span className="text-[10px] font-bold text-stone-600">Phòng {activeRoomNumber}</span>}
@@ -119,7 +141,6 @@ export const MobileRobotScreen = ({
             <button onClick={onToggleLanguage} className="h-8 min-w-10 px-2 rounded-full bg-white border border-stone-300 text-[10px] font-bold active:scale-95">
               {language === 'English' ? 'EN' : 'VI'}
             </button>
-            <button onClick={onLogout} className="h-8 px-3 rounded-full bg-stone-900 text-white text-[10px] font-bold active:scale-95">Thoát</button>
           </div>
         </header>
 
@@ -137,7 +158,11 @@ export const MobileRobotScreen = ({
               className="w-full flex-1 min-h-0 flex items-center justify-center active:scale-[0.98] disabled:opacity-70 transition-transform"
               aria-label="Bắt đầu trò chuyện với Robot"
             >
-              <RobotFace mode={getRobotMode(currentState)} compact />
+              <RobotFace 
+                mode={getRobotMode(currentState, isSpeaking)} 
+                isSpeakingActive={isSpeaking}
+                compact 
+              />
             </button>
             <div className="shrink-0 text-center pb-3">
               <h1 className="text-xl font-black tracking-tight">{statusTitle}</h1>
@@ -211,6 +236,13 @@ export const MobileRobotScreen = ({
             )}
           </div>
         </main>
+
+        {/* Vùng chạm bí mật góc dưới bên phải cho Mobile (Chạm 5 lần trong 2s để đăng xuất) */}
+        <div
+          onClick={handleSecretTap}
+          className="absolute bottom-0 right-0 w-16 h-16 z-40 select-none opacity-0"
+          aria-hidden="true"
+        />
       </div>
     </section>
   );

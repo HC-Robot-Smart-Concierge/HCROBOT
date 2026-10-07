@@ -5,6 +5,9 @@ import {
   History,
   Bell,
   User,
+  PhoneCall,
+  Car,
+  Star,
 } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
 
@@ -26,13 +29,20 @@ export const MobileBottomNav = ({
     roleLower.includes('concierge') ||
     defaultDashLower === 'concierge';
 
-  const navItems = [
-    { id: 'Dashboard', label: t('menuDashboard') || 'Tổng Quan', icon: LayoutDashboard },
-    { id: 'Requests', label: t('menuRequests') || 'Yêu Cầu', icon: Inbox },
-    ...(isConcierge ? [{ id: 'History', label: t('menuHistory') || 'Lịch Sử', icon: History }] : []),
-    { id: 'Notifications', label: t('menuNotifications') || 'Thông Báo', icon: Bell },
-    { id: 'Profile', label: t('menuProfile') || 'Hồ Sơ', icon: User },
-  ];
+  const navItems = isConcierge
+    ? [
+        { id: 'LiveCalls', label: 'Tổng Đài', icon: PhoneCall },
+        { id: 'Taxi', label: 'Đặt Xe', icon: Car },
+        { id: 'Feedback', label: 'Đánh Giá', icon: Star },
+        { id: 'Requests', label: t('menuRequests') || 'Yêu Cầu', icon: Inbox },
+        { id: 'Notifications', label: t('menuNotifications') || 'Thông Báo', icon: Bell },
+      ]
+    : [
+        { id: 'Dashboard', label: t('menuDashboard') || 'Tổng Quan', icon: LayoutDashboard },
+        { id: 'Requests', label: t('menuRequests') || 'Yêu Cầu', icon: Inbox },
+        { id: 'Notifications', label: t('menuNotifications') || 'Thông Báo', icon: Bell },
+        { id: 'Profile', label: t('menuProfile') || 'Hồ Sơ', icon: User },
+      ];
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-t border-[#E8E5E0] h-16 flex items-center justify-around px-1 md:hidden select-none shadow-lg">

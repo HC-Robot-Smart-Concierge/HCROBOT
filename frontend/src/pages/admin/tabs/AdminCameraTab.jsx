@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { FilesetResolver, FaceLandmarker } from '@mediapipe/tasks-vision';
 import {
   Video,
   VideoOff,
@@ -32,6 +33,19 @@ export const AdminCameraTab = ({ currentUser }) => {
   const [snapshotUrl, setSnapshotUrl] = useState(null);
   const [streamKey, setStreamKey] = useState(() => Date.now());
 
+  // AI Emotion Recognition States (Pi5 Camera)
+  const [isAiEmotionActive, setIsAiEmotionActive] = useState(true);
+  const [visionModelReady, setVisionModelReady] = useState(false);
+  const [isFaceDetected, setIsFaceDetected] = useState(false);
+  const [detectedEmotion, setDetectedEmotion] = useState('neutral');
+  const [smileScore, setSmileScore] = useState(0);
+  const [frownScore, setFrownScore] = useState(0);
+  const [overrideEmotion, setOverrideEmotion] = useState(null);
+  const [showEmotionHud, setShowEmotionHud] = useState(true);
+
+  const landmarkerRef = useRef(null);
+  const noFaceCountRef = useRef(0);
+
   const reloadStream = () => {
     setStreamKey(Date.now());
     setStreamError(false);
@@ -50,6 +64,143 @@ export const AdminCameraTab = ({ currentUser }) => {
 
   const pressedKeysRef = useRef(new Set());
   const activeMotionRef = useRef('stop');
+
+  // Khởi tạo Google MediaPipe Face Landmarker cho ảnh Pi5 Stream
+  useEffect(() => {
+    let isCancelled = false;
+
+    const initLandmarker = async () => {
+      try {
+        const fileset = await FilesetResolver.forVisionTasks(
+          'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm'
+        );
+        if (isCancelled) return;
+
+        const landmarker = await FaceLandmarker.createFromOptions(fileset, {
+          baseOptions: {
+            modelAssetPath:
+              'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',
+            delegate: 'GPU',
+          },
+          outputFaceBlendshapes: true,
+          runningMode: 'IMAGE',
+          numFaces: 1,
+        });
+
+        if (isCancelled) {
+          landmarker.close();
+          return;
+        }
+
+        landmarkerRef.current = landmarker;
+        setVisionModelReady(true);
+      } catch (err) {
+        console.warn('[AdminCameraTab] MediaPipe model init fallback:', err);
+      }
+    };
+
+    initLandmarker();
+
+    return () => {
+      isCancelled = true;
+      if (landmarkerRef.current) {
+        try {
+          landmarkerRef.current.close();
+        } catch {
+          // ignore cleanup error
+        }
+      }
+    };
+  }, []);
+
+  // Vòng lặp phân tích biểu cảm trực tiếp từ luồng ảnh Pi5
+  useEffect(() => {
+    if (!isAiEmotionActive || !isStreaming || streamError) {
+      setIsFaceDetected(false);
+      return;
+    }
+
+    const intervalId = setInterval(() => {
+      if (!landmarkerRef.current || !imgRef.current) return;
+      const imgEl = imgRef.current;
+      if (!imgEl.complete || imgEl.naturalWidth === 0) return;
+
+      try {
+        const results = landmarkerRef.current.detect(imgEl);
+
+        if (results && results.faceLandmarks && results.faceLandmarks.length > 0) {
+          setIsFaceDetected(true);
+          noFaceCountRef.current = 0;
+
+          if (results.faceBlendshapes && results.faceBlendshapes.length > 0) {
+            const categories = results.faceBlendshapes[0].categories;
+            let sLeft = 0;
+            let sRight = 0;
+            let bDownL = 0;
+            let bDownR = 0;
+            let mFrownL = 0;
+            let mFrownR = 0;
+
+            for (const c of categories) {
+              if (c.categoryName === 'mouthSmileLeft') sLeft = c.score;
+              else if (c.categoryName === 'mouthSmileRight') sRight = c.score;
+              else if (c.categoryName === 'browDownLeft') bDownL = c.score;
+              else if (c.categoryName === 'browDownRight') bDownR = c.score;
+              else if (c.categoryName === 'mouthFrownLeft') mFrownL = c.score;
+              else if (c.categoryName === 'mouthFrownRight') mFrownR = c.score;
+            }
+
+            const smile = (sLeft + sRight) / 2;
+            const frown = Math.max((bDownL + bDownR) / 2, (mFrownL + mFrownR) / 2);
+            setSmileScore(smile);
+            setFrownScore(frown);
+
+            let detected = 'neutral';
+            if (smile >= 0.35) {
+              detected = 'happy';
+            } else if (frown >= 0.28) {
+              detected = 'unhappy';
+            }
+            setDetectedEmotion(detected);
+          }
+        } else {
+          noFaceCountRef.current += 1;
+          if (noFaceCountRef.current >= 3) {
+            setIsFaceDetected(false);
+            setDetectedEmotion('neutral');
+            setSmileScore(0);
+            setFrownScore(0);
+          }
+        }
+      } catch {
+        // Nuốt lỗi cross-origin hoặc frame gián đoạn để tránh treo loop
+      }
+    }, 600);
+
+    return () => clearInterval(intervalId);
+  }, [isAiEmotionActive, isStreaming, streamError]);
+
+  const handleOverrideEmotion = useCallback(
+    async (emo) => {
+      setOverrideEmotion(emo);
+      if (emo) {
+        try {
+          await fetch('/api/v1/operations/robot/control', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              command: `emotion:${emo}`,
+              target_ip: controlIp,
+              port: 9999,
+            }),
+          });
+        } catch {
+          // ignore
+        }
+      }
+    },
+    [controlIp]
+  );
 
   const handleSpeedChange = useCallback(
     async (newSpeed) => {
@@ -436,6 +587,144 @@ export const AdminCameraTab = ({ currentUser }) => {
             }`}
           />
         ) : null}
+
+        {/* AI Emotion Recognition Panel - Top-Left HUD (Không dùng emoji, tone xám tối giản) */}
+        <div className="absolute top-14 left-3 z-20 w-[270px] bg-[#18181B]/90 backdrop-blur-md rounded-2xl border border-white/10 shadow-2xl p-3 text-stone-200 select-none animate-fadeIn flex flex-col gap-2.5">
+          {/* Header */}
+          <div className="flex items-center justify-between border-b border-white/10 pb-2">
+            <div className="flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-stone-300" />
+              <span className="text-[10px] font-mono font-bold tracking-wider text-stone-200 uppercase">
+                Biểu cảm AI Pi5
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setIsAiEmotionActive((prev) => !prev)}
+                className={`px-2 py-0.5 rounded-md text-[9px] font-mono font-bold transition-all cursor-pointer border ${
+                  isAiEmotionActive
+                    ? 'bg-stone-200 text-stone-900 border-white shadow-xs'
+                    : 'bg-stone-800 text-stone-400 border-stone-700 hover:text-stone-200'
+                }`}
+                title="Bật/Tắt module nhận diện biểu cảm"
+              >
+                {isAiEmotionActive ? 'BẬT' : 'TẮT'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowEmotionHud((prev) => !prev)}
+                className="text-[10px] font-mono text-stone-400 hover:text-stone-200 px-1 cursor-pointer"
+                title={showEmotionHud ? 'Thu gọn' : 'Mở rộng'}
+              >
+                {showEmotionHud ? '▲' : '▼'}
+              </button>
+            </div>
+          </div>
+
+          {showEmotionHud && (
+            <>
+              {/* Trạng thái khuôn mặt & AI Model */}
+              <div className="grid grid-cols-2 gap-2 text-[9px] font-mono">
+                <div className="p-1.5 rounded-lg bg-black/40 border border-white/5 flex flex-col">
+                  <span className="text-stone-400">TRẠNG THÁI AI</span>
+                  <span className="font-bold text-stone-200">
+                    {visionModelReady ? 'SẴN SÀNG' : 'ĐANG TẢI...'}
+                  </span>
+                </div>
+                <div className="p-1.5 rounded-lg bg-black/40 border border-white/5 flex flex-col">
+                  <span className="text-stone-400">KHUÔN MẶT</span>
+                  <span
+                    className={`font-bold ${
+                      isFaceDetected ? 'text-stone-100' : 'text-stone-400'
+                    }`}
+                  >
+                    {isFaceDetected ? 'ĐÃ KHÓA' : 'CHƯA PHÁT HIỆN'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Biểu cảm hiện tại */}
+              <div className="p-2.5 rounded-xl bg-black/40 border border-white/5 flex items-center justify-between">
+                <div className="flex flex-col">
+                  <span className="text-[9px] font-mono text-stone-400">BIỂU CẢM HIỆN TẠI</span>
+                  <span className="text-xs font-bold tracking-wide text-white">
+                    {(overrideEmotion || detectedEmotion) === 'happy'
+                      ? 'VUI VẺ'
+                      : (overrideEmotion || detectedEmotion) === 'unhappy'
+                      ? 'KHÓ CHỊU'
+                      : 'BÌNH THƯỜNG'}
+                  </span>
+                </div>
+                <span className="text-[9px] font-mono px-2 py-0.5 rounded-md bg-stone-800 text-stone-300 border border-stone-700">
+                  {overrideEmotion ? 'THỦ CÔNG' : 'AI QUÉT'}
+                </span>
+              </div>
+
+              {/* Thước đo Nụ cười & Cau mày */}
+              <div className="space-y-1.5 text-[9px] font-mono">
+                <div>
+                  <div className="flex justify-between text-stone-400 mb-0.5">
+                    <span>NỤ CƯỜI (SMILE)</span>
+                    <span className="text-stone-200 font-bold">
+                      {Math.round(smileScore * 100)}%
+                    </span>
+                  </div>
+                  <div className="w-full h-1.5 rounded-full bg-stone-800 overflow-hidden">
+                    <div
+                      className="h-full bg-stone-200 transition-all duration-300"
+                      style={{ width: `${Math.min(100, Math.round(smileScore * 100))}%` }}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex justify-between text-stone-400 mb-0.5">
+                    <span>CAU MÀY (FROWN)</span>
+                    <span className="text-stone-200 font-bold">
+                      {Math.round(frownScore * 100)}%
+                    </span>
+                  </div>
+                  <div className="w-full h-1.5 rounded-full bg-stone-800 overflow-hidden">
+                    <div
+                      className="h-full bg-stone-400 transition-all duration-300"
+                      style={{ width: `${Math.min(100, Math.round(frownScore * 100))}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Bộ nút can thiệp / Thử nghiệm thủ công */}
+              <div className="pt-1 border-t border-white/10 space-y-1">
+                <span className="text-[8px] font-mono text-stone-400 block uppercase">
+                  Kiểm tra phản ứng Robot:
+                </span>
+                <div className="grid grid-cols-4 gap-1">
+                  {[
+                    { id: null, label: 'TỰ ĐỘNG' },
+                    { id: 'happy', label: 'VUI VẺ' },
+                    { id: 'neutral', label: 'BÌNH THƯỜNG' },
+                    { id: 'unhappy', label: 'KHÓ CHỊU' },
+                  ].map((mode) => (
+                    <button
+                      key={String(mode.id)}
+                      type="button"
+                      onClick={() => handleOverrideEmotion(mode.id)}
+                      className={`py-1 rounded-md text-[8px] font-mono font-bold transition-all cursor-pointer border ${
+                        overrideEmotion === mode.id
+                          ? 'bg-stone-200 text-stone-900 border-white shadow-xs'
+                          : 'bg-stone-900 text-stone-400 border-stone-800 hover:text-stone-200'
+                      }`}
+                      title={mode.id ? `Ghi đè biểu cảm: ${mode.label}` : 'Để AI tự động nhận diện'}
+                    >
+                      {mode.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
 
         {/* Telemetry OSD Strip (Bottom-Left) */}
         <div className="absolute bottom-4 left-4 z-10 px-3 py-2 bg-[#18181B]/80 backdrop-blur-md rounded-xl border border-white/10 shadow-2xl flex items-center gap-3 text-[10px] font-mono text-stone-300 select-none">

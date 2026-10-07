@@ -18,6 +18,9 @@ import {
   Film,
   ExternalLink,
   Cloud,
+  Star,
+  AlertCircle,
+  MessageCircle,
 } from 'lucide-react';
 import {
   fetchConciergeDashboard,
@@ -25,6 +28,7 @@ import {
   updateConciergeRequest,
   fetchHumanSupportSessions,
 } from '../../services/conciergeApi';
+import { fetchFeedbacks, fetchSessionMessages } from '../../services/aiApi';
 import { MessengerVideoCallModal } from '../../components/video/MessengerVideoCallModal';
 import {
   fetchTaxiDashboard,
@@ -33,9 +37,21 @@ import {
   updateTaxiRequestStatus,
 } from '../../services/taxiApi';
 
-export const ConciergeDashboard = ({ currentUser, onNotify = () => {} }) => {
-  const [activeSubTab, setActiveSubTab] = useState('live_call'); // 'live_call' | 'taxi'
+export const ConciergeDashboard = ({
+  currentUser,
+  onNotify = () => {},
+  activeSubTab: propActiveSubTab,
+}) => {
+  const [internalSubTab, setInternalSubTab] = useState('live_call');
+  const activeSubTab = propActiveSubTab || internalSubTab;
+  const isManagedFromSidebar = Boolean(propActiveSubTab);
   const [isLoading, setIsLoading] = useState(false);
+
+  // Feedback & Service Recovery states
+  const [feedbacks, setFeedbacks] = useState([]);
+  const [selectedTranscriptFb, setSelectedTranscriptFb] = useState(null);
+  const [transcriptMessages, setTranscriptMessages] = useState([]);
+  const [isTranscriptLoading, setIsTranscriptLoading] = useState(false);
 
   // Live Call states
   const [activeSession, setActiveSession] = useState(null);
@@ -75,19 +91,28 @@ export const ConciergeDashboard = ({ currentUser, onNotify = () => {} }) => {
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const [conciergeData, taxiDashData, taxiReqsData, sessionsData] = await Promise.all([
+      const [conciergeData, taxiDashData, taxiReqsData, sessionsData, feedbacksData] = await Promise.all([
         fetchConciergeDashboard(),
         fetchTaxiDashboard(),
         fetchTaxiRequests(),
         fetchHumanSupportSessions(),
+        fetchFeedbacks(),
       ]);
 
       if (conciergeData) {
-        setActiveSession(conciergeData.current_request || null);
+        const curReq = conciergeData.current_request;
+        if (curReq && ['Pending', 'Connected', 'In Progress'].includes(curReq.status)) {
+          setActiveSession(curReq);
+        } else {
+          setActiveSession(null);
+        }
         setActiveCount(conciergeData.active_sessions_count || 0);
       }
       if (Array.isArray(sessionsData)) {
         setRecordedSessions(sessionsData);
+      }
+      if (Array.isArray(feedbacksData)) {
+        setFeedbacks(feedbacksData);
       }
 
       if (taxiDashData?.kpis) {
@@ -105,6 +130,21 @@ export const ConciergeDashboard = ({ currentUser, onNotify = () => {} }) => {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleViewTranscript = async (fb) => {
+    setSelectedTranscriptFb(fb);
+    setIsTranscriptLoading(true);
+    setTranscriptMessages([]);
+    if (fb.chat_session_id) {
+      try {
+        const msgs = await fetchSessionMessages(fb.chat_session_id);
+        setTranscriptMessages(Array.isArray(msgs) ? msgs : []);
+      } catch (err) {
+        console.warn('Error fetching transcript:', err);
+      }
+    }
+    setIsTranscriptLoading(false);
   };
 
   useEffect(() => {
@@ -127,6 +167,12 @@ export const ConciergeDashboard = ({ currentUser, onNotify = () => {} }) => {
   const handleUpdateStatus = async (status) => {
     if (!activeSession) return;
     const reqId = activeSession.id || activeSession.ticket_code;
+    
+    // Optimistic UI: nếu từ chối hoặc đóng cuộc gọi, lập tức tắt modal
+    if (status === 'Closed' || status === 'Completed' || status === 'Cancelled') {
+      setActiveSession(null);
+    }
+
     const result = await updateConciergeRequest(reqId, {
       status,
       assigned_staff_name: currentUser?.full_name || 'Concierge Specialist',
@@ -184,11 +230,36 @@ export const ConciergeDashboard = ({ currentUser, onNotify = () => {} }) => {
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
             <h1 className="text-xl font-bold text-palette-charcoal flex items-center gap-2">
-              <PhoneCall className="w-5 h-5 text-palette-charcoal" />
-              Bộ phận Trợ lý Concierge & Điều phối Vận chuyển (Concierge & Transportation)
+              {activeSubTab === 'recordings' ? (
+                <>
+                  <Film className="w-5 h-5 text-sky-600" />
+                  Lịch Sử Cuộc Gọi & Bản Ghi Cloudinary
+                </>
+              ) : activeSubTab === 'taxi' ? (
+                <>
+                  <Car className="w-5 h-5 text-emerald-600" />
+                  Điều Phối Dịch Vụ Đặt Xe & Vận Chuyển
+                </>
+              ) : activeSubTab === 'feedback' ? (
+                <>
+                  <Star className="w-5 h-5 text-amber-500 fill-amber-500" />
+                  Đánh Giá & Cứu Vãn Dịch Vụ (Robot Kiosk)
+                </>
+              ) : (
+                <>
+                  <PhoneCall className="w-5 h-5 text-palette-charcoal" />
+                  Tổng Đài Can Thiệp Trực Tuyến Live Call (Robot Kiosk)
+                </>
+              )}
             </h1>
             <p className="text-xs text-palette-slate mt-0.5">
-              Tổng đài can thiệp trực tuyến Live Call Robot Kiosk và điều phối dịch vụ đặt xe di chuyển cho khách
+              {activeSubTab === 'recordings'
+                ? 'Danh sách video ghi hình tự động các phiên hỗ trợ trực tiếp giữa Robot Kiosk và Nhân viên'
+                : activeSubTab === 'taxi'
+                ? 'Tiếp nhận yêu cầu xe, điều phối tài xế và theo dõi lộ trình di chuyển của khách'
+                : activeSubTab === 'feedback'
+                ? 'Theo dõi mức độ hài lòng của khách hàng và can thiệp hỗ trợ dịch vụ kịp thời'
+                : 'Tiếp nhận cuộc gọi video hỗ trợ tức thì từ màn hình Robot Kiosk của khách hàng'}
             </p>
           </div>
 
@@ -201,7 +272,7 @@ export const ConciergeDashboard = ({ currentUser, onNotify = () => {} }) => {
               <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
               Làm mới
             </button>
-            {activeSubTab === 'live_call' ? (
+            {activeSubTab === 'live_call' && (
               <button
                 onClick={() => setIsTestModalOpen(true)}
                 className="px-3 py-1.5 rounded-lg bg-palette-charcoal hover:bg-neutral-800 text-palette-cream text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-all"
@@ -209,7 +280,8 @@ export const ConciergeDashboard = ({ currentUser, onNotify = () => {} }) => {
                 <Plus className="w-3.5 h-3.5" />
                 Mô phỏng gọi từ Kiosk
               </button>
-            ) : (
+            )}
+            {activeSubTab === 'taxi' && (
               <button
                 onClick={() => setIsTaxiModalOpen(true)}
                 className="px-3 py-1.5 rounded-lg bg-palette-charcoal hover:bg-neutral-800 text-palette-cream text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-all"
@@ -221,59 +293,78 @@ export const ConciergeDashboard = ({ currentUser, onNotify = () => {} }) => {
           </div>
         </div>
 
-        {/* Tab Navigation */}
-        <div className="flex items-center gap-2 mt-4 border-t border-palette-silver/50 pt-3">
-          <button
-            onClick={() => setActiveSubTab('live_call')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
-              activeSubTab === 'live_call'
-                ? 'bg-palette-charcoal text-palette-cream shadow-sm'
-                : 'text-palette-slate hover:bg-palette-stone hover:text-palette-charcoal'
-            }`}
-          >
-            <PhoneCall className="w-3.5 h-3.5" />
-            <span>Tổng đài Live Call</span>
-            {activeCount > 0 && (
-              <span className="bg-emerald-500 text-white text-[10px] px-1.5 py-0.2 rounded-full">
-                {activeCount}
-              </span>
-            )}
-          </button>
+        {/* Tab Navigation (Chỉ hiển thị fallback nếu không điều hướng từ sidebar) */}
+        {!isManagedFromSidebar && (
+          <div className="flex items-center gap-2 mt-4 border-t border-palette-silver/50 pt-3">
+            <button
+              onClick={() => setActiveSubTab('live_call')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
+                activeSubTab === 'live_call'
+                  ? 'bg-palette-charcoal text-palette-cream shadow-sm'
+                  : 'text-palette-slate hover:bg-palette-stone hover:text-palette-charcoal'
+              }`}
+            >
+              <PhoneCall className="w-3.5 h-3.5" />
+              <span>Tổng đài Live Call</span>
+              {activeCount > 0 && (
+                <span className="bg-emerald-500 text-white text-[10px] px-1.5 py-0.2 rounded-full">
+                  {activeCount}
+                </span>
+              )}
+            </button>
 
-          <button
-            onClick={() => setActiveSubTab('recordings')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
-              activeSubTab === 'recordings'
-                ? 'bg-palette-charcoal text-palette-cream shadow-sm'
-                : 'text-palette-slate hover:bg-palette-stone hover:text-palette-charcoal'
-            }`}
-          >
-            <Film className="w-3.5 h-3.5" />
-            <span>Bản Ghi Cuộc Gọi (Cloudinary)</span>
-            {recordedSessions.filter((s) => s.recording_url).length > 0 && (
-              <span className="bg-sky-500 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold">
-                {recordedSessions.filter((s) => s.recording_url).length}
-              </span>
-            )}
-          </button>
+            <button
+              onClick={() => setActiveSubTab('recordings')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
+                activeSubTab === 'recordings'
+                  ? 'bg-palette-charcoal text-palette-cream shadow-sm'
+                  : 'text-palette-slate hover:bg-palette-stone hover:text-palette-charcoal'
+              }`}
+            >
+              <Film className="w-3.5 h-3.5" />
+              <span>Bản Ghi Cuộc Gọi (Cloudinary)</span>
+              {recordedSessions.filter((s) => s.recording_url).length > 0 && (
+                <span className="bg-sky-500 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold">
+                  {recordedSessions.filter((s) => s.recording_url).length}
+                </span>
+              )}
+            </button>
 
-          <button
-            onClick={() => setActiveSubTab('taxi')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
-              activeSubTab === 'taxi'
-                ? 'bg-palette-charcoal text-palette-cream shadow-sm'
-                : 'text-palette-slate hover:bg-palette-stone hover:text-palette-charcoal'
-            }`}
-          >
-            <Car className="w-3.5 h-3.5" />
-            <span>Điều phối Đặt xe & Vận chuyển</span>
-            {taxiKpis.pendingRequests > 0 && (
-              <span className="bg-palette-stone text-palette-charcoal border border-palette-silver text-[10px] px-1.5 py-0.2 rounded-full font-bold">
-                {taxiKpis.pendingRequests}
-              </span>
-            )}
-          </button>
-        </div>
+            <button
+              onClick={() => setActiveSubTab('taxi')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
+                activeSubTab === 'taxi'
+                  ? 'bg-palette-charcoal text-palette-cream shadow-sm'
+                  : 'text-palette-slate hover:bg-palette-stone hover:text-palette-charcoal'
+              }`}
+            >
+              <Car className="w-3.5 h-3.5" />
+              <span>Điều phối Đặt xe & Vận chuyển</span>
+              {taxiKpis.pendingRequests > 0 && (
+                <span className="bg-palette-stone text-palette-charcoal border border-palette-silver text-[10px] px-1.5 py-0.2 rounded-full font-bold">
+                  {taxiKpis.pendingRequests}
+                </span>
+              )}
+            </button>
+
+            <button
+              onClick={() => setActiveSubTab('feedback')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 ${
+                activeSubTab === 'feedback'
+                  ? 'bg-palette-charcoal text-palette-cream shadow-sm'
+                  : 'text-palette-slate hover:bg-palette-stone hover:text-palette-charcoal'
+              }`}
+            >
+              <Star className="w-3.5 h-3.5" />
+              <span>Đánh Giá & Cứu Vãn Dịch Vụ</span>
+              {feedbacks.filter((f) => f.rating <= 3).length > 0 && (
+                <span className="bg-rose-500 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold animate-pulse">
+                  {feedbacks.filter((f) => f.rating <= 3).length}
+                </span>
+              )}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Main Content Area */}
@@ -641,6 +732,124 @@ export const ConciergeDashboard = ({ currentUser, onNotify = () => {} }) => {
             </div>
           </div>
         )}
+
+        {/* SUBTAB 4: FEEDBACK & SERVICE RECOVERY */}
+        {activeSubTab === 'feedback' && (
+          <div className="space-y-6">
+            {/* KPI Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-white rounded-xl border border-palette-silver p-4 shadow-xs">
+                <span className="text-xs text-palette-slate font-medium">Tổng Đánh Giá Nhận Được</span>
+                <div className="text-2xl font-bold text-palette-charcoal mt-1">
+                  {feedbacks.length}
+                </div>
+              </div>
+
+              <div className="bg-white rounded-xl border border-palette-silver p-4 shadow-xs">
+                <span className="text-xs text-palette-slate font-medium">Điểm Đánh Giá Trung Bình</span>
+                <div className="text-2xl font-bold text-palette-charcoal mt-1 flex items-center gap-1.5">
+                  <Star className="w-5 h-5 text-amber-500 fill-amber-500" />
+                  <span>
+                    {feedbacks.length > 0
+                      ? (feedbacks.reduce((acc, cur) => acc + (cur.rating || 5), 0) / feedbacks.length).toFixed(1)
+                      : '--'}
+                  </span>
+                  {feedbacks.length > 0 && (
+                    <span className="text-xs text-palette-slate font-normal">/ 5.0</span>
+                  )}
+                </div>
+              </div>
+
+              <div className="bg-white rounded-xl border border-palette-silver p-4 shadow-xs">
+                <span className="text-xs text-palette-slate font-medium">Hài Lòng (4 - 5 Sao)</span>
+                <div className="text-2xl font-bold text-emerald-600 mt-1">
+                  {feedbacks.filter((f) => f.rating >= 4).length}
+                </div>
+              </div>
+
+              <div className="bg-white rounded-xl border border-rose-200 bg-rose-50/30 p-4 shadow-xs">
+                <span className="text-xs text-rose-700 font-bold uppercase tracking-wider">Cần Can Thiệp (≤ 3 Sao)</span>
+                <div className="text-2xl font-bold text-rose-600 mt-1 flex items-center gap-2">
+                  <span>{feedbacks.filter((f) => f.rating <= 3).length}</span>
+                  {feedbacks.filter((f) => f.rating <= 3).length > 0 && (
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 font-semibold animate-pulse">
+                      Cần xử lý
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Service Recovery Alerts Banner */}
+            {feedbacks.filter((f) => f.rating <= 3).length > 0 && (
+              <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+                <div className="flex-1 text-xs text-rose-900">
+                  <strong className="font-bold">Cảnh báo can thiệp dịch vụ (Service Recovery): </strong>
+                  Có {feedbacks.filter((f) => f.rating <= 3).length} lượt khách chưa hài lòng về hỗ trợ của Robot Kiosk.
+                  Nhân viên Concierge có thể nhấn trực tiếp vào dòng đánh giá để xem lại lịch sử hội thoại và chủ động hỗ trợ khách ngay!
+                </div>
+              </div>
+            )}
+
+            {/* Feedback List */}
+            <div className="bg-white rounded-xl border border-palette-silver p-5 shadow-xs space-y-4">
+              <div className="flex items-center justify-between border-b border-palette-silver/50 pb-3">
+                <h3 className="text-sm font-bold text-palette-charcoal flex items-center gap-2">
+                  <MessageSquare className="w-4 h-4 text-palette-charcoal" />
+                  Danh Sách Đánh Giá & Ý Kiến Khách Hàng Từ Robot Kiosk
+                </h3>
+                <span className="text-xs font-mono text-palette-slate font-semibold">
+                  {feedbacks.length} phản hồi
+                </span>
+              </div>
+
+              {feedbacks.length === 0 ? (
+                <div className="py-12 text-center text-xs text-palette-slate">
+                  Chưa có đánh giá nào từ khách hàng tại Kiosk.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {feedbacks.map((fb) => {
+                    const isBad = (fb.rating || 5) <= 3;
+                    return (
+                      <div
+                        key={fb.id || fb.chat_session_id}
+                        onClick={() => fb.chat_session_id && handleViewTranscript(fb)}
+                        className={`p-3.5 rounded-xl border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer hover:shadow-xs ${
+                          isBad
+                            ? 'bg-rose-50/40 border-rose-200 hover:border-rose-300'
+                            : 'bg-white border-palette-silver hover:border-palette-charcoal/40'
+                        }`}
+                        title={fb.chat_session_id ? 'Nhấn để xem chi tiết lịch sử hội thoại' : undefined}
+                      >
+                        <div className="flex items-center gap-3">
+                          {/* Star Badge */}
+                          <div className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-stone-100 border border-stone-200">
+                            <Star className={`w-3.5 h-3.5 ${isBad ? 'text-rose-500 fill-rose-500' : 'text-amber-500 fill-amber-500'}`} />
+                            <span className="text-xs font-bold text-palette-charcoal">
+                              {fb.rating} / 5 Sao
+                            </span>
+                          </div>
+
+                          {/* Mã phiên */}
+                          <div className="text-xs font-mono text-stone-700">
+                            <span className="text-stone-400">Mã phiên:</span> {fb.chat_session_id || fb.id || 'N/A'}
+                          </div>
+                        </div>
+
+                        {/* Thời gian */}
+                        <div className="text-xs font-mono text-stone-500">
+                          <span className="text-stone-400">Thời gian:</span> {fb.created_at ? new Date(fb.created_at).toLocaleString('vi-VN') : 'Vừa xong'}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* MODAL: MÔ PHỎNG LIVE CALL */}
@@ -881,6 +1090,97 @@ export const ConciergeDashboard = ({ currentUser, onNotify = () => {} }) => {
               >
                 <ExternalLink className="w-3.5 h-3.5" /> Mở gốc
               </a>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: XEM TRANSCRIPT CHI TIẾT HỘI THOẠI (SERVICE RECOVERY) */}
+      {selectedTranscriptFb && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[85vh] flex flex-col shadow-2xl border border-palette-silver overflow-hidden">
+            {/* Modal Header */}
+            <div className="p-4 bg-palette-stone/40 border-b border-palette-silver flex items-center justify-between">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold font-mono px-2 py-0.5 rounded bg-palette-charcoal text-palette-cream">
+                    {selectedTranscriptFb.chat_session_id}
+                  </span>
+                  <span className="text-sm font-bold text-palette-charcoal">
+                    {selectedTranscriptFb.guest_name || 'Khách tại Kiosk'}
+                  </span>
+                  <span className="text-xs text-palette-slate">
+                    ({selectedTranscriptFb.room_number ? `Phòng ${selectedTranscriptFb.room_number}` : 'Kiosk Sảnh'})
+                  </span>
+                </div>
+                <div className="text-xs text-palette-slate mt-1 flex items-center gap-2">
+                  <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
+                  <span>Đánh giá dịch vụ: <strong>{selectedTranscriptFb.rating}/5 Sao</strong></span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedTranscriptFb(null)}
+                className="p-1.5 text-palette-slate hover:text-palette-charcoal hover:bg-palette-stone rounded-lg font-bold text-xs cursor-pointer"
+              >
+                Đóng
+              </button>
+            </div>
+
+            {/* Modal Content / Chat Stream */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-palette-cream/30">
+              {isTranscriptLoading ? (
+                <div className="py-12 text-center text-xs text-palette-slate flex items-center justify-center gap-2">
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  <span>Đang tải toàn bộ lượt hội thoại...</span>
+                </div>
+              ) : transcriptMessages.length === 0 ? (
+                <div className="py-12 text-center text-xs text-palette-slate">
+                  Không tìm thấy bản ghi chi tiết từng tin nhắn cho phiên này.
+                </div>
+              ) : (
+                transcriptMessages.map((msg, idx) => {
+                  const isUser = msg.sender === 'user';
+                  return (
+                    <div
+                      key={msg.id || idx}
+                      className={`flex flex-col ${isUser ? 'items-end' : 'items-start'}`}
+                    >
+                      <span className="text-[10px] font-mono font-bold text-palette-slate mb-1 px-1">
+                        {isUser ? 'Khách hàng (User)' : 'Trợ lý Robot Rora (Assistant)'}
+                      </span>
+                      <div
+                        className={`max-w-[85%] rounded-2xl p-3 text-xs leading-relaxed shadow-2xs ${
+                          isUser
+                            ? 'bg-palette-charcoal text-palette-cream rounded-br-xs'
+                            : 'bg-white text-palette-charcoal border border-palette-silver rounded-bl-xs'
+                        }`}
+                      >
+                        {msg.text}
+                        {msg.intent_action && (
+                          <div className="mt-1 pt-1 border-t border-white/20 text-[9px] font-mono opacity-70">
+                            Intent: {msg.intent_action}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-3 bg-white border-t border-palette-silver flex items-center justify-between">
+              <span className="text-[11px] text-palette-slate font-medium">
+                Dữ liệu lưu tự động trong CSDL bảng <code>chat_messages</code>
+              </span>
+              <button
+                type="button"
+                onClick={() => setSelectedTranscriptFb(null)}
+                className="px-4 py-1.5 rounded-lg bg-palette-stone hover:bg-palette-silver text-palette-charcoal font-bold text-xs transition-colors cursor-pointer"
+              >
+                Đóng
+              </button>
             </div>
           </div>
         </div>

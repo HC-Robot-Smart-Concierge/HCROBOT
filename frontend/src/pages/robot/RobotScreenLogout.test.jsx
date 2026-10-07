@@ -19,4 +19,62 @@ describe('Robot Screen Protected Logout Password Validation', () => {
     expect(validateLogoutPassword('123')).toBe(false);
     expect(validateLogoutPassword('')).toBe(false);
   });
+
+  describe('Secret Multi-Tap Gesture Counter Logic', () => {
+    it('triggers secret modal only when tap count reaches threshold (5 taps)', () => {
+      let tapCount = 0;
+      let modalOpened = false;
+
+      const triggerTap = () => {
+        tapCount += 1;
+        if (tapCount >= 5) {
+          modalOpened = true;
+          tapCount = 0;
+        }
+      };
+
+      for (let i = 0; i < 4; i++) {
+        triggerTap();
+      }
+      expect(modalOpened).toBe(false);
+
+      triggerTap(); // 5th tap
+      expect(modalOpened).toBe(true);
+      expect(tapCount).toBe(0);
+    });
+  });
+
+  describe('Secret Keyboard Hotkey Trigger Logic', () => {
+    it('matches Ctrl + Shift + L hotkey pattern', () => {
+      const isSecretHotkey = (e) =>
+        Boolean((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'l' || e.key === 'L'));
+
+      expect(isSecretHotkey({ ctrlKey: true, shiftKey: true, key: 'l' })).toBe(true);
+      expect(isSecretHotkey({ ctrlKey: true, shiftKey: true, key: 'L' })).toBe(true);
+      expect(isSecretHotkey({ metaKey: true, shiftKey: true, key: 'l' })).toBe(true);
+      expect(isSecretHotkey({ ctrlKey: true, shiftKey: false, key: 'l' })).toBe(false);
+      expect(isSecretHotkey({ ctrlKey: false, shiftKey: true, key: 'a' })).toBe(false);
+    });
+
+    it('matches Esc x3 threshold pattern', () => {
+      let escCount = 0;
+      let triggered = false;
+
+      const pressEsc = () => {
+        escCount += 1;
+        if (escCount >= 3) {
+          triggered = true;
+          escCount = 0;
+        }
+      };
+
+      pressEsc();
+      pressEsc();
+      expect(triggered).toBe(false);
+
+      pressEsc();
+      expect(triggered).toBe(true);
+      expect(escCount).toBe(0);
+    });
+  });
 });

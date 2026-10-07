@@ -28,6 +28,7 @@ from app.models import (
     SupportRequest,
     Feedback,
 )
+from app.models.chat_session import ChatSession, ChatMessage
 from app.models.support import HumanSupportSession
 from app.api.v1.endpoints.operations import create_department_notification
 
@@ -735,16 +736,74 @@ async def _auto_create_ticket(db: AsyncSession, action: str, room_number: str, i
 
 @router.post("/feedback", response_model=FeedbackResponse, status_code=status.HTTP_201_CREATED, summary="Gửi phản hồi và đánh giá dịch vụ từ khách")
 async def submit_feedback(fb_in: FeedbackCreate, db: AsyncSession = Depends(get_db)):
-    """Lưu đánh giá và nhận xét của khách hàng vào bảng feedbacks trong cơ sở dữ liệu."""
+    """
+    Lưu đánh giá và nhận xét của khách hàng vào bảng feedbacks trong cơ sở dữ liệu.
+    Nếu rating <= 3 sao: tự động kích hoạt cảnh báo khẩn cấp (Urgent Alert) tới Concierge và Lễ tân.
+    """
+    # Đảm bảo chat_session_id hợp lệ trong bảng chat_sessions
+    session_id_val = fb_in.chat_session_id
+    if session_id_val:
+        from sqlalchemy.future import select
+        chk_stmt = select(ChatSession).where(ChatSession.id == session_id_val)
+        chk_res = await db.execute(chk_stmt)
+        if not chk_res.scalar_one_or_none():
+            new_session = ChatSession(
+                id=session_id_val,
+                room_number=fb_in.room_number,
+                guest_name=fb_in.guest_name or "Khách tại Kiosk",
+                is_active=False,
+            )
+            db.add(new_session)
+            await db.flush()
+
     new_fb = Feedback(
-        chat_session_id=fb_in.chat_session_id,
+        chat_session_id=session_id_val,
         rating=fb_in.rating,
-        category=fb_in.category,
+        category=fb_in.category or "Robot Concierge",
         comment=fb_in.comment,
         guest_name=fb_in.guest_name,
         room_number=fb_in.room_number,
     )
     db.add(new_fb)
+    await db.flush()
+
+    # XỬ LÝ ĐÁNH GIÁ TIÊU CỰC (SERVICE RECOVERY DISPATCH)
+    if new_fb.rating <= 3:
+        room_label = f"Phòng {new_fb.room_number}" if new_fb.room_number else "Kiosk Sảnh"
+        comment_text = new_fb.comment or "Khách không để lại ghi chú chi tiết"
+
+        try:
+            # Cảnh báo khẩn cấp tới bộ phận Concierge
+            await create_department_notification(
+                db=db,
+                department="Concierge",
+                title=f"[CẢNH BÁO] Đánh giá tiêu cực ({room_label}) - {new_fb.rating} Sao",
+                description=(
+                    f"Khách tại {room_label} vừa đánh giá {new_fb.rating}/5 sao. "
+                    f"Phản hồi: \"{comment_text}\". "
+                    f"Vui lòng mở lịch sử hội thoại để can thiệp hỗ trợ ngay!"
+                ),
+                request_id=new_fb.chat_session_id,
+                request_type="bad_feedback",
+                type="UrgentAlert",
+            )
+
+            # Đồng thời cảnh báo tới bộ phận Lễ tân (Reception)
+            await create_department_notification(
+                db=db,
+                department="Reception",
+                title=f"[CẢNH BÁO] Đánh giá thấp ({room_label}) - {new_fb.rating} Sao",
+                description=(
+                    f"Khách phản hồi {new_fb.rating}/5 sao về Robot Kiosk. "
+                    f"Session ID: {new_fb.chat_session_id}"
+                ),
+                request_id=new_fb.chat_session_id,
+                request_type="bad_feedback",
+                type="UrgentAlert",
+            )
+        except Exception as alert_err:
+            logger.warning(f"[Feedback Service Recovery Alert Error] {alert_err}")
+
     await db.commit()
     await db.refresh(new_fb)
     return new_fb

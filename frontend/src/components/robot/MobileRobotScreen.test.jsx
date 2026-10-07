@@ -7,13 +7,12 @@ describe('MobileRobotScreen Header Layout & Workflow Trigger', () => {
   });
 
   it('orders header right elements so workflow trigger appears to the left of emotion badge and action buttons', () => {
-    // Simulate header element sequence
+    // Simulate header element sequence (visible logout button removed for kiosk security)
     const buildHeaderRightElements = ({ hasWorkflowTrigger, guestEmotion, language }) => {
       const elements = [];
       if (hasWorkflowTrigger) elements.push('workflow-trigger');
       if (guestEmotion) elements.push('guest-emotion');
       if (language) elements.push('language-toggle');
-      elements.push('logout-button');
       return elements;
     };
 
@@ -27,15 +26,35 @@ describe('MobileRobotScreen Header Layout & Workflow Trigger', () => {
       'workflow-trigger',
       'guest-emotion',
       'language-toggle',
-      'logout-button',
     ]);
 
     // Workflow trigger is positioned strictly before guest-emotion to avoid blocking info
     const triggerIndex = headerElements.indexOf('workflow-trigger');
     const emotionIndex = headerElements.indexOf('guest-emotion');
-    const logoutIndex = headerElements.indexOf('logout-button');
 
     expect(triggerIndex).toBeLessThan(emotionIndex);
-    expect(emotionIndex).toBeLessThan(logoutIndex);
+    expect(headerElements).not.toContain('logout-button');
+  });
+
+  it('supports secret multi-tap gesture logic for kiosk exit', () => {
+    let tapCount = 0;
+    let logoutTriggered = false;
+
+    const onSecretTap = () => {
+      tapCount += 1;
+      if (tapCount >= 5) {
+        tapCount = 0;
+        logoutTriggered = true;
+      }
+    };
+
+    for (let i = 0; i < 4; i++) {
+      onSecretTap();
+    }
+    expect(logoutTriggered).toBe(false);
+
+    onSecretTap();
+    expect(logoutTriggered).toBe(true);
+    expect(tapCount).toBe(0);
   });
 });

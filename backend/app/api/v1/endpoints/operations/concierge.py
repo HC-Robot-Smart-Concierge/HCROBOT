@@ -1,7 +1,7 @@
 import os
 import json
 import random
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
 
 from fastapi import (
@@ -19,7 +19,7 @@ from fastapi import (
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc, or_, func
+from sqlalchemy import select, desc, or_, func, update
 
 from app.core.database import get_db
 from app.models import SupportRequest
@@ -86,23 +86,43 @@ async def get_concierge_dashboard(db: AsyncSession = Depends(get_db)):
     """
     Truy vấn phiên hỗ trợ trực tuyến (Live Call / Video Assistance) mới nhất khi khách hàng tương tác với Robot Kiosk:
     - Cuộc gọi video cần nhân viên can thiệp trực tiếp (Human-in-the-loop)
-    - Hội thoại thoại (`transcript`) giữa Robot và khách
-    - Dữ liệu chuẩn hóa trong bảng `support_requests`.
+    - Tự động đóng các phiên gọi nhỡ / quá hạn (> 5 phút không ai nhấc máy)
+    - Chỉ trả về cuộc gọi đang thực sự kết nối hoặc đang reo chuông
     """
+    now = datetime.utcnow()
+    five_minutes_ago = now - timedelta(minutes=5)
+
+    # 1. Tự động đóng các phiên gọi Pending đã quá 5 phút thành 'Missed'
+    await db.execute(
+        update(SupportRequest)
+        .where(
+            or_(
+                SupportRequest.department_id == "DEP-CONCIERGE",
+                SupportRequest.service_type_id == "ST-CONCIERGE",
+            ),
+            SupportRequest.status == "Pending",
+            SupportRequest.created_at < five_minutes_ago,
+        )
+        .values(status="Missed", updated_at=now)
+    )
+    await db.commit()
+
+    # 2. Chỉ lấy cuộc gọi đang chờ bắt máy (mới tạo < 5 phút) hoặc đang diễn ra
     result = await db.execute(
         select(SupportRequest)
         .where(
             or_(
                 SupportRequest.department_id == "DEP-CONCIERGE",
                 SupportRequest.service_type_id == "ST-CONCIERGE",
-            )
+            ),
+            SupportRequest.status.in_(["Pending", "In Progress", "Connected"]),
         )
         .order_by(desc(SupportRequest.created_at))
         .limit(1)
     )
     current_req = result.scalar_one_or_none()
 
-    # Đếm số phiên đang active
+    # Đếm số phiên đang active thực sự
     count_res = await db.execute(
         select(func.count(SupportRequest.id))
         .where(

@@ -181,18 +181,24 @@ class TTSService:
                 return b""
 
             cache_key = self._get_cache_key(clean_text, "edge_chunk", target_voice)
+            if cache_key in self._memory_cache:
+                return base64.b64decode(self._memory_cache[cache_key])
+
             disk_path = os.path.join(self._cache_dir, f"{cache_key}.mp3")
             if os.path.isfile(disk_path):
                 with open(disk_path, "rb") as f:
-                    return f.read()
+                    data = f.read()
+                    self._memory_cache[cache_key] = base64.b64encode(data).decode("utf-8")
+                    return data
 
-            communicate = edge_tts.Communicate(clean_text, target_voice, rate="+10%")
+            communicate = edge_tts.Communicate(clean_text, target_voice, rate="+5%")
             audio_bytes = b""
             async for chunk in communicate.stream():
                 if chunk["type"] == "audio":
                     audio_bytes += chunk["data"]
 
             if audio_bytes:
+                self._memory_cache[cache_key] = base64.b64encode(audio_bytes).decode("utf-8")
                 try:
                     with open(disk_path, "wb") as f:
                         f.write(audio_bytes)

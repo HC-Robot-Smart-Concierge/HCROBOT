@@ -1,9 +1,13 @@
+import json
 import logging
 import asyncio
+import time
 import random
 from typing import Optional, Dict, Any, List
-from fastapi import APIRouter, HTTPException, Depends, status, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, HTTPException, Depends, status, WebSocket, WebSocketDisconnect, UploadFile, File, Form
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.services.ai.stt_service import transcribe_audio_wav
 
 from app.core.database import get_db
 from app.schemas.ai import (
@@ -37,11 +41,11 @@ router = APIRouter()
 @router.post("/chat", response_model=ChatResponse, summary="Sinh câu trả lời hội thoại cho Concierge Robot")
 async def chat_with_robot(request: ChatRequest, db: AsyncSession = Depends(get_db)):
     """
-    Endpoint nhận prompt từ Robot/User (kèm session_id để duy trì bộ nhớ đa lượt) và sinh câu trả lời bằng Ollama LLM.
+    Endpoint nhận prompt từ Robot/User (kèm session_id để duy trì bộ nhớ đa lượt) và sinh câu trả lời hội thoại nhanh chóng.
+    Đã gỡ bỏ RAG, BGE-M3 và logic tự động phân chia / gửi ticket để tập trung tối đa vào giao tiếp tự nhiên.
     """
     try:
         sid = request.session_id or "default_session"
-        rag_ctx = request.rag_context
 
         # Cập nhật số phòng nếu truyền trực tiếp
         if request.room_number:
@@ -50,7 +54,7 @@ async def chat_with_robot(request: ChatRequest, db: AsyncSession = Depends(get_d
         current_room = session_manager.get_room_number(sid)
         history = session_manager.get_history(sid)
 
-        # Điều phối toàn bộ vòng đời Agent qua LangGraph Harness (State Machine & Fast-Path)
+        # Điều phối hội thoại trực tiếp qua LangGraph Harness (Fast-Path <1ms -> Direct Generator)
         initial_state = {
             "session_id": sid,
             "prompt": request.prompt,
@@ -58,7 +62,6 @@ async def chat_with_robot(request: ChatRequest, db: AsyncSession = Depends(get_d
             "emotion": request.emotion,
             "room_number": current_room,
             "chat_history": history,
-            "rag_context": rag_ctx,
         }
         graph_config = {"configurable": {"thread_id": sid}}
         graph_result = await concierge_graph.ainvoke(initial_state, config=graph_config)
@@ -66,34 +69,24 @@ async def chat_with_robot(request: ChatRequest, db: AsyncSession = Depends(get_d
         reply = graph_result.get("response", "")
         detected_lang = graph_result.get("lang_name", "Tiếng Việt")
         lang_code = graph_result.get("lang_code", "vi-VN")
-        missing_room = graph_result.get("missing_room_number", False)
-        updated_room = graph_result.get("room_number") or current_room
+        act = graph_result.get("action", "conversation")
 
-        if updated_room and updated_room != current_room:
-            session_manager.set_room_number(sid, updated_room)
-            current_room = updated_room
-
-        act = graph_result.get("action")
-        items = graph_result.get("items")
-
-        # Thêm lượt nói vào bộ nhớ RAM của phiên (In-Memory Buffer - Không lưu lẻ từng dòng vào DB)
+        # Thêm lượt nói vào bộ nhớ RAM của phiên để duy trì ngữ cảnh nhiều lượt
         session_manager.add_turn(sid, "user", request.prompt, language=lang_code)
         session_manager.add_turn(sid, "assistant", reply, language=lang_code, intent_action=act)
 
-        # Lấy audio_base64 trực tiếp từ Audio Cache (0.07ms) hoặc EdgeTTS (tối đa 12s để luôn giữ giọng Hoài My)
-        try:
-            audio_b64, mime_type, _ = await asyncio.wait_for(
-                tts_service.synthesize(reply, provider="edge", language=lang_code),
-                timeout=12.0
-            )
-        except Exception as e_tts:
-            logger.warning(f"[AIChat] TTS online timeout/error, fallback to frontend WebSpeech: {e_tts}")
-            audio_b64, mime_type = None, "audio/mp3"
-
-        # TỰ ĐỘNG TẠO TICKET DỊCH VỤ TRONG NỀN TẬN DỤNG INTENT ĐÃ CÓ TỪ LANGGRAPH (Không gọi lại Ollama 5s)
-        act = graph_result.get("action")
-        items = graph_result.get("items")
-        asyncio.create_task(_background_extract_and_create_ticket(request.prompt, current_room, act, items))
+        # TTS DECOUPLED: Chạy TTS nhanh cho reply ngắn (<50 ký tự), còn lại frontend dùng WebSpeech
+        audio_b64 = None
+        mime_type = "audio/mp3"
+        if len(reply) < 50:
+            try:
+                audio_b64, mime_type, _ = await asyncio.wait_for(
+                    tts_service.synthesize(reply, provider="edge", language=lang_code),
+                    timeout=2.0
+                )
+            except Exception as e_tts:
+                logger.warning(f"[AIChat] TTS short-reply timeout, fallback to WebSpeech: {e_tts}")
+                audio_b64, mime_type = None, "audio/mp3"
 
         return ChatResponse(
             response=reply,
@@ -102,7 +95,7 @@ async def chat_with_robot(request: ChatRequest, db: AsyncSession = Depends(get_d
             lang_code=lang_code,
             session_id=sid,
             current_room_number=current_room,
-            missing_room_number=missing_room,
+            missing_room_number=False,
             audio_base64=audio_b64,
             mime_type=mime_type or "audio/mp3",
         )
@@ -113,6 +106,78 @@ async def chat_with_robot(request: ChatRequest, db: AsyncSession = Depends(get_d
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=str(e)
         )
+
+
+@router.post("/chat/stream", summary="Streaming câu trả lời hội thoại từ Ollama LLM qua Server-Sent Events (SSE)")
+async def chat_stream_endpoint(request: ChatRequest):
+    """
+    Endpoint streaming tokens trực tiếp từ Qwen LLM về client theo thời gian thực.
+    Continuous Token Streaming kết hợp duy trì bộ nhớ đa lượt Session Memory.
+    """
+    async def event_generator():
+        try:
+            sid = request.session_id or "default_session"
+            if request.room_number:
+                session_manager.set_room_number(sid, request.room_number)
+            current_room = session_manager.get_room_number(sid)
+            history = session_manager.get_history(sid)
+
+            # 0. INSTANT ACK (<5ms) — Frontend biết kết nối sống ngay lập tức
+            yield f"data: {json.dumps({'event': 'ack', 'status': 'connected'}, ensure_ascii=False)}\n\n"
+
+            # 1. Stream Ollama tokens trực tiếp liên tục từ Qwen 3B
+            full_text = ""
+            async for token in ollama_service.generate_response_stream(
+                prompt=request.prompt,
+                language=request.language,
+                emotion=request.emotion,
+                chat_history=history,
+                stored_room_number=current_room,
+            ):
+                full_text += token
+                yield f"data: {json.dumps({'event': 'token', 'token': token}, ensure_ascii=False)}\n\n"
+
+            _, final_lang_code = ollama_service.detect_language(full_text)
+
+            # Lưu lại lịch sử lượt nói vào bộ nhớ RAM của phiên để duy trì ngữ cảnh
+            session_manager.add_turn(sid, "user", request.prompt, language=final_lang_code)
+            session_manager.add_turn(sid, "assistant", full_text, language=final_lang_code, intent_action="conversation")
+
+            yield f"data: {json.dumps({'event': 'done', 'full_text': full_text, 'lang_code': final_lang_code, 'room_number': current_room}, ensure_ascii=False)}\n\n"
+        except Exception as e:
+            logger.error(f"[AIChatStream Error] {e}")
+            yield f"data: {json.dumps({'event': 'error', 'message': str(e)}, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+@router.post("/stt/transcribe", summary="Nhận diện giọng nói từ file âm thanh WAV")
+async def transcribe_speech_endpoint(
+    file: UploadFile = File(...),
+    language: str = Form("vi")
+):
+    """
+    Endpoint nhận file âm thanh WAV từ frontend và trả về văn bản tiếng Việt/tiếng Anh.
+    Giải quyết triệt để 100% vấn đề trình duyệt không nhận diện được tiếng nói.
+    """
+    try:
+        content = await file.read()
+        if not content:
+            raise HTTPException(status_code=400, detail="File âm thanh rỗng")
+
+        text = transcribe_audio_wav(content, language=language)
+        return {
+            "success": True,
+            "text": text,
+            "language": language
+        }
+    except Exception as e:
+        logger.error(f"[STT Endpoint Error] {e}")
+        return {
+            "success": False,
+            "text": "",
+            "error": str(e)
+        }
 
 
 @router.post("/intent", response_model=IntentResponse, summary="Phân tích ý định & bóc tách JSON yêu cầu dịch vụ (kèm Slot-Filling Số Phòng)")
@@ -138,87 +203,6 @@ async def extract_service_intent(request: IntentRequest, db: AsyncSession = Depe
             session_manager.set_room_number(sid, speech_room)
 
         current_room = session_manager.get_room_number(sid)
-
-        # 2. Xử lý trường hợp khách cung cấp số phòng để hoàn tất đơn hàng dở dang (Pending Intent)
-        pending = session_manager.get_pending_intent(sid)
-        if (speech_room or action == "provide_room_number") and current_room and pending:
-            p_action = pending.get("action", "room_service")
-            p_items = pending.get("items") or "Dịch vụ yêu cầu"
-            
-            # Tự động tạo ticket vào PostgreSQL CSDL
-            created_ticket_code = await _auto_create_ticket(db, p_action, current_room, p_items)
-            session_manager.set_pending_intent(sid, None)
-
-            suggested = f"Dạ em đã ghi nhận yêu cầu '{p_items}' cho Phòng {current_room} rồi ạ. Nhân viên sẽ hỗ trợ quý khách ngay!"
-            
-            return IntentResponse(
-                action=p_action,
-                room_number=current_room,
-                items=p_items,
-                missing_room_number=False,
-                suggested_reply=suggested,
-                session_id=sid,
-                raw_output={"status": "completed_pending_order", "ticket_code": created_ticket_code}
-            )
-
-        # 3. Các hành động dịch vụ cần số phòng: room_service, housekeeping, bellman, maintenance, taxi, concierge, reception, restaurant
-        SERVICE_ACTIONS = [
-            "room_service",
-            "housekeeping",
-            "bellman",
-            "maintenance",
-            "restaurant",
-            "taxi",
-            "concierge",
-            "reception",
-            "receptionist",
-            "front_desk",
-            "live_support",
-        ]
-        
-        if action in SERVICE_ACTIONS:
-            # Nếu chưa có số phòng trong lượt nói và cũng chưa lưu trong Session -> Chủ động hỏi
-            if not current_room:
-                session_manager.set_pending_intent(sid, {"action": action, "items": items})
-                action_vn_map = {
-                    "room_service": "đồ ăn thức uống",
-                    "housekeeping": "dọn phòng",
-                    "bellman": "hỗ trợ hành lý",
-                    "maintenance": "kỹ thuật bảo trì",
-                    "restaurant": "đặt bàn nhà hàng",
-                    "taxi": "đặt xe taxi",
-                    "concierge": "kết nối tổng đài Concierge",
-                    "reception": "dịch vụ lễ tân",
-                    "receptionist": "dịch vụ lễ tân",
-                    "front_desk": "dịch vụ tiền sảnh",
-                    "live_support": "hỗ trợ trực tiếp",
-                }
-                action_vn = action_vn_map.get(action, action)
-                suggested_question = f"Dạ em sẽ hỗ trợ {action_vn} ngay! Quý khách vui lòng cho em xin số phòng của mình là bao nhiêu ạ?"
-                
-                return IntentResponse(
-                    action="ask_room_number",
-                    room_number=None,
-                    items=items,
-                    missing_room_number=True,
-                    suggested_reply=suggested_question,
-                    session_id=sid,
-                    raw_output=intent_data
-                )
-
-            # Đã có số phòng -> Tự động tạo Ticket vào CSDL
-            created_ticket_code = await _auto_create_ticket(db, action, current_room, items)
-            confirm_msg = f"Dạ em đã ghi nhận yêu cầu dịch vụ cho Phòng {current_room} rồi ạ!"
-
-            return IntentResponse(
-                action=action,
-                room_number=current_room,
-                items=items,
-                missing_room_number=False,
-                suggested_reply=confirm_msg,
-                session_id=sid,
-                raw_output={"status": "ticket_created", "ticket_code": created_ticket_code}
-            )
 
         return IntentResponse(
             action=action,
@@ -286,14 +270,142 @@ async def synthesize_voice_speech(request: TTSRequest):
 @router.websocket("/ws/pipecat")
 async def pipecat_audio_websocket(websocket: WebSocket, session_id: str = "pipecat_kiosk"):
     """
-    WebSocket Realtime Audio Streaming & Barge-in Interruption Endpoint (Pipecat Pipeline).
-    Hỗ trợ 2 chế độ:
+    Unified WebSocket Streaming Pipeline — STT Streaming + LLM Token Stream + TTS Audio Chunks.
+    Events:
+    - event="stt_interim": Client gửi interim transcript → Server echo lại để hiển thị UI
+    - event="stt_final":   Client gửi final transcript → Server trigger full AI pipeline streaming
+    - event="speech_stream": Client gửi text trực tiếp (bypass STT) → Server trigger full AI pipeline streaming
     - event="speech": (Legacy) Chờ full response rồi trả JSON + Base64 audio
-    - event="speech_stream": (Streaming) Gửi text_chunk JSON + Binary audio chunks tức thì
+    - event="barge_in": Client yêu cầu dừng Robot đang nói
     """
     await websocket.accept()
     pipecat_service.create_pipeline_session(session_id)
     logger.info(f"[Pipecat WS] WebSocket client connected: session_id='{session_id}'")
+
+    # Server-side VAD timer and active pipeline task references
+    vad_timer_task: Optional[asyncio.Task] = None
+    active_pipeline_task: Optional[asyncio.Task] = None
+    last_processed_prompt: str = ""
+    last_processed_timestamp: float = 0.0
+
+    async def _safe_start_pipeline(text: str, room: Optional[str], lang: str):
+        """Khởi chạy streaming pipeline an toàn: hủy task cũ nếu đang chạy và chống trùng lặp câu hỏi."""
+        nonlocal active_pipeline_task, vad_timer_task, last_processed_prompt, last_processed_timestamp
+
+        clean_text = text.strip()
+        if not clean_text:
+            return
+
+        # Hủy VAD timer nếu còn pending
+        if vad_timer_task and not vad_timer_task.done():
+            vad_timer_task.cancel()
+
+        # Chống gửi lặp câu cùng lúc (Deduplication within 1.5s)
+        now = time.time()
+        if (now - last_processed_timestamp < 1.5) and (clean_text.lower() == last_processed_prompt.lower()):
+            logger.info(f"[Pipecat WS] Ignored duplicate prompt '{clean_text}' within {now - last_processed_timestamp:.2f}s")
+            return
+
+        last_processed_prompt = clean_text
+        last_processed_timestamp = now
+
+        # Nếu đang có một luồng pipeline khác đang phát âm thanh cho session này, lập tức hủy luồng cũ (tránh 2 giọng nói đè nhau)
+        if active_pipeline_task and not active_pipeline_task.done():
+            active_pipeline_task.cancel()
+            pipecat_service.handle_barge_in(session_id)
+            logger.info(f"[Pipecat WS] Cancelled previous pipeline task to prevent overlapping voices for '{session_id}'")
+
+        active_pipeline_task = asyncio.create_task(_trigger_streaming_pipeline(clean_text, room, lang))
+
+    async def _trigger_streaming_pipeline(text: str, room: Optional[str], lang: str):
+        """Helper: chạy full streaming pipeline và gửi kết quả qua WebSocket."""
+        try:
+            async for chunk in pipecat_service.process_user_speech_stream(
+                session_id, text, room_number=room, language=lang
+            ):
+                chunk_type = chunk.get("type")
+
+                if chunk_type == "audio_chunk":
+                    await websocket.send_bytes(chunk["data"])
+                elif chunk_type == "token":
+                    await websocket.send_json({
+                        "event": "token",
+                        "session_id": session_id,
+                        "token": chunk.get("token", ""),
+                    })
+                elif chunk_type in ("text", "text_chunk"):
+                    await websocket.send_json({
+                        "event": chunk_type,
+                        "session_id": session_id,
+                        "text": chunk.get("text", ""),
+                        "lang_code": chunk.get("lang_code", "vi-VN"),
+                        "action": chunk.get("action"),
+                        "missing_room": chunk.get("missing_room", False),
+                        "room_number": chunk.get("room_number"),
+                    })
+                elif chunk_type == "done":
+                    await websocket.send_json({
+                        "event": "stream_done",
+                        "session_id": session_id,
+                        "full_text": chunk.get("full_text", ""),
+                        "lang_code": chunk.get("lang_code", "vi-VN"),
+                        "action": chunk.get("action"),
+                        "room_number": chunk.get("room_number"),
+                    })
+                elif chunk_type == "interrupted":
+                    await websocket.send_json({
+                        "event": "interrupted",
+                        "session_id": session_id,
+                        "full_text": chunk.get("full_text", ""),
+                    })
+                elif chunk_type == "error":
+                    await websocket.send_json({
+                        "event": "error",
+                        "session_id": session_id,
+                        "message": chunk.get("message", ""),
+                    })
+        except (WebSocketDisconnect, RuntimeError):
+            logger.info(f"[Pipecat WS] WebSocket client disconnected during stream for session '{session_id}'")
+        except asyncio.CancelledError:
+            logger.info(f"[Pipecat WS] Pipeline task was cancelled for session '{session_id}'")
+        except Exception as e_pipe:
+            logger.error(f"[Pipecat WS Pipeline Error] {e_pipe}")
+            try:
+                await websocket.send_json({
+                    "event": "error",
+                    "session_id": session_id,
+                    "message": str(e_pipe),
+                })
+            except Exception:
+                pass
+
+    async def _vad_silence_handler(room: Optional[str], lang: str):
+        """
+        Server-side VAD: chờ đủ thời gian im lặng (1.5s) mới chốt câu và chạy pipeline.
+        Tránh cắt ngang khi khách dừng lại lấy hơi hoặc đang nghĩ dở câu.
+        """
+        vad_ms = max(getattr(settings, "VAD_SILENCE_MS", 500) / 1000.0, 0.4)
+        await asyncio.sleep(vad_ms)
+
+        # Sau khi chờ im lặng, kiểm tra buffer còn text chưa xử lý
+        final_text = pipecat_service.get_stt_text(session_id)
+        if final_text and final_text.strip():
+            clean = final_text.strip()
+            # Tránh kích hoạt nếu câu chỉ có 1 từ đệm ngắn chưa có nghĩa (ví dụ: "ờ", "ừm", "cho")
+            if len(clean.split()) < 2 and len(clean) < 6:
+                logger.info(f"[Pipecat WS VAD] Skipped incomplete fragment '{clean}', waiting for more speech")
+                return
+
+            pipecat_service.clear_stt_buffer(session_id)
+
+            # Gửi thông báo bắt đầu xử lý
+            await websocket.send_json({
+                "event": "stt_processing",
+                "session_id": session_id,
+                "text": clean,
+            })
+
+            await _safe_start_pipeline(clean, room, lang)
 
     try:
         while True:
@@ -301,10 +413,70 @@ async def pipecat_audio_websocket(websocket: WebSocket, session_id: str = "pipec
             event_type = data.get("event")
 
             if event_type == "barge_in":
+                if vad_timer_task and not vad_timer_task.done():
+                    vad_timer_task.cancel()
+                if active_pipeline_task and not active_pipeline_task.done():
+                    active_pipeline_task.cancel()
                 pipecat_service.handle_barge_in(session_id)
+                pipecat_service.clear_stt_buffer(session_id)
                 await websocket.send_json({"event": "interrupted", "session_id": session_id})
 
+            elif event_type == "stt_interim":
+                text = data.get("text", "")
+                room = data.get("room_number")
+                lang = data.get("language", "auto")
+
+                if text.strip():
+                    pipecat_service.update_stt_buffer(session_id, text, is_final=False)
+
+                    # Echo interim text ngay cho UI hiển thị (< 1ms roundtrip)
+                    await websocket.send_json({
+                        "event": "stt_interim_echo",
+                        "session_id": session_id,
+                        "text": text,
+                    })
+
+                    # Reset VAD timer — mỗi interim mới reset lại đồng hồ
+                    if vad_timer_task and not vad_timer_task.done():
+                        vad_timer_task.cancel()
+                    vad_timer_task = asyncio.create_task(
+                        _vad_silence_handler(room, lang)
+                    )
+
+            elif event_type == "stt_final":
+                text = data.get("text", "")
+                room = data.get("room_number")
+                lang = data.get("language", "auto")
+
+                if vad_timer_task and not vad_timer_task.done():
+                    vad_timer_task.cancel()
+
+                if text.strip():
+                    pipecat_service.update_stt_buffer(session_id, text, is_final=True)
+                    pipecat_service.clear_stt_buffer(session_id)
+
+                    await websocket.send_json({
+                        "event": "stt_processing",
+                        "session_id": session_id,
+                        "text": text,
+                    })
+
+                    await _safe_start_pipeline(text, room, lang)
+
+            elif event_type == "speech_stream":
+                text = data.get("text", "")
+                room = data.get("room_number")
+                lang = data.get("language", "auto")
+
+                if vad_timer_task and not vad_timer_task.done():
+                    vad_timer_task.cancel()
+
+                if text.strip():
+                    pipecat_service.clear_stt_buffer(session_id)
+                    await _safe_start_pipeline(text, room, lang)
+
             elif event_type == "speech":
+                # Legacy mode (backward compatible)
                 text = data.get("text", "")
                 room = data.get("room_number")
                 result = await pipecat_service.process_user_speech(session_id, text, room)
@@ -314,50 +486,15 @@ async def pipecat_audio_websocket(websocket: WebSocket, session_id: str = "pipec
                     "payload": result
                 })
 
-            elif event_type == "speech_stream":
-                text = data.get("text", "")
-                room = data.get("room_number")
-                lang = data.get("language", "auto")
-
-                async for chunk in pipecat_service.process_user_speech_stream(
-                    session_id, text, room_number=room, language=lang
-                ):
-                    chunk_type = chunk.get("type")
-
-                    if chunk_type == "audio_chunk":
-                        await websocket.send_bytes(chunk["data"])
-                    elif chunk_type in ("text", "text_chunk"):
-                        await websocket.send_json({
-                            "event": chunk_type,
-                            "session_id": session_id,
-                            "text": chunk.get("text", ""),
-                            "lang_code": chunk.get("lang_code", "vi-VN"),
-                        })
-                    elif chunk_type == "done":
-                        await websocket.send_json({
-                            "event": "stream_done",
-                            "session_id": session_id,
-                            "full_text": chunk.get("full_text", ""),
-                            "lang_code": chunk.get("lang_code", "vi-VN"),
-                        })
-                    elif chunk_type == "interrupted":
-                        await websocket.send_json({
-                            "event": "interrupted",
-                            "session_id": session_id,
-                            "full_text": chunk.get("full_text", ""),
-                        })
-                    elif chunk_type == "error":
-                        await websocket.send_json({
-                            "event": "error",
-                            "session_id": session_id,
-                            "message": chunk.get("message", ""),
-                        })
-
     except WebSocketDisconnect:
         logger.info(f"[Pipecat WS] WebSocket disconnected for session '{session_id}'")
     except Exception as e:
         logger.error(f"[Pipecat WS Error] {e}")
     finally:
+        if vad_timer_task and not vad_timer_task.done():
+            vad_timer_task.cancel()
+        if active_pipeline_task and not active_pipeline_task.done():
+            active_pipeline_task.cancel()
         pipecat_service.close_session(session_id)
 
 
@@ -705,31 +842,3 @@ async def _background_save_chat(session_id: str, user_turn: str, ai_turn: str, l
             await session_manager.save_turn_to_db(bg_db, session_id, "assistant", ai_turn, language=lang_code, room_number=room_number)
     except Exception as e:
         logger.warning(f"[AIChat Background Save Error] {e}")
-
-
-async def _background_extract_and_create_ticket(prompt: str, room_number: Optional[str], action: Optional[str] = None, items: Optional[str] = None):
-    """Tạo ticket ngầm dưới nền sử dụng intent đã có sẵn từ LangGraph, không gọi lại Ollama tốn 5s CPU."""
-    try:
-        from app.core.database import AsyncSessionLocal
-        act = action or "unknown"
-        items_desc = items or prompt
-
-        prompt_lower = prompt.lower()
-        request_keywords = [
-            "cần", "xin", "cho", "gửi", "gọi", "đặt", "sửa", "dọn", "nước", "khăn",
-            "lễ tân", "yêu cầu", "phòng", "hỗ trợ", "bàn", "chăn", "gối", "vali", "hành lý",
-            "taxi", "xe", "concierge", "live call", "trợ giúp", "hỏng", "bảo trì"
-        ]
-        
-        target_actions = [
-            "room_service", "housekeeping", "bellman", "maintenance", 
-            "restaurant", "reception", "receptionist", "front_desk", 
-            "taxi", "concierge", "live_support"
-        ]
-        if act in target_actions or any(kw in prompt_lower for kw in request_keywords):
-            target_action = act if act != "unknown" else "reception"
-            async with AsyncSessionLocal() as bg_db:
-                created_ticket_code = await _auto_create_ticket(bg_db, target_action, room_number or "402", items_desc)
-                logger.info(f"[AI Chat Background Auto-Ticket] Created ticket #{created_ticket_code} for {target_action} from prompt: '{prompt}'")
-    except Exception as ex_ticket:
-        logger.warning(f"[AI Chat Background Ticket Warning] Could not auto-create ticket: {ex_ticket}")

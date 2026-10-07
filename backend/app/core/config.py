@@ -22,8 +22,8 @@ class Settings(BaseSettings):
 
     # Ollama Configuration
     OLLAMA_HOST: str = "http://127.0.0.1:11434"
-    OLLAMA_MODEL: str = "qwen2.5:3b-instruct"
-    OLLAMA_EMBED_MODEL: str = "bge-m3"
+    OLLAMA_MODEL: str = "llama3.2:3b"
+    OLLAMA_EMBED_MODEL: Optional[str] = None
 
     # AI Voice Concierge TTS Configuration
     TTS_PROVIDER: str = "edge"  # Options: 'edge', 'elevenlabs', 'openai', 'browser'
@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     # Pipecat Realtime Audio Pipeline Configuration
     ENABLE_PIPECAT: bool = True
     PIPECAT_SAMPLE_RATE: int = 16000
+
+    # STT Streaming VAD Configuration (Wait 1.5s of silence before finalizing speech)
+    VAD_SILENCE_MS: int = 1500  # Milliseconds of silence before triggering LLM processing
 
     # Pi5 Camera Stream Configuration (MJPEG over SSH Tunnel)
     PI5_CAMERA_STREAM_URL: str = "http://localhost:8554/stream"

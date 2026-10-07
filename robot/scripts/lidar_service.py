@@ -17,14 +17,26 @@ import threading
 import time
 from typing import Any, Dict, List, Optional
 
-import serial
-import uvicorn
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+try:
+    import uvicorn
+    from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+    from fastapi.middleware.cors import CORSMiddleware
+    from pydantic import BaseModel
+    HAS_FASTAPI = True
+except ImportError:
+    HAS_FASTAPI = False
+    uvicorn = None
+    FastAPI = None
+    WebSocket = None
+    WebSocketDisconnect = Exception
+    CORSMiddleware = None
+    BaseModel = object
 
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s] [%(levelname)s] [LiDAR-SLAM] %(message)s")
 logger = logging.getLogger("RPLidarSLAM")
+
+MAPS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "maps")
+os.makedirs(MAPS_DIR, exist_ok=True)
 
 
 def find_rplidar_port() -> str:
@@ -103,6 +115,158 @@ class RPLidarSLAMCore:
             self.angular_velocity = 0.0
         self.stop_navigation()
         logger.info("🧹 Đã làm sạch bản đồ 2D Occupancy Grid và đặt lại vị trí Robot về (0,0)")
+
+    def save_map(self, name: str = "default_map") -> Dict[str, Any]:
+        """Lưu bản đồ 2D Occupancy Grid ra file JSON (Web Admin) và chuẩn ROS 2 / Nav2 (.yaml + .pgm)."""
+        safe_name = "".join(c for c in name if c.isalnum() or c in ("_", "-")).strip() or "map"
+        json_path = os.path.join(MAPS_DIR, f"{safe_name}.json")
+        yaml_path = os.path.join(MAPS_DIR, f"{safe_name}.yaml")
+        pgm_path = os.path.join(MAPS_DIR, f"{safe_name}.pgm")
+
+        with self._lock:
+            grid_copy = list(self.grid_data)
+            w = self.grid_width
+            h = self.grid_height
+            res = self.resolution
+            ox = self.origin_x
+            oy = self.origin_y
+            pose = {"x": round(self.robot_x, 3), "y": round(self.robot_y, 3), "yaw": round(self.robot_yaw, 1)}
+
+        occupied_count = sum(1 for v in grid_copy if v == 100)
+        free_count = sum(1 for v in grid_copy if v == 0)
+        unknown_count = sum(1 for v in grid_copy if v < 0)
+
+        # 1. Lưu file JSON cho Web Admin
+        payload = {
+            "name": safe_name,
+            "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "width": w,
+            "height": h,
+            "resolution": res,
+            "origin_x": ox,
+            "origin_y": oy,
+            "robot_pose": pose,
+            "grid_data": grid_copy,
+            "statistics": {
+                "occupied_cells": occupied_count,
+                "free_cells": free_count,
+                "unknown_cells": unknown_count,
+            },
+        }
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2)
+
+        # 2. Lưu file PGM (P5 binary) theo chuẩn ROS 2 Nav2 Map Server
+        # ROS 2 coordinate: y=0 là hàng đáy (origin_y).
+        # Ảnh PGM: hàng 0 là đỉnh trên cùng, nên cần duyệt y từ (h - 1) xuống 0.
+        pgm_header = f"P5\n{w} {h}\n255\n".encode("ascii")
+        pgm_data = bytearray(w * h)
+        idx = 0
+        for y in range(h - 1, -1, -1):
+            row_offset = y * w
+            for x in range(w):
+                val = grid_copy[row_offset + x]
+                if val == 100:       # Vật cản -> Màu đen (0)
+                    pgm_data[idx] = 0
+                elif val == 0:       # Vùng trống -> Màu trắng (254)
+                    pgm_data[idx] = 254
+                else:                # Chưa rõ (-1) -> Màu xám (205)
+                    pgm_data[idx] = 205
+                idx += 1
+
+        with open(pgm_path, "wb") as f:
+            f.write(pgm_header + pgm_data)
+
+        # 3. Lưu file YAML metadata cho ROS 2 Nav2 map_server
+        yaml_content = f"""image: {safe_name}.pgm
+mode: trinary
+resolution: {res}
+origin: [{ox}, {oy}, 0.0]
+negate: 0
+occupied_thresh: 0.65
+free_thresh: 0.25
+"""
+        with open(yaml_path, "w", encoding="utf-8") as f:
+            f.write(yaml_content)
+
+        logger.info(f"💾 Đã lưu bản đồ '{safe_name}' thành công: JSON, YAML & PGM ({occupied_count} ô vật cản, {free_count} ô trống)")
+        return {
+            "name": safe_name,
+            "json_path": json_path,
+            "yaml_path": yaml_path,
+            "pgm_path": pgm_path,
+            "occupied_cells": occupied_count,
+            "free_cells": free_count,
+        }
+
+    def load_map(self, name: str) -> bool:
+        """Nạp bản đồ đã lưu từ file JSON vào bộ nhớ runtime."""
+        safe_name = "".join(c for c in name if c.isalnum() or c in ("_", "-")).strip()
+        json_path = os.path.join(MAPS_DIR, f"{safe_name}.json")
+        if not os.path.exists(json_path):
+            logger.warning(f"Không tìm thấy file bản đồ {json_path}")
+            return False
+
+        try:
+            with open(json_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+
+            with self._lock:
+                self.grid_width = data.get("width", 200)
+                self.grid_height = data.get("height", 200)
+                self.resolution = data.get("resolution", 0.05)
+                self.origin_x = data.get("origin_x", -5.0)
+                self.origin_y = data.get("origin_y", -5.0)
+                self.grid_data = data.get("grid_data", [-1] * (self.grid_width * self.grid_height))
+                pose = data.get("robot_pose", {})
+                self.robot_x = pose.get("x", 0.0)
+                self.robot_y = pose.get("y", 0.0)
+                self.robot_yaw = pose.get("yaw", 0.0)
+
+            logger.info(f"📂 Đã nạp bản đồ '{safe_name}' vào SLAM core thành công!")
+            return True
+        except Exception as e:
+            logger.error(f"Lỗi khi đọc file bản đồ {json_path}: {e}")
+            return False
+
+    def list_saved_maps(self) -> List[Dict[str, Any]]:
+        """Lấy danh sách các bản đồ đã lưu."""
+        maps = []
+        if not os.path.exists(MAPS_DIR):
+            return maps
+
+        for fname in sorted(os.listdir(MAPS_DIR)):
+            if fname.endswith(".json"):
+                fpath = os.path.join(MAPS_DIR, fname)
+                try:
+                    with open(fpath, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    maps.append({
+                        "name": data.get("name", fname.replace(".json", "")),
+                        "created_at": data.get("created_at", ""),
+                        "width": data.get("width", 200),
+                        "height": data.get("height", 200),
+                        "resolution": data.get("resolution", 0.05),
+                        "statistics": data.get("statistics", {}),
+                        "has_ros2_yaml": os.path.exists(os.path.join(MAPS_DIR, fname.replace(".json", ".yaml"))),
+                    })
+                except Exception:
+                    pass
+        return maps
+
+    def delete_map(self, name: str) -> bool:
+        """Xóa bản đồ đã lưu."""
+        safe_name = "".join(c for c in name if c.isalnum() or c in ("_", "-")).strip()
+        deleted = False
+        for ext in (".json", ".yaml", ".pgm"):
+            p = os.path.join(MAPS_DIR, f"{safe_name}{ext}")
+            if os.path.exists(p):
+                try:
+                    os.remove(p)
+                    deleted = True
+                except Exception:
+                    pass
+        return deleted
 
     def _world_to_grid(self, x: float, y: float):
         gx = int((x - self.origin_x) / self.resolution)
@@ -461,16 +625,23 @@ class RPLidarSLAMCore:
 # Khởi tạo singleton Core
 slam_core = RPLidarSLAMCore()
 
-# Khởi tạo FastAPI Server cho Web Admin
-app = FastAPI(title="HC-Robot Pi5 LiDAR SLAM & Navigation Service")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Khởi tạo FastAPI Server cho Web Admin (hoặc DummyApp nếu chạy test offline)
+if HAS_FASTAPI:
+    app = FastAPI(title="HC-Robot Pi5 LiDAR SLAM & Navigation Service")
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+else:
+    class DummyApp:
+        def get(self, *args, **kwargs): return lambda f: f
+        def post(self, *args, **kwargs): return lambda f: f
+        def delete(self, *args, **kwargs): return lambda f: f
+        def websocket(self, *args, **kwargs): return lambda f: f
+    app = DummyApp()
 
 
 class NavigateGoalRequest(BaseModel):
@@ -519,6 +690,47 @@ async def connect_lidar():
 async def reset_map():
     slam_core.reset_map()
     return {"status": "SUCCESS", "message": "Đã xóa trắng bản đồ 2D Occupancy Grid"}
+
+
+class SaveMapRequest(BaseModel):
+    name: Optional[str] = "floor1_map"
+
+
+@app.post("/api/v1/map/save")
+async def save_map_endpoint(req: Optional[SaveMapRequest] = None):
+    map_name = (req.name if req and req.name else None) or f"map_{int(time.time())}"
+    res = slam_core.save_map(map_name)
+    return {
+        "status": "SUCCESS",
+        "message": f"Đã lưu bản đồ '{map_name}' thành công (JSON + ROS 2 YAML/PGM)",
+        "data": res,
+    }
+
+
+@app.get("/api/v1/map/saved_list")
+async def get_saved_maps():
+    maps = slam_core.list_saved_maps()
+    return {"status": "SUCCESS", "maps": maps, "count": len(maps)}
+
+
+class LoadMapRequest(BaseModel):
+    name: str
+
+
+@app.post("/api/v1/map/load")
+async def load_map_endpoint(req: LoadMapRequest):
+    ok = slam_core.load_map(req.name)
+    if ok:
+        return {"status": "SUCCESS", "message": f"Đã nạp bản đồ '{req.name}' vào hệ thống"}
+    return {"status": "FAILED", "message": f"Không tìm thấy hoặc không đọc được bản đồ '{req.name}'"}
+
+
+@app.delete("/api/v1/map/saved/{name}")
+async def delete_map_endpoint(name: str):
+    ok = slam_core.delete_map(name)
+    if ok:
+        return {"status": "SUCCESS", "message": f"Đã xóa bản đồ '{name}'"}
+    return {"status": "FAILED", "message": f"Không tìm thấy bản đồ '{name}'"}
 
 
 @app.post("/api/v1/map/scan_360")

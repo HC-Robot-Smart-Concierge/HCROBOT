@@ -166,8 +166,19 @@ export const RobotScreenPage = ({ onLogout = () => {} }) => {
     setCurrentState('RT-02');
   };
 
-  // Khi người dùng lại gần Camera -> Chào hỏi chủ động bằng giọng nói
+  // Khi người dùng lại gần Camera -> Chào hỏi chủ động bằng giọng nói hoặc kích hoạt kịch bản AUTO_DETECT
   const handleGuestApproached = () => {
+    // 1. Kiểm tra kịch bản tự động kích hoạt (AUTO_DETECT) đang active
+    const autoWf = availableWorkflows.find(
+      (wf) => (wf.is_active ?? true) && wf.trigger_type === 'AUTO_DETECT'
+    );
+    if (autoWf && !isWorkflowRunning) {
+      setCurrentState('RT-02');
+      startWorkflow(autoWf);
+      return;
+    }
+
+    // 2. Mặc định: Chào hỏi chủ động của trợ lý Rora
     if (currentState === 'RT-01' || currentState === 'RT-02') {
       setCurrentState('RT-02');
       const hour = new Date().getHours();
@@ -383,7 +394,12 @@ export const RobotScreenPage = ({ onLogout = () => {} }) => {
 
   // Xác định mode cho RobotFace
   const getRobotFaceMode = () => {
-    if (isWorkflowRunning && activeStep?.type === 'GREET') return 'welcome';
+    if (isWorkflowRunning && activeStep?.type === 'GREET') {
+      const exp = activeStep.params?.face_expression || 'HAPPY_SMILE';
+      if (exp === 'HAPPY_SMILE' || exp === 'WELCOME') return 'happy';
+      if (exp === 'LISTENING') return 'listening';
+      return 'welcome';
+    }
     if (currentState === 'RT-01') return 'sleeping';
     if (isProcessing || currentState === 'RT-04') return 'processing';
     if (isSpeaking) return 'speaking';

@@ -47,19 +47,30 @@ export const WorkflowSimulatorModal = ({ workflow, isOpen, onClose }) => {
     ]);
 
     let stepDurationMs = 3500;
-    if (step.type === 'MOVE') stepDurationMs = 4000;
-    else if (step.type === 'SHOW') {
-      const showTimeout = step.params?.timeout || step.params?.slide_duration_sec || 5;
-      stepDurationMs = Math.min(5000, showTimeout * 1000);
+    if (step.type === 'MOVE') {
+      const spd = Math.max(0.1, parseFloat(step.params?.speed) || 0.4);
+      const timeout = parseInt(step.params?.timeout_sec || step.params?.timeout) || 30;
+      // Tính toán thời gian thực tế: ~4m khoảng cách / vận tốc, tối đa bằng timeout
+      const estimatedSec = Math.min(timeout, Math.max(3, Math.round(4.0 / spd)));
+      stepDurationMs = estimatedSec * 1000;
+    } else if (step.type === 'SHOW') {
+      const showTimeout = parseInt(step.params?.timeout || step.params?.slide_duration_sec) || 5;
+      stepDurationMs = showTimeout * 1000;
+    } else if (step.type === 'LISTEN') {
+      const listenTimeout = parseInt(step.params?.timeout || step.params?.timeout_sec) || 6;
+      stepDurationMs = listenTimeout * 1000;
+    } else if (step.type === 'FEEDBACK') {
+      const feedbackTimeout = parseInt(step.params?.timeout_sec || step.params?.timeout) || 6;
+      stepDurationMs = feedbackTimeout * 1000;
+    } else if (step.type === 'CREATE_REQUEST') {
+      const reqTimeout = parseInt(step.params?.timeout_sec || step.params?.timeout) || 4;
+      stepDurationMs = reqTimeout * 1000;
+    } else if (step.type === 'RECOMMEND') {
+      const recTimeout = parseInt(step.params?.timeout_sec || step.params?.timeout) || 5;
+      stepDurationMs = recTimeout * 1000;
     }
-    else if (step.type === 'LISTEN') {
-      const listenTimeout = step.params?.timeout || step.params?.timeout_sec || 6;
-      stepDurationMs = Math.min(5000, listenTimeout * 1000);
-    }
-    else if (step.type === 'FEEDBACK') stepDurationMs = 5000;
-    else if (step.type === 'CREATE_REQUEST') stepDurationMs = 4000;
 
-    stepDurationMs = Math.max(1500, stepDurationMs / execSpeed);
+    stepDurationMs = Math.max(1000, stepDurationMs / execSpeed);
 
     if (!isMuted) {
       const voiceText =
@@ -69,8 +80,10 @@ export const WorkflowSimulatorModal = ({ workflow, isOpen, onClose }) => {
           ? (step.params?.speech_text || step.params?.text)
           : null;
 
+      const voiceSpeed = parseFloat(step.params?.voice_speed) || 1.0;
+
       if (voiceText && voiceText.trim()) {
-        speak(voiceText, step.params?.language || 'vi-VN');
+        speak(voiceText, step.params?.language || 'vi-VN', null, null, null, voiceSpeed);
       }
     }
 
@@ -118,6 +131,12 @@ export const WorkflowSimulatorModal = ({ workflow, isOpen, onClose }) => {
   const getRobotMode = () => {
     if (!isExecuting) return 'welcome';
     if (!activeStep) return 'welcome';
+    if (activeStep.type === 'GREET') {
+      const exp = activeStep.params?.face_expression || 'HAPPY_SMILE';
+      if (exp === 'HAPPY_SMILE' || exp === 'WELCOME') return 'happy';
+      if (exp === 'LISTENING') return 'listening';
+      return 'welcome';
+    }
     if (activeStep.type === 'SPEAK') return 'speaking';
     if (activeStep.type === 'LISTEN') return 'listening';
     if (activeStep.type === 'RECOMMEND') return 'processing';
@@ -164,6 +183,23 @@ export const WorkflowSimulatorModal = ({ workflow, isOpen, onClose }) => {
               <SkipForward className="w-3.5 h-3.5" />
               <span>Next</span>
             </button>
+            {/* Speed Selector */}
+            <div className="flex items-center rounded-lg bg-stone-800 p-0.5 border border-stone-700">
+              {[1.0, 2.0, 4.0].map((spd) => (
+                <button
+                  key={spd}
+                  type="button"
+                  onClick={() => setExecSpeed(spd)}
+                  className={`px-2 py-0.5 rounded text-[11px] font-bold cursor-pointer transition-colors ${
+                    execSpeed === spd
+                      ? 'bg-amber-500 text-stone-900 shadow-sm'
+                      : 'text-stone-400 hover:text-white'
+                  }`}
+                >
+                  {spd}x
+                </button>
+              ))}
+            </div>
             <button
               type="button"
               onClick={() => setIsMuted(!isMuted)}

@@ -43,7 +43,7 @@ export const useSpeechSynthesis = () => {
   const onQueueStartCallbackRef = useRef(null);
   const streamLangRef = useRef('vi-VN');
 
-  const speakWebSpeech = (text, language = 'vi-VN', onEndCallback = null, onStartCallback = null, shouldCancel = true) => {
+  const speakWebSpeech = (text, language = 'vi-VN', onEndCallback = null, onStartCallback = null, shouldCancel = true, rate = 1.0) => {
     if (safetyTimerRef.current) {
       clearTimeout(safetyTimerRef.current);
       safetyTimerRef.current = null;
@@ -100,6 +100,7 @@ export const useSpeechSynthesis = () => {
           if (data?.audio_base64 && data.audio_base64.length > 50) {
             const audioSrc = `data:audio/mp3;base64,${data.audio_base64}`;
             const audio = new Audio(audioSrc);
+            audio.playbackRate = Math.max(0.5, Math.min(2.0, rate || 1.0));
             audioRef.current = audio;
 
             audio.onplay = () => {
@@ -126,18 +127,18 @@ export const useSpeechSynthesis = () => {
             return;
           }
           // Fallback if backend returned empty
-          _speakWithBrowserUtterance(cleanText, langTag, null, onEndCallback, onStartCallback, shouldCancel);
+          _speakWithBrowserUtterance(cleanText, langTag, null, onEndCallback, onStartCallback, shouldCancel, rate);
         })
         .catch(() => {
-          _speakWithBrowserUtterance(cleanText, langTag, null, onEndCallback, onStartCallback, shouldCancel);
+          _speakWithBrowserUtterance(cleanText, langTag, null, onEndCallback, onStartCallback, shouldCancel, rate);
         });
       return;
     }
 
-    _speakWithBrowserUtterance(cleanText, langTag, targetVoice, onEndCallback, onStartCallback, shouldCancel);
+    _speakWithBrowserUtterance(cleanText, langTag, targetVoice, onEndCallback, onStartCallback, shouldCancel, rate);
   };
 
-  const _speakWithBrowserUtterance = (cleanText, langTag, targetVoice, onEndCallback, onStartCallback, shouldCancel) => {
+  const _speakWithBrowserUtterance = (cleanText, langTag, targetVoice, onEndCallback, onStartCallback, shouldCancel, rate = 1.0) => {
     if (!('speechSynthesis' in window)) {
       if (onStartCallback) onStartCallback();
       if (onEndCallback) onEndCallback();
@@ -155,7 +156,7 @@ export const useSpeechSynthesis = () => {
 
       const utterance = new SpeechSynthesisUtterance(cleanText);
       utterance.lang = langTag;
-      utterance.rate = 1.0;
+      utterance.rate = Math.max(0.5, Math.min(2.0, rate || 1.0));
       utterance.pitch = 1.0;
       utterance.volume = 1.0;
 
@@ -286,7 +287,7 @@ export const useSpeechSynthesis = () => {
     }
   };
 
-  const speak = async (text, language = 'vi-VN', onEndCallback = null, onStartCallback = null, preloadedAudioBase64 = null) => {
+  const speak = async (text, language = 'vi-VN', onEndCallback = null, onStartCallback = null, preloadedAudioBase64 = null, rate = 1.0) => {
     cancel();
 
     if (!text || !text.trim()) {
@@ -300,6 +301,7 @@ export const useSpeechSynthesis = () => {
       try {
         const audioSrc = `data:audio/mp3;base64,${preloadedAudioBase64}`;
         const audio = new Audio(audioSrc);
+        audio.playbackRate = Math.max(0.5, Math.min(2.0, rate || 1.0));
         audioRef.current = audio;
 
         audio.onplay = () => {
@@ -316,7 +318,7 @@ export const useSpeechSynthesis = () => {
         audio.onerror = () => {
           setIsSpeaking(false);
           audioRef.current = null;
-          speakWebSpeech(text, language, onEndCallback, onStartCallback);
+          speakWebSpeech(text, language, onEndCallback, onStartCallback, true, rate);
         };
 
         await audio.play();
@@ -327,7 +329,7 @@ export const useSpeechSynthesis = () => {
     }
 
     // 1. INSTANT WebSpeech / EdgeTTS fallback
-    speakWebSpeech(text, language, onEndCallback, onStartCallback);
+    speakWebSpeech(text, language, onEndCallback, onStartCallback, true, rate);
   };
 
   const cancel = () => {

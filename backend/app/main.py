@@ -9,41 +9,8 @@ from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
 from app.api.v1.router import api_router
-from app.services.rag.obsidian_service import obsidian_service
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
-)
-logger = logging.getLogger("app.main")
-
-
-async def watch_obsidian_vault():
-    """
-    Background Task lắng nghe sự kiện thay đổi file .md trong thư mục Obsidian Vault
-    và tự động nạp vào ChromaDB tức thì.
-    """
-    vault_dir = os.path.abspath(settings.OBSIDIAN_VAULT_DIR)
-    os.makedirs(vault_dir, exist_ok=True)
-    
-    # 1. Đồng bộ ban đầu khi khởi động Server trong background thread
-    try:
-        res = await asyncio.to_thread(obsidian_service.sync_vault_to_chroma)
-        logger.info(f"[OK] Initial Obsidian sync completed ({res.get('chunks_upserted', 0)} chunks) tai {vault_dir}")
-    except Exception as e:
-        logger.error(f"Loi khi dong bo Obsidian ban dau: {e}")
-
-    # 2. Lắng nghe và đồng bộ định kỳ mỗi 10 giây
-    while True:
-        try:
-            await asyncio.sleep(10)
-            await asyncio.to_thread(obsidian_service.sync_vault_to_chroma)
-        except asyncio.CancelledError:
-            logger.info("Obsidian Auto-Watcher da dung.")
-            break
-        except Exception as e:
-            logger.error(f"Loi khi auto-sync Obsidian: {e}")
-
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -58,10 +25,7 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"[WARN] Could not auto-initialize DB on startup (is PostgreSQL running?): {e}")
 
-    # 2. Start Obsidian watcher
-    watcher_task = asyncio.create_task(watch_obsidian_vault())
-
-    # 3. Thông báo sẵn sàng kèm link truy cập Swagger / Redoc
+    # 2. Thông báo sẵn sàng kèm link truy cập Swagger / Redoc
     logger.info("=" * 60)
     logger.info("[INFO] %s DA KHOI DONG THANH CONG!", settings.PROJECT_NAME)
     logger.info("Swagger UI (Test API): http://localhost:8000/docs")
@@ -70,7 +34,6 @@ async def lifespan(app: FastAPI):
     logger.info("=" * 60)
 
     yield
-    watcher_task.cancel()
     rplidar_service.stop()
 
 

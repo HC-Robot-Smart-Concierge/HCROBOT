@@ -17,7 +17,8 @@ export const RobotFace = ({
   const isListening = mode === 'listening';
   const isSpeaking = mode === 'speaking';
   const isProcessing = mode === 'processing';
-  const isWelcome = mode === 'welcome';
+  const isHappy = mode === 'happy' || mode === 'smile';
+  const isWelcome = mode === 'welcome' || isHappy;
 
   // 1. Sleeping Mode (Snooze - Giữ nguyên không đổi theo chỉ đạo của ông chủ)
   if (mode === 'sleeping') {
@@ -72,8 +73,8 @@ export const RobotFace = ({
     );
   }
 
-  // 3. Màu sắc: Welcome & Speaking dùng xám đậm #4A4A4A, Listening dùng xám nhạt #A0A0A0
-  const color = isListening ? '#A0A0A0' : '#4A4A4A';
+  // 3. Màu sắc: Welcome & Speaking dùng xám đậm #4A4A4A, Listening dùng xám nhạt #A0A0A0, Happy dùng xanh ngọc tươi tắn #10b981
+  const color = isHappy ? '#10b981' : isListening ? '#A0A0A0' : '#4A4A4A';
   const sizeClass = compact ? 'w-[170px] h-[170px]' : 'w-[420px] h-[420px] sm:w-[480px] sm:h-[480px] md:w-[560px] md:h-[560px] lg:w-[620px] lg:h-[620px]';
 
   return (
@@ -148,7 +149,7 @@ export const RobotFace = ({
 
         {/* Miệng Robot có hiệu ứng Transition chuyển đổi mượt mà giữa không miệng và có miệng */}
         
-        {/* 1. Miệng Listening: Nụ cười cong xám nhạt (Nở ra từ từ khi chuyển từ Welcome sang Listening) */}
+        {/* 1. Miệng Listening / Happy: Nụ cười cong (Nở ra từ từ khi chuyển từ Welcome sang Listening hoặc Happy) */}
         <path 
           d="M 334 736 Q 500 826 666 736" 
           fill="none" 
@@ -158,11 +159,11 @@ export const RobotFace = ({
           className="robot-mouth-transition"
           style={{
             transformOrigin: '500px 780px',
-            opacity: isListening ? 1 : 0,
-            transform: isListening 
+            opacity: (isListening || isHappy) ? 1 : 0,
+            transform: (isListening || isHappy) 
               ? 'scale(1) translateY(0)' 
               : 'scale(0.6) translateY(24px)',
-            pointerEvents: isListening ? 'auto' : 'none',
+            pointerEvents: (isListening || isHappy) ? 'auto' : 'none',
           }}
         />
 

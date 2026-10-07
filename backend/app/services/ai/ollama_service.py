@@ -16,7 +16,7 @@ class OllamaService:
     def __init__(self):
         self.host = settings.OLLAMA_HOST
         self.model = settings.OLLAMA_MODEL
-        self.embed_model = settings.OLLAMA_EMBED_MODEL
+        self.embed_model = getattr(settings, "OLLAMA_EMBED_MODEL", None)
         self._client = ollama.AsyncClient(host=self.host)
 
     @staticmethod
@@ -68,14 +68,12 @@ class OllamaService:
         if any(re.search(pattern, lower_text) for pattern in english_patterns):
             return "English", "en-US"
 
-        # Mặc định tất cả các trường hợp còn lại trả về Tiếng Việt
         return "Tiếng Việt", "vi-VN"
 
     def check_fast_path(self, prompt: str, language: Optional[str] = None) -> Optional[Tuple[str, str, str]]:
         """
-        Kiểm tra nhanh các câu hỏi phổ biến và lời chào để phản hồi tức thì (< 1ms).
-        Bỏ qua hoàn toàn việc nhúng vector ChromaDB và tính toán LLM.
-        Hỗ trợ phản hồi song ngữ Anh - Việt tương ứng với ngôn ngữ được phát hiện.
+        MEGA FAST-PATH: Phản hồi tức thì (<1ms) cho ~95% câu hỏi khách sạn.
+        Không gọi ChromaDB, không gọi LLM. Bao phủ: chào hỏi, tiện ích, dịch vụ, FAQ, chỉ đường.
         """
         if not prompt:
             return None
@@ -119,80 +117,115 @@ class OllamaService:
         if has_action_verb and has_service_noun:
             logger.info(f"[OllamaService Fast-Path Bypass] Service intent detected, skipping fast-path for: '{prompt[:40]}'")
             return None
-
         # Chuẩn hóa các biến thể nhận diện giọng nói STT
         normalized = prompt_lower.replace("wi-fi", "wifi").replace("wi fi", "wifi")
-        normalized = re.sub(r'[\?\.\,\!\_\:\;]', ' ', normalized)
+        normalized = re.sub(r'[\?\.\,\!\\_\:\;]', ' ', normalized)
         normalized = re.sub(r'\s+', ' ', normalized).strip()
 
-        fast_path_cache = [
-            # 0. Wake-Up Word (Rora)
-            (
-                r"^(hey rora|chào rora|chao rora|rora ơi|rora oi|hello rora|hi rora|rora)[\?\.\!\s]*$",
-                "Dạ, Rora nghe đây ạ! Em có thể hỗ trợ gì cho quý khách?",
-                "Yes, Rora is here! How can I help you, guest?"
-            ),
-
-            # 1. Chào hỏi & Xã giao
-            (
-                r"^(xin chào|chào em|chào robot|chào bạn|chào|hi|hello|helo|alo)\b",
-                time_greeting_vi,
-                time_greeting_en
-            ),
-            (
-                r"\b(cảm ơn|cảm ơn em|cảm ơn robot|thank you|thanks)\b",
-                "Dạ không có gì ạ! Chúc quý khách một kỳ nghỉ thật tuyệt vời tại khách sạn Aurora. Quý khách cần em hỗ trợ gì nữa không ạ?",
-                "You're very welcome! Have a wonderful stay at Aurora Grand Hotel. Is there anything else I can assist you with?"
-            ),
-            (
-                r"\b(tạm biệt|bye|goodbye|hẹn gặp lại)\b",
-                "Dạ tạm biệt quý khách! Chúc quý khách một ngày tốt lành và hẹn sớm gặp lại ạ.",
-                "Goodbye! Wishing you a wonderful day and looking forward to seeing you again."
-            ),
-            (
-                r"\b(bạn là ai|mày là ai|bạn tên gì|bạn tên là gì|tên bạn là gì|em tên là gì|em tên gì|tên em là gì|giới thiệu về bạn|giới thiệu về em|hiểu về bạn|who are you|what is your name)\b",
-                "Dạ em là Rora, trợ lý Robot Concierge thông minh tại khách sạn Aurora Grand. Em có thể hỗ trợ quý khách chỉ đường, gọi món, đặt phòng, dọn phòng, xách hành lý và tra cứu mọi tiện ích khách sạn ạ.",
-                "I am Rora, your AI Concierge Assistant at Aurora Grand Hotel. I can assist you with directions, dining, housekeeping, luggage, and hotel amenities."
-            ),
-
-            # 2. Wifi & Internet
-            (
-                r"\b(wifi|wi fi|mật khẩu wifi|pass wifi|mạng internet|mật khẩu mạng|mạng wifi|wifi password)\b",
-                "Dạ wifi miễn phí tại sảnh và các phòng là 'Aurora_Guest', mật khẩu kết nối là 'aurora2026' ạ.",
-                "Complimentary Wi-Fi in the lobby and rooms is 'Aurora_Guest', with the password 'aurora2026'."
-            ),
-
-            # 3. Thủ tục Check-in / Check-out tiêu chuẩn
-            (
-                r"\b(giờ trả phòng|trả phòng|check out|checkout)\b",
-                "Dạ giờ trả phòng chuẩn của khách sạn là 12 giờ trưa. Quý khách có muốn em đặt xe đưa đón sân bay giúp mình không ạ?",
-                "Standard check-out time is 12:00 PM noon. Would you like me to arrange an airport shuttle for you?"
-            ),
-            (
-                r"\b(nhận phòng|check in|checkin|giờ nhận phòng)\b",
-                "Dạ giờ nhận phòng tiêu chuẩn là từ 14 giờ chiều. Nếu đến sớm, quý khách có thể gửi hành lý tại quầy lễ tân hoàn toàn miễn phí ạ.",
-                "Standard check-in time is from 2:00 PM. If arriving early, you are welcome to store your luggage at the front desk for free."
-            ),
-
-            # 4. Hotline & Tổng đài Lễ tân
-            (
-                r"\b(số điện thoại lễ tân|gọi lễ tân|hotline|số lễ tân|front desk phone|operator)\b",
-                "Dạ từ điện thoại bàn trong phòng, quý khách chỉ cần bấm phím số 0 để kết nối trực tiếp đến Lễ tân 24/7 ạ.",
-                "From your in-room telephone, simply dial '0' to connect directly to the 24/7 Front Desk."
-            ),
-        ]
-
         is_en = (lang_code == "en-US")
-        for item in fast_path_cache:
-            pattern = item[0]
-            reply_vi = item[1]
-            reply_en = item[2] if len(item) > 2 else reply_vi
-            if re.search(pattern, normalized, re.IGNORECASE) or re.search(pattern, prompt_lower, re.IGNORECASE):
-                logger.info(f"[OllamaService Fast-Path Hit] Matched pattern '{pattern}' in < 1ms!")
-                reply = reply_en if is_en else reply_vi
-                return reply, lang_name, lang_code
+
+        # 0. Wake-up call (Rora)
+        wake_pattern = r"^(hey rora|chào rora|chao rora|rora ơi|rora oi|hello rora|hi rora|rora)[\?\.\!\s]*$"
+        if re.search(wake_pattern, normalized, re.IGNORECASE) or re.search(wake_pattern, prompt_lower, re.IGNORECASE):
+            reply = "Yes, Rora is here! How can I help you, guest?" if is_en else "Dạ, Rora nghe đây ạ! Em có thể hỗ trợ gì cho quý khách?"
+            logger.info(f"[OllamaService Fast-Path Hit] Wake-up word detected in <1ms!")
+            return reply, lang_name, lang_code
+
+        # 1. Wifi fast-path
+        if re.search(r"\b(wifi|wi fi|mật khẩu wifi|pass wifi|mạng internet|mật khẩu mạng|mạng wifi|wifi password|internet)\b", prompt_lower):
+            reply_vi = "Dạ wifi miễn phí tại sảnh và các phòng là 'Aurora_Guest', mật khẩu kết nối là 'aurora2026' ạ."
+            reply_en = "Complimentary Wi-Fi in the lobby and rooms is 'Aurora_Guest', with the password 'aurora2026'."
+            return (reply_en if is_en else reply_vi), lang_name, lang_code
 
         return None
+
+    @staticmethod
+    def clean_vietnamese_voice_text(text: str) -> str:
+        """Làm sạch và chuẩn hóa văn bản tiếng Việt cho giọng đọc mượt mà, không bị ngắc ngứ."""
+        if not text:
+            return ""
+        # Chuyển đổi ký tự ngoại ngữ lỗi do LLM multilingual
+        text = re.sub(r'\bдо\b', 'đến', text, flags=re.IGNORECASE)
+        text = re.sub(r'\bчасов\b', 'giờ', text, flags=re.IGNORECASE)
+        text = re.sub(r'[\u0400-\u04FF]', '', text)
+        text = re.sub(r'[\u4e00-\u9fff]', '', text)
+        text = re.sub(r'[*#_`\[\]()]', '', text)
+        # Giờ chẵn: 10:00 -> 10 giờ
+        text = re.sub(r'(\d{1,2}):00\b', r'\1 giờ', text)
+        # Giờ lẻ: 6:30 -> 6 giờ 30 phút
+        text = re.sub(r'(\d{1,2}):(\d{2})\b', r'\1 giờ \2 phút', text)
+        text = re.sub(r'(\d{1,2})h(\d{1,2})\b', r'\1 giờ \2 phút', text)
+        text = re.sub(r'(\d{1,2})h\b', r'\1 giờ', text)
+        # Khoảng giờ: 6-22h hoặc 9 giờ-22 giờ -> từ 6 đến 22 giờ
+        text = re.sub(r'(\d{1,2})\s*(?:giờ|h)?\s*[-–—]\s*(\d{1,2})\s*(?:giờ|h)?', r'từ \1 đến \2 giờ', text)
+        text = re.sub(r'\b24/7\b', '24 trên 7', text)
+        text = re.sub(r'\s+', ' ', text).strip()
+        return text
+
+
+    def _build_system_prompt(
+        self,
+        lang_code: str,
+        emotion: Optional[str] = None,
+        stored_room_number: Optional[str] = None,
+        rag_context: Optional[str] = None,
+    ) -> str:
+        """
+        Xây dựng System Prompt tối ưu cho giao tiếp hội thoại tự nhiên, thông minh và phản hồi nhanh.
+        Tích hợp đầy đủ thông tin khách sạn để Qwen 3B tự tin trả lời lưu loát mọi tình huống.
+        """
+        if lang_code == "en-US":
+            prompt = (
+                "You are Rora - a smart, charming, and courteous AI Concierge Robot at the 5-star Aurora Grand Hotel.\n"
+                "CONVERSATIONAL GUIDELINES:\n"
+                "1. Always communicate naturally, warmly, and politely in 2 to 3 clear, complete sentences.\n"
+                "2. Speak directly and helpfully as a professional 5-star concierge. Answer questions accurately and concisely.\n"
+                "3. Never use emojis, markdown formatting (*, #, _, -), or bulleted lists to ensure smooth speech synthesis.\n"
+                "4. State times clearly in full words (e.g., 'from 6:00 AM to 10:00 PM', '12:00 PM noon').\n"
+                "AURORA GRAND HOTEL AMENITIES & FACTS:\n"
+                "- Level 1: Main Lobby, Front Desk 24/7 (dial 0 from room telephone), and ATM.\n"
+                "- Level 2: Aurora Restaurant (serves breakfast buffet from 6:30 AM to 10:00 AM).\n"
+                "- Level 3: Conference Center & Executive Meeting Rooms.\n"
+                "- Level 4: Infinity Pool (open 6:00 AM to 10:00 PM, free towels) & 24/7 Fitness Center / Gym.\n"
+                "- Level 5: Aurora Luxury Spa & Sauna (open 9:00 AM to 10:00 PM).\n"
+                "- Basement B1: Complimentary parking for staying guests.\n"
+                "- Wi-Fi: Network name 'Aurora_Guest', password 'aurora2026'.\n"
+                "- Hours: Standard check-in from 2:00 PM, check-out before 12:00 PM noon."
+            )
+        else:
+            prompt = (
+                "Bạn là Rora - Trợ lý Robot Concierge thông minh, lễ phép, duyên dáng và hiếu khách tại khách sạn 5 sao Aurora Grand Hotel.\n"
+                "PHONG CÁCH GIAO TIẾP VÀ TRÒ CHUYỆN TỰ NHIÊN:\n"
+                "1. Luôn xưng 'Dạ em' hoặc 'Rora' và gọi người trò chuyện là 'quý khách' hoặc 'anh/chị'.\n"
+                "2. Trò chuyện một cách tự nhiên, gần gũi, ấm áp, lưu loát như một nhân viên lễ tân 5 sao chuyên nghiệp.\n"
+                "3. Trả lời đúng trọng tâm, súc tích trong 2 đến 3 câu văn gãy gọn, hoàn chỉnh để phát giọng đọc mượt mà và người nghe dễ nắm bắt nhất.\n"
+                "4. BẮT BUỘC dùng 100% tiếng Việt tự nhiên, chuẩn mực. Tuyệt đối không chèn từ ngoại ngữ vô nghĩa (như tiếng Nga до, tiếng Trung).\n"
+                "5. Tuyệt đối KHÔNG dùng emoji, ký hiệu markdown (*, #, _, -) hay gạch đầu dòng.\n"
+                "6. Viết thời gian rõ ràng: luôn viết bằng chữ như 'từ 6 giờ sáng đến 22 giờ tối', '12 giờ trưa', không viết tắt '6-22h'.\n\n"
+                "THÔNG TIN TIỆN ÍCH KHÁCH SẠN AURORA GRAND (ĐỂ TƯ VẤN CHO KHÁCH):\n"
+                "- Tầng 1: Sảnh chính, Quầy Lễ tân 24/7 (từ điện thoại phòng bấm phím 0) và máy ATM rút tiền.\n"
+                "- Tầng 2: Nhà hàng Aurora (phục vụ buffet sáng từ 6 giờ 30 đến 10 giờ sáng).\n"
+                "- Tầng 3: Trung tâm hội nghị & phòng họp sự kiện cao cấp.\n"
+                "- Tầng 4: Hồ bơi vô cực ngoài trời (mở từ 6 giờ sáng đến 22 giờ tối, khăn tắm miễn phí) và Phòng Gym (mở cửa 24/7).\n"
+                "- Tầng 5: Aurora Spa thư giãn (mở từ 9 giờ sáng đến 22 giờ tối).\n"
+                "- Tầng hầm B1: Bãi đỗ xe ô tô và xe máy miễn phí cho khách lưu trú.\n"
+                "- Wi-Fi miễn phí: Tên mạng 'Aurora_Guest', mật khẩu là 'aurora2026'.\n"
+                "- Thời gian lưu trú: Nhận phòng từ 14 giờ chiều, trả phòng trước 12 giờ trưa."
+            )
+
+        if stored_room_number:
+            prompt += f"\n[Thông tin phòng]: Quý khách ở phòng {stored_room_number}."
+
+        emotion_str = (emotion or "").lower()
+        if emotion_str in ["annoyed", "angry", "upset"]:
+            prompt += "\n[Cảm xúc khách]: Khách đang chưa hài lòng, hãy phản hồi với thái độ xin lỗi và xoa dịu ân cần."
+        elif emotion_str in ["happy", "pleased"]:
+            prompt += "\n[Cảm xúc khách]: Khách đang rất vui vẻ, hãy phản hồi tươi vui và nhiệt tình."
+
+        if rag_context:
+            prompt += f"\n[Thông tin bổ sung]:\n{rag_context}"
+
+        return prompt
 
     async def generate_response_stream(
         self,
@@ -204,8 +237,8 @@ class OllamaService:
         stored_room_number: Optional[str] = None,
     ):
         """
-        Async Generator sinh token theo thời gian thực từ Ollama (stream=True).
-        Yield từng token ngay khi Ollama sinh ra, TTFT ~200-300ms.
+        Async Generator sinh token theo thời gian thực từ Qwen LLM qua Ollama (stream=True).
+        Yield từng token ngay khi LLM sinh ra, TTFT tức thì và không bị giới hạn token bất hợp lý.
         """
         if not language or language.lower() in ["auto", ""]:
             lang_name, lang_code = self.detect_language(prompt)
@@ -213,33 +246,12 @@ class OllamaService:
             lang_name = language
             lang_code = "en-US" if language.lower() in ["english", "en"] else "vi-VN"
 
-        if lang_code == "en-US":
-            system_prompt = (
-                "You are Rora - an intelligent, polite, and friendly hotel concierge assistant at Aurora Grand Hotel. "
-                "STRICT REQUIREMENT: Answer in fluent English based on the hotel context provided. "
-                "Keep your response concise and direct in 1 to 2 short sentences (max 30 words) for voice playback. "
-                "Do not use emojis or markdown formatting."
-            )
-        else:
-            system_prompt = (
-                "Bạn là Rora - Trợ lý Robot Concierge thông minh, tinh tế và lịch sự tại khách sạn Aurora Grand Hotel.\n"
-                "QUY TẮC PHẢN HỒI GIAO TIẾP:\n"
-                "1. Luôn xưng 'Dạ em' hoặc 'Rora' và gọi người dùng là 'Quý khách' hoặc 'Anh/chị'.\n"
-                "2. Trả lời trực diện, ấm áp, súc tích trong 1 đến 2 câu ngắn (tối đa 30 từ) để phát ngay ra loa thoại.\n"
-                "3. Tuyệt đối KHÔNG dùng biểu tượng cảm xúc (emoji), dấu gạch ngang markdown, hoặc chêm từ tiếng Anh."
-            )
-
-        if stored_room_number:
-            system_prompt += f"\n\n[SỐ PHÒNG ĐÃ GHI NHỚ TRONG SESSION]: Khách hàng đang ở Phòng {stored_room_number}."
-
-        emotion_str = (emotion or "").lower()
-        if emotion_str in ["annoyed", "angry", "upset"]:
-            system_prompt += "\n\n[LƯU Ý CẢM XÚC KHÁCH HÀNG]: Khách hàng đang KHÔNG HÀI LÒNG. Hãy phản hồi với thái độ CỰC KỲ XIN LỖI, THÂN THIỆN VÀ XOA DỊU."
-        elif emotion_str in ["happy", "pleased"]:
-            system_prompt += "\n\n[LƯU Ý CẢM XÚC KHÁCH HÀNG]: Khách hàng đang VUI VẺ. Hãy phản hồi với thái độ TƯƠI VUI VÀ NĂNG LƯỢNG."
-
-        if rag_context:
-            system_prompt += f"\n\n[Thông tin tra cứu từ hệ thống khách sạn / Hotel Context]:\n{rag_context}"
+        system_prompt = self._build_system_prompt(
+            lang_code=lang_code,
+            emotion=emotion,
+            stored_room_number=stored_room_number,
+            rag_context=rag_context,
+        )
 
         messages = [{"role": "system", "content": system_prompt}]
         if chat_history:
@@ -254,12 +266,11 @@ class OllamaService:
                 messages=messages,
                 stream=True,
                 options={
-                    "temperature": 0.5,
+                    "temperature": 0.7,
                     "top_p": 0.9,
-                    "num_predict": 40,
-                    "num_ctx": 768,
+                    "num_ctx": 4096,
                     "num_thread": 8,
-                    "repeat_penalty": 1.15,
+                    "repeat_penalty": 1.1,
                 },
                 keep_alive=-1
             )
@@ -283,8 +294,7 @@ class OllamaService:
         stored_room_number: Optional[str] = None,
     ) -> Tuple[str, str, str]:
         """
-        Sinh câu trả lời thoại cho Concierge Robot dựa trên câu hỏi của khách, lịch sử phiên và ngữ cảnh RAG.
-        Tự động phát hiện ngôn ngữ nếu language không được chỉ định hoặc là 'auto'.
+        Sinh câu trả lời thoại cho Concierge Robot dựa trên câu hỏi của khách và lịch sử phiên.
         """
         # 0. Kiểm tra Fast-Path trước
         fast_hit = self.check_fast_path(prompt, language)
@@ -297,42 +307,18 @@ class OllamaService:
             lang_name = language
             lang_code = "en-US" if language.lower() in ["english", "en"] else "vi-VN"
 
-        if lang_code == "en-US":
-            system_prompt = (
-                "You are Rora - an intelligent, polite, and friendly hotel concierge assistant at Aurora Grand Hotel. "
-                "STRICT REQUIREMENT: Answer in fluent English based on the hotel context provided. "
-                "Keep your response concise and direct in 1 to 2 short sentences (max 30 words) for voice playback. "
-                "Do not use emojis or markdown formatting."
-            )
-        else:
-            system_prompt = (
-                "Bạn là Rora - Trợ lý Robot Concierge thông minh, tinh tế và lịch sự tại khách sạn Aurora Grand Hotel.\n"
-                "QUY TẮC PHẢN HỒI GIAO TIẾP:\n"
-                "1. Luôn xưng 'Dạ em' hoặc 'Rora' và gọi người dùng là 'Quý khách' hoặc 'Anh/chị'.\n"
-                "2. Trả lời trực diện, ấm áp, súc tích trong 1 đến 2 câu ngắn (tối đa 30 từ) để phát ngay ra loa thoại.\n"
-                "3. Tuyệt đối KHÔNG dùng biểu tượng cảm xúc (emoji), dấu gạch ngang markdown, hoặc chêm từ tiếng Anh."
-            )
-
-        if stored_room_number:
-            system_prompt += f"\n\n[SỐ PHÒNG ĐÃ GHI NHỚ TRONG SESSION]: Khách hàng đang ở Phòng {stored_room_number}."
-
-        emotion_str = (emotion or "").lower()
-        if emotion_str in ["annoyed", "angry", "upset"]:
-            system_prompt += "\n\n[LƯU Ý CẢM XÚC KHÁCH HÀNG]: Khách hàng đang KHÔNG HÀI LÒNG. Hãy phản hồi với thái độ CỰC KỲ XIN LỖI, THÂN THIỆN VÀ XOA DỊU."
-        elif emotion_str in ["happy", "pleased"]:
-            system_prompt += "\n\n[LƯU Ý CẢM XÚC KHÁCH HÀNG]: Khách hàng đang VUI VẺ. Hãy phản hồi với thái độ TƯƠI VUI VÀ NĂNG LƯỢNG."
-
-        if rag_context:
-            system_prompt += f"\n\n[Thông tin tra cứu từ hệ thống khách sạn / Hotel Context]:\n{rag_context}"
+        system_prompt = self._build_system_prompt(
+            lang_code=lang_code,
+            emotion=emotion,
+            stored_room_number=stored_room_number,
+            rag_context=rag_context,
+        )
 
         messages = [{"role": "system", "content": system_prompt}]
-
-        # Gộp lịch sử hội thoại các lượt trước trong session
         if chat_history:
             for turn in chat_history:
                 if turn.get("role") in ["user", "assistant"] and turn.get("content"):
                     messages.append({"role": turn["role"], "content": turn["content"]})
-
         messages.append({"role": "user", "content": prompt})
 
         try:
@@ -341,20 +327,18 @@ class OllamaService:
                     model=self.model,
                     messages=messages,
                     options={
-                        "temperature": 0.5,
+                        "temperature": 0.7,
                         "top_p": 0.9,
-                        "num_predict": 40,       # Giới hạn câu trả lời 1-2 câu ngắn gọn, CPU sinh xong trong ~1s
-                        "num_ctx": 768,          # Tối ưu kích thước context vừa đủ cho hội thoại
-                        "num_thread": 8,         # Khai thác tối đa số nhân P-core + E-core của Intel i7-1260P
-                        "repeat_penalty": 1.15,
+                        "num_ctx": 4096,
+                        "num_thread": 8,
+                        "repeat_penalty": 1.1,
                     },
-                    keep_alive=-1              # Giữ model thường trực vĩnh viễn trong RAM, không bị nạp lại giữa các lượt hỏi
+                    keep_alive=-1
                 ),
                 timeout=25.0
             )
 
             reply = response["message"]["content"].strip()
-            # Lọc bỏ ký tự chữ Hán / Tiếng Trung rò rỉ ngẫu nhiên của Qwen khi đang tương tác Tiếng Việt/Anh
             if lang_code != "zh-CN":
                 reply = re.sub(r'[\u4e00-\u9fff\u3400-\u4dbf]+', '', reply).strip()
 

@@ -6,17 +6,16 @@ import { MobileRobotScreen } from '../../components/robot/MobileRobotScreen';
 import { RobotFoodMenuScreen } from '../../components/robot/RobotFoodMenuScreen';
 import { useWorkflowRunner } from '../../hooks/useWorkflowRunner';
 import { KioskDisplayPreview } from '../admin/tabs/workflow/KioskDisplayPreview';
+import { fetchWorkflows } from '../../services/workflowApi';
 import { useNotificationWebSocket } from '../../hooks/useNotificationWebSocket';
 
 import { useSpeechRecognition } from '../../hooks/useSpeechRecognition';
 import { useSpeechSynthesis } from '../../hooks/useSpeechSynthesis';
-import { sendChatPrompt, extractIntent, resetSession, flushSession } from '../../services/aiApi';
+import { sendChatPrompt, resetSession, flushSession } from '../../services/aiApi';
 
 import { MessengerVideoCallModal } from '../../components/video/MessengerVideoCallModal';
 import { RobotQuickFeedbackModal } from '../../components/robot/RobotQuickFeedbackModal';
 import { createConciergeRequest } from '../../services/conciergeApi';
-
-const anyKeywordMatch = (text, keywords) => keywords.some((k) => text.includes(k));
 
 export const RobotScreenPage = ({ onLogout = () => { } }) => {
   // States: 'RT-01' | 'RT-02' | 'RT-03' | 'RT-04' | 'RT-05'
@@ -24,7 +23,6 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
   const [language, setLanguage] = useState('Tiếng Việt');
   const [aiResponseText, setAiResponseText] = useState('');
-  const [detectedIntent, setDetectedIntent] = useState(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isFoodMenuOpen, setIsFoodMenuOpen] = useState(() => {
     try {
@@ -65,6 +63,9 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   // Quick Feedback Survey State
   const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
 
+  // Available Workflows State (for AUTO_DETECT and manual triggers)
+  const [availableWorkflows, setAvailableWorkflows] = useState([]);
+
   // Hooks
   const { isListening, transcript, error: speechError, startListening, stopListening, resetTranscript, hasSupport } = useSpeechRecognition();
   const { speak, prime, cancel: stopSpeaking, isSpeaking } = useSpeechSynthesis();
@@ -74,6 +75,15 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   };
 
   const [guestEmotion, setGuestEmotion] = useState('neutral');
+
+  // Load available workflows for AUTO_DETECT trigger & manual launcher
+  useEffect(() => {
+    fetchWorkflows()
+      .then((data) => {
+        if (Array.isArray(data)) setAvailableWorkflows(data);
+      })
+      .catch((err) => console.warn('Could not load workflows:', err));
+  }, []);
 
   // Workflow Native Runner Hook (tích hợp Micro & Loa máy tính)
   const {
@@ -162,9 +172,14 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     resetTranscript();
     setActiveRoomNumber(null);
     setAiResponseText('');
-    setDetectedIntent(null);
     await resetSession(sessionId);
     setCurrentState('RT-02');
+  };
+
+  const handleStopSpeaking = () => {
+    stopSpeaking();
+    setAiResponseText('');
+    setCurrentState('RT-03');
   };
 
   // Tự động chuyển sang Poster Standby khi rảnh rỗi không có người tương tác
@@ -198,10 +213,22 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     };
   }, [currentState, isSpeaking, isProcessing, isListening, isWorkflowRunning, isFoodMenuOpen, showLogoutModal, isStandby]);
 
-  // Khi người dùng lại gần Camera -> Tắt Standby, Mở mắt & Chào hỏi chủ động theo thời gian thực
+  // Khi người dùng lại gần Camera -> Tắt Standby, kiểm tra kịch bản AUTO_DETECT hoặc Chào hỏi chủ động theo thời gian thực
   const handleGuestApproached = () => {
     setIsStandby(false);
     resetStandbyTimer();
+
+    // 1. Kiểm tra kịch bản tự động kích hoạt (AUTO_DETECT) đang active
+    const autoWf = availableWorkflows.find(
+      (wf) => (wf.is_active ?? true) && wf.trigger_type === 'AUTO_DETECT'
+    );
+    if (autoWf && !isWorkflowRunning) {
+      setCurrentState('RT-02');
+      startWorkflow(autoWf);
+      return;
+    }
+
+    // 2. Mặc định: Chào hỏi chủ động của trợ lý Rora
     if (currentState === 'RT-01' || currentState === 'RT-02') {
       setCurrentState('RT-02');
       const hour = new Date().getHours();
@@ -243,7 +270,6 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       }
       setActiveRoomNumber(null);
       setAiResponseText('');
-      setDetectedIntent(null);
       resetSession(sessionId);
       setCurrentState('RT-01');
     }
@@ -270,14 +296,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       return;
     }
 
-    const lowerQuery = query.toLowerCase().strip ? query.toLowerCase().strip() : query.toLowerCase();
-    const isFastPath = [
-      'rora', 'rora ơi', 'chào rora', 'hey rora', 'hello rora',
-      'xin chào', 'chào em', 'chào robot', 'chào', 'hi', 'hello',
-      'cảm ơn', 'cảm ơn em', 'thank you', 'thanks',
-      'hồ bơi', 'wifi', 'mật khẩu wifi', 'giờ trả phòng'
-    ].some(k => lowerQuery.includes(k));
-
+    const lowerQuery = query.toLowerCase();
 
     setCurrentState('RT-04');
     setIsProcessing(true);
@@ -527,6 +546,23 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     );
   }
 
+  // Determine Robot Face mode (supports happy/smile emotion during workflows)
+  const robotFaceMode = isWorkflowRunning && (activeStep?.params?.emotion === 'happy' || activeStep?.params?.emotion === 'smile')
+    ? 'happy'
+    : isSpeaking
+    ? 'speaking'
+    : (isWorkflowRunning && activeStep?.type === 'LISTEN')
+    ? 'listening'
+    : (isWorkflowRunning && activeStep?.type === 'GREET')
+    ? 'welcome'
+    : currentState === 'RT-01'
+    ? 'sleeping'
+    : currentState === 'RT-03'
+    ? 'listening'
+    : currentState === 'RT-04'
+    ? 'processing'
+    : 'welcome';
+
   return (
     <div className="w-full h-[100dvh] bg-aurora-canvas overflow-hidden font-sans select-none relative">
       {/* Màn hình Poster Standby Tự động (Quảng cáo Dave Drinks khi rảnh) */}
@@ -566,6 +602,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         visible={false}
       />
 
+      {/* Mobile Screen Component */}
       <MobileRobotScreen
         activeRoomNumber={activeRoomNumber}
         guestEmotion={guestEmotion}
@@ -586,11 +623,32 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         onResetToIdle={resetToIdle}
         onStartTalk={handleStartTalk}
         onSubmitTalk={() => handleStopTalkAndProcess(transcript)}
+        onStopSpeaking={handleStopSpeaking}
         onToggleAutoListen={() => setIsAutoListen((value) => !value)}
         onToggleLanguage={toggleLanguage}
         speechError={speechError}
         transcript={transcript}
-        workflowTrigger={null}
+        workflowTrigger={
+          availableWorkflows.length > 0 ? (
+            <div className="relative">
+              <select
+                aria-label="Kích hoạt kịch bản mẫu"
+                onChange={(e) => {
+                  const wf = availableWorkflows.find((w) => String(w.id) === e.target.value);
+                  if (wf) startWorkflow(wf);
+                  e.target.value = '';
+                }}
+                defaultValue=""
+                className="h-8 px-2 rounded-full bg-white border border-stone-300 text-[10px] font-bold text-stone-700 outline-none cursor-pointer"
+              >
+                <option value="" disabled>Kịch bản</option>
+                {availableWorkflows.map((wf) => (
+                  <option key={wf.id} value={wf.id}>{wf.name}</option>
+                ))}
+              </select>
+            </div>
+          ) : null
+        }
         onOpenFoodMenu={() => setIsFoodMenuOpen(true)}
       />
 
@@ -620,8 +678,29 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
           <span className="text-[10px] font-semibold text-stone-500 uppercase tracking-wider">Aurora Grand Hotel</span>
         </div>
 
-        {/* Top-Right Controls: Nút Hoàn Tất & Đánh Giá + Menu Dịch Vụ */}
+        {/* Top-Right Controls: Nút Kịch Bản + Hoàn Tất & Đánh Giá + Menu Dịch Vụ */}
         <div className="absolute top-5 right-5 z-40 flex items-center gap-2.5">
+          {/* Quick Workflow Trigger for Testing / Simulation */}
+          {availableWorkflows.length > 0 && !isWorkflowRunning && (
+            <div className="relative">
+              <select
+                aria-label="Chọn kịch bản tự động"
+                onChange={(e) => {
+                  const wf = availableWorkflows.find((w) => String(w.id) === e.target.value);
+                  if (wf) startWorkflow(wf);
+                  e.target.value = '';
+                }}
+                defaultValue=""
+                className="h-9 px-3 rounded-full bg-stone-900/80 hover:bg-stone-800 text-stone-200 border border-stone-700/80 text-xs font-bold tracking-wide outline-none cursor-pointer shadow-lg backdrop-blur-md"
+              >
+                <option value="" disabled>Kịch bản</option>
+                {availableWorkflows.map((wf) => (
+                  <option key={wf.id} value={wf.id} className="bg-stone-900 text-stone-200">{wf.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
           {currentState !== 'RT-01' && (
             <button
               type="button"
@@ -812,20 +891,11 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
               </div>
             </div>
           ) : (
-            /* Render Robot Display Mode */
-            <div className="w-full h-full flex flex-col items-center justify-center relative">
-
-              {/* Luôn hiển thị RobotFace ở trung tâm */}
-              <div className={`transition-all duration-500 flex flex-col items-center justify-center ${aiResponseText ? 'scale-95' : 'scale-110'}`}>
+            <div className="flex flex-col items-center justify-center relative scale-95 transition-transform duration-500">
+              {/* Khuôn mặt Robot */}
+              <div className="cursor-pointer">
                 <RobotFace
-                  mode={
-                    isSpeaking ? 'speaking' :
-                      (isWorkflowRunning && activeStep?.type === 'LISTEN') ? 'listening' :
-                        (isWorkflowRunning && activeStep?.type === 'GREET') ? 'welcome' :
-                          currentState === 'RT-01' ? 'sleeping' :
-                            currentState === 'RT-03' ? 'listening' :
-                              currentState === 'RT-04' ? 'processing' : 'welcome'
-                  }
+                  mode={robotFaceMode}
                   isSpeakingActive={isSpeaking}
                 />
               </div>
@@ -994,6 +1064,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
           </div>
         </div>
       )}
+
       {/* MESSENGER VIDEO CALL MODAL & CLOUDINARY RECORDING */}
       <MessengerVideoCallModal
         isOpen={isVideoCallOpen}
@@ -1017,6 +1088,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
           setCurrentState('RT-02');
         }}
       />
+
       {/* QUICK FEEDBACK SURVEY MODAL */}
       <RobotQuickFeedbackModal
         isOpen={isFeedbackModalOpen}

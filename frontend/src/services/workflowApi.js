@@ -147,3 +147,64 @@ export async function deleteZone(zoneId) {
   return res.json();
 }
 
+/**
+ * Lưu bản đồ Occupancy Grid hiện tại vào CSDL và lưu file cố định
+ */
+export async function saveCurrentLidarMap(mapId = 'MAP-LOBBY-01', name = 'Bản đồ Sảnh Tầng 1 Main Lobby', floor = 'Sảnh Tầng 1') {
+  const params = new URLSearchParams({ map_id: mapId, name, floor });
+  const res = await fetch(`${API_BASE}/map/save_map?${params.toString()}`, {
+    method: 'POST',
+  });
+  if (!res.ok) throw new Error('Không thể lưu bản đồ vào CSDL');
+  return res.json();
+}
+
+/**
+ * Nạp lại bản đồ cố định đã lưu từ CSDL/file
+ */
+export async function loadSavedLidarMap(mapId = 'MAP-LOBBY-01') {
+  const params = new URLSearchParams({ map_id: mapId, lock: 'true' });
+  const res = await fetch(`${API_BASE}/map/load_map?${params.toString()}`, {
+    method: 'POST',
+  });
+  if (!res.ok) throw new Error('Không thể nạp bản đồ từ CSDL');
+  return res.json();
+}
+
+/**
+ * Bật/tắt chế độ khóa bản đồ tĩnh
+ */
+export async function toggleLidarMapLock(lock = null) {
+  const params = lock !== null ? `?lock=${lock}` : '';
+  const res = await fetch(`${API_BASE}/map/toggle_lock${params}`, {
+    method: 'POST',
+  });
+  if (!res.ok) throw new Error('Không thể thay đổi trạng thái khóa bản đồ');
+  return res.json();
+}
+
+/**
+ * Lấy dữ liệu bản đồ SLAM Occupancy Grid 2D hiện tại
+ */
+export async function fetchCurrentMap() {
+  const res = await fetch(`${API_BASE}/map/current`);
+  if (!res.ok) throw new Error('Không thể tải dữ liệu bản đồ hiện tại');
+  return res.json();
+}
+
+/**
+ * Xác định URL WebSocket kết nối tới LiDAR SLAM service (tự động thích ứng localhost/LAN/Pi5)
+ */
+export function getMapWebSocketUrl() {
+  const customIp = import.meta.env.VITE_PI5_IP;
+  if (customIp && customIp !== 'localhost' && customIp !== '127.0.0.1' && customIp !== '100.73.245.66') {
+    return `ws://${customIp}:8000/api/v1/map/ws`;
+  }
+  const loc = window.location;
+  if (loc.hostname === 'localhost' || loc.hostname === '127.0.0.1') {
+    return `ws://127.0.0.1:8000/api/v1/map/ws`;
+  }
+  const protocol = loc.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${protocol}//${loc.host}/api/v1/map/ws`;
+}
+

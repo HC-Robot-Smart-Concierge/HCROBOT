@@ -1,7 +1,7 @@
 import asyncio
 import json
 import logging
-from typing import List
+from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, status, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,6 +9,7 @@ from sqlalchemy import select
 
 from app.core.database import get_db
 from app.models.workflow import RobotWaypoint, RobotZone
+from app.models.map import Map
 from app.schemas.map import (
     MapMetaData,
     NavigationRequest,
@@ -366,10 +367,92 @@ async def get_lidar_status():
     return rplidar_service.get_status()
 
 
+@router.post("/save_map", summary="Lưu bản đồ Occupancy Grid hiện tại vào CSDL và lưu file cố định")
+async def save_current_map(
+    map_id: str = "MAP-LOBBY-01",
+    name: str = "Bản đồ Sảnh Tầng 1 Main Lobby",
+    floor: str = "Sảnh Tầng 1",
+    db: AsyncSession = Depends(get_db)
+):
+    """Lưu toàn bộ ma trận 2D Occupancy Grid hiện tại vào bộ nhớ lưu trữ cố định và CSDL PostgreSQL."""
+    res = rplidar_service.save_map_to_storage(map_id=map_id, name=name, floor=floor)
+
+    try:
+        stmt = select(Map).where(Map.id == map_id)
+        result = await db.execute(stmt)
+        db_map = result.scalar_one_or_none()
+
+        map_data = rplidar_service.get_grid_map_data()
+        if db_map:
+            db_map.name = name
+            db_map.floor = floor
+            db_map.resolution = map_data["resolution"]
+            db_map.width = map_data["width"]
+            db_map.height = map_data["height"]
+            db_map.origin_x = map_data["origin_x"]
+            db_map.origin_y = map_data["origin_y"]
+            db_map.image_url = f"/static/maps/{map_id}.json"
+            db_map.is_active = True
+        else:
+            db_map = Map(
+                id=map_id,
+                hotel_id="HTL-MAIN",
+                name=name,
+                floor=floor,
+                resolution=map_data["resolution"],
+                width=map_data["width"],
+                height=map_data["height"],
+                origin_x=map_data["origin_x"],
+                origin_y=map_data["origin_y"],
+                image_url=f"/static/maps/{map_id}.json",
+                is_active=True,
+            )
+            db.add(db_map)
+
+        await db.commit()
+    except Exception as e:
+        logger.warning(f"Lưu thông tin bảng maps CSDL gặp lỗi (vẫn lưu file tĩnh): {e}")
+
+    return {
+        "status": "SUCCESS",
+        "message": f"Đã lưu bản đồ cố định '{name}' thành công vào CSDL!",
+        "map_id": map_id,
+        "is_map_locked": rplidar_service.is_map_locked,
+        "saved_at": res.get("saved_at")
+    }
+
+
+@router.post("/load_map", summary="Nạp lại bản đồ cố định đã lưu từ CSDL/file")
+async def load_saved_map(map_id: str = "MAP-LOBBY-01", lock: bool = True):
+    """Tải lại bản đồ 2D cố định đã lưu từ trước vào bộ nhớ hệ thống."""
+    success = rplidar_service.load_map_from_storage(map_id=map_id, lock=lock)
+    if success:
+        return {
+            "status": "SUCCESS",
+            "message": f"Đã tải thành công bản đồ cố định '{map_id}'!",
+            "map_id": map_id,
+            "is_map_locked": rplidar_service.is_map_locked
+        }
+    else:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Không tìm thấy bản đồ '{map_id}'")
+
+
+@router.post("/toggle_lock", summary="Bật/tắt chế độ khóa bản đồ tĩnh")
+async def toggle_map_lock(lock: Optional[bool] = None):
+    """Khóa bản đồ (để bản đồ đứng yên cố định không bị trôi) hoặc mở khóa (để quét thêm không gian mới)."""
+    new_state = rplidar_service.set_map_lock(not rplidar_service.is_map_locked if lock is None else lock)
+    msg = "Đã KHÓA bản đồ cố định (Static Map Locked)" if new_state else "Đã MỞ KHÓA chế độ quét bản đồ tự do (Free Mapping Mode)"
+    return {
+        "status": "SUCCESS",
+        "message": msg,
+        "is_map_locked": new_state
+    }
+
+
 @router.post("/reset_map", summary="Xóa trắng bản đồ 2D để tiến hành quét SLAM lại từ đầu")
 async def reset_map():
     rplidar_service.reset_grid_map()
-    return {"status": "SUCCESS", "message": "Đã xóa trắng bản đồ 2D Occupancy Grid"}
+    return {"status": "SUCCESS", "message": "Đã xử lý reset bản đồ 2D"}
 
 
 @router.post("/connect_lidar", summary="Kích hoạt kết nối với cổng COM9 của RPLiDAR")
@@ -426,7 +509,7 @@ async def navigate_to_target(request: NavigationRequest):
 @router.websocket("/ws")
 async def map_websocket_endpoint(websocket: WebSocket):
     """
-    WebSocket streaming dữ liệu 100% THỰC TẾ từ phần cứng RPLiDAR COM9.
+    WebSocket streaming dữ liệu 100% THỰC TẾ từ phần cứng RPLiDAR COM9 và Bản đồ Cố định.
     """
     await websocket.accept()
     logger.info("🔌 WebSocket LiDAR Client connected")
@@ -456,6 +539,8 @@ async def map_websocket_endpoint(websocket: WebSocket):
                     "linear_velocity": 0.0,
                     "angular_velocity": 0.0,
                     "status": "RPLIDAR_COM9_ACTIVE",
+                    "is_map_locked": rplidar_service.is_map_locked,
+                    "saved_map_id": rplidar_service.saved_map_id,
                     "scan_points": scans,
                     "grid_data": map_info["grid_data"],
                     "grid_metadata": {
@@ -467,6 +552,7 @@ async def map_websocket_endpoint(websocket: WebSocket):
                     }
                 }
             else:
+                map_info = rplidar_service.get_grid_map_data()
                 payload = {
                     "type": "telemetry_update",
                     "source": "NO_HARDWARE_CONNECTED",
@@ -479,8 +565,18 @@ async def map_websocket_endpoint(websocket: WebSocket):
                     "linear_velocity": 0.0,
                     "angular_velocity": 0.0,
                     "status": "WAITING_FOR_COM9_HARDWARE",
+                    "is_map_locked": rplidar_service.is_map_locked,
+                    "saved_map_id": rplidar_service.saved_map_id,
                     "last_error": rplidar_service.last_error,
-                    "scan_points": []
+                    "scan_points": [],
+                    "grid_data": map_info["grid_data"],
+                    "grid_metadata": {
+                        "width": map_info["width"],
+                        "height": map_info["height"],
+                        "resolution": map_info["resolution"],
+                        "origin_x": map_info["origin_x"],
+                        "origin_y": map_info["origin_y"],
+                    }
                 }
 
             await websocket.send_text(json.dumps(payload))

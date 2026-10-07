@@ -93,15 +93,15 @@ export const WorkflowStepBlock = ({
                 {waypoints.length > 0 ? (
                   waypoints.map((wp) => (
                     <option key={wp.id} value={wp.id}>
-                      📍 {wp.name}
+                      {wp.name}
                     </option>
                   ))
                 ) : (
                   <>
-                    <option value="wp-reception">📍 Quầy Lễ Tân</option>
-                    <option value="wp-lounge">📍 Sảnh Lounge & Coffee</option>
-                    <option value="wp-vip-table">📍 Bàn VIP 01</option>
-                    <option value="wp-elevator">📍 Cụm Thang Máy A</option>
+                    <option value="wp-reception">Quầy Lễ Tân</option>
+                    <option value="wp-lounge">Sảnh Lounge & Coffee</option>
+                    <option value="wp-vip-table">Bàn VIP 01</option>
+                    <option value="wp-elevator">Cụm Thang Máy A</option>
                   </>
                 )}
               </select>
@@ -145,9 +145,9 @@ export const WorkflowStepBlock = ({
                 onChange={(e) => handleFieldChange('face_expression', e.target.value)}
                 className="bg-white text-gray-900 px-3 py-1 rounded-full text-xs font-bold shadow-inner border border-black/10 focus:outline-none cursor-pointer"
               >
-                <option value="HAPPY_SMILE">😊 Mỉm cười</option>
-                <option value="WELCOME">✨ Chào đón</option>
-                <option value="LISTENING">👂 Lắng nghe</option>
+                <option value="HAPPY_SMILE">Mỉm cười (Happy)</option>
+                <option value="WELCOME">Chào đón (Welcome)</option>
+                <option value="LISTENING">Lắng nghe (Listening)</option>
               </select>
               <span>LED</span>
               <select
@@ -155,9 +155,9 @@ export const WorkflowStepBlock = ({
                 onChange={(e) => handleFieldChange('led_color', e.target.value)}
                 className="bg-white text-gray-900 px-3 py-1 rounded-full text-xs font-bold shadow-inner border border-black/10 focus:outline-none cursor-pointer"
               >
-                <option value="CYAN">🔵 Xanh Cyan</option>
-                <option value="AMBER">🟡 Vàng Hổ Phách</option>
-                <option value="EMERALD">🟢 Xanh Lục</option>
+                <option value="CYAN">Xanh Cyan</option>
+                <option value="AMBER">Vàng Hổ Phách</option>
+                <option value="EMERALD">Xanh Lục</option>
               </select>
             </>
           )}
@@ -200,14 +200,14 @@ export const WorkflowStepBlock = ({
                 }}
                 className="bg-white text-gray-900 px-3 py-1 rounded-full text-xs font-bold shadow-inner border border-black/10 focus:outline-none cursor-pointer"
               >
-                <option value="SERVICES_GRID">🛎️ Tiện ích khách sạn</option>
-                <option value="DINING_MENU">🍽️ Menu nhà hàng</option>
-                <option value="LANGUAGE_SELECTOR">🌐 Chọn ngôn ngữ</option>
-                <option value="UI_SERVICE_FORM">🛏️ Biểu mẫu Buồng phòng</option>
-                <option value="UI_CONFIRMATION">✅ Xác nhận dịch vụ</option>
-                <option value="UI_WAITING_STAFF">🚨 Kết nối Lễ tân khẩn cấp</option>
-                <option value="PROMO_SUMMER">☀️ Chiếu Poster Khuyến mại</option>
-                <option value="MAP_LOBBY_FLOOR1">🗺️ Sơ đồ bản đồ Tầng 1</option>
+                <option value="SERVICES_GRID">Tiện ích khách sạn</option>
+                <option value="DINING_MENU">Menu nhà hàng</option>
+                <option value="LANGUAGE_SELECTOR">Chọn ngôn ngữ</option>
+                <option value="UI_SERVICE_FORM">Biểu mẫu Buồng phòng</option>
+                <option value="UI_CONFIRMATION">Xác nhận dịch vụ</option>
+                <option value="UI_WAITING_STAFF">Kết nối Lễ tân khẩn cấp</option>
+                <option value="PROMO_SUMMER">Chiếu Poster Khuyến mại</option>
+                <option value="MAP_LOBBY_FLOOR1">Sơ đồ bản đồ Tầng 1</option>
               </select>
               <span>banner</span>
               <input
@@ -245,9 +245,9 @@ export const WorkflowStepBlock = ({
                 }}
                 className="bg-white text-gray-900 px-3 py-1 rounded-full text-xs font-bold shadow-inner border border-black/10 focus:outline-none cursor-pointer"
               >
-                <option value="VOICE_AND_TOUCH">🎙️ Mic & Cảm ứng</option>
-                <option value="TOUCH_ONLY">👆 Chỉ cảm ứng</option>
-                <option value="BOTH">🎙️ Cả hai (Both)</option>
+                <option value="VOICE_AND_TOUCH">Mic & Cảm ứng</option>
+                <option value="TOUCH_ONLY">Chỉ cảm ứng</option>
+                <option value="BOTH">Cả hai (Both)</option>
               </select>
               <span>chờ</span>
               <input
@@ -285,9 +285,9 @@ export const WorkflowStepBlock = ({
                 }}
                 className="bg-white text-gray-900 px-3 py-1 rounded-full text-xs font-bold shadow-inner border border-black/10 focus:outline-none cursor-pointer"
               >
-                <option value="DINING_AND_SPA">🍷 Ẩm thực & Spa</option>
-                <option value="DINING">🍽️ Ẩm thực (Dining)</option>
-                <option value="CITY_TOUR">🏛️ Điểm tham quan</option>
+                <option value="DINING_AND_SPA">Ẩm thực & Spa</option>
+                <option value="DINING">Ẩm thực (Dining)</option>
+                <option value="CITY_TOUR">Điểm tham quan</option>
               </select>
               <span>món/dịch vụ</span>
               <input
@@ -308,10 +308,10 @@ export const WorkflowStepBlock = ({
                 onChange={(e) => handleFieldChange('target_department', e.target.value)}
                 className="bg-white text-gray-900 px-3 py-1 rounded-full text-xs font-bold shadow-inner border border-black/10 focus:outline-none cursor-pointer"
               >
-                <option value="Housekeeping">🧹 Buồng Phòng</option>
-                <option value="Food_and_Beverage">🍽️ Nhà Hàng & Bếp</option>
-                <option value="Front_Desk">🛎️ Lễ Tân</option>
-                <option value="Reception">🛎️ Tiếp Tân Sảnh</option>
+                <option value="Housekeeping">Buồng Phòng</option>
+                <option value="Food_and_Beverage">Nhà Hàng & Bếp</option>
+                <option value="Front_Desk">Lễ Tân</option>
+                <option value="Reception">Tiếp Tân Sảnh</option>
               </select>
               <span>phòng</span>
               <input
@@ -353,8 +353,8 @@ export const WorkflowStepBlock = ({
                 onChange={(e) => handleFieldChange('survey_type', e.target.value)}
                 className="bg-white text-gray-900 px-3 py-1 rounded-full text-xs font-bold shadow-inner border border-black/10 focus:outline-none cursor-pointer"
               >
-                <option value="5_STAR_RATING">⭐ 5 Ngôi Sao</option>
-                <option value="YES_NO">👍 Hài lòng/Không</option>
+                <option value="5_STAR_RATING">5 Ngôi Sao (Rating)</option>
+                <option value="YES_NO">Hài lòng / Không</option>
               </select>
               <span>câu hỏi</span>
               <input

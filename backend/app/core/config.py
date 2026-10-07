@@ -42,6 +42,13 @@ class Settings(BaseSettings):
     # Pi5 Camera Stream Configuration (MJPEG over SSH Tunnel)
     PI5_CAMERA_STREAM_URL: str = "http://localhost:8554/stream"
 
+    # Cloudinary Video Call Recording Storage Configuration
+    CLOUDINARY_CLOUD_NAME: Optional[str] = None
+    CLOUDINARY_API_KEY: Optional[str] = None
+    CLOUDINARY_API_SECRET: Optional[str] = None
+    CLOUDINARY_URL: Optional[str] = None
+    CLOUDINARY_FOLDER: str = "hcrobot/call_recordings"
+
     model_config = SettingsConfigDict(
         env_file=(".env", "backend/.env"), 
         env_file_encoding="utf-8", 

@@ -6,7 +6,7 @@
 ## 1. TỔNG QUAN CÔNG VIỆC ĐÃ HOÀN THÀNH
 
 ### ✅ Backend & Cơ Sở Dữ Liệu (PostgreSQL)
-- **Đã nạp 100% vào CSDL:** Toàn bộ **7 Core Workflows** (theo tài liệu `Stepflow.md`) đã được nạp thành công vào bảng `robot_workflows` trên PostgreSQL.
+- **Đã nạp 100% vào CSDL:** Toàn bộ **7 Core Workflows** (theo tài liệu [`stepflow.md`](./stepflow.md)) đã được nạp thành công vào bảng `robot_workflows` trên PostgreSQL.
 - **Tách file chuẩn kiến trúc (< 400 dòng):**
   - `backend/app/api/v1/endpoints/workflows.py`: **147 dòng** (Router điều phối API).
   - `backend/app/api/v1/endpoints/default_workflows.py`: **381 dòng** (Dữ liệu tĩnh nạp sẵn 7 Core Workflows).

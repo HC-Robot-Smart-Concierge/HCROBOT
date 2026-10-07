@@ -10,12 +10,7 @@ from sqlalchemy import select, desc
 from app.services.notification_manager import notification_manager
 from app.models import (
     Staff,
-    RoomServiceOrder,
-    HousekeepingRequest,
-    BellRequest,
-    MaintenanceRequest,
     ManagementDirective,
-    ReceptionRequest,
     Notification,
     SupportRequest,
     ServiceType,
@@ -27,17 +22,25 @@ from app.models import (
 # =====================================================================
 
 TAG_REC = ["05. Bộ phận Lễ tân & Đặt phòng (Front Desk & Reception)"]
-TAG_FB = ["06. Bộ phận Phục vụ phòng (F&B / Room Service)"]
-TAG_HK = ["07. Bộ phận Buồng phòng (Housekeeping Operations)"]
-TAG_BELL = ["08. Bộ phận Hành lý & Tiền sảnh (Bell Services)"]
-TAG_MNT = ["09. Bộ phận Kỹ thuật & Bảo trì (Facility Maintenance)"]
-TAG_REST = ["10. Bộ phận Nhà hàng (Restaurant - Đặt bàn & Đặt món)"]
-TAG_OPS = ["11. Quản lý Chung & Điều phối Nghiệp vụ (Operations & Directives)"]
-TAG_ADMIN = ["12. Trung tâm Điều hành & Quản trị (Admin & Human Support)"]
-TAG_NOTIF = ["13. Thông báo Hệ thống (Notifications)"]
-TAG_STAFF = ["15. Quản lý Phòng ban & Nhân sự (Departments & Staff)"]
-TAG_TAXI = ["16. Bộ phận Đặt xe & Vận chuyển (Taxi & Transportation)"]
-TAG_CONCIERGE = ["17. Bộ phận Trợ lý Concierge & Live Call (Concierge & Live Support)"]
+TAG_HK = ["06. Bộ phận Buồng phòng (Housekeeping Operations)"]
+TAG_BELL = ["07. Bộ phận Hành lý & Tiền sảnh (Bell Services)"]
+TAG_MNT = ["08. Bộ phận Kỹ thuật & Bảo trì (Facility Maintenance)"]
+TAG_ROOM_SERVICE = ["09. Bộ phận Phục vụ phòng (Room Service)"]
+TAG_FB = TAG_ROOM_SERVICE  # Backward compatibility alias
+TAG_KITCHEN = ["10. Bộ phận Bếp & Ẩm thực (Kitchen Operations & Menus)"]
+TAG_KITCHEN_FOOD_CATALOG = TAG_KITCHEN
+TAG_KITCHEN_MENU = TAG_KITCHEN
+TAG_KITCHEN_BOOKING = TAG_KITCHEN
+TAG_REST_BOOKING = TAG_KITCHEN
+TAG_REST_FOOD_CATALOG = TAG_KITCHEN
+TAG_REST_MENU = TAG_KITCHEN
+TAG_REST = TAG_KITCHEN  # Backward compatibility alias
+TAG_TAXI = ["11. Bộ phận Đặt xe & Vận chuyển (Taxi & Transportation)"]
+TAG_CONCIERGE = ["12. Bộ phận Trợ lý Concierge & Live Call (Concierge & Live Support)"]
+TAG_STAFF = ["13. Quản lý Phòng ban & Nhân sự (Departments & Staff)"]
+TAG_OPS = ["14. Quản lý Chung & Điều phối Nghiệp vụ (Operations & Directives)"]
+TAG_ADMIN = ["15. Trung tâm Điều hành & Quản trị (Admin & Human Support)"]
+TAG_NOTIF = ["16. Thông báo Hệ thống (Notifications)"]
 
 
 
@@ -150,31 +153,7 @@ async def _fetch_all_raw_requests(db: AsyncSession) -> List[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Error fetching SupportRequests: {e}")
 
-    # 2. Orders from RoomServiceOrder (F&B / ẩm thực phòng)
-    try:
-        orders_res = await db.execute(select(RoomServiceOrder).order_by(desc(RoomServiceOrder.created_at)))
-        for o in orders_res.scalars().all():
-            unified.append({
-                "id": f"REQ-{o.order_number}",
-                "raw_id": o.id,
-                "department": "F&B",
-                "table_type": "room_service",
-                "title": f"Order #{o.order_number}: {', '.join([i.get('name', 'Item') for i in o.items]) if o.items else 'Room Service'}",
-                "location": o.room_number,
-                "guestName": "Room Guest",
-                "priority": "NORMAL",
-                "status": o.status,
-                "time": o.created_at.strftime("%I:%M %p").lstrip("0") if o.created_at else "Recent",
-                "assignedTo": o.assigned_staff_name,
-                "assigned_robot": o.assigned_robot_id,
-                "notes": o.note,
-                "source": "Guest / Robot App",
-                "created_at": o.created_at,
-            })
-    except Exception as e:
-        logger.error(f"Error fetching RoomServiceOrders: {e}")
-
-    # 3. Directives from ManagementDirective (Chỉ thị vận hành)
+    # 2. Directives from ManagementDirective (Chỉ thị vận hành)
     try:
         dir_res = await db.execute(select(ManagementDirective).order_by(desc(ManagementDirective.created_at)))
         for d in dir_res.scalars().all():

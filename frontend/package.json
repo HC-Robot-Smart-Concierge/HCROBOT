@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:https": "cross-env HTTPS=true vite",
+    "tunnel": "npx cloudflared tunnel --url http://localhost:3000",
     "build": "vite build",
     "pwa:icons": "node scripts/generate-pwa-icons.mjs",
     "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0",

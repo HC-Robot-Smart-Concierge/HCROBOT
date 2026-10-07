@@ -1,15 +1,26 @@
+import os
+import sys
 from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.pool import NullPool
 
 from app.core.config import settings
+
+# In tests or CI, use NullPool so connections aren't tied to closed event loops
+engine_kwargs = {
+    "echo": False,
+    "future": True,
+}
+if os.getenv("TESTING") == "1" or "pytest" in sys.modules:
+    engine_kwargs["poolclass"] = NullPool
+else:
+    engine_kwargs["pool_pre_ping"] = True
 
 # Create Async SQLAlchemy Engine
 engine = create_async_engine(
     settings.async_database_url,
-    echo=False,
-    future=True,
-    pool_pre_ping=True,
+    **engine_kwargs
 )
 
 # Async Session Factory
@@ -41,9 +52,15 @@ async def init_db() -> None:
     from sqlalchemy import text
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        # An toàn cho database cũ: bổ sung cột thiếu nếu bảng đã tồn tại
         try:
-            await conn.execute(text("ALTER TABLE room_service_orders ADD COLUMN IF NOT EXISTS is_vip BOOLEAN DEFAULT FALSE;"))
+            await conn.execute(text("ALTER TABLE human_support_sessions ADD COLUMN IF NOT EXISTS chat_session_id VARCHAR(64);"))
+            await conn.execute(text("ALTER TABLE human_support_sessions ADD COLUMN IF NOT EXISTS account_id VARCHAR(50);"))
+            await conn.execute(text("ALTER TABLE human_support_sessions ADD COLUMN IF NOT EXISTS recording_url TEXT;"))
+            await conn.execute(text("ALTER TABLE human_support_sessions ADD COLUMN IF NOT EXISTS recording_public_id VARCHAR(150);"))
+            await conn.execute(text("ALTER TABLE human_support_sessions ADD COLUMN IF NOT EXISTS recording_duration INTEGER;"))
+            await conn.execute(text("ALTER TABLE human_support_sessions ADD COLUMN IF NOT EXISTS thumbnail_url TEXT;"))
+            await conn.execute(text("ALTER TABLE human_support_sessions ADD COLUMN IF NOT EXISTS call_started_at TIMESTAMP;"))
+            await conn.execute(text("ALTER TABLE human_support_sessions ADD COLUMN IF NOT EXISTS call_ended_at TIMESTAMP;"))
         except Exception:
             pass
 

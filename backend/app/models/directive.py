@@ -1,10 +1,13 @@
 import uuid
 from datetime import datetime
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 from sqlalchemy import String, Integer, DateTime, Boolean, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+
+if TYPE_CHECKING:
+    from app.models.account import Account
 
 
 class ManagementDirective(Base):
@@ -21,9 +24,9 @@ class ManagementDirective(Base):
     description: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     status: Mapped[str] = mapped_column(String(50), default="Unassigned") # 'Unassigned', 'In Progress', 'Completed'
 
-    # TODO (Phase sau): Kích hoạt khi chạy migration thêm 2 cột này vào bảng management_directives trong DB
-    # assigned_account_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True, index=True)
-    # created_by_account_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True, index=True)
+    account_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True, index=True)
+    assigned_account_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True, index=True)
+    created_by_account_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True, index=True)
 
     assigned_staff_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     assigned_eta: Mapped[Optional[str]] = mapped_column(String(20), nullable=True) # e.g. '5m'
@@ -35,10 +38,11 @@ class ManagementDirective(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    # TODO (Phase sau): Kích hoạt quan hệ khi DB đã có 2 foreign key trên
-    # assigned_account: Mapped[Optional["Account"]] = relationship(
-    #     "Account", foreign_keys="ManagementDirective.assigned_account_id", back_populates="directives_assigned"
-    # )
-    # created_by_account: Mapped[Optional["Account"]] = relationship(
-    #     "Account", foreign_keys="ManagementDirective.created_by_account_id", back_populates="directives_created"
-    # )
+    # Relationships
+    account: Mapped[Optional["Account"]] = relationship("Account", foreign_keys=[account_id])
+    assigned_account: Mapped[Optional["Account"]] = relationship("Account", foreign_keys=[assigned_account_id])
+    created_by_account: Mapped[Optional["Account"]] = relationship("Account", foreign_keys=[created_by_account_id])
+
+
+# Backward compatibility alias
+ManageDirective = ManagementDirective

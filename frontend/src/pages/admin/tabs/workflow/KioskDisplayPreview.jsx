@@ -14,6 +14,8 @@ import {
   Check,
   ChevronRight,
   Volume2,
+  Bot,
+  Mic,
 } from 'lucide-react';
 import { KioskServiceForm } from './KioskServiceForm';
 import { KioskStaffAlert } from './KioskStaffAlert';
@@ -40,10 +42,10 @@ export const KioskDisplayPreview = ({
   if (!activeStep) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center text-center p-6 text-stone-500 text-xs">
-        <span className="text-3xl mb-2">🤖</span>
+        <Bot className="w-8 h-8 mb-2 text-stone-400" />
         <span className="font-bold text-stone-700">Robot đang ở chế độ chờ (Idle Standby)</span>
         <span className="text-[11px] mt-1 text-stone-500">
-          Nhấn nút ▶ Chạy thử kịch bản để bắt đầu chu trình!
+          Nhấn nút Chạy thử kịch bản để bắt đầu chu trình!
         </span>
       </div>
     );
@@ -188,9 +190,8 @@ export const KioskDisplayPreview = ({
                 <div className="p-3 rounded-2xl bg-white border border-stone-200 shadow-sm hover:shadow-md hover:border-amber-400 transition-all space-y-1.5 group">
                   <div className="flex items-center justify-between">
                     <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
-                      ⭐ Chef's Signature
+                      Chef's Signature
                     </span>
-                    <span className="text-base">🫖</span>
                   </div>
                   <div className="text-xs font-bold text-stone-900 group-hover:text-amber-700 transition-colors">
                     Set Trà Chiều Hoàng Gia
@@ -208,9 +209,8 @@ export const KioskDisplayPreview = ({
                 <div className="p-3 rounded-2xl bg-white border border-stone-200 shadow-sm hover:shadow-md hover:border-amber-400 transition-all space-y-1.5 group">
                   <div className="flex items-center justify-between">
                     <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
-                      🔥 Best Seller
+                      Best Seller
                     </span>
-                    <span className="text-base">🦞</span>
                   </div>
                   <div className="text-xs font-bold text-stone-900 group-hover:text-amber-700 transition-colors">
                     Buffet Hải Sản Thượng Hạng
@@ -342,17 +342,17 @@ export const KioskDisplayPreview = ({
         <div className="flex flex-col items-center justify-center py-5 space-y-3 animate-in fade-in duration-300">
           {/* Luminous Pulsing Mic Orb */}
           <div className="relative w-20 h-20 flex items-center justify-center">
-            <div className="absolute inset-0 rounded-full bg-amber-400/20 animate-ping opacity-60" />
-            <div className="absolute inset-2 rounded-full bg-gradient-to-tr from-amber-400/30 to-orange-400/30 animate-pulse" />
-            <div className="w-14 h-14 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 text-white flex items-center justify-center shadow-lg shadow-amber-400/40 text-xl font-bold">
-              🎙️
+            <div className="absolute inset-0 rounded-full bg-stone-300/30 animate-ping opacity-60" />
+            <div className="absolute inset-2 rounded-full bg-stone-200/50 animate-pulse" />
+            <div className="w-14 h-14 rounded-full bg-[#262626] text-[#F2EFE9] flex items-center justify-center shadow-lg text-xl font-bold">
+              <Mic className="w-6 h-6" />
             </div>
           </div>
 
           <div className="text-center space-y-1">
             <h4 className="text-sm font-black text-stone-900 flex items-center justify-center gap-1.5">
               <span>Đang Lắng Nghe Qua Micro Máy Tính</span>
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="w-2 h-2 rounded-full bg-[#262626] animate-pulse" />
             </h4>
             <p className="text-xs text-stone-600 max-w-md mx-auto">
               {params.prompt_hint || 'Quý khách vui lòng nói yêu cầu hoặc chạm màn hình để chọn...'}
@@ -361,8 +361,8 @@ export const KioskDisplayPreview = ({
 
           {/* Real-time Laptop Speech Transcript Display */}
           {transcript && transcript.trim() ? (
-            <div className="w-full max-w-md p-3.5 rounded-2xl bg-white border-2 border-amber-400 shadow-md text-left animate-in zoom-in-95">
-              <span className="text-[10px] font-black uppercase text-amber-600 flex items-center gap-1">
+            <div className="w-full max-w-md p-3.5 rounded-2xl bg-white border border-[#BFBFBD] shadow-md text-left animate-in zoom-in-95">
+              <span className="text-[10px] font-black uppercase text-[#262626] flex items-center gap-1">
                 <Volume2 className="w-3.5 h-3.5" />
                 Nội dung vừa nhận diện từ giọng nói:
               </span>
@@ -372,7 +372,7 @@ export const KioskDisplayPreview = ({
             </div>
           ) : (
             <div className="flex items-center gap-2 text-[11px] text-stone-500 bg-white/80 px-3 py-1.5 rounded-full border border-stone-200">
-              <Clock className="w-3.5 h-3.5 text-amber-600" />
+              <Clock className="w-3.5 h-3.5 text-stone-600" />
               <span>Chờ phản hồi trong {params.timeout || params.timeout_sec || 15} giây</span>
             </div>
           )}
@@ -396,13 +396,13 @@ export const KioskDisplayPreview = ({
         params.service_type === 'CALL_STAFF' || params.urgency === 'HIGH' ? (
           <KioskStaffAlert activeStep={activeStep} />
         ) : (
-          <div className="p-4 rounded-2xl bg-white border border-orange-200 shadow-md space-y-2.5 animate-in fade-in duration-300">
+          <div className="p-4 rounded-2xl bg-white border border-stone-300 shadow-md space-y-2.5 animate-in fade-in duration-300">
             <div className="flex items-center justify-between text-xs font-bold">
-              <span className="text-orange-600 flex items-center gap-1.5 font-extrabold">
+              <span className="text-[#262626] flex items-center gap-1.5 font-extrabold">
                 <Send className="w-4 h-4" />
                 PHIẾU DỊCH VỤ #{params.room_number ? `REQ-${params.room_number}` : 'REQ-882'}
               </span>
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-orange-100 text-orange-800 border border-orange-200 font-mono">
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-stone-100 text-stone-800 border border-stone-300 font-mono">
                 {params.urgency || params.ticket_priority || 'NORMAL'}
               </span>
             </div>
@@ -417,19 +417,18 @@ export const KioskDisplayPreview = ({
                 Ghi chú: <em>"{params.note}"</em>
               </div>
             )}
-            <div className="flex items-center gap-1.5 text-xs text-emerald-700 font-bold pt-1">
-              <CheckCircle className="w-4 h-4 text-emerald-600" />
+            <div className="flex items-center gap-1.5 text-xs text-[#262626] font-bold pt-1">
+              <CheckCircle className="w-4 h-4 text-[#262626]" />
               <span>Hệ thống buồng phòng đã tiếp nhận yêu cầu</span>
             </div>
           </div>
         )
       )}
 
-      {/* 6. FEEDBACK: 5-STAR INTERACTIVE (Luminous Champagne Gold) */}
+      {/* 6. FEEDBACK: 5-STAR INTERACTIVE */}
       {activeStep.type === 'FEEDBACK' && (
         <div className="flex flex-col items-center justify-center py-4 space-y-3 animate-in fade-in duration-300">
           <div className="text-center space-y-1">
-            <span className="text-2xl">✨</span>
             <h4 className="text-sm font-extrabold text-stone-900 px-3">
               {params.question_text || 'Quý khách có hài lòng với sự hỗ trợ của Robot không?'}
             </h4>
@@ -451,8 +450,8 @@ export const KioskDisplayPreview = ({
                 <Star
                   className={`w-8 h-8 transition-colors ${
                     star <= feedbackRating
-                      ? 'fill-amber-400 text-amber-400 drop-shadow-[0_2px_8px_rgba(251,191,36,0.6)]'
-                      : 'text-stone-300 hover:text-amber-200'
+                      ? 'fill-stone-800 text-stone-800'
+                      : 'text-stone-300 hover:text-stone-400'
                   }`}
                 />
               </button>
@@ -460,11 +459,11 @@ export const KioskDisplayPreview = ({
           </div>
 
           {hasRated ? (
-            <div className="p-3 rounded-2xl bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-300 text-emerald-900 text-xs font-bold text-center animate-in zoom-in-95 shadow-sm max-w-md">
-              🎉 {params.thank_you_message || 'Cảm ơn quý khách đã đánh giá! Chúc quý khách một kỳ nghỉ tuyệt vời tại Aurora.'}
+            <div className="p-3 rounded-2xl bg-stone-100 border border-stone-300 text-stone-900 text-xs font-bold text-center animate-in zoom-in-95 shadow-sm max-w-md">
+              {params.thank_you_message || 'Cảm ơn quý khách đã đánh giá! Chúc quý khách một kỳ nghỉ tuyệt vời tại Aurora.'}
             </div>
           ) : (
-            <span className="text-[11px] font-semibold text-amber-700 bg-amber-50 px-3 py-1 rounded-full border border-amber-200">
+            <span className="text-[11px] font-semibold text-stone-700 bg-stone-100 px-3 py-1 rounded-full border border-stone-300">
               Chạm vào số sao để gửi đánh giá
             </span>
           )}

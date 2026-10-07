@@ -3,8 +3,8 @@
 // Connects React Frontend with FastAPI Backend (/api/v1/operations/restaurant)
 // =====================================================================
 
-const BASE_URL = '/api/v1/operations/restaurant';
-const DASHBOARD_URL = '/api/v1/operations/dashboard/restaurant';
+const BASE_URL = '/api/v1/operations/kitchen';
+const DASHBOARD_URL = '/api/v1/operations/dashboard/kitchen';
 
 async function fetchWithFallback(url, options = {}, fallbackData = null) {
   try {
@@ -160,5 +160,84 @@ export async function createRestaurantMenuItem(itemData) {
       body: JSON.stringify(itemData),
     },
     { id: `item_${Date.now()}`, ...itemData }
+  );
+}
+
+/**
+ * 11. Lay danh muc tat ca mon an goc toan khach san (Master Food Items - Diagram 2)
+ */
+export async function fetchRestaurantFoodItems(category = null, search = null) {
+  const params = new URLSearchParams();
+  if (category) params.append('category', category);
+  if (search) params.append('search', search);
+  const qs = params.toString() ? `?${params.toString()}` : '';
+  return await fetchWithFallback(`${BASE_URL}/food-items${qs}`, {}, []);
+}
+
+/**
+ * 12. Tao moi mot mon an goc vao danh muc tong the (Master Food Item)
+ */
+export async function createRestaurantFoodItem(foodData) {
+  return await fetchWithFallback(
+    `${BASE_URL}/food-items`,
+    {
+      method: 'POST',
+      body: JSON.stringify(foodData),
+    },
+    { id: `food_${Date.now()}`, ...foodData }
+  );
+}
+
+/**
+ * 13. Cap nhat mon an goc
+ */
+export async function updateRestaurantFoodItem(foodId, foodData) {
+  return await fetchWithFallback(
+    `${BASE_URL}/food-items/${encodeURIComponent(foodId)}`,
+    {
+      method: 'PUT',
+      body: JSON.stringify(foodData),
+    },
+    { id: foodId, ...foodData }
+  );
+}
+
+/**
+ * 14. Xoa mon an goc khoi danh muc
+ */
+export async function deleteRestaurantFoodItem(foodId) {
+  return await fetchWithFallback(
+    `${BASE_URL}/food-items/${encodeURIComponent(foodId)}`,
+    {
+      method: 'DELETE',
+    },
+    { detail: 'Success', id: foodId }
+  );
+}
+
+/**
+ * 15. Gan mon an goc vao mot thuc don cu the voi don gia rieng
+ */
+export async function assignFoodItemToMenu(menuId, assignData) {
+  return await fetchWithFallback(
+    `${BASE_URL}/menus/${encodeURIComponent(menuId)}/items`,
+    {
+      method: 'POST',
+      body: JSON.stringify(assignData),
+    },
+    { id: `item_${Date.now()}`, menu_id: menuId, ...assignData }
+  );
+}
+
+/**
+ * 16. Go mon an khoi mot thuc don cu the
+ */
+export async function removeFoodItemFromMenu(menuId, menuItemId) {
+  return await fetchWithFallback(
+    `${BASE_URL}/menus/${encodeURIComponent(menuId)}/items/${encodeURIComponent(menuItemId)}`,
+    {
+      method: 'DELETE',
+    },
+    { detail: 'Success', menu_id: menuId, menu_item_id: menuItemId }
   );
 }

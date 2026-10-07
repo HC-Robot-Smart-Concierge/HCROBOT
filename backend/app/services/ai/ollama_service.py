@@ -97,6 +97,26 @@ class OllamaService:
 
         prompt_lower = prompt.lower().strip()
 
+        # PRE-CHECK: Nếu câu nói chứa từ khóa HÀNH ĐỘNG dịch vụ → Bỏ qua fast-path,
+        # để Intent Router + Service FSM xử lý đúng (đặt bàn, gọi xe, sửa phòng...)
+        service_action_verbs = [
+            "đặt", "cần", "muốn", "yêu cầu", "gọi cho", "gọi", "gặp", "kết nối", "nói chuyện",
+            "book", "order", "reserve", "need", "call", "talk", "speak", "connect"
+        ]
+        service_nouns = [
+            "nhà hàng", "nha hang", "bàn ăn", "ban an", "đặt bàn", "đặt món",
+            "taxi", "xe", "sân bay",
+            "dọn phòng", "don phong", "khăn", "gối", "chăn",
+            "sửa", "hỏng", "bảo trì", "điều hòa", "máy lạnh",
+            "hành lý", "vali", "chuyển phòng",
+            "concierge", "video call", "live call", "gọi video", "nhân viên", "người thật", "tổng đài",
+            "lễ tân", "check in", "check out", "trả phòng", "staff", "human", "receptionist", "live agent"
+        ]
+        has_action_verb = any(v in prompt_lower for v in service_action_verbs)
+        has_service_noun = any(n in prompt_lower for n in service_nouns)
+        if has_action_verb and has_service_noun:
+            logger.info(f"[OllamaService Fast-Path Bypass] Service intent detected, skipping fast-path for: '{prompt[:40]}'")
+            return None
         # Chuẩn hóa các biến thể nhận diện giọng nói STT
         normalized = prompt_lower.replace("wi-fi", "wifi").replace("wi fi", "wifi")
         normalized = re.sub(r'[\?\.\,\!\\_\:\;]', ' ', normalized)

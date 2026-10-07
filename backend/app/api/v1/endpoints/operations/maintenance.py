@@ -1,19 +1,19 @@
 import random
 from datetime import datetime
 from typing import List, Dict, Any, Optional
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc, or_
 
 from app.core.database import get_db
-from app.models import Staff, SupportRequest, ManagementDirective, InventoryStock
+from app.models import Staff, SupportRequest, ManagementDirective
 from app.schemas.operations import (
     MaintenanceRequestCreate,
+    MaintenanceRequestStatusUpdate,
     MaintenanceRequestResponse,
     MaintenanceDashboardResponse,
     DirectiveCreate,
     DirectiveResponse,
-    InventoryStockResponse,
 )
 from .shared import TAG_MNT, TAG_OPS, create_department_notification
 
@@ -107,14 +107,41 @@ async def get_maintenance_dashboard(db: AsyncSession = Depends(get_db)):
     }
 
 
+@router.get(
+    "/maintenance/requests",
+    response_model=List[MaintenanceRequestResponse],
+    tags=TAG_MNT,
+    summary="Danh sách toàn bộ yêu cầu Kỹ thuật & Bảo trì",
+)
+async def list_maintenance_requests(
+    status: Optional[str] = Query(None, description="Lọc theo trạng thái yêu cầu"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Lấy danh sách các sự cố kỹ thuật và bảo trì."""
+    stmt = (
+        select(SupportRequest)
+        .where(
+            or_(
+                SupportRequest.department_id == "DEP-MAINTENANCE",
+                SupportRequest.service_type_id == "ST-MAINTENANCE",
+            )
+        )
+        .order_by(desc(SupportRequest.created_at))
+    )
+    if status and status not in ("All", ""):
+        stmt = stmt.where(SupportRequest.status == status)
+    res = await db.execute(stmt)
+    return res.scalars().all()
+
+
 @router.post(
     "/maintenance/requests",
     response_model=MaintenanceRequestResponse,
     status_code=status.HTTP_201_CREATED,
     tags=TAG_MNT,
-    summary="Tạo mới phiếu yêu cầu bảo trì / sửa chữa thiết bị",
+    summary="Tạo mới yêu cầu xử lý sự cố kỹ thuật",
     responses={
-        201: {"description": "Tạo ticket kỹ thuật thành công và lưu vào bảng support_requests."}
+        201: {"description": "Tạo ticket sự cố kỹ thuật thành công và lưu vào bảng support_requests."}
     },
 )
 async def create_maintenance_request(req_in: MaintenanceRequestCreate, db: AsyncSession = Depends(get_db)):
@@ -151,6 +178,42 @@ async def create_maintenance_request(req_in: MaintenanceRequestCreate, db: Async
     return new_req
 
 
+@router.get(
+    "/maintenance/requests/{request_id}",
+    response_model=MaintenanceRequestResponse,
+    tags=TAG_MNT,
+    summary="Xem chi tiết một yêu cầu Kỹ thuật & Bảo trì",
+    responses={
+        200: {"description": "Lấy chi tiết yêu cầu sự cố kỹ thuật thành công."},
+        404: {"description": "Không tìm thấy yêu cầu kỹ thuật."},
+    },
+)
+async def get_maintenance_request(
+    request_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    ### Mô tả nghiệp vụ:
+    Tra cứu chi tiết một sự cố hoặc yêu cầu kỹ thuật theo `request_id` (ID hệ thống hoặc mã `ticket_code` như `MN-101`).
+    """
+    clean_id = request_id.replace("REQ-", "").replace("MN-", "").strip()
+    res = await db.execute(
+        select(SupportRequest).where(
+            or_(
+                SupportRequest.id == request_id,
+                SupportRequest.ticket_code == request_id,
+                SupportRequest.id == clean_id,
+                SupportRequest.ticket_code == clean_id,
+                SupportRequest.ticket_code == f"MN-{clean_id}",
+            )
+        )
+    )
+    req = res.scalar_one_or_none()
+    if not req:
+        raise HTTPException(status_code=404, detail="Không tìm thấy yêu cầu kỹ thuật")
+    return req
+
+
 @router.patch(
     "/maintenance/requests/{request_id}/status",
     response_model=MaintenanceRequestResponse,
@@ -161,10 +224,17 @@ async def create_maintenance_request(req_in: MaintenanceRequestCreate, db: Async
         404: {"description": "Không tìm thấy yêu cầu kỹ thuật."}
     },
 )
+@router.patch(
+    "/maintenance/requests/{request_id}",
+    response_model=MaintenanceRequestResponse,
+    tags=TAG_MNT,
+    include_in_schema=False,
+)
 async def update_maintenance_request_status(
     request_id: str,
-    status: str,
-    assigned_to: Optional[str] = None,
+    status: Optional[str] = Query(None),
+    assigned_to: Optional[str] = Query(None),
+    update_in: Optional[MaintenanceRequestStatusUpdate] = Body(None),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -187,9 +257,17 @@ async def update_maintenance_request_status(
     if not req:
         raise HTTPException(status_code=404, detail="Không tìm thấy yêu cầu Kỹ thuật")
 
-    req.status = status
-    if assigned_to:
-        req.assigned_staff_name = assigned_to
+    target_status = status
+    target_assigned = assigned_to
+    if update_in:
+        if update_in.status:
+            target_status = update_in.status
+        target_assigned = update_in.assigned_to or update_in.assigned_technician or target_assigned
+
+    if target_status:
+        req.status = target_status
+    if target_assigned:
+        req.assigned_staff_name = target_assigned
     req.updated_at = datetime.utcnow()
 
     await db.commit()
@@ -228,33 +306,3 @@ async def create_operational_directive(dir_in: DirectiveCreate, db: AsyncSession
     await db.refresh(new_dir)
     return new_dir
 
-
-@router.patch(
-    "/stock/{stock_id}/restock",
-    response_model=InventoryStockResponse,
-    tags=TAG_OPS,
-    summary="Nhập bổ sung kho vật tư kỹ thuật & tiện ích",
-)
-
-async def restock_inventory(
-    stock_id: str,
-    add_quantity: int = 10,
-    db: AsyncSession = Depends(get_db),
-):
-    """Cập nhật số lượng tồn kho vật tư."""
-    res = await db.execute(select(InventoryStock).where(InventoryStock.id == stock_id))
-    stock = res.scalar_one_or_none()
-    if not stock:
-        raise HTTPException(status_code=404, detail="Vật tư không tồn tại")
-
-    stock.quantity += add_quantity
-    if stock.quantity > stock.min_threshold:
-        stock.level = "normal"
-    elif stock.quantity > 5:
-        stock.level = "low"
-    else:
-        stock.level = "critical"
-
-    await db.commit()
-    await db.refresh(stock)
-    return stock

@@ -7,6 +7,10 @@ import {
   User,
   LogOut,
   Home,
+  PhoneCall,
+  Film,
+  Car,
+  Star,
 } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
 
@@ -32,13 +36,23 @@ export const AuroraSidebar = ({
     roleLower.includes('concierge') ||
     defaultDashLower === 'concierge';
 
-  const staffNavItems = [
-    { id: 'Dashboard', label: t('menuDashboard'), icon: LayoutDashboard },
-    { id: 'Requests', label: t('menuRequests'), icon: Inbox },
-    ...(isConcierge ? [{ id: 'History', label: t('menuHistory'), icon: History }] : []),
-    { id: 'Notifications', label: t('menuNotifications'), icon: Bell },
-    { id: 'Profile', label: t('menuProfile'), icon: User },
-  ];
+  const staffNavItems = isConcierge
+    ? [
+        { id: 'LiveCalls', label: 'Tổng đài Live Call', icon: PhoneCall },
+        { id: 'Recordings', label: 'Bản ghi cuộc gọi', icon: Film },
+        { id: 'Taxi', label: 'Điều phối đặt xe', icon: Car },
+        { id: 'Feedback', label: 'Đánh giá dịch vụ', icon: Star },
+        { id: 'Requests', label: t('menuRequests') || 'Yêu cầu', icon: Inbox },
+        { id: 'History', label: t('menuHistory') || 'Lịch sử', icon: History },
+        { id: 'Notifications', label: t('menuNotifications') || 'Thông báo', icon: Bell },
+        { id: 'Profile', label: t('menuProfile') || 'Hồ sơ', icon: User },
+      ]
+    : [
+        { id: 'Dashboard', label: t('menuDashboard') || 'Tổng quan', icon: LayoutDashboard },
+        { id: 'Requests', label: t('menuRequests') || 'Yêu cầu', icon: Inbox },
+        { id: 'Notifications', label: t('menuNotifications') || 'Thông báo', icon: Bell },
+        { id: 'Profile', label: t('menuProfile') || 'Hồ sơ', icon: User },
+      ];
 
   return (
     <aside

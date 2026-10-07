@@ -136,9 +136,21 @@ STAFF_ACCOUNTS = [
         "shift": "Morning Shift (06:00 - 14:00)",
     },
     {
+        "username": "concierge",
+        "code": "CCG01",
+        "full_name": "Elena Rossi",
+        "role": "Concierge Specialist",
+        "department": "Concierge & Live Support",
+        "department_id": "DEP-CONCIERGE",
+        "default_dashboard": "concierge",
+        "location": "Concierge Lounge",
+        "status": "available",
+        "shift": "Morning Shift (06:00 - 14:00)",
+    },
+    {
         "username": "concierge_lead",
         "code": "CCG",
-        "full_name": "Elena Rossi",
+        "full_name": "Elena Rossi (Lead)",
         "role": "Concierge Specialist",
         "department": "Concierge & Live Support",
         "department_id": "DEP-CONCIERGE",
@@ -179,10 +191,10 @@ async def seed_departments_and_services(session):
         ("DEP-HOUSEKEEPING", "HOUSEKEEPING", "Housekeeping", "Dịch vụ buồng phòng và dọn dẹp"),
         ("DEP-BELL", "BELL", "Bell Services", "Vận chuyển hành lý và hỗ trợ sảnh"),
         ("DEP-TAXI", "TAXI", "Taxi", "Điều phối taxi và đưa đón di chuyển"),
-        ("DEP-FB", "FB", "Food & Beverage", "Ẩm thực và phục vụ phòng Room Service"),
+        ("DEP-ROOMSERVICE", "ROOMSERVICE", "Room Service", "Bộ phận Phục vụ phòng (Room Service)"),
         ("DEP-MAINTENANCE", "MAINTENANCE", "Maintenance", "Kỹ thuật và bảo trì trang thiết bị"),
         ("DEP-EXECUTIVE", "EXECUTIVE", "Executive", "Ban quản trị và điều hành khách sạn"),
-        ("DEP-RESTAURANT", "RESTAURANT", "Restaurant", "Bộ phận Nhà hàng, Đặt bàn & Gọi món trước"),
+        ("DEP-KITCHEN", "KITCHEN", "Kitchen", "Bộ phận Bếp & Chế biến ẩm thực (Kitchen Operations)"),
     ]
     for d_id, d_code, d_name, d_desc in deps:
         d = await session.get(Department, d_id)
@@ -199,7 +211,7 @@ async def seed_departments_and_services(session):
         ("ST-BELL", "BELL_SERVICE", "Dịch vụ Bellman & Hành lý", "DEP-BELL", "Khuân vác hành lý check-in / check-out", "NORMAL"),
         ("ST-TAXI", "TAXI", "Dịch vụ Đặt xe & Taxi", "DEP-TAXI", "Gọi xe taxi hoặc đưa đón sân bay", "NORMAL"),
         ("ST-MAINTENANCE", "MAINTENANCE", "Dịch vụ Kỹ thuật & Bảo trì", "DEP-MAINTENANCE", "Bảo trì điều hòa nhiệt độ, điện nước", "HIGH"),
-        ("ST-ROOM-SERVICE", "ROOM_SERVICE", "Dịch vụ Ẩm thực & Phục vụ phòng", "DEP-FB", "Phục vụ đồ ăn thức uống tại phòng", "NORMAL"),
+        ("ST-ROOM-SERVICE", "ROOM_SERVICE", "Dịch vụ Ẩm thực & Phục vụ phòng", "DEP-ROOMSERVICE", "Phục vụ đồ ăn thức uống tại phòng", "NORMAL"),
     ]
     for s_id, s_code, s_name, s_dep, s_desc, s_prio in services:
         s = await session.get(ServiceType, s_id)
@@ -634,20 +646,8 @@ def seed_chroma():
 # 6b. WAYPOINTS & WORKFLOWS
 # ==============================================================================
 async def seed_waypoints_and_workflows(session):
-    logger.info("📍 [6b/7] Seeding Default Robot Waypoints...")
-    wp_check = await session.execute(select(RobotWaypoint).limit(1))
-    if wp_check.scalar_one_or_none() is None:
-        default_waypoints = [
-            RobotWaypoint(id="wp-reception", name="Quầy Lễ Tân", x=0.0, y=0.0, yaw=0.0, floor="Sảnh Tầng 1", type="DOCKING_TARGET", description="Điểm dừng tiếp đón khách và làm thủ tục check-in sảnh chính"),
-            RobotWaypoint(id="wp-lounge", name="Sảnh Lounge & Coffee", x=2.5, y=4.0, yaw=90.0, floor="Sảnh Tầng 1", type="SERVICE_STATION", description="Khu vực nghỉ chờ và thưởng thức đồ uống sảnh chính"),
-            RobotWaypoint(id="wp-vip-table", name="Bàn Tiếp Khách VIP 01", x=5.0, y=2.5, yaw=45.0, floor="Sảnh Tầng 1", type="GUEST_TABLE", description="Khu vực bàn tiếp đón khách VIP tại sảnh Tầng 1"),
-            RobotWaypoint(id="wp-elevator", name="Sảnh Thang Máy A", x=-3.0, y=5.0, yaw=180.0, floor="Sảnh Tầng 1", type="WAYPOINT", description="Điểm mốc điều hướng robot tại hành lang thang máy sảnh Tầng 1"),
-        ]
-        session.add_all(default_waypoints)
-        await session.commit()
-        logger.info("   ✅ Seeded 4 default waypoints.")
-    else:
-        logger.info("   ℹ️ Waypoints already exist, skipping.")
+    logger.info("📍 [6b/7] Skipping default map waypoints (Clean slate for custom mapping).")
+
 
 
 # ==============================================================================

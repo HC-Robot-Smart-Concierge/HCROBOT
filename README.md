@@ -21,8 +21,10 @@
    - [Bước 5: Cấu Hình & Khởi Chạy Robot Node (Raspberry Pi 5 + ROS 2)](#bước-5-cấu-hình--khởi-chạy-robot-node-raspberry-pi-5--ros-2)
    - [Bước 6: Cấu Hình & Mở Camera Stream (Pi 5 <-> Laptop)](#bước-6-cấu-hình--mở-camera-stream-pi-5--laptop)
    - [Bước 7: Quy Trình Tạo Map SLAM & Điều Hướng Nav2 (Pi 5 <-> Laptop WSL2 <-> Web Admin)](#bước-7-quy-trình-tạo-map-slam--điều-hướng-nav2-pi-5--laptop-wsl2--web-admin)
+   - [Bước 8: Khởi Chạy Giả Lập 3D & Tự Hành Né Vật Cản (Gazebo Sim + RViz2 LiDAR)](#bước-8-khởi-chạy-giả-lập-3d--tự-hành-né-vật-cản-gazebo-sim--rviz2-lidar)
 5. [Giao Tiếp Real-time, APIs & ROS 2 Topics](#5-giao-tiếp-real-time-apis--ros-2-topics)
 6. [Triển Khai Production Với Docker Compose](#6-triển-khai-production-với-docker-compose)
+7. [Tài Liệu Kỹ Thuật Chuyên Sâu (Documentation Index)](#7-tài-liệu-kỹ-thuật-chuyên-sâu-documentation-index)
 
 ---
 
@@ -70,6 +72,7 @@
 ### B. Frontend Web & PWA Console (ReactJS + Vite + Tailwind CSS)
 - **Role**: Cung cấp giao diện web & PWA đa nền tảng (hỗ trợ màn hình Robot, Laptop Admin, Smartphone của Staff/Guest):
   1. **Robot Screen Display & PWA Face**: Màn hình cảm ứng trên thân Robot (hoặc Điện thoại PWA) với avatar biểu cảm Lottie linh hoạt (Listening, Speaking, Thinking, Idle), menu dịch vụ nhanh.
+     - **Bảo mật Kiosk chuyên nghiệp (Zero-Exposure UI)**: Ẩn hoàn toàn nút đăng xuất khỏi tầm mắt khách hàng. Nhân viên & Kỹ thuật viên thoát ứng dụng bằng cử chỉ **Secret Multi-Tap** (Gõ 5 lần liên tiếp trong 2 giây vào Logo hoặc góc màn hình trên cả Web Kiosk và App PWA) hoặc phím tắt `Ctrl + Shift + L`, kết hợp nhập mật khẩu bảo vệ 2 lớp.
   2. **Staff Dashboard**: Web console cho nhân viên nhận thông báo và xử lý Ticket dịch vụ, phản hồi WebRTC Call khi Robot báo động.
   3. **Admin Console & Teleop**: Quản trị người dùng, quản lý tài liệu RAG Knowledge Base, xem bản đồ LiDAR 2D SLAM và bộ điều khiển di chuyển Robot từ xa (Manual Nudge Teleop).
 
@@ -126,8 +129,12 @@ HC-Robot/
 │           ├── hc_robot_client/# Python nodes (ai_bridge_node, telemetry_node)
 │           ├── config/         # settings.yaml (IP Tailscale Server)
 │           └── package.xml     # ROS 2 package dependencies
+├── docs/                       # Hệ thống tài liệu kỹ thuật chuẩn hóa (guides/, workflows/)
+│   ├── guides/                 # Hướng dẫn ROS 2 phân tán, AI pipeline, Alembic, Ultrasonic
+│   ├── workflows/              # Đặc tả kịch bản tương tác (Stepflow) & biên bản bàn giao
+│   └── README.md               # Trung tâm chỉ mục tài liệu (Docs Index)
 ├── start_all.bat               # Windows Batch Script khởi chạy nhanh Backend & Frontend
-├── LIDAR_SLAM_GUIDE.md         # Hướng dẫn kiến trúc & quy trình LiDAR SLAM phân tán (Laptop Off-board)
+├── stop_all.bat                # Windows Batch Script dừng an toàn toàn bộ tiến trình
 ├── .gitignore                  # Git Ignore rule cho toàn dự án
 └── README.md                   # Tài liệu hướng dẫn Master HCRobot System (File này)
 ```
@@ -323,9 +330,20 @@ Nếu không muốn mở nhiều cửa sổ terminal thủ công:
 
 ---
 
+#### CÁCH 3: KHỞI CHẠY GIẢ LẬP 3D & DEMO TỰ HÀNH NÉ VẬT CẢN (1-CLICK BATCH)
+Nếu muốn chạy thử nghiệm toàn bộ hệ thống Robot tự hành trong thế giới ảo 3D mà không cần kết nối Raspberry Pi 5 vật lý:
+- Nhấp đúp chuột vào file:
+  ```text
+  demo_tu_hanh.bat
+  ```
+- Hệ thống sẽ tự động khởi động đồng thời **Gazebo Sim 8**, **ROS 2 Parameter Bridge**, **RViz2 (Chùm tia Laser LiDAR 360°)** và node điều hướng tự hành **Artificial Potential Field (APF)** tuần tra né vật cản.
+- Xem chi tiết tại [Bước 8: Khởi Chạy Giả Lập 3D](#bước-8-khởi-chạy-giả-lập-3d--tự-hành-né-vật-cản-gazebo-sim--rviz2-lidar).
+
+---
+
 ### Bước 5: Cấu Hình & Khởi Chạy Robot Node (Raspberry Pi 5 + ROS 2)
 
-Hướng dẫn riêng cho Raspberry Pi 5 + ESP32 + L298N + 4 HC-SR04: [`robot/ULTRASONIC_SETUP.md`](robot/ULTRASONIC_SETUP.md).
+Hướng dẫn riêng cho Raspberry Pi 5 + ESP32 + L298N + 4 HC-SR04: [`docs/guides/ultrasonic_setup.md`](docs/guides/ultrasonic_setup.md).
 
 #### 1. Cấu hình mạng VPN Tailscale (Khuyên dùng)
 Để Pi 5 và Laptop Backend kết nối cố định không phụ thuộc vào địa chỉ Wi-Fi local:
@@ -599,6 +617,62 @@ Sau khi đã có bản đồ hoàn chỉnh, robot chuyển sang chế độ tự
 
 ---
 
+### Bước 8: Khởi Chạy Giả Lập 3D & Tự Hành Né Vật Cản (Gazebo Sim + RViz2 LiDAR)
+
+Dành cho kiểm thử và trình diễn tính năng Robot tự hành trong môi trường 3D mô phỏng (**Digital Twin**) mà không cần phần cứng Raspberry Pi 5.
+
+#### 1. Các thành phần trong kịch bản giả lập
+- **Gazebo Sim (Harmonic 8):** Mô phỏng thế giới vật lý 3D sa bàn sảnh khách sạn rộng **8m x 6m**, 6 cột trụ vật cản và chú robot HC-Robot với hệ truyền động vi sai (Differential Drive).
+- **Robot State Publisher (RSP):** Tính toán và xuất cây khung tọa độ TF (`base_link`, `left_wheel`, `right_wheel`, `laser_frame`, `camera_link`).
+- **ROS-Gazebo Parameter Bridge (`ros_gz_bridge`):** Cầu nối đồng bộ 2 chiều dữ liệu thời gian thực giữa Gazebo và ROS 2:
+  - `/clock`: Đồng bộ Simulation Time chính xác tới mili-giây.
+  - `/cmd_vel`: Nhận lệnh điều khiển vận tốc tuyến tính ($v_x$) và vận tốc góc ($\omega_z$).
+  - `/odom`: Xuất tọa độ và vận tốc xe phục vụ định vị Odometry.
+  - `/scan`: Xuất dữ liệu cảm biến Laser LiDAR 360° (360 tia quét độ phân giải $1^\circ$).
+- **RViz2 Visualization:** Hiển thị trực quan 3D chuyên dụng:
+  - `RobotModel`: Mô hình xe 3D sắc nét (`Status: OK`).
+  - `LiDAR 360 Rays (Blue Beams)`: Chùm 360 tia laser màu xanh điện quang (**Electric Blue**) phóng quét từ đỉnh robot ra toàn khán phòng, tự động gập và tạo bóng khi va chạm cột trụ.
+  - `Obstacle Pillars (White)`: Tọa độ 6 cột trụ trắng được định vị chuẩn xác.
+  - `LaserScan (Hit Points)`: Các điểm va chạm sáng rực trên chướng ngại vật.
+- **Autonomous APF Navigator ([autonomous_navigator.py](robot/scripts/autonomous_navigator.py)):** Node điều khiển tự hành tuần tra khép kín qua 5 Waypoints kết hợp thuật toán **Trường thế nhân tạo (Artificial Potential Field - APF)** để chủ động phát hiện cột từ xa, tự động hãm phanh và lách sang làn thoáng, tuyệt đối không va chạm.
+
+---
+
+#### 2. Hướng dẫn khởi chạy
+
+##### Cách A: Khởi chạy 1-Click (Khuyên dùng trên Windows)
+Tại thư mục gốc dự án `f:\DoAn\HC-Robot`, nhấp đúp chuột vào file:
+```text
+demo_tu_hanh.bat
+```
+> Kịch bản sẽ tự động mở WSL2 Ubuntu-24.04, dọn dẹp các tiến trình cũ, khởi động Gazebo Sim, khởi chạy cầu nối ROS 2, mở RViz2 với cấu hình LiDAR tối ưu và kích hoạt robot tự hành tuần tra.
+
+##### Cách B: Khởi chạy bằng lệnh Terminal (WSL2 / Linux)
+Mở cửa sổ PowerShell hoặc Terminal WSL2 và chạy lệnh:
+```bash
+wsl -d Ubuntu-24.04 bash /mnt/f/DoAn/HC-Robot/robot/scripts/launch_autonomous_demo.sh
+```
+
+---
+
+#### 3. Quan sát và Đánh giá Demo
+Khi hệ thống khởi chạy, bạn sẽ thấy 2 cửa sổ hoạt động đồng bộ:
+1. **Cửa sổ Gazebo Sim:**
+   - Robot HC-Robot (khung gầm cam, bánh xanh) lăn bánh mượt mà trên sàn gạch sa bàn 8x6m.
+   - Khi tiếp cận các cột trụ trắng ở cự ly $< 0.9\text{m}$, robot tự động giảm tốc độ, lách vòng quanh cột theo đường cong mềm mại và tiếp tục tiến về mục tiêu tiếp theo.
+2. **Cửa sổ RViz2:**
+   - Chùm tia laser 360° màu xanh điện quang tỏa ra từ tâm cảm biến LiDAR, liên tục quét không gian và hiển thị phản xạ vật lý.
+   - Telemetry hiển thị chi tiết khoảng cách các hướng trên Terminal:
+     ```text
+     [LiDAR 360°] Mũi trước: 1.93m | Trái: 1.93m | Phải: 0.12m -> Robot tại: (0.64, 0.00) -> Cách đích: 1.76m
+     ```
+
+#### 4. Cách dừng giả lập
+Để dừng toàn bộ hệ thống giả lập:
+- Nhấn `Ctrl + C` tại cửa sổ Terminal đang chạy script. Kịch bản sẽ tự động dọn dẹp và đóng an toàn tất cả các tiến trình (Gazebo Sim, RViz2, Bridge và Navigator).
+
+---
+
 ## 5. GIAO TIẾP REAL-TIME, APIS & ROS 2 TOPICS
 
 ### Endpoints RESTful API Chính (Phân loại theo Bộ phận)
@@ -644,6 +718,26 @@ Lệnh trên sẽ tự động khởi tạo 3 Containers cách ly:
 1. `backend-api`: FastAPI Service (Python 3.10 Container).
 2. `postgres-db`: PostgreSQL Relational Database.
 3. `chromadb-store`: ChromaDB Vector Database phục vụ RAG.
+
+---
+
+## 7. TÀI LIỆU KỸ THUẬT CHUYÊN SÂU (DOCUMENTATION INDEX)
+
+Toàn bộ tài liệu chuyên sâu được phân loại và quản lý tập trung trong thư mục [`docs/`](docs/README.md):
+
+* 🤖 **Kiến Trúc & Robot ROS 2**:
+  * [Kiến Trúc Mạng ROS 2 Phân Tán (Distributed ROS 2)](docs/guides/distributed_ros2.md)
+  * [Cấu Hình Cảm Biến Siêu Âm HC-SR04 & ESP32](docs/guides/ultrasonic_setup.md)
+* 🧠 **Trí Tuệ Nhân Tạo (AI Core)**:
+  * [Tối Ưu Hóa AI & Audio Pipeline](docs/guides/ai_optimization.md)
+  * [Test Harness & Đánh Giá LangGraph](docs/guides/langgraph_harness.md)
+  * [Kiến Trúc Thu Thập Đánh Giá Feedback 5 Sao](docs/guides/robot_feedback_architecture.md)
+  * [Cơ Chế Bảo Mật Thoát Kiosk (Secret Multi-Tap Gesture)](docs/guides/kiosk_security_exit.md)
+* ⚙️ **Kịch Bản & Nghiệp Vụ (Workflows)**:
+  * [Đặc Tả 7 Core Workflows (Stepflow)](docs/workflows/stepflow.md)
+  * [Báo Cáo Tiến Độ & Bàn Giao Workflow](docs/workflows/workflow_handover.md)
+* 🗄️ **Cơ Sở Dữ Liệu & Backend**:
+  * [Hướng Dẫn Quản Lý Database Migration Với Alembic](docs/guides/alembic_guide.md)
 
 ---
 

@@ -1,7 +1,7 @@
 import random
 from datetime import datetime
 from typing import List, Dict, Any, Optional
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc, or_
 
@@ -110,6 +110,33 @@ async def get_bell_services_dashboard(db: AsyncSession = Depends(get_db)):
     }
 
 
+@router.get(
+    "/bell-services/requests",
+    response_model=List[BellRequestResponse],
+    tags=TAG_BELL,
+    summary="Danh sách toàn bộ yêu cầu Bell Services",
+)
+async def list_bell_requests(
+    status: Optional[str] = Query(None, description="Lọc theo trạng thái yêu cầu"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Lấy danh sách các yêu cầu dịch vụ Bellman."""
+    stmt = (
+        select(SupportRequest)
+        .where(
+            or_(
+                SupportRequest.department_id == "DEP-BELL",
+                SupportRequest.service_type_id == "ST-BELL",
+            )
+        )
+        .order_by(desc(SupportRequest.created_at))
+    )
+    if status and status not in ("All", ""):
+        stmt = stmt.where(SupportRequest.status == status)
+    res = await db.execute(stmt)
+    return res.scalars().all()
+
+
 @router.post(
     "/bell-services/requests",
     response_model=BellRequestResponse,
@@ -155,6 +182,42 @@ async def create_bell_request(req_in: BellRequestCreate, db: AsyncSession = Depe
     return new_req
 
 
+@router.get(
+    "/bell-services/requests/{request_id}",
+    response_model=BellRequestResponse,
+    tags=TAG_BELL,
+    summary="Xem chi tiết một yêu cầu Bell Services",
+    responses={
+        200: {"description": "Lấy chi tiết yêu cầu Bellman / hành lý thành công."},
+        404: {"description": "Không tìm thấy yêu cầu Bell Services."},
+    },
+)
+async def get_bell_request(
+    request_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    ### Mô tả nghiệp vụ:
+    Tra cứu chi tiết một yêu cầu dịch vụ Bellman / hành lý theo `request_id` (ID hệ thống hoặc mã `ticket_code` như `BS-504`).
+    """
+    clean_id = request_id.replace("REQ-", "").replace("BS-", "").strip()
+    res = await db.execute(
+        select(SupportRequest).where(
+            or_(
+                SupportRequest.id == request_id,
+                SupportRequest.ticket_code == request_id,
+                SupportRequest.id == clean_id,
+                SupportRequest.ticket_code == clean_id,
+                SupportRequest.ticket_code == f"BS-{clean_id}",
+            )
+        )
+    )
+    req = res.scalar_one_or_none()
+    if not req:
+        raise HTTPException(status_code=404, detail="Không tìm thấy yêu cầu Bell Services")
+    return req
+
+
 @router.patch(
     "/bell-services/requests/{request_id}/status",
     response_model=BellRequestResponse,
@@ -164,6 +227,12 @@ async def create_bell_request(req_in: BellRequestCreate, db: AsyncSession = Depe
         200: {"description": "Cập nhật trạng thái nhiệm vụ Bellman thành công."},
         404: {"description": "Không tìm thấy yêu cầu với ID hoặc ticket_code được cung cấp."}
     },
+)
+@router.patch(
+    "/bell-services/requests/{request_id}",
+    response_model=BellRequestResponse,
+    tags=TAG_BELL,
+    include_in_schema=False,
 )
 async def update_bell_request_status(
     request_id: str,
@@ -190,9 +259,11 @@ async def update_bell_request_status(
     if not req:
         raise HTTPException(status_code=404, detail="Không tìm thấy yêu cầu Bell Services")
 
-    req.status = update_in.status
-    if update_in.assigned_to:
-        req.assigned_staff_name = update_in.assigned_to
+    if update_in.status:
+        req.status = update_in.status
+    assigned = update_in.assigned_to or update_in.assigned_staff
+    if assigned:
+        req.assigned_staff_name = assigned
     req.updated_at = datetime.utcnow()
 
     await db.commit()

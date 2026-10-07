@@ -92,10 +92,12 @@ class NotificationConnectionManager:
             if rec_dept in self.department_connections:
                 target_sockets.update(self.department_connections[rec_dept])
 
-        # 3. Bộ phận đích cụ thể
+        # 3. Bộ phận đích cụ thể (Hỗ trợ so khớp linh hoạt ví dụ: 'Concierge' khớp với 'Concierge & Live Support')
         if target_department:
+            target_clean = target_department.lower().strip()
             for dept_key, ws_set in self.department_connections.items():
-                if dept_key.lower() == target_department.lower():
+                k = dept_key.lower().strip()
+                if k == target_clean or target_clean in k or k in target_clean:
                     target_sockets.update(ws_set)
 
         if not target_sockets:

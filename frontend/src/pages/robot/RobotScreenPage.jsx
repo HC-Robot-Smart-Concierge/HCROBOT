@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { RobotFace } from '../../components/robot/RobotFace';
-import { AudioWave } from '../../components/robot/AudioWave';
 import { FloorMap } from '../../components/robot/FloorMap';
 import { CameraPreview } from '../../components/robot/CameraPreview';
 import { MobileRobotScreen } from '../../components/robot/MobileRobotScreen';
+import { RobotFoodMenuScreen } from '../../components/robot/RobotFoodMenuScreen';
 import { useWorkflowRunner } from '../../hooks/useWorkflowRunner';
 import { KioskDisplayPreview } from '../admin/tabs/workflow/KioskDisplayPreview';
 import { fetchWorkflows } from '../../services/workflowApi';
@@ -11,93 +11,81 @@ import { useNotificationWebSocket } from '../../hooks/useNotificationWebSocket';
 
 import { useSpeechRecognition } from '../../hooks/useSpeechRecognition';
 import { useSpeechSynthesis } from '../../hooks/useSpeechSynthesis';
-import { sendChatStreamSSE, resetSession, flushSession } from '../../services/aiApi';
+import { sendChatPrompt, resetSession, flushSession } from '../../services/aiApi';
 
-import {
-  Mic,
-  MicOff,
-  Volume2,
-  Sparkles,
-  LogOut,
-  RotateCcw,
-  Zap,
-  Globe,
-  HelpCircle,
-  Shield,
-  Layers,
-} from 'lucide-react';
+import { MessengerVideoCallModal } from '../../components/video/MessengerVideoCallModal';
+import { RobotQuickFeedbackModal } from '../../components/robot/RobotQuickFeedbackModal';
+import { createConciergeRequest } from '../../services/conciergeApi';
 
-export const RobotScreenPage = ({ onLogout = () => {} }) => {
-  // Trạng thái Robot: 'RT-01' (Sleeping) | 'RT-02' (Welcome) | 'RT-03' (Listening) | 'RT-04' (Processing) | 'RT-05' (Directions)
-  const [currentState, setCurrentState] = useState('RT-02');
+export const RobotScreenPage = ({ onLogout = () => { } }) => {
+  // States: 'RT-01' | 'RT-02' | 'RT-03' | 'RT-04' | 'RT-05'
+  const [currentState, setCurrentState] = useState('RT-01');
+
   const [language, setLanguage] = useState('Tiếng Việt');
-
-  // Subtitle / Lời nói của Robot và Người dùng
-  const [spokenSubtitle, setSpokenSubtitle] = useState('');
-  const [lastAnswerText, setLastAnswerText] = useState('');
+  const [aiResponseText, setAiResponseText] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
-  const [guestEmotion, setGuestEmotion] = useState('neutral');
+  const [isFoodMenuOpen, setIsFoodMenuOpen] = useState(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('mode') === 'food_menu' || params.get('view') === 'food_menu';
+    } catch {
+      return false;
+    }
+  });
 
-  // Auto-listen loop (Tự động mở lại mic sau khi robot nói xong)
+  // Auto-Listen Hands-Free State
   const [isAutoListen, setIsAutoListen] = useState(true);
   const silenceTimerRef = useRef(null);
+  const wasSpeakingRef = useRef(false);
+
+  // Standby Poster Mode (Tự động chiếu poster Dave Drinks khi rảnh)
+  const [isStandby, setIsStandby] = useState(false);
+  const standbyTimerRef = useRef(null);
+  const STANDBY_IDLE_TIMEOUT_MS = 25000; // 25 giây rảnh tự động vào Standby
 
   // Session Memory & Room Number States
   const [sessionId] = useState(() => 'session_kiosk_' + Math.random().toString(36).substring(2, 9));
   const [activeRoomNumber, setActiveRoomNumber] = useState(null);
 
-  // Kiosk Protected Logout State
+  // Robot Kiosk Protected Logout States
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [logoutPassword, setLogoutPassword] = useState('');
   const [logoutError, setLogoutError] = useState('');
-
-  // Mobile / Phone Layout Detection
   const [isPhoneLayout, setIsPhoneLayout] = useState(() => (
     window.matchMedia('(max-width: 767px), (max-height: 600px) and (max-width: 1024px)').matches
   ));
 
-  // Voice Hooks
-  const {
-    isListening,
-    micLive,
-    transcript,
-    error: speechError,
-    volumeLevel,
-    hasMicPermission,
-    requestMicrophonePermission,
-    startListening,
-    stopListening,
-    resetTranscript,
-    hasSupport,
-  } = useSpeechRecognition();
+  // Video Call WebRTC & Cloudinary Recording States
+  const [isVideoCallOpen, setIsVideoCallOpen] = useState(false);
+  const [videoCallSessionId, setVideoCallSessionId] = useState(null);
+  const [videoCallTicketCode, setVideoCallTicketCode] = useState(null);
 
-  const {
-    speak,
-    prime,
-    cancel: stopSpeaking,
-    isSpeaking,
-    initStreamSpeech,
-    enqueueStreamChunk,
-    endStreamSpeech,
-  } = useSpeechSynthesis();
+  // Quick Feedback Survey State
+  const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
 
-  const streamingBufferRef = useRef('');
+  // Available Workflows State (for AUTO_DETECT and manual triggers)
+  const [availableWorkflows, setAvailableWorkflows] = useState([]);
 
-  // Dừng nói và tắt hoàn toàn audio
-  const handleStopSpeaking = () => {
-    stopSpeaking();
-    streamingBufferRef.current = '';
-    setCurrentState('RT-03');
-    setTimeout(() => {
-      handleStartTalk();
-    }, 150);
-  };
+  // Hooks
+  const { isListening, transcript, error: speechError, startListening, stopListening, resetTranscript, hasSupport } = useSpeechRecognition();
+  const { speak, prime, cancel: stopSpeaking, isSpeaking } = useSpeechSynthesis();
 
   const toggleLanguage = () => {
     setLanguage((prev) => (prev === 'English' ? 'Tiếng Việt' : 'English'));
   };
 
-  // Workflow Native Runner Hook
+  const [guestEmotion, setGuestEmotion] = useState('neutral');
+
+  // Load available workflows for AUTO_DETECT trigger & manual launcher
+  useEffect(() => {
+    fetchWorkflows()
+      .then((data) => {
+        if (Array.isArray(data)) setAvailableWorkflows(data);
+      })
+      .catch((err) => console.warn('Could not load workflows:', err));
+  }, []);
+
+  // Workflow Native Runner Hook (tích hợp Micro & Loa máy tính)
   const {
     activeWorkflow,
     isWorkflowRunning,
@@ -117,18 +105,9 @@ export const RobotScreenPage = ({ onLogout = () => {} }) => {
     isListening,
   });
 
-  const [availableWorkflows, setAvailableWorkflows] = useState([]);
-  const [showWorkflowMenu, setShowWorkflowMenu] = useState(false);
+  const [showQuickMenu, setShowQuickMenu] = useState(false);
 
-  useEffect(() => {
-    fetchWorkflows()
-      .then((res) => {
-        if (Array.isArray(res)) setAvailableWorkflows(res);
-      })
-      .catch(() => {});
-  }, []);
-
-  // BroadcastChannel & WebSocket Workflow Listeners
+  // Listen to BroadcastChannel for zero-latency local dispatch
   useEffect(() => {
     let bc;
     try {
@@ -138,12 +117,15 @@ export const RobotScreenPage = ({ onLogout = () => {} }) => {
           startWorkflow(event.data.workflow);
         }
       };
-    } catch {}
+    } catch {
+      // BroadcastChannel fallback
+    }
     return () => {
       if (bc) bc.close();
     };
   }, [startWorkflow]);
 
+  // Listen to WebSocket Hub for remote LAN dispatch
   useNotificationWebSocket({
     department: 'All',
     onNotificationReceived: (notif) => {
@@ -154,20 +136,88 @@ export const RobotScreenPage = ({ onLogout = () => {} }) => {
     enabled: true,
   });
 
-  // Xóa bộ nhớ phiên (Dùng cho nút Khách Mới / Đổi Khách)
+  // Close menus on outside click
+  useEffect(() => {
+    if (!showQuickMenu) return;
+    const handleOutsideClick = () => {
+      setShowQuickMenu(false);
+    };
+    window.addEventListener('click', handleOutsideClick);
+    return () => window.removeEventListener('click', handleOutsideClick);
+  }, [showQuickMenu]);
+
+  // Mở Khảo sát đánh giá dịch vụ nhanh (Feedback Survey)
+  const handleOpenFeedback = useCallback(() => {
+    stopSpeaking();
+    stopListening();
+    setIsFeedbackModalOpen(true);
+    speak('Rora cảm ơn quý khách! Quý khách chấm điểm dịch vụ giúp em nhé.');
+  }, [stopSpeaking, stopListening, speak]);
+
+  const handleFeedbackCompleted = useCallback((selectedRating) => {
+    setIsFeedbackModalOpen(false);
+    if (selectedRating && selectedRating >= 4) {
+      speak('Rora cảm ơn quý khách! Chúc quý khách kỳ nghỉ tuyệt vời.');
+    } else {
+      speak('Rora xin ghi nhận ý kiến để hoàn thiện hơn. Cảm ơn quý khách.');
+    }
+    flushSession(sessionId).catch(() => {});
+    setCurrentState('RT-02');
+  }, [sessionId, speak]);
+
+  // Xóa bộ nhớ phiên (Dùng cho nút Khách Mới / Đổi Phòng)
   const handleManualResetSession = async () => {
     stopSpeaking();
     stopListening();
     resetTranscript();
     setActiveRoomNumber(null);
-    setSpokenSubtitle('');
-    setLastAnswerText('');
+    setAiResponseText('');
     await resetSession(sessionId);
     setCurrentState('RT-02');
   };
 
-  // Khi người dùng lại gần Camera -> Chào hỏi chủ động bằng giọng nói hoặc kích hoạt kịch bản AUTO_DETECT
+  const handleStopSpeaking = () => {
+    stopSpeaking();
+    setAiResponseText('');
+    setCurrentState('RT-03');
+  };
+
+  // Tự động chuyển sang Poster Standby khi rảnh rỗi không có người tương tác
+  const resetStandbyTimer = () => {
+    if (standbyTimerRef.current) clearTimeout(standbyTimerRef.current);
+    if (isStandby) setIsStandby(false);
+
+    // Chỉ đếm ngược khi ở trạng thái RT-02 hoặc RT-01 và không đang bận
+    if (!isSpeaking && !isProcessing && !isListening && !isWorkflowRunning && !isFoodMenuOpen && !showLogoutModal) {
+      standbyTimerRef.current = setTimeout(() => {
+        setIsStandby(true);
+      }, STANDBY_IDLE_TIMEOUT_MS);
+    }
+  };
+
+  useEffect(() => {
+    resetStandbyTimer();
+    const handleUserActivity = () => resetStandbyTimer();
+
+    window.addEventListener('click', handleUserActivity);
+    window.addEventListener('touchstart', handleUserActivity);
+    window.addEventListener('mousemove', handleUserActivity);
+    window.addEventListener('keydown', handleUserActivity);
+
+    return () => {
+      if (standbyTimerRef.current) clearTimeout(standbyTimerRef.current);
+      window.removeEventListener('click', handleUserActivity);
+      window.removeEventListener('touchstart', handleUserActivity);
+      window.removeEventListener('mousemove', handleUserActivity);
+      window.removeEventListener('keydown', handleUserActivity);
+    };
+  }, [currentState, isSpeaking, isProcessing, isListening, isWorkflowRunning, isFoodMenuOpen, showLogoutModal, isStandby]);
+
+  // Khi người dùng lại gần Camera -> Tắt Standby, kiểm tra kịch bản AUTO_DETECT hoặc Chào hỏi chủ động theo thời gian thực
   const handleGuestApproached = () => {
+    setIsStandby(false);
+    resetStandbyTimer();
+
     // 1. Kiểm tra kịch bản tự động kích hoạt (AUTO_DETECT) đang active
     const autoWf = availableWorkflows.find(
       (wf) => (wf.is_active ?? true) && wf.trigger_type === 'AUTO_DETECT'
@@ -182,33 +232,34 @@ export const RobotScreenPage = ({ onLogout = () => {} }) => {
     if (currentState === 'RT-01' || currentState === 'RT-02') {
       setCurrentState('RT-02');
       const hour = new Date().getHours();
-      let greeting = 'Dạ em chào quý khách! Em là Rora, trợ lý AI của khách sạn Aurora Grand. Quý khách cần em hỗ trợ gì ạ?';
+      let greeting = "Dạ em chào quý khách! Em là Rora, trợ lý Robot Concierge của khách sạn Aurora. Quý khách cần em hỗ trợ gì ạ?";
       if (hour >= 5 && hour < 11) {
-        greeting = 'Dạ em chào buổi sáng quý khách! Em là Rora. Chúc quý khách một ngày mới tràn đầy năng lượng tại Aurora Grand Hotel. Quý khách cần em hỗ trợ gì ạ?';
-      } else if (hour >= 18) {
-        greeting = 'Dạ em chào buổi tối quý khách! Em là Rora. Chúc quý khách một buổi tối thư thái tại Aurora Grand Hotel. Quý khách cần em hỗ trợ gì ạ?';
+        greeting = "Dạ em chào buổi sáng quý khách! Em là Rora. Chúc quý khách một ngày mới tràn đầy năng lượng tại khách sạn Aurora. Quý khách cần em hỗ trợ gì ạ?";
+      } else if (hour >= 11 && hour < 18) {
+        greeting = "Dạ em chào quý khách! Em là Rora. Chúc quý khách một buổi chiều thật vui vẻ tại khách sạn Aurora. Quý khách cần em hỗ trợ gì ạ?";
+      } else {
+        greeting = "Dạ em chào buổi tối quý khách! Em là Rora. Chúc quý khách một buổi tối thư thái tại khách sạn Aurora. Quý khách cần em hỗ trợ gì ạ?";
       }
 
-      setSpokenSubtitle(greeting);
       speak(
         greeting,
-        language === 'English' ? 'en-US' : 'vi-VN',
+        'vi-VN',
         () => {
           setCurrentState('RT-03');
           if (isAutoListen) {
-            setTimeout(() => handleStartTalk(), 300);
+            handleStartTalk();
           }
         },
         () => {
-          setCurrentState('RT-02');
+          setAiResponseText(greeting);
         }
       );
     }
   };
 
-  // Khi người dùng đi xa khỏi Camera -> Đóng gói phiên & chuyển sang ngủ nhẹ (RT-01)
+  // Khi người dùng đi xa khỏi Camera -> Đóng gói lưu DB, dọn dẹp âm thanh & chuyển sang ngủ nhẹ (RT-01)
   const handleGuestLeft = async () => {
-    if (!isProcessing && !isSpeaking) {
+    if (!isProcessing) {
       stopSpeaking();
       stopListening();
       resetTranscript();
@@ -218,196 +269,156 @@ export const RobotScreenPage = ({ onLogout = () => {} }) => {
         console.warn('Auto-flush session on guest left:', err);
       }
       setActiveRoomNumber(null);
-      setSpokenSubtitle('');
+      setAiResponseText('');
+      resetSession(sessionId);
       setCurrentState('RT-01');
     }
   };
 
-  // Bắt đầu lắng nghe giọng nói (MIC ON, LOA OFF)
-  const handleStartTalk = async () => {
+  // 1. Khi kích hoạt lắng nghe (Bấm nút hoặc Tự động)
+  const handleStartTalk = () => {
     prime();
     stopSpeaking();
     resetTranscript();
+    setAiResponseText('');
     setCurrentState('RT-03');
-
-    if (silenceTimerRef.current) {
-      clearTimeout(silenceTimerRef.current);
-      silenceTimerRef.current = null;
-    }
-
-    await requestMicrophonePermission();
-
-    startListening(language, {
-      onInterim: (interimText) => {
-        // Cập nhật transcript trực tiếp
-        if (silenceTimerRef.current) {
-          clearTimeout(silenceTimerRef.current);
-        }
-        // Sau 1300ms người dùng không nói gì thêm -> Tự động chốt câu và gửi tới Llama 3.2 3B
-        silenceTimerRef.current = setTimeout(() => {
-          if (interimText && interimText.trim().length > 1) {
-            handleProcessSpeech(interimText.trim());
-          }
-        }, 1300);
-      },
-      onFinal: (finalText) => {
-        if (silenceTimerRef.current) {
-          clearTimeout(silenceTimerRef.current);
-        }
-        // onFinal đã xác nhận câu nói -> chốt sau 600ms im lặng
-        silenceTimerRef.current = setTimeout(() => {
-          if (finalText && finalText.trim().length > 1) {
-            handleProcessSpeech(finalText.trim());
-          }
-        }, 600);
-      },
-    });
+    startListening(language);
   };
 
-  // Xử lý câu nói của khách qua Llama 3.2 3B và phát âm thanh streaming liên tục
-  const handleProcessSpeech = async (userText) => {
-    if (silenceTimerRef.current) {
-      clearTimeout(silenceTimerRef.current);
-      silenceTimerRef.current = null;
+  // 2. Gửi tới Ollama RAG Backend
+  const handleStopTalkAndProcess = async (userText) => {
+    if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+    stopListening();
+    const query = userText || transcript;
+
+    if (!query || query.trim().length === 0) {
+      setCurrentState('RT-02');
+      return;
     }
 
-    const query = (userText || transcript || '').trim();
-    if (!query || query.length < 2 || isProcessing) return;
+    const lowerQuery = query.toLowerCase();
 
-    // QUAN TRỌNG: TẮT MIC NGAY LẬP TỨC để triệt tiêu tiếng vọng và không nối câu trước vào câu sau!
-    stopListening();
-    resetTranscript();
-
-    setCurrentState('RT-04'); // Processing state (mắt nhấp nháy xanh)
+    setCurrentState('RT-04');
     setIsProcessing(true);
-    setSpokenSubtitle('');
-    streamingBufferRef.current = '';
-
-    const langCode = language === 'English' ? 'en-US' : 'vi-VN';
-
-    // Khởi tạo hàng đợi phát âm thanh Streaming TTS liên tục (Continuous Speech Queue)
-    initStreamSpeech(
-      langCode,
-      // onStart: Khi câu đầu tiên bắt đầu phát ra âm thanh
-      () => {
-        setIsProcessing(false);
-        setCurrentState('RT-02'); // mode speaking / welcome
-      },
-      // onEnd: Khi toàn bộ câu trả lời đã phát xong qua loa
-      () => {
-        setIsProcessing(false);
-        setCurrentState('RT-03');
-        if (isAutoListen) {
-          setTimeout(() => handleStartTalk(), 400);
-        }
-      }
-    );
-
-    let fullGeneratedText = '';
 
     try {
-      await sendChatStreamSSE(
-        query,
-        // onToken: Nhận từng token từ Meta Llama 3.2 3B -> Đẩy ngay vào chunker để phát âm thanh lập tức!
-        (token, detectedLangCode) => {
-          fullGeneratedText += token;
-          setSpokenSubtitle((prev) => prev + token);
-          streamingBufferRef.current += token;
+      // Gọi Chat AI - Backend đã tự động xử lý Intent & Ticket trong nền ngầm không gây nghẽn
+      const chatRes = await sendChatPrompt(query, null, "auto", guestEmotion, sessionId, activeRoomNumber);
 
-          const buf = streamingBufferRef.current;
-          const targetLang = detectedLangCode || langCode;
+      let replyText = chatRes.response || 'Dạ, tôi đã ghi nhận yêu cầu của quý khách.';
+      const detectedLang = chatRes.detected_language || 'Tiếng Việt';
+      const langCode = chatRes.lang_code || 'vi-VN';
 
-          // 1. Tách theo dấu kết thúc câu (. ! ? \n) để phát ngay lập tức
-          const sentenceMatch = buf.match(/([.!?\n]+)/);
-          if (sentenceMatch) {
-            const splitIdx = sentenceMatch.index + sentenceMatch[0].length;
-            const sentence = buf.slice(0, splitIdx).trim();
-            streamingBufferRef.current = buf.slice(splitIdx);
-            if (sentence.length > 2) {
-              enqueueStreamChunk(sentence, targetLang);
-            }
+      const updatedRoom = chatRes.current_room_number;
+      if (updatedRoom) {
+        setActiveRoomNumber(updatedRoom);
+      }
+
+      setLanguage(detectedLang);
+      setIsProcessing(false);
+      // Hiển thị câu trả lời lên màn hình ngay lập tức (Zero Latency Visual Feedback)
+      setAiResponseText(replyText);
+
+      // TỰ ĐỘNG MỞ VIDEO CALL NẾU NHẬN DIỆN Ý ĐỊNH GỌI CHO NHÂN VIÊN
+      if (chatRes.trigger_video_call) {
+        const vSession = chatRes.support_session_id || chatRes.session_id || sessionId;
+        setVideoCallSessionId(vSession);
+        setVideoCallTicketCode(chatRes.ticket_code || 'CCG-CALL');
+        setIsVideoCallOpen(true);
+      }
+
+      if (lowerQuery.includes('hồ bơi') || lowerQuery.includes('pool') || lowerQuery.includes('ở đâu') || lowerQuery.includes('tầng') || lowerQuery.includes('where')) {
+        setCurrentState('RT-05');
+      }
+
+      if (lowerQuery.includes('đặt món') || lowerQuery.includes('chọn món') || lowerQuery.includes('thực đơn') || lowerQuery.includes('menu') || lowerQuery.includes('gọi món') || lowerQuery.includes('room service') || lowerQuery.includes('đồ ăn')) {
+        setIsFoodMenuOpen(true);
+      }
+
+      const isFarewell = ['tạm biệt', 'hẹn gặp lại', 'bye', 'goodbye', 'kết thúc', 'xong rồi', 'hết rồi'].some(k => lowerQuery.includes(k));
+
+      // Đồng bộ 100% thời điểm phát tiếng nói và hiển thị chữ lên màn hình (Zero Lag Sync)
+      speak(
+        replyText,
+        langCode,
+        // onEndCallback: Khi loa phát xong -> Xóa bảng chữ, hiện lại mắt xám nháy & Tự động nghe câu tiếp theo
+        () => {
+          setAiResponseText('');
+          if (isFarewell) {
+            setTimeout(() => {
+              handleOpenFeedback();
+            }, 600);
           } else {
-            // 2. Tách theo dấu phẩy / chấm phẩy (,) khi câu đủ dài (>= 7 từ) để phát không phải đợi lâu
-            const commaMatch = buf.match(/([,;:—]+)/);
-            if (commaMatch) {
-              const wordsBeforeComma = buf.slice(0, commaMatch.index).trim().split(/\s+/);
-              if (wordsBeforeComma.length >= 7) {
-                const splitIdx = commaMatch.index + commaMatch[0].length;
-                const clause = buf.slice(0, splitIdx).trim();
-                streamingBufferRef.current = buf.slice(splitIdx);
-                if (clause.length > 2) {
-                  enqueueStreamChunk(clause, targetLang);
-                }
-              }
+            setCurrentState('RT-03');
+            if (isAutoListen) {
+              setTimeout(() => {
+                handleStartTalk();
+              }, 300);
             }
           }
         },
-        // onDone: Khi mô hình sinh xong toàn bộ text -> Đẩy nốt phần còn lại và chốt queue
-        (fullText, detectedLangCode) => {
-          setIsProcessing(false);
-          const finalFull = fullText || fullGeneratedText;
-          if (finalFull) {
-            setSpokenSubtitle(finalFull);
-            setLastAnswerText(finalFull);
-          }
-
-          const targetLang = detectedLangCode || langCode;
-          const remaining = (streamingBufferRef.current || '').trim();
-          streamingBufferRef.current = '';
-
-          if (remaining.length > 0) {
-            enqueueStreamChunk(remaining, targetLang);
-          }
-
-          // Báo hiệu stream đã hoàn tất để hàng đợi tự động kết thúc sau câu cuối
-          endStreamSpeech();
+        // onStartCallback: Khi tiếng cất lên -> Hiện bảng chữ ở trung tâm
+        () => {
+          setAiResponseText(replyText);
         },
-        // onError: Báo lỗi nếu AI Server gặp sự cố
-        (err) => {
-          console.error('[Robot Voice] Error with Llama 3.2 3B:', err);
-          setIsProcessing(false);
-          streamingBufferRef.current = '';
-          const fallback = language === 'English'
-            ? 'Sorry, unable to connect to AI server. Please try again.'
-            : 'Dạ xin lỗi quý khách, hệ thống AI đang bận. Quý khách vui lòng nói lại giúp em ạ.';
-          setSpokenSubtitle(fallback);
-          speak(fallback, langCode, () => {
-            setCurrentState('RT-03');
-            if (isAutoListen) setTimeout(() => handleStartTalk(), 300);
-          });
+        chatRes.audio_base64
+      );
+
+    } catch (error) {
+      setIsProcessing(false);
+      const fallbackText = 'Xin lỗi quý khách, không thể kết nối tới AI Server.';
+      setCurrentState('RT-02');
+      speak(
+        fallbackText,
+        language,
+        () => {
+          setAiResponseText('');
+          setCurrentState('RT-03');
+          if (isAutoListen) handleStartTalk();
         },
-        {
-          sessionId,
-          language: language === 'English' ? 'en' : 'vi',
-          emotion: guestEmotion,
-          roomNumber: activeRoomNumber,
+        () => {
+          setAiResponseText(fallbackText);
         }
       );
-    } catch (err) {
-      console.error('[Robot Voice] Critical exception:', err);
-      setIsProcessing(false);
-      streamingBufferRef.current = '';
-      endStreamSpeech();
-      setCurrentState('RT-03');
     }
   };
 
-  // Xác định mode cho RobotFace
-  const getRobotFaceMode = () => {
-    if (isWorkflowRunning && activeStep?.type === 'GREET') {
-      const exp = activeStep.params?.face_expression || 'HAPPY_SMILE';
-      if (exp === 'HAPPY_SMILE' || exp === 'WELCOME') return 'happy';
-      if (exp === 'LISTENING') return 'listening';
-      return 'welcome';
+  // Tự động gửi AI khi người dùng ngừng nói 900ms (VAD Silence Detection tự nhiên, không cướp lời)
+  useEffect(() => {
+    if (currentState === 'RT-03' && transcript.trim().length > 0) {
+      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = setTimeout(() => {
+        handleStopTalkAndProcess(transcript);
+      }, 900);
     }
-    if (currentState === 'RT-01') return 'sleeping';
-    if (isProcessing || currentState === 'RT-04') return 'processing';
-    if (isSpeaking) return 'speaking';
-    if (isListening || currentState === 'RT-03') return 'listening';
-    return 'welcome';
-  };
+    return () => {
+      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+    };
+  }, [transcript, currentState]);
 
-  // Submit Password Đăng xuất
+  // Tự động bật nghe câu hỏi tiếp theo sau khi Robot nói xong (TTS completed)
+  useEffect(() => {
+    if (wasSpeakingRef.current && !isSpeaking && isAutoListen && !isProcessing) {
+      const timer = setTimeout(() => {
+        if (currentState === 'RT-02' || currentState === 'RT-05') {
+          handleStartTalk();
+        }
+      }, 800);
+      return () => clearTimeout(timer);
+    }
+    wasSpeakingRef.current = isSpeaking;
+  }, [isSpeaking, isAutoListen, isProcessing, currentState]);
+
+  // Xử lý an toàn khi Micro dừng hẳn (chờ thêm 600ms tránh ngắt quãng tạm thời)
+  useEffect(() => {
+    if (!isListening && currentState === 'RT-03' && transcript.trim().length > 0) {
+      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = setTimeout(() => {
+        handleStopTalkAndProcess(transcript);
+      }, 600);
+    }
+  }, [isListening]);
+
   const handleProtectedLogoutSubmit = (e) => {
     if (e) e.preventDefault();
     const validPasswords = ['123456', 'robot123', 'password123', 'admin', 'aurora2026'];
@@ -421,16 +432,164 @@ export const RobotScreenPage = ({ onLogout = () => {} }) => {
     }
   };
 
-  // Orientation lock
-  useEffect(() => {
-    try {
-      window.screen?.orientation?.lock?.('landscape').catch?.(() => {});
-    } catch {}
+  // Kiosk Protected Exit: Secret Multi-Tap (5 chạm) & Long Press (3s) & Hotkey (Ctrl+Shift+L / Esc x3)
+  const secretTapCountRef = useRef(0);
+  const secretTapTimerRef = useRef(null);
+  const secretLongPressTimerRef = useRef(null);
+
+  const handleSecretTrigger = useCallback(() => {
+    setLogoutError('');
+    setLogoutPassword('');
+    setShowLogoutModal(true);
   }, []);
 
+  const handleSecretAreaClick = useCallback((e) => {
+    e.stopPropagation();
+    secretTapCountRef.current += 1;
+    if (secretTapTimerRef.current) clearTimeout(secretTapTimerRef.current);
+
+    if (secretTapCountRef.current >= 5) {
+      secretTapCountRef.current = 0;
+      handleSecretTrigger();
+      return;
+    }
+
+    secretTapTimerRef.current = setTimeout(() => {
+      secretTapCountRef.current = 0;
+    }, 2000);
+  }, [handleSecretTrigger]);
+
+  const handleSecretAreaTouchStart = useCallback(() => {
+    secretLongPressTimerRef.current = setTimeout(() => {
+      handleSecretTrigger();
+    }, 3000);
+  }, [handleSecretTrigger]);
+
+  const handleSecretAreaTouchEnd = useCallback(() => {
+    if (secretLongPressTimerRef.current) {
+      clearTimeout(secretLongPressTimerRef.current);
+    }
+  }, []);
+
+  // Keyboard Secret Shortcut: Ctrl + Shift + L hoặc 3 lần Esc
+  useEffect(() => {
+    let escCount = 0;
+    let escTimer = null;
+
+    const handleKeyDown = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'l' || e.key === 'L')) {
+        e.preventDefault();
+        handleSecretTrigger();
+        return;
+      }
+
+      if (e.key === 'Escape') {
+        escCount += 1;
+        if (escTimer) clearTimeout(escTimer);
+        if (escCount >= 3) {
+          escCount = 0;
+          handleSecretTrigger();
+        } else {
+          escTimer = setTimeout(() => {
+            escCount = 0;
+          }, 1500);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleSecretTrigger]);
+
+  const resetToIdle = () => {
+    stopSpeaking();
+    stopListening();
+    resetTranscript();
+    setCurrentState('RT-02');
+  };
+
+  useEffect(() => {
+    const phoneMedia = window.matchMedia('(max-width: 767px), (max-height: 600px) and (max-width: 1024px)');
+    const updateLayout = (event) => setIsPhoneLayout(event.matches);
+    phoneMedia.addEventListener?.('change', updateLayout);
+    return () => phoneMedia.removeEventListener?.('change', updateLayout);
+  }, []);
+
+  // Auto Lock Screen Orientation to Landscape on Mobile/Kiosk Devices
+  useEffect(() => {
+    try {
+      const lockPromise = window.screen?.orientation?.lock?.('landscape');
+      if (lockPromise && typeof lockPromise.catch === 'function') {
+        lockPromise.catch(() => { });
+      }
+    } catch {
+      // Ignore orientation lock errors
+    }
+    return () => {
+      try {
+        const unlockResult = window.screen?.orientation?.unlock?.();
+        if (unlockResult && typeof unlockResult.catch === 'function') {
+          unlockResult.catch(() => { });
+        }
+      } catch {
+        // Ignore orientation unlock errors
+      }
+    };
+  }, []);
+
+  if (isFoodMenuOpen) {
+    return (
+      <RobotFoodMenuScreen
+        activeRoomNumber={activeRoomNumber || '304'}
+        onClose={() => setIsFoodMenuOpen(false)}
+      />
+    );
+  }
+
+  // Determine Robot Face mode (supports happy/smile emotion during workflows)
+  const robotFaceMode = isWorkflowRunning && (activeStep?.params?.emotion === 'happy' || activeStep?.params?.emotion === 'smile')
+    ? 'happy'
+    : isSpeaking
+    ? 'speaking'
+    : (isWorkflowRunning && activeStep?.type === 'LISTEN')
+    ? 'listening'
+    : (isWorkflowRunning && activeStep?.type === 'GREET')
+    ? 'welcome'
+    : currentState === 'RT-01'
+    ? 'sleeping'
+    : currentState === 'RT-03'
+    ? 'listening'
+    : currentState === 'RT-04'
+    ? 'processing'
+    : 'welcome';
+
   return (
-    <div className="w-full h-[100dvh] bg-aurora-canvas text-aurora-primary overflow-hidden font-sans select-none relative flex flex-col justify-between items-center">
-      {/* Camera Preview Control góc trên bên trái */}
+    <div className="w-full h-[100dvh] bg-aurora-canvas overflow-hidden font-sans select-none relative">
+      {/* Màn hình Poster Standby Tự động (Quảng cáo Dave Drinks khi rảnh) */}
+      {isStandby && (
+        <div
+          onClick={(e) => {
+            e.stopPropagation();
+            setIsStandby(false);
+            resetStandbyTimer();
+          }}
+          className="fixed inset-0 z-50 bg-[#0F0E0E] flex items-center justify-center cursor-pointer select-none animate-fadeIn"
+          title="Chạm vào màn hình để bắt đầu"
+        >
+          <div className="relative h-full max-h-screen flex items-center justify-center p-2 sm:p-4">
+            <img
+              src="/images/robot/standby-poster.jpg"
+              alt="Dave Drinks Lemonade Promotion"
+              className="h-full max-h-[96vh] w-auto max-w-[100vw] object-contain rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.85)]"
+            />
+            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 px-5 py-2.5 rounded-full bg-stone-900/85 backdrop-blur-md border border-white/20 text-white text-xs font-semibold flex items-center gap-2 shadow-2xl animate-pulse">
+              <span>Chạm vào màn hình để bắt đầu</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Camera AI (Chạy ngầm 100% nhận diện khách/cảm xúc, không hiển thị trên màn hình robot) */}
       <CameraPreview
         autoStart={!isPhoneLayout}
         controlsClassName="robot-camera-control"
@@ -439,365 +598,416 @@ export const RobotScreenPage = ({ onLogout = () => {} }) => {
         onEmotionChange={(emotion) => setGuestEmotion(emotion)}
         source={import.meta.env.VITE_CAMERA_SOURCE || 'local'}
         streamUrl={import.meta.env.VITE_PI5_CAMERA_URL || 'http://localhost:8554/stream'}
+        defaultMinimized={true}
+        visible={false}
       />
 
-      {/* Header Bar tối giản, sáng sủa, thanh lịch */}
-      <header className="relative z-30 w-full px-8 py-5 flex items-center justify-between shrink-0">
-        {/* Left: Tên Khách Sạn & Model Llama 3.2 3B */}
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-extrabold tracking-tight text-aurora-primary">AURORA GRAND CONCIERGE</span>
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" title="Sẵn sàng" />
-          </div>
-          <span className="hidden sm:inline-block px-2.5 py-0.5 rounded-full bg-white/90 text-[10px] font-mono font-bold text-stone-600 border border-aurora-border shadow-sm">
-            Meta Llama 3.2 3B
-          </span>
-        </div>
-
-        {/* Right: Điều khiển & Ngôn ngữ */}
-        <div className="flex items-center gap-2.5">
-          {/* Menu Kịch Bản Workflow */}
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setShowWorkflowMenu(!showWorkflowMenu)}
-              className="px-3.5 py-1.5 rounded-full bg-white/95 hover:bg-stone-50 text-stone-700 border border-aurora-border text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all active:scale-95 cursor-pointer"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-              <span>Kịch Bản ({availableWorkflows.length})</span>
-            </button>
-
-            {showWorkflowMenu && (
-              <div className="absolute top-11 right-0 w-72 rounded-2xl bg-white/98 border border-stone-200 shadow-2xl p-2.5 space-y-1.5 backdrop-blur-xl z-50 text-left animate-in fade-in zoom-in-95">
-                <div className="text-[10px] font-black uppercase text-stone-400 px-2 py-1 border-b border-stone-100 flex items-center justify-between">
-                  <span>Kịch Bản Tự Động Kiosk</span>
-                  <span className="text-stone-600 font-mono">{availableWorkflows.length}</span>
-                </div>
-                <div className="max-h-60 overflow-y-auto space-y-1 custom-scrollbar">
-                  {availableWorkflows.map((wf) => (
-                    <button
-                      key={wf.id}
-                      type="button"
-                      onClick={() => {
-                        startWorkflow(wf);
-                        setShowWorkflowMenu(false);
-                      }}
-                      className="w-full p-2 rounded-xl text-left text-xs font-semibold text-stone-700 hover:bg-stone-100 transition-all cursor-pointer flex items-center justify-between"
-                    >
-                      <span className="truncate">{wf.name}</span>
-                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-stone-100 text-stone-500 font-mono">
-                        {wf.steps?.length || 0}s
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Đổi ngôn ngữ Tiếng Việt / Tiếng Anh */}
-          <button
-            type="button"
-            onClick={toggleLanguage}
-            className="px-3.5 py-1.5 rounded-full bg-white/95 hover:bg-stone-50 text-aurora-primary border border-aurora-border text-xs font-bold shadow-sm transition-all active:scale-95 cursor-pointer"
-          >
-            {language === 'English' ? '🇬🇧 EN' : '🇻🇳 VI'}
-          </button>
-
-          {/* Nút Khách mới (Reset phiên) */}
-          <button
-            type="button"
-            onClick={handleManualResetSession}
-            className="px-3.5 py-1.5 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-700 border border-stone-300 text-xs font-bold flex items-center gap-1 shadow-sm transition-all active:scale-95 cursor-pointer"
-            title="Bắt đầu đón tiếp khách mới"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-            <span>Khách mới</span>
-          </button>
-        </div>
-      </header>
-
-      {/* Floating Active Workflow Banner */}
-      {isWorkflowRunning && (
-        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-40 px-5 py-2 rounded-full bg-white/98 border border-stone-200 shadow-xl backdrop-blur-md flex items-center gap-3 animate-fadeIn">
-          <span className="w-2.5 h-2.5 rounded-full bg-cyan-500 animate-pulse" />
-          <span className="text-xs font-black text-stone-800 tracking-wide uppercase">
-            {activeWorkflow?.name}
-          </span>
-          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-cyan-50 text-cyan-800 border border-cyan-200">
-            BƯỚC {currentStepIndex + 1}/{totalSteps}: {activeStep?.type}
-          </span>
-          <button
-            type="button"
-            onClick={nextStep}
-            className="px-2.5 py-1 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-700 text-[10px] font-bold cursor-pointer transition-colors"
-          >
-            Tiếp
-          </button>
-          <button
-            type="button"
-            onClick={stopWorkflow}
-            className="px-2.5 py-1 rounded-full bg-red-50 hover:bg-red-100 text-red-600 text-[10px] font-bold cursor-pointer transition-colors"
-          >
-            Dừng
-          </button>
-        </div>
-      )}
-
-      {/* Mobile Screen Fallback Component */}
+      {/* Mobile Screen Component */}
       <MobileRobotScreen
         activeRoomNumber={activeRoomNumber}
         guestEmotion={guestEmotion}
-        spokenSubtitle={spokenSubtitle}
+        aiResponseText={aiResponseText}
         currentState={currentState}
+        hasSpeechSupport={hasSupport}
+        isAutoListen={isAutoListen}
         isListening={isListening}
         isProcessing={isProcessing}
         isSpeaking={isSpeaking}
         language={language}
-        transcript={transcript}
-        volumeLevel={volumeLevel}
-        onStartTalk={handleStartTalk}
-        onStopSpeaking={handleStopSpeaking}
-        onResetSession={handleManualResetSession}
-        onResetToIdle={() => setCurrentState('RT-02')}
-        onToggleLanguage={toggleLanguage}
         onLogout={() => {
           setLogoutError('');
           setLogoutPassword('');
           setShowLogoutModal(true);
         }}
+        onResetSession={handleManualResetSession}
+        onResetToIdle={resetToIdle}
+        onStartTalk={handleStartTalk}
+        onSubmitTalk={() => handleStopTalkAndProcess(transcript)}
+        onStopSpeaking={handleStopSpeaking}
+        onToggleAutoListen={() => setIsAutoListen((value) => !value)}
+        onToggleLanguage={toggleLanguage}
+        speechError={speechError}
+        transcript={transcript}
+        workflowTrigger={
+          availableWorkflows.length > 0 ? (
+            <div className="relative">
+              <select
+                aria-label="Kích hoạt kịch bản mẫu"
+                onChange={(e) => {
+                  const wf = availableWorkflows.find((w) => String(w.id) === e.target.value);
+                  if (wf) startWorkflow(wf);
+                  e.target.value = '';
+                }}
+                defaultValue=""
+                className="h-8 px-2 rounded-full bg-white border border-stone-300 text-[10px] font-bold text-stone-700 outline-none cursor-pointer"
+              >
+                <option value="" disabled>Kịch bản</option>
+                {availableWorkflows.map((wf) => (
+                  <option key={wf.id} value={wf.id}>{wf.name}</option>
+                ))}
+              </select>
+            </div>
+          ) : null
+        }
+        onOpenFoodMenu={() => setIsFoodMenuOpen(true)}
       />
 
-      {/* Desktop / Kiosk Screen - TRUNG TÂM CHỈ CÓ MẶT ROBOT VÀ PHỤ ĐỀ NÓI CHUYỆN */}
-      <main
+      <div
         onClick={() => {
           prime();
-          // Nếu robot đang nói, bấm màn hình để dừng nói và mở mic (Barge-in)
           if (isSpeaking) {
-            handleStopSpeaking();
+            stopSpeaking();
+            handleStartTalk();
             return;
           }
-          // Nếu đang rảnh rỗi, bấm màn hình để kích hoạt nói chuyện
-          if (!isSpeaking && !isProcessing && !isListening) {
+          if ((currentState === 'RT-02' || currentState === 'RT-01') && !isSpeaking && !isProcessing) {
             handleStartTalk();
           }
         }}
-        className="robot-desktop-ui relative z-10 flex-1 w-full max-w-5xl flex flex-col items-center justify-center px-8 cursor-pointer"
+        className="robot-desktop-ui w-full h-full flex-col justify-start items-center relative cursor-pointer"
       >
-        {/* Trường hợp chạy Workflow Kiosk Display */}
-        {isWorkflowRunning && (activeStep?.type === 'SHOW' || activeStep?.type === 'FEEDBACK' || activeStep?.type === 'MOVE' || activeStep?.type === 'LISTEN' || activeStep?.type === 'RECOMMEND' || activeStep?.type === 'CREATE_REQUEST') ? (
-          <div className="w-[700px] max-h-[610px] bg-white/98 backdrop-blur-2xl border-2 border-stone-200/90 rounded-3xl shadow-2xl p-5 flex flex-col overflow-hidden animate-fadeIn">
-            <KioskDisplayPreview
-              activeStep={activeStep}
-              transcript={transcript}
-              isListening={isListening}
-              onNextStep={nextStep}
-            />
-          </div>
-        ) : currentState === 'RT-05' ? (
-          /* Route Guidance Floor Map Mode */
-          <div className="w-full flex justify-between items-center gap-8 animate-fadeIn">
-            <FloorMap
-              destination="SWIMMING POOL"
-              destinationLevel="LEVEL 4"
-              estimatedTime="4 MIN"
-              estimatedDistance="APPROX. 120 M"
-            />
-            <div className="w-[450px] p-6 bg-white/95 rounded-3xl border border-aurora-border shadow-aurora-lg flex flex-col justify-between gap-5">
-              <div className="space-y-3">
-                <div className="flex items-center gap-2 text-xs font-bold text-aurora-primary uppercase tracking-wider">
-                  <Sparkles className="w-4 h-4 text-amber-500" />
-                  <span>Chỉ dẫn vị trí Hồ bơi (Tầng 4)</span>
-                </div>
-                <div className="p-4 bg-aurora-cardMuted rounded-2xl border border-aurora-border text-sm font-medium leading-relaxed">
-                  {spokenSubtitle || "Hồ bơi vô cực nằm ở tầng 4. Khăn tắm và nước khoáng được phục vụ miễn phí!"}
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setCurrentState('RT-03');
-                  handleStartTalk();
-                }}
-                className="w-full py-4 bg-aurora-primary text-aurora-textInverse rounded-2xl font-bold flex items-center justify-center gap-2 hover:opacity-90 active:scale-95 transition-all cursor-pointer shadow-lg"
-              >
-                <Mic className="w-5 h-5 text-emerald-400" />
-                <span>NÓI CHUYỆN TIẾP</span>
-              </button>
-            </div>
-          </div>
-        ) : (
-          /* MAIN STAGE: CHỈ CÓ MẶT ROBOT VÀ PHỤ ĐỀ NÓI CHUYỆN (SÁNG SỦA, TINH TẾ) */
-          <div className="flex flex-col items-center justify-center gap-8 w-full max-w-3xl text-center">
-            {/* 1. MẶT ROBOT TO, CHÍNH GIỮA MÀN HÌNH */}
-            <div className="scale-125 sm:scale-135 py-4 transition-transform duration-500">
-              <RobotFace mode={getRobotFaceMode()} />
-            </div>
 
-            {/* 2. KHU VỰC PHỤ ĐỀ LỜI NÓI & TRẠNG THÁI NÓI CHUYỆN */}
-            <div className="w-full flex flex-col items-center gap-4 animate-fadeIn">
-              {/* KHI ROBOT ĐANG NÓI HOẶC VỪA NÓI XONG: HIỆN PHỤ ĐỀ CÂU TRẢ LỜI CỦA ROBOT */}
-              {isSpeaking || (spokenSubtitle && !isListening && !isProcessing) ? (
-                <div className="w-full max-w-2xl px-8 py-5 bg-white/95 rounded-3xl border border-aurora-border shadow-aurora-lg flex flex-col items-center gap-3.5 animate-fadeIn backdrop-blur-md">
-                  <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-emerald-700">
-                    <AudioWave isActive={isSpeaking} />
-                    <span>{isSpeaking ? 'Rora đang trả lời' : 'Câu trả lời của Rora'}</span>
-                  </div>
-
-                  <p className="text-lg sm:text-xl font-bold text-aurora-primary leading-relaxed text-center">
-                    {spokenSubtitle}
-                  </p>
-
-                  <div className="flex items-center gap-3 pt-1 border-t border-stone-100">
-                    {isSpeaking && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleStopSpeaking();
-                        }}
-                        className="px-4 py-1.5 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-bold transition-all cursor-pointer"
-                      >
-                        ⏹️ Chạm để dừng nói
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ) : isListening ? (
-                /* KHI NGƯỜI DÙNG ĐANG NÓI (ROBOT ĐANG LẮNG NGHE) */
-                <div className="flex flex-col items-center gap-3 animate-fadeIn">
-                  <div className="px-7 py-3.5 rounded-full bg-white/95 border border-emerald-500/40 shadow-aurora-lg flex items-center gap-3.5 backdrop-blur-md">
-                    <AudioWave isActive={true} volumeLevel={volumeLevel} />
-                    <span className="text-sm font-bold text-emerald-800">
-                      {transcript ? (
-                        <span>"{transcript}"</span>
-                      ) : (
-                        <span>🟢 Đang lắng nghe... Quý khách hãy nói câu hỏi</span>
-                      )}
-                    </span>
-
-                    {/* Nút Chốt câu sớm khi người dùng nói xong */}
-                    {transcript && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleProcessSpeech(transcript);
-                        }}
-                        className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-full text-xs font-bold shadow-md transition-all active:scale-95 cursor-pointer"
-                      >
-                        Xong
-                      </button>
-                    )}
-                  </div>
-
-                  {volumeLevel === 0 && !transcript && (
-                    <p className="text-xs text-stone-500 font-medium">
-                      💡 Hãy nói to rõ vào microphone của quý khách
-                    </p>
-                  )}
-                </div>
-              ) : isProcessing ? (
-                /* KHI ROBOT ĐANG SUY NGHĨ (PROCESSING VỚI LLAMA 3.2 3B) */
-                <div className="px-6 py-3.5 rounded-full bg-white/95 border border-sky-300 shadow-aurora-lg flex items-center gap-3 animate-fadeIn backdrop-blur-md">
-                  <span className="w-3 h-3 rounded-full bg-sky-500 animate-ping" />
-                  <span className="text-sm font-bold text-sky-800">
-                    Rora đang suy nghĩ câu trả lời...
-                  </span>
-                </div>
-              ) : (
-                /* TRẠNG THÁI CHỜ / SẴN SÀNG: NÚT NÓI CHUYỆN RÕ RÀNG */
-                <div className="flex flex-col items-center gap-3.5 animate-fadeIn">
-                  {lastAnswerText && (
-                    <div className="max-w-lg px-6 py-2.5 bg-white/80 border border-aurora-border rounded-2xl text-xs text-stone-600 text-center font-medium line-clamp-2 shadow-sm">
-                      <span className="font-bold text-aurora-primary">Câu trả lời vừa rồi: </span>
-                      <span>{lastAnswerText}</span>
-                    </div>
-                  )}
-
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleStartTalk();
-                    }}
-                    className="px-8 py-4 rounded-full bg-aurora-primary hover:bg-stone-800 text-aurora-textInverse font-black text-sm tracking-wide shadow-aurora-lg flex items-center gap-3 transition-all hover:scale-105 active:scale-95 cursor-pointer"
-                  >
-                    <Mic className="w-5 h-5 text-emerald-400" />
-                    <span>CHẠM ĐỂ NÓI CHUYỆN VỚI RORA</span>
-                  </button>
-
-                  <p className="text-xs text-stone-500 font-medium">
-                    (Không cần gõ phím · Nhận diện giọng nói và đối thoại tự nhiên)
-                  </p>
-                </div>
-              )}
-
-              {speechError && (
-                <div className="px-4 py-2.5 rounded-2xl bg-amber-50 border border-amber-300 text-amber-900 text-xs font-semibold max-w-md shadow-sm">
-                  ⚠️ {speechError}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </main>
-
-      {/* Footer Bar: Dev Dots Switcher & Nút Thoát */}
-      <footer className="relative z-30 w-full px-8 py-5 flex items-center justify-between shrink-0">
-        {/* Left: State Switcher Dots (RT-01 đến RT-05) */}
-        <div className="bg-white/90 px-3.5 py-1.5 rounded-full flex items-center gap-2.5 shadow-sm border border-aurora-border">
-          {[
-            { id: 'RT-01', name: 'Sleeping', activeColor: 'bg-slate-400 ring-2 ring-slate-300' },
-            { id: 'RT-02', name: 'Welcome', activeColor: 'bg-stone-800 ring-2 ring-stone-600' },
-            { id: 'RT-03', name: 'Listening', activeColor: 'bg-emerald-500 ring-2 ring-emerald-300 animate-pulse' },
-            { id: 'RT-04', name: 'Processing', activeColor: 'bg-sky-500 ring-2 ring-sky-300 animate-pulse' },
-            { id: 'RT-05', name: 'Directions', activeColor: 'bg-amber-500 ring-2 ring-amber-300' },
-          ].map((st) => (
-            <button
-              key={st.id}
-              onClick={() => setCurrentState(st.id)}
-              className={`w-3 h-3 rounded-full transition-all cursor-pointer ${
-                currentState === st.id ? st.activeColor : 'bg-stone-300 hover:bg-stone-400'
-              }`}
-              title={`${st.id}: ${st.name}`}
-            />
-          ))}
+        {/* Top-Left Branding & Secret Multi-Tap Zone (Nhân viên: Gõ 5 lần liên tiếp để mở Đăng xuất) */}
+        <div
+          onClick={handleSecretAreaClick}
+          className="absolute top-5 left-6 z-40 flex items-center gap-2.5 cursor-default select-none"
+          title=""
+        >
+          <strong className="text-xs font-black tracking-widest text-stone-400/90 uppercase">HCROBOT</strong>
+          <span className="w-1.5 h-1.5 rounded-full bg-stone-600" />
+          <span className="text-[10px] font-semibold text-stone-500 uppercase tracking-wider">Aurora Grand Hotel</span>
         </div>
 
-        {/* Center: Chế độ Tự Nghe (Auto-Listen toggle) */}
-        <button
-          type="button"
-          onClick={() => setIsAutoListen(!isAutoListen)}
-          className={`px-3.5 py-1.5 rounded-full text-xs font-bold border transition-all cursor-pointer ${
-            isAutoListen
-              ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
-              : 'bg-stone-100 text-stone-600 border-stone-300'
-          }`}
-        >
-          {isAutoListen ? '🟢 Tự động nghe tiếp: Bật' : '⚪ Tự động nghe tiếp: Tắt'}
-        </button>
+        {/* Top-Right Controls: Nút Kịch Bản + Hoàn Tất & Đánh Giá + Menu Dịch Vụ */}
+        <div className="absolute top-5 right-5 z-40 flex items-center gap-2.5">
+          {/* Quick Workflow Trigger for Testing / Simulation */}
+          {availableWorkflows.length > 0 && !isWorkflowRunning && (
+            <div className="relative">
+              <select
+                aria-label="Chọn kịch bản tự động"
+                onChange={(e) => {
+                  const wf = availableWorkflows.find((w) => String(w.id) === e.target.value);
+                  if (wf) startWorkflow(wf);
+                  e.target.value = '';
+                }}
+                defaultValue=""
+                className="h-9 px-3 rounded-full bg-stone-900/80 hover:bg-stone-800 text-stone-200 border border-stone-700/80 text-xs font-bold tracking-wide outline-none cursor-pointer shadow-lg backdrop-blur-md"
+              >
+                <option value="" disabled>Kịch bản</option>
+                {availableWorkflows.map((wf) => (
+                  <option key={wf.id} value={wf.id} className="bg-stone-900 text-stone-200">{wf.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
-        {/* Right: Nút Đăng Xuất Bảo Mật */}
-        <button
-          type="button"
-          onClick={() => {
-            setLogoutError('');
-            setLogoutPassword('');
-            setShowLogoutModal(true);
-          }}
-          title="Đăng xuất Robot"
-          className="w-10 h-10 rounded-full bg-white hover:bg-stone-100 border border-aurora-border text-stone-700 flex items-center justify-center shadow-sm transition-all active:scale-95 cursor-pointer"
-        >
-          <LogOut className="w-4 h-4" />
-        </button>
-      </footer>
+          {currentState !== 'RT-01' && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleOpenFeedback();
+              }}
+              className="h-9 px-4 rounded-full bg-stone-900/80 hover:bg-stone-800 text-stone-200 border border-stone-700/80 text-xs font-bold tracking-wide flex items-center shadow-lg backdrop-blur-md cursor-pointer transition-all active:scale-95"
+              title="Hoàn tất phiên hội thoại và đánh giá dịch vụ"
+            >
+              <span>Hoàn tất / Đánh giá</span>
+            </button>
+          )}
 
-      {/* Modal Mật Khẩu Đăng Xuất Robot */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowQuickMenu((prev) => !prev);
+              }}
+              className="h-9 px-4 rounded-full bg-stone-900/80 hover:bg-stone-800 text-stone-200 border border-stone-700/80 text-xs font-bold tracking-wide flex items-center shadow-lg backdrop-blur-md cursor-pointer transition-all active:scale-95"
+              title="Dịch vụ và tiện ích"
+            >
+              <span>Dịch vụ</span>
+            </button>
+
+            {showQuickMenu && (
+              <div
+                onClick={(e) => e.stopPropagation()}
+                className="absolute top-11 right-0 w-60 rounded-2xl bg-stone-900/95 border border-stone-700 shadow-2xl p-2 space-y-1 backdrop-blur-xl z-50 text-left animate-in fade-in zoom-in-95"
+              >
+                <div className="text-[10px] font-bold uppercase text-stone-400 px-3 py-1.5 border-b border-stone-800">
+                  Menu Dịch vụ
+                </div>
+
+                {/* 1. Gọi Nhân Viên */}
+                <button
+                  type="button"
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    setShowQuickMenu(false);
+                    try {
+                      const req = await createConciergeRequest({
+                        title: 'Yêu cầu gọi video trực tiếp từ Khách tại Kiosk',
+                        room_number: activeRoomNumber || 'Main Lobby Kiosk',
+                        guest_name: 'Khách tại Sảnh',
+                        description: 'Khách bấm gọi hỗ trợ trực tiếp từ màn hình Robot Concierge',
+                      });
+                      setVideoCallSessionId(req.id || `SUP-${Date.now()}`);
+                      setVideoCallTicketCode(req.ticket_code || 'CCG-CALL');
+                      setIsVideoCallOpen(true);
+                    } catch (err) {
+                      setVideoCallSessionId(`SUP-${Date.now()}`);
+                      setIsVideoCallOpen(true);
+                    }
+                  }}
+                  className="w-full p-2.5 rounded-xl text-left hover:bg-stone-800 transition-all cursor-pointer flex flex-col"
+                >
+                  <span className="text-xs font-bold text-stone-200">Gọi nhân viên</span>
+                  <span className="text-[10px] text-stone-400">Kết nối cuộc gọi hỗ trợ trực tiếp</span>
+                </button>
+
+                {/* 2. Thực Đơn Món Ăn */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowQuickMenu(false);
+                    setIsFoodMenuOpen(true);
+                  }}
+                  className="w-full p-2.5 rounded-xl text-left hover:bg-stone-800 transition-all cursor-pointer flex flex-col"
+                >
+                  <span className="text-xs font-bold text-stone-200">Thực đơn món ăn</span>
+                  <span className="text-[10px] text-stone-400">Xem danh mục và chọn món</span>
+                </button>
+
+                {/* 3. Khảo Sát Đánh Giá */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowQuickMenu(false);
+                    handleOpenFeedback();
+                  }}
+                  className="w-full p-2.5 rounded-xl text-left hover:bg-stone-800 transition-all cursor-pointer flex flex-col"
+                >
+                  <span className="text-xs font-bold text-stone-200">Đánh giá dịch vụ</span>
+                  <span className="text-[10px] text-stone-400">Khảo sát mức độ hài lòng</span>
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Aurora Workflow Floating Status Banner */}
+        {isWorkflowRunning && (
+          <div className="absolute top-5 left-1/2 -translate-x-1/2 z-40 px-5 py-2 rounded-full bg-stone-900/90 border border-stone-700 shadow-xl backdrop-blur-md flex items-center gap-3 animate-fadeIn text-stone-200">
+            <span className="w-2.5 h-2.5 rounded-full bg-stone-300 animate-pulse" />
+            <span className="text-xs font-bold text-stone-200 tracking-wide uppercase">
+              {activeWorkflow?.name}
+            </span>
+            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-stone-800 text-stone-300 border border-stone-700">
+              BƯỚC {currentStepIndex + 1}/{totalSteps}: {activeStep?.type}
+            </span>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                nextStep();
+              }}
+              className="px-2.5 py-1 rounded-full bg-stone-800 hover:bg-stone-700 text-stone-200 text-[10px] font-bold cursor-pointer transition-colors"
+            >
+              Tiếp
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                stopWorkflow();
+              }}
+              className="px-2.5 py-1 rounded-full bg-stone-800 hover:bg-stone-700 text-stone-400 hover:text-stone-200 text-[10px] font-bold cursor-pointer transition-colors"
+            >
+              Dừng
+            </button>
+          </div>
+        )}
+
+        {/* 2. Main Body Container */}
+        <main className="w-full flex-1 px-16 py-[54px] flex items-center justify-center gap-16 overflow-hidden">
+
+          {/* Render Workflow Kiosk Interface trực tiếp tại trung tâm màn hình robot */}
+          {isWorkflowRunning && (activeStep?.type === 'SHOW' || activeStep?.type === 'FEEDBACK' || activeStep?.type === 'MOVE' || activeStep?.type === 'LISTEN' || activeStep?.type === 'RECOMMEND' || activeStep?.type === 'CREATE_REQUEST') ? (
+            <div className="w-[700px] max-h-[610px] bg-white/98 backdrop-blur-2xl border-2 border-stone-200/90 rounded-3xl shadow-2xl p-4 sm:p-5 flex flex-col overflow-hidden animate-fadeIn">
+              <KioskDisplayPreview
+                activeStep={activeStep}
+                transcript={transcript}
+                isListening={isListening}
+                onNextStep={nextStep}
+              />
+            </div>
+          ) : currentState === 'RT-05' ? (
+            <div className="w-full flex justify-between items-center gap-8 animate-fadeIn">
+              {/* Left: 2D Floor Map */}
+              <FloorMap
+                destination="SWIMMING POOL"
+                destinationLevel="LEVEL 4"
+                estimatedTime="4 MIN"
+                estimatedDistance="APPROX. 120 M"
+              />
+
+              {/* Right: AI Answer & Step Instructions */}
+              <div className="w-[450px] h-[558px] flex flex-col justify-between items-start gap-4">
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-2 text-xs font-bold text-stone-700 tracking-wider uppercase">
+                    <span>Phản hồi thông tin</span>
+                  </div>
+
+                  {/* AI Text Response */}
+                  <div className="p-4 bg-stone-100 rounded-2xl border border-stone-200 shadow-sm text-sm font-medium text-stone-800 leading-relaxed max-h-[160px] overflow-y-auto">
+                    {aiResponseText || "Hồ bơi vô cực nằm ở tầng 4. Khăn tắm và nước uống được phục vụ miễn phí!"}
+                  </div>
+                </div>
+
+                {/* Step checklist */}
+                <div className="w-full flex flex-col gap-2.5">
+                  <div className="p-3.5 bg-stone-100 rounded-xl border border-stone-200 flex items-center gap-3">
+                    <div className="w-7 h-7 rounded-full bg-stone-800 text-white flex items-center justify-center font-bold text-xs">1</div>
+                    <span className="text-xs font-semibold text-stone-700">Đi thẳng 20m tới Cụm Thang Máy A</span>
+                  </div>
+                  <div className="p-3.5 bg-stone-100 rounded-xl border border-stone-200 flex items-center gap-3">
+                    <div className="w-7 h-7 rounded-full bg-stone-800 text-white flex items-center justify-center font-bold text-xs">2</div>
+                    <span className="text-xs font-semibold text-stone-700">Đi Thang Máy A lên Tầng 4 (Wellness)</span>
+                  </div>
+                  <div className="p-3.5 bg-stone-100 rounded-xl border border-stone-200 flex items-center gap-3">
+                    <div className="w-7 h-7 rounded-full bg-stone-800 text-white flex items-center justify-center font-bold text-xs">3</div>
+                    <span className="text-xs font-semibold text-stone-700">Rẽ phải theo hành lang đến Hồ Bơi</span>
+                  </div>
+                </div>
+
+                {/* Reset Action */}
+                <button
+                  onClick={resetToIdle}
+                  className="w-full py-3.5 bg-stone-800 hover:bg-stone-700 text-stone-100 rounded-2xl font-semibold flex items-center justify-center gap-2 active:scale-[0.99] transition-all cursor-pointer shadow-lg"
+                >
+                  <span>Hỏi câu hỏi mới</span>
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center relative scale-95 transition-transform duration-500">
+              {/* Khuôn mặt Robot */}
+              <div className="cursor-pointer">
+                <RobotFace
+                  mode={robotFaceMode}
+                  isSpeakingActive={isSpeaking}
+                />
+              </div>
+
+              {/* 1. Khi đang nói (Speaking) hoặc có câu trả lời: Hiển thị Subtitle Card trang nhã bên dưới RobotFace */}
+              {(aiResponseText || (isWorkflowRunning && (activeStep?.type === 'GREET' || activeStep?.type === 'SPEAK') && (activeStep.params?.speech_text || activeStep.params?.greeting_text || activeStep.params?.text))) && (
+                <div className="mt-6 w-[580px] max-w-[90vw] p-5 bg-stone-900/90 backdrop-blur-xl border border-stone-700 rounded-3xl shadow-2xl flex flex-col gap-3 animate-fadeIn text-stone-100">
+                  <div className="flex items-center justify-between border-b border-stone-800 pb-2.5">
+                    <span className="text-xs font-bold tracking-wider uppercase text-stone-400 flex items-center gap-2">
+                      <span className={`w-2 h-2 rounded-full ${isSpeaking ? 'bg-stone-300 animate-pulse' : 'bg-stone-600'}`} />
+                      <span>{isSpeaking ? "Robot đang trả lời..." : "Câu trả lời của robot"}</span>
+                    </span>
+                    <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-stone-800 text-stone-300 uppercase">
+                      {language}
+                    </span>
+                  </div>
+
+                  <div className="text-sm font-medium text-stone-200 leading-relaxed max-h-[140px] overflow-y-auto custom-scrollbar">
+                    {aiResponseText || (activeStep?.params?.speech_text || activeStep?.params?.greeting_text || activeStep?.params?.text)}
+                  </div>
+
+                  <div className="pt-2.5 border-t border-stone-800 flex items-center justify-between text-xs text-stone-400 font-medium">
+                    <span className="flex items-center gap-2">
+                      <span className={`w-1.5 h-1.5 rounded-full ${isSpeaking ? 'bg-stone-300 animate-pulse' : 'bg-stone-600'}`} />
+                      <span>{isSpeaking ? "Đang phát qua loa..." : "Đã hoàn tất trả lời"}</span>
+                    </span>
+                    <span className="text-xs text-stone-400 font-medium flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-stone-500" />
+                      <span>Tự động nghe câu tiếp theo</span>
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* 2. Khi đang nghe (Listening) và có Transcript: Hiển thị những gì Robot đang nhận được */}
+              {currentState === 'RT-03' && !aiResponseText && transcript && (
+                <div className="mt-6 px-6 py-3 bg-stone-900/85 backdrop-blur-md border border-stone-700 rounded-full shadow-lg flex items-center gap-3 animate-fadeIn">
+                  <span className="w-2.5 h-2.5 rounded-full bg-stone-300 animate-pulse" />
+                  <span className="text-xs font-semibold text-stone-200">Đang nghe: "{transcript}"</span>
+                </div>
+              )}
+
+              {/* 3. Khi đang xử lý (Processing): Hiển thị text trạng thái */}
+              {currentState === 'RT-04' && !aiResponseText && (
+                <div className="mt-4 text-xs font-bold text-stone-400 tracking-wider uppercase animate-pulse">
+                  Đang tìm câu trả lời phù hợp...
+                </div>
+              )}
+
+            </div>
+          )}
+        </main>
+
+        {/* 3. Bottom Dev State Switcher (Chỉ là các hình tròn nhỏ màu xám/trung tính đại diện cho State, không chữ) */}
+        <footer className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-stone-900/80 px-3.5 py-2 rounded-full flex items-center gap-3 shadow-2xl backdrop-blur-md border border-stone-800/80 z-40 opacity-20 hover:opacity-100 transition-opacity duration-300">
+          {[
+            { id: 'RT-01', name: 'Sleeping', activeColor: 'bg-stone-300 ring-2 ring-stone-200 scale-125', idleColor: 'bg-stone-700 hover:bg-stone-600' },
+            { id: 'RT-02', name: 'Welcome', activeColor: 'bg-stone-100 ring-2 ring-white scale-125', idleColor: 'bg-stone-700 hover:bg-stone-600' },
+            { id: 'RT-03', name: 'Listening', activeColor: 'bg-stone-400 ring-2 ring-stone-300 scale-125 animate-pulse', idleColor: 'bg-stone-700 hover:bg-stone-600' },
+            { id: 'RT-04', name: 'Processing', activeColor: 'bg-stone-300 ring-2 ring-stone-200 scale-125 animate-pulse', idleColor: 'bg-stone-700 hover:bg-stone-600' },
+            { id: 'RT-05', name: 'Route Guidance', activeColor: 'bg-stone-200 ring-2 ring-stone-100 scale-125', idleColor: 'bg-stone-700 hover:bg-stone-600' },
+          ].map((st) => {
+            const isActive = currentState === st.id;
+            return (
+              <button
+                key={st.id}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setCurrentState(st.id);
+                }}
+                className={`w-3 h-3 rounded-full transition-all cursor-pointer ${isActive ? st.activeColor : st.idleColor}`}
+                title={`${st.id}: ${st.name}`}
+              />
+            );
+          })}
+
+          <div className="w-[1px] h-3.5 bg-stone-700 mx-0.5" />
+
+          {/* Nút Standby Poster Dev Quick Toggle */}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsStandby((prev) => !prev);
+            }}
+            className={`px-2 py-0.5 rounded-full text-[9px] font-bold tracking-wider transition-all cursor-pointer ${isStandby
+              ? 'bg-stone-200 text-stone-900 shadow-sm'
+              : 'bg-stone-800 text-stone-400 hover:text-stone-200'
+              }`}
+            title="Bật/Tắt Chế độ Standby Poster Quảng Cáo"
+          >
+            POSTER
+          </button>
+        </footer>
+
+        {/* Vùng chạm bí mật góc dưới bên phải dành riêng cho nhân viên (Vô hình hoàn toàn với khách hàng)
+            Nhân viên: Chạm 5 lần liên tiếp hoặc Giữ 3 giây để mở Mật khẩu Đăng xuất.
+            Hoặc bấm tổ hợp phím Ctrl + Shift + L (hoặc phím Esc 3 lần). */}
+        <div
+          onClick={handleSecretAreaClick}
+          onTouchStart={handleSecretAreaTouchStart}
+          onTouchEnd={handleSecretAreaTouchEnd}
+          className="absolute bottom-0 right-0 w-16 h-16 z-40 cursor-default select-none opacity-0"
+          title=""
+          aria-hidden="true"
+        />
+      </div>
+
+      {/* Modal Bảo Mật Nhập Mật Khẩu Đăng Xuất Robot (Phong cách Trang Chủ - Màu xám / Kem, Không Icon / Emoji) */}
       {showLogoutModal && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">
-          <div className="bg-white border border-aurora-border text-aurora-primary rounded-3xl p-7 max-w-md w-full shadow-2xl space-y-5 relative">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">
+          <div className="bg-white border border-[#E3DFD5] text-[#1A1917] rounded-3xl p-7 max-w-md w-full shadow-2xl space-y-5 relative">
             <button
               onClick={() => setShowLogoutModal(false)}
               className="absolute top-4 right-4 text-xs font-bold text-stone-400 hover:text-stone-700 transition-colors cursor-pointer px-2 py-1"
@@ -805,12 +1015,9 @@ export const RobotScreenPage = ({ onLogout = () => {} }) => {
               Đóng
             </button>
 
-            <div className="space-y-1 border-b border-stone-100 pb-4">
-              <h3 className="text-base font-black tracking-tight flex items-center gap-2">
-                <Shield className="w-5 h-5 text-stone-700" />
-                <span>Mật Khẩu Đăng Xuất Robot</span>
-              </h3>
-              <p className="text-xs text-stone-500 font-medium">Bảo vệ màn hình Kiosk khỏi thoát ứng dụng trái phép</p>
+            <div className="space-y-1 border-b border-[#E3DFD5] pb-4">
+              <h3 className="text-base font-black text-[#1A1917] tracking-tight">Mật Khẩu Đăng Xuất Robot</h3>
+              <p className="text-xs text-stone-500 font-medium">Ngăn người dùng tự ý thoát khỏi màn hình</p>
             </div>
 
             {logoutError && (
@@ -822,7 +1029,7 @@ export const RobotScreenPage = ({ onLogout = () => {} }) => {
             <form onSubmit={handleProtectedLogoutSubmit} className="space-y-4">
               <div>
                 <label className="block text-[11px] font-bold text-stone-600 uppercase tracking-wider mb-1.5">
-                  Mật khẩu Bảo vệ
+                  Mật khẩu Bảo vệ (Password)
                 </label>
                 <input
                   type="password"
@@ -831,10 +1038,10 @@ export const RobotScreenPage = ({ onLogout = () => {} }) => {
                   onChange={(e) => setLogoutPassword(e.target.value)}
                   autoFocus
                   required
-                  className="w-full px-4 py-2.5 rounded-2xl bg-stone-50 border border-stone-200 text-xs font-bold text-stone-900 outline-none focus:border-stone-600 transition-colors"
+                  className="w-full px-4 py-2.5 rounded-2xl bg-[#FAF8F5] border border-[#E0DCD3] text-xs font-bold text-stone-900 outline-none focus:border-stone-600 transition-colors"
                 />
                 <p className="text-[11px] text-stone-500 font-medium mt-2">
-                  Mật khẩu mẫu: <code className="text-stone-800 font-bold">123456</code> hoặc <code className="text-stone-800 font-bold">aurora2026</code>
+                  Mật khẩu mẫu: <code className="text-stone-800 font-bold">123456</code> hoặc <code className="text-stone-800 font-bold">robot123</code>
                 </p>
               </div>
 
@@ -842,13 +1049,13 @@ export const RobotScreenPage = ({ onLogout = () => {} }) => {
                 <button
                   type="button"
                   onClick={() => setShowLogoutModal(false)}
-                  className="flex-1 py-3 rounded-2xl bg-stone-100 hover:bg-stone-200 text-stone-700 font-bold text-xs transition-colors cursor-pointer"
+                  className="flex-1 py-3 rounded-2xl bg-[#FAF8F5] hover:bg-[#E5E1D8] text-stone-700 border border-[#E0DCD3] font-bold text-xs transition-colors cursor-pointer"
                 >
                   Hủy bỏ
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-3 rounded-2xl bg-aurora-primary hover:bg-stone-800 text-aurora-textInverse font-bold text-xs transition-all shadow-sm cursor-pointer"
+                  className="flex-1 py-3 rounded-2xl bg-[#E5E1D8] hover:bg-[#DCD7CB] text-stone-900 border border-[#CFCABF] font-bold text-xs transition-all shadow-sm cursor-pointer"
                 >
                   Xác Nhận Đăng Xuất
                 </button>
@@ -857,8 +1064,40 @@ export const RobotScreenPage = ({ onLogout = () => {} }) => {
           </div>
         </div>
       )}
+
+      {/* MESSENGER VIDEO CALL MODAL & CLOUDINARY RECORDING */}
+      <MessengerVideoCallModal
+        isOpen={isVideoCallOpen}
+        sessionId={videoCallSessionId || sessionId}
+        role="guest"
+        callerName="Khách tại Kiosk"
+        calleeName="Tổng Đài Viên Concierge"
+        roomNumber={activeRoomNumber || 'Main Lobby Kiosk'}
+        ticketCode={videoCallTicketCode}
+        onClose={() => {
+          setIsVideoCallOpen(false);
+          setVideoCallSessionId(null);
+          setVideoCallTicketCode(null);
+          setCurrentState('RT-02');
+        }}
+        onCallEnded={(recordRes) => {
+          console.log('[RobotScreen] Call ended:', recordRes);
+          setIsVideoCallOpen(false);
+          setVideoCallSessionId(null);
+          setVideoCallTicketCode(null);
+          setCurrentState('RT-02');
+        }}
+      />
+
+      {/* QUICK FEEDBACK SURVEY MODAL */}
+      <RobotQuickFeedbackModal
+        isOpen={isFeedbackModalOpen}
+        onClose={() => setIsFeedbackModalOpen(false)}
+        sessionId={sessionId}
+        roomNumber={activeRoomNumber || 'Main Lobby Kiosk'}
+        guestName="Khách tại Kiosk"
+        onCompleted={handleFeedbackCompleted}
+      />
     </div>
   );
 };
-
-export default RobotScreenPage;

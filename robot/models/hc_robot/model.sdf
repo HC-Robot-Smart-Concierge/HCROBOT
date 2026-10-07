@@ -1,0 +1,352 @@
+<?xml version="1.0" ?>
+<sdf version="1.8">
+  <model name="hc_robot">
+    <pose>0 0 0.033 0 0 0</pose>
+
+    <!-- BASE LINK / CHASSIS -->
+    <link name="base_link">
+      <inertial>
+        <pose>-0.0585 0 0.059 0 0 0</pose>
+        <mass>1.2</mass>
+        <inertia>
+          <ixx>0.01</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.015</iyy>
+          <iyz>0</iyz>
+          <izz>0.02</izz>
+        </inertia>
+      </inertial>
+
+      <!-- Chassis Visual (Orange Body) -->
+      <visual name="chassis_visual">
+        <pose>-0.0585 0 0.059 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.335 0.265 0.138</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.95 0.45 0.1 1</ambient>
+          <diffuse>0.95 0.45 0.1 1</diffuse>
+          <specular>0.5 0.5 0.5 1</specular>
+        </material>
+      </visual>
+
+      <collision name="chassis_collision">
+        <pose>-0.0585 0 0.059 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.335 0.265 0.138</size>
+          </box>
+        </geometry>
+      </collision>
+
+      <!-- Caster Wheel (White Low-Friction Ball) -->
+      <visual name="caster_visual">
+        <pose>-0.151 0 -0.023 0 0 0</pose>
+        <geometry>
+          <sphere>
+            <radius>0.01</radius>
+          </sphere>
+        </geometry>
+        <material>
+          <ambient>0.9 0.9 0.9 1</ambient>
+          <diffuse>0.9 0.9 0.9 1</diffuse>
+        </material>
+      </visual>
+
+      <collision name="caster_collision">
+        <pose>-0.151 0 -0.023 0 0 0</pose>
+        <geometry>
+          <sphere>
+            <radius>0.01</radius>
+          </sphere>
+        </geometry>
+        <surface>
+          <friction>
+            <ode>
+              <mu>0.001</mu>
+              <mu2>0.001</mu2>
+            </ode>
+          </friction>
+        </surface>
+      </collision>
+
+      <!-- LiDAR Sensor Stand & Puck -->
+      <visual name="lidar_stand">
+        <pose>-0.104 0 0.15 0 0 0</pose>
+        <geometry>
+          <cylinder>
+            <radius>0.01</radius>
+            <length>0.1</length>
+          </cylinder>
+        </geometry>
+        <material>
+          <ambient>0.1 0.1 0.1 1</ambient>
+          <diffuse>0.1 0.1 0.1 1</diffuse>
+        </material>
+      </visual>
+
+      <visual name="lidar_puck">
+        <pose>-0.104 0 0.20 0 0 0</pose>
+        <geometry>
+          <cylinder>
+            <radius>0.05</radius>
+            <length>0.04</length>
+          </cylinder>
+        </geometry>
+        <material>
+          <ambient>0.05 0.7 0.9 1</ambient>
+          <diffuse>0.05 0.7 0.9 1</diffuse>
+        </material>
+      </visual>
+
+      <collision name="lidar_collision">
+        <pose>-0.104 0 0.20 0 0 0</pose>
+        <geometry>
+          <cylinder>
+            <radius>0.05</radius>
+            <length>0.04</length>
+          </cylinder>
+        </geometry>
+      </collision>
+
+      <!-- Camera Mount -->
+      <visual name="camera_visual">
+        <pose>0.11 0 0.14 0 0.18 0</pose>
+        <geometry>
+          <box>
+            <size>0.02 0.04 0.04</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.1 0.1 0.1 1</ambient>
+          <diffuse>0.1 0.1 0.1 1</diffuse>
+        </material>
+      </visual>
+
+      <!-- Robot Eyes (Display Face) -->
+      <visual name="face_eye_left">
+        <pose>0.11 0.05 0.09 0 1.5708 0</pose>
+        <geometry>
+          <cylinder>
+            <radius>0.015</radius>
+            <length>0.005</length>
+          </cylinder>
+        </geometry>
+        <material>
+          <ambient>0.1 0.8 1.0 1</ambient>
+          <diffuse>0.1 0.8 1.0 1</diffuse>
+          <emissive>0.1 0.8 1.0 1</emissive>
+        </material>
+      </visual>
+
+      <visual name="face_eye_right">
+        <pose>0.11 -0.05 0.09 0 1.5708 0</pose>
+        <geometry>
+          <cylinder>
+            <radius>0.015</radius>
+            <length>0.005</length>
+          </cylinder>
+        </geometry>
+        <material>
+          <ambient>0.1 0.8 1.0 1</ambient>
+          <diffuse>0.1 0.8 1.0 1</diffuse>
+          <emissive>0.1 0.8 1.0 1</emissive>
+        </material>
+      </visual>
+
+      <!-- Robot Mouth / LED Screen Indicator -->
+      <visual name="face_mouth">
+        <pose>0.11 0 0.05 0 1.5708 0</pose>
+        <geometry>
+          <box>
+            <size>0.01 0.06 0.005</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.1 1.0 0.3 1</ambient>
+          <diffuse>0.1 1.0 0.3 1</diffuse>
+          <emissive>0.1 1.0 0.3 1</emissive>
+        </material>
+      </visual>
+
+      <!-- LiDAR Sensor Plugin (Visual 360 Rays Enabled, 8m Range Capped to Room) -->
+      <sensor name="laser" type="gpu_lidar">
+        <pose>-0.104 0 0.20 0 0 0</pose>
+        <visualize>true</visualize>
+        <update_rate>15</update_rate>
+        <topic>/scan</topic>
+        <gz_frame_id>laser_frame</gz_frame_id>
+        <lidar>
+          <scan>
+            <horizontal>
+              <samples>360</samples>
+              <resolution>1</resolution>
+              <min_angle>-3.14159</min_angle>
+              <max_angle>3.14159</max_angle>
+            </horizontal>
+            <vertical>
+              <samples>1</samples>
+              <resolution>1</resolution>
+              <min_angle>0.0</min_angle>
+              <max_angle>0.0</max_angle>
+            </vertical>
+          </scan>
+          <range>
+            <min>0.12</min>
+            <max>8.0</max>
+            <resolution>0.01</resolution>
+          </range>
+        </lidar>
+      </sensor>
+
+      <!-- Camera Sensor Plugin (Matched to camera.xacro pose and optical frame) -->
+      <sensor name="camera" type="camera">
+        <pose>0.11 0 0.14 0 0.18 0</pose>
+        <visualize>false</visualize>
+        <update_rate>15</update_rate>
+        <topic>/camera/image_raw</topic>
+        <gz_frame_id>camera_link_optical</gz_frame_id>
+        <camera>
+          <camera_info_topic>/camera/camera_info</camera_info_topic>
+          <horizontal_fov>1.1</horizontal_fov>
+          <image>
+            <format>R8G8B8</format>
+            <width>640</width>
+            <height>480</height>
+          </image>
+          <clip>
+            <near>0.05</near>
+            <far>10.0</far>
+          </clip>
+        </camera>
+      </sensor>
+    </link>
+
+    <!-- LEFT WHEEL -->
+    <link name="left_wheel">
+      <pose>0 0.1485 0 -1.5708 0 0</pose>
+      <inertial>
+        <mass>0.08</mass>
+        <inertia>
+          <ixx>0.0001</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.0001</iyy>
+          <iyz>0</iyz>
+          <izz>0.0001</izz>
+        </inertia>
+      </inertial>
+      <visual name="visual">
+        <geometry>
+          <cylinder>
+            <radius>0.033</radius>
+            <length>0.026</length>
+          </cylinder>
+        </geometry>
+        <material>
+          <ambient>0.15 0.45 0.9 1</ambient>
+          <diffuse>0.15 0.45 0.9 1</diffuse>
+        </material>
+      </visual>
+      <collision name="collision">
+        <geometry>
+          <sphere>
+            <radius>0.033</radius>
+          </sphere>
+        </geometry>
+        <surface>
+          <friction>
+            <ode>
+              <mu>1.0</mu>
+              <mu2>1.0</mu2>
+            </ode>
+          </friction>
+        </surface>
+      </collision>
+    </link>
+
+    <!-- RIGHT WHEEL -->
+    <link name="right_wheel">
+      <pose>0 -0.1485 0 1.5708 0 0</pose>
+      <inertial>
+        <mass>0.08</mass>
+        <inertia>
+          <ixx>0.0001</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.0001</iyy>
+          <iyz>0</iyz>
+          <izz>0.0001</izz>
+        </inertia>
+      </inertial>
+      <visual name="visual">
+        <geometry>
+          <cylinder>
+            <radius>0.033</radius>
+            <length>0.026</length>
+          </cylinder>
+        </geometry>
+        <material>
+          <ambient>0.15 0.45 0.9 1</ambient>
+          <diffuse>0.15 0.45 0.9 1</diffuse>
+        </material>
+      </visual>
+      <collision name="collision">
+        <geometry>
+          <sphere>
+            <radius>0.033</radius>
+          </sphere>
+        </geometry>
+        <surface>
+          <friction>
+            <ode>
+              <mu>1.0</mu>
+              <mu2>1.0</mu2>
+            </ode>
+          </friction>
+        </surface>
+      </collision>
+    </link>
+
+    <!-- REVOLUTE JOINTS FOR WHEELS (Axle rotation around horizontal Y-axis of base_link) -->
+    <joint name="left_wheel_joint" type="revolute">
+      <parent>base_link</parent>
+      <child>left_wheel</child>
+      <axis>
+        <xyz expressed_in="base_link">0 1 0</xyz>
+        <limit>
+          <lower>-1e16</lower>
+          <upper>1e16</upper>
+        </limit>
+      </axis>
+    </joint>
+
+    <joint name="right_wheel_joint" type="revolute">
+      <parent>base_link</parent>
+      <child>right_wheel</child>
+      <axis>
+        <xyz expressed_in="base_link">0 1 0</xyz>
+        <limit>
+          <lower>-1e16</lower>
+          <upper>1e16</upper>
+        </limit>
+      </axis>
+    </joint>
+
+    <!-- DIFF DRIVE SYSTEM PLUGIN (GAZEBO HARMONIC) -->
+    <plugin filename="gz-sim-diff-drive-system" name="gz::sim::systems::DiffDrive">
+      <left_joint>left_wheel_joint</left_joint>
+      <right_joint>right_wheel_joint</right_joint>
+      <wheel_separation>0.297</wheel_separation>
+      <wheel_radius>0.033</wheel_radius>
+      <topic>cmd_vel</topic>
+      <odom_topic>odom</odom_topic>
+      <tf_topic>tf</tf_topic>
+      <frame_id>odom</frame_id>
+      <child_frame_id>base_link</child_frame_id>
+    </plugin>
+  </model>
+</sdf>

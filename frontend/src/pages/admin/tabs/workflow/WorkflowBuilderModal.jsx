@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, Layers, X } from 'lucide-react';
 import { OTTO_STEP_TYPES, STEP_SCRATCH_THEMES } from './workflowConstants';
 import { WorkflowStepBlock } from './WorkflowStepBlock';
 
@@ -28,19 +28,20 @@ export const WorkflowBuilderModal = ({
         <div className="px-5 py-3 border-b flex items-center justify-between shrink-0 bg-[#E9E5DC]" style={{ borderColor: '#BFBFBD' }}>
           <div>
             <h3 className="font-extrabold text-sm text-[#262626] flex items-center gap-2">
-              <span>🧩</span>
+              <Layers className="w-4 h-4 text-[#262626]" />
               <span>Cấu Hình Chu Trình Khối Lệnh (Workflow Builder)</span>
             </h3>
             <p className="text-[11px] text-stone-500">
-              Điền tham số trực tiếp trên từng khối lệnh giống Scratch để điều khiển trạng thái Robot
+              Điền tham số trực tiếp trên từng khối lệnh để điều khiển trạng thái Robot
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="px-2.5 py-1 rounded-lg text-xs font-bold border border-stone-400 bg-white hover:bg-stone-100 cursor-pointer text-stone-800"
+            className="px-2.5 py-1 rounded-lg text-xs font-bold border border-stone-400 bg-white hover:bg-stone-100 cursor-pointer text-stone-800 flex items-center gap-1"
           >
-            ✕ Đóng
+            <X className="w-3.5 h-3.5" />
+            <span>Đóng</span>
           </button>
         </div>
 
@@ -76,9 +77,11 @@ export const WorkflowBuilderModal = ({
                   onChange={(e) => onWorkflowMetaChange('trigger_type', e.target.value)}
                   className="w-full px-2.5 py-1.5 rounded-lg border border-stone-300 text-xs font-bold bg-white focus:outline-none"
                 >
-                  <option value="AUTO_DETECT">🤖 AI Phát Hiện Người (Auto)</option>
-                  <option value="MANUAL_DISPATCH">👤 Lễ Tân Kích Hoạt (Manual)</option>
-                  <option value="KIOSK_TOUCH">👆 Khách Chạm Màn Hình Kiosk</option>
+                  <option value="AUTO_DETECT">AI Phát Hiện Người (Auto)</option>
+                  <option value="MANUAL_DISPATCH">Lễ Tân Kích Hoạt (Manual)</option>
+                  <option value="KIOSK_TOUCH">Khách Chạm Màn Hình Kiosk</option>
+                  <option value="GUEST_TAP">Khách Chạm Màn Hình (Tap)</option>
+                  <option value="SCHEDULE">Theo Lịch Trình (Schedule)</option>
                 </select>
               </div>
               <label className="flex items-center gap-1.5 text-xs font-bold text-stone-800 cursor-pointer pt-4">

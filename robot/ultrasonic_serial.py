@@ -162,7 +162,7 @@ class SensorSnapshot:
 
 
 def _port_score(port_info) -> int:
-    """Ưu tiên USB-UART thường gặp trên ESP32: Espressif, CP210x, CH340, FTDI."""
+    """Ưu tiên USB-UART thường gặp trên ESP32: Espressif, CH340, FTDI, CP210x."""
     vid = getattr(port_info, "vid", None)
     description = (getattr(port_info, "description", "") or "").lower()
     manufacturer = (getattr(port_info, "manufacturer", "") or "").lower()
@@ -170,14 +170,14 @@ def _port_score(port_info) -> int:
 
     if vid == 0x303A or "espressif" in text:
         return 100
-    if vid == 0x10C4 or "cp210" in text or "silicon labs" in text:
-        return 90
     if vid == 0x1A86 or "ch340" in text or "wch" in text:
-        return 80
+        return 95  # Robot HC-Robot dùng CH340 cho ESP32, ưu tiên cao nhất
     if vid == 0x0403 or "ftdi" in text:
         return 70
     if "usb serial" in text or "usb uart" in text:
         return 50
+    if vid == 0x10C4 or "cp210" in text or "silicon labs" in text:
+        return 40  # RPLiDAR A1 dùng CP2102, để điểm thấp hơn để không chiếm cổng của LiDAR
     return 0
 
 

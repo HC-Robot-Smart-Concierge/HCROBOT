@@ -32,8 +32,8 @@ export const KioskStaffAlert = ({ activeStep }) => {
           {/* Assigned Staff Card */}
           <div className="p-3 rounded-2xl bg-white border border-stone-200/90 shadow-sm flex items-center justify-between text-left">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-amber-100 border border-amber-300 flex items-center justify-center text-lg shadow-sm">
-                👩‍💼
+              <div className="w-10 h-10 rounded-xl bg-stone-100 border border-stone-300 flex items-center justify-center text-lg shadow-sm">
+                <UserCheck className="w-5 h-5 text-stone-700" />
               </div>
               <div>
                 <div className="text-xs font-black text-stone-900 flex items-center gap-1.5">

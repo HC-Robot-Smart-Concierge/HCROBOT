@@ -1,9 +1,9 @@
 @echo off
-title Khoi Chay Gazebo 11 - HC-Robot Simulation
+title Khoi Chay Gazebo - HC-Robot Simulation
 echo ========================================================
-echo   DANG MO GAZEBO 11 TREN WSL 2 (UBUNTU 22.04 LTS)...
-echo   Tu dong nap can phong: hotel_room.world
-echo   Meo: Dung tab [Insert] ben trai de dat them ban ghe vao phong!
+echo   DANG MO GAZEBO SIM (HARMONIC / ROS 2 JAZZY) TREN WSL 2...
+echo   Distro: Ubuntu-24.04
+echo   Can phong mo phong: hotel_room.world
 echo ========================================================
-wsl -d Ubuntu-22.04 -u root bash -c "source /opt/ros/humble/setup.bash && export GAZEBO_MODEL_PATH=$GAZEBO_MODEL_PATH:/root/.gazebo/models:/mnt/d/Learning/Ki_9/SEP490/HCROBOT/robot/models && gazebo /mnt/d/Learning/Ki_9/SEP490/HCROBOT/robot/worlds/hotel_room.world"
+wsl -d Ubuntu-24.04 bash /mnt/f/DoAn/HC-Robot/robot/scripts/launch_gazebo.sh
 pause

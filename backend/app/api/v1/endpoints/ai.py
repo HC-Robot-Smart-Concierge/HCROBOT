@@ -27,11 +27,13 @@ from app.services.ai.tts_service import tts_service
 from app.services.ai.pipecat_service import pipecat_service
 from app.services.ai.concierge_graph import concierge_graph
 from app.core.config import settings
+from datetime import datetime
 from app.models import (
-    RoomServiceOrder,
     SupportRequest,
     Feedback,
 )
+from app.models.chat_session import ChatSession, ChatMessage
+from app.models.support import HumanSupportSession
 from app.api.v1.endpoints.operations import create_department_notification
 
 logger = logging.getLogger(__name__)
@@ -75,18 +77,77 @@ async def chat_with_robot(request: ChatRequest, db: AsyncSession = Depends(get_d
         session_manager.add_turn(sid, "user", request.prompt, language=lang_code)
         session_manager.add_turn(sid, "assistant", reply, language=lang_code, intent_action=act)
 
-        # TTS DECOUPLED: Chạy TTS nhanh cho reply ngắn (<50 ký tự), còn lại frontend dùng WebSpeech
-        audio_b64 = None
-        mime_type = "audio/mp3"
-        if len(reply) < 50:
+        # Lấy audio_base64 trực tiếp từ Audio Cache (0.07ms) hoặc EdgeTTS (tối đa 12s để luôn giữ giọng Hoài My)
+        try:
+            audio_b64, mime_type, _ = await asyncio.wait_for(
+                tts_service.synthesize(reply, provider="edge", language=lang_code),
+                timeout=12.0
+            )
+        except Exception as e_tts:
+            logger.warning(f"[AIChat] TTS online timeout/error, fallback to frontend WebSpeech: {e_tts}")
+            audio_b64, mime_type = None, "audio/mp3"
+
+        # Xử lý Intent phân loại tác vụ dịch vụ / cuộc gọi
+        act = graph_result.get("action")
+        items = graph_result.get("items")
+        is_video_call = bool(graph_result.get("trigger_video_call") or act == "concierge")
+        support_session_id = None
+        call_ticket_code = None
+
+        if is_video_call:
             try:
-                audio_b64, mime_type, _ = await asyncio.wait_for(
-                    tts_service.synthesize(reply, provider="edge", language=lang_code),
-                    timeout=2.0
+                code_num = random.randint(1000, 99999)
+                call_ticket_code = f"CCG-{code_num}"
+                room_loc = current_room or "Main Lobby Kiosk"
+
+                req = SupportRequest(
+                    ticket_code=call_ticket_code,
+                    source="Robot Voice Assistant",
+                    title=f"Live Call Concierge ({room_loc})",
+                    room_number=room_loc,
+                    description=request.prompt or "Yêu cầu cuộc gọi video trực tiếp từ khách",
+                    guest_name=f"Guest ({room_loc})",
+                    department_id="DEP-CONCIERGE",
+                    service_type_id="ST-CONCIERGE",
+                    priority="HIGH",
+                    status="Pending",
                 )
-            except Exception as e_tts:
-                logger.warning(f"[AIChat] TTS short-reply timeout, fallback to WebSpeech: {e_tts}")
-                audio_b64, mime_type = None, "audio/mp3"
+                db.add(req)
+                await db.flush()
+
+                human_session = HumanSupportSession(
+                    session_code=f"LIVE-{code_num}",
+                    room_number=room_loc,
+                    guest_name=f"Guest ({room_loc})",
+                    category="Live Call Support",
+                    origin_robot_code="RC-001 (Main Lobby)",
+                    sentiment="Neutral",
+                    status="Active",
+                    linked_request_id=req.id,
+                    call_started_at=datetime.utcnow(),
+                    messages=[{"speaker": "guest", "text": request.prompt}],
+                )
+                db.add(human_session)
+                await db.flush()
+                support_session_id = human_session.id
+
+                await create_department_notification(
+                    db=db,
+                    department="Concierge",
+                    title=f"Cuộc gọi Video Call mới: {call_ticket_code}",
+                    description=f"Khách tại {room_loc} đang gọi video tới Concierge",
+                    request_id=req.id,
+                    request_type="concierge",
+                    type="LiveAssistance",
+                )
+                await db.commit()
+                logger.info(f"[AIChat] Live video call created: session='{support_session_id}', ticket='{call_ticket_code}'")
+            except Exception as e_vc:
+                logger.error(f"[AIChat VideoCall Setup Error] {e_vc}")
+                await db.rollback()
+        else:
+            # TỰ ĐỘNG TẠO TICKET DỊCH VỤ TRONG NỀN TẬN DỤNG INTENT ĐÃ CÓ TỪ LANGGRAPH (Không gọi lại Ollama 5s)
+            asyncio.create_task(_background_extract_and_create_ticket(request.prompt, current_room, act, items))
 
         return ChatResponse(
             response=reply,
@@ -95,7 +156,10 @@ async def chat_with_robot(request: ChatRequest, db: AsyncSession = Depends(get_d
             lang_code=lang_code,
             session_id=sid,
             current_room_number=current_room,
-            missing_room_number=False,
+            missing_room_number=bool(graph_result.get("missing_room_number", False)),
+            trigger_video_call=is_video_call,
+            support_session_id=support_session_id,
+            ticket_code=call_ticket_code,
             audio_base64=audio_b64,
             mime_type=mime_type or "audio/mp3",
         )
@@ -556,12 +620,20 @@ async def _auto_create_ticket(db: AsyncSession, action: str, room_number: str, i
 
     try:
         if action in ["room_service", "restaurant"]:
-            order = RoomServiceOrder(
-                order_number=str(random.randint(1043, 9999)),
+            order_num = str(random.randint(1043, 9999))
+            ticket_code = f"ORD-{order_num}"
+            order = SupportRequest(
+                ticket_code=ticket_code,
+                title=f"Đơn Room Service (Phòng {rm}): {items}",
                 room_number=rm,
+                description=items or "Yêu cầu gửi từ HCRobot Concierge AI Chat",
+                guest_name=f"Guest (Room {rm})",
+                department_id="DEP-ROOMSERVICE",
+                service_type_id="ST-ROOM-SERVICE",
                 items=[{"name": items, "qty": 1}],
-                note="Yêu cầu gửi từ HCRobot Concierge AI Chat",
+                source="HCRobot Concierge AI Chat",
                 status="Pending",
+                priority="NORMAL",
                 progress=0,
             )
             db.add(order)
@@ -578,13 +650,13 @@ async def _auto_create_ticket(db: AsyncSession, action: str, room_number: str, i
                 db=db,
                 department="Reception",
                 title=f"Robot AI: Đơn F&B mới từ Khách Phòng {rm}",
-                description=f"Robot đã tiếp nhận đơn #{order.order_number}: {items}",
+                description=f"Robot đã tiếp nhận đơn #{ticket_code}: {items}",
                 request_id=order.id,
                 request_type="room_service",
                 type="Request",
             )
             await db.commit()
-            return order.order_number
+            return ticket_code
 
         elif action == "housekeeping":
             ticket_code = f"HK-{random.randint(1000, 99999)}"
@@ -803,16 +875,74 @@ async def _auto_create_ticket(db: AsyncSession, action: str, room_number: str, i
 
 @router.post("/feedback", response_model=FeedbackResponse, status_code=status.HTTP_201_CREATED, summary="Gửi phản hồi và đánh giá dịch vụ từ khách")
 async def submit_feedback(fb_in: FeedbackCreate, db: AsyncSession = Depends(get_db)):
-    """Lưu đánh giá và nhận xét của khách hàng vào bảng feedbacks trong cơ sở dữ liệu."""
+    """
+    Lưu đánh giá và nhận xét của khách hàng vào bảng feedbacks trong cơ sở dữ liệu.
+    Nếu rating <= 3 sao: tự động kích hoạt cảnh báo khẩn cấp (Urgent Alert) tới Concierge và Lễ tân.
+    """
+    # Đảm bảo chat_session_id hợp lệ trong bảng chat_sessions
+    session_id_val = fb_in.chat_session_id
+    if session_id_val:
+        from sqlalchemy.future import select
+        chk_stmt = select(ChatSession).where(ChatSession.id == session_id_val)
+        chk_res = await db.execute(chk_stmt)
+        if not chk_res.scalar_one_or_none():
+            new_session = ChatSession(
+                id=session_id_val,
+                room_number=fb_in.room_number,
+                guest_name=fb_in.guest_name or "Khách tại Kiosk",
+                is_active=False,
+            )
+            db.add(new_session)
+            await db.flush()
+
     new_fb = Feedback(
-        chat_session_id=fb_in.chat_session_id,
+        chat_session_id=session_id_val,
         rating=fb_in.rating,
-        category=fb_in.category,
+        category=fb_in.category or "Robot Concierge",
         comment=fb_in.comment,
         guest_name=fb_in.guest_name,
         room_number=fb_in.room_number,
     )
     db.add(new_fb)
+    await db.flush()
+
+    # XỬ LÝ ĐÁNH GIÁ TIÊU CỰC (SERVICE RECOVERY DISPATCH)
+    if new_fb.rating <= 3:
+        room_label = f"Phòng {new_fb.room_number}" if new_fb.room_number else "Kiosk Sảnh"
+        comment_text = new_fb.comment or "Khách không để lại ghi chú chi tiết"
+
+        try:
+            # Cảnh báo khẩn cấp tới bộ phận Concierge
+            await create_department_notification(
+                db=db,
+                department="Concierge",
+                title=f"[CẢNH BÁO] Đánh giá tiêu cực ({room_label}) - {new_fb.rating} Sao",
+                description=(
+                    f"Khách tại {room_label} vừa đánh giá {new_fb.rating}/5 sao. "
+                    f"Phản hồi: \"{comment_text}\". "
+                    f"Vui lòng mở lịch sử hội thoại để can thiệp hỗ trợ ngay!"
+                ),
+                request_id=new_fb.chat_session_id,
+                request_type="bad_feedback",
+                type="UrgentAlert",
+            )
+
+            # Đồng thời cảnh báo tới bộ phận Lễ tân (Reception)
+            await create_department_notification(
+                db=db,
+                department="Reception",
+                title=f"[CẢNH BÁO] Đánh giá thấp ({room_label}) - {new_fb.rating} Sao",
+                description=(
+                    f"Khách phản hồi {new_fb.rating}/5 sao về Robot Kiosk. "
+                    f"Session ID: {new_fb.chat_session_id}"
+                ),
+                request_id=new_fb.chat_session_id,
+                request_type="bad_feedback",
+                type="UrgentAlert",
+            )
+        except Exception as alert_err:
+            logger.warning(f"[Feedback Service Recovery Alert Error] {alert_err}")
+
     await db.commit()
     await db.refresh(new_fb)
     return new_fb

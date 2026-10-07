@@ -228,11 +228,21 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
                   {item.id === 'Robot Control' && activeMenu === 'Robot Control' && (
                     <div className="ml-3 pl-3 border-l my-0.5 space-y-0.5" style={{ borderColor: '#262626' }}>
                       <button
+                        onClick={() => setRobotSubTab('lidar')}
+                        className="w-full text-left px-2 py-1.5 rounded text-[11px] font-semibold transition-all cursor-pointer"
+                        style={{
+                          background: robotSubTab === 'lidar' || robotSubTab === 'teleop_odom' ? '#262626' : 'transparent',
+                          color: robotSubTab === 'lidar' || robotSubTab === 'teleop_odom' ? '#FFFFFF' : '#8C8C8C',
+                        }}
+                      >
+                        Điều Khiển & Odometry SLAM
+                      </button>
+                      <button
                         onClick={() => setRobotSubTab('studio')}
                         className="w-full text-left px-2 py-1.5 rounded text-[11px] font-semibold transition-all cursor-pointer"
                         style={{
-                          background: robotSubTab === 'studio' || robotSubTab === 'lidar' ? '#262626' : 'transparent',
-                          color: robotSubTab === 'studio' || robotSubTab === 'lidar' ? '#FFFFFF' : '#8C8C8C',
+                          background: robotSubTab === 'studio' ? '#262626' : 'transparent',
+                          color: robotSubTab === 'studio' ? '#FFFFFF' : '#8C8C8C',
                         }}
                       >
                         Bản Đồ LiDAR Studio

@@ -37,10 +37,15 @@ except ImportError:
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s] [%(levelname)s] [LiDAR-SLAM] %(message)s")
 logger = logging.getLogger("RPLidarSLAM")
 
-MAPS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "maps")
-WORKFLOWS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "workflows")
+ROBOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+MAPS_DIR = os.path.join(ROBOT_DIR, "maps")
+WORKFLOWS_DIR = os.path.join(ROBOT_DIR, "workflows")
 os.makedirs(MAPS_DIR, exist_ok=True)
 os.makedirs(WORKFLOWS_DIR, exist_ok=True)
+
+import sys
+if ROBOT_DIR not in sys.path:
+    sys.path.insert(0, ROBOT_DIR)
 
 
 def find_rplidar_port() -> str:
@@ -124,6 +129,22 @@ class RPLidarSLAMCore:
         self.is_workflow_running = False
         self.workflow_step_index = 0
         self.workflow_progress: Dict[str, Any] = {}
+
+        # Direct Motor Control via Raspberry Pi 5 L298N (GPIO 17, 27, 22, 23)
+        self.pi_motor = None
+        try:
+            from motor_controller import MotorController
+            self.pi_motor = MotorController(
+                left_forward_pin=17,
+                left_backward_pin=27,
+                right_forward_pin=22,
+                right_backward_pin=23,
+                invert_left_direction=False,
+                invert_right_direction=True,
+            )
+            logger.info("🚗 [LiDAR-SLAM] Đã khởi tạo MotorController trực tiếp trên Raspberry Pi 5 (GPIO 17, 27, 22, 23)!")
+        except Exception as e:
+            logger.warning(f"⚠️ [LiDAR-SLAM] Không khởi tạo được MotorController trực tiếp ({e}), sử dụng fallback UDP 9999")
 
     def reset_map(self):
         """Xóa trắng bản đồ 2D về trạng thái ban đầu và đưa vị trí robot về gốc."""
@@ -510,13 +531,44 @@ free_thresh: 0.25
             }
 
     def send_udp_motor_command(self, cmd: str):
-        """Gửi lệnh di chuyển qua UDP tới port 9999 của robot/main.py."""
+        """
+        Điều khiển động cơ:
+        1. Trực tiếp qua MotorController (L298N GPIO) nếu đang chạy trên Pi 5.
+        2. Đồng thời gửi UDP tới 127.0.0.1:9999 nếu main.py đang chạy để đồng bộ.
+        """
+        cmd_clean = cmd.strip().lower()
+
+        # 1. Direct hardware execution
+        if self.pi_motor is not None:
+            try:
+                if cmd_clean in ("forward", "w"):
+                    self.pi_motor.move_forward()
+                elif cmd_clean in ("backward", "s"):
+                    self.pi_motor.move_backward()
+                elif cmd_clean in ("left", "a"):
+                    self.pi_motor.turn_left()
+                elif cmd_clean in ("right", "d"):
+                    self.pi_motor.turn_right()
+                elif cmd_clean in ("forward_left", "wa", "aw"):
+                    self.pi_motor.turn_forward_left()
+                elif cmd_clean in ("forward_right", "wd", "dw"):
+                    self.pi_motor.turn_forward_right()
+                elif cmd_clean in ("backward_left", "sa", "as"):
+                    self.pi_motor.turn_backward_left()
+                elif cmd_clean in ("backward_right", "sd", "ds"):
+                    self.pi_motor.turn_backward_right()
+                elif cmd_clean in ("stop", "x", "") or cmd_clean.startswith("speed:"):
+                    self.pi_motor.stop()
+            except Exception as e:
+                logger.warning(f"Lỗi motor phần cứng trực tiếp: {e}")
+
+        # 2. UDP Fallback / Sync
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             sock.sendto(cmd.encode("utf-8"), ("127.0.0.1", 9999))
             sock.close()
-        except Exception as e:
-            logger.warning(f"Lỗi gửi lệnh UDP {cmd}: {e}")
+        except Exception:
+            pass
 
     def navigate_to(self, target_x: float, target_y: float):
         """Bắt đầu tác vụ tự hành tới tọa độ mục tiêu (target_x, target_y)."""

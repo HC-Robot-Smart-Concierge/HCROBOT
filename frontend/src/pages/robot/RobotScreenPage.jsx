@@ -742,10 +742,18 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         calleeName="Tổng Đài Viên Concierge"
         roomNumber={activeRoomNumber || 'Main Lobby Kiosk'}
         ticketCode={videoCallTicketCode}
-        onClose={() => setIsVideoCallOpen(false)}
-        onCallEnded={(recordRes) => {
-          console.log('[RobotScreen] Call ended and recorded to Cloudinary:', recordRes);
+        onClose={() => {
           setIsVideoCallOpen(false);
+          setVideoCallSessionId(null);
+          setVideoCallTicketCode(null);
+          setCurrentState('RT-02');
+        }}
+        onCallEnded={(recordRes) => {
+          console.log('[RobotScreen] Call ended:', recordRes);
+          setIsVideoCallOpen(false);
+          setVideoCallSessionId(null);
+          setVideoCallTicketCode(null);
+          setCurrentState('RT-02');
         }}
       />
     </div>

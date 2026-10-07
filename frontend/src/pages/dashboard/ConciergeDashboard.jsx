@@ -366,7 +366,10 @@ export const ConciergeDashboard = ({ currentUser, onNotify = () => {} }) => {
 
                   {activeSession.status === 'Connected' && (
                     <button
-                      onClick={() => handleUpdateStatus('Closed')}
+                      onClick={async () => {
+                        setIsVideoModalOpen(false);
+                        await handleUpdateStatus('Closed');
+                      }}
                       className="px-4 py-2 rounded-lg bg-neutral-700 hover:bg-neutral-800 text-white text-xs font-bold flex items-center gap-2 shadow-sm transition-all"
                     >
                       <PhoneOff className="w-4 h-4" />
@@ -940,13 +943,19 @@ export const ConciergeDashboard = ({ currentUser, onNotify = () => {} }) => {
         calleeName={currentUser?.full_name || 'Tổng Đài Viên Concierge'}
         roomNumber={activeSession?.room_number || 'Sảnh S1'}
         ticketCode={activeSession?.ticket_code}
-        onClose={() => {
+        onClose={async () => {
           setIsVideoModalOpen(false);
+          if (activeSession && activeSession.status === 'Connected') {
+            await handleUpdateStatus('Closed');
+          }
           loadData();
         }}
-        onCallEnded={(recordRes) => {
-          console.log('[ConciergeDashboard] Staff call ended, video uploaded:', recordRes);
+        onCallEnded={async (recordRes) => {
+          console.log('[ConciergeDashboard] Staff call ended:', recordRes);
           setIsVideoModalOpen(false);
+          if (activeSession && activeSession.status === 'Connected') {
+            await handleUpdateStatus('Closed');
+          }
           loadData();
         }}
       />

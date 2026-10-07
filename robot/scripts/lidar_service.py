@@ -597,6 +597,10 @@ free_thresh: 0.25
                         self.current_motion_cmd = "stop"
                         self.status = "OBSTACLE_STOP"
                         self.last_safety_alert = f"🚨 PHANH KHẨN CẤP: Vật cản sau xe {rear_d*100:.1f}cm (< 30cm)!"
+                else:
+                    self.last_safety_alert = ""
+                    if self.status == "OBSTACLE_STOP":
+                        self.status = "IDLE"
             except Exception as e:
                 logger.error(f"Lỗi safety watchdog: {e}")
             time.sleep(0.04)

@@ -375,10 +375,6 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
             if (data.overlay_waypoints) setOverlayWaypoints(data.overlay_waypoints);
             if (data.safety) {
               setSafetyInfo(data.safety);
-              if (data.safety.alert) {
-                setNavNotification(data.safety.alert);
-                setTimeout(() => setNavNotification(''), 4000);
-              }
             }
           }
         } catch (err) {
@@ -938,12 +934,13 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
         </div>
       </div>
 
-      {/* Nav Notification Alert */}
+      {/* Floating Toast Notification (Absolute - Never shifts workspace layout height) */}
       {navNotification && (
-        <div className="w-full border-b px-6 py-2 flex items-center gap-2 text-xs font-bold font-mono"
-          style={{ background: '#E9E5DC', borderColor: '#BFBFBD', color: '#262626' }}>
-          <Radio className="w-3 h-3 shrink-0" style={{ color: '#8C8C8C' }} />
+        <div className="absolute top-14 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-lg shadow-md border flex items-center gap-2 text-xs font-bold font-mono pointer-events-auto backdrop-blur-xs"
+          style={{ background: 'rgba(250, 248, 245, 0.95)', borderColor: '#BFBFBD', color: '#262626' }}>
+          <Radio className="w-3.5 h-3.5 shrink-0 text-amber-600 animate-pulse" />
           <span>{navNotification}</span>
+          <button onClick={() => setNavNotification('')} className="ml-2 text-stone-400 hover:text-stone-700 font-bold text-xs cursor-pointer">✕</button>
         </div>
       )}
 

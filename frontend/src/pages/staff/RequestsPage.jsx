@@ -22,7 +22,7 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
   const [selectedDetailReq, setSelectedDetailReq] = useState(null); // Read-only completed detail modal
   const [isLoading, setIsLoading] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 20;
+  const pageSize = 10;
 
   // Consolidated initial hotel requests
   const [requests, setRequests] = useState([
@@ -138,26 +138,9 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
   // - Bước 2 (Đã chuyển bếp -> Bếp nhận nấu): CHỈ Kitchen / Đầu Bếp (hoặc Executive/Admin)
   // - Bước 3 (Bếp đang nấu -> Món đã nấu xong): CHỈ Kitchen / Đầu Bếp (hoặc Executive/Admin)
   // - Bước 4 (Món đã nấu xong -> Lấy món & giao phòng): CHỈ Room Service (hoặc Executive/Admin)
-  // - Bước 5 (Đang giao phòng -> Xác nhận đã giao): CHỈ Room Service (hoặc Executive/Admin)
-  const canUserActOnStage = (step) => {
-    if (isExecutive) return true; // Quản lý khách sạn có quyền can thiệp/kiểm thử toàn trình
-    if (step === 1) {
-      // Room Service kiểm tra và chuyển cho Bếp
-      return isRoomServiceStaff || (!isKitchenStaff);
-    }
-    if (step === 2 || step === 3) {
-      // Bếp nhận nấu và bấm món đã nấu xong: CHỈ Bếp mới được bấm! Room Service chỉ xem
-      return isKitchenStaff;
-    }
-    if (step === 4 || step === 5) {
-      // Bếp nấu xong -> Room Service lấy món đi giao và xác nhận hoàn tất: CHỈ Room Service mới được bấm!
-      return isRoomServiceStaff || (!isKitchenStaff);
-    }
-    return false;
-  };
-
   // Helper to check if task is assigned to current user
   const isTaskAssignedToMe = (r) => {
+    if (!r) return false;
     const assigned =
       r.assignedTo ||
       r.assigned_to ||
@@ -178,6 +161,33 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
       (curFullNameNorm && assignedNorm === curFullNameNorm) ||
       (curUserNorm && assignedNorm === curUserNorm)
     );
+  };
+
+  // Phân quyền chặt chẽ theo từng giai đoạn (Stage-based Authorization):
+  // - Bước 1 (Khách đặt -> Chuyển sang bếp): CHỈ Room Service (hoặc Executive/Admin)
+  // - Bước 2 (Đã chuyển bếp -> Bếp nhận nấu): CHỈ Kitchen / Đầu Bếp (hoặc Executive/Admin)
+  // - Bước 3 (Bếp đang nấu -> Món đã nấu xong): CHỈ người nhận request (đầu bếp phụ trách) mới được bấm!
+  // - Bước 4 (Món đã nấu xong -> Lấy món & giao phòng): CHỈ Room Service (hoặc Executive/Admin)
+  // - Bước 5 (Đang giao phòng -> Xác nhận đã giao): CHỈ Room Service (hoặc Executive/Admin)
+  const canUserActOnStage = (step, req = null) => {
+    if (isExecutive) return true; // Quản lý khách sạn có quyền can thiệp/kiểm thử toàn trình
+    if (step === 1) {
+      // Room Service kiểm tra và chuyển cho Bếp
+      return isRoomServiceStaff || (!isKitchenStaff);
+    }
+    if (step === 2) {
+      // Bếp nhận nấu: Đầu bếp trực ca có thể tiếp nhận đơn
+      return isKitchenStaff;
+    }
+    if (step === 3) {
+      // Bếp nấu xong -> Món đã nấu xong: CHỈ người nhận request mới được bấm!
+      return isKitchenStaff && isTaskAssignedToMe(req);
+    }
+    if (step === 4 || step === 5) {
+      // Bếp nấu xong -> Room Service lấy món đi giao và xác nhận hoàn tất: CHỈ Room Service mới được bấm!
+      return isRoomServiceStaff || (!isKitchenStaff);
+    }
+    return false;
   };
 
   // Helper to get unified handler name for both list view and detail modal
@@ -380,33 +390,98 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
   };
 
   // Base list scoped to department & task visibility rules:
-  // - Đang xử lý: Với đơn Room Service / Bếp, cho phép toàn bộ nhân viên cùng theo dõi tiến độ
-  // - Đã hoàn tất & Chờ tiếp nhận: Hiển thị đầy đủ theo bộ phận
+  // - Phương án 2 (Tách biệt hàng đợi Bếp & Room Service):
+  //   + Nhân viên Bếp (Kitchen):
+  //     * Bước 1 (Khách Đặt): Chưa chuyển bếp -> Bếp không thấy.
+  //     * Bước 2 (Đã Chuyển Bếp): Chờ nhận nấu -> Hiển thị cho tất cả đầu bếp để nhận việc.
+  //     * Bước 3 (Bếp Đang Nấu): Đã có người nhận -> Ẩn đối với người khác (!isTaskAssignedToMe), chỉ người nhận mới thấy.
+  //     * Bước 4, 5 (Món Xong / Đang Giao): Ẩn đối với người khác, người nấu vẫn có thể theo dõi.
+  //     * Bước 6 (Đã Hoàn Tất): Hiển thị bình thường trong lịch sử đơn hàng.
+  //   + Room Service: Quản lý tiếp nhận (step 1) và giao phòng (step 4, 5).
   const deptScopedRequests = requests.filter((r) => {
     if (!isExecutive && !isDeptMatch(r.department, staffDept)) {
       return false;
     }
 
-    if (!isExecutive && !isFoodOrder(r) && isTaskInProgress(r) && !isTaskAssignedToMe(r)) {
-      return false;
+    if (!isExecutive) {
+      if (isFoodOrder(r)) {
+        const stage = getFoodOrderStage(r.status);
+        if (isKitchenStaff) {
+          // 1. Bước 1: Khách đặt -> Room Service duyệt (Bếp không thấy)
+          if (stage.step === 1) {
+            return false;
+          }
+          // 2. Bước 3: Bếp đang nấu -> Đã có người nhận, ẩn khỏi người KHÁC (!isTaskAssignedToMe)
+          if (stage.step === 3 && !isTaskAssignedToMe(r)) {
+            return false;
+          }
+          // 3. Bước 4, 5: Món xong / Giao phòng -> Ẩn khỏi người KHÁC (!isTaskAssignedToMe)
+          if ((stage.step === 4 || stage.step === 5) && !isTaskAssignedToMe(r)) {
+            return false;
+          }
+        } else {
+          // Với Room Service / Bộ phận khác:
+          // - Bước 3: Bếp đang nấu -> Ẩn khỏi Requests của Room Service (Bếp đang nấu)
+          if (stage.step === 3) {
+            return false;
+          }
+          // - Bước 5: Đang giao phòng -> Đã có người nhận đi giao, ẩn khỏi người KHÁC
+          if (stage.step === 5 && !isTaskAssignedToMe(r)) {
+            return false;
+          }
+        }
+      } else {
+        // Đơn thông thường (Non-Food):
+        // Khi task đã có người nhận (In Progress) mà KHÔNG PHẢI TÔI NHẬN -> Ẩn khỏi Requests!
+        if (isTaskInProgress(r) && !isTaskAssignedToMe(r)) {
+          return false;
+        }
+      }
     }
 
     return true;
   });
 
+  // Helper phân loại trạng thái theo vai trò người dùng (Bếp vs Room Service/Khác)
+  const isReqPendingForUser = (r) => {
+    if (isKitchenStaff && isFoodOrder(r)) {
+      const stage = getFoodOrderStage(r.status);
+      return stage.step === 2; // Đã chuyển bếp, chờ Bếp bấm nhận nấu
+    }
+    return isTaskPending(r);
+  };
+
+  const isReqInProgressForUser = (r) => {
+    if (isKitchenStaff && isFoodOrder(r)) {
+      const stage = getFoodOrderStage(r.status);
+      // Với Bếp: Chỉ 'Đang Xử Lý' khi bếp đang chế biến (step 3).
+      // Khi đã đến 'Món Xong' (step >= 4), xem như Bếp đã xong phần phụ trách, phần còn lại là của Room Service!
+      return stage.step === 3;
+    }
+    return isTaskInProgress(r);
+  };
+
+  const isReqCompletedForUser = (r) => {
+    if (isKitchenStaff && isFoodOrder(r)) {
+      const stage = getFoodOrderStage(r.status);
+      return stage.step >= 4; // Món đã nấu xong -> xong phần phụ trách của Bếp
+    }
+    return isTaskCompleted(r);
+  };
+
   // Calculate live badge counts
-  const pendingCount = deptScopedRequests.filter(isTaskPending).length;
-  const inProgressCount = deptScopedRequests.filter(isTaskInProgress).length;
-  const completedCount = deptScopedRequests.filter(isTaskCompleted).length;
+  const pendingCount = deptScopedRequests.filter(isReqPendingForUser).length;
+  const inProgressCount = deptScopedRequests.filter(isReqInProgressForUser).length;
+  const completedCount = deptScopedRequests.filter(isReqCompletedForUser).length;
 
   // Sorting logic based on progress workflow:
   // 1. Pending (chờ tiếp nhận)
-  // 2. In Progress (đang xử lý / Bếp / Đang giao)
+  // 2. In Progress (đang xử lý / Bếp nấu)
   // 3. Completed (hoàn thành)
   const getRequestPriorityScore = (req) => {
-    const isPending = isTaskPending(req);
-    const isInProgress = isTaskInProgress(req);
-    const isCompleted = isTaskCompleted(req);
+    const isPending = isReqPendingForUser(req);
+    const isInProgress = isReqInProgressForUser(req);
+    const isCompleted = isReqCompletedForUser(req);
 
     if (isPending) return 1;
     if (isInProgress) return 2;
@@ -418,9 +493,9 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
   const filtered = deptScopedRequests.filter((r) => {
     const matchStatus = (() => {
       if (statusFilter === 'All') return true;
-      if (statusFilter === 'Pending') return isTaskPending(r);
-      if (statusFilter === 'In Progress') return isTaskInProgress(r);
-      if (statusFilter === 'Completed') return isTaskCompleted(r);
+      if (statusFilter === 'Pending') return isReqPendingForUser(r);
+      if (statusFilter === 'In Progress') return isReqInProgressForUser(r);
+      if (statusFilter === 'Completed') return isReqCompletedForUser(r);
       return (r.status || '').toLowerCase().trim() === statusFilter.toLowerCase();
     })();
 
@@ -451,9 +526,16 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
     currentPage * pageSize
   );
 
-  // Giới hạn nhiệm vụ đang xử lý (Phương án 1: Cho phép nhận tối đa 3 đơn cùng lúc)
+  // Giới hạn nhiệm vụ đang xử lý (Cho phép nhận tối đa 3 đơn cùng lúc)
   const MAX_CONCURRENT_TASKS = 3;
-  const myActiveTasks = requests.filter((r) => isTaskInProgress(r) && isTaskAssignedToMe(r));
+  const myActiveTasks = requests.filter((r) => {
+    if (!isTaskAssignedToMe(r)) return false;
+    if (isKitchenStaff && isFoodOrder(r)) {
+      const stage = getFoodOrderStage(r.status);
+      return stage.step === 2 || stage.step === 3;
+    }
+    return isTaskInProgress(r);
+  });
   const activeTaskCount = myActiveTasks.length;
   const isTaskLimitReached = activeTaskCount >= MAX_CONCURRENT_TASKS;
 
@@ -473,6 +555,14 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
       nextStatus.toLowerCase() === 'delivered' ||
       nextStatus.toLowerCase() === 'done';
 
+    // Khi nhận việc mới (chuyển sang Cooking, Delivering, hoặc In Progress), gán chính xác người thực hiện
+    const isNewClaimOrAssign =
+      nextStatus.toLowerCase() === 'cooking' ||
+      nextStatus.toLowerCase() === 'delivering' ||
+      nextStatus.toLowerCase() === 'in progress';
+
+    const finalAssignedTo = isNewClaimOrAssign ? staffName : (targetReq?.assignedTo || staffName);
+
     // 1. Optimistic UI update
     setRequests((prev) =>
       prev.map((r) =>
@@ -480,9 +570,9 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
           ? {
               ...r,
               status: nextStatus,
-              assignedTo: r.assignedTo || staffName,
-              assigned_to: r.assigned_to || staffName,
-              assigned_staff_name: r.assigned_staff_name || staffName,
+              assignedTo: finalAssignedTo,
+              assigned_to: finalAssignedTo,
+              assigned_staff_name: finalAssignedTo,
               completed_by: isCompletedStatus ? staffName : r.completed_by,
             }
           : r
@@ -490,7 +580,7 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
     );
 
     // 2. Call backend API to persist in PostgreSQL database
-    await updateGenericRequestStatus(reqId, nextStatus, staffName);
+    await updateGenericRequestStatus(reqId, nextStatus, finalAssignedTo);
 
     const statusMessages = {
       'Sent to Kitchen': `Đã chuyển phiếu #${reqId} sang bộ phận Bếp và lưu vào mục [Yêu Cầu Cá Nhân]!`,
@@ -868,7 +958,7 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
                       <div className="flex items-center gap-2 w-full md:w-auto justify-end">
                         {/* 1. Food Order Action Button for the current stage */}
                         {isFood && stage.nextStatus && (
-                          canUserActOnStage(stage.step) ? (
+                          canUserActOnStage(stage.step, req) ? (
                             <button
                               onClick={() => {
                                 if (stage.step === 1 && isTaskLimitReached) {
@@ -911,10 +1001,14 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
                             ) : stage.step === 3 ? (
                               <span
                                 className="px-3 py-1.5 rounded-full bg-amber-50 text-amber-800 text-[11px] font-bold border border-amber-200 flex items-center gap-1.5 select-none shadow-2xs"
-                                title="Bếp đang chế biến món ăn. Khi hoàn tất, Bếp sẽ bấm xác nhận để báo cho Room Service."
+                                title={
+                                  isKitchenStaff
+                                    ? `Đơn này do ${handlerName} nhận nấu. Chỉ ${handlerName} mới có quyền bấm món nấu xong.`
+                                    : 'Bếp đang chế biến món ăn. Khi hoàn tất, Bếp sẽ bấm xác nhận để báo cho Room Service.'
+                                }
                               >
-                                <Sparkles className="w-3.5 h-3.5 text-amber-600 animate-pulse" />
-                                <span>Bếp Đang Nấu Món...</span>
+                                <ChefHat className="w-3.5 h-3.5 text-amber-600 animate-pulse" />
+                                <span>{isKitchenStaff ? `Đang nấu bởi: ${handlerName}` : 'Bếp Đang Nấu Món...'}</span>
                               </span>
                             ) : stage.step === 4 ? (
                               <span
@@ -1309,7 +1403,7 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
                 <div className="flex items-center gap-2">
                   {/* Food order next step button inside modal */}
                   {isModalFood && modalStage.nextStatus && (
-                    canUserActOnStage(modalStage.step) ? (
+                    canUserActOnStage(modalStage.step, selectedDetailReq) ? (
                       <button
                         type="button"
                         onClick={async () => {

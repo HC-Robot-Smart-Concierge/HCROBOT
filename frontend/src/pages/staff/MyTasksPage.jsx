@@ -270,10 +270,14 @@ export const MyTasksPage = ({ currentUser, onNotify = () => {}, onNavigate = () 
     };
   };
 
-  const canUserActOnStage = (step) => {
+  const canUserActOnStage = (step, req = null) => {
     if (isExecutive) return true;
     if (step === 1) return isRoomServiceStaff || (!isKitchenStaff);
-    if (step === 2 || step === 3) return isKitchenStaff;
+    if (step === 2) return isKitchenStaff;
+    if (step === 3) {
+      // Bước 3 (Bếp nấu xong -> Món đã nấu xong): CHỈ người nhận request (đầu bếp phụ trách) mới được bấm!
+      return isKitchenStaff && isTaskAssignedToMe(req);
+    }
     if (step === 4 || step === 5) return isRoomServiceStaff || (!isKitchenStaff);
     return false;
   };
@@ -281,8 +285,28 @@ export const MyTasksPage = ({ currentUser, onNotify = () => {}, onNavigate = () 
   // Scope strictly to: tasks assigned to or handled by current user
   const myAssignedRequests = requests.filter((r) => isTaskAssignedToMe(r));
 
+  // Phân định trách nhiệm hoàn thành theo bộ phận:
+  // - Bộ phận Bếp (Kitchen): Khi chuyển request đến 'Món Xong' (Ready, step >= 4) thì XEM NHƯ ĐÃ XONG PHẦN PHỤ TRÁCH, phần còn lại (giao phòng) là của Room Service!
+  //   Do đó: Bếp chỉ 'Đang Phụ Trách' khi đang chế biến (Cooking / Sent to Kitchen).
+  // - Room Service: Phụ trách toàn trình từ tiếp nhận tới giao phòng thành công.
+  const isTaskActiveForUser = (r) => {
+    if (isKitchenStaff && isFoodOrder(r)) {
+      const stage = getFoodOrderStage(r.status);
+      return stage.step === 2 || stage.step === 3;
+    }
+    return isTaskInProgress(r);
+  };
+
+  const isTaskDoneForUser = (r) => {
+    if (isKitchenStaff && isFoodOrder(r)) {
+      const stage = getFoodOrderStage(r.status);
+      return stage.step >= 4; // Món đã nấu xong, đã xong phần phụ trách của Bếp
+    }
+    return isTaskCompleted(r);
+  };
+
   // Calculate live badge counts
-  const activeCount = myAssignedRequests.filter(isTaskInProgress).length;
+  const activeCount = myAssignedRequests.filter(isTaskActiveForUser).length;
   const readyCount = myAssignedRequests.filter((r) => {
     const s = (r.status || '').toLowerCase().trim();
     return s === 'ready' || s === 'món đã nấu xong' || s === 'sẵn sàng';
@@ -291,18 +315,20 @@ export const MyTasksPage = ({ currentUser, onNotify = () => {}, onNavigate = () 
     const s = (r.status || '').toLowerCase().trim();
     return s === 'cooking' || s === 'in preparation' || s === 'sent to kitchen' || s === 'sent_to_kitchen';
   }).length;
-  const completedCount = myAssignedRequests.filter(isTaskCompleted).length;
+  const completedCount = isKitchenStaff
+    ? myAssignedRequests.filter(isTaskDoneForUser).length
+    : myAssignedRequests.filter(isTaskCompleted).length;
 
   // Filter requests
   const filtered = myAssignedRequests.filter((r) => {
     const matchStatus = (() => {
       if (statusFilter === 'All') return true;
-      if (statusFilter === 'In Progress') return isTaskInProgress(r);
+      if (statusFilter === 'In Progress') return isTaskActiveForUser(r);
       if (statusFilter === 'Ready') {
         const s = (r.status || '').toLowerCase().trim();
         return s === 'ready' || s === 'món đã nấu xong';
       }
-      if (statusFilter === 'Completed') return isTaskCompleted(r);
+      if (statusFilter === 'Completed') return isTaskDoneForUser(r);
       return (r.status || '').toLowerCase().trim() === statusFilter.toLowerCase();
     })();
 
@@ -315,10 +341,10 @@ export const MyTasksPage = ({ currentUser, onNotify = () => {}, onNavigate = () 
     return matchStatus && matchSearch;
   });
 
-  // Sort: Active first (delivering -> ready -> cooking -> sent to kitchen), completed last
+  // Sort: Đơn đang xử lý đưa lên đầu, đơn đã xong phần việc đưa xuống cuối
   const sortedRequests = [...filtered].sort((a, b) => {
-    const isCompA = isTaskCompleted(a);
-    const isCompB = isTaskCompleted(b);
+    const isCompA = isTaskDoneForUser(a);
+    const isCompB = isTaskDoneForUser(b);
     if (isCompA !== isCompB) return isCompA ? 1 : -1;
     return (b.id || '').localeCompare(a.id || '');
   });
@@ -335,22 +361,30 @@ export const MyTasksPage = ({ currentUser, onNotify = () => {}, onNavigate = () 
       nextStatus.toLowerCase() === 'delivered' ||
       nextStatus.toLowerCase() === 'done';
 
+    const isNewClaimOrAssign =
+      nextStatus.toLowerCase() === 'cooking' ||
+      nextStatus.toLowerCase() === 'delivering' ||
+      nextStatus.toLowerCase() === 'in progress';
+
+    const targetReq = requests.find((r) => r.id === reqId);
+    const finalAssignedTo = isNewClaimOrAssign ? staffName : (targetReq?.assignedTo || staffName);
+
     setRequests((prev) =>
       prev.map((r) =>
         r.id === reqId
           ? {
               ...r,
               status: nextStatus,
-              assignedTo: r.assignedTo || staffName,
-              assigned_to: r.assigned_to || staffName,
-              assigned_staff_name: r.assigned_staff_name || staffName,
+              assignedTo: finalAssignedTo,
+              assigned_to: finalAssignedTo,
+              assigned_staff_name: finalAssignedTo,
               completed_by: isCompletedStatus ? staffName : r.completed_by,
             }
           : r
       )
     );
 
-    await updateGenericRequestStatus(reqId, nextStatus, staffName);
+    await updateGenericRequestStatus(reqId, nextStatus, finalAssignedTo);
 
     const statusMessages = {
       'Sent to Kitchen': `Đã chuyển phiếu #${reqId} sang bộ phận Bếp (Kitchen)`,
@@ -440,7 +474,9 @@ export const MyTasksPage = ({ currentUser, onNotify = () => {}, onNavigate = () 
 
           <div className="bg-white p-4 rounded-2xl border border-[#E5E1D8] shadow-xs flex items-center justify-between">
             <div>
-              <p className="text-[11px] font-bold text-stone-500 uppercase">Đã Giao Xong</p>
+              <p className="text-[11px] font-bold text-stone-500 uppercase">
+                {isKitchenStaff ? 'Đã Xong Phần Bếp' : 'Đã Giao Xong'}
+              </p>
               <h3 className="text-2xl font-black text-stone-700 mt-0.5">{completedCount}</h3>
             </div>
             <div className="w-10 h-10 rounded-xl bg-stone-100 text-stone-700 flex items-center justify-center font-bold">
@@ -478,7 +514,12 @@ export const MyTasksPage = ({ currentUser, onNotify = () => {}, onNavigate = () 
               { key: 'All', label: `Tất Cả (${myAssignedRequests.length})` },
               { key: 'In Progress', label: `Đang Xử Lý (${activeCount})` },
               { key: 'Ready', label: `Món Xong Chờ Giao (${readyCount})` },
-              { key: 'Completed', label: `Đã Giao Xong (${completedCount})` },
+              {
+                key: 'Completed',
+                label: isKitchenStaff
+                  ? `Đã Xong Phần Bếp (${completedCount})`
+                  : `Đã Giao Xong (${completedCount})`,
+              },
             ].map((tab) => (
               <button
                 key={tab.key}
@@ -688,7 +729,7 @@ export const MyTasksPage = ({ currentUser, onNotify = () => {}, onNavigate = () 
                       <div className="flex items-center gap-2 w-full md:w-auto justify-end">
                         {/* 1. Food Order: Stage Action Button if User has permission */}
                         {isFood && stage.nextStatus && (
-                          canUserActOnStage(stage.step) ? (
+                          canUserActOnStage(stage.step, req) ? (
                             <button
                               onClick={() => handleUpdateTaskStatus(req.id, stage.nextStatus)}
                               className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95 flex items-center gap-1.5 ${stage.actionBtnClass}`}
@@ -710,10 +751,18 @@ export const MyTasksPage = ({ currentUser, onNotify = () => {}, onNavigate = () 
                             ) : stage.step === 3 ? (
                               <span
                                 className="px-3 py-1.5 rounded-full bg-amber-50 text-amber-800 text-[11px] font-bold border border-amber-200 flex items-center gap-1.5 select-none shadow-2xs"
-                                title="Bếp đang chế biến món ăn. Khi hoàn tất, Bếp sẽ bấm xác nhận để báo cho Room Service."
+                                title={
+                                  isKitchenStaff
+                                    ? `Đơn này do ${req.assignedTo || req.assigned_staff_name || 'đầu bếp khác'} nhận nấu. Chỉ người nhận mới có quyền bấm món nấu xong.`
+                                    : 'Bếp đang chế biến món ăn. Khi hoàn tất, Bếp sẽ bấm xác nhận để báo cho Room Service.'
+                                }
                               >
-                                <Sparkles className="w-3.5 h-3.5 text-amber-600 animate-pulse" />
-                                <span>Bếp Đang Nấu Món...</span>
+                                <ChefHat className="w-3.5 h-3.5 text-amber-600 animate-pulse" />
+                                <span>
+                                  {isKitchenStaff
+                                    ? `Đang nấu bởi: ${req.assignedTo || req.assigned_staff_name || 'Đầu bếp khác'}`
+                                    : 'Bếp Đang Nấu Món...'}
+                                </span>
                               </span>
                             ) : (
                               <span className="px-3 py-1.5 rounded-full bg-stone-100 text-stone-600 text-xs font-semibold border border-stone-200">
@@ -938,7 +987,7 @@ export const MyTasksPage = ({ currentUser, onNotify = () => {}, onNavigate = () 
                 </button>
 
                 {isModalFood && modalStage.nextStatus && (
-                  canUserActOnStage(modalStage.step) ? (
+                  canUserActOnStage(modalStage.step, selectedDetailReq) ? (
                     <button
                       type="button"
                       onClick={async () => {

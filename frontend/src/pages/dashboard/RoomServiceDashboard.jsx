@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { InteractiveMapModal } from '../../components/dashboard/Modals';
+import { Pagination } from '../../components/common/Pagination';
 import { INITIAL_ROOM_SERVICE_DATA } from '../../data/mockHotelData';
 import {
   fetchRoomServiceDashboard,
@@ -68,6 +69,12 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
   });
   const [filter, setFilter] = useState('All');
   const [isMapModalOpen, setIsMapModalOpen] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filter]);
 
   useEffect(() => {
     const loadData = async () => {
@@ -97,17 +104,40 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
   }, []);
 
   const filteredOrders = useMemo(() => {
-    if (filter === 'All') return data.orders || [];
-    const filterLower = filter.toLowerCase();
-    return (data.orders || []).filter((order) => {
-      const s = (order.status || '').toLowerCase();
-      if (filterLower === 'pending') return s === 'pending' || s === 'unassigned';
-      if (filterLower === 'cooking') return s === 'cooking' || s === 'in preparation' || s === 'in progress' || s === 'sent to kitchen' || s === 'ready';
-      if (filterLower === 'delivering') return s === 'delivering' || s === 'in transit';
-      if (filterLower === 'completed') return s === 'completed' || s === 'delivered';
-      return s === filterLower;
+    let list = data.orders || [];
+    if (filter !== 'All') {
+      const filterLower = filter.toLowerCase();
+      list = list.filter((order) => {
+        const s = (order.status || '').toLowerCase();
+        if (filterLower === 'pending') return s === 'pending' || s === 'unassigned';
+        if (filterLower === 'cooking') return s === 'cooking' || s === 'in preparation' || s === 'in progress' || s === 'sent to kitchen' || s === 'ready';
+        if (filterLower === 'delivering') return s === 'delivering' || s === 'in transit';
+        if (filterLower === 'completed') return s === 'completed' || s === 'delivered';
+        return s === filterLower;
+      });
+    }
+
+    // Sắp xếp: Đơn nào Done / Completed thì để xuống cuối cùng
+    return [...list].sort((a, b) => {
+      const isDoneA = ['completed', 'delivered'].includes((a.status || '').toLowerCase().trim());
+      const isDoneB = ['completed', 'delivered'].includes((b.status || '').toLowerCase().trim());
+      if (isDoneA && !isDoneB) return 1;
+      if (!isDoneA && isDoneB) return -1;
+      return 0;
     });
   }, [data.orders, filter]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredOrders.length / pageSize));
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
+  const paginatedOrders = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredOrders.slice(start, start + pageSize);
+  }, [filteredOrders, currentPage, pageSize]);
 
   const updateKpisForStatusChange = (previous, oldStatus, nextStatus) => {
     const oldNormalized = (oldStatus || '').toLowerCase();
@@ -310,7 +340,7 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
                   {t('noDataMatch')}
                 </div>
               ) : (
-                filteredOrders.map((order) => {
+                paginatedOrders.map((order) => {
                   const normalizedStatus = (order.status || '').toLowerCase();
                   const isPending =
                     normalizedStatus === 'pending' || normalizedStatus === 'unassigned';
@@ -469,6 +499,18 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
                 })
               )}
             </div>
+
+            {/* Pagination Footer */}
+            {filteredOrders.length > 0 && (
+              <Pagination
+                currentPage={currentPage}
+                totalItems={filteredOrders.length}
+                pageSize={pageSize}
+                onPageChange={setCurrentPage}
+                itemName="đơn"
+                className="mt-3 rounded-2xl border border-[#E5E1D8] shadow-xs bg-white"
+              />
+            )}
           </div>
 
           <aside className="space-y-4">

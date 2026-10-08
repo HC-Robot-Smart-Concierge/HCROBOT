@@ -53,6 +53,10 @@ USERNAME_ALIASES = {
     "livecall": "concierge",
     "live_call": "concierge",
     "troly": "concierge",
+    "bep": "kitchen",
+    "nha_bep": "kitchen",
+    "nhabep": "kitchen",
+    "chef": "kitchen",
 }
 
 

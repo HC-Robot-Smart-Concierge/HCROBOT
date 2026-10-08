@@ -145,8 +145,8 @@ class ObstacleSafetyController:
                 if sensor_name in ("left", "right"):
                     continue
                 state = self._sensor_states.get(sensor_name)
-                if state and state.last_valid_distance is None:
-                    # Sensor chưa từng có số đo (offline) -> không chặn resume
+                if state and (state.last_valid_distance is None or state.consecutive_invalid > 3):
+                    # Sensor chưa từng có số đo hoặc đang chập chờn mất tín hiệu -> không chặn resume
                     continue
                 return False
             if distance <= stop_threshold + self.resume_margin_cm:
@@ -202,6 +202,16 @@ class ObstacleSafetyController:
 
         valid_age = now - state.last_valid_at
         if state.consecutive_invalid > self.allowed_null_packets:
+            if valid_age > 3.0:
+                # Nếu mất tín hiệu liên tục hơn 3 giây, tự động bỏ qua để không làm kẹt robot
+                if sensor_name not in self.ignored_sensors:
+                    logger.warning(
+                        "⚠️ Cảm biến %s mất tín hiệu quá %.1fs. Tự động bypass để không kẹt xe (LiDAR bảo vệ).",
+                        sensor_name.upper(),
+                        valid_age,
+                    )
+                    self.ignored_sensors.add(sensor_name)
+                return None, False, None
             return (
                 None,
                 False,

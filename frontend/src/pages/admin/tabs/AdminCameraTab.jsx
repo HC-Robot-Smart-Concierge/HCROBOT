@@ -60,6 +60,8 @@ export const AdminCameraTab = ({ currentUser }) => {
   const [overrideEmotion, setOverrideEmotion] = useState(null);
   const [showEmotionHud, setShowEmotionHud] = useState(true);
 
+  const landmarkerRef = useRef(null);
+  const noFaceCountRef = useRef(0);
   const reconnectTimeoutRef = useRef(null);
 
   const reloadStream = useCallback(() => {

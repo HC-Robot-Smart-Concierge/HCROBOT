@@ -13,7 +13,7 @@ from ultrasonic_serial import UltrasonicSerialReader
 logger = logging.getLogger("RobotMain")
 
 
-def start_camera_stream(device=None, width=1920, height=1080, fps=15):
+def start_camera_stream(device=None, width=1280, height=720, fps=15):
     """Khởi động MJPEG Camera Stream Server trên background thread với Frame Broadcaster và auto-reconnect."""
     try:
         from scripts.camera_stream import (
@@ -333,6 +333,11 @@ def build_argument_parser():
         action="store_true",
         help="Bỏ qua khóa fail-safe cảm biến siêu âm (cho phép điều khiển trực tiếp qua Web/phím)",
     )
+    parser.add_argument(
+        "--ignore-sensors",
+        default="",
+        help="Danh sách cảm biến siêu âm bỏ qua kiểm tra an toàn (ví dụ: front hoặc front,rear)",
+    )
     parser.add_argument("--debug", action="store_true", help="Bật log từng packet")
     return parser
 
@@ -483,6 +488,10 @@ def main(argv=None):
         )
 
         reader = UltrasonicSerialReader(port=port, baudrate=baudrate, exclude_ports=exclude)
+        ignored = [s.strip().lower() for s in args.ignore_sensors.split(",") if s.strip()]
+        if ignored:
+            logger.info("🛡️ Cấu hình bỏ qua cảm biến an toàn: %s", ", ".join(ignored).upper())
+
         safety = ObstacleSafetyController(
             motor=motor,
             sensor_reader=reader,
@@ -493,6 +502,7 @@ def main(argv=None):
             resume_margin_cm=resume_margin,
             resume_valid_packets=resume_packets,
             turn_clearance_cm=turn_clearance,
+            ignored_sensors=ignored,
         )
 
         try:

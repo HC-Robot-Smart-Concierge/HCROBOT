@@ -52,6 +52,7 @@ class ObstacleSafetyController:
         resume_margin_cm=10.0,
         resume_valid_packets=3,
         turn_clearance_cm=25.0,
+        ignored_sensors=(),
     ):
         self.motor = motor
         self.sensor_reader = sensor_reader
@@ -67,6 +68,7 @@ class ObstacleSafetyController:
         self.resume_margin_cm = max(0.0, float(resume_margin_cm))
         self.resume_valid_packets = max(1, int(resume_valid_packets))
         self.turn_clearance_cm = float(turn_clearance_cm)
+        self.ignored_sensors = set(ignored_sensors or ())
 
         self.motion = "stop"
         self._sensor_states = {name: _SensorState() for name in SENSOR_NAMES}
@@ -88,49 +90,60 @@ class ObstacleSafetyController:
 
     def _requirements(self, motion):
         if motion == "forward":
-            return (("front", self.thresholds_cm["forward"]),)
-        if motion == "backward":
-            return (("rear", self.thresholds_cm["backward"]),)
-        if motion == "left":
-            return (
+            reqs = (("front", self.thresholds_cm["forward"]),)
+        elif motion == "backward":
+            reqs = (("rear", self.thresholds_cm["backward"]),)
+        elif motion == "left":
+            reqs = (
                 ("left", self.thresholds_cm["left"]),
                 ("front", self.turn_clearance_cm),
                 ("rear", self.turn_clearance_cm),
             )
-        if motion == "right":
-            return (
+        elif motion == "right":
+            reqs = (
                 ("right", self.thresholds_cm["right"]),
                 ("front", self.turn_clearance_cm),
                 ("rear", self.turn_clearance_cm),
             )
-        if motion == "forward_left":
-            return (
+        elif motion == "forward_left":
+            reqs = (
                 ("front", self.thresholds_cm["forward"]),
                 ("left", self.thresholds_cm["left"]),
             )
-        if motion == "forward_right":
-            return (
+        elif motion == "forward_right":
+            reqs = (
                 ("front", self.thresholds_cm["forward"]),
                 ("right", self.thresholds_cm["right"]),
             )
-        if motion == "backward_left":
-            return (
+        elif motion == "backward_left":
+            reqs = (
                 ("rear", self.thresholds_cm["backward"]),
                 ("left", self.thresholds_cm["left"]),
             )
-        if motion == "backward_right":
-            return (
+        elif motion == "backward_right":
+            reqs = (
                 ("rear", self.thresholds_cm["backward"]),
                 ("right", self.thresholds_cm["right"]),
             )
-        return ()
+        else:
+            return ()
+
+        if self.ignored_sensors:
+            return tuple(r for r in reqs if r[0] not in self.ignored_sensors)
+        return reqs
 
     def _packet_is_clear_for_resume(self, snapshot, motion):
         """Resume chỉ dùng số đo hiện tại, tuyệt đối không dùng giá trị giữ tạm."""
         for sensor_name, stop_threshold in self._requirements(motion):
+            if sensor_name in self.ignored_sensors:
+                continue
             distance = snapshot.distance(sensor_name)
             if distance is None:
                 if sensor_name in ("left", "right"):
+                    continue
+                state = self._sensor_states.get(sensor_name)
+                if state and state.last_valid_distance is None:
+                    # Sensor chưa từng có số đo (offline) -> không chặn resume
                     continue
                 return False
             if distance <= stop_threshold + self.resume_margin_cm:
@@ -161,6 +174,9 @@ class ObstacleSafetyController:
                 self._clear_streak[motion] = 0
 
     def _distance_for_safety(self, snapshot, sensor_name, now):
+        if sensor_name in self.ignored_sensors:
+            return None, False, None
+
         current = snapshot.distance(sensor_name)
         if current is not None:
             return current, False, None
@@ -171,7 +187,15 @@ class ObstacleSafetyController:
 
         state = self._sensor_states[sensor_name]
         if state.last_valid_distance is None or state.last_valid_at is None:
-            return None, False, f"sensor {sensor_name} chưa có số đo hợp lệ"
+            # Cảm biến chưa từng hoạt động từ lúc khởi động (tuột dây/mất tín hiệu):
+            # Tự động bỏ qua để không khóa cứng xe, LiDAR 360° vẫn bảo vệ phía trước.
+            if sensor_name not in self.ignored_sensors:
+                logger.warning(
+                    "⚠️ Cảm biến %s không có tín hiệu phần cứng (null). Tự động bỏ qua để không khóa xe.",
+                    sensor_name.upper(),
+                )
+                self.ignored_sensors.add(sensor_name)
+            return None, False, None
 
         valid_age = now - state.last_valid_at
         if state.consecutive_invalid > self.allowed_null_packets:

@@ -95,20 +95,35 @@ class Picamera2Backend(CameraBackend):
 
 
 def get_v4l2_video_devices():
-    """Lấy danh sách các video device index thực sự là camera trên hệ thống Linux (lọc bỏ ISP/codec node nội bộ)."""
+    """Lấy danh sách các video device index thực sự là camera trên hệ thống Linux (ưu tiên /dev/v4l/by-id)."""
     import glob
     import os
     import re
 
-    dev_paths = glob.glob("/dev/video*")
     indices = []
-    # Các từ khóa đại diện cho node ISP/Codec phần cứng nội bộ của Raspberry Pi 5 cần loại bỏ
-    skip_keywords = ["pispbe", "rpi-hevc", "codec", "unicam-image"]
+    # 1. Ưu tiên quét qua /dev/v4l/by-id/ (đặc trưng cho USB webcam thật)
+    by_id_paths = glob.glob("/dev/v4l/by-id/*index0*") or glob.glob("/dev/v4l/by-id/*")
+    for bp in by_id_paths:
+        try:
+            target = os.path.realpath(bp)
+            m = re.search(r"/dev/video(\d+)$", target)
+            if m:
+                idx = int(m.group(1))
+                if idx not in indices:
+                    indices.append(idx)
+        except Exception:
+            pass
+
+    # 2. Quét tiếp các node /dev/video* còn lại
+    dev_paths = glob.glob("/dev/video*")
+    skip_keywords = ["pispbe", "rpi-hevc", "codec", "unicam-image", "metadata"]
 
     for p in dev_paths:
         m = re.search(r"/dev/video(\d+)$", p)
         if m:
             idx = int(m.group(1))
+            if idx in indices:
+                continue
             name_file = f"/sys/class/video4linux/video{idx}/name"
             if os.path.exists(name_file):
                 try:
@@ -119,7 +134,7 @@ def get_v4l2_video_devices():
                 except Exception:
                     pass
             indices.append(idx)
-    indices.sort()
+
     return indices
 
 
@@ -151,6 +166,7 @@ class OpenCVBackend(CameraBackend):
         self._cv2 = None
         self._fail_count = 0
         self._last_reconnect_time = 0.0
+        self._last_good_jpeg = None
         self._lock = threading.Lock()
 
     def start(self):
@@ -168,7 +184,7 @@ class OpenCVBackend(CameraBackend):
                 candidates = [normalize_video_device(self.device)]
             else:
                 system_devs = get_v4l2_video_devices()
-                candidates = system_devs if system_devs else [0, 1, 2, 4, 10, 14, 16, 18, 20]
+                candidates = system_devs if system_devs else [1, 0, 2, 4, 10, 14, 16, 18, 20]
 
             opened = False
             for dev in candidates:
@@ -189,25 +205,36 @@ class OpenCVBackend(CameraBackend):
                     except Exception:
                         pass
 
-                    cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
-                    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
                     cap.set(cv2.CAP_PROP_FPS, self.fps)
                     try:
                         cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
                     except Exception:
                         pass
 
-                    ret, frame = cap.read()
-                    if ret and frame is not None:
-                        self._cap = cap
-                        opened = True
-                        actual_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-                        actual_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-                        self._fail_count = 0
-                        logger.info(
-                            f"✅ USB Camera kết nối thành công tại device {dev}: "
-                            f"{actual_w}x{actual_h} @ {self.fps}fps"
-                        )
+                    # Thử độ phân giải mong muốn, nếu camera USB không nhận thì fallback xuống 720p hoặc 480p
+                    res_candidates = [(self.width, self.height)]
+                    if (self.width, self.height) != (1280, 720):
+                        res_candidates.append((1280, 720))
+                    if (self.width, self.height) != (640, 480):
+                        res_candidates.append((640, 480))
+
+                    for try_w, try_h in res_candidates:
+                        cap.set(cv2.CAP_PROP_FRAME_WIDTH, try_w)
+                        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, try_h)
+                        ret, frame = cap.read()
+                        if ret and frame is not None:
+                            self._cap = cap
+                            opened = True
+                            actual_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                            actual_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                            self._fail_count = 0
+                            logger.info(
+                                f"✅ USB Camera kết nối thành công tại device {dev}: "
+                                f"{actual_w}x{actual_h} @ {self.fps}fps"
+                            )
+                            break
+
+                    if opened:
                         break
                     else:
                         cap.release()
@@ -235,20 +262,25 @@ class OpenCVBackend(CameraBackend):
         with self._lock:
             if not self._cap or not self._cap.isOpened():
                 self._attempt_reconnect()
+                if self._last_good_jpeg:
+                    return self._last_good_jpeg
                 raise RuntimeError("Camera is not opened")
 
             ret, frame = self._cap.read()
             if not ret or frame is None:
                 self._fail_count += 1
-                if self._fail_count >= 3:
+                if self._fail_count >= 10:
                     self._attempt_reconnect()
+                if self._last_good_jpeg:
+                    return self._last_good_jpeg
                 raise RuntimeError("Failed to read frame from camera")
 
             self._fail_count = 0
             _, jpeg = self._cv2.imencode(
                 ".jpg", frame, [self._cv2.IMWRITE_JPEG_QUALITY, 80]
             )
-            return jpeg.tobytes()
+            self._last_good_jpeg = jpeg.tobytes()
+            return self._last_good_jpeg
 
     def stop(self):
         if self._cap:

@@ -60,14 +60,17 @@ export const AdminCameraTab = ({ currentUser }) => {
   const [overrideEmotion, setOverrideEmotion] = useState(null);
   const [showEmotionHud, setShowEmotionHud] = useState(true);
 
-  const landmarkerRef = useRef(null);
-  const noFaceCountRef = useRef(0);
+  const reconnectTimeoutRef = useRef(null);
 
-  const reloadStream = () => {
+  const reloadStream = useCallback(() => {
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
     setStreamKey(Date.now());
     setStreamError(false);
     setIsStreaming(true);
-  };
+  }, []);
 
   // Teleop Motion state
   const [activeMotion, setActiveMotion] = useState('stop');
@@ -433,12 +436,22 @@ export const AdminCameraTab = ({ currentUser }) => {
     return () => clearInterval(interval);
   }, [checkHealth]);
 
-  const handleStreamError = () => {
+  const handleStreamError = useCallback(() => {
     setStreamError(true);
     setIsConnected(false);
-  };
+    if (!reconnectTimeoutRef.current) {
+      reconnectTimeoutRef.current = setTimeout(() => {
+        reconnectTimeoutRef.current = null;
+        reloadStream();
+      }, 2500);
+    }
+  }, [reloadStream]);
 
   const handleStreamLoad = () => {
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
     setStreamError(false);
     setIsConnected(true);
   };
@@ -645,10 +658,27 @@ export const AdminCameraTab = ({ currentUser }) => {
             onError={handleStreamError}
             onLoad={handleStreamLoad}
             className={`w-full h-full object-contain ${
-              streamError ? 'hidden' : 'block'
+              streamError ? 'opacity-0' : 'opacity-100'
             }`}
           />
         ) : null}
+
+        {/* Reconnecting Overlay khi stream bị gián đoạn */}
+        {streamError && isStreaming && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/85 backdrop-blur-xs z-10 text-stone-300">
+            <RefreshCw className="w-8 h-8 animate-spin mb-3 text-stone-400" />
+            <p className="text-xs font-mono font-bold tracking-wider uppercase text-stone-200">
+              Đang tự động kết nối lại luồng Camera...
+            </p>
+            <p className="text-[10px] text-stone-500 font-mono mt-1">{streamUrl}</p>
+            <button
+              onClick={reloadStream}
+              className="mt-4 px-3 py-1.5 rounded-lg bg-stone-800 hover:bg-stone-700 text-xs font-medium border border-stone-600 transition-all cursor-pointer text-stone-200"
+            >
+              Thử lại ngay
+            </button>
+          </div>
+        )}
 
         {/* AI Emotion Recognition Panel - Top-Left HUD (Không dùng emoji, tone xám tối giản) */}
         <div className="absolute top-14 left-3 z-20 w-[270px] bg-[#18181B]/90 backdrop-blur-md rounded-2xl border border-white/10 shadow-2xl p-3 text-stone-200 select-none animate-fadeIn flex flex-col gap-2.5">

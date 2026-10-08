@@ -14,19 +14,23 @@ logger = logging.getLogger("RobotMain")
 
 
 def start_camera_stream(device=None, width=1920, height=1080, fps=15):
-    """Khởi động MJPEG Camera Stream Server trên background thread với cơ chế tự phục hồi."""
+    """Khởi động MJPEG Camera Stream Server trên background thread với Frame Broadcaster và auto-reconnect."""
     try:
-        from scripts.camera_stream import create_camera_backend, ThreadedHTTPServer, MJPEGHandler
+        from scripts.camera_stream import (
+            create_camera_backend,
+            ThreadedHTTPServer,
+            MJPEGHandler,
+            CameraBroadcaster,
+        )
         import scripts.camera_stream as cam_module
 
-        try:
-            cam_module.camera_backend = create_camera_backend(width, height, fps, device=device)
-        except Exception as e:
-            logger.warning(f"Camera backend chua san sang luc khoi dong ({e}), se tu dong ket noi lai khi co request...")
-            cam_module.camera_backend = None
+        broadcaster = CameraBroadcaster(width=width, height=height, fps=fps, device=device)
+        broadcaster.start()
+        cam_module.camera_broadcaster = broadcaster
+        cam_module.camera_backend = broadcaster.backend
 
         server = ThreadedHTTPServer(("0.0.0.0", 8554), MJPEGHandler)
-        logger.info("📹 Camera stream started: http://0.0.0.0:8554/stream (Auto-reconnect)")
+        logger.info("📹 Camera stream started: http://0.0.0.0:8554/stream (Broadcaster Enabled)")
         server.serve_forever()
     except Exception as e:
         logger.error(f"Camera stream failed to start: {e}")

@@ -260,26 +260,31 @@ class OpenCVBackend(CameraBackend):
 
 
 def create_camera_backend(width, height, fps, device=None):
-    """Tự động chọn backend phù hợp: Picamera2 -> OpenCV."""
-    try:
-        backend = Picamera2Backend(width, height, fps)
-        backend.start()
-        return backend
-    except (ImportError, RuntimeError) as e:
-        logger.warning(f"Picamera2 không khả dụng ({e}), chuyển sang OpenCV USB backend...")
-
+    """Tự động chọn backend phù hợp: Thử OpenCV (USB Camera) trước -> Picamera2 (CSI Camera)."""
+    # 1. Thử OpenCV trước (chuẩn cho USB webcam, hỗ trợ hardware MJPG & auto-reconnect)
     try:
         backend = OpenCVBackend(width, height, fps, device=device)
         backend.start()
+        logger.info("✅ Đang sử dụng OpenCV V4L2 backend cho USB Camera.")
         return backend
     except (ImportError, RuntimeError) as e:
-        logger.error(f"OpenCV cũng không khả dụng: {e}")
+        logger.info(f"OpenCV USB backend không khả dụng ({e}), chuyển sang kiểm tra Picamera2 (CSI)...")
+
+    # 2. Thử Picamera2 cho Camera Module CSI
+    try:
+        backend = Picamera2Backend(width, height, fps)
+        backend.start()
+        logger.info("✅ Đang sử dụng Picamera2 backend cho CSI Camera Module.")
+        return backend
+    except (ImportError, RuntimeError) as e:
+        logger.error(f"Picamera2 cũng không khả dụng: {e}")
         raise RuntimeError(
-            "Không tìm thấy camera backend nào (cần picamera2 hoặc opencv-python)"
+            "Không tìm thấy camera backend nào (cần opencv-python hoặc picamera2)"
         )
 
 
 camera_backend = None
+camera_broadcaster = None
 
 
 def generate_placeholder_jpeg(text="CAMERA DISCONNECTED / RECONNECTING..."):
@@ -302,6 +307,85 @@ def generate_placeholder_jpeg(text="CAMERA DISCONNECTED / RECONNECTING..."):
         return b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x01\x00H\x00H\x00\x00\xff\xdb\x00C\x00\x08\x06\x06\x07\x06\x05\x08\x07\x07\x07\t\t\x08\n\x0c\x14\r\x0c\x0b\x0b\x0c\x19\x12\x13\x0f\x14\x1d\x1a\x1f\x1e\x1d\x1a\x1c\x1c $.' \",#\x1c\x1c(7),01444\x1f'9=82<.342\xff\xc0\x00\x0b\x08\x00\x01\x00\x01\x01\x01\x11\x00\xff\xc4\x00\x1f\x00\x00\x01\x05\x01\x01\x01\x01\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x01\x02\x03\x04\x05\x06\x07\x08\t\n\x0b\xff\xda\x00\x08\x01\x01\x00\x00?\x00\xbf\x00\xff\xd9"
 
 
+class CameraBroadcaster:
+    """Thread nền đọc camera duy nhất và broadcast khung hình mới nhất cho mọi HTTP client."""
+
+    def __init__(self, width=1280, height=720, fps=15, device=None):
+        self.width = width
+        self.height = height
+        self.fps = fps
+        self.device = device
+        self.backend = None
+        self._current_frame = None
+        self._lock = threading.Lock()
+        self._cond = threading.Condition(self._lock)
+        self._running = False
+        self._thread = None
+
+    def start(self):
+        try:
+            self.backend = create_camera_backend(
+                self.width, self.height, self.fps, device=self.device
+            )
+        except Exception as e:
+            logger.warning(
+                "Camera backend chưa sẵn sàng lúc khởi động (%s), sẽ tự động kết nối lại...", e
+            )
+            self.backend = None
+
+        self._running = True
+        self._thread = threading.Thread(target=self._capture_loop, daemon=True)
+        self._thread.start()
+
+    def _capture_loop(self):
+        logger.info("🚀 Background Frame Broadcaster đã khởi chạy.")
+        target_interval = 1.0 / self.fps
+        last_reconnect_try = 0.0
+
+        while self._running:
+            now = time.time()
+            if self.backend is None and (now - last_reconnect_try >= 2.0):
+                last_reconnect_try = now
+                try:
+                    self.backend = create_camera_backend(
+                        self.width, self.height, self.fps, device=self.device
+                    )
+                except Exception:
+                    self.backend = None
+
+            frame = None
+            if self.backend:
+                try:
+                    frame = self.backend.capture_jpeg()
+                except Exception as e:
+                    logger.debug("Lỗi capture frame: %s", e)
+                    frame = None
+
+            if frame is None:
+                frame = generate_placeholder_jpeg("RECONNECTING CAMERA SENSOR...")
+
+            with self._cond:
+                self._current_frame = frame
+                self._cond.notify_all()
+
+            time.sleep(target_interval)
+
+    def get_frame(self, timeout=0.2):
+        with self._cond:
+            if self._current_frame is None:
+                self._cond.wait(timeout=timeout)
+            return self._current_frame or generate_placeholder_jpeg("INITIALIZING CAMERA...")
+
+    def stop(self):
+        self._running = False
+        if self.backend:
+            try:
+                self.backend.stop()
+            except Exception:
+                pass
+            self.backend = None
+
+
 class MJPEGHandler(BaseHTTPRequestHandler):
     """HTTP handler phát MJPEG stream và health check."""
 
@@ -318,7 +402,7 @@ class MJPEGHandler(BaseHTTPRequestHandler):
             self.end_headers()
 
     def _handle_stream(self):
-        global camera_backend
+        global camera_broadcaster, camera_backend
         self.send_response(200)
         self.send_header(
             "Content-Type", "multipart/x-mixed-replace; boundary=frame"
@@ -328,30 +412,19 @@ class MJPEGHandler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
 
-        interval = 1.0 / (camera_backend.fps if camera_backend else 15)
-
-        last_backend_try = 0.0
+        target_interval = 1.0 / (camera_broadcaster.fps if camera_broadcaster else 15)
 
         try:
             while True:
-                frame = None
-                now = time.time()
-                if camera_backend is None and (now - last_backend_try > 2.0):
-                    last_backend_try = now
-                    try:
-                        camera_backend = create_camera_backend(640, 480, 15)
-                    except Exception:
-                        camera_backend = None
-
-                if camera_backend:
+                if camera_broadcaster:
+                    frame = camera_broadcaster.get_frame(timeout=0.2)
+                elif camera_backend:
                     try:
                         frame = camera_backend.capture_jpeg()
-                    except RuntimeError:
-                        frame = None
-
-                if frame is None:
-                    frame = generate_placeholder_jpeg("RECONNECTING CAMERA SENSOR...")
-                    time.sleep(0.5)
+                    except Exception:
+                        frame = generate_placeholder_jpeg("RECONNECTING...")
+                else:
+                    frame = generate_placeholder_jpeg("CAMERA NOT READY...")
 
                 self.wfile.write(b"--frame\r\n")
                 self.wfile.write(b"Content-Type: image/jpeg\r\n")
@@ -360,7 +433,7 @@ class MJPEGHandler(BaseHTTPRequestHandler):
                 )
                 self.wfile.write(frame)
                 self.wfile.write(b"\r\n")
-                time.sleep(interval)
+                time.sleep(target_interval)
         except (BrokenPipeError, ConnectionResetError):
             logger.info("Client disconnected from stream")
 

@@ -36,6 +36,21 @@ def start_camera_stream(device=None, width=1280, height=720, fps=15):
         logger.error(f"Camera stream failed to start: {e}")
 
 
+_wsl_sync_sock = None
+
+def _notify_wsl_motion(motion: str):
+    global _wsl_sync_sock
+    try:
+        if _wsl_sync_sock is None:
+            import socket
+            _wsl_sync_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            _wsl_sync_sock.settimeout(0.02)
+        # Gửi sang laptop WSL để RViz2 cập nhật chuyển động tức thời
+        _wsl_sync_sock.sendto(motion.encode('utf-8'), ("100.92.82.61", 9998))
+    except Exception:
+        pass
+
+
 def start_udp_control_listener(safety, port=9999):
     """Khởi động UDP Remote Listener trên background thread để nhận lệnh điều khiển từ xa."""
     import socket
@@ -602,9 +617,12 @@ def main(argv=None):
                 continue
             key = char.lower()
             if key in key_to_motion:
-                safety.command(key_to_motion[key])
+                target_cmd = key_to_motion[key]
+                safety.command(target_cmd)
+                _notify_wsl_motion(target_cmd)
             elif key in ("x", "5", " ", "\r", "\n"):
                 safety.stop()
+                _notify_wsl_motion("stop")
             elif key in ("+", "="):
                 new_spd = safety.set_speed(safety.speed + 10)
                 logger.info("Vận tốc: %d%%", new_spd)

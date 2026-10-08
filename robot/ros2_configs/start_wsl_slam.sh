@@ -6,6 +6,11 @@ export ROS_DOMAIN_ID=0
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+echo "=== [0/4] DON DEP CAC TIEN TRINH CU (NEU CO) ==="
+killall -q rosbridge_websocket async_slam_toolbox_node robot_state_publisher 2>/dev/null || true
+pkill -f "lidar_ws_to_ros2.py" 2>/dev/null || true
+sleep 1
+
 echo "=== [1/4] KHOI DONG ROBOT STATE PUBLISHER (URDF 3D Model & TF Tree) ==="
 URDF_PATH="$SCRIPT_DIR/../description/robot.urdf"
 ros2 run robot_state_publisher robot_state_publisher "$URDF_PATH" &
@@ -33,5 +38,7 @@ echo "   - Topic /scan dang nhan tia tu Pi 5 qua Tailscale"
 echo "   - SLAM Toolbox dang dung Occupancy Grid Map tren /map"
 echo "   - Rosbridge WebSocket mo tai ws://127.0.0.1:9090 cho Web Admin"
 echo "=========================================================="
+
+trap "kill $RSP_PID $BRIDGE_PID $LIDAR_PID $SLAM_PID 2>/dev/null || true" EXIT INT TERM
 
 wait $RSP_PID $BRIDGE_PID $LIDAR_PID $SLAM_PID

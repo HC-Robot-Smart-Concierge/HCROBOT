@@ -208,3 +208,9 @@ export function getMapWebSocketUrl() {
   return `${protocol}//${loc.host}/api/v1/map/ws`;
 }
 
+export async function listSavedMaps() {
+  const res = await fetch(`${API_BASE}/map/list_saved_maps`);
+  if (!res.ok) throw new Error('Không thể lấy danh sách bản đồ đã lưu');
+  return res.json();
+}
+

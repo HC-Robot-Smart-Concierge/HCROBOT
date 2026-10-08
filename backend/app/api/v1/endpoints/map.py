@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import os
 from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, status, Depends
@@ -19,7 +20,7 @@ from app.schemas.map import (
     Waypoint,
     ZoneSchema,
 )
-from app.services.hardware.rplidar_service import rplidar_service
+from app.services.hardware.rplidar_service import rplidar_service, MAPS_DIR
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -435,6 +436,36 @@ async def load_saved_map(map_id: str = "MAP-LOBBY-01", lock: bool = True):
         }
     else:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Không tìm thấy bản đồ '{map_id}'")
+
+
+@router.get("/list_saved_maps", summary="Lấy danh sách các bản đồ đã lưu trong static/maps")
+async def list_saved_maps():
+    """Trả về danh sách tất cả các bản đồ có sẵn trong thư mục static/maps."""
+    maps = []
+    if os.path.exists(MAPS_DIR):
+        for f in os.listdir(MAPS_DIR):
+            if f.endswith(".json"):
+                mid = f[:-5]
+                filepath = os.path.join(MAPS_DIR, f)
+                try:
+                    with open(filepath, "r", encoding="utf-8") as fp:
+                        meta = json.load(fp)
+                    maps.append({
+                        "map_id": meta.get("map_id", mid),
+                        "name": meta.get("name", mid),
+                        "floor": meta.get("floor", "Tầng 1"),
+                        "width": meta.get("width", 200),
+                        "height": meta.get("height", 200),
+                        "resolution": meta.get("resolution", 0.05),
+                    })
+                except Exception:
+                    maps.append({"map_id": mid, "name": mid, "floor": "Tầng 1"})
+    return {
+        "status": "SUCCESS",
+        "maps": maps,
+        "active_map_id": rplidar_service.saved_map_id,
+        "is_map_locked": rplidar_service.is_map_locked,
+    }
 
 
 @router.post("/toggle_lock", summary="Bật/tắt chế độ khóa bản đồ tĩnh")

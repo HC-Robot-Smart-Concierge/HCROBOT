@@ -249,15 +249,31 @@ HC-Robot/
 
 ---
 
-### Bước 4: Hướng Dẫn Khởi Chạy Toàn Bộ Hệ Thống (Mở Từng Cái & 1-Click Batch)
+### Bước 4: Hướng Dẫn Khởi Chạy Toàn Bộ Hệ Thống (Cheat Sheet & Multi-Terminal)
 
-Toàn bộ hệ thống HC-Robot bao gồm 4 tiến trình chính kết nối với nhau qua mạng an toàn **Tailscale Mesh VPN**. Tùy thuộc vào nhu cầu phát triển hoặc vận hành, bạn có thể lựa chọn 1 trong 2 cách sau:
+Toàn bộ hệ thống HC-Robot bao gồm các phân hệ kết nối với nhau qua mạng an toàn **Tailscale Mesh VPN**.
 
 ---
 
-#### CÁCH 1: MỞ THỦ CÔNG TỪNG CÁI (DÀNH CHO LẬP TRÌNH & DEBUG TỪNG PHÂN HỆ)
+#### 📋 BẢNG TRA CỨU LỆNH KHỞI CHẠY TỪNG TÁC VỤ (QUICK CHEAT SHEET)
 
-Mở 4 cửa sổ Terminal riêng biệt theo đúng thứ tự sau:
+| STT | Tác vụ (Task) | Môi trường chạy | Lệnh thực thi trực tiếp (Copy & Run) | Chức năng & Cổng kết nối |
+| :---: | :--- | :--- | :--- | :--- |
+| **1** | **SLAM Master Stack** | WSL2 Ubuntu | `bash /mnt/f/DoAn/HC-Robot/robot/ros2_configs/start_wsl_slam.sh` | Bật URDF 3D, Rosbridge (`:9090`), Bridge LiDAR và SLAM Toolbox |
+| **2** | **RViz2 3D Viewer** | WSL2 Ubuntu | `source /opt/ros/jazzy/setup.bash && rviz2 -d /mnt/f/DoAn/HC-Robot/robot/ros2_configs/nav2/lidar_view.rviz` | Giám sát 3D Robot, Map vật cản, LaserScan, vệt vàng `/robot_path` |
+| **3** | **Bàn phím WASD Teleop** | WSL2 Ubuntu | `python3 /mnt/f/DoAn/HC-Robot/robot/scripts/teleop_keyboard.py` | Lái xe thời gian thực (W, A, S, D, Space phanh, +/- tốc độ) |
+| **4** | **Lưu Bản đồ (Save Map)** | WSL2 Ubuntu | `/mnt/f/DoAn/HC-Robot/robot/scripts/save_map.sh phong_lam_viec` | Trích xuất Occupancy Grid ra `phong_lam_viec.yaml` và `.pgm` |
+| **5** | **Reset Bản đồ (Fresh Start)** | WSL2 & RViz2 | Nhấn `Ctrl + C` $\rightarrow$ bấm nút `Reset` trên RViz2 (`Alt + R`) $\rightarrow$ chạy lại lệnh số 1 | Xóa sạch bộ nhớ map cũ để bắt đầu quét phòng mới |
+| **6** | **Phần cứng Pi 5 (SSH)** | Terminal SSH | `ssh phuc@100.99.72.51` $\rightarrow$ `sudo python3 ~/HC-Robot/robot/main.py` | Động cơ L298N, Camera (`:8554`), Cảm biến & LiDAR (`:8000`) |
+| **7** | **Backend Server** | Windows PS | `cd f:\DoAn\HC-Robot\backend && .\venv\Scripts\activate && uvicorn app.main:app --reload --host 0.0.0.0 --port 8000` | AI RAG, Database, WebSocket Voice & REST API (`:8000`) |
+| **8** | **Frontend Web Admin** | Windows PS | `cd f:\DoAn\HC-Robot\frontend && npm run dev` | Giao diện Web Console, Kiosk Face Robot, LiDAR Canvas (`:3000`) |
+| **9** | **Giả lập 3D Digital Twin** | Windows / WSL2 | `wsl -d Ubuntu-24.04 bash /mnt/f/DoAn/HC-Robot/robot/scripts/launch_autonomous_demo.sh` | Gazebo Sim 8 + RViz2 APF tự hành tuần tra né 6 cột trụ |
+
+---
+
+#### CÁCH 1: MỞ THỦ CÔNG TỪNG TERMINAL (DÀNH CHO DEV & DEBUG CHI TIẾT)
+
+Mở các cửa sổ Terminal riêng biệt theo đúng trình tự:
 
 ##### Terminal 1 (Laptop - Backend FastAPI Server)
 Mở PowerShell trên Windows và chạy:
@@ -278,28 +294,43 @@ npm run dev
 - **Nhiệm vụ:** Giao diện Quản trị viên (`/admin`), Màn hình mặt Robot Kiosk (`/robot`) và Canvas hiển thị LiDAR 2D.
 - **Kiểm tra:** Mở trình duyệt vào `http://localhost:3000`.
 
-##### Terminal 3 (Laptop - WSL2 Ubuntu-24.04 ROS 2 SLAM Stack)
+##### Terminal 3 (Laptop - WSL2 Khởi chạy SLAM Stack)
 Mở cửa sổ PowerShell thứ 3 trên Windows để vào môi trường Linux WSL2:
 ```powershell
 wsl -d Ubuntu-24.04
-```
-Sau khi vào shell `kha@...:~$`, khởi chạy SLAM Toolbox và Rosbridge:
-```bash
 bash /mnt/f/DoAn/HC-Robot/robot/ros2_configs/start_wsl_slam.sh
 ```
 - **Nhiệm vụ:**
+  - Khởi động `robot_state_publisher` đọc mô hình 3D URDF.
   - Khởi động `rosbridge_server` mở cổng WebSocket `9090` truyền dữ liệu lên Web Admin.
-  - Chạy cầu nối `lidar_ws_to_ros2.py` tự động hút tia quét từ Pi 5 về Laptop qua Tailscale.
-  - Chạy `slam_toolbox` tính toán ma trận lưới Occupancy Grid và xuất topic `/map`.
+  - Chạy cầu nối `lidar_ws_to_ros2.py` nhận tia quét từ Pi 5 qua Tailscale (chuẩn hóa chiều quay CCW chuẩn ROS REP-103).
+  - Chạy `slam_toolbox` dựng ma trận Occupancy Grid thời gian thực trên topic `/map`.
 
-##### Terminal 4 (SSH từ Laptop vào Raspberry Pi 5 - Khởi chạy Phần Cứng Robot)
-Mở cửa sổ PowerShell thứ 4 trên Windows và **SSH trực tiếp vào Raspberry Pi 5** qua địa chỉ IP Tailscale (Ví dụ: `100.99.72.51`):
+##### Terminal 4 (Laptop - WSL2 Mở RViz2 Giám sát 3D)
+Mở cửa sổ PowerShell thứ 4 vào WSL2 để bật giao diện trực quan 3D:
 ```powershell
-ssh pi@100.99.72.51
+wsl -d Ubuntu-24.04
+source /opt/ros/jazzy/setup.bash
+rviz2 -d /mnt/f/DoAn/HC-Robot/robot/ros2_configs/nav2/lidar_view.rviz
+```
+- **Nhiệm vụ:** Trực quan hóa 3D xe HC-Robot, Occupancy Grid Map nét đậm (`Alpha: 0.85`), chùm tia quét laser xanh ngọc và vệt đường vàng `/robot_path`.
+
+##### Terminal 5 (Laptop - WSL2 Bàn phím WASD Teleop)
+Mở cửa sổ PowerShell thứ 5 vào WSL2 để lái robot:
+```powershell
+wsl -d Ubuntu-24.04
+python3 /mnt/f/DoAn/HC-Robot/robot/scripts/teleop_keyboard.py
+```
+- **Nhiệm vụ:** Lái xe bằng các phím `W`, `A`, `S`, `D`, phanh `Space`/`X`. Đồng thời phát `/cmd_vel` cho RViz2 và bắn UDP (port `9999`) trực tiếp tới Pi 5 để quay bánh xe thật.
+
+##### Terminal 6 (SSH từ Laptop vào Raspberry Pi 5 - Khởi chạy Phần cứng)
+Mở cửa sổ PowerShell thứ 6 trên Windows và SSH vào Pi 5 qua IP Tailscale:
+```powershell
+ssh phuc@100.99.72.51   # hoặc ssh pi@100.99.72.51
 ```
 *(Nhập mật khẩu SSH của Pi 5)*.
 
-Sau khi đã đăng nhập thành công vào Pi 5 (`pi@raspberrypi:~$`), chạy bộ điều khiển All-in-One:
+Sau khi đã đăng nhập thành công vào Pi 5, chạy bộ điều khiển All-in-One:
 ```bash
 cd ~/HC-Robot/robot
 sudo python3 main.py
@@ -308,7 +339,7 @@ sudo python3 main.py
 > 1. **Động cơ bánh xe (L298N):** Nhận lệnh lái bàn phím WASD hoặc nhận lệnh điều khiển từ xa qua UDP port `9999`.
 > 2. **Camera Stream HD:** Tự động mở luồng video MJPEG tại port `8554` cho Web Admin giám sát.
 > 3. **Cảm biến siêu âm (ESP32):** Tự động đo khoảng cách 4 góc và khóa an toàn nếu sắp đụng tường.
-> 4. **Cảm biến LiDAR (RPLiDAR A1M8):** Tự quay mô tơ 360° và stream dữ liệu tia quét qua WebSocket port `8000` để Terminal 3 (WSL2) nhận và vẽ bản đồ.
+> 4. **Cảm biến LiDAR (RPLiDAR A1M8):** Tự quay mô tơ 360° và stream dữ liệu tia quét qua WebSocket port `8000` để WSL2 nhận và dựng bản đồ.
 
 ---
 

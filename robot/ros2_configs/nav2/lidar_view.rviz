@@ -37,10 +37,10 @@ Visualization Manager:
       Collision Enabled: false
       Description File: /mnt/f/DoAn/HC-Robot/robot/description/robot.urdf
       Description Source: File
-      Enabled: true
+      Enabled: false
       Name: RobotModel
       Visual Enabled: true
-      Value: true
+      Value: false
     - Class: rviz_default_plugins/Marker
       Enabled: true
       Name: LiDAR 360 Rays (Blue Beams)
@@ -115,7 +115,7 @@ Visualization Manager:
   Enabled: true
   Global Options:
     Background Color: 25; 28; 35
-    Fixed Frame: odom
+    Fixed Frame: map
     Frame Rate: 30
   Name: root
   Tools:

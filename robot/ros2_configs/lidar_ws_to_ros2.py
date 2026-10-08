@@ -64,25 +64,15 @@ class LidarWsToRos2Bridge(Node):
         self.get_logger().info("🚀 LidarWsToRos2Bridge da san sang! Ho tro Realtime Teleop Terminal -> RViz2 & Pi 5")
 
     def broadcast_static_laser_tf(self):
-        # 1. Alias static transform laser_frame -> laser (de tuong thich ca 2 frame id)
+        # Alias static transform laser_frame -> laser (tương thích cả 2 tên frame)
         t_alias = TransformStamped()
         t_alias.header.stamp = self.get_clock().now().to_msg()
         t_alias.header.frame_id = "laser_frame"
         t_alias.child_frame_id = "laser"
         t_alias.transform.rotation.w = 1.0
 
-        # 2. Fallback base_link -> laser_frame neu khong chay robot_state_publisher
-        t_fallback = TransformStamped()
-        t_fallback.header.stamp = self.get_clock().now().to_msg()
-        t_fallback.header.frame_id = "base_link"
-        t_fallback.child_frame_id = "laser_frame"
-        t_fallback.transform.translation.x = -0.104
-        t_fallback.transform.translation.y = 0.0
-        t_fallback.transform.translation.z = 0.202
-        t_fallback.transform.rotation.w = 1.0
-
-        self.static_tf_broadcaster.sendTransform([t_alias, t_fallback])
-        self.get_logger().info("✅ Da phat static TF: laser_frame -> laser & base_link -> laser_frame")
+        self.static_tf_broadcaster.sendTransform([t_alias])
+        self.get_logger().info("✅ Đã phát static TF alias: laser_frame -> laser")
 
     def _record_and_publish_state(self, now, px, py, yaw_deg, vx=0.0, wz=0.0):
         yaw_rad = math.radians(yaw_deg)

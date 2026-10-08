@@ -81,7 +81,7 @@ Visualization Manager:
       Min Color: 0; 220; 255
       Name: LaserScan (Hit Points)
       Position Transformer: XYZ
-      Queue Size: 10
+      Queue Size: 50
       Selectable: true
       Size (Pixels): 6
       Size (m): 0.08

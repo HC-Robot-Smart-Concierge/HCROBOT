@@ -13,7 +13,8 @@ import websockets
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import LaserScan
-from geometry_msgs.msg import TransformStamped
+from nav_msgs.msg import Odometry, Path
+from geometry_msgs.msg import TransformStamped, PoseStamped
 from tf2_ros import TransformBroadcaster
 from tf2_ros.static_transform_broadcaster import StaticTransformBroadcaster
 
@@ -22,42 +23,115 @@ class LidarWsToRos2Bridge(Node):
     def __init__(self):
         super().__init__('lidar_ws_to_ros2_bridge')
         self.publisher_ = self.create_publisher(LaserScan, '/scan', 10)
+        self.odom_pub_ = self.create_publisher(Odometry, '/odom', 10)
+        self.path_pub_ = self.create_publisher(Path, '/robot_path', 10)
         self.static_tf_broadcaster = StaticTransformBroadcaster(self)
         self.tf_broadcaster = TransformBroadcaster(self)
         self.scan_count = 0
 
+        # Lưu trạng thái vị trí robot và quỹ đạo đường đi
+        self.current_pose = {'x': 0.0, 'y': 0.0, 'yaw': 0.0}
+        self.last_recorded_pose = {'x': 0.0, 'y': 0.0, 'yaw': 0.0}
+        self.trajectory_path = Path()
+        self.trajectory_path.header.frame_id = 'odom'
+
         # Broadcast static transform base_link -> laser
         self.broadcast_static_laser_tf()
 
-        self.get_logger().info("🚀 LidarWsToRos2Bridge da san sang! Dang ket noi toi Pi 5 ws://100.99.72.51:8000/api/v1/map/ws ...")
+        self.get_logger().info("🚀 LidarWsToRos2Bridge da san sang! Ho tro Odometry & Robot Path Trajectory")
 
     def broadcast_static_laser_tf(self):
-        t1 = TransformStamped()
-        t1.header.stamp = self.get_clock().now().to_msg()
-        t1.header.frame_id = "base_link"
-        t1.child_frame_id = "laser"
-        t1.transform.translation.x = 0.0
-        t1.transform.translation.y = 0.0
-        t1.transform.translation.z = 0.15
-        t1.transform.rotation.w = 1.0
-        self.static_tf_broadcaster.sendTransform(t1)
-        self.get_logger().info("✅ Da phat static TF: base_link -> laser")
+        # 1. Alias static transform laser_frame -> laser (de tuong thich ca 2 frame id)
+        t_alias = TransformStamped()
+        t_alias.header.stamp = self.get_clock().now().to_msg()
+        t_alias.header.frame_id = "laser_frame"
+        t_alias.child_frame_id = "laser"
+        t_alias.transform.rotation.w = 1.0
+
+        # 2. Fallback base_link -> laser_frame neu khong chay robot_state_publisher
+        t_fallback = TransformStamped()
+        t_fallback.header.stamp = self.get_clock().now().to_msg()
+        t_fallback.header.frame_id = "base_link"
+        t_fallback.child_frame_id = "laser_frame"
+        t_fallback.transform.translation.x = -0.104
+        t_fallback.transform.translation.y = 0.0
+        t_fallback.transform.translation.z = 0.202
+        t_fallback.transform.rotation.w = 1.0
+
+        self.static_tf_broadcaster.sendTransform([t_alias, t_fallback])
+        self.get_logger().info("✅ Da phat static TF: laser_frame -> laser & base_link -> laser_frame")
+
+    def update_robot_pose(self, pose_dict):
+        if not pose_dict:
+            return
+        px = float(pose_dict.get('x', 0.0))
+        py = float(pose_dict.get('y', 0.0))
+        yaw_deg = float(pose_dict.get('yaw', 0.0))
+        self.current_pose = {'x': px, 'y': py, 'yaw': yaw_deg}
+
+        now = self.get_clock().now().to_msg()
+        yaw_rad = math.radians(yaw_deg)
+        qz = math.sin(yaw_rad / 2.0)
+        qw = math.cos(yaw_rad / 2.0)
+
+        # 1. Publish /odom
+        odom_msg = Odometry()
+        odom_msg.header.stamp = now
+        odom_msg.header.frame_id = 'odom'
+        odom_msg.child_frame_id = 'base_link'
+        odom_msg.pose.pose.position.x = px
+        odom_msg.pose.pose.position.y = py
+        odom_msg.pose.pose.position.z = 0.0
+        odom_msg.pose.pose.orientation.z = qz
+        odom_msg.pose.pose.orientation.w = qw
+        self.odom_pub_.publish(odom_msg)
+
+        # 2. Ghi nhận vết đường đi (Trajectory Trail)
+        dx = px - self.last_recorded_pose['x']
+        dy = py - self.last_recorded_pose['y']
+        dist = math.hypot(dx, dy)
+        d_yaw = abs(yaw_deg - self.last_recorded_pose['yaw'])
+
+        # Lưu điểm mới nếu di chuyển > 3cm hoặc quay > 5 độ, hoặc là điểm đầu tiên
+        if dist > 0.03 or d_yaw > 5.0 or len(self.trajectory_path.poses) == 0:
+            pose_stamped = PoseStamped()
+            pose_stamped.header.stamp = now
+            pose_stamped.header.frame_id = 'odom'
+            pose_stamped.pose.position.x = px
+            pose_stamped.pose.position.y = py
+            pose_stamped.pose.position.z = 0.0
+            pose_stamped.pose.orientation.z = qz
+            pose_stamped.pose.orientation.w = qw
+
+            self.trajectory_path.header.stamp = now
+            self.trajectory_path.poses.append(pose_stamped)
+            if len(self.trajectory_path.poses) > 500:
+                self.trajectory_path.poses.pop(0)
+
+            self.last_recorded_pose = {'x': px, 'y': py, 'yaw': yaw_deg}
+            self.path_pub_.publish(self.trajectory_path)
 
     def publish_scan(self, points):
         if not points:
             return
 
         now = self.get_clock().now().to_msg()
+        px = self.current_pose['x']
+        py = self.current_pose['y']
+        yaw_rad = math.radians(self.current_pose['yaw'])
+        qz = math.sin(yaw_rad / 2.0)
+        qw = math.cos(yaw_rad / 2.0)
 
-        # Dynamic TF odom -> base_link tai dung thoi diem cua LaserScan
+        # Dynamic TF odom -> base_link tai dung vi tri robot
         t_odom = TransformStamped()
         t_odom.header.stamp = now
         t_odom.header.frame_id = "odom"
         t_odom.child_frame_id = "base_link"
-        t_odom.transform.translation.x = 0.0
-        t_odom.transform.translation.y = 0.0
+        t_odom.transform.translation.x = px
+        t_odom.transform.translation.y = py
         t_odom.transform.translation.z = 0.0
-        t_odom.transform.rotation.w = 1.0
+        t_odom.transform.rotation.z = qz
+        t_odom.transform.rotation.w = qw
         self.tf_broadcaster.sendTransform(t_odom)
 
         self.scan_count += 1
@@ -66,7 +140,7 @@ class LidarWsToRos2Bridge(Node):
 
         msg = LaserScan()
         msg.header.stamp = now
-        msg.header.frame_id = 'laser'
+        msg.header.frame_id = 'laser_frame'
 
         # 360 do: tu 0 den 2*PI, do phan giai 1 do (360 bins)
         num_bins = 360
@@ -108,6 +182,9 @@ async def ws_loop(node: LidarWsToRos2Bridge, ws_url="ws://100.99.72.51:8000/api/
                         break
                     try:
                         data = json.loads(msg_str)
+                        robot_pose = data.get("robot_pose")
+                        if robot_pose:
+                            node.update_robot_pose(robot_pose)
                         points = data.get("scan_points", [])
                         if points:
                             node.publish_scan(points)

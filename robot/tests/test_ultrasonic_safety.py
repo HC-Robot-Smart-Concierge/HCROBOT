@@ -225,7 +225,17 @@ class TestObstacleSafety(unittest.TestCase):
         self.assertTrue(self.safety.command("left"))
         self.assertEqual(self.motor.motion, "left")
 
+    def test_ignored_rear_sensor_allows_backward(self):
+        self.safety.ignored_sensors.add("rear")
+        self.reader.snapshot = snapshot(front=10.0, rear=None)
+        # Tiến bị chặn do front=10.0
+        self.assertFalse(self.safety.command("forward"))
+        # Lùi được phép do rear đã bỏ qua
+        self.assertTrue(self.safety.command("backward"))
+        self.assertEqual(self.motor.motion, "backward")
+
 
 if __name__ == "__main__":
     unittest.main()
+
 

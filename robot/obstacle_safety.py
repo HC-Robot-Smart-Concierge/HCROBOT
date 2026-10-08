@@ -88,49 +88,52 @@ class ObstacleSafetyController:
             )
         }
 
-    def _requirements(self, motion):
+    def _base_requirements(self, motion):
         if motion == "forward":
-            reqs = (("front", self.thresholds_cm["forward"]),)
+            return (("front", self.thresholds_cm["forward"]),)
         elif motion == "backward":
-            reqs = (("rear", self.thresholds_cm["backward"]),)
+            return (("rear", self.thresholds_cm["backward"]),)
         elif motion == "left":
-            reqs = (
+            return (
                 ("left", self.thresholds_cm["left"]),
                 ("front", self.turn_clearance_cm),
                 ("rear", self.turn_clearance_cm),
             )
         elif motion == "right":
-            reqs = (
+            return (
                 ("right", self.thresholds_cm["right"]),
                 ("front", self.turn_clearance_cm),
                 ("rear", self.turn_clearance_cm),
             )
         elif motion == "forward_left":
-            reqs = (
+            return (
                 ("front", self.thresholds_cm["forward"]),
                 ("left", self.thresholds_cm["left"]),
             )
         elif motion == "forward_right":
-            reqs = (
+            return (
                 ("front", self.thresholds_cm["forward"]),
                 ("right", self.thresholds_cm["right"]),
             )
         elif motion == "backward_left":
-            reqs = (
+            return (
                 ("rear", self.thresholds_cm["backward"]),
                 ("left", self.thresholds_cm["left"]),
             )
         elif motion == "backward_right":
-            reqs = (
+            return (
                 ("rear", self.thresholds_cm["backward"]),
                 ("right", self.thresholds_cm["right"]),
             )
-        else:
-            return ()
+        return ()
 
+    def _requirements(self, motion):
+        base = self._base_requirements(motion)
+        if not base:
+            return ()
         if self.ignored_sensors:
-            return tuple(r for r in reqs if r[0] not in self.ignored_sensors)
-        return reqs
+            return tuple(r for r in base if r[0] not in self.ignored_sensors)
+        return base
 
     def _packet_is_clear_for_resume(self, snapshot, motion):
         """Resume chỉ dùng số đo hiện tại, tuyệt đối không dùng giá trị giữ tạm."""
@@ -222,11 +225,17 @@ class ObstacleSafetyController:
     def evaluate(self, motion: str) -> SafetyDecision:
         if motion == "stop":
             return SafetyDecision(True, "stop luôn được phép")
-        if not self._requirements(motion):
+        if not self._base_requirements(motion):
             return SafetyDecision(False, f"lệnh không hợp lệ: {motion}")
 
+        reqs = self._requirements(motion)
+        if not reqs:
+            if motion in self._blocked_motions:
+                self._blocked_motions.discard(motion)
+            return SafetyDecision(True, f"toàn bộ cảm biến cho {motion} đã được bỏ qua (cho phép)")
+
         snapshot = self.sensor_reader.latest()
-        primary_sensor, primary_threshold = self._requirements(motion)[0]
+        primary_sensor, primary_threshold = reqs[0]
         if snapshot is None:
             return SafetyDecision(
                 False,

@@ -101,9 +101,10 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
     const filterLower = filter.toLowerCase();
     return (data.orders || []).filter((order) => {
       const s = (order.status || '').toLowerCase();
-      if (filterLower === 'cooking') return s === 'cooking' || s === 'in preparation' || s === 'in progress';
+      if (filterLower === 'pending') return s === 'pending' || s === 'unassigned';
+      if (filterLower === 'cooking') return s === 'cooking' || s === 'in preparation' || s === 'in progress' || s === 'sent to kitchen' || s === 'ready';
       if (filterLower === 'delivering') return s === 'delivering' || s === 'in transit';
-      if (filterLower === 'completed') return s === 'completed' || s === 'delivered' || s === 'ready';
+      if (filterLower === 'completed') return s === 'completed' || s === 'delivered';
       return s === filterLower;
     });
   }, [data.orders, filter]);
@@ -161,38 +162,74 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
     });
   };
 
-  const handleStartPreparation = async (order) => {
-    const activeOrder = (data.orders || []).find(
-      (o) =>
-        ['Cooking', 'In Progress'].includes(o.status) &&
-        (o.assignedTo === staffName || o.assigned_staff_name === staffName)
-    );
-    if (activeOrder) {
-      onNotify(
-        `⚠️ Bạn đang chuẩn bị đơn #${activeOrder.orderNumber || activeOrder.id}. Vui lòng hoàn thành trước khi nhận thêm đơn mới!`
-      );
-      return;
-    }
+  const handleSendToKitchen = async (order) => {
+    updateOrderLocally(order.id, {
+      status: 'Sent to Kitchen',
+      progress: 25,
+      estCompletion: '20 mins',
+      assignedTo: staffName,
+    });
+    await updateRoomServiceOrderStatus(order.rawId || order.id, {
+      status: 'Sent to Kitchen',
+      progress: 25,
+      est_completion: '20 mins',
+      assigned_staff_name: staffName,
+    });
+    onNotify(`Đã kiểm tra và chuyển đơn #${order.id} sang cho Bếp chế biến!`);
+  };
 
+  const handleStartCooking = async (order) => {
     updateOrderLocally(order.id, {
       status: 'Cooking',
-      progress: 25,
-      estCompletion: '12 mins',
+      progress: 50,
+      estCompletion: '15 mins',
       assignedTo: staffName,
     });
     await updateRoomServiceOrderStatus(order.rawId || order.id, {
       status: 'Cooking',
-      progress: 25,
-      est_completion: '12 mins',
+      progress: 50,
+      est_completion: '15 mins',
       assigned_staff_name: staffName,
     });
-    onNotify(`Started preparation for order #${order.id}`);
+    onNotify(`Bếp đã nhận và bắt đầu nấu đơn #${order.id}`);
+  };
+
+  const handleMarkReady = async (order) => {
+    updateOrderLocally(order.id, {
+      status: 'Ready',
+      progress: 75,
+      estCompletion: 'Sẵn sàng',
+      assignedTo: staffName,
+    });
+    await updateRoomServiceOrderStatus(order.rawId || order.id, {
+      status: 'Ready',
+      progress: 75,
+      est_completion: 'Sẵn sàng',
+      assigned_staff_name: staffName,
+    });
+    onNotify(`Món ăn đơn #${order.id} đã nấu xong! Thông báo Room Service lấy món.`);
+  };
+
+  const handleStartDelivery = async (order) => {
+    updateOrderLocally(order.id, {
+      status: 'Delivering',
+      progress: 85,
+      estCompletion: '5 mins',
+      assignedTo: staffName,
+    });
+    await updateRoomServiceOrderStatus(order.rawId || order.id, {
+      status: 'Delivering',
+      progress: 85,
+      est_completion: '5 mins',
+      assigned_staff_name: staffName,
+    });
+    onNotify(`Room Service đã lấy món, chuẩn bị dụng cụ và đang giao lên phòng ${order.room}`);
   };
 
   const handleReject = async (order) => {
     updateOrderLocally(order.id, { status: 'Rejected' });
     await updateRoomServiceOrderStatus(order.rawId || order.id, { status: 'Rejected' });
-    onNotify(`Rejected order #${order.id}`);
+    onNotify(`Từ chối đơn #${order.id}`);
   };
 
   const handleCompleteOrder = async (order) => {
@@ -202,7 +239,7 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
       progress: 100,
       assigned_staff_name: staffName,
     });
-    onNotify(`Đã hoàn tất giao đơn hàng #${order.id}!`);
+    onNotify(`Đã giao thành công và hoàn tất đơn hàng #${order.id}!`);
   };
 
   const kpis = data.kpis || INITIAL_ROOM_SERVICE_DATA.kpis;
@@ -275,14 +312,25 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
               ) : (
                 filteredOrders.map((order) => {
                   const normalizedStatus = (order.status || '').toLowerCase();
-                  const isPending = normalizedStatus === 'pending' || normalizedStatus === 'unassigned';
-                  const isCooking = normalizedStatus === 'cooking' || normalizedStatus === 'in progress' || normalizedStatus === 'in preparation';
-                  const isCompleted = normalizedStatus === 'completed' || normalizedStatus === 'ready' || normalizedStatus === 'delivered';
+                  const isPending =
+                    normalizedStatus === 'pending' || normalizedStatus === 'unassigned';
+                  const isSentToKitchen =
+                    normalizedStatus === 'sent to kitchen' || normalizedStatus === 'sent_to_kitchen';
+                  const isCooking =
+                    normalizedStatus === 'cooking' ||
+                    normalizedStatus === 'in progress' ||
+                    normalizedStatus === 'in preparation';
+                  const isReady =
+                    normalizedStatus === 'ready' || normalizedStatus === 'món đã nấu xong';
+                  const isDelivering =
+                    normalizedStatus === 'delivering' || normalizedStatus === 'in transit';
+                  const isCompleted =
+                    normalizedStatus === 'completed' || normalizedStatus === 'delivered';
 
                   return (
                     <article
                       key={order.id}
-                      className="rounded-xl bg-white p-4 border border-[#E8E5E0]"
+                      className="rounded-xl bg-white p-4 border border-[#E8E5E0] space-y-3"
                     >
                       <div className="flex items-center justify-between gap-4">
                         <div className="flex items-center gap-2 text-[11px] font-bold text-[#3A3530]">
@@ -291,66 +339,130 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
                             {order.room}
                           </span>
                         </div>
-                        <span className="text-[11px] font-semibold text-[#666]">
-                          {isCompleted
-                            ? t('completed')
+                        <span
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                            isPending
+                              ? 'bg-amber-100 text-amber-800 border-amber-200'
+                              : isSentToKitchen
+                              ? 'bg-blue-100 text-blue-800 border-blue-200'
+                              : isCooking
+                              ? 'bg-amber-100 text-amber-800 border-amber-200'
+                              : isReady
+                              ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                              : isDelivering
+                              ? 'bg-purple-100 text-purple-800 border-purple-200'
+                              : 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                          }`}
+                        >
+                          {isPending
+                            ? 'Chờ Tiếp Nhận'
+                            : isSentToKitchen
+                            ? 'Đã Chuyển Bếp'
                             : isCooking
-                            ? t('inProgress')
-                            : t('pending')}
+                            ? 'Bếp Đang Nấu'
+                            : isReady
+                            ? 'Món Đã Nấu Xong'
+                            : isDelivering
+                            ? 'Đang Giao Phòng'
+                            : 'Đã Hoàn Tất'}
                         </span>
                       </div>
 
-                      <p className="mt-1 text-[10px] text-[#888]">
-                        {order.orderedAt || 'Ordered recently'}
+                      <p className="text-[10px] text-[#888]">
+                        {order.orderedAt || 'Vừa đặt'}
                       </p>
 
-                      <div className="mt-3 flex items-center justify-between gap-4">
+                      <div className="flex items-center justify-between gap-4">
                         <div>
                           <h4 className="text-[12px] font-semibold text-[#322F2C]">
-                            {order.name}
+                            {order.name || (Array.isArray(order.items) && order.items.map(it => it.name).join(', ')) || 'Yêu cầu Room Service'}
                           </h4>
                           <p className="text-[11px] text-[#746F69]">
-                            {order.notes || 'No special requests'}
+                            {order.notes || 'Không có ghi chú đặc biệt'}
                           </p>
                         </div>
                         <span className="text-[11px] font-bold text-[#444]">x{order.qty || 1}</span>
                       </div>
 
-                      <div className="mt-4 pt-3 border-t border-[#F0ECE6] flex justify-end gap-2">
-                        {isPending && !order.isServiceRequest && (
-                          <>
+                      <div className="pt-3 border-t border-[#F0ECE6] flex items-center justify-between gap-2">
+                        <span className="text-[10px] text-stone-500 font-medium">
+                          {isPending
+                            ? 'Room Service kiểm tra đơn'
+                            : isSentToKitchen
+                            ? 'Chờ Bếp chế biến'
+                            : isCooking
+                            ? 'Bếp đang làm món'
+                            : isReady
+                            ? 'Lấy món & chuẩn bị dụng cụ'
+                            : isDelivering
+                            ? 'Đang giao lên phòng'
+                            : 'Hoàn tất'}
+                        </span>
+
+                        <div className="flex items-center gap-2">
+                          {/* 1. Pending: Reject & Chuyển Sang Bếp */}
+                          {isPending && !order.isServiceRequest && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleReject(order)}
+                                className="rounded-lg border border-[#D4D0CB] bg-white px-3 py-1.5 text-[11px] text-[#444] hover:bg-[#F7F5F2] cursor-pointer"
+                              >
+                                {t('reject')}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleSendToKitchen(order)}
+                                className="rounded-lg bg-indigo-600 hover:bg-indigo-700 px-3.5 py-1.5 text-[11px] font-bold text-white cursor-pointer shadow-xs"
+                              >
+                                Chuyển Sang Bếp
+                              </button>
+                            </>
+                          )}
+
+                          {/* 2. Sent to Kitchen (Chờ Bếp, Room Service không bấm được) */}
+                          {isSentToKitchen && (
+                            <span className="px-3 py-1.5 rounded-lg bg-blue-50 text-blue-800 text-[11px] font-bold border border-blue-200 flex items-center gap-1.5">
+                              <span>⏳ Chờ Bếp Nhận Nấu</span>
+                            </span>
+                          )}
+
+                          {/* 3. Cooking (Bếp đang nấu, Room Service chỉ xem) */}
+                          {isCooking && (
+                            <span className="px-3 py-1.5 rounded-lg bg-amber-50 text-amber-800 text-[11px] font-bold border border-amber-200 flex items-center gap-1.5">
+                              <span>🔥 Bếp Đang Nấu Món...</span>
+                            </span>
+                          )}
+
+                          {/* 4. Ready -> Lấy Món & Giao Phòng */}
+                          {isReady && (
                             <button
                               type="button"
-                              onClick={() => handleReject(order)}
-                              className="rounded-lg border border-[#D4D0CB] bg-white px-3 py-1.5 text-[11px] text-[#444] hover:bg-[#F7F5F2] cursor-pointer"
+                              onClick={() => handleStartDelivery(order)}
+                              className="rounded-lg bg-sky-600 hover:bg-sky-700 px-3.5 py-1.5 text-[11px] font-bold text-white cursor-pointer shadow-xs"
                             >
-                              {t('reject')}
+                              Lấy Món & Giao Phòng
                             </button>
+                          )}
+
+                          {/* 5. Delivering -> Xác Nhận Đã Giao */}
+                          {isDelivering && (
                             <button
                               type="button"
-                              onClick={() => handleStartPreparation(order)}
-                              className="rounded-lg bg-black px-4 py-1.5 text-[11px] font-bold text-white hover:bg-[#252525] cursor-pointer"
+                              onClick={() => handleCompleteOrder(order)}
+                              className="rounded-lg bg-emerald-600 hover:bg-emerald-700 px-3.5 py-1.5 text-[11px] font-bold text-white cursor-pointer shadow-xs"
                             >
-                              {t('startPrep')}
+                              Xác Nhận Đã Giao
                             </button>
-                          </>
-                        )}
+                          )}
 
-                        {isCooking && (
-                          <button
-                            type="button"
-                            onClick={() => handleCompleteOrder(order)}
-                            className="rounded-lg bg-emerald-600 px-4 py-1.5 text-[11px] font-bold text-white hover:bg-emerald-700 cursor-pointer"
-                          >
-                            {t('completeOrder')}
-                          </button>
-                        )}
-
-                        {isCompleted && (
-                          <span className="rounded bg-emerald-50 text-emerald-800 px-3 py-1 text-[11px] font-bold border border-emerald-200">
-                            {t('orderCompleted')}
-                          </span>
-                        )}
+                          {/* 6. Completed */}
+                          {isCompleted && (
+                            <span className="rounded bg-emerald-50 text-emerald-800 px-3 py-1 text-[11px] font-bold border border-emerald-200">
+                              {t('orderCompleted')}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </article>
                   );

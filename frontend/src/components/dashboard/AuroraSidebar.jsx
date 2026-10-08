@@ -2,6 +2,7 @@ import React from 'react';
 import {
   LayoutDashboard,
   Inbox,
+  ClipboardCheck,
   History,
   Bell,
   User,
@@ -43,6 +44,7 @@ export const AuroraSidebar = ({
         { id: 'Taxi', label: 'Điều phối đặt xe', icon: Car },
         { id: 'Feedback', label: 'Đánh giá dịch vụ', icon: Star },
         { id: 'Requests', label: t('menuRequests') || 'Yêu cầu', icon: Inbox },
+        { id: 'MyTasks', label: t('menuMyTasks') || 'Yêu cầu cá nhân', icon: ClipboardCheck },
         { id: 'History', label: t('menuHistory') || 'Lịch sử', icon: History },
         { id: 'Notifications', label: t('menuNotifications') || 'Thông báo', icon: Bell },
         { id: 'Profile', label: t('menuProfile') || 'Hồ sơ', icon: User },
@@ -50,6 +52,7 @@ export const AuroraSidebar = ({
     : [
         { id: 'Dashboard', label: t('menuDashboard') || 'Tổng quan', icon: LayoutDashboard },
         { id: 'Requests', label: t('menuRequests') || 'Yêu cầu', icon: Inbox },
+        { id: 'MyTasks', label: t('menuMyTasks') || 'Yêu cầu cá nhân', icon: ClipboardCheck },
         { id: 'Notifications', label: t('menuNotifications') || 'Thông báo', icon: Bell },
         { id: 'Profile', label: t('menuProfile') || 'Hồ sơ', icon: User },
       ];

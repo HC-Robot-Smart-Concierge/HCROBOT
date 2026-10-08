@@ -2,6 +2,7 @@ import React from 'react';
 import {
   LayoutDashboard,
   Inbox,
+  ClipboardCheck,
   History,
   Bell,
   User,
@@ -35,11 +36,13 @@ export const MobileBottomNav = ({
         { id: 'Taxi', label: 'Đặt Xe', icon: Car },
         { id: 'Feedback', label: 'Đánh Giá', icon: Star },
         { id: 'Requests', label: t('menuRequests') || 'Yêu Cầu', icon: Inbox },
+        { id: 'MyTasks', label: 'Cá Nhân', icon: ClipboardCheck },
         { id: 'Notifications', label: t('menuNotifications') || 'Thông Báo', icon: Bell },
       ]
     : [
         { id: 'Dashboard', label: t('menuDashboard') || 'Tổng Quan', icon: LayoutDashboard },
         { id: 'Requests', label: t('menuRequests') || 'Yêu Cầu', icon: Inbox },
+        { id: 'MyTasks', label: 'Cá Nhân', icon: ClipboardCheck },
         { id: 'Notifications', label: t('menuNotifications') || 'Thông Báo', icon: Bell },
         { id: 'Profile', label: t('menuProfile') || 'Hồ Sơ', icon: User },
       ];

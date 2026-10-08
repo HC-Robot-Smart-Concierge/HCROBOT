@@ -150,7 +150,7 @@ const translations = {
     // Sidebar
     menuDashboard: 'Bảng Điều Khiển',
     menuRequests: 'Yêu Cầu',
-    menuMyTasks: 'Nhiệm Vụ Của Tôi',
+    menuMyTasks: 'Yêu Cầu Cá Nhân',
     menuHistory: 'Lịch Sử',
     menuNotifications: 'Thông Báo',
     menuProfile: 'Hồ Sơ Cá Nhân',

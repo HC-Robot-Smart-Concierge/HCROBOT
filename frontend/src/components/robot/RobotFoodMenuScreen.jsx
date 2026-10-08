@@ -13,6 +13,8 @@ import {
   Sparkles,
   Info,
   ChefHat,
+  Edit3,
+  Home,
 } from 'lucide-react';
 import { createRoomServiceOrder } from '../../services/operationsApi';
 
@@ -708,15 +710,46 @@ export const RobotFoodMenuScreen = ({
   activeRoomNumber = '304',
   onClose = () => {},
   onOrderSuccess = () => {},
+  onRoomChange = () => {},
 }) => {
   const [selectedCategory, setSelectedCategory] = useState(INITIAL_MENU_CATEGORIES[0]?.id || 'appetizers');
   const [searchQuery, setSearchQuery] = useState('');
   const [cart, setCart] = useState({}); // { [itemId]: { item, qty } }
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
   const [orderNote, setOrderNote] = useState('');
-  const [deliveryRoom, setDeliveryRoom] = useState(activeRoomNumber || '304');
+  const [deliveryRoom, setDeliveryRoom] = useState(() => {
+    try {
+      const saved = localStorage.getItem('robot_delivery_room');
+      if (saved && saved.trim()) return saved.trim();
+    } catch {}
+    return activeRoomNumber || '304';
+  });
+  const [isRoomModalOpen, setIsRoomModalOpen] = useState(false);
+  const [tempRoomInput, setTempRoomInput] = useState(deliveryRoom);
+  const [roomError, setRoomError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [orderSuccessData, setOrderSuccessData] = useState(null);
+
+  const handleOpenRoomModal = () => {
+    setTempRoomInput(deliveryRoom);
+    setRoomError('');
+    setIsRoomModalOpen(true);
+  };
+
+  const handleSaveRoom = (roomToSave = tempRoomInput) => {
+    const trimmed = String(roomToSave || '').trim();
+    if (!trimmed) {
+      setRoomError('Vui lòng nhập số phòng hợp lệ');
+      return;
+    }
+    setDeliveryRoom(trimmed);
+    setRoomError('');
+    setIsRoomModalOpen(false);
+    try {
+      localStorage.setItem('robot_delivery_room', trimmed);
+    } catch {}
+    onRoomChange(trimmed);
+  };
 
   const mainScrollRef = useRef(null);
   const sidebarNavRef = useRef(null);
@@ -1030,11 +1063,17 @@ export const RobotFoodMenuScreen = ({
               )}
             </div>
 
-            {/* Room / Table badge */}
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white border border-[#E3DFD5] text-[11px] font-bold text-stone-800 shadow-sm">
+            {/* Room / Table badge - Bấm vào để sửa số phòng */}
+            <button
+              type="button"
+              onClick={handleOpenRoomModal}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white hover:bg-stone-50 border border-[#E3DFD5] hover:border-stone-400 text-[11px] font-bold text-stone-800 shadow-sm transition-all cursor-pointer active:scale-95 group"
+              title="Bấm để thay đổi số phòng nhận món"
+            >
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span>{deliveryRoom ? `Phòng ${deliveryRoom}` : 'Bàn A-11'}</span>
-            </div>
+              <span>{deliveryRoom ? `Phòng ${deliveryRoom}` : 'Chọn phòng'}</span>
+              <Edit3 className="w-3 h-3 text-stone-400 group-hover:text-stone-700 transition-colors ml-0.5" />
+            </button>
 
             {/* Nút Quay lại màn hình Robot */}
             <button
@@ -1305,6 +1344,23 @@ export const RobotFoodMenuScreen = ({
 
             {/* Footer Modal: Tổng cộng & Nút Đặt Món */}
             <div className="p-4 border-t border-[#E3DFD5] bg-white space-y-3 touch-none">
+              {/* Phòng nhận món - Bấm vào để sửa */}
+              <div className="flex items-center justify-between text-xs py-2 px-3 bg-stone-50 rounded-2xl border border-stone-200">
+                <span className="text-stone-500 font-semibold flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  <span>Giao đến phòng:</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={handleOpenRoomModal}
+                  className="font-black text-stone-900 hover:text-amber-700 flex items-center gap-1 cursor-pointer transition-colors px-2 py-0.5 rounded-lg hover:bg-stone-200/60"
+                  title="Bấm để thay đổi số phòng nhận món"
+                >
+                  <span>Phòng {deliveryRoom}</span>
+                  <Edit3 className="w-3 h-3 text-stone-400" />
+                </button>
+              </div>
+
               <div className="flex justify-between items-baseline text-xs">
                 <span className="font-black text-stone-900 text-sm">Tổng cộng:</span>
                 <span className="font-black text-xl text-stone-900">
@@ -1332,6 +1388,92 @@ export const RobotFoodMenuScreen = ({
         </div>
       )}
 
+      {/* MODAL THAY ĐỔI SỐ PHÒNG NHẬN MÓN */}
+      {isRoomModalOpen && (
+        <div
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn overscroll-none touch-none"
+          onClick={() => setIsRoomModalOpen(false)}
+        >
+          <div
+            className="bg-white border border-[#E3DFD5] rounded-3xl p-5 sm:p-6 max-w-sm w-full shadow-2xl space-y-4 animate-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-stone-100 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                  <Home className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-stone-900">Phòng Nhận Món</h3>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsRoomModalOpen(false)}
+                className="w-7 h-7 rounded-full hover:bg-stone-100 flex items-center justify-center text-stone-400 hover:text-stone-700 transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleSaveRoom();
+              }}
+              className="space-y-4"
+            >
+              <div>
+                <label className="block text-[11px] font-bold text-stone-600 uppercase tracking-wider mb-1.5">
+                  Nhập số phòng của quý khách:
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={tempRoomInput}
+                    onChange={(e) => {
+                      setTempRoomInput(e.target.value);
+                      if (roomError) setRoomError('');
+                    }}
+                    placeholder="VD: 304, 502, Villa 01..."
+                    autoFocus
+                    className="w-full px-4 py-2.5 rounded-2xl bg-[#FAF8F5] border border-[#E0DCD3] text-base font-black text-stone-900 tracking-wide outline-none focus:border-stone-800 focus:bg-white transition-all text-center"
+                  />
+                  {tempRoomInput && (
+                    <button
+                      type="button"
+                      onClick={() => setTempRoomInput('')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600 text-xs w-5 h-5 flex items-center justify-center rounded-full hover:bg-stone-200"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+                {roomError && (
+                  <p className="text-[11px] font-bold text-red-600 mt-1.5 text-center">{roomError}</p>
+                )}
+              </div>
+
+              <div className="flex gap-2.5 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setIsRoomModalOpen(false)}
+                  className="flex-1 py-2.5 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-800 text-xs font-bold transition-all cursor-pointer"
+                >
+                  Hủy bỏ
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 rounded-full bg-[#1A1917] hover:bg-stone-800 text-white text-xs font-bold shadow-md transition-all cursor-pointer"
+                >
+                  Xác Nhận Số Phòng
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* POPUP THÔNG BÁO ĐẶT MÓN THÀNH CÔNG */}
       {orderSuccessData && (
         <div
@@ -1348,8 +1490,8 @@ export const RobotFoodMenuScreen = ({
                 Mã đơn: <span className="font-mono font-bold text-stone-800">{orderSuccessData.orderCode}</span>
               </p>
               <p className="text-xs text-stone-600 mt-2 leading-relaxed">
-                Yêu cầu đã được chuyển tới Bếp. Robot AI sẽ thông báo và giao món tận phòng{' '}
-                <strong className="text-stone-900">{orderSuccessData.room}</strong> của quý khách.
+                Đơn hàng của quý khách đã được ghi nhận. Món ăn sẽ được giao đến phòng{' '}
+                <strong className="text-stone-900">{orderSuccessData.room || '304'}</strong> ngay sau khi hoàn tất.
               </p>
             </div>
 

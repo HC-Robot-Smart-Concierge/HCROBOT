@@ -24,8 +24,9 @@ import { NotificationCenterModal } from './components/common/NotificationCenterM
 import { QuickRequestModal } from './components/common/QuickRequestModal';
 import { UserProfileModal } from './components/common/UserProfileModal';
 
-// 4 Sidebar Staff Pages
+// 5 Sidebar Staff Pages
 import { RequestsPage } from './pages/staff/RequestsPage';
+import { MyTasksPage } from './pages/staff/MyTasksPage';
 import { HistoryPage } from './pages/staff/HistoryPage';
 import { NotificationsPage } from './pages/staff/NotificationsPage';
 import { ProfilePage } from './pages/staff/ProfilePage';
@@ -719,7 +720,20 @@ export function App() {
 
             {/* Requests Page (Role-Filtered) */}
             {activeMenu === 'Requests' && (
-              <RequestsPage currentUser={currentUser} onNotify={showNotification} />
+              <RequestsPage
+                currentUser={currentUser}
+                onNotify={showNotification}
+                onNavigate={(menu) => setActiveMenu(menu)}
+              />
+            )}
+
+            {/* My Tasks Page (Personal Tasks & Food Order Lifecycle) */}
+            {activeMenu === 'MyTasks' && (
+              <MyTasksPage
+                currentUser={currentUser}
+                onNotify={showNotification}
+                onNavigate={(menu) => setActiveMenu(menu)}
+              />
             )}
 
             {/* History Page */}
@@ -750,8 +764,8 @@ export function App() {
               />
             )}
             {/* Default Dashboard Fallback if activeMenu is unrecognized */}
-            {!['Dashboard', 'LiveCalls', 'Recordings', 'Taxi', 'Feedback', 'Requests', 'History', 'Notifications', 'Profile'].includes(activeMenu) && (
-              <RequestsPage currentUser={currentUser} onNotify={showNotification} />
+            {!['Dashboard', 'LiveCalls', 'Recordings', 'Taxi', 'Feedback', 'Requests', 'MyTasks', 'History', 'Notifications', 'Profile'].includes(activeMenu) && (
+              <RequestsPage currentUser={currentUser} onNotify={showNotification} onNavigate={(menu) => setActiveMenu(menu)} />
             )}
           </div>
 

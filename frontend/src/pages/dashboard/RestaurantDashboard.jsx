@@ -14,6 +14,9 @@ import {
   Coffee,
   RefreshCw,
   BookOpen,
+  Utensils,
+  Sparkles,
+  Truck,
 } from 'lucide-react';
 import {
   fetchRestaurantDashboard,
@@ -31,12 +34,17 @@ import {
   assignFoodItemToMenu,
   removeFoodItemFromMenu,
 } from '../../services/restaurantApi';
+import {
+  fetchUnifiedRequests,
+  updateGenericRequestStatus,
+} from '../../services/operationsApi';
 
 export const RestaurantDashboard = ({ currentUser, onNotify = () => {} }) => {
-  const [activeTab, setActiveTab] = useState('reservations'); // 'reservations' | 'preorders' | 'menus'
+  const [activeTab, setActiveTab] = useState('reservations'); // 'reservations' | 'preorders' | 'menus' | 'kitchen'
   const [menuSubTab, setMenuSubTab] = useState('menu_items'); // 'menu_items' | 'master_catalog'
   const [selectedMenuFilter, setSelectedMenuFilter] = useState('ALL');
   const [isLoading, setIsLoading] = useState(false);
+  const [kitchenOrders, setKitchenOrders] = useState([]);
   const [kpis, setKpis] = useState({
     totalReservations: 0,
     totalPreOrders: 0,
@@ -97,13 +105,14 @@ export const RestaurantDashboard = ({ currentUser, onNotify = () => {} }) => {
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const [dashData, resData, preData, menuData, itemData, foodsData] = await Promise.all([
+      const [dashData, resData, preData, menuData, itemData, foodsData, opsRequests] = await Promise.all([
         fetchRestaurantDashboard(),
         fetchRestaurantReservations(),
         fetchRestaurantPreOrders(),
         fetchRestaurantMenus(),
         fetchRestaurantMenuItems(),
         fetchRestaurantFoodItems(),
+        fetchUnifiedRequests(),
       ]);
 
       if (dashData?.kpis) {
@@ -114,6 +123,27 @@ export const RestaurantDashboard = ({ currentUser, onNotify = () => {} }) => {
       setMenus(Array.isArray(menuData) ? menuData : []);
       setMenuItems(Array.isArray(itemData) ? itemData : []);
       setFoodItems(Array.isArray(foodsData) ? foodsData : []);
+
+      // Filter Room Service / F&B orders for kitchen view
+      if (Array.isArray(opsRequests)) {
+        const rsOrders = opsRequests.filter((r) => {
+          const dept = (r.department || '').toLowerCase();
+          const id = (r.id || '').toLowerCase();
+          const title = (r.title || '').toLowerCase();
+          return (
+            dept.includes('room') ||
+            dept.includes('f&b') ||
+            dept.includes('ẩm thực') ||
+            dept.includes('kitchen') ||
+            dept.includes('bếp') ||
+            id.includes('ord') ||
+            title.includes('room service') ||
+            title.includes('order') ||
+            r.table_type === 'room_service'
+          );
+        });
+        setKitchenOrders(rsOrders);
+      }
       
       // Auto select first menu for itemForm if available
       if (Array.isArray(menuData) && menuData.length > 0 && !itemForm.menu_id) {
@@ -123,6 +153,24 @@ export const RestaurantDashboard = ({ currentUser, onNotify = () => {} }) => {
       console.error('[RestaurantDashboard] Load data error:', err);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleKitchenStatusChange = async (ticketId, nextStatus) => {
+    setKitchenOrders((prev) =>
+      prev.map((o) => (o.id === ticketId || o.raw_id === ticketId ? { ...o, status: nextStatus } : o))
+    );
+    await updateGenericRequestStatus(
+      ticketId,
+      nextStatus,
+      currentUser?.full_name || currentUser?.name || 'Đầu Bếp Trực Ca'
+    );
+    if (nextStatus === 'Cooking') {
+      onNotify(`Bếp đã nhận chế biến phiếu #${ticketId}!`);
+    } else if (nextStatus === 'Ready') {
+      onNotify(`Món ăn phiếu #${ticketId} đã nấu xong! Đã gửi thông báo cho Room Service lấy món.`);
+    } else {
+      onNotify(`Đã cập nhật trạng thái phiếu #${ticketId}: ${nextStatus}`);
     }
   };
 
@@ -353,6 +401,17 @@ export const RestaurantDashboard = ({ currentUser, onNotify = () => {} }) => {
             }`}
           >
             Thực đơn & Món ăn ({menuItems.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('kitchen')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+              activeTab === 'kitchen'
+                ? 'bg-palette-charcoal text-palette-cream shadow-sm'
+                : 'text-palette-slate hover:bg-palette-stone hover:text-palette-charcoal'
+            }`}
+          >
+            <ChefHat className="w-3.5 h-3.5" />
+            <span>Đơn Room Service ({kitchenOrders.filter((o) => (o.status || '').toLowerCase() !== 'completed' && (o.status || '').toLowerCase() !== 'delivered').length})</span>
           </button>
         </div>
       </div>
@@ -648,6 +707,175 @@ export const RestaurantDashboard = ({ currentUser, onNotify = () => {} }) => {
                     </div>
                   ))}
                 </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* TAB 4: ROOM SERVICE KITCHEN QUEUE */}
+        {activeTab === 'kitchen' && (
+          <div className="space-y-4">
+            <div className="bg-white rounded-xl border border-palette-silver p-4 shadow-sm flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-bold text-palette-charcoal flex items-center gap-2">
+                  <ChefHat className="w-4 h-4 text-amber-600" />
+                  <span>Hàng Đợi Chế Biến Món Room Service (KITCHEN QUEUE)</span>
+                </h3>
+                <p className="text-xs text-palette-slate mt-0.5">
+                  Các đơn hàng do Room Service kiểm tra và chuyển sang cho Bếp chế biến món ăn.
+                </p>
+              </div>
+              <button
+                onClick={loadData}
+                className="p-2 border border-palette-silver rounded-lg hover:bg-palette-stone transition-all text-palette-slate cursor-pointer"
+                title="Làm mới"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+              </button>
+            </div>
+
+            {kitchenOrders.length === 0 ? (
+              <div className="bg-white rounded-xl border border-palette-silver p-12 text-center text-xs text-palette-slate">
+                Hiện chưa có đơn món Room Service nào cần Bếp xử lý.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {kitchenOrders.map((order) => {
+                  const s = (order.status || '').toLowerCase();
+                  const isSentToKitchen = s === 'sent to kitchen' || s === 'sent_to_kitchen';
+                  const isCooking = s === 'cooking' || s === 'in preparation' || s === 'in progress';
+                  const isReady = s === 'ready' || s === 'món đã nấu xong';
+                  const isDelivering = s === 'delivering' || s === 'in transit';
+                  const isCompleted = s === 'completed' || s === 'delivered';
+                  const items = Array.isArray(order.items) ? order.items : [];
+
+                  return (
+                    <div
+                      key={order.id}
+                      className={`bg-white rounded-xl border p-4 shadow-sm space-y-3 transition-all ${
+                        isSentToKitchen
+                          ? 'border-blue-300 ring-2 ring-blue-50'
+                          : isCooking
+                          ? 'border-amber-300 ring-2 ring-amber-50'
+                          : isReady
+                          ? 'border-emerald-300 ring-2 ring-emerald-50'
+                          : 'border-palette-silver'
+                      }`}
+                    >
+                      {/* Header */}
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-mono text-xs font-bold text-palette-charcoal">
+                            #{order.id}
+                          </span>
+                          <span className="text-[10px] font-bold bg-palette-stone border border-palette-silver px-2 py-0.5 rounded">
+                            {order.location || `Phòng ${order.room_number}`}
+                          </span>
+                          <span className="text-[10px] font-medium text-palette-slate">
+                            {order.time || 'Vừa xong'}
+                          </span>
+                        </div>
+
+                        <span
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                            isSentToKitchen
+                              ? 'bg-blue-100 text-blue-800 border-blue-200'
+                              : isCooking
+                              ? 'bg-amber-100 text-amber-800 border-amber-200'
+                              : isReady
+                              ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                              : isDelivering
+                              ? 'bg-purple-100 text-purple-800 border-purple-200'
+                              : 'bg-stone-100 text-stone-700 border-stone-200'
+                          }`}
+                        >
+                          {isSentToKitchen
+                            ? 'Chờ Bếp Nấu'
+                            : isCooking
+                            ? 'Bếp Đang Nấu'
+                            : isReady
+                            ? 'Món Đã Nấu Xong'
+                            : isDelivering
+                            ? 'Đang Giao Phòng'
+                            : 'Hoàn Tất'}
+                        </span>
+                      </div>
+
+                      {/* Title & Notes */}
+                      <div>
+                        <h4 className="text-xs font-bold text-palette-charcoal">{order.title}</h4>
+                        {order.notes && (
+                          <p className="text-[11px] text-amber-900 bg-amber-50 border border-amber-200 rounded px-2 py-1 mt-1 font-medium">
+                            Ghi chú bếp: {order.notes}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Items */}
+                      {items.length > 0 && (
+                        <div className="p-2.5 rounded-lg bg-palette-stone/40 border border-palette-silver/60 space-y-1 text-xs">
+                          <span className="text-[10px] font-bold text-palette-slate block uppercase">
+                            Món cần làm:
+                          </span>
+                          {items.map((it, idx) => (
+                            <div key={idx} className="flex items-center justify-between font-medium">
+                              <span>{it.name || it.item_name}</span>
+                              <span className="font-bold font-mono">x{it.quantity || it.qty || 1}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Action buttons */}
+                      <div className="pt-2 border-t border-palette-silver/40 flex items-center justify-between gap-2">
+                        <span className="text-[10px] text-palette-slate font-medium">
+                          Khách: {order.guestName || 'Khách lưu trú'}
+                        </span>
+
+                        <div className="flex items-center gap-2">
+                          {isSentToKitchen && (
+                            <button
+                              onClick={() => handleKitchenStatusChange(order.id, 'Cooking')}
+                              className="px-3 py-1.5 text-xs font-bold rounded-lg bg-amber-600 hover:bg-amber-700 text-white transition-all shadow-xs flex items-center gap-1 cursor-pointer"
+                            >
+                              <ChefHat className="w-3.5 h-3.5" />
+                              <span>Bếp Nhận Nấu</span>
+                            </button>
+                          )}
+
+                          {isCooking && (
+                            <button
+                              onClick={() => handleKitchenStatusChange(order.id, 'Ready')}
+                              className="px-3 py-1.5 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-all shadow-xs flex items-center gap-1 cursor-pointer"
+                            >
+                              <Sparkles className="w-3.5 h-3.5" />
+                              <span>Món Đã Nấu Xong</span>
+                            </button>
+                          )}
+
+                          {isReady && (
+                            <span className="text-[11px] font-bold text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-200">
+                              ✓ Đã báo Room Service lấy món
+                            </span>
+                          )}
+
+                          {isDelivering && (
+                            <span className="text-[11px] font-semibold text-purple-800 bg-purple-50 px-2.5 py-1 rounded-md border border-purple-200 flex items-center gap-1">
+                              <Truck className="w-3 h-3 text-purple-600" />
+                              Room Service đang giao
+                            </span>
+                          )}
+
+                          {isCompleted && (
+                            <span className="text-[11px] font-semibold text-stone-600 bg-stone-100 px-2.5 py-1 rounded-md">
+                              Đã hoàn tất
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>

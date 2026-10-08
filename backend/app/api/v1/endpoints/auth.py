@@ -268,16 +268,6 @@ async def logout(
                     actor_name=staff.full_name,
                     after_state={"status": "logged_out"},
                 )
-                log_event(
-                    level=LogLevelEnum.INFO,
-                    category=LogCategoryEnum.AUDIT,
-                    event_type="LOGOUT_SUCCESS",
-                    module="app.api.v1.auth",
-                    message=f"Nhân viên '{staff.username}' ({staff.full_name}) đã đăng xuất thành công khỏi hệ thống.",
-                    actor_type=ActorTypeEnum.ADMIN if staff.role == "Admin" else ActorTypeEnum.STAFF,
-                    actor_id=staff.username,
-                    metadata={"user_id": staff.id, "username": staff.username, "department": staff.department},
-                )
                 return LogoutResponse(
                     message=f"Đăng xuất tài khoản {staff.username} thành công.",
                     success=True,

@@ -18,6 +18,30 @@ from app.services.logger_service import (
 
 router = APIRouter(prefix="/logs")
 
+def clean_log_message(msg: str) -> str:
+    if not msg:
+        return ""
+    import re
+    match = re.match(r"^\[([A-Z_]+)\]\s+([\w\d_-]+)\s+performed\s+([A-Z_]+)", msg, re.IGNORECASE)
+    if match:
+        actor = match.group(2)
+        action = match.group(3).upper()
+        if action == "LOGIN":
+            return f"Nhân viên '{actor}' đã đăng nhập thành công vào hệ thống."
+        elif action == "LOGOUT":
+            return f"Nhân viên '{actor}' đã đăng xuất thành công khỏi hệ thống."
+        elif action == "CREATE":
+            return f"Nhân viên '{actor}' đã tạo mới dữ liệu."
+        elif action == "UPDATE":
+            return f"Nhân viên '{actor}' đã cập nhật thông tin dữ liệu."
+        elif action == "DELETE":
+            return f"Nhân viên '{actor}' đã xóa dữ liệu khỏi hệ thống."
+        return f"Nhân viên '{actor}' đã thực hiện thao tác {action.lower()}."
+
+    msg = re.sub(r"SESSION:[a-zA-Z0-9_\-]+", "Phiên làm việc", msg)
+    msg = re.sub(r"token:[a-zA-Z0-9_\-\.]+", "***", msg)
+    return msg
+
 def serialize_log(log: LogEvent) -> dict:
     return {
         "id": log.id,
@@ -26,7 +50,7 @@ def serialize_log(log: LogEvent) -> dict:
         "category": log.category.value if hasattr(log.category, "value") else str(log.category),
         "event_type": log.event_type,
         "module": log.module,
-        "message": log.message,
+        "message": clean_log_message(log.message),
         "actor_type": log.actor_type.value if hasattr(log.actor_type, "value") else str(log.actor_type),
         "actor_id": log.actor_id,
         "robot_id": log.robot_id,

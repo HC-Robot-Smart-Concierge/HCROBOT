@@ -78,6 +78,34 @@ export const AdminLogsTab = () => {
     setTimeout(() => setToastMessage(null), 3500);
   };
 
+  const formatLogMessage = (msg) => {
+    if (!msg || typeof msg !== 'string') return '';
+    const staffMatch = msg.match(/^\[([A-Z_]+)\]\s+([\w\d_-]+)\s+performed\s+([A-Z_]+)(?:\s+on\s+([A-Z_]+):?([^\s]*))?/i);
+    if (staffMatch) {
+      const [, , actor, action] = staffMatch;
+      const act = action.toUpperCase();
+      if (act === 'LOGIN') {
+        return `Nhân viên '${actor}' đã đăng nhập thành công vào hệ thống.`;
+      }
+      if (act === 'LOGOUT') {
+        return `Nhân viên '${actor}' đã đăng xuất thành công khỏi hệ thống.`;
+      }
+      if (act === 'CREATE') {
+        return `Nhân viên '${actor}' đã tạo mới dữ liệu.`;
+      }
+      if (act === 'UPDATE') {
+        return `Nhân viên '${actor}' đã cập nhật thông tin dữ liệu.`;
+      }
+      if (act === 'DELETE') {
+        return `Nhân viên '${actor}' đã xóa dữ liệu khỏi hệ thống.`;
+      }
+      return `Nhân viên '${actor}' đã thực hiện thao tác ${action.toLowerCase()}.`;
+    }
+
+    return msg.replace(/SESSION:[a-zA-Z0-9_\-]+/gi, 'Phiên làm việc')
+              .replace(/token:[a-zA-Z0-9_\-\.]+/gi, '***');
+  };
+
   const loadLogsData = async () => {
     if (activeView === 'operational') {
       try {
@@ -469,7 +497,7 @@ export const AdminLogsTab = () => {
                   {isLoading && logs.length === 0 ? (
                     <tr>
                       <td colSpan={6} className="py-6 text-center" style={{ color: '#8C8C8C' }}>
-                        Đang nạp nhật ký từ PostgreSQL...
+                        Đang tải nhật ký hệ thống...
                       </td>
                     </tr>
                   ) : logs.length === 0 ? (
@@ -505,7 +533,7 @@ export const AdminLogsTab = () => {
                             {item.actor_id || item.actor_type || 'N/A'}
                           </td>
                           <td className="py-2 px-3 font-medium text-[11px]" style={{ color: '#262626' }}>
-                            {item.message}
+                            {formatLogMessage(item.message)}
                           </td>
                           <td className="py-2 px-3 text-right space-x-1.5">
                             {item.correlation_id && (
@@ -655,7 +683,7 @@ export const AdminLogsTab = () => {
             <div className="space-y-2 text-xs">
               <div className="p-2.5 rounded border space-y-1" style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD' }}>
                 <div className="font-semibold text-xs" style={{ color: '#262626' }}>
-                  {selectedLog.message}
+                  {formatLogMessage(selectedLog.message)}
                 </div>
                 <div className="text-[10px] font-mono" style={{ color: '#8C8C8C' }}>
                   Thời gian: {selectedLog.timestamp}

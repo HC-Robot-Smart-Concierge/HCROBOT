@@ -370,9 +370,9 @@ async def get_lidar_status():
 
 @router.post("/save_map", summary="Lưu bản đồ Occupancy Grid hiện tại vào CSDL và lưu file cố định")
 async def save_current_map(
-    map_id: str = "MAP-LOBBY-01",
-    name: str = "Bản đồ Sảnh Tầng 1 Main Lobby",
-    floor: str = "Sảnh Tầng 1",
+    map_id: str = "phong_lam_viec",
+    name: str = "Bản đồ Phòng Làm Việc",
+    floor: str = "Phòng Làm Việc",
     db: AsyncSession = Depends(get_db)
 ):
     """Lưu toàn bộ ma trận 2D Occupancy Grid hiện tại vào bộ nhớ lưu trữ cố định và CSDL PostgreSQL."""
@@ -424,7 +424,7 @@ async def save_current_map(
 
 
 @router.post("/load_map", summary="Nạp lại bản đồ cố định đã lưu từ CSDL/file")
-async def load_saved_map(map_id: str = "MAP-LOBBY-01", lock: bool = True):
+async def load_saved_map(map_id: str = "phong_lam_viec", lock: bool = True):
     """Tải lại bản đồ 2D cố định đã lưu từ trước vào bộ nhớ hệ thống."""
     success = rplidar_service.load_map_from_storage(map_id=map_id, lock=lock)
     if success:

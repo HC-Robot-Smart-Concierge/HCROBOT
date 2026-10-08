@@ -116,9 +116,9 @@ def main():
     # 1. Lưu bản đồ cố định vào File & DB
     print("\n[+] Đang lưu bản đồ vào Database và File tĩnh...")
     save_res = rplidar_service.save_map_to_storage(
-        map_id="MAP-LOBBY-01",
-        name="Bản đồ Sảnh Tầng 1 Main Lobby",
-        floor="Sảnh Tầng 1"
+        map_id="phong_lam_viec",
+        name="Bản đồ Phòng Làm Việc",
+        floor="Phòng Làm Việc"
     )
 
     # 2. Khóa bản đồ lại cố định

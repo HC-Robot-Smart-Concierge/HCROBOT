@@ -14,10 +14,27 @@ import {
   ChevronLeft,
   ChevronRight,
   Square,
+  Trash2,
+  ArrowUp,
+  ArrowDown,
+  ArrowLeft,
+  ArrowRight,
 } from 'lucide-react';
 
 const DEFAULT_STREAM_URL = 'http://100.99.72.51:8554/stream';
 const HEALTH_CHECK_INTERVAL_MS = 5000;
+
+const MOTION_CONFIG = {
+  w: { label: 'Tiến', eng: 'Forward', icon: ArrowUp, color: 'text-emerald-400' },
+  s: { label: 'Lùi', eng: 'Backward', icon: ArrowDown, color: 'text-amber-400' },
+  a: { label: 'Xoay Trái', eng: 'Turn Left', icon: ArrowLeft, color: 'text-sky-400' },
+  d: { label: 'Xoay Phải', eng: 'Turn Right', icon: ArrowRight, color: 'text-sky-400' },
+  wa: { label: 'Tiến-Trái', eng: 'Arc Left', icon: ArrowUp, color: 'text-teal-400' },
+  wd: { label: 'Tiến-Phải', eng: 'Arc Right', icon: ArrowUp, color: 'text-teal-400' },
+  sa: { label: 'Lùi-Trái', eng: 'Arc Left', icon: ArrowDown, color: 'text-orange-400' },
+  sd: { label: 'Lùi-Phải', eng: 'Arc Right', icon: ArrowDown, color: 'text-orange-400' },
+  stop: { label: 'Dừng', eng: 'Stop', icon: Square, color: 'text-rose-400' },
+};
 
 export const AdminCameraTab = ({ currentUser }) => {
   const [streamUrl, setStreamUrl] = useState(
@@ -57,6 +74,17 @@ export const AdminCameraTab = ({ currentUser }) => {
   const [controlIp, setControlIp] = useState(() => import.meta.env.VITE_PI5_IP || '100.99.72.51');
   const [speed, setSpeed] = useState(75);
   const speedRef = useRef(75);
+
+  // Live Movement Logs
+  const [movementLogs, setMovementLogs] = useState([
+    {
+      id: 1,
+      time: new Date().toLocaleTimeString('vi-VN', { hour12: false }),
+      label: 'Hệ thống sẵn sàng',
+      type: 'info',
+    },
+  ]);
+  const [showMoveLogs, setShowMoveLogs] = useState(true);
 
   const imgRef = useRef(null);
   const containerRef = useRef(null);
@@ -205,8 +233,23 @@ export const AdminCameraTab = ({ currentUser }) => {
   const handleSpeedChange = useCallback(
     async (newSpeed) => {
       const clamped = Math.max(20, Math.min(100, newSpeed));
+      if (clamped === speedRef.current) return;
       setSpeed(clamped);
       speedRef.current = clamped;
+
+      const nowStr = new Date().toLocaleTimeString('vi-VN', { hour12: false });
+      setMovementLogs((prev) => [
+        {
+          id: Date.now() + Math.random(),
+          time: nowStr,
+          cmd: `speed:${clamped}`,
+          label: `Đổi tốc độ: ${clamped}%`,
+          speed: clamped,
+          type: 'speed',
+        },
+        ...prev.slice(0, 24),
+      ]);
+
       try {
         await fetch('/api/v1/operations/robot/control', {
           method: 'POST',
@@ -244,8 +287,27 @@ export const AdminCameraTab = ({ currentUser }) => {
 
   const sendControlCommand = useCallback(
     async (cmd) => {
+      if (cmd === activeMotionRef.current && cmd !== 'stop') {
+        return;
+      }
       setActiveMotion(cmd);
       activeMotionRef.current = cmd;
+
+      const info = MOTION_CONFIG[cmd] || { label: cmd, eng: cmd };
+      const nowStr = new Date().toLocaleTimeString('vi-VN', { hour12: false });
+
+      setMovementLogs((prev) => [
+        {
+          id: Date.now() + Math.random(),
+          time: nowStr,
+          cmd,
+          label: `${info.label} (${info.eng})`,
+          speed: speedRef.current,
+          type: cmd === 'stop' ? 'stop' : 'move',
+        },
+        ...prev.slice(0, 24),
+      ]);
+
       try {
         await fetch('/api/v1/operations/robot/control', {
           method: 'POST',
@@ -748,6 +810,74 @@ export const AdminCameraTab = ({ currentUser }) => {
             <span className="text-stone-400">HƯỚNG:</span>
             <span className="text-white font-bold">90°</span>
           </div>
+        </div>
+
+        {/* Live Movement Logs Panel (Bottom Right, next to D-Pad) */}
+        <div className="absolute bottom-4 right-40 z-10 w-72 max-w-[calc(100vw-360px)] bg-[#18181B]/85 backdrop-blur-md rounded-2xl border border-white/10 shadow-2xl overflow-hidden transition-all text-xs">
+          {/* Header */}
+          <div className="flex items-center justify-between px-3 py-2 bg-black/40 border-b border-white/10 select-none">
+            <div className="flex items-center gap-2">
+              <span className="text-emerald-400 font-bold text-[10px] flex items-center gap-1.5 font-mono">
+                <span className={`w-2 h-2 rounded-full ${activeMotion !== 'stop' ? 'bg-emerald-400 animate-pulse' : 'bg-stone-500'}`} />
+                LOG DI CHUYỂN
+              </span>
+              <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold font-mono transition-all ${
+                activeMotion !== 'stop'
+                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                  : 'bg-stone-800 text-stone-400'
+              }`}>
+                {activeMotion !== 'stop' ? `${MOTION_CONFIG[activeMotion]?.label || activeMotion} • ${speed}%` : 'Đã dừng'}
+              </span>
+            </div>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setMovementLogs([])}
+                className="p-1 text-stone-400 hover:text-rose-400 hover:bg-white/5 rounded transition-all cursor-pointer"
+                title="Xóa nhật ký"
+              >
+                <Trash2 className="w-3 h-3" />
+              </button>
+              <button
+                onClick={() => setShowMoveLogs(!showMoveLogs)}
+                className="p-1 text-stone-400 hover:text-white hover:bg-white/5 rounded transition-all cursor-pointer"
+                title={showMoveLogs ? "Thu gọn" : "Mở rộng"}
+              >
+                {showMoveLogs ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
+              </button>
+            </div>
+          </div>
+
+          {/* Logs List */}
+          {showMoveLogs && (
+            <div className="p-2 max-h-40 overflow-y-auto space-y-1 font-mono text-[11px] custom-scrollbar">
+              {movementLogs.length === 0 ? (
+                <div className="text-center py-4 text-stone-500 text-[10px]">Chưa có lệnh di chuyển nào</div>
+              ) : (
+                movementLogs.map((log) => (
+                  <div
+                    key={log.id}
+                    className={`flex items-center justify-between px-2 py-1 rounded-lg transition-all ${
+                      log.type === 'stop'
+                        ? 'bg-rose-500/10 text-rose-300'
+                        : log.type === 'speed'
+                        ? 'bg-amber-500/10 text-amber-300'
+                        : 'bg-white/5 text-stone-200'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-[10px] text-stone-500 shrink-0">{log.time}</span>
+                      <span className="font-semibold truncate">{log.label}</span>
+                    </div>
+                    {log.speed && log.type !== 'stop' && (
+                      <span className="text-[9px] px-1 py-0.5 rounded bg-black/40 text-stone-300 shrink-0 border border-white/5">
+                        {log.speed}%
+                      </span>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          )}
         </div>
 
         {/* Minimalist Cross D-Pad Teleop Controller Overlay */}

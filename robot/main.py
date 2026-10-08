@@ -105,6 +105,8 @@ class DirectMotorSafetyWrapper:
         if motion == "stop":
             self.stop()
             return True
+        if motion == self.motion:
+            return True
         action = self.actions.get(motion)
         if action:
             action()
@@ -113,8 +115,9 @@ class DirectMotorSafetyWrapper:
         return False
 
     def stop(self):
-        self.motor.stop()
-        self.motion = "stop"
+        if self.motion != "stop":
+            self.motor.stop()
+            self.motion = "stop"
 
     def set_speed(self, speed_percent: int) -> int:
         if hasattr(self.motor, "set_speed"):
@@ -337,31 +340,6 @@ def main(argv=None):
         format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
     )
 
-    # Bật Camera Stream Server trên background thread (trừ khi --no-camera)
-    if not args.no_camera:
-        camera_thread = threading.Thread(
-            target=start_camera_stream,
-            args=(args.camera_device,),
-            daemon=True,
-        )
-        camera_thread.start()
-
-    # Bật LiDAR SLAM & WebSocket Server trên background thread (trừ khi --no-lidar)
-    if not args.no_lidar:
-        try:
-            from scripts.lidar_service import run_lidar_server, slam_core
-            if args.lidar_port:
-                slam_core.port = args.lidar_port
-            lidar_thread = threading.Thread(
-                target=run_lidar_server,
-                kwargs={"host": "0.0.0.0", "port": 8000},
-                daemon=True,
-            )
-            lidar_thread.start()
-            logger.info("📡 LiDAR SLAM Server đang chạy tại ws://0.0.0.0:8000/api/v1/map/ws")
-        except Exception as e:
-            logger.warning("Không thể khởi chạy LiDAR SLAM Server: %s", e)
-
     config = load_config()
     robot_cfg = config.get("robot", {})
     gpio_cfg = robot_cfg.get("gpio", {})
@@ -385,6 +363,32 @@ def main(argv=None):
         )
         motor.cleanup()
         return 2
+
+    # Bật Camera Stream Server trên background thread (trừ khi --no-camera)
+    if not args.no_camera:
+        camera_thread = threading.Thread(
+            target=start_camera_stream,
+            args=(args.camera_device,),
+            daemon=True,
+        )
+        camera_thread.start()
+
+    # Bật LiDAR SLAM & WebSocket Server trên background thread (trừ khi --no-lidar)
+    if not args.no_lidar:
+        try:
+            from scripts.lidar_service import run_lidar_server, slam_core
+            slam_core.pi_motor = motor  # Dùng chung instance MotorController đã claim GPIO thành công
+            if args.lidar_port:
+                slam_core.port = args.lidar_port
+            lidar_thread = threading.Thread(
+                target=run_lidar_server,
+                kwargs={"host": "0.0.0.0", "port": 8000},
+                daemon=True,
+            )
+            lidar_thread.start()
+            logger.info("📡 LiDAR SLAM Server đang chạy tại ws://0.0.0.0:8000/api/v1/map/ws")
+        except Exception as e:
+            logger.warning("Không thể khởi chạy LiDAR SLAM Server: %s", e)
 
     if args.drive_test:
         return run_direct_motor_test(
@@ -494,15 +498,22 @@ def main(argv=None):
             motor.cleanup()
             return 3
 
-        if reader.wait_for_packet(timeout=3.0):
+        if reader.wait_for_packet(timeout=4.5):
             logger.info("Đã nhận packet ultrasonic đầu tiên; khóa fail-safe sẵn sàng.")
         else:
             logger.warning(
-                "Chưa nhận được packet sau 3 giây; mọi lệnh chạy bị khóa cho tới khi có dữ liệu từ ESP32."
+                "⚠️ Không nhận được packet từ ESP32 sau 4.5 giây (cổng %s).",
+                port,
             )
             logger.warning(
-                "💡 MẸO: Để điều khiển xe ngay mà không cần ESP32, hãy thêm cờ: sudo python3 main.py --no-safety"
+                "🔄 TỰ ĐỘNG CHUYỂN SANG NO-SAFETY: Bỏ qua khóa siêu âm để cho phép điều khiển xe ngay (LiDAR 360° vẫn bảo vệ)."
             )
+            try:
+                reader.stop()
+            except Exception:
+                pass
+            reader = None
+            safety = DirectMotorSafetyWrapper(motor)
 
         _print_controls(port, thresholds, stale_timeout, turn_clearance)
 

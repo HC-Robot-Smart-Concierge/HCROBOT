@@ -132,6 +132,20 @@ class RPLidarSLAMCore:
 
         # Direct Motor Control via Raspberry Pi 5 L298N (GPIO 17, 27, 22, 23)
         self.pi_motor = None
+
+        # Hệ thống An toàn Vật cản LiDAR (360-degree Continuous Distance Buffer & Fail-Safe)
+        self.angle_distances: List[float] = [99.0] * 360
+        self.angle_timestamps: List[float] = [0.0] * 360
+        self.front_safety_distance = 0.35   # Ngưỡng phanh khẩn cấp phía trước: <= 35cm
+        self.rear_safety_distance = 0.30    # Ngưỡng phanh khẩn cấp phía sau: <= 30cm
+        self.current_motion_cmd = "stop"
+        self._safety_thread: Optional[threading.Thread] = None
+        self.last_safety_alert: str = ""
+
+    def init_direct_motor(self):
+        """Khởi tạo MotorController trực tiếp nếu chưa có (dùng khi chạy standalone)."""
+        if self.pi_motor is not None:
+            return self.pi_motor
         try:
             from motor_controller import MotorController
             self.pi_motor = MotorController(
@@ -145,15 +159,7 @@ class RPLidarSLAMCore:
             logger.info("🚗 [LiDAR-SLAM] Đã khởi tạo MotorController trực tiếp trên Raspberry Pi 5 (GPIO 17, 27, 22, 23)!")
         except Exception as e:
             logger.warning(f"⚠️ [LiDAR-SLAM] Không khởi tạo được MotorController trực tiếp ({e}), sử dụng fallback UDP 9999")
-
-        # Hệ thống An toàn Vật cản LiDAR (360-degree Continuous Distance Buffer & Fail-Safe)
-        self.angle_distances: List[float] = [99.0] * 360
-        self.angle_timestamps: List[float] = [0.0] * 360
-        self.front_safety_distance = 0.35   # Ngưỡng phanh khẩn cấp phía trước: <= 35cm
-        self.rear_safety_distance = 0.30    # Ngưỡng phanh khẩn cấp phía sau: <= 30cm
-        self.current_motion_cmd = "stop"
-        self._safety_thread: Optional[threading.Thread] = None
-        self.last_safety_alert: str = ""
+        return self.pi_motor
 
     def reset_map(self):
         """Xóa trắng bản đồ 2D về trạng thái ban đầu và đưa vị trí robot về gốc."""
@@ -1628,6 +1634,8 @@ async def map_ws_endpoint(websocket: WebSocket):
 
 
 def run_lidar_server(host="0.0.0.0", port=8000):
+    if slam_core.pi_motor is None:
+        slam_core.init_direct_motor()
     slam_core.connect()
     slam_core.start_scanning()
     uvicorn.run(app, host=host, port=port, log_level="warning")

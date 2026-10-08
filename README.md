@@ -119,16 +119,22 @@ HC-Robot/
 │   ├── package.json            # Node.js dependencies & scripts
 │   ├── tailwind.config.js      # Configuration Tailwind CSS
 │   └── vite.config.js          # Vite build & PWA allowedHosts settings
-├── robot/                      # Robot Edge Controller & ROS 2 (Raspberry Pi 5)
-│   ├── main.py                 # Điều khiển động cơ, cảm biến & auto-start camera stream
+├── robot/                      # Robot Edge Controller & ROS 2 (Raspberry Pi 5 + Laptop WSL2)
+│   ├── main.py                 # Điều khiển động cơ, an toàn vật cản & LiDAR/Camera services
+│   ├── description/            # Mô hình 3D URDF & xacro (robot.urdf, lidar.xacro...)
+│   ├── maps/                   # Thư mục lưu bản đồ SLAM Occupancy Grid (.yaml + .pgm)
+│   ├── ros2_configs/           # Cấu hình SLAM Toolbox, Bridge, RViz2
+│   │   ├── start_wsl_slam.sh   # 1-Click khởi chạy toàn bộ SLAM Stack trên WSL2
+│   │   ├── lidar_ws_to_ros2.py # Bridge WebSocket Pi 5 -> ROS 2 (/scan, /odom, /robot_path)
+│   │   ├── slam_toolbox_params.yaml # Cấu hình thuật toán SLAM Toolbox Online Async
+│   │   └── nav2/lidar_view.rviz# Giao diện RViz2 trực quan hóa 3D Robot, LiDAR & Map
 │   ├── scripts/
-│   │   ├── camera_stream.py    # MJPEG HTTP Server đa luồng cho camera (OpenCV / Picamera2)
-│   │   └── setup_gpio_permissions.sh # Script phân quyền GPIO trên Pi
+│   │   ├── teleop_keyboard.py  # Điều khiển bàn phím WASD terminal (đồng bộ RViz2 & Pi 5)
+│   │   ├── save_map.sh         # Script trích xuất và lưu bản đồ SLAM thành phẩm
+│   │   ├── lidar_service.py    # Dịch vụ RPLiDAR SLAM & WebSocket trên Pi 5
+│   │   └── camera_stream.py    # MJPEG HTTP Server đa luồng cho camera
 │   └── src/
 │       └── hc_robot_client/    # ROS 2 Package (nodes, launch, config)
-│           ├── hc_robot_client/# Python nodes (ai_bridge_node, telemetry_node)
-│           ├── config/         # settings.yaml (IP Tailscale Server)
-│           └── package.xml     # ROS 2 package dependencies
 ├── docs/                       # Hệ thống tài liệu kỹ thuật chuẩn hóa (guides/, workflows/)
 │   ├── guides/                 # Hướng dẫn ROS 2 phân tán, AI pipeline, Alembic, Ultrasonic
 │   ├── workflows/              # Đặc tả kịch bản tương tác (Stepflow) & biên bản bàn giao
@@ -542,78 +548,100 @@ flowchart LR
 
 #### Chu Trình Vận Hành Cốt Lõi:
 ```text
-[1. Khởi động SLAM] -> [2. Lái Robot chạy chậm 1 vòng] -> [3. Lưu Map ra file] -> [4. TẮT SLAM, BẬT NAV2]
+[1. Khởi động SLAM Stack] -> [2. Mở RViz2 Giám sát 3D] -> [3. Lái Robot bằng WASD Teleop] -> [4. Lưu Bản đồ thành phẩm]
 ```
 
 ---
 
-#### 1. Khởi động SLAM
-- **Trên Raspberry Pi 5:** Khởi động bộ điều khiển:
+#### 1. Khởi động SLAM Stack (Laptop WSL2)
+- **Trên Raspberry Pi 5:** Khởi động robot và LiDAR server:
   ```bash
   cd ~/HC-Robot/robot
   sudo python3 main.py
   ```
-- **Trên Laptop WSL2:** Khởi chạy toàn bộ stack SLAM (Rosbridge WebSocket + Lidar Bridge + SLAM Toolbox):
+- **Trên Laptop WSL2:** Khởi chạy toàn bộ stack SLAM chỉ với 1 lệnh:
   ```bash
   bash /mnt/f/DoAn/HC-Robot/robot/ros2_configs/start_wsl_slam.sh
   ```
-  *(Nếu test mô phỏng trên Gazebo mà không có robot thật: `ros2 launch nav2_bringup tb3_simulation_launch.py slam:=True`)*
-- **Trên Web Admin:** Truy cập `/admin` -> chuyển sang tab **Bản đồ LiDAR**. Kết nối WebSocket sẽ tự động kích hoạt và hiển thị lưới tọa độ sẵn sàng.
+  *Script sẽ tự động dọn tiến trình cũ và khởi chạy đồng thời:*
+  1. `robot_state_publisher`: Đọc URDF 3D của HC-Robot và phát khung tọa độ TF (`base_link`, `laser_frame`...).
+  2. `rosbridge_websocket`: Mở cổng WebSocket `ws://127.0.0.1:9090` phục vụ Web Admin.
+  3. `lidar_ws_to_ros2.py`: Nhận tia quét từ Pi 5 qua Tailscale, chuẩn hóa chiều quay CCW (chuẩn ROS REP-103), phát `/scan`, `/odom` (30Hz) và `/robot_path`.
+  4. `slam_toolbox` (Online Async): Dựng bản đồ Occupancy Grid thời gian thực trên topic `/map`.
 
 ---
 
-#### 2. Lái Robot chạy chậm 1 vòng quét phòng (Mapping Phase)
-- Sử dụng công cụ điều khiển phím WASD trên terminal hoặc D-Pad trên Web Admin để lái robot:
-  ```bash
-  # Chạy script điều khiển bàn phím WASD từ Laptop:
-  python3 /mnt/f/DoAn/HC-Robot/robot/laptop_teleop_wasd.py
-  ```
-- **Quy tắc di chuyển:**
-  - Lái robot di chuyển với vận tốc chậm (0.15 - 0.25 m/s) bám theo mép tường căn phòng.
-  - Quan sát trực quan trên **Web Admin Canvas**: các ô lưới chưa quét (`-1`, màu xám) sẽ chuyển thành vùng trống di chuyển được (`0`, màu trắng) và mép tường vật cản (`100`, màu đen).
-  - Khi robot hoàn thành 1 vòng khép kín quanh phòng, thuật toán **Loop Closure** trong SLAM Toolbox sẽ tự động triệt tiêu sai số trôi dạt (drift), nối khớp các bức tường hoàn hảo.
-
----
-
-#### 3. Lưu Map ra file (Save Map)
-Khi bản đồ căn phòng đã hiển thị đầy đủ và sắc nét trên Web, mở một terminal WSL2 mới và chạy lệnh lưu bản đồ:
+#### 2. Mở giao diện trực quan 3D RViz2
+Trên một terminal WSL2 khác, mở RViz2 với cấu hình chuyên dụng:
 ```bash
-# Tạo thư mục lưu trữ (nếu chưa có)
-mkdir -p ~/HC-Robot/maps
-
-# Lưu map (xuất ra file my_hotel_map.yaml và my_hotel_map.pgm)
-ros2 run nav2_map_server map_saver_cli -f ~/HC-Robot/maps/my_hotel_map
+source /opt/ros/jazzy/setup.bash
+rviz2 -d /mnt/f/DoAn/HC-Robot/robot/ros2_configs/nav2/lidar_view.rviz
 ```
-- File `.pgm`: Ảnh nhị phân trực quan của mặt bằng sàn phòng.
-- File `.yaml`: Tọa độ gốc `origin`, độ phân giải `resolution: 0.05` (5cm/pixel) và ngưỡng chiếm chỗ.
+*Các thành phần hiển thị trên RViz2:*
+- **RobotModel:** Mô hình 3D xe HC-Robot đầy đủ khung gầm cam, bánh xe và cảm biến.
+- **Realtime SLAM Map:** Bản đồ lưới Occupancy Grid sắc nét (`Alpha: 0.85`), vùng trắng là không gian trống đã đi qua, viền đen là tường/vật cản kiên cố.
+- **LaserScan (Hit Points):** Các điểm va chạm LiDAR màu xanh ngọc (cyan) tức thời.
+- **Robot Trajectory:** Đường nét đứt màu vàng hiển thị toàn bộ quỹ đạo xe đã di chuyển.
 
 ---
 
-#### 4. TẮT SLAM, BẬT NAV2 (Navigation & Service Phase)
-Sau khi đã có bản đồ hoàn chỉnh, robot chuyển sang chế độ tự hành thương mại (không tốn tài nguyên chạy SLAM nữa):
+#### 3. Lái Robot quét phòng (Terminal WASD Teleop)
+Mở terminal WSL2 thứ ba và chạy công cụ điều khiển bàn phím:
+```bash
+python3 /mnt/f/DoAn/HC-Robot/robot/scripts/teleop_keyboard.py
+```
+- **Bàn phím điều khiển:**
+  - `W`: Tiến thẳng | `S`: Lùi lại
+  - `A`: Xoay trái  | `D`: Xoay phải
+  - `Q` / `E`: Rẽ trái / Rẽ phải vừa tiến
+  - `SPACE` hoặc `X`: Phanh dừng khẩn cấp
+  - `+` / `-`: Tăng / Giảm vận tốc tuyến tính ($v_x$)
+  - `]` / `[`: Tăng / Giảm vận tốc góc ($\omega_z$)
+- **Đồng bộ kép:** Lệnh phím vừa bắn `/cmd_vel` cho Odometry Dead-Reckoning trên RViz2, vừa bắn UDP (Port `9999`) trực tiếp tới Pi 5 để quay motor bánh xe thật.
+- **Quy tắc di chuyển:** Lái xe tốc độ vừa phải ($0.20 - 0.25\text{ m/s}$) men theo các bức tường. Bản đồ sẽ tự động mở rộng theo thời gian thực và ghim các vật cản mới xuất hiện vào bản đồ.
 
-1. **Tắt tiến trình SLAM:**
-   - Tại terminal chạy script `start_wsl_slam.sh`, nhấn `Ctrl + C` để dừng `slam_toolbox`.
-2. **Khởi chạy Nav2 Stack nạp bản đồ đã lưu:**
+---
+
+#### 4. Lưu Bản đồ thành phẩm (Save Map)
+Khi robot đã quét kín không gian phòng và các đường biên đã khép góc hoàn chỉnh (Loop Closure):
+```bash
+/mnt/f/DoAn/HC-Robot/robot/scripts/save_map.sh phong_lam_viec
+```
+- Lệnh trên sẽ tự động xuất cặp file vào thư mục `robot/maps/`:
+  - `phong_lam_viec.yaml`: Chứa tọa độ gốc `origin`, độ phân giải `resolution: 0.05` (5cm/ô lưới).
+  - `phong_lam_viec.pgm`: Ảnh nhị phân mặt bằng sàn để đưa lên Web Admin hoặc làm dữ liệu định vị cho Nav2.
+
+---
+
+#### 5. Mẹo xóa bản đồ quét lại từ đầu (Reset / Fresh Start)
+Khi muốn xóa sạch bản đồ cũ để quét một căn phòng mới:
+1. Nhấn `Ctrl + C` tại terminal đang chạy `start_wsl_slam.sh`.
+2. Trên cửa sổ RViz2, nhấn nút **Reset** ở góc dưới cùng bên phải (hoặc phím tắt `Alt + R`).
+3. Khởi chạy lại: `bash /mnt/f/DoAn/HC-Robot/robot/ros2_configs/start_wsl_slam.sh`.
+
+---
+
+#### 6. TẮT SLAM, BẬT NAV2 (Navigation Phase)
+Sau khi đã có bản đồ hoàn chỉnh, chuyển sang chế độ tự hành thương mại:
+1. **Tắt SLAM:** Nhấn `Ctrl + C` tại terminal `start_wsl_slam.sh`.
+2. **Khởi chạy Nav2:**
    ```bash
    ros2 launch nav2_bringup bringup_launch.py \
      use_sim_time:=False \
-     map:=$HOME/HC-Robot/maps/my_hotel_map.yaml
+     map:=/mnt/f/DoAn/HC-Robot/robot/maps/phong_lam_viec.yaml
    ```
-3. **Cơ chế hoạt động khi tự hành:**
-   - **AMCL Localization:** Cảm biến LiDAR trên Pi 5 lúc này chỉ làm nhiệm vụ so khớp tia quét với bản đồ tĩnh đã nạp để định vị chính xác vị trí robot đang đứng.
-   - **Costmap & Obstacle Avoidance:** Tự động phát hiện chướng ngại vật động (khách đi lại, vali) để vẽ chướng ngại vật tức thời và tránh va chạm.
-   - **Điều hướng từ Web Admin:** Khi Admin nhấp chuột chọn điểm đến (Goal Pose) hoặc chọn Waypoint trên Web, Web Admin bắn tin nhắn `/goal_pose` (`geometry_msgs/PoseStamped`) tới Nav2 để robot tự động di chuyển phục vụ khách.
+3. **Tự hành:** AMCL sẽ định vị vị trí robot trên bản đồ tĩnh, Costmap phát hiện người đi lại và né vật cản, đồng thời nhận mục tiêu từ Web Admin qua topic `/goal_pose`.
 
 ---
 
-#### 5. Checklist Kỹ Thuật Tối Ưu SLAM & Nav2
-| Hạng mục | Tham số / Lưu ý kỹ thuật |
-| :--- | :--- |
-| **Mạng Tailscale** | Kiểm tra IP ảo `100.x.y.z` của Pi (`100.99.72.51`) và Laptop. Chạy `tailscale ping` đảm bảo độ trễ < 10ms. |
-| **CycloneDDS Unicast** | Sử dụng file [cyclonedds_laptop.xml](robot/ros2_configs/cyclonedds_laptop.xml) cấu hình IP Unicast Peers để ROS 2 xuyên qua Tailscale. |
-| **Độ phân giải bản đồ** | Đặt `resolution: 0.05` (5cm/ô lưới) trong [slam_toolbox_params.yaml](robot/ros2_configs/slam_toolbox_params.yaml) - cân bằng tối ưu giữa độ chi tiết và tốc độ truyền Web. |
-| **Nguồn điện LiDAR** | Đảm bảo cấp nguồn 5V/3A chuẩn cho Pi 5 tránh sụt áp cổng USB khi motor LiDAR quay quét liên tục. |
+#### 7. Cải tiến Kỹ thuật Đột phá trong SLAM Stack
+| Điểm cải tiến | Giải pháp kỹ thuật | Tác dụng |
+| :--- | :--- | :--- |
+| **Chuẩn hóa góc CCW (REP-103)** | `ros_angle = (360 - angle) % 360` trong [lidar_ws_to_ros2.py](robot/ros2_configs/lidar_ws_to_ros2.py) | Triệt tiêu lỗi lật gương trái-phải của RPLiDAR A1M8, giúp Scan Matcher bám tường chuẩn xác khi quay xe. |
+| **Đồng bộ hóa Timestamp TF** | Dùng chung timestamp giữa TF `odom -> base_link` và topic `/scan` | Triệt tiêu 100% lỗi rớt tia LiDAR (*dropping message: earlier than transform cache*). |
+| **Tối ưu Scan Matcher Ceres** | `angle_variance_penalty: 0.30`, `distance_variance_penalty: 0.25` trong [slam_toolbox_params.yaml](robot/ros2_configs/slam_toolbox_params.yaml) | Cho phép Scan Matcher linh hoạt tự nắn chỉnh sai số góc trôi bánh xe, bản đồ liên tục lưu vật cản mới khi xe đi vào vùng lạ. |
+| **Tăng tầm liên kết Pose-Graph** | `link_scan_maximum_distance: 4.0m`, `scan_buffer_size: 30` | Bản đồ không bị đứt đoạn hay tạo vệt sọc khi xe đổi hướng hoặc đi qua khoảng trống lớn. |
+| **Trực quan hóa RViz2 & Model 3D** | Tích hợp [robot.urdf](robot/description/robot.urdf) và cấu hình [lidar_view.rviz](robot/ros2_configs/nav2/lidar_view.rviz) | Hiển thị mô hình 3D thực tế của HC-Robot, Occupancy Grid độ tương phản cao, chùm tia LiDAR và vệt đường vàng. |
 
 ---
 

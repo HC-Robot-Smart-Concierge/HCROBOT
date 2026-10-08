@@ -74,22 +74,23 @@ class LidarWsToRos2Bridge(Node):
         self.static_tf_broadcaster.sendTransform([t_alias])
         self.get_logger().info("✅ Đã phát static TF alias: laser_frame -> laser")
 
-    def _record_and_publish_state(self, now, px, py, yaw_deg, vx=0.0, wz=0.0):
+    def _record_and_publish_state(self, now, px, py, yaw_deg, vx=0.0, wz=0.0, broadcast_tf=False):
         yaw_rad = math.radians(yaw_deg)
         qz = math.sin(yaw_rad / 2.0)
         qw = math.cos(yaw_rad / 2.0)
 
-        # 1. Dynamic TF odom -> base_link
-        t_odom = TransformStamped()
-        t_odom.header.stamp = now
-        t_odom.header.frame_id = "odom"
-        t_odom.child_frame_id = "base_link"
-        t_odom.transform.translation.x = px
-        t_odom.transform.translation.y = py
-        t_odom.transform.translation.z = 0.0
-        t_odom.transform.rotation.z = qz
-        t_odom.transform.rotation.w = qw
-        self.tf_broadcaster.sendTransform(t_odom)
+        # 1. Dynamic TF odom -> base_link (chỉ phát khi cần để tránh xung đột timestamp với publish_scan)
+        if broadcast_tf:
+            t_odom = TransformStamped()
+            t_odom.header.stamp = now
+            t_odom.header.frame_id = "odom"
+            t_odom.child_frame_id = "base_link"
+            t_odom.transform.translation.x = px
+            t_odom.transform.translation.y = py
+            t_odom.transform.translation.z = 0.0
+            t_odom.transform.rotation.z = qz
+            t_odom.transform.rotation.w = qw
+            self.tf_broadcaster.sendTransform(t_odom)
 
         # 2. Publish /odom
         odom_msg = Odometry()
@@ -198,15 +199,16 @@ class LidarWsToRos2Bridge(Node):
             self.current_pose['x'] += self.current_vx * math.cos(yaw_rad) * dt
             self.current_pose['y'] += self.current_vx * math.sin(yaw_rad) * dt
 
-            now = self.get_clock().now().to_msg()
-            self._record_and_publish_state(
-                now,
-                self.current_pose['x'],
-                self.current_pose['y'],
-                self.current_pose['yaw'],
-                vx=self.current_vx,
-                wz=self.current_wz
-            )
+        # Luôn phát /odom đều đặn 30Hz để các node hạ tầng không bị timeout
+        now = self.get_clock().now().to_msg()
+        self._record_and_publish_state(
+            now,
+            self.current_pose['x'],
+            self.current_pose['y'],
+            self.current_pose['yaw'],
+            vx=self.current_vx,
+            wz=self.current_wz
+        )
 
     def start_pi5_telemetry_udp_server(self):
         """Lắng nghe UDP trên port 9998 từ SSH main.py nếu người dùng gõ phím trực tiếp trên Pi 5."""
@@ -274,7 +276,7 @@ class LidarWsToRos2Bridge(Node):
         self.tf_broadcaster.sendTransform(t_odom)
 
         self.scan_count += 1
-        if self.scan_count % 20 == 1:
+        if self.scan_count % 30 == 1:
             self.get_logger().info(f"📡 Dang publish /scan (packet #{self.scan_count}, {len(points)} tia)")
 
         msg = LaserScan()
@@ -300,7 +302,12 @@ class LidarWsToRos2Bridge(Node):
             quality = pt.get('quality', 0)
 
             if msg.range_min <= dist <= msg.range_max:
-                bin_idx = int(angle_deg) % num_bins
+                # Đảo ngược góc từ chuẩn RPLiDAR (CW) sang chuẩn ROS REP-103 (CCW):
+                # 0° -> 0 rad (+X Front)
+                # 90° (Right) -> 270° (-Y Right)
+                # 270° (Left) -> 90° (+Y Left)
+                ros_angle_deg = (360.0 - angle_deg) % 360.0
+                bin_idx = int(ros_angle_deg) % num_bins
                 # Giu khoang cach nho nhat neu co nhieu diem trong 1 bin
                 if dist < ranges[bin_idx]:
                     ranges[bin_idx] = float(dist)

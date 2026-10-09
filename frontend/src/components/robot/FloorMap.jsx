@@ -212,7 +212,7 @@ export const FloorMap = ({
   onSelectDestination,
   className = '',
   onClose,
-  defaultZoom = 1.6,
+  defaultZoom = 2.2,
 }) => {
   // Lấy dữ liệu điểm đến hiện tại (Mặc định là Hồ bơi vô cực nếu không truyền)
   const currentDest = HOTEL_DESTINATIONS[destinationKey] || HOTEL_DESTINATIONS.infinity_pool;
@@ -263,7 +263,7 @@ export const FloorMap = ({
     setZoomLevel(defaultZoom);
   }, [destinationKey, defaultZoom]);
 
-  const handleZoomIn = () => setZoomLevel((z) => Math.min(2.8, Number((z + 0.25).toFixed(2))));
+  const handleZoomIn = () => setZoomLevel((z) => Math.min(4.0, Number((z + 0.25).toFixed(2))));
   const handleZoomOut = () => setZoomLevel((z) => Math.max(1.0, Number((z - 0.25).toFixed(2))));
   const handleResetZoom = () => {
     setZoomLevel(defaultZoom);
@@ -290,84 +290,9 @@ export const FloorMap = ({
   return (
     <div className={`relative bg-white rounded-2xl md:rounded-3xl overflow-hidden border-2 border-stone-200/90 shadow-2xl flex flex-col ${className || 'w-[720px] h-[558px] shrink-0'}`}>
       
-      {/* 1. Header Bar: Tiêu đề lộ trình, Nút đổi chặng & Nút Đóng */}
-      <div className="h-12 md:h-14 px-3 md:px-5 bg-gradient-to-r from-stone-900 via-stone-800 to-stone-900 text-white flex items-center justify-between z-20 shrink-0 shadow-md">
-        
-        {/* Điểm đến badge */}
-        <div className="flex items-center gap-2 md:gap-3 min-w-0">
-          <div className="w-8 h-8 rounded-xl bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center text-lg shadow-inner shrink-0">
-            {currentDest.icon}
-          </div>
-          <div className="flex flex-col min-w-0">
-            <div className="flex items-center gap-1.5">
-              <span className="text-[10px] md:text-xs font-black tracking-wider text-emerald-400 uppercase">
-                {currentDest.floorLevel}
-              </span>
-              <span className="text-[9px] text-stone-400 truncate">• {currentDest.category}</span>
-            </div>
-            <h3 className="text-xs md:text-sm font-extrabold text-white truncate max-w-[130px] sm:max-w-[220px]">
-              {currentDest.name}
-            </h3>
-          </div>
-        </div>
-
-        {/* Nút Chuyển Chặng (Step Pills) & Nút Đóng */}
-        <div className="flex items-center gap-2">
-          {currentDest.isDifferentFloor ? (
-            <div className="flex items-center bg-stone-950/80 p-0.5 rounded-xl border border-stone-700/80 gap-1 shrink-0">
-              <button
-                onClick={() => {
-                  setActiveStep(1);
-                  setAutoPlay(false);
-                }}
-                className={`px-2 py-1 rounded-lg text-[10px] md:text-xs font-bold transition-all flex items-center gap-1 cursor-pointer ${
-                  activeStep === 1
-                    ? 'bg-emerald-500 text-stone-950 shadow-md'
-                    : 'text-stone-300 hover:text-white'
-                }`}
-              >
-                <span>🛗 Chặng 1: Thang Máy</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  setActiveStep(2);
-                  setAutoPlay(false);
-                }}
-                className={`px-2 py-1 rounded-lg text-[10px] md:text-xs font-bold transition-all flex items-center gap-1 cursor-pointer ${
-                  activeStep === 2
-                    ? 'bg-emerald-500 text-stone-950 shadow-md'
-                    : 'text-stone-300 hover:text-white'
-                }`}
-              >
-                <span>{currentDest.icon} Chặng 2: {currentDest.floorLevel}</span>
-              </button>
-            </div>
-          ) : (
-            <div className="px-2.5 py-1 rounded-lg bg-emerald-500/20 border border-emerald-400/30 text-emerald-300 text-[10px] md:text-xs font-bold flex items-center gap-1">
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              <span>Cùng Tầng Trệt</span>
-            </div>
-          )}
-
-          {/* Nút Đóng / Đã nhớ đường */}
-          {onClose && (
-            <button
-              type="button"
-              onClick={onClose}
-              className="h-8 px-2.5 sm:px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] sm:text-xs font-bold flex items-center gap-1 active:scale-95 shadow-md cursor-pointer shrink-0 ml-1"
-              title="Đóng bản đồ chỉ đường"
-            >
-              <span>✓</span>
-              <span>Đã nhớ</span>
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* 2. Map Canvas Area (Chứa ảnh mặt bằng 1920x1080 + Lớp SVG Polyline dẫn đường) */}
+      {/* 2. Map Canvas Area (Chiếm trọn 100% diện tích, các nút và thông tin nổi trên nền kính) */}
       <div 
-        className="w-full flex-1 relative bg-stone-50 overflow-hidden flex items-center justify-center select-none"
+        className="w-full h-full flex-1 relative bg-stone-50 overflow-hidden flex items-center justify-center select-none touch-none"
         onMouseEnter={() => setIsHovering(true)}
         onMouseLeave={() => setIsHovering(false)}
         onPointerDown={handlePointerDown}
@@ -375,8 +300,70 @@ export const FloorMap = ({
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
       >
-        {/* Floating Zoom & Pan Controls: +, -, Reset */}
-        <div className="absolute top-2 left-2 z-20 flex items-center bg-stone-900/90 backdrop-blur-md rounded-xl p-0.5 border border-stone-700/80 shadow-lg gap-0.5 pointer-events-auto">
+        {/* 1. Thanh tiêu đề nổi (Floating Header Bar): Siêu gọn, không chiếm chiều dọc bản đồ */}
+        <div className="absolute top-2.5 left-2.5 right-2.5 z-30 flex items-center justify-between pointer-events-none gap-2">
+          {/* Tên phòng/điểm đến badge nhỏ gọn (Glassmorphism Pill) */}
+          <div className="flex items-center gap-1.5 sm:gap-2 bg-stone-950/85 backdrop-blur-md text-white px-2.5 sm:px-3 py-1.5 rounded-full border border-stone-700/80 shadow-xl pointer-events-auto min-w-0">
+            <span className="text-sm shrink-0">{currentDest.icon}</span>
+            <span className="font-extrabold text-xs text-white truncate max-w-[140px] sm:max-w-[200px]">
+              {currentDest.name}
+            </span>
+            <span className="text-[10px] font-black text-emerald-400 bg-emerald-500/20 px-1.5 py-0.5 rounded-full shrink-0 uppercase">
+              {currentDest.floorLevel}
+            </span>
+          </div>
+
+          {/* Nút Chuyển Chặng (Nếu khác tầng) & Nút Đã nhớ */}
+          <div className="flex items-center gap-1.5 sm:gap-2 pointer-events-auto shrink-0">
+            {currentDest.isDifferentFloor && (
+              <div className="flex items-center bg-stone-950/85 backdrop-blur-md p-0.5 rounded-full border border-stone-700/80 shadow-xl gap-0.5">
+                <button
+                  onClick={() => {
+                    setActiveStep(1);
+                    setAutoPlay(false);
+                  }}
+                  className={`px-2 sm:px-2.5 py-1 rounded-full text-[10px] sm:text-xs font-bold transition-all cursor-pointer ${
+                    activeStep === 1
+                      ? 'bg-emerald-500 text-stone-950 shadow-md'
+                      : 'text-stone-300 hover:text-white'
+                  }`}
+                >
+                  <span>🛗 Chặng 1</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setActiveStep(2);
+                    setAutoPlay(false);
+                  }}
+                  className={`px-2 sm:px-2.5 py-1 rounded-full text-[10px] sm:text-xs font-bold transition-all cursor-pointer ${
+                    activeStep === 2
+                      ? 'bg-emerald-500 text-stone-950 shadow-md'
+                      : 'text-stone-300 hover:text-white'
+                  }`}
+                >
+                  <span>{currentDest.icon} Chặng 2</span>
+                </button>
+              </div>
+            )}
+
+            {/* Nút Đã nhớ */}
+            {onClose && (
+              <button
+                type="button"
+                onClick={onClose}
+                className="h-8 px-3 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] sm:text-xs font-black flex items-center gap-1 active:scale-95 shadow-xl cursor-pointer"
+                title="Đóng bản đồ chỉ đường"
+              >
+                <span>✓</span>
+                <span>Đã nhớ</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Floating Zoom & Pan Controls: Đặt ở góc trái bên dưới huy hiệu tên phòng */}
+        <div className="absolute top-12 left-2.5 z-20 flex items-center bg-stone-900/90 backdrop-blur-md rounded-xl p-0.5 border border-stone-700/80 shadow-lg gap-0.5 pointer-events-auto">
           <button
             type="button"
             onClick={handleZoomIn}
@@ -648,45 +635,6 @@ export const FloorMap = ({
             <span>Chỉ dẫn chặng {activeStep}</span>
           </button>
         )}
-      </div>
-
-      {/* 3. Footer Quick Chips: Các địa điểm khách hay hỏi nhất */}
-      <div className="h-11 md:h-14 px-2 md:px-4 bg-stone-100 border-t border-stone-200 flex items-center gap-1.5 md:gap-2 overflow-x-auto no-scrollbar z-20 shrink-0">
-        <span className="text-[10px] md:text-[11px] font-black text-stone-500 uppercase tracking-wider shrink-0 flex items-center gap-1">
-          <Sparkles className="w-3 md:w-3.5 h-3 md:h-3.5 text-amber-500" />
-          <span>Gợi ý:</span>
-        </span>
-
-        {[
-          { key: 'infinity_pool', label: '🏊 Hồ bơi (T5)' },
-          { key: 'restaurant', label: '🍽️ Nhà hàng (T2)' },
-          { key: 'rooftop_coffee', label: '☕ Rooftop Coffee (T6)' },
-          { key: 'bar', label: '🍸 Quầy Bar (T6)' },
-          { key: 'gym', label: '💪 Phòng Gym (T5)' },
-          { key: 'spa', label: '💆 Spa Thảo Mộc (T5)' },
-          { key: 'karaoke', label: '🎤 Karaoke (T6)' },
-          { key: 'room_401', label: '🛏️ Phòng 401 (T4)' },
-          { key: 'front_desk', label: '🛎️ Lễ tân' },
-          { key: 'parking_car', label: '🚗 Bãi xe ô tô' },
-        ].map((item) => {
-          const isSelected = destinationKey === item.key;
-          return (
-            <button
-              key={item.key}
-              onClick={() => {
-                if (onSelectDestination) onSelectDestination(item.key);
-                setAutoPlay(true);
-              }}
-              className={`px-2.5 md:px-3 py-1 md:py-1.5 rounded-lg md:rounded-xl text-[11px] md:text-xs font-bold shrink-0 transition-all cursor-pointer flex items-center gap-1 ${
-                isSelected
-                  ? 'bg-emerald-600 text-white shadow-md scale-102 ring-2 ring-emerald-300'
-                  : 'bg-white text-stone-700 hover:bg-stone-200 border border-stone-200'
-              }`}
-            >
-              <span>{item.label}</span>
-            </button>
-          );
-        })}
       </div>
 
     </div>

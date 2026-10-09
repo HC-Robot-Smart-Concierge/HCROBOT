@@ -91,59 +91,61 @@ export const MobileRobotScreen = ({
       </div>
 
       <div className="robot-landscape-content h-full w-full flex flex-col">
-        <header className="h-12 shrink-0 flex items-center justify-between gap-3 border-b border-stone-200 px-4 robot-safe-x bg-white/80 backdrop-blur-md relative z-30">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <strong className="text-sm font-black tracking-tight text-stone-900">HCROBOT</strong>
-            <span className="hidden min-[680px]:inline text-[10px] font-semibold text-stone-500">Aurora Grand</span>
-            <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-500 shadow-sm' : 'bg-red-500'}`} title={isOnline ? 'Đã kết nối' : 'Ngoại tuyến'} />
-          </div>
+        {!isNavigating && (
+          <header className="h-12 shrink-0 flex items-center justify-between gap-3 border-b border-stone-200 px-4 robot-safe-x bg-white/80 backdrop-blur-md relative z-30">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <strong className="text-sm font-black tracking-tight text-stone-900">HCROBOT</strong>
+              <span className="hidden min-[680px]:inline text-[10px] font-semibold text-stone-500">Aurora Grand</span>
+              <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-500 shadow-sm' : 'bg-red-500'}`} title={isOnline ? 'Đã kết nối' : 'Ngoại tuyến'} />
+            </div>
 
-          <div className="flex items-center gap-2">
-            {activeRoomNumber && (
-              <span className="text-[10px] font-bold text-stone-600 bg-stone-100 px-2 py-0.5 rounded-full border border-stone-200">
-                P.{activeRoomNumber}
-              </span>
-            )}
+            <div className="flex items-center gap-2">
+              {activeRoomNumber && (
+                <span className="text-[10px] font-bold text-stone-600 bg-stone-100 px-2 py-0.5 rounded-full border border-stone-200">
+                  P.{activeRoomNumber}
+                </span>
+              )}
 
-            {guestEmotion && (
-              <span 
-                className={`text-[10px] font-bold px-2 py-0.5 rounded-full border flex items-center gap-1 transition-all ${
-                  guestEmotion === 'happy'
-                    ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
-                    : guestEmotion === 'unhappy'
-                    ? 'bg-rose-50 text-rose-700 border-rose-300'
-                    : 'bg-stone-100 text-stone-700 border-stone-300'
-                }`}
-                title="Cảm xúc khuôn mặt"
+              {guestEmotion && (
+                <span 
+                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full border flex items-center gap-1 transition-all ${
+                    guestEmotion === 'happy'
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                      : guestEmotion === 'unhappy'
+                      ? 'bg-rose-50 text-rose-700 border-rose-300'
+                      : 'bg-stone-100 text-stone-700 border-stone-300'
+                  }`}
+                  title="Cảm xúc khuôn mặt"
+                >
+                  <span>{guestEmotion === 'happy' ? '😊' : guestEmotion === 'unhappy' ? '😠' : '😐'}</span>
+                </span>
+              )}
+
+              <button 
+                onClick={onToggleLanguage} 
+                className="h-8 min-w-9 px-2 rounded-full bg-white hover:bg-stone-50 border border-stone-300 text-[10px] font-bold active:scale-95 shadow-xs cursor-pointer"
               >
-                <span>{guestEmotion === 'happy' ? '😊' : guestEmotion === 'unhappy' ? '😠' : '😐'}</span>
-              </span>
-            )}
+                {language === 'English' ? 'EN' : 'VI'}
+              </button>
 
-            <button 
-              onClick={onToggleLanguage} 
-              className="h-8 min-w-9 px-2 rounded-full bg-white hover:bg-stone-50 border border-stone-300 text-[10px] font-bold active:scale-95 shadow-xs cursor-pointer"
-            >
-              {language === 'English' ? 'EN' : 'VI'}
-            </button>
-
-            {/* Nút Sổ Tiện Ích */}
-            <button
-              type="button"
-              onClick={() => setIsUtilitiesMenuOpen((prev) => !prev)}
-              className={`h-8 px-3 rounded-full border text-[10px] font-black flex items-center gap-1.5 active:scale-95 shadow-xs cursor-pointer transition-all ${
-                isUtilitiesMenuOpen || isNavigating
-                  ? 'bg-stone-900 text-white border-stone-900 shadow-sm'
-                  : 'bg-white hover:bg-stone-50 border-stone-300 text-stone-900'
-              }`}
-              title="Danh sách tiện ích & chức năng"
-            >
-              <span>⚡</span>
-              <span>Tiện ích</span>
-              <ChevronDown className={`w-3 h-3 transition-transform duration-200 ${isUtilitiesMenuOpen ? 'rotate-180' : ''}`} />
-            </button>
-          </div>
-        </header>
+              {/* Nút Sổ Tiện Ích */}
+              <button
+                type="button"
+                onClick={() => setIsUtilitiesMenuOpen((prev) => !prev)}
+                className={`h-8 px-3 rounded-full border text-[10px] font-black flex items-center gap-1.5 active:scale-95 shadow-xs cursor-pointer transition-all ${
+                  isUtilitiesMenuOpen
+                    ? 'bg-stone-900 text-white border-stone-900 shadow-sm'
+                    : 'bg-white hover:bg-stone-50 border-stone-300 text-stone-900'
+                }`}
+                title="Danh sách tiện ích & chức năng"
+              >
+                <span>⚡</span>
+                <span>Tiện ích</span>
+                <ChevronDown className={`w-3 h-3 transition-transform duration-200 ${isUtilitiesMenuOpen ? 'rotate-180' : ''}`} />
+              </button>
+            </div>
+          </header>
+        )}
 
         {/* Nền mờ khi mở Menu Tiện Ích (Click outside to close) */}
         {isUtilitiesMenuOpen && (
@@ -329,7 +331,7 @@ export const MobileRobotScreen = ({
                 setIsMapManualOpen(false);
                 onResetToIdle();
               }}
-              defaultZoom={1.65}
+              defaultZoom={2.4}
               className="w-full h-full rounded-none border-none shadow-none"
             />
           </main>

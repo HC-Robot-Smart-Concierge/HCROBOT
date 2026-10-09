@@ -1,5 +1,5 @@
 // Service Worker for HC-Robot PWA
-const CACHE_NAME = 'hc-robot-v6-sync';
+const CACHE_NAME = 'hc-robot-app-cache';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',

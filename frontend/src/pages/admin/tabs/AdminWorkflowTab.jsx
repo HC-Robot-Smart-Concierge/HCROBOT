@@ -6,6 +6,8 @@ import {
   Trash2,
   Plus,
   Power,
+  Radio,
+  Layers,
 } from 'lucide-react';
 import {
   fetchWorkflows,
@@ -17,6 +19,7 @@ import {
 import { OTTO_STEP_TYPES } from './workflow/workflowConstants';
 import { WorkflowBuilderModal } from './workflow/WorkflowBuilderModal';
 import { WorkflowSimulatorModal } from './workflow/WorkflowSimulatorModal';
+import { WorkflowSimulatorStudio } from './workflow/WorkflowSimulatorStudio';
 
 export { OTTO_STEP_TYPES };
 
@@ -25,6 +28,9 @@ export const AdminWorkflowTab = () => {
   const [waypoints, setWaypoints] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [notification, setNotification] = useState(null);
+
+  // View state: 'list' (Quản lý kịch bản) | 'simulator' (Phòng giả lập Gazebo & Kiosk)
+  const [activeView, setActiveView] = useState('list');
 
   // Editor State
   const [editingWorkflow, setEditingWorkflow] = useState(null);
@@ -150,7 +156,7 @@ export const AdminWorkflowTab = () => {
 
   const handleTestRun = (wf) => {
     setSimulatingWorkflow(wf);
-    setIsSimulatorOpen(true);
+    setActiveView('simulator');
   };
 
   const handleDispatchToRobot = async (wf) => {
@@ -221,7 +227,12 @@ export const AdminWorkflowTab = () => {
   };
 
   return (
-    <div className="w-full flex flex-col min-h-full pb-4" style={{ color: '#262626' }}>
+    <div
+      className={`w-full flex flex-col ${
+        activeView === 'simulator' ? 'h-[calc(100vh-75px)] overflow-hidden' : 'min-h-full pb-4'
+      }`}
+      style={{ color: '#262626' }}
+    >
       {/* Toast Notification */}
       {notification && (
         <div
@@ -232,9 +243,9 @@ export const AdminWorkflowTab = () => {
         </div>
       )}
 
-      {/* Header Bar - seamlessly aligned with sidebar brand header */}
+      {/* Header Bar */}
       <div
-        className="h-16 px-5 border-b flex items-center justify-between gap-4 shrink-0 sticky top-0 z-20"
+        className="h-14 px-5 border-b flex items-center justify-between gap-4 shrink-0 sticky top-0 z-20"
         style={{ borderColor: '#BFBFBD', backgroundColor: '#F2EFE9' }}
       >
         <div className="min-w-0">
@@ -254,19 +265,63 @@ export const AdminWorkflowTab = () => {
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={handleOpenCreate}
-          className="px-3.5 py-1.5 rounded-lg text-xs font-bold border cursor-pointer transition-colors whitespace-nowrap shrink-0 hover:bg-[#363636] flex items-center gap-1.5 shadow-2xs"
-          style={{ backgroundColor: '#262626', color: '#F2EFE9', borderColor: '#262626' }}
-        >
-          <Plus className="w-3.5 h-3.5" />
-          <span>Tạo kịch bản mới</span>
-        </button>
+        <div className="flex items-center gap-2">
+          {/* View switcher: List vs Simulator */}
+          <div
+            className="inline-flex rounded-lg p-0.5 border"
+            style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD' }}
+          >
+            <button
+              type="button"
+              onClick={() => setActiveView('list')}
+              className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all cursor-pointer ${
+                activeView === 'list'
+                  ? 'bg-[#262626] text-white shadow-xs'
+                  : 'text-[#262626] hover:bg-white/50'
+              }`}
+            >
+              Danh Sách Kịch Bản ({workflows.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveView('simulator')}
+              className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                activeView === 'simulator'
+                  ? 'bg-[#262626] text-white shadow-xs'
+                  : 'text-[#262626] hover:bg-white/50'
+              }`}
+            >
+              <Radio className="w-3.5 h-3.5 text-cyan-600 animate-pulse" />
+              <span>Phòng Giả Lập Gazebo</span>
+            </button>
+          </div>
+
+          {activeView === 'list' && (
+            <button
+              type="button"
+              onClick={handleOpenCreate}
+              className="px-3.5 py-1.5 rounded-lg text-xs font-bold border cursor-pointer transition-colors whitespace-nowrap shrink-0 hover:bg-[#363636] flex items-center gap-1.5 shadow-2xs"
+              style={{ backgroundColor: '#262626', color: '#F2EFE9', borderColor: '#262626' }}
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Tạo kịch bản mới</span>
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Content Body */}
-      <div className="p-4 space-y-4">
+      {/* Content Body: Simulator Studio hoặc Workflow Cards Grid */}
+      {activeView === 'simulator' ? (
+        <div className="flex-1 min-h-0 h-full overflow-hidden">
+          <WorkflowSimulatorStudio
+            workflows={workflows}
+            initialWorkflowId={simulatingWorkflow?.id}
+            onClose={() => setActiveView('list')}
+            onNotify={showNotification}
+          />
+        </div>
+      ) : (
+        <div className="p-4 space-y-4">
         {/* Workflow Cards Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
           {workflows.length === 0 ? (
@@ -402,6 +457,7 @@ export const AdminWorkflowTab = () => {
           )}
         </div>
       </div>
+      )}
 
       {/* MODAL 1: WORKFLOW BUILDER (Scratch-style block editor) */}
       <WorkflowBuilderModal

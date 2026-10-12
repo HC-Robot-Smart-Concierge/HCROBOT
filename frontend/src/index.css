@@ -121,3 +121,14 @@
   animation: spin-slow 12s linear infinite;
 }
 
+@keyframes routeDash {
+  to {
+    stroke-dashoffset: -56;
+  }
+}
+
+.animate-routeDash {
+  animation: routeDash 1.4s linear infinite;
+}
+
+

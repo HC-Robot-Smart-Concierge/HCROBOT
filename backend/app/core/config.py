@@ -20,10 +20,15 @@ class Settings(BaseSettings):
     OBSIDIAN_VAULT_DIR: str = "./knowledge_vault"
 
 
-    # Ollama Configuration
+    # Ollama Configuration (Default for all team members)
+    AI_PROVIDER: str = "ollama"  # Options: 'ollama' (default local) | 'groq' (cloud fallback/low-spec test)
     OLLAMA_HOST: str = "http://127.0.0.1:11434"
     OLLAMA_MODEL: str = "llama3.2:3b"
     OLLAMA_EMBED_MODEL: Optional[str] = None
+
+    # Groq Cloud AI Configuration (Optional: Only active when configured)
+    GROQ_API_KEY: Optional[str] = None
+    GROQ_MODEL: str = "qwen/qwen3.8-27b"
 
     # AI Voice Concierge TTS Configuration
     TTS_PROVIDER: str = "edge"  # Options: 'edge', 'elevenlabs', 'openai', 'browser'

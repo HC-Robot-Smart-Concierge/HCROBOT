@@ -2,6 +2,8 @@
 
 > **Hệ Thống Trợ Lý Robot Dịch Vụ Khách Sạn Thông Minh**  
 > Giải pháp toàn diện kết hợp **AI Voice Conversational, RAG Knowledge Base, Real-time Socket.IO, WebRTC Call Escalation, ROS 2 Navigation & Dynamic Multi-Platform Clients**.
+> 
+> *Tài liệu khởi động nhanh toàn bộ (SSH Pi 5, Backend, Frontend, WSL2 Gazebo): xem [README_STARTUP.md](file:///f:/DoAn/HC-Robot/README_STARTUP.md)*
 
 ---
 

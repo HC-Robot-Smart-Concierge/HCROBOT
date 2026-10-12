@@ -500,7 +500,9 @@ free_thresh: 0.25
                     is_new_scan = (s == 1)
                     quality = packet[0] >> 2
                     angle_q6 = (packet[1] >> 1) | (packet[2] << 7)
-                    angle = angle_q6 / 64.0
+                    raw_angle = angle_q6 / 64.0
+                    # Bù góc 180° do cụm RPLiDAR thực tế trên xe bị xoay ngược 180° so với đầu xe
+                    angle = (raw_angle + 180.0) % 360.0
                     distance_q2 = packet[3] | (packet[4] << 8)
                     dist_m = (distance_q2 / 4.0) / 1000.0
 
@@ -512,11 +514,11 @@ free_thresh: 0.25
                         self.angle_distances[deg] = dist_m
                         self.angle_timestamps[deg] = now
 
-                        # RPLiDAR quay theo chiều kim đồng hồ; chuẩn hóa góc về hệ tọa độ chuẩn
+                        # Chuẩn hóa góc và tọa độ theo chuẩn chuẩn Cartesian (+X Tiến, +Y Trái, CCW)
                         heading = (angle + self.robot_yaw) % 360.0
                         rad = math.radians(heading)
-                        x = self.robot_x + dist_m * math.sin(rad)
-                        y = self.robot_y + dist_m * math.cos(rad)
+                        x = self.robot_x + dist_m * math.cos(rad)
+                        y = self.robot_y + dist_m * math.sin(rad)
 
                         current_scan_batch.append({
                             "angle": round(angle, 1),
@@ -1421,7 +1423,7 @@ async def teleop_control(req: TeleopCommandRequest):
         spd = req.speed or 35
         slam_core.send_udp_motor_command(f"speed:{spd}")
         slam_core.send_udp_motor_command(cmd)
-        yaw_step = 8.0 if cmd == "right" else -8.0
+        yaw_step = -8.0 if cmd == "right" else 8.0
         slam_core.robot_yaw = (slam_core.robot_yaw + yaw_step) % 360.0
     elif cmd in ["forward", "backward"]:
         spd = req.speed or 45
@@ -1429,8 +1431,8 @@ async def teleop_control(req: TeleopCommandRequest):
         slam_core.send_udp_motor_command(cmd)
         step_m = 0.08 if cmd == "forward" else -0.08
         rad = math.radians(slam_core.robot_yaw)
-        slam_core.robot_x += step_m * math.sin(rad)
-        slam_core.robot_y += step_m * math.cos(rad)
+        slam_core.robot_x += step_m * math.cos(rad)
+        slam_core.robot_y += step_m * math.sin(rad)
     return {"status": "SUCCESS", "command": cmd}
 
 

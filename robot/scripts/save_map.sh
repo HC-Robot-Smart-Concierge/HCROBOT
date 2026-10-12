@@ -6,7 +6,7 @@ source /opt/ros/jazzy/setup.bash
 export ROS_DOMAIN_ID=0
 
 MAP_NAME="${1:-phong_lam_viec}"
-OUTPUT_DIR="/mnt/f/DoAn/HC-Robot/robot/maps"
+OUTPUT_DIR="/mnt/d/do_an_fptu/HCROBOT/robot/maps"
 mkdir -p "$OUTPUT_DIR"
 
 TARGET_FILE="$OUTPUT_DIR/$MAP_NAME"

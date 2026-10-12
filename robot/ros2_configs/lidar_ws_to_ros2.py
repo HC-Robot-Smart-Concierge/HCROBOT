@@ -9,7 +9,7 @@ import websockets
 
 import rclpy
 from rclpy.node import Node
-from sensor_msgs.msg import LaserScan
+from sensor_msgs.msg import LaserScan, JointState
 from nav_msgs.msg import Odometry, Path
 from geometry_msgs.msg import TransformStamped, PoseStamped, Twist
 from tf2_ros import TransformBroadcaster
@@ -24,6 +24,11 @@ class LidarWsToRos2Bridge(Node):
         self.path_pub_ = self.create_publisher(Path, '/robot_path', 10)
         self.static_tf_broadcaster = StaticTransformBroadcaster(self)
         self.tf_broadcaster = TransformBroadcaster(self)
+        self.joint_pub_ = self.create_publisher(JointState, '/joint_states', 10)
+        self.wheel_l_pos = 0.0
+        self.wheel_r_pos = 0.0
+        self.wheel_radius = 0.033
+        self.wheel_sep = 0.297
         self.scan_count = 0
 
         # Lắng nghe topic /cmd_vel để điều khiển xe và di chuyển robot trên RViz
@@ -139,7 +144,7 @@ class LidarWsToRos2Bridge(Node):
         if abs(px) > 0.001 or abs(py) > 0.001 or abs(yaw_deg) > 0.001:
             self.current_pose = {'x': px, 'y': py, 'yaw': yaw_deg}
             now = self.get_clock().now().to_msg()
-            self._record_and_publish_state(now, px, py, yaw_deg)
+            self._record_and_publish_state(now, px, py, yaw_deg, broadcast_tf=True)
 
     def on_cmd_vel_received(self, msg: Twist):
         self.last_cmd_time = time.monotonic()
@@ -199,7 +204,7 @@ class LidarWsToRos2Bridge(Node):
             self.current_pose['x'] += self.current_vx * math.cos(yaw_rad) * dt
             self.current_pose['y'] += self.current_vx * math.sin(yaw_rad) * dt
 
-        # Luôn phát /odom đều đặn 30Hz để các node hạ tầng không bị timeout
+        # Luôn phát /odom và TF odom -> base_link đều đặn 30Hz để robot model di chuyển mượt mà trên RViz2
         now = self.get_clock().now().to_msg()
         self._record_and_publish_state(
             now,
@@ -207,8 +212,23 @@ class LidarWsToRos2Bridge(Node):
             self.current_pose['y'],
             self.current_pose['yaw'],
             vx=self.current_vx,
-            wz=self.current_wz
+            wz=self.current_wz,
+            broadcast_tf=True
         )
+
+        # Tính toán góc quay và phát /joint_states để bánh xe xoay tròn trên RViz2
+        v_l = self.current_vx - (self.current_wz * self.wheel_sep / 2.0)
+        v_r = self.current_vx + (self.current_wz * self.wheel_sep / 2.0)
+        self.wheel_l_pos += (v_l / self.wheel_radius) * dt
+        self.wheel_r_pos += (v_r / self.wheel_radius) * dt
+
+        js = JointState()
+        js.header.stamp = now
+        js.header.frame_id = 'base_link'
+        js.name = ['left_wheel_joint', 'right_wheel_joint']
+        js.position = [float(self.wheel_l_pos), float(self.wheel_r_pos)]
+        js.velocity = [float(v_l / self.wheel_radius), float(v_r / self.wheel_radius)]
+        self.joint_pub_.publish(js)
 
     def start_pi5_telemetry_udp_server(self):
         """Lắng nghe UDP trên port 9998 từ SSH main.py nếu người dùng gõ phím trực tiếp trên Pi 5."""
@@ -257,24 +277,6 @@ class LidarWsToRos2Bridge(Node):
             return
 
         now = self.get_clock().now().to_msg()
-        px = self.current_pose['x']
-        py = self.current_pose['y']
-        yaw_rad = math.radians(self.current_pose['yaw'])
-        qz = math.sin(yaw_rad / 2.0)
-        qw = math.cos(yaw_rad / 2.0)
-
-        # Dynamic TF odom -> base_link tai dung vi tri robot
-        t_odom = TransformStamped()
-        t_odom.header.stamp = now
-        t_odom.header.frame_id = "odom"
-        t_odom.child_frame_id = "base_link"
-        t_odom.transform.translation.x = px
-        t_odom.transform.translation.y = py
-        t_odom.transform.translation.z = 0.0
-        t_odom.transform.rotation.z = qz
-        t_odom.transform.rotation.w = qw
-        self.tf_broadcaster.sendTransform(t_odom)
-
         self.scan_count += 1
         if self.scan_count % 30 == 1:
             self.get_logger().info(f"📡 Dang publish /scan (packet #{self.scan_count}, {len(points)} tia)")

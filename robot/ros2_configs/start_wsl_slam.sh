@@ -9,6 +9,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 echo "=== [0/4] DON DEP CAC TIEN TRINH CU (NEU CO) ==="
 killall -q rosbridge_websocket async_slam_toolbox_node robot_state_publisher 2>/dev/null || true
 pkill -f "lidar_ws_to_ros2.py" 2>/dev/null || true
+pkill -f "static_transform_publisher" 2>/dev/null || true
 sleep 1
 
 echo "=== [1/4] KHOI DONG ROBOT STATE PUBLISHER (URDF 3D Model & TF Tree) ==="

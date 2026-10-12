@@ -21,7 +21,7 @@ const STANDARD_DEPARTMENTS = [
   'Executive',
 ];
 
-export const AdminStaffTab = () => {
+export const AdminStaffTab = ({ currentUser }) => {
   const [staffList, setStaffList] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -65,10 +65,19 @@ export const AdminStaffTab = () => {
   const [selectedStaff, setSelectedStaff] = useState(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
 
+  // Department options mapping
+  const deptOptions =
+    departments.length > 0
+      ? departments
+      : STANDARD_DEPARTMENTS.map((dept) => ({ id: dept, name: dept, code: dept }));
+
+  const allDepartments = deptOptions.map((d) => d.name);
+
   // Forms
   const [editForm, setEditForm] = useState({
     full_name: '',
-    department: 'Reception',
+    department: 'Front Desk & Reception',
+    department_id: '',
     is_fallback_agent: false,
   });
 
@@ -76,16 +85,10 @@ export const AdminStaffTab = () => {
     username: '',
     password: '123456',
     full_name: '',
-    department: 'Reception',
+    department: 'Front Desk & Reception',
+    department_id: '',
     is_fallback_agent: false,
   });
-
-  // Bảng departments là nguồn dữ liệu chuẩn duy nhất (Single Source of Truth)
-  const allDepartments = (
-    departments.length > 0
-      ? Array.from(new Set(departments.map((d) => d.name).filter(Boolean)))
-      : STANDARD_DEPARTMENTS
-  );
 
   const showNotification = (msg) => {
     setNotification(msg);
@@ -110,15 +113,50 @@ export const AdminStaffTab = () => {
     }
   };
 
+  const loadStaff = loadData; // Alias to safeguard against legacy references
+
   useEffect(() => {
     loadData();
   }, []);
 
+  useEffect(() => {
+    if (departments.length > 0 && !addForm.department_id) {
+      setAddForm((prev) => ({
+        ...prev,
+        department: departments[0].name,
+        department_id: departments[0].id,
+      }));
+    }
+  }, [departments]);
+
+  const handleOpenAddModal = () => {
+    const firstDept = deptOptions[0] || { id: '', name: 'Bell Services' };
+    setAddForm({
+      username: '',
+      password: '123456',
+      full_name: '',
+      department: firstDept.name,
+      department_id: firstDept.id,
+      is_fallback_agent: false,
+    });
+    setIsAddModalOpen(true);
+  };
+
   const handleOpenEditModal = (staff) => {
     setSelectedStaff(staff);
+    const matchedDept = deptOptions.find(
+      (d) =>
+        d.id === staff.department_id ||
+        (d.name && (staff.department || '').toLowerCase().includes(d.name.toLowerCase())) ||
+        (staff.department && d.name && d.name.toLowerCase().includes(staff.department.toLowerCase())) ||
+        d.code === staff.department_id ||
+        (d.code && (staff.department || '').toLowerCase().includes(d.code.toLowerCase()))
+    );
+
     setEditForm({
       full_name: staff.full_name || '',
-      department: staff.department || 'Reception',
+      department: matchedDept ? matchedDept.name : (staff.department || deptOptions[0]?.name || 'Reception'),
+      department_id: matchedDept ? matchedDept.id : (staff.department_id || deptOptions[0]?.id || ''),
       is_fallback_agent: !!staff.is_fallback_agent,
     });
   };
@@ -129,13 +167,14 @@ export const AdminStaffTab = () => {
     try {
       setIsLoading(true);
       await updateStaffMember(selectedStaff.id, {
-        full_name: editForm.full_name,
+        full_name: editForm.full_name.trim(),
         department: editForm.department,
+        department_id: editForm.department_id,
         is_fallback_agent: editForm.is_fallback_agent,
       });
       showNotification(`Đã cập nhật nhân sự ${editForm.full_name}`);
       setSelectedStaff(null);
-      await loadStaff();
+      await loadData();
     } catch (err) {
       showNotification('Lỗi khi cập nhật: ' + err.message);
     } finally {
@@ -145,29 +184,51 @@ export const AdminStaffTab = () => {
 
   const handleCreateStaff = async (e) => {
     e.preventDefault();
+    const cleanFullName = addForm.full_name.trim();
+    const cleanUsername = addForm.username.trim().toLowerCase();
+
+    if (!cleanFullName) {
+      showNotification('Vui lòng nhập họ và tên nhân viên');
+      return;
+    }
+    if (!cleanUsername) {
+      showNotification('Vui lòng nhập tên đăng nhập');
+      return;
+    }
+
+    const targetDept =
+      deptOptions.find((d) => d.id === addForm.department_id) ||
+      deptOptions.find((d) => d.name === addForm.department) ||
+      deptOptions[0] ||
+      { id: undefined, name: addForm.department };
+
     try {
       setIsLoading(true);
       await createStaffMember({
-        username: addForm.username.trim(),
-        password: addForm.password,
-        full_name: addForm.full_name.trim(),
-        department: addForm.department,
-        role: addForm.department,
+        username: cleanUsername,
+        password: addForm.password || '123456',
+        full_name: cleanFullName,
+        department: targetDept.name,
+        department_id: targetDept.id || undefined,
+        role: targetDept.name,
         is_fallback_agent: addForm.is_fallback_agent,
         status: 'available',
         shift: 'All Shifts',
         location: 'On Site',
       });
-      showNotification(`Đã tạo nhân sự ${addForm.full_name}`);
+      showNotification(`Đã tạo thành công nhân sự ${cleanFullName}`);
       setIsAddModalOpen(false);
+      const firstDept = deptOptions[0] || { id: '', name: 'Bell Services' };
       setAddForm({
         username: '',
         password: '123456',
         full_name: '',
-        department: 'Reception',
+        department: firstDept.name,
+        department_id: firstDept.id,
         is_fallback_agent: false,
       });
-      await loadStaff();
+      setSearchQuery(cleanFullName);
+      await loadData();
     } catch (err) {
       showNotification('Lỗi khi tạo nhân sự: ' + err.message);
     } finally {
@@ -176,13 +237,24 @@ export const AdminStaffTab = () => {
   };
 
   const handleDelete = async (staffId, name) => {
+    const targetStaff = staffList.find((s) => s.id === staffId);
+    if (
+      currentUser &&
+      (currentUser.id === staffId ||
+        currentUser.username === targetStaff?.username ||
+        (targetStaff?.username === 'admin' && currentUser.role?.toLowerCase().includes('admin')))
+    ) {
+      showNotification('Không thể xóa tài khoản quản trị hiện tại đang đăng nhập!');
+      return;
+    }
+
     if (!window.confirm(`Xác nhận xóa nhân sự ${name}?`)) return;
     try {
       setIsLoading(true);
       await deleteStaffMember(staffId);
       showNotification(`Đã xóa nhân sự ${name}`);
       if (selectedStaff?.id === staffId) setSelectedStaff(null);
-      await loadStaff();
+      await loadData();
     } catch (err) {
       showNotification('Lỗi khi xóa: ' + err.message);
     } finally {
@@ -200,15 +272,14 @@ export const AdminStaffTab = () => {
       (s.code || '').toLowerCase().includes(q);
 
     const staffDept = (s.department || '').toLowerCase();
+    const staffDeptId = (s.department_id || '').toLowerCase();
     const filterDept = departmentFilter.toLowerCase();
     const matchesDept =
       departmentFilter === 'All' ||
+      staffDeptId === filterDept ||
       staffDept === filterDept ||
-      (filterDept.includes('food') && staffDept.includes('food')) ||
-      (filterDept.includes('reception') && staffDept.includes('reception')) ||
-      (filterDept.includes('housekeeping') && staffDept.includes('housekeeping')) ||
-      (filterDept.includes('bell') && staffDept.includes('bell')) ||
-      (filterDept.includes('maintenance') && staffDept.includes('maintenance'));
+      (s.department_rel?.name || '').toLowerCase() === filterDept ||
+      (filterDept.length > 3 && (staffDept.includes(filterDept) || filterDept.includes(staffDept)));
 
     const matchesFallback =
       fallbackFilter === 'All' ||
@@ -260,7 +331,7 @@ export const AdminStaffTab = () => {
         </div>
 
         <button
-          onClick={() => setIsAddModalOpen(true)}
+          onClick={handleOpenAddModal}
           className="px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer border transition-colors whitespace-nowrap shrink-0 hover:bg-[#262626]/90"
           style={{
             backgroundColor: '#262626',
@@ -313,9 +384,9 @@ export const AdminStaffTab = () => {
             }}
           >
             <option value="All">Tất cả bộ phận</option>
-            {allDepartments.map((dept) => (
-              <option key={dept} value={dept}>
-                {dept}
+            {deptOptions.map((dept) => (
+              <option key={dept.id || dept.name} value={dept.id || dept.name}>
+                {dept.name}
               </option>
             ))}
           </select>
@@ -530,8 +601,16 @@ export const AdminStaffTab = () => {
                   BỘ PHẬN:
                 </label>
                 <select
-                  value={editForm.department}
-                  onChange={(e) => setEditForm({ ...editForm, department: e.target.value })}
+                  value={editForm.department_id || editForm.department}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    const found = deptOptions.find((d) => d.id === val || d.name === val);
+                    setEditForm({
+                      ...editForm,
+                      department_id: found ? found.id : '',
+                      department: found ? found.name : val,
+                    });
+                  }}
                   className="w-full px-3 py-2 rounded-lg border focus:outline-none cursor-pointer"
                   style={{
                     backgroundColor: '#FFFFFF',
@@ -539,9 +618,9 @@ export const AdminStaffTab = () => {
                     color: '#262626',
                   }}
                 >
-                  {allDepartments.map((dept) => (
-                    <option key={dept} value={dept}>
-                      {dept}
+                  {deptOptions.map((dept) => (
+                    <option key={dept.id || dept.name} value={dept.id || dept.name}>
+                      {dept.name}
                     </option>
                   ))}
                 </select>
@@ -658,7 +737,12 @@ export const AdminStaffTab = () => {
                     type="text"
                     required
                     value={addForm.username}
-                    onChange={(e) => setAddForm({ ...addForm, username: e.target.value })}
+                    onChange={(e) =>
+                      setAddForm({
+                        ...addForm,
+                        username: e.target.value.toLowerCase().replace(/\s+/g, '_'),
+                      })
+                    }
                     placeholder="nguyen_an"
                     className="w-full px-3 py-2 rounded-lg border focus:outline-none font-mono"
                     style={{
@@ -693,8 +777,16 @@ export const AdminStaffTab = () => {
                   BỘ PHẬN:
                 </label>
                 <select
-                  value={addForm.department}
-                  onChange={(e) => setAddForm({ ...addForm, department: e.target.value })}
+                  value={addForm.department_id || (deptOptions[0]?.id || '')}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    const found = deptOptions.find((d) => d.id === val || d.name === val);
+                    setAddForm({
+                      ...addForm,
+                      department_id: found ? found.id : val,
+                      department: found ? found.name : val,
+                    });
+                  }}
                   className="w-full px-3 py-2 rounded-lg border focus:outline-none cursor-pointer"
                   style={{
                     backgroundColor: '#FFFFFF',
@@ -702,9 +794,9 @@ export const AdminStaffTab = () => {
                     color: '#262626',
                   }}
                 >
-                  {allDepartments.map((dept) => (
-                    <option key={dept} value={dept}>
-                      {dept}
+                  {deptOptions.map((dept) => (
+                    <option key={dept.id || dept.name} value={dept.id || dept.name}>
+                      {dept.name}
                     </option>
                   ))}
                 </select>

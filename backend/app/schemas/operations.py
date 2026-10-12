@@ -40,6 +40,20 @@ class DepartmentDetailResponse(DepartmentResponse):
     model_config = ConfigDict(from_attributes=True)
 
 
+class DepartmentCreate(BaseModel):
+    name: str = Field(..., description="Tên phòng ban hiển thị", json_schema_extra={"example": "Security & Loss Prevention"})
+    code: Optional[str] = Field(None, description="Mã code chuẩn của phòng ban (vd: 'SECURITY')", json_schema_extra={"example": "SECURITY"})
+    description: Optional[str] = Field(None, description="Mô tả chức năng nhiệm vụ của phòng ban", json_schema_extra={"example": "Bộ phận kiểm soát an ninh và an toàn"})
+    is_active: bool = Field(True, description="Trạng thái hoạt động", json_schema_extra={"example": True})
+
+
+class DepartmentUpdate(BaseModel):
+    name: Optional[str] = Field(None, description="Tên phòng ban cập nhật")
+    code: Optional[str] = Field(None, description="Mã code cập nhật")
+    description: Optional[str] = Field(None, description="Mô tả cập nhật")
+    is_active: Optional[bool] = Field(None, description="Trạng thái hoạt động")
+
+
 # ---------------------------------------------------------
 # Staff & Robot Fleet Schemas
 # ---------------------------------------------------------

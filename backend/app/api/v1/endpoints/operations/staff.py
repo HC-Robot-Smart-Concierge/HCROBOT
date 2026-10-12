@@ -15,6 +15,8 @@ from app.schemas.operations import (
     StaffUpdate,
     DepartmentResponse,
     DepartmentDetailResponse,
+    DepartmentCreate,
+    DepartmentUpdate,
     ServiceTypeResponse,
 )
 from .shared import TAG_OPS, TAG_STAFF
@@ -28,7 +30,7 @@ router = APIRouter()
 
 @router.get(
     "/departments",
-    response_model=List[DepartmentResponse],
+    response_model=List[DepartmentDetailResponse],
     tags=TAG_STAFF,
     summary="Danh sách các phòng ban khách sạn",
     responses={
@@ -39,7 +41,7 @@ router = APIRouter()
 )
 async def list_departments(
     is_active: Optional[bool] = Query(
-        True,
+        None,
         description="Lọc theo trạng thái hoạt động: `true` (chỉ lấy phòng ban đang mở), `false` (phòng ban ngưng), `null` (lấy tất cả)",
     ),
     db: AsyncSession = Depends(get_db),
@@ -47,26 +49,191 @@ async def list_departments(
     """
     ### Mô tả nghiệp vụ:
     Truy vấn danh mục toàn bộ các bộ phận vận hành chuẩn của khách sạn (`Aurora Hotel & Resort`).
-
-    ### Các bộ phận chuẩn trong hệ thống:
-    - **DEP-HOUSEKEEPING**: Bộ phận Buồng phòng & Tiện ích vệ sinh phòng
-    - **DEP-BELL**: Bộ phận Tiền sảnh, Chuông hành lý & Bellman
-    - **DEP-TAXI**: Bộ phận Điều phối Taxi & Đưa đón di chuyển
-    - **DEP-MAINTENANCE**: Bộ phận Kỹ thuật, Bảo trì điện nước & Điều hòa
-    - **DEP-RECEPTION**: Bộ phận Lễ tân & Đặt phòng (Front Desk & Room Booking)
-    - **DEP-CONCIERGE**: Bộ phận Trợ lý Concierge, Live Call & Tổng đài hỗ trợ
-    - **DEP-ROOMSERVICE**: Bộ phận Phục vụ phòng (Room Service)
-    - **DEP-KITCHEN**: Bộ phận Bếp & Ẩm thực (Kitchen Operations)
-
-    ### Tham số đầu vào:
-    - `is_active` (query, boolean, tùy chọn): Mặc định `true`.
+    Bao gồm số lượng nhân sự active trực thuộc mỗi phòng ban.
     """
-    query = select(Department)
+    query = select(Department).options(
+        selectinload(Department.accounts),
+        selectinload(Department.service_types),
+    )
     if is_active is not None:
         query = query.where(Department.is_active == is_active)
     query = query.order_by(Department.code)
     result = await db.execute(query)
-    return result.scalars().all()
+    depts = result.scalars().all()
+    return [
+        DepartmentDetailResponse(
+            id=d.id,
+            code=d.code,
+            name=d.name,
+            description=d.description,
+            is_active=d.is_active,
+            created_at=d.created_at,
+            updated_at=d.updated_at,
+            service_types=d.service_types or [],
+            staff_count=sum(1 for acc in d.accounts if acc.is_active),
+        )
+        for d in depts
+    ]
+
+
+@router.post(
+    "/departments",
+    response_model=DepartmentDetailResponse,
+    status_code=status.HTTP_201_CREATED,
+    tags=TAG_STAFF,
+    summary="Thêm mới phòng ban khách sạn",
+    responses={
+        201: {"description": "Tạo phòng ban thành công."},
+        400: {"description": "Mã code hoặc tên phòng ban đã tồn tại."},
+    },
+)
+async def create_department(
+    dept_in: DepartmentCreate,
+    db: AsyncSession = Depends(get_db),
+):
+    name_clean = dept_in.name.strip()
+    code_clean = (dept_in.code or "").strip().upper()
+    if not code_clean:
+        words = name_clean.split()
+        if len(words) == 1:
+            code_clean = words[0][:10].upper()
+        else:
+            code_clean = "".join(w[0].upper() for w in words[:4])
+        code_clean = f"{code_clean}_{uuid.uuid4().hex[:3].upper()}"
+
+    existing = await db.execute(select(Department).where(Department.code == code_clean))
+    if existing.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Mã code phòng ban '{code_clean}' đã tồn tại trong hệ thống.",
+        )
+
+    dept_id = f"DEP-{code_clean[:12]}"
+    existing_id = await db.execute(select(Department).where(Department.id == dept_id))
+    if existing_id.scalar_one_or_none():
+        dept_id = f"DEP-{uuid.uuid4().hex[:8].upper()}"
+
+    new_dept = Department(
+        id=dept_id,
+        code=code_clean,
+        name=name_clean,
+        description=dept_in.description,
+        is_active=dept_in.is_active,
+    )
+    db.add(new_dept)
+    await db.commit()
+    await db.refresh(new_dept)
+    return DepartmentDetailResponse(
+        id=new_dept.id,
+        code=new_dept.code,
+        name=new_dept.name,
+        description=new_dept.description,
+        is_active=new_dept.is_active,
+        created_at=new_dept.created_at,
+        updated_at=new_dept.updated_at,
+        service_types=[],
+        staff_count=0,
+    )
+
+
+@router.patch(
+    "/departments/{department_id}",
+    response_model=DepartmentDetailResponse,
+    tags=TAG_STAFF,
+    summary="Cập nhật thông tin phòng ban",
+    responses={
+        200: {"description": "Cập nhật thông tin phòng ban thành công."},
+        404: {"description": "Không tìm thấy phòng ban."},
+    },
+)
+async def update_department(
+    department_id: str = Path(..., description="ID hoặc mã code phòng ban"),
+    dept_in: DepartmentUpdate = ...,
+    db: AsyncSession = Depends(get_db),
+):
+    target = department_id.strip()
+    query = (
+        select(Department)
+        .options(
+            selectinload(Department.accounts),
+            selectinload(Department.service_types),
+        )
+        .where(or_(Department.id == target, Department.code == target.upper()))
+    )
+    result = await db.execute(query)
+    dept = result.scalar_one_or_none()
+    if not dept:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Không tìm thấy phòng ban với mã định danh '{department_id}'",
+        )
+
+    update_data = dept_in.model_dump(exclude_unset=True)
+    if "code" in update_data and update_data["code"]:
+        new_code = update_data["code"].strip().upper()
+        if new_code != dept.code:
+            existing = await db.execute(select(Department).where(Department.code == new_code))
+            if existing.scalar_one_or_none():
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Mã code phòng ban '{new_code}' đã tồn tại trong hệ thống.",
+                )
+            dept.code = new_code
+        del update_data["code"]
+
+    for field, val in update_data.items():
+        setattr(dept, field, val)
+
+    dept.updated_at = datetime.utcnow()
+    await db.commit()
+    await db.refresh(dept)
+    return DepartmentDetailResponse(
+        id=dept.id,
+        code=dept.code,
+        name=dept.name,
+        description=dept.description,
+        is_active=dept.is_active,
+        created_at=dept.created_at,
+        updated_at=dept.updated_at,
+        service_types=dept.service_types or [],
+        staff_count=sum(1 for acc in dept.accounts if acc.is_active),
+    )
+
+
+@router.delete(
+    "/departments/{department_id}",
+    tags=TAG_STAFF,
+    summary="Vô hiệu hóa phòng ban (Soft Delete)",
+    responses={
+        200: {"description": "Đã vô hiệu hóa phòng ban thành công."},
+        404: {"description": "Không tìm thấy phòng ban."},
+    },
+)
+async def delete_department(
+    department_id: str = Path(..., description="ID hoặc mã code phòng ban"),
+    db: AsyncSession = Depends(get_db),
+):
+    target = department_id.strip()
+    query = select(Department).options(selectinload(Department.accounts)).where(or_(Department.id == target, Department.code == target.upper()))
+    result = await db.execute(query)
+    dept = result.scalar_one_or_none()
+    if not dept:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Không tìm thấy phòng ban với mã định danh '{department_id}'",
+        )
+
+    dept.is_active = False
+    dept.updated_at = datetime.utcnow()
+    await db.commit()
+    return {
+        "success": True,
+        "id": dept.id,
+        "code": dept.code,
+        "name": dept.name,
+        "is_active": dept.is_active,
+        "message": f"Đã vô hiệu hóa phòng ban {dept.name}",
+    }
 
 
 @router.get(
@@ -360,7 +527,7 @@ async def create_staff(
                 )
             )
         )
-        dept = dept_res.scalar_one_or_none()
+        dept = dept_res.scalars().first()
         if dept:
             resolved_dept_id = dept.id
             resolved_dept_name = dept.name
@@ -377,6 +544,7 @@ async def create_staff(
         "DEP-BELL": "bell_services",
         "DEP-TAXI": "bell_services",
         "DEP-MAINTENANCE": "maintenance",
+        "DEP-EXECUTIVE": "admin_portal",
     }
     default_dashboard = dashboard_map.get(resolved_dept_id, "room_service")
     if "admin" in (staff_in.role or "").lower():
@@ -510,7 +678,7 @@ async def update_staff(
                     )
                 )
             )
-            dept = dept_res.scalar_one_or_none()
+            dept = dept_res.scalars().first()
             if dept:
                 staff.department_id = dept.id
                 staff.department = dept.name

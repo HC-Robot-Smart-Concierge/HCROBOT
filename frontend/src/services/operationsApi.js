@@ -47,7 +47,7 @@ export const fetchReceptionDashboard = async () => {
   return await fetchWithFallback(
     `${BASE_URL}/dashboard/reception`,
     {},
-    { current_request: INITIAL_RECEPTION_DATA }
+    { current_request: null, recent_requests: [] }
   );
 };
 
@@ -535,6 +535,162 @@ export const fetchServiceTypes = async (departmentId = null) => {
 export const fetchStaffDepartments = async () => {
   return await fetchWithFallback(`${BASE_URL}/departments`, {}, []);
 };
+
+// ---------------------------------------------------------
+// 12. Kitchen Food Items, Menus & Menu Items Management
+// ---------------------------------------------------------
+
+// 12A. Kho món ăn gốc (Master Food Catalog)
+export const fetchKitchenFoodItems = async ({ category = null, search = null, is_available = null } = {}) => {
+  const params = new URLSearchParams();
+  if (category && category !== 'All') params.append('category', category);
+  if (search) params.append('search', search);
+  if (is_available !== null && is_available !== undefined) params.append('is_available', is_available);
+  const qs = params.toString() ? `?${params.toString()}` : '';
+  return await fetchWithFallback(`${BASE_URL}/kitchen/food-items${qs}`, {}, []);
+};
+
+export const createKitchenFoodItem = async (foodData) => {
+  return await fetchWithFallback(
+    `${BASE_URL}/kitchen/food-items`,
+    {
+      method: 'POST',
+      body: JSON.stringify(foodData),
+    },
+    { id: `FOOD-${Date.now()}`, ...foodData }
+  );
+};
+
+export const getKitchenFoodItem = async (foodId) => {
+  return await fetchWithFallback(
+    `${BASE_URL}/kitchen/food-items/${encodeURIComponent(foodId)}`,
+    {},
+    null
+  );
+};
+
+export const updateKitchenFoodItem = async (foodId, foodData) => {
+  return await fetchWithFallback(
+    `${BASE_URL}/kitchen/food-items/${encodeURIComponent(foodId)}`,
+    {
+      method: 'PUT',
+      body: JSON.stringify(foodData),
+    },
+    { id: foodId, ...foodData }
+  );
+};
+
+export const deleteKitchenFoodItem = async (foodId) => {
+  return await fetchWithFallback(
+    `${BASE_URL}/kitchen/food-items/${encodeURIComponent(foodId)}`,
+    {
+      method: 'DELETE',
+    },
+    { id: foodId, detail: 'Đã xóa' }
+  );
+};
+
+// 12B. Danh sách bộ thực đơn (Menus)
+export const fetchKitchenMenus = async ({ category = null, is_active = null } = {}) => {
+  const params = new URLSearchParams();
+  if (category && category !== 'All') params.append('category', category);
+  if (is_active !== null && is_active !== undefined) params.append('is_active', is_active);
+  const qs = params.toString() ? `?${params.toString()}` : '';
+  return await fetchWithFallback(`${BASE_URL}/kitchen/menus${qs}`, {}, []);
+};
+
+export const createKitchenMenu = async (menuData) => {
+  return await fetchWithFallback(
+    `${BASE_URL}/kitchen/menus`,
+    {
+      method: 'POST',
+      body: JSON.stringify(menuData),
+    },
+    { id: `MENU-${Date.now()}`, ...menuData, items: [] }
+  );
+};
+
+export const getKitchenMenu = async (menuId) => {
+  return await fetchWithFallback(
+    `${BASE_URL}/kitchen/menus/${encodeURIComponent(menuId)}`,
+    {},
+    null
+  );
+};
+
+export const updateKitchenMenu = async (menuId, menuData) => {
+  return await fetchWithFallback(
+    `${BASE_URL}/kitchen/menus/${encodeURIComponent(menuId)}`,
+    {
+      method: 'PUT',
+      body: JSON.stringify(menuData),
+    },
+    { id: menuId, ...menuData }
+  );
+};
+
+export const deleteKitchenMenu = async (menuId) => {
+  return await fetchWithFallback(
+    `${BASE_URL}/kitchen/menus/${encodeURIComponent(menuId)}`,
+    {
+      method: 'DELETE',
+    },
+    { id: menuId, detail: 'Đã xóa thực đơn' }
+  );
+};
+
+// 12C. Món ăn trong thực đơn (Menu Items)
+export const fetchKitchenMenuItems = async ({ menu_id = null, category = null } = {}) => {
+  const params = new URLSearchParams();
+  if (menu_id) params.append('menu_id', menu_id);
+  if (category && category !== 'All') params.append('category', category);
+  const qs = params.toString() ? `?${params.toString()}` : '';
+  return await fetchWithFallback(`${BASE_URL}/kitchen/menu-items${qs}`, {}, []);
+};
+
+export const createKitchenMenuItem = async (itemData) => {
+  return await fetchWithFallback(
+    `${BASE_URL}/kitchen/menu-items`,
+    {
+      method: 'POST',
+      body: JSON.stringify(itemData),
+    },
+    { id: `ITEM-${Date.now()}`, ...itemData }
+  );
+};
+
+export const assignFoodItemToMenu = async (menuId, assignData) => {
+  return await fetchWithFallback(
+    `${BASE_URL}/kitchen/menus/${encodeURIComponent(menuId)}/items`,
+    {
+      method: 'POST',
+      body: JSON.stringify(assignData),
+    },
+    { id: `ITEM-${Date.now()}`, menu_id: menuId, ...assignData }
+  );
+};
+
+export const updateKitchenMenuItem = async (menuId, menuItemId, updateData) => {
+  return await fetchWithFallback(
+    `${BASE_URL}/kitchen/menus/${encodeURIComponent(menuId)}/items/${encodeURIComponent(menuItemId)}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(updateData),
+    },
+    { id: menuItemId, menu_id: menuId, ...updateData }
+  );
+};
+
+export const removeKitchenMenuItem = async (menuId, menuItemId) => {
+  return await fetchWithFallback(
+    `${BASE_URL}/kitchen/menus/${encodeURIComponent(menuId)}/items/${encodeURIComponent(menuItemId)}`,
+    {
+      method: 'DELETE',
+    },
+    { id: menuItemId, menu_id: menuId, detail: 'Đã gỡ món khỏi thực đơn' }
+  );
+};
+
 
 
 

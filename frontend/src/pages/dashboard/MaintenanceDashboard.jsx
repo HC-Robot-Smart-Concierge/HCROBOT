@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { NewDirectiveModal, InteractiveMapModal } from '../../components/dashboard/Modals';
+import { NewDirectiveModal } from '../../components/dashboard/Modals';
 import { INITIAL_MAINTENANCE_DATA } from '../../data/mockHotelData';
 import {
   createMaintenanceRequest,
@@ -31,7 +31,6 @@ export const MaintenanceDashboard = ({ currentUser, onNotify = () => {} }) => {
   const [filter, setFilter] = useState('All');
   const [sortNewestFirst, setSortNewestFirst] = useState(true);
   const [isNewRequestModalOpen, setIsNewRequestModalOpen] = useState(false);
-  const [isMapModalOpen, setIsMapModalOpen] = useState(false);
 
   useEffect(() => {
     const loadData = async () => {
@@ -292,30 +291,10 @@ export const MaintenanceDashboard = ({ currentUser, onNotify = () => {} }) => {
                 ))}
               </div>
             </section>
-
-            <section className="rounded-xl bg-white p-4 border border-[#E8E5E0]">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-[#777]">FACILITY MAP</p>
-              <p className="mt-1 text-[12px] font-semibold text-[#333]">{data.facilityMap?.zone}</p>
-              <p className="mt-1 text-[11px] text-[#666]">
-                {data.facilityMap?.description}
-              </p>
-              <button
-                type="button"
-                onClick={() => setIsMapModalOpen(true)}
-                className="mt-3 text-[11px] font-bold text-black underline cursor-pointer"
-              >
-                Open Map
-              </button>
-            </section>
           </aside>
         </section>
       </div>
 
-      <InteractiveMapModal
-        isOpen={isMapModalOpen}
-        onClose={() => setIsMapModalOpen(false)}
-        title="Facility Map"
-      />
     </main>
   );
 };

@@ -8,7 +8,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 export const Pagination = ({
   currentPage = 1,
   totalItems = 0,
-  pageSize = 20,
+  pageSize = 10,
   onPageChange = () => {},
   itemName = 'mục',
   className = '',

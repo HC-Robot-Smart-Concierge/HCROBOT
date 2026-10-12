@@ -4,6 +4,7 @@ import { AdminDashboardTab } from './tabs/AdminDashboardTab';
 import { AdminOperationsTab } from './tabs/AdminOperationsTab';
 import { AdminRobotControlTab } from './tabs/AdminRobotControlTab';
 import { AdminKnowledgePage } from './tabs/AdminKnowledgePage';
+import { AdminDepartmentTab } from './tabs/AdminDepartmentTab';
 import { AdminStaffTab } from './tabs/AdminStaffTab';
 import { AdminSettingsTab } from './tabs/AdminSettingsTab';
 import { AdminLogsTab } from './tabs/AdminLogsTab';
@@ -25,6 +26,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
         'Robot Control',
         'Knowledge',
         'Hotel Content',
+        'Department',
         'Staff',
         'Logs',
         'Settings',
@@ -160,6 +162,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
     { id: 'Robot Control', label: 'Robot Control' },
     { id: 'Knowledge',     label: 'Knowledge' },
     { id: 'Hotel Content', label: 'Hotel Content' },
+    { id: 'Department',    label: 'Department' },
     { id: 'Staff',         label: 'Staff' },
     { id: 'Logs',          label: 'Logs' },
   ];
@@ -488,6 +491,10 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
 
           {activeMenu === 'Knowledge' && (
             <AdminKnowledgePage activeSubView={knowledgeSubTab} />
+          )}
+
+          {activeMenu === 'Department' && (
+            <AdminDepartmentTab currentUser={currentUser} />
           )}
 
           {activeMenu === 'Staff' && (

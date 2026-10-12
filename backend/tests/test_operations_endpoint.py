@@ -97,3 +97,69 @@ async def test_all_operations_dashboards_and_endpoints():
         all_roster_res = await ac.get("/api/v1/operations/staff?include_inactive=true")
         all_ids = [s["id"] for s in all_roster_res.json()]
         assert created_id in all_ids
+
+        # 10. Test generic request status update (Staff claim and complete workflow)
+        if len(unified_data) > 0:
+            sample_ticket = unified_data[0]["id"]
+            # Test Claim (In Progress)
+            claim_res = await ac.patch(
+                f"/api/v1/operations/generic-request/{sample_ticket}/status?status=In%20Progress&assigned_to=Test%20Staff"
+            )
+            assert claim_res.status_code == 200
+            claim_data = claim_res.json()
+            assert claim_data["success"] is True
+            assert claim_data["status"] == "In Progress"
+
+            # Test Complete
+            complete_res = await ac.patch(
+                f"/api/v1/operations/generic-request/{sample_ticket}/status?status=Completed&assigned_to=Test%20Staff"
+            )
+            assert complete_res.status_code == 200
+            complete_data = complete_res.json()
+            assert complete_data["success"] is True
+            assert complete_data["status"] == "Completed"
+
+            # Reset back to Pending
+            reset_res = await ac.patch(
+                f"/api/v1/operations/generic-request/{sample_ticket}/status?status=Pending"
+            )
+            assert reset_res.status_code == 200
+
+        # 11. Admin Service Requests (Admin Portal tasks & dispatch)
+        admin_tasks_res = await ac.get("/api/v1/operations/admin/tasks")
+        assert admin_tasks_res.status_code == 200
+        admin_tasks_data = admin_tasks_res.json()
+        assert isinstance(admin_tasks_data, list)
+        assert len(admin_tasks_data) > 0
+
+        # Test single task detail
+        test_task_id = admin_tasks_data[0]["id"]
+        detail_res = await ac.get(f"/api/v1/operations/admin/tasks/{test_task_id}")
+        assert detail_res.status_code == 200
+        assert detail_res.json()["id"] == test_task_id
+
+        # Test Admin Dispatch
+        dispatch_res = await ac.post("/api/v1/operations/admin/dispatch", json={
+            "department": "Housekeeping",
+            "title": "Clean suite urgent",
+            "room_number": "505",
+            "guest_name": "VIP Guest",
+            "priority": "HIGH PRIORITY",
+            "description": "Thorough sanitization requested",
+            "assigned_staff_name": "Maria Santos",
+            "assigned_robot_code": "RC-001"
+        })
+        assert dispatch_res.status_code == 200
+        disp_data = dispatch_res.json()
+        assert disp_data["success"] is True
+        assert "id" in disp_data
+        dispatched_id = disp_data["id"]
+
+        # Test PATCH update on dispatched task
+        patch_res = await ac.patch(
+            f"/api/v1/operations/admin/tasks/{dispatched_id}",
+            json={"status": "Completed", "note": "All clean and inspected"}
+        )
+        assert patch_res.status_code == 200
+        assert patch_res.json()["status"] == "Completed"
+

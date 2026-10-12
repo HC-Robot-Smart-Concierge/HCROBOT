@@ -704,6 +704,18 @@ class AdminOperationsSummary(BaseModel):
     directives_count: int = 0
 
 
+class AdminTaskDispatchCreate(BaseModel):
+    department: str = Field("Housekeeping", description="Tên bộ phận tiếp nhận (Housekeeping, F&B, Reception, Bell Services, Maintenance, Taxi, Concierge)")
+    title: str = Field(..., description="Tiêu đề yêu cầu điều phối")
+    room_number: str = Field(..., description="Số phòng hoặc vị trí tiếp nhận")
+    guest_name: Optional[str] = Field("Hotel Guest", description="Tên khách hàng")
+    priority: Optional[str] = Field("HIGH PRIORITY", description="Mức độ ưu tiên ('LOW', 'NORMAL', 'HIGH', 'HIGH PRIORITY', 'URGENT')")
+    description: Optional[str] = Field("", description="Chi tiết nội dung chỉ đạo / yêu cầu")
+    assigned_staff_name: Optional[str] = Field(None, description="Tên nhân viên phụ trách ban đầu")
+    assigned_robot_code: Optional[str] = Field(None, description="Mã Robot điều động")
+
+
+
 # ---------------------------------------------------------
 # Human Support & Multilingual Conversations Schemas
 # ---------------------------------------------------------

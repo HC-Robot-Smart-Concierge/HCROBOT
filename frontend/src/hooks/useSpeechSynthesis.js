@@ -304,7 +304,9 @@ export const useSpeechSynthesis = () => {
         audio.playbackRate = Math.max(0.5, Math.min(2.0, rate || 1.0));
         audioRef.current = audio;
 
+        let hasStartedPlaying = false;
         audio.onplay = () => {
+          hasStartedPlaying = true;
           setIsSpeaking(true);
           if (onStartCallback) onStartCallback();
         };
@@ -318,7 +320,11 @@ export const useSpeechSynthesis = () => {
         audio.onerror = () => {
           setIsSpeaking(false);
           audioRef.current = null;
-          speakWebSpeech(text, language, onEndCallback, onStartCallback, true, rate);
+          if (!hasStartedPlaying) {
+            speakWebSpeech(text, language, onEndCallback, onStartCallback, true, rate);
+          } else {
+            if (onEndCallback) onEndCallback();
+          }
         };
 
         await audio.play();

@@ -12,6 +12,7 @@ import {
   Film,
   Car,
   Star,
+  UtensilsCrossed,
 } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
 
@@ -30,12 +31,27 @@ export const AuroraSidebar = ({
 
   const deptLower = (user?.department || '').toLowerCase();
   const roleLower = (user?.role || '').toLowerCase();
+  const usernameLower = (user?.username || '').toLowerCase();
   const defaultDashLower = (user?.default_dashboard || user?.defaultDashboard || '').toLowerCase();
   const isConcierge =
     activeView === 'concierge' ||
     deptLower.includes('concierge') ||
     roleLower.includes('concierge') ||
     defaultDashLower === 'concierge';
+
+  const isKitchen =
+    activeView === 'kitchen' ||
+    deptLower.includes('kitchen') ||
+    deptLower.includes('bếp') ||
+    deptLower.includes('bep') ||
+    roleLower.includes('kitchen') ||
+    roleLower.includes('chef') ||
+    roleLower.includes('bếp') ||
+    usernameLower.includes('kitchen') ||
+    defaultDashLower === 'kitchen' ||
+    deptLower.includes('executive') ||
+    roleLower.includes('admin') ||
+    usernameLower === 'admin';
 
   const staffNavItems = isConcierge
     ? [
@@ -45,6 +61,7 @@ export const AuroraSidebar = ({
         { id: 'Feedback', label: 'Đánh giá dịch vụ', icon: Star },
         { id: 'Requests', label: t('menuRequests') || 'Yêu cầu', icon: Inbox },
         { id: 'MyTasks', label: t('menuMyTasks') || 'Yêu cầu cá nhân', icon: ClipboardCheck },
+        ...(isKitchen ? [{ id: 'KitchenMenu', label: 'Quản Lý Menu', icon: UtensilsCrossed }] : []),
         { id: 'History', label: t('menuHistory') || 'Lịch sử', icon: History },
         { id: 'Notifications', label: t('menuNotifications') || 'Thông báo', icon: Bell },
         { id: 'Profile', label: t('menuProfile') || 'Hồ sơ', icon: User },
@@ -53,6 +70,7 @@ export const AuroraSidebar = ({
         { id: 'Dashboard', label: t('menuDashboard') || 'Tổng quan', icon: LayoutDashboard },
         { id: 'Requests', label: t('menuRequests') || 'Yêu cầu', icon: Inbox },
         { id: 'MyTasks', label: t('menuMyTasks') || 'Yêu cầu cá nhân', icon: ClipboardCheck },
+        ...(isKitchen ? [{ id: 'KitchenMenu', label: t('menuKitchenMenu') || 'Quản Lý Menu', icon: UtensilsCrossed }] : []),
         { id: 'Notifications', label: t('menuNotifications') || 'Thông báo', icon: Bell },
         { id: 'Profile', label: t('menuProfile') || 'Hồ sơ', icon: User },
       ];

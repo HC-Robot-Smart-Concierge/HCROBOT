@@ -9,6 +9,7 @@ import {
   PhoneCall,
   Car,
   Star,
+  UtensilsCrossed,
 } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
 
@@ -23,12 +24,27 @@ export const MobileBottomNav = ({
 
   const deptLower = (currentUser?.department || '').toLowerCase();
   const roleLower = (currentUser?.role || '').toLowerCase();
+  const usernameLower = (currentUser?.username || '').toLowerCase();
   const defaultDashLower = (currentUser?.default_dashboard || currentUser?.defaultDashboard || '').toLowerCase();
   const isConcierge =
     activeView === 'concierge' ||
     deptLower.includes('concierge') ||
     roleLower.includes('concierge') ||
     defaultDashLower === 'concierge';
+
+  const isKitchen =
+    activeView === 'kitchen' ||
+    deptLower.includes('kitchen') ||
+    deptLower.includes('bếp') ||
+    deptLower.includes('bep') ||
+    roleLower.includes('kitchen') ||
+    roleLower.includes('chef') ||
+    roleLower.includes('bếp') ||
+    usernameLower.includes('kitchen') ||
+    defaultDashLower === 'kitchen' ||
+    deptLower.includes('executive') ||
+    roleLower.includes('admin') ||
+    usernameLower === 'admin';
 
   const navItems = isConcierge
     ? [
@@ -37,12 +53,14 @@ export const MobileBottomNav = ({
         { id: 'Feedback', label: 'Đánh Giá', icon: Star },
         { id: 'Requests', label: t('menuRequests') || 'Yêu Cầu', icon: Inbox },
         { id: 'MyTasks', label: 'Cá Nhân', icon: ClipboardCheck },
+        ...(isKitchen ? [{ id: 'KitchenMenu', label: 'Menu', icon: UtensilsCrossed }] : []),
         { id: 'Notifications', label: t('menuNotifications') || 'Thông Báo', icon: Bell },
       ]
     : [
         { id: 'Dashboard', label: t('menuDashboard') || 'Tổng Quan', icon: LayoutDashboard },
         { id: 'Requests', label: t('menuRequests') || 'Yêu Cầu', icon: Inbox },
         { id: 'MyTasks', label: 'Cá Nhân', icon: ClipboardCheck },
+        ...(isKitchen ? [{ id: 'KitchenMenu', label: 'Menu', icon: UtensilsCrossed }] : []),
         { id: 'Notifications', label: t('menuNotifications') || 'Thông Báo', icon: Bell },
         { id: 'Profile', label: t('menuProfile') || 'Hồ Sơ', icon: User },
       ];

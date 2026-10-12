@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { InteractiveMapModal } from '../../components/dashboard/Modals';
 import { Pagination } from '../../components/common/Pagination';
 import { INITIAL_ROOM_SERVICE_DATA } from '../../data/mockHotelData';
 import {
@@ -68,7 +67,6 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
     lowStockAlerts: INITIAL_ROOM_SERVICE_DATA.lowStockAlerts.map(normalizeStock),
   });
   const [filter, setFilter] = useState('All');
-  const [isMapModalOpen, setIsMapModalOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 10;
 
@@ -514,27 +512,6 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
           </div>
 
           <aside className="space-y-4">
-            <article className="rounded-xl bg-[#F4F3F0] p-4 border border-[#E8E5E0]">
-              <h3 className="text-[11px] font-bold uppercase tracking-wider text-[#3E3A36]">{t('rsRobotChannel')}</h3>
-
-              <div className="mt-3 p-3 rounded-lg bg-white border border-[#E0DDD8] flex items-center justify-between">
-                <div>
-                  <p className="text-[12px] font-bold text-[#2C2926]">HCRobot Unit 01</p>
-                  <p className="text-[10px] text-emerald-700 font-semibold">{t('rsRobotOnline')}</p>
-                </div>
-                <span className="text-[11px] font-mono font-bold text-stone-700 bg-stone-100 px-2 py-0.5 rounded">
-                  96%
-                </span>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setIsMapModalOpen(true)}
-                className="mt-3 w-full rounded-lg border border-[#D3CFCA] bg-white py-2 text-[11px] font-semibold text-[#444] hover:bg-[#FAF9F7] cursor-pointer"
-              >
-                {t('rsViewMap')}
-              </button>
-            </article>
 
             <article className="rounded-xl bg-[#F4F3F0] p-4 border border-[#E8E5E0]">
               <h3 className="text-[11px] font-bold uppercase tracking-wider text-[#3E3A36]">{t('rsLowStockAlerts')}</h3>
@@ -553,11 +530,6 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
         </section>
       </div>
 
-      <InteractiveMapModal
-        isOpen={isMapModalOpen}
-        onClose={() => setIsMapModalOpen(false)}
-        title="HCRobot Delivery Fleet Live Map"
-      />
     </main>
   );
 };

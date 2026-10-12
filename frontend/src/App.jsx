@@ -28,6 +28,7 @@ import { UserProfileModal } from './components/common/UserProfileModal';
 // 5 Sidebar Staff Pages
 import { RequestsPage } from './pages/staff/RequestsPage';
 import { MyTasksPage } from './pages/staff/MyTasksPage';
+import { KitchenMenuManagementPage } from './pages/staff/KitchenMenuManagementPage';
 import { HistoryPage } from './pages/staff/HistoryPage';
 import { NotificationsPage } from './pages/staff/NotificationsPage';
 import { ProfilePage } from './pages/staff/ProfilePage';
@@ -700,7 +701,11 @@ export function App() {
               ) : activeView === 'room_service' ? (
                 <RoomServiceDashboard currentUser={currentUser} onNotify={showNotification} />
               ) : activeView === 'reception' ? (
-                <ReceptionDashboard currentUser={currentUser} onNotify={showNotification} />
+                <ReceptionDashboard
+                  currentUser={currentUser}
+                  onNotify={showNotification}
+                  onNavigate={(menu) => setActiveMenu(menu)}
+                />
               ) : activeView === 'housekeeping' ? (
                 <HousekeepingDashboard currentUser={currentUser} onNotify={showNotification} />
               ) : activeView === 'bell_services' ? (
@@ -757,6 +762,15 @@ export function App() {
               />
             )}
 
+            {/* Kitchen Menu Management Page (Food Catalog, Menus, Menu Items) */}
+            {activeMenu === 'KitchenMenu' && (
+              <KitchenMenuManagementPage
+                currentUser={currentUser}
+                onNotify={showNotification}
+                onNavigate={(menu) => setActiveMenu(menu)}
+              />
+            )}
+
             {/* History Page */}
             {activeMenu === 'History' && (
               <HistoryPage currentUser={currentUser} onNotify={showNotification} />
@@ -785,7 +799,7 @@ export function App() {
               />
             )}
             {/* Default Dashboard Fallback if activeMenu is unrecognized */}
-            {!['Dashboard', 'LiveCalls', 'Recordings', 'Taxi', 'Feedback', 'Requests', 'MyTasks', 'History', 'Notifications', 'Profile'].includes(activeMenu) && (
+            {!['Dashboard', 'LiveCalls', 'Recordings', 'Taxi', 'Feedback', 'Requests', 'MyTasks', 'KitchenMenu', 'History', 'Notifications', 'Profile'].includes(activeMenu) && (
               <RequestsPage currentUser={currentUser} onNotify={showNotification} onNavigate={(menu) => setActiveMenu(menu)} />
             )}
           </div>

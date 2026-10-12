@@ -688,46 +688,6 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
           <PhoneCall className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
           <span>Gọi Nhân Viên</span>
         </button>
-
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            setShowWorkflowMenu(!showWorkflowMenu);
-          }}
-          className="px-3.5 py-1.5 rounded-full bg-stone-900/85 hover:bg-stone-800 text-cyan-300 border border-cyan-500/40 text-xs font-black flex items-center gap-1.5 shadow-2xl backdrop-blur-md cursor-pointer transition-transform hover:scale-105"
-        >
-          <Sparkles className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
-          <span>Kịch Bản ({availableWorkflows.length})</span>
-        </button>
-
-        {showWorkflowMenu && (
-          <div className="absolute top-10 right-0 w-72 rounded-2xl bg-stone-900/95 border border-stone-700 shadow-2xl p-2.5 space-y-1.5 backdrop-blur-xl z-50 text-left animate-in fade-in zoom-in-95">
-            <div className="text-[10px] font-black uppercase text-stone-400 px-2 py-1 border-b border-stone-800 flex items-center justify-between">
-              <span>Chọn Kịch Bản Chạy Trên Robot</span>
-              <span className="text-cyan-400 font-mono">{availableWorkflows.length} Workflows</span>
-            </div>
-            <div className="max-h-60 overflow-y-auto space-y-1">
-              {availableWorkflows.map((wf) => (
-                <button
-                  key={wf.id}
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    startWorkflow(wf);
-                    setShowWorkflowMenu(false);
-                  }}
-                  className="w-full p-2 rounded-xl text-left text-xs font-semibold text-stone-200 hover:bg-cyan-500/20 hover:text-cyan-200 border border-transparent hover:border-cyan-500/30 transition-all cursor-pointer flex items-center justify-between"
-                >
-                  <span className="truncate">{wf.name}</span>
-                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-stone-800 text-stone-400 font-mono">
-                    {wf.steps?.length || 0}s
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
 
       <MobileRobotScreen
@@ -755,32 +715,9 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         onToggleLanguage={toggleLanguage}
         speechError={speechError}
         transcript={transcript}
-        workflowTrigger={
-          availableWorkflows.length > 0 ? (
-            <div className="relative">
-              <select
-                aria-label="Kích hoạt kịch bản mẫu"
-                onChange={(e) => {
-                  const wf = availableWorkflows.find((w) => String(w.id) === e.target.value);
-                  if (wf) startWorkflow(wf);
-                  e.target.value = '';
-                }}
-                defaultValue=""
-                className="h-8 px-2 rounded-full bg-white border border-stone-300 text-[10px] font-bold text-stone-700 outline-none cursor-pointer"
-              >
-                <option value="" disabled>Kịch bản</option>
-                {availableWorkflows.map((wf) => (
-                  <option key={wf.id} value={wf.id}>{wf.name}</option>
-                ))}
-              </select>
-            </div>
-          ) : null
-        }
         onOpenFoodMenu={() => setIsFoodMenuOpen(true)}
         navigationDestinationKey={navigationDestinationKey}
         onSelectDestination={setNavigationDestinationKey}
-        availableWorkflows={availableWorkflows}
-        onStartWorkflow={startWorkflow}
         onCallStaff={async () => {
           try {
             const req = await createConciergeRequest({

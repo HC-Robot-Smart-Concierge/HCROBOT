@@ -18,6 +18,7 @@ import { ConciergeDashboard } from './pages/dashboard/ConciergeDashboard';
 import { StaffOverviewDashboard } from './pages/dashboard/StaffOverviewDashboard';
 import { RobotScreenPage } from './pages/robot/RobotScreenPage';
 import { RobotFoodMenuScreen } from './components/robot/RobotFoodMenuScreen';
+import { GuestMapPage } from './pages/guest/GuestMapPage';
 import { AdminLidarPage } from './pages/admin/AdminLidarPage';
 import { AdminPortal } from './pages/admin/AdminPortal';
 import { FeedbackModal } from './components/common/FeedbackModal';
@@ -171,7 +172,12 @@ export function App() {
   }, []);
 
   const [activeView, setActiveView] = useState(() => {
-    const requestedView = new URLSearchParams(window.location.search).get('view');
+    const searchParams = new URLSearchParams(window.location.search);
+    const requestedView = searchParams.get('view');
+    const pathname = window.location.pathname;
+    if (pathname.includes('/guest-map') || requestedView === 'guest_map' || (searchParams.has('dest') && !requestedView)) {
+      return 'guest_map';
+    }
     if (requestedView === 'robot_display') return 'robot_display';
     if (requestedView === 'food_menu' || requestedView === 'order_food') return 'food_menu';
 
@@ -261,7 +267,7 @@ export function App() {
   useEffect(() => {
     // A. User not logged in (Guest)
     if (!currentUser) {
-      const isPublicRoute = ['landing', 'login', 'robot_display'].includes(activeView);
+      const isPublicRoute = ['landing', 'login', 'robot_display', 'food_menu', 'guest_map'].includes(activeView);
       if (!isPublicRoute) {
         // Any attempt to view admin or staff dashboards requires login
         setActiveView('login');
@@ -630,6 +636,13 @@ export function App() {
         </div>
       )}
 
+      {/* 3c. Màn hình Bản đồ Mobile dành cho Khách Quét QR */}
+      {activeView === 'guest_map' && (
+        <div className="w-full h-full relative overflow-y-auto">
+          <GuestMapPage />
+        </div>
+      )}
+
       {activeView === 'admin_map' && (
         <div className="w-full h-full relative">
           <AdminLidarPage />
@@ -819,7 +832,7 @@ export function App() {
       )}
 
       {/* 5. Fallback Safety Render in case activeView is desynchronized */}
-      {!['landing', 'login', 'robot_display', 'admin_map', 'admin_portal'].includes(activeView) && !isDashboardView && (
+      {!['landing', 'login', 'robot_display', 'admin_map', 'admin_portal', 'food_menu', 'guest_map'].includes(activeView) && !isDashboardView && (
         <LandingHomePage
           currentUser={currentUser}
           onNavigateToLogin={() => {

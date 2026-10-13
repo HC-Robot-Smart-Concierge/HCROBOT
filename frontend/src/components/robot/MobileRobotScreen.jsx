@@ -145,22 +145,21 @@ export const MobileRobotScreen = ({
               </button>
             )}
             {guestEmotion && (
-              <span 
-                className={`text-[10px] font-bold px-2 py-0.5 rounded-full border flex items-center transition-all ${
-                  guestEmotion === 'happy'
+              <span
+                className={`text-[10px] font-bold px-2 py-0.5 rounded-full border flex items-center transition-all ${guestEmotion === 'happy'
                     ? 'bg-stone-800 text-stone-200 border-stone-700'
                     : guestEmotion === 'unhappy'
-                    ? 'bg-stone-800 text-stone-300 border-stone-700'
-                    : 'bg-stone-900 text-stone-400 border-stone-800'
-                }`}
+                      ? 'bg-stone-800 text-stone-300 border-stone-700'
+                      : 'bg-stone-900 text-stone-400 border-stone-800'
+                  }`}
                 title="Cảm xúc khuôn mặt nhận diện từ Camera Laptop"
               >
                 <span>{guestEmotion === 'happy' ? 'Vui vẻ' : guestEmotion === 'unhappy' ? 'Khó chịu' : 'Bình thường'}</span>
               </span>
             )}
 
-            <button 
-              onClick={onToggleLanguage} 
+            <button
+              onClick={onToggleLanguage}
               className="h-8 min-w-9 px-2 rounded-full bg-white hover:bg-stone-50 border border-stone-300 text-[10px] font-bold active:scale-95 shadow-xs cursor-pointer"
             >
               {language === 'English' ? 'EN' : 'VI'}
@@ -170,11 +169,10 @@ export const MobileRobotScreen = ({
             <button
               type="button"
               onClick={() => setIsUtilitiesMenuOpen((prev) => !prev)}
-              className={`h-8 px-3 rounded-full border text-[10px] font-black flex items-center gap-1.5 active:scale-95 shadow-xs cursor-pointer transition-all ${
-                isUtilitiesMenuOpen || isNavigating
+              className={`h-8 px-3 rounded-full border text-[10px] font-black flex items-center gap-1.5 active:scale-95 shadow-xs cursor-pointer transition-all ${isUtilitiesMenuOpen || isNavigating
                   ? 'bg-stone-900 text-white border-stone-900 shadow-sm'
                   : 'bg-white hover:bg-stone-50 border-stone-300 text-stone-900'
-              }`}
+                }`}
               title="Danh sách tiện ích & chức năng"
             >
               <Sparkles className="w-3 h-3 text-amber-500" />
@@ -381,10 +379,10 @@ export const MobileRobotScreen = ({
                 className="w-full flex-1 min-h-0 flex items-center justify-center active:scale-[0.98] disabled:opacity-70 transition-transform cursor-pointer"
                 aria-label="Bắt đầu trò chuyện với Robot"
               >
-                <RobotFace 
-                  mode={getRobotMode(currentState, isSpeaking, isProcessing, isListening)} 
+                <RobotFace
+                  mode={getRobotMode(currentState, isSpeaking, isProcessing, isListening)}
                   isSpeakingActive={isSpeaking}
-                  compact 
+                  compact
                 />
               </button>
               <div className="shrink-0 text-center pb-3">

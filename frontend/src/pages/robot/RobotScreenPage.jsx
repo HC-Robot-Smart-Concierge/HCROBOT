@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { RobotFace } from '../../components/robot/RobotFace';
 import { AudioWave } from '../../components/robot/AudioWave';
 import { FloorMap, HOTEL_DESTINATIONS } from '../../components/robot/FloorMap';
-import { PhoneCall, Sparkles, RefreshCw } from 'lucide-react';
+import { PhoneCall, Sparkles, RefreshCw, Smartphone, QrCode } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import { CameraPreview } from '../../components/robot/CameraPreview';
 import { MobileRobotScreen } from '../../components/robot/MobileRobotScreen';
 import { RobotFoodMenuScreen } from '../../components/robot/RobotFoodMenuScreen';
@@ -167,7 +168,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     } else {
       speak('Rora xin ghi nhận ý kiến để hoàn thiện hơn. Cảm ơn quý khách.');
     }
-    flushSession(sessionId).catch(() => {});
+    flushSession(sessionId).catch(() => { });
     setCurrentState('RT-02');
   }, [sessionId, speak]);
 
@@ -293,7 +294,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     startListening(language);
   };
 
-    // 2. Gửi tới Ollama RAG Backend
+  // 2. Gửi tới Ollama RAG Backend
   const handleStopTalkAndProcess = async (userText) => {
     if (isProcessingRef.current || isSpeaking) return;
     if (silenceTimerRef.current) {
@@ -611,18 +612,18 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   const robotFaceMode = isWorkflowRunning && (activeStep?.params?.emotion === 'happy' || activeStep?.params?.emotion === 'smile')
     ? 'happy'
     : isSpeaking
-    ? 'speaking'
-    : (isWorkflowRunning && activeStep?.type === 'LISTEN')
-    ? 'listening'
-    : (isWorkflowRunning && activeStep?.type === 'GREET')
-    ? 'welcome'
-    : currentState === 'RT-01'
-    ? 'sleeping'
-    : currentState === 'RT-03'
-    ? 'listening'
-    : currentState === 'RT-04'
-    ? 'processing'
-    : 'welcome';
+      ? 'speaking'
+      : (isWorkflowRunning && activeStep?.type === 'LISTEN')
+        ? 'listening'
+        : (isWorkflowRunning && activeStep?.type === 'GREET')
+          ? 'welcome'
+          : currentState === 'RT-01'
+            ? 'sleeping'
+            : currentState === 'RT-03'
+              ? 'listening'
+              : currentState === 'RT-04'
+                ? 'processing'
+                : 'welcome';
 
   return (
     <div className="w-full h-[100dvh] bg-aurora-canvas overflow-hidden font-sans select-none relative">
@@ -897,11 +898,10 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                           e.stopPropagation();
                           updateSpeechRate(opt.value);
                         }}
-                        className={`py-1 text-[10px] font-bold rounded-lg border transition-all cursor-pointer ${
-                          Math.abs(speechRate - opt.value) < 0.01
+                        className={`py-1 text-[10px] font-bold rounded-lg border transition-all cursor-pointer ${Math.abs(speechRate - opt.value) < 0.01
                             ? 'bg-amber-500 text-stone-950 border-amber-400 shadow-sm'
                             : 'bg-stone-800/80 hover:bg-stone-700 text-stone-300 border-stone-700/60'
-                        }`}
+                          }`}
                       >
                         {opt.label}
                       </button>
@@ -1019,6 +1019,27 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                       </span>
                     </div>
                   )}
+                </div>
+
+                {/* Mobile QR Handoff Card (Quét QR mang theo bản đồ trên điện thoại) */}
+                <div className="w-full p-3 bg-gradient-to-r from-emerald-950/85 via-stone-900/90 to-stone-900/90 rounded-2xl border border-emerald-500/35 flex items-center gap-3.5 shadow-md">
+                  <div className="p-1.5 bg-white rounded-xl shrink-0 shadow-sm flex items-center justify-center">
+                    <QRCodeSVG
+                      value={`${window.location.origin}/guest-map?dest=${navigationDestinationKey}`}
+                      size={82}
+                      level="M"
+                      includeMargin={false}
+                    />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 text-emerald-400 font-bold text-xs uppercase tracking-wide">
+                      <Smartphone className="w-3.5 h-3.5" />
+                      <span>Quét QR lưu chỉ dẫn</span>
+                    </div>
+                    <p className="text-[11px] text-stone-200 font-medium leading-tight mt-1">
+                      Quý khách có thể quét mã QR trên màn hình để ghi nhớ 2 chặng chỉ dẫn trên điện thoại nhé ạ.
+                    </p>
+                  </div>
                 </div>
 
                 {/* Reset Action */}

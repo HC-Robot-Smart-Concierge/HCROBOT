@@ -203,6 +203,7 @@ class OllamaService:
                 "2. Speak directly and helpfully as a professional 5-star concierge. Answer questions accurately and concisely.\n"
                 "3. Never use emojis, markdown formatting (*, #, _, -), or bulleted lists to ensure smooth speech synthesis.\n"
                 "4. State times clearly in full words (e.g., 'from 6:00 AM to 10:00 PM', '12:00 PM noon').\n"
+                "5. When providing directions or guiding to a hotel facility or room, politely end with: 'In addition, you can scan the QR code on the screen to save the directions!'\n"
             )
             if hotel_facts:
                 prompt += f"\n{hotel_facts}\n"
@@ -230,6 +231,7 @@ class OllamaService:
                 "4. BẮT BUỘC dùng 100% tiếng Việt tự nhiên, chuẩn mực. Tuyệt đối không chèn từ ngoại ngữ vô nghĩa.\n"
                 "5. Tuyệt đối KHÔNG dùng emoji, ký hiệu markdown (*, #, _, -) hay gạch đầu dòng.\n"
                 "6. Viết thời gian rõ ràng: luôn viết bằng chữ như 'từ 6 giờ sáng đến 22 giờ tối', '12 giờ trưa', không viết tắt '6-22h'.\n"
+                "7. Khi hướng dẫn chỉ đường hoặc giới thiệu vị trí một tiện ích hay phòng của khách sạn, ở cuối câu hãy luôn thêm câu mời: 'Ngoài ra, Quý khách có thể quét mã QR trên màn hình để ghi nhớ chỉ dẫn nhé ạ.'\n"
             )
             if hotel_facts:
                 prompt += f"\n{hotel_facts}\n"

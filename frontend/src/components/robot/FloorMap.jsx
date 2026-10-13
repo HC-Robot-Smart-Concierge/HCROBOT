@@ -21,7 +21,10 @@ import {
   X,
   ChevronUp,
   ChevronDown,
+  QrCode,
+  Smartphone,
 } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 
 // Danh sách cấu hình 8 Tầng trong khách sạn
 export const HOTEL_FLOORS = [
@@ -202,10 +205,56 @@ export const HOTEL_DESTINATIONS = {
     coords: { x: 950, y: 520 },
     routeTarget: 'M 1249 410 L 1249 470 C 1249 480, 1220 480, 1150 480 L 950 520',
   },
+  parking_bike: {
+    id: 'parking_bike',
+    name: 'Bãi Giữ Xe Máy (Hầm B1)',
+    floorId: '2',
+    floorLevel: 'HẦM B1',
+    category: 'Bãi Xe & Vận Chuyển',
+    icon: '🏍️',
+    time: '2 Phút',
+    distance: '85m',
+    isDifferentFloor: true,
+    step1Text: 'Chặng 1: Di chuyển tới Thang máy A và bấm xuống Hầm B1.',
+    step2Text: 'Chặng 2: Ra khỏi thang máy, rẽ phải vào khu vực giữ xe máy an toàn.',
+    coords: { x: 950, y: 520 },
+    routeTarget: 'M 1249 410 L 1249 470 C 1249 480, 1220 480, 1150 480 L 950 520',
+  },
+  gift_shop: {
+    id: 'gift_shop',
+    name: 'Cửa Hàng Lưu Niệm (Gift Shop)',
+    floorId: '8',
+    floorLevel: 'TẦNG 6',
+    category: 'Mua Sắm & Quà Tặng',
+    icon: '🎁',
+    time: '4 Phút',
+    distance: '120m',
+    isDifferentFloor: true,
+    step1Text: 'Chặng 1: Di chuyển tới Thang máy A và bấm lên Tầng 6.',
+    step2Text: 'Chặng 2: Ra khỏi thang máy, rẽ trái đi vào sảnh trung tâm là đến Quầy quà lưu niệm.',
+    coords: { x: 950, y: 420 },
+    routeTarget: 'M 1249 410 L 1249 470 C 1249 480, 1220 480, 1150 480 L 950 420',
+  },
 };
 
 // Tuyến đường chuẩn chặng 1: Từ Lobby (Ground) -> Thang máy A
-const ROUTE_GROUND_TO_ELEVATOR = 'M 796 545 C 850 545, 880 545, 908 545 C 935 545, 955 480, 990 480 L 1210 480 C 1235 480, 1249 460, 1249 410';
+export const ROUTE_GROUND_TO_ELEVATOR = 'M 796 545 C 850 545, 880 545, 908 545 C 935 545, 955 480, 990 480 L 1210 480 C 1235 480, 1249 460, 1249 410';
+
+// Hàm tạo URL chỉ đường di động tối ưu cho quét QR (Tự động map IP LAN 192.168.1.149 nếu máy tính mở qua localhost)
+export const getMobileGuestMapUrl = (destKey) => {
+  try {
+    const origin = window.location.origin;
+    const hostname = window.location.hostname;
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      const port = window.location.port ? `:${window.location.port}` : ':3000';
+      const lanIp = localStorage.getItem('aurora_custom_lan_ip') || '192.168.1.149';
+      return `${window.location.protocol}//${lanIp}${port}/guest-map?dest=${destKey}`;
+    }
+    return `${origin}/guest-map?dest=${destKey}`;
+  } catch {
+    return `http://192.168.1.149:3000/guest-map?dest=${destKey}`;
+  }
+};
 
 export const FloorMap = ({
   destinationKey = 'infinity_pool',
@@ -230,6 +279,7 @@ export const FloorMap = ({
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [showInstructionBanner, setShowInstructionBanner] = useState(true);
+  const [showQrModal, setShowQrModal] = useState(false);
 
   // Tầng đang hiển thị ảnh trên màn hình
   // Nếu chặng 1 -> Tầng 3 (Ground). Nếu chặng 2 -> Tầng mục tiêu của điểm đến.
@@ -346,6 +396,17 @@ export const FloorMap = ({
                 </button>
               </div>
             )}
+
+            {/* Nút Quét QR lưu vào điện thoại */}
+            <button
+              type="button"
+              onClick={() => setShowQrModal(true)}
+              className="h-8 px-2.5 rounded-full bg-stone-900/90 hover:bg-stone-800 text-emerald-400 border border-emerald-500/40 text-[10px] sm:text-xs font-bold flex items-center gap-1 active:scale-95 shadow-xl cursor-pointer"
+              title="Quét mã QR lưu chỉ dẫn trên điện thoại"
+            >
+              <QrCode className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">QR Điện Thoại</span>
+            </button>
 
             {/* Nút Đã nhớ */}
             {onClose && (
@@ -634,6 +695,87 @@ export const FloorMap = ({
             <ChevronUp className="w-3 h-3 text-emerald-400" />
             <span>Chỉ dẫn chặng {activeStep}</span>
           </button>
+        )}
+
+        {/* THẺ MÃ QR HIỆN SẴN TRỰC TIẾP TRÊN BẢN ĐỒ (Quét ngay không cần bấm nút) */}
+        <div
+          onClick={() => setShowQrModal(true)}
+          className="absolute bottom-16 left-2.5 z-20 bg-stone-950/92 backdrop-blur-md p-2 rounded-2xl border border-emerald-500/50 shadow-2xl flex items-center gap-2.5 cursor-pointer hover:border-emerald-400 hover:scale-[1.03] transition-all group animate-fadeIn"
+          title="Chạm vào để phóng to mã QR"
+        >
+          <div className="p-1 bg-white rounded-xl shrink-0 shadow-sm">
+            <QRCodeSVG
+              value={getMobileGuestMapUrl(currentDest.id)}
+              size={64}
+              level="M"
+              includeMargin={false}
+            />
+          </div>
+          <div className="flex flex-col pr-1 text-left">
+            <div className="flex items-center gap-1 text-[11px] font-extrabold text-emerald-400 uppercase tracking-wide">
+              <Smartphone className="w-3.5 h-3.5" />
+              <span>Quét Lưu Chỉ Dẫn</span>
+            </div>
+            <p className="text-[10px] text-stone-200 font-medium leading-tight mt-0.5 max-w-[140px]">
+              Mang theo bản đồ 2 chặng trên điện thoại
+            </p>
+            <span className="text-[9px] text-emerald-400/80 font-bold mt-0.5 group-hover:text-emerald-300 transition-colors">
+              Chạm để phóng to ↗
+            </span>
+          </div>
+        </div>
+
+        {/* Modal Quét Mã QR Phóng To Trên Kiosk */}
+        {showQrModal && (
+          <div
+            className="absolute inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 animate-fadeIn"
+            onClick={() => setShowQrModal(false)}
+          >
+            <div
+              className="w-[360px] max-w-[95%] bg-stone-900 border border-emerald-500/40 rounded-3xl p-5 shadow-2xl flex flex-col items-center gap-4 text-center text-white"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between w-full border-b border-stone-800 pb-2.5">
+                <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs uppercase tracking-wider">
+                  <Smartphone className="w-4 h-4" />
+                  <span>Lưu Bản Đồ Trên Điện Thoại</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowQrModal(false)}
+                  className="w-7 h-7 rounded-full bg-stone-800 text-stone-300 hover:text-white flex items-center justify-center cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="p-3 bg-white rounded-2xl shadow-xl flex items-center justify-center">
+                <QRCodeSVG
+                  value={getMobileGuestMapUrl(currentDest.id)}
+                  size={190}
+                  level="H"
+                  includeMargin={false}
+                />
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <h4 className="font-extrabold text-sm text-stone-100">
+                  {currentDest.name} ({currentDest.floorLevel})
+                </h4>
+                <p className="text-xs text-stone-300 leading-relaxed">
+                  Quý khách vui lòng bật camera điện thoại để quét mã QR và xem sơ đồ 2 chặng đường đi trực tiếp nhé ạ.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowQrModal(false)}
+                className="w-full py-2.5 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-200 text-xs font-bold transition cursor-pointer"
+              >
+                Đóng
+              </button>
+            </div>
+          </div>
         )}
       </div>
 

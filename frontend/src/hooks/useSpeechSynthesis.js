@@ -43,6 +43,23 @@ export const useSpeechSynthesis = () => {
     window.speechSynthesis.onvoiceschanged = updateVoices;
   }, []);
 
+  // Sync speech rate from BroadcastChannel across tabs (Admin -> Robot Screen)
+  useEffect(() => {
+    let bc;
+    try {
+      bc = new BroadcastChannel('hcrobot_voice_settings');
+      bc.onmessage = (event) => {
+        if (event.data?.type === 'VOICE_SETTINGS_UPDATED' && event.data?.speech_rate) {
+          const clamped = Math.max(0.5, Math.min(2.0, parseFloat(event.data.speech_rate) || 1.0));
+          setSpeechRateState(clamped);
+        }
+      };
+    } catch {}
+    return () => {
+      if (bc) bc.close();
+    };
+  }, []);
+
   // Unlock TTS Audio Engine on Mobile / Kiosk Gesture
   const prime = () => {
     if (!('speechSynthesis' in window)) return;

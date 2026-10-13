@@ -13,7 +13,7 @@ import { useNotificationWebSocket } from '../../hooks/useNotificationWebSocket';
 
 import { useSpeechRecognition } from '../../hooks/useSpeechRecognition';
 import { useSpeechSynthesis } from '../../hooks/useSpeechSynthesis';
-import { sendChatPrompt, resetSession, flushSession } from '../../services/aiApi';
+import { sendChatPrompt, resetSession, flushSession, getVoiceSettings } from '../../services/aiApi';
 
 import { MessengerVideoCallModal } from '../../components/video/MessengerVideoCallModal';
 import { RobotQuickFeedbackModal } from '../../components/robot/RobotQuickFeedbackModal';
@@ -90,6 +90,17 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       })
       .catch((err) => console.warn('Could not load workflows:', err));
   }, []);
+
+  // Sync global robot voice settings from Backend
+  useEffect(() => {
+    getVoiceSettings()
+      .then((data) => {
+        if (data?.speech_rate) {
+          updateSpeechRate(data.speech_rate);
+        }
+      })
+      .catch((err) => console.warn('Could not fetch voice settings:', err));
+  }, [updateSpeechRate]);
 
   // Workflow Native Runner Hook (tích hợp Micro & Loa máy tính)
   const {

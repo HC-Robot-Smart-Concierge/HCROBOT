@@ -18,6 +18,8 @@ from app.schemas.ai import (
     SessionResetRequest,
     TTSRequest,
     TTSResponse,
+    VoiceSettingsRequest,
+    VoiceSettingsResponse,
     FeedbackCreate,
     FeedbackResponse,
 )
@@ -359,6 +361,22 @@ async def synthesize_voice_speech(request: TTSRequest):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)
         )
+
+
+@router.get("/voice-settings", response_model=VoiceSettingsResponse, summary="Lấy cấu hình tốc độ và giọng nói AI của Robot")
+async def get_robot_voice_settings():
+    """Lấy tốc độ phát âm thanh và giọng nói hiện tại của hệ thống Concierge Robot."""
+    return tts_service.get_voice_settings()
+
+
+@router.post("/voice-settings", response_model=VoiceSettingsResponse, summary="Admin cập nhật tốc độ và giọng nói AI của Robot")
+async def update_robot_voice_settings(req: VoiceSettingsRequest):
+    """Admin điều chỉnh tốc độ nói (0.5x - 2.0x) và giọng đọc của Robot trên toàn hệ thống."""
+    return tts_service.update_voice_settings(
+        speech_rate=req.speech_rate,
+        vi_voice=req.vi_voice,
+        en_voice=req.en_voice,
+    )
 
 
 @router.websocket("/ws/pipecat")

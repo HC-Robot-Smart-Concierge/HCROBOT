@@ -361,5 +361,60 @@ export const transcribeAudio = async (audioBlob, language = 'vi') => {
   }
 };
 
+/**
+ * Lấy cấu hình tốc độ phát và giọng nói hiện tại từ Backend
+ */
+export const getVoiceSettings = async () => {
+  try {
+    const res = await fetch(`${API_BASE_URL}/voice-settings`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } catch (err) {
+    console.warn('[AIApi] getVoiceSettings error:', err.message);
+    const saved = typeof window !== 'undefined' ? localStorage.getItem('rora_speech_rate') : null;
+    return {
+      speech_rate: saved ? parseFloat(saved) : 1.0,
+      rate_percentage: '+0%',
+      vi_voice: 'vi-VN-HoaiMyNeural',
+      en_voice: 'en-US-JennyNeural',
+    };
+  }
+};
+
+/**
+ * Admin cập nhật cấu hình tốc độ phát và giọng nói toàn hệ thống
+ */
+export const updateVoiceSettings = async ({ speech_rate, vi_voice, en_voice }) => {
+  try {
+    const res = await fetch(`${API_BASE_URL}/voice-settings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ speech_rate, vi_voice, en_voice }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('rora_speech_rate', data.speech_rate.toString());
+      try {
+        const bc = new BroadcastChannel('hcrobot_voice_settings');
+        bc.postMessage({ type: 'VOICE_SETTINGS_UPDATED', ...data });
+        bc.close();
+      } catch {}
+    }
+    return data;
+  } catch (err) {
+    console.warn('[AIApi] updateVoiceSettings error:', err.message);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('rora_speech_rate', speech_rate.toString());
+    }
+    return {
+      speech_rate,
+      rate_percentage: '+0%',
+      vi_voice: vi_voice || 'vi-VN-HoaiMyNeural',
+      en_voice: en_voice || 'en-US-JennyNeural',
+    };
+  }
+};
+
 
 

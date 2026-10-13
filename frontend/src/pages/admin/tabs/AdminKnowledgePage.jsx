@@ -6,6 +6,8 @@ import {
   deleteScenario,
   reloadScenariosCache,
 } from '../../../services/scenariosApi';
+import { getVoiceSettings, updateVoiceSettings } from '../../../services/aiApi';
+import { useSpeechSynthesis } from '../../../hooks/useSpeechSynthesis';
 import { Pagination } from '../../../components/common/Pagination';
 import {
   Plus,
@@ -22,6 +24,9 @@ import {
   Layers,
   X,
   Sparkles,
+  Volume2,
+  Play,
+  Square,
 } from 'lucide-react';
 
 const CATEGORY_MAP = {
@@ -60,11 +65,76 @@ export const AdminKnowledgePage = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 8;
 
-  // Modal State
+  // Scenario Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [formData, setFormData] = useState(DEFAULT_FORM_STATE);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Robot Voice Settings State
+  const [isVoiceModalOpen, setIsVoiceModalOpen] = useState(false);
+  const [voiceSettings, setVoiceSettings] = useState({
+    speech_rate: 1.0,
+    rate_percentage: '+0%',
+    vi_voice: 'vi-VN-HoaiMyNeural',
+    en_voice: 'en-US-JennyNeural',
+  });
+  const [tempRate, setTempRate] = useState(1.0);
+  const [tempVoice, setTempVoice] = useState('vi-VN-HoaiMyNeural');
+  const [isSavingVoice, setIsSavingVoice] = useState(false);
+
+  const { speak: testSpeak, cancel: stopTestSpeak, isSpeaking: isTestSpeaking } = useSpeechSynthesis();
+
+  // Load Voice Settings on Mount
+  useEffect(() => {
+    getVoiceSettings()
+      .then((data) => {
+        if (data) {
+          setVoiceSettings(data);
+          setTempRate(data.speech_rate || 1.0);
+          setTempVoice(data.vi_voice || 'vi-VN-HoaiMyNeural');
+        }
+      })
+      .catch((err) => console.warn('Could not load voice settings:', err));
+  }, []);
+
+  const handleOpenVoiceModal = () => {
+    setTempRate(voiceSettings.speech_rate || 1.0);
+    setTempVoice(voiceSettings.vi_voice || 'vi-VN-HoaiMyNeural');
+    setIsVoiceModalOpen(true);
+  };
+
+  const handleCloseVoiceModal = () => {
+    stopTestSpeak();
+    setIsVoiceModalOpen(false);
+  };
+
+  const handleTestVoice = () => {
+    if (isTestSpeaking) {
+      stopTestSpeak();
+      return;
+    }
+    const sampleText = 'Dạ em chào quý khách! Em là robot lễ tân Rora. Chúc quý khách kỳ nghỉ tuyệt vời tại khách sạn Aurora Grand!';
+    testSpeak(sampleText, 'vi-VN', null, null, null, tempRate);
+  };
+
+  const handleSaveVoiceSettings = async () => {
+    setIsSavingVoice(true);
+    stopTestSpeak();
+    try {
+      const updated = await updateVoiceSettings({
+        speech_rate: tempRate,
+        vi_voice: tempVoice,
+      });
+      setVoiceSettings(updated);
+      setIsVoiceModalOpen(false);
+      showNotification(`Đã cập nhật tốc độ nói của Robot: ${tempRate}x (${updated.rate_percentage})`);
+    } catch (err) {
+      showNotification(`Lỗi cập nhật cấu hình giọng nói: ${err.message}`);
+    } finally {
+      setIsSavingVoice(false);
+    }
+  };
 
   const showNotification = (msg) => {
     setActionMessage(msg);
@@ -260,6 +330,20 @@ export const AdminKnowledgePage = () => {
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
             <span>Tải Lại RAM Cache</span>
+          </button>
+
+          <button
+            onClick={handleOpenVoiceModal}
+            className="px-3 py-1.5 rounded-lg border text-xs font-semibold cursor-pointer transition-colors flex items-center gap-1.5"
+            style={{
+              backgroundColor: '#FFFFFF',
+              color: '#262626',
+              borderColor: '#BFBFBD',
+            }}
+            title="Cài đặt tốc độ nói và giọng phát âm AI của Robot"
+          >
+            <Volume2 className="w-3.5 h-3.5 text-indigo-600" />
+            <span>Tốc Độ Nói: {voiceSettings.speech_rate}x</span>
           </button>
 
           <button
@@ -766,6 +850,166 @@ export const AdminKnowledgePage = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      {/* MODAL CÀI ĐẶT TỐC ĐỘ NÓI & GIỌNG AI */}
+      {isVoiceModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+          <div
+            className="w-full max-w-md rounded-2xl border shadow-2xl p-5 space-y-4 animate-in zoom-in-95"
+            style={{ backgroundColor: '#F2EFE9', borderColor: '#BFBFBD' }}
+          >
+            <div className="flex items-center justify-between pb-3 border-b" style={{ borderColor: '#E9E5DC' }}>
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-indigo-100 flex items-center justify-center text-indigo-700">
+                  <Volume2 className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold" style={{ color: '#262626' }}>
+                    Cấu Hình Tốc Độ Nói Robot
+                  </h3>
+                  <p className="text-[11px]" style={{ color: '#8C8C8C' }}>
+                    EdgeTTS Neural & Kiosk Speech Synthesis
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleCloseVoiceModal}
+                className="p-1 rounded-lg hover:bg-black/5 cursor-pointer text-stone-500"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-4 text-xs">
+              {/* Tốc độ đọc */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-stone-700">
+                    Tốc độ phát âm ({tempRate}x)
+                  </label>
+                  <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                    {tempRate === 1.0 ? 'Chuẩn (1.0x)' : tempRate < 1.0 ? `Chậm (${tempRate}x)` : `Nhanh (${tempRate}x)`}
+                  </span>
+                </div>
+
+                <div className="p-3 bg-white rounded-xl border space-y-3" style={{ borderColor: '#E9E5DC' }}>
+                  <input
+                    type="range"
+                    min="0.5"
+                    max="1.5"
+                    step="0.05"
+                    value={tempRate}
+                    onChange={(e) => setTempRate(parseFloat(e.target.value))}
+                    className="w-full accent-amber-600 cursor-pointer h-2 bg-stone-200 rounded-lg appearance-none"
+                  />
+
+                  <div className="grid grid-cols-5 gap-1 pt-1">
+                    {[
+                      { label: '0.75x', val: 0.75 },
+                      { label: '0.85x', val: 0.85 },
+                      { label: '1.0x', val: 1.0 },
+                      { label: '1.15x', val: 1.15 },
+                      { label: '1.25x', val: 1.25 },
+                    ].map((opt) => (
+                      <button
+                        key={opt.val}
+                        type="button"
+                        onClick={() => setTempRate(opt.val)}
+                        className={`py-1 text-[10px] font-bold rounded-lg border transition-all cursor-pointer ${
+                          Math.abs(tempRate - opt.val) < 0.01
+                            ? 'bg-amber-500 text-stone-950 border-amber-400 shadow-sm'
+                            : 'bg-stone-50 hover:bg-stone-100 text-stone-700 border-stone-200'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Lựa chọn giọng đọc */}
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-700 mb-1.5">
+                  Giọng Đọc EdgeTTS Neural
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { id: 'vi-VN-HoaiMyNeural', name: 'Hoài My (Nữ)', desc: 'Tự nhiên, nhẹ nhàng' },
+                    { id: 'vi-VN-NamMinhNeural', name: 'Nam Minh (Nam)', desc: 'Ấm áp, truyền cảm' },
+                  ].map((voice) => (
+                    <button
+                      key={voice.id}
+                      type="button"
+                      onClick={() => setTempVoice(voice.id)}
+                      className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                        tempVoice === voice.id
+                          ? 'bg-indigo-50/80 border-indigo-400 ring-1 ring-indigo-400'
+                          : 'bg-white border-stone-200 hover:bg-stone-50'
+                      }`}
+                    >
+                      <div className="text-xs font-bold text-stone-800">{voice.name}</div>
+                      <div className="text-[10px] text-stone-500">{voice.desc}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Nút nghe thử trực tiếp */}
+              <div className="p-3 bg-stone-100 rounded-xl border flex items-center justify-between gap-3" style={{ borderColor: '#E9E5DC' }}>
+                <div className="min-w-0">
+                  <div className="text-xs font-bold text-stone-800 truncate">Nghe thử câu chào mẫu</div>
+                  <div className="text-[10px] text-stone-500 truncate">Kiểm tra tốc độ trước khi áp dụng</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleTestVoice}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                    isTestSpeaking
+                      ? 'bg-rose-600 text-white animate-pulse'
+                      : 'bg-stone-900 text-stone-100 hover:bg-stone-800'
+                  }`}
+                >
+                  {isTestSpeaking ? (
+                    <>
+                      <Square className="w-3.5 h-3.5 fill-current" />
+                      <span>Dừng</span>
+                    </>
+                  ) : (
+                    <>
+                      <Play className="w-3.5 h-3.5 fill-current" />
+                      <span>Nghe Thử</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            <div className="pt-3 border-t flex items-center justify-end gap-2" style={{ borderColor: '#E9E5DC' }}>
+              <button
+                type="button"
+                onClick={handleCloseVoiceModal}
+                className="px-4 py-2 rounded-lg border text-xs font-semibold hover:bg-gray-100 transition-colors cursor-pointer"
+                style={{ borderColor: '#BFBFBD', color: '#262626' }}
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveVoiceSettings}
+                disabled={isSavingVoice}
+                className="px-4 py-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer flex items-center gap-1.5"
+                style={{
+                  backgroundColor: '#262626',
+                  color: '#F2EFE9',
+                }}
+              >
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                <span>{isSavingVoice ? 'Đang lưu...' : 'Lưu & Áp Dụng Ngay'}</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

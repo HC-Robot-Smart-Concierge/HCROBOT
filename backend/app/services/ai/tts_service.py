@@ -21,6 +21,8 @@ class TTSService:
     def __init__(self):
         self.default_vi_voice = "vi-VN-HoaiMyNeural"
         self.default_en_voice = "en-US-JennyNeural"
+        self.current_rate: float = 1.0
+        self.current_rate_str: str = "+0%"
         
         # 1. Memory LRU/Cache
         self._memory_cache: Dict[str, str] = {}
@@ -32,6 +34,42 @@ class TTSService:
             os.makedirs(self._cache_dir, exist_ok=True)
         except Exception as e:
             logger.warning(f"[TTSService] Cannot create audio_cache dir: {e}")
+
+    @staticmethod
+    def rate_float_to_percentage(rate: float) -> str:
+        """Chuyển đổi tốc độ float (0.5 - 2.0) sang chuỗi phần trăm EdgeTTS (+10%, -15%, +0%)"""
+        clamped = max(0.5, min(2.0, float(rate)))
+        diff = round((clamped - 1.0) * 100)
+        return f"+{diff}%" if diff >= 0 else f"{diff}%"
+
+    def get_voice_settings(self) -> dict:
+        """Lấy cấu hình giọng nói và tốc độ hiện tại của robot"""
+        rate = getattr(self, "current_rate", 1.0)
+        return {
+            "speech_rate": rate,
+            "rate_percentage": self.rate_float_to_percentage(rate),
+            "vi_voice": self.default_vi_voice,
+            "en_voice": self.default_en_voice,
+        }
+
+    def update_voice_settings(
+        self,
+        speech_rate: float = 1.0,
+        vi_voice: Optional[str] = None,
+        en_voice: Optional[str] = None,
+    ) -> dict:
+        """Cập nhật tốc độ đọc và giọng nói của robot trên toàn hệ thống"""
+        clamped_rate = max(0.5, min(2.0, float(speech_rate)))
+        self.current_rate = clamped_rate
+        rate_str = self.rate_float_to_percentage(clamped_rate)
+        self.current_rate_str = rate_str
+        settings.TTS_RATE = rate_str
+        if vi_voice:
+            self.default_vi_voice = vi_voice
+        if en_voice:
+            self.default_en_voice = en_voice
+        logger.info(f"[TTSService] Cập nhật cấu hình giọng nói AI: rate={clamped_rate} ({rate_str}), vi_voice={self.default_vi_voice}")
+        return self.get_voice_settings()
 
     @staticmethod
     def is_vietnamese(text: str) -> bool:
@@ -92,7 +130,7 @@ class TTSService:
             return "", "audio/mp3", "none"
 
         selected_provider = (provider or settings.TTS_PROVIDER or "edge").lower()
-        target_rate = rate or getattr(settings, "TTS_RATE", "+0%")
+        target_rate = rate or getattr(self, "current_rate_str", getattr(settings, "TTS_RATE", "+0%"))
         if language and any(en in language.lower() for en in ["en", "english"]):
             target_voice = voice or self.default_en_voice
         elif language and any(vi in language.lower() for vi in ["vi", "vietnamese"]):

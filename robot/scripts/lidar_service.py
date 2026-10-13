@@ -141,6 +141,9 @@ class RPLidarSLAMCore:
         self.current_motion_cmd = "stop"
         self._safety_thread: Optional[threading.Thread] = None
         self.last_safety_alert: str = ""
+        # Hysteresis Lock cho thuật toán né vật cản an toàn (chống rung lắc trái-phải)
+        self.avoidance_locked_dir: Optional[str] = None
+        self.avoidance_steps: int = 0
 
     def init_direct_motor(self):
         """Khởi tạo MotorController trực tiếp nếu chưa có (dùng khi chạy standalone)."""
@@ -736,65 +739,86 @@ free_thresh: 0.25
             dy = gy - self.robot_y
             dist_to_goal = math.hypot(dx, dy)
 
-            # Đã đến đích
-            if dist_to_goal < 0.18:
+            # 1. Đã đến đích (Goal Reached)
+            if dist_to_goal < 0.22:
                 logger.info(f"🏁 ĐÃ ĐẾN ĐÍCH X={gx:.2f}m, Y={gy:.2f}m!")
                 self.send_udp_motor_command("stop")
                 self.status = "GOAL_REACHED"
                 self.is_navigating = False
                 self.active_goal = None
+                self.avoidance_locked_dir = None
                 break
 
-            # Tính góc mục tiêu (trong hệ quy chiếu 0° = North, chiều kim đồng hồ)
-            desired_yaw = (math.degrees(math.atan2(dx, dy)) + 360.0) % 360.0
-            yaw_error = (desired_yaw - self.robot_yaw + 540.0) % 360.0 - 180.0
-
-            # Kiểm tra vật cản phía trước bằng tia LiDAR thời gian thực
+            # 2. Xử lý né vật cản an toàn với Hysteresis Lock (chống xoay trái/phải liên tục khi gặp tường)
             front_obstacle_dist = self.get_front_distance()
-
-            # Xử lý né vật cản an toàn
             if front_obstacle_dist < 0.40:
-                logger.warning(f"⚠️ Phát hiện vật cản trước mặt cự ly {front_obstacle_dist:.2f}m! Đang dừng & rẽ tránh...")
+                logger.warning(f"⚠️ Phát hiện vật cản trước mặt ({front_obstacle_dist:.2f}m)! Đang rẽ tránh an toàn...")
                 self.send_udp_motor_command("stop", force=True)
-                left_dist = self.get_left_distance()
-                right_dist = self.get_right_distance()
-                turn_cmd = "left" if left_dist > right_dist else "right"
-                yaw_step = -10.0 if turn_cmd == "left" else 10.0
-                self.send_udp_motor_command("speed:35")
+                if not self.avoidance_locked_dir:
+                    left_dist = self.get_left_distance()
+                    right_dist = self.get_right_distance()
+                    self.avoidance_locked_dir = "left" if left_dist >= right_dist else "right"
+
+                turn_cmd = self.avoidance_locked_dir
+                # Chuẩn REP-103 CCW: rẽ trái tăng yaw (+), rẽ phải giảm yaw (-)
+                yaw_step = 10.0 if turn_cmd == "left" else -10.0
+                self.send_udp_motor_command("speed:30")
                 self.send_udp_motor_command(turn_cmd, force=True)
-                time.sleep(0.12)
+                time.sleep(0.08)
                 self.send_udp_motor_command("stop", force=True)
                 self.robot_yaw = (self.robot_yaw + yaw_step) % 360.0
-                time.sleep(0.05)
+                time.sleep(0.04)
+                continue
+            else:
+                if front_obstacle_dist > 0.55:
+                    self.avoidance_locked_dir = None
+
+            # 3. Approach Lock (Khóa góc khi cự ly gần < 40cm để triệt tiêu Waypoint Hunting / xoay lắc tại đích)
+            if dist_to_goal < 0.40:
+                self.send_udp_motor_command("speed:30")
+                self.send_udp_motor_command("forward")
+                speed_mps = 0.14
+                rad = math.radians(self.robot_yaw)
+                self.robot_x += speed_mps * dt * math.cos(rad)
+                self.robot_y += speed_mps * dt * math.sin(rad)
+                self.linear_velocity = speed_mps
+                self.angular_velocity = 0.0
+                time.sleep(dt)
                 continue
 
-            # Điều khiển bám mục tiêu
-            if abs(yaw_error) > 15.0:
-                # Cần quay đầu về hướng mục tiêu (quay nhẹ nhàng bằng xung 35% công suất)
-                turn_cmd = "right" if yaw_error > 0 else "left"
-                self.send_udp_motor_command("speed:35")
+            # 4. Tính góc mục tiêu theo chuẩn Cartesian (+X Tiến, +Y Trái, CCW)
+            desired_yaw = (math.degrees(math.atan2(dy, dx)) + 360.0) % 360.0
+            yaw_error = (desired_yaw - self.robot_yaw + 540.0) % 360.0 - 180.0
+
+            # 5. Điều khiển bám mục tiêu kèm Deadband 12°
+            if abs(yaw_error) > 12.0:
+                # Chuẩn REP-103 CCW: yaw_error > 0 => mục tiêu nằm bên TRÁI, rẽ TRÁI (+)
+                #                   yaw_error < 0 => mục tiêu nằm bên PHẢI, rẽ PHẢI (-)
+                turn_cmd = "left" if yaw_error > 0 else "right"
+                yaw_step = 8.0 if yaw_error > 0 else -8.0
+                self.send_udp_motor_command("speed:30")
                 self.send_udp_motor_command(turn_cmd)
-                time.sleep(0.07)
+                time.sleep(0.06)
                 self.send_udp_motor_command("stop")
 
-                yaw_step = 7.0 if yaw_error > 0 else -7.0
                 self.robot_yaw = (self.robot_yaw + yaw_step) % 360.0
                 self.angular_velocity = yaw_step
                 self.linear_velocity = 0.0
                 time.sleep(0.04)
             else:
-                # Hướng đã thẳng: Tiến thẳng về phía trước ở tốc độ ổn định
+                # Góc hướng đã chuẩn trong deadband: Tiến thẳng ổn định
                 self.send_udp_motor_command("speed:45")
                 self.send_udp_motor_command("forward")
-                speed_mps = 0.18  # Tốc độ tiến ~18cm/s
+                speed_mps = 0.18
                 rad = math.radians(self.robot_yaw)
-                self.robot_x += speed_mps * dt * math.sin(rad)
-                self.robot_y += speed_mps * dt * math.cos(rad)
+                self.robot_x += speed_mps * dt * math.cos(rad)
+                self.robot_y += speed_mps * dt * math.sin(rad)
                 self.linear_velocity = speed_mps
                 self.angular_velocity = 0.0
                 time.sleep(dt)
 
         self.send_udp_motor_command("stop")
+        self.avoidance_locked_dir = None
 
     def scan_room_360(self):
         """Quay tròn 360 độ từ tốn để quét toàn cảnh các bức tường xung quanh phòng."""
@@ -811,7 +835,7 @@ free_thresh: 0.25
                 self.send_udp_motor_command("right")
                 time.sleep(0.08)
                 self.send_udp_motor_command("stop")
-                self.robot_yaw = (self.robot_yaw + 10.0) % 360.0
+                self.robot_yaw = (self.robot_yaw - 10.0) % 360.0
                 time.sleep(0.12)  # Dừng để LiDAR quét bức tường sắc nét
 
             self.status = "IDLE"
@@ -917,64 +941,93 @@ free_thresh: 0.25
             dy = target_y - self.robot_y
             dist = math.hypot(dx, dy)
 
+            # 1. Đã đến đích (Goal Reached)
             if dist < goal_radius:
                 self.send_udp_motor_command("stop")
+                self.avoidance_locked_dir = None
                 return True
 
-            # Kiểm tra stuck (robot không di chuyển)
+            # 2. Kiểm tra kẹt (Robot Stuck Detection)
             stuck_counter += 1
             if stuck_counter >= stuck_check_interval:
                 moved = math.hypot(self.robot_x - last_pos[0], self.robot_y - last_pos[1])
                 if moved < 0.03:  # Di chuyển < 3cm trong 2 giây = stuck
                     logger.warning("⚠️ Robot bị kẹt — bỏ qua frontier này.")
                     self.send_udp_motor_command("stop")
+                    self.avoidance_locked_dir = None
                     return False
                 last_pos = (self.robot_x, self.robot_y)
                 stuck_counter = 0
 
-            # Tính góc mục tiêu
-            desired_yaw = (math.degrees(math.atan2(dx, dy)) + 360.0) % 360.0
-            yaw_error = (desired_yaw - self.robot_yaw + 540.0) % 360.0 - 180.0
-
-            # Kiểm tra vật cản phía trước
+            # 3. Né vật cản an toàn với Hysteresis Lock (chống lắc trái phải liên tục khi gặp vật cản)
             front_dist = self.get_front_distance()
-
             if front_dist < 0.40:
-                logger.warning(f"⚠️ Frontier navigation: Vật cản phía trước cách {front_dist:.2f}m! Dừng & rẽ tránh...")
+                logger.warning(f"⚠️ Frontier navigation: Vật cản phía trước cách {front_dist:.2f}m! Rẽ tránh an toàn...")
                 self.send_udp_motor_command("stop", force=True)
-                left_dist = self.get_left_distance()
-                right_dist = self.get_right_distance()
-                turn_cmd = "left" if left_dist > right_dist else "right"
-                yaw_step = -12.0 if turn_cmd == "left" else 12.0
+                if not self.avoidance_locked_dir:
+                    left_dist = self.get_left_distance()
+                    right_dist = self.get_right_distance()
+                    self.avoidance_locked_dir = "left" if left_dist >= right_dist else "right"
+
+                turn_cmd = self.avoidance_locked_dir
+                # Chuẩn REP-103 CCW: rẽ trái tăng yaw (+), rẽ phải giảm yaw (-)
+                yaw_step = 10.0 if turn_cmd == "left" else -10.0
                 self.send_udp_motor_command("speed:30")
                 self.send_udp_motor_command(turn_cmd, force=True)
-                time.sleep(0.10)
+                time.sleep(0.08)
                 self.send_udp_motor_command("stop", force=True)
                 self.robot_yaw = (self.robot_yaw + yaw_step) % 360.0
-                time.sleep(0.05)
+                time.sleep(0.04)
+                continue
+            else:
+                if front_dist > 0.55:
+                    self.avoidance_locked_dir = None
+
+            # 4. Approach Lock (Khóa góc khi cự ly gần < 40cm để triệt tiêu hiện tượng lắc quay vòng quanh đích)
+            if dist < 0.40:
+                self.send_udp_motor_command("speed:30")
+                self.send_udp_motor_command("forward")
+                speed_mps = 0.14
+                rad = math.radians(self.robot_yaw)
+                self.robot_x += speed_mps * dt * math.cos(rad)
+                self.robot_y += speed_mps * dt * math.sin(rad)
+                self.linear_velocity = speed_mps
+                self.angular_velocity = 0.0
+                time.sleep(dt)
                 continue
 
-            if abs(yaw_error) > 15.0:
-                turn_cmd = "right" if yaw_error > 0 else "left"
+            # 5. Tính góc mục tiêu theo chuẩn Cartesian (+X Tiến, +Y Trái, CCW)
+            desired_yaw = (math.degrees(math.atan2(dy, dx)) + 360.0) % 360.0
+            yaw_error = (desired_yaw - self.robot_yaw + 540.0) % 360.0 - 180.0
+
+            # 6. Điều khiển bám mục tiêu kèm Deadband 12°
+            if abs(yaw_error) > 12.0:
+                # Chuẩn REP-103 CCW: yaw_error > 0 => mục tiêu nằm bên TRÁI, rẽ TRÁI (+)
+                #                   yaw_error < 0 => mục tiêu nằm bên PHẢI, rẽ PHẢI (-)
+                turn_cmd = "left" if yaw_error > 0 else "right"
                 yaw_step = 8.0 if yaw_error > 0 else -8.0
                 self.send_udp_motor_command("speed:30")
                 self.send_udp_motor_command(turn_cmd)
-                time.sleep(0.07)
+                time.sleep(0.06)
                 self.send_udp_motor_command("stop")
                 self.robot_yaw = (self.robot_yaw + yaw_step) % 360.0
+                self.angular_velocity = yaw_step
+                self.linear_velocity = 0.0
                 time.sleep(0.04)
             else:
+                # Góc hướng đã chuẩn trong deadband: Tiến thẳng ổn định
                 self.send_udp_motor_command("speed:45")
                 self.send_udp_motor_command("forward")
                 speed_mps = 0.18
                 rad = math.radians(self.robot_yaw)
-                self.robot_x += speed_mps * dt * math.sin(rad)
-                self.robot_y += speed_mps * dt * math.cos(rad)
+                self.robot_x += speed_mps * dt * math.cos(rad)
+                self.robot_y += speed_mps * dt * math.sin(rad)
                 self.linear_velocity = speed_mps
                 self.angular_velocity = 0.0
                 time.sleep(dt)
 
         self.send_udp_motor_command("stop")
+        self.avoidance_locked_dir = None
         return False
 
     def _exploration_loop(self, auto_save: bool = True, save_name: str = "auto_explored_map"):
@@ -1003,19 +1056,10 @@ free_thresh: 0.25
             self.explored_frontiers.append(frontier_key)
 
             if success:
-                # Quét tại frontier mới
+                # Đã tới frontier: Dừng yên 0.8s để RPLiDAR A1 (tự quay 360° ở tần số 5.5Hz)
+                # quét ổn định toàn cảnh không gian mới, không rung giật động cơ và không trượt bánh
                 self.send_udp_motor_command("stop")
-                time.sleep(0.3)
-                # Quét nhỏ 90° để thu dữ liệu sắc nét hơn
-                for _ in range(9):
-                    if not self.is_exploring:
-                        break
-                    self.send_udp_motor_command("speed:25")
-                    self.send_udp_motor_command("right")
-                    time.sleep(0.06)
-                    self.send_udp_motor_command("stop")
-                    self.robot_yaw = (self.robot_yaw + 10.0) % 360.0
-                    time.sleep(0.15)
+                time.sleep(0.8)
             else:
                 logger.warning(f"⚠️ Không đến được frontier ({fx:.2f}, {fy:.2f}) — bỏ qua.")
 

@@ -2,7 +2,7 @@ import random
 import uuid
 from datetime import datetime
 from typing import List, Dict, Any, Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc, or_
 
@@ -240,34 +240,6 @@ async def create_room_service_order(order_in: RoomServiceOrderCreate, db: AsyncS
     return new_order
 
 
-@router.get(
-    "/room-service/orders",
-    response_model=List[RoomServiceOrderResponse],
-    tags=TAG_FB,
-    summary="Danh sách toàn bộ đơn hàng Room Service",
-)
-async def list_room_service_orders(
-    status: Optional[str] = Query(None, description="Lọc theo trạng thái đơn hàng ('Pending', 'Cooking', 'Delivering', 'Completed')"),
-    room_number: Optional[str] = Query(None, description="Lọc theo số phòng (vd: '402', 'ROOM 201')"),
-    db: AsyncSession = Depends(get_db),
-):
-    """Lấy danh sách các đơn đặt món Room Service (bảng room_service_orders)."""
-    stmt = select(RoomServiceOrder).order_by(desc(RoomServiceOrder.created_at))
-    if status and status not in ("All", ""):
-        stmt = stmt.where(RoomServiceOrder.status == status)
-    if room_number and room_number not in ("All", ""):
-        clean_room = room_number.upper().replace("ROOM", "").replace("PHÒNG", "").strip()
-        stmt = stmt.where(
-            or_(
-                RoomServiceOrder.room_number == room_number,
-                RoomServiceOrder.room_number.ilike(f"%{clean_room}%"),
-                RoomServiceOrder.room_number == f"ROOM {clean_room}",
-                RoomServiceOrder.room_number == f"Room {clean_room}",
-            )
-        )
-    res = await db.execute(stmt)
-    return res.scalars().all()
-
 
 @router.get(
     "/room-service/rooms/{room_number}/orders",
@@ -389,105 +361,6 @@ async def get_room_service_order(
         raise HTTPException(status_code=404, detail="Không tìm thấy đơn hàng Room Service.")
     return order
 
-
-@router.patch(
-    "/room-service/orders/{order_id}/status",
-    response_model=RoomServiceOrderResponse,
-    tags=TAG_FB,
-    summary="Cập nhật trạng thái đơn phục vụ phòng",
-)
-async def update_room_service_order_status(
-    order_id: str,
-    status_in: RoomServiceOrderStatusUpdate,
-    db: AsyncSession = Depends(get_db),
-):
-    """Updates order status (e.g. Cooking, Ready, Completed, Rejected)."""
-    clean_id = order_id.replace("REQ-", "").replace("ORD-", "").strip()
-    res = await db.execute(
-        select(SupportRequest).where(
-            (SupportRequest.id == order_id)
-            | (SupportRequest.ticket_code == order_id)
-            | (SupportRequest.ticket_code == f"ORD-{clean_id}")
-            | (SupportRequest.ticket_code == clean_id)
-            | (SupportRequest.ticket_code == f"REQ-ORD-{clean_id}")
-        )
-    )
-    order = res.scalar_one_or_none()
-    if not order:
-        raise HTTPException(status_code=404, detail="Order not found")
-
-    order.status = status_in.status
-    st_lower = (status_in.status or "").lower().strip()
-    if status_in.progress is not None:
-        target_progress = status_in.progress
-    elif st_lower in ["completed", "delivered", "done"]:
-        target_progress = 100
-    elif st_lower in ["delivering"]:
-        target_progress = 85
-    elif st_lower in ["ready", "food ready"]:
-        target_progress = 75
-    elif st_lower in ["cooking", "in preparation"]:
-        target_progress = 50
-    elif st_lower in ["sent to kitchen", "sent_to_kitchen"]:
-        target_progress = 25
-    elif st_lower in ["pending"]:
-        target_progress = 0
-    else:
-        target_progress = order.progress or 0
-
-    order.progress = target_progress
-    if status_in.est_completion is not None:
-        order.est_completion = status_in.est_completion
-    if status_in.assigned_staff_name is not None:
-        order.assigned_staff_name = status_in.assigned_staff_name
-
-    # Cross-department notifications
-    ticket_label = order.ticket_code or order.id
-    room_label = order.room_number or "phòng khách"
-    try:
-        if st_lower in ["sent to kitchen", "sent_to_kitchen", "chờ bếp"]:
-            await create_department_notification(
-                db,
-                department="Kitchen",
-                title=f"Đơn Room Service #{ticket_label} chuyển Bếp",
-                description=f"{room_label}: {order.title}. Bếp vui lòng tiếp nhận và làm món.",
-                request_id=order.id,
-                request_type="Room Service",
-            )
-        elif st_lower in ["ready", "food ready"]:
-            await create_department_notification(
-                db,
-                department="Room Service",
-                title=f"Bếp đã làm xong món #{ticket_label}!",
-                description=f"Món ăn {room_label} đã sẵn sàng. Room Service vui lòng lấy món và chuẩn bị dụng cụ giao lên phòng.",
-                request_id=order.id,
-                request_type="Room Service",
-            )
-    except Exception:
-        pass
-
-    await db.commit()
-    await db.refresh(order)
-
-    # Đồng bộ cập nhật sang bảng room_service_orders nếu có
-    rs_res = await db.execute(
-        select(RoomServiceOrder).where(
-            (RoomServiceOrder.id == order.id)
-            | (RoomServiceOrder.support_request_id == order.id)
-            | (RoomServiceOrder.order_number == clean_id)
-        )
-    )
-    rs_order = rs_res.scalars().first()
-    if rs_order:
-        rs_order.status = status_in.status
-        rs_order.progress = target_progress
-        if status_in.est_completion is not None:
-            rs_order.est_completion = status_in.est_completion
-        if status_in.assigned_staff_name is not None:
-            rs_order.assigned_staff_name = status_in.assigned_staff_name
-        await db.commit()
-
-    return order
 
 
 # =====================================================================

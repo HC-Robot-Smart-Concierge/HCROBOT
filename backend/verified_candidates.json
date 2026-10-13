@@ -1,0 +1,306 @@
+[
+  {
+    "method": "POST",
+    "path": "/api/v1/ai/feedback",
+    "summary": "Gửi phản hồi và đánh giá dịch vụ từ khách",
+    "fe_matches": [],
+    "test_matches": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/ai/feedback",
+    "summary": "Xem danh sách phản hồi và đánh giá của khách hàng",
+    "fe_matches": [],
+    "test_matches": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/ai/sessions",
+    "summary": "Get All Chat Sessions",
+    "fe_matches": [],
+    "test_matches": [
+      "tests\\test_chat_session_db.py"
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/ai/sessions/{session_id}/messages",
+    "summary": "Get Session Messages",
+    "fe_matches": [],
+    "test_matches": [
+      "tests\\test_chat_session_db.py"
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/ai/tts",
+    "summary": "Chuyển văn bản thành âm thanh thoại MP3 (EdgeTTS / ElevenLabs / OpenAI TTS)",
+    "fe_matches": [],
+    "test_matches": []
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/auth/login",
+    "summary": "Login",
+    "fe_matches": [],
+    "test_matches": []
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/auth/logout",
+    "summary": "Logout",
+    "fe_matches": [],
+    "test_matches": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/auth/me",
+    "summary": "Get Current User",
+    "fe_matches": [],
+    "test_matches": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/logs/audit-logs",
+    "summary": "Get Audit Trail",
+    "fe_matches": [],
+    "test_matches": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/logs/export",
+    "summary": "Export Logs",
+    "fe_matches": [],
+    "test_matches": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/logs/statistics",
+    "summary": "Get Statistics",
+    "fe_matches": [],
+    "test_matches": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/logs/trace/{correlation_id}",
+    "summary": "Get Trace",
+    "fe_matches": [],
+    "test_matches": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/concierge/recordings/local/{filename}",
+    "summary": "Phát lại video ghi hình local fallback",
+    "fe_matches": [],
+    "test_matches": []
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/operations/concierge/recordings/{session_id}",
+    "summary": "Tải video ghi hình cuộc gọi lên Cloudinary và lưu vào HumanSupportSession",
+    "fe_matches": [],
+    "test_matches": []
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/operations/concierge/requests",
+    "summary": "Khởi tạo phiên hỗ trợ Live Call / Video Call từ Robot Kiosk",
+    "fe_matches": [],
+    "test_matches": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/concierge/requests",
+    "summary": "Danh sách toàn bộ yêu cầu hỗ trợ Concierge & Live Call",
+    "fe_matches": [],
+    "test_matches": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/concierge/requests/{request_id}",
+    "summary": "Xem chi tiết một phiên yêu cầu hỗ trợ Concierge",
+    "fe_matches": [],
+    "test_matches": []
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/v1/operations/concierge/requests/{request_id}",
+    "summary": "Cập nhật trạng thái cuộc gọi, phân công hoặc đóng phiên Live Call Concierge",
+    "fe_matches": [],
+    "test_matches": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/concierge/sessions",
+    "summary": "Lấy danh sách các phiên hỗ trợ người thật & video call đã ghi hình",
+    "fe_matches": [],
+    "test_matches": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/concierge/sessions/{session_id}",
+    "summary": "Chi tiết một phiên HumanSupportSession",
+    "fe_matches": [],
+    "test_matches": []
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/operations/directives",
+    "summary": "Phát chỉ thị điều hành quản lý liên bộ phận",
+    "fe_matches": [],
+    "test_matches": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/fleet",
+    "summary": "Danh sách trạng thái đội Robot HCRobot",
+    "fe_matches": [],
+    "test_matches": [
+      "tests\\test_operations_endpoint.py"
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/operations/kitchen/menus/{menu_id}/items",
+    "summary": "Gán món từ kho gốc vào thực đơn với giá riêng",
+    "fe_matches": [],
+    "test_matches": []
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/v1/operations/kitchen/menus/{menu_id}/items/{menu_item_id}",
+    "summary": "Cập nhật giá và trạng thái món trong thực đơn",
+    "fe_matches": [],
+    "test_matches": []
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/operations/kitchen/menus/{menu_id}/items/{menu_item_id}",
+    "summary": "Gỡ món ăn khỏi thực đơn",
+    "fe_matches": [],
+    "test_matches": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/notifications",
+    "summary": "Get Notifications",
+    "fe_matches": [],
+    "test_matches": [
+      "scripts\\compare_apis.py"
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/operations/notifications",
+    "summary": "Create Notification Endpoint",
+    "fe_matches": [],
+    "test_matches": [
+      "scripts\\compare_apis.py"
+    ]
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/operations/notifications/{notification_id}",
+    "summary": "Delete Notification Item",
+    "fe_matches": [],
+    "test_matches": []
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/v1/operations/notifications/{notification_id}/read",
+    "summary": "Toggle Notification Read",
+    "fe_matches": [],
+    "test_matches": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/room-service/order-items",
+    "summary": "Tra cứu toàn bộ danh sách các món ăn đã gọi (ORDER_ITEM)",
+    "fe_matches": [],
+    "test_matches": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/room-service/orders/{order_id}/items",
+    "summary": "Danh sách món ăn của một đơn hàng Room Service (ORDER_ITEM)",
+    "fe_matches": [],
+    "test_matches": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/room-service/rooms/{room_number}/orders",
+    "summary": "Tra cứu toàn bộ đơn hàng và món ăn phòng đó đã đặt",
+    "fe_matches": [],
+    "test_matches": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/service-types",
+    "summary": "Danh mục các loại hình dịch vụ khách sạn (Service Types)",
+    "fe_matches": [],
+    "test_matches": []
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/operations/taxi/requests",
+    "summary": "Tạo mới yêu cầu gọi xe taxi / đưa đón sân bay",
+    "fe_matches": [],
+    "test_matches": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/taxi/requests/{request_id}",
+    "summary": "Xem chi tiết một yêu cầu đặt xe Taxi",
+    "fe_matches": [],
+    "test_matches": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/rag/documents",
+    "summary": "Xem tất cả tài liệu tri thức trong ChromaDB",
+    "fe_matches": [],
+    "test_matches": []
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/rag/documents",
+    "summary": "Thêm hoặc Cập nhật (Upsert) tài liệu tri thức",
+    "fe_matches": [],
+    "test_matches": []
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/rag/documents/{doc_id}",
+    "summary": "Xóa tài liệu tri thức theo ID",
+    "fe_matches": [],
+    "test_matches": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/rag/sources",
+    "summary": "Danh sách các file nguồn đã nạp vào Robot",
+    "fe_matches": [],
+    "test_matches": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/rag/stats",
+    "summary": "Thống kê tổng quan tri thức RAG",
+    "fe_matches": [],
+    "test_matches": []
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/rag/sync-obsidian",
+    "summary": "Đồng bộ tự động tất cả ghi chú Obsidian Vault vào ChromaDB",
+    "fe_matches": [],
+    "test_matches": []
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/rag/upload-file",
+    "summary": "Tải file PDF, DOCX, Markdown hoặc Ảnh nạp vào Robot",
+    "fe_matches": [],
+    "test_matches": []
+  }
+]

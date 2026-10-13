@@ -1,7 +1,7 @@
 import random
 from datetime import datetime
 from typing import List, Dict, Any, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status, Body
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc, or_
 
@@ -161,33 +161,6 @@ async def get_taxi_dashboard(db: AsyncSession = Depends(get_db)):
     }
 
 
-@router.get(
-    "/taxi/requests",
-    response_model=List[TaxiRequestResponse],
-    tags=TAG_TAXI,
-    summary="Danh sách toàn bộ các yêu cầu đặt xe taxi",
-)
-async def list_taxi_requests(
-    status_filter: Optional[str] = Query(None, description="Lọc theo trạng thái chuyến xe ('Pending', 'In Progress', 'Completed', 'Cancelled')"),
-    db: AsyncSession = Depends(get_db),
-):
-    """Lấy danh sách các chuyến xe taxi đã tiếp nhận."""
-    stmt = (
-        select(SupportRequest)
-        .where(
-            or_(
-                SupportRequest.department_id == "DEP-TAXI",
-                SupportRequest.service_type_id == "ST-TAXI",
-            )
-        )
-        .order_by(desc(SupportRequest.created_at))
-    )
-    if status_filter and status_filter not in ("All", ""):
-        stmt = stmt.where(SupportRequest.status == status_filter)
-
-    res = await db.execute(stmt)
-    return [_format_taxi_request(r) for r in res.scalars().all()]
-
 
 @router.post(
     "/taxi/requests",
@@ -275,53 +248,3 @@ async def get_taxi_request(
         raise HTTPException(status_code=404, detail="Không tìm thấy yêu cầu đặt xe Taxi")
     return _format_taxi_request(req)
 
-
-@router.patch(
-    "/taxi/requests/{request_id}/status",
-    response_model=TaxiRequestResponse,
-    tags=TAG_TAXI,
-    summary="Cập nhật trạng thái chuyến xe và điều phối tài xế",
-    responses={
-        200: {"description": "Cập nhật trạng thái chuyến xe thành công."},
-        404: {"description": "Không tìm thấy yêu cầu đặt xe."}
-    },
-)
-@router.patch(
-    "/taxi/requests/{request_id}",
-    response_model=TaxiRequestResponse,
-    tags=TAG_TAXI,
-    include_in_schema=False,
-)
-async def update_taxi_request_status(
-    request_id: str,
-    update_in: TaxiRequestStatusUpdate,
-    db: AsyncSession = Depends(get_db),
-):
-    """
-    ### Mô tả nghiệp vụ:
-    Điều phối viên gán tài xế, cập nhật trạng thái chuyến đi (`Driver Assigned`, `On The Way`, `Completed`, `Cancelled`).
-    """
-    clean_id = request_id.replace("REQ-", "").replace("TX-", "").strip()
-    res = await db.execute(
-        select(SupportRequest).where(
-            or_(
-                SupportRequest.id == request_id,
-                SupportRequest.ticket_code == request_id,
-                SupportRequest.id == clean_id,
-                SupportRequest.ticket_code == clean_id,
-                SupportRequest.ticket_code == f"TX-{clean_id}",
-            )
-        )
-    )
-    req = res.scalar_one_or_none()
-    if not req:
-        raise HTTPException(status_code=404, detail="Không tìm thấy yêu cầu đặt xe Taxi")
-
-    req.status = update_in.status
-    if update_in.assigned_driver:
-        req.assigned_staff_name = update_in.assigned_driver
-    req.updated_at = datetime.utcnow()
-
-    await db.commit()
-    await db.refresh(req)
-    return _format_taxi_request(req)

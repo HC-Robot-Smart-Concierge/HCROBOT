@@ -107,32 +107,6 @@ async def get_maintenance_dashboard(db: AsyncSession = Depends(get_db)):
     }
 
 
-@router.get(
-    "/maintenance/requests",
-    response_model=List[MaintenanceRequestResponse],
-    tags=TAG_MNT,
-    summary="Danh sách toàn bộ yêu cầu Kỹ thuật & Bảo trì",
-)
-async def list_maintenance_requests(
-    status: Optional[str] = Query(None, description="Lọc theo trạng thái yêu cầu"),
-    db: AsyncSession = Depends(get_db),
-):
-    """Lấy danh sách các sự cố kỹ thuật và bảo trì."""
-    stmt = (
-        select(SupportRequest)
-        .where(
-            or_(
-                SupportRequest.department_id == "DEP-MAINTENANCE",
-                SupportRequest.service_type_id == "ST-MAINTENANCE",
-            )
-        )
-        .order_by(desc(SupportRequest.created_at))
-    )
-    if status and status not in ("All", ""):
-        stmt = stmt.where(SupportRequest.status == status)
-    res = await db.execute(stmt)
-    return res.scalars().all()
-
 
 @router.post(
     "/maintenance/requests",
@@ -213,66 +187,6 @@ async def get_maintenance_request(
         raise HTTPException(status_code=404, detail="Không tìm thấy yêu cầu kỹ thuật")
     return req
 
-
-@router.patch(
-    "/maintenance/requests/{request_id}/status",
-    response_model=MaintenanceRequestResponse,
-    tags=TAG_MNT,
-    summary="Cập nhật trạng thái xử lý sự cố kỹ thuật",
-    responses={
-        200: {"description": "Cập nhật trạng thái sự cố kỹ thuật thành công."},
-        404: {"description": "Không tìm thấy yêu cầu kỹ thuật."}
-    },
-)
-@router.patch(
-    "/maintenance/requests/{request_id}",
-    response_model=MaintenanceRequestResponse,
-    tags=TAG_MNT,
-    include_in_schema=False,
-)
-async def update_maintenance_request_status(
-    request_id: str,
-    status: Optional[str] = Query(None),
-    assigned_to: Optional[str] = Query(None),
-    update_in: Optional[MaintenanceRequestStatusUpdate] = Body(None),
-    db: AsyncSession = Depends(get_db),
-):
-    """
-    ### Mô tả nghiệp vụ:
-    Kỹ thuật viên cập nhật tiến độ sửa chữa: `In Progress`, `Completed`, `Cancelled`.
-    """
-    clean_id = request_id.replace("REQ-", "").replace("MN-", "").strip()
-    res = await db.execute(
-        select(SupportRequest).where(
-            or_(
-                SupportRequest.id == request_id,
-                SupportRequest.ticket_code == request_id,
-                SupportRequest.id == clean_id,
-                SupportRequest.ticket_code == clean_id,
-                SupportRequest.ticket_code == f"MN-{clean_id}",
-            )
-        )
-    )
-    req = res.scalar_one_or_none()
-    if not req:
-        raise HTTPException(status_code=404, detail="Không tìm thấy yêu cầu Kỹ thuật")
-
-    target_status = status
-    target_assigned = assigned_to
-    if update_in:
-        if update_in.status:
-            target_status = update_in.status
-        target_assigned = update_in.assigned_to or update_in.assigned_technician or target_assigned
-
-    if target_status:
-        req.status = target_status
-    if target_assigned:
-        req.assigned_staff_name = target_assigned
-    req.updated_at = datetime.utcnow()
-
-    await db.commit()
-    await db.refresh(req)
-    return req
 
 
 # =====================================================================

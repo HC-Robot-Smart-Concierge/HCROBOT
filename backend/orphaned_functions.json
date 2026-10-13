@@ -1,0 +1,194 @@
+[
+  {
+    "service": "aiApi.js",
+    "func_name": "sendChatStreamViaWebSocket",
+    "endpoint_hint": "",
+    "snippet": "export const sendChatStreamViaWebSocket = (pipecatClient, text, callbacks = {}, roomNumber = null, language = 'auto') => {   const { onToken, onTextCh"
+  },
+  {
+    "service": "aiApi.js",
+    "func_name": "sendChatStreamSSE",
+    "endpoint_hint": "${API_BASE_URL}/chat/stream",
+    "snippet": "export const sendChatStreamSSE = async (   prompt,   onToken,   onDone,   onError,   options = {} ) => {   const {     sessionId = 'default_session', "
+  },
+  {
+    "service": "aiApi.js",
+    "func_name": "extractIntent",
+    "endpoint_hint": "${API_BASE_URL}/intent",
+    "snippet": "export const extractIntent = async (userSpeech, sessionId = 'default_session', roomNumber = null) => {   const controller = new AbortController();   c"
+  },
+  {
+    "service": "aiApi.js",
+    "func_name": "fetchChatSessions",
+    "endpoint_hint": "${API_BASE_URL}/sessions",
+    "snippet": "export const fetchChatSessions = async () => {   try {     const response = await fetch(`${API_BASE_URL}/sessions`);     if (!response.ok) throw new E"
+  },
+  {
+    "service": "authApi.js",
+    "func_name": "getStoredToken",
+    "endpoint_hint": "${AUTH_URL}/logout",
+    "snippet": "export function getStoredToken() {   return localStorage.getItem(TOKEN_KEY); }  export async function logoutUser() {   const token = getStoredToken();"
+  },
+  {
+    "service": "knowledgeApi.js",
+    "func_name": "upsertRAGDocument",
+    "endpoint_hint": "",
+    "snippet": "export const upsertRAGDocument = async (doc) => {   return await fetchWithFallback(     `${RAG_BASE_URL}/documents`,     {       method: 'POST',      "
+  },
+  {
+    "service": "knowledgeApi.js",
+    "func_name": "uploadRAGFile",
+    "endpoint_hint": "${RAG_BASE_URL}/upload-file",
+    "snippet": "export const uploadRAGFile = async (file, category = 'general') => {   const formData = new FormData();   formData.append('file', file);   formData.ap"
+  },
+  {
+    "service": "operationsApi.js",
+    "func_name": "fetchReceptionRequestById",
+    "endpoint_hint": "",
+    "snippet": "export const fetchReceptionRequestById = async (requestId) => {   return await fetchWithFallback(     `${BASE_URL}/reception/requests/${encodeURICompo"
+  },
+  {
+    "service": "operationsApi.js",
+    "func_name": "fetchRoomServiceOrderById",
+    "endpoint_hint": "",
+    "snippet": "export const fetchRoomServiceOrderById = async (orderId) => {   return await fetchWithFallback(     `${BASE_URL}/room-service/orders/${encodeURICompon"
+  },
+  {
+    "service": "operationsApi.js",
+    "func_name": "fetchRoomOrdersHistory",
+    "endpoint_hint": "",
+    "snippet": "export const fetchRoomOrdersHistory = async (roomNumber) => {   return await fetchWithFallback(     `${BASE_URL}/room-service/rooms/${encodeURICompone"
+  },
+  {
+    "service": "operationsApi.js",
+    "func_name": "fetchRoomOrderedItemsSummary",
+    "endpoint_hint": "",
+    "snippet": "export const fetchRoomOrderedItemsSummary = async (roomNumber) => {   const history = await fetchRoomOrdersHistory(roomNumber);   return history?.orde"
+  },
+  {
+    "service": "operationsApi.js",
+    "func_name": "fetchHousekeepingRequestById",
+    "endpoint_hint": "",
+    "snippet": "export const fetchHousekeepingRequestById = async (requestId) => {   return await fetchWithFallback(     `${BASE_URL}/housekeeping/requests/${encodeUR"
+  },
+  {
+    "service": "operationsApi.js",
+    "func_name": "fetchBellRequestById",
+    "endpoint_hint": "",
+    "snippet": "export const fetchBellRequestById = async (requestId) => {   return await fetchWithFallback(     `${BASE_URL}/bell-services/requests/${encodeURICompon"
+  },
+  {
+    "service": "operationsApi.js",
+    "func_name": "fetchMaintenanceRequestById",
+    "endpoint_hint": "",
+    "snippet": "export const fetchMaintenanceRequestById = async (requestId) => {   return await fetchWithFallback(     `${BASE_URL}/maintenance/requests/${encodeURIC"
+  },
+  {
+    "service": "operationsApi.js",
+    "func_name": "fetchRoomAllRequests",
+    "endpoint_hint": "",
+    "snippet": "export const fetchRoomAllRequests = async (roomNumber) => {   const tasks = await fetchWithFallback(     `${BASE_URL}/tasks?room_number=${encodeURICom"
+  },
+  {
+    "service": "operationsApi.js",
+    "func_name": "fetchDepartmentTasks",
+    "endpoint_hint": "${BASE_URL}/tasks${qs}",
+    "snippet": "export const fetchDepartmentTasks = async (department, status = null) => {   const query = new URLSearchParams();   if (department && department !== '"
+  },
+  {
+    "service": "operationsApi.js",
+    "func_name": "restockInventory",
+    "endpoint_hint": "",
+    "snippet": "export const restockInventory = async (stockId, addQuantity = 10) => {   return await fetchWithFallback(     `${BASE_URL}/stock/${encodeURIComponent(s"
+  },
+  {
+    "service": "operationsApi.js",
+    "func_name": "fetchAdminConversationDetail",
+    "endpoint_hint": "",
+    "snippet": "export const fetchAdminConversationDetail = async (sessionId) => {   return await fetchWithFallback(     `${BASE_URL}/admin/conversations/${encodeURIC"
+  },
+  {
+    "service": "operationsApi.js",
+    "func_name": "createNotification",
+    "endpoint_hint": "",
+    "snippet": "export const createNotification = async (notifData) => {   return await fetchWithFallback(     `${BASE_URL}/notifications`,     {       method: 'POST'"
+  },
+  {
+    "service": "operationsApi.js",
+    "func_name": "fetchServiceTypes",
+    "endpoint_hint": "${BASE_URL}/service-types${query}",
+    "snippet": "export const fetchServiceTypes = async (departmentId = null) => {   const query = departmentId ? `?department_id=${encodeURIComponent(departmentId)}` "
+  },
+  {
+    "service": "operationsApi.js",
+    "func_name": "fetchStaffDepartments",
+    "endpoint_hint": "${BASE_URL}/departments",
+    "snippet": "export const fetchStaffDepartments = async () => {   return await fetchWithFallback(`${BASE_URL}/departments`, {}, []); };  // -----------------------"
+  },
+  {
+    "service": "operationsApi.js",
+    "func_name": "getKitchenFoodItem",
+    "endpoint_hint": "",
+    "snippet": "export const getKitchenFoodItem = async (foodId) => {   return await fetchWithFallback(     `${BASE_URL}/kitchen/food-items/${encodeURIComponent(foodI"
+  },
+  {
+    "service": "operationsApi.js",
+    "func_name": "getKitchenMenu",
+    "endpoint_hint": "",
+    "snippet": "export const getKitchenMenu = async (menuId) => {   return await fetchWithFallback(     `${BASE_URL}/kitchen/menus/${encodeURIComponent(menuId)}`,    "
+  },
+  {
+    "service": "personDetector.js",
+    "func_name": "estimateDistance",
+    "endpoint_hint": "",
+    "snippet": "export const estimateDistance = (bboxHeight, videoHeight) => {   const vH = videoHeight && videoHeight > 0 ? videoHeight : 480;   const ratio = Math.m"
+  },
+  {
+    "service": "pipecatAudioService.js",
+    "func_name": "pipecatAudioClient",
+    "endpoint_hint": "",
+    "snippet": "export const pipecatAudioClient = new PipecatAudioClient(); "
+  },
+  {
+    "service": "rosbridgeService.js",
+    "func_name": "createGoalPoseMsg",
+    "endpoint_hint": "",
+    "snippet": "export const createGoalPoseMsg = (x, y, yaw = 0, frameId = 'map') => {   const halfYaw = yaw / 2;   return {     header: {       stamp: {         sec:"
+  },
+  {
+    "service": "rosbridgeService.js",
+    "func_name": "createCmdVelMsg",
+    "endpoint_hint": "",
+    "snippet": "export const createCmdVelMsg = (linearX = 0, angularZ = 0) => {   return {     linear: {       x: Number(linearX),       y: 0.0,       z: 0.0,     }, "
+  },
+  {
+    "service": "taxiApi.js",
+    "func_name": "fetchTaxiRequestById",
+    "endpoint_hint": "${BASE_URL}/requests/${encodeURIComponent(requestId",
+    "snippet": "export async function fetchTaxiRequestById(requestId) {   return await fetchWithFallback(`${BASE_URL}/requests/${encodeURIComponent(requestId)}`, {}, "
+  },
+  {
+    "service": "workflowApi.js",
+    "func_name": "fetchWorkflowById",
+    "endpoint_hint": "${API_BASE}/workflows/${workflowId}",
+    "snippet": "export async function fetchWorkflowById(workflowId) {   const res = await fetch(`${API_BASE}/workflows/${workflowId}`);   if (!res.ok) throw new Error"
+  },
+  {
+    "service": "workflowApi.js",
+    "func_name": "saveCurrentLidarMap",
+    "endpoint_hint": "${API_BASE}/map/save_map?${params.toString(",
+    "snippet": "export async function saveCurrentLidarMap(mapId = 'phong_lam_viec', name = 'Bản đồ Phòng Làm Việc', floor = 'Phòng Làm Việc') {   const params = new U"
+  },
+  {
+    "service": "workflowApi.js",
+    "func_name": "toggleLidarMapLock",
+    "endpoint_hint": "${API_BASE}/map/toggle_lock${params}",
+    "snippet": "export async function toggleLidarMapLock(lock = null) {   const params = lock !== null ? `?lock=${lock}` : '';   const res = await fetch(`${API_BASE}/"
+  },
+  {
+    "service": "workflowApi.js",
+    "func_name": "getMapWebSocketUrl",
+    "endpoint_hint": "",
+    "snippet": "export function getMapWebSocketUrl() {   const customIp = import.meta.env.VITE_PI5_IP;   if (customIp && customIp !== 'localhost' && customIp !== '127"
+  }
+]

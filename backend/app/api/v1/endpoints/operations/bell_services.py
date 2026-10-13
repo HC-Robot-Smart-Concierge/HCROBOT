@@ -1,7 +1,7 @@
 import random
 from datetime import datetime
 from typing import List, Dict, Any, Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc, or_
 
@@ -110,32 +110,6 @@ async def get_bell_services_dashboard(db: AsyncSession = Depends(get_db)):
     }
 
 
-@router.get(
-    "/bell-services/requests",
-    response_model=List[BellRequestResponse],
-    tags=TAG_BELL,
-    summary="Danh sách toàn bộ yêu cầu Bell Services",
-)
-async def list_bell_requests(
-    status: Optional[str] = Query(None, description="Lọc theo trạng thái yêu cầu"),
-    db: AsyncSession = Depends(get_db),
-):
-    """Lấy danh sách các yêu cầu dịch vụ Bellman."""
-    stmt = (
-        select(SupportRequest)
-        .where(
-            or_(
-                SupportRequest.department_id == "DEP-BELL",
-                SupportRequest.service_type_id == "ST-BELL",
-            )
-        )
-        .order_by(desc(SupportRequest.created_at))
-    )
-    if status and status not in ("All", ""):
-        stmt = stmt.where(SupportRequest.status == status)
-    res = await db.execute(stmt)
-    return res.scalars().all()
-
 
 @router.post(
     "/bell-services/requests",
@@ -218,54 +192,3 @@ async def get_bell_request(
     return req
 
 
-@router.patch(
-    "/bell-services/requests/{request_id}/status",
-    response_model=BellRequestResponse,
-    tags=TAG_BELL,
-    summary="Cập nhật trạng thái và tiếp nhận nhiệm vụ Bellman",
-    responses={
-        200: {"description": "Cập nhật trạng thái nhiệm vụ Bellman thành công."},
-        404: {"description": "Không tìm thấy yêu cầu với ID hoặc ticket_code được cung cấp."}
-    },
-)
-@router.patch(
-    "/bell-services/requests/{request_id}",
-    response_model=BellRequestResponse,
-    tags=TAG_BELL,
-    include_in_schema=False,
-)
-async def update_bell_request_status(
-    request_id: str,
-    update_in: BellRequestStatusUpdate,
-    db: AsyncSession = Depends(get_db),
-):
-    """
-    ### Mô tả nghiệp vụ:
-    Nhân viên Bellman bấm **Nhận việc (Accept)** hoặc **Hoàn thành (Complete)** trên giao diện Dashboard.
-    Cập nhật trạng thái trực tiếp trong bảng `support_requests`.
-    """
-    clean_id = request_id.replace("REQ-", "").strip()
-    res = await db.execute(
-        select(SupportRequest).where(
-            or_(
-                SupportRequest.id == request_id,
-                SupportRequest.ticket_code == request_id,
-                SupportRequest.id == clean_id,
-                SupportRequest.ticket_code == clean_id,
-            )
-        )
-    )
-    req = res.scalar_one_or_none()
-    if not req:
-        raise HTTPException(status_code=404, detail="Không tìm thấy yêu cầu Bell Services")
-
-    if update_in.status:
-        req.status = update_in.status
-    assigned = update_in.assigned_to or update_in.assigned_staff
-    if assigned:
-        req.assigned_staff_name = assigned
-    req.updated_at = datetime.utcnow()
-
-    await db.commit()
-    await db.refresh(req)
-    return req

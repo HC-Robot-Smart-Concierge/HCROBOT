@@ -1,0 +1,637 @@
+[
+  [
+    "POST",
+    "/api/v1/ai/chat",
+    "Sinh câu trả lời hội thoại cho Concierge Robot"
+  ],
+  [
+    "POST",
+    "/api/v1/ai/chat/stream",
+    "Streaming câu trả lời hội thoại từ Ollama LLM qua Server-Sent Events (SSE)"
+  ],
+  [
+    "POST",
+    "/api/v1/ai/feedback",
+    "Gửi phản hồi và đánh giá dịch vụ từ khách"
+  ],
+  [
+    "GET",
+    "/api/v1/ai/feedback",
+    "Xem danh sách phản hồi và đánh giá của khách hàng"
+  ],
+  [
+    "POST",
+    "/api/v1/ai/intent",
+    "Phân tích ý định & bóc tách JSON yêu cầu dịch vụ (kèm Slot-Filling Số Phòng)"
+  ],
+  [
+    "POST",
+    "/api/v1/ai/session/flush",
+    "Đóng gói và lưu toàn bộ phiên hội thoại vào CSDL (End-of-Session Bulk Persistence)"
+  ],
+  [
+    "POST",
+    "/api/v1/ai/session/reset",
+    "Reset bộ nhớ phiên & Đóng gói lưu CSDL một lần duy nhất"
+  ],
+  [
+    "GET",
+    "/api/v1/ai/sessions",
+    "Get All Chat Sessions"
+  ],
+  [
+    "GET",
+    "/api/v1/ai/sessions/{session_id}/messages",
+    "Get Session Messages"
+  ],
+  [
+    "POST",
+    "/api/v1/ai/stt/transcribe",
+    "Nhận diện giọng nói từ file âm thanh WAV"
+  ],
+  [
+    "POST",
+    "/api/v1/ai/tts",
+    "Chuyển văn bản thành âm thanh thoại MP3 (EdgeTTS / ElevenLabs / OpenAI TTS)"
+  ],
+  [
+    "POST",
+    "/api/v1/auth/change-password",
+    "Change Password"
+  ],
+  [
+    "POST",
+    "/api/v1/auth/login",
+    "Login"
+  ],
+  [
+    "POST",
+    "/api/v1/auth/logout",
+    "Logout"
+  ],
+  [
+    "GET",
+    "/api/v1/auth/me",
+    "Get Current User"
+  ],
+  [
+    "PATCH",
+    "/api/v1/auth/profile",
+    "Update Profile"
+  ],
+  [
+    "GET",
+    "/api/v1/logs",
+    "Get Logs"
+  ],
+  [
+    "GET",
+    "/api/v1/logs/audit-logs",
+    "Get Audit Trail"
+  ],
+  [
+    "GET",
+    "/api/v1/logs/export",
+    "Export Logs"
+  ],
+  [
+    "GET",
+    "/api/v1/logs/statistics",
+    "Get Statistics"
+  ],
+  [
+    "GET",
+    "/api/v1/logs/trace/{correlation_id}",
+    "Get Trace"
+  ],
+  [
+    "POST",
+    "/api/v1/map/connect_lidar",
+    "Kích hoạt kết nối với cổng COM9 của RPLiDAR"
+  ],
+  [
+    "GET",
+    "/api/v1/map/current",
+    "Lấy dữ liệu bản đồ SLAM Occupancy Grid 2D thực tế"
+  ],
+  [
+    "GET",
+    "/api/v1/map/lidar_status",
+    "Kiểm tra trạng thái phần cứng RPLiDAR COM9 thực tế"
+  ],
+  [
+    "GET",
+    "/api/v1/map/list_saved_maps",
+    "Lấy danh sách các bản đồ đã lưu trong static/maps"
+  ],
+  [
+    "POST",
+    "/api/v1/map/load_map",
+    "Nạp lại bản đồ cố định đã lưu từ CSDL/file"
+  ],
+  [
+    "POST",
+    "/api/v1/map/navigate",
+    "Gửi mục tiêu di chuyển Robot"
+  ],
+  [
+    "POST",
+    "/api/v1/map/reset_map",
+    "Xóa trắng bản đồ 2D để tiến hành quét SLAM lại từ đầu"
+  ],
+  [
+    "POST",
+    "/api/v1/map/save_map",
+    "Lưu bản đồ Occupancy Grid hiện tại vào CSDL và lưu file cố định"
+  ],
+  [
+    "POST",
+    "/api/v1/map/scan_360",
+    "Kích hoạt robot quay 360 độ để quét toàn cảnh phòng"
+  ],
+  [
+    "POST",
+    "/api/v1/map/teleop",
+    "Điều khiển thủ công Robot di chuyển"
+  ],
+  [
+    "POST",
+    "/api/v1/map/toggle_lock",
+    "Bật/tắt chế độ khóa bản đồ tĩnh"
+  ],
+  [
+    "GET",
+    "/api/v1/map/waypoints",
+    "Lấy danh sách các điểm Waypoints / Endpoints"
+  ],
+  [
+    "POST",
+    "/api/v1/map/waypoints",
+    "Tạo mới hoặc cập nhật tọa độ Waypoint / Endpoint"
+  ],
+  [
+    "PUT",
+    "/api/v1/map/waypoints/{waypoint_id}",
+    "Chỉnh sửa Endpoint đã có"
+  ],
+  [
+    "DELETE",
+    "/api/v1/map/waypoints/{waypoint_id}",
+    "Xóa điểm Waypoint / Endpoint"
+  ],
+  [
+    "GET",
+    "/api/v1/map/zones",
+    "Lấy danh sách các Vùng Chức Năng (Zones)"
+  ],
+  [
+    "POST",
+    "/api/v1/map/zones",
+    "Tạo mới hoặc cập nhật Vùng Chức Năng (Zone)"
+  ],
+  [
+    "PUT",
+    "/api/v1/map/zones/{zone_id}",
+    "Cập nhật Vùng Chức Năng theo ID"
+  ],
+  [
+    "DELETE",
+    "/api/v1/map/zones/{zone_id}",
+    "Xóa Vùng Chức Năng"
+  ],
+  [
+    "GET",
+    "/api/v1/operations/admin/conversations",
+    "Admin: Xem danh sách các phiên đàm thoại giọng nói Robot với khách"
+  ],
+  [
+    "GET",
+    "/api/v1/operations/admin/conversations/{session_id}",
+    "Admin: Xem chi tiết toàn bộ lịch sử đàm thoại song ngữ của 1 phiên"
+  ],
+  [
+    "POST",
+    "/api/v1/operations/admin/dispatch",
+    "Admin: Tạo lệnh điều phối công việc toàn khách sạn"
+  ],
+  [
+    "GET",
+    "/api/v1/operations/admin/summary",
+    "Admin: Thống kê số lượng ticket theo bộ phận"
+  ],
+  [
+    "GET",
+    "/api/v1/operations/analytics/summary",
+    "Admin: Thống kê phân tích số liệu thực tế từ Database"
+  ],
+  [
+    "POST",
+    "/api/v1/operations/bell-services/requests",
+    "Tạo mới yêu cầu hỗ trợ hành lý / Bellman"
+  ],
+  [
+    "GET",
+    "/api/v1/operations/bell-services/requests/{request_id}",
+    "Xem chi tiết một yêu cầu Bell Services"
+  ],
+  [
+    "GET",
+    "/api/v1/operations/concierge/recordings/local/{filename}",
+    "Phát lại video ghi hình local fallback"
+  ],
+  [
+    "POST",
+    "/api/v1/operations/concierge/recordings/{session_id}",
+    "Tải video ghi hình cuộc gọi lên Cloudinary và lưu vào HumanSupportSession"
+  ],
+  [
+    "POST",
+    "/api/v1/operations/concierge/requests",
+    "Khởi tạo phiên hỗ trợ Live Call / Video Call từ Robot Kiosk"
+  ],
+  [
+    "GET",
+    "/api/v1/operations/concierge/requests",
+    "Danh sách toàn bộ yêu cầu hỗ trợ Concierge & Live Call"
+  ],
+  [
+    "GET",
+    "/api/v1/operations/concierge/requests/{request_id}",
+    "Xem chi tiết một phiên yêu cầu hỗ trợ Concierge"
+  ],
+  [
+    "PATCH",
+    "/api/v1/operations/concierge/requests/{request_id}",
+    "Cập nhật trạng thái cuộc gọi, phân công hoặc đóng phiên Live Call Concierge"
+  ],
+  [
+    "GET",
+    "/api/v1/operations/concierge/sessions",
+    "Lấy danh sách các phiên hỗ trợ người thật & video call đã ghi hình"
+  ],
+  [
+    "GET",
+    "/api/v1/operations/concierge/sessions/{session_id}",
+    "Chi tiết một phiên HumanSupportSession"
+  ],
+  [
+    "GET",
+    "/api/v1/operations/dashboard/bell-services",
+    "Dashboard vận hành bộ phận Bellman & Hành lý"
+  ],
+  [
+    "GET",
+    "/api/v1/operations/dashboard/concierge",
+    "Dashboard Concierge: Phiên hỗ trợ Live Call và trợ giúp khách hàng mới nhất"
+  ],
+  [
+    "GET",
+    "/api/v1/operations/dashboard/housekeeping",
+    "Dashboard vận hành bộ phận Buồng phòng"
+  ],
+  [
+    "GET",
+    "/api/v1/operations/dashboard/maintenance",
+    "Dashboard vận hành bộ phận Kỹ thuật & Bảo trì"
+  ],
+  [
+    "GET",
+    "/api/v1/operations/dashboard/reception",
+    "Dashboard Lễ tân: Danh sách yêu cầu đặt phòng và hỗ trợ tiền sảnh"
+  ],
+  [
+    "GET",
+    "/api/v1/operations/dashboard/room-service",
+    "Xem Dashboard Phục vụ phòng (Room Service)"
+  ],
+  [
+    "GET",
+    "/api/v1/operations/dashboard/taxi",
+    "Dashboard điều phối Đặt xe & Vận chuyển (Taxi & Transportation)"
+  ],
+  [
+    "GET",
+    "/api/v1/operations/departments",
+    "Danh sách các phòng ban khách sạn"
+  ],
+  [
+    "POST",
+    "/api/v1/operations/departments",
+    "Thêm mới phòng ban khách sạn"
+  ],
+  [
+    "PATCH",
+    "/api/v1/operations/departments/{department_id}",
+    "Cập nhật thông tin phòng ban"
+  ],
+  [
+    "DELETE",
+    "/api/v1/operations/departments/{department_id}",
+    "Vô hiệu hóa phòng ban (Soft Delete)"
+  ],
+  [
+    "GET",
+    "/api/v1/operations/departments/{department_id}",
+    "Chi tiết phòng ban kèm danh sách dịch vụ và nhân sự trực thuộc"
+  ],
+  [
+    "POST",
+    "/api/v1/operations/directives",
+    "Phát chỉ thị điều hành quản lý liên bộ phận"
+  ],
+  [
+    "GET",
+    "/api/v1/operations/fleet",
+    "Danh sách trạng thái đội Robot HCRobot"
+  ],
+  [
+    "POST",
+    "/api/v1/operations/housekeeping/requests",
+    "Tạo mới yêu cầu dịch vụ buồng phòng"
+  ],
+  [
+    "GET",
+    "/api/v1/operations/housekeeping/requests/{request_id}",
+    "Xem chi tiết một yêu cầu Buồng phòng"
+  ],
+  [
+    "GET",
+    "/api/v1/operations/kitchen/food-items",
+    "Danh mục tất cả món ăn gốc (Master Catalog)"
+  ],
+  [
+    "POST",
+    "/api/v1/operations/kitchen/food-items",
+    "Thêm món ăn mới vào danh mục gốc"
+  ],
+  [
+    "GET",
+    "/api/v1/operations/kitchen/food-items/{food_id}",
+    "Xem thông tin chi tiết món ăn gốc"
+  ],
+  [
+    "PUT",
+    "/api/v1/operations/kitchen/food-items/{food_id}",
+    "Cập nhật thông tin món ăn gốc"
+  ],
+  [
+    "DELETE",
+    "/api/v1/operations/kitchen/food-items/{food_id}",
+    "Xóa món ăn khỏi kho dữ liệu gốc"
+  ],
+  [
+    "GET",
+    "/api/v1/operations/kitchen/menu-items",
+    "Danh sách món ăn trong thực đơn (Menu Items)"
+  ],
+  [
+    "POST",
+    "/api/v1/operations/kitchen/menu-items",
+    "Tạo và gán nhanh món vào thực đơn"
+  ],
+  [
+    "GET",
+    "/api/v1/operations/kitchen/menus",
+    "Danh sách tất cả các thực đơn (Menus)"
+  ],
+  [
+    "POST",
+    "/api/v1/operations/kitchen/menus",
+    "Tạo thực đơn mới (kèm danh sách món nếu có)"
+  ],
+  [
+    "GET",
+    "/api/v1/operations/kitchen/menus/{menu_id}",
+    "Xem chi tiết một thực đơn kèm danh sách món"
+  ],
+  [
+    "PUT",
+    "/api/v1/operations/kitchen/menus/{menu_id}",
+    "Cập nhật thông tin thực đơn"
+  ],
+  [
+    "DELETE",
+    "/api/v1/operations/kitchen/menus/{menu_id}",
+    "Xóa một thực đơn"
+  ],
+  [
+    "POST",
+    "/api/v1/operations/kitchen/menus/{menu_id}/items",
+    "Gán món từ kho gốc vào thực đơn với giá riêng"
+  ],
+  [
+    "PATCH",
+    "/api/v1/operations/kitchen/menus/{menu_id}/items/{menu_item_id}",
+    "Cập nhật giá và trạng thái món trong thực đơn"
+  ],
+  [
+    "DELETE",
+    "/api/v1/operations/kitchen/menus/{menu_id}/items/{menu_item_id}",
+    "Gỡ món ăn khỏi thực đơn"
+  ],
+  [
+    "POST",
+    "/api/v1/operations/maintenance/requests",
+    "Tạo mới yêu cầu xử lý sự cố kỹ thuật"
+  ],
+  [
+    "GET",
+    "/api/v1/operations/maintenance/requests/{request_id}",
+    "Xem chi tiết một yêu cầu Kỹ thuật & Bảo trì"
+  ],
+  [
+    "GET",
+    "/api/v1/operations/notifications",
+    "Get Notifications"
+  ],
+  [
+    "POST",
+    "/api/v1/operations/notifications",
+    "Create Notification Endpoint"
+  ],
+  [
+    "POST",
+    "/api/v1/operations/notifications/mark-all-read",
+    "Mark All Notifications Read"
+  ],
+  [
+    "DELETE",
+    "/api/v1/operations/notifications/{notification_id}",
+    "Delete Notification Item"
+  ],
+  [
+    "PATCH",
+    "/api/v1/operations/notifications/{notification_id}/read",
+    "Toggle Notification Read"
+  ],
+  [
+    "POST",
+    "/api/v1/operations/reception/requests",
+    "Tạo mới yêu cầu Lễ tân & Đặt phòng"
+  ],
+  [
+    "GET",
+    "/api/v1/operations/reception/requests/{request_id}",
+    "Xem chi tiết một yêu cầu Lễ tân & Đặt phòng"
+  ],
+  [
+    "POST",
+    "/api/v1/operations/robot/control",
+    "Điều khiển di chuyển HCRobot (UDP Remote)"
+  ],
+  [
+    "GET",
+    "/api/v1/operations/room-service/order-items",
+    "Tra cứu toàn bộ danh sách các món ăn đã gọi (ORDER_ITEM)"
+  ],
+  [
+    "POST",
+    "/api/v1/operations/room-service/orders",
+    "Tạo đơn gọi món phục vụ phòng"
+  ],
+  [
+    "GET",
+    "/api/v1/operations/room-service/orders/{order_id}",
+    "Chi tiết một đơn hàng Room Service"
+  ],
+  [
+    "GET",
+    "/api/v1/operations/room-service/orders/{order_id}/items",
+    "Danh sách món ăn của một đơn hàng Room Service (ORDER_ITEM)"
+  ],
+  [
+    "GET",
+    "/api/v1/operations/room-service/rooms/{room_number}/orders",
+    "Tra cứu toàn bộ đơn hàng và món ăn phòng đó đã đặt"
+  ],
+  [
+    "GET",
+    "/api/v1/operations/service-types",
+    "Danh mục các loại hình dịch vụ khách sạn (Service Types)"
+  ],
+  [
+    "GET",
+    "/api/v1/operations/staff",
+    "Xem tất cả staff"
+  ],
+  [
+    "POST",
+    "/api/v1/operations/staff",
+    "Thêm mới nhân viên vào hệ thống"
+  ],
+  [
+    "GET",
+    "/api/v1/operations/staff/{staff_id}",
+    "Xem thông tin chi tiết một nhân viên theo ID"
+  ],
+  [
+    "PATCH",
+    "/api/v1/operations/staff/{staff_id}",
+    "Cập nhật thông tin hồ sơ nhân viên"
+  ],
+  [
+    "DELETE",
+    "/api/v1/operations/staff/{staff_id}",
+    "Vô hiệu hóa tài khoản nhân viên (Soft Delete)"
+  ],
+  [
+    "GET",
+    "/api/v1/operations/tasks",
+    "Danh sách tất cả yêu cầu dịch vụ / Tasks toàn khách sạn"
+  ],
+  [
+    "GET",
+    "/api/v1/operations/tasks/{ticket_id}",
+    "Xem chi tiết một phiếu yêu cầu / Task"
+  ],
+  [
+    "PATCH",
+    "/api/v1/operations/tasks/{ticket_id}",
+    "Cập nhật trạng thái và phân công xử lý yêu cầu nghiệp vụ / Task toàn khách sạn"
+  ],
+  [
+    "POST",
+    "/api/v1/operations/taxi/requests",
+    "Tạo mới yêu cầu gọi xe taxi / đưa đón sân bay"
+  ],
+  [
+    "GET",
+    "/api/v1/operations/taxi/requests/{request_id}",
+    "Xem chi tiết một yêu cầu đặt xe Taxi"
+  ],
+  [
+    "GET",
+    "/api/v1/rag/documents",
+    "Xem tất cả tài liệu tri thức trong ChromaDB"
+  ],
+  [
+    "POST",
+    "/api/v1/rag/documents",
+    "Thêm hoặc Cập nhật (Upsert) tài liệu tri thức"
+  ],
+  [
+    "DELETE",
+    "/api/v1/rag/documents/{doc_id}",
+    "Xóa tài liệu tri thức theo ID"
+  ],
+  [
+    "GET",
+    "/api/v1/rag/sources",
+    "Danh sách các file nguồn đã nạp vào Robot"
+  ],
+  [
+    "POST",
+    "/api/v1/rag/sources/save",
+    "Lưu trực tiếp nội dung file Markdown xuống ổ đĩa và tái đồng bộ ChromaDB"
+  ],
+  [
+    "GET",
+    "/api/v1/rag/stats",
+    "Thống kê tổng quan tri thức RAG"
+  ],
+  [
+    "POST",
+    "/api/v1/rag/sync-obsidian",
+    "Đồng bộ tự động tất cả ghi chú Obsidian Vault vào ChromaDB"
+  ],
+  [
+    "POST",
+    "/api/v1/rag/upload-file",
+    "Tải file PDF, DOCX, Markdown hoặc Ảnh nạp vào Robot"
+  ],
+  [
+    "GET",
+    "/api/v1/workflows",
+    "Lấy danh sách các Step Workflows của Robot"
+  ],
+  [
+    "POST",
+    "/api/v1/workflows",
+    "Tạo mới hoặc cập nhật kịch bản Workflow"
+  ],
+  [
+    "GET",
+    "/api/v1/workflows/{workflow_id}",
+    "Lấy chi tiết kịch bản Workflow"
+  ],
+  [
+    "PUT",
+    "/api/v1/workflows/{workflow_id}",
+    "Cập nhật Workflow"
+  ],
+  [
+    "DELETE",
+    "/api/v1/workflows/{workflow_id}",
+    "Xóa Workflow"
+  ],
+  [
+    "POST",
+    "/api/v1/workflows/{workflow_id}/execute",
+    "Chạy thử kịch bản Workflow trên Robot"
+  ],
+  [
+    "GET",
+    "/health",
+    "Kiểm tra trạng thái kết nối máy chủ (Health)"
+  ]
+]

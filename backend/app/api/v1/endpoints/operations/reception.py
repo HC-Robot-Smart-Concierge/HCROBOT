@@ -1,7 +1,7 @@
 import random
 from datetime import datetime
-from typing import Optional, List
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from typing import Optional, List, Dict, Any
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc, or_, func
 
@@ -142,32 +142,6 @@ async def create_reception_request(
     return new_request
 
 
-@router.get(
-    "/reception/requests",
-    response_model=List[ReceptionRequestResponse],
-    tags=TAG_REC,
-    summary="Danh sách toàn bộ yêu cầu Lễ tân & Đặt phòng",
-)
-async def list_reception_requests(
-    status: Optional[str] = Query(None, description="Lọc theo trạng thái yêu cầu"),
-    db: AsyncSession = Depends(get_db),
-):
-    """Lấy danh sách các yêu cầu tiếp nhận tại bộ phận Lễ tân."""
-    stmt = (
-        select(SupportRequest)
-        .where(
-            or_(
-                SupportRequest.department_id == "DEP-RECEPTION",
-                SupportRequest.service_type_id == "ST-RECEPTION",
-            )
-        )
-        .order_by(desc(SupportRequest.created_at))
-    )
-    if status and status not in ("All", ""):
-        stmt = stmt.where(SupportRequest.status == status)
-    res = await db.execute(stmt)
-    return res.scalars().all()
-
 
 @router.get(
     "/reception/requests/{request_id}",
@@ -204,51 +178,3 @@ async def get_reception_request(
         raise HTTPException(status_code=404, detail="Không tìm thấy yêu cầu Lễ tân")
     return request
 
-
-@router.patch(
-    "/reception/requests/{request_id}",
-    response_model=ReceptionRequestResponse,
-    tags=TAG_REC,
-    summary="Cập nhật trạng thái và phân công xử lý yêu cầu Lễ tân",
-    responses={
-        200: {"description": "Cập nhật yêu cầu lễ tân thành công."},
-        404: {"description": "Không tìm thấy yêu cầu lễ tân."}
-    },
-)
-async def update_reception_request(
-    request_id: str,
-    update_in: ReceptionRequestUpdate,
-    db: AsyncSession = Depends(get_db),
-):
-    """
-    ### Mô tả nghiệp vụ:
-    Nhân viên Lễ tân đổi trạng thái (`In Progress`, `Completed`), tiếp nhận xử lý phiếu hoặc phân công nhân sự giải quyết.
-    """
-    clean_id = request_id.replace("REQ-", "").strip()
-    result = await db.execute(
-        select(SupportRequest).where(
-            or_(
-                SupportRequest.id == request_id,
-                SupportRequest.ticket_code == request_id,
-                SupportRequest.id == clean_id,
-                SupportRequest.ticket_code == clean_id,
-            )
-        )
-    )
-    request = result.scalar_one_or_none()
-    if not request:
-        raise HTTPException(status_code=404, detail="Không tìm thấy yêu cầu Lễ tân")
-
-    if update_in.status is not None:
-        request.status = update_in.status
-    if update_in.assigned_to is not None:
-        request.assigned_staff_name = update_in.assigned_to
-    if update_in.note:
-        request.description = f"{request.description or ''} | Note: {update_in.note}".strip(" |")
-    if update_in.escalated:
-        request.priority = "HIGH"
-
-    request.updated_at = datetime.utcnow()
-    await db.commit()
-    await db.refresh(request)
-    return request

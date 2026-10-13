@@ -1,0 +1,1009 @@
+[
+  {
+    "method": "POST",
+    "path": "/api/v1/ai/chat",
+    "summary": "Sinh câu trả lời hội thoại cho Concierge Robot",
+    "fe_hits": [
+      "services\\aiApi.test.js"
+    ],
+    "test_hits": []
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/ai/chat/stream",
+    "summary": "Streaming câu trả lời hội thoại từ Ollama LLM qua Server-Sent Events (SSE)",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/ai/feedback",
+    "summary": "Gửi phản hồi và đánh giá dịch vụ từ khách",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/ai/feedback",
+    "summary": "Xem danh sách phản hồi và đánh giá của khách hàng",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/ai/intent",
+    "summary": "Phân tích ý định & bóc tách JSON yêu cầu dịch vụ (kèm Slot-Filling Số Phòng)",
+    "fe_hits": [
+      "services\\aiApi.test.js"
+    ],
+    "test_hits": []
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/ai/session/flush",
+    "summary": "Đóng gói và lưu toàn bộ phiên hội thoại vào CSDL (End-of-Session Bulk Persistence)",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/ai/session/reset",
+    "summary": "Reset bộ nhớ phiên & Đóng gói lưu CSDL một lần duy nhất",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/ai/sessions",
+    "summary": "Get All Chat Sessions",
+    "fe_hits": [],
+    "test_hits": [
+      "tests\\test_chat_session_db.py"
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/ai/sessions/{session_id}/messages",
+    "summary": "Get Session Messages",
+    "fe_hits": [],
+    "test_hits": [
+      "tests\\test_chat_session_db.py"
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/ai/stt/transcribe",
+    "summary": "Nhận diện giọng nói từ file âm thanh WAV",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/ai/tts",
+    "summary": "Chuyển văn bản thành âm thanh thoại MP3 (EdgeTTS / ElevenLabs / OpenAI TTS)",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/auth/change-password",
+    "summary": "Change Password",
+    "fe_hits": [
+      "services\\authApi.js"
+    ],
+    "test_hits": []
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/auth/login",
+    "summary": "Login",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/auth/logout",
+    "summary": "Logout",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/auth/me",
+    "summary": "Get Current User",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/v1/auth/profile",
+    "summary": "Update Profile",
+    "fe_hits": [
+      "services\\authApi.js"
+    ],
+    "test_hits": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/logs",
+    "summary": "Get Logs",
+    "fe_hits": [
+      "pages\\admin\\tabs\\AdminLogsTab.jsx",
+      "services\\logsApi.js"
+    ],
+    "test_hits": [
+      "scripts\\compare_apis.py"
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/logs/audit-logs",
+    "summary": "Get Audit Trail",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/logs/export",
+    "summary": "Export Logs",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/logs/statistics",
+    "summary": "Get Statistics",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/logs/trace/{correlation_id}",
+    "summary": "Get Trace",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/map/connect_lidar",
+    "summary": "Kích hoạt kết nối với cổng COM9 của RPLiDAR",
+    "fe_hits": [
+      "pages\\admin\\AdminLidarPage.jsx"
+    ],
+    "test_hits": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/map/current",
+    "summary": "Lấy dữ liệu bản đồ SLAM Occupancy Grid 2D thực tế",
+    "fe_hits": [
+      "pages\\admin\\AdminLidarPage.jsx",
+      "services\\workflowApi.js"
+    ],
+    "test_hits": [
+      "tests\\test_map_endpoint.py"
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/map/lidar_status",
+    "summary": "Kiểm tra trạng thái phần cứng RPLiDAR COM9 thực tế",
+    "fe_hits": [
+      "pages\\admin\\AdminLidarPage.jsx"
+    ],
+    "test_hits": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/map/list_saved_maps",
+    "summary": "Lấy danh sách các bản đồ đã lưu trong static/maps",
+    "fe_hits": [
+      "services\\workflowApi.js"
+    ],
+    "test_hits": []
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/map/load_map",
+    "summary": "Nạp lại bản đồ cố định đã lưu từ CSDL/file",
+    "fe_hits": [
+      "services\\workflowApi.js"
+    ],
+    "test_hits": []
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/map/navigate",
+    "summary": "Gửi mục tiêu di chuyển Robot",
+    "fe_hits": [
+      "pages\\admin\\AdminLidarPage.jsx",
+      "pages\\admin\\tabs\\AdminUnifiedStudioTab.jsx"
+    ],
+    "test_hits": [
+      "tests\\test_map_endpoint.py"
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/map/reset_map",
+    "summary": "Xóa trắng bản đồ 2D để tiến hành quét SLAM lại từ đầu",
+    "fe_hits": [
+      "pages\\admin\\AdminLidarPage.jsx",
+      "pages\\admin\\tabs\\AdminUnifiedStudioTab.jsx"
+    ],
+    "test_hits": []
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/map/save_map",
+    "summary": "Lưu bản đồ Occupancy Grid hiện tại vào CSDL và lưu file cố định",
+    "fe_hits": [
+      "services\\workflowApi.js"
+    ],
+    "test_hits": []
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/map/scan_360",
+    "summary": "Kích hoạt robot quay 360 độ để quét toàn cảnh phòng",
+    "fe_hits": [
+      "pages\\admin\\AdminLidarPage.jsx",
+      "pages\\admin\\tabs\\AdminUnifiedStudioTab.jsx"
+    ],
+    "test_hits": []
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/map/teleop",
+    "summary": "Điều khiển thủ công Robot di chuyển",
+    "fe_hits": [
+      "pages\\admin\\AdminLidarPage.jsx",
+      "pages\\admin\\tabs\\AdminUnifiedStudioTab.jsx"
+    ],
+    "test_hits": []
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/map/toggle_lock",
+    "summary": "Bật/tắt chế độ khóa bản đồ tĩnh",
+    "fe_hits": [
+      "services\\workflowApi.js"
+    ],
+    "test_hits": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/map/waypoints",
+    "summary": "Lấy danh sách các điểm Waypoints / Endpoints",
+    "fe_hits": [
+      "services\\workflowApi.js"
+    ],
+    "test_hits": [
+      "tests\\test_map_endpoint.py"
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/map/waypoints",
+    "summary": "Tạo mới hoặc cập nhật tọa độ Waypoint / Endpoint",
+    "fe_hits": [
+      "services\\workflowApi.js"
+    ],
+    "test_hits": [
+      "tests\\test_map_endpoint.py"
+    ]
+  },
+  {
+    "method": "PUT",
+    "path": "/api/v1/map/waypoints/{waypoint_id}",
+    "summary": "Chỉnh sửa Endpoint đã có",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/map/waypoints/{waypoint_id}",
+    "summary": "Xóa điểm Waypoint / Endpoint",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/map/zones",
+    "summary": "Lấy danh sách các Vùng Chức Năng (Zones)",
+    "fe_hits": [
+      "services\\workflowApi.js"
+    ],
+    "test_hits": []
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/map/zones",
+    "summary": "Tạo mới hoặc cập nhật Vùng Chức Năng (Zone)",
+    "fe_hits": [
+      "services\\workflowApi.js"
+    ],
+    "test_hits": []
+  },
+  {
+    "method": "PUT",
+    "path": "/api/v1/map/zones/{zone_id}",
+    "summary": "Cập nhật Vùng Chức Năng theo ID",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/map/zones/{zone_id}",
+    "summary": "Xóa Vùng Chức Năng",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/admin/conversations",
+    "summary": "Admin: Xem danh sách các phiên đàm thoại giọng nói Robot với khách",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/admin/conversations/{session_id}",
+    "summary": "Admin: Xem chi tiết toàn bộ lịch sử đàm thoại song ngữ của 1 phiên",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/operations/admin/dispatch",
+    "summary": "Admin: Tạo lệnh điều phối công việc toàn khách sạn",
+    "fe_hits": [],
+    "test_hits": [
+      "tests\\test_operations_endpoint.py"
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/admin/summary",
+    "summary": "Admin: Thống kê số lượng ticket theo bộ phận",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/analytics/summary",
+    "summary": "Admin: Thống kê phân tích số liệu thực tế từ Database",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/operations/bell-services/requests",
+    "summary": "Tạo mới yêu cầu hỗ trợ hành lý / Bellman",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/bell-services/requests/{request_id}",
+    "summary": "Xem chi tiết một yêu cầu Bell Services",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/concierge/recordings/local/{filename}",
+    "summary": "Phát lại video ghi hình local fallback",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/operations/concierge/recordings/{session_id}",
+    "summary": "Tải video ghi hình cuộc gọi lên Cloudinary và lưu vào HumanSupportSession",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/operations/concierge/requests",
+    "summary": "Khởi tạo phiên hỗ trợ Live Call / Video Call từ Robot Kiosk",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/concierge/requests",
+    "summary": "Danh sách toàn bộ yêu cầu hỗ trợ Concierge & Live Call",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/concierge/requests/{request_id}",
+    "summary": "Xem chi tiết một phiên yêu cầu hỗ trợ Concierge",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/v1/operations/concierge/requests/{request_id}",
+    "summary": "Cập nhật trạng thái cuộc gọi, phân công hoặc đóng phiên Live Call Concierge",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/concierge/sessions",
+    "summary": "Lấy danh sách các phiên hỗ trợ người thật & video call đã ghi hình",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/concierge/sessions/{session_id}",
+    "summary": "Chi tiết một phiên HumanSupportSession",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/dashboard/bell-services",
+    "summary": "Dashboard vận hành bộ phận Bellman & Hành lý",
+    "fe_hits": [],
+    "test_hits": [
+      "tests\\test_operations_endpoint.py"
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/dashboard/concierge",
+    "summary": "Dashboard Concierge: Phiên hỗ trợ Live Call và trợ giúp khách hàng mới nhất",
+    "fe_hits": [
+      "services\\conciergeApi.js"
+    ],
+    "test_hits": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/dashboard/housekeeping",
+    "summary": "Dashboard vận hành bộ phận Buồng phòng",
+    "fe_hits": [],
+    "test_hits": [
+      "tests\\test_operations_endpoint.py"
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/dashboard/maintenance",
+    "summary": "Dashboard vận hành bộ phận Kỹ thuật & Bảo trì",
+    "fe_hits": [],
+    "test_hits": [
+      "tests\\test_operations_endpoint.py"
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/dashboard/reception",
+    "summary": "Dashboard Lễ tân: Danh sách yêu cầu đặt phòng và hỗ trợ tiền sảnh",
+    "fe_hits": [],
+    "test_hits": [
+      "tests\\test_operations_endpoint.py"
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/dashboard/room-service",
+    "summary": "Xem Dashboard Phục vụ phòng (Room Service)",
+    "fe_hits": [],
+    "test_hits": [
+      "tests\\test_operations_endpoint.py"
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/dashboard/taxi",
+    "summary": "Dashboard điều phối Đặt xe & Vận chuyển (Taxi & Transportation)",
+    "fe_hits": [
+      "services\\taxiApi.js"
+    ],
+    "test_hits": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/departments",
+    "summary": "Danh sách các phòng ban khách sạn",
+    "fe_hits": [
+      "services\\departmentApi.js",
+      "services\\staffApi.js"
+    ],
+    "test_hits": []
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/operations/departments",
+    "summary": "Thêm mới phòng ban khách sạn",
+    "fe_hits": [
+      "services\\departmentApi.js",
+      "services\\staffApi.js"
+    ],
+    "test_hits": []
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/v1/operations/departments/{department_id}",
+    "summary": "Cập nhật thông tin phòng ban",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/operations/departments/{department_id}",
+    "summary": "Vô hiệu hóa phòng ban (Soft Delete)",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/departments/{department_id}",
+    "summary": "Chi tiết phòng ban kèm danh sách dịch vụ và nhân sự trực thuộc",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/operations/directives",
+    "summary": "Phát chỉ thị điều hành quản lý liên bộ phận",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/fleet",
+    "summary": "Danh sách trạng thái đội Robot HCRobot",
+    "fe_hits": [],
+    "test_hits": [
+      "tests\\test_operations_endpoint.py"
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/operations/housekeeping/requests",
+    "summary": "Tạo mới yêu cầu dịch vụ buồng phòng",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/housekeeping/requests/{request_id}",
+    "summary": "Xem chi tiết một yêu cầu Buồng phòng",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/kitchen/food-items",
+    "summary": "Danh mục tất cả món ăn gốc (Master Catalog)",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/operations/kitchen/food-items",
+    "summary": "Thêm món ăn mới vào danh mục gốc",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/kitchen/food-items/{food_id}",
+    "summary": "Xem thông tin chi tiết món ăn gốc",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "PUT",
+    "path": "/api/v1/operations/kitchen/food-items/{food_id}",
+    "summary": "Cập nhật thông tin món ăn gốc",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/operations/kitchen/food-items/{food_id}",
+    "summary": "Xóa món ăn khỏi kho dữ liệu gốc",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/kitchen/menu-items",
+    "summary": "Danh sách món ăn trong thực đơn (Menu Items)",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/operations/kitchen/menu-items",
+    "summary": "Tạo và gán nhanh món vào thực đơn",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/kitchen/menus",
+    "summary": "Danh sách tất cả các thực đơn (Menus)",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/operations/kitchen/menus",
+    "summary": "Tạo thực đơn mới (kèm danh sách món nếu có)",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/kitchen/menus/{menu_id}",
+    "summary": "Xem chi tiết một thực đơn kèm danh sách món",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "PUT",
+    "path": "/api/v1/operations/kitchen/menus/{menu_id}",
+    "summary": "Cập nhật thông tin thực đơn",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/operations/kitchen/menus/{menu_id}",
+    "summary": "Xóa một thực đơn",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/operations/kitchen/menus/{menu_id}/items",
+    "summary": "Gán món từ kho gốc vào thực đơn với giá riêng",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/v1/operations/kitchen/menus/{menu_id}/items/{menu_item_id}",
+    "summary": "Cập nhật giá và trạng thái món trong thực đơn",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/operations/kitchen/menus/{menu_id}/items/{menu_item_id}",
+    "summary": "Gỡ món ăn khỏi thực đơn",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/operations/maintenance/requests",
+    "summary": "Tạo mới yêu cầu xử lý sự cố kỹ thuật",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/maintenance/requests/{request_id}",
+    "summary": "Xem chi tiết một yêu cầu Kỹ thuật & Bảo trì",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/notifications",
+    "summary": "Get Notifications",
+    "fe_hits": [],
+    "test_hits": [
+      "scripts\\compare_apis.py"
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/operations/notifications",
+    "summary": "Create Notification Endpoint",
+    "fe_hits": [],
+    "test_hits": [
+      "scripts\\compare_apis.py"
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/operations/notifications/mark-all-read",
+    "summary": "Mark All Notifications Read",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/operations/notifications/{notification_id}",
+    "summary": "Delete Notification Item",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/v1/operations/notifications/{notification_id}/read",
+    "summary": "Toggle Notification Read",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/operations/reception/requests",
+    "summary": "Tạo mới yêu cầu Lễ tân & Đặt phòng",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/reception/requests/{request_id}",
+    "summary": "Xem chi tiết một yêu cầu Lễ tân & Đặt phòng",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/operations/robot/control",
+    "summary": "Điều khiển di chuyển HCRobot (UDP Remote)",
+    "fe_hits": [
+      "pages\\admin\\AdminLidarPage.jsx",
+      "pages\\admin\\tabs\\AdminCameraTab.jsx"
+    ],
+    "test_hits": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/room-service/order-items",
+    "summary": "Tra cứu toàn bộ danh sách các món ăn đã gọi (ORDER_ITEM)",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/operations/room-service/orders",
+    "summary": "Tạo đơn gọi món phục vụ phòng",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/room-service/orders/{order_id}",
+    "summary": "Chi tiết một đơn hàng Room Service",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/room-service/orders/{order_id}/items",
+    "summary": "Danh sách món ăn của một đơn hàng Room Service (ORDER_ITEM)",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/room-service/rooms/{room_number}/orders",
+    "summary": "Tra cứu toàn bộ đơn hàng và món ăn phòng đó đã đặt",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/service-types",
+    "summary": "Danh mục các loại hình dịch vụ khách sạn (Service Types)",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/staff",
+    "summary": "Xem tất cả staff",
+    "fe_hits": [
+      "services\\staffApi.js"
+    ],
+    "test_hits": [
+      "tests\\test_operations_endpoint.py",
+      "scripts\\compare_apis.py"
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/operations/staff",
+    "summary": "Thêm mới nhân viên vào hệ thống",
+    "fe_hits": [
+      "services\\staffApi.js"
+    ],
+    "test_hits": [
+      "tests\\test_operations_endpoint.py",
+      "scripts\\compare_apis.py"
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/staff/{staff_id}",
+    "summary": "Xem thông tin chi tiết một nhân viên theo ID",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/v1/operations/staff/{staff_id}",
+    "summary": "Cập nhật thông tin hồ sơ nhân viên",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/operations/staff/{staff_id}",
+    "summary": "Vô hiệu hóa tài khoản nhân viên (Soft Delete)",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/tasks",
+    "summary": "Danh sách tất cả yêu cầu dịch vụ / Tasks toàn khách sạn",
+    "fe_hits": [
+      "services\\taxiApi.js"
+    ],
+    "test_hits": [
+      "tests\\test_operations_endpoint.py"
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/tasks/{ticket_id}",
+    "summary": "Xem chi tiết một phiếu yêu cầu / Task",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/v1/operations/tasks/{ticket_id}",
+    "summary": "Cập nhật trạng thái và phân công xử lý yêu cầu nghiệp vụ / Task toàn khách sạn",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/operations/taxi/requests",
+    "summary": "Tạo mới yêu cầu gọi xe taxi / đưa đón sân bay",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/operations/taxi/requests/{request_id}",
+    "summary": "Xem chi tiết một yêu cầu đặt xe Taxi",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/rag/documents",
+    "summary": "Xem tất cả tài liệu tri thức trong ChromaDB",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/rag/documents",
+    "summary": "Thêm hoặc Cập nhật (Upsert) tài liệu tri thức",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/rag/documents/{doc_id}",
+    "summary": "Xóa tài liệu tri thức theo ID",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/rag/sources",
+    "summary": "Danh sách các file nguồn đã nạp vào Robot",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/rag/sources/save",
+    "summary": "Lưu trực tiếp nội dung file Markdown xuống ổ đĩa và tái đồng bộ ChromaDB",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/rag/stats",
+    "summary": "Thống kê tổng quan tri thức RAG",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/rag/sync-obsidian",
+    "summary": "Đồng bộ tự động tất cả ghi chú Obsidian Vault vào ChromaDB",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/rag/upload-file",
+    "summary": "Tải file PDF, DOCX, Markdown hoặc Ảnh nạp vào Robot",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/workflows",
+    "summary": "Lấy danh sách các Step Workflows của Robot",
+    "fe_hits": [
+      "services\\workflowApi.js"
+    ],
+    "test_hits": [
+      "scripts\\compare_apis.py"
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/workflows",
+    "summary": "Tạo mới hoặc cập nhật kịch bản Workflow",
+    "fe_hits": [
+      "services\\workflowApi.js"
+    ],
+    "test_hits": [
+      "scripts\\compare_apis.py"
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/api/v1/workflows/{workflow_id}",
+    "summary": "Lấy chi tiết kịch bản Workflow",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "PUT",
+    "path": "/api/v1/workflows/{workflow_id}",
+    "summary": "Cập nhật Workflow",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/v1/workflows/{workflow_id}",
+    "summary": "Xóa Workflow",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "POST",
+    "path": "/api/v1/workflows/{workflow_id}/execute",
+    "summary": "Chạy thử kịch bản Workflow trên Robot",
+    "fe_hits": [],
+    "test_hits": []
+  },
+  {
+    "method": "GET",
+    "path": "/health",
+    "summary": "Kiểm tra trạng thái kết nối máy chủ (Health)",
+    "fe_hits": [
+      "pages\\admin\\tabs\\AdminCameraTab.jsx"
+    ],
+    "test_hits": [
+      "tests\\test_operations_endpoint.py",
+      "scripts\\compare_apis.py"
+    ]
+  }
+]

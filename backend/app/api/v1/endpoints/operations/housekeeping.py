@@ -1,7 +1,7 @@
 import random
 from datetime import datetime
 from typing import List, Dict, Any, Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc, or_
 
@@ -129,48 +129,6 @@ async def get_housekeeping_dashboard(db: AsyncSession = Depends(get_db)):
     }
 
 
-@router.get(
-    "/housekeeping/requests",
-    response_model=List[HousekeepingRequestResponse],
-    tags=TAG_HK,
-    summary="Danh sách toàn bộ yêu cầu Buồng phòng",
-)
-async def list_housekeeping_requests(
-    status: Optional[str] = Query(None, description="Lọc theo trạng thái yêu cầu"),
-    db: AsyncSession = Depends(get_db),
-):
-    """Lấy danh sách các yêu cầu dịch vụ buồng phòng."""
-    stmt = (
-        select(SupportRequest)
-        .where(
-            or_(
-                SupportRequest.department_id == "DEP-HOUSEKEEPING",
-                SupportRequest.service_type_id == "ST-HOUSEKEEPING",
-            )
-        )
-        .order_by(desc(SupportRequest.created_at))
-    )
-    if status and status not in ("All", ""):
-        stmt = stmt.where(SupportRequest.status == status)
-    res = await db.execute(stmt)
-    reqs = res.scalars().all()
-    return [
-        HousekeepingRequestResponse(
-            id=f"REQ-{h.ticket_code}" if not str(h.ticket_code).startswith("REQ-") else h.ticket_code,
-            ticket_code=h.ticket_code,
-            source=h.source or "From HCRobot",
-            time_label=h.created_at.strftime("%H:%M") if h.created_at else "Recent",
-            title=h.title,
-            room_number=h.room_number or "Room 000",
-            description=h.description,
-            guest_name=h.guest_name or "Guest",
-            status=h.status,
-            assigned_staff_name=h.assigned_staff_name,
-            created_at=h.created_at,
-        )
-        for h in reqs
-    ]
-
 
 @router.post(
     "/housekeeping/requests",
@@ -263,71 +221,3 @@ async def get_housekeeping_request(
         created_at=req.created_at,
     )
 
-
-@router.patch(
-    "/housekeeping/requests/{request_id}/assign",
-    response_model=HousekeepingRequestResponse,
-    tags=TAG_HK,
-    summary="Phân công nhân viên xử lý yêu cầu buồng phòng",
-    responses={
-        200: {"description": "Phân công hoặc cập nhật tiến độ công việc buồng phòng thành công."},
-        404: {"description": "Không tìm thấy yêu cầu buồng phòng."}
-    },
-)
-@router.patch(
-    "/housekeeping/requests/{request_id}",
-    response_model=HousekeepingRequestResponse,
-    tags=TAG_HK,
-    include_in_schema=False,
-)
-async def assign_housekeeping_request(
-    request_id: str,
-    assign_in: HousekeepingAssignRequest,
-    db: AsyncSession = Depends(get_db),
-):
-    """
-    ### Mô tả nghiệp vụ:
-    Điều phối viên hoặc nhân viên Buồng phòng bấm **Nhận việc / Phân công nhân viên** xử lý yêu cầu.
-    """
-    clean_id = request_id.replace("REQ-", "").replace("HK-", "").strip()
-    res = await db.execute(
-        select(SupportRequest).where(
-            or_(
-                SupportRequest.id == request_id,
-                SupportRequest.ticket_code == request_id,
-                SupportRequest.id == clean_id,
-                SupportRequest.ticket_code == clean_id,
-                SupportRequest.ticket_code == f"HK-{clean_id}",
-            )
-        )
-    )
-    req = res.scalar_one_or_none()
-    if not req:
-        raise HTTPException(status_code=404, detail="Không tìm thấy yêu cầu Buồng phòng")
-
-    staff_name = assign_in.assigned_staff_name or assign_in.assigned_staff
-    if assign_in.status:
-        req.status = assign_in.status
-    if staff_name:
-        req.assigned_staff_name = staff_name
-
-    staff_identifier = assign_in.assigned_staff_id or staff_name
-    if staff_identifier:
-        staff_check = await db.execute(
-            select(Staff).where(
-                or_(
-                    Staff.id == staff_identifier,
-                    Staff.username == staff_identifier,
-                    Staff.full_name == assign_in.assigned_staff_name,
-                )
-            )
-        )
-        found_staff = staff_check.scalar_one_or_none()
-        req.account_id = found_staff.id if found_staff else None
-    else:
-        req.account_id = None
-
-    req.updated_at = datetime.utcnow()
-    await db.commit()
-    await db.refresh(req)
-    return req

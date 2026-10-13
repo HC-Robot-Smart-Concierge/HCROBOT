@@ -7,8 +7,8 @@ CORE_WORKFLOWS = [
         "id": "wf-01-welcome",
         "name": "Workflow 1: Đón tiếp và Chào mừng khách chủ động",
         "description": "Tự động tiếp cận khi thấy khách vào sảnh để chào hỏi và mở menu.",
-        "trigger_type": "AUTO_DETECT",
-        "is_active": True,
+        "trigger_type": "MANUAL",
+        "is_active": False,
         "steps": [
             {
                 "step_id": "wf1-step-1",

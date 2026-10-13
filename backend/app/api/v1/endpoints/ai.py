@@ -25,7 +25,7 @@ from app.services.ai.ollama_service import ollama_service
 from app.services.ai.session_manager import session_manager
 from app.services.ai.tts_service import tts_service
 from app.services.ai.pipecat_service import pipecat_service
-from app.services.ai.concierge_graph import concierge_graph
+from app.services.ai.concierge_graph import concierge_graph, intent_router_node, service_fsm_node, retrieval_node
 from app.core.config import settings
 from datetime import datetime
 from app.models import (
@@ -145,13 +145,10 @@ async def chat_with_robot(request: ChatRequest, db: AsyncSession = Depends(get_d
             except Exception as e_vc:
                 logger.error(f"[AIChat VideoCall Setup Error] {e_vc}")
                 await db.rollback()
-        else:
-            # TỰ ĐỘNG TẠO TICKET DỊCH VỤ TRONG NỀN TẬN DỤNG INTENT ĐÃ CÓ TỪ LANGGRAPH (Không gọi lại Ollama 5s)
-            asyncio.create_task(_background_extract_and_create_ticket(request.prompt, current_room, act, items))
 
         return ChatResponse(
             response=reply,
-            model_used=settings.OLLAMA_MODEL,
+            model_used=settings.active_llm_model,
             detected_language=detected_lang,
             lang_code=lang_code,
             session_id=sid,
@@ -175,8 +172,8 @@ async def chat_with_robot(request: ChatRequest, db: AsyncSession = Depends(get_d
 @router.post("/chat/stream", summary="Streaming câu trả lời hội thoại từ Ollama LLM qua Server-Sent Events (SSE)")
 async def chat_stream_endpoint(request: ChatRequest):
     """
-    Endpoint streaming tokens trực tiếp từ Qwen LLM về client theo thời gian thực.
-    Continuous Token Streaming kết hợp duy trì bộ nhớ đa lượt Session Memory.
+    Endpoint streaming tokens trực tiếp từ LangGraph Harness & Ollama LLM về client theo thời gian thực.
+    Tích hợp Fast-Path (<1ms) và Service FSM (<2ms) kết hợp duy trì bộ nhớ đa lượt Session Memory.
     """
     async def event_generator():
         try:
@@ -189,10 +186,83 @@ async def chat_stream_endpoint(request: ChatRequest):
             # 0. INSTANT ACK (<5ms) — Frontend biết kết nối sống ngay lập tức
             yield f"data: {json.dumps({'event': 'ack', 'status': 'connected'}, ensure_ascii=False)}\n\n"
 
-            # 1. Stream Ollama tokens trực tiếp liên tục từ Qwen 3B
+            # 1. KIỂM TRA HARNESS: MEGA FAST-PATH (< 1ms)
+            fast_hit = ollama_service.check_fast_path(request.prompt, request.language)
+            if fast_hit:
+                reply, lang_name, lang_code = fast_hit
+                logger.info(f"[AIChatStream Fast-Path] Trả lời tức thì <1ms cho: '{request.prompt[:30]}'")
+
+                words = reply.split(" ")
+                for i, w in enumerate(words):
+                    token_piece = w + (" " if i < len(words) - 1 else "")
+                    yield f"data: {json.dumps({'event': 'token', 'token': token_piece}, ensure_ascii=False)}\n\n"
+                    await asyncio.sleep(0.008)
+
+                session_manager.add_turn(sid, "user", request.prompt, language=lang_code)
+                session_manager.add_turn(sid, "assistant", reply, language=lang_code, intent_action="fast_path")
+                yield f"data: {json.dumps({'event': 'done', 'full_text': reply, 'lang_code': lang_code, 'room_number': current_room, 'action': 'fast_path'}, ensure_ascii=False)}\n\n"
+                return
+
+            # 2. KIỂM TRA HARNESS: INTENT ROUTER & SERVICE FSM (< 2ms)
+            router_state = await intent_router_node({
+                "prompt": request.prompt,
+                "room_number": current_room,
+            })
+
+            category = router_state.get("intent_category", "chitchat")
+            action = router_state.get("action", "conversation")
+
+            if category == "service":
+                effective_room = router_state.get("room_number") or current_room
+                if effective_room:
+                    session_manager.set_room_number(sid, effective_room)
+
+                fsm_state = await service_fsm_node({
+                    "action": action,
+                    "room_number": effective_room,
+                    "items": router_state.get("items"),
+                    "lang_code": "en-US" if request.language and "en" in request.language.lower() else "vi-VN",
+                })
+
+                fsm_reply = fsm_state.get("response", "")
+                is_call = bool(fsm_state.get("trigger_video_call") or action == "concierge")
+
+                logger.info(f"[AIChatStream FSM] Trả lời FSM tức thì <2ms cho action: '{action}'")
+
+                words = fsm_reply.split(" ")
+                for i, w in enumerate(words):
+                    token_piece = w + (" " if i < len(words) - 1 else "")
+                    yield f"data: {json.dumps({'event': 'token', 'token': token_piece}, ensure_ascii=False)}\n\n"
+                    await asyncio.sleep(0.008)
+
+                _, final_lang_code = ollama_service.detect_language(fsm_reply)
+                session_manager.add_turn(sid, "user", request.prompt, language=final_lang_code)
+                session_manager.add_turn(sid, "assistant", fsm_reply, language=final_lang_code, intent_action=action)
+
+                yield f"data: {json.dumps({
+                    'event': 'done',
+                    'full_text': fsm_reply,
+                    'lang_code': final_lang_code,
+                    'room_number': effective_room,
+                    'action': action,
+                    'trigger_video_call': is_call
+                }, ensure_ascii=False)}\n\n"
+                return
+
+            # 3. NẾU LÀ FAQ: TRUY VẤN VÀ CẮT GỌT RAG CONTEXT (HARNESS CONTEXT PRUNING)
+            rag_context = request.rag_context
+            if category == "faq" and not rag_context:
+                try:
+                    retrieval_res = await retrieval_node({"prompt": request.prompt})
+                    rag_context = retrieval_res.get("rag_context", "")
+                except Exception as ex_rag:
+                    logger.warning(f"[AIChatStream] Retrieval error: {ex_rag}")
+
+            # 4. TRÒ CHUYỆN TỰ DO: STREAM OLLAMA TOKENS TỪ LLM (ĐÃ TỐI ƯU NUM_CTX=1024, TTFT < 300MS)
             full_text = ""
             async for token in ollama_service.generate_response_stream(
                 prompt=request.prompt,
+                rag_context=rag_context,
                 language=request.language,
                 emotion=request.emotion,
                 chat_history=history,
@@ -203,11 +273,16 @@ async def chat_stream_endpoint(request: ChatRequest):
 
             _, final_lang_code = ollama_service.detect_language(full_text)
 
-            # Lưu lại lịch sử lượt nói vào bộ nhớ RAM của phiên để duy trì ngữ cảnh
             session_manager.add_turn(sid, "user", request.prompt, language=final_lang_code)
             session_manager.add_turn(sid, "assistant", full_text, language=final_lang_code, intent_action="conversation")
 
-            yield f"data: {json.dumps({'event': 'done', 'full_text': full_text, 'lang_code': final_lang_code, 'room_number': current_room}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({
+                'event': 'done',
+                'full_text': full_text,
+                'lang_code': final_lang_code,
+                'room_number': current_room,
+                'action': 'conversation'
+            }, ensure_ascii=False)}\n\n"
         except Exception as e:
             logger.error(f"[AIChatStream Error] {e}")
             yield f"data: {json.dumps({'event': 'error', 'message': str(e)}, ensure_ascii=False)}\n\n"

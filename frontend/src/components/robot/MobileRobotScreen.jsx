@@ -222,13 +222,24 @@ export const MobileRobotScreen = ({
                 <div className="h-full flex flex-col justify-center">
                   {isListening && transcript ? (
                     <div className="rounded-2xl bg-white border border-stone-200 p-4">
-                      <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-stone-500">Đã nghe được</p>
+                      <div className="flex items-center justify-between">
+                        <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-emerald-600">Đang nhận diện giọng nói</p>
+                        <AudioWave isActive={true} volumeLevel={volumeLevel} />
+                      </div>
                       <p className="mt-2 text-sm leading-5 font-semibold line-clamp-4">{transcript}</p>
+                    </div>
+                  ) : isListening ? (
+                    <div className="rounded-2xl bg-white border-2 border-red-300 p-5 text-center shadow-sm">
+                      <div className="flex items-center justify-center gap-3">
+                        <AudioWave isActive={true} volumeLevel={volumeLevel} />
+                        <span className="text-sm font-bold text-red-600 animate-pulse">Micro đang mở · Mời bạn nói...</span>
+                      </div>
+                      <p className="mt-2 text-[11px] text-stone-500 font-medium">Nói xong ngắt giọng 1 giây, robot sẽ tự động trả lời.</p>
                     </div>
                   ) : (
                     <div className="rounded-2xl border border-dashed border-stone-300 p-4 text-center">
                       <p className="text-sm font-bold">Tôi có thể hỗ trợ dịch vụ phòng, chỉ đường và thông tin khách sạn.</p>
-                      <p className="mt-1 text-[10px] text-stone-500">Bấm Nói rồi đặt câu hỏi bằng tiếng Việt hoặc tiếng Anh.</p>
+                      <p className="mt-1 text-[10px] text-stone-500">Bấm nút [NÓI] màu đen bên dưới rồi đặt câu hỏi.</p>
                     </div>
                   )}
                   {!hasSpeechSupport && (

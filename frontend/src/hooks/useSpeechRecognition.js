@@ -78,6 +78,7 @@ export const useSpeechRecognition = (callbacks = {}) => {
   const inlineCallbacksRef = useRef({});
   const destroyedRef = useRef(false);
   const currentLanguageRef = useRef('vi-VN');
+  const networkErrorCountRef = useRef(0);
 
   // Audio Context & Hardware Stream References
   const audioContextRef = useRef(null);
@@ -127,12 +128,15 @@ export const useSpeechRecognition = (callbacks = {}) => {
 
   // Hàm gửi Audio Buffer lên Backend STT khi browser không nhận diện được chữ
   const processBackendSTT = useCallback(async () => {
-    if (audioChunksRef.current.length === 0 || !hasDetectedVoiceRef.current) {
+    // Chỉ gửi khi có ít nhất ~0.7s âm thanh (khoảng 8 chunks) và đã phát hiện tiếng nói
+    if (audioChunksRef.current.length < 8 || !hasDetectedVoiceRef.current) {
+      audioChunksRef.current = [];
+      hasDetectedVoiceRef.current = false;
       return;
     }
 
-    // Nếu Web Speech API đã có kết quả gần đây, không cần gửi lại
-    if (lastFinalTranscriptRef.current && lastFinalTranscriptRef.current.trim().length > 1) {
+    // Nếu Web Speech API của Chrome đang hoạt động và đã có kết quả gần đây, không cần gửi lại Backend
+    if (liveRef.current && lastFinalTranscriptRef.current && lastFinalTranscriptRef.current.trim().length > 1) {
       audioChunksRef.current = [];
       hasDetectedVoiceRef.current = false;
       return;
@@ -155,7 +159,7 @@ export const useSpeechRecognition = (callbacks = {}) => {
         offset += chunk.length;
       }
 
-      // Xóa buffer sau khi đã lấy
+      // Xóa buffer sau khi đã lấy để sẵn sàng cho câu tiếp theo
       audioChunksRef.current = [];
       hasDetectedVoiceRef.current = false;
 
@@ -164,12 +168,12 @@ export const useSpeechRecognition = (callbacks = {}) => {
       const wavBlob = encodeWAV(downsampled, 16000);
 
       const langParam = currentLanguageRef.current.startsWith('en') ? 'en' : 'vi';
-      console.log('[STT Engine] Đang gửi WAV audio lên Backend STT (kích thước:', wavBlob.size, 'bytes)...');
+      console.log(`[STT Engine] Fallback Backend STT (Whisper): gửi file ${wavBlob.size} bytes (${(totalLength / inputSampleRate).toFixed(1)}s)...`);
       const recognizedText = await transcribeAudio(wavBlob, langParam);
 
       if (recognizedText && recognizedText.trim()) {
         const clean = recognizedText.trim();
-        console.log('[STT Engine] Backend STT nhận diện thành công:', clean);
+        console.log('[STT Engine] Backend Whisper nhận diện thành công:', clean);
         setTranscript(clean);
         lastFinalTranscriptRef.current = clean;
 
@@ -232,7 +236,7 @@ export const useSpeechRecognition = (callbacks = {}) => {
           await audioCtx.resume();
         }
 
-        // Analyser đo volume
+        // Analyser đo volume visualizer
         const analyser = audioCtx.createAnalyser();
         analyser.fftSize = 256;
         analyser.smoothingTimeConstant = 0.5;
@@ -249,7 +253,6 @@ export const useSpeechRecognition = (callbacks = {}) => {
         processor.onaudioprocess = (e) => {
           if (!shouldListenRef.current) return;
           const inputData = e.inputBuffer.getChannelData(0);
-          // Sao chép mẫu âm thanh vào audio buffer
           const copy = new Float32Array(inputData.length);
           copy.set(inputData);
           audioChunksRef.current.push(copy);
@@ -262,13 +265,13 @@ export const useSpeechRecognition = (callbacks = {}) => {
         };
 
         source.connect(processor);
-        // Nối qua GainNode = 0 để tránh âm thanh mic vòng lặp ra loa gây tiếng rít/vọng
         const muteGain = audioCtx.createGain();
         muteGain.gain.value = 0;
         processor.connect(muteGain);
         muteGain.connect(audioCtx.destination);
 
         const dataArray = new Uint8Array(analyser.frequencyBinCount);
+        let consecutiveVoiceFrames = 0;
 
         const updateVolume = () => {
           if (destroyedRef.current || !analyserRef.current) return;
@@ -282,21 +285,31 @@ export const useSpeechRecognition = (callbacks = {}) => {
           const currentVol = Math.min(100, Math.round((avg / 64) * 100));
           setVolumeLevel(currentVol);
 
-          // Voice Activity Detection (VAD)
-          if (currentVol > 6) {
-            hasDetectedVoiceRef.current = true;
-            if (silenceTimerRef.current) {
-              clearTimeout(silenceTimerRef.current);
-              silenceTimerRef.current = null;
-            }
-          } else if (hasDetectedVoiceRef.current) {
-            // Đã từng nói và giờ đang im lặng: hẹn 700ms để chốt âm thanh
-            if (!silenceTimerRef.current) {
-              silenceTimerRef.current = setTimeout(() => {
-                silenceTimerRef.current = null;
-                // Nếu Web Speech API chưa ra chữ gì thì kích hoạt ngay Backend STT
-                processBackendSTT();
-              }, 700);
+          // Chỉ kích hoạt Fallback Backend VAD khi KHÔNG có Web Speech API hoặc khi Chrome báo lỗi mạng
+          const shouldUseBackendVAD = !recognitionRef.current || networkErrorCountRef.current >= 2;
+
+          if (shouldUseBackendVAD && shouldListenRef.current) {
+            // Ngưỡng phát hiện tiếng nói chuẩn (> 14): tránh quạt laptop và tạp âm nhẹ
+            if (currentVol >= 14) {
+              consecutiveVoiceFrames++;
+              if (consecutiveVoiceFrames >= 2) {
+                hasDetectedVoiceRef.current = true;
+                if (silenceTimerRef.current) {
+                  clearTimeout(silenceTimerRef.current);
+                  silenceTimerRef.current = null;
+                }
+              }
+            } else {
+              consecutiveVoiceFrames = 0;
+              if (hasDetectedVoiceRef.current) {
+                // Đã nói xong và im lặng 1.3 giây: chốt file gửi sang Backend Whisper
+                if (!silenceTimerRef.current) {
+                  silenceTimerRef.current = setTimeout(() => {
+                    silenceTimerRef.current = null;
+                    processBackendSTT();
+                  }, 1300);
+                }
+              }
             }
           }
 
@@ -411,7 +424,8 @@ export const useSpeechRecognition = (callbacks = {}) => {
           setHasMicPermission(false);
           setError('Trình duyệt chưa được cấp quyền Micro! Vui lòng bấm vào biểu tượng khóa trên thanh URL để Cấp quyền Micro.');
         } else if (event.error === 'network') {
-          console.warn('[SpeechRecognition] Lỗi mạng Google Speech. Hệ thống sẽ tự động dùng Backend STT Fallback.');
+          networkErrorCountRef.current += 1;
+          console.warn(`[SpeechRecognition] Lỗi mạng Google Speech (${networkErrorCountRef.current}). Hệ thống tự động kích hoạt Backend STT Fallback.`);
         } else if (event.error === 'audio-capture') {
           setError('Không tìm thấy Microphone hoặc Micro đang bị ứng dụng khác chiếm dụng.');
         }
@@ -422,6 +436,11 @@ export const useSpeechRecognition = (callbacks = {}) => {
         setMicLive(false);
         // KHÔNG set isListening = false ở đây để tránh giao diện bị nhấp nháy bật/tắt liên tục!
         if (shouldListenRef.current && !destroyedRef.current) {
+          // Nếu Google Speech liên tục lỗi mạng (>2 lần), chuyển hoàn toàn sang Microphone Recorder nội bộ
+          if (networkErrorCountRef.current >= 2) {
+            setMicLive(true);
+            return;
+          }
           clearRestartTimer();
           restartTimerRef.current = setTimeout(() => {
             if (shouldListenRef.current && !liveRef.current && !destroyedRef.current) {
@@ -457,6 +476,7 @@ export const useSpeechRecognition = (callbacks = {}) => {
   const startListening = async (language = 'vi-VN', inlineCallbacks = null) => {
     destroyedRef.current = false;
     currentLanguageRef.current = language;
+    networkErrorCountRef.current = 0;
     lastFinalTranscriptRef.current = '';
     audioChunksRef.current = [];
     hasDetectedVoiceRef.current = false;

@@ -49,9 +49,18 @@ export const useSpeechSynthesis = () => {
       safetyTimerRef.current = null;
     }
 
+    // Chuẩn hóa văn bản: loại bỏ ký tự rác, markdown, định dạng danh sách và chuẩn hóa dấu câu
+    // để mô hình TTS đọc liền mạch, êm ái, KHÔNG bị giật hay ngắt quãng đột ngột.
     const cleanText = (text || '')
       .replace(/[*#_`\[\]()]/g, '')
       .replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '')
+      .replace(/^[\s*•\-–—]+\s*/gm, '') // Xóa gạch đầu dòng danh sách
+      .replace(/\.{2,}/g, '.') // ... -> .
+      .replace(/!{2,}/g, '!')
+      .replace(/\?{2,}/g, '?')
+      .replace(/:\s+/g, ', ') // Dấu hai chấm đổi thành dấu phẩy để hạ giọng êm, không ngắt cụt
+      .replace(/\s*;\s*/g, ', ')
+      .replace(/\s+/g, ' ')
       .trim();
 
     if (!cleanText) {
@@ -92,9 +101,9 @@ export const useSpeechSynthesis = () => {
       );
     }
 
-    // NẾU LÀ TIẾNG VIỆT VÀ TRÌNH DUYỆT KHÔNG CÓ GIỌNG TIẾNG VIỆT NÀO (ví dụ: Chrome trên Windows mặc định):
-    // Tự động gọi backend EdgeTTS Neural vi-VN-HoaiMyNeural để phát giọng chuẩn 100% tự nhiên!
-    if (langTag.startsWith('vi') && !targetVoice) {
+    // 1. VỚI TIẾNG VIỆT: LUÔN LUÔN ƯU TIÊN GỌI Backend EdgeTTS Neural (vi-VN-HoaiMyNeural)
+    // Đảm bảo phát ra giọng đọc tiếng Việt nữ tự nhiên 100%, luyến láy truyền cảm, không giật cục theo dấu câu!
+    if (langTag.startsWith('vi')) {
       synthesizeSpeech(cleanText, { language: 'vi-VN', voice: 'vi-VN-HoaiMyNeural' })
         .then((data) => {
           if (data?.audio_base64 && data.audio_base64.length > 50) {
@@ -126,11 +135,12 @@ export const useSpeechSynthesis = () => {
             });
             return;
           }
-          // Fallback if backend returned empty
-          _speakWithBrowserUtterance(cleanText, langTag, null, onEndCallback, onStartCallback, shouldCancel, rate);
+          // Fallback nếu backend trả về rỗng: dùng Web Speech của trình duyệt
+          _speakWithBrowserUtterance(cleanText, langTag, targetVoice, onEndCallback, onStartCallback, shouldCancel, rate);
         })
         .catch(() => {
-          _speakWithBrowserUtterance(cleanText, langTag, null, onEndCallback, onStartCallback, shouldCancel, rate);
+          // Fallback an toàn khi backend bận/ngắt kết nối
+          _speakWithBrowserUtterance(cleanText, langTag, targetVoice, onEndCallback, onStartCallback, shouldCancel, rate);
         });
       return;
     }
@@ -218,12 +228,7 @@ export const useSpeechSynthesis = () => {
     }
   };
 
-  const playNextInQueue = () => {
-    if (!('speechSynthesis' in window)) {
-      if (onQueueEndCallbackRef.current) onQueueEndCallbackRef.current();
-      return;
-    }
-
+  const playNextInQueue = async () => {
     if (queueRef.current.length === 0) {
       if (streamEndedRef.current) {
         isPlayingQueueRef.current = false;
@@ -242,6 +247,45 @@ export const useSpeechSynthesis = () => {
     isPlayingQueueRef.current = true;
     const nextItem = queueRef.current.shift();
 
+    if (onQueueStartCallbackRef.current) {
+      setIsSpeaking(true);
+      onQueueStartCallbackRef.current();
+      onQueueStartCallbackRef.current = null;
+    }
+
+    // 1. Kiểm tra nếu audio đã được tải trước sẵn trong RAM (0ms latency!)
+    let audioObj = nextItem.getAudio ? nextItem.getAudio() : null;
+    if (!audioObj && nextItem.audioPromise) {
+      try {
+        audioObj = await nextItem.audioPromise;
+      } catch (e) {
+        audioObj = null;
+      }
+    }
+
+    if (audioObj) {
+      audioRef.current = audioObj;
+      audioObj.onplay = () => {
+        setIsSpeaking(true);
+      };
+      audioObj.onended = () => {
+        audioRef.current = null;
+        playNextInQueue();
+      };
+      audioObj.onerror = () => {
+        audioRef.current = null;
+        playNextInQueue();
+      };
+
+      try {
+        await audioObj.play();
+        return;
+      } catch (playErr) {
+        console.warn('[Queue Audio Playback Error, fallback to WebSpeech]:', playErr);
+      }
+    }
+
+    // 2. Fallback: Nếu chưa có audio, dùng speakWebSpeech thông thường
     speakWebSpeech(
       nextItem.text,
       nextItem.language || streamLangRef.current,
@@ -250,10 +294,6 @@ export const useSpeechSynthesis = () => {
       },
       () => {
         setIsSpeaking(true);
-        if (onQueueStartCallbackRef.current) {
-          onQueueStartCallbackRef.current();
-          onQueueStartCallbackRef.current = null;
-        }
       },
       false
     );
@@ -270,11 +310,44 @@ export const useSpeechSynthesis = () => {
   };
 
   const enqueueStreamChunk = (chunkText, language = null) => {
-    if (!chunkText || !chunkText.trim()) return;
-    queueRef.current.push({
-      text: chunkText.trim(),
-      language: language || streamLangRef.current,
-    });
+    const rawText = (chunkText || '')
+      .replace(/[*#_`\[\]()]/g, '')
+      .replace(/^[\s*•\-–—]+\s*/gm, '')
+      .trim();
+    if (!rawText) return;
+
+    const lang = language || streamLangRef.current || 'vi-VN';
+
+    // PRE-FETCH AUDIO NGAY LẬP TỨC TRONG NỀN:
+    // Tải trước file âm thanh của từng câu để sẵn trong RAM.
+    // Khi câu trước đọc xong, câu này cất tiếng ngay lập tức với 0ms độ trễ!
+    let preloadedAudio = null;
+    let audioPromise = null;
+
+    if (lang.startsWith('vi')) {
+      audioPromise = synthesizeSpeech(rawText, { language: 'vi-VN', voice: 'vi-VN-HoaiMyNeural' })
+        .then((data) => {
+          if (data?.audio_base64 && data.audio_base64.length > 50) {
+            const audioSrc = `data:audio/mp3;base64,${data.audio_base64}`;
+            const audio = new Audio(audioSrc);
+            audio.preload = 'auto';
+            preloadedAudio = audio;
+            return audio;
+          }
+          return null;
+        })
+        .catch(() => null);
+    }
+
+    const queueItem = {
+      text: rawText,
+      language: lang,
+      audioPromise,
+      getAudio: () => preloadedAudio,
+    };
+
+    queueRef.current.push(queueItem);
+
     if (!isPlayingQueueRef.current) {
       playNextInQueue();
     }

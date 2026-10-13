@@ -20,7 +20,12 @@ class Settings(BaseSettings):
     OBSIDIAN_VAULT_DIR: str = "./knowledge_vault"
 
 
-    # Ollama Configuration
+    # LLM Engine Configuration ('gemini' or 'ollama')
+    LLM_PROVIDER: str = "gemini"
+    GEMINI_API_KEY: Optional[str] = None
+    GEMINI_MODEL: str = "gemini-3.5-flash"
+
+    # Ollama Configuration (Llama / Qwen local)
     OLLAMA_HOST: str = "http://127.0.0.1:11434"
     OLLAMA_MODEL: str = "llama3.2:3b"
     OLLAMA_EMBED_MODEL: Optional[str] = None
@@ -54,6 +59,18 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8", 
         extra="ignore"
     )
+
+    @property
+    def is_gemini_active(self) -> bool:
+        """Kiểm tra xem Gemini có đang được kích hoạt và có API key hay không."""
+        return self.LLM_PROVIDER.lower() == "gemini" and bool(self.GEMINI_API_KEY)
+
+    @property
+    def active_llm_model(self) -> str:
+        """Trả về tên model đang kích hoạt thực tế (Gemini hoặc Ollama Llama)."""
+        if self.is_gemini_active:
+            return self.GEMINI_MODEL
+        return self.OLLAMA_MODEL
 
     @property
     def sync_database_url(self) -> str:

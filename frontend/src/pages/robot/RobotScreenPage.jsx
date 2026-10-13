@@ -11,7 +11,7 @@ import { useNotificationWebSocket } from '../../hooks/useNotificationWebSocket';
 
 import { useSpeechRecognition } from '../../hooks/useSpeechRecognition';
 import { useSpeechSynthesis } from '../../hooks/useSpeechSynthesis';
-import { sendChatPrompt, resetSession, flushSession } from '../../services/aiApi';
+import { sendChatPrompt, sendChatStreamSSE, resetSession, flushSession } from '../../services/aiApi';
 
 import { MessengerVideoCallModal } from '../../components/video/MessengerVideoCallModal';
 import { RobotQuickFeedbackModal } from '../../components/robot/RobotQuickFeedbackModal';
@@ -19,7 +19,7 @@ import { createConciergeRequest } from '../../services/conciergeApi';
 
 export const RobotScreenPage = ({ onLogout = () => { } }) => {
   // States: 'RT-01' | 'RT-02' | 'RT-03' | 'RT-04' | 'RT-05'
-  const [currentState, setCurrentState] = useState('RT-01');
+  const [currentState, setCurrentState] = useState('RT-02');
 
   const [language, setLanguage] = useState('Tiếng Việt');
   const [aiResponseText, setAiResponseText] = useState('');
@@ -66,9 +66,18 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   // Available Workflows State (for AUTO_DETECT and manual triggers)
   const [availableWorkflows, setAvailableWorkflows] = useState([]);
 
-  // Hooks
-  const { isListening, transcript, error: speechError, startListening, stopListening, resetTranscript, hasSupport } = useSpeechRecognition();
-  const { speak, prime, cancel: stopSpeaking, isSpeaking } = useSpeechSynthesis();
+  // Ref lưu handler xử lý khi người dùng dứt câu nói (tránh circular dependency)
+  const stopTalkHandlerRef = useRef(null);
+
+  // Hooks (kết nối trực tiếp callback nhận diện giọng nói cho cả Browser và Backend STT Fallback)
+  const { isListening, transcript, error: speechError, startListening, stopListening, resetTranscript, hasSupport, volumeLevel } = useSpeechRecognition({
+    onFinal: (finalText) => {
+      if (finalText && finalText.trim().length > 0) {
+        stopTalkHandlerRef.current?.(finalText.trim());
+      }
+    },
+  });
+  const { speak, prime, cancel: stopSpeaking, isSpeaking, initStreamSpeech, enqueueStreamChunk, endStreamSpeech } = useSpeechSynthesis();
 
   const toggleLanguage = () => {
     setLanguage((prev) => (prev === 'English' ? 'Tiếng Việt' : 'English'));
@@ -107,15 +116,13 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
   const [showQuickMenu, setShowQuickMenu] = useState(false);
 
-  // Listen to BroadcastChannel for zero-latency local dispatch
+  // Listen to BroadcastChannel (đã tắt tự động chạy kịch bản để ưu tiên giao tiếp trực tiếp)
   useEffect(() => {
     let bc;
     try {
       bc = new BroadcastChannel('hcrobot_workflow_channel');
-      bc.onmessage = (event) => {
-        if (event.data?.type === 'EXECUTE_WORKFLOW' && event.data?.workflow) {
-          startWorkflow(event.data.workflow);
-        }
+      bc.onmessage = (_event) => {
+        // Đã tắt tự động trigger kịch bản để tập trung giao tiếp bình thường
       };
     } catch {
       // BroadcastChannel fallback
@@ -123,15 +130,13 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     return () => {
       if (bc) bc.close();
     };
-  }, [startWorkflow]);
+  }, []);
 
-  // Listen to WebSocket Hub for remote LAN dispatch
+  // Listen to WebSocket Hub (đã tắt tự động chạy kịch bản từ xa)
   useNotificationWebSocket({
     department: 'All',
-    onNotificationReceived: (notif) => {
-      if (notif?.type === 'WORKFLOW_DISPATCH' && notif?.workflow) {
-        startWorkflow(notif.workflow);
-      }
+    onNotificationReceived: (_notif) => {
+      // Đã tắt tự động trigger kịch bản để tập trung giao tiếp bình thường
     },
     enabled: true,
   });
@@ -213,47 +218,23 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     };
   }, [currentState, isSpeaking, isProcessing, isListening, isWorkflowRunning, isFoodMenuOpen, showLogoutModal, isStandby]);
 
-  // Khi người dùng lại gần Camera -> Tắt Standby, kiểm tra kịch bản AUTO_DETECT hoặc Chào hỏi chủ động theo thời gian thực
+  // Khi người dùng lại gần Camera -> Tắt Standby, chuyển về trạng thái sẵn sàng giao tiếp trực tiếp
   const handleGuestApproached = () => {
     setIsStandby(false);
     resetStandbyTimer();
 
-    // 1. Kiểm tra kịch bản tự động kích hoạt (AUTO_DETECT) đang active
-    const autoWf = availableWorkflows.find(
-      (wf) => (wf.is_active ?? true) && wf.trigger_type === 'AUTO_DETECT'
-    );
-    if (autoWf && !isWorkflowRunning) {
-      setCurrentState('RT-02');
-      startWorkflow(autoWf);
-      return;
+    // Dừng kịch bản ngay lập tức nếu đang có kịch bản chạy
+    if (isWorkflowRunning) {
+      stopWorkflow();
     }
 
-    // 2. Mặc định: Chào hỏi chủ động của trợ lý Rora
-    if (currentState === 'RT-01' || currentState === 'RT-02') {
+    if (currentState === 'RT-01') {
       setCurrentState('RT-02');
-      const hour = new Date().getHours();
-      let greeting = "Dạ em chào quý khách! Em là Rora, trợ lý Robot Concierge của khách sạn Aurora. Quý khách cần em hỗ trợ gì ạ?";
-      if (hour >= 5 && hour < 11) {
-        greeting = "Dạ em chào buổi sáng quý khách! Em là Rora. Chúc quý khách một ngày mới tràn đầy năng lượng tại khách sạn Aurora. Quý khách cần em hỗ trợ gì ạ?";
-      } else if (hour >= 11 && hour < 18) {
-        greeting = "Dạ em chào quý khách! Em là Rora. Chúc quý khách một buổi chiều thật vui vẻ tại khách sạn Aurora. Quý khách cần em hỗ trợ gì ạ?";
-      } else {
-        greeting = "Dạ em chào buổi tối quý khách! Em là Rora. Chúc quý khách một buổi tối thư thái tại khách sạn Aurora. Quý khách cần em hỗ trợ gì ạ?";
+      if (isAutoListen) {
+        setTimeout(() => {
+          handleStartTalk();
+        }, 500);
       }
-
-      speak(
-        greeting,
-        'vi-VN',
-        () => {
-          setCurrentState('RT-03');
-          if (isAutoListen) {
-            handleStartTalk();
-          }
-        },
-        () => {
-          setAiResponseText(greeting);
-        }
-      );
     }
   };
 
@@ -282,13 +263,20 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     resetTranscript();
     setAiResponseText('');
     setCurrentState('RT-03');
-    startListening(language);
+    startListening(language, {
+      onFinal: (finalText) => {
+        if (finalText && finalText.trim().length > 0) {
+          handleStopTalkAndProcess(finalText.trim());
+        }
+      },
+    });
   };
 
-  // 2. Gửi tới Ollama RAG Backend
+  // 2. Gửi tới AI Streaming Backend (Continuous Token Streaming + Nói liền tức thì)
   const handleStopTalkAndProcess = async (userText) => {
     if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
     stopListening();
+    stopSpeaking();
     const query = userText || transcript;
 
     if (!query || query.trim().length === 0) {
@@ -300,88 +288,108 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
     setCurrentState('RT-04');
     setIsProcessing(true);
+    setAiResponseText('');
+
+    const isFarewell = ['tạm biệt', 'hẹn gặp lại', 'bye', 'goodbye', 'kết thúc', 'xong rồi', 'hết rồi'].some(k => lowerQuery.includes(k));
+
+    let speechBuffer = '';
+    let accumulatedText = '';
+    const SENTENCE_DELIMITERS = /([.!?\n]+)/;
+
+    // Khởi tạo luồng phát âm thanh Streaming tức thì
+    initStreamSpeech(
+      language === 'English' ? 'en-US' : 'vi-VN',
+      () => {
+        // onStart: Khi âm thanh đầu tiên cất lên
+        setCurrentState('RT-04');
+      },
+      () => {
+        // onEnd: Khi toàn bộ câu đã nói xong mượt mà
+        setAiResponseText('');
+        if (isFarewell) {
+          setTimeout(() => {
+            handleOpenFeedback();
+          }, 600);
+        } else {
+          setCurrentState('RT-03');
+          if (isAutoListen) {
+            setTimeout(() => {
+              handleStartTalk();
+            }, 300);
+          }
+        }
+      }
+    );
 
     try {
-      // Gọi Chat AI - Backend đã tự động xử lý Intent & Ticket trong nền ngầm không gây nghẽn
-      const chatRes = await sendChatPrompt(query, null, "auto", guestEmotion, sessionId, activeRoomNumber);
+      await sendChatStreamSSE(
+        query,
+        // onToken: Từng token xuất hiện từ AI -> Hiển thị ngay lên màn hình & đưa vào hàng đợi nói theo câu trọn vẹn
+        (token, langCode) => {
+          setIsProcessing(false);
+          setAiResponseText((prev) => prev + token);
+          speechBuffer += token;
+          accumulatedText += token;
 
-      let replyText = chatRes.response || 'Dạ, tôi đã ghi nhận yêu cầu của quý khách.';
-      const detectedLang = chatRes.detected_language || 'Tiếng Việt';
-      const langCode = chatRes.lang_code || 'vi-VN';
+          const currentLang = langCode || (language === 'English' ? 'en-US' : 'vi-VN');
 
-      const updatedRoom = chatRes.current_room_number;
-      if (updatedRoom) {
-        setActiveRoomNumber(updatedRoom);
-      }
-
-      setLanguage(detectedLang);
-      setIsProcessing(false);
-      // Hiển thị câu trả lời lên màn hình ngay lập tức (Zero Latency Visual Feedback)
-      setAiResponseText(replyText);
-
-      // TỰ ĐỘNG MỞ VIDEO CALL NẾU NHẬN DIỆN Ý ĐỊNH GỌI CHO NHÂN VIÊN
-      if (chatRes.trigger_video_call) {
-        const vSession = chatRes.support_session_id || chatRes.session_id || sessionId;
-        setVideoCallSessionId(vSession);
-        setVideoCallTicketCode(chatRes.ticket_code || 'CCG-CALL');
-        setIsVideoCallOpen(true);
-      }
-
-      if (lowerQuery.includes('hồ bơi') || lowerQuery.includes('pool') || lowerQuery.includes('ở đâu') || lowerQuery.includes('tầng') || lowerQuery.includes('where')) {
-        setCurrentState('RT-05');
-      }
-
-      if (lowerQuery.includes('đặt món') || lowerQuery.includes('chọn món') || lowerQuery.includes('thực đơn') || lowerQuery.includes('menu') || lowerQuery.includes('gọi món') || lowerQuery.includes('room service') || lowerQuery.includes('đồ ăn')) {
-        setIsFoodMenuOpen(true);
-      }
-
-      const isFarewell = ['tạm biệt', 'hẹn gặp lại', 'bye', 'goodbye', 'kết thúc', 'xong rồi', 'hết rồi'].some(k => lowerQuery.includes(k));
-
-      // Đồng bộ 100% thời điểm phát tiếng nói và hiển thị chữ lên màn hình (Zero Lag Sync)
-      speak(
-        replyText,
-        langCode,
-        // onEndCallback: Khi loa phát xong -> Xóa bảng chữ, hiện lại mắt xám nháy & Tự động nghe câu tiếp theo
-        () => {
-          setAiResponseText('');
-          if (isFarewell) {
-            setTimeout(() => {
-              handleOpenFeedback();
-            }, 600);
-          } else {
-            setCurrentState('RT-03');
-            if (isAutoListen) {
-              setTimeout(() => {
-                handleStartTalk();
-              }, 300);
+          // Tách theo câu hoàn chỉnh (. ! ? \n) để đẩy vào hàng đợi nói liên tục không độ trễ
+          const parts = speechBuffer.split(SENTENCE_DELIMITERS);
+          if (parts.length > 2) {
+            const sentence = (parts[0] + parts[1]).trim();
+            if (sentence.length >= 10) {
+              speechBuffer = parts.slice(2).join('');
+              enqueueStreamChunk(sentence, currentLang);
             }
           }
         },
-        // onStartCallback: Khi tiếng cất lên -> Hiện bảng chữ ở trung tâm
-        () => {
-          setAiResponseText(replyText);
-        },
-        chatRes.audio_base64
-      );
+        // onDone: Khi stream text kết thúc -> Đẩy phần còn lại và hoàn tất stream speech
+        (fullText, finalLangCode) => {
+          setIsProcessing(false);
+          const finalText = (fullText || accumulatedText || '').trim();
+          setAiResponseText(finalText);
 
-    } catch (error) {
-      setIsProcessing(false);
-      const fallbackText = 'Xin lỗi quý khách, không thể kết nối tới AI Server.';
-      setCurrentState('RT-02');
-      speak(
-        fallbackText,
-        language,
-        () => {
-          setAiResponseText('');
-          setCurrentState('RT-03');
-          if (isAutoListen) handleStartTalk();
+          const currentLang = finalLangCode || (language === 'English' ? 'en-US' : 'vi-VN');
+
+          // Đẩy phần còn lại trong buffer vào hàng đợi phát âm thanh
+          const remaining = speechBuffer.trim();
+          if (remaining.length > 0) {
+            enqueueStreamChunk(remaining, currentLang);
+          }
+          endStreamSpeech();
         },
-        () => {
+        // onError: Fallback khi có sự cố
+        (err) => {
+          console.warn('[ChatStreamSSE Error]:', err);
+          setIsProcessing(false);
+          const fallbackText = 'Dạ em nghe rõ rồi ạ. Quý khách cần em hỗ trợ gì thêm không ạ?';
           setAiResponseText(fallbackText);
+          speak(
+            fallbackText,
+            language,
+            () => {
+              setAiResponseText('');
+              setCurrentState('RT-03');
+              if (isAutoListen) handleStartTalk();
+            },
+            () => {
+              setAiResponseText(fallbackText);
+            }
+          );
+        },
+        {
+          sessionId,
+          roomNumber: activeRoomNumber,
+          emotion: guestEmotion,
         }
       );
+    } catch (error) {
+      console.warn('[handleStopTalkAndProcess Error]:', error);
+      setIsProcessing(false);
+      setCurrentState('RT-02');
     }
   };
+  stopTalkHandlerRef.current = handleStopTalkAndProcess;
 
   // Tự động gửi AI khi người dùng ngừng nói 900ms (VAD Silence Detection tự nhiên, không cướp lời)
   useEffect(() => {
@@ -628,6 +636,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         onToggleLanguage={toggleLanguage}
         speechError={speechError}
         transcript={transcript}
+        volumeLevel={volumeLevel}
         workflowTrigger={
           availableWorkflows.length > 0 ? (
             <div className="relative">

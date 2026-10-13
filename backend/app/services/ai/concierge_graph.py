@@ -283,10 +283,21 @@ async def generator_node(state: ConciergeState) -> Dict[str, Any]:
 # ============================================================================
 
 def route_after_fast_path(state: ConciergeState) -> str:
-    """Nếu trúng Fast-Path thì dừng ngay (<1ms), ngược lại chuyển sang Generator sinh câu trả lời trực tiếp."""
+    """Nếu trúng Fast-Path thì dừng ngay (<1ms), ngược lại chuyển sang Router."""
     if state.get("fast_path_hit"):
         return END
-    return "generator"
+    return "intent_router"
+
+
+def route_after_intent(state: ConciergeState) -> str:
+    """Điều hướng theo kết quả phân loại ý định."""
+    category = state.get("intent_category", "chitchat")
+    if category == "service":
+        return "service_fsm"
+    elif category == "faq":
+        return "retrieval"
+    else:
+        return "generator"
 
 
 # ============================================================================
@@ -294,19 +305,33 @@ def route_after_fast_path(state: ConciergeState) -> str:
 # ============================================================================
 
 def build_concierge_graph() -> StateGraph:
-    """Khởi tạo cấu trúc đồ thị trạng thái Agent hội thoại trực tiếp."""
+    """Khởi tạo cấu trúc đồ thị trạng thái Agent Harness."""
     builder = StateGraph(ConciergeState)
 
     builder.add_node("fast_path", fast_path_node)
+    builder.add_node("intent_router", intent_router_node)
+    builder.add_node("retrieval", retrieval_node)
+    builder.add_node("service_fsm", service_fsm_node)
     builder.add_node("generator", generator_node)
 
     builder.add_edge(START, "fast_path")
     builder.add_conditional_edges(
         "fast_path",
         route_after_fast_path,
-        {"generator": "generator", END: END}
+        {"intent_router": "intent_router", END: END}
     )
+    builder.add_conditional_edges(
+        "intent_router",
+        route_after_intent,
+        {
+            "service_fsm": "service_fsm",
+            "retrieval": "retrieval",
+            "generator": "generator",
+        }
+    )
+    builder.add_edge("retrieval", "generator")
     builder.add_edge("generator", END)
+    builder.add_edge("service_fsm", END)
 
     memory = MemorySaver()
     return builder.compile(checkpointer=memory)

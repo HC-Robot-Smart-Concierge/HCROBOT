@@ -137,6 +137,75 @@ class OllamaService:
             reply_en = "Complimentary Wi-Fi in the lobby and rooms is 'Aurora_Guest', with the password 'aurora2026'."
             return (reply_en if is_en else reply_vi), lang_name, lang_code
 
+        # 2. Lời chào chung (Greetings)
+        if re.search(r"^(xin chào|chào em|chào robot|chào bạn|chào rora|hello|hi|hey|good morning|good afternoon|good evening)[\?\.\!\s]*$", prompt_lower):
+            return (time_greeting_en if is_en else time_greeting_vi), lang_name, lang_code
+
+        # 3. Lời cảm ơn (Thanks)
+        if re.search(r"\b(cảm ơn|cam on|thank you|thanks|cảm ơn em|cảm ơn rora)\b", prompt_lower):
+            reply_vi = "Dạ không có gì ạ! Rora rất hân hạnh được hỗ trợ quý khách. Chúc quý khách có những phút giây tuyệt vời tại Aurora!"
+            reply_en = "You are most welcome! Rora is always delighted to assist you. Have a wonderful time at Aurora!"
+            return (reply_en if is_en else reply_vi), lang_name, lang_code
+
+        # 4. Tạm biệt (Farewell)
+        if re.search(r"\b(tạm biệt|tam biet|goodbye|bye|bye bye|hẹn gặp lại)\b", prompt_lower):
+            reply_vi = "Dạ tạm biệt quý khách! Chúc quý khách một ngày tràn ngập niềm vui và hẹn sớm gặp lại ạ."
+            reply_en = "Goodbye! Wishing you a joyful day and looking forward to seeing you again."
+            return (reply_en if is_en else reply_vi), lang_name, lang_code
+
+        # 5. Hồ bơi / Bể bơi (Pool)
+        if re.search(r"\b(hồ bơi|bể bơi|swimming pool|pool)\b", prompt_lower):
+            reply_vi = "Dạ hồ bơi vô cực ngoài trời nằm ở Tầng 4, mở cửa từ 6 giờ sáng đến 22 giờ tối và có sẵn khăn tắm miễn phí ạ."
+            reply_en = "The outdoor infinity pool is located on Level 4, open from 6:00 AM to 10:00 PM with complimentary towels."
+            return (reply_en if is_en else reply_vi), lang_name, lang_code
+
+        # 6. Nhà hàng / Ăn sáng / Buffet (Restaurant & Breakfast)
+        if re.search(r"\b(nhà hàng|bữa sáng|buffet sáng|ăn sáng|restaurant|breakfast)\b", prompt_lower):
+            reply_vi = "Dạ Nhà hàng Aurora nằm ở Tầng 2, phục vụ buffet sáng từ 6 giờ 30 đến 10 giờ sáng hàng ngày ạ."
+            reply_en = "The Aurora Restaurant is located on Level 2, serving breakfast buffet from 6:30 AM to 10:00 AM daily."
+            return (reply_en if is_en else reply_vi), lang_name, lang_code
+
+        # 7. Phòng Gym / Thể hình (Gym / Fitness)
+        if re.search(r"\b(phòng gym|tập gym|thể dục|gym|fitness)\b", prompt_lower):
+            reply_vi = "Dạ Phòng Gym và trung tâm thể hình nằm ở Tầng 4, mở cửa phục vụ 24 trên 7 miễn phí cho quý khách ạ."
+            reply_en = "The Fitness Center is on Level 4, open 24/7 complimentary for staying guests."
+            return (reply_en if is_en else reply_vi), lang_name, lang_code
+
+        # 8. Spa / Xông hơi (Spa & Sauna)
+        if re.search(r"\b(spa|massage|xông hơi|sauna)\b", prompt_lower):
+            reply_vi = "Dạ Aurora Luxury Spa nằm tại Tầng 5, mở cửa phục vụ quý khách từ 9 giờ sáng đến 22 giờ tối ạ."
+            reply_en = "Aurora Luxury Spa is on Level 5, open from 9:00 AM to 10:00 PM."
+            return (reply_en if is_en else reply_vi), lang_name, lang_code
+
+        # 9. Giờ nhận phòng / Trả phòng (Check-in / Check-out)
+        if re.search(r"\b(trả phòng|check out|check-out|mấy giờ trả phòng|trả phòng lúc mấy giờ)\b", prompt_lower):
+            reply_vi = "Dạ giờ trả phòng tiêu chuẩn là trước 12 giờ trưa quý khách nhé."
+            reply_en = "Standard check-out time is before 12:00 PM noon."
+            return (reply_en if is_en else reply_vi), lang_name, lang_code
+
+        if re.search(r"\b(nhận phòng|check in|check-in|mấy giờ nhận phòng|nhận phòng lúc mấy giờ)\b", prompt_lower):
+            reply_vi = "Dạ giờ nhận phòng tiêu chuẩn tại khách sạn Aurora là từ 14 giờ chiều ạ."
+            reply_en = "Standard check-in time at Aurora Hotel is from 2:00 PM."
+            return (reply_en if is_en else reply_vi), lang_name, lang_code
+
+        # 10. Nhà vệ sinh / Toilet / WC
+        if re.search(r"\b(nhà vệ sinh|toilet|wc|restroom|phòng vệ sinh)\b", prompt_lower):
+            reply_vi = "Dạ nhà vệ sinh sảnh chính nằm ở phía tay phải sau quầy lễ tân tầng 1 ạ."
+            reply_en = "The lobby restrooms are located on the right side behind the Front Desk on Level 1."
+            return (reply_en if is_en else reply_vi), lang_name, lang_code
+
+        # 11. Bãi đỗ xe (Parking)
+        if re.search(r"\b(bãi đỗ xe|đỗ xe|gửi xe|bãi xe|parking)\b", prompt_lower):
+            reply_vi = "Dạ bãi đỗ xe ô tô và xe máy miễn phí nằm ở Tầng hầm B1 của khách sạn ạ."
+            reply_en = "Complimentary car and motorbike parking is located at Basement B1."
+            return (reply_en if is_en else reply_vi), lang_name, lang_code
+
+        # 12. Danh tính robot (Who are you)
+        if re.search(r"\b(bạn là ai|em là ai|tên gì|who are you|what is your name)\b", prompt_lower):
+            reply_vi = "Dạ em là Rora, trợ lý Robot Concierge thông minh của khách sạn 5 sao Aurora Grand. Rất hân hạnh được phục vụ quý khách ạ!"
+            reply_en = "I am Rora, the smart AI Concierge Robot at Aurora Grand Hotel. It is my pleasure to assist you!"
+            return (reply_en if is_en else reply_vi), lang_name, lang_code
+
         return None
 
     @staticmethod
@@ -238,8 +307,32 @@ class OllamaService:
     ):
         """
         Async Generator sinh token theo thời gian thực từ Qwen LLM qua Ollama (stream=True).
-        Yield từng token ngay khi LLM sinh ra, TTFT tức thì và không bị giới hạn token bất hợp lý.
         """
+        # 0. Kiểm tra Mega Fast-Path tức thì (< 1ms)
+        fast_hit = self.check_fast_path(prompt, language)
+        if fast_hit:
+            reply, _, _ = fast_hit
+            yield reply
+            return
+
+        # Ưu tiên Gemini LLM Engine nếu được kích hoạt
+        if getattr(settings, "is_gemini_active", False):
+            try:
+                from app.services.ai.gemini_service import gemini_service
+                if gemini_service.is_configured:
+                    async for token in gemini_service.generate_response_stream(
+                        prompt=prompt,
+                        rag_context=rag_context,
+                        language=language,
+                        emotion=emotion,
+                        chat_history=chat_history,
+                        stored_room_number=stored_room_number,
+                    ):
+                        yield token
+                    return
+            except Exception as e_gemini:
+                logger.warning(f"[OllamaService] Gemini streaming error, fallback to Ollama Llama: {e_gemini}")
+
         if not language or language.lower() in ["auto", ""]:
             lang_name, lang_code = self.detect_language(prompt)
         else:
@@ -268,11 +361,12 @@ class OllamaService:
                 options={
                     "temperature": 0.7,
                     "top_p": 0.9,
-                    "num_ctx": 4096,
+                    "num_ctx": 1024,
+                    "num_predict": 70,
                     "num_thread": 8,
                     "repeat_penalty": 1.1,
                 },
-                keep_alive=-1
+                keep_alive="30m"
             )
 
             async for chunk in response_stream:
@@ -300,6 +394,22 @@ class OllamaService:
         fast_hit = self.check_fast_path(prompt, language)
         if fast_hit:
             return fast_hit
+
+        # Ưu tiên Gemini LLM Engine nếu được kích hoạt
+        if getattr(settings, "is_gemini_active", False):
+            try:
+                from app.services.ai.gemini_service import gemini_service
+                if gemini_service.is_configured:
+                    return await gemini_service.generate_response(
+                        prompt=prompt,
+                        rag_context=rag_context,
+                        language=language,
+                        emotion=emotion,
+                        chat_history=chat_history,
+                        stored_room_number=stored_room_number,
+                    )
+            except Exception as e_gemini:
+                logger.warning(f"[OllamaService] Gemini generate error, fallback to Ollama Llama: {e_gemini}")
 
         if not language or language.lower() in ["auto", ""]:
             lang_name, lang_code = self.detect_language(prompt)
@@ -329,11 +439,12 @@ class OllamaService:
                     options={
                         "temperature": 0.7,
                         "top_p": 0.9,
-                        "num_ctx": 4096,
+                        "num_ctx": 1024,
+                        "num_predict": 70,
                         "num_thread": 8,
                         "repeat_penalty": 1.1,
                     },
-                    keep_alive=-1
+                    keep_alive="30m"
                 ),
                 timeout=25.0
             )
@@ -399,6 +510,15 @@ class OllamaService:
                 "room_number": extracted_room_regex,
                 "items": None,
             }
+
+        # Ưu tiên Gemini LLM Engine nếu được kích hoạt
+        if getattr(settings, "is_gemini_active", False):
+            try:
+                from app.services.ai.gemini_service import gemini_service
+                if gemini_service.is_configured:
+                    return await gemini_service.extract_intent(user_speech=user_speech)
+            except Exception as e_gemini:
+                logger.warning(f"[OllamaService] Gemini extract_intent error, fallback to Ollama Llama: {e_gemini}")
 
         system_prompt = (
             "Bạn là hệ thống trích xuất dữ liệu tự động cho dịch vụ khách sạn. "

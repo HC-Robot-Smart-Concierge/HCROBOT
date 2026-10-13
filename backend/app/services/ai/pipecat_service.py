@@ -10,8 +10,8 @@ from app.services.ai.tts_service import tts_service
 
 logger = logging.getLogger(__name__)
 
-# Regex tách mệnh đề cho Clause Chunker (dấu câu hoặc xuống dòng)
-CLAUSE_DELIMITERS = re.compile(r"([,.;:!?\n]+)")
+# Regex tách câu hoàn chỉnh cho Sentence Chunker (chỉ ngắt ở .!?\n, giữ nguyên dấu phẩy để giọng nói không bị khựng)
+SENTENCE_DELIMITERS = re.compile(r"([.!?\n]+)")
 
 
 class PipecatPipelineService:
@@ -193,13 +193,12 @@ class PipecatPipelineService:
                 # Yield token tức thì để UI hiển thị chữ chạy thời gian thực (Continuous Token Streaming)
                 yield {"type": "token", "token": token, "lang_code": lang_code}
 
-                # Clause Chunker: tách mệnh đề khi gặp dấu câu để chuyển sang âm thanh thoại tức thì
-                parts = CLAUSE_DELIMITERS.split(buffer)
+                # Sentence Chunker: tách câu khi gặp dấu chấm, chấm than, hỏi chấm (.!?\n)
+                parts = SENTENCE_DELIMITERS.split(buffer)
                 if len(parts) > 2:
                     clause = (parts[0] + parts[1]).strip()
-                    buffer = "".join(parts[2:])
-
-                    if clause and len(clause) > 2:
+                    if clause and len(clause) >= 15:
+                        buffer = "".join(parts[2:])
                         yield {"type": "text_chunk", "text": clause, "lang_code": lang_code}
                         try:
                             audio_bytes = await tts_service.synthesize_chunk(clause, language=lang_code)

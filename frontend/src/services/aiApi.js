@@ -83,7 +83,7 @@ export const sendChatStreamSSE = async (
             } else if (data.event === 'token' && onToken) {
               onToken(data.token, data.lang_code);
             } else if (data.event === 'done' && onDone) {
-              onDone(data.full_text, data.lang_code);
+              onDone(data.full_text, data.lang_code, data);
             } else if (data.event === 'error' && onError) {
               onError(new Error(data.message));
             }
@@ -100,7 +100,7 @@ export const sendChatStreamSSE = async (
         if (data.event === 'token' && onToken) {
           onToken(data.token, data.lang_code);
         } else if (data.event === 'done' && onDone) {
-          onDone(data.full_text, data.lang_code);
+          onDone(data.full_text, data.lang_code, data);
         }
       } catch (e) {}
     }

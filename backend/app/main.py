@@ -92,6 +92,9 @@ async def health_check():
     return {
         "status": "online",
         "system": settings.PROJECT_NAME,
+        "llm_provider": settings.LLM_PROVIDER,
+        "active_llm_model": settings.active_llm_model,
+        "gemini_active": settings.is_gemini_active,
         "ollama_host": settings.OLLAMA_HOST,
         "ollama_model": settings.OLLAMA_MODEL,
     }

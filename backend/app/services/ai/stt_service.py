@@ -25,41 +25,63 @@ def get_whisper_model():
 def transcribe_audio_wav(wav_bytes: bytes, language: str = "vi") -> str:
     """
     Nhận diện giọng nói từ file WAV bytes.
-    Chiến lược kép (Dual-Engine Fallback):
-    1. Ưu tiên speech_recognition (Google Speech API chuẩn): Cực nhanh, độ chính xác cao.
-    2. Fallback sang faster_whisper (Offline 100% trên máy tính): Hoạt động kể cả khi mất mạng.
+    Chiến lược tối ưu:
+    1. Thử Google Speech API (với timeout ngắn 2.5s để không bị đơ nếu rớt mạng).
+    2. Fallback sang Faster Whisper Offline (với bộ lọc VAD và beam search cho tiếng Việt).
     """
-    if not wav_bytes or len(wav_bytes) < 100:
+    # Nếu file âm thanh quá nhỏ (< 2000 bytes ~ 0.06s), bỏ qua không xử lý
+    if not wav_bytes or len(wav_bytes) < 2000:
         return ""
 
     lang_code = "vi-VN" if language.startswith("vi") else "en-US"
     whisper_lang = "vi" if language.startswith("vi") else "en"
 
-    # 1. Thử qua speech_recognition trước
+    # 1. Thử nhanh qua Google Speech API trước
     try:
         import speech_recognition as sr
+        import socket
         recognizer = sr.Recognizer()
         bio = io.BytesIO(wav_bytes)
         with sr.AudioFile(bio) as source:
             audio_data = recognizer.record(source)
-            text = recognizer.recognize_google(audio_data, language=lang_code)
+            
+            # Đặt socket timeout tạm thời 2.5s để tránh bị treo server khi Google bị chặn
+            orig_timeout = socket.getdefaulttimeout()
+            socket.setdefaulttimeout(2.5)
+            try:
+                text = recognizer.recognize_google(audio_data, language=lang_code)
+            finally:
+                socket.setdefaulttimeout(orig_timeout)
+
             if text and text.strip():
                 logger.info(f"[STT Service - Google] Transcribed: '{text.strip()}'")
                 return text.strip()
     except Exception as e_sr:
-        logger.warning(f"[STT Service] speech_recognition failed or offline ({e_sr}), switching to faster_whisper...")
+        e_type = type(e_sr).__name__
+        if "UnknownValueError" in e_type:
+            logger.info("[STT Service - Google] No speech detected in audio, falling back to faster_whisper...")
+        else:
+            logger.warning(f"[STT Service - Google] Unavailable ({e_type}: {e_sr or 'timeout'}), falling back to faster_whisper...")
 
-    # 2. Fallback sang faster_whisper offline
+    # 2. Fallback sang faster_whisper offline 100% trên máy tính
     try:
         model = get_whisper_model()
         if model:
             bio_whisper = io.BytesIO(wav_bytes)
-            segments, info = model.transcribe(bio_whisper, language=whisper_lang, beam_size=1)
+            segments, info = model.transcribe(
+                bio_whisper,
+                language=whisper_lang,
+                beam_size=2,
+                vad_filter=True,
+                vad_parameters=dict(min_silence_duration_ms=400),
+            )
             results = [seg.text.strip() for seg in segments if seg.text.strip()]
             full_text = " ".join(results).strip()
             if full_text:
                 logger.info(f"[STT Service - Whisper] Transcribed: '{full_text}'")
                 return full_text
+            else:
+                logger.info("[STT Service - Whisper] Audio analyzed but no clear speech words recognized.")
     except Exception as e_wh:
         logger.error(f"[STT Service] faster_whisper failed: {e_wh}")
 

@@ -345,21 +345,21 @@
       </link>
 
       <!-- 7. GIAN PHAI: PHONG NHAN VIEN (STAFF ONLY ROOM) -->
-      <!-- Vach doc phong Staff -->
+      <!-- Vach doc phong Staff (x = 8.35, keo dai tu y = 0.0 den 2.25, chuc khoang cua mo y = 2.25 -> 3.06 rong 0.81m) -->
       <link name="staff_wall_v">
-        <pose>7.7 1.3 0.7 0 0 0</pose>
-        <collision name="col"><geometry><box><size>0.15 2.6 1.4</size></box></geometry></collision>
+        <pose>8.35 1.125 0.7 0 0 0</pose>
+        <collision name="col"><geometry><box><size>0.15 2.25 1.4</size></box></geometry></collision>
         <visual name="vis">
-          <geometry><box><size>0.15 2.6 1.4</size></box></geometry>
+          <geometry><box><size>0.15 2.25 1.4</size></box></geometry>
           <material><ambient>0.35 0.35 0.38 1</ambient><diffuse>0.35 0.35 0.38 1</diffuse></material>
         </visual>
       </link>
-      <!-- Vach ngang phong Staff -->
+      <!-- Vach ngang phia Bac phong Staff (y = 3.06, tu x = 8.35 den 10.0) -->
       <link name="staff_wall_h">
-        <pose>8.85 2.6 0.7 0 0 0</pose>
-        <collision name="col"><geometry><box><size>2.3 0.15 1.4</size></box></geometry></collision>
+        <pose>9.175 3.06 0.7 0 0 0</pose>
+        <collision name="col"><geometry><box><size>1.65 0.15 1.4</size></box></geometry></collision>
         <visual name="vis">
-          <geometry><box><size>2.3 0.15 1.4</size></box></geometry>
+          <geometry><box><size>1.65 0.15 1.4</size></box></geometry>
           <material><ambient>0.35 0.35 0.38 1</ambient><diffuse>0.35 0.35 0.38 1</diffuse></material>
         </visual>
       </link>

@@ -1,4 +1,4 @@
-import { Move, Smile, Volume2, Monitor, Mic, Sparkles, Send, Star } from 'lucide-react';
+import { Move, Smile, Volume2, Monitor, Mic, Sliders, Send, Star } from 'lucide-react';
 
 /**
  * Standard 8 Otto Step Types for Hotel Concierge Robot
@@ -9,9 +9,14 @@ export const OTTO_STEP_TYPES = [
     label: '1. MOVE (Di chuyển vị trí)',
     desc: 'Robot di chuyển tự hành đến điểm mốc Waypoint hoặc tọa độ quy định',
     defaultParams: {
-      target_waypoint_id: 'wp-reception',
-      waypoint_name: 'Quầy Lễ Tân',
-      speed: 0.5,
+      from_waypoint: 'CURRENT',
+      from_waypoint_name: 'Vị trí hiện tại của Robot',
+      target_waypoint_id: 'FRONT_DESK',
+      target_value: 'FRONT_DESK',
+      waypoint_name: 'Trước Quầy Lễ Tân (Front Desk)',
+      target_x: 5.2,
+      target_y: 2.0,
+      speed: 0.35,
       timeout_sec: 30,
     },
   },
@@ -89,15 +94,15 @@ export const OTTO_STEP_TYPES = [
 ];
 
 /**
- * Flat Solid Palette Definitions for Otto Steps (No Gradient)
+ * Clean Neutral Palette Definitions for Otto Steps (Minimalist Slate / Stone)
  */
 export const STEP_SCRATCH_THEMES = {
-  MOVE: { label: 'Motion', bg: '#2563EB', border: '#1D4ED8', icon: Move },
-  GREET: { label: 'Looks', bg: '#7C3AED', border: '#6D28D9', icon: Smile },
-  SPEAK: { label: 'Voice', bg: '#BE185D', border: '#9D174D', icon: Volume2 },
-  SHOW: { label: 'Display', bg: '#1E40AF', border: '#1E3A8A', icon: Monitor },
-  LISTEN: { label: 'Sensing', bg: '#D97706', border: '#B45309', icon: Mic },
-  RECOMMEND: { label: 'Logic', bg: '#059669', border: '#047857', icon: Sparkles },
-  CREATE_REQUEST: { label: 'Dispatch', bg: '#C2410C', border: '#9A3412', icon: Send },
-  FEEDBACK: { label: 'Feedback', bg: '#374151', border: '#1F2937', icon: Star },
+  MOVE: { label: 'Motion', bg: '#ffffff', border: '#cbd5e1', accent: '#334155', icon: Move },
+  GREET: { label: 'Looks', bg: '#ffffff', border: '#cbd5e1', accent: '#475569', icon: Smile },
+  SPEAK: { label: 'Voice', bg: '#ffffff', border: '#cbd5e1', accent: '#475569', icon: Volume2 },
+  SHOW: { label: 'Display', bg: '#ffffff', border: '#cbd5e1', accent: '#334155', icon: Monitor },
+  LISTEN: { label: 'Sensing', bg: '#ffffff', border: '#cbd5e1', accent: '#475569', icon: Mic },
+  RECOMMEND: { label: 'Logic', bg: '#ffffff', border: '#cbd5e1', accent: '#334155', icon: Sliders },
+  CREATE_REQUEST: { label: 'Dispatch', bg: '#ffffff', border: '#cbd5e1', accent: '#475569', icon: Send },
+  FEEDBACK: { label: 'Feedback', bg: '#ffffff', border: '#cbd5e1', accent: '#334155', icon: Star },
 };

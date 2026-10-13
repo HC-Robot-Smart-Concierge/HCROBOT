@@ -13,12 +13,13 @@ import {
   Eye,
   Mic,
   MessageSquare,
-  Sparkles,
   ClipboardList,
   Star,
   Navigation,
   Wifi,
   WifiOff,
+  Edit3,
+  Check,
 } from 'lucide-react';
 import { useSpeechSynthesis } from '../../../../hooks/useSpeechSynthesis';
 import {
@@ -31,6 +32,7 @@ import { executeWorkflow } from '../../../../services/workflowApi';
 import {
   ROBOT_INITIAL_POSE,
   GAZEBO_LOBBY_WAYPOINTS,
+  STANDARD_LOBBY_WAYPOINTS,
   meterToSvg,
   svgToMeter,
   calculateSafeWaypoints,
@@ -50,6 +52,14 @@ export const WorkflowSimulatorStudio = ({
       ? workflows
       : BUILTIN_SIMULATOR_WORKFLOWS;
 
+  const [localWorkflows, setLocalWorkflows] = useState(() => effectiveWorkflows);
+
+  useEffect(() => {
+    if (Array.isArray(workflows) && workflows.length > 0) {
+      setLocalWorkflows(workflows);
+    }
+  }, [workflows]);
+
   // Chon kich ban
   const [selectedWorkflowId, setSelectedWorkflowId] = useState(() => {
     if (initialWorkflowId) return initialWorkflowId;
@@ -57,9 +67,59 @@ export const WorkflowSimulatorStudio = ({
   });
 
   const activeWorkflow =
-    effectiveWorkflows.find((w) => w.id === selectedWorkflowId) ||
-    effectiveWorkflows[0];
+    localWorkflows.find((w) => w.id === selectedWorkflowId) ||
+    localWorkflows[0];
   const steps = activeWorkflow?.steps || [];
+
+  // Che do chinh sua nhanh diem moc cua buoc MOVE ngay tai sa ban
+  const [editingStepIdx, setEditingStepIdx] = useState(null);
+
+  const handleUpdateMoveStepWaypoints = (stepIdx, fromKey, toKey) => {
+    const targetWp = GAZEBO_LOBBY_WAYPOINTS[toKey] || GAZEBO_LOBBY_WAYPOINTS.FRONT_DESK;
+    const fromWp = fromKey === 'CURRENT' ? null : GAZEBO_LOBBY_WAYPOINTS[fromKey];
+
+    setLocalWorkflows((prevList) => {
+      return prevList.map((wf) => {
+        if (wf.id !== selectedWorkflowId) return wf;
+        const updatedSteps = (wf.steps || []).map((st, i) => {
+          if (i !== stepIdx) return st;
+          return {
+            ...st,
+            params: {
+              ...(st.params || {}),
+              from_waypoint: fromKey,
+              from_waypoint_name: fromWp ? fromWp.name : 'Vị trí hiện tại của Robot',
+              target_value: toKey,
+              target_waypoint_id: toKey,
+              waypoint_name: targetWp.name,
+              target_x: targetWp.x,
+              target_y: targetWp.y,
+            },
+          };
+        });
+        return { ...wf, steps: updatedSteps };
+      });
+    });
+
+    // Ve ngay duong di preview tu diem A den B tren sa ban
+    const startPt =
+      fromKey === 'CURRENT'
+        ? { x: robotPoseRef.current.x, y: robotPoseRef.current.y }
+        : { x: fromWp?.x ?? 3.7, y: fromWp?.y ?? 5.0 };
+    const goalPt = { x: targetWp.x, y: targetWp.y };
+    const pts = calculateSafeWaypoints(startPt, goalPt);
+    let totalDist = 0;
+    for (let i = 0; i < pts.length - 1; i++) {
+      totalDist += Math.hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y);
+    }
+    setCurrentPath({
+      waypoints: pts,
+      label: targetWp.name,
+      targetPoint: goalPt,
+      totalDistance: totalDist,
+    });
+    setManualNavLabel(`Lộ trình: ${fromKey === 'CURRENT' ? 'Hiện tại' : (fromWp?.name?.split('(')[0]?.trim() || fromKey)} ➔ ${targetWp.name?.split('(')[0]?.trim()}`);
+  };
 
   // Trang thai thuc thi
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
@@ -195,7 +255,8 @@ export const WorkflowSimulatorStudio = ({
       return;
     }
 
-    const client = new RosbridgeClient('ws://localhost:9090', {
+    const rosUrl = import.meta.env.VITE_ROSBRIDGE_URL || 'ws://127.0.0.1:9090';
+    const client = new RosbridgeClient(rosUrl, {
       autoReconnect: true,
       onOpen: () => setIsRosConnected(true),
       onClose: () => setIsRosConnected(false),
@@ -301,13 +362,25 @@ export const WorkflowSimulatorStudio = ({
 
   // Dieu huong robot toi bat ky diem nao (Click waypoint hoac click sanh map hoac buoc MOVE)
   const handleNavigateToGoal = useCallback(
-    (targetX, targetY, targetName = 'Điểm đã chọn', fromWorkflow = false) => {
+    (targetX, targetY, targetName = 'Điểm đã chọn', fromWorkflow = false, startPoseOverride = null) => {
       if (timerRef.current) clearTimeout(timerRef.current);
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
       if (stopSpeakingRef.current) stopSpeakingRef.current();
 
-      const startPoint = { x: robotPoseRef.current.x, y: robotPoseRef.current.y };
+      const startPoint = startPoseOverride
+        ? { x: Number(startPoseOverride.x.toFixed(2)), y: Number(startPoseOverride.y.toFixed(2)) }
+        : { x: robotPoseRef.current.x, y: robotPoseRef.current.y };
       const goalPoint = { x: Number(targetX.toFixed(2)), y: Number(targetY.toFixed(2)) };
+
+      if (startPoseOverride) {
+        const resetPose = {
+          x: startPoint.x,
+          y: startPoint.y,
+          yaw: startPoseOverride.yaw ?? robotPoseRef.current.yaw,
+        };
+        robotPoseRef.current = resetPose;
+        setRobotPose(resetPose);
+      }
 
       // Tinh toan lo trinh da diem ne tuong va vach ngan
       const waypoints = calculateSafeWaypoints(startPoint, goalPoint);
@@ -442,15 +515,23 @@ export const WorkflowSimulatorStudio = ({
     if (stepType === 'MOVE') {
       let targetX = parseFloat(params.target_x);
       let targetY = parseFloat(params.target_y);
-      const wpName = params.waypoint_name || params.target_value || 'Diem den';
+      const wpName = params.waypoint_name || params.target_value || 'Điểm đến';
 
       if (isNaN(targetX) || isNaN(targetY)) {
-        const wp = GAZEBO_LOBBY_WAYPOINTS[params.target_value] || GAZEBO_LOBBY_WAYPOINTS.ROBOT_STANDBY;
-        targetX = wp?.x ?? 8.2;
-        targetY = wp?.y ?? 3.6;
+        const wp = GAZEBO_LOBBY_WAYPOINTS[params.target_value] || GAZEBO_LOBBY_WAYPOINTS.FRONT_DESK;
+        targetX = wp?.x ?? 5.2;
+        targetY = wp?.y ?? 2.0;
       }
 
-      handleNavigateToGoal(targetX, targetY, wpName, true);
+      let startOverride = null;
+      if (params.from_waypoint && params.from_waypoint !== 'CURRENT') {
+        const fromWp = GAZEBO_LOBBY_WAYPOINTS[params.from_waypoint];
+        if (fromWp) {
+          startOverride = { x: fromWp.x, y: fromWp.y, yaw: robotPoseRef.current.yaw };
+        }
+      }
+
+      handleNavigateToGoal(targetX, targetY, wpName, true, startOverride);
     } else {
       // CAC BUOC TUONG TAC (GREET, SPEAK, SHOW, LISTEN, RECOMMEND, CREATE_REQUEST, FEEDBACK)
       let waitDurationSec = 3.5;
@@ -566,13 +647,16 @@ export const WorkflowSimulatorStudio = ({
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-75px)] w-full bg-[#f4f2ee] overflow-hidden select-none">
-      {/* THANH DIEU KHIEN CHINH (h-14 shrink-0) */}
-      <div className="h-14 px-4 bg-[#D9D5CC] border-b border-[#BFBFBD] flex items-center justify-between gap-4 shrink-0">
+    <div className="flex flex-col h-[calc(100vh-75px)] w-full overflow-hidden select-none" style={{ backgroundColor: '#F2EFE9' }}>
+      {/* THANH DIEU KHIEN CHINH - Đồng bộ màu xám #E9E5DC của Sidebar trái */}
+      <div
+        className="h-14 px-4 border-b flex items-center justify-between gap-4 shrink-0"
+        style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD' }}
+      >
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
-            <Radio className="w-4 h-4 text-cyan-800 animate-pulse" />
-            <span className="font-bold text-xs uppercase tracking-wider text-stone-900 hidden sm:inline">
+            <Radio className="w-4 h-4 text-[#262626] animate-pulse" />
+            <span className="font-bold text-xs uppercase tracking-wider text-[#262626] hidden sm:inline">
               Gia Lap
             </span>
             {/* NUT BAT / TAT KET NOI ROS 2 (PORT 9090) */}
@@ -592,8 +676,9 @@ export const WorkflowSimulatorStudio = ({
                   ? isRosConnected
                     ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
                     : 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100'
-                  : 'bg-stone-200 text-stone-700 border-stone-300 hover:bg-stone-300'
+                  : 'text-[#262626] hover:bg-[#BFBFBD]'
               }`}
+              style={!isRosEnabled ? { backgroundColor: '#F2EFE9', borderColor: '#BFBFBD' } : {}}
               title={
                 isRosEnabled
                   ? isRosConnected
@@ -616,9 +701,12 @@ export const WorkflowSimulatorStudio = ({
                 </>
               ) : (
                 <>
-                  <WifiOff className="w-3 h-3 text-stone-500" />
+                  <WifiOff className="w-3 h-3 text-[#8C8C8C]" />
                   <span>GIẢ LẬP WEB</span>
-                  <span className="text-[9px] font-sans font-semibold text-cyan-800 bg-cyan-100 px-1 py-0.2 rounded border border-cyan-300 ml-0.5">
+                  <span
+                    className="text-[9px] font-sans font-semibold px-1 py-0.2 rounded border ml-0.5"
+                    style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD', color: '#262626' }}
+                  >
                     Bật ROS
                   </span>
                 </>
@@ -632,7 +720,8 @@ export const WorkflowSimulatorStudio = ({
               handleStopSim();
               setSelectedWorkflowId(e.target.value);
             }}
-            className="h-8 px-2.5 rounded-lg border border-stone-400 bg-white text-xs font-bold text-stone-800 shadow-xs focus:outline-none focus:ring-1 focus:ring-cyan-600 max-w-[280px] sm:max-w-[340px] truncate cursor-pointer"
+            className="h-8 px-2.5 rounded-lg border text-xs font-bold shadow-xs focus:outline-none max-w-[280px] sm:max-w-[340px] truncate cursor-pointer"
+            style={{ backgroundColor: '#F2EFE9', borderColor: '#BFBFBD', color: '#262626' }}
           >
             {effectiveWorkflows.map((wf) => (
               <option key={wf.id} value={wf.id}>
@@ -648,7 +737,7 @@ export const WorkflowSimulatorStudio = ({
             <button
               type="button"
               onClick={handleStartSim}
-              className="h-8 px-3 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold flex items-center gap-1 shadow-sm transition-all cursor-pointer"
+              className="h-8 px-3 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold flex items-center gap-1 shadow-xs transition-all cursor-pointer"
             >
               <Play className="w-3.5 h-3.5 fill-current" />
               <span>Chay</span>
@@ -658,7 +747,7 @@ export const WorkflowSimulatorStudio = ({
               <button
                 type="button"
                 onClick={handlePauseSim}
-                className="h-8 px-2.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold flex items-center gap-1 shadow-sm cursor-pointer"
+                className="h-8 px-2.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold flex items-center gap-1 shadow-xs cursor-pointer"
               >
                 {isPaused ? <Play className="w-3.5 h-3.5 fill-current" /> : <Pause className="w-3.5 h-3.5" />}
                 <span>{isPaused ? 'Tiep' : 'Dung'}</span>
@@ -666,7 +755,8 @@ export const WorkflowSimulatorStudio = ({
               <button
                 type="button"
                 onClick={handleNextStep}
-                className="h-8 px-2.5 rounded-lg bg-stone-700 hover:bg-stone-800 text-white text-xs font-bold flex items-center gap-1 shadow-sm cursor-pointer"
+                className="h-8 px-2.5 rounded-lg text-white text-xs font-bold flex items-center gap-1 shadow-xs cursor-pointer hover:bg-[#363636]"
+                style={{ backgroundColor: '#262626' }}
                 title="Chuyen buoc tiep theo"
               >
                 <SkipForward className="w-3.5 h-3.5" />
@@ -674,7 +764,7 @@ export const WorkflowSimulatorStudio = ({
               <button
                 type="button"
                 onClick={handleStopSim}
-                className="h-8 px-2.5 rounded-lg bg-red-700 hover:bg-red-800 text-white text-xs font-bold flex items-center gap-1 shadow-sm cursor-pointer"
+                className="h-8 px-2.5 rounded-lg bg-red-700 hover:bg-red-800 text-white text-xs font-bold flex items-center gap-1 shadow-xs cursor-pointer"
                 title="Huy kich ban"
               >
                 <Square className="w-3 h-3 fill-current" />
@@ -685,21 +775,25 @@ export const WorkflowSimulatorStudio = ({
           <button
             type="button"
             onClick={handleReset}
-            className="h-8 px-2.5 rounded-lg bg-white border border-stone-300 text-stone-700 hover:bg-stone-100 text-xs font-bold flex items-center gap-1 shadow-xs cursor-pointer"
+            className="h-8 px-2.5 rounded-lg border text-xs font-bold flex items-center gap-1 shadow-xs cursor-pointer hover:bg-[#FAF8F5]"
+            style={{ backgroundColor: '#F2EFE9', borderColor: '#BFBFBD', color: '#262626' }}
             title="Ve vi tri tram cho sảnh"
           >
             <RotateCcw className="w-3.5 h-3.5" />
           </button>
 
           {/* Toc do mo phong */}
-          <div className="hidden lg:flex items-center bg-white border border-stone-300 rounded-lg p-0.5 shadow-xs">
+          <div
+            className="hidden lg:flex items-center border rounded-lg p-0.5 shadow-xs"
+            style={{ backgroundColor: '#F2EFE9', borderColor: '#BFBFBD' }}
+          >
             {[1, 2, 4].map((spd) => (
               <button
                 key={spd}
                 type="button"
                 onClick={() => setSimSpeed(spd)}
                 className={`px-2 py-0.5 text-[11px] font-bold rounded cursor-pointer ${
-                  simSpeed === spd ? 'bg-cyan-700 text-white' : 'text-stone-600 hover:bg-stone-100'
+                  simSpeed === spd ? 'bg-[#262626] text-white' : 'text-[#262626] hover:bg-[#E9E5DC]'
                 }`}
               >
                 {spd}x
@@ -714,8 +808,9 @@ export const WorkflowSimulatorStudio = ({
             className={`h-8 w-8 rounded-lg border flex items-center justify-center cursor-pointer transition-all ${
               isMuted
                 ? 'bg-amber-100 border-amber-300 text-amber-800'
-                : 'bg-white border-stone-300 text-stone-700 hover:bg-stone-100'
+                : 'hover:bg-[#FAF8F5]'
             }`}
+            style={!isMuted ? { backgroundColor: '#F2EFE9', borderColor: '#BFBFBD', color: '#262626' } : {}}
             title={isMuted ? 'Bat tieng noi' : 'Tat tieng noi'}
           >
             {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
@@ -724,7 +819,8 @@ export const WorkflowSimulatorStudio = ({
           <button
             type="button"
             onClick={handleDispatchToKiosk}
-            className="h-8 px-3 rounded-lg bg-cyan-700 hover:bg-cyan-800 text-white text-xs font-bold flex items-center gap-1 shadow-sm transition-all cursor-pointer shrink-0"
+            className="h-8 px-3 rounded-lg text-white text-xs font-bold flex items-center gap-1 shadow-xs transition-all cursor-pointer shrink-0 hover:bg-[#363636]"
+            style={{ backgroundColor: '#262626' }}
             title="Phat kich ban nay toi man hinh Robot Kiosk"
           >
             <Send className="w-3.5 h-3.5" />
@@ -735,7 +831,8 @@ export const WorkflowSimulatorStudio = ({
             <button
               type="button"
               onClick={onClose}
-              className="h-8 px-3 rounded-lg bg-[#262626] text-white text-xs font-bold hover:bg-stone-800 cursor-pointer"
+              className="h-8 px-3 rounded-lg border text-xs font-bold cursor-pointer shadow-xs hover:bg-[#FAF8F5]"
+              style={{ backgroundColor: '#F2EFE9', borderColor: '#BFBFBD', color: '#262626' }}
             >
               Dong
             </button>
@@ -745,33 +842,48 @@ export const WorkflowSimulatorStudio = ({
 
       {/* KHONG GIAN CHINH CHIA 2 COT: SIDEBAR STEPS BEN TRAI VA SA BAN BEN PHAI */}
       <div className="flex-1 min-h-0 flex overflow-hidden">
-        {/* COT TRAI: DANH SACH CAC BUOC WORKFLOW XEP DOC (w-72 sm:w-80 shrink-0) */}
-        <aside className="w-72 sm:w-80 bg-[#ECE8E1] border-r border-[#BFBFBD] flex flex-col shrink-0 overflow-hidden">
+        {/* COT TRAI: DANH SACH CAC BUOC WORKFLOW XEP DOC (Màu xám #E9E5DC đồng bộ với Tab bên trái) */}
+        <aside
+          className="w-72 sm:w-80 border-r flex flex-col shrink-0 overflow-hidden"
+          style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD' }}
+        >
           {/* Header Sidebar: Trang thai buoc hien tai & Tien do */}
-          <div className="p-3 bg-[#E2DED5] border-b border-[#BFBFBD] shrink-0">
+          <div
+            className="p-3 border-b shrink-0"
+            style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD' }}
+          >
             <div className="flex items-center justify-between gap-2 mb-2">
-              <span className="text-[11px] font-bold text-stone-700 uppercase tracking-wider flex items-center gap-1.5">
-                <ClipboardList className="w-3.5 h-3.5 text-cyan-800" />
+              <span className="text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5" style={{ color: '#262626' }}>
+                <ClipboardList className="w-3.5 h-3.5 text-[#262626]" />
                 <span>Tiến trình kịch bản</span>
               </span>
-              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-stone-200/90 text-stone-700 border border-stone-300">
+              <span
+                className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border"
+                style={{ backgroundColor: '#F2EFE9', borderColor: '#BFBFBD', color: '#262626' }}
+              >
                 {steps.length} bước
               </span>
             </div>
 
             {/* Card trang thai buoc dang thuc thi */}
-            <div className="p-2.5 rounded-xl bg-white border border-stone-300 shadow-xs">
+            <div
+              className="p-2.5 rounded-xl border shadow-xs"
+              style={{ backgroundColor: '#F2EFE9', borderColor: '#BFBFBD' }}
+            >
               <div className="flex items-center justify-between gap-2 mb-1.5">
                 <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] font-bold text-stone-500 uppercase">
+                  <span className="text-[10px] font-bold uppercase" style={{ color: '#8C8C8C' }}>
                     {isPlaying ? `Bước ${currentStepIndex + 1}/${steps.length}` : 'Trạng thái'}
                   </span>
-                  <span className="px-2 py-0.5 rounded text-[10px] font-black font-mono bg-cyan-800 text-white shadow-xs tracking-wider">
+                  <span
+                    className="px-2 py-0.5 rounded text-[10px] font-bold font-mono shadow-xs tracking-wider"
+                    style={{ backgroundColor: '#262626', color: '#FFFFFF' }}
+                  >
                     {activeDetail.label}
                   </span>
                 </div>
                 {isPlaying && (
-                  <span className="text-xs font-mono font-black text-cyan-800">
+                  <span className="text-xs font-mono font-bold" style={{ color: '#262626' }}>
                     {stepProgress}%
                   </span>
                 )}
@@ -779,15 +891,18 @@ export const WorkflowSimulatorStudio = ({
 
               {/* Progress bar */}
               {isPlaying && (
-                <div className="w-full h-1.5 bg-stone-100 rounded-full overflow-hidden mb-1.5 border border-stone-200">
+                <div
+                  className="w-full h-1.5 rounded-full overflow-hidden mb-1.5 border"
+                  style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD' }}
+                >
                   <div
-                    className="h-full bg-cyan-700 transition-all duration-150 rounded-full"
-                    style={{ width: `${stepProgress}%` }}
+                    className="h-full transition-all duration-150 rounded-full"
+                    style={{ width: `${stepProgress}%`, backgroundColor: '#262626' }}
                   />
                 </div>
               )}
 
-              <p className="text-[11px] text-stone-700 font-medium leading-snug line-clamp-2" title={activeDetail.detailText}>
+              <p className="text-[11px] font-medium leading-snug line-clamp-2" style={{ color: '#262626' }} title={activeDetail.detailText}>
                 {activeDetail.detailText}
               </p>
             </div>
@@ -803,23 +918,23 @@ export const WorkflowSimulatorStudio = ({
               return (
                 <div
                   key={step.step_id || idx}
-                  className={`p-2.5 rounded-xl border transition-all flex items-start gap-2.5 select-none ${
-                    isActive
-                      ? 'bg-white border-cyan-600 shadow-md ring-2 ring-cyan-500/30'
-                      : isPast
-                      ? 'bg-[#E3EFE7] border-emerald-300 text-emerald-950'
-                      : 'bg-white/70 border-stone-300 hover:bg-white text-stone-700'
-                  }`}
+                  className="p-2.5 rounded-xl border transition-all flex items-start gap-2.5 select-none"
+                  style={{
+                    backgroundColor: isActive ? '#FFFFFF' : isPast ? '#E9E5DC' : '#F2EFE9',
+                    borderColor: isActive ? '#262626' : '#BFBFBD',
+                    boxShadow: isActive ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                  }}
                 >
                   {/* Badge so thu tu tron */}
                   <div
                     className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold font-mono shrink-0 mt-0.5 ${
                       isActive
-                        ? 'bg-cyan-800 text-white ring-2 ring-cyan-400'
+                        ? 'bg-[#262626] text-white'
                         : isPast
-                        ? 'bg-emerald-600 text-white'
-                        : 'bg-stone-200 text-stone-600'
+                        ? 'bg-[#BFBFBD] text-[#262626]'
+                        : 'border'
                     }`}
+                    style={!isActive && !isPast ? { backgroundColor: '#E9E5DC', borderColor: '#BFBFBD', color: '#262626' } : {}}
                   >
                     {idx + 1}
                   </div>
@@ -828,34 +943,114 @@ export const WorkflowSimulatorStudio = ({
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5 mb-1">
                       <span
-                        className={`px-1.5 py-0.2 rounded text-[9.5px] font-mono font-bold tracking-wider ${
-                          isActive
-                            ? 'bg-cyan-100 text-cyan-900 border border-cyan-300'
-                            : isPast
-                            ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
-                            : 'bg-stone-100 text-stone-600 border border-stone-200'
-                        }`}
+                        className="px-1.5 py-0.2 rounded text-[9.5px] font-mono font-bold tracking-wider border"
+                        style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD', color: '#262626' }}
                       >
                         {stepDetail.label}
                       </span>
                       <span
-                        className={`text-[11px] font-bold truncate ${
-                          isActive ? 'text-cyan-950' : isPast ? 'text-emerald-900' : 'text-stone-800'
-                        }`}
+                        className="text-[11px] font-bold truncate flex-1"
+                        style={{ color: '#262626' }}
                         title={step.title || stepDetail.shortChip}
                       >
                         {step.title || stepDetail.shortChip}
                       </span>
+
+                      {step.type === 'MOVE' && !isPlaying && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingStepIdx(editingStepIdx === idx ? null : idx);
+                          }}
+                          className="text-[9.5px] font-bold flex items-center gap-1 px-1.5 py-0.5 rounded border transition-colors cursor-pointer shrink-0 hover:bg-[#FAF8F5]"
+                          style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD', color: '#262626' }}
+                          title="Thay đổi điểm mốc xuất phát và đích đến của bước này"
+                        >
+                          <Edit3 className="w-2.5 h-2.5" />
+                          <span>{editingStepIdx === idx ? 'Đóng' : 'Đổi điểm'}</span>
+                        </button>
+                      )}
                     </div>
 
                     <p
-                      className={`text-[10px] leading-relaxed line-clamp-2 ${
-                        isActive ? 'text-stone-700 font-medium' : isPast ? 'text-stone-600' : 'text-stone-500'
-                      }`}
+                      className="text-[10px] leading-relaxed line-clamp-2"
+                      style={{ color: '#8C8C8C' }}
                       title={stepDetail.detailText}
                     >
                       {stepDetail.detailText}
                     </p>
+
+                    {/* Panel chinh sua nhanh diem moc ngay tai Sa ban Studio */}
+                    {editingStepIdx === idx && step.type === 'MOVE' && (
+                      <div
+                        className="mt-2 pt-2 border-t space-y-2 p-2 rounded-lg animate-fadeIn"
+                        style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD', color: '#262626' }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div className="flex items-center justify-between text-[10px] font-bold mb-0.5" style={{ color: '#262626' }}>
+                          <span>Đổi Điểm Mốc (A ➔ B)</span>
+                          <button
+                            type="button"
+                            onClick={() => setEditingStepIdx(null)}
+                            className="font-bold flex items-center gap-0.5 cursor-pointer text-[9.5px] hover:text-black"
+                            style={{ color: '#262626' }}
+                          >
+                            <Check className="w-3 h-3 text-[#262626]" />
+                            <span>Xong</span>
+                          </button>
+                        </div>
+
+                        <div className="space-y-0.5">
+                          <label className="block text-[9px] font-bold uppercase" style={{ color: '#8C8C8C' }}>
+                            Từ Điểm Mốc (Start):
+                          </label>
+                          <select
+                            value={step.params?.from_waypoint || 'CURRENT'}
+                            onChange={(e) =>
+                              handleUpdateMoveStepWaypoints(
+                                idx,
+                                e.target.value,
+                                step.params?.target_value || step.params?.target_waypoint_id || 'FRONT_DESK'
+                              )
+                            }
+                            className="w-full px-2 py-1 rounded text-[10px] font-semibold border focus:outline-none cursor-pointer"
+                            style={{ backgroundColor: '#F2EFE9', borderColor: '#BFBFBD', color: '#262626' }}
+                          >
+                            <option value="CURRENT">Vị trí hiện tại của Robot</option>
+                            {STANDARD_LOBBY_WAYPOINTS.map((wp) => (
+                              <option key={wp.id} value={wp.id}>
+                                {wp.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="space-y-0.5">
+                          <label className="block text-[9px] font-bold uppercase" style={{ color: '#8C8C8C' }}>
+                            Đến Điểm Mốc (Goal):
+                          </label>
+                          <select
+                            value={step.params?.target_value || step.params?.target_waypoint_id || 'FRONT_DESK'}
+                            onChange={(e) =>
+                              handleUpdateMoveStepWaypoints(
+                                idx,
+                                step.params?.from_waypoint || 'CURRENT',
+                                e.target.value
+                              )
+                            }
+                            className="w-full px-2 py-1 rounded text-[10px] font-semibold border focus:outline-none cursor-pointer"
+                            style={{ backgroundColor: '#F2EFE9', borderColor: '#BFBFBD', color: '#262626' }}
+                          >
+                            {STANDARD_LOBBY_WAYPOINTS.map((wp) => (
+                              <option key={wp.id} value={wp.id}>
+                                {wp.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               );
@@ -864,12 +1059,21 @@ export const WorkflowSimulatorStudio = ({
         </aside>
 
         {/* COT PHAI: TOAN BO KHONG GIAN SA BAN 2D SANH GROUND FLOOR */}
-        <main className="flex-1 min-w-0 h-full relative bg-white p-2 flex items-center justify-center overflow-hidden">
+        <main
+          className="flex-1 min-w-0 h-full relative p-2 flex items-center justify-center overflow-hidden"
+          style={{ backgroundColor: '#F2EFE9' }}
+        >
         {/* Thanh huong dan dieu huong truc quan */}
-        <div className="absolute top-3 right-4 z-10 flex items-center gap-2 bg-stone-900/85 backdrop-blur-xs text-white px-3 py-1.5 rounded-lg border border-cyan-500/40 shadow-sm text-xs font-semibold pointer-events-none select-none">
-          <Compass className="w-3.5 h-3.5 text-cyan-400" />
+        <div
+          className="absolute top-3 right-4 z-10 flex items-center gap-2 px-3 py-1.5 rounded-lg border shadow-xs text-xs font-medium pointer-events-none select-none backdrop-blur-xs"
+          style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD', color: '#262626' }}
+        >
+          <Navigation className="w-3.5 h-3.5 text-[#8C8C8C]" />
           <span>Click điểm mốc hoặc vị trí sàn để robot di chuyển tới đó</span>
-          <span className="text-cyan-400 font-mono ml-1">
+          <span
+            className="font-mono font-bold px-1.5 py-0.5 rounded border ml-1"
+            style={{ backgroundColor: '#F2EFE9', borderColor: '#BFBFBD', color: '#262626' }}
+          >
             ({robotPose.x}m, {robotPose.y}m)
           </span>
         </div>
@@ -882,16 +1086,16 @@ export const WorkflowSimulatorStudio = ({
         >
           <defs>
             <pattern id="blueprintDots" width="20" height="20" patternUnits="userSpaceOnUse">
-              <circle cx="2" cy="2" r="1.2" fill="#cbd5e1" />
+              <circle cx="2" cy="2" r="1.2" fill="#BFBFBD" />
             </pattern>
           </defs>
 
           {/* Nen san co luoi cham */}
-          <rect x="0" y="0" width="1000" height="620" fill="#fdfbf7" />
+          <rect x="0" y="0" width="1000" height="620" fill="#F2EFE9" />
           <rect x="50" y="50" width="900" height="500" fill="url(#blueprintDots)" />
 
-          <text x="50" y="38" className="text-xl font-black fill-stone-900" fontFamily="sans-serif">
-            Ground Floor - Hotel Lobby Arena (10m x 6m)
+          <text x="50" y="36" className="text-xs font-mono font-bold tracking-widest uppercase" fill="#8C8C8C" fontFamily="sans-serif">
+            Mặt bằng sảnh khách sạn • 10m x 6m
           </text>
 
           {/* MAT BANG KIEN TRUC SANH TANG TRET (ARCHITECTURAL VECTOR BLUEPRINT 10M x 6M) */}
@@ -901,8 +1105,8 @@ export const WorkflowSimulatorStudio = ({
             y="50"
             width="900"
             height="500"
-            fill="#ffffff"
-            stroke="#1c1917"
+            fill="#FFFFFF"
+            stroke="#262626"
             strokeWidth="3.5"
           />
 
@@ -986,12 +1190,13 @@ export const WorkflowSimulatorStudio = ({
 
           {/* Phong Staff Only (Goc Dong Nam) */}
           <g>
-            {/* Vach dung va vach ngang */}
-            <line x1="805" y1="295" x2="805" y2="550" stroke="#1c1917" strokeWidth="3" />
+            {/* Vach ngang phia Bac */}
             <line x1="805" y1="295" x2="950" y2="295" stroke="#1c1917" strokeWidth="3" />
+            {/* Vach dung phia Tay (Chua khe cua mo tu y=295 den y=355) */}
+            <line x1="805" y1="355" x2="805" y2="550" stroke="#1c1917" strokeWidth="3" />
             {/* Cua mo 1 canh xoay vao trong phong Staff Only */}
-            <line x1="805" y1="345" x2="865" y2="345" stroke="#1c1917" strokeWidth="2" />
-            <path d="M 805 295 A 50 50 0 0 1 865 345" fill="none" stroke="#94a3b8" strokeWidth="1.2" strokeDasharray="2 2" />
+            <line x1="805" y1="355" x2="865" y2="355" stroke="#1c1917" strokeWidth="2" />
+            <path d="M 805 295 A 60 60 0 0 1 865 355" fill="none" stroke="#94a3b8" strokeWidth="1.2" strokeDasharray="2 2" />
             <text x="878" y="445" textAnchor="middle" className="text-sm font-bold fill-stone-900" fontFamily="sans-serif">
               Staff Only
             </text>
@@ -1036,7 +1241,7 @@ export const WorkflowSimulatorStudio = ({
             ))}
           </g>
 
-          {/* CAC DIEM MOC WAYPOINTS TREN SA BAN - KHONG CON TRAM SAC ROBOT, HO TRO CLICK-TO-NAVIGATE */}
+          {/* CAC DIEM MOC WAYPOINTS TREN SA BAN - CHU THICH TINH GON, PHONG CACH KI THUAT TOI GIAN */}
           {Object.entries(GAZEBO_LOBBY_WAYPOINTS)
             .filter(([k]) =>
               [
@@ -1058,9 +1263,9 @@ export const WorkflowSimulatorStudio = ({
 
               // Các tiện ích: Cửa chính, Quầy lễ tân, Thang máy, WC, Cầu thang, Phòng NV, Sofa sảnh
               const badgeText = wp.badge || wp.name || k;
-              const badgeWidth = Math.max(68, badgeText.length * 7.5 + 16);
+              const badgeWidth = Math.max(64, badgeText.length * 7.2 + 14);
               const isTopOffset = wp.offset === 'top';
-              const badgeOffsetY = isTopOffset ? -16 : 18;
+              const badgeOffsetY = isTopOffset ? -15 : 16;
 
               return (
                 <g
@@ -1071,37 +1276,43 @@ export const WorkflowSimulatorStudio = ({
                   }}
                   className="cursor-pointer group select-none"
                 >
-                  {/* Chấm tròn tọa độ tĩnh (hover phát sáng) */}
+                  {/* Diem endpoint reticle ky thuat kep */}
                   <circle
                     cx={wpSvg.x}
                     cy={wpSvg.y}
-                    r={isTarget ? 9 : 6.5}
-                    fill={isTarget ? '#0284c7' : '#334155'}
-                    stroke="#ffffff"
-                    strokeWidth="2"
-                    className="group-hover:fill-sky-500 transition-colors"
+                    r={isTarget ? 7 : 5}
+                    fill={isTarget ? '#18181b' : '#ffffff'}
+                    stroke={isTarget ? '#18181b' : '#52525b'}
+                    strokeWidth={isTarget ? '2' : '1.5'}
+                    className="group-hover:stroke-stone-900 group-hover:scale-110 transition-transform"
+                  />
+                  <circle
+                    cx={wpSvg.x}
+                    cy={wpSvg.y}
+                    r={isTarget ? 2.5 : 2}
+                    fill={isTarget ? '#ffffff' : '#18181b'}
                   />
 
-                  {/* Pill badge hiển thị tên gọn gàng, thanh lịch */}
+                  {/* Nhan chu thich endpoint: nen trang xam toi gian, chu ro net */}
                   <g transform={`translate(${wpSvg.x}, ${wpSvg.y + badgeOffsetY})`}>
                     <rect
                       x={-badgeWidth / 2}
-                      y="-8.5"
+                      y="-8"
                       width={badgeWidth}
-                      height="17"
-                      rx="4"
-                      fill={isTarget ? '#0284c7' : '#ffffff'}
-                      stroke={isTarget ? '#0284c7' : '#94a3b8'}
-                      strokeWidth={isTarget ? '1.5' : '1'}
-                      filter="drop-shadow(0 1px 2px rgba(0,0,0,0.08))"
-                      className="group-hover:stroke-sky-500 group-hover:fill-sky-50 transition-colors"
+                      height="16"
+                      rx="3"
+                      fill={isTarget ? '#262626' : '#E9E5DC'}
+                      stroke={isTarget ? '#262626' : '#BFBFBD'}
+                      strokeWidth="1"
+                      filter="drop-shadow(0 1px 2px rgba(0,0,0,0.06))"
+                      className="group-hover:stroke-[#262626] group-hover:fill-white transition-colors"
                     />
                     <text
                       x="0"
-                      y="3.5"
+                      y="3.2"
                       textAnchor="middle"
-                      fill={isTarget ? '#ffffff' : '#0f172a'}
-                      className={`text-[9px] font-bold ${isTarget ? 'font-black' : ''} group-hover:fill-sky-600 transition-colors`}
+                      fill={isTarget ? '#ffffff' : '#262626'}
+                      className="text-[9px] font-semibold tracking-tight transition-colors"
                       fontFamily="sans-serif"
                     >
                       {badgeText}
@@ -1126,7 +1337,7 @@ export const WorkflowSimulatorStudio = ({
               currentPath.targetPoint.y
             );
             const targetLabel = currentPath.label || 'Đích Đến';
-            const labelWidth = Math.max(90, targetLabel.length * 8 + 20);
+            const labelWidth = Math.max(84, targetLabel.length * 7.5 + 16);
 
             return (
               <g>
@@ -1134,12 +1345,12 @@ export const WorkflowSimulatorStudio = ({
                 <path
                   d={pathData}
                   fill="none"
-                  stroke="#0284c7"
-                  strokeWidth="3.5"
-                  strokeDasharray="6 4"
+                  stroke="#71717a"
+                  strokeWidth="2.5"
+                  strokeDasharray="5 4"
                   strokeLinecap="round"
                   strokeLinejoin="round"
-                  opacity="0.65"
+                  opacity="0.75"
                 />
 
                 {/* 2. Vet duong robot da lan banh qua toi vi tri hien tai */}
@@ -1148,8 +1359,8 @@ export const WorkflowSimulatorStudio = ({
                   y1={meterToSvg(currentPath.waypoints[0].x, currentPath.waypoints[0].y).y}
                   x2={curSvg.x}
                   y2={curSvg.y}
-                  stroke="#06b6d4"
-                  strokeWidth="4.5"
+                  stroke="#18181b"
+                  strokeWidth="3.5"
                   strokeLinecap="round"
                 />
 
@@ -1158,28 +1369,29 @@ export const WorkflowSimulatorStudio = ({
                   <circle
                     cx={targetSvg.x}
                     cy={targetSvg.y}
-                    r="13"
-                    fill="rgba(2, 132, 199, 0.2)"
-                    stroke="#0284c7"
-                    strokeWidth="2"
+                    r="12"
+                    fill="rgba(24, 24, 27, 0.05)"
+                    stroke="#18181b"
+                    strokeWidth="1.5"
+                    strokeDasharray="3 3"
                   />
-                  <g transform={`translate(${targetSvg.x}, ${targetSvg.y - 20})`}>
+                  <g transform={`translate(${targetSvg.x}, ${targetSvg.y - 18})`}>
                     <rect
                       x={-labelWidth / 2}
-                      y="-9"
+                      y="-8.5"
                       width={labelWidth}
-                      height="18"
-                      rx="4"
-                      fill="#0369a1"
-                      stroke="#38bdf8"
-                      strokeWidth="1.2"
-                      filter="drop-shadow(0 2px 4px rgba(0,0,0,0.15))"
+                      height="17"
+                      rx="3"
+                      fill="#18181b"
+                      stroke="#27272a"
+                      strokeWidth="1"
+                      filter="drop-shadow(0 2px 4px rgba(0,0,0,0.12))"
                     />
                     <text
                       x="0"
-                      y="3.5"
+                      y="3.2"
                       textAnchor="middle"
-                      className="text-[9.5px] font-black fill-white"
+                      className="text-[9px] font-bold fill-white tracking-wide"
                       fontFamily="sans-serif"
                     >
                       {targetLabel}
@@ -1197,47 +1409,59 @@ export const WorkflowSimulatorStudio = ({
 
             return (
               <g transform={`translate(${robotSvg.x}, ${robotSvg.y})`}>
-                {/* BONG BONG ACTION HUD GIAI NGHIA ENUM TREN DAU ROBOT */}
-                <g transform="translate(0, -42)">
-                  {/* Nen card HUD bo goc */}
+                {/* BONG BONG ACTION HUD TREN DAU ROBOT (TRANG - XAM TOI GIAN) */}
+                <g transform="translate(0, -40)">
+                  {/* Card nen trang, vien xam tinh te */}
                   <rect
-                    x="-110"
+                    x="-105"
                     y="-30"
-                    width="220"
-                    height="36"
-                    rx="8"
-                    fill="#0f172a"
-                    stroke="#38bdf8"
-                    strokeWidth="1.5"
-                    filter="drop-shadow(0 4px 6px rgba(0,0,0,0.25))"
+                    width="210"
+                    height="34"
+                    rx="6"
+                    fill="#ffffff"
+                    stroke="#cbd5e1"
+                    strokeWidth="1.2"
+                    filter="drop-shadow(0 3px 6px rgba(0,0,0,0.08))"
                   />
                   {/* Mui ten tro xuong robot */}
-                  <polygon points="-6,6 6,6 0,12" fill="#0f172a" />
+                  <polygon points="-6,4 6,4 0,10" fill="#ffffff" stroke="#cbd5e1" strokeWidth="1.2" />
+                  <line x1="-5" y1="4" x2="5" y2="4" stroke="#ffffff" strokeWidth="2" />
 
-                  {/* Header Enum badge */}
+                  {/* Badge Enum phan loai buoc */}
+                  <rect
+                    x="-97"
+                    y="-25"
+                    width="44"
+                    height="14"
+                    rx="3"
+                    fill="#f1f5f9"
+                    stroke="#e2e8f0"
+                    strokeWidth="0.8"
+                  />
                   <text
-                    x="-100"
+                    x="-75"
                     y="-15"
-                    className="text-[10px] font-mono font-black fill-cyan-400"
+                    textAnchor="middle"
+                    className="text-[8.5px] font-mono font-bold fill-stone-700"
                   >
-                    [{activeDetail.label}]
+                    {activeDetail.label}
                   </text>
 
                   {/* Tieu de ngan */}
                   <text
-                    x="-40"
+                    x="-45"
                     y="-15"
-                    className="text-[9px] font-sans font-bold fill-stone-300 uppercase tracking-wider"
+                    className="text-[8.5px] font-sans font-bold fill-stone-500 uppercase tracking-wider"
                   >
                     {activeDetail.bubbleTitle}
                   </text>
 
-                  {/* Noi dung thuc te (Show gi, noi gi, den dau) */}
+                  {/* Noi dung thuc te buoc */}
                   <text
                     x="0"
-                    y="-1"
+                    y="-3"
                     textAnchor="middle"
-                    className="text-[10px] font-sans font-semibold fill-white truncate"
+                    className="text-[9.5px] font-sans font-bold fill-stone-900 truncate"
                   >
                     {activeDetail.bubbleBody.length > 36
                       ? activeDetail.bubbleBody.slice(0, 34) + '...'
@@ -1245,48 +1469,31 @@ export const WorkflowSimulatorStudio = ({
                   </text>
                 </g>
 
-                {/* Xe Robot hinh chu nhat mo phong 1:1 theo Gazebo (Than vang cam, LiDAR cyan, banh xe 2 ben) */}
+                {/* Robot hinh chu nhat mau xam don gian, toi gian ky thuat */}
                 <g transform={`rotate(${svgAngle})`}>
-                  {/* Vong quet LiDAR an toan mo rong */}
-                  <rect
-                    x="-18"
-                    y="-16"
-                    width="36"
-                    height="32"
-                    rx="8"
-                    fill="rgba(245, 158, 11, 0.15)"
-                    stroke="#f59e0b"
-                    strokeWidth="1.2"
-                    strokeDasharray="3 3"
-                  />
-
                   {/* 2 Banh xe mau xam den o 2 ben hong xe */}
-                  <rect x="-8" y="-15" width="16" height="4.5" rx="1.5" fill="#1e293b" stroke="#334155" strokeWidth="1" />
-                  <rect x="-8" y="10.5" width="16" height="4.5" rx="1.5" fill="#1e293b" stroke="#334155" strokeWidth="1" />
+                  <rect x="-8" y="-14" width="16" height="3.5" rx="1" fill="#18181b" />
+                  <rect x="-8" y="10.5" width="16" height="3.5" rx="1" fill="#18181b" />
 
-                  {/* Than xe hinh chu nhat mau cam vang dac trung giong Gazebo */}
+                  {/* Than xe hinh chu nhat mau xam toi gian */}
                   <rect
                     x="-14"
-                    y="-12"
+                    y="-11"
                     width="28"
-                    height="24"
-                    rx="4"
-                    fill="#f59e0b"
-                    stroke="#d97706"
-                    strokeWidth="2"
-                    filter="drop-shadow(0 2px 4px rgba(0,0,0,0.2))"
+                    height="22"
+                    rx="3"
+                    fill="#64748b"
+                    stroke="#334155"
+                    strokeWidth="1.5"
+                    filter="drop-shadow(0 2px 4px rgba(0,0,0,0.15))"
                   />
 
-                  {/* Cam bien LiDAR hinh tru tron mau cyan tren noc phia sau */}
-                  <circle cx="-6" cy="0" r="5" fill="#06b6d4" stroke="#0891b2" strokeWidth="1.2" />
-                  <circle cx="-6" cy="0" r="2" fill="#ffffff" />
+                  {/* Tam LiDAR nho mau xam dam */}
+                  <circle cx="-3" cy="0" r="3.5" fill="#334155" stroke="#94a3b8" strokeWidth="0.8" />
+                  <circle cx="-3" cy="0" r="1.2" fill="#cbd5e1" />
 
-                  {/* 2 Mat robot phat sang mau cyan o mat truoc (+X) */}
-                  <circle cx="10" cy="-5" r="2.2" fill="#06b6d4" stroke="#ffffff" strokeWidth="0.8" />
-                  <circle cx="10" cy="5" r="2.2" fill="#06b6d4" stroke="#ffffff" strokeWidth="0.8" />
-
-                  {/* Mui ten dinh huong tien phia truoc */}
-                  <polygon points="17,0 12,-4 12,4" fill="#d97706" />
+                  {/* Mui ten chi huong dau xe (+X) mau trang tinh gon */}
+                  <polygon points="11,0 6,-3.5 6,3.5" fill="#ffffff" />
                 </g>
               </g>
             );

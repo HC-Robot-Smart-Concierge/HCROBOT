@@ -26,10 +26,11 @@ WAYPOINTS = [
     (3.7, 5.0, "1. Vị Trí Chờ Robot (Góc Trên Bên Phải Lobby)"),
     (2.0, 2.8, "2. Khu Sofa Khách Chờ Sảnh (Lobby Lounge)"),
     (5.2, 1.0, "3. Cửa Chính Ra Vào Sảnh (Main Entrance)"),
-    (6.4, 2.0, "4. Quầy Tiếp Tân (Front Desk)"),
+    (5.2, 2.0, "4. Trước Quầy Tiếp Tân (Front Desk)"),
     (7.8, 4.5, "5. Cụm Thang Máy Tầng 1 (Elevator)"),
     (6.6, 4.5, "6. Khu Vệ Sinh Sảnh (Restrooms)"),
-    (3.7, 5.0, "7. Vị Trí Chờ Robot (Góc Trên Bên Phải Lobby)"),
+    (7.85, 2.7, "7. Trước Phòng Nhân Viên (Staff Only)"),
+    (3.7, 5.0, "8. Vị Trí Chờ Robot (Góc Trên Bên Phải Lobby)"),
 ]
 
 # Tọa độ xuất phát ban đầu tại Góc Trên Bên Phải Lobby (3.7m, 5.0m, Yaw: -90° quay mũi xuống Nam)
@@ -90,15 +91,16 @@ class AutonomousNavigator(Node):
         self.get_logger().info(" San sang nhan lenh dieu huong 1:1 tu Web Kiosk & Studio ")
         self.get_logger().info("==========================================================")
 
-    def calculate_safe_path(self, start_x, start_y, target_x, target_y):
-        """Sinh chuoi waypoint trung gian ne vach ngan x=4.4m va quay le tan."""
+    def get_lobby_base_path(self, start_x, start_y, target_x, target_y):
+        """Sinh chuoi waypoint co ban ne vach ngan x=4.4m va quay tiep tan."""
         pts = []
         from_is_left = start_x < 4.4
         to_is_left = target_x < 4.4
 
         if from_is_left and not to_is_left:
             # Gian Trai -> Gian Phai: Phai qua Cua Thong Sanh o tam (4.4, 2.85)
-            pts.append((3.8, 2.85, "Cửa Thông Sảnh (Tây)"))
+            if abs(start_y - 2.85) > 0.3 or start_x < 3.6:
+                pts.append((3.8, 2.85, "Cửa Thông Sảnh (Tây)"))
             pts.append((4.4, 2.85, "Cửa Thông Sảnh (Tâm)"))
             pts.append((5.1, 2.85, "Cửa Thông Sảnh (Đông)"))
             if target_y < 2.0:
@@ -115,15 +117,51 @@ class AutonomousNavigator(Node):
             pts.append((4.4, 2.85, "Cửa Thông Sảnh (Tâm)"))
             pts.append((3.8, 2.85, "Cửa Thông Sảnh (Tây)"))
         elif not from_is_left and not to_is_left:
-            # Cung o Gian Phai: Ne quay Tiep Tan (x: 5.8-6.8, y: 0.8-2.6)
-            crosses = (start_y < 2.3 and target_y > 3.5) or (start_y > 3.5 and target_y < 2.3)
-            if crosses:
+            # Cung o Gian Phai: Kiem tra vuong Quay Front Desk theo 2 truc
+            crosses_y = (start_y < 2.3 and target_y > 3.5) or (start_y > 3.5 and target_y < 2.3)
+            min_x = min(start_x, target_x)
+            max_x = max(start_x, target_x)
+            crosses_x = min_x < 5.6 and max_x > 6.8 and (start_y < 2.65 or target_y < 2.65)
+
+            if crosses_x:
+                if start_x < target_x:
+                    if start_y < 2.7:
+                        pts.append((5.2, 2.85, "Hành lang Bắc Quầy"))
+                else:
+                    if target_y < 2.7:
+                        pts.append((5.2, 2.85, "Hành lang Bắc Quầy"))
+            elif crosses_y:
                 pts.append((5.2, 2.5 if start_y < 2.3 else 3.5, "Né Quầy Tiếp Tân"))
                 pts.append((5.2, 3.5 if start_y < 2.3 else 2.5, "Hành lang Quầy"))
         else:
             # Cung o Gian Trai: Tranh sofa sat tuong tay (x <= 1.5)
             if start_x < 1.8 or target_x < 1.8:
                 pts.append((2.6, (start_y + target_y) / 2.0, "Hành lang Sofa"))
+
+        return pts
+
+    def calculate_safe_path(self, start_x, start_y, target_x, target_y):
+        """Sinh chuoi waypoint trung gian ne vach ngan x=4.4m, quay le tan va tuong Staff Only."""
+        pts = []
+        is_inside_staff = lambda x, y: x >= 8.2 and y <= 3.05
+        from_staff = is_inside_staff(start_x, start_y)
+        to_staff = is_inside_staff(target_x, target_y)
+
+        staff_approach = (7.85, 2.7, "Hành lang trước Cửa Staff Only")
+        staff_door = (8.35, 2.65, "Tâm Cửa Phòng Staff Only")
+
+        if not from_staff and to_staff:
+            pts.extend(self.get_lobby_base_path(start_x, start_y, staff_approach[0], staff_approach[1]))
+            pts.append(staff_approach)
+            pts.append(staff_door)
+        elif from_staff and not to_staff:
+            pts.append(staff_door)
+            pts.append(staff_approach)
+            pts.extend(self.get_lobby_base_path(staff_approach[0], staff_approach[1], target_x, target_y))
+        elif from_staff and to_staff:
+            pass
+        else:
+            pts.extend(self.get_lobby_base_path(start_x, start_y, target_x, target_y))
 
         pts.append((target_x, target_y, f"Đích đến ({target_x:.2f}, {target_y:.2f})"))
         return pts

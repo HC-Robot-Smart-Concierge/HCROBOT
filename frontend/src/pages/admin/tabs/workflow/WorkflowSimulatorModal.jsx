@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Pause, SkipForward, Volume2, VolumeX, Square, Bot } from 'lucide-react';
+import { Play, Pause, SkipForward, Volume2, VolumeX, Square, Layers } from 'lucide-react';
 import { RobotFace } from '../../../../components/robot/RobotFace';
 import { AudioWave } from '../../../../components/robot/AudioWave';
 import { useSpeechSynthesis } from '../../../../hooks/useSpeechSynthesis';
@@ -157,7 +157,7 @@ export const WorkflowSimulatorModal = ({ workflow, isOpen, onClose }) => {
         <div className="px-5 py-3 border-b border-stone-700 flex items-center justify-between bg-[#27272A]">
           <div>
             <h3 className="font-extrabold text-sm text-stone-100 flex items-center gap-2 uppercase tracking-wide">
-              <Bot className="w-4 h-4 text-stone-300" />
+              <Layers className="w-4 h-4 text-stone-300" />
               <span>Giả Lập Thực Thi Robot: {workflow.name}</span>
             </h3>
             <span className="text-[10px] text-stone-400 font-mono">

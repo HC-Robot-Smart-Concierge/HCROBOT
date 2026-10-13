@@ -241,16 +241,6 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
                         Điều Khiển & Odometry SLAM
                       </button>
                       <button
-                        onClick={() => setRobotSubTab('studio')}
-                        className="w-full text-left px-2 py-1.5 rounded text-[11px] font-semibold transition-all cursor-pointer"
-                        style={{
-                          background: robotSubTab === 'studio' ? '#262626' : 'transparent',
-                          color: robotSubTab === 'studio' ? '#FFFFFF' : '#8C8C8C',
-                        }}
-                      >
-                        Bản Đồ LiDAR Studio
-                      </button>
-                      <button
                         onClick={() => setRobotSubTab('workflows')}
                         className="w-full text-left px-2 py-1.5 rounded text-[11px] font-semibold transition-all cursor-pointer"
                         style={{

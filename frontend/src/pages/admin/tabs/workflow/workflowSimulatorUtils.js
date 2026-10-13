@@ -31,11 +31,11 @@ export const GAZEBO_LOBBY_WAYPOINTS = {
     offset: 'top',
   },
   FRONT_DESK: {
-    x: 6.4,
+    x: 5.2,
     y: 2.0,
-    name: 'Quầy Lễ Tân (Front Desk)',
+    name: 'Trước Quầy Lễ Tân (Front Desk)',
     badge: 'Quầy Lễ Tân',
-    label: 'Quầy Lễ Tân (Front Desk)',
+    label: 'Trước Quầy Lễ Tân (Front Desk)',
     role: 'facility',
     offset: 'top',
   },
@@ -67,11 +67,11 @@ export const GAZEBO_LOBBY_WAYPOINTS = {
     offset: 'bottom',
   },
   STAFF_ONLY: {
-    x: 8.5,
-    y: 2.0,
-    name: 'Phòng Nhân Viên (Staff Only)',
+    x: 7.85,
+    y: 2.7,
+    name: 'Trước Phòng Nội Bộ (Staff Only)',
     badge: 'Phòng Nội Bộ',
-    label: 'Phòng Nhân Viên (Staff Only)',
+    label: 'Trước Phòng Nội Bộ (Staff Only)',
     role: 'staff',
     offset: 'bottom',
   },
@@ -94,6 +94,18 @@ export const GAZEBO_LOBBY_WAYPOINTS = {
   LOBBY_NORTHEAST: { x: 7.8, y: 4.5, badge: 'Thang Máy', label: 'Cụm Thang Máy' },
   ELEVATOR_CLUSTER: { x: 7.8, y: 4.5, badge: 'Thang Máy', label: 'Cụm Thang Máy' },
 };
+
+// Danh sach 8 diem moc chuan Lobby de su dung thong nhat giua Builder va Studio
+export const STANDARD_LOBBY_WAYPOINTS = [
+  { id: 'ROBOT_STANDBY', key: 'ROBOT_STANDBY', name: 'Vị Trí Chờ Robot Sảnh', x: 3.7, y: 5.0 },
+  { id: 'MAIN_ENTRANCE', key: 'MAIN_ENTRANCE', name: 'Cửa Chính Sảnh (Main Entrance)', x: 5.2, y: 1.0 },
+  { id: 'FRONT_DESK', key: 'FRONT_DESK', name: 'Trước Quầy Lễ Tân (Front Desk)', x: 5.2, y: 2.0 },
+  { id: 'STAFF_ONLY', key: 'STAFF_ONLY', name: 'Trước Phòng Nội Bộ (Staff Only)', x: 7.85, y: 2.7 },
+  { id: 'ELEVATOR', key: 'ELEVATOR', name: 'Cụm Thang Máy Tầng 1', x: 7.8, y: 4.5 },
+  { id: 'RESTROOMS', key: 'RESTROOMS', name: 'Nhà Vệ Sinh Sảnh (WC)', x: 6.6, y: 4.5 },
+  { id: 'STAIRS', key: 'STAIRS', name: 'Cầu Thang Bộ Thoát Hiểm', x: 8.8, y: 4.5 },
+  { id: 'LOBBY_LOUNGE', key: 'LOBBY_LOUNGE', name: 'Khu Sofa Khách Chờ Sảnh', x: 2.0, y: 2.8 },
+];
 
 // Chuyen toa do Met (ROS: X 0..10m, Y 0..6m) sang Toa do SVG Canvas (1000 x 600)
 export const meterToSvg = (mx, my) => {
@@ -118,56 +130,91 @@ export const svgToMeter = (svgX, svgY) => {
   };
 };
 
-// THUAT TOAN DINH TUYEN NE TUONG VA VAT CAN TRONG SANH (Ground Floor Lobby)
-// Tranh vach ngan x=4.4m bang cach di qua cua thong sanh (4.4, 2.85) va tranh quay tiep tan
-export const calculateSafeWaypoints = (from, to) => {
-  const points = [{ x: Number(from.x.toFixed(2)), y: Number(from.y.toFixed(2)) }];
-
+// Tinh toan lo trinh di chuyen co ban trong sanh (Tranh vach ngan trung tam x=4.4m va quay tiep tan)
+const getLobbyBaseWaypoints = (from, to) => {
+  const points = [];
   const fromIsLeft = from.x < 4.4;
   const toIsLeft = to.x < 4.4;
 
   if (fromIsLeft && !toIsLeft) {
-    // Di tu Gian Trai sang Gian Phai -> BAT BUOC phai qua Cua Thong Sanh o giua vach ngan
     if (Math.abs(from.y - 2.85) > 0.3 || from.x < 3.6) {
       points.push({ x: 3.8, y: 2.85 });
     }
-    // Di xuyen qua tam Cua Thong Sanh
     points.push({ x: 4.4, y: 2.85 });
-    // Thoat sang hanh lang Gian Phai
     points.push({ x: 5.1, y: 2.85 });
 
-    // Tu Gian Phai re huong tiep can dich den an toan
     if (to.y < 2.0) {
-      // Huong xuong phia Nam (Cua Chinh hoac Quay Tiep Tan)
       points.push({ x: 5.2, y: 1.8 });
     } else if (to.y > 3.6) {
-      // Huong len phia Bac (Thang May, Restrooms, Stairs)
       points.push({ x: 5.2, y: 4.0 });
     }
   } else if (!fromIsLeft && toIsLeft) {
-    // Di tu Gian Phai ve Gian Trai -> BAT BUOC phai tap ket ve Cua Thong Sanh
     if (from.y < 2.0) {
       points.push({ x: 5.2, y: 1.8 });
     } else if (from.y > 3.6) {
       points.push({ x: 5.2, y: 4.0 });
     }
     points.push({ x: 5.1, y: 2.85 });
-    // Di xuyen qua tam Cua Thong Sanh
     points.push({ x: 4.4, y: 2.85 });
-    // Thoat sang hanh lang Gian Trai
     points.push({ x: 3.8, y: 2.85 });
   } else if (!fromIsLeft && !toIsLeft) {
-    // Cung o Gian Phai: Kiem tra vuong Quay Front Desk (x: 5.8-6.8, y: 0.8-2.6)
-    const crossesDesk = (from.y < 2.3 && to.y > 3.5) || (from.y > 3.5 && to.y < 2.3);
-    if (crossesDesk) {
+    // 1. Kiem tra vuong Quay Front Desk theo truc Doc (Nam <-> Bac)
+    const crossesDeskY = (from.y < 2.3 && to.y > 3.5) || (from.y > 3.5 && to.y < 2.3);
+    // 2. Kiem tra vuong Quay Front Desk theo truc Ngang (Tay <-> Dong qua mat quay)
+    const minX = Math.min(from.x, to.x);
+    const maxX = Math.max(from.x, to.x);
+    const crossesDeskX = minX < 5.6 && maxX > 6.8 && (from.y < 2.65 || to.y < 2.65);
+
+    if (crossesDeskX) {
+      // Di vong qua hanh lang phia Bac quay le tan (y = 2.85) de tranh dam vao mat ban quay
+      if (from.x < to.x) {
+        if (from.y < 2.7) points.push({ x: 5.2, y: 2.85 });
+      } else {
+        if (to.y < 2.7) points.push({ x: 5.2, y: 2.85 });
+      }
+    } else if (crossesDeskY) {
       points.push({ x: 5.2, y: from.y < 2.3 ? 2.5 : 3.5 });
       points.push({ x: 5.2, y: from.y < 2.3 ? 3.5 : 2.5 });
     }
   } else {
-    // Cung o Gian Trai: Tranh sofa sat tuong tay (x <= 1.5)
     if (from.x < 1.8 || to.x < 1.8) {
       points.push({ x: 2.6, y: Number(((from.y + to.y) / 2).toFixed(2)) });
     }
+  }
+  return points;
+};
+
+// THUAT TOAN DINH TUYEN NE TUONG VA VAT CAN TRONG SANH (Ground Floor Lobby)
+// Tranh vach ngan x=4.4m, quay tiep tan va vach tuong Phong Noi Bo Staff Only
+export const calculateSafeWaypoints = (from, to) => {
+  const points = [{ x: Number(from.x.toFixed(2)), y: Number(from.y.toFixed(2)) }];
+
+  const isInsideStaff = (pt) => pt.x >= 8.2 && pt.y <= 3.05;
+  const fromStaff = isInsideStaff(from);
+  const toStaff = isInsideStaff(to);
+
+  // Diem hanh lang tiep can va tam khe cua phong Staff Only
+  const staffApproach = { x: 7.85, y: 2.7 };
+  const staffDoor = { x: 8.35, y: 2.65 };
+
+  if (!fromStaff && toStaff) {
+    // Di tu ngoai sanh VAO phong Staff Only: tap ket truoc cua -> xuyen qua tam cua -> vao dich
+    const approachPts = getLobbyBaseWaypoints(from, staffApproach);
+    points.push(...approachPts);
+    points.push(staffApproach);
+    points.push(staffDoor);
+  } else if (fromStaff && !toStaff) {
+    // Di tu trong phong Staff Only RA ngoai sanh: xuyen qua tam cua -> ra hanh lang truoc cua -> toi dich
+    points.push(staffDoor);
+    points.push(staffApproach);
+    const leavePts = getLobbyBaseWaypoints(staffApproach, to);
+    points.push(...leavePts);
+  } else if (fromStaff && toStaff) {
+    // Di chuyen noi bo trong phong Staff Only
+  } else {
+    // Di chuyen ngoai sanh binh thuong
+    const lobbyPts = getLobbyBaseWaypoints(from, to);
+    points.push(...lobbyPts);
   }
 
   // Them diem dich cuoi cung
@@ -320,13 +367,30 @@ export const getStepActionDetail = (step) => {
     }
 
     case 'MOVE': {
-      const wp = params.waypoint_name || params.target_value || 'Diem den';
+      const fromWpKey = params.from_waypoint;
+      const toWpKey = params.target_value || params.target_waypoint_id;
+      const fromWpName =
+        params.from_waypoint_name ||
+        (fromWpKey && GAZEBO_LOBBY_WAYPOINTS[fromWpKey]?.name) ||
+        'Vị trí hiện tại';
+      const toWpName =
+        params.waypoint_name ||
+        (toWpKey && GAZEBO_LOBBY_WAYPOINTS[toWpKey]?.name) ||
+        params.target_value ||
+        'Điểm đến';
+
+      const isCurrentStart = !fromWpKey || fromWpKey === 'CURRENT';
+      const toShort = toWpName.split('(')[0].trim();
+      const fromShort = fromWpName.split('(')[0].trim();
+
       return {
         label: 'MOVE',
-        shortChip: `MOVE: ${wp.split('(')[0].trim()}`,
-        detailText: `Dieu huong ne tuong & vat can den: ${wp}`,
-        bubbleTitle: 'DI CHUYEN NE VAT CAN (MOVE)',
-        bubbleBody: `Den: ${wp}`,
+        shortChip: isCurrentStart ? `MOVE: ${toShort}` : `MOVE: ${fromShort} ➔ ${toShort}`,
+        detailText: isCurrentStart
+          ? `Điều hướng né vật cản đến: ${toWpName}`
+          : `Lộ trình: ${fromWpName} ➔ ${toWpName}`,
+        bubbleTitle: isCurrentStart ? 'DI CHUYỂN NÉ VẬT CẢN (MOVE)' : 'LỘ TRÌNH ĐIỂM MỐC (MOVE)',
+        bubbleBody: isCurrentStart ? `Đến: ${toWpName}` : `Từ: ${fromWpName}\nĐến: ${toWpName}`,
       };
     }
 
@@ -354,9 +418,11 @@ export const BUILTIN_SIMULATOR_WORKFLOWS = [
         type: 'MOVE',
         title: '1. Di chuyen ra Cua chinh don khach',
         params: {
+          from_waypoint: 'ROBOT_STANDBY',
+          from_waypoint_name: 'Vị Trí Chờ Robot Sảnh',
           target_type: 'LOCATION',
           target_value: 'MAIN_ENTRANCE',
-          waypoint_name: 'Cua Chinh Ra Vao Sanh (Main Entrance)',
+          waypoint_name: 'Cửa Chính Ra Vào Sảnh (Main Entrance)',
           target_x: 5.2,
           target_y: 1.0,
           speed: 0.35,
@@ -422,10 +488,12 @@ export const BUILTIN_SIMULATOR_WORKFLOWS = [
         type: 'MOVE',
         title: '2. Dan khach toi Quay Le Tan (Front Desk)',
         params: {
+          from_waypoint: 'LOBBY_LOUNGE',
+          from_waypoint_name: 'Khu Sofa Khách Chờ Sảnh',
           target_type: 'LOCATION',
           target_value: 'FRONT_DESK',
-          waypoint_name: 'Quay Le Tan (Front Desk)',
-          target_x: 6.4,
+          waypoint_name: 'Trước Quầy Lễ Tân (Front Desk)',
+          target_x: 5.2,
           target_y: 2.0,
           speed: 0.35,
         },

@@ -3,6 +3,7 @@ import logging
 import asyncio
 import time
 import random
+import re
 from typing import Optional, Dict, Any, List
 from fastapi import APIRouter, HTTPException, Depends, status, WebSocket, WebSocketDisconnect, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
@@ -64,6 +65,8 @@ async def chat_with_robot(request: ChatRequest, db: AsyncSession = Depends(get_d
             "emotion": request.emotion,
             "room_number": current_room,
             "chat_history": history,
+            "destination_key": None,
+            "trigger_video_call": False,
         }
         graph_config = {"configurable": {"thread_id": sid}}
         graph_result = await concierge_graph.ainvoke(initial_state, config=graph_config)
@@ -151,31 +154,67 @@ async def chat_with_robot(request: ChatRequest, db: AsyncSession = Depends(get_d
         # TỰ ĐỘNG NHẬN DIỆN MÃ ĐIỂM ĐẾN POI ĐỂ ĐỒNG BỘ BẢN ĐỒ 8 TẦNG (0ms Sync)
         destination_key = graph_result.get("destination_key")
         if not destination_key:
-            p_lower = request.prompt.lower()
-            if any(k in p_lower for k in ["hồ bơi", "ho boi", "pool", "bơi"]):
-                destination_key = "infinity_pool"
-            elif any(k in p_lower for k in ["nhà hàng", "nha hang", "buffet", "ăn sáng"]):
-                destination_key = "restaurant"
-            elif any(k in p_lower for k in ["rooftop", "cafe", "cà phê", "coffee"]):
+            p_lower = (request.prompt or "").lower()
+            rep_lower = (reply or "").lower()
+
+            # 1. Nhận diện phòng cụ thể theo số phòng (Tầng 3: 301-309, Tầng 4: 401-406)
+            room_3_match = re.search(r'\b(30[1-9])\b', p_lower)
+            room_4_match = re.search(r'\b(40[1-6])\b', p_lower)
+
+            if room_4_match:
+                destination_key = f"room_{room_4_match.group(1)}"
+            elif room_3_match:
+                destination_key = f"room_{room_3_match.group(1)}"
+            # 2. Tiện ích Tầng 6 (Rooftop & Giải trí)
+            elif any(k in p_lower for k in ["cafe", "cà phê", "coffee", "rooftop coffee", "quán cafe", "quán cà phê"]):
                 destination_key = "rooftop_coffee"
-            elif any(k in p_lower for k in ["quầy bar", "quay bar", "bar", "sky lounge"]):
+            elif any(k in p_lower for k in ["quầy bar", "quay bar", "bar", "sky lounge", "sky bar", "uống rượu"]):
                 destination_key = "bar"
-            elif any(k in p_lower for k in ["karaoke", "hát"]):
+            elif any(k in p_lower for k in ["karaoke", "hát karaoke", "phòng hát"]):
                 destination_key = "karaoke"
-            elif any(k in p_lower for k in ["gym", "thể hình", "the hinh", "fitness"]):
-                destination_key = "gym"
-            elif any(k in p_lower for k in ["spa", "massage", "xông hơi"]):
-                destination_key = "spa"
-            elif any(k in p_lower for k in ["401", "phòng 401"]):
-                destination_key = "room_401"
-            elif any(k in p_lower for k in ["402", "phòng 402"]):
-                destination_key = "room_402"
-            elif any(k in p_lower for k in ["bãi xe", "đỗ xe", "gửi xe", "parking", "ô tô", "hầm"]):
-                destination_key = "parking_car"
-            elif any(k in p_lower for k in ["lễ tân", "tiếp tân", "front desk"]):
-                destination_key = "front_desk"
-            elif any(k in p_lower for k in ["chỉ đường", "bản đồ", "sơ đồ", "đường đi"]) and ("tầng" in reply.lower() or "thang máy" in reply.lower()):
+            elif any(k in p_lower for k in ["quà lưu niệm", "lưu niệm", "gift shop", "cửa hàng lưu niệm", "souvenir"]):
+                destination_key = "gift_shop"
+            # 3. Tiện ích Tầng 5 (Wellness & Bơi lội)
+            elif any(k in p_lower for k in ["hồ bơi", "ho boi", "bể bơi", "be boi", "pool", "bơi"]):
                 destination_key = "infinity_pool"
+            elif any(k in p_lower for k in ["spa", "massage", "xông hơi", "mát xa"]):
+                destination_key = "spa"
+            elif any(k in p_lower for k in ["gym", "thể hình", "the hinh", "fitness", "tập gym"]):
+                destination_key = "gym"
+            elif any(k in p_lower for k in ["thay đồ", "locker", "tủ đồ"]):
+                destination_key = "locker_room"
+            # 4. Tiện ích Tầng 2 (Nhà hàng & Bếp)
+            elif any(k in p_lower for k in ["nhà hàng", "nha hang", "buffet", "ăn sáng", "ăn trưa", "ăn tối", "dining", "restaurant"]):
+                destination_key = "restaurant"
+            elif any(k in p_lower for k in ["bếp", "nhà bếp", "kitchen"]):
+                destination_key = "kitchen"
+            # 5. Tiện ích Tầng Trệt & Bãi xe
+            elif any(k in p_lower for k in ["vệ sinh", "toilet", "wc", "nhà vệ sinh", "restroom", "đi vệ sinh", "đi wc"]):
+                destination_key = "restroom_ground"
+            elif any(k in p_lower for k in ["lễ tân", "tiếp tân", "front desk", "check-in", "check in"]):
+                destination_key = "front_desk"
+            elif any(k in p_lower for k in ["xe máy", "gửi xe máy", "bãi xe máy", "xe đạp", "hầm b1"]):
+                destination_key = "parking_bike"
+            elif any(k in p_lower for k in ["bãi xe", "đỗ xe", "gửi xe", "parking", "ô tô", "hầm b2", "xe hơi"]):
+                destination_key = "parking_car"
+            # Fallback nếu câu hỏi yêu cầu chỉ đường chung và AI trả lời về tiện ích nào đó
+            elif any(k in p_lower for k in ["chỉ đường", "bản đồ", "sơ đồ", "đường đi"]):
+                if any(k in rep_lower for k in ["cà phê", "coffee", "cafe", "rooftop"]):
+                    destination_key = "rooftop_coffee"
+                elif any(k in rep_lower for k in ["bar", "sky lounge"]):
+                    destination_key = "bar"
+                elif any(k in rep_lower for k in ["karaoke"]):
+                    destination_key = "karaoke"
+                elif any(k in rep_lower for k in ["nhà hàng", "buffet"]):
+                    destination_key = "restaurant"
+                elif any(k in rep_lower for k in ["hồ bơi", "pool"]):
+                    destination_key = "infinity_pool"
+                elif any(k in rep_lower for k in ["gym", "thể hình"]):
+                    destination_key = "gym"
+                elif any(k in rep_lower for k in ["spa"]):
+                    destination_key = "spa"
+                else:
+                    destination_key = "front_desk"
 
         return ChatResponse(
             response=reply,

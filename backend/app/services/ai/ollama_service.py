@@ -208,13 +208,15 @@ class OllamaService:
                 prompt += f"\n{hotel_facts}\n"
             else:
                 prompt += (
-                    "AURORA GRAND HOTEL AMENITIES & FACTS:\n"
-                    "- Level 1: Main Lobby, Front Desk 24/7 (dial 0 from room telephone), and ATM.\n"
-                    "- Level 2: Aurora Restaurant (serves breakfast buffet from 6:30 AM to 10:00 AM).\n"
-                    "- Level 3: Conference Center & Executive Meeting Rooms.\n"
-                    "- Level 4: Infinity Pool (open 6:00 AM to 10:00 PM, free towels) & 24/7 Fitness Center / Gym.\n"
-                    "- Level 5: Aurora Luxury Spa & Sauna (open 9:00 AM to 10:00 PM).\n"
-                    "- Basement B1: Complimentary parking for staying guests.\n"
+                    "AURORA GRAND HOTEL AMENITIES & FLOOR DIRECTORY:\n"
+                    "- Ground Floor (Lobby): Main Lobby, Front Desk 24/7 (dial 0 from room telephone), and Restrooms.\n"
+                    "- Level 2: Aurora Restaurant (serves breakfast buffet from 6:30 AM to 10:00 AM, all-day dining until 10:00 PM), Kitchen, and Restrooms.\n"
+                    "- Level 3: Standard Guest Rooms 301 to 309.\n"
+                    "- Level 4: Deluxe & Executive Guest Rooms 401 to 406.\n"
+                    "- Level 5: Wellness floor including Infinity Pool (open 6:00 AM to 10:00 PM, free towels), Luxury Herb Spa (9:00 AM to 10:00 PM), 24/7 Fitness Center / Gym, and Locker Room.\n"
+                    "- Level 6 (Rooftop): Rooftop Coffee & View (open 7:00 AM to 11:00 PM with skyline view), Sky Lounge Bar (4:30 PM to 1:00 AM midnight), VIP Karaoke rooms (2:00 PM to midnight), and Gift Shop.\n"
+                    "- Basement B1: Motorbike parking garage.\n"
+                    "- Basement B2: Complimentary secure car parking garage for staying guests.\n"
                     "- Wi-Fi: Network name 'Aurora_Guest', password 'aurora2026'.\n"
                     "- Hours: Standard check-in from 2:00 PM, check-out before 12:00 PM noon.\n"
                 )
@@ -233,13 +235,15 @@ class OllamaService:
                 prompt += f"\n{hotel_facts}\n"
             else:
                 prompt += (
-                    "\nTHÔNG TIN TIỆN ÍCH KHÁCH SẠN AURORA GRAND (ĐỂ TƯ VẤN CHO KHÁCH):\n"
-                    "- Tầng 1: Sảnh chính, Quầy Lễ tân 24/7 (từ điện thoại phòng bấm phím 0) và máy ATM rút tiền.\n"
-                    "- Tầng 2: Nhà hàng Aurora (phục vụ buffet sáng từ 6 giờ 30 đến 10 giờ sáng).\n"
-                    "- Tầng 3: Trung tâm hội nghị & phòng họp sự kiện cao cấp.\n"
-                    "- Tầng 4: Hồ bơi vô cực ngoài trời (mở từ 6 giờ sáng đến 22 giờ tối, khăn tắm miễn phí) và Phòng Gym (mở cửa 24/7).\n"
-                    "- Tầng 5: Aurora Spa thư giãn (mở từ 9 giờ sáng đến 22 giờ tối).\n"
-                    "- Tầng hầm B1: Bãi đỗ xe ô tô và xe máy miễn phí cho khách lưu trú.\n"
+                    "\nTHÔNG TIN TIỆN ÍCH & SƠ ĐỒ 8 TẦNG KHÁCH SẠN AURORA GRAND (ĐỂ TƯ VẤN VÀ CHỈ ĐƯỜNG CHÍNH XÁC):\n"
+                    "- Tầng Trệt (Ground): Sảnh chính Lobby, Quầy Lễ tân 24/7 (từ điện thoại phòng bấm phím 0) và Nhà vệ sinh nam nữ cạnh thang máy.\n"
+                    "- Tầng 2: Nhà hàng Buffet Á - Âu Aurora (phục vụ buffet sáng từ 6 giờ 30 đến 10 giờ sáng, mở đến 22 giờ tối), Bếp và Nhà vệ sinh.\n"
+                    "- Tầng 3: Khu phòng nghỉ tiêu chuẩn từ phòng 301 đến 309.\n"
+                    "- Tầng 4: Khu phòng nghỉ cao cấp gồm phòng 401 đến 406 (phòng Deluxe và Suite).\n"
+                    "- Tầng 5: Khu chăm sóc sức khỏe gồm Hồ bơi vô cực ngoài trời (mở từ 6 giờ sáng đến 22 giờ tối, khăn tắm miễn phí), Thảo Mộc Spa thư giãn (9 giờ sáng đến 22 giờ tối), Phòng Gym thể hình (mở cửa 24/7), và Phòng thay đồ Locker Room.\n"
+                    "- Tầng 6 (Sân thượng Rooftop): Quán cà phê Rooftop Coffee & View ngắm toàn cảnh thành phố (mở từ 7 giờ sáng đến 23 giờ đêm), Quầy Sky Lounge Bar (16 giờ 30 chiều đến 1 giờ đêm), Phòng VIP Karaoke (14 giờ chiều đến 0 giờ đêm), và Cửa hàng lưu niệm Gift Shop.\n"
+                    "- Hầm B1: Bãi giữ xe máy.\n"
+                    "- Hầm B2: Bãi đỗ xe ô tô an toàn miễn phí cho khách lưu trú.\n"
                     "- Wi-Fi miễn phí: Tên mạng 'Aurora_Guest', mật khẩu là 'aurora2026'.\n"
                     "- Thời gian lưu trú: Nhận phòng từ 14 giờ chiều, trả phòng trước 12 giờ trưa.\n"
                 )
@@ -315,6 +319,18 @@ class OllamaService:
             fallback = "Xin lỗi quý khách, hiện không thể kết nối tới AI Server." if lang_code == "vi-VN" else "Sorry, cannot connect to AI Server."
             yield fallback
 
+    @classmethod
+    def format_and_clean_reply(cls, reply: str, lang_code: str) -> str:
+        """Chuẩn hóa văn bản câu trả lời trước khi gửi ra ngoài: dọn dẹp markdown, ký tự lạ, và chuẩn hóa giờ."""
+        if not reply:
+            return ""
+        if lang_code == "vi-VN":
+            return cls.clean_vietnamese_voice_text(reply)
+        elif lang_code != "zh-CN":
+            reply = re.sub(r'[\u4e00-\u9fff\u3400-\u4dbf]+', '', reply).strip()
+            reply = re.sub(r'[*#_`\[\]()]', '', reply).strip()
+        return reply
+
     async def generate_response(
         self,
         prompt: str,
@@ -358,9 +374,7 @@ class OllamaService:
             logger.info(f"[OllamaService -> Groq Cloud] Chế độ máy yếu: gọi Groq model {settings.GROQ_MODEL}")
             groq_reply = await self._call_groq(messages, json_mode=False, max_tokens=60)
             if groq_reply:
-                reply = groq_reply.strip()
-                if lang_code != "zh-CN":
-                    reply = re.sub(r'[\u4e00-\u9fff\u3400-\u4dbf]+', '', reply).strip()
+                reply = self.format_and_clean_reply(groq_reply.strip(), lang_code)
                 final_lang_name, final_lang_code = self.detect_language(reply)
                 return reply, final_lang_name, final_lang_code
 
@@ -382,9 +396,8 @@ class OllamaService:
                 timeout=25.0
             )
 
-            reply = response["message"]["content"].strip()
-            if lang_code != "zh-CN":
-                reply = re.sub(r'[\u4e00-\u9fff\u3400-\u4dbf]+', '', reply).strip()
+            raw_reply = response["message"]["content"].strip()
+            reply = self.format_and_clean_reply(raw_reply, lang_code)
 
             final_lang_name, final_lang_code = self.detect_language(reply)
             return reply, final_lang_name, final_lang_code
@@ -396,9 +409,7 @@ class OllamaService:
                 logger.info("[OllamaService Fallback] Tự động chuyển tiếp sang Groq Cloud...")
                 groq_reply = await self._call_groq(messages, json_mode=False, max_tokens=60)
                 if groq_reply:
-                    reply = groq_reply.strip()
-                    if lang_code != "zh-CN":
-                        reply = re.sub(r'[\u4e00-\u9fff\u3400-\u4dbf]+', '', reply).strip()
+                    reply = self.format_and_clean_reply(groq_reply.strip(), lang_code)
                     final_lang_name, final_lang_code = self.detect_language(reply)
                     return reply, final_lang_name, final_lang_code
 

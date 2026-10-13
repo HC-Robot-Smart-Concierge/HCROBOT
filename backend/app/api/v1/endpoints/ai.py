@@ -145,9 +145,8 @@ async def chat_with_robot(request: ChatRequest, db: AsyncSession = Depends(get_d
             except Exception as e_vc:
                 logger.error(f"[AIChat VideoCall Setup Error] {e_vc}")
                 await db.rollback()
-        else:
-            # TỰ ĐỘNG TẠO TICKET DỊCH VỤ TRONG NỀN TẬN DỤNG INTENT ĐÃ CÓ TỪ LANGGRAPH (Không gọi lại Ollama 5s)
-            asyncio.create_task(_background_extract_and_create_ticket(request.prompt, current_room, act, items))
+        # Tự động lưu phiên hội thoại vào database trong nền (0ms blocking)
+        asyncio.create_task(_background_save_chat(sid, request.prompt, reply, lang_code, current_room))
 
         # TỰ ĐỘNG NHẬN DIỆN MÃ ĐIỂM ĐẾN POI ĐỂ ĐỒNG BỘ BẢN ĐỒ 8 TẦNG (0ms Sync)
         destination_key = graph_result.get("destination_key")

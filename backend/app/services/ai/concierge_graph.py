@@ -35,6 +35,7 @@ class ConciergeState(TypedDict, total=False):
     missing_room_number: bool
     ticket_code: Optional[str]
     trigger_video_call: Optional[bool]
+    destination_key: Optional[str]
     response: str
 
 
@@ -44,24 +45,28 @@ class ConciergeState(TypedDict, total=False):
 
 async def fast_path_node(state: ConciergeState) -> Dict[str, Any]:
     """
-    Node 1: Fast-Path Rule Engine.
-    Kiểm tra nhanh các câu hỏi thường gặp, lời chào, pass wifi, tiện ích cơ bản.
-    Nếu khớp -> Độ trễ < 1ms, tiêu thụ 0 token, không gọi LLM.
+    Node 1: Dynamic Fast-Path Rule Engine.
+    Kiểm tra nhanh các câu hỏi thường gặp, lời chào, pass wifi, tiện ích từ RAM Cache (<1ms).
+    Do Admin cấu hình động qua API Scenarios. Không gọi LLM.
     """
     prompt = state.get("prompt", "")
     language = state.get("language")
 
-    fast_hit = ollama_service.check_fast_path(prompt, language)
+    fast_hit = ollama_service.check_fast_path_full(prompt, language)
     if fast_hit:
-        reply, lang_name, lang_code = fast_hit
-        logger.info(f"[Harness FastPath] Matched! Fast response in <1ms for: '{prompt[:30]}...'")
+        reply, lang_name, lang_code, action_type, action_payload = fast_hit
+        dest_key = action_payload.get("destination_key") if isinstance(action_payload, dict) else None
+        is_vc = bool(action_type == "trigger_video_call")
+        logger.info(f"[Harness FastPath] Matched dynamic scenario! Fast response in <1ms for: '{prompt[:30]}...'")
         return {
             "fast_path_hit": True,
             "response": reply,
             "lang_name": lang_name,
             "lang_code": lang_code,
             "intent_category": "fast_path",
-            "action": "fast_path",
+            "action": action_type or "fast_path",
+            "destination_key": dest_key,
+            "trigger_video_call": is_vc,
             "missing_room_number": False,
         }
 
@@ -156,37 +161,6 @@ async def intent_router_node(state: ConciergeState) -> Dict[str, Any]:
         "items": prompt,
         "room_number": current_room,
     }
-
-
-async def retrieval_node(state: ConciergeState) -> Dict[str, Any]:
-    """
-    Node 3: Context Retrieval & Pruning (Tối ưu hóa Context cho Qwen 3B).
-    Chỉ kích hoạt khi category == 'faq'. Rút gọn context tối đa (< 100 từ) để Qwen 3B sinh từ tức thì.
-    """
-    # Nếu client đã gửi kèm rag_context sẵn thì giữ nguyên
-    existing_ctx = state.get("rag_context")
-    if existing_ctx:
-        return {"rag_context": existing_ctx}
-
-    prompt = state.get("prompt", "")
-    rag_context = ""
-    try:
-        from app.services.rag.chroma import get_concierge_collection
-        collection = get_concierge_collection("concierge_kb")
-        results = await asyncio.to_thread(
-            collection.query,
-            query_texts=[prompt],
-            n_results=1  # CHỈ LẤY ĐÚNG 1 CHUNK LIÊN QUAN NHẤT ĐỂ GIẢM ĐỘ TRỄ CHO 3B
-        )
-        if results and results.get("documents") and results["documents"][0]:
-            raw_chunk = results["documents"][0][0]
-            # Prune/Cắt gọt context tối đa 1200 ký tự (~250 words) để giữ trọn vẹn thông tin bảng/mục cho 3B
-            rag_context = raw_chunk[:1200].strip()
-            logger.info(f"[Harness Retrieval] Pruned context to {len(rag_context)} chars for rapid 3B generation.")
-    except Exception as ex:
-        logger.warning(f"[Harness Retrieval Warning] Không thể truy vấn ChromaDB: {ex}")
-
-    return {"rag_context": rag_context}
 
 
 async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:

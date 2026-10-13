@@ -6,6 +6,8 @@ import {
   Trash2,
   Plus,
   Power,
+  Radio,
+  Layers,
 } from 'lucide-react';
 import {
   fetchWorkflows,
@@ -17,6 +19,7 @@ import {
 import { OTTO_STEP_TYPES } from './workflow/workflowConstants';
 import { WorkflowBuilderModal } from './workflow/WorkflowBuilderModal';
 import { WorkflowSimulatorModal } from './workflow/WorkflowSimulatorModal';
+import { WorkflowSimulatorStudio } from './workflow/WorkflowSimulatorStudio';
 
 export { OTTO_STEP_TYPES };
 
@@ -25,6 +28,9 @@ export const AdminWorkflowTab = () => {
   const [waypoints, setWaypoints] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [notification, setNotification] = useState(null);
+
+  // View state: 'list' (Quản lý kịch bản) | 'simulator' (Phòng giả lập Gazebo & Kiosk)
+  const [activeView, setActiveView] = useState('list');
 
   // Editor State
   const [editingWorkflow, setEditingWorkflow] = useState(null);
@@ -150,7 +156,7 @@ export const AdminWorkflowTab = () => {
 
   const handleTestRun = (wf) => {
     setSimulatingWorkflow(wf);
-    setIsSimulatorOpen(true);
+    setActiveView('simulator');
   };
 
   const handleDispatchToRobot = async (wf) => {
@@ -221,7 +227,12 @@ export const AdminWorkflowTab = () => {
   };
 
   return (
-    <div className="w-full flex flex-col min-h-full pb-4" style={{ color: '#262626' }}>
+    <div
+      className={`w-full flex flex-col ${
+        activeView === 'simulator' ? 'h-[calc(100vh-75px)] overflow-hidden' : 'min-h-full pb-4'
+      }`}
+      style={{ color: '#262626' }}
+    >
       {/* Toast Notification */}
       {notification && (
         <div
@@ -232,10 +243,10 @@ export const AdminWorkflowTab = () => {
         </div>
       )}
 
-      {/* Header Bar - seamlessly aligned with sidebar brand header */}
+      {/* Header Bar - Đồng bộ màu xám #E9E5DC của Sidebar trái */}
       <div
-        className="h-16 px-5 border-b flex items-center justify-between gap-4 shrink-0 sticky top-0 z-20"
-        style={{ borderColor: '#BFBFBD', backgroundColor: '#F2EFE9' }}
+        className="h-14 px-5 border-b flex items-center justify-between gap-4 shrink-0 sticky top-0 z-20"
+        style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD' }}
       >
         <div className="min-w-0">
           <div className="flex items-center gap-2">
@@ -244,7 +255,7 @@ export const AdminWorkflowTab = () => {
             </h2>
             <span
               className="px-2 py-0.5 rounded text-[10px] font-bold border shrink-0"
-              style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD', color: '#262626' }}
+              style={{ backgroundColor: '#F2EFE9', borderColor: '#BFBFBD', color: '#262626' }}
             >
               HOTEL CONCIERGE
             </span>
@@ -254,25 +265,69 @@ export const AdminWorkflowTab = () => {
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={handleOpenCreate}
-          className="px-3.5 py-1.5 rounded-lg text-xs font-bold border cursor-pointer transition-colors whitespace-nowrap shrink-0 hover:bg-[#363636] flex items-center gap-1.5 shadow-2xs"
-          style={{ backgroundColor: '#262626', color: '#F2EFE9', borderColor: '#262626' }}
-        >
-          <Plus className="w-3.5 h-3.5" />
-          <span>Tạo kịch bản mới</span>
-        </button>
+        <div className="flex items-center gap-2">
+          {/* View switcher: List vs Simulator */}
+          <div
+            className="inline-flex rounded-lg p-0.5 border"
+            style={{ backgroundColor: '#F2EFE9', borderColor: '#BFBFBD' }}
+          >
+            <button
+              type="button"
+              onClick={() => setActiveView('list')}
+              className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all cursor-pointer ${
+                activeView === 'list'
+                  ? 'bg-[#262626] text-white shadow-xs'
+                  : 'text-[#262626] hover:bg-[#E9E5DC]'
+              }`}
+            >
+              Danh Sách Kịch Bản ({workflows.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveView('simulator')}
+              className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                activeView === 'simulator'
+                  ? 'bg-[#262626] text-white shadow-xs'
+                  : 'text-[#262626] hover:bg-[#E9E5DC]'
+              }`}
+            >
+              <Radio className="w-3.5 h-3.5 text-cyan-600 animate-pulse" />
+              <span>Phòng Giả Lập Gazebo</span>
+            </button>
+          </div>
+
+          {activeView === 'list' && (
+            <button
+              type="button"
+              onClick={handleOpenCreate}
+              className="px-3.5 py-1.5 rounded-lg text-xs font-bold border cursor-pointer transition-colors whitespace-nowrap shrink-0 flex items-center gap-1.5 shadow-2xs hover:bg-[#363636]"
+              style={{ backgroundColor: '#262626', color: '#FFFFFF', borderColor: '#262626' }}
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Tạo kịch bản mới</span>
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Content Body */}
-      <div className="p-4 space-y-4">
-        {/* Workflow Cards Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+      {/* Content Body: Simulator Studio hoặc Workflow Cards Grid */}
+      {activeView === 'simulator' ? (
+        <div className="flex-1 min-h-0 h-full overflow-hidden">
+          <WorkflowSimulatorStudio
+            workflows={workflows}
+            initialWorkflowId={simulatingWorkflow?.id}
+            onClose={() => setActiveView('list')}
+            onNotify={showNotification}
+          />
+        </div>
+      ) : (
+        <div className="p-5 space-y-4 min-h-[calc(100vh-75px)]" style={{ backgroundColor: '#F2EFE9' }}>
+        {/* Workflow Cards Grid - 2 Cột rộng rãi, màu xám #E9E5DC đồng bộ */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {workflows.length === 0 ? (
             <div
               className="col-span-full p-8 text-center rounded-xl border text-xs"
-              style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD', color: '#8C8C8C' }}
+              style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD', color: '#8C8C8C' }}
             >
               Chưa có kịch bản nào. Nhấn "+ Tạo kịch bản mới" để bắt đầu cấu hình.
             </div>
@@ -282,14 +337,14 @@ export const AdminWorkflowTab = () => {
               return (
                 <div
                   key={wf.id}
-                  className="p-4 rounded-xl border flex flex-col justify-between space-y-3 transition-all hover:shadow-md"
-                  style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD' }}
+                  className="p-5 rounded-xl border flex flex-col justify-between space-y-3.5 transition-all hover:shadow-md"
+                  style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD' }}
                 >
                   <div>
                     {/* Top Status & Trigger Header */}
                     <div className="flex items-center justify-between gap-2 mb-2">
                       <span
-                        className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold border"
+                        className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold border"
                         style={{
                           backgroundColor: wf.is_active ? '#F2EFE9' : '#FAF8F5',
                           color: wf.is_active ? '#262626' : '#8C8C8C',
@@ -308,45 +363,45 @@ export const AdminWorkflowTab = () => {
                     </div>
 
                     {/* Workflow Title & Description */}
-                    <h3 className="font-bold text-sm leading-snug line-clamp-1" style={{ color: '#262626' }}>
+                    <h3 className="font-bold text-sm leading-snug line-clamp-2" style={{ color: '#262626' }}>
                       {wf.name}
                     </h3>
-                    <p className="text-[11px] line-clamp-2 min-h-[32px] mt-1 leading-relaxed" style={{ color: '#8C8C8C' }}>
+                    <p className="text-[11px] line-clamp-2 min-h-[32px] mt-1.5 leading-relaxed" style={{ color: '#8C8C8C' }}>
                       {wf.description || 'Chưa có mô tả chi tiết'}
                     </p>
 
                     {/* Steps Pipeline Preview */}
-                    <div className="mt-3 pt-2.5 border-t flex items-center justify-between text-xs" style={{ borderColor: '#E9E5DC' }}>
+                    <div className="mt-3 pt-2.5 border-t flex items-center justify-between text-xs" style={{ borderColor: '#BFBFBD' }}>
                       <span className="text-[11px] font-medium" style={{ color: '#8C8C8C' }}>
                         Quy trình: <strong style={{ color: '#262626' }}>{stepCount} bước</strong>
                       </span>
-                      <div className="flex items-center gap-1">
-                        {(wf.steps || []).slice(0, 4).map((s, idx) => (
+                      <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                        {(wf.steps || []).slice(0, 6).map((s, idx) => (
                           <span
                             key={idx}
-                            className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold border"
+                            className="px-2 py-0.5 rounded text-[9.5px] font-mono font-bold border"
                             style={{ backgroundColor: '#F2EFE9', borderColor: '#BFBFBD', color: '#262626' }}
                           >
                             {s.type}
                           </span>
                         ))}
-                        {stepCount > 4 && (
+                        {stepCount > 6 && (
                           <span className="text-[10px] font-bold" style={{ color: '#8C8C8C' }}>
-                            +{stepCount - 4}
+                            +{stepCount - 6}
                           </span>
                         )}
                       </div>
                     </div>
                   </div>
 
-                  {/* Actions Footer - Executive Design */}
-                  <div className="pt-2.5 border-t flex items-center justify-between gap-2" style={{ borderColor: '#E9E5DC' }}>
+                  {/* Actions Footer */}
+                  <div className="pt-2.5 border-t flex items-center justify-between gap-2" style={{ borderColor: '#BFBFBD' }}>
                     {/* Left: Execution Triggers */}
                     <div className="flex items-center gap-1.5">
                       <button
                         type="button"
                         onClick={() => handleTestRun(wf)}
-                        className="px-2.5 py-1.5 rounded-lg text-xs font-bold border cursor-pointer hover:bg-[#E9E5DC] transition-colors flex items-center gap-1.5 shadow-2xs"
+                        className="px-2.5 py-1.5 rounded-lg text-xs font-bold border cursor-pointer hover:bg-[#F2EFE9] transition-colors flex items-center gap-1.5 shadow-2xs"
                         style={{ backgroundColor: '#F2EFE9', borderColor: '#BFBFBD', color: '#262626' }}
                         title="Chạy thử mô phỏng kịch bản"
                       >
@@ -357,7 +412,7 @@ export const AdminWorkflowTab = () => {
                         type="button"
                         onClick={() => handleDispatchToRobot(wf)}
                         className="px-2.5 py-1.5 rounded-lg text-xs font-bold border cursor-pointer hover:bg-[#363636] transition-colors flex items-center gap-1.5 shadow-2xs"
-                        style={{ backgroundColor: '#262626', borderColor: '#262626', color: '#F2EFE9' }}
+                        style={{ backgroundColor: '#262626', borderColor: '#262626', color: '#FFFFFF' }}
                         title="Phát lệnh điều khiển trực tiếp tới màn hình Robot"
                       >
                         <Send className="w-3 h-3" />
@@ -370,17 +425,17 @@ export const AdminWorkflowTab = () => {
                       <button
                         type="button"
                         onClick={() => handleToggleActive(wf)}
-                        className="p-1.5 rounded-lg border cursor-pointer hover:bg-[#E9E5DC] transition-colors"
-                        style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD' }}
+                        className="p-1.5 rounded-lg border cursor-pointer hover:bg-[#F2EFE9] transition-colors"
+                        style={{ backgroundColor: '#F2EFE9', borderColor: '#BFBFBD' }}
                         title={wf.is_active ? 'Tắt kịch bản' : 'Kích hoạt kịch bản'}
                       >
-                        <Power className={`w-3.5 h-3.5 ${wf.is_active ? 'text-[#262626]' : 'text-[#BFBFBD]'}`} />
+                        <Power className={`w-3.5 h-3.5 ${wf.is_active ? 'text-emerald-700' : 'text-[#8C8C8C]'}`} />
                       </button>
                       <button
                         type="button"
                         onClick={() => handleOpenEdit(wf)}
-                        className="p-1.5 rounded-lg border cursor-pointer hover:bg-[#E9E5DC] transition-colors text-[#262626]"
-                        style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD' }}
+                        className="p-1.5 rounded-lg border cursor-pointer hover:bg-[#F2EFE9] transition-colors"
+                        style={{ backgroundColor: '#F2EFE9', borderColor: '#BFBFBD', color: '#262626' }}
                         title="Chỉnh sửa kịch bản"
                       >
                         <Edit3 className="w-3.5 h-3.5" />
@@ -388,8 +443,8 @@ export const AdminWorkflowTab = () => {
                       <button
                         type="button"
                         onClick={() => handleDeleteWorkflow(wf.id, wf.name)}
-                        className="p-1.5 rounded-lg border cursor-pointer hover:bg-[#E9E5DC] transition-colors text-[#8C8C8C] hover:text-[#262626]"
-                        style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD' }}
+                        className="p-1.5 rounded-lg border cursor-pointer hover:bg-red-100 hover:border-red-300 hover:text-red-700 transition-colors"
+                        style={{ backgroundColor: '#F2EFE9', borderColor: '#BFBFBD', color: '#8C8C8C' }}
                         title="Xóa kịch bản"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -402,6 +457,7 @@ export const AdminWorkflowTab = () => {
           )}
         </div>
       </div>
+      )}
 
       {/* MODAL 1: WORKFLOW BUILDER (Scratch-style block editor) */}
       <WorkflowBuilderModal

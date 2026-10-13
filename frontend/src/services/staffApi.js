@@ -6,7 +6,7 @@
 const BASE_URL = '/api/v1/operations/staff';
 
 /**
- * Generic fetch helper with fallback support
+ * Generic fetch helper with fallback support for queries (GET)
  */
 async function fetchWithFallback(url, options = {}, fallbackData = null) {
   try {
@@ -32,7 +32,35 @@ async function fetchWithFallback(url, options = {}, fallbackData = null) {
 }
 
 /**
- * Lấy toàn bộ danh sách nhân viên 5 phòng ban từ PostgreSQL
+ * Mutation helper that throws descriptive errors on failure
+ */
+async function requestMutation(url, options = {}) {
+  const token = localStorage.getItem('aurora_jwt_token');
+  const response = await fetch(url, {
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(options.headers || {}),
+    },
+    ...options,
+  });
+
+  if (!response.ok) {
+    let errorDetail = `Lỗi máy chủ (${response.status})`;
+    try {
+      const errData = await response.json();
+      if (errData?.detail) {
+        errorDetail = typeof errData.detail === 'string' ? errData.detail : JSON.stringify(errData.detail);
+      }
+    } catch {}
+    throw new Error(errorDetail);
+  }
+
+  return await response.json();
+}
+
+/**
+ * Lấy toàn bộ danh sách nhân viên từ backend
  */
 export const fetchStaffRoster = async () => {
   return await fetchWithFallback(`${BASE_URL}`, {}, []);
@@ -42,41 +70,29 @@ export const fetchStaffRoster = async () => {
  * Tạo mới một nhân sự trong khách sạn
  */
 export const createStaffMember = async (staffData) => {
-  return await fetchWithFallback(
-    `${BASE_URL}`,
-    {
-      method: 'POST',
-      body: JSON.stringify(staffData),
-    },
-    { success: true, ...staffData }
-  );
+  return await requestMutation(`${BASE_URL}`, {
+    method: 'POST',
+    body: JSON.stringify(staffData),
+  });
 };
 
 /**
  * Cập nhật thông tin nhân sự, ca trực, hoặc cấu hình điều phối Robot Escalation
  */
 export const updateStaffMember = async (staffId, updateData) => {
-  return await fetchWithFallback(
-    `${BASE_URL}/${encodeURIComponent(staffId)}`,
-    {
-      method: 'PATCH',
-      body: JSON.stringify(updateData),
-    },
-    { success: true, id: staffId, ...updateData }
-  );
+  return await requestMutation(`${BASE_URL}/${encodeURIComponent(staffId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(updateData),
+  });
 };
 
 /**
  * Xóa nhân sự theo ID
  */
 export const deleteStaffMember = async (staffId) => {
-  return await fetchWithFallback(
-    `${BASE_URL}/${encodeURIComponent(staffId)}`,
-    {
-      method: 'DELETE',
-    },
-    { success: true, id: staffId }
-  );
+  return await requestMutation(`${BASE_URL}/${encodeURIComponent(staffId)}`, {
+    method: 'DELETE',
+  });
 };
 
 /**
@@ -85,4 +101,3 @@ export const deleteStaffMember = async (staffId) => {
 export const fetchDepartments = async () => {
   return await fetchWithFallback('/api/v1/operations/departments', {}, []);
 };
-

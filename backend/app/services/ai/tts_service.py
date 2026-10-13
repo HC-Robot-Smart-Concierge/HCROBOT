@@ -43,9 +43,9 @@ class TTSService:
         vi_words = [r'\bdạ\b', r'\bem\b', r'\banh\b', r'\bchị\b', r'\bquý khách\b', r'\bphòng\b', r'\bkhách sạn\b', r'\bạ\b']
         return any(re.search(w, text, re.IGNORECASE) for w in vi_words)
 
-    def _get_cache_key(self, text: str, provider: str, voice: str) -> str:
+    def _get_cache_key(self, text: str, provider: str, voice: str, rate: str = "+0%") -> str:
         clean = text.strip()
-        raw = f"{provider}:{voice}:{clean}"
+        raw = f"{provider}:{voice}:{rate}:{clean}"
         return hashlib.md5(raw.encode("utf-8")).hexdigest()
 
     def _get_from_cache(self, cache_key: str) -> Optional[str]:
@@ -82,6 +82,7 @@ class TTSService:
         provider: Optional[str] = None,
         voice: Optional[str] = None,
         language: Optional[str] = None,
+        rate: Optional[str] = None,
     ) -> Tuple[str, str, str]:
         """
         Tổng hợp giọng đọc từ văn bản kèm bộ đệm âm thanh siêu tốc.
@@ -91,6 +92,7 @@ class TTSService:
             return "", "audio/mp3", "none"
 
         selected_provider = (provider or settings.TTS_PROVIDER or "edge").lower()
+        target_rate = rate or getattr(settings, "TTS_RATE", "+0%")
         if language and any(en in language.lower() for en in ["en", "english"]):
             target_voice = voice or self.default_en_voice
         elif language and any(vi in language.lower() for vi in ["vi", "vietnamese"]):
@@ -100,7 +102,7 @@ class TTSService:
             target_voice = (voice or self.default_vi_voice) if is_vi else (voice or self.default_en_voice)
 
         # 0. KIỂM TRA AUDIO CACHE TRƯỚC (< 1ms)
-        cache_key = self._get_cache_key(text, selected_provider, target_voice)
+        cache_key = self._get_cache_key(text, selected_provider, target_voice, target_rate)
         cached_audio = self._get_from_cache(cache_key)
         if cached_audio:
             logger.info(f"[TTSService Cache Hit] Phục vụ âm thanh từ bộ nhớ đệm (0ms) cho text: '{text[:25]}...'")
@@ -128,7 +130,7 @@ class TTSService:
 
         # 3. Mặc định dùng EdgeTTS Neural (Siêu tự nhiên & Miễn phí)
         try:
-            audio_b64 = await self._synthesize_edge_tts(text, target_voice)
+            audio_b64 = await self._synthesize_edge_tts(text, target_voice, target_rate)
             if audio_b64:
                 self._save_to_cache(cache_key, audio_b64)
                 return audio_b64, "audio/mp3", "edge"
@@ -138,7 +140,7 @@ class TTSService:
         # 4. Fallback cuối cùng: Trả về empty để Frontend dùng Web Speech API thiết bị
         return "", "audio/mp3", "browser"
 
-    async def _synthesize_edge_tts(self, text: str, voice: str) -> Optional[str]:
+    async def _synthesize_edge_tts(self, text: str, voice: str, rate: Optional[str] = None) -> Optional[str]:
         """EdgeTTS Neural Engine."""
         try:
             import edge_tts
@@ -146,7 +148,8 @@ class TTSService:
             if not clean_text:
                 return None
 
-            communicate = edge_tts.Communicate(clean_text, voice, rate="+10%")
+            selected_rate = rate or getattr(settings, "TTS_RATE", "+0%")
+            communicate = edge_tts.Communicate(clean_text, voice, rate=selected_rate)
             audio_bytes = b""
             async for chunk in communicate.stream():
                 if chunk["type"] == "audio":
@@ -191,7 +194,8 @@ class TTSService:
                     self._memory_cache[cache_key] = base64.b64encode(data).decode("utf-8")
                     return data
 
-            communicate = edge_tts.Communicate(clean_text, target_voice, rate="+5%")
+            chunk_rate = getattr(settings, "TTS_RATE", "+0%")
+            communicate = edge_tts.Communicate(clean_text, target_voice, rate=chunk_rate)
             audio_bytes = b""
             async for chunk in communicate.stream():
                 if chunk["type"] == "audio":

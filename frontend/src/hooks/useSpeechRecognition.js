@@ -506,8 +506,12 @@ export const useSpeechRecognition = (callbacks = {}) => {
     liveRef.current = false;
     if (recognitionRef.current) {
       try {
-        recognitionRef.current.abort(); // Dùng abort để hủy bỏ ngay lập tức và dọn sạch buffer
-      } catch (err) {}
+        recognitionRef.current.abort();
+      } catch (err) {
+        try {
+          recognitionRef.current.stop();
+        } catch (e) {}
+      }
     }
     setIsListening(false);
     setMicLive(false);

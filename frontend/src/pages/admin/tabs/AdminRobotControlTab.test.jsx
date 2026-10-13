@@ -2,14 +2,17 @@ import { describe, it, expect } from 'vitest';
 
 describe('AdminRobotControlTab Sub-view Logic', () => {
   const SUB_VIEWS = {
-    STUDIO: 'studio',
+    LIDAR: 'lidar',
+    WORKFLOWS: 'workflows',
     CAMERA: 'camera',
   };
 
   const getActiveTabTitle = (subViewKey) => {
     switch (subViewKey) {
-      case SUB_VIEWS.STUDIO:
-        return 'Studio Bản Đồ & Step Workflows';
+      case SUB_VIEWS.LIDAR:
+        return 'Điều Khiển & Odometry SLAM';
+      case SUB_VIEWS.WORKFLOWS:
+        return 'Quản Lý Step Workflows';
       case SUB_VIEWS.CAMERA:
         return 'Live Camera FPV';
       default:
@@ -17,17 +20,21 @@ describe('AdminRobotControlTab Sub-view Logic', () => {
     }
   };
 
-  it('should default to studio sub-view', () => {
-    const defaultSubView = SUB_VIEWS.STUDIO;
-    expect(defaultSubView).toBe('studio');
-    expect(getActiveTabTitle(defaultSubView)).toBe('Studio Bản Đồ & Step Workflows');
+  it('should default to lidar sub-view', () => {
+    const defaultSubView = SUB_VIEWS.LIDAR;
+    expect(defaultSubView).toBe('lidar');
+    expect(getActiveTabTitle(defaultSubView)).toBe('Điều Khiển & Odometry SLAM');
   });
 
-  it('should switch smoothly to camera sub-view', () => {
-    let currentSubView = SUB_VIEWS.STUDIO;
+  it('should switch smoothly between workflows and camera sub-views', () => {
+    let currentSubView = SUB_VIEWS.LIDAR;
     const handleSwitch = (newView) => {
       currentSubView = newView;
     };
+
+    handleSwitch(SUB_VIEWS.WORKFLOWS);
+    expect(currentSubView).toBe('workflows');
+    expect(getActiveTabTitle(currentSubView)).toBe('Quản Lý Step Workflows');
 
     handleSwitch(SUB_VIEWS.CAMERA);
     expect(currentSubView).toBe('camera');

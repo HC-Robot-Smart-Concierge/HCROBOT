@@ -13,6 +13,7 @@ import { HousekeepingDashboard } from './pages/dashboard/HousekeepingDashboard';
 import { BellServicesDashboard } from './pages/dashboard/BellServicesDashboard';
 import { MaintenanceDashboard } from './pages/dashboard/MaintenanceDashboard';
 import { RestaurantDashboard } from './pages/dashboard/RestaurantDashboard';
+import { KitchenDashboard } from './pages/dashboard/KitchenDashboard';
 import { ConciergeDashboard } from './pages/dashboard/ConciergeDashboard';
 import { StaffOverviewDashboard } from './pages/dashboard/StaffOverviewDashboard';
 import { RobotScreenPage } from './pages/robot/RobotScreenPage';
@@ -24,8 +25,10 @@ import { NotificationCenterModal } from './components/common/NotificationCenterM
 import { QuickRequestModal } from './components/common/QuickRequestModal';
 import { UserProfileModal } from './components/common/UserProfileModal';
 
-// 4 Sidebar Staff Pages
+// 5 Sidebar Staff Pages
 import { RequestsPage } from './pages/staff/RequestsPage';
+import { MyTasksPage } from './pages/staff/MyTasksPage';
+import { KitchenMenuManagementPage } from './pages/staff/KitchenMenuManagementPage';
 import { HistoryPage } from './pages/staff/HistoryPage';
 import { NotificationsPage } from './pages/staff/NotificationsPage';
 import { ProfilePage } from './pages/staff/ProfilePage';
@@ -66,6 +69,7 @@ const STAFF_DASHBOARDS = [
   'bell_services',
   'maintenance',
   'restaurant',
+  'kitchen',
   'concierge',
 ];
 
@@ -128,7 +132,17 @@ const normalizeLegacyView = (view, user) => {
   if (['reception', 'front_desk', 'frontdesk'].includes(clean)) {
     return 'reception';
   }
-  if (['restaurant', 'nhahang', 'nha_hang', 'kitchen', 'bep'].includes(clean)) {
+  if (['kitchen', 'bep', 'nha_bep', 'nhabep', 'chef'].includes(clean)) {
+    return 'kitchen';
+  }
+  if (['restaurant', 'nhahang', 'nha_hang'].includes(clean)) {
+    if (
+      (user?.department || '').toLowerCase().includes('kitchen') ||
+      (user?.role || '').toLowerCase().includes('kitchen') ||
+      user?.username === 'kitchen'
+    ) {
+      return 'kitchen';
+    }
     return 'restaurant';
   }
   if (['taxi', 'datxe', 'dat_xe', 'transport', 'transportation'].includes(clean)) {
@@ -451,6 +465,7 @@ export function App() {
     'bell_services',
     'maintenance',
     'restaurant',
+    'kitchen',
     'concierge',
   ].includes(activeView);
 
@@ -464,7 +479,8 @@ export function App() {
     { id: 'housekeeping', label: '2. Housekeeping (Staff)' },
     { id: 'bell_services', label: '3. Bell Services (Staff)' },
     { id: 'maintenance', label: '4. Maintenance (Staff)' },
-    { id: 'restaurant', label: '5. Kitchen / Bếp (Staff)' },
+    { id: 'restaurant', label: '5. Restaurant / Nhà hàng (Staff)' },
+    { id: 'kitchen', label: '5b. Kitchen / Bếp (Staff)' },
     { id: 'concierge', label: '6. Concierge & Transport (Staff)' },
     { id: 'robot_display', label: 'Man Hinh Robot' },
     { id: 'admin_map', label: 'LiDAR SLAM Map' },
@@ -657,9 +673,7 @@ export function App() {
               hotelName={t('hotelName')}
               systemName="HCROBOT"
               subtitle={
-                usesReferenceLayout
-                  ? t('frontDeskSubtitle')
-                  : `${currentUser?.department || 'Staff'} ${t('portalSubtitle')}`
+                `${currentUser?.department || 'Staff'} ${t('portalSubtitle')}`
               }
               language={language}
               onToggleLanguage={() => {
@@ -679,12 +693,42 @@ export function App() {
             />
 
             {/* Dynamic View rendering based on activeMenu */}
-            {((activeMenu === 'Dashboard' && !usesReferenceLayout && !['concierge', 'taxi'].includes(activeView)) ||
-              (['LiveCalls', 'Recordings', 'Taxi', 'Feedback', 'Dashboard'].includes(activeMenu) &&
-                (['concierge', 'taxi'].includes(activeView) || (currentUser?.department || '').toLowerCase().includes('concierge')))) && (
-              activeView === 'restaurant' ? (
+            {activeMenu === 'Dashboard' && (
+              activeView === 'kitchen' || (activeView === 'restaurant' && (currentUser?.department || '').toLowerCase().includes('kitchen')) ? (
+                <KitchenDashboard currentUser={currentUser} onNotify={showNotification} />
+              ) : activeView === 'restaurant' ? (
                 <RestaurantDashboard currentUser={currentUser} onNotify={showNotification} />
+              ) : activeView === 'room_service' ? (
+                <RoomServiceDashboard currentUser={currentUser} onNotify={showNotification} />
+              ) : activeView === 'reception' ? (
+                <ReceptionDashboard
+                  currentUser={currentUser}
+                  onNotify={showNotification}
+                  onNavigate={(menu) => setActiveMenu(menu)}
+                />
+              ) : activeView === 'housekeeping' ? (
+                <HousekeepingDashboard currentUser={currentUser} onNotify={showNotification} />
+              ) : activeView === 'bell_services' ? (
+                <BellServicesDashboard currentUser={currentUser} onNotify={showNotification} />
+              ) : activeView === 'maintenance' ? (
+                <MaintenanceDashboard currentUser={currentUser} onNotify={showNotification} />
               ) : activeView === 'concierge' || activeView === 'taxi' || (currentUser?.department || '').toLowerCase().includes('concierge') ? (
+                <ConciergeDashboard
+                  currentUser={currentUser}
+                  onNotify={showNotification}
+                  activeSubTab="live_call"
+                />
+              ) : (
+                <StaffOverviewDashboard
+                  currentUser={currentUser}
+                  onNotify={showNotification}
+                />
+              )
+            )}
+
+            {/* Special Concierge Sub-Tabs when activeView is concierge/taxi */}
+            {['LiveCalls', 'Recordings', 'Taxi', 'Feedback'].includes(activeMenu) &&
+              (activeView === 'concierge' || activeView === 'taxi' || (currentUser?.department || '').toLowerCase().includes('concierge')) && (
                 <ConciergeDashboard
                   currentUser={currentUser}
                   onNotify={showNotification}
@@ -698,28 +742,33 @@ export function App() {
                       : 'live_call'
                   }
                 />
-              ) : (
-                <StaffOverviewDashboard
-                  currentUser={currentUser}
-                  onNotify={showNotification}
-                />
-              )
-            )}
-
-            {/* General Staff Dashboard when activeMenu === 'Dashboard' */}
-            {activeMenu === 'Dashboard' &&
-              !['concierge', 'taxi'].includes(activeView) &&
-              !(currentUser?.department || '').toLowerCase().includes('concierge') &&
-              activeView !== 'restaurant' && (
-                <StaffOverviewDashboard
-                  currentUser={currentUser}
-                  onNotify={showNotification}
-                />
               )}
 
             {/* Requests Page (Role-Filtered) */}
             {activeMenu === 'Requests' && (
-              <RequestsPage currentUser={currentUser} onNotify={showNotification} />
+              <RequestsPage
+                currentUser={currentUser}
+                onNotify={showNotification}
+                onNavigate={(menu) => setActiveMenu(menu)}
+              />
+            )}
+
+            {/* My Tasks Page (Personal Tasks & Food Order Lifecycle) */}
+            {activeMenu === 'MyTasks' && (
+              <MyTasksPage
+                currentUser={currentUser}
+                onNotify={showNotification}
+                onNavigate={(menu) => setActiveMenu(menu)}
+              />
+            )}
+
+            {/* Kitchen Menu Management Page (Food Catalog, Menus, Menu Items) */}
+            {activeMenu === 'KitchenMenu' && (
+              <KitchenMenuManagementPage
+                currentUser={currentUser}
+                onNotify={showNotification}
+                onNavigate={(menu) => setActiveMenu(menu)}
+              />
             )}
 
             {/* History Page */}
@@ -750,8 +799,8 @@ export function App() {
               />
             )}
             {/* Default Dashboard Fallback if activeMenu is unrecognized */}
-            {!['Dashboard', 'LiveCalls', 'Recordings', 'Taxi', 'Feedback', 'Requests', 'History', 'Notifications', 'Profile'].includes(activeMenu) && (
-              <RequestsPage currentUser={currentUser} onNotify={showNotification} />
+            {!['Dashboard', 'LiveCalls', 'Recordings', 'Taxi', 'Feedback', 'Requests', 'MyTasks', 'KitchenMenu', 'History', 'Notifications', 'Profile'].includes(activeMenu) && (
+              <RequestsPage currentUser={currentUser} onNotify={showNotification} onNavigate={(menu) => setActiveMenu(menu)} />
             )}
           </div>
 

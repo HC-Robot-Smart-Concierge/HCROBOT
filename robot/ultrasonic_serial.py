@@ -299,6 +299,13 @@ class UltrasonicSerialReader:
                     baudrate=self.baudrate,
                     timeout=0.5,
                 )
+                try:
+                    connection.dtr = False
+                    connection.rts = True
+                    time.sleep(0.08)
+                    connection.rts = False
+                except Exception:
+                    pass
                 with self._lock:
                     self._connection = connection
                 logger.info("Đã kết nối ESP32 tại %s @ %d baud", port, self.baudrate)

@@ -149,6 +149,11 @@ async def _fetch_all_raw_requests(db: AsyncSession) -> List[Dict[str, Any]]:
                 "notes": sr.description,
                 "source": sr.source or "From HCRobot",
                 "created_at": sr.created_at,
+                "items": sr.items or [],
+                "total_amount": sr.total_amount or 0,
+                "progress": sr.progress or 0,
+                "est_completion": sr.est_completion,
+                "room_number": sr.room_number,
             })
     except Exception as e:
         logger.error(f"Error fetching SupportRequests: {e}")

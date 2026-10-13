@@ -8,6 +8,28 @@ export const useSpeechSynthesis = () => {
   const activeUtteranceRef = useRef(null);
   const safetyTimerRef = useRef(null);
 
+  // Persistent Speech Rate State (0.5x - 2.0x, default 1.0x)
+  const [speechRate, setSpeechRateState] = useState(() => {
+    try {
+      const saved = typeof window !== 'undefined' ? localStorage.getItem('rora_speech_rate') : null;
+      return saved ? parseFloat(saved) : 1.0;
+    } catch {
+      return 1.0;
+    }
+  });
+
+  const updateSpeechRate = (newRate) => {
+    const parsed = parseFloat(newRate);
+    const clamped = Math.max(0.5, Math.min(2.0, isNaN(parsed) ? 1.0 : parsed));
+    setSpeechRateState(clamped);
+    try {
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('rora_speech_rate', clamped.toString());
+      }
+    } catch {}
+    return clamped;
+  };
+
   // Load available TTS voices from browser
   useEffect(() => {
     if (!('speechSynthesis' in window)) return;
@@ -43,11 +65,13 @@ export const useSpeechSynthesis = () => {
   const onQueueStartCallbackRef = useRef(null);
   const streamLangRef = useRef('vi-VN');
 
-  const speakWebSpeech = (text, language = 'vi-VN', onEndCallback = null, onStartCallback = null, shouldCancel = true, rate = 1.0) => {
+  const speakWebSpeech = (text, language = 'vi-VN', onEndCallback = null, onStartCallback = null, shouldCancel = true, rate = null) => {
     if (safetyTimerRef.current) {
       clearTimeout(safetyTimerRef.current);
       safetyTimerRef.current = null;
     }
+
+    const effectiveRate = Math.max(0.5, Math.min(2.0, rate ?? speechRate ?? 1.0));
 
     const cleanText = (text || '')
       .replace(/[*#_`\[\]()]/g, '')
@@ -100,7 +124,7 @@ export const useSpeechSynthesis = () => {
           if (data?.audio_base64 && data.audio_base64.length > 50) {
             const audioSrc = `data:audio/mp3;base64,${data.audio_base64}`;
             const audio = new Audio(audioSrc);
-            audio.playbackRate = Math.max(0.5, Math.min(2.0, rate || 1.0));
+            audio.playbackRate = effectiveRate;
             audioRef.current = audio;
 
             audio.onplay = () => {
@@ -127,23 +151,25 @@ export const useSpeechSynthesis = () => {
             return;
           }
           // Fallback if backend returned empty
-          _speakWithBrowserUtterance(cleanText, langTag, null, onEndCallback, onStartCallback, shouldCancel, rate);
+          _speakWithBrowserUtterance(cleanText, langTag, null, onEndCallback, onStartCallback, shouldCancel, effectiveRate);
         })
         .catch(() => {
-          _speakWithBrowserUtterance(cleanText, langTag, null, onEndCallback, onStartCallback, shouldCancel, rate);
+          _speakWithBrowserUtterance(cleanText, langTag, null, onEndCallback, onStartCallback, shouldCancel, effectiveRate);
         });
       return;
     }
 
-    _speakWithBrowserUtterance(cleanText, langTag, targetVoice, onEndCallback, onStartCallback, shouldCancel, rate);
+    _speakWithBrowserUtterance(cleanText, langTag, targetVoice, onEndCallback, onStartCallback, shouldCancel, effectiveRate);
   };
 
-  const _speakWithBrowserUtterance = (cleanText, langTag, targetVoice, onEndCallback, onStartCallback, shouldCancel, rate = 1.0) => {
+  const _speakWithBrowserUtterance = (cleanText, langTag, targetVoice, onEndCallback, onStartCallback, shouldCancel, rate = null) => {
     if (!('speechSynthesis' in window)) {
       if (onStartCallback) onStartCallback();
       if (onEndCallback) onEndCallback();
       return;
     }
+
+    const effectiveRate = Math.max(0.5, Math.min(2.0, rate ?? speechRate ?? 1.0));
 
     try {
       if (window.speechSynthesis.paused) {
@@ -255,7 +281,8 @@ export const useSpeechSynthesis = () => {
           onQueueStartCallbackRef.current = null;
         }
       },
-      false
+      false,
+      nextItem.rate ?? speechRate
     );
   };
 
@@ -269,11 +296,12 @@ export const useSpeechSynthesis = () => {
     streamLangRef.current = language;
   };
 
-  const enqueueStreamChunk = (chunkText, language = null) => {
+  const enqueueStreamChunk = (chunkText, language = null, chunkRate = null) => {
     if (!chunkText || !chunkText.trim()) return;
     queueRef.current.push({
       text: chunkText.trim(),
       language: language || streamLangRef.current,
+      rate: chunkRate ?? speechRate,
     });
     if (!isPlayingQueueRef.current) {
       playNextInQueue();
@@ -287,7 +315,7 @@ export const useSpeechSynthesis = () => {
     }
   };
 
-  const speak = async (text, language = 'vi-VN', onEndCallback = null, onStartCallback = null, preloadedAudioBase64 = null, rate = 1.0) => {
+  const speak = async (text, language = 'vi-VN', onEndCallback = null, onStartCallback = null, preloadedAudioBase64 = null, rate = null) => {
     cancel();
 
     if (!text || !text.trim()) {
@@ -296,12 +324,14 @@ export const useSpeechSynthesis = () => {
       return;
     }
 
+    const effectiveRate = Math.max(0.5, Math.min(2.0, rate ?? speechRate ?? 1.0));
+
     // 0. ƯU TIÊN PHÁT NGAY LẬP TỨC AUDIO PRELOADED TỪ /chat (0ms Network delay)
     if (preloadedAudioBase64 && preloadedAudioBase64.length > 100) {
       try {
         const audioSrc = `data:audio/mp3;base64,${preloadedAudioBase64}`;
         const audio = new Audio(audioSrc);
-        audio.playbackRate = Math.max(0.5, Math.min(2.0, rate || 1.0));
+        audio.playbackRate = effectiveRate;
         audioRef.current = audio;
 
         let hasStartedPlaying = false;
@@ -320,7 +350,11 @@ export const useSpeechSynthesis = () => {
         audio.onerror = () => {
           setIsSpeaking(false);
           audioRef.current = null;
-          speakWebSpeech(text, language, onEndCallback, onStartCallback, true, rate);
+          if (!hasStartedPlaying) {
+            speakWebSpeech(text, language, onEndCallback, onStartCallback, true, effectiveRate);
+          } else {
+            if (onEndCallback) onEndCallback();
+          }
         };
 
         await audio.play();
@@ -331,7 +365,7 @@ export const useSpeechSynthesis = () => {
     }
 
     // 1. INSTANT WebSpeech / EdgeTTS fallback
-    speakWebSpeech(text, language, onEndCallback, onStartCallback, true, rate);
+    speakWebSpeech(text, language, onEndCallback, onStartCallback, true, effectiveRate);
   };
 
   const cancel = () => {
@@ -366,6 +400,9 @@ export const useSpeechSynthesis = () => {
     prime,
     cancel,
     isSpeaking,
+    speechRate,
+    setSpeechRate: updateSpeechRate,
+    updateSpeechRate,
     initStreamSpeech,
     enqueueStreamChunk,
     endStreamSpeech,

@@ -52,6 +52,7 @@ class TTSRequest(BaseModel):
     provider: Optional[str] = Field("edge", description="Provider TTS: edge, elevenlabs, openai, browser")
     voice: Optional[str] = Field(None, description="Tên giọng đọc cụ thể (VD: vi-VN-HoaiMyNeural)")
     language: Optional[str] = Field("vi-VN", description="Mã ngôn ngữ: vi-VN, en-US")
+    rate: Optional[str] = Field("+0%", description="Tốc độ nói (VD: +0%, -10%, +10%)")
 
 
 class TTSResponse(BaseModel):

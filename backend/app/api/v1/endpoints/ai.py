@@ -346,6 +346,7 @@ async def synthesize_voice_speech(request: TTSRequest):
             provider=request.provider,
             voice=request.voice,
             language=request.language,
+            rate=request.rate,
         )
         return TTSResponse(
             audio_base64=audio_b64,

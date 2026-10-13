@@ -34,3 +34,17 @@ async def test_tts_service_voice_selection_by_language():
     assert service.default_vi_voice == "vi-VN-HoaiMyNeural"
     assert en_key != vi_key
 
+
+@pytest.mark.asyncio
+async def test_tts_service_rate_cache_differentiation():
+    """Unit test kiểm tra phân biệt cache key theo tốc độ đọc"""
+    service = TTSService()
+    key_normal = service._get_cache_key("Xin chào", "edge", service.default_vi_voice, "+0%")
+    key_slower = service._get_cache_key("Xin chào", "edge", service.default_vi_voice, "-10%")
+    key_faster = service._get_cache_key("Xin chào", "edge", service.default_vi_voice, "+15%")
+
+    assert key_normal != key_slower
+    assert key_normal != key_faster
+    assert key_slower != key_faster
+
+

@@ -32,6 +32,7 @@ class Settings(BaseSettings):
 
     # AI Voice Concierge TTS Configuration
     TTS_PROVIDER: str = "edge"  # Options: 'edge', 'elevenlabs', 'openai', 'browser'
+    TTS_RATE: str = "+0%"  # Default speech rate: '+0%' (natural), '-10%' (slower), '+10%' (faster)
     ELEVENLABS_API_KEY: Optional[str] = None
     ELEVENLABS_VOICE_ID: Optional[str] = "21m00Tcm4TlvDq8ikWAM"
     OPENAI_API_KEY: Optional[str] = None

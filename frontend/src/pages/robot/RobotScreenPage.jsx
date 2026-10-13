@@ -74,7 +74,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
   // Hooks
   const { isListening, transcript, error: speechError, startListening, stopListening, resetTranscript, hasSupport } = useSpeechRecognition();
-  const { speak, prime, cancel: stopSpeaking, isSpeaking } = useSpeechSynthesis();
+  const { speak, prime, cancel: stopSpeaking, isSpeaking, speechRate, updateSpeechRate } = useSpeechSynthesis();
 
   const toggleLanguage = () => {
     setLanguage((prev) => (prev === 'English' ? 'Tiếng Việt' : 'English'));
@@ -875,6 +875,39 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                   <span className="text-xs font-bold text-stone-200">Đánh giá dịch vụ</span>
                   <span className="text-[10px] text-stone-400">Khảo sát mức độ hài lòng</span>
                 </button>
+
+                {/* 4. Tốc độ nói của Robot */}
+                <div className="pt-2 pb-1 px-2.5 border-t border-stone-800 space-y-1.5">
+                  <div className="flex items-center justify-between text-[11px] text-stone-300 font-medium">
+                    <span>Tốc độ nói Robot</span>
+                    <span className="font-bold text-amber-400">{speechRate}x</span>
+                  </div>
+                  <div className="grid grid-cols-4 gap-1">
+                    {[
+                      { label: '0.85x', value: 0.85, title: 'Chậm' },
+                      { label: '1.0x', value: 1.0, title: 'Chuẩn' },
+                      { label: '1.1x', value: 1.1, title: 'Nhanh' },
+                      { label: '1.25x', value: 1.25, title: 'Rất nhanh' },
+                    ].map((opt) => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        title={opt.title}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          updateSpeechRate(opt.value);
+                        }}
+                        className={`py-1 text-[10px] font-bold rounded-lg border transition-all cursor-pointer ${
+                          Math.abs(speechRate - opt.value) < 0.01
+                            ? 'bg-amber-500 text-stone-950 border-amber-400 shadow-sm'
+                            : 'bg-stone-800/80 hover:bg-stone-700 text-stone-300 border-stone-700/60'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
             )}
           </div>

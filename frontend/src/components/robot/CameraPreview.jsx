@@ -9,9 +9,9 @@ import {
 const PI5_STREAM_DEFAULT_URL = 'http://localhost:8554/stream';
 
 const EMOTIONS = [
-  { id: 'happy', label: 'Vui vẻ', emoji: '😊' },
-  { id: 'neutral', label: 'Bình thường', emoji: '😐' },
-  { id: 'unhappy', label: 'Khó chịu', emoji: '😠' },
+  { id: 'happy', label: 'Vui vẻ' },
+  { id: 'neutral', label: 'Bình thường' },
+  { id: 'unhappy', label: 'Khó chịu' },
 ];
 
 export const CameraPreview = ({
@@ -22,6 +22,9 @@ export const CameraPreview = ({
   controlsClassName = '',
   source = 'local',
   streamUrl = PI5_STREAM_DEFAULT_URL,
+  defaultMinimized = true,
+  visible = true,
+  onClose,
 }) => {
   const isPi5 = source === 'pi5';
 
@@ -37,7 +40,7 @@ export const CameraPreview = ({
   const negativeFramesRef = useRef(0);
 
   const [isCameraActive, setIsCameraActive] = useState(false);
-  const [isMinimized, setIsMinimized] = useState(false);
+  const [isMinimized, setIsMinimized] = useState(defaultMinimized);
   const [stream, setStream] = useState(null);
   const [pi5StreamError, setPi5StreamError] = useState(false);
 
@@ -561,18 +564,17 @@ export const CameraPreview = ({
       )}
       <canvas ref={hiddenCanvasRef} className="hidden" />
 
-      {isMinimized ? (
+      {!visible ? null : isMinimized ? (
         /* Nút xem Camera ở chế độ Thu nhỏ (Collapsed) */
         <button
           onClick={() => setIsMinimized(false)}
           className={`absolute top-5 left-5 md:top-3 md:left-4 z-40 bg-stone-900/95 text-stone-200 px-3.5 py-1.5 rounded-full border border-stone-700/80 shadow-xl backdrop-blur-md flex items-center gap-2 text-xs font-semibold hover:bg-stone-800 transition-all cursor-pointer ${controlsClassName}`}
-          title="Bấm để xem khung hình Camera, AI Bounding Box & Cảm xúc"
+          title="Bấm để xem khung hình Camera & Cảm xúc"
         >
           <span className="flex items-center gap-1.5">
-            <span>AI Camera</span>
-            {isPi5 && <span className="text-[8px] text-cyan-400 font-mono">PI5</span>}
+            <span>Camera AI</span>
             {latestDetection?.detected && (
-              <span className="text-[10px] text-emerald-400 font-mono font-bold">
+              <span className="text-[10px] text-stone-300 font-mono font-bold">
                 [{latestDetection.distance}]
               </span>
             )}
@@ -580,78 +582,66 @@ export const CameraPreview = ({
 
           {isCameraActive ? (
             pi5StreamError ? (
-              <span className="w-2 h-2 rounded-full bg-red-400 animate-pulse" />
+              <span className="w-2 h-2 rounded-full bg-stone-500" />
             ) : isPersonDetected ? (
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
+              <span className="w-2 h-2 rounded-full bg-stone-300 animate-pulse" />
             ) : (
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="w-2 h-2 rounded-full bg-stone-400" />
             )
           ) : (
-            <span className="w-2 h-2 rounded-full bg-stone-500" />
+            <span className="w-2 h-2 rounded-full bg-stone-600" />
           )}
 
           <div className="h-3 w-px bg-stone-700 mx-0.5" />
 
           {/* Current Emotion Badge in Collapsed Mode */}
-          <span
-            className={`text-[11px] font-bold px-2 py-0.5 rounded-full border flex items-center gap-1 transition-all ${
-              currentEmotion === 'happy'
-                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50'
-                : currentEmotion === 'unhappy'
-                ? 'bg-rose-500/20 text-rose-300 border-rose-500/50'
-                : 'bg-stone-800 text-stone-300 border-stone-600'
-            }`}
-          >
-            <span>{currentEmotion === 'happy' ? '😊' : currentEmotion === 'unhappy' ? '😠' : '😐'}</span>
-            <span>{currentEmotion === 'happy' ? 'Vui vẻ' : currentEmotion === 'unhappy' ? 'Khó chịu' : 'Bình thường'}</span>
+          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-stone-800 text-stone-300 border border-stone-700">
+            {currentEmotion === 'happy' ? 'Vui vẻ' : currentEmotion === 'unhappy' ? 'Khó chịu' : 'Bình thường'}
           </span>
         </button>
       ) : (
         /* Khung xem Camera ở chế độ Mở rộng (Expanded với Bounding Box HUD & Emotion Panel) */
         <div className={`absolute top-5 left-5 md:top-3 md:left-4 z-40 ${controlsClassName}`}>
-          <div className="w-[280px] bg-stone-900/95 rounded-2xl overflow-hidden border-2 border-stone-700/80 shadow-2xl backdrop-blur-md flex flex-col transition-all">
+          <div className="w-[280px] bg-stone-900/95 rounded-2xl overflow-hidden border border-stone-700 shadow-2xl backdrop-blur-md flex flex-col transition-all">
             {/* Header thông tin công nghệ */}
             <div className="px-3 py-2 bg-stone-950/80 border-b border-stone-800 flex items-center justify-between">
               <div className="flex items-center gap-1.5">
                 <span
                   className={`w-2 h-2 rounded-full ${
                     pi5StreamError
-                      ? 'bg-red-400'
+                      ? 'bg-stone-500'
                       : isPersonDetected
-                      ? 'bg-emerald-400 animate-ping'
+                      ? 'bg-stone-200 animate-pulse'
                       : isCameraActive
-                      ? 'bg-cyan-400 animate-pulse'
-                      : 'bg-stone-500'
+                      ? 'bg-stone-400'
+                      : 'bg-stone-600'
                   }`}
                 />
-                <span className="text-white text-[10px] font-mono font-bold tracking-wider">
-                  {isPi5 ? 'PI5 MJPEG' : 'CAM LAPTOP'}
+                <span className="text-stone-200 text-[10px] font-mono font-bold tracking-wider">
+                  CAMERA AI
                 </span>
                 <span className="text-[9px] font-mono text-stone-400">
                   {modelLoading
-                    ? 'LOAD...'
+                    ? 'ĐANG TẢI...'
                     : pi5StreamError
-                    ? 'ERR'
+                    ? 'NGOẠI TUYẾN'
                     : isPersonDetected
-                    ? `[${latestDetection?.distance || 'DETECT'}]`
-                    : 'SCAN'}
+                    ? `[${latestDetection?.distance || 'PHÁT HIỆN'}]`
+                    : 'ĐANG QUÉT'}
                 </span>
               </div>
 
               <div className="flex items-center gap-1.5">
-                <span
-                  className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
-                    isFaceDetected
-                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                      : 'bg-stone-800 text-stone-400 border border-stone-700'
-                  }`}
-                >
-                  {isFaceDetected ? '👤 Thấy mặt' : '👤 Quét mặt...'}
+                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-stone-800 text-stone-300 border border-stone-700">
+                  {isFaceDetected ? 'Khuôn mặt: Có' : 'Quét mặt...'}
                 </span>
                 <button
-                  onClick={() => setIsMinimized(true)}
+                  onClick={() => {
+                    setIsMinimized(true);
+                    onClose?.();
+                  }}
                   className="text-stone-400 hover:text-white p-1 rounded-md hover:bg-stone-800 text-xs leading-none transition-colors cursor-pointer"
-                  title="Thu nhỏ camera"
+                  title="Đóng camera"
                 >
                   ✕
                 </button>
@@ -675,14 +665,13 @@ export const CameraPreview = ({
                   />
                   {pi5StreamError && isCameraActive && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 text-stone-300 text-[10px] font-semibold gap-1 p-2 text-center">
-                      <span className="text-red-400 font-bold">Stream Error</span>
-                      <span>Không kết nối được Pi5 Camera</span>
+                      <span className="text-stone-300 font-bold">Chưa kết nối luồng camera</span>
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
                           setPi5StreamError(false);
                         }}
-                        className="mt-1 px-2 py-0.5 bg-stone-700 rounded text-[9px] hover:bg-stone-600 cursor-pointer"
+                        className="mt-1 px-2.5 py-1 bg-stone-800 border border-stone-700 rounded text-[9px] hover:bg-stone-700 cursor-pointer text-stone-200"
                       >
                         Thử lại
                       </button>
@@ -711,10 +700,10 @@ export const CameraPreview = ({
 
               {/* HUD scan overlay */}
               {isCameraActive && (
-                <div className="absolute inset-0 pointer-events-none border border-emerald-500/20 m-2 rounded-lg flex flex-col justify-between p-1.5">
-                  <div className="flex justify-between text-[8px] font-mono text-emerald-400/80 font-bold">
-                    <span>{visionModelReady ? '[AI BLENDSHAPES]' : '[COCO-SSD]'}</span>
-                    <span>{isFaceDetected ? 'FACE: LOCKED' : isPersonDetected ? 'GUEST: LOCKED' : 'SEARCHING...'}</span>
+                <div className="absolute inset-0 pointer-events-none border border-stone-700/60 m-2 rounded-lg flex flex-col justify-between p-1.5">
+                  <div className="flex justify-between text-[8px] font-mono text-stone-400 font-bold">
+                    <span>CẢM BIẾN</span>
+                    <span>{isFaceDetected ? 'KHUÔN MẶT: ĐÃ KHÓA' : isPersonDetected ? 'KHÁCH: ĐÃ KHÓA' : 'ĐANG QUÉT...'}</span>
                   </div>
 
                   {isFaceDetected && (
@@ -727,8 +716,8 @@ export const CameraPreview = ({
                     </div>
                   )}
 
-                  <div className="text-[8px] font-mono text-stone-400/70 text-right">
-                    {isPi5 ? 'MJPEG STREAM' : '720p HD @ 30FPS'}
+                  <div className="text-[8px] font-mono text-stone-500 text-right">
+                    CAMERA TRỰC TIẾP
                   </div>
                 </div>
               )}
@@ -739,9 +728,9 @@ export const CameraPreview = ({
                     e.stopPropagation();
                     startCamera();
                   }}
-                  className="text-stone-300 hover:text-white transition-colors p-3 text-center text-xs font-semibold cursor-pointer bg-stone-800/80 hover:bg-stone-700/80 rounded-xl border border-stone-600 z-10"
+                  className="text-stone-300 hover:text-white transition-colors px-3 py-2 text-center text-xs font-semibold cursor-pointer bg-stone-800 hover:bg-stone-700 rounded-xl border border-stone-700 z-10"
                 >
-                  📷 Bấm để bật Camera AI
+                  Bật Camera AI
                 </button>
               )}
             </div>
@@ -749,10 +738,10 @@ export const CameraPreview = ({
             {/* Emotion Detection & Selection Control */}
             <div className="p-2.5 bg-stone-900/90 border-t border-stone-800 flex flex-col gap-1.5">
               <div className="flex items-center justify-between text-[10px]">
-                <span className="font-bold tracking-wide uppercase text-stone-300">
+                <span className="font-bold tracking-wide uppercase text-stone-400">
                   Cảm xúc từ Camera:
                 </span>
-                <span className="text-[9px] text-stone-500 font-medium">Click để đổi</span>
+                <span className="text-[9px] text-stone-500 font-medium">Chọn để thử</span>
               </div>
 
               <div className="grid grid-cols-3 gap-1.5">
@@ -762,25 +751,20 @@ export const CameraPreview = ({
                     <button
                       key={item.id}
                       onClick={() => handleEmotionSelect(item.id)}
-                      className={`py-1.5 px-2 rounded-xl text-xs font-semibold flex flex-col items-center gap-0.5 border transition-all cursor-pointer ${
+                      className={`py-1.5 px-2 rounded-xl text-[11px] font-bold border transition-all cursor-pointer ${
                         isSelected
-                          ? item.id === 'happy'
-                            ? 'bg-emerald-500/25 text-emerald-200 border-emerald-400 shadow-md shadow-emerald-950/50 ring-1 ring-emerald-400'
-                            : item.id === 'unhappy'
-                            ? 'bg-rose-500/25 text-rose-200 border-rose-400 shadow-md shadow-rose-950/50 ring-1 ring-rose-400'
-                            : 'bg-amber-500/25 text-amber-200 border-amber-400 shadow-md shadow-amber-950/50 ring-1 ring-amber-400'
-                          : 'bg-stone-800/60 text-stone-400 border-stone-700/60 hover:bg-stone-800 hover:text-stone-200'
+                          ? 'bg-stone-700 text-white border-stone-500 shadow-sm'
+                          : 'bg-stone-800/80 text-stone-400 border-stone-700 hover:bg-stone-800 hover:text-stone-200'
                       }`}
                     >
-                      <span className="text-base">{item.emoji}</span>
-                      <span className="text-[10px]">{item.label}</span>
+                      {item.label}
                     </button>
                   );
                 })}
               </div>
 
-              <p className="text-[8.5px] text-stone-400/80 italic text-center mt-0.5">
-                💡 Rora tự điều chỉnh ngữ điệu và phản hồi tương ứng!
+              <p className="text-[8.5px] text-stone-500 italic text-center mt-0.5">
+                Rora tự điều chỉnh ngữ điệu phản hồi theo cảm xúc
               </p>
             </div>
           </div>

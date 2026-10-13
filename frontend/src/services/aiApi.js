@@ -10,13 +10,103 @@ const API_BASE_URL = '/api/v1/ai';
  * Sử dụng PipecatAudioClient để stream text + audio chunks real-time.
  */
 export const sendChatStreamViaWebSocket = (pipecatClient, text, callbacks = {}, roomNumber = null, language = 'auto') => {
-  const { onTextChunk, onStreamDone, onError } = callbacks;
+  const { onToken, onTextChunk, onStreamDone, onAudioEnded, onError } = callbacks;
 
+  if (onToken) pipecatClient.onTokenCallback = onToken;
   if (onTextChunk) pipecatClient.onTextChunkCallback = onTextChunk;
   if (onStreamDone) pipecatClient.onStreamDoneCallback = onStreamDone;
+  if (onAudioEnded) pipecatClient.onAudioEndedCallback = onAudioEnded;
   if (onError) pipecatClient.onErrorCallback = onError;
 
   pipecatClient.sendSpeechStream(text, roomNumber, language);
+};
+
+/**
+ * Gửi prompt qua HTTP Server-Sent Events (SSE) Streaming Endpoint.
+ * Nhận từng token text thời gian thực (TTFT < 200ms).
+ */
+export const sendChatStreamSSE = async (
+  prompt,
+  onToken,
+  onDone,
+  onError,
+  options = {}
+) => {
+  const {
+    sessionId = 'default_session',
+    ragContext = null,
+    language = 'auto',
+    emotion = 'neutral',
+    roomNumber = null,
+    onAck = null,
+  } = options;
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/chat/stream`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        session_id: sessionId,
+        prompt: prompt,
+        rag_context: ragContext,
+        language: language,
+        emotion: emotion,
+        room_number: roomNumber,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder('utf-8');
+    let buffer = '';
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop(); // Giữ lại phần chưa hoàn chỉnh
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed.startsWith('data: ')) {
+          try {
+            const data = JSON.parse(trimmed.slice(6));
+            if (data.event === 'ack' && onAck) {
+              onAck();
+            } else if (data.event === 'token' && onToken) {
+              onToken(data.token, data.lang_code);
+            } else if (data.event === 'done' && onDone) {
+              onDone(data.full_text, data.lang_code);
+            } else if (data.event === 'error' && onError) {
+              onError(new Error(data.message));
+            }
+          } catch (e) {
+            // Ignore parse errors on keep-alive
+          }
+        }
+      }
+    }
+
+    if (buffer && buffer.trim().startsWith('data: ')) {
+      try {
+        const data = JSON.parse(buffer.trim().slice(6));
+        if (data.event === 'token' && onToken) {
+          onToken(data.token, data.lang_code);
+        } else if (data.event === 'done' && onDone) {
+          onDone(data.full_text, data.lang_code);
+        }
+      } catch (e) {}
+    }
+  } catch (err) {
+    if (onError) onError(err);
+  }
 };
 
 export const sendChatPrompt = async (
@@ -133,7 +223,19 @@ export const flushSession = async (sessionId = 'default_session') => {
   }
 };
 
-export const synthesizeSpeech = async (text, provider = 'edge', voice = null, language = 'vi-VN') => {
+export const synthesizeSpeech = async (text, optionsOrProvider = 'edge', voice = null, language = 'vi-VN') => {
+  let provider = 'edge';
+  let targetVoice = voice;
+  let targetLang = language;
+
+  if (typeof optionsOrProvider === 'object' && optionsOrProvider !== null) {
+    provider = optionsOrProvider.provider || 'edge';
+    targetVoice = optionsOrProvider.voice || voice;
+    targetLang = optionsOrProvider.language || language;
+  } else if (typeof optionsOrProvider === 'string') {
+    provider = optionsOrProvider;
+  }
+
   try {
     const response = await fetch(`${API_BASE_URL}/tts`, {
       method: 'POST',
@@ -143,8 +245,8 @@ export const synthesizeSpeech = async (text, provider = 'edge', voice = null, la
       body: JSON.stringify({
         text,
         provider,
-        voice,
-        language,
+        voice: targetVoice,
+        language: targetLang,
       }),
     });
 
@@ -231,5 +333,33 @@ export const fetchFeedbacks = async (category = null, limit = 50) => {
     return [];
   }
 };
+
+/**
+ * Chuyển đổi file âm thanh WAV thành văn bản thông qua Backend STT Engine
+ * (Dual-Engine Fallback: Google Speech + Faster-Whisper Offline 100%)
+ */
+export const transcribeAudio = async (audioBlob, language = 'vi') => {
+  try {
+    const formData = new FormData();
+    formData.append('file', audioBlob, 'speech.wav');
+    formData.append('language', language);
+
+    const response = await fetch(`${API_BASE_URL}/stt/transcribe`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error ${response.status}`);
+    }
+
+    const data = await response.json();
+    return data?.text || '';
+  } catch (error) {
+    console.warn('[AIApi] transcribeAudio error:', error.message);
+    return '';
+  }
+};
+
 
 

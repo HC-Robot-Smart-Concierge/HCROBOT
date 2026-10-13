@@ -18,13 +18,34 @@ import time
 from typing import Any, Dict, List, Optional
 
 import serial
-import uvicorn
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+
+try:
+    import uvicorn
+    from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+    from fastapi.middleware.cors import CORSMiddleware
+    from pydantic import BaseModel
+    HAS_FASTAPI = True
+except ImportError:
+    HAS_FASTAPI = False
+    uvicorn = None
+    FastAPI = None
+    WebSocket = None
+    WebSocketDisconnect = Exception
+    CORSMiddleware = None
+    BaseModel = object
 
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s] [%(levelname)s] [LiDAR-SLAM] %(message)s")
 logger = logging.getLogger("RPLidarSLAM")
+
+ROBOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+MAPS_DIR = os.path.join(ROBOT_DIR, "maps")
+WORKFLOWS_DIR = os.path.join(ROBOT_DIR, "workflows")
+os.makedirs(MAPS_DIR, exist_ok=True)
+os.makedirs(WORKFLOWS_DIR, exist_ok=True)
+
+import sys
+if ROBOT_DIR not in sys.path:
+    sys.path.insert(0, ROBOT_DIR)
 
 
 def find_rplidar_port() -> str:
@@ -91,6 +112,49 @@ class RPLidarSLAMCore:
         self.nav_thread: Optional[threading.Thread] = None
         self.is_navigating = False
 
+        # Frontier Exploration
+        self.is_exploring = False
+        self._explore_thread: Optional[threading.Thread] = None
+        self.explored_frontiers: List[tuple] = []  # danh sách frontier đã thăm
+
+        # Static Overlay Map (floor plan cứng)
+        self._overlay_grid: List[int] = []          # grid vật cản cứng (100/0/-1)
+        self._overlay_waypoints: List[Dict] = []    # POI có tên
+        self._overlay_zones: List[Dict] = []        # Vùng đặc biệt (no-go, lobby...)
+        self._overlay_active = False
+
+        # Workflow execution
+        self.active_workflow: Optional[Dict] = None
+        self._workflow_thread: Optional[threading.Thread] = None
+        self.is_workflow_running = False
+        self.workflow_step_index = 0
+        self.workflow_progress: Dict[str, Any] = {}
+
+        # Direct Motor Control via Raspberry Pi 5 L298N (GPIO 17, 27, 22, 23)
+        self.pi_motor = None
+        try:
+            from motor_controller import MotorController
+            self.pi_motor = MotorController(
+                left_forward_pin=17,
+                left_backward_pin=27,
+                right_forward_pin=22,
+                right_backward_pin=23,
+                invert_left_direction=False,
+                invert_right_direction=True,
+            )
+            logger.info("🚗 [LiDAR-SLAM] Đã khởi tạo MotorController trực tiếp trên Raspberry Pi 5 (GPIO 17, 27, 22, 23)!")
+        except Exception as e:
+            logger.warning(f"⚠️ [LiDAR-SLAM] Không khởi tạo được MotorController trực tiếp ({e}), sử dụng fallback UDP 9999")
+
+        # Hệ thống An toàn Vật cản LiDAR (360-degree Continuous Distance Buffer & Fail-Safe)
+        self.angle_distances: List[float] = [99.0] * 360
+        self.angle_timestamps: List[float] = [0.0] * 360
+        self.front_safety_distance = 0.35   # Ngưỡng phanh khẩn cấp phía trước: <= 35cm
+        self.rear_safety_distance = 0.30    # Ngưỡng phanh khẩn cấp phía sau: <= 30cm
+        self.current_motion_cmd = "stop"
+        self._safety_thread: Optional[threading.Thread] = None
+        self.last_safety_alert: str = ""
+
     def reset_map(self):
         """Xóa trắng bản đồ 2D về trạng thái ban đầu và đưa vị trí robot về gốc."""
         with self._lock:
@@ -103,6 +167,158 @@ class RPLidarSLAMCore:
             self.angular_velocity = 0.0
         self.stop_navigation()
         logger.info("🧹 Đã làm sạch bản đồ 2D Occupancy Grid và đặt lại vị trí Robot về (0,0)")
+
+    def save_map(self, name: str = "default_map") -> Dict[str, Any]:
+        """Lưu bản đồ 2D Occupancy Grid ra file JSON (Web Admin) và chuẩn ROS 2 / Nav2 (.yaml + .pgm)."""
+        safe_name = "".join(c for c in name if c.isalnum() or c in ("_", "-")).strip() or "map"
+        json_path = os.path.join(MAPS_DIR, f"{safe_name}.json")
+        yaml_path = os.path.join(MAPS_DIR, f"{safe_name}.yaml")
+        pgm_path = os.path.join(MAPS_DIR, f"{safe_name}.pgm")
+
+        with self._lock:
+            grid_copy = list(self.grid_data)
+            w = self.grid_width
+            h = self.grid_height
+            res = self.resolution
+            ox = self.origin_x
+            oy = self.origin_y
+            pose = {"x": round(self.robot_x, 3), "y": round(self.robot_y, 3), "yaw": round(self.robot_yaw, 1)}
+
+        occupied_count = sum(1 for v in grid_copy if v == 100)
+        free_count = sum(1 for v in grid_copy if v == 0)
+        unknown_count = sum(1 for v in grid_copy if v < 0)
+
+        # 1. Lưu file JSON cho Web Admin
+        payload = {
+            "name": safe_name,
+            "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "width": w,
+            "height": h,
+            "resolution": res,
+            "origin_x": ox,
+            "origin_y": oy,
+            "robot_pose": pose,
+            "grid_data": grid_copy,
+            "statistics": {
+                "occupied_cells": occupied_count,
+                "free_cells": free_count,
+                "unknown_cells": unknown_count,
+            },
+        }
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2)
+
+        # 2. Lưu file PGM (P5 binary) theo chuẩn ROS 2 Nav2 Map Server
+        # ROS 2 coordinate: y=0 là hàng đáy (origin_y).
+        # Ảnh PGM: hàng 0 là đỉnh trên cùng, nên cần duyệt y từ (h - 1) xuống 0.
+        pgm_header = f"P5\n{w} {h}\n255\n".encode("ascii")
+        pgm_data = bytearray(w * h)
+        idx = 0
+        for y in range(h - 1, -1, -1):
+            row_offset = y * w
+            for x in range(w):
+                val = grid_copy[row_offset + x]
+                if val == 100:       # Vật cản -> Màu đen (0)
+                    pgm_data[idx] = 0
+                elif val == 0:       # Vùng trống -> Màu trắng (254)
+                    pgm_data[idx] = 254
+                else:                # Chưa rõ (-1) -> Màu xám (205)
+                    pgm_data[idx] = 205
+                idx += 1
+
+        with open(pgm_path, "wb") as f:
+            f.write(pgm_header + pgm_data)
+
+        # 3. Lưu file YAML metadata cho ROS 2 Nav2 map_server
+        yaml_content = f"""image: {safe_name}.pgm
+mode: trinary
+resolution: {res}
+origin: [{ox}, {oy}, 0.0]
+negate: 0
+occupied_thresh: 0.65
+free_thresh: 0.25
+"""
+        with open(yaml_path, "w", encoding="utf-8") as f:
+            f.write(yaml_content)
+
+        logger.info(f"💾 Đã lưu bản đồ '{safe_name}' thành công: JSON, YAML & PGM ({occupied_count} ô vật cản, {free_count} ô trống)")
+        return {
+            "name": safe_name,
+            "json_path": json_path,
+            "yaml_path": yaml_path,
+            "pgm_path": pgm_path,
+            "occupied_cells": occupied_count,
+            "free_cells": free_count,
+        }
+
+    def load_map(self, name: str) -> bool:
+        """Nạp bản đồ đã lưu từ file JSON vào bộ nhớ runtime."""
+        safe_name = "".join(c for c in name if c.isalnum() or c in ("_", "-")).strip()
+        json_path = os.path.join(MAPS_DIR, f"{safe_name}.json")
+        if not os.path.exists(json_path):
+            logger.warning(f"Không tìm thấy file bản đồ {json_path}")
+            return False
+
+        try:
+            with open(json_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+
+            with self._lock:
+                self.grid_width = data.get("width", 200)
+                self.grid_height = data.get("height", 200)
+                self.resolution = data.get("resolution", 0.05)
+                self.origin_x = data.get("origin_x", -5.0)
+                self.origin_y = data.get("origin_y", -5.0)
+                self.grid_data = data.get("grid_data", [-1] * (self.grid_width * self.grid_height))
+                pose = data.get("robot_pose", {})
+                self.robot_x = pose.get("x", 0.0)
+                self.robot_y = pose.get("y", 0.0)
+                self.robot_yaw = pose.get("yaw", 0.0)
+
+            logger.info(f"📂 Đã nạp bản đồ '{safe_name}' vào SLAM core thành công!")
+            return True
+        except Exception as e:
+            logger.error(f"Lỗi khi đọc file bản đồ {json_path}: {e}")
+            return False
+
+    def list_saved_maps(self) -> List[Dict[str, Any]]:
+        """Lấy danh sách các bản đồ đã lưu."""
+        maps = []
+        if not os.path.exists(MAPS_DIR):
+            return maps
+
+        for fname in sorted(os.listdir(MAPS_DIR)):
+            if fname.endswith(".json"):
+                fpath = os.path.join(MAPS_DIR, fname)
+                try:
+                    with open(fpath, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    maps.append({
+                        "name": data.get("name", fname.replace(".json", "")),
+                        "created_at": data.get("created_at", ""),
+                        "width": data.get("width", 200),
+                        "height": data.get("height", 200),
+                        "resolution": data.get("resolution", 0.05),
+                        "statistics": data.get("statistics", {}),
+                        "has_ros2_yaml": os.path.exists(os.path.join(MAPS_DIR, fname.replace(".json", ".yaml"))),
+                    })
+                except Exception:
+                    pass
+        return maps
+
+    def delete_map(self, name: str) -> bool:
+        """Xóa bản đồ đã lưu."""
+        safe_name = "".join(c for c in name if c.isalnum() or c in ("_", "-")).strip()
+        deleted = False
+        for ext in (".json", ".yaml", ".pgm"):
+            p = os.path.join(MAPS_DIR, f"{safe_name}{ext}")
+            if os.path.exists(p):
+                try:
+                    os.remove(p)
+                    deleted = True
+                except Exception:
+                    pass
+        return deleted
 
     def _world_to_grid(self, x: float, y: float):
         gx = int((x - self.origin_x) / self.resolution)
@@ -226,7 +442,9 @@ class RPLidarSLAMCore:
         self.is_running = True
         self._scan_thread = threading.Thread(target=self._scan_loop, daemon=True)
         self._scan_thread.start()
-        logger.info("🚀 Luồng quét LiDAR SLAM đã sẵn sàng")
+        self._safety_thread = threading.Thread(target=self._safety_watchdog_loop, daemon=True)
+        self._safety_thread.start()
+        logger.info("🚀 Luồng quét LiDAR SLAM & Safety Watchdog đã sẵn sàng")
 
     def stop(self):
         self.is_running = False
@@ -282,6 +500,12 @@ class RPLidarSLAMCore:
 
                     # 1. Lọc tia khoảng cách hợp lệ (từ 12cm đến 12m)
                     if 0.12 <= dist_m <= 12.0:
+                        # Cập nhật liên tục mảng khoảng cách 360 độ theo thời gian thực
+                        deg = int(round(angle)) % 360
+                        now = time.time()
+                        self.angle_distances[deg] = dist_m
+                        self.angle_timestamps[deg] = now
+
                         # RPLiDAR quay theo chiều kim đồng hồ; chuẩn hóa góc về hệ tọa độ chuẩn
                         heading = (angle + self.robot_yaw) % 360.0
                         rad = math.radians(heading)
@@ -296,8 +520,8 @@ class RPLidarSLAMCore:
                             "quality": quality,
                         })
 
-                    # 2. Cập nhật khi hoàn thành vòng quét hoặc đủ đợt 60 điểm
-                    if (is_new_scan and len(current_scan_batch) >= 15) or len(current_scan_batch) >= 60:
+                    # 2. Cập nhật khi hoàn thành nguyên 1 vòng quét 360 độ
+                    if (is_new_scan and len(current_scan_batch) >= 60) or len(current_scan_batch) >= 720:
                         with self._lock:
                             self._latest_scans = list(current_scan_batch)
                             self._update_grid_from_scan(self.robot_x, self.robot_y, self._latest_scans)
@@ -307,6 +531,79 @@ class RPLidarSLAMCore:
             logger.error(f"Lỗi scan loop: {e}")
             self.is_connected = False
             self.is_running = False
+
+    def get_obstacle_distance(self, angle_min: int, angle_max: int, max_age: float = 0.8) -> float:
+        """
+        Tìm khoảng cách vật cản gần nhất trong cung góc [angle_min, angle_max] (hỗ trợ qua mốc 0°).
+        Chỉ tính các tia quét tươi trong vòng max_age giây.
+        """
+        now = time.time()
+        min_d = 99.0
+        if angle_min <= angle_max:
+            deg_range = range(angle_min, angle_max + 1)
+        else:
+            deg_range = list(range(angle_min, 360)) + list(range(0, angle_max + 1))
+
+        for deg in deg_range:
+            if now - self.angle_timestamps[deg] <= max_age:
+                d = self.angle_distances[deg]
+                if 0.10 <= d < min_d:
+                    min_d = d
+        return min_d
+
+    def get_front_distance(self) -> float:
+        """Khoảng cách vật cản phía trước mặt (góc mở ±45°: từ 315° qua 0° tới 45°)."""
+        return self.get_obstacle_distance(315, 45)
+
+    def get_rear_distance(self) -> float:
+        """Khoảng cách vật cản phía sau xe (góc mở ±45°: từ 135° tới 225°)."""
+        return self.get_obstacle_distance(135, 225)
+
+    def get_left_distance(self) -> float:
+        """Khoảng cách vật cản bên trái xe (45° tới 135°)."""
+        return self.get_obstacle_distance(45, 135)
+
+    def get_right_distance(self) -> float:
+        """Khoảng cách vật cản bên phải xe (225° tới 315°)."""
+        return self.get_obstacle_distance(225, 315)
+
+    def _safety_watchdog_loop(self):
+        """Thread giám sát an toàn phần cứng (25Hz): Tự động ngắt motor nếu có vật cản gần."""
+        while self.is_running:
+            try:
+                cmd = self.current_motion_cmd
+                if cmd in ("forward", "w", "forward_left", "forward_right", "wa", "wd"):
+                    front_d = self.get_front_distance()
+                    if front_d < self.front_safety_distance:
+                        logger.warning(
+                            f"🚨 [WATCHDOG PHANH KHẨN CẤP] Vật cản trước mặt cách {front_d*100:.1f}cm "
+                            f"(< {self.front_safety_distance*100:.0f}cm)! DỪNG MOTOR NGAY!"
+                        )
+                        if self.pi_motor is not None:
+                            self.pi_motor.stop()
+                        self.current_motion_cmd = "stop"
+                        self.status = "OBSTACLE_STOP"
+                        self.last_safety_alert = f"🚨 PHANH KHẨN CẤP: Vật cản trước mặt {front_d*100:.1f}cm (< 35cm)!"
+
+                elif cmd in ("backward", "s", "backward_left", "backward_right", "sa", "sd"):
+                    rear_d = self.get_rear_distance()
+                    if rear_d < self.rear_safety_distance:
+                        logger.warning(
+                            f"🚨 [WATCHDOG PHANH KHẨN CẤP] Vật cản sau xe cách {rear_d*100:.1f}cm "
+                            f"(< {self.rear_safety_distance*100:.0f}cm)! DỪNG MOTOR NGAY!"
+                        )
+                        if self.pi_motor is not None:
+                            self.pi_motor.stop()
+                        self.current_motion_cmd = "stop"
+                        self.status = "OBSTACLE_STOP"
+                        self.last_safety_alert = f"🚨 PHANH KHẨN CẤP: Vật cản sau xe {rear_d*100:.1f}cm (< 30cm)!"
+                else:
+                    self.last_safety_alert = ""
+                    if self.status == "OBSTACLE_STOP":
+                        self.status = "IDLE"
+            except Exception as e:
+                logger.error(f"Lỗi safety watchdog: {e}")
+            time.sleep(0.04)
 
     def get_latest_scans(self) -> List[Dict[str, Any]]:
         with self._lock:
@@ -323,14 +620,75 @@ class RPLidarSLAMCore:
                 "grid_data": list(self.grid_data),
             }
 
-    def send_udp_motor_command(self, cmd: str):
-        """Gửi lệnh di chuyển qua UDP tới port 9999 của robot/main.py."""
+    def send_udp_motor_command(self, cmd: str, force: bool = False):
+        """
+        Điều khiển động cơ kèm cơ chế bảo vệ an toàn vật cản (Fail-Safe Interlock):
+        1. Kiểm tra an toàn hướng di chuyển trước khi cấp lệnh cho motor.
+        2. Trực tiếp qua MotorController (L298N GPIO) nếu đang chạy trên Pi 5.
+        3. Đồng thời gửi UDP tới 127.0.0.1:9999 nếu main.py đang chạy để đồng bộ.
+        """
+        cmd_clean = cmd.strip().lower()
+
+        # PRE-FLIGHT SAFETY INTERLOCK
+        if not force and cmd_clean in ("forward", "w", "forward_left", "forward_right", "wa", "wd"):
+            front_d = self.get_front_distance()
+            if front_d < self.front_safety_distance:
+                logger.warning(
+                    f"🛑 [SAFETY INTERLOCK] Khóa tiến! Phía trước có vật cản cách {front_d*100:.1f}cm "
+                    f"(< {self.front_safety_distance*100:.0f}cm)"
+                )
+                if self.pi_motor is not None:
+                    self.pi_motor.stop()
+                self.current_motion_cmd = "stop"
+                self.status = "OBSTACLE_STOP"
+                return
+
+        if not force and cmd_clean in ("backward", "s", "backward_left", "backward_right", "sa", "sd"):
+            rear_d = self.get_rear_distance()
+            if rear_d < self.rear_safety_distance:
+                logger.warning(
+                    f"🛑 [SAFETY INTERLOCK] Khóa lùi! Phía sau có vật cản cách {rear_d*100:.1f}cm "
+                    f"(< {self.rear_safety_distance*100:.0f}cm)"
+                )
+                if self.pi_motor is not None:
+                    self.pi_motor.stop()
+                self.current_motion_cmd = "stop"
+                self.status = "OBSTACLE_STOP"
+                return
+
+        self.current_motion_cmd = cmd_clean
+
+        # 1. Direct hardware execution
+        if self.pi_motor is not None:
+            try:
+                if cmd_clean in ("forward", "w"):
+                    self.pi_motor.move_forward()
+                elif cmd_clean in ("backward", "s"):
+                    self.pi_motor.move_backward()
+                elif cmd_clean in ("left", "a"):
+                    self.pi_motor.turn_left()
+                elif cmd_clean in ("right", "d"):
+                    self.pi_motor.turn_right()
+                elif cmd_clean in ("forward_left", "wa", "aw"):
+                    self.pi_motor.turn_forward_left()
+                elif cmd_clean in ("forward_right", "wd", "dw"):
+                    self.pi_motor.turn_forward_right()
+                elif cmd_clean in ("backward_left", "sa", "as"):
+                    self.pi_motor.turn_backward_left()
+                elif cmd_clean in ("backward_right", "sd", "ds"):
+                    self.pi_motor.turn_backward_right()
+                elif cmd_clean in ("stop", "x", "") or cmd_clean.startswith("speed:"):
+                    self.pi_motor.stop()
+            except Exception as e:
+                logger.warning(f"Lỗi motor phần cứng trực tiếp: {e}")
+
+        # 2. UDP Fallback / Sync
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             sock.sendto(cmd.encode("utf-8"), ("127.0.0.1", 9999))
             sock.close()
-        except Exception as e:
-            logger.warning(f"Lỗi gửi lệnh UDP {cmd}: {e}")
+        except Exception:
+            pass
 
     def navigate_to(self, target_x: float, target_y: float):
         """Bắt đầu tác vụ tự hành tới tọa độ mục tiêu (target_x, target_y)."""
@@ -383,24 +741,22 @@ class RPLidarSLAMCore:
             desired_yaw = (math.degrees(math.atan2(dx, dy)) + 360.0) % 360.0
             yaw_error = (desired_yaw - self.robot_yaw + 540.0) % 360.0 - 180.0
 
-            # Kiểm tra vật cản phía trước bằng tia LiDAR
-            scans = self.get_latest_scans()
-            front_obstacle_dist = 99.0
-            for pt in scans:
-                ang = pt["angle"]
-                # Góc phía trước robot (từ 335° qua 0° tới 25°)
-                if ang >= 335 or ang <= 25:
-                    if pt["distance"] < front_obstacle_dist:
-                        front_obstacle_dist = pt["distance"]
+            # Kiểm tra vật cản phía trước bằng tia LiDAR thời gian thực
+            front_obstacle_dist = self.get_front_distance()
 
             # Xử lý né vật cản an toàn
             if front_obstacle_dist < 0.40:
-                logger.warning(f"⚠️ Phát hiện vật cản trước mặt cự ly {front_obstacle_dist:.2f}m! Đang rẽ tránh...")
+                logger.warning(f"⚠️ Phát hiện vật cản trước mặt cự ly {front_obstacle_dist:.2f}m! Đang dừng & rẽ tránh...")
+                self.send_udp_motor_command("stop", force=True)
+                left_dist = self.get_left_distance()
+                right_dist = self.get_right_distance()
+                turn_cmd = "left" if left_dist > right_dist else "right"
+                yaw_step = -10.0 if turn_cmd == "left" else 10.0
                 self.send_udp_motor_command("speed:35")
-                self.send_udp_motor_command("left")
-                time.sleep(0.08)
-                self.send_udp_motor_command("stop")
-                self.robot_yaw = (self.robot_yaw - 8.0) % 360.0
+                self.send_udp_motor_command(turn_cmd, force=True)
+                time.sleep(0.12)
+                self.send_udp_motor_command("stop", force=True)
+                self.robot_yaw = (self.robot_yaw + yaw_step) % 360.0
                 time.sleep(0.05)
                 continue
 
@@ -457,26 +813,500 @@ class RPLidarSLAMCore:
         t = threading.Thread(target=_scan_worker, daemon=True)
         t.start()
 
+    # =========================================================================
+    # FRONTIER EXPLORATION ENGINE
+    # =========================================================================
+
+    def start_exploration(self, auto_save: bool = True, save_name: str = "auto_explored_map"):
+        """Bắt đầu chế độ tự động khám phá bản đồ (Greedy Frontier Exploration)."""
+        if self.is_exploring:
+            logger.warning("⚠️ Đang trong quá trình khám phá — bỏ qua lệnh mới.")
+            return
+        self.stop_navigation()
+        self.explored_frontiers = []
+        self.is_exploring = True
+        self.status = "EXPLORING"
+        logger.info("🗺️ BẮT ĐẦU KHÁM PHÁ TỰ ĐỘNG (Frontier Exploration)...")
+
+        def _worker():
+            self._exploration_loop(auto_save=auto_save, save_name=save_name)
+
+        self._explore_thread = threading.Thread(target=_worker, daemon=True)
+        self._explore_thread.start()
+
+    def stop_exploration(self):
+        """Dừng chế độ tự khám phá."""
+        self.is_exploring = False
+        self.send_udp_motor_command("stop")
+        self.status = "IDLE"
+        logger.info("🛑 Đã dừng khám phá tự động.")
+
+    def _find_frontier(self) -> Optional[tuple]:
+        """
+        Tìm ô frontier gần nhất: ô chưa rõ (-1) tiếp giáp với ô đã biết (0/100).
+        Trả về (world_x, world_y) của frontier đó, hoặc None nếu không còn.
+        """
+        with self._lock:
+            w = self.grid_width
+            h = self.grid_height
+            data = self.grid_data
+            rx = self.robot_x
+            ry = self.robot_y
+
+        best_frontier = None
+        best_score = float('inf')  # Ưu tiên frontier gần nhất
+
+        # Robot vị trí trong grid
+        robot_gx = int((rx - self.origin_x) / self.resolution)
+        robot_gy = int((ry - self.origin_y) / self.resolution)
+
+        for gy in range(1, h - 1):
+            for gx in range(1, w - 1):
+                idx = gy * w + gx
+                if data[idx] != -1:   # Chỉ xét ô chưa biết
+                    continue
+
+                # Kiểm tra xem có ít nhất 1 ô lân cận đã biết không
+                has_known_neighbor = False
+                for dgx, dgy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                    nidx = (gy + dgy) * w + (gx + dgx)
+                    if 0 <= nidx < len(data) and data[nidx] == 0:
+                        has_known_neighbor = True
+                        break
+
+                if not has_known_neighbor:
+                    continue
+
+                # Bỏ qua frontier đã thăm
+                world_x = self.origin_x + (gx + 0.5) * self.resolution
+                world_y = self.origin_y + (gy + 0.5) * self.resolution
+                frontier_key = (round(world_x, 1), round(world_y, 1))
+                if frontier_key in self.explored_frontiers:
+                    continue
+
+                dist = math.hypot(gx - robot_gx, gy - robot_gy)
+                if dist < best_score:
+                    best_score = dist
+                    best_frontier = (world_x, world_y)
+
+        return best_frontier
+
+    def _navigate_to_sync(self, target_x: float, target_y: float,
+                          timeout: float = 30.0, goal_radius: float = 0.25) -> bool:
+        """
+        Navigate đến điểm (target_x, target_y) theo kiểu synchronous (chặn thread cho đến khi đến nơi
+        hoặc timeout). Trả về True nếu đến được, False nếu thất bại/timeout.
+        """
+        deadline = time.time() + timeout
+        rate_hz = 10
+        dt = 1.0 / rate_hz
+        stuck_counter = 0
+        last_pos = (self.robot_x, self.robot_y)
+        stuck_check_interval = 20  # Kiểm tra stuck mỗi 2 giây
+
+        while time.time() < deadline:
+            dx = target_x - self.robot_x
+            dy = target_y - self.robot_y
+            dist = math.hypot(dx, dy)
+
+            if dist < goal_radius:
+                self.send_udp_motor_command("stop")
+                return True
+
+            # Kiểm tra stuck (robot không di chuyển)
+            stuck_counter += 1
+            if stuck_counter >= stuck_check_interval:
+                moved = math.hypot(self.robot_x - last_pos[0], self.robot_y - last_pos[1])
+                if moved < 0.03:  # Di chuyển < 3cm trong 2 giây = stuck
+                    logger.warning("⚠️ Robot bị kẹt — bỏ qua frontier này.")
+                    self.send_udp_motor_command("stop")
+                    return False
+                last_pos = (self.robot_x, self.robot_y)
+                stuck_counter = 0
+
+            # Tính góc mục tiêu
+            desired_yaw = (math.degrees(math.atan2(dx, dy)) + 360.0) % 360.0
+            yaw_error = (desired_yaw - self.robot_yaw + 540.0) % 360.0 - 180.0
+
+            # Kiểm tra vật cản phía trước
+            front_dist = self.get_front_distance()
+
+            if front_dist < 0.40:
+                logger.warning(f"⚠️ Frontier navigation: Vật cản phía trước cách {front_dist:.2f}m! Dừng & rẽ tránh...")
+                self.send_udp_motor_command("stop", force=True)
+                left_dist = self.get_left_distance()
+                right_dist = self.get_right_distance()
+                turn_cmd = "left" if left_dist > right_dist else "right"
+                yaw_step = -12.0 if turn_cmd == "left" else 12.0
+                self.send_udp_motor_command("speed:30")
+                self.send_udp_motor_command(turn_cmd, force=True)
+                time.sleep(0.10)
+                self.send_udp_motor_command("stop", force=True)
+                self.robot_yaw = (self.robot_yaw + yaw_step) % 360.0
+                time.sleep(0.05)
+                continue
+
+            if abs(yaw_error) > 15.0:
+                turn_cmd = "right" if yaw_error > 0 else "left"
+                yaw_step = 8.0 if yaw_error > 0 else -8.0
+                self.send_udp_motor_command("speed:30")
+                self.send_udp_motor_command(turn_cmd)
+                time.sleep(0.07)
+                self.send_udp_motor_command("stop")
+                self.robot_yaw = (self.robot_yaw + yaw_step) % 360.0
+                time.sleep(0.04)
+            else:
+                self.send_udp_motor_command("speed:45")
+                self.send_udp_motor_command("forward")
+                speed_mps = 0.18
+                rad = math.radians(self.robot_yaw)
+                self.robot_x += speed_mps * dt * math.sin(rad)
+                self.robot_y += speed_mps * dt * math.cos(rad)
+                self.linear_velocity = speed_mps
+                self.angular_velocity = 0.0
+                time.sleep(dt)
+
+        self.send_udp_motor_command("stop")
+        return False
+
+    def _exploration_loop(self, auto_save: bool = True, save_name: str = "auto_explored_map"):
+        """Vòng lặp khám phá: tìm frontier → di chuyển → quét → lặp cho đến khi hết frontier."""
+        # Quét 360 tại chỗ ban đầu
+        logger.info("📡 Quét 360° tại vị trí xuất phát...")
+        self.scan_room_360()
+        time.sleep(5.0)  # Chờ quét xong
+
+        max_frontiers = 200  # Giới hạn số frontier để tránh chạy vô tận
+        frontier_count = 0
+
+        while self.is_exploring and frontier_count < max_frontiers:
+            frontier = self._find_frontier()
+
+            if frontier is None:
+                logger.info("🎉 KHÁM PHÁ HOÀN THÀNH — Không còn frontier chưa thăm!")
+                break
+
+            fx, fy = frontier
+            frontier_count += 1
+            logger.info(f"🧭 [{frontier_count}] Di chuyển tới frontier ({fx:.2f}, {fy:.2f})...")
+
+            success = self._navigate_to_sync(fx, fy, timeout=25.0, goal_radius=0.30)
+            frontier_key = (round(fx, 1), round(fy, 1))
+            self.explored_frontiers.append(frontier_key)
+
+            if success:
+                # Quét tại frontier mới
+                self.send_udp_motor_command("stop")
+                time.sleep(0.3)
+                # Quét nhỏ 90° để thu dữ liệu sắc nét hơn
+                for _ in range(9):
+                    if not self.is_exploring:
+                        break
+                    self.send_udp_motor_command("speed:25")
+                    self.send_udp_motor_command("right")
+                    time.sleep(0.06)
+                    self.send_udp_motor_command("stop")
+                    self.robot_yaw = (self.robot_yaw + 10.0) % 360.0
+                    time.sleep(0.15)
+            else:
+                logger.warning(f"⚠️ Không đến được frontier ({fx:.2f}, {fy:.2f}) — bỏ qua.")
+
+        # Kết thúc khám phá
+        self.send_udp_motor_command("stop")
+        self.status = "IDLE"
+        self.is_exploring = False
+        logger.info(f"🗺️ Khám phá hoàn tất — đã thăm {frontier_count} frontier.")
+
+        if auto_save:
+            result = self.save_map(save_name)
+            logger.info(f"💾 Tự động lưu bản đồ: {result}")
+
+    # =========================================================================
+    # STATIC OVERLAY MAP
+    # =========================================================================
+
+    def load_overlay_map(self, overlay_path: str) -> bool:
+        """
+        Nạp floor plan JSON cứng (bản đồ overlay).
+        Format:
+        {
+          "width": 200, "height": 200,
+          "resolution": 0.05, "origin_x": -5.0, "origin_y": -5.0,
+          "walls": [[gx, gy], ...],          # Ô tường cứng
+          "waypoints": [{"name": "Lobby", "x": 1.2, "y": 0.5}, ...],
+          "zones": [{"name": "Reception", "type": "poi", "x": 0.5, "y": 1.0, "radius": 0.5}],
+          "no_go_zones": [[gx, gy], ...]     # Vùng cấm robot
+        }
+        """
+        try:
+            with open(overlay_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+
+            w = data.get("width", self.grid_width)
+            h = data.get("height", self.grid_height)
+
+            overlay = [-1] * (w * h)
+
+            # Vẽ tường cứng
+            for gx, gy in data.get("walls", []):
+                if 0 <= gx < w and 0 <= gy < h:
+                    overlay[gy * w + gx] = 100
+
+            # Vùng no-go cũng là tường cứng
+            for gx, gy in data.get("no_go_zones", []):
+                if 0 <= gx < w and 0 <= gy < h:
+                    overlay[gy * w + gx] = 100
+
+            with self._lock:
+                self._overlay_grid = overlay
+                self._overlay_waypoints = data.get("waypoints", [])
+                self._overlay_zones = data.get("zones", [])
+                self._overlay_active = True
+
+            logger.info(f"🏢 Đã nạp overlay map: {len(data.get('walls', []))} tường, "
+                        f"{len(self._overlay_waypoints)} waypoints.")
+            return True
+        except Exception as e:
+            logger.error(f"❌ Lỗi nạp overlay map: {e}")
+            return False
+
+    def merge_maps(self) -> List[int]:
+        """
+        Hợp nhất LiDAR map + Overlay map:
+        - Overlay tường cứng ghi đè lên LiDAR map (tường cứng luôn thắng)
+        - Vùng trống trong overlay KHÔNG xóa vật cản LiDAR (thực tế thắng)
+        """
+        with self._lock:
+            lidar = list(self.grid_data)
+            overlay = list(self._overlay_grid)
+
+        if not overlay or len(overlay) != len(lidar):
+            return lidar
+
+        merged = []
+        for i, lval in enumerate(lidar):
+            oval = overlay[i]
+            if oval == 100:        # Tường cứng luôn thắng
+                merged.append(100)
+            else:
+                merged.append(lval)
+        return merged
+
+    def save_overlay_template(self, name: str = "floor_plan") -> str:
+        """Tạo file JSON template overlay map rỗng để user chỉnh sửa."""
+        template = {
+            "name": name,
+            "description": "Static floor plan overlay cho HC-Robot",
+            "width": self.grid_width,
+            "height": self.grid_height,
+            "resolution": self.resolution,
+            "origin_x": self.origin_x,
+            "origin_y": self.origin_y,
+            "walls": [],
+            "no_go_zones": [],
+            "waypoints": [
+                {"name": "Diem_Xuat_Phat", "x": 0.0, "y": 0.0, "description": "Vị trí gốc/dock"},
+                {"name": "Vi_Tri_A",      "x": 1.0, "y": 0.0, "description": "Điền tọa độ thực"},
+            ],
+            "zones": [
+                {"name": "Reception", "type": "poi", "x": 0.5, "y": 1.0, "radius": 0.5},
+            ],
+        }
+        path = os.path.join(MAPS_DIR, f"{name}_overlay.json")
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(template, f, indent=2, ensure_ascii=False)
+        logger.info(f"📄 Đã tạo template overlay map tại: {path}")
+        return path
+
+    # =========================================================================
+    # WORKFLOW ENGINE
+    # =========================================================================
+
+    def list_workflows(self) -> List[Dict]:
+        """Lấy danh sách tất cả workflow đã lưu."""
+        workflows = []
+        for fname in sorted(os.listdir(WORKFLOWS_DIR)):
+            if fname.endswith(".json"):
+                fpath = os.path.join(WORKFLOWS_DIR, fname)
+                try:
+                    with open(fpath, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    workflows.append({
+                        "id": data.get("id", fname.replace(".json", "")),
+                        "name": data.get("name", ""),
+                        "description": data.get("description", ""),
+                        "created_at": data.get("created_at", ""),
+                        "step_count": len(data.get("steps", [])),
+                    })
+                except Exception:
+                    pass
+        return workflows
+
+    def save_workflow(self, workflow: Dict) -> str:
+        """Lưu workflow ra file JSON."""
+        wid = workflow.get("id") or f"wf_{int(time.time())}"
+        workflow["id"] = wid
+        workflow["created_at"] = workflow.get("created_at") or time.strftime("%Y-%m-%d %H:%M:%S")
+        path = os.path.join(WORKFLOWS_DIR, f"{wid}.json")
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(workflow, f, indent=2, ensure_ascii=False)
+        logger.info(f"💾 Đã lưu workflow '{workflow.get('name', wid)}'")
+        return wid
+
+    def delete_workflow(self, wid: str) -> bool:
+        """Xóa workflow."""
+        path = os.path.join(WORKFLOWS_DIR, f"{wid}.json")
+        if os.path.exists(path):
+            os.remove(path)
+            return True
+        return False
+
+    def execute_workflow(self, wid: str) -> bool:
+        """Thực thi workflow theo ID trong background thread."""
+        if self.is_workflow_running:
+            logger.warning("⚠️ Đã có workflow đang chạy — dừng workflow hiện tại trước.")
+            self.stop_workflow()
+
+        path = os.path.join(WORKFLOWS_DIR, f"{wid}.json")
+        if not os.path.exists(path):
+            logger.error(f"❌ Không tìm thấy workflow '{wid}'")
+            return False
+
+        with open(path, "r", encoding="utf-8") as f:
+            wf = json.load(f)
+
+        self.active_workflow = wf
+        self.is_workflow_running = True
+        self.workflow_step_index = 0
+        self.workflow_progress = {
+            "id": wid, "name": wf.get("name", ""),
+            "total_steps": len(wf.get("steps", [])),
+            "current_step": 0, "status": "RUNNING",
+        }
+        self.status = "WORKFLOW_RUNNING"
+
+        self._workflow_thread = threading.Thread(target=self._workflow_loop, daemon=True)
+        self._workflow_thread.start()
+        logger.info(f"▶️ Bắt đầu Workflow: {wf.get('name', wid)} ({len(wf.get('steps', []))} bước)")
+        return True
+
+    def stop_workflow(self):
+        """Dừng workflow đang chạy."""
+        self.is_workflow_running = False
+        self.active_workflow = None
+        self.workflow_progress["status"] = "STOPPED"
+        self.status = "IDLE"
+        self.send_udp_motor_command("stop")
+        logger.info("🛑 Đã dừng workflow.")
+
+    def _workflow_loop(self):
+        """
+        Thực thi từng bước workflow:
+        Mỗi step: { "name": "...", "action": "navigate|wait|scan_360|custom",
+                    "x": float, "y": float, "wait_sec": float, "speed": int }
+        """
+        wf = self.active_workflow
+        steps = wf.get("steps", [])
+
+        for i, step in enumerate(steps):
+            if not self.is_workflow_running:
+                break
+
+            self.workflow_step_index = i
+            self.workflow_progress["current_step"] = i + 1
+            step_name = step.get("name", f"Bước {i + 1}")
+            action = step.get("action", "navigate")
+
+            logger.info(f"📍 [WF {i+1}/{len(steps)}] {step_name} — Hành động: {action}")
+
+            if action == "navigate":
+                tx = step.get("x", self.robot_x)
+                ty = step.get("y", self.robot_y)
+                timeout = step.get("timeout", 45.0)
+                success = self._navigate_to_sync(tx, ty, timeout=timeout)
+                if success:
+                    logger.info(f"✅ [{step_name}] Đã đến ({tx:.2f}, {ty:.2f})")
+                else:
+                    logger.warning(f"⚠️ [{step_name}] Không đến được ({tx:.2f}, {ty:.2f}) — tiếp tục")
+
+            elif action == "scan_360":
+                logger.info(f"🔄 [{step_name}] Quét 360°...")
+                self.scan_room_360()
+                time.sleep(6.0)  # Chờ quét xong
+
+            elif action == "wait":
+                wait_sec = step.get("wait_sec", 2.0)
+                logger.info(f"⏱️ [{step_name}] Dừng {wait_sec}s...")
+                self.send_udp_motor_command("stop")
+                deadline = time.time() + wait_sec
+                while time.time() < deadline and self.is_workflow_running:
+                    time.sleep(0.1)
+
+            elif action == "return_home":
+                logger.info(f"🏠 [{step_name}] Quay về gốc (0, 0)...")
+                self._navigate_to_sync(0.0, 0.0, timeout=60.0)
+
+        # Workflow hoàn thành
+        self.send_udp_motor_command("stop")
+        self.is_workflow_running = False
+        self.active_workflow = None
+        self.status = "IDLE"
+        self.workflow_progress["status"] = "COMPLETED"
+        logger.info("🎉 WORKFLOW HOÀN THÀNH!")
+
 
 # Khởi tạo singleton Core
 slam_core = RPLidarSLAMCore()
 
-# Khởi tạo FastAPI Server cho Web Admin
-app = FastAPI(title="HC-Robot Pi5 LiDAR SLAM & Navigation Service")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Khởi tạo FastAPI Server cho Web Admin (hoặc DummyApp nếu chạy test offline)
+if HAS_FASTAPI:
+    app = FastAPI(title="HC-Robot Pi5 LiDAR SLAM & Navigation Service")
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+else:
+    class DummyApp:
+        def get(self, *args, **kwargs): return lambda f: f
+        def post(self, *args, **kwargs): return lambda f: f
+        def delete(self, *args, **kwargs): return lambda f: f
+        def websocket(self, *args, **kwargs): return lambda f: f
+    app = DummyApp()
 
 
 class NavigateGoalRequest(BaseModel):
     target_x: float
     target_y: float
     target_yaw: Optional[float] = None
+
+
+class ExploreStartRequest(BaseModel):
+    auto_save: bool = True
+    save_name: str = "auto_explored_map"
+
+
+class WorkflowStep(BaseModel):
+    name: str
+    action: str  # navigate | wait | scan_360 | return_home
+    x: Optional[float] = None
+    y: Optional[float] = None
+    wait_sec: Optional[float] = 2.0
+    timeout: Optional[float] = 45.0
+    speed: Optional[int] = 45
+
+
+class WorkflowCreateRequest(BaseModel):
+    id: Optional[str] = None
+    name: str
+    description: Optional[str] = ""
+    steps: List[WorkflowStep]
+
+
+class OverlayLoadRequest(BaseModel):
+    map_name: str  # Tên file overlay (trong MAPS_DIR): ví dụ "floor_plan_overlay"
 
 
 @app.get("/api/v1/map/current")
@@ -519,6 +1349,47 @@ async def connect_lidar():
 async def reset_map():
     slam_core.reset_map()
     return {"status": "SUCCESS", "message": "Đã xóa trắng bản đồ 2D Occupancy Grid"}
+
+
+class SaveMapRequest(BaseModel):
+    name: Optional[str] = "floor1_map"
+
+
+@app.post("/api/v1/map/save")
+async def save_map_endpoint(req: Optional[SaveMapRequest] = None):
+    map_name = (req.name if req and req.name else None) or f"map_{int(time.time())}"
+    res = slam_core.save_map(map_name)
+    return {
+        "status": "SUCCESS",
+        "message": f"Đã lưu bản đồ '{map_name}' thành công (JSON + ROS 2 YAML/PGM)",
+        "data": res,
+    }
+
+
+@app.get("/api/v1/map/saved_list")
+async def get_saved_maps():
+    maps = slam_core.list_saved_maps()
+    return {"status": "SUCCESS", "maps": maps, "count": len(maps)}
+
+
+class LoadMapRequest(BaseModel):
+    name: str
+
+
+@app.post("/api/v1/map/load")
+async def load_map_endpoint(req: LoadMapRequest):
+    ok = slam_core.load_map(req.name)
+    if ok:
+        return {"status": "SUCCESS", "message": f"Đã nạp bản đồ '{req.name}' vào hệ thống"}
+    return {"status": "FAILED", "message": f"Không tìm thấy hoặc không đọc được bản đồ '{req.name}'"}
+
+
+@app.delete("/api/v1/map/saved/{name}")
+async def delete_map_endpoint(name: str):
+    ok = slam_core.delete_map(name)
+    if ok:
+        return {"status": "SUCCESS", "message": f"Đã xóa bản đồ '{name}'"}
+    return {"status": "FAILED", "message": f"Không tìm thấy bản đồ '{name}'"}
 
 
 @app.post("/api/v1/map/scan_360")
@@ -568,6 +1439,137 @@ async def navigate_to_point(req: NavigateGoalRequest):
     }
 
 
+# ─── FRONTIER EXPLORATION ────────────────────────────────────────────────────
+
+@app.post("/api/v1/map/explore/start")
+async def start_exploration(req: Optional[ExploreStartRequest] = None):
+    auto_save = req.auto_save if req else True
+    save_name = req.save_name if req else "auto_explored_map"
+    slam_core.start_exploration(auto_save=auto_save, save_name=save_name)
+    return {
+        "status": "SUCCESS",
+        "message": "Robot đang bắt đầu khám phá tự động (Frontier Exploration)",
+        "auto_save": auto_save,
+        "save_name": save_name,
+    }
+
+
+@app.post("/api/v1/map/explore/stop")
+async def stop_exploration():
+    slam_core.stop_exploration()
+    return {"status": "SUCCESS", "message": "Đã dừng khám phá tự động"}
+
+
+# ─── STATIC OVERLAY MAP ──────────────────────────────────────────────────────
+
+@app.post("/api/v1/map/overlay/load")
+async def load_overlay(req: OverlayLoadRequest):
+    safe_name = "".join(c for c in req.map_name if c.isalnum() or c in ("_", "-")).strip()
+    candidates = [
+        os.path.join(MAPS_DIR, f"{safe_name}.json"),
+        os.path.join(MAPS_DIR, f"{safe_name}_overlay.json"),
+    ]
+    if safe_name.endswith("_overlay"):
+        base_name = safe_name[:-8]
+        candidates.append(os.path.join(MAPS_DIR, f"{base_name}.json"))
+    
+    overlay_path = None
+    for c in candidates:
+        if os.path.exists(c):
+            overlay_path = c
+            break
+
+    if not overlay_path:
+        return {"status": "FAILED", "message": f"Không tìm thấy overlay map '{safe_name}' (đã tìm trong {MAPS_DIR})"}
+
+    ok = slam_core.load_overlay_map(overlay_path)
+    if ok:
+        return {"status": "SUCCESS", "message": f"Đã nạp overlay map từ '{os.path.basename(overlay_path)}'",
+                "waypoints": slam_core._overlay_waypoints,
+                "zones": slam_core._overlay_zones}
+    return {"status": "FAILED", "message": f"Không thể giải mã file overlay '{safe_name}'"}
+
+
+@app.post("/api/v1/map/overlay/disable")
+async def disable_overlay():
+    slam_core._overlay_active = False
+    return {"status": "SUCCESS", "message": "Đã tắt overlay map"}
+
+
+@app.get("/api/v1/map/overlay/template")
+async def create_overlay_template(name: str = "floor_plan"):
+    path = slam_core.save_overlay_template(name)
+    return {"status": "SUCCESS", "message": f"Đã tạo template tại {path}", "path": path}
+
+
+@app.get("/api/v1/map/merged")
+async def get_merged_map():
+    """Trả về bản đồ đã merge LiDAR + Overlay."""
+    merged = slam_core.merge_maps()
+    meta = slam_core.get_grid_map()
+    waypoints = slam_core._overlay_waypoints if slam_core._overlay_active else []
+    zones = slam_core._overlay_zones if slam_core._overlay_active else []
+    return {
+        "status": "SUCCESS",
+        "width": meta["width"],
+        "height": meta["height"],
+        "resolution": meta["resolution"],
+        "origin_x": meta["origin_x"],
+        "origin_y": meta["origin_y"],
+        "grid_data": merged,
+        "overlay_active": slam_core._overlay_active,
+        "waypoints": waypoints,
+        "zones": zones,
+    }
+
+
+# ─── WORKFLOW ENGINE ──────────────────────────────────────────────────────────
+
+@app.get("/api/v1/workflow/list")
+async def list_workflows():
+    wfs = slam_core.list_workflows()
+    return {"status": "SUCCESS", "workflows": wfs, "count": len(wfs)}
+
+
+@app.post("/api/v1/workflow/create")
+async def create_workflow(req: WorkflowCreateRequest):
+    wf_dict = req.dict()
+    wid = slam_core.save_workflow(wf_dict)
+    return {"status": "SUCCESS", "message": f"Đã lưu workflow '{req.name}'", "id": wid}
+
+
+@app.post("/api/v1/workflow/execute/{wid}")
+async def execute_workflow(wid: str):
+    ok = slam_core.execute_workflow(wid)
+    if ok:
+        return {"status": "SUCCESS", "message": f"Đang thực thi workflow '{wid}'"}
+    return {"status": "FAILED", "message": f"Không tìm thấy workflow '{wid}' hoặc lỗi khởi động"}
+
+
+@app.post("/api/v1/workflow/stop")
+async def stop_workflow():
+    slam_core.stop_workflow()
+    return {"status": "SUCCESS", "message": "Đã dừng workflow"}
+
+
+@app.delete("/api/v1/workflow/{wid}")
+async def delete_workflow(wid: str):
+    ok = slam_core.delete_workflow(wid)
+    if ok:
+        return {"status": "SUCCESS", "message": f"Đã xóa workflow '{wid}'"}
+    return {"status": "FAILED", "message": f"Không tìm thấy workflow '{wid}'"}
+
+
+@app.get("/api/v1/workflow/status")
+async def workflow_status():
+    return {
+        "status": "SUCCESS",
+        "is_running": slam_core.is_workflow_running,
+        "progress": slam_core.workflow_progress,
+        "robot_status": slam_core.status,
+    }
+
+
 @app.websocket("/api/v1/map/ws")
 async def map_ws_endpoint(websocket: WebSocket):
     await websocket.accept()
@@ -595,8 +1597,20 @@ async def map_ws_endpoint(websocket: WebSocket):
                 "linear_velocity": round(slam_core.linear_velocity, 2),
                 "angular_velocity": round(slam_core.angular_velocity, 1),
                 "status": slam_core.status,
+                "is_exploring": slam_core.is_exploring,
+                "is_workflow_running": slam_core.is_workflow_running,
+                "workflow_progress": slam_core.workflow_progress,
+                "overlay_active": slam_core._overlay_active,
+                "overlay_waypoints": slam_core._overlay_waypoints if slam_core._overlay_active else [],
                 "scan_points": scans,
-                "grid_data": map_data["grid_data"],
+                "safety": {
+                    "front_cm": round(slam_core.get_front_distance() * 100, 1) if slam_core.get_front_distance() < 90 else None,
+                    "rear_cm": round(slam_core.get_rear_distance() * 100, 1) if slam_core.get_rear_distance() < 90 else None,
+                    "left_cm": round(slam_core.get_left_distance() * 100, 1) if slam_core.get_left_distance() < 90 else None,
+                    "right_cm": round(slam_core.get_right_distance() * 100, 1) if slam_core.get_right_distance() < 90 else None,
+                    "alert": getattr(slam_core, "last_safety_alert", ""),
+                },
+                "grid_data": slam_core.merge_maps() if slam_core._overlay_active else map_data["grid_data"],
                 "grid_metadata": {
                     "width": map_data["width"],
                     "height": map_data["height"],

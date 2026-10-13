@@ -7,7 +7,7 @@
 set -e
 
 SERVICE_FILE="/etc/systemd/system/hc-robot.service"
-ROBOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+ROBOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 echo "==> Dang tao file dich vu systemd tai $SERVICE_FILE..."
 

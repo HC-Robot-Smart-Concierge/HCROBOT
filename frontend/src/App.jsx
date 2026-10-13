@@ -219,21 +219,27 @@ export function App() {
     }
   }, [activeMenu]);
 
-  // Tab History chỉ dành riêng cho bộ phận Concierge
+  // Tab History & Concierge Menus synchronization
   useEffect(() => {
-    if (activeMenu === 'History') {
-      const deptLower = (currentUser?.department || '').toLowerCase();
-      const roleLower = (currentUser?.role || '').toLowerCase();
-      const defaultDashLower = (currentUser?.default_dashboard || currentUser?.defaultDashboard || '').toLowerCase();
-      const isConcierge =
-        activeView === 'concierge' ||
-        deptLower.includes('concierge') ||
-        roleLower.includes('concierge') ||
-        defaultDashLower === 'concierge';
+    const deptLower = (currentUser?.department || '').toLowerCase();
+    const roleLower = (currentUser?.role || '').toLowerCase();
+    const defaultDashLower = (currentUser?.default_dashboard || currentUser?.defaultDashboard || '').toLowerCase();
+    const isConcierge =
+      activeView === 'concierge' ||
+      deptLower.includes('concierge') ||
+      roleLower.includes('concierge') ||
+      defaultDashLower === 'concierge';
 
-      if (!isConcierge) {
-        setActiveMenu('Dashboard');
-      }
+    if (activeMenu === 'History' && !isConcierge) {
+      setActiveMenu('Dashboard');
+    }
+
+    if (isConcierge && activeMenu === 'Dashboard') {
+      setActiveMenu('LiveCalls');
+    }
+
+    if (!isConcierge && ['LiveCalls', 'Recordings', 'Taxi', 'Feedback'].includes(activeMenu)) {
+      setActiveMenu('Dashboard');
     }
   }, [activeMenu, activeView, currentUser]);
 
@@ -673,11 +679,25 @@ export function App() {
             />
 
             {/* Dynamic View rendering based on activeMenu */}
-            {activeMenu === 'Dashboard' && (
+            {((activeMenu === 'Dashboard' && !usesReferenceLayout && !['concierge', 'taxi'].includes(activeView)) ||
+              (['LiveCalls', 'Recordings', 'Taxi', 'Feedback', 'Dashboard'].includes(activeMenu) &&
+                (['concierge', 'taxi'].includes(activeView) || (currentUser?.department || '').toLowerCase().includes('concierge')))) && (
               activeView === 'restaurant' ? (
                 <RestaurantDashboard currentUser={currentUser} onNotify={showNotification} />
-              ) : activeView === 'concierge' || activeView === 'taxi' ? (
-                <ConciergeDashboard currentUser={currentUser} onNotify={showNotification} />
+              ) : activeView === 'concierge' || activeView === 'taxi' || (currentUser?.department || '').toLowerCase().includes('concierge') ? (
+                <ConciergeDashboard
+                  currentUser={currentUser}
+                  onNotify={showNotification}
+                  activeSubTab={
+                    activeMenu === 'Recordings'
+                      ? 'recordings'
+                      : activeMenu === 'Taxi'
+                      ? 'taxi'
+                      : activeMenu === 'Feedback'
+                      ? 'feedback'
+                      : 'live_call'
+                  }
+                />
               ) : (
                 <StaffOverviewDashboard
                   currentUser={currentUser}
@@ -685,6 +705,17 @@ export function App() {
                 />
               )
             )}
+
+            {/* General Staff Dashboard when activeMenu === 'Dashboard' */}
+            {activeMenu === 'Dashboard' &&
+              !['concierge', 'taxi'].includes(activeView) &&
+              !(currentUser?.department || '').toLowerCase().includes('concierge') &&
+              activeView !== 'restaurant' && (
+                <StaffOverviewDashboard
+                  currentUser={currentUser}
+                  onNotify={showNotification}
+                />
+              )}
 
             {/* Requests Page (Role-Filtered) */}
             {activeMenu === 'Requests' && (
@@ -719,7 +750,7 @@ export function App() {
               />
             )}
             {/* Default Dashboard Fallback if activeMenu is unrecognized */}
-            {!['Dashboard', 'Requests', 'History', 'Notifications', 'Profile'].includes(activeMenu) && (
+            {!['Dashboard', 'LiveCalls', 'Recordings', 'Taxi', 'Feedback', 'Requests', 'History', 'Notifications', 'Profile'].includes(activeMenu) && (
               <RequestsPage currentUser={currentUser} onNotify={showNotification} />
             )}
           </div>

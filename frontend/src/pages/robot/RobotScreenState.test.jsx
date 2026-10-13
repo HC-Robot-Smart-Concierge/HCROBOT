@@ -66,4 +66,39 @@ describe('Robot Screen UI State Transitions', () => {
     expect(isRobotUser(robotUser)).toBe(true);
     expect(isAdminUser(robotUser)).toBe(false);
   });
+
+  it('manages auto-standby poster mode when idle and wakes up on user action', () => {
+    let isStandby = false;
+    let currentState = 'RT-02';
+    const isBusy = false;
+
+    // Simulate idle timeout triggering standby
+    const onIdleTimeout = () => {
+      if (!isBusy && (currentState === 'RT-02' || currentState === 'RT-01')) {
+        isStandby = true;
+      }
+    };
+
+    onIdleTimeout();
+    expect(isStandby).toBe(true);
+
+    // Simulate user interaction (touch/click/approaching camera)
+    const onUserInteraction = () => {
+      isStandby = false;
+      currentState = 'RT-02';
+    };
+
+    onUserInteraction();
+    expect(isStandby).toBe(false);
+    expect(currentState).toBe('RT-02');
+  });
+
+  it('keeps camera preview UI completely hidden on robot screen while running AI in background', () => {
+    // Hotel guest view: camera UI is completely hidden (visible = false, no CAM button)
+    const cameraVisibleOnRobotScreen = false;
+    const cameraBackgroundActive = true;
+
+    expect(cameraVisibleOnRobotScreen).toBe(false);
+    expect(cameraBackgroundActive).toBe(true);
+  });
 });

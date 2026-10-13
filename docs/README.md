@@ -21,6 +21,13 @@ Chào mừng bạn đến với trung tâm tài liệu kỹ thuật của dự �
 * **[Test Harness & Đánh Giá LangGraph](guides/langgraph_harness.md)**:
   * Framework kiểm thử tự động hộp đen/hộp trắng cho LangGraph Concierge State Machine.
   * Kịch bản benchmark độ chính xác định tuyến ý định (Intent Routing) và trích xuất tham số slot.
+* **[Kiến Trúc Thu Thập Đánh Giá & Vòng Đời Hội Thoại (Feedback & Session Lifecycle)](guides/robot_feedback_architecture.md)**:
+  * Cơ chế nút kết thúc hội thoại, Modal đánh giá 5 sao chuẩn Kiosk 3 giây.
+  * Quy trình lưu trữ hội thoại End-of-Session và cảnh báo đánh giá tệ (≤ 3 sao) tới Concierge.
+* **[Cơ Chế Bảo Mật Thoát Kiosk: Secret Multi-Tap Gesture (Kiosk Exit Architecture)](guides/kiosk_security_exit.md)**:
+  * Quy trình ẩn hoàn toàn nút đăng xuất khỏi khách hàng (Zero-Exposure UI).
+  * Cơ chế Secret Multi-Tap (Gõ 5 lần liên tiếp trong 2 giây vào Logo hoặc góc bí mật) trên Web & App Mobile.
+  * Phím tắt bảo mật (`Ctrl + Shift + L` / `Escape` x3) và lớp xác thực mật khẩu nhân viên.
 
 ### 3. Kịch Bản Tương Tác & Tự Động Hóa (Workflows)
 * **[Đặc Tả 7 Core Workflows (Stepflow)](workflows/stepflow.md)**:

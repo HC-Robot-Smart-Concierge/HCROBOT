@@ -59,12 +59,25 @@ export default defineConfig({
         ws: true,
         configure: (proxy) => {
           proxy.on('error', (err) => {
-            if (err?.code === 'ECONNRESET') return;
-            console.warn('[Vite Proxy]', err.message);
+            if (['ECONNRESET', 'ECONNABORTED', 'EPIPE', 'ECONNREFUSED'].includes(err.code)) {
+              return;
+            }
+            console.warn('[vite proxy error]:', err.message);
           });
-          proxy.on('proxyReqWs', (proxyReq, req, socket) => {
-            socket.on('error', (err) => {
-              if (err?.code === 'ECONNRESET') return;
+          proxy.on('open', (proxySocket) => {
+            proxySocket.on('error', (err) => {
+              if (['ECONNRESET', 'ECONNABORTED', 'EPIPE', 'ECONNREFUSED'].includes(err.code)) {
+                return;
+              }
+              console.warn('[vite proxy target socket error]:', err.message);
+            });
+          });
+          proxy.on('proxyReqWs', (_proxyReq, _req, clientSocket) => {
+            clientSocket.on('error', (err) => {
+              if (['ECONNRESET', 'ECONNABORTED', 'EPIPE', 'ECONNREFUSED'].includes(err.code)) {
+                return;
+              }
+              console.warn('[vite proxy client socket error]:', err.message);
             });
           });
         },

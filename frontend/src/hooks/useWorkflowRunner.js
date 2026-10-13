@@ -108,8 +108,10 @@ export function useWorkflowRunner({
         ? (activeStep.params?.speech_text || activeStep.params?.text)
         : null;
 
+    const voiceSpeed = parseFloat(activeStep.params?.voice_speed) || 1.0;
+
     if (voiceText && voiceText.trim() && speak) {
-      speak(voiceText, activeStep.params?.language || 'vi-VN');
+      speak(voiceText, activeStep.params?.language || 'vi-VN', null, null, null, voiceSpeed);
     }
 
     timerRef.current = setTimeout(() => {

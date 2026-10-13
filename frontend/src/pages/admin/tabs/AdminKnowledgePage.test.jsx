@@ -75,10 +75,7 @@ describe('AdminKnowledgePage Dialogue Scenarios Filtering and Fast-Path State', 
       return `Nhanh (${rate}x)`;
     };
 
-    const validVoiceModels = [
-      'vi-VN-HoaiMyNeural',
-      'vi-VN-NamMinhNeural',
-    ];
+    const standardVoice = 'vi-VN-HoaiMyNeural';
 
     it('formats speech rate speed tags correctly', () => {
       expect(formatSpeedLabel(1.0)).toBe('Chuẩn (1.0x)');
@@ -86,10 +83,8 @@ describe('AdminKnowledgePage Dialogue Scenarios Filtering and Fast-Path State', 
       expect(formatSpeedLabel(1.15)).toBe('Nhanh (1.15x)');
     });
 
-    it('supports official high quality Vietnamese Neural voice models', () => {
-      expect(validVoiceModels).toContain('vi-VN-HoaiMyNeural');
-      expect(validVoiceModels).toContain('vi-VN-NamMinhNeural');
-      expect(validVoiceModels).toHaveLength(2);
+    it('uses official standard Vietnamese Neural voice model for Rora robot', () => {
+      expect(standardVoice).toBe('vi-VN-HoaiMyNeural');
     });
   });
 });

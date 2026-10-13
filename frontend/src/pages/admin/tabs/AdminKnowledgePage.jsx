@@ -932,31 +932,15 @@ export const AdminKnowledgePage = () => {
                 </div>
               </div>
 
-              {/* Lựa chọn giọng đọc */}
-              <div>
-                <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-700 mb-1.5">
-                  Giọng Đọc EdgeTTS Neural
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  {[
-                    { id: 'vi-VN-HoaiMyNeural', name: 'Hoài My (Nữ)', desc: 'Tự nhiên, nhẹ nhàng' },
-                    { id: 'vi-VN-NamMinhNeural', name: 'Nam Minh (Nam)', desc: 'Ấm áp, truyền cảm' },
-                  ].map((voice) => (
-                    <button
-                      key={voice.id}
-                      type="button"
-                      onClick={() => setTempVoice(voice.id)}
-                      className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
-                        tempVoice === voice.id
-                          ? 'bg-indigo-50/80 border-indigo-400 ring-1 ring-indigo-400'
-                          : 'bg-white border-stone-200 hover:bg-stone-50'
-                      }`}
-                    >
-                      <div className="text-xs font-bold text-stone-800">{voice.name}</div>
-                      <div className="text-[10px] text-stone-500">{voice.desc}</div>
-                    </button>
-                  ))}
+              {/* Giọng đọc chuẩn của Robot Rora */}
+              <div className="flex items-center justify-between p-2.5 bg-white rounded-xl border" style={{ borderColor: '#E9E5DC' }}>
+                <div>
+                  <div className="text-[11px] font-bold text-stone-700">Giọng đọc Robot (Rora)</div>
+                  <div className="text-[10px] text-stone-500">EdgeTTS Hoài My Neural (Chuẩn tự nhiên)</div>
                 </div>
+                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                  Hoài My (Nữ)
+                </span>
               </div>
 
               {/* Nút nghe thử trực tiếp */}

@@ -61,6 +61,19 @@ class TTSResponse(BaseModel):
     provider_used: str = Field("edge", description="Provider TTS đã được sử dụng thực tế (edge, elevenlabs, openai, browser)")
 
 
+class VoiceSettingsRequest(BaseModel):
+    speech_rate: float = Field(1.0, ge=0.5, le=2.0, description="Tốc độ nói từ 0.5x đến 2.0x")
+    vi_voice: Optional[str] = Field("vi-VN-HoaiMyNeural", description="Giọng đọc tiếng Việt (VD: vi-VN-HoaiMyNeural, vi-VN-NamMinhNeural)")
+    en_voice: Optional[str] = Field("en-US-JennyNeural", description="Giọng đọc tiếng Anh")
+
+
+class VoiceSettingsResponse(BaseModel):
+    speech_rate: float = Field(1.0, description="Tốc độ nói float (0.5 - 2.0)")
+    rate_percentage: str = Field("+0%", description="Tốc độ theo định dạng % của EdgeTTS")
+    vi_voice: str = Field("vi-VN-HoaiMyNeural", description="Giọng tiếng Việt đang dùng")
+    en_voice: str = Field("en-US-JennyNeural", description="Giọng tiếng Anh đang dùng")
+
+
 class FeedbackCreate(BaseModel):
     chat_session_id: Optional[str] = None
     rating: int = Field(5, ge=1, le=5, description="Số sao đánh giá từ 1 đến 5")

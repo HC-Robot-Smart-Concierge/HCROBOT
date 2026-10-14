@@ -19,6 +19,8 @@ from app.schemas.ai import (
     SessionResetRequest,
     TTSRequest,
     TTSResponse,
+    VoiceSettingsRequest,
+    VoiceSettingsResponse,
     FeedbackCreate,
     FeedbackResponse,
 )
@@ -154,28 +156,41 @@ async def chat_with_robot(request: ChatRequest, db: AsyncSession = Depends(get_d
         # TỰ ĐỘNG NHẬN DIỆN MÃ ĐIỂM ĐẾN POI ĐỂ ĐỒNG BỘ BẢN ĐỒ 8 TẦNG (0ms Sync)
         destination_key = graph_result.get("destination_key")
         if not destination_key:
-            p_lower = (request.prompt or "").lower()
-            rep_lower = (reply or "").lower()
-
-            # 1. Nhận diện phòng cụ thể theo số phòng (Tầng 3: 301-309, Tầng 4: 401-406)
-            room_3_match = re.search(r'\b(30[1-9])\b', p_lower)
-            room_4_match = re.search(r'\b(40[1-6])\b', p_lower)
-
-            if room_4_match:
-                destination_key = f"room_{room_4_match.group(1)}"
-            elif room_3_match:
-                destination_key = f"room_{room_3_match.group(1)}"
-            # 2. Tiện ích Tầng 6 (Rooftop & Giải trí)
-            elif any(k in p_lower for k in ["cafe", "cà phê", "coffee", "rooftop coffee", "quán cafe", "quán cà phê"]):
+            p_lower = request.prompt.lower()
+            
+            # 1. Nhận diện các phòng Tầng 4 (401 -> 409)
+            room_4xx_match = re.search(r'\b(?:phòng|p\.?|phong)?\s*(40[1-9])\b', p_lower)
+            if room_4xx_match:
+                destination_key = f"room_{room_4xx_match.group(1)}"
+            # 2. Nhận diện các khu vực Tầng 2 (Bếp, Nhận món, Kho, Sơ chế, WC)
+            elif any(k in p_lower for k in ["nhà bếp", "nha bep", "bếp", "bep", "kitchen"]):
+                destination_key = "kitchen"
+            elif any(k in p_lower for k in ["sơ chế", "so che", "chuẩn bị món", "preparation"]):
+                destination_key = "preparation_area"
+            elif any(k in p_lower for k in ["kho hàng", "kho hang", "kho nguyên liệu", "kho thực phẩm", "warehouse", "kho"]):
+                destination_key = "warehouse"
+            elif any(k in p_lower for k in ["vệ sinh tầng 2", "wc tầng 2", "toilet tầng 2", "restroom tầng 2"]):
+                destination_key = "restroom_f2"
+            elif any(k in p_lower for k in ["nhà hàng", "nha hang", "buffet", "ăn sáng", "pickup", "quầy nhận món", "nhận món"]):
+                destination_key = "restaurant"
+            # 3. Các tiện ích khác
+            elif any(k in p_lower for k in ["hồ bơi", "ho boi", "pool", "bơi"]):
+                destination_key = "infinity_pool"
+            elif any(k in p_lower for k in ["rooftop", "cafe", "cà phê", "coffee"]):
                 destination_key = "rooftop_coffee"
             elif any(k in p_lower for k in ["quầy bar", "quay bar", "bar", "sky lounge", "sky bar", "uống rượu"]):
                 destination_key = "bar"
             elif any(k in p_lower for k in ["karaoke", "hát karaoke", "phòng hát"]):
                 destination_key = "karaoke"
-            elif any(k in p_lower for k in ["quà lưu niệm", "lưu niệm", "gift shop", "cửa hàng lưu niệm", "souvenir"]):
-                destination_key = "gift_shop"
-            # 3. Tiện ích Tầng 5 (Wellness & Bơi lội)
-            elif any(k in p_lower for k in ["hồ bơi", "ho boi", "bể bơi", "be boi", "pool", "bơi"]):
+            elif any(k in p_lower for k in ["gym", "thể hình", "the hinh", "fitness"]):
+                destination_key = "gym"
+            elif any(k in p_lower for k in ["spa", "massage", "xông hơi"]):
+                destination_key = "spa"
+            elif any(k in p_lower for k in ["bãi xe", "đỗ xe", "gửi xe", "parking", "ô tô", "hầm"]):
+                destination_key = "parking_car"
+            elif any(k in p_lower for k in ["lễ tân", "tiếp tân", "front desk"]):
+                destination_key = "front_desk"
+            elif any(k in p_lower for k in ["chỉ đường", "bản đồ", "sơ đồ", "đường đi"]) and ("tầng" in reply.lower() or "thang máy" in reply.lower()):
                 destination_key = "infinity_pool"
             elif any(k in p_lower for k in ["spa", "massage", "xông hơi", "mát xa"]):
                 destination_key = "spa"
@@ -398,6 +413,22 @@ async def synthesize_voice_speech(request: TTSRequest):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)
         )
+
+
+@router.get("/voice-settings", response_model=VoiceSettingsResponse, summary="Lấy cấu hình tốc độ và giọng nói AI của Robot")
+async def get_robot_voice_settings():
+    """Lấy tốc độ phát âm thanh và giọng nói hiện tại của hệ thống Concierge Robot."""
+    return tts_service.get_voice_settings()
+
+
+@router.post("/voice-settings", response_model=VoiceSettingsResponse, summary="Admin cập nhật tốc độ và giọng nói AI của Robot")
+async def update_robot_voice_settings(req: VoiceSettingsRequest):
+    """Admin điều chỉnh tốc độ nói (0.5x - 2.0x) và giọng đọc của Robot trên toàn hệ thống."""
+    return tts_service.update_voice_settings(
+        speech_rate=req.speech_rate,
+        vi_voice=req.vi_voice,
+        en_voice=req.en_voice,
+    )
 
 
 @router.websocket("/ws/pipecat")

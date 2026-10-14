@@ -209,15 +209,14 @@ class OllamaService:
                 prompt += f"\n{hotel_facts}\n"
             else:
                 prompt += (
-                    "AURORA GRAND HOTEL AMENITIES & FLOOR DIRECTORY:\n"
-                    "- Ground Floor (Lobby): Main Lobby, Front Desk 24/7 (dial 0 from room telephone), and Restrooms.\n"
-                    "- Level 2: Aurora Restaurant (serves breakfast buffet from 6:30 AM to 10:00 AM, all-day dining until 10:00 PM), Kitchen, and Restrooms.\n"
-                    "- Level 3: Standard Guest Rooms 301 to 309.\n"
-                    "- Level 4: Deluxe & Executive Guest Rooms 401 to 406.\n"
-                    "- Level 5: Wellness floor including Infinity Pool (open 6:00 AM to 10:00 PM, free towels), Luxury Herb Spa (9:00 AM to 10:00 PM), 24/7 Fitness Center / Gym, and Locker Room.\n"
-                    "- Level 6 (Rooftop): Rooftop Coffee & View (open 7:00 AM to 11:00 PM with skyline view), Sky Lounge Bar (4:30 PM to 1:00 AM midnight), VIP Karaoke rooms (2:00 PM to midnight), and Gift Shop.\n"
-                    "- Basement B1: Motorbike parking garage.\n"
-                    "- Basement B2: Complimentary secure car parking garage for staying guests.\n"
+                    "AURORA GRAND HOTEL AMENITIES & FACTS:\n"
+                    "- Level 1 (Ground): Main Lobby, Front Desk 24/7 (dial 0 from room telephone), and ATM.\n"
+                    "- Level 2: Culinary Floor - Aurora Restaurant & Pickup Area (breakfast buffet 6:30 AM to 10:00 AM), Main Kitchen, Warehouse, and Restrooms.\n"
+                    "- Level 3: Guest Rooms 301 to 306.\n"
+                    "- Level 4: Premium Guest Rooms 401 to 409 (Deluxe, Executive King, and President Suite 406).\n"
+                    "- Level 5: Infinity Pool (6:00 AM to 10:00 PM, free towels), Herbal Spa & Sauna (9:00 AM to 10:00 PM), and 24/7 Fitness Center / Gym.\n"
+                    "- Level 6: Rooftop Coffee, Sky Lounge Bar (4:30 PM to 1:00 AM), VIP Karaoke, and Gift Shop.\n"
+                    "- Basement B1 & B2: B1 Motorbike parking; B2 Car parking (complimentary for staying guests).\n"
                     "- Wi-Fi: Network name 'Aurora_Guest', password 'aurora2026'.\n"
                     "- Hours: Standard check-in from 2:00 PM, check-out before 12:00 PM noon.\n"
                 )
@@ -237,15 +236,14 @@ class OllamaService:
                 prompt += f"\n{hotel_facts}\n"
             else:
                 prompt += (
-                    "\nTHÔNG TIN TIỆN ÍCH & SƠ ĐỒ 8 TẦNG KHÁCH SẠN AURORA GRAND (ĐỂ TƯ VẤN VÀ CHỈ ĐƯỜNG CHÍNH XÁC):\n"
-                    "- Tầng Trệt (Ground): Sảnh chính Lobby, Quầy Lễ tân 24/7 (từ điện thoại phòng bấm phím 0) và Nhà vệ sinh nam nữ cạnh thang máy.\n"
-                    "- Tầng 2: Nhà hàng Buffet Á - Âu Aurora (phục vụ buffet sáng từ 6 giờ 30 đến 10 giờ sáng, mở đến 22 giờ tối), Bếp và Nhà vệ sinh.\n"
-                    "- Tầng 3: Khu phòng nghỉ tiêu chuẩn từ phòng 301 đến 309.\n"
-                    "- Tầng 4: Khu phòng nghỉ cao cấp gồm phòng 401 đến 406 (phòng Deluxe và Suite).\n"
-                    "- Tầng 5: Khu chăm sóc sức khỏe gồm Hồ bơi vô cực ngoài trời (mở từ 6 giờ sáng đến 22 giờ tối, khăn tắm miễn phí), Thảo Mộc Spa thư giãn (9 giờ sáng đến 22 giờ tối), Phòng Gym thể hình (mở cửa 24/7), và Phòng thay đồ Locker Room.\n"
-                    "- Tầng 6 (Sân thượng Rooftop): Quán cà phê Rooftop Coffee & View ngắm toàn cảnh thành phố (mở từ 7 giờ sáng đến 23 giờ đêm), Quầy Sky Lounge Bar (16 giờ 30 chiều đến 1 giờ đêm), Phòng VIP Karaoke (14 giờ chiều đến 0 giờ đêm), và Cửa hàng lưu niệm Gift Shop.\n"
-                    "- Hầm B1: Bãi giữ xe máy.\n"
-                    "- Hầm B2: Bãi đỗ xe ô tô an toàn miễn phí cho khách lưu trú.\n"
+                    "\nTHÔNG TIN TIỆN ÍCH KHÁCH SẠN AURORA GRAND (ĐỂ TƯ VẤN CHO KHÁCH):\n"
+                    "- Tầng 1 (Trệt): Sảnh chính, Quầy Lễ tân 24/7 (từ điện thoại phòng bấm phím 0) và máy ATM rút tiền.\n"
+                    "- Tầng 2: Tầng ẩm thực - Nhà hàng Aurora & Quầy nhận món Pickup (buffet sáng từ 6 giờ 30 đến 10 giờ sáng), Khu Bếp Chính, Kho thực phẩm và Nhà vệ sinh tầng 2.\n"
+                    "- Tầng 3: Khu phòng nghỉ lưu trú từ Phòng 301 đến 306.\n"
+                    "- Tầng 4: Khu phòng nghỉ cao cấp gồm 9 phòng từ Phòng 401 đến Phòng 409 (Deluxe, Executive King, Suite và Phòng Tổng Thống 406).\n"
+                    "- Tầng 5: Hồ bơi vô cực ngoài trời (mở từ 6 giờ sáng đến 22 giờ tối), Thảo Mộc Spa (9 giờ sáng đến 22 giờ tối) và Phòng Gym (mở cửa 24/7).\n"
+                    "- Tầng 6: Rooftop Coffee, Sky Lounge Bar (16 giờ 30 đến 1 giờ đêm), Phòng VIP Karaoke và Cửa hàng quà lưu niệm Gift Shop.\n"
+                    "- Tầng hầm: Hầm B1 bãi xe máy, Hầm B2 bãi đỗ xe ô tô miễn phí cho khách lưu trú.\n"
                     "- Wi-Fi miễn phí: Tên mạng 'Aurora_Guest', mật khẩu là 'aurora2026'.\n"
                     "- Thời gian lưu trú: Nhận phòng từ 14 giờ chiều, trả phòng trước 12 giờ trưa.\n"
                 )
@@ -379,6 +377,10 @@ class OllamaService:
                 reply = self.format_and_clean_reply(groq_reply.strip(), lang_code)
                 final_lang_name, final_lang_code = self.detect_language(reply)
                 return reply, final_lang_name, final_lang_code
+            else:
+                logger.warning("[OllamaService] Groq Cloud API không phản hồi, trả về phản hồi dự phòng nhanh.")
+                fallback = "Xin lỗi quý khách, đường truyền tới AI Server tạm thời gián đoạn." if lang_code == "vi-VN" else "Sorry, connection to AI Server is temporarily unavailable."
+                return fallback, lang_name, lang_code
 
         # 2. Mặc định cho toàn bộ dự án: Chạy Ollama cục bộ nguyên bản
         try:
@@ -495,6 +497,13 @@ class OllamaService:
                     return parsed_json
                 except Exception as je:
                     logger.warning(f"[Groq JSON parse warning]: {je}")
+            else:
+                logger.warning("[OllamaService] Groq extract_intent không phản hồi, fallback ngay lập tức.")
+                return {
+                    "action": "unknown",
+                    "room_number": extracted_room_regex,
+                    "items": user_speech,
+                }
 
         # 2. Mặc định cho toàn bộ dự án: Chạy Ollama cục bộ nguyên bản
         try:

@@ -44,9 +44,9 @@ DEFAULT_SEED_SCENARIOS = [
     },
     {
         "id": "scn-restaurant",
-        "title": "Nhà hàng & Buffet sáng",
+        "title": "Nhà hàng & Quầy Nhận Món (Pickup Area)",
         "category": "facility",
-        "match_keywords": ["buffet sáng", "ăn sáng", "nhà hàng ở đâu", "giờ ăn sáng", "breakfast", "buffet", "nhà hàng aurora"],
+        "match_keywords": ["buffet sáng", "ăn sáng", "nhà hàng ở đâu", "giờ ăn sáng", "breakfast", "buffet", "nhà hàng aurora", "quầy nhận món", "pickup area", "lấy món", "nhận món", "nhà hàng tầng 2"],
         "match_type": "keyword",
         "response_vi": "Dạ nhà hàng Aurora tọa lạc tại Tầng 2, phục vụ buffet sáng hàng ngày từ 6 giờ 30 đến 10 giờ sáng ạ. Ngoài ra, Quý khách có thể quét mã QR trên màn hình để ghi nhớ chỉ dẫn nhé ạ!",
         "response_en": "Aurora Restaurant is located on Level 2, serving breakfast buffet daily from 6:30 AM to 10:00 AM. In addition, you can scan the QR code on the screen to save the directions!",
@@ -55,6 +55,202 @@ DEFAULT_SEED_SCENARIOS = [
         "is_fast_path": True,
         "is_active": True,
         "priority": 85,
+    },
+    {
+        "id": "scn-kitchen-f2",
+        "title": "Khu Bếp Chính Tầng 2",
+        "category": "facility",
+        "match_keywords": ["nhà bếp", "khu bếp", "bếp ở đâu", "kitchen", "bếp trưởng", "bếp tầng 2"],
+        "match_type": "keyword",
+        "response_vi": "Dạ khu bếp ẩm thực chính của khách sạn nằm tại Tầng 2, ngay phía sau sảnh nhận món ạ. Em xin mở sơ đồ chỉ dẫn tới Tầng 2 cho quý khách ạ!",
+        "response_en": "The main culinary Kitchen is on Level 2, right behind the food pickup area.",
+        "action_type": "show_map",
+        "action_payload": {"destination_key": "kitchen"},
+        "is_fast_path": True,
+        "is_active": True,
+        "priority": 85,
+    },
+    {
+        "id": "scn-warehouse-f2",
+        "title": "Kho Hàng & Nguyên Liệu Tầng 2",
+        "category": "facility",
+        "match_keywords": ["kho hàng", "kho thực phẩm", "kho nguyên liệu", "warehouse", "kho tầng 2"],
+        "match_type": "keyword",
+        "response_vi": "Dạ kho hàng và thực phẩm của khách sạn nằm tại Tầng 2, đi dọc hành lang bên phải thang máy ạ.",
+        "response_en": "The food and supplies Warehouse is on Level 2, down the corridor to the right of the elevator.",
+        "action_type": "show_map",
+        "action_payload": {"destination_key": "warehouse"},
+        "is_fast_path": True,
+        "is_active": True,
+        "priority": 80,
+    },
+    {
+        "id": "scn-preparation-f2",
+        "title": "Khu Sơ Chế Thực Phẩm Tầng 2",
+        "category": "facility",
+        "match_keywords": ["sơ chế", "khu sơ chế", "chuẩn bị món", "preparation area"],
+        "match_type": "keyword",
+        "response_vi": "Dạ khu vực sơ chế thực phẩm nằm ở góc trái Tầng 2, ngay cạnh quầy nhận món ạ.",
+        "response_en": "The Preparation Area is located on the left side of Level 2, adjacent to the Pickup Area.",
+        "action_type": "show_map",
+        "action_payload": {"destination_key": "preparation_area"},
+        "is_fast_path": True,
+        "is_active": True,
+        "priority": 80,
+    },
+    {
+        "id": "scn-restroom-f2",
+        "title": "Nhà Vệ Sinh Tầng 2",
+        "category": "facility",
+        "match_keywords": ["vệ sinh tầng 2", "wc tầng 2", "toilet tầng 2", "nhà vệ sinh tầng 2", "restroom tầng 2"],
+        "match_type": "keyword",
+        "response_vi": "Dạ nhà vệ sinh Tầng 2 nằm ở cuối hành lang bên phải thang máy, gần khu vực kho hàng ạ.",
+        "response_en": "Level 2 Restrooms are at the end of the corridor to the right of the elevator.",
+        "action_type": "show_map",
+        "action_payload": {"destination_key": "restroom_f2"},
+        "is_fast_path": True,
+        "is_active": True,
+        "priority": 85,
+    },
+    {
+        "id": "scn-floor4-overview",
+        "title": "Tổng quan Phòng Nghỉ Tầng 4",
+        "category": "facility",
+        "match_keywords": ["tầng 4", "tang 4", "tầng 4 có gì", "phòng tầng 4", "phòng nghỉ tầng 4", "danh sách phòng tầng 4"],
+        "match_type": "keyword",
+        "response_vi": "Dạ Tầng 4 là tầng phòng nghỉ lưu trú cao cấp của khách sạn, gồm 9 phòng từ Phòng 401 đến Phòng 409 chia làm hai dãy phòng hai bên hành lang ạ.",
+        "response_en": "Level 4 features 9 premium guest rooms from Room 401 to 409 along both sides of the corridor.",
+        "action_type": "show_map",
+        "action_payload": {"destination_key": "room_401"},
+        "is_fast_path": True,
+        "is_active": True,
+        "priority": 90,
+    },
+    {
+        "id": "scn-room-401",
+        "title": "Chỉ đường Phòng 401",
+        "category": "facility",
+        "match_keywords": ["phòng 401", "p401", "phong 401", "phòng 401 ở đâu", "tìm phòng 401", "room 401"],
+        "match_type": "keyword",
+        "response_vi": "Dạ Phòng 401 nằm tại Tầng 4, bước ra khỏi thang máy rẽ vào hành lang là phòng 401 ngay bên tay phải ạ. Em xin mở sơ đồ đường đi cho quý khách ạ!",
+        "response_en": "Room 401 is on Level 4, right next to the elevator corridor on the right side.",
+        "action_type": "show_map",
+        "action_payload": {"destination_key": "room_401"},
+        "is_fast_path": True,
+        "is_active": True,
+        "priority": 95,
+    },
+    {
+        "id": "scn-room-402",
+        "title": "Chỉ đường Phòng 402",
+        "category": "facility",
+        "match_keywords": ["phòng 402", "p402", "phong 402", "phòng 402 ở đâu", "tìm phòng 402", "room 402"],
+        "match_type": "keyword",
+        "response_vi": "Dạ Phòng 402 nằm tại Tầng 4, đi thang máy lên Tầng 4 và đi dọc hành lang bên phải là đến Phòng 402 ạ.",
+        "response_en": "Room 402 is on Level 4 along the upper corridor on the right.",
+        "action_type": "show_map",
+        "action_payload": {"destination_key": "room_402"},
+        "is_fast_path": True,
+        "is_active": True,
+        "priority": 95,
+    },
+    {
+        "id": "scn-room-403",
+        "title": "Chỉ đường Phòng 403",
+        "category": "facility",
+        "match_keywords": ["phòng 403", "p403", "phong 403", "phòng 403 ở đâu", "tìm phòng 403", "room 403"],
+        "match_type": "keyword",
+        "response_vi": "Dạ Phòng 403 nằm tại Tầng 4, đi thẳng theo hành lang dãy trên là đến Phòng 403 ạ.",
+        "response_en": "Room 403 is on Level 4 along the upper hallway.",
+        "action_type": "show_map",
+        "action_payload": {"destination_key": "room_403"},
+        "is_fast_path": True,
+        "is_active": True,
+        "priority": 95,
+    },
+    {
+        "id": "scn-room-404",
+        "title": "Chỉ đường Phòng 404",
+        "category": "facility",
+        "match_keywords": ["phòng 404", "p404", "phong 404", "phòng 404 ở đâu", "tìm phòng 404", "room 404"],
+        "match_type": "keyword",
+        "response_vi": "Dạ Phòng 404 nằm tại góc cuối hành lang dãy trên Tầng 4 ạ. Em xin mở bản đồ chỉ đường cho quý khách ạ!",
+        "response_en": "Room 404 is at the end of the upper corridor on Level 4.",
+        "action_type": "show_map",
+        "action_payload": {"destination_key": "room_404"},
+        "is_fast_path": True,
+        "is_active": True,
+        "priority": 95,
+    },
+    {
+        "id": "scn-room-405",
+        "title": "Chỉ đường Phòng 405",
+        "category": "facility",
+        "match_keywords": ["phòng 405", "p405", "phong 405", "phòng 405 ở đâu", "tìm phòng 405", "room 405"],
+        "match_type": "keyword",
+        "response_vi": "Dạ Phòng 405 nằm ở góc trái dãy dưới Tầng 4. Quý khách đi thang máy lên Tầng 4, đi hết hành lang sang phía đối diện là đến ạ.",
+        "response_en": "Room 405 is at the lower left corner of Level 4 corridor.",
+        "action_type": "show_map",
+        "action_payload": {"destination_key": "room_405"},
+        "is_fast_path": True,
+        "is_active": True,
+        "priority": 95,
+    },
+    {
+        "id": "scn-room-406",
+        "title": "Chỉ đường Phòng 406 (President Suite)",
+        "category": "facility",
+        "match_keywords": ["phòng 406", "p406", "phong 406", "phòng 406 ở đâu", "phòng tổng thống", "room 406"],
+        "match_type": "keyword",
+        "response_vi": "Dạ Phòng Tổng Thống 406 tọa lạc tại dãy dưới Tầng 4, có tầm nhìn thoáng đãng và tiện nghi cao cấp nhất ạ.",
+        "response_en": "President Suite 406 is located on the lower corridor of Level 4 with premium panoramic views.",
+        "action_type": "show_map",
+        "action_payload": {"destination_key": "room_406"},
+        "is_fast_path": True,
+        "is_active": True,
+        "priority": 95,
+    },
+    {
+        "id": "scn-room-407",
+        "title": "Chỉ đường Phòng 407",
+        "category": "facility",
+        "match_keywords": ["phòng 407", "p407", "phong 407", "phòng 407 ở đâu", "tìm phòng 407", "room 407"],
+        "match_type": "keyword",
+        "response_vi": "Dạ Phòng 407 nằm tại Tầng 4, ở vị trí trung tâm dãy phòng đối diện thang máy ạ.",
+        "response_en": "Room 407 is centrally located on the lower corridor of Level 4.",
+        "action_type": "show_map",
+        "action_payload": {"destination_key": "room_407"},
+        "is_fast_path": True,
+        "is_active": True,
+        "priority": 95,
+    },
+    {
+        "id": "scn-room-408",
+        "title": "Chỉ đường Phòng 408",
+        "category": "facility",
+        "match_keywords": ["phòng 408", "p408", "phong 408", "phòng 408 ở đâu", "tìm phòng 408", "room 408"],
+        "match_type": "keyword",
+        "response_vi": "Dạ Phòng 408 nằm tại dãy dưới Tầng 4, ngay phía đối diện khu vực thang máy ạ.",
+        "response_en": "Room 408 is on Level 4 directly across from the elevator corridor.",
+        "action_type": "show_map",
+        "action_payload": {"destination_key": "room_408"},
+        "is_fast_path": True,
+        "is_active": True,
+        "priority": 95,
+    },
+    {
+        "id": "scn-room-409",
+        "title": "Chỉ đường Phòng 409",
+        "category": "facility",
+        "match_keywords": ["phòng 409", "p409", "phong 409", "phòng 409 ở đâu", "tìm phòng 409", "room 409"],
+        "match_type": "keyword",
+        "response_vi": "Dạ Phòng 409 nằm tại góc phải cuối dãy dưới Tầng 4, bước ra thang máy đi thẳng xuống là đến ạ.",
+        "response_en": "Room 409 is located at the lower right corner of Level 4, straight down from the elevator.",
+        "action_type": "show_map",
+        "action_payload": {"destination_key": "room_409"},
+        "is_fast_path": True,
+        "is_active": True,
+        "priority": 95,
     },
     {
         "id": "scn-pool-gym",
@@ -238,16 +434,18 @@ class ScenarioService:
     async def initialize_cache(self, db: AsyncSession):
         """
         Khoi tao In-Memory Cache tu PostgreSQL.
-        Neu co so du lieu chua co du lieu, tu dong seed cac kich ban mac dinh.
+        Tu dong seed va dong bo cac kich ban mac dinh moi nhat.
         """
         try:
             stmt = select(DialogueScenario)
             result = await db.execute(stmt)
             records = result.scalars().all()
+            existing_map = {r.id: r for r in records}
 
-            if not records:
-                logger.info("[ScenarioService] Database chua co kich ban, tien hanh nạp seed data...")
-                for s_data in DEFAULT_SEED_SCENARIOS:
+            has_changes = False
+            for s_data in DEFAULT_SEED_SCENARIOS:
+                sid = s_data["id"]
+                if sid not in existing_map:
                     item = DialogueScenario(
                         id=s_data["id"],
                         title=s_data["title"],
@@ -263,9 +461,22 @@ class ScenarioService:
                         priority=s_data.get("priority", 0),
                     )
                     db.add(item)
-                await db.commit()
+                    has_changes = True
+                else:
+                    existing = existing_map[sid]
+                    if (existing.match_keywords != s_data["match_keywords"] or
+                        existing.response_vi != s_data["response_vi"] or
+                        existing.action_payload != s_data.get("action_payload")):
+                        existing.match_keywords = s_data["match_keywords"]
+                        existing.response_vi = s_data["response_vi"]
+                        existing.response_en = s_data.get("response_en")
+                        existing.action_type = s_data.get("action_type", "none")
+                        existing.action_payload = s_data.get("action_payload")
+                        existing.priority = s_data.get("priority", existing.priority)
+                        has_changes = True
 
-                # Doc lai sau khi seed
+            if has_changes:
+                await db.commit()
                 result = await db.execute(select(DialogueScenario))
                 records = result.scalars().all()
 

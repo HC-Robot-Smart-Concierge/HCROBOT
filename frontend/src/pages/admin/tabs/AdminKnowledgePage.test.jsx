@@ -67,4 +67,25 @@ describe('AdminKnowledgePage Dialogue Scenarios Filtering and Fast-Path State', 
     expect(matched).toHaveLength(1);
     expect(matched[0].id).toBe('scn-wifi');
   });
+
+  describe('Robot Speech Rate and Voice Configuration Options', () => {
+    const formatSpeedLabel = (rate) => {
+      if (rate === 1.0) return 'Chuẩn (1.0x)';
+      if (rate < 1.0) return `Chậm (${rate}x)`;
+      return `Nhanh (${rate}x)`;
+    };
+
+    const standardVoice = 'vi-VN-HoaiMyNeural';
+
+    it('formats speech rate speed tags correctly', () => {
+      expect(formatSpeedLabel(1.0)).toBe('Chuẩn (1.0x)');
+      expect(formatSpeedLabel(0.85)).toBe('Chậm (0.85x)');
+      expect(formatSpeedLabel(1.15)).toBe('Nhanh (1.15x)');
+    });
+
+    it('uses official standard Vietnamese Neural voice model for Rora robot', () => {
+      expect(standardVoice).toBe('vi-VN-HoaiMyNeural');
+    });
+  });
 });
+

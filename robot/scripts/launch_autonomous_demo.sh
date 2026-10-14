@@ -4,8 +4,11 @@ set -e
 source /opt/ros/jazzy/setup.bash
 export PATH="/usr/bin:/bin:/usr/local/bin:/opt/ros/jazzy/opt/gz_tools_vendor/bin:$PATH"
 export GZ_CONFIG_PATH="/opt/ros/jazzy/opt/gz_sim_vendor/share/gz:/opt/ros/jazzy/opt/gz_gui_vendor/share/gz:/opt/ros/jazzy/opt/gz_msgs_vendor/share/gz:/opt/ros/jazzy/opt/gz_transport_vendor/share/gz:/opt/ros/jazzy/opt/gz_plugin_vendor/share/gz:/opt/ros/jazzy/opt/sdformat_vendor/share/gz:/opt/ros/jazzy/opt/gz_fuel_tools_vendor/share/gz:${GZ_CONFIG_PATH:-}"
-export GZ_SIM_RESOURCE_PATH="/mnt/d/do_an_fptu/HCROBOT/robot/models:$HOME/.gazebo/models:$HOME/.gz/models:$GZ_SIM_RESOURCE_PATH"
-export GAZEBO_MODEL_PATH="/mnt/d/do_an_fptu/HCROBOT/robot/models:$HOME/.gazebo/models:$HOME/.gz/models:$GAZEBO_MODEL_PATH"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROBOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+export GZ_SIM_RESOURCE_PATH="$ROBOT_DIR/models:$HOME/.gazebo/models:$HOME/.gz/models:${GZ_SIM_RESOURCE_PATH:-}"
+export GAZEBO_MODEL_PATH="$ROBOT_DIR/models:$HOME/.gazebo/models:$HOME/.gz/models:${GAZEBO_MODEL_PATH:-}"
 
 echo "=========================================================="
 echo "    HC-ROBOT AUTONOMOUS NAVIGATION DEMO (10m x 6m ARENA)  "
@@ -21,11 +24,11 @@ sleep 1
 
 # Dong bo model hc_robot moi nhat vao thu muc cache cua he thong
 mkdir -p "$HOME/.gazebo/models/hc_robot" "$HOME/.gz/models/hc_robot" 2>/dev/null || true
-cp -rf /mnt/d/do_an_fptu/HCROBOT/robot/models/hc_robot/* "$HOME/.gazebo/models/hc_robot/" 2>/dev/null || true
-cp -rf /mnt/d/do_an_fptu/HCROBOT/robot/models/hc_robot/* "$HOME/.gz/models/hc_robot/" 2>/dev/null || true
+cp -rf "$ROBOT_DIR/models/hc_robot/"* "$HOME/.gazebo/models/hc_robot/" 2>/dev/null || true
+cp -rf "$ROBOT_DIR/models/hc_robot/"* "$HOME/.gz/models/hc_robot/" 2>/dev/null || true
 
 echo " [2/4] Khoi dong Gazebo Sim (Sa ban 10x6m + HC-Robot)..."
-gz sim -r /mnt/d/do_an_fptu/HCROBOT/robot/worlds/hotel_room.world &
+gz sim -r "$ROBOT_DIR/worlds/hotel_room.world" &
 GZ_PID=$!
 sleep 4
 
@@ -58,4 +61,4 @@ trap cleanup EXIT INT TERM
 echo "=========================================================="
 echo " KICH HOAT TU HANH: ROBOT SAN SANG NHAN LENH TU WEB VA TUAN TRA..."
 echo "=========================================================="
-python3 /mnt/d/do_an_fptu/HCROBOT/robot/scripts/autonomous_navigator.py --ros-args -p use_sim_time:=true
+python3 "$SCRIPT_DIR/autonomous_navigator.py" --ros-args -p use_sim_time:=true

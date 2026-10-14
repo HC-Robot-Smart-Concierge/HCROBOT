@@ -2,11 +2,14 @@
 set -e
 
 source /opt/ros/jazzy/setup.bash
-export ROS_LOCALHOST_ONLY=1
+export ROS_DOMAIN_ID=0
 export PATH="/usr/bin:/bin:/usr/local/bin:/opt/ros/jazzy/opt/gz_tools_vendor/bin:$PATH"
 export GZ_CONFIG_PATH="/opt/ros/jazzy/opt/gz_sim_vendor/share/gz:/opt/ros/jazzy/opt/gz_gui_vendor/share/gz:/opt/ros/jazzy/opt/gz_msgs_vendor/share/gz:/opt/ros/jazzy/opt/gz_transport_vendor/share/gz:/opt/ros/jazzy/opt/gz_plugin_vendor/share/gz:/opt/ros/jazzy/opt/sdformat_vendor/share/gz:/opt/ros/jazzy/opt/gz_fuel_tools_vendor/share/gz:${GZ_CONFIG_PATH:-}"
-export GZ_SIM_RESOURCE_PATH="/mnt/d/do_an_fptu/HCROBOT/robot/models:$HOME/.gazebo/models:$HOME/.gz/models:$GZ_SIM_RESOURCE_PATH"
-export GAZEBO_MODEL_PATH="/mnt/d/do_an_fptu/HCROBOT/robot/models:$HOME/.gazebo/models:$HOME/.gz/models:$GAZEBO_MODEL_PATH"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROBOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+export GZ_SIM_RESOURCE_PATH="$ROBOT_DIR/models:$HOME/.gazebo/models:$HOME/.gz/models:${GZ_SIM_RESOURCE_PATH:-}"
+export GAZEBO_MODEL_PATH="$ROBOT_DIR/models:$HOME/.gazebo/models:$HOME/.gz/models:${GAZEBO_MODEL_PATH:-}"
 
 echo "=========================================================="
 echo "   KHOI CHAY MO PHONG GAZEBO SIM + ROS 2 + WEB BRIDGE     "
@@ -22,11 +25,11 @@ sleep 1
 
 # Dong bo model hc_robot moi nhat vao thu muc cache
 mkdir -p "$HOME/.gazebo/models/hc_robot" "$HOME/.gz/models/hc_robot" 2>/dev/null || true
-cp -rf /mnt/d/do_an_fptu/HCROBOT/robot/models/hc_robot/* "$HOME/.gazebo/models/hc_robot/" 2>/dev/null || true
-cp -rf /mnt/d/do_an_fptu/HCROBOT/robot/models/hc_robot/* "$HOME/.gz/models/hc_robot/" 2>/dev/null || true
+cp -rf "$ROBOT_DIR/models/hc_robot/"* "$HOME/.gazebo/models/hc_robot/" 2>/dev/null || true
+cp -rf "$ROBOT_DIR/models/hc_robot/"* "$HOME/.gz/models/hc_robot/" 2>/dev/null || true
 
 echo " [2/4] Khoi dong Gazebo Sim Harmonic (World: hotel_room.world)..."
-gz sim -r /mnt/d/do_an_fptu/HCROBOT/robot/worlds/hotel_room.world &
+gz sim -r "$ROBOT_DIR/worlds/hotel_room.world" &
 GZ_PID=$!
 sleep 4
 
@@ -60,4 +63,4 @@ echo "=========================================================="
 echo " SAN SANG! KICH HOAT NODE TU HANH NE TUONG TRONG GAZEBO..."
 echo " Node dang san sang tiep nhan lenh A->B tu Web hoac Tuan tra"
 echo "=========================================================="
-python3 /mnt/d/do_an_fptu/HCROBOT/robot/scripts/autonomous_navigator.py --ros-args -p use_sim_time:=true
+python3 "$SCRIPT_DIR/autonomous_navigator.py" --ros-args -p use_sim_time:=true

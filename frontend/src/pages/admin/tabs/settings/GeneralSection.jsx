@@ -120,6 +120,45 @@ export const GeneralSection = ({ settings, setSettings }) => {
             </div>
           </div>
 
+          {/* Default Speech Rate */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-[11px] font-black text-stone-600 uppercase tracking-wider">
+                DEFAULT SPEECH RATE ({settings.speechRate || 1.0}x)
+              </label>
+              <span className="text-[11px] font-mono font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">
+                {settings.speechRate || 1.0}x Speed
+              </span>
+            </div>
+            <div className="space-y-2 bg-stone-50 p-3 rounded-2xl border border-stone-200">
+              <input
+                type="range"
+                min="0.5"
+                max="1.5"
+                step="0.05"
+                value={settings.speechRate || 1.0}
+                onChange={(e) => setSettings({ ...settings, speechRate: parseFloat(e.target.value) })}
+                className="w-full accent-amber-600 cursor-pointer h-2 bg-stone-200 rounded-lg appearance-none"
+              />
+              <div className="grid grid-cols-4 gap-1.5 pt-1">
+                {[0.85, 1.0, 1.15, 1.25].map((val) => (
+                  <button
+                    key={val}
+                    type="button"
+                    onClick={() => setSettings({ ...settings, speechRate: val })}
+                    className={`py-1 text-[10px] font-bold rounded-lg border transition-all cursor-pointer ${
+                      Math.abs((settings.speechRate || 1.0) - val) < 0.01
+                        ? 'bg-amber-500 text-stone-950 border-amber-400 shadow-sm'
+                        : 'bg-white hover:bg-stone-100 text-stone-700 border-stone-200'
+                    }`}
+                  >
+                    {val}x
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
           {/* Night Mode Operation */}
           <div>
             <label className="block text-[11px] font-black text-stone-600 uppercase tracking-wider mb-1.5">

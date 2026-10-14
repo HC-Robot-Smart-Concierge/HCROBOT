@@ -17,7 +17,7 @@ async def test_fast_path_harness():
     result = await concierge_graph.ainvoke(initial_state, config=config)
 
     assert result["fast_path_hit"] is True
-    assert "aurora2026" in result["response"].lower()
+    assert "aurora_guest" in result["response"].lower()
     assert result["intent_category"] == "fast_path"
 
 

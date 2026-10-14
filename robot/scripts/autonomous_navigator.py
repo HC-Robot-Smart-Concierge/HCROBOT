@@ -52,6 +52,8 @@ class AutonomousNavigator(Node):
         self.scan_sub = self.create_subscription(LaserScan, '/scan', self.scan_callback, 10)
         # Điểm đến A -> B động từ RViz2 '2D Goal Pose' hoặc CLI / Web:
         self.goal_sub = self.create_subscription(PoseStamped, '/goal_pose', self.goal_callback, 10)
+        # Lenh chuyen mode: "PATROL", "STANDBY", "STOP"
+        self.mode_sub = self.create_subscription(String, '/nav_mode', self.nav_mode_callback, 10)
         
         # Robot position & orientation (Khoi tao tai Goc Tren Ben Phai Lobby: 3.7, 5.0, -90°)
         self.current_x = SPAWN_X
@@ -72,6 +74,7 @@ class AutonomousNavigator(Node):
         
         # Navigation state: "STANDBY" (túc trực chờ lệnh từ Web/Kiosk) hoặc "POINT_TO_POINT" hoặc "PATROL"
         self.mode = "STANDBY"
+        self.standby_stopped = False
         self.custom_goal = None  # (x, y, name)
         self.sub_waypoints = []  # Danh sach diem trung gian ne tuong
         self.target_idx = 0
@@ -173,11 +176,28 @@ class AutonomousNavigator(Node):
         self.sub_waypoints = self.calculate_safe_path(self.current_x, self.current_y, gx, gy)
         self.custom_goal = self.sub_waypoints[0]
         self.mode = "POINT_TO_POINT"
+        self.standby_stopped = False
         self.pause_until = 0.0
         self.get_logger().info(
-            f"🎯 [NHẬN LỆNH A -> B] Sinh lộ trình {len(self.sub_waypoints)} điểm né tường tới: X={gx:.2f}, Y={gy:.2f}"
+            f"[NHAN LENH A -> B] Sinh lo trinh {len(self.sub_waypoints)} diem ne tuong toi: X={gx:.2f}, Y={gy:.2f}"
         )
         self.print_next_target()
+
+    def nav_mode_callback(self, msg: String):
+        """Tiếp nhận lệnh chuyển đổi chế độ từ Web API: PATROL / STANDBY / STOP."""
+        cmd = msg.data.strip().upper()
+        if cmd == "PATROL":
+            self.mode = "PATROL"
+            self.standby_stopped = False
+            self.get_logger().info("[MODE] Chuyen sang che do TUAN TRA (PATROL)")
+            self.print_next_target()
+        elif cmd in ("STANDBY", "STOP"):
+            self.mode = "STANDBY"
+            self.sub_waypoints = []
+            self.custom_goal = None
+            self.publish_stop()
+            self.standby_stopped = True
+            self.get_logger().info("[MODE] Chuyen sang che do DUNG (STANDBY)")
 
     def print_next_target(self):
         if self.mode == "POINT_TO_POINT" and self.custom_goal:
@@ -307,11 +327,13 @@ class AutonomousNavigator(Node):
             self.publish_joint_states(0.0, 0.0)
             return
 
-        # Neu dang o STANDBY, khong di chuyen, giu xe dung yen tai vi tri cho
+        # Neu dang o STANDBY, chi publish_stop mot lan de khong chan lenh teleop /cmd_vel tu Web
         if self.mode == "STANDBY":
-            self.publish_stop()
+            if not self.standby_stopped:
+                self.publish_stop()
+                self.standby_stopped = True
             now = time.time()
-            if now - self.last_log_time > 3.0:
+            if now - self.last_log_time > 4.0:
                 self.last_log_time = now
                 self.get_logger().info(f"[STANDBY] San sang tai ({self.current_x:.2f}, {self.current_y:.2f})")
             return
@@ -356,16 +378,16 @@ class AutonomousNavigator(Node):
                     self.print_next_target()
                     return
                 else:
-                    self.get_logger().info(f"🎉 ==> ĐÃ ĐẾN NƠI THÀNH CÔNG: {name}! Dừng xe an toàn tại điểm B.")
+                    self.get_logger().info(f"[SUCCESS] DA DEN NOI: {name}! Dung xe an toan tai diem B.")
                     self.publish_stop()
+                    self.standby_stopped = True
                     status_msg = String()
                     status_msg.data = f"REACHED:{tx:.2f},{ty:.2f}:{name}"
                     self.status_pub.publish(status_msg)
                     self.custom_goal = None
                     self.sub_waypoints = []
-                    self.mode = "STANDBY"  # Dung yen tai diem dich cho lenh tiep theo tu Web
+                    self.mode = "STANDBY"
                     self.pause_until = 0.0
-                    return
                     return
             else:
                 self.get_logger().info(f"==> ĐÃ ĐẾN NƠI: {name}! Tạm dừng 2s tiếp nhận...")

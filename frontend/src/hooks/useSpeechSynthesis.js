@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { synthesizeSpeech } from '../services/aiApi';
 
 export const useSpeechSynthesis = () => {
@@ -18,7 +18,7 @@ export const useSpeechSynthesis = () => {
     }
   });
 
-  const updateSpeechRate = (newRate) => {
+  const updateSpeechRate = useCallback((newRate) => {
     const parsed = parseFloat(newRate);
     const clamped = Math.max(0.5, Math.min(2.0, isNaN(parsed) ? 1.0 : parsed));
     setSpeechRateState(clamped);
@@ -28,7 +28,7 @@ export const useSpeechSynthesis = () => {
       }
     } catch {}
     return clamped;
-  };
+  }, []);
 
   // Load available TTS voices from browser
   useEffect(() => {
@@ -41,6 +41,23 @@ export const useSpeechSynthesis = () => {
 
     updateVoices();
     window.speechSynthesis.onvoiceschanged = updateVoices;
+  }, []);
+
+  // Sync speech rate from BroadcastChannel across tabs (Admin -> Robot Screen)
+  useEffect(() => {
+    let bc;
+    try {
+      bc = new BroadcastChannel('hcrobot_voice_settings');
+      bc.onmessage = (event) => {
+        if (event.data?.type === 'VOICE_SETTINGS_UPDATED' && event.data?.speech_rate) {
+          const clamped = Math.max(0.5, Math.min(2.0, parseFloat(event.data.speech_rate) || 1.0));
+          setSpeechRateState(clamped);
+        }
+      };
+    } catch {}
+    return () => {
+      if (bc) bc.close();
+    };
   }, []);
 
   // Unlock TTS Audio Engine on Mobile / Kiosk Gesture

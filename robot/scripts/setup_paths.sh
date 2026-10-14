@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
-if ! grep -q "GAZEBO_MODEL_PATH" /root/.bashrc; then
-    echo 'export GAZEBO_MODEL_PATH=$GAZEBO_MODEL_PATH:/root/.gazebo/models:/mnt/d/Learning/Ki_9/SEP490/HCROBOT/robot/models' >> /root/.bashrc
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROBOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+if ! grep -q "GAZEBO_MODEL_PATH" "$HOME/.bashrc"; then
+    echo "export GAZEBO_MODEL_PATH=\$GAZEBO_MODEL_PATH:\$HOME/.gazebo/models:$ROBOT_DIR/models" >> "$HOME/.bashrc"
 fi

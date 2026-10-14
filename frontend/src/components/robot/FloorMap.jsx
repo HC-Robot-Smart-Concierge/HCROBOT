@@ -414,19 +414,36 @@ export const HOTEL_DESTINATIONS = {
 // Tuyến đường chuẩn chặng 1: Từ Lobby (Ground) -> Thang máy A
 export const ROUTE_GROUND_TO_ELEVATOR = 'M 796 545 C 850 545, 880 545, 908 545 C 935 545, 955 480, 990 480 L 1210 480 C 1235 480, 1249 460, 1249 410';
 
-// Hàm tạo URL chỉ đường di động tối ưu cho quét QR (Tự động map IP LAN 192.168.1.149 nếu máy tính mở qua localhost)
+// Tạo vé chỉ đường dùng 1 lần (Ephemeral One-time Ticket có thời hạn 15 phút)
+export const createEphemeralTicket = (destKey) => {
+  const now = Date.now();
+  const expiresAt = now + 15 * 60 * 1000; // Có hiệu lực trong 15 phút
+  const payload = {
+    d: destKey,
+    e: expiresAt,
+    n: Math.random().toString(36).substring(2, 8),
+  };
+  try {
+    return btoa(JSON.stringify(payload)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  } catch {
+    return `${destKey}_${expiresAt}`;
+  }
+};
+
+// Hàm tạo URL chỉ đường di động siêu nhẹ (Standalone 15KB map.html) tối ưu cho quét QR
 export const getMobileGuestMapUrl = (destKey) => {
+  const token = createEphemeralTicket(destKey);
   try {
     const origin = window.location.origin;
     const hostname = window.location.hostname;
     if (hostname === 'localhost' || hostname === '127.0.0.1') {
-      const port = window.location.port ? `:${window.location.port}` : ':3000';
+      const port = window.location.port ? `:${window.location.port}` : ':5173';
       const lanIp = localStorage.getItem('aurora_custom_lan_ip') || '192.168.1.149';
-      return `${window.location.protocol}//${lanIp}${port}/guest-map?dest=${destKey}`;
+      return `${window.location.protocol}//${lanIp}${port}/map.html?t=${token}`;
     }
-    return `${origin}/guest-map?dest=${destKey}`;
+    return `${origin}/map.html?t=${token}`;
   } catch {
-    return `http://192.168.1.149:3000/guest-map?dest=${destKey}`;
+    return `http://192.168.1.149:5173/map.html?t=${token}`;
   }
 };
 
@@ -436,6 +453,9 @@ export const FloorMap = ({
   className = '',
   onClose,
   defaultZoom = 2.2,
+  showQrModalExternal = false,
+  qrCountdown = null,
+  onCloseQrModal = null,
 }) => {
   // Lấy dữ liệu điểm đến hiện tại (Mặc định là Hồ bơi vô cực nếu không truyền)
   const currentDest = HOTEL_DESTINATIONS[destinationKey] || HOTEL_DESTINATIONS.infinity_pool;
@@ -900,10 +920,13 @@ export const FloorMap = ({
         </div>
 
         {/* Modal Quét Mã QR Phóng To Trên Kiosk */}
-        {showQrModal && (
+        {(showQrModal || showQrModalExternal) && (
           <div
             className="absolute inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 animate-fadeIn"
-            onClick={() => setShowQrModal(false)}
+            onClick={() => {
+              setShowQrModal(false);
+              if (onCloseQrModal) onCloseQrModal();
+            }}
           >
             <div
               className="w-[360px] max-w-[95%] bg-stone-900 border border-emerald-500/40 rounded-3xl p-5 shadow-2xl flex flex-col items-center gap-4 text-center text-white"
@@ -916,12 +939,23 @@ export const FloorMap = ({
                 </div>
                 <button
                   type="button"
-                  onClick={() => setShowQrModal(false)}
+                  onClick={() => {
+                    setShowQrModal(false);
+                    if (onCloseQrModal) onCloseQrModal();
+                  }}
                   className="w-7 h-7 rounded-full bg-stone-800 text-stone-300 hover:text-white flex items-center justify-center cursor-pointer"
                 >
                   <X className="w-4 h-4" />
                 </button>
               </div>
+
+              {/* Countdown badge khi được kích hoạt tự động ở cuối request chỉ đường */}
+              {qrCountdown !== null && qrCountdown >= 0 && (
+                <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-xs font-bold animate-pulse">
+                  <Clock className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Tự động đóng sau {qrCountdown}s</span>
+                </div>
+              )}
 
               <div className="p-3 bg-white rounded-2xl shadow-xl flex items-center justify-center">
                 <QRCodeSVG
@@ -943,7 +977,10 @@ export const FloorMap = ({
 
               <button
                 type="button"
-                onClick={() => setShowQrModal(false)}
+                onClick={() => {
+                  setShowQrModal(false);
+                  if (onCloseQrModal) onCloseQrModal();
+                }}
                 className="w-full py-2.5 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-200 text-xs font-bold transition cursor-pointer"
               >
                 Đóng

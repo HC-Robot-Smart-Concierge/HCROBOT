@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { RobotFace } from '../../components/robot/RobotFace';
 import { AudioWave } from '../../components/robot/AudioWave';
-import { FloorMap, HOTEL_DESTINATIONS } from '../../components/robot/FloorMap';
-import { PhoneCall, Sparkles, RefreshCw, Smartphone, QrCode } from 'lucide-react';
+import { FloorMap, HOTEL_DESTINATIONS, getMobileGuestMapUrl } from '../../components/robot/FloorMap';
+import { PhoneCall, Sparkles, RefreshCw, Smartphone, QrCode, Clock } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { CameraPreview } from '../../components/robot/CameraPreview';
 import { MobileRobotScreen } from '../../components/robot/MobileRobotScreen';
@@ -44,6 +44,30 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   const routeGuidanceTimerRef = useRef(null);
   const isProcessingRef = useRef(false);
   const processingSafetyTimerRef = useRef(null);
+
+  // Auto QR Modal 8s Countdown States & Refs for Route Guidance
+  const [isAutoQrModalOpen, setIsAutoQrModalOpen] = useState(false);
+  const [qrCountdown, setQrCountdown] = useState(null);
+  const qrStageTimerRef = useRef(null);
+  const qrCountdownIntervalRef = useRef(null);
+
+  // Helper dọn dẹp sạch sẽ tất cả timer của luồng chỉ đường & QR
+  const clearRouteGuidanceTimers = useCallback(() => {
+    if (routeGuidanceTimerRef.current) {
+      clearTimeout(routeGuidanceTimerRef.current);
+      routeGuidanceTimerRef.current = null;
+    }
+    if (qrStageTimerRef.current) {
+      clearTimeout(qrStageTimerRef.current);
+      qrStageTimerRef.current = null;
+    }
+    if (qrCountdownIntervalRef.current) {
+      clearInterval(qrCountdownIntervalRef.current);
+      qrCountdownIntervalRef.current = null;
+    }
+    setIsAutoQrModalOpen(false);
+    setQrCountdown(null);
+  }, []);
 
   // Standby Poster Mode (Tự động chiếu poster Dave Drinks khi rảnh)
   const [isStandby, setIsStandby] = useState(false);
@@ -189,6 +213,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     if (processingSafetyTimerRef.current) clearTimeout(processingSafetyTimerRef.current);
     isProcessingRef.current = false;
     setIsProcessing(false);
+    clearRouteGuidanceTimers();
     stopSpeaking();
     stopListening();
     resetTranscript();
@@ -348,16 +373,16 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
     const lowerQuery = query.toLowerCase();
 
-    // Xử lý đóng bản đồ chỉ đường RT-05 bằng giọng nói khi khách nói "ok tôi đã nhớ" / "cảm ơn"
-    if (currentState === 'RT-05') {
+    // Xử lý đóng bản đồ chỉ đường RT-05 / Modal QR bằng giọng nói khi khách nói "ok tôi đã nhớ" / "cảm ơn"
+    if (currentState === 'RT-05' || isAutoQrModalOpen) {
       const isDismissDirectionsPhrase = [
         'đã nhớ', 'nhớ rồi', 'tôi nhớ', 'ok tôi', 'hiểu rồi', 'tôi hiểu',
         'cảm ơn', 'cảm ơn em', 'cảm ơn robot', 'thank', 'thanks', 'xong rồi',
-        'được rồi', 'biết rồi', 'ok rora', 'ok robot', 'ok em', 'dạ rồi'
+        'được rồi', 'biết rồi', 'ok rora', 'ok robot', 'ok em', 'dạ rồi', 'đóng'
       ].some((k) => lowerQuery.includes(k));
 
       if (isDismissDirectionsPhrase) {
-        if (routeGuidanceTimerRef.current) clearTimeout(routeGuidanceTimerRef.current);
+        clearRouteGuidanceTimers();
         const ackText = language === 'English'
           ? 'You are welcome! Have a wonderful experience at Aurora Grand Hotel.'
           : 'Dạ vâng, chúc quý khách đi đường thuận tiện và có trải nghiệm tuyệt vời ạ!';
@@ -435,10 +460,41 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
               handleOpenFeedback();
             }, 600);
           } else if (isRouteGuidance || currentState === 'RT-05') {
-            // Giữ nguyên bản đồ 20s để khách quan sát
-            if (routeGuidanceTimerRef.current) clearTimeout(routeGuidanceTimerRef.current);
+            // Request chỉ đường chính: Giữ nguyên trọn vẹn 20 giây để khách thoải mái quan sát lộ trình
+            clearRouteGuidanceTimers();
             routeGuidanceTimerRef.current = setTimeout(() => {
-              resetToIdle();
+              // Kết thúc 20s xem lộ trình chính -> Kích hoạt giai đoạn QR Code 8 giây ở cuối
+              setIsAutoQrModalOpen(true);
+              setQrCountdown(8);
+
+              const qrVoicePrompt = (langCode === 'en-US' || detectedLang === 'English')
+                ? 'You can scan the QR code on the screen to save directions on your mobile phone.'
+                : 'Quý khách có thể quét mã QR trên màn hình để lưu lại chỉ dẫn đường đi trên điện thoại nhé ạ.';
+
+              speak(
+                qrVoicePrompt,
+                (langCode === 'en-US' || detectedLang === 'English') ? 'en-US' : 'vi-VN',
+                null,
+                () => {
+                  setAiResponseText(qrVoicePrompt);
+                }
+              );
+
+              // Đếm ngược 8 giây
+              let timeLeft = 8;
+              qrCountdownIntervalRef.current = setInterval(() => {
+                timeLeft -= 1;
+                setQrCountdown(timeLeft);
+                if (timeLeft <= 0) {
+                  if (qrCountdownIntervalRef.current) clearInterval(qrCountdownIntervalRef.current);
+                }
+              }, 1000);
+
+              // Hết đúng 8 giây -> Tự động đóng QR và đóng luôn bản đồ chỉ đường (resetToIdle)
+              qrStageTimerRef.current = setTimeout(() => {
+                clearRouteGuidanceTimers();
+                resetToIdle();
+              }, 8000);
             }, 20000);
 
             if (isAutoListen) {
@@ -596,7 +652,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     if (processingSafetyTimerRef.current) clearTimeout(processingSafetyTimerRef.current);
     isProcessingRef.current = false;
     setIsProcessing(false);
-    if (routeGuidanceTimerRef.current) clearTimeout(routeGuidanceTimerRef.current);
+    clearRouteGuidanceTimers();
     stopSpeaking();
     stopListening();
     resetTranscript();
@@ -753,6 +809,12 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         onOpenFoodMenu={() => setIsFoodMenuOpen(true)}
         navigationDestinationKey={navigationDestinationKey}
         onSelectDestination={setNavigationDestinationKey}
+        showQrModalExternal={isAutoQrModalOpen}
+        qrCountdown={qrCountdown}
+        onCloseQrModal={() => {
+          clearRouteGuidanceTimers();
+          resetToIdle();
+        }}
         onCallStaff={async () => {
           try {
             const req = await createConciergeRequest({
@@ -1000,6 +1062,12 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                 destinationKey={navigationDestinationKey}
                 onSelectDestination={setNavigationDestinationKey}
                 onClose={resetToIdle}
+                showQrModalExternal={isAutoQrModalOpen}
+                qrCountdown={qrCountdown}
+                onCloseQrModal={() => {
+                  clearRouteGuidanceTimers();
+                  resetToIdle();
+                }}
               />
 
               {/* Right: AI Answer & Step Instructions */}
@@ -1056,19 +1124,34 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                 </div>
 
                 {/* Mobile QR Handoff Card (Quét QR mang theo bản đồ trên điện thoại) */}
-                <div className="w-full p-3 bg-gradient-to-r from-emerald-950/85 via-stone-900/90 to-stone-900/90 rounded-2xl border border-emerald-500/35 flex items-center gap-3.5 shadow-md">
+                <div
+                  onClick={() => setIsAutoQrModalOpen(true)}
+                  className={`w-full p-3 bg-gradient-to-r from-emerald-950/85 via-stone-900/90 to-stone-900/90 rounded-2xl border transition-all duration-300 flex items-center gap-3.5 shadow-md cursor-pointer ${
+                    isAutoQrModalOpen
+                      ? 'border-emerald-400 ring-2 ring-emerald-400/50 shadow-emerald-500/20'
+                      : 'border-emerald-500/35 hover:border-emerald-500/60'
+                  }`}
+                >
                   <div className="p-1.5 bg-white rounded-xl shrink-0 shadow-sm flex items-center justify-center">
                     <QRCodeSVG
-                      value={`${window.location.origin}/guest-map?dest=${navigationDestinationKey}`}
+                      value={getMobileGuestMapUrl(navigationDestinationKey)}
                       size={82}
                       level="M"
                       includeMargin={false}
                     />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5 text-emerald-400 font-bold text-xs uppercase tracking-wide">
-                      <Smartphone className="w-3.5 h-3.5" />
-                      <span>Quét QR lưu chỉ dẫn</span>
+                    <div className="flex items-center justify-between gap-1">
+                      <div className="flex items-center gap-1.5 text-emerald-400 font-bold text-xs uppercase tracking-wide">
+                        <Smartphone className="w-3.5 h-3.5" />
+                        <span>Quét QR lưu chỉ dẫn</span>
+                      </div>
+                      {qrCountdown !== null && qrCountdown >= 0 && (
+                        <span className="flex items-center gap-1 text-[10px] font-black text-emerald-300 bg-emerald-500/25 px-2 py-0.5 rounded-full animate-pulse border border-emerald-400/30">
+                          <Clock className="w-3 h-3" />
+                          <span>{qrCountdown}s</span>
+                        </span>
+                      )}
                     </div>
                     <p className="text-[11px] text-stone-200 font-medium leading-tight mt-1">
                       Quý khách có thể quét mã QR trên màn hình để ghi nhớ 2 chặng chỉ dẫn trên điện thoại nhé ạ.

@@ -52,6 +52,9 @@ export const MobileRobotScreen = ({
   availableWorkflows = [],
   onStartWorkflow,
   onCallStaff,
+  showQrModalExternal = false,
+  qrCountdown = null,
+  onCloseQrModal = null,
 }) => {
   const [isOnline, setIsOnline] = useState(() => navigator.onLine);
   const [installMessage, setInstallMessage] = useState('');
@@ -366,6 +369,9 @@ export const MobileRobotScreen = ({
                 setIsMapManualOpen(false);
                 onResetToIdle();
               }}
+              showQrModalExternal={showQrModalExternal}
+              qrCountdown={qrCountdown}
+              onCloseQrModal={onCloseQrModal}
               defaultZoom={1.65}
               className="w-full h-full rounded-none border-none shadow-none"
             />

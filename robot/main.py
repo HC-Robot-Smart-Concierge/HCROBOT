@@ -454,7 +454,37 @@ def main(argv=None):
         run_wasd_controller(motor)
         return 0
 
+    active_lidar_port = None
+    if not args.no_lidar:
+        try:
+            from scripts.lidar_service import slam_core
+            active_lidar_port = slam_core.port
+        except Exception:
+            pass
+
+    port = _value(args.port, serial_cfg, "port", "auto")
+    exclude = [active_lidar_port] if active_lidar_port else []
+    baudrate = int(_value(args.baud, serial_cfg, "baudrate", 115200))
+
+    from ultrasonic_serial import detect_esp32_port
+    esp32_port = detect_esp32_port(exclude_ports=exclude) if port == "auto" else port
+
     reader = None
+    if esp32_port:
+        try:
+            reader = UltrasonicSerialReader(port=esp32_port, baudrate=baudrate, exclude_ports=exclude)
+            reader.start()
+            if not args.no_lidar:
+                try:
+                    from scripts.lidar_service import slam_core
+                    slam_core.esp32_reader = reader
+                except Exception:
+                    pass
+            logger.info("📡 Đã khởi động luồng đọc cảm biến siêu âm & Encoder từ ESP32 trên %s", esp32_port)
+        except Exception as e:
+            logger.warning("⚠️ Không mở được Serial ESP32 (%s).", e)
+            reader = None
+
     if args.no_safety:
         logger.warning(
             "⚠️ NO-SAFETY: Đã tắt khóa an toàn cảm biến siêu âm. Điều khiển Web và bàn phím sẽ tác động trực tiếp tới motor."
@@ -469,19 +499,7 @@ def main(argv=None):
         udp_thread.start()
         _print_controls("disabled (--no-safety)", {}, 0.0, 0.0)
     else:
-        active_lidar_port = None
-        if not args.no_lidar:
-            try:
-                from scripts.lidar_service import slam_core
-                active_lidar_port = slam_core.port
-            except Exception:
-                pass
-
-        port = _value(args.port, serial_cfg, "port", "auto")
-        exclude = [active_lidar_port] if active_lidar_port else []
-
-        from ultrasonic_serial import detect_esp32_port
-        if port == "auto" and not detect_esp32_port(exclude_ports=exclude):
+        if not reader:
             logger.warning(
                 f"⚠️ Không tìm thấy cổng USB riêng cho ESP32 (cổng {active_lidar_port} đang dùng cho RPLiDAR). "
                 "Tự động chuyển sang chế độ --no-safety để điều khiển xe bình thường."
@@ -497,7 +515,6 @@ def main(argv=None):
             run_wasd_controller(motor)
             return 0
 
-        baudrate = int(_value(args.baud, serial_cfg, "baudrate", 115200))
         stale_timeout = float(
             _value(args.sensor_timeout, safety_cfg, "stale_timeout_seconds", 0.4)
         )
@@ -521,7 +538,6 @@ def main(argv=None):
             _value(args.turn_clearance, safety_cfg, "turn_clearance_cm", 25.0)
         )
 
-        reader = UltrasonicSerialReader(port=port, baudrate=baudrate, exclude_ports=exclude)
         ignored = [s.strip().lower() for s in args.ignore_sensors.split(",") if s.strip()]
         if ignored:
             logger.info("🛡️ Cấu hình bỏ qua cảm biến an toàn: %s", ", ".join(ignored).upper())
@@ -539,13 +555,6 @@ def main(argv=None):
             ignored_sensors=ignored,
         )
 
-        try:
-            reader.start()
-        except RuntimeError as exc:
-            logger.error("Không khởi động được Serial reader: %s", exc)
-            motor.cleanup()
-            return 3
-
         if reader.wait_for_packet(timeout=4.5):
             logger.info("Đã nhận packet ultrasonic đầu tiên; khóa fail-safe sẵn sàng.")
         else:
@@ -556,11 +565,6 @@ def main(argv=None):
             logger.warning(
                 "🔄 TỰ ĐỘNG CHUYỂN SANG NO-SAFETY: Bỏ qua khóa siêu âm để cho phép điều khiển xe ngay (LiDAR 360° vẫn bảo vệ)."
             )
-            try:
-                reader.stop()
-            except Exception:
-                pass
-            reader = None
             safety = DirectMotorSafetyWrapper(motor)
 
         _print_controls(port, thresholds, stale_timeout, turn_clearance)

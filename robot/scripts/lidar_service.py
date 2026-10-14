@@ -1745,6 +1745,28 @@ async def map_ws_endpoint(websocket: WebSocket):
             scans = slam_core.get_latest_scans()
             map_data = slam_core.get_grid_map()
 
+            encoders_payload = {"m1": {"rpm": 0, "ticks": 0}, "m2": {"rpm": 0, "ticks": 0}, "m3": {"rpm": 0, "ticks": 0}, "m4": {"rpm": 0, "ticks": 0}}
+            esp_reader = getattr(slam_core, "esp32_reader", None)
+            snap = esp_reader.get_snapshot() if (esp_reader and hasattr(esp_reader, "get_snapshot")) else None
+            if snap and snap.encoders:
+                encoders_payload = snap.encoders
+
+            front_cm = round(slam_core.get_front_distance() * 100, 1) if slam_core.get_front_distance() < 90 else None
+            rear_cm = round(slam_core.get_rear_distance() * 100, 1) if slam_core.get_rear_distance() < 90 else None
+            left_cm = round(slam_core.get_left_distance() * 100, 1) if slam_core.get_left_distance() < 90 else None
+            right_cm = round(slam_core.get_right_distance() * 100, 1) if slam_core.get_right_distance() < 90 else None
+
+            # Kết hợp dữ liệu cảm biến siêu âm ESP32 khi LiDAR chưa kịp quét hoặc bị che
+            if snap and snap.distances:
+                if front_cm is None and snap.distances.get("front") is not None:
+                    front_cm = round(snap.distances["front"], 1)
+                if rear_cm is None and snap.distances.get("rear") is not None:
+                    rear_cm = round(snap.distances["rear"], 1)
+                if left_cm is None and snap.distances.get("left") is not None:
+                    left_cm = round(snap.distances["left"], 1)
+                if right_cm is None and snap.distances.get("right") is not None:
+                    right_cm = round(snap.distances["right"], 1)
+
             payload = {
                 "type": "telemetry_update",
                 "source": "REAL_RPLIDAR_A1M8_PI5",
@@ -1764,11 +1786,12 @@ async def map_ws_endpoint(websocket: WebSocket):
                 "overlay_active": slam_core._overlay_active,
                 "overlay_waypoints": slam_core._overlay_waypoints if slam_core._overlay_active else [],
                 "scan_points": scans,
+                "encoders": encoders_payload,
                 "safety": {
-                    "front_cm": round(slam_core.get_front_distance() * 100, 1) if slam_core.get_front_distance() < 90 else None,
-                    "rear_cm": round(slam_core.get_rear_distance() * 100, 1) if slam_core.get_rear_distance() < 90 else None,
-                    "left_cm": round(slam_core.get_left_distance() * 100, 1) if slam_core.get_left_distance() < 90 else None,
-                    "right_cm": round(slam_core.get_right_distance() * 100, 1) if slam_core.get_right_distance() < 90 else None,
+                    "front_cm": front_cm,
+                    "rear_cm": rear_cm,
+                    "left_cm": left_cm,
+                    "right_cm": right_cm,
                     "alert": getattr(slam_core, "last_safety_alert", ""),
                 },
                 "grid_data": slam_core.merge_maps() if slam_core._overlay_active else map_data["grid_data"],

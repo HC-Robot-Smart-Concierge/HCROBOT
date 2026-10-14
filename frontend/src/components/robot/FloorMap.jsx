@@ -53,8 +53,8 @@ export const HOTEL_DESTINATIONS = {
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Đi từ sảnh Lobby đến Thang máy A và bấm lên Tầng 5.',
     step2Text: 'Chặng 2: Ra khỏi thang máy, rẽ trái đi hết hành lang qua cửa kính là đến Hồ bơi vô cực.',
-    coords: { x: 740, y: 380 },
-    routeTarget: 'M 1249 410 L 1249 470 C 1249 480, 1235 480, 1220 480 L 960 480 C 930 480, 915 510, 908 560 C 900 600, 850 590, 820 560 L 820 450 C 820 420, 790 390, 740 380',
+    coords: { x: 806, y: 420 },
+    routeTarget: 'M 1232 415 L 1232 525 L 806 525 L 806 420',
   },
   gym: {
     id: 'gym',
@@ -68,8 +68,8 @@ export const HOTEL_DESTINATIONS = {
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Đi tới Thang máy A và bấm lên Tầng 5.',
     step2Text: 'Chặng 2: Ra khỏi thang máy, đi thẳng xuống phía dưới để vào Phòng Gym.',
-    coords: { x: 1140, y: 680 },
-    routeTarget: 'M 1249 410 L 1249 550 C 1249 570, 1230 600, 1200 630 L 1140 680',
+    coords: { x: 1180, y: 650 },
+    routeTarget: 'M 1232 415 L 1232 525 L 1180 525 L 1180 650',
   },
   spa: {
     id: 'spa',
@@ -83,8 +83,8 @@ export const HOTEL_DESTINATIONS = {
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Đi tới Thang máy A và bấm lên Tầng 5.',
     step2Text: 'Chặng 2: Ra khỏi thang máy, rẽ trái 15m vào cửa phòng Spa.',
-    coords: { x: 1040, y: 380 },
-    routeTarget: 'M 1249 410 L 1249 470 C 1249 480, 1235 480, 1220 480 L 1080 480 C 1080 460, 1070 440, 1070 430 L 1040 380',
+    coords: { x: 1054, y: 420 },
+    routeTarget: 'M 1232 415 L 1232 525 L 1054 525 L 1054 420',
   },
 
   // === TẦNG 2: BẾP, NHÀ HÀNG & F&B (MAP 4.PNG MỚI) ===
@@ -412,8 +412,8 @@ export const HOTEL_DESTINATIONS = {
   },
 };
 
-// Tuyến đường chuẩn chặng 1: Từ Lobby (Ground) -> Thang máy A
-export const ROUTE_GROUND_TO_ELEVATOR = 'M 796 545 C 850 545, 880 545, 908 545 C 935 545, 955 480, 990 480 L 1210 480 C 1235 480, 1249 460, 1249 410';
+// Tuyến đường chuẩn chặng 1: Từ Lobby (Ground) -> Thang máy A (đi qua cửa sảnh, không xuyên tường)
+export const ROUTE_GROUND_TO_ELEVATOR = 'M 796 545 L 870 545 Q 908 545, 908 500 Q 908 480, 950 480 L 1232 480 L 1232 415';
 
 // Tạo vé chỉ đường dùng 1 lần (Ephemeral One-time Ticket có thời hạn 15 phút)
 export const createEphemeralTicket = (destKey) => {
@@ -431,21 +431,36 @@ export const createEphemeralTicket = (destKey) => {
   }
 };
 
+// Cache URL vé QR theo destinationKey để mã QR ổn định, không bị render lại giật giật khi đếm ngược
+const qrTicketCache = new Map();
+
 // Hàm tạo URL chỉ đường di động siêu nhẹ (Standalone 15KB map.html) tối ưu cho quét QR
 export const getMobileGuestMapUrl = (destKey) => {
+  const now = Date.now();
+  const cached = qrTicketCache.get(destKey);
+  // Nếu đã tạo vé trong vòng 10 phút thì giữ nguyên mã QR để không bị giật/đổi hình
+  if (cached && cached.expiresAt > now + 60 * 1000) {
+    return cached.url;
+  }
+
   const token = createEphemeralTicket(destKey);
+  let url = '';
   try {
     const origin = window.location.origin;
     const hostname = window.location.hostname;
     if (hostname === 'localhost' || hostname === '127.0.0.1') {
       const port = window.location.port ? `:${window.location.port}` : ':5173';
       const lanIp = localStorage.getItem('aurora_custom_lan_ip') || '192.168.1.149';
-      return `${window.location.protocol}//${lanIp}${port}/map.html?t=${token}`;
+      url = `${window.location.protocol}//${lanIp}${port}/map.html?t=${token}`;
+    } else {
+      url = `${origin}/map.html?t=${token}`;
     }
-    return `${origin}/map.html?t=${token}`;
   } catch {
-    return `http://192.168.1.149:5173/map.html?t=${token}`;
+    url = `http://192.168.1.149:5173/map.html?t=${token}`;
   }
+
+  qrTicketCache.set(destKey, { url, expiresAt: now + 15 * 60 * 1000 });
+  return url;
 };
 
 export const FloorMap = ({
@@ -460,6 +475,11 @@ export const FloorMap = ({
 }) => {
   // Lấy dữ liệu điểm đến hiện tại (Mặc định là Hồ bơi vô cực nếu không truyền)
   const currentDest = HOTEL_DESTINATIONS[destinationKey] || HOTEL_DESTINATIONS.infinity_pool;
+
+  // Giữ URL mã QR cố định trong suốt vòng đời của điểm đến này để mã QR không bị giật ma trận
+  const qrMapUrl = useMemo(() => {
+    return getMobileGuestMapUrl(currentDest.id);
+  }, [currentDest.id]);
 
   // Trạng thái Chặng:
   // 1: Chặng 1 (Tầng Trệt ra Thang Máy)
@@ -730,7 +750,7 @@ export const FloorMap = ({
               </g>
 
               {/* VỊ TRÍ THANG MÁY ĐẾN (ELEVATOR GOAL) - Chấm vàng hổ phách nhấp nháy */}
-              <g transform="translate(1249, 400)">
+              <g transform="translate(1232, 415)">
                 <circle r="30" fill="#F59E0B" opacity="0.25" className="animate-ping" />
                 <circle r="18" fill="#F59E0B" stroke="#ffffff" strokeWidth="4" filter="url(#amber-glow)" />
                 <text x="0" y="5" textAnchor="middle" fill="#ffffff" fontSize="14" fontWeight="bold">
@@ -774,7 +794,7 @@ export const FloorMap = ({
 
               {/* VỊ TRÍ XUẤT PHÁT: THANG MÁY (Nếu khác tầng) hoặc ROBOT LOBBY (Nếu cùng tầng) */}
               {currentDest.isDifferentFloor ? (
-                <g transform="translate(1249, 410)">
+                <g transform="translate(1232, 415)">
                   <circle r="18" fill="#0ea5e9" stroke="#ffffff" strokeWidth="4" />
                   <rect x="-90" y="-50" width="180" height="30" rx="15" fill="#0f172a" stroke="#0ea5e9" strokeWidth="2" />
                   <text x="0" y="-30" textAnchor="middle" fill="#ffffff" fontSize="12" fontWeight="bold">
@@ -900,7 +920,7 @@ export const FloorMap = ({
         >
           <div className="p-1 bg-white rounded-xl shrink-0 shadow-sm">
             <QRCodeSVG
-              value={getMobileGuestMapUrl(currentDest.id)}
+              value={qrMapUrl}
               size={64}
               level="M"
               includeMargin={false}
@@ -960,7 +980,7 @@ export const FloorMap = ({
 
               <div className="p-3 bg-white rounded-2xl shadow-xl flex items-center justify-center">
                 <QRCodeSVG
-                  value={getMobileGuestMapUrl(currentDest.id)}
+                  value={qrMapUrl}
                   size={190}
                   level="H"
                   includeMargin={false}

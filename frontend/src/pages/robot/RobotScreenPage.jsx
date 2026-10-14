@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { RobotFace } from '../../components/robot/RobotFace';
 import { AudioWave } from '../../components/robot/AudioWave';
 import { FloorMap, HOTEL_DESTINATIONS, getMobileGuestMapUrl } from '../../components/robot/FloorMap';
@@ -24,6 +24,11 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   // States: 'RT-01' | 'RT-02' | 'RT-03' | 'RT-04' | 'RT-05'
   const [currentState, setCurrentState] = useState('RT-01');
   const [navigationDestinationKey, setNavigationDestinationKey] = useState('infinity_pool');
+
+  // Giữ mã QR URL cố định để không bị giật ma trận khi đồng hồ 8s đếm ngược re-render
+  const qrMapUrl = useMemo(() => {
+    return getMobileGuestMapUrl(navigationDestinationKey);
+  }, [navigationDestinationKey]);
 
   const [language, setLanguage] = useState('Tiếng Việt');
   const [aiResponseText, setAiResponseText] = useState('');
@@ -1134,7 +1139,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                 >
                   <div className="p-1.5 bg-white rounded-xl shrink-0 shadow-sm flex items-center justify-center">
                     <QRCodeSVG
-                      value={getMobileGuestMapUrl(navigationDestinationKey)}
+                      value={qrMapUrl}
                       size={82}
                       level="M"
                       includeMargin={false}

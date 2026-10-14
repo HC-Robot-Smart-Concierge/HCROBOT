@@ -2,6 +2,7 @@
 
 import argparse
 import logging
+import os
 import threading
 import time
 
@@ -358,6 +359,24 @@ def build_argument_parser():
 
 
 def main(argv=None):
+    # 0. Ngăn ngừa chạy trùng lặp tiến trình gây tranh chấp cổng Serial /dev/ttyUSB0
+    try:
+        import fcntl
+        global _instance_lock_file
+        _instance_lock_file = open("/tmp/hcrobot_main.lock", "w")
+        fcntl.flock(_instance_lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        _instance_lock_file.write(str(os.getpid()))
+        _instance_lock_file.flush()
+    except (IOError, BlockingIOError):
+        print("\n" + "=" * 65)
+        print("🚨 [LỖI] ĐÃ CÓ TIẾN TRÌNH HC-ROBOT ĐANG CHẠY TRÊN HỆ THỐNG!")
+        print("Cổng Serial và GPIO sẽ bị xung đột nếu chạy 2 instance cùng lúc.")
+        print("Vui lòng dừng tiến trình cũ trước bằng lệnh: sudo killall -9 python3")
+        print("=" * 65 + "\n")
+        return 1
+    except Exception:
+        pass
+
     args = build_argument_parser().parse_args(argv)
     logging.basicConfig(
         level=logging.DEBUG if args.debug else logging.INFO,

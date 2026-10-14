@@ -972,3 +972,31 @@ async def _background_save_chat(session_id: str, user_turn: str, ai_turn: str, l
             await session_manager.save_turn_to_db(bg_db, session_id, "assistant", ai_turn, language=lang_code, room_number=room_number)
     except Exception as e:
         logger.warning(f"[AIChat Background Save Error] {e}")
+
+
+async def _background_extract_and_create_ticket(prompt: str, room_number: Optional[str], action: Optional[str] = None, items: Optional[str] = None):
+    """Tạo ticket ngầm dưới nền sử dụng intent đã có sẵn từ LangGraph, không gọi lại Ollama tốn 5s CPU."""
+    try:
+        from app.core.database import AsyncSessionLocal
+        act = action or "unknown"
+        items_desc = items or prompt
+
+        prompt_lower = prompt.lower()
+        request_keywords = [
+            "cần", "xin", "cho", "gửi", "gọi", "đặt", "sửa", "dọn", "nước", "khăn",
+            "lễ tân", "yêu cầu", "phòng", "hỗ trợ", "bàn", "chăn", "gối", "vali", "hành lý",
+            "taxi", "xe", "concierge", "live call", "trợ giúp", "hỏng", "bảo trì"
+        ]
+        
+        target_actions = [
+            "room_service", "housekeeping", "bellman", "maintenance", 
+            "restaurant", "reception", "receptionist", "front_desk", 
+            "taxi", "concierge", "live_support"
+        ]
+        if act in target_actions or any(kw in prompt_lower for kw in request_keywords):
+            target_action = act if act in target_actions else "reception"
+            async with AsyncSessionLocal() as bg_db:
+                created_ticket_code = await _auto_create_ticket(bg_db, target_action, room_number or "402", items_desc)
+                logger.info(f"[AI Chat Background Auto-Ticket] Created ticket #{created_ticket_code} for {target_action} from prompt: '{prompt}'")
+    except Exception as ex_ticket:
+        logger.warning(f"[AI Chat Background Ticket Warning] Could not auto-create ticket: {ex_ticket}")

@@ -12,7 +12,6 @@ import { RoomServiceDashboard } from './pages/dashboard/RoomServiceDashboard';
 import { HousekeepingDashboard } from './pages/dashboard/HousekeepingDashboard';
 import { BellServicesDashboard } from './pages/dashboard/BellServicesDashboard';
 import { MaintenanceDashboard } from './pages/dashboard/MaintenanceDashboard';
-import { RestaurantDashboard } from './pages/dashboard/RestaurantDashboard';
 import { KitchenDashboard } from './pages/dashboard/KitchenDashboard';
 import { ConciergeDashboard } from './pages/dashboard/ConciergeDashboard';
 import { StaffOverviewDashboard } from './pages/dashboard/StaffOverviewDashboard';
@@ -132,18 +131,8 @@ const normalizeLegacyView = (view, user) => {
   if (['reception', 'front_desk', 'frontdesk'].includes(clean)) {
     return 'reception';
   }
-  if (['kitchen', 'bep', 'nha_bep', 'nhabep', 'chef'].includes(clean)) {
+  if (['kitchen', 'bep', 'nha_bep', 'nhabep', 'chef', 'restaurant', 'nhahang', 'nha_hang'].includes(clean)) {
     return 'kitchen';
-  }
-  if (['restaurant', 'nhahang', 'nha_hang'].includes(clean)) {
-    if (
-      (user?.department || '').toLowerCase().includes('kitchen') ||
-      (user?.role || '').toLowerCase().includes('kitchen') ||
-      user?.username === 'kitchen'
-    ) {
-      return 'kitchen';
-    }
-    return 'restaurant';
   }
   if (['taxi', 'datxe', 'dat_xe', 'transport', 'transportation'].includes(clean)) {
     return 'concierge';
@@ -479,8 +468,7 @@ export function App() {
     { id: 'housekeeping', label: '2. Housekeeping (Staff)' },
     { id: 'bell_services', label: '3. Bell Services (Staff)' },
     { id: 'maintenance', label: '4. Maintenance (Staff)' },
-    { id: 'restaurant', label: '5. Restaurant / Nhà hàng (Staff)' },
-    { id: 'kitchen', label: '5b. Kitchen / Bếp (Staff)' },
+    { id: 'kitchen', label: '5. Kitchen / Bếp (Staff)' },
     { id: 'concierge', label: '6. Concierge & Transport (Staff)' },
     { id: 'robot_display', label: 'Man Hinh Robot' },
     { id: 'admin_map', label: 'LiDAR SLAM Map' },
@@ -694,10 +682,8 @@ export function App() {
 
             {/* Dynamic View rendering based on activeMenu */}
             {activeMenu === 'Dashboard' && (
-              activeView === 'kitchen' || (activeView === 'restaurant' && (currentUser?.department || '').toLowerCase().includes('kitchen')) ? (
+              activeView === 'kitchen' || activeView === 'restaurant' ? (
                 <KitchenDashboard currentUser={currentUser} onNotify={showNotification} />
-              ) : activeView === 'restaurant' ? (
-                <RestaurantDashboard currentUser={currentUser} onNotify={showNotification} />
               ) : activeView === 'room_service' ? (
                 <RoomServiceDashboard currentUser={currentUser} onNotify={showNotification} />
               ) : activeView === 'reception' ? (

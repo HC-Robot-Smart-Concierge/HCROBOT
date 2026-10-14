@@ -9,6 +9,7 @@ export const DEFAULT_SETTINGS = {
   systemTimezone: 'UTC+07:00 Asia/Ho_Chi_Minh',
   defaultLanguage: 'English (US)',
   voiceVolume: 75,
+  speechRate: 1.0,
   nightMode: 'Quiet Navigation Only',
 
   // 2. Security & Access

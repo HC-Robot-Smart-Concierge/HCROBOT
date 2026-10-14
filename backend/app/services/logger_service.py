@@ -196,13 +196,28 @@ def audit(
         except Exception:
             pass
 
-    # Also log operational log
+    # Also log operational log with user-friendly message
+    act_upper = action.upper()
+    act_name = actor_name or str(actor_id)
+    if act_upper == "LOGIN":
+        vn_msg = f"Nhân viên '{actor_id}' ({act_name}) đã đăng nhập thành công vào hệ thống."
+    elif act_upper == "LOGOUT":
+        vn_msg = f"Nhân viên '{actor_id}' ({act_name}) đã đăng xuất thành công khỏi hệ thống."
+    elif act_upper == "CREATE":
+        vn_msg = f"Nhân viên '{actor_id}' ({act_name}) đã tạo mới dữ liệu ({resource_type})."
+    elif act_upper == "UPDATE":
+        vn_msg = f"Nhân viên '{actor_id}' ({act_name}) đã cập nhật dữ liệu ({resource_type})."
+    elif act_upper == "DELETE":
+        vn_msg = f"Nhân viên '{actor_id}' ({act_name}) đã xóa dữ liệu ({resource_type})."
+    else:
+        vn_msg = f"Nhân viên '{actor_id}' ({act_name}) đã thực hiện thao tác {action.lower()} trên hệ thống."
+
     log_event(
         level=LogLevelEnum.INFO,
         category=LogCategoryEnum.AUDIT,
         event_type=f"AUDIT_{action.upper()}",
         module="app.core.audit",
-        message=f"[{actor_type.value}] {actor_id} performed {action.upper()} on {resource_type.upper()}:{resource_id or 'N/A'}",
+        message=vn_msg,
         actor_type=actor_type,
         actor_id=str(actor_id),
         correlation_id=correlation_id,

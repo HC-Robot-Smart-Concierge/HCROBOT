@@ -40,6 +40,20 @@ class DepartmentDetailResponse(DepartmentResponse):
     model_config = ConfigDict(from_attributes=True)
 
 
+class DepartmentCreate(BaseModel):
+    name: str = Field(..., description="Tên phòng ban hiển thị", json_schema_extra={"example": "Security & Loss Prevention"})
+    code: Optional[str] = Field(None, description="Mã code chuẩn của phòng ban (vd: 'SECURITY')", json_schema_extra={"example": "SECURITY"})
+    description: Optional[str] = Field(None, description="Mô tả chức năng nhiệm vụ của phòng ban", json_schema_extra={"example": "Bộ phận kiểm soát an ninh và an toàn"})
+    is_active: bool = Field(True, description="Trạng thái hoạt động", json_schema_extra={"example": True})
+
+
+class DepartmentUpdate(BaseModel):
+    name: Optional[str] = Field(None, description="Tên phòng ban cập nhật")
+    code: Optional[str] = Field(None, description="Mã code cập nhật")
+    description: Optional[str] = Field(None, description="Mô tả cập nhật")
+    is_active: Optional[bool] = Field(None, description="Trạng thái hoạt động")
+
+
 # ---------------------------------------------------------
 # Staff & Robot Fleet Schemas
 # ---------------------------------------------------------
@@ -688,6 +702,18 @@ class AdminOperationsSummary(BaseModel):
     maintenance_count: int = 0
     taxi_count: int = 0
     directives_count: int = 0
+
+
+class AdminTaskDispatchCreate(BaseModel):
+    department: str = Field("Housekeeping", description="Tên bộ phận tiếp nhận (Housekeeping, F&B, Reception, Bell Services, Maintenance, Taxi, Concierge)")
+    title: str = Field(..., description="Tiêu đề yêu cầu điều phối")
+    room_number: str = Field(..., description="Số phòng hoặc vị trí tiếp nhận")
+    guest_name: Optional[str] = Field("Hotel Guest", description="Tên khách hàng")
+    priority: Optional[str] = Field("HIGH PRIORITY", description="Mức độ ưu tiên ('LOW', 'NORMAL', 'HIGH', 'HIGH PRIORITY', 'URGENT')")
+    description: Optional[str] = Field("", description="Chi tiết nội dung chỉ đạo / yêu cầu")
+    assigned_staff_name: Optional[str] = Field(None, description="Tên nhân viên phụ trách ban đầu")
+    assigned_robot_code: Optional[str] = Field(None, description="Mã Robot điều động")
+
 
 
 # ---------------------------------------------------------

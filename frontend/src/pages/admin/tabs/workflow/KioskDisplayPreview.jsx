@@ -361,7 +361,7 @@ export const KioskDisplayPreview = ({
 
           {/* Real-time Laptop Speech Transcript Display */}
           {transcript && transcript.trim() ? (
-            <div className="w-full max-w-md p-3.5 rounded-2xl bg-white border border-[#BFBFBD] shadow-md text-left animate-in zoom-in-95">
+            <div className="w-full max-w-md p-3.5 rounded-2xl bg-white border border-slate-200 shadow-md text-left animate-in zoom-in-95">
               <span className="text-[10px] font-black uppercase text-[#262626] flex items-center gap-1">
                 <Volume2 className="w-3.5 h-3.5" />
                 Nội dung vừa nhận diện từ giọng nói:

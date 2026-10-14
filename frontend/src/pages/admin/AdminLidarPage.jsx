@@ -4,6 +4,9 @@ import {
   fetchWaypoints,
   saveWaypoint,
   deleteWaypoint,
+  fetchCurrentMap,
+  loadSavedLidarMap,
+  listSavedMaps,
 } from '../../services/workflowApi';
 import {
   RosbridgeClient,
@@ -64,6 +67,7 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
   const [scanPoints, setScanPoints] = useState([]);
   const [gridData, setGridData] = useState([]);
   const [gridMetadata, setGridMetadata] = useState({ width: 200, height: 200, resolution: 0.05, origin_x: -5.0, origin_y: -5.0 });
+  const [selectedMapId, setSelectedMapId] = useState('phong_lam_viec');
 
   const [telemetry, setTelemetry] = useState({
     x: 0.0,
@@ -216,6 +220,43 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
   useEffect(() => {
     fetchHardwareStatus();
   }, [connectionMode]);
+
+  // Tự động tải danh sách bản đồ và nạp bản đồ tĩnh hiện tại từ Backend
+  useEffect(() => {
+    const initMaps = async () => {
+      try {
+        const listData = await listSavedMaps();
+        if (listData?.maps && listData.maps.length > 0) {
+          setSavedMapsList(listData.maps);
+          if (listData.active_map_id) setSelectedMapId(listData.active_map_id);
+        }
+        const currMap = await fetchCurrentMap();
+        if (currMap?.grid_data && currMap.grid_data.length > 0) {
+          setGridData(currMap.grid_data);
+          if (currMap.metadata) setGridMetadata(currMap.metadata);
+        }
+      } catch (err) {
+        console.warn('Lỗi load bản đồ tĩnh ban đầu:', err);
+      }
+    };
+    initMaps();
+  }, []);
+
+  const handleSelectMap = async (mapId) => {
+    try {
+      setSelectedMapId(mapId);
+      setNavNotification(`Đang nạp bản đồ: ${mapId}...`);
+      await loadSavedLidarMap(mapId);
+      const curr = await fetchCurrentMap();
+      if (curr?.grid_data) {
+        setGridData(curr.grid_data);
+        if (curr.metadata) setGridMetadata(curr.metadata);
+        setNavNotification(`✅ Đã nạp thành công bản đồ: ${mapId}`);
+      }
+    } catch (err) {
+      setNavNotification(`❌ Lỗi nạp bản đồ: ${err.message}`);
+    }
+  };
 
   // Dual Connection Effect: ROS 2 Rosbridge (port 9090) hoặc Pi 5 (port 8000)
   useEffect(() => {
@@ -821,6 +862,27 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Map Selector */}
+          {savedMapsList.length > 0 && (
+            <div className="flex items-center gap-1.5 px-2 py-1 rounded-md border text-[11px] font-bold"
+              style={{ background: '#FAF8F5', borderColor: '#BFBFBD' }}>
+              <FolderOpen className="w-3.5 h-3.5 text-amber-600" />
+              <select
+                value={selectedMapId}
+                onChange={(e) => handleSelectMap(e.target.value)}
+                className="bg-transparent border-none text-[11px] font-bold outline-none cursor-pointer"
+                style={{ color: '#262626' }}
+                title="Chọn bản đồ đã lưu để hiển thị"
+              >
+                {savedMapsList.map((m) => (
+                  <option key={m.map_id} value={m.map_id}>
+                    {m.name || m.map_id} ({m.width}x{m.height})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           <button
             onClick={handleOpenSaveMapModal}
             className="px-2.5 py-1 text-[11px] font-bold rounded-md border flex items-center gap-1.5 transition-all cursor-pointer hover:bg-stone-200"
@@ -965,8 +1027,8 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
               showWaypoints={true}
             />
 
-            {/* Waiting for data overlay */}
-            {scanPoints.length === 0 && (
+            {/* Waiting for data overlay: chỉ hiện khi chưa có cả live scan VÀ chưa có bản đồ tĩnh */}
+            {scanPoints.length === 0 && gridData.length === 0 && (
               <div className="absolute inset-0 z-10 backdrop-blur-sm flex flex-col items-center justify-center gap-4 text-center p-6 rounded-2xl"
                 style={{ background: 'rgba(242,239,233,0.97)', border: '1px solid #BFBFBD' }}>
                 <Cpu className="w-8 h-8 animate-pulse" style={{ color: '#8C8C8C' }} />

@@ -25,20 +25,16 @@ _workflows_seeded = False
 
 
 async def ensure_default_workflow(db: AsyncSession):
-    """Seed all 7 standard Core Workflows from Stepflow.md if database is empty or missing."""
+    """Seed all 8 standard Core Workflows from Stepflow.md if database is missing any."""
     global _workflows_seeded
     if _workflows_seeded:
         return
 
-    # Check if table already contains workflows to skip 7 sequential queries
-    check_res = await db.execute(select(RobotWorkflow.id).limit(1))
-    if check_res.scalar_one_or_none() is not None:
-        _workflows_seeded = True
-        return
-
+    added_any = False
     for wf_data in CORE_WORKFLOWS:
         res = await db.execute(select(RobotWorkflow).where(RobotWorkflow.id == wf_data["id"]))
-        if res.scalar_one_or_none() is None:
+        existing_wf = res.scalar_one_or_none()
+        if existing_wf is None:
             new_wf = RobotWorkflow(
                 id=wf_data["id"],
                 name=wf_data["name"],
@@ -48,7 +44,16 @@ async def ensure_default_workflow(db: AsyncSession):
                 steps=wf_data["steps"],
             )
             db.add(new_wf)
-    await db.commit()
+            added_any = True
+        else:
+            existing_wf.name = wf_data["name"]
+            existing_wf.description = wf_data["description"]
+            existing_wf.trigger_type = wf_data["trigger_type"]
+            existing_wf.steps = wf_data["steps"]
+            added_any = True
+
+    if added_any:
+        await db.commit()
     _workflows_seeded = True
 
 

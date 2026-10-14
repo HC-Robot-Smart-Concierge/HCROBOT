@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc, or_
+from sqlalchemy import select, desc, or_, func
 
 from app.core.database import get_db
 from app.models import SupportRequest
@@ -41,7 +41,31 @@ async def get_reception_dashboard(db: AsyncSession = Depends(get_db)):
     
     Dữ liệu được truy vấn chuẩn hóa từ bảng `support_requests` có `department_id = 'DEP-RECEPTION'` hoặc `service_type_id = 'ST-RECEPTION'`.
     """
-    result = await db.execute(
+    # 1. Tìm yêu cầu active đang cần xử lý:
+    # - Loại trừ các yêu cầu đã Completed, Done, Cancelled, Delivered
+    # - Ưu tiên các yêu cầu 'In Progress' trước, sau đó là 'Pending' mới nhất
+    active_stmt = (
+        select(SupportRequest)
+        .where(
+            or_(
+                SupportRequest.department_id == "DEP-RECEPTION",
+                SupportRequest.service_type_id == "ST-RECEPTION",
+            ),
+            func.lower(SupportRequest.status).notin_([
+                "completed", "done", "cancelled", "delivered", "hoàn tất", "đã hoàn thành", "hủy"
+            ]),
+        )
+        .order_by(
+            desc(func.lower(SupportRequest.status) == "in progress"),
+            desc(SupportRequest.created_at),
+        )
+        .limit(1)
+    )
+    active_res = await db.execute(active_stmt)
+    current_req = active_res.scalar_one_or_none()
+
+    # 2. Lấy danh sách 10 yêu cầu gần đây (bao gồm cả các yêu cầu đã hoàn tất để hiển thị lịch sử)
+    recent_stmt = (
         select(SupportRequest)
         .where(
             or_(
@@ -51,10 +75,10 @@ async def get_reception_dashboard(db: AsyncSession = Depends(get_db)):
         )
         .order_by(desc(SupportRequest.created_at))
         .limit(10)
-
     )
-    all_reqs = result.scalars().all()
-    current_req = all_reqs[0] if all_reqs else None
+    recent_res = await db.execute(recent_stmt)
+    all_reqs = recent_res.scalars().all()
+
     return {
         "current_request": current_req,
         "recent_requests": all_reqs,

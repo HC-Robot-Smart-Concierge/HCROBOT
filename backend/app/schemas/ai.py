@@ -24,6 +24,7 @@ class ChatResponse(BaseModel):
     ticket_code: Optional[str] = Field(None, description="Mã ticket CCG được tạo cho cuộc gọi")
     audio_base64: Optional[str] = Field(None, description="Âm thanh giọng đọc phát tức thì từ backend cache")
     mime_type: Optional[str] = Field("audio/mp3", description="Định dạng âm thanh")
+    destination_key: Optional[str] = Field(None, description="Mã POI điều hướng bản đồ (VD: infinity_pool, restaurant, rooftop_coffee) nếu là câu hỏi chỉ đường/vị trí")
 
 
 class IntentRequest(BaseModel):
@@ -51,12 +52,26 @@ class TTSRequest(BaseModel):
     provider: Optional[str] = Field("edge", description="Provider TTS: edge, elevenlabs, openai, browser")
     voice: Optional[str] = Field(None, description="Tên giọng đọc cụ thể (VD: vi-VN-HoaiMyNeural)")
     language: Optional[str] = Field("vi-VN", description="Mã ngôn ngữ: vi-VN, en-US")
+    rate: Optional[str] = Field("+0%", description="Tốc độ nói (VD: +0%, -10%, +10%)")
 
 
 class TTSResponse(BaseModel):
     audio_base64: str = Field(..., description="Dữ liệu âm thanh MP3 mã hóa Base64")
     mime_type: str = Field("audio/mp3", description="MIME type của âm thanh")
     provider_used: str = Field("edge", description="Provider TTS đã được sử dụng thực tế (edge, elevenlabs, openai, browser)")
+
+
+class VoiceSettingsRequest(BaseModel):
+    speech_rate: float = Field(1.0, ge=0.5, le=2.0, description="Tốc độ nói từ 0.5x đến 2.0x")
+    vi_voice: Optional[str] = Field("vi-VN-HoaiMyNeural", description="Giọng đọc tiếng Việt (VD: vi-VN-HoaiMyNeural, vi-VN-NamMinhNeural)")
+    en_voice: Optional[str] = Field("en-US-JennyNeural", description="Giọng đọc tiếng Anh")
+
+
+class VoiceSettingsResponse(BaseModel):
+    speech_rate: float = Field(1.0, description="Tốc độ nói float (0.5 - 2.0)")
+    rate_percentage: str = Field("+0%", description="Tốc độ theo định dạng % của EdgeTTS")
+    vi_voice: str = Field("vi-VN-HoaiMyNeural", description="Giọng tiếng Việt đang dùng")
+    en_voice: str = Field("en-US-JennyNeural", description="Giọng tiếng Anh đang dùng")
 
 
 class FeedbackCreate(BaseModel):

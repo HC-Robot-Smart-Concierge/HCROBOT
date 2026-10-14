@@ -18,6 +18,7 @@ import {
   fetchRobotFleet,
   updateGenericRequestStatus,
 } from '../../services/operationsApi';
+import { Pagination } from '../../components/common/Pagination';
 
 export const StaffOverviewDashboard = ({ currentUser, onNotify = () => {} }) => {
   const staffName = currentUser?.full_name || currentUser?.name || 'Hotel Staff';
@@ -29,6 +30,12 @@ export const StaffOverviewDashboard = ({ currentUser, onNotify = () => {} }) => 
   const [robotFleet, setRobotFleet] = useState([]);
   const [statusFilter, setStatusFilter] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [statusFilter, searchQuery]);
 
   // Voice & Support Calls Mock Data (Synchronized with Backend API calls)
   const [supportCalls, setSupportCalls] = useState([
@@ -171,6 +178,18 @@ export const StaffOverviewDashboard = ({ currentUser, onNotify = () => {} }) => 
 
     return matchStatus && matchSearch;
   });
+
+  const totalPages = Math.max(1, Math.ceil(filteredRequests.length / pageSize));
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
+  const paginatedRequests = React.useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredRequests.slice(start, start + pageSize);
+  }, [filteredRequests, currentPage, pageSize]);
 
   const handleUpdateStatus = async (reqId, nextStatus) => {
     setRequests((prev) =>
@@ -326,7 +345,7 @@ export const StaffOverviewDashboard = ({ currentUser, onNotify = () => {} }) => 
                       </td>
                     </tr>
                   ) : (
-                    filteredRequests.slice(0, 5).map((r) => {
+                    paginatedRequests.map((r) => {
                       const isPending =
                         (r.status || '').toLowerCase() === 'pending' ||
                         (r.status || '').toLowerCase() === 'unassigned';
@@ -394,7 +413,7 @@ export const StaffOverviewDashboard = ({ currentUser, onNotify = () => {} }) => 
                   Không có yêu cầu nào phù hợp.
                 </div>
               ) : (
-                filteredRequests.slice(0, 5).map((r) => {
+                paginatedRequests.map((r) => {
                   const isPending =
                     (r.status || '').toLowerCase() === 'pending' ||
                     (r.status || '').toLowerCase() === 'unassigned';
@@ -459,6 +478,18 @@ export const StaffOverviewDashboard = ({ currentUser, onNotify = () => {} }) => 
                 })
               )}
             </div>
+
+            {/* Pagination Footer */}
+            {!isLoading && filteredRequests.length > 0 && (
+              <Pagination
+                currentPage={currentPage}
+                totalItems={filteredRequests.length}
+                pageSize={pageSize}
+                onPageChange={setCurrentPage}
+                itemName="yêu cầu"
+                className="rounded-2xl border border-[#E5E1D8] shadow-xs bg-white mt-3"
+              />
+            )}
           </div>
         </section>
 

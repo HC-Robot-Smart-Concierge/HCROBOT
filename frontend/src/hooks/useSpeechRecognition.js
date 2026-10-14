@@ -250,6 +250,8 @@ export const useSpeechRecognition = (callbacks = {}) => {
         const processor = audioCtx.createScriptProcessor(bufferSize, 1, 1);
         scriptProcessorRef.current = processor;
 
+        let consecutiveVoiceFrames = 0;
+
         processor.onaudioprocess = (e) => {
           if (!shouldListenRef.current) return;
           const inputData = e.inputBuffer.getChannelData(0);
@@ -262,6 +264,45 @@ export const useSpeechRecognition = (callbacks = {}) => {
           if (audioChunksRef.current.length > maxChunks) {
             audioChunksRef.current.shift();
           }
+
+          // Tính RMS (Root Mean Square) chính xác theo biên độ sóng âm thanh thực tế
+          let sumSquares = 0;
+          for (let i = 0; i < inputData.length; i++) {
+            sumSquares += inputData[i] * inputData[i];
+          }
+          const rms = Math.sqrt(sumSquares / inputData.length);
+          // Âm lượng từ 0 đến 100
+          const realVol = Math.min(100, Math.round(rms * 400));
+          setVolumeLevel(realVol);
+
+          // VAD (Voice Activity Detection): Phát hiện khi khách nói (RMS > 0.012 hoặc realVol >= 5)
+          const isHumanSpeaking = rms > 0.012 || realVol >= 5;
+
+          if (isHumanSpeaking) {
+            consecutiveVoiceFrames++;
+            if (consecutiveVoiceFrames >= 2) {
+              hasDetectedVoiceRef.current = true;
+              if (silenceTimerRef.current) {
+                clearTimeout(silenceTimerRef.current);
+                silenceTimerRef.current = null;
+              }
+            }
+          } else {
+            consecutiveVoiceFrames = 0;
+            if (hasDetectedVoiceRef.current) {
+              // Khách đã nói xong và im lặng 1.1 giây
+              if (!silenceTimerRef.current) {
+                silenceTimerRef.current = setTimeout(() => {
+                  silenceTimerRef.current = null;
+                  // Nếu sau khi nói mà trình duyệt không trả về chữ (do lỗi mạng Google Speech API hoặc không hỗ trợ)
+                  // Tự động chốt file gửi sang Backend Whisper
+                  if (!lastFinalTranscriptRef.current || lastFinalTranscriptRef.current.trim().length === 0) {
+                    processBackendSTT();
+                  }
+                }, 1100);
+              }
+            }
+          }
         };
 
         source.connect(processor);
@@ -269,54 +310,6 @@ export const useSpeechRecognition = (callbacks = {}) => {
         muteGain.gain.value = 0;
         processor.connect(muteGain);
         muteGain.connect(audioCtx.destination);
-
-        const dataArray = new Uint8Array(analyser.frequencyBinCount);
-        let consecutiveVoiceFrames = 0;
-
-        const updateVolume = () => {
-          if (destroyedRef.current || !analyserRef.current) return;
-          analyserRef.current.getByteFrequencyData(dataArray);
-
-          let sum = 0;
-          for (let i = 0; i < dataArray.length; i++) {
-            sum += dataArray[i];
-          }
-          const avg = sum / dataArray.length;
-          const currentVol = Math.min(100, Math.round((avg / 64) * 100));
-          setVolumeLevel(currentVol);
-
-          // Chỉ kích hoạt Fallback Backend VAD khi KHÔNG có Web Speech API hoặc khi Chrome báo lỗi mạng
-          const shouldUseBackendVAD = !recognitionRef.current || networkErrorCountRef.current >= 2;
-
-          if (shouldUseBackendVAD && shouldListenRef.current) {
-            // Ngưỡng phát hiện tiếng nói chuẩn (> 14): tránh quạt laptop và tạp âm nhẹ
-            if (currentVol >= 14) {
-              consecutiveVoiceFrames++;
-              if (consecutiveVoiceFrames >= 2) {
-                hasDetectedVoiceRef.current = true;
-                if (silenceTimerRef.current) {
-                  clearTimeout(silenceTimerRef.current);
-                  silenceTimerRef.current = null;
-                }
-              }
-            } else {
-              consecutiveVoiceFrames = 0;
-              if (hasDetectedVoiceRef.current) {
-                // Đã nói xong và im lặng 1.3 giây: chốt file gửi sang Backend Whisper
-                if (!silenceTimerRef.current) {
-                  silenceTimerRef.current = setTimeout(() => {
-                    silenceTimerRef.current = null;
-                    processBackendSTT();
-                  }, 1300);
-                }
-              }
-            }
-          }
-
-          animFrameRef.current = requestAnimationFrame(updateVolume);
-        };
-
-        updateVolume();
       }
       return true;
     } catch (err) {
@@ -377,6 +370,7 @@ export const useSpeechRecognition = (callbacks = {}) => {
       };
 
       recognition.onresult = (event) => {
+        if (!shouldListenRef.current) return;
         let fullTranscript = '';
         for (let i = 0; i < event.results.length; i++) {
           const piece = event.results[i][0]?.transcript || '';
@@ -501,16 +495,13 @@ export const useSpeechRecognition = (callbacks = {}) => {
       setTranscript('');
       const isEn = typeof language === 'string' && (language.toLowerCase().includes('en') || language.toLowerCase() === 'english');
       const targetLang = isEn ? 'en-US' : 'vi-VN';
-      recognitionRef.current.lang = targetLang;
+      try {
+        recognitionRef.current.lang = targetLang;
+      } catch (e) {}
 
-      // Abort phiên cũ để Chrome xả sạch bộ nhớ câu cũ trước đó
-      if (liveRef.current) {
-        try {
-          recognitionRef.current.abort();
-        } catch (e) {}
-        liveRef.current = false;
+      if (!liveRef.current) {
+        startRecognition();
       }
-      startRecognition();
       setIsListening(true);
     } else {
       // Trường hợp trình duyệt không có Web Speech API: dùng 100% Backend STT Recorder
@@ -525,8 +516,12 @@ export const useSpeechRecognition = (callbacks = {}) => {
     liveRef.current = false;
     if (recognitionRef.current) {
       try {
-        recognitionRef.current.abort(); // Dùng abort để hủy bỏ ngay lập tức và dọn sạch buffer
-      } catch (err) {}
+        recognitionRef.current.stop();
+      } catch (err) {
+        try {
+          recognitionRef.current.abort();
+        } catch (e) {}
+      }
     }
     setIsListening(false);
     setMicLive(false);
@@ -538,22 +533,7 @@ export const useSpeechRecognition = (callbacks = {}) => {
     lastFinalTranscriptRef.current = '';
     audioChunksRef.current = [];
     hasDetectedVoiceRef.current = false;
-    // Abort phiên đang chạy để xóa sạch buffer câu trước trong Chrome
-    if (recognitionRef.current && liveRef.current) {
-      try {
-        recognitionRef.current.abort();
-      } catch (e) {}
-      liveRef.current = false;
-      if (shouldListenRef.current && !destroyedRef.current) {
-        clearRestartTimer();
-        restartTimerRef.current = setTimeout(() => {
-          if (shouldListenRef.current && !liveRef.current && !destroyedRef.current) {
-            startRecognition();
-          }
-        }, 100);
-      }
-    }
-  }, [startRecognition]);
+  }, []);
 
   // Kích hoạt chốt giọng nói ngay lập tức (dùng khi bấm "Gửi ngay" hoặc "Nói xong")
   const finishVoiceCapture = useCallback(async () => {

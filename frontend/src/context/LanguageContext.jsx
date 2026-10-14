@@ -35,6 +35,7 @@ const translations = {
     menuDashboard: 'Dashboard',
     menuRequests: 'Requests',
     menuMyTasks: 'My Tasks',
+    menuKitchenMenu: 'Menu Management',
     menuHistory: 'History',
     menuNotifications: 'Notifications',
     menuProfile: 'Profile',
@@ -57,6 +58,15 @@ const translations = {
     rsRobotDesc: 'All guest room orders placed via Robot Concierge are routed directly to the kitchen in real time.',
     rsViewMap: 'View Robot Position On Live Map',
     rsLowStockAlerts: 'Low Stock Alerts',
+
+    // Kitchen / Culinary Operations
+    ktTitle: 'Kitchen Operations & Culinary Hub',
+    ktSubtitle: 'Receive real-time order tickets from Room Service & Restaurant, manage cooking queue, and signal runners for delivery.',
+    kpiCookingNow: 'Cooking Now',
+    kpiReadyForPickup: 'Ready for Pickup',
+    ktChefActionStart: 'Start Cooking',
+    ktChefActionReady: 'Mark Ready',
+    ktPantryAlerts: 'Pantry & Ingredient Alerts',
 
     // Housekeeping
     hkTitle: 'Housekeeping Operations',
@@ -150,7 +160,8 @@ const translations = {
     // Sidebar
     menuDashboard: 'Bảng Điều Khiển',
     menuRequests: 'Yêu Cầu',
-    menuMyTasks: 'Nhiệm Vụ Của Tôi',
+    menuMyTasks: 'Yêu Cầu Cá Nhân',
+    menuKitchenMenu: 'Quản Lý Menu',
     menuHistory: 'Lịch Sử',
     menuNotifications: 'Thông Báo',
     menuProfile: 'Hồ Sơ Cá Nhân',
@@ -172,7 +183,14 @@ const translations = {
     rsRobotOnline: '● Trực tuyến • Sẵn sàng nhận yêu cầu',
     rsRobotDesc: 'Mọi yêu cầu gọi món từ khách phòng qua Robot Concierge được tự động chuyển về bếp theo thời gian thực.',
     rsViewMap: 'Xem Vị Trí Robot Trên Bản Đồ',
-    rsLowStockAlerts: 'Cảnh Báo Sắp Hết Hàng',
+    // Kitchen / Culinary Operations
+    ktTitle: 'Bộ Phận Bếp & Chế Biến Ẩm Thực (Kitchen Operations)',
+    ktSubtitle: 'Tiếp nhận vé gọi món thời gian thực từ Room Service & Nhà hàng, quản lý quy trình chế biến và bàn giao món cho nhân viên.',
+    kpiCookingNow: 'Đang Nấu Trên Bếp',
+    kpiReadyForPickup: 'Món Đã Nấu Xong',
+    ktChefActionStart: 'Nhận & Nấu Món',
+    ktChefActionReady: 'Nấu Xong (Báo Lấy)',
+    ktPantryAlerts: 'Cảnh Báo Nguyên Liệu Bếp',
 
     // Housekeeping
     hkTitle: 'Bộ Phận Buồng Phòng (Housekeeping)',

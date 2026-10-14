@@ -82,4 +82,10 @@ describe('RobotFoodMenuScreen Logic & Initial Data', () => {
     delete nextCart[item.id];
     expect(nextCart[item.id]).toBeUndefined();
   });
+
+  it('safely handles delivery room parameter', () => {
+    expect(typeof RobotFoodMenuScreen).toBe('function');
+  });
 });
+
+

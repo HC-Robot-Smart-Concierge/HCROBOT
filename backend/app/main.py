@@ -22,6 +22,10 @@ async def lifespan(app: FastAPI):
     try:
         await init_db()
         logger.info("[OK] Database connection & schema verified.")
+        from app.core.database import AsyncSessionLocal
+        from app.services.ai.scenario_service import scenario_service
+        async with AsyncSessionLocal() as db_session:
+            await scenario_service.initialize_cache(db_session)
     except Exception as e:
         logger.warning(f"[WARN] Could not auto-initialize DB on startup (is PostgreSQL running?): {e}")
 

@@ -10,6 +10,7 @@ export const ROS_TOPICS = {
   AMCL_POSE: '/amcl_pose',
   GOAL_POSE: '/goal_pose',
   CMD_VEL: '/cmd_vel',
+  GOAL_REACHED: '/goal_reached',
 };
 
 export const ROS_MSG_TYPES = {
@@ -19,6 +20,7 @@ export const ROS_MSG_TYPES = {
   POSE_WITH_COVARIANCE: 'geometry_msgs/PoseWithCovarianceStamped',
   POSE_STAMPED: 'geometry_msgs/PoseStamped',
   TWIST: 'geometry_msgs/Twist',
+  STRING: 'std_msgs/String',
 };
 
 /**
@@ -125,6 +127,7 @@ export const createCmdVelMsg = (linearX = 0, angularZ = 0) => {
 };
 
 /**
+/**
  * Rosbridge WebSocket Client Class
  */
 export class RosbridgeClient {
@@ -132,7 +135,8 @@ export class RosbridgeClient {
     this.url = url;
     this.options = options;
     this.ws = null;
-    this.subscriptions = new Map(); // topic -> Set(callbacks)
+    this.subscriptions = new Map(); // topic -> { type, callbacks: Set() }
+    this.advertisedTopics = new Set();
     this.isConnected = false;
     this.reconnectTimer = null;
     this.autoReconnect = options.autoReconnect ?? true;
@@ -154,9 +158,12 @@ export class RosbridgeClient {
         }
         if (this.options.onOpen) this.options.onOpen();
 
-        // Resubscribe to all topics on reconnect
-        this.subscriptions.forEach((_, topic) => {
-          this.sendSubscribeOp(topic);
+        // Re-advertise previously registered publish topics
+        this.advertisedTopics.clear();
+
+        // Resubscribe to all topics with explicit type specification
+        this.subscriptions.forEach((sub, topic) => {
+          this.sendSubscribeOp(topic, sub.type);
         });
       };
 
@@ -164,9 +171,9 @@ export class RosbridgeClient {
         try {
           const data = JSON.parse(event.data);
           if (data.op === 'publish' && data.topic) {
-            const listeners = this.subscriptions.get(data.topic);
-            if (listeners) {
-              listeners.forEach((cb) => {
+            const sub = this.subscriptions.get(data.topic);
+            if (sub && sub.callbacks) {
+              sub.callbacks.forEach((cb) => {
                 try {
                   cb(data.msg);
                 } catch (err) {
@@ -237,24 +244,30 @@ export class RosbridgeClient {
 
   subscribe(topic, type, callback) {
     if (!this.subscriptions.has(topic)) {
-      this.subscriptions.set(topic, new Set());
-      this.sendSubscribeOp(topic, type);
+      this.subscriptions.set(topic, { type, callbacks: new Set() });
+      if (this.isConnected) {
+        this.sendSubscribeOp(topic, type);
+      }
     }
-    this.subscriptions.get(topic).add(callback);
+    const sub = this.subscriptions.get(topic);
+    if (type && !sub.type) {
+      sub.type = type;
+    }
+    sub.callbacks.add(callback);
 
     // Return unbind function
     return () => this.unsubscribe(topic, callback);
   }
 
   unsubscribe(topic, callback) {
-    const listeners = this.subscriptions.get(topic);
-    if (!listeners) return;
+    const sub = this.subscriptions.get(topic);
+    if (!sub) return;
 
     if (callback) {
-      listeners.delete(callback);
+      sub.callbacks.delete(callback);
     }
 
-    if (!callback || listeners.size === 0) {
+    if (!callback || sub.callbacks.size === 0) {
       this.subscriptions.delete(topic);
       this.send({
         op: 'unsubscribe',
@@ -263,7 +276,21 @@ export class RosbridgeClient {
     }
   }
 
+  advertise(topic, type) {
+    if (!this.advertisedTopics.has(topic)) {
+      this.advertisedTopics.add(topic);
+      this.send({
+        op: 'advertise',
+        topic,
+        type,
+      });
+    }
+  }
+
   publish(topic, type, msg) {
+    if (type && !this.advertisedTopics.has(topic)) {
+      this.advertise(topic, type);
+    }
     return this.send({
       op: 'publish',
       topic,

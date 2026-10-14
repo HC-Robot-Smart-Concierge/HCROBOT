@@ -25,8 +25,8 @@ class GeminiService:
         # Danh sách model dự phòng ưu tiên các model phản hồi ổn định nhất (đã test 200 OK)
         self.fallback_models = [
             self.model,
-            "gemini-3.5-flash",
-            "gemini-3.8-flash",
+            "gemini-3-flash-preview",
+            "gemini-3.1-flash-lite-preview",
             "gemini-flash-latest",
         ]
         # Loại bỏ trùng lặp mà vẫn giữ thứ tự ưu tiên

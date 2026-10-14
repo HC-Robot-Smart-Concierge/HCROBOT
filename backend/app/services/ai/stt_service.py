@@ -36,32 +36,33 @@ def transcribe_audio_wav(wav_bytes: bytes, language: str = "vi") -> str:
     lang_code = "vi-VN" if language.startswith("vi") else "en-US"
     whisper_lang = "vi" if language.startswith("vi") else "en"
 
-    # 1. Thử nhanh qua Google Speech API trước
+    # 1. Thử nhanh qua Google Speech API trước (giới hạn 2.0s bằng ThreadPool để an toàn, không ảnh hưởng socket toàn cục)
     try:
         import speech_recognition as sr
-        import socket
+        from concurrent.futures import ThreadPoolExecutor, TimeoutError
         recognizer = sr.Recognizer()
         bio = io.BytesIO(wav_bytes)
         with sr.AudioFile(bio) as source:
             audio_data = recognizer.record(source)
-            
-            # Đặt socket timeout tạm thời 2.5s để tránh bị treo server khi Google bị chặn
-            orig_timeout = socket.getdefaulttimeout()
-            socket.setdefaulttimeout(2.5)
-            try:
-                text = recognizer.recognize_google(audio_data, language=lang_code)
-            finally:
-                socket.setdefaulttimeout(orig_timeout)
 
-            if text and text.strip():
-                logger.info(f"[STT Service - Google] Transcribed: '{text.strip()}'")
-                return text.strip()
+            def _google_call():
+                return recognizer.recognize_google(audio_data, language=lang_code)
+
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(_google_call)
+                try:
+                    text = future.result(timeout=2.0)
+                    if text and text.strip():
+                        logger.info(f"[STT Service - Google] Transcribed: '{text.strip()}'")
+                        return text.strip()
+                except TimeoutError:
+                    logger.warning("[STT Service - Google] Timeout sau 2.0s, fallback sang faster_whisper offline...")
     except Exception as e_sr:
         e_type = type(e_sr).__name__
         if "UnknownValueError" in e_type:
             logger.info("[STT Service - Google] No speech detected in audio, falling back to faster_whisper...")
         else:
-            logger.warning(f"[STT Service - Google] Unavailable ({e_type}: {e_sr or 'timeout'}), falling back to faster_whisper...")
+            logger.warning(f"[STT Service - Google] Unavailable ({e_type}: {e_sr}), falling back to faster_whisper...")
 
     # 2. Fallback sang faster_whisper offline 100% trên máy tính
     try:

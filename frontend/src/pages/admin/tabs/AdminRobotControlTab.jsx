@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { AdminLidarPage } from '../AdminLidarPage';
-import { AdminUnifiedStudioTab } from './AdminUnifiedStudioTab';
 import { AdminCameraTab } from './AdminCameraTab';
 import { AdminWorkflowTab } from './AdminWorkflowTab';
 
@@ -12,7 +11,6 @@ export const AdminRobotControlTab = ({
   const [localSubTab, setLocalSubTab] = useState(() => {
     if (subTabProp === 'camera') return 'camera';
     if (subTabProp === 'workflows') return 'workflows';
-    if (subTabProp === 'studio') return 'studio';
     return 'teleop_odom';
   });
 
@@ -23,8 +21,6 @@ export const AdminRobotControlTab = ({
           ? 'camera'
           : subTabProp === 'workflows'
           ? 'workflows'
-          : subTabProp === 'studio'
-          ? 'studio'
           : 'teleop_odom';
       if (target !== localSubTab) {
         setLocalSubTab(target);
@@ -46,10 +42,6 @@ export const AdminRobotControlTab = ({
         {localSubTab === 'teleop_odom' || localSubTab === 'lidar' ? (
           <div className="w-full h-full overflow-hidden">
             <AdminLidarPage onSwitchToCamera={() => handleSwitchTab('camera')} />
-          </div>
-        ) : localSubTab === 'studio' ? (
-          <div className="w-full h-full overflow-hidden">
-            <AdminUnifiedStudioTab onSwitchToCamera={() => handleSwitchTab('camera')} />
           </div>
         ) : localSubTab === 'workflows' ? (
           <div className="w-full h-full overflow-y-auto custom-scrollbar">

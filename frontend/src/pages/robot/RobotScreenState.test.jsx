@@ -1,6 +1,12 @@
 import { describe, it, expect } from 'vitest';
+import { RobotScreenPage } from './RobotScreenPage';
 
 describe('Robot Screen UI State Transitions', () => {
+  it('successfully exports and parses RobotScreenPage component without reference errors', () => {
+    expect(RobotScreenPage).toBeDefined();
+    expect(typeof RobotScreenPage).toBe('function');
+  });
+
   const validStates = ['RT-01', 'RT-02', 'RT-03', 'RT-04', 'RT-05'];
 
   it('should have all 5 design states defined in state flow', () => {

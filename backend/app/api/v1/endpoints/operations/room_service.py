@@ -402,13 +402,14 @@ async def update_room_service_order_status(
     db: AsyncSession = Depends(get_db),
 ):
     """Updates order status (e.g. Cooking, Ready, Completed, Rejected)."""
-    clean_id = order_id.replace("ORD-", "")
+    clean_id = order_id.replace("REQ-", "").replace("ORD-", "").strip()
     res = await db.execute(
         select(SupportRequest).where(
             (SupportRequest.id == order_id)
             | (SupportRequest.ticket_code == order_id)
             | (SupportRequest.ticket_code == f"ORD-{clean_id}")
             | (SupportRequest.ticket_code == clean_id)
+            | (SupportRequest.ticket_code == f"REQ-ORD-{clean_id}")
         )
     )
     order = res.scalar_one_or_none()
@@ -416,12 +417,54 @@ async def update_room_service_order_status(
         raise HTTPException(status_code=404, detail="Order not found")
 
     order.status = status_in.status
+    st_lower = (status_in.status or "").lower().strip()
     if status_in.progress is not None:
-        order.progress = status_in.progress
+        target_progress = status_in.progress
+    elif st_lower in ["completed", "delivered", "done"]:
+        target_progress = 100
+    elif st_lower in ["delivering"]:
+        target_progress = 85
+    elif st_lower in ["ready", "food ready"]:
+        target_progress = 75
+    elif st_lower in ["cooking", "in preparation"]:
+        target_progress = 50
+    elif st_lower in ["sent to kitchen", "sent_to_kitchen"]:
+        target_progress = 25
+    elif st_lower in ["pending"]:
+        target_progress = 0
+    else:
+        target_progress = order.progress or 0
+
+    order.progress = target_progress
     if status_in.est_completion is not None:
         order.est_completion = status_in.est_completion
     if status_in.assigned_staff_name is not None:
         order.assigned_staff_name = status_in.assigned_staff_name
+
+    # Cross-department notifications
+    ticket_label = order.ticket_code or order.id
+    room_label = order.room_number or "phòng khách"
+    try:
+        if st_lower in ["sent to kitchen", "sent_to_kitchen", "chờ bếp"]:
+            await create_department_notification(
+                db,
+                department="Kitchen",
+                title=f"Đơn Room Service #{ticket_label} chuyển Bếp",
+                description=f"{room_label}: {order.title}. Bếp vui lòng tiếp nhận và làm món.",
+                request_id=order.id,
+                request_type="Room Service",
+            )
+        elif st_lower in ["ready", "food ready"]:
+            await create_department_notification(
+                db,
+                department="Room Service",
+                title=f"Bếp đã làm xong món #{ticket_label}!",
+                description=f"Món ăn {room_label} đã sẵn sàng. Room Service vui lòng lấy món và chuẩn bị dụng cụ giao lên phòng.",
+                request_id=order.id,
+                request_type="Room Service",
+            )
+    except Exception:
+        pass
 
     await db.commit()
     await db.refresh(order)
@@ -437,8 +480,7 @@ async def update_room_service_order_status(
     rs_order = rs_res.scalars().first()
     if rs_order:
         rs_order.status = status_in.status
-        if status_in.progress is not None:
-            rs_order.progress = status_in.progress
+        rs_order.progress = target_progress
         if status_in.est_completion is not None:
             rs_order.est_completion = status_in.est_completion
         if status_in.assigned_staff_name is not None:

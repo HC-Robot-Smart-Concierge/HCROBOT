@@ -18,6 +18,8 @@ from app.schemas.ai import (
     SessionResetRequest,
     TTSRequest,
     TTSResponse,
+    VoiceSettingsRequest,
+    VoiceSettingsResponse,
     FeedbackCreate,
     FeedbackResponse,
 )
@@ -145,6 +147,37 @@ async def chat_with_robot(request: ChatRequest, db: AsyncSession = Depends(get_d
             except Exception as e_vc:
                 logger.error(f"[AIChat VideoCall Setup Error] {e_vc}")
                 await db.rollback()
+        # Tự động lưu phiên hội thoại vào database trong nền (0ms blocking)
+        asyncio.create_task(_background_save_chat(sid, request.prompt, reply, lang_code, current_room))
+
+        # TỰ ĐỘNG NHẬN DIỆN MÃ ĐIỂM ĐẾN POI ĐỂ ĐỒNG BỘ BẢN ĐỒ 8 TẦNG (0ms Sync)
+        destination_key = graph_result.get("destination_key")
+        if not destination_key:
+            p_lower = request.prompt.lower()
+            if any(k in p_lower for k in ["hồ bơi", "ho boi", "pool", "bơi"]):
+                destination_key = "infinity_pool"
+            elif any(k in p_lower for k in ["nhà hàng", "nha hang", "buffet", "ăn sáng"]):
+                destination_key = "restaurant"
+            elif any(k in p_lower for k in ["rooftop", "cafe", "cà phê", "coffee"]):
+                destination_key = "rooftop_coffee"
+            elif any(k in p_lower for k in ["quầy bar", "quay bar", "bar", "sky lounge"]):
+                destination_key = "bar"
+            elif any(k in p_lower for k in ["karaoke", "hát"]):
+                destination_key = "karaoke"
+            elif any(k in p_lower for k in ["gym", "thể hình", "the hinh", "fitness"]):
+                destination_key = "gym"
+            elif any(k in p_lower for k in ["spa", "massage", "xông hơi"]):
+                destination_key = "spa"
+            elif any(k in p_lower for k in ["401", "phòng 401"]):
+                destination_key = "room_401"
+            elif any(k in p_lower for k in ["402", "phòng 402"]):
+                destination_key = "room_402"
+            elif any(k in p_lower for k in ["bãi xe", "đỗ xe", "gửi xe", "parking", "ô tô", "hầm"]):
+                destination_key = "parking_car"
+            elif any(k in p_lower for k in ["lễ tân", "tiếp tân", "front desk"]):
+                destination_key = "front_desk"
+            elif any(k in p_lower for k in ["chỉ đường", "bản đồ", "sơ đồ", "đường đi"]) and ("tầng" in reply.lower() or "thang máy" in reply.lower()):
+                destination_key = "infinity_pool"
 
         return ChatResponse(
             response=reply,
@@ -159,6 +192,7 @@ async def chat_with_robot(request: ChatRequest, db: AsyncSession = Depends(get_d
             ticket_code=call_ticket_code,
             audio_base64=audio_b64,
             mime_type=mime_type or "audio/mp3",
+            destination_key=destination_key,
         )
 
     except Exception as e:
@@ -392,6 +426,7 @@ async def synthesize_voice_speech(request: TTSRequest):
             provider=request.provider,
             voice=request.voice,
             language=request.language,
+            rate=request.rate,
         )
         return TTSResponse(
             audio_base64=audio_b64,
@@ -404,6 +439,22 @@ async def synthesize_voice_speech(request: TTSRequest):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)
         )
+
+
+@router.get("/voice-settings", response_model=VoiceSettingsResponse, summary="Lấy cấu hình tốc độ và giọng nói AI của Robot")
+async def get_robot_voice_settings():
+    """Lấy tốc độ phát âm thanh và giọng nói hiện tại của hệ thống Concierge Robot."""
+    return tts_service.get_voice_settings()
+
+
+@router.post("/voice-settings", response_model=VoiceSettingsResponse, summary="Admin cập nhật tốc độ và giọng nói AI của Robot")
+async def update_robot_voice_settings(req: VoiceSettingsRequest):
+    """Admin điều chỉnh tốc độ nói (0.5x - 2.0x) và giọng đọc của Robot trên toàn hệ thống."""
+    return tts_service.update_voice_settings(
+        speech_rate=req.speech_rate,
+        vi_voice=req.vi_voice,
+        en_voice=req.en_voice,
+    )
 
 
 @router.websocket("/ws/pipecat")

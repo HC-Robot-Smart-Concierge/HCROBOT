@@ -13,7 +13,7 @@ echo [2/3] Khoi chay Frontend React App (Port 3000)...
 start "HC-Robot [Frontend :3000]" cmd /k "cd /d %~dp0frontend && npm run dev"
 
 echo [3/3] Khoi chay ROS 2 SLAM & Rosbridge tren WSL2 (Port 9090)...
-start "HC-Robot [ROS 2 SLAM WSL2 :9090]" wsl -d Ubuntu-24.04 bash /mnt/f/DoAn/HC-Robot/robot/ros2_configs/start_wsl_slam.sh
+start "HC-Robot [ROS 2 SLAM WSL2 :9090]" wsl -d Ubuntu-24.04 bash /mnt/d/do_an_fptu/HCROBOT/robot/ros2_configs/start_wsl_slam.sh
 
 echo.
 echo ============================================================

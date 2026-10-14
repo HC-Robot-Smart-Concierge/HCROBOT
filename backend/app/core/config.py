@@ -26,12 +26,19 @@ class Settings(BaseSettings):
     GEMINI_MODEL: str = "gemini-3.5-flash"
 
     # Ollama Configuration (Llama / Qwen local)
+    # Ollama Configuration (Default for all team members)
+    AI_PROVIDER: str = "ollama"  # Options: 'ollama' (default local) | 'groq' (cloud fallback/low-spec test)
     OLLAMA_HOST: str = "http://127.0.0.1:11434"
     OLLAMA_MODEL: str = "llama3.2:3b"
     OLLAMA_EMBED_MODEL: Optional[str] = None
 
+    # Groq Cloud AI Configuration (Optional: Only active when configured)
+    GROQ_API_KEY: Optional[str] = None
+    GROQ_MODEL: str = "qwen/qwen3.8-27b"
+
     # AI Voice Concierge TTS Configuration
     TTS_PROVIDER: str = "edge"  # Options: 'edge', 'elevenlabs', 'openai', 'browser'
+    TTS_RATE: str = "+0%"  # Default speech rate: '+0%' (natural), '-10%' (slower), '+10%' (faster)
     ELEVENLABS_API_KEY: Optional[str] = None
     ELEVENLABS_VOICE_ID: Optional[str] = "21m00Tcm4TlvDq8ikWAM"
     OPENAI_API_KEY: Optional[str] = None

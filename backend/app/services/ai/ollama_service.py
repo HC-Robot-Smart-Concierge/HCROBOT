@@ -209,12 +209,13 @@ class OllamaService:
             else:
                 prompt += (
                     "AURORA GRAND HOTEL AMENITIES & FACTS:\n"
-                    "- Level 1: Main Lobby, Front Desk 24/7 (dial 0 from room telephone), and ATM.\n"
-                    "- Level 2: Aurora Restaurant (serves breakfast buffet from 6:30 AM to 10:00 AM).\n"
-                    "- Level 3: Conference Center & Executive Meeting Rooms.\n"
-                    "- Level 4: Infinity Pool (open 6:00 AM to 10:00 PM, free towels) & 24/7 Fitness Center / Gym.\n"
-                    "- Level 5: Aurora Luxury Spa & Sauna (open 9:00 AM to 10:00 PM).\n"
-                    "- Basement B1: Complimentary parking for staying guests.\n"
+                    "- Level 1 (Ground): Main Lobby, Front Desk 24/7 (dial 0 from room telephone), and ATM.\n"
+                    "- Level 2: Culinary Floor - Aurora Restaurant & Pickup Area (breakfast buffet 6:30 AM to 10:00 AM), Main Kitchen, Warehouse, and Restrooms.\n"
+                    "- Level 3: Guest Rooms 301 to 306.\n"
+                    "- Level 4: Premium Guest Rooms 401 to 409 (Deluxe, Executive King, and President Suite 406).\n"
+                    "- Level 5: Infinity Pool (6:00 AM to 10:00 PM, free towels), Herbal Spa & Sauna (9:00 AM to 10:00 PM), and 24/7 Fitness Center / Gym.\n"
+                    "- Level 6: Rooftop Coffee, Sky Lounge Bar (4:30 PM to 1:00 AM), VIP Karaoke, and Gift Shop.\n"
+                    "- Basement B1 & B2: B1 Motorbike parking; B2 Car parking (complimentary for staying guests).\n"
                     "- Wi-Fi: Network name 'Aurora_Guest', password 'aurora2026'.\n"
                     "- Hours: Standard check-in from 2:00 PM, check-out before 12:00 PM noon.\n"
                 )
@@ -234,12 +235,13 @@ class OllamaService:
             else:
                 prompt += (
                     "\nTHÔNG TIN TIỆN ÍCH KHÁCH SẠN AURORA GRAND (ĐỂ TƯ VẤN CHO KHÁCH):\n"
-                    "- Tầng 1: Sảnh chính, Quầy Lễ tân 24/7 (từ điện thoại phòng bấm phím 0) và máy ATM rút tiền.\n"
-                    "- Tầng 2: Nhà hàng Aurora (phục vụ buffet sáng từ 6 giờ 30 đến 10 giờ sáng).\n"
-                    "- Tầng 3: Trung tâm hội nghị & phòng họp sự kiện cao cấp.\n"
-                    "- Tầng 4: Hồ bơi vô cực ngoài trời (mở từ 6 giờ sáng đến 22 giờ tối, khăn tắm miễn phí) và Phòng Gym (mở cửa 24/7).\n"
-                    "- Tầng 5: Aurora Spa thư giãn (mở từ 9 giờ sáng đến 22 giờ tối).\n"
-                    "- Tầng hầm B1: Bãi đỗ xe ô tô và xe máy miễn phí cho khách lưu trú.\n"
+                    "- Tầng 1 (Trệt): Sảnh chính, Quầy Lễ tân 24/7 (từ điện thoại phòng bấm phím 0) và máy ATM rút tiền.\n"
+                    "- Tầng 2: Tầng ẩm thực - Nhà hàng Aurora & Quầy nhận món Pickup (buffet sáng từ 6 giờ 30 đến 10 giờ sáng), Khu Bếp Chính, Kho thực phẩm và Nhà vệ sinh tầng 2.\n"
+                    "- Tầng 3: Khu phòng nghỉ lưu trú từ Phòng 301 đến 306.\n"
+                    "- Tầng 4: Khu phòng nghỉ cao cấp gồm 9 phòng từ Phòng 401 đến Phòng 409 (Deluxe, Executive King, Suite và Phòng Tổng Thống 406).\n"
+                    "- Tầng 5: Hồ bơi vô cực ngoài trời (mở từ 6 giờ sáng đến 22 giờ tối), Thảo Mộc Spa (9 giờ sáng đến 22 giờ tối) và Phòng Gym (mở cửa 24/7).\n"
+                    "- Tầng 6: Rooftop Coffee, Sky Lounge Bar (16 giờ 30 đến 1 giờ đêm), Phòng VIP Karaoke và Cửa hàng quà lưu niệm Gift Shop.\n"
+                    "- Tầng hầm: Hầm B1 bãi xe máy, Hầm B2 bãi đỗ xe ô tô miễn phí cho khách lưu trú.\n"
                     "- Wi-Fi miễn phí: Tên mạng 'Aurora_Guest', mật khẩu là 'aurora2026'.\n"
                     "- Thời gian lưu trú: Nhận phòng từ 14 giờ chiều, trả phòng trước 12 giờ trưa.\n"
                 )
@@ -363,6 +365,10 @@ class OllamaService:
                     reply = re.sub(r'[\u4e00-\u9fff\u3400-\u4dbf]+', '', reply).strip()
                 final_lang_name, final_lang_code = self.detect_language(reply)
                 return reply, final_lang_name, final_lang_code
+            else:
+                logger.warning("[OllamaService] Groq Cloud API không phản hồi, trả về phản hồi dự phòng nhanh.")
+                fallback = "Xin lỗi quý khách, đường truyền tới AI Server tạm thời gián đoạn." if lang_code == "vi-VN" else "Sorry, connection to AI Server is temporarily unavailable."
+                return fallback, lang_name, lang_code
 
         # 2. Mặc định cho toàn bộ dự án: Chạy Ollama cục bộ nguyên bản
         try:
@@ -482,6 +488,13 @@ class OllamaService:
                     return parsed_json
                 except Exception as je:
                     logger.warning(f"[Groq JSON parse warning]: {je}")
+            else:
+                logger.warning("[OllamaService] Groq extract_intent không phản hồi, fallback ngay lập tức.")
+                return {
+                    "action": "unknown",
+                    "room_number": extracted_room_regex,
+                    "items": user_speech,
+                }
 
         # 2. Mặc định cho toàn bộ dự án: Chạy Ollama cục bộ nguyên bản
         try:

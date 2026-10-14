@@ -154,10 +154,25 @@ async def chat_with_robot(request: ChatRequest, db: AsyncSession = Depends(get_d
         destination_key = graph_result.get("destination_key")
         if not destination_key:
             p_lower = request.prompt.lower()
-            if any(k in p_lower for k in ["hồ bơi", "ho boi", "pool", "bơi"]):
-                destination_key = "infinity_pool"
-            elif any(k in p_lower for k in ["nhà hàng", "nha hang", "buffet", "ăn sáng"]):
+            
+            # 1. Nhận diện các phòng Tầng 4 (401 -> 409)
+            room_4xx_match = re.search(r'\b(?:phòng|p\.?|phong)?\s*(40[1-9])\b', p_lower)
+            if room_4xx_match:
+                destination_key = f"room_{room_4xx_match.group(1)}"
+            # 2. Nhận diện các khu vực Tầng 2 (Bếp, Nhận món, Kho, Sơ chế, WC)
+            elif any(k in p_lower for k in ["nhà bếp", "nha bep", "bếp", "bep", "kitchen"]):
+                destination_key = "kitchen"
+            elif any(k in p_lower for k in ["sơ chế", "so che", "chuẩn bị món", "preparation"]):
+                destination_key = "preparation_area"
+            elif any(k in p_lower for k in ["kho hàng", "kho hang", "kho nguyên liệu", "kho thực phẩm", "warehouse", "kho"]):
+                destination_key = "warehouse"
+            elif any(k in p_lower for k in ["vệ sinh tầng 2", "wc tầng 2", "toilet tầng 2", "restroom tầng 2"]):
+                destination_key = "restroom_f2"
+            elif any(k in p_lower for k in ["nhà hàng", "nha hang", "buffet", "ăn sáng", "pickup", "quầy nhận món", "nhận món"]):
                 destination_key = "restaurant"
+            # 3. Các tiện ích khác
+            elif any(k in p_lower for k in ["hồ bơi", "ho boi", "pool", "bơi"]):
+                destination_key = "infinity_pool"
             elif any(k in p_lower for k in ["rooftop", "cafe", "cà phê", "coffee"]):
                 destination_key = "rooftop_coffee"
             elif any(k in p_lower for k in ["quầy bar", "quay bar", "bar", "sky lounge"]):
@@ -168,10 +183,6 @@ async def chat_with_robot(request: ChatRequest, db: AsyncSession = Depends(get_d
                 destination_key = "gym"
             elif any(k in p_lower for k in ["spa", "massage", "xông hơi"]):
                 destination_key = "spa"
-            elif any(k in p_lower for k in ["401", "phòng 401"]):
-                destination_key = "room_401"
-            elif any(k in p_lower for k in ["402", "phòng 402"]):
-                destination_key = "room_402"
             elif any(k in p_lower for k in ["bãi xe", "đỗ xe", "gửi xe", "parking", "ô tô", "hầm"]):
                 destination_key = "parking_car"
             elif any(k in p_lower for k in ["lễ tân", "tiếp tân", "front desk"]):

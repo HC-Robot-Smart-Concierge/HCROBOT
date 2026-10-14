@@ -42,6 +42,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   const wasSpeakingRef = useRef(false);
   const routeGuidanceTimerRef = useRef(null);
   const isProcessingRef = useRef(false);
+  const processingSafetyTimerRef = useRef(null);
 
   // Standby Poster Mode (Tự động chiếu poster Dave Drinks khi rảnh)
   const [isStandby, setIsStandby] = useState(false);
@@ -91,7 +92,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       .catch((err) => console.warn('Could not load workflows:', err));
   }, []);
 
-  // Sync global robot voice settings from Backend
+  // Sync global robot voice settings from Backend (fetch once on mount)
   useEffect(() => {
     getVoiceSettings()
       .then((data) => {
@@ -100,7 +101,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         }
       })
       .catch((err) => console.warn('Could not fetch voice settings:', err));
-  }, [updateSpeechRate]);
+  }, []);
 
   // Workflow Native Runner Hook (tích hợp Micro & Loa máy tính)
   const {
@@ -184,6 +185,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
   // Xóa bộ nhớ phiên (Dùng cho nút Khách Mới / Đổi Phòng)
   const handleManualResetSession = async () => {
+    if (processingSafetyTimerRef.current) clearTimeout(processingSafetyTimerRef.current);
     isProcessingRef.current = false;
     setIsProcessing(false);
     stopSpeaking();
@@ -296,6 +298,9 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
   // 1. Khi kích hoạt lắng nghe (Bấm nút hoặc Tự động)
   const handleStartTalk = () => {
+    if (processingSafetyTimerRef.current) clearTimeout(processingSafetyTimerRef.current);
+    isProcessingRef.current = false;
+    setIsProcessing(false);
     prime();
     stopSpeaking();
     resetTranscript();
@@ -323,6 +328,20 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
     isProcessingRef.current = true;
     setIsProcessing(true);
+
+    // Safety timeout: tự động giải phóng sau 12 giây nếu AI hoặc âm thanh bị treo
+    if (processingSafetyTimerRef.current) clearTimeout(processingSafetyTimerRef.current);
+    processingSafetyTimerRef.current = setTimeout(() => {
+      if (isProcessingRef.current) {
+        console.warn('[SafetyTimeout] Auto-unlocking stuck isProcessing state');
+        isProcessingRef.current = false;
+        setIsProcessing(false);
+        if (!isSpeaking) {
+          setCurrentState((prev) => (prev === 'RT-04' ? 'RT-02' : prev));
+        }
+      }
+    }, 12000);
+
     stopListening();
     resetTranscript();
 
@@ -405,6 +424,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         replyText,
         langCode,
         () => {
+          if (processingSafetyTimerRef.current) clearTimeout(processingSafetyTimerRef.current);
           isProcessingRef.current = false;
           setIsProcessing(false);
 
@@ -444,6 +464,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       );
 
     } catch (error) {
+      if (processingSafetyTimerRef.current) clearTimeout(processingSafetyTimerRef.current);
       isProcessingRef.current = false;
       setIsProcessing(false);
       const fallbackText = 'Xin lỗi quý khách, không thể kết nối tới AI Server.';
@@ -452,6 +473,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         fallbackText,
         language,
         () => {
+          if (processingSafetyTimerRef.current) clearTimeout(processingSafetyTimerRef.current);
           isProcessingRef.current = false;
           setIsProcessing(false);
           setAiResponseText('');
@@ -570,6 +592,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   }, [handleSecretTrigger]);
 
   const resetToIdle = () => {
+    if (processingSafetyTimerRef.current) clearTimeout(processingSafetyTimerRef.current);
     isProcessingRef.current = false;
     setIsProcessing(false);
     if (routeGuidanceTimerRef.current) clearTimeout(routeGuidanceTimerRef.current);

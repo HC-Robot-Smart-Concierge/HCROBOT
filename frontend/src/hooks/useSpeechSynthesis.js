@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { synthesizeSpeech } from '../services/aiApi';
 
 export const useSpeechSynthesis = () => {
@@ -18,7 +18,7 @@ export const useSpeechSynthesis = () => {
     }
   });
 
-  const updateSpeechRate = (newRate) => {
+  const updateSpeechRate = useCallback((newRate) => {
     const parsed = parseFloat(newRate);
     const clamped = Math.max(0.5, Math.min(2.0, isNaN(parsed) ? 1.0 : parsed));
     setSpeechRateState(clamped);
@@ -28,7 +28,7 @@ export const useSpeechSynthesis = () => {
       }
     } catch {}
     return clamped;
-  };
+  }, []);
 
   // Load available TTS voices from browser
   useEffect(() => {

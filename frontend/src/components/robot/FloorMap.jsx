@@ -165,9 +165,10 @@ export const HOTEL_DESTINATIONS = {
   },
 
   // === TẦNG 4: PHÒNG NGHỈ 401 - 409 (MAP 6.PNG MỚI) ===
+  // === TẦNG 4: PHÒNG NGHỈ 401 - 409 (MAP 6.PNG MỚI) ===
   room_401: {
     id: 'room_401',
-    name: 'Phòng Nghỉ 401 (Deluxe Suite)',
+    name: 'Phòng Nghỉ 401',
     floorId: '6',
     floorLevel: 'TẦNG 4',
     category: 'Phòng Khách',
@@ -182,7 +183,7 @@ export const HOTEL_DESTINATIONS = {
   },
   room_402: {
     id: 'room_402',
-    name: 'Phòng Nghỉ 402 (Executive King)',
+    name: 'Phòng Nghỉ 402',
     floorId: '6',
     floorLevel: 'TẦNG 4',
     category: 'Phòng Khách',
@@ -197,7 +198,7 @@ export const HOTEL_DESTINATIONS = {
   },
   room_403: {
     id: 'room_403',
-    name: 'Phòng Nghỉ 403 (Executive Suite)',
+    name: 'Phòng Nghỉ 403',
     floorId: '6',
     floorLevel: 'TẦNG 4',
     category: 'Phòng Khách',
@@ -212,7 +213,7 @@ export const HOTEL_DESTINATIONS = {
   },
   room_404: {
     id: 'room_404',
-    name: 'Phòng Nghỉ 404 (Grand Suite King)',
+    name: 'Phòng Nghỉ 404',
     floorId: '6',
     floorLevel: 'TẦNG 4',
     category: 'Phòng Khách',
@@ -227,7 +228,7 @@ export const HOTEL_DESTINATIONS = {
   },
   room_405: {
     id: 'room_405',
-    name: 'Phòng Nghỉ 405 (Executive Twin)',
+    name: 'Phòng Nghỉ 405',
     floorId: '6',
     floorLevel: 'TẦNG 4',
     category: 'Phòng Khách',
@@ -242,22 +243,22 @@ export const HOTEL_DESTINATIONS = {
   },
   room_406: {
     id: 'room_406',
-    name: 'Phòng Nghỉ 406 (President Suite)',
+    name: 'Phòng Nghỉ 406',
     floorId: '6',
     floorLevel: 'TẦNG 4',
     category: 'Phòng Khách',
-    icon: '👑',
+    icon: '🛏️',
     time: '3 Phút',
     distance: '100m',
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 4.',
-    step2Text: 'Chặng 2: Ra khỏi thang máy, đi dọc hành lang rẽ vào Phòng Tổng Thống 406.',
+    step2Text: 'Chặng 2: Ra khỏi thang máy, đi dọc hành lang rẽ vào Phòng 406.',
     coords: { x: 790, y: 705 },
     routeTarget: 'M 1249 410 L 1249 540 L 790 540 L 790 690',
   },
   room_407: {
     id: 'room_407',
-    name: 'Phòng Nghỉ 407 (Deluxe Double)',
+    name: 'Phòng Nghỉ 407',
     floorId: '6',
     floorLevel: 'TẦNG 4',
     category: 'Phòng Khách',
@@ -272,7 +273,7 @@ export const HOTEL_DESTINATIONS = {
   },
   room_408: {
     id: 'room_408',
-    name: 'Phòng Nghỉ 408 (Superior King)',
+    name: 'Phòng Nghỉ 408',
     floorId: '6',
     floorLevel: 'TẦNG 4',
     category: 'Phòng Khách',
@@ -287,7 +288,7 @@ export const HOTEL_DESTINATIONS = {
   },
   room_409: {
     id: 'room_409',
-    name: 'Phòng Nghỉ 409 (Junior Suite)',
+    name: 'Phòng Nghỉ 409',
     floorId: '6',
     floorLevel: 'TẦNG 4',
     category: 'Phòng Khách',

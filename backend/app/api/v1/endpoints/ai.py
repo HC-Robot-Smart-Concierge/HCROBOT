@@ -157,79 +157,67 @@ async def chat_with_robot(request: ChatRequest, db: AsyncSession = Depends(get_d
         destination_key = graph_result.get("destination_key")
         if not destination_key:
             p_lower = request.prompt.lower()
+            rep_lower = reply.lower()
             
-            # 1. Nhận diện các phòng Tầng 4 (401 -> 409)
-            room_4xx_match = re.search(r'\b(?:phòng|p\.?|phong)?\s*(40[1-9])\b', p_lower)
-            if room_4xx_match:
-                destination_key = f"room_{room_4xx_match.group(1)}"
-            # 2. Nhận diện các khu vực Tầng 2 (Bếp, Nhận món, Kho, Sơ chế, WC)
-            elif any(k in p_lower for k in ["nhà bếp", "nha bep", "bếp", "bep", "kitchen"]):
-                destination_key = "kitchen"
-            elif any(k in p_lower for k in ["sơ chế", "so che", "chuẩn bị món", "preparation"]):
-                destination_key = "preparation_area"
-            elif any(k in p_lower for k in ["kho hàng", "kho hang", "kho nguyên liệu", "kho thực phẩm", "warehouse", "kho"]):
-                destination_key = "warehouse"
-            elif any(k in p_lower for k in ["vệ sinh tầng 2", "wc tầng 2", "toilet tầng 2", "restroom tầng 2"]):
-                destination_key = "restroom_f2"
-            elif any(k in p_lower for k in ["nhà hàng", "nha hang", "buffet", "ăn sáng", "pickup", "quầy nhận món", "nhận món"]):
-                destination_key = "restaurant"
-            # 3. Các tiện ích khác
-            elif any(k in p_lower for k in ["hồ bơi", "ho boi", "pool", "bơi"]):
-                destination_key = "infinity_pool"
-            elif any(k in p_lower for k in ["rooftop", "cafe", "cà phê", "coffee"]):
-                destination_key = "rooftop_coffee"
-            elif any(k in p_lower for k in ["quầy bar", "quay bar", "bar", "sky lounge", "sky bar", "uống rượu"]):
-                destination_key = "bar"
-            elif any(k in p_lower for k in ["karaoke", "hát karaoke", "phòng hát"]):
-                destination_key = "karaoke"
-            elif any(k in p_lower for k in ["gym", "thể hình", "the hinh", "fitness"]):
-                destination_key = "gym"
-            elif any(k in p_lower for k in ["spa", "massage", "xông hơi"]):
-                destination_key = "spa"
-            elif any(k in p_lower for k in ["bãi xe", "đỗ xe", "gửi xe", "parking", "ô tô", "hầm"]):
-                destination_key = "parking_car"
-            elif any(k in p_lower for k in ["lễ tân", "tiếp tân", "front desk"]):
-                destination_key = "front_desk"
-            elif any(k in p_lower for k in ["chỉ đường", "bản đồ", "sơ đồ", "đường đi"]) and ("tầng" in reply.lower() or "thang máy" in reply.lower()):
-                destination_key = "infinity_pool"
-            elif any(k in p_lower for k in ["spa", "massage", "xông hơi", "mát xa"]):
-                destination_key = "spa"
-            elif any(k in p_lower for k in ["gym", "thể hình", "the hinh", "fitness", "tập gym"]):
-                destination_key = "gym"
-            elif any(k in p_lower for k in ["thay đồ", "locker", "tủ đồ"]):
-                destination_key = "locker_room"
-            # 4. Tiện ích Tầng 2 (Nhà hàng & Bếp)
-            elif any(k in p_lower for k in ["nhà hàng", "nha hang", "buffet", "ăn sáng", "ăn trưa", "ăn tối", "dining", "restaurant"]):
-                destination_key = "restaurant"
-            elif any(k in p_lower for k in ["bếp", "nhà bếp", "kitchen"]):
-                destination_key = "kitchen"
-            # 5. Tiện ích Tầng Trệt & Bãi xe
-            elif any(k in p_lower for k in ["vệ sinh", "toilet", "wc", "nhà vệ sinh", "restroom", "đi vệ sinh", "đi wc"]):
-                destination_key = "restroom_ground"
-            elif any(k in p_lower for k in ["lễ tân", "tiếp tân", "front desk", "check-in", "check in"]):
-                destination_key = "front_desk"
-            elif any(k in p_lower for k in ["xe máy", "gửi xe máy", "bãi xe máy", "xe đạp", "hầm b1"]):
-                destination_key = "parking_bike"
-            elif any(k in p_lower for k in ["bãi xe", "đỗ xe", "gửi xe", "parking", "ô tô", "hầm b2", "xe hơi"]):
-                destination_key = "parking_car"
-            # Fallback nếu câu hỏi yêu cầu chỉ đường chung và AI trả lời về tiện ích nào đó
-            elif any(k in p_lower for k in ["chỉ đường", "bản đồ", "sơ đồ", "đường đi"]):
-                if any(k in rep_lower for k in ["cà phê", "coffee", "cafe", "rooftop"]):
-                    destination_key = "rooftop_coffee"
-                elif any(k in rep_lower for k in ["bar", "sky lounge"]):
-                    destination_key = "bar"
-                elif any(k in rep_lower for k in ["karaoke"]):
-                    destination_key = "karaoke"
-                elif any(k in rep_lower for k in ["nhà hàng", "buffet"]):
+            # Nếu khách hỏi đường tới các địa điểm bên ngoài khách sạn -> Tuyệt đối KHÔNG bật bản đồ trong nhà
+            external_places = [
+                "sân bay", "airport", "nội bài", "tân sơn nhất", "ga tàu", "ga hà nội",
+                "bến xe", "bãi biển", "ra biển", "chợ", "chợ đêm", "bến thành",
+                "phố cổ", "hồ gươm", "trung tâm thương mại", "vincom", "bệnh viện",
+                "bảo tàng", "ngoài khách sạn", "địa điểm du lịch", "tour", "bắt taxi", "bắt xe", "grab"
+            ]
+            is_external_query = any(k in p_lower for k in external_places)
+
+            if not is_external_query:
+                # 1. Nhận diện các phòng Tầng 4 (401 -> 409)
+                room_4xx_match = re.search(r'\b(?:phòng|p\.?|phong)?\s*(40[1-9])\b', p_lower)
+                # 2. Nhận diện các phòng Tầng 3 (301 -> 309)
+                room_3xx_match = re.search(r'\b(?:phòng|p\.?|phong)?\s*(30[1-9])\b', p_lower)
+                
+                if room_4xx_match:
+                    destination_key = f"room_{room_4xx_match.group(1)}"
+                elif room_3xx_match:
+                    destination_key = f"room_{room_3xx_match.group(1)}"
+                # 3. Khu vực Tầng 2 (Bếp, Nhận món, Kho, Sơ chế, WC)
+                elif any(k in p_lower for k in ["nhà bếp", "nha bep", "khu bếp", "bếp chính", "kitchen"]):
+                    destination_key = "kitchen"
+                elif any(k in p_lower for k in ["sơ chế", "so che", "chuẩn bị món", "preparation"]):
+                    destination_key = "preparation_area"
+                elif any(k in p_lower for k in ["kho hàng", "kho hang", "kho nguyên liệu", "kho thực phẩm", "warehouse"]):
+                    destination_key = "warehouse"
+                elif any(k in p_lower for k in ["vệ sinh tầng 2", "wc tầng 2", "toilet tầng 2", "restroom tầng 2"]):
+                    destination_key = "restroom_f2"
+                elif any(k in p_lower for k in ["nhà hàng", "nha hang", "buffet", "ăn sáng", "quầy nhận món", "pickup"]):
                     destination_key = "restaurant"
-                elif any(k in rep_lower for k in ["hồ bơi", "pool"]):
+                # 4. Tiện ích Tầng 5 & Tầng 6
+                elif any(k in p_lower for k in ["hồ bơi", "ho boi", "bể bơi", "pool", "bơi"]):
                     destination_key = "infinity_pool"
-                elif any(k in rep_lower for k in ["gym", "thể hình"]):
+                elif any(k in p_lower for k in ["rooftop", "cafe", "cà phê", "coffee"]):
+                    destination_key = "rooftop_coffee"
+                elif any(k in p_lower for k in ["quầy bar", "quay bar", "sky bar", "sky lounge", "uống rượu"]):
+                    destination_key = "bar"
+                elif any(k in p_lower for k in ["karaoke", "hát karaoke", "phòng hát"]):
+                    destination_key = "karaoke"
+                elif any(k in p_lower for k in ["gym", "thể hình", "the hinh", "fitness", "tập gym"]):
                     destination_key = "gym"
-                elif any(k in rep_lower for k in ["spa"]):
+                elif any(k in p_lower for k in ["spa", "massage", "xông hơi", "mát xa"]):
                     destination_key = "spa"
-                else:
+                elif any(k in p_lower for k in ["lưu niệm", "gift shop", "cửa hàng quà"]):
+                    destination_key = "gift_shop"
+                elif any(k in p_lower for k in ["thay đồ", "locker", "tủ đồ"]):
+                    destination_key = "locker_room"
+                # 5. Tiện ích Tầng Trệt & Bãi xe
+                elif any(k in p_lower for k in ["lễ tân", "tiếp tân", "quầy lễ tân", "bàn lễ tân", "front desk", "check-in", "check in"]):
                     destination_key = "front_desk"
+                elif any(k in p_lower for k in ["vệ sinh tầng trệt", "vệ sinh ở sảnh", "wc ở sảnh", "toilet sảnh"]):
+                    destination_key = "restroom_ground"
+                elif any(k in p_lower for k in ["xe máy", "gửi xe máy", "bãi xe máy", "xe đạp", "hầm b1"]):
+                    destination_key = "parking_bike"
+                elif any(k in p_lower for k in ["đỗ ô tô", "bãi ô tô", "bãi xe ô tô", "hầm b2", "xe hơi"]):
+                    destination_key = "parking_car"
+                elif any(k in p_lower for k in ["bãi xe", "đỗ xe", "gửi xe", "parking"]):
+                    destination_key = "parking_car"
+                # Chú ý: Không fallback về front_desk nếu không khớp bất kỳ điểm đến nào trong khách sạn!
 
         return ChatResponse(
             response=reply,

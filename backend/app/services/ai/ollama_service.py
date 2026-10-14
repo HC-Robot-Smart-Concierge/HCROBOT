@@ -239,13 +239,15 @@ class OllamaService:
                     "\nTHÔNG TIN TIỆN ÍCH KHÁCH SẠN AURORA GRAND (ĐỂ TƯ VẤN CHO KHÁCH):\n"
                     "- Tầng 1 (Trệt): Sảnh chính, Quầy Lễ tân 24/7 (từ điện thoại phòng bấm phím 0) và máy ATM rút tiền.\n"
                     "- Tầng 2: Tầng ẩm thực - Nhà hàng Aurora & Quầy nhận món Pickup (buffet sáng từ 6 giờ 30 đến 10 giờ sáng), Khu Bếp Chính, Kho thực phẩm và Nhà vệ sinh tầng 2.\n"
-                    "- Tầng 3: Khu phòng nghỉ lưu trú từ Phòng 301 đến 306.\n"
-                    "- Tầng 4: Khu phòng nghỉ cao cấp gồm 9 phòng từ Phòng 401 đến Phòng 409 (Deluxe, Executive King, Suite và Phòng Tổng Thống 406).\n"
+                    "- Tầng 3: Khu phòng nghỉ tiêu chuẩn từ Phòng 301 đến 309. Toàn bộ các phòng đều cùng một loại phòng nghỉ tiêu chuẩn.\n"
+                    "- Tầng 4: Khu phòng nghỉ tiêu chuẩn từ Phòng 401 đến 409. Toàn bộ các phòng đều cùng một loại phòng nghỉ tiêu chuẩn.\n"
                     "- Tầng 5: Hồ bơi vô cực ngoài trời (mở từ 6 giờ sáng đến 22 giờ tối), Thảo Mộc Spa (9 giờ sáng đến 22 giờ tối) và Phòng Gym (mở cửa 24/7).\n"
                     "- Tầng 6: Rooftop Coffee, Sky Lounge Bar (16 giờ 30 đến 1 giờ đêm), Phòng VIP Karaoke và Cửa hàng quà lưu niệm Gift Shop.\n"
                     "- Tầng hầm: Hầm B1 bãi xe máy, Hầm B2 bãi đỗ xe ô tô miễn phí cho khách lưu trú.\n"
                     "- Wi-Fi miễn phí: Tên mạng 'Aurora_Guest', mật khẩu là 'aurora2026'.\n"
-                    "- Thời gian lưu trú: Nhận phòng từ 14 giờ chiều, trả phòng trước 12 giờ trưa.\n"
+                    "- QUY TẮC CHỈ ĐƯỜNG:\n"
+                    "  + Khi khách hỏi đường đến các phòng (301-309 hoặc 401-409): Hãy trả lời ngắn gọn, súc tích chỉ đường (nêu số tầng và hướng đi Thang máy A), tuyệt đối KHÔNG đọc thêm thông tin tiện nghi hay loại phòng dư thừa.\n"
+                    "  + Khi khách hỏi đường đến các địa điểm bên ngoài khách sạn (như sân bay, chợ, bãi biển, điểm tham quan): Trả lời lịch sự hướng dẫn hoặc gợi ý khách liên hệ quầy lễ tân để hỗ trợ gọi xe, không trả lời như thể địa điểm đó nằm trong khách sạn.\n"
                 )
 
         if stored_room_number:

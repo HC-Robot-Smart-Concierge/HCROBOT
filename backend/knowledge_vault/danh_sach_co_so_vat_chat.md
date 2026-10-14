@@ -38,34 +38,16 @@ Dưới đây là bảng tổng hợp thông tin vị trí, thời gian hoạt �
 - **Lên Tầng 6 (Rooftop Coffee, Sky Bar, Karaoke):** Đi Thang máy A lên Tầng 6, rẽ trái sang khu Rooftop Coffee & Quầy Bar; đi thẳng cuối hành lang vào Phòng Karaoke.
 - **Xuống Hầm B1 (Bãi Xe Máy) & Hầm B2 (Bãi Ô Tô):** Đi Thang máy A bấm xuống Hầm B1 hoặc Hầm B2 theo nhu cầu.
 
-## 3. Danh Sách Phòng Lưu Trú (Phòng 101 đến 409)
+## 3. Danh Sách Phòng Lưu Trú
 
-Khách sạn Aurora Grand có tổng cộng 27 phòng lưu trú tiêu chuẩn từ Tầng 1 đến Tầng 4:
+Các phòng lưu trú của khách sạn được bố trí tại Tầng 3 và Tầng 4, đều là cùng một loại phòng nghỉ tiêu chuẩn dành cho khách:
 
-### 3.1. Danh Sách Phòng Tầng 3 (Phòng 301 đến 309 - Standard Rooms)
-- **Vị trí & Chỉ đường:** Tầng 3, đi thang máy A bấm Tầng 3.
-- **Phòng 301 - 304:** Dãy phòng phía trên (phòng 301 cạnh cụm thang máy).
-- **Phòng 305 - 309:** Dãy phòng phía dưới dọc theo hành lang trung tâm.
-### 3.2. Danh Sách Phòng Tầng 2 (F&B & Ẩm Thực)
-- **Vị trí & Chỉ đường:** Tầng 2 chuyên về dịch vụ ẩm thực và hậu cần bếp: Quầy Nhận Món (Pickup Area), Nhà Hàng Buffet Á - Âu, Khu Bếp Chính (Kitchen), Kho Hàng (Warehouse), Khu Sơ Chế và Nhà Vệ Sinh Tầng 2.
+### 3.1. Các Phòng Nghỉ Tầng 3 (Phòng 301 đến 309)
+- **Đặc điểm:** Toàn bộ từ Phòng 301 đến Phòng 309 đều là phòng nghỉ tiêu chuẩn đồng nhất tại Tầng 3.
+- **Chỉ đường:** Đi Thang máy A ở sảnh tiếp tân lên Tầng 3, bước ra khỏi thang máy và đi theo hành lang là tới các phòng từ 301 đến 309.
 
-### 3.3. Danh Sách Phòng Tầng 3 (Phòng 301 đến 306)
-- **Vị trí & Chỉ đường:** Tầng 3, đi thang máy A bấm Tầng 3.
-- **Phòng 301:** Premier King Bed - Ban Công Panorama - Tầng 3.
-- **Phòng 302:** Premier Twin Bed - Hướng Thành Phố - Tầng 3.
-- **Phòng 303:** Deluxe Suite King - Có bồn tắm nằm thủy lực - Tầng 3.
-- **Phòng 304:** Premier King Bed - Hướng Trực Diện Thành Phố - Tầng 3.
-- **Phòng 305:** Premier Twin Bed - Ban Công Thoáng Mát - Tầng 3.
-- **Phòng 306:** Family Suite (Dành cho 4 người) - 2 Phòng Ngủ Liên thông - Tầng 3.
+### 3.2. Các Phòng Nghỉ Tầng 4 (Phòng 401 đến 409)
+- **Đặc điểm:** Toàn bộ từ Phòng 401 đến Phòng 409 đều là phòng nghỉ tiêu chuẩn đồng nhất tại Tầng 4.
+- **Chỉ đường:** Đi Thang máy A ở sảnh tiếp tân lên Tầng 4, bước ra khỏi thang máy và đi theo biển chỉ dẫn 2 bên hành lang là tới các phòng từ 401 đến 409 (Dãy phòng 401-404 ở hành lang bên phải; Dãy phòng 405-409 ở hành lang bên trái).
 
-### 3.4. Danh Sách Phòng Tầng 4 (Phòng 401 đến 409)
-- **Vị trí & Chỉ đường:** Tầng 4, đi thang máy A bấm Tầng 4, gồm 9 phòng nghỉ cao cấp bố trí dọc 2 bên hành lang:
-- **Phòng 401:** Deluxe Suite - Ngay cạnh thang máy hành lang phải - Tầng 4.
-- **Phòng 402:** Executive King - Hướng Thành Phố, dãy trên - Tầng 4.
-- **Phòng 403:** Executive Suite - Phòng khách VIP, dãy trên - Tầng 4.
-- **Phòng 404:** Grand Suite King - Bồn tắm kính góc cuối dãy trên - Tầng 4.
-- **Phòng 405:** Executive Twin Bed - Góc trái dãy dưới - Tầng 4.
-- **Phòng 406:** President Suite (Phòng Tổng Thống) - Cao cấp nhất, tầm nhìn Panorama - Tầng 4.
-- **Phòng 407:** Deluxe Double Bed - Trung tâm dãy đối diện - Tầng 4.
-- **Phòng 408:** Superior King Bed - Đối diện thang máy dãy dưới - Tầng 4.
-- **Phòng 409:** Junior Suite - Góc phải cuối dãy dưới - Tầng 4.
+*Lưu ý khi trả lời khách:* Khi khách hỏi đường đi đến phòng (từ 301 đến 309 hoặc từ 401 đến 409), Robot chỉ cần trả lời ngắn gọn: thông báo phòng nằm ở tầng tương ứng và hướng dẫn khách đi Thang máy A lên tầng rồi rẽ theo biển chỉ dẫn hành lang. Tuyệt đối không đọc thêm thông tin tiện nghi hay loại phòng dư thừa.

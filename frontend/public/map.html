@@ -430,10 +430,9 @@
 
   <!-- Footer -->
   <footer>
-    <button class="dismiss-btn" onclick="finishTicket()">✓ Tôi đã nhớ đường</button>
-    <a href="tel:02438886666" class="call-btn">
-      <span>📞 Gọi Lễ Tân</span>
-    </a>
+    <button class="dismiss-btn" onclick="finishTicket()" style="width:100%; padding:12px; font-size:13px; font-weight:800; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.15); border-radius:14px; color:#f1f5f9; cursor:pointer;">
+      ✓ Tôi đã nhớ đường · Đóng chỉ dẫn
+    </button>
   </footer>
 
   <!-- Màn Hình Khi Vé Hết Hạn -->
@@ -444,9 +443,6 @@
       <p style="font-size:13px; color:#94a3b8; line-height:1.5;">
         Vé chỉ đường này có hiệu lực 1 lần để đảm bảo an ninh. Quý khách vui lòng hỏi lại <strong>Robot Concierge Rora</strong> tại sảnh khách sạn nhé ạ!
       </p>
-      <a href="tel:02438886666" class="call-btn" style="width:100%; justify-content:center; padding:12px;">
-        <span>Gọi Nhân Viên Hỗ Trợ</span>
-      </a>
     </div>
   </div>
 
@@ -455,11 +451,11 @@
     const ROUTE_GROUND_TO_ELEVATOR = 'M 796 545 C 850 545, 880 545, 908 545 C 935 545, 955 480, 990 480 L 1210 480 C 1235 480, 1249 460, 1249 410';
 
     const DESTINATIONS = {
-      room_401: { name: 'Phòng Nghỉ 401 (Deluxe)', floorId: '6', floorLevel: 'TẦNG 4', isDiff: true, step1: 'Đi từ sảnh ra Thang máy A và bấm lên Tầng 4.', step2: 'Ra khỏi thang máy, rẽ phải đi dọc hành lang tới phòng 401.', coords: {x: 1040, y: 760}, route: 'M 1249 410 L 1249 536 C 1249 550, 1220 560, 1150 560 L 1040 560 L 1040 760' },
+      room_401: { name: 'Phòng Nghỉ 401', floorId: '6', floorLevel: 'TẦNG 4', isDiff: true, step1: 'Đi từ sảnh ra Thang máy A và bấm lên Tầng 4.', step2: 'Ra khỏi thang máy, rẽ phải đi dọc hành lang tới phòng 401.', coords: {x: 1040, y: 760}, route: 'M 1249 410 L 1249 536 C 1249 550, 1220 560, 1150 560 L 1040 560 L 1040 760' },
       room_402: { name: 'Phòng Nghỉ 402', floorId: '6', floorLevel: 'TẦNG 4', isDiff: true, step1: 'Đi từ sảnh ra Thang máy A và bấm lên Tầng 4.', step2: 'Ra khỏi thang máy, đi theo hành lang bên phải tới phòng 402.', coords: {x: 930, y: 760}, route: 'M 1249 410 L 1249 536 L 1150 560 L 930 560 L 930 760' },
       room_403: { name: 'Phòng Nghỉ 403', floorId: '6', floorLevel: 'TẦNG 4', isDiff: true, step1: 'Đi từ sảnh ra Thang máy A và bấm lên Tầng 4.', step2: 'Đi theo hành lang tầng 4 tới phòng 403.', coords: {x: 820, y: 760}, route: 'M 1249 410 L 1249 536 L 1000 560 L 820 560 L 820 760' },
       room_404: { name: 'Phòng Nghỉ 404', floorId: '6', floorLevel: 'TẦNG 4', isDiff: true, step1: 'Đi từ sảnh ra Thang máy A và bấm lên Tầng 4.', step2: 'Đi theo hành lang tầng 4 tới phòng 404.', coords: {x: 710, y: 760}, route: 'M 1249 410 L 1249 536 L 900 560 L 710 560 L 710 760' },
-      room_405: { name: 'Phòng Nghỉ 405 (Executive)', floorId: '6', floorLevel: 'TẦNG 4', isDiff: true, step1: 'Đi từ sảnh ra Thang máy A và bấm lên Tầng 4.', step2: 'Đi thẳng tới cuối hành lang trái vào phòng 405.', coords: {x: 580, y: 760}, route: 'M 1249 410 L 1249 536 L 800 560 L 580 560 L 580 760' },
+      room_405: { name: 'Phòng Nghỉ 405', floorId: '6', floorLevel: 'TẦNG 4', isDiff: true, step1: 'Đi từ sảnh ra Thang máy A và bấm lên Tầng 4.', step2: 'Đi thẳng tới cuối hành lang trái vào phòng 405.', coords: {x: 580, y: 760}, route: 'M 1249 410 L 1249 536 L 800 560 L 580 560 L 580 760' },
       room_406: { name: 'Phòng Nghỉ 406', floorId: '6', floorLevel: 'TẦNG 4', isDiff: true, step1: 'Đi từ sảnh ra Thang máy A và bấm lên Tầng 4.', step2: 'Ra khỏi thang máy, rẽ trái theo dãy phòng số chẵn tới phòng 406.', coords: {x: 620, y: 412}, route: 'M 1249 410 L 1249 470 L 1000 470 L 620 470 L 620 412' },
       room_407: { name: 'Phòng Nghỉ 407', floorId: '6', floorLevel: 'TẦNG 4', isDiff: true, step1: 'Đi từ sảnh ra Thang máy A và bấm lên Tầng 4.', step2: 'Đi qua sảnh thang máy sang phòng 407 bên tay trái.', coords: {x: 750, y: 412}, route: 'M 1249 410 L 1249 470 L 950 470 L 750 470 L 750 412' },
       room_408: { name: 'Phòng Nghỉ 408', floorId: '6', floorLevel: 'TẦNG 4', isDiff: true, step1: 'Đi từ sảnh ra Thang máy A và bấm lên Tầng 4.', step2: 'Ra khỏi thang máy, rẽ trái vào phòng 408.', coords: {x: 880, y: 412}, route: 'M 1249 410 L 1249 470 L 1050 470 L 880 470 L 880 412' },

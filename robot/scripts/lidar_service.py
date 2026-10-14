@@ -380,9 +380,9 @@ free_thresh: 0.25
                     err += dx
                     curr_y += sy
 
-    def connect(self) -> bool:
-        """Mở cổng Serial và bắt tay với RPLiDAR A1M8."""
-        if self.is_connected and self.ser and self.ser.is_open:
+    def connect(self, force: bool = False) -> bool:
+        """Mở cổng Serial và bắt tay với RPLiDAR A1M8 có cơ chế auto-reset khi đơ/treo."""
+        if not force and self.is_connected and self.ser and self.ser.is_open:
             return True
 
         self.stop()
@@ -390,20 +390,49 @@ free_thresh: 0.25
 
         try:
             logger.info(f"🔌 Mở cổng Serial {self.port} tốc độ {self.baudrate} baud...")
-            self.ser = serial.Serial(self.port, self.baudrate, timeout=0.05)
+            self.ser = serial.Serial(self.port, self.baudrate, timeout=0.08)
+            # Khởi động motor bằng chân DTR (DTR = False cấp nguồn quay motor trên RPLiDAR A1)
             self.ser.dtr = False
             self.ser.rts = False
             time.sleep(0.15)
 
-            # STOP
+            # STOP chuỗi quét cũ
             self.ser.write(b"\xa5\x25")
-            time.sleep(0.1)
+            time.sleep(0.08)
             self.ser.reset_input_buffer()
             self.ser.reset_output_buffer()
 
-            # GET_INFO
+            # Thử GET_HEALTH (0xA5 0x52)
+            self.ser.write(b"\xa5\x52")
+            time.sleep(0.08)
+            desc_health = self.ser.read(7)
+
+            # Nếu cảm biến bị đơ hoặc lỗi sau rung lắc/sụt áp, gửi lệnh RESET (0xA5 0x40)
+            if len(desc_health) < 7 or desc_health[:2] != b"\xa5\x5a":
+                logger.warning(f"⚠️ Cảm biến {self.port} không phản hồi GET_HEALTH. Gửi mã RESET phần cứng (0xA5 0x40)...")
+                self.ser.write(b"\xa5\x40")
+                time.sleep(1.2)  # RPLiDAR A1 reboot mất ~1.0 - 1.2s
+                self.ser.reset_input_buffer()
+                self.ser.reset_output_buffer()
+                self.ser.dtr = False
+                time.sleep(0.1)
+                self.ser.write(b"\xa5\x25")
+                time.sleep(0.08)
+                self.ser.reset_input_buffer()
+                self.ser.write(b"\xa5\x52")
+                time.sleep(0.08)
+                desc_health = self.ser.read(7)
+
+            if len(desc_health) == 7 and desc_health[:2] == b"\xa5\x5a":
+                health_data = self.ser.read(3)
+                if len(health_data) >= 3:
+                    h_status = health_data[0]
+                    self.device_info["health"] = "Good" if h_status == 0 else f"Warning({h_status})"
+                    logger.info(f"🩺 RPLiDAR Health Status: {self.device_info['health']}")
+
+            # GET_INFO (0xA5 0x50)
             self.ser.write(b"\xa5\x50")
-            time.sleep(0.1)
+            time.sleep(0.08)
             desc_info = self.ser.read(7)
             if len(desc_info) == 7 and desc_info[:2] == b"\xa5\x5a":
                 info = self.ser.read(20)
@@ -413,26 +442,9 @@ free_thresh: 0.25
                     self.device_info["hardware"] = f"{info[3]}"
                     self.device_info["serialnumber"] = info[4:].hex().upper()
 
-            # GET_HEALTH
-            self.ser.write(b"\xa5\x52")
-            time.sleep(0.05)
-            desc_health = self.ser.read(7)
-            if len(desc_health) == 7 and desc_health[:2] == b"\xa5\x5a":
-                health_data = self.ser.read(3)
-                if len(health_data) >= 3:
-                    h_status = health_data[0]
-                    self.device_info["health"] = "Good" if h_status == 0 else f"Warning({h_status})"
-
-            # Bật quay motor PWM
-            try:
-                self.ser.write(b"\xa5\xf0\x02\x94\x02\xc5")
-                time.sleep(0.1)
-            except Exception:
-                pass
-
             self.is_connected = True
             self.last_error = ""
-            logger.info(f"✅ Đã kết nối RPLiDAR A1M8 trên {self.port}! Health: {self.device_info['health']}")
+            logger.info(f"✅ Đã kết nối RPLiDAR A1M8 trên {self.port}! Model: {self.device_info['model']}, Firmware: {self.device_info['firmware']}")
             return True
 
         except Exception as e:
@@ -443,7 +455,7 @@ free_thresh: 0.25
 
     def start_scanning(self):
         """Bật Thread thu thập tia quét thời gian thực."""
-        if self.is_running:
+        if self.is_running and self._scan_thread and self._scan_thread.is_alive():
             return
         if not self.is_connected and not self.connect():
             return
@@ -451,8 +463,9 @@ free_thresh: 0.25
         self.is_running = True
         self._scan_thread = threading.Thread(target=self._scan_loop, daemon=True)
         self._scan_thread.start()
-        self._safety_thread = threading.Thread(target=self._safety_watchdog_loop, daemon=True)
-        self._safety_thread.start()
+        if not self._safety_thread or not self._safety_thread.is_alive():
+            self._safety_thread = threading.Thread(target=self._safety_watchdog_loop, daemon=True)
+            self._safety_thread.start()
         logger.info("🚀 Luồng quét LiDAR SLAM & Safety Watchdog đã sẵn sàng")
 
     def stop(self):
@@ -467,23 +480,60 @@ free_thresh: 0.25
         self.is_connected = False
 
     def _scan_loop(self):
-        """Vòng lặp bóc tách 5-byte packet chuẩn RPLiDAR có lọc nhiễu thân robot."""
+        """Vòng lặp bóc tách 5-byte packet chuẩn RPLiDAR có watchdog tự phục hồi."""
         try:
             if not self.ser or not self.ser.is_open:
                 return
 
             self.ser.write(b"\xa5\x20")
-            time.sleep(0.1)
+            time.sleep(0.08)
             self.ser.read(7)  # Bỏ qua descriptor 7-byte
 
             buf = bytearray()
             current_scan_batch = []
+            last_packet_time = time.time()
+            stall_retries = 0
 
             while self.is_running and self.ser and self.ser.is_open:
                 chunk = self.ser.read(512)
+                now = time.time()
+
                 if not chunk:
+                    # WATCHDOG: Nếu không có dữ liệu > 2.0s (do sụt áp động cơ, brownout hoặc sensor đơ)
+                    if now - last_packet_time > 2.0:
+                        stall_retries += 1
+                        logger.warning(
+                            f"⚠️ [LiDAR Watchdog] Mất luồng dữ liệu {now - last_packet_time:.1f}s "
+                            f"(lần {stall_retries}/3). Kích hoạt soft-reset STOP & SCAN..."
+                        )
+                        try:
+                            self.ser.write(b"\xa5\x25")
+                            time.sleep(0.06)
+                            self.ser.reset_input_buffer()
+                            self.ser.reset_output_buffer()
+                            self.ser.dtr = False
+                            time.sleep(0.04)
+                            self.ser.write(b"\xa5\x20")
+                            time.sleep(0.06)
+                            self.ser.read(7)
+                            buf.clear()
+                            last_packet_time = time.time()
+                        except Exception as ex:
+                            logger.error(f"Lỗi soft-reset LiDAR: {ex}")
+
+                        if stall_retries >= 3:
+                            logger.error("🚨 [LiDAR Watchdog] Tín hiệu gián đoạn quá 6s, thực hiện tái kết nối Serial toàn phần...")
+                            self.connect(force=True)
+                            stall_retries = 0
+                            last_packet_time = time.time()
+                            if self.ser and self.ser.is_open:
+                                self.ser.write(b"\xa5\x20")
+                                time.sleep(0.06)
+                                self.ser.read(7)
+
                     time.sleep(0.005)
                     continue
+
                 buf.extend(chunk)
 
                 while len(buf) >= 5:
@@ -500,6 +550,10 @@ free_thresh: 0.25
                     packet = buf[:5]
                     del buf[:5]
 
+                    # Nhận được packet hợp lệ: reset watchdog
+                    last_packet_time = time.time()
+                    stall_retries = 0
+
                     is_new_scan = (s == 1)
                     quality = packet[0] >> 2
                     angle_q6 = (packet[1] >> 1) | (packet[2] << 7)
@@ -513,9 +567,9 @@ free_thresh: 0.25
                     if 0.12 <= dist_m <= 12.0:
                         # Cập nhật liên tục mảng khoảng cách 360 độ theo thời gian thực
                         deg = int(round(angle)) % 360
-                        now = time.time()
+                        now_ts = time.time()
                         self.angle_distances[deg] = dist_m
-                        self.angle_timestamps[deg] = now
+                        self.angle_timestamps[deg] = now_ts
 
                         # Chuẩn hóa góc và tọa độ theo chuẩn chuẩn Cartesian (+X Tiến, +Y Trái, CCW)
                         heading = (angle + self.robot_yaw) % 360.0
@@ -829,7 +883,7 @@ free_thresh: 0.25
         self.send_udp_motor_command("stop")
         self.avoidance_locked_dir = None
 
-    def scan_room_360(self):
+    def scan_room_360(self, blocking: bool = False):
         """Quay tròn 360 độ từ tốn để quét toàn cảnh các bức tường xung quanh phòng."""
         def _scan_worker():
             self.stop_navigation()
@@ -851,8 +905,11 @@ free_thresh: 0.25
             self.send_udp_motor_command("stop")
             logger.info("✅ HOÀN THÀNH QUÉT 360 ĐỘ TOÀN PHÒNG!")
 
-        t = threading.Thread(target=_scan_worker, daemon=True)
-        t.start()
+        if blocking:
+            _scan_worker()
+        else:
+            t = threading.Thread(target=_scan_worker, daemon=True)
+            t.start()
 
     # =========================================================================
     # FRONTIER EXPLORATION ENGINE
@@ -1050,10 +1107,21 @@ free_thresh: 0.25
 
     def _exploration_loop(self, auto_save: bool = True, save_name: str = "auto_explored_map"):
         """Vòng lặp khám phá: tìm frontier → di chuyển → quét → lặp cho đến khi hết frontier."""
-        # Quét 360 tại chỗ ban đầu
-        logger.info("📡 Quét 360° tại vị trí xuất phát...")
-        self.scan_room_360()
-        time.sleep(5.0)  # Chờ quét xong
+        # 1. Quét 360 tại chỗ ban đầu (chặn hoàn toàn cho tới khi xoay xong 360 độ)
+        logger.info("📡 Quét 360° toàn cảnh tại vị trí xuất phát...")
+        self.scan_room_360(blocking=True)
+        time.sleep(0.5)
+
+        # 2. Đảm bảo LiDAR đã có dữ liệu quét thực tế trước khi tìm frontier
+        wait_start = time.time()
+        while len(self.get_latest_scans()) == 0 and time.time() - wait_start < 5.0 and self.is_exploring:
+            logger.warning("⏳ Đang chờ RPLiDAR gửi tia quét...")
+            time.sleep(0.5)
+
+        if len(self.get_latest_scans()) == 0:
+            logger.error("❌ RPLiDAR chưa gửi tia quét nào. Thử kích hoạt tái kết nối khẩn cấp...")
+            self.connect(force=True)
+            time.sleep(1.0)
 
         max_frontiers = 200  # Giới hạn số frontier để tránh chạy vô tận
         frontier_count = 0
@@ -1062,7 +1130,21 @@ free_thresh: 0.25
             frontier = self._find_frontier()
 
             if frontier is None:
-                logger.info("🎉 KHÁM PHÁ HOÀN THÀNH — Không còn frontier chưa thăm!")
+                # Kiểm tra nếu bản đồ hoàn toàn chưa có điểm nào (chưa có free cell do tia laser bị cản)
+                with self._lock:
+                    known_free = sum(1 for v in self.grid_data if v == 0)
+                if known_free < 20 and frontier_count == 0:
+                    logger.warning(f"⚠️ Bản đồ mới có {known_free} ô trống, nhích nhẹ 0.3m để mở rộng góc quan sát...")
+                    self.send_udp_motor_command("speed:35")
+                    self.send_udp_motor_command("forward")
+                    time.sleep(0.6)
+                    self.send_udp_motor_command("stop")
+                    self.robot_x += 0.20 * math.cos(math.radians(self.robot_yaw))
+                    self.robot_y += 0.20 * math.sin(math.radians(self.robot_yaw))
+                    time.sleep(0.8)
+                    continue
+
+                logger.info("🎉 KHÁM PHÁ HOÀN THÀNH — Đã quét toàn bộ khu vực!")
                 break
 
             fx, fy = frontier
@@ -1074,12 +1156,11 @@ free_thresh: 0.25
             self.explored_frontiers.append(frontier_key)
 
             if success:
-                # Đã tới frontier: Dừng yên 0.8s để RPLiDAR A1 (tự quay 360° ở tần số 5.5Hz)
-                # quét ổn định toàn cảnh không gian mới, không rung giật động cơ và không trượt bánh
+                # Đã tới frontier: Dừng yên 0.8s để RPLiDAR A1 quét ổn định toàn cảnh không gian mới
                 self.send_udp_motor_command("stop")
                 time.sleep(0.8)
             else:
-                logger.warning(f"⚠️ Không đến được frontier ({fx:.2f}, {fy:.2f}) — bỏ qua.")
+                logger.warning(f"⚠️ Không đến được frontier ({fx:.2f}, {fy:.2f}) — tiếp tục điểm kế tiếp.")
 
         # Kết thúc khám phá
         self.send_udp_motor_command("stop")
@@ -1408,11 +1489,21 @@ async def get_lidar_status():
 
 @app.post("/api/v1/map/connect_lidar")
 async def connect_lidar():
-    success = slam_core.connect()
+    success = slam_core.connect(force=True)
     if success:
         slam_core.start_scanning()
-        return {"status": "SUCCESS", "message": "Đã kết nối thành công RPLiDAR A1M8", "info": slam_core.device_info}
+        return {"status": "SUCCESS", "message": "Đã tái kết nối thành công phần cứng RPLiDAR A1M8", "info": slam_core.device_info}
     return {"status": "FAILED", "message": slam_core.last_error or "Không thể kết nối RPLiDAR"}
+
+
+@app.post("/api/v1/system/restart")
+async def restart_system():
+    """Khởi động lại toàn bộ tiến trình điều khiển robot."""
+    def _do_exit():
+        time.sleep(0.5)
+        os._exit(0)
+    threading.Thread(target=_do_exit, daemon=True).start()
+    return {"status": "SUCCESS", "message": "Đang khởi động lại tiến trình robot..."}
 
 
 @app.post("/api/v1/map/reset_map")
@@ -1654,6 +1745,28 @@ async def map_ws_endpoint(websocket: WebSocket):
             scans = slam_core.get_latest_scans()
             map_data = slam_core.get_grid_map()
 
+            encoders_payload = {"m1": {"rpm": 0, "ticks": 0}, "m2": {"rpm": 0, "ticks": 0}, "m3": {"rpm": 0, "ticks": 0}, "m4": {"rpm": 0, "ticks": 0}}
+            esp_reader = getattr(slam_core, "esp32_reader", None)
+            snap = esp_reader.get_snapshot() if (esp_reader and hasattr(esp_reader, "get_snapshot")) else None
+            if snap and snap.encoders:
+                encoders_payload = snap.encoders
+
+            front_cm = round(slam_core.get_front_distance() * 100, 1) if slam_core.get_front_distance() < 90 else None
+            rear_cm = round(slam_core.get_rear_distance() * 100, 1) if slam_core.get_rear_distance() < 90 else None
+            left_cm = round(slam_core.get_left_distance() * 100, 1) if slam_core.get_left_distance() < 90 else None
+            right_cm = round(slam_core.get_right_distance() * 100, 1) if slam_core.get_right_distance() < 90 else None
+
+            # Kết hợp dữ liệu cảm biến siêu âm ESP32 khi LiDAR chưa kịp quét hoặc bị che
+            if snap and snap.distances:
+                if front_cm is None and snap.distances.get("front") is not None:
+                    front_cm = round(snap.distances["front"], 1)
+                if rear_cm is None and snap.distances.get("rear") is not None:
+                    rear_cm = round(snap.distances["rear"], 1)
+                if left_cm is None and snap.distances.get("left") is not None:
+                    left_cm = round(snap.distances["left"], 1)
+                if right_cm is None and snap.distances.get("right") is not None:
+                    right_cm = round(snap.distances["right"], 1)
+
             payload = {
                 "type": "telemetry_update",
                 "source": "REAL_RPLIDAR_A1M8_PI5",
@@ -1673,11 +1786,12 @@ async def map_ws_endpoint(websocket: WebSocket):
                 "overlay_active": slam_core._overlay_active,
                 "overlay_waypoints": slam_core._overlay_waypoints if slam_core._overlay_active else [],
                 "scan_points": scans,
+                "encoders": encoders_payload,
                 "safety": {
-                    "front_cm": round(slam_core.get_front_distance() * 100, 1) if slam_core.get_front_distance() < 90 else None,
-                    "rear_cm": round(slam_core.get_rear_distance() * 100, 1) if slam_core.get_rear_distance() < 90 else None,
-                    "left_cm": round(slam_core.get_left_distance() * 100, 1) if slam_core.get_left_distance() < 90 else None,
-                    "right_cm": round(slam_core.get_right_distance() * 100, 1) if slam_core.get_right_distance() < 90 else None,
+                    "front_cm": front_cm,
+                    "rear_cm": rear_cm,
+                    "left_cm": left_cm,
+                    "right_cm": right_cm,
                     "alert": getattr(slam_core, "last_safety_alert", ""),
                 },
                 "grid_data": slam_core.merge_maps() if slam_core._overlay_active else map_data["grid_data"],

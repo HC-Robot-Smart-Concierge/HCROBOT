@@ -281,6 +281,8 @@ async def generator_node(state: ConciergeState) -> Dict[str, Any]:
         "lang_code": final_code,
         "action": "conversation",
         "intent_category": "conversation",
+        "destination_key": None,
+        "trigger_video_call": False,
         "missing_room_number": False,
     }
 

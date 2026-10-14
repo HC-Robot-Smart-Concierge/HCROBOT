@@ -52,6 +52,9 @@ export const MobileRobotScreen = ({
   availableWorkflows = [],
   onStartWorkflow,
   onCallStaff,
+  showQrModalExternal = false,
+  qrCountdown = null,
+  onCloseQrModal = null,
 }) => {
   const [isOnline, setIsOnline] = useState(() => navigator.onLine);
   const [installMessage, setInstallMessage] = useState('');
@@ -144,14 +147,13 @@ export const MobileRobotScreen = ({
                 <span>Chọn món</span>
               </button>
             )}
-
             {guestEmotion && (
               <span
                 className={`text-[10px] font-bold px-2 py-0.5 rounded-full border flex items-center transition-all ${guestEmotion === 'happy'
-                    ? 'bg-stone-800 text-stone-200 border-stone-700'
-                    : guestEmotion === 'unhappy'
-                      ? 'bg-stone-800 text-stone-300 border-stone-700'
-                      : 'bg-stone-900 text-stone-400 border-stone-800'
+                  ? 'bg-stone-800 text-stone-200 border-stone-700'
+                  : guestEmotion === 'unhappy'
+                    ? 'bg-stone-800 text-stone-300 border-stone-700'
+                    : 'bg-stone-900 text-stone-400 border-stone-800'
                   }`}
                 title="Cảm xúc khuôn mặt"
               >
@@ -171,8 +173,8 @@ export const MobileRobotScreen = ({
               type="button"
               onClick={() => setIsUtilitiesMenuOpen((prev) => !prev)}
               className={`h-8 px-3 rounded-full border text-[10px] font-black flex items-center gap-1.5 active:scale-95 shadow-xs cursor-pointer transition-all ${isUtilitiesMenuOpen || isNavigating
-                  ? 'bg-stone-900 text-white border-stone-900 shadow-sm'
-                  : 'bg-white hover:bg-stone-50 border-stone-300 text-stone-900'
+                ? 'bg-stone-900 text-white border-stone-900 shadow-sm'
+                : 'bg-white hover:bg-stone-50 border-stone-300 text-stone-900'
                 }`}
               title="Danh sách tiện ích & chức năng"
             >
@@ -367,6 +369,9 @@ export const MobileRobotScreen = ({
                 setIsMapManualOpen(false);
                 onResetToIdle();
               }}
+              showQrModalExternal={showQrModalExternal}
+              qrCountdown={qrCountdown}
+              onCloseQrModal={onCloseQrModal}
               defaultZoom={1.65}
               className="w-full h-full rounded-none border-none shadow-none"
             />

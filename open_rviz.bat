@@ -9,5 +9,6 @@ echo  - File cau hinh: robot/ros2_configs/nav2/lidar_view.rviz
 echo  - Hien thi: URDF Model 3D, Occupancy Grid Map, /scan Laser, /robot_path
 echo ===================================================================
 echo.
-wsl -d Ubuntu-24.04 bash -c "source /opt/ros/jazzy/setup.bash && rviz2 -d /mnt/d/do_an_fptu/HCROBOT/robot/ros2_configs/nav2/lidar_view.rviz"
+cd /d "%~dp0"
+wsl -d Ubuntu-24.04 bash -c "source /opt/ros/jazzy/setup.bash && rviz2 -d robot/ros2_configs/nav2/lidar_view.rviz"
 pause

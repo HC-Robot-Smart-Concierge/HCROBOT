@@ -1,6 +1,6 @@
 import React from 'react';
 import { Routes, Route, Navigate, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
-import { useAuth, resolveStaffDashboard } from '../context/AuthContext';
+import { useAuth, resolveStaffDashboard, isRobotUser } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
 import { ProtectedRoute } from './ProtectedRoute';
 import { StaffLayout } from '../layouts/StaffLayout';
@@ -49,15 +49,22 @@ function ConciergeRouteWrapper() {
 
 // Staff index resolver
 function StaffIndexRedirect() {
-  const { currentUser, isAdmin } = useAuth();
+  const { currentUser, isAdmin, isRobot } = useAuth();
+  if (isRobot) return <Navigate to="/robot" replace />;
   if (isAdmin) return <Navigate to="/admin/portal" replace />;
   const defaultDash = resolveStaffDashboard(currentUser).replace('_', '-');
   return <Navigate to={`/staff/${defaultDash}`} replace />;
 }
 
 export const AppRoutes = () => {
-  const { currentUser, isAdmin, login, logout, setCurrentUser } = useAuth();
-  const { showNotification } = useNotifications();
+  const { currentUser, isAdmin, isRobot, login, logout, setCurrentUser } = useAuth();
+  const {
+    notifications,
+    showNotification,
+    handleToggleRead,
+    handleMarkAllRead,
+    loadNotifications,
+  } = useNotifications();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -78,7 +85,7 @@ export const AppRoutes = () => {
       return;
     }
     showNotification(`Đăng nhập thành công! Vai trò: ${user.role || user.department}`);
-    if (res.resolvedDashboard === 'robot_display') {
+    if (res.resolvedDashboard === 'robot_display' || isRobotUser(user)) {
       navigate('/robot');
     } else if (res.resolvedDashboard === 'admin_portal') {
       navigate('/admin/portal');
@@ -102,9 +109,13 @@ export const AppRoutes = () => {
         element={
           <LandingHomePage
             currentUser={currentUser}
+            isRobot={isRobot}
+            onLoginSuccess={handleLoginSuccess}
             onNavigateToLogin={() => {
               if (currentUser) {
-                if (isAdmin) {
+                if (isRobot) {
+                  navigate('/robot');
+                } else if (isAdmin) {
                   navigate('/admin/portal');
                 } else {
                   const dash = resolveStaffDashboard(currentUser).replace('_', '-');
@@ -134,7 +145,9 @@ export const AppRoutes = () => {
           currentUser ? (
             <Navigate
               to={
-                isAdmin
+                isRobot
+                  ? '/robot'
+                  : isAdmin
                   ? '/admin/portal'
                   : `/staff/${resolveStaffDashboard(currentUser).replace('_', '-')}`
               }
@@ -191,6 +204,8 @@ export const AppRoutes = () => {
         }
       >
         <Route index element={<StaffIndexRedirect />} />
+        <Route path="robot-display" element={<Navigate to="/robot" replace />} />
+        <Route path="robot" element={<Navigate to="/robot" replace />} />
         <Route
           path="reception"
           element={
@@ -307,7 +322,11 @@ export const AppRoutes = () => {
           element={
             <NotificationsPage
               currentUser={currentUser}
+              notifications={notifications}
               onNotify={showNotification}
+              onToggleRead={handleToggleRead}
+              onMarkAllRead={handleMarkAllRead}
+              onRefresh={loadNotifications}
             />
           }
         />

@@ -15,8 +15,6 @@ import { NotificationCenterModal } from '../components/common/NotificationCenter
 import { QuickRequestModal } from '../components/common/QuickRequestModal';
 import { UserProfileModal } from '../components/common/UserProfileModal';
 
-import { Bell, PlusCircle, LogOut } from 'lucide-react';
-
 export const StaffLayout = () => {
   const { currentUser, isAdmin, logout, setCurrentUser, resolveStaffDashboard } = useAuth();
   const {
@@ -123,95 +121,10 @@ export const StaffLayout = () => {
     navigate('/');
   };
 
-  const viewOptions = [
-    { id: 'admin_portal', label: 'Admin Command Portal', path: '/admin/portal' },
-    { id: 'landing', label: 'Trang Chu (Landing)', path: '/' },
-    { id: 'reception', label: '0. Reception (Staff)', path: '/staff/reception' },
-    { id: 'room_service', label: '1. Room Service (Staff)', path: '/staff/room-service' },
-    { id: 'housekeeping', label: '2. Housekeeping (Staff)', path: '/staff/housekeeping' },
-    { id: 'bell_services', label: '3. Bell Services (Staff)', path: '/staff/bell-services' },
-    { id: 'maintenance', label: '4. Maintenance (Staff)', path: '/staff/maintenance' },
-    { id: 'kitchen', label: '5. Kitchen / Bếp (Staff)', path: '/staff/kitchen' },
-    { id: 'concierge', label: '6. Concierge & Transport (Staff)', path: '/staff/concierge' },
-    { id: 'robot_display', label: 'Man Hinh Robot', path: '/robot' },
-    { id: 'admin_map', label: 'LiDAR SLAM Map', path: '/admin/map' },
-  ];
-
   return (
     <div className="w-full h-screen overflow-hidden bg-[#FAF8F5] text-[#1A1917] flex flex-col font-sans select-none relative">
       {/* Toast Notification */}
       <ToastNotification message={toastMessage} />
-
-      {/* Floating Header Pill with User & Admin Switcher */}
-      <div className="absolute top-2.5 right-6 z-50 flex items-center gap-2">
-        {currentUser && (
-          <div className="flex items-center gap-2 bg-[#18181B]/95 text-white border border-stone-700/80 backdrop-blur-md px-3.5 py-1.5 rounded-full shadow-2xl">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <button
-              onClick={() => setShowProfileModal(true)}
-              title="Xem hồ sơ & Đổi mật khẩu"
-              className="flex items-center gap-1.5 text-xs font-bold hover:opacity-80 transition cursor-pointer"
-            >
-              <span className="text-amber-300">
-                {currentUser.full_name || currentUser.name}
-              </span>
-              <span className="text-stone-400 text-[10px]">
-                ({currentUser.role || currentUser.department})
-              </span>
-            </button>
-
-            {/* Quick Request Button */}
-            <button
-              onClick={() => setShowQuickRequestModal(true)}
-              title="Tạo yêu cầu dịch vụ nhanh"
-              className="p-1 rounded-full text-stone-300 hover:text-white hover:bg-stone-800 transition cursor-pointer"
-            >
-              <PlusCircle className="w-4 h-4" />
-            </button>
-
-            {/* Notification Bell Badge Button */}
-            <button
-              onClick={() => setShowNotifModal(true)}
-              title="Trung tâm thông báo"
-              className="relative p-1 rounded-full text-stone-300 hover:text-white hover:bg-stone-800 transition cursor-pointer"
-            >
-              <Bell className="w-4 h-4" />
-              {unreadNotifCount > 0 && (
-                <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-600 text-white text-[9px] font-bold flex items-center justify-center">
-                  {unreadNotifCount > 9 ? '9+' : unreadNotifCount}
-                </span>
-              )}
-            </button>
-
-            {/* If Admin: Allow role switcher */}
-            {isAdmin && (
-              <select
-                value={activeView}
-                onChange={(e) => {
-                  const target = viewOptions.find((opt) => opt.id === e.target.value);
-                  if (target) navigate(target.path);
-                }}
-                className="bg-stone-800 text-white text-[11px] font-bold rounded-full px-2 py-0.5 border border-stone-600 outline-none cursor-pointer ml-1"
-              >
-                {viewOptions.map((opt) => (
-                  <option key={opt.id} value={opt.id}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            )}
-
-            <button
-              onClick={handleLogout}
-              title="Đăng xuất"
-              className="ml-1 px-2.5 py-1 rounded-full bg-red-600/90 hover:bg-red-600 text-white text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer shadow-sm"
-            >
-              <LogOut className="w-3 h-3" />
-              <span>Đăng xuất</span>
-            </button>
-          </div>
-        )}
-      </div>
 
       {/* Main Staff Frame: Sidebar + Content */}
       <div className="flex-1 flex overflow-hidden">

@@ -14,21 +14,38 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import { Pagination } from '../../components/common/Pagination';
+import { useNotifications } from '../../context/NotificationContext';
+import { useAuth } from '../../context/AuthContext';
 
 export const NotificationsPage = ({
-  currentUser = null,
-  notifications = [],
-  onNotify = () => {},
-  onToggleRead = () => {},
-  onMarkAllRead = () => {},
-  onRefresh = () => {},
+  currentUser: propUser = null,
+  notifications: propNotifications = null,
+  onNotify: propNotify = null,
+  onToggleRead: propToggleRead = null,
+  onMarkAllRead: propMarkAllRead = null,
+  onRefresh: propRefresh = null,
 }) => {
+  const { currentUser: authUser } = useAuth();
+  const notifCtx = useNotifications();
+
+  const currentUser = propUser || authUser;
+  const notifications = propNotifications || notifCtx?.notifications || [];
+  const onNotify = propNotify || notifCtx?.showNotification || (() => {});
+  const onToggleRead = propToggleRead || notifCtx?.handleToggleRead || (() => {});
+  const onMarkAllRead = propMarkAllRead || notifCtx?.handleMarkAllRead || (() => {});
+  const onRefresh = propRefresh || notifCtx?.loadNotifications || (() => {});
+
   const [filter, setFilter] = useState('All'); // 'All' | 'Unread' | 'Robot' | 'Warning'
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 10;
 
   const userDept = currentUser?.department || 'Staff';
+
+  // Tải danh sách thông báo mới nhất khi mở trang
+  useEffect(() => {
+    onRefresh();
+  }, []);
 
   // Reset page when filter or search changes
   useEffect(() => {

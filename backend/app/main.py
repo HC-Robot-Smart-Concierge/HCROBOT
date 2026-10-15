@@ -55,7 +55,7 @@ tags_metadata = [
     {"name": "10. Bộ phận Bếp & Ẩm thực (Kitchen Operations & Menus)"},
     {"name": "11. Bộ phận Đặt xe & Vận chuyển (Taxi & Transportation)"},
     {"name": "12. Bộ phận Trợ lý Concierge & Live Call (Concierge & Live Support)"},
-    {"name": "13. Quản lý Phòng ban & Nhân sự (Departments & Staff)"},
+    {"name": "13. Quản lý Phòng ban & Tài khoản (Departments & Accounts)"},
     {"name": "14. Quản lý Chung & Điều phối Nghiệp vụ (Operations & Directives)"},
     {"name": "15. Trung tâm Điều hành & Quản trị (Admin & Human Support)"},
     {"name": "16. Thông báo Hệ thống (Notifications)"},

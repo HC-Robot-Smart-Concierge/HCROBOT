@@ -21,6 +21,8 @@ from app.schemas.operations import (
     AdminOperationsSummary,
     AdminTaskDispatchCreate,
     HumanSupportSessionResponse,
+    DirectiveCreate,
+    DirectiveResponse,
 )
 from app.repositories import (
     SupportRequestRepository,
@@ -604,6 +606,35 @@ async def update_task_status(
 
 # Python alias for backward compatibility
 update_generic_request_status = update_task_status
+
+
+@router.post(
+    "/directives",
+    response_model=DirectiveResponse,
+    status_code=status.HTTP_201_CREATED,
+    tags=TAG_OPS,
+    summary="Phát chỉ thị điều hành quản lý liên bộ phận",
+)
+async def create_operational_directive(
+    dir_in: DirectiveCreate,
+    dir_repo: DirectiveRepository = Depends(get_directive_repository),
+):
+    """Phát hành chỉ thị điều phối đặc biệt từ Ban Quản lý Khách sạn."""
+    code = f"OP-{random.randint(104, 999)}"
+    new_dir = ManagementDirective(
+        code=code,
+        title=dir_in.title,
+        department=dir_in.department,
+        priority=dir_in.priority,
+        location=dir_in.location,
+        reported_time_label="Directive Just Issued",
+        description=dir_in.description,
+        status="Unassigned",
+        type=dir_in.type,
+        created_by="System Administrator",
+    )
+    await dir_repo.create(new_dir, autocommit=True)
+    return new_dir
 
 
 

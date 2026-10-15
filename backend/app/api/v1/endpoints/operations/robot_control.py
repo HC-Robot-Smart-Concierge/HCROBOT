@@ -1,11 +1,24 @@
 import socket
 import json
-from typing import Optional
+from typing import Optional, List
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from .shared import TAG_OPS
 
 router = APIRouter()
+
+
+@router.get(
+    "/fleet",
+    response_model=List[dict],
+    tags=TAG_OPS,
+    summary="Danh sách trạng thái đội Robot HCRobot",
+)
+async def get_robot_fleet():
+    """
+    Trả về danh sách trạng thái thời gian thực của các Robot tự hành HCRobot đang trực tuyến.
+    """
+    return []
 
 
 class RobotMoveCommand(BaseModel):

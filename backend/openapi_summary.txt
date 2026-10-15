@@ -1,0 +1,190 @@
+Tags in openapi metadata (order):
+  0. 00. Trạng thái Máy chủ (System Health)
+  1. 01. Xác thực Hệ thống & JWT (Authentication)
+  2. 02. Trợ lý Giọng nói AI (Ollama Voice Engine)
+  3. 03. Định vị & Bản đồ LiDAR SLAM (Robot Navigation)
+  4. 04. Cơ sở Tri thức & RAG Lễ tân (Knowledge Base & RAG)
+  5. 05. Bộ phận Lễ tân & Đặt phòng (Front Desk & Reception)
+  6. 06. Bộ phận Buồng phòng (Housekeeping Operations)
+  7. 07. Bộ phận Hành lý & Tiền sảnh (Bell Services)
+  8. 08. Bộ phận Kỹ thuật & Bảo trì (Facility Maintenance)
+  9. 09. Bộ phận Phục vụ phòng (Room Service)
+  10. 10. Bộ phận Bếp & Ẩm thực (Kitchen Operations & Menus)
+  11. 11. Bộ phận Đặt xe & Vận chuyển (Taxi & Transportation)
+  12. 12. Bộ phận Trợ lý Concierge & Live Call (Concierge & Live Support)
+  13. 13. Quản lý Phòng ban & Nhân sự (Departments & Staff)
+  14. 14. Quản lý Chung & Điều phối Nghiệp vụ (Operations & Directives)
+  15. 15. Trung tâm Điều hành & Quản trị (Admin & Human Support)
+  16. 16. Thông báo Hệ thống (Notifications)
+  17. 17. Nhật ký Vận hành & Audit Trail (Logging & Trace)
+
+--- Tag: 00. Trạng thái Máy chủ (System Health) (1 endpoints) ---
+   GET /health
+
+--- Tag: 01. Xác thực Hệ thống & JWT (Authentication) (5 endpoints) ---
+   POST /api/v1/auth/login
+   GET /api/v1/auth/me
+   POST /api/v1/auth/change-password
+   PATCH /api/v1/auth/profile
+   POST /api/v1/auth/logout
+
+--- Tag: 02. Trợ lý Giọng nói AI (Ollama Voice Engine) (19 endpoints) ---
+   POST /api/v1/ai/chat
+   POST /api/v1/ai/chat/stream
+   POST /api/v1/ai/stt/transcribe
+   POST /api/v1/ai/tts
+   GET /api/v1/ai/voice-settings
+   POST /api/v1/ai/voice-settings
+   POST /api/v1/ai/intent
+   POST /api/v1/ai/session/reset
+   POST /api/v1/ai/session/flush
+   GET /api/v1/ai/sessions
+   GET /api/v1/ai/sessions/{session_id}/messages
+   POST /api/v1/ai/feedback
+   GET /api/v1/ai/feedback
+   GET /api/v1/ai/scenarios
+   POST /api/v1/ai/scenarios
+   GET /api/v1/ai/scenarios/{scenario_id}
+   PUT /api/v1/ai/scenarios/{scenario_id}
+   DELETE /api/v1/ai/scenarios/{scenario_id}
+   POST /api/v1/ai/scenarios/reload-cache
+
+--- Tag: 03. Định vị & Bản đồ LiDAR SLAM (Robot Navigation) (25 endpoints) ---
+   GET /api/v1/map/current
+   GET /api/v1/map/waypoints
+   POST /api/v1/map/waypoints
+   PUT /api/v1/map/waypoints/{waypoint_id}
+   DELETE /api/v1/map/waypoints/{waypoint_id}
+   GET /api/v1/map/zones
+   POST /api/v1/map/zones
+   PUT /api/v1/map/zones/{zone_id}
+   DELETE /api/v1/map/zones/{zone_id}
+   GET /api/v1/map/lidar_status
+   POST /api/v1/map/save_map
+   POST /api/v1/map/load_map
+   GET /api/v1/map/list_saved_maps
+   POST /api/v1/map/toggle_lock
+   POST /api/v1/map/reset_map
+   POST /api/v1/map/connect_lidar
+   POST /api/v1/map/scan_360
+   POST /api/v1/map/teleop
+   POST /api/v1/map/navigate
+   GET /api/v1/workflows
+   POST /api/v1/workflows
+   GET /api/v1/workflows/{workflow_id}
+   PUT /api/v1/workflows/{workflow_id}
+   DELETE /api/v1/workflows/{workflow_id}
+   POST /api/v1/workflows/{workflow_id}/execute
+
+--- Tag: 04. Cơ sở Tri thức & RAG Lễ tân (Knowledge Base & RAG) (8 endpoints) ---
+   GET /api/v1/rag/stats
+   GET /api/v1/rag/sources
+   POST /api/v1/rag/sources/save
+   POST /api/v1/rag/upload-file
+   GET /api/v1/rag/documents
+   POST /api/v1/rag/documents
+   DELETE /api/v1/rag/documents/{doc_id}
+   POST /api/v1/rag/sync-obsidian
+
+--- Tag: 05. Bộ phận Lễ tân & Đặt phòng (Front Desk & Reception) (3 endpoints) ---
+   GET /api/v1/operations/dashboard/reception
+   POST /api/v1/operations/reception/requests
+   GET /api/v1/operations/reception/requests/{request_id}
+
+--- Tag: 06. Bộ phận Buồng phòng (Housekeeping Operations) (3 endpoints) ---
+   GET /api/v1/operations/dashboard/housekeeping
+   POST /api/v1/operations/housekeeping/requests
+   GET /api/v1/operations/housekeeping/requests/{request_id}
+
+--- Tag: 07. Bộ phận Hành lý & Tiền sảnh (Bell Services) (3 endpoints) ---
+   GET /api/v1/operations/dashboard/bell-services
+   POST /api/v1/operations/bell-services/requests
+   GET /api/v1/operations/bell-services/requests/{request_id}
+
+--- Tag: 08. Bộ phận Kỹ thuật & Bảo trì (Facility Maintenance) (3 endpoints) ---
+   GET /api/v1/operations/dashboard/maintenance
+   POST /api/v1/operations/maintenance/requests
+   GET /api/v1/operations/maintenance/requests/{request_id}
+
+--- Tag: 09. Bộ phận Phục vụ phòng (Room Service) (6 endpoints) ---
+   GET /api/v1/operations/dashboard/room-service
+   POST /api/v1/operations/room-service/orders
+   GET /api/v1/operations/room-service/rooms/{room_number}/orders
+   GET /api/v1/operations/room-service/orders/{order_id}
+   GET /api/v1/operations/room-service/orders/{order_id}/items
+   GET /api/v1/operations/room-service/order-items
+
+--- Tag: 10. Bộ phận Bếp & Ẩm thực (Kitchen Operations & Menus) (15 endpoints) ---
+   GET /api/v1/operations/kitchen/food-items
+   POST /api/v1/operations/kitchen/food-items
+   GET /api/v1/operations/kitchen/food-items/{food_id}
+   PUT /api/v1/operations/kitchen/food-items/{food_id}
+   DELETE /api/v1/operations/kitchen/food-items/{food_id}
+   GET /api/v1/operations/kitchen/menus
+   POST /api/v1/operations/kitchen/menus
+   GET /api/v1/operations/kitchen/menus/{menu_id}
+   PUT /api/v1/operations/kitchen/menus/{menu_id}
+   DELETE /api/v1/operations/kitchen/menus/{menu_id}
+   GET /api/v1/operations/kitchen/menu-items
+   POST /api/v1/operations/kitchen/menu-items
+   POST /api/v1/operations/kitchen/menus/{menu_id}/items
+   PATCH /api/v1/operations/kitchen/menus/{menu_id}/items/{menu_item_id}
+   DELETE /api/v1/operations/kitchen/menus/{menu_id}/items/{menu_item_id}
+
+--- Tag: 11. Bộ phận Đặt xe & Vận chuyển (Taxi & Transportation) (3 endpoints) ---
+   GET /api/v1/operations/dashboard/taxi
+   POST /api/v1/operations/taxi/requests
+   GET /api/v1/operations/taxi/requests/{request_id}
+
+--- Tag: 12. Bộ phận Trợ lý Concierge & Live Call (Concierge & Live Support) (9 endpoints) ---
+   GET /api/v1/operations/dashboard/concierge
+   POST /api/v1/operations/concierge/requests
+   GET /api/v1/operations/concierge/requests
+   GET /api/v1/operations/concierge/requests/{request_id}
+   PATCH /api/v1/operations/concierge/requests/{request_id}
+   GET /api/v1/operations/concierge/sessions
+   GET /api/v1/operations/concierge/sessions/{session_id}
+   POST /api/v1/operations/concierge/recordings/{session_id}
+   GET /api/v1/operations/concierge/recordings/local/{filename}
+
+--- Tag: 13. Quản lý Phòng ban & Tài khoản (Departments & Accounts) (11 endpoints) ---
+   GET /api/v1/operations/departments
+   POST /api/v1/operations/departments
+   PATCH /api/v1/operations/departments/{department_id}
+   DELETE /api/v1/operations/departments/{department_id}
+   GET /api/v1/operations/departments/{department_id}
+   GET /api/v1/operations/service-types
+   GET /api/v1/operations/accounts
+   POST /api/v1/operations/accounts
+   GET /api/v1/operations/accounts/{account_id}
+   PATCH /api/v1/operations/accounts/{account_id}
+   DELETE /api/v1/operations/accounts/{account_id}
+
+--- Tag: 14. Quản lý Chung & Điều phối Nghiệp vụ (Operations & Directives) (6 endpoints) ---
+   POST /api/v1/operations/directives
+   GET /api/v1/operations/fleet
+   GET /api/v1/operations/tasks
+   GET /api/v1/operations/tasks/{ticket_id}
+   PATCH /api/v1/operations/tasks/{ticket_id}
+   POST /api/v1/operations/robot/control
+
+--- Tag: 15. Trung tâm Điều hành & Quản trị (Admin & Human Support) (5 endpoints) ---
+   GET /api/v1/operations/admin/summary
+   POST /api/v1/operations/admin/dispatch
+   GET /api/v1/operations/admin/conversations
+   GET /api/v1/operations/admin/conversations/{session_id}
+   GET /api/v1/operations/analytics/summary
+
+--- Tag: 16. Thông báo Hệ thống (Notifications) (5 endpoints) ---
+   GET /api/v1/operations/notifications
+   POST /api/v1/operations/notifications
+   PATCH /api/v1/operations/notifications/{notification_id}/read
+   POST /api/v1/operations/notifications/mark-all-read
+   DELETE /api/v1/operations/notifications/{notification_id}
+
+--- Tag: 17. Nhật ký Vận hành & Audit Trail (Logging & Trace) (5 endpoints) ---
+   GET /api/v1/logs
+   GET /api/v1/logs/statistics
+   GET /api/v1/logs/trace/{correlation_id}
+   GET /api/v1/logs/audit-logs
+   GET /api/v1/logs/export

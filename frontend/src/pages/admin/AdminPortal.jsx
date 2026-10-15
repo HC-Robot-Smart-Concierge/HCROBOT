@@ -27,11 +27,13 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
         'Knowledge',
         'Hotel Content',
         'Department',
+        'Account',
         'Staff',
         'Logs',
         'Settings',
       ];
       if (tab === 'Analytics') return 'Dashboard';
+      if (tab === 'Staff') return 'Account';
       return validTabs.includes(tab) ? tab : 'Dashboard';
     } catch {
       return 'Dashboard';
@@ -163,7 +165,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
     { id: 'Knowledge',     label: 'Hội Thoại AI' },
     { id: 'Hotel Content', label: 'Hotel Content' },
     { id: 'Department',    label: 'Department' },
-    { id: 'Staff',         label: 'Staff' },
+    { id: 'Account',       label: 'Account' },
     { id: 'Logs',          label: 'Logs' },
   ];
 
@@ -487,7 +489,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
             <AdminDepartmentTab currentUser={currentUser} />
           )}
 
-          {activeMenu === 'Staff' && (
+          {(activeMenu === 'Account' || activeMenu === 'Staff') && (
             <AdminStaffTab currentUser={currentUser} />
           )}
 

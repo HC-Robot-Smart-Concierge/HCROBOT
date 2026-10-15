@@ -151,7 +151,6 @@ async def test_all_operations_dashboards_and_endpoints():
             "title": "Clean suite urgent",
             "room_number": "505",
             "guest_name": "VIP Guest",
-            "priority": "HIGH PRIORITY",
             "description": "Thorough sanitization requested",
             "assigned_staff_name": "Maria Santos",
             "assigned_robot_code": "RC-001"

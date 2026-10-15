@@ -348,20 +348,6 @@ export const WorkflowStepBlock = ({
                 onChange={(e) => handleFieldChange('room_number', e.target.value)}
                 className="w-16 bg-stone-50 hover:bg-white text-stone-900 px-2 py-1 rounded-lg text-xs font-bold text-center border border-stone-300 focus:outline-none focus:border-stone-700 focus:bg-white shadow-2xs"
               />
-              <span>ưu tiên</span>
-              <select
-                value={params.urgency || params.ticket_priority || 'Normal'}
-                onChange={(e) => {
-                  handleFieldChange('ticket_priority', e.target.value);
-                  handleFieldChange('urgency', e.target.value);
-                }}
-                className="bg-stone-50 hover:bg-white text-stone-900 px-2.5 py-1 rounded-lg text-xs font-bold border border-stone-300 focus:outline-none focus:border-stone-700 focus:bg-white cursor-pointer shadow-2xs"
-              >
-                <option value="Normal">Bình thường</option>
-                <option value="NORMAL">Bình thường (NORMAL)</option>
-                <option value="High">Khẩn cấp (HIGH)</option>
-                <option value="HIGH">Khẩn cấp (HIGH)</option>
-              </select>
               <span>ghi chú</span>
               <input
                 type="text"

@@ -32,7 +32,6 @@ class SupportRequest(Base):
     room_number: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, index=True) # e.g. 'Room 412', 'Lobby', or None
     guest_name: Mapped[str] = mapped_column(String(100), default="Hotel Guest")
     source: Mapped[str] = mapped_column(String(50), default="From HCRobot") # 'From HCRobot', 'Front Desk', 'Guest App'
-    priority: Mapped[str] = mapped_column(String(20), default="NORMAL") # 'LOW', 'NORMAL', 'HIGH', 'URGENT'
     status: Mapped[str] = mapped_column(String(50), default="Pending") # 'Pending', 'In Progress', 'Completed', 'Cancelled'
     
     # Backward compatibility fields
@@ -90,7 +89,7 @@ class SupportRequest(Base):
             "time_label", "reported_time_label", "created_label",
             "location_details", "guest_tier", "guest_stay_details",
             "attached_media", "transcript", "assistance_status", "assigned_role",
-            "notes", "activity_log", "escalated"
+            "notes", "activity_log", "escalated", "priority"
         ):
             kwargs.pop(k, None)
 
@@ -253,7 +252,7 @@ class SupportRequest(Base):
     @property
     def activity_log(self) -> list: return []
     @property
-    def escalated(self) -> bool: return self.priority in ["HIGH", "URGENT"]
+    def escalated(self) -> bool: return False
 
 # Backward compatibility aliases
 HousekeepingRequest = SupportRequest

@@ -38,7 +38,6 @@ class RoomServiceOrder(Base):
     assigned_robot_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     assigned_staff_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     total_amount: Mapped[float] = mapped_column(Float, default=0.0)
-    priority: Mapped[Optional[str]] = mapped_column(String(20), default="NORMAL")
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

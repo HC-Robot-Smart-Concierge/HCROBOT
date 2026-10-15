@@ -135,7 +135,6 @@ async def create_bell_request(
         department_id="DEP-BELL",
         service_type_id="ST-BELL",
         status="Pending",
-        priority="NORMAL",
     )
     await sr_repo.create(new_req)
     await create_department_notification(

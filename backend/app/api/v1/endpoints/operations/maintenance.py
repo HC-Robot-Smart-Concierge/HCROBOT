@@ -131,7 +131,6 @@ async def create_maintenance_request(
         department_id="DEP-MAINTENANCE",
         service_type_id="ST-MAINTENANCE",
         status="Pending",
-        priority="NORMAL",
     )
     await sr_repo.create(new_req)
     await create_department_notification(

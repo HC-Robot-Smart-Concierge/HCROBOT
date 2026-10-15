@@ -82,7 +82,6 @@ export const AdminOperationsTab = ({
     title: '',
     room_number: '',
     guest_name: 'Hotel Guest',
-    priority: 'HIGH PRIORITY',
     description: '',
     assigned_staff_name: '',
     assigned_robot_code: 'RC-001',
@@ -204,7 +203,6 @@ export const AdminOperationsTab = ({
           title: '',
           room_number: '',
           guest_name: 'Hotel Guest',
-          priority: 'HIGH PRIORITY',
           description: '',
           assigned_staff_name: '',
           assigned_robot_code: 'RC-001',
@@ -348,9 +346,6 @@ export const AdminOperationsTab = ({
         ) : (
           <div className="space-y-3.5">
             {paginatedTasks.map((t) => {
-              const isHigh =
-                (t.priority || '').toUpperCase().includes('HIGH') ||
-                (t.priority || '').toUpperCase().includes('URGENT');
               const isDone = (t.status || '').toLowerCase() === 'completed';
               const isInProgress =
                 (t.status || '').toLowerCase().includes('progress') ||
@@ -378,13 +373,6 @@ export const AdminOperationsTab = ({
                       <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-[#EFECE6] text-stone-800 border border-[#DDD8CE]">
                         {t.location}
                       </span>
-
-                      {/* Priority Badge */}
-                      {isHigh && (
-                        <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-rose-50 text-rose-600 border border-rose-200 animate-pulse">
-                          HIGH PRIORITY
-                        </span>
-                      )}
 
                       {/* Robot Indicator */}
                       {t.assigned_robot && (
@@ -661,39 +649,22 @@ export const AdminOperationsTab = ({
                 </div>
               </div>
 
-              {/* Priority & Assign to Robot */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[11px] font-bold text-stone-700 uppercase tracking-wider mb-1">
-                    MỨC ƯU TIÊN:
-                  </label>
-                  <select
-                    value={dispatchForm.priority}
-                    onChange={(e) => setDispatchForm({ ...dispatchForm, priority: e.target.value })}
-                    className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs text-stone-900 font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer"
-                  >
-                    <option value="HIGH PRIORITY">Khẩn cấp (HIGH PRIORITY)</option>
-                    <option value="NORMAL">Bình thường (NORMAL)</option>
-                    <option value="LOW">Thấp (LOW)</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold text-stone-700 uppercase tracking-wider mb-1">
-                    GÁN CHO ROBOT (NẾU CẦN):
-                  </label>
-                  <select
-                    value={dispatchForm.assigned_robot_code}
-                    onChange={(e) =>
-                      setDispatchForm({ ...dispatchForm, assigned_robot_code: e.target.value })
-                    }
-                    className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs text-stone-900 font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer"
-                  >
-                    <option value="RC-001">Robot Concierge Unit 01 (RC-001)</option>
-                    <option value="Bot Unit Alpha">Bot Unit Alpha (Bellman Service)</option>
-                    <option value="">Không gán Robot (Giao nhân viên)</option>
-                  </select>
-                </div>
+              {/* Assign to Robot */}
+              <div>
+                <label className="block text-[11px] font-bold text-stone-700 uppercase tracking-wider mb-1">
+                  GÁN CHO ROBOT (NẾU CẦN):
+                </label>
+                <select
+                  value={dispatchForm.assigned_robot_code}
+                  onChange={(e) =>
+                    setDispatchForm({ ...dispatchForm, assigned_robot_code: e.target.value })
+                  }
+                  className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs text-stone-900 font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer"
+                >
+                  <option value="RC-001">Robot Concierge Unit 01 (RC-001)</option>
+                  <option value="Bot Unit Alpha">Bot Unit Alpha (Bellman Service)</option>
+                  <option value="">Không gán Robot (Giao nhân viên)</option>
+                </select>
               </div>
 
               {/* Notes */}

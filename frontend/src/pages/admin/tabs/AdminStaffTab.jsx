@@ -213,7 +213,6 @@ export const AdminStaffTab = ({ currentUser }) => {
         role: targetDept.name,
         is_fallback_agent: addForm.is_fallback_agent,
         status: 'available',
-        shift: 'All Shifts',
         location: 'On Site',
       });
       showNotification(`Đã tạo thành công nhân sự ${cleanFullName}`);

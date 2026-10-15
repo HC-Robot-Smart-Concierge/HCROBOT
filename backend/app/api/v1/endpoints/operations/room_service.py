@@ -158,7 +158,6 @@ async def create_room_service_order(
         guest_name="Room Guest",
         source="Guest App / In-Room Tablet",
         status="Pending",
-        priority="NORMAL",
         progress=0,
         total_amount=total_amount,
         items=items_payload,
@@ -183,7 +182,6 @@ async def create_room_service_order(
         is_service_request=order_in.is_service_request,
         progress=0,
         total_amount=total_amount,
-        priority="NORMAL",
     )
     db.add(rs_order)
 

@@ -492,13 +492,10 @@ async def create_staff(
         default_dashboard=default_dashboard,
         email=staff_in.email or f"{username_clean}@aurora.hotel",
         phone=staff_in.phone or "+84 90 123 4567",
-        shift=staff_in.shift or "Morning Shift (06:00 - 14:00)",
         location=staff_in.location or "Main Hotel",
         status=staff_in.status or "available",
         avatar_url=staff_in.avatar_url,
         is_fallback_agent=staff_in.is_fallback_agent,
-        assigned_floors=staff_in.assigned_floors or "Floor 1 - 5",
-        notification_channels=staff_in.notification_channels or "Web Dashboard, Tablet Alert",
         is_active=True,
     )
     try:
@@ -542,10 +539,9 @@ async def update_staff(
     - `role`: Chức vụ chuyên môn
     - `department_id`: Chuyển phòng ban (vd: `DEP-BELL` sang `DEP-TAXI`). Hệ thống tự động xác thực và đồng bộ tên phòng ban.
     - `status`: Cập nhật trạng thái trực (`available`, `busy`, `off_shift`, `inactive`)
-    - `phone`, `email`, `shift`, `location`: Thông tin ca trực và liên lạc
+    - `phone`, `email`, `location`: Thông tin liên lạc và vị trí làm việc
     - `avatar_url`: Ảnh đại diện
     - `is_fallback_agent`: Cấu hình tiếp nhận cuộc gọi khẩn chuyển tiếp từ Concierge Robot
-    - `assigned_floors`, `notification_channels`: Phạm vi tầng phụ trách và kênh nhận tin
     """
     staff = await repo.get_by_id(staff_id, load_department=True)
     if not staff:

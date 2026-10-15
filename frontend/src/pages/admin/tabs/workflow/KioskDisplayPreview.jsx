@@ -402,8 +402,8 @@ export const KioskDisplayPreview = ({
                 <Send className="w-4 h-4" />
                 PHIẾU DỊCH VỤ #{params.room_number ? `REQ-${params.room_number}` : 'REQ-882'}
               </span>
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-stone-100 text-stone-800 border border-stone-300 font-mono">
-                {params.urgency || params.ticket_priority || 'NORMAL'}
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                TIẾP NHẬN
               </span>
             </div>
             <div className="text-xs text-stone-700">

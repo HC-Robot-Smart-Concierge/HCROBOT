@@ -140,7 +140,6 @@ async def _fetch_all_raw_requests(db: AsyncSession) -> List[Dict[str, Any]]:
                 "location": loc_label,
                 "guestName": sr.guest_name or "Hotel Guest",
                 "guest_name": sr.guest_name or "Hotel Guest",
-                "priority": sr.priority or (st.default_priority if st else "NORMAL"),
                 "status": sr.status or "Pending",
                 "time": sr.created_at.strftime("%I:%M %p").lstrip("0") if sr.created_at else "Recent",
                 "time_label": sr.created_at.strftime("%H:%M") if sr.created_at else "Recent",

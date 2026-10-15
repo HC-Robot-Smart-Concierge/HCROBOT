@@ -96,7 +96,6 @@ async def create_reception_request(
         room_number=request_in.room_number or request_in.location or "Lobby Desk",
         guest_name=request_in.guest_name or "Hotel Guest",
         source=request_in.source or "Front Desk / Robot Kiosk",
-        priority=request_in.priority or "NORMAL",
         status="Pending",
     )
     await repo.create(new_request)

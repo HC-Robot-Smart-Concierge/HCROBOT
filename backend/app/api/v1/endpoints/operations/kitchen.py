@@ -19,6 +19,7 @@ from app.schemas.operations import (
     FoodItemResponse,
     AssignFoodToMenuRequest,
 )
+from app.repositories import KitchenRepository, get_kitchen_repository
 from .shared import TAG_KITCHEN_FOOD_CATALOG, TAG_KITCHEN_MENU
 
 router = APIRouter()
@@ -39,18 +40,14 @@ async def get_kitchen_food_items(
     category: Optional[str] = Query(None, description="Lọc theo phân loại: Khai vị, Món chính, Đồ uống, Tráng miệng, Ăn nhẹ"),
     search: Optional[str] = Query(None, description="Tìm kiếm theo tên món ăn"),
     is_available: Optional[bool] = Query(None, description="Lọc theo tình trạng phục vụ của bếp tổng"),
-    db: AsyncSession = Depends(get_db),
+    repo: KitchenRepository = Depends(get_kitchen_repository),
 ):
     """Tra cứu danh mục tất cả món ăn / thức uống gốc của toàn khách sạn (Master Catalog)."""
-    stmt = select(FoodItem).order_by(FoodItem.category, FoodItem.name)
-    if category:
-        stmt = stmt.where(FoodItem.category == category)
-    if is_available is not None:
-        stmt = stmt.where(FoodItem.is_available == is_available)
-    if search:
-        stmt = stmt.where(FoodItem.name.ilike(f"%{search.strip()}%"))
-    res = await db.execute(stmt)
-    return res.scalars().all()
+    return await repo.list_food_items(
+        category=category,
+        search=search,
+        is_available=is_available,
+    )
 
 
 @router.post(
@@ -63,7 +60,7 @@ async def get_kitchen_food_items(
 @router.post("/restaurant/food-items", response_model=FoodItemResponse, status_code=status.HTTP_201_CREATED, tags=TAG_KITCHEN_FOOD_CATALOG, include_in_schema=False)
 async def create_kitchen_food_item(
     food_in: FoodItemCreate,
-    db: AsyncSession = Depends(get_db),
+    repo: KitchenRepository = Depends(get_kitchen_repository),
 ):
     """Tạo mới một món ăn / thức uống vào danh mục gốc của khách sạn."""
     clean_name = food_in.name.strip()
@@ -74,9 +71,7 @@ async def create_kitchen_food_item(
         )
 
     # Kiểm tra xem đã có món ăn cùng tên chưa
-    stmt = select(FoodItem).where(func.lower(FoodItem.name) == clean_name.lower())
-    res = await db.execute(stmt)
-    existing_food = res.scalars().first()
+    existing_food = await repo.find_food_by_name(clean_name)
     if existing_food:
         return existing_food
 
@@ -88,9 +83,7 @@ async def create_kitchen_food_item(
         prep_time_minutes=food_in.prep_time_minutes,
         is_available=food_in.is_available,
     )
-    db.add(new_food)
-    await db.commit()
-    await db.refresh(new_food)
+    await repo.create(new_food, autocommit=True)
     return new_food
 
 
@@ -103,10 +96,10 @@ async def create_kitchen_food_item(
 @router.get("/restaurant/food-items/{food_id}", response_model=FoodItemResponse, tags=TAG_KITCHEN_FOOD_CATALOG, include_in_schema=False)
 async def get_kitchen_food_item(
     food_id: str,
-    db: AsyncSession = Depends(get_db),
+    repo: KitchenRepository = Depends(get_kitchen_repository),
 ):
     """Lấy thông tin chi tiết một món ăn trong danh mục gốc theo ID."""
-    food = await db.get(FoodItem, food_id)
+    food = await repo.get_food_item_by_id(food_id)
     if not food:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy món ăn.")
     return food
@@ -122,10 +115,10 @@ async def get_kitchen_food_item(
 async def update_kitchen_food_item(
     food_id: str,
     food_in: FoodItemUpdate,
-    db: AsyncSession = Depends(get_db),
+    repo: KitchenRepository = Depends(get_kitchen_repository),
 ):
     """Cập nhật thông tin món ăn trong danh mục gốc (tên, mô tả, ảnh, giá gốc, thời gian chế biến, trạng thái)."""
-    food = await db.get(FoodItem, food_id)
+    food = await repo.get_food_item_by_id(food_id)
     if not food:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy món ăn.")
 
@@ -137,8 +130,8 @@ async def update_kitchen_food_item(
         setattr(food, key, value)
     
     food.updated_at = datetime.utcnow()
-    await db.commit()
-    await db.refresh(food)
+    await repo.commit()
+    await repo.refresh(food)
     return food
 
 
@@ -150,15 +143,14 @@ async def update_kitchen_food_item(
 @router.delete("/restaurant/food-items/{food_id}", tags=TAG_KITCHEN_FOOD_CATALOG, include_in_schema=False)
 async def delete_kitchen_food_item(
     food_id: str,
-    db: AsyncSession = Depends(get_db),
+    repo: KitchenRepository = Depends(get_kitchen_repository),
 ):
     """Xóa một món ăn khỏi danh mục gốc (tự động xóa khỏi các thực đơn liên quan nhờ CASCADE)."""
-    food = await db.get(FoodItem, food_id)
+    food = await repo.get_food_item_by_id(food_id)
     if not food:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy món ăn.")
 
-    await db.delete(food)
-    await db.commit()
+    await repo.delete(food, autocommit=True)
     return {"detail": "Đã xoá món ăn thành công khỏi danh mục gốc", "id": food_id}
 
 
@@ -178,19 +170,10 @@ async def delete_kitchen_food_item(
 async def get_kitchen_menus(
     category: Optional[str] = Query(None, description="Lọc theo phân loại thực đơn (Food, Beverage, Dessert, Combo...)"),
     is_active: Optional[bool] = Query(None, description="Lọc theo trạng thái hoạt động (True/False)"),
-    db: AsyncSession = Depends(get_db),
+    repo: KitchenRepository = Depends(get_kitchen_repository),
 ):
     """Lấy danh sách các bộ thực đơn (Sáng, Tối, Alacarte, Room Service...) kèm tất cả các món ăn bên trong."""
-    stmt = (
-        select(Menu)
-        .options(selectinload(Menu.items).selectinload(MenuItem.food_item))
-    )
-    if is_active is not None:
-        stmt = stmt.where(Menu.is_active == is_active)
-    if category:
-        stmt = stmt.where(Menu.category == category)
-    res = await db.execute(stmt)
-    return res.scalars().all()
+    return await repo.list_menus(category=category, is_active=is_active)
 
 
 @router.post(
@@ -203,7 +186,7 @@ async def get_kitchen_menus(
 @router.post("/restaurant/menus", response_model=MenuResponse, status_code=status.HTTP_201_CREATED, tags=TAG_KITCHEN_MENU, include_in_schema=False)
 async def create_kitchen_menu(
     menu_in: MenuCreate,
-    db: AsyncSession = Depends(get_db),
+    repo: KitchenRepository = Depends(get_kitchen_repository),
 ):
     """Tạo mới một bộ thực đơn, đồng thời tự động liên kết các món ăn với kho dữ liệu FoodItem gốc."""
     clean_menu_name = menu_in.name.strip()
@@ -214,9 +197,7 @@ async def create_kitchen_menu(
         )
 
     # 1. Tìm menu theo tên (không phân biệt hoa thường)
-    stmt_menu = select(Menu).where(func.lower(Menu.name) == clean_menu_name.lower())
-    res_menu = await db.execute(stmt_menu)
-    target_menu = res_menu.scalars().first()
+    target_menu = await repo.find_menu_by_name(clean_menu_name)
 
     if not target_menu:
         target_menu = Menu(
@@ -225,24 +206,20 @@ async def create_kitchen_menu(
             description=menu_in.description,
             is_active=menu_in.is_active,
         )
-        db.add(target_menu)
-        await db.flush()
+        repo.add(target_menu)
+        await repo.flush()
 
     # 2. Xử lý các món ăn trong menu: liên kết với FoodItem
     if menu_in.items:
-        stmt_existing = select(MenuItem.food_item_id).where(MenuItem.menu_id == target_menu.id)
-        existing_res = await db.execute(stmt_existing)
-        existing_food_ids = set(existing_res.scalars().all())
+        existing_food_ids = await repo.get_existing_menu_food_ids(target_menu.id)
 
         for it in menu_in.items:
             target_food: Optional[FoodItem] = None
             if it.food_item_id:
-                target_food = await db.get(FoodItem, it.food_item_id)
+                target_food = await repo.get_food_item_by_id(it.food_item_id)
             elif it.name and it.name.strip():
                 clean_item_name = it.name.strip()
-                stmt_food = select(FoodItem).where(func.lower(FoodItem.name) == clean_item_name.lower())
-                f_res = await db.execute(stmt_food)
-                target_food = f_res.scalars().first()
+                target_food = await repo.find_food_by_name(clean_item_name)
                 if not target_food:
                     target_food = FoodItem(
                         name=clean_item_name,
@@ -252,8 +229,8 @@ async def create_kitchen_menu(
                         prep_time_minutes=getattr(it, 'prep_time_minutes', 15) or 15,
                         is_available=it.is_available,
                     )
-                    db.add(target_food)
-                    await db.flush()
+                    repo.add(target_food)
+                    await repo.flush()
 
             if not target_food or target_food.id in existing_food_ids:
                 continue
@@ -271,17 +248,11 @@ async def create_kitchen_menu(
                 description=target_food.description,
                 currency="VND",
             )
-            db.add(menu_item)
+            repo.add(menu_item)
             existing_food_ids.add(target_food.id)
 
-    await db.commit()
-    stmt = (
-        select(Menu)
-        .options(selectinload(Menu.items).selectinload(MenuItem.food_item))
-        .where(Menu.id == target_menu.id)
-    )
-    res = await db.execute(stmt)
-    return res.scalar_one()
+    await repo.commit()
+    return await repo.get_menu_by_id(target_menu.id)
 
 
 @router.get(
@@ -293,16 +264,10 @@ async def create_kitchen_menu(
 @router.get("/restaurant/menus/{menu_id}", response_model=MenuResponse, tags=TAG_KITCHEN_MENU, include_in_schema=False)
 async def get_kitchen_menu(
     menu_id: str,
-    db: AsyncSession = Depends(get_db),
+    repo: KitchenRepository = Depends(get_kitchen_repository),
 ):
     """Lấy thông tin chi tiết của một bộ thực đơn theo ID kèm các món ăn bên trong."""
-    stmt = (
-        select(Menu)
-        .options(selectinload(Menu.items).selectinload(MenuItem.food_item))
-        .where(Menu.id == menu_id)
-    )
-    res = await db.execute(stmt)
-    menu = res.scalar_one_or_none()
+    menu = await repo.get_menu_by_id(menu_id)
     if not menu:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy thực đơn.")
     return menu
@@ -318,10 +283,10 @@ async def get_kitchen_menu(
 async def update_kitchen_menu(
     menu_id: str,
     menu_in: MenuUpdate,
-    db: AsyncSession = Depends(get_db),
+    repo: KitchenRepository = Depends(get_kitchen_repository),
 ):
     """Chỉnh sửa thông tin thực đơn (tên, phân loại, mô tả, trạng thái hoạt động)."""
-    menu = await db.get(Menu, menu_id)
+    menu = await repo.get_menu_by_id(menu_id)
     if not menu:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy thực đơn.")
 
@@ -333,15 +298,8 @@ async def update_kitchen_menu(
         setattr(menu, k, v)
 
     menu.updated_at = datetime.utcnow()
-    await db.commit()
-
-    stmt = (
-        select(Menu)
-        .options(selectinload(Menu.items).selectinload(MenuItem.food_item))
-        .where(Menu.id == menu.id)
-    )
-    res = await db.execute(stmt)
-    return res.scalar_one()
+    await repo.commit()
+    return await repo.get_menu_by_id(menu.id)
 
 
 @router.delete(
@@ -352,15 +310,14 @@ async def update_kitchen_menu(
 @router.delete("/restaurant/menus/{menu_id}", tags=TAG_KITCHEN_MENU, include_in_schema=False)
 async def delete_kitchen_menu(
     menu_id: str,
-    db: AsyncSession = Depends(get_db),
+    repo: KitchenRepository = Depends(get_kitchen_repository),
 ):
     """Xóa bỏ một bộ thực đơn (các món ăn trong kho dữ liệu gốc FoodItem vẫn được giữ nguyên)."""
-    menu = await db.get(Menu, menu_id)
+    menu = await repo.get_menu_by_id(menu_id)
     if not menu:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy thực đơn.")
 
-    await db.delete(menu)
-    await db.commit()
+    await repo.delete(menu, autocommit=True)
     return {"detail": "Đã xóa thực đơn thành công", "id": menu_id}
 
 
@@ -374,23 +331,10 @@ async def delete_kitchen_menu(
 async def get_kitchen_menu_items(
     menu_id: Optional[str] = Query(None, description="Lọc theo ID thực đơn cụ thể"),
     category: Optional[str] = Query(None, description="Lọc theo danh mục món"),
-    db: AsyncSession = Depends(get_db),
+    repo: KitchenRepository = Depends(get_kitchen_repository),
 ):
     """Lấy danh sách các món ăn đã được đưa vào thực đơn, với đầy đủ thông tin món gốc FoodItem."""
-    stmt = (
-        select(MenuItem)
-        .options(selectinload(MenuItem.food_item))
-        .where(MenuItem.is_available == True)
-        .order_by(MenuItem.display_order, MenuItem.id)
-    )
-    if menu_id:
-        stmt = stmt.where(MenuItem.menu_id == menu_id)
-    if category:
-        stmt = stmt.where(
-            (MenuItem.category == category) | (MenuItem.food_item.has(FoodItem.category == category))
-        )
-    res = await db.execute(stmt)
-    return res.scalars().all()
+    return await repo.list_menu_items(menu_id=menu_id, category=category)
 
 
 @router.post(
@@ -403,10 +347,10 @@ async def get_kitchen_menu_items(
 @router.post("/restaurant/menu-items", response_model=MenuItemResponse, status_code=status.HTTP_201_CREATED, tags=TAG_KITCHEN_MENU, include_in_schema=False)
 async def create_kitchen_menu_item(
     item_in: MenuItemCreate,
-    db: AsyncSession = Depends(get_db),
+    repo: KitchenRepository = Depends(get_kitchen_repository),
 ):
     """Thêm món vào Menu. Chấp nhận food_item_id có sẵn hoặc tên món để tự động tìm/tạo FoodItem."""
-    menu = await db.get(Menu, item_in.menu_id)
+    menu = await repo.get_menu_by_id(item_in.menu_id)
     if not menu:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -415,7 +359,7 @@ async def create_kitchen_menu_item(
 
     target_food: Optional[FoodItem] = None
     if item_in.food_item_id:
-        target_food = await db.get(FoodItem, item_in.food_item_id)
+        target_food = await repo.get_food_item_by_id(item_in.food_item_id)
         if not target_food:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -423,9 +367,7 @@ async def create_kitchen_menu_item(
             )
     elif item_in.name and item_in.name.strip():
         clean_name = item_in.name.strip()
-        stmt = select(FoodItem).where(func.lower(FoodItem.name) == clean_name.lower())
-        res = await db.execute(stmt)
-        target_food = res.scalars().first()
+        target_food = await repo.find_food_by_name(clean_name)
         if not target_food:
             target_food = FoodItem(
                 name=clean_name,
@@ -435,25 +377,20 @@ async def create_kitchen_menu_item(
                 prep_time_minutes=getattr(item_in, 'prep_time_minutes', 15) or 15,
                 is_available=item_in.is_available,
             )
-            db.add(target_food)
-            await db.flush()
+            repo.add(target_food)
+            await repo.flush()
     else:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Vui lòng cung cấp food_item_id hoặc name của món ăn.",
         )
 
-    stmt_check = select(MenuItem).where(
-        MenuItem.menu_id == item_in.menu_id,
-        MenuItem.food_item_id == target_food.id,
-    )
-    check_res = await db.execute(stmt_check)
-    existing_item = check_res.scalars().first()
+    existing_item = await repo.get_menu_item_by_menu_and_food(item_in.menu_id, target_food.id)
     if existing_item:
         if item_in.price is not None and item_in.price > 0:
             existing_item.price = item_in.price
-            await db.commit()
-            await db.refresh(existing_item)
+            await repo.commit()
+            await repo.refresh(existing_item)
         return existing_item
 
     effective_price = item_in.price if (item_in.price is not None and item_in.price > 0) else 0.0
@@ -469,12 +406,9 @@ async def create_kitchen_menu_item(
         description=target_food.description,
         currency="VND",
     )
-    db.add(new_item)
-    await db.commit()
-    
-    stmt_reload = select(MenuItem).options(selectinload(MenuItem.food_item)).where(MenuItem.id == new_item.id)
-    res_reload = await db.execute(stmt_reload)
-    return res_reload.scalar_one()
+    repo.add(new_item)
+    await repo.commit()
+    return await repo.get_menu_item_by_id(new_item.id, load_food=True)
 
 
 @router.post(
@@ -488,30 +422,25 @@ async def create_kitchen_menu_item(
 async def assign_kitchen_food_item_to_menu(
     menu_id: str,
     assign_in: AssignFoodToMenuRequest,
-    db: AsyncSession = Depends(get_db),
+    repo: KitchenRepository = Depends(get_kitchen_repository),
 ):
     """Gán một món ăn từ danh mục gốc (FoodItem) vào một thực đơn cụ thể với đơn giá riêng."""
-    menu = await db.get(Menu, menu_id)
+    menu = await repo.get_menu_by_id(menu_id)
     if not menu:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Thực đơn không tồn tại.")
 
-    food = await db.get(FoodItem, assign_in.food_item_id)
+    food = await repo.get_food_item_by_id(assign_in.food_item_id)
     if not food:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Món ăn không tồn tại trong danh mục gốc.")
 
-    stmt = select(MenuItem).where(
-        MenuItem.menu_id == menu_id,
-        MenuItem.food_item_id == assign_in.food_item_id,
-    )
-    res = await db.execute(stmt)
-    existing = res.scalars().first()
+    existing = await repo.get_menu_item_by_menu_and_food(menu_id, assign_in.food_item_id)
     if existing:
         if assign_in.price is not None:
             existing.price = assign_in.price
         existing.is_available = assign_in.is_available
         existing.display_order = assign_in.display_order
-        await db.commit()
-        await db.refresh(existing)
+        await repo.commit()
+        await repo.refresh(existing)
         return existing
 
     price = assign_in.price if (assign_in.price is not None and assign_in.price > 0) else 0.0
@@ -527,12 +456,9 @@ async def assign_kitchen_food_item_to_menu(
         description=food.description,
         currency="VND",
     )
-    db.add(menu_item)
-    await db.commit()
-
-    stmt_reload = select(MenuItem).options(selectinload(MenuItem.food_item)).where(MenuItem.id == menu_item.id)
-    res_reload = await db.execute(stmt_reload)
-    return res_reload.scalar_one()
+    repo.add(menu_item)
+    await repo.commit()
+    return await repo.get_menu_item_by_id(menu_item.id, load_food=True)
 
 
 @router.patch(
@@ -546,12 +472,10 @@ async def update_kitchen_menu_item(
     menu_id: str,
     menu_item_id: str,
     item_in: MenuItemUpdate,
-    db: AsyncSession = Depends(get_db),
+    repo: KitchenRepository = Depends(get_kitchen_repository),
 ):
     """Cập nhật giá bán áp dụng riêng (`price`), thứ tự sắp xếp (`display_order`) hoặc trạng thái khả dụng (`is_available`) của món trong thực đơn này."""
-    stmt = select(MenuItem).where(MenuItem.id == menu_item_id, MenuItem.menu_id == menu_id)
-    res = await db.execute(stmt)
-    item = res.scalars().first()
+    item = await repo.get_menu_item_in_menu(menu_id, menu_item_id)
     if not item:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy món ăn trong thực đơn này.")
 
@@ -563,11 +487,8 @@ async def update_kitchen_menu_item(
         item.is_available = item_in.is_available
 
     item.updated_at = datetime.utcnow()
-    await db.commit()
-
-    stmt_reload = select(MenuItem).options(selectinload(MenuItem.food_item)).where(MenuItem.id == item.id)
-    res_reload = await db.execute(stmt_reload)
-    return res_reload.scalar_one()
+    await repo.commit()
+    return await repo.get_menu_item_by_id(item.id, load_food=True)
 
 
 @router.delete(
@@ -579,15 +500,12 @@ async def update_kitchen_menu_item(
 async def remove_kitchen_item_from_menu(
     menu_id: str,
     menu_item_id: str,
-    db: AsyncSession = Depends(get_db),
+    repo: KitchenRepository = Depends(get_kitchen_repository),
 ):
     """Gỡ món ăn khỏi một thực đơn cụ thể (không xóa món ăn trong danh mục gốc)."""
-    stmt = select(MenuItem).where(MenuItem.id == menu_item_id, MenuItem.menu_id == menu_id)
-    res = await db.execute(stmt)
-    item = res.scalars().first()
+    item = await repo.get_menu_item_in_menu(menu_id, menu_item_id)
     if not item:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy món ăn trong thực đơn này.")
 
-    await db.delete(item)
-    await db.commit()
+    await repo.delete(item, autocommit=True)
     return {"detail": "Đã gỡ món khỏi thực đơn thành công", "menu_id": menu_id, "menu_item_id": menu_item_id}

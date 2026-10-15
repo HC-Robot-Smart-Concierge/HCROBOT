@@ -5,9 +5,11 @@ import { QuickRequestModal } from '../../components/common/QuickRequestModal';
 
 export const LandingHomePage = ({
   currentUser = null,
+  isRobot = false,
   onNavigateToLogin = () => {},
   onNavigateToRobotDisplay = () => {},
   onNavigateToLidarMap = () => {},
+  onLoginSuccess = null,
 }) => {
   // State cho Modal Đăng Nhập Robot
   const [showRobotModal, setShowRobotModal] = useState(false);
@@ -35,6 +37,9 @@ export const LandingHomePage = ({
     setIsLoading(false);
 
     if (res.success) {
+      if (onLoginSuccess) {
+        onLoginSuccess(res.user, res.targetDashboard);
+      }
       setShowRobotModal(false);
       onNavigateToRobotDisplay();
     } else {
@@ -94,7 +99,7 @@ export const LandingHomePage = ({
             <span className="text-stone-300 select-none">|</span>
 
             <button
-              onClick={onNavigateToLogin}
+              onClick={currentUser ? (isRobot ? onNavigateToRobotDisplay : onNavigateToLogin) : onNavigateToLogin}
               className="hover:text-stone-900 font-semibold transition-colors cursor-pointer"
             >
               {currentUser ? (currentUser.full_name || currentUser.name) : 'Đăng Nhập'}
@@ -121,13 +126,17 @@ export const LandingHomePage = ({
           Nền tảng trợ lý Robot tự hành tích hợp AI Voice Conversational, RAG Knowledge Base, Socket.IO Real-time & 2D SLAM LiDAR Navigation.
         </p>
 
-        {/* NÚT ĐĂNG NHẬP VÀO HỆ THỐNG (1 NÚT MÀU XÁM SIGNATURE, KHÔNG DÙNG ICON) */}
-        <div className="mt-8">
+        {/* NÚT ĐĂNG NHẬP VÀO HỆ THỐNG / VÀO GIAO DIỆN */}
+        <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">
           <button
-            onClick={onNavigateToLogin}
+            onClick={currentUser ? (isRobot ? onNavigateToRobotDisplay : onNavigateToLogin) : onNavigateToLogin}
             className="hc-btn-home"
           >
-            Đăng nhập vào hệ thống
+            {currentUser
+              ? isRobot
+                ? 'Vào Màn Hình Robot Kiosk'
+                : 'Vào Bảng Điều Khiển'
+              : 'Đăng nhập vào hệ thống'}
           </button>
         </div>
 

@@ -2,13 +2,10 @@ from datetime import datetime
 import uuid
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Path, status
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, or_
-from sqlalchemy.orm import selectinload
 
-from app.core.database import get_db
 from app.core.security import hash_password
 from app.models import Staff, Department, ServiceType
+from app.repositories import StaffRepository, get_staff_repository
 from app.schemas.operations import (
     StaffResponse,
     StaffCreate,
@@ -44,22 +41,14 @@ async def list_departments(
         None,
         description="Lọc theo trạng thái hoạt động: `true` (chỉ lấy phòng ban đang mở), `false` (phòng ban ngưng), `null` (lấy tất cả)",
     ),
-    db: AsyncSession = Depends(get_db),
+    repo: StaffRepository = Depends(get_staff_repository),
 ):
     """
     ### Mô tả nghiệp vụ:
     Truy vấn danh mục toàn bộ các bộ phận vận hành chuẩn của khách sạn (`Aurora Hotel & Resort`).
     Bao gồm số lượng nhân sự active trực thuộc mỗi phòng ban.
     """
-    query = select(Department).options(
-        selectinload(Department.accounts),
-        selectinload(Department.service_types),
-    )
-    if is_active is not None:
-        query = query.where(Department.is_active == is_active)
-    query = query.order_by(Department.code)
-    result = await db.execute(query)
-    depts = result.scalars().all()
+    depts = await repo.list_departments(is_active=is_active)
     return [
         DepartmentDetailResponse(
             id=d.id,
@@ -89,7 +78,7 @@ async def list_departments(
 )
 async def create_department(
     dept_in: DepartmentCreate,
-    db: AsyncSession = Depends(get_db),
+    repo: StaffRepository = Depends(get_staff_repository),
 ):
     name_clean = dept_in.name.strip()
     code_clean = (dept_in.code or "").strip().upper()
@@ -101,16 +90,16 @@ async def create_department(
             code_clean = "".join(w[0].upper() for w in words[:4])
         code_clean = f"{code_clean}_{uuid.uuid4().hex[:3].upper()}"
 
-    existing = await db.execute(select(Department).where(Department.code == code_clean))
-    if existing.scalar_one_or_none():
+    existing = await repo.find_department_by_code(code_clean)
+    if existing:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Mã code phòng ban '{code_clean}' đã tồn tại trong hệ thống.",
         )
 
     dept_id = f"DEP-{code_clean[:12]}"
-    existing_id = await db.execute(select(Department).where(Department.id == dept_id))
-    if existing_id.scalar_one_or_none():
+    existing_id = await repo.get_department_by_id_or_code(dept_id)
+    if existing_id:
         dept_id = f"DEP-{uuid.uuid4().hex[:8].upper()}"
 
     new_dept = Department(
@@ -120,9 +109,7 @@ async def create_department(
         description=dept_in.description,
         is_active=dept_in.is_active,
     )
-    db.add(new_dept)
-    await db.commit()
-    await db.refresh(new_dept)
+    await repo.create(new_dept, autocommit=True)
     return DepartmentDetailResponse(
         id=new_dept.id,
         code=new_dept.code,
@@ -149,19 +136,9 @@ async def create_department(
 async def update_department(
     department_id: str = Path(..., description="ID hoặc mã code phòng ban"),
     dept_in: DepartmentUpdate = ...,
-    db: AsyncSession = Depends(get_db),
+    repo: StaffRepository = Depends(get_staff_repository),
 ):
-    target = department_id.strip()
-    query = (
-        select(Department)
-        .options(
-            selectinload(Department.accounts),
-            selectinload(Department.service_types),
-        )
-        .where(or_(Department.id == target, Department.code == target.upper()))
-    )
-    result = await db.execute(query)
-    dept = result.scalar_one_or_none()
+    dept = await repo.get_department_by_id_or_code(department_id)
     if not dept:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -172,8 +149,8 @@ async def update_department(
     if "code" in update_data and update_data["code"]:
         new_code = update_data["code"].strip().upper()
         if new_code != dept.code:
-            existing = await db.execute(select(Department).where(Department.code == new_code))
-            if existing.scalar_one_or_none():
+            existing = await repo.find_department_by_code(new_code)
+            if existing:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=f"Mã code phòng ban '{new_code}' đã tồn tại trong hệ thống.",
@@ -185,8 +162,8 @@ async def update_department(
         setattr(dept, field, val)
 
     dept.updated_at = datetime.utcnow()
-    await db.commit()
-    await db.refresh(dept)
+    await repo.commit()
+    await repo.refresh(dept)
     return DepartmentDetailResponse(
         id=dept.id,
         code=dept.code,
@@ -211,21 +188,15 @@ async def update_department(
 )
 async def delete_department(
     department_id: str = Path(..., description="ID hoặc mã code phòng ban"),
-    db: AsyncSession = Depends(get_db),
+    repo: StaffRepository = Depends(get_staff_repository),
 ):
-    target = department_id.strip()
-    query = select(Department).options(selectinload(Department.accounts)).where(or_(Department.id == target, Department.code == target.upper()))
-    result = await db.execute(query)
-    dept = result.scalar_one_or_none()
+    dept = await repo.soft_delete_department(department_id)
     if not dept:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Không tìm thấy phòng ban với mã định danh '{department_id}'",
         )
 
-    dept.is_active = False
-    dept.updated_at = datetime.utcnow()
-    await db.commit()
     return {
         "success": True,
         "id": dept.id,
@@ -252,7 +223,7 @@ async def get_department_detail(
         description="Mã định danh duy nhất (vd: `DEP-HOUSEKEEPING`, `DEP-TAXI`) hoặc code phòng ban (vd: `HOUSEKEEPING`, `TAXI`)",
         examples=["DEP-HOUSEKEEPING", "DEP-BELL", "DEP-TAXI"],
     ),
-    db: AsyncSession = Depends(get_db),
+    repo: StaffRepository = Depends(get_staff_repository),
 ):
     """
     ### Mô tả nghiệp vụ:
@@ -264,17 +235,7 @@ async def get_department_detail(
     ### Quy tắc tra cứu:
     Hệ thống hỗ trợ tra cứu linh hoạt bằng `id` (vd: `DEP-BELL`) hoặc `code` (vd: `BELL`).
     """
-    target = department_id.strip()
-    query = (
-        select(Department)
-        .options(
-            selectinload(Department.service_types),
-            selectinload(Department.accounts),
-        )
-        .where(or_(Department.id == target, Department.code == target.upper()))
-    )
-    result = await db.execute(query)
-    dept = result.scalar_one_or_none()
+    dept = await repo.get_department_by_id_or_code(department_id)
     if not dept:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -319,7 +280,7 @@ async def list_service_types(
         True,
         description="Lọc theo trạng thái hoạt động: `true` (đang cung cấp), `false` (tạm ngưng), `null` (tất cả)",
     ),
-    db: AsyncSession = Depends(get_db),
+    repo: StaffRepository = Depends(get_staff_repository),
 ):
     """
     ### Mô tả nghiệp vụ:
@@ -335,14 +296,7 @@ async def list_service_types(
     - **ST-CONCIERGE** (`CONCIERGE`): Dịch vụ Concierge & Live Call Hỗ trợ -> Thuộc `DEP-CONCIERGE`
     - **ST-ROOM-SERVICE** (`ROOM_SERVICE`): Dịch vụ Ẩm thực & Phục vụ phòng -> Thuộc `DEP-ROOMSERVICE`
     """
-    query = select(ServiceType).options(selectinload(ServiceType.department))
-    if department_id:
-        query = query.where(ServiceType.department_id == department_id.strip())
-    if is_active is not None:
-        query = query.where(ServiceType.is_active == is_active)
-    query = query.order_by(ServiceType.code)
-    result = await db.execute(query)
-    return result.scalars().all()
+    return await repo.list_service_types(department_id=department_id, is_active=is_active)
 
 
 # =====================================================================
@@ -371,8 +325,9 @@ async def list_staff(
         description="Lọc theo tên phòng ban hiển thị (vd: `Housekeeping`, `Bell Services`, `F&B`, `Maintenance`, `Reception`)",
         examples=["Housekeeping", "Bell Services"],
     ),
-    status: Optional[str] = Query(
+    status_filter: Optional[str] = Query(
         None,
+        alias="status",
         description="Lọc theo trạng thái trực: `available` (sẵn sàng), `busy` (đang bận), `off_shift` (hết ca)",
         examples=["available", "busy"],
     ),
@@ -385,7 +340,7 @@ async def list_staff(
         False,
         description="Nếu chọn `true`, sẽ bao gồm cả các tài khoản nhân viên đã bị vô hiệu hóa hoặc xóa mềm",
     ),
-    db: AsyncSession = Depends(get_db),
+    repo: StaffRepository = Depends(get_staff_repository),
 ):
     """
     ### Mô tả nghiệp vụ:
@@ -398,27 +353,13 @@ async def list_staff(
     - **role**: Lọc theo vị trí nghiệp vụ.
     - **include_inactive**: Lấy cả nhân viên đã xóa mềm để phục vụ đối soát kiểm toán (Audit).
     """
-    query = select(Staff).options(selectinload(Staff.department_rel))
-    
-    if not include_inactive:
-        query = query.where(
-            Staff.is_active == True,
-            Staff.status != "deleted",
-            Staff.status != "inactive",
-        )
-    if department_id and department_id not in ("All", ""):
-        query = query.where(Staff.department_id == department_id.strip())
-    elif department and department not in ("All", ""):
-        query = query.where(Staff.department == department.strip())
-    if status and status not in ("All", ""):
-        query = query.where(Staff.status == status.strip())
-    if role and role not in ("All", ""):
-        query = query.where(Staff.role == role.strip())
-
-    query = query.order_by(Staff.department_id, Staff.department, Staff.full_name)
-    result = await db.execute(query)
-    return result.scalars().all()
-
+    return await repo.list_staff(
+        department_id=department_id,
+        department=department,
+        status=status_filter,
+        role=role,
+        include_inactive=include_inactive,
+    )
 
 
 @router.get(
@@ -437,20 +378,14 @@ async def get_staff_detail(
         description="Mã định danh duy nhất của nhân viên (vd: `STF-f9ab1b15`)",
         examples=["STF-f9ab1b15", "STF-cda7e68e"],
     ),
-    db: AsyncSession = Depends(get_db),
+    repo: StaffRepository = Depends(get_staff_repository),
 ):
     """
     ### Mô tả nghiệp vụ:
     Truy vấn hồ sơ chi tiết của một nhân viên bằng `id`.
     Trả về đầy đủ thông tin tài khoản, phòng ban, ca trực, phạm vi tầng phân công và cấu hình liên lạc.
     """
-    query = (
-        select(Staff)
-        .options(selectinload(Staff.department_rel))
-        .where(Staff.id == staff_id.strip())
-    )
-    result = await db.execute(query)
-    staff = result.scalar_one_or_none()
+    staff = await repo.get_by_id(staff_id, load_department=True)
     if not staff:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -472,7 +407,7 @@ async def get_staff_detail(
 )
 async def create_staff(
     staff_in: StaffCreate,
-    db: AsyncSession = Depends(get_db),
+    repo: StaffRepository = Depends(get_staff_repository),
 ):
     """
     ### Mô tả nghiệp vụ:
@@ -496,8 +431,8 @@ async def create_staff(
     5. **Tự động sinh mã viết tắt (Code)**: Nếu để trống, hệ thống tự động sinh từ chữ cái đầu của họ tên kèm chuỗi hex ngẫu nhiên.
     """
     username_clean = staff_in.username.strip().lower()
-    existing = await db.execute(select(Staff).where(Staff.username == username_clean))
-    if existing.scalar_one_or_none():
+    existing = await repo.get_by_username(username_clean)
+    if existing:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Tên đăng nhập '{username_clean}' đã tồn tại trong hệ thống. Vui lòng chọn tên khác.",
@@ -508,8 +443,7 @@ async def create_staff(
     resolved_dept_name: str = staff_in.department or "General"
 
     if resolved_dept_id:
-        dept_res = await db.execute(select(Department).where(Department.id == resolved_dept_id.strip()))
-        dept = dept_res.scalar_one_or_none()
+        dept = await repo.get_department_by_id_or_code(resolved_dept_id)
         if not dept:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -517,17 +451,7 @@ async def create_staff(
             )
         resolved_dept_name = dept.name
     elif staff_in.department:
-        # Tra cứu theo tên hoặc mã code tương ứng
-        d_name = staff_in.department.strip().lower()
-        dept_res = await db.execute(
-            select(Department).where(
-                or_(
-                    func.lower(Department.name).like(f"%{d_name}%"),
-                    func.lower(Department.code) == d_name,
-                )
-            )
-        )
-        dept = dept_res.scalars().first()
+        dept = await repo.find_department_by_name_or_code(staff_in.department)
         if dept:
             resolved_dept_id = dept.id
             resolved_dept_name = dept.name
@@ -577,23 +501,16 @@ async def create_staff(
         notification_channels=staff_in.notification_channels or "Web Dashboard, Tablet Alert",
         is_active=True,
     )
-    db.add(new_staff)
     try:
-        await db.commit()
-        await db.refresh(new_staff)
+        await repo.create(new_staff, autocommit=True)
         # Load relationship để serialize đầy đủ
-        await db.refresh(new_staff, attribute_names=["department_rel"])
+        await repo.refresh(new_staff, attribute_names=["department_rel"])
     except Exception as e:
-        await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Không thể tạo tài khoản nhân viên: {e}",
         )
     return new_staff
-
-
-
-
 
 
 @router.patch(
@@ -607,7 +524,6 @@ async def create_staff(
         404: {"description": "Không tìm thấy nhân viên với ID được cung cấp."},
     },
 )
-
 async def update_staff(
     staff_id: str = Path(
         ...,
@@ -615,7 +531,7 @@ async def update_staff(
         examples=["STF-f9ab1b15"],
     ),
     update_in: StaffUpdate = ...,
-    db: AsyncSession = Depends(get_db),
+    repo: StaffRepository = Depends(get_staff_repository),
 ):
     """
     ### Mô tả nghiệp vụ:
@@ -631,13 +547,7 @@ async def update_staff(
     - `is_fallback_agent`: Cấu hình tiếp nhận cuộc gọi khẩn chuyển tiếp từ Concierge Robot
     - `assigned_floors`, `notification_channels`: Phạm vi tầng phụ trách và kênh nhận tin
     """
-    query = (
-        select(Staff)
-        .options(selectinload(Staff.department_rel))
-        .where(Staff.id == staff_id.strip())
-    )
-    result = await db.execute(query)
-    staff = result.scalar_one_or_none()
+    staff = await repo.get_by_id(staff_id, load_department=True)
     if not staff:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -650,8 +560,7 @@ async def update_staff(
     if "department_id" in update_data:
         new_dept_id = update_data["department_id"]
         if new_dept_id:
-            dept_res = await db.execute(select(Department).where(Department.id == new_dept_id.strip()))
-            dept = dept_res.scalar_one_or_none()
+            dept = await repo.get_department_by_id_or_code(new_dept_id)
             if not dept:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -667,18 +576,9 @@ async def update_staff(
             staff.department = update_data.pop("department")
 
     elif "department" in update_data:
-        # Nếu chỉ cập nhật tên phòng ban, cố gắng suy ra department_id
-        d_name = (update_data.pop("department") or "").strip().lower()
+        d_name = (update_data.pop("department") or "").strip()
         if d_name:
-            dept_res = await db.execute(
-                select(Department).where(
-                    or_(
-                        func.lower(Department.name).like(f"%{d_name}%"),
-                        func.lower(Department.code) == d_name,
-                    )
-                )
-            )
-            dept = dept_res.scalars().first()
+            dept = await repo.find_department_by_name_or_code(d_name)
             if dept:
                 staff.department_id = dept.id
                 staff.department = dept.name
@@ -690,9 +590,9 @@ async def update_staff(
         setattr(staff, field, value)
 
     staff.updated_at = datetime.utcnow()
-    await db.commit()
-    await db.refresh(staff)
-    await db.refresh(staff, attribute_names=["department_rel"])
+    await repo.commit()
+    await repo.refresh(staff)
+    await repo.refresh(staff, attribute_names=["department_rel"])
     return staff
 
 
@@ -711,7 +611,7 @@ async def delete_staff(
         description="Mã định danh duy nhất của nhân viên cần vô hiệu hóa",
         examples=["STF-f9ab1b15"],
     ),
-    db: AsyncSession = Depends(get_db),
+    repo: StaffRepository = Depends(get_staff_repository),
 ):
     """
     ### Mô tả nghiệp vụ:
@@ -720,18 +620,13 @@ async def delete_staff(
     - Cập nhật trạng thái `status = 'inactive'`
     - Không xóa vĩnh viễn dòng dữ liệu trong cơ sở dữ liệu để bảo toàn toàn vẹn khóa ngoại các đơn hàng (`RoomServiceOrder`) và yêu cầu trợ giúp (`SupportRequest`) mà nhân viên này đã xử lý trước đó.
     """
-    result = await db.execute(select(Staff).where(Staff.id == staff_id.strip()))
-    staff = result.scalar_one_or_none()
+    staff = await repo.soft_delete_staff(staff_id)
     if not staff:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Không tìm thấy nhân viên với ID: {staff_id}",
         )
 
-    staff.is_active = False
-    staff.status = "inactive"
-    staff.updated_at = datetime.utcnow()
-    await db.commit()
     return {
         "success": True,
         "id": staff_id,

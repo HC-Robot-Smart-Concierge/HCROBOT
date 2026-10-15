@@ -22,6 +22,18 @@ from app.schemas.operations import (
     AdminTaskDispatchCreate,
     HumanSupportSessionResponse,
 )
+from app.repositories import (
+    SupportRequestRepository,
+    get_support_request_repository,
+    DirectiveRepository,
+    get_directive_repository,
+    RoomServiceRepository,
+    get_room_service_repository,
+    StaffRepository,
+    get_staff_repository,
+    SupportSessionRepository,
+    get_support_session_repository,
+)
 from .shared import TAG_ADMIN, TAG_OPS, _fetch_all_raw_requests, create_department_notification
 
 logger = logging.getLogger(__name__)
@@ -72,21 +84,26 @@ async def get_admin_operations_summary(db: AsyncSession = Depends(get_db)):
 
 
 @router.get(
-    "/admin/tasks",
-    tags=TAG_ADMIN,
-    summary="Admin: Danh sách tất cả yêu cầu dịch vụ toàn khách sạn",
+    "/tasks",
+    tags=TAG_OPS,
+    summary="Danh sách tất cả yêu cầu dịch vụ / Tasks toàn khách sạn",
 )
-async def get_admin_tasks(
-    department: Optional[str] = Query(None, description="Lọc theo bộ phận ('All', 'Housekeeping', 'F&B', 'Reception', 'Bell Services', 'Maintenance', 'Taxi', 'Concierge')"),
-    status: Optional[str] = Query(None, description="Lọc theo trạng thái ('All', 'Pending', 'In Progress', 'Completed')"),
-    search: Optional[str] = Query(None, description="Tìm kiếm theo mã phiếu, số phòng, tên khách, tiêu đề"),
-    limit: Optional[int] = Query(None, description="Giới hạn số lượng bản ghi trả về"),
-    offset: Optional[int] = Query(None, description="Số lượng bản ghi bỏ qua (phân trang)"),
+@router.get(
+    "/admin/tasks",
+    include_in_schema=False,
+)
+async def get_tasks(
+    department: Optional[str] = None,
+    status: Optional[str] = None,
+    search: Optional[str] = None,
+    room_number: Optional[str] = None,
+    limit: Optional[int] = None,
+    offset: Optional[int] = None,
     db: AsyncSession = Depends(get_db),
 ):
     """
     Trả về danh sách đầy đủ tất cả các yêu cầu dịch vụ (Service Requests) toàn khách sạn cho Admin Portal.
-    Hỗ trợ bộ lọc linh hoạt theo phòng ban, trạng thái, và từ khóa tìm kiếm.
+    Hỗ trợ bộ lọc linh hoạt theo phòng ban, trạng thái, số phòng và từ khóa tìm kiếm.
     """
     raw_list = await _fetch_all_raw_requests(db)
 
@@ -96,9 +113,13 @@ async def get_admin_tasks(
         guest_val = t.get("guestName") or t.get("guest_name") or "Hotel Guest"
         assigned_val = t.get("assignedTo") or t.get("assigned_to")
         notes_val = t.get("notes") or t.get("description") or ""
+        raw_ticket = t.get("ticket_code") or t.get("raw_id") or t["id"]
+        clean_ticket = str(raw_ticket).replace("REQ-", "")
+
         tasks.append({
             "id": t["id"],
             "raw_id": t["raw_id"],
+            "ticket_code": t.get("ticket_code") or clean_ticket,
             "department": t["department"],
             "table_type": t.get("table_type"),
             "title": t["title"],
@@ -109,8 +130,10 @@ async def get_admin_tasks(
             "priority": t.get("priority") or "NORMAL",
             "status": t.get("status") or "Pending",
             "time": t.get("time") or "Recent",
+            "time_label": t.get("time_label") or t.get("time") or "Recent",
             "assigned_to": assigned_val,
             "assignedTo": assigned_val,
+            "assigned_staff_name": assigned_val,
             "assigned_robot": t.get("assigned_robot"),
             "notes": notes_val,
             "description": notes_val,
@@ -122,8 +145,19 @@ async def get_admin_tasks(
             "est_completion": t.get("est_completion"),
         })
 
+    # Room number filter
+    if isinstance(room_number, str) and room_number.strip():
+        clean_rn = room_number.upper().replace("ROOM", "").replace("PHÒNG", "").strip()
+        filtered = []
+        for item in tasks:
+            item_rn = str(item.get("room_number") or "").upper().strip()
+            item_loc = str(item.get("location") or "").upper().strip()
+            if clean_rn in item_rn or clean_rn in item_loc or clean_rn == item_rn:
+                filtered.append(item)
+        tasks = filtered
+
     # Department filter
-    if department and department.strip().lower() != "all":
+    if isinstance(department, str) and department.strip().lower() != "all":
         dept_q = department.strip().lower()
         filtered = []
         for item in tasks:
@@ -142,7 +176,7 @@ async def get_admin_tasks(
         tasks = filtered
 
     # Status filter
-    if status and status.strip().lower() != "all":
+    if isinstance(status, str) and status.strip().lower() != "all":
         st_q = status.strip().lower()
         filtered = []
         for item in tasks:
@@ -161,7 +195,7 @@ async def get_admin_tasks(
         tasks = filtered
 
     # Search query filter
-    if search and search.strip():
+    if isinstance(search, str) and search.strip():
         sq = search.strip().lower()
         filtered = []
         for item in tasks:
@@ -175,20 +209,25 @@ async def get_admin_tasks(
         tasks = filtered
 
     # Offset & Limit slicing
-    if offset is not None and offset > 0:
+    if isinstance(offset, int) and offset > 0:
         tasks = tasks[offset:]
-    if limit is not None and limit > 0:
+    if isinstance(limit, int) and limit > 0:
         tasks = tasks[:limit]
 
     return tasks
 
 
+
+@router.get(
+    "/tasks/{ticket_id}",
+    tags=TAG_OPS,
+    summary="Xem chi tiết một phiếu yêu cầu / Task",
+)
 @router.get(
     "/admin/tasks/{ticket_id}",
-    tags=TAG_ADMIN,
-    summary="Admin: Xem chi tiết một phiếu yêu cầu",
+    include_in_schema=False,
 )
-async def get_admin_task_detail(
+async def get_task_detail(
     ticket_id: str,
     db: AsyncSession = Depends(get_db),
 ):
@@ -232,6 +271,11 @@ async def get_admin_task_detail(
             }
 
     raise HTTPException(status_code=404, detail=f"Không tìm thấy yêu cầu #{ticket_id}")
+
+
+# Python aliases for backward compatibility
+get_admin_tasks = get_tasks
+get_admin_task_detail = get_task_detail
 
 
 @router.post(
@@ -304,115 +348,86 @@ async def dispatch_admin_task(
     }
 
 
-# Backwards compatibility / Monitoring read-only endpoint
-@router.get("/all-requests", tags=TAG_OPS, summary="Giám sát: Lấy tất cả request (chế độ chỉ xem)")
-
-async def get_all_unified_requests(db: AsyncSession = Depends(get_db)):
-    """Trả về danh sách tổng hợp công việc toàn hệ thống ở chế độ chỉ xem (không can thiệp / CRUD)."""
-    return await _fetch_all_raw_requests(db)
-
-
-@router.get(
-    "/rooms/{room_number}/all-requests",
-    tags=TAG_OPS,
-    summary="Tra cứu toàn bộ yêu cầu & dịch vụ của một phòng trên toàn hệ thống (All Departments)",
-)
-async def get_room_all_requests(
-    room_number: str,
-    db: AsyncSession = Depends(get_db),
-):
-    """
-    Tra cứu tổng hợp tất cả các đơn hàng, yêu cầu dịch vụ (Room Service, Buồng phòng, Bellman, Taxi, Kỹ thuật...)
-    mà khách tại một phòng cụ thể đã phát sinh.
-    """
-    clean_room = room_number.upper().replace("ROOM", "").replace("PHÒNG", "").strip()
-    all_reqs = await _fetch_all_raw_requests(db)
-    
-    room_reqs = [
-        r for r in all_reqs
-        if clean_room in str(r.get("location", "")).upper()
-        or clean_room in str(r.get("room_number", "")).upper()
-    ]
-    return {
-        "room_number": room_number,
-        "total_requests": len(room_reqs),
-        "requests": room_reqs,
-    }
 
 
 @router.patch(
-    "/generic-request/{ticket_id}/status",
+    "/tasks/{ticket_id}",
     tags=TAG_OPS,
-    summary="Cập nhật trạng thái và phân công xử lý yêu cầu nghiệp vụ / Task",
+    summary="Cập nhật trạng thái và phân công xử lý yêu cầu nghiệp vụ / Task toàn khách sạn",
 )
 @router.put(
-    "/generic-request/{ticket_id}/status",
-    tags=TAG_OPS,
+    "/tasks/{ticket_id}",
     include_in_schema=False,
 )
-@router.patch(
-    "/admin/tasks/{ticket_id}",
-    tags=TAG_ADMIN,
-    summary="Admin: Cập nhật thông tin phiếu yêu cầu (trạng thái, phân công, robot, ghi chú)",
-)
-@router.put(
-    "/admin/tasks/{ticket_id}",
-    tags=TAG_ADMIN,
-    include_in_schema=False,
-)
-async def update_generic_request_status(
+async def update_task_status(
     ticket_id: str,
-    status: Optional[str] = Query(None),
-    assigned_to: Optional[str] = Query(None),
-    update_in: Optional[Dict[str, Any]] = Body(None),
+    status: Optional[str] = None,
+    assigned_to: Optional[str] = None,
+    update_in: Optional[Dict[str, Any]] = None,
     db: AsyncSession = Depends(get_db),
+    sr_repo: SupportRequestRepository = Depends(get_support_request_repository),
+    directive_repo: DirectiveRepository = Depends(get_directive_repository),
+    rs_repo: RoomServiceRepository = Depends(get_room_service_repository),
+    staff_repo: StaffRepository = Depends(get_staff_repository),
 ):
     """
     Cập nhật trạng thái phiếu công việc (Pending, In Progress, Completed...) và nhân viên phụ trách.
     Đồng bộ trên toàn bộ cơ sở dữ liệu: bảng SupportRequest, RoomServiceOrder, và ManagementDirective.
+    Hỗ trợ tất cả các phòng ban: Buồng phòng, Lễ tân, F&B/Room Service, Bellman, Kỹ thuật bảo trì, Taxi.
     """
-    target_status = status
-    target_assigned_to = assigned_to
+    target_status = status if isinstance(status, str) else None
+    target_assigned_to = assigned_to if isinstance(assigned_to, str) else None
     target_assigned_robot = None
     target_note = None
+    target_progress_in = None
 
-    if update_in and isinstance(update_in, dict):
+    payload = update_in if isinstance(update_in, dict) else (
+        update_in.dict() if hasattr(update_in, "dict") else {}
+    ) if update_in is not None else {}
+
+    if payload:
         if not target_status:
-            target_status = update_in.get("status")
+            target_status = payload.get("status")
         if not target_assigned_to:
-            target_assigned_to = update_in.get("assigned_to") or update_in.get("assigned_staff_name")
-        target_assigned_robot = update_in.get("assigned_robot")
-        target_note = update_in.get("note") or update_in.get("notes")
+            target_assigned_to = (
+                payload.get("assigned_to")
+                or payload.get("assigned_staff_name")
+                or payload.get("assigned_staff")
+                or payload.get("assigned_driver")
+                or payload.get("assigned_technician")
+            )
+        target_assigned_robot = (
+            payload.get("assigned_robot")
+            or payload.get("assigned_robot_id")
+            or payload.get("assigned_robot_code")
+        )
+        target_note = payload.get("note") or payload.get("notes") or payload.get("description")
+        target_progress_in = payload.get("progress")
 
-    if not target_status and target_assigned_to is None and target_assigned_robot is None and target_note is None:
+    if not target_status and target_assigned_to is None and target_assigned_robot is None and target_note is None and target_progress_in is None:
         raise HTTPException(status_code=400, detail="Không có thông tin cập nhật hợp lệ")
 
     raw_id = ticket_id.strip()
     no_req_id = raw_id[4:].strip() if raw_id.upper().startswith("REQ-") else raw_id
     core_id = re.sub(r"^(REQ-)?(ORD-|HK-|BS-|MN-|REC-|DIR-|OP-)?", "", raw_id, flags=re.IGNORECASE).strip()
 
-    # 1. Tra cứu và cập nhật bảng SupportRequest (HK, Room Service, Bellman, Maintenance, Taxi...)
-    conditions = [
-        SupportRequest.id == raw_id,
-        SupportRequest.ticket_code == raw_id,
-        SupportRequest.id == no_req_id,
-        SupportRequest.ticket_code == no_req_id,
-    ]
-    if no_req_id:
-        conditions.append(SupportRequest.ticket_code.ilike(f"%{no_req_id}%"))
-        conditions.append(SupportRequest.id.ilike(f"%{no_req_id}%"))
-    if core_id and len(core_id) >= 2:
-        conditions.append(SupportRequest.ticket_code.ilike(f"%{core_id}%"))
-        conditions.append(SupportRequest.id.ilike(f"%{core_id}%"))
-
-    sr_res = await db.execute(select(SupportRequest).where(or_(*conditions)))
-    sr = sr_res.scalars().first()
+    # 1. Tra cứu và cập nhật bảng SupportRequest (HK, Room Service, Bellman, Maintenance, Taxi, Reception...)
+    sr = await sr_repo.get_by_id_or_code(raw_id)
+    if not sr and no_req_id:
+        sr = await sr_repo.get_by_id_or_code(no_req_id)
+    if not sr and core_id and len(core_id) >= 2:
+        sr = await sr_repo.get_by_id_or_code(core_id)
 
     st_lower = target_status.lower().strip() if target_status else ""
     is_pending = st_lower in ["pending", "unassigned", "waiting", "chờ tiếp nhận"]
 
     # Map progress percentage based on restaurant / room-service lifecycle
-    if st_lower in ["completed", "delivered", "done", "hoàn tất", "hoàn thành"]:
+    if target_progress_in is not None:
+        try:
+            target_progress = int(target_progress_in)
+        except (ValueError, TypeError):
+            target_progress = 50
+    elif st_lower in ["completed", "delivered", "done", "hoàn tất", "hoàn thành"]:
         target_progress = 100
     elif st_lower in ["delivering", "đang giao", "giao phòng"]:
         target_progress = 85
@@ -440,18 +455,24 @@ async def update_generic_request_status(
         if target_note is not None and str(target_note).strip():
             sr.description = str(target_note).strip()
 
-        # Đồng bộ sang RoomServiceOrder nếu là đơn hàng ẩm thực
-        rs_conditions = [
-            RoomServiceOrder.support_request_id == sr.id,
-            RoomServiceOrder.id == sr.id,
-        ]
-        if no_req_id:
-            rs_conditions.append(RoomServiceOrder.order_number == no_req_id)
-        if core_id:
-            rs_conditions.append(RoomServiceOrder.order_number == core_id)
+        # Cập nhật account_id nếu tìm thấy nhân viên tương ứng
+        staff_ident = (payload.get("assigned_staff_id") if payload else None) or target_assigned_to
+        if staff_ident and str(staff_ident).lower() not in ("", "null", "none"):
+            found_staff = await staff_repo.get_by_identifier(str(staff_ident))
+            if found_staff:
+                sr.account_id = found_staff.id
+        elif is_pending and target_status:
+            sr.account_id = None
 
-        rs_res = await db.execute(select(RoomServiceOrder).where(or_(*rs_conditions)))
-        rs_order = rs_res.scalars().first()
+        sr.updated_at = datetime.utcnow()
+
+        # Đồng bộ sang RoomServiceOrder nếu là đơn hàng ẩm thực
+        rs_order = await rs_repo.find_order_by_linked_or_number(sr.id, raw_id)
+        if not rs_order and no_req_id:
+            rs_order = await rs_repo.find_order_by_linked_or_number(order_identifier=no_req_id)
+        if not rs_order and core_id:
+            rs_order = await rs_repo.find_order_by_linked_or_number(order_identifier=core_id)
+
         if rs_order:
             if target_status:
                 rs_order.status = target_status
@@ -460,6 +481,7 @@ async def update_generic_request_status(
                 rs_order.assigned_staff_name = None if str(target_assigned_to).lower() in ("", "null", "none") else target_assigned_to
             elif is_pending and target_status:
                 rs_order.assigned_staff_name = None
+            rs_order.updated_at = datetime.utcnow()
 
         # Tự động gửi thông báo liên phòng ban theo chu trình Room Service & Kitchen
         ticket_label = sr.ticket_code or sr.id
@@ -501,28 +523,35 @@ async def update_generic_request_status(
             "success": True,
             "type": "support_request",
             "id": sr.id,
-            "ticket_code": sr.ticket_code,
+            "ticket_code": sr.ticket_code or sr.id,
             "status": sr.status,
             "progress": sr.progress,
             "assigned_to": sr.assigned_staff_name,
+            "assigned_staff": sr.assigned_staff_name,
+            "assigned_staff_name": sr.assigned_staff_name,
+            "assigned_driver": sr.assigned_staff_name,
+            "assigned_technician": sr.assigned_staff_name,
             "assigned_robot": sr.assigned_robot_id,
             "notes": sr.description,
             "note": sr.description,
+            "description": sr.description,
+            "title": sr.title,
+            "room_number": sr.room_number or "",
+            "guest_name": sr.guest_name or "Hotel Guest",
+            "department_id": sr.department_id,
+            "request_type": sr.service_type_id or "General",
+            "priority": sr.priority or "NORMAL",
+            "created_at": sr.created_at,
+            "updated_at": sr.updated_at,
         }
 
     # 2. Tra cứu và cập nhật bảng ManagementDirective (Chỉ thị vận hành)
-    dir_conditions = [
-        ManagementDirective.id == raw_id,
-        ManagementDirective.code == raw_id,
-        ManagementDirective.id == no_req_id,
-        ManagementDirective.code == no_req_id,
-    ]
-    if no_req_id:
-        dir_conditions.append(ManagementDirective.code.ilike(f"%{no_req_id}%"))
-        dir_conditions.append(ManagementDirective.id.ilike(f"%{no_req_id}%"))
+    d = await directive_repo.get_by_id_or_code(raw_id)
+    if not d and no_req_id:
+        d = await directive_repo.get_by_id_or_code(no_req_id)
+    if not d and core_id:
+        d = await directive_repo.get_by_id_or_code(core_id)
 
-    dir_res = await db.execute(select(ManagementDirective).where(or_(*dir_conditions)))
-    d = dir_res.scalars().first()
     if d:
         if target_status:
             d.status = target_status
@@ -544,17 +573,12 @@ async def update_generic_request_status(
         }
 
     # 3. Tra cứu trực tiếp bảng RoomServiceOrder (nếu không có trong SupportRequest)
-    rso_conditions = [
-        RoomServiceOrder.id == raw_id,
-        RoomServiceOrder.order_number == raw_id,
-        RoomServiceOrder.id == no_req_id,
-        RoomServiceOrder.order_number == no_req_id,
-    ]
-    if core_id:
-        rso_conditions.append(RoomServiceOrder.order_number == core_id)
+    rso = await rs_repo.get_order_by_id_or_number(raw_id)
+    if not rso and no_req_id:
+        rso = await rs_repo.get_order_by_id_or_number(no_req_id)
+    if not rso and core_id:
+        rso = await rs_repo.get_order_by_id_or_number(core_id)
 
-    rso_res = await db.execute(select(RoomServiceOrder).where(or_(*rso_conditions)))
-    rso = rso_res.scalars().first()
     if rso:
         if target_status:
             rso.status = target_status
@@ -576,6 +600,10 @@ async def update_generic_request_status(
     raise HTTPException(status_code=404, detail=f"Không tìm thấy yêu cầu #{ticket_id}")
 
 
+# Python alias for backward compatibility
+update_generic_request_status = update_task_status
+
+
 
 # ---------------------------------------------------------
 # Human Support Sessions & Multilingual Conversation Logs
@@ -589,19 +617,13 @@ async def update_generic_request_status(
 )
 async def get_admin_conversations(
     status: Optional[str] = None,
-    db: AsyncSession = Depends(get_db),
+    session_repo: SupportSessionRepository = Depends(get_support_session_repository),
 ):
     """
     Trả về danh sách các phiên hỗ trợ / hội thoại giữa Robot Concierge và khách hàng.
     Hỗ trợ chế độ chỉ xem (View-only) cho Admin giám sát.
     """
-    stmt = select(HumanSupportSession).order_by(desc(HumanSupportSession.created_at))
-    if status and status.lower() != "all":
-        stmt = stmt.where(HumanSupportSession.status.ilike(f"%{status}%"))
-
-    res = await db.execute(stmt)
-    sessions = res.scalars().all()
-    return sessions
+    return await session_repo.list_sessions(status=status)
 
 
 @router.get(
@@ -612,27 +634,24 @@ async def get_admin_conversations(
 )
 async def get_admin_conversation_detail(
     session_id: str,
-    db: AsyncSession = Depends(get_db),
+    session_repo: SupportSessionRepository = Depends(get_support_session_repository),
 ):
     """
     Lấy chi tiết toàn bộ các lượt nói (turns), văn bản gốc đa ngữ,
     và bản dịch song ngữ Tiếng Việt / Tiếng Anh của phiên hỗ trợ.
     """
-    res = await db.execute(
-        select(HumanSupportSession).where(
-            (HumanSupportSession.id == session_id)
-            | (HumanSupportSession.session_code == session_id)
-            | (HumanSupportSession.room_number.ilike(f"%{session_id}%"))
-        )
-    )
-    session_item = res.scalar_one_or_none()
+    session_item = await session_repo.get_by_id_or_code(session_id)
     if not session_item:
         raise HTTPException(status_code=404, detail=f"Conversation session {session_id} not found")
     return session_item
 
 
 @router.get("/analytics/summary", tags=TAG_ADMIN, summary="Admin: Thống kê phân tích số liệu thực tế từ Database")
-async def get_analytics_summary(db: AsyncSession = Depends(get_db)):
+async def get_analytics_summary(
+    db: AsyncSession = Depends(get_db),
+    staff_repo: StaffRepository = Depends(get_staff_repository),
+    session_repo: SupportSessionRepository = Depends(get_support_session_repository),
+):
     """Trả về số liệu phân tích vận hành thực tế 100% từ cơ sở dữ liệu."""
     raw_list = await _fetch_all_raw_requests(db)
     total_tasks = len(raw_list)
@@ -670,33 +689,13 @@ async def get_analytics_summary(db: AsyncSession = Depends(get_db)):
         elif "maintenance" in d:
             dept_distribution["Maintenance"] += 1
 
-    # Sessions & Messages
-    try:
-        session_res = await db.execute(select(func.count(ChatSession.id)))
-        total_sessions = session_res.scalar() or 0
-    except Exception:
-        total_sessions = 0
+    # Sessions & Messages via repository
+    total_sessions = await session_repo.count_chat_sessions()
+    total_messages = await session_repo.count_chat_messages()
 
-    try:
-        msg_res = await db.execute(select(func.count(ChatMessage.id)))
-        total_messages = msg_res.scalar() or 0
-    except Exception:
-        total_messages = 0
-
-    # Staff
-    try:
-        staff_res = await db.execute(select(func.count(Staff.id)).where(Staff.is_active == True))
-        total_staff = staff_res.scalar() or 0
-    except Exception:
-        total_staff = 0
-
-    try:
-        fallback_res = await db.execute(
-            select(func.count(Staff.id)).where(Staff.is_active == True, Staff.is_fallback_agent == True)
-        )
-        fallback_staff = fallback_res.scalar() or 0
-    except Exception:
-        fallback_staff = 0
+    # Staff metrics via repository
+    total_staff = await staff_repo.count_active()
+    fallback_staff = await staff_repo.count_fallback_agents()
 
     # Robot units
     total_robots = 1

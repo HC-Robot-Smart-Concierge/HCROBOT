@@ -1,14 +1,8 @@
-import json
 import logging
-import asyncio
-import time
-import random
-import re
-from typing import Optional, Dict, Any, List
-from fastapi import APIRouter, HTTPException, Depends, status, WebSocket, WebSocketDisconnect, UploadFile, File, Form
+from typing import Optional, List
+from fastapi import APIRouter, HTTPException, Depends, status, WebSocket, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.services.ai.stt_service import transcribe_audio_wav
 
 from app.core.database import get_db
 from app.schemas.ai import (
@@ -24,222 +18,40 @@ from app.schemas.ai import (
     FeedbackCreate,
     FeedbackResponse,
 )
-from app.services.ai.ollama_service import ollama_service
-from app.services.ai.session_manager import session_manager
-from app.services.ai.tts_service import tts_service
-from app.services.ai.pipecat_service import pipecat_service
-from app.services.ai.concierge_graph import concierge_graph, intent_router_node, service_fsm_node, retrieval_node
-from app.core.config import settings
-from datetime import datetime
-from app.models import (
-    SupportRequest,
-    Feedback,
+
+# AI Sub-services
+from app.services.ai.ai_chat_service import process_chat_request, generate_chat_stream
+from app.services.ai.ai_ticket_service import (
+    auto_create_ticket,
+    background_extract_and_create_ticket,
 )
-from app.models.chat_session import ChatSession, ChatMessage
-from app.models.support import HumanSupportSession
-from app.api.v1.endpoints.operations import create_department_notification
+from app.services.ai.feedback_service import submit_guest_feedback, get_feedbacks
+from app.services.ai.websocket_pipeline import handle_pipecat_websocket
+from app.services.ai.session_manager import session_manager
+from app.services.ai.stt_service import transcribe_audio_wav
+from app.services.ai.tts_service import tts_service
+from app.services.ai.ollama_service import ollama_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+# -----------------------------------------------------------------------------
+# 1. Hội thoại thông minh (Chat & Streaming)
+# -----------------------------------------------------------------------------
 @router.post("/chat", response_model=ChatResponse, summary="Sinh câu trả lời hội thoại cho Concierge Robot")
 async def chat_with_robot(request: ChatRequest, db: AsyncSession = Depends(get_db)):
     """
     Endpoint nhận prompt từ Robot/User (kèm session_id để duy trì bộ nhớ đa lượt) và sinh câu trả lời hội thoại nhanh chóng.
-    Đã gỡ bỏ RAG, BGE-M3 và logic tự động phân chia / gửi ticket để tập trung tối đa vào giao tiếp tự nhiên.
+    Điều phối luồng qua AIChatService (LangGraph Harness, Session Memory, TTS, Auto Ticket/Live Call).
     """
     try:
-        sid = request.session_id or "default_session"
-
-        # Cập nhật số phòng nếu truyền trực tiếp
-        if request.room_number:
-            session_manager.set_room_number(sid, request.room_number)
-
-        current_room = session_manager.get_room_number(sid)
-        history = session_manager.get_history(sid)
-
-        # Điều phối hội thoại trực tiếp qua LangGraph Harness (Fast-Path <1ms -> Direct Generator)
-        initial_state = {
-            "session_id": sid,
-            "prompt": request.prompt,
-            "language": request.language,
-            "emotion": request.emotion,
-            "room_number": current_room,
-            "chat_history": history,
-            "destination_key": None,
-            "trigger_video_call": False,
-        }
-        graph_config = {"configurable": {"thread_id": sid}}
-        graph_result = await concierge_graph.ainvoke(initial_state, config=graph_config)
-
-        reply = graph_result.get("response", "")
-        detected_lang = graph_result.get("lang_name", "Tiếng Việt")
-        lang_code = graph_result.get("lang_code", "vi-VN")
-        act = graph_result.get("action", "conversation")
-
-        # Thêm lượt nói vào bộ nhớ RAM của phiên để duy trì ngữ cảnh nhiều lượt
-        session_manager.add_turn(sid, "user", request.prompt, language=lang_code)
-        session_manager.add_turn(sid, "assistant", reply, language=lang_code, intent_action=act)
-
-        # Lấy audio_base64 trực tiếp từ Audio Cache (0.07ms) hoặc EdgeTTS (tối đa 12s để luôn giữ giọng Hoài My)
-        try:
-            audio_b64, mime_type, _ = await asyncio.wait_for(
-                tts_service.synthesize(reply, provider="edge", language=lang_code),
-                timeout=12.0
-            )
-        except Exception as e_tts:
-            logger.warning(f"[AIChat] TTS online timeout/error, fallback to frontend WebSpeech: {e_tts}")
-            audio_b64, mime_type = None, "audio/mp3"
-
-        # Xử lý Intent phân loại tác vụ dịch vụ / cuộc gọi
-        act = graph_result.get("action")
-        items = graph_result.get("items")
-        is_video_call = bool(graph_result.get("trigger_video_call") or act == "concierge")
-        support_session_id = None
-        call_ticket_code = None
-
-        if is_video_call:
-            try:
-                code_num = random.randint(1000, 99999)
-                call_ticket_code = f"CCG-{code_num}"
-                room_loc = current_room or "Main Lobby Kiosk"
-
-                req = SupportRequest(
-                    ticket_code=call_ticket_code,
-                    source="Robot Voice Assistant",
-                    title=f"Live Call Concierge ({room_loc})",
-                    room_number=room_loc,
-                    description=request.prompt or "Yêu cầu cuộc gọi video trực tiếp từ khách",
-                    guest_name=f"Guest ({room_loc})",
-                    department_id="DEP-CONCIERGE",
-                    service_type_id="ST-CONCIERGE",
-                    priority="HIGH",
-                    status="Pending",
-                )
-                db.add(req)
-                await db.flush()
-
-                human_session = HumanSupportSession(
-                    session_code=f"LIVE-{code_num}",
-                    room_number=room_loc,
-                    guest_name=f"Guest ({room_loc})",
-                    category="Live Call Support",
-                    origin_robot_code="RC-001 (Main Lobby)",
-                    sentiment="Neutral",
-                    status="Active",
-                    linked_request_id=req.id,
-                    call_started_at=datetime.utcnow(),
-                    messages=[{"speaker": "guest", "text": request.prompt}],
-                )
-                db.add(human_session)
-                await db.flush()
-                support_session_id = human_session.id
-
-                await create_department_notification(
-                    db=db,
-                    department="Concierge",
-                    title=f"Cuộc gọi Video Call mới: {call_ticket_code}",
-                    description=f"Khách tại {room_loc} đang gọi video tới Concierge",
-                    request_id=req.id,
-                    request_type="concierge",
-                    type="LiveAssistance",
-                )
-                await db.commit()
-                logger.info(f"[AIChat] Live video call created: session='{support_session_id}', ticket='{call_ticket_code}'")
-            except Exception as e_vc:
-                logger.error(f"[AIChat VideoCall Setup Error] {e_vc}")
-                await db.rollback()
-        # Tự động lưu phiên hội thoại vào database trong nền (0ms blocking)
-        asyncio.create_task(_background_save_chat(sid, request.prompt, reply, lang_code, current_room))
-
-        # TỰ ĐỘNG NHẬN DIỆN MÃ ĐIỂM ĐẾN POI ĐỂ ĐỒNG BỘ BẢN ĐỒ 8 TẦNG (0ms Sync)
-        destination_key = graph_result.get("destination_key")
-        if not destination_key:
-            p_lower = request.prompt.lower()
-            rep_lower = reply.lower()
-            
-            # Nếu khách hỏi đường tới các địa điểm bên ngoài khách sạn -> Tuyệt đối KHÔNG bật bản đồ trong nhà
-            external_places = [
-                "sân bay", "airport", "nội bài", "tân sơn nhất", "ga tàu", "ga hà nội",
-                "bến xe", "bãi biển", "ra biển", "chợ", "chợ đêm", "bến thành",
-                "phố cổ", "hồ gươm", "trung tâm thương mại", "vincom", "bệnh viện",
-                "bảo tàng", "ngoài khách sạn", "địa điểm du lịch", "tour", "bắt taxi", "bắt xe", "grab"
-            ]
-            is_external_query = any(k in p_lower for k in external_places)
-
-            if not is_external_query:
-                # 1. Nhận diện các phòng Tầng 4 (401 -> 409)
-                room_4xx_match = re.search(r'\b(?:phòng|p\.?|phong)?\s*(40[1-9])\b', p_lower)
-                # 2. Nhận diện các phòng Tầng 3 (301 -> 309)
-                room_3xx_match = re.search(r'\b(?:phòng|p\.?|phong)?\s*(30[1-9])\b', p_lower)
-                
-                if room_4xx_match:
-                    destination_key = f"room_{room_4xx_match.group(1)}"
-                elif room_3xx_match:
-                    destination_key = f"room_{room_3xx_match.group(1)}"
-                # 3. Khu vực Tầng 2 (Bếp, Nhận món, Kho, Sơ chế, WC)
-                elif any(k in p_lower for k in ["nhà bếp", "nha bep", "khu bếp", "bếp chính", "kitchen"]):
-                    destination_key = "kitchen"
-                elif any(k in p_lower for k in ["sơ chế", "so che", "chuẩn bị món", "preparation"]):
-                    destination_key = "preparation_area"
-                elif any(k in p_lower for k in ["kho hàng", "kho hang", "kho nguyên liệu", "kho thực phẩm", "warehouse"]):
-                    destination_key = "warehouse"
-                elif any(k in p_lower for k in ["vệ sinh tầng 2", "wc tầng 2", "toilet tầng 2", "restroom tầng 2"]):
-                    destination_key = "restroom_f2"
-                elif any(k in p_lower for k in ["nhà hàng", "nha hang", "buffet", "ăn sáng", "quầy nhận món", "pickup"]):
-                    destination_key = "restaurant"
-                # 4. Tiện ích Tầng 5 & Tầng 6
-                elif any(k in p_lower for k in ["hồ bơi", "ho boi", "bể bơi", "pool", "bơi"]):
-                    destination_key = "infinity_pool"
-                elif any(k in p_lower for k in ["rooftop", "cafe", "cà phê", "coffee"]):
-                    destination_key = "rooftop_coffee"
-                elif any(k in p_lower for k in ["quầy bar", "quay bar", "sky bar", "sky lounge", "uống rượu"]):
-                    destination_key = "bar"
-                elif any(k in p_lower for k in ["karaoke", "hát karaoke", "phòng hát"]):
-                    destination_key = "karaoke"
-                elif any(k in p_lower for k in ["gym", "thể hình", "the hinh", "fitness", "tập gym"]):
-                    destination_key = "gym"
-                elif any(k in p_lower for k in ["spa", "massage", "xông hơi", "mát xa"]):
-                    destination_key = "spa"
-                elif any(k in p_lower for k in ["lưu niệm", "gift shop", "cửa hàng quà"]):
-                    destination_key = "gift_shop"
-                elif any(k in p_lower for k in ["thay đồ", "locker", "tủ đồ"]):
-                    destination_key = "locker_room"
-                # 5. Tiện ích Tầng Trệt & Bãi xe
-                elif any(k in p_lower for k in ["lễ tân", "tiếp tân", "quầy lễ tân", "bàn lễ tân", "front desk", "check-in", "check in"]):
-                    destination_key = "front_desk"
-                elif any(k in p_lower for k in ["vệ sinh tầng trệt", "vệ sinh ở sảnh", "wc ở sảnh", "toilet sảnh"]):
-                    destination_key = "restroom_ground"
-                elif any(k in p_lower for k in ["xe máy", "gửi xe máy", "bãi xe máy", "xe đạp", "hầm b1"]):
-                    destination_key = "parking_bike"
-                elif any(k in p_lower for k in ["đỗ ô tô", "bãi ô tô", "bãi xe ô tô", "hầm b2", "xe hơi"]):
-                    destination_key = "parking_car"
-                elif any(k in p_lower for k in ["bãi xe", "đỗ xe", "gửi xe", "parking"]):
-                    destination_key = "parking_car"
-                # Chú ý: Không fallback về front_desk nếu không khớp bất kỳ điểm đến nào trong khách sạn!
-
-        return ChatResponse(
-            response=reply,
-            model_used=settings.active_llm_model,
-            detected_language=detected_lang,
-            lang_code=lang_code,
-            session_id=sid,
-            current_room_number=current_room,
-            missing_room_number=bool(graph_result.get("missing_room_number", False)),
-            trigger_video_call=is_video_call,
-            support_session_id=support_session_id,
-            ticket_code=call_ticket_code,
-            audio_base64=audio_b64,
-            mime_type=mime_type or "audio/mp3",
-            destination_key=destination_key,
-        )
-
+        return await process_chat_request(db=db, request=request)
     except Exception as e:
         logger.error(f"[AIChat Error] {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=str(e)
+            detail=str(e),
         )
 
 
@@ -249,131 +61,19 @@ async def chat_stream_endpoint(request: ChatRequest):
     Endpoint streaming tokens trực tiếp từ LangGraph Harness & Ollama LLM về client theo thời gian thực.
     Tích hợp Fast-Path (<1ms) và Service FSM (<2ms) kết hợp duy trì bộ nhớ đa lượt Session Memory.
     """
-    async def event_generator():
-        try:
-            sid = request.session_id or "default_session"
-            if request.room_number:
-                session_manager.set_room_number(sid, request.room_number)
-            current_room = session_manager.get_room_number(sid)
-            history = session_manager.get_history(sid)
-
-            # 0. INSTANT ACK (<5ms) — Frontend biết kết nối sống ngay lập tức
-            yield f"data: {json.dumps({'event': 'ack', 'status': 'connected'}, ensure_ascii=False)}\n\n"
-
-            # 1. KIỂM TRA HARNESS: MEGA FAST-PATH (< 1ms)
-            fast_hit = ollama_service.check_fast_path(request.prompt, request.language)
-            if fast_hit:
-                reply, lang_name, lang_code = fast_hit
-                logger.info(f"[AIChatStream Fast-Path] Trả lời tức thì <1ms cho: '{request.prompt[:30]}'")
-
-                words = reply.split(" ")
-                for i, w in enumerate(words):
-                    token_piece = w + (" " if i < len(words) - 1 else "")
-                    yield f"data: {json.dumps({'event': 'token', 'token': token_piece}, ensure_ascii=False)}\n\n"
-                    await asyncio.sleep(0.008)
-
-                session_manager.add_turn(sid, "user", request.prompt, language=lang_code)
-                session_manager.add_turn(sid, "assistant", reply, language=lang_code, intent_action="fast_path")
-                yield f"data: {json.dumps({'event': 'done', 'full_text': reply, 'lang_code': lang_code, 'room_number': current_room, 'action': 'fast_path'}, ensure_ascii=False)}\n\n"
-                return
-
-            # 2. KIỂM TRA HARNESS: INTENT ROUTER & SERVICE FSM (< 2ms)
-            router_state = await intent_router_node({
-                "prompt": request.prompt,
-                "room_number": current_room,
-            })
-
-            category = router_state.get("intent_category", "chitchat")
-            action = router_state.get("action", "conversation")
-
-            if category == "service":
-                effective_room = router_state.get("room_number") or current_room
-                if effective_room:
-                    session_manager.set_room_number(sid, effective_room)
-
-                fsm_state = await service_fsm_node({
-                    "action": action,
-                    "room_number": effective_room,
-                    "items": router_state.get("items"),
-                    "lang_code": "en-US" if request.language and "en" in request.language.lower() else "vi-VN",
-                })
-
-                fsm_reply = fsm_state.get("response", "")
-                is_call = bool(fsm_state.get("trigger_video_call") or action == "concierge")
-
-                logger.info(f"[AIChatStream FSM] Trả lời FSM tức thì <2ms cho action: '{action}'")
-
-                words = fsm_reply.split(" ")
-                for i, w in enumerate(words):
-                    token_piece = w + (" " if i < len(words) - 1 else "")
-                    yield f"data: {json.dumps({'event': 'token', 'token': token_piece}, ensure_ascii=False)}\n\n"
-                    await asyncio.sleep(0.008)
-
-                _, final_lang_code = ollama_service.detect_language(fsm_reply)
-                session_manager.add_turn(sid, "user", request.prompt, language=final_lang_code)
-                session_manager.add_turn(sid, "assistant", fsm_reply, language=final_lang_code, intent_action=action)
-
-                done_payload = {
-                    "event": "done",
-                    "full_text": fsm_reply,
-                    "lang_code": final_lang_code,
-                    "room_number": effective_room,
-                    "action": action,
-                    "trigger_video_call": is_call,
-                }
-                yield f"data: {json.dumps(done_payload, ensure_ascii=False)}\n\n"
-                return
-
-            # 3. NẾU LÀ FAQ: TRUY VẤN VÀ CẮT GỌT RAG CONTEXT (HARNESS CONTEXT PRUNING)
-            rag_context = request.rag_context
-            if category == "faq" and not rag_context:
-                try:
-                    retrieval_res = await retrieval_node({"prompt": request.prompt})
-                    rag_context = retrieval_res.get("rag_context", "")
-                except Exception as ex_rag:
-                    logger.warning(f"[AIChatStream] Retrieval error: {ex_rag}")
-
-            # 4. TRÒ CHUYỆN TỰ DO: STREAM OLLAMA TOKENS TỪ LLM (ĐÃ TỐI ƯU NUM_CTX=1024, TTFT < 300MS)
-            full_text = ""
-            async for token in ollama_service.generate_response_stream(
-                prompt=request.prompt,
-                rag_context=rag_context,
-                language=request.language,
-                emotion=request.emotion,
-                chat_history=history,
-                stored_room_number=current_room,
-            ):
-                full_text += token
-                yield f"data: {json.dumps({'event': 'token', 'token': token}, ensure_ascii=False)}\n\n"
-
-            _, final_lang_code = ollama_service.detect_language(full_text)
-
-            session_manager.add_turn(sid, "user", request.prompt, language=final_lang_code)
-            session_manager.add_turn(sid, "assistant", full_text, language=final_lang_code, intent_action="conversation")
-
-            done_payload = {
-                "event": "done",
-                "full_text": full_text,
-                "lang_code": final_lang_code,
-                "room_number": current_room,
-                "action": "conversation",
-            }
-            yield f"data: {json.dumps(done_payload, ensure_ascii=False)}\n\n"
-        except Exception as e:
-            logger.error(f"[AIChatStream Error] {e}")
-            yield f"data: {json.dumps({'event': 'error', 'message': str(e)}, ensure_ascii=False)}\n\n"
-
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+    return StreamingResponse(generate_chat_stream(request), media_type="text/event-stream")
 
 
+# -----------------------------------------------------------------------------
+# 2. Xử lý Giọng nói (STT & TTS)
+# -----------------------------------------------------------------------------
 @router.post("/stt/transcribe", summary="Nhận diện giọng nói từ file âm thanh WAV")
 async def transcribe_speech_endpoint(
     file: UploadFile = File(...),
-    language: str = Form("vi")
+    language: str = Form("vi"),
 ):
     """
     Endpoint nhận file âm thanh WAV từ frontend và trả về văn bản tiếng Việt/tiếng Anh.
-    Giải quyết triệt để 100% vấn đề trình duyệt không nhận diện được tiếng nói.
     """
     try:
         content = await file.read()
@@ -381,82 +81,13 @@ async def transcribe_speech_endpoint(
             raise HTTPException(status_code=400, detail="File âm thanh rỗng")
 
         text = transcribe_audio_wav(content, language=language)
-        return {
-            "success": True,
-            "text": text,
-            "language": language
-        }
+        return {"success": True, "text": text, "language": language}
     except Exception as e:
         logger.error(f"[STT Endpoint Error] {e}")
-        return {
-            "success": False,
-            "text": "",
-            "error": str(e)
-        }
+        return {"success": False, "text": "", "error": str(e)}
 
 
-@router.post("/intent", response_model=IntentResponse, summary="Phân tích ý định & bóc tách JSON yêu cầu dịch vụ (kèm Slot-Filling Số Phòng)")
-async def extract_service_intent(request: IntentRequest, db: AsyncSession = Depends(get_db)):
-    """
-    Endpoint nhận văn bản giọng nói (STT) và bóc tách thông tin dịch vụ.
-    Tự động ghi nhớ số phòng theo Session và chủ động hỏi số phòng nếu chưa có.
-    """
-    try:
-        sid = request.session_id or "default_session"
-
-        # Cập nhật số phòng nếu truyền trực tiếp
-        if request.room_number:
-            session_manager.set_room_number(sid, request.room_number)
-
-        intent_data = await ollama_service.extract_intent(user_speech=request.user_speech)
-        action = intent_data.get("action", "unknown")
-        speech_room = intent_data.get("room_number")
-        items = intent_data.get("items") or request.user_speech
-
-        # 1. Nếu câu nói của khách có chứa số phòng -> Ghi đè vào Session Memory
-        if speech_room:
-            session_manager.set_room_number(sid, speech_room)
-
-        current_room = session_manager.get_room_number(sid)
-
-        return IntentResponse(
-            action=action,
-            room_number=current_room,
-            items=items,
-            missing_room_number=False,
-            suggested_reply=None,
-            session_id=sid,
-            raw_output=intent_data
-        )
-
-    except Exception as e:
-        logger.error(f"[AIIntent Error] {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
-        )
-
-
-@router.post("/session/reset", summary="Reset bộ nhớ phiên & Đóng gói lưu CSDL một lần duy nhất")
-async def reset_session_memory(request: SessionResetRequest, db: AsyncSession = Depends(get_db)):
-    """
-    Đóng gói toàn bộ lịch sử hội thoại trong RAM lưu xuống PostgreSQL 1 lần duy nhất, sau đó xóa sạch bộ nhớ phiên.
-    """
-    await session_manager.flush_session_to_db(db, request.session_id)
-    session_manager.reset_session(request.session_id)
-    return {"success": True, "message": f"Session '{request.session_id}' flushed to DB and reset successfully."}
-
-
-@router.post("/session/flush", summary="Đóng gói và lưu toàn bộ phiên hội thoại vào CSDL (End-of-Session Bulk Persistence)")
-async def flush_session_endpoint(request: SessionResetRequest, db: AsyncSession = Depends(get_db)):
-    """
-    Chủ động đóng gói toàn bộ hội thoại trong RAM của session và lưu xuống PostgreSQL một lần duy nhất.
-    """
-    saved = await session_manager.flush_session_to_db(db, request.session_id)
-    return {"success": True, "saved": saved, "session_id": request.session_id}
-
-
-@router.post("/tts", response_model=TTSResponse, summary="Chuyển văn bản thành âm thanh thoại MP3 (EdgeTTS / ElevenLabs / OpenAI TTS)")
+@router.post("/tts", response_model=TTSResponse, summary="Chuyển văn bản thành âm thanh thoại MP3")
 async def synthesize_voice_speech(request: TTSRequest):
     """
     Endpoint nhận văn bản và tổng hợp giọng thoại MP3 mã hóa Base64 siêu mượt.
@@ -479,7 +110,7 @@ async def synthesize_voice_speech(request: TTSRequest):
         logger.error(f"[TTS Endpoint Error] {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
+            detail=str(e),
         )
 
 
@@ -503,617 +134,100 @@ async def update_robot_voice_settings(req: VoiceSettingsRequest):
 async def pipecat_audio_websocket(websocket: WebSocket, session_id: str = "pipecat_kiosk"):
     """
     Unified WebSocket Streaming Pipeline — STT Streaming + LLM Token Stream + TTS Audio Chunks.
-    Events:
-    - event="stt_interim": Client gửi interim transcript → Server echo lại để hiển thị UI
-    - event="stt_final":   Client gửi final transcript → Server trigger full AI pipeline streaming
-    - event="speech_stream": Client gửi text trực tiếp (bypass STT) → Server trigger full AI pipeline streaming
-    - event="speech": (Legacy) Chờ full response rồi trả JSON + Base64 audio
-    - event="barge_in": Client yêu cầu dừng Robot đang nói
     """
-    await websocket.accept()
-    pipecat_service.create_pipeline_session(session_id)
-    logger.info(f"[Pipecat WS] WebSocket client connected: session_id='{session_id}'")
+    await handle_pipecat_websocket(websocket, session_id)
 
-    # Server-side VAD timer and active pipeline task references
-    vad_timer_task: Optional[asyncio.Task] = None
-    active_pipeline_task: Optional[asyncio.Task] = None
-    last_processed_prompt: str = ""
-    last_processed_timestamp: float = 0.0
 
-    async def _safe_start_pipeline(text: str, room: Optional[str], lang: str):
-        """Khởi chạy streaming pipeline an toàn: hủy task cũ nếu đang chạy và chống trùng lặp câu hỏi."""
-        nonlocal active_pipeline_task, vad_timer_task, last_processed_prompt, last_processed_timestamp
-
-        clean_text = text.strip()
-        if not clean_text:
-            return
-
-        # Hủy VAD timer nếu còn pending
-        if vad_timer_task and not vad_timer_task.done():
-            vad_timer_task.cancel()
-
-        # Chống gửi lặp câu cùng lúc (Deduplication within 1.5s)
-        now = time.time()
-        if (now - last_processed_timestamp < 1.5) and (clean_text.lower() == last_processed_prompt.lower()):
-            logger.info(f"[Pipecat WS] Ignored duplicate prompt '{clean_text}' within {now - last_processed_timestamp:.2f}s")
-            return
-
-        last_processed_prompt = clean_text
-        last_processed_timestamp = now
-
-        # Nếu đang có một luồng pipeline khác đang phát âm thanh cho session này, lập tức hủy luồng cũ (tránh 2 giọng nói đè nhau)
-        if active_pipeline_task and not active_pipeline_task.done():
-            active_pipeline_task.cancel()
-            pipecat_service.handle_barge_in(session_id)
-            logger.info(f"[Pipecat WS] Cancelled previous pipeline task to prevent overlapping voices for '{session_id}'")
-
-        active_pipeline_task = asyncio.create_task(_trigger_streaming_pipeline(clean_text, room, lang))
-
-    async def _trigger_streaming_pipeline(text: str, room: Optional[str], lang: str):
-        """Helper: chạy full streaming pipeline và gửi kết quả qua WebSocket."""
-        try:
-            async for chunk in pipecat_service.process_user_speech_stream(
-                session_id, text, room_number=room, language=lang
-            ):
-                chunk_type = chunk.get("type")
-
-                if chunk_type == "audio_chunk":
-                    await websocket.send_bytes(chunk["data"])
-                elif chunk_type == "token":
-                    await websocket.send_json({
-                        "event": "token",
-                        "session_id": session_id,
-                        "token": chunk.get("token", ""),
-                    })
-                elif chunk_type in ("text", "text_chunk"):
-                    await websocket.send_json({
-                        "event": chunk_type,
-                        "session_id": session_id,
-                        "text": chunk.get("text", ""),
-                        "lang_code": chunk.get("lang_code", "vi-VN"),
-                        "action": chunk.get("action"),
-                        "missing_room": chunk.get("missing_room", False),
-                        "room_number": chunk.get("room_number"),
-                    })
-                elif chunk_type == "done":
-                    await websocket.send_json({
-                        "event": "stream_done",
-                        "session_id": session_id,
-                        "full_text": chunk.get("full_text", ""),
-                        "lang_code": chunk.get("lang_code", "vi-VN"),
-                        "action": chunk.get("action"),
-                        "room_number": chunk.get("room_number"),
-                    })
-                elif chunk_type == "interrupted":
-                    await websocket.send_json({
-                        "event": "interrupted",
-                        "session_id": session_id,
-                        "full_text": chunk.get("full_text", ""),
-                    })
-                elif chunk_type == "error":
-                    await websocket.send_json({
-                        "event": "error",
-                        "session_id": session_id,
-                        "message": chunk.get("message", ""),
-                    })
-        except (WebSocketDisconnect, RuntimeError):
-            logger.info(f"[Pipecat WS] WebSocket client disconnected during stream for session '{session_id}'")
-        except asyncio.CancelledError:
-            logger.info(f"[Pipecat WS] Pipeline task was cancelled for session '{session_id}'")
-        except Exception as e_pipe:
-            logger.error(f"[Pipecat WS Pipeline Error] {e_pipe}")
-            try:
-                await websocket.send_json({
-                    "event": "error",
-                    "session_id": session_id,
-                    "message": str(e_pipe),
-                })
-            except Exception:
-                pass
-
-    async def _vad_silence_handler(room: Optional[str], lang: str):
-        """
-        Server-side VAD: chờ đủ thời gian im lặng (1.5s) mới chốt câu và chạy pipeline.
-        Tránh cắt ngang khi khách dừng lại lấy hơi hoặc đang nghĩ dở câu.
-        """
-        vad_ms = max(getattr(settings, "VAD_SILENCE_MS", 500) / 1000.0, 0.4)
-        await asyncio.sleep(vad_ms)
-
-        # Sau khi chờ im lặng, kiểm tra buffer còn text chưa xử lý
-        final_text = pipecat_service.get_stt_text(session_id)
-        if final_text and final_text.strip():
-            clean = final_text.strip()
-            # Tránh kích hoạt nếu câu chỉ có 1 từ đệm ngắn chưa có nghĩa (ví dụ: "ờ", "ừm", "cho")
-            if len(clean.split()) < 2 and len(clean) < 6:
-                logger.info(f"[Pipecat WS VAD] Skipped incomplete fragment '{clean}', waiting for more speech")
-                return
-
-            pipecat_service.clear_stt_buffer(session_id)
-
-            # Gửi thông báo bắt đầu xử lý
-            await websocket.send_json({
-                "event": "stt_processing",
-                "session_id": session_id,
-                "text": clean,
-            })
-
-            await _safe_start_pipeline(clean, room, lang)
-
+# -----------------------------------------------------------------------------
+# 3. Phân tích Ý định & Quản lý Phiên hội thoại (Intent & Session Memory)
+# -----------------------------------------------------------------------------
+@router.post("/intent", response_model=IntentResponse, summary="Phân tích ý định & bóc tách JSON yêu cầu dịch vụ")
+async def extract_service_intent(request: IntentRequest, db: AsyncSession = Depends(get_db)):
+    """
+    Endpoint nhận văn bản giọng nói (STT) và bóc tách thông tin dịch vụ.
+    Tự động ghi nhớ số phòng theo Session và chủ động hỏi số phòng nếu chưa có.
+    """
     try:
-        while True:
-            data = await websocket.receive_json()
-            event_type = data.get("event")
+        sid = request.session_id or "default_session"
 
-            if event_type == "barge_in":
-                if vad_timer_task and not vad_timer_task.done():
-                    vad_timer_task.cancel()
-                if active_pipeline_task and not active_pipeline_task.done():
-                    active_pipeline_task.cancel()
-                pipecat_service.handle_barge_in(session_id)
-                pipecat_service.clear_stt_buffer(session_id)
-                await websocket.send_json({"event": "interrupted", "session_id": session_id})
+        if request.room_number:
+            session_manager.set_room_number(sid, request.room_number)
 
-            elif event_type == "stt_interim":
-                text = data.get("text", "")
-                room = data.get("room_number")
-                lang = data.get("language", "auto")
+        intent_data = await ollama_service.extract_intent(user_speech=request.user_speech)
+        action = intent_data.get("action", "unknown")
+        speech_room = intent_data.get("room_number")
+        items = intent_data.get("items") or request.user_speech
 
-                if text.strip():
-                    pipecat_service.update_stt_buffer(session_id, text, is_final=False)
+        if speech_room:
+            session_manager.set_room_number(sid, speech_room)
 
-                    # Echo interim text ngay cho UI hiển thị (< 1ms roundtrip)
-                    await websocket.send_json({
-                        "event": "stt_interim_echo",
-                        "session_id": session_id,
-                        "text": text,
-                    })
+        current_room = session_manager.get_room_number(sid)
 
-                    # Reset VAD timer — mỗi interim mới reset lại đồng hồ
-                    if vad_timer_task and not vad_timer_task.done():
-                        vad_timer_task.cancel()
-                    vad_timer_task = asyncio.create_task(
-                        _vad_silence_handler(room, lang)
-                    )
-
-            elif event_type == "stt_final":
-                text = data.get("text", "")
-                room = data.get("room_number")
-                lang = data.get("language", "auto")
-
-                if vad_timer_task and not vad_timer_task.done():
-                    vad_timer_task.cancel()
-
-                if text.strip():
-                    pipecat_service.update_stt_buffer(session_id, text, is_final=True)
-                    pipecat_service.clear_stt_buffer(session_id)
-
-                    await websocket.send_json({
-                        "event": "stt_processing",
-                        "session_id": session_id,
-                        "text": text,
-                    })
-
-                    await _safe_start_pipeline(text, room, lang)
-
-            elif event_type == "speech_stream":
-                text = data.get("text", "")
-                room = data.get("room_number")
-                lang = data.get("language", "auto")
-
-                if vad_timer_task and not vad_timer_task.done():
-                    vad_timer_task.cancel()
-
-                if text.strip():
-                    pipecat_service.clear_stt_buffer(session_id)
-                    await _safe_start_pipeline(text, room, lang)
-
-            elif event_type == "speech":
-                # Legacy mode (backward compatible)
-                text = data.get("text", "")
-                room = data.get("room_number")
-                result = await pipecat_service.process_user_speech(session_id, text, room)
-                await websocket.send_json({
-                    "event": "audio_stream",
-                    "session_id": session_id,
-                    "payload": result
-                })
-
-    except WebSocketDisconnect:
-        logger.info(f"[Pipecat WS] WebSocket disconnected for session '{session_id}'")
+        return IntentResponse(
+            action=action,
+            room_number=current_room,
+            items=items,
+            missing_room_number=False,
+            suggested_reply=None,
+            session_id=sid,
+            raw_output=intent_data,
+        )
     except Exception as e:
-        logger.error(f"[Pipecat WS Error] {e}")
-    finally:
-        if vad_timer_task and not vad_timer_task.done():
-            vad_timer_task.cancel()
-        if active_pipeline_task and not active_pipeline_task.done():
-            active_pipeline_task.cancel()
-        pipecat_service.close_session(session_id)
+        logger.error(f"[AIIntent Error] {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e),
+        )
 
 
-@router.get("/sessions")
+@router.post("/session/reset", summary="Reset bộ nhớ phiên & Đóng gói lưu CSDL một lần duy nhất")
+async def reset_session_memory(request: SessionResetRequest, db: AsyncSession = Depends(get_db)):
+    """
+    Đóng gói toàn bộ lịch sử hội thoại trong RAM lưu xuống PostgreSQL 1 lần duy nhất, sau đó xóa sạch bộ nhớ phiên.
+    """
+    await session_manager.flush_session_to_db(db, request.session_id)
+    session_manager.reset_session(request.session_id)
+    return {"success": True, "message": f"Session '{request.session_id}' flushed to DB and reset successfully."}
+
+
+@router.post("/session/flush", summary="Đóng gói và lưu toàn bộ phiên hội thoại vào CSDL")
+async def flush_session_endpoint(request: SessionResetRequest, db: AsyncSession = Depends(get_db)):
+    """
+    Chủ động đóng gói toàn bộ hội thoại trong RAM của session và lưu xuống PostgreSQL một lần duy nhất.
+    """
+    saved = await session_manager.flush_session_to_db(db, request.session_id)
+    return {"success": True, "saved": saved, "session_id": request.session_id}
+
+
+@router.get("/sessions", summary="Xem danh sách các phiên hội thoại đã lưu")
 async def get_all_chat_sessions(db: AsyncSession = Depends(get_db)):
     """Lấy danh sách các phiên hội thoại (Chat Sessions) đã lưu trong PostgreSQL."""
     try:
-        from app.models.chat_session import ChatSession
-        from sqlalchemy.future import select
-
-        result = await db.execute(select(ChatSession).order_by(ChatSession.updated_at.desc()))
-        sessions = result.scalars().all()
-        return [
-            {
-                "id": s.id,
-                "room_number": s.room_number,
-                "guest_name": s.guest_name,
-                "is_active": s.is_active,
-                "created_at": s.created_at.isoformat() if s.created_at else None,
-                "updated_at": s.updated_at.isoformat() if s.updated_at else None,
-            }
-            for s in sessions
-        ]
+        return await session_manager.get_all_db_sessions(db)
     except Exception as e:
         logger.error(f"[GetSessions Error] {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/sessions/{session_id}/messages")
+@router.get("/sessions/{session_id}/messages", summary="Xem chi tiết tin nhắn của một phiên hội thoại")
 async def get_session_messages(session_id: str, db: AsyncSession = Depends(get_db)):
     """Lấy chi tiết danh sách tin nhắn hội thoại của một phiên từ PostgreSQL."""
     try:
-        from app.models.chat_session import ChatMessage
-        from sqlalchemy.future import select
-
-        result = await db.execute(select(ChatMessage).where(ChatMessage.session_id == session_id).order_by(ChatMessage.id.asc()))
-        messages = result.scalars().all()
-        return [
-            {
-                "id": m.id,
-                "session_id": m.session_id,
-                "sender": m.sender,
-                "text": m.text,
-                "language": m.language,
-                "intent_action": m.intent_action,
-                "created_at": m.created_at.isoformat() if m.created_at else None,
-            }
-            for m in messages
-        ]
+        return await session_manager.get_db_session_messages(db, session_id)
     except Exception as e:
         logger.error(f"[GetMessages Error] {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
-async def _auto_create_ticket(db: AsyncSession, action: str, room_number: str, items: str) -> str:
-    """Tự động chèn Ticket dịch vụ vào PostgreSQL Database tương ứng (SupportRequest / RoomServiceOrder) và gửi Notification cho Lễ tân / Staff."""
-    code = f"AUTO-{random.randint(1000, 99999)}"
-    rm = room_number or "402"
-
-    try:
-        if action in ["room_service", "restaurant"]:
-            order_num = str(random.randint(1043, 9999))
-            ticket_code = f"ORD-{order_num}"
-            order = SupportRequest(
-                ticket_code=ticket_code,
-                title=f"Đơn Room Service (Phòng {rm}): {items}",
-                room_number=rm,
-                description=items or "Yêu cầu gửi từ HCRobot Concierge AI Chat",
-                guest_name=f"Guest (Room {rm})",
-                department_id="DEP-ROOMSERVICE",
-                service_type_id="ST-ROOM-SERVICE",
-                items=[{"name": items, "qty": 1}],
-                source="HCRobot Concierge AI Chat",
-                status="Pending",
-                priority="NORMAL",
-                progress=0,
-            )
-            db.add(order)
-            await create_department_notification(
-                db=db,
-                department="F&B",
-                title=f"Robot AI: Yêu cầu F&B mới từ Phòng {rm}",
-                description=f"{items}",
-                request_id=order.id,
-                request_type="room_service",
-                type="Request",
-            )
-            await create_department_notification(
-                db=db,
-                department="Reception",
-                title=f"Robot AI: Đơn F&B mới từ Khách Phòng {rm}",
-                description=f"Robot đã tiếp nhận đơn #{ticket_code}: {items}",
-                request_id=order.id,
-                request_type="room_service",
-                type="Request",
-            )
-            await db.commit()
-            return ticket_code
-
-        elif action == "housekeeping":
-            ticket_code = f"HK-{random.randint(1000, 99999)}"
-            req = SupportRequest(
-                ticket_code=ticket_code,
-                source="HCRobot Concierge AI Chat",
-                title=f"Yêu cầu Buồng phòng (Phòng {rm}): {items}",
-                room_number=rm,
-                description=items,
-                guest_name=f"Guest (Room {rm})",
-                department_id="DEP-HOUSEKEEPING",
-                service_type_id="ST-HOUSEKEEPING",
-                priority="NORMAL",
-                status="Unassigned",
-            )
-            db.add(req)
-            await create_department_notification(
-                db=db,
-                department="Housekeeping",
-                title=f"Robot AI: Yêu cầu Buồng phòng mới #{ticket_code}",
-                description=f"Phòng {rm}: {items}",
-                request_id=req.id,
-                request_type="housekeeping",
-                type="Request",
-            )
-            await create_department_notification(
-                db=db,
-                department="Reception",
-                title=f"Robot AI: Yêu cầu Buồng phòng từ Khách Phòng {rm}",
-                description=f"Phiếu #{ticket_code}: {items}",
-                request_id=req.id,
-                request_type="housekeeping",
-                type="Request",
-            )
-            await db.commit()
-            return ticket_code
-
-        elif action == "bellman":
-            ticket_code = f"BS-{random.randint(1000, 99999)}"
-            req = SupportRequest(
-                ticket_code=ticket_code,
-                source="HCRobot Concierge AI Chat",
-                title=f"Khách phòng {rm} hỗ trợ hành lý: {items}",
-                room_number=rm,
-                guest_name=f"Guest (Room {rm})",
-                description=items,
-                department_id="DEP-BELL",
-                service_type_id="ST-BELL",
-                priority="NORMAL",
-                status="Pending",
-            )
-            db.add(req)
-            await create_department_notification(
-                db=db,
-                department="Bell Services",
-                title=f"Robot AI: Yêu cầu Hành lý mới #{ticket_code}",
-                description=f"Phòng {rm}: {items}",
-                request_id=req.id,
-                request_type="bell_service",
-                type="Request",
-            )
-            await create_department_notification(
-                db=db,
-                department="Reception",
-                title=f"Robot AI: Yêu cầu Bellman từ Khách Phòng {rm}",
-                description=f"Phiếu #{ticket_code}: {items}",
-                request_id=req.id,
-                request_type="bell_service",
-                type="Request",
-            )
-            await db.commit()
-            return ticket_code
-
-        elif action == "maintenance":
-            ticket_code = f"MN-{random.randint(1000, 99999)}"
-            req = SupportRequest(
-                ticket_code=ticket_code,
-                source="HCRobot Concierge AI Chat",
-                title=f"Sự cố kỹ thuật Phòng {rm}: {items}",
-                room_number=rm,
-                description=items,
-                guest_name=f"Guest (Room {rm})",
-                department_id="DEP-MAINTENANCE",
-                service_type_id="ST-MAINTENANCE",
-                priority="HIGH",
-                status="Pending",
-            )
-            db.add(req)
-            await create_department_notification(
-                db=db,
-                department="Maintenance",
-                title=f"Robot AI: Yêu cầu Kỹ thuật mới #{ticket_code}",
-                description=f"Phòng {rm}: {items}",
-                request_id=req.id,
-                request_type="maintenance",
-                type="Request",
-            )
-            await create_department_notification(
-                db=db,
-                department="Reception",
-                title=f"Robot AI: Yêu cầu Bảo trì từ Khách Phòng {rm}",
-                description=f"Phiếu #{ticket_code}: {items}",
-                request_id=req.id,
-                request_type="maintenance",
-                type="Request",
-            )
-            await db.commit()
-            return ticket_code
-
-        elif action == "taxi":
-            ticket_code = f"TX-{random.randint(1000, 99999)}"
-            req = SupportRequest(
-                ticket_code=ticket_code,
-                source="HCRobot Concierge AI Chat",
-                title=f"Yêu cầu Đặt xe từ Phòng {rm}: {items}",
-                room_number=rm,
-                description=items,
-                guest_name=f"Guest (Room {rm})",
-                department_id="DEP-TAXI",
-                service_type_id="ST-TAXI",
-                priority="NORMAL",
-                status="Pending",
-            )
-            db.add(req)
-            await create_department_notification(
-                db=db,
-                department="Taxi",
-                title=f"Robot AI: Yêu cầu Đặt xe mới #{ticket_code}",
-                description=f"Phòng {rm}: {items}",
-                request_id=req.id,
-                request_type="taxi",
-                type="Request",
-            )
-            await create_department_notification(
-                db=db,
-                department="Reception",
-                title=f"Robot AI: Yêu cầu Taxi từ Khách Phòng {rm}",
-                description=f"Phiếu #{ticket_code}: {items}",
-                request_id=req.id,
-                request_type="taxi",
-                type="Request",
-            )
-            await db.commit()
-            return ticket_code
-
-        elif action in ["concierge", "live_support", "video_call", "emergency"]:
-            ticket_code = f"CCG-{random.randint(1000, 99999)}"
-            req = SupportRequest(
-                ticket_code=ticket_code,
-                source="Robot Voice Assistant",
-                title=f"Yêu cầu Hỗ trợ Concierge trực tuyến (Phòng {rm}): {items}",
-                room_number=rm,
-                description=items or "Yêu cầu kết nối Live Call với Concierge từ Robot",
-                guest_name=f"Guest (Room {rm})",
-                department_id="DEP-CONCIERGE",
-                service_type_id="ST-CONCIERGE",
-                priority="HIGH",
-                status="Pending",
-            )
-            db.add(req)
-            await create_department_notification(
-                db=db,
-                department="Concierge",
-                title=f"Robot AI: Cuộc gọi hỗ trợ Concierge #{ticket_code}",
-                description=f"Phòng {rm} cần trợ giúp: {items}",
-                request_id=req.id,
-                request_type="concierge",
-                type="LiveAssistance",
-            )
-            await create_department_notification(
-                db=db,
-                department="Reception",
-                title=f"Robot AI: Yêu cầu Concierge từ Khách Phòng {rm}",
-                description=f"Phiếu #{ticket_code}: {items}",
-                request_id=req.id,
-                request_type="concierge",
-                type="Request",
-            )
-            await db.commit()
-            return ticket_code
-
-        else:
-            # Default Reception & General Service Request
-            ticket_code = f"REC-{random.randint(1000, 99999)}"
-            req = SupportRequest(
-                ticket_code=ticket_code,
-                source="HCRobot Concierge AI Chat",
-                title=f"Yêu cầu Lễ tân từ Phòng {rm}: {items}",
-                room_number=rm,
-                description=items,
-                guest_name=f"Guest (Room {rm})",
-                department_id="DEP-RECEPTION",
-                service_type_id="ST-RECEPTION",
-                priority="NORMAL",
-                status="Pending",
-            )
-            db.add(req)
-            await create_department_notification(
-                db=db,
-                department="Reception",
-                title=f"Robot AI: Yêu cầu Lễ tân mới #{ticket_code}",
-                description=f"Phòng {rm}: {items}",
-                request_id=req.id,
-                request_type="reception",
-                type="Request",
-            )
-            await db.commit()
-            return ticket_code
-
-    except Exception as e:
-        logger.error(f"Lỗi khi tự động tạo ticket dịch vụ CSDL: {e}")
-        await db.rollback()
-
-    return code
-
-
+# -----------------------------------------------------------------------------
+# 4. Đánh giá & Phản hồi Dịch vụ (Feedback & Service Recovery)
+# -----------------------------------------------------------------------------
 @router.post("/feedback", response_model=FeedbackResponse, status_code=status.HTTP_201_CREATED, summary="Gửi phản hồi và đánh giá dịch vụ từ khách")
 async def submit_feedback(fb_in: FeedbackCreate, db: AsyncSession = Depends(get_db)):
     """
-    Lưu đánh giá và nhận xét của khách hàng vào bảng feedbacks trong cơ sở dữ liệu.
-    Nếu rating <= 3 sao: tự động kích hoạt cảnh báo khẩn cấp (Urgent Alert) tới Concierge và Lễ tân.
+    Lưu đánh giá của khách hàng và tự động kích hoạt cảnh báo khẩn cấp (Urgent Alert) tới Concierge và Lễ tân nếu rating <= 3.
     """
-    # Đảm bảo chat_session_id hợp lệ trong bảng chat_sessions
-    session_id_val = fb_in.chat_session_id
-    if session_id_val:
-        from sqlalchemy.future import select
-        chk_stmt = select(ChatSession).where(ChatSession.id == session_id_val)
-        chk_res = await db.execute(chk_stmt)
-        if not chk_res.scalar_one_or_none():
-            new_session = ChatSession(
-                id=session_id_val,
-                room_number=fb_in.room_number,
-                guest_name=fb_in.guest_name or "Khách tại Kiosk",
-                is_active=False,
-            )
-            db.add(new_session)
-            await db.flush()
-
-    new_fb = Feedback(
-        chat_session_id=session_id_val,
-        rating=fb_in.rating,
-        category=fb_in.category or "Robot Concierge",
-        comment=fb_in.comment,
-        guest_name=fb_in.guest_name,
-        room_number=fb_in.room_number,
-    )
-    db.add(new_fb)
-    await db.flush()
-
-    # XỬ LÝ ĐÁNH GIÁ TIÊU CỰC (SERVICE RECOVERY DISPATCH)
-    if new_fb.rating <= 3:
-        room_label = f"Phòng {new_fb.room_number}" if new_fb.room_number else "Kiosk Sảnh"
-        comment_text = new_fb.comment or "Khách không để lại ghi chú chi tiết"
-
-        try:
-            # Cảnh báo khẩn cấp tới bộ phận Concierge
-            await create_department_notification(
-                db=db,
-                department="Concierge",
-                title=f"[CẢNH BÁO] Đánh giá tiêu cực ({room_label}) - {new_fb.rating} Sao",
-                description=(
-                    f"Khách tại {room_label} vừa đánh giá {new_fb.rating}/5 sao. "
-                    f"Phản hồi: \"{comment_text}\". "
-                    f"Vui lòng mở lịch sử hội thoại để can thiệp hỗ trợ ngay!"
-                ),
-                request_id=new_fb.chat_session_id,
-                request_type="bad_feedback",
-                type="UrgentAlert",
-            )
-
-            # Đồng thời cảnh báo tới bộ phận Lễ tân (Reception)
-            await create_department_notification(
-                db=db,
-                department="Reception",
-                title=f"[CẢNH BÁO] Đánh giá thấp ({room_label}) - {new_fb.rating} Sao",
-                description=(
-                    f"Khách phản hồi {new_fb.rating}/5 sao về Robot Kiosk. "
-                    f"Session ID: {new_fb.chat_session_id}"
-                ),
-                request_id=new_fb.chat_session_id,
-                request_type="bad_feedback",
-                type="UrgentAlert",
-            )
-        except Exception as alert_err:
-            logger.warning(f"[Feedback Service Recovery Alert Error] {alert_err}")
-
-    await db.commit()
-    await db.refresh(new_fb)
-    return new_fb
+    return await submit_guest_feedback(db=db, fb_in=fb_in)
 
 
 @router.get("/feedback", response_model=List[FeedbackResponse], summary="Xem danh sách phản hồi và đánh giá của khách hàng")
@@ -1123,20 +237,11 @@ async def get_all_feedbacks(
     db: AsyncSession = Depends(get_db),
 ):
     """Lấy danh sách đánh giá của khách hàng."""
-    from sqlalchemy.future import select
-    stmt = select(Feedback).order_by(Feedback.created_at.desc()).limit(limit)
-    if category:
-        stmt = stmt.where(Feedback.category == category)
-    res = await db.execute(stmt)
-    return res.scalars().all()
+    return await get_feedbacks(db=db, category=category, limit=limit)
 
 
-async def _background_save_chat(session_id: str, user_turn: str, ai_turn: str, lang_code: str, room_number: Optional[str]):
-    """Lưu lượt hội thoại vào PostgreSQL trong nền, không chặn thời gian phản hồi của Robot."""
-    try:
-        from app.core.database import AsyncSessionLocal
-        async with AsyncSessionLocal() as bg_db:
-            await session_manager.save_turn_to_db(bg_db, session_id, "user", user_turn, language=lang_code, room_number=room_number)
-            await session_manager.save_turn_to_db(bg_db, session_id, "assistant", ai_turn, language=lang_code, room_number=room_number)
-    except Exception as e:
-        logger.warning(f"[AIChat Background Save Error] {e}")
+# -----------------------------------------------------------------------------
+# Backward Compatibility Aliases
+# -----------------------------------------------------------------------------
+_auto_create_ticket = auto_create_ticket
+_background_extract_and_create_ticket = background_extract_and_create_ticket

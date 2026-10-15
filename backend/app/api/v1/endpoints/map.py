@@ -5,12 +5,10 @@ import os
 from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, status, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 
-from app.core.database import get_db
 from app.models.workflow import RobotWaypoint, RobotZone
 from app.models.map import Map
+from app.repositories import MapRepository, get_map_repository
 from app.schemas.map import (
     MapMetaData,
     NavigationRequest,
@@ -31,13 +29,13 @@ DEFAULT_ZONES: List[dict] = []
 current_robot_pose = Pose2D(x=0.0, y=0.0, yaw=0.0)
 
 
-async def ensure_default_waypoints(db: AsyncSession):
+async def ensure_default_waypoints(repo: MapRepository):
     if not DEFAULT_WAYPOINTS:
         return
-    res = await db.execute(select(RobotWaypoint).limit(1))
-    if res.scalar_one_or_none() is None:
+    existing = await repo.list_waypoints()
+    if not existing:
         for wp in DEFAULT_WAYPOINTS:
-            db.add(RobotWaypoint(
+            await repo.save_or_update_waypoint(
                 id=wp["id"],
                 name=wp["name"],
                 x=wp["x"],
@@ -46,17 +44,16 @@ async def ensure_default_waypoints(db: AsyncSession):
                 floor=wp["floor"],
                 type=wp.get("type", "WAYPOINT"),
                 description=wp.get("description", ""),
-            ))
-        await db.commit()
+            )
 
 
-async def ensure_default_zones(db: AsyncSession):
+async def ensure_default_zones(repo: MapRepository):
     if not DEFAULT_ZONES:
         return
-    res = await db.execute(select(RobotZone).limit(1))
-    if res.scalar_one_or_none() is None:
+    existing = await repo.list_zones()
+    if not existing:
         for z in DEFAULT_ZONES:
-            db.add(RobotZone(
+            await repo.save_or_update_zone(
                 id=z["id"],
                 name=z["name"],
                 type=z["type"],
@@ -67,14 +64,12 @@ async def ensure_default_zones(db: AsyncSession):
                 speed_limit=z.get("speed_limit", 0.3),
                 floor=z.get("floor", "Sảnh Tầng 1"),
                 description=z.get("description", ""),
-            ))
-        await db.commit()
+            )
 
 
 @router.get("/current", response_model=OccupancyGridResponse, summary="Lấy dữ liệu bản đồ SLAM Occupancy Grid 2D thực tế")
-async def get_current_map(db: AsyncSession = Depends(get_db)):
-    wps_res = await db.execute(select(RobotWaypoint))
-    wps_db = wps_res.scalars().all()
+async def get_current_map(repo: MapRepository = Depends(get_map_repository)):
+    wps_db = await repo.list_waypoints()
     waypoints = [
         Waypoint(
             id=w.id,
@@ -89,8 +84,7 @@ async def get_current_map(db: AsyncSession = Depends(get_db)):
         for w in wps_db
     ]
 
-    zones_res = await db.execute(select(RobotZone))
-    zones_db = zones_res.scalars().all()
+    zones_db = await repo.list_zones()
     zones = [
         ZoneSchema(
             id=z.id,
@@ -126,9 +120,8 @@ async def get_current_map(db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/waypoints", response_model=List[Waypoint], summary="Lấy danh sách các điểm Waypoints / Endpoints")
-async def get_waypoints(db: AsyncSession = Depends(get_db)):
-    res = await db.execute(select(RobotWaypoint).order_by(RobotWaypoint.created_at))
-    wps = res.scalars().all()
+async def get_waypoints(repo: MapRepository = Depends(get_map_repository)):
+    wps = await repo.list_waypoints()
     return [
         Waypoint(
             id=w.id,
@@ -145,101 +138,68 @@ async def get_waypoints(db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/waypoints", response_model=Waypoint, summary="Tạo mới hoặc cập nhật tọa độ Waypoint / Endpoint")
-async def save_waypoint(wp: Waypoint, db: AsyncSession = Depends(get_db)):
-    res = await db.execute(select(RobotWaypoint).where(RobotWaypoint.id == wp.id))
-    existing = res.scalar_one_or_none()
-
-    if existing:
-        existing.name = wp.name
-        existing.x = wp.x
-        existing.y = wp.y
-        existing.yaw = wp.yaw
-        existing.floor = wp.floor
-        existing.type = wp.type or existing.type or "WAYPOINT"
-        existing.description = wp.description
-        await db.commit()
-        await db.refresh(existing)
-        return Waypoint(
-            id=existing.id,
-            name=existing.name,
-            x=existing.x,
-            y=existing.y,
-            yaw=existing.yaw,
-            floor=existing.floor,
-            type=existing.type,
-            description=existing.description
-        )
-    else:
-        new_wp = RobotWaypoint(
-            id=wp.id,
-            name=wp.name,
-            x=wp.x,
-            y=wp.y,
-            yaw=wp.yaw,
-            floor=wp.floor,
-            type=wp.type or "WAYPOINT",
-            description=wp.description,
-        )
-        db.add(new_wp)
-        await db.commit()
-        await db.refresh(new_wp)
-        return Waypoint(
-            id=new_wp.id,
-            name=new_wp.name,
-            x=new_wp.x,
-            y=new_wp.y,
-            yaw=new_wp.yaw,
-            floor=new_wp.floor,
-            type=new_wp.type,
-            description=new_wp.description
-        )
+async def save_waypoint(wp: Waypoint, repo: MapRepository = Depends(get_map_repository)):
+    saved = await repo.save_or_update_waypoint(
+        id=wp.id,
+        name=wp.name,
+        x=wp.x,
+        y=wp.y,
+        yaw=wp.yaw,
+        floor=wp.floor,
+        type=wp.type or "WAYPOINT",
+        description=wp.description,
+    )
+    return Waypoint(
+        id=saved.id,
+        name=saved.name,
+        x=saved.x,
+        y=saved.y,
+        yaw=saved.yaw,
+        floor=saved.floor,
+        type=saved.type,
+        description=saved.description
+    )
 
 
 @router.put("/waypoints/{waypoint_id}", response_model=Waypoint, summary="Chỉnh sửa Endpoint đã có")
-async def update_waypoint(waypoint_id: str, wp: Waypoint, db: AsyncSession = Depends(get_db)):
-    res = await db.execute(select(RobotWaypoint).where(RobotWaypoint.id == waypoint_id))
-    existing = res.scalar_one_or_none()
+async def update_waypoint(waypoint_id: str, wp: Waypoint, repo: MapRepository = Depends(get_map_repository)):
+    existing = await repo.get_waypoint_by_id(waypoint_id)
     if not existing:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy Waypoint")
 
-    existing.name = wp.name
-    existing.x = wp.x
-    existing.y = wp.y
-    existing.yaw = wp.yaw
-    existing.floor = wp.floor
-    existing.type = wp.type or existing.type or "WAYPOINT"
-    existing.description = wp.description
-
-    await db.commit()
-    await db.refresh(existing)
+    saved = await repo.save_or_update_waypoint(
+        id=waypoint_id,
+        name=wp.name,
+        x=wp.x,
+        y=wp.y,
+        yaw=wp.yaw,
+        floor=wp.floor,
+        type=wp.type or "WAYPOINT",
+        description=wp.description,
+    )
     return Waypoint(
-        id=existing.id,
-        name=existing.name,
-        x=existing.x,
-        y=existing.y,
-        yaw=existing.yaw,
-        floor=existing.floor,
-        type=existing.type,
-        description=existing.description
+        id=saved.id,
+        name=saved.name,
+        x=saved.x,
+        y=saved.y,
+        yaw=saved.yaw,
+        floor=saved.floor,
+        type=saved.type,
+        description=saved.description
     )
 
 
 @router.delete("/waypoints/{waypoint_id}", summary="Xóa điểm Waypoint / Endpoint")
-async def delete_waypoint(waypoint_id: str, db: AsyncSession = Depends(get_db)):
-    res = await db.execute(select(RobotWaypoint).where(RobotWaypoint.id == waypoint_id))
-    existing = res.scalar_one_or_none()
-    if not existing:
+async def delete_waypoint(waypoint_id: str, repo: MapRepository = Depends(get_map_repository)):
+    deleted = await repo.delete_waypoint(waypoint_id)
+    if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy Waypoint")
-
-    await db.delete(existing)
-    await db.commit()
     return {"status": "SUCCESS", "message": f"Đã xóa waypoint {waypoint_id}"}
 
 
 @router.get("/zones", response_model=List[ZoneSchema], summary="Lấy danh sách các Vùng Chức Năng (Zones)")
-async def get_zones(db: AsyncSession = Depends(get_db)):
-    res = await db.execute(select(RobotZone).order_by(RobotZone.created_at))
-    zones = res.scalars().all()
+async def get_zones(repo: MapRepository = Depends(get_map_repository)):
+    zones = await repo.list_zones()
     return [
         ZoneSchema(
             id=z.id,
@@ -258,109 +218,71 @@ async def get_zones(db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/zones", response_model=ZoneSchema, summary="Tạo mới hoặc cập nhật Vùng Chức Năng (Zone)")
-async def save_zone(zone: ZoneSchema, db: AsyncSession = Depends(get_db)):
-    res = await db.execute(select(RobotZone).where(RobotZone.id == zone.id))
-    existing = res.scalar_one_or_none()
-
-    if existing:
-        existing.name = zone.name
-        existing.type = zone.type or "KEEP_OUT"
-        existing.x = zone.x
-        existing.y = zone.y
-        existing.width = zone.width
-        existing.height = zone.height
-        existing.speed_limit = zone.speed_limit
-        existing.floor = zone.floor
-        existing.description = zone.description
-        await db.commit()
-        await db.refresh(existing)
-        return ZoneSchema(
-            id=existing.id,
-            name=existing.name,
-            type=existing.type,
-            x=existing.x,
-            y=existing.y,
-            width=existing.width,
-            height=existing.height,
-            speed_limit=existing.speed_limit,
-            floor=existing.floor,
-            description=existing.description
-        )
-    else:
-        new_z = RobotZone(
-            id=zone.id,
-            name=zone.name,
-            type=zone.type or "KEEP_OUT",
-            x=zone.x,
-            y=zone.y,
-            width=zone.width,
-            height=zone.height,
-            speed_limit=zone.speed_limit,
-            floor=zone.floor,
-            description=zone.description
-        )
-        db.add(new_z)
-        await db.commit()
-        await db.refresh(new_z)
-        return ZoneSchema(
-            id=new_z.id,
-            name=new_z.name,
-            type=new_z.type,
-            x=new_z.x,
-            y=new_z.y,
-            width=new_z.width,
-            height=new_z.height,
-            speed_limit=new_z.speed_limit,
-            floor=new_z.floor,
-            description=new_z.description
-        )
+async def save_zone(zone: ZoneSchema, repo: MapRepository = Depends(get_map_repository)):
+    saved = await repo.save_or_update_zone(
+        id=zone.id,
+        name=zone.name,
+        type=zone.type or "KEEP_OUT",
+        x=zone.x,
+        y=zone.y,
+        width=zone.width,
+        height=zone.height,
+        speed_limit=zone.speed_limit,
+        floor=zone.floor,
+        description=zone.description,
+    )
+    return ZoneSchema(
+        id=saved.id,
+        name=saved.name,
+        type=saved.type,
+        x=saved.x,
+        y=saved.y,
+        width=saved.width,
+        height=saved.height,
+        speed_limit=saved.speed_limit,
+        floor=saved.floor,
+        description=saved.description
+    )
 
 
 @router.put("/zones/{zone_id}", response_model=ZoneSchema, summary="Cập nhật Vùng Chức Năng theo ID")
-async def update_zone(zone_id: str, zone: ZoneSchema, db: AsyncSession = Depends(get_db)):
-    res = await db.execute(select(RobotZone).where(RobotZone.id == zone_id))
-    existing = res.scalar_one_or_none()
+async def update_zone(zone_id: str, zone: ZoneSchema, repo: MapRepository = Depends(get_map_repository)):
+    existing = await repo.get_zone_by_id(zone_id)
     if not existing:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy Vùng Chức Năng")
 
-    existing.name = zone.name
-    existing.type = zone.type or "KEEP_OUT"
-    existing.x = zone.x
-    existing.y = zone.y
-    existing.width = zone.width
-    existing.height = zone.height
-    existing.speed_limit = zone.speed_limit
-    existing.floor = zone.floor
-    existing.description = zone.description
-
-    await db.commit()
-    await db.refresh(existing)
+    saved = await repo.save_or_update_zone(
+        id=zone_id,
+        name=zone.name,
+        type=zone.type or "KEEP_OUT",
+        x=zone.x,
+        y=zone.y,
+        width=zone.width,
+        height=zone.height,
+        speed_limit=zone.speed_limit,
+        floor=zone.floor,
+        description=zone.description,
+    )
     return ZoneSchema(
-        id=existing.id,
-        name=existing.name,
-        type=existing.type,
-        x=existing.x,
-        y=existing.y,
-        width=existing.width,
-        height=existing.height,
-        speed_limit=existing.speed_limit,
-        floor=existing.floor,
-        description=existing.description
+        id=saved.id,
+        name=saved.name,
+        type=saved.type,
+        x=saved.x,
+        y=saved.y,
+        width=saved.width,
+        height=saved.height,
+        speed_limit=saved.speed_limit,
+        floor=saved.floor,
+        description=saved.description
     )
 
 
 @router.delete("/zones/{zone_id}", summary="Xóa Vùng Chức Năng")
-async def delete_zone(zone_id: str, db: AsyncSession = Depends(get_db)):
-    res = await db.execute(select(RobotZone).where(RobotZone.id == zone_id))
-    existing = res.scalar_one_or_none()
-    if not existing:
+async def delete_zone(zone_id: str, repo: MapRepository = Depends(get_map_repository)):
+    deleted = await repo.delete_zone(zone_id)
+    if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy Vùng Chức Năng")
-
-    await db.delete(existing)
-    await db.commit()
     return {"status": "SUCCESS", "message": f"Đã xóa vùng {zone_id}"}
-
-
 
 
 @router.get("/lidar_status", summary="Kiểm tra trạng thái phần cứng RPLiDAR COM9 thực tế")
@@ -373,44 +295,24 @@ async def save_current_map(
     map_id: str = "phong_lam_viec",
     name: str = "Bản đồ Phòng Làm Việc",
     floor: str = "Phòng Làm Việc",
-    db: AsyncSession = Depends(get_db)
+    repo: MapRepository = Depends(get_map_repository),
 ):
     """Lưu toàn bộ ma trận 2D Occupancy Grid hiện tại vào bộ nhớ lưu trữ cố định và CSDL PostgreSQL."""
     res = rplidar_service.save_map_to_storage(map_id=map_id, name=name, floor=floor)
 
     try:
-        stmt = select(Map).where(Map.id == map_id)
-        result = await db.execute(stmt)
-        db_map = result.scalar_one_or_none()
-
         map_data = rplidar_service.get_grid_map_data()
-        if db_map:
-            db_map.name = name
-            db_map.floor = floor
-            db_map.resolution = map_data["resolution"]
-            db_map.width = map_data["width"]
-            db_map.height = map_data["height"]
-            db_map.origin_x = map_data["origin_x"]
-            db_map.origin_y = map_data["origin_y"]
-            db_map.image_url = f"/static/maps/{map_id}.json"
-            db_map.is_active = True
-        else:
-            db_map = Map(
-                id=map_id,
-                hotel_id="HTL-MAIN",
-                name=name,
-                floor=floor,
-                resolution=map_data["resolution"],
-                width=map_data["width"],
-                height=map_data["height"],
-                origin_x=map_data["origin_x"],
-                origin_y=map_data["origin_y"],
-                image_url=f"/static/maps/{map_id}.json",
-                is_active=True,
-            )
-            db.add(db_map)
-
-        await db.commit()
+        await repo.upsert_map(
+            map_id=map_id,
+            name=name,
+            floor=floor,
+            resolution=map_data["resolution"],
+            width=map_data["width"],
+            height=map_data["height"],
+            origin_x=map_data["origin_x"],
+            origin_y=map_data["origin_y"],
+            image_url=f"/static/maps/{map_id}.json",
+        )
     except Exception as e:
         logger.warning(f"Lưu thông tin bảng maps CSDL gặp lỗi (vẫn lưu file tĩnh): {e}")
 

@@ -10,6 +10,7 @@ from sqlalchemy import select, func
 
 from app.core.database import get_db
 from app.models.logging import LogEvent, AuditLog
+from app.repositories import AuditLogRepository, get_audit_log_repository
 from app.services.logger_service import (
     query_logs_async,
     get_log_statistics_async,
@@ -161,25 +162,18 @@ async def get_audit_trail(
     action: Optional[str] = None,
     actor_id: Optional[str] = None,
     resource_type: Optional[str] = None,
-    db: AsyncSession = Depends(get_db),
+    repo: AuditLogRepository = Depends(get_audit_log_repository),
 ):
     """
     Query dedicated security and configuration audit logs.
     """
-    query = select(AuditLog)
-    if action:
-        query = query.where(AuditLog.action == action.upper())
-    if actor_id:
-        query = query.where(AuditLog.actor_id == actor_id)
-    if resource_type:
-        query = query.where(AuditLog.resource_type == resource_type.upper())
-
-    count_res = await db.execute(select(func.count()).select_from(query.subquery()))
-    total = count_res.scalar_one()
-
-    paged_query = query.order_by(AuditLog.timestamp.desc()).offset((page - 1) * limit).limit(limit)
-    items_res = await db.execute(paged_query)
-    items = items_res.scalars().all()
+    total, items = await repo.query_audit_trail(
+        page=page,
+        limit=limit,
+        action=action,
+        actor_id=actor_id,
+        resource_type=resource_type,
+    )
 
     return {
         "status": "success",

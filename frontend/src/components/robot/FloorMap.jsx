@@ -362,8 +362,8 @@ export const HOTEL_DESTINATIONS = {
     isDifferentFloor: false,
     step1Text: 'Đi thẳng qua cửa kính sảnh chính, quầy lễ tân nằm ngay bên tay phải bạn.',
     step2Text: '',
-    coords: { x: 1045, y: 640 },
-    routeTarget: 'M 796 545 C 850 545, 880 545, 908 545 C 940 545, 980 580, 1045 640',
+    coords: { x: 995, y: 620 },
+    routeTarget: 'M 796 545 L 930 545 C 960 545, 970 620, 995 620',
   },
   parking_car: {
     id: 'parking_car',
@@ -412,8 +412,8 @@ export const HOTEL_DESTINATIONS = {
   },
 };
 
-// Tuyến đường chuẩn chặng 1: Từ Lobby (Ground) -> Thang máy A (đi qua cửa sảnh, không xuyên tường)
-export const ROUTE_GROUND_TO_ELEVATOR = 'M 796 545 L 870 545 Q 908 545, 908 500 Q 908 480, 950 480 L 1232 480 L 1232 415';
+// Tuyến đường chuẩn chặng 1: Từ Lobby (Ground) -> Thang máy A (đi thẳng qua cửa sảnh x=908 rồi mới lượn lên hành lang thang máy, hoàn toàn không chạm tường)
+export const ROUTE_GROUND_TO_ELEVATOR = 'M 796 545 L 930 545 C 960 545, 980 480, 1020 480 L 1232 480 L 1232 415';
 
 // Tạo vé chỉ đường dùng 1 lần (Ephemeral One-time Ticket có thời hạn 15 phút)
 export const createEphemeralTicket = (destKey) => {

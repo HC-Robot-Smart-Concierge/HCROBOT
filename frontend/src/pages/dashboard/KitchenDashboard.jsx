@@ -710,7 +710,7 @@ export const KitchenDashboard = ({ currentUser, onNotify = () => {} }) => {
               )}
             </div>
 
-            {/* Pagination Footer (Áp dụng đúng chuẩn component Pagination như bên RequestsPage) */}
+            {/* Pagination Footer */}
             {!isLoading && filteredOrders.length > 0 && (
               <Pagination
                 currentPage={currentPage}
@@ -718,7 +718,7 @@ export const KitchenDashboard = ({ currentUser, onNotify = () => {} }) => {
                 pageSize={pageSize}
                 onPageChange={setCurrentPage}
                 itemName="đơn"
-                className="rounded-2xl border border-[#E5E1D8] shadow-xs bg-white"
+                className="mt-3 rounded-2xl border border-[#E5E1D8] shadow-xs bg-white"
               />
             )}
           </div>

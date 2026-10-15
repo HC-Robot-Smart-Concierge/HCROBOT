@@ -81,12 +81,13 @@ export async function createTaxiRequest(requestData) {
  */
 export async function updateTaxiRequestStatus(requestId, status, assignedDriver = null) {
   return await fetchWithFallback(
-    `${BASE_URL}/requests/${encodeURIComponent(requestId)}/status`,
+    `/api/v1/operations/tasks/${encodeURIComponent(requestId)}`,
     {
       method: 'PATCH',
       body: JSON.stringify({
         status,
         assigned_driver: assignedDriver,
+        assigned_to: assignedDriver,
       }),
     },
     {

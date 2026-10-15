@@ -62,7 +62,7 @@ async def test_all_operations_dashboards_and_endpoints():
         assert isinstance(staff_res.json(), list)
 
         # 8. Reception requests participate in the shared staff workflow
-        unified_res = await ac.get("/api/v1/operations/all-requests")
+        unified_res = await ac.get("/api/v1/operations/tasks")
         assert unified_res.status_code == 200
         unified_data = unified_res.json()
         assert isinstance(unified_data, list)
@@ -101,18 +101,20 @@ async def test_all_operations_dashboards_and_endpoints():
         # 10. Test generic request status update (Staff claim and complete workflow)
         if len(unified_data) > 0:
             sample_ticket = unified_data[0]["id"]
-            # Test Claim (In Progress)
+            # Test unified PATCH /tasks/{ticket_id}
             claim_res = await ac.patch(
-                f"/api/v1/operations/generic-request/{sample_ticket}/status?status=In%20Progress&assigned_to=Test%20Staff"
+                f"/api/v1/operations/tasks/{sample_ticket}",
+                json={"status": "In Progress", "assigned_to": "Test Staff"}
             )
             assert claim_res.status_code == 200
             claim_data = claim_res.json()
             assert claim_data["success"] is True
             assert claim_data["status"] == "In Progress"
 
-            # Test Complete
+            # Test Complete via query param alias
             complete_res = await ac.patch(
-                f"/api/v1/operations/generic-request/{sample_ticket}/status?status=Completed&assigned_to=Test%20Staff"
+                f"/api/v1/operations/tasks/{sample_ticket}",
+                json={"status": "Completed", "assigned_to": "Test Staff"}
             )
             assert complete_res.status_code == 200
             complete_data = complete_res.json()
@@ -121,20 +123,25 @@ async def test_all_operations_dashboards_and_endpoints():
 
             # Reset back to Pending
             reset_res = await ac.patch(
-                f"/api/v1/operations/generic-request/{sample_ticket}/status?status=Pending"
+                f"/api/v1/operations/tasks/{sample_ticket}",
+                json={"status": "Pending"}
             )
             assert reset_res.status_code == 200
 
-        # 11. Admin Service Requests (Admin Portal tasks & dispatch)
-        admin_tasks_res = await ac.get("/api/v1/operations/admin/tasks")
+        # 11. Admin Service Requests (Tasks & dispatch)
+        admin_tasks_res = await ac.get("/api/v1/operations/tasks")
         assert admin_tasks_res.status_code == 200
         admin_tasks_data = admin_tasks_res.json()
         assert isinstance(admin_tasks_data, list)
         assert len(admin_tasks_data) > 0
 
+        # Test alias /admin/tasks also works
+        alias_res = await ac.get("/api/v1/operations/admin/tasks")
+        assert alias_res.status_code == 200
+
         # Test single task detail
         test_task_id = admin_tasks_data[0]["id"]
-        detail_res = await ac.get(f"/api/v1/operations/admin/tasks/{test_task_id}")
+        detail_res = await ac.get(f"/api/v1/operations/tasks/{test_task_id}")
         assert detail_res.status_code == 200
         assert detail_res.json()["id"] == test_task_id
 
@@ -157,7 +164,7 @@ async def test_all_operations_dashboards_and_endpoints():
 
         # Test PATCH update on dispatched task
         patch_res = await ac.patch(
-            f"/api/v1/operations/admin/tasks/{dispatched_id}",
+            f"/api/v1/operations/tasks/{dispatched_id}",
             json={"status": "Completed", "note": "All clean and inspected"}
         )
         assert patch_res.status_code == 200

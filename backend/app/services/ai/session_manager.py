@@ -204,16 +204,60 @@ class SessionMemoryManager:
         session = self.get_session(session_id)
         return session.get("pending_intent")
 
-    def set_pending_intent(self, session_id: str, intent_data: Optional[Dict[str, Any]]):
-        """Lưu hoặc xoá ý định dịch vụ đang chờ số phòng."""
-        session = self.get_session(session_id)
-        session["pending_intent"] = intent_data
-
     def reset_session(self, session_id: str = "default_session"):
         """Xoá sạch bộ nhớ phiên (Dùng khi bấm nút Khách Mới / Đổi Phòng)."""
         if session_id in self._sessions:
             del self._sessions[session_id]
             logger.info(f"[SessionMemory] Session '{session_id}' manually reset.")
+
+    async def get_all_db_sessions(self, db) -> List[Dict[str, Any]]:
+        """Lấy danh sách các phiên hội thoại (Chat Sessions) đã lưu trong PostgreSQL."""
+        from app.models.chat_session import ChatSession
+        from sqlalchemy.future import select
+
+        result = await db.execute(select(ChatSession).order_by(ChatSession.updated_at.desc()))
+        sessions = result.scalars().all()
+        return [
+            {
+                "id": s.id,
+                "room_number": s.room_number,
+                "guest_name": s.guest_name,
+                "is_active": s.is_active,
+                "created_at": s.created_at.isoformat() if s.created_at else None,
+                "updated_at": s.updated_at.isoformat() if s.updated_at else None,
+            }
+            for s in sessions
+        ]
+
+    async def get_db_session_messages(self, db, session_id: str) -> List[Dict[str, Any]]:
+        """Lấy chi tiết danh sách tin nhắn hội thoại của một phiên từ PostgreSQL."""
+        from app.models.chat_session import ChatMessage
+        from sqlalchemy.future import select
+
+        result = await db.execute(select(ChatMessage).where(ChatMessage.session_id == session_id).order_by(ChatMessage.id.asc()))
+        messages = result.scalars().all()
+        return [
+            {
+                "id": m.id,
+                "session_id": m.session_id,
+                "sender": m.sender,
+                "text": m.text,
+                "language": m.language,
+                "intent_action": m.intent_action,
+                "created_at": m.created_at.isoformat() if m.created_at else None,
+            }
+            for m in messages
+        ]
+
+    async def background_save_turn(self, session_id: str, user_turn: str, ai_turn: str, lang_code: str, room_number: Optional[str]):
+        """Lưu lượt hội thoại vào PostgreSQL trong nền, không chặn thời gian phản hồi của Robot."""
+        try:
+            from app.core.database import AsyncSessionLocal
+            async with AsyncSessionLocal() as bg_db:
+                await self.save_turn_to_db(bg_db, session_id, "user", user_turn, language=lang_code, room_number=room_number)
+                await self.save_turn_to_db(bg_db, session_id, "assistant", ai_turn, language=lang_code, room_number=room_number)
+        except Exception as e:
+            logger.warning(f"[SessionMemory Background Save Error] {e}")
 
 
 # Singleton instance toàn hệ thống

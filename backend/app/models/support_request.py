@@ -144,10 +144,6 @@ class SupportRequest(Base):
         self.extra_data["image_url"] = val
 
     @property
-    def is_vip(self) -> bool:
-        return self.priority in ["HIGH", "URGENT"]
-
-    @property
     def location(self) -> str:
         return self.room_number or "Main Hotel"
 

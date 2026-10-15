@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { RobotFace } from '../../components/robot/RobotFace';
 import { AudioWave } from '../../components/robot/AudioWave';
 import { FloorMap, HOTEL_DESTINATIONS, getMobileGuestMapUrl } from '../../components/robot/FloorMap';
-import { PhoneCall, Sparkles, RefreshCw, Smartphone, QrCode, Clock } from 'lucide-react';
+import { PhoneCall, Sparkles, RefreshCw, Smartphone, QrCode, Clock, Utensils, Star, PlayCircle } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { CameraPreview } from '../../components/robot/CameraPreview';
 import { MobileRobotScreen } from '../../components/robot/MobileRobotScreen';
@@ -318,6 +318,17 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     });
   };
 
+  // Tự động bật mic khi mở màn hình robot (khi vừa vào)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (!isListening && !isSpeaking && !isProcessing && currentState !== 'RT-05' && !isStandby) {
+        handleStartTalk();
+      }
+    }, 700);
+
+    return () => clearTimeout(timer);
+  }, []);
+
   // 2. Gửi tới Ollama RAG Backend
   const handleStopTalkAndProcess = async (userText) => {
     if (isProcessingRef.current || isSpeaking) return;
@@ -443,12 +454,12 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
               handleOpenFeedback();
             }, 600);
           } else if (isRouteGuidance || currentState === 'RT-05') {
-            // Request chỉ đường chính: Giữ nguyên trọn vẹn 20 giây để khách thoải mái quan sát lộ trình
+            // Request chỉ đường chính: Giữ nguyên 16 giây để khách quan sát sơ đồ lộ trình
             clearRouteGuidanceTimers();
             routeGuidanceTimerRef.current = setTimeout(() => {
-              // Kết thúc 20s xem lộ trình chính -> Kích hoạt giai đoạn QR Code 8 giây ở cuối
+              // Kết thúc 16s xem lộ trình chính -> Kích hoạt giai đoạn QR Code 15 giây ở cuối
               setIsAutoQrModalOpen(true);
-              setQrCountdown(8);
+              setQrCountdown(15);
 
               const qrVoicePrompt = (langCode === 'en-US' || detectedLang === 'English')
                 ? 'You can scan the QR code on the screen to save directions on your mobile phone.'
@@ -463,8 +474,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                 }
               );
 
-              // Đếm ngược 8 giây
-              let timeLeft = 8;
+              // Đếm ngược 15 giây
+              let timeLeft = 15;
               qrCountdownIntervalRef.current = setInterval(() => {
                 timeLeft -= 1;
                 setQrCountdown(timeLeft);
@@ -473,12 +484,12 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                 }
               }, 1000);
 
-              // Hết đúng 8 giây -> Tự động đóng QR và đóng luôn bản đồ chỉ đường (resetToIdle)
+              // Hết đúng 15 giây -> Tự động đóng QR và đóng luôn bản đồ chỉ đường (resetToIdle)
               qrStageTimerRef.current = setTimeout(() => {
                 clearRouteGuidanceTimers();
                 resetToIdle();
-              }, 8000);
-            }, 20000);
+              }, 15000);
+            }, 16000);
 
             if (isAutoListen) {
               setTimeout(() => {
@@ -737,33 +748,6 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         visible={false}
       />
 
-      {/* Quick Workflow & Video Call Triggers for Guest & Staff (Desktop only) */}
-      <div className="absolute top-4 right-20 z-40 flex items-center gap-2 robot-desktop-ui">
-        <button
-          type="button"
-          onClick={async () => {
-            try {
-              const req = await createConciergeRequest({
-                title: 'Yêu cầu gọi video trực tiếp từ Khách tại Kiosk',
-                room_number: activeRoomNumber || 'Main Lobby Kiosk',
-                guest_name: 'Khách tại Sảnh',
-                description: 'Khách bấm gọi hỗ trợ trực tiếp từ màn hình Robot Concierge',
-              });
-              setVideoCallSessionId(req.id || `SUP-${Date.now()}`);
-              setVideoCallTicketCode(req.ticket_code || 'CCG-CALL');
-              setIsVideoCallOpen(true);
-            } catch (err) {
-              setVideoCallSessionId(`SUP-${Date.now()}`);
-              setIsVideoCallOpen(true);
-            }
-          }}
-          className="px-3.5 py-1.5 rounded-full bg-emerald-950/85 hover:bg-emerald-900 text-emerald-300 border border-emerald-500/40 text-xs font-black flex items-center gap-1.5 shadow-2xl backdrop-blur-md cursor-pointer transition-transform hover:scale-105"
-        >
-          <PhoneCall className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
-          <span>Gọi Nhân Viên</span>
-        </button>
-      </div>
-
       <MobileRobotScreen
         activeRoomNumber={activeRoomNumber}
         guestEmotion={guestEmotion}
@@ -790,27 +774,9 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         speechError={speechError}
         transcript={transcript}
         volumeLevel={volumeLevel}
-        workflowTrigger={
-          availableWorkflows.length > 0 ? (
-            <div className="relative">
-              <select
-                aria-label="Kích hoạt kịch bản mẫu"
-                onChange={(e) => {
-                  const wf = availableWorkflows.find((w) => String(w.id) === e.target.value);
-                  if (wf) startWorkflow(wf);
-                  e.target.value = '';
-                }}
-                defaultValue=""
-                className="h-8 px-2 rounded-full bg-white border border-stone-300 text-[10px] font-bold text-stone-700 outline-none cursor-pointer"
-              >
-                <option value="" disabled>Kịch bản</option>
-                {availableWorkflows.map((wf) => (
-                  <option key={wf.id} value={wf.id}>{wf.name}</option>
-                ))}
-              </select>
-            </div>
-          ) : null
-        }
+        workflowTrigger={null}
+        availableWorkflows={availableWorkflows}
+        onStartWorkflow={startWorkflow}
         onOpenFoodMenu={() => setIsFoodMenuOpen(true)}
         navigationDestinationKey={navigationDestinationKey}
         onSelectDestination={setNavigationDestinationKey}
@@ -864,57 +830,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
           <span className="text-[10px] font-semibold text-stone-500 uppercase tracking-wider">Aurora Grand Hotel</span>
         </div>
 
-        {/* Top-Right Controls: Nút Kịch Bản + Hoàn Tất & Đánh Giá + Menu Dịch Vụ */}
+        {/* Top-Right Controls: Nút Menu Dịch Vụ */}
         <div className="absolute top-5 right-5 z-40 flex items-center gap-2.5">
-          {/* Quick Workflow Trigger for Testing / Simulation */}
-          {availableWorkflows.length > 0 && !isWorkflowRunning && (
-            <div className="relative">
-              <select
-                aria-label="Chọn kịch bản tự động"
-                onChange={(e) => {
-                  const wf = availableWorkflows.find((w) => String(w.id) === e.target.value);
-                  if (wf) startWorkflow(wf);
-                  e.target.value = '';
-                }}
-                defaultValue=""
-                className="h-9 px-3 rounded-full bg-stone-900/80 hover:bg-stone-800 text-stone-200 border border-stone-700/80 text-xs font-bold tracking-wide outline-none cursor-pointer shadow-lg backdrop-blur-md"
-              >
-                <option value="" disabled>Kịch bản</option>
-                {availableWorkflows.map((wf) => (
-                  <option key={wf.id} value={wf.id} className="bg-stone-900 text-stone-200">{wf.name}</option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          {/* Quick Language Toggle */}
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              toggleLanguage();
-            }}
-            className="h-9 px-3.5 rounded-full bg-stone-900/80 hover:bg-stone-800 text-stone-200 border border-stone-700/80 text-xs font-bold tracking-wide flex items-center gap-1.5 shadow-lg backdrop-blur-md cursor-pointer transition-all active:scale-95"
-            title="Nhấn để đổi giữa Tiếng Việt và English"
-          >
-            <span className="w-2 h-2 rounded-full bg-amber-400" />
-            <span>{language}</span>
-          </button>
-
-          {currentState !== 'RT-01' && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleOpenFeedback();
-              }}
-              className="h-9 px-4 rounded-full bg-stone-900/80 hover:bg-stone-800 text-stone-200 border border-stone-700/80 text-xs font-bold tracking-wide flex items-center shadow-lg backdrop-blur-md cursor-pointer transition-all active:scale-95"
-              title="Hoàn tất phiên hội thoại và đánh giá dịch vụ"
-            >
-              <span>Hoàn tất / Đánh giá</span>
-            </button>
-          )}
-
           <div className="relative">
             <button
               type="button"
@@ -922,19 +839,21 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                 e.stopPropagation();
                 setShowQuickMenu((prev) => !prev);
               }}
-              className="h-9 px-4 rounded-full bg-stone-900/80 hover:bg-stone-800 text-stone-200 border border-stone-700/80 text-xs font-bold tracking-wide flex items-center shadow-lg backdrop-blur-md cursor-pointer transition-all active:scale-95"
+              className="h-9 px-4 rounded-full bg-stone-900/80 hover:bg-stone-800 text-stone-200 border border-stone-700/80 text-xs font-bold tracking-wide flex items-center gap-1.5 shadow-lg backdrop-blur-md cursor-pointer transition-all active:scale-95"
               title="Dịch vụ và tiện ích"
             >
+              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
               <span>Dịch vụ</span>
             </button>
 
             {showQuickMenu && (
               <div
                 onClick={(e) => e.stopPropagation()}
-                className="absolute top-11 right-0 w-60 rounded-2xl bg-stone-900/95 border border-stone-700 shadow-2xl p-2 space-y-1 backdrop-blur-xl z-50 text-left animate-in fade-in zoom-in-95"
+                className="absolute top-11 right-0 w-72 rounded-2xl bg-stone-900/95 border border-stone-700 shadow-2xl p-2.5 space-y-1.5 backdrop-blur-xl z-50 text-left animate-in fade-in zoom-in-95"
               >
-                <div className="text-[10px] font-bold uppercase text-stone-400 px-3 py-1.5 border-b border-stone-800">
-                  Menu Dịch vụ
+                <div className="text-[10px] font-bold uppercase tracking-wider text-stone-400 px-3 py-1 border-b border-stone-800 flex items-center justify-between">
+                  <span>Menu Dịch vụ</span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
                 </div>
 
                 {/* 1. Gọi Nhân Viên */}
@@ -958,10 +877,15 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                       setIsVideoCallOpen(true);
                     }
                   }}
-                  className="w-full p-2.5 rounded-xl text-left hover:bg-stone-800 transition-all cursor-pointer flex flex-col"
+                  className="w-full p-2.5 rounded-xl text-left hover:bg-stone-800/90 transition-all cursor-pointer flex items-center gap-2.5 group"
                 >
-                  <span className="text-xs font-bold text-stone-200">Gọi nhân viên</span>
-                  <span className="text-[10px] text-stone-400">Kết nối cuộc gọi hỗ trợ trực tiếp</span>
+                  <div className="w-8 h-8 rounded-lg bg-emerald-950/80 text-emerald-400 border border-emerald-500/30 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                    <PhoneCall className="w-4 h-4 text-emerald-400" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-bold text-stone-200">Gọi nhân viên</p>
+                    <p className="text-[10px] text-stone-400">Kết nối cuộc gọi hỗ trợ trực tiếp</p>
+                  </div>
                 </button>
 
                 {/* 2. Thực Đơn Món Ăn */}
@@ -972,13 +896,18 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                     setShowQuickMenu(false);
                     setIsFoodMenuOpen(true);
                   }}
-                  className="w-full p-2.5 rounded-xl text-left hover:bg-stone-800 transition-all cursor-pointer flex flex-col"
+                  className="w-full p-2.5 rounded-xl text-left hover:bg-stone-800/90 transition-all cursor-pointer flex items-center gap-2.5 group"
                 >
-                  <span className="text-xs font-bold text-stone-200">Thực đơn món ăn</span>
-                  <span className="text-[10px] text-stone-400">Xem danh mục và chọn món</span>
+                  <div className="w-8 h-8 rounded-lg bg-amber-950/80 text-amber-400 border border-amber-500/30 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                    <Utensils className="w-4 h-4 text-amber-400" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-bold text-stone-200">Thực đơn món ăn</p>
+                    <p className="text-[10px] text-stone-400">Xem danh mục và chọn món</p>
+                  </div>
                 </button>
 
-                {/* 3. Khảo Sát Đánh Giá */}
+                {/* 3. Hoàn tất / Đánh Giá Dịch Vụ */}
                 <button
                   type="button"
                   onClick={(e) => {
@@ -986,43 +915,49 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                     setShowQuickMenu(false);
                     handleOpenFeedback();
                   }}
-                  className="w-full p-2.5 rounded-xl text-left hover:bg-stone-800 transition-all cursor-pointer flex flex-col"
+                  className="w-full p-2.5 rounded-xl text-left hover:bg-stone-800/90 transition-all cursor-pointer flex items-center gap-2.5 group"
                 >
-                  <span className="text-xs font-bold text-stone-200">Đánh giá dịch vụ</span>
-                  <span className="text-[10px] text-stone-400">Khảo sát mức độ hài lòng</span>
+                  <div className="w-8 h-8 rounded-lg bg-yellow-950/80 text-yellow-400 border border-yellow-500/30 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                    <Star className="w-4 h-4 text-yellow-400" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-bold text-stone-200">Hoàn tất / Đánh giá</p>
+                    <p className="text-[10px] text-stone-400">Kết thúc phiên & khảo sát hài lòng</p>
+                  </div>
                 </button>
 
-                {/* 4. Tốc độ nói của Robot */}
-                <div className="pt-2 pb-1 px-2.5 border-t border-stone-800 space-y-1.5">
-                  <div className="flex items-center justify-between text-[11px] text-stone-300 font-medium">
-                    <span>Tốc độ nói Robot</span>
-                    <span className="font-bold text-amber-400">{speechRate}x</span>
+                {/* 4. Kịch bản tự động */}
+                {availableWorkflows.length > 0 && !isWorkflowRunning && (
+                  <div className="pt-2 px-1 border-t border-stone-800 space-y-1.5">
+                    <div className="flex items-center justify-between text-[11px] text-stone-300 font-medium px-1.5">
+                      <span className="flex items-center gap-1.5">
+                        <PlayCircle className="w-3.5 h-3.5 text-purple-400" />
+                        <span>Kịch bản tự động</span>
+                      </span>
+                      <span className="text-[10px] text-stone-500">{availableWorkflows.length} kịch bản</span>
+                    </div>
+                    <select
+                      aria-label="Chọn kịch bản tự động"
+                      onChange={(e) => {
+                        const wf = availableWorkflows.find((w) => String(w.id) === e.target.value);
+                        if (wf) {
+                          startWorkflow(wf);
+                          setShowQuickMenu(false);
+                        }
+                        e.target.value = '';
+                      }}
+                      defaultValue=""
+                      className="w-full h-8 px-2.5 rounded-lg bg-stone-800 hover:bg-stone-700/80 text-stone-200 border border-stone-700 text-xs font-bold outline-none cursor-pointer transition-colors"
+                    >
+                      <option value="" disabled>-- Chọn kịch bản --</option>
+                      {availableWorkflows.map((wf) => (
+                        <option key={wf.id} value={wf.id} className="bg-stone-900 text-stone-200">
+                          {wf.name}
+                        </option>
+                      ))}
+                    </select>
                   </div>
-                  <div className="grid grid-cols-4 gap-1">
-                    {[
-                      { label: '0.85x', value: 0.85, title: 'Chậm' },
-                      { label: '1.0x', value: 1.0, title: 'Chuẩn' },
-                      { label: '1.1x', value: 1.1, title: 'Nhanh' },
-                      { label: '1.25x', value: 1.25, title: 'Rất nhanh' },
-                    ].map((opt) => (
-                      <button
-                        key={opt.value}
-                        type="button"
-                        title={opt.title}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          updateSpeechRate(opt.value);
-                        }}
-                        className={`py-1 text-[10px] font-bold rounded-lg border transition-all cursor-pointer ${Math.abs(speechRate - opt.value) < 0.01
-                          ? 'bg-amber-500 text-stone-950 border-amber-400 shadow-sm'
-                          : 'bg-stone-800/80 hover:bg-stone-700 text-stone-300 border-stone-700/60'
-                          }`}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                )}
               </div>
             )}
           </div>

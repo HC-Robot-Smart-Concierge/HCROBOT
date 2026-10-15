@@ -3,11 +3,10 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, WebSocket, WebSocketDisconnect, Query
 from app.services.notification_manager import notification_manager
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, desc, func
 
 from app.core.database import get_db
-from app.models import Notification
 from app.schemas.operations import NotificationCreate, NotificationResponse
+from app.repositories import NotificationRepository, get_notification_repository
 from .shared import TAG_NOTIF, create_department_notification
 
 router = APIRouter()
@@ -19,36 +18,14 @@ router = APIRouter()
 async def get_notifications(
     department: Optional[str] = None,
     limit: int = 50,
-    db: AsyncSession = Depends(get_db),
+    repo: NotificationRepository = Depends(get_notification_repository),
 ):
     """
     Lấy danh sách thông báo được phân tách theo phòng ban.
     - Nhân viên phòng ban nào sẽ nhận thông báo phòng ban đó + thông báo chung 'All'.
     - Quản trị viên/Executive nhận toàn bộ thông báo.
     """
-    query = select(Notification)
-    if department and department.strip().lower() not in ["all", "admin", "executive", "operations admin", "toàn bộ"]:
-        dep_clean = department.strip().lower()
-        dept_aliases = [dep_clean]
-        if "f&b" in dep_clean or "room" in dep_clean or "ẩm thực" in dep_clean:
-            dept_aliases.extend(["f&b", "room service", "room_service", "ẩm thực & f&b"])
-        elif "housekeeping" in dep_clean or "buồng" in dep_clean:
-            dept_aliases.extend(["housekeeping", "buồng phòng"])
-        elif "bell" in dep_clean or "hành lý" in dep_clean:
-            dept_aliases.extend(["bell services", "bellman", "bell_services", "vận chuyển hành lý"])
-        elif "maint" in dep_clean or "kỹ thuật" in dep_clean or "bảo trì" in dep_clean:
-            dept_aliases.extend(["maintenance", "kỹ thuật & bảo trì", "kỹ thuật"])
-        elif "reception" in dep_clean or "lễ tân" in dep_clean or "front" in dep_clean:
-            dept_aliases.extend(["reception", "lễ tân", "front desk"])
-
-        query = query.where(
-            (func.lower(Notification.department).in_(dept_aliases))
-            | (Notification.department == "All")
-        )
-
-    query = query.order_by(desc(Notification.created_at)).limit(limit)
-    result = await db.execute(query)
-    return result.scalars().all()
+    return await repo.list_notifications(department=department, limit=limit)
 
 
 @router.post("/notifications", response_model=NotificationResponse, status_code=status.HTTP_201_CREATED, tags=TAG_NOTIF)
@@ -74,64 +51,36 @@ async def create_notification_endpoint(
 @router.patch("/notifications/{notification_id}/read", response_model=NotificationResponse, tags=TAG_NOTIF)
 async def toggle_notification_read(
     notification_id: str,
-    db: AsyncSession = Depends(get_db),
+    repo: NotificationRepository = Depends(get_notification_repository),
 ):
     """Đánh dấu thông báo đã đọc hoặc chưa đọc."""
-    res = await db.execute(select(Notification).where(Notification.id == notification_id))
-    notif = res.scalar_one_or_none()
+    notif = await repo.toggle_read(notification_id)
     if not notif:
         raise HTTPException(status_code=404, detail="Không tìm thấy thông báo")
-
-    notif.is_read = not notif.is_read
-    await db.commit()
-    await db.refresh(notif)
     return notif
 
 
 @router.post("/notifications/mark-all-read", tags=TAG_NOTIF)
 async def mark_all_notifications_read(
     department: Optional[str] = None,
-    db: AsyncSession = Depends(get_db),
+    repo: NotificationRepository = Depends(get_notification_repository),
 ):
     """Đánh dấu toàn bộ thông báo của phòng ban là đã đọc."""
-    query = update(Notification).values(is_read=True)
-    if department and department.strip().lower() not in ["all", "admin", "executive", "operations admin", "toàn bộ"]:
-        dep_clean = department.strip().lower()
-        dept_aliases = [dep_clean]
-        if "f&b" in dep_clean or "room" in dep_clean:
-            dept_aliases.extend(["f&b", "room service", "room_service"])
-        elif "housekeeping" in dep_clean:
-            dept_aliases.extend(["housekeeping", "buồng phòng"])
-        elif "bell" in dep_clean:
-            dept_aliases.extend(["bell services", "bellman", "bell_services"])
-        elif "maint" in dep_clean:
-            dept_aliases.extend(["maintenance", "kỹ thuật & bảo trì"])
-        elif "reception" in dep_clean:
-            dept_aliases.extend(["reception", "lễ tân"])
-
-        query = query.where(
-            (func.lower(Notification.department).in_(dept_aliases))
-            | (Notification.department == "All")
-        )
-
-    await db.execute(query)
-    await db.commit()
+    await repo.mark_all_read(department=department)
     return {"message": "Đã đánh dấu tất cả thông báo là đã đọc", "department": department}
 
 
 @router.delete("/notifications/{notification_id}", tags=TAG_NOTIF)
 async def delete_notification_item(
     notification_id: str,
-    db: AsyncSession = Depends(get_db),
+    repo: NotificationRepository = Depends(get_notification_repository),
 ):
     """Xóa thông báo khỏi hệ thống."""
-    res = await db.execute(select(Notification).where(Notification.id == notification_id))
-    notif = res.scalar_one_or_none()
+    notif = await repo.get_by_id(notification_id)
     if not notif:
         raise HTTPException(status_code=404, detail="Không tìm thấy thông báo")
 
-    await db.delete(notif)
-    await db.commit()
+    await repo.delete(notif, autocommit=True)
     return {"message": "Đã xóa thông báo thành công", "id": notification_id}
 
 

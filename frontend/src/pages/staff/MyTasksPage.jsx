@@ -417,9 +417,6 @@ export const MyTasksPage = ({ currentUser, onNotify = () => {}, onNavigate = () 
                     {myAssignedRequests.length} phiếu
                   </span>
                 </div>
-                <p className="text-xs text-[#78716C] mt-0.5">
-                  Danh sách các đơn hàng Room Service & yêu cầu bạn đã nhận, theo dõi tiến độ Bếp chế biến và giao phòng.
-                </p>
               </div>
             </div>
           </div>

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { Pagination } from '../../components/common/Pagination';
 import { INITIAL_BELL_SERVICES_DATA } from '../../data/mockHotelData';
 import {
   fetchBellServicesDashboard,
@@ -29,6 +30,12 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
     requests: INITIAL_BELL_SERVICES_DATA.requests.map(normalizeRequest),
   });
   const [filter, setFilter] = useState('All');
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filter]);
 
   const filteredRequests = useMemo(() => {
     const list = data.requests || [];
@@ -41,6 +48,18 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
       return s === filter;
     });
   }, [data.requests, filter]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredRequests.length / pageSize));
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
+  const paginatedRequests = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredRequests.slice(start, start + pageSize);
+  }, [filteredRequests, currentPage, pageSize]);
 
   useEffect(() => {
     const loadData = async () => {
@@ -182,7 +201,7 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
                   {t('noDataMatch')}
                 </div>
               ) : (
-                filteredRequests.map((request) => {
+                paginatedRequests.map((request) => {
                   const status = getStatusLabel(request.status);
                   const isPending = status === 'Pending';
                   const isInProgress = status === 'In Progress';
@@ -243,6 +262,18 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
                 })
               )}
             </div>
+
+            {/* Pagination Footer */}
+            {filteredRequests.length > 0 && (
+              <Pagination
+                currentPage={currentPage}
+                totalItems={filteredRequests.length}
+                pageSize={pageSize}
+                onPageChange={setCurrentPage}
+                itemName="yêu cầu"
+                className="mt-3 rounded-2xl border border-[#E5E1D8] shadow-xs bg-white"
+              />
+            )}
           </div>
 
           <aside className="min-w-0 space-y-4">

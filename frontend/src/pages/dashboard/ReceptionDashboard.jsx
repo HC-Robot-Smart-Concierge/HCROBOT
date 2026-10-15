@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   CheckCircle2,
   Clock,
@@ -9,6 +9,7 @@ import {
   ChevronRight,
   Sparkles,
 } from 'lucide-react';
+import { Pagination } from '../../components/common/Pagination';
 import {
   fetchReceptionDashboard,
   updateReceptionRequest,
@@ -44,6 +45,8 @@ export const ReceptionDashboard = ({ currentUser, onNotify = () => {}, onNavigat
   const [recentRequests, setRecentRequests] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isViewingHistory, setIsViewingHistory] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
@@ -108,6 +111,18 @@ export const ReceptionDashboard = ({ currentUser, onNotify = () => {}, onNavigat
     : isInProgress
     ? 'text-[#3D72B9]'
     : 'text-[#C9222A]';
+
+  const totalPages = Math.max(1, Math.ceil(recentRequests.length / pageSize));
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
+  const paginatedRecentRequests = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return recentRequests.slice(start, start + pageSize);
+  }, [recentRequests, currentPage, pageSize]);
 
   return (
     <main className="flex-1 overflow-y-auto custom-scrollbar bg-[#FCFAF7] font-sans">
@@ -341,7 +356,7 @@ export const ReceptionDashboard = ({ currentUser, onNotify = () => {}, onNavigat
             </div>
 
             <div className="mt-3 divide-y divide-stone-100">
-              {recentRequests.map((r) => {
+              {paginatedRecentRequests.map((r) => {
                 const rTicket = r.ticket_code || r.ticketCode || r.id;
                 const isSelected = activeRequest && (activeRequest.ticketCode === rTicket);
                 const statusLower = String(r.status || '').toLowerCase();
@@ -393,6 +408,18 @@ export const ReceptionDashboard = ({ currentUser, onNotify = () => {}, onNavigat
                 );
               })}
             </div>
+
+            {/* Pagination Footer */}
+            {recentRequests.length > 0 && (
+              <Pagination
+                currentPage={currentPage}
+                totalItems={recentRequests.length}
+                pageSize={pageSize}
+                onPageChange={setCurrentPage}
+                itemName="phiếu"
+                className="mt-3 rounded-2xl border border-[#E5E1D8] shadow-xs bg-white"
+              />
+            )}
           </section>
         )}
       </div>

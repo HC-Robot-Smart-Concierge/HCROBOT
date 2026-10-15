@@ -82,8 +82,8 @@ class NotificationConnectionManager:
         """Phát sóng payload JSON tới các client phù hợp."""
         target_sockets: Set[WebSocket] = set()
 
-        # 1. Các client kết nối dạng 'All' hoặc 'admin' luôn nhận được tất cả thông báo
-        for super_dept in ["All", "all", "admin", "Admin"]:
+        # 1. Các client kết nối dạng 'All' nhận broadcast toàn hệ thống (không bao gồm admin)
+        for super_dept in ["All", "all"]:
             if super_dept in self.department_connections:
                 target_sockets.update(self.department_connections[super_dept])
 

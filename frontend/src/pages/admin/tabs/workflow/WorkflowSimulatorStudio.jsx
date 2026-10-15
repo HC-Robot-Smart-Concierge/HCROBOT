@@ -637,12 +637,16 @@ export const WorkflowSimulatorStudio = ({
     handleNavigateToGoal(meter.x, meter.y, `${meter.x}m, ${meter.y}m`);
   };
 
-  const handleDispatchToKiosk = async () => {
+  const handleDispatchToRobot = async () => {
     try {
       await executeWorkflow(selectedWorkflowId);
-      onNotify('Đã phát lệnh kích hoạt kịch bản tới Robot Kiosk thành công.', 'success');
+      onNotify('Đã phát lệnh kích hoạt kịch bản tới Robot thành công.', 'success');
     } catch {
-      onNotify('Kích hoạt kịch bản tới Kiosk (Chế độ mô phỏng nội bộ).', 'info');
+      onNotify('Kích hoạt kịch bản tới Robot (Chế độ mô phỏng nội bộ).', 'info');
+    } finally {
+      if (onClose) {
+        onClose();
+      }
     }
   };
 
@@ -818,13 +822,13 @@ export const WorkflowSimulatorStudio = ({
 
           <button
             type="button"
-            onClick={handleDispatchToKiosk}
+            onClick={handleDispatchToRobot}
             className="h-8 px-3 rounded-lg text-white text-xs font-bold flex items-center gap-1 shadow-xs transition-all cursor-pointer shrink-0 hover:bg-[#363636]"
             style={{ backgroundColor: '#262626' }}
-            title="Phat kich ban nay toi man hinh Robot Kiosk"
+            title="Phát kịch bản này tới Robot và đóng"
           >
             <Send className="w-3.5 h-3.5" />
-            <span className="hidden md:inline">Phat Toi Kiosk</span>
+            <span className="hidden md:inline">Phát Tới Robot và Đóng</span>
           </button>
 
           {onClose && (
@@ -833,8 +837,9 @@ export const WorkflowSimulatorStudio = ({
               onClick={onClose}
               className="h-8 px-3 rounded-lg border text-xs font-bold cursor-pointer shadow-xs hover:bg-[#FAF8F5]"
               style={{ backgroundColor: '#F2EFE9', borderColor: '#BFBFBD', color: '#262626' }}
+              title="Đóng giả lập"
             >
-              Dong
+              Đóng
             </button>
           )}
         </div>

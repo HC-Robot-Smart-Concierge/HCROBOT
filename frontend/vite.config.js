@@ -1,6 +1,19 @@
-import { defineConfig } from 'vite';
+import { defineConfig, createLogger } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
+
+const customLogger = createLogger();
+const originalError = customLogger.error.bind(customLogger);
+customLogger.error = (msg, options) => {
+  if (
+    (typeof msg === 'string' && msg.includes('ws proxy socket error')) ||
+    options?.error?.code === 'ECONNRESET' ||
+    options?.error?.code === 'ECONNABORTED'
+  ) {
+    return;
+  }
+  originalError(msg, options);
+};
 
 const preventEconnresetPlugin = () => ({
   name: 'prevent-econnreset',
@@ -40,6 +53,7 @@ const preventEconnresetPlugin = () => ({
 });
 
 export default defineConfig({
+  customLogger,
   plugins: [react(), preventEconnresetPlugin()],
   resolve: {
     alias: {

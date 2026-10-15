@@ -285,8 +285,8 @@ export const getStepActionDetail = (step) => {
       return {
         label: 'SHOW',
         shortChip: `SHOW: ${shortName}`,
-        detailText: `Hien thi man hinh Kiosk: ${displayContent}`,
-        bubbleTitle: 'MAN HINH KIOSK (SHOW)',
+        detailText: `Hien thi man hinh Robot: ${displayContent}`,
+        bubbleTitle: 'MAN HINH ROBOT (SHOW)',
         bubbleBody: displayContent,
       };
     }
@@ -323,7 +323,7 @@ export const getStepActionDetail = (step) => {
       const prompt = rawTitle || 'Cho khach tuong tac';
       return {
         label: 'LISTEN',
-        shortChip: `LISTEN: ${params.input_source === 'TOUCH' ? 'Cham Kiosk' : 'Giong noi'}`,
+        shortChip: `LISTEN: ${params.input_source === 'TOUCH' ? 'Cham Robot' : 'Giong noi'}`,
         detailText: `Tiep nhan tu khach: ${prompt} (Kenh: ${src})`,
         bubbleTitle: 'DANG LANG NGHE (LISTEN)',
         bubbleBody: `${prompt} (${src})`,

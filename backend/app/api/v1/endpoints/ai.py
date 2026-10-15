@@ -313,14 +313,15 @@ async def chat_stream_endpoint(request: ChatRequest):
                 session_manager.add_turn(sid, "user", request.prompt, language=final_lang_code)
                 session_manager.add_turn(sid, "assistant", fsm_reply, language=final_lang_code, intent_action=action)
 
-                yield f"data: {json.dumps({
-                    'event': 'done',
-                    'full_text': fsm_reply,
-                    'lang_code': final_lang_code,
-                    'room_number': effective_room,
-                    'action': action,
-                    'trigger_video_call': is_call
-                }, ensure_ascii=False)}\n\n"
+                done_payload = {
+                    "event": "done",
+                    "full_text": fsm_reply,
+                    "lang_code": final_lang_code,
+                    "room_number": effective_room,
+                    "action": action,
+                    "trigger_video_call": is_call,
+                }
+                yield f"data: {json.dumps(done_payload, ensure_ascii=False)}\n\n"
                 return
 
             # 3. NẾU LÀ FAQ: TRUY VẤN VÀ CẮT GỌT RAG CONTEXT (HARNESS CONTEXT PRUNING)
@@ -350,13 +351,14 @@ async def chat_stream_endpoint(request: ChatRequest):
             session_manager.add_turn(sid, "user", request.prompt, language=final_lang_code)
             session_manager.add_turn(sid, "assistant", full_text, language=final_lang_code, intent_action="conversation")
 
-            yield f"data: {json.dumps({
-                'event': 'done',
-                'full_text': full_text,
-                'lang_code': final_lang_code,
-                'room_number': current_room,
-                'action': 'conversation'
-            }, ensure_ascii=False)}\n\n"
+            done_payload = {
+                "event": "done",
+                "full_text": full_text,
+                "lang_code": final_lang_code,
+                "room_number": current_room,
+                "action": "conversation",
+            }
+            yield f"data: {json.dumps(done_payload, ensure_ascii=False)}\n\n"
         except Exception as e:
             logger.error(f"[AIChatStream Error] {e}")
             yield f"data: {json.dumps({'event': 'error', 'message': str(e)}, ensure_ascii=False)}\n\n"

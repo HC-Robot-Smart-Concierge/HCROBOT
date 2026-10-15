@@ -191,4 +191,25 @@ describe('WorkflowSimulatorStudio Engine & Gazebo Navigation Logic', () => {
     expect(endPoint.x).toBe(5.2);
     expect(endPoint.y).toBe(1.0);
   });
+
+  it('ensures step action details display Robot instead of Kiosk', () => {
+    const showStep = {
+      type: 'SHOW',
+      title: 'Hiển thị bản đồ',
+      params: { content: 'Bản đồ tầng 1' },
+    };
+    const showDetail = getStepActionDetail(showStep);
+    expect(showDetail.detailText).toContain('Hien thi man hinh Robot');
+    expect(showDetail.bubbleTitle).toBe('MAN HINH ROBOT (SHOW)');
+    expect(showDetail.detailText).not.toContain('Kiosk');
+
+    const touchStep = {
+      type: 'LISTEN',
+      title: 'Chờ khách chọn',
+      params: { input_source: 'TOUCH' },
+    };
+    const touchDetail = getStepActionDetail(touchStep);
+    expect(touchDetail.shortChip).toContain('Cham Robot');
+    expect(touchDetail.shortChip).not.toContain('Kiosk');
+  });
 });

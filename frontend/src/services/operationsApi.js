@@ -372,6 +372,8 @@ export const fetchAdminSummary = async () => {
     room_service_count: 0,
     bell_services_count: 0,
     maintenance_count: 0,
+    concierge_count: 0,
+    taxi_count: 0,
     directives_count: 0,
   });
 };

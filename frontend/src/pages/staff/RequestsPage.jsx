@@ -386,6 +386,8 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
     if ((uD.includes('bell') || uD.includes('hành lý')) && (rD.includes('bell') || rD.includes('hành lý'))) return true;
     if ((uD.includes('maint') || uD.includes('bảo trì') || uD.includes('kỹ thuật')) && (rD.includes('maint') || rD.includes('bảo trì') || rD.includes('kỹ thuật'))) return true;
     if ((uD.includes('reception') || uD.includes('lễ tân')) && (rD.includes('reception') || rD.includes('lễ tân'))) return true;
+    if ((uD.includes('concierge') || uD.includes('trợ lý')) && (rD.includes('concierge') || rD.includes('trợ lý') || rD.includes('live'))) return true;
+    if ((uD.includes('taxi') || uD.includes('xe') || uD.includes('vận chuyển')) && (rD.includes('taxi') || rD.includes('xe') || rD.includes('vận chuyển'))) return true;
     return false;
   };
 
@@ -732,7 +734,7 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
           {isExecutive && (
             <div className="flex flex-wrap items-center gap-1.5 w-full md:w-auto">
               <span className="text-[11px] font-bold text-stone-500 uppercase mr-1">Bộ phận:</span>
-              {['All', 'F&B', 'Housekeeping', 'Bell Services', 'Maintenance'].map((dept) => (
+              {['All', 'Reception', 'Housekeeping', 'F&B', 'Bell Services', 'Maintenance', 'Concierge', 'Taxi'].map((dept) => (
                 <button
                   key={dept}
                   onClick={() => setDeptFilter(dept)}

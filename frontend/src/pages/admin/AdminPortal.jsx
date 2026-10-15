@@ -53,7 +53,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
 
   const loadNotifications = async () => {
     try {
-      const data = await fetchNotifications('All', 40);
+      const data = await fetchNotifications('Admin', 40);
       if (Array.isArray(data)) {
         setNotifications(data);
       }
@@ -62,7 +62,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
     }
   };
 
-  // WebSocket for Real-time Notifications
+  // WebSocket for Real-time Notifications (chỉ nhận thông báo riêng cho Admin)
   useEffect(() => {
     loadNotifications();
 
@@ -70,7 +70,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
     try {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const host = window.location.hostname === 'localhost' ? 'localhost:8000' : window.location.host;
-      ws = new WebSocket(`${protocol}//${host}/api/v1/operations/ws/notifications?department=All`);
+      ws = new WebSocket(`${protocol}//${host}/api/v1/operations/ws/notifications?department=Admin`);
       wsRef.current = ws;
 
       ws.onopen = () => {
@@ -83,7 +83,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
           const newNotif = JSON.parse(event.data);
           if (newNotif && newNotif.id) {
             setNotifications((prev) => [newNotif, ...prev.filter((n) => n.id !== newNotif.id)]);
-            onNotify(`🔔 [${newNotif.department || 'All'}] ${newNotif.title}`);
+            onNotify(`🔔 [${newNotif.department || 'Admin'}] ${newNotif.title}`);
           }
         } catch {}
       };

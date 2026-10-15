@@ -44,13 +44,11 @@ class NotificationRepository(BaseRepository[Notification]):
     ) -> Sequence[Notification]:
         """Fetch notifications filtered by department alias and global ('All') notices."""
         stmt = select(Notification)
-        if department and department.strip().lower() not in [
-            "all",
-            "admin",
-            "executive",
-            "operations admin",
-            "toàn bộ",
-        ]:
+        dep_clean = department.strip().lower() if department else None
+        if dep_clean in ["admin", "executive", "operations admin"]:
+            # Admin chỉ nhận thông báo trực tiếp cho Admin, không nhận các yêu cầu nghiệp vụ của phòng ban
+            stmt = stmt.where(func.lower(Notification.department) == "admin")
+        elif dep_clean and dep_clean not in ["all", "toàn bộ"]:
             aliases = self._get_department_aliases(department)
             stmt = stmt.where(
                 (func.lower(Notification.department).in_(aliases))

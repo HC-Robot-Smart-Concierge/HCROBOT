@@ -69,7 +69,7 @@ async def get_admin_operations_summary(db: AsyncSession = Depends(get_db)):
             summary.reception_count += 1
         elif "housekeeping" in dept:
             summary.housekeeping_count += 1
-        elif "f&b" in dept or "room service" in dept:
+        elif "f&b" in dept or "room service" in dept or "kitchen" in dept:
             summary.room_service_count += 1
         elif "bell" in dept:
             summary.bell_services_count += 1
@@ -162,14 +162,20 @@ async def get_tasks(
         filtered = []
         for item in tasks:
             d = (item.get("department") or "").lower()
-            if dept_q in ["f&b", "fb", "room service", "room_service"]:
-                if "f&b" in d or "room service" in d or "fb" in d:
+            if dept_q in ["f&b", "fb", "room service", "room_service", "kitchen"]:
+                if "f&b" in d or "room service" in d or "fb" in d or "kitchen" in d:
                     filtered.append(item)
             elif dept_q in ["bell", "bell services", "bell_services", "bellman"]:
                 if "bell" in d:
                     filtered.append(item)
             elif dept_q in ["concierge", "live support"]:
                 if "concierge" in d or "live" in d:
+                    filtered.append(item)
+            elif dept_q in ["taxi", "đặt xe", "vận chuyển"]:
+                if "taxi" in d:
+                    filtered.append(item)
+            elif dept_q in ["directive", "directives", "chỉ thị", "chỉ thị điều phối"]:
+                if "directive" in d or item.get("table_type") == "directive":
                     filtered.append(item)
             elif dept_q in d:
                 filtered.append(item)

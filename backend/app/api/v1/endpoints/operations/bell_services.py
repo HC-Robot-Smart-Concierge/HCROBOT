@@ -3,7 +3,6 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc, or_
 
 from app.core.database import get_db
 from app.models import Staff, SupportRequest
@@ -12,6 +11,12 @@ from app.schemas.operations import (
     BellRequestStatusUpdate,
     BellRequestResponse,
     BellServicesDashboardResponse,
+)
+from app.repositories import (
+    SupportRequestRepository,
+    get_support_request_repository,
+    StaffRepository,
+    get_staff_repository,
 )
 from .shared import TAG_BELL, create_department_notification
 
@@ -31,7 +36,10 @@ router = APIRouter()
         200: {"description": "Lấy dữ liệu Dashboard Bell Services thành công kèm KPI, danh sách yêu cầu và nhân sự trực."}
     },
 )
-async def get_bell_services_dashboard(db: AsyncSession = Depends(get_db)):
+async def get_bell_services_dashboard(
+    sr_repo: SupportRequestRepository = Depends(get_support_request_repository),
+    staff_repo: StaffRepository = Depends(get_staff_repository),
+):
     """
     ### Mô tả nghiệp vụ:
     Truy vấn toàn bộ dữ liệu bảng điều khiển của bộ phận **Hành lý & Tiền sảnh (Bell Services)**.
@@ -43,31 +51,17 @@ async def get_bell_services_dashboard(db: AsyncSession = Depends(get_db)):
     - **team_status**: Danh sách nhân viên Bellman đang làm việc và xe vận chuyển tự hành.
     - **announcement**: Bản tin thông báo giờ cao điểm check-in / check-out.
     """
-    stmt = (
-        select(SupportRequest)
-        .where(
-            or_(
-                SupportRequest.department_id == "DEP-BELL",
-                SupportRequest.service_type_id == "ST-BELL",
-            )
-        )
-        .order_by(desc(SupportRequest.created_at))
+    requests = await sr_repo.get_recent_by_department(
+        department_ids=["DEP-BELL"],
+        service_type_ids=["ST-BELL"],
+        limit=100,
     )
-    res = await db.execute(stmt)
-
-    requests = res.scalars().all()
 
     pending_count = sum(1 for r in requests if r.status in ["Pending", "Unassigned"])
     on_job_count = sum(1 for r in requests if r.status == "In Progress")
     completed_count = sum(1 for r in requests if r.status == "Completed")
 
-    staff_res = await db.execute(
-        select(Staff).where(
-            or_(Staff.department_id == "DEP-BELL", Staff.department == "Bell Services"),
-            Staff.is_active == True,
-        )
-    )
-    bell_staff = staff_res.scalars().all()
+    bell_staff = await staff_repo.list_staff(department="Bell Services")
 
     team_status = [
         {"id": s.id, "name": s.full_name, "role": s.role, "status": s.status, "avatar": s.avatar_url}
@@ -110,7 +104,6 @@ async def get_bell_services_dashboard(db: AsyncSession = Depends(get_db)):
     }
 
 
-
 @router.post(
     "/bell-services/requests",
     response_model=BellRequestResponse,
@@ -121,7 +114,11 @@ async def get_bell_services_dashboard(db: AsyncSession = Depends(get_db)):
         201: {"description": "Tạo ticket hành lý thành công và lưu vào bảng support_requests."}
     },
 )
-async def create_bell_request(req_in: BellRequestCreate, db: AsyncSession = Depends(get_db)):
+async def create_bell_request(
+    req_in: BellRequestCreate,
+    sr_repo: SupportRequestRepository = Depends(get_support_request_repository),
+    db: AsyncSession = Depends(get_db),
+):
     """
     ### Mô tả nghiệp vụ:
     Tiếp nhận yêu cầu dịch vụ Bellman (chuyển hành lý, nhận đồ tại sảnh, hỗ trợ đổi phòng).
@@ -137,11 +134,10 @@ async def create_bell_request(req_in: BellRequestCreate, db: AsyncSession = Depe
         description=req_in.description,
         department_id="DEP-BELL",
         service_type_id="ST-BELL",
-
         status="Pending",
         priority="NORMAL",
     )
-    db.add(new_req)
+    await sr_repo.create(new_req)
     await create_department_notification(
         db=db,
         department="Bell Services",
@@ -151,8 +147,8 @@ async def create_bell_request(req_in: BellRequestCreate, db: AsyncSession = Depe
         request_type="bell_service",
         type="Request",
     )
-    await db.commit()
-    await db.refresh(new_req)
+    await sr_repo.commit()
+    await sr_repo.refresh(new_req)
     return new_req
 
 
@@ -168,25 +164,13 @@ async def create_bell_request(req_in: BellRequestCreate, db: AsyncSession = Depe
 )
 async def get_bell_request(
     request_id: str,
-    db: AsyncSession = Depends(get_db),
+    sr_repo: SupportRequestRepository = Depends(get_support_request_repository),
 ):
     """
     ### Mô tả nghiệp vụ:
     Tra cứu chi tiết một yêu cầu dịch vụ Bellman / hành lý theo `request_id` (ID hệ thống hoặc mã `ticket_code` như `BS-504`).
     """
-    clean_id = request_id.replace("REQ-", "").replace("BS-", "").strip()
-    res = await db.execute(
-        select(SupportRequest).where(
-            or_(
-                SupportRequest.id == request_id,
-                SupportRequest.ticket_code == request_id,
-                SupportRequest.id == clean_id,
-                SupportRequest.ticket_code == clean_id,
-                SupportRequest.ticket_code == f"BS-{clean_id}",
-            )
-        )
-    )
-    req = res.scalar_one_or_none()
+    req = await sr_repo.get_by_id_or_code(request_id)
     if not req:
         raise HTTPException(status_code=404, detail="Không tìm thấy yêu cầu Bell Services")
     return req

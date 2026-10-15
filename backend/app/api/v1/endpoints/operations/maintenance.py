@@ -3,7 +3,6 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc, or_
 
 from app.core.database import get_db
 from app.models import Staff, SupportRequest, ManagementDirective
@@ -14,6 +13,14 @@ from app.schemas.operations import (
     MaintenanceDashboardResponse,
     DirectiveCreate,
     DirectiveResponse,
+)
+from app.repositories import (
+    SupportRequestRepository,
+    get_support_request_repository,
+    StaffRepository,
+    get_staff_repository,
+    DirectiveRepository,
+    get_directive_repository,
 )
 from .shared import TAG_MNT, TAG_OPS, create_department_notification
 
@@ -33,38 +40,26 @@ router = APIRouter()
         200: {"description": "Lấy dữ liệu Dashboard Kỹ thuật kèm KPI sự cố, kỹ thuật viên trực và bản đồ khu vực."}
     },
 )
-async def get_maintenance_dashboard(db: AsyncSession = Depends(get_db)):
+async def get_maintenance_dashboard(
+    sr_repo: SupportRequestRepository = Depends(get_support_request_repository),
+    staff_repo: StaffRepository = Depends(get_staff_repository),
+):
     """
     ### Mô tả nghiệp vụ:
     Truy vấn bảng điều khiển của bộ phận **Kỹ thuật & Bảo trì (Facility Maintenance)**.
     Dữ liệu được truy vấn trực tiếp từ bảng chuẩn hóa `support_requests` có `service_type_id = 'ST-MAINTENANCE'` hoặc `department_id = 'DEP-MAINTENANCE'`.
     """
-    stmt = (
-        select(SupportRequest)
-        .where(
-            or_(
-                SupportRequest.department_id == "DEP-MAINTENANCE",
-                SupportRequest.service_type_id == "ST-MAINTENANCE",
-            )
-        )
-        .order_by(desc(SupportRequest.created_at))
+    requests = await sr_repo.get_recent_by_department(
+        department_ids=["DEP-MAINTENANCE"],
+        service_type_ids=["ST-MAINTENANCE"],
+        limit=100,
     )
-    res = await db.execute(stmt)
-
-    requests = res.scalars().all()
 
     pending_count = sum(1 for r in requests if r.status in ["Pending", "Unassigned"])
     in_prog_count = sum(1 for r in requests if r.status == "In Progress")
     completed_count = sum(1 for r in requests if r.status == "Completed")
 
-    staff_res = await db.execute(
-        select(Staff).where(
-            or_(Staff.department_id == "DEP-MAINTENANCE", Staff.department == "Maintenance"),
-            Staff.is_active == True,
-
-        )
-    )
-    maint_staff = staff_res.scalars().all()
+    maint_staff = await staff_repo.list_staff(department="Maintenance")
 
     staff_availability = [
         {
@@ -82,7 +77,6 @@ async def get_maintenance_dashboard(db: AsyncSession = Depends(get_db)):
         staff_availability = [
             {"id": "MNT", "name": "James Doe", "role": "HVAC Tech & Maintenance", "status": "Available", "statusClass": "text-emerald-600"}
         ]
-
 
     active_techs_count = sum(1 for s in staff_availability if s.get("status") == "Available")
 
@@ -107,7 +101,6 @@ async def get_maintenance_dashboard(db: AsyncSession = Depends(get_db)):
     }
 
 
-
 @router.post(
     "/maintenance/requests",
     response_model=MaintenanceRequestResponse,
@@ -118,7 +111,11 @@ async def get_maintenance_dashboard(db: AsyncSession = Depends(get_db)):
         201: {"description": "Tạo ticket sự cố kỹ thuật thành công và lưu vào bảng support_requests."}
     },
 )
-async def create_maintenance_request(req_in: MaintenanceRequestCreate, db: AsyncSession = Depends(get_db)):
+async def create_maintenance_request(
+    req_in: MaintenanceRequestCreate,
+    sr_repo: SupportRequestRepository = Depends(get_support_request_repository),
+    db: AsyncSession = Depends(get_db),
+):
     """
     ### Mô tả nghiệp vụ:
     Tiếp nhận sự cố kỹ thuật (điều hòa hỏng, chập điện, rò rỉ nước, khóa cửa phòng).
@@ -133,11 +130,10 @@ async def create_maintenance_request(req_in: MaintenanceRequestCreate, db: Async
         source=req_in.source or "Staff / Guest",
         department_id="DEP-MAINTENANCE",
         service_type_id="ST-MAINTENANCE",
-
         status="Pending",
         priority="NORMAL",
     )
-    db.add(new_req)
+    await sr_repo.create(new_req)
     await create_department_notification(
         db=db,
         department="Maintenance",
@@ -147,8 +143,8 @@ async def create_maintenance_request(req_in: MaintenanceRequestCreate, db: Async
         request_type="maintenance",
         type="Request",
     )
-    await db.commit()
-    await db.refresh(new_req)
+    await sr_repo.commit()
+    await sr_repo.refresh(new_req)
     return new_req
 
 
@@ -164,29 +160,16 @@ async def create_maintenance_request(req_in: MaintenanceRequestCreate, db: Async
 )
 async def get_maintenance_request(
     request_id: str,
-    db: AsyncSession = Depends(get_db),
+    sr_repo: SupportRequestRepository = Depends(get_support_request_repository),
 ):
     """
     ### Mô tả nghiệp vụ:
     Tra cứu chi tiết một sự cố hoặc yêu cầu kỹ thuật theo `request_id` (ID hệ thống hoặc mã `ticket_code` như `MN-101`).
     """
-    clean_id = request_id.replace("REQ-", "").replace("MN-", "").strip()
-    res = await db.execute(
-        select(SupportRequest).where(
-            or_(
-                SupportRequest.id == request_id,
-                SupportRequest.ticket_code == request_id,
-                SupportRequest.id == clean_id,
-                SupportRequest.ticket_code == clean_id,
-                SupportRequest.ticket_code == f"MN-{clean_id}",
-            )
-        )
-    )
-    req = res.scalar_one_or_none()
+    req = await sr_repo.get_by_id_or_code(request_id)
     if not req:
         raise HTTPException(status_code=404, detail="Không tìm thấy yêu cầu kỹ thuật")
     return req
-
 
 
 # =====================================================================
@@ -200,7 +183,10 @@ async def get_maintenance_request(
     tags=TAG_OPS,
     summary="Phát chỉ thị điều hành quản lý liên bộ phận",
 )
-async def create_operational_directive(dir_in: DirectiveCreate, db: AsyncSession = Depends(get_db)):
+async def create_operational_directive(
+    dir_in: DirectiveCreate,
+    dir_repo: DirectiveRepository = Depends(get_directive_repository),
+):
     """Phát hành chỉ thị điều phối đặc biệt từ Ban Quản lý Khách sạn."""
     code = f"OP-{random.randint(104, 999)}"
     new_dir = ManagementDirective(
@@ -215,8 +201,6 @@ async def create_operational_directive(dir_in: DirectiveCreate, db: AsyncSession
         type=dir_in.type,
         created_by="System Administrator",
     )
-    db.add(new_dir)
-    await db.commit()
-    await db.refresh(new_dir)
+    await dir_repo.create(new_dir, autocommit=True)
     return new_dir
 

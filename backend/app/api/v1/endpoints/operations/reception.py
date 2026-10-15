@@ -3,7 +3,6 @@ from datetime import datetime
 from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc, or_, func
 
 from app.core.database import get_db
 from app.models import SupportRequest
@@ -13,6 +12,7 @@ from app.schemas.operations import (
     ReceptionRequestResponse,
     ReceptionDashboardResponse,
 )
+from app.repositories import SupportRequestRepository, get_support_request_repository
 from .shared import TAG_REC, create_department_notification
 
 router = APIRouter()
@@ -31,7 +31,9 @@ router = APIRouter()
         200: {"description": "Lấy thông tin yêu cầu của khách tại quầy lễ tân thành công."}
     },
 )
-async def get_reception_dashboard(db: AsyncSession = Depends(get_db)):
+async def get_reception_dashboard(
+    repo: SupportRequestRepository = Depends(get_support_request_repository),
+):
     """
     ### Mô tả nghiệp vụ:
     Truy vấn các yêu cầu khách hàng cần Lễ tân xử lý:
@@ -41,43 +43,15 @@ async def get_reception_dashboard(db: AsyncSession = Depends(get_db)):
     
     Dữ liệu được truy vấn chuẩn hóa từ bảng `support_requests` có `department_id = 'DEP-RECEPTION'` hoặc `service_type_id = 'ST-RECEPTION'`.
     """
-    # 1. Tìm yêu cầu active đang cần xử lý:
-    # - Loại trừ các yêu cầu đã Completed, Done, Cancelled, Delivered
-    # - Ưu tiên các yêu cầu 'In Progress' trước, sau đó là 'Pending' mới nhất
-    active_stmt = (
-        select(SupportRequest)
-        .where(
-            or_(
-                SupportRequest.department_id == "DEP-RECEPTION",
-                SupportRequest.service_type_id == "ST-RECEPTION",
-            ),
-            func.lower(SupportRequest.status).notin_([
-                "completed", "done", "cancelled", "delivered", "hoàn tất", "đã hoàn thành", "hủy"
-            ]),
-        )
-        .order_by(
-            desc(func.lower(SupportRequest.status) == "in progress"),
-            desc(SupportRequest.created_at),
-        )
-        .limit(1)
+    current_req = await repo.get_active_by_department(
+        department_ids=["DEP-RECEPTION"],
+        service_type_ids=["ST-RECEPTION"],
     )
-    active_res = await db.execute(active_stmt)
-    current_req = active_res.scalar_one_or_none()
-
-    # 2. Lấy danh sách 10 yêu cầu gần đây (bao gồm cả các yêu cầu đã hoàn tất để hiển thị lịch sử)
-    recent_stmt = (
-        select(SupportRequest)
-        .where(
-            or_(
-                SupportRequest.department_id == "DEP-RECEPTION",
-                SupportRequest.service_type_id == "ST-RECEPTION",
-            )
-        )
-        .order_by(desc(SupportRequest.created_at))
-        .limit(10)
+    all_reqs = await repo.get_recent_by_department(
+        department_ids=["DEP-RECEPTION"],
+        service_type_ids=["ST-RECEPTION"],
+        limit=10,
     )
-    recent_res = await db.execute(recent_stmt)
-    all_reqs = recent_res.scalars().all()
 
     return {
         "current_request": current_req,
@@ -98,6 +72,7 @@ async def get_reception_dashboard(db: AsyncSession = Depends(get_db)):
 )
 async def create_reception_request(
     request_in: ReceptionRequestCreate,
+    repo: SupportRequestRepository = Depends(get_support_request_repository),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -124,8 +99,7 @@ async def create_reception_request(
         priority=request_in.priority or "NORMAL",
         status="Pending",
     )
-    db.add(new_request)
-    await db.flush()
+    await repo.create(new_request)
 
     # Tạo thông báo thời gian thực gửi tới Bộ phận Lễ tân
     await create_department_notification(
@@ -137,10 +111,9 @@ async def create_reception_request(
         request_type="reception",
     )
 
-    await db.commit()
-    await db.refresh(new_request)
+    await repo.commit()
+    await repo.refresh(new_request)
     return new_request
-
 
 
 @router.get(
@@ -155,25 +128,13 @@ async def create_reception_request(
 )
 async def get_reception_request(
     request_id: str,
-    db: AsyncSession = Depends(get_db),
+    repo: SupportRequestRepository = Depends(get_support_request_repository),
 ):
     """
     ### Mô tả nghiệp vụ:
     Tra cứu chi tiết một yêu cầu Lễ tân & Đặt phòng theo `request_id` (ID hệ thống hoặc mã `ticket_code` như `REC-12345`).
     """
-    clean_id = request_id.replace("REQ-", "").replace("REC-", "").strip()
-    result = await db.execute(
-        select(SupportRequest).where(
-            or_(
-                SupportRequest.id == request_id,
-                SupportRequest.ticket_code == request_id,
-                SupportRequest.id == clean_id,
-                SupportRequest.ticket_code == clean_id,
-                SupportRequest.ticket_code == f"REC-{clean_id}",
-            )
-        )
-    )
-    request = result.scalar_one_or_none()
+    request = await repo.get_by_id_or_code(request_id)
     if not request:
         raise HTTPException(status_code=404, detail="Không tìm thấy yêu cầu Lễ tân")
     return request

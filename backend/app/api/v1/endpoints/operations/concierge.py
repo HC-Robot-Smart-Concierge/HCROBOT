@@ -30,6 +30,12 @@ from app.schemas.operations import (
     ConciergeLiveRequestResponse,
     ConciergeDashboardResponse,
 )
+from app.repositories import (
+    SupportRequestRepository,
+    get_support_request_repository,
+    SupportSessionRepository,
+    get_support_session_repository,
+)
 from app.services.cloudinary_service import cloudinary_service
 from app.services.video_call_manager import video_call_manager
 from .shared import TAG_CONCIERGE, create_department_notification
@@ -82,7 +88,9 @@ class RecordingUploadResponse(BaseModel):
     tags=TAG_CONCIERGE,
     summary="Dashboard Concierge: Phiên hỗ trợ Live Call và trợ giúp khách hàng mới nhất",
 )
-async def get_concierge_dashboard(db: AsyncSession = Depends(get_db)):
+async def get_concierge_dashboard(
+    sr_repo: SupportRequestRepository = Depends(get_support_request_repository),
+):
     """
     Truy vấn phiên hỗ trợ trực tuyến (Live Call / Video Assistance) mới nhất khi khách hàng tương tác với Robot Kiosk:
     - Cuộc gọi video cần nhân viên can thiệp trực tiếp (Human-in-the-loop)
@@ -93,47 +101,24 @@ async def get_concierge_dashboard(db: AsyncSession = Depends(get_db)):
     five_minutes_ago = now - timedelta(minutes=5)
 
     # 1. Tự động đóng các phiên gọi Pending đã quá 5 phút thành 'Missed'
-    await db.execute(
-        update(SupportRequest)
-        .where(
-            or_(
-                SupportRequest.department_id == "DEP-CONCIERGE",
-                SupportRequest.service_type_id == "ST-CONCIERGE",
-            ),
-            SupportRequest.status == "Pending",
-            SupportRequest.created_at < five_minutes_ago,
-        )
-        .values(status="Missed", updated_at=now)
+    await sr_repo.close_expired_pending(
+        department_ids=["DEP-CONCIERGE"],
+        service_type_ids=["ST-CONCIERGE"],
+        cutoff_time=five_minutes_ago,
+        new_status="Missed",
     )
-    await db.commit()
 
     # 2. Chỉ lấy cuộc gọi đang chờ bắt máy (mới tạo < 5 phút) hoặc đang diễn ra
-    result = await db.execute(
-        select(SupportRequest)
-        .where(
-            or_(
-                SupportRequest.department_id == "DEP-CONCIERGE",
-                SupportRequest.service_type_id == "ST-CONCIERGE",
-            ),
-            SupportRequest.status.in_(["Pending", "In Progress", "Connected"]),
-        )
-        .order_by(desc(SupportRequest.created_at))
-        .limit(1)
+    current_req = await sr_repo.get_active_live_call(
+        department_ids=["DEP-CONCIERGE"],
+        service_type_ids=["ST-CONCIERGE"],
     )
-    current_req = result.scalar_one_or_none()
 
     # Đếm số phiên đang active thực sự
-    count_res = await db.execute(
-        select(func.count(SupportRequest.id))
-        .where(
-            or_(
-                SupportRequest.department_id == "DEP-CONCIERGE",
-                SupportRequest.service_type_id == "ST-CONCIERGE",
-            ),
-            SupportRequest.status.in_(["Pending", "In Progress", "Connected"]),
-        )
+    active_count = await sr_repo.count_active_live_calls(
+        department_ids=["DEP-CONCIERGE"],
+        service_type_ids=["ST-CONCIERGE"],
     )
-    active_count = count_res.scalar() or 0
 
     return {
         "current_request": current_req,
@@ -157,6 +142,8 @@ async def get_concierge_dashboard(db: AsyncSession = Depends(get_db)):
 )
 async def create_concierge_live_request(
     request_in: ConciergeLiveRequestCreate,
+    sr_repo: SupportRequestRepository = Depends(get_support_request_repository),
+    session_repo: SupportSessionRepository = Depends(get_support_session_repository),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -182,8 +169,7 @@ async def create_concierge_live_request(
         priority="HIGH",
         status="Pending",
     )
-    db.add(new_request)
-    await db.flush()
+    await sr_repo.create(new_request)
 
     # Tạo song song phiên HumanSupportSession để sẵn sàng lưu vết cuộc gọi và Cloudinary recording
     human_session = HumanSupportSession(
@@ -198,8 +184,7 @@ async def create_concierge_live_request(
         call_started_at=datetime.utcnow(),
         messages=request_in.transcript or [],
     )
-    db.add(human_session)
-    await db.flush()
+    await session_repo.create(human_session)
 
     # Gửi thông báo khẩn tới tổng đài viên Concierge
     await create_department_notification(
@@ -212,8 +197,8 @@ async def create_concierge_live_request(
         type="LiveAssistance",
     )
 
-    await db.commit()
-    await db.refresh(new_request)
+    await sr_repo.commit()
+    await sr_repo.refresh(new_request)
     return new_request
 
 
@@ -225,23 +210,14 @@ async def create_concierge_live_request(
 )
 async def list_concierge_requests(
     status: Optional[str] = Query(None, description="Lọc theo trạng thái yêu cầu"),
-    db: AsyncSession = Depends(get_db),
+    sr_repo: SupportRequestRepository = Depends(get_support_request_repository),
 ):
     """Lấy danh sách các phiên hỗ trợ và yêu cầu can thiệp từ khách hàng tại bộ phận Concierge."""
-    stmt = (
-        select(SupportRequest)
-        .where(
-            or_(
-                SupportRequest.department_id == "DEP-CONCIERGE",
-                SupportRequest.service_type_id == "ST-CONCIERGE",
-            )
-        )
-        .order_by(desc(SupportRequest.created_at))
+    return await sr_repo.list_by_department_and_status(
+        department_ids=["DEP-CONCIERGE"],
+        service_type_ids=["ST-CONCIERGE"],
+        status=status,
     )
-    if status and status not in ("All", ""):
-        stmt = stmt.where(SupportRequest.status == status)
-    res = await db.execute(stmt)
-    return res.scalars().all()
 
 
 @router.get(
@@ -262,25 +238,13 @@ async def list_concierge_requests(
 )
 async def get_concierge_request(
     request_id: str,
-    db: AsyncSession = Depends(get_db),
+    sr_repo: SupportRequestRepository = Depends(get_support_request_repository),
 ):
     """
     ### Mô tả nghiệp vụ:
     Tra cứu chi tiết một phiên gọi hỗ trợ trực tiếp Concierge / Robot Kiosk theo `request_id` (ID hệ thống hoặc mã `ticket_code` như `CCG-12345`).
     """
-    clean_id = request_id.replace("REQ-", "").replace("CCG-", "").strip()
-    result = await db.execute(
-        select(SupportRequest).where(
-            or_(
-                SupportRequest.id == request_id,
-                SupportRequest.ticket_code == request_id,
-                SupportRequest.id == clean_id,
-                SupportRequest.ticket_code == clean_id,
-                SupportRequest.ticket_code == f"CCG-{clean_id}",
-            )
-        )
-    )
-    request = result.scalar_one_or_none()
+    request = await sr_repo.get_by_id_or_code(request_id)
     if not request:
         raise HTTPException(status_code=404, detail="Không tìm thấy phiên hỗ trợ Concierge")
     return request
@@ -301,23 +265,13 @@ async def get_concierge_request(
 async def update_concierge_request(
     request_id: str,
     update_in: ConciergeLiveRequestUpdate,
-    db: AsyncSession = Depends(get_db),
+    sr_repo: SupportRequestRepository = Depends(get_support_request_repository),
+    session_repo: SupportSessionRepository = Depends(get_support_session_repository),
 ):
     """
     Tổng đài viên Concierge tiếp nhận cuộc gọi, đổi trạng thái (`Connected`, `In Progress`, `Completed`), ghi chú và kết thúc phiên làm việc.
     """
-    clean_id = request_id.replace("REQ-", "").strip()
-    result = await db.execute(
-        select(SupportRequest).where(
-            or_(
-                SupportRequest.id == request_id,
-                SupportRequest.ticket_code == request_id,
-                SupportRequest.id == clean_id,
-                SupportRequest.ticket_code == clean_id,
-            )
-        )
-    )
-    req = result.scalar_one_or_none()
+    req = await sr_repo.get_by_id_or_code(request_id)
     if not req:
         raise HTTPException(status_code=404, detail="Không tìm thấy phiên hỗ trợ Concierge")
 
@@ -329,10 +283,7 @@ async def update_concierge_request(
     req.updated_at = datetime.utcnow()
 
     # Đồng bộ trạng thái sang HumanSupportSession tương ứng
-    hs_res = await db.execute(
-        select(HumanSupportSession).where(HumanSupportSession.linked_request_id == req.id)
-    )
-    hs = hs_res.scalar_one_or_none()
+    hs = await session_repo.get_by_linked_request(req.id)
     if hs:
         if update_in.status in ["Completed", "Closed"]:
             hs.status = "Resolved"
@@ -341,8 +292,8 @@ async def update_concierge_request(
         elif update_in.status in ["Connected", "In Progress"]:
             hs.status = "Active"
 
-    await db.commit()
-    await db.refresh(req)
+    await sr_repo.commit()
+    await sr_repo.refresh(req)
     return req
 
 
@@ -359,17 +310,12 @@ async def update_concierge_request(
 async def get_human_support_sessions(
     limit: int = 50,
     status_filter: Optional[str] = None,
-    db: AsyncSession = Depends(get_db),
+    session_repo: SupportSessionRepository = Depends(get_support_session_repository),
 ):
     """
     Truy vấn danh sách các phiên HumanSupportSession bao gồm link video Cloudinary, thời lượng, trạng thái.
     """
-    query = select(HumanSupportSession).order_by(desc(HumanSupportSession.created_at)).limit(limit)
-    if status_filter:
-        query = query.where(HumanSupportSession.status == status_filter)
-
-    res = await db.execute(query)
-    return res.scalars().all()
+    return await session_repo.list_sessions(limit=limit, status_filter=status_filter)
 
 
 @router.get(
@@ -380,18 +326,9 @@ async def get_human_support_sessions(
 )
 async def get_human_support_session_detail(
     session_id: str,
-    db: AsyncSession = Depends(get_db),
+    session_repo: SupportSessionRepository = Depends(get_support_session_repository),
 ):
-    res = await db.execute(
-        select(HumanSupportSession).where(
-            or_(
-                HumanSupportSession.id == session_id,
-                HumanSupportSession.session_code == session_id,
-                HumanSupportSession.linked_request_id == session_id,
-            )
-        )
-    )
-    session_item = res.scalar_one_or_none()
+    session_item = await session_repo.get_by_id_or_code(session_id)
     if not session_item:
         raise HTTPException(status_code=404, detail="Không tìm thấy phiên hỗ trợ")
     return session_item
@@ -409,7 +346,8 @@ async def upload_call_recording(
     duration: int = Form(0, description="Thời lượng cuộc gọi tính bằng giây"),
     call_started_at: Optional[str] = Form(None),
     call_ended_at: Optional[str] = Form(None),
-    db: AsyncSession = Depends(get_db),
+    session_repo: SupportSessionRepository = Depends(get_support_session_repository),
+    sr_repo: SupportRequestRepository = Depends(get_support_request_repository),
 ):
     """
     ### Nghiệp vụ Ghi hình Cuộc gọi & Cloudinary:
@@ -430,16 +368,7 @@ async def upload_call_recording(
     )
 
     # 2. Tìm HumanSupportSession tương ứng
-    res = await db.execute(
-        select(HumanSupportSession).where(
-            or_(
-                HumanSupportSession.id == session_id,
-                HumanSupportSession.session_code == session_id,
-                HumanSupportSession.linked_request_id == session_id,
-            )
-        )
-    )
-    h_session = res.scalar_one_or_none()
+    h_session = await session_repo.get_by_id_or_code(session_id)
 
     # Nếu chưa có bản ghi (ví dụ cuộc gọi trực tiếp từ test/modal), tự động tạo mới
     if not h_session:
@@ -451,8 +380,7 @@ async def upload_call_recording(
             category="Video Call Support",
             status="Resolved",
         )
-        db.add(h_session)
-        await db.flush()
+        await session_repo.create(h_session)
 
     # 3. Ghi nhận dữ liệu video vào CSDL
     h_session.recording_url = cloud_result["secure_url"]
@@ -470,16 +398,24 @@ async def upload_call_recording(
 
     # 4. Cập nhật ticket SupportRequest liên kết nếu có
     if h_session.linked_request_id:
-        req_res = await db.execute(
-            select(SupportRequest).where(SupportRequest.id == h_session.linked_request_id)
-        )
-        req = req_res.scalar_one_or_none()
+        req = await sr_repo.get_by_id_or_code(h_session.linked_request_id)
         if req:
             req.status = "Completed"
             req.updated_at = datetime.utcnow()
 
-    await db.commit()
-    await db.refresh(h_session)
+    await session_repo.commit()
+    await session_repo.refresh(h_session)
+
+    return {
+        "session_id": h_session.id,
+        "recording_url": h_session.recording_url,
+        "public_id": h_session.recording_public_id,
+        "duration": h_session.recording_duration or 0,
+        "thumbnail_url": h_session.thumbnail_url,
+        "storage_provider": cloud_result.get("storage_provider", "cloudinary"),
+        "status": "Resolved",
+        "message": "Ghi hình cuộc gọi đã được lưu trữ thành công vào Cloudinary và CSDL!",
+    }
 
     return {
         "session_id": h_session.id,

@@ -3,7 +3,6 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status, Body
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc, or_
 
 from app.core.database import get_db
 from app.models import Staff, SupportRequest
@@ -12,6 +11,12 @@ from app.schemas.operations import (
     TaxiRequestStatusUpdate,
     TaxiRequestResponse,
     TaxiDashboardResponse,
+)
+from app.repositories import (
+    SupportRequestRepository,
+    get_support_request_repository,
+    StaffRepository,
+    get_staff_repository,
 )
 from .shared import TAG_TAXI, create_department_notification
 
@@ -73,39 +78,28 @@ def _format_taxi_request(req: SupportRequest) -> TaxiRequestResponse:
         200: {"description": "Lấy thông tin Dashboard điều phối xe taxi thành công."}
     },
 )
-async def get_taxi_dashboard(db: AsyncSession = Depends(get_db)):
+async def get_taxi_dashboard(
+    sr_repo: SupportRequestRepository = Depends(get_support_request_repository),
+    staff_repo: StaffRepository = Depends(get_staff_repository),
+):
     """
     ### Mô tả nghiệp vụ:
     Bảng điều khiển trung tâm của bộ phận **Đặt xe & Vận chuyển (Taxi & Transportation)**.
     Quản lý các yêu cầu gọi xe sân bay, taxi tham quan, xe đưa đón theo lịch trình từ Concierge Robot hoặc Lễ tân.
     Dữ liệu được lưu trữ chuẩn hóa trong bảng `support_requests` với `service_type_id = 'ST-TAXI'` và `department_id = 'DEP-TAXI'`.
     """
-    stmt = (
-        select(SupportRequest)
-        .where(
-            or_(
-                SupportRequest.department_id == "DEP-TAXI",
-                SupportRequest.service_type_id == "ST-TAXI",
-            )
-        )
-        .order_by(desc(SupportRequest.created_at))
+    raw_requests = await sr_repo.get_recent_by_department(
+        department_ids=["DEP-TAXI"],
+        service_type_ids=["ST-TAXI"],
+        limit=100,
     )
-    res = await db.execute(stmt)
-    raw_requests = res.scalars().all()
     requests = [_format_taxi_request(r) for r in raw_requests]
 
     pending_count = sum(1 for r in requests if r.status in ["Pending", "Unassigned"])
     active_count = sum(1 for r in requests if r.status in ["In Progress", "Driver Assigned", "On The Way"])
     completed_count = sum(1 for r in requests if r.status == "Completed")
 
-    # Staff / drivers
-    staff_res = await db.execute(
-        select(Staff).where(
-            or_(Staff.department_id == "DEP-TAXI", Staff.department == "Taxi"),
-            Staff.is_active == True,
-        )
-    )
-    taxi_staff = staff_res.scalars().all()
+    taxi_staff = await staff_repo.list_staff(department="Taxi")
 
     fleet_status = [
         {
@@ -161,7 +155,6 @@ async def get_taxi_dashboard(db: AsyncSession = Depends(get_db)):
     }
 
 
-
 @router.post(
     "/taxi/requests",
     response_model=TaxiRequestResponse,
@@ -172,7 +165,11 @@ async def get_taxi_dashboard(db: AsyncSession = Depends(get_db)):
         201: {"description": "Tạo yêu cầu gọi xe thành công và lưu vào bảng support_requests."}
     },
 )
-async def create_taxi_request(req_in: TaxiRequestCreate, db: AsyncSession = Depends(get_db)):
+async def create_taxi_request(
+    req_in: TaxiRequestCreate,
+    sr_repo: SupportRequestRepository = Depends(get_support_request_repository),
+    db: AsyncSession = Depends(get_db),
+):
     """
     ### Mô tả nghiệp vụ:
     Tiếp nhận yêu cầu gọi xe từ Khách hàng hoặc Concierge Robot.
@@ -198,7 +195,7 @@ async def create_taxi_request(req_in: TaxiRequestCreate, db: AsyncSession = Depe
         status="Pending",
         priority="NORMAL",
     )
-    db.add(new_req)
+    await sr_repo.create(new_req)
     await create_department_notification(
         db=db,
         department="Taxi",
@@ -208,8 +205,8 @@ async def create_taxi_request(req_in: TaxiRequestCreate, db: AsyncSession = Depe
         request_type="taxi",
         type="Request",
     )
-    await db.commit()
-    await db.refresh(new_req)
+    await sr_repo.commit()
+    await sr_repo.refresh(new_req)
     return _format_taxi_request(new_req)
 
 
@@ -225,25 +222,13 @@ async def create_taxi_request(req_in: TaxiRequestCreate, db: AsyncSession = Depe
 )
 async def get_taxi_request(
     request_id: str,
-    db: AsyncSession = Depends(get_db),
+    sr_repo: SupportRequestRepository = Depends(get_support_request_repository),
 ):
     """
     ### Mô tả nghiệp vụ:
     Tra cứu chi tiết một cuốc xe / yêu cầu di chuyển taxi theo `request_id` (ID hệ thống hoặc mã `ticket_code` như `TX-12345`).
     """
-    clean_id = request_id.replace("REQ-", "").replace("TX-", "").strip()
-    res = await db.execute(
-        select(SupportRequest).where(
-            or_(
-                SupportRequest.id == request_id,
-                SupportRequest.ticket_code == request_id,
-                SupportRequest.id == clean_id,
-                SupportRequest.ticket_code == clean_id,
-                SupportRequest.ticket_code == f"TX-{clean_id}",
-            )
-        )
-    )
-    req = res.scalar_one_or_none()
+    req = await sr_repo.get_by_id_or_code(request_id)
     if not req:
         raise HTTPException(status_code=404, detail="Không tìm thấy yêu cầu đặt xe Taxi")
     return _format_taxi_request(req)

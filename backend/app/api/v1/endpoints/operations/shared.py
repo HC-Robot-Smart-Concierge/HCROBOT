@@ -91,16 +91,13 @@ async def _fetch_all_raw_requests(db: AsyncSession) -> List[Dict[str, Any]]:
     """Helper to collect and normalize tasks across all operational tables including SupportRequest."""
     unified = []
 
+    from app.repositories import SupportRequestRepository, DirectiveRepository
+
     # 1. Fetch from SupportRequest table (HK, Bell, Taxi, Maintenance, Concierge, Reception)
     try:
-        sr_stmt = (
-            select(SupportRequest, ServiceType, Department)
-            .outerjoin(ServiceType, SupportRequest.service_type_id == ServiceType.id)
-            .outerjoin(Department, SupportRequest.department_id == Department.id)
-            .order_by(desc(SupportRequest.created_at))
-        )
-        sr_res = await db.execute(sr_stmt)
-        for sr, st, dep in sr_res.all():
+        sr_repo = SupportRequestRepository(db)
+        sr_res = await sr_repo.list_all_with_relations()
+        for sr, st, dep in sr_res:
             dep_code = (dep.code if dep else (st.code if st else "")).upper()
             if "HOUSEKEEPING" in dep_code:
                 dept_label = "Housekeeping"
@@ -166,8 +163,9 @@ async def _fetch_all_raw_requests(db: AsyncSession) -> List[Dict[str, Any]]:
 
     # 2. Directives from ManagementDirective (Chỉ thị vận hành)
     try:
-        dir_res = await db.execute(select(ManagementDirective).order_by(desc(ManagementDirective.created_at)))
-        for d in dir_res.scalars().all():
+        dir_repo = DirectiveRepository(db)
+        directives = await dir_repo.list_by_department()
+        for d in directives:
             unified.append({
                 "id": f"REQ-{d.code}",
                 "raw_id": d.id,

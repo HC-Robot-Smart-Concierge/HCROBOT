@@ -1,46 +1,17 @@
 import uuid
 from datetime import datetime
-from typing import TYPE_CHECKING, Optional, List
-from sqlalchemy import String, Integer, Float, DateTime, Boolean, Text, ForeignKey
+from typing import Optional, List
+from sqlalchemy import String, Integer, Float, DateTime, Text, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
-
-if TYPE_CHECKING:
-    from app.models.hotel import Hotel, Floor
-
-
-class Map(Base):
-    __tablename__ = "maps"
-
-    id: Mapped[str] = mapped_column(String(50), primary_key=True, default=lambda: f"MAP-{uuid.uuid4().hex[:6].upper()}")
-    hotel_id: Mapped[str] = mapped_column(String(50), ForeignKey("hotels.id", ondelete="CASCADE"), nullable=False, index=True)
-    floor_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("floors.id", ondelete="SET NULL"), nullable=True, index=True)
-    name: Mapped[str] = mapped_column(String(100), nullable=False) # e.g. "Bản đồ Sảnh Tầng 1 Main Lobby"
-    floor: Mapped[str] = mapped_column(String(50), default="Sảnh Tầng 1")
-    resolution: Mapped[float] = mapped_column(Float, default=0.05) # meter per pixel
-    width: Mapped[int] = mapped_column(Integer, default=200)
-    height: Mapped[int] = mapped_column(Integer, default=200)
-    origin_x: Mapped[float] = mapped_column(Float, default=-5.0)
-    origin_y: Mapped[float] = mapped_column(Float, default=-5.0)
-    image_url: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-    # Relationships
-    hotel: Mapped["Hotel"] = relationship("Hotel", back_populates="maps")
-    floor_rel: Mapped[Optional["Floor"]] = relationship("Floor", back_populates="maps")
-    zones: Mapped[List["Zone"]] = relationship("Zone", back_populates="map_rel", cascade="all, delete-orphan")
-    endpoints: Mapped[List["Endpoint"]] = relationship("Endpoint", back_populates="map_rel", cascade="all, delete-orphan")
 
 
 class Zone(Base):
     __tablename__ = "zones"
 
     id: Mapped[str] = mapped_column(String(50), primary_key=True, default=lambda: f"zone-{uuid.uuid4().hex[:8]}")
-    map_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("maps.id", ondelete="CASCADE"), nullable=True, index=True)
+    map_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, index=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     type: Mapped[str] = mapped_column(String(50), default="KEEP_OUT") # 'KEEP_OUT', 'SLOW_SPEED', 'SILENT_ZONE', 'GREETING_ZONE', 'SERVICE_PRIORITY'
     x: Mapped[float] = mapped_column(Float, default=0.0)
@@ -54,15 +25,12 @@ class Zone(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    # Relationships
-    map_rel: Mapped[Optional["Map"]] = relationship("Map", back_populates="zones")
-
 
 class Endpoint(Base):
     __tablename__ = "endpoints"
 
     id: Mapped[str] = mapped_column(String(50), primary_key=True, default=lambda: f"wp-{uuid.uuid4().hex[:8]}")
-    map_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("maps.id", ondelete="CASCADE"), nullable=True, index=True)
+    map_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, index=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False) # e.g. "Quầy Lễ Tân", "Trạm Sạc", "Bàn VIP 1"
     floor: Mapped[str] = mapped_column(String(50), default="Sảnh Tầng 1")
     x: Mapped[float] = mapped_column(Float, default=0.0)
@@ -75,7 +43,6 @@ class Endpoint(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
-    map_rel: Mapped[Optional["Map"]] = relationship("Map", back_populates="endpoints")
     group_memberships: Mapped[List["EndpointGroupMember"]] = relationship("EndpointGroupMember", back_populates="endpoint", cascade="all, delete-orphan")
 
 

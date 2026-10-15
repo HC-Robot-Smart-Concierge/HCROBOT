@@ -61,3 +61,4 @@ class NavigationResponse(BaseModel):
     target_x: float
     target_y: float
 
+

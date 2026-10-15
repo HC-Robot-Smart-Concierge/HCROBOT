@@ -308,4 +308,15 @@ export class RosbridgeClient {
     const msg = createCmdVelMsg(linearX, angularZ);
     return this.publish(ROS_TOPICS.CMD_VEL, ROS_MSG_TYPES.TWIST, msg);
   }
+
+  resetMap() {
+    return this.publish('/robot/reset_map', 'std_msgs/Empty', {});
+  }
+
+  saveSlamMap(mapName) {
+    const rawName = (mapName || '').trim();
+    return this.publish('/robot/save_map', 'std_msgs/String', { data: rawName });
+  }
 }
+
+

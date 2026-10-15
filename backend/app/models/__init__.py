@@ -13,7 +13,7 @@ from app.models.chat_session import ChatSession, ChatMessage
 from app.models.logging import LogEvent, AuditLog, LogLevelEnum, LogCategoryEnum, ActorTypeEnum
 from app.models.notification import Notification
 from app.models.hotel import Hotel, Floor, Room, Amenity, Facility, Event
-from app.models.map import Map, Zone, Endpoint, EndpointGroup, EndpointGroupMember
+from app.models.map import Zone, Endpoint, EndpointGroup, EndpointGroupMember
 from app.models.menu import Menu, MenuItem, FoodItem
 from app.models.feedback import Feedback
 from app.models.schedule import Schedule
@@ -54,7 +54,6 @@ __all__ = [
     "Amenity",
     "Facility",
     "Event",
-    "Map",
     "Zone",
     "Endpoint",
     "EndpointGroup",

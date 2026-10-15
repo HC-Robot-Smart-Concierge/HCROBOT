@@ -61,6 +61,8 @@ async def init_db() -> None:
             await conn.execute(text("ALTER TABLE human_support_sessions ADD COLUMN IF NOT EXISTS thumbnail_url TEXT;"))
             await conn.execute(text("ALTER TABLE human_support_sessions ADD COLUMN IF NOT EXISTS call_started_at TIMESTAMP;"))
             await conn.execute(text("ALTER TABLE human_support_sessions ADD COLUMN IF NOT EXISTS call_ended_at TIMESTAMP;"))
+            # Xóa bảng maps theo yêu cầu không lưu bản đồ vào CSDL
+            await conn.execute(text("DROP TABLE IF EXISTS maps CASCADE;"))
         except Exception:
             pass
 

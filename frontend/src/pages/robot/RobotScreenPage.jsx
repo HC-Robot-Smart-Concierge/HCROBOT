@@ -454,12 +454,12 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
               handleOpenFeedback();
             }, 600);
           } else if (isRouteGuidance || currentState === 'RT-05') {
-            // Request chỉ đường chính: Giữ nguyên trọn vẹn 20 giây để khách thoải mái quan sát lộ trình
+            // Request chỉ đường chính: Giữ nguyên 16 giây để khách quan sát sơ đồ lộ trình
             clearRouteGuidanceTimers();
             routeGuidanceTimerRef.current = setTimeout(() => {
-              // Kết thúc 20s xem lộ trình chính -> Kích hoạt giai đoạn QR Code 8 giây ở cuối
+              // Kết thúc 16s xem lộ trình chính -> Kích hoạt giai đoạn QR Code 15 giây ở cuối
               setIsAutoQrModalOpen(true);
-              setQrCountdown(8);
+              setQrCountdown(15);
 
               const qrVoicePrompt = (langCode === 'en-US' || detectedLang === 'English')
                 ? 'You can scan the QR code on the screen to save directions on your mobile phone.'
@@ -474,8 +474,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                 }
               );
 
-              // Đếm ngược 8 giây
-              let timeLeft = 8;
+              // Đếm ngược 15 giây
+              let timeLeft = 15;
               qrCountdownIntervalRef.current = setInterval(() => {
                 timeLeft -= 1;
                 setQrCountdown(timeLeft);
@@ -484,12 +484,12 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                 }
               }, 1000);
 
-              // Hết đúng 8 giây -> Tự động đóng QR và đóng luôn bản đồ chỉ đường (resetToIdle)
+              // Hết đúng 15 giây -> Tự động đóng QR và đóng luôn bản đồ chỉ đường (resetToIdle)
               qrStageTimerRef.current = setTimeout(() => {
                 clearRouteGuidanceTimers();
                 resetToIdle();
-              }, 8000);
-            }, 20000);
+              }, 15000);
+            }, 16000);
 
             if (isAutoListen) {
               setTimeout(() => {

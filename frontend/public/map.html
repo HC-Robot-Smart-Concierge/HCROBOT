@@ -455,8 +455,8 @@
 
   <script>
     // === DỮ LIỆU ĐIỂM ĐẾN KHÁCH SẠN AURORA (Chuẩn tọa độ 1920x1080) ===
-    // Đường đi từ Robot Lobby qua cửa sảnh sang Thang máy A (không xuyên tường)
-    const ROUTE_GROUND_TO_ELEVATOR = 'M 796 545 L 870 545 Q 908 545, 908 500 Q 908 480, 950 480 L 1232 480 L 1232 415';
+    // Tuyến đi từ Robot Lobby đi thẳng qua cửa sảnh (x=908, y=545) rồi mới lượn lên hành lang thang máy, hoàn toàn không chạm tường
+    const ROUTE_GROUND_TO_ELEVATOR = 'M 796 545 L 930 545 C 960 545, 980 480, 1020 480 L 1232 480 L 1232 415';
 
     const DESTINATIONS = {
       // === TẦNG 4: PHÒNG NGHỈ 401 - 409 ===
@@ -485,7 +485,7 @@
       sky_bar: { name: 'Skyline Lounge & Bar', floorId: '7', floorLevel: 'TẦNG 5', isDiff: true, step1: 'Đi tới Thang máy A và bấm lên Tầng 5.', step2: 'Ra khỏi thang máy, rẽ phải theo hành lang vào quầy bar Skyline.', coords: {x: 880, y: 620}, route: 'M 1232 415 L 1232 525 L 880 525 L 880 620' },
 
       // === TẦNG TRỆT: QUẦY TIẾP TÂN ===
-      front_desk: { name: 'Quầy Lễ Tân (Front Desk)', floorId: '3', floorLevel: 'GROUND', isDiff: false, step1: 'Đi thẳng qua cửa kính sảnh chính, quầy lễ tân nằm ngay bên tay phải bạn.', step2: '', coords: {x: 1050, y: 620}, route: 'M 796 545 L 870 545 Q 908 545, 908 500 Q 908 480, 950 480 L 1050 480 L 1050 620' }
+      front_desk: { name: 'Quầy Lễ Tân (Front Desk)', floorId: '3', floorLevel: 'GROUND', isDiff: false, step1: 'Đi thẳng qua cửa kính sảnh chính, quầy lễ tân nằm ngay bên tay phải bạn.', step2: '', coords: {x: 995, y: 620}, route: 'M 796 545 L 930 545 C 960 545, 970 620, 995 620' }
     };
 
     // Parse Token hoặc Query

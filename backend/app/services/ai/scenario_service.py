@@ -284,7 +284,7 @@ DEFAULT_SEED_SCENARIOS = [
         "id": "scn-pool-gym",
         "title": "Hồ bơi vô cực & Phòng Gym",
         "category": "facility",
-        "match_keywords": ["hồ bơi", "bể bơi", "swimming pool", "phòng gym", "tập gym", "thể hình", "hồ bơi ở đâu", "gym ở đâu", "ho boi", "be boi", "phong gym", "tap gym", "ho boi o dau"],
+        "match_keywords": ["hồ bơi", "bể bơi", "swimming pool", "phòng gym", "tập gym", "thể hình", "hồ bơi ở đâu", "ho boi", "be boi", "phong gym", "tap gym", "ho boi o dau"],
         "match_type": "keyword",
         "response_vi": "Dạ hồ bơi vô cực và phòng gym nằm tại Tầng 5. Hồ bơi mở từ 6 giờ sáng đến 22 giờ tối với khăn tắm miễn phí, còn phòng gym mở cửa 24/7 ạ.",
         "response_en": "The Infinity Pool and Gym are on Level 5. Pool hours are 6:00 AM to 10:00 PM with free towels, Gym is open 24/7.",

@@ -3,7 +3,7 @@ import { AudioWave } from './AudioWave';
 import { RobotFace } from './RobotFace';
 import { FloorMap, HOTEL_DESTINATIONS } from './FloorMap';
 import { usePwaInstall } from '../../hooks/usePwaInstall';
-import { Sparkles, ChevronDown, X, PhoneCall, Map as MapIcon, Utensils, Zap, Smartphone, LogOut } from 'lucide-react';
+import { Sparkles, ChevronDown, X, PhoneCall, Map as MapIcon, Utensils, Zap, Smartphone } from 'lucide-react';
 
 const getRobotMode = (state, isSpeaking = false, isProcessing = false, isListening = false) => {
   if (state === 'RT-01') return 'sleeping';
@@ -101,6 +101,34 @@ export const MobileRobotScreen = ({
     };
   }, []);
 
+  // Tự động bật mic khi vào màn hình robot mobile
+  useEffect(() => {
+    let timer = null;
+    if (typeof onStartTalk === 'function' && !isListening && !isSpeaking && !isBusy) {
+      timer = setTimeout(() => {
+        onStartTalk();
+      }, 500);
+    }
+
+    // Bắt tương tác chạm đầu tiên trên màn hình nếu trình duyệt mobile yêu cầu user gesture
+    const handleFirstTouch = () => {
+      if (typeof onStartTalk === 'function' && !isListening && !isSpeaking && !isBusy) {
+        onStartTalk();
+      }
+      window.removeEventListener('touchstart', handleFirstTouch);
+      window.removeEventListener('click', handleFirstTouch);
+    };
+
+    window.addEventListener('touchstart', handleFirstTouch, { passive: true, once: true });
+    window.addEventListener('click', handleFirstTouch, { passive: true, once: true });
+
+    return () => {
+      if (timer) clearTimeout(timer);
+      window.removeEventListener('touchstart', handleFirstTouch);
+      window.removeEventListener('click', handleFirstTouch);
+    };
+  }, []);
+
   const handleInstall = async () => {
     if (canInstall) {
       const accepted = await promptInstall();
@@ -121,7 +149,7 @@ export const MobileRobotScreen = ({
       </div>
 
       <div className="robot-landscape-content h-full w-full flex flex-col">
-        <header className="h-12 shrink-0 flex items-center justify-between gap-3 border-b border-stone-200 px-4 robot-safe-x bg-white/80 backdrop-blur-md relative z-30">
+        <header className="h-12 shrink-0 flex items-center justify-between gap-3 border-b border-stone-200/50 px-4 robot-safe-x bg-[#F5F2EB]/95 backdrop-blur-sm relative z-30">
           <div onClick={handleSecretTap} className="flex items-center gap-2.5 min-w-0 cursor-default select-none" title="Chạm 5 lần để đăng xuất">
             <strong className="text-sm font-black tracking-tight text-stone-900">HCROBOT</strong>
             <span className="hidden min-[680px]:inline text-[10px] font-semibold text-stone-500">Aurora Grand Hotel</span>
@@ -134,39 +162,6 @@ export const MobileRobotScreen = ({
                 P.{activeRoomNumber}
               </span>
             )}
-
-            {workflowTrigger}
-
-            {onOpenFoodMenu && (
-              <button
-                type="button"
-                onClick={onOpenFoodMenu}
-                className="h-8 px-3 rounded-full bg-stone-900 hover:bg-stone-800 border border-stone-700 text-stone-200 text-[10px] font-bold flex items-center active:scale-95 shadow-xs cursor-pointer transition-transform hover:scale-105 shrink-0"
-                title="Mở thực đơn chọn món"
-              >
-                <span>Chọn món</span>
-              </button>
-            )}
-            {guestEmotion && (
-              <span
-                className={`text-[10px] font-bold px-2 py-0.5 rounded-full border flex items-center transition-all ${guestEmotion === 'happy'
-                  ? 'bg-stone-800 text-stone-200 border-stone-700'
-                  : guestEmotion === 'unhappy'
-                    ? 'bg-stone-800 text-stone-300 border-stone-700'
-                    : 'bg-stone-900 text-stone-400 border-stone-800'
-                  }`}
-                title="Cảm xúc khuôn mặt"
-              >
-                <span>{guestEmotion === 'happy' ? 'Vui vẻ' : guestEmotion === 'unhappy' ? 'Khó chịu' : 'Bình thường'}</span>
-              </span>
-            )}
-
-            <button
-              onClick={onToggleLanguage}
-              className="h-8 min-w-9 px-2 rounded-full bg-white hover:bg-stone-50 border border-stone-300 text-[10px] font-bold active:scale-95 shadow-xs cursor-pointer"
-            >
-              {language === 'English' ? 'EN' : 'VI'}
-            </button>
 
             {/* Nút Sổ Tiện Ích */}
             <button
@@ -188,7 +183,7 @@ export const MobileRobotScreen = ({
         {/* Nền mờ khi mở Menu Tiện Ích (Click outside to close) */}
         {isUtilitiesMenuOpen && (
           <div
-            className="fixed inset-0 z-40 bg-black/25 backdrop-blur-[1px]"
+            className="fixed inset-0 z-40 bg-black/50 backdrop-blur-xs"
             onClick={() => {
               setIsUtilitiesMenuOpen(false);
               setShowWorkflowsSubmenu(false);
@@ -198,13 +193,13 @@ export const MobileRobotScreen = ({
 
         {/* Dropdown Menu Sổ Xuống Tiện Ích */}
         {isUtilitiesMenuOpen && (
-          <div className="absolute top-13 right-4 z-50 w-72 sm:w-80 rounded-2xl bg-white/98 border border-stone-200 shadow-2xl p-2.5 backdrop-blur-xl text-stone-900 space-y-1 animate-fadeIn">
-            <div className="flex items-center justify-between px-2 py-1 border-b border-stone-100 pb-1.5">
-              <span className="text-[10px] font-black uppercase tracking-wider text-stone-400">Danh mục tiện ích Kiosk</span>
+          <div className="absolute top-13 right-4 z-50 w-72 sm:w-80 rounded-2xl bg-stone-900 border border-stone-800 shadow-2xl p-2.5 text-stone-100 space-y-1 animate-fadeIn">
+            <div className="flex items-center justify-between px-2 py-1 border-b border-stone-800 pb-1.5">
+              <span className="text-[10px] font-black uppercase tracking-wider text-stone-400">Danh mục tiện ích</span>
               <button
                 type="button"
                 onClick={() => setIsUtilitiesMenuOpen(false)}
-                className="w-5 h-5 rounded-full hover:bg-stone-100 flex items-center justify-center text-stone-400 hover:text-stone-700 cursor-pointer"
+                className="w-5 h-5 rounded-full hover:bg-stone-800 flex items-center justify-center text-stone-400 hover:text-stone-200 cursor-pointer transition-colors"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -217,14 +212,14 @@ export const MobileRobotScreen = ({
                 setIsMapManualOpen(true);
                 setIsUtilitiesMenuOpen(false);
               }}
-              className="w-full p-2 rounded-xl text-left text-xs font-bold hover:bg-emerald-50 text-stone-800 hover:text-emerald-900 border border-transparent hover:border-emerald-200 transition-all cursor-pointer flex items-center gap-2.5"
+              className="w-full p-2 rounded-xl text-left text-xs font-bold hover:bg-stone-800/80 text-stone-200 border border-transparent hover:border-emerald-500/30 transition-all cursor-pointer flex items-center gap-2.5 group"
             >
-              <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center text-sm shrink-0">
-                <MapIcon className="w-4 h-4 text-emerald-700" />
+              <div className="w-7 h-7 rounded-lg bg-emerald-950/80 border border-emerald-500/30 text-emerald-400 flex items-center justify-center text-sm shrink-0">
+                <MapIcon className="w-4 h-4 text-emerald-400" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="font-extrabold truncate">Sơ đồ bản đồ (8 Tầng)</p>
-                <p className="text-[10px] text-stone-500 font-normal truncate">Chỉ đường 2D Canva & đổi tầng</p>
+                <p className="font-extrabold text-stone-100 group-hover:text-emerald-400 transition-colors truncate">Sơ đồ bản đồ (8 Tầng)</p>
+                <p className="text-[10px] text-stone-400 font-normal truncate">Chỉ đường 2D Canva & đổi tầng</p>
               </div>
             </button>
 
@@ -236,14 +231,14 @@ export const MobileRobotScreen = ({
                   onOpenFoodMenu();
                   setIsUtilitiesMenuOpen(false);
                 }}
-                className="w-full p-2 rounded-xl text-left text-xs font-bold hover:bg-amber-50 text-stone-800 hover:text-amber-900 border border-transparent hover:border-amber-200 transition-all cursor-pointer flex items-center gap-2.5"
+                className="w-full p-2 rounded-xl text-left text-xs font-bold hover:bg-stone-800/80 text-stone-200 border border-transparent hover:border-amber-500/30 transition-all cursor-pointer flex items-center gap-2.5 group"
               >
-                <div className="w-7 h-7 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center text-sm shrink-0">
-                  <Utensils className="w-4 h-4 text-amber-700" />
+                <div className="w-7 h-7 rounded-lg bg-amber-950/80 border border-amber-500/30 text-amber-400 flex items-center justify-center text-sm shrink-0">
+                  <Utensils className="w-4 h-4 text-amber-400" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="font-extrabold truncate">Thực đơn chọn món</p>
-                  <p className="text-[10px] text-stone-500 font-normal truncate">Gọi món ăn & đồ uống lên phòng</p>
+                  <p className="font-extrabold text-stone-100 group-hover:text-amber-400 transition-colors truncate">Thực đơn chọn món</p>
+                  <p className="text-[10px] text-stone-400 font-normal truncate">Gọi món ăn & đồ uống lên phòng</p>
                 </div>
               </button>
             )}
@@ -256,14 +251,14 @@ export const MobileRobotScreen = ({
                   onCallStaff();
                   setIsUtilitiesMenuOpen(false);
                 }}
-                className="w-full p-2 rounded-xl text-left text-xs font-bold hover:bg-cyan-50 text-stone-800 hover:text-cyan-900 border border-transparent hover:border-cyan-200 transition-all cursor-pointer flex items-center gap-2.5"
+                className="w-full p-2 rounded-xl text-left text-xs font-bold hover:bg-stone-800/80 text-stone-200 border border-transparent hover:border-cyan-500/30 transition-all cursor-pointer flex items-center gap-2.5 group"
               >
-                <div className="w-7 h-7 rounded-lg bg-cyan-100 text-cyan-700 flex items-center justify-center text-sm shrink-0">
-                  <PhoneCall className="w-4 h-4 text-cyan-700" />
+                <div className="w-7 h-7 rounded-lg bg-cyan-950/80 border border-cyan-500/30 text-cyan-400 flex items-center justify-center text-sm shrink-0">
+                  <PhoneCall className="w-4 h-4 text-cyan-400" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="font-extrabold truncate">Gọi nhân viên hỗ trợ</p>
-                  <p className="text-[10px] text-stone-500 font-normal truncate">Kết nối hỗ trợ trực tiếp</p>
+                  <p className="font-extrabold text-stone-100 group-hover:text-cyan-400 transition-colors truncate">Gọi nhân viên hỗ trợ</p>
+                  <p className="text-[10px] text-stone-400 font-normal truncate">Kết nối hỗ trợ trực tiếp</p>
                 </div>
               </button>
             )}
@@ -274,15 +269,15 @@ export const MobileRobotScreen = ({
                 <button
                   type="button"
                   onClick={() => setShowWorkflowsSubmenu(!showWorkflowsSubmenu)}
-                  className="w-full p-2 rounded-xl text-left text-xs font-bold hover:bg-stone-100 text-stone-800 border border-transparent hover:border-stone-200 transition-all cursor-pointer flex items-center justify-between"
+                  className="w-full p-2 rounded-xl text-left text-xs font-bold hover:bg-stone-800/80 text-stone-200 border border-transparent hover:border-purple-500/30 transition-all cursor-pointer flex items-center justify-between group"
                 >
                   <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="w-7 h-7 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center text-sm shrink-0">
-                      <Zap className="w-4 h-4 text-purple-700" />
+                    <div className="w-7 h-7 rounded-lg bg-purple-950/80 border border-purple-500/30 text-purple-400 flex items-center justify-center text-sm shrink-0">
+                      <Zap className="w-4 h-4 text-purple-400" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="font-extrabold truncate">Kịch bản tự động ({availableWorkflows.length})</p>
-                      <p className="text-[10px] text-stone-500 font-normal truncate">Chào đón, chỉ đường mẫu...</p>
+                      <p className="font-extrabold text-stone-100 group-hover:text-purple-400 transition-colors truncate">Kịch bản tự động ({availableWorkflows.length})</p>
+                      <p className="text-[10px] text-stone-400 font-normal truncate">Chào đón, chỉ đường mẫu...</p>
                     </div>
                   </div>
                   <ChevronDown className={`w-3.5 h-3.5 text-stone-400 transition-transform ${showWorkflowsSubmenu ? 'rotate-180' : ''}`} />
@@ -299,10 +294,10 @@ export const MobileRobotScreen = ({
                           setIsUtilitiesMenuOpen(false);
                           setShowWorkflowsSubmenu(false);
                         }}
-                        className="w-full p-1.5 rounded-lg text-left text-[11px] font-semibold text-stone-700 hover:bg-purple-50 hover:text-purple-900 border border-transparent hover:border-purple-200 transition-all cursor-pointer flex items-center justify-between"
+                        className="w-full p-1.5 rounded-lg text-left text-[11px] font-semibold text-stone-300 hover:bg-stone-800 hover:text-white border border-transparent hover:border-purple-500/30 transition-all cursor-pointer flex items-center justify-between"
                       >
                         <span className="truncate">{wf.name}</span>
-                        <span className="text-[9px] px-1 py-0.5 rounded bg-stone-100 text-stone-500 font-mono">
+                        <span className="text-[9px] px-1 py-0.5 rounded bg-stone-800 text-stone-400 font-mono">
                           {wf.steps?.length || 0}s
                         </span>
                       </button>
@@ -320,37 +315,17 @@ export const MobileRobotScreen = ({
                   handleInstall();
                   setIsUtilitiesMenuOpen(false);
                 }}
-                className="w-full p-2 rounded-xl text-left text-xs font-bold hover:bg-stone-100 text-stone-800 transition-all cursor-pointer flex items-center gap-2.5"
+                className="w-full p-2 rounded-xl text-left text-xs font-bold hover:bg-stone-800/80 text-stone-200 transition-all cursor-pointer flex items-center gap-2.5"
               >
-                <div className="w-7 h-7 rounded-lg bg-stone-100 text-stone-700 flex items-center justify-center text-sm shrink-0">
-                  <Smartphone className="w-4 h-4 text-stone-700" />
+                <div className="w-7 h-7 rounded-lg bg-stone-800 text-stone-300 flex items-center justify-center text-sm shrink-0">
+                  <Smartphone className="w-4 h-4 text-stone-300" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="font-extrabold truncate">Cài ứng dụng (PWA)</p>
-                  <p className="text-[10px] text-stone-500 font-normal truncate">Thêm vào Màn hình chính</p>
+                  <p className="font-extrabold text-stone-100 truncate">Cài ứng dụng (PWA)</p>
+                  <p className="text-[10px] text-stone-400 font-normal truncate">Thêm vào Màn hình chính</p>
                 </div>
               </button>
             )}
-
-            {/* 6. Thoát Kiosk */}
-            <div className="pt-1 border-t border-stone-100">
-              <button
-                type="button"
-                onClick={() => {
-                  setIsUtilitiesMenuOpen(false);
-                  onLogout();
-                }}
-                className="w-full p-2 rounded-xl text-left text-xs font-bold hover:bg-rose-50 text-rose-700 transition-all cursor-pointer flex items-center gap-2.5"
-              >
-                <div className="w-7 h-7 rounded-lg bg-rose-100 text-rose-700 flex items-center justify-center text-sm shrink-0">
-                  <LogOut className="w-4 h-4 text-rose-700" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-extrabold truncate">Thoát tài khoản</p>
-                  <p className="text-[10px] text-rose-500 font-normal truncate">Đăng xuất màn hình Kiosk</p>
-                </div>
-              </button>
-            </div>
           </div>
         )}
 
@@ -377,81 +352,43 @@ export const MobileRobotScreen = ({
             />
           </main>
         ) : (
-          <main className="flex-1 min-h-0 grid grid-cols-[42%_58%] robot-safe-x robot-safe-bottom">
-            <div className="relative min-w-0 flex flex-col items-center justify-center border-r border-stone-200 px-4">
-              <button
-                onClick={onStartTalk}
-                disabled={isBusy || !hasSpeechSupport}
-                className="w-full flex-1 min-h-0 flex items-center justify-center active:scale-[0.98] disabled:opacity-70 transition-transform cursor-pointer"
-                aria-label="Bắt đầu trò chuyện với Robot"
-              >
+          <main
+            onClick={() => {
+              if (isSpeaking && onStopSpeaking) {
+                onStopSpeaking();
+                if (onStartTalk) onStartTalk();
+                return;
+              }
+              if (!isSpeaking && !isBusy && onStartTalk) {
+                onStartTalk();
+              }
+            }}
+            className="flex-1 min-h-0 w-full flex flex-col items-center justify-center robot-safe-x robot-safe-bottom cursor-pointer relative px-4 select-none"
+          >
+            <div className="w-full max-w-md flex flex-col items-center justify-center py-2">
+              <div className="w-full flex items-center justify-center transition-transform active:scale-95 duration-200">
                 <RobotFace
                   mode={getRobotMode(currentState, isSpeaking, isProcessing, isListening)}
                   isSpeakingActive={isSpeaking}
                   compact
                 />
-              </button>
-              <div className="shrink-0 text-center pb-3">
-                <h1 className="text-xl font-black tracking-tight">{statusTitle}</h1>
-                <p className="mt-0.5 text-[10px] font-medium text-stone-500">{statusSubtitle}</p>
               </div>
-            </div>
 
-            <div className="min-w-0 min-h-0 flex flex-col px-4 py-3">
-              <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar">
-                {displayText ? (
-                  <div className="h-full rounded-2xl bg-white border border-stone-200 p-4 flex flex-col">
-                    <div className="flex items-center justify-between gap-3 pb-2 border-b border-stone-100">
-                      <span className="text-[9px] font-extrabold tracking-[0.16em] uppercase text-emerald-800">Robot đang trả lời</span>
-                      <span className="text-[9px] font-bold text-stone-500">{language}</span>
-                    </div>
-                    <p className="flex-1 min-h-0 overflow-y-auto py-3 text-sm leading-6 font-semibold">{displayText}</p>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <AudioWave isActive={isSpeaking} volumeLevel={volumeLevel} />
-                        <span className="text-[9px] font-semibold text-stone-500">Đang phát qua loa</span>
-                      </div>
-                      {isSpeaking && onStopSpeaking && (
-                        <button
-                          onClick={onStopSpeaking}
-                          className="text-[10px] font-bold text-stone-500 underline hover:text-stone-700 cursor-pointer"
-                        >
-                          Dừng nói
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="h-full flex flex-col justify-center">
-                    {isListening && transcript ? (
-                      <div className="rounded-2xl bg-white border border-stone-200 p-4">
-                        <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-stone-500">Đã nghe được</p>
-                        <p className="mt-2 text-sm leading-5 font-semibold line-clamp-4">{transcript}</p>
-                      </div>
-                    ) : (
-                      <div className="rounded-2xl border border-dashed border-stone-300 p-4 text-center">
-                        <p className="text-sm font-bold">Tôi có thể hỗ trợ dịch vụ phòng, chỉ đường và thông tin khách sạn.</p>
-                        <p className="mt-1 text-[10px] text-stone-500">Bấm Nói rồi đặt câu hỏi bằng tiếng Việt hoặc tiếng Anh.</p>
-                      </div>
-                    )}
-                    {!hasSpeechSupport && (
-                      <p className="mt-2 rounded-xl bg-amber-50 border border-amber-200 px-3 py-2 text-[10px] font-semibold text-amber-900">Trình duyệt chưa hỗ trợ nhận giọng nói. Nên dùng Chrome trên Android.</p>
-                    )}
-                    {speechError && hasSpeechSupport && <p className="mt-2 text-[10px] font-semibold text-red-700">Không thể dùng microphone: {speechError}</p>}
+              <div className="mt-2 text-center">
+                <h1 className="text-xl font-black tracking-tight text-stone-900">{statusTitle}</h1>
+                <p className="mt-0.5 text-[11px] font-medium text-stone-500 max-w-sm mx-auto line-clamp-2">
+                  {isListening && transcript ? transcript : (displayText || statusSubtitle)}
+                </p>
+                {isSpeaking && (
+                  <div className="mt-2 flex items-center justify-center gap-2">
+                    <AudioWave isActive={isSpeaking} volumeLevel={volumeLevel} />
                   </div>
                 )}
-              </div>
-
-              <div className="shrink-0 pt-3 flex items-center justify-between gap-3">
-                <button onClick={onResetSession} className="h-11 min-w-20 px-3 rounded-xl bg-white border border-stone-300 text-[10px] font-bold active:scale-95 cursor-pointer">Khách mới</button>
-                <button
-                  onClick={isSpeaking && onStopSpeaking ? onStopSpeaking : isListening ? onSubmitTalk : onStartTalk}
-                  disabled={isBusy || !hasSpeechSupport}
-                  className={`h-12 min-w-28 px-6 rounded-2xl border-4 border-white shadow-lg text-xs font-black tracking-wider active:scale-95 disabled:opacity-50 cursor-pointer ${isListening ? 'bg-red-600 text-white animate-pulse' : isSpeaking ? 'bg-amber-600 text-white' : 'bg-stone-950 text-white'}`}
-                >
-                  {isListening ? 'GỬI' : isSpeaking ? 'DỪNG' : isBusy ? 'ĐỢI' : 'NÓI'}
-                </button>
-                <button onClick={onToggleAutoListen} className="h-11 min-w-20 px-3 rounded-xl bg-white border border-stone-300 text-[10px] font-bold active:scale-95 cursor-pointer">Tự nghe: {isAutoListen ? 'Bật' : 'Tắt'}</button>
+                {speechError && hasSpeechSupport && (
+                  <p className="mt-2 text-[10px] font-semibold text-red-600 bg-red-50 border border-red-200 px-3 py-1 rounded-full inline-block">
+                    {speechError}
+                  </p>
+                )}
               </div>
             </div>
           </main>

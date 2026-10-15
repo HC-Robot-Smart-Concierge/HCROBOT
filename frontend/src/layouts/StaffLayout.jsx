@@ -18,7 +18,7 @@ import { UserProfileModal } from '../components/common/UserProfileModal';
 import { Bell, PlusCircle, LogOut } from 'lucide-react';
 
 export const StaffLayout = () => {
-  const { currentUser, isAdmin, logout, setCurrentUser } = useAuth();
+  const { currentUser, isAdmin, logout, setCurrentUser, resolveStaffDashboard } = useAuth();
   const {
     notifications,
     unreadNotifCount,
@@ -44,7 +44,8 @@ export const StaffLayout = () => {
 
   // Determine activeView & activeMenu from current path
   const path = location.pathname;
-  let activeView = 'room_service';
+  const staffDefaultView = resolveStaffDashboard ? resolveStaffDashboard(currentUser) : 'housekeeping';
+  let activeView = staffDefaultView;
   let activeMenu = 'Dashboard';
 
   if (path.includes('/staff/reception')) activeView = 'reception';

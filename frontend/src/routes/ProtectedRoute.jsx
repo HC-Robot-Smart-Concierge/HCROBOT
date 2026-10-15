@@ -1,6 +1,6 @@
 import React from 'react';
 import { Navigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import { useAuth, resolveStaffDashboard } from '../context/AuthContext';
 
 export const ProtectedRoute = ({ children, requireAdmin = false }) => {
   const { currentUser, isLoading, isAdmin, isRobot } = useAuth();
@@ -27,7 +27,8 @@ export const ProtectedRoute = ({ children, requireAdmin = false }) => {
   }
 
   if (requireAdmin && !isAdmin) {
-    return <Navigate to="/staff/room-service" replace />;
+    const dash = resolveStaffDashboard(currentUser).replace('_', '-');
+    return <Navigate to={`/staff/${dash}`} replace />;
   }
 
   return children;

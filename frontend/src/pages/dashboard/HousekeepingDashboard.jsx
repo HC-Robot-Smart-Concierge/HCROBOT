@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { AssignStaffModal } from '../../components/dashboard/Modals';
+import { Pagination } from '../../components/common/Pagination';
 import { INITIAL_HOUSEKEEPING_DATA } from '../../data/mockHotelData';
 import {
   assignHousekeepingStaff,
@@ -41,6 +42,12 @@ export const HousekeepingDashboard = ({ currentUser, onNotify = () => {} }) => {
   const [data, setData] = useState(INITIAL_HOUSEKEEPING_DATA);
   const [filter, setFilter] = useState('All');
   const [requestToAssign, setRequestToAssign] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filter]);
 
   useEffect(() => {
     const loadData = async () => {
@@ -115,6 +122,18 @@ export const HousekeepingDashboard = ({ currentUser, onNotify = () => {} }) => {
       return score(a) - score(b);
     });
   }, [allRequests, filter]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredRequests.length / pageSize));
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
+  const paginatedRequests = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredRequests.slice(start, start + pageSize);
+  }, [filteredRequests, currentPage, pageSize]);
 
   const saveRequests = (requests) => {
     try {
@@ -244,7 +263,7 @@ export const HousekeepingDashboard = ({ currentUser, onNotify = () => {} }) => {
                   {t('noDataMatch')}
                 </div>
               ) : (
-                filteredRequests.map((request) => {
+                paginatedRequests.map((request) => {
                   const requestId = requestKey(request);
                   const pending = isPendingRequest(request);
                   const inProgress = isInProgressRequest(request);
@@ -317,6 +336,18 @@ export const HousekeepingDashboard = ({ currentUser, onNotify = () => {} }) => {
                 })
               )}
             </div>
+
+            {/* Pagination Footer */}
+            {filteredRequests.length > 0 && (
+              <Pagination
+                currentPage={currentPage}
+                totalItems={filteredRequests.length}
+                pageSize={pageSize}
+                onPageChange={setCurrentPage}
+                itemName="yêu cầu"
+                className="mt-3 rounded-2xl border border-[#E5E1D8] shadow-xs bg-white"
+              />
+            )}
           </div>
 
           <aside className="space-y-4">

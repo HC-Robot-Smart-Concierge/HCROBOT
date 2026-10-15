@@ -45,6 +45,50 @@ export const isAdminUser = (user) => {
   );
 };
 
+export const resolveStaffDashboard = (user) => {
+  if (!user) return 'landing';
+  if (isRobotUser(user)) return 'robot_display';
+  if (isAdminUser(user)) return 'admin_portal';
+
+  // 1. Check department strictly
+  const dept = String(user.department || '').toLowerCase();
+  if (dept.includes('housekeeping') || dept.includes('buồng')) return 'housekeeping';
+  if (dept.includes('reception') || dept.includes('lễ tân') || dept.includes('front')) return 'reception';
+  if (dept.includes('bell') || dept.includes('hành lý')) return 'bell_services';
+  if (dept.includes('maintenance') || dept.includes('kỹ thuật')) return 'maintenance';
+  if (dept.includes('kitchen') || dept.includes('bếp')) return 'kitchen';
+  if (dept.includes('concierge') || dept.includes('trợ lý') || dept.includes('taxi')) return 'concierge';
+  if (dept.includes('room') || dept.includes('phục vụ') || dept.includes('f&b')) return 'room_service';
+
+  // 2. Check username
+  const username = String(user.username || '').toLowerCase();
+  if (username.includes('housekeeping')) return 'housekeeping';
+  if (username.includes('reception')) return 'reception';
+  if (username.includes('bell')) return 'bell_services';
+  if (username.includes('maintenance')) return 'maintenance';
+  if (username.includes('kitchen')) return 'kitchen';
+  if (username.includes('taxi') || username.includes('concierge')) return 'concierge';
+  if (username.includes('roomservice') || username.includes('room_service')) return 'room_service';
+
+  // 3. Check role
+  const role = String(user.role || '').toLowerCase();
+  if (role.includes('housekeeping') || role.includes('buồng')) return 'housekeeping';
+  if (role.includes('reception') || role.includes('lễ tân')) return 'reception';
+  if (role.includes('bell') || role.includes('hành lý')) return 'bell_services';
+  if (role.includes('maintenance') || role.includes('kỹ thuật')) return 'maintenance';
+  if (role.includes('kitchen') || role.includes('bếp') || role.includes('chef')) return 'kitchen';
+  if (role.includes('concierge') || role.includes('taxi')) return 'concierge';
+  if (role.includes('room') || role.includes('phục vụ')) return 'room_service';
+
+  // 4. Check explicit default_dashboard
+  const dash = user.default_dashboard || user.defaultDashboard;
+  if (dash && dash !== 'room_service') {
+    return normalizeLegacyView(dash, user);
+  }
+
+  return 'housekeeping';
+};
+
 export const normalizeLegacyView = (view, user) => {
   if (isRobotUser(user)) return 'robot_display';
   if (isAdminUser(user)) {
@@ -55,7 +99,7 @@ export const normalizeLegacyView = (view, user) => {
   }
   if (view === 'robot_display') return 'robot_display';
   if (!view || view === 'manager_hub' || view === 'admin_portal' || view === 'admin_map') {
-    return user ? (user.default_dashboard || 'room_service') : 'landing';
+    return user ? resolveStaffDashboard(user) : 'landing';
   }
   const clean = String(view).toLowerCase().trim().replace(/[\s-]+/g, '_');
   if (['f&b', 'fb', 'food_beverage', 'roomservice', 'f_and_b', 'room_service'].includes(clean)) {
@@ -122,10 +166,7 @@ export function AuthProvider({ children }) {
     } else if (isAdminUser(user)) {
       resolvedDashboard = 'admin_portal';
     } else {
-      resolvedDashboard = normalizeLegacyView(
-        targetDashboard || user.default_dashboard || user.defaultDashboard || 'room_service',
-        user
-      );
+      resolvedDashboard = resolveStaffDashboard(user);
     }
     return { success: true, resolvedDashboard };
   };
@@ -150,6 +191,7 @@ export function AuthProvider({ children }) {
     login,
     logout,
     syncProfile,
+    resolveStaffDashboard: (u = currentUser) => resolveStaffDashboard(u),
     normalizeLegacyView: (v) => normalizeLegacyView(v, currentUser),
   };
 

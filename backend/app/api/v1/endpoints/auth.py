@@ -58,6 +58,37 @@ USERNAME_ALIASES = {
 }
 
 
+def resolve_dashboard_for_staff(staff: Staff) -> str:
+    """Ensures staff account is strictly mapped to their operational department dashboard."""
+    role_lower = (staff.role or "").lower()
+    username_lower = (staff.username or "").lower()
+    if role_lower == "admin" or username_lower == "admin":
+        return "admin_portal"
+    if "robot" in role_lower or username_lower.startswith("robot"):
+        return "robot_display"
+
+    dept_lower = (staff.department or "").lower()
+    if "housekeeping" in dept_lower or "buồng" in dept_lower or "housekeeping" in username_lower:
+        return "housekeeping"
+    if "reception" in dept_lower or "lễ tân" in dept_lower or "front" in dept_lower or "reception" in username_lower:
+        return "reception"
+    if "bell" in dept_lower or "hành lý" in dept_lower or "bell" in username_lower:
+        return "bell_services"
+    if "maint" in dept_lower or "kỹ thuật" in dept_lower or "maintenance" in username_lower:
+        return "maintenance"
+    if "kitchen" in dept_lower or "bếp" in dept_lower or "chef" in dept_lower or "kitchen" in username_lower:
+        return "kitchen"
+    if "concierge" in dept_lower or "trợ lý" in dept_lower or "taxi" in dept_lower or "concierge" in username_lower or "taxi" in username_lower:
+        return "concierge"
+    if "room" in dept_lower or "phục vụ" in dept_lower or "f&b" in dept_lower or "roomservice" in username_lower:
+        return "room_service"
+
+    if staff.default_dashboard and staff.default_dashboard != "room_service":
+        return staff.default_dashboard
+
+    return "reception"
+
+
 @router.post("/login", response_model=TokenResponse)
 async def login(
     login_in: LoginRequest,
@@ -107,12 +138,13 @@ async def login(
     )
 
     # 3. Create JWT Token
+    resolved_dashboard = resolve_dashboard_for_staff(staff)
     token_payload = {
         "sub": staff.id,
         "username": staff.username,
         "role": staff.role,
         "department": staff.department,
-        "default_dashboard": staff.default_dashboard,
+        "default_dashboard": resolved_dashboard,
     }
     token = create_access_token(data=token_payload)
 
@@ -123,7 +155,7 @@ async def login(
         full_name=staff.full_name,
         role=staff.role,
         department=staff.department,
-        default_dashboard=staff.default_dashboard,
+        default_dashboard=resolved_dashboard,
         location=staff.location,
         status=staff.status,
         avatar_url=staff.avatar_url,
@@ -133,7 +165,7 @@ async def login(
         access_token=token,
         token_type="bearer",
         user=user_profile,
-        target_dashboard=staff.default_dashboard,
+        target_dashboard=resolved_dashboard,
     )
 
 
@@ -162,7 +194,9 @@ async def get_current_user(
     if not staff:
         raise HTTPException(status_code=404, detail="User not found")
 
-    return UserAuthProfile.model_validate(staff)
+    user_profile = UserAuthProfile.model_validate(staff)
+    user_profile.default_dashboard = resolve_dashboard_for_staff(staff)
+    return user_profile
 
 
 @router.post("/change-password")

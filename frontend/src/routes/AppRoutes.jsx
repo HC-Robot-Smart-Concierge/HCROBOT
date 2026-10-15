@@ -1,6 +1,6 @@
 import React from 'react';
 import { Routes, Route, Navigate, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import { useAuth, resolveStaffDashboard } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
 import { ProtectedRoute } from './ProtectedRoute';
 import { StaffLayout } from '../layouts/StaffLayout';
@@ -51,9 +51,7 @@ function ConciergeRouteWrapper() {
 function StaffIndexRedirect() {
   const { currentUser, isAdmin } = useAuth();
   if (isAdmin) return <Navigate to="/admin/portal" replace />;
-  const defaultDash = (currentUser?.default_dashboard || currentUser?.defaultDashboard || 'room_service')
-    .toLowerCase()
-    .replace('_', '-');
+  const defaultDash = resolveStaffDashboard(currentUser).replace('_', '-');
   return <Navigate to={`/staff/${defaultDash}`} replace />;
 }
 
@@ -109,7 +107,7 @@ export const AppRoutes = () => {
                 if (isAdmin) {
                   navigate('/admin/portal');
                 } else {
-                  const dash = (currentUser.default_dashboard || 'room-service').replace('_', '-');
+                  const dash = resolveStaffDashboard(currentUser).replace('_', '-');
                   navigate(`/staff/${dash}`);
                 }
               } else {
@@ -138,7 +136,7 @@ export const AppRoutes = () => {
               to={
                 isAdmin
                   ? '/admin/portal'
-                  : `/staff/${(currentUser.default_dashboard || 'room-service').replace('_', '-')}`
+                  : `/staff/${resolveStaffDashboard(currentUser).replace('_', '-')}`
               }
               replace
             />

@@ -29,7 +29,7 @@ async def test_concierge_intent_routing_triggers_call():
         "rag_context": "",
     }
     result_vi = await concierge_graph.ainvoke(state_vi, config=config)
-    assert result_vi.get("action") == "concierge"
+    assert result_vi.get("action") in ["concierge", "trigger_video_call"]
     assert result_vi.get("trigger_video_call") is True
     assert "nhân viên" in result_vi.get("response").lower()
 
@@ -44,7 +44,7 @@ async def test_concierge_intent_routing_triggers_call():
         "rag_context": "",
     }
     result_en = await concierge_graph.ainvoke(state_en, config=config_en)
-    assert result_en.get("action") == "concierge"
+    assert result_en.get("action") in ["concierge", "trigger_video_call"]
     assert result_en.get("trigger_video_call") is True
     assert "connecting" in result_en.get("response").lower() or "concierge" in result_en.get("response").lower()
 

@@ -4,6 +4,7 @@ import {
   GAZEBO_LOBBY_WAYPOINTS,
   STANDARD_LOBBY_WAYPOINTS,
   getStepActionDetail,
+  resolveNoStopPassthrough,
 } from './workflowSimulatorUtils';
 
 describe('Waypoint Locations - In Front of Facilities', () => {
@@ -116,3 +117,66 @@ describe('STANDARD_LOBBY_WAYPOINTS and getStepActionDetail', () => {
     expect(detail.detailText).toContain('Điều hướng né vật cản đến:');
   });
 });
+
+describe('resolveNoStopPassthrough - Smart Auto-Passthrough for NO_STOP Zones', () => {
+  it('should detect when target lies inside a NO_STOP zone and project passthrough exit point', () => {
+    // Doorway NO_STOP zone is around x=4.4, y=2.85 (w=1.4, h=1.6) -> x in [3.7, 5.1]
+    const robotStart = { x: 5.2, y: 2.85 };
+    const targetInsideDoor = { x: 4.2, y: 2.85 };
+
+    const result = resolveNoStopPassthrough(robotStart, targetInsideDoor);
+    expect(result.isNoStop).toBe(true);
+    expect(result.zone.type).toBe('NO_STOP');
+    // Moving West, safe point should be outside doorway in Left Room (x < 3.7)
+    expect(result.safePoint.x).toBeLessThan(3.7);
+    expect(result.safePoint.x).toBeGreaterThan(1.0);
+  });
+
+  it('should project passthrough exit to East side when moving from West to East', () => {
+    const robotStart = { x: 2.5, y: 2.85 };
+    const targetInsideDoor = { x: 4.2, y: 2.85 };
+
+    const result = resolveNoStopPassthrough(robotStart, targetInsideDoor);
+    expect(result.isNoStop).toBe(true);
+    // Moving East, safe point should be outside doorway in Right Room (x > 5.1)
+    expect(result.safePoint.x).toBeGreaterThan(5.1);
+    expect(result.safePoint.x).toBeLessThan(9.0);
+  });
+
+  it('should return isNoStop false when target is in a safe area', () => {
+    const robotStart = { x: 5.2, y: 2.85 };
+    const safeTarget = { x: 2.0, y: 4.0 };
+
+    const result = resolveNoStopPassthrough(robotStart, safeTarget);
+    expect(result.isNoStop).toBe(false);
+    expect(result.safePoint).toEqual(safeTarget);
+  });
+
+  it('should route around Front Desk via East and North corridors when starting from behind Front Desk', () => {
+    // Robot behind Front Desk: (6.1, 2.0)
+    // Destination: Sofa in Left Wing: (2.06, 4.0)
+    const fromBehindDesk = { x: 6.1, y: 2.0 };
+    const toSofa = { x: 2.06, y: 4.0 };
+
+    const waypoints = calculateSafeWaypoints(fromBehindDesk, toSofa);
+
+    // Phai thoat ra hanh lang phia Dong quay le tan (x >= 7.0)
+    const hasEastExit = waypoints.some((p) => p.x >= 7.0 && p.y <= 2.2);
+    expect(hasEastExit).toBe(true);
+
+    // Phai di vong qua hanh lang phia Bac quay le tan (x: 7.1, y: 2.85)
+    const hasNorthCorridor = waypoints.some((p) => Math.abs(p.x - 7.1) < 0.2 && Math.abs(p.y - 2.85) < 0.2);
+    expect(hasNorthCorridor).toBe(true);
+
+    // Phai di qua cua thong sanh (x=4.4, y=2.85)
+    const hasDoorway = waypoints.some((p) => Math.abs(p.x - 4.4) < 0.2 && Math.abs(p.y - 2.85) < 0.2);
+    expect(hasDoorway).toBe(true);
+
+    // Diem den cuoi cung la Sofa (2.06, 4.0)
+    const lastPoint = waypoints[waypoints.length - 1];
+    expect(lastPoint.x).toBe(2.06);
+    expect(lastPoint.y).toBe(4.0);
+  });
+});
+
+

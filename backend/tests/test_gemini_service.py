@@ -7,10 +7,11 @@ from app.core.config import settings
 
 def test_gemini_service_initialization():
     """Kiểm tra khởi tạo GeminiService và candidate models."""
-    service = GeminiService()
-    assert service.is_configured is True
-    assert "gemini-flash-latest" in service.candidate_models
-    assert len(service.candidate_models) >= 1
+    with patch.object(settings, "GEMINI_API_KEY", "mock-gemini-key"):
+        service = GeminiService()
+        assert service.is_configured is True
+        assert "gemini-flash-latest" in service.candidate_models
+        assert len(service.candidate_models) >= 1
 
 
 def test_gemini_detect_language():
@@ -90,6 +91,8 @@ async def test_gemini_extract_intent_mocked():
 async def test_ollama_service_delegates_to_gemini_when_active():
     """Kiểm tra khi settings.is_gemini_active=True thì ollama_service gọi Gemini."""
     with patch.object(settings, "LLM_PROVIDER", "gemini"), \
+         patch.object(settings, "GEMINI_API_KEY", "mock-gemini-key"), \
+         patch("app.services.ai.gemini_service.gemini_service.api_key", "mock-gemini-key"), \
          patch("app.services.ai.gemini_service.gemini_service.generate_response", new_callable=AsyncMock) as mock_gemini_gen:
         mock_gemini_gen.return_value = ("Dạ em là Rora được cấp nguồn bởi Gemini ạ.", "Tiếng Việt", "vi-VN")
 

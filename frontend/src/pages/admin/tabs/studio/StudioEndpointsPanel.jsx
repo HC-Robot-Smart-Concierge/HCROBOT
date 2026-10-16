@@ -119,7 +119,7 @@ export const StudioEndpointsPanel = ({
                       type="button"
                       onClick={() => onAddWaypointToWorkflow(wp)}
                       className="px-1.5 py-0.5 rounded text-[10px] font-bold cursor-pointer"
-                      style={{ backgroundColor: '#8B5CF6', color: '#FFFFFF' }}
+                      style={{ backgroundColor: '#262626', color: '#FFFFFF' }}
                       title="Nối điểm này vào Workflow"
                     >
                       + Nối

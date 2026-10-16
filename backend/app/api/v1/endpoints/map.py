@@ -27,17 +27,64 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 DEFAULT_WAYPOINTS: List[dict] = []
-DEFAULT_ZONES: List[dict] = []
+DEFAULT_ZONES: List[dict] = [
+    {
+        "id": "zone-keepout-staff",
+        "name": "Khu Vực Staff Only (Cấm Vào)",
+        "type": "KEEP_OUT",
+        "x": 8.8,
+        "y": 1.5,
+        "width": 1.5,
+        "height": 2.8,
+        "speed_limit": 0.0,
+        "floor": "Sảnh Tầng 1",
+        "description": "Khu vực kỹ thuật & phòng nhân viên nội bộ, robot tuyệt đối không đi vào.",
+    },
+    {
+        "id": "zone-speed-frontdesk",
+        "name": "Khu Vực Quầy Tiếp Tân (Giới Hạn Tốc Độ)",
+        "type": "SPEED_ZONE",
+        "x": 5.2,
+        "y": 2.2,
+        "width": 2.6,
+        "height": 2.0,
+        "speed_limit": 0.20,
+        "floor": "Sảnh Tầng 1",
+        "description": "Khu vực đón tiếp đông khách, tự động giới hạn tốc độ tối đa 0.20 m/s.",
+    },
+    {
+        "id": "zone-nostop-doorway",
+        "name": "Cửa Thông Sảnh Chính (Cấm Dừng)",
+        "type": "NO_STOP",
+        "x": 4.4,
+        "y": 2.85,
+        "width": 1.4,
+        "height": 1.6,
+        "speed_limit": 0.30,
+        "floor": "Sảnh Tầng 1",
+        "description": "Nút thắt lưu thông chính giữa 2 gian sảnh, robot chỉ được phép đi qua, cấm dừng đỗ.",
+    },
+]
 
 current_robot_pose = Pose2D(x=0.0, y=0.0, yaw=0.0)
+
+
+def is_point_in_zone(px: float, py: float, z) -> bool:
+    """Kiểm tra một tọa độ (px, py) có nằm trong vùng hình chữ nhật z hay không."""
+    half_w = (getattr(z, "width", 2.0) or 2.0) / 2.0
+    half_h = (getattr(z, "height", 2.0) or 2.0) / 2.0
+    zx = getattr(z, "x", 0.0)
+    zy = getattr(z, "y", 0.0)
+    return (zx - half_w) <= px <= (zx + half_w) and (zy - half_h) <= py <= (zy + half_h)
 
 
 async def ensure_default_waypoints(repo: MapRepository):
     if not DEFAULT_WAYPOINTS:
         return
     existing = await repo.list_waypoints()
-    if not existing:
-        for wp in DEFAULT_WAYPOINTS:
+    existing_ids = {wp.id for wp in existing}
+    for wp in DEFAULT_WAYPOINTS:
+        if wp["id"] not in existing_ids:
             await repo.save_or_update_waypoint(
                 id=wp["id"],
                 name=wp["name"],
@@ -54,8 +101,9 @@ async def ensure_default_zones(repo: MapRepository):
     if not DEFAULT_ZONES:
         return
     existing = await repo.list_zones()
-    if not existing:
-        for z in DEFAULT_ZONES:
+    existing_ids = {z.id for z in existing}
+    for z in DEFAULT_ZONES:
+        if z["id"] not in existing_ids:
             await repo.save_or_update_zone(
                 id=z["id"],
                 name=z["name"],
@@ -64,7 +112,7 @@ async def ensure_default_zones(repo: MapRepository):
                 y=z["y"],
                 width=z["width"],
                 height=z["height"],
-                speed_limit=z.get("speed_limit", 0.3),
+                speed_limit=z.get("speed_limit", 0.2),
                 floor=z.get("floor", "Sảnh Tầng 1"),
                 description=z.get("description", ""),
             )
@@ -72,6 +120,7 @@ async def ensure_default_zones(repo: MapRepository):
 
 @router.get("/current", response_model=OccupancyGridResponse, summary="Lấy dữ liệu bản đồ SLAM Occupancy Grid 2D thực tế")
 async def get_current_map(repo: MapRepository = Depends(get_map_repository)):
+    await ensure_default_zones(repo)
     wps_db = await repo.list_waypoints()
     waypoints = [
         Waypoint(
@@ -142,6 +191,19 @@ async def get_waypoints(repo: MapRepository = Depends(get_map_repository)):
 
 @router.post("/waypoints", response_model=Waypoint, summary="Tạo mới hoặc cập nhật tọa độ Waypoint / Endpoint")
 async def save_waypoint(wp: Waypoint, repo: MapRepository = Depends(get_map_repository)):
+    active_zones = await repo.list_zones()
+    for z in active_zones:
+        if z.type == "KEEP_OUT" and is_point_in_zone(wp.x, wp.y, z):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Tọa độ ({wp.x:.2f}, {wp.y:.2f}) nằm trong Khu vực cấm vào (Keep-out Zone) '{z.name}'!",
+            )
+        if z.type == "NO_STOP" and (wp.type or "").upper() in ("PARK", "PARKING_SPOT", "CHARGER", "DOCKING_TARGET") and is_point_in_zone(wp.x, wp.y, z):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Tọa độ ({wp.x:.2f}, {wp.y:.2f}) nằm trong Khu vực cấm dừng (No-Stop Zone) '{z.name}'. Không thể tạo điểm đỗ/chờ tại đây!",
+            )
+
     saved = await repo.save_or_update_waypoint(
         id=wp.id,
         name=wp.name,
@@ -169,6 +231,19 @@ async def update_waypoint(waypoint_id: str, wp: Waypoint, repo: MapRepository = 
     existing = await repo.get_waypoint_by_id(waypoint_id)
     if not existing:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy Waypoint")
+
+    active_zones = await repo.list_zones()
+    for z in active_zones:
+        if z.type == "KEEP_OUT" and is_point_in_zone(wp.x, wp.y, z):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Tọa độ ({wp.x:.2f}, {wp.y:.2f}) nằm trong Khu vực cấm vào (Keep-out Zone) '{z.name}'!",
+            )
+        if z.type == "NO_STOP" and (wp.type or "").upper() in ("PARK", "PARKING_SPOT", "CHARGER", "DOCKING_TARGET") and is_point_in_zone(wp.x, wp.y, z):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Tọa độ ({wp.x:.2f}, {wp.y:.2f}) nằm trong Khu vực cấm dừng (No-Stop Zone) '{z.name}'. Không thể tạo điểm đỗ/chờ tại đây!",
+            )
 
     saved = await repo.save_or_update_waypoint(
         id=waypoint_id,
@@ -202,6 +277,7 @@ async def delete_waypoint(waypoint_id: str, repo: MapRepository = Depends(get_ma
 
 @router.get("/zones", response_model=List[ZoneSchema], summary="Lấy danh sách các Vùng Chức Năng (Zones)")
 async def get_zones(repo: MapRepository = Depends(get_map_repository)):
+    await ensure_default_zones(repo)
     zones = await repo.list_zones()
     return [
         ZoneSchema(
@@ -596,9 +672,29 @@ async def trigger_teleop(payload: dict):
 
 
 @router.post("/navigate", response_model=NavigationResponse, summary="Gửi mục tiêu di chuyển Robot")
-async def navigate_to_target(request: NavigationRequest):
+async def navigate_to_target(
+    request: NavigationRequest,
+    repo: MapRepository = Depends(get_map_repository),
+):
     global current_robot_pose
     try:
+        active_zones = await repo.list_zones()
+        for z in active_zones:
+            if z.type == "KEEP_OUT" and is_point_in_zone(request.target_x, request.target_y, z):
+                return NavigationResponse(
+                    status="REJECTED",
+                    message=f"Đích đến ({request.target_x:.2f}, {request.target_y:.2f}) nằm trong Khu vực cấm vào (Keep-out Zone) '{z.name}'!",
+                    target_x=request.target_x,
+                    target_y=request.target_y,
+                )
+            if z.type == "NO_STOP" and is_point_in_zone(request.target_x, request.target_y, z):
+                return NavigationResponse(
+                    status="REJECTED",
+                    message=f"Đích đến ({request.target_x:.2f}, {request.target_y:.2f}) nằm trong Khu vực cấm dừng (No-Stop Zone) '{z.name}'. Robot không thể chọn đây làm điểm kết thúc!",
+                    target_x=request.target_x,
+                    target_y=request.target_y,
+                )
+
         current_robot_pose.x = request.target_x
         current_robot_pose.y = request.target_y
         if request.target_yaw is not None:

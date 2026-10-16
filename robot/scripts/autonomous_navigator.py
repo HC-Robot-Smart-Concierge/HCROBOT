@@ -11,6 +11,9 @@ Features:
 import sys
 import math
 import time
+import json
+import urllib.request
+import threading
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import String
@@ -19,6 +22,43 @@ from nav_msgs.msg import Odometry
 from sensor_msgs.msg import LaserScan, JointState
 from visualization_msgs.msg import Marker, MarkerArray
 from tf2_ros import TransformBroadcaster
+
+# Danh sách Vùng Chức Năng Mặc Định chuẩn Hotel Concierge Lobby Arena (10m x 6m)
+DEFAULT_HOTEL_ZONES = [
+    {
+        "id": "zone-keepout-staff",
+        "name": "Khu Vực Staff Only (Cấm Vào)",
+        "type": "KEEP_OUT",
+        "x": 8.8,
+        "y": 1.5,
+        "width": 1.5,
+        "height": 2.8,
+        "speed_limit": 0.0,
+        "description": "Khu vực kỹ thuật & phòng nhân viên nội bộ, robot tuyệt đối không đi vào.",
+    },
+    {
+        "id": "zone-speed-frontdesk",
+        "name": "Khu Vực Quầy Tiếp Tân (Giới Hạn Tốc Độ)",
+        "type": "SPEED_ZONE",
+        "x": 5.2,
+        "y": 2.2,
+        "width": 2.6,
+        "height": 2.0,
+        "speed_limit": 0.20,
+        "description": "Khu vực đón tiếp đông khách, tự động giới hạn tốc độ tối đa 0.20 m/s.",
+    },
+    {
+        "id": "zone-nostop-doorway",
+        "name": "Cửa Thông Sảnh Chính (Cấm Dừng)",
+        "type": "NO_STOP",
+        "x": 4.4,
+        "y": 2.85,
+        "width": 1.4,
+        "height": 1.6,
+        "speed_limit": 0.30,
+        "description": "Nút thắt lưu thông chính giữa 2 gian sảnh, robot chỉ được phép đi qua, cấm dừng đỗ.",
+    },
+]
 
 # Sơ đồ Mặt Bằng Sảnh Tầng Trệt (Ground Floor - Lobby Arena)
 # Không có trạm sạc robot, robot xuất phát và túc trực tại góc trên bên phải của Lobby (3.7, 5.0)
@@ -54,6 +94,19 @@ class AutonomousNavigator(Node):
         self.goal_sub = self.create_subscription(PoseStamped, '/goal_pose', self.goal_callback, 10)
         # Lenh chuyen mode: "PATROL", "STANDBY", "STOP"
         self.mode_sub = self.create_subscription(String, '/nav_mode', self.nav_mode_callback, 10)
+
+        # Quản lý Vùng Chức Năng (Keep-out, Speed Limit, No-Stop)
+        self.zones = [dict(z) for z in DEFAULT_HOTEL_ZONES]
+        self.zone_sub = self.create_subscription(String, '/hotel_zones', self.zones_callback, 10)
+        self.zone_telemetry_pub = self.create_publisher(String, '/zone_telemetry', 10)
+        self.zone_marker_pub = self.create_publisher(MarkerArray, '/zone_markers', 10)
+        self.last_zone_telemetry_time = 0.0
+        self.last_speed_zone_log_id = None
+        self.no_stop_stop_detected = 0.0
+        self.zone_violation_msg = None
+        self.clearing_no_stop = False
+        self.marker_timer = self.create_timer(1.0, self.publish_zone_markers)
+        self.fetch_backend_zones_async()
         
         # Robot position & orientation (Khoi tao tai Goc Tren Ben Phai Lobby: 3.7, 5.0, -90°)
         self.current_x = SPAWN_X
@@ -91,8 +144,126 @@ class AutonomousNavigator(Node):
         self.get_logger().info("==========================================================")
         self.get_logger().info(" HC-ROBOT AUTONOMOUS LIDAR NAVIGATION (10m x 6m LOBBY)   ")
         self.get_logger().info(" Standby tai Goc Tren Ben Phai Lobby (X=3.70, Y=5.00)     ")
-        self.get_logger().info(" San sang nhan lenh dieu huong 1:1 tu Web Kiosk & Studio ")
+        self.get_logger().info(" Tích hợp Zone: Keep-out, Speed Limit, No-Stop trực tiếp ")
         self.get_logger().info("==========================================================")
+
+    def is_inside_zone(self, x, y, zone):
+        half_w = float(zone.get('width', 2.0) or 2.0) / 2.0
+        half_h = float(zone.get('height', 2.0) or 2.0) / 2.0
+        zx = float(zone.get('x', 0.0) or 0.0)
+        zy = float(zone.get('y', 0.0) or 0.0)
+        return (zx - half_w) <= x <= (zx + half_w) and (zy - half_h) <= y <= (zy + half_h)
+
+    def get_zone_proximity(self, x, y, zone):
+        half_w = float(zone.get('width', 2.0) or 2.0) / 2.0
+        half_h = float(zone.get('height', 2.0) or 2.0) / 2.0
+        zx = float(zone.get('x', 0.0) or 0.0)
+        zy = float(zone.get('y', 0.0) or 0.0)
+        dx = max(0.0, abs(x - zx) - half_w)
+        dy = max(0.0, abs(y - zy) - half_h)
+        return math.hypot(dx, dy)
+
+    def get_active_zone(self, x, y):
+        priority = {'KEEP_OUT': 3, 'NO_STOP': 2, 'SPEED_ZONE': 1, 'SLOW_SPEED': 1}
+        matching = []
+        for z in self.zones:
+            if self.is_inside_zone(x, y, z):
+                matching.append(z)
+        if not matching:
+            return None
+        matching.sort(key=lambda z: priority.get(z.get('type', ''), 0), reverse=True)
+        return matching[0]
+
+    def zones_callback(self, msg: String):
+        try:
+            data = json.loads(msg.data)
+            if isinstance(data, list):
+                self.zones = data
+                self.get_logger().info(f"[ĐỒNG BỘ ZONES] Nhận {len(self.zones)} vùng chức năng từ Web!")
+                self.publish_zone_markers()
+        except Exception as e:
+            self.get_logger().error(f"Lỗi khi giải mã /hotel_zones: {e}")
+
+    def fetch_backend_zones_async(self):
+        def _fetch():
+            try:
+                req = urllib.request.Request("http://127.0.0.1:8000/api/v1/map/zones", headers={'User-Agent': 'HC-Robot-Nav'})
+                with urllib.request.urlopen(req, timeout=2.0) as resp:
+                    if resp.status == 200:
+                        data = json.loads(resp.read().decode('utf-8'))
+                        if isinstance(data, list) and len(data) > 0:
+                            self.zones = data
+                            self.get_logger().info(f"[ZONES CSDL] Đã tải thành công {len(self.zones)} vùng từ Backend!")
+                            self.publish_zone_markers()
+            except Exception:
+                pass
+        t = threading.Thread(target=_fetch, daemon=True)
+        t.start()
+
+    def publish_zone_markers(self):
+        if not self.zones:
+            return
+        now_msg = self.get_clock().now().to_msg()
+        ma = MarkerArray()
+
+        for idx, z in enumerate(self.zones):
+            z_type = z.get('type', 'KEEP_OUT')
+            zx = float(z.get('x', 0.0) or 0.0)
+            zy = float(z.get('y', 0.0) or 0.0)
+            zw = float(z.get('width', 2.0) or 2.0)
+            zh = float(z.get('height', 2.0) or 2.0)
+            name = z.get('name', f"Zone-{idx}")
+
+            box = Marker()
+            box.header.stamp = now_msg
+            box.header.frame_id = 'map'
+            box.ns = 'hotel_zones_box'
+            box.id = idx * 2
+            box.type = Marker.CUBE
+            box.action = Marker.ADD
+            box.pose.position.x = zx
+            box.pose.position.y = zy
+            box.pose.position.z = 0.5
+            box.pose.orientation.w = 1.0
+            box.scale.x = zw
+            box.scale.y = zh
+            box.scale.z = 1.0
+
+            if z_type == 'KEEP_OUT':
+                box.color.r, box.color.g, box.color.b, box.color.a = 0.90, 0.15, 0.15, 0.35
+            elif z_type in ('SPEED_ZONE', 'SLOW_SPEED'):
+                box.color.r, box.color.g, box.color.b, box.color.a = 0.95, 0.65, 0.05, 0.30
+            elif z_type == 'NO_STOP':
+                box.color.r, box.color.g, box.color.b, box.color.a = 0.88, 0.12, 0.45, 0.35
+            else:
+                box.color.r, box.color.g, box.color.b, box.color.a = 0.30, 0.45, 0.90, 0.25
+            ma.markers.append(box)
+
+            txt = Marker()
+            txt.header.stamp = now_msg
+            txt.header.frame_id = 'map'
+            txt.ns = 'hotel_zones_text'
+            txt.id = idx * 2 + 1
+            txt.type = Marker.TEXT_VIEW_FACING
+            txt.action = Marker.ADD
+            txt.pose.position.x = zx
+            txt.pose.position.y = zy
+            txt.pose.position.z = 1.15
+            txt.pose.orientation.w = 1.0
+            txt.scale.z = 0.28
+            txt.color.r, txt.color.g, txt.color.b, txt.color.a = 1.0, 1.0, 1.0, 0.95
+
+            if z_type == 'KEEP_OUT':
+                txt.text = f"[CẤM VÀO] {name}"
+            elif z_type in ('SPEED_ZONE', 'SLOW_SPEED'):
+                txt.text = f"[TỐC ĐỘ {z.get('speed_limit', 0.2)}m/s] {name}"
+            elif z_type == 'NO_STOP':
+                txt.text = f"[CẤM DỪNG] {name}"
+            else:
+                txt.text = name
+            ma.markers.append(txt)
+
+        self.zone_marker_pub.publish(ma)
 
     def get_lobby_base_path(self, start_x, start_y, target_x, target_y):
         """Sinh chuoi waypoint co ban ne vach ngan x=4.4m va quay tiep tan."""
@@ -173,13 +344,29 @@ class AutonomousNavigator(Node):
         """Tiếp nhận điểm đích A -> B từ RViz2 '2D Goal Pose' hoặc Web API."""
         gx = msg.pose.position.x
         gy = msg.pose.position.y
+
+        # Kiểm tra mục tiêu có vi phạm Vùng Chức Năng không:
+        for z in self.zones:
+            if z.get('type') == 'KEEP_OUT' and self.is_inside_zone(gx, gy, z):
+                self.get_logger().error(f"[VÙNG CẤM] Điểm đến ({gx:.2f}, {gy:.2f}) nằm trong Keep-out Zone '{z.get('name')}'! Từ chối mục tiêu.")
+                status_msg = String()
+                status_msg.data = f"REJECTED:KEEP_OUT:{z.get('name')}"
+                self.status_pub.publish(status_msg)
+                return
+            if z.get('type') == 'NO_STOP' and self.is_inside_zone(gx, gy, z):
+                self.get_logger().warn(f"[VÙNG CẤM DỪNG] Điểm đến ({gx:.2f}, {gy:.2f}) nằm trong No-Stop Zone '{z.get('name')}'! Không thể đặt đích dừng tại đây.")
+                status_msg = String()
+                status_msg.data = f"REJECTED:NO_STOP:{z.get('name')}"
+                self.status_pub.publish(status_msg)
+                return
+
         self.sub_waypoints = self.calculate_safe_path(self.current_x, self.current_y, gx, gy)
         self.custom_goal = self.sub_waypoints[0]
         self.mode = "POINT_TO_POINT"
         self.standby_stopped = False
         self.pause_until = 0.0
         self.get_logger().info(
-            f"[NHAN LENH A -> B] Sinh lo trinh {len(self.sub_waypoints)} diem ne tuong toi: X={gx:.2f}, Y={gy:.2f}"
+            f"[NHẬN LỆNH A -> B] Sinh lộ trình {len(self.sub_waypoints)} điểm né tường tới: X={gx:.2f}, Y={gy:.2f}"
         )
         self.print_next_target()
 
@@ -189,7 +376,7 @@ class AutonomousNavigator(Node):
         if cmd == "PATROL":
             self.mode = "PATROL"
             self.standby_stopped = False
-            self.get_logger().info("[MODE] Chuyen sang che do TUAN TRA (PATROL)")
+            self.get_logger().info("[MODE] Chuyển sang chế độ TUẦN TRA (PATROL)")
             self.print_next_target()
         elif cmd in ("STANDBY", "STOP"):
             self.mode = "STANDBY"
@@ -197,7 +384,7 @@ class AutonomousNavigator(Node):
             self.custom_goal = None
             self.publish_stop()
             self.standby_stopped = True
-            self.get_logger().info("[MODE] Chuyen sang che do DUNG (STANDBY)")
+            self.get_logger().info("[MODE] Chuyển sang chế độ DỪNG (STANDBY)")
 
     def print_next_target(self):
         if self.mode == "POINT_TO_POINT" and self.custom_goal:
@@ -210,7 +397,6 @@ class AutonomousNavigator(Node):
             self.get_logger().info(f">> [STANDBY]: Túc trực tại ({self.current_x:.2f}, {self.current_y:.2f})")
 
     def publish_joint_states(self, linear_vel, angular_vel, dt=0.05):
-        # Calculate differential wheel speeds
         wheel_sep = 0.297
         v_l = linear_vel - (angular_vel * wheel_sep / 2.0)
         v_r = linear_vel + (angular_vel * wheel_sep / 2.0)
@@ -227,8 +413,6 @@ class AutonomousNavigator(Node):
         self.joint_pub.publish(js)
 
     def odom_callback(self, msg: Odometry):
-        # DiffDrive trong Gazebo Harmonic xuat odom tuong doi bat dau tu (0, 0, yaw=0) tai diem spawn
-        # Ap dung ma tran quay Euler 2D tu Odom Frame sang World Frame theo SPAWN_YAW
         local_x = msg.pose.pose.position.x
         local_y = msg.pose.pose.position.y
 
@@ -241,7 +425,6 @@ class AutonomousNavigator(Node):
         self.current_x = SPAWN_X + world_dx
         self.current_y = SPAWN_Y + world_dy
 
-        # Orientation: Lay yaw tu quaternion Odom roi quay them SPAWN_YAW de ve dung he World
         q = msg.pose.pose.orientation
         siny_cosp = 2.0 * (q.w * q.z + q.x * q.y)
         cosy_cosp = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
@@ -252,7 +435,6 @@ class AutonomousNavigator(Node):
 
         now_msg = self.get_clock().now().to_msg()
 
-        # Publish Pose the gioi ra topic /robot_pose cho Web Kiosk & Admin Studio
         world_pose = PoseStamped()
         world_pose.header.stamp = now_msg
         world_pose.header.frame_id = 'map'
@@ -265,7 +447,6 @@ class AutonomousNavigator(Node):
         world_pose.pose.orientation.w = math.cos(self.current_yaw / 2.0)
         self.pose_pub.publish(world_pose)
 
-        # Broadcast map -> odom transform (offset vi tri spawn & rotation cua odom frame)
         t_map = TransformStamped()
         t_map.header.stamp = now_msg
         t_map.header.frame_id = 'map'
@@ -279,7 +460,6 @@ class AutonomousNavigator(Node):
         t_map.transform.rotation.w = math.cos(SPAWN_YAW / 2.0)
         self.tf_broadcaster.sendTransform(t_map)
 
-        # Broadcast odom -> base_link transform
         t = TransformStamped()
         t.header.stamp = now_msg
         t.header.frame_id = 'odom'
@@ -295,8 +475,6 @@ class AutonomousNavigator(Node):
             return
             
         self.lidar_ray_count = len(msg.ranges)
-        
-        # 1. Compute sector distances by true geometric angle
         front_ranges = []
         left_ranges = []
         right_ranges = []
@@ -308,13 +486,10 @@ class AutonomousNavigator(Node):
 
             valid = (not math.isnan(r)) and (msg.range_min <= r <= msg.range_max)
             if valid:
-                # Front sector: -40° to +40° (directly ahead)
                 if -40.0 <= deg <= 40.0:
                     front_ranges.append(r)
-                # Left sector: +40° to +90°
                 elif 40.0 < deg <= 90.0:
                     left_ranges.append(r)
-                # Right sector: -90° to -40°
                 elif -90.0 <= deg < -40.0:
                     right_ranges.append(r)
 
@@ -327,16 +502,48 @@ class AutonomousNavigator(Node):
             self.publish_joint_states(0.0, 0.0)
             return
 
-        # Neu dang o STANDBY, chi publish_stop mot lan de khong chan lenh teleop /cmd_vel tu Web
+        now = time.time()
+        active_zone = self.get_active_zone(self.current_x, self.current_y)
+
+        # Định kỳ publish telemetry vùng (2Hz)
+        if now - self.last_zone_telemetry_time > 0.5:
+            self.last_zone_telemetry_time = now
+            z_tel = {
+                "in_zone": active_zone is not None,
+                "zone_id": active_zone.get("id") if active_zone else None,
+                "zone_name": active_zone.get("name") if active_zone else None,
+                "zone_type": active_zone.get("type") if active_zone else None,
+                "speed_limit": float(active_zone.get("speed_limit") or 0.20) if active_zone and active_zone.get("type") in ("SPEED_ZONE", "SLOW_SPEED") else None,
+                "violation": self.zone_violation_msg,
+            }
+            tel_msg = String()
+            tel_msg.data = json.dumps(z_tel)
+            self.zone_telemetry_pub.publish(tel_msg)
+
+        # 1. Xử lý chế độ STANDBY
         if self.mode == "STANDBY":
-            if not self.standby_stopped:
-                self.publish_stop()
-                self.standby_stopped = True
-            now = time.time()
-            if now - self.last_log_time > 4.0:
-                self.last_log_time = now
-                self.get_logger().info(f"[STANDBY] San sang tai ({self.current_x:.2f}, {self.current_y:.2f})")
-            return
+            # Nếu đang nằm trong NO_STOP zone, robot không được dừng lại hẳn mà phải tự động di chuyển thoát khỏi vùng
+            if active_zone and active_zone.get("type") == "NO_STOP":
+                if not self.clearing_no_stop:
+                    self.clearing_no_stop = True
+                    self.get_logger().warn(
+                        f"[NO-STOP ZONE] Robot nhận lệnh dừng nhưng đang ở trong '{active_zone.get('name')}'. Tự động di chuyển thoát khỏi vùng cấm dừng..."
+                    )
+                cmd = Twist()
+                cmd.linear.x = 0.18
+                cmd.angular.z = 0.0
+                self.cmd_pub.publish(cmd)
+                self.publish_joint_states(cmd.linear.x, cmd.angular.z)
+                return
+            else:
+                self.clearing_no_stop = False
+                if not self.standby_stopped:
+                    self.publish_stop()
+                    self.standby_stopped = True
+                if now - self.last_log_time > 4.0:
+                    self.last_log_time = now
+                    self.get_logger().info(f"[STANDBY] Sẵn sàng tại ({self.current_x:.2f}, {self.current_y:.2f})")
+                return
 
         cmd = Twist()
         if self.mode == "POINT_TO_POINT" and self.custom_goal:
@@ -348,17 +555,22 @@ class AutonomousNavigator(Node):
         dy = ty - self.current_y
         dist_to_target = math.hypot(dx, dy)
         
-        now = time.time()
         if now - self.last_log_time > 1.5:
             self.last_log_time = now
+            zone_tag = f" | [Zone: {active_zone['name']}]" if active_zone else ""
             self.get_logger().info(
                 f"[{self.mode}] Mũi: {self.min_front_dist:.2f}m | Trái: {self.min_left_dist:.2f}m | Phải: {self.min_right_dist:.2f}m "
-                f"-> Tại ({self.current_x:.2f}, {self.current_y:.2f}) -> Cách {name}: {dist_to_target:.2f}m"
+                f"-> Tại ({self.current_x:.2f}, {self.current_y:.2f}){zone_tag} -> Cách {name}: {dist_to_target:.2f}m"
             )
 
-        # Check waypoint pause state (Non-blocking)
+        # 2. Xử lý Pause tại Waypoint: Tuyệt đối không dừng nếu đang trong NO_STOP zone
         if self.pause_until > 0.0:
-            if now < self.pause_until:
+            if active_zone and active_zone.get("type") == "NO_STOP":
+                self.get_logger().warn(
+                    f"[NO-STOP ZONE] Bỏ qua thời gian tạm dừng vì đang trong '{active_zone.get('name')}', tiếp tục di chuyển!"
+                )
+                self.pause_until = 0.0
+            elif now < self.pause_until:
                 self.publish_stop()
                 return
             else:
@@ -367,18 +579,17 @@ class AutonomousNavigator(Node):
                     self.target_idx = (self.target_idx + 1) % len(WAYPOINTS)
                     self.print_next_target()
 
-        # 1. Waypoint reached check (< 0.35m)
+        # 3. Đã tới đích (< 0.35m)
         if dist_to_target < 0.35:
             if self.mode == "POINT_TO_POINT":
                 if len(self.sub_waypoints) > 1:
-                    # Da qua diem trung gian ne tuong, chuyen sang diem ke tiep
-                    self.get_logger().info(f"==> Da qua diem trung gian: {name}, tiep tuc hanh trinh...")
+                    self.get_logger().info(f"==> Đã qua điểm trung gian: {name}, tiếp tục hành trình...")
                     self.sub_waypoints.pop(0)
                     self.custom_goal = self.sub_waypoints[0]
                     self.print_next_target()
                     return
                 else:
-                    self.get_logger().info(f"[SUCCESS] DA DEN NOI: {name}! Dung xe an toan tai diem B.")
+                    self.get_logger().info(f"[SUCCESS] ĐÃ ĐẾN NƠI: {name}! Dừng xe an toàn tại điểm B.")
                     self.publish_stop()
                     self.standby_stopped = True
                     status_msg = String()
@@ -395,20 +606,17 @@ class AutonomousNavigator(Node):
                 self.pause_until = now + 2.0
                 return
 
-        # 2. Smooth Tangential Guidance & Reactive Avoidance
-        # Hướng mục tiêu cơ sở tới đích:
+        # 4. Điều hướng mục tiêu cơ bản
         target_yaw = math.atan2(dy, dx)
         d_safe = 0.65       # Vùng cảnh báo vật cản 65cm
         d_stop = 0.25       # Khoảng cách phanh dừng khẩn cấp 25cm
 
-        # Kiểm tra vật cản phía trước và khóa hướng lách (chống đảo hướng liên tục):
+        # Kiểm tra vật cản phía trước bằng LiDAR
         avoidance_offset = 0.0
         if self.min_front_dist < d_safe:
             if now > self.avoidance_locked_until:
                 self.avoidance_dir = 1.0 if self.min_left_dist >= self.min_right_dist else -1.0
-                self.avoidance_locked_until = now + 1.5  # Giữ hướng né ổn định trong 1.5s
-            
-            # Góc né mượt tỉ lệ thuận với độ gần của vật cản (tối đa né 75 độ):
+                self.avoidance_locked_until = now + 1.5
             obstacle_urgency = max(0.0, min(1.0, (d_safe - self.min_front_dist) / (d_safe - d_stop)))
             avoidance_offset = self.avoidance_dir * (1.30 * obstacle_urgency)
         else:
@@ -422,27 +630,73 @@ class AutonomousNavigator(Node):
         if self.min_right_dist < 0.35:
             side_bias += 0.35 * (0.35 - self.min_right_dist) / 0.35
 
-        desired_yaw = target_yaw + avoidance_offset + side_bias
+        # Lực đẩy ảo tránh xâm nhập Keep-out Zone
+        keepout_bias = 0.0
+        for z in self.zones:
+            if z.get('type') == 'KEEP_OUT':
+                prox = self.get_zone_proximity(self.current_x, self.current_y, z)
+                if prox < 0.45:
+                    zx = float(z.get('x', 0.0) or 0.0)
+                    zy = float(z.get('y', 0.0) or 0.0)
+                    angle_to_zone = math.atan2(zy - self.current_y, zx - self.current_x)
+                    repulse_yaw = angle_to_zone + math.pi
+                    ang_diff_rep = math.atan2(math.sin(repulse_yaw - self.current_yaw), math.cos(repulse_yaw - self.current_yaw))
+                    rep_urgency = (0.45 - prox) / 0.45
+                    keepout_bias += math.copysign(1.25 * rep_urgency, ang_diff_rep)
+
+        desired_yaw = target_yaw + avoidance_offset + side_bias + keepout_bias
         angle_diff = desired_yaw - self.current_yaw
         angle_diff = math.atan2(math.sin(angle_diff), math.cos(angle_diff))
 
-        # 3. Tính toán vận tốc mượt mà (Smooth Velocity Profile)
-        if self.min_front_dist < d_stop:
-            # Phanh dừng khẩn cấp trước vật cản quá gần, chỉ xoay mở góc né
+        # 5. Áp dụng Giới Hạn Tốc Độ (Speed Zone)
+        max_allowed_linear = 0.38
+        if active_zone and active_zone.get('type') in ('SPEED_ZONE', 'SLOW_SPEED'):
+            zone_limit = float(active_zone.get('speed_limit') or 0.20)
+            max_allowed_linear = min(max_allowed_linear, zone_limit)
+            if self.last_speed_zone_log_id != active_zone.get('id'):
+                self.last_speed_zone_log_id = active_zone.get('id')
+                self.get_logger().info(f"[SPEED ZONE] Đi vào '{active_zone.get('name')}': Giới hạn tốc độ {zone_limit:.2f} m/s")
+        else:
+            if self.last_speed_zone_log_id is not None:
+                self.get_logger().info(f"[NORMAL ZONE] Đã ra khỏi khu vực giới hạn tốc độ, khôi phục tốc độ {max_allowed_linear:.2f} m/s")
+                self.last_speed_zone_log_id = None
+
+        # 6. Tính toán vận tốc mượt mà (Smooth Velocity Profile)
+        # Nếu robot xâm nhập sâu vào Keep-out Zone -> Lùi xe thoát ngay lập tức
+        is_in_keepout = active_zone and active_zone.get('type') == 'KEEP_OUT'
+        if is_in_keepout:
+            self.get_logger().error(f"[XÂM NHẬP VÙNG CẤM] Robot đang ở trong '{active_zone.get('name')}', kích hoạt lùi khẩn cấp!")
+            target_linear = -0.10
+            target_angular = 0.60
+        elif self.min_front_dist < d_stop:
             target_linear = 0.0
             turn_dir = self.avoidance_dir if self.avoidance_dir != 0.0 else (1.0 if angle_diff > 0 else -1.0)
             target_angular = 0.50 * turn_dir
         else:
-            # Khi góc lệch quá lớn (> 55 độ): Giảm tốc độ tịnh tiến để xoay căn hướng trước
             if abs(angle_diff) > 0.95:
                 heading_factor = 0.15
             else:
                 heading_factor = max(0.20, math.cos(angle_diff))
             
-            # Điều tiết tốc độ theo độ thông thoáng phía trước
             clearance_factor = max(0.25, min(1.0, (self.min_front_dist - d_stop) / (d_safe - d_stop)))
-            target_linear = 0.38 * heading_factor * clearance_factor
+            target_linear = max_allowed_linear * heading_factor * clearance_factor
             target_angular = max(min(1.35 * angle_diff, 0.85), -0.85)
+
+        # 7. Phát hiện sự cố dừng trong No-Stop Zone
+        if active_zone and active_zone.get('type') == 'NO_STOP':
+            if abs(self.cmd_linear_x) < 0.03 and self.min_front_dist > 0.40:
+                if self.no_stop_stop_detected == 0.0:
+                    self.no_stop_stop_detected = now
+                elif now - self.no_stop_stop_detected > 2.0:
+                    self.zone_violation_msg = f"Cảnh báo: Robot dừng trong No-Stop Zone '{active_zone.get('name')}'"
+                    if now - self.last_log_time > 2.0:
+                        self.get_logger().warn(f"[VI PHẠM NO-STOP] {self.zone_violation_msg}")
+            else:
+                self.no_stop_stop_detected = 0.0
+                self.zone_violation_msg = None
+        else:
+            self.no_stop_stop_detected = 0.0
+            self.zone_violation_msg = None
 
         # Bộ lọc thông thấp (EMA) chống giật và bảo vệ vật lý robot
         alpha_lin = 0.35

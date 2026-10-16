@@ -107,6 +107,219 @@ export const STANDARD_LOBBY_WAYPOINTS = [
   { id: 'LOBBY_LOUNGE', key: 'LOBBY_LOUNGE', name: 'Khu Sofa Khách Chờ Sảnh', x: 2.0, y: 2.8 },
 ];
 
+// Danh sach 3 Vung Chuc Nang tieu chuan cho sa ban Gia lap Workflow & Gazebo (10m x 6m)
+export const SIMULATOR_HOTEL_ZONES = [
+  {
+    id: 'zone-keepout-staff',
+    name: 'Phòng Staff Only (Khu Vực Cấm Vào)',
+    type: 'KEEP_OUT',
+    badge: 'KEEP OUT',
+    color: '#DC2626',
+    bgColor: 'rgba(220, 38, 38, 0.16)',
+    borderColor: '#DC2626',
+    x: 8.8,
+    y: 1.5,
+    width: 1.5,
+    height: 2.8,
+    speed_limit: 0.0,
+    description: 'Khu vực nội bộ & kỹ thuật, robot tuyệt đối không đi vào hay nhận điểm đến.',
+  },
+  {
+    id: 'zone-speed-frontdesk',
+    name: 'Hành Lang Tiếp Tân (Giới Hạn Tốc Độ)',
+    type: 'SPEED_ZONE',
+    badge: 'SPEED ZONE: 0.2m/s',
+    color: '#D97706',
+    bgColor: 'rgba(217, 119, 6, 0.16)',
+    borderColor: '#D97706',
+    x: 5.2,
+    y: 2.2,
+    width: 2.6,
+    height: 2.0,
+    speed_limit: 0.20,
+    description: 'Khu vực tiếp đón khách, tốc độ robot tự động hạ tối đa 0.20 m/s để đảm bảo an toàn.',
+  },
+  {
+    id: 'zone-nostop-doorway',
+    name: 'Lối Cửa Thông Sảnh (Khu Vực Cấm Dừng)',
+    type: 'NO_STOP',
+    badge: 'NO STOP',
+    color: '#E11D48',
+    bgColor: 'rgba(225, 29, 72, 0.16)',
+    borderColor: '#E11D48',
+    x: 4.4,
+    y: 2.85,
+    width: 1.4,
+    height: 1.6,
+    speed_limit: 0.30,
+    description: 'Lối đi huyết mạch giữa 2 gian sảnh, robot chỉ được phép đi qua, tuyệt đối cấm dừng/chờ.',
+  },
+];
+
+export const isPointInSimulatorZone = (x, y, zone) => {
+  if (!zone) return false;
+  const halfW = (Number(zone.width) || 2.0) / 2;
+  const halfH = (Number(zone.height) || 2.0) / 2;
+  const zx = Number(zone.x) || 0;
+  const zy = Number(zone.y) || 0;
+  return x >= (zx - halfW) && x <= (zx + halfW) && y >= (zy - halfH) && y <= (zy + halfH);
+};
+
+export const getActiveSimulatorZone = (x, y, zones = SIMULATOR_HOTEL_ZONES) => {
+  if (!Array.isArray(zones) || zones.length === 0) return null;
+  const priority = { KEEP_OUT: 3, NO_STOP: 2, SPEED_ZONE: 1, SLOW_SPEED: 1 };
+  const active = zones.filter((z) => isPointInSimulatorZone(x, y, z));
+  if (active.length === 0) return null;
+  active.sort((a, b) => (priority[b.type] || 0) - (priority[a.type] || 0));
+
+  // Neu co nhieu SPEED_ZONE chong lan, ap dung van toc nho nhat de dam bao an toan
+  const speedZones = active.filter((z) => z.type === 'SPEED_ZONE' || z.type === 'SLOW_SPEED');
+  if (speedZones.length > 1 && (active[0].type === 'SPEED_ZONE' || active[0].type === 'SLOW_SPEED')) {
+    const minSpeed = Math.min(...speedZones.map((z) => Number(z.speed_limit) || 0.2));
+    return {
+      ...active[0],
+      speed_limit: minSpeed,
+    };
+  }
+
+  return active[0];
+};
+
+export const zoneToSvgRect = (zone) => {
+  const zw = Number(zone.width) || 2.0;
+  const zh = Number(zone.height) || 2.0;
+  const zx = Number(zone.x) || 0.0;
+  const zy = Number(zone.y) || 0.0;
+
+  const minX = zx - zw / 2;
+  const maxY = zy + zh / 2;
+
+  const svgX = 50 + (minX / 10.0) * 900;
+  const svgY = 550 - (maxY / 6.0) * 500;
+  const svgWidth = (zw / 10.0) * 900;
+  const svgHeight = (zh / 6.0) * 500;
+
+  return {
+    x: svgX,
+    y: svgY,
+    width: svgWidth,
+    height: svgHeight,
+  };
+};
+
+export const validateWorkflowStepZone = (step, zones = SIMULATOR_HOTEL_ZONES) => {
+  if (!step) return { valid: true };
+  const stepType = step.type || '';
+  const params = step.params || {};
+
+  if (stepType === 'MOVE') {
+    let targetX = parseFloat(params.target_x);
+    let targetY = parseFloat(params.target_y);
+    if (isNaN(targetX) || isNaN(targetY)) {
+      const wp = GAZEBO_LOBBY_WAYPOINTS[params.target_value] || GAZEBO_LOBBY_WAYPOINTS.FRONT_DESK;
+      targetX = wp?.x ?? 5.2;
+      targetY = wp?.y ?? 2.0;
+    }
+
+    const zone = getActiveSimulatorZone(targetX, targetY, zones);
+    if (zone && zone.type === 'KEEP_OUT') {
+      return {
+        valid: false,
+        error: `Điểm đích bước "${step.title || 'MOVE'}" nằm trong Vùng cấm vào "${zone.name}"! Robot không được phép di chuyển vào đây.`,
+        zone,
+      };
+    }
+    if (zone && zone.type === 'NO_STOP') {
+      return {
+        valid: true,
+        warning: `Điểm đến nằm trong Vùng cấm dừng "${zone.name}". Robot chỉ được phép đi qua, không nên kết thúc hành trình tại đây.`,
+        zone,
+      };
+    }
+  }
+
+  return { valid: true };
+};
+
+/**
+ * Tinh toan diem thoat an toan xuyen qua Vung cam dung (NO_STOP).
+ * Robot khong duoc phep dung lai trong Vung cam dung (vi du Cua thong sanh chinh x=4.4m).
+ * Neu muc tieu hoac diem click nam trong vung nay, ham se tu dong chieu vec-to di chuyen
+ * de dua robot di xuyen qua vung den vi tri an toan ke tiep o gian phong doi dien.
+ */
+export const resolveNoStopPassthrough = (fromPt, targetPt, zones = SIMULATOR_HOTEL_ZONES) => {
+  if (!targetPt || typeof targetPt.x !== 'number' || typeof targetPt.y !== 'number') {
+    return { isNoStop: false, safePoint: targetPt, zone: null };
+  }
+
+  const activeZone = getActiveSimulatorZone(targetPt.x, targetPt.y, zones);
+  if (!activeZone || activeZone.type !== 'NO_STOP') {
+    return { isNoStop: false, safePoint: targetPt, zone: null };
+  }
+
+  const zw = Number(activeZone.width) || 1.4;
+  const zh = Number(activeZone.height) || 1.6;
+  const zx = Number(activeZone.x) || 4.4;
+  const zy = Number(activeZone.y) || 2.85;
+
+  const minX = zx - zw / 2;
+  const maxX = zx + zw / 2;
+  const minY = zy - zh / 2;
+  const maxY = zy + zh / 2;
+
+  const fromX = typeof fromPt?.x === 'number' ? fromPt.x : zx + 0.8;
+  const fromY = typeof fromPt?.y === 'number' ? fromPt.y : zy;
+
+  const dx = targetPt.x - fromX;
+  const dy = targetPt.y - fromY;
+
+  const clearance = 0.45; // Khoang dem thoat khoi vung (m)
+  let safeX = targetPt.x;
+  let safeY = targetPt.y;
+
+  // Xac dinh truc di chuyen uu tien (Ngang hoac Doc)
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    // Di theo truc ngang (qua cua trung tam sanh Dong <-> Tay)
+    if (fromX >= zx) {
+      // Robot di tu Phia Dong sang Tay -> Thoat ra phia Tay
+      safeX = Number((minX - clearance).toFixed(2));
+      safeY = Number(Math.max(2.4, Math.min(3.2, targetPt.y)).toFixed(2));
+    } else {
+      // Robot di tu Phia Tay sang Dong -> Thoat ra phia Dong
+      safeX = Number((maxX + clearance).toFixed(2));
+      safeY = Number(Math.max(2.4, Math.min(3.2, targetPt.y)).toFixed(2));
+    }
+  } else {
+    // Di theo truc doc (Bac <-> Nam)
+    if (fromY >= zy) {
+      safeY = Number((minY - clearance).toFixed(2));
+      safeX = Number(Math.max(minX, Math.min(maxX, targetPt.x)).toFixed(2));
+    } else {
+      safeY = Number((maxY + clearance).toFixed(2));
+      safeX = Number(Math.max(minX, Math.min(maxX, targetPt.x)).toFixed(2));
+    }
+  }
+
+  // Kiem tra gioi han bien mat bang san sanh
+  safeX = Number(Math.max(0.8, Math.min(9.2, safeX)).toFixed(2));
+  safeY = Number(Math.max(0.8, Math.min(5.2, safeY)).toFixed(2));
+
+  // Tranh de diem an toan roi vao vung KEEP_OUT
+  const keepOutCheck = getActiveSimulatorZone(safeX, safeY, zones);
+  if (keepOutCheck && keepOutCheck.type === 'KEEP_OUT') {
+    if (safeX > 4.4) safeX = 5.4;
+    else safeX = 3.2;
+    safeY = 2.85;
+  }
+
+  return {
+    isNoStop: true,
+    safePoint: { x: safeX, y: safeY },
+    zone: activeZone,
+    originalPoint: { x: Number(targetPt.x.toFixed(2)), y: Number(targetPt.y.toFixed(2)) },
+  };
+};
+
 // Chuyen toa do Met (ROS: X 0..10m, Y 0..6m) sang Toa do SVG Canvas (1000 x 600)
 export const meterToSvg = (mx, my) => {
   const safeX = typeof mx === 'number' && !isNaN(mx) ? mx : 3.7;
@@ -136,47 +349,104 @@ const getLobbyBaseWaypoints = (from, to) => {
   const fromIsLeft = from.x < 4.4;
   const toIsLeft = to.x < 4.4;
 
+  const isEastOrBehindDesk = (pt) => pt.x >= 5.6 && pt.y <= 2.8;
+  const isWestCorridor = (pt) => pt.x < 5.6 && pt.y <= 2.8;
+
   if (fromIsLeft && !toIsLeft) {
+    // DI TU GIAN TRAI (SOFA / CHARGER) SANG GIAN PHAI (FRONT DESK / WC / STAFF)
     if (Math.abs(from.y - 2.85) > 0.3 || from.x < 3.6) {
       points.push({ x: 3.8, y: 2.85 });
     }
     points.push({ x: 4.4, y: 2.85 });
     points.push({ x: 5.1, y: 2.85 });
 
-    if (to.y < 2.0) {
-      points.push({ x: 5.2, y: 1.8 });
+    if (isEastOrBehindDesk(to)) {
+      // Dich den nam sau hoac ben phai quay Le Tan: Vong qua hanh lang Bac (y=2.85) roi moi xuong
+      points.push({ x: 7.1, y: 2.85 });
+      if (to.y < 2.4) {
+        points.push({ x: 7.1, y: Math.max(0.8, Math.min(to.y, 2.2)) });
+      }
+    } else if (isWestCorridor(to)) {
+      if (to.y < 2.0) {
+        points.push({ x: 5.2, y: 1.8 });
+      }
     } else if (to.y > 3.6) {
       points.push({ x: 5.2, y: 4.0 });
     }
   } else if (!fromIsLeft && toIsLeft) {
-    if (from.y < 2.0) {
-      points.push({ x: 5.2, y: 1.8 });
-    } else if (from.y > 3.6) {
-      points.push({ x: 5.2, y: 4.0 });
+    // DI TU GIAN PHAI (FRONT DESK / WC / STAFF) SANG GIAN TRAI (SOFA / LOBBY)
+    if (isEastOrBehindDesk(from)) {
+      // Robot dang o sau hoac ben phai quay Le Tan: Phai thoat ra phia Dong (x=7.1) roi moi len hanh lang Bac
+      if (from.x < 7.0) {
+        points.push({ x: 7.1, y: Math.max(0.8, Math.min(from.y, 2.2)) });
+      }
+      points.push({ x: 7.1, y: 2.85 });
+      points.push({ x: 5.1, y: 2.85 });
+    } else if (isWestCorridor(from)) {
+      if (from.y < 2.0) {
+        points.push({ x: 5.2, y: 1.8 });
+      }
+      points.push({ x: 5.1, y: 2.85 });
+    } else {
+      if (from.y > 3.6 && from.x > 6.0) {
+        points.push({ x: 5.2, y: 4.0 });
+      }
+      points.push({ x: 5.1, y: 2.85 });
     }
-    points.push({ x: 5.1, y: 2.85 });
+
+    // Qua cua thong sanh
     points.push({ x: 4.4, y: 2.85 });
     points.push({ x: 3.8, y: 2.85 });
-  } else if (!fromIsLeft && !toIsLeft) {
-    // 1. Kiem tra vuong Quay Front Desk theo truc Doc (Nam <-> Bac)
-    const crossesDeskY = (from.y < 2.3 && to.y > 3.5) || (from.y > 3.5 && to.y < 2.3);
-    // 2. Kiem tra vuong Quay Front Desk theo truc Ngang (Tay <-> Dong qua mat quay)
-    const minX = Math.min(from.x, to.x);
-    const maxX = Math.max(from.x, to.x);
-    const crossesDeskX = minX < 5.6 && maxX > 6.8 && (from.y < 2.65 || to.y < 2.65);
 
-    if (crossesDeskX) {
-      // Di vong qua hanh lang phia Bac quay le tan (y = 2.85) de tranh dam vao mat ban quay
-      if (from.x < to.x) {
-        if (from.y < 2.7) points.push({ x: 5.2, y: 2.85 });
-      } else {
-        if (to.y < 2.7) points.push({ x: 5.2, y: 2.85 });
+    // Tiep can Gian Trai (tranh bo sofa giua)
+    if (to.y > 3.4 && to.x < 2.0) {
+      points.push({ x: 2.5, y: to.y });
+    }
+  } else if (!fromIsLeft && !toIsLeft) {
+    // DI CHUYEN NOI BO GIAN PHAI
+    const fromEast = isEastOrBehindDesk(from);
+    const toEast = isEastOrBehindDesk(to);
+    const fromWest = isWestCorridor(from);
+    const toWest = isWestCorridor(to);
+
+    if (fromWest && toEast) {
+      // Tu phia Tay quay sang phia Dong quay: Vong qua hanh lang Bac
+      points.push({ x: 5.2, y: 2.85 });
+      points.push({ x: 7.1, y: 2.85 });
+      if (to.y < 2.4) {
+        points.push({ x: 7.1, y: Math.max(0.8, Math.min(to.y, 2.2)) });
       }
-    } else if (crossesDeskY) {
-      points.push({ x: 5.2, y: from.y < 2.3 ? 2.5 : 3.5 });
-      points.push({ x: 5.2, y: from.y < 2.3 ? 3.5 : 2.5 });
+    } else if (fromEast && toWest) {
+      // Tu phia Dong quay sang phia Tay quay: Vong qua hanh lang Bac
+      if (from.x < 7.0) {
+        points.push({ x: 7.1, y: Math.max(0.8, Math.min(from.y, 2.2)) });
+      }
+      points.push({ x: 7.1, y: 2.85 });
+      points.push({ x: 5.2, y: 2.85 });
+      if (to.y < 2.0) {
+        points.push({ x: 5.2, y: 1.8 });
+      }
+    } else if (fromEast && from.y < 2.8 && to.y > 2.8) {
+      // Tu trong/sau quay di len phia Bac (WC / Thang May)
+      if (from.x < 7.0) {
+        points.push({ x: 7.1, y: Math.max(0.8, Math.min(from.y, 2.2)) });
+      }
+      points.push({ x: 7.1, y: 2.85 });
+    } else if (from.y > 2.8 && toEast && to.y < 2.8) {
+      // Tu phia Bac di xuong trong/sau quay
+      points.push({ x: 7.1, y: 2.85 });
+      if (to.y < 2.4) {
+        points.push({ x: 7.1, y: Math.max(0.8, Math.min(to.y, 2.2)) });
+      }
+    } else {
+      // Kiem tra vuong Quay Front Desk theo truc Doc (Nam <-> Bac o khu vuc hanh lang Tay)
+      const crossesDeskY = (from.y < 2.3 && to.y > 3.5) || (from.y > 3.5 && to.y < 2.3);
+      if (crossesDeskY && (from.x < 5.6 || to.x < 5.6)) {
+        points.push({ x: 5.2, y: 2.85 });
+      }
     }
   } else {
+    // DI CHUYEN NOI BO GIAN TRAI (Tranh cac bo sofa ben trai)
     if (from.x < 1.8 || to.x < 1.8) {
       points.push({ x: 2.6, y: Number(((from.y + to.y) / 2).toFixed(2)) });
     }

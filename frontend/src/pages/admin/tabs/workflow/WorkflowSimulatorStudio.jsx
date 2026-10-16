@@ -7,8 +7,6 @@ import {
   Square,
   Volume2,
   VolumeX,
-  Compass,
-  Radio,
   Send,
   Eye,
   Mic,
@@ -16,10 +14,23 @@ import {
   ClipboardList,
   Star,
   Navigation,
-  Wifi,
-  WifiOff,
   Edit3,
   Check,
+  Shield,
+  ShieldAlert,
+  Layers,
+  Gauge,
+  Ban,
+  AlertTriangle,
+  X,
+  Info,
+  Move,
+  Save,
+  Plus,
+  Trash2,
+  ChevronDown,
+  EyeOff,
+  MapPin,
 } from 'lucide-react';
 import { useSpeechSynthesis } from '../../../../hooks/useSpeechSynthesis';
 import {
@@ -27,8 +38,24 @@ import {
   ROS_TOPICS,
   ROS_MSG_TYPES,
   quaternionToYaw,
+  createZoneSyncMsg,
 } from '../../../../services/rosbridgeService';
-import { executeWorkflow } from '../../../../services/workflowApi';
+import {
+  fetchWorkflows,
+  executeWorkflow,
+  fetchZones,
+  saveZone,
+  updateZone,
+  deleteZone,
+  fetchWaypoints,
+  saveWaypoint,
+  updateWaypoint,
+  deleteWaypoint,
+} from '../../../../services/workflowApi';
+import {
+  OTTO_ENDPOINT_TEMPLATES,
+  getEndpointTemplateInfo,
+} from '../studio/studioConstants';
 import {
   ROBOT_INITIAL_POSE,
   GAZEBO_LOBBY_WAYPOINTS,
@@ -37,7 +64,12 @@ import {
   svgToMeter,
   calculateSafeWaypoints,
   getStepActionDetail,
-  BUILTIN_SIMULATOR_WORKFLOWS,
+  SIMULATOR_HOTEL_ZONES,
+  isPointInSimulatorZone,
+  getActiveSimulatorZone,
+  zoneToSvgRect,
+  validateWorkflowStepZone,
+  resolveNoStopPassthrough,
 } from './workflowSimulatorUtils';
 
 export const WorkflowSimulatorStudio = ({
@@ -46,37 +78,63 @@ export const WorkflowSimulatorStudio = ({
   onClose = null,
   onNotify = () => {},
 }) => {
-  // Danh sach kich ban hieu luc (co fallback noi bo neu backend chua tra ve hoac loi mang)
-  const effectiveWorkflows =
-    Array.isArray(workflows) && workflows.length > 0
-      ? workflows
-      : BUILTIN_SIMULATOR_WORKFLOWS;
+  // Khoi tao danh sach workflow thuc te tu props (Khong dung fallback seed gia lap)
+  const [localWorkflows, setLocalWorkflows] = useState(() =>
+    Array.isArray(workflows) && workflows.length > 0 ? workflows : []
+  );
 
-  const [localWorkflows, setLocalWorkflows] = useState(() => effectiveWorkflows);
+  // Chon workflow dang duoc mo phong
+  const [selectedWorkflowId, setSelectedWorkflowId] = useState(() => {
+    if (initialWorkflowId) return initialWorkflowId;
+    return (Array.isArray(workflows) && workflows[0]?.id) || null;
+  });
 
+  // Dong bo workflows thuc te tu props hoac tu dong goi API neu chua co du lieu
   useEffect(() => {
     if (Array.isArray(workflows) && workflows.length > 0) {
       setLocalWorkflows(workflows);
+    } else {
+      fetchWorkflows()
+        .then((data) => {
+          if (Array.isArray(data) && data.length > 0) {
+            setLocalWorkflows(data);
+          }
+        })
+        .catch(() => {});
     }
   }, [workflows]);
 
-  // Chon kich ban
-  const [selectedWorkflowId, setSelectedWorkflowId] = useState(() => {
-    if (initialWorkflowId) return initialWorkflowId;
-    return effectiveWorkflows[0]?.id || 'wf-01-welcome';
-  });
+  // Cap nhat selectedWorkflowId ngay lap tuc khi initialWorkflowId hoac localWorkflows thay doi
+  useEffect(() => {
+    if (initialWorkflowId && localWorkflows.some((w) => w.id === initialWorkflowId)) {
+      setSelectedWorkflowId(initialWorkflowId);
+    } else if (
+      localWorkflows.length > 0 &&
+      (!selectedWorkflowId || !localWorkflows.some((w) => w.id === selectedWorkflowId))
+    ) {
+      setSelectedWorkflowId(localWorkflows[0].id);
+    }
+  }, [initialWorkflowId, localWorkflows]);
 
   const activeWorkflow =
     localWorkflows.find((w) => w.id === selectedWorkflowId) ||
-    localWorkflows[0];
+    localWorkflows[0] ||
+    null;
   const steps = activeWorkflow?.steps || [];
 
   // Che do chinh sua nhanh diem moc cua buoc MOVE ngay tai sa ban
   const [editingStepIdx, setEditingStepIdx] = useState(null);
 
   const handleUpdateMoveStepWaypoints = (stepIdx, fromKey, toKey) => {
-    const targetWp = GAZEBO_LOBBY_WAYPOINTS[toKey] || GAZEBO_LOBBY_WAYPOINTS.FRONT_DESK;
-    const fromWp = fromKey === 'CURRENT' ? null : GAZEBO_LOBBY_WAYPOINTS[fromKey];
+    const targetWp =
+      endpointsRef.current.find((e) => e.id === toKey || e.key === toKey) ||
+      GAZEBO_LOBBY_WAYPOINTS[toKey] ||
+      GAZEBO_LOBBY_WAYPOINTS.FRONT_DESK;
+    const fromWp =
+      fromKey === 'CURRENT'
+        ? null
+        : endpointsRef.current.find((e) => e.id === fromKey || e.key === fromKey) ||
+          GAZEBO_LOBBY_WAYPOINTS[fromKey];
 
     setLocalWorkflows((prevList) => {
       return prevList.map((wf) => {
@@ -138,6 +196,539 @@ export const WorkflowSimulatorStudio = ({
   const [isRosEnabled, setIsRosEnabled] = useState(true);
   const [isRosConnected, setIsRosConnected] = useState(false);
 
+  // Quan ly 3 Vung Chuc Nang: Keep-Out, Speed Zone, No-Stop
+  const [zones, setZones] = useState(SIMULATOR_HOTEL_ZONES);
+  const [showZones, setShowZones] = useState(true);
+  const [selectedZone, setSelectedZone] = useState(null);
+  const [zoneAlert, setZoneAlert] = useState(null);
+
+  // Che do keo tha va thay doi kich thuoc Vung tren sa ban map
+  const [isZoneEditMode, setIsZoneEditMode] = useState(false);
+  const [dragState, setDragState] = useState(null);
+  const [hasUnsavedZones, setHasUnsavedZones] = useState(false);
+  const [isSavingZones, setIsSavingZones] = useState(false);
+  const [isZoneMenuOpen, setIsZoneMenuOpen] = useState(false);
+  const wasDraggingRef = useRef(false);
+
+  // Tai danh sach Vung tu backend CSDL neu co, fallback la 3 vung mac dinh
+  useEffect(() => {
+    let isMounted = true;
+    fetchZones()
+      .then((data) => {
+        if (isMounted && Array.isArray(data) && data.length > 0) {
+          setZones(data);
+        }
+      })
+      .catch(() => {
+        // Fallback giu nguyen SIMULATOR_HOTEL_ZONES
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // Them Vung moi tren sa ban (Add Zone)
+  const handleAddZone = (type) => {
+    setIsZoneMenuOpen(false);
+    const count = zones.filter((z) => z.type === type).length + 1;
+    let name = '';
+    let speedLimit = null;
+    let width = 2.0;
+    let height = 2.0;
+
+    const slot = zones.length % 4;
+    const initialX = Number((3.5 + slot * 0.8).toFixed(2));
+    const initialY = Number((3.0 + (slot % 2 === 0 ? 0.4 : -0.4)).toFixed(2));
+
+    if (type === 'KEEP_OUT') {
+      name = `Khu Vực Cấm Vào #${count}`;
+    } else if (type === 'SPEED_ZONE' || type === 'SLOW_SPEED') {
+      name = `Vùng Giới Hạn Tốc Độ #${count}`;
+      speedLimit = 0.20;
+      width = 2.4;
+      height = 2.0;
+    } else {
+      name = `Khu Vực Cấm Dừng #${count}`;
+      width = 1.8;
+      height = 1.6;
+    }
+
+    const newZone = {
+      id: `zone_${Date.now()}`,
+      name,
+      type,
+      x: initialX,
+      y: initialY,
+      width,
+      height,
+      speed_limit: speedLimit,
+      description: 'Vùng được tạo mới bởi quản trị viên.',
+    };
+
+    const updatedZones = [...zones, newZone];
+    setZones(updatedZones);
+    setSelectedZone(newZone);
+    setIsZoneEditMode(true);
+    setShowZones(true);
+    setHasUnsavedZones(true);
+
+    if (isRosEnabledRef.current && rosClientRef.current?.isConnected) {
+      rosClientRef.current.publish(
+        '/hotel_zones',
+        'std_msgs/String',
+        createZoneSyncMsg(updatedZones)
+      );
+    }
+
+    onNotify(`Đã thêm ${name}. Hãy kéo thân để di chuyển hoặc kéo 4 góc để co giãn.`, 'success');
+  };
+
+  // Xoa Vung duoc chon (Delete Zone)
+  const handleDeleteZone = async (zoneId) => {
+    if (!zoneId) return;
+    const target = zones.find((z) => z.id === zoneId);
+    const updatedZones = zones.filter((z) => z.id !== zoneId);
+    setZones(updatedZones);
+    setSelectedZone(null);
+    setHasUnsavedZones(true);
+
+    try {
+      await deleteZone(zoneId);
+    } catch {
+      // Bỏ qua lỗi nếu zone chỉ tồn tại client-side
+    }
+
+    if (isRosEnabledRef.current && rosClientRef.current?.isConnected) {
+      rosClientRef.current.publish(
+        '/hotel_zones',
+        'std_msgs/String',
+        createZoneSyncMsg(updatedZones)
+      );
+    }
+
+    onNotify(`Đã xóa vùng "${target?.name || zoneId}" khỏi bản đồ.`, 'info');
+  };
+
+  // Cap nhat thuoc tinh cua Vung dang chon (Edit Zone attributes)
+  const handleUpdateSelectedZone = (field, value) => {
+    if (!selectedZone) return;
+    const updated = { ...selectedZone, [field]: value };
+    setSelectedZone(updated);
+    setZones((prev) => prev.map((z) => (z.id === selectedZone.id ? updated : z)));
+    setHasUnsavedZones(true);
+  };
+
+  // Luu cau hinh 3 Vung Chuc Nang vao CSDL va phat len topic ROS 2
+  const handleSaveZones = async () => {
+    setIsSavingZones(true);
+    try {
+      for (const z of zones) {
+        await saveZone(z);
+      }
+      if (isRosEnabledRef.current && rosClientRef.current?.isConnected) {
+        rosClientRef.current.publish(
+          '/hotel_zones',
+          'std_msgs/String',
+          createZoneSyncMsg(zones)
+        );
+      }
+      setHasUnsavedZones(false);
+      onNotify('Đã lưu cấu hình vị trí & kích thước Vùng thành công.', 'success');
+    } catch {
+      if (isRosEnabledRef.current && rosClientRef.current?.isConnected) {
+        rosClientRef.current.publish(
+          '/hotel_zones',
+          'std_msgs/String',
+          createZoneSyncMsg(zones)
+        );
+      }
+      setHasUnsavedZones(false);
+      onNotify('Đã áp dụng vị trí Vùng cho phiên làm việc hiện tại.', 'info');
+    } finally {
+      setIsSavingZones(false);
+    }
+  };
+
+  // Khoi phuc vi tri 3 Vung Chuc Nang ve mac dinh
+  const handleResetDefaultZones = () => {
+    setZones(SIMULATOR_HOTEL_ZONES);
+    setSelectedZone(null);
+    setHasUnsavedZones(true);
+    if (isRosEnabledRef.current && rosClientRef.current?.isConnected) {
+      rosClientRef.current.publish(
+        '/hotel_zones',
+        'std_msgs/String',
+        createZoneSyncMsg(SIMULATOR_HOTEL_ZONES)
+      );
+    }
+    onNotify('Đã khôi phục 3 Vùng Chức Năng về thông số chuẩn sảnh 10m x 6m.', 'info');
+  };
+
+  // ========================================================
+  // QUAN LY ENDPOINTS (3 LOAI CHUAN: WAYPOINT, CHARGER, PARK)
+  // ========================================================
+  const [endpoints, setEndpoints] = useState(STANDARD_LOBBY_WAYPOINTS);
+  const endpointsRef = useRef(endpoints);
+  endpointsRef.current = endpoints;
+
+  const [selectedEndpoint, setSelectedEndpoint] = useState(null);
+  const [hoveredEndpointId, setHoveredEndpointId] = useState(null);
+  const [isEndpointEditMode, setIsEndpointEditMode] = useState(false);
+  const [dragEndpointState, setDragEndpointState] = useState(null);
+  const [isEndpointMenuOpen, setIsEndpointMenuOpen] = useState(false);
+  const [hasUnsavedEndpoints, setHasUnsavedEndpoints] = useState(false);
+  const [isSavingEndpoints, setIsSavingEndpoints] = useState(false);
+
+  // Tai danh sach Endpoints tu backend CSDL
+  useEffect(() => {
+    let isMounted = true;
+    fetchWaypoints()
+      .then((data) => {
+        if (isMounted && Array.isArray(data) && data.length > 0) {
+          setEndpoints(data);
+        }
+      })
+      .catch(() => {
+        // Fallback giu nguyen STANDARD_LOBBY_WAYPOINTS
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // Them Endpoint moi (Add Endpoint)
+  const handleAddEndpoint = (type = 'WAYPOINT', customCoords = null) => {
+    setIsEndpointMenuOpen(false);
+    const count = endpoints.filter((e) => (e.type || 'WAYPOINT') === type).length + 1;
+    const typeInfo = getEndpointTemplateInfo(type);
+    const defaultName =
+      type === 'CHARGER'
+        ? `Trạm Sạc #${count}`
+        : type === 'PARK'
+        ? `Điểm Chờ #${count}`
+        : `Điểm Mốc #${count}`;
+
+    const x = customCoords ? Number(customCoords.x.toFixed(2)) : Number(Math.min(9.0, Math.max(1.0, robotPose.x + 0.8)).toFixed(2));
+    const y = customCoords ? Number(customCoords.y.toFixed(2)) : Number(Math.min(5.0, Math.max(1.0, robotPose.y + 0.5)).toFixed(2));
+
+    const newEndpoint = {
+      id: `wp-${Date.now().toString(36)}`,
+      name: defaultName,
+      type,
+      x,
+      y,
+      yaw: 0,
+      floor: 'Sảnh Tầng 1',
+      description: typeInfo.description,
+    };
+
+    setEndpoints((prev) => [...prev, newEndpoint]);
+    setSelectedEndpoint(newEndpoint);
+    setSelectedZone(null);
+    setIsEndpointEditMode(true);
+    setHasUnsavedEndpoints(true);
+    onNotify(`Đã thêm mới ${typeInfo.label.split('(')[0].trim()}: "${newEndpoint.name}"`, 'success');
+
+    saveWaypoint(newEndpoint).catch((err) => {
+      console.warn('Lỗi lưu endpoint vào backend:', err.message);
+    });
+  };
+
+  // Cap nhat thong tin Endpoint (ten, loai)
+  const handleUpdateSelectedEndpoint = (field, value) => {
+    if (!selectedEndpoint) return;
+    const updated = { ...selectedEndpoint, [field]: value };
+    setSelectedEndpoint(updated);
+    setEndpoints((prev) => prev.map((e) => (e.id === updated.id ? updated : e)));
+    setHasUnsavedEndpoints(true);
+  };
+
+  // Luu endpoint vao CSDL
+  const handleSaveEndpointToDb = async (endpoint) => {
+    if (!endpoint || !endpoint.name?.trim()) return;
+    try {
+      setIsSavingEndpoints(true);
+      await saveWaypoint({
+        ...endpoint,
+        name: endpoint.name.trim(),
+        x: Number(endpoint.x),
+        y: Number(endpoint.y),
+        type: endpoint.type || 'WAYPOINT',
+        floor: endpoint.floor || 'Sảnh Tầng 1',
+      });
+      setHasUnsavedEndpoints(false);
+      onNotify(`Đã lưu Endpoint "${endpoint.name}" vào CSDL.`, 'success');
+    } catch (err) {
+      onNotify('Lỗi khi lưu Endpoint: ' + err.message, 'warning');
+    } finally {
+      setIsSavingEndpoints(false);
+    }
+  };
+
+  // Xoa Endpoint
+  const handleDeleteEndpoint = async (endpointId) => {
+    const target = endpoints.find((e) => e.id === endpointId);
+    const name = target?.name || 'Endpoint';
+    setEndpoints((prev) => prev.filter((e) => e.id !== endpointId));
+    if (selectedEndpoint?.id === endpointId) {
+      setSelectedEndpoint(null);
+      setIsEndpointEditMode(false);
+    }
+    onNotify(`Đã xóa "${name}" khỏi bản đồ.`, 'info');
+    try {
+      await deleteWaypoint(endpointId);
+    } catch {
+      // local state already updated
+    }
+  };
+
+  // Dat lai danh sach Endpoints chuan ban dau
+  const handleResetDefaultEndpoints = () => {
+    setEndpoints(STANDARD_LOBBY_WAYPOINTS);
+    setSelectedEndpoint(null);
+    setHasUnsavedEndpoints(true);
+    onNotify('Đã khôi phục danh sách Điểm Đích về thông số chuẩn sảnh 10m x 6m.', 'info');
+  };
+
+  // PointerDown de keo tha Endpoint tren SVG Map
+  const handleEndpointPointerDown = (e, ep) => {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    setSelectedEndpoint(ep);
+    setSelectedZone(null);
+    setIsEndpointEditMode(true);
+    wasDraggingRef.current = false;
+    setDragEndpointState({
+      endpointId: ep.id,
+      pointerId: e.pointerId,
+      startClientX: e.clientX,
+      startClientY: e.clientY,
+      initialEndpoint: { ...ep },
+    });
+  };
+
+  // Bat dau keo tha di chuyen hoac co gian kich thuoc Vung
+  const handleZonePointerDown = (e, zone, type = 'MOVE') => {
+    if (!isZoneEditMode && selectedZone?.id !== zone.id) return;
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    e.preventDefault();
+    setSelectedZone(zone);
+    wasDraggingRef.current = false;
+    setDragState({
+      type,
+      zoneId: zone.id,
+      pointerId: e.pointerId,
+      startClientX: e.clientX,
+      startClientY: e.clientY,
+      initialZone: { ...zone },
+    });
+  };
+
+  // Tinh toan toa do keo tha thoi gian thuc tren he toa do met ROS
+  const handleSvgPointerMove = (e) => {
+    if ((!dragState && !dragEndpointState) || !svgRef.current) return;
+
+    // QUAN TRỌNG: Neu chuot KHONG con duoc de nhan (e.buttons === 0), lap tuc huy trang thai keo tha
+    if (e.buttons !== undefined && (e.buttons & 1) === 0) {
+      if (dragEndpointState) {
+        setDragEndpointState(null);
+      }
+      if (dragState) {
+        setDragState(null);
+      }
+      return;
+    }
+
+    const activeStartClientX = dragState ? dragState.startClientX : dragEndpointState.startClientX;
+    const activeStartClientY = dragState ? dragState.startClientY : dragEndpointState.startClientY;
+
+    const deltaClientX = e.clientX - activeStartClientX;
+    const deltaClientY = e.clientY - activeStartClientY;
+    const moveDist = Math.hypot(deltaClientX, deltaClientY);
+
+    // Nguong phan biet click va drag (4px): Neu chi bam click ma khong re chuot thi khong bat drag
+    if (moveDist < 4) return;
+    if (!wasDraggingRef.current) {
+      wasDraggingRef.current = true;
+      try {
+        const pId = dragState?.pointerId || dragEndpointState?.pointerId || e.pointerId;
+        if (svgRef.current?.setPointerCapture && pId) {
+          svgRef.current.setPointerCapture(pId);
+        }
+      } catch {
+        // Ignore fallback
+      }
+    }
+
+    const svgRect = svgRef.current.getBoundingClientRect();
+    if (!svgRect.width || !svgRect.height) return;
+
+    const scaleX = 1000 / svgRect.width;
+    const scaleY = 620 / svgRect.height;
+
+    const deltaSvgX = deltaClientX * scaleX;
+    const deltaSvgY = deltaClientY * scaleY;
+
+    // Chuyen delta sang met: 900 SVG px = 10m X, 500 SVG px = 6m Y (truc Y nguoc chieu)
+    const deltaMeterX = (deltaSvgX / 900) * 10.0;
+    const deltaMeterY = -(deltaSvgY / 500) * 6.0;
+
+    // 1. KEO THA ENDPOINT
+    if (dragEndpointState) {
+      const initEp = dragEndpointState.initialEndpoint;
+      const rawX = initEp.x + deltaMeterX;
+      const rawY = initEp.y + deltaMeterY;
+      const clampedX = Number(Math.max(0.3, Math.min(9.7, rawX)).toFixed(2));
+      const clampedY = Number(Math.max(0.3, Math.min(5.7, rawY)).toFixed(2));
+
+      setEndpoints((prev) =>
+        prev.map((ep) =>
+          ep.id === dragEndpointState.endpointId ? { ...ep, x: clampedX, y: clampedY } : ep
+        )
+      );
+      setSelectedEndpoint((prev) =>
+        prev && prev.id === dragEndpointState.endpointId
+          ? { ...prev, x: clampedX, y: clampedY }
+          : prev
+      );
+      setHasUnsavedEndpoints(true);
+      return;
+    }
+
+    const initZone = dragState.initialZone;
+
+    if (dragState.type === 'MOVE') {
+      const halfW = (Number(initZone.width) || 2.0) / 2;
+      const halfH = (Number(initZone.height) || 2.0) / 2;
+
+      const rawX = initZone.x + deltaMeterX;
+      const rawY = initZone.y + deltaMeterY;
+      const clampedX = Number(Math.max(halfW, Math.min(10.0 - halfW, rawX)).toFixed(2));
+      const clampedY = Number(Math.max(halfH, Math.min(6.0 - halfH, rawY)).toFixed(2));
+
+      setZones((prev) =>
+        prev.map((z) => (z.id === dragState.zoneId ? { ...z, x: clampedX, y: clampedY } : z))
+      );
+      setSelectedZone((prev) =>
+        prev && prev.id === dragState.zoneId ? { ...prev, x: clampedX, y: clampedY } : prev
+      );
+      setHasUnsavedZones(true);
+    } else {
+      // RESIZE HANDLES (NW, NE, SW, SE)
+      const zw = Number(initZone.width) || 2.0;
+      const zh = Number(initZone.height) || 2.0;
+      const left = initZone.x - zw / 2;
+      const right = initZone.x + zw / 2;
+      const bottom = initZone.y - zh / 2;
+      const top = initZone.y + zh / 2;
+
+      let newLeft = left;
+      let newRight = right;
+      let newBottom = bottom;
+      let newTop = top;
+
+      if (dragState.type === 'RESIZE_SE') {
+        newRight = Math.max(left + 0.6, Math.min(10.0, right + deltaMeterX));
+        newBottom = Math.min(top - 0.6, Math.max(0.0, bottom + deltaMeterY));
+      } else if (dragState.type === 'RESIZE_SW') {
+        newLeft = Math.min(right - 0.6, Math.max(0.0, left + deltaMeterX));
+        newBottom = Math.min(top - 0.6, Math.max(0.0, bottom + deltaMeterY));
+      } else if (dragState.type === 'RESIZE_NE') {
+        newRight = Math.max(left + 0.6, Math.min(10.0, right + deltaMeterX));
+        newTop = Math.max(bottom + 0.6, Math.min(6.0, top + deltaMeterY));
+      } else if (dragState.type === 'RESIZE_NW') {
+        newLeft = Math.min(right - 0.6, Math.max(0.0, left + deltaMeterX));
+        newTop = Math.max(bottom + 0.6, Math.min(6.0, top + deltaMeterY));
+      }
+
+      const newWidth = Number((newRight - newLeft).toFixed(2));
+      const newHeight = Number((newTop - newBottom).toFixed(2));
+      const newCenterX = Number(((newLeft + newRight) / 2).toFixed(2));
+      const newCenterY = Number(((newBottom + newTop) / 2).toFixed(2));
+
+      const updated = {
+        ...initZone,
+        x: newCenterX,
+        y: newCenterY,
+        width: newWidth,
+        height: newHeight,
+      };
+
+      setZones((prev) => prev.map((z) => (z.id === dragState.zoneId ? updated : z)));
+      setSelectedZone(updated);
+      setHasUnsavedZones(true);
+    }
+  };
+
+  // Ket thuc keo tha
+  const handleSvgPointerUp = (e) => {
+    if (!dragState && !dragEndpointState) return;
+    try {
+      const pId = dragState?.pointerId || dragEndpointState?.pointerId || e.pointerId;
+      if (svgRef.current?.releasePointerCapture && pId) {
+        svgRef.current.releasePointerCapture(pId);
+      }
+      if (pId) {
+        e.currentTarget?.releasePointerCapture?.(pId);
+      }
+    } catch {
+      // Ignore
+    }
+
+    if (dragEndpointState) {
+      const curEp = endpointsRef.current.find((ep) => ep.id === dragEndpointState.endpointId);
+      if (curEp && wasDraggingRef.current) {
+        saveWaypoint(curEp).catch(() => {});
+      }
+      setDragEndpointState(null);
+    }
+
+    if (dragState) {
+      if (isRosEnabledRef.current && rosClientRef.current?.isConnected && wasDraggingRef.current) {
+        rosClientRef.current.publish(
+          '/hotel_zones',
+          'std_msgs/String',
+          createZoneSyncMsg(zonesRef.current)
+        );
+      }
+      setDragState(null);
+    }
+
+    setTimeout(() => {
+      wasDraggingRef.current = false;
+    }, 80);
+  };
+
+  // Xu ly click chon vung hoac chuyen doi luan phien khi cac vung chong len nhau
+  const handleZoneClick = (e, clickedZone) => {
+    if (!isZoneEditMode && !selectedZone) {
+      return;
+    }
+
+    e.stopPropagation();
+    if (wasDraggingRef.current) return;
+
+    const svg = svgRef.current;
+    if (svg) {
+      const bRect = svg.getBoundingClientRect();
+      const svgX = ((e.clientX - bRect.left) / bRect.width) * 1000;
+      const svgY = ((e.clientY - bRect.top) / bRect.height) * 620;
+      const meter = svgToMeter(svgX, svgY);
+
+      // Tim tat ca cac vung bao phu toa do click
+      const overlapping = zones.filter((z) => isPointInSimulatorZone(meter.x, meter.y, z));
+      if (overlapping.length > 1) {
+        const currentIdx = overlapping.findIndex((z) => z.id === selectedZone?.id);
+        const nextIdx = (currentIdx + 1) % overlapping.length;
+        setSelectedZone(overlapping[nextIdx]);
+        return;
+      }
+    }
+
+    setSelectedZone(selectedZone?.id === clickedZone.id ? null : clickedZone);
+  };
+
   // TTS Voice Hook
   const { speak, cancel: stopSpeaking } = useSpeechSynthesis();
 
@@ -158,6 +749,7 @@ export const WorkflowSimulatorStudio = ({
   const isRosConnectedRef = useRef(isRosConnected);
   const currentPathRef = useRef(currentPath);
   const targetTelemetryPoseRef = useRef(null);
+  const zonesRef = useRef(zones);
 
   useEffect(() => {
     speakRef.current = speak;
@@ -171,7 +763,24 @@ export const WorkflowSimulatorStudio = ({
     isRosEnabledRef.current = isRosEnabled;
     isRosConnectedRef.current = isRosConnected;
     currentPathRef.current = currentPath;
+    zonesRef.current = zones;
   });
+
+  // Giai phong trang thai keo tha tren toan bo document / window khi nguoi dung tha chuot
+  useEffect(() => {
+    const handleGlobalPointerUp = (e) => {
+      if (dragState || dragEndpointState) {
+        handleSvgPointerUp(e);
+      }
+    };
+    window.addEventListener('pointerup', handleGlobalPointerUp);
+    return () => {
+      window.removeEventListener('pointerup', handleGlobalPointerUp);
+    };
+  }, [dragState, dragEndpointState]);
+
+  // Vung chuc nang ma robot dang dung hien tai
+  const activeRobotZone = getActiveSimulatorZone(robotPose.x, robotPose.y, zones);
 
   // VONG LAP LERP NOI SUY MUOT 60FPS: Dong bo ti le 1:1 theo Gazebo, khong bi giat lag
   useEffect(() => {
@@ -205,6 +814,54 @@ export const WorkflowSimulatorStudio = ({
   }, []);
 
   const activeStep = isPlaying && currentStepIndex < steps.length ? steps[currentStepIndex] : null;
+  const isMoving = Boolean(currentPath && currentPath.waypoints && currentPath.waypoints.length > 0);
+
+  // Xac dinh trang thai gon gang cua robot (Chi the hien trang thai, khong ghi chi tiet toa do/dieu huong toi dau)
+  const robotStatus = (() => {
+    if (isMoving || (manualNavLabel && manualNavLabel.startsWith('Toi:'))) {
+      return {
+        code: 'NAV',
+        label: 'ĐIỀU HƯỚNG',
+        dotColor: '#262626',
+        isMoving: true,
+      };
+    }
+    if (activeStep) {
+      switch (activeStep.type) {
+        case 'MOVE':
+          return { code: 'NAV', label: 'ĐIỀU HƯỚNG', dotColor: '#262626', isMoving: true };
+        case 'GREET':
+          return { code: 'GREET', label: 'CHÀO KHÁCH', dotColor: '#059669', isMoving: false };
+        case 'SPEAK':
+          return { code: 'SPEAK', label: 'PHÁT GIỌNG NÓI', dotColor: '#059669', isMoving: false };
+        case 'SHOW':
+          return { code: 'SHOW', label: 'MÀN HÌNH', dotColor: '#262626', isMoving: false };
+        case 'LISTEN':
+          return { code: 'LISTEN', label: 'LẮNG NGHE', dotColor: '#D97706', isMoving: false };
+        case 'RECOMMEND':
+          return { code: 'REC', label: 'GỢI Ý', dotColor: '#D97706', isMoving: false };
+        case 'FEEDBACK':
+          return { code: 'RATE', label: 'ĐÁNH GIÁ', dotColor: '#059669', isMoving: false };
+        default:
+          return { code: activeStep.type, label: activeStep.type, dotColor: '#262626', isMoving: false };
+      }
+    }
+    if (manualNavLabel && manualNavLabel.startsWith('Da den')) {
+      return {
+        code: 'ARRIVED',
+        label: 'ĐÃ ĐẾN NƠI',
+        dotColor: '#059669',
+        isMoving: false,
+      };
+    }
+    return {
+      code: 'READY',
+      label: 'SẴN SÀNG',
+      dotColor: '#059669',
+      isMoving: false,
+    };
+  })();
+
   const activeDetail = activeStep
     ? getStepActionDetail(activeStep)
     : manualNavLabel
@@ -372,6 +1029,29 @@ export const WorkflowSimulatorStudio = ({
         : { x: robotPoseRef.current.x, y: robotPoseRef.current.y };
       const goalPoint = { x: Number(targetX.toFixed(2)), y: Number(targetY.toFixed(2)) };
 
+      // Kiem tra an toan Vung chuc nang: Chặn tuyet doi neu dich den la KEEP_OUT
+      const targetZone = getActiveSimulatorZone(goalPoint.x, goalPoint.y, zonesRef.current);
+      if (targetZone && targetZone.type === 'KEEP_OUT') {
+        const errMessage = `Vị trí (${goalPoint.x}m, ${goalPoint.y}m) thuộc "${targetZone.name}" (Vùng cấm vào - KEEP_OUT). Lệnh điều hướng đã bị chặn!`;
+        setZoneAlert({
+          type: 'error',
+          message: errMessage,
+        });
+        onNotify(errMessage, 'warning');
+        return;
+      }
+
+      // Xu ly tu dong di xuyen qua neu dich den nam trong NO_STOP (tuyet doi khong dung lai giua vung cam dung)
+      const passthrough = resolveNoStopPassthrough(startPoint, goalPoint, zonesRef.current);
+      if (passthrough.isNoStop) {
+        goalPoint.x = passthrough.safePoint.x;
+        goalPoint.y = passthrough.safePoint.y;
+        onNotify(
+          `Điểm đến nằm trong Vùng cấm dừng "${passthrough.zone.name}". Robot tự động đi xuyên qua vùng cấm đến vị trí an toàn (${goalPoint.x}m, ${goalPoint.y}m).`,
+          'info'
+        );
+      }
+
       if (startPoseOverride) {
         const resetPose = {
           x: startPoint.x,
@@ -384,6 +1064,23 @@ export const WorkflowSimulatorStudio = ({
 
       // Tinh toan lo trinh da diem ne tuong va vach ngan
       const waypoints = calculateSafeWaypoints(startPoint, goalPoint);
+
+      // Kiem tra neu lo trinh bat buoc phai di qua vung KEEP_OUT (vi du cua thong sanh bi chan boi KEEP_OUT)
+      const blockedMidpoint = waypoints.slice(1, -1).find((pt) => {
+        const z = getActiveSimulatorZone(pt.x, pt.y, zonesRef.current);
+        return z && z.type === 'KEEP_OUT';
+      });
+
+      if (blockedMidpoint) {
+        const blockingZone = getActiveSimulatorZone(blockedMidpoint.x, blockedMidpoint.y, zonesRef.current);
+        const warnMsg = `Lộ trình di chuyển bị chặn bởi Vùng cấm vào "${blockingZone?.name || 'KEEP_OUT'}" ngay tại lối đi. Nếu đây là lối đi cần cấm dừng/đậu, vui lòng chuyển loại vùng sang "Cấm dừng (NO_STOP)".`;
+        setZoneAlert({
+          type: 'error',
+          message: warnMsg,
+        });
+        onNotify(warnMsg, 'warning');
+        return;
+      }
 
       const segments = [];
       let totalDistance = 0;
@@ -493,6 +1190,19 @@ export const WorkflowSimulatorStudio = ({
     if (timerRef.current) clearTimeout(timerRef.current);
     if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
 
+    // Kiem tra an toan Vung chuc nang truoc khi thuc thi buoc
+    const stepValidation = validateWorkflowStepZone(activeStep, zonesRef.current);
+    if (!stepValidation.valid) {
+      setIsPlaying(false);
+      setIsPaused(false);
+      setZoneAlert({ type: 'error', message: stepValidation.error });
+      onNotify(stepValidation.error, 'error');
+      return;
+    }
+    if (stepValidation.warning) {
+      onNotify(stepValidation.warning, 'info');
+    }
+
     setStepProgress(0);
     const stepType = activeStep.type;
     const params = activeStep.params || {};
@@ -580,6 +1290,10 @@ export const WorkflowSimulatorStudio = ({
 
   // Bo dieu khien
   const handleStartSim = () => {
+    if (!steps || steps.length === 0) {
+      onNotify('Kịch bản hiện tại chưa có bước thực thi nào', 'warning');
+      return;
+    }
     setIsPlaying(true);
     setIsPaused(false);
     setCurrentStepIndex(0);
@@ -622,6 +1336,28 @@ export const WorkflowSimulatorStudio = ({
 
   // Nguoi dung click vao mat san de chon diem den truc tiep tren ban do
   const handleMapClick = (e) => {
+    // Neu vua keo tha Vung hoac Endpoint xong thi khong kich hoat dieu huong robot
+    if (wasDraggingRef.current || dragState || dragEndpointState) return;
+
+    // Neu click trung endpoint hoac phan tu con cua endpoint thi khong bo chon va khong dieu huong
+    if (e.target?.closest?.('[data-endpoint]')) return;
+
+    // Neu click trung vung (zone) hoac tay nam co gian thi khong bo chon va khong dieu huong
+    if (e.target?.closest?.('[data-zone]') || e.target?.closest?.('.zone-resize-handles')) return;
+
+    // KHI DANG CHINH SUA HOAC THEM VUNG / ENDPOINT: BO CHON VA KHONG LAI ROBOT
+    if (isZoneEditMode || selectedZone || isEndpointEditMode || selectedEndpoint) {
+      if (selectedZone) {
+        setSelectedZone(null);
+      }
+      if (selectedEndpoint) {
+        setSelectedEndpoint(null);
+      }
+      setIsZoneEditMode(false);
+      setIsEndpointEditMode(false);
+      return;
+    }
+
     const svg = svgRef.current;
     if (!svg) return;
     const rect = svg.getBoundingClientRect();
@@ -634,6 +1370,28 @@ export const WorkflowSimulatorStudio = ({
     if (svgX < 50 || svgX > 950 || svgY < 50 || svgY > 550) return;
 
     const meter = svgToMeter(svgX, svgY);
+
+    // Kiem tra an toan Zone tai toa do nguoi dung click
+    const clickedZone = getActiveSimulatorZone(meter.x, meter.y, zonesRef.current);
+    if (clickedZone && clickedZone.type === 'KEEP_OUT') {
+      const msg = `Vị trí (${meter.x.toFixed(1)}m, ${meter.y.toFixed(1)}m) thuộc Vùng cấm vào "${clickedZone.name}". Robot không được phép di chuyển vào đây!`;
+      setZoneAlert({ type: 'error', message: msg });
+      onNotify(msg, 'warning');
+      return;
+    }
+
+    const currentRobotPt = { x: robotPoseRef.current.x, y: robotPoseRef.current.y };
+    const passthrough = resolveNoStopPassthrough(currentRobotPt, meter, zonesRef.current);
+    if (passthrough.isNoStop) {
+      const safePt = passthrough.safePoint;
+      onNotify(
+        `Điểm chọn (${meter.x}m, ${meter.y}m) nằm trong Vùng cấm dừng "${passthrough.zone.name}". Robot tự động đi xuyên qua vùng cấm đến vị trí an toàn (${safePt.x}m, ${safePt.y}m).`,
+        'info'
+      );
+      handleNavigateToGoal(safePt.x, safePt.y, `Thoát vùng cấm dừng (${safePt.x}m, ${safePt.y}m)`);
+      return;
+    }
+
     handleNavigateToGoal(meter.x, meter.y, `${meter.x}m, ${meter.y}m`);
   };
 
@@ -651,75 +1409,47 @@ export const WorkflowSimulatorStudio = ({
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-75px)] w-full overflow-hidden select-none" style={{ backgroundColor: '#F2EFE9' }}>
+    <div className="flex flex-col h-full w-full overflow-hidden select-none" style={{ backgroundColor: '#F2EFE9' }}>
       {/* THANH DIEU KHIEN CHINH - Đồng bộ màu xám #E9E5DC của Sidebar trái */}
       <div
         className="h-14 px-4 border-b flex items-center justify-between gap-4 shrink-0"
         style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD' }}
       >
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <Radio className="w-4 h-4 text-[#262626] animate-pulse" />
-            <span className="font-bold text-xs uppercase tracking-wider text-[#262626] hidden sm:inline">
-              Gia Lap
-            </span>
-            {/* NUT BAT / TAT KET NOI ROS 2 (PORT 9090) */}
-            <button
-              type="button"
-              onClick={() => {
-                const nextState = !isRosEnabled;
-                setIsRosEnabled(nextState);
-                if (nextState) {
-                  onNotify('Đang kích hoạt kết nối ROS 2 (port 9090)...', 'info');
-                } else {
-                  onNotify('Đã ngắt kết nối ROS 2. Chuyển sang chế độ Giả lập thuần Web.', 'info');
-                }
-              }}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-mono font-bold border transition-all cursor-pointer shadow-xs ${
-                isRosEnabled
-                  ? isRosConnected
-                    ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
-                    : 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100'
-                  : 'text-[#262626] hover:bg-[#BFBFBD]'
-              }`}
-              style={!isRosEnabled ? { backgroundColor: '#F2EFE9', borderColor: '#BFBFBD' } : {}}
-              title={
-                isRosEnabled
-                  ? isRosConnected
-                    ? 'ROS 2 đang ONLINE (Click để ngắt kết nối và chạy giả lập Web)'
-                    : 'Đang đợi ROS 2 port 9090 (Click để tắt và chạy giả lập Web)'
-                  : 'Đang ở chế độ Giả lập thuần Web (Click để bật lại kết nối ROS 2 port 9090)'
+          {/* NUT TRANG THAI ROS 2: ONLINE / OFFLINE */}
+          <button
+            type="button"
+            onClick={() => {
+              const nextState = !isRosEnabled;
+              setIsRosEnabled(nextState);
+              if (nextState) {
+                onNotify('Đang kích hoạt kết nối ROS 2 (port 9090)...', 'info');
+              } else {
+                onNotify('Đã ngắt kết nối ROS 2.', 'info');
               }
-            >
-              {isRosEnabled ? (
-                <>
-                  <span
-                    className={`w-1.5 h-1.5 rounded-full ${
-                      isRosConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'
-                    }`}
-                  />
-                  <span>{isRosConnected ? 'ROS 2: ONLINE' : 'ROS 2: CONNECTING'}</span>
-                  <span className="text-[9px] font-sans font-normal opacity-70 border-l border-current/30 pl-1 ml-0.5">
-                    Tắt ROS
-                  </span>
-                </>
-              ) : (
-                <>
-                  <WifiOff className="w-3 h-3 text-[#8C8C8C]" />
-                  <span>GIẢ LẬP WEB</span>
-                  <span
-                    className="text-[9px] font-sans font-semibold px-1 py-0.2 rounded border ml-0.5"
-                    style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD', color: '#262626' }}
-                  >
-                    Bật ROS
-                  </span>
-                </>
-              )}
-            </button>
-          </div>
+            }}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-mono font-bold border transition-all cursor-pointer shadow-xs ${
+              isRosEnabled && isRosConnected
+                ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
+                : 'text-[#262626] hover:bg-[#BFBFBD]'
+            }`}
+            style={!(isRosEnabled && isRosConnected) ? { backgroundColor: '#F2EFE9', borderColor: '#BFBFBD' } : {}}
+            title={
+              isRosEnabled && isRosConnected
+                ? 'ROS 2: ONLINE (Click để ngắt kết nối)'
+                : 'ROS 2: OFFLINE (Click để kết nối lại port 9090)'
+            }
+          >
+            <span
+              className={`w-1.5 h-1.5 rounded-full ${
+                isRosEnabled && isRosConnected ? 'bg-emerald-500 animate-pulse' : 'bg-stone-400'
+              }`}
+            />
+            <span>{isRosEnabled && isRosConnected ? 'ROS 2: ONLINE' : 'ROS 2: OFFLINE'}</span>
+          </button>
 
           <select
-            value={selectedWorkflowId}
+            value={selectedWorkflowId || ''}
             onChange={(e) => {
               handleStopSim();
               setSelectedWorkflowId(e.target.value);
@@ -727,12 +1457,284 @@ export const WorkflowSimulatorStudio = ({
             className="h-8 px-2.5 rounded-lg border text-xs font-bold shadow-xs focus:outline-none max-w-[280px] sm:max-w-[340px] truncate cursor-pointer"
             style={{ backgroundColor: '#F2EFE9', borderColor: '#BFBFBD', color: '#262626' }}
           >
-            {effectiveWorkflows.map((wf) => (
+            {localWorkflows.map((wf) => (
               <option key={wf.id} value={wf.id}>
-                {wf.name}
+                {wf.name} ({wf.steps?.length || 0} bước)
               </option>
             ))}
           </select>
+
+          {/* NUT VUNG TONG HOP (DROP BOX TOAN BO CHUC NANG KEO THA, THEM, LUU, DAT LAI) */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setIsZoneMenuOpen((prev) => !prev)}
+              className={`h-8 px-2.5 rounded-lg border text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer ${
+                showZones
+                  ? 'bg-[#262626] text-white border-[#262626]'
+                  : 'hover:bg-[#FAF8F5] text-[#262626]'
+              }`}
+              style={!showZones ? { backgroundColor: '#F2EFE9', borderColor: '#BFBFBD' } : {}}
+              title="Mở menu quản lý các Vùng Quy Định (Hiển thị, Kéo thả, Thêm, Lưu, Đặt lại)"
+            >
+              <Layers className="w-3.5 h-3.5" />
+              <span>Vùng</span>
+              <span
+                className={`text-[9.5px] px-1 py-0.2 rounded font-mono ${
+                  showZones ? 'bg-white/20 text-white' : 'bg-[#E9E5DC] text-[#262626]'
+                }`}
+              >
+                {zones.length}
+              </span>
+              {hasUnsavedZones && <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />}
+              <ChevronDown className={`w-3 h-3 transition-transform ${isZoneMenuOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {/* DROP BOX MENU QUAN LY VUNG */}
+            {isZoneMenuOpen && (
+              <div
+                className="absolute top-9 left-0 z-30 w-72 p-2.5 rounded-xl border shadow-2xl backdrop-blur-md animate-fadeIn text-xs space-y-2 select-none"
+                style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD', color: '#262626' }}
+              >
+                {/* Header Drop Box */}
+                <div className="flex items-center justify-between pb-1.5 border-b" style={{ borderColor: '#E9E5DC' }}>
+                  <div className="flex items-center gap-1.5 font-bold uppercase tracking-wider text-[10.5px]">
+                    <Layers className="w-3.5 h-3.5 text-[#262626]" />
+                    <span>Quản lý Vùng ({zones.length})</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsZoneMenuOpen(false)}
+                    className="p-1 rounded hover:bg-[#F2EFE9] text-[#8C8C8C] hover:text-[#262626] cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                {/* 1. Switch Hien Thi & Switch Keo Tha */}
+                <div className="space-y-1">
+                  <button
+                    type="button"
+                    onClick={() => setShowZones((prev) => !prev)}
+                    className="w-full px-2 py-1.5 rounded-lg border flex items-center justify-between font-semibold hover:bg-[#F2EFE9] cursor-pointer transition-colors text-left"
+                    style={{ borderColor: '#E9E5DC' }}
+                  >
+                    <span className="flex items-center gap-2">
+                      {showZones ? <Eye className="w-3.5 h-3.5 text-emerald-600" /> : <EyeOff className="w-3.5 h-3.5 text-[#8C8C8C]" />}
+                      <span>Hiển thị lớp Vùng</span>
+                    </span>
+                    <span
+                      className={`text-[9.5px] font-mono font-bold px-1.5 py-0.2 rounded ${
+                        showZones ? 'bg-emerald-100 text-emerald-800' : 'bg-[#E9E5DC] text-[#8C8C8C]'
+                      }`}
+                    >
+                      {showZones ? 'BẬT' : 'TẮT'}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsZoneEditMode((prev) => !prev)}
+                    className={`w-full px-2 py-1.5 rounded-lg border flex items-center justify-between font-semibold cursor-pointer transition-colors text-left ${
+                      isZoneEditMode
+                        ? 'bg-amber-50 text-amber-900 border-amber-300'
+                        : 'hover:bg-[#F2EFE9] text-[#8C8C8C] border-[#E9E5DC]'
+                    }`}
+                  >
+                    <span className="flex items-center gap-2">
+                      <Move className="w-3.5 h-3.5 text-amber-700" />
+                      <span>Kéo thả & Co giãn Vùng</span>
+                    </span>
+                    <span
+                      className={`text-[9.5px] font-mono font-bold px-1.5 py-0.2 rounded ${
+                        isZoneEditMode ? 'bg-amber-200 text-amber-900' : 'bg-[#E9E5DC] text-[#8C8C8C]'
+                      }`}
+                    >
+                      {isZoneEditMode ? 'BẬT' : 'TẮT'}
+                    </span>
+                  </button>
+                </div>
+
+                {/* 2. Them Vung Moi */}
+                <div className="pt-1.5 border-t space-y-1" style={{ borderColor: '#E9E5DC' }}>
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-[#8C8C8C]">
+                    + Thêm vùng mới:
+                  </div>
+                  <div className="space-y-0.5">
+                    <button
+                      type="button"
+                      onClick={() => handleAddZone('KEEP_OUT')}
+                      className="w-full text-left px-2 py-1.2 rounded-lg flex items-center gap-2 hover:bg-red-50 text-red-700 font-semibold cursor-pointer transition-colors"
+                    >
+                      <span className="w-2.5 h-2.5 rounded-full bg-red-600 shrink-0" />
+                      <span>Cấm vào (Keep-Out Zone)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleAddZone('SPEED_ZONE')}
+                      className="w-full text-left px-2 py-1.2 rounded-lg flex items-center gap-2 hover:bg-amber-50 text-amber-800 font-semibold cursor-pointer transition-colors"
+                    >
+                      <span className="w-2.5 h-2.5 rounded-full bg-amber-500 shrink-0" />
+                      <span>Giới hạn tốc độ (Speed Zone)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleAddZone('NO_STOP')}
+                      className="w-full text-left px-2 py-1.2 rounded-lg flex items-center gap-2 hover:bg-rose-50 text-rose-700 font-semibold cursor-pointer transition-colors"
+                    >
+                      <span className="w-2.5 h-2.5 rounded-full bg-rose-500 shrink-0" />
+                      <span>Cấm dừng (No-Stop Zone)</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* 3. Luu Vung & Dat Lai */}
+                <div className="pt-2 border-t flex items-center gap-2" style={{ borderColor: '#E9E5DC' }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleSaveZones();
+                      setIsZoneMenuOpen(false);
+                    }}
+                    disabled={isSavingZones || !hasUnsavedZones}
+                    className={`flex-1 h-7.5 px-2 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs transition-all ${
+                      hasUnsavedZones
+                        ? 'bg-emerald-700 hover:bg-emerald-800 text-white cursor-pointer animate-pulse'
+                        : 'bg-[#F2EFE9] text-[#8C8C8C] cursor-not-allowed border border-[#E9E5DC]'
+                    }`}
+                  >
+                    <Save className="w-3 h-3" />
+                    <span>{isSavingZones ? 'Đang lưu...' : 'Lưu Vùng'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleResetDefaultZones();
+                      setIsZoneMenuOpen(false);
+                    }}
+                    className="h-7.5 px-2.5 rounded-lg border text-xs font-semibold flex items-center gap-1 text-[#8C8C8C] hover:text-[#262626] hover:bg-[#F2EFE9] cursor-pointer"
+                    style={{ borderColor: '#BFBFBD' }}
+                    title="Khôi phục lại 3 Vùng Chức Năng về chuẩn ban đầu"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    <span>Đặt lại</span>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* MENU QUAN LY ENDPOINTS (3 LOAI CHUAN: WAYPOINT, CHARGER, PARK) */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => {
+                setIsEndpointMenuOpen((prev) => !prev);
+                setIsZoneMenuOpen(false);
+              }}
+              className={`h-8 px-2.5 rounded-lg border text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer ${
+                isEndpointMenuOpen || selectedEndpoint
+                  ? 'bg-[#262626] text-white border-[#262626]'
+                  : 'text-[#262626] hover:bg-[#FAF8F5]'
+              }`}
+              style={!(isEndpointMenuOpen || selectedEndpoint) ? { backgroundColor: '#F2EFE9', borderColor: '#BFBFBD' } : {}}
+              title="Thêm và chỉnh sửa các loại Endpoint sảnh"
+            >
+              <MapPin className="w-3.5 h-3.5 text-[#262626]" />
+              <span>Điểm đích ({endpoints.length})</span>
+              <ChevronDown className="w-3 h-3 opacity-70" />
+            </button>
+
+            {isEndpointMenuOpen && (
+              <div
+                className="absolute top-full left-0 mt-1.5 w-68 rounded-xl border shadow-xl p-3 z-50 text-xs space-y-2.5 animate-fadeIn"
+                style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD', color: '#262626' }}
+              >
+                {/* Header */}
+                <div className="flex items-center justify-between border-b pb-2" style={{ borderColor: '#E9E5DC' }}>
+                  <div className="flex items-center gap-1.5 font-bold">
+                    <MapPin className="w-4 h-4 text-[#262626]" />
+                    <span>Quản lý Endpoint ({endpoints.length})</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsEndpointMenuOpen(false)}
+                    className="p-1 rounded hover:bg-[#F2EFE9] text-[#8C8C8C] hover:text-[#262626] cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                {/* + Them Endpoint Moi (3 Loai Chuan) */}
+                <div className="space-y-1">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-[#8C8C8C]">
+                    + Thêm Endpoint mới:
+                  </div>
+                  <div className="space-y-0.5">
+                    <button
+                      type="button"
+                      onClick={() => handleAddEndpoint('WAYPOINT')}
+                      className="w-full text-left px-2 py-1.5 rounded-lg flex items-center gap-2 hover:bg-[#F2EFE9] text-[#262626] font-semibold cursor-pointer transition-colors"
+                    >
+                      <span className="w-2.5 h-2.5 rounded-full bg-[#262626] shrink-0" />
+                      <span>Waypoint (Điểm đường / Điểm trung gian)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleAddEndpoint('CHARGER')}
+                      className="w-full text-left px-2 py-1.5 rounded-lg flex items-center gap-2 hover:bg-emerald-50 text-emerald-800 font-semibold cursor-pointer transition-colors"
+                    >
+                      <span className="w-2.5 h-2.5 rounded-full bg-[#059669] shrink-0" />
+                      <span>Charger (Điểm sạc pin)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleAddEndpoint('PARK')}
+                      className="w-full text-left px-2 py-1.5 rounded-lg flex items-center gap-2 hover:bg-[#E9E5DC] text-stone-800 font-semibold cursor-pointer transition-colors"
+                    >
+                      <span className="w-2.5 h-2.5 rounded-full bg-[#71717A] shrink-0" />
+                      <span>Park (Điểm đỗ / chờ)</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Luu & Dat lai */}
+                <div className="pt-2 border-t flex items-center gap-2" style={{ borderColor: '#E9E5DC' }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      endpoints.forEach((ep) => handleSaveEndpointToDb(ep));
+                      setIsEndpointMenuOpen(false);
+                    }}
+                    disabled={isSavingEndpoints || !hasUnsavedEndpoints}
+                    className={`flex-1 h-7.5 px-2 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs transition-all ${
+                      hasUnsavedEndpoints
+                        ? 'bg-[#262626] hover:bg-[#383838] text-[#F2EFE9] cursor-pointer'
+                        : 'bg-[#F2EFE9] text-[#8C8C8C] cursor-not-allowed border border-[#E9E5DC]'
+                    }`}
+                  >
+                    <Save className="w-3 h-3" />
+                    <span>{isSavingEndpoints ? 'Đang lưu...' : 'Lưu Điểm'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleResetDefaultEndpoints();
+                      setIsEndpointMenuOpen(false);
+                    }}
+                    className="h-7.5 px-2.5 rounded-lg border text-xs font-semibold flex items-center gap-1 text-[#8C8C8C] hover:text-[#262626] hover:bg-[#F2EFE9] cursor-pointer"
+                    style={{ borderColor: '#BFBFBD' }}
+                    title="Khôi phục lại danh sách Điểm Mốc về chuẩn ban đầu"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    <span>Đặt lại</span>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Nhom nut dieu khien Play / Pause / Next / Reset / Speed */}
@@ -825,10 +1827,10 @@ export const WorkflowSimulatorStudio = ({
             onClick={handleDispatchToRobot}
             className="h-8 px-3 rounded-lg text-white text-xs font-bold flex items-center gap-1 shadow-xs transition-all cursor-pointer shrink-0 hover:bg-[#363636]"
             style={{ backgroundColor: '#262626' }}
-            title="Phát kịch bản này tới Robot và đóng"
+            title="Phát kịch bản tới Robot"
           >
             <Send className="w-3.5 h-3.5" />
-            <span className="hidden md:inline">Phát Tới Robot và Đóng</span>
+            <span>Phát</span>
           </button>
 
           {onClose && (
@@ -907,18 +1909,32 @@ export const WorkflowSimulatorStudio = ({
                 </div>
               )}
 
-              <p className="text-[11px] font-medium leading-snug line-clamp-2" style={{ color: '#262626' }} title={activeDetail.detailText}>
-                {activeDetail.detailText}
-              </p>
+              <div
+                className="text-[11px] font-bold truncate"
+                style={{ color: '#262626' }}
+                title={activeStep ? (activeStep.title || activeDetail.shortChip) : 'Robot ở trạng thái chờ lệnh'}
+              >
+                {activeStep ? (activeStep.title || activeDetail.shortChip) : 'Robot ở trạng thái chờ lệnh'}
+              </div>
             </div>
           </div>
 
           {/* Danh sach cac buoc xep doc (Vertical Timeline) */}
           <div className="flex-1 min-h-0 overflow-y-auto p-2.5 space-y-2">
-            {steps.map((step, idx) => {
-              const isActive = isPlaying && currentStepIndex === idx;
-              const isPast = isPlaying && currentStepIndex > idx;
-              const stepDetail = getStepActionDetail(step);
+            {steps.length === 0 ? (
+              <div
+                className="p-4 text-center rounded-xl border text-xs leading-relaxed"
+                style={{ backgroundColor: '#F2EFE9', borderColor: '#BFBFBD', color: '#8C8C8C' }}
+              >
+                {activeWorkflow
+                  ? `Kịch bản "${activeWorkflow.name}" chưa có bước thực thi nào trong CSDL.`
+                  : 'Chưa có kịch bản nào được chọn.'}
+              </div>
+            ) : (
+              steps.map((step, idx) => {
+                const isActive = isPlaying && currentStepIndex === idx;
+                const isPast = isPlaying && currentStepIndex > idx;
+                const stepDetail = getStepActionDetail(step);
 
               return (
                 <div
@@ -946,9 +1962,9 @@ export const WorkflowSimulatorStudio = ({
 
                   {/* Noi dung buoc */}
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5 mb-1">
+                    <div className="flex items-center gap-1.5">
                       <span
-                        className="px-1.5 py-0.2 rounded text-[9.5px] font-mono font-bold tracking-wider border"
+                        className="px-1.5 py-0.2 rounded text-[9.5px] font-mono font-bold tracking-wider border shrink-0"
                         style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD', color: '#262626' }}
                       >
                         {stepDetail.label}
@@ -977,14 +1993,6 @@ export const WorkflowSimulatorStudio = ({
                         </button>
                       )}
                     </div>
-
-                    <p
-                      className="text-[10px] leading-relaxed line-clamp-2"
-                      style={{ color: '#8C8C8C' }}
-                      title={stepDetail.detailText}
-                    >
-                      {stepDetail.detailText}
-                    </p>
 
                     {/* Panel chinh sua nhanh diem moc ngay tai Sa ban Studio */}
                     {editingStepIdx === idx && step.type === 'MOVE' && (
@@ -1023,7 +2031,7 @@ export const WorkflowSimulatorStudio = ({
                             style={{ backgroundColor: '#F2EFE9', borderColor: '#BFBFBD', color: '#262626' }}
                           >
                             <option value="CURRENT">Vị trí hiện tại của Robot</option>
-                            {STANDARD_LOBBY_WAYPOINTS.map((wp) => (
+                            {endpoints.map((wp) => (
                               <option key={wp.id} value={wp.id}>
                                 {wp.name}
                               </option>
@@ -1047,7 +2055,7 @@ export const WorkflowSimulatorStudio = ({
                             className="w-full px-2 py-1 rounded text-[10px] font-semibold border focus:outline-none cursor-pointer"
                             style={{ backgroundColor: '#F2EFE9', borderColor: '#BFBFBD', color: '#262626' }}
                           >
-                            {STANDARD_LOBBY_WAYPOINTS.map((wp) => (
+                            {endpoints.map((wp) => (
                               <option key={wp.id} value={wp.id}>
                                 {wp.name}
                               </option>
@@ -1059,39 +2067,128 @@ export const WorkflowSimulatorStudio = ({
                   </div>
                 </div>
               );
-            })}
-          </div>
-        </aside>
+            })
+          )}
+        </div>
+      </aside>
 
         {/* COT PHAI: TOAN BO KHONG GIAN SA BAN 2D SANH GROUND FLOOR */}
         <main
           className="flex-1 min-w-0 h-full relative p-2 flex items-center justify-center overflow-hidden"
           style={{ backgroundColor: '#F2EFE9' }}
         >
-        {/* Thanh huong dan dieu huong truc quan */}
-        <div
-          className="absolute top-3 right-4 z-10 flex items-center gap-2 px-3 py-1.5 rounded-lg border shadow-xs text-xs font-medium pointer-events-none select-none backdrop-blur-xs"
-          style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD', color: '#262626' }}
-        >
-          <Navigation className="w-3.5 h-3.5 text-[#8C8C8C]" />
-          <span>Click điểm mốc hoặc vị trí sàn để robot di chuyển tới đó</span>
-          <span
-            className="font-mono font-bold px-1.5 py-0.5 rounded border ml-1"
-            style={{ backgroundColor: '#F2EFE9', borderColor: '#BFBFBD', color: '#262626' }}
+        {/* Thanh huong dan dieu huong truc quan & HUD Trang thai Vung cua Robot */}
+        <div className="absolute top-3 right-4 z-10 flex flex-col items-end gap-1.5 select-none pointer-events-none">
+          <div
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg border shadow-xs text-xs font-medium backdrop-blur-xs"
+            style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD', color: '#262626' }}
           >
-            ({robotPose.x}m, {robotPose.y}m)
-          </span>
+            {isZoneEditMode || selectedZone ? (
+              <>
+                <Move className="w-3.5 h-3.5 text-amber-700" />
+                <span className="hidden sm:inline font-bold text-amber-900">Chế độ sửa Vùng (Kéo thả định vị)</span>
+              </>
+            ) : (
+              <>
+                <Navigation className="w-3.5 h-3.5 text-[#8C8C8C]" />
+                <span className="hidden sm:inline">Click sàn để di chuyển</span>
+              </>
+            )}
+            <span
+              className="font-mono font-bold px-1.5 py-0.5 rounded border ml-1"
+              style={{ backgroundColor: '#F2EFE9', borderColor: '#BFBFBD', color: '#262626' }}
+            >
+              ({robotPose.x}m, {robotPose.y}m)
+            </span>
+
+            {/* Chip HUD Trang thai Vung hien tai cua Robot */}
+            {activeRobotZone ? (
+              <span
+                className={`flex items-center gap-1 px-2 py-0.5 rounded font-mono font-bold text-[10px] border shadow-2xs ${
+                  activeRobotZone.type === 'KEEP_OUT'
+                    ? 'bg-red-100 text-red-800 border-red-300 animate-pulse'
+                    : activeRobotZone.type === 'SPEED_ZONE' || activeRobotZone.type === 'SLOW_SPEED'
+                    ? 'bg-amber-100 text-amber-900 border-amber-300'
+                    : 'bg-rose-100 text-rose-800 border-rose-300'
+                }`}
+              >
+                {activeRobotZone.type === 'KEEP_OUT' && <Ban className="w-3 h-3 text-red-600" />}
+                {(activeRobotZone.type === 'SPEED_ZONE' || activeRobotZone.type === 'SLOW_SPEED') && (
+                  <Gauge className="w-3 h-3 text-amber-600" />
+                )}
+                {activeRobotZone.type === 'NO_STOP' && <AlertTriangle className="w-3 h-3 text-rose-600" />}
+                <span>
+                  {activeRobotZone.type === 'KEEP_OUT'
+                    ? 'VÙNG CẤM'
+                    : activeRobotZone.type === 'SPEED_ZONE' || activeRobotZone.type === 'SLOW_SPEED'
+                    ? `TỐC ĐỘ: ${activeRobotZone.speed_limit || 0.20}m/s`
+                    : 'CẤM DỪNG'}
+                </span>
+              </span>
+            ) : (
+              <span
+                className="flex items-center gap-1 px-1.5 py-0.5 rounded font-mono text-[9.5px] border"
+                style={{ backgroundColor: '#F2EFE9', borderColor: '#BFBFBD', color: '#8C8C8C' }}
+              >
+                <Shield className="w-2.5 h-2.5" />
+                <span>Sảnh Tự Do</span>
+              </span>
+            )}
+          </div>
+
+
+          {/* Toast Cảnh Báo An Toàn Vùng (Nổi khi vi phạm hoặc click vùng cấm) */}
+          {zoneAlert && (
+            <div
+              className="pointer-events-auto flex items-center gap-2 px-3 py-1.5 rounded-lg border shadow-md text-xs font-semibold animate-fadeIn max-w-md"
+              style={{
+                backgroundColor: zoneAlert.type === 'error' ? '#FEF2F2' : '#FFFBEB',
+                borderColor: zoneAlert.type === 'error' ? '#FCA5A5' : '#FCD34D',
+                color: zoneAlert.type === 'error' ? '#991B1B' : '#92400E',
+              }}
+            >
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+              <span className="text-[11px] leading-tight flex-1">{zoneAlert.message}</span>
+              <button
+                type="button"
+                onClick={() => setZoneAlert(null)}
+                className="p-1 rounded hover:bg-black/5 cursor-pointer shrink-0"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          )}
         </div>
 
         <svg
           ref={svgRef}
           viewBox="0 0 1000 620"
           onClick={handleMapClick}
-          className="w-full h-full object-contain select-none cursor-crosshair"
+          onPointerMove={handleSvgPointerMove}
+          onPointerUp={handleSvgPointerUp}
+          className={`w-full h-full object-contain select-none ${
+            dragState
+              ? 'cursor-grabbing'
+              : isZoneEditMode || selectedZone
+              ? 'cursor-default'
+              : 'cursor-crosshair'
+          }`}
         >
           <defs>
             <pattern id="blueprintDots" width="20" height="20" patternUnits="userSpaceOnUse">
               <circle cx="2" cy="2" r="1.2" fill="#BFBFBD" />
+            </pattern>
+            {/* Pattern soc cheo do cho KEEP_OUT */}
+            <pattern id="keepoutStripes" width="16" height="16" patternTransform="rotate(45 0 0)" patternUnits="userSpaceOnUse">
+              <line x1="0" y1="0" x2="0" y2="16" stroke="#DC2626" strokeWidth="4" opacity="0.30" />
+            </pattern>
+            {/* Pattern cham ho phach cho SPEED_ZONE */}
+            <pattern id="speedZonePattern" width="14" height="14" patternUnits="userSpaceOnUse">
+              <circle cx="3" cy="3" r="2" fill="#D97706" opacity="0.35" />
+            </pattern>
+            {/* Pattern soc cheo do hong cho NO_STOP */}
+            <pattern id="nostopStripes" width="14" height="14" patternTransform="rotate(-45 0 0)" patternUnits="userSpaceOnUse">
+              <line x1="0" y1="0" x2="0" y2="14" stroke="#E11D48" strokeWidth="3" opacity="0.30" />
             </pattern>
           </defs>
 
@@ -1103,8 +2200,8 @@ export const WorkflowSimulatorStudio = ({
             Mặt bằng sảnh khách sạn • 10m x 6m
           </text>
 
-          {/* MAT BANG KIEN TRUC SANH TANG TRET (ARCHITECTURAL VECTOR BLUEPRINT 10M x 6M) */}
-          {/* 1. KHUNG TUONG BAO NGOAI (OUTER WALLS: X 50..950, Y 50..550) */}
+          {/* MAT BANG KIEN TRUC SANH TANG TRET - DONG BO CHINH XAC 100% VOI GAZEBO hotel_room.world */}
+          {/* 1. KHUNG TUONG BAO NGOAI (OUTER WALLS: X 50..950, Y 50..550 tuong ung 10m x 6m) */}
           <rect
             x="50"
             y="50"
@@ -1115,43 +2212,34 @@ export const WorkflowSimulatorStudio = ({
             strokeWidth="3.5"
           />
 
-          {/* 2. VACH NGAN CHIA SANH (X = 446 ~ 4.4m) KEM CUA MO 1 CANH */}
-          {/* Vach Bac (Y 50 den 265) */}
-          <line x1="446" y1="50" x2="446" y2="265" stroke="#1c1917" strokeWidth="3" />
-          {/* Cua mo 1 canh xoay ve phia Gian Trai (Lobby) */}
-          <line x1="446" y1="335" x2="376" y2="335" stroke="#1c1917" strokeWidth="2.5" />
-          <path
-            d="M 446 265 A 70 70 0 0 0 376 335"
-            fill="none"
-            stroke="#94a3b8"
-            strokeWidth="1.5"
-            strokeDasharray="3 3"
-          />
-          {/* Vach Nam (Y 335 den 550) */}
-          <line x1="446" y1="335" x2="446" y2="550" stroke="#1c1917" strokeWidth="3" />
+          {/* 2. VACH NGAN CHIA SANH (Gazebo: X = 4.4m -> svgX = 446) */}
+          {/* Vach Bac (Gazebo: Y = 3.3m den 6.0m -> svgY = 275 den 50) */}
+          <line x1="446" y1="50" x2="446" y2="275" stroke="#1c1917" strokeWidth="3.5" />
+          {/* Vach Nam (Gazebo: Y = 0.0m den 2.4m -> svgY = 550 den 350) */}
+          <line x1="446" y1="350" x2="446" y2="550" stroke="#1c1917" strokeWidth="3.5" />
+          {/* Lối Cửa Thông Sảnh (Doorway: Gazebo Y = 2.4m den 3.3m rong 0.9m -> svgY = 275 den 350) */}
+          <line x1="446" y1="275" x2="446" y2="350" stroke="#94a3b8" strokeWidth="1" strokeDasharray="3 3" />
 
-          {/* 3. GIAN TRAI: 3 BO SOFA VA BAN TRA HINH VIEN THUOC DOC TUONG TAY */}
-          {/* Sofa 1 (Tren) */}
+          {/* 3. GIAN TRAI: 3 BO SOFA VA BAN TRA TRON (LOBBY LOUNGE - Chuan Gazebo) */}
+          {/* Bo Sofa 1 (Bac: pose x=0.55, y=5.0; ban tra x=1.3, y=5.0) */}
           <g>
-            <rect x="54" y="90" width="28" height="95" rx="3" fill="#ffffff" stroke="#1c1917" strokeWidth="2" />
-            <line x1="54" y1="122" x2="82" y2="122" stroke="#64748b" strokeWidth="1" />
-            <line x1="54" y1="154" x2="82" y2="154" stroke="#64748b" strokeWidth="1" />
-            {/* Ban vien thuoc 1 */}
-            <rect x="115" y="85" width="36" height="105" rx="18" fill="#ffffff" stroke="#1c1917" strokeWidth="2.5" />
+            <rect x="73" y="75" width="54" height="116" rx="4" fill="#ffffff" stroke="#1c1917" strokeWidth="2" />
+            <line x1="73" y1="104" x2="127" y2="104" stroke="#64748b" strokeWidth="1" />
+            <line x1="73" y1="162" x2="127" y2="162" stroke="#64748b" strokeWidth="1" />
+            <circle cx="167" cy="133" r="23" fill="#ffffff" stroke="#1c1917" strokeWidth="2" />
           </g>
 
-          {/* Sofa 2 (Giua) */}
+          {/* Bo Sofa 2 (Giua: pose x=0.55, y=3.0; ban tra x=1.3, y=3.0) */}
           <g>
-            <rect x="54" y="250" width="28" height="95" rx="3" fill="#ffffff" stroke="#1c1917" strokeWidth="2" />
-            <line x1="54" y1="282" x2="82" y2="282" stroke="#64748b" strokeWidth="1" />
-            <line x1="54" y1="314" x2="82" y2="314" stroke="#64748b" strokeWidth="1" />
-            {/* Ban vien thuoc 2 */}
-            <rect x="115" y="245" width="36" height="105" rx="18" fill="#ffffff" stroke="#1c1917" strokeWidth="2.5" />
+            <rect x="73" y="242" width="54" height="116" rx="4" fill="#ffffff" stroke="#1c1917" strokeWidth="2" />
+            <line x1="73" y1="271" x2="127" y2="271" stroke="#64748b" strokeWidth="1" />
+            <line x1="73" y1="329" x2="127" y2="329" stroke="#64748b" strokeWidth="1" />
+            <circle cx="167" cy="300" r="23" fill="#ffffff" stroke="#1c1917" strokeWidth="2" />
           </g>
 
-          {/* Chu Lobby o giua Gian Trai (Dung nhu hinh cua ong chu) */}
+          {/* Chu Lobby o giua Gian Trai */}
           <text
-            x="225"
+            x="240"
             y="305"
             textAnchor="middle"
             className="text-base font-bold fill-stone-900"
@@ -1160,172 +2248,421 @@ export const WorkflowSimulatorStudio = ({
             Lobby
           </text>
 
-          {/* Sofa 3 (Duoi) */}
+          {/* Bo Sofa 3 (Nam: pose x=0.55, y=1.0; ban tra x=1.3, y=1.0) */}
           <g>
-            <rect x="54" y="410" width="28" height="95" rx="3" fill="#ffffff" stroke="#1c1917" strokeWidth="2" />
-            <line x1="54" y1="442" x2="82" y2="442" stroke="#64748b" strokeWidth="1" />
-            <line x1="54" y1="474" x2="82" y2="474" stroke="#64748b" strokeWidth="1" />
-            {/* Ban vien thuoc 3 */}
-            <rect x="115" y="405" width="36" height="105" rx="18" fill="#ffffff" stroke="#1c1917" strokeWidth="2.5" />
+            <rect x="73" y="408" width="54" height="116" rx="4" fill="#ffffff" stroke="#1c1917" strokeWidth="2" />
+            <line x1="73" y1="437" x2="127" y2="437" stroke="#64748b" strokeWidth="1" />
+            <line x1="73" y1="495" x2="127" y2="495" stroke="#64748b" strokeWidth="1" />
+            <circle cx="167" cy="467" r="23" fill="#ffffff" stroke="#1c1917" strokeWidth="2" />
           </g>
 
           {/* 4. GIAN PHAI - PHIA NAM: CUA CHINH, FRONT DESK, STAFF ONLY */}
-          {/* Cua Chinh (Main Entrance: mo 2 canh sat vach ngan o tuong Nam) */}
+          {/* Cua Chinh (Gazebo: x = 4.8m den 5.8m -> svgX = 482 den 572, tam x = 527) */}
           <g>
-            {/* Khoang mo cua tuong */}
-            <rect x="485" y="546" width="70" height="8" fill="#ffffff" />
-            {/* Canh cua trai mo xoay vao trong */}
-            <line x1="485" y1="550" x2="520" y2="520" stroke="#1c1917" strokeWidth="2" />
-            <path d="M 520 520 A 42 42 0 0 1 520 550" fill="none" stroke="#94a3b8" strokeWidth="1.2" strokeDasharray="2 2" />
-            {/* Canh cua phai mo xoay vao trong */}
-            <line x1="555" y1="550" x2="520" y2="520" stroke="#1c1917" strokeWidth="2" />
-            <path d="M 520 520 A 42 42 0 0 0 520 550" fill="none" stroke="#94a3b8" strokeWidth="1.2" strokeDasharray="2 2" />
+            <rect x="482" y="546" width="90" height="8" fill="#ffffff" />
+            {/* Canh cua mo xoay vao trong */}
+            <line x1="482" y1="550" x2="527" y2="520" stroke="#1c1917" strokeWidth="2" />
+            <path d="M 527 520 A 45 45 0 0 1 527 550" fill="none" stroke="#94a3b8" strokeWidth="1.2" strokeDasharray="2 2" />
+            <line x1="572" y1="550" x2="527" y2="520" stroke="#1c1917" strokeWidth="2" />
+            <path d="M 527 520 A 45 45 0 0 0 527 550" fill="none" stroke="#94a3b8" strokeWidth="1.2" strokeDasharray="2 2" />
           </g>
 
-          {/* Quay Tiep Tan (Front Desk: khoi chu nhat dung o giua) */}
+          {/* Quay Tiep Tan (Gazebo Front Desk: goc L tai x=5.8m, y=2.5m -> svgX=572, svgY=342) */}
           <g>
-            <rect x="600" y="295" width="95" height="255" fill="#ffffff" stroke="#1c1917" strokeWidth="3" />
-            <text x="647" y="420" textAnchor="middle" className="text-sm font-bold fill-stone-900" fontFamily="sans-serif">
+            {/* Mat truoc quay ngang: x = 5.8m -> 6.8m (svgX 572 -> 662), y = 2.5m (svgY 342) */}
+            <rect x="572" y="327" width="90" height="30" fill="#ffffff" stroke="#1c1917" strokeWidth="3" />
+            {/* Vach doc ben hong: x = 5.8m (svgX 572), y = 0.3m -> 2.5m (svgY 342 -> 525) */}
+            <rect x="572" y="357" width="23" height="168" fill="#ffffff" stroke="#1c1917" strokeWidth="3" />
+            <text x="635" y="420" textAnchor="middle" className="text-sm font-bold fill-stone-900" fontFamily="sans-serif">
               Front
             </text>
-            <text x="647" y="442" textAnchor="middle" className="text-sm font-bold fill-stone-900" fontFamily="sans-serif">
+            <text x="635" y="442" textAnchor="middle" className="text-sm font-bold fill-stone-900" fontFamily="sans-serif">
               Desk
             </text>
           </g>
 
-          {/* Phong Staff Only (Goc Dong Nam) */}
+          {/* Phong Staff Only (Gazebo: x = 8.35m den 10.0m, y = 0.0m den 3.06m -> svgX = 802 den 950, svgY = 295 den 550) */}
           <g>
-            {/* Vach ngang phia Bac */}
-            <line x1="805" y1="295" x2="950" y2="295" stroke="#1c1917" strokeWidth="3" />
-            {/* Vach dung phia Tay (Chua khe cua mo tu y=295 den y=355) */}
-            <line x1="805" y1="355" x2="805" y2="550" stroke="#1c1917" strokeWidth="3" />
-            {/* Cua mo 1 canh xoay vao trong phong Staff Only */}
-            <line x1="805" y1="355" x2="865" y2="355" stroke="#1c1917" strokeWidth="2" />
-            <path d="M 805 295 A 60 60 0 0 1 865 355" fill="none" stroke="#94a3b8" strokeWidth="1.2" strokeDasharray="2 2" />
-            <text x="878" y="445" textAnchor="middle" className="text-sm font-bold fill-stone-900" fontFamily="sans-serif">
+            {/* Vach ngang phia Bac (Gazebo: y = 3.06m -> svgY = 295) */}
+            <line x1="802" y1="295" x2="950" y2="295" stroke="#1c1917" strokeWidth="3" />
+            {/* Vach dung phia Tay (Gazebo: x = 8.35m, y = 0.0m den 2.25m -> svgY 550 den 363) */}
+            <line x1="802" y1="363" x2="802" y2="550" stroke="#1c1917" strokeWidth="3" />
+            {/* Cua mo vao phong Staff Only (Gazebo: y = 2.25m den 3.06m -> svgY 295 den 363) */}
+            <line x1="802" y1="295" x2="802" y2="363" stroke="#94a3b8" strokeWidth="1.2" strokeDasharray="3 3" />
+            <text x="876" y="445" textAnchor="middle" className="text-sm font-bold fill-stone-900" fontFamily="sans-serif">
               Staff Only
             </text>
           </g>
 
-          {/* 5. GIAN PHAI - PHIA BAC: DAY 3 PHONG (WC, THANG MAY, CAU THANG) */}
-          <rect x="610" y="50" width="340" height="120" fill="#ffffff" stroke="#1c1917" strokeWidth="3" />
-          {/* Vach ngan giua WC va Thang May */}
-          <line x1="745" y1="50" x2="745" y2="170" stroke="#1c1917" strokeWidth="2.5" />
-          {/* Vach ngan giua Thang May va Cau Thang */}
-          <line x1="850" y1="50" x2="850" y2="170" stroke="#1c1917" strokeWidth="2.5" />
+          {/* 5. GIAN PHAI - PHIA BAC: DAY 3 PHONG (WC, THANG MAY, CAU THANG - Chuan Gazebo) */}
+          {/* Mat truoc: Gazebo y = 4.7m den 6.0m -> svgY = 50 den 158; x = 5.8m den 10.0m -> svgX = 572 den 950 */}
+          <rect x="572" y="50" width="378" height="108" fill="#ffffff" stroke="#1c1917" strokeWidth="3" />
+          {/* Vach ngan giua WC va Thang May (Gazebo: x = 7.2m -> svgX = 698) */}
+          <line x1="698" y1="50" x2="698" y2="158" stroke="#1c1917" strokeWidth="2.5" />
+          {/* Vach ngan giua Thang May va Cau Thang (Gazebo: x = 8.65m -> svgX = 828) */}
+          <line x1="828" y1="50" x2="828" y2="158" stroke="#1c1917" strokeWidth="2.5" />
 
-          {/* (1) Nha Ve Sinh (Restrooms) - Icon Pictogram Nam / Nu Den */}
+          {/* (1) Nha Ve Sinh (Restrooms: Gazebo x = 5.8m den 7.2m -> svgX = 572 den 698) */}
           <g>
             {/* Nam */}
-            <circle cx="654" cy="82" r="7" fill="#1c1917" />
-            <path d="M 645 93 L 663 93 L 663 125 L 658 125 L 658 152 L 650 152 L 650 125 L 645 125 Z" fill="#1c1917" />
+            <circle cx="620" cy="80" r="7" fill="#1c1917" />
+            <path d="M 611 91 L 629 91 L 629 120 L 624 120 L 624 145 L 616 145 L 616 120 L 611 120 Z" fill="#1c1917" />
             {/* Nu */}
-            <circle cx="702" cy="82" r="7" fill="#1c1917" />
-            <path d="M 693 93 L 711 93 L 718 125 L 708 125 L 708 152 L 703 152 L 703 125 L 699 125 L 699 152 L 694 152 L 694 125 L 686 125 Z" fill="#1c1917" />
+            <circle cx="660" cy="80" r="7" fill="#1c1917" />
+            <path d="M 651 91 L 669 91 L 676 120 L 666 120 L 666 145 L 661 145 L 661 120 L 657 120 L 657 145 L 652 145 L 652 120 L 644 120 Z" fill="#1c1917" />
           </g>
 
-          {/* (2) Cum Thang May (Elevator) */}
+          {/* (2) Cum Thang May (Elevator: Gazebo x = 7.2m den 8.65m -> svgX = 698 den 828) */}
           <g>
-            <rect x="768" y="70" width="64" height="80" fill="none" stroke="#1c1917" strokeWidth="2.5" />
-            <line x1="800" y1="70" x2="800" y2="150" stroke="#1c1917" strokeWidth="2" />
-            <line x1="794" y1="105" x2="794" y2="115" stroke="#1c1917" strokeWidth="2" strokeLinecap="round" />
-            <line x1="806" y1="105" x2="806" y2="115" stroke="#1c1917" strokeWidth="2" strokeLinecap="round" />
+            <rect x="736" y="68" width="54" height="74" fill="none" stroke="#1c1917" strokeWidth="2.2" />
+            <line x1="763" y1="68" x2="763" y2="142" stroke="#1c1917" strokeWidth="1.8" />
+            <line x1="758" y1="100" x2="758" y2="110" stroke="#1c1917" strokeWidth="2" strokeLinecap="round" />
+            <line x1="768" y1="100" x2="768" y2="110" stroke="#1c1917" strokeWidth="2" strokeLinecap="round" />
             {/* Mui ten len / xuong */}
-            <path d="M 788 95 L 788 80 M 784 84 L 788 80 L 792 84" stroke="#1c1917" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-            <path d="M 812 80 L 812 95 M 808 91 L 812 95 L 816 91" stroke="#1c1917" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M 752 90 L 752 78 M 748 82 L 752 78 L 756 82" stroke="#1c1917" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M 774 78 L 774 90 M 770 86 L 774 90 L 778 86" stroke="#1c1917" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
           </g>
 
-          {/* (3) Cau Thang Bo (Stairs) */}
+          {/* (3) Cau Thang Bo (Stairs: Gazebo x = 8.65m den 10.0m -> svgX = 828 den 950) */}
           <g>
-            <line x1="900" y1="50" x2="900" y2="170" stroke="#1c1917" strokeWidth="2" />
-            {[65, 80, 95, 110, 125, 140, 155].map((sy) => (
+            <line x1="889" y1="50" x2="889" y2="158" stroke="#1c1917" strokeWidth="2" />
+            {[62, 76, 90, 104, 118, 132, 146].map((sy) => (
               <g key={sy}>
-                <line x1="855" y1={sy} x2="896" y2={sy} stroke="#64748b" strokeWidth="1.5" />
-                <line x1="904" y1={sy} x2="945" y2={sy} stroke="#64748b" strokeWidth="1.5" />
+                <line x1="835" y1={sy} x2="883" y2={sy} stroke="#64748b" strokeWidth="1.5" />
+                <line x1="895" y1={sy} x2="943" y2={sy} stroke="#64748b" strokeWidth="1.5" />
               </g>
             ))}
           </g>
 
-          {/* CAC DIEM MOC WAYPOINTS TREN SA BAN - CHU THICH TINH GON, PHONG CACH KI THUAT TOI GIAN */}
-          {Object.entries(GAZEBO_LOBBY_WAYPOINTS)
-            .filter(([k]) =>
-              [
-                'MAIN_ENTRANCE',
-                'FRONT_DESK',
-                'ELEVATOR',
-                'RESTROOMS',
-                'STAIRS',
-                'STAFF_ONLY',
-                'LOBBY_LOUNGE',
-              ].includes(k)
-            )
-            .map(([k, wp]) => {
-              const wpSvg = meterToSvg(wp.x, wp.y);
-              const isTarget =
-                currentPath?.targetPoint &&
-                Math.abs(currentPath.targetPoint.x - wp.x) < 0.25 &&
-                Math.abs(currentPath.targetPoint.y - wp.y) < 0.25;
+          {/* LOP 3 VUNG CHUC NANG (KEEP-OUT, SPEED ZONE, NO-STOP) TRUOC MAT BANG SAU TUONG SAN */}
+          {showZones &&
+            zones.map((zone) => {
+              const rect = zoneToSvgRect(zone);
+              const isKeepOut = zone.type === 'KEEP_OUT';
+              const isSpeed = zone.type === 'SPEED_ZONE' || zone.type === 'SLOW_SPEED';
+              const isSelected = selectedZone?.id === zone.id;
+              const isDraggingThis = dragState?.zoneId === zone.id;
 
-              // Các tiện ích: Cửa chính, Quầy lễ tân, Thang máy, WC, Cầu thang, Phòng NV, Sofa sảnh
-              const badgeText = wp.badge || wp.name || k;
-              const badgeWidth = Math.max(64, badgeText.length * 7.2 + 14);
-              const isTopOffset = wp.offset === 'top';
-              const badgeOffsetY = isTopOffset ? -15 : 16;
+              const fillPattern = isKeepOut
+                ? 'url(#keepoutStripes)'
+                : isSpeed
+                ? 'url(#speedZonePattern)'
+                : 'url(#nostopStripes)';
+
+              const strokeColor = isKeepOut ? '#DC2626' : isSpeed ? '#D97706' : '#E11D48';
+              const bgTint = isKeepOut
+                ? 'rgba(220, 38, 38, 0.12)'
+                : isSpeed
+                ? 'rgba(217, 119, 6, 0.12)'
+                : 'rgba(225, 29, 72, 0.12)';
+
+
+              const isZoneInteractable = isZoneEditMode || isSelected;
 
               return (
                 <g
-                  key={k}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleNavigateToGoal(wp.x, wp.y, badgeText);
+                  key={zone.id}
+                  data-zone="true"
+                  data-zone-id={zone.id}
+                  onPointerDown={(e) => {
+                    if (isZoneInteractable) {
+                      handleZonePointerDown(e, zone, 'MOVE');
+                    }
                   }}
-                  className="cursor-pointer group select-none"
+                  onPointerUp={(e) => {
+                    handleSvgPointerUp(e);
+                  }}
+                  onClick={(e) => handleZoneClick(e, zone)}
+                  className={`select-none transition-opacity ${
+                    isZoneInteractable
+                      ? isDraggingThis
+                        ? 'cursor-grabbing opacity-90 pointer-events-auto'
+                        : 'cursor-grab hover:opacity-95 pointer-events-auto'
+                      : 'pointer-events-none'
+                  }`}
                 >
-                  {/* Diem endpoint reticle ky thuat kep */}
-                  <circle
-                    cx={wpSvg.x}
-                    cy={wpSvg.y}
-                    r={isTarget ? 7 : 5}
-                    fill={isTarget ? '#18181b' : '#ffffff'}
-                    stroke={isTarget ? '#18181b' : '#52525b'}
-                    strokeWidth={isTarget ? '2' : '1.5'}
-                    className="group-hover:stroke-stone-900 group-hover:scale-110 transition-transform"
+                  {/* Nen mau tint nhe */}
+                  <rect
+                    x={rect.x}
+                    y={rect.y}
+                    width={rect.width}
+                    height={rect.height}
+                    fill={bgTint}
                   />
-                  <circle
-                    cx={wpSvg.x}
-                    cy={wpSvg.y}
-                    r={isTarget ? 2.5 : 2}
-                    fill={isTarget ? '#ffffff' : '#18181b'}
+                  {/* Lop hoa van pattern */}
+                  <rect
+                    x={rect.x}
+                    y={rect.y}
+                    width={rect.width}
+                    height={rect.height}
+                    fill={fillPattern}
+                  />
+                  {/* Vien bao net dut ky thuat */}
+                  <rect
+                    x={rect.x}
+                    y={rect.y}
+                    width={rect.width}
+                    height={rect.height}
+                    fill="none"
+                    stroke={strokeColor}
+                    strokeWidth={isSelected ? '2.5' : '1.8'}
+                    strokeDasharray={isKeepOut ? '6 4' : isSpeed ? '5 3' : '4 3'}
                   />
 
-                  {/* Nhan chu thich endpoint: nen trang xam toi gian, chu ro net */}
-                  <g transform={`translate(${wpSvg.x}, ${wpSvg.y + badgeOffsetY})`}>
-                    <rect
-                      x={-badgeWidth / 2}
-                      y="-8"
-                      width={badgeWidth}
-                      height="16"
-                      rx="3"
-                      fill={isTarget ? '#262626' : '#E9E5DC'}
-                      stroke={isTarget ? '#262626' : '#BFBFBD'}
-                      strokeWidth="1"
-                      filter="drop-shadow(0 1px 2px rgba(0,0,0,0.06))"
-                      className="group-hover:stroke-[#262626] group-hover:fill-white transition-colors"
-                    />
-                    <text
-                      x="0"
-                      y="3.2"
-                      textAnchor="middle"
-                      fill={isTarget ? '#ffffff' : '#262626'}
-                      className="text-[9px] font-semibold tracking-tight transition-colors"
-                      fontFamily="sans-serif"
-                    >
-                      {badgeText}
-                    </text>
+                  {/* Chú thích vùng bằng ICON và MÀU RIÊNG ở góc trên bên phải của vùng (Click vao Icon de chon va sua Vung) */}
+                  <g
+                    transform={`translate(${rect.x + rect.width - (isSpeed ? 44 : 26)}, ${rect.y + 7})`}
+                    className="pointer-events-auto select-none cursor-pointer group"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const nextSelected = isSelected ? null : zone;
+                      setSelectedZone(nextSelected);
+                      setIsZoneEditMode(Boolean(nextSelected));
+                      if (nextSelected) {
+                        onNotify(`Chế độ sửa vùng: Đã chọn "${zone.name}".`, 'info');
+                      }
+                    }}
+                    title={`Click vào Icon để chọn và chỉnh sửa Vùng: ${zone.name}`}
+                  >
+                    {isKeepOut && (
+                      <g filter="drop-shadow(0 1px 2px rgba(0,0,0,0.25))">
+                        {/* Vòng nền đỏ riêng biệt */}
+                        <circle cx="10" cy="10" r="9.5" fill="#DC2626" />
+                        {/* Icon Cấm Vào (Ban / Circle Slash) */}
+                        <circle cx="10" cy="10" r="6" fill="none" stroke="#FFFFFF" strokeWidth="1.6" />
+                        <line x1="5.8" y1="5.8" x2="14.2" y2="14.2" stroke="#FFFFFF" strokeWidth="1.6" />
+                      </g>
+                    )}
+                    {!isKeepOut && !isSpeed && (
+                      <g filter="drop-shadow(0 1px 2px rgba(0,0,0,0.25))">
+                        {/* Vòng nền hồng đỏ riêng biệt */}
+                        <circle cx="10" cy="10" r="9.5" fill="#E11D48" />
+                        {/* Icon Cấm Dừng (Stop / Octagon Hand) */}
+                        <polygon points="7,4 13,4 16,7 16,13 13,16 7,16 4,13 4,7" fill="#FFFFFF" />
+                        <rect x="7" y="9.2" width="6" height="1.6" rx="0.4" fill="#E11D48" />
+                      </g>
+                    )}
+                    {isSpeed && (
+                      <g filter="drop-shadow(0 1px 2px rgba(0,0,0,0.25))">
+                        {/* Pill badge nền cam hổ phách */}
+                        <rect x="0" y="0" width="38" height="18" rx="9" fill="#D97706" />
+                        {/* Gauge arc & needle */}
+                        <path d="M 6 12.5 A 4.5 4.5 0 1 1 14 12.5" fill="none" stroke="#FFFFFF" strokeWidth="1.3" strokeLinecap="round" />
+                        <line x1="10" y1="9.5" x2="12.5" y2="7" stroke="#FFFFFF" strokeWidth="1.3" strokeLinecap="round" />
+                        <text
+                          x="25"
+                          y="12.5"
+                          textAnchor="middle"
+                          fill="#FFFFFF"
+                          className="text-[8.5px] font-mono font-bold"
+                          fontFamily="sans-serif"
+                        >
+                          {zone.speed_limit || 0.2}
+                        </text>
+                      </g>
+                    )}
                   </g>
+
+
+                  {/* 4 NUT TAY NAM CO GIAN KICH THUOC (RESIZE HANDLES) SIÊU NHẠY VÀ DỄ KÉO THẢ */}
+                  {isSelected && (
+                    <g className="zone-resize-handles">
+                      {[
+                        { cx: rect.x, cy: rect.y, type: 'RESIZE_NW', cursor: 'cursor-nwse-resize' },
+                        { cx: rect.x + rect.width, cy: rect.y, type: 'RESIZE_NE', cursor: 'cursor-nesw-resize' },
+                        { cx: rect.x, cy: rect.y + rect.height, type: 'RESIZE_SW', cursor: 'cursor-nesw-resize' },
+                        { cx: rect.x + rect.width, cy: rect.y + rect.height, type: 'RESIZE_SE', cursor: 'cursor-nwse-resize' },
+                      ].map((handle) => (
+                        <g key={handle.type} className="group">
+                          {/* 1. Vùng nhận diện click/drag tàng hình rộng r=16 (đường kính 32px), siêu dễ trỏ trúng */}
+                          <circle
+                            cx={handle.cx}
+                            cy={handle.cy}
+                            r="16"
+                            fill="transparent"
+                            stroke="transparent"
+                            className={`${handle.cursor} select-none`}
+                            onPointerDown={(e) => {
+                              e.stopPropagation();
+                              handleZonePointerDown(e, zone, handle.type);
+                            }}
+                          />
+                          {/* 2. Vòng hào quang tương tác hỗ trợ định vị góc khi rê chuột */}
+                          <circle
+                            cx={handle.cx}
+                            cy={handle.cy}
+                            r="11"
+                            fill={strokeColor}
+                            fillOpacity="0.25"
+                            className="pointer-events-none transition-transform"
+                          />
+                          {/* 3. Vòng tròn hiển thị chính (bán kính 7.5px, viền dày 3px màu vùng, nền trắng tương phản) */}
+                          <circle
+                            cx={handle.cx}
+                            cy={handle.cy}
+                            r="7.5"
+                            fill="#FFFFFF"
+                            stroke={strokeColor}
+                            strokeWidth="3"
+                            filter="drop-shadow(0 2px 4px rgba(0,0,0,0.30))"
+                            className={`pointer-events-none ${handle.cursor} transition-transform`}
+                          />
+                          {/* 4. Tâm tròn định vị đồng màu viền vùng */}
+                          <circle
+                            cx={handle.cx}
+                            cy={handle.cy}
+                            r="2.5"
+                            fill={strokeColor}
+                            className="pointer-events-none"
+                          />
+                        </g>
+                      ))}
+                    </g>
+                  )}
                 </g>
               );
             })}
+
+          {/* CAC DIEM MOC ENDPOINTS TREN SA BAN - 3 LOAI CHUAN (WAYPOINT, CHARGER, PARK), HO TRO KEO THA & SUA TEN */}
+          {endpoints.map((ep) => {
+            const wpSvg = meterToSvg(ep.x, ep.y);
+            const isTarget =
+              currentPath?.targetPoint &&
+              Math.abs(currentPath.targetPoint.x - ep.x) < 0.25 &&
+              Math.abs(currentPath.targetPoint.y - ep.y) < 0.25;
+            const isSelected = selectedEndpoint?.id === ep.id;
+            const isDraggingThis = dragEndpointState?.endpointId === ep.id;
+            const isHovered = hoveredEndpointId === ep.id;
+            const showLabel = isSelected || isDraggingThis || isHovered;
+
+            const tmpl = getEndpointTemplateInfo(ep.type);
+            const epColor = tmpl.color || '#262626';
+
+            // Ten diem moc do nguoi dung dat
+            const nameText = ep.name || 'Điểm mốc';
+            const badgeWidth = Math.max(70, nameText.length * 7.2 + 20);
+            const isTopHalf = ep.y > 3.0;
+            const badgeOffsetY = isTopHalf ? 18 : -18;
+
+            return (
+              <g
+                key={ep.id}
+                data-endpoint="true"
+                data-endpoint-id={ep.id}
+                onMouseEnter={() => setHoveredEndpointId(ep.id)}
+                onMouseLeave={() => setHoveredEndpointId((prev) => (prev === ep.id ? null : prev))}
+                onPointerDown={(e) => handleEndpointPointerDown(e, ep)}
+                onPointerUp={(e) => {
+                  if (!wasDraggingRef.current) {
+                    setSelectedEndpoint(ep);
+                    setSelectedZone(null);
+                    setIsEndpointEditMode(true);
+                  }
+                  handleSvgPointerUp(e);
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (wasDraggingRef.current) return;
+                  setSelectedEndpoint(ep);
+                  setSelectedZone(null);
+                  setIsEndpointEditMode(true);
+                }}
+                onDoubleClick={(e) => {
+                  e.stopPropagation();
+                  handleNavigateToGoal(ep.x, ep.y, ep.name);
+                }}
+                className={`select-none ${isDraggingThis ? 'cursor-grabbing' : 'cursor-pointer'} group`}
+              >
+                {/* 1. Vung nhan dien Pointer va Halo khi duoc chon */}
+                {isSelected && (
+                  <circle
+                    cx={wpSvg.x}
+                    cy={wpSvg.y}
+                    r="15"
+                    fill={epColor}
+                    fillOpacity="0.22"
+                    stroke={epColor}
+                    strokeWidth="1.8"
+                    strokeDasharray="4 2"
+                    className="animate-pulse pointer-events-none"
+                  />
+                )}
+
+                {/* Vung nhan dien tuong tac rong r=16 de de tro chuot / keo tha */}
+                <circle
+                  cx={wpSvg.x}
+                  cy={wpSvg.y}
+                  r="16"
+                  fill="transparent"
+                  stroke="transparent"
+                  className={isDraggingThis ? 'cursor-grabbing' : 'cursor-grab'}
+                />
+
+                {/* 2. Vong tron ngoai: Mau theo loai Endpoint (Waypoint: Carbon, Charger: Emerald, Park: Slate) */}
+                <circle
+                  cx={wpSvg.x}
+                  cy={wpSvg.y}
+                  r={isSelected ? 8.5 : isHovered ? 7.5 : 5.5}
+                  fill="#ffffff"
+                  stroke={epColor}
+                  strokeWidth={isSelected ? '2.8' : isHovered ? '2.2' : '1.8'}
+                  filter="drop-shadow(0 2px 4px rgba(0,0,0,0.18))"
+                  className="transition-all duration-150"
+                />
+
+                {/* 3. Tam tron dinh vi dong mau loai */}
+                <circle
+                  cx={wpSvg.x}
+                  cy={wpSvg.y}
+                  r={isSelected ? 3.5 : isHovered ? 3.0 : 2.2}
+                  fill={epColor}
+                  className="pointer-events-none transition-all duration-150"
+                />
+
+                {/* 4. The Nhan ten Endpoint - Hien khi hover hoac khi duoc chon, click vao cung chon duoc endpoint */}
+                {showLabel && (
+                  <g
+                    transform={`translate(${wpSvg.x}, ${wpSvg.y + badgeOffsetY})`}
+                    className="cursor-pointer transition-all duration-150"
+                  >
+                    {/* Card nen trang / xam tinh gon */}
+                    <rect
+                      x={-badgeWidth / 2}
+                      y="-10"
+                      width={badgeWidth}
+                      height="20"
+                      rx="4"
+                      fill={isSelected ? '#18181B' : '#FFFFFF'}
+                      stroke={isSelected ? epColor : '#BFBFBD'}
+                      strokeWidth={isSelected ? '1.8' : '1'}
+                      filter="drop-shadow(0 2px 6px rgba(0,0,0,0.22))"
+                    />
+
+                    {/* Dot mau phan biet loai Endpoint */}
+                    <circle
+                      cx={-badgeWidth / 2 + 8}
+                      cy="0"
+                      r="2.5"
+                      fill={epColor}
+                      className="pointer-events-none"
+                    />
+
+                    {/* Chu ten do nguoi dung dat */}
+                    <text
+                      x="4"
+                      y="3.5"
+                      textAnchor="middle"
+                      fill={isSelected ? '#FFFFFF' : '#18181B'}
+                      className="text-[9.5px] font-bold tracking-tight truncate pointer-events-none"
+                      fontFamily="sans-serif"
+                    >
+                      {nameText.length > 24 ? nameText.slice(0, 22) + '...' : nameText}
+                    </text>
+                  </g>
+                )}
+              </g>
+            );
+          })}
 
           {/* THE HIEN DUONG DI NE TUONG VA VAT CAN (OBSTACLE-AVOIDANCE TRAJECTORY) */}
           {currentPath?.waypoints?.length > 1 && (() => {
@@ -1344,6 +2681,50 @@ export const WorkflowSimulatorStudio = ({
             const targetLabel = currentPath.label || 'Đích Đến';
             const labelWidth = Math.max(84, targetLabel.length * 7.5 + 16);
 
+            // Tinh toan vet duong da lan banh qua (bam theo cac waypoints da di qua, tuyet doi khong ve duong thang cat xuyen tuong)
+            const traveledPathData = (() => {
+              const pts = currentPath.waypoints;
+              const traveledPts = [pts[0]];
+              let foundCurrentSeg = false;
+
+              for (let i = 0; i < pts.length - 1; i++) {
+                const pA = pts[i];
+                const pB = pts[i + 1];
+                const segLen = Math.hypot(pB.x - pA.x, pB.y - pA.y);
+                if (segLen < 0.001) continue;
+
+                const vAx = robotPose.x - pA.x;
+                const vAy = robotPose.y - pA.y;
+                const vABx = pB.x - pA.x;
+                const vABy = pB.y - pA.y;
+                const proj = (vAx * vABx + vAy * vABy) / (segLen * segLen);
+
+                const clampedProj = Math.max(0, Math.min(1, proj));
+                const closestX = pA.x + clampedProj * vABx;
+                const closestY = pA.y + clampedProj * vABy;
+                const distToSeg = Math.hypot(robotPose.x - closestX, robotPose.y - closestY);
+
+                if (distToSeg < 0.6 && proj >= -0.15 && proj <= 1.05) {
+                  traveledPts.push({ x: robotPose.x, y: robotPose.y });
+                  foundCurrentSeg = true;
+                  break;
+                } else {
+                  traveledPts.push(pB);
+                }
+              }
+
+              if (!foundCurrentSeg && traveledPts.length > 0) {
+                traveledPts.push({ x: robotPose.x, y: robotPose.y });
+              }
+
+              return traveledPts
+                .map((pt, idx) => {
+                  const s = meterToSvg(pt.x, pt.y);
+                  return `${idx === 0 ? 'M' : 'L'} ${s.x} ${s.y}`;
+                })
+                .join(' ');
+            })();
+
             return (
               <g>
                 {/* 1. Duong dan huong ne tuong (Polyline uon quanh qua cua mo) */}
@@ -1358,15 +2739,14 @@ export const WorkflowSimulatorStudio = ({
                   opacity="0.75"
                 />
 
-                {/* 2. Vet duong robot da lan banh qua toi vi tri hien tai */}
-                <line
-                  x1={meterToSvg(currentPath.waypoints[0].x, currentPath.waypoints[0].y).x}
-                  y1={meterToSvg(currentPath.waypoints[0].x, currentPath.waypoints[0].y).y}
-                  x2={curSvg.x}
-                  y2={curSvg.y}
+                {/* 2. Vet duong robot da lan banh qua toi vi tri hien tai (Bam sat polyline ne tuong, khong cat xuyen tuong) */}
+                <path
+                  d={traveledPathData}
+                  fill="none"
                   stroke="#18181b"
                   strokeWidth="3.5"
                   strokeLinecap="round"
+                  strokeLinejoin="round"
                 />
 
                 {/* 3. Vong tron dich den tinh gon gang */}
@@ -1414,65 +2794,51 @@ export const WorkflowSimulatorStudio = ({
 
             return (
               <g transform={`translate(${robotSvg.x}, ${robotSvg.y})`}>
-                {/* BONG BONG ACTION HUD TREN DAU ROBOT (TRANG - XAM TOI GIAN) */}
-                <g transform="translate(0, -40)">
-                  {/* Card nen trang, vien xam tinh te */}
-                  <rect
-                    x="-105"
-                    y="-30"
-                    width="210"
-                    height="34"
-                    rx="6"
-                    fill="#ffffff"
-                    stroke="#cbd5e1"
-                    strokeWidth="1.2"
-                    filter="drop-shadow(0 3px 6px rgba(0,0,0,0.08))"
-                  />
-                  {/* Mui ten tro xuong robot */}
-                  <polygon points="-6,4 6,4 0,10" fill="#ffffff" stroke="#cbd5e1" strokeWidth="1.2" />
-                  <line x1="-5" y1="4" x2="5" y2="4" stroke="#ffffff" strokeWidth="2" />
+                {/* BONG BONG TRANG THAI TINH GON TREN DAU ROBOT (CHI HIEN THI TRANG THAI, KHONG HIEN CHI TIET DIEN DEN) */}
+                {(() => {
+                  const statusText = robotStatus.label;
+                  const pillWidth = Math.max(86, statusText.length * 8.0 + 26);
+                  return (
+                    <g transform="translate(0, -32)" className="pointer-events-none select-none">
+                      {/* Card nen trang tinh te */}
+                      <rect
+                        x={-pillWidth / 2}
+                        y="-11"
+                        width={pillWidth}
+                        height="22"
+                        rx="5"
+                        fill="#FFFFFF"
+                        stroke="#BFBFBD"
+                        strokeWidth="1.2"
+                        filter="drop-shadow(0 2px 5px rgba(0,0,0,0.12))"
+                      />
+                      {/* Mui ten tro xuong robot */}
+                      <polygon points="-4,11 4,11 0,16" fill="#FFFFFF" stroke="#BFBFBD" strokeWidth="1.2" />
+                      <line x1="-3.5" y1="11" x2="3.5" y2="11" stroke="#FFFFFF" strokeWidth="2" />
 
-                  {/* Badge Enum phan loai buoc */}
-                  <rect
-                    x="-97"
-                    y="-25"
-                    width="44"
-                    height="14"
-                    rx="3"
-                    fill="#f1f5f9"
-                    stroke="#e2e8f0"
-                    strokeWidth="0.8"
-                  />
-                  <text
-                    x="-75"
-                    y="-15"
-                    textAnchor="middle"
-                    className="text-[8.5px] font-mono font-bold fill-stone-700"
-                  >
-                    {activeDetail.label}
-                  </text>
+                      {/* Dot trang thai nho */}
+                      <circle
+                        cx={-pillWidth / 2 + 10}
+                        cy="0"
+                        r="3"
+                        fill={robotStatus.dotColor}
+                        className={robotStatus.isMoving ? 'animate-pulse' : ''}
+                      />
 
-                  {/* Tieu de ngan */}
-                  <text
-                    x="-45"
-                    y="-15"
-                    className="text-[8.5px] font-sans font-bold fill-stone-500 uppercase tracking-wider"
-                  >
-                    {activeDetail.bubbleTitle}
-                  </text>
-
-                  {/* Noi dung thuc te buoc */}
-                  <text
-                    x="0"
-                    y="-3"
-                    textAnchor="middle"
-                    className="text-[9.5px] font-sans font-bold fill-stone-900 truncate"
-                  >
-                    {activeDetail.bubbleBody.length > 36
-                      ? activeDetail.bubbleBody.slice(0, 34) + '...'
-                      : activeDetail.bubbleBody}
-                  </text>
-                </g>
+                      {/* Chu trang thai cua robot */}
+                      <text
+                        x="4"
+                        y="3.5"
+                        textAnchor="middle"
+                        className="text-[9.5px] font-bold tracking-wider uppercase"
+                        fill="#262626"
+                        fontFamily="sans-serif"
+                      >
+                        {statusText}
+                      </text>
+                    </g>
+                  );
+                })()}
 
                 {/* Robot hinh chu nhat mau xam don gian, toi gian ky thuat */}
                 <g transform={`rotate(${svgAngle})`}>
@@ -1504,6 +2870,192 @@ export const WorkflowSimulatorStudio = ({
             );
           })()}
         </svg>
+
+        {/* FLOATING ACTION BAR TINH GON O DUOI DAY SA BAN (EDIT ZONE & DRAG/RESIZE) */}
+        {selectedZone && (
+          <div
+            className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center flex-nowrap whitespace-nowrap gap-2 px-3.5 py-1.5 rounded-xl border shadow-2xl backdrop-blur-md animate-fadeIn text-xs max-w-[95%] overflow-x-auto select-none"
+            style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD', color: '#262626' }}
+          >
+            {/* 1. Loai Vung Dropdown */}
+            <div className="flex items-center gap-1.5 shrink-0">
+              <span
+                className="w-2.5 h-2.5 rounded-full shrink-0"
+                style={{
+                  backgroundColor:
+                    selectedZone.type === 'KEEP_OUT'
+                      ? '#DC2626'
+                      : selectedZone.type === 'SPEED_ZONE' || selectedZone.type === 'SLOW_SPEED'
+                      ? '#D97706'
+                      : '#E11D48',
+                }}
+              />
+              <select
+                value={
+                  selectedZone.type === 'SLOW_SPEED' ? 'SPEED_ZONE' : selectedZone.type || 'KEEP_OUT'
+                }
+                onChange={(e) => handleUpdateSelectedZone('type', e.target.value)}
+                className="px-2 py-1 rounded-lg font-bold text-[11px] border focus:outline-none cursor-pointer"
+                style={{ backgroundColor: '#F2EFE9', borderColor: '#BFBFBD', color: '#262626' }}
+              >
+                <option value="KEEP_OUT">Cấm vào (Keep-Out)</option>
+                <option value="SPEED_ZONE">Giới hạn tốc độ (Speed Zone)</option>
+                <option value="NO_STOP">Cấm dừng (No-Stop)</option>
+              </select>
+            </div>
+
+            {/* 2. Sua Ten Vung Inline */}
+            <div className="flex items-center gap-1 shrink-0">
+              <input
+                type="text"
+                value={selectedZone.name || ''}
+                onChange={(e) => handleUpdateSelectedZone('name', e.target.value)}
+                placeholder="Tên vùng..."
+                className="w-36 sm:w-44 px-2 py-1 rounded-lg text-xs font-semibold border focus:outline-none"
+                style={{ backgroundColor: '#F2EFE9', borderColor: '#BFBFBD', color: '#262626' }}
+              />
+            </div>
+
+            {/* 3. Neu la Speed Zone: Cho sua van toc toi da */}
+            {(selectedZone.type === 'SPEED_ZONE' || selectedZone.type === 'SLOW_SPEED') && (
+              <div className="flex items-center gap-1 text-[11px] font-mono shrink-0">
+                <span className="text-[#8C8C8C]">Tối đa:</span>
+                <input
+                  type="number"
+                  step="0.05"
+                  min="0.05"
+                  max="1.0"
+                  value={selectedZone.speed_limit || 0.2}
+                  onChange={(e) => handleUpdateSelectedZone('speed_limit', parseFloat(e.target.value) || 0.2)}
+                  className="w-14 px-1.5 py-1 rounded-lg text-xs font-bold text-center border focus:outline-none"
+                  style={{ backgroundColor: '#F2EFE9', borderColor: '#BFBFBD', color: '#D97706' }}
+                />
+                <span className="text-[#8C8C8C]">m/s</span>
+              </div>
+            )}
+
+            {/* 4. Thong so toa do realtime */}
+            <div
+              className="flex items-center gap-1 px-2 py-1 rounded-lg font-mono text-[10.5px] border shrink-0"
+              style={{ backgroundColor: '#F2EFE9', borderColor: '#E9E5DC', color: '#262626' }}
+            >
+              <span className="text-[#8C8C8C]">Tâm:</span>
+              <span className="font-bold">({selectedZone.x}m, {selectedZone.y}m)</span>
+              <span className="text-[#8C8C8C] ml-1">KT:</span>
+              <span className="font-bold">{selectedZone.width}m × {selectedZone.height}m</span>
+            </div>
+
+            {/* 5. Nut Xoa Vung (Delete Zone) */}
+            <button
+              type="button"
+              onClick={() => handleDeleteZone(selectedZone.id)}
+              className="p-1.5 rounded-lg border text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 border-red-200 cursor-pointer transition-colors shrink-0"
+              title="Xóa vùng này khỏi bản đồ"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+
+            {/* 6. Nut Hoan tat / Dong che do sua */}
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedZone(null);
+                setIsZoneEditMode(false);
+              }}
+              className="p-1.5 rounded-lg border text-[#8C8C8C] hover:text-[#262626] hover:bg-[#F2EFE9] border-transparent hover:border-[#BFBFBD] cursor-pointer transition-colors shrink-0"
+              title="Hoàn tất và trở về chế độ điều hướng"
+            >
+              <Check className="w-3.5 h-3.5 text-emerald-600" />
+            </button>
+          </div>
+        )}
+
+        {/* FLOATING ACTION BAR TINH GON O DUOI DAY SA BAN (EDIT ENDPOINT: DAT TEN, LOAI, TOA DO, DIEN DEN, XOA) */}
+        {selectedEndpoint && (
+          <div
+            className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center flex-nowrap whitespace-nowrap gap-2 px-3.5 py-1.5 rounded-xl border shadow-2xl backdrop-blur-md animate-fadeIn text-xs max-w-[95%] overflow-x-auto select-none"
+            style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD', color: '#262626' }}
+          >
+            {/* 1. Loai Endpoint Dropdown (3 Loai Chuan: WAYPOINT, CHARGER, PARK) */}
+            <div className="flex items-center gap-1.5 shrink-0">
+              <span
+                className="w-2.5 h-2.5 rounded-full shrink-0"
+                style={{ backgroundColor: getEndpointTemplateInfo(selectedEndpoint.type).color }}
+              />
+              <select
+                value={selectedEndpoint.type || 'WAYPOINT'}
+                onChange={(e) => handleUpdateSelectedEndpoint('type', e.target.value)}
+                className="px-2 py-1 rounded-lg font-bold text-[11px] border focus:outline-none cursor-pointer"
+                style={{ backgroundColor: '#F2EFE9', borderColor: '#BFBFBD', color: '#262626' }}
+              >
+                {OTTO_ENDPOINT_TEMPLATES.map((tmpl) => (
+                  <option key={tmpl.type} value={tmpl.type}>
+                    {tmpl.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* 2. Dat ten cho cho do Inline */}
+            <div className="flex items-center gap-1 shrink-0">
+              <input
+                type="text"
+                value={selectedEndpoint.name || ''}
+                onChange={(e) => handleUpdateSelectedEndpoint('name', e.target.value)}
+                onBlur={() => handleSaveEndpointToDb(selectedEndpoint)}
+                placeholder="Đặt tên cho chỗ này..."
+                className="w-40 sm:w-56 px-2 py-1 rounded-lg text-xs font-semibold border focus:outline-none"
+                style={{ backgroundColor: '#F2EFE9', borderColor: '#BFBFBD', color: '#262626' }}
+              />
+            </div>
+
+            {/* 3. Thong so toa do realtime */}
+            <div
+              className="flex items-center gap-1 px-2 py-1 rounded-lg font-mono text-[10.5px] border shrink-0"
+              style={{ backgroundColor: '#F2EFE9', borderColor: '#E9E5DC', color: '#262626' }}
+            >
+              <span className="text-[#8C8C8C]">Tọa độ:</span>
+              <span className="font-bold">
+                ({Number(selectedEndpoint.x).toFixed(2)}m, {Number(selectedEndpoint.y).toFixed(2)}m)
+              </span>
+            </div>
+
+            {/* 4. Nut Dieu huong toi day (Navigate robot) */}
+            <button
+              type="button"
+              onClick={() => handleNavigateToGoal(selectedEndpoint.x, selectedEndpoint.y, selectedEndpoint.name)}
+              className="px-2.5 py-1 rounded-lg border font-bold text-[11px] text-[#262626] bg-[#F2EFE9] hover:bg-stone-200 border-[#BFBFBD] cursor-pointer transition-colors shrink-0 flex items-center gap-1"
+              title="Điều hướng Robot chạy tới điểm này"
+            >
+              <Navigation className="w-3 h-3 text-[#262626]" />
+              <span>Tới đây</span>
+            </button>
+
+            {/* 5. Nut Xoa Endpoint */}
+            <button
+              type="button"
+              onClick={() => handleDeleteEndpoint(selectedEndpoint.id)}
+              className="p-1.5 rounded-lg border text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 border-red-200 cursor-pointer transition-colors shrink-0"
+              title="Xóa Endpoint này khỏi bản đồ"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+
+            {/* 6. Nut Hoan tat / Dong che do sua */}
+            <button
+              type="button"
+              onClick={() => {
+                handleSaveEndpointToDb(selectedEndpoint);
+                setSelectedEndpoint(null);
+                setIsEndpointEditMode(false);
+              }}
+              className="p-1.5 rounded-lg border text-[#8C8C8C] hover:text-[#262626] hover:bg-[#F2EFE9] border-transparent hover:border-[#BFBFBD] cursor-pointer transition-colors shrink-0"
+              title="Hoàn tất và đóng thanh chỉnh sửa"
+            >
+              <Check className="w-3.5 h-3.5 text-emerald-600" />
+            </button>
+          </div>
+        )}
       </main>
     </div>
   </div>

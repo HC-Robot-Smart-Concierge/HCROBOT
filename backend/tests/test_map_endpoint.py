@@ -82,3 +82,72 @@ async def test_download_map_file():
         res_yaml = await client.get("/api/v1/map/download/map_2026_10_15_8373?format=yaml")
         assert res_yaml.status_code == 200
         assert "yaml" in res_yaml.headers["content-type"] or "text" in res_yaml.headers["content-type"]
+
+
+@pytest.mark.asyncio
+async def test_hotel_zone_rules_and_navigation_rejection():
+    """Test các ràng buộc an toàn của Hotel Zones: cấm vào (KEEP_OUT) và cấm dừng (NO_STOP)."""
+    await init_db()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        # 1. Đảm bảo danh sách Vùng Chức Năng (Zones) trả về đầy đủ
+        zones_res = await client.get("/api/v1/map/zones")
+        assert zones_res.status_code == 200
+        zones = zones_res.json()
+        assert len(zones) >= 3
+        zone_types = [z["type"] for z in zones]
+        assert "KEEP_OUT" in zone_types
+        assert "SPEED_ZONE" in zone_types
+        assert "NO_STOP" in zone_types
+
+        # 2. Test từ chối điều hướng vào vùng cấm (KEEP_OUT: x=8.8, y=1.5)
+        nav_keepout = await client.post(
+            "/api/v1/map/navigate",
+            json={"target_x": 8.8, "target_y": 1.5, "target_yaw": 0.0},
+        )
+        assert nav_keepout.status_code == 200
+        keepout_data = nav_keepout.json()
+        assert keepout_data["status"] == "REJECTED"
+        assert "Khu vực cấm vào" in keepout_data["message"]
+
+        # 3. Test từ chối điều hướng kết thúc tại vùng cấm dừng (NO_STOP: x=4.4, y=2.85)
+        nav_nostop = await client.post(
+            "/api/v1/map/navigate",
+            json={"target_x": 4.4, "target_y": 2.85, "target_yaw": 0.0},
+        )
+        assert nav_nostop.status_code == 200
+        nostop_data = nav_nostop.json()
+        assert nostop_data["status"] == "REJECTED"
+        assert "Khu vực cấm dừng" in nostop_data["message"]
+
+        # 4. Test từ chối tạo waypoint trong vùng KEEP_OUT
+        wp_keepout = await client.post(
+            "/api/v1/map/waypoints",
+            json={
+                "id": "wp_test_invalid_keepout",
+                "name": "Điểm Test Cấm",
+                "type": "NORMAL",
+                "x": 8.8,
+                "y": 1.5,
+                "yaw": 0.0,
+                "floor": "Sảnh Tầng 1",
+            },
+        )
+        assert wp_keepout.status_code == 400
+        assert "Khu vực cấm vào" in wp_keepout.json()["detail"]
+
+        # 5. Test từ chối tạo PARKING_SPOT trong vùng NO_STOP
+        wp_nostop = await client.post(
+            "/api/v1/map/waypoints",
+            json={
+                "id": "wp_test_invalid_nostop",
+                "name": "Bãi đỗ cấm",
+                "type": "PARKING_SPOT",
+                "x": 4.4,
+                "y": 2.85,
+                "yaw": 0.0,
+                "floor": "Sảnh Tầng 1",
+            },
+        )
+        assert wp_nostop.status_code == 400
+        assert "Khu vực cấm dừng" in wp_nostop.json()["detail"]
+

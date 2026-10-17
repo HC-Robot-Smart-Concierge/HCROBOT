@@ -41,10 +41,10 @@ class WorkflowStepItem(BaseModel):
     step_id: str = Field(..., description="ID định danh duy nhất của step trong workflow")
     type: str = Field(
         ...,
-        description="Loại step: MOVE, GREET, SPEAK, SHOW, LISTEN, RECOMMEND, CREATE_REQUEST, FEEDBACK"
+        description="Loại step: MOVE, GREET, COMMUNICATE, SHOW, RECOMMEND, CREATE_REQUEST, FEEDBACK (SPEAK và LISTEN hợp nhất thành COMMUNICATE)"
     )
     title: str = Field(..., description="Mô tả tiêu đề của step")
-    params: Dict[str, Any] = Field(default_factory=dict, description="Các tham số chi tiết của step")
+    params: Dict[str, Any] = Field(default_factory=dict, description="Các tham số chi tiết của step (silence_timeout_sec: 30, initial_prompt, ...)")
 
 
 # --- WORKFLOW SCHEMAS ---

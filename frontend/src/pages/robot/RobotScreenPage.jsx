@@ -697,7 +697,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     ? 'happy'
     : isSpeaking
       ? 'speaking'
-      : (isWorkflowRunning && activeStep?.type === 'LISTEN')
+      : (isWorkflowRunning && (activeStep?.type === 'LISTEN' || activeStep?.type === 'COMMUNICATE'))
         ? 'listening'
         : (isWorkflowRunning && activeStep?.type === 'GREET')
           ? 'welcome'
@@ -1000,13 +1000,14 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         <main className="w-full flex-1 px-16 py-[54px] flex items-center justify-center gap-16 overflow-hidden">
 
           {/* Render Workflow Kiosk Interface trực tiếp tại trung tâm màn hình robot */}
-          {isWorkflowRunning && (activeStep?.type === 'SHOW' || activeStep?.type === 'FEEDBACK' || activeStep?.type === 'MOVE' || activeStep?.type === 'LISTEN' || activeStep?.type === 'RECOMMEND' || activeStep?.type === 'CREATE_REQUEST') ? (
+          {isWorkflowRunning && (activeStep?.type === 'SHOW' || activeStep?.type === 'FEEDBACK' || activeStep?.type === 'MOVE' || activeStep?.type === 'LISTEN' || activeStep?.type === 'COMMUNICATE' || activeStep?.type === 'RECOMMEND' || activeStep?.type === 'CREATE_REQUEST') ? (
             <div className="w-[700px] max-h-[610px] bg-white/98 backdrop-blur-2xl border-2 border-stone-200/90 rounded-3xl shadow-2xl p-4 sm:p-5 flex flex-col overflow-hidden animate-fadeIn">
               <KioskDisplayPreview
                 activeStep={activeStep}
                 transcript={transcript}
                 isListening={isListening}
-                onNextStep={nextStep}
+                silenceRemaining={30}
+                onNextStep={() => {}}
               />
             </div>
           ) : currentState === 'RT-05' ? (

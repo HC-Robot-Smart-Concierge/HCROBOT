@@ -172,6 +172,10 @@ async def execute_workflow(
         elif step_type == "GREET":
             greeting = params.get("greeting_text") or params.get("text", "Xin chào")
             logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] [GREET] Phát lời chào: \"{greeting}\" - Biểu cảm: {params.get('face_expression', params.get('expression', 'SMILE'))}")
+        elif step_type == "COMMUNICATE":
+            timeout = params.get("silence_timeout_sec", params.get("timeout", 30))
+            prompt = params.get("initial_prompt") or params.get("speech_text") or params.get("text") or "Đối thoại thông minh hai chiều"
+            logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] [COMMUNICATE] Đối thoại thông minh hai chiều: \"{prompt[:60]}...\" (Silence Timeout: {timeout}s)")
         elif step_type == "SPEAK":
             speech = params.get("speech_text") or params.get("text", "")
             logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] [SPEAK] Đọc TTS ra loa: \"{speech[:50]}...\"")

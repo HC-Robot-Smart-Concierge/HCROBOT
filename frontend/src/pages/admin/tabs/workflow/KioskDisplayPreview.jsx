@@ -26,6 +26,7 @@ export const KioskDisplayPreview = ({
   activeStep,
   transcript = '',
   isListening = false,
+  silenceRemaining = 30,
   onNextStep = () => {},
 }) => {
   const [feedbackRating, setFeedbackRating] = useState(5);
@@ -337,7 +338,63 @@ export const KioskDisplayPreview = ({
         </div>
       )}
 
-      {/* 4. LISTEN MODE: Radiant Laptop Mic Radar & Live Speech Bubble */}
+      {/* 4. COMMUNICATE MODE: 2-Way AI Conversation & 30s Silence Timeout */}
+      {activeStep.type === 'COMMUNICATE' && (
+        <div className="flex flex-col items-center justify-center py-4 space-y-4 animate-in fade-in duration-300">
+          {/* Dual Pulsing AI Orb (Mic + Speaker) */}
+          <div className="relative w-24 h-24 flex items-center justify-center">
+            <div className="absolute inset-0 rounded-full bg-sky-200/50 animate-ping opacity-60" />
+            <div className="absolute inset-2 rounded-full bg-sky-100/60 animate-pulse" />
+            <div className="w-16 h-16 rounded-full bg-gradient-to-tr from-sky-600 to-indigo-600 text-white flex items-center justify-center shadow-lg text-2xl font-bold">
+              <Bot className="w-8 h-8 animate-bounce duration-1000" />
+            </div>
+          </div>
+
+          <div className="text-center space-y-1">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-sky-50 border border-sky-200 text-sky-700 text-[11px] font-bold">
+              <span className="w-2 h-2 rounded-full bg-sky-500 animate-pulse" />
+              <span>Đang Đối Thoại Trực Tiếp Hai Chiều (AI Communicate)</span>
+            </div>
+            <h4 className="text-sm font-black text-stone-900 mt-2">
+              {params.initial_prompt || params.speech_text || params.text || 'Dạ em chào quý khách! Em có thể hỗ trợ gì cho quý khách ạ?'}
+            </h4>
+          </div>
+
+          {/* Real-time Customer Speech Transcript Display */}
+          {transcript && transcript.trim() ? (
+            <div className="w-full max-w-md p-3.5 rounded-2xl bg-white border border-sky-200 shadow-md text-left animate-in zoom-in-95">
+              <span className="text-[10px] font-black uppercase text-sky-700 flex items-center gap-1">
+                <Mic className="w-3.5 h-3.5" />
+                Khách đang nói (Reset đếm 30s im lặng):
+              </span>
+              <p className="text-sm font-extrabold text-stone-900 mt-1">
+                "{transcript}"
+              </p>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 text-[11px] text-stone-600 bg-white/90 px-3.5 py-1.5 rounded-full border border-stone-200 shadow-2xs">
+              <Clock className="w-3.5 h-3.5 text-sky-600 animate-spin duration-3000" />
+              <span>
+                Không nhận tiếng nói trong <strong>{silenceRemaining ?? (params.silence_timeout_sec || 30)}s</strong> sẽ tự động sang bước tiếp theo
+              </span>
+            </div>
+          )}
+
+          {/* Action buttons */}
+          <div className="pt-2 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onNextStep}
+              className="px-4 py-2 rounded-xl bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-700 hover:to-indigo-700 text-white text-xs font-bold shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
+            >
+              <span>Xong cuộc trò chuyện</span>
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 5. LISTEN MODE: Radiant Laptop Mic Radar & Live Speech Bubble */}
       {activeStep.type === 'LISTEN' && (
         <div className="flex flex-col items-center justify-center py-5 space-y-3 animate-in fade-in duration-300">
           {/* Luminous Pulsing Mic Orb */}

@@ -1,7 +1,7 @@
-import { Move, Smile, Volume2, Monitor, Mic, Sliders, Send, Star } from 'lucide-react';
+import { Move, Smile, Volume2, Monitor, Mic, Sliders, Send, Star, MessagesSquare } from 'lucide-react';
 
 /**
- * Standard 8 Otto Step Types for Hotel Concierge Robot
+ * Standard Otto Step Types for Hotel Concierge Robot
  */
 export const OTTO_STEP_TYPES = [
   {
@@ -32,13 +32,17 @@ export const OTTO_STEP_TYPES = [
     },
   },
   {
-    type: 'SPEAK',
-    label: '3. SPEAK (Phát âm thanh / Đọc thông báo)',
-    desc: 'Xuất phản hồi dạng giọng nói TTS qua loa thông báo hoặc hướng dẫn đường đi',
+    type: 'COMMUNICATE',
+    label: '3. COMMUNICATE (Giao tiếp & Đối thoại 2 chiều)',
+    desc: 'Đối thoại AI hai chiều (Nói & Nghe). Tự động kết thúc sau 30s im lặng hoặc khi khách chào tạm biệt.',
     defaultParams: {
-      speech_text: 'Em là Robot Concierge. Em có thể giúp quý khách kiểm tra tiện ích và đặt dịch vụ.',
+      initial_prompt: 'Dạ em chào quý khách! Em có thể hỗ trợ gì cho quý khách hôm nay ạ?',
+      silence_timeout_sec: 30,
+      input_source: 'BOTH',
+      ai_agent_enabled: true,
       voice_speed: 1.0,
       language: 'vi-VN',
+      prompt_hint: 'Quý khách vui lòng nói yêu cầu hoặc chạm màn hình...',
     },
   },
   {
@@ -52,9 +56,19 @@ export const OTTO_STEP_TYPES = [
     },
   },
   {
+    type: 'SPEAK',
+    label: 'SPEAK (Phát âm thanh / Thông báo đơn - Kế thừa)',
+    desc: 'Xuất phản hồi dạng giọng nói TTS qua loa thông báo (Khuyến nghị dùng COMMUNICATE)',
+    defaultParams: {
+      speech_text: 'Em là Robot Concierge. Em có thể giúp quý khách kiểm tra tiện ích và đặt dịch vụ.',
+      voice_speed: 1.0,
+      language: 'vi-VN',
+    },
+  },
+  {
     type: 'LISTEN',
-    label: '5. LISTEN (Lắng nghe & Ghi nhận)',
-    desc: 'Chờ khách nói qua micro hoặc chạm nút chọn trên màn hình cảm ứng',
+    label: 'LISTEN (Lắng nghe & Ghi nhận - Kế thừa)',
+    desc: 'Chờ khách nói qua micro hoặc chạm nút chọn trên màn hình cảm ứng (Khuyến nghị dùng COMMUNICATE)',
     defaultParams: {
       input_mode: 'VOICE_AND_TOUCH',
       timeout_sec: 15,
@@ -99,8 +113,9 @@ export const OTTO_STEP_TYPES = [
 export const STEP_SCRATCH_THEMES = {
   MOVE: { label: 'Motion', bg: '#ffffff', border: '#cbd5e1', accent: '#334155', icon: Move },
   GREET: { label: 'Looks', bg: '#ffffff', border: '#cbd5e1', accent: '#475569', icon: Smile },
-  SPEAK: { label: 'Voice', bg: '#ffffff', border: '#cbd5e1', accent: '#475569', icon: Volume2 },
+  COMMUNICATE: { label: 'Converse', bg: '#ffffff', border: '#38bdf8', accent: '#0284c7', icon: MessagesSquare },
   SHOW: { label: 'Display', bg: '#ffffff', border: '#cbd5e1', accent: '#334155', icon: Monitor },
+  SPEAK: { label: 'Voice', bg: '#ffffff', border: '#cbd5e1', accent: '#475569', icon: Volume2 },
   LISTEN: { label: 'Sensing', bg: '#ffffff', border: '#cbd5e1', accent: '#475569', icon: Mic },
   RECOMMEND: { label: 'Logic', bg: '#ffffff', border: '#cbd5e1', accent: '#334155', icon: Sliders },
   CREATE_REQUEST: { label: 'Dispatch', bg: '#ffffff', border: '#cbd5e1', accent: '#475569', icon: Send },

@@ -291,6 +291,19 @@ export const getStepActionDetail = (step) => {
       };
     }
 
+    case 'COMMUNICATE': {
+      const prompt = params.initial_prompt || params.speech_text || params.text || rawTitle || 'Đối thoại hai chiều với khách';
+      const timeout = params.silence_timeout_sec || params.timeout || 30;
+      const src = params.input_source === 'VOICE' ? 'Giọng nói' : params.input_source === 'TOUCH' ? 'Chạm cảm ứng' : 'Giọng nói & Chạm';
+      return {
+        label: 'COMMUNICATE',
+        shortChip: `COMMUNICATE: Đối thoại AI (30s)`,
+        detailText: `Đối thoại AI 2 chiều (${src}): "${prompt}" (Tự ngắt sau ${timeout}s im lặng)`,
+        bubbleTitle: 'ĐỐI THOẠI AI 2 CHIỀU (COMMUNICATE)',
+        bubbleBody: `"${prompt}"`,
+      };
+    }
+
     case 'SPEAK': {
       const speech = params.text || params.speech_text || rawTitle || 'Thong bao toi quy khach';
       return {
@@ -451,11 +464,12 @@ export const BUILTIN_SIMULATOR_WORKFLOWS = [
       },
       {
         step_id: 'wf1-step-4',
-        type: 'LISTEN',
-        title: '4. Cho khach cham chon ngon ngu',
+        type: 'COMMUNICATE',
+        title: '4. Giao tiếp & xác nhận yêu cầu của khách',
         params: {
-          input_source: 'TOUCH',
-          timeout: 3,
+          initial_prompt: 'Dạ em chào quý khách, em có thể hỗ trợ quý khách thông tin gì ạ?',
+          silence_timeout_sec: 30,
+          input_source: 'BOTH',
         },
       },
       {
@@ -477,10 +491,11 @@ export const BUILTIN_SIMULATOR_WORKFLOWS = [
     steps: [
       {
         step_id: 'wf4-step-1',
-        type: 'SPEAK',
-        title: '1. Thong bao huong dan toi quay le tan',
+        type: 'COMMUNICATE',
+        title: '1. Thong bao huong dan & doi thoai voi khach',
         params: {
-          text: 'Xin moi quy khach di theo em toi quay tiep tan a.',
+          initial_prompt: 'Xin moi quy khach di theo em toi quay tiep tan a.',
+          silence_timeout_sec: 30,
         },
       },
       {
@@ -527,10 +542,11 @@ export const BUILTIN_SIMULATOR_WORKFLOWS = [
       },
       {
         step_id: 'wf7-step-2',
-        type: 'SPEAK',
+        type: 'COMMUNICATE',
         title: '2. Huong dan khach di theo robot toi thang may',
         params: {
-          text: 'Da, em xin phep dan quy khach toi cum thang may de len phong a.',
+          initial_prompt: 'Da, em xin phep dan quy khach toi cum thang may de len phong a.',
+          silence_timeout_sec: 30,
         },
       },
       {
@@ -548,10 +564,11 @@ export const BUILTIN_SIMULATOR_WORKFLOWS = [
       },
       {
         step_id: 'wf7-step-4',
-        type: 'SPEAK',
-        title: '4. Thong bao da den khu vuc thang may',
+        type: 'COMMUNICATE',
+        title: '4. Thong bao da den khu vuc thang may & giai dap them',
         params: {
-          text: 'Chung ta da den khu vuc thang may. Chuc quy khach mot ngay tot lanh!',
+          initial_prompt: 'Chung ta da den khu vuc thang may. Chuc quy khach mot ngay tot lanh! Quy khach can em giup gi them khong a?',
+          silence_timeout_sec: 30,
         },
       },
     ],

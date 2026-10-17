@@ -149,15 +149,16 @@ class OllamaService:
             time_greeting_vi = "Dạ, Rora xin chào buổi tối quý khách! Chúc quý khách buổi tối an lành và thư giãn ạ."
             time_greeting_en = "Good evening! Wishing you a peaceful and relaxing evening."
 
-        # PRE-CHECK: Nếu câu nói chứa từ khóa HÀNH ĐỘNG dịch vụ buồng phòng / bảo trì
+        # PRE-CHECK: Nếu câu nói chứa từ khóa HÀNH ĐỘNG dịch vụ buồng phòng / bảo trì / ẩm thực / hành lý
         # → Bỏ qua fast-path để Intent Router + Service FSM xử lý slot-filling số phòng
         service_action_verbs = [
-            "đặt", "cần", "muốn", "yêu cầu", "sửa",
-            "book", "order", "reserve", "need", "repair", "fix"
+            "đặt", "cần", "muốn", "yêu cầu", "sửa", "cho", "xin", "lấy", "mang", "giao", "gọi", "đổi",
+            "book", "order", "reserve", "need", "repair", "fix", "send", "bring", "get"
         ]
         service_nouns = [
-            "khăn", "gối", "chăn", "dọn phòng", "don phong",
-            "điều hòa", "máy lạnh", "bóng đèn", "nước rò", "kẹt", "towel", "cleaning"
+            "khăn", "gối", "chăn", "dọn phòng", "don phong", "nước", "đồ ăn", "cơm", "hành lý", "vali",
+            "điều hòa", "máy lạnh", "bóng đèn", "nước rò", "kẹt", "taxi", "bàn ủi", "sấy tóc", "máy sấy",
+            "towel", "cleaning", "food", "water", "drink", "luggage", "iron"
         ]
         has_action_verb = any(v in prompt_lower for v in service_action_verbs)
         has_service_noun = any(n in prompt_lower for n in service_nouns)
@@ -292,6 +293,10 @@ class OllamaService:
                 "3. Never use emojis, markdown formatting (*, #, _, -), or bulleted lists to ensure smooth speech synthesis.\n"
                 "4. State times clearly in full words (e.g., 'from 6:00 AM to 10:00 PM', '12:00 PM noon').\n"
                 "5. When providing directions or guiding to a hotel facility or room, politely end with: 'In addition, you can scan the QR code on the screen to save the directions!'\n"
+                "6. MANDATORY SERVICE & ROOM NUMBER RULES:\n"
+                "   - Whenever the guest makes a room service or amenity request (cleaning, towels, food, repairs, luggage, taxi):\n"
+                "     + If room number is NOT known yet (not in [Room Info]): ALWAYS politely ask for their room number first.\n"
+                "     + If room number IS ALREADY known (in [Room Info]): Confirm the request with their room number and NEVER ask for their room number again during this session.\n"
             )
             if hotel_facts:
                 prompt += f"\n{hotel_facts}\n"
@@ -319,6 +324,11 @@ class OllamaService:
                 "5. Tuyệt đối KHÔNG dùng emoji, ký hiệu markdown (*, #, _, -) hay gạch đầu dòng.\n"
                 "6. Viết thời gian rõ ràng: luôn viết bằng chữ như 'từ 6 giờ sáng đến 22 giờ tối', '12 giờ trưa', không viết tắt '6-22h'.\n"
                 "7. Khi hướng dẫn chỉ đường hoặc giới thiệu vị trí một tiện ích hay phòng của khách sạn, ở cuối câu hãy luôn thêm câu mời: 'Ngoài ra, Quý khách có thể quét mã QR trên màn hình để ghi nhớ chỉ dẫn nhé ạ.'\n"
+                "8. QUY TẮC BẮT BUỘC VỀ YÊU CẦU DỊCH VỤ LIÊN QUAN TỚI SỐ PHÒNG:\n"
+                "   - Khi khách yêu cầu bất kỳ dịch vụ phòng nào (khăn tắm, buồng phòng, dọn phòng, chăn gối, đồ dùng, đồ ăn thức uống room service, hành lý bellman, sửa chữa máy lạnh điện nước, đặt xe taxi, v.v.):\n"
+                "     + Nếu CHƯA BIẾT số phòng (chưa có trong [Thông tin phòng]): BẮT BUỘC Rora phải hỏi số phòng của quý khách trước (ví dụ: 'Dạ em sẽ hỗ trợ ... cho quý khách ngay ạ! Quý khách vui lòng cho em xin số phòng của mình là bao nhiêu ạ?').\n"
+                "     + Nếu ĐÃ BIẾT số phòng (đã có trong [Thông tin phòng] hoặc vừa được cung cấp): Ghi nhận yêu cầu KÈM SỐ PHÒNG của khách (ví dụ: 'Dạ Rora đã ghi nhận yêu cầu ... cho Phòng [X] rồi ạ, bộ phận chuyên trách sẽ hỗ trợ quý khách ngay!') và TUYỆT ĐỐI KHÔNG hỏi lại số phòng nữa trong suốt phiên trò chuyện.\n"
+                "   - Toàn bộ các yêu cầu dịch vụ tiếp theo trong phiên này đều tự động gắn với số phòng đã lưu đó.\n"
             )
             if hotel_facts:
                 prompt += f"\n{hotel_facts}\n"
@@ -559,11 +569,9 @@ class OllamaService:
         # Làm sạch wake-up word 'Rora' nếu có ở đầu câu nói
         user_speech = re.sub(r'^(?:hey rora|chào rora|chao rora|rora ơi|rora oi|hello rora|hi rora|rora)[\,\.\!\s]*', '', user_speech, flags=re.IGNORECASE).strip() or user_speech
 
-        # Regex kiểm tra nhanh số phòng trực tiếp (Ví dụ: "phòng 502", "p.304", "502", "tôi ở 402")
-        room_match = re.search(r'(?:phòng|p\.|p|phong)\s*([0-9]{3,4})|^(?:tôi ở|ở)\s*([0-9]{3,4})$', user_speech, re.IGNORECASE)
-        extracted_room_regex = None
-        if room_match:
-            extracted_room_regex = room_match.group(1) or room_match.group(2)
+        # Bóc tách nhanh số phòng trực tiếp (Ví dụ: "phòng 502", "p.304", "502", "tôi ở 402", "402 ạ")
+        from app.services.ai.session_manager import extract_room_number
+        extracted_room_regex = extract_room_number(user_speech, is_answering_room=True)
 
         # Fast-Path Keyword Check (Nếu khớp từ khóa dịch vụ rõ ràng -> Trả về luôn siêu tốc < 1ms)
         lower_speech = user_speech.lower()

@@ -1,21 +1,20 @@
 import { describe, it, expect } from 'vitest';
 import { OTTO_STEP_TYPES } from './AdminWorkflowTab';
 
-describe('AdminWorkflowTab Otto 8-Step Engine', () => {
-  it('should define all 8 Otto standard step types correctly', () => {
-    expect(OTTO_STEP_TYPES).toHaveLength(8);
-
+describe('AdminWorkflowTab Otto Step Engine', () => {
+  it('should define standard step types including COMMUNICATE with 30s silence timeout', () => {
     const types = OTTO_STEP_TYPES.map((s) => s.type);
-    expect(types).toEqual([
-      'MOVE',
-      'GREET',
-      'SPEAK',
-      'SHOW',
-      'LISTEN',
-      'RECOMMEND',
-      'CREATE_REQUEST',
-      'FEEDBACK',
-    ]);
+    expect(types).toContain('MOVE');
+    expect(types).toContain('GREET');
+    expect(types).toContain('COMMUNICATE');
+    expect(types).toContain('SHOW');
+    expect(types).toContain('RECOMMEND');
+    expect(types).toContain('CREATE_REQUEST');
+    expect(types).toContain('FEEDBACK');
+
+    const commStep = OTTO_STEP_TYPES.find((s) => s.type === 'COMMUNICATE');
+    expect(commStep).toBeDefined();
+    expect(commStep.defaultParams.silence_timeout_sec).toBe(30);
   });
 
   it('should generate valid default parameters for MOVE step linked to LiDAR waypoints', () => {

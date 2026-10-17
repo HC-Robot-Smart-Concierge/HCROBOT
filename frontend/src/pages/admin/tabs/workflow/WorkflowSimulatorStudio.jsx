@@ -533,9 +533,14 @@ export const WorkflowSimulatorStudio = ({
 
       handleNavigateToGoal(targetX, targetY, wpName, true, startOverride);
     } else {
-      // CAC BUOC TUONG TAC (GREET, SPEAK, SHOW, LISTEN, RECOMMEND, CREATE_REQUEST, FEEDBACK)
+      // CAC BUOC TUONG TAC (GREET, COMMUNICATE, SPEAK, SHOW, LISTEN, RECOMMEND, CREATE_REQUEST, FEEDBACK)
       let waitDurationSec = 3.5;
-      if (stepType === 'GREET' || stepType === 'SPEAK') {
+      if (stepType === 'COMMUNICATE') {
+        const textContent = params.initial_prompt || params.speech_text || params.text || '';
+        const len = textContent.trim().length;
+        const silenceSec = parseInt(params.silence_timeout_sec || params.timeout) || 30;
+        waitDurationSec = Math.max(4.0, Math.min(silenceSec, Math.ceil(len * 0.085) + 3));
+      } else if (stepType === 'GREET' || stepType === 'SPEAK') {
         const textContent =
           stepType === 'GREET'
             ? params.greeting_text || params.text || 'Xin chào quý khách'

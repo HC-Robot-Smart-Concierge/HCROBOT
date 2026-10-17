@@ -11,6 +11,7 @@ from typing import Dict, Any, List, Optional, TypedDict
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import MemorySaver
 
+from app.services.ai.session_manager import session_manager, extract_room_number
 from app.services.ai.ollama_service import ollama_service
 
 logger = logging.getLogger(__name__)
@@ -88,30 +89,51 @@ async def fast_path_node(state: ConciergeState) -> Dict[str, Any]:
 async def intent_router_node(state: ConciergeState) -> Dict[str, Any]:
     """
     Node 2: Fast Intent Router & Slot Extractor (0ms).
-    Phân loại ý định khách hàng tức thì không gọi LLM blocking 5s.
+    Phân loại ý định khách hàng tức thì, bóc tách số phòng và quản lý pending intent dịch vụ.
     """
     import re
+    session_id = state.get("session_id") or "default_session"
     prompt = state.get("prompt", "")
     # Làm sạch wake-up word Rora ở đầu câu (nếu khách nói kèm mệnh lệnh)
     clean_prompt = re.sub(r'^(?:hey rora|chào rora|chao rora|rora ơi|rora oi|hello rora|hi rora|rora)[\,\.\!\s]*', '', prompt, flags=re.IGNORECASE).strip() or prompt
     prompt_lower = clean_prompt.lower().strip()
 
-    # 1. Bóc tách nhanh số phòng nếu có
-    room_match = re.search(r'(?:phòng|p\.|p|phong)\s*([0-9]{3,4})|^(?:tôi ở|ở)\s*([0-9]{3,4})$', clean_prompt, re.IGNORECASE)
-    extracted_room = (room_match.group(1) or room_match.group(2)) if room_match else None
+    # Kiểm tra xem session có pending_intent đang chờ số phòng không
+    pending = session_manager.get_pending_intent(session_id)
+    is_answering = bool(pending)
+
+    # 1. Bóc tách nhanh số phòng linh hoạt
+    extracted_room = extract_room_number(clean_prompt, is_answering_room=is_answering)
     
-    current_room = state.get("room_number")
+    current_room = state.get("room_number") or session_manager.get_room_number(session_id)
     if extracted_room:
         current_room = extracted_room
+        session_manager.set_room_number(session_id, extracted_room)
 
     # 2. Heuristic nhận diện dịch vụ khách sạn (< 0.1ms)
     SERVICE_KEYWORDS = {
-        "housekeeping": ["khăn", "dọn phòng", "gối", "chăn", "nệm", "dọn dẹp", "dọn vệ sinh", "vệ sinh phòng", "làm vệ sinh", "towel", "clean room", "cleaning"],
-        "room_service": ["cơm", "nước", "ăn", "uống", "đồ ăn", "trà", "cà phê", "pizza", "phở", "bánh", "food", "drink"],
-        "bellman": ["hành lý", "vali", "túi", "chuyển phòng", "mang đồ", "xách đồ", "luggage", "bag"],
-        "maintenance": ["hỏng", "sửa", "điều hòa", "bóng đèn", "nước rò", "máy lạnh", "tủ lạnh", "kẹt", "fix", "repair"],
-        "restaurant": ["đặt bàn", "bàn ăn", "nhà hàng", "table", "restaurant"],
-        "taxi": ["taxi", "đặt xe", "gọi xe", "sân bay", "cab", "ride", "xe đón"],
+        "housekeeping": [
+            "khăn", "khan", "dọn phòng", "don phong", "gối", "goi", "chăn", "chan", 
+            "nệm", "nem", "dọn dẹp", "dọn vệ sinh", "vệ sinh phòng", "làm vệ sinh", 
+            "towel", "clean room", "cleaning", "bàn ủi", "máy sấy", "dao cạo", "kem đánh răng", 
+            "bàn chải", "dầu gội", "sữa tắm", "giấy vệ sinh", "nước suối trong phòng"
+        ],
+        "room_service": [
+            "cơm", "com", "nước", "nuoc", "ăn", "an", "uống", "uong", "đồ ăn", "do an", 
+            "trà", "tra", "cà phê", "ca phe", "pizza", "phở", "pho", "bánh", "banh", 
+            "food", "drink", "bữa sáng", "gọi món", "đặt món", "thực đơn", "menu", "nước ngọt", "bia", "trái cây"
+        ],
+        "bellman": [
+            "hành lý", "hanh ly", "vali", "túi", "tui", "chuyển phòng", "chuyen phong", 
+            "mang đồ", "xách đồ", "luggage", "bag", "mang hành lý", "gửi hành lý"
+        ],
+        "maintenance": [
+            "hỏng", "hong", "sửa", "sua", "điều hòa", "dieu hoa", "bóng đèn", "bong den", 
+            "nước rò", "nuoc ro", "máy lạnh", "may lanh", "tủ lạnh", "tu lanh", "kẹt", "ket", 
+            "fix", "repair", "vòi sen", "vòi nước", "bồn cầu", "tắc", "mất điện", "không lạnh", "cháy bóng"
+        ],
+        "restaurant": ["đặt bàn", "dat ban", "bàn ăn", "ban an", "nhà hàng", "table", "restaurant"],
+        "taxi": ["taxi", "đặt xe", "dat xe", "gọi xe", "goi xe", "sân bay", "cab", "ride", "xe đón", "grab"],
         "concierge": [
             "concierge", "gặp người", "trợ giúp trực tiếp", "nhân viên hỗ trợ", 
             "live call", "video call", "tổng đài", "gọi cho nhân viên", 
@@ -124,7 +146,11 @@ async def intent_router_node(state: ConciergeState) -> Dict[str, Any]:
             "connect staff", "video call support", "talk to staff", "call receptionist",
             "human agent", "live agent", "talk to a person", "speak to a person", "live support"
         ],
-        "reception": ["lễ tân", "check out", "check in", "đổi phòng", "trả phòng", "front desk", "reception"],
+        "reception": [
+            "lễ tân", "check out", "checkout", "check in", "checkin", 
+            "đổi phòng", "doi phong", "trả phòng", "tra phong", "front desk", "reception",
+            "gia hạn phòng", "thẻ phòng", "mất chìa khóa", "khóa phòng"
+        ],
     }
 
     # 3. Phân loại Category & FAQ / Facility Keywords
@@ -143,24 +169,44 @@ async def intent_router_node(state: ConciergeState) -> Dict[str, Any]:
                 action = act
                 break
 
+    items_text = clean_prompt
     if action:
         category = "service"
+        # Nếu đã có số phòng thì xóa pending_intent cũ nếu có
+        if current_room:
+            session_manager.clear_pending_intent(session_id)
+        else:
+            # Chưa có số phòng -> Lưu pending_intent để chờ câu sau khách trả lời số phòng
+            session_manager.set_pending_intent(session_id, {
+                "action": action,
+                "items": clean_prompt,
+                "prompt": clean_prompt,
+            })
+    elif extracted_room and pending:
+        # Khách vừa bổ sung số phòng cho yêu cầu đang chờ!
+        action = pending.get("action")
+        items_text = pending.get("items") or pending.get("prompt") or clean_prompt
+        category = "service"
+        session_manager.clear_pending_intent(session_id)
+        logger.info(f"[Harness FastRouter] Resolved pending intent '{action}' with room '{extracted_room}': {items_text}")
     elif is_asking_info:
         category = "faq"
         action = "faq"
     elif extracted_room and not action:
+        # Khách chỉ nói số phòng, chưa có yêu cầu dịch vụ cụ thể
         action = "provide_room_number"
         category = "service"
     else:
         category = "chitchat"
         action = "chitchat"
 
-    logger.info(f"[Harness FastRouter] category='{category}', action='{action}', room='{current_room}'")
+    logger.info(f"[Harness FastRouter] session='{session_id}', category='{category}', action='{action}', room='{current_room}'")
     return {
         "intent_category": category,
         "action": action,
-        "items": prompt,
+        "items": items_text,
         "room_number": current_room,
+        "session_id": session_id,
     }
 
 
@@ -204,7 +250,7 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
     items = state.get("items") or "dịch vụ"
     lang_code = state.get("lang_code", "vi-VN")
 
-    # Trường hợp đặc biệt: Khách yêu cầu Live Video Call với Concierge / Nhân viên
+    # Trường hợp 1: Khách yêu cầu Live Video Call với Concierge / Nhân viên
     if action == "concierge":
         effective_room = current_room or "Main Lobby Kiosk"
         if lang_code == "en-US":
@@ -219,19 +265,41 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
             "trigger_video_call": True,
         }
 
-    # Kiểm tra thiếu số phòng (Missing Room Number Slot)
+    # Trường hợp 2: Khách chỉ cung cấp/giới thiệu số phòng (không có yêu cầu dịch vụ cụ thể)
+    if action == "provide_room_number":
+        if lang_code == "en-US":
+            intro_reply = f"Hello guest from Room {current_room}! Rora has remembered your room number for our conversation session. How may I assist you today?"
+        else:
+            intro_reply = f"Dạ Rora xin chào quý khách ở Phòng {current_room} ạ! Rora đã ghi nhớ số phòng của quý khách cho phiên nói chuyện này rồi ạ. Em có thể hỗ trợ dịch vụ gì cho quý khách ạ?"
+
+        return {
+            "missing_room_number": False,
+            "room_number": current_room,
+            "response": intro_reply,
+        }
+
+    # Trường hợp 3: Yêu cầu dịch vụ liên quan phòng nhưng CHƯA CÓ SỐ PHÒNG -> Bắt buộc hỏi khách số phòng!
     if not current_room:
         if lang_code == "en-US":
-            ask_reply = f"Certainly! I would be glad to help with {action}. Could you please tell me your room number?"
+            action_en_map = {
+                "room_service": "room service and dining",
+                "housekeeping": "housekeeping services",
+                "bellman": "luggage assistance",
+                "maintenance": "maintenance support",
+                "restaurant": "restaurant reservation",
+                "taxi": "taxi booking",
+                "reception": "front desk services",
+            }
+            action_en = action_en_map.get(action, "this service")
+            ask_reply = f"Certainly! I would be glad to help you with {action_en}. Could you please let me know your room number?"
         else:
             action_vn_map = {
-                "room_service": "đồ ăn và thức uống",
+                "room_service": "đồ ăn, thức uống và phục vụ phòng",
                 "housekeeping": "dọn phòng và tiện ích buồng phòng",
                 "bellman": "hỗ trợ hành lý",
-                "maintenance": "kỹ thuật bảo trì",
+                "maintenance": "bộ phận kỹ thuật sửa chữa",
                 "restaurant": "đặt bàn nhà hàng",
                 "taxi": "đặt xe taxi và di chuyển",
-                "concierge": "kết nối tổng đài Concierge",
                 "reception": "dịch vụ lễ tân tiền sảnh",
             }
             action_vn = action_vn_map.get(action, "dịch vụ")
@@ -239,17 +307,39 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
 
         return {
             "missing_room_number": True,
+            "room_number": None,
             "response": ask_reply,
         }
 
-    # Đã có đủ số phòng
+    # Trường hợp 4: Đã có đủ số phòng và có yêu cầu dịch vụ -> Xác nhận gửi tới đúng phòng ban kèm số phòng
+    DEPT_MAP_VI = {
+        "housekeeping": "Buồng phòng (Housekeeping)",
+        "room_service": "Ẩm thực (F&B / Room Service)",
+        "bellman": "Hành lý (Bell Services)",
+        "maintenance": "Kỹ thuật & Bảo trì (Maintenance)",
+        "restaurant": "Nhà hàng & Ẩm thực",
+        "taxi": "Vận chuyển & Đặt xe (Taxi)",
+        "reception": "Lễ tân (Reception)",
+    }
+    DEPT_MAP_EN = {
+        "housekeeping": "Housekeeping Department",
+        "room_service": "Food & Beverage (Room Service)",
+        "bellman": "Bell Services Department",
+        "maintenance": "Maintenance & Engineering",
+        "restaurant": "Restaurant & F&B Department",
+        "taxi": "Transportation & Taxi Desk",
+        "reception": "Front Desk & Reception",
+    }
+    dept_name = (DEPT_MAP_EN if lang_code == "en-US" else DEPT_MAP_VI).get(action, "chuyên trách")
+
     if lang_code == "en-US":
-        confirm_reply = f"Rora has noted your request for Room {current_room}. Our team will attend to it shortly!"
+        confirm_reply = f"Rora has noted your request for Room {current_room}! The {dept_name} will attend to it right away."
     else:
-        confirm_reply = f"Dạ Rora đã ghi nhận yêu cầu cho Phòng {current_room} rồi ạ! Bộ phận chuyên trách sẽ hỗ trợ quý khách ngay."
+        confirm_reply = f"Dạ Rora đã ghi nhận yêu cầu cho Phòng {current_room} rồi ạ! Bộ phận {dept_name} sẽ tiếp nhận và hỗ trợ quý khách ngay."
 
     return {
         "missing_room_number": False,
+        "room_number": current_room,
         "response": confirm_reply,
     }
 

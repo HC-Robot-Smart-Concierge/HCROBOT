@@ -85,7 +85,10 @@ async def auto_create_ticket(
     và gửi Notification tới phòng ban phụ trách cùng Lễ tân.
     """
     code = f"AUTO-{random.randint(1000, 99999)}"
-    rm = room_number or "402"
+    if not room_number:
+        logger.warning(f"[AITicketService] auto_create_ticket skipped: missing room_number for action '{action}'.")
+        return ""
+    rm = str(room_number).strip()
 
     try:
         if action in ["room_service", "restaurant"]:
@@ -350,33 +353,28 @@ async def background_extract_and_create_ticket(
 ):
     """
     Tạo ticket ngầm dưới nền sử dụng intent đã có sẵn từ LangGraph,
-    không chặn phản hồi của robot và không tốn thêm 5s CPU gọi Ollama lại.
+    kèm số phòng chính xác của khách và định tuyến đến đúng phòng ban phụ trách.
     """
+    if not room_number:
+        logger.info(f"[AITicketService] Skipping background ticket creation for '{action}' because guest has not yet provided room number.")
+        return
+
+    # Không tạo ticket nếu là chào hỏi, giới thiệu phòng hoặc câu hỏi thông tin chung
+    if action in ["provide_room_number", "chitchat", "conversation", "faq", "fast_path", "unknown"]:
+        return
+
     try:
         from app.core.database import AsyncSessionLocal
-        act = action or "unknown"
+        target_action = action or "reception"
         items_desc = items or prompt
 
-        prompt_lower = prompt.lower()
-        request_keywords = [
-            "cần", "xin", "cho", "gửi", "gọi", "đặt", "sửa", "dọn", "nước", "khăn",
-            "lễ tân", "yêu cầu", "phòng", "hỗ trợ", "bàn", "chăn", "gối", "vali", "hành lý",
-            "taxi", "xe", "concierge", "live call", "trợ giúp", "hỏng", "bảo trì"
-        ]
-
-        target_actions = [
-            "room_service", "housekeeping", "bellman", "maintenance",
-            "restaurant", "reception", "receptionist", "front_desk",
-            "taxi", "concierge", "live_support"
-        ]
-        if act in target_actions or any(kw in prompt_lower for kw in request_keywords):
-            target_action = act if act in target_actions else "reception"
-            async with AsyncSessionLocal() as bg_db:
-                created_ticket_code = await auto_create_ticket(
-                    bg_db, target_action, room_number or "402", items_desc
-                )
+        async with AsyncSessionLocal() as bg_db:
+            created_ticket_code = await auto_create_ticket(
+                bg_db, target_action, str(room_number).strip(), items_desc
+            )
+            if created_ticket_code:
                 logger.info(
-                    f"[AITicketService] Created ticket #{created_ticket_code} for {target_action} from prompt: '{prompt}'"
+                    f"[AITicketService] Successfully created ticket #{created_ticket_code} for department '{target_action}' (Room {room_number}): {items_desc}"
                 )
     except Exception as ex_ticket:
         logger.warning(f"[AITicketService Warning] Could not auto-create ticket: {ex_ticket}")

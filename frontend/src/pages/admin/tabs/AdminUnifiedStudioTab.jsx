@@ -734,6 +734,14 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
           `[BƯỚC ${i + 1}: SHOW] Màn hình Kiosk: "${step.params?.screen_mode || step.params?.content_id || 'TIỆN ÍCH'}" - Banner: "${step.params?.display_banner || 'Tiêu chuẩn'}" (${(showDuration / 1000).toFixed(0)}s)`,
         ]);
         await new Promise((resolve) => setTimeout(resolve, showDuration));
+      } else if (step.type === 'COMMUNICATE') {
+        const commDuration = Math.min(5000, Math.max(1500, (parseInt(step.params?.silence_timeout_sec || step.params?.timeout) || 4) * 1000));
+        const prompt = step.params?.initial_prompt || step.params?.speech_text || step.params?.text || 'Đối thoại hai chiều với khách';
+        setSimLogs((prev) => [
+          ...prev,
+          `[BƯỚC ${i + 1}: COMMUNICATE] Đối thoại AI 2 chiều: "${prompt.slice(0, 45)}..." (Silence Timeout: ${step.params?.silence_timeout_sec || 30}s)`,
+        ]);
+        await new Promise((resolve) => setTimeout(resolve, commDuration));
       } else if (step.type === 'LISTEN') {
         const listenDuration = Math.min(5000, Math.max(1500, (parseInt(step.params?.timeout_sec || step.params?.timeout) || 4) * 1000));
         setSimLogs((prev) => [
@@ -1360,6 +1368,11 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
                       {step.type === 'SHOW' && (
                         <div className="text-[11px]" style={{ color: '#8C8C8C' }}>
                           Màn hình: <strong>{step.params?.screen_mode || 'MENU'}</strong>
+                        </div>
+                      )}
+                      {step.type === 'COMMUNICATE' && (
+                        <div className="text-[11px]" style={{ color: '#8C8C8C' }}>
+                          Đối thoại AI (Ngắt sau: <strong>{step.params?.silence_timeout_sec || 30}s</strong> im lặng)
                         </div>
                       )}
                       {step.type === 'LISTEN' && (

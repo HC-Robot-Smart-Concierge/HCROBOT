@@ -56,6 +56,9 @@ export const WorkflowSimulatorModal = ({ workflow, isOpen, onClose }) => {
     } else if (step.type === 'SHOW') {
       const showTimeout = parseInt(step.params?.timeout || step.params?.slide_duration_sec) || 5;
       stepDurationMs = showTimeout * 1000;
+    } else if (step.type === 'COMMUNICATE') {
+      const commTimeout = parseInt(step.params?.silence_timeout_sec || step.params?.timeout) || 6;
+      stepDurationMs = Math.min(6000, commTimeout * 1000);
     } else if (step.type === 'LISTEN') {
       const listenTimeout = parseInt(step.params?.timeout || step.params?.timeout_sec) || 6;
       stepDurationMs = listenTimeout * 1000;
@@ -74,7 +77,9 @@ export const WorkflowSimulatorModal = ({ workflow, isOpen, onClose }) => {
 
     if (!isMuted) {
       const voiceText =
-        step.type === 'GREET'
+        step.type === 'COMMUNICATE'
+          ? (step.params?.initial_prompt || step.params?.speech_text || step.params?.text)
+          : step.type === 'GREET'
           ? (step.params?.greeting_text || step.params?.text)
           : step.type === 'SPEAK'
           ? (step.params?.speech_text || step.params?.text)
@@ -137,6 +142,7 @@ export const WorkflowSimulatorModal = ({ workflow, isOpen, onClose }) => {
       if (exp === 'LISTENING') return 'listening';
       return 'welcome';
     }
+    if (activeStep.type === 'COMMUNICATE') return 'listening';
     if (activeStep.type === 'SPEAK') return 'speaking';
     if (activeStep.type === 'LISTEN') return 'listening';
     if (activeStep.type === 'RECOMMEND') return 'processing';
@@ -144,7 +150,9 @@ export const WorkflowSimulatorModal = ({ workflow, isOpen, onClose }) => {
   };
 
   const speechText =
-    activeStep?.type === 'GREET'
+    activeStep?.type === 'COMMUNICATE'
+      ? (activeStep.params?.initial_prompt || activeStep.params?.speech_text || activeStep.params?.text)
+      : activeStep?.type === 'GREET'
       ? (activeStep.params?.greeting_text || activeStep.params?.text)
       : activeStep?.type === 'SPEAK'
       ? (activeStep.params?.speech_text || activeStep.params?.text)
@@ -278,7 +286,7 @@ export const WorkflowSimulatorModal = ({ workflow, isOpen, onClose }) => {
                 </div>
               )}
               <RobotFace mode={getRobotMode()} compact={true} />
-              {(activeStep?.type === 'SPEAK' || activeStep?.type === 'LISTEN') && (
+              {(activeStep?.type === 'COMMUNICATE' || activeStep?.type === 'SPEAK' || activeStep?.type === 'LISTEN') && (
                 <div className="mt-1">
                   <AudioWave isActive={isExecuting} />
                 </div>

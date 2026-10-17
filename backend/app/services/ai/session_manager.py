@@ -1,8 +1,61 @@
 import time
 import logging
+import re
 from typing import Dict, Any, List, Optional
 
 logger = logging.getLogger(__name__)
+
+
+def extract_room_number(text: str, is_answering_room: bool = False) -> Optional[str]:
+    """
+    Bóc tách số phòng linh hoạt và chính xác từ câu nói của khách.
+    Hỗ trợ:
+      - Câu trả lời trực tiếp: "402", "dạ 402 ạ", "402 em", "402 nha", "là 402"
+      - Cụm từ có tiền tố: "phòng 402", "phong 402", "p.402", "p402", "room 402", "số phòng 402"
+      - Khẳng định cư trú: "tôi ở 402", "anh ở phòng 402", "mình ở 305", "em ở 402", "phòng của tôi là 402"
+      - Lồng ghép trong câu yêu cầu: "Cho anh 2 khăn tắm phòng 402", "phòng 301 bị hỏng điều hòa"
+    """
+    if not text:
+        return None
+
+    clean = text.strip()
+
+    # 1. Câu trả lời ngắn thuần túy số phòng: vd "402", "dạ 402", "402 ạ", "402 nha em", "là 402", "402 nhé"
+    standalone = re.search(
+        r'^(?:dạ|da|là|la|ở|o|số|so|phòng|phong|room)?\s*([1-9][0-9]{2,3})(?:\s+(?:ạ|a|nha|nhé|nhe|em|ơi|oi|nhá|rora|đó|do|nhé|nhá))*[\s\.\!\?]*$',
+        clean,
+        re.IGNORECASE
+    )
+    if standalone:
+        return standalone.group(1)
+
+    # 2. Các mẫu cụm từ chứa 'phòng' / 'room' / 'p.' / 'số phòng': vd "phòng 402", "room 402", "p.305", "số phòng của tôi là 402", "phòng em là 301"
+    pattern_explicit = re.search(
+        r'(?:phòng|phong|room|p\.|p|số phòng|so phong)\s*(?:(?:của\s+)?(?:tôi|em|anh|chị|mình|khách)\s*)?(?:là|la|số|so)?\s*([1-9][0-9]{2,3})\b',
+        clean,
+        re.IGNORECASE
+    )
+    if pattern_explicit:
+        return pattern_explicit.group(1)
+
+    # 3. Các mẫu cư trú: "tôi ở 402", "anh ở 402", "chị ở 402", "em ở 402", "mình ở 402", "i am in 402", "staying in 402"
+    pattern_stay = re.search(
+        r'(?:tôi ở|anh ở|chị ở|em ở|mình ở|toi o|anh o|chi o|em o|minh o|i am in|i\'m in|staying in)\s*(?:phòng|phong|room)?\s*([1-9][0-9]{2,3})\b',
+        clean,
+        re.IGNORECASE
+    )
+    if pattern_stay:
+        return pattern_stay.group(1)
+
+    # 4. Khi đang trong trạng thái chờ khách bổ sung số phòng (is_answering_room=True)
+    if is_answering_room:
+        # Bắt số 3-4 chữ số trong câu (ngoại trừ các năm dương lịch 2020-2035)
+        matches = re.findall(r'\b([1-9][0-9]{2,3})\b', clean)
+        for m in matches:
+            if not (2020 <= int(m) <= 2035):
+                return m
+
+    return None
 
 
 class SessionMemoryManager:
@@ -183,26 +236,42 @@ class SessionMemoryManager:
 
     def set_room_number(self, session_id: str, room_number: Optional[str]) -> bool:
         """
-        Cập nhật số phòng. Nếu có số phòng mới khác số phòng cũ -> Ghi đè & Reset pending intent cũ.
+        Cập nhật và lưu số phòng vào phiên hội thoại (Session Memory).
+        Số phòng này được ghi nhớ xuyên suốt toàn bộ phiên nói chuyện đến khi hết phiên hoặc đổi phòng.
         Returns True nếu số phòng thay đổi.
         """
+        if not room_number:
+            return False
+
+        clean_room = str(room_number).strip()
         session = self.get_session(session_id)
         old_room = session.get("room_number")
 
-        if room_number and room_number != old_room:
-            logger.info(f"[SessionMemory] Room updated in session '{session_id}': {old_room} -> {room_number}")
-            session["room_number"] = room_number
+        if clean_room != old_room:
+            logger.info(f"[SessionMemory] Room set/updated in session '{session_id}': {old_room} -> {clean_room}")
+            session["room_number"] = clean_room
             return True
-
-        if room_number:
-            session["room_number"] = room_number
 
         return False
 
     def get_pending_intent(self, session_id: str = "default_session") -> Optional[Dict[str, Any]]:
-        """Lấy ý định dịch vụ đang chờ số phòng."""
+        """Lấy ý định dịch vụ đang chờ bổ sung số phòng."""
         session = self.get_session(session_id)
         return session.get("pending_intent")
+
+    def set_pending_intent(self, session_id: str, intent_data: Optional[Dict[str, Any]]):
+        """Lưu ý định dịch vụ đang chờ khách cung cấp số phòng."""
+        session = self.get_session(session_id)
+        session["pending_intent"] = intent_data
+        if intent_data:
+            logger.info(f"[SessionMemory] Saved pending service intent for session '{session_id}': {intent_data.get('action')}")
+        else:
+            logger.info(f"[SessionMemory] Cleared pending intent for session '{session_id}'")
+
+    def clear_pending_intent(self, session_id: str = "default_session"):
+        """Xóa ý định dịch vụ chờ sau khi đã xử lý xong hoặc tạo ticket."""
+        session = self.get_session(session_id)
+        session["pending_intent"] = None
 
     def reset_session(self, session_id: str = "default_session"):
         """Xoá sạch bộ nhớ phiên (Dùng khi bấm nút Khách Mới / Đổi Phòng)."""

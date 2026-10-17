@@ -137,10 +137,17 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
         logger.warning(f"[AIChatService] TTS online timeout/error, fallback to frontend WebSpeech: {e_tts}")
         audio_b64, mime_type = None, "audio/mp3"
 
+    # Cập nhật số phòng mới nhất từ kết quả Graph hoặc Session Manager
+    updated_room = graph_result.get("room_number") or session_manager.get_room_number(sid)
+    if updated_room:
+        session_manager.set_room_number(sid, updated_room)
+        current_room = updated_room
+
     # Xử lý Intent phân loại tác vụ dịch vụ / cuộc gọi
     act = graph_result.get("action")
-    items = graph_result.get("items")
+    items = graph_result.get("items") or request.prompt
     is_video_call = bool(graph_result.get("trigger_video_call") or act == "concierge")
+    missing_room = bool(graph_result.get("missing_room_number", False))
     support_session_id = None
     call_ticket_code = None
 
@@ -148,11 +155,15 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
         support_session_id, call_ticket_code = await create_live_call_session(
             db, request.prompt, current_room
         )
-    else:
-        # Tự động tạo ticket dịch vụ trong nền tận dụng intent từ LangGraph
-        asyncio.create_task(
-            background_extract_and_create_ticket(request.prompt, current_room, act, items)
-        )
+    elif act and act not in ["chitchat", "conversation", "faq", "fast_path", "provide_room_number", "unknown"]:
+        # CHỈ TẠO TICKET KHI ĐÃ CÓ ĐẦY ĐỦ SỐ PHÒNG CỦA KHÁCH
+        if not missing_room and current_room:
+            asyncio.create_task(
+                background_extract_and_create_ticket(items, current_room, act, items)
+            )
+            logger.info(f"[AIChatService] Dispatched ticket creation for '{act}' (Room {current_room}): {items}")
+        else:
+            logger.info(f"[AIChatService] Service request '{act}' is waiting for room number from guest.")
 
     destination_key = graph_result.get("destination_key") or _detect_destination_poi(request.prompt, reply)
 
@@ -163,7 +174,7 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
         lang_code=lang_code,
         session_id=sid,
         current_room_number=current_room,
-        missing_room_number=bool(graph_result.get("missing_room_number", False)),
+        missing_room_number=missing_room,
         trigger_video_call=is_video_call,
         support_session_id=support_session_id,
         ticket_code=call_ticket_code,
@@ -216,6 +227,7 @@ async def generate_chat_stream(request: ChatRequest) -> AsyncGenerator[str, None
         router_state = await intent_router_node({
             "prompt": request.prompt,
             "room_number": current_room,
+            "session_id": sid,
         })
         category = router_state.get("intent_category", "chitchat")
         action = router_state.get("action", "conversation")
@@ -224,6 +236,7 @@ async def generate_chat_stream(request: ChatRequest) -> AsyncGenerator[str, None
             effective_room = router_state.get("room_number") or current_room
             if effective_room:
                 session_manager.set_room_number(sid, effective_room)
+                current_room = effective_room
 
             fsm_state = await service_fsm_node({
                 "action": action,
@@ -234,6 +247,15 @@ async def generate_chat_stream(request: ChatRequest) -> AsyncGenerator[str, None
 
             fsm_reply = fsm_state.get("response", "")
             is_call = bool(fsm_state.get("trigger_video_call") or action == "concierge")
+            missing_room = bool(fsm_state.get("missing_room_number", False))
+            fsm_items = router_state.get("items") or request.prompt
+
+            # CHỈ TẠO TICKET KHI ĐÃ CÓ ĐẦY ĐỦ SỐ PHÒNG
+            if not is_call and not missing_room and effective_room and action not in ["provide_room_number", "unknown"]:
+                asyncio.create_task(
+                    background_extract_and_create_ticket(fsm_items, effective_room, action, fsm_items)
+                )
+                logger.info(f"[AIChatStream] Dispatched ticket creation for '{action}' (Room {effective_room}): {fsm_items}")
 
             logger.info(f"[AIChatStream FSM] Trả lời FSM tức thì <2ms cho action: '{action}'")
 
@@ -252,6 +274,7 @@ async def generate_chat_stream(request: ChatRequest) -> AsyncGenerator[str, None
                 "full_text": fsm_reply,
                 "lang_code": final_lang_code,
                 "room_number": effective_room,
+                "missing_room_number": missing_room,
                 "action": action,
                 "trigger_video_call": is_call,
             }

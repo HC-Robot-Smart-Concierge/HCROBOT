@@ -48,12 +48,13 @@ CORE_WORKFLOWS = [
             },
             {
                 "step_id": "wf1-step-4",
-                "type": "LISTEN",
-                "title": "4. Chờ khách chạm chọn ngôn ngữ",
+                "type": "COMMUNICATE",
+                "title": "4. Giao tiếp & xác nhận yêu cầu / ngôn ngữ",
                 "params": {
-                    "input_source": "TOUCH",
-                    "timeout": 10,
-                    "output_var": "selected_lang"
+                    "input_source": "BOTH",
+                    "silence_timeout_sec": 30,
+                    "output_var": "selected_lang",
+                    "initial_prompt": "Dạ em chào quý khách! Quý khách cần em hỗ trợ thông tin hay dịch vụ gì ạ?"
                 }
             },
             {
@@ -87,12 +88,13 @@ CORE_WORKFLOWS = [
             },
             {
                 "step_id": "wf2-step-2",
-                "type": "LISTEN",
-                "title": "2. Lắng nghe nhu cầu của khách tại sảnh",
+                "type": "COMMUNICATE",
+                "title": "2. Đối thoại & lắng nghe sở thích ẩm thực / giải trí",
                 "params": {
                     "input_source": "BOTH",
-                    "timeout": 15,
-                    "output_var": "guest_choice"
+                    "silence_timeout_sec": 30,
+                    "output_var": "guest_choice",
+                    "initial_prompt": "Dạ em có thể tư vấn nhà hàng, quán bar hoặc hồ bơi cho quý khách, quý khách thích phong cách ẩm thực nào ạ?"
                 }
             },
             {
@@ -118,12 +120,12 @@ CORE_WORKFLOWS = [
             },
             {
                 "step_id": "wf2-step-5",
-                "type": "SPEAK",
-                "title": "5. Phát âm thanh hướng dẫn đi thang máy",
+                "type": "COMMUNICATE",
+                "title": "5. Hướng dẫn & giải đáp thắc mắc thêm",
                 "params": {
-                    "text": "Quý khách có thể sử dụng cụm thang máy ngay phía sau quầy lễ tân để lên nhà hàng Tầng 2 thưởng thức ẩm thực ạ.",
-                    "language": "vi-VN",
-                    "speed": 1.0
+                    "initial_prompt": "Quý khách có thể sử dụng cụm thang máy ngay phía sau quầy lễ tân để lên nhà hàng Tầng 2 thưởng thức ẩm thực ạ. Quý khách có cần em hỗ trợ thêm gì không ạ?",
+                    "silence_timeout_sec": 30,
+                    "language": "vi-VN"
                 }
             }
         ]
@@ -147,12 +149,13 @@ CORE_WORKFLOWS = [
             },
             {
                 "step_id": "wf3-step-2",
-                "type": "LISTEN",
-                "title": "2. Ghi nhận số phòng hoặc điểm đến taxi",
+                "type": "COMMUNICATE",
+                "title": "2. Đối thoại ghi nhận dịch vụ buồng phòng & số phòng",
                 "params": {
                     "input_source": "BOTH",
-                    "timeout": 30,
-                    "output_var": "request_data"
+                    "silence_timeout_sec": 30,
+                    "output_var": "request_data",
+                    "initial_prompt": "Dạ quý khách cần dọn phòng hay đặt xe taxi ạ? Vui lòng cho em biết số phòng của mình nhé!"
                 }
             },
             {
@@ -169,12 +172,12 @@ CORE_WORKFLOWS = [
             },
             {
                 "step_id": "wf3-step-4",
-                "type": "SPEAK",
-                "title": "4. Thông báo xác nhận tới khách",
+                "type": "COMMUNICATE",
+                "title": "4. Xác nhận yêu cầu & giải đáp thêm",
                 "params": {
-                    "text": "Yêu cầu của quý khách đã được chuyển tới nhân viên trực sảnh. Chúng em sẽ phục vụ trong ít phút.",
-                    "language": "vi-VN",
-                    "speed": 1.0
+                    "initial_prompt": "Yêu cầu của quý khách đã được chuyển tới nhân viên trực sảnh. Chúng em sẽ phục vụ trong ít phút. Quý khách cần hỗ trợ thêm gì không ạ?",
+                    "silence_timeout_sec": 30,
+                    "language": "vi-VN"
                 }
             },
             {
@@ -198,12 +201,12 @@ CORE_WORKFLOWS = [
         "steps": [
             {
                 "step_id": "wf4-step-1",
-                "type": "SPEAK",
-                "title": "1. Thông báo hướng dẫn tới quầy lễ tân",
+                "type": "COMMUNICATE",
+                "title": "1. Thông báo hướng dẫn & giải đáp tới quầy lễ tân",
                 "params": {
-                    "text": "Em sẽ dẫn quý khách qua Quầy Lễ Tân ngay bên cạnh để nhân viên trực tiếp hỗ trợ ạ.",
-                    "language": "vi-VN",
-                    "speed": 1.0
+                    "initial_prompt": "Em sẽ dẫn quý khách qua Quầy Lễ Tân ngay bên cạnh để nhân viên trực tiếp hỗ trợ ạ. Xin mời quý khách đi cùng em!",
+                    "silence_timeout_sec": 30,
+                    "language": "vi-VN"
                 }
             },
             {
@@ -273,12 +276,12 @@ CORE_WORKFLOWS = [
             },
             {
                 "step_id": "wf5-step-3",
-                "type": "SPEAK",
-                "title": "3. Lời cảm ơn chân thành",
+                "type": "COMMUNICATE",
+                "title": "3. Cảm ơn và lắng nghe phản hồi thêm",
                 "params": {
-                    "text": "Cảm ơn quý khách đã đánh giá! Chúc quý khách một ngày thật tuyệt vời tại Aurora!",
-                    "language": "vi-VN",
-                    "speed": 1.0
+                    "initial_prompt": "Cảm ơn quý khách đã đánh giá! Chúc quý khách một ngày thật tuyệt vời tại Aurora! Quý khách có điều gì cần góp ý thêm không ạ?",
+                    "silence_timeout_sec": 30,
+                    "language": "vi-VN"
                 }
             },
             {
@@ -348,12 +351,12 @@ CORE_WORKFLOWS = [
             },
             {
                 "step_id": "wf7-step-2",
-                "type": "SPEAK",
+                "type": "COMMUNICATE",
                 "title": "2. Hướng dẫn khách đi theo robot tới thang máy",
                 "params": {
-                    "text": "Em sẽ dẫn quý khách tới cụm thang máy để lên tầng, xin mời quý khách đi theo em ạ.",
-                    "language": "vi-VN",
-                    "speed": 1.0
+                    "initial_prompt": "Em sẽ dẫn quý khách tới cụm thang máy để lên tầng, xin mời quý khách đi theo em ạ.",
+                    "silence_timeout_sec": 30,
+                    "language": "vi-VN"
                 }
             },
             {
@@ -371,12 +374,12 @@ CORE_WORKFLOWS = [
             },
             {
                 "step_id": "wf7-step-4",
-                "type": "SPEAK",
-                "title": "4. Thông báo đã đến khu vực thang máy",
+                "type": "COMMUNICATE",
+                "title": "4. Thông báo đã đến khu vực thang máy & giải đáp thêm",
                 "params": {
-                    "text": "Dạ chúng ta đã đến cụm thang máy rồi ạ. Quý khách bấm nút để lên tầng nhé!",
-                    "language": "vi-VN",
-                    "speed": 1.0
+                    "initial_prompt": "Dạ chúng ta đã đến cụm thang máy rồi ạ. Quý khách bấm nút để lên tầng nhé! Quý khách có cần em hỗ trợ thêm gì không ạ?",
+                    "silence_timeout_sec": 30,
+                    "language": "vi-VN"
                 }
             },
             {
@@ -413,12 +416,13 @@ CORE_WORKFLOWS = [
             },
             {
                 "step_id": "wf8-step-2",
-                "type": "LISTEN",
-                "title": "2. Ghi nhận thời gian báo thức & số phòng",
+                "type": "COMMUNICATE",
+                "title": "2. Đối thoại ghi nhận thời gian báo thức & số phòng",
                 "params": {
                     "input_source": "BOTH",
-                    "timeout": 20,
-                    "output_var": "wakeup_time"
+                    "silence_timeout_sec": 30,
+                    "output_var": "wakeup_time",
+                    "initial_prompt": "Dạ quý khách muốn cài báo thức lúc mấy giờ và phòng của mình là bao nhiêu ạ?"
                 }
             },
             {
@@ -435,12 +439,12 @@ CORE_WORKFLOWS = [
             },
             {
                 "step_id": "wf8-step-4",
-                "type": "SPEAK",
-                "title": "4. Xác nhận cài đặt thành công",
+                "type": "COMMUNICATE",
+                "title": "4. Xác nhận lịch báo thức & chào khách",
                 "params": {
-                    "text": "Đã lưu lịch báo thức lúc 6 giờ 30 sáng cho quý khách. Chúc quý khách một giấc ngủ ngon!",
-                    "language": "vi-VN",
-                    "speed": 1.0
+                    "initial_prompt": "Đã lưu lịch báo thức lúc 6 giờ 30 sáng cho quý khách. Chúc quý khách một giấc ngủ ngon! Quý khách có cần hỗ trợ gì thêm không ạ?",
+                    "silence_timeout_sec": 30,
+                    "language": "vi-VN"
                 }
             },
             {

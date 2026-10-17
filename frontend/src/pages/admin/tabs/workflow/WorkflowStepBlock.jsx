@@ -190,6 +190,46 @@ export const WorkflowStepBlock = ({
             </>
           )}
 
+          {step.type === 'COMMUNICATE' && (
+            <>
+              <span className="font-semibold text-stone-700">Câu mở đầu AI</span>
+              <input
+                type="text"
+                value={params.initial_prompt || params.speech_text || params.text || ''}
+                onChange={(e) => {
+                  handleFieldChange('initial_prompt', e.target.value);
+                  handleFieldChange('speech_text', e.target.value);
+                }}
+                placeholder="Dạ em chào quý khách, em có thể hỗ trợ gì ạ?..."
+                className="flex-1 min-w-[260px] bg-stone-50 hover:bg-white text-stone-900 px-2.5 py-1 rounded-lg text-xs font-semibold border border-stone-300 focus:outline-none focus:border-stone-700 focus:bg-white shadow-2xs"
+              />
+              <span className="font-semibold text-stone-700">Kênh nhận</span>
+              <select
+                value={params.input_source || 'BOTH'}
+                onChange={(e) => handleFieldChange('input_source', e.target.value)}
+                className="bg-stone-50 hover:bg-white text-stone-900 px-2 py-1 rounded-lg text-xs font-bold border border-stone-300 focus:outline-none focus:border-stone-700 cursor-pointer shadow-2xs"
+              >
+                <option value="BOTH">Mic & Cảm ứng</option>
+                <option value="VOICE">Chỉ Mic giọng nói</option>
+                <option value="TOUCH">Chỉ Cảm ứng</option>
+              </select>
+              <span>ngắt sau</span>
+              <input
+                type="number"
+                min="5"
+                max="120"
+                value={params.silence_timeout_sec || params.timeout || 30}
+                onChange={(e) => {
+                  const num = parseInt(e.target.value) || 30;
+                  handleFieldChange('silence_timeout_sec', num);
+                  handleFieldChange('timeout', num);
+                }}
+                className="w-14 bg-stone-50 hover:bg-white text-stone-900 px-2 py-1 rounded-lg text-xs font-bold text-center border border-stone-300 focus:outline-none focus:border-stone-700 focus:bg-white shadow-2xs"
+              />
+              <span>giây im lặng</span>
+            </>
+          )}
+
           {step.type === 'SPEAK' && (
             <>
               <span className="font-semibold text-stone-700">Phát loa đọc</span>

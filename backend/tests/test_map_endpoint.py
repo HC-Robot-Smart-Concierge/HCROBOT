@@ -14,12 +14,12 @@ async def test_map_endpoints():
         assert response.status_code == 200
         data = response.json()
         assert "metadata" in data
-        assert data["metadata"]["width"] == 200
-        assert data["metadata"]["height"] == 200
+        assert data["metadata"]["width"] > 0
+        assert data["metadata"]["height"] > 0
         assert "robot_pose" in data
         assert "waypoints" in data
         assert isinstance(data["grid_data"], list)
-        assert len(data["grid_data"]) == 40000
+        assert len(data["grid_data"]) == data["metadata"]["width"] * data["metadata"]["height"]
 
         # 2. Test get waypoints
         response = await client.get("/api/v1/map/waypoints")

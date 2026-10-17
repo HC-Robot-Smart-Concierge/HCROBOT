@@ -32,10 +32,11 @@ describe('WorkflowSimulatorStudio Engine & Gazebo Navigation Logic', () => {
     expect(isGoalReached(3.2, 2.8, 3.2, 2.8)).toBe(true);
   });
 
-  it('supports all 8 core step types in simulator dispatch sequence', () => {
+  it('supports all core step types including COMMUNICATE in simulator dispatch sequence', () => {
     const supportedTypes = [
       'MOVE',
       'GREET',
+      'COMMUNICATE',
       'SPEAK',
       'SHOW',
       'LISTEN',
@@ -44,12 +45,10 @@ describe('WorkflowSimulatorStudio Engine & Gazebo Navigation Logic', () => {
       'FEEDBACK',
     ];
 
-    expect(supportedTypes).toHaveLength(8);
     expect(supportedTypes).toContain('MOVE');
     expect(supportedTypes).toContain('GREET');
-    expect(supportedTypes).toContain('SPEAK');
+    expect(supportedTypes).toContain('COMMUNICATE');
     expect(supportedTypes).toContain('SHOW');
-    expect(supportedTypes).toContain('LISTEN');
     expect(supportedTypes).toContain('RECOMMEND');
     expect(supportedTypes).toContain('CREATE_REQUEST');
     expect(supportedTypes).toContain('FEEDBACK');

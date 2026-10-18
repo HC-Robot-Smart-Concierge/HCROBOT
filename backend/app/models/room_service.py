@@ -45,7 +45,7 @@ class RoomServiceOrder(Base):
     # Relationships
     room: Mapped[Optional["Room"]] = relationship("Room")
     account: Mapped[Optional["Account"]] = relationship("Account")
-    support_request: Mapped[Optional["SupportRequest"]] = relationship("SupportRequest")
+    support_request: Mapped[Optional["SupportRequest"]] = relationship("SupportRequest", back_populates="room_service_order")
     assigned_robot: Mapped[Optional["Robot"]] = relationship("Robot")
     order_items: Mapped[List["OrderItem"]] = relationship("OrderItem", back_populates="order", cascade="all, delete-orphan")
 

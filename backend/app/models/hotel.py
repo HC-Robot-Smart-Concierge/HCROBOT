@@ -61,7 +61,6 @@ class Room(Base):
     hotel_id: Mapped[str] = mapped_column(String(50), ForeignKey("hotels.id", ondelete="CASCADE"), nullable=False, index=True)
     floor_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("floors.id", ondelete="SET NULL"), nullable=True, index=True)
     room_number: Mapped[str] = mapped_column(String(20), unique=True, index=True) # e.g. "402", "305", "502"
-    floor: Mapped[str] = mapped_column(String(50), default="Tầng 4") # compatibility label
     room_type: Mapped[str] = mapped_column(String(50), default="Deluxe Suite") # 'Standard', 'Deluxe', 'Suite', 'Presidential'
     status: Mapped[str] = mapped_column(String(50), default="AVAILABLE") # 'AVAILABLE', 'OCCUPIED', 'CLEANING', 'MAINTENANCE'
     current_guest_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
@@ -75,6 +74,20 @@ class Room(Base):
     hotel: Mapped["Hotel"] = relationship("Hotel", back_populates="rooms")
     floor_rel: Mapped[Optional["Floor"]] = relationship("Floor", back_populates="rooms")
     support_requests: Mapped[List["SupportRequest"]] = relationship("SupportRequest", back_populates="room")
+
+    @property
+    def floor(self) -> str:
+        if self.floor_rel and self.floor_rel.name:
+            return self.floor_rel.name
+        if self.floor_id:
+            num = self.floor_id.replace("FLR-0", "").replace("FLR-", "")
+            return f"Tầng {num}"
+        return "Tầng 1"
+
+    @floor.setter
+    def floor(self, val: str):
+        pass
+
 
 
 class Amenity(Base):

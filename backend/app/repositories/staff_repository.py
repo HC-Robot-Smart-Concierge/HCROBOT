@@ -76,14 +76,20 @@ class StaffRepository(BaseRepository[Staff]):
         if department_id and department_id not in ("All", ""):
             stmt = stmt.where(Staff.department_id == department_id.strip())
         elif department and department not in ("All", ""):
-            stmt = stmt.where(Staff.department == department.strip())
+            stmt = stmt.join(Staff.department_rel).where(
+                or_(
+                    Department.name.ilike(f"%{department.strip()}%"),
+                    Department.code.ilike(f"%{department.strip()}%"),
+                )
+            )
 
         if status and status not in ("All", ""):
             stmt = stmt.where(Staff.status == status.strip())
         if role and role not in ("All", ""):
             stmt = stmt.where(Staff.role == role.strip())
 
-        stmt = stmt.order_by(Staff.department_id, Staff.department, Staff.full_name)
+        stmt = stmt.order_by(Staff.department_id, Staff.full_name)
+
         res = await self.db.execute(stmt)
         return res.scalars().all()
 

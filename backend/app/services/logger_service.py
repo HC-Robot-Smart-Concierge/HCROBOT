@@ -87,8 +87,8 @@ def log_event(
         actor_type=actor_type,
         actor_id=str(actor_id) if actor_id is not None else None,
         robot_id=robot_id or "RC-001",
-        staff_id=staff_id,
         guest_id=guest_id,
+
         service_request_id=str(service_request_id) if service_request_id is not None else None,
         conversation_id=conversation_id,
         correlation_id=correlation_id,

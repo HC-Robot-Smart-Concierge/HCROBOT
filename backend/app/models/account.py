@@ -23,7 +23,6 @@ class Account(Base):
     
     # Foreign key to Department
     department_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("departments.id", ondelete="SET NULL"), nullable=True, index=True)
-    department: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, default="General") # Compatibility label
     
     default_dashboard: Mapped[str] = mapped_column(String(50), default="room_service") # 'reception', 'room_service', 'housekeeping', 'bell_services', 'maintenance', 'admin_map'
     location: Mapped[str] = mapped_column(String(100), default="Main Hotel") # e.g. 'Floor 3', 'Lobby', 'Floor 5'
@@ -43,6 +42,8 @@ class Account(Base):
 
     @property
     def department_name(self) -> Optional[str]:
+        if self.department_rel and self.department_rel.name:
+            return self.department_rel.name
         if self.department_id:
             dept_map = {
                 "DEP-HOUSEKEEPING": "Housekeeping",
@@ -58,7 +59,17 @@ class Account(Base):
             }
             if self.department_id in dept_map:
                 return dept_map[self.department_id]
-        return self.department or "General"
+        return "General"
+
+    @property
+    def department(self) -> str:
+        return self.department_name or "General"
+
+    @department.setter
+    def department(self, val: Optional[str]):
+        # No-op setter for backward compatibility with Staff(**kwargs)
+        pass
+
     # TODO (Phase sau): Kích hoạt khi chạy migration thêm assigned_account_id/created_by_account_id vào management_directives trong DB
     # directives_assigned: Mapped[List["ManagementDirective"]] = relationship(
     #     "ManagementDirective", foreign_keys="ManagementDirective.assigned_account_id", back_populates="assigned_account"

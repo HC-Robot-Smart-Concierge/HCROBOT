@@ -45,10 +45,10 @@ class LogEvent(Base):
     # Target & Scope Entities
     robot_id = Column(String(50), default="RC-001", nullable=True, index=True)
     job_id = Column(String(50), ForeignKey("jobs.id", ondelete="SET NULL"), nullable=True, index=True)
-    staff_id = Column(Integer, nullable=True, index=True)
     guest_id = Column(String(100), nullable=True, index=True)
     service_request_id = Column(String(100), nullable=True, index=True)
     conversation_id = Column(String(100), nullable=True, index=True)
+
 
     # Tracing & Correlation
     correlation_id = Column(String(100), nullable=True, index=True)

@@ -176,7 +176,6 @@ async def create_room_service_order(
         room_id=room_id,
         support_request_id=order_id,
         status="Pending",
-        items=items_payload,
         note=order_in.note,
         image_url=order_in.image_url,
         is_service_request=order_in.is_service_request,
@@ -184,6 +183,7 @@ async def create_room_service_order(
         total_amount=total_amount,
     )
     db.add(rs_order)
+
 
     # 3. Tạo các ORDER_ITEM trong bảng order_items chuẩn ERD
     for oi_data in order_items_to_create:

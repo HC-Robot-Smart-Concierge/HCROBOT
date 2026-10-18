@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from app.models.hotel import Room
     from app.models.service_type import ServiceType
     from app.models.room_service import RoomServiceOrder
+    from app.models.robot import Robot
 
 
 class SupportRequest(Base):
@@ -34,9 +35,9 @@ class SupportRequest(Base):
     source: Mapped[str] = mapped_column(String(50), default="From HCRobot") # 'From HCRobot', 'Front Desk', 'Guest App'
     status: Mapped[str] = mapped_column(String(50), default="Pending") # 'Pending', 'In Progress', 'Completed', 'Cancelled'
     
-    # Backward compatibility fields
+    # Assignment fields
     assigned_staff_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
-    assigned_robot_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    assigned_robot_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("robots.id", ondelete="SET NULL"), nullable=True, index=True)
 
     # Specialized request attributes (Room Service / F&B, Taxi, Custom orders)
     items: Mapped[Optional[List[Dict[str, Any]]]] = mapped_column(JSON, default=list, nullable=True) # e.g. [{"name": "Club Sandwich", "qty": 2, "price": 120000}]
@@ -52,8 +53,10 @@ class SupportRequest(Base):
     service_type: Mapped[Optional["ServiceType"]] = relationship("ServiceType", back_populates="support_requests")
     department: Mapped[Optional["Department"]] = relationship("Department")
     assigned_account: Mapped[Optional["Account"]] = relationship("Account")
+    assigned_robot: Mapped[Optional["Robot"]] = relationship("Robot")
     room: Mapped[Optional["Room"]] = relationship("Room", back_populates="support_requests")
     room_service_order: Mapped[Optional["RoomServiceOrder"]] = relationship("RoomServiceOrder", back_populates="support_request", uselist=False)
+
 
     def __init__(self, **kwargs):
         # Normalize legacy field aliases

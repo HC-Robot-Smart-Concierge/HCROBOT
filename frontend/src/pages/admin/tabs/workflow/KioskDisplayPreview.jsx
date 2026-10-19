@@ -60,24 +60,7 @@ export const KioskDisplayPreview = ({
   const screenMode = params.screen_mode || '';
 
   return (
-    <div className="flex-1 min-h-0 flex flex-col p-4 sm:p-5 bg-gradient-to-br from-stone-50 via-white to-amber-50/40 rounded-2xl border border-stone-200/90 shadow-inner overflow-y-auto select-none">
-      {/* 0. Top Elegant Kiosk Header */}
-      <div className="flex items-center justify-between pb-3 mb-3 border-b border-stone-200">
-        <div className="flex items-center gap-2">
-          <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse ring-4 ring-amber-100" />
-          <span className="text-[11px] font-black tracking-widest uppercase text-stone-800">
-            Aurora Concierge Kiosk
-          </span>
-          <span className="text-[10px] font-medium text-amber-700 bg-amber-100/80 px-2 py-0.5 rounded-full border border-amber-200">
-            5-Star Service
-          </span>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] font-mono font-bold text-stone-500 bg-stone-100 px-2.5 py-0.5 rounded-full border border-stone-200">
-            STEP: {activeStep.type}
-          </span>
-        </div>
-      </div>
+    <div className="flex-1 min-h-0 flex flex-col p-3 sm:p-4 bg-gradient-to-br from-stone-50 via-white to-amber-50/40 rounded-2xl border border-stone-200/90 shadow-inner overflow-y-auto select-none">
 
       {/* 1. MOVE: MEDIA PROMO, CHỈ ĐƯỜNG QR HOẶC 2D MINI MAP */}
       {activeStep.type === 'MOVE' && (

@@ -1369,16 +1369,7 @@ export const WorkflowSimulatorStudio = ({
     const stepType = activeStep.type;
     const params = activeStep.params || {};
 
-    // Tu dong mo man hinh Kiosk Robot neu buoc la SHOW hoac MOVE co media quang cao
-    if (
-      stepType === 'SHOW' ||
-      params.show_media_on_move ||
-      params.media_url ||
-      params.screen_mode === 'PROMO_VIDEO' ||
-      params.screen_mode === 'PROMO_IMAGE'
-    ) {
-      setShowKioskScreen(true);
-    }
+
 
     // Phat giong noi TTS neu buoc co loi thoai hoac buoc SHOW co thuyet minh
     if (
@@ -3341,7 +3332,7 @@ export const WorkflowSimulatorStudio = ({
         {/* FLOATING ROBOT SCREEN PREVIEW (KIOSK DISPLAY - CHIẾU VIDEO / POSTER / MENU) */}
         {showKioskScreen && (
           <div
-            className="absolute bottom-4 left-4 z-30 w-80 sm:w-96 rounded-2xl shadow-2xl border flex flex-col overflow-hidden animate-fadeIn backdrop-blur-md"
+            className="absolute bottom-4 left-4 z-30 w-80 sm:w-[400px] rounded-2xl shadow-2xl border flex flex-col overflow-hidden animate-fadeIn backdrop-blur-md"
             style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD' }}
           >
             <div
@@ -3374,7 +3365,7 @@ export const WorkflowSimulatorStudio = ({
               </button>
             </div>
 
-            <div className="max-h-80 overflow-y-auto p-2 bg-stone-50">
+            <div className="max-h-[360px] overflow-y-auto p-1.5 bg-stone-50">
               <KioskDisplayPreview activeStep={activeStep} />
             </div>
           </div>

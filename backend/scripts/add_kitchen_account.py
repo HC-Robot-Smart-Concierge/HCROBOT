@@ -65,13 +65,9 @@ async def add_kitchen_account():
                 default_dashboard="restaurant",
                 location="Khu vực Bếp Trung tâm (Tầng 1)",
                 status="available",
-                shift="Ca sáng (06:00 - 14:00)",
                 phone="+84 90 123 4567",
                 email="kitchen@aurora.hotel",
-                current_tasks_count=0,
                 is_fallback_agent=False,
-                assigned_floors="Floor 1 - 5",
-                notification_channels="Web Dashboard, Tablet Alert",
                 is_active=True,
             )
             session.add(account)

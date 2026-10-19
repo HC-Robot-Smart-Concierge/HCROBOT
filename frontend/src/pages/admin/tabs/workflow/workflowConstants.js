@@ -48,11 +48,14 @@ export const OTTO_STEP_TYPES = [
   {
     type: 'SHOW',
     label: '4. SHOW (Hiển thị nội dung màn hình)',
-    desc: 'Bật thực đơn dịch vụ, poster quảng cáo, hình ảnh nhà hàng, bản đồ tiện ích',
+    desc: 'Chỉ đường & mã QR di động, thực đơn ẩm thực đặt món, tiện ích cơ sở vật chất, video/poster quảng cáo',
     defaultParams: {
       screen_mode: 'SERVICES_GRID',
+      destination_key: 'infinity_pool',
       display_banner: 'Dịch vụ nghỉ dưỡng 5 sao & Ẩm thực thượng hạng',
       slide_duration_sec: 10,
+      speech_text: '',
+      media_url: '',
     },
   },
   {
@@ -91,7 +94,6 @@ export const OTTO_STEP_TYPES = [
     desc: 'Đóng gói phiếu dịch vụ gửi tới bộ phận buồng phòng, gọi taxi, gọi nhân viên',
     defaultParams: {
       target_department: 'Housekeeping',
-      ticket_priority: 'Normal',
       fallback_staff: true,
     },
   },
@@ -121,3 +123,19 @@ export const STEP_SCRATCH_THEMES = {
   CREATE_REQUEST: { label: 'Dispatch', bg: '#ffffff', border: '#cbd5e1', accent: '#475569', icon: Send },
   FEEDBACK: { label: 'Feedback', bg: '#ffffff', border: '#cbd5e1', accent: '#334155', icon: Star },
 };
+
+/**
+ * Danh sách các điểm đến tiện ích chỉ đường đồng bộ với FloorMap và Kiosk
+ */
+export const WAYFINDING_DESTINATIONS = [
+  { key: 'infinity_pool', name: 'Hồ Bơi Vô Cực (Tầng 5)', floorLevel: 'TẦNG 5', category: 'Thư giãn' },
+  { key: 'restaurant', name: 'Nhà Hàng & Quầy Nhận Món (Tầng 2)', floorLevel: 'TẦNG 2', category: 'Ẩm thực' },
+  { key: 'spa', name: 'Thảo Mộc Spa & Massage (Tầng 5)', floorLevel: 'TẦNG 5', category: 'Chăm sóc sức khỏe' },
+  { key: 'gym', name: 'Fitness & Gym Center (Tầng 5)', floorLevel: 'TẦNG 5', category: 'Thể thao' },
+  { key: 'rooftop_coffee', name: 'Rooftop Coffee & Bar (Tầng 6)', floorLevel: 'TẦNG 6', category: 'Cafe sân thượng' },
+  { key: 'reception', name: 'Quầy Lễ Tân (Tầng Trệt)', floorLevel: 'TẦNG TRỆT', category: 'Tiếp tân' },
+  { key: 'restroom_f2', name: 'Nhà Vệ Sinh (Tầng 2)', floorLevel: 'TẦNG 2', category: 'Vệ sinh' },
+  { key: 'parking_car', name: 'Bãi Đỗ Xe Ô Tô (Hầm B2)', floorLevel: 'HẦM B2', category: 'Bãi xe' },
+  { key: 'gift_shop', name: 'Cửa Hàng Lưu Niệm (Tầng 6)', floorLevel: 'TẦNG 6', category: 'Mua sắm' },
+];
+

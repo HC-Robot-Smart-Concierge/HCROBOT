@@ -646,6 +646,212 @@ describe('WorkflowSimulatorStudio Engine & Gazebo Navigation Logic', () => {
     expect(selectedEndpoint).toBeNull();
     expect(isEndpointEditMode).toBe(false);
   });
+
+  it('resolves custom endpoint waypoints (e.g. Toilet) and synchronizes step title', () => {
+    const customEndpoints = [
+      { id: 'wp-toilet', name: 'Toilet', x: 6.35, y: 4.22 },
+      { id: 'LOBBY_LOUNGE', name: 'Khu Sofa Khách Chờ Sảnh', x: 1.67, y: 3.77 },
+    ];
+
+    const toKey = 'wp-toilet';
+    const fromKey = 'LOBBY_LOUNGE';
+    const targetWp = customEndpoints.find((e) => e.id === toKey) || GAZEBO_LOBBY_WAYPOINTS[toKey];
+    const fromWp = customEndpoints.find((e) => e.id === fromKey) || GAZEBO_LOBBY_WAYPOINTS[fromKey];
+
+    expect(targetWp).toBeDefined();
+    expect(targetWp.name).toBe('Toilet');
+    expect(targetWp.x).toBe(6.35);
+    expect(targetWp.y).toBe(4.22);
+
+    expect(fromWp).toBeDefined();
+    expect(fromWp.name).toBe('Khu Sofa Khách Chờ Sảnh');
+
+    const stepIdx = 0;
+    const toCleanName = targetWp.name.split('(')[0].trim();
+    const newTitle = `${stepIdx + 1}. Di chuyển tới ${toCleanName}`;
+    expect(newTitle).toBe('1. Di chuyển tới Toilet');
+
+    const initialStep = {
+      type: 'MOVE',
+      title: '1. Di chuyển ra Cửa chính đón khách',
+      params: { target_value: 'MAIN_ENTRANCE', target_x: 5.2, target_y: 1.0 },
+    };
+
+    const updatedStep = {
+      ...initialStep,
+      title: newTitle,
+      params: {
+        ...initialStep.params,
+        from_waypoint: fromKey,
+        from_waypoint_name: fromWp.name,
+        target_value: toKey,
+        target_waypoint_id: toKey,
+        waypoint_name: targetWp.name,
+        target_x: targetWp.x,
+        target_y: targetWp.y,
+      },
+    };
+
+    expect(updatedStep.title).toBe('1. Di chuyển tới Toilet');
+    expect(updatedStep.params.target_x).toBe(6.35);
+    expect(updatedStep.params.target_y).toBe(4.22);
+    expect(updatedStep.params.from_waypoint).toBe('LOBBY_LOUNGE');
+
+    // validateWorkflowStepZone with customEndpoints
+    const validationResult = validateWorkflowStepZone(updatedStep, SIMULATOR_HOTEL_ZONES, customEndpoints);
+    expect(validationResult.valid).toBe(true);
+  });
+
+  it('handles Patrol Loop mode: resets to step 0 upon reaching the end when loop mode is active', () => {
+    let currentStepIndex = 2;
+    const totalSteps = 3;
+    let isLoopMode = true;
+    let isPlaying = true;
+    let loopNotification = null;
+
+    const simulateStepFinish = () => {
+      const nextIdx = currentStepIndex + 1;
+      if (nextIdx < totalSteps) {
+        currentStepIndex = nextIdx;
+      } else if (isLoopMode && totalSteps > 0) {
+        loopNotification = 'Đã hết chu trình, tự động lặp lại hành trình tuần tra';
+        currentStepIndex = 0;
+      } else {
+        isPlaying = false;
+        currentStepIndex = 0;
+      }
+    };
+
+    // Khi đến bước cuối và loop mode đang bật
+    simulateStepFinish();
+    expect(currentStepIndex).toBe(0);
+    expect(isPlaying).toBe(true);
+    expect(loopNotification).toContain('lặp lại hành trình tuần tra');
+
+    // Khi loop mode tắt
+    currentStepIndex = 2;
+    isLoopMode = false;
+    simulateStepFinish();
+    expect(currentStepIndex).toBe(0);
+    expect(isPlaying).toBe(false);
+  });
+
+  it('supports concurrent broadcast on MOVE step (vừa đi vừa phát quảng cáo) and assigns PATROL status', () => {
+    const moveStepWithBroadcast = {
+      type: 'MOVE',
+      title: 'Tuần tra phát loa sảnh',
+      params: {
+        target_value: 'FRONT_DESK',
+        target_x: 5.2,
+        target_y: 2.0,
+        broadcast_speech: 'Nhà hàng tầng 2 đang có ưu đãi tiệc trà chiều cho quý khách',
+      },
+    };
+
+    const hasBroadcast =
+      moveStepWithBroadcast.type === 'MOVE' &&
+      Boolean(moveStepWithBroadcast.params?.broadcast_speech);
+
+    expect(hasBroadcast).toBe(true);
+
+    const isMoving = true;
+    const robotStatus = (() => {
+      if (isMoving && hasBroadcast) {
+        return {
+          code: 'PATROL',
+          label: 'TUẦN TRA & PHÁT LOA',
+          dotColor: '#6366F1',
+          isMoving: true,
+        };
+      }
+      return { code: 'NAV', label: 'ĐIỀU HƯỚNG', dotColor: '#262626', isMoving: true };
+    })();
+
+    expect(robotStatus.code).toBe('PATROL');
+    expect(robotStatus.label).toBe('TUẦN TRA & PHÁT LOA');
+    expect(robotStatus.isMoving).toBe(true);
+  });
+
+  it('handles SHOW step for Video & Image advertisement display and assigns SHOW_VIDEO / SHOW_IMAGE status', () => {
+    const videoStep = {
+      type: 'SHOW',
+      title: 'Chiếu video giới thiệu tiện ích resort 5 sao',
+      params: {
+        screen_mode: 'PROMO_VIDEO',
+        media_type: 'VIDEO',
+        media_url: 'https://example.com/promo.mp4',
+        display_banner: 'Ưu đãi kỳ nghỉ hè',
+        timeout: 15,
+      },
+    };
+
+    const isVideo =
+      videoStep.params?.media_type === 'VIDEO' ||
+      videoStep.params?.screen_mode === 'PROMO_VIDEO' ||
+      /\.(mp4|webm)$/i.test(videoStep.params?.media_url);
+
+    expect(isVideo).toBe(true);
+
+    const getStatusForShow = (step) => {
+      const isVid =
+        step.params?.media_type === 'VIDEO' ||
+        step.params?.screen_mode === 'PROMO_VIDEO' ||
+        /\.(mp4|webm)$/i.test(step.params?.media_url);
+      const isImg =
+        step.params?.media_type === 'IMAGE' ||
+        step.params?.screen_mode === 'PROMO_IMAGE' ||
+        step.params?.screen_mode === 'PROMO_SUMMER';
+      if (isVid) return { code: 'SHOW_VIDEO', label: 'CHIẾU VIDEO QUẢNG CÁO' };
+      if (isImg) return { code: 'SHOW_IMAGE', label: 'CHIẾU POSTER QUẢNG CÁO' };
+      return { code: 'SHOW', label: 'MÀN HÌNH QUẢNG CÁO' };
+    };
+
+    expect(getStatusForShow(videoStep).code).toBe('SHOW_VIDEO');
+
+    const imageStep = {
+      type: 'SHOW',
+      title: 'Chiếu poster tiệc trà chiều hoàng gia',
+      params: {
+        screen_mode: 'PROMO_IMAGE',
+        media_type: 'IMAGE',
+        media_url: 'https://example.com/poster.jpg',
+      },
+    };
+
+    expect(getStatusForShow(imageStep).code).toBe('SHOW_IMAGE');
+  });
+
+  it('supports concurrent screen media promo on MOVE step (vừa đi vừa chiếu video/poster)', () => {
+    const moveWithScreenPromo = {
+      type: 'MOVE',
+      title: 'Tuần tra sảnh và chiếu video quảng cáo',
+      params: {
+        target_value: 'FRONT_DESK',
+        show_media_on_move: true,
+        screen_mode: 'PROMO_VIDEO',
+        media_type: 'VIDEO',
+      },
+    };
+
+    const hasMediaMove =
+      moveWithScreenPromo.type === 'MOVE' &&
+      (Boolean(moveWithScreenPromo.params?.show_media_on_move) ||
+        Boolean(moveWithScreenPromo.params?.media_url) ||
+        moveWithScreenPromo.params?.screen_mode === 'PROMO_VIDEO' ||
+        moveWithScreenPromo.params?.screen_mode === 'PROMO_IMAGE');
+
+    expect(hasMediaMove).toBe(true);
+
+    const isMoving = true;
+    const robotStatus = isMoving && hasMediaMove
+      ? { code: 'PATROL_MEDIA', label: 'TUẦN TRA • CHIẾU QC', isMoving: true }
+      : { code: 'NAV', label: 'ĐIỀU HƯỚNG', isMoving: true };
+
+    expect(robotStatus.code).toBe('PATROL_MEDIA');
+    expect(robotStatus.label).toBe('TUẦN TRA • CHIẾU QC');
+  });
 });
+
+
 
 

@@ -19,7 +19,6 @@ class ServiceType(Base):
     name: Mapped[str] = mapped_column(String(100), nullable=False) # e.g. 'Giao thêm khăn/nước', 'Dọn phòng', 'Vận chuyển hành lý'
     department_id: Mapped[str] = mapped_column(String(50), ForeignKey("departments.id", ondelete="CASCADE"), nullable=False, index=True)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    default_priority: Mapped[str] = mapped_column(String(20), default="NORMAL") # 'LOW', 'NORMAL', 'HIGH', 'URGENT'
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

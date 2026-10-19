@@ -34,7 +34,6 @@ async def create_live_call_session(
             guest_name=f"Guest ({room_loc})",
             department_id="DEP-CONCIERGE",
             service_type_id="ST-CONCIERGE",
-            priority="HIGH",
             status="Pending",
         )
         db.add(req)
@@ -105,7 +104,6 @@ async def auto_create_ticket(
                 items=[{"name": items, "qty": 1}],
                 source="HCRobot Concierge AI Chat",
                 status="Pending",
-                priority="NORMAL",
                 progress=0,
             )
             db.add(order)
@@ -141,7 +139,6 @@ async def auto_create_ticket(
                 guest_name=f"Guest (Room {rm})",
                 department_id="DEP-HOUSEKEEPING",
                 service_type_id="ST-HOUSEKEEPING",
-                priority="NORMAL",
                 status="Unassigned",
             )
             db.add(req)
@@ -177,7 +174,6 @@ async def auto_create_ticket(
                 description=items,
                 department_id="DEP-BELL",
                 service_type_id="ST-BELL",
-                priority="NORMAL",
                 status="Pending",
             )
             db.add(req)
@@ -213,7 +209,6 @@ async def auto_create_ticket(
                 guest_name=f"Guest (Room {rm})",
                 department_id="DEP-MAINTENANCE",
                 service_type_id="ST-MAINTENANCE",
-                priority="HIGH",
                 status="Pending",
             )
             db.add(req)
@@ -249,7 +244,6 @@ async def auto_create_ticket(
                 guest_name=f"Guest (Room {rm})",
                 department_id="DEP-TAXI",
                 service_type_id="ST-TAXI",
-                priority="NORMAL",
                 status="Pending",
             )
             db.add(req)
@@ -285,7 +279,6 @@ async def auto_create_ticket(
                 guest_name=f"Guest (Room {rm})",
                 department_id="DEP-CONCIERGE",
                 service_type_id="ST-CONCIERGE",
-                priority="HIGH",
                 status="Pending",
             )
             db.add(req)
@@ -322,7 +315,6 @@ async def auto_create_ticket(
                 guest_name=f"Guest (Room {rm})",
                 department_id="DEP-RECEPTION",
                 service_type_id="ST-RECEPTION",
-                priority="NORMAL",
                 status="Pending",
             )
             db.add(req)

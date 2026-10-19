@@ -16,7 +16,6 @@ export function QuickRequestModal({ isOpen, onClose, onCreated }) {
   const [guestName, setGuestName] = useState('');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [priority, setPriority] = useState('NORMAL');
   const [loading, setLoading] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
@@ -40,7 +39,6 @@ export function QuickRequestModal({ isOpen, onClose, onCreated }) {
         title: title.trim(),
         description: description.trim(),
         guest_name: guestName.trim() || 'Khách lưu trú',
-        priority,
       };
 
       if (department === 'Reception') {
@@ -61,7 +59,6 @@ export function QuickRequestModal({ isOpen, onClose, onCreated }) {
           items: [{ name: title.trim(), qty: 1, notes: description.trim() }],
           note: description.trim() || title.trim(),
           guest_name: guestName.trim() || 'Khách lưu trú',
-          priority,
         });
       } else if (department === 'Taxi') {
         res = await createTaxiRequest({
@@ -89,7 +86,6 @@ export function QuickRequestModal({ isOpen, onClose, onCreated }) {
         res = await createOperationalDirective({
           title: title.trim(),
           department: 'Executive',
-          priority,
           location: roomNumber.trim() || 'Toàn khách sạn',
           description: description.trim(),
           type: 'General',
@@ -151,37 +147,21 @@ export function QuickRequestModal({ isOpen, onClose, onCreated }) {
 
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="mt-4 space-y-3.5">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-bold text-palette-charcoal mb-1">Bộ phận tiếp nhận</label>
-              <select
-                value={department}
-                onChange={(e) => setDepartment(e.target.value)}
-                className="hc-select"
-              >
-                <option value="Housekeeping">Buồng phòng (Housekeeping)</option>
-                <option value="Room Service">Phục vụ phòng (Room Service / F&B)</option>
-                <option value="Taxi">Đặt xe & Vận chuyển (Taxi / Transport)</option>
-                <option value="Reception">Lễ tân (Reception)</option>
-                <option value="Bell Services">Hành lý & Sảnh (Bell Services)</option>
-                <option value="Maintenance">Kỹ thuật & Bảo trì (Maintenance)</option>
-                <option value="Directive">Chỉ thị Điều hành (Directive)</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-palette-charcoal mb-1">Mức độ ưu tiên</label>
-              <select
-                value={priority}
-                onChange={(e) => setPriority(e.target.value)}
-                className="hc-select"
-              >
-                <option value="LOW">Thấp (Low)</option>
-                <option value="NORMAL">Bình thường (Normal)</option>
-                <option value="HIGH">Ưu tiên cao (High)</option>
-                <option value="URGENT">Khẩn cấp (Urgent)</option>
-              </select>
-            </div>
+          <div>
+            <label className="block text-xs font-bold text-palette-charcoal mb-1">Bộ phận tiếp nhận</label>
+            <select
+              value={department}
+              onChange={(e) => setDepartment(e.target.value)}
+              className="hc-select"
+            >
+              <option value="Housekeeping">Buồng phòng (Housekeeping)</option>
+              <option value="Room Service">Phục vụ phòng (Room Service / F&B)</option>
+              <option value="Taxi">Đặt xe & Vận chuyển (Taxi / Transport)</option>
+              <option value="Reception">Lễ tân (Reception)</option>
+              <option value="Bell Services">Hành lý & Sảnh (Bell Services)</option>
+              <option value="Maintenance">Kỹ thuật & Bảo trì (Maintenance)</option>
+              <option value="Directive">Chỉ thị Điều hành (Directive)</option>
+            </select>
           </div>
 
           <div className="grid grid-cols-2 gap-3">

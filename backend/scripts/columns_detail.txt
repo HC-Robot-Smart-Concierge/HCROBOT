@@ -1,0 +1,606 @@
+=== TABLE: accounts (15 rows) ===
+Columns:
+  - id (character varying, NOT NULL)
+  - username (character varying, NOT NULL)
+  - password_hash (character varying, NOT NULL, def=''::character varying)
+  - code (character varying, NOT NULL)
+  - full_name (character varying, NOT NULL)
+  - role (character varying, NOT NULL, def='STAFF'::character varying)
+  - department_id (character varying, NULL)
+  - department (character varying, NULL)
+  - default_dashboard (character varying, NOT NULL, def='room_service'::character varying)
+  - location (character varying, NOT NULL, def='Main Hotel'::character varying)
+  - status (character varying, NOT NULL, def='available'::character varying)
+  - avatar_url (text, NULL)
+  - email (character varying, NULL)
+  - phone (character varying, NULL)
+  - is_fallback_agent (boolean, NOT NULL, def=false)
+  - is_active (boolean, NOT NULL, def=true)
+  - created_at (timestamp without time zone, NOT NULL, def=now())
+  - updated_at (timestamp without time zone, NOT NULL, def=now())
+  - current_tasks_count (integer, NULL, def=0)
+  - shift (character varying, NULL, def='Morning Shift (06:00 - 14:00)'::character varying)
+  - assigned_floors (character varying, NULL, def='Floor 1 - 5'::character varying)
+  - notification_channels (character varying, NULL, def='Web Dashboard, Tablet Alert'::character varying)
+Foreign Keys:
+  * department_id -> departments.id
+
+=== TABLE: amenities (4 rows) ===
+Columns:
+  - id (character varying, NOT NULL)
+  - hotel_id (character varying, NOT NULL)
+  - floor_id (character varying, NULL)
+  - name (character varying, NOT NULL)
+  - category (character varying, NOT NULL)
+  - location (character varying, NOT NULL)
+  - open_time (character varying, NOT NULL)
+  - close_time (character varying, NOT NULL)
+  - description (text, NULL)
+  - is_active (boolean, NOT NULL, def=true)
+  - created_at (timestamp without time zone, NULL, def=CURRENT_TIMESTAMP)
+  - updated_at (timestamp without time zone, NULL, def=CURRENT_TIMESTAMP)
+Foreign Keys:
+  * floor_id -> floors.id
+  * hotel_id -> hotels.id
+
+=== TABLE: audit_logs (360 rows) ===
+Columns:
+  - id (integer, NOT NULL, def=nextval('audit_logs_id_seq'::regclass))
+  - timestamp (timestamp with time zone, NOT NULL, def=now())
+  - actor_type (USER-DEFINED, NOT NULL)
+  - actor_id (character varying, NOT NULL)
+  - actor_name (character varying, NULL)
+  - action (character varying, NOT NULL)
+  - resource_type (character varying, NOT NULL)
+  - resource_id (character varying, NULL)
+  - before_state (jsonb, NULL)
+  - after_state (jsonb, NULL)
+  - correlation_id (character varying, NULL)
+  - ip_address (character varying, NULL)
+  - user_agent (character varying, NULL)
+  - created_at (timestamp with time zone, NOT NULL, def=now())
+  - account_id (character varying, NULL)
+Foreign Keys:
+  * account_id -> accounts.id
+
+=== TABLE: chat_messages (604 rows) ===
+Columns:
+  - id (integer, NOT NULL, def=nextval('chat_messages_id_seq'::regclass))
+  - session_id (character varying, NOT NULL)
+  - sender (character varying, NOT NULL)
+  - text (text, NOT NULL)
+  - language (character varying, NULL)
+  - intent_action (character varying, NULL)
+  - created_at (timestamp without time zone, NULL)
+Foreign Keys:
+  * session_id -> chat_sessions.id
+
+=== TABLE: chat_sessions (120 rows) ===
+Columns:
+  - id (character varying, NOT NULL)
+  - room_number (character varying, NULL)
+  - guest_name (character varying, NULL)
+  - is_active (boolean, NULL)
+  - created_at (timestamp without time zone, NULL)
+  - updated_at (timestamp without time zone, NULL)
+  - account_id (character varying, NULL)
+Foreign Keys:
+  * account_id -> accounts.id
+
+=== TABLE: departments (10 rows) ===
+Columns:
+  - id (character varying, NOT NULL)
+  - code (character varying, NOT NULL)
+  - name (character varying, NOT NULL)
+  - description (text, NULL)
+  - is_active (boolean, NOT NULL, def=true)
+  - created_at (timestamp without time zone, NOT NULL, def=now())
+  - updated_at (timestamp without time zone, NOT NULL, def=now())
+
+=== TABLE: dialogue_scenarios (30 rows) ===
+Columns:
+  - id (character varying, NOT NULL)
+  - title (character varying, NOT NULL)
+  - category (character varying, NOT NULL)
+  - match_keywords (json, NOT NULL)
+  - match_type (character varying, NOT NULL)
+  - response_vi (text, NOT NULL)
+  - response_en (text, NULL)
+  - action_type (character varying, NOT NULL)
+  - action_payload (json, NULL)
+  - is_fast_path (boolean, NOT NULL)
+  - is_active (boolean, NOT NULL)
+  - priority (integer, NOT NULL)
+  - created_at (timestamp without time zone, NOT NULL)
+  - updated_at (timestamp without time zone, NOT NULL)
+
+=== TABLE: endpoint_group_members (0 rows) ===
+Columns:
+  - id (integer, NOT NULL, def=nextval('endpoint_group_members_id_seq'::regclass))
+  - endpoint_id (character varying, NOT NULL)
+  - endpoint_group_id (character varying, NOT NULL)
+  - created_at (timestamp without time zone, NOT NULL)
+Foreign Keys:
+  * endpoint_group_id -> endpoint_groups.id
+  * endpoint_id -> endpoints.id
+
+=== TABLE: endpoint_groups (2 rows) ===
+Columns:
+  - id (character varying, NOT NULL)
+  - name (character varying, NOT NULL)
+  - description (text, NULL)
+  - created_at (timestamp without time zone, NOT NULL)
+  - updated_at (timestamp without time zone, NOT NULL)
+
+=== TABLE: endpoints (3 rows) ===
+Columns:
+  - id (character varying, NOT NULL)
+  - map_id (character varying, NULL)
+  - name (character varying, NOT NULL)
+  - floor (character varying, NOT NULL)
+  - x (double precision, NOT NULL)
+  - y (double precision, NOT NULL)
+  - yaw (double precision, NOT NULL)
+  - type (character varying, NOT NULL)
+  - description (text, NULL)
+  - created_at (timestamp without time zone, NOT NULL)
+  - updated_at (timestamp without time zone, NOT NULL)
+
+=== TABLE: events (2 rows) ===
+Columns:
+  - id (character varying, NOT NULL)
+  - hotel_id (character varying, NOT NULL)
+  - title (character varying, NOT NULL)
+  - location (character varying, NOT NULL)
+  - start_time (timestamp without time zone, NOT NULL)
+  - end_time (timestamp without time zone, NOT NULL)
+  - description (text, NULL)
+  - is_active (boolean, NOT NULL)
+  - created_at (timestamp without time zone, NOT NULL)
+  - updated_at (timestamp without time zone, NOT NULL)
+Foreign Keys:
+  * hotel_id -> hotels.id
+
+=== TABLE: facilities (0 rows) ===
+Columns:
+  - id (character varying, NOT NULL)
+  - hotel_id (character varying, NOT NULL)
+  - name (character varying, NOT NULL)
+  - category (character varying, NOT NULL)
+  - location (character varying, NOT NULL)
+  - open_time (character varying, NOT NULL)
+  - close_time (character varying, NOT NULL)
+  - description (text, NULL)
+  - is_active (boolean, NOT NULL)
+  - created_at (timestamp without time zone, NOT NULL)
+  - updated_at (timestamp without time zone, NOT NULL)
+  - floor_id (character varying, NULL)
+Foreign Keys:
+  * hotel_id -> hotels.id
+
+=== TABLE: feedbacks (6 rows) ===
+Columns:
+  - id (character varying, NOT NULL)
+  - chat_session_id (character varying, NULL)
+  - account_id (character varying, NULL)
+  - rating (integer, NOT NULL)
+  - category (character varying, NOT NULL)
+  - comment (text, NULL)
+  - guest_name (character varying, NULL)
+  - room_number (character varying, NULL)
+  - created_at (timestamp without time zone, NOT NULL)
+Foreign Keys:
+  * account_id -> accounts.id
+  * chat_session_id -> chat_sessions.id
+
+=== TABLE: floors (5 rows) ===
+Columns:
+  - id (character varying, NOT NULL)
+  - hotel_id (character varying, NOT NULL)
+  - floor_number (integer, NOT NULL)
+  - name (character varying, NOT NULL)
+  - description (text, NULL)
+  - created_at (timestamp without time zone, NULL, def=CURRENT_TIMESTAMP)
+  - updated_at (timestamp without time zone, NULL, def=CURRENT_TIMESTAMP)
+Foreign Keys:
+  * hotel_id -> hotels.id
+
+=== TABLE: food_items (78 rows) ===
+Columns:
+  - id (character varying, NOT NULL)
+  - name (character varying, NOT NULL)
+  - category (character varying, NOT NULL, def='Món chính'::character varying)
+  - description (text, NULL)
+  - image_url (character varying, NULL)
+  - prep_time_minutes (integer, NOT NULL, def=15)
+  - is_available (boolean, NOT NULL, def=true)
+  - created_at (timestamp without time zone, NULL, def=(now() AT TIME ZONE 'utc'::text))
+  - updated_at (timestamp without time zone, NULL, def=(now() AT TIME ZONE 'utc'::text))
+
+=== TABLE: hotels (1 rows) ===
+Columns:
+  - id (character varying, NOT NULL)
+  - name (character varying, NOT NULL)
+  - address (character varying, NOT NULL)
+  - phone (character varying, NULL)
+  - email (character varying, NULL)
+  - star_rating (integer, NOT NULL)
+  - description (text, NULL)
+  - is_active (boolean, NOT NULL)
+  - created_at (timestamp without time zone, NOT NULL)
+  - updated_at (timestamp without time zone, NOT NULL)
+
+=== TABLE: human_support_sessions (8 rows) ===
+Columns:
+  - id (character varying, NOT NULL)
+  - session_code (character varying, NOT NULL)
+  - room_number (character varying, NOT NULL)
+  - guest_name (character varying, NOT NULL)
+  - category (character varying, NOT NULL)
+  - origin_robot_code (character varying, NOT NULL)
+  - sentiment (character varying, NOT NULL)
+  - wait_time_label (character varying, NOT NULL)
+  - status (character varying, NOT NULL)
+  - linked_request_id (character varying, NULL)
+  - messages (json, NOT NULL)
+  - created_at (timestamp without time zone, NOT NULL)
+  - updated_at (timestamp without time zone, NOT NULL)
+  - chat_session_id (character varying, NULL)
+  - account_id (character varying, NULL)
+  - recording_url (text, NULL)
+  - recording_public_id (character varying, NULL)
+  - recording_duration (integer, NULL)
+  - thumbnail_url (text, NULL)
+  - call_started_at (timestamp without time zone, NULL)
+  - call_ended_at (timestamp without time zone, NULL)
+Foreign Keys:
+  * account_id -> accounts.id
+  * chat_session_id -> chat_sessions.id
+
+=== TABLE: job_events (0 rows) ===
+Columns:
+  - id (integer, NOT NULL, def=nextval('job_events_id_seq'::regclass))
+  - job_id (character varying, NOT NULL)
+  - event_type (character varying, NOT NULL)
+  - message (text, NOT NULL)
+  - severity (character varying, NOT NULL, def='INFO'::character varying)
+  - metadata_payload (json, NOT NULL, def='{}'::json)
+  - created_at (timestamp without time zone, NOT NULL, def=now())
+Foreign Keys:
+  * job_id -> jobs.id
+
+=== TABLE: job_steps (0 rows) ===
+Columns:
+  - id (character varying, NOT NULL)
+  - job_id (character varying, NOT NULL)
+  - step_index (integer, NOT NULL)
+  - step_type (character varying, NOT NULL)
+  - params (json, NOT NULL, def='{}'::json)
+  - status (character varying, NOT NULL, def='PENDING'::character varying)
+  - started_at (timestamp without time zone, NULL)
+  - completed_at (timestamp without time zone, NULL)
+  - result_payload (json, NULL)
+Foreign Keys:
+  * job_id -> jobs.id
+
+=== TABLE: jobs (0 rows) ===
+Columns:
+  - id (character varying, NOT NULL)
+  - job_code (character varying, NOT NULL)
+  - title (character varying, NOT NULL)
+  - workflow_id (character varying, NULL)
+  - chat_session_id (character varying, NULL)
+  - robot_id (character varying, NULL)
+  - trigger_type (character varying, NOT NULL, def='MANUAL'::character varying)
+  - status (character varying, NOT NULL, def='PENDING'::character varying)
+  - current_step_index (integer, NOT NULL, def=0)
+  - total_steps (integer, NOT NULL, def=0)
+  - started_at (timestamp without time zone, NULL)
+  - completed_at (timestamp without time zone, NULL)
+  - error_message (text, NULL)
+  - created_at (timestamp without time zone, NOT NULL, def=now())
+  - updated_at (timestamp without time zone, NOT NULL, def=now())
+  - schedule_id (character varying, NULL)
+  - account_id (character varying, NULL)
+Foreign Keys:
+  * account_id -> accounts.id
+  * chat_session_id -> chat_sessions.id
+  * robot_id -> robots.id
+  * schedule_id -> schedules.id
+  * workflow_id -> robot_workflows.id
+
+=== TABLE: log_events (477 rows) ===
+Columns:
+  - id (integer, NOT NULL, def=nextval('log_events_id_seq'::regclass))
+  - timestamp (timestamp with time zone, NOT NULL, def=now())
+  - level (USER-DEFINED, NOT NULL)
+  - category (USER-DEFINED, NOT NULL)
+  - event_type (character varying, NOT NULL)
+  - module (character varying, NULL)
+  - message (text, NOT NULL)
+  - actor_type (USER-DEFINED, NOT NULL)
+  - actor_id (character varying, NULL)
+  - robot_id (character varying, NULL)
+  - staff_id (integer, NULL)
+  - guest_id (character varying, NULL)
+  - service_request_id (character varying, NULL)
+  - conversation_id (character varying, NULL)
+  - correlation_id (character varying, NULL)
+  - request_id (character varying, NULL)
+  - trace_id (character varying, NULL)
+  - metadata_payload (jsonb, NULL)
+  - ip_address (character varying, NULL)
+  - user_agent (character varying, NULL)
+  - created_at (timestamp with time zone, NOT NULL, def=now())
+  - account_id (character varying, NULL)
+  - job_id (character varying, NULL)
+Foreign Keys:
+  * account_id -> accounts.id
+  * robot_id -> robots.id
+  * job_id -> jobs.id
+
+=== TABLE: management_directives (6 rows) ===
+Columns:
+  - id (character varying, NOT NULL)
+  - code (character varying, NOT NULL)
+  - title (character varying, NOT NULL)
+  - department (character varying, NOT NULL)
+  - priority (character varying, NOT NULL)
+  - location (character varying, NOT NULL)
+  - reported_time_label (character varying, NOT NULL)
+  - description (character varying, NULL)
+  - status (character varying, NOT NULL)
+  - assigned_staff_name (character varying, NULL)
+  - assigned_eta (character varying, NULL)
+  - assigned_staff_avatar (character varying, NULL)
+  - type (character varying, NOT NULL)
+  - created_by (character varying, NOT NULL)
+  - created_at (timestamp without time zone, NOT NULL)
+  - updated_at (timestamp without time zone, NOT NULL)
+  - assigned_account_id (character varying, NULL)
+  - created_by_account_id (character varying, NULL)
+  - account_id (character varying, NULL)
+Foreign Keys:
+  * assigned_account_id -> accounts.id
+  * created_by_account_id -> accounts.id
+  * account_id -> accounts.id
+
+=== TABLE: menu_items (82 rows) ===
+Columns:
+  - id (character varying, NOT NULL)
+  - menu_id (character varying, NOT NULL)
+  - food_item_id (character varying, NULL)
+  - name (character varying, NULL)
+  - price (double precision, NOT NULL, def=0.0)
+  - currency (character varying, NULL, def='VND'::character varying)
+  - image_url (character varying, NULL)
+  - category (character varying, NULL)
+  - is_available (boolean, NOT NULL, def=true)
+  - description (text, NULL)
+  - display_order (integer, NULL, def=0)
+  - created_at (timestamp without time zone, NOT NULL, def=CURRENT_TIMESTAMP)
+  - updated_at (timestamp without time zone, NOT NULL, def=CURRENT_TIMESTAMP)
+Foreign Keys:
+  * food_item_id -> food_items.id
+  * menu_id -> menus.id
+  * food_item_id -> food_items.id
+  * menu_id -> menus.id
+
+=== TABLE: menus (10 rows) ===
+Columns:
+  - id (character varying, NOT NULL)
+  - name (character varying, NOT NULL)
+  - category (character varying, NOT NULL)
+  - description (text, NULL)
+  - is_active (boolean, NOT NULL)
+  - created_at (timestamp without time zone, NOT NULL)
+  - updated_at (timestamp without time zone, NOT NULL)
+
+=== TABLE: notifications (192 rows) ===
+Columns:
+  - id (character varying, NOT NULL)
+  - department (character varying, NOT NULL)
+  - title (character varying, NOT NULL)
+  - description (character varying, NOT NULL)
+  - request_id (character varying, NULL)
+  - request_type (character varying, NULL)
+  - type (character varying, NOT NULL)
+  - is_read (boolean, NOT NULL)
+  - created_at (timestamp without time zone, NOT NULL)
+  - updated_at (timestamp without time zone, NOT NULL)
+  - account_id (character varying, NULL)
+Foreign Keys:
+  * account_id -> accounts.id
+
+=== TABLE: order_items (32 rows) ===
+Columns:
+  - id (integer, NOT NULL, def=nextval('order_items_id_seq'::regclass))
+  - order_id (character varying, NOT NULL)
+  - menu_item_id (character varying, NULL)
+  - item_name (character varying, NOT NULL)
+  - quantity (integer, NOT NULL)
+  - unit_price (double precision, NOT NULL)
+  - subtotal (double precision, NOT NULL)
+  - notes (character varying, NULL)
+  - created_at (timestamp without time zone, NOT NULL)
+  - food_item_id (character varying, NULL)
+Foreign Keys:
+  * food_item_id -> food_items.id
+  * menu_item_id -> menu_items.id
+  * order_id -> room_service_orders.id
+
+=== TABLE: robot_units (0 rows) ===
+Columns:
+  - id (character varying, NOT NULL)
+  - unit_code (character varying, NOT NULL)
+  - name (character varying, NOT NULL)
+  - model_type (character varying, NOT NULL)
+  - status (character varying, NOT NULL)
+  - status_color (character varying, NOT NULL)
+  - location (character varying, NOT NULL)
+  - battery_level (integer, NOT NULL)
+  - current_payload (character varying, NULL)
+  - is_online (boolean, NOT NULL)
+  - created_at (timestamp without time zone, NOT NULL)
+  - updated_at (timestamp without time zone, NOT NULL)
+
+=== TABLE: robot_waypoints (0 rows) ===
+Columns:
+  - id (character varying, NOT NULL)
+  - name (character varying, NOT NULL)
+  - floor (character varying, NOT NULL)
+  - x (double precision, NOT NULL)
+  - y (double precision, NOT NULL)
+  - yaw (double precision, NOT NULL)
+  - type (character varying, NOT NULL)
+  - description (text, NULL)
+  - created_at (timestamp without time zone, NOT NULL)
+  - updated_at (timestamp without time zone, NOT NULL)
+
+=== TABLE: robot_workflows (9 rows) ===
+Columns:
+  - id (character varying, NOT NULL)
+  - name (character varying, NOT NULL)
+  - description (text, NULL)
+  - trigger_type (character varying, NOT NULL)
+  - is_active (boolean, NOT NULL)
+  - steps (json, NOT NULL)
+  - created_at (timestamp without time zone, NOT NULL)
+  - updated_at (timestamp without time zone, NOT NULL)
+
+=== TABLE: robots (1 rows) ===
+Columns:
+  - id (character varying, NOT NULL)
+  - code (character varying, NOT NULL)
+  - name (character varying, NOT NULL)
+  - model_type (character varying, NOT NULL, def='Differential Drive Concierge'::character varying)
+  - status (character varying, NOT NULL, def='IDLE'::character varying)
+  - battery_level (integer, NOT NULL, def=100)
+  - current_location (character varying, NOT NULL, def='Main Lobby'::character varying)
+  - is_online (boolean, NOT NULL, def=true)
+  - ip_address (character varying, NULL)
+  - last_heartbeat (timestamp without time zone, NULL)
+  - created_at (timestamp without time zone, NOT NULL, def=now())
+  - updated_at (timestamp without time zone, NOT NULL, def=now())
+
+=== TABLE: room_service_orders (25 rows) ===
+Columns:
+  - id (character varying, NOT NULL)
+  - order_number (character varying, NOT NULL)
+  - room_number (character varying, NOT NULL)
+  - status (character varying, NOT NULL)
+  - items (json, NOT NULL)
+  - note (character varying, NULL)
+  - image_url (character varying, NULL)
+  - is_service_request (boolean, NOT NULL)
+  - progress (integer, NOT NULL)
+  - est_completion (character varying, NULL)
+  - assigned_robot_id (character varying, NULL)
+  - assigned_staff_name (character varying, NULL)
+  - created_at (timestamp without time zone, NOT NULL)
+  - updated_at (timestamp without time zone, NOT NULL)
+  - room_id (character varying, NULL)
+  - account_id (character varying, NULL)
+  - total_amount (double precision, NOT NULL, def='0'::double precision)
+  - support_request_id (character varying, NULL)
+  - priority (character varying, NULL, def='NORMAL'::character varying)
+Foreign Keys:
+  * account_id -> accounts.id
+  * room_id -> rooms.id
+  * support_request_id -> support_requests.id
+
+=== TABLE: rooms (12 rows) ===
+Columns:
+  - id (character varying, NOT NULL)
+  - hotel_id (character varying, NOT NULL)
+  - room_number (character varying, NOT NULL)
+  - floor (character varying, NOT NULL)
+  - room_type (character varying, NOT NULL)
+  - status (character varying, NOT NULL)
+  - current_guest_name (character varying, NULL)
+  - qr_code (character varying, NULL)
+  - description (text, NULL)
+  - created_at (timestamp without time zone, NOT NULL)
+  - updated_at (timestamp without time zone, NOT NULL)
+  - floor_id (character varying, NULL)
+Foreign Keys:
+  * floor_id -> floors.id
+  * hotel_id -> hotels.id
+
+=== TABLE: schedules (0 rows) ===
+Columns:
+  - id (character varying, NOT NULL)
+  - name (character varying, NOT NULL)
+  - description (text, NULL)
+  - workflow_id (character varying, NULL)
+  - account_id (character varying, NULL)
+  - cron_expression (character varying, NULL)
+  - scheduled_time (character varying, NULL)
+  - repeat_days (character varying, NULL)
+  - is_active (boolean, NOT NULL)
+  - created_at (timestamp without time zone, NOT NULL)
+  - updated_at (timestamp without time zone, NOT NULL)
+Foreign Keys:
+  * account_id -> accounts.id
+  * workflow_id -> robot_workflows.id
+
+=== TABLE: service_types (13 rows) ===
+Columns:
+  - id (character varying, NOT NULL)
+  - code (character varying, NOT NULL)
+  - name (character varying, NOT NULL)
+  - department_id (character varying, NOT NULL)
+  - description (text, NULL)
+  - is_active (boolean, NOT NULL, def=true)
+  - created_at (timestamp without time zone, NOT NULL, def=now())
+  - updated_at (timestamp without time zone, NOT NULL, def=now())
+  - default_priority (character varying, NULL, def='NORMAL'::character varying)
+Foreign Keys:
+  * department_id -> departments.id
+
+=== TABLE: support_requests (167 rows) ===
+Columns:
+  - id (character varying, NOT NULL)
+  - ticket_code (character varying, NOT NULL)
+  - title (character varying, NOT NULL)
+  - description (text, NULL)
+  - service_type_id (character varying, NULL)
+  - department_id (character varying, NULL)
+  - account_id (character varying, NULL)
+  - room_number (character varying, NOT NULL)
+  - guest_name (character varying, NOT NULL, def='Hotel Guest'::character varying)
+  - source (character varying, NOT NULL, def='From HCRobot'::character varying)
+  - status (character varying, NOT NULL, def='Pending'::character varying)
+  - assigned_staff_name (character varying, NULL)
+  - assigned_robot_id (character varying, NULL)
+  - created_at (timestamp without time zone, NOT NULL, def=now())
+  - updated_at (timestamp without time zone, NOT NULL, def=now())
+  - room_id (character varying, NULL)
+  - items (json, NULL, def='[]'::json)
+  - total_amount (double precision, NULL, def=0.0)
+  - progress (integer, NULL, def=0)
+  - est_completion (character varying, NULL)
+  - extra_data (json, NULL, def='{}'::json)
+  - priority (character varying, NULL, def='NORMAL'::character varying)
+Foreign Keys:
+  * room_id -> rooms.id
+  * account_id -> accounts.id
+  * department_id -> departments.id
+  * service_type_id -> service_types.id
+
+=== TABLE: zones (3 rows) ===
+Columns:
+  - id (character varying, NOT NULL)
+  - map_id (character varying, NULL)
+  - name (character varying, NOT NULL)
+  - type (character varying, NOT NULL)
+  - x (double precision, NOT NULL)
+  - y (double precision, NOT NULL)
+  - width (double precision, NOT NULL)
+  - height (double precision, NOT NULL)
+  - speed_limit (double precision, NULL)
+  - floor (character varying, NOT NULL)
+  - description (text, NULL)
+  - created_at (timestamp without time zone, NOT NULL)
+  - updated_at (timestamp without time zone, NOT NULL)
+

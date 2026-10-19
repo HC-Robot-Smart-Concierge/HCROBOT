@@ -242,14 +242,14 @@ export const KitchenDashboard = ({ currentUser, onNotify = () => {} }) => {
       if (!isDoneA && isDoneB) return -1;
 
       // Với các đơn Bếp đang chế biến:
-      const getPriority = (order) => {
+      const getCookingStatusRank = (order) => {
         const s = (order.status || '').toLowerCase().trim();
         if (s === 'cooking' || s === 'in preparation') return 1; // Đang nấu trên bếp (ưu tiên cao nhất)
         if (s === 'pending' || s === 'sent to kitchen' || s === 'sent_to_kitchen') return 2; // Mới nhận cần nấu
         return 3;
       };
 
-      return getPriority(a) - getPriority(b);
+      return getCookingStatusRank(a) - getCookingStatusRank(b);
     });
   }, [kitchenScopedOrders, filter, searchQuery]);
 

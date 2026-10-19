@@ -28,7 +28,6 @@ async def sync():
                 name="Dịch vụ phục vụ phòng (Room Service)",
                 department_id="DEP-ROOMSERVICE",
                 description="Tiếp nhận và chế biến các đơn gọi món đồ ăn, thức uống tận phòng nghỉ",
-                default_priority="NORMAL",
                 is_active=True,
             )
             session.add(st)
@@ -99,7 +98,6 @@ async def sync():
                     guest_name="Room Guest",
                     source="Guest App / In-Room Tablet",
                     status=o.status or "Pending",
-                    priority=o.priority or "NORMAL",
                     progress=o.progress or 0,
                     total_amount=o.total_amount or 0.0,
                     items=o.items,

@@ -246,8 +246,6 @@ async def seed_departments_and_staff():
                     default_dashboard=staff_info["default_dashboard"],
                     location=staff_info["location"],
                     status=staff_info["status"],
-                    shift=staff_info["shift"],
-                    current_tasks_count=0,
                     is_active=True,
                 )
                 session.add(staff)
@@ -261,7 +259,6 @@ async def seed_departments_and_staff():
                 staff.default_dashboard = staff_info["default_dashboard"]
                 staff.location = staff_info["location"]
                 staff.status = staff_info["status"]
-                staff.shift = staff_info["shift"]
                 staff.is_active = True
                 print(f"[OK] Cap nhat tai khoan: {staff_info['username']} - {staff_info['full_name']} (Pass: {DEFAULT_PASSWORD})")
 

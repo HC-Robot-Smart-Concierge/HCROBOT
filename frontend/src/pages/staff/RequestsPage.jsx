@@ -32,7 +32,6 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
       title: 'Club Sandwich & Truffle Fries (x2), Artisan Cola (x2)',
       location: 'ROOM 412',
       guestName: 'Mr. John Smith',
-      priority: 'NORMAL',
       status: 'Pending',
       time: '4 mins ago',
       assignedTo: null,
@@ -44,7 +43,6 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
       title: 'Spill cleanup required (Wine spill on carpet)',
       location: 'ROOM 502',
       guestName: 'Mr. John Smith',
-      priority: 'NORMAL',
       status: 'Pending',
       time: '10:15 AM',
       assignedTo: null,
@@ -56,7 +54,6 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
       title: 'Luggage Pickup',
       location: 'ROOM 402',
       guestName: 'Mr. Aris Thorne',
-      priority: 'NORMAL',
       status: 'Pending',
       time: '09:30 AM',
       assignedTo: null,
@@ -68,7 +65,6 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
       title: 'Plumbing Leak near bathroom sink',
       location: 'ROOM 412',
       guestName: 'Guest in 412',
-      priority: 'HIGH PRIORITY',
       status: 'Pending',
       time: '10 mins ago',
       assignedTo: null,
@@ -480,7 +476,7 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
   // 1. Pending (chờ tiếp nhận)
   // 2. In Progress (đang xử lý / Bếp nấu)
   // 3. Completed (hoàn thành)
-  const getRequestPriorityScore = (req) => {
+  const getRequestStatusOrder = (req) => {
     const isPending = isReqPendingForUser(req);
     const isInProgress = isReqInProgressForUser(req);
     const isCompleted = isReqCompletedForUser(req);
@@ -512,10 +508,10 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
     return matchStatus && matchDept && matchSearch;
   });
 
-  // Apply Priority Sorting
+  // Apply Status Sorting (Pending -> In Progress -> Completed)
   const sortedRequests = [...filtered].sort((a, b) => {
-    const scoreA = getRequestPriorityScore(a);
-    const scoreB = getRequestPriorityScore(b);
+    const scoreA = getRequestStatusOrder(a);
+    const scoreB = getRequestStatusOrder(b);
     if (scoreA !== scoreB) {
       return scoreA - scoreB;
     }
@@ -625,7 +621,6 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
       title: newReq.title,
       location: newReq.location || 'General',
       guestName: 'Guest / Staff Reported',
-      priority: newReq.priority || 'NORMAL',
       status: 'Pending',
       time: 'Vừa xong',
       assignedTo: null,
@@ -638,14 +633,12 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
       await createHousekeepingRequest({
         title: newReq.title,
         room_number: newReq.location || '502',
-        priority: newReq.priority,
         description: newReq.notes,
       });
     } else if (newReq.department === 'Maintenance') {
       await createMaintenanceRequest({
         title: newReq.title,
         location: newReq.location || 'Room 412',
-        priority: newReq.priority,
         description: newReq.notes,
       });
     } else {
@@ -653,7 +646,6 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
         title: newReq.title,
         department: newReq.department,
         location: newReq.location || 'Main Floor',
-        priority: newReq.priority,
         description: newReq.notes,
       });
     }
@@ -1216,13 +1208,6 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
                       }`}
                     >
                       {selectedDetailReq.status}
-                    </span>
-                  )}
-
-                  {((selectedDetailReq.priority || '').toUpperCase().includes('HIGH') ||
-                    (selectedDetailReq.priority || '').toUpperCase().includes('URGENT')) && (
-                    <span className="px-2.5 py-1 rounded-full bg-red-100 text-red-700 font-bold text-[11px]">
-                      HIGH PRIORITY
                     </span>
                   )}
                 </div>

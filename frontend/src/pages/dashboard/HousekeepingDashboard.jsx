@@ -13,7 +13,7 @@ const normalizeStatus = (status = '') => status.toLowerCase().trim().replace('_'
 const isPendingRequest = (request) => ['unassigned', 'pending', 'waiting'].includes(normalizeStatus(request.status));
 const isInProgressRequest = (request) => normalizeStatus(request.status) === 'in progress';
 const isCompletedRequest = (request) => ['completed', 'ready', 'done'].includes(normalizeStatus(request.status));
-const isUrgentRequest = (request) => String(request?.urgency || request?.priority || '').toLowerCase() === 'high' || Boolean(request?.is_urgent);
+const isUrgentRequest = (request) => String(request?.urgency || '').toLowerCase() === 'high' || Boolean(request?.is_urgent);
 
 const requestKey = (request) => request.ticket_code || request.id;
 const displayRequestId = (request) => String(request.ticket_code || request.id || '').replace(/^REQ-/, '');

@@ -16,7 +16,7 @@ from app.schemas.operations import (
     DepartmentUpdate,
     ServiceTypeResponse,
 )
-from .shared import TAG_OPS, TAG_STAFF
+from .shared import TAG_STAFF
 
 router = APIRouter()
 
@@ -123,6 +123,58 @@ async def create_department(
     )
 
 
+@router.get(
+    "/departments/{department_id}",
+    response_model=DepartmentDetailResponse,
+    tags=TAG_STAFF,
+    summary="Chi tiết phòng ban kèm danh sách dịch vụ và nhân sự trực thuộc",
+    responses={
+        200: {"description": "Thông tin chi tiết phòng ban, danh sách loại dịch vụ và tổng số nhân sự."},
+        404: {"description": "Không tìm thấy phòng ban với mã ID hoặc code được cung cấp."},
+    },
+)
+async def get_department_detail(
+    department_id: str = Path(
+        ...,
+        description="Mã định danh duy nhất (vd: `DEP-HOUSEKEEPING`, `DEP-TAXI`) hoặc code phòng ban (vd: `HOUSEKEEPING`, `TAXI`)",
+        examples=["DEP-HOUSEKEEPING", "DEP-BELL", "DEP-TAXI"],
+    ),
+    repo: StaffRepository = Depends(get_staff_repository),
+):
+    """
+    ### Mô tả nghiệp vụ:
+    Lấy thông tin chuyên sâu của một phòng ban bao gồm:
+    - Hồ sơ phòng ban (mã code, tên hiển thị, mô tả nhiệm vụ).
+    - Toàn bộ danh mục **loại dịch vụ (Service Types)** trực thuộc phòng ban đó.
+    - **Số lượng nhân viên** đang biên chế và hoạt động trong phòng ban.
+
+    ### Quy tắc tra cứu:
+    Hệ thống hỗ trợ tra cứu linh hoạt bằng `id` (vd: `DEP-BELL`) hoặc `code` (vd: `BELL`).
+    """
+    dept = await repo.get_department_by_id_or_code(department_id)
+    if not dept:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Không tìm thấy phòng ban với mã định danh '{department_id}'",
+        )
+
+    # Đếm số lượng nhân sự active
+    staff_count = sum(1 for acc in dept.accounts if acc.is_active)
+    
+    # Map sang schema response
+    return DepartmentDetailResponse(
+        id=dept.id,
+        code=dept.code,
+        name=dept.name,
+        description=dept.description,
+        is_active=dept.is_active,
+        created_at=dept.created_at,
+        updated_at=dept.updated_at,
+        service_types=dept.service_types,
+        staff_count=staff_count,
+    )
+
+
 @router.patch(
     "/departments/{department_id}",
     response_model=DepartmentDetailResponse,
@@ -208,58 +260,6 @@ async def delete_department(
 
 
 @router.get(
-    "/departments/{department_id}",
-    response_model=DepartmentDetailResponse,
-    tags=TAG_STAFF,
-    summary="Chi tiết phòng ban kèm danh sách dịch vụ và nhân sự trực thuộc",
-    responses={
-        200: {"description": "Thông tin chi tiết phòng ban, danh sách loại dịch vụ và tổng số nhân sự."},
-        404: {"description": "Không tìm thấy phòng ban với mã ID hoặc code được cung cấp."},
-    },
-)
-async def get_department_detail(
-    department_id: str = Path(
-        ...,
-        description="Mã định danh duy nhất (vd: `DEP-HOUSEKEEPING`, `DEP-TAXI`) hoặc code phòng ban (vd: `HOUSEKEEPING`, `TAXI`)",
-        examples=["DEP-HOUSEKEEPING", "DEP-BELL", "DEP-TAXI"],
-    ),
-    repo: StaffRepository = Depends(get_staff_repository),
-):
-    """
-    ### Mô tả nghiệp vụ:
-    Lấy thông tin chuyên sâu của một phòng ban bao gồm:
-    - Hồ sơ phòng ban (mã code, tên hiển thị, mô tả nhiệm vụ).
-    - Toàn bộ danh mục **loại dịch vụ (Service Types)** trực thuộc phòng ban đó.
-    - **Số lượng nhân viên** đang biên chế và hoạt động trong phòng ban.
-
-    ### Quy tắc tra cứu:
-    Hệ thống hỗ trợ tra cứu linh hoạt bằng `id` (vd: `DEP-BELL`) hoặc `code` (vd: `BELL`).
-    """
-    dept = await repo.get_department_by_id_or_code(department_id)
-    if not dept:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Không tìm thấy phòng ban với mã định danh '{department_id}'",
-        )
-
-    # Đếm số lượng nhân sự active
-    staff_count = sum(1 for acc in dept.accounts if acc.is_active)
-    
-    # Map sang schema response
-    return DepartmentDetailResponse(
-        id=dept.id,
-        code=dept.code,
-        name=dept.name,
-        description=dept.description,
-        is_active=dept.is_active,
-        created_at=dept.created_at,
-        updated_at=dept.updated_at,
-        service_types=dept.service_types,
-        staff_count=staff_count,
-    )
-
-
-@router.get(
     "/service-types",
     response_model=List[ServiceTypeResponse],
     tags=TAG_STAFF,
@@ -300,19 +300,24 @@ async def list_service_types(
 
 
 # =====================================================================
-# 2. STAFF & ACCOUNT DIRECTORY (QUẢN LÝ NHÂN SỰ & TÀI KHOẢN KHÁCH SẠN)
+# 2. ACCOUNTS & DIRECTORY (QUẢN LÝ TÀI KHOẢN & NHÂN SỰ KHÁCH SẠN)
 # =====================================================================
 
 @router.get(
-    "/staff",
+    "/accounts",
     response_model=List[StaffResponse],
     tags=TAG_STAFF,
-    summary="Xem tất cả staff",
+    summary="Xem tất cả tài khoản",
     responses={
         200: {
-            "description": "Lấy danh sách nhân sự thành công.",
+            "description": "Lấy danh sách tài khoản thành công.",
         }
     },
+)
+@router.get(
+    "/staff",
+    response_model=List[StaffResponse],
+    include_in_schema=False,
 )
 async def list_staff(
     department_id: Optional[str] = Query(
@@ -333,25 +338,25 @@ async def list_staff(
     ),
     role: Optional[str] = Query(
         None,
-        description="Lọc theo chức danh / vai trò nhân viên",
+        description="Lọc theo chức danh / vai trò tài khoản",
         examples=["Housekeeping Lead", "Bell Captain"],
     ),
     include_inactive: bool = Query(
         False,
-        description="Nếu chọn `true`, sẽ bao gồm cả các tài khoản nhân viên đã bị vô hiệu hóa hoặc xóa mềm",
+        description="Nếu chọn `true`, sẽ bao gồm cả các tài khoản đã bị vô hiệu hóa hoặc xóa mềm",
     ),
     repo: StaffRepository = Depends(get_staff_repository),
 ):
     """
     ### Mô tả nghiệp vụ:
-    Truy vấn danh bạ nhân sự toàn khách sạn, tích hợp liên kết trực tiếp với bảng `departments`.
+    Truy vấn danh bạ tài khoản nhân sự toàn khách sạn, tích hợp liên kết trực tiếp với bảng `departments`.
     
     ### Tính năng bộ lọc:
     - **department_id**: Lọc chính xác theo khóa ngoại phòng ban.
     - **department**: Lọc tương thích ngược theo tên chuỗi phòng ban.
     - **status**: Lọc theo ca trực / tính sẵn sàng tiếp nhận công việc.
     - **role**: Lọc theo vị trí nghiệp vụ.
-    - **include_inactive**: Lấy cả nhân viên đã xóa mềm để phục vụ đối soát kiểm toán (Audit).
+    - **include_inactive**: Lấy cả tài khoản đã xóa mềm để phục vụ đối soát kiểm toán (Audit).
     """
     return await repo.list_staff(
         department_id=department_id,
@@ -362,48 +367,22 @@ async def list_staff(
     )
 
 
-@router.get(
-    "/staff/{staff_id}",
+@router.post(
+    "/accounts",
     response_model=StaffResponse,
+    status_code=status.HTTP_201_CREATED,
     tags=TAG_STAFF,
-    summary="Xem thông tin chi tiết một nhân viên theo ID",
+    summary="Thêm mới tài khoản vào hệ thống",
     responses={
-        200: {"description": "Thông tin chi tiết hồ sơ nhân sự."},
-        404: {"description": "Không tìm thấy nhân viên với ID được cung cấp."},
+        201: {"description": "Tạo tài khoản mới thành công."},
+        400: {"description": "Tên đăng nhập đã tồn tại hoặc mã phòng ban không hợp lệ."},
     },
 )
-async def get_staff_detail(
-    staff_id: str = Path(
-        ...,
-        description="Mã định danh duy nhất của nhân viên (vd: `STF-f9ab1b15`)",
-        examples=["STF-f9ab1b15", "STF-cda7e68e"],
-    ),
-    repo: StaffRepository = Depends(get_staff_repository),
-):
-    """
-    ### Mô tả nghiệp vụ:
-    Truy vấn hồ sơ chi tiết của một nhân viên bằng `id`.
-    Trả về đầy đủ thông tin tài khoản, phòng ban, ca trực, phạm vi tầng phân công và cấu hình liên lạc.
-    """
-    staff = await repo.get_by_id(staff_id, load_department=True)
-    if not staff:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Không tìm thấy nhân viên với ID: {staff_id}",
-        )
-    return staff
-
-
 @router.post(
     "/staff",
     response_model=StaffResponse,
     status_code=status.HTTP_201_CREATED,
-    tags=TAG_STAFF,
-    summary="Thêm mới nhân viên vào hệ thống",
-    responses={
-        201: {"description": "Tạo tài khoản nhân viên mới thành công."},
-        400: {"description": "Tên đăng nhập đã tồn tại hoặc mã phòng ban không hợp lệ."},
-    },
+    include_in_schema=False,
 )
 async def create_staff(
     staff_in: StaffCreate,
@@ -411,7 +390,7 @@ async def create_staff(
 ):
     """
     ### Mô tả nghiệp vụ:
-    Tạo mới một tài khoản nhân viên trong hệ thống và phân bổ vào đúng phòng ban vận hành.
+    Tạo mới một tài khoản nhân sự trong hệ thống và phân bổ vào đúng phòng ban vận hành.
 
     ### Quy tắc xử lý tự động:
     1. **Kiểm tra trùng Username**: `username` được chuẩn hóa viết thường, không được trùng với bất kỳ tài khoản nào khác.
@@ -423,10 +402,12 @@ async def create_staff(
        - `DEP-CONCIERGE` -> `concierge`
        - `DEP-ROOMSERVICE` -> `room_service`
        - `DEP-KITCHEN` -> `restaurant`
+       - `DEP-FB` -> `room_service`
+       - `DEP-RESTAURANT` -> `restaurant`
        - `DEP-HOUSEKEEPING` -> `housekeeping`
        - `DEP-BELL` hoặc `DEP-TAXI` -> `bell_services`
        - `DEP-MAINTENANCE` -> `maintenance`
-       - Role Quản trị viên (`ADMIN`) -> `admin_map`
+       - Role Quản trị viên (`ADMIN`) -> `admin_portal`
     4. **Băm mật khẩu bảo mật**: Sử dụng thuật toán Bcrypt an toàn.
     5. **Tự động sinh mã viết tắt (Code)**: Nếu để trống, hệ thống tự động sinh từ chữ cái đầu của họ tên kèm chuỗi hex ngẫu nhiên.
     """
@@ -492,13 +473,10 @@ async def create_staff(
         default_dashboard=default_dashboard,
         email=staff_in.email or f"{username_clean}@aurora.hotel",
         phone=staff_in.phone or "+84 90 123 4567",
-        shift=staff_in.shift or "Morning Shift (06:00 - 14:00)",
         location=staff_in.location or "Main Hotel",
         status=staff_in.status or "available",
         avatar_url=staff_in.avatar_url,
         is_fallback_agent=staff_in.is_fallback_agent,
-        assigned_floors=staff_in.assigned_floors or "Floor 1 - 5",
-        notification_channels=staff_in.notification_channels or "Web Dashboard, Tablet Alert",
         is_active=True,
     )
     try:
@@ -513,45 +491,86 @@ async def create_staff(
     return new_staff
 
 
-@router.patch(
-    "/staff/{staff_id}",
+@router.get(
+    "/accounts/{account_id}",
     response_model=StaffResponse,
     tags=TAG_STAFF,
-    summary="Cập nhật thông tin hồ sơ nhân viên",
+    summary="Xem thông tin chi tiết một tài khoản theo ID",
     responses={
-        200: {"description": "Cập nhật thông tin nhân viên thành công."},
-        400: {"description": "Mã phòng ban mới không hợp lệ."},
-        404: {"description": "Không tìm thấy nhân viên với ID được cung cấp."},
+        200: {"description": "Thông tin chi tiết hồ sơ tài khoản."},
+        404: {"description": "Không tìm thấy tài khoản với ID được cung cấp."},
     },
 )
-async def update_staff(
-    staff_id: str = Path(
+@router.get(
+    "/staff/{account_id}",
+    response_model=StaffResponse,
+    include_in_schema=False,
+)
+async def get_staff_detail(
+    account_id: str = Path(
         ...,
-        description="Mã định danh duy nhất của nhân viên cần cập nhật",
-        examples=["STF-f9ab1b15"],
+        description="Mã định danh duy nhất của tài khoản (vd: `ACC-f9ab1b15`)",
+        examples=["ACC-f9ab1b15", "STF-f9ab1b15"],
+    ),
+    repo: StaffRepository = Depends(get_staff_repository),
+):
+    """
+    ### Mô tả nghiệp vụ:
+    Truy vấn hồ sơ chi tiết của một tài khoản bằng `id`.
+    Trả về đầy đủ thông tin tài khoản, phòng ban, ca trực, phạm vi tầng phân công và cấu hình liên lạc.
+    """
+    staff = await repo.get_by_id(account_id, load_department=True)
+    if not staff:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Không tìm thấy tài khoản với ID: {account_id}",
+        )
+    return staff
+
+
+@router.patch(
+    "/accounts/{account_id}",
+    response_model=StaffResponse,
+    tags=TAG_STAFF,
+    summary="Cập nhật thông tin hồ sơ tài khoản",
+    responses={
+        200: {"description": "Cập nhật thông tin tài khoản thành công."},
+        400: {"description": "Mã phòng ban mới không hợp lệ."},
+        404: {"description": "Không tìm thấy tài khoản với ID được cung cấp."},
+    },
+)
+@router.patch(
+    "/staff/{account_id}",
+    response_model=StaffResponse,
+    include_in_schema=False,
+)
+async def update_staff(
+    account_id: str = Path(
+        ...,
+        description="Mã định danh duy nhất của tài khoản cần cập nhật",
+        examples=["ACC-f9ab1b15", "STF-f9ab1b15"],
     ),
     update_in: StaffUpdate = ...,
     repo: StaffRepository = Depends(get_staff_repository),
 ):
     """
     ### Mô tả nghiệp vụ:
-    Cập nhật một phần hoặc toàn bộ thông tin hồ sơ của nhân viên (PATCH partial update).
+    Cập nhật một phần hoặc toàn bộ thông tin hồ sơ của tài khoản (PATCH partial update).
 
     ### Các trường hỗ trợ cập nhật:
     - `full_name`: Họ tên hiển thị
     - `role`: Chức vụ chuyên môn
     - `department_id`: Chuyển phòng ban (vd: `DEP-BELL` sang `DEP-TAXI`). Hệ thống tự động xác thực và đồng bộ tên phòng ban.
     - `status`: Cập nhật trạng thái trực (`available`, `busy`, `off_shift`, `inactive`)
-    - `phone`, `email`, `shift`, `location`: Thông tin ca trực và liên lạc
+    - `phone`, `email`, `location`: Thông tin liên lạc và vị trí làm việc
     - `avatar_url`: Ảnh đại diện
     - `is_fallback_agent`: Cấu hình tiếp nhận cuộc gọi khẩn chuyển tiếp từ Concierge Robot
-    - `assigned_floors`, `notification_channels`: Phạm vi tầng phụ trách và kênh nhận tin
     """
-    staff = await repo.get_by_id(staff_id, load_department=True)
+    staff = await repo.get_by_id(account_id, load_department=True)
     if not staff:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Không tìm thấy nhân viên với ID: {staff_id}",
+            detail=f"Không tìm thấy tài khoản với ID: {account_id}",
         )
 
     update_data = update_in.model_dump(exclude_unset=True)
@@ -597,58 +616,47 @@ async def update_staff(
 
 
 @router.delete(
-    "/staff/{staff_id}",
+    "/accounts/{account_id}",
     tags=TAG_STAFF,
-    summary="Vô hiệu hóa tài khoản nhân viên (Soft Delete)",
+    summary="Vô hiệu hóa tài khoản (Soft Delete)",
     responses={
-        200: {"description": "Đã vô hiệu hóa tài khoản nhân viên thành công."},
-        404: {"description": "Không tìm thấy nhân viên với ID được cung cấp."},
+        200: {"description": "Đã vô hiệu hóa tài khoản thành công."},
+        404: {"description": "Không tìm thấy tài khoản với ID được cung cấp."},
     },
 )
+@router.delete(
+    "/staff/{account_id}",
+    include_in_schema=False,
+)
 async def delete_staff(
-    staff_id: str = Path(
+    account_id: str = Path(
         ...,
-        description="Mã định danh duy nhất của nhân viên cần vô hiệu hóa",
-        examples=["STF-f9ab1b15"],
+        description="Mã định danh duy nhất của tài khoản cần vô hiệu hóa",
+        examples=["ACC-f9ab1b15", "STF-f9ab1b15"],
     ),
     repo: StaffRepository = Depends(get_staff_repository),
 ):
     """
     ### Mô tả nghiệp vụ:
-    Thực hiện **xóa mềm (Soft Delete)** tài khoản nhân viên trong hệ thống:
+    Thực hiện **xóa mềm (Soft Delete)** tài khoản trong hệ thống:
     - Đặt cờ `is_active = False`
     - Cập nhật trạng thái `status = 'inactive'`
-    - Không xóa vĩnh viễn dòng dữ liệu trong cơ sở dữ liệu để bảo toàn toàn vẹn khóa ngoại các đơn hàng (`RoomServiceOrder`) và yêu cầu trợ giúp (`SupportRequest`) mà nhân viên này đã xử lý trước đó.
+    - Không xóa vĩnh viễn dòng dữ liệu trong cơ sở dữ liệu để bảo toàn toàn vẹn khóa ngoại các đơn hàng (`RoomServiceOrder`) và yêu cầu trợ giúp (`SupportRequest`) mà tài khoản này đã xử lý trước đó.
     """
-    staff = await repo.soft_delete_staff(staff_id)
+    staff = await repo.soft_delete_staff(account_id)
     if not staff:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Không tìm thấy nhân viên với ID: {staff_id}",
+            detail=f"Không tìm thấy tài khoản với ID: {account_id}",
         )
 
     return {
         "success": True,
-        "id": staff_id,
+        "id": account_id,
         "full_name": staff.full_name,
         "is_active": staff.is_active,
         "status": staff.status,
-        "message": f"Đã vô hiệu hóa thành công tài khoản nhân viên {staff.full_name}",
+        "message": f"Đã vô hiệu hóa thành công tài khoản {staff.full_name}",
     }
 
 
-# =====================================================================
-# 3. ROBOT FLEET STATUS (ĐỘI ROBOT HỆ THỐNG)
-# =====================================================================
-
-@router.get(
-    "/fleet",
-    response_model=List[dict],
-    tags=TAG_OPS,
-    summary="Danh sách trạng thái đội Robot HCRobot",
-)
-async def get_robot_fleet():
-    """
-    Trả về danh sách trạng thái thời gian thực của các Robot tự hành HCRobot đang trực tuyến.
-    """
-    return []

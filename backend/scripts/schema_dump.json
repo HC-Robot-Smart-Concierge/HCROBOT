@@ -1,0 +1,3194 @@
+{
+  "accounts": {
+    "columns": [
+      {
+        "name": "id",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "username",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "password_hash",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": "''::character varying"
+      },
+      {
+        "name": "code",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "full_name",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "role",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": "'STAFF'::character varying"
+      },
+      {
+        "name": "department_id",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "department",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "default_dashboard",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": "'room_service'::character varying"
+      },
+      {
+        "name": "location",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": "'Main Hotel'::character varying"
+      },
+      {
+        "name": "status",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": "'available'::character varying"
+      },
+      {
+        "name": "avatar_url",
+        "type": "text",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "email",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "phone",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "is_fallback_agent",
+        "type": "boolean",
+        "nullable": "NO",
+        "default": "false"
+      },
+      {
+        "name": "is_active",
+        "type": "boolean",
+        "nullable": "NO",
+        "default": "true"
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp without time zone",
+        "nullable": "NO",
+        "default": "now()"
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp without time zone",
+        "nullable": "NO",
+        "default": "now()"
+      },
+      {
+        "name": "current_tasks_count",
+        "type": "integer",
+        "nullable": "YES",
+        "default": "0"
+      },
+      {
+        "name": "shift",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": "'Morning Shift (06:00 - 14:00)'::character varying"
+      },
+      {
+        "name": "assigned_floors",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": "'Floor 1 - 5'::character varying"
+      },
+      {
+        "name": "notification_channels",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": "'Web Dashboard, Tablet Alert'::character varying"
+      }
+    ],
+    "pks": [
+      "id"
+    ],
+    "fks": [
+      {
+        "column": "department_id",
+        "ref_table": "departments",
+        "ref_column": "id",
+        "constraint_name": "fk_accounts_department_id"
+      }
+    ],
+    "row_count": 15
+  },
+  "amenities": {
+    "columns": [
+      {
+        "name": "id",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "hotel_id",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "floor_id",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "name",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "category",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "location",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "open_time",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "close_time",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "description",
+        "type": "text",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "is_active",
+        "type": "boolean",
+        "nullable": "NO",
+        "default": "true"
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp without time zone",
+        "nullable": "YES",
+        "default": "CURRENT_TIMESTAMP"
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp without time zone",
+        "nullable": "YES",
+        "default": "CURRENT_TIMESTAMP"
+      }
+    ],
+    "pks": [
+      "id"
+    ],
+    "fks": [
+      {
+        "column": "floor_id",
+        "ref_table": "floors",
+        "ref_column": "id",
+        "constraint_name": "amenities_floor_id_fkey"
+      },
+      {
+        "column": "hotel_id",
+        "ref_table": "hotels",
+        "ref_column": "id",
+        "constraint_name": "amenities_hotel_id_fkey"
+      }
+    ],
+    "row_count": 4
+  },
+  "audit_logs": {
+    "columns": [
+      {
+        "name": "id",
+        "type": "integer",
+        "nullable": "NO",
+        "default": "nextval('audit_logs_id_seq'::regclass)"
+      },
+      {
+        "name": "timestamp",
+        "type": "timestamp with time zone",
+        "nullable": "NO",
+        "default": "now()"
+      },
+      {
+        "name": "actor_type",
+        "type": "USER-DEFINED",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "actor_id",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "actor_name",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "action",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "resource_type",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "resource_id",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "before_state",
+        "type": "jsonb",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "after_state",
+        "type": "jsonb",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "correlation_id",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "ip_address",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "user_agent",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone",
+        "nullable": "NO",
+        "default": "now()"
+      },
+      {
+        "name": "account_id",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      }
+    ],
+    "pks": [
+      "id"
+    ],
+    "fks": [
+      {
+        "column": "account_id",
+        "ref_table": "accounts",
+        "ref_column": "id",
+        "constraint_name": "fk_audit_logs_account_id"
+      }
+    ],
+    "row_count": 360
+  },
+  "chat_messages": {
+    "columns": [
+      {
+        "name": "id",
+        "type": "integer",
+        "nullable": "NO",
+        "default": "nextval('chat_messages_id_seq'::regclass)"
+      },
+      {
+        "name": "session_id",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "sender",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "text",
+        "type": "text",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "language",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "intent_action",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp without time zone",
+        "nullable": "YES",
+        "default": null
+      }
+    ],
+    "pks": [
+      "id"
+    ],
+    "fks": [
+      {
+        "column": "session_id",
+        "ref_table": "chat_sessions",
+        "ref_column": "id",
+        "constraint_name": "chat_messages_session_id_fkey"
+      }
+    ],
+    "row_count": 604
+  },
+  "chat_sessions": {
+    "columns": [
+      {
+        "name": "id",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "room_number",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "guest_name",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "is_active",
+        "type": "boolean",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp without time zone",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp without time zone",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "account_id",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      }
+    ],
+    "pks": [
+      "id"
+    ],
+    "fks": [
+      {
+        "column": "account_id",
+        "ref_table": "accounts",
+        "ref_column": "id",
+        "constraint_name": "chat_sessions_account_id_fkey"
+      }
+    ],
+    "row_count": 120
+  },
+  "departments": {
+    "columns": [
+      {
+        "name": "id",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "code",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "name",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "description",
+        "type": "text",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "is_active",
+        "type": "boolean",
+        "nullable": "NO",
+        "default": "true"
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp without time zone",
+        "nullable": "NO",
+        "default": "now()"
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp without time zone",
+        "nullable": "NO",
+        "default": "now()"
+      }
+    ],
+    "pks": [
+      "id"
+    ],
+    "fks": [],
+    "row_count": 10
+  },
+  "dialogue_scenarios": {
+    "columns": [
+      {
+        "name": "id",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "title",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "category",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "match_keywords",
+        "type": "json",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "match_type",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "response_vi",
+        "type": "text",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "response_en",
+        "type": "text",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "action_type",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "action_payload",
+        "type": "json",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "is_fast_path",
+        "type": "boolean",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "is_active",
+        "type": "boolean",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "priority",
+        "type": "integer",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp without time zone",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp without time zone",
+        "nullable": "NO",
+        "default": null
+      }
+    ],
+    "pks": [
+      "id"
+    ],
+    "fks": [],
+    "row_count": 30
+  },
+  "endpoint_group_members": {
+    "columns": [
+      {
+        "name": "id",
+        "type": "integer",
+        "nullable": "NO",
+        "default": "nextval('endpoint_group_members_id_seq'::regclass)"
+      },
+      {
+        "name": "endpoint_id",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "endpoint_group_id",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp without time zone",
+        "nullable": "NO",
+        "default": null
+      }
+    ],
+    "pks": [
+      "id"
+    ],
+    "fks": [
+      {
+        "column": "endpoint_group_id",
+        "ref_table": "endpoint_groups",
+        "ref_column": "id",
+        "constraint_name": "endpoint_group_members_endpoint_group_id_fkey"
+      },
+      {
+        "column": "endpoint_id",
+        "ref_table": "endpoints",
+        "ref_column": "id",
+        "constraint_name": "endpoint_group_members_endpoint_id_fkey"
+      }
+    ],
+    "row_count": 0
+  },
+  "endpoint_groups": {
+    "columns": [
+      {
+        "name": "id",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "name",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "description",
+        "type": "text",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp without time zone",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp without time zone",
+        "nullable": "NO",
+        "default": null
+      }
+    ],
+    "pks": [
+      "id"
+    ],
+    "fks": [],
+    "row_count": 2
+  },
+  "endpoints": {
+    "columns": [
+      {
+        "name": "id",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "map_id",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "name",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "floor",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "x",
+        "type": "double precision",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "y",
+        "type": "double precision",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "yaw",
+        "type": "double precision",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "type",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "description",
+        "type": "text",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp without time zone",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp without time zone",
+        "nullable": "NO",
+        "default": null
+      }
+    ],
+    "pks": [
+      "id"
+    ],
+    "fks": [],
+    "row_count": 3
+  },
+  "events": {
+    "columns": [
+      {
+        "name": "id",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "hotel_id",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "title",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "location",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "start_time",
+        "type": "timestamp without time zone",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "end_time",
+        "type": "timestamp without time zone",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "description",
+        "type": "text",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "is_active",
+        "type": "boolean",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp without time zone",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp without time zone",
+        "nullable": "NO",
+        "default": null
+      }
+    ],
+    "pks": [
+      "id"
+    ],
+    "fks": [
+      {
+        "column": "hotel_id",
+        "ref_table": "hotels",
+        "ref_column": "id",
+        "constraint_name": "events_hotel_id_fkey"
+      }
+    ],
+    "row_count": 2
+  },
+  "facilities": {
+    "columns": [
+      {
+        "name": "id",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "hotel_id",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "name",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "category",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "location",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "open_time",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "close_time",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "description",
+        "type": "text",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "is_active",
+        "type": "boolean",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp without time zone",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp without time zone",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "floor_id",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      }
+    ],
+    "pks": [
+      "id"
+    ],
+    "fks": [
+      {
+        "column": "hotel_id",
+        "ref_table": "hotels",
+        "ref_column": "id",
+        "constraint_name": "facilities_hotel_id_fkey"
+      }
+    ],
+    "row_count": 0
+  },
+  "feedbacks": {
+    "columns": [
+      {
+        "name": "id",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "chat_session_id",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "account_id",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "rating",
+        "type": "integer",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "category",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "comment",
+        "type": "text",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "guest_name",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "room_number",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp without time zone",
+        "nullable": "NO",
+        "default": null
+      }
+    ],
+    "pks": [
+      "id"
+    ],
+    "fks": [
+      {
+        "column": "account_id",
+        "ref_table": "accounts",
+        "ref_column": "id",
+        "constraint_name": "feedbacks_account_id_fkey"
+      },
+      {
+        "column": "chat_session_id",
+        "ref_table": "chat_sessions",
+        "ref_column": "id",
+        "constraint_name": "feedbacks_chat_session_id_fkey"
+      }
+    ],
+    "row_count": 6
+  },
+  "floors": {
+    "columns": [
+      {
+        "name": "id",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "hotel_id",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "floor_number",
+        "type": "integer",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "name",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "description",
+        "type": "text",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp without time zone",
+        "nullable": "YES",
+        "default": "CURRENT_TIMESTAMP"
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp without time zone",
+        "nullable": "YES",
+        "default": "CURRENT_TIMESTAMP"
+      }
+    ],
+    "pks": [
+      "id"
+    ],
+    "fks": [
+      {
+        "column": "hotel_id",
+        "ref_table": "hotels",
+        "ref_column": "id",
+        "constraint_name": "floors_hotel_id_fkey"
+      }
+    ],
+    "row_count": 5
+  },
+  "food_items": {
+    "columns": [
+      {
+        "name": "id",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "name",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "category",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": "'Món chính'::character varying"
+      },
+      {
+        "name": "description",
+        "type": "text",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "image_url",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "prep_time_minutes",
+        "type": "integer",
+        "nullable": "NO",
+        "default": "15"
+      },
+      {
+        "name": "is_available",
+        "type": "boolean",
+        "nullable": "NO",
+        "default": "true"
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp without time zone",
+        "nullable": "YES",
+        "default": "(now() AT TIME ZONE 'utc'::text)"
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp without time zone",
+        "nullable": "YES",
+        "default": "(now() AT TIME ZONE 'utc'::text)"
+      }
+    ],
+    "pks": [
+      "id"
+    ],
+    "fks": [],
+    "row_count": 78
+  },
+  "hotels": {
+    "columns": [
+      {
+        "name": "id",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "name",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "address",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "phone",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "email",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "star_rating",
+        "type": "integer",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "description",
+        "type": "text",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "is_active",
+        "type": "boolean",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp without time zone",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp without time zone",
+        "nullable": "NO",
+        "default": null
+      }
+    ],
+    "pks": [
+      "id"
+    ],
+    "fks": [],
+    "row_count": 1
+  },
+  "human_support_sessions": {
+    "columns": [
+      {
+        "name": "id",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "session_code",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "room_number",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "guest_name",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "category",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "origin_robot_code",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "sentiment",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "wait_time_label",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "status",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "linked_request_id",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "messages",
+        "type": "json",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp without time zone",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp without time zone",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "chat_session_id",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "account_id",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "recording_url",
+        "type": "text",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "recording_public_id",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "recording_duration",
+        "type": "integer",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "thumbnail_url",
+        "type": "text",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "call_started_at",
+        "type": "timestamp without time zone",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "call_ended_at",
+        "type": "timestamp without time zone",
+        "nullable": "YES",
+        "default": null
+      }
+    ],
+    "pks": [
+      "id"
+    ],
+    "fks": [
+      {
+        "column": "account_id",
+        "ref_table": "accounts",
+        "ref_column": "id",
+        "constraint_name": "human_support_sessions_account_id_fkey"
+      },
+      {
+        "column": "chat_session_id",
+        "ref_table": "chat_sessions",
+        "ref_column": "id",
+        "constraint_name": "human_support_sessions_chat_session_id_fkey"
+      }
+    ],
+    "row_count": 8
+  },
+  "job_events": {
+    "columns": [
+      {
+        "name": "id",
+        "type": "integer",
+        "nullable": "NO",
+        "default": "nextval('job_events_id_seq'::regclass)"
+      },
+      {
+        "name": "job_id",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "event_type",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "message",
+        "type": "text",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "severity",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": "'INFO'::character varying"
+      },
+      {
+        "name": "metadata_payload",
+        "type": "json",
+        "nullable": "NO",
+        "default": "'{}'::json"
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp without time zone",
+        "nullable": "NO",
+        "default": "now()"
+      }
+    ],
+    "pks": [
+      "id"
+    ],
+    "fks": [
+      {
+        "column": "job_id",
+        "ref_table": "jobs",
+        "ref_column": "id",
+        "constraint_name": "job_events_job_id_fkey"
+      }
+    ],
+    "row_count": 0
+  },
+  "job_steps": {
+    "columns": [
+      {
+        "name": "id",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "job_id",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "step_index",
+        "type": "integer",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "step_type",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "params",
+        "type": "json",
+        "nullable": "NO",
+        "default": "'{}'::json"
+      },
+      {
+        "name": "status",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": "'PENDING'::character varying"
+      },
+      {
+        "name": "started_at",
+        "type": "timestamp without time zone",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "completed_at",
+        "type": "timestamp without time zone",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "result_payload",
+        "type": "json",
+        "nullable": "YES",
+        "default": null
+      }
+    ],
+    "pks": [
+      "id"
+    ],
+    "fks": [
+      {
+        "column": "job_id",
+        "ref_table": "jobs",
+        "ref_column": "id",
+        "constraint_name": "job_steps_job_id_fkey"
+      }
+    ],
+    "row_count": 0
+  },
+  "jobs": {
+    "columns": [
+      {
+        "name": "id",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "job_code",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "title",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "workflow_id",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "chat_session_id",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "robot_id",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "trigger_type",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": "'MANUAL'::character varying"
+      },
+      {
+        "name": "status",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": "'PENDING'::character varying"
+      },
+      {
+        "name": "current_step_index",
+        "type": "integer",
+        "nullable": "NO",
+        "default": "0"
+      },
+      {
+        "name": "total_steps",
+        "type": "integer",
+        "nullable": "NO",
+        "default": "0"
+      },
+      {
+        "name": "started_at",
+        "type": "timestamp without time zone",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "completed_at",
+        "type": "timestamp without time zone",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "error_message",
+        "type": "text",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp without time zone",
+        "nullable": "NO",
+        "default": "now()"
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp without time zone",
+        "nullable": "NO",
+        "default": "now()"
+      },
+      {
+        "name": "schedule_id",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "account_id",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      }
+    ],
+    "pks": [
+      "id"
+    ],
+    "fks": [
+      {
+        "column": "account_id",
+        "ref_table": "accounts",
+        "ref_column": "id",
+        "constraint_name": "jobs_account_id_fkey"
+      },
+      {
+        "column": "chat_session_id",
+        "ref_table": "chat_sessions",
+        "ref_column": "id",
+        "constraint_name": "jobs_chat_session_id_fkey"
+      },
+      {
+        "column": "robot_id",
+        "ref_table": "robots",
+        "ref_column": "id",
+        "constraint_name": "jobs_robot_id_fkey"
+      },
+      {
+        "column": "schedule_id",
+        "ref_table": "schedules",
+        "ref_column": "id",
+        "constraint_name": "jobs_schedule_id_fkey"
+      },
+      {
+        "column": "workflow_id",
+        "ref_table": "robot_workflows",
+        "ref_column": "id",
+        "constraint_name": "jobs_workflow_id_fkey"
+      }
+    ],
+    "row_count": 0
+  },
+  "log_events": {
+    "columns": [
+      {
+        "name": "id",
+        "type": "integer",
+        "nullable": "NO",
+        "default": "nextval('log_events_id_seq'::regclass)"
+      },
+      {
+        "name": "timestamp",
+        "type": "timestamp with time zone",
+        "nullable": "NO",
+        "default": "now()"
+      },
+      {
+        "name": "level",
+        "type": "USER-DEFINED",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "category",
+        "type": "USER-DEFINED",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "event_type",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "module",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "message",
+        "type": "text",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "actor_type",
+        "type": "USER-DEFINED",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "actor_id",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "robot_id",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "staff_id",
+        "type": "integer",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "guest_id",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "service_request_id",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "conversation_id",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "correlation_id",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "request_id",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "trace_id",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "metadata_payload",
+        "type": "jsonb",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "ip_address",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "user_agent",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp with time zone",
+        "nullable": "NO",
+        "default": "now()"
+      },
+      {
+        "name": "account_id",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "job_id",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      }
+    ],
+    "pks": [
+      "id"
+    ],
+    "fks": [
+      {
+        "column": "account_id",
+        "ref_table": "accounts",
+        "ref_column": "id",
+        "constraint_name": "fk_log_events_account_id"
+      },
+      {
+        "column": "robot_id",
+        "ref_table": "robots",
+        "ref_column": "id",
+        "constraint_name": "fk_log_events_robot_id"
+      },
+      {
+        "column": "job_id",
+        "ref_table": "jobs",
+        "ref_column": "id",
+        "constraint_name": "log_events_job_id_fkey"
+      }
+    ],
+    "row_count": 477
+  },
+  "management_directives": {
+    "columns": [
+      {
+        "name": "id",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "code",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "title",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "department",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "priority",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "location",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "reported_time_label",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "description",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "status",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "assigned_staff_name",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "assigned_eta",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "assigned_staff_avatar",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "type",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "created_by",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp without time zone",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp without time zone",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "assigned_account_id",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "created_by_account_id",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "account_id",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      }
+    ],
+    "pks": [
+      "id"
+    ],
+    "fks": [
+      {
+        "column": "assigned_account_id",
+        "ref_table": "accounts",
+        "ref_column": "id",
+        "constraint_name": "fk_management_directives_assigned_account_id"
+      },
+      {
+        "column": "created_by_account_id",
+        "ref_table": "accounts",
+        "ref_column": "id",
+        "constraint_name": "fk_management_directives_created_by_account_id"
+      },
+      {
+        "column": "account_id",
+        "ref_table": "accounts",
+        "ref_column": "id",
+        "constraint_name": "fk_mgmt_directives_account_id"
+      }
+    ],
+    "row_count": 6
+  },
+  "menu_items": {
+    "columns": [
+      {
+        "name": "id",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "menu_id",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "food_item_id",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "name",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "price",
+        "type": "double precision",
+        "nullable": "NO",
+        "default": "0.0"
+      },
+      {
+        "name": "currency",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": "'VND'::character varying"
+      },
+      {
+        "name": "image_url",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "category",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "is_available",
+        "type": "boolean",
+        "nullable": "NO",
+        "default": "true"
+      },
+      {
+        "name": "description",
+        "type": "text",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "display_order",
+        "type": "integer",
+        "nullable": "YES",
+        "default": "0"
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp without time zone",
+        "nullable": "NO",
+        "default": "CURRENT_TIMESTAMP"
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp without time zone",
+        "nullable": "NO",
+        "default": "CURRENT_TIMESTAMP"
+      }
+    ],
+    "pks": [
+      "id"
+    ],
+    "fks": [
+      {
+        "column": "food_item_id",
+        "ref_table": "food_items",
+        "ref_column": "id",
+        "constraint_name": "fk_menu_items_food_item_id"
+      },
+      {
+        "column": "menu_id",
+        "ref_table": "menus",
+        "ref_column": "id",
+        "constraint_name": "menu_items_menu_id_fkey"
+      },
+      {
+        "column": "food_item_id",
+        "ref_table": "food_items",
+        "ref_column": "id",
+        "constraint_name": "menu_items_new_food_item_id_fkey"
+      },
+      {
+        "column": "menu_id",
+        "ref_table": "menus",
+        "ref_column": "id",
+        "constraint_name": "menu_items_new_menu_id_fkey"
+      }
+    ],
+    "row_count": 82
+  },
+  "menus": {
+    "columns": [
+      {
+        "name": "id",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "name",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "category",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "description",
+        "type": "text",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "is_active",
+        "type": "boolean",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp without time zone",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp without time zone",
+        "nullable": "NO",
+        "default": null
+      }
+    ],
+    "pks": [
+      "id"
+    ],
+    "fks": [],
+    "row_count": 10
+  },
+  "notifications": {
+    "columns": [
+      {
+        "name": "id",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "department",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "title",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "description",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "request_id",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "request_type",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "type",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "is_read",
+        "type": "boolean",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp without time zone",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp without time zone",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "account_id",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      }
+    ],
+    "pks": [
+      "id"
+    ],
+    "fks": [
+      {
+        "column": "account_id",
+        "ref_table": "accounts",
+        "ref_column": "id",
+        "constraint_name": "fk_notifications_account_id"
+      }
+    ],
+    "row_count": 192
+  },
+  "order_items": {
+    "columns": [
+      {
+        "name": "id",
+        "type": "integer",
+        "nullable": "NO",
+        "default": "nextval('order_items_id_seq'::regclass)"
+      },
+      {
+        "name": "order_id",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "menu_item_id",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "item_name",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "quantity",
+        "type": "integer",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "unit_price",
+        "type": "double precision",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "subtotal",
+        "type": "double precision",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "notes",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp without time zone",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "food_item_id",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      }
+    ],
+    "pks": [
+      "id"
+    ],
+    "fks": [
+      {
+        "column": "food_item_id",
+        "ref_table": "food_items",
+        "ref_column": "id",
+        "constraint_name": "fk_order_items_food_item_id"
+      },
+      {
+        "column": "menu_item_id",
+        "ref_table": "menu_items",
+        "ref_column": "id",
+        "constraint_name": "order_items_menu_item_id_fkey"
+      },
+      {
+        "column": "order_id",
+        "ref_table": "room_service_orders",
+        "ref_column": "id",
+        "constraint_name": "order_items_order_id_fkey"
+      }
+    ],
+    "row_count": 32
+  },
+  "robot_units": {
+    "columns": [
+      {
+        "name": "id",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "unit_code",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "name",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "model_type",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "status",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "status_color",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "location",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "battery_level",
+        "type": "integer",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "current_payload",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "is_online",
+        "type": "boolean",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp without time zone",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp without time zone",
+        "nullable": "NO",
+        "default": null
+      }
+    ],
+    "pks": [
+      "id"
+    ],
+    "fks": [],
+    "row_count": 0
+  },
+  "robot_waypoints": {
+    "columns": [
+      {
+        "name": "id",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "name",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "floor",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "x",
+        "type": "double precision",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "y",
+        "type": "double precision",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "yaw",
+        "type": "double precision",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "type",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "description",
+        "type": "text",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp without time zone",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp without time zone",
+        "nullable": "NO",
+        "default": null
+      }
+    ],
+    "pks": [
+      "id"
+    ],
+    "fks": [],
+    "row_count": 0
+  },
+  "robot_workflows": {
+    "columns": [
+      {
+        "name": "id",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "name",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "description",
+        "type": "text",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "trigger_type",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "is_active",
+        "type": "boolean",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "steps",
+        "type": "json",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp without time zone",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp without time zone",
+        "nullable": "NO",
+        "default": null
+      }
+    ],
+    "pks": [
+      "id"
+    ],
+    "fks": [],
+    "row_count": 9
+  },
+  "robots": {
+    "columns": [
+      {
+        "name": "id",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "code",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "name",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "model_type",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": "'Differential Drive Concierge'::character varying"
+      },
+      {
+        "name": "status",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": "'IDLE'::character varying"
+      },
+      {
+        "name": "battery_level",
+        "type": "integer",
+        "nullable": "NO",
+        "default": "100"
+      },
+      {
+        "name": "current_location",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": "'Main Lobby'::character varying"
+      },
+      {
+        "name": "is_online",
+        "type": "boolean",
+        "nullable": "NO",
+        "default": "true"
+      },
+      {
+        "name": "ip_address",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "last_heartbeat",
+        "type": "timestamp without time zone",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp without time zone",
+        "nullable": "NO",
+        "default": "now()"
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp without time zone",
+        "nullable": "NO",
+        "default": "now()"
+      }
+    ],
+    "pks": [
+      "id"
+    ],
+    "fks": [],
+    "row_count": 1
+  },
+  "room_service_orders": {
+    "columns": [
+      {
+        "name": "id",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "order_number",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "room_number",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "status",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "items",
+        "type": "json",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "note",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "image_url",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "is_service_request",
+        "type": "boolean",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "progress",
+        "type": "integer",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "est_completion",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "assigned_robot_id",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "assigned_staff_name",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp without time zone",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp without time zone",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "room_id",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "account_id",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "total_amount",
+        "type": "double precision",
+        "nullable": "NO",
+        "default": "'0'::double precision"
+      },
+      {
+        "name": "support_request_id",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "priority",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": "'NORMAL'::character varying"
+      }
+    ],
+    "pks": [
+      "id"
+    ],
+    "fks": [
+      {
+        "column": "account_id",
+        "ref_table": "accounts",
+        "ref_column": "id",
+        "constraint_name": "fk_room_service_orders_account_id"
+      },
+      {
+        "column": "room_id",
+        "ref_table": "rooms",
+        "ref_column": "id",
+        "constraint_name": "fk_room_service_orders_room_id"
+      },
+      {
+        "column": "support_request_id",
+        "ref_table": "support_requests",
+        "ref_column": "id",
+        "constraint_name": "fk_room_service_orders_support_request_id"
+      }
+    ],
+    "row_count": 25
+  },
+  "rooms": {
+    "columns": [
+      {
+        "name": "id",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "hotel_id",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "room_number",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "floor",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "room_type",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "status",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "current_guest_name",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "qr_code",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "description",
+        "type": "text",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp without time zone",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp without time zone",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "floor_id",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      }
+    ],
+    "pks": [
+      "id"
+    ],
+    "fks": [
+      {
+        "column": "floor_id",
+        "ref_table": "floors",
+        "ref_column": "id",
+        "constraint_name": "fk_rooms_floor_id"
+      },
+      {
+        "column": "hotel_id",
+        "ref_table": "hotels",
+        "ref_column": "id",
+        "constraint_name": "rooms_hotel_id_fkey"
+      }
+    ],
+    "row_count": 12
+  },
+  "schedules": {
+    "columns": [
+      {
+        "name": "id",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "name",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "description",
+        "type": "text",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "workflow_id",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "account_id",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "cron_expression",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "scheduled_time",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "repeat_days",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "is_active",
+        "type": "boolean",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp without time zone",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp without time zone",
+        "nullable": "NO",
+        "default": null
+      }
+    ],
+    "pks": [
+      "id"
+    ],
+    "fks": [
+      {
+        "column": "account_id",
+        "ref_table": "accounts",
+        "ref_column": "id",
+        "constraint_name": "schedules_account_id_fkey"
+      },
+      {
+        "column": "workflow_id",
+        "ref_table": "robot_workflows",
+        "ref_column": "id",
+        "constraint_name": "schedules_workflow_id_fkey"
+      }
+    ],
+    "row_count": 0
+  },
+  "service_types": {
+    "columns": [
+      {
+        "name": "id",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "code",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "name",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "department_id",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "description",
+        "type": "text",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "is_active",
+        "type": "boolean",
+        "nullable": "NO",
+        "default": "true"
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp without time zone",
+        "nullable": "NO",
+        "default": "now()"
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp without time zone",
+        "nullable": "NO",
+        "default": "now()"
+      },
+      {
+        "name": "default_priority",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": "'NORMAL'::character varying"
+      }
+    ],
+    "pks": [
+      "id"
+    ],
+    "fks": [
+      {
+        "column": "department_id",
+        "ref_table": "departments",
+        "ref_column": "id",
+        "constraint_name": "service_types_department_id_fkey"
+      }
+    ],
+    "row_count": 13
+  },
+  "support_requests": {
+    "columns": [
+      {
+        "name": "id",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "ticket_code",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "title",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "description",
+        "type": "text",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "service_type_id",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "department_id",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "account_id",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "room_number",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "guest_name",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": "'Hotel Guest'::character varying"
+      },
+      {
+        "name": "source",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": "'From HCRobot'::character varying"
+      },
+      {
+        "name": "status",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": "'Pending'::character varying"
+      },
+      {
+        "name": "assigned_staff_name",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "assigned_robot_id",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp without time zone",
+        "nullable": "NO",
+        "default": "now()"
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp without time zone",
+        "nullable": "NO",
+        "default": "now()"
+      },
+      {
+        "name": "room_id",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "items",
+        "type": "json",
+        "nullable": "YES",
+        "default": "'[]'::json"
+      },
+      {
+        "name": "total_amount",
+        "type": "double precision",
+        "nullable": "YES",
+        "default": "0.0"
+      },
+      {
+        "name": "progress",
+        "type": "integer",
+        "nullable": "YES",
+        "default": "0"
+      },
+      {
+        "name": "est_completion",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "extra_data",
+        "type": "json",
+        "nullable": "YES",
+        "default": "'{}'::json"
+      },
+      {
+        "name": "priority",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": "'NORMAL'::character varying"
+      }
+    ],
+    "pks": [
+      "id"
+    ],
+    "fks": [
+      {
+        "column": "room_id",
+        "ref_table": "rooms",
+        "ref_column": "id",
+        "constraint_name": "fk_support_requests_room_id"
+      },
+      {
+        "column": "account_id",
+        "ref_table": "accounts",
+        "ref_column": "id",
+        "constraint_name": "support_requests_account_id_fkey"
+      },
+      {
+        "column": "department_id",
+        "ref_table": "departments",
+        "ref_column": "id",
+        "constraint_name": "support_requests_department_id_fkey"
+      },
+      {
+        "column": "service_type_id",
+        "ref_table": "service_types",
+        "ref_column": "id",
+        "constraint_name": "support_requests_service_type_id_fkey"
+      }
+    ],
+    "row_count": 167
+  },
+  "zones": {
+    "columns": [
+      {
+        "name": "id",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "map_id",
+        "type": "character varying",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "name",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "type",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "x",
+        "type": "double precision",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "y",
+        "type": "double precision",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "width",
+        "type": "double precision",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "height",
+        "type": "double precision",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "speed_limit",
+        "type": "double precision",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "floor",
+        "type": "character varying",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "description",
+        "type": "text",
+        "nullable": "YES",
+        "default": null
+      },
+      {
+        "name": "created_at",
+        "type": "timestamp without time zone",
+        "nullable": "NO",
+        "default": null
+      },
+      {
+        "name": "updated_at",
+        "type": "timestamp without time zone",
+        "nullable": "NO",
+        "default": null
+      }
+    ],
+    "pks": [
+      "id"
+    ],
+    "fks": [],
+    "row_count": 3
+  }
+}

@@ -1,0 +1,3035 @@
+{
+  "summary": {},
+  "table_discrepancies": {
+    "missing_in_database": [],
+    "missing_in_code_models": [],
+    "common_tables_count": 34
+  },
+  "column_discrepancies": {
+    "amenities": {
+      "in_db_not_code": [],
+      "in_code_not_db": [],
+      "type_mismatches": [],
+      "nullability_mismatches": [
+        {
+          "column": "created_at",
+          "db_nullable": true,
+          "model_nullable": false
+        },
+        {
+          "column": "updated_at",
+          "db_nullable": true,
+          "model_nullable": false
+        }
+      ]
+    },
+    "floors": {
+      "in_db_not_code": [],
+      "in_code_not_db": [],
+      "type_mismatches": [],
+      "nullability_mismatches": [
+        {
+          "column": "created_at",
+          "db_nullable": true,
+          "model_nullable": false
+        },
+        {
+          "column": "updated_at",
+          "db_nullable": true,
+          "model_nullable": false
+        }
+      ]
+    },
+    "food_items": {
+      "in_db_not_code": [],
+      "in_code_not_db": [],
+      "type_mismatches": [],
+      "nullability_mismatches": [
+        {
+          "column": "created_at",
+          "db_nullable": true,
+          "model_nullable": false
+        },
+        {
+          "column": "updated_at",
+          "db_nullable": true,
+          "model_nullable": false
+        }
+      ]
+    },
+    "maps": {
+      "in_db_not_code": [],
+      "in_code_not_db": [],
+      "type_mismatches": [],
+      "nullability_mismatches": [
+        {
+          "column": "created_at",
+          "db_nullable": true,
+          "model_nullable": false
+        },
+        {
+          "column": "updated_at",
+          "db_nullable": true,
+          "model_nullable": false
+        }
+      ]
+    },
+    "menu_items": {
+      "in_db_not_code": [],
+      "in_code_not_db": [],
+      "type_mismatches": [],
+      "nullability_mismatches": [
+        {
+          "column": "display_order",
+          "db_nullable": true,
+          "model_nullable": false
+        },
+        {
+          "column": "food_item_id",
+          "db_nullable": true,
+          "model_nullable": false
+        }
+      ]
+    },
+    "support_requests": {
+      "in_db_not_code": [],
+      "in_code_not_db": [],
+      "type_mismatches": [],
+      "nullability_mismatches": [
+        {
+          "column": "progress",
+          "db_nullable": true,
+          "model_nullable": false
+        },
+        {
+          "column": "total_amount",
+          "db_nullable": true,
+          "model_nullable": false
+        }
+      ]
+    }
+  },
+  "fk_discrepancies": {},
+  "relationship_audit": {
+    "ServiceType": {
+      "table": "service_types",
+      "relationships": [
+        {
+          "attribute": "department",
+          "target_model": "Department",
+          "target_table": "departments",
+          "direction": "MANYTOONE",
+          "uselist": false,
+          "back_populates": "service_types",
+          "local_columns": [
+            "department_id"
+          ]
+        },
+        {
+          "attribute": "support_requests",
+          "target_model": "SupportRequest",
+          "target_table": "support_requests",
+          "direction": "ONETOMANY",
+          "uselist": true,
+          "back_populates": "service_type",
+          "local_columns": [
+            "id"
+          ]
+        }
+      ],
+      "unmapped_fk_columns": []
+    },
+    "JobStep": {
+      "table": "job_steps",
+      "relationships": [
+        {
+          "attribute": "job",
+          "target_model": "Job",
+          "target_table": "jobs",
+          "direction": "MANYTOONE",
+          "uselist": false,
+          "back_populates": "job_steps",
+          "local_columns": [
+            "job_id"
+          ]
+        }
+      ],
+      "unmapped_fk_columns": []
+    },
+    "Floor": {
+      "table": "floors",
+      "relationships": [
+        {
+          "attribute": "hotel",
+          "target_model": "Hotel",
+          "target_table": "hotels",
+          "direction": "MANYTOONE",
+          "uselist": false,
+          "back_populates": "floors",
+          "local_columns": [
+            "hotel_id"
+          ]
+        },
+        {
+          "attribute": "rooms",
+          "target_model": "Room",
+          "target_table": "rooms",
+          "direction": "ONETOMANY",
+          "uselist": true,
+          "back_populates": "floor_rel",
+          "local_columns": [
+            "id"
+          ]
+        },
+        {
+          "attribute": "maps",
+          "target_model": "Map",
+          "target_table": "maps",
+          "direction": "ONETOMANY",
+          "uselist": true,
+          "back_populates": "floor_rel",
+          "local_columns": [
+            "id"
+          ]
+        },
+        {
+          "attribute": "amenities",
+          "target_model": "Amenity",
+          "target_table": "amenities",
+          "direction": "ONETOMANY",
+          "uselist": true,
+          "back_populates": "floor_rel",
+          "local_columns": [
+            "id"
+          ]
+        }
+      ],
+      "unmapped_fk_columns": []
+    },
+    "Menu": {
+      "table": "menus",
+      "relationships": [
+        {
+          "attribute": "items",
+          "target_model": "MenuItem",
+          "target_table": "menu_items",
+          "direction": "ONETOMANY",
+          "uselist": true,
+          "back_populates": "menu",
+          "local_columns": [
+            "id"
+          ]
+        }
+      ],
+      "unmapped_fk_columns": []
+    },
+    "RobotWorkflow": {
+      "table": "robot_workflows",
+      "relationships": [],
+      "unmapped_fk_columns": []
+    },
+    "Department": {
+      "table": "departments",
+      "relationships": [
+        {
+          "attribute": "accounts",
+          "target_model": "Account",
+          "target_table": "accounts",
+          "direction": "ONETOMANY",
+          "uselist": true,
+          "back_populates": "department_rel",
+          "local_columns": [
+            "id"
+          ]
+        },
+        {
+          "attribute": "service_types",
+          "target_model": "ServiceType",
+          "target_table": "service_types",
+          "direction": "ONETOMANY",
+          "uselist": true,
+          "back_populates": "department",
+          "local_columns": [
+            "id"
+          ]
+        }
+      ],
+      "unmapped_fk_columns": []
+    },
+    "SupportRequest": {
+      "table": "support_requests",
+      "relationships": [
+        {
+          "attribute": "service_type",
+          "target_model": "ServiceType",
+          "target_table": "service_types",
+          "direction": "MANYTOONE",
+          "uselist": false,
+          "back_populates": "support_requests",
+          "local_columns": [
+            "service_type_id"
+          ]
+        },
+        {
+          "attribute": "department",
+          "target_model": "Department",
+          "target_table": "departments",
+          "direction": "MANYTOONE",
+          "uselist": false,
+          "back_populates": null,
+          "local_columns": [
+            "department_id"
+          ]
+        },
+        {
+          "attribute": "assigned_account",
+          "target_model": "Account",
+          "target_table": "accounts",
+          "direction": "MANYTOONE",
+          "uselist": false,
+          "back_populates": null,
+          "local_columns": [
+            "account_id"
+          ]
+        },
+        {
+          "attribute": "assigned_robot",
+          "target_model": "Robot",
+          "target_table": "robots",
+          "direction": "MANYTOONE",
+          "uselist": false,
+          "back_populates": null,
+          "local_columns": [
+            "assigned_robot_id"
+          ]
+        },
+        {
+          "attribute": "room",
+          "target_model": "Room",
+          "target_table": "rooms",
+          "direction": "MANYTOONE",
+          "uselist": false,
+          "back_populates": "support_requests",
+          "local_columns": [
+            "room_id"
+          ]
+        },
+        {
+          "attribute": "room_service_order",
+          "target_model": "RoomServiceOrder",
+          "target_table": "room_service_orders",
+          "direction": "ONETOMANY",
+          "uselist": false,
+          "back_populates": "support_request",
+          "local_columns": [
+            "id"
+          ]
+        }
+      ],
+      "unmapped_fk_columns": []
+    },
+    "ChatSession": {
+      "table": "chat_sessions",
+      "relationships": [
+        {
+          "attribute": "messages",
+          "target_model": "ChatMessage",
+          "target_table": "chat_messages",
+          "direction": "ONETOMANY",
+          "uselist": true,
+          "back_populates": "session",
+          "local_columns": [
+            "id"
+          ]
+        },
+        {
+          "attribute": "feedbacks",
+          "target_model": "Feedback",
+          "target_table": "feedbacks",
+          "direction": "ONETOMANY",
+          "uselist": true,
+          "back_populates": "chat_session",
+          "local_columns": [
+            "id"
+          ]
+        },
+        {
+          "attribute": "account",
+          "target_model": "Account",
+          "target_table": "accounts",
+          "direction": "MANYTOONE",
+          "uselist": false,
+          "back_populates": null,
+          "local_columns": [
+            "account_id"
+          ]
+        }
+      ],
+      "unmapped_fk_columns": []
+    },
+    "Robot": {
+      "table": "robots",
+      "relationships": [
+        {
+          "attribute": "jobs",
+          "target_model": "Job",
+          "target_table": "jobs",
+          "direction": "ONETOMANY",
+          "uselist": true,
+          "back_populates": "robot",
+          "local_columns": [
+            "id"
+          ]
+        }
+      ],
+      "unmapped_fk_columns": []
+    },
+    "EndpointGroup": {
+      "table": "endpoint_groups",
+      "relationships": [
+        {
+          "attribute": "members",
+          "target_model": "EndpointGroupMember",
+          "target_table": "endpoint_group_members",
+          "direction": "ONETOMANY",
+          "uselist": true,
+          "back_populates": "endpoint_group",
+          "local_columns": [
+            "id"
+          ]
+        }
+      ],
+      "unmapped_fk_columns": []
+    },
+    "Account": {
+      "table": "accounts",
+      "relationships": [
+        {
+          "attribute": "department_rel",
+          "target_model": "Department",
+          "target_table": "departments",
+          "direction": "MANYTOONE",
+          "uselist": false,
+          "back_populates": "accounts",
+          "local_columns": [
+            "department_id"
+          ]
+        },
+        {
+          "attribute": "notifications",
+          "target_model": "Notification",
+          "target_table": "notifications",
+          "direction": "ONETOMANY",
+          "uselist": true,
+          "back_populates": "account",
+          "local_columns": [
+            "id"
+          ]
+        }
+      ],
+      "unmapped_fk_columns": []
+    },
+    "Notification": {
+      "table": "notifications",
+      "relationships": [
+        {
+          "attribute": "account",
+          "target_model": "Account",
+          "target_table": "accounts",
+          "direction": "MANYTOONE",
+          "uselist": false,
+          "back_populates": "notifications",
+          "local_columns": [
+            "account_id"
+          ]
+        }
+      ],
+      "unmapped_fk_columns": []
+    },
+    "Map": {
+      "table": "maps",
+      "relationships": [
+        {
+          "attribute": "hotel",
+          "target_model": "Hotel",
+          "target_table": "hotels",
+          "direction": "MANYTOONE",
+          "uselist": false,
+          "back_populates": "maps",
+          "local_columns": [
+            "hotel_id"
+          ]
+        },
+        {
+          "attribute": "floor_rel",
+          "target_model": "Floor",
+          "target_table": "floors",
+          "direction": "MANYTOONE",
+          "uselist": false,
+          "back_populates": "maps",
+          "local_columns": [
+            "floor_id"
+          ]
+        },
+        {
+          "attribute": "zones",
+          "target_model": "Zone",
+          "target_table": "zones",
+          "direction": "ONETOMANY",
+          "uselist": true,
+          "back_populates": "map_rel",
+          "local_columns": [
+            "id"
+          ]
+        },
+        {
+          "attribute": "endpoints",
+          "target_model": "Endpoint",
+          "target_table": "endpoints",
+          "direction": "ONETOMANY",
+          "uselist": true,
+          "back_populates": "map_rel",
+          "local_columns": [
+            "id"
+          ]
+        }
+      ],
+      "unmapped_fk_columns": []
+    },
+    "JobEvent": {
+      "table": "job_events",
+      "relationships": [
+        {
+          "attribute": "job",
+          "target_model": "Job",
+          "target_table": "jobs",
+          "direction": "MANYTOONE",
+          "uselist": false,
+          "back_populates": "job_events",
+          "local_columns": [
+            "job_id"
+          ]
+        }
+      ],
+      "unmapped_fk_columns": []
+    },
+    "Room": {
+      "table": "rooms",
+      "relationships": [
+        {
+          "attribute": "hotel",
+          "target_model": "Hotel",
+          "target_table": "hotels",
+          "direction": "MANYTOONE",
+          "uselist": false,
+          "back_populates": "rooms",
+          "local_columns": [
+            "hotel_id"
+          ]
+        },
+        {
+          "attribute": "floor_rel",
+          "target_model": "Floor",
+          "target_table": "floors",
+          "direction": "MANYTOONE",
+          "uselist": false,
+          "back_populates": "rooms",
+          "local_columns": [
+            "floor_id"
+          ]
+        },
+        {
+          "attribute": "support_requests",
+          "target_model": "SupportRequest",
+          "target_table": "support_requests",
+          "direction": "ONETOMANY",
+          "uselist": true,
+          "back_populates": "room",
+          "local_columns": [
+            "id"
+          ]
+        }
+      ],
+      "unmapped_fk_columns": []
+    },
+    "MenuItem": {
+      "table": "menu_items",
+      "relationships": [
+        {
+          "attribute": "menu",
+          "target_model": "Menu",
+          "target_table": "menus",
+          "direction": "MANYTOONE",
+          "uselist": false,
+          "back_populates": "items",
+          "local_columns": [
+            "menu_id"
+          ]
+        },
+        {
+          "attribute": "food_item",
+          "target_model": "FoodItem",
+          "target_table": "food_items",
+          "direction": "MANYTOONE",
+          "uselist": false,
+          "back_populates": "menu_items",
+          "local_columns": [
+            "food_item_id"
+          ]
+        }
+      ],
+      "unmapped_fk_columns": []
+    },
+    "ChatMessage": {
+      "table": "chat_messages",
+      "relationships": [
+        {
+          "attribute": "session",
+          "target_model": "ChatSession",
+          "target_table": "chat_sessions",
+          "direction": "MANYTOONE",
+          "uselist": false,
+          "back_populates": "messages",
+          "local_columns": [
+            "session_id"
+          ]
+        }
+      ],
+      "unmapped_fk_columns": []
+    },
+    "ManagementDirective": {
+      "table": "management_directives",
+      "relationships": [
+        {
+          "attribute": "assigned_account",
+          "target_model": "Account",
+          "target_table": "accounts",
+          "direction": "MANYTOONE",
+          "uselist": false,
+          "back_populates": null,
+          "local_columns": [
+            "assigned_account_id"
+          ]
+        },
+        {
+          "attribute": "created_by_account",
+          "target_model": "Account",
+          "target_table": "accounts",
+          "direction": "MANYTOONE",
+          "uselist": false,
+          "back_populates": null,
+          "local_columns": [
+            "created_by_account_id"
+          ]
+        }
+      ],
+      "unmapped_fk_columns": []
+    },
+    "Job": {
+      "table": "jobs",
+      "relationships": [
+        {
+          "attribute": "robot",
+          "target_model": "Robot",
+          "target_table": "robots",
+          "direction": "MANYTOONE",
+          "uselist": false,
+          "back_populates": "jobs",
+          "local_columns": [
+            "robot_id"
+          ]
+        },
+        {
+          "attribute": "workflow",
+          "target_model": "RobotWorkflow",
+          "target_table": "robot_workflows",
+          "direction": "MANYTOONE",
+          "uselist": false,
+          "back_populates": null,
+          "local_columns": [
+            "workflow_id"
+          ]
+        },
+        {
+          "attribute": "chat_session",
+          "target_model": "ChatSession",
+          "target_table": "chat_sessions",
+          "direction": "MANYTOONE",
+          "uselist": false,
+          "back_populates": null,
+          "local_columns": [
+            "chat_session_id"
+          ]
+        },
+        {
+          "attribute": "schedule",
+          "target_model": "Schedule",
+          "target_table": "schedules",
+          "direction": "MANYTOONE",
+          "uselist": false,
+          "back_populates": "jobs",
+          "local_columns": [
+            "schedule_id"
+          ]
+        },
+        {
+          "attribute": "account",
+          "target_model": "Account",
+          "target_table": "accounts",
+          "direction": "MANYTOONE",
+          "uselist": false,
+          "back_populates": null,
+          "local_columns": [
+            "account_id"
+          ]
+        },
+        {
+          "attribute": "job_steps",
+          "target_model": "JobStep",
+          "target_table": "job_steps",
+          "direction": "ONETOMANY",
+          "uselist": true,
+          "back_populates": "job",
+          "local_columns": [
+            "id"
+          ]
+        },
+        {
+          "attribute": "job_events",
+          "target_model": "JobEvent",
+          "target_table": "job_events",
+          "direction": "ONETOMANY",
+          "uselist": true,
+          "back_populates": "job",
+          "local_columns": [
+            "id"
+          ]
+        }
+      ],
+      "unmapped_fk_columns": []
+    },
+    "LogEvent": {
+      "table": "log_events",
+      "relationships": [],
+      "unmapped_fk_columns": [
+        "job_id",
+        "robot_id",
+        "account_id"
+      ]
+    },
+    "EndpointGroupMember": {
+      "table": "endpoint_group_members",
+      "relationships": [
+        {
+          "attribute": "endpoint",
+          "target_model": "Endpoint",
+          "target_table": "endpoints",
+          "direction": "MANYTOONE",
+          "uselist": false,
+          "back_populates": "group_memberships",
+          "local_columns": [
+            "endpoint_id"
+          ]
+        },
+        {
+          "attribute": "endpoint_group",
+          "target_model": "EndpointGroup",
+          "target_table": "endpoint_groups",
+          "direction": "MANYTOONE",
+          "uselist": false,
+          "back_populates": "members",
+          "local_columns": [
+            "endpoint_group_id"
+          ]
+        }
+      ],
+      "unmapped_fk_columns": []
+    },
+    "FoodItem": {
+      "table": "food_items",
+      "relationships": [
+        {
+          "attribute": "menu_items",
+          "target_model": "MenuItem",
+          "target_table": "menu_items",
+          "direction": "ONETOMANY",
+          "uselist": true,
+          "back_populates": "food_item",
+          "local_columns": [
+            "id"
+          ]
+        }
+      ],
+      "unmapped_fk_columns": []
+    },
+    "RoomServiceOrder": {
+      "table": "room_service_orders",
+      "relationships": [
+        {
+          "attribute": "room",
+          "target_model": "Room",
+          "target_table": "rooms",
+          "direction": "MANYTOONE",
+          "uselist": false,
+          "back_populates": null,
+          "local_columns": [
+            "room_id"
+          ]
+        },
+        {
+          "attribute": "account",
+          "target_model": "Account",
+          "target_table": "accounts",
+          "direction": "MANYTOONE",
+          "uselist": false,
+          "back_populates": null,
+          "local_columns": [
+            "account_id"
+          ]
+        },
+        {
+          "attribute": "support_request",
+          "target_model": "SupportRequest",
+          "target_table": "support_requests",
+          "direction": "MANYTOONE",
+          "uselist": false,
+          "back_populates": "room_service_order",
+          "local_columns": [
+            "support_request_id"
+          ]
+        },
+        {
+          "attribute": "assigned_robot",
+          "target_model": "Robot",
+          "target_table": "robots",
+          "direction": "MANYTOONE",
+          "uselist": false,
+          "back_populates": null,
+          "local_columns": [
+            "assigned_robot_id"
+          ]
+        },
+        {
+          "attribute": "order_items",
+          "target_model": "OrderItem",
+          "target_table": "order_items",
+          "direction": "ONETOMANY",
+          "uselist": true,
+          "back_populates": "order",
+          "local_columns": [
+            "id"
+          ]
+        }
+      ],
+      "unmapped_fk_columns": []
+    },
+    "Zone": {
+      "table": "zones",
+      "relationships": [
+        {
+          "attribute": "map_rel",
+          "target_model": "Map",
+          "target_table": "maps",
+          "direction": "MANYTOONE",
+          "uselist": false,
+          "back_populates": "zones",
+          "local_columns": [
+            "map_id"
+          ]
+        }
+      ],
+      "unmapped_fk_columns": []
+    },
+    "DialogueScenario": {
+      "table": "dialogue_scenarios",
+      "relationships": [],
+      "unmapped_fk_columns": []
+    },
+    "Amenity": {
+      "table": "amenities",
+      "relationships": [
+        {
+          "attribute": "hotel",
+          "target_model": "Hotel",
+          "target_table": "hotels",
+          "direction": "MANYTOONE",
+          "uselist": false,
+          "back_populates": "amenities",
+          "local_columns": [
+            "hotel_id"
+          ]
+        },
+        {
+          "attribute": "floor_rel",
+          "target_model": "Floor",
+          "target_table": "floors",
+          "direction": "MANYTOONE",
+          "uselist": false,
+          "back_populates": "amenities",
+          "local_columns": [
+            "floor_id"
+          ]
+        }
+      ],
+      "unmapped_fk_columns": []
+    },
+    "Feedback": {
+      "table": "feedbacks",
+      "relationships": [
+        {
+          "attribute": "chat_session",
+          "target_model": "ChatSession",
+          "target_table": "chat_sessions",
+          "direction": "MANYTOONE",
+          "uselist": false,
+          "back_populates": "feedbacks",
+          "local_columns": [
+            "chat_session_id"
+          ]
+        },
+        {
+          "attribute": "account",
+          "target_model": "Account",
+          "target_table": "accounts",
+          "direction": "MANYTOONE",
+          "uselist": false,
+          "back_populates": null,
+          "local_columns": [
+            "account_id"
+          ]
+        }
+      ],
+      "unmapped_fk_columns": []
+    },
+    "Schedule": {
+      "table": "schedules",
+      "relationships": [
+        {
+          "attribute": "workflow",
+          "target_model": "RobotWorkflow",
+          "target_table": "robot_workflows",
+          "direction": "MANYTOONE",
+          "uselist": false,
+          "back_populates": null,
+          "local_columns": [
+            "workflow_id"
+          ]
+        },
+        {
+          "attribute": "account",
+          "target_model": "Account",
+          "target_table": "accounts",
+          "direction": "MANYTOONE",
+          "uselist": false,
+          "back_populates": null,
+          "local_columns": [
+            "account_id"
+          ]
+        },
+        {
+          "attribute": "jobs",
+          "target_model": "Job",
+          "target_table": "jobs",
+          "direction": "ONETOMANY",
+          "uselist": true,
+          "back_populates": "schedule",
+          "local_columns": [
+            "id"
+          ]
+        }
+      ],
+      "unmapped_fk_columns": []
+    },
+    "Hotel": {
+      "table": "hotels",
+      "relationships": [
+        {
+          "attribute": "floors",
+          "target_model": "Floor",
+          "target_table": "floors",
+          "direction": "ONETOMANY",
+          "uselist": true,
+          "back_populates": "hotel",
+          "local_columns": [
+            "id"
+          ]
+        },
+        {
+          "attribute": "rooms",
+          "target_model": "Room",
+          "target_table": "rooms",
+          "direction": "ONETOMANY",
+          "uselist": true,
+          "back_populates": "hotel",
+          "local_columns": [
+            "id"
+          ]
+        },
+        {
+          "attribute": "amenities",
+          "target_model": "Amenity",
+          "target_table": "amenities",
+          "direction": "ONETOMANY",
+          "uselist": true,
+          "back_populates": "hotel",
+          "local_columns": [
+            "id"
+          ]
+        },
+        {
+          "attribute": "facilities",
+          "target_model": "Amenity",
+          "target_table": "amenities",
+          "direction": "ONETOMANY",
+          "uselist": true,
+          "back_populates": "hotel",
+          "local_columns": [
+            "id"
+          ]
+        },
+        {
+          "attribute": "events",
+          "target_model": "Event",
+          "target_table": "events",
+          "direction": "ONETOMANY",
+          "uselist": true,
+          "back_populates": "hotel",
+          "local_columns": [
+            "id"
+          ]
+        },
+        {
+          "attribute": "maps",
+          "target_model": "Map",
+          "target_table": "maps",
+          "direction": "ONETOMANY",
+          "uselist": true,
+          "back_populates": "hotel",
+          "local_columns": [
+            "id"
+          ]
+        }
+      ],
+      "unmapped_fk_columns": []
+    },
+    "AuditLog": {
+      "table": "audit_logs",
+      "relationships": [],
+      "unmapped_fk_columns": [
+        "account_id"
+      ]
+    },
+    "HumanSupportSession": {
+      "table": "human_support_sessions",
+      "relationships": [
+        {
+          "attribute": "chat_session",
+          "target_model": "ChatSession",
+          "target_table": "chat_sessions",
+          "direction": "MANYTOONE",
+          "uselist": false,
+          "back_populates": null,
+          "local_columns": [
+            "chat_session_id"
+          ]
+        },
+        {
+          "attribute": "assigned_account",
+          "target_model": "Account",
+          "target_table": "accounts",
+          "direction": "MANYTOONE",
+          "uselist": false,
+          "back_populates": null,
+          "local_columns": [
+            "account_id"
+          ]
+        }
+      ],
+      "unmapped_fk_columns": []
+    },
+    "OrderItem": {
+      "table": "order_items",
+      "relationships": [
+        {
+          "attribute": "order",
+          "target_model": "RoomServiceOrder",
+          "target_table": "room_service_orders",
+          "direction": "MANYTOONE",
+          "uselist": false,
+          "back_populates": "order_items",
+          "local_columns": [
+            "order_id"
+          ]
+        },
+        {
+          "attribute": "menu_item",
+          "target_model": "MenuItem",
+          "target_table": "menu_items",
+          "direction": "MANYTOONE",
+          "uselist": false,
+          "back_populates": null,
+          "local_columns": [
+            "menu_item_id"
+          ]
+        },
+        {
+          "attribute": "food_item",
+          "target_model": "FoodItem",
+          "target_table": "food_items",
+          "direction": "MANYTOONE",
+          "uselist": false,
+          "back_populates": null,
+          "local_columns": [
+            "food_item_id"
+          ]
+        }
+      ],
+      "unmapped_fk_columns": []
+    },
+    "Endpoint": {
+      "table": "endpoints",
+      "relationships": [
+        {
+          "attribute": "map_rel",
+          "target_model": "Map",
+          "target_table": "maps",
+          "direction": "MANYTOONE",
+          "uselist": false,
+          "back_populates": "endpoints",
+          "local_columns": [
+            "map_id"
+          ]
+        },
+        {
+          "attribute": "group_memberships",
+          "target_model": "EndpointGroupMember",
+          "target_table": "endpoint_group_members",
+          "direction": "ONETOMANY",
+          "uselist": true,
+          "back_populates": "endpoint",
+          "local_columns": [
+            "id"
+          ]
+        }
+      ],
+      "unmapped_fk_columns": []
+    },
+    "Event": {
+      "table": "events",
+      "relationships": [
+        {
+          "attribute": "hotel",
+          "target_model": "Hotel",
+          "target_table": "hotels",
+          "direction": "MANYTOONE",
+          "uselist": false,
+          "back_populates": "events",
+          "local_columns": [
+            "hotel_id"
+          ]
+        }
+      ],
+      "unmapped_fk_columns": []
+    }
+  },
+  "all_tables_details": {
+    "accounts": {
+      "columns_count_db": 17,
+      "columns_count_model": 17,
+      "fks_count_db": 1,
+      "fks_count_model": 1,
+      "db_columns": [
+        "id",
+        "username",
+        "password_hash",
+        "code",
+        "full_name",
+        "role",
+        "department_id",
+        "default_dashboard",
+        "location",
+        "status",
+        "avatar_url",
+        "email",
+        "phone",
+        "is_fallback_agent",
+        "is_active",
+        "created_at",
+        "updated_at"
+      ],
+      "model_columns": [
+        "id",
+        "username",
+        "password_hash",
+        "code",
+        "full_name",
+        "role",
+        "department_id",
+        "default_dashboard",
+        "location",
+        "status",
+        "avatar_url",
+        "email",
+        "phone",
+        "is_fallback_agent",
+        "is_active",
+        "created_at",
+        "updated_at"
+      ],
+      "db_fks": [
+        {
+          "name": "fk_accounts_department_id",
+          "column": "department_id",
+          "referred_table": "departments",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        }
+      ],
+      "model_fks": [
+        {
+          "column": "department_id",
+          "referred_table": "departments",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        }
+      ]
+    },
+    "amenities": {
+      "columns_count_db": 12,
+      "columns_count_model": 12,
+      "fks_count_db": 2,
+      "fks_count_model": 2,
+      "db_columns": [
+        "id",
+        "hotel_id",
+        "floor_id",
+        "name",
+        "category",
+        "location",
+        "open_time",
+        "close_time",
+        "description",
+        "is_active",
+        "created_at",
+        "updated_at"
+      ],
+      "model_columns": [
+        "id",
+        "hotel_id",
+        "floor_id",
+        "name",
+        "category",
+        "location",
+        "open_time",
+        "close_time",
+        "description",
+        "is_active",
+        "created_at",
+        "updated_at"
+      ],
+      "db_fks": [
+        {
+          "name": "amenities_floor_id_fkey",
+          "column": "floor_id",
+          "referred_table": "floors",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        },
+        {
+          "name": "amenities_hotel_id_fkey",
+          "column": "hotel_id",
+          "referred_table": "hotels",
+          "referred_column": "id",
+          "ondelete": "CASCADE"
+        }
+      ],
+      "model_fks": [
+        {
+          "column": "hotel_id",
+          "referred_table": "hotels",
+          "referred_column": "id",
+          "ondelete": "CASCADE"
+        },
+        {
+          "column": "floor_id",
+          "referred_table": "floors",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        }
+      ]
+    },
+    "audit_logs": {
+      "columns_count_db": 15,
+      "columns_count_model": 15,
+      "fks_count_db": 1,
+      "fks_count_model": 1,
+      "db_columns": [
+        "id",
+        "timestamp",
+        "actor_type",
+        "actor_id",
+        "actor_name",
+        "action",
+        "resource_type",
+        "resource_id",
+        "before_state",
+        "after_state",
+        "correlation_id",
+        "ip_address",
+        "user_agent",
+        "created_at",
+        "account_id"
+      ],
+      "model_columns": [
+        "id",
+        "timestamp",
+        "actor_type",
+        "actor_id",
+        "account_id",
+        "actor_name",
+        "action",
+        "resource_type",
+        "resource_id",
+        "before_state",
+        "after_state",
+        "correlation_id",
+        "ip_address",
+        "user_agent",
+        "created_at"
+      ],
+      "db_fks": [
+        {
+          "name": "fk_audit_logs_account_id",
+          "column": "account_id",
+          "referred_table": "accounts",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        }
+      ],
+      "model_fks": [
+        {
+          "column": "account_id",
+          "referred_table": "accounts",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        }
+      ]
+    },
+    "chat_messages": {
+      "columns_count_db": 7,
+      "columns_count_model": 7,
+      "fks_count_db": 1,
+      "fks_count_model": 1,
+      "db_columns": [
+        "id",
+        "session_id",
+        "sender",
+        "text",
+        "language",
+        "intent_action",
+        "created_at"
+      ],
+      "model_columns": [
+        "id",
+        "session_id",
+        "sender",
+        "text",
+        "language",
+        "intent_action",
+        "created_at"
+      ],
+      "db_fks": [
+        {
+          "name": "chat_messages_session_id_fkey",
+          "column": "session_id",
+          "referred_table": "chat_sessions",
+          "referred_column": "id",
+          "ondelete": "CASCADE"
+        }
+      ],
+      "model_fks": [
+        {
+          "column": "session_id",
+          "referred_table": "chat_sessions",
+          "referred_column": "id",
+          "ondelete": "CASCADE"
+        }
+      ]
+    },
+    "chat_sessions": {
+      "columns_count_db": 7,
+      "columns_count_model": 7,
+      "fks_count_db": 1,
+      "fks_count_model": 1,
+      "db_columns": [
+        "id",
+        "room_number",
+        "guest_name",
+        "is_active",
+        "created_at",
+        "updated_at",
+        "account_id"
+      ],
+      "model_columns": [
+        "id",
+        "account_id",
+        "room_number",
+        "guest_name",
+        "is_active",
+        "created_at",
+        "updated_at"
+      ],
+      "db_fks": [
+        {
+          "name": "chat_sessions_account_id_fkey",
+          "column": "account_id",
+          "referred_table": "accounts",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        }
+      ],
+      "model_fks": [
+        {
+          "column": "account_id",
+          "referred_table": "accounts",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        }
+      ]
+    },
+    "departments": {
+      "columns_count_db": 7,
+      "columns_count_model": 7,
+      "fks_count_db": 0,
+      "fks_count_model": 0,
+      "db_columns": [
+        "id",
+        "code",
+        "name",
+        "description",
+        "is_active",
+        "created_at",
+        "updated_at"
+      ],
+      "model_columns": [
+        "id",
+        "code",
+        "name",
+        "description",
+        "is_active",
+        "created_at",
+        "updated_at"
+      ],
+      "db_fks": [],
+      "model_fks": []
+    },
+    "dialogue_scenarios": {
+      "columns_count_db": 14,
+      "columns_count_model": 14,
+      "fks_count_db": 0,
+      "fks_count_model": 0,
+      "db_columns": [
+        "id",
+        "title",
+        "category",
+        "match_keywords",
+        "match_type",
+        "response_vi",
+        "response_en",
+        "action_type",
+        "action_payload",
+        "is_fast_path",
+        "is_active",
+        "priority",
+        "created_at",
+        "updated_at"
+      ],
+      "model_columns": [
+        "id",
+        "title",
+        "category",
+        "match_keywords",
+        "match_type",
+        "response_vi",
+        "response_en",
+        "action_type",
+        "action_payload",
+        "is_fast_path",
+        "is_active",
+        "priority",
+        "created_at",
+        "updated_at"
+      ],
+      "db_fks": [],
+      "model_fks": []
+    },
+    "endpoint_group_members": {
+      "columns_count_db": 4,
+      "columns_count_model": 4,
+      "fks_count_db": 2,
+      "fks_count_model": 2,
+      "db_columns": [
+        "id",
+        "endpoint_id",
+        "endpoint_group_id",
+        "created_at"
+      ],
+      "model_columns": [
+        "id",
+        "endpoint_id",
+        "endpoint_group_id",
+        "created_at"
+      ],
+      "db_fks": [
+        {
+          "name": "endpoint_group_members_endpoint_group_id_fkey",
+          "column": "endpoint_group_id",
+          "referred_table": "endpoint_groups",
+          "referred_column": "id",
+          "ondelete": "CASCADE"
+        },
+        {
+          "name": "endpoint_group_members_endpoint_id_fkey",
+          "column": "endpoint_id",
+          "referred_table": "endpoints",
+          "referred_column": "id",
+          "ondelete": "CASCADE"
+        }
+      ],
+      "model_fks": [
+        {
+          "column": "endpoint_group_id",
+          "referred_table": "endpoint_groups",
+          "referred_column": "id",
+          "ondelete": "CASCADE"
+        },
+        {
+          "column": "endpoint_id",
+          "referred_table": "endpoints",
+          "referred_column": "id",
+          "ondelete": "CASCADE"
+        }
+      ]
+    },
+    "endpoint_groups": {
+      "columns_count_db": 5,
+      "columns_count_model": 5,
+      "fks_count_db": 0,
+      "fks_count_model": 0,
+      "db_columns": [
+        "id",
+        "name",
+        "description",
+        "created_at",
+        "updated_at"
+      ],
+      "model_columns": [
+        "id",
+        "name",
+        "description",
+        "created_at",
+        "updated_at"
+      ],
+      "db_fks": [],
+      "model_fks": []
+    },
+    "endpoints": {
+      "columns_count_db": 11,
+      "columns_count_model": 11,
+      "fks_count_db": 1,
+      "fks_count_model": 1,
+      "db_columns": [
+        "id",
+        "map_id",
+        "name",
+        "floor",
+        "x",
+        "y",
+        "yaw",
+        "type",
+        "description",
+        "created_at",
+        "updated_at"
+      ],
+      "model_columns": [
+        "id",
+        "map_id",
+        "name",
+        "floor",
+        "x",
+        "y",
+        "yaw",
+        "type",
+        "description",
+        "created_at",
+        "updated_at"
+      ],
+      "db_fks": [
+        {
+          "name": "fk_endpoints_map_id",
+          "column": "map_id",
+          "referred_table": "maps",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        }
+      ],
+      "model_fks": [
+        {
+          "column": "map_id",
+          "referred_table": "maps",
+          "referred_column": "id",
+          "ondelete": "CASCADE"
+        }
+      ]
+    },
+    "events": {
+      "columns_count_db": 10,
+      "columns_count_model": 10,
+      "fks_count_db": 1,
+      "fks_count_model": 1,
+      "db_columns": [
+        "id",
+        "hotel_id",
+        "title",
+        "location",
+        "start_time",
+        "end_time",
+        "description",
+        "is_active",
+        "created_at",
+        "updated_at"
+      ],
+      "model_columns": [
+        "id",
+        "hotel_id",
+        "title",
+        "location",
+        "start_time",
+        "end_time",
+        "description",
+        "is_active",
+        "created_at",
+        "updated_at"
+      ],
+      "db_fks": [
+        {
+          "name": "events_hotel_id_fkey",
+          "column": "hotel_id",
+          "referred_table": "hotels",
+          "referred_column": "id",
+          "ondelete": "CASCADE"
+        }
+      ],
+      "model_fks": [
+        {
+          "column": "hotel_id",
+          "referred_table": "hotels",
+          "referred_column": "id",
+          "ondelete": "CASCADE"
+        }
+      ]
+    },
+    "feedbacks": {
+      "columns_count_db": 9,
+      "columns_count_model": 9,
+      "fks_count_db": 2,
+      "fks_count_model": 2,
+      "db_columns": [
+        "id",
+        "chat_session_id",
+        "account_id",
+        "rating",
+        "category",
+        "comment",
+        "guest_name",
+        "room_number",
+        "created_at"
+      ],
+      "model_columns": [
+        "id",
+        "chat_session_id",
+        "account_id",
+        "rating",
+        "category",
+        "comment",
+        "guest_name",
+        "room_number",
+        "created_at"
+      ],
+      "db_fks": [
+        {
+          "name": "feedbacks_account_id_fkey",
+          "column": "account_id",
+          "referred_table": "accounts",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        },
+        {
+          "name": "feedbacks_chat_session_id_fkey",
+          "column": "chat_session_id",
+          "referred_table": "chat_sessions",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        }
+      ],
+      "model_fks": [
+        {
+          "column": "chat_session_id",
+          "referred_table": "chat_sessions",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        },
+        {
+          "column": "account_id",
+          "referred_table": "accounts",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        }
+      ]
+    },
+    "floors": {
+      "columns_count_db": 7,
+      "columns_count_model": 7,
+      "fks_count_db": 1,
+      "fks_count_model": 1,
+      "db_columns": [
+        "id",
+        "hotel_id",
+        "floor_number",
+        "name",
+        "description",
+        "created_at",
+        "updated_at"
+      ],
+      "model_columns": [
+        "id",
+        "hotel_id",
+        "floor_number",
+        "name",
+        "description",
+        "created_at",
+        "updated_at"
+      ],
+      "db_fks": [
+        {
+          "name": "floors_hotel_id_fkey",
+          "column": "hotel_id",
+          "referred_table": "hotels",
+          "referred_column": "id",
+          "ondelete": "CASCADE"
+        }
+      ],
+      "model_fks": [
+        {
+          "column": "hotel_id",
+          "referred_table": "hotels",
+          "referred_column": "id",
+          "ondelete": "CASCADE"
+        }
+      ]
+    },
+    "food_items": {
+      "columns_count_db": 9,
+      "columns_count_model": 9,
+      "fks_count_db": 0,
+      "fks_count_model": 0,
+      "db_columns": [
+        "id",
+        "name",
+        "category",
+        "description",
+        "image_url",
+        "prep_time_minutes",
+        "is_available",
+        "created_at",
+        "updated_at"
+      ],
+      "model_columns": [
+        "id",
+        "name",
+        "category",
+        "description",
+        "image_url",
+        "prep_time_minutes",
+        "is_available",
+        "created_at",
+        "updated_at"
+      ],
+      "db_fks": [],
+      "model_fks": []
+    },
+    "hotels": {
+      "columns_count_db": 10,
+      "columns_count_model": 10,
+      "fks_count_db": 0,
+      "fks_count_model": 0,
+      "db_columns": [
+        "id",
+        "name",
+        "address",
+        "phone",
+        "email",
+        "star_rating",
+        "description",
+        "is_active",
+        "created_at",
+        "updated_at"
+      ],
+      "model_columns": [
+        "id",
+        "name",
+        "address",
+        "phone",
+        "email",
+        "star_rating",
+        "description",
+        "is_active",
+        "created_at",
+        "updated_at"
+      ],
+      "db_fks": [],
+      "model_fks": []
+    },
+    "human_support_sessions": {
+      "columns_count_db": 21,
+      "columns_count_model": 21,
+      "fks_count_db": 2,
+      "fks_count_model": 2,
+      "db_columns": [
+        "id",
+        "session_code",
+        "room_number",
+        "guest_name",
+        "category",
+        "origin_robot_code",
+        "sentiment",
+        "wait_time_label",
+        "status",
+        "linked_request_id",
+        "messages",
+        "created_at",
+        "updated_at",
+        "chat_session_id",
+        "account_id",
+        "recording_url",
+        "recording_public_id",
+        "recording_duration",
+        "thumbnail_url",
+        "call_started_at",
+        "call_ended_at"
+      ],
+      "model_columns": [
+        "id",
+        "session_code",
+        "room_number",
+        "guest_name",
+        "category",
+        "origin_robot_code",
+        "sentiment",
+        "wait_time_label",
+        "status",
+        "linked_request_id",
+        "chat_session_id",
+        "account_id",
+        "messages",
+        "recording_url",
+        "recording_public_id",
+        "recording_duration",
+        "thumbnail_url",
+        "call_started_at",
+        "call_ended_at",
+        "created_at",
+        "updated_at"
+      ],
+      "db_fks": [
+        {
+          "name": "human_support_sessions_account_id_fkey",
+          "column": "account_id",
+          "referred_table": "accounts",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        },
+        {
+          "name": "human_support_sessions_chat_session_id_fkey",
+          "column": "chat_session_id",
+          "referred_table": "chat_sessions",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        }
+      ],
+      "model_fks": [
+        {
+          "column": "account_id",
+          "referred_table": "accounts",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        },
+        {
+          "column": "chat_session_id",
+          "referred_table": "chat_sessions",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        }
+      ]
+    },
+    "job_events": {
+      "columns_count_db": 7,
+      "columns_count_model": 7,
+      "fks_count_db": 1,
+      "fks_count_model": 1,
+      "db_columns": [
+        "id",
+        "job_id",
+        "event_type",
+        "message",
+        "severity",
+        "metadata_payload",
+        "created_at"
+      ],
+      "model_columns": [
+        "id",
+        "job_id",
+        "event_type",
+        "message",
+        "severity",
+        "metadata_payload",
+        "created_at"
+      ],
+      "db_fks": [
+        {
+          "name": "job_events_job_id_fkey",
+          "column": "job_id",
+          "referred_table": "jobs",
+          "referred_column": "id",
+          "ondelete": "CASCADE"
+        }
+      ],
+      "model_fks": [
+        {
+          "column": "job_id",
+          "referred_table": "jobs",
+          "referred_column": "id",
+          "ondelete": "CASCADE"
+        }
+      ]
+    },
+    "job_steps": {
+      "columns_count_db": 9,
+      "columns_count_model": 9,
+      "fks_count_db": 1,
+      "fks_count_model": 1,
+      "db_columns": [
+        "id",
+        "job_id",
+        "step_index",
+        "step_type",
+        "params",
+        "status",
+        "started_at",
+        "completed_at",
+        "result_payload"
+      ],
+      "model_columns": [
+        "id",
+        "job_id",
+        "step_index",
+        "step_type",
+        "params",
+        "status",
+        "started_at",
+        "completed_at",
+        "result_payload"
+      ],
+      "db_fks": [
+        {
+          "name": "job_steps_job_id_fkey",
+          "column": "job_id",
+          "referred_table": "jobs",
+          "referred_column": "id",
+          "ondelete": "CASCADE"
+        }
+      ],
+      "model_fks": [
+        {
+          "column": "job_id",
+          "referred_table": "jobs",
+          "referred_column": "id",
+          "ondelete": "CASCADE"
+        }
+      ]
+    },
+    "jobs": {
+      "columns_count_db": 17,
+      "columns_count_model": 17,
+      "fks_count_db": 5,
+      "fks_count_model": 5,
+      "db_columns": [
+        "id",
+        "job_code",
+        "title",
+        "workflow_id",
+        "chat_session_id",
+        "robot_id",
+        "trigger_type",
+        "status",
+        "current_step_index",
+        "total_steps",
+        "started_at",
+        "completed_at",
+        "error_message",
+        "created_at",
+        "updated_at",
+        "schedule_id",
+        "account_id"
+      ],
+      "model_columns": [
+        "id",
+        "job_code",
+        "title",
+        "workflow_id",
+        "chat_session_id",
+        "robot_id",
+        "schedule_id",
+        "account_id",
+        "trigger_type",
+        "status",
+        "current_step_index",
+        "total_steps",
+        "started_at",
+        "completed_at",
+        "error_message",
+        "created_at",
+        "updated_at"
+      ],
+      "db_fks": [
+        {
+          "name": "jobs_account_id_fkey",
+          "column": "account_id",
+          "referred_table": "accounts",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        },
+        {
+          "name": "jobs_chat_session_id_fkey",
+          "column": "chat_session_id",
+          "referred_table": "chat_sessions",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        },
+        {
+          "name": "jobs_robot_id_fkey",
+          "column": "robot_id",
+          "referred_table": "robots",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        },
+        {
+          "name": "jobs_schedule_id_fkey",
+          "column": "schedule_id",
+          "referred_table": "schedules",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        },
+        {
+          "name": "jobs_workflow_id_fkey",
+          "column": "workflow_id",
+          "referred_table": "robot_workflows",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        }
+      ],
+      "model_fks": [
+        {
+          "column": "account_id",
+          "referred_table": "accounts",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        },
+        {
+          "column": "schedule_id",
+          "referred_table": "schedules",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        },
+        {
+          "column": "robot_id",
+          "referred_table": "robots",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        },
+        {
+          "column": "workflow_id",
+          "referred_table": "robot_workflows",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        },
+        {
+          "column": "chat_session_id",
+          "referred_table": "chat_sessions",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        }
+      ]
+    },
+    "log_events": {
+      "columns_count_db": 22,
+      "columns_count_model": 22,
+      "fks_count_db": 3,
+      "fks_count_model": 3,
+      "db_columns": [
+        "id",
+        "timestamp",
+        "level",
+        "category",
+        "event_type",
+        "module",
+        "message",
+        "actor_type",
+        "actor_id",
+        "robot_id",
+        "guest_id",
+        "service_request_id",
+        "conversation_id",
+        "correlation_id",
+        "request_id",
+        "trace_id",
+        "metadata_payload",
+        "ip_address",
+        "user_agent",
+        "created_at",
+        "account_id",
+        "job_id"
+      ],
+      "model_columns": [
+        "id",
+        "timestamp",
+        "level",
+        "category",
+        "event_type",
+        "module",
+        "message",
+        "actor_type",
+        "actor_id",
+        "account_id",
+        "robot_id",
+        "job_id",
+        "guest_id",
+        "service_request_id",
+        "conversation_id",
+        "correlation_id",
+        "request_id",
+        "trace_id",
+        "metadata_payload",
+        "ip_address",
+        "user_agent",
+        "created_at"
+      ],
+      "db_fks": [
+        {
+          "name": "fk_log_events_account_id",
+          "column": "account_id",
+          "referred_table": "accounts",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        },
+        {
+          "name": "fk_log_events_robot_id",
+          "column": "robot_id",
+          "referred_table": "robots",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        },
+        {
+          "name": "log_events_job_id_fkey",
+          "column": "job_id",
+          "referred_table": "jobs",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        }
+      ],
+      "model_fks": [
+        {
+          "column": "job_id",
+          "referred_table": "jobs",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        },
+        {
+          "column": "robot_id",
+          "referred_table": "robots",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        },
+        {
+          "column": "account_id",
+          "referred_table": "accounts",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        }
+      ]
+    },
+    "management_directives": {
+      "columns_count_db": 18,
+      "columns_count_model": 18,
+      "fks_count_db": 2,
+      "fks_count_model": 2,
+      "db_columns": [
+        "id",
+        "code",
+        "title",
+        "department",
+        "priority",
+        "location",
+        "reported_time_label",
+        "description",
+        "status",
+        "assigned_staff_name",
+        "assigned_eta",
+        "assigned_staff_avatar",
+        "type",
+        "created_by",
+        "created_at",
+        "updated_at",
+        "assigned_account_id",
+        "created_by_account_id"
+      ],
+      "model_columns": [
+        "id",
+        "code",
+        "title",
+        "department",
+        "priority",
+        "location",
+        "reported_time_label",
+        "description",
+        "status",
+        "assigned_account_id",
+        "created_by_account_id",
+        "assigned_staff_name",
+        "assigned_eta",
+        "assigned_staff_avatar",
+        "type",
+        "created_by",
+        "created_at",
+        "updated_at"
+      ],
+      "db_fks": [
+        {
+          "name": "fk_management_directives_assigned_account_id",
+          "column": "assigned_account_id",
+          "referred_table": "accounts",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        },
+        {
+          "name": "fk_management_directives_created_by_account_id",
+          "column": "created_by_account_id",
+          "referred_table": "accounts",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        }
+      ],
+      "model_fks": [
+        {
+          "column": "assigned_account_id",
+          "referred_table": "accounts",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        },
+        {
+          "column": "created_by_account_id",
+          "referred_table": "accounts",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        }
+      ]
+    },
+    "maps": {
+      "columns_count_db": 14,
+      "columns_count_model": 14,
+      "fks_count_db": 2,
+      "fks_count_model": 2,
+      "db_columns": [
+        "id",
+        "hotel_id",
+        "floor_id",
+        "name",
+        "floor",
+        "resolution",
+        "width",
+        "height",
+        "origin_x",
+        "origin_y",
+        "image_url",
+        "is_active",
+        "created_at",
+        "updated_at"
+      ],
+      "model_columns": [
+        "id",
+        "hotel_id",
+        "floor_id",
+        "name",
+        "floor",
+        "resolution",
+        "width",
+        "height",
+        "origin_x",
+        "origin_y",
+        "image_url",
+        "is_active",
+        "created_at",
+        "updated_at"
+      ],
+      "db_fks": [
+        {
+          "name": "maps_floor_id_fkey",
+          "column": "floor_id",
+          "referred_table": "floors",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        },
+        {
+          "name": "maps_hotel_id_fkey",
+          "column": "hotel_id",
+          "referred_table": "hotels",
+          "referred_column": "id",
+          "ondelete": "CASCADE"
+        }
+      ],
+      "model_fks": [
+        {
+          "column": "hotel_id",
+          "referred_table": "hotels",
+          "referred_column": "id",
+          "ondelete": "CASCADE"
+        },
+        {
+          "column": "floor_id",
+          "referred_table": "floors",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        }
+      ]
+    },
+    "menu_items": {
+      "columns_count_db": 13,
+      "columns_count_model": 13,
+      "fks_count_db": 2,
+      "fks_count_model": 2,
+      "db_columns": [
+        "id",
+        "menu_id",
+        "food_item_id",
+        "name",
+        "price",
+        "currency",
+        "image_url",
+        "category",
+        "is_available",
+        "description",
+        "display_order",
+        "created_at",
+        "updated_at"
+      ],
+      "model_columns": [
+        "id",
+        "menu_id",
+        "food_item_id",
+        "price",
+        "display_order",
+        "is_available",
+        "name",
+        "currency",
+        "image_url",
+        "category",
+        "description",
+        "created_at",
+        "updated_at"
+      ],
+      "db_fks": [
+        {
+          "name": "menu_items_new_food_item_id_fkey",
+          "column": "food_item_id",
+          "referred_table": "food_items",
+          "referred_column": "id",
+          "ondelete": "CASCADE"
+        },
+        {
+          "name": "menu_items_new_menu_id_fkey",
+          "column": "menu_id",
+          "referred_table": "menus",
+          "referred_column": "id",
+          "ondelete": "CASCADE"
+        }
+      ],
+      "model_fks": [
+        {
+          "column": "menu_id",
+          "referred_table": "menus",
+          "referred_column": "id",
+          "ondelete": "CASCADE"
+        },
+        {
+          "column": "food_item_id",
+          "referred_table": "food_items",
+          "referred_column": "id",
+          "ondelete": "CASCADE"
+        }
+      ]
+    },
+    "menus": {
+      "columns_count_db": 7,
+      "columns_count_model": 7,
+      "fks_count_db": 0,
+      "fks_count_model": 0,
+      "db_columns": [
+        "id",
+        "name",
+        "category",
+        "description",
+        "is_active",
+        "created_at",
+        "updated_at"
+      ],
+      "model_columns": [
+        "id",
+        "name",
+        "category",
+        "description",
+        "is_active",
+        "created_at",
+        "updated_at"
+      ],
+      "db_fks": [],
+      "model_fks": []
+    },
+    "notifications": {
+      "columns_count_db": 11,
+      "columns_count_model": 11,
+      "fks_count_db": 1,
+      "fks_count_model": 1,
+      "db_columns": [
+        "id",
+        "department",
+        "title",
+        "description",
+        "request_id",
+        "request_type",
+        "type",
+        "is_read",
+        "created_at",
+        "updated_at",
+        "account_id"
+      ],
+      "model_columns": [
+        "id",
+        "account_id",
+        "department",
+        "title",
+        "description",
+        "request_id",
+        "request_type",
+        "type",
+        "is_read",
+        "created_at",
+        "updated_at"
+      ],
+      "db_fks": [
+        {
+          "name": "fk_notifications_account_id",
+          "column": "account_id",
+          "referred_table": "accounts",
+          "referred_column": "id",
+          "ondelete": "CASCADE"
+        }
+      ],
+      "model_fks": [
+        {
+          "column": "account_id",
+          "referred_table": "accounts",
+          "referred_column": "id",
+          "ondelete": "CASCADE"
+        }
+      ]
+    },
+    "order_items": {
+      "columns_count_db": 10,
+      "columns_count_model": 10,
+      "fks_count_db": 3,
+      "fks_count_model": 3,
+      "db_columns": [
+        "id",
+        "order_id",
+        "menu_item_id",
+        "item_name",
+        "quantity",
+        "unit_price",
+        "subtotal",
+        "notes",
+        "created_at",
+        "food_item_id"
+      ],
+      "model_columns": [
+        "id",
+        "order_id",
+        "menu_item_id",
+        "food_item_id",
+        "item_name",
+        "quantity",
+        "unit_price",
+        "subtotal",
+        "notes",
+        "created_at"
+      ],
+      "db_fks": [
+        {
+          "name": "fk_order_items_food_item_id",
+          "column": "food_item_id",
+          "referred_table": "food_items",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        },
+        {
+          "name": "order_items_menu_item_id_fkey",
+          "column": "menu_item_id",
+          "referred_table": "menu_items",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        },
+        {
+          "name": "order_items_order_id_fkey",
+          "column": "order_id",
+          "referred_table": "room_service_orders",
+          "referred_column": "id",
+          "ondelete": "CASCADE"
+        }
+      ],
+      "model_fks": [
+        {
+          "column": "order_id",
+          "referred_table": "room_service_orders",
+          "referred_column": "id",
+          "ondelete": "CASCADE"
+        },
+        {
+          "column": "food_item_id",
+          "referred_table": "food_items",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        },
+        {
+          "column": "menu_item_id",
+          "referred_table": "menu_items",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        }
+      ]
+    },
+    "robot_workflows": {
+      "columns_count_db": 8,
+      "columns_count_model": 8,
+      "fks_count_db": 0,
+      "fks_count_model": 0,
+      "db_columns": [
+        "id",
+        "name",
+        "description",
+        "trigger_type",
+        "is_active",
+        "steps",
+        "created_at",
+        "updated_at"
+      ],
+      "model_columns": [
+        "id",
+        "name",
+        "description",
+        "trigger_type",
+        "is_active",
+        "steps",
+        "created_at",
+        "updated_at"
+      ],
+      "db_fks": [],
+      "model_fks": []
+    },
+    "robots": {
+      "columns_count_db": 12,
+      "columns_count_model": 12,
+      "fks_count_db": 0,
+      "fks_count_model": 0,
+      "db_columns": [
+        "id",
+        "code",
+        "name",
+        "model_type",
+        "status",
+        "battery_level",
+        "current_location",
+        "is_online",
+        "ip_address",
+        "last_heartbeat",
+        "created_at",
+        "updated_at"
+      ],
+      "model_columns": [
+        "id",
+        "code",
+        "name",
+        "model_type",
+        "status",
+        "battery_level",
+        "current_location",
+        "is_online",
+        "ip_address",
+        "last_heartbeat",
+        "created_at",
+        "updated_at"
+      ],
+      "db_fks": [],
+      "model_fks": []
+    },
+    "room_service_orders": {
+      "columns_count_db": 17,
+      "columns_count_model": 17,
+      "fks_count_db": 4,
+      "fks_count_model": 4,
+      "db_columns": [
+        "id",
+        "order_number",
+        "room_number",
+        "status",
+        "note",
+        "image_url",
+        "is_service_request",
+        "progress",
+        "est_completion",
+        "assigned_robot_id",
+        "assigned_staff_name",
+        "created_at",
+        "updated_at",
+        "room_id",
+        "account_id",
+        "total_amount",
+        "support_request_id"
+      ],
+      "model_columns": [
+        "id",
+        "order_number",
+        "room_number",
+        "room_id",
+        "account_id",
+        "support_request_id",
+        "status",
+        "note",
+        "image_url",
+        "is_service_request",
+        "progress",
+        "est_completion",
+        "assigned_robot_id",
+        "assigned_staff_name",
+        "total_amount",
+        "created_at",
+        "updated_at"
+      ],
+      "db_fks": [
+        {
+          "name": "fk_room_service_orders_account_id",
+          "column": "account_id",
+          "referred_table": "accounts",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        },
+        {
+          "name": "fk_room_service_orders_assigned_robot_id",
+          "column": "assigned_robot_id",
+          "referred_table": "robots",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        },
+        {
+          "name": "fk_room_service_orders_room_id",
+          "column": "room_id",
+          "referred_table": "rooms",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        },
+        {
+          "name": "fk_room_service_orders_support_request_id",
+          "column": "support_request_id",
+          "referred_table": "support_requests",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        }
+      ],
+      "model_fks": [
+        {
+          "column": "room_id",
+          "referred_table": "rooms",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        },
+        {
+          "column": "assigned_robot_id",
+          "referred_table": "robots",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        },
+        {
+          "column": "support_request_id",
+          "referred_table": "support_requests",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        },
+        {
+          "column": "account_id",
+          "referred_table": "accounts",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        }
+      ]
+    },
+    "rooms": {
+      "columns_count_db": 11,
+      "columns_count_model": 11,
+      "fks_count_db": 2,
+      "fks_count_model": 2,
+      "db_columns": [
+        "id",
+        "hotel_id",
+        "room_number",
+        "room_type",
+        "status",
+        "current_guest_name",
+        "qr_code",
+        "description",
+        "created_at",
+        "updated_at",
+        "floor_id"
+      ],
+      "model_columns": [
+        "id",
+        "hotel_id",
+        "floor_id",
+        "room_number",
+        "room_type",
+        "status",
+        "current_guest_name",
+        "qr_code",
+        "description",
+        "created_at",
+        "updated_at"
+      ],
+      "db_fks": [
+        {
+          "name": "fk_rooms_floor_id",
+          "column": "floor_id",
+          "referred_table": "floors",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        },
+        {
+          "name": "rooms_hotel_id_fkey",
+          "column": "hotel_id",
+          "referred_table": "hotels",
+          "referred_column": "id",
+          "ondelete": "CASCADE"
+        }
+      ],
+      "model_fks": [
+        {
+          "column": "floor_id",
+          "referred_table": "floors",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        },
+        {
+          "column": "hotel_id",
+          "referred_table": "hotels",
+          "referred_column": "id",
+          "ondelete": "CASCADE"
+        }
+      ]
+    },
+    "schedules": {
+      "columns_count_db": 11,
+      "columns_count_model": 11,
+      "fks_count_db": 2,
+      "fks_count_model": 2,
+      "db_columns": [
+        "id",
+        "name",
+        "description",
+        "workflow_id",
+        "account_id",
+        "cron_expression",
+        "scheduled_time",
+        "repeat_days",
+        "is_active",
+        "created_at",
+        "updated_at"
+      ],
+      "model_columns": [
+        "id",
+        "name",
+        "description",
+        "workflow_id",
+        "account_id",
+        "cron_expression",
+        "scheduled_time",
+        "repeat_days",
+        "is_active",
+        "created_at",
+        "updated_at"
+      ],
+      "db_fks": [
+        {
+          "name": "schedules_account_id_fkey",
+          "column": "account_id",
+          "referred_table": "accounts",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        },
+        {
+          "name": "schedules_workflow_id_fkey",
+          "column": "workflow_id",
+          "referred_table": "robot_workflows",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        }
+      ],
+      "model_fks": [
+        {
+          "column": "account_id",
+          "referred_table": "accounts",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        },
+        {
+          "column": "workflow_id",
+          "referred_table": "robot_workflows",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        }
+      ]
+    },
+    "service_types": {
+      "columns_count_db": 8,
+      "columns_count_model": 8,
+      "fks_count_db": 1,
+      "fks_count_model": 1,
+      "db_columns": [
+        "id",
+        "code",
+        "name",
+        "department_id",
+        "description",
+        "is_active",
+        "created_at",
+        "updated_at"
+      ],
+      "model_columns": [
+        "id",
+        "code",
+        "name",
+        "department_id",
+        "description",
+        "is_active",
+        "created_at",
+        "updated_at"
+      ],
+      "db_fks": [
+        {
+          "name": "service_types_department_id_fkey",
+          "column": "department_id",
+          "referred_table": "departments",
+          "referred_column": "id",
+          "ondelete": "CASCADE"
+        }
+      ],
+      "model_fks": [
+        {
+          "column": "department_id",
+          "referred_table": "departments",
+          "referred_column": "id",
+          "ondelete": "CASCADE"
+        }
+      ]
+    },
+    "support_requests": {
+      "columns_count_db": 21,
+      "columns_count_model": 21,
+      "fks_count_db": 5,
+      "fks_count_model": 5,
+      "db_columns": [
+        "id",
+        "ticket_code",
+        "title",
+        "description",
+        "service_type_id",
+        "department_id",
+        "account_id",
+        "room_number",
+        "guest_name",
+        "source",
+        "status",
+        "assigned_staff_name",
+        "assigned_robot_id",
+        "created_at",
+        "updated_at",
+        "room_id",
+        "items",
+        "total_amount",
+        "progress",
+        "est_completion",
+        "extra_data"
+      ],
+      "model_columns": [
+        "id",
+        "ticket_code",
+        "title",
+        "description",
+        "service_type_id",
+        "department_id",
+        "account_id",
+        "room_id",
+        "room_number",
+        "guest_name",
+        "source",
+        "status",
+        "assigned_staff_name",
+        "assigned_robot_id",
+        "items",
+        "total_amount",
+        "progress",
+        "est_completion",
+        "extra_data",
+        "created_at",
+        "updated_at"
+      ],
+      "db_fks": [
+        {
+          "name": "fk_support_requests_assigned_robot_id",
+          "column": "assigned_robot_id",
+          "referred_table": "robots",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        },
+        {
+          "name": "fk_support_requests_room_id",
+          "column": "room_id",
+          "referred_table": "rooms",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        },
+        {
+          "name": "support_requests_account_id_fkey",
+          "column": "account_id",
+          "referred_table": "accounts",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        },
+        {
+          "name": "support_requests_department_id_fkey",
+          "column": "department_id",
+          "referred_table": "departments",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        },
+        {
+          "name": "support_requests_service_type_id_fkey",
+          "column": "service_type_id",
+          "referred_table": "service_types",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        }
+      ],
+      "model_fks": [
+        {
+          "column": "department_id",
+          "referred_table": "departments",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        },
+        {
+          "column": "account_id",
+          "referred_table": "accounts",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        },
+        {
+          "column": "room_id",
+          "referred_table": "rooms",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        },
+        {
+          "column": "service_type_id",
+          "referred_table": "service_types",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        },
+        {
+          "column": "assigned_robot_id",
+          "referred_table": "robots",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        }
+      ]
+    },
+    "zones": {
+      "columns_count_db": 13,
+      "columns_count_model": 13,
+      "fks_count_db": 1,
+      "fks_count_model": 1,
+      "db_columns": [
+        "id",
+        "map_id",
+        "name",
+        "type",
+        "x",
+        "y",
+        "width",
+        "height",
+        "speed_limit",
+        "floor",
+        "description",
+        "created_at",
+        "updated_at"
+      ],
+      "model_columns": [
+        "id",
+        "map_id",
+        "name",
+        "type",
+        "x",
+        "y",
+        "width",
+        "height",
+        "speed_limit",
+        "floor",
+        "description",
+        "created_at",
+        "updated_at"
+      ],
+      "db_fks": [
+        {
+          "name": "fk_zones_map_id",
+          "column": "map_id",
+          "referred_table": "maps",
+          "referred_column": "id",
+          "ondelete": "SET NULL"
+        }
+      ],
+      "model_fks": [
+        {
+          "column": "map_id",
+          "referred_table": "maps",
+          "referred_column": "id",
+          "ondelete": "CASCADE"
+        }
+      ]
+    }
+  }
+}

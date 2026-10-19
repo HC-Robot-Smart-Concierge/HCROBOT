@@ -193,7 +193,6 @@ async def create_taxi_request(
         department_id="DEP-TAXI",
         service_type_id="ST-TAXI",
         status="Pending",
-        priority="NORMAL",
     )
     await sr_repo.create(new_req)
     await create_department_notification(

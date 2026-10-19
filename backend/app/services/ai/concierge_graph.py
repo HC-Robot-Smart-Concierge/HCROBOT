@@ -56,7 +56,15 @@ async def fast_path_node(state: ConciergeState) -> Dict[str, Any]:
 
     fast_hit = ollama_service.check_fast_path_full(prompt, language)
     if fast_hit:
-        reply, lang_name, lang_code, action_type, action_payload = fast_hit
+        if len(fast_hit) == 5:
+            reply, lang_name, lang_code, action_type, action_payload = fast_hit
+        elif len(fast_hit) == 4:
+            reply, lang_name, lang_code, action_type = fast_hit
+            action_payload = None
+        else:
+            reply, lang_name, lang_code = fast_hit[0], fast_hit[1], fast_hit[2]
+            action_type, action_payload = None, None
+
         dest_key = action_payload.get("destination_key") if isinstance(action_payload, dict) else None
         is_vc = bool(action_type == "trigger_video_call")
         logger.info(f"[Harness FastPath] Matched dynamic scenario! Fast response in <1ms for: '{prompt[:30]}...'")

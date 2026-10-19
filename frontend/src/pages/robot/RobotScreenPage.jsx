@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { RobotFace } from '../../components/robot/RobotFace';
 import { AudioWave } from '../../components/robot/AudioWave';
 import { FloorMap, HOTEL_DESTINATIONS, getMobileGuestMapUrl } from '../../components/robot/FloorMap';
-import { PhoneCall, Sparkles, RefreshCw, Smartphone, QrCode, Clock, Utensils, Star, PlayCircle, Building, Navigation, Film } from 'lucide-react';
+import { PhoneCall, Sparkles, RefreshCw, Smartphone, QrCode, Clock, Utensils, Star, Building, Navigation, Film, Menu, Globe, Check, Volume2, X, Mic } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { CameraPreview } from '../../components/robot/CameraPreview';
 import { MobileRobotScreen } from '../../components/robot/MobileRobotScreen';
@@ -20,6 +20,100 @@ import { MessengerVideoCallModal } from '../../components/video/MessengerVideoCa
 import { RobotQuickFeedbackModal } from '../../components/robot/RobotQuickFeedbackModal';
 import { RobotFacilitiesModal } from '../../components/robot/RobotFacilitiesModal';
 import { createConciergeRequest } from '../../services/conciergeApi';
+import { fetchActiveAdvertisements } from '../../services/advertisementApi';
+import { RobotAdPlayer } from '../../components/robot/RobotAdPlayer';
+
+/**
+ * FloatingCinemaSubtitle
+ * Phụ đề động tinh giản (Floating Subtitle / Cinema Captions) cho Robot Kiosk 5 sao
+ * - Dải kính mờ thanh thoát: backdrop-blur-md bg-stone-900/60 border border-stone-700/50 rounded-2xl
+ * - Cỡ chữ to rõ 16px - 18px, giới hạn tối đa 2 dòng chữ
+ * - Tự động tách câu và chuyển câu mượt mà theo nhịp giọng nói
+ */
+const FloatingCinemaSubtitle = ({ fullText, isSpeaking, onClose }) => {
+  const sentences = useMemo(() => {
+    if (!fullText) return [];
+    const raw = String(fullText).trim();
+    const split = raw
+      .split(/(?<=[.!?])\s+|\n+/)
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+    return split.length > 0 ? split : [raw];
+  }, [fullText]);
+
+  const [currentIndex, setCurrentIndex] = useState(0);
+
+  // Reset về câu đầu tiên khi đoạn text mới được nhận
+  useEffect(() => {
+    setCurrentIndex(0);
+  }, [fullText]);
+
+  // Chuyển câu mượt mà theo nhịp nói khi robot đang phát âm thanh
+  useEffect(() => {
+    if (!isSpeaking || sentences.length <= 1) return;
+
+    const currentSentence = sentences[currentIndex] || '';
+    const duration = Math.min(6000, Math.max(2500, currentSentence.length * 65));
+
+    const timer = setTimeout(() => {
+      setCurrentIndex((prev) => (prev + 1 < sentences.length ? prev + 1 : prev));
+    }, duration);
+
+    return () => clearTimeout(timer);
+  }, [currentIndex, isSpeaking, sentences]);
+
+  const activeSentence = sentences[currentIndex] || fullText;
+
+  return (
+    <div
+      className="relative mt-4 sm:mt-5 w-[640px] max-w-[92vw] px-6 py-3.5 bg-stone-900/60 backdrop-blur-md border border-stone-700/50 rounded-2xl shadow-xl flex items-center justify-center text-center animate-in fade-in zoom-in-95 duration-300 z-20 group"
+      role="region"
+      aria-label="Phụ đề lời thoại của robot"
+    >
+      {/* Chỉ báo phát âm thanh mini & số câu */}
+      <div className="absolute left-3.5 flex items-center gap-1.5 opacity-60 group-hover:opacity-100 transition-opacity">
+        <span
+          className={`w-2 h-2 rounded-full transition-colors ${
+            isSpeaking ? 'bg-stone-300 animate-pulse' : 'bg-stone-500'
+          }`}
+          title={isSpeaking ? 'Đang phát qua loa' : 'Đã phát xong'}
+        />
+        {sentences.length > 1 && (
+          <span className="text-[10px] font-mono text-stone-400">
+            {currentIndex + 1}/{sentences.length}
+          </span>
+        )}
+      </div>
+
+      {/* Dòng chữ phụ đề điện ảnh: Cỡ chữ 16px - 18px, giới hạn tối đa 2 dòng chữ */}
+      <p
+        key={currentIndex}
+        className="text-base sm:text-[17px] font-medium text-stone-100 leading-snug sm:leading-relaxed tracking-wide px-7 select-text animate-in fade-in slide-in-from-bottom-1 duration-300 line-clamp-2"
+        style={{
+          display: '-webkit-box',
+          WebkitLineClamp: 2,
+          WebkitBoxOrient: 'vertical',
+          overflow: 'hidden',
+        }}
+      >
+        {activeSentence}
+      </p>
+
+      {/* Nút đóng phụ đề tinh giản */}
+      {onClose && (
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute right-3.5 w-5 h-5 rounded-full hover:bg-stone-800/80 text-stone-400 hover:text-stone-200 flex items-center justify-center transition-all opacity-0 group-hover:opacity-100 cursor-pointer"
+          title="Ẩn phụ đề"
+          aria-label="Ẩn phụ đề"
+        >
+          <X className="w-3.5 h-3.5" />
+        </button>
+      )}
+    </div>
+  );
+};
 
 export const RobotScreenPage = ({ onLogout = () => { } }) => {
   // States: 'RT-01' | 'RT-02' | 'RT-03' | 'RT-04' | 'RT-05'
@@ -75,10 +169,46 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     setQrCountdown(null);
   }, []);
 
-  // Standby Poster Mode (Tự động chiếu poster Dave Drinks khi rảnh)
+  // Standby Poster Mode (Tự động chiếu quảng cáo khi rảnh rỗi không tương tác)
   const [isStandby, setIsStandby] = useState(false);
-  const standbyTimerRef = useRef(null);
-  const STANDBY_IDLE_TIMEOUT_MS = 25000; // 25 giây rảnh tự động vào Standby
+  const STANDBY_IDLE_TIMEOUT_MS = 60000; // 60 giây rảnh rỗi ở trạng thái RT-01 mới tự động bật Standby
+  const CONVERSATION_IDLE_TIMEOUT_MS = 45000; // 45 giây im lặng trong phiên hội thoại sẽ tự động kết thúc phiên về RT-01
+  const lastInteractionTimeRef = useRef(Date.now());
+
+  // Active Advertisements state (Lưu trữ và đồng bộ với Cloudinary & Admin)
+  const [activeAds, setActiveAds] = useState([]);
+  const [pushedAd, setPushedAd] = useState(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadActiveAds = async () => {
+      try {
+        const data = await fetchActiveAdvertisements();
+        if (isMounted && Array.isArray(data)) {
+          setActiveAds(data);
+        }
+      } catch (e) {
+        console.warn('Failed to load active advertisements for robot:', e);
+      }
+    };
+    loadActiveAds();
+    const interval = setInterval(loadActiveAds, 30000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, []);
+
+  // Lắng nghe lệnh đẩy quảng cáo từ Admin qua WebSocket
+  useNotificationWebSocket({
+    department: 'All',
+    onNotificationReceived: (event) => {
+      if (event && event.type === 'ADVERTISEMENT_PUSH' && event.advertisement) {
+        setPushedAd(event.advertisement);
+        setIsStandby(true);
+      }
+    },
+  });
 
   // Session Memory & Room Number States
   const [sessionId] = useState(() => 'session_kiosk_' + Math.random().toString(36).substring(2, 9));
@@ -158,6 +288,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   });
 
   const [showQuickMenu, setShowQuickMenu] = useState(false);
+  const [showLangMenu, setShowLangMenu] = useState(false);
 
   // Listen to BroadcastChannel (đã tắt tự động chạy kịch bản để ưu tiên giao tiếp trực tiếp)
   useEffect(() => {
@@ -186,13 +317,14 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
   // Close menus on outside click
   useEffect(() => {
-    if (!showQuickMenu) return;
+    if (!showQuickMenu && !showLangMenu) return;
     const handleOutsideClick = () => {
       setShowQuickMenu(false);
+      setShowLangMenu(false);
     };
     window.addEventListener('click', handleOutsideClick);
     return () => window.removeEventListener('click', handleOutsideClick);
-  }, [showQuickMenu]);
+  }, [showQuickMenu, showLangMenu]);
 
   // Mở Khảo sát đánh giá dịch vụ nhanh (Feedback Survey)
   const handleOpenFeedback = useCallback(() => {
@@ -235,35 +367,129 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   };
 
   // Tự động chuyển sang Poster Standby khi rảnh rỗi không có người tương tác
-  const resetStandbyTimer = () => {
-    if (standbyTimerRef.current) clearTimeout(standbyTimerRef.current);
-    if (isStandby) setIsStandby(false);
-
-    // Chỉ đếm ngược khi ở trạng thái RT-02 hoặc RT-01 và không đang bận
-    if (!isSpeaking && !isProcessing && !isListening && !isWorkflowRunning && !isFoodMenuOpen && !isFacilitiesModalOpen && !showLogoutModal) {
-      standbyTimerRef.current = setTimeout(() => {
-        setIsStandby(true);
-      }, STANDBY_IDLE_TIMEOUT_MS);
+  const resetStandbyTimer = useCallback(() => {
+    lastInteractionTimeRef.current = Date.now();
+    if (isStandby) {
+      setIsStandby(false);
     }
-  };
+  }, [isStandby]);
 
+  // Bộ giám sát thời gian rảnh rỗi độc lập: kiểm tra mỗi 1 giây
   useEffect(() => {
-    resetStandbyTimer();
-    const handleUserActivity = () => resetStandbyTimer();
+    const checkIdleInterval = setInterval(() => {
+      // 1. Kiểm tra trạng thái đang bận giao tiếp hoặc tương tác:
+      // - Đang phát âm thanh qua loa (isSpeaking)
+      // - AI đang xử lý suy luận (isProcessing)
+      // - Micro đang chủ động lắng nghe (isListening)
+      // - Khách đang nói vào micro (transcript có nội dung)
+      // - Câu trả lời AI đang hiển thị trên màn hình (aiResponseText)
+      // - Kịch bản workflow đang diễn ra (isWorkflowRunning)
+      // - Các modal / popup đang mở (thực đơn, tiện ích, gọi video, feedback, menu nhanh, ngôn ngữ, qr...)
+      const isUserTalking = Boolean(transcript && transcript.trim().length > 0);
+      const hasAiResponse = Boolean(aiResponseText && aiResponseText.trim().length > 0);
+      const isModalOpen = (
+        isFoodMenuOpen ||
+        isFacilitiesModalOpen ||
+        isVideoCallOpen ||
+        isFeedbackModalOpen ||
+        showLogoutModal ||
+        showQuickMenu ||
+        showLangMenu ||
+        isAutoQrModalOpen
+      );
+
+      const isBusy = (
+        isSpeaking ||
+        isProcessing ||
+        isListening ||
+        isUserTalking ||
+        hasAiResponse ||
+        isWorkflowRunning ||
+        isModalOpen
+      );
+
+      if (isBusy) {
+        lastInteractionTimeRef.current = Date.now();
+        return;
+      }
+
+      const idleDuration = Date.now() - lastInteractionTimeRef.current;
+
+      // 2. Nếu đang trong phiên hội thoại (RT-02, RT-03, RT-04, RT-05) nhưng khách im lặng quá lâu:
+      if (currentState !== 'RT-01') {
+        if (idleDuration >= CONVERSATION_IDLE_TIMEOUT_MS) {
+          // Tự động kết thúc phiên hội thoại một cách lịch sự về chế độ ngủ nhẹ RT-01
+          stopSpeaking();
+          stopListening();
+          resetTranscript();
+          setAiResponseText('');
+          setCurrentState('RT-01');
+          lastInteractionTimeRef.current = Date.now();
+        }
+        return; // Tuyệt đối KHÔNG tự ý bật quảng cáo khi chưa về trạng thái RT-01
+      }
+
+      // 3. Khi robot đã ở trạng thái ngủ nhẹ RT-01 và rảnh rỗi hoàn toàn
+      if (currentState === 'RT-01' && !isStandby) {
+        if (idleDuration >= STANDBY_IDLE_TIMEOUT_MS) {
+          setIsStandby(true);
+        }
+      }
+    }, 1000);
+
+    const handleUserActivity = () => {
+      lastInteractionTimeRef.current = Date.now();
+      if (isStandby) {
+        setIsStandby(false);
+      }
+    };
 
     window.addEventListener('click', handleUserActivity);
-    window.addEventListener('touchstart', handleUserActivity);
-    window.addEventListener('mousemove', handleUserActivity);
+    window.addEventListener('touchstart', handleUserActivity, { passive: true });
+    window.addEventListener('pointerdown', handleUserActivity, { passive: true });
     window.addEventListener('keydown', handleUserActivity);
 
     return () => {
-      if (standbyTimerRef.current) clearTimeout(standbyTimerRef.current);
+      clearInterval(checkIdleInterval);
       window.removeEventListener('click', handleUserActivity);
       window.removeEventListener('touchstart', handleUserActivity);
-      window.removeEventListener('mousemove', handleUserActivity);
+      window.removeEventListener('pointerdown', handleUserActivity);
       window.removeEventListener('keydown', handleUserActivity);
     };
-  }, [currentState, isSpeaking, isProcessing, isListening, isWorkflowRunning, isFoodMenuOpen, showLogoutModal, isStandby]);
+  }, [
+    isSpeaking,
+    isProcessing,
+    isListening,
+    transcript,
+    aiResponseText,
+    isWorkflowRunning,
+    isFoodMenuOpen,
+    isFacilitiesModalOpen,
+    isVideoCallOpen,
+    isFeedbackModalOpen,
+    showLogoutModal,
+    showQuickMenu,
+    showLangMenu,
+    isAutoQrModalOpen,
+    isStandby,
+    currentState,
+    stopSpeaking,
+    stopListening,
+    resetTranscript,
+  ]);
+
+  // Voice Wake-up: Tự động tắt quảng cáo ngay lập tức và giữ phiên khi khách cất lời gọi robot
+  useEffect(() => {
+    if (transcript && transcript.trim().length > 0) {
+      lastInteractionTimeRef.current = Date.now();
+      if (isStandby) {
+        setIsStandby(false);
+        if (currentState === 'RT-01') {
+          setCurrentState('RT-03');
+        }
+      }
+    }
+  }, [isStandby, transcript, currentState]);
 
   // Khi người dùng lại gần Camera -> Tắt Standby, chuyển về trạng thái sẵn sàng giao tiếp trực tiếp
   const handleGuestApproached = () => {
@@ -305,6 +531,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
   // 1. Khi kích hoạt lắng nghe (Bấm nút hoặc Tự động)
   const handleStartTalk = () => {
+    lastInteractionTimeRef.current = Date.now();
+    if (isStandby) setIsStandby(false);
     if (processingSafetyTimerRef.current) clearTimeout(processingSafetyTimerRef.current);
     isProcessingRef.current = false;
     setIsProcessing(false);
@@ -316,6 +544,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     startListening(language, {
       onFinal: (finalText) => {
         if (finalText && finalText.trim().length > 0) {
+          setIsStandby(false);
+          lastInteractionTimeRef.current = Date.now();
           handleStopTalkAndProcess(finalText.trim());
         }
       },
@@ -335,6 +565,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
   // 2. Gửi tới Ollama RAG Backend
   const handleStopTalkAndProcess = async (userText) => {
+    lastInteractionTimeRef.current = Date.now();
+    if (isStandby) setIsStandby(false);
     if (isProcessingRef.current || isSpeaking) return;
     if (silenceTimerRef.current) {
       clearTimeout(silenceTimerRef.current);
@@ -453,6 +685,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         replyText,
         langCode,
         () => {
+          lastInteractionTimeRef.current = Date.now();
           if (processingSafetyTimerRef.current) clearTimeout(processingSafetyTimerRef.current);
           isProcessingRef.current = false;
           setIsProcessing(false);
@@ -721,29 +954,20 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
   return (
     <div className="w-full h-[100dvh] bg-aurora-canvas overflow-hidden font-sans select-none relative">
-      {/* Màn hình Poster Standby Tự động (Quảng cáo Dave Drinks khi rảnh) */}
-      {isStandby && (
-        <div
-          onClick={(e) => {
-            e.stopPropagation();
-            setIsStandby(false);
-            resetStandbyTimer();
-          }}
-          className="fixed inset-0 z-50 bg-[#0F0E0E] flex items-center justify-center cursor-pointer select-none animate-fadeIn"
-          title="Chạm vào màn hình để bắt đầu"
-        >
-          <div className="relative h-full max-h-screen flex items-center justify-center p-2 sm:p-4">
-            <img
-              src="/images/robot/standby-poster.jpg"
-              alt="Dave Drinks Lemonade Promotion"
-              className="h-full max-h-[96vh] w-auto max-w-[100vw] object-contain rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.85)]"
-            />
-            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 px-5 py-2.5 rounded-full bg-stone-900/85 backdrop-blur-md border border-white/20 text-white text-xs font-semibold flex items-center gap-2 shadow-2xl animate-pulse">
-              <span>Chạm vào màn hình để bắt đầu</span>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Màn hình Trình chiếu Quảng cáo Cloudinary (Khi rảnh rỗi hoặc nhận lệnh push từ Admin) */}
+      <RobotAdPlayer
+        isOpen={isStandby}
+        onClose={() => {
+          setIsStandby(false);
+          resetStandbyTimer();
+        }}
+        ads={activeAds}
+        pushedAd={pushedAd}
+        onUserInteract={() => {
+          setIsStandby(false);
+          resetStandbyTimer();
+        }}
+      />
 
       {/* Camera AI (Chạy ngầm 100% nhận diện khách/cảm xúc, không hiển thị trên màn hình robot) */}
       <CameraPreview
@@ -840,30 +1064,101 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
           <span className="text-[10px] font-semibold text-stone-500 uppercase tracking-wider">Aurora Grand Hotel</span>
         </div>
 
-        {/* Top-Right Controls: Nút Menu Dịch Vụ */}
-        <div className="absolute top-5 right-5 z-40 flex items-center gap-2.5">
+        {/* Top-Right Controls: Nút Ngôn ngữ Địa Cầu & Nút Icon Menu Dịch Vụ */}
+        <div className="absolute top-5 right-5 z-40 flex items-center gap-2">
+          {/* 1. Nút Icon Địa Cầu Chuyển Ngôn Ngữ (Tiếng Việt & English) */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowLangMenu((prev) => !prev);
+                setShowQuickMenu(false);
+              }}
+              className="w-9 h-9 rounded-full bg-stone-900/85 hover:bg-stone-800 text-stone-300 hover:text-white border border-stone-700/80 flex items-center justify-center shadow-lg backdrop-blur-md cursor-pointer transition-all active:scale-95"
+              title="Ngôn ngữ / Language"
+              aria-label="Chọn ngôn ngữ"
+            >
+              <Globe className="w-4 h-4 text-stone-300" />
+            </button>
+
+            {showLangMenu && (
+              <div
+                onClick={(e) => e.stopPropagation()}
+                className="absolute top-11 right-0 w-44 rounded-2xl bg-stone-900/95 border border-stone-700/80 shadow-2xl p-1.5 backdrop-blur-xl z-50 text-left animate-in fade-in zoom-in-95 space-y-1"
+              >
+                <div className="text-[10px] font-bold uppercase tracking-wider text-stone-400 px-2.5 py-1 border-b border-stone-800 flex items-center justify-between">
+                  <span>Ngôn ngữ</span>
+                  <span className="text-[9px] text-stone-500 font-mono">LANG</span>
+                </div>
+
+                {/* Tiếng Việt */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLanguage('Tiếng Việt');
+                    setShowLangMenu(false);
+                  }}
+                  className={`w-full px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-between transition-all cursor-pointer ${
+                    language === 'Tiếng Việt'
+                      ? 'bg-stone-800 text-stone-100 border border-stone-600'
+                      : 'text-stone-300 hover:bg-stone-800/60 hover:text-stone-100'
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    <span className="text-sm">🇻🇳</span>
+                    <span>Tiếng Việt</span>
+                  </span>
+                  {language === 'Tiếng Việt' && <Check className="w-3.5 h-3.5 text-stone-200" />}
+                </button>
+
+                {/* English */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLanguage('English');
+                    setShowLangMenu(false);
+                  }}
+                  className={`w-full px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-between transition-all cursor-pointer ${
+                    language === 'English'
+                      ? 'bg-stone-800 text-stone-100 border border-stone-600'
+                      : 'text-stone-300 hover:bg-stone-800/60 hover:text-stone-100'
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    <span className="text-sm">🇬🇧</span>
+                    <span>English</span>
+                  </span>
+                  {language === 'English' && <Check className="w-3.5 h-3.5 text-stone-200" />}
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* 2. Nút Icon Menu Dịch Vụ */}
           <div className="relative">
             <button
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
                 setShowQuickMenu((prev) => !prev);
+                setShowLangMenu(false);
               }}
-              className="h-9 px-4 rounded-full bg-stone-900/80 hover:bg-stone-800 text-stone-200 border border-stone-700/80 text-xs font-bold tracking-wide flex items-center gap-1.5 shadow-lg backdrop-blur-md cursor-pointer transition-all active:scale-95"
-              title="Dịch vụ và tiện ích"
+              className="w-9 h-9 rounded-full bg-stone-900/85 hover:bg-stone-800 text-stone-300 hover:text-white border border-stone-700/80 flex items-center justify-center shadow-lg backdrop-blur-md cursor-pointer transition-all active:scale-95"
+              title="Menu Dịch vụ và Tiện ích"
+              aria-label="Menu dịch vụ"
             >
-              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-              <span>Dịch vụ</span>
+              <Menu className="w-4 h-4 text-stone-300" />
             </button>
 
             {showQuickMenu && (
               <div
                 onClick={(e) => e.stopPropagation()}
-                className="absolute top-11 right-0 w-72 rounded-2xl bg-stone-900/95 border border-stone-700 shadow-2xl p-2.5 space-y-1.5 backdrop-blur-xl z-50 text-left animate-in fade-in zoom-in-95"
+                className="absolute top-11 right-0 w-80 rounded-2xl bg-stone-900/95 border border-stone-700/80 shadow-2xl p-2.5 space-y-1.5 backdrop-blur-xl z-50 text-left animate-in fade-in zoom-in-95"
               >
                 <div className="text-[10px] font-bold uppercase tracking-wider text-stone-400 px-3 py-1 border-b border-stone-800 flex items-center justify-between">
                   <span>Menu Dịch vụ</span>
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-stone-500" />
                 </div>
 
                 {/* 1. Chỉ Đường & Quét Mã QR Di Động */}
@@ -878,14 +1173,14 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                     setQrCountdown(15);
                     speak('Dạ em mở sơ đồ chỉ đường và mã QR di động cho quý khách nhé ạ.');
                   }}
-                  className="w-full p-2.5 rounded-xl text-left hover:bg-stone-800/90 transition-all cursor-pointer flex items-center gap-2.5 group"
+                  className="w-full p-2.5 rounded-xl text-left hover:bg-stone-800/90 transition-all cursor-pointer flex items-center gap-3 group active:scale-[0.99]"
                 >
-                  <div className="w-8 h-8 rounded-lg bg-emerald-950/80 text-emerald-400 border border-emerald-500/30 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                    <Navigation className="w-4 h-4 text-emerald-400" />
+                  <div className="w-8 h-8 rounded-lg bg-stone-800 border border-stone-700/80 text-stone-300 flex items-center justify-center shrink-0 group-hover:bg-stone-700 group-hover:text-stone-100 group-hover:scale-105 transition-all">
+                    <Navigation className="w-4 h-4 text-stone-300 group-hover:text-stone-100" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-bold text-stone-200">Chỉ đường & Quét QR</p>
-                    <p className="text-[10px] text-stone-400">Xem sơ đồ tầng & mã QR lưu trên điện thoại</p>
+                    <p className="text-xs font-bold text-stone-200 group-hover:text-white transition-colors">Chỉ đường & Quét QR</p>
+                    <p className="text-[10px] text-stone-400 group-hover:text-stone-300 transition-colors">Xem sơ đồ tầng & mã QR lưu trên điện thoại</p>
                   </div>
                 </button>
 
@@ -898,14 +1193,14 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                     setIsFacilitiesModalOpen(true);
                     speak('Dạ đây là toàn bộ cơ sở vật chất và tiện ích 5 sao của khách sạn ạ.');
                   }}
-                  className="w-full p-2.5 rounded-xl text-left hover:bg-stone-800/90 transition-all cursor-pointer flex items-center gap-2.5 group"
+                  className="w-full p-2.5 rounded-xl text-left hover:bg-stone-800/90 transition-all cursor-pointer flex items-center gap-3 group active:scale-[0.99]"
                 >
-                  <div className="w-8 h-8 rounded-lg bg-amber-950/80 text-amber-400 border border-amber-500/30 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                    <Building className="w-4 h-4 text-amber-400" />
+                  <div className="w-8 h-8 rounded-lg bg-stone-800 border border-stone-700/80 text-stone-300 flex items-center justify-center shrink-0 group-hover:bg-stone-700 group-hover:text-stone-100 group-hover:scale-105 transition-all">
+                    <Building className="w-4 h-4 text-stone-300 group-hover:text-stone-100" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-bold text-stone-200">Cơ sở vật chất & Tiện ích</p>
-                    <p className="text-[10px] text-stone-400">Hồ bơi vô cực, Spa, Gym, Sky Bar, Bãi xe</p>
+                    <p className="text-xs font-bold text-stone-200 group-hover:text-white transition-colors">Cơ sở vật chất & Tiện ích</p>
+                    <p className="text-[10px] text-stone-400 group-hover:text-stone-300 transition-colors">Hồ bơi vô cực, Spa, Gym, Sky Bar, Bãi xe</p>
                   </div>
                 </button>
 
@@ -917,14 +1212,14 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                     setShowQuickMenu(false);
                     setIsFoodMenuOpen(true);
                   }}
-                  className="w-full p-2.5 rounded-xl text-left hover:bg-stone-800/90 transition-all cursor-pointer flex items-center gap-2.5 group"
+                  className="w-full p-2.5 rounded-xl text-left hover:bg-stone-800/90 transition-all cursor-pointer flex items-center gap-3 group active:scale-[0.99]"
                 >
-                  <div className="w-8 h-8 rounded-lg bg-orange-950/80 text-orange-400 border border-orange-500/30 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                    <Utensils className="w-4 h-4 text-orange-400" />
+                  <div className="w-8 h-8 rounded-lg bg-stone-800 border border-stone-700/80 text-stone-300 flex items-center justify-center shrink-0 group-hover:bg-stone-700 group-hover:text-stone-100 group-hover:scale-105 transition-all">
+                    <Utensils className="w-4 h-4 text-stone-300 group-hover:text-stone-100" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-bold text-stone-200">Thực đơn món ăn</p>
-                    <p className="text-[10px] text-stone-400">Danh mục món ăn & đặt ẩm thực tại phòng</p>
+                    <p className="text-xs font-bold text-stone-200 group-hover:text-white transition-colors">Thực đơn món ăn</p>
+                    <p className="text-[10px] text-stone-400 group-hover:text-stone-300 transition-colors">Danh mục món ăn & đặt ẩm thực tại phòng</p>
                   </div>
                 </button>
 
@@ -936,14 +1231,14 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                     setShowQuickMenu(false);
                     setIsStandby(true);
                   }}
-                  className="w-full p-2.5 rounded-xl text-left hover:bg-stone-800/90 transition-all cursor-pointer flex items-center gap-2.5 group"
+                  className="w-full p-2.5 rounded-xl text-left hover:bg-stone-800/90 transition-all cursor-pointer flex items-center gap-3 group active:scale-[0.99]"
                 >
-                  <div className="w-8 h-8 rounded-lg bg-rose-950/80 text-rose-400 border border-rose-500/30 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                    <Film className="w-4 h-4 text-rose-400" />
+                  <div className="w-8 h-8 rounded-lg bg-stone-800 border border-stone-700/80 text-stone-300 flex items-center justify-center shrink-0 group-hover:bg-stone-700 group-hover:text-stone-100 group-hover:scale-105 transition-all">
+                    <Film className="w-4 h-4 text-stone-300 group-hover:text-stone-100" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-bold text-stone-200">Video & Poster ưu đãi</p>
-                    <p className="text-[10px] text-stone-400">Chiếu poster & clip quảng bá dịch vụ</p>
+                    <p className="text-xs font-bold text-stone-200 group-hover:text-white transition-colors">Video & Poster ưu đãi</p>
+                    <p className="text-[10px] text-stone-400 group-hover:text-stone-300 transition-colors">Chiếu poster & clip quảng bá dịch vụ</p>
                   </div>
                 </button>
 
@@ -968,14 +1263,14 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                       setIsVideoCallOpen(true);
                     }
                   }}
-                  className="w-full p-2.5 rounded-xl text-left hover:bg-stone-800/90 transition-all cursor-pointer flex items-center gap-2.5 group"
+                  className="w-full p-2.5 rounded-xl text-left hover:bg-stone-800/90 transition-all cursor-pointer flex items-center gap-3 group active:scale-[0.99]"
                 >
-                  <div className="w-8 h-8 rounded-lg bg-cyan-950/80 text-cyan-400 border border-cyan-500/30 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                    <PhoneCall className="w-4 h-4 text-cyan-400" />
+                  <div className="w-8 h-8 rounded-lg bg-stone-800 border border-stone-700/80 text-stone-300 flex items-center justify-center shrink-0 group-hover:bg-stone-700 group-hover:text-stone-100 group-hover:scale-105 transition-all">
+                    <PhoneCall className="w-4 h-4 text-stone-300 group-hover:text-stone-100" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-bold text-stone-200">Gọi lễ tân trực tiếp</p>
-                    <p className="text-[10px] text-stone-400">Kết nối cuộc gọi video hỗ trợ tức thì</p>
+                    <p className="text-xs font-bold text-stone-200 group-hover:text-white transition-colors">Gọi lễ tân trực tiếp</p>
+                    <p className="text-[10px] text-stone-400 group-hover:text-stone-300 transition-colors">Kết nối cuộc gọi video hỗ trợ tức thì</p>
                   </div>
                 </button>
 
@@ -987,49 +1282,16 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                     setShowQuickMenu(false);
                     handleOpenFeedback();
                   }}
-                  className="w-full p-2.5 rounded-xl text-left hover:bg-stone-800/90 transition-all cursor-pointer flex items-center gap-2.5 group"
+                  className="w-full p-2.5 rounded-xl text-left hover:bg-stone-800/90 transition-all cursor-pointer flex items-center gap-3 group active:scale-[0.99]"
                 >
-                  <div className="w-8 h-8 rounded-lg bg-yellow-950/80 text-yellow-400 border border-yellow-500/30 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                    <Star className="w-4 h-4 text-yellow-400" />
+                  <div className="w-8 h-8 rounded-lg bg-stone-800 border border-stone-700/80 text-stone-300 flex items-center justify-center shrink-0 group-hover:bg-stone-700 group-hover:text-stone-100 group-hover:scale-105 transition-all">
+                    <Star className="w-4 h-4 text-stone-300 group-hover:text-stone-100" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-bold text-stone-200">Hoàn tất / Đánh giá</p>
-                    <p className="text-[10px] text-stone-400">Kết thúc phiên & khảo sát hài lòng 5 sao</p>
+                    <p className="text-xs font-bold text-stone-200 group-hover:text-white transition-colors">Hoàn tất / Đánh giá</p>
+                    <p className="text-[10px] text-stone-400 group-hover:text-stone-300 transition-colors">Kết thúc phiên & khảo sát hài lòng 5 sao</p>
                   </div>
                 </button>
-
-                {/* 4. Kịch bản tự động */}
-                {availableWorkflows.length > 0 && !isWorkflowRunning && (
-                  <div className="pt-2 px-1 border-t border-stone-800 space-y-1.5">
-                    <div className="flex items-center justify-between text-[11px] text-stone-300 font-medium px-1.5">
-                      <span className="flex items-center gap-1.5">
-                        <PlayCircle className="w-3.5 h-3.5 text-purple-400" />
-                        <span>Kịch bản tự động</span>
-                      </span>
-                      <span className="text-[10px] text-stone-500">{availableWorkflows.length} kịch bản</span>
-                    </div>
-                    <select
-                      aria-label="Chọn kịch bản tự động"
-                      onChange={(e) => {
-                        const wf = availableWorkflows.find((w) => String(w.id) === e.target.value);
-                        if (wf) {
-                          startWorkflow(wf);
-                          setShowQuickMenu(false);
-                        }
-                        e.target.value = '';
-                      }}
-                      defaultValue=""
-                      className="w-full h-8 px-2.5 rounded-lg bg-stone-800 hover:bg-stone-700/80 text-stone-200 border border-stone-700 text-xs font-bold outline-none cursor-pointer transition-colors"
-                    >
-                      <option value="" disabled>-- Chọn kịch bản --</option>
-                      {availableWorkflows.map((wf) => (
-                        <option key={wf.id} value={wf.id} className="bg-stone-900 text-stone-200">
-                          {wf.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
               </div>
             )}
           </div>
@@ -1209,47 +1471,27 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                 />
               </div>
 
-              {/* 1. Khi đang nói (Speaking) hoặc có câu trả lời: Hiển thị Subtitle Card trang nhã bên dưới RobotFace */}
+              {/* 1. Khi đang nói (Speaking) hoặc có câu trả lời: Phụ đề động tinh giản (Floating Cinema Captions) */}
               {(aiResponseText || (isWorkflowRunning && (activeStep?.type === 'GREET' || activeStep?.type === 'SPEAK') && (activeStep.params?.speech_text || activeStep.params?.greeting_text || activeStep.params?.text))) && (
-                <div className="mt-6 w-[580px] max-w-[90vw] p-5 bg-stone-900/90 backdrop-blur-xl border border-stone-700 rounded-3xl shadow-2xl flex flex-col gap-3 animate-fadeIn text-stone-100">
-                  <div className="flex items-center justify-between border-b border-stone-800 pb-2.5">
-                    <span className="text-xs font-bold tracking-wider uppercase text-stone-400 flex items-center gap-2">
-                      <span className={`w-2 h-2 rounded-full ${isSpeaking ? 'bg-stone-300 animate-pulse' : 'bg-stone-600'}`} />
-                      <span>{isSpeaking ? "Robot đang trả lời..." : "Câu trả lời của robot"}</span>
-                    </span>
-                    <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-stone-800 text-stone-300 uppercase">
-                      {language}
-                    </span>
-                  </div>
-
-                  <div className="text-sm font-medium text-stone-200 leading-relaxed max-h-[140px] overflow-y-auto custom-scrollbar">
-                    {aiResponseText || (activeStep?.params?.speech_text || activeStep?.params?.greeting_text || activeStep?.params?.text)}
-                  </div>
-
-                  <div className="pt-2.5 border-t border-stone-800 flex items-center justify-between text-xs text-stone-400 font-medium">
-                    <span className="flex items-center gap-2">
-                      <span className={`w-1.5 h-1.5 rounded-full ${isSpeaking ? 'bg-stone-300 animate-pulse' : 'bg-stone-600'}`} />
-                      <span>{isSpeaking ? "Đang phát qua loa..." : "Đã hoàn tất trả lời"}</span>
-                    </span>
-                    <span className="text-xs text-stone-400 font-medium flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-stone-500" />
-                      <span>Tự động nghe câu tiếp theo</span>
-                    </span>
-                  </div>
-                </div>
+                <FloatingCinemaSubtitle
+                  fullText={aiResponseText || (activeStep?.params?.speech_text || activeStep?.params?.greeting_text || activeStep?.params?.text)}
+                  isSpeaking={isSpeaking}
+                  onClose={() => setAiResponseText('')}
+                />
               )}
 
               {/* 2. Khi đang nghe (Listening): Hiển thị AudioWave và trạng thái thu âm thực tế */}
               {currentState === 'RT-03' && !aiResponseText && (
                 <div className="mt-6 flex flex-col items-center gap-3 animate-fadeIn">
-                  <div className="px-6 py-3.5 bg-stone-900/90 backdrop-blur-xl border border-stone-700/80 rounded-2xl shadow-2xl flex items-center gap-4 text-stone-100">
+                  <div className="px-6 py-3 bg-stone-900/90 backdrop-blur-xl border border-stone-700/80 rounded-2xl shadow-2xl flex items-center gap-4 text-stone-100">
                     <AudioWave isActive={isListening} volumeLevel={volumeLevel} />
                     <div className="flex flex-col text-left">
                       <span className="text-xs font-bold text-stone-200">
-                        {transcript ? `"${transcript}"` : 'Đang lắng nghe... Quý khách hãy nói tự nhiên'}
+                        {transcript ? `"${transcript}"` : 'Listening... · Đang lắng nghe...'}
                       </span>
-                      <span className="text-[10px] text-stone-400 font-medium">
-                        Ngôn ngữ: {language} · Micro đang bật
+                      <span className="text-[10px] text-stone-400 font-medium flex items-center gap-1.5">
+                        <Globe className="w-3 h-3 text-stone-400" />
+                        <span>Auto-detect VI · EN · Tự động nhận diện</span>
                       </span>
                     </div>
                   </div>
@@ -1261,7 +1503,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                 </div>
               )}
 
-              {/* 3. Khi ở trạng thái chờ (RT-01 hoặc RT-02): Hiển thị badge chạm để nói */}
+              {/* 3. Khi ở trạng thái chờ (RT-01 hoặc RT-02): Dùng Icon làm chỉ thị tương tác quốc tế */}
               {(currentState === 'RT-01' || currentState === 'RT-02') && !aiResponseText && !isSpeaking && (
                 <div className="mt-6 flex flex-col items-center gap-2 animate-fadeIn">
                   <div
@@ -1269,12 +1511,24 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                       e.stopPropagation();
                       handleStartTalk();
                     }}
-                    className="px-6 py-3 bg-stone-900/80 hover:bg-stone-800 backdrop-blur-md border border-stone-700/80 hover:border-stone-500 rounded-full shadow-lg flex items-center gap-3 cursor-pointer transition-all active:scale-95 group"
+                    className="px-5 py-2.5 bg-stone-900/85 hover:bg-stone-800 backdrop-blur-xl border border-stone-700/80 hover:border-stone-500 rounded-full shadow-2xl flex items-center gap-3.5 cursor-pointer transition-all active:scale-95 group text-stone-300 hover:text-stone-100"
+                    title="Chạm hoặc nói chuyện để bắt đầu / Touch or speak to begin"
+                    aria-label="Bắt đầu giao tiếp"
                   >
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse group-hover:scale-125 transition-transform" />
-                    <span className="text-xs font-bold text-stone-200 tracking-wide">
-                      Chạm vào đây hoặc nói chuyện để bắt đầu ({language})
-                    </span>
+                    {/* Chấm trạng thái xám sáng theo chuẩn theme hệ thống */}
+                    <span className="w-2 h-2 rounded-full bg-stone-300 animate-pulse group-hover:scale-125 transition-transform" />
+
+                    {/* Icon Micro & Chỉ thị tương tác */}
+                    <div className="flex items-center gap-2 text-stone-200 group-hover:text-white transition-colors">
+                      <Mic className="w-4 h-4 text-stone-300 group-hover:text-white" />
+                      <span className="text-xs font-semibold tracking-wide">Touch or Speak · Chạm hoặc Nói</span>
+                    </div>
+
+                    {/* Biểu tượng đa ngôn ngữ quốc tế */}
+                    <div className="flex items-center gap-1 text-[10px] text-stone-400 bg-stone-800/90 px-2 py-0.5 rounded-full border border-stone-700/60 font-mono">
+                      <Globe className="w-3 h-3 text-stone-400" />
+                      <span>VI · EN</span>
+                    </div>
                   </div>
                 </div>
               )}
@@ -1291,7 +1545,9 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         </main>
 
         {/* 3. Bottom Dev State Switcher (Chỉ là các hình tròn nhỏ màu xám/trung tính đại diện cho State, không chữ) */}
-        <footer className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-stone-900/80 px-3.5 py-2 rounded-full flex items-center gap-3 shadow-2xl backdrop-blur-md border border-stone-800/80 z-40 opacity-20 hover:opacity-100 transition-opacity duration-300">
+        <footer className={`absolute bottom-4 left-1/2 -translate-x-1/2 bg-stone-900/80 px-3.5 py-2 rounded-full flex items-center gap-3 shadow-2xl backdrop-blur-md border border-stone-800/80 z-10 transition-all duration-300 ${
+          aiResponseText || isSpeaking ? 'opacity-0 pointer-events-none' : 'opacity-20 hover:opacity-100'
+        }`}>
           {[
             { id: 'RT-01', name: 'Sleeping', activeColor: 'bg-stone-300 ring-2 ring-stone-200 scale-125', idleColor: 'bg-stone-700 hover:bg-stone-600' },
             { id: 'RT-02', name: 'Welcome', activeColor: 'bg-stone-100 ring-2 ring-white scale-125', idleColor: 'bg-stone-700 hover:bg-stone-600' },

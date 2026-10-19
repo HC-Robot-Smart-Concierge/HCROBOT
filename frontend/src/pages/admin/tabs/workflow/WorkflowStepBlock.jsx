@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { ChevronUp, ChevronDown, Trash2, Megaphone, Film, Image as ImageIcon, QrCode, Navigation } from 'lucide-react';
 import { STEP_SCRATCH_THEMES, WAYFINDING_DESTINATIONS } from './workflowConstants';
 import { STANDARD_LOBBY_WAYPOINTS } from './workflowSimulatorUtils';
+import { fetchActiveAdvertisements } from '../../../../services/advertisementApi';
 
 export const WorkflowStepBlock = ({
   step,
@@ -16,6 +17,22 @@ export const WorkflowStepBlock = ({
   const theme = STEP_SCRATCH_THEMES[step.type] || STEP_SCRATCH_THEMES.MOVE;
   const Icon = theme.icon;
   const params = step.params || {};
+
+  const [availableAds, setAvailableAds] = useState([]);
+
+  useEffect(() => {
+    let isMounted = true;
+    fetchActiveAdvertisements()
+      .then((data) => {
+        if (isMounted && Array.isArray(data)) {
+          setAvailableAds(data);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const effectiveWaypoints =
     Array.isArray(waypoints) && waypoints.length > 0 ? waypoints : STANDARD_LOBBY_WAYPOINTS;
@@ -200,13 +217,23 @@ export const WorkflowStepBlock = ({
                 </select>
 
                 {(params.screen_mode === 'PROMO_VIDEO' || params.screen_mode === 'PROMO_IMAGE' || params.show_media_on_move) && (
-                  <input
-                    type="text"
-                    placeholder="URL video clip mp4 hoặc ảnh poster (để trống sẽ dùng clip mẫu 5 sao)..."
-                    value={params.media_url || ''}
-                    onChange={(e) => handleFieldChange('media_url', e.target.value)}
-                    className="flex-1 min-w-[200px] bg-stone-50 hover:bg-white text-stone-900 px-2.5 py-1 rounded-lg text-xs font-medium border border-stone-300 focus:outline-none focus:border-rose-600 focus:bg-white shadow-2xs"
-                  />
+                  <>
+                    <input
+                      type="text"
+                      list={`ad-media-list-${index}`}
+                      placeholder="URL video clip mp4 hoặc ảnh poster (chọn từ danh sách)..."
+                      value={params.media_url || ''}
+                      onChange={(e) => handleFieldChange('media_url', e.target.value)}
+                      className="flex-1 min-w-[200px] bg-stone-50 hover:bg-white text-stone-900 px-2.5 py-1 rounded-lg text-xs font-medium border border-stone-300 focus:outline-none focus:border-rose-600 focus:bg-white shadow-2xs"
+                    />
+                    <datalist id={`ad-media-list-${index}`}>
+                      {availableAds.map((ad) => (
+                        <option key={ad.id} value={ad.media_url}>
+                          [{ad.media_type}] {ad.title}
+                        </option>
+                      ))}
+                    </datalist>
+                  </>
                 )}
               </div>
             </>
@@ -393,11 +420,19 @@ export const WorkflowStepBlock = ({
                   </span>
                   <input
                     type="text"
-                    placeholder="URL file video .mp4 hoặc ảnh poster (để trống sẽ dùng clip mẫu resort 5 sao)..."
+                    list={`ad-media-list-show-${index}`}
+                    placeholder="URL file video .mp4 hoặc ảnh poster (chọn từ danh sách)..."
                     value={params.media_url || ''}
                     onChange={(e) => handleFieldChange('media_url', e.target.value)}
                     className="flex-1 min-w-[240px] bg-stone-50 hover:bg-white text-stone-900 px-2.5 py-1 rounded-lg text-xs font-medium border border-stone-300 focus:outline-none focus:border-rose-600 focus:bg-white shadow-2xs"
                   />
+                  <datalist id={`ad-media-list-show-${index}`}>
+                    {availableAds.map((ad) => (
+                      <option key={ad.id} value={ad.media_url}>
+                        [{ad.media_type}] {ad.title}
+                      </option>
+                    ))}
+                  </datalist>
                   <span className="font-semibold text-stone-700 text-xs shrink-0">
                     Thuyết minh:
                   </span>

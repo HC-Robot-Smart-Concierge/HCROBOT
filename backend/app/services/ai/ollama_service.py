@@ -173,78 +173,78 @@ class OllamaService:
 
         # 2. Lời chào chung (Greetings)
         if re.search(r"^(xin chào|xin chao|chào em|chao em|chào robot|chao robot|chào bạn|chao ban|chào rora|chao rora|hello|hi|hey|good morning|good afternoon|good evening)[\?\.\!\s]*$", prompt_lower):
-            return (time_greeting_en if is_en else time_greeting_vi), lang_name, lang_code
+            return (time_greeting_en if is_en else time_greeting_vi), lang_name, lang_code, None, None
 
         # 2.1. Hỏi thăm sức khỏe (How are you)
         if re.search(r"\b(khỏe không|khoe khong|bạn khỏe không|ban khoe khong|em khỏe không|em khoe khong|bạn có khỏe không|ban co khoe khong|how are you|how are you doing)\b", prompt_lower):
             reply_vi = "Dạ em khỏe ạ! Cảm ơn quý khách đã quan tâm. Em có thể hỗ trợ gì cho kỳ nghỉ của mình hôm nay ạ?"
             reply_en = "I am doing great, thank you for asking! How may I assist you with your stay today?"
-            return (reply_en if is_en else reply_vi), lang_name, lang_code
+            return (reply_en if is_en else reply_vi), lang_name, lang_code, None, None
 
         # 3. Lời cảm ơn (Thanks)
         if re.search(r"\b(cảm ơn|cam on|thank you|thanks|cảm ơn em|cảm ơn rora)\b", prompt_lower):
             reply_vi = "Dạ không có gì ạ! Rora rất hân hạnh được hỗ trợ quý khách. Chúc quý khách có những phút giây tuyệt vời tại Aurora!"
             reply_en = "You are most welcome! Rora is always delighted to assist you. Have a wonderful time at Aurora!"
-            return (reply_en if is_en else reply_vi), lang_name, lang_code
+            return (reply_en if is_en else reply_vi), lang_name, lang_code, None, None
 
         # 4. Tạm biệt (Farewell)
         if re.search(r"\b(tạm biệt|tam biet|goodbye|bye|bye bye|hẹn gặp lại)\b", prompt_lower):
             reply_vi = "Dạ tạm biệt quý khách! Chúc quý khách một ngày tràn ngập niềm vui và hẹn sớm gặp lại ạ."
             reply_en = "Goodbye! Wishing you a joyful day and looking forward to seeing you again."
-            return (reply_en if is_en else reply_vi), lang_name, lang_code
+            return (reply_en if is_en else reply_vi), lang_name, lang_code, None, None
 
         # 5. Hồ bơi / Bể bơi (Pool)
         if re.search(r"\b(hồ bơi|bể bơi|swimming pool|pool)\b", prompt_lower):
             reply_vi = "Dạ hồ bơi vô cực ngoài trời nằm ở Tầng 4, mở cửa từ 6 giờ sáng đến 22 giờ tối và có sẵn khăn tắm miễn phí ạ."
             reply_en = "The outdoor infinity pool is located on Level 4, open from 6:00 AM to 10:00 PM with complimentary towels."
-            return (reply_en if is_en else reply_vi), lang_name, lang_code
+            return (reply_en if is_en else reply_vi), lang_name, lang_code, None, None
 
         # 6. Nhà hàng / Ăn sáng / Buffet (Restaurant & Breakfast)
         if re.search(r"\b(nhà hàng|bữa sáng|buffet sáng|ăn sáng|restaurant|breakfast)\b", prompt_lower):
             reply_vi = "Dạ Nhà hàng Aurora nằm ở Tầng 2, phục vụ buffet sáng từ 6 giờ 30 đến 10 giờ sáng hàng ngày ạ."
             reply_en = "The Aurora Restaurant is located on Level 2, serving breakfast buffet from 6:30 AM to 10:00 AM daily."
-            return (reply_en if is_en else reply_vi), lang_name, lang_code
+            return (reply_en if is_en else reply_vi), lang_name, lang_code, None, None
 
         # 7. Phòng Gym / Thể hình (Gym / Fitness)
         if re.search(r"\b(phòng gym|tập gym|thể dục|gym|fitness)\b", prompt_lower):
             reply_vi = "Dạ Phòng Gym và trung tâm thể hình nằm ở Tầng 4, mở cửa phục vụ 24 trên 7 miễn phí cho quý khách ạ."
             reply_en = "The Fitness Center is on Level 4, open 24/7 complimentary for staying guests."
-            return (reply_en if is_en else reply_vi), lang_name, lang_code
+            return (reply_en if is_en else reply_vi), lang_name, lang_code, None, None
 
         # 8. Spa / Xông hơi (Spa & Sauna)
         if re.search(r"\b(spa|massage|xông hơi|sauna)\b", prompt_lower):
             reply_vi = "Dạ Aurora Luxury Spa nằm tại Tầng 5, mở cửa phục vụ quý khách từ 9 giờ sáng đến 22 giờ tối ạ."
             reply_en = "Aurora Luxury Spa is on Level 5, open from 9:00 AM to 10:00 PM."
-            return (reply_en if is_en else reply_vi), lang_name, lang_code
+            return (reply_en if is_en else reply_vi), lang_name, lang_code, None, None
 
         # 9. Giờ nhận phòng / Trả phòng (Check-in / Check-out)
         if re.search(r"\b(trả phòng|check out|check-out|mấy giờ trả phòng|trả phòng lúc mấy giờ)\b", prompt_lower):
             reply_vi = "Dạ giờ trả phòng tiêu chuẩn là trước 12 giờ trưa quý khách nhé."
             reply_en = "Standard check-out time is before 12:00 PM noon."
-            return (reply_en if is_en else reply_vi), lang_name, lang_code
+            return (reply_en if is_en else reply_vi), lang_name, lang_code, None, None
 
         if re.search(r"\b(nhận phòng|check in|check-in|mấy giờ nhận phòng|nhận phòng lúc mấy giờ)\b", prompt_lower):
             reply_vi = "Dạ giờ nhận phòng tiêu chuẩn tại khách sạn Aurora là từ 14 giờ chiều ạ."
             reply_en = "Standard check-in time at Aurora Hotel is from 2:00 PM."
-            return (reply_en if is_en else reply_vi), lang_name, lang_code
+            return (reply_en if is_en else reply_vi), lang_name, lang_code, None, None
 
         # 10. Nhà vệ sinh / Toilet / WC
         if re.search(r"\b(nhà vệ sinh|toilet|wc|restroom|phòng vệ sinh)\b", prompt_lower):
             reply_vi = "Dạ nhà vệ sinh sảnh chính nằm ở phía tay phải sau quầy lễ tân tầng 1 ạ."
             reply_en = "The lobby restrooms are located on the right side behind the Front Desk on Level 1."
-            return (reply_en if is_en else reply_vi), lang_name, lang_code
+            return (reply_en if is_en else reply_vi), lang_name, lang_code, None, None
 
         # 11. Bãi đỗ xe (Parking)
         if re.search(r"\b(bãi đỗ xe|đỗ xe|gửi xe|bãi xe|parking)\b", prompt_lower):
             reply_vi = "Dạ bãi đỗ xe ô tô và xe máy miễn phí nằm ở Tầng hầm B1 của khách sạn ạ."
             reply_en = "Complimentary car and motorbike parking is located at Basement B1."
-            return (reply_en if is_en else reply_vi), lang_name, lang_code
+            return (reply_en if is_en else reply_vi), lang_name, lang_code, None, None
 
         # 12. Danh tính robot (Who are you)
         if re.search(r"\b(bạn là ai|em là ai|tên gì|who are you|what is your name)\b", prompt_lower):
             reply_vi = "Dạ em là Rora, trợ lý Robot Concierge thông minh của khách sạn 5 sao Aurora Grand. Rất hân hạnh được phục vụ quý khách ạ!"
             reply_en = "I am Rora, the smart AI Concierge Robot at Aurora Grand Hotel. It is my pleasure to assist you!"
-            return (reply_en if is_en else reply_vi), lang_name, lang_code
+            return (reply_en if is_en else reply_vi), lang_name, lang_code, None, None
 
         return None
 
@@ -440,8 +440,13 @@ class OllamaService:
                 if token:
                     yield token
         except Exception as e:
-            logger.error(f"[OllamaService StreamError] Lỗi streaming LLM: {str(e)}")
-            fallback = "Xin lỗi quý khách, hiện không thể kết nối tới AI Server." if lang_code == "vi-VN" else "Sorry, cannot connect to AI Server."
+            logger.warning(f"[OllamaService StreamWarning] Ollama offline ({e}), activating Smart Offline Knowledge Fallback...")
+            fallback = self.generate_offline_fallback_response(
+                prompt=prompt,
+                lang_code=lang_code,
+                rag_context=rag_context,
+                stored_room_number=stored_room_number,
+            )
             yield fallback
 
     @classmethod
@@ -548,7 +553,7 @@ class OllamaService:
             final_lang_name, final_lang_code = self.detect_language(reply)
             return reply, final_lang_name, final_lang_code
         except Exception as e:
-            logger.warning(f"[OllamaService Warning] Lỗi Ollama cục bộ: {str(e)}")
+            logger.warning(f"[OllamaService Warning] Ollama offline ({e}), activating Smart Offline Knowledge Fallback...")
 
             # Fallback an toàn sang Groq nếu có API key (phòng ngừa máy yếu hết RAM không bật được Ollama)
             if settings.GROQ_API_KEY:
@@ -559,8 +564,124 @@ class OllamaService:
                     final_lang_name, final_lang_code = self.detect_language(reply)
                     return reply, final_lang_name, final_lang_code
 
-            fallback = "Xin lỗi quý khách, hiện không thể kết nối tới AI Server." if lang_code == "vi-VN" else "Sorry, cannot connect to AI Server."
+            fallback = self.generate_offline_fallback_response(
+                prompt=prompt,
+                lang_code=lang_code,
+                rag_context=rag_context,
+                stored_room_number=stored_room_number,
+            )
             return fallback, lang_name, lang_code
+
+    def generate_offline_fallback_response(
+        self,
+        prompt: str,
+        lang_code: str = "vi-VN",
+        rag_context: Optional[str] = None,
+        stored_room_number: Optional[str] = None,
+    ) -> str:
+        """
+        Tự động phản hồi thông minh từ factsheet khách sạn Aurora khi Ollama local chưa khởi động.
+        Đảm bảo zero-crash, zero-downtime cho bất kỳ ai clone dự án về mà chưa cài Ollama.
+        """
+        p_lower = prompt.lower().strip()
+        is_en = lang_code == "en-US"
+
+        # 1. Wifi & Mật khẩu
+        if any(k in p_lower for k in ["wifi", "wi-fi", "mật khẩu", "mat khau", "pass wifi", "password", "mạng"]):
+            return (
+                "The complimentary Wi-Fi is 'Aurora_Guest' with password 'aurora2026'."
+                if is_en else
+                "Dạ mạng Wi-Fi miễn phí của khách sạn là 'Aurora_Guest' và mật khẩu là 'aurora2026' quý khách nhé."
+            )
+
+        # 2. Bữa sáng, Nhà hàng, Ăn uống
+        if any(k in p_lower for k in ["ăn sáng", "an sang", "bữa sáng", "bua sang", "buffet", "nhà hàng", "nha hang", "breakfast", "restaurant"]):
+            return (
+                "The Aurora Restaurant is on Level 2, serving breakfast buffet from 6:30 AM to 10:00 AM daily."
+                if is_en else
+                "Dạ Nhà hàng Aurora nằm tại Tầng 2, phục vụ buffet sáng từ 6 giờ 30 đến 10 giờ sáng hàng ngày ạ."
+            )
+
+        # 3. Hồ bơi / Bể bơi
+        if any(k in p_lower for k in ["hồ bơi", "ho boi", "bể bơi", "be boi", "bơi", "pool", "swimming"]):
+            return (
+                "The outdoor infinity pool is on Level 5, open from 6:00 AM to 10:00 PM with complimentary towels."
+                if is_en else
+                "Dạ hồ bơi vô cực ngoài trời nằm ở Tầng 5, mở cửa từ 6 giờ sáng đến 22 giờ tối và có sẵn khăn tắm miễn phí ạ."
+            )
+
+        # 4. Phòng Gym / Thể hình
+        if any(k in p_lower for k in ["gym", "fitness", "thể hình", "the hinh", "tập gym"]):
+            return (
+                "The Fitness Center is on Level 5, open 24/7 complimentary for staying guests."
+                if is_en else
+                "Dạ phòng Gym và trung tâm thể hình nằm ở Tầng 5, mở cửa phục vụ 24 trên 7 miễn phí cho quý khách ạ."
+            )
+
+        # 5. Spa / Massage / Xông hơi
+        if any(k in p_lower for k in ["spa", "massage", "xông hơi", "xong hoi", "sauna"]):
+            return (
+                "Herbal Spa & Sauna is located on Level 5, open from 9:00 AM to 10:00 PM."
+                if is_en else
+                "Dạ Thảo Mộc Spa nằm tại Tầng 5, mở cửa phục vụ quý khách từ 9 giờ sáng đến 22 giờ tối ạ."
+            )
+
+        # 6. Bar / Rooftop / Cafe / Karaoke
+        if any(k in p_lower for k in ["rooftop", "bar", "cafe", "cà phê", "sky lounge", "karaoke"]):
+            return (
+                "Sky Lounge Bar and Rooftop Coffee are on Level 6, open from 4:30 PM to 1:00 AM."
+                if is_en else
+                "Dạ Sky Lounge Bar và Rooftop Coffee nằm ở Tầng 6, mở cửa phục vụ từ 16 giờ 30 đến 1 giờ sáng ạ."
+            )
+
+        # 7. Nhận phòng / Trả phòng
+        if any(k in p_lower for k in ["nhận phòng", "nhan phong", "trả phòng", "tra phong", "check in", "check out", "check-in", "check-out"]):
+            return (
+                "Standard check-in time is from 2:00 PM and check-out is before 12:00 PM noon."
+                if is_en else
+                "Dạ giờ nhận phòng tiêu chuẩn là từ 14 giờ chiều và giờ trả phòng là trước 12 giờ trưa quý khách nhé."
+            )
+
+        # 8. Bãi đỗ xe
+        if any(k in p_lower for k in ["bãi xe", "bai xe", "đỗ xe", "do xe", "gửi xe", "gui xe", "parking"]):
+            return (
+                "Motorbike parking is at Basement B1 and car parking is at Basement B2, both complimentary for staying guests."
+                if is_en else
+                "Dạ bãi xe máy ở Hầm B1 và bãi ô tô ở Hầm B2 của khách sạn hoàn toàn miễn phí cho khách lưu trú ạ."
+            )
+
+        # 9. Lễ tân / Giúp đỡ
+        if any(k in p_lower for k in ["lễ tân", "le tan", "tiếp tân", "front desk", "reception"]):
+            return (
+                "The Front Desk is located on Level 1, available 24/7. You can also dial 0 from your room phone."
+                if is_en else
+                "Dạ Quầy Lễ tân nằm tại Tầng 1 sảnh chính, phục vụ 24 trên 7. Quý khách cũng có thể bấm phím 0 từ phòng để được hỗ trợ ạ."
+            )
+
+        # 10. Tìm phòng 3xx hoặc 4xx
+        room_match = re.search(r'\b(?:phòng|p\.?|phong)?\s*([34]0[1-9])\b', p_lower)
+        if room_match:
+            r_num = room_match.group(1)
+            floor_num = r_num[0]
+            return (
+                f"Room {r_num} is on Level {floor_num}. Please take Elevator A on the left to reach your floor."
+                if is_en else
+                f"Dạ Phòng {r_num} nằm ở Tầng {floor_num} ạ. Quý khách vui lòng đi thẳng tới Thang máy A phía bên trái để lên tầng nhé."
+            )
+
+        # 11. Nếu có rag_context từ ChromaDB, dùng ngay
+        if rag_context and len(rag_context.strip()) > 20:
+            clean_ctx = re.sub(r'[*#_`]', '', rag_context).strip()
+            first_sentence = clean_ctx.split('.')[0].strip()
+            if len(first_sentence) > 15:
+                return f"Dạ theo thông tin khách sạn: {first_sentence} ạ." if not is_en else f"According to hotel info: {first_sentence}."
+
+        # 12. Fallback nhã nhặn, không báo lỗi máy chủ
+        return (
+            "I have noted your request. Please contact the Front Desk at Level 1 or dial 0 from your room phone for immediate assistance!"
+            if is_en else
+            "Dạ Rora xin ghi nhận câu hỏi của quý khách. Quý khách vui lòng liên hệ Quầy Lễ tân sảnh tầng 1 hoặc gọi phím 0 từ điện thoại phòng để được hỗ trợ chu đáo nhất nhé ạ!"
+        )
 
     async def extract_intent(self, user_speech: str) -> Dict[str, Any]:
         """

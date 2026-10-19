@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.v1.endpoints import ai, scenarios, rag, map, operations, auth, logs, workflows
+from app.api.v1.endpoints import ai, scenarios, rag, map, operations, auth, logs, workflows, advertisements
 from app.interceptors import RouteInterceptor
 from app.schemas.response import (
     AUTH_RESPONSES,
@@ -65,4 +65,13 @@ api_router.include_router(
     tags=["17. Nhật ký Vận hành & Audit Trail (Logging & Trace)"],
     responses={**AUTH_RESPONSES, **NOT_FOUND_RESPONSES},
 )
+
+# Quản lý Quảng cáo & Truyền thông Robot (Cloudinary)
+api_router.include_router(
+    advertisements.router,
+    prefix="/advertisements",
+    tags=["18. Quản lý Quảng cáo & Truyền thông Robot (Advertisements & Media)"],
+    responses={**BUSINESS_ERROR_RESPONSES, **NOT_FOUND_RESPONSES},
+)
+
 

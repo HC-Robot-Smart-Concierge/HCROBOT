@@ -5,38 +5,26 @@ import {
   SkipForward,
   RotateCcw,
   Square,
-  Volume2,
-  VolumeX,
   Send,
-  Eye,
-  Mic,
-  MessageSquare,
-  ClipboardList,
-  Star,
   Navigation,
   Edit3,
   Check,
-  Shield,
-  ShieldAlert,
   Layers,
   Gauge,
   Ban,
   AlertTriangle,
   X,
-  Info,
   Move,
   Save,
-  Plus,
   Trash2,
   ChevronDown,
-  EyeOff,
-  MapPin,
-  Repeat,
+  SlidersHorizontal,
+  ListOrdered,
   Megaphone,
-  Monitor,
-  Film,
+  ZoomIn,
+  ZoomOut,
+  Maximize2,
 } from 'lucide-react';
-import { KioskDisplayPreview } from './KioskDisplayPreview';
 import { useSpeechSynthesis } from '../../../../hooks/useSpeechSynthesis';
 import {
   RosbridgeClient,
@@ -279,7 +267,6 @@ export const WorkflowSimulatorStudio = ({
   const [simSpeed, setSimSpeed] = useState(1.0);
   const [isMuted, setIsMuted] = useState(false);
   const [isLoopMode, setIsLoopMode] = useState(false);
-  const [showKioskScreen, setShowKioskScreen] = useState(false);
   const [stepProgress, setStepProgress] = useState(0);
 
   // Duong di hien tai cua robot: { waypoints: [{x, y}], label: string }
@@ -297,6 +284,72 @@ export const WorkflowSimulatorStudio = ({
   const [selectedZone, setSelectedZone] = useState(null);
   const [zoneAlert, setZoneAlert] = useState(null);
 
+  // Zoom & Pan state cho ban do tren web (ho tro phong to, thu nho, di chuyen view)
+  const [zoomScale, setZoomScale] = useState(1.0);
+  const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState(false);
+  const panStartRef = useRef({ x: 0, y: 0, initialPan: { x: 0, y: 0 } });
+
+  const handleZoomIn = useCallback(() => {
+    setZoomScale((prev) => Math.min(2.5, Number((prev + 0.25).toFixed(2))));
+  }, []);
+
+  const handleZoomOut = useCallback(() => {
+    setZoomScale((prev) => Math.max(0.75, Number((prev - 0.25).toFixed(2))));
+  }, []);
+
+  const handleResetZoom = useCallback(() => {
+    setZoomScale(1.0);
+    setPanOffset({ x: 0, y: 0 });
+  }, []);
+
+  const handleWheelZoom = useCallback((e) => {
+    e.preventDefault();
+    const zoomDelta = e.deltaY < 0 ? 0.15 : -0.15;
+    setZoomScale((prev) => Math.max(0.75, Math.min(2.5, Number((prev + zoomDelta).toFixed(2)))));
+  }, []);
+
+  // Chuyen doi toa do chuot Client sang toa do SVG ViewBox tinh den Zoom & Pan
+  const getSvgPointFromClient = useCallback(
+    (clientX, clientY) => {
+      const svg = svgRef.current;
+      if (!svg) return { x: 500, y: 310 };
+      if (typeof svg.createSVGPoint === 'function' && svg.getScreenCTM) {
+        try {
+          const ctm = svg.getScreenCTM();
+          if (ctm) {
+            const pt = svg.createSVGPoint();
+            pt.x = clientX;
+            pt.y = clientY;
+            const p = pt.matrixTransform(ctm.inverse());
+            return { x: p.x, y: p.y };
+          }
+        } catch {
+          // Fallback bên dưới
+        }
+      }
+      const rect = svg.getBoundingClientRect();
+      const relX = (clientX - rect.left) / (rect.width || 1);
+      const relY = (clientY - rect.top) / (rect.height || 1);
+      const vbW = 1000 / zoomScale;
+      const vbH = 620 / zoomScale;
+      const vbX = 500 - vbW / 2 - panOffset.x;
+      const vbY = 310 - vbH / 2 - panOffset.y;
+      return {
+        x: vbX + relX * vbW,
+        y: vbY + relY * vbH,
+      };
+    },
+    [zoomScale, panOffset]
+  );
+
+  // ViewBox dong ho tro Zoom & Pan
+  const currentVbWidth = 1000 / zoomScale;
+  const currentVbHeight = 620 / zoomScale;
+  const currentVbX = 500 - currentVbWidth / 2 - panOffset.x;
+  const currentVbY = 310 - currentVbHeight / 2 - panOffset.y;
+  const dynamicViewBox = `${currentVbX} ${currentVbY} ${currentVbWidth} ${currentVbHeight}`;
+
   // Che do keo tha va thay doi kich thuoc Vung tren sa ban map
   const [isZoneEditMode, setIsZoneEditMode] = useState(false);
   const [dragState, setDragState] = useState(null);
@@ -304,6 +357,39 @@ export const WorkflowSimulatorStudio = ({
   const [isSavingZones, setIsSavingZones] = useState(false);
   const [isZoneMenuOpen, setIsZoneMenuOpen] = useState(false);
   const wasDraggingRef = useRef(false);
+
+  // Dropdown menu Workflow, Ban do, Tien trinh kịch bản & Menu Tuy chon mo phong
+  const [isWorkflowMenuOpen, setIsWorkflowMenuOpen] = useState(false);
+  const [isMapMenuOpen, setIsMapMenuOpen] = useState(false);
+  const [mapMenuTab, setMapMenuTab] = useState('ZONES'); // 'ZONES' | 'ENDPOINTS'
+  const [isSettingsMenuOpen, setIsSettingsMenuOpen] = useState(false);
+  const [isStepsMenuOpen, setIsStepsMenuOpen] = useState(false);
+  const workflowMenuRef = useRef(null);
+  const mapMenuRef = useRef(null);
+  const settingsMenuRef = useRef(null);
+  const stepsMenuRef = useRef(null);
+
+  // Tu dong dong Dropdown khi click ben ngoai
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (workflowMenuRef.current && !workflowMenuRef.current.contains(event.target)) {
+        setIsWorkflowMenuOpen(false);
+      }
+      if (mapMenuRef.current && !mapMenuRef.current.contains(event.target)) {
+        setIsMapMenuOpen(false);
+      }
+      if (settingsMenuRef.current && !settingsMenuRef.current.contains(event.target)) {
+        setIsSettingsMenuOpen(false);
+      }
+      if (stepsMenuRef.current && !stepsMenuRef.current.contains(event.target)) {
+        setIsStepsMenuOpen(false);
+      }
+    };
+    document.addEventListener('pointerdown', handleClickOutside);
+    return () => {
+      document.removeEventListener('pointerdown', handleClickOutside);
+    };
+  }, []);
 
   // Tai danh sach Vung tu backend CSDL neu co, fallback la 3 vung mac dinh
   useEffect(() => {
@@ -325,6 +411,7 @@ export const WorkflowSimulatorStudio = ({
   // Them Vung moi tren sa ban (Add Zone)
   const handleAddZone = (type) => {
     setIsZoneMenuOpen(false);
+    setIsMapMenuOpen(false);
     const count = zones.filter((z) => z.type === type).length + 1;
     let name = '';
     let speedLimit = null;
@@ -494,6 +581,7 @@ export const WorkflowSimulatorStudio = ({
   // Them Endpoint moi (Add Endpoint)
   const handleAddEndpoint = (type = 'WAYPOINT', customCoords = null) => {
     setIsEndpointMenuOpen(false);
+    setIsMapMenuOpen(false);
     const count = endpoints.filter((e) => (e.type || 'WAYPOINT') === type).length + 1;
     const typeInfo = getEndpointTemplateInfo(type);
     const defaultName =
@@ -622,6 +710,20 @@ export const WorkflowSimulatorStudio = ({
 
   // Tinh toan toa do keo tha thoi gian thuc tren he toa do met ROS
   const handleSvgPointerMove = (e) => {
+    // Xu ly Pan ban do khi dang giu chuot giua hoac giu phim Space
+    if (isPanning) {
+      const dx = e.clientX - panStartRef.current.x;
+      const dy = e.clientY - panStartRef.current.y;
+      const svgRect = svgRef.current?.getBoundingClientRect();
+      const scaleX = (1000 / zoomScale) / (svgRect?.width || 1);
+      const scaleY = (620 / zoomScale) / (svgRect?.height || 1);
+      setPanOffset({
+        x: panStartRef.current.initialPan.x + dx * scaleX,
+        y: panStartRef.current.initialPan.y + dy * scaleY,
+      });
+      return;
+    }
+
     if ((!dragState && !dragEndpointState) || !svgRef.current) return;
 
     // QUAN TRỌNG: Neu chuot KHONG con duoc de nhan (e.buttons === 0), lap tuc huy trang thai keo tha
@@ -659,15 +761,15 @@ export const WorkflowSimulatorStudio = ({
     const svgRect = svgRef.current.getBoundingClientRect();
     if (!svgRect.width || !svgRect.height) return;
 
-    const scaleX = 1000 / svgRect.width;
-    const scaleY = 620 / svgRect.height;
+    const scaleX = (1000 / zoomScale) / svgRect.width;
+    const scaleY = (620 / zoomScale) / svgRect.height;
 
     const deltaSvgX = deltaClientX * scaleX;
     const deltaSvgY = deltaClientY * scaleY;
 
-    // Chuyen delta sang met: 900 SVG px = 10m X, 500 SVG px = 6m Y (truc Y nguoc chieu)
-    const deltaMeterX = (deltaSvgX / 900) * 10.0;
-    const deltaMeterY = -(deltaSvgY / 500) * 6.0;
+    // Dong bo ti le 1:1 voi Gazebo: PPM = 90 px/m cho ca X va Y
+    const deltaMeterX = deltaSvgX / 90;
+    const deltaMeterY = -deltaSvgY / 90;
 
     // 1. KEO THA ENDPOINT
     if (dragEndpointState) {
@@ -758,6 +860,9 @@ export const WorkflowSimulatorStudio = ({
 
   // Ket thuc keo tha
   const handleSvgPointerUp = (e) => {
+    if (isPanning) {
+      setIsPanning(false);
+    }
     if (!dragState && !dragEndpointState) return;
     try {
       const pId = dragState?.pointerId || dragEndpointState?.pointerId || e.pointerId;
@@ -795,6 +900,19 @@ export const WorkflowSimulatorStudio = ({
     }, 80);
   };
 
+  // Bat dau Pan ban do
+  const handleSvgPointerDown = (e) => {
+    if (e.button === 1 || (e.button === 0 && e.shiftKey)) {
+      e.preventDefault();
+      setIsPanning(true);
+      panStartRef.current = {
+        x: e.clientX,
+        y: e.clientY,
+        initialPan: { ...panOffset },
+      };
+    }
+  };
+
   // Xu ly click chon vung hoac chuyen doi luan phien khi cac vung chong len nhau
   const handleZoneClick = (e, clickedZone) => {
     if (!isZoneEditMode && !selectedZone) {
@@ -804,21 +922,16 @@ export const WorkflowSimulatorStudio = ({
     e.stopPropagation();
     if (wasDraggingRef.current) return;
 
-    const svg = svgRef.current;
-    if (svg) {
-      const bRect = svg.getBoundingClientRect();
-      const svgX = ((e.clientX - bRect.left) / bRect.width) * 1000;
-      const svgY = ((e.clientY - bRect.top) / bRect.height) * 620;
-      const meter = svgToMeter(svgX, svgY);
+    const pt = getSvgPointFromClient(e.clientX, e.clientY);
+    const meter = svgToMeter(pt.x, pt.y);
 
-      // Tim tat ca cac vung bao phu toa do click
-      const overlapping = zones.filter((z) => isPointInSimulatorZone(meter.x, meter.y, z));
-      if (overlapping.length > 1) {
-        const currentIdx = overlapping.findIndex((z) => z.id === selectedZone?.id);
-        const nextIdx = (currentIdx + 1) % overlapping.length;
-        setSelectedZone(overlapping[nextIdx]);
-        return;
-      }
+    // Tim tat ca cac vung bao phu toa do click
+    const overlapping = zones.filter((z) => isPointInSimulatorZone(meter.x, meter.y, z));
+    if (overlapping.length > 1) {
+      const currentIdx = overlapping.findIndex((z) => z.id === selectedZone?.id);
+      const nextIdx = (currentIdx + 1) % overlapping.length;
+      setSelectedZone(overlapping[nextIdx]);
+      return;
     }
 
     setSelectedZone(selectedZone?.id === clickedZone.id ? null : clickedZone);
@@ -1560,16 +1673,12 @@ export const WorkflowSimulatorStudio = ({
       return;
     }
 
-    const svg = svgRef.current;
-    if (!svg) return;
-    const rect = svg.getBoundingClientRect();
-    const clientX = e.clientX - rect.left;
-    const clientY = e.clientY - rect.top;
-    const svgX = (clientX / rect.width) * 1000;
-    const svgY = (clientY / rect.height) * 620;
+    const pt = getSvgPointFromClient(e.clientX, e.clientY);
+    const svgX = pt.x;
+    const svgY = pt.y;
 
-    // Chi tiep nhan click trong pham vi sanh (X 50..950, Y 50..550)
-    if (svgX < 50 || svgX > 950 || svgY < 50 || svgY > 550) return;
+    // Chi tiep nhan click trong pham vi sanh (X 50..950, Y 40..580 chuan 10m x 6m)
+    if (svgX < 50 || svgX > 950 || svgY < 40 || svgY > 580) return;
 
     const meter = svgToMeter(svgX, svgY);
 
@@ -1612,782 +1721,934 @@ export const WorkflowSimulatorStudio = ({
 
   return (
     <div className="flex flex-col h-full w-full overflow-hidden select-none" style={{ backgroundColor: '#F2EFE9' }}>
-      {/* THANH DIEU KHIEN CHINH - Đồng bộ màu xám #E9E5DC của Sidebar trái */}
+      {/* THANH DIEU KHIEN CHINH - Gọn gàng, phân nhóm trực quan chuẩn UX */}
       <div
-        className="h-14 px-4 border-b flex items-center justify-between gap-4 shrink-0"
+        className="h-14 px-3 sm:px-4 border-b flex items-center justify-between gap-2 shrink-0 select-none"
         style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD' }}
       >
-        <div className="flex items-center gap-3">
-          {/* NUT TRANG THAI ROS 2: ONLINE / OFFLINE */}
-          <button
-            type="button"
-            onClick={() => {
-              const nextState = !isRosEnabled;
-              setIsRosEnabled(nextState);
-              if (nextState) {
-                onNotify('Đang kích hoạt kết nối ROS 2 (port 9090)...', 'info');
-              } else {
-                onNotify('Đã ngắt kết nối ROS 2.', 'info');
-              }
-            }}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-mono font-bold border transition-all cursor-pointer shadow-xs ${
-              isRosEnabled && isRosConnected
-                ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
-                : 'text-[#262626] hover:bg-[#BFBFBD]'
-            }`}
-            style={!(isRosEnabled && isRosConnected) ? { backgroundColor: '#F2EFE9', borderColor: '#BFBFBD' } : {}}
-            title={
-              isRosEnabled && isRosConnected
-                ? 'ROS 2: ONLINE (Click để ngắt kết nối)'
-                : 'ROS 2: OFFLINE (Click để kết nối lại port 9090)'
-            }
-          >
-            <span
-              className={`w-1.5 h-1.5 rounded-full ${
-                isRosEnabled && isRosConnected ? 'bg-emerald-500 animate-pulse' : 'bg-stone-400'
-              }`}
-            />
-            <span>{isRosEnabled && isRosConnected ? 'ROS 2: ONLINE' : 'ROS 2: OFFLINE'}</span>
-          </button>
-
-          <select
-            value={selectedWorkflowId || ''}
-            onChange={(e) => {
-              handleStopSim();
-              setSelectedWorkflowId(e.target.value);
-            }}
-            className="h-8 px-2.5 rounded-lg border text-xs font-bold shadow-xs focus:outline-none max-w-[280px] sm:max-w-[340px] truncate cursor-pointer"
-            style={{ backgroundColor: '#F2EFE9', borderColor: '#BFBFBD', color: '#262626' }}
-          >
-            {localWorkflows.map((wf) => (
-              <option key={wf.id} value={wf.id}>
-                {wf.name} ({wf.steps?.length || 0} bước)
-              </option>
-            ))}
-          </select>
-
-          {/* NUT VUNG TONG HOP (DROP BOX TOAN BO CHUC NANG KEO THA, THEM, LUU, DAT LAI) */}
-          <div className="relative">
+        {/* NHOM 1: CHON KICH BAN VA QUAN LY LOP BAN DO */}
+        <div className="flex items-center gap-2 min-w-0">
+          {/* Dropdown Kịch bản: BÊN NGOÀI CHỈ HIỆN WORKFLOW X + CHEVRON */}
+          <div className="relative" ref={workflowMenuRef}>
             <button
               type="button"
-              onClick={() => setIsZoneMenuOpen((prev) => !prev)}
-              className={`h-8 px-2.5 rounded-lg border text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer ${
-                showZones
+              onClick={() => {
+                setIsWorkflowMenuOpen((prev) => !prev);
+                setIsMapMenuOpen(false);
+                setIsSettingsMenuOpen(false);
+              }}
+              className={`h-8.5 px-3 rounded-lg border text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer ${
+                isWorkflowMenuOpen
                   ? 'bg-[#262626] text-white border-[#262626]'
-                  : 'hover:bg-[#FAF8F5] text-[#262626]'
+                  : 'text-[#262626] hover:bg-[#FAF8F5]'
               }`}
-              style={!showZones ? { backgroundColor: '#F2EFE9', borderColor: '#BFBFBD' } : {}}
-              title="Mở menu quản lý các Vùng Quy Định (Hiển thị, Kéo thả, Thêm, Lưu, Đặt lại)"
+              style={!isWorkflowMenuOpen ? { backgroundColor: '#F2EFE9', borderColor: '#BFBFBD' } : {}}
+              title={activeWorkflow?.name ? `Kịch bản hiện tại: ${activeWorkflow.name}` : 'Chọn kịch bản'}
             >
-              <Layers className="w-3.5 h-3.5" />
-              <span>Vùng</span>
-              <span
-                className={`text-[9.5px] px-1 py-0.2 rounded font-mono ${
-                  showZones ? 'bg-white/20 text-white' : 'bg-[#E9E5DC] text-[#262626]'
-                }`}
-              >
-                {zones.length}
+              <span>
+                Workflow {localWorkflows.findIndex((w) => w.id === selectedWorkflowId) >= 0 ? localWorkflows.findIndex((w) => w.id === selectedWorkflowId) + 1 : 1}
               </span>
-              {hasUnsavedZones && <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />}
-              <ChevronDown className={`w-3 h-3 transition-transform ${isZoneMenuOpen ? 'rotate-180' : ''}`} />
+              <ChevronDown className={`w-3 h-3 transition-transform opacity-70 ${isWorkflowMenuOpen ? 'rotate-180' : ''}`} />
             </button>
 
-            {/* DROP BOX MENU QUAN LY VUNG */}
-            {isZoneMenuOpen && (
+            {/* DANH SÁCH CHI TIẾT KHI MỞ RA */}
+            {isWorkflowMenuOpen && (
               <div
-                className="absolute top-9 left-0 z-30 w-72 p-2.5 rounded-xl border shadow-2xl backdrop-blur-md animate-fadeIn text-xs space-y-2 select-none"
+                className="absolute top-full left-0 mt-1.5 w-80 sm:w-96 rounded-xl border shadow-2xl p-2.5 z-50 text-xs space-y-1.5 animate-fadeIn"
                 style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD', color: '#262626' }}
               >
-                {/* Header Drop Box */}
-                <div className="flex items-center justify-between pb-1.5 border-b" style={{ borderColor: '#E9E5DC' }}>
-                  <div className="flex items-center gap-1.5 font-bold uppercase tracking-wider text-[10.5px]">
-                    <Layers className="w-3.5 h-3.5 text-[#262626]" />
-                    <span>Quản lý Vùng ({zones.length})</span>
-                  </div>
+                <div className="flex items-center justify-between pb-2 border-b px-1" style={{ borderColor: '#E9E5DC' }}>
+                  <span className="font-bold text-xs uppercase tracking-wider text-[#8C8C8C]">
+                    Danh sách kịch bản ({localWorkflows.length})
+                  </span>
                   <button
                     type="button"
-                    onClick={() => setIsZoneMenuOpen(false)}
+                    onClick={() => setIsWorkflowMenuOpen(false)}
                     className="p-1 rounded hover:bg-[#F2EFE9] text-[#8C8C8C] hover:text-[#262626] cursor-pointer"
                   >
                     <X className="w-3.5 h-3.5" />
                   </button>
                 </div>
 
-                {/* 1. Switch Hien Thi & Switch Keo Tha */}
-                <div className="space-y-1">
-                  <button
-                    type="button"
-                    onClick={() => setShowZones((prev) => !prev)}
-                    className="w-full px-2 py-1.5 rounded-lg border flex items-center justify-between font-semibold hover:bg-[#F2EFE9] cursor-pointer transition-colors text-left"
-                    style={{ borderColor: '#E9E5DC' }}
-                  >
-                    <span className="flex items-center gap-2">
-                      {showZones ? <Eye className="w-3.5 h-3.5 text-emerald-600" /> : <EyeOff className="w-3.5 h-3.5 text-[#8C8C8C]" />}
-                      <span>Hiển thị lớp Vùng</span>
-                    </span>
-                    <span
-                      className={`text-[9.5px] font-mono font-bold px-1.5 py-0.2 rounded ${
-                        showZones ? 'bg-emerald-100 text-emerald-800' : 'bg-[#E9E5DC] text-[#8C8C8C]'
-                      }`}
-                    >
-                      {showZones ? 'BẬT' : 'TẮT'}
-                    </span>
-                  </button>
+                <div className="max-h-72 overflow-y-auto space-y-1 pr-1">
+                  {localWorkflows.map((wf, idx) => {
+                    const isSelected = wf.id === selectedWorkflowId;
+                    return (
+                      <button
+                        key={wf.id}
+                        type="button"
+                        onClick={() => {
+                          handleStopSim();
+                          setSelectedWorkflowId(wf.id);
+                          setIsWorkflowMenuOpen(false);
+                        }}
+                        className={`w-full text-left p-2 rounded-lg border flex items-center justify-between gap-2.5 transition-all cursor-pointer ${
+                          isSelected
+                            ? 'bg-[#262626] text-white border-[#262626] shadow-xs'
+                            : 'hover:bg-[#F2EFE9] border-transparent hover:border-[#E9E5DC] text-[#262626]'
+                        }`}
+                      >
+                        <div className="flex items-start gap-2 min-w-0">
+                          <span
+                            className={`w-5 h-5 rounded-md flex items-center justify-center font-mono font-bold text-[10px] shrink-0 mt-0.5 ${
+                              isSelected ? 'bg-white/20 text-white' : 'bg-[#E9E5DC] text-[#262626]'
+                            }`}
+                          >
+                            {idx + 1}
+                          </span>
+                          <div className="min-w-0">
+                            <div className="font-bold text-xs truncate">
+                              {wf.name}
+                            </div>
+                            <div
+                              className={`text-[10px] mt-0.5 truncate ${
+                                isSelected ? 'text-white/70' : 'text-[#8C8C8C]'
+                              }`}
+                            >
+                              {wf.description || `${wf.steps?.length || 0} bước thực thi`}
+                            </div>
+                          </div>
+                        </div>
 
-                  <button
-                    type="button"
-                    onClick={() => setIsZoneEditMode((prev) => !prev)}
-                    className={`w-full px-2 py-1.5 rounded-lg border flex items-center justify-between font-semibold cursor-pointer transition-colors text-left ${
-                      isZoneEditMode
-                        ? 'bg-amber-50 text-amber-900 border-amber-300'
-                        : 'hover:bg-[#F2EFE9] text-[#8C8C8C] border-[#E9E5DC]'
-                    }`}
-                  >
-                    <span className="flex items-center gap-2">
-                      <Move className="w-3.5 h-3.5 text-amber-700" />
-                      <span>Kéo thả & Co giãn Vùng</span>
-                    </span>
-                    <span
-                      className={`text-[9.5px] font-mono font-bold px-1.5 py-0.2 rounded ${
-                        isZoneEditMode ? 'bg-amber-200 text-amber-900' : 'bg-[#E9E5DC] text-[#8C8C8C]'
-                      }`}
-                    >
-                      {isZoneEditMode ? 'BẬT' : 'TẮT'}
-                    </span>
-                  </button>
-                </div>
-
-                {/* 2. Them Vung Moi */}
-                <div className="pt-1.5 border-t space-y-1" style={{ borderColor: '#E9E5DC' }}>
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-[#8C8C8C]">
-                    + Thêm vùng mới:
-                  </div>
-                  <div className="space-y-0.5">
-                    <button
-                      type="button"
-                      onClick={() => handleAddZone('KEEP_OUT')}
-                      className="w-full text-left px-2 py-1.2 rounded-lg flex items-center gap-2 hover:bg-red-50 text-red-700 font-semibold cursor-pointer transition-colors"
-                    >
-                      <span className="w-2.5 h-2.5 rounded-full bg-red-600 shrink-0" />
-                      <span>Cấm vào (Keep-Out Zone)</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleAddZone('SPEED_ZONE')}
-                      className="w-full text-left px-2 py-1.2 rounded-lg flex items-center gap-2 hover:bg-amber-50 text-amber-800 font-semibold cursor-pointer transition-colors"
-                    >
-                      <span className="w-2.5 h-2.5 rounded-full bg-amber-500 shrink-0" />
-                      <span>Giới hạn tốc độ (Speed Zone)</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleAddZone('NO_STOP')}
-                      className="w-full text-left px-2 py-1.2 rounded-lg flex items-center gap-2 hover:bg-rose-50 text-rose-700 font-semibold cursor-pointer transition-colors"
-                    >
-                      <span className="w-2.5 h-2.5 rounded-full bg-rose-500 shrink-0" />
-                      <span>Cấm dừng (No-Stop Zone)</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* 3. Luu Vung & Dat Lai */}
-                <div className="pt-2 border-t flex items-center gap-2" style={{ borderColor: '#E9E5DC' }}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      handleSaveZones();
-                      setIsZoneMenuOpen(false);
-                    }}
-                    disabled={isSavingZones || !hasUnsavedZones}
-                    className={`flex-1 h-7.5 px-2 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs transition-all ${
-                      hasUnsavedZones
-                        ? 'bg-emerald-700 hover:bg-emerald-800 text-white cursor-pointer animate-pulse'
-                        : 'bg-[#F2EFE9] text-[#8C8C8C] cursor-not-allowed border border-[#E9E5DC]'
-                    }`}
-                  >
-                    <Save className="w-3 h-3" />
-                    <span>{isSavingZones ? 'Đang lưu...' : 'Lưu Vùng'}</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      handleResetDefaultZones();
-                      setIsZoneMenuOpen(false);
-                    }}
-                    className="h-7.5 px-2.5 rounded-lg border text-xs font-semibold flex items-center gap-1 text-[#8C8C8C] hover:text-[#262626] hover:bg-[#F2EFE9] cursor-pointer"
-                    style={{ borderColor: '#BFBFBD' }}
-                    title="Khôi phục lại 3 Vùng Chức Năng về chuẩn ban đầu"
-                  >
-                    <RotateCcw className="w-3 h-3" />
-                    <span>Đặt lại</span>
-                  </button>
+                        <span
+                          className={`text-[10px] font-mono px-2 py-0.5 rounded-full shrink-0 font-bold ${
+                            isSelected ? 'bg-white/20 text-white' : 'bg-[#E9E5DC] text-[#262626]'
+                          }`}
+                        >
+                          {wf.steps?.length || 0} bước
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             )}
           </div>
 
-          {/* MENU QUAN LY ENDPOINTS (3 LOAI CHUAN: WAYPOINT, CHARGER, PARK) */}
-          <div className="relative">
+          {/* ICON BUTTON BẢN ĐỒ (CHỈ DÙNG ICON LAYERS + CHEVRON, TOOLTIP CHI TIẾT) */}
+          <div className="relative" ref={mapMenuRef}>
             <button
               type="button"
               onClick={() => {
-                setIsEndpointMenuOpen((prev) => !prev);
-                setIsZoneMenuOpen(false);
+                setIsMapMenuOpen((prev) => !prev);
+                setIsWorkflowMenuOpen(false);
+                setIsSettingsMenuOpen(false);
               }}
-              className={`h-8 px-2.5 rounded-lg border text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer ${
-                isEndpointMenuOpen || selectedEndpoint
+              className={`h-8.5 px-2.5 rounded-lg border text-xs font-bold flex items-center gap-1 shadow-xs transition-all cursor-pointer ${
+                isMapMenuOpen || selectedZone || selectedEndpoint
                   ? 'bg-[#262626] text-white border-[#262626]'
                   : 'text-[#262626] hover:bg-[#FAF8F5]'
               }`}
-              style={!(isEndpointMenuOpen || selectedEndpoint) ? { backgroundColor: '#F2EFE9', borderColor: '#BFBFBD' } : {}}
-              title="Thêm và chỉnh sửa các loại Endpoint sảnh"
+              style={!(isMapMenuOpen || selectedZone || selectedEndpoint) ? { backgroundColor: '#F2EFE9', borderColor: '#BFBFBD' } : {}}
+              title={`Lớp bản đồ: ${zones.length} Vùng · ${endpoints.length} Điểm`}
             >
-              <MapPin className="w-3.5 h-3.5 text-[#262626]" />
-              <span>Điểm đích ({endpoints.length})</span>
-              <ChevronDown className="w-3 h-3 opacity-70" />
+              <Layers className="w-4 h-4" />
+              {(hasUnsavedZones || hasUnsavedEndpoints) && (
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+              )}
+              <ChevronDown className={`w-3 h-3 transition-transform opacity-70 ${isMapMenuOpen ? 'rotate-180' : ''}`} />
             </button>
 
-            {isEndpointMenuOpen && (
+            {/* DROPDOWN POPOVER BẢN ĐỒ */}
+            {isMapMenuOpen && (
               <div
-                className="absolute top-full left-0 mt-1.5 w-68 rounded-xl border shadow-xl p-3 z-50 text-xs space-y-2.5 animate-fadeIn"
+                className="absolute top-full left-0 mt-1.5 w-80 rounded-xl border shadow-2xl p-3 z-50 text-xs space-y-3 animate-fadeIn"
                 style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD', color: '#262626' }}
               >
                 {/* Header */}
-                <div className="flex items-center justify-between border-b pb-2" style={{ borderColor: '#E9E5DC' }}>
-                  <div className="flex items-center gap-1.5 font-bold">
-                    <MapPin className="w-4 h-4 text-[#262626]" />
-                    <span>Quản lý Endpoint ({endpoints.length})</span>
+                <div className="flex items-center justify-between pb-2 border-b" style={{ borderColor: '#E9E5DC' }}>
+                  <div className="flex items-center gap-1.5 font-bold text-xs">
+                    <Layers className="w-4 h-4 text-[#262626]" />
+                    <span>Cấu hình Lớp bản đồ</span>
                   </div>
                   <button
                     type="button"
-                    onClick={() => setIsEndpointMenuOpen(false)}
+                    onClick={() => setIsMapMenuOpen(false)}
                     className="p-1 rounded hover:bg-[#F2EFE9] text-[#8C8C8C] hover:text-[#262626] cursor-pointer"
                   >
                     <X className="w-3.5 h-3.5" />
                   </button>
                 </div>
 
-                {/* + Them Endpoint Moi (3 Loai Chuan) */}
-                <div className="space-y-1">
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-[#8C8C8C]">
-                    + Thêm Endpoint mới:
-                  </div>
-                  <div className="space-y-0.5">
-                    <button
-                      type="button"
-                      onClick={() => handleAddEndpoint('WAYPOINT')}
-                      className="w-full text-left px-2 py-1.5 rounded-lg flex items-center gap-2 hover:bg-[#F2EFE9] text-[#262626] font-semibold cursor-pointer transition-colors"
-                    >
-                      <span className="w-2.5 h-2.5 rounded-full bg-[#262626] shrink-0" />
-                      <span>Waypoint (Điểm đường / Điểm trung gian)</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleAddEndpoint('CHARGER')}
-                      className="w-full text-left px-2 py-1.5 rounded-lg flex items-center gap-2 hover:bg-emerald-50 text-emerald-800 font-semibold cursor-pointer transition-colors"
-                    >
-                      <span className="w-2.5 h-2.5 rounded-full bg-[#059669] shrink-0" />
-                      <span>Charger (Điểm sạc pin)</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleAddEndpoint('PARK')}
-                      className="w-full text-left px-2 py-1.5 rounded-lg flex items-center gap-2 hover:bg-[#E9E5DC] text-stone-800 font-semibold cursor-pointer transition-colors"
-                    >
-                      <span className="w-2.5 h-2.5 rounded-full bg-[#71717A] shrink-0" />
-                      <span>Park (Điểm đỗ / chờ)</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Luu & Dat lai */}
-                <div className="pt-2 border-t flex items-center gap-2" style={{ borderColor: '#E9E5DC' }}>
+                {/* Tabs chuyển đổi giữa Vùng và Điểm đích (Text thuần túy) */}
+                <div className="flex p-0.5 rounded-lg border bg-[#F2EFE9]" style={{ borderColor: '#E9E5DC' }}>
                   <button
                     type="button"
-                    onClick={() => {
-                      endpoints.forEach((ep) => handleSaveEndpointToDb(ep));
-                      setIsEndpointMenuOpen(false);
-                    }}
-                    disabled={isSavingEndpoints || !hasUnsavedEndpoints}
-                    className={`flex-1 h-7.5 px-2 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs transition-all ${
-                      hasUnsavedEndpoints
-                        ? 'bg-[#262626] hover:bg-[#383838] text-[#F2EFE9] cursor-pointer'
-                        : 'bg-[#F2EFE9] text-[#8C8C8C] cursor-not-allowed border border-[#E9E5DC]'
+                    onClick={() => setMapMenuTab('ZONES')}
+                    className={`flex-1 py-1 px-2 rounded-md font-bold text-[11px] transition-all flex items-center justify-center cursor-pointer ${
+                      mapMenuTab === 'ZONES' ? 'bg-[#262626] text-white shadow-xs' : 'text-[#8C8C8C] hover:text-[#262626]'
                     }`}
                   >
-                    <Save className="w-3 h-3" />
-                    <span>{isSavingEndpoints ? 'Đang lưu...' : 'Lưu Điểm'}</span>
+                    <span>Vùng ({zones.length})</span>
                   </button>
-
                   <button
                     type="button"
-                    onClick={() => {
-                      handleResetDefaultEndpoints();
-                      setIsEndpointMenuOpen(false);
-                    }}
-                    className="h-7.5 px-2.5 rounded-lg border text-xs font-semibold flex items-center gap-1 text-[#8C8C8C] hover:text-[#262626] hover:bg-[#F2EFE9] cursor-pointer"
-                    style={{ borderColor: '#BFBFBD' }}
-                    title="Khôi phục lại danh sách Điểm Mốc về chuẩn ban đầu"
+                    onClick={() => setMapMenuTab('ENDPOINTS')}
+                    className={`flex-1 py-1 px-2 rounded-md font-bold text-[11px] transition-all flex items-center justify-center cursor-pointer ${
+                      mapMenuTab === 'ENDPOINTS' ? 'bg-[#262626] text-white shadow-xs' : 'text-[#8C8C8C] hover:text-[#262626]'
+                    }`}
                   >
-                    <RotateCcw className="w-3 h-3" />
-                    <span>Đặt lại</span>
+                    <span>Điểm đích ({endpoints.length})</span>
                   </button>
                 </div>
+
+                {/* TAB 1: VÙNG QUY ĐỊNH */}
+                {mapMenuTab === 'ZONES' && (
+                  <div className="space-y-2.5">
+                    {/* Bật/Tắt hiển thị & Kéo thả (Gọn gàng không chèn icon) */}
+                    <div className="space-y-1">
+                      <button
+                        type="button"
+                        onClick={() => setShowZones((prev) => !prev)}
+                        className="w-full px-2.5 py-1.5 rounded-lg border flex items-center justify-between font-semibold hover:bg-[#F2EFE9] cursor-pointer transition-colors text-left text-xs"
+                        style={{ borderColor: '#E9E5DC' }}
+                      >
+                        <span className="text-[#262626]">Hiển thị Lớp Vùng</span>
+                        <span
+                          className={`text-[9.5px] font-mono font-bold px-1.5 py-0.2 rounded ${
+                            showZones ? 'bg-emerald-100 text-emerald-800' : 'bg-[#E9E5DC] text-[#8C8C8C]'
+                          }`}
+                        >
+                          {showZones ? 'BẬT' : 'TẮT'}
+                        </span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setIsZoneEditMode((prev) => !prev)}
+                        className={`w-full px-2.5 py-1.5 rounded-lg border flex items-center justify-between font-semibold cursor-pointer transition-colors text-left text-xs ${
+                          isZoneEditMode
+                            ? 'bg-amber-50 text-amber-900 border-amber-300'
+                            : 'hover:bg-[#F2EFE9] text-[#262626] border-[#E9E5DC]'
+                        }`}
+                      >
+                        <span>Kéo thả & Co giãn Vùng</span>
+                        <span
+                          className={`text-[9.5px] font-mono font-bold px-1.5 py-0.2 rounded ${
+                            isZoneEditMode ? 'bg-amber-200 text-amber-900' : 'bg-[#E9E5DC] text-[#8C8C8C]'
+                          }`}
+                        >
+                          {isZoneEditMode ? 'BẬT' : 'TẮT'}
+                        </span>
+                      </button>
+                    </div>
+
+                    {/* Thêm Vùng mới */}
+                    <div className="pt-1.5 border-t space-y-1" style={{ borderColor: '#E9E5DC' }}>
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-[#8C8C8C]">
+                        + Thêm vùng chức năng:
+                      </div>
+                      <div className="space-y-0.5">
+                        <button
+                          type="button"
+                          onClick={() => handleAddZone('KEEP_OUT')}
+                          className="w-full text-left px-2 py-1.2 rounded-lg flex items-center gap-2 hover:bg-red-50 text-red-700 font-semibold cursor-pointer transition-colors"
+                        >
+                          <span className="w-2.5 h-2.5 rounded-full bg-red-600 shrink-0" />
+                          <span>Cấm vào (Keep-Out Zone)</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleAddZone('SPEED_ZONE')}
+                          className="w-full text-left px-2 py-1.2 rounded-lg flex items-center gap-2 hover:bg-amber-50 text-amber-800 font-semibold cursor-pointer transition-colors"
+                        >
+                          <span className="w-2.5 h-2.5 rounded-full bg-amber-500 shrink-0" />
+                          <span>Giới hạn tốc độ (Speed Zone)</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleAddZone('NO_STOP')}
+                          className="w-full text-left px-2 py-1.2 rounded-lg flex items-center gap-2 hover:bg-rose-50 text-rose-700 font-semibold cursor-pointer transition-colors"
+                        >
+                          <span className="w-2.5 h-2.5 rounded-full bg-rose-500 shrink-0" />
+                          <span>Cấm dừng (No-Stop Zone)</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Lưu & Đặt lại Vùng (Pure Text CTA) */}
+                    <div className="pt-2 border-t flex items-center gap-2" style={{ borderColor: '#E9E5DC' }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleSaveZones();
+                          setIsMapMenuOpen(false);
+                        }}
+                        disabled={isSavingZones || !hasUnsavedZones}
+                        className={`flex-1 h-7.5 px-2 rounded-lg font-bold text-xs flex items-center justify-center shadow-xs transition-all ${
+                          hasUnsavedZones
+                            ? 'bg-emerald-700 hover:bg-emerald-800 text-white cursor-pointer animate-pulse'
+                            : 'bg-[#F2EFE9] text-[#8C8C8C] cursor-not-allowed border border-[#E9E5DC]'
+                        }`}
+                      >
+                        <span>{isSavingZones ? 'Đang lưu...' : 'Lưu Vùng'}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleResetDefaultZones();
+                          setIsMapMenuOpen(false);
+                        }}
+                        className="h-7.5 px-3 rounded-lg border text-xs font-semibold flex items-center justify-center text-[#8C8C8C] hover:text-[#262626] hover:bg-[#F2EFE9] cursor-pointer"
+                        style={{ borderColor: '#BFBFBD' }}
+                        title="Khôi phục lại 3 Vùng Chức Năng về chuẩn ban đầu"
+                      >
+                        <span>Đặt lại</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* TAB 2: ĐIỂM ĐÍCH (ENDPOINTS) */}
+                {mapMenuTab === 'ENDPOINTS' && (
+                  <div className="space-y-2.5">
+                    {/* Thêm Endpoint Mới */}
+                    <div className="space-y-1">
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-[#8C8C8C]">
+                        + Thêm điểm đích mới:
+                      </div>
+                      <div className="space-y-0.5">
+                        <button
+                          type="button"
+                          onClick={() => handleAddEndpoint('WAYPOINT')}
+                          className="w-full text-left px-2 py-1.5 rounded-lg flex items-center gap-2 hover:bg-[#F2EFE9] text-[#262626] font-semibold cursor-pointer transition-colors"
+                        >
+                          <span className="w-2.5 h-2.5 rounded-full bg-[#262626] shrink-0" />
+                          <span>Waypoint (Điểm đường / Điểm trung gian)</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleAddEndpoint('CHARGER')}
+                          className="w-full text-left px-2 py-1.5 rounded-lg flex items-center gap-2 hover:bg-emerald-50 text-emerald-800 font-semibold cursor-pointer transition-colors"
+                        >
+                          <span className="w-2.5 h-2.5 rounded-full bg-[#059669] shrink-0" />
+                          <span>Charger (Trạm sạc pin)</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleAddEndpoint('PARK')}
+                          className="w-full text-left px-2 py-1.5 rounded-lg flex items-center gap-2 hover:bg-[#E9E5DC] text-stone-800 font-semibold cursor-pointer transition-colors"
+                        >
+                          <span className="w-2.5 h-2.5 rounded-full bg-[#71717A] shrink-0" />
+                          <span>Park (Điểm đỗ / chờ)</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Lưu & Đặt lại Endpoints (Pure Text CTA) */}
+                    <div className="pt-2 border-t flex items-center gap-2" style={{ borderColor: '#E9E5DC' }}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          endpoints.forEach((ep) => handleSaveEndpointToDb(ep));
+                          setIsMapMenuOpen(false);
+                        }}
+                        disabled={isSavingEndpoints || !hasUnsavedEndpoints}
+                        className={`flex-1 h-7.5 px-2 rounded-lg font-bold text-xs flex items-center justify-center shadow-xs transition-all ${
+                          hasUnsavedEndpoints
+                            ? 'bg-[#262626] hover:bg-[#383838] text-[#F2EFE9] cursor-pointer'
+                            : 'bg-[#F2EFE9] text-[#8C8C8C] cursor-not-allowed border border-[#E9E5DC]'
+                        }`}
+                      >
+                        <span>{isSavingEndpoints ? 'Đang lưu...' : 'Lưu Điểm'}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleResetDefaultEndpoints();
+                          setIsMapMenuOpen(false);
+                        }}
+                        className="h-7.5 px-3 rounded-lg border text-xs font-semibold flex items-center justify-center text-[#8C8C8C] hover:text-[#262626] hover:bg-[#F2EFE9] cursor-pointer"
+                        style={{ borderColor: '#BFBFBD' }}
+                        title="Khôi phục lại danh sách Điểm Mốc về chuẩn ban đầu"
+                      >
+                        <span>Đặt lại</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
         </div>
 
-        {/* Nhom nut dieu khien Play / Pause / Next / Reset / Speed */}
-        <div className="flex items-center gap-2">
-          {!isPlaying ? (
+        {/* NHOM 2: BỘ ĐIỀU KHIỂN CHẠY & TIẾN TRÌNH WORKFLOW HỢP NHẤT TRÊN THANH CÔNG CỤ */}
+        <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 max-w-2xl">
+          {/* Cụm Nút Playback Controls: ĐỒNG BỘ 4 NÚT CÙNG TỈ LỆ VÀ KÍCH THƯỚC (32x32px) */}
+          <div className="flex items-center gap-1 bg-[#F2EFE9] p-1 rounded-xl border shrink-0" style={{ borderColor: '#BFBFBD' }}>
+            {/* 1. Nút Chạy / Tạm dừng */}
             <button
               type="button"
-              onClick={handleStartSim}
-              className="h-8 px-3 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold flex items-center gap-1 shadow-xs transition-all cursor-pointer"
+              onClick={isPlaying ? handlePauseSim : handleStartSim}
+              className={`h-8 w-8 rounded-lg text-white flex items-center justify-center shadow-xs transition-all cursor-pointer ${
+                isPlaying && !isPaused
+                  ? 'bg-amber-600 hover:bg-amber-700'
+                  : 'bg-emerald-700 hover:bg-emerald-800'
+              }`}
+              title={
+                isPlaying && !isPaused
+                  ? 'Tạm dừng mô phỏng'
+                  : isPlaying && isPaused
+                  ? 'Tiếp tục mô phỏng'
+                  : 'Chạy thử nghiệm kịch bản'
+              }
             >
-              <Play className="w-3.5 h-3.5 fill-current" />
-              <span>Chay</span>
+              {isPlaying && !isPaused ? (
+                <Pause className="w-3.5 h-3.5" />
+              ) : (
+                <Play className="w-3.5 h-3.5 fill-current" />
+              )}
             </button>
-          ) : (
-            <>
-              <button
-                type="button"
-                onClick={handlePauseSim}
-                className="h-8 px-2.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold flex items-center gap-1 shadow-xs cursor-pointer"
-              >
-                {isPaused ? <Play className="w-3.5 h-3.5 fill-current" /> : <Pause className="w-3.5 h-3.5" />}
-                <span>{isPaused ? 'Tiep' : 'Dung'}</span>
-              </button>
-              <button
-                type="button"
-                onClick={handleNextStep}
-                className="h-8 px-2.5 rounded-lg text-white text-xs font-bold flex items-center gap-1 shadow-xs cursor-pointer hover:bg-[#363636]"
-                style={{ backgroundColor: '#262626' }}
-                title="Chuyen buoc tiep theo"
-              >
-                <SkipForward className="w-3.5 h-3.5" />
-              </button>
-              <button
-                type="button"
-                onClick={handleStopSim}
-                className="h-8 px-2.5 rounded-lg bg-red-700 hover:bg-red-800 text-white text-xs font-bold flex items-center gap-1 shadow-xs cursor-pointer"
-                title="Huy kich ban"
-              >
-                <Square className="w-3 h-3 fill-current" />
-              </button>
-            </>
-          )}
 
-          <button
-            type="button"
-            onClick={handleReset}
-            className="h-8 px-2.5 rounded-lg border text-xs font-bold flex items-center gap-1 shadow-xs cursor-pointer hover:bg-[#FAF8F5]"
-            style={{ backgroundColor: '#F2EFE9', borderColor: '#BFBFBD', color: '#262626' }}
-            title="Ve vi tri tram cho sảnh"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-          </button>
+            {/* 2. Nút Bước tiếp theo */}
+            <button
+              type="button"
+              onClick={isPlaying ? handleNextStep : handleStartSim}
+              className="h-8 w-8 rounded-lg text-white flex items-center justify-center shadow-xs cursor-pointer hover:bg-[#363636] transition-colors"
+              style={{ backgroundColor: '#262626' }}
+              title={isPlaying ? 'Chuyển sang bước tiếp theo' : 'Bắt đầu kịch bản'}
+            >
+              <SkipForward className="w-3.5 h-3.5" />
+            </button>
 
-          {/* Che do Tuan tra lap lai (Patrol Loop) */}
-          <button
-            type="button"
-            onClick={() => {
-              const nextVal = !isLoopMode;
-              setIsLoopMode(nextVal);
-              isLoopModeRef.current = nextVal;
-              onNotify(
-                nextVal
-                  ? 'Đã bật Chế độ Tuần tra lặp lại (Patrol Loop)'
-                  : 'Đã tắt Chế độ Tuần tra lặp lại',
-                'info'
-              );
-            }}
-            className={`h-8 px-2.5 rounded-lg border text-xs font-bold flex items-center gap-1 shadow-xs cursor-pointer transition-colors ${
-              isLoopMode
-                ? 'bg-indigo-700 hover:bg-indigo-800 text-white border-indigo-700'
-                : 'hover:bg-[#FAF8F5]'
-            }`}
-            style={
-              !isLoopMode
-                ? { backgroundColor: '#F2EFE9', borderColor: '#BFBFBD', color: '#262626' }
-                : {}
-            }
-            title={
-              isLoopMode
-                ? 'Chế độ Tuần tra lặp lại: ĐANG BẬT (Tự động lặp lại chu trình khi đi hết các bước)'
-                : 'Bật Chế độ Tuần tra lặp lại (Patrol Loop)'
-            }
-          >
-            <Repeat className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Lặp lại</span>
-          </button>
+            {/* 3. Nút Dừng hẳn mô phỏng */}
+            <button
+              type="button"
+              onClick={handleStopSim}
+              className="h-8 w-8 rounded-lg bg-red-700 hover:bg-red-800 text-white flex items-center justify-center shadow-xs cursor-pointer transition-colors"
+              title="Dừng hẳn phiên mô phỏng"
+            >
+              <Square className="w-3.5 h-3.5 fill-current" />
+            </button>
 
-          {/* Toc do mo phong */}
+            {/* 4. Nút Đặt Robot về vị trí chờ ban đầu */}
+            <button
+              type="button"
+              onClick={handleReset}
+              className="h-8 w-8 rounded-lg border bg-white hover:bg-[#FAF8F5] text-[#262626] shadow-xs flex items-center justify-center cursor-pointer transition-colors"
+              style={{ borderColor: '#BFBFBD' }}
+              title="Đặt Robot về vị trí chờ ban đầu"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          {/* DÃY TIẾN TRÌNH STEPPER VÀ TRẠNG THÁI REALTIME */}
           <div
-            className="hidden lg:flex items-center border rounded-lg p-0.5 shadow-xs"
+            className="flex items-center gap-2 px-2.5 py-1 rounded-xl border bg-[#F2EFE9] shadow-xs min-w-0"
+            style={{ borderColor: '#BFBFBD' }}
+          >
+            {/* Dãy Stepper các bước ngang (Horizontal Steps) */}
+            <div className="flex items-center gap-1 shrink-0 overflow-x-auto py-0.5">
+              {steps.map((st, idx) => {
+                const isActive = isPlaying && currentStepIndex === idx;
+                const isPast = isPlaying && currentStepIndex > idx;
+                const stDetail = getStepActionDetail(st);
+
+                return (
+                  <button
+                    key={st.step_id || idx}
+                    type="button"
+                    onClick={() => {
+                      setIsStepsMenuOpen(true);
+                      setEditingStepIdx(idx);
+                      setIsWorkflowMenuOpen(false);
+                      setIsMapMenuOpen(false);
+                      setIsSettingsMenuOpen(false);
+                    }}
+                    className={`h-7 min-w-7 px-1.5 rounded-lg flex items-center justify-center text-[10.5px] font-mono font-bold transition-all cursor-pointer ${
+                      isActive
+                        ? 'bg-[#262626] text-white shadow-xs ring-2 ring-emerald-500/60 animate-pulse'
+                        : isPast
+                        ? 'bg-[#BFBFBD] text-[#262626]'
+                        : 'border hover:bg-[#E9E5DC] text-[#8C8C8C] hover:text-[#262626]'
+                    }`}
+                    style={!isActive && !isPast ? { backgroundColor: '#FFFFFF', borderColor: '#BFBFBD' } : {}}
+                    title={`Bước ${idx + 1}: ${stDetail.label} - ${st.title || stDetail.shortChip}`}
+                  >
+                    {idx + 1}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Vách ngăn mỏng */}
+            <div className="w-px h-5 bg-[#BFBFBD] shrink-0" />
+
+            {/* Chip Trạng thái & Tiến độ bước thời gian thực */}
+            <div className="flex flex-col justify-center min-w-0 shrink">
+              <div className="flex items-center gap-1.5 text-xs">
+                <span
+                  className="px-1.5 py-0.2 rounded text-[9.5px] font-mono font-bold tracking-wider shrink-0"
+                  style={{
+                    backgroundColor: isPlaying ? '#262626' : '#E9E5DC',
+                    color: isPlaying ? '#FFFFFF' : '#262626',
+                    border: '1px solid #BFBFBD',
+                  }}
+                >
+                  {isPlaying ? `B${currentStepIndex + 1}/${steps.length} ${activeDetail.label}` : 'READY'}
+                </span>
+                <span
+                  className="font-bold text-[11px] truncate max-w-[120px] sm:max-w-[200px]"
+                  style={{ color: '#262626' }}
+                  title={activeStep ? (activeStep.title || activeDetail.shortChip) : 'Robot ở trạng thái chờ lệnh'}
+                >
+                  {activeStep ? (activeStep.title || activeDetail.shortChip) : 'Robot chờ lệnh'}
+                </span>
+                {isPlaying && (
+                  <span className="font-mono font-bold text-[11px] text-[#262626] shrink-0">
+                    {stepProgress}%
+                  </span>
+                )}
+              </div>
+
+              {/* Progress Bar mảnh chạy theo tiến độ */}
+              {isPlaying && (
+                <div className="w-full h-1 rounded-full bg-[#E9E5DC] overflow-hidden mt-0.5 border border-[#BFBFBD]/50">
+                  <div
+                    className="h-full bg-[#262626] transition-all duration-150 rounded-full"
+                    style={{ width: `${stepProgress}%` }}
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Nút Popover mở Danh sách tất cả các bước chi tiết (ListOrdered) */}
+            <div className="relative shrink-0" ref={stepsMenuRef}>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsStepsMenuOpen((prev) => !prev);
+                  setIsWorkflowMenuOpen(false);
+                  setIsMapMenuOpen(false);
+                  setIsSettingsMenuOpen(false);
+                }}
+                className={`h-7 w-7 rounded-lg border flex items-center justify-center shadow-2xs transition-all cursor-pointer ${
+                  isStepsMenuOpen ? 'bg-[#262626] text-white border-[#262626]' : 'text-[#262626] hover:bg-[#FAF8F5]'
+                }`}
+                style={!isStepsMenuOpen ? { backgroundColor: '#FFFFFF', borderColor: '#BFBFBD' } : {}}
+                title={`Xem & chỉnh sửa chi tiết ${steps.length} bước kịch bản`}
+              >
+                <ListOrdered className="w-3.5 h-3.5" />
+              </button>
+
+              {/* DROPDOWN POPOVER DANH SÁCH BƯỚC VÀ ĐỔI ĐIỂM MỐC */}
+              {isStepsMenuOpen && (
+                <div
+                  className="absolute top-full left-1/2 -translate-x-1/2 sm:left-auto sm:right-0 sm:translate-x-0 mt-2 w-80 sm:w-96 rounded-xl border shadow-2xl p-3 z-50 text-xs space-y-2 animate-fadeIn"
+                  style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD', color: '#262626' }}
+                >
+                  {/* Header Popover */}
+                  <div className="flex items-center justify-between pb-2 border-b" style={{ borderColor: '#E9E5DC' }}>
+                    <div className="flex items-center gap-1.5 font-bold text-xs text-[#262626]">
+                      <ListOrdered className="w-4 h-4 text-[#262626]" />
+                      <span>Tiến trình kịch bản</span>
+                      <span className="font-mono text-[10px] text-[#8C8C8C]">({steps.length} bước)</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsStepsMenuOpen(false)}
+                      className="p-1 rounded hover:bg-[#F2EFE9] text-[#8C8C8C] hover:text-[#262626] cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  {/* Danh sách các bước dạng cuộn */}
+                  <div className="max-h-80 overflow-y-auto space-y-2 pr-1">
+                    {steps.map((st, idx) => {
+                      const isActive = isPlaying && currentStepIndex === idx;
+                      const isPast = isPlaying && currentStepIndex > idx;
+                      const stDetail = getStepActionDetail(st);
+
+                      return (
+                        <div
+                          key={st.step_id || idx}
+                          className="p-2 rounded-lg border transition-all flex flex-col gap-1.5 select-none"
+                          style={{
+                            backgroundColor: isActive ? '#FFFFFF' : isPast ? '#E9E5DC' : '#F2EFE9',
+                            borderColor: isActive ? '#262626' : '#BFBFBD',
+                          }}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span
+                                className={`w-5 h-5 rounded-md flex items-center justify-center font-mono font-bold text-[10px] shrink-0 ${
+                                  isActive
+                                    ? 'bg-[#262626] text-white'
+                                    : isPast
+                                    ? 'bg-[#BFBFBD] text-[#262626]'
+                                    : 'bg-[#E9E5DC] text-[#262626]'
+                                }`}
+                              >
+                                {idx + 1}
+                              </span>
+                              <span
+                                className="px-1.5 py-0.2 rounded text-[9px] font-mono font-bold tracking-wider border shrink-0"
+                                style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD', color: '#262626' }}
+                              >
+                                {stDetail.label}
+                              </span>
+                              <span className="font-bold text-xs truncate" title={st.title || stDetail.shortChip}>
+                                {st.title || stDetail.shortChip}
+                              </span>
+                            </div>
+
+                            {st.type === 'MOVE' && !isPlaying && (
+                              <button
+                                type="button"
+                                onClick={() => setEditingStepIdx(editingStepIdx === idx ? null : idx)}
+                                className="p-1 rounded border transition-colors cursor-pointer shrink-0 hover:bg-[#FAF8F5]"
+                                style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD', color: '#262626' }}
+                                title={editingStepIdx === idx ? 'Đóng bảng đổi điểm mốc' : 'Đổi điểm mốc xuất phát / đích đến'}
+                              >
+                                <Edit3 className="w-3 h-3" />
+                              </button>
+                            )}
+                          </div>
+
+                          {/* Bảng chỉnh sửa điểm mốc nếu đang mở */}
+                          {editingStepIdx === idx && st.type === 'MOVE' && (
+                            <div
+                              className="mt-1 pt-2 border-t space-y-2 p-2 rounded-lg"
+                              style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD', color: '#262626' }}
+                            >
+                              <div className="flex items-center justify-between text-[10px] font-bold">
+                                <span>Đổi Điểm Mốc (A ➔ B)</span>
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingStepIdx(null)}
+                                  className="p-0.5 rounded hover:bg-[#FAF8F5] cursor-pointer text-[#262626] transition-colors"
+                                  title="Hoàn tất và đóng"
+                                >
+                                  <Check className="w-3.5 h-3.5 text-emerald-700" />
+                                </button>
+                              </div>
+
+                              <div className="space-y-0.5">
+                                <label className="block text-[9px] font-bold uppercase text-[#8C8C8C]">
+                                  Từ Điểm Mốc (Start):
+                                </label>
+                                <select
+                                  value={st.params?.from_waypoint || 'CURRENT'}
+                                  onChange={(e) =>
+                                    handleUpdateMoveStepWaypoints(
+                                      idx,
+                                      e.target.value,
+                                      st.params?.target_value || st.params?.target_waypoint_id || 'FRONT_DESK'
+                                    )
+                                  }
+                                  className="w-full px-2 py-1 rounded text-[10px] font-semibold border focus:outline-none cursor-pointer"
+                                  style={{ backgroundColor: '#F2EFE9', borderColor: '#BFBFBD', color: '#262626' }}
+                                >
+                                  <option value="CURRENT">Vị trí hiện tại của Robot</option>
+                                  {endpoints.map((wp) => (
+                                    <option key={wp.id} value={wp.id}>
+                                      {wp.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+
+                              <div className="space-y-0.5">
+                                <label className="block text-[9px] font-bold uppercase text-[#8C8C8C]">
+                                  Đến Điểm Mốc (Goal):
+                                </label>
+                                <select
+                                  value={st.params?.target_value || st.params?.target_waypoint_id || 'FRONT_DESK'}
+                                  onChange={(e) =>
+                                    handleUpdateMoveStepWaypoints(
+                                      idx,
+                                      st.params?.from_waypoint || 'CURRENT',
+                                      e.target.value
+                                    )
+                                  }
+                                  className="w-full px-2 py-1 rounded text-[10px] font-semibold border focus:outline-none cursor-pointer"
+                                  style={{ backgroundColor: '#F2EFE9', borderColor: '#BFBFBD', color: '#262626' }}
+                                >
+                                  {endpoints.map((wp) => (
+                                    <option key={wp.id} value={wp.id}>
+                                      {wp.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+
+                              {/* Phát loa quảng cáo khi di chuyển */}
+                              <div className="space-y-0.5 pt-1 border-t" style={{ borderColor: '#BFBFBD' }}>
+                                <label className="block text-[9px] font-bold uppercase text-[#4F46E5] flex items-center gap-1">
+                                  <Megaphone className="w-2.5 h-2.5" />
+                                  <span>Phát loa quảng cáo khi di chuyển:</span>
+                                </label>
+                                <input
+                                  type="text"
+                                  value={st.params?.broadcast_speech || ''}
+                                  onChange={(e) => handleUpdateMoveStepBroadcast(idx, e.target.value)}
+                                  placeholder="vd: Nhà hàng tầng 2 ưu đãi tiệc trà chiều..."
+                                  className="w-full px-2 py-1 rounded text-[10px] font-medium border focus:outline-none"
+                                  style={{ backgroundColor: '#F2EFE9', borderColor: '#BFBFBD', color: '#262626' }}
+                                />
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* NHOM 3: TỐC ĐỘ (1x, 2x, 4x TRỰC TIẾP), TÙY CHỌN, PHÁT VÀ ĐÓNG */}
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          {/* 3 NÚT TỐC ĐỘ MÔ PHỎNG TRỰC TIẾP TRÊN THANH CÔNG CỤ (KHÔNG CẦN POPUP) */}
+          <div
+            className="flex items-center p-0.5 rounded-lg border shadow-xs"
             style={{ backgroundColor: '#F2EFE9', borderColor: '#BFBFBD' }}
+            title="Tốc độ mô phỏng trực tiếp"
           >
             {[1, 2, 4].map((spd) => (
               <button
                 key={spd}
                 type="button"
                 onClick={() => setSimSpeed(spd)}
-                className={`px-2 py-0.5 text-[11px] font-bold rounded cursor-pointer ${
-                  simSpeed === spd ? 'bg-[#262626] text-white' : 'text-[#262626] hover:bg-[#E9E5DC]'
+                className={`h-7 px-2 text-[11px] font-mono font-bold rounded-md cursor-pointer transition-all ${
+                  simSpeed === spd
+                    ? 'bg-[#262626] text-white shadow-xs'
+                    : 'text-[#262626] hover:bg-[#FAF8F5]'
                 }`}
+                title={`Đặt tốc độ ${spd}x`}
               >
                 {spd}x
               </button>
             ))}
           </div>
 
-          {/* Man hinh Robot Kiosk Display */}
-          <button
-            type="button"
-            onClick={() => setShowKioskScreen((prev) => !prev)}
-            className={`h-8 px-2.5 rounded-lg border text-xs font-bold flex items-center gap-1 shadow-xs cursor-pointer transition-colors ${
-              showKioskScreen
-                ? 'bg-rose-700 hover:bg-rose-800 text-white border-rose-700'
-                : 'hover:bg-[#FAF8F5]'
-            }`}
-            style={
-              !showKioskScreen
-                ? { backgroundColor: '#F2EFE9', borderColor: '#BFBFBD', color: '#262626' }
-                : {}
-            }
-            title={showKioskScreen ? 'Đóng màn hình Tablet Robot' : 'Mở màn hình Tablet Robot (Chiếu Video / Poster quảng cáo)'}
-          >
-            <Monitor className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Màn hình</span>
-            {(activeStep?.type === 'SHOW' || activeStep?.params?.show_media_on_move || activeStep?.params?.media_url) && (
-              <span className="w-2 h-2 rounded-full bg-rose-400 animate-ping ml-0.5" />
+          {/* TÙY CHỌN: CHỈ DÙNG ICON SLIDERS (LOOP, TTS, ROS 2) */}
+          <div className="relative" ref={settingsMenuRef}>
+            <button
+              type="button"
+              onClick={() => {
+                setIsSettingsMenuOpen((prev) => !prev);
+                setIsMapMenuOpen(false);
+                setIsWorkflowMenuOpen(false);
+              }}
+              className={`h-8.5 w-8.5 rounded-lg border text-xs font-bold flex items-center justify-center shadow-xs cursor-pointer transition-all ${
+                isSettingsMenuOpen
+                  ? 'bg-[#262626] text-white border-[#262626]'
+                  : 'hover:bg-[#FAF8F5]'
+              }`}
+              style={!isSettingsMenuOpen ? { backgroundColor: '#F2EFE9', borderColor: '#BFBFBD', color: '#262626' } : {}}
+              title={`Tùy chọn nâng cao: ${isLoopMode ? 'Lặp lại, ' : ''}Âm thanh, ROS 2`}
+            >
+              <div className="relative flex items-center justify-center">
+                <SlidersHorizontal className="w-3.5 h-3.5" />
+                <span
+                  className={`absolute -top-1 -right-1 w-2 h-2 rounded-full border-2 border-white ${
+                    isRosEnabled && isRosConnected ? 'bg-emerald-500 animate-pulse' : 'bg-stone-400'
+                  }`}
+                />
+              </div>
+            </button>
+
+            {/* DROPDOWN POPOVER TÙY CHỌN */}
+            {isSettingsMenuOpen && (
+              <div
+                className="absolute top-full right-0 mt-1.5 w-68 rounded-xl border shadow-2xl p-3 z-50 text-xs space-y-3 animate-fadeIn"
+                style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD', color: '#262626' }}
+              >
+                {/* Header */}
+                <div className="flex items-center justify-between pb-2 border-b" style={{ borderColor: '#E9E5DC' }}>
+                  <div className="flex items-center gap-1.5 font-bold text-xs">
+                    <SlidersHorizontal className="w-3.5 h-3.5 text-[#262626]" />
+                    <span>Tùy chọn mô phỏng</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsSettingsMenuOpen(false)}
+                    className="p-1 rounded hover:bg-[#F2EFE9] text-[#8C8C8C] hover:text-[#262626] cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                {/* 1. Tốc độ mô phỏng */}
+                <div className="space-y-1.5">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-[#8C8C8C]">
+                    Tốc độ mô phỏng:
+                  </div>
+                  <div className="flex p-0.5 rounded-lg border bg-[#F2EFE9]" style={{ borderColor: '#E9E5DC' }}>
+                    {[1, 2, 4].map((spd) => (
+                      <button
+                        key={spd}
+                        type="button"
+                        onClick={() => setSimSpeed(spd)}
+                        className={`flex-1 py-1 text-xs font-bold rounded cursor-pointer transition-colors ${
+                          simSpeed === spd ? 'bg-[#262626] text-white shadow-xs' : 'text-[#262626] hover:bg-[#E9E5DC]'
+                        }`}
+                      >
+                        {spd}x
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 2. Tuần tra lặp lại (Patrol Loop) */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const nextVal = !isLoopMode;
+                    setIsLoopMode(nextVal);
+                    isLoopModeRef.current = nextVal;
+                    onNotify(
+                      nextVal
+                        ? 'Đã bật Chế độ Tuần tra lặp lại (Patrol Loop)'
+                        : 'Đã tắt Chế độ Tuần tra lặp lại',
+                      'info'
+                    );
+                  }}
+                  className="w-full px-2.5 py-1.5 rounded-lg border flex items-center justify-between font-semibold hover:bg-[#F2EFE9] cursor-pointer transition-colors text-left text-xs"
+                  style={{ borderColor: '#E9E5DC' }}
+                >
+                  <span className="text-[#262626]">Tuần tra lặp lại (Loop)</span>
+                  <span
+                    className={`text-[9.5px] font-mono font-bold px-1.5 py-0.2 rounded ${
+                      isLoopMode ? 'bg-indigo-100 text-indigo-800' : 'bg-[#E9E5DC] text-[#8C8C8C]'
+                    }`}
+                  >
+                    {isLoopMode ? 'BẬT' : 'TẮT'}
+                  </span>
+                </button>
+
+                {/* 3. Giọng đọc TTS (Voice Audio) */}
+                <button
+                  type="button"
+                  onClick={() => setIsMuted((prev) => !prev)}
+                  className="w-full px-2.5 py-1.5 rounded-lg border flex items-center justify-between font-semibold hover:bg-[#F2EFE9] cursor-pointer transition-colors text-left text-xs"
+                  style={{ borderColor: '#E9E5DC' }}
+                >
+                  <span className="text-[#262626]">Giọng nói Robot (TTS)</span>
+                  <span
+                    className={`text-[9.5px] font-mono font-bold px-1.5 py-0.2 rounded ${
+                      !isMuted ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                    }`}
+                  >
+                    {!isMuted ? 'BẬT' : 'TẮT'}
+                  </span>
+                </button>
+
+                {/* 4. Cổng kết nối ROS 2 */}
+                <div className="pt-2 border-t space-y-1.5" style={{ borderColor: '#E9E5DC' }}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-[#8C8C8C]">
+                      ROS 2 Bridge (Port 9090)
+                    </span>
+                    <span
+                      className={`text-[9.5px] font-mono font-bold px-1.5 py-0.2 rounded flex items-center gap-1 ${
+                        isRosEnabled && isRosConnected ? 'bg-emerald-100 text-emerald-800' : 'bg-stone-200 text-stone-700'
+                      }`}
+                    >
+                      <span className={`w-1.5 h-1.5 rounded-full ${isRosEnabled && isRosConnected ? 'bg-emerald-500 animate-pulse' : 'bg-stone-400'}`} />
+                      {isRosEnabled && isRosConnected ? 'ONLINE' : 'OFFLINE'}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const nextState = !isRosEnabled;
+                      setIsRosEnabled(nextState);
+                      if (nextState) {
+                        onNotify('Đang kích hoạt kết nối ROS 2 (port 9090)...', 'info');
+                      } else {
+                        onNotify('Đã ngắt kết nối ROS 2.', 'info');
+                      }
+                    }}
+                    className="w-full py-1 px-2 rounded-lg border text-xs font-semibold text-center hover:bg-[#F2EFE9] cursor-pointer transition-colors"
+                    style={{ borderColor: '#E9E5DC', color: '#262626' }}
+                  >
+                    {isRosEnabled && isRosConnected ? 'Ngắt kết nối ROS 2' : 'Kết nối lại ROS 2'}
+                  </button>
+                </div>
+              </div>
             )}
-          </button>
+          </div>
 
-          {/* Mute Voice */}
-          <button
-            type="button"
-            onClick={() => setIsMuted((prev) => !prev)}
-            className={`h-8 w-8 rounded-lg border flex items-center justify-center cursor-pointer transition-all ${
-              isMuted
-                ? 'bg-amber-100 border-amber-300 text-amber-800'
-                : 'hover:bg-[#FAF8F5]'
-            }`}
-            style={!isMuted ? { backgroundColor: '#F2EFE9', borderColor: '#BFBFBD', color: '#262626' } : {}}
-            title={isMuted ? 'Bat tieng noi' : 'Tat tieng noi'}
-          >
-            {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
-          </button>
-
+          {/* NÚT PHÁT: ICON BUTTON CAO CẤP */}
           <button
             type="button"
             onClick={handleDispatchToRobot}
-            className="h-8 px-3 rounded-lg text-white text-xs font-bold flex items-center gap-1 shadow-xs transition-all cursor-pointer shrink-0 hover:bg-[#363636]"
+            className="h-8.5 w-8.5 rounded-lg text-white flex items-center justify-center shadow-xs transition-all cursor-pointer shrink-0 hover:bg-[#363636]"
             style={{ backgroundColor: '#262626' }}
-            title="Phát kịch bản tới Robot"
+            title="Phát kịch bản xuống Robot"
           >
             <Send className="w-3.5 h-3.5" />
-            <span>Phát</span>
           </button>
 
+          {/* NÚT ĐÓNG: ICON X GỌN GÀNG */}
           {onClose && (
             <button
               type="button"
               onClick={onClose}
-              className="h-8 px-3 rounded-lg border text-xs font-bold cursor-pointer shadow-xs hover:bg-[#FAF8F5]"
+              className="h-8.5 w-8.5 rounded-lg border flex items-center justify-center cursor-pointer shadow-xs hover:bg-[#FAF8F5]"
               style={{ backgroundColor: '#F2EFE9', borderColor: '#BFBFBD', color: '#262626' }}
               title="Đóng giả lập"
             >
-              Đóng
+              <X className="w-4 h-4" />
             </button>
           )}
         </div>
       </div>
 
-      {/* KHONG GIAN CHINH CHIA 2 COT: SIDEBAR STEPS BEN TRAI VA SA BAN BEN PHAI */}
+      {/* KHONG GIAN SA BAN 2D TOAN MAN HINH (FULL-WIDTH GROUND FLOOR VIEWPORT) */}
       <div className="flex-1 min-h-0 flex overflow-hidden">
-        {/* COT TRAI: DANH SACH CAC BUOC WORKFLOW XEP DOC (Màu xám #E9E5DC đồng bộ với Tab bên trái) */}
-        <aside
-          className="w-72 sm:w-80 border-r flex flex-col shrink-0 overflow-hidden"
-          style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD' }}
-        >
-          {/* Header Sidebar: Trang thai buoc hien tai & Tien do */}
-          <div
-            className="p-3 border-b shrink-0"
-            style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD' }}
-          >
-            <div className="flex items-center justify-between gap-2 mb-2">
-              <span className="text-[11px] font-bold uppercase tracking-wider flex items-center gap-1.5" style={{ color: '#262626' }}>
-                <ClipboardList className="w-3.5 h-3.5 text-[#262626]" />
-                <span>Tiến trình kịch bản</span>
-              </span>
-              <span
-                className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border"
-                style={{ backgroundColor: '#F2EFE9', borderColor: '#BFBFBD', color: '#262626' }}
-              >
-                {steps.length} bước
-              </span>
-            </div>
-
-            {/* Card trang thai buoc dang thuc thi */}
-            <div
-              className="p-2.5 rounded-xl border shadow-xs"
-              style={{ backgroundColor: '#F2EFE9', borderColor: '#BFBFBD' }}
-            >
-              <div className="flex items-center justify-between gap-2 mb-1.5">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] font-bold uppercase" style={{ color: '#8C8C8C' }}>
-                    {isPlaying ? `Bước ${currentStepIndex + 1}/${steps.length}` : 'Trạng thái'}
-                  </span>
-                  <span
-                    className="px-2 py-0.5 rounded text-[10px] font-bold font-mono shadow-xs tracking-wider"
-                    style={{ backgroundColor: '#262626', color: '#FFFFFF' }}
-                  >
-                    {activeDetail.label}
-                  </span>
-                </div>
-                {isPlaying && (
-                  <span className="text-xs font-mono font-bold" style={{ color: '#262626' }}>
-                    {stepProgress}%
-                  </span>
-                )}
-              </div>
-
-              {/* Progress bar */}
-              {isPlaying && (
-                <div
-                  className="w-full h-1.5 rounded-full overflow-hidden mb-1.5 border"
-                  style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD' }}
-                >
-                  <div
-                    className="h-full transition-all duration-150 rounded-full"
-                    style={{ width: `${stepProgress}%`, backgroundColor: '#262626' }}
-                  />
-                </div>
-              )}
-
-              <div
-                className="text-[11px] font-bold truncate"
-                style={{ color: '#262626' }}
-                title={activeStep ? (activeStep.title || activeDetail.shortChip) : 'Robot ở trạng thái chờ lệnh'}
-              >
-                {activeStep ? (activeStep.title || activeDetail.shortChip) : 'Robot ở trạng thái chờ lệnh'}
-              </div>
-            </div>
-          </div>
-
-          {/* Danh sach cac buoc xep doc (Vertical Timeline) */}
-          <div className="flex-1 min-h-0 overflow-y-auto p-2.5 space-y-2">
-            {steps.length === 0 ? (
-              <div
-                className="p-4 text-center rounded-xl border text-xs leading-relaxed"
-                style={{ backgroundColor: '#F2EFE9', borderColor: '#BFBFBD', color: '#8C8C8C' }}
-              >
-                {activeWorkflow
-                  ? `Kịch bản "${activeWorkflow.name}" chưa có bước thực thi nào trong CSDL.`
-                  : 'Chưa có kịch bản nào được chọn.'}
-              </div>
-            ) : (
-              steps.map((step, idx) => {
-                const isActive = isPlaying && currentStepIndex === idx;
-                const isPast = isPlaying && currentStepIndex > idx;
-                const stepDetail = getStepActionDetail(step);
-
-              return (
-                <div
-                  key={step.step_id || idx}
-                  className="p-2.5 rounded-xl border transition-all flex items-start gap-2.5 select-none"
-                  style={{
-                    backgroundColor: isActive ? '#FFFFFF' : isPast ? '#E9E5DC' : '#F2EFE9',
-                    borderColor: isActive ? '#262626' : '#BFBFBD',
-                    boxShadow: isActive ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-                  }}
-                >
-                  {/* Badge so thu tu tron */}
-                  <div
-                    className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold font-mono shrink-0 mt-0.5 ${
-                      isActive
-                        ? 'bg-[#262626] text-white'
-                        : isPast
-                        ? 'bg-[#BFBFBD] text-[#262626]'
-                        : 'border'
-                    }`}
-                    style={!isActive && !isPast ? { backgroundColor: '#E9E5DC', borderColor: '#BFBFBD', color: '#262626' } : {}}
-                  >
-                    {idx + 1}
-                  </div>
-
-                  {/* Noi dung buoc */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <span
-                        className="px-1.5 py-0.2 rounded text-[9.5px] font-mono font-bold tracking-wider border shrink-0"
-                        style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD', color: '#262626' }}
-                      >
-                        {stepDetail.label}
-                      </span>
-                      <span
-                        className="text-[11px] font-bold truncate flex-1"
-                        style={{ color: '#262626' }}
-                        title={step.title || stepDetail.shortChip}
-                      >
-                        {step.title || stepDetail.shortChip}
-                      </span>
-
-                      {step.type === 'MOVE' && !isPlaying && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setEditingStepIdx(editingStepIdx === idx ? null : idx);
-                          }}
-                          className="text-[9.5px] font-bold flex items-center gap-1 px-1.5 py-0.5 rounded border transition-colors cursor-pointer shrink-0 hover:bg-[#FAF8F5]"
-                          style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD', color: '#262626' }}
-                          title="Thay đổi điểm mốc xuất phát và đích đến của bước này"
-                        >
-                          <Edit3 className="w-2.5 h-2.5" />
-                          <span>{editingStepIdx === idx ? 'Đóng' : 'Đổi điểm'}</span>
-                        </button>
-                      )}
-                    </div>
-
-                    {/* Panel chinh sua nhanh diem moc ngay tai Sa ban Studio */}
-                    {editingStepIdx === idx && step.type === 'MOVE' && (
-                      <div
-                        className="mt-2 pt-2 border-t space-y-2 p-2 rounded-lg animate-fadeIn"
-                        style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD', color: '#262626' }}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <div className="flex items-center justify-between text-[10px] font-bold mb-0.5" style={{ color: '#262626' }}>
-                          <span>Đổi Điểm Mốc (A ➔ B)</span>
-                          <button
-                            type="button"
-                            onClick={() => setEditingStepIdx(null)}
-                            className="font-bold flex items-center gap-0.5 cursor-pointer text-[9.5px] hover:text-black"
-                            style={{ color: '#262626' }}
-                          >
-                            <Check className="w-3 h-3 text-[#262626]" />
-                            <span>Xong</span>
-                          </button>
-                        </div>
-
-                        <div className="space-y-0.5">
-                          <label className="block text-[9px] font-bold uppercase" style={{ color: '#8C8C8C' }}>
-                            Từ Điểm Mốc (Start):
-                          </label>
-                          <select
-                            value={step.params?.from_waypoint || 'CURRENT'}
-                            onChange={(e) =>
-                              handleUpdateMoveStepWaypoints(
-                                idx,
-                                e.target.value,
-                                step.params?.target_value || step.params?.target_waypoint_id || 'FRONT_DESK'
-                              )
-                            }
-                            className="w-full px-2 py-1 rounded text-[10px] font-semibold border focus:outline-none cursor-pointer"
-                            style={{ backgroundColor: '#F2EFE9', borderColor: '#BFBFBD', color: '#262626' }}
-                          >
-                            <option value="CURRENT">Vị trí hiện tại của Robot</option>
-                            {endpoints.map((wp) => (
-                              <option key={wp.id} value={wp.id}>
-                                {wp.name}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-
-                        <div className="space-y-0.5">
-                          <label className="block text-[9px] font-bold uppercase" style={{ color: '#8C8C8C' }}>
-                            Đến Điểm Mốc (Goal):
-                          </label>
-                          <select
-                            value={step.params?.target_value || step.params?.target_waypoint_id || 'FRONT_DESK'}
-                            onChange={(e) =>
-                              handleUpdateMoveStepWaypoints(
-                                idx,
-                                step.params?.from_waypoint || 'CURRENT',
-                                e.target.value
-                              )
-                            }
-                            className="w-full px-2 py-1 rounded text-[10px] font-semibold border focus:outline-none cursor-pointer"
-                            style={{ backgroundColor: '#F2EFE9', borderColor: '#BFBFBD', color: '#262626' }}
-                          >
-                            {endpoints.map((wp) => (
-                              <option key={wp.id} value={wp.id}>
-                                {wp.name}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-
-                        {/* Phat loa quang ba khi di chuyen */}
-                        <div className="space-y-0.5 pt-1 border-t" style={{ borderColor: '#BFBFBD' }}>
-                          <label className="block text-[9px] font-bold uppercase flex items-center gap-1" style={{ color: '#4F46E5' }}>
-                            <Megaphone className="w-2.5 h-2.5" />
-                            <span>Phát loa quảng cáo khi di chuyển:</span>
-                          </label>
-                          <input
-                            type="text"
-                            value={step.params?.broadcast_speech || ''}
-                            onChange={(e) =>
-                              handleUpdateMoveStepBroadcast(idx, e.target.value)
-                            }
-                            placeholder="vd: Nhà hàng tầng 2 ưu đãi tiệc trà chiều..."
-                            className="w-full px-2 py-1 rounded text-[10px] font-medium border focus:outline-none"
-                            style={{ backgroundColor: '#F2EFE9', borderColor: '#BFBFBD', color: '#262626' }}
-                          />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
-      </aside>
-
-        {/* COT PHAI: TOAN BO KHONG GIAN SA BAN 2D SANH GROUND FLOOR */}
         <main
-          className="flex-1 min-w-0 h-full relative p-2 flex items-center justify-center overflow-hidden"
+          className="flex-1 w-full h-full relative p-1 sm:p-2 flex items-center justify-center overflow-hidden"
           style={{ backgroundColor: '#F2EFE9' }}
         >
         {/* Thanh huong dan dieu huong truc quan & HUD Trang thai Vung cua Robot */}
         <div className="absolute top-3 right-4 z-10 flex flex-col items-end gap-1.5 select-none pointer-events-none">
           <div
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg border shadow-xs text-xs font-medium backdrop-blur-xs"
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border shadow-xs text-xs font-medium backdrop-blur-xs"
             style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD', color: '#262626' }}
           >
             {isZoneEditMode || selectedZone ? (
-              <>
+              <span title="Chế độ sửa Vùng (Kéo thả & Định vị)">
                 <Move className="w-3.5 h-3.5 text-amber-700" />
-                <span className="hidden sm:inline font-bold text-amber-900">Chế độ sửa Vùng (Kéo thả định vị)</span>
-              </>
+              </span>
             ) : (
-              <>
+              <span title="Click sàn bản đồ để điều hướng Robot">
                 <Navigation className="w-3.5 h-3.5 text-[#8C8C8C]" />
-                <span className="hidden sm:inline">Click sàn để di chuyển</span>
-              </>
+              </span>
             )}
             <span
-              className="font-mono font-bold px-1.5 py-0.5 rounded border ml-1"
+              className="font-mono font-bold px-1.5 py-0.5 rounded border text-[11px]"
               style={{ backgroundColor: '#F2EFE9', borderColor: '#BFBFBD', color: '#262626' }}
+              title="Tọa độ Robot hiện tại (X, Y)"
             >
-              ({robotPose.x}m, {robotPose.y}m)
+              {robotPose.x}m, {robotPose.y}m
             </span>
 
             {/* Chip HUD Trang thai Vung hien tai cua Robot */}
             {activeRobotZone ? (
               <span
-                className={`flex items-center gap-1 px-2 py-0.5 rounded font-mono font-bold text-[10px] border shadow-2xs ${
+                className={`flex items-center gap-1 px-1.5 py-0.5 rounded font-mono font-bold text-[10px] border shadow-2xs ${
                   activeRobotZone.type === 'KEEP_OUT'
                     ? 'bg-red-100 text-red-800 border-red-300 animate-pulse'
                     : activeRobotZone.type === 'SPEED_ZONE' || activeRobotZone.type === 'SLOW_SPEED'
                     ? 'bg-amber-100 text-amber-900 border-amber-300'
                     : 'bg-rose-100 text-rose-800 border-rose-300'
                 }`}
+                title={
+                  activeRobotZone.type === 'KEEP_OUT'
+                    ? 'Cảnh báo: Robot đang trong Vùng Cấm!'
+                    : activeRobotZone.type === 'SPEED_ZONE' || activeRobotZone.type === 'SLOW_SPEED'
+                    ? `Robot trong Vùng Giới hạn tốc độ ${activeRobotZone.speed_limit || 0.20}m/s`
+                    : 'Robot đang trong Vùng Cấm Dừng'
+                }
               >
                 {activeRobotZone.type === 'KEEP_OUT' && <Ban className="w-3 h-3 text-red-600" />}
                 {(activeRobotZone.type === 'SPEED_ZONE' || activeRobotZone.type === 'SLOW_SPEED') && (
@@ -2396,23 +2657,22 @@ export const WorkflowSimulatorStudio = ({
                 {activeRobotZone.type === 'NO_STOP' && <AlertTriangle className="w-3 h-3 text-rose-600" />}
                 <span>
                   {activeRobotZone.type === 'KEEP_OUT'
-                    ? 'VÙNG CẤM'
+                    ? 'CẤM'
                     : activeRobotZone.type === 'SPEED_ZONE' || activeRobotZone.type === 'SLOW_SPEED'
-                    ? `TỐC ĐỘ: ${activeRobotZone.speed_limit || 0.20}m/s`
+                    ? `${activeRobotZone.speed_limit || 0.20}m/s`
                     : 'CẤM DỪNG'}
                 </span>
               </span>
             ) : (
               <span
-                className="flex items-center gap-1 px-1.5 py-0.5 rounded font-mono text-[9.5px] border"
+                className="px-1.5 py-0.5 rounded font-mono text-[9.5px] border font-bold"
                 style={{ backgroundColor: '#F2EFE9', borderColor: '#BFBFBD', color: '#8C8C8C' }}
+                title="Robot đang trong vùng tự do an toàn"
               >
-                <Shield className="w-2.5 h-2.5" />
-                <span>Sảnh Tự Do</span>
+                Sảnh Tự Do
               </span>
             )}
           </div>
-
 
           {/* Toast Cảnh Báo An Toàn Vùng (Nổi khi vi phạm hoặc click vùng cấm) */}
           {zoneAlert && (
@@ -2437,14 +2697,64 @@ export const WorkflowSimulatorStudio = ({
           )}
         </div>
 
+        {/* FLOATING ZOOM CONTROLS (PHÓNG TO / THU NHỎ / RESET ZOOM TRÊN BẢN ĐỒ) */}
+        <div
+          className="absolute bottom-4 right-4 z-20 flex items-center gap-1 p-1 rounded-xl border shadow-lg backdrop-blur-xs select-none"
+          style={{ backgroundColor: 'rgba(255, 255, 255, 0.95)', borderColor: '#BFBFBD' }}
+        >
+          <button
+            type="button"
+            onClick={handleZoomOut}
+            disabled={zoomScale <= 0.75}
+            className="w-7 h-7 rounded-lg flex items-center justify-center text-[#262626] hover:bg-[#F2EFE9] disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-colors"
+            title="Thu nhỏ bản đồ (Zoom Out)"
+          >
+            <ZoomOut className="w-3.5 h-3.5" />
+          </button>
+
+          <button
+            type="button"
+            onClick={handleResetZoom}
+            className="h-7 px-2 rounded-lg font-mono font-bold text-[11px] text-[#262626] hover:bg-[#F2EFE9] cursor-pointer transition-colors"
+            title="Khôi phục kích thước 100% (Reset Zoom)"
+          >
+            {Math.round(zoomScale * 100)}%
+          </button>
+
+          <button
+            type="button"
+            onClick={handleZoomIn}
+            disabled={zoomScale >= 2.5}
+            className="w-7 h-7 rounded-lg flex items-center justify-center text-[#262626] hover:bg-[#F2EFE9] disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-colors"
+            title="Phóng to bản đồ (Zoom In)"
+          >
+            <ZoomIn className="w-3.5 h-3.5" />
+          </button>
+
+          <div className="w-px h-4 bg-[#BFBFBD] mx-0.5" />
+
+          <button
+            type="button"
+            onClick={handleResetZoom}
+            className="w-7 h-7 rounded-lg flex items-center justify-center text-[#262626] hover:bg-[#F2EFE9] cursor-pointer transition-colors"
+            title="Căn giữa toàn màn hình"
+          >
+            <Maximize2 className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
         <svg
           ref={svgRef}
-          viewBox="0 0 1000 620"
+          viewBox={dynamicViewBox}
           onClick={handleMapClick}
+          onWheel={handleWheelZoom}
+          onPointerDown={handleSvgPointerDown}
           onPointerMove={handleSvgPointerMove}
           onPointerUp={handleSvgPointerUp}
           className={`w-full h-full object-contain select-none ${
-            dragState
+            isPanning
+              ? 'cursor-grabbing'
+              : dragState
               ? 'cursor-grabbing'
               : isZoneEditMode || selectedZone
               ? 'cursor-default'
@@ -2455,69 +2765,69 @@ export const WorkflowSimulatorStudio = ({
             <pattern id="blueprintDots" width="20" height="20" patternUnits="userSpaceOnUse">
               <circle cx="2" cy="2" r="1.2" fill="#BFBFBD" />
             </pattern>
-            {/* Pattern soc cheo do cho KEEP_OUT */}
+            {/* Pattern soc cheo do nhe cho KEEP_OUT */}
             <pattern id="keepoutStripes" width="16" height="16" patternTransform="rotate(45 0 0)" patternUnits="userSpaceOnUse">
-              <line x1="0" y1="0" x2="0" y2="16" stroke="#DC2626" strokeWidth="4" opacity="0.30" />
+              <line x1="0" y1="0" x2="0" y2="16" stroke="#EF4444" strokeWidth="2" opacity="0.16" />
             </pattern>
-            {/* Pattern cham ho phach cho SPEED_ZONE */}
+            {/* Pattern cham ho phach nhe cho SPEED_ZONE */}
             <pattern id="speedZonePattern" width="14" height="14" patternUnits="userSpaceOnUse">
-              <circle cx="3" cy="3" r="2" fill="#D97706" opacity="0.35" />
+              <circle cx="3" cy="3" r="1.5" fill="#F59E0B" opacity="0.18" />
             </pattern>
-            {/* Pattern soc cheo do hong cho NO_STOP */}
+            {/* Pattern soc cheo do hong nhe cho NO_STOP */}
             <pattern id="nostopStripes" width="14" height="14" patternTransform="rotate(-45 0 0)" patternUnits="userSpaceOnUse">
-              <line x1="0" y1="0" x2="0" y2="14" stroke="#E11D48" strokeWidth="3" opacity="0.30" />
+              <line x1="0" y1="0" x2="0" y2="14" stroke="#F43F5E" strokeWidth="2" opacity="0.16" />
             </pattern>
           </defs>
 
           {/* Nen san co luoi cham */}
           <rect x="0" y="0" width="1000" height="620" fill="#F2EFE9" />
-          <rect x="50" y="50" width="900" height="500" fill="url(#blueprintDots)" />
+          <rect x="50" y="40" width="900" height="540" fill="url(#blueprintDots)" />
 
-          <text x="50" y="36" className="text-xs font-mono font-bold tracking-widest uppercase" fill="#8C8C8C" fontFamily="sans-serif">
-            Mặt bằng sảnh khách sạn • 10m x 6m
+          <text x="50" y="28" className="text-xs font-mono font-bold tracking-widest uppercase" fill="#8C8C8C" fontFamily="sans-serif">
+            Mặt bằng sảnh khách sạn • 10m x 6m (Tỉ lệ chuẩn Gazebo 1:1)
           </text>
 
           {/* MAT BANG KIEN TRUC SANH TANG TRET - DONG BO CHINH XAC 100% VOI GAZEBO hotel_room.world */}
-          {/* 1. KHUNG TUONG BAO NGOAI (OUTER WALLS: X 50..950, Y 50..550 tuong ung 10m x 6m) */}
+          {/* 1. KHUNG TUONG BAO NGOAI (OUTER WALLS: X 50..950, Y 40..580 tuong ung 10m x 6m PPM=90) */}
           <rect
             x="50"
-            y="50"
+            y="40"
             width="900"
-            height="500"
+            height="540"
             fill="#FFFFFF"
             stroke="#262626"
             strokeWidth="3.5"
           />
 
           {/* 2. VACH NGAN CHIA SANH (Gazebo: X = 4.4m -> svgX = 446) */}
-          {/* Vach Bac (Gazebo: Y = 3.3m den 6.0m -> svgY = 275 den 50) */}
-          <line x1="446" y1="50" x2="446" y2="275" stroke="#1c1917" strokeWidth="3.5" />
-          {/* Vach Nam (Gazebo: Y = 0.0m den 2.4m -> svgY = 550 den 350) */}
-          <line x1="446" y1="350" x2="446" y2="550" stroke="#1c1917" strokeWidth="3.5" />
-          {/* Lối Cửa Thông Sảnh (Doorway: Gazebo Y = 2.4m den 3.3m rong 0.9m -> svgY = 275 den 350) */}
-          <line x1="446" y1="275" x2="446" y2="350" stroke="#94a3b8" strokeWidth="1" strokeDasharray="3 3" />
+          {/* Vach Bac (Gazebo: Y = 3.3m den 6.0m -> svgY = 283 den 40) */}
+          <line x1="446" y1="40" x2="446" y2="283" stroke="#1c1917" strokeWidth="3.5" />
+          {/* Vach Nam (Gazebo: Y = 0.0m den 2.4m -> svgY = 580 den 364) */}
+          <line x1="446" y1="364" x2="446" y2="580" stroke="#1c1917" strokeWidth="3.5" />
+          {/* Lối Cửa Thông Sảnh (Doorway: Gazebo Y = 2.4m den 3.3m rong 0.9m -> svgY = 283 den 364) */}
+          <line x1="446" y1="283" x2="446" y2="364" stroke="#94a3b8" strokeWidth="1" strokeDasharray="3 3" />
 
           {/* 3. GIAN TRAI: 3 BO SOFA VA BAN TRA TRON (LOBBY LOUNGE - Chuan Gazebo) */}
-          {/* Bo Sofa 1 (Bac: pose x=0.55, y=5.0; ban tra x=1.3, y=5.0) */}
+          {/* Bo Sofa 1 (Bac: pose x=0.55, y=5.0; ban tra x=1.3, y=5.0 -> svgY = 130) */}
           <g>
-            <rect x="73" y="75" width="54" height="116" rx="4" fill="#ffffff" stroke="#1c1917" strokeWidth="2" />
-            <line x1="73" y1="104" x2="127" y2="104" stroke="#64748b" strokeWidth="1" />
-            <line x1="73" y1="162" x2="127" y2="162" stroke="#64748b" strokeWidth="1" />
-            <circle cx="167" cy="133" r="23" fill="#ffffff" stroke="#1c1917" strokeWidth="2" />
+            <rect x="73" y="72" width="54" height="116" rx="4" fill="#ffffff" stroke="#1c1917" strokeWidth="2" />
+            <line x1="73" y1="101" x2="127" y2="101" stroke="#64748b" strokeWidth="1" />
+            <line x1="73" y1="159" x2="127" y2="159" stroke="#64748b" strokeWidth="1" />
+            <circle cx="167" cy="130" r="23" fill="#ffffff" stroke="#1c1917" strokeWidth="2" />
           </g>
 
-          {/* Bo Sofa 2 (Giua: pose x=0.55, y=3.0; ban tra x=1.3, y=3.0) */}
+          {/* Bo Sofa 2 (Giua: pose x=0.55, y=3.0; ban tra x=1.3, y=3.0 -> svgY = 310) */}
           <g>
-            <rect x="73" y="242" width="54" height="116" rx="4" fill="#ffffff" stroke="#1c1917" strokeWidth="2" />
-            <line x1="73" y1="271" x2="127" y2="271" stroke="#64748b" strokeWidth="1" />
-            <line x1="73" y1="329" x2="127" y2="329" stroke="#64748b" strokeWidth="1" />
-            <circle cx="167" cy="300" r="23" fill="#ffffff" stroke="#1c1917" strokeWidth="2" />
+            <rect x="73" y="252" width="54" height="116" rx="4" fill="#ffffff" stroke="#1c1917" strokeWidth="2" />
+            <line x1="73" y1="281" x2="127" y2="281" stroke="#64748b" strokeWidth="1" />
+            <line x1="73" y1="339" x2="127" y2="339" stroke="#64748b" strokeWidth="1" />
+            <circle cx="167" cy="310" r="23" fill="#ffffff" stroke="#1c1917" strokeWidth="2" />
           </g>
 
           {/* Chu Lobby o giua Gian Trai */}
           <text
             x="240"
-            y="305"
+            y="315"
             textAnchor="middle"
             className="text-base font-bold fill-stone-900"
             fontFamily="sans-serif"
@@ -2525,85 +2835,85 @@ export const WorkflowSimulatorStudio = ({
             Lobby
           </text>
 
-          {/* Bo Sofa 3 (Nam: pose x=0.55, y=1.0; ban tra x=1.3, y=1.0) */}
+          {/* Bo Sofa 3 (Nam: pose x=0.55, y=1.0; ban tra x=1.3, y=1.0 -> svgY = 490) */}
           <g>
-            <rect x="73" y="408" width="54" height="116" rx="4" fill="#ffffff" stroke="#1c1917" strokeWidth="2" />
-            <line x1="73" y1="437" x2="127" y2="437" stroke="#64748b" strokeWidth="1" />
-            <line x1="73" y1="495" x2="127" y2="495" stroke="#64748b" strokeWidth="1" />
-            <circle cx="167" cy="467" r="23" fill="#ffffff" stroke="#1c1917" strokeWidth="2" />
+            <rect x="73" y="432" width="54" height="116" rx="4" fill="#ffffff" stroke="#1c1917" strokeWidth="2" />
+            <line x1="73" y1="461" x2="127" y2="461" stroke="#64748b" strokeWidth="1" />
+            <line x1="73" y1="519" x2="127" y2="519" stroke="#64748b" strokeWidth="1" />
+            <circle cx="167" cy="490" r="23" fill="#ffffff" stroke="#1c1917" strokeWidth="2" />
           </g>
 
           {/* 4. GIAN PHAI - PHIA NAM: CUA CHINH, FRONT DESK, STAFF ONLY */}
-          {/* Cua Chinh (Gazebo: x = 4.8m den 5.8m -> svgX = 482 den 572, tam x = 527) */}
+          {/* Cua Chinh (Gazebo: x = 4.8m den 5.8m -> svgX = 482 den 572, tam x = 527; Y = 580) */}
           <g>
-            <rect x="482" y="546" width="90" height="8" fill="#ffffff" />
+            <rect x="482" y="576" width="90" height="8" fill="#ffffff" />
             {/* Canh cua mo xoay vao trong */}
-            <line x1="482" y1="550" x2="527" y2="520" stroke="#1c1917" strokeWidth="2" />
-            <path d="M 527 520 A 45 45 0 0 1 527 550" fill="none" stroke="#94a3b8" strokeWidth="1.2" strokeDasharray="2 2" />
-            <line x1="572" y1="550" x2="527" y2="520" stroke="#1c1917" strokeWidth="2" />
-            <path d="M 527 520 A 45 45 0 0 0 527 550" fill="none" stroke="#94a3b8" strokeWidth="1.2" strokeDasharray="2 2" />
+            <line x1="482" y1="580" x2="527" y2="550" stroke="#1c1917" strokeWidth="2" />
+            <path d="M 527 550 A 45 45 0 0 1 527 580" fill="none" stroke="#94a3b8" strokeWidth="1.2" strokeDasharray="2 2" />
+            <line x1="572" y1="580" x2="527" y2="550" stroke="#1c1917" strokeWidth="2" />
+            <path d="M 527 550 A 45 45 0 0 0 527 580" fill="none" stroke="#94a3b8" strokeWidth="1.2" strokeDasharray="2 2" />
           </g>
 
-          {/* Quay Tiep Tan (Gazebo Front Desk: goc L tai x=5.8m, y=2.5m -> svgX=572, svgY=342) */}
+          {/* Quay Tiep Tan (Gazebo Front Desk: goc L tai x=5.8m, y=2.5m -> svgX=572, svgY=355) */}
           <g>
-            {/* Mat truoc quay ngang: x = 5.8m -> 6.8m (svgX 572 -> 662), y = 2.5m (svgY 342) */}
-            <rect x="572" y="327" width="90" height="30" fill="#ffffff" stroke="#1c1917" strokeWidth="3" />
-            {/* Vach doc ben hong: x = 5.8m (svgX 572), y = 0.3m -> 2.5m (svgY 342 -> 525) */}
-            <rect x="572" y="357" width="23" height="168" fill="#ffffff" stroke="#1c1917" strokeWidth="3" />
-            <text x="635" y="420" textAnchor="middle" className="text-sm font-bold fill-stone-900" fontFamily="sans-serif">
+            {/* Mat truoc quay ngang: x = 5.8m -> 6.8m (svgX 572 -> 662), y = 2.5m (svgY 355) */}
+            <rect x="572" y="340" width="90" height="30" fill="#ffffff" stroke="#1c1917" strokeWidth="3" />
+            {/* Vach doc ben hong: x = 5.8m (svgX 572), y = 0.3m -> 2.5m (svgY 355 -> 553) */}
+            <rect x="572" y="370" width="23" height="183" fill="#ffffff" stroke="#1c1917" strokeWidth="3" />
+            <text x="635" y="440" textAnchor="middle" className="text-sm font-bold fill-stone-900" fontFamily="sans-serif">
               Front
             </text>
-            <text x="635" y="442" textAnchor="middle" className="text-sm font-bold fill-stone-900" fontFamily="sans-serif">
+            <text x="635" y="462" textAnchor="middle" className="text-sm font-bold fill-stone-900" fontFamily="sans-serif">
               Desk
             </text>
           </g>
 
-          {/* Phong Staff Only (Gazebo: x = 8.35m den 10.0m, y = 0.0m den 3.06m -> svgX = 802 den 950, svgY = 295 den 550) */}
+          {/* Phong Staff Only (Gazebo: x = 8.35m den 10.0m, y = 0.0m den 3.06m -> svgX = 802 den 950, svgY = 305 den 580) */}
           <g>
-            {/* Vach ngang phia Bac (Gazebo: y = 3.06m -> svgY = 295) */}
-            <line x1="802" y1="295" x2="950" y2="295" stroke="#1c1917" strokeWidth="3" />
-            {/* Vach dung phia Tay (Gazebo: x = 8.35m, y = 0.0m den 2.25m -> svgY 550 den 363) */}
-            <line x1="802" y1="363" x2="802" y2="550" stroke="#1c1917" strokeWidth="3" />
-            {/* Cua mo vao phong Staff Only (Gazebo: y = 2.25m den 3.06m -> svgY 295 den 363) */}
-            <line x1="802" y1="295" x2="802" y2="363" stroke="#94a3b8" strokeWidth="1.2" strokeDasharray="3 3" />
-            <text x="876" y="445" textAnchor="middle" className="text-sm font-bold fill-stone-900" fontFamily="sans-serif">
+            {/* Vach ngang phia Bac (Gazebo: y = 3.06m -> svgY = 305) */}
+            <line x1="802" y1="305" x2="950" y2="305" stroke="#1c1917" strokeWidth="3" />
+            {/* Vach dung phia Tay (Gazebo: x = 8.35m, y = 0.0m den 2.25m -> svgY 580 den 375) */}
+            <line x1="802" y1="375" x2="802" y2="580" stroke="#1c1917" strokeWidth="3" />
+            {/* Cua mo vao phong Staff Only (Gazebo: y = 2.25m den 3.06m -> svgY 305 den 375) */}
+            <line x1="802" y1="305" x2="802" y2="375" stroke="#94a3b8" strokeWidth="1.2" strokeDasharray="3 3" />
+            <text x="876" y="455" textAnchor="middle" className="text-sm font-bold fill-stone-900" fontFamily="sans-serif">
               Staff Only
             </text>
           </g>
 
           {/* 5. GIAN PHAI - PHIA BAC: DAY 3 PHONG (WC, THANG MAY, CAU THANG - Chuan Gazebo) */}
-          {/* Mat truoc: Gazebo y = 4.7m den 6.0m -> svgY = 50 den 158; x = 5.8m den 10.0m -> svgX = 572 den 950 */}
-          <rect x="572" y="50" width="378" height="108" fill="#ffffff" stroke="#1c1917" strokeWidth="3" />
+          {/* Mat truoc: Gazebo y = 4.7m den 6.0m -> svgY = 40 den 157; x = 5.8m den 10.0m -> svgX = 572 den 950 */}
+          <rect x="572" y="40" width="378" height="117" fill="#ffffff" stroke="#1c1917" strokeWidth="3" />
           {/* Vach ngan giua WC va Thang May (Gazebo: x = 7.2m -> svgX = 698) */}
-          <line x1="698" y1="50" x2="698" y2="158" stroke="#1c1917" strokeWidth="2.5" />
+          <line x1="698" y1="40" x2="698" y2="157" stroke="#1c1917" strokeWidth="2.5" />
           {/* Vach ngan giua Thang May va Cau Thang (Gazebo: x = 8.65m -> svgX = 828) */}
-          <line x1="828" y1="50" x2="828" y2="158" stroke="#1c1917" strokeWidth="2.5" />
+          <line x1="828" y1="40" x2="828" y2="157" stroke="#1c1917" strokeWidth="2.5" />
 
           {/* (1) Nha Ve Sinh (Restrooms: Gazebo x = 5.8m den 7.2m -> svgX = 572 den 698) */}
           <g>
             {/* Nam */}
-            <circle cx="620" cy="80" r="7" fill="#1c1917" />
-            <path d="M 611 91 L 629 91 L 629 120 L 624 120 L 624 145 L 616 145 L 616 120 L 611 120 Z" fill="#1c1917" />
+            <circle cx="620" cy="74" r="7" fill="#1c1917" />
+            <path d="M 611 85 L 629 85 L 629 114 L 624 114 L 624 139 L 616 139 L 616 114 L 611 114 Z" fill="#1c1917" />
             {/* Nu */}
-            <circle cx="660" cy="80" r="7" fill="#1c1917" />
-            <path d="M 651 91 L 669 91 L 676 120 L 666 120 L 666 145 L 661 145 L 661 120 L 657 120 L 657 145 L 652 145 L 652 120 L 644 120 Z" fill="#1c1917" />
+            <circle cx="660" cy="74" r="7" fill="#1c1917" />
+            <path d="M 651 85 L 669 85 L 676 114 L 666 114 L 666 139 L 661 139 L 661 114 L 657 114 L 657 139 L 652 139 L 652 114 L 644 114 Z" fill="#1c1917" />
           </g>
 
           {/* (2) Cum Thang May (Elevator: Gazebo x = 7.2m den 8.65m -> svgX = 698 den 828) */}
           <g>
-            <rect x="736" y="68" width="54" height="74" fill="none" stroke="#1c1917" strokeWidth="2.2" />
-            <line x1="763" y1="68" x2="763" y2="142" stroke="#1c1917" strokeWidth="1.8" />
-            <line x1="758" y1="100" x2="758" y2="110" stroke="#1c1917" strokeWidth="2" strokeLinecap="round" />
-            <line x1="768" y1="100" x2="768" y2="110" stroke="#1c1917" strokeWidth="2" strokeLinecap="round" />
+            <rect x="736" y="62" width="54" height="74" fill="none" stroke="#1c1917" strokeWidth="2.2" />
+            <line x1="763" y1="62" x2="763" y2="136" stroke="#1c1917" strokeWidth="1.8" />
+            <line x1="758" y1="94" x2="758" y2="104" stroke="#1c1917" strokeWidth="2" strokeLinecap="round" />
+            <line x1="768" y1="94" x2="768" y2="104" stroke="#1c1917" strokeWidth="2" strokeLinecap="round" />
             {/* Mui ten len / xuong */}
-            <path d="M 752 90 L 752 78 M 748 82 L 752 78 L 756 82" stroke="#1c1917" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-            <path d="M 774 78 L 774 90 M 770 86 L 774 90 L 778 86" stroke="#1c1917" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M 752 84 L 752 72 M 748 76 L 752 72 L 756 76" stroke="#1c1917" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M 774 72 L 774 84 M 770 80 L 774 84 L 778 80" stroke="#1c1917" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
           </g>
 
           {/* (3) Cau Thang Bo (Stairs: Gazebo x = 8.65m den 10.0m -> svgX = 828 den 950) */}
           <g>
-            <line x1="889" y1="50" x2="889" y2="158" stroke="#1c1917" strokeWidth="2" />
-            {[62, 76, 90, 104, 118, 132, 146].map((sy) => (
+            <line x1="889" y1="40" x2="889" y2="157" stroke="#1c1917" strokeWidth="2" />
+            {[52, 66, 80, 94, 108, 122, 136, 150].map((sy) => (
               <g key={sy}>
                 <line x1="835" y1={sy} x2="883" y2={sy} stroke="#64748b" strokeWidth="1.5" />
                 <line x1="895" y1={sy} x2="943" y2={sy} stroke="#64748b" strokeWidth="1.5" />
@@ -2626,12 +2936,12 @@ export const WorkflowSimulatorStudio = ({
                 ? 'url(#speedZonePattern)'
                 : 'url(#nostopStripes)';
 
-              const strokeColor = isKeepOut ? '#DC2626' : isSpeed ? '#D97706' : '#E11D48';
+              const strokeColor = isKeepOut ? '#F87171' : isSpeed ? '#FBBF24' : '#FB7185';
               const bgTint = isKeepOut
-                ? 'rgba(220, 38, 38, 0.12)'
+                ? 'rgba(239, 68, 68, 0.05)'
                 : isSpeed
-                ? 'rgba(217, 119, 6, 0.12)'
-                : 'rgba(225, 29, 72, 0.12)';
+                ? 'rgba(245, 158, 11, 0.05)'
+                : 'rgba(244, 63, 94, 0.05)';
 
 
               const isZoneInteractable = isZoneEditMode || isSelected;
@@ -2682,8 +2992,9 @@ export const WorkflowSimulatorStudio = ({
                     height={rect.height}
                     fill="none"
                     stroke={strokeColor}
-                    strokeWidth={isSelected ? '2.5' : '1.8'}
+                    strokeWidth={isSelected ? '2' : '1.2'}
                     strokeDasharray={isKeepOut ? '6 4' : isSpeed ? '5 3' : '4 3'}
+                    strokeOpacity="0.75"
                   />
 
                   {/* Chú thích vùng bằng ICON và MÀU RIÊNG ở góc trên bên phải của vùng (Click vao Icon de chon va sua Vung) */}
@@ -2740,8 +3051,7 @@ export const WorkflowSimulatorStudio = ({
                     )}
                   </g>
 
-
-                  {/* 4 NUT TAY NAM CO GIAN KICH THUOC (RESIZE HANDLES) SIÊU NHẠY VÀ DỄ KÉO THẢ */}
+                  {/* TAY NAM GOC VUONG MINI FIGMA/CAD (6x6px trang vien xam dam, thanh lich, khong hinh tron, khong hao quang) */}
                   {isSelected && (
                     <g className="zone-resize-handles">
                       {[
@@ -2750,47 +3060,31 @@ export const WorkflowSimulatorStudio = ({
                         { cx: rect.x, cy: rect.y + rect.height, type: 'RESIZE_SW', cursor: 'cursor-nesw-resize' },
                         { cx: rect.x + rect.width, cy: rect.y + rect.height, type: 'RESIZE_SE', cursor: 'cursor-nwse-resize' },
                       ].map((handle) => (
-                        <g key={handle.type} className="group">
-                          {/* 1. Vùng nhận diện click/drag tàng hình rộng r=16 (đường kính 32px), siêu dễ trỏ trúng */}
-                          <circle
-                            cx={handle.cx}
-                            cy={handle.cy}
-                            r="16"
+                        <g key={handle.type}>
+                          {/* Vung nhan click tang hinh de de trỏ chuot */}
+                          <rect
+                            x={handle.cx - 8}
+                            y={handle.cy - 8}
+                            width="16"
+                            height="16"
                             fill="transparent"
-                            stroke="transparent"
                             className={`${handle.cursor} select-none`}
                             onPointerDown={(e) => {
                               e.stopPropagation();
                               handleZonePointerDown(e, zone, handle.type);
                             }}
                           />
-                          {/* 2. Vòng hào quang tương tác hỗ trợ định vị góc khi rê chuột */}
-                          <circle
-                            cx={handle.cx}
-                            cy={handle.cy}
-                            r="11"
-                            fill={strokeColor}
-                            fillOpacity="0.25"
-                            className="pointer-events-none transition-transform"
-                          />
-                          {/* 3. Vòng tròn hiển thị chính (bán kính 7.5px, viền dày 3px màu vùng, nền trắng tương phản) */}
-                          <circle
-                            cx={handle.cx}
-                            cy={handle.cy}
-                            r="7.5"
+                          {/* Mau vuong mini Figma style: 6x6px trang vien xam dam */}
+                          <rect
+                            x={handle.cx - 3}
+                            y={handle.cy - 3}
+                            width="6"
+                            height="6"
+                            rx="1"
                             fill="#FFFFFF"
-                            stroke={strokeColor}
-                            strokeWidth="3"
-                            filter="drop-shadow(0 2px 4px rgba(0,0,0,0.30))"
-                            className={`pointer-events-none ${handle.cursor} transition-transform`}
-                          />
-                          {/* 4. Tâm tròn định vị đồng màu viền vùng */}
-                          <circle
-                            cx={handle.cx}
-                            cy={handle.cy}
-                            r="2.5"
-                            fill={strokeColor}
-                            className="pointer-events-none"
+                            stroke="#262626"
+                            strokeWidth="1.2"
+                            className={`pointer-events-none ${handle.cursor}`}
                           />
                         </g>
                       ))}
@@ -3211,18 +3505,56 @@ export const WorkflowSimulatorStudio = ({
               </div>
             )}
 
-            {/* 4. Thong so toa do realtime */}
+            {/* 4. Thong so toa do & O nhap kich thuoc truc tiep */}
             <div
-              className="flex items-center gap-1 px-2 py-1 rounded-lg font-mono text-[10.5px] border shrink-0"
+              className="flex items-center gap-1.5 px-2 py-1 rounded-lg font-mono text-[10.5px] border shrink-0"
               style={{ backgroundColor: '#F2EFE9', borderColor: '#E9E5DC', color: '#262626' }}
             >
               <span className="text-[#8C8C8C]">Tâm:</span>
-              <span className="font-bold">({selectedZone.x}m, {selectedZone.y}m)</span>
+              <span className="font-bold">({Number(selectedZone.x).toFixed(1)}m, {Number(selectedZone.y).toFixed(1)}m)</span>
               <span className="text-[#8C8C8C] ml-1">KT:</span>
-              <span className="font-bold">{selectedZone.width}m × {selectedZone.height}m</span>
+              <input
+                type="number"
+                step="0.1"
+                min="0.4"
+                max="8.0"
+                value={selectedZone.width || 2.0}
+                onChange={(e) => handleUpdateSelectedZone('width', Math.max(0.3, parseFloat(e.target.value) || 0.4))}
+                className="w-12 px-1 py-0.5 rounded text-center font-bold border focus:outline-none"
+                style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD', color: '#262626' }}
+                title="Chiều rộng vùng (m)"
+              />
+              <span className="text-[#8C8C8C]">×</span>
+              <input
+                type="number"
+                step="0.1"
+                min="0.4"
+                max="8.0"
+                value={selectedZone.height || 2.0}
+                onChange={(e) => handleUpdateSelectedZone('height', Math.max(0.3, parseFloat(e.target.value) || 0.4))}
+                className="w-12 px-1 py-0.5 rounded text-center font-bold border focus:outline-none"
+                style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD', color: '#262626' }}
+                title="Chiều dài vùng (m)"
+              />
+              <span className="text-[#8C8C8C]">m</span>
             </div>
 
-            {/* 5. Nut Xoa Vung (Delete Zone) */}
+            {/* 5. Nut Luu Vung nhanh (Pure Icon Button) */}
+            <button
+              type="button"
+              onClick={handleSaveZones}
+              disabled={isSavingZones || !hasUnsavedZones}
+              className={`p-1.5 rounded-lg border cursor-pointer transition-colors shrink-0 flex items-center justify-center ${
+                hasUnsavedZones
+                  ? 'bg-emerald-700 hover:bg-emerald-800 text-white border-emerald-700 animate-pulse'
+                  : 'bg-[#F2EFE9] text-[#8C8C8C] border-[#BFBFBD] cursor-not-allowed'
+              }`}
+              title={isSavingZones ? 'Đang lưu cấu hình vùng...' : 'Lưu cấu hình vùng vào CSDL'}
+            >
+              <Save className={`w-3.5 h-3.5 ${isSavingZones ? 'animate-spin' : ''}`} />
+            </button>
+
+            {/* 6. Nut Xoa Vung (Delete Zone) */}
             <button
               type="button"
               onClick={() => handleDeleteZone(selectedZone.id)}
@@ -3232,7 +3564,7 @@ export const WorkflowSimulatorStudio = ({
               <Trash2 className="w-3.5 h-3.5" />
             </button>
 
-            {/* 6. Nut Hoan tat / Dong che do sua */}
+            {/* 7. Nut Hoan tat / Dong che do sua */}
             <button
               type="button"
               onClick={() => {
@@ -3240,7 +3572,7 @@ export const WorkflowSimulatorStudio = ({
                 setIsZoneEditMode(false);
               }}
               className="p-1.5 rounded-lg border text-[#8C8C8C] hover:text-[#262626] hover:bg-[#F2EFE9] border-transparent hover:border-[#BFBFBD] cursor-pointer transition-colors shrink-0"
-              title="Hoàn tất và trở về chế độ điều hướng"
+              title="Hoàn tất và đóng thanh chỉnh sửa"
             >
               <Check className="w-3.5 h-3.5 text-emerald-600" />
             </button>
@@ -3297,15 +3629,14 @@ export const WorkflowSimulatorStudio = ({
               </span>
             </div>
 
-            {/* 4. Nut Dieu huong toi day (Navigate robot) */}
+            {/* 4. Nut Dieu huong toi day (Pure Icon Button) */}
             <button
               type="button"
               onClick={() => handleNavigateToGoal(selectedEndpoint.x, selectedEndpoint.y, selectedEndpoint.name)}
-              className="px-2.5 py-1 rounded-lg border font-bold text-[11px] text-[#262626] bg-[#F2EFE9] hover:bg-stone-200 border-[#BFBFBD] cursor-pointer transition-colors shrink-0 flex items-center gap-1"
+              className="p-1.5 rounded-lg border text-[#262626] bg-[#F2EFE9] hover:bg-[#FAF8F5] border-[#BFBFBD] cursor-pointer transition-colors shrink-0 flex items-center justify-center"
               title="Điều hướng Robot chạy tới điểm này"
             >
-              <Navigation className="w-3 h-3 text-[#262626]" />
-              <span>Tới đây</span>
+              <Navigation className="w-3.5 h-3.5" />
             </button>
 
             {/* 5. Nut Xoa Endpoint */}
@@ -3334,47 +3665,6 @@ export const WorkflowSimulatorStudio = ({
           </div>
         )}
 
-        {/* FLOATING ROBOT SCREEN PREVIEW (KIOSK DISPLAY - CHIẾU VIDEO / POSTER / MENU) */}
-        {showKioskScreen && (
-          <div
-            className="absolute bottom-4 left-4 z-30 w-80 sm:w-[400px] rounded-2xl shadow-2xl border flex flex-col overflow-hidden animate-fadeIn backdrop-blur-md"
-            style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD' }}
-          >
-            <div
-              className="px-3.5 py-2 border-b flex items-center justify-between text-xs font-bold shrink-0"
-              style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD', color: '#262626' }}
-            >
-              <div className="flex items-center gap-1.5">
-                <Monitor className="w-3.5 h-3.5 text-rose-600" />
-                <span className="uppercase tracking-wider text-[11px] font-black">
-                  Màn hình Robot Kiosk
-                </span>
-                {activeStep?.type === 'SHOW' && (
-                  <span className="px-1.5 py-0.2 rounded text-[9px] font-mono font-bold bg-rose-600 text-white shadow-2xs">
-                    SHOW
-                  </span>
-                )}
-                {activeStep?.type === 'MOVE' && (activeStep.params?.show_media_on_move || activeStep.params?.media_url) && (
-                  <span className="px-1.5 py-0.2 rounded text-[9px] font-mono font-bold bg-indigo-600 text-white shadow-2xs">
-                    MOVE PROMO
-                  </span>
-                )}
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowKioskScreen(false)}
-                className="p-1 rounded-lg text-stone-600 hover:text-black hover:bg-black/10 cursor-pointer transition-colors"
-                title="Đóng màn hình xem trước"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-
-            <div className="max-h-[360px] overflow-y-auto p-1.5 bg-stone-50">
-              <KioskDisplayPreview activeStep={activeStep} />
-            </div>
-          </div>
-        )}
       </main>
     </div>
   </div>

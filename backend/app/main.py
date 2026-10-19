@@ -4,11 +4,11 @@ import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
 from app.api.v1.router import api_router
+from app.middlewares import register_middlewares
 
 logger = logging.getLogger(__name__)
 
@@ -74,14 +74,8 @@ app = FastAPI(
 )
 
 
-# CORS Configuration - Cho phép Pi 5, Web Admin & Mobile App trong mạng Local kết nối
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Hỗ trợ mở rộng cho các IP local
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Đăng ký hệ thống Middleware (Security Headers, Latency Tracking, Error Handling, Tracing, CORS)
+register_middlewares(app)
 
 # Mount Static Files for Uploads and Media
 os.makedirs("static/uploads", exist_ok=True)

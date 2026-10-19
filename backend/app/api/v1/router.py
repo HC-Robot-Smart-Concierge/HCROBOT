@@ -1,7 +1,8 @@
 from fastapi import APIRouter
 from app.api.v1.endpoints import ai, scenarios, rag, map, operations, auth, logs, workflows
+from app.interceptors import RouteInterceptor
 
-api_router = APIRouter()
+api_router = APIRouter(route_class=RouteInterceptor)
 
 # Swagger UI API Docs organized by Department
 api_router.include_router(auth.router, prefix="/auth", tags=["01. Xác thực Hệ thống & JWT (Authentication)"])

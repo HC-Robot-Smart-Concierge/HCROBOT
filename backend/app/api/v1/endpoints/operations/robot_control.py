@@ -4,8 +4,9 @@ from typing import Optional, List
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from .shared import TAG_OPS
+from app.interceptors import RouteInterceptor, audit_action, measure_performance
 
-router = APIRouter()
+router = APIRouter(route_class=RouteInterceptor)
 
 
 @router.get(
@@ -29,6 +30,8 @@ class RobotMoveCommand(BaseModel):
 
 
 @router.post("/robot/control", tags=TAG_OPS, summary="Điều khiển di chuyển HCRobot (UDP Remote)")
+@audit_action(action="ROBOT_MOVE", resource_type="ROBOT", default_actor_id="operator")
+@measure_performance(action_name="control_robot_movement", slow_threshold_ms=300.0)
 async def control_robot_movement(cmd: RobotMoveCommand):
     """Gửi lệnh di chuyển qua UDP tới Raspberry Pi 5 tích hợp fail-safe siêu âm và PWM speed."""
     import socket

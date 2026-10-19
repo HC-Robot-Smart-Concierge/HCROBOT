@@ -7,6 +7,7 @@ from sqlalchemy import select, desc, func, or_
 
 from app.core.database import AsyncSessionLocal
 from app.models.logging import LogEvent, AuditLog, LogLevelEnum, LogCategoryEnum, ActorTypeEnum
+from app.middlewares.correlation_id import ctx_correlation_id, ctx_request_id
 
 # Standard Python logger for fallback
 std_logger = logging.getLogger("hcrobot.logger_service")
@@ -76,6 +77,12 @@ def log_event(
             actor_type = ActorTypeEnum(actor_type.upper())
         except ValueError:
             actor_type = ActorTypeEnum.SYSTEM
+
+    # Auto-resolve correlation_id and request_id from async contextvars if not explicitly passed
+    if correlation_id is None:
+        correlation_id = ctx_correlation_id.get()
+    if request_id is None:
+        request_id = ctx_request_id.get()
 
     log_entry = LogEvent(
         timestamp=datetime.datetime.now(datetime.timezone.utc),
@@ -156,6 +163,9 @@ def audit(
             actor_type = ActorTypeEnum(actor_type.upper())
         except ValueError:
             actor_type = ActorTypeEnum.ADMIN
+
+    if correlation_id is None:
+        correlation_id = ctx_correlation_id.get()
 
     audit_entry = AuditLog(
         timestamp=datetime.datetime.now(datetime.timezone.utc),

@@ -37,13 +37,15 @@ class Account(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
-    department_rel: Mapped[Optional["Department"]] = relationship("Department", back_populates="accounts")
+    department_rel: Mapped[Optional["Department"]] = relationship("Department", back_populates="accounts", lazy="selectin")
     notifications: Mapped[List["Notification"]] = relationship("Notification", back_populates="account")
 
     @property
     def department_name(self) -> Optional[str]:
-        if self.department_rel and self.department_rel.name:
-            return self.department_rel.name
+        # Tránh trigger IO đồng bộ (MissingGreenlet) trong môi trường async SQLAlchemy
+        dept = self.__dict__.get("department_rel")
+        if dept and getattr(dept, "name", None):
+            return dept.name
         if self.department_id:
             dept_map = {
                 "DEP-HOUSEKEEPING": "Housekeeping",

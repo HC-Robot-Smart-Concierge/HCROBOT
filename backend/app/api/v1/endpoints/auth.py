@@ -13,6 +13,11 @@ from app.schemas.auth import (
     ProfileUpdateRequest,
     LogoutResponse,
 )
+from app.schemas.response import (
+    UnauthorizedResponseSchema,
+    ForbiddenResponseSchema,
+    NotFoundResponseSchema,
+)
 
 router = APIRouter()
 
@@ -89,7 +94,15 @@ def resolve_dashboard_for_staff(staff: Staff) -> str:
     return "reception"
 
 
-@router.post("/login", response_model=TokenResponse)
+@router.post(
+    "/login",
+    response_model=TokenResponse,
+    summary="Đăng nhập hệ thống & cấp Access Token",
+    responses={
+        401: {"model": UnauthorizedResponseSchema, "description": "Tên đăng nhập hoặc mật khẩu không chính xác"},
+        403: {"model": ForbiddenResponseSchema, "description": "Tài khoản đã bị vô hiệu hóa hoặc bị khóa"},
+    },
+)
 async def login(
     login_in: LoginRequest,
     repo: StaffRepository = Depends(get_staff_repository),
@@ -99,7 +112,7 @@ async def login(
     username_clean = USERNAME_ALIASES.get(username_clean, username_clean)
 
     # 1. Query staff by username via repository
-    staff = await repo.get_by_username(username_clean)
+    staff = await repo.get_by_username(username_clean, load_department=True)
 
     # 2. Check credentials against DB
     if not staff or not verify_password(login_in.password, staff.password_hash):
@@ -169,7 +182,15 @@ async def login(
     )
 
 
-@router.get("/me", response_model=UserAuthProfile)
+@router.get(
+    "/me",
+    response_model=UserAuthProfile,
+    summary="Lấy thông tin tài khoản đang đăng nhập",
+    responses={
+        401: {"model": UnauthorizedResponseSchema, "description": "Thiếu hoặc Token JWT không hợp lệ/hết hạn"},
+        404: {"model": NotFoundResponseSchema, "description": "Không tìm thấy thông tin nhân viên tương ứng"},
+    },
+)
 async def get_current_user(
     authorization: str = Header(None),
     repo: StaffRepository = Depends(get_staff_repository),
@@ -199,7 +220,15 @@ async def get_current_user(
     return user_profile
 
 
-@router.post("/change-password")
+@router.post(
+    "/change-password",
+    summary="Đổi mật khẩu tài khoản nhân viên",
+    responses={
+        400: {"description": "Mật khẩu hiện tại không chính xác"},
+        401: {"model": UnauthorizedResponseSchema, "description": "Token JWT không hợp lệ"},
+        404: {"model": NotFoundResponseSchema, "description": "Không tìm thấy tài khoản"},
+    },
+)
 async def change_password(
     req: ChangePasswordRequest,
     authorization: str = Header(None),
@@ -227,7 +256,15 @@ async def change_password(
     return {"message": "Mật khẩu đã được cập nhật thành công trong cơ sở dữ liệu!"}
 
 
-@router.patch("/profile", response_model=UserAuthProfile)
+@router.patch(
+    "/profile",
+    response_model=UserAuthProfile,
+    summary="Cập nhật hồ sơ nhân viên",
+    responses={
+        401: {"model": UnauthorizedResponseSchema, "description": "Token JWT không hợp lệ"},
+        404: {"model": NotFoundResponseSchema, "description": "Không tìm thấy tài khoản"},
+    },
+)
 async def update_profile(
     req: ProfileUpdateRequest,
     authorization: str = Header(None),

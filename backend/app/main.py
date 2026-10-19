@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from app.core.config import settings
 from app.api.v1.router import api_router
 from app.middlewares import register_middlewares
+from app.schemas.response import GLOBAL_RESPONSES, setup_openapi_response_schemas
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +71,8 @@ app = FastAPI(
     openapi_tags=tags_metadata,
     docs_url="/docs",
     redoc_url="/redoc",
-    lifespan=lifespan
+    lifespan=lifespan,
+    responses=GLOBAL_RESPONSES,
 )
 
 
@@ -83,6 +85,9 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Attach Routers
 app.include_router(api_router, prefix="/api/v1")
+
+# Chuẩn hóa toàn bộ OpenAPI Response Schemas (400, 401, 403, 404, 500)
+setup_openapi_response_schemas(app)
 
 
 @app.get("/health", tags=["00. Trạng thái Máy chủ (System Health)"], summary="Kiểm tra trạng thái kết nối máy chủ (Health)")

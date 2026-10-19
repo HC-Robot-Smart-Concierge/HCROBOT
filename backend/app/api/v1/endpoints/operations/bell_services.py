@@ -19,6 +19,7 @@ from app.repositories import (
     get_staff_repository,
 )
 from .shared import TAG_BELL, create_department_notification
+from app.schemas.response import NotFoundResponseSchema
 
 router = APIRouter()
 
@@ -158,7 +159,10 @@ async def create_bell_request(
     summary="Xem chi tiết một yêu cầu Bell Services",
     responses={
         200: {"description": "Lấy chi tiết yêu cầu Bellman / hành lý thành công."},
-        404: {"description": "Không tìm thấy yêu cầu Bell Services."},
+        404: {
+            "model": NotFoundResponseSchema,
+            "description": "Không tìm thấy yêu cầu Bell Services.",
+        },
     },
 )
 async def get_bell_request(

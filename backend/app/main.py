@@ -4,11 +4,12 @@ import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
 from app.api.v1.router import api_router
+from app.middlewares import register_middlewares
+from app.schemas.response import GLOBAL_RESPONSES, setup_openapi_response_schemas
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +56,7 @@ tags_metadata = [
     {"name": "10. Bộ phận Bếp & Ẩm thực (Kitchen Operations & Menus)"},
     {"name": "11. Bộ phận Đặt xe & Vận chuyển (Taxi & Transportation)"},
     {"name": "12. Bộ phận Trợ lý Concierge & Live Call (Concierge & Live Support)"},
-    {"name": "13. Quản lý Phòng ban & Nhân sự (Departments & Staff)"},
+    {"name": "13. Quản lý Phòng ban & Tài khoản (Departments & Accounts)"},
     {"name": "14. Quản lý Chung & Điều phối Nghiệp vụ (Operations & Directives)"},
     {"name": "15. Trung tâm Điều hành & Quản trị (Admin & Human Support)"},
     {"name": "16. Thông báo Hệ thống (Notifications)"},
@@ -70,18 +71,13 @@ app = FastAPI(
     openapi_tags=tags_metadata,
     docs_url="/docs",
     redoc_url="/redoc",
-    lifespan=lifespan
+    lifespan=lifespan,
+    responses=GLOBAL_RESPONSES,
 )
 
 
-# CORS Configuration - Cho phép Pi 5, Web Admin & Mobile App trong mạng Local kết nối
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Hỗ trợ mở rộng cho các IP local
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Đăng ký hệ thống Middleware (Security Headers, Latency Tracking, Error Handling, Tracing, CORS)
+register_middlewares(app)
 
 # Mount Static Files for Uploads and Media
 os.makedirs("static/uploads", exist_ok=True)
@@ -89,6 +85,9 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Attach Routers
 app.include_router(api_router, prefix="/api/v1")
+
+# Chuẩn hóa toàn bộ OpenAPI Response Schemas (400, 401, 403, 404, 500)
+setup_openapi_response_schemas(app)
 
 
 @app.get("/health", tags=["00. Trạng thái Máy chủ (System Health)"], summary="Kiểm tra trạng thái kết nối máy chủ (Health)")

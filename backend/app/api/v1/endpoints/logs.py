@@ -55,8 +55,9 @@ def serialize_log(log: LogEvent) -> dict:
         "actor_type": log.actor_type.value if hasattr(log.actor_type, "value") else str(log.actor_type),
         "actor_id": log.actor_id,
         "robot_id": log.robot_id,
-        "staff_id": log.staff_id,
+        "staff_id": None,
         "guest_id": log.guest_id,
+
         "service_request_id": log.service_request_id,
         "conversation_id": log.conversation_id,
         "correlation_id": log.correlation_id,

@@ -166,7 +166,6 @@ async def create_concierge_live_request(
         room_number=room_loc,
         guest_name=guest,
         source="Robot Voice Assistant",
-        priority="HIGH",
         status="Pending",
     )
     await sr_repo.create(new_request)

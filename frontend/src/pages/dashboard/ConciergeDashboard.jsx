@@ -64,7 +64,6 @@ export const ConciergeDashboard = ({
     room_number: 'Lobby Kiosk Unit 01',
     guest_name: 'Mr. Tanaka Kenji',
     transcript: 'Khách muốn tìm hiểu thông tin về tour du lịch Bà Nà Hills trong ngày.',
-    priority: 'HIGH',
   });
 
   // Taxi & Transportation states

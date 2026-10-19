@@ -28,8 +28,8 @@ class StaffRepository(BaseRepository[Staff]):
         res = await self.db.execute(stmt)
         return res.scalar_one_or_none()
 
-    async def get_by_username(self, username: str, load_department: bool = False) -> Optional[Staff]:
-        """Fetch staff member by clean username."""
+    async def get_by_username(self, username: str, load_department: bool = True) -> Optional[Staff]:
+        """Fetch staff member by clean username with optional department eager loading."""
         clean_user = username.strip().lower()
         stmt = select(Staff).where(func.lower(Staff.username) == clean_user)
         if load_department:
@@ -37,13 +37,15 @@ class StaffRepository(BaseRepository[Staff]):
         res = await self.db.execute(stmt)
         return res.scalar_one_or_none()
 
-    async def get_by_code(self, code: str) -> Optional[Staff]:
-        """Fetch staff member by staff code."""
+    async def get_by_code(self, code: str, load_department: bool = True) -> Optional[Staff]:
+        """Fetch staff member by staff code with optional department eager loading."""
         stmt = select(Staff).where(Staff.code == code.strip())
+        if load_department:
+            stmt = stmt.options(selectinload(Staff.department_rel))
         res = await self.db.execute(stmt)
         return res.scalar_one_or_none()
 
-    async def get_by_identifier(self, identifier: str) -> Optional[Staff]:
+    async def get_by_identifier(self, identifier: str, load_department: bool = True) -> Optional[Staff]:
         """Fetch staff member matching id, username, full_name, or code."""
         target = identifier.strip()
         stmt = select(Staff).where(
@@ -54,6 +56,8 @@ class StaffRepository(BaseRepository[Staff]):
                 Staff.code == target,
             )
         )
+        if load_department:
+            stmt = stmt.options(selectinload(Staff.department_rel))
         res = await self.db.execute(stmt)
         return res.scalar_one_or_none()
 
@@ -76,14 +80,20 @@ class StaffRepository(BaseRepository[Staff]):
         if department_id and department_id not in ("All", ""):
             stmt = stmt.where(Staff.department_id == department_id.strip())
         elif department and department not in ("All", ""):
-            stmt = stmt.where(Staff.department == department.strip())
+            stmt = stmt.join(Staff.department_rel).where(
+                or_(
+                    Department.name.ilike(f"%{department.strip()}%"),
+                    Department.code.ilike(f"%{department.strip()}%"),
+                )
+            )
 
         if status and status not in ("All", ""):
             stmt = stmt.where(Staff.status == status.strip())
         if role and role not in ("All", ""):
             stmt = stmt.where(Staff.role == role.strip())
 
-        stmt = stmt.order_by(Staff.department_id, Staff.department, Staff.full_name)
+        stmt = stmt.order_by(Staff.department_id, Staff.full_name)
+
         res = await self.db.execute(stmt)
         return res.scalars().all()
 

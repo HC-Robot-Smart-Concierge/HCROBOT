@@ -15,6 +15,7 @@ from .shared import (
     TAG_ADMIN,
     TAG_NOTIF,
     TAG_STAFF,
+    TAG_ACCOUNT,
     TAG_TAXI,
     TAG_CONCIERGE,
     create_department_notification,
@@ -68,6 +69,7 @@ __all__ = [
     "TAG_ADMIN",
     "TAG_NOTIF",
     "TAG_STAFF",
+    "TAG_ACCOUNT",
     "TAG_TAXI",
     "TAG_CONCIERGE",
 ]

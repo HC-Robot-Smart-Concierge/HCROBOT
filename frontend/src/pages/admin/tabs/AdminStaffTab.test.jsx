@@ -61,7 +61,6 @@ describe('AdminStaffTab Robot Escalation Logic', () => {
       role: form.department,
       is_fallback_agent: form.is_fallback_agent,
       status: 'available',
-      shift: 'All Shifts',
       location: 'On Site',
     });
 

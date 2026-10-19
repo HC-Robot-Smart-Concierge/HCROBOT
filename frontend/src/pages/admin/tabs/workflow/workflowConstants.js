@@ -80,7 +80,6 @@ export const OTTO_STEP_TYPES = [
     desc: 'Đóng gói phiếu dịch vụ gửi tới bộ phận buồng phòng, gọi taxi, gọi nhân viên',
     defaultParams: {
       target_department: 'Housekeeping',
-      ticket_priority: 'Normal',
       fallback_staff: true,
     },
   },

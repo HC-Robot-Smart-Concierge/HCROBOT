@@ -24,7 +24,6 @@ class ManagementDirective(Base):
     description: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     status: Mapped[str] = mapped_column(String(50), default="Unassigned") # 'Unassigned', 'In Progress', 'Completed'
 
-    account_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True, index=True)
     assigned_account_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True, index=True)
     created_by_account_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True, index=True)
 
@@ -39,9 +38,9 @@ class ManagementDirective(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
-    account: Mapped[Optional["Account"]] = relationship("Account", foreign_keys=[account_id])
     assigned_account: Mapped[Optional["Account"]] = relationship("Account", foreign_keys=[assigned_account_id])
     created_by_account: Mapped[Optional["Account"]] = relationship("Account", foreign_keys=[created_by_account_id])
+
 
 
 # Backward compatibility alias

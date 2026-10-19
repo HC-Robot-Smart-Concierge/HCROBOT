@@ -44,7 +44,7 @@ export const AdminStaffTab = ({ currentUser }) => {
     setCurrentPage(newPage);
     try {
       const params = new URLSearchParams(window.location.search);
-      params.set('tab', 'Staff');
+      params.set('tab', params.get('tab') || 'Account');
       params.set('page', newPage.toString());
       window.history.pushState(null, '', `${window.location.pathname}?${params.toString()}`);
     } catch {}
@@ -213,7 +213,6 @@ export const AdminStaffTab = ({ currentUser }) => {
         role: targetDept.name,
         is_fallback_agent: addForm.is_fallback_agent,
         status: 'available',
-        shift: 'All Shifts',
         location: 'On Site',
       });
       showNotification(`Đã tạo thành công nhân sự ${cleanFullName}`);
@@ -323,10 +322,10 @@ export const AdminStaffTab = ({ currentUser }) => {
       >
         <div className="min-w-0">
           <h2 className="text-sm sm:text-base font-bold tracking-tight leading-tight truncate" style={{ color: '#262626' }}>
-            Nhân Sự Tiếp Nhận & Hỗ Trợ Robot
+            Tài Khoản Tiếp Nhận & Hỗ Trợ Robot
           </h2>
           <p className="text-[10px] sm:text-[11px] font-normal truncate mt-0.5" style={{ color: '#8C8C8C' }}>
-            Danh sách nhân sự theo bộ phận để robot chuyển tiếp yêu cầu hoặc gọi hỗ trợ khi cần thiết
+            Danh sách tài khoản theo bộ phận để robot chuyển tiếp yêu cầu hoặc gọi hỗ trợ khi cần thiết
           </p>
         </div>
 
@@ -339,7 +338,7 @@ export const AdminStaffTab = ({ currentUser }) => {
             borderColor: '#262626',
           }}
         >
-          + Thêm nhân sự
+          + Thêm tài khoản
         </button>
       </div>
 
@@ -428,7 +427,7 @@ export const AdminStaffTab = ({ currentUser }) => {
                   color: '#262626',
                 }}
               >
-                <th className="w-1/4 py-2 px-4 text-left">Nhân sự</th>
+                <th className="w-1/4 py-2 px-4 text-left">Tài khoản</th>
                 <th className="w-1/4 py-2 px-4 text-center">Bộ phận</th>
                 <th className="w-1/4 py-2 px-4 text-center">Hỗ trợ Robot</th>
                 <th className="w-1/4 py-2 px-4 text-center">Thao tác</th>

@@ -149,7 +149,6 @@ async def create_housekeeping_request(
         department_id="DEP-HOUSEKEEPING",
         service_type_id="ST-HOUSEKEEPING",
         status="Unassigned",
-        priority="NORMAL",
     )
     await sr_repo.create(new_req)
     await create_department_notification(

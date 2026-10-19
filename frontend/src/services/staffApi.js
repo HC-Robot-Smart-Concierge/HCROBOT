@@ -1,9 +1,9 @@
 // =====================================================================
 // AURORA OS - STAFF DIRECTORY & WORKFORCE MANAGEMENT API SERVICE
-// Connects React Frontend with FastAPI Backend (/api/v1/operations/staff)
+// Connects React Frontend with FastAPI Backend (/api/v1/operations/accounts)
 // =====================================================================
 
-const BASE_URL = '/api/v1/operations/staff';
+const BASE_URL = '/api/v1/operations/accounts';
 
 /**
  * Generic fetch helper with fallback support for queries (GET)

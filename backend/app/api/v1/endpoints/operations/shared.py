@@ -37,7 +37,8 @@ TAG_REST_MENU = TAG_KITCHEN
 TAG_REST = TAG_KITCHEN  # Backward compatibility alias
 TAG_TAXI = ["11. Bộ phận Đặt xe & Vận chuyển (Taxi & Transportation)"]
 TAG_CONCIERGE = ["12. Bộ phận Trợ lý Concierge & Live Call (Concierge & Live Support)"]
-TAG_STAFF = ["13. Quản lý Phòng ban & Nhân sự (Departments & Staff)"]
+TAG_STAFF = ["13. Quản lý Phòng ban & Tài khoản (Departments & Accounts)"]
+TAG_ACCOUNT = TAG_STAFF
 TAG_OPS = ["14. Quản lý Chung & Điều phối Nghiệp vụ (Operations & Directives)"]
 TAG_ADMIN = ["15. Trung tâm Điều hành & Quản trị (Admin & Human Support)"]
 TAG_NOTIF = ["16. Thông báo Hệ thống (Notifications)"]
@@ -140,7 +141,6 @@ async def _fetch_all_raw_requests(db: AsyncSession) -> List[Dict[str, Any]]:
                 "location": loc_label,
                 "guestName": sr.guest_name or "Hotel Guest",
                 "guest_name": sr.guest_name or "Hotel Guest",
-                "priority": sr.priority or (st.default_priority if st else "NORMAL"),
                 "status": sr.status or "Pending",
                 "time": sr.created_at.strftime("%I:%M %p").lstrip("0") if sr.created_at else "Recent",
                 "time_label": sr.created_at.strftime("%H:%M") if sr.created_at else "Recent",

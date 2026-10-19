@@ -216,7 +216,7 @@ async def seed_departments_and_services(session):
     for s_id, s_code, s_name, s_dep, s_desc, s_prio in services:
         s = await session.get(ServiceType, s_id)
         if not s:
-            session.add(ServiceType(id=s_id, code=s_code, name=s_name, department_id=s_dep, description=s_desc, default_priority=s_prio, is_active=True))
+            session.add(ServiceType(id=s_id, code=s_code, name=s_name, department_id=s_dep, description=s_desc, is_active=True))
         else:
             s.name = s_name
             s.department_id = s_dep
@@ -247,8 +247,6 @@ async def seed_accounts(session):
                 default_dashboard=acc.get("default_dashboard", "room_service"),
                 location=acc.get("location", "Main Hotel"),
                 status=acc.get("status", "available"),
-                shift=acc.get("shift", "Morning Shift"),
-                current_tasks_count=0,
                 is_active=True,
             )
             session.add(staff)
@@ -440,7 +438,6 @@ async def seed_reception(session):
             department_id="DEP-RECEPTION",
             service_type_id="ST-RECEPTION",
             source="From HCRobot",
-            priority="HIGH",
             assigned_staff_name="Nguyen Thu Trang",
         )
         session.add(req)
@@ -458,7 +455,6 @@ async def seed_reception(session):
             department_id="DEP-CONCIERGE",
             service_type_id="ST-CONCIERGE",
             source="Robot Voice Assistant",
-            priority="HIGH",
             assigned_staff_name="Elena Rossi",
         )
         session.add(ccg_req)

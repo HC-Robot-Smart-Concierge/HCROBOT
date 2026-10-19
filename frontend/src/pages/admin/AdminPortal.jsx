@@ -160,7 +160,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
     { id: 'Dashboard',     label: 'Dashboard' },
     { id: 'Operations',    label: 'Operations' },
     { id: 'Robot Control', label: 'Robot Control' },
-    { id: 'Knowledge',     label: 'Hội Thoại AI' },
+    { id: 'Knowledge',     label: 'Kho Tri Thức & AI' },
     { id: 'Hotel Content', label: 'Hotel Content' },
     { id: 'Department',    label: 'Department' },
     { id: 'Staff',         label: 'Staff' },
@@ -267,14 +267,24 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
                   {item.id === 'Knowledge' && activeMenu === 'Knowledge' && (
                     <div className="ml-3 pl-3 border-l my-0.5 space-y-0.5" style={{ borderColor: '#262626' }}>
                       <button
+                        onClick={() => setKnowledgeSubTab('sources')}
+                        className="w-full text-left px-2 py-1.5 rounded text-[11px] font-semibold transition-all cursor-pointer"
+                        style={{
+                          background: knowledgeSubTab === 'sources' || knowledgeSubTab === 'vault' ? '#262626' : 'transparent',
+                          color: knowledgeSubTab === 'sources' || knowledgeSubTab === 'vault' ? '#FFFFFF' : '#8C8C8C',
+                        }}
+                      >
+                        Kho Tài Liệu Tri Thức
+                      </button>
+                      <button
                         onClick={() => setKnowledgeSubTab('scenarios')}
                         className="w-full text-left px-2 py-1.5 rounded text-[11px] font-semibold transition-all cursor-pointer"
                         style={{
-                          background: '#262626',
-                          color: '#FFFFFF',
+                          background: knowledgeSubTab === 'scenarios' ? '#262626' : 'transparent',
+                          color: knowledgeSubTab === 'scenarios' ? '#FFFFFF' : '#8C8C8C',
                         }}
                       >
-                        Kịch Bản Hội Thoại
+                        Kịch Bản Fast-Path
                       </button>
                     </div>
                   )}
@@ -480,7 +490,10 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
           )}
 
           {activeMenu === 'Knowledge' && (
-            <AdminKnowledgePage activeSubView={knowledgeSubTab} />
+            <AdminKnowledgePage
+              activeSubView={knowledgeSubTab}
+              onSelectSubView={setKnowledgeSubTab}
+            />
           )}
 
           {activeMenu === 'Department' && (

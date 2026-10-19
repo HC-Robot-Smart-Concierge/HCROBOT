@@ -2,10 +2,12 @@ import { describe, it, expect } from 'vitest';
 import { CONCIERGE_ZONE_TEMPLATES, getZoneTemplateInfo } from './AdminUnifiedStudioTab';
 
 describe('Hotel Concierge Zone Management Logic', () => {
-  it('should define official Hotel Concierge 5 functional zone templates', () => {
+  it('should define official Hotel Concierge 7 functional zone templates', () => {
     const templateTypes = CONCIERGE_ZONE_TEMPLATES.map((t) => t.type);
-    expect(templateTypes).toHaveLength(5);
+    expect(templateTypes).toHaveLength(7);
     expect(templateTypes).toContain('KEEP_OUT');
+    expect(templateTypes).toContain('SPEED_ZONE');
+    expect(templateTypes).toContain('NO_STOP');
     expect(templateTypes).toContain('SLOW_SPEED');
     expect(templateTypes).toContain('SILENT_ZONE');
     expect(templateTypes).toContain('GREETING_ZONE');

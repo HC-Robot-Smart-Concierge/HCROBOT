@@ -11,6 +11,9 @@ export const ROS_TOPICS = {
   GOAL_POSE: '/goal_pose',
   CMD_VEL: '/cmd_vel',
   GOAL_REACHED: '/goal_reached',
+  HOTEL_ZONES: '/hotel_zones',
+  ZONE_TELEMETRY: '/zone_telemetry',
+  ZONE_MARKERS: '/zone_markers',
 };
 
 export const ROS_MSG_TYPES = {
@@ -127,6 +130,14 @@ export const createCmdVelMsg = (linearX = 0, angularZ = 0) => {
 };
 
 /**
+ * Tạo message đồng bộ danh sách Vùng Chức Năng (/hotel_zones)
+ */
+export const createZoneSyncMsg = (zones = []) => {
+  return {
+    data: JSON.stringify(zones),
+  };
+};
+
 /**
  * Rosbridge WebSocket Client Class
  */
@@ -308,4 +319,15 @@ export class RosbridgeClient {
     const msg = createCmdVelMsg(linearX, angularZ);
     return this.publish(ROS_TOPICS.CMD_VEL, ROS_MSG_TYPES.TWIST, msg);
   }
+
+  resetMap() {
+    return this.publish('/robot/reset_map', 'std_msgs/Empty', {});
+  }
+
+  saveSlamMap(mapName) {
+    const rawName = (mapName || '').trim();
+    return this.publish('/robot/save_map', 'std_msgs/String', { data: rawName });
+  }
 }
+
+

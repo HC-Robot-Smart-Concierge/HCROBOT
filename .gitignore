@@ -62,7 +62,6 @@ static/audio_cache/
 # Uploads directory (chỉ giữ file mẫu hoặc .gitkeep, không commit file upload runtime)
 backend/static/uploads/*
 !backend/static/uploads/.gitkeep
-!backend/static/uploads/De_Xuat_Tinh_Nang_Robot_Concierge.pdf
 static/uploads/*
 !static/uploads/.gitkeep
 

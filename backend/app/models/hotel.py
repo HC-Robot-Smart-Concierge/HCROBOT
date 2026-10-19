@@ -7,7 +7,6 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import Base
 
 if TYPE_CHECKING:
-    from app.models.map import Map
     from app.models.support_request import SupportRequest
 
 
@@ -32,7 +31,6 @@ class Hotel(Base):
     amenities: Mapped[List["Amenity"]] = relationship("Amenity", back_populates="hotel", cascade="all, delete-orphan")
     facilities: Mapped[List["Amenity"]] = relationship("Amenity", back_populates="hotel", viewonly=True)
     events: Mapped[List["Event"]] = relationship("Event", back_populates="hotel", cascade="all, delete-orphan")
-    maps: Mapped[List["Map"]] = relationship("Map", back_populates="hotel", cascade="all, delete-orphan")
 
 
 class Floor(Base):
@@ -50,7 +48,6 @@ class Floor(Base):
     # Relationships
     hotel: Mapped["Hotel"] = relationship("Hotel", back_populates="floors")
     rooms: Mapped[List["Room"]] = relationship("Room", back_populates="floor_rel")
-    maps: Mapped[List["Map"]] = relationship("Map", back_populates="floor_rel")
     amenities: Mapped[List["Amenity"]] = relationship("Amenity", back_populates="floor_rel")
 
 

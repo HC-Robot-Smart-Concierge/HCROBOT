@@ -1,57 +1,44 @@
-// Chuẩn Otto Motors: Default Endpoint Templates (Không bao gồm Trạm Sạc theo yêu cầu)
+// Chuan Robot Concierge: 3 loai Endpoint duy nhat cho 1 robot (Khong dung emoji)
 export const OTTO_ENDPOINT_TEMPLATES = [
   {
     type: 'WAYPOINT',
-    label: 'Waypoint (Điểm Mốc Hành Trình)',
+    label: 'Waypoint Endpoint (Điểm đường / Điểm trung gian)',
     badge: 'WAYPOINT',
-    color: '#8B5CF6',
-    bgColor: '#F5F3FF',
-    borderColor: '#C4B5FD',
+    color: '#262626',
+    bgColor: '#F2EFE9',
+    borderColor: '#BFBFBD',
     defaultTasks: 'MOVE, WAIT',
-    description: 'Điểm mốc định vị trên bản đồ để robot di chuyển qua hoặc căn chỉnh hướng.',
+    description: 'Điểm mốc định vị sảnh để robot di chuyển qua hoặc căn chỉnh hướng hành trình.',
   },
   {
-    type: 'PARKING_SPOT',
-    label: 'Parking Spot (Bãi Đỗ / Điểm Chờ)',
-    badge: 'PARKING',
-    color: '#64748B',
-    bgColor: '#F1F5F9',
-    borderColor: '#CBD5E1',
-    defaultTasks: 'MOVE, STANDBY',
-    description: 'Khu vực đỗ chờ sẵn của robot khi không có nhiệm vụ khách sạn.',
-  },
-  {
-    type: 'DOCKING_TARGET',
-    label: 'Docking Target (Điểm Tiếp Đón / Quầy)',
-    badge: 'DOCKING',
-    color: '#0284C7',
-    bgColor: '#F0F9FF',
-    borderColor: '#BAE6FD',
-    defaultTasks: 'MOVE, DOCK, GREET, SPEAK',
-    description: 'Điểm tiếp cận quầy Lễ tân, bàn tiếp đón với độ chính xác cao.',
-  },
-  {
-    type: 'PICKUP_DROPOFF',
-    label: 'Carts & Pallets (Giao Nhận Đồ)',
-    badge: 'PICKUP/DROP',
+    type: 'CHARGER',
+    label: 'Charger Endpoint (Điểm sạc)',
+    badge: 'CHARGER',
     color: '#059669',
     bgColor: '#ECFDF5',
     borderColor: '#A7F3D0',
-    defaultTasks: 'MOVE, LOAD, TRANSPORT, UNLOAD',
-    description: 'Khu vực giao nhận khay hành lý, đồ dùng phòng hoặc giao đồ ăn.',
+    defaultTasks: 'MOVE, DOCK, CHARGE',
+    description: 'Trạm sạc tự động của Robot Concierge, phục vụ nạp pin khi mức pin thấp hoặc ngoài ca trực.',
   },
   {
-    type: 'SERVICE_STATION',
-    label: 'Service Station (Trạm Tiện Ích)',
-    badge: 'SERVICE',
-    color: '#6366F1',
-    bgColor: '#EEF2FF',
-    borderColor: '#C7D2FE',
-    defaultTasks: 'MOVE, SHOW, RECOMMEND',
-    description: 'Trạm tiện ích khách sạn (Hồ bơi, Nhà hàng, Spa, Thang máy).',
+    type: 'PARK',
+    label: 'Park Endpoint (Điểm đỗ / chờ)',
+    badge: 'PARK',
+    color: '#71717A',
+    bgColor: '#E9E5DC',
+    borderColor: '#BFBFBD',
+    defaultTasks: 'MOVE, STANDBY',
+    description: 'Vị trí dừng đỗ chờ sẵn của Robot Concierge khi không có nhiệm vụ phục vụ tại sảnh.',
   },
 ];
 
 export const getEndpointTemplateInfo = (type) => {
-  return OTTO_ENDPOINT_TEMPLATES.find((t) => t.type === type) || OTTO_ENDPOINT_TEMPLATES[0];
+  const norm = (type || 'WAYPOINT').toUpperCase();
+  if (norm === 'CHARGER' || norm === 'DOCKING_TARGET') {
+    return OTTO_ENDPOINT_TEMPLATES.find((t) => t.type === 'CHARGER') || OTTO_ENDPOINT_TEMPLATES[1];
+  }
+  if (norm === 'PARK' || norm === 'PARKING_SPOT') {
+    return OTTO_ENDPOINT_TEMPLATES.find((t) => t.type === 'PARK') || OTTO_ENDPOINT_TEMPLATES[2];
+  }
+  return OTTO_ENDPOINT_TEMPLATES.find((t) => t.type === 'WAYPOINT') || OTTO_ENDPOINT_TEMPLATES[0];
 };

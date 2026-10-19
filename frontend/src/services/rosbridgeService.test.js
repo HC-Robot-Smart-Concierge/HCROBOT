@@ -4,6 +4,7 @@ import {
   parseLaserScan,
   createGoalPoseMsg,
   createCmdVelMsg,
+  createZoneSyncMsg,
   quaternionToYaw,
   RosbridgeClient,
   ROS_TOPICS,
@@ -80,6 +81,16 @@ describe('rosbridgeService Logic & Helpers', () => {
 
     const yaw90 = quaternionToYaw(Math.sin(Math.PI / 4), Math.cos(Math.PI / 4));
     expect(yaw90).toBeCloseTo(Math.PI / 2);
+  });
+
+  it('should support hotel zones topics and createZoneSyncMsg serialization', () => {
+    expect(ROS_TOPICS.HOTEL_ZONES).toBe('/hotel_zones');
+    expect(ROS_TOPICS.ZONE_TELEMETRY).toBe('/zone_telemetry');
+    expect(ROS_TOPICS.ZONE_MARKERS).toBe('/zone_markers');
+
+    const sampleZones = [{ id: 'z1', name: 'VIP Area', type: 'KEEP_OUT' }];
+    const msg = createZoneSyncMsg(sampleZones);
+    expect(msg.data).toBe(JSON.stringify(sampleZones));
   });
 });
 

@@ -5,6 +5,7 @@ import json
 import socket
 import asyncio
 import threading
+import urllib.request
 import websockets
 
 import rclpy
@@ -12,6 +13,8 @@ from rclpy.node import Node
 from sensor_msgs.msg import LaserScan, JointState
 from nav_msgs.msg import Odometry, Path
 from geometry_msgs.msg import TransformStamped, PoseStamped, Twist
+from std_msgs.msg import Empty, String
+from slam_toolbox.srv import Reset, SaveMap
 from tf2_ros import TransformBroadcaster
 from tf2_ros.static_transform_broadcaster import StaticTransformBroadcaster
 
@@ -22,6 +25,7 @@ class LidarWsToRos2Bridge(Node):
         self.publisher_ = self.create_publisher(LaserScan, '/scan', 10)
         self.odom_pub_ = self.create_publisher(Odometry, '/odom', 10)
         self.path_pub_ = self.create_publisher(Path, '/robot_path', 10)
+        self.plan_pub_ = self.create_publisher(Path, '/plan', 10)
         self.static_tf_broadcaster = StaticTransformBroadcaster(self)
         self.tf_broadcaster = TransformBroadcaster(self)
         self.joint_pub_ = self.create_publisher(JointState, '/joint_states', 10)
@@ -38,6 +42,34 @@ class LidarWsToRos2Bridge(Node):
             self.on_cmd_vel_received,
             10
         )
+
+        # Lắng nghe topic /robot/reset_map để reset sạch SLAM và đưa robot về (0,0)
+        self.reset_sub = self.create_subscription(
+            Empty,
+            '/robot/reset_map',
+            self.on_reset_map_received,
+            10
+        )
+
+        # Lắng nghe topic /robot/save_map để lưu bản đồ SLAM Toolbox đồng bộ
+        self.save_map_sub = self.create_subscription(
+            String,
+            '/robot/save_map',
+            self.on_save_map_received,
+            10
+        )
+
+        # Lắng nghe topic /goal_pose từ RViz2 (2D Goal Pose) hoặc Web Admin
+        self.goal_sub = self.create_subscription(
+            PoseStamped,
+            '/goal_pose',
+            self.on_goal_pose_received,
+            10
+        )
+
+        # Service Clients kết nối tới SLAM Toolbox
+        self.slam_reset_client = self.create_client(Reset, '/slam_toolbox/reset')
+        self.slam_save_client = self.create_client(SaveMap, '/slam_toolbox/save_map')
 
         # Lưu trạng thái vị trí robot và quỹ đạo đường đi
         self.current_pose = {'x': 0.0, 'y': 0.0, 'yaw': 0.0}
@@ -67,6 +99,101 @@ class LidarWsToRos2Bridge(Node):
         self.start_pi5_telemetry_udp_server()
 
         self.get_logger().info("🚀 LidarWsToRos2Bridge da san sang! Ho tro Realtime Teleop Terminal -> RViz2 & Pi 5")
+
+    def on_reset_map_received(self, msg=None):
+        """Reset sạch toàn bộ bản đồ SLAM, xóa vết đường đi và đưa robot về (0,0)."""
+        self.get_logger().info("🧹 Đã nhận lệnh Reset Bản đồ: Đang xóa sạch SLAM Toolbox và đưa Robot về gốc (0,0)...")
+        self.current_pose = {'x': 0.0, 'y': 0.0, 'yaw': 0.0}
+        self.last_recorded_pose = {'x': 0.0, 'y': 0.0, 'yaw': 0.0}
+        self.current_vx = 0.0
+        self.current_wz = 0.0
+        self.last_cmd_time = time.monotonic()
+        self._send_udp_to_pi5("stop")
+
+        # Xóa sạch quỹ đạo đường đi màu vàng
+        self.trajectory_path = Path()
+        self.trajectory_path.header.frame_id = 'odom'
+        self.trajectory_path.header.stamp = self.get_clock().now().to_msg()
+        self.path_pub_.publish(self.trajectory_path)
+
+        # Gọi service của SLAM Toolbox để xóa sạch dữ liệu OccupancyGrid & Scan Matcher
+        if self.slam_reset_client.service_is_ready():
+            req = Reset.Request()
+            req.pause_new_measurements = False
+            self.slam_reset_client.call_async(req)
+            self.get_logger().info("✅ Đã gọi /slam_toolbox/reset thành công!")
+        else:
+            self.get_logger().warn("⚠️ Service /slam_toolbox/reset chưa sẵn sàng lúc này!")
+
+        # Đồng bộ ngay TF odom -> base_link về (0, 0, 0)
+        now = self.get_clock().now().to_msg()
+        self._record_and_publish_state(now, 0.0, 0.0, 0.0, vx=0.0, wz=0.0, broadcast_tf=True)
+
+    def on_save_map_received(self, msg: String):
+        """Lưu bản đồ SLAM Toolbox ra file .yaml và .pgm đồng bộ với Web Admin."""
+        raw_name = msg.data.strip() if msg and msg.data else "slam_map"
+        safe_name = "".join(c for c in raw_name if c.isalnum() or c in ("_", "-")).strip() or "slam_map"
+        map_dir = "/mnt/f/DoAn/HC-Robot/robot/maps"
+        os.makedirs(map_dir, exist_ok=True)
+        map_full_path = os.path.join(map_dir, safe_name)
+        self.get_logger().info(f"💾 Đang lưu bản đồ SLAM Toolbox đồng bộ: {map_full_path}.(yaml/pgm)...")
+
+        if self.slam_save_client.service_is_ready():
+            req = SaveMap.Request()
+            req.name.data = map_full_path
+            future = self.slam_save_client.call_async(req)
+            future.add_done_callback(
+                lambda f: self.get_logger().info(f"✅ Đã lưu thành công bản đồ SLAM Toolbox: {map_full_path}")
+            )
+        else:
+            self.get_logger().warn("⚠️ Service /slam_toolbox/save_map chưa sẵn sàng!")
+
+    def on_goal_pose_received(self, msg: PoseStamped):
+        """Nhận mục tiêu điều hướng từ 2D Goal Pose (RViz2) hoặc Web Admin và kích hoạt tự hành."""
+        tx = float(msg.pose.position.x)
+        ty = float(msg.pose.position.y)
+        self.get_logger().info(f"🎯 [NAV2 GOAL] Nhận mục tiêu tự hành mới: X={tx:.2f}m, Y={ty:.2f}m")
+
+        # 1. Xuất vệt đường đi toàn cục (Global Plan) lên topic /plan để RViz2 hiển thị đường dẫn màu xanh
+        plan_msg = Path()
+        plan_msg.header.stamp = self.get_clock().now().to_msg()
+        plan_msg.header.frame_id = 'map'
+
+        # Điểm xuất phát: vị trí robot hiện tại
+        start_pose = PoseStamped()
+        start_pose.header = plan_msg.header
+        start_pose.pose.position.x = float(self.current_pose.get('x', 0.0))
+        start_pose.pose.position.y = float(self.current_pose.get('y', 0.0))
+        start_pose.pose.orientation.w = 1.0
+        plan_msg.poses.append(start_pose)
+
+        # Điểm đích: tọa độ goal
+        end_pose = PoseStamped()
+        end_pose.header = plan_msg.header
+        end_pose.pose = msg.pose
+        plan_msg.poses.append(end_pose)
+
+        self.plan_pub_.publish(plan_msg)
+
+        # 2. Gửi lệnh tự hành né vật cản tới Pi 5 bất đồng bộ
+        def _send_goal():
+            try:
+                url = f"http://{self.pi5_ip}:8000/api/v1/map/navigate"
+                payload = json.dumps({"target_x": tx, "target_y": ty}).encode('utf-8')
+                req = urllib.request.Request(
+                    url,
+                    data=payload,
+                    headers={"Content-Type": "application/json", "User-Agent": "ROS2-Nav2-Bridge"},
+                    method="POST"
+                )
+                with urllib.request.urlopen(req, timeout=3.0) as resp:
+                    res_data = json.loads(resp.read().decode('utf-8'))
+                    self.get_logger().info(f"🚗 Pi 5 đã nhận lệnh tự hành: {res_data.get('message', 'OK')}")
+            except Exception as e:
+                self.get_logger().warn(f"⚠️ Không thể gửi Nav2 Goal tới Pi 5 ({url}): {e}")
+
+        threading.Thread(target=_send_goal, daemon=True).start()
+
 
     def broadcast_static_laser_tf(self):
         # Alias static transform laser_frame -> laser (tương thích cả 2 tên frame)
@@ -317,6 +444,18 @@ class LidarWsToRos2Bridge(Node):
 
         msg.ranges = ranges
         msg.intensities = intensities
+
+        # Đồng bộ hóa tức thời TF odom -> base_link đúng với timestamp của LaserScan
+        self._record_and_publish_state(
+            now,
+            self.current_pose['x'],
+            self.current_pose['y'],
+            self.current_pose['yaw'],
+            vx=self.current_vx,
+            wz=self.current_wz,
+            broadcast_tf=True
+        )
+
         self.publisher_.publish(msg)
 
 

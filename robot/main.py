@@ -363,17 +363,19 @@ def main(argv=None):
     try:
         import fcntl
         global _instance_lock_file
-        _instance_lock_file = open("/tmp/hcrobot_main.lock", "w")
+        lock_path = os.path.expanduser("~/.hcrobot_main.lock")
+        _instance_lock_file = open(lock_path, "w")
         fcntl.flock(_instance_lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
         _instance_lock_file.write(str(os.getpid()))
         _instance_lock_file.flush()
-    except (IOError, BlockingIOError):
-        print("\n" + "=" * 65)
-        print("🚨 [LỖI] ĐÃ CÓ TIẾN TRÌNH HC-ROBOT ĐANG CHẠY TRÊN HỆ THỐNG!")
-        print("Cổng Serial và GPIO sẽ bị xung đột nếu chạy 2 instance cùng lúc.")
-        print("Vui lòng dừng tiến trình cũ trước bằng lệnh: sudo killall -9 python3")
-        print("=" * 65 + "\n")
-        return 1
+    except (IOError, BlockingIOError) as e:
+        if isinstance(e, BlockingIOError) or "Resource temporarily unavailable" in str(e):
+            print("\n" + "=" * 65)
+            print("🚨 [LỖI] ĐÃ CÓ TIẾN TRÌNH HC-ROBOT ĐANG CHẠY TRÊN HỆ THỐNG!")
+            print("Cổng Serial và GPIO sẽ bị xung đột nếu chạy 2 instance cùng lúc.")
+            print("Vui lòng dừng tiến trình cũ trước bằng lệnh: sudo killall -9 python3")
+            print("=" * 65 + "\n")
+            return 1
     except Exception:
         pass
 

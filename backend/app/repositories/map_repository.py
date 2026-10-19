@@ -3,7 +3,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.models.workflow import RobotWaypoint, RobotZone
-from app.models.map import Map
 from app.repositories.base import BaseRepository
 
 
@@ -146,51 +145,3 @@ class MapRepository(BaseRepository[RobotWaypoint]):
         await self.db.delete(existing)
         await self.db.commit()
         return True
-
-    # ---------------- SLAM Map Records ----------------
-
-    async def get_map_by_id(self, map_id: str) -> Optional[Map]:
-        """Fetch SLAM map record by ID."""
-        stmt = select(Map).where(Map.id == map_id.strip())
-        res = await self.db.execute(stmt)
-        return res.scalar_one_or_none()
-
-    async def upsert_map(
-        self,
-        map_id: str,
-        name: str,
-        floor: str,
-        resolution: float,
-        width: int,
-        height: int,
-        origin_x: float,
-        origin_y: float,
-        image_url: str,
-    ) -> Map:
-        """Upsert a SLAM occupancy grid map metadata."""
-        db_map = await self.get_map_by_id(map_id)
-        if db_map:
-            db_map.name = name
-            db_map.floor = floor
-            db_map.resolution = resolution
-            db_map.width = width
-            db_map.height = height
-            db_map.origin_x = origin_x
-            db_map.origin_y = origin_y
-            db_map.image_url = image_url
-        else:
-            db_map = Map(
-                id=map_id,
-                name=name,
-                floor=floor,
-                resolution=resolution,
-                width=width,
-                height=height,
-                origin_x=origin_x,
-                origin_y=origin_y,
-                image_url=image_url,
-            )
-            self.db.add(db_map)
-        await self.db.commit()
-        await self.db.refresh(db_map)
-        return db_map

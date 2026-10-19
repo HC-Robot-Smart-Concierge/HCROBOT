@@ -1,13 +1,16 @@
 import asyncio
+import io
 import json
 import logging
 import os
+import zipfile
+from datetime import datetime
 from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, status, Depends
+from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, status, Depends, Response
+from fastapi.responses import FileResponse, StreamingResponse
 
 from app.models.workflow import RobotWaypoint, RobotZone
-from app.models.map import Map
 from app.repositories import MapRepository, get_map_repository
 from app.schemas.map import (
     MapMetaData,
@@ -24,17 +27,64 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 DEFAULT_WAYPOINTS: List[dict] = []
-DEFAULT_ZONES: List[dict] = []
+DEFAULT_ZONES: List[dict] = [
+    {
+        "id": "zone-keepout-staff",
+        "name": "Khu Vực Staff Only (Cấm Vào)",
+        "type": "KEEP_OUT",
+        "x": 8.8,
+        "y": 1.5,
+        "width": 1.5,
+        "height": 2.8,
+        "speed_limit": 0.0,
+        "floor": "Sảnh Tầng 1",
+        "description": "Khu vực kỹ thuật & phòng nhân viên nội bộ, robot tuyệt đối không đi vào.",
+    },
+    {
+        "id": "zone-speed-frontdesk",
+        "name": "Khu Vực Quầy Tiếp Tân (Giới Hạn Tốc Độ)",
+        "type": "SPEED_ZONE",
+        "x": 5.2,
+        "y": 2.2,
+        "width": 2.6,
+        "height": 2.0,
+        "speed_limit": 0.20,
+        "floor": "Sảnh Tầng 1",
+        "description": "Khu vực đón tiếp đông khách, tự động giới hạn tốc độ tối đa 0.20 m/s.",
+    },
+    {
+        "id": "zone-nostop-doorway",
+        "name": "Cửa Thông Sảnh Chính (Cấm Dừng)",
+        "type": "NO_STOP",
+        "x": 4.4,
+        "y": 2.85,
+        "width": 1.4,
+        "height": 1.6,
+        "speed_limit": 0.30,
+        "floor": "Sảnh Tầng 1",
+        "description": "Nút thắt lưu thông chính giữa 2 gian sảnh, robot chỉ được phép đi qua, cấm dừng đỗ.",
+    },
+]
 
 current_robot_pose = Pose2D(x=0.0, y=0.0, yaw=0.0)
+
+
+def is_point_in_zone(px: float, py: float, z) -> bool:
+    """Kiểm tra một tọa độ (px, py) có nằm trong vùng hình chữ nhật z hay không."""
+    half_w = (getattr(z, "width", 2.0) or 2.0) / 2.0
+    half_h = (getattr(z, "height", 2.0) or 2.0) / 2.0
+    zx = getattr(z, "x", 0.0)
+    zy = getattr(z, "y", 0.0)
+    return (zx - half_w) <= px <= (zx + half_w) and (zy - half_h) <= py <= (zy + half_h)
 
 
 async def ensure_default_waypoints(repo: MapRepository):
     if not DEFAULT_WAYPOINTS:
         return
     existing = await repo.list_waypoints()
-    if not existing:
-        for wp in DEFAULT_WAYPOINTS:
+    existing_ids = {wp.id for wp in existing}
+    for wp in DEFAULT_WAYPOINTS:
+        if wp["id"] not in existing_ids:
             await repo.save_or_update_waypoint(
                 id=wp["id"],
                 name=wp["name"],
@@ -51,8 +101,9 @@ async def ensure_default_zones(repo: MapRepository):
     if not DEFAULT_ZONES:
         return
     existing = await repo.list_zones()
-    if not existing:
-        for z in DEFAULT_ZONES:
+    existing_ids = {z.id for z in existing}
+    for z in DEFAULT_ZONES:
+        if z["id"] not in existing_ids:
             await repo.save_or_update_zone(
                 id=z["id"],
                 name=z["name"],
@@ -61,7 +112,7 @@ async def ensure_default_zones(repo: MapRepository):
                 y=z["y"],
                 width=z["width"],
                 height=z["height"],
-                speed_limit=z.get("speed_limit", 0.3),
+                speed_limit=z.get("speed_limit", 0.2),
                 floor=z.get("floor", "Sảnh Tầng 1"),
                 description=z.get("description", ""),
             )
@@ -69,6 +120,7 @@ async def ensure_default_zones(repo: MapRepository):
 
 @router.get("/current", response_model=OccupancyGridResponse, summary="Lấy dữ liệu bản đồ SLAM Occupancy Grid 2D thực tế")
 async def get_current_map(repo: MapRepository = Depends(get_map_repository)):
+    await ensure_default_zones(repo)
     wps_db = await repo.list_waypoints()
     waypoints = [
         Waypoint(
@@ -139,6 +191,19 @@ async def get_waypoints(repo: MapRepository = Depends(get_map_repository)):
 
 @router.post("/waypoints", response_model=Waypoint, summary="Tạo mới hoặc cập nhật tọa độ Waypoint / Endpoint")
 async def save_waypoint(wp: Waypoint, repo: MapRepository = Depends(get_map_repository)):
+    active_zones = await repo.list_zones()
+    for z in active_zones:
+        if z.type == "KEEP_OUT" and is_point_in_zone(wp.x, wp.y, z):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Tọa độ ({wp.x:.2f}, {wp.y:.2f}) nằm trong Khu vực cấm vào (Keep-out Zone) '{z.name}'!",
+            )
+        if z.type == "NO_STOP" and (wp.type or "").upper() in ("PARK", "PARKING_SPOT", "CHARGER", "DOCKING_TARGET") and is_point_in_zone(wp.x, wp.y, z):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Tọa độ ({wp.x:.2f}, {wp.y:.2f}) nằm trong Khu vực cấm dừng (No-Stop Zone) '{z.name}'. Không thể tạo điểm đỗ/chờ tại đây!",
+            )
+
     saved = await repo.save_or_update_waypoint(
         id=wp.id,
         name=wp.name,
@@ -166,6 +231,19 @@ async def update_waypoint(waypoint_id: str, wp: Waypoint, repo: MapRepository = 
     existing = await repo.get_waypoint_by_id(waypoint_id)
     if not existing:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy Waypoint")
+
+    active_zones = await repo.list_zones()
+    for z in active_zones:
+        if z.type == "KEEP_OUT" and is_point_in_zone(wp.x, wp.y, z):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Tọa độ ({wp.x:.2f}, {wp.y:.2f}) nằm trong Khu vực cấm vào (Keep-out Zone) '{z.name}'!",
+            )
+        if z.type == "NO_STOP" and (wp.type or "").upper() in ("PARK", "PARKING_SPOT", "CHARGER", "DOCKING_TARGET") and is_point_in_zone(wp.x, wp.y, z):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Tọa độ ({wp.x:.2f}, {wp.y:.2f}) nằm trong Khu vực cấm dừng (No-Stop Zone) '{z.name}'. Không thể tạo điểm đỗ/chờ tại đây!",
+            )
 
     saved = await repo.save_or_update_waypoint(
         id=waypoint_id,
@@ -199,6 +277,7 @@ async def delete_waypoint(waypoint_id: str, repo: MapRepository = Depends(get_ma
 
 @router.get("/zones", response_model=List[ZoneSchema], summary="Lấy danh sách các Vùng Chức Năng (Zones)")
 async def get_zones(repo: MapRepository = Depends(get_map_repository)):
+    await ensure_default_zones(repo)
     zones = await repo.list_zones()
     return [
         ZoneSchema(
@@ -290,39 +369,170 @@ async def get_lidar_status():
     return rplidar_service.get_status()
 
 
-@router.post("/save_map", summary="Lưu bản đồ Occupancy Grid hiện tại vào CSDL và lưu file cố định")
+@router.post("/save_map", summary="Lưu bản đồ Occupancy Grid hiện tại vào file lưu trữ cố định")
 async def save_current_map(
     map_id: str = "phong_lam_viec",
     name: str = "Bản đồ Phòng Làm Việc",
     floor: str = "Phòng Làm Việc",
-    repo: MapRepository = Depends(get_map_repository),
 ):
-    """Lưu toàn bộ ma trận 2D Occupancy Grid hiện tại vào bộ nhớ lưu trữ cố định và CSDL PostgreSQL."""
+    """Lưu toàn bộ ma trận 2D Occupancy Grid hiện tại vào bộ nhớ lưu trữ file cố định (không lưu vào CSDL)."""
     res = rplidar_service.save_map_to_storage(map_id=map_id, name=name, floor=floor)
-
-    try:
-        map_data = rplidar_service.get_grid_map_data()
-        await repo.upsert_map(
-            map_id=map_id,
-            name=name,
-            floor=floor,
-            resolution=map_data["resolution"],
-            width=map_data["width"],
-            height=map_data["height"],
-            origin_x=map_data["origin_x"],
-            origin_y=map_data["origin_y"],
-            image_url=f"/static/maps/{map_id}.json",
-        )
-    except Exception as e:
-        logger.warning(f"Lưu thông tin bảng maps CSDL gặp lỗi (vẫn lưu file tĩnh): {e}")
-
     return {
         "status": "SUCCESS",
-        "message": f"Đã lưu bản đồ cố định '{name}' thành công vào CSDL!",
+        "message": f"Đã lưu bản đồ cố định '{name}' thành công!",
         "map_id": map_id,
         "is_map_locked": rplidar_service.is_map_locked,
         "saved_at": res.get("saved_at")
     }
+
+
+def get_robot_maps_dir() -> str:
+    candidates = [
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "..", "robot", "maps")),
+        os.path.abspath(os.path.join(os.getcwd(), "..", "robot", "maps")),
+        os.path.abspath(os.path.join(os.getcwd(), "robot", "maps")),
+    ]
+    for c in candidates:
+        if os.path.exists(c):
+            return c
+    return candidates[0]
+
+
+def get_static_maps_dir() -> str:
+    candidates = [
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "static", "maps")),
+        os.path.abspath(os.path.join(os.getcwd(), "static", "maps")),
+    ]
+    for c in candidates:
+        if os.path.exists(c):
+            return c
+    return candidates[0]
+
+
+def generate_pgm_bytes(width: int, height: int, grid_data: Optional[List[int]] = None) -> bytes:
+    """Tạo file PGM binary P5 chuẩn grayscale cho ROS 2 Nav2."""
+    header = f"P5\n{width} {height}\n255\n".encode("ascii")
+    if not grid_data or len(grid_data) != width * height:
+        pixels = bytearray([205] * (width * height))
+    else:
+        pixels = bytearray(width * height)
+        for i, val in enumerate(grid_data):
+            if val == 100:
+                pixels[i] = 0
+            elif val == 0:
+                pixels[i] = 254
+            else:
+                pixels[i] = 205
+    return header + bytes(pixels)
+
+
+@router.get("/download/{map_name}", summary="Tải file bản đồ về máy tính cá nhân (ZIP hoặc từng file .yaml/.pgm/.json)")
+async def download_map_file(map_name: str, format: str = "zip"):
+    """
+    Tải gói bản đồ SLAM trực tiếp về thư mục Downloads của người dùng (chỉ lưu trên máy tính admin, không lưu CSDL).
+    Hỗ trợ format: 'zip' (trọn gói .yaml + .pgm + .json), 'yaml', 'pgm', 'json'.
+    Nếu file chưa kịp xuất ra đĩa, tự động tổng hợp trực tiếp từ ma trận LiDAR hiện tại.
+    """
+    safe_name = "".join(c for c in map_name if c.isalnum() or c in ("_", "-")).strip()
+    if not safe_name:
+        safe_name = "slam_map"
+
+    robot_maps_dir = get_robot_maps_dir()
+    static_maps_dir = get_static_maps_dir()
+    os.makedirs(robot_maps_dir, exist_ok=True)
+    os.makedirs(static_maps_dir, exist_ok=True)
+
+    yaml_path = os.path.join(robot_maps_dir, f"{safe_name}.yaml")
+    pgm_path = os.path.join(robot_maps_dir, f"{safe_name}.pgm")
+    json_path = os.path.join(robot_maps_dir, f"{safe_name}.json")
+    if not os.path.exists(json_path):
+        json_path = os.path.join(static_maps_dir, f"{safe_name}.json")
+
+    # Đợi tối đa 0.8s nếu file vừa mới được lưu bởi SLAM Toolbox
+    for _ in range(8):
+        if os.path.exists(yaml_path) or os.path.exists(json_path):
+            break
+        await asyncio.sleep(0.1)
+
+    # Nếu trên đĩa chưa có file nào, tự động tổng hợp trực tiếp từ ma trận rplidar_service
+    if not os.path.exists(yaml_path) and not os.path.exists(json_path):
+        map_info = rplidar_service.get_grid_map_data()
+        res_val = map_info.get("resolution", 0.05)
+        width_val = map_info.get("width", 200)
+        height_val = map_info.get("height", 200)
+        ox_val = map_info.get("origin_x", -5.0)
+        oy_val = map_info.get("origin_y", -5.0)
+        grid_data = map_info.get("grid_data", [])
+
+        # 1. Sinh file YAML chuẩn Nav2
+        yaml_text = f"""image: {safe_name}.pgm
+mode: trinary
+resolution: {res_val:.4f}
+origin: [{ox_val:.3f}, {oy_val:.3f}, 0]
+negate: 0
+occupied_thresh: 0.65
+free_thresh: 0.196
+"""
+        with open(yaml_path, "w", encoding="utf-8") as f:
+            f.write(yaml_text)
+
+        # 2. Sinh file PGM nhị phân
+        pgm_bytes = generate_pgm_bytes(width_val, height_val, grid_data)
+        with open(pgm_path, "wb") as f:
+            f.write(pgm_bytes)
+
+        # 3. Sinh file JSON
+        json_data = {
+            "name": safe_name,
+            "resolution": res_val,
+            "width": width_val,
+            "height": height_val,
+            "origin_x": ox_val,
+            "origin_y": oy_val,
+            "grid_data": grid_data,
+            "saved_at": datetime.now().isoformat(),
+        }
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump(json_data, f)
+
+    if format == "yaml":
+        return FileResponse(path=yaml_path, filename=f"{safe_name}.yaml", media_type="text/yaml")
+    elif format == "pgm":
+        return FileResponse(path=pgm_path, filename=f"{safe_name}.pgm", media_type="image/x-portable-graymap")
+    elif format == "json":
+        return FileResponse(path=json_path, filename=f"{safe_name}.json", media_type="application/json")
+
+    # Mặc định format == "zip": đóng gói toàn bộ file liên quan
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        if os.path.exists(yaml_path):
+            zf.write(yaml_path, arcname=f"{safe_name}.yaml")
+        if os.path.exists(pgm_path):
+            zf.write(pgm_path, arcname=f"{safe_name}.pgm")
+        if os.path.exists(json_path):
+            zf.write(json_path, arcname=f"{safe_name}.json")
+
+        readme_content = f"""HCRobot Concierge - SLAM Map Package
+Map Name: {safe_name}
+Created At: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+Contents:
+- {safe_name}.yaml : ROS 2 Nav2 Map Server metadata configuration
+- {safe_name}.pgm  : 2D Occupancy Grid Graymap image (100: Obstacle, 0: Free, -1: Unknown)
+- {safe_name}.json : Web Canvas / Pi 5 compatible JSON grid format
+
+Usage in ROS 2 Nav2:
+ros2 run nav2_map_server map_server --ros-args -p yaml_filename:={safe_name}.yaml
+"""
+        zf.writestr("README.txt", readme_content)
+
+    return Response(
+        content=zip_buffer.getvalue(),
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{safe_name}_slam_map.zip"'
+        }
+    )
 
 
 @router.post("/load_map", summary="Nạp lại bản đồ cố định đã lưu từ CSDL/file")
@@ -340,14 +550,35 @@ async def load_saved_map(map_id: str = "phong_lam_viec", lock: bool = True):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Không tìm thấy bản đồ '{map_id}'")
 
 
-@router.get("/list_saved_maps", summary="Lấy danh sách các bản đồ đã lưu trong static/maps")
+@router.get("/list_saved_maps", summary="Lấy danh sách các bản đồ đã lưu trên máy tính (robot/maps và static/maps)")
 async def list_saved_maps():
-    """Trả về danh sách tất cả các bản đồ có sẵn trong thư mục static/maps."""
+    """Trả về danh sách tất cả các bản đồ có sẵn trên đĩa máy tính (robot/maps và static/maps)."""
     maps = []
+    seen = set()
+    robot_maps_dir = get_robot_maps_dir()
+    if os.path.exists(robot_maps_dir):
+        for f in os.listdir(robot_maps_dir):
+            if f.endswith(".yaml"):
+                mname = f[:-5]
+                seen.add(mname)
+                mtime = os.path.getmtime(os.path.join(robot_maps_dir, f))
+                time_str = datetime.fromtimestamp(mtime).strftime("%Y-%m-%d %H:%M")
+                maps.append({
+                    "map_id": mname,
+                    "name": mname,
+                    "floor": "Sảnh Tầng 1",
+                    "width": 200,
+                    "height": 200,
+                    "resolution": 0.05,
+                    "created_at": time_str,
+                })
     if os.path.exists(MAPS_DIR):
         for f in os.listdir(MAPS_DIR):
             if f.endswith(".json"):
                 mid = f[:-5]
+                if mid in seen:
+                    continue
+                seen.add(mid)
                 filepath = os.path.join(MAPS_DIR, f)
                 try:
                     with open(filepath, "r", encoding="utf-8") as fp:
@@ -355,19 +586,39 @@ async def list_saved_maps():
                     maps.append({
                         "map_id": meta.get("map_id", mid),
                         "name": meta.get("name", mid),
-                        "floor": meta.get("floor", "Tầng 1"),
+                        "floor": meta.get("floor", "Sảnh Tầng 1"),
                         "width": meta.get("width", 200),
                         "height": meta.get("height", 200),
                         "resolution": meta.get("resolution", 0.05),
+                        "created_at": meta.get("saved_at", ""),
                     })
                 except Exception:
-                    maps.append({"map_id": mid, "name": mid, "floor": "Tầng 1"})
+                    maps.append({"map_id": mid, "name": mid, "floor": "Sảnh Tầng 1"})
     return {
         "status": "SUCCESS",
         "maps": maps,
         "active_map_id": rplidar_service.saved_map_id,
         "is_map_locked": rplidar_service.is_map_locked,
     }
+
+
+@router.delete("/saved/{map_name}", summary="Xóa file bản đồ trên máy tính")
+async def delete_saved_map(map_name: str):
+    """Xóa file bản đồ trên máy tính (robot/maps và static/maps)."""
+    safe_name = "".join(c for c in map_name if c.isalnum() or c in ("_", "-")).strip()
+    if not safe_name:
+        raise HTTPException(status_code=400, detail="Tên bản đồ không hợp lệ")
+    deleted = False
+    for folder in [get_robot_maps_dir(), get_static_maps_dir(), MAPS_DIR]:
+        for ext in [".yaml", ".pgm", ".json"]:
+            fpath = os.path.join(folder, f"{safe_name}{ext}")
+            if os.path.exists(fpath):
+                try:
+                    os.remove(fpath)
+                    deleted = True
+                except Exception:
+                    pass
+    return {"status": "SUCCESS", "message": f"Đã xóa file bản đồ '{safe_name}'", "deleted": deleted}
 
 
 @router.post("/toggle_lock", summary="Bật/tắt chế độ khóa bản đồ tĩnh")
@@ -421,9 +672,29 @@ async def trigger_teleop(payload: dict):
 
 
 @router.post("/navigate", response_model=NavigationResponse, summary="Gửi mục tiêu di chuyển Robot")
-async def navigate_to_target(request: NavigationRequest):
+async def navigate_to_target(
+    request: NavigationRequest,
+    repo: MapRepository = Depends(get_map_repository),
+):
     global current_robot_pose
     try:
+        active_zones = await repo.list_zones()
+        for z in active_zones:
+            if z.type == "KEEP_OUT" and is_point_in_zone(request.target_x, request.target_y, z):
+                return NavigationResponse(
+                    status="REJECTED",
+                    message=f"Đích đến ({request.target_x:.2f}, {request.target_y:.2f}) nằm trong Khu vực cấm vào (Keep-out Zone) '{z.name}'!",
+                    target_x=request.target_x,
+                    target_y=request.target_y,
+                )
+            if z.type == "NO_STOP" and is_point_in_zone(request.target_x, request.target_y, z):
+                return NavigationResponse(
+                    status="REJECTED",
+                    message=f"Đích đến ({request.target_x:.2f}, {request.target_y:.2f}) nằm trong Khu vực cấm dừng (No-Stop Zone) '{z.name}'. Robot không thể chọn đây làm điểm kết thúc!",
+                    target_x=request.target_x,
+                    target_y=request.target_y,
+                )
+
         current_robot_pose.x = request.target_x
         current_robot_pose.y = request.target_y
         if request.target_yaw is not None:

@@ -15,19 +15,19 @@ class Waypoint(BaseModel):
     y: float
     yaw: float = 0.0
     floor: str = "Sảnh Tầng 1"
-    type: str = Field("WAYPOINT", description="Mẫu Endpoint Concierge: WAYPOINT, PARKING_SPOT, DOCKING_TARGET, SERVICE_STATION, GUEST_TABLE")
+    type: str = Field("WAYPOINT", description="Mẫu Endpoint Concierge: WAYPOINT, CHARGER, PARK")
     description: Optional[str] = None
 
 
 class ZoneSchema(BaseModel):
     id: str = Field(..., description="ID duy nhất của vùng chức năng")
-    name: str = Field(..., description="Tên vùng (vd: Cầu Thang Bộ, Khu Giảm Tốc Sảnh)")
-    type: str = Field("KEEP_OUT", description="Loại vùng: KEEP_OUT, SLOW_SPEED, SILENT_ZONE, GREETING_ZONE, SERVICE_PRIORITY")
+    name: str = Field(..., description="Tên vùng (vd: Cầu Thang Bộ, Khu Giảm Tốc Sảnh, Cửa Thông Sảnh)")
+    type: str = Field("KEEP_OUT", description="Loại vùng: KEEP_OUT (Khu vực cấm vào), SPEED_ZONE / SLOW_SPEED (Giới hạn tốc độ), NO_STOP (Khu vực cấm dừng), SILENT_ZONE, GREETING_ZONE, SERVICE_PRIORITY")
     x: float = Field(0.0, description="Tọa độ X tâm vùng")
     y: float = Field(0.0, description="Tọa độ Y tâm vùng")
     width: float = Field(2.0, description="Chiều rộng vùng (mét)")
     height: float = Field(2.0, description="Chiều cao vùng (mét)")
-    speed_limit: Optional[float] = Field(0.3, description="Tốc độ tối đa cho phép (m/s) nếu là SLOW_SPEED")
+    speed_limit: Optional[float] = Field(0.2, description="Tốc độ tối đa cho phép (m/s) nếu là SPEED_ZONE / SLOW_SPEED")
     floor: str = "Sảnh Tầng 1"
     description: Optional[str] = None
 
@@ -60,4 +60,5 @@ class NavigationResponse(BaseModel):
     message: str
     target_x: float
     target_y: float
+
 

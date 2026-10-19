@@ -174,6 +174,8 @@ class RPLidarSLAMCore:
             self.status = "IDLE"
             self.linear_velocity = 0.0
             self.angular_velocity = 0.0
+            self.is_exploring = False
+            self.explored_frontiers = []
         self.stop_navigation()
         logger.info("🧹 Đã làm sạch bản đồ 2D Occupancy Grid và đặt lại vị trí Robot về (0,0)")
 
@@ -975,11 +977,19 @@ free_thresh: 0.25
                 if not has_known_neighbor:
                     continue
 
-                # Bỏ qua frontier đã thăm
+                # Bo qua frontier da tham hoac qua gan diem da tham (< 30cm)
                 world_x = self.origin_x + (gx + 0.5) * self.resolution
                 world_y = self.origin_y + (gy + 0.5) * self.resolution
                 frontier_key = (round(world_x, 1), round(world_y, 1))
                 if frontier_key in self.explored_frontiers:
+                    continue
+
+                is_visited = False
+                for ef in self.explored_frontiers:
+                    if math.hypot(world_x - ef[0], world_y - ef[1]) < 0.30:
+                        is_visited = True
+                        break
+                if is_visited:
                     continue
 
                 dist = math.hypot(gx - robot_gx, gy - robot_gy)
@@ -1003,6 +1013,12 @@ free_thresh: 0.25
         stuck_check_interval = 20  # Kiểm tra stuck mỗi 2 giây
 
         while time.time() < deadline:
+            # 0. Thoat ngay lap tuc neu nguoi dung kich hoat lenh dung kham pha
+            if not self.is_exploring:
+                self.send_udp_motor_command("stop", force=True)
+                self.avoidance_locked_dir = None
+                return False
+
             dx = target_x - self.robot_x
             dy = target_y - self.robot_y
             dist = math.hypot(dx, dy)
@@ -1111,6 +1127,13 @@ free_thresh: 0.25
         logger.info("📡 Quét 360° toàn cảnh tại vị trí xuất phát...")
         self.scan_room_360(blocking=True)
         time.sleep(0.5)
+
+        if not self.is_exploring:
+            self.send_udp_motor_command("stop", force=True)
+            self.status = "IDLE"
+            return
+
+        self.status = "EXPLORING"
 
         # 2. Đảm bảo LiDAR đã có dữ liệu quét thực tế trước khi tìm frontier
         wait_start = time.time()
@@ -1619,6 +1642,34 @@ async def start_exploration(req: Optional[ExploreStartRequest] = None):
 async def stop_exploration():
     slam_core.stop_exploration()
     return {"status": "SUCCESS", "message": "Đã dừng khám phá tự động"}
+
+
+@app.post("/api/v1/map/emergency_stop")
+async def emergency_stop():
+    """Dừng khẩn cấp: ngắt toàn bộ quét map frontier, navigation và phanh động cơ lập tức."""
+    slam_core.stop_exploration()
+    slam_core.stop_navigation()
+    slam_core.send_udp_motor_command("stop", force=True)
+    slam_core.status = "EMERGENCY_STOPPED"
+    slam_core.linear_velocity = 0.0
+    slam_core.angular_velocity = 0.0
+    logger.warning("🛑 [E-STOP] Đã kích hoạt dừng khẩn cấp: ngắt toàn bộ tự hành, quét map và động cơ bánh xe!")
+    return {
+        "status": "SUCCESS",
+        "message": "Đã ngắt toàn bộ chuyển động khẩn cấp (Emergency Stop Activated). Robot đứng yên an toàn."
+    }
+
+
+@app.get("/api/v1/map/explore/status")
+async def get_explore_status():
+    return {
+        "status": "SUCCESS",
+        "is_exploring": slam_core.is_exploring,
+        "robot_status": slam_core.status,
+        "explored_count": len(slam_core.explored_frontiers),
+        "linear_velocity": round(slam_core.linear_velocity, 2),
+        "angular_velocity": round(slam_core.angular_velocity, 1),
+    }
 
 
 # ─── STATIC OVERLAY MAP ──────────────────────────────────────────────────────

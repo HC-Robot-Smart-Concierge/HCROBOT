@@ -13,19 +13,55 @@ import {
   updateZone,
   deleteZone,
 } from '../../../services/workflowApi';
+import {
+  RosbridgeClient,
+  ROS_TOPICS,
+  ROS_MSG_TYPES,
+  createZoneSyncMsg,
+} from '../../../services/rosbridgeService';
 import { OTTO_STEP_TYPES } from './AdminWorkflowTab';
 import { Trash2, RotateCw, Compass, ChevronUp, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
 
-// Hotel Concierge Standard: Zone Templates (5 Loại Vùng Chức Năng)
+/**
+ * Kiểm tra một tọa độ (px, py) có nằm trong vùng hình chữ nhật của Zone hay không
+ */
+export const isPointInZone = (px, py, zone) => {
+  if (!zone) return false;
+  const halfW = (Number(zone.width) || 2.0) / 2;
+  const halfH = (Number(zone.height) || 2.0) / 2;
+  const zx = Number(zone.x) || 0;
+  const zy = Number(zone.y) || 0;
+  return px >= (zx - halfW) && px <= (zx + halfW) && py >= (zy - halfH) && py <= (zy + halfH);
+};
+
+// Hotel Concierge Standard: Zone Templates (Bao gồm Keep-Out, Speed Zone, No-Stop Zone)
 export const CONCIERGE_ZONE_TEMPLATES = [
   {
     type: 'KEEP_OUT',
-    label: 'Vùng Cấm Di Chuyển (Keep-Out Zone)',
+    label: 'Khu Vực Cấm Vào (Keep-Out Zone)',
     badge: 'KEEP OUT',
     color: '#DC2626',
     bgColor: '#FEF2F2',
     borderColor: '#FCA5A5',
     description: 'Cầu thang bộ, khu vực bảo trì, bếp. Robot tuyệt đối không đi vào hay qua.',
+  },
+  {
+    type: 'SPEED_ZONE',
+    label: 'Khu Vực Giới Hạn Tốc Độ (Speed Zone)',
+    badge: 'SPEED ZONE',
+    color: '#D97706',
+    bgColor: '#FFFBEB',
+    borderColor: '#FDE68A',
+    description: 'Khu vực đông người qua lại sảnh. Tự động áp đặt vận tốc tối đa an toàn (m/s).',
+  },
+  {
+    type: 'NO_STOP',
+    label: 'Khu Vực Cấm Dừng (No-Stop Zone)',
+    badge: 'NO STOP',
+    color: '#E11D48',
+    bgColor: '#FFF1F2',
+    borderColor: '#FECDD3',
+    description: 'Cửa thông sảnh, cửa thang máy, lối thoát hiểm. Robot chỉ được phép đi qua, cấm dừng/đỗ.',
   },
   {
     type: 'SLOW_SPEED',
@@ -69,64 +105,51 @@ export const getZoneTemplateInfo = (type) => {
   return CONCIERGE_ZONE_TEMPLATES.find((t) => t.type === type) || CONCIERGE_ZONE_TEMPLATES[0];
 };
 
-// Hotel Concierge Standard: Endpoint Templates Sảnh Tầng 1
+// Hotel Concierge Standard: 3 loai Endpoint duy nhat cho 1 robot (Khong dung emoji)
 export const CONCIERGE_ENDPOINT_TEMPLATES = [
   {
     type: 'WAYPOINT',
-    label: 'Waypoint (Điểm Mốc Hành Trình Sảnh)',
+    label: 'Waypoint Endpoint (Điểm đường / Điểm trung gian)',
     badge: 'WAYPOINT',
-    color: '#8B5CF6',
-    bgColor: '#F5F3FF',
-    borderColor: '#C4B5FD',
+    color: '#262626',
+    bgColor: '#F2EFE9',
+    borderColor: '#BFBFBD',
     defaultTasks: 'MOVE, WAIT',
-    description: 'Điểm mốc định vị sảnh để robot di chuyển qua hoặc chuyển hướng.',
+    description: 'Điểm mốc định vị sảnh để robot di chuyển qua hoặc căn chỉnh hướng hành trình.',
   },
   {
-    type: 'DOCKING_TARGET',
-    label: 'Trạm Lễ Tân & Tiếp Đón (Reception Desk)',
-    badge: 'RECEPTION',
-    color: '#0284C7',
-    bgColor: '#F0F9FF',
-    borderColor: '#BAE6FD',
-    defaultTasks: 'MOVE, GREET, SPEAK, SHOW',
-    description: 'Điểm dừng tại Quầy Lễ Tân sảnh chính để chào đón, hỗ trợ check-in và phát thông báo.',
+    type: 'CHARGER',
+    label: 'Charger Endpoint (Điểm sạc)',
+    badge: 'CHARGER',
+    color: '#059669',
+    bgColor: '#ECFDF5',
+    borderColor: '#A7F3D0',
+    defaultTasks: 'MOVE, DOCK, CHARGE',
+    description: 'Trạm sạc tự động của Robot Concierge, phục vụ nạp pin khi mức pin thấp hoặc ngoài ca trực.',
   },
   {
-    type: 'PARKING_SPOT',
-    label: 'Trạm Sạc & Đỗ Chờ (Charging / Standby)',
-    badge: 'PARKING',
-    color: '#64748B',
-    bgColor: '#F1F5F9',
-    borderColor: '#CBD5E1',
+    type: 'PARK',
+    label: 'Park Endpoint (Điểm đỗ / chờ)',
+    badge: 'PARK',
+    color: '#71717A',
+    bgColor: '#E9E5DC',
+    borderColor: '#BFBFBD',
     defaultTasks: 'MOVE, STANDBY',
-    description: 'Khu vực đỗ chờ sẵn hoặc trạm sạc tự động của Robot Concierge tại sảnh.',
-  },
-  {
-    type: 'SERVICE_STATION',
-    label: 'Trạm Tiện Ích Sảnh (Lounge / Bar / Elevator)',
-    badge: 'AMENITY',
-    color: '#6366F1',
-    bgColor: '#EEF2FF',
-    borderColor: '#C7D2FE',
-    defaultTasks: 'MOVE, SHOW, RECOMMEND',
-    description: 'Khu vực tiện ích sảnh (Lobby Lounge, Quầy Bar, Cụm Thang Máy, Nhà Hàng).',
-  },
-  {
-    type: 'GUEST_TABLE',
-    label: 'Bàn Khách VIP / Tiếp Khách (Guest & VIP Area)',
-    badge: 'VIP TABLE',
-    color: '#D97706',
-    bgColor: '#FFFBEB',
-    borderColor: '#FDE68A',
-    defaultTasks: 'MOVE, GREET, RECOMMEND, FEEDBACK',
-    description: 'Điểm dừng tại khu vực bàn tiếp khách sảnh VIP để tư vấn dịch vụ và nhận đánh giá.',
+    description: 'Vị trí dừng đỗ chờ sẵn của Robot Concierge khi không có nhiệm vụ phục vụ tại sảnh.',
   },
 ];
 
 export const OTTO_ENDPOINT_TEMPLATES = CONCIERGE_ENDPOINT_TEMPLATES;
 
 export const getEndpointTemplateInfo = (type) => {
-  return CONCIERGE_ENDPOINT_TEMPLATES.find((t) => t.type === type) || CONCIERGE_ENDPOINT_TEMPLATES[0];
+  const norm = (type || 'WAYPOINT').toUpperCase();
+  if (norm === 'CHARGER' || norm === 'DOCKING_TARGET') {
+    return CONCIERGE_ENDPOINT_TEMPLATES.find((t) => t.type === 'CHARGER') || CONCIERGE_ENDPOINT_TEMPLATES[1];
+  }
+  if (norm === 'PARK' || norm === 'PARKING_SPOT') {
+    return CONCIERGE_ENDPOINT_TEMPLATES.find((t) => t.type === 'PARK') || CONCIERGE_ENDPOINT_TEMPLATES[2];
+  }
+  return CONCIERGE_ENDPOINT_TEMPLATES.find((t) => t.type === 'WAYPOINT') || CONCIERGE_ENDPOINT_TEMPLATES[0];
 };
 
 // Pi5 Connection
@@ -197,6 +220,46 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
   // 5. Notifications
   const [notification, setNotification] = useState('');
 
+  // 6. Zone Telemetry & ROS Synchronization
+  const [zoneTelemetry, setZoneTelemetry] = useState(null);
+  const rosClientRef = useRef(null);
+
+  const syncZonesToRos = (zonesList) => {
+    try {
+      if (rosClientRef.current && rosClientRef.current.isConnected) {
+        rosClientRef.current.publish(
+          ROS_TOPICS.HOTEL_ZONES,
+          ROS_MSG_TYPES.STRING,
+          createZoneSyncMsg(zonesList)
+        );
+      }
+    } catch {}
+  };
+
+  useEffect(() => {
+    let client = null;
+    let unbindZoneTel = null;
+    try {
+      const hostname = window.location.hostname || 'localhost';
+      const wsUrl = `ws://${hostname}:9090`;
+      client = new RosbridgeClient(wsUrl, { autoReconnect: true });
+      rosClientRef.current = client;
+      client.connect();
+
+      unbindZoneTel = client.subscribe(ROS_TOPICS.ZONE_TELEMETRY, ROS_MSG_TYPES.STRING, (msg) => {
+        try {
+          const data = typeof msg.data === 'string' ? JSON.parse(msg.data) : msg;
+          setZoneTelemetry(data);
+        } catch {}
+      });
+    } catch {}
+
+    return () => {
+      if (unbindZoneTel) unbindZoneTel();
+      if (client) client.disconnect();
+    };
+  }, []);
+
   const showNotification = (msg) => {
     setNotification(msg);
     setTimeout(() => setNotification(''), 4000);
@@ -209,6 +272,7 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
       setWorkflows(wfs || []);
       setWaypoints(wps || []);
       setKeepOutZones(zs || []);
+      syncZonesToRos(zs || []);
       if (wfs && wfs.length > 0 && !activeWf) {
         setActiveWf(wfs[0]);
       }
@@ -1048,7 +1112,7 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
                       type="button"
                       onClick={() => handleAddWaypointToWorkflow(selectedWaypoint)}
                       className="px-2.5 py-1 rounded text-xs font-bold cursor-pointer transition-colors"
-                      style={{ backgroundColor: '#8B5CF6', color: '#FFFFFF' }}
+                      style={{ backgroundColor: '#262626', color: '#FFFFFF' }}
                       title="Nối điểm này vào Workflow"
                     >
                       + Nối vào Workflow
@@ -1306,9 +1370,9 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
                           <span
                             className="px-1.5 py-0.2 rounded text-[9px] font-mono font-bold border uppercase shrink-0"
                             style={{
-                              backgroundColor: isMove ? '#8B5CF6' : '#262626',
+                              backgroundColor: isMove ? '#262626' : '#52525B',
                               color: '#FFFFFF',
-                              borderColor: isMove ? '#7C3AED' : '#262626',
+                              borderColor: isMove ? '#262626' : '#52525B',
                             }}
                           >
                             {step.type}
@@ -1524,7 +1588,7 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
                               type="button"
                               onClick={() => handleAddWaypointToWorkflow(wp)}
                               className="px-1.5 py-0.5 rounded text-[10px] font-bold cursor-pointer"
-                              style={{ backgroundColor: '#8B5CF6', color: '#FFFFFF' }}
+                              style={{ backgroundColor: '#262626', color: '#FFFFFF' }}
                               title="Nối điểm này vào Workflow"
                             >
                               + Nối

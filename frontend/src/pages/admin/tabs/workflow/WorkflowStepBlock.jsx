@@ -1,6 +1,6 @@
 import React from 'react';
-import { ChevronUp, ChevronDown, Trash2 } from 'lucide-react';
-import { STEP_SCRATCH_THEMES } from './workflowConstants';
+import { ChevronUp, ChevronDown, Trash2, Megaphone, Film, Image as ImageIcon, QrCode, Navigation } from 'lucide-react';
+import { STEP_SCRATCH_THEMES, WAYFINDING_DESTINATIONS } from './workflowConstants';
 import { STANDARD_LOBBY_WAYPOINTS } from './workflowSimulatorUtils';
 
 export const WorkflowStepBlock = ({
@@ -154,6 +154,61 @@ export const WorkflowStepBlock = ({
                 />
                 <span>giây</span>
               </div>
+
+              <div className="w-full flex items-center gap-2 pt-1.5 mt-1 border-t border-stone-200">
+                <span className="font-semibold text-indigo-700 text-xs shrink-0 flex items-center gap-1">
+                  <Megaphone className="w-3.5 h-3.5" />
+                  Loa quảng cáo:
+                </span>
+                <input
+                  type="text"
+                  placeholder="Nhập nội dung phát loa khi di chuyển (tùy chọn)..."
+                  value={params.broadcast_speech || ''}
+                  onChange={(e) => handleFieldChange('broadcast_speech', e.target.value)}
+                  className="flex-1 bg-stone-50 hover:bg-white text-stone-900 px-2.5 py-1 rounded-lg text-xs font-medium border border-stone-300 focus:outline-none focus:border-indigo-600 focus:bg-white shadow-2xs"
+                />
+              </div>
+
+              <div className="w-full flex flex-wrap items-center gap-2 pt-1.5 border-t border-stone-200">
+                <span className="font-semibold text-rose-700 text-xs shrink-0 flex items-center gap-1">
+                  <Film className="w-3.5 h-3.5" />
+                  Chiếu màn hình khi đi:
+                </span>
+                <select
+                  value={params.screen_mode || (params.show_media_on_move ? 'PROMO_VIDEO' : 'OFF')}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === 'OFF') {
+                      handleFieldChange('show_media_on_move', false);
+                      handleFieldChange('screen_mode', '');
+                      handleFieldChange('media_type', '');
+                    } else {
+                      handleFieldChange('show_media_on_move', true);
+                      handleFieldChange('screen_mode', val);
+                      handleFieldChange('media_type', val === 'PROMO_VIDEO' ? 'VIDEO' : 'IMAGE');
+                    }
+                  }}
+                  className="bg-stone-50 hover:bg-white text-stone-900 px-2 py-1 rounded-lg text-xs font-bold border border-stone-300 focus:outline-none focus:border-rose-600 focus:bg-white cursor-pointer shadow-2xs"
+                >
+                  <option value="OFF">Tắt (Hiện bản đồ di chuyển)</option>
+                  <option value="PROMO_VIDEO">Chiếu Video quảng cáo</option>
+                  <option value="PROMO_IMAGE">Chiếu Hình ảnh Poster</option>
+                  <option value="PROMO_SLIDE">Chiếu Slide Ưu Đãi Mùa Hè</option>
+                  <option value="MAP_WAYFINDING">Chiếu Chỉ đường & Mã QR di động</option>
+                  <option value="DINING_MENU">Chiếu Menu ẩm thực nhà hàng</option>
+                  <option value="SERVICES_GRID">Chiếu Cơ sở vật chất & Dịch vụ</option>
+                </select>
+
+                {(params.screen_mode === 'PROMO_VIDEO' || params.screen_mode === 'PROMO_IMAGE' || params.show_media_on_move) && (
+                  <input
+                    type="text"
+                    placeholder="URL video clip mp4 hoặc ảnh poster (để trống sẽ dùng clip mẫu 5 sao)..."
+                    value={params.media_url || ''}
+                    onChange={(e) => handleFieldChange('media_url', e.target.value)}
+                    className="flex-1 min-w-[200px] bg-stone-50 hover:bg-white text-stone-900 px-2.5 py-1 rounded-lg text-xs font-medium border border-stone-300 focus:outline-none focus:border-rose-600 focus:bg-white shadow-2xs"
+                  />
+                )}
+              </div>
             </>
           )}
 
@@ -225,18 +280,44 @@ export const WorkflowStepBlock = ({
                   const val = e.target.value;
                   handleFieldChange('screen_mode', val);
                   handleFieldChange('content_id', val);
+                  if (val === 'PROMO_VIDEO') handleFieldChange('media_type', 'VIDEO');
+                  else if (val === 'PROMO_IMAGE') handleFieldChange('media_type', 'IMAGE');
                 }}
                 className="bg-stone-50 hover:bg-white text-stone-900 px-2.5 py-1 rounded-lg text-xs font-bold border border-stone-300 focus:outline-none focus:border-stone-700 focus:bg-white cursor-pointer shadow-2xs"
               >
-                <option value="SERVICES_GRID">Tiện ích khách sạn</option>
-                <option value="DINING_MENU">Menu nhà hàng</option>
+                <option value="MAP_WAYFINDING">Chỉ đường & Quét mã QR di động</option>
+                <option value="DINING_MENU">Menu nhà hàng ẩm thực</option>
+                <option value="SERVICES_GRID">Cơ sở vật chất & Tiện ích khách sạn</option>
+                <option value="PROMO_VIDEO">Video quảng cáo</option>
+                <option value="PROMO_IMAGE">Hình ảnh / Poster quảng cáo</option>
+                <option value="PROMO_SUMMER">Chiếu Slide Ưu Đãi Mùa Hè</option>
                 <option value="LANGUAGE_SELECTOR">Chọn ngôn ngữ</option>
                 <option value="UI_SERVICE_FORM">Biểu mẫu Buồng phòng</option>
                 <option value="UI_CONFIRMATION">Xác nhận dịch vụ</option>
                 <option value="UI_WAITING_STAFF">Kết nối Lễ tân khẩn cấp</option>
-                <option value="PROMO_SUMMER">Chiếu Poster Khuyến mại</option>
-                <option value="MAP_LOBBY_FLOOR1">Sơ đồ bản đồ Tầng 1</option>
+                <option value="FEEDBACK">Đánh giá mức độ hài lòng</option>
               </select>
+
+              {(params.screen_mode === 'MAP_WAYFINDING' || params.content_id === 'MAP_WAYFINDING') && (
+                <>
+                  <span className="font-semibold text-stone-700 flex items-center gap-1">
+                    <QrCode className="w-3.5 h-3.5 text-stone-600" />
+                    Điểm đến:
+                  </span>
+                  <select
+                    value={params.destination_key || 'infinity_pool'}
+                    onChange={(e) => handleFieldChange('destination_key', e.target.value)}
+                    className="bg-stone-50 hover:bg-white text-stone-900 px-2 py-1 rounded-lg text-xs font-bold border border-stone-300 focus:outline-none focus:border-stone-700 focus:bg-white cursor-pointer shadow-2xs"
+                  >
+                    {WAYFINDING_DESTINATIONS.map((dest) => (
+                      <option key={dest.key} value={dest.key}>
+                        {dest.name}
+                      </option>
+                    ))}
+                  </select>
+                </>
+              )}
+
               <span>banner</span>
               <input
                 type="text"
@@ -259,6 +340,36 @@ export const WorkflowStepBlock = ({
                 className="w-14 bg-stone-50 hover:bg-white text-stone-900 px-2 py-1 rounded-lg text-xs font-bold text-center border border-stone-300 focus:outline-none focus:border-stone-700 focus:bg-white shadow-2xs"
               />
               <span>giây</span>
+
+              {(params.screen_mode === 'PROMO_VIDEO' ||
+                params.screen_mode === 'PROMO_IMAGE' ||
+                params.media_type === 'VIDEO' ||
+                params.media_type === 'IMAGE' ||
+                Boolean(params.media_url)) && (
+                <div className="w-full flex flex-wrap items-center gap-2 pt-1.5 mt-1 border-t border-stone-200">
+                  <span className="font-semibold text-rose-700 text-xs shrink-0 flex items-center gap-1">
+                    <Film className="w-3.5 h-3.5" />
+                    URL Media:
+                  </span>
+                  <input
+                    type="text"
+                    placeholder="URL file video .mp4 hoặc ảnh poster (để trống sẽ dùng clip mẫu resort 5 sao)..."
+                    value={params.media_url || ''}
+                    onChange={(e) => handleFieldChange('media_url', e.target.value)}
+                    className="flex-1 min-w-[240px] bg-stone-50 hover:bg-white text-stone-900 px-2.5 py-1 rounded-lg text-xs font-medium border border-stone-300 focus:outline-none focus:border-rose-600 focus:bg-white shadow-2xs"
+                  />
+                  <span className="font-semibold text-stone-700 text-xs shrink-0">
+                    Thuyết minh:
+                  </span>
+                  <input
+                    type="text"
+                    placeholder="Phát giọng nói kèm theo khi chiếu (tùy chọn)..."
+                    value={params.speech_text || ''}
+                    onChange={(e) => handleFieldChange('speech_text', e.target.value)}
+                    className="flex-1 min-w-[180px] bg-stone-50 hover:bg-white text-stone-900 px-2.5 py-1 rounded-lg text-xs font-medium border border-stone-300 focus:outline-none focus:border-stone-700 focus:bg-white shadow-2xs"
+                  />
+                </div>
+              )}
             </>
           )}
 

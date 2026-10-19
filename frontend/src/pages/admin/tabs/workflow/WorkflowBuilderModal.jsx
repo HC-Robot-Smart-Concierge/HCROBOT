@@ -117,6 +117,7 @@ export const WorkflowBuilderModal = ({
                 <option value="KIOSK_TOUCH">Khách Chạm Màn Hình Kiosk</option>
                 <option value="GUEST_TAP">Khách Chạm Màn Hình (Tap)</option>
                 <option value="SCHEDULE">Theo Lịch Trình (Schedule)</option>
+                <option value="PATROL_LOOP">Tuần Tra Lặp Lại & Phát Loa Quảng Bá (Patrol Loop)</option>
               </select>
             </div>
           </div>

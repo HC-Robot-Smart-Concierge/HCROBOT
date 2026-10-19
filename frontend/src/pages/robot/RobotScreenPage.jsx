@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { RobotFace } from '../../components/robot/RobotFace';
 import { AudioWave } from '../../components/robot/AudioWave';
 import { FloorMap, HOTEL_DESTINATIONS, getMobileGuestMapUrl } from '../../components/robot/FloorMap';
-import { PhoneCall, Sparkles, RefreshCw, Smartphone, QrCode, Clock, Utensils, Star, PlayCircle } from 'lucide-react';
+import { PhoneCall, Sparkles, RefreshCw, Smartphone, QrCode, Clock, Utensils, Star, PlayCircle, Building, Navigation, Film } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { CameraPreview } from '../../components/robot/CameraPreview';
 import { MobileRobotScreen } from '../../components/robot/MobileRobotScreen';
@@ -18,6 +18,7 @@ import { sendChatPrompt, sendChatStreamSSE, resetSession, flushSession, getVoice
 
 import { MessengerVideoCallModal } from '../../components/video/MessengerVideoCallModal';
 import { RobotQuickFeedbackModal } from '../../components/robot/RobotQuickFeedbackModal';
+import { RobotFacilitiesModal } from '../../components/robot/RobotFacilitiesModal';
 import { createConciergeRequest } from '../../services/conciergeApi';
 
 export const RobotScreenPage = ({ onLogout = () => { } }) => {
@@ -98,6 +99,9 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
   // Quick Feedback Survey State
   const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
+
+  // 5-Star Hotel Facilities Directory Modal State
+  const [isFacilitiesModalOpen, setIsFacilitiesModalOpen] = useState(false);
 
   // Available Workflows State (for AUTO_DETECT and manual triggers)
   const [availableWorkflows, setAvailableWorkflows] = useState([]);
@@ -236,7 +240,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     if (isStandby) setIsStandby(false);
 
     // Chỉ đếm ngược khi ở trạng thái RT-02 hoặc RT-01 và không đang bận
-    if (!isSpeaking && !isProcessing && !isListening && !isWorkflowRunning && !isFoodMenuOpen && !showLogoutModal) {
+    if (!isSpeaking && !isProcessing && !isListening && !isWorkflowRunning && !isFoodMenuOpen && !isFacilitiesModalOpen && !showLogoutModal) {
       standbyTimerRef.current = setTimeout(() => {
         setIsStandby(true);
       }, STANDBY_IDLE_TIMEOUT_MS);
@@ -400,6 +404,11 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     // Mở menu thực đơn nếu khách yêu cầu đặt món
     if (lowerQuery.includes('đặt món') || lowerQuery.includes('chọn món') || lowerQuery.includes('thực đơn') || lowerQuery.includes('menu') || lowerQuery.includes('gọi món') || lowerQuery.includes('room service') || lowerQuery.includes('đồ ăn')) {
       setIsFoodMenuOpen(true);
+    }
+
+    // Mở danh mục cơ sở vật chất nếu khách hỏi tiện ích / dịch vụ khách sạn
+    if (lowerQuery.includes('cơ sở vật chất') || lowerQuery.includes('tiện ích') || lowerQuery.includes('khách sạn có gì') || lowerQuery.includes('dịch vụ gì')) {
+      setIsFacilitiesModalOpen(true);
     }
 
     setCurrentState('RT-04');
@@ -647,6 +656,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     isProcessingRef.current = false;
     setIsProcessing(false);
     clearRouteGuidanceTimers();
+    setIsFacilitiesModalOpen(false);
     stopSpeaking();
     stopListening();
     resetTranscript();
@@ -856,7 +866,88 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
                 </div>
 
-                {/* 1. Gọi Nhân Viên */}
+                {/* 1. Chỉ Đường & Quét Mã QR Di Động */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowQuickMenu(false);
+                    setNavigationDestinationKey('infinity_pool');
+                    setCurrentState('RT-05');
+                    setIsAutoQrModalOpen(true);
+                    setQrCountdown(15);
+                    speak('Dạ em mở sơ đồ chỉ đường và mã QR di động cho quý khách nhé ạ.');
+                  }}
+                  className="w-full p-2.5 rounded-xl text-left hover:bg-stone-800/90 transition-all cursor-pointer flex items-center gap-2.5 group"
+                >
+                  <div className="w-8 h-8 rounded-lg bg-emerald-950/80 text-emerald-400 border border-emerald-500/30 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                    <Navigation className="w-4 h-4 text-emerald-400" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-bold text-stone-200">Chỉ đường & Quét QR</p>
+                    <p className="text-[10px] text-stone-400">Xem sơ đồ tầng & mã QR lưu trên điện thoại</p>
+                  </div>
+                </button>
+
+                {/* 2. Cơ Sở Vật Chất & Tiện Ích 5 Sao */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowQuickMenu(false);
+                    setIsFacilitiesModalOpen(true);
+                    speak('Dạ đây là toàn bộ cơ sở vật chất và tiện ích 5 sao của khách sạn ạ.');
+                  }}
+                  className="w-full p-2.5 rounded-xl text-left hover:bg-stone-800/90 transition-all cursor-pointer flex items-center gap-2.5 group"
+                >
+                  <div className="w-8 h-8 rounded-lg bg-amber-950/80 text-amber-400 border border-amber-500/30 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                    <Building className="w-4 h-4 text-amber-400" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-bold text-stone-200">Cơ sở vật chất & Tiện ích</p>
+                    <p className="text-[10px] text-stone-400">Hồ bơi vô cực, Spa, Gym, Sky Bar, Bãi xe</p>
+                  </div>
+                </button>
+
+                {/* 3. Thực Đơn Món Ăn & Đặt Nhà Hàng */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowQuickMenu(false);
+                    setIsFoodMenuOpen(true);
+                  }}
+                  className="w-full p-2.5 rounded-xl text-left hover:bg-stone-800/90 transition-all cursor-pointer flex items-center gap-2.5 group"
+                >
+                  <div className="w-8 h-8 rounded-lg bg-orange-950/80 text-orange-400 border border-orange-500/30 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                    <Utensils className="w-4 h-4 text-orange-400" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-bold text-stone-200">Thực đơn món ăn</p>
+                    <p className="text-[10px] text-stone-400">Danh mục món ăn & đặt ẩm thực tại phòng</p>
+                  </div>
+                </button>
+
+                {/* 4. Video & Poster Quảng Cáo Ưu Đãi */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowQuickMenu(false);
+                    setIsStandby(true);
+                  }}
+                  className="w-full p-2.5 rounded-xl text-left hover:bg-stone-800/90 transition-all cursor-pointer flex items-center gap-2.5 group"
+                >
+                  <div className="w-8 h-8 rounded-lg bg-rose-950/80 text-rose-400 border border-rose-500/30 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                    <Film className="w-4 h-4 text-rose-400" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-bold text-stone-200">Video & Poster ưu đãi</p>
+                    <p className="text-[10px] text-stone-400">Chiếu poster & clip quảng bá dịch vụ</p>
+                  </div>
+                </button>
+
+                {/* 5. Gọi Lễ Tân / Nhân Viên Trực Tiếp */}
                 <button
                   type="button"
                   onClick={async (e) => {
@@ -879,35 +970,16 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                   }}
                   className="w-full p-2.5 rounded-xl text-left hover:bg-stone-800/90 transition-all cursor-pointer flex items-center gap-2.5 group"
                 >
-                  <div className="w-8 h-8 rounded-lg bg-emerald-950/80 text-emerald-400 border border-emerald-500/30 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                    <PhoneCall className="w-4 h-4 text-emerald-400" />
+                  <div className="w-8 h-8 rounded-lg bg-cyan-950/80 text-cyan-400 border border-cyan-500/30 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                    <PhoneCall className="w-4 h-4 text-cyan-400" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-xs font-bold text-stone-200">Gọi nhân viên</p>
-                    <p className="text-[10px] text-stone-400">Kết nối cuộc gọi hỗ trợ trực tiếp</p>
+                    <p className="text-xs font-bold text-stone-200">Gọi lễ tân trực tiếp</p>
+                    <p className="text-[10px] text-stone-400">Kết nối cuộc gọi video hỗ trợ tức thì</p>
                   </div>
                 </button>
 
-                {/* 2. Thực Đơn Món Ăn */}
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setShowQuickMenu(false);
-                    setIsFoodMenuOpen(true);
-                  }}
-                  className="w-full p-2.5 rounded-xl text-left hover:bg-stone-800/90 transition-all cursor-pointer flex items-center gap-2.5 group"
-                >
-                  <div className="w-8 h-8 rounded-lg bg-amber-950/80 text-amber-400 border border-amber-500/30 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                    <Utensils className="w-4 h-4 text-amber-400" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-bold text-stone-200">Thực đơn món ăn</p>
-                    <p className="text-[10px] text-stone-400">Xem danh mục và chọn món</p>
-                  </div>
-                </button>
-
-                {/* 3. Hoàn tất / Đánh Giá Dịch Vụ */}
+                {/* 6. Hoàn tất / Đánh Giá Dịch Vụ */}
                 <button
                   type="button"
                   onClick={(e) => {
@@ -922,7 +994,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-bold text-stone-200">Hoàn tất / Đánh giá</p>
-                    <p className="text-[10px] text-stone-400">Kết thúc phiên & khảo sát hài lòng</p>
+                    <p className="text-[10px] text-stone-400">Kết thúc phiên & khảo sát hài lòng 5 sao</p>
                   </div>
                 </button>
 
@@ -1365,6 +1437,25 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         roomNumber={activeRoomNumber || 'Main Lobby Kiosk'}
         guestName="Khách tại Kiosk"
         onCompleted={handleFeedbackCompleted}
+      />
+
+      {/* 5-STAR HOTEL FACILITIES MODAL */}
+      <RobotFacilitiesModal
+        isOpen={isFacilitiesModalOpen}
+        onClose={() => setIsFacilitiesModalOpen(false)}
+        onNavigateToDestination={(destKey) => {
+          setIsFacilitiesModalOpen(false);
+          setNavigationDestinationKey(destKey);
+          setCurrentState('RT-05');
+          setIsAutoQrModalOpen(true);
+          setQrCountdown(15);
+          const destName = HOTEL_DESTINATIONS[destKey]?.name || 'tiện ích';
+          speak(`Dạ đây là lộ trình tới ${destName}. Quý khách quét mã QR trên màn hình để mang theo trên điện thoại nhé ạ.`);
+        }}
+        onOpenFoodMenu={() => {
+          setIsFacilitiesModalOpen(false);
+          setIsFoodMenuOpen(true);
+        }}
       />
     </div>
   );

@@ -31,7 +31,12 @@ import {
   ChevronDown,
   EyeOff,
   MapPin,
+  Repeat,
+  Megaphone,
+  Monitor,
+  Film,
 } from 'lucide-react';
+import { KioskDisplayPreview } from './KioskDisplayPreview';
 import { useSpeechSynthesis } from '../../../../hooks/useSpeechSynthesis';
 import {
   RosbridgeClient,
@@ -42,6 +47,7 @@ import {
 } from '../../../../services/rosbridgeService';
 import {
   fetchWorkflows,
+  saveWorkflow,
   executeWorkflow,
   fetchZones,
   saveZone,
@@ -77,6 +83,7 @@ export const WorkflowSimulatorStudio = ({
   initialWorkflowId = null,
   onClose = null,
   onNotify = () => {},
+  onWorkflowUpdated = null,
 }) => {
   // Khoi tao danh sach workflow thuc te tu props (Khong dung fallback seed gia lap)
   const [localWorkflows, setLocalWorkflows] = useState(() =>
@@ -122,19 +129,31 @@ export const WorkflowSimulatorStudio = ({
     null;
   const steps = activeWorkflow?.steps || [];
 
+  // Tu dong bat che do Lap lai neu kich ban co kieu kich hoat la PATROL_LOOP
+  useEffect(() => {
+    if (activeWorkflow?.trigger_type === 'PATROL_LOOP') {
+      setIsLoopMode(true);
+      isLoopModeRef.current = true;
+    }
+  }, [selectedWorkflowId, activeWorkflow?.trigger_type]);
+
   // Che do chinh sua nhanh diem moc cua buoc MOVE ngay tai sa ban
   const [editingStepIdx, setEditingStepIdx] = useState(null);
 
   const handleUpdateMoveStepWaypoints = (stepIdx, fromKey, toKey) => {
     const targetWp =
-      endpointsRef.current.find((e) => e.id === toKey || e.key === toKey) ||
+      endpointsRef.current.find((e) => e.id === toKey || e.key === toKey || e.name === toKey) ||
       GAZEBO_LOBBY_WAYPOINTS[toKey] ||
       GAZEBO_LOBBY_WAYPOINTS.FRONT_DESK;
     const fromWp =
       fromKey === 'CURRENT'
         ? null
-        : endpointsRef.current.find((e) => e.id === fromKey || e.key === fromKey) ||
+        : endpointsRef.current.find((e) => e.id === fromKey || e.key === fromKey || e.name === fromKey) ||
           GAZEBO_LOBBY_WAYPOINTS[fromKey];
+
+    const toCleanName = targetWp?.name?.split('(')[0]?.trim() || toKey;
+    const stepNumber = stepIdx + 1;
+    const newTitle = `${stepNumber}. Di chuyển tới ${toCleanName}`;
 
     setLocalWorkflows((prevList) => {
       return prevList.map((wf) => {
@@ -143,6 +162,7 @@ export const WorkflowSimulatorStudio = ({
           if (i !== stepIdx) return st;
           return {
             ...st,
+            title: newTitle,
             params: {
               ...(st.params || {}),
               from_waypoint: fromKey,
@@ -176,7 +196,80 @@ export const WorkflowSimulatorStudio = ({
       targetPoint: goalPt,
       totalDistance: totalDist,
     });
-    setManualNavLabel(`Lộ trình: ${fromKey === 'CURRENT' ? 'Hiện tại' : (fromWp?.name?.split('(')[0]?.trim() || fromKey)} ➔ ${targetWp.name?.split('(')[0]?.trim()}`);
+    setManualNavLabel(`Lộ trình: ${fromKey === 'CURRENT' ? 'Hiện tại' : (fromWp?.name?.split('(')[0]?.trim() || fromKey)} ➔ ${toCleanName}`);
+
+    // Dong bo luu truc tiep vao Database & cap nhat len Tab Danh Sach
+    const currentWf = localWorkflows.find((w) => w.id === selectedWorkflowId);
+    if (currentWf) {
+      const updatedSteps = (currentWf.steps || []).map((st, i) => {
+        if (i !== stepIdx) return st;
+        return {
+          ...st,
+          title: newTitle,
+          params: {
+            ...(st.params || {}),
+            from_waypoint: fromKey,
+            from_waypoint_name: fromWp ? fromWp.name : 'Vị trí hiện tại của Robot',
+            target_value: toKey,
+            target_waypoint_id: toKey,
+            waypoint_name: targetWp.name,
+            target_x: targetWp.x,
+            target_y: targetWp.y,
+          },
+        };
+      });
+      const wfToSave = { ...currentWf, steps: updatedSteps };
+      saveWorkflow(wfToSave)
+        .then((savedWf) => {
+          onWorkflowUpdated?.(savedWf || wfToSave);
+          onNotify?.(`Đã đồng bộ điểm mốc Bước ${stepNumber} vào kịch bản`, 'success');
+        })
+        .catch((err) => {
+          console.warn('Lỗi tự động lưu kịch bản vào Database:', err);
+        });
+    }
+  };
+
+  // Cap nhat loi quang ba/phat loa khi di chuyen cho buoc MOVE
+  const handleUpdateMoveStepBroadcast = (stepIdx, speechText) => {
+    setLocalWorkflows((prevList) => {
+      return prevList.map((wf) => {
+        if (wf.id !== selectedWorkflowId) return wf;
+        const updatedSteps = (wf.steps || []).map((st, i) => {
+          if (i !== stepIdx) return st;
+          return {
+            ...st,
+            params: {
+              ...(st.params || {}),
+              broadcast_speech: speechText,
+            },
+          };
+        });
+        return { ...wf, steps: updatedSteps };
+      });
+    });
+
+    const currentWf = localWorkflows.find((w) => w.id === selectedWorkflowId);
+    if (currentWf) {
+      const updatedSteps = (currentWf.steps || []).map((st, i) => {
+        if (i !== stepIdx) return st;
+        return {
+          ...st,
+          params: {
+            ...(st.params || {}),
+            broadcast_speech: speechText,
+          },
+        };
+      });
+      const wfToSave = { ...currentWf, steps: updatedSteps };
+      saveWorkflow(wfToSave)
+        .then((savedWf) => {
+          onWorkflowUpdated?.(savedWf || wfToSave);
+        })
+        .catch((err) => {
+          console.warn('Lỗi lưu lời phát loa vào Database:', err);
+        });
+    }
   };
 
   // Trang thai thuc thi
@@ -185,6 +278,8 @@ export const WorkflowSimulatorStudio = ({
   const [isPaused, setIsPaused] = useState(false);
   const [simSpeed, setSimSpeed] = useState(1.0);
   const [isMuted, setIsMuted] = useState(false);
+  const [isLoopMode, setIsLoopMode] = useState(false);
+  const [showKioskScreen, setShowKioskScreen] = useState(false);
   const [stepProgress, setStepProgress] = useState(0);
 
   // Duong di hien tai cua robot: { waypoints: [{x, y}], label: string }
@@ -750,6 +845,7 @@ export const WorkflowSimulatorStudio = ({
   const currentPathRef = useRef(currentPath);
   const targetTelemetryPoseRef = useRef(null);
   const zonesRef = useRef(zones);
+  const isLoopModeRef = useRef(isLoopMode);
 
   useEffect(() => {
     speakRef.current = speak;
@@ -764,6 +860,7 @@ export const WorkflowSimulatorStudio = ({
     isRosConnectedRef.current = isRosConnected;
     currentPathRef.current = currentPath;
     zonesRef.current = zones;
+    isLoopModeRef.current = isLoopMode;
   });
 
   // Giai phong trang thai keo tha tren toan bo document / window khi nguoi dung tha chuot
@@ -818,7 +915,31 @@ export const WorkflowSimulatorStudio = ({
 
   // Xac dinh trang thai gon gang cua robot (Chi the hien trang thai, khong ghi chi tiet toa do/dieu huong toi dau)
   const robotStatus = (() => {
+    const hasMediaMove =
+      activeStep?.type === 'MOVE' &&
+      (Boolean(activeStep.params?.show_media_on_move) ||
+        Boolean(activeStep.params?.media_url) ||
+        activeStep.params?.screen_mode === 'PROMO_VIDEO' ||
+        activeStep.params?.screen_mode === 'PROMO_IMAGE');
+    const hasBroadcast = activeStep?.type === 'MOVE' && Boolean(activeStep.params?.broadcast_speech);
+
     if (isMoving || (manualNavLabel && manualNavLabel.startsWith('Toi:'))) {
+      if (hasMediaMove) {
+        return {
+          code: 'PATROL_MEDIA',
+          label: 'TUẦN TRA • CHIẾU QC',
+          dotColor: '#E11D48',
+          isMoving: true,
+        };
+      }
+      if (hasBroadcast) {
+        return {
+          code: 'PATROL',
+          label: 'TUẦN TRA & PHÁT LOA',
+          dotColor: '#6366F1',
+          isMoving: true,
+        };
+      }
       return {
         code: 'NAV',
         label: 'ĐIỀU HƯỚNG',
@@ -829,13 +950,33 @@ export const WorkflowSimulatorStudio = ({
     if (activeStep) {
       switch (activeStep.type) {
         case 'MOVE':
-          return { code: 'NAV', label: 'ĐIỀU HƯỚNG', dotColor: '#262626', isMoving: true };
+          if (hasMediaMove) {
+            return { code: 'PATROL_MEDIA', label: 'TUẦN TRA • CHIẾU QC', dotColor: '#E11D48', isMoving: true };
+          }
+          return hasBroadcast
+            ? { code: 'PATROL', label: 'TUẦN TRA & PHÁT LOA', dotColor: '#6366F1', isMoving: true }
+            : { code: 'NAV', label: 'ĐIỀU HƯỚNG', dotColor: '#262626', isMoving: true };
+        case 'SHOW': {
+          const isVid =
+            activeStep.params?.media_type === 'VIDEO' ||
+            activeStep.params?.screen_mode === 'PROMO_VIDEO' ||
+            (activeStep.params?.media_url && /\.(mp4|webm)$/i.test(activeStep.params.media_url));
+          const isImg =
+            activeStep.params?.media_type === 'IMAGE' ||
+            activeStep.params?.screen_mode === 'PROMO_IMAGE' ||
+            activeStep.params?.screen_mode === 'PROMO_SUMMER';
+          if (isVid) {
+            return { code: 'SHOW_VIDEO', label: 'CHIẾU VIDEO QUẢNG CÁO', dotColor: '#E11D48', isMoving: false };
+          }
+          if (isImg) {
+            return { code: 'SHOW_IMAGE', label: 'CHIẾU POSTER QUẢNG CÁO', dotColor: '#E11D48', isMoving: false };
+          }
+          return { code: 'SHOW', label: 'MÀN HÌNH QUẢNG CÁO', dotColor: '#E11D48', isMoving: false };
+        }
         case 'GREET':
           return { code: 'GREET', label: 'CHÀO KHÁCH', dotColor: '#059669', isMoving: false };
         case 'SPEAK':
           return { code: 'SPEAK', label: 'PHÁT GIỌNG NÓI', dotColor: '#059669', isMoving: false };
-        case 'SHOW':
-          return { code: 'SHOW', label: 'MÀN HÌNH', dotColor: '#262626', isMoving: false };
         case 'LISTEN':
           return { code: 'LISTEN', label: 'LẮNG NGHE', dotColor: '#D97706', isMoving: false };
         case 'RECOMMEND':
@@ -863,7 +1004,25 @@ export const WorkflowSimulatorStudio = ({
   })();
 
   const activeDetail = activeStep
-    ? getStepActionDetail(activeStep)
+    ? activeStep.type === 'SHOW'
+      ? {
+          label: 'SHOW',
+          bubbleTitle: 'CHIẾU QUẢNG CÁO MÀN HÌNH',
+          bubbleBody: activeStep.params?.display_banner || activeStep.title || 'Quảng cáo Video / Poster',
+          shortChip: activeStep.title || 'Chiếu quảng cáo',
+          badgeColor: '#E11D48',
+        }
+      : activeStep.type === 'MOVE' && (activeStep.params?.broadcast_speech || activeStep.params?.show_media_on_move || activeStep.params?.media_url)
+      ? {
+          label: 'PATROL',
+          bubbleTitle: activeStep.params?.show_media_on_move || activeStep.params?.media_url
+            ? 'TUẦN TRA • CHIẾU QC MÀN HÌNH'
+            : 'TUẦN TRA & PHÁT LOA',
+          bubbleBody: activeStep.params?.broadcast_speech || activeStep.params?.display_banner || activeStep.title || 'Tuần tra phát quảng cáo',
+          shortChip: activeStep.title || 'Tuần tra phát quảng cáo',
+          badgeColor: '#4F46E5',
+        }
+      : getStepActionDetail(activeStep)
     : manualNavLabel
     ? {
         label: 'NAV',
@@ -893,6 +1052,9 @@ export const WorkflowSimulatorStudio = ({
       const totalSteps = stepsRef.current?.length || 0;
       if (nextIdx < totalSteps) {
         return nextIdx;
+      } else if (isLoopModeRef.current && totalSteps > 0) {
+        onNotify?.('Đã hết chu trình, tự động lặp lại hành trình tuần tra', 'info');
+        return 0;
       } else {
         setIsPlaying(false);
         setIsPaused(false);
@@ -1191,7 +1353,7 @@ export const WorkflowSimulatorStudio = ({
     if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
 
     // Kiem tra an toan Vung chuc nang truoc khi thuc thi buoc
-    const stepValidation = validateWorkflowStepZone(activeStep, zonesRef.current);
+    const stepValidation = validateWorkflowStepZone(activeStep, zonesRef.current, endpointsRef.current);
     if (!stepValidation.valid) {
       setIsPlaying(false);
       setIsPaused(false);
@@ -1207,12 +1369,28 @@ export const WorkflowSimulatorStudio = ({
     const stepType = activeStep.type;
     const params = activeStep.params || {};
 
-    // Phat giong noi TTS neu buoc co loi thoai
-    if (!isMutedRef.current && (stepType === 'GREET' || stepType === 'SPEAK')) {
+    // Tu dong mo man hinh Kiosk Robot neu buoc la SHOW hoac MOVE co media quang cao
+    if (
+      stepType === 'SHOW' ||
+      params.show_media_on_move ||
+      params.media_url ||
+      params.screen_mode === 'PROMO_VIDEO' ||
+      params.screen_mode === 'PROMO_IMAGE'
+    ) {
+      setShowKioskScreen(true);
+    }
+
+    // Phat giong noi TTS neu buoc co loi thoai hoac buoc SHOW co thuyet minh
+    if (
+      !isMutedRef.current &&
+      (stepType === 'GREET' ||
+        stepType === 'SPEAK' ||
+        (stepType === 'SHOW' && Boolean(params.speech_text || params.text)))
+    ) {
       const voiceText =
         stepType === 'GREET'
           ? params.greeting_text || params.text || 'Xin chao quy khach'
-          : params.text || params.speech_text || '';
+          : params.speech_text || params.text || '';
       const voiceSpeed = parseFloat(params.speed || params.voice_speed) || 1.0;
       const lang = params.language || 'vi-VN';
 
@@ -1228,17 +1406,30 @@ export const WorkflowSimulatorStudio = ({
       const wpName = params.waypoint_name || params.target_value || 'Điểm đến';
 
       if (isNaN(targetX) || isNaN(targetY)) {
-        const wp = GAZEBO_LOBBY_WAYPOINTS[params.target_value] || GAZEBO_LOBBY_WAYPOINTS.FRONT_DESK;
+        const wp =
+          endpointsRef.current.find((e) => e.id === params.target_value || e.key === params.target_value || e.name === params.target_value) ||
+          GAZEBO_LOBBY_WAYPOINTS[params.target_value] ||
+          GAZEBO_LOBBY_WAYPOINTS.FRONT_DESK;
         targetX = wp?.x ?? 5.2;
         targetY = wp?.y ?? 2.0;
       }
 
       let startOverride = null;
       if (params.from_waypoint && params.from_waypoint !== 'CURRENT') {
-        const fromWp = GAZEBO_LOBBY_WAYPOINTS[params.from_waypoint];
+        const fromWp =
+          endpointsRef.current.find((e) => e.id === params.from_waypoint || e.key === params.from_waypoint || e.name === params.from_waypoint) ||
+          GAZEBO_LOBBY_WAYPOINTS[params.from_waypoint];
         if (fromWp) {
           startOverride = { x: fromWp.x, y: fromWp.y, yaw: robotPoseRef.current.yaw };
         }
+      }
+
+      // THUC THI PHAT THANH / QUANG BA SONG SONG KHI DANG DI CHUYEN (Concurrent Broadcast)
+      const broadcastText = (params.broadcast_speech || params.speech_text || '').trim();
+      if (broadcastText && !isMutedRef.current && speakRef.current) {
+        const lang = params.language || 'vi-VN';
+        const voiceSpeed = parseFloat(params.speed || params.voice_speed) || 1.0;
+        speakRef.current(broadcastText, lang, null, null, null, voiceSpeed);
       }
 
       handleNavigateToGoal(targetX, targetY, wpName, true, startOverride);
@@ -1299,8 +1490,23 @@ export const WorkflowSimulatorStudio = ({
     setCurrentStepIndex(0);
     setStepProgress(0);
     setManualNavLabel(null);
-    robotPoseRef.current = ROBOT_INITIAL_POSE;
-    setRobotPose(ROBOT_INITIAL_POSE);
+
+    // Xac dinh vi tri xuat phat cua Robot cho buoc dau tien:
+    // Neu buoc 1 co from_waypoint (A -> B), dat robot ngay tai vi tri A
+    const firstStep = steps[0];
+    let initialPose = ROBOT_INITIAL_POSE;
+    if (firstStep?.type === 'MOVE' && firstStep?.params?.from_waypoint && firstStep.params.from_waypoint !== 'CURRENT') {
+      const fromKey = firstStep.params.from_waypoint;
+      const fromWp =
+        endpointsRef.current.find((e) => e.id === fromKey || e.key === fromKey || e.name === fromKey) ||
+        GAZEBO_LOBBY_WAYPOINTS[fromKey];
+      if (fromWp && !isNaN(fromWp.x) && !isNaN(fromWp.y)) {
+        initialPose = { x: fromWp.x, y: fromWp.y, yaw: -Math.PI / 2 };
+      }
+    }
+
+    robotPoseRef.current = initialPose;
+    setRobotPose(initialPose);
   };
 
   const handlePauseSim = () => {
@@ -1788,6 +1994,40 @@ export const WorkflowSimulatorStudio = ({
             <RotateCcw className="w-3.5 h-3.5" />
           </button>
 
+          {/* Che do Tuan tra lap lai (Patrol Loop) */}
+          <button
+            type="button"
+            onClick={() => {
+              const nextVal = !isLoopMode;
+              setIsLoopMode(nextVal);
+              isLoopModeRef.current = nextVal;
+              onNotify(
+                nextVal
+                  ? 'Đã bật Chế độ Tuần tra lặp lại (Patrol Loop)'
+                  : 'Đã tắt Chế độ Tuần tra lặp lại',
+                'info'
+              );
+            }}
+            className={`h-8 px-2.5 rounded-lg border text-xs font-bold flex items-center gap-1 shadow-xs cursor-pointer transition-colors ${
+              isLoopMode
+                ? 'bg-indigo-700 hover:bg-indigo-800 text-white border-indigo-700'
+                : 'hover:bg-[#FAF8F5]'
+            }`}
+            style={
+              !isLoopMode
+                ? { backgroundColor: '#F2EFE9', borderColor: '#BFBFBD', color: '#262626' }
+                : {}
+            }
+            title={
+              isLoopMode
+                ? 'Chế độ Tuần tra lặp lại: ĐANG BẬT (Tự động lặp lại chu trình khi đi hết các bước)'
+                : 'Bật Chế độ Tuần tra lặp lại (Patrol Loop)'
+            }
+          >
+            <Repeat className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Lặp lại</span>
+          </button>
+
           {/* Toc do mo phong */}
           <div
             className="hidden lg:flex items-center border rounded-lg p-0.5 shadow-xs"
@@ -1806,6 +2046,29 @@ export const WorkflowSimulatorStudio = ({
               </button>
             ))}
           </div>
+
+          {/* Man hinh Robot Kiosk Display */}
+          <button
+            type="button"
+            onClick={() => setShowKioskScreen((prev) => !prev)}
+            className={`h-8 px-2.5 rounded-lg border text-xs font-bold flex items-center gap-1 shadow-xs cursor-pointer transition-colors ${
+              showKioskScreen
+                ? 'bg-rose-700 hover:bg-rose-800 text-white border-rose-700'
+                : 'hover:bg-[#FAF8F5]'
+            }`}
+            style={
+              !showKioskScreen
+                ? { backgroundColor: '#F2EFE9', borderColor: '#BFBFBD', color: '#262626' }
+                : {}
+            }
+            title={showKioskScreen ? 'Đóng màn hình Tablet Robot' : 'Mở màn hình Tablet Robot (Chiếu Video / Poster quảng cáo)'}
+          >
+            <Monitor className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Màn hình</span>
+            {(activeStep?.type === 'SHOW' || activeStep?.params?.show_media_on_move || activeStep?.params?.media_url) && (
+              <span className="w-2 h-2 rounded-full bg-rose-400 animate-ping ml-0.5" />
+            )}
+          </button>
 
           {/* Mute Voice */}
           <button
@@ -2061,6 +2324,24 @@ export const WorkflowSimulatorStudio = ({
                               </option>
                             ))}
                           </select>
+                        </div>
+
+                        {/* Phat loa quang ba khi di chuyen */}
+                        <div className="space-y-0.5 pt-1 border-t" style={{ borderColor: '#BFBFBD' }}>
+                          <label className="block text-[9px] font-bold uppercase flex items-center gap-1" style={{ color: '#4F46E5' }}>
+                            <Megaphone className="w-2.5 h-2.5" />
+                            <span>Phát loa quảng cáo khi di chuyển:</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={step.params?.broadcast_speech || ''}
+                            onChange={(e) =>
+                              handleUpdateMoveStepBroadcast(idx, e.target.value)
+                            }
+                            placeholder="vd: Nhà hàng tầng 2 ưu đãi tiệc trà chiều..."
+                            className="w-full px-2 py-1 rounded text-[10px] font-medium border focus:outline-none"
+                            style={{ backgroundColor: '#F2EFE9', borderColor: '#BFBFBD', color: '#262626' }}
+                          />
                         </div>
                       </div>
                     )}
@@ -3054,6 +3335,48 @@ export const WorkflowSimulatorStudio = ({
             >
               <Check className="w-3.5 h-3.5 text-emerald-600" />
             </button>
+          </div>
+        )}
+
+        {/* FLOATING ROBOT SCREEN PREVIEW (KIOSK DISPLAY - CHIẾU VIDEO / POSTER / MENU) */}
+        {showKioskScreen && (
+          <div
+            className="absolute bottom-4 left-4 z-30 w-80 sm:w-96 rounded-2xl shadow-2xl border flex flex-col overflow-hidden animate-fadeIn backdrop-blur-md"
+            style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD' }}
+          >
+            <div
+              className="px-3.5 py-2 border-b flex items-center justify-between text-xs font-bold shrink-0"
+              style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD', color: '#262626' }}
+            >
+              <div className="flex items-center gap-1.5">
+                <Monitor className="w-3.5 h-3.5 text-rose-600" />
+                <span className="uppercase tracking-wider text-[11px] font-black">
+                  Màn hình Robot Kiosk
+                </span>
+                {activeStep?.type === 'SHOW' && (
+                  <span className="px-1.5 py-0.2 rounded text-[9px] font-mono font-bold bg-rose-600 text-white shadow-2xs">
+                    SHOW
+                  </span>
+                )}
+                {activeStep?.type === 'MOVE' && (activeStep.params?.show_media_on_move || activeStep.params?.media_url) && (
+                  <span className="px-1.5 py-0.2 rounded text-[9px] font-mono font-bold bg-indigo-600 text-white shadow-2xs">
+                    MOVE PROMO
+                  </span>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowKioskScreen(false)}
+                className="p-1 rounded-lg text-stone-600 hover:text-black hover:bg-black/10 cursor-pointer transition-colors"
+                title="Đóng màn hình xem trước"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            <div className="max-h-80 overflow-y-auto p-2 bg-stone-50">
+              <KioskDisplayPreview activeStep={activeStep} />
+            </div>
           </div>
         )}
       </main>

@@ -207,7 +207,7 @@ export const zoneToSvgRect = (zone) => {
   };
 };
 
-export const validateWorkflowStepZone = (step, zones = SIMULATOR_HOTEL_ZONES) => {
+export const validateWorkflowStepZone = (step, zones = SIMULATOR_HOTEL_ZONES, customEndpoints = null) => {
   if (!step) return { valid: true };
   const stepType = step.type || '';
   const params = step.params || {};
@@ -216,7 +216,10 @@ export const validateWorkflowStepZone = (step, zones = SIMULATOR_HOTEL_ZONES) =>
     let targetX = parseFloat(params.target_x);
     let targetY = parseFloat(params.target_y);
     if (isNaN(targetX) || isNaN(targetY)) {
-      const wp = GAZEBO_LOBBY_WAYPOINTS[params.target_value] || GAZEBO_LOBBY_WAYPOINTS.FRONT_DESK;
+      const customWp = Array.isArray(customEndpoints)
+        ? customEndpoints.find((e) => e.id === params.target_value || e.key === params.target_value || e.name === params.target_value)
+        : null;
+      const wp = customWp || GAZEBO_LOBBY_WAYPOINTS[params.target_value] || GAZEBO_LOBBY_WAYPOINTS.FRONT_DESK;
       targetX = wp?.x ?? 5.2;
       targetY = wp?.y ?? 2.0;
     }

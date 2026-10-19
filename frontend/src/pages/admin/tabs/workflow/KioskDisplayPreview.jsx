@@ -21,6 +21,9 @@ import { KioskServiceForm } from './KioskServiceForm';
 import { KioskStaffAlert } from './KioskStaffAlert';
 import { KioskPromoSlide } from './KioskPromoSlide';
 import { Kiosk2DMapPreview } from './Kiosk2DMapPreview';
+import { KioskMediaPromo } from './KioskMediaPromo';
+import { KioskWayfindingQR } from './KioskWayfindingQR';
+import { KioskDiningMenu } from './KioskDiningMenu';
 
 export const KioskDisplayPreview = ({
   activeStep,
@@ -76,33 +79,62 @@ export const KioskDisplayPreview = ({
         </div>
       </div>
 
-      {/* 1. MOVE: 2D MINI MAP NAVIGATION */}
+      {/* 1. MOVE: MEDIA PROMO, CHỈ ĐƯỜNG QR HOẶC 2D MINI MAP */}
       {activeStep.type === 'MOVE' && (
-        <Kiosk2DMapPreview activeStep={activeStep} />
+        screenMode === 'MAP_WAYFINDING' || screenMode === 'SHOW_QR_NAVIGATION' ? (
+          <KioskWayfindingQR activeStep={activeStep} />
+        ) : params.show_media_on_move || params.media_type || params.media_url || params.screen_mode === 'PROMO_VIDEO' || params.screen_mode === 'PROMO_IMAGE' ? (
+          <KioskMediaPromo activeStep={activeStep} isMoving={true} />
+        ) : (
+          <Kiosk2DMapPreview activeStep={activeStep} />
+        )
       )}
 
       {/* 2. SHOW: SPECIALIZED SCREENS */}
       {activeStep.type === 'SHOW' && (
         <>
-          {/* A. 2D Map Floor Plan */}
-          {(screenType === 'MAP' || contentId === 'MAP_LOBBY_FLOOR1' || screenMode === 'MAP_TOUR') && (
-            <Kiosk2DMapPreview activeStep={activeStep} />
+          {/* A. Chỉ Đường Thông Minh Kèm Mã QR Di Động */}
+          {(screenMode === 'MAP_WAYFINDING' ||
+            screenMode === 'SHOW_QR_NAVIGATION' ||
+            contentId === 'MAP_WAYFINDING' ||
+            screenType === 'MAP') && (
+            <KioskWayfindingQR activeStep={activeStep} />
           )}
 
-          {/* B. Room Service Form or Confirmation */}
+          {/* B. Thực Đơn Ẩm Thực Nhà Hàng & Đặt Món */}
+          {(screenMode === 'DINING_MENU' ||
+            screenMode === 'RESTAURANT_ORDER' ||
+            contentId === 'UI_CATEGORIES' ||
+            contentId === 'UI_RECOMMEND_LIST') && (
+            <KioskDiningMenu activeStep={activeStep} />
+          )}
+
+          {/* C. Video hoặc Poster Hình ảnh quảng cáo chuyên dụng */}
+          {(screenMode === 'PROMO_VIDEO' ||
+            screenMode === 'PROMO_IMAGE' ||
+            params.media_type === 'VIDEO' ||
+            params.media_type === 'IMAGE' ||
+            Boolean(params.media_url)) && (
+            <KioskMediaPromo activeStep={activeStep} />
+          )}
+
+          {/* D. Room Service Form or Confirmation */}
           {(contentId === 'UI_SERVICE_FORM' || contentId === 'UI_CONFIRMATION' || screenMode === 'SERVICE_FORM') && (
             <KioskServiceForm activeStep={activeStep} />
           )}
 
-          {/* C. Waiting Staff Emergency Radar */}
+          {/* E. Waiting Staff Emergency Radar */}
           {(contentId === 'UI_WAITING_STAFF' || screenMode === 'CALL_STAFF_WAIT') && (
             <KioskStaffAlert activeStep={activeStep} />
           )}
 
-          {/* D. Summer Promotion Slide */}
-          {(contentId === 'PROMO_SUMMER' || screenType === 'SLIDE' || screenMode === 'PROMO_SLIDE') && (
-            <KioskPromoSlide activeStep={activeStep} />
-          )}
+          {/* F. Summer Promotion Slide */}
+          {(contentId === 'PROMO_SUMMER' || screenType === 'SLIDE' || screenMode === 'PROMO_SLIDE') &&
+            screenMode !== 'PROMO_VIDEO' &&
+            screenMode !== 'PROMO_IMAGE' &&
+            !params.media_url && (
+              <KioskPromoSlide activeStep={activeStep} />
+            )}
 
           {/* E. Language Selector */}
           {(screenType === 'LANGUAGE_SELECT' || contentId === 'UI_LANG' || screenMode === 'LANGUAGE_SELECTOR') && (
@@ -129,7 +161,9 @@ export const KioskDisplayPreview = ({
                       : 'bg-white border-stone-200 hover:border-amber-300 hover:bg-stone-50/80'
                   }`}
                 >
-                  <span className="text-3xl filter drop-shadow">🇻🇳</span>
+                  <div className="w-10 h-8 rounded-lg bg-red-600 text-yellow-300 font-black text-xs flex items-center justify-center border border-red-700 shadow-xs">
+                    VN
+                  </div>
                   <div className="text-center">
                     <span className="block text-xs font-black text-stone-900">Tiếng Việt</span>
                     <span className="text-[10px] text-stone-500 font-medium">Xin chào quý khách</span>
@@ -150,7 +184,9 @@ export const KioskDisplayPreview = ({
                       : 'bg-white border-stone-200 hover:border-amber-300 hover:bg-stone-50/80'
                   }`}
                 >
-                  <span className="text-3xl filter drop-shadow">🇺🇸</span>
+                  <div className="w-10 h-8 rounded-lg bg-blue-700 text-white font-black text-xs flex items-center justify-center border border-blue-800 shadow-xs">
+                    EN
+                  </div>
                   <div className="text-center">
                     <span className="block text-xs font-black text-stone-900">English</span>
                     <span className="text-[10px] text-stone-500 font-medium">Welcome to Aurora</span>
@@ -161,68 +197,6 @@ export const KioskDisplayPreview = ({
                     </span>
                   )}
                 </button>
-              </div>
-            </div>
-          )}
-
-          {/* F. Dining Menu / Gourmet Showcase */}
-          {(screenMode === 'DINING_MENU' || contentId === 'UI_CATEGORIES' || contentId === 'UI_RECOMMEND_LIST') && (
-            <div className="space-y-3 animate-in fade-in duration-300">
-              <div className="flex items-center justify-between pb-1">
-                <div className="flex items-center gap-2">
-                  <div className="w-7 h-7 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center">
-                    <Utensils className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-extrabold text-stone-900">
-                      {params.display_banner || 'Thực Đơn Ẩm Thực Thượng Hạng'}
-                    </h4>
-                    <p className="text-[10px] text-stone-500">Bếp trưởng 5 sao tuyển chọn hàng ngày</p>
-                  </div>
-                </div>
-                <span className="px-2.5 py-1 rounded-full text-[9px] font-black bg-amber-500 text-white shadow-sm">
-                  AURORA DINING
-                </span>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 text-left">
-                {/* Dish Card 1 */}
-                <div className="p-3 rounded-2xl bg-white border border-stone-200 shadow-sm hover:shadow-md hover:border-amber-400 transition-all space-y-1.5 group">
-                  <div className="flex items-center justify-between">
-                    <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
-                      Chef's Signature
-                    </span>
-                  </div>
-                  <div className="text-xs font-bold text-stone-900 group-hover:text-amber-700 transition-colors">
-                    Set Trà Chiều Hoàng Gia
-                  </div>
-                  <div className="text-[10px] text-stone-500 leading-tight">
-                    Trà thảo mộc Anh Quốc & bánh ngọt Pháp cao cấp tại tầng 3
-                  </div>
-                  <div className="pt-1 border-t border-stone-100 flex items-center justify-between">
-                    <span className="text-[11px] font-extrabold text-amber-600">380.000 ₫</span>
-                    <span className="text-[9px] text-stone-400">Phục vụ 14:00 - 18:00</span>
-                  </div>
-                </div>
-
-                {/* Dish Card 2 */}
-                <div className="p-3 rounded-2xl bg-white border border-stone-200 shadow-sm hover:shadow-md hover:border-amber-400 transition-all space-y-1.5 group">
-                  <div className="flex items-center justify-between">
-                    <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
-                      Best Seller
-                    </span>
-                  </div>
-                  <div className="text-xs font-bold text-stone-900 group-hover:text-amber-700 transition-colors">
-                    Buffet Hải Sản Thượng Hạng
-                  </div>
-                  <div className="text-[10px] text-stone-500 leading-tight">
-                    Tôm hùm, cua tuyết, sashimi cá hồi Na Uy tươi sống tại tầng 2
-                  </div>
-                  <div className="pt-1 border-t border-stone-100 flex items-center justify-between">
-                    <span className="text-[11px] font-extrabold text-amber-600">890.000 ₫ / Khách</span>
-                    <span className="text-[9px] text-stone-400">Phục vụ 18:00 - 22:00</span>
-                  </div>
-                </div>
               </div>
             </div>
           )}
@@ -314,8 +288,9 @@ export const KioskDisplayPreview = ({
               <span className="text-[10px] text-stone-400 font-medium">Dành riêng cho quý khách</span>
             </div>
 
-            <div className="text-sm font-black text-stone-900">
-              ⭐ {params.highlight_item || 'Set Trà Chiều Thảo Mộc & Dịch Vụ Spa Thư Giãn Tầng 3'}
+            <div className="text-sm font-black text-stone-900 flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-amber-500" />
+              <span>{params.highlight_item || 'Set Trà Chiều Thảo Mộc & Dịch Vụ Spa Thư Giãn Tầng 3'}</span>
             </div>
 
             <p className="text-xs text-stone-600 leading-relaxed">

@@ -50,9 +50,14 @@ export const AdminWorkflowTab = () => {
         return 'Tự Động Nhận Diện';
       case 'GUEST_TAP':
         return 'Chạm Màn Hình';
+      case 'KIOSK_TOUCH':
+        return 'Chạm Màn Hình Kiosk';
       case 'SCHEDULE':
         return 'Lịch Định Kỳ';
+      case 'PATROL_LOOP':
+        return 'Tuần Tra Lặp Lại';
       case 'MANUAL':
+      case 'MANUAL_DISPATCH':
       default:
         return 'Thủ Công';
     }
@@ -301,8 +306,17 @@ export const AdminWorkflowTab = () => {
           <WorkflowSimulatorStudio
             workflows={workflows}
             initialWorkflowId={simulatingWorkflow?.id || (workflows.length > 0 ? workflows[0].id : null)}
-            onClose={() => setActiveView('list')}
+            onClose={() => {
+              setActiveView('list');
+              loadData();
+            }}
             onNotify={showNotification}
+            onWorkflowUpdated={(updatedWf) => {
+              if (!updatedWf || !updatedWf.id) return;
+              setWorkflows((prev) =>
+                prev.map((w) => (w.id === updatedWf.id ? updatedWf : w))
+              );
+            }}
           />
         </div>
       ) : (

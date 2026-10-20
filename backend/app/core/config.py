@@ -20,13 +20,25 @@ class Settings(BaseSettings):
     OBSIDIAN_VAULT_DIR: str = "./knowledge_vault"
 
 
-    # Ollama Configuration
+    # LLM Engine Configuration ('gemini' or 'ollama')
+    LLM_PROVIDER: str = "ollama"
+    GEMINI_API_KEY: Optional[str] = None
+    GEMINI_MODEL: str = "gemini-2.5-flash"
+
+    # Ollama Configuration (Llama / Qwen local)
+    # Ollama Configuration (Default for all team members)
+    AI_PROVIDER: str = "ollama"  # Options: 'ollama' (default local) | 'groq' (cloud fallback/low-spec test)
     OLLAMA_HOST: str = "http://127.0.0.1:11434"
     OLLAMA_MODEL: str = "llama3.2:3b"
     OLLAMA_EMBED_MODEL: Optional[str] = None
 
+    # Groq Cloud AI Configuration (Optional: Only active when configured)
+    GROQ_API_KEY: Optional[str] = None
+    GROQ_MODEL: str = "qwen/qwen3.8-27b"
+
     # AI Voice Concierge TTS Configuration
     TTS_PROVIDER: str = "edge"  # Options: 'edge', 'elevenlabs', 'openai', 'browser'
+    TTS_RATE: str = "+0%"  # Default speech rate: '+0%' (natural), '-10%' (slower), '+10%' (faster)
     ELEVENLABS_API_KEY: Optional[str] = None
     ELEVENLABS_VOICE_ID: Optional[str] = "21m00Tcm4TlvDq8ikWAM"
     OPENAI_API_KEY: Optional[str] = None
@@ -54,6 +66,18 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8", 
         extra="ignore"
     )
+
+    @property
+    def is_gemini_active(self) -> bool:
+        """Kiểm tra xem Gemini có đang được kích hoạt và có API key hay không."""
+        return self.LLM_PROVIDER.lower() == "gemini" and bool(self.GEMINI_API_KEY)
+
+    @property
+    def active_llm_model(self) -> str:
+        """Trả về tên model đang kích hoạt thực tế (Gemini hoặc Ollama Llama)."""
+        if self.is_gemini_active:
+            return self.GEMINI_MODEL
+        return self.OLLAMA_MODEL
 
     @property
     def sync_database_url(self) -> str:

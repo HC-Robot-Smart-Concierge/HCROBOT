@@ -47,13 +47,13 @@ export const fetchReceptionDashboard = async () => {
   return await fetchWithFallback(
     `${BASE_URL}/dashboard/reception`,
     {},
-    { current_request: INITIAL_RECEPTION_DATA }
+    { current_request: null, recent_requests: [] }
   );
 };
 
 export const updateReceptionRequest = async (requestId, updateData) => {
   return await fetchWithFallback(
-    `${BASE_URL}/reception/requests/${encodeURIComponent(requestId)}`,
+    `${BASE_URL}/tasks/${encodeURIComponent(requestId)}`,
     {
       method: 'PATCH',
       body: JSON.stringify(updateData),
@@ -101,7 +101,7 @@ export const createRoomServiceOrder = async (orderData) => {
 
 export const updateRoomServiceOrderStatus = async (orderId, statusData) => {
   return await fetchWithFallback(
-    `${BASE_URL}/room-service/orders/${orderId}/status`,
+    `${BASE_URL}/tasks/${encodeURIComponent(orderId)}`,
     {
       method: 'PATCH',
       body: JSON.stringify(statusData),
@@ -151,7 +151,7 @@ export const createHousekeepingRequest = async (requestData) => {
 
 export const assignHousekeepingStaff = async (requestId, assignData) => {
   return await fetchWithFallback(
-    `${BASE_URL}/housekeeping/requests/${requestId}/assign`,
+    `${BASE_URL}/tasks/${encodeURIComponent(requestId)}`,
     {
       method: 'PATCH',
       body: JSON.stringify(assignData),
@@ -188,7 +188,7 @@ export const createBellRequest = async (requestData) => {
 
 export const updateBellRequestStatus = async (requestId, statusData) => {
   return await fetchWithFallback(
-    `${BASE_URL}/bell-services/requests/${requestId}/status`,
+    `${BASE_URL}/tasks/${encodeURIComponent(requestId)}`,
     {
       method: 'PATCH',
       body: JSON.stringify(statusData),
@@ -225,11 +225,13 @@ export const createMaintenanceRequest = async (requestData) => {
 
 export const updateMaintenanceStatus = async (requestId, status, assignedTo = null) => {
   return await fetchWithFallback(
-    `${BASE_URL}/maintenance/requests/${requestId}/status?status=${encodeURIComponent(status)}${
-      assignedTo ? `&assigned_to=${encodeURIComponent(assignedTo)}` : ''
-    }`,
+    `${BASE_URL}/tasks/${encodeURIComponent(requestId)}`,
     {
       method: 'PATCH',
+      body: JSON.stringify({
+        status,
+        assigned_to: assignedTo,
+      }),
     },
     { id: requestId, status, assigned_to: assignedTo }
   );
@@ -261,24 +263,40 @@ export const createOperationalDirective = async (directiveData) => {
 // 6. Unified Requests & Generic Database Update
 // ---------------------------------------------------------
 export const fetchUnifiedRequests = async () => {
-  return await fetchWithFallback(`${BASE_URL}/all-requests`, {}, null);
+  return await fetchWithFallback(`${BASE_URL}/tasks`, {}, []);
 };
 
 export const fetchRoomAllRequests = async (roomNumber) => {
-  return await fetchWithFallback(
-    `${BASE_URL}/rooms/${encodeURIComponent(roomNumber)}/all-requests`,
+  const tasks = await fetchWithFallback(
+    `${BASE_URL}/tasks?room_number=${encodeURIComponent(roomNumber)}`,
     {},
-    { room_number: roomNumber, total_requests: 0, requests: [] }
+    []
   );
+  return {
+    room_number: roomNumber,
+    total_requests: Array.isArray(tasks) ? tasks.length : 0,
+    requests: Array.isArray(tasks) ? tasks : [],
+  };
 };
+
+export const fetchDepartmentTasks = async (department, status = null) => {
+  const query = new URLSearchParams();
+  if (department && department !== 'All') query.append('department', department);
+  if (status && status !== 'All') query.append('status', status);
+  const qs = query.toString() ? `?${query.toString()}` : '';
+  return await fetchWithFallback(`${BASE_URL}/tasks${qs}`, {}, []);
+};
+
 
 export const updateGenericRequestStatus = async (ticketId, status, assignedTo = null) => {
   return await fetchWithFallback(
-    `${BASE_URL}/generic-request/${encodeURIComponent(ticketId)}/status?status=${encodeURIComponent(
-      status
-    )}${assignedTo ? `&assigned_to=${encodeURIComponent(assignedTo)}` : ''}`,
+    `${BASE_URL}/tasks/${encodeURIComponent(ticketId)}`,
     {
       method: 'PATCH',
+      body: JSON.stringify({
+        status,
+        assigned_to: assignedTo,
+      }),
     },
     { success: true, id: ticketId, status }
   );
@@ -354,6 +372,8 @@ export const fetchAdminSummary = async () => {
     room_service_count: 0,
     bell_services_count: 0,
     maintenance_count: 0,
+    concierge_count: 0,
+    taxi_count: 0,
     directives_count: 0,
   });
 };
@@ -367,7 +387,7 @@ export const fetchAdminTasks = async (params = {}) => {
   if (params.offset) query.append('offset', params.offset);
 
   const qs = query.toString() ? `?${query.toString()}` : '';
-  return await fetchWithFallback(`${BASE_URL}/admin/tasks${qs}`, {}, []);
+  return await fetchWithFallback(`${BASE_URL}/tasks${qs}`, {}, []);
 };
 
 export const dispatchAdminTask = async (taskData) => {
@@ -383,7 +403,7 @@ export const dispatchAdminTask = async (taskData) => {
 
 export const updateAdminTask = async (ticketId, updateData) => {
   return await fetchWithFallback(
-    `${BASE_URL}/admin/tasks/${encodeURIComponent(ticketId)}`,
+    `${BASE_URL}/tasks/${encodeURIComponent(ticketId)}`,
     {
       method: 'PATCH',
       body: JSON.stringify(updateData),
@@ -490,7 +510,7 @@ export const fetchAnalyticsSummary = async () => {
 };
 export const fetchAdminTaskDetail = async (ticketId) => {
   return await fetchWithFallback(
-    `${BASE_URL}/admin/tasks/${encodeURIComponent(ticketId)}`,
+    `${BASE_URL}/tasks/${encodeURIComponent(ticketId)}`,
     {},
     null
   );
@@ -535,6 +555,162 @@ export const fetchServiceTypes = async (departmentId = null) => {
 export const fetchStaffDepartments = async () => {
   return await fetchWithFallback(`${BASE_URL}/departments`, {}, []);
 };
+
+// ---------------------------------------------------------
+// 12. Kitchen Food Items, Menus & Menu Items Management
+// ---------------------------------------------------------
+
+// 12A. Kho món ăn gốc (Master Food Catalog)
+export const fetchKitchenFoodItems = async ({ category = null, search = null, is_available = null } = {}) => {
+  const params = new URLSearchParams();
+  if (category && category !== 'All') params.append('category', category);
+  if (search) params.append('search', search);
+  if (is_available !== null && is_available !== undefined) params.append('is_available', is_available);
+  const qs = params.toString() ? `?${params.toString()}` : '';
+  return await fetchWithFallback(`${BASE_URL}/kitchen/food-items${qs}`, {}, []);
+};
+
+export const createKitchenFoodItem = async (foodData) => {
+  return await fetchWithFallback(
+    `${BASE_URL}/kitchen/food-items`,
+    {
+      method: 'POST',
+      body: JSON.stringify(foodData),
+    },
+    { id: `FOOD-${Date.now()}`, ...foodData }
+  );
+};
+
+export const getKitchenFoodItem = async (foodId) => {
+  return await fetchWithFallback(
+    `${BASE_URL}/kitchen/food-items/${encodeURIComponent(foodId)}`,
+    {},
+    null
+  );
+};
+
+export const updateKitchenFoodItem = async (foodId, foodData) => {
+  return await fetchWithFallback(
+    `${BASE_URL}/kitchen/food-items/${encodeURIComponent(foodId)}`,
+    {
+      method: 'PUT',
+      body: JSON.stringify(foodData),
+    },
+    { id: foodId, ...foodData }
+  );
+};
+
+export const deleteKitchenFoodItem = async (foodId) => {
+  return await fetchWithFallback(
+    `${BASE_URL}/kitchen/food-items/${encodeURIComponent(foodId)}`,
+    {
+      method: 'DELETE',
+    },
+    { id: foodId, detail: 'Đã xóa' }
+  );
+};
+
+// 12B. Danh sách bộ thực đơn (Menus)
+export const fetchKitchenMenus = async ({ category = null, is_active = null } = {}) => {
+  const params = new URLSearchParams();
+  if (category && category !== 'All') params.append('category', category);
+  if (is_active !== null && is_active !== undefined) params.append('is_active', is_active);
+  const qs = params.toString() ? `?${params.toString()}` : '';
+  return await fetchWithFallback(`${BASE_URL}/kitchen/menus${qs}`, {}, []);
+};
+
+export const createKitchenMenu = async (menuData) => {
+  return await fetchWithFallback(
+    `${BASE_URL}/kitchen/menus`,
+    {
+      method: 'POST',
+      body: JSON.stringify(menuData),
+    },
+    { id: `MENU-${Date.now()}`, ...menuData, items: [] }
+  );
+};
+
+export const getKitchenMenu = async (menuId) => {
+  return await fetchWithFallback(
+    `${BASE_URL}/kitchen/menus/${encodeURIComponent(menuId)}`,
+    {},
+    null
+  );
+};
+
+export const updateKitchenMenu = async (menuId, menuData) => {
+  return await fetchWithFallback(
+    `${BASE_URL}/kitchen/menus/${encodeURIComponent(menuId)}`,
+    {
+      method: 'PUT',
+      body: JSON.stringify(menuData),
+    },
+    { id: menuId, ...menuData }
+  );
+};
+
+export const deleteKitchenMenu = async (menuId) => {
+  return await fetchWithFallback(
+    `${BASE_URL}/kitchen/menus/${encodeURIComponent(menuId)}`,
+    {
+      method: 'DELETE',
+    },
+    { id: menuId, detail: 'Đã xóa thực đơn' }
+  );
+};
+
+// 12C. Món ăn trong thực đơn (Menu Items)
+export const fetchKitchenMenuItems = async ({ menu_id = null, category = null } = {}) => {
+  const params = new URLSearchParams();
+  if (menu_id) params.append('menu_id', menu_id);
+  if (category && category !== 'All') params.append('category', category);
+  const qs = params.toString() ? `?${params.toString()}` : '';
+  return await fetchWithFallback(`${BASE_URL}/kitchen/menu-items${qs}`, {}, []);
+};
+
+export const createKitchenMenuItem = async (itemData) => {
+  return await fetchWithFallback(
+    `${BASE_URL}/kitchen/menu-items`,
+    {
+      method: 'POST',
+      body: JSON.stringify(itemData),
+    },
+    { id: `ITEM-${Date.now()}`, ...itemData }
+  );
+};
+
+export const assignFoodItemToMenu = async (menuId, assignData) => {
+  return await fetchWithFallback(
+    `${BASE_URL}/kitchen/menus/${encodeURIComponent(menuId)}/items`,
+    {
+      method: 'POST',
+      body: JSON.stringify(assignData),
+    },
+    { id: `ITEM-${Date.now()}`, menu_id: menuId, ...assignData }
+  );
+};
+
+export const updateKitchenMenuItem = async (menuId, menuItemId, updateData) => {
+  return await fetchWithFallback(
+    `${BASE_URL}/kitchen/menus/${encodeURIComponent(menuId)}/items/${encodeURIComponent(menuItemId)}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(updateData),
+    },
+    { id: menuItemId, menu_id: menuId, ...updateData }
+  );
+};
+
+export const removeKitchenMenuItem = async (menuId, menuItemId) => {
+  return await fetchWithFallback(
+    `${BASE_URL}/kitchen/menus/${encodeURIComponent(menuId)}/items/${encodeURIComponent(menuItemId)}`,
+    {
+      method: 'DELETE',
+    },
+    { id: menuItemId, menu_id: menuId, detail: 'Đã gỡ món khỏi thực đơn' }
+  );
+};
+
 
 
 

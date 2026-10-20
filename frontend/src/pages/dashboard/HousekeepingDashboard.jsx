@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { AssignStaffModal, InteractiveMapModal } from '../../components/dashboard/Modals';
+import { AssignStaffModal } from '../../components/dashboard/Modals';
+import { Pagination } from '../../components/common/Pagination';
 import { INITIAL_HOUSEKEEPING_DATA } from '../../data/mockHotelData';
 import {
   assignHousekeepingStaff,
@@ -12,7 +13,7 @@ const normalizeStatus = (status = '') => status.toLowerCase().trim().replace('_'
 const isPendingRequest = (request) => ['unassigned', 'pending', 'waiting'].includes(normalizeStatus(request.status));
 const isInProgressRequest = (request) => normalizeStatus(request.status) === 'in progress';
 const isCompletedRequest = (request) => ['completed', 'ready', 'done'].includes(normalizeStatus(request.status));
-const isUrgentRequest = (request) => String(request?.urgency || request?.priority || '').toLowerCase() === 'high' || Boolean(request?.is_urgent);
+const isUrgentRequest = (request) => String(request?.urgency || '').toLowerCase() === 'high' || Boolean(request?.is_urgent);
 
 const requestKey = (request) => request.ticket_code || request.id;
 const displayRequestId = (request) => String(request.ticket_code || request.id || '').replace(/^REQ-/, '');
@@ -40,8 +41,13 @@ export const HousekeepingDashboard = ({ currentUser, onNotify = () => {} }) => {
 
   const [data, setData] = useState(INITIAL_HOUSEKEEPING_DATA);
   const [filter, setFilter] = useState('All');
-  const [isMapModalOpen, setIsMapModalOpen] = useState(false);
   const [requestToAssign, setRequestToAssign] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filter]);
 
   useEffect(() => {
     const loadData = async () => {
@@ -116,6 +122,18 @@ export const HousekeepingDashboard = ({ currentUser, onNotify = () => {} }) => {
       return score(a) - score(b);
     });
   }, [allRequests, filter]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredRequests.length / pageSize));
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
+  const paginatedRequests = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredRequests.slice(start, start + pageSize);
+  }, [filteredRequests, currentPage, pageSize]);
 
   const saveRequests = (requests) => {
     try {
@@ -196,10 +214,6 @@ export const HousekeepingDashboard = ({ currentUser, onNotify = () => {} }) => {
     onNotify(`Request ${requestId} was assigned to ${assignment.name}.`);
   };
 
-  const floorStatus = data.floorStatus || INITIAL_HOUSEKEEPING_DATA.floorStatus;
-  const roomsCleaned = floorStatus.roomsCleaned ?? 45;
-  const totalRooms = floorStatus.totalRooms ?? 120;
-  const roomsCleanedPercent = Math.min(100, Math.round((roomsCleaned / Math.max(1, totalRooms)) * 100));
   const availableStaff = (data.availableStaff || []).map((staff) => ({
     ...staff,
     name: staff.name || staff.full_name,
@@ -249,7 +263,7 @@ export const HousekeepingDashboard = ({ currentUser, onNotify = () => {} }) => {
                   {t('noDataMatch')}
                 </div>
               ) : (
-                filteredRequests.map((request) => {
+                paginatedRequests.map((request) => {
                   const requestId = requestKey(request);
                   const pending = isPendingRequest(request);
                   const inProgress = isInProgressRequest(request);
@@ -322,31 +336,21 @@ export const HousekeepingDashboard = ({ currentUser, onNotify = () => {} }) => {
                 })
               )}
             </div>
+
+            {/* Pagination Footer */}
+            {filteredRequests.length > 0 && (
+              <Pagination
+                currentPage={currentPage}
+                totalItems={filteredRequests.length}
+                pageSize={pageSize}
+                onPageChange={setCurrentPage}
+                itemName="yêu cầu"
+                className="mt-3 rounded-2xl border border-[#E5E1D8] shadow-xs bg-white"
+              />
+            )}
           </div>
 
           <aside className="space-y-4">
-            <section className="rounded-xl bg-[#F4F3F0] p-4 border border-[#E8E5E0]">
-              <h2 className="text-[11px] font-bold uppercase tracking-wider text-[#171717]">Floor Status</h2>
-              <button
-                type="button"
-                onClick={() => setIsMapModalOpen(true)}
-                className="mt-2 w-full rounded-lg bg-white p-3 text-left border border-[#E0DDD8] cursor-pointer hover:bg-[#FAF9F7]"
-              >
-                <span className="text-[12px] font-semibold text-[#222]">
-                  {floorStatus.activeFloor || 'FLOOR 5 - ACTIVE'}
-                </span>
-              </button>
-
-              <div className="mt-3">
-                <div className="flex items-center justify-between text-[11px] text-[#555]">
-                  <span>Rooms Cleaned</span>
-                  <span className="font-semibold text-[#222]">{roomsCleaned} / {totalRooms}</span>
-                </div>
-                <div className="mt-1.5 h-1.5 rounded-full bg-[#E0DED9] overflow-hidden">
-                  <div className="h-full rounded-full bg-black" style={{ width: `${roomsCleanedPercent}%` }} />
-                </div>
-              </div>
-            </section>
 
             <section className="rounded-xl bg-[#F4F3F0] p-4 border border-[#E8E5E0]">
               <h2 className="text-[11px] font-bold uppercase tracking-wider text-[#171717]">Available Staff</h2>
@@ -372,11 +376,6 @@ export const HousekeepingDashboard = ({ currentUser, onNotify = () => {} }) => {
         task={requestToAssign ? { ...requestToAssign, id: requestKey(requestToAssign) } : null}
         staffList={availableStaff}
         onAssign={handleAssignRequest}
-      />
-      <InteractiveMapModal
-        isOpen={isMapModalOpen}
-        onClose={() => setIsMapModalOpen(false)}
-        title="Floor 5 Housekeeping Status"
       />
     </main>
   );

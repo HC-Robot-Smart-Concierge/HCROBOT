@@ -313,17 +313,20 @@ export const LidarCanvas = ({
       if (keepOutZones && keepOutZones.length > 0) {
         const getZoneStyle = (type) => {
           switch (type) {
+            case 'SPEED_ZONE':
             case 'SLOW_SPEED':
-              return { fill: 'rgba(191, 191, 189, 0.25)', stroke: '#8C8C8C', text: '#262626', tag: '[GIẢM TỐC]' };
+              return { fill: 'rgba(217, 119, 6, 0.16)', stroke: '#D97706', text: '#92400E', tag: '[GIỚI HẠN TỐC ĐỘ]' };
+            case 'NO_STOP':
+              return { fill: 'rgba(225, 29, 72, 0.16)', stroke: '#E11D48', text: '#9F1239', tag: '[CẤM DỪNG / NO-STOP]' };
             case 'SILENT_ZONE':
-              return { fill: 'rgba(233, 229, 220, 0.45)', stroke: '#8C8C8C', text: '#262626', tag: '[YÊN LẶNG]' };
+              return { fill: 'rgba(99, 102, 241, 0.15)', stroke: '#6366F1', text: '#3730A3', tag: '[YÊN LẶNG]' };
             case 'GREETING_ZONE':
-              return { fill: 'rgba(242, 239, 233, 0.60)', stroke: '#262626', text: '#262626', tag: '[ĐÓN KHÁCH]' };
+              return { fill: 'rgba(5, 150, 105, 0.15)', stroke: '#059669', text: '#065F46', tag: '[ĐÓN KHÁCH]' };
             case 'SERVICE_PRIORITY':
-              return { fill: 'rgba(191, 191, 189, 0.35)', stroke: '#262626', text: '#262626', tag: '[DỊCH VỤ]' };
+              return { fill: 'rgba(2, 132, 199, 0.15)', stroke: '#0284C7', text: '#075985', tag: '[DỊCH VỤ]' };
             case 'KEEP_OUT':
             default:
-              return { fill: 'rgba(38, 38, 38, 0.12)', stroke: '#262626', text: '#262626', tag: '[VÙNG CẤM]' };
+              return { fill: 'rgba(220, 38, 38, 0.16)', stroke: '#DC2626', text: '#991B1B', tag: '[CẤM VÀO / KEEP-OUT]' };
           }
         };
 
@@ -358,7 +361,7 @@ export const LidarCanvas = ({
           const label = `${zone.name || 'VÙNG CHỨC NĂNG'} ${style.tag}`;
           ctx.fillText(label, topLeft.px + 4, topLeft.py + 12);
 
-          if (zone.type === 'SLOW_SPEED' && zone.speed_limit) {
+          if ((zone.type === 'SLOW_SPEED' || zone.type === 'SPEED_ZONE') && zone.speed_limit) {
             ctx.font = '8px monospace';
             ctx.fillText(`MAX: ${zone.speed_limit}m/s`, topLeft.px + 4, topLeft.py + 24);
           }
@@ -397,15 +400,15 @@ export const LidarCanvas = ({
       // 7. Render Waypoints / Endpoints Overlay (Hotel Concierge Palette Style)
       if (showWaypoints && waypoints.length > 0) {
         const getEndpointColor = (type) => {
-          switch (type) {
+          const norm = (type || 'WAYPOINT').toUpperCase();
+          switch (norm) {
+            case 'CHARGER':
             case 'DOCKING_TARGET':
-              return '#262626';
-            case 'PICKUP_DROPOFF':
-              return '#404040';
-            case 'SERVICE_STATION':
-              return '#595959';
+              return '#059669';
+            case 'PARK':
             case 'PARKING_SPOT':
-              return '#8C8C8C';
+              return '#71717A';
+            case 'WAYPOINT':
             default:
               return '#262626';
           }

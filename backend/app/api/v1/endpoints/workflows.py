@@ -8,6 +8,7 @@ from sqlalchemy import select, desc
 
 from app.core.database import get_db
 from app.models.workflow import RobotWorkflow, RobotWaypoint
+from app.repositories import WorkflowRepository, get_workflow_repository
 from app.schemas.workflow import (
     WorkflowResponse,
     WorkflowCreate,
@@ -24,56 +25,40 @@ from app.api.v1.endpoints.default_workflows import CORE_WORKFLOWS
 _workflows_seeded = False
 
 
-async def ensure_default_workflow(db: AsyncSession):
-    """Seed all 7 standard Core Workflows from Stepflow.md if database is empty or missing."""
+async def ensure_default_workflow(repo: WorkflowRepository):
+    """Seed all standard Core Workflows from Stepflow.md if database is empty or missing."""
     global _workflows_seeded
     if _workflows_seeded:
         return
 
-    # Check if table already contains workflows to skip 7 sequential queries
-    check_res = await db.execute(select(RobotWorkflow.id).limit(1))
-    if check_res.scalar_one_or_none() is not None:
-        _workflows_seeded = True
-        return
-
-    for wf_data in CORE_WORKFLOWS:
-        res = await db.execute(select(RobotWorkflow).where(RobotWorkflow.id == wf_data["id"]))
-        if res.scalar_one_or_none() is None:
-            new_wf = RobotWorkflow(
-                id=wf_data["id"],
-                name=wf_data["name"],
-                description=wf_data["description"],
-                trigger_type=wf_data["trigger_type"],
-                is_active=wf_data["is_active"],
-                steps=wf_data["steps"],
-            )
-            db.add(new_wf)
-    await db.commit()
+    await repo.seed_defaults(CORE_WORKFLOWS)
     _workflows_seeded = True
 
 
 @router.get("", response_model=List[WorkflowResponse], summary="Lấy danh sách các Step Workflows của Robot")
-async def get_all_workflows(db: AsyncSession = Depends(get_db)):
-    await ensure_default_workflow(db)
-    res = await db.execute(select(RobotWorkflow).order_by(RobotWorkflow.id.asc()))
-    return res.scalars().all()
+async def get_all_workflows(repo: WorkflowRepository = Depends(get_workflow_repository)):
+    await ensure_default_workflow(repo)
+    return await repo.list_workflows()
 
 
 @router.get("/{workflow_id}", response_model=WorkflowResponse, summary="Lấy chi tiết kịch bản Workflow")
-async def get_workflow_by_id(workflow_id: str, db: AsyncSession = Depends(get_db)):
-    res = await db.execute(select(RobotWorkflow).where(RobotWorkflow.id == workflow_id))
-    wf = res.scalar_one_or_none()
+async def get_workflow_by_id(
+    workflow_id: str,
+    repo: WorkflowRepository = Depends(get_workflow_repository),
+):
+    wf = await repo.get_by_id(workflow_id)
     if not wf:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy Workflow")
     return wf
 
 
 @router.post("", response_model=WorkflowResponse, summary="Tạo mới hoặc cập nhật kịch bản Workflow")
-async def create_or_save_workflow(payload: WorkflowCreate, db: AsyncSession = Depends(get_db)):
+async def create_or_save_workflow(
+    payload: WorkflowCreate,
+    repo: WorkflowRepository = Depends(get_workflow_repository),
+):
     wf_id = payload.id or f"wf-{uuid.uuid4().hex[:8]}"
-
-    res = await db.execute(select(RobotWorkflow).where(RobotWorkflow.id == wf_id))
-    existing = res.scalar_one_or_none()
+    existing = await repo.get_by_id(wf_id)
 
     # Convert steps models to plain dicts for JSON column
     steps_data = [s.model_dump() if hasattr(s, "model_dump") else s for s in payload.steps]
@@ -85,8 +70,8 @@ async def create_or_save_workflow(payload: WorkflowCreate, db: AsyncSession = De
         existing.is_active = payload.is_active
         existing.steps = steps_data
         existing.updated_at = datetime.utcnow()
-        await db.commit()
-        await db.refresh(existing)
+        await repo.commit()
+        await repo.refresh(existing)
         return existing
     else:
         new_wf = RobotWorkflow(
@@ -97,16 +82,17 @@ async def create_or_save_workflow(payload: WorkflowCreate, db: AsyncSession = De
             is_active=payload.is_active,
             steps=steps_data,
         )
-        db.add(new_wf)
-        await db.commit()
-        await db.refresh(new_wf)
+        await repo.create(new_wf, autocommit=True)
         return new_wf
 
 
 @router.put("/{workflow_id}", response_model=WorkflowResponse, summary="Cập nhật Workflow")
-async def update_workflow(workflow_id: str, payload: WorkflowUpdate, db: AsyncSession = Depends(get_db)):
-    res = await db.execute(select(RobotWorkflow).where(RobotWorkflow.id == workflow_id))
-    existing = res.scalar_one_or_none()
+async def update_workflow(
+    workflow_id: str,
+    payload: WorkflowUpdate,
+    repo: WorkflowRepository = Depends(get_workflow_repository),
+):
+    existing = await repo.get_by_id(workflow_id)
     if not existing:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy Workflow")
 
@@ -122,20 +108,21 @@ async def update_workflow(workflow_id: str, payload: WorkflowUpdate, db: AsyncSe
         existing.steps = [s.model_dump() if hasattr(s, "model_dump") else s for s in payload.steps]
 
     existing.updated_at = datetime.utcnow()
-    await db.commit()
-    await db.refresh(existing)
+    await repo.commit()
+    await repo.refresh(existing)
     return existing
 
 
 @router.delete("/{workflow_id}", summary="Xóa Workflow")
-async def delete_workflow(workflow_id: str, db: AsyncSession = Depends(get_db)):
-    res = await db.execute(select(RobotWorkflow).where(RobotWorkflow.id == workflow_id))
-    existing = res.scalar_one_or_none()
+async def delete_workflow(
+    workflow_id: str,
+    repo: WorkflowRepository = Depends(get_workflow_repository),
+):
+    existing = await repo.get_by_id(workflow_id)
     if not existing:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy Workflow")
 
-    await db.delete(existing)
-    await db.commit()
+    await repo.delete(existing, autocommit=True)
     return {"status": "SUCCESS", "message": f"Đã xóa thành công Workflow {workflow_id}"}
 
 
@@ -143,9 +130,12 @@ from app.services.notification_manager import notification_manager
 
 
 @router.post("/{workflow_id}/execute", response_model=WorkflowExecuteResponse, summary="Chạy thử kịch bản Workflow trên Robot")
-async def execute_workflow(workflow_id: str, payload: WorkflowExecuteRequest = WorkflowExecuteRequest(), db: AsyncSession = Depends(get_db)):
-    res = await db.execute(select(RobotWorkflow).where(RobotWorkflow.id == workflow_id))
-    wf = res.scalar_one_or_none()
+async def execute_workflow(
+    workflow_id: str,
+    payload: WorkflowExecuteRequest = WorkflowExecuteRequest(),
+    repo: WorkflowRepository = Depends(get_workflow_repository),
+):
+    wf = await repo.get_by_id(workflow_id)
     if not wf:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy Workflow")
 
@@ -182,6 +172,10 @@ async def execute_workflow(workflow_id: str, payload: WorkflowExecuteRequest = W
         elif step_type == "GREET":
             greeting = params.get("greeting_text") or params.get("text", "Xin chào")
             logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] [GREET] Phát lời chào: \"{greeting}\" - Biểu cảm: {params.get('face_expression', params.get('expression', 'SMILE'))}")
+        elif step_type == "COMMUNICATE":
+            timeout = params.get("silence_timeout_sec", params.get("timeout", 30))
+            prompt = params.get("initial_prompt") or params.get("speech_text") or params.get("text") or "Đối thoại thông minh hai chiều"
+            logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] [COMMUNICATE] Đối thoại thông minh hai chiều: \"{prompt[:60]}...\" (Silence Timeout: {timeout}s)")
         elif step_type == "SPEAK":
             speech = params.get("speech_text") or params.get("text", "")
             logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] [SPEAK] Đọc TTS ra loa: \"{speech[:50]}...\"")

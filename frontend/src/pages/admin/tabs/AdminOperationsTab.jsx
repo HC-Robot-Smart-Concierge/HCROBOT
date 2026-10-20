@@ -47,6 +47,8 @@ export const AdminOperationsTab = ({
     room_service_count: 0,
     bell_services_count: 0,
     maintenance_count: 0,
+    concierge_count: 0,
+    taxi_count: 0,
     directives_count: 0,
   });
 
@@ -80,7 +82,6 @@ export const AdminOperationsTab = ({
     title: '',
     room_number: '',
     guest_name: 'Hotel Guest',
-    priority: 'HIGH PRIORITY',
     description: '',
     assigned_staff_name: '',
     assigned_robot_code: 'RC-001',
@@ -202,7 +203,6 @@ export const AdminOperationsTab = ({
           title: '',
           room_number: '',
           guest_name: 'Hotel Guest',
-          priority: 'HIGH PRIORITY',
           description: '',
           assigned_staff_name: '',
           assigned_robot_code: 'RC-001',
@@ -224,6 +224,9 @@ export const AdminOperationsTab = ({
     { id: 'F&B', label: 'Phục vụ phòng (F&B)', count: summary.room_service_count },
     { id: 'Bell Services', label: 'Hành lý (Bellman)', count: summary.bell_services_count },
     { id: 'Maintenance', label: 'Kỹ thuật', count: summary.maintenance_count },
+    { id: 'Concierge', label: 'Trợ lý Concierge', count: summary.concierge_count || 0 },
+    { id: 'Taxi', label: 'Đặt xe & Taxi', count: summary.taxi_count || 0 },
+    { id: 'Directive', label: 'Chỉ thị điều phối', count: summary.directives_count || 0 },
   ];
 
   if (subTab === 'support') {
@@ -343,9 +346,6 @@ export const AdminOperationsTab = ({
         ) : (
           <div className="space-y-3.5">
             {paginatedTasks.map((t) => {
-              const isHigh =
-                (t.priority || '').toUpperCase().includes('HIGH') ||
-                (t.priority || '').toUpperCase().includes('URGENT');
               const isDone = (t.status || '').toLowerCase() === 'completed';
               const isInProgress =
                 (t.status || '').toLowerCase().includes('progress') ||
@@ -373,13 +373,6 @@ export const AdminOperationsTab = ({
                       <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-[#EFECE6] text-stone-800 border border-[#DDD8CE]">
                         {t.location}
                       </span>
-
-                      {/* Priority Badge */}
-                      {isHigh && (
-                        <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-rose-50 text-rose-600 border border-rose-200 animate-pulse">
-                          HIGH PRIORITY
-                        </span>
-                      )}
 
                       {/* Robot Indicator */}
                       {t.assigned_robot && (
@@ -438,43 +431,14 @@ export const AdminOperationsTab = ({
                       </span>
                     </div>
 
-                    {/* Detail / Dispatch button */}
+                    {/* Detail button (Admin chỉ xem được request chứ không thể tiếp nhận request) */}
                     <button
                       onClick={() => handleOpenTaskDetail(t)}
-                      className="px-2.5 py-1.5 rounded-xl border border-stone-200 bg-stone-50 hover:bg-stone-100 text-stone-700 text-xs font-semibold flex items-center gap-1 cursor-pointer transition-all"
+                      className="px-3 py-1.5 rounded-xl border border-stone-200 bg-stone-50 hover:bg-stone-100 text-stone-700 text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-all shadow-2xs hover:border-stone-300"
                     >
-                      <Edit3 className="w-3.5 h-3.5" />
+                      <Eye className="w-3.5 h-3.5 text-stone-500" />
                       <span>Chi tiết</span>
                     </button>
-
-                    {/* Action Buttons */}
-                    {!isDone ? (
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          onClick={() => handleStatusChange(t.id, 'In Progress')}
-                          disabled={isInProgress}
-                          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                            isInProgress
-                              ? 'bg-stone-100 text-stone-400 cursor-not-allowed'
-                              : 'bg-stone-900 hover:bg-stone-800 text-white cursor-pointer shadow-sm'
-                          }`}
-                        >
-                          Tiếp Nhận
-                        </button>
-                        <button
-                          onClick={() => handleStatusChange(t.id, 'Completed')}
-                          className="px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition-all cursor-pointer shadow-sm flex items-center gap-1"
-                        >
-                          <CheckCircle2 className="w-3.5 h-3.5" />
-                          <span>Xong</span>
-                        </button>
-                      </div>
-                    ) : (
-                      <span className="text-xs font-bold text-emerald-600 flex items-center gap-1">
-                        <CheckCircle2 className="w-4 h-4" />
-                        <span>Hoàn Tất</span>
-                      </span>
-                    )}
                   </div>
                 </div>
               );
@@ -493,7 +457,7 @@ export const AdminOperationsTab = ({
       </div>
       </div>
 
-      {/* MODAL: TASK DETAIL & ASSIGNMENT */}
+      {/* MODAL: TASK DETAIL (READ-ONLY FOR ADMIN) */}
       {selectedTask && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="max-w-lg w-full bg-white p-6 rounded-3xl border border-stone-200 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-200">
@@ -517,96 +481,83 @@ export const AdminOperationsTab = ({
               </button>
             </div>
 
-            <form onSubmit={handleSaveTaskDetail} className="space-y-4 text-xs">
-              <div className="p-3 bg-stone-50 rounded-2xl border border-stone-200 space-y-1">
+            <div className="space-y-3.5 text-xs">
+              <div className="p-3.5 bg-stone-50 rounded-2xl border border-stone-200 space-y-1.5">
                 <div className="font-extrabold text-stone-900 text-sm">{selectedTask.title}</div>
-                <div className="text-[11px] text-stone-500">
-                  Nguồn: {selectedTask.source} • Tạo lúc: {selectedTask.time || selectedTask.created_at}
+                <div className="flex flex-wrap items-center gap-3 text-[11px] text-stone-500">
+                  <span>Nguồn: <strong>{selectedTask.source}</strong></span>
+                  <span>•</span>
+                  <span>Tạo lúc: <strong>{selectedTask.time || selectedTask.created_at}</strong></span>
                 </div>
               </div>
 
-              {/* Status Update */}
-              <div>
-                <label className="block text-[11px] font-bold text-stone-700 uppercase tracking-wider mb-1">
-                  TRẠNG THÁI:
-                </label>
-                <select
-                  value={editTaskForm.status}
-                  onChange={(e) => setEditTaskForm({ ...editTaskForm, status: e.target.value })}
-                  className="w-full px-3.5 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs text-stone-900 font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer"
-                >
-                  <option value="Pending">Pending (Chờ tiếp nhận)</option>
-                  <option value="In Progress">In Progress (Đang thực hiện)</option>
-                  <option value="Completed">Completed (Đã hoàn tất)</option>
-                  <option value="Cancelled">Cancelled (Đã hủy)</option>
-                </select>
+              {/* Status & Location Display */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="p-3 bg-stone-50 rounded-xl border border-stone-200">
+                  <span className="block text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-1">
+                    Trạng Thái Hiện Tại
+                  </span>
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-extrabold bg-stone-200 text-stone-800">
+                    {selectedTask.status}
+                  </span>
+                </div>
+
+                <div className="p-3 bg-stone-50 rounded-xl border border-stone-200">
+                  <span className="block text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-1">
+                    Phòng / Vị Trí
+                  </span>
+                  <span className="text-xs font-bold text-stone-900">
+                    {selectedTask.location}
+                  </span>
+                </div>
               </div>
 
-              {/* Assign to Staff */}
-              <div>
-                <label className="block text-[11px] font-bold text-stone-700 uppercase tracking-wider mb-1">
-                  PHÂN CÔNG NHÂN SỰ:
-                </label>
-                <select
-                  value={editTaskForm.assigned_to}
-                  onChange={(e) => setEditTaskForm({ ...editTaskForm, assigned_to: e.target.value })}
-                  className="w-full px-3.5 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs text-stone-900 font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer"
-                >
-                  <option value="">-- Chưa gán nhân viên --</option>
-                  {staffList.map((st) => (
-                    <option key={st.id} value={st.full_name}>
-                      {st.full_name} ({st.department} - {st.status})
-                    </option>
-                  ))}
-                </select>
+              {/* Assigned Staff Display */}
+              <div className="p-3 bg-stone-50 rounded-xl border border-stone-200">
+                <span className="block text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-1">
+                  Nhân Sự Phụ Trách
+                </span>
+                <span className="text-xs font-bold text-stone-900 flex items-center gap-1.5">
+                  <User className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>{selectedTask.assigned_to || 'Chưa phân công (Chờ bộ phận tiếp nhận)'}</span>
+                </span>
               </div>
 
-              {/* Assign to Robot */}
-              <div>
-                <label className="block text-[11px] font-bold text-stone-700 uppercase tracking-wider mb-1">
-                  ĐIỀU PHỐI ROBOT TỰ HÀNH:
-                </label>
-                <select
-                  value={editTaskForm.assigned_robot}
-                  onChange={(e) => setEditTaskForm({ ...editTaskForm, assigned_robot: e.target.value })}
-                  className="w-full px-3.5 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs text-stone-900 font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer"
-                >
-                  <option value="">-- Không sử dụng Robot --</option>
-                  <option value="RC-001">Robot Concierge RC-001 (Sảnh chính)</option>
-                  <option value="Bot Unit Alpha">Bot Unit Alpha (Vận chuyển hàng)</option>
-                </select>
-              </div>
+              {/* Assigned Robot Display */}
+              {selectedTask.assigned_robot && (
+                <div className="p-3 bg-stone-50 rounded-xl border border-stone-200">
+                  <span className="block text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-1">
+                    Robot Điều Phối
+                  </span>
+                  <span className="text-xs font-bold text-stone-900 flex items-center gap-1.5">
+                    <Bot className="w-3.5 h-3.5 text-stone-600" />
+                    <span>{selectedTask.assigned_robot}</span>
+                  </span>
+                </div>
+              )}
 
-              {/* Note / Update Log */}
-              <div>
-                <label className="block text-[11px] font-bold text-stone-700 uppercase tracking-wider mb-1">
-                  GHI CHÚ / CẬP NHẬT:
-                </label>
-                <textarea
-                  rows={2}
-                  value={editTaskForm.note}
-                  onChange={(e) => setEditTaskForm({ ...editTaskForm, note: e.target.value })}
-                  placeholder="Ghi chú thêm tiến trình xử lý..."
-                  className="w-full px-3.5 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs text-stone-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                />
-              </div>
+              {/* Note Display */}
+              {selectedTask.notes && (
+                <div className="p-3 bg-stone-50 rounded-xl border border-stone-200">
+                  <span className="block text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-1">
+                    Ghi Chú Khách Hàng
+                  </span>
+                  <p className="text-xs text-stone-700 leading-relaxed font-medium">
+                    {selectedTask.notes}
+                  </p>
+                </div>
+              )}
 
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-stone-100">
+              <div className="flex items-center justify-end pt-3 border-t border-stone-100">
                 <button
                   type="button"
                   onClick={() => setSelectedTask(null)}
-                  className="px-4 py-2 rounded-xl text-xs font-bold text-stone-600 hover:bg-stone-100 transition-all cursor-pointer"
+                  className="px-5 py-2 rounded-xl text-xs font-bold bg-stone-900 hover:bg-stone-800 text-white transition-all cursor-pointer shadow-sm"
                 >
-                  Hủy
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white transition-all shadow-md cursor-pointer"
-                >
-                  Lưu Thay Đổi
+                  Đóng
                 </button>
               </div>
-            </form>
+            </div>
           </div>
         </div>
       )}
@@ -635,7 +586,7 @@ export const AdminOperationsTab = ({
                   BỘ PHẬN TIẾP NHẬN:
                 </label>
                 <div className="grid grid-cols-3 gap-1.5">
-                  {['Housekeeping', 'F&B', 'Bell Services', 'Maintenance', 'Reception', 'Directive'].map(
+                  {['Reception', 'Housekeeping', 'F&B', 'Bell Services', 'Maintenance', 'Concierge', 'Taxi', 'Directive'].map(
                     (d) => (
                       <button
                         type="button"
@@ -698,39 +649,22 @@ export const AdminOperationsTab = ({
                 </div>
               </div>
 
-              {/* Priority & Assign to Robot */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[11px] font-bold text-stone-700 uppercase tracking-wider mb-1">
-                    MỨC ƯU TIÊN:
-                  </label>
-                  <select
-                    value={dispatchForm.priority}
-                    onChange={(e) => setDispatchForm({ ...dispatchForm, priority: e.target.value })}
-                    className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs text-stone-900 font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer"
-                  >
-                    <option value="HIGH PRIORITY">Khẩn cấp (HIGH PRIORITY)</option>
-                    <option value="NORMAL">Bình thường (NORMAL)</option>
-                    <option value="LOW">Thấp (LOW)</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-[11px] font-bold text-stone-700 uppercase tracking-wider mb-1">
-                    GÁN CHO ROBOT (NẾU CẦN):
-                  </label>
-                  <select
-                    value={dispatchForm.assigned_robot_code}
-                    onChange={(e) =>
-                      setDispatchForm({ ...dispatchForm, assigned_robot_code: e.target.value })
-                    }
-                    className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs text-stone-900 font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer"
-                  >
-                    <option value="RC-001">Robot Concierge Unit 01 (RC-001)</option>
-                    <option value="Bot Unit Alpha">Bot Unit Alpha (Bellman Service)</option>
-                    <option value="">Không gán Robot (Giao nhân viên)</option>
-                  </select>
-                </div>
+              {/* Assign to Robot */}
+              <div>
+                <label className="block text-[11px] font-bold text-stone-700 uppercase tracking-wider mb-1">
+                  GÁN CHO ROBOT (NẾU CẦN):
+                </label>
+                <select
+                  value={dispatchForm.assigned_robot_code}
+                  onChange={(e) =>
+                    setDispatchForm({ ...dispatchForm, assigned_robot_code: e.target.value })
+                  }
+                  className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs text-stone-900 font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer"
+                >
+                  <option value="RC-001">Robot Concierge Unit 01 (RC-001)</option>
+                  <option value="Bot Unit Alpha">Bot Unit Alpha (Bellman Service)</option>
+                  <option value="">Không gán Robot (Giao nhân viên)</option>
+                </select>
               </div>
 
               {/* Notes */}

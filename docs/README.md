@@ -15,6 +15,9 @@ Chào mừng bạn đến với trung tâm tài liệu kỹ thuật của dự �
   * Giao thức truyền dữ liệu Serial nhị phân/chuỗi và cơ chế an toàn tránh va chạm thời gian thực.
 
 ### 2. Trí Tuệ Nhân Tạo & Kiểm Thử (AI & Testing)
+* **[Nhật Ký Tối Ưu AI Voice Pipeline & LangGraph Harness](guides/nhat_ky_toi_uu_ai_voice_harness.md)**:
+  * Chi tiết giải pháp chuyển về Llama 3.2 3B, tích hợp Harness vào `/chat/stream` (<20ms).
+  * Khắc phục triệt để lỗi robot khựng/ngắt quãng tại dấu phẩy và dấu câu trong phát âm thanh.
 * **[Tối Ưu Hóa AI & Audio Pipeline](guides/ai_optimization.md)**:
   * Kiến trúc xử lý đa phương tiện tốc độ cao: Fast Whisper (STT), VieNeu-TTS / EdgeTTS, Ollama LLM.
   * Tối ưu hóa độ trễ xử lý Voice Conversational và luồng RAG tri thức khách sạn.

@@ -10,6 +10,7 @@ from sqlalchemy import select, func
 
 from app.core.database import get_db
 from app.models.logging import LogEvent, AuditLog
+from app.repositories import AuditLogRepository, get_audit_log_repository
 from app.services.logger_service import (
     query_logs_async,
     get_log_statistics_async,
@@ -17,6 +18,30 @@ from app.services.logger_service import (
 )
 
 router = APIRouter(prefix="/logs")
+
+def clean_log_message(msg: str) -> str:
+    if not msg:
+        return ""
+    import re
+    match = re.match(r"^\[([A-Z_]+)\]\s+([\w\d_-]+)\s+performed\s+([A-Z_]+)", msg, re.IGNORECASE)
+    if match:
+        actor = match.group(2)
+        action = match.group(3).upper()
+        if action == "LOGIN":
+            return f"Nhân viên '{actor}' đã đăng nhập thành công vào hệ thống."
+        elif action == "LOGOUT":
+            return f"Nhân viên '{actor}' đã đăng xuất thành công khỏi hệ thống."
+        elif action == "CREATE":
+            return f"Nhân viên '{actor}' đã tạo mới dữ liệu."
+        elif action == "UPDATE":
+            return f"Nhân viên '{actor}' đã cập nhật thông tin dữ liệu."
+        elif action == "DELETE":
+            return f"Nhân viên '{actor}' đã xóa dữ liệu khỏi hệ thống."
+        return f"Nhân viên '{actor}' đã thực hiện thao tác {action.lower()}."
+
+    msg = re.sub(r"SESSION:[a-zA-Z0-9_\-]+", "Phiên làm việc", msg)
+    msg = re.sub(r"token:[a-zA-Z0-9_\-\.]+", "***", msg)
+    return msg
 
 def serialize_log(log: LogEvent) -> dict:
     return {
@@ -26,12 +51,13 @@ def serialize_log(log: LogEvent) -> dict:
         "category": log.category.value if hasattr(log.category, "value") else str(log.category),
         "event_type": log.event_type,
         "module": log.module,
-        "message": log.message,
+        "message": clean_log_message(log.message),
         "actor_type": log.actor_type.value if hasattr(log.actor_type, "value") else str(log.actor_type),
         "actor_id": log.actor_id,
         "robot_id": log.robot_id,
-        "staff_id": log.staff_id,
+        "staff_id": None,
         "guest_id": log.guest_id,
+
         "service_request_id": log.service_request_id,
         "conversation_id": log.conversation_id,
         "correlation_id": log.correlation_id,
@@ -137,25 +163,18 @@ async def get_audit_trail(
     action: Optional[str] = None,
     actor_id: Optional[str] = None,
     resource_type: Optional[str] = None,
-    db: AsyncSession = Depends(get_db),
+    repo: AuditLogRepository = Depends(get_audit_log_repository),
 ):
     """
     Query dedicated security and configuration audit logs.
     """
-    query = select(AuditLog)
-    if action:
-        query = query.where(AuditLog.action == action.upper())
-    if actor_id:
-        query = query.where(AuditLog.actor_id == actor_id)
-    if resource_type:
-        query = query.where(AuditLog.resource_type == resource_type.upper())
-
-    count_res = await db.execute(select(func.count()).select_from(query.subquery()))
-    total = count_res.scalar_one()
-
-    paged_query = query.order_by(AuditLog.timestamp.desc()).offset((page - 1) * limit).limit(limit)
-    items_res = await db.execute(paged_query)
-    items = items_res.scalars().all()
+    total, items = await repo.query_audit_trail(
+        page=page,
+        limit=limit,
+        action=action,
+        actor_id=actor_id,
+        resource_type=resource_type,
+    )
 
     return {
         "status": "success",

@@ -86,7 +86,7 @@ export const StudioMapCanvas = ({
                   type="button"
                   onClick={() => onAddWaypointToWorkflow(selectedWaypoint)}
                   className="px-2.5 py-1 rounded text-xs font-bold cursor-pointer transition-colors"
-                  style={{ backgroundColor: '#8B5CF6', color: '#FFFFFF' }}
+                  style={{ backgroundColor: '#262626', color: '#FFFFFF' }}
                   title="Nối điểm này vào Workflow"
                 >
                   + Nối vào Workflow

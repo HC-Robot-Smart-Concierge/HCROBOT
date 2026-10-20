@@ -64,7 +64,6 @@ export const ConciergeDashboard = ({
     room_number: 'Lobby Kiosk Unit 01',
     guest_name: 'Mr. Tanaka Kenji',
     transcript: 'Khách muốn tìm hiểu thông tin về tour du lịch Bà Nà Hills trong ngày.',
-    priority: 'HIGH',
   });
 
   // Taxi & Transportation states
@@ -233,7 +232,7 @@ export const ConciergeDashboard = ({
               {activeSubTab === 'recordings' ? (
                 <>
                   <Film className="w-5 h-5 text-sky-600" />
-                  Lịch Sử Cuộc Gọi & Bản Ghi Cloudinary
+                  Lịch Sử Cuộc Gọi & Bản Ghi Video
                 </>
               ) : activeSubTab === 'taxi' ? (
                 <>
@@ -322,7 +321,7 @@ export const ConciergeDashboard = ({
               }`}
             >
               <Film className="w-3.5 h-3.5" />
-              <span>Bản Ghi Cuộc Gọi (Cloudinary)</span>
+              <span>Bản Ghi Cuộc Gọi</span>
               {recordedSessions.filter((s) => s.recording_url).length > 0 && (
                 <span className="bg-sky-500 text-white text-[10px] px-1.5 py-0.2 rounded-full font-bold">
                   {recordedSessions.filter((s) => s.recording_url).length}
@@ -502,7 +501,7 @@ export const ConciergeDashboard = ({
                 <div>
                   <h3 className="text-xs font-bold text-palette-charcoal flex items-center gap-2">
                     <Film className="w-4 h-4 text-sky-600" />
-                    Lịch Sử Cuộc Gọi & Bản Ghi Cloudinary (Human Support Sessions)
+                    Lịch Sử Cuộc Gọi & Bản Ghi Video (Human Support Sessions)
                   </h3>
                   <p className="text-[11px] text-palette-slate mt-0.5">
                     Các cuộc gọi video hỗ trợ trực tiếp giữa Robot Kiosk và Nhân viên được ghi hình tự động.
@@ -1239,9 +1238,9 @@ export const ConciergeDashboard = ({
         isOpen={isVideoModalOpen}
         sessionId={activeSession?.id || activeSession?.ticket_code || 'SUP-STAFF'}
         role="staff"
-        callerName={activeSession?.guest_name || 'Khách tại Kiosk'}
-        calleeName={currentUser?.full_name || 'Tổng Đài Viên Concierge'}
-        roomNumber={activeSession?.room_number || 'Sảnh S1'}
+        callerName={activeSession?.guest_name || 'Khách hàng'}
+        calleeName={currentUser?.full_name || 'Nhân viên hỗ trợ'}
+        roomNumber={activeSession?.room_number || ''}
         ticketCode={activeSession?.ticket_code}
         onClose={async () => {
           setIsVideoModalOpen(false);

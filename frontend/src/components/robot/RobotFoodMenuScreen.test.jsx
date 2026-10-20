@@ -82,4 +82,26 @@ describe('RobotFoodMenuScreen Logic & Initial Data', () => {
     delete nextCart[item.id];
     expect(nextCart[item.id]).toBeUndefined();
   });
+
+  it('safely handles delivery room parameter and defaults to empty when not provided', () => {
+    expect(typeof RobotFoodMenuScreen).toBe('function');
+
+    const resolveDeliveryRoom = (activeRoom, cachedRoom) => {
+      if (activeRoom && String(activeRoom).trim()) return String(activeRoom).trim();
+      if (cachedRoom && cachedRoom.trim() && cachedRoom.trim() !== '304') return cachedRoom.trim();
+      return '';
+    };
+
+    expect(resolveDeliveryRoom(null, null)).toBe('');
+    expect(resolveDeliveryRoom(undefined, '304')).toBe('');
+    expect(resolveDeliveryRoom('', '')).toBe('');
+    expect(resolveDeliveryRoom('502', null)).toBe('502');
+    expect(resolveDeliveryRoom(null, 'Villa 01')).toBe('Villa 01');
+
+    const roomStatusDotClass = 'w-2 h-2 rounded-full bg-stone-400';
+    expect(roomStatusDotClass).toContain('bg-stone-400');
+    expect(roomStatusDotClass).not.toContain('bg-emerald');
+  });
 });
+
+

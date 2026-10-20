@@ -132,6 +132,23 @@ class RPLidarSLAMCore:
 
         # Direct Motor Control via Raspberry Pi 5 L298N (GPIO 17, 27, 22, 23)
         self.pi_motor = None
+
+        # Hệ thống An toàn Vật cản LiDAR (360-degree Continuous Distance Buffer & Fail-Safe)
+        self.angle_distances: List[float] = [99.0] * 360
+        self.angle_timestamps: List[float] = [0.0] * 360
+        self.front_safety_distance = 0.35   # Ngưỡng phanh khẩn cấp phía trước: <= 35cm
+        self.rear_safety_distance = 0.30    # Ngưỡng phanh khẩn cấp phía sau: <= 30cm
+        self.current_motion_cmd = "stop"
+        self._safety_thread: Optional[threading.Thread] = None
+        self.last_safety_alert: str = ""
+        # Hysteresis Lock cho thuật toán né vật cản an toàn (chống rung lắc trái-phải)
+        self.avoidance_locked_dir: Optional[str] = None
+        self.avoidance_steps: int = 0
+
+    def init_direct_motor(self):
+        """Khởi tạo MotorController trực tiếp nếu chưa có (dùng khi chạy standalone)."""
+        if self.pi_motor is not None:
+            return self.pi_motor
         try:
             from motor_controller import MotorController
             self.pi_motor = MotorController(
@@ -145,15 +162,7 @@ class RPLidarSLAMCore:
             logger.info("🚗 [LiDAR-SLAM] Đã khởi tạo MotorController trực tiếp trên Raspberry Pi 5 (GPIO 17, 27, 22, 23)!")
         except Exception as e:
             logger.warning(f"⚠️ [LiDAR-SLAM] Không khởi tạo được MotorController trực tiếp ({e}), sử dụng fallback UDP 9999")
-
-        # Hệ thống An toàn Vật cản LiDAR (360-degree Continuous Distance Buffer & Fail-Safe)
-        self.angle_distances: List[float] = [99.0] * 360
-        self.angle_timestamps: List[float] = [0.0] * 360
-        self.front_safety_distance = 0.35   # Ngưỡng phanh khẩn cấp phía trước: <= 35cm
-        self.rear_safety_distance = 0.30    # Ngưỡng phanh khẩn cấp phía sau: <= 30cm
-        self.current_motion_cmd = "stop"
-        self._safety_thread: Optional[threading.Thread] = None
-        self.last_safety_alert: str = ""
+        return self.pi_motor
 
     def reset_map(self):
         """Xóa trắng bản đồ 2D về trạng thái ban đầu và đưa vị trí robot về gốc."""
@@ -165,6 +174,8 @@ class RPLidarSLAMCore:
             self.status = "IDLE"
             self.linear_velocity = 0.0
             self.angular_velocity = 0.0
+            self.is_exploring = False
+            self.explored_frontiers = []
         self.stop_navigation()
         logger.info("🧹 Đã làm sạch bản đồ 2D Occupancy Grid và đặt lại vị trí Robot về (0,0)")
 
@@ -371,9 +382,9 @@ free_thresh: 0.25
                     err += dx
                     curr_y += sy
 
-    def connect(self) -> bool:
-        """Mở cổng Serial và bắt tay với RPLiDAR A1M8."""
-        if self.is_connected and self.ser and self.ser.is_open:
+    def connect(self, force: bool = False) -> bool:
+        """Mở cổng Serial và bắt tay với RPLiDAR A1M8 có cơ chế auto-reset khi đơ/treo."""
+        if not force and self.is_connected and self.ser and self.ser.is_open:
             return True
 
         self.stop()
@@ -381,20 +392,49 @@ free_thresh: 0.25
 
         try:
             logger.info(f"🔌 Mở cổng Serial {self.port} tốc độ {self.baudrate} baud...")
-            self.ser = serial.Serial(self.port, self.baudrate, timeout=0.05)
+            self.ser = serial.Serial(self.port, self.baudrate, timeout=0.08)
+            # Khởi động motor bằng chân DTR (DTR = False cấp nguồn quay motor trên RPLiDAR A1)
             self.ser.dtr = False
             self.ser.rts = False
             time.sleep(0.15)
 
-            # STOP
+            # STOP chuỗi quét cũ
             self.ser.write(b"\xa5\x25")
-            time.sleep(0.1)
+            time.sleep(0.08)
             self.ser.reset_input_buffer()
             self.ser.reset_output_buffer()
 
-            # GET_INFO
+            # Thử GET_HEALTH (0xA5 0x52)
+            self.ser.write(b"\xa5\x52")
+            time.sleep(0.08)
+            desc_health = self.ser.read(7)
+
+            # Nếu cảm biến bị đơ hoặc lỗi sau rung lắc/sụt áp, gửi lệnh RESET (0xA5 0x40)
+            if len(desc_health) < 7 or desc_health[:2] != b"\xa5\x5a":
+                logger.warning(f"⚠️ Cảm biến {self.port} không phản hồi GET_HEALTH. Gửi mã RESET phần cứng (0xA5 0x40)...")
+                self.ser.write(b"\xa5\x40")
+                time.sleep(1.2)  # RPLiDAR A1 reboot mất ~1.0 - 1.2s
+                self.ser.reset_input_buffer()
+                self.ser.reset_output_buffer()
+                self.ser.dtr = False
+                time.sleep(0.1)
+                self.ser.write(b"\xa5\x25")
+                time.sleep(0.08)
+                self.ser.reset_input_buffer()
+                self.ser.write(b"\xa5\x52")
+                time.sleep(0.08)
+                desc_health = self.ser.read(7)
+
+            if len(desc_health) == 7 and desc_health[:2] == b"\xa5\x5a":
+                health_data = self.ser.read(3)
+                if len(health_data) >= 3:
+                    h_status = health_data[0]
+                    self.device_info["health"] = "Good" if h_status == 0 else f"Warning({h_status})"
+                    logger.info(f"🩺 RPLiDAR Health Status: {self.device_info['health']}")
+
+            # GET_INFO (0xA5 0x50)
             self.ser.write(b"\xa5\x50")
-            time.sleep(0.1)
+            time.sleep(0.08)
             desc_info = self.ser.read(7)
             if len(desc_info) == 7 and desc_info[:2] == b"\xa5\x5a":
                 info = self.ser.read(20)
@@ -404,26 +444,9 @@ free_thresh: 0.25
                     self.device_info["hardware"] = f"{info[3]}"
                     self.device_info["serialnumber"] = info[4:].hex().upper()
 
-            # GET_HEALTH
-            self.ser.write(b"\xa5\x52")
-            time.sleep(0.05)
-            desc_health = self.ser.read(7)
-            if len(desc_health) == 7 and desc_health[:2] == b"\xa5\x5a":
-                health_data = self.ser.read(3)
-                if len(health_data) >= 3:
-                    h_status = health_data[0]
-                    self.device_info["health"] = "Good" if h_status == 0 else f"Warning({h_status})"
-
-            # Bật quay motor PWM
-            try:
-                self.ser.write(b"\xa5\xf0\x02\x94\x02\xc5")
-                time.sleep(0.1)
-            except Exception:
-                pass
-
             self.is_connected = True
             self.last_error = ""
-            logger.info(f"✅ Đã kết nối RPLiDAR A1M8 trên {self.port}! Health: {self.device_info['health']}")
+            logger.info(f"✅ Đã kết nối RPLiDAR A1M8 trên {self.port}! Model: {self.device_info['model']}, Firmware: {self.device_info['firmware']}")
             return True
 
         except Exception as e:
@@ -434,7 +457,7 @@ free_thresh: 0.25
 
     def start_scanning(self):
         """Bật Thread thu thập tia quét thời gian thực."""
-        if self.is_running:
+        if self.is_running and self._scan_thread and self._scan_thread.is_alive():
             return
         if not self.is_connected and not self.connect():
             return
@@ -442,8 +465,9 @@ free_thresh: 0.25
         self.is_running = True
         self._scan_thread = threading.Thread(target=self._scan_loop, daemon=True)
         self._scan_thread.start()
-        self._safety_thread = threading.Thread(target=self._safety_watchdog_loop, daemon=True)
-        self._safety_thread.start()
+        if not self._safety_thread or not self._safety_thread.is_alive():
+            self._safety_thread = threading.Thread(target=self._safety_watchdog_loop, daemon=True)
+            self._safety_thread.start()
         logger.info("🚀 Luồng quét LiDAR SLAM & Safety Watchdog đã sẵn sàng")
 
     def stop(self):
@@ -458,23 +482,60 @@ free_thresh: 0.25
         self.is_connected = False
 
     def _scan_loop(self):
-        """Vòng lặp bóc tách 5-byte packet chuẩn RPLiDAR có lọc nhiễu thân robot."""
+        """Vòng lặp bóc tách 5-byte packet chuẩn RPLiDAR có watchdog tự phục hồi."""
         try:
             if not self.ser or not self.ser.is_open:
                 return
 
             self.ser.write(b"\xa5\x20")
-            time.sleep(0.1)
+            time.sleep(0.08)
             self.ser.read(7)  # Bỏ qua descriptor 7-byte
 
             buf = bytearray()
             current_scan_batch = []
+            last_packet_time = time.time()
+            stall_retries = 0
 
             while self.is_running and self.ser and self.ser.is_open:
                 chunk = self.ser.read(512)
+                now = time.time()
+
                 if not chunk:
+                    # WATCHDOG: Nếu không có dữ liệu > 2.0s (do sụt áp động cơ, brownout hoặc sensor đơ)
+                    if now - last_packet_time > 2.0:
+                        stall_retries += 1
+                        logger.warning(
+                            f"⚠️ [LiDAR Watchdog] Mất luồng dữ liệu {now - last_packet_time:.1f}s "
+                            f"(lần {stall_retries}/3). Kích hoạt soft-reset STOP & SCAN..."
+                        )
+                        try:
+                            self.ser.write(b"\xa5\x25")
+                            time.sleep(0.06)
+                            self.ser.reset_input_buffer()
+                            self.ser.reset_output_buffer()
+                            self.ser.dtr = False
+                            time.sleep(0.04)
+                            self.ser.write(b"\xa5\x20")
+                            time.sleep(0.06)
+                            self.ser.read(7)
+                            buf.clear()
+                            last_packet_time = time.time()
+                        except Exception as ex:
+                            logger.error(f"Lỗi soft-reset LiDAR: {ex}")
+
+                        if stall_retries >= 3:
+                            logger.error("🚨 [LiDAR Watchdog] Tín hiệu gián đoạn quá 6s, thực hiện tái kết nối Serial toàn phần...")
+                            self.connect(force=True)
+                            stall_retries = 0
+                            last_packet_time = time.time()
+                            if self.ser and self.ser.is_open:
+                                self.ser.write(b"\xa5\x20")
+                                time.sleep(0.06)
+                                self.ser.read(7)
+
                     time.sleep(0.005)
                     continue
+
                 buf.extend(chunk)
 
                 while len(buf) >= 5:
@@ -491,10 +552,16 @@ free_thresh: 0.25
                     packet = buf[:5]
                     del buf[:5]
 
+                    # Nhận được packet hợp lệ: reset watchdog
+                    last_packet_time = time.time()
+                    stall_retries = 0
+
                     is_new_scan = (s == 1)
                     quality = packet[0] >> 2
                     angle_q6 = (packet[1] >> 1) | (packet[2] << 7)
-                    angle = angle_q6 / 64.0
+                    raw_angle = angle_q6 / 64.0
+                    # Bù góc 180° do cụm RPLiDAR thực tế trên xe bị xoay ngược 180° so với đầu xe
+                    angle = (raw_angle + 180.0) % 360.0
                     distance_q2 = packet[3] | (packet[4] << 8)
                     dist_m = (distance_q2 / 4.0) / 1000.0
 
@@ -502,15 +569,15 @@ free_thresh: 0.25
                     if 0.12 <= dist_m <= 12.0:
                         # Cập nhật liên tục mảng khoảng cách 360 độ theo thời gian thực
                         deg = int(round(angle)) % 360
-                        now = time.time()
+                        now_ts = time.time()
                         self.angle_distances[deg] = dist_m
-                        self.angle_timestamps[deg] = now
+                        self.angle_timestamps[deg] = now_ts
 
-                        # RPLiDAR quay theo chiều kim đồng hồ; chuẩn hóa góc về hệ tọa độ chuẩn
+                        # Chuẩn hóa góc và tọa độ theo chuẩn chuẩn Cartesian (+X Tiến, +Y Trái, CCW)
                         heading = (angle + self.robot_yaw) % 360.0
                         rad = math.radians(heading)
-                        x = self.robot_x + dist_m * math.sin(rad)
-                        y = self.robot_y + dist_m * math.cos(rad)
+                        x = self.robot_x + dist_m * math.cos(rad)
+                        y = self.robot_y + dist_m * math.sin(rad)
 
                         current_scan_batch.append({
                             "angle": round(angle, 1),
@@ -728,67 +795,97 @@ free_thresh: 0.25
             dy = gy - self.robot_y
             dist_to_goal = math.hypot(dx, dy)
 
-            # Đã đến đích
-            if dist_to_goal < 0.18:
+            # 1. Đã đến đích (Goal Reached)
+            if dist_to_goal < 0.22:
                 logger.info(f"🏁 ĐÃ ĐẾN ĐÍCH X={gx:.2f}m, Y={gy:.2f}m!")
                 self.send_udp_motor_command("stop")
                 self.status = "GOAL_REACHED"
                 self.is_navigating = False
                 self.active_goal = None
+                self.avoidance_locked_dir = None
                 break
 
-            # Tính góc mục tiêu (trong hệ quy chiếu 0° = North, chiều kim đồng hồ)
-            desired_yaw = (math.degrees(math.atan2(dx, dy)) + 360.0) % 360.0
-            yaw_error = (desired_yaw - self.robot_yaw + 540.0) % 360.0 - 180.0
-
-            # Kiểm tra vật cản phía trước bằng tia LiDAR thời gian thực
+            # 2. Xử lý né vật cản an toàn: Lùi nhẹ nếu quá gần + Xoay dứt khoát (triệt tiêu rung giật 80ms)
             front_obstacle_dist = self.get_front_distance()
-
-            # Xử lý né vật cản an toàn
             if front_obstacle_dist < 0.40:
-                logger.warning(f"⚠️ Phát hiện vật cản trước mặt cự ly {front_obstacle_dist:.2f}m! Đang dừng & rẽ tránh...")
+                logger.warning(f"⚠️ Phát hiện vật cản trước mặt ({front_obstacle_dist:.2f}m)! Đang rẽ tránh an toàn...")
                 self.send_udp_motor_command("stop", force=True)
-                left_dist = self.get_left_distance()
-                right_dist = self.get_right_distance()
-                turn_cmd = "left" if left_dist > right_dist else "right"
-                yaw_step = -10.0 if turn_cmd == "left" else 10.0
-                self.send_udp_motor_command("speed:35")
+
+                # Nếu khoảng cách quá sát (< 30cm): Lùi nhẹ 0.25s để tạo khoảng hở an toàn quay đầu
+                if front_obstacle_dist < 0.30:
+                    rear_dist = self.get_rear_distance()
+                    if rear_dist > 0.35:
+                        self.send_udp_motor_command("speed:35")
+                        self.send_udp_motor_command("backward", force=True)
+                        time.sleep(0.25)
+                        self.send_udp_motor_command("stop", force=True)
+                        time.sleep(0.08)
+
+                if not self.avoidance_locked_dir:
+                    left_dist = self.get_left_distance()
+                    right_dist = self.get_right_distance()
+                    self.avoidance_locked_dir = "left" if left_dist >= right_dist else "right"
+
+                turn_cmd = self.avoidance_locked_dir
+                # Xoay dứt khoát 0.35s ở công suất 38% để robot thực sự xoay được góc ~30-35 độ
+                yaw_step = 30.0 if turn_cmd == "left" else -30.0
+                self.send_udp_motor_command("speed:38")
                 self.send_udp_motor_command(turn_cmd, force=True)
-                time.sleep(0.12)
+                time.sleep(0.35)
                 self.send_udp_motor_command("stop", force=True)
                 self.robot_yaw = (self.robot_yaw + yaw_step) % 360.0
-                time.sleep(0.05)
+                time.sleep(0.10)
+                continue
+            else:
+                if front_obstacle_dist > 0.50:
+                    self.avoidance_locked_dir = None
+
+            # 3. Approach Lock (Khóa góc khi cự ly gần < 40cm để triệt tiêu Waypoint Hunting / xoay lắc tại đích)
+            if dist_to_goal < 0.40:
+                self.send_udp_motor_command("speed:30")
+                self.send_udp_motor_command("forward")
+                speed_mps = 0.14
+                rad = math.radians(self.robot_yaw)
+                self.robot_x += speed_mps * dt * math.cos(rad)
+                self.robot_y += speed_mps * dt * math.sin(rad)
+                self.linear_velocity = speed_mps
+                self.angular_velocity = 0.0
+                time.sleep(dt)
                 continue
 
-            # Điều khiển bám mục tiêu
+            # 4. Tính góc mục tiêu theo chuẩn Cartesian (+X Tiến, +Y Trái, CCW)
+            desired_yaw = (math.degrees(math.atan2(dy, dx)) + 360.0) % 360.0
+            yaw_error = (desired_yaw - self.robot_yaw + 540.0) % 360.0 - 180.0
+
+            # 5. Điều khiển bám mục tiêu kèm Deadband 15°
             if abs(yaw_error) > 15.0:
-                # Cần quay đầu về hướng mục tiêu (quay nhẹ nhàng bằng xung 35% công suất)
-                turn_cmd = "right" if yaw_error > 0 else "left"
+                turn_cmd = "left" if yaw_error > 0 else "right"
+                yaw_step = 15.0 if yaw_error > 0 else -15.0
                 self.send_udp_motor_command("speed:35")
                 self.send_udp_motor_command(turn_cmd)
-                time.sleep(0.07)
+                time.sleep(0.18)
                 self.send_udp_motor_command("stop")
 
-                yaw_step = 7.0 if yaw_error > 0 else -7.0
                 self.robot_yaw = (self.robot_yaw + yaw_step) % 360.0
                 self.angular_velocity = yaw_step
                 self.linear_velocity = 0.0
-                time.sleep(0.04)
+                time.sleep(0.06)
             else:
-                # Hướng đã thẳng: Tiến thẳng về phía trước ở tốc độ ổn định
+                # Góc hướng đã chuẩn trong deadband: Tiến thẳng ổn định
                 self.send_udp_motor_command("speed:45")
                 self.send_udp_motor_command("forward")
-                speed_mps = 0.18  # Tốc độ tiến ~18cm/s
+                speed_mps = 0.18
                 rad = math.radians(self.robot_yaw)
-                self.robot_x += speed_mps * dt * math.sin(rad)
-                self.robot_y += speed_mps * dt * math.cos(rad)
+                self.robot_x += speed_mps * dt * math.cos(rad)
+                self.robot_y += speed_mps * dt * math.sin(rad)
                 self.linear_velocity = speed_mps
                 self.angular_velocity = 0.0
                 time.sleep(dt)
 
         self.send_udp_motor_command("stop")
+        self.avoidance_locked_dir = None
 
-    def scan_room_360(self):
+    def scan_room_360(self, blocking: bool = False):
         """Quay tròn 360 độ từ tốn để quét toàn cảnh các bức tường xung quanh phòng."""
         def _scan_worker():
             self.stop_navigation()
@@ -803,15 +900,18 @@ free_thresh: 0.25
                 self.send_udp_motor_command("right")
                 time.sleep(0.08)
                 self.send_udp_motor_command("stop")
-                self.robot_yaw = (self.robot_yaw + 10.0) % 360.0
+                self.robot_yaw = (self.robot_yaw - 10.0) % 360.0
                 time.sleep(0.12)  # Dừng để LiDAR quét bức tường sắc nét
 
             self.status = "IDLE"
             self.send_udp_motor_command("stop")
             logger.info("✅ HOÀN THÀNH QUÉT 360 ĐỘ TOÀN PHÒNG!")
 
-        t = threading.Thread(target=_scan_worker, daemon=True)
-        t.start()
+        if blocking:
+            _scan_worker()
+        else:
+            t = threading.Thread(target=_scan_worker, daemon=True)
+            t.start()
 
     # =========================================================================
     # FRONTIER EXPLORATION ENGINE
@@ -877,11 +977,19 @@ free_thresh: 0.25
                 if not has_known_neighbor:
                     continue
 
-                # Bỏ qua frontier đã thăm
+                # Bo qua frontier da tham hoac qua gan diem da tham (< 30cm)
                 world_x = self.origin_x + (gx + 0.5) * self.resolution
                 world_y = self.origin_y + (gy + 0.5) * self.resolution
                 frontier_key = (round(world_x, 1), round(world_y, 1))
                 if frontier_key in self.explored_frontiers:
+                    continue
+
+                is_visited = False
+                for ef in self.explored_frontiers:
+                    if math.hypot(world_x - ef[0], world_y - ef[1]) < 0.30:
+                        is_visited = True
+                        break
+                if is_visited:
                     continue
 
                 dist = math.hypot(gx - robot_gx, gy - robot_gy)
@@ -905,76 +1013,138 @@ free_thresh: 0.25
         stuck_check_interval = 20  # Kiểm tra stuck mỗi 2 giây
 
         while time.time() < deadline:
+            # 0. Thoat ngay lap tuc neu nguoi dung kich hoat lenh dung kham pha
+            if not self.is_exploring:
+                self.send_udp_motor_command("stop", force=True)
+                self.avoidance_locked_dir = None
+                return False
+
             dx = target_x - self.robot_x
             dy = target_y - self.robot_y
             dist = math.hypot(dx, dy)
 
+            # 1. Đã đến đích (Goal Reached)
             if dist < goal_radius:
                 self.send_udp_motor_command("stop")
+                self.avoidance_locked_dir = None
                 return True
 
-            # Kiểm tra stuck (robot không di chuyển)
+            # 2. Kiểm tra kẹt (Robot Stuck Detection)
             stuck_counter += 1
             if stuck_counter >= stuck_check_interval:
                 moved = math.hypot(self.robot_x - last_pos[0], self.robot_y - last_pos[1])
                 if moved < 0.03:  # Di chuyển < 3cm trong 2 giây = stuck
                     logger.warning("⚠️ Robot bị kẹt — bỏ qua frontier này.")
                     self.send_udp_motor_command("stop")
+                    self.avoidance_locked_dir = None
                     return False
                 last_pos = (self.robot_x, self.robot_y)
                 stuck_counter = 0
 
-            # Tính góc mục tiêu
-            desired_yaw = (math.degrees(math.atan2(dx, dy)) + 360.0) % 360.0
-            yaw_error = (desired_yaw - self.robot_yaw + 540.0) % 360.0 - 180.0
-
-            # Kiểm tra vật cản phía trước
+            # 3. Né vật cản an toàn: Lùi nhẹ nếu quá gần + Xoay dứt khoát (triệt tiêu rung giật 80ms)
             front_dist = self.get_front_distance()
-
             if front_dist < 0.40:
-                logger.warning(f"⚠️ Frontier navigation: Vật cản phía trước cách {front_dist:.2f}m! Dừng & rẽ tránh...")
+                logger.warning(f"⚠️ Frontier navigation: Vật cản phía trước cách {front_dist:.2f}m! Rẽ tránh an toàn...")
                 self.send_udp_motor_command("stop", force=True)
-                left_dist = self.get_left_distance()
-                right_dist = self.get_right_distance()
-                turn_cmd = "left" if left_dist > right_dist else "right"
-                yaw_step = -12.0 if turn_cmd == "left" else 12.0
-                self.send_udp_motor_command("speed:30")
+
+                # Nếu khoảng cách quá sát (< 30cm): Lùi nhẹ 0.25s để tạo khoảng hở an toàn quay đầu
+                if front_dist < 0.30:
+                    rear_dist = self.get_rear_distance()
+                    if rear_dist > 0.35:
+                        self.send_udp_motor_command("speed:35")
+                        self.send_udp_motor_command("backward", force=True)
+                        time.sleep(0.25)
+                        self.send_udp_motor_command("stop", force=True)
+                        time.sleep(0.08)
+
+                if not self.avoidance_locked_dir:
+                    left_dist = self.get_left_distance()
+                    right_dist = self.get_right_distance()
+                    self.avoidance_locked_dir = "left" if left_dist >= right_dist else "right"
+
+                turn_cmd = self.avoidance_locked_dir
+                # Xoay dứt khoát 0.35s ở công suất 38% để xe thực sự quay được góc ~30-35 độ
+                yaw_step = 30.0 if turn_cmd == "left" else -30.0
+                self.send_udp_motor_command("speed:38")
                 self.send_udp_motor_command(turn_cmd, force=True)
-                time.sleep(0.10)
+                time.sleep(0.35)
                 self.send_udp_motor_command("stop", force=True)
                 self.robot_yaw = (self.robot_yaw + yaw_step) % 360.0
-                time.sleep(0.05)
+                time.sleep(0.10)
+                continue
+            else:
+                if front_dist > 0.50:
+                    self.avoidance_locked_dir = None
+
+            # 4. Approach Lock (Khóa góc khi cự ly gần < 40cm để triệt tiêu hiện tượng lắc quay vòng quanh đích)
+            if dist < 0.40:
+                self.send_udp_motor_command("speed:30")
+                self.send_udp_motor_command("forward")
+                speed_mps = 0.14
+                rad = math.radians(self.robot_yaw)
+                self.robot_x += speed_mps * dt * math.cos(rad)
+                self.robot_y += speed_mps * dt * math.sin(rad)
+                self.linear_velocity = speed_mps
+                self.angular_velocity = 0.0
+                time.sleep(dt)
                 continue
 
+            # 5. Tính góc mục tiêu theo chuẩn Cartesian (+X Tiến, +Y Trái, CCW)
+            desired_yaw = (math.degrees(math.atan2(dy, dx)) + 360.0) % 360.0
+            yaw_error = (desired_yaw - self.robot_yaw + 540.0) % 360.0 - 180.0
+
+            # 6. Điều khiển bám mục tiêu kèm Deadband 15°
             if abs(yaw_error) > 15.0:
-                turn_cmd = "right" if yaw_error > 0 else "left"
-                yaw_step = 8.0 if yaw_error > 0 else -8.0
-                self.send_udp_motor_command("speed:30")
+                turn_cmd = "left" if yaw_error > 0 else "right"
+                yaw_step = 15.0 if yaw_error > 0 else -15.0
+                self.send_udp_motor_command("speed:35")
                 self.send_udp_motor_command(turn_cmd)
-                time.sleep(0.07)
+                time.sleep(0.18)
                 self.send_udp_motor_command("stop")
                 self.robot_yaw = (self.robot_yaw + yaw_step) % 360.0
-                time.sleep(0.04)
+                self.angular_velocity = yaw_step
+                self.linear_velocity = 0.0
+                time.sleep(0.06)
             else:
+                # Góc hướng đã chuẩn trong deadband: Tiến thẳng ổn định
                 self.send_udp_motor_command("speed:45")
                 self.send_udp_motor_command("forward")
                 speed_mps = 0.18
                 rad = math.radians(self.robot_yaw)
-                self.robot_x += speed_mps * dt * math.sin(rad)
-                self.robot_y += speed_mps * dt * math.cos(rad)
+                self.robot_x += speed_mps * dt * math.cos(rad)
+                self.robot_y += speed_mps * dt * math.sin(rad)
                 self.linear_velocity = speed_mps
                 self.angular_velocity = 0.0
                 time.sleep(dt)
 
         self.send_udp_motor_command("stop")
+        self.avoidance_locked_dir = None
         return False
 
     def _exploration_loop(self, auto_save: bool = True, save_name: str = "auto_explored_map"):
         """Vòng lặp khám phá: tìm frontier → di chuyển → quét → lặp cho đến khi hết frontier."""
-        # Quét 360 tại chỗ ban đầu
-        logger.info("📡 Quét 360° tại vị trí xuất phát...")
-        self.scan_room_360()
-        time.sleep(5.0)  # Chờ quét xong
+        # 1. Quét 360 tại chỗ ban đầu (chặn hoàn toàn cho tới khi xoay xong 360 độ)
+        logger.info("📡 Quét 360° toàn cảnh tại vị trí xuất phát...")
+        self.scan_room_360(blocking=True)
+        time.sleep(0.5)
+
+        if not self.is_exploring:
+            self.send_udp_motor_command("stop", force=True)
+            self.status = "IDLE"
+            return
+
+        self.status = "EXPLORING"
+
+        # 2. Đảm bảo LiDAR đã có dữ liệu quét thực tế trước khi tìm frontier
+        wait_start = time.time()
+        while len(self.get_latest_scans()) == 0 and time.time() - wait_start < 5.0 and self.is_exploring:
+            logger.warning("⏳ Đang chờ RPLiDAR gửi tia quét...")
+            time.sleep(0.5)
+
+        if len(self.get_latest_scans()) == 0:
+            logger.error("❌ RPLiDAR chưa gửi tia quét nào. Thử kích hoạt tái kết nối khẩn cấp...")
+            self.connect(force=True)
+            time.sleep(1.0)
 
         max_frontiers = 200  # Giới hạn số frontier để tránh chạy vô tận
         frontier_count = 0
@@ -983,7 +1153,21 @@ free_thresh: 0.25
             frontier = self._find_frontier()
 
             if frontier is None:
-                logger.info("🎉 KHÁM PHÁ HOÀN THÀNH — Không còn frontier chưa thăm!")
+                # Kiểm tra nếu bản đồ hoàn toàn chưa có điểm nào (chưa có free cell do tia laser bị cản)
+                with self._lock:
+                    known_free = sum(1 for v in self.grid_data if v == 0)
+                if known_free < 20 and frontier_count == 0:
+                    logger.warning(f"⚠️ Bản đồ mới có {known_free} ô trống, nhích nhẹ 0.3m để mở rộng góc quan sát...")
+                    self.send_udp_motor_command("speed:35")
+                    self.send_udp_motor_command("forward")
+                    time.sleep(0.6)
+                    self.send_udp_motor_command("stop")
+                    self.robot_x += 0.20 * math.cos(math.radians(self.robot_yaw))
+                    self.robot_y += 0.20 * math.sin(math.radians(self.robot_yaw))
+                    time.sleep(0.8)
+                    continue
+
+                logger.info("🎉 KHÁM PHÁ HOÀN THÀNH — Đã quét toàn bộ khu vực!")
                 break
 
             fx, fy = frontier
@@ -995,21 +1179,11 @@ free_thresh: 0.25
             self.explored_frontiers.append(frontier_key)
 
             if success:
-                # Quét tại frontier mới
+                # Đã tới frontier: Dừng yên 0.8s để RPLiDAR A1 quét ổn định toàn cảnh không gian mới
                 self.send_udp_motor_command("stop")
-                time.sleep(0.3)
-                # Quét nhỏ 90° để thu dữ liệu sắc nét hơn
-                for _ in range(9):
-                    if not self.is_exploring:
-                        break
-                    self.send_udp_motor_command("speed:25")
-                    self.send_udp_motor_command("right")
-                    time.sleep(0.06)
-                    self.send_udp_motor_command("stop")
-                    self.robot_yaw = (self.robot_yaw + 10.0) % 360.0
-                    time.sleep(0.15)
+                time.sleep(0.8)
             else:
-                logger.warning(f"⚠️ Không đến được frontier ({fx:.2f}, {fy:.2f}) — bỏ qua.")
+                logger.warning(f"⚠️ Không đến được frontier ({fx:.2f}, {fy:.2f}) — tiếp tục điểm kế tiếp.")
 
         # Kết thúc khám phá
         self.send_udp_motor_command("stop")
@@ -1338,11 +1512,21 @@ async def get_lidar_status():
 
 @app.post("/api/v1/map/connect_lidar")
 async def connect_lidar():
-    success = slam_core.connect()
+    success = slam_core.connect(force=True)
     if success:
         slam_core.start_scanning()
-        return {"status": "SUCCESS", "message": "Đã kết nối thành công RPLiDAR A1M8", "info": slam_core.device_info}
+        return {"status": "SUCCESS", "message": "Đã tái kết nối thành công phần cứng RPLiDAR A1M8", "info": slam_core.device_info}
     return {"status": "FAILED", "message": slam_core.last_error or "Không thể kết nối RPLiDAR"}
+
+
+@app.post("/api/v1/system/restart")
+async def restart_system():
+    """Khởi động lại toàn bộ tiến trình điều khiển robot."""
+    def _do_exit():
+        time.sleep(0.5)
+        os._exit(0)
+    threading.Thread(target=_do_exit, daemon=True).start()
+    return {"status": "SUCCESS", "message": "Đang khởi động lại tiến trình robot..."}
 
 
 @app.post("/api/v1/map/reset_map")
@@ -1415,7 +1599,7 @@ async def teleop_control(req: TeleopCommandRequest):
         spd = req.speed or 35
         slam_core.send_udp_motor_command(f"speed:{spd}")
         slam_core.send_udp_motor_command(cmd)
-        yaw_step = 8.0 if cmd == "right" else -8.0
+        yaw_step = -8.0 if cmd == "right" else 8.0
         slam_core.robot_yaw = (slam_core.robot_yaw + yaw_step) % 360.0
     elif cmd in ["forward", "backward"]:
         spd = req.speed or 45
@@ -1423,8 +1607,8 @@ async def teleop_control(req: TeleopCommandRequest):
         slam_core.send_udp_motor_command(cmd)
         step_m = 0.08 if cmd == "forward" else -0.08
         rad = math.radians(slam_core.robot_yaw)
-        slam_core.robot_x += step_m * math.sin(rad)
-        slam_core.robot_y += step_m * math.cos(rad)
+        slam_core.robot_x += step_m * math.cos(rad)
+        slam_core.robot_y += step_m * math.sin(rad)
     return {"status": "SUCCESS", "command": cmd}
 
 
@@ -1458,6 +1642,34 @@ async def start_exploration(req: Optional[ExploreStartRequest] = None):
 async def stop_exploration():
     slam_core.stop_exploration()
     return {"status": "SUCCESS", "message": "Đã dừng khám phá tự động"}
+
+
+@app.post("/api/v1/map/emergency_stop")
+async def emergency_stop():
+    """Dừng khẩn cấp: ngắt toàn bộ quét map frontier, navigation và phanh động cơ lập tức."""
+    slam_core.stop_exploration()
+    slam_core.stop_navigation()
+    slam_core.send_udp_motor_command("stop", force=True)
+    slam_core.status = "EMERGENCY_STOPPED"
+    slam_core.linear_velocity = 0.0
+    slam_core.angular_velocity = 0.0
+    logger.warning("🛑 [E-STOP] Đã kích hoạt dừng khẩn cấp: ngắt toàn bộ tự hành, quét map và động cơ bánh xe!")
+    return {
+        "status": "SUCCESS",
+        "message": "Đã ngắt toàn bộ chuyển động khẩn cấp (Emergency Stop Activated). Robot đứng yên an toàn."
+    }
+
+
+@app.get("/api/v1/map/explore/status")
+async def get_explore_status():
+    return {
+        "status": "SUCCESS",
+        "is_exploring": slam_core.is_exploring,
+        "robot_status": slam_core.status,
+        "explored_count": len(slam_core.explored_frontiers),
+        "linear_velocity": round(slam_core.linear_velocity, 2),
+        "angular_velocity": round(slam_core.angular_velocity, 1),
+    }
 
 
 # ─── STATIC OVERLAY MAP ──────────────────────────────────────────────────────
@@ -1584,6 +1796,28 @@ async def map_ws_endpoint(websocket: WebSocket):
             scans = slam_core.get_latest_scans()
             map_data = slam_core.get_grid_map()
 
+            encoders_payload = {"m1": {"rpm": 0, "ticks": 0}, "m2": {"rpm": 0, "ticks": 0}, "m3": {"rpm": 0, "ticks": 0}, "m4": {"rpm": 0, "ticks": 0}}
+            esp_reader = getattr(slam_core, "esp32_reader", None)
+            snap = esp_reader.get_snapshot() if (esp_reader and hasattr(esp_reader, "get_snapshot")) else None
+            if snap and snap.encoders:
+                encoders_payload = snap.encoders
+
+            front_cm = round(slam_core.get_front_distance() * 100, 1) if slam_core.get_front_distance() < 90 else None
+            rear_cm = round(slam_core.get_rear_distance() * 100, 1) if slam_core.get_rear_distance() < 90 else None
+            left_cm = round(slam_core.get_left_distance() * 100, 1) if slam_core.get_left_distance() < 90 else None
+            right_cm = round(slam_core.get_right_distance() * 100, 1) if slam_core.get_right_distance() < 90 else None
+
+            # Kết hợp dữ liệu cảm biến siêu âm ESP32 khi LiDAR chưa kịp quét hoặc bị che
+            if snap and snap.distances:
+                if front_cm is None and snap.distances.get("front") is not None:
+                    front_cm = round(snap.distances["front"], 1)
+                if rear_cm is None and snap.distances.get("rear") is not None:
+                    rear_cm = round(snap.distances["rear"], 1)
+                if left_cm is None and snap.distances.get("left") is not None:
+                    left_cm = round(snap.distances["left"], 1)
+                if right_cm is None and snap.distances.get("right") is not None:
+                    right_cm = round(snap.distances["right"], 1)
+
             payload = {
                 "type": "telemetry_update",
                 "source": "REAL_RPLIDAR_A1M8_PI5",
@@ -1603,11 +1837,12 @@ async def map_ws_endpoint(websocket: WebSocket):
                 "overlay_active": slam_core._overlay_active,
                 "overlay_waypoints": slam_core._overlay_waypoints if slam_core._overlay_active else [],
                 "scan_points": scans,
+                "encoders": encoders_payload,
                 "safety": {
-                    "front_cm": round(slam_core.get_front_distance() * 100, 1) if slam_core.get_front_distance() < 90 else None,
-                    "rear_cm": round(slam_core.get_rear_distance() * 100, 1) if slam_core.get_rear_distance() < 90 else None,
-                    "left_cm": round(slam_core.get_left_distance() * 100, 1) if slam_core.get_left_distance() < 90 else None,
-                    "right_cm": round(slam_core.get_right_distance() * 100, 1) if slam_core.get_right_distance() < 90 else None,
+                    "front_cm": front_cm,
+                    "rear_cm": rear_cm,
+                    "left_cm": left_cm,
+                    "right_cm": right_cm,
                     "alert": getattr(slam_core, "last_safety_alert", ""),
                 },
                 "grid_data": slam_core.merge_maps() if slam_core._overlay_active else map_data["grid_data"],
@@ -1628,6 +1863,8 @@ async def map_ws_endpoint(websocket: WebSocket):
 
 
 def run_lidar_server(host="0.0.0.0", port=8000):
+    if slam_core.pi_motor is None:
+        slam_core.init_direct_motor()
     slam_core.connect()
     slam_core.start_scanning()
     uvicorn.run(app, host=host, port=port, log_level="warning")

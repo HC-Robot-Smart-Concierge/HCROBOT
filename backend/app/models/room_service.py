@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     from app.models.hotel import Room
     from app.models.support_request import SupportRequest
     from app.models.menu import MenuItem, FoodItem
+    from app.models.robot import Robot
 
 
 class RoomServiceOrder(Base):
@@ -29,17 +30,14 @@ class RoomServiceOrder(Base):
     support_request_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("support_requests.id", ondelete="SET NULL"), nullable=True, index=True)
     
     status: Mapped[str] = mapped_column(String(50), default="Pending") # 'Pending', 'Cooking', 'Ready', 'Delivering', 'Completed', 'Cancelled'
-    items: Mapped[Optional[List[Dict[str, Any]]]] = mapped_column(JSON, default=list) # JSON cache
     note: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     image_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     is_service_request: Mapped[bool] = mapped_column(Boolean, default=False)
     progress: Mapped[int] = mapped_column(Integer, default=0)
     est_completion: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
-    assigned_robot_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    assigned_robot_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("robots.id", ondelete="SET NULL"), nullable=True, index=True)
     assigned_staff_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     total_amount: Mapped[float] = mapped_column(Float, default=0.0)
-    priority: Mapped[Optional[str]] = mapped_column(String(20), default="NORMAL")
-    is_vip: Mapped[Optional[bool]] = mapped_column(Boolean, default=False)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -47,8 +45,35 @@ class RoomServiceOrder(Base):
     # Relationships
     room: Mapped[Optional["Room"]] = relationship("Room")
     account: Mapped[Optional["Account"]] = relationship("Account")
-    support_request: Mapped[Optional["SupportRequest"]] = relationship("SupportRequest")
+    support_request: Mapped[Optional["SupportRequest"]] = relationship("SupportRequest", back_populates="room_service_order")
+    assigned_robot: Mapped[Optional["Robot"]] = relationship("Robot")
     order_items: Mapped[List["OrderItem"]] = relationship("OrderItem", back_populates="order", cascade="all, delete-orphan")
+
+    @property
+    def items(self) -> List[Dict[str, Any]]:
+        """Synthesizes items list from order_items relational table."""
+        if self.order_items:
+            return [
+                {
+                    "id": oi.id,
+                    "name": oi.item_name,
+                    "item_name": oi.item_name,
+                    "qty": oi.quantity,
+                    "quantity": oi.quantity,
+                    "unit_price": oi.unit_price,
+                    "subtotal": oi.subtotal,
+                    "menu_item_id": oi.menu_item_id,
+                    "food_item_id": oi.food_item_id,
+                    "notes": oi.notes,
+                }
+                for oi in self.order_items
+            ]
+        return []
+
+    @items.setter
+    def items(self, val):
+        pass
+
 
 
 class OrderItem(Base):

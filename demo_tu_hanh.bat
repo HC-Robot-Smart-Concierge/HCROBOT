@@ -11,5 +11,6 @@ echo  4. Tu hanh tuan tra qua cac diem (Tiep tan, Sofa, Cua, Tram sac)
 echo     va tu dong ne vat can thoi gian thuc!
 echo ===================================================================
 echo.
-wsl -d Ubuntu-24.04 bash /mnt/f/DoAn/HC-Robot/robot/scripts/launch_autonomous_demo.sh
+cd /d "%~dp0"
+wsl -d Ubuntu-24.04 bash robot/scripts/launch_autonomous_demo.sh
 pause

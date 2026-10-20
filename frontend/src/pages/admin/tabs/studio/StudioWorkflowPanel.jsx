@@ -75,9 +75,9 @@ export const StudioWorkflowPanel = ({
                   <span
                     className="px-1.5 py-0.2 rounded text-[9px] font-mono font-bold border uppercase shrink-0"
                     style={{
-                      backgroundColor: isMove ? '#8B5CF6' : '#262626',
+                      backgroundColor: isMove ? '#262626' : '#52525B',
                       color: '#FFFFFF',
-                      borderColor: isMove ? '#7C3AED' : '#262626',
+                      borderColor: isMove ? '#262626' : '#52525B',
                     }}
                   >
                     {step.type}

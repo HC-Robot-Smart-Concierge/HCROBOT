@@ -2,6 +2,7 @@
 
 import argparse
 import logging
+import os
 import threading
 import time
 
@@ -13,23 +14,42 @@ from ultrasonic_serial import UltrasonicSerialReader
 logger = logging.getLogger("RobotMain")
 
 
-def start_camera_stream(device=None, width=1920, height=1080, fps=15):
-    """Khởi động MJPEG Camera Stream Server trên background thread với cơ chế tự phục hồi."""
+def start_camera_stream(device=None, width=1280, height=720, fps=15):
+    """Khởi động MJPEG Camera Stream Server trên background thread với Frame Broadcaster và auto-reconnect."""
     try:
-        from scripts.camera_stream import create_camera_backend, ThreadedHTTPServer, MJPEGHandler
+        from scripts.camera_stream import (
+            create_camera_backend,
+            ThreadedHTTPServer,
+            MJPEGHandler,
+            CameraBroadcaster,
+        )
         import scripts.camera_stream as cam_module
 
-        try:
-            cam_module.camera_backend = create_camera_backend(width, height, fps, device=device)
-        except Exception as e:
-            logger.warning(f"Camera backend chua san sang luc khoi dong ({e}), se tu dong ket noi lai khi co request...")
-            cam_module.camera_backend = None
+        broadcaster = CameraBroadcaster(width=width, height=height, fps=fps, device=device)
+        broadcaster.start()
+        cam_module.camera_broadcaster = broadcaster
+        cam_module.camera_backend = broadcaster.backend
 
         server = ThreadedHTTPServer(("0.0.0.0", 8554), MJPEGHandler)
-        logger.info("📹 Camera stream started: http://0.0.0.0:8554/stream (Auto-reconnect)")
+        logger.info("📹 Camera stream started: http://0.0.0.0:8554/stream (Broadcaster Enabled)")
         server.serve_forever()
     except Exception as e:
         logger.error(f"Camera stream failed to start: {e}")
+
+
+_wsl_sync_sock = None
+
+def _notify_wsl_motion(motion: str):
+    global _wsl_sync_sock
+    try:
+        if _wsl_sync_sock is None:
+            import socket
+            _wsl_sync_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            _wsl_sync_sock.settimeout(0.02)
+        # Gửi sang laptop WSL để RViz2 cập nhật chuyển động tức thời
+        _wsl_sync_sock.sendto(motion.encode('utf-8'), ("100.92.82.61", 9998))
+    except Exception:
+        pass
 
 
 def start_udp_control_listener(safety, port=9999):
@@ -105,6 +125,8 @@ class DirectMotorSafetyWrapper:
         if motion == "stop":
             self.stop()
             return True
+        if motion == self.motion:
+            return True
         action = self.actions.get(motion)
         if action:
             action()
@@ -113,8 +135,9 @@ class DirectMotorSafetyWrapper:
         return False
 
     def stop(self):
-        self.motor.stop()
-        self.motion = "stop"
+        if self.motion != "stop":
+            self.motor.stop()
+            self.motion = "stop"
 
     def set_speed(self, speed_percent: int) -> int:
         if hasattr(self.motor, "set_speed"):
@@ -326,41 +349,41 @@ def build_argument_parser():
         action="store_true",
         help="Bỏ qua khóa fail-safe cảm biến siêu âm (cho phép điều khiển trực tiếp qua Web/phím)",
     )
+    parser.add_argument(
+        "--ignore-sensors",
+        default="",
+        help="Danh sách cảm biến siêu âm bỏ qua kiểm tra an toàn (ví dụ: front hoặc front,rear)",
+    )
     parser.add_argument("--debug", action="store_true", help="Bật log từng packet")
     return parser
 
 
 def main(argv=None):
+    # 0. Ngăn ngừa chạy trùng lặp tiến trình gây tranh chấp cổng Serial /dev/ttyUSB0
+    try:
+        import fcntl
+        global _instance_lock_file
+        lock_path = os.path.expanduser("~/.hcrobot_main.lock")
+        _instance_lock_file = open(lock_path, "w")
+        fcntl.flock(_instance_lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        _instance_lock_file.write(str(os.getpid()))
+        _instance_lock_file.flush()
+    except (IOError, BlockingIOError) as e:
+        if isinstance(e, BlockingIOError) or "Resource temporarily unavailable" in str(e):
+            print("\n" + "=" * 65)
+            print("🚨 [LỖI] ĐÃ CÓ TIẾN TRÌNH HC-ROBOT ĐANG CHẠY TRÊN HỆ THỐNG!")
+            print("Cổng Serial và GPIO sẽ bị xung đột nếu chạy 2 instance cùng lúc.")
+            print("Vui lòng dừng tiến trình cũ trước bằng lệnh: sudo killall -9 python3")
+            print("=" * 65 + "\n")
+            return 1
+    except Exception:
+        pass
+
     args = build_argument_parser().parse_args(argv)
     logging.basicConfig(
         level=logging.DEBUG if args.debug else logging.INFO,
         format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
     )
-
-    # Bật Camera Stream Server trên background thread (trừ khi --no-camera)
-    if not args.no_camera:
-        camera_thread = threading.Thread(
-            target=start_camera_stream,
-            args=(args.camera_device,),
-            daemon=True,
-        )
-        camera_thread.start()
-
-    # Bật LiDAR SLAM & WebSocket Server trên background thread (trừ khi --no-lidar)
-    if not args.no_lidar:
-        try:
-            from scripts.lidar_service import run_lidar_server, slam_core
-            if args.lidar_port:
-                slam_core.port = args.lidar_port
-            lidar_thread = threading.Thread(
-                target=run_lidar_server,
-                kwargs={"host": "0.0.0.0", "port": 8000},
-                daemon=True,
-            )
-            lidar_thread.start()
-            logger.info("📡 LiDAR SLAM Server đang chạy tại ws://0.0.0.0:8000/api/v1/map/ws")
-        except Exception as e:
-            logger.warning("Không thể khởi chạy LiDAR SLAM Server: %s", e)
 
     config = load_config()
     robot_cfg = config.get("robot", {})
@@ -386,6 +409,32 @@ def main(argv=None):
         motor.cleanup()
         return 2
 
+    # Bật Camera Stream Server trên background thread (trừ khi --no-camera)
+    if not args.no_camera:
+        camera_thread = threading.Thread(
+            target=start_camera_stream,
+            args=(args.camera_device,),
+            daemon=True,
+        )
+        camera_thread.start()
+
+    # Bật LiDAR SLAM & WebSocket Server trên background thread (trừ khi --no-lidar)
+    if not args.no_lidar:
+        try:
+            from scripts.lidar_service import run_lidar_server, slam_core
+            slam_core.pi_motor = motor  # Dùng chung instance MotorController đã claim GPIO thành công
+            if args.lidar_port:
+                slam_core.port = args.lidar_port
+            lidar_thread = threading.Thread(
+                target=run_lidar_server,
+                kwargs={"host": "0.0.0.0", "port": 8000},
+                daemon=True,
+            )
+            lidar_thread.start()
+            logger.info("📡 LiDAR SLAM Server đang chạy tại ws://0.0.0.0:8000/api/v1/map/ws")
+        except Exception as e:
+            logger.warning("Không thể khởi chạy LiDAR SLAM Server: %s", e)
+
     if args.drive_test:
         return run_direct_motor_test(
             motor,
@@ -407,7 +456,37 @@ def main(argv=None):
         run_wasd_controller(motor)
         return 0
 
+    active_lidar_port = None
+    if not args.no_lidar:
+        try:
+            from scripts.lidar_service import slam_core
+            active_lidar_port = slam_core.port
+        except Exception:
+            pass
+
+    port = _value(args.port, serial_cfg, "port", "auto")
+    exclude = [active_lidar_port] if active_lidar_port else []
+    baudrate = int(_value(args.baud, serial_cfg, "baudrate", 115200))
+
+    from ultrasonic_serial import detect_esp32_port
+    esp32_port = detect_esp32_port(exclude_ports=exclude) if port == "auto" else port
+
     reader = None
+    if esp32_port:
+        try:
+            reader = UltrasonicSerialReader(port=esp32_port, baudrate=baudrate, exclude_ports=exclude)
+            reader.start()
+            if not args.no_lidar:
+                try:
+                    from scripts.lidar_service import slam_core
+                    slam_core.esp32_reader = reader
+                except Exception:
+                    pass
+            logger.info("📡 Đã khởi động luồng đọc cảm biến siêu âm & Encoder từ ESP32 trên %s", esp32_port)
+        except Exception as e:
+            logger.warning("⚠️ Không mở được Serial ESP32 (%s).", e)
+            reader = None
+
     if args.no_safety:
         logger.warning(
             "⚠️ NO-SAFETY: Đã tắt khóa an toàn cảm biến siêu âm. Điều khiển Web và bàn phím sẽ tác động trực tiếp tới motor."
@@ -422,19 +501,7 @@ def main(argv=None):
         udp_thread.start()
         _print_controls("disabled (--no-safety)", {}, 0.0, 0.0)
     else:
-        active_lidar_port = None
-        if not args.no_lidar:
-            try:
-                from scripts.lidar_service import slam_core
-                active_lidar_port = slam_core.port
-            except Exception:
-                pass
-
-        port = _value(args.port, serial_cfg, "port", "auto")
-        exclude = [active_lidar_port] if active_lidar_port else []
-
-        from ultrasonic_serial import detect_esp32_port
-        if port == "auto" and not detect_esp32_port(exclude_ports=exclude):
+        if not reader:
             logger.warning(
                 f"⚠️ Không tìm thấy cổng USB riêng cho ESP32 (cổng {active_lidar_port} đang dùng cho RPLiDAR). "
                 "Tự động chuyển sang chế độ --no-safety để điều khiển xe bình thường."
@@ -450,7 +517,6 @@ def main(argv=None):
             run_wasd_controller(motor)
             return 0
 
-        baudrate = int(_value(args.baud, serial_cfg, "baudrate", 115200))
         stale_timeout = float(
             _value(args.sensor_timeout, safety_cfg, "stale_timeout_seconds", 0.4)
         )
@@ -474,7 +540,10 @@ def main(argv=None):
             _value(args.turn_clearance, safety_cfg, "turn_clearance_cm", 25.0)
         )
 
-        reader = UltrasonicSerialReader(port=port, baudrate=baudrate, exclude_ports=exclude)
+        ignored = [s.strip().lower() for s in args.ignore_sensors.split(",") if s.strip()]
+        if ignored:
+            logger.info("🛡️ Cấu hình bỏ qua cảm biến an toàn: %s", ", ".join(ignored).upper())
+
         safety = ObstacleSafetyController(
             motor=motor,
             sensor_reader=reader,
@@ -485,24 +554,20 @@ def main(argv=None):
             resume_margin_cm=resume_margin,
             resume_valid_packets=resume_packets,
             turn_clearance_cm=turn_clearance,
+            ignored_sensors=ignored,
         )
 
-        try:
-            reader.start()
-        except RuntimeError as exc:
-            logger.error("Không khởi động được Serial reader: %s", exc)
-            motor.cleanup()
-            return 3
-
-        if reader.wait_for_packet(timeout=3.0):
+        if reader.wait_for_packet(timeout=4.5):
             logger.info("Đã nhận packet ultrasonic đầu tiên; khóa fail-safe sẵn sàng.")
         else:
             logger.warning(
-                "Chưa nhận được packet sau 3 giây; mọi lệnh chạy bị khóa cho tới khi có dữ liệu từ ESP32."
+                "⚠️ Không nhận được packet từ ESP32 sau 4.5 giây (cổng %s).",
+                port,
             )
             logger.warning(
-                "💡 MẸO: Để điều khiển xe ngay mà không cần ESP32, hãy thêm cờ: sudo python3 main.py --no-safety"
+                "🔄 TỰ ĐỘNG CHUYỂN SANG NO-SAFETY: Bỏ qua khóa siêu âm để cho phép điều khiển xe ngay (LiDAR 360° vẫn bảo vệ)."
             )
+            safety = DirectMotorSafetyWrapper(motor)
 
         _print_controls(port, thresholds, stale_timeout, turn_clearance)
 
@@ -577,9 +642,12 @@ def main(argv=None):
                 continue
             key = char.lower()
             if key in key_to_motion:
-                safety.command(key_to_motion[key])
+                target_cmd = key_to_motion[key]
+                safety.command(target_cmd)
+                _notify_wsl_motion(target_cmd)
             elif key in ("x", "5", " ", "\r", "\n"):
                 safety.stop()
+                _notify_wsl_motion("stop")
             elif key in ("+", "="):
                 new_spd = safety.set_speed(safety.speed + 10)
                 logger.info("Vận tốc: %d%%", new_spd)

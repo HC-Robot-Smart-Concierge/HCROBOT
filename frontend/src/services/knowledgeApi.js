@@ -141,3 +141,17 @@ export const saveRAGSourceFile = async (filename, content) => {
     { message: `Đã lưu file ${filename} thành công!`, id: filename }
   );
 };
+
+/**
+ * Xóa file tài liệu nguồn khỏi knowledge_vault / uploads
+ */
+export const deleteRAGSource = async (filename) => {
+  return await fetchWithFallback(
+    `${RAG_BASE_URL}/sources/${encodeURIComponent(filename)}`,
+    {
+      method: 'DELETE',
+    },
+    { message: `Đã xóa file ${filename} thành công!`, id: filename }
+  );
+};
+

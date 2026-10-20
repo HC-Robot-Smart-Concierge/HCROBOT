@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Pause, SkipForward, Volume2, VolumeX, Square, Bot } from 'lucide-react';
+import { Play, Pause, SkipForward, Volume2, VolumeX, Square, Layers } from 'lucide-react';
 import { RobotFace } from '../../../../components/robot/RobotFace';
 import { AudioWave } from '../../../../components/robot/AudioWave';
 import { useSpeechSynthesis } from '../../../../hooks/useSpeechSynthesis';
@@ -56,6 +56,9 @@ export const WorkflowSimulatorModal = ({ workflow, isOpen, onClose }) => {
     } else if (step.type === 'SHOW') {
       const showTimeout = parseInt(step.params?.timeout || step.params?.slide_duration_sec) || 5;
       stepDurationMs = showTimeout * 1000;
+    } else if (step.type === 'COMMUNICATE') {
+      const commTimeout = parseInt(step.params?.silence_timeout_sec || step.params?.timeout) || 6;
+      stepDurationMs = Math.min(6000, commTimeout * 1000);
     } else if (step.type === 'LISTEN') {
       const listenTimeout = parseInt(step.params?.timeout || step.params?.timeout_sec) || 6;
       stepDurationMs = listenTimeout * 1000;
@@ -74,7 +77,9 @@ export const WorkflowSimulatorModal = ({ workflow, isOpen, onClose }) => {
 
     if (!isMuted) {
       const voiceText =
-        step.type === 'GREET'
+        step.type === 'COMMUNICATE'
+          ? (step.params?.initial_prompt || step.params?.speech_text || step.params?.text)
+          : step.type === 'GREET'
           ? (step.params?.greeting_text || step.params?.text)
           : step.type === 'SPEAK'
           ? (step.params?.speech_text || step.params?.text)
@@ -134,9 +139,14 @@ export const WorkflowSimulatorModal = ({ workflow, isOpen, onClose }) => {
     if (activeStep.type === 'GREET') {
       const exp = activeStep.params?.face_expression || 'HAPPY_SMILE';
       if (exp === 'HAPPY_SMILE' || exp === 'WELCOME') return 'happy';
+      if (exp === 'LOOK_UP') return 'look_up';
+      if (exp === 'LOOK_LEFT') return 'look_left';
+      if (exp === 'LOOK_RIGHT') return 'look_right';
+      if (exp === 'LOOK_AROUND') return 'look_around';
       if (exp === 'LISTENING') return 'listening';
       return 'welcome';
     }
+    if (activeStep.type === 'COMMUNICATE') return 'listening';
     if (activeStep.type === 'SPEAK') return 'speaking';
     if (activeStep.type === 'LISTEN') return 'listening';
     if (activeStep.type === 'RECOMMEND') return 'processing';
@@ -144,7 +154,9 @@ export const WorkflowSimulatorModal = ({ workflow, isOpen, onClose }) => {
   };
 
   const speechText =
-    activeStep?.type === 'GREET'
+    activeStep?.type === 'COMMUNICATE'
+      ? (activeStep.params?.initial_prompt || activeStep.params?.speech_text || activeStep.params?.text)
+      : activeStep?.type === 'GREET'
       ? (activeStep.params?.greeting_text || activeStep.params?.text)
       : activeStep?.type === 'SPEAK'
       ? (activeStep.params?.speech_text || activeStep.params?.text)
@@ -157,7 +169,7 @@ export const WorkflowSimulatorModal = ({ workflow, isOpen, onClose }) => {
         <div className="px-5 py-3 border-b border-stone-700 flex items-center justify-between bg-[#27272A]">
           <div>
             <h3 className="font-extrabold text-sm text-stone-100 flex items-center gap-2 uppercase tracking-wide">
-              <Bot className="w-4 h-4 text-stone-300" />
+              <Layers className="w-4 h-4 text-stone-300" />
               <span>Giả Lập Thực Thi Robot: {workflow.name}</span>
             </h3>
             <span className="text-[10px] text-stone-400 font-mono">
@@ -278,7 +290,7 @@ export const WorkflowSimulatorModal = ({ workflow, isOpen, onClose }) => {
                 </div>
               )}
               <RobotFace mode={getRobotMode()} compact={true} />
-              {(activeStep?.type === 'SPEAK' || activeStep?.type === 'LISTEN') && (
+              {(activeStep?.type === 'COMMUNICATE' || activeStep?.type === 'SPEAK' || activeStep?.type === 'LISTEN') && (
                 <div className="mt-1">
                   <AudioWave isActive={isExecuting} />
                 </div>

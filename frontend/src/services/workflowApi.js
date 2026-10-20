@@ -150,7 +150,7 @@ export async function deleteZone(zoneId) {
 /**
  * Lưu bản đồ Occupancy Grid hiện tại vào CSDL và lưu file cố định
  */
-export async function saveCurrentLidarMap(mapId = 'MAP-LOBBY-01', name = 'Bản đồ Sảnh Tầng 1 Main Lobby', floor = 'Sảnh Tầng 1') {
+export async function saveCurrentLidarMap(mapId = 'phong_lam_viec', name = 'Bản đồ Phòng Làm Việc', floor = 'Phòng Làm Việc') {
   const params = new URLSearchParams({ map_id: mapId, name, floor });
   const res = await fetch(`${API_BASE}/map/save_map?${params.toString()}`, {
     method: 'POST',
@@ -162,7 +162,7 @@ export async function saveCurrentLidarMap(mapId = 'MAP-LOBBY-01', name = 'Bản 
 /**
  * Nạp lại bản đồ cố định đã lưu từ CSDL/file
  */
-export async function loadSavedLidarMap(mapId = 'MAP-LOBBY-01') {
+export async function loadSavedLidarMap(mapId = 'phong_lam_viec') {
   const params = new URLSearchParams({ map_id: mapId, lock: 'true' });
   const res = await fetch(`${API_BASE}/map/load_map?${params.toString()}`, {
     method: 'POST',
@@ -206,5 +206,11 @@ export function getMapWebSocketUrl() {
   }
   const protocol = loc.protocol === 'https:' ? 'wss:' : 'ws:';
   return `${protocol}//${loc.host}/api/v1/map/ws`;
+}
+
+export async function listSavedMaps() {
+  const res = await fetch(`${API_BASE}/map/list_saved_maps`);
+  if (!res.ok) throw new Error('Không thể lấy danh sách bản đồ đã lưu');
+  return res.json();
 }
 

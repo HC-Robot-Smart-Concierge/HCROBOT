@@ -8,6 +8,7 @@ from typing import Dict, Any, List, Optional, Tuple
 import ollama
 
 from app.core.config import settings
+from app.services.ai.scenario_service import scenario_service
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +19,42 @@ class OllamaService:
         self.model = settings.OLLAMA_MODEL
         self.embed_model = getattr(settings, "OLLAMA_EMBED_MODEL", None)
         self._client = ollama.AsyncClient(host=self.host)
+
+    async def _call_groq(self, messages: List[Dict[str, str]], json_mode: bool = False, max_tokens: int = 60) -> Optional[str]:
+        """
+        Gọi Groq Cloud API qua HTTP POST (OpenAI format).
+        Chỉ kích hoạt khi AI_PROVIDER='groq' hoặc tự động fallback khi Ollama cục bộ offline.
+        """
+        if not settings.GROQ_API_KEY:
+            return None
+        import httpx
+        url = "https://api.groq.com/openai/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {settings.GROQ_API_KEY}",
+            "Content-Type": "application/json",
+            "User-Agent": "HC-Robot-Concierge/1.0",
+        }
+        payload = {
+            "model": settings.GROQ_MODEL or "qwen/qwen3.8-27b",
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": 0.0 if json_mode else 0.4,
+        }
+        if json_mode:
+            payload["response_format"] = {"type": "json_object"}
+
+        try:
+            async with httpx.AsyncClient(timeout=12.0) as client:
+                res = await client.post(url, headers=headers, json=payload)
+                if res.status_code == 200:
+                    data = res.json()
+                    return data["choices"][0]["message"]["content"]
+                else:
+                    logger.warning(f"[Groq API Warning] status={res.status_code}: {res.text[:120]}")
+                    return None
+        except Exception as e:
+            logger.warning(f"[Groq API Error]: {str(e)}")
+            return None
 
     @staticmethod
     def detect_language(text: str) -> Tuple[str, str]:
@@ -72,10 +109,23 @@ class OllamaService:
 
     def check_fast_path(self, prompt: str, language: Optional[str] = None) -> Optional[Tuple[str, str, str]]:
         """
-        MEGA FAST-PATH: Phản hồi tức thì (<1ms) cho ~95% câu hỏi khách sạn.
-        Không gọi ChromaDB, không gọi LLM. Bao phủ: chào hỏi, tiện ích, dịch vụ, FAQ, chỉ đường.
+        Phản hồi tức thì (<1ms) từ Dynamic Fast-Path In-Memory Cache.
+        Trả về 3-tuple (reply, lang_name, lang_code) để tương thích ngược.
         """
-        if not prompt:
+        match = self.check_fast_path_full(prompt, language)
+        if match:
+            return match[0], match[1], match[2]
+        return None
+
+    def check_fast_path_full(
+        self, prompt: str, language: Optional[str] = None
+    ) -> Optional[Tuple[str, str, str, str, Optional[Dict[str, Any]]]]:
+        """
+        Phản hồi tức thì (<1ms) từ Dynamic Fast-Path In-Memory Cache (do Admin quản lý qua API).
+        Bao phủ: chào hỏi, tiện ích, dịch vụ, FAQ, chỉ đường, kích hoạt video call.
+        Trả về: (reply, lang_name, lang_code, action_type, action_payload).
+        """
+        if not prompt or not prompt.strip():
             return None
 
         if not language or language.lower() in ["auto", ""]:
@@ -84,58 +134,117 @@ class OllamaService:
             lang_name = language
             lang_code = "en-US" if language.lower() in ["english", "en"] else "vi-VN"
 
-        hour = datetime.datetime.now().hour
-        if 5 <= hour < 11:
-            time_greeting_vi = "Dạ em chào buổi sáng quý khách! Chúc quý khách một ngày mới tràn đầy năng lượng tại khách sạn Aurora. Quý khách cần em hỗ trợ gì ạ?"
-            time_greeting_en = "Good morning! Welcome to Aurora Grand Hotel. How may I assist you today?"
-        elif 11 <= hour < 18:
-            time_greeting_vi = "Dạ em chào quý khách! Chúc quý khách một buổi chiều thật vui vẻ tại khách sạn Aurora. Quý khách cần em hỗ trợ gì ạ?"
-            time_greeting_en = "Good afternoon! Welcome to Aurora Grand Hotel. How may I assist you today?"
-        else:
-            time_greeting_vi = "Dạ em chào buổi tối quý khách! Chúc quý khách một buổi tối thư thái tại khách sạn Aurora. Quý khách cần em hỗ trợ gì ạ?"
-            time_greeting_en = "Good evening! Welcome to Aurora Grand Hotel. How may I assist you tonight?"
-
         prompt_lower = prompt.lower().strip()
+        is_en = lang_code == "en-US"
 
-        # PRE-CHECK: Nếu câu nói chứa từ khóa HÀNH ĐỘNG dịch vụ → Bỏ qua fast-path,
-        # để Intent Router + Service FSM xử lý đúng (đặt bàn, gọi xe, sửa phòng...)
+        import datetime
+        now_hour = datetime.datetime.now().hour
+        if 5 <= now_hour < 12:
+            time_greeting_vi = "Dạ, Rora xin chào buổi sáng quý khách! Chúc quý khách một ngày mới tràn ngập niềm vui ạ."
+            time_greeting_en = "Good morning! Rora wishes you a wonderful and joyful day."
+        elif 12 <= now_hour < 18:
+            time_greeting_vi = "Dạ, Rora xin chào quý khách! Em có thể hỗ trợ gì cho quý khách chiều nay ạ?"
+            time_greeting_en = "Good afternoon! How may Rora assist you today?"
+        else:
+            time_greeting_vi = "Dạ, Rora xin chào buổi tối quý khách! Chúc quý khách buổi tối an lành và thư giãn ạ."
+            time_greeting_en = "Good evening! Wishing you a peaceful and relaxing evening."
+
+        # PRE-CHECK: Nếu câu nói chứa từ khóa HÀNH ĐỘNG dịch vụ buồng phòng / bảo trì / ẩm thực / hành lý
+        # → Bỏ qua fast-path để Intent Router + Service FSM xử lý slot-filling số phòng
         service_action_verbs = [
-            "đặt", "cần", "muốn", "yêu cầu", "gọi cho", "gọi", "gặp", "kết nối", "nói chuyện",
-            "book", "order", "reserve", "need", "call", "talk", "speak", "connect"
+            "đặt", "cần", "muốn", "yêu cầu", "sửa", "cho", "xin", "lấy", "mang", "giao", "gọi", "đổi",
+            "book", "order", "reserve", "need", "repair", "fix", "send", "bring", "get"
         ]
         service_nouns = [
-            "nhà hàng", "nha hang", "bàn ăn", "ban an", "đặt bàn", "đặt món",
-            "taxi", "xe", "sân bay",
-            "dọn phòng", "don phong", "khăn", "gối", "chăn",
-            "sửa", "hỏng", "bảo trì", "điều hòa", "máy lạnh",
-            "hành lý", "vali", "chuyển phòng",
-            "concierge", "video call", "live call", "gọi video", "nhân viên", "người thật", "tổng đài",
-            "lễ tân", "check in", "check out", "trả phòng", "staff", "human", "receptionist", "live agent"
+            "khăn", "gối", "chăn", "dọn phòng", "don phong", "nước", "đồ ăn", "cơm", "hành lý", "vali",
+            "điều hòa", "máy lạnh", "bóng đèn", "nước rò", "kẹt", "taxi", "bàn ủi", "sấy tóc", "máy sấy",
+            "towel", "cleaning", "food", "water", "drink", "luggage", "iron"
         ]
         has_action_verb = any(v in prompt_lower for v in service_action_verbs)
         has_service_noun = any(n in prompt_lower for n in service_nouns)
         if has_action_verb and has_service_noun:
-            logger.info(f"[OllamaService Fast-Path Bypass] Service intent detected, skipping fast-path for: '{prompt[:40]}'")
+            logger.info(f"[OllamaService Fast-Path Bypass] Service action intent detected, skipping fast-path for: '{prompt[:40]}'")
             return None
-        # Chuẩn hóa các biến thể nhận diện giọng nói STT
-        normalized = prompt_lower.replace("wi-fi", "wifi").replace("wi fi", "wifi")
-        normalized = re.sub(r'[\?\.\,\!\\_\:\;]', ' ', normalized)
-        normalized = re.sub(r'\s+', ' ', normalized).strip()
 
-        is_en = (lang_code == "en-US")
+        # Đối soát nhanh từ Dynamic Scenarios Cache trong RAM (< 0.1ms)
+        dynamic_hit = scenario_service.match_fast_path(prompt, lang_code)
+        if dynamic_hit:
+            return dynamic_hit
 
-        # 0. Wake-up call (Rora)
-        wake_pattern = r"^(hey rora|chào rora|chao rora|rora ơi|rora oi|hello rora|hi rora|rora)[\?\.\!\s]*$"
-        if re.search(wake_pattern, normalized, re.IGNORECASE) or re.search(wake_pattern, prompt_lower, re.IGNORECASE):
-            reply = "Yes, Rora is here! How can I help you, guest?" if is_en else "Dạ, Rora nghe đây ạ! Em có thể hỗ trợ gì cho quý khách?"
-            logger.info(f"[OllamaService Fast-Path Hit] Wake-up word detected in <1ms!")
-            return reply, lang_name, lang_code
+        # 2. Lời chào chung (Greetings)
+        if re.search(r"^(xin chào|xin chao|chào em|chao em|chào robot|chao robot|chào bạn|chao ban|chào rora|chao rora|hello|hi|hey|good morning|good afternoon|good evening)[\?\.\!\s]*$", prompt_lower):
+            return (time_greeting_en if is_en else time_greeting_vi), lang_name, lang_code, None, None
 
-        # 1. Wifi fast-path
-        if re.search(r"\b(wifi|wi fi|mật khẩu wifi|pass wifi|mạng internet|mật khẩu mạng|mạng wifi|wifi password|internet)\b", prompt_lower):
-            reply_vi = "Dạ wifi miễn phí tại sảnh và các phòng là 'Aurora_Guest', mật khẩu kết nối là 'aurora2026' ạ."
-            reply_en = "Complimentary Wi-Fi in the lobby and rooms is 'Aurora_Guest', with the password 'aurora2026'."
-            return (reply_en if is_en else reply_vi), lang_name, lang_code
+        # 2.1. Hỏi thăm sức khỏe (How are you)
+        if re.search(r"\b(khỏe không|khoe khong|bạn khỏe không|ban khoe khong|em khỏe không|em khoe khong|bạn có khỏe không|ban co khoe khong|how are you|how are you doing)\b", prompt_lower):
+            reply_vi = "Dạ em khỏe ạ! Cảm ơn quý khách đã quan tâm. Em có thể hỗ trợ gì cho kỳ nghỉ của mình hôm nay ạ?"
+            reply_en = "I am doing great, thank you for asking! How may I assist you with your stay today?"
+            return (reply_en if is_en else reply_vi), lang_name, lang_code, None, None
+
+        # 3. Lời cảm ơn (Thanks)
+        if re.search(r"\b(cảm ơn|cam on|thank you|thanks|cảm ơn em|cảm ơn rora)\b", prompt_lower):
+            reply_vi = "Dạ không có gì ạ! Rora rất hân hạnh được hỗ trợ quý khách. Chúc quý khách có những phút giây tuyệt vời tại Aurora!"
+            reply_en = "You are most welcome! Rora is always delighted to assist you. Have a wonderful time at Aurora!"
+            return (reply_en if is_en else reply_vi), lang_name, lang_code, None, None
+
+        # 4. Tạm biệt (Farewell)
+        if re.search(r"\b(tạm biệt|tam biet|goodbye|bye|bye bye|hẹn gặp lại)\b", prompt_lower):
+            reply_vi = "Dạ tạm biệt quý khách! Chúc quý khách một ngày tràn ngập niềm vui và hẹn sớm gặp lại ạ."
+            reply_en = "Goodbye! Wishing you a joyful day and looking forward to seeing you again."
+            return (reply_en if is_en else reply_vi), lang_name, lang_code, None, None
+
+        # 5. Hồ bơi / Bể bơi (Pool)
+        if re.search(r"\b(hồ bơi|bể bơi|swimming pool|pool)\b", prompt_lower):
+            reply_vi = "Dạ hồ bơi vô cực ngoài trời nằm ở Tầng 4, mở cửa từ 6 giờ sáng đến 22 giờ tối và có sẵn khăn tắm miễn phí ạ."
+            reply_en = "The outdoor infinity pool is located on Level 4, open from 6:00 AM to 10:00 PM with complimentary towels."
+            return (reply_en if is_en else reply_vi), lang_name, lang_code, None, None
+
+        # 6. Nhà hàng / Ăn sáng / Buffet (Restaurant & Breakfast)
+        if re.search(r"\b(nhà hàng|bữa sáng|buffet sáng|ăn sáng|restaurant|breakfast)\b", prompt_lower):
+            reply_vi = "Dạ Nhà hàng Aurora nằm ở Tầng 2, phục vụ buffet sáng từ 6 giờ 30 đến 10 giờ sáng hàng ngày ạ."
+            reply_en = "The Aurora Restaurant is located on Level 2, serving breakfast buffet from 6:30 AM to 10:00 AM daily."
+            return (reply_en if is_en else reply_vi), lang_name, lang_code, None, None
+
+        # 7. Phòng Gym / Thể hình (Gym / Fitness)
+        if re.search(r"\b(phòng gym|tập gym|thể dục|gym|fitness)\b", prompt_lower):
+            reply_vi = "Dạ Phòng Gym và trung tâm thể hình nằm ở Tầng 4, mở cửa phục vụ 24 trên 7 miễn phí cho quý khách ạ."
+            reply_en = "The Fitness Center is on Level 4, open 24/7 complimentary for staying guests."
+            return (reply_en if is_en else reply_vi), lang_name, lang_code, None, None
+
+        # 8. Spa / Xông hơi (Spa & Sauna)
+        if re.search(r"\b(spa|massage|xông hơi|sauna)\b", prompt_lower):
+            reply_vi = "Dạ Aurora Luxury Spa nằm tại Tầng 5, mở cửa phục vụ quý khách từ 9 giờ sáng đến 22 giờ tối ạ."
+            reply_en = "Aurora Luxury Spa is on Level 5, open from 9:00 AM to 10:00 PM."
+            return (reply_en if is_en else reply_vi), lang_name, lang_code, None, None
+
+        # 9. Giờ nhận phòng / Trả phòng (Check-in / Check-out)
+        if re.search(r"\b(trả phòng|check out|check-out|mấy giờ trả phòng|trả phòng lúc mấy giờ)\b", prompt_lower):
+            reply_vi = "Dạ giờ trả phòng tiêu chuẩn là trước 12 giờ trưa quý khách nhé."
+            reply_en = "Standard check-out time is before 12:00 PM noon."
+            return (reply_en if is_en else reply_vi), lang_name, lang_code, None, None
+
+        if re.search(r"\b(nhận phòng|check in|check-in|mấy giờ nhận phòng|nhận phòng lúc mấy giờ)\b", prompt_lower):
+            reply_vi = "Dạ giờ nhận phòng tiêu chuẩn tại khách sạn Aurora là từ 14 giờ chiều ạ."
+            reply_en = "Standard check-in time at Aurora Hotel is from 2:00 PM."
+            return (reply_en if is_en else reply_vi), lang_name, lang_code, None, None
+
+        # 10. Nhà vệ sinh / Toilet / WC
+        if re.search(r"\b(nhà vệ sinh|toilet|wc|restroom|phòng vệ sinh)\b", prompt_lower):
+            reply_vi = "Dạ nhà vệ sinh sảnh chính nằm ở phía tay phải sau quầy lễ tân tầng 1 ạ."
+            reply_en = "The lobby restrooms are located on the right side behind the Front Desk on Level 1."
+            return (reply_en if is_en else reply_vi), lang_name, lang_code, None, None
+
+        # 11. Bãi đỗ xe (Parking)
+        if re.search(r"\b(bãi đỗ xe|đỗ xe|gửi xe|bãi xe|parking)\b", prompt_lower):
+            reply_vi = "Dạ bãi đỗ xe ô tô và xe máy miễn phí nằm ở Tầng hầm B1 của khách sạn ạ."
+            reply_en = "Complimentary car and motorbike parking is located at Basement B1."
+            return (reply_en if is_en else reply_vi), lang_name, lang_code, None, None
+
+        # 12. Danh tính robot (Who are you)
+        if re.search(r"\b(bạn là ai|em là ai|tên gì|who are you|what is your name)\b", prompt_lower):
+            reply_vi = "Dạ em là Rora, trợ lý Robot Concierge thông minh của khách sạn 5 sao Aurora Grand. Rất hân hạnh được phục vụ quý khách ạ!"
+            reply_en = "I am Rora, the smart AI Concierge Robot at Aurora Grand Hotel. It is my pleasure to assist you!"
+            return (reply_en if is_en else reply_vi), lang_name, lang_code, None, None
 
         return None
 
@@ -162,7 +271,6 @@ class OllamaService:
         text = re.sub(r'\s+', ' ', text).strip()
         return text
 
-
     def _build_system_prompt(
         self,
         lang_code: str,
@@ -172,8 +280,10 @@ class OllamaService:
     ) -> str:
         """
         Xây dựng System Prompt tối ưu cho giao tiếp hội thoại tự nhiên, thông minh và phản hồi nhanh.
-        Tích hợp đầy đủ thông tin khách sạn để Qwen 3B tự tin trả lời lưu loát mọi tình huống.
+        Tự động nạp thông tin tiện ích động từ ScenarioService (do Admin quản lý qua API).
         """
+        hotel_facts = scenario_service.get_hotel_facts_prompt(lang_code)
+
         if lang_code == "en-US":
             prompt = (
                 "You are Rora - a smart, charming, and courteous AI Concierge Robot at the 5-star Aurora Grand Hotel.\n"
@@ -182,16 +292,27 @@ class OllamaService:
                 "2. Speak directly and helpfully as a professional 5-star concierge. Answer questions accurately and concisely.\n"
                 "3. Never use emojis, markdown formatting (*, #, _, -), or bulleted lists to ensure smooth speech synthesis.\n"
                 "4. State times clearly in full words (e.g., 'from 6:00 AM to 10:00 PM', '12:00 PM noon').\n"
-                "AURORA GRAND HOTEL AMENITIES & FACTS:\n"
-                "- Level 1: Main Lobby, Front Desk 24/7 (dial 0 from room telephone), and ATM.\n"
-                "- Level 2: Aurora Restaurant (serves breakfast buffet from 6:30 AM to 10:00 AM).\n"
-                "- Level 3: Conference Center & Executive Meeting Rooms.\n"
-                "- Level 4: Infinity Pool (open 6:00 AM to 10:00 PM, free towels) & 24/7 Fitness Center / Gym.\n"
-                "- Level 5: Aurora Luxury Spa & Sauna (open 9:00 AM to 10:00 PM).\n"
-                "- Basement B1: Complimentary parking for staying guests.\n"
-                "- Wi-Fi: Network name 'Aurora_Guest', password 'aurora2026'.\n"
-                "- Hours: Standard check-in from 2:00 PM, check-out before 12:00 PM noon."
+                "5. When providing directions or guiding to a hotel facility or room, politely end with: 'In addition, you can scan the QR code on the screen to save the directions!'\n"
+                "6. MANDATORY SERVICE & ROOM NUMBER RULES:\n"
+                "   - Whenever the guest makes a room service or amenity request (cleaning, towels, food, repairs, luggage, taxi):\n"
+                "     + If room number is NOT known yet (not in [Room Info]): ALWAYS politely ask for their room number first.\n"
+                "     + If room number IS ALREADY known (in [Room Info]): Confirm the request with their room number and NEVER ask for their room number again during this session.\n"
             )
+            if hotel_facts:
+                prompt += f"\n{hotel_facts}\n"
+            else:
+                prompt += (
+                    "AURORA GRAND HOTEL AMENITIES & FACTS:\n"
+                    "- Level 1 (Ground): Main Lobby, Front Desk 24/7 (dial 0 from room telephone), and ATM.\n"
+                    "- Level 2: Culinary Floor - Aurora Restaurant & Pickup Area (breakfast buffet 6:30 AM to 10:00 AM), Main Kitchen, Warehouse, and Restrooms.\n"
+                    "- Level 3: Guest Rooms 301 to 306.\n"
+                    "- Level 4: Premium Guest Rooms 401 to 409 (Deluxe, Executive King, and President Suite 406).\n"
+                    "- Level 5: Infinity Pool (6:00 AM to 10:00 PM, free towels), Herbal Spa & Sauna (9:00 AM to 10:00 PM), and 24/7 Fitness Center / Gym.\n"
+                    "- Level 6: Rooftop Coffee, Sky Lounge Bar (4:30 PM to 1:00 AM), VIP Karaoke, and Gift Shop.\n"
+                    "- Basement B1 & B2: B1 Motorbike parking; B2 Car parking (complimentary for staying guests).\n"
+                    "- Wi-Fi: Network name 'Aurora_Guest', password 'aurora2026'.\n"
+                    "- Hours: Standard check-in from 2:00 PM, check-out before 12:00 PM noon.\n"
+                )
         else:
             prompt = (
                 "Bạn là Rora - Trợ lý Robot Concierge thông minh, lễ phép, duyên dáng và hiếu khách tại khách sạn 5 sao Aurora Grand Hotel.\n"
@@ -199,19 +320,33 @@ class OllamaService:
                 "1. Luôn xưng 'Dạ em' hoặc 'Rora' và gọi người trò chuyện là 'quý khách' hoặc 'anh/chị'.\n"
                 "2. Trò chuyện một cách tự nhiên, gần gũi, ấm áp, lưu loát như một nhân viên lễ tân 5 sao chuyên nghiệp.\n"
                 "3. Trả lời đúng trọng tâm, súc tích trong 2 đến 3 câu văn gãy gọn, hoàn chỉnh để phát giọng đọc mượt mà và người nghe dễ nắm bắt nhất.\n"
-                "4. BẮT BUỘC dùng 100% tiếng Việt tự nhiên, chuẩn mực. Tuyệt đối không chèn từ ngoại ngữ vô nghĩa (như tiếng Nga до, tiếng Trung).\n"
+                "4. BẮT BUỘC dùng 100% tiếng Việt tự nhiên, chuẩn mực. Tuyệt đối không chèn từ ngoại ngữ vô nghĩa.\n"
                 "5. Tuyệt đối KHÔNG dùng emoji, ký hiệu markdown (*, #, _, -) hay gạch đầu dòng.\n"
-                "6. Viết thời gian rõ ràng: luôn viết bằng chữ như 'từ 6 giờ sáng đến 22 giờ tối', '12 giờ trưa', không viết tắt '6-22h'.\n\n"
-                "THÔNG TIN TIỆN ÍCH KHÁCH SẠN AURORA GRAND (ĐỂ TƯ VẤN CHO KHÁCH):\n"
-                "- Tầng 1: Sảnh chính, Quầy Lễ tân 24/7 (từ điện thoại phòng bấm phím 0) và máy ATM rút tiền.\n"
-                "- Tầng 2: Nhà hàng Aurora (phục vụ buffet sáng từ 6 giờ 30 đến 10 giờ sáng).\n"
-                "- Tầng 3: Trung tâm hội nghị & phòng họp sự kiện cao cấp.\n"
-                "- Tầng 4: Hồ bơi vô cực ngoài trời (mở từ 6 giờ sáng đến 22 giờ tối, khăn tắm miễn phí) và Phòng Gym (mở cửa 24/7).\n"
-                "- Tầng 5: Aurora Spa thư giãn (mở từ 9 giờ sáng đến 22 giờ tối).\n"
-                "- Tầng hầm B1: Bãi đỗ xe ô tô và xe máy miễn phí cho khách lưu trú.\n"
-                "- Wi-Fi miễn phí: Tên mạng 'Aurora_Guest', mật khẩu là 'aurora2026'.\n"
-                "- Thời gian lưu trú: Nhận phòng từ 14 giờ chiều, trả phòng trước 12 giờ trưa."
+                "6. Viết thời gian rõ ràng: luôn viết bằng chữ như 'từ 6 giờ sáng đến 22 giờ tối', '12 giờ trưa', không viết tắt '6-22h'.\n"
+                "7. Khi hướng dẫn chỉ đường hoặc giới thiệu vị trí một tiện ích hay phòng của khách sạn, ở cuối câu hãy luôn thêm câu mời: 'Ngoài ra, Quý khách có thể quét mã QR trên màn hình để ghi nhớ chỉ dẫn nhé ạ.'\n"
+                "8. QUY TẮC BẮT BUỘC VỀ YÊU CẦU DỊCH VỤ LIÊN QUAN TỚI SỐ PHÒNG:\n"
+                "   - Khi khách yêu cầu bất kỳ dịch vụ phòng nào (khăn tắm, buồng phòng, dọn phòng, chăn gối, đồ dùng, đồ ăn thức uống room service, hành lý bellman, sửa chữa máy lạnh điện nước, đặt xe taxi, v.v.):\n"
+                "     + Nếu CHƯA BIẾT số phòng (chưa có trong [Thông tin phòng]): BẮT BUỘC Rora phải hỏi số phòng của quý khách trước (ví dụ: 'Dạ em sẽ hỗ trợ ... cho quý khách ngay ạ! Quý khách vui lòng cho em xin số phòng của mình là bao nhiêu ạ?').\n"
+                "     + Nếu ĐÃ BIẾT số phòng (đã có trong [Thông tin phòng] hoặc vừa được cung cấp): Ghi nhận yêu cầu KÈM SỐ PHÒNG của khách (ví dụ: 'Dạ Rora đã ghi nhận yêu cầu ... cho Phòng [X] rồi ạ, bộ phận chuyên trách sẽ hỗ trợ quý khách ngay!') và TUYỆT ĐỐI KHÔNG hỏi lại số phòng nữa trong suốt phiên trò chuyện.\n"
+                "   - Toàn bộ các yêu cầu dịch vụ tiếp theo trong phiên này đều tự động gắn với số phòng đã lưu đó.\n"
             )
+            if hotel_facts:
+                prompt += f"\n{hotel_facts}\n"
+            else:
+                prompt += (
+                    "\nTHÔNG TIN TIỆN ÍCH KHÁCH SẠN AURORA GRAND (ĐỂ TƯ VẤN CHO KHÁCH):\n"
+                    "- Tầng 1 (Trệt): Sảnh chính, Quầy Lễ tân 24/7 (từ điện thoại phòng bấm phím 0) và máy ATM rút tiền.\n"
+                    "- Tầng 2: Tầng ẩm thực - Nhà hàng Aurora & Quầy nhận món Pickup (buffet sáng từ 6 giờ 30 đến 10 giờ sáng), Khu Bếp Chính, Kho thực phẩm và Nhà vệ sinh tầng 2.\n"
+                    "- Tầng 3: Khu phòng nghỉ tiêu chuẩn từ Phòng 301 đến 309. Toàn bộ các phòng đều cùng một loại phòng nghỉ tiêu chuẩn.\n"
+                    "- Tầng 4: Khu phòng nghỉ tiêu chuẩn từ Phòng 401 đến 409. Toàn bộ các phòng đều cùng một loại phòng nghỉ tiêu chuẩn.\n"
+                    "- Tầng 5: Hồ bơi vô cực ngoài trời (mở từ 6 giờ sáng đến 22 giờ tối), Thảo Mộc Spa (9 giờ sáng đến 22 giờ tối) và Phòng Gym (mở cửa 24/7).\n"
+                    "- Tầng 6: Rooftop Coffee, Sky Lounge Bar (16 giờ 30 đến 1 giờ đêm), Phòng VIP Karaoke và Cửa hàng quà lưu niệm Gift Shop.\n"
+                    "- Tầng hầm: Hầm B1 bãi xe máy, Hầm B2 bãi đỗ xe ô tô miễn phí cho khách lưu trú.\n"
+                    "- Wi-Fi miễn phí: Tên mạng 'Aurora_Guest', mật khẩu là 'aurora2026'.\n"
+                    "- QUY TẮC CHỈ ĐƯỜNG:\n"
+                    "  + Khi khách hỏi đường đến các phòng (301-309 hoặc 401-409): Hãy trả lời ngắn gọn, súc tích chỉ đường (nêu số tầng và hướng đi Thang máy A), tuyệt đối KHÔNG đọc thêm thông tin tiện nghi hay loại phòng dư thừa.\n"
+                    "  + Khi khách hỏi đường đến các địa điểm bên ngoài khách sạn (như sân bay, chợ, bãi biển, điểm tham quan): Trả lời lịch sự hướng dẫn hoặc gợi ý khách liên hệ quầy lễ tân để hỗ trợ gọi xe, không trả lời như thể địa điểm đó nằm trong khách sạn.\n"
+                )
 
         if stored_room_number:
             prompt += f"\n[Thông tin phòng]: Quý khách ở phòng {stored_room_number}."
@@ -238,8 +373,32 @@ class OllamaService:
     ):
         """
         Async Generator sinh token theo thời gian thực từ Qwen LLM qua Ollama (stream=True).
-        Yield từng token ngay khi LLM sinh ra, TTFT tức thì và không bị giới hạn token bất hợp lý.
         """
+        # 0. Kiểm tra Mega Fast-Path tức thì (< 1ms)
+        fast_hit = self.check_fast_path(prompt, language)
+        if fast_hit:
+            reply, _, _ = fast_hit
+            yield reply
+            return
+
+        # Ưu tiên Gemini LLM Engine nếu được kích hoạt
+        if getattr(settings, "is_gemini_active", False):
+            try:
+                from app.services.ai.gemini_service import gemini_service
+                if gemini_service.is_configured:
+                    async for token in gemini_service.generate_response_stream(
+                        prompt=prompt,
+                        rag_context=rag_context,
+                        language=language,
+                        emotion=emotion,
+                        chat_history=chat_history,
+                        stored_room_number=stored_room_number,
+                    ):
+                        yield token
+                    return
+            except Exception as e_gemini:
+                logger.warning(f"[OllamaService] Gemini streaming error, fallback to Ollama Llama: {e_gemini}")
+
         if not language or language.lower() in ["auto", ""]:
             lang_name, lang_code = self.detect_language(prompt)
         else:
@@ -268,11 +427,12 @@ class OllamaService:
                 options={
                     "temperature": 0.7,
                     "top_p": 0.9,
-                    "num_ctx": 4096,
+                    "num_ctx": 1024,
+                    "num_predict": 70,
                     "num_thread": 8,
                     "repeat_penalty": 1.1,
                 },
-                keep_alive=-1
+                keep_alive="30m"
             )
 
             async for chunk in response_stream:
@@ -280,9 +440,26 @@ class OllamaService:
                 if token:
                     yield token
         except Exception as e:
-            logger.error(f"[OllamaService StreamError] Lỗi streaming LLM: {str(e)}")
-            fallback = "Xin lỗi quý khách, hiện không thể kết nối tới AI Server." if lang_code == "vi-VN" else "Sorry, cannot connect to AI Server."
+            logger.warning(f"[OllamaService StreamWarning] Ollama offline ({e}), activating Smart Offline Knowledge Fallback...")
+            fallback = self.generate_offline_fallback_response(
+                prompt=prompt,
+                lang_code=lang_code,
+                rag_context=rag_context,
+                stored_room_number=stored_room_number,
+            )
             yield fallback
+
+    @classmethod
+    def format_and_clean_reply(cls, reply: str, lang_code: str) -> str:
+        """Chuẩn hóa văn bản câu trả lời trước khi gửi ra ngoài: dọn dẹp markdown, ký tự lạ, và chuẩn hóa giờ."""
+        if not reply:
+            return ""
+        if lang_code == "vi-VN":
+            return cls.clean_vietnamese_voice_text(reply)
+        elif lang_code != "zh-CN":
+            reply = re.sub(r'[\u4e00-\u9fff\u3400-\u4dbf]+', '', reply).strip()
+            reply = re.sub(r'[*#_`\[\]()]', '', reply).strip()
+        return reply
 
     async def generate_response(
         self,
@@ -300,6 +477,22 @@ class OllamaService:
         fast_hit = self.check_fast_path(prompt, language)
         if fast_hit:
             return fast_hit
+
+        # Ưu tiên Gemini LLM Engine nếu được kích hoạt
+        if getattr(settings, "is_gemini_active", False):
+            try:
+                from app.services.ai.gemini_service import gemini_service
+                if gemini_service.is_configured:
+                    return await gemini_service.generate_response(
+                        prompt=prompt,
+                        rag_context=rag_context,
+                        language=language,
+                        emotion=emotion,
+                        chat_history=chat_history,
+                        stored_room_number=stored_room_number,
+                    )
+            except Exception as e_gemini:
+                logger.warning(f"[OllamaService] Gemini generate error, fallback to Ollama Llama: {e_gemini}")
 
         if not language or language.lower() in ["auto", ""]:
             lang_name, lang_code = self.detect_language(prompt)
@@ -321,6 +514,21 @@ class OllamaService:
                     messages.append({"role": turn["role"], "content": turn["content"]})
         messages.append({"role": "user", "content": prompt})
 
+        # 1. Chế độ Test máy yếu đặc thù qua Groq Cloud (chỉ kích hoạt khi AI_PROVIDER='groq')
+        use_groq = (settings.AI_PROVIDER == "groq" and bool(settings.GROQ_API_KEY))
+        if use_groq:
+            logger.info(f"[OllamaService -> Groq Cloud] Chế độ máy yếu: gọi Groq model {settings.GROQ_MODEL}")
+            groq_reply = await self._call_groq(messages, json_mode=False, max_tokens=60)
+            if groq_reply:
+                reply = self.format_and_clean_reply(groq_reply.strip(), lang_code)
+                final_lang_name, final_lang_code = self.detect_language(reply)
+                return reply, final_lang_name, final_lang_code
+            else:
+                logger.warning("[OllamaService] Groq Cloud API không phản hồi, trả về phản hồi dự phòng nhanh.")
+                fallback = "Xin lỗi quý khách, đường truyền tới AI Server tạm thời gián đoạn." if lang_code == "vi-VN" else "Sorry, connection to AI Server is temporarily unavailable."
+                return fallback, lang_name, lang_code
+
+        # 2. Mặc định cho toàn bộ dự án: Chạy Ollama cục bộ nguyên bản
         try:
             response = await asyncio.wait_for(
                 self._client.chat(
@@ -329,25 +537,151 @@ class OllamaService:
                     options={
                         "temperature": 0.7,
                         "top_p": 0.9,
-                        "num_ctx": 4096,
+                        "num_ctx": 1024,
+                        "num_predict": 70,
                         "num_thread": 8,
                         "repeat_penalty": 1.1,
                     },
-                    keep_alive=-1
+                    keep_alive="30m"
                 ),
                 timeout=25.0
             )
 
-            reply = response["message"]["content"].strip()
-            if lang_code != "zh-CN":
-                reply = re.sub(r'[\u4e00-\u9fff\u3400-\u4dbf]+', '', reply).strip()
+            raw_reply = response["message"]["content"].strip()
+            reply = self.format_and_clean_reply(raw_reply, lang_code)
 
             final_lang_name, final_lang_code = self.detect_language(reply)
             return reply, final_lang_name, final_lang_code
         except Exception as e:
-            logger.error(f"[OllamaService Error] Lỗi khi sinh câu trả lời LLM: {str(e)}")
-            fallback = "Xin lỗi quý khách, hiện không thể kết nối tới AI Server." if lang_code == "vi-VN" else "Sorry, cannot connect to AI Server."
+            logger.warning(f"[OllamaService Warning] Ollama offline ({e}), activating Smart Offline Knowledge Fallback...")
+
+            # Fallback an toàn sang Groq nếu có API key (phòng ngừa máy yếu hết RAM không bật được Ollama)
+            if settings.GROQ_API_KEY:
+                logger.info("[OllamaService Fallback] Tự động chuyển tiếp sang Groq Cloud...")
+                groq_reply = await self._call_groq(messages, json_mode=False, max_tokens=60)
+                if groq_reply:
+                    reply = self.format_and_clean_reply(groq_reply.strip(), lang_code)
+                    final_lang_name, final_lang_code = self.detect_language(reply)
+                    return reply, final_lang_name, final_lang_code
+
+            fallback = self.generate_offline_fallback_response(
+                prompt=prompt,
+                lang_code=lang_code,
+                rag_context=rag_context,
+                stored_room_number=stored_room_number,
+            )
             return fallback, lang_name, lang_code
+
+    def generate_offline_fallback_response(
+        self,
+        prompt: str,
+        lang_code: str = "vi-VN",
+        rag_context: Optional[str] = None,
+        stored_room_number: Optional[str] = None,
+    ) -> str:
+        """
+        Tự động phản hồi thông minh từ factsheet khách sạn Aurora khi Ollama local chưa khởi động.
+        Đảm bảo zero-crash, zero-downtime cho bất kỳ ai clone dự án về mà chưa cài Ollama.
+        """
+        p_lower = prompt.lower().strip()
+        is_en = lang_code == "en-US"
+
+        # 1. Wifi & Mật khẩu
+        if any(k in p_lower for k in ["wifi", "wi-fi", "mật khẩu", "mat khau", "pass wifi", "password", "mạng"]):
+            return (
+                "The complimentary Wi-Fi is 'Aurora_Guest' with password 'aurora2026'."
+                if is_en else
+                "Dạ mạng Wi-Fi miễn phí của khách sạn là 'Aurora_Guest' và mật khẩu là 'aurora2026' quý khách nhé."
+            )
+
+        # 2. Bữa sáng, Nhà hàng, Ăn uống
+        if any(k in p_lower for k in ["ăn sáng", "an sang", "bữa sáng", "bua sang", "buffet", "nhà hàng", "nha hang", "breakfast", "restaurant"]):
+            return (
+                "The Aurora Restaurant is on Level 2, serving breakfast buffet from 6:30 AM to 10:00 AM daily."
+                if is_en else
+                "Dạ Nhà hàng Aurora nằm tại Tầng 2, phục vụ buffet sáng từ 6 giờ 30 đến 10 giờ sáng hàng ngày ạ."
+            )
+
+        # 3. Hồ bơi / Bể bơi
+        if any(k in p_lower for k in ["hồ bơi", "ho boi", "bể bơi", "be boi", "bơi", "pool", "swimming"]):
+            return (
+                "The outdoor infinity pool is on Level 5, open from 6:00 AM to 10:00 PM with complimentary towels."
+                if is_en else
+                "Dạ hồ bơi vô cực ngoài trời nằm ở Tầng 5, mở cửa từ 6 giờ sáng đến 22 giờ tối và có sẵn khăn tắm miễn phí ạ."
+            )
+
+        # 4. Phòng Gym / Thể hình
+        if any(k in p_lower for k in ["gym", "fitness", "thể hình", "the hinh", "tập gym"]):
+            return (
+                "The Fitness Center is on Level 5, open 24/7 complimentary for staying guests."
+                if is_en else
+                "Dạ phòng Gym và trung tâm thể hình nằm ở Tầng 5, mở cửa phục vụ 24 trên 7 miễn phí cho quý khách ạ."
+            )
+
+        # 5. Spa / Massage / Xông hơi
+        if any(k in p_lower for k in ["spa", "massage", "xông hơi", "xong hoi", "sauna"]):
+            return (
+                "Herbal Spa & Sauna is located on Level 5, open from 9:00 AM to 10:00 PM."
+                if is_en else
+                "Dạ Thảo Mộc Spa nằm tại Tầng 5, mở cửa phục vụ quý khách từ 9 giờ sáng đến 22 giờ tối ạ."
+            )
+
+        # 6. Bar / Rooftop / Cafe / Karaoke
+        if any(k in p_lower for k in ["rooftop", "bar", "cafe", "cà phê", "sky lounge", "karaoke"]):
+            return (
+                "Sky Lounge Bar and Rooftop Coffee are on Level 6, open from 4:30 PM to 1:00 AM."
+                if is_en else
+                "Dạ Sky Lounge Bar và Rooftop Coffee nằm ở Tầng 6, mở cửa phục vụ từ 16 giờ 30 đến 1 giờ sáng ạ."
+            )
+
+        # 7. Nhận phòng / Trả phòng
+        if any(k in p_lower for k in ["nhận phòng", "nhan phong", "trả phòng", "tra phong", "check in", "check out", "check-in", "check-out"]):
+            return (
+                "Standard check-in time is from 2:00 PM and check-out is before 12:00 PM noon."
+                if is_en else
+                "Dạ giờ nhận phòng tiêu chuẩn là từ 14 giờ chiều và giờ trả phòng là trước 12 giờ trưa quý khách nhé."
+            )
+
+        # 8. Bãi đỗ xe
+        if any(k in p_lower for k in ["bãi xe", "bai xe", "đỗ xe", "do xe", "gửi xe", "gui xe", "parking"]):
+            return (
+                "Motorbike parking is at Basement B1 and car parking is at Basement B2, both complimentary for staying guests."
+                if is_en else
+                "Dạ bãi xe máy ở Hầm B1 và bãi ô tô ở Hầm B2 của khách sạn hoàn toàn miễn phí cho khách lưu trú ạ."
+            )
+
+        # 9. Lễ tân / Giúp đỡ
+        if any(k in p_lower for k in ["lễ tân", "le tan", "tiếp tân", "front desk", "reception"]):
+            return (
+                "The Front Desk is located on Level 1, available 24/7. You can also dial 0 from your room phone."
+                if is_en else
+                "Dạ Quầy Lễ tân nằm tại Tầng 1 sảnh chính, phục vụ 24 trên 7. Quý khách cũng có thể bấm phím 0 từ phòng để được hỗ trợ ạ."
+            )
+
+        # 10. Tìm phòng 3xx hoặc 4xx
+        room_match = re.search(r'\b(?:phòng|p\.?|phong)?\s*([34]0[1-9])\b', p_lower)
+        if room_match:
+            r_num = room_match.group(1)
+            floor_num = r_num[0]
+            return (
+                f"Room {r_num} is on Level {floor_num}. Please take Elevator A on the left to reach your floor."
+                if is_en else
+                f"Dạ Phòng {r_num} nằm ở Tầng {floor_num} ạ. Quý khách vui lòng đi thẳng tới Thang máy A phía bên trái để lên tầng nhé."
+            )
+
+        # 11. Nếu có rag_context từ ChromaDB, dùng ngay
+        if rag_context and len(rag_context.strip()) > 20:
+            clean_ctx = re.sub(r'[*#_`]', '', rag_context).strip()
+            first_sentence = clean_ctx.split('.')[0].strip()
+            if len(first_sentence) > 15:
+                return f"Dạ theo thông tin khách sạn: {first_sentence} ạ." if not is_en else f"According to hotel info: {first_sentence}."
+
+        # 12. Fallback nhã nhặn, không báo lỗi máy chủ
+        return (
+            "I have noted your request. Please contact the Front Desk at Level 1 or dial 0 from your room phone for immediate assistance!"
+            if is_en else
+            "Dạ Rora xin ghi nhận câu hỏi của quý khách. Quý khách vui lòng liên hệ Quầy Lễ tân sảnh tầng 1 hoặc gọi phím 0 từ điện thoại phòng để được hỗ trợ chu đáo nhất nhé ạ!"
+        )
 
     async def extract_intent(self, user_speech: str) -> Dict[str, Any]:
         """
@@ -356,11 +690,9 @@ class OllamaService:
         # Làm sạch wake-up word 'Rora' nếu có ở đầu câu nói
         user_speech = re.sub(r'^(?:hey rora|chào rora|chao rora|rora ơi|rora oi|hello rora|hi rora|rora)[\,\.\!\s]*', '', user_speech, flags=re.IGNORECASE).strip() or user_speech
 
-        # Regex kiểm tra nhanh số phòng trực tiếp (Ví dụ: "phòng 502", "p.304", "502", "tôi ở 402")
-        room_match = re.search(r'(?:phòng|p\.|p|phong)\s*([0-9]{3,4})|^(?:tôi ở|ở)\s*([0-9]{3,4})$', user_speech, re.IGNORECASE)
-        extracted_room_regex = None
-        if room_match:
-            extracted_room_regex = room_match.group(1) or room_match.group(2)
+        # Bóc tách nhanh số phòng trực tiếp (Ví dụ: "phòng 502", "p.304", "502", "tôi ở 402", "402 ạ")
+        from app.services.ai.session_manager import extract_room_number
+        extracted_room_regex = extract_room_number(user_speech, is_answering_room=True)
 
         # Fast-Path Keyword Check (Nếu khớp từ khóa dịch vụ rõ ràng -> Trả về luôn siêu tốc < 1ms)
         lower_speech = user_speech.lower()
@@ -400,6 +732,15 @@ class OllamaService:
                 "items": None,
             }
 
+        # Ưu tiên Gemini LLM Engine nếu được kích hoạt
+        if getattr(settings, "is_gemini_active", False):
+            try:
+                from app.services.ai.gemini_service import gemini_service
+                if gemini_service.is_configured:
+                    return await gemini_service.extract_intent(user_speech=user_speech)
+            except Exception as e_gemini:
+                logger.warning(f"[OllamaService] Gemini extract_intent error, fallback to Ollama Llama: {e_gemini}")
+
         system_prompt = (
             "Bạn là hệ thống trích xuất dữ liệu tự động cho dịch vụ khách sạn. "
             "Hãy phân tích câu nói của khách và trả về kết quả dưới định dạng JSON duy nhất với các field sau:\n"
@@ -409,14 +750,37 @@ class OllamaService:
             "Chỉ trả về JSON thuần túy, không kèm bất kỳ câu giải thích nào."
         )
 
+        intent_messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_speech}
+        ]
+
+        # 1. Chế độ Test máy yếu đặc thù qua Groq Cloud
+        use_groq = (settings.AI_PROVIDER == "groq" and bool(settings.GROQ_API_KEY))
+        if use_groq:
+            groq_content = await self._call_groq(intent_messages, json_mode=True, max_tokens=60)
+            if groq_content:
+                try:
+                    parsed_json = json.loads(groq_content.strip())
+                    if extracted_room_regex and not parsed_json.get("room_number"):
+                        parsed_json["room_number"] = extracted_room_regex
+                    return parsed_json
+                except Exception as je:
+                    logger.warning(f"[Groq JSON parse warning]: {je}")
+            else:
+                logger.warning("[OllamaService] Groq extract_intent không phản hồi, fallback ngay lập tức.")
+                return {
+                    "action": "unknown",
+                    "room_number": extracted_room_regex,
+                    "items": user_speech,
+                }
+
+        # 2. Mặc định cho toàn bộ dự án: Chạy Ollama cục bộ nguyên bản
         try:
             response = await asyncio.wait_for(
                 self._client.chat(
                     model=self.model,
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_speech}
-                    ],
+                    messages=intent_messages,
                     format="json",
                     options={
                         "temperature": 0.0,
@@ -437,8 +801,20 @@ class OllamaService:
             return parsed_json
         except Exception as e:
             err_msg = repr(e) if not str(e) else str(e)
-            logger.warning(f"[OllamaService Warning] Lỗi hoặc Timeout khi bóc tách intent: {err_msg}")
+            logger.warning(f"[OllamaService Warning] Lỗi Ollama khi bóc tách intent: {err_msg}")
             
+            # Fallback an toàn sang Groq nếu có API key
+            if settings.GROQ_API_KEY:
+                groq_content = await self._call_groq(intent_messages, json_mode=True, max_tokens=60)
+                if groq_content:
+                    try:
+                        parsed_json = json.loads(groq_content.strip())
+                        if extracted_room_regex and not parsed_json.get("room_number"):
+                            parsed_json["room_number"] = extracted_room_regex
+                        return parsed_json
+                    except Exception:
+                        pass
+
             # Keyword-based Intent Fallback khi LLM offline/timeout
             fallback_action = "unknown"
             lower_speech = user_speech.lower()

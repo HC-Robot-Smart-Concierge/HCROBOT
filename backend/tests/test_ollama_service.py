@@ -6,13 +6,15 @@ from app.services.ai.ollama_service import OllamaService
 @pytest.mark.asyncio
 async def test_generate_response_success():
     """Unit test kiểm tra hàm generate_response của OllamaService với mock client"""
+    from app.core.config import settings
     mock_chat_response = {
         "message": {
             "content": "Xin chào! Tôi có thể giúp gì cho ông chủ hôm nay?"
         }
     }
 
-    with patch("ollama.AsyncClient.chat", new_callable=AsyncMock) as mock_chat:
+    with patch.object(settings, "LLM_PROVIDER", "ollama"), \
+         patch("ollama.AsyncClient.chat", new_callable=AsyncMock) as mock_chat:
         mock_chat.return_value = mock_chat_response
 
         service = OllamaService()

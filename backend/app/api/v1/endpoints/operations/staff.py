@@ -2,22 +2,21 @@ from datetime import datetime
 import uuid
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Path, status
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, or_
-from sqlalchemy.orm import selectinload
 
-from app.core.database import get_db
 from app.core.security import hash_password
 from app.models import Staff, Department, ServiceType
+from app.repositories import StaffRepository, get_staff_repository
 from app.schemas.operations import (
     StaffResponse,
     StaffCreate,
     StaffUpdate,
     DepartmentResponse,
     DepartmentDetailResponse,
+    DepartmentCreate,
+    DepartmentUpdate,
     ServiceTypeResponse,
 )
-from .shared import TAG_OPS, TAG_STAFF
+from .shared import TAG_STAFF
 
 router = APIRouter()
 
@@ -28,7 +27,7 @@ router = APIRouter()
 
 @router.get(
     "/departments",
-    response_model=List[DepartmentResponse],
+    response_model=List[DepartmentDetailResponse],
     tags=TAG_STAFF,
     summary="Danh sách các phòng ban khách sạn",
     responses={
@@ -39,34 +38,89 @@ router = APIRouter()
 )
 async def list_departments(
     is_active: Optional[bool] = Query(
-        True,
+        None,
         description="Lọc theo trạng thái hoạt động: `true` (chỉ lấy phòng ban đang mở), `false` (phòng ban ngưng), `null` (lấy tất cả)",
     ),
-    db: AsyncSession = Depends(get_db),
+    repo: StaffRepository = Depends(get_staff_repository),
 ):
     """
     ### Mô tả nghiệp vụ:
     Truy vấn danh mục toàn bộ các bộ phận vận hành chuẩn của khách sạn (`Aurora Hotel & Resort`).
-
-    ### Các bộ phận chuẩn trong hệ thống:
-    - **DEP-HOUSEKEEPING**: Bộ phận Buồng phòng & Tiện ích vệ sinh phòng
-    - **DEP-BELL**: Bộ phận Tiền sảnh, Chuông hành lý & Bellman
-    - **DEP-TAXI**: Bộ phận Điều phối Taxi & Đưa đón di chuyển
-    - **DEP-MAINTENANCE**: Bộ phận Kỹ thuật, Bảo trì điện nước & Điều hòa
-    - **DEP-RECEPTION**: Bộ phận Lễ tân & Đặt phòng (Front Desk & Room Booking)
-    - **DEP-CONCIERGE**: Bộ phận Trợ lý Concierge, Live Call & Tổng đài hỗ trợ
-    - **DEP-ROOMSERVICE**: Bộ phận Phục vụ phòng (Room Service)
-    - **DEP-KITCHEN**: Bộ phận Bếp & Ẩm thực (Kitchen Operations)
-
-    ### Tham số đầu vào:
-    - `is_active` (query, boolean, tùy chọn): Mặc định `true`.
+    Bao gồm số lượng nhân sự active trực thuộc mỗi phòng ban.
     """
-    query = select(Department)
-    if is_active is not None:
-        query = query.where(Department.is_active == is_active)
-    query = query.order_by(Department.code)
-    result = await db.execute(query)
-    return result.scalars().all()
+    depts = await repo.list_departments(is_active=is_active)
+    return [
+        DepartmentDetailResponse(
+            id=d.id,
+            code=d.code,
+            name=d.name,
+            description=d.description,
+            is_active=d.is_active,
+            created_at=d.created_at,
+            updated_at=d.updated_at,
+            service_types=d.service_types or [],
+            staff_count=sum(1 for acc in d.accounts if acc.is_active),
+        )
+        for d in depts
+    ]
+
+
+@router.post(
+    "/departments",
+    response_model=DepartmentDetailResponse,
+    status_code=status.HTTP_201_CREATED,
+    tags=TAG_STAFF,
+    summary="Thêm mới phòng ban khách sạn",
+    responses={
+        201: {"description": "Tạo phòng ban thành công."},
+        400: {"description": "Mã code hoặc tên phòng ban đã tồn tại."},
+    },
+)
+async def create_department(
+    dept_in: DepartmentCreate,
+    repo: StaffRepository = Depends(get_staff_repository),
+):
+    name_clean = dept_in.name.strip()
+    code_clean = (dept_in.code or "").strip().upper()
+    if not code_clean:
+        words = name_clean.split()
+        if len(words) == 1:
+            code_clean = words[0][:10].upper()
+        else:
+            code_clean = "".join(w[0].upper() for w in words[:4])
+        code_clean = f"{code_clean}_{uuid.uuid4().hex[:3].upper()}"
+
+    existing = await repo.find_department_by_code(code_clean)
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Mã code phòng ban '{code_clean}' đã tồn tại trong hệ thống.",
+        )
+
+    dept_id = f"DEP-{code_clean[:12]}"
+    existing_id = await repo.get_department_by_id_or_code(dept_id)
+    if existing_id:
+        dept_id = f"DEP-{uuid.uuid4().hex[:8].upper()}"
+
+    new_dept = Department(
+        id=dept_id,
+        code=code_clean,
+        name=name_clean,
+        description=dept_in.description,
+        is_active=dept_in.is_active,
+    )
+    await repo.create(new_dept, autocommit=True)
+    return DepartmentDetailResponse(
+        id=new_dept.id,
+        code=new_dept.code,
+        name=new_dept.name,
+        description=new_dept.description,
+        is_active=new_dept.is_active,
+        created_at=new_dept.created_at,
+        updated_at=new_dept.updated_at,
+        service_types=[],
+        staff_count=0,
+    )
 
 
 @router.get(
@@ -85,7 +139,7 @@ async def get_department_detail(
         description="Mã định danh duy nhất (vd: `DEP-HOUSEKEEPING`, `DEP-TAXI`) hoặc code phòng ban (vd: `HOUSEKEEPING`, `TAXI`)",
         examples=["DEP-HOUSEKEEPING", "DEP-BELL", "DEP-TAXI"],
     ),
-    db: AsyncSession = Depends(get_db),
+    repo: StaffRepository = Depends(get_staff_repository),
 ):
     """
     ### Mô tả nghiệp vụ:
@@ -97,17 +151,7 @@ async def get_department_detail(
     ### Quy tắc tra cứu:
     Hệ thống hỗ trợ tra cứu linh hoạt bằng `id` (vd: `DEP-BELL`) hoặc `code` (vd: `BELL`).
     """
-    target = department_id.strip()
-    query = (
-        select(Department)
-        .options(
-            selectinload(Department.service_types),
-            selectinload(Department.accounts),
-        )
-        .where(or_(Department.id == target, Department.code == target.upper()))
-    )
-    result = await db.execute(query)
-    dept = result.scalar_one_or_none()
+    dept = await repo.get_department_by_id_or_code(department_id)
     if not dept:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -131,6 +175,90 @@ async def get_department_detail(
     )
 
 
+@router.patch(
+    "/departments/{department_id}",
+    response_model=DepartmentDetailResponse,
+    tags=TAG_STAFF,
+    summary="Cập nhật thông tin phòng ban",
+    responses={
+        200: {"description": "Cập nhật thông tin phòng ban thành công."},
+        404: {"description": "Không tìm thấy phòng ban."},
+    },
+)
+async def update_department(
+    department_id: str = Path(..., description="ID hoặc mã code phòng ban"),
+    dept_in: DepartmentUpdate = ...,
+    repo: StaffRepository = Depends(get_staff_repository),
+):
+    dept = await repo.get_department_by_id_or_code(department_id)
+    if not dept:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Không tìm thấy phòng ban với mã định danh '{department_id}'",
+        )
+
+    update_data = dept_in.model_dump(exclude_unset=True)
+    if "code" in update_data and update_data["code"]:
+        new_code = update_data["code"].strip().upper()
+        if new_code != dept.code:
+            existing = await repo.find_department_by_code(new_code)
+            if existing:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Mã code phòng ban '{new_code}' đã tồn tại trong hệ thống.",
+                )
+            dept.code = new_code
+        del update_data["code"]
+
+    for field, val in update_data.items():
+        setattr(dept, field, val)
+
+    dept.updated_at = datetime.utcnow()
+    await repo.commit()
+    await repo.refresh(dept)
+    return DepartmentDetailResponse(
+        id=dept.id,
+        code=dept.code,
+        name=dept.name,
+        description=dept.description,
+        is_active=dept.is_active,
+        created_at=dept.created_at,
+        updated_at=dept.updated_at,
+        service_types=dept.service_types or [],
+        staff_count=sum(1 for acc in dept.accounts if acc.is_active),
+    )
+
+
+@router.delete(
+    "/departments/{department_id}",
+    tags=TAG_STAFF,
+    summary="Vô hiệu hóa phòng ban (Soft Delete)",
+    responses={
+        200: {"description": "Đã vô hiệu hóa phòng ban thành công."},
+        404: {"description": "Không tìm thấy phòng ban."},
+    },
+)
+async def delete_department(
+    department_id: str = Path(..., description="ID hoặc mã code phòng ban"),
+    repo: StaffRepository = Depends(get_staff_repository),
+):
+    dept = await repo.soft_delete_department(department_id)
+    if not dept:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Không tìm thấy phòng ban với mã định danh '{department_id}'",
+        )
+
+    return {
+        "success": True,
+        "id": dept.id,
+        "code": dept.code,
+        "name": dept.name,
+        "is_active": dept.is_active,
+        "message": f"Đã vô hiệu hóa phòng ban {dept.name}",
+    }
+
+
 @router.get(
     "/service-types",
     response_model=List[ServiceTypeResponse],
@@ -152,7 +280,7 @@ async def list_service_types(
         True,
         description="Lọc theo trạng thái hoạt động: `true` (đang cung cấp), `false` (tạm ngưng), `null` (tất cả)",
     ),
-    db: AsyncSession = Depends(get_db),
+    repo: StaffRepository = Depends(get_staff_repository),
 ):
     """
     ### Mô tả nghiệp vụ:
@@ -168,30 +296,28 @@ async def list_service_types(
     - **ST-CONCIERGE** (`CONCIERGE`): Dịch vụ Concierge & Live Call Hỗ trợ -> Thuộc `DEP-CONCIERGE`
     - **ST-ROOM-SERVICE** (`ROOM_SERVICE`): Dịch vụ Ẩm thực & Phục vụ phòng -> Thuộc `DEP-ROOMSERVICE`
     """
-    query = select(ServiceType).options(selectinload(ServiceType.department))
-    if department_id:
-        query = query.where(ServiceType.department_id == department_id.strip())
-    if is_active is not None:
-        query = query.where(ServiceType.is_active == is_active)
-    query = query.order_by(ServiceType.code)
-    result = await db.execute(query)
-    return result.scalars().all()
+    return await repo.list_service_types(department_id=department_id, is_active=is_active)
 
 
 # =====================================================================
-# 2. STAFF & ACCOUNT DIRECTORY (QUẢN LÝ NHÂN SỰ & TÀI KHOẢN KHÁCH SẠN)
+# 2. ACCOUNTS & DIRECTORY (QUẢN LÝ TÀI KHOẢN & NHÂN SỰ KHÁCH SẠN)
 # =====================================================================
 
 @router.get(
-    "/staff",
+    "/accounts",
     response_model=List[StaffResponse],
     tags=TAG_STAFF,
-    summary="Xem tất cả staff",
+    summary="Xem tất cả tài khoản",
     responses={
         200: {
-            "description": "Lấy danh sách nhân sự thành công.",
+            "description": "Lấy danh sách tài khoản thành công.",
         }
     },
+)
+@router.get(
+    "/staff",
+    response_model=List[StaffResponse],
+    include_in_schema=False,
 )
 async def list_staff(
     department_id: Optional[str] = Query(
@@ -204,112 +330,67 @@ async def list_staff(
         description="Lọc theo tên phòng ban hiển thị (vd: `Housekeeping`, `Bell Services`, `F&B`, `Maintenance`, `Reception`)",
         examples=["Housekeeping", "Bell Services"],
     ),
-    status: Optional[str] = Query(
+    status_filter: Optional[str] = Query(
         None,
+        alias="status",
         description="Lọc theo trạng thái trực: `available` (sẵn sàng), `busy` (đang bận), `off_shift` (hết ca)",
         examples=["available", "busy"],
     ),
     role: Optional[str] = Query(
         None,
-        description="Lọc theo chức danh / vai trò nhân viên",
+        description="Lọc theo chức danh / vai trò tài khoản",
         examples=["Housekeeping Lead", "Bell Captain"],
     ),
     include_inactive: bool = Query(
         False,
-        description="Nếu chọn `true`, sẽ bao gồm cả các tài khoản nhân viên đã bị vô hiệu hóa hoặc xóa mềm",
+        description="Nếu chọn `true`, sẽ bao gồm cả các tài khoản đã bị vô hiệu hóa hoặc xóa mềm",
     ),
-    db: AsyncSession = Depends(get_db),
+    repo: StaffRepository = Depends(get_staff_repository),
 ):
     """
     ### Mô tả nghiệp vụ:
-    Truy vấn danh bạ nhân sự toàn khách sạn, tích hợp liên kết trực tiếp với bảng `departments`.
+    Truy vấn danh bạ tài khoản nhân sự toàn khách sạn, tích hợp liên kết trực tiếp với bảng `departments`.
     
     ### Tính năng bộ lọc:
     - **department_id**: Lọc chính xác theo khóa ngoại phòng ban.
     - **department**: Lọc tương thích ngược theo tên chuỗi phòng ban.
     - **status**: Lọc theo ca trực / tính sẵn sàng tiếp nhận công việc.
     - **role**: Lọc theo vị trí nghiệp vụ.
-    - **include_inactive**: Lấy cả nhân viên đã xóa mềm để phục vụ đối soát kiểm toán (Audit).
+    - **include_inactive**: Lấy cả tài khoản đã xóa mềm để phục vụ đối soát kiểm toán (Audit).
     """
-    query = select(Staff).options(selectinload(Staff.department_rel))
-    
-    if not include_inactive:
-        query = query.where(
-            Staff.is_active == True,
-            Staff.status != "deleted",
-            Staff.status != "inactive",
-        )
-    if department_id and department_id not in ("All", ""):
-        query = query.where(Staff.department_id == department_id.strip())
-    elif department and department not in ("All", ""):
-        query = query.where(Staff.department == department.strip())
-    if status and status not in ("All", ""):
-        query = query.where(Staff.status == status.strip())
-    if role and role not in ("All", ""):
-        query = query.where(Staff.role == role.strip())
-
-    query = query.order_by(Staff.department_id, Staff.department, Staff.full_name)
-    result = await db.execute(query)
-    return result.scalars().all()
+    return await repo.list_staff(
+        department_id=department_id,
+        department=department,
+        status=status_filter,
+        role=role,
+        include_inactive=include_inactive,
+    )
 
 
-
-@router.get(
-    "/staff/{staff_id}",
+@router.post(
+    "/accounts",
     response_model=StaffResponse,
+    status_code=status.HTTP_201_CREATED,
     tags=TAG_STAFF,
-    summary="Xem thông tin chi tiết một nhân viên theo ID",
+    summary="Thêm mới tài khoản vào hệ thống",
     responses={
-        200: {"description": "Thông tin chi tiết hồ sơ nhân sự."},
-        404: {"description": "Không tìm thấy nhân viên với ID được cung cấp."},
+        201: {"description": "Tạo tài khoản mới thành công."},
+        400: {"description": "Tên đăng nhập đã tồn tại hoặc mã phòng ban không hợp lệ."},
     },
 )
-async def get_staff_detail(
-    staff_id: str = Path(
-        ...,
-        description="Mã định danh duy nhất của nhân viên (vd: `STF-f9ab1b15`)",
-        examples=["STF-f9ab1b15", "STF-cda7e68e"],
-    ),
-    db: AsyncSession = Depends(get_db),
-):
-    """
-    ### Mô tả nghiệp vụ:
-    Truy vấn hồ sơ chi tiết của một nhân viên bằng `id`.
-    Trả về đầy đủ thông tin tài khoản, phòng ban, ca trực, phạm vi tầng phân công và cấu hình liên lạc.
-    """
-    query = (
-        select(Staff)
-        .options(selectinload(Staff.department_rel))
-        .where(Staff.id == staff_id.strip())
-    )
-    result = await db.execute(query)
-    staff = result.scalar_one_or_none()
-    if not staff:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Không tìm thấy nhân viên với ID: {staff_id}",
-        )
-    return staff
-
-
 @router.post(
     "/staff",
     response_model=StaffResponse,
     status_code=status.HTTP_201_CREATED,
-    tags=TAG_STAFF,
-    summary="Thêm mới nhân viên vào hệ thống",
-    responses={
-        201: {"description": "Tạo tài khoản nhân viên mới thành công."},
-        400: {"description": "Tên đăng nhập đã tồn tại hoặc mã phòng ban không hợp lệ."},
-    },
+    include_in_schema=False,
 )
 async def create_staff(
     staff_in: StaffCreate,
-    db: AsyncSession = Depends(get_db),
+    repo: StaffRepository = Depends(get_staff_repository),
 ):
     """
     ### Mô tả nghiệp vụ:
-    Tạo mới một tài khoản nhân viên trong hệ thống và phân bổ vào đúng phòng ban vận hành.
+    Tạo mới một tài khoản nhân sự trong hệ thống và phân bổ vào đúng phòng ban vận hành.
 
     ### Quy tắc xử lý tự động:
     1. **Kiểm tra trùng Username**: `username` được chuẩn hóa viết thường, không được trùng với bất kỳ tài khoản nào khác.
@@ -321,16 +402,18 @@ async def create_staff(
        - `DEP-CONCIERGE` -> `concierge`
        - `DEP-ROOMSERVICE` -> `room_service`
        - `DEP-KITCHEN` -> `restaurant`
+       - `DEP-FB` -> `room_service`
+       - `DEP-RESTAURANT` -> `restaurant`
        - `DEP-HOUSEKEEPING` -> `housekeeping`
        - `DEP-BELL` hoặc `DEP-TAXI` -> `bell_services`
        - `DEP-MAINTENANCE` -> `maintenance`
-       - Role Quản trị viên (`ADMIN`) -> `admin_map`
+       - Role Quản trị viên (`ADMIN`) -> `admin_portal`
     4. **Băm mật khẩu bảo mật**: Sử dụng thuật toán Bcrypt an toàn.
     5. **Tự động sinh mã viết tắt (Code)**: Nếu để trống, hệ thống tự động sinh từ chữ cái đầu của họ tên kèm chuỗi hex ngẫu nhiên.
     """
     username_clean = staff_in.username.strip().lower()
-    existing = await db.execute(select(Staff).where(Staff.username == username_clean))
-    if existing.scalar_one_or_none():
+    existing = await repo.get_by_username(username_clean)
+    if existing:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Tên đăng nhập '{username_clean}' đã tồn tại trong hệ thống. Vui lòng chọn tên khác.",
@@ -341,8 +424,7 @@ async def create_staff(
     resolved_dept_name: str = staff_in.department or "General"
 
     if resolved_dept_id:
-        dept_res = await db.execute(select(Department).where(Department.id == resolved_dept_id.strip()))
-        dept = dept_res.scalar_one_or_none()
+        dept = await repo.get_department_by_id_or_code(resolved_dept_id)
         if not dept:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -350,17 +432,7 @@ async def create_staff(
             )
         resolved_dept_name = dept.name
     elif staff_in.department:
-        # Tra cứu theo tên hoặc mã code tương ứng
-        d_name = staff_in.department.strip().lower()
-        dept_res = await db.execute(
-            select(Department).where(
-                or_(
-                    func.lower(Department.name).like(f"%{d_name}%"),
-                    func.lower(Department.code) == d_name,
-                )
-            )
-        )
-        dept = dept_res.scalar_one_or_none()
+        dept = await repo.find_department_by_name_or_code(staff_in.department)
         if dept:
             resolved_dept_id = dept.id
             resolved_dept_name = dept.name
@@ -377,6 +449,7 @@ async def create_staff(
         "DEP-BELL": "bell_services",
         "DEP-TAXI": "bell_services",
         "DEP-MAINTENANCE": "maintenance",
+        "DEP-EXECUTIVE": "admin_portal",
     }
     default_dashboard = dashboard_map.get(resolved_dept_id, "room_service")
     if "admin" in (staff_in.role or "").lower():
@@ -400,23 +473,17 @@ async def create_staff(
         default_dashboard=default_dashboard,
         email=staff_in.email or f"{username_clean}@aurora.hotel",
         phone=staff_in.phone or "+84 90 123 4567",
-        shift=staff_in.shift or "Morning Shift (06:00 - 14:00)",
         location=staff_in.location or "Main Hotel",
         status=staff_in.status or "available",
         avatar_url=staff_in.avatar_url,
         is_fallback_agent=staff_in.is_fallback_agent,
-        assigned_floors=staff_in.assigned_floors or "Floor 1 - 5",
-        notification_channels=staff_in.notification_channels or "Web Dashboard, Tablet Alert",
         is_active=True,
     )
-    db.add(new_staff)
     try:
-        await db.commit()
-        await db.refresh(new_staff)
+        await repo.create(new_staff, autocommit=True)
         # Load relationship để serialize đầy đủ
-        await db.refresh(new_staff, attribute_names=["department_rel"])
+        await repo.refresh(new_staff, attribute_names=["department_rel"])
     except Exception as e:
-        await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Không thể tạo tài khoản nhân viên: {e}",
@@ -424,56 +491,86 @@ async def create_staff(
     return new_staff
 
 
-
-
-
-
-@router.patch(
-    "/staff/{staff_id}",
+@router.get(
+    "/accounts/{account_id}",
     response_model=StaffResponse,
     tags=TAG_STAFF,
-    summary="Cập nhật thông tin hồ sơ nhân viên",
+    summary="Xem thông tin chi tiết một tài khoản theo ID",
     responses={
-        200: {"description": "Cập nhật thông tin nhân viên thành công."},
-        400: {"description": "Mã phòng ban mới không hợp lệ."},
-        404: {"description": "Không tìm thấy nhân viên với ID được cung cấp."},
+        200: {"description": "Thông tin chi tiết hồ sơ tài khoản."},
+        404: {"description": "Không tìm thấy tài khoản với ID được cung cấp."},
     },
 )
-
-async def update_staff(
-    staff_id: str = Path(
+@router.get(
+    "/staff/{account_id}",
+    response_model=StaffResponse,
+    include_in_schema=False,
+)
+async def get_staff_detail(
+    account_id: str = Path(
         ...,
-        description="Mã định danh duy nhất của nhân viên cần cập nhật",
-        examples=["STF-f9ab1b15"],
+        description="Mã định danh duy nhất của tài khoản (vd: `ACC-f9ab1b15`)",
+        examples=["ACC-f9ab1b15", "STF-f9ab1b15"],
     ),
-    update_in: StaffUpdate = ...,
-    db: AsyncSession = Depends(get_db),
+    repo: StaffRepository = Depends(get_staff_repository),
 ):
     """
     ### Mô tả nghiệp vụ:
-    Cập nhật một phần hoặc toàn bộ thông tin hồ sơ của nhân viên (PATCH partial update).
+    Truy vấn hồ sơ chi tiết của một tài khoản bằng `id`.
+    Trả về đầy đủ thông tin tài khoản, phòng ban, ca trực, phạm vi tầng phân công và cấu hình liên lạc.
+    """
+    staff = await repo.get_by_id(account_id, load_department=True)
+    if not staff:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Không tìm thấy tài khoản với ID: {account_id}",
+        )
+    return staff
+
+
+@router.patch(
+    "/accounts/{account_id}",
+    response_model=StaffResponse,
+    tags=TAG_STAFF,
+    summary="Cập nhật thông tin hồ sơ tài khoản",
+    responses={
+        200: {"description": "Cập nhật thông tin tài khoản thành công."},
+        400: {"description": "Mã phòng ban mới không hợp lệ."},
+        404: {"description": "Không tìm thấy tài khoản với ID được cung cấp."},
+    },
+)
+@router.patch(
+    "/staff/{account_id}",
+    response_model=StaffResponse,
+    include_in_schema=False,
+)
+async def update_staff(
+    account_id: str = Path(
+        ...,
+        description="Mã định danh duy nhất của tài khoản cần cập nhật",
+        examples=["ACC-f9ab1b15", "STF-f9ab1b15"],
+    ),
+    update_in: StaffUpdate = ...,
+    repo: StaffRepository = Depends(get_staff_repository),
+):
+    """
+    ### Mô tả nghiệp vụ:
+    Cập nhật một phần hoặc toàn bộ thông tin hồ sơ của tài khoản (PATCH partial update).
 
     ### Các trường hỗ trợ cập nhật:
     - `full_name`: Họ tên hiển thị
     - `role`: Chức vụ chuyên môn
     - `department_id`: Chuyển phòng ban (vd: `DEP-BELL` sang `DEP-TAXI`). Hệ thống tự động xác thực và đồng bộ tên phòng ban.
     - `status`: Cập nhật trạng thái trực (`available`, `busy`, `off_shift`, `inactive`)
-    - `phone`, `email`, `shift`, `location`: Thông tin ca trực và liên lạc
+    - `phone`, `email`, `location`: Thông tin liên lạc và vị trí làm việc
     - `avatar_url`: Ảnh đại diện
     - `is_fallback_agent`: Cấu hình tiếp nhận cuộc gọi khẩn chuyển tiếp từ Concierge Robot
-    - `assigned_floors`, `notification_channels`: Phạm vi tầng phụ trách và kênh nhận tin
     """
-    query = (
-        select(Staff)
-        .options(selectinload(Staff.department_rel))
-        .where(Staff.id == staff_id.strip())
-    )
-    result = await db.execute(query)
-    staff = result.scalar_one_or_none()
+    staff = await repo.get_by_id(account_id, load_department=True)
     if not staff:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Không tìm thấy nhân viên với ID: {staff_id}",
+            detail=f"Không tìm thấy tài khoản với ID: {account_id}",
         )
 
     update_data = update_in.model_dump(exclude_unset=True)
@@ -482,8 +579,7 @@ async def update_staff(
     if "department_id" in update_data:
         new_dept_id = update_data["department_id"]
         if new_dept_id:
-            dept_res = await db.execute(select(Department).where(Department.id == new_dept_id.strip()))
-            dept = dept_res.scalar_one_or_none()
+            dept = await repo.get_department_by_id_or_code(new_dept_id)
             if not dept:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -499,18 +595,9 @@ async def update_staff(
             staff.department = update_data.pop("department")
 
     elif "department" in update_data:
-        # Nếu chỉ cập nhật tên phòng ban, cố gắng suy ra department_id
-        d_name = (update_data.pop("department") or "").strip().lower()
+        d_name = (update_data.pop("department") or "").strip()
         if d_name:
-            dept_res = await db.execute(
-                select(Department).where(
-                    or_(
-                        func.lower(Department.name).like(f"%{d_name}%"),
-                        func.lower(Department.code) == d_name,
-                    )
-                )
-            )
-            dept = dept_res.scalar_one_or_none()
+            dept = await repo.find_department_by_name_or_code(d_name)
             if dept:
                 staff.department_id = dept.id
                 staff.department = dept.name
@@ -522,70 +609,54 @@ async def update_staff(
         setattr(staff, field, value)
 
     staff.updated_at = datetime.utcnow()
-    await db.commit()
-    await db.refresh(staff)
-    await db.refresh(staff, attribute_names=["department_rel"])
+    await repo.commit()
+    await repo.refresh(staff)
+    await repo.refresh(staff, attribute_names=["department_rel"])
     return staff
 
 
 @router.delete(
-    "/staff/{staff_id}",
+    "/accounts/{account_id}",
     tags=TAG_STAFF,
-    summary="Vô hiệu hóa tài khoản nhân viên (Soft Delete)",
+    summary="Vô hiệu hóa tài khoản (Soft Delete)",
     responses={
-        200: {"description": "Đã vô hiệu hóa tài khoản nhân viên thành công."},
-        404: {"description": "Không tìm thấy nhân viên với ID được cung cấp."},
+        200: {"description": "Đã vô hiệu hóa tài khoản thành công."},
+        404: {"description": "Không tìm thấy tài khoản với ID được cung cấp."},
     },
 )
+@router.delete(
+    "/staff/{account_id}",
+    include_in_schema=False,
+)
 async def delete_staff(
-    staff_id: str = Path(
+    account_id: str = Path(
         ...,
-        description="Mã định danh duy nhất của nhân viên cần vô hiệu hóa",
-        examples=["STF-f9ab1b15"],
+        description="Mã định danh duy nhất của tài khoản cần vô hiệu hóa",
+        examples=["ACC-f9ab1b15", "STF-f9ab1b15"],
     ),
-    db: AsyncSession = Depends(get_db),
+    repo: StaffRepository = Depends(get_staff_repository),
 ):
     """
     ### Mô tả nghiệp vụ:
-    Thực hiện **xóa mềm (Soft Delete)** tài khoản nhân viên trong hệ thống:
+    Thực hiện **xóa mềm (Soft Delete)** tài khoản trong hệ thống:
     - Đặt cờ `is_active = False`
     - Cập nhật trạng thái `status = 'inactive'`
-    - Không xóa vĩnh viễn dòng dữ liệu trong cơ sở dữ liệu để bảo toàn toàn vẹn khóa ngoại các đơn hàng (`RoomServiceOrder`) và yêu cầu trợ giúp (`SupportRequest`) mà nhân viên này đã xử lý trước đó.
+    - Không xóa vĩnh viễn dòng dữ liệu trong cơ sở dữ liệu để bảo toàn toàn vẹn khóa ngoại các đơn hàng (`RoomServiceOrder`) và yêu cầu trợ giúp (`SupportRequest`) mà tài khoản này đã xử lý trước đó.
     """
-    result = await db.execute(select(Staff).where(Staff.id == staff_id.strip()))
-    staff = result.scalar_one_or_none()
+    staff = await repo.soft_delete_staff(account_id)
     if not staff:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Không tìm thấy nhân viên với ID: {staff_id}",
+            detail=f"Không tìm thấy tài khoản với ID: {account_id}",
         )
 
-    staff.is_active = False
-    staff.status = "inactive"
-    staff.updated_at = datetime.utcnow()
-    await db.commit()
     return {
         "success": True,
-        "id": staff_id,
+        "id": account_id,
         "full_name": staff.full_name,
         "is_active": staff.is_active,
         "status": staff.status,
-        "message": f"Đã vô hiệu hóa thành công tài khoản nhân viên {staff.full_name}",
+        "message": f"Đã vô hiệu hóa thành công tài khoản {staff.full_name}",
     }
 
 
-# =====================================================================
-# 3. ROBOT FLEET STATUS (ĐỘI ROBOT HỆ THỐNG)
-# =====================================================================
-
-@router.get(
-    "/fleet",
-    response_model=List[dict],
-    tags=TAG_OPS,
-    summary="Danh sách trạng thái đội Robot HCRobot",
-)
-async def get_robot_fleet():
-    """
-    Trả về danh sách trạng thái thời gian thực của các Robot tự hành HCRobot đang trực tuyến.
-    """
-    return []

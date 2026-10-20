@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { synthesizeSpeech } from '../services/aiApi';
 
 export const useSpeechSynthesis = () => {
@@ -7,6 +7,28 @@ export const useSpeechSynthesis = () => {
   const audioRef = useRef(null);
   const activeUtteranceRef = useRef(null);
   const safetyTimerRef = useRef(null);
+
+  // Persistent Speech Rate State (0.5x - 2.0x, default 1.0x)
+  const [speechRate, setSpeechRateState] = useState(() => {
+    try {
+      const saved = typeof window !== 'undefined' ? localStorage.getItem('rora_speech_rate') : null;
+      return saved ? parseFloat(saved) : 1.0;
+    } catch {
+      return 1.0;
+    }
+  });
+
+  const updateSpeechRate = useCallback((newRate) => {
+    const parsed = parseFloat(newRate);
+    const clamped = Math.max(0.5, Math.min(2.0, isNaN(parsed) ? 1.0 : parsed));
+    setSpeechRateState(clamped);
+    try {
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('rora_speech_rate', clamped.toString());
+      }
+    } catch {}
+    return clamped;
+  }, []);
 
   // Load available TTS voices from browser
   useEffect(() => {
@@ -19,6 +41,23 @@ export const useSpeechSynthesis = () => {
 
     updateVoices();
     window.speechSynthesis.onvoiceschanged = updateVoices;
+  }, []);
+
+  // Sync speech rate from BroadcastChannel across tabs (Admin -> Robot Screen)
+  useEffect(() => {
+    let bc;
+    try {
+      bc = new BroadcastChannel('hcrobot_voice_settings');
+      bc.onmessage = (event) => {
+        if (event.data?.type === 'VOICE_SETTINGS_UPDATED' && event.data?.speech_rate) {
+          const clamped = Math.max(0.5, Math.min(2.0, parseFloat(event.data.speech_rate) || 1.0));
+          setSpeechRateState(clamped);
+        }
+      };
+    } catch {}
+    return () => {
+      if (bc) bc.close();
+    };
   }, []);
 
   // Unlock TTS Audio Engine on Mobile / Kiosk Gesture
@@ -43,15 +82,26 @@ export const useSpeechSynthesis = () => {
   const onQueueStartCallbackRef = useRef(null);
   const streamLangRef = useRef('vi-VN');
 
-  const speakWebSpeech = (text, language = 'vi-VN', onEndCallback = null, onStartCallback = null, shouldCancel = true, rate = 1.0) => {
+  const speakWebSpeech = (text, language = 'vi-VN', onEndCallback = null, onStartCallback = null, shouldCancel = true, rate = null) => {
     if (safetyTimerRef.current) {
       clearTimeout(safetyTimerRef.current);
       safetyTimerRef.current = null;
     }
 
+    // Chuẩn hóa văn bản: loại bỏ ký tự rác, markdown, định dạng danh sách và chuẩn hóa dấu câu
+    // để mô hình TTS đọc liền mạch, êm ái, KHÔNG bị giật hay ngắt quãng đột ngột.
+    const effectiveRate = Math.max(0.5, Math.min(2.0, rate ?? speechRate ?? 1.0));
+
     const cleanText = (text || '')
       .replace(/[*#_`\[\]()]/g, '')
       .replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '')
+      .replace(/^[\s*•\-–—]+\s*/gm, '') // Xóa gạch đầu dòng danh sách
+      .replace(/\.{2,}/g, '.') // ... -> .
+      .replace(/!{2,}/g, '!')
+      .replace(/\?{2,}/g, '?')
+      .replace(/:\s+/g, ', ') // Dấu hai chấm đổi thành dấu phẩy để hạ giọng êm, không ngắt cụt
+      .replace(/\s*;\s*/g, ', ')
+      .replace(/\s+/g, ' ')
       .trim();
 
     if (!cleanText) {
@@ -92,15 +142,18 @@ export const useSpeechSynthesis = () => {
       );
     }
 
-    // NẾU LÀ TIẾNG VIỆT VÀ TRÌNH DUYỆT KHÔNG CÓ GIỌNG TIẾNG VIỆT NÀO (ví dụ: Chrome trên Windows mặc định):
-    // Tự động gọi backend EdgeTTS Neural vi-VN-HoaiMyNeural để phát giọng chuẩn 100% tự nhiên!
-    if (langTag.startsWith('vi') && !targetVoice) {
-      synthesizeSpeech(cleanText, { language: 'vi-VN', voice: 'vi-VN-HoaiMyNeural' })
+    // 1. ƯU TIÊN GỌI Backend EdgeTTS Neural (vi-VN: vi-VN-HoaiMyNeural, en-US: en-US-JennyNeural)
+    // Đảm bảo phát ra giọng đọc nữ tự nhiên 100%, luyến láy truyền cảm, không giật cục theo dấu câu
+    const isSupportedEdgeLang = langTag.startsWith('vi') || langTag.startsWith('en');
+    if (isSupportedEdgeLang) {
+      const edgeVoice = langTag.startsWith('vi') ? 'vi-VN-HoaiMyNeural' : 'en-US-JennyNeural';
+      const edgeLang = langTag.startsWith('vi') ? 'vi-VN' : 'en-US';
+      synthesizeSpeech(cleanText, { language: edgeLang, voice: edgeVoice })
         .then((data) => {
           if (data?.audio_base64 && data.audio_base64.length > 50) {
             const audioSrc = `data:audio/mp3;base64,${data.audio_base64}`;
             const audio = new Audio(audioSrc);
-            audio.playbackRate = Math.max(0.5, Math.min(2.0, rate || 1.0));
+            audio.playbackRate = effectiveRate;
             audioRef.current = audio;
 
             audio.onplay = () => {
@@ -127,23 +180,25 @@ export const useSpeechSynthesis = () => {
             return;
           }
           // Fallback if backend returned empty
-          _speakWithBrowserUtterance(cleanText, langTag, null, onEndCallback, onStartCallback, shouldCancel, rate);
+          _speakWithBrowserUtterance(cleanText, langTag, targetVoice, onEndCallback, onStartCallback, shouldCancel, effectiveRate);
         })
         .catch(() => {
-          _speakWithBrowserUtterance(cleanText, langTag, null, onEndCallback, onStartCallback, shouldCancel, rate);
+          _speakWithBrowserUtterance(cleanText, langTag, targetVoice, onEndCallback, onStartCallback, shouldCancel, effectiveRate);
         });
       return;
     }
 
-    _speakWithBrowserUtterance(cleanText, langTag, targetVoice, onEndCallback, onStartCallback, shouldCancel, rate);
+    _speakWithBrowserUtterance(cleanText, langTag, targetVoice, onEndCallback, onStartCallback, shouldCancel, effectiveRate);
   };
 
-  const _speakWithBrowserUtterance = (cleanText, langTag, targetVoice, onEndCallback, onStartCallback, shouldCancel, rate = 1.0) => {
+  const _speakWithBrowserUtterance = (cleanText, langTag, targetVoice, onEndCallback, onStartCallback, shouldCancel, rate = null) => {
     if (!('speechSynthesis' in window)) {
       if (onStartCallback) onStartCallback();
       if (onEndCallback) onEndCallback();
       return;
     }
+
+    const effectiveRate = Math.max(0.5, Math.min(2.0, rate ?? speechRate ?? 1.0));
 
     try {
       if (window.speechSynthesis.paused) {
@@ -218,12 +273,7 @@ export const useSpeechSynthesis = () => {
     }
   };
 
-  const playNextInQueue = () => {
-    if (!('speechSynthesis' in window)) {
-      if (onQueueEndCallbackRef.current) onQueueEndCallbackRef.current();
-      return;
-    }
-
+  const playNextInQueue = async () => {
     if (queueRef.current.length === 0) {
       if (streamEndedRef.current) {
         isPlayingQueueRef.current = false;
@@ -242,6 +292,45 @@ export const useSpeechSynthesis = () => {
     isPlayingQueueRef.current = true;
     const nextItem = queueRef.current.shift();
 
+    if (onQueueStartCallbackRef.current) {
+      setIsSpeaking(true);
+      onQueueStartCallbackRef.current();
+      onQueueStartCallbackRef.current = null;
+    }
+
+    // 1. Kiểm tra nếu audio đã được tải trước sẵn trong RAM (0ms latency!)
+    let audioObj = nextItem.getAudio ? nextItem.getAudio() : null;
+    if (!audioObj && nextItem.audioPromise) {
+      try {
+        audioObj = await nextItem.audioPromise;
+      } catch (e) {
+        audioObj = null;
+      }
+    }
+
+    if (audioObj) {
+      audioRef.current = audioObj;
+      audioObj.onplay = () => {
+        setIsSpeaking(true);
+      };
+      audioObj.onended = () => {
+        audioRef.current = null;
+        playNextInQueue();
+      };
+      audioObj.onerror = () => {
+        audioRef.current = null;
+        playNextInQueue();
+      };
+
+      try {
+        await audioObj.play();
+        return;
+      } catch (playErr) {
+        console.warn('[Queue Audio Playback Error, fallback to WebSpeech]:', playErr);
+      }
+    }
+
+    // 2. Fallback: Nếu chưa có audio, dùng speakWebSpeech thông thường
     speakWebSpeech(
       nextItem.text,
       nextItem.language || streamLangRef.current,
@@ -250,12 +339,9 @@ export const useSpeechSynthesis = () => {
       },
       () => {
         setIsSpeaking(true);
-        if (onQueueStartCallbackRef.current) {
-          onQueueStartCallbackRef.current();
-          onQueueStartCallbackRef.current = null;
-        }
       },
-      false
+      false,
+      nextItem.rate ?? speechRate
     );
   };
 
@@ -269,12 +355,48 @@ export const useSpeechSynthesis = () => {
     streamLangRef.current = language;
   };
 
-  const enqueueStreamChunk = (chunkText, language = null) => {
-    if (!chunkText || !chunkText.trim()) return;
-    queueRef.current.push({
-      text: chunkText.trim(),
-      language: language || streamLangRef.current,
-    });
+  const enqueueStreamChunk = (chunkText, language = null, chunkRate = null) => {
+    const rawText = (chunkText || '')
+      .replace(/[*#_`\[\]()]/g, '')
+      .replace(/^[\s*•\-–—]+\s*/gm, '')
+      .trim();
+    if (!rawText) return;
+
+    const lang = language || streamLangRef.current || 'vi-VN';
+
+    // PRE-FETCH AUDIO NGAY LẬP TỨC TRONG NỀN:
+    // Tải trước file âm thanh của từng câu để sẵn trong RAM.
+    // Khi câu trước đọc xong, câu này cất tiếng ngay lập tức với 0ms độ trễ!
+    let preloadedAudio = null;
+    let audioPromise = null;
+
+    const isSupportedEdgeLang = lang.startsWith('vi') || lang.startsWith('en');
+    if (isSupportedEdgeLang) {
+      const edgeVoice = lang.startsWith('vi') ? 'vi-VN-HoaiMyNeural' : 'en-US-JennyNeural';
+      const edgeLang = lang.startsWith('vi') ? 'vi-VN' : 'en-US';
+      audioPromise = synthesizeSpeech(rawText, { language: edgeLang, voice: edgeVoice })
+        .then((data) => {
+          if (data?.audio_base64 && data.audio_base64.length > 50) {
+            const audioSrc = `data:audio/mp3;base64,${data.audio_base64}`;
+            const audio = new Audio(audioSrc);
+            audio.preload = 'auto';
+            preloadedAudio = audio;
+            return audio;
+          }
+          return null;
+        })
+        .catch(() => null);
+    }
+
+    const queueItem = {
+      text: rawText,
+      language: lang,
+      audioPromise,
+      getAudio: () => preloadedAudio,
+      rate: chunkRate ?? speechRate,
+    };
+
+    queueRef.current.push(queueItem);
     if (!isPlayingQueueRef.current) {
       playNextInQueue();
     }
@@ -287,7 +409,7 @@ export const useSpeechSynthesis = () => {
     }
   };
 
-  const speak = async (text, language = 'vi-VN', onEndCallback = null, onStartCallback = null, preloadedAudioBase64 = null, rate = 1.0) => {
+  const speak = async (text, language = 'vi-VN', onEndCallback = null, onStartCallback = null, preloadedAudioBase64 = null, rate = null) => {
     cancel();
 
     if (!text || !text.trim()) {
@@ -296,15 +418,19 @@ export const useSpeechSynthesis = () => {
       return;
     }
 
+    const effectiveRate = Math.max(0.5, Math.min(2.0, rate ?? speechRate ?? 1.0));
+
     // 0. ƯU TIÊN PHÁT NGAY LẬP TỨC AUDIO PRELOADED TỪ /chat (0ms Network delay)
     if (preloadedAudioBase64 && preloadedAudioBase64.length > 100) {
       try {
         const audioSrc = `data:audio/mp3;base64,${preloadedAudioBase64}`;
         const audio = new Audio(audioSrc);
-        audio.playbackRate = Math.max(0.5, Math.min(2.0, rate || 1.0));
+        audio.playbackRate = effectiveRate;
         audioRef.current = audio;
 
+        let hasStartedPlaying = false;
         audio.onplay = () => {
+          hasStartedPlaying = true;
           setIsSpeaking(true);
           if (onStartCallback) onStartCallback();
         };
@@ -318,7 +444,11 @@ export const useSpeechSynthesis = () => {
         audio.onerror = () => {
           setIsSpeaking(false);
           audioRef.current = null;
-          speakWebSpeech(text, language, onEndCallback, onStartCallback, true, rate);
+          if (!hasStartedPlaying) {
+            speakWebSpeech(text, language, onEndCallback, onStartCallback, true, effectiveRate);
+          } else {
+            if (onEndCallback) onEndCallback();
+          }
         };
 
         await audio.play();
@@ -329,7 +459,7 @@ export const useSpeechSynthesis = () => {
     }
 
     // 1. INSTANT WebSpeech / EdgeTTS fallback
-    speakWebSpeech(text, language, onEndCallback, onStartCallback, true, rate);
+    speakWebSpeech(text, language, onEndCallback, onStartCallback, true, effectiveRate);
   };
 
   const cancel = () => {
@@ -364,6 +494,9 @@ export const useSpeechSynthesis = () => {
     prime,
     cancel,
     isSpeaking,
+    speechRate,
+    setSpeechRate: updateSpeechRate,
+    updateSpeechRate,
     initStreamSpeech,
     enqueueStreamChunk,
     endStreamSpeech,

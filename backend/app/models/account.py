@@ -23,30 +23,29 @@ class Account(Base):
     
     # Foreign key to Department
     department_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("departments.id", ondelete="SET NULL"), nullable=True, index=True)
-    department: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, default="General") # Compatibility label
     
     default_dashboard: Mapped[str] = mapped_column(String(50), default="room_service") # 'reception', 'room_service', 'housekeeping', 'bell_services', 'maintenance', 'admin_map'
     location: Mapped[str] = mapped_column(String(100), default="Main Hotel") # e.g. 'Floor 3', 'Lobby', 'Floor 5'
     status: Mapped[str] = mapped_column(String(50), default="available") # 'available', 'busy', 'off_shift'
-    current_tasks_count: Mapped[int] = mapped_column(Integer, default=0)
     avatar_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     email: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     phone: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, default="+84 90 123 4567")
-    shift: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, default="Morning Shift (06:00 - 14:00)")
     is_fallback_agent: Mapped[bool] = mapped_column(Boolean, default=False)
-    assigned_floors: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, default="Floor 1 - 5")
-    notification_channels: Mapped[Optional[str]] = mapped_column(String(200), nullable=True, default="Web Dashboard, Tablet Alert")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
-    department_rel: Mapped[Optional["Department"]] = relationship("Department", back_populates="accounts")
+    department_rel: Mapped[Optional["Department"]] = relationship("Department", back_populates="accounts", lazy="selectin")
     notifications: Mapped[List["Notification"]] = relationship("Notification", back_populates="account")
 
     @property
     def department_name(self) -> Optional[str]:
+        # Tránh trigger IO đồng bộ (MissingGreenlet) trong môi trường async SQLAlchemy
+        dept = self.__dict__.get("department_rel")
+        if dept and getattr(dept, "name", None):
+            return dept.name
         if self.department_id:
             dept_map = {
                 "DEP-HOUSEKEEPING": "Housekeeping",
@@ -62,7 +61,17 @@ class Account(Base):
             }
             if self.department_id in dept_map:
                 return dept_map[self.department_id]
-        return self.department or "General"
+        return "General"
+
+    @property
+    def department(self) -> str:
+        return self.department_name or "General"
+
+    @department.setter
+    def department(self, val: Optional[str]):
+        # No-op setter for backward compatibility with Staff(**kwargs)
+        pass
+
     # TODO (Phase sau): Kích hoạt khi chạy migration thêm assigned_account_id/created_by_account_id vào management_directives trong DB
     # directives_assigned: Mapped[List["ManagementDirective"]] = relationship(
     #     "ManagementDirective", foreign_keys="ManagementDirective.assigned_account_id", back_populates="assigned_account"

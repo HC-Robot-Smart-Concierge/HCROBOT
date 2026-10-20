@@ -162,6 +162,34 @@ def save_source_file(payload: dict):
         )
 
 
+@router.delete("/sources/{filename}", response_model=RAGActionResponse, summary="Xóa file tài liệu nguồn")
+def delete_source_file(filename: str):
+    """
+    Xóa file tài liệu nguồn khỏi knowledge_vault hoặc static/uploads.
+    """
+    safe_name = os.path.basename(filename)
+    deleted = False
+    for folder in [settings.OBSIDIAN_VAULT_DIR, "static/uploads"]:
+        fpath = os.path.join(folder, safe_name)
+        if os.path.exists(fpath):
+            try:
+                os.remove(fpath)
+                deleted = True
+            except Exception:
+                pass
+    if not deleted:
+        raise HTTPException(status_code=404, detail=f"Không tìm thấy file '{safe_name}'")
+    try:
+        from app.services.rag.obsidian_service import obsidian_service
+        obsidian_service.sync_vault_to_chroma()
+    except Exception:
+        pass
+    return RAGActionResponse(
+        message=f"Đã xóa file '{safe_name}' và cập nhật lại kho tri thức!",
+        id=safe_name,
+    )
+
+
 @router.post("/upload-file", response_model=RAGFileUploadResponse, summary="Tải file PDF, DOCX, Markdown hoặc Ảnh nạp vào Robot")
 def upload_rag_file(
     file: UploadFile = File(...),
@@ -196,6 +224,14 @@ def upload_rag_file(
         if ext in [".md", ".txt"]:
             with open(dest_path, "r", encoding="utf-8", errors="replace") as f:
                 text_content = f.read()
+            # Đồng thời sao chép vào knowledge_vault để trở thành file nguồn chính thức có thể chỉnh sửa
+            try:
+                os.makedirs(settings.OBSIDIAN_VAULT_DIR, exist_ok=True)
+                vault_path = os.path.join(settings.OBSIDIAN_VAULT_DIR, filename)
+                with open(vault_path, "w", encoding="utf-8") as fv:
+                    fv.write(text_content)
+            except Exception:
+                pass
         elif ext == ".pdf":
             try:
                 import pypdf

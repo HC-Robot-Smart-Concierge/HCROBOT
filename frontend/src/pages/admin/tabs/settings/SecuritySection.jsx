@@ -75,7 +75,7 @@ export const SecuritySection = ({ settings, setSettings, showToast, currentUser 
               <span>Tài Khoản Quản Trị & Đổi Mật Khẩu (Admin Account)</span>
             </h3>
             <p className="text-xs text-stone-500 mt-0.5">
-              Cập nhật thông tin định danh và mật khẩu đăng nhập trực tiếp trên cơ sở dữ liệu PostgreSQL.
+              Cập nhật thông tin định danh và mật khẩu đăng nhập trực tiếp trên cơ sở dữ liệu hệ thống.
             </p>
           </div>
           <span className="px-3 py-1 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">

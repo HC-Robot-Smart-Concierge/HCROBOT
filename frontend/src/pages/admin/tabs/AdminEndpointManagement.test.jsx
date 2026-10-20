@@ -2,25 +2,33 @@ import { describe, it, expect } from 'vitest';
 import { CONCIERGE_ENDPOINT_TEMPLATES, getEndpointTemplateInfo } from './AdminUnifiedStudioTab';
 
 describe('Hotel Concierge Endpoint Management Logic', () => {
-  it('should define official Hotel Concierge endpoint templates', () => {
+  it('should define exactly 3 official Hotel Concierge endpoint templates without emoji', () => {
     const templateTypes = CONCIERGE_ENDPOINT_TEMPLATES.map((t) => t.type);
+    expect(templateTypes).toHaveLength(3);
     expect(templateTypes).toContain('WAYPOINT');
-    expect(templateTypes).toContain('PARKING_SPOT');
-    expect(templateTypes).toContain('DOCKING_TARGET');
-    expect(templateTypes).toContain('SERVICE_STATION');
-    expect(templateTypes).toContain('GUEST_TABLE');
+    expect(templateTypes).toContain('CHARGER');
+    expect(templateTypes).toContain('PARK');
+
     // Robot does not load industrial pallets/cargo
     expect(templateTypes).not.toContain('PICKUP_DROPOFF');
+    expect(templateTypes).not.toContain('SERVICE_STATION');
+    expect(templateTypes).not.toContain('GUEST_TABLE');
   });
 
-  it('should retrieve correct template info for DOCKING_TARGET and GUEST_TABLE', () => {
-    const docking = getEndpointTemplateInfo('DOCKING_TARGET');
-    expect(docking.badge).toBe('RECEPTION');
-    expect(docking.defaultTasks).toContain('GREET');
+  it('should retrieve correct template info for CHARGER and PARK without emoji', () => {
+    const charger = getEndpointTemplateInfo('CHARGER');
+    expect(charger.badge).toBe('CHARGER');
+    expect(charger.defaultTasks).toContain('CHARGE');
 
-    const guestTable = getEndpointTemplateInfo('GUEST_TABLE');
-    expect(guestTable.badge).toBe('VIP TABLE');
-    expect(guestTable.defaultTasks).toContain('RECOMMEND');
+    const park = getEndpointTemplateInfo('PARK');
+    expect(park.badge).toBe('PARK');
+    expect(park.defaultTasks).toContain('STANDBY');
+
+    // Backward compatibility for legacy aliases
+    const legacyDock = getEndpointTemplateInfo('DOCKING_TARGET');
+    expect(legacyDock.type).toBe('CHARGER');
+    const legacyParking = getEndpointTemplateInfo('PARKING_SPOT');
+    expect(legacyParking.type).toBe('PARK');
   });
 
   it('should validate and construct payload for creating a Concierge Endpoint', () => {

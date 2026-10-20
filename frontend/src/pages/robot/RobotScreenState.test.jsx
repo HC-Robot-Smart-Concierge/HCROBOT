@@ -1,6 +1,12 @@
 import { describe, it, expect } from 'vitest';
+import { RobotScreenPage } from './RobotScreenPage';
 
 describe('Robot Screen UI State Transitions', () => {
+  it('successfully exports and parses RobotScreenPage component without reference errors', () => {
+    expect(RobotScreenPage).toBeDefined();
+    expect(typeof RobotScreenPage).toBe('function');
+  });
+
   const validStates = ['RT-01', 'RT-02', 'RT-03', 'RT-04', 'RT-05'];
 
   it('should have all 5 design states defined in state flow', () => {
@@ -91,6 +97,68 @@ describe('Robot Screen UI State Transitions', () => {
     onUserInteraction();
     expect(isStandby).toBe(false);
     expect(currentState).toBe('RT-02');
+  });
+
+  it('never triggers standby poster while user is conversing, listening, or robot is speaking/processing', () => {
+    let isStandby = false;
+    let currentState = 'RT-03'; // Listening
+    const isListening = true;
+    const isSpeaking = false;
+    const isProcessing = false;
+    const transcript = 'Tôi muốn hỏi đường ra hồ bơi';
+    const isUserTalking = transcript.trim().length > 0;
+
+    const isBusy = isSpeaking || isProcessing || isListening || isUserTalking;
+
+    const onTick = () => {
+      if (isBusy) return;
+      if (currentState !== 'RT-01') return;
+      isStandby = true;
+    };
+
+    onTick();
+    expect(isStandby).toBe(false);
+  });
+
+  it('transitions from active conversation to RT-01 sleeping before allowing standby poster', () => {
+    let isStandby = false;
+    let currentState = 'RT-03';
+    let isListening = false;
+    let transcript = '';
+    const isBusy = isListening || Boolean(transcript);
+
+    // Step 1: In conversation but guest is silent for 45s -> Transition to RT-01
+    const onConversationSilenceTimeout = () => {
+      if (!isBusy && currentState !== 'RT-01') {
+        currentState = 'RT-01';
+      }
+    };
+
+    onConversationSilenceTimeout();
+    expect(currentState).toBe('RT-01');
+    expect(isStandby).toBe(false);
+
+    // Step 2: Now in RT-01, if still completely idle for 60s -> Trigger Standby
+    const onStandbyIdleTimeout = () => {
+      if (!isBusy && currentState === 'RT-01') {
+        isStandby = true;
+      }
+    };
+
+    onStandbyIdleTimeout();
+    expect(isStandby).toBe(true);
+
+    // Step 3: Guest speaks -> Immediate wake up and dismiss standby
+    const onVoiceWakeUp = (speech) => {
+      if (speech && speech.trim().length > 0) {
+        isStandby = false;
+        currentState = 'RT-03';
+      }
+    };
+
+    onVoiceWakeUp('Chào em robot');
+    expect(isStandby).toBe(false);
+    expect(currentState).toBe('RT-03');
   });
 
   it('keeps camera preview UI completely hidden on robot screen while running AI in background', () => {

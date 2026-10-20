@@ -40,7 +40,7 @@ class RPLidarService:
 
         # Chế độ Khóa Bản Đồ Cố Định (Lock Static Map) & Lưu trữ CSDL
         self.is_map_locked = True
-        self.saved_map_id = "MAP-LOBBY-01"
+        self.saved_map_id = "phong_lam_viec"
         self.static_grid_data: Optional[List[int]] = None
         self.last_saved_time: Optional[str] = None
 
@@ -116,7 +116,7 @@ class RPLidarService:
             logger.info("🗺️ Đã tạo và nạp bản đồ sảnh cố định mặc định (Lobby Map Template)")
             return True
 
-    def save_map_to_storage(self, map_id: str = "MAP-LOBBY-01", name: str = "Bản đồ Sảnh Tầng 1 Main Lobby", floor: str = "Sảnh Tầng 1") -> Dict[str, Any]:
+    def save_map_to_storage(self, map_id: str = "phong_lam_viec", name: str = "Bản đồ Phòng Làm Việc", floor: str = "Phòng Làm Việc") -> Dict[str, Any]:
         """Lưu toàn bộ ma trận Occupancy Grid 2D hiện tại thành file bản đồ cố định vĩnh viễn"""
         with self._lock:
             self.saved_map_id = map_id
@@ -148,7 +148,7 @@ class RPLidarService:
             logger.error(f"Lỗi khi lưu file bản đồ: {e}")
             return {"status": "ERROR", "message": str(e)}
 
-    def load_map_from_storage(self, map_id: str = "MAP-LOBBY-01", lock: bool = True) -> bool:
+    def load_map_from_storage(self, map_id: str = "phong_lam_viec", lock: bool = True) -> bool:
         """Nạp bản đồ đã lưu từ file vào hệ thống và đóng băng cố định"""
         map_path = os.path.join(MAPS_DIR, f"{map_id}.json")
         if not os.path.exists(map_path):

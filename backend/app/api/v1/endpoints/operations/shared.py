@@ -37,7 +37,8 @@ TAG_REST_MENU = TAG_KITCHEN
 TAG_REST = TAG_KITCHEN  # Backward compatibility alias
 TAG_TAXI = ["11. Bộ phận Đặt xe & Vận chuyển (Taxi & Transportation)"]
 TAG_CONCIERGE = ["12. Bộ phận Trợ lý Concierge & Live Call (Concierge & Live Support)"]
-TAG_STAFF = ["13. Quản lý Phòng ban & Nhân sự (Departments & Staff)"]
+TAG_STAFF = ["13. Quản lý Phòng ban & Tài khoản (Departments & Accounts)"]
+TAG_ACCOUNT = TAG_STAFF
 TAG_OPS = ["14. Quản lý Chung & Điều phối Nghiệp vụ (Operations & Directives)"]
 TAG_ADMIN = ["15. Trung tâm Điều hành & Quản trị (Admin & Human Support)"]
 TAG_NOTIF = ["16. Thông báo Hệ thống (Notifications)"]
@@ -91,16 +92,13 @@ async def _fetch_all_raw_requests(db: AsyncSession) -> List[Dict[str, Any]]:
     """Helper to collect and normalize tasks across all operational tables including SupportRequest."""
     unified = []
 
+    from app.repositories import SupportRequestRepository, DirectiveRepository
+
     # 1. Fetch from SupportRequest table (HK, Bell, Taxi, Maintenance, Concierge, Reception)
     try:
-        sr_stmt = (
-            select(SupportRequest, ServiceType, Department)
-            .outerjoin(ServiceType, SupportRequest.service_type_id == ServiceType.id)
-            .outerjoin(Department, SupportRequest.department_id == Department.id)
-            .order_by(desc(SupportRequest.created_at))
-        )
-        sr_res = await db.execute(sr_stmt)
-        for sr, st, dep in sr_res.all():
+        sr_repo = SupportRequestRepository(db)
+        sr_res = await sr_repo.list_all_with_relations()
+        for sr, st, dep in sr_res:
             dep_code = (dep.code if dep else (st.code if st else "")).upper()
             if "HOUSEKEEPING" in dep_code:
                 dept_label = "Housekeeping"
@@ -136,41 +134,58 @@ async def _fetch_all_raw_requests(db: AsyncSession) -> List[Dict[str, Any]]:
             unified.append({
                 "id": ticket_display,
                 "raw_id": sr.id,
+                "ticket_code": sr.ticket_code or raw_ticket,
                 "department": dept_label,
                 "table_type": tbl_type,
                 "title": sr.title,
                 "location": loc_label,
                 "guestName": sr.guest_name or "Hotel Guest",
-                "priority": sr.priority or (st.default_priority if st else "NORMAL"),
+                "guest_name": sr.guest_name or "Hotel Guest",
                 "status": sr.status or "Pending",
                 "time": sr.created_at.strftime("%I:%M %p").lstrip("0") if sr.created_at else "Recent",
+                "time_label": sr.created_at.strftime("%H:%M") if sr.created_at else "Recent",
                 "assignedTo": sr.assigned_staff_name,
+                "assigned_to": sr.assigned_staff_name,
+                "assigned_staff_name": sr.assigned_staff_name,
                 "assigned_robot": sr.assigned_robot_id,
                 "notes": sr.description,
+                "description": sr.description,
                 "source": sr.source or "From HCRobot",
                 "created_at": sr.created_at,
+                "items": sr.items or [],
+                "total_amount": sr.total_amount or 0,
+                "progress": sr.progress or 0,
+                "est_completion": sr.est_completion,
+                "room_number": sr.room_number,
             })
     except Exception as e:
         logger.error(f"Error fetching SupportRequests: {e}")
 
     # 2. Directives from ManagementDirective (Chỉ thị vận hành)
     try:
-        dir_res = await db.execute(select(ManagementDirective).order_by(desc(ManagementDirective.created_at)))
-        for d in dir_res.scalars().all():
+        dir_repo = DirectiveRepository(db)
+        directives = await dir_repo.list_by_department()
+        for d in directives:
             unified.append({
                 "id": f"REQ-{d.code}",
                 "raw_id": d.id,
+                "ticket_code": d.code,
                 "department": d.department or "Directive",
                 "table_type": "directive",
                 "title": d.title,
                 "location": d.location or "Main Hotel",
                 "guestName": "Operations Directive",
+                "guest_name": "Operations Directive",
                 "priority": d.priority or "NORMAL",
                 "status": d.status,
                 "time": d.reported_time_label or (d.created_at.strftime("%I:%M %p").lstrip("0") if d.created_at else "Recent"),
+                "time_label": d.reported_time_label or (d.created_at.strftime("%H:%M") if d.created_at else "Recent"),
                 "assignedTo": d.assigned_staff_name,
+                "assigned_to": d.assigned_staff_name,
+                "assigned_staff_name": d.assigned_staff_name,
                 "assigned_robot": None,
                 "notes": d.description,
+                "description": d.description,
                 "source": f"Admin ({d.created_by})",
                 "created_at": d.created_at,
             })

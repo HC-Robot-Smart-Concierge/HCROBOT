@@ -6,7 +6,9 @@ import {
   createBellRequest,
   createMaintenanceRequest,
   createOperationalDirective,
+  createRoomServiceOrder,
 } from '../../services/operationsApi';
+import { createTaxiRequest } from '../../services/taxiApi';
 
 export function QuickRequestModal({ isOpen, onClose, onCreated }) {
   const [department, setDepartment] = useState('Housekeeping');
@@ -14,7 +16,6 @@ export function QuickRequestModal({ isOpen, onClose, onCreated }) {
   const [guestName, setGuestName] = useState('');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [priority, setPriority] = useState('NORMAL');
   const [loading, setLoading] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
@@ -38,7 +39,6 @@ export function QuickRequestModal({ isOpen, onClose, onCreated }) {
         title: title.trim(),
         description: description.trim(),
         guest_name: guestName.trim() || 'Khách lưu trú',
-        priority,
       };
 
       if (department === 'Reception') {
@@ -52,6 +52,23 @@ export function QuickRequestModal({ isOpen, onClose, onCreated }) {
           ...basePayload,
           room_number: roomNumber.trim() || 'Phòng chưa gán',
           source: 'Front Desk / Kiosk',
+        });
+      } else if (department === 'Room Service') {
+        res = await createRoomServiceOrder({
+          room_number: roomNumber.trim() || 'Phòng chưa gán',
+          items: [{ name: title.trim(), qty: 1, notes: description.trim() }],
+          note: description.trim() || title.trim(),
+          guest_name: guestName.trim() || 'Khách lưu trú',
+        });
+      } else if (department === 'Taxi') {
+        res = await createTaxiRequest({
+          guest_name: guestName.trim() || 'Khách lưu trú',
+          pickup_location: roomNumber.trim() || 'Sảnh chính (Main Lobby)',
+          destination: title.trim(),
+          pickup_time: 'Immediate',
+          party_size: 2,
+          vehicle_type: '4-Seater Sedan',
+          description: description.trim() || title.trim(),
         });
       } else if (department === 'Bell Services') {
         res = await createBellRequest({
@@ -69,7 +86,6 @@ export function QuickRequestModal({ isOpen, onClose, onCreated }) {
         res = await createOperationalDirective({
           title: title.trim(),
           department: 'Executive',
-          priority,
           location: roomNumber.trim() || 'Toàn khách sạn',
           description: description.trim(),
           type: 'General',
@@ -110,7 +126,7 @@ export function QuickRequestModal({ isOpen, onClose, onCreated }) {
           </div>
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-palette-stone text-palette-slate hover:text-palette-charcoal transition"
+            className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-palette-stone text-palette-slate hover:text-palette-charcoal transition cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
@@ -131,43 +147,31 @@ export function QuickRequestModal({ isOpen, onClose, onCreated }) {
 
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="mt-4 space-y-3.5">
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-bold text-palette-charcoal mb-1">Bộ phận tiếp nhận</label>
-              <select
-                value={department}
-                onChange={(e) => setDepartment(e.target.value)}
-                className="hc-select"
-              >
-                <option value="Housekeeping">Buồng phòng (Housekeeping)</option>
-                <option value="Reception">Lễ tân (Reception)</option>
-                <option value="Bell Services">Hành lý & Sảnh (Bell Services)</option>
-                <option value="Maintenance">Kỹ thuật & Bảo trì (Maintenance)</option>
-                <option value="Directive">Chỉ thị Điều hành (Directive)</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-palette-charcoal mb-1">Mức độ ưu tiên</label>
-              <select
-                value={priority}
-                onChange={(e) => setPriority(e.target.value)}
-                className="hc-select"
-              >
-                <option value="LOW">Thấp (Low)</option>
-                <option value="NORMAL">Bình thường (Normal)</option>
-                <option value="HIGH">Ưu tiên cao (High)</option>
-                <option value="URGENT">Khẩn cấp (Urgent)</option>
-              </select>
-            </div>
+          <div>
+            <label className="block text-xs font-bold text-palette-charcoal mb-1">Bộ phận tiếp nhận</label>
+            <select
+              value={department}
+              onChange={(e) => setDepartment(e.target.value)}
+              className="hc-select"
+            >
+              <option value="Housekeeping">Buồng phòng (Housekeeping)</option>
+              <option value="Room Service">Phục vụ phòng (Room Service / F&B)</option>
+              <option value="Taxi">Đặt xe & Vận chuyển (Taxi / Transport)</option>
+              <option value="Reception">Lễ tân (Reception)</option>
+              <option value="Bell Services">Hành lý & Sảnh (Bell Services)</option>
+              <option value="Maintenance">Kỹ thuật & Bảo trì (Maintenance)</option>
+              <option value="Directive">Chỉ thị Điều hành (Directive)</option>
+            </select>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-bold text-palette-charcoal mb-1">Số phòng / Vị trí</label>
+              <label className="block text-xs font-bold text-palette-charcoal mb-1">
+                {department === 'Taxi' ? 'Điểm đón (Số phòng / Sảnh)' : 'Số phòng / Vị trí'}
+              </label>
               <input
                 type="text"
-                placeholder="VD: Phòng 402 hoặc Sảnh A"
+                placeholder={department === 'Taxi' ? 'VD: Sảnh chính hoặc Phòng 402' : 'VD: Phòng 402 hoặc Sảnh A'}
                 value={roomNumber}
                 onChange={(e) => setRoomNumber(e.target.value)}
                 className="hc-input"
@@ -187,11 +191,23 @@ export function QuickRequestModal({ isOpen, onClose, onCreated }) {
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-palette-charcoal mb-1">Tiêu đề yêu cầu *</label>
+            <label className="block text-xs font-bold text-palette-charcoal mb-1">
+              {department === 'Taxi'
+                ? 'Điểm đến / Lộ trình xe *'
+                : department === 'Room Service'
+                ? 'Món ăn / Đồ uống yêu cầu *'
+                : 'Tiêu đề yêu cầu *'}
+            </label>
             <input
               type="text"
               required
-              placeholder="VD: Cung cấp thêm 2 bộ khăn tắm & nước khoáng"
+              placeholder={
+                department === 'Taxi'
+                  ? 'VD: Sân bay Quốc tế Đà Nẵng (DAD)'
+                  : department === 'Room Service'
+                  ? 'VD: 2 Club Sandwich & 1 Cà phê sữa đá'
+                  : 'VD: Cung cấp thêm 2 bộ khăn tắm & nước khoáng'
+              }
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               className="hc-input"
@@ -199,15 +215,28 @@ export function QuickRequestModal({ isOpen, onClose, onCreated }) {
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-palette-charcoal mb-1">Ghi chú / Chi tiết công việc</label>
+            <label className="block text-xs font-bold text-palette-charcoal mb-1">
+              {department === 'Taxi'
+                ? 'Ghi chú chuyến xe (Loại xe, giờ đón, hành lý)'
+                : department === 'Room Service'
+                ? 'Ghi chú món ăn / Bếp'
+                : 'Ghi chú / Chi tiết công việc'}
+            </label>
             <textarea
               rows={3}
-              placeholder="Ghi chú thêm cho nhân viên tiếp nhận công việc..."
+              placeholder={
+                department === 'Taxi'
+                  ? 'VD: Xe 4 chỗ, có 2 vali lớn, đón ngay...'
+                  : department === 'Room Service'
+                  ? 'VD: Ít đá, không đường, giao trước 11:30...'
+                  : 'Ghi chú thêm cho nhân viên tiếp nhận công việc...'
+              }
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               className="hc-input resize-none"
             />
           </div>
+
 
           {/* Action Buttons */}
           <div className="pt-3 border-t border-palette-silver flex items-center justify-end gap-2">

@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from app.models.hotel import Room
     from app.models.service_type import ServiceType
     from app.models.room_service import RoomServiceOrder
+    from app.models.robot import Robot
 
 
 class SupportRequest(Base):
@@ -32,12 +33,11 @@ class SupportRequest(Base):
     room_number: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, index=True) # e.g. 'Room 412', 'Lobby', or None
     guest_name: Mapped[str] = mapped_column(String(100), default="Hotel Guest")
     source: Mapped[str] = mapped_column(String(50), default="From HCRobot") # 'From HCRobot', 'Front Desk', 'Guest App'
-    priority: Mapped[str] = mapped_column(String(20), default="NORMAL") # 'LOW', 'NORMAL', 'HIGH', 'URGENT'
     status: Mapped[str] = mapped_column(String(50), default="Pending") # 'Pending', 'In Progress', 'Completed', 'Cancelled'
     
-    # Backward compatibility fields
+    # Assignment fields
     assigned_staff_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
-    assigned_robot_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    assigned_robot_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("robots.id", ondelete="SET NULL"), nullable=True, index=True)
 
     # Specialized request attributes (Room Service / F&B, Taxi, Custom orders)
     items: Mapped[Optional[List[Dict[str, Any]]]] = mapped_column(JSON, default=list, nullable=True) # e.g. [{"name": "Club Sandwich", "qty": 2, "price": 120000}]
@@ -53,8 +53,10 @@ class SupportRequest(Base):
     service_type: Mapped[Optional["ServiceType"]] = relationship("ServiceType", back_populates="support_requests")
     department: Mapped[Optional["Department"]] = relationship("Department")
     assigned_account: Mapped[Optional["Account"]] = relationship("Account")
+    assigned_robot: Mapped[Optional["Robot"]] = relationship("Robot")
     room: Mapped[Optional["Room"]] = relationship("Room", back_populates="support_requests")
     room_service_order: Mapped[Optional["RoomServiceOrder"]] = relationship("RoomServiceOrder", back_populates="support_request", uselist=False)
+
 
     def __init__(self, **kwargs):
         # Normalize legacy field aliases
@@ -90,7 +92,7 @@ class SupportRequest(Base):
             "time_label", "reported_time_label", "created_label",
             "location_details", "guest_tier", "guest_stay_details",
             "attached_media", "transcript", "assistance_status", "assigned_role",
-            "notes", "activity_log", "escalated"
+            "notes", "activity_log", "escalated", "priority"
         ):
             kwargs.pop(k, None)
 
@@ -142,10 +144,6 @@ class SupportRequest(Base):
         if not self.extra_data:
             self.extra_data = {}
         self.extra_data["image_url"] = val
-
-    @property
-    def is_vip(self) -> bool:
-        return self.priority in ["HIGH", "URGENT"]
 
     @property
     def location(self) -> str:
@@ -257,7 +255,7 @@ class SupportRequest(Base):
     @property
     def activity_log(self) -> list: return []
     @property
-    def escalated(self) -> bool: return self.priority in ["HIGH", "URGENT"]
+    def escalated(self) -> bool: return False
 
 # Backward compatibility aliases
 HousekeepingRequest = SupportRequest

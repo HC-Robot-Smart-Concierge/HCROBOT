@@ -1,11 +1,9 @@
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Header
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 
-from app.core.database import get_db
 from app.core.security import verify_password, hash_password, create_access_token, decode_access_token
 from app.models.staff import Staff
+from app.repositories import StaffRepository, get_staff_repository
 from app.services.logger_service import audit, log_event, LogLevelEnum, LogCategoryEnum, ActorTypeEnum
 from app.schemas.auth import (
     LoginRequest,
@@ -14,6 +12,11 @@ from app.schemas.auth import (
     ChangePasswordRequest,
     ProfileUpdateRequest,
     LogoutResponse,
+)
+from app.schemas.response import (
+    UnauthorizedResponseSchema,
+    ForbiddenResponseSchema,
+    NotFoundResponseSchema,
 )
 
 router = APIRouter()
@@ -53,18 +56,63 @@ USERNAME_ALIASES = {
     "livecall": "concierge",
     "live_call": "concierge",
     "troly": "concierge",
+    "bep": "kitchen",
+    "nha_bep": "kitchen",
+    "nhabep": "kitchen",
+    "chef": "kitchen",
 }
 
 
-@router.post("/login", response_model=TokenResponse)
-async def login(login_in: LoginRequest, db: AsyncSession = Depends(get_db)):
+def resolve_dashboard_for_staff(staff: Staff) -> str:
+    """Ensures staff account is strictly mapped to their operational department dashboard."""
+    role_lower = (staff.role or "").lower()
+    username_lower = (staff.username or "").lower()
+    if role_lower == "admin" or username_lower == "admin":
+        return "admin_portal"
+    if "robot" in role_lower or username_lower.startswith("robot"):
+        return "robot_display"
+
+    dept_lower = (staff.department or "").lower()
+    if "housekeeping" in dept_lower or "buồng" in dept_lower or "housekeeping" in username_lower:
+        return "housekeeping"
+    if "reception" in dept_lower or "lễ tân" in dept_lower or "front" in dept_lower or "reception" in username_lower:
+        return "reception"
+    if "bell" in dept_lower or "hành lý" in dept_lower or "bell" in username_lower:
+        return "bell_services"
+    if "maint" in dept_lower or "kỹ thuật" in dept_lower or "maintenance" in username_lower:
+        return "maintenance"
+    if "kitchen" in dept_lower or "bếp" in dept_lower or "chef" in dept_lower or "kitchen" in username_lower:
+        return "kitchen"
+    if "concierge" in dept_lower or "trợ lý" in dept_lower or "taxi" in dept_lower or "concierge" in username_lower or "taxi" in username_lower:
+        return "concierge"
+    if "room" in dept_lower or "phục vụ" in dept_lower or "f&b" in dept_lower or "roomservice" in username_lower:
+        return "room_service"
+
+    if staff.default_dashboard and staff.default_dashboard != "room_service":
+        return staff.default_dashboard
+
+    return "reception"
+
+
+@router.post(
+    "/login",
+    response_model=TokenResponse,
+    summary="Đăng nhập hệ thống & cấp Access Token",
+    responses={
+        401: {"model": UnauthorizedResponseSchema, "description": "Tên đăng nhập hoặc mật khẩu không chính xác"},
+        403: {"model": ForbiddenResponseSchema, "description": "Tài khoản đã bị vô hiệu hóa hoặc bị khóa"},
+    },
+)
+async def login(
+    login_in: LoginRequest,
+    repo: StaffRepository = Depends(get_staff_repository),
+):
     """Authenticates staff member with username & password, returns JWT token with assigned role & dashboard."""
     username_clean = login_in.username.strip().lower()
     username_clean = USERNAME_ALIASES.get(username_clean, username_clean)
 
-    # 1. Query staff by username from PostgreSQL DB
-    res = await db.execute(select(Staff).where(Staff.username == username_clean))
-    staff = res.scalar_one_or_none()
+    # 1. Query staff by username via repository
+    staff = await repo.get_by_username(username_clean, load_department=True)
 
     # 2. Check credentials against DB
     if not staff or not verify_password(login_in.password, staff.password_hash):
@@ -103,12 +151,13 @@ async def login(login_in: LoginRequest, db: AsyncSession = Depends(get_db)):
     )
 
     # 3. Create JWT Token
+    resolved_dashboard = resolve_dashboard_for_staff(staff)
     token_payload = {
         "sub": staff.id,
         "username": staff.username,
         "role": staff.role,
         "department": staff.department,
-        "default_dashboard": staff.default_dashboard,
+        "default_dashboard": resolved_dashboard,
     }
     token = create_access_token(data=token_payload)
 
@@ -119,7 +168,7 @@ async def login(login_in: LoginRequest, db: AsyncSession = Depends(get_db)):
         full_name=staff.full_name,
         role=staff.role,
         department=staff.department,
-        default_dashboard=staff.default_dashboard,
+        default_dashboard=resolved_dashboard,
         location=staff.location,
         status=staff.status,
         avatar_url=staff.avatar_url,
@@ -129,14 +178,22 @@ async def login(login_in: LoginRequest, db: AsyncSession = Depends(get_db)):
         access_token=token,
         token_type="bearer",
         user=user_profile,
-        target_dashboard=staff.default_dashboard,
+        target_dashboard=resolved_dashboard,
     )
 
 
-@router.get("/me", response_model=UserAuthProfile)
+@router.get(
+    "/me",
+    response_model=UserAuthProfile,
+    summary="Lấy thông tin tài khoản đang đăng nhập",
+    responses={
+        401: {"model": UnauthorizedResponseSchema, "description": "Thiếu hoặc Token JWT không hợp lệ/hết hạn"},
+        404: {"model": NotFoundResponseSchema, "description": "Không tìm thấy thông tin nhân viên tương ứng"},
+    },
+)
 async def get_current_user(
     authorization: str = Header(None),
-    db: AsyncSession = Depends(get_db),
+    repo: StaffRepository = Depends(get_staff_repository),
 ):
     """Returns current user details decoded from Bearer JWT token."""
     if not authorization or not authorization.startswith("Bearer "):
@@ -154,19 +211,28 @@ async def get_current_user(
         )
 
     user_id = payload["sub"]
-    res = await db.execute(select(Staff).where(Staff.id == user_id))
-    staff = res.scalar_one_or_none()
+    staff = await repo.get_by_id(user_id)
     if not staff:
         raise HTTPException(status_code=404, detail="User not found")
 
-    return UserAuthProfile.model_validate(staff)
+    user_profile = UserAuthProfile.model_validate(staff)
+    user_profile.default_dashboard = resolve_dashboard_for_staff(staff)
+    return user_profile
 
 
-@router.post("/change-password")
+@router.post(
+    "/change-password",
+    summary="Đổi mật khẩu tài khoản nhân viên",
+    responses={
+        400: {"description": "Mật khẩu hiện tại không chính xác"},
+        401: {"model": UnauthorizedResponseSchema, "description": "Token JWT không hợp lệ"},
+        404: {"model": NotFoundResponseSchema, "description": "Không tìm thấy tài khoản"},
+    },
+)
 async def change_password(
     req: ChangePasswordRequest,
     authorization: str = Header(None),
-    db: AsyncSession = Depends(get_db),
+    repo: StaffRepository = Depends(get_staff_repository),
 ):
     """Changes staff user password and updates password_hash in database."""
     staff = None
@@ -174,12 +240,10 @@ async def change_password(
         token = authorization.split(" ")[1]
         payload = decode_access_token(token)
         if payload and "sub" in payload:
-            res = await db.execute(select(Staff).where(Staff.id == payload["sub"]))
-            staff = res.scalar_one_or_none()
+            staff = await repo.get_by_id(payload["sub"])
 
     if not staff and req.username:
-        res = await db.execute(select(Staff).where(Staff.username == req.username.strip().lower()))
-        staff = res.scalar_one_or_none()
+        staff = await repo.get_by_username(req.username.strip().lower())
 
     if not staff:
         raise HTTPException(status_code=404, detail="Staff account not found")
@@ -188,15 +252,23 @@ async def change_password(
         raise HTTPException(status_code=400, detail="Mật khẩu hiện tại không chính xác")
 
     staff.password_hash = hash_password(req.new_password)
-    await db.commit()
+    await repo.commit()
     return {"message": "Mật khẩu đã được cập nhật thành công trong cơ sở dữ liệu!"}
 
 
-@router.patch("/profile", response_model=UserAuthProfile)
+@router.patch(
+    "/profile",
+    response_model=UserAuthProfile,
+    summary="Cập nhật hồ sơ nhân viên",
+    responses={
+        401: {"model": UnauthorizedResponseSchema, "description": "Token JWT không hợp lệ"},
+        404: {"model": NotFoundResponseSchema, "description": "Không tìm thấy tài khoản"},
+    },
+)
 async def update_profile(
     req: ProfileUpdateRequest,
     authorization: str = Header(None),
-    db: AsyncSession = Depends(get_db),
+    repo: StaffRepository = Depends(get_staff_repository),
 ):
     """Updates staff profile details in database."""
     staff = None
@@ -204,18 +276,14 @@ async def update_profile(
         token = authorization.split(" ")[1]
         payload = decode_access_token(token)
         if payload and "sub" in payload:
-            res = await db.execute(select(Staff).where(Staff.id == payload["sub"]))
-            staff = res.scalar_one_or_none()
+            staff = await repo.get_by_id(payload["sub"])
 
     if not staff and req.username:
-        res = await db.execute(select(Staff).where(Staff.username == req.username.strip().lower()))
-        staff = res.scalar_one_or_none()
+        staff = await repo.get_by_username(req.username.strip().lower())
 
     if not staff:
-        # If still not found, try searching by code
         if req.code:
-            res = await db.execute(select(Staff).where(Staff.code == req.code))
-            staff = res.scalar_one_or_none()
+            staff = await repo.get_by_code(req.code)
 
     if not staff:
         raise HTTPException(status_code=404, detail="Staff account not found")
@@ -235,15 +303,15 @@ async def update_profile(
     if req.location is not None:
         staff.location = req.location
 
-    await db.commit()
-    await db.refresh(staff)
+    await repo.commit()
+    await repo.refresh(staff)
     return UserAuthProfile.model_validate(staff)
 
 
 @router.post("/logout", response_model=LogoutResponse)
 async def logout(
     authorization: Optional[str] = Header(None),
-    db: AsyncSession = Depends(get_db),
+    repo: StaffRepository = Depends(get_staff_repository),
 ):
     """
     Logs out the current staff user.
@@ -255,8 +323,7 @@ async def logout(
         payload = decode_access_token(token)
         if payload and "sub" in payload:
             user_id = payload["sub"]
-            res = await db.execute(select(Staff).where(Staff.id == user_id))
-            staff = res.scalar_one_or_none()
+            staff = await repo.get_by_id(user_id)
             if staff:
                 # 1. Ghi log audit hệ thống
                 audit(
@@ -267,16 +334,6 @@ async def logout(
                     actor_id=staff.username,
                     actor_name=staff.full_name,
                     after_state={"status": "logged_out"},
-                )
-                log_event(
-                    level=LogLevelEnum.INFO,
-                    category=LogCategoryEnum.AUDIT,
-                    event_type="LOGOUT_SUCCESS",
-                    module="app.api.v1.auth",
-                    message=f"Nhân viên '{staff.username}' ({staff.full_name}) đã đăng xuất thành công khỏi hệ thống.",
-                    actor_type=ActorTypeEnum.ADMIN if staff.role == "Admin" else ActorTypeEnum.STAFF,
-                    actor_id=staff.username,
-                    metadata={"user_id": staff.id, "username": staff.username, "department": staff.department},
                 )
                 return LogoutResponse(
                     message=f"Đăng xuất tài khoản {staff.username} thành công.",

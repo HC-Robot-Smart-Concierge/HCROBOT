@@ -27,7 +27,6 @@ class HumanSupportSession(Base):
     wait_time_label: Mapped[str] = mapped_column(String(30), default="02m 14s")
     status: Mapped[str] = mapped_column(String(50), default="Active") # 'Active', 'Resolved', 'Queued'
     linked_request_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True) # e.g. 'REQ-1042'
-    is_vip: Mapped[bool] = mapped_column(Boolean, default=False)
     chat_session_id: Mapped[Optional[str]] = mapped_column(String(64), ForeignKey("chat_sessions.id", ondelete="SET NULL"), nullable=True, index=True)
     account_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True, index=True)
     

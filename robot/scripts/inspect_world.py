@@ -1,6 +1,9 @@
+import os
 import xml.etree.ElementTree as ET
 
-tree = ET.parse('/mnt/d/Learning/Ki_9/SEP490/HCROBOT/robot/worlds/hotel_room.world')
+script_dir = os.path.dirname(os.path.abspath(__file__))
+world_path = os.path.join(script_dir, "..", "worlds", "hotel_room.world")
+tree = ET.parse(world_path)
 root = tree.getroot()
 world = root.find('world')
 

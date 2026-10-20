@@ -96,6 +96,11 @@ export function useNotificationWebSocket({
             if (onNotificationReceivedRef.current) {
               onNotificationReceivedRef.current(payload.data);
             }
+          } else if (payload.type === 'ADVERTISEMENT_PUSH') {
+            console.log('📺 [NotificationWS] Incoming advertisement push:', payload);
+            if (onNotificationReceivedRef.current) {
+              onNotificationReceivedRef.current(payload);
+            }
           }
         } catch (err) {
           console.warn('[NotificationWS] Error parsing payload:', err);

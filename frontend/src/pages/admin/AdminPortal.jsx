@@ -4,9 +4,11 @@ import { AdminDashboardTab } from './tabs/AdminDashboardTab';
 import { AdminOperationsTab } from './tabs/AdminOperationsTab';
 import { AdminRobotControlTab } from './tabs/AdminRobotControlTab';
 import { AdminKnowledgePage } from './tabs/AdminKnowledgePage';
+import { AdminDepartmentTab } from './tabs/AdminDepartmentTab';
 import { AdminStaffTab } from './tabs/AdminStaffTab';
 import { AdminSettingsTab } from './tabs/AdminSettingsTab';
 import { AdminLogsTab } from './tabs/AdminLogsTab';
+import { AdminAdvertisementsTab } from './tabs/AdminAdvertisementsTab';
 import {
   fetchNotifications,
   toggleNotificationRead,
@@ -25,11 +27,16 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
         'Robot Control',
         'Knowledge',
         'Hotel Content',
+        'Advertisements',
+        'Department',
+        'Account',
         'Staff',
         'Logs',
         'Settings',
       ];
       if (tab === 'Analytics') return 'Dashboard';
+      if (tab === 'Staff') return 'Account';
+      if (tab === 'Hotel Content') return 'Advertisements';
       return validTabs.includes(tab) ? tab : 'Dashboard';
     } catch {
       return 'Dashboard';
@@ -51,7 +58,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
 
   const loadNotifications = async () => {
     try {
-      const data = await fetchNotifications('All', 40);
+      const data = await fetchNotifications('Admin', 40);
       if (Array.isArray(data)) {
         setNotifications(data);
       }
@@ -60,7 +67,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
     }
   };
 
-  // WebSocket for Real-time Notifications
+  // WebSocket for Real-time Notifications (chỉ nhận thông báo riêng cho Admin)
   useEffect(() => {
     loadNotifications();
 
@@ -68,7 +75,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
     try {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const host = window.location.hostname === 'localhost' ? 'localhost:8000' : window.location.host;
-      ws = new WebSocket(`${protocol}//${host}/api/v1/operations/ws/notifications?department=All`);
+      ws = new WebSocket(`${protocol}//${host}/api/v1/operations/ws/notifications?department=Admin`);
       wsRef.current = ws;
 
       ws.onopen = () => {
@@ -81,7 +88,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
           const newNotif = JSON.parse(event.data);
           if (newNotif && newNotif.id) {
             setNotifications((prev) => [newNotif, ...prev.filter((n) => n.id !== newNotif.id)]);
-            onNotify(`🔔 [${newNotif.department || 'All'}] ${newNotif.title}`);
+            onNotify(`🔔 [${newNotif.department || 'Admin'}] ${newNotif.title}`);
           }
         } catch {}
       };
@@ -158,9 +165,10 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
     { id: 'Dashboard',     label: 'Dashboard' },
     { id: 'Operations',    label: 'Operations' },
     { id: 'Robot Control', label: 'Robot Control' },
-    { id: 'Knowledge',     label: 'Knowledge' },
-    { id: 'Hotel Content', label: 'Hotel Content' },
-    { id: 'Staff',         label: 'Staff' },
+    { id: 'Knowledge',     label: 'Kho Tri Thức & AI' },
+    { id: 'Advertisements',label: 'Quảng Cáo Robot' },
+    { id: 'Department',    label: 'Department' },
+    { id: 'Account',       label: 'Account' },
     { id: 'Logs',          label: 'Logs' },
   ];
 
@@ -238,16 +246,6 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
                         Điều Khiển & Odometry SLAM
                       </button>
                       <button
-                        onClick={() => setRobotSubTab('studio')}
-                        className="w-full text-left px-2 py-1.5 rounded text-[11px] font-semibold transition-all cursor-pointer"
-                        style={{
-                          background: robotSubTab === 'studio' ? '#262626' : 'transparent',
-                          color: robotSubTab === 'studio' ? '#FFFFFF' : '#8C8C8C',
-                        }}
-                      >
-                        Bản Đồ LiDAR Studio
-                      </button>
-                      <button
                         onClick={() => setRobotSubTab('workflows')}
                         className="w-full text-left px-2 py-1.5 rounded text-[11px] font-semibold transition-all cursor-pointer"
                         style={{
@@ -277,11 +275,21 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
                         onClick={() => setKnowledgeSubTab('sources')}
                         className="w-full text-left px-2 py-1.5 rounded text-[11px] font-semibold transition-all cursor-pointer"
                         style={{
-                          background: knowledgeSubTab === 'sources' ? '#262626' : 'transparent',
-                          color: knowledgeSubTab === 'sources' ? '#FFFFFF' : '#8C8C8C',
+                          background: knowledgeSubTab === 'sources' || knowledgeSubTab === 'vault' ? '#262626' : 'transparent',
+                          color: knowledgeSubTab === 'sources' || knowledgeSubTab === 'vault' ? '#FFFFFF' : '#8C8C8C',
                         }}
                       >
-                        Source Files
+                        Kho Tài Liệu Tri Thức
+                      </button>
+                      <button
+                        onClick={() => setKnowledgeSubTab('scenarios')}
+                        className="w-full text-left px-2 py-1.5 rounded text-[11px] font-semibold transition-all cursor-pointer"
+                        style={{
+                          background: knowledgeSubTab === 'scenarios' ? '#262626' : 'transparent',
+                          color: knowledgeSubTab === 'scenarios' ? '#FFFFFF' : '#8C8C8C',
+                        }}
+                      >
+                        Kịch Bản Fast-Path
                       </button>
                     </div>
                   )}
@@ -487,10 +495,17 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
           )}
 
           {activeMenu === 'Knowledge' && (
-            <AdminKnowledgePage activeSubView={knowledgeSubTab} />
+            <AdminKnowledgePage
+              activeSubView={knowledgeSubTab}
+              onSelectSubView={setKnowledgeSubTab}
+            />
           )}
 
-          {activeMenu === 'Staff' && (
+          {activeMenu === 'Department' && (
+            <AdminDepartmentTab currentUser={currentUser} />
+          )}
+
+          {(activeMenu === 'Account' || activeMenu === 'Staff') && (
             <AdminStaffTab currentUser={currentUser} />
           )}
 
@@ -502,22 +517,8 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
             <AdminLogsTab currentUser={currentUser} />
           )}
 
-          {activeMenu === 'Hotel Content' && (
-            <div className="w-full h-full flex flex-col items-center justify-center p-8 text-center space-y-3">
-              <h3 className="text-lg font-extrabold" style={{ color: '#262626' }}>
-                {activeMenu}
-              </h3>
-              <p className="text-xs max-w-md" style={{ color: '#8C8C8C' }}>
-                Module này sẽ được triển khai trong phiên bản tiếp theo.
-              </p>
-              <button
-                onClick={() => setActiveMenu('Operations')}
-                className="px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer"
-                style={{ background: '#262626', color: '#FFFFFF' }}
-              >
-                Quay lại Operations
-              </button>
-            </div>
+          {(activeMenu === 'Advertisements' || activeMenu === 'Hotel Content') && (
+            <AdminAdvertisementsTab currentUser={currentUser} onNotify={onNotify} />
           )}
         </main>
       </div>

@@ -218,6 +218,17 @@ class MotorController:
 
     Hỗ trợ điều khiển vận tốc cố định qua băm xung PWM trực tiếp trên các chân IN.
     """
+    _active_instance = None
+
+    def __new__(cls, *args, **kwargs):
+        if (
+            cls._active_instance is not None
+            and not cls._active_instance.is_mock
+            and cls._active_instance._lgpio_handle is not None
+        ):
+            logger.info("♻️ Tái sử dụng MotorController instance đang hoạt động.")
+            return cls._active_instance
+        return super().__new__(cls)
 
     def __init__(
         self,
@@ -231,6 +242,10 @@ class MotorController:
         invert_right_direction: bool = False,
         default_speed: int = 100,
     ):
+        if getattr(self, "_initialized", False):
+            return
+        self._initialized = True
+
         self.left_forward_pin = left_forward_pin
         self.left_backward_pin = left_backward_pin
         self.right_forward_pin = right_forward_pin
@@ -250,6 +265,9 @@ class MotorController:
         self.right_backward_dev = None
 
         self._init_devices()
+        if not self.is_mock and self._lgpio_handle is not None:
+            MotorController._active_instance = self
+
         if self.invert_left_direction or self.invert_right_direction:
             logger.info(
                 "Đảo chiều motor theo cấu hình: left=%s, right=%s",
@@ -379,19 +397,25 @@ class MotorController:
         return self.speed
 
     def _log_motion_outputs(self, label, states):
-        logger.info(
-            "MOTOR %s (%d%%): GPIO%d=%d GPIO%d=%d | GPIO%d=%d GPIO%d=%d",
-            label,
-            self.speed,
-            self.left_forward_pin,
-            states[0],
-            self.left_backward_pin,
-            states[1],
-            self.right_forward_pin,
-            states[2],
-            self.right_backward_pin,
-            states[3],
-        )
+        # Rút gọn log di chuyển: Không in lặp lại nếu hướng chạy và vận tốc không đổi
+        if label == getattr(self, "_last_logged_motion", None) and self.speed == getattr(self, "_last_logged_speed", None):
+            return
+        self._last_logged_motion = label
+        self._last_logged_speed = self.speed
+
+        direction_names = {
+            "FORWARD": "Tiến (Forward)",
+            "BACKWARD": "Lùi (Backward)",
+            "TURN_LEFT": "Xoay Trái (Turn Left)",
+            "TURN_RIGHT": "Xoay Phải (Turn Right)",
+            "TURN_FORWARD_LEFT": "Tiến-Trái (Forward Left)",
+            "TURN_FORWARD_RIGHT": "Tiến-Phải (Forward Right)",
+            "TURN_BACKWARD_LEFT": "Lùi-Trái (Backward Left)",
+            "TURN_BACKWARD_RIGHT": "Lùi-Phải (Backward Right)",
+            "STOP": "Dừng (Stop)",
+        }
+        name = direction_names.get(label, label)
+        logger.info("🚗 [DI CHUYỂN] %s | Tốc độ: %d%%", name, self.speed)
 
     def forward(self):
         """Cho cả hai bên quay theo chiều tiến."""
@@ -478,8 +502,9 @@ class MotorController:
                 device.off()
         was_moving = self.motion != "stop"
         self.motion = "stop"
-        if was_moving:
-            logger.info("MOTOR STOP: toàn bộ GPIO direction = 0")
+        if was_moving or getattr(self, "_last_logged_motion", None) != "STOP":
+            self._last_logged_motion = "STOP"
+            logger.info("🛑 [DI CHUYỂN] Dừng lại")
 
     def set_drive_cmd(self, linear_x: float, angular_z: float):
         """Chuyển đổi tín hiệu vận tốc Twist / Analog Joystick sang hướng chạy."""
@@ -517,6 +542,9 @@ class MotorController:
             except Exception:
                 pass
             self._lgpio_handle = None
+        if MotorController._active_instance is self:
+            MotorController._active_instance = None
+        self._initialized = False
         logger.info("Đã dọn dẹp tài nguyên GPIO an toàn.")
 
 

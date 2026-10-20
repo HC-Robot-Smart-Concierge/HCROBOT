@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { NewDirectiveModal, InteractiveMapModal } from '../../components/dashboard/Modals';
+import { Pagination } from '../../components/common/Pagination';
+import { NewDirectiveModal } from '../../components/dashboard/Modals';
 import { INITIAL_MAINTENANCE_DATA } from '../../data/mockHotelData';
 import {
   createMaintenanceRequest,
@@ -29,9 +30,14 @@ export const MaintenanceDashboard = ({ currentUser, onNotify = () => {} }) => {
     requests: INITIAL_MAINTENANCE_DATA.requests.map(normalizeRequest),
   });
   const [filter, setFilter] = useState('All');
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
   const [sortNewestFirst, setSortNewestFirst] = useState(true);
   const [isNewRequestModalOpen, setIsNewRequestModalOpen] = useState(false);
-  const [isMapModalOpen, setIsMapModalOpen] = useState(false);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filter]);
 
   useEffect(() => {
     const loadData = async () => {
@@ -67,6 +73,19 @@ export const MaintenanceDashboard = ({ currentUser, onNotify = () => {} }) => {
     });
     return sortNewestFirst ? filtered : [...filtered].reverse();
   }, [data.requests, filter, sortNewestFirst]);
+
+  const totalPages = Math.max(1, Math.ceil(visibleRequests.length / pageSize));
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
+  const paginatedRequests = useMemo(() => {
+    const startIndex = (currentPage - 1) * pageSize;
+    return visibleRequests.slice(startIndex, startIndex + pageSize);
+  }, [visibleRequests, currentPage, pageSize]);
 
   const updateRequestLocally = (requestId, status, assignedTo) => {
     setData((previous) => ({
@@ -185,7 +204,7 @@ export const MaintenanceDashboard = ({ currentUser, onNotify = () => {} }) => {
             </div>
 
             <div className="space-y-3">
-              {visibleRequests.map((request) => {
+              {paginatedRequests.map((request) => {
                 const status = request.status || 'Pending';
                 const meta = statusMeta[status] || statusMeta.Pending;
                 const isPending = status === 'Pending' || status === 'Unassigned';
@@ -271,6 +290,18 @@ export const MaintenanceDashboard = ({ currentUser, onNotify = () => {} }) => {
                 </div>
               )}
             </div>
+
+            {/* Pagination Footer */}
+            {visibleRequests.length > 0 && (
+              <Pagination
+                currentPage={currentPage}
+                totalItems={visibleRequests.length}
+                pageSize={pageSize}
+                onPageChange={setCurrentPage}
+                itemName="yêu cầu"
+                className="mt-3 rounded-2xl border border-[#E5E1D8] shadow-xs bg-white"
+              />
+            )}
           </div>
 
           <aside className="min-w-0 space-y-4">
@@ -292,30 +323,10 @@ export const MaintenanceDashboard = ({ currentUser, onNotify = () => {} }) => {
                 ))}
               </div>
             </section>
-
-            <section className="rounded-xl bg-white p-4 border border-[#E8E5E0]">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-[#777]">FACILITY MAP</p>
-              <p className="mt-1 text-[12px] font-semibold text-[#333]">{data.facilityMap?.zone}</p>
-              <p className="mt-1 text-[11px] text-[#666]">
-                {data.facilityMap?.description}
-              </p>
-              <button
-                type="button"
-                onClick={() => setIsMapModalOpen(true)}
-                className="mt-3 text-[11px] font-bold text-black underline cursor-pointer"
-              >
-                Open Map
-              </button>
-            </section>
           </aside>
         </section>
       </div>
 
-      <InteractiveMapModal
-        isOpen={isMapModalOpen}
-        onClose={() => setIsMapModalOpen(false)}
-        title="Facility Map"
-      />
     </main>
   );
 };

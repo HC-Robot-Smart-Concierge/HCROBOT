@@ -233,6 +233,21 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   // 5-Star Hotel Facilities Directory Modal State
   const [isFacilitiesModalOpen, setIsFacilitiesModalOpen] = useState(false);
 
+  // Dynamic Robot Eye Expression State (look_up, look_left, look_right, look_around)
+  const [activeEyeExpression, setActiveEyeExpression] = useState(null);
+  const eyeExpressionTimeoutRef = useRef(null);
+
+  const triggerEyeExpression = useCallback((expr, duration = 3800) => {
+    if (!expr || expr === 'none') return;
+    if (eyeExpressionTimeoutRef.current) {
+      clearTimeout(eyeExpressionTimeoutRef.current);
+    }
+    setActiveEyeExpression(expr);
+    eyeExpressionTimeoutRef.current = setTimeout(() => {
+      setActiveEyeExpression(null);
+    }, duration);
+  }, []);
+
   // Available Workflows State (for AUTO_DETECT and manual triggers)
   const [availableWorkflows, setAvailableWorkflows] = useState([]);
   const [showWorkflowMenu, setShowWorkflowMenu] = useState(false);
@@ -241,9 +256,28 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   const { isListening, transcript, error: speechError, startListening, stopListening, resetTranscript, hasSupport, volumeLevel } = useSpeechRecognition();
   const { speak, prime, cancel: stopSpeaking, isSpeaking, speechRate, updateSpeechRate } = useSpeechSynthesis();
 
-  const toggleLanguage = () => {
+  const toggleLanguage = useCallback((targetLang) => {
+    if (typeof targetLang === 'string' && (targetLang === 'English' || targetLang === 'Tiếng Việt')) {
+      setLanguage(targetLang);
+      return;
+    }
     setLanguage((prev) => (prev === 'English' ? 'Tiếng Việt' : 'English'));
-  };
+  }, []);
+
+  // Tự động khởi động lại SpeechRecognition với ngôn ngữ mới khi language thay đổi
+  useEffect(() => {
+    if (isListening && currentState === 'RT-03') {
+      startListening(language, {
+        onFinal: (finalText) => {
+          if (finalText && finalText.trim().length > 0) {
+            setIsStandby(false);
+            lastInteractionTimeRef.current = Date.now();
+            handleStopTalkAndProcess(finalText.trim());
+          }
+        },
+      });
+    }
+  }, [language]);
 
   const [guestEmotion, setGuestEmotion] = useState('neutral');
 
@@ -678,6 +712,21 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         setCurrentState('RT-05');
       }
 
+      // Cử động mắt sinh động theo kịch bản Admin thiết lập hoặc nhận diện từ khóa tự nhiên
+      if (chatRes.eye_expression && chatRes.eye_expression !== 'none') {
+        triggerEyeExpression(chatRes.eye_expression);
+      } else {
+        if (['nhìn lên', 'ngước lên', 'đánh mắt lên', 'trên trần', 'đèn trần', 'tầng trên', 'thời tiết hôm nay', 'bầu trời', 'look up'].some(k => lowerQuery.includes(k))) {
+          triggerEyeExpression('look_up');
+        } else if (['bên trái', 'phía trái', 'liếc trái', 'rẽ trái', 'quầy bên trái', 'look left'].some(k => lowerQuery.includes(k))) {
+          triggerEyeExpression('look_left');
+        } else if (['bên phải', 'phía phải', 'liếc phải', 'rẽ phải', 'quầy bên phải', 'look right'].some(k => lowerQuery.includes(k))) {
+          triggerEyeExpression('look_right');
+        } else if (['nhìn quanh', 'đảo mắt', 'xung quanh', 'ngắm nhìn', 'tham quan', 'khách sạn có gì', 'look around'].some(k => lowerQuery.includes(k))) {
+          triggerEyeExpression('look_around');
+        }
+      }
+
       const isFarewell = ['tạm biệt', 'hẹn gặp lại', 'bye', 'goodbye', 'kết thúc', 'xong rồi', 'hết rồi'].some(k => lowerQuery.includes(k));
 
       // Phát giọng đọc duy nhất từ RAG Backend
@@ -929,7 +978,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   if (isFoodMenuOpen) {
     return (
       <RobotFoodMenuScreen
-        activeRoomNumber={activeRoomNumber || '304'}
+        activeRoomNumber={activeRoomNumber || ''}
         onClose={() => setIsFoodMenuOpen(false)}
       />
     );
@@ -985,6 +1034,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       <MobileRobotScreen
         activeRoomNumber={activeRoomNumber}
         guestEmotion={guestEmotion}
+        eyeExpression={activeEyeExpression}
         aiResponseText={aiResponseText}
         currentState={currentState}
         hasSpeechSupport={hasSupport}
@@ -1011,7 +1061,12 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         workflowTrigger={null}
         availableWorkflows={availableWorkflows}
         onStartWorkflow={startWorkflow}
+        onOpenFacilities={() => {
+          setIsFacilitiesModalOpen(true);
+          speak('Dạ đây là toàn bộ cơ sở vật chất và tiện ích 5 sao của khách sạn ạ.');
+        }}
         onOpenFoodMenu={() => setIsFoodMenuOpen(true)}
+        onCloseAiResponse={() => setAiResponseText('')}
         navigationDestinationKey={navigationDestinationKey}
         onSelectDestination={setNavigationDestinationKey}
         showQrModalExternal={isAutoQrModalOpen}
@@ -1161,28 +1216,6 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                   <span className="w-1.5 h-1.5 rounded-full bg-stone-500" />
                 </div>
 
-                {/* 1. Chỉ Đường & Quét Mã QR Di Động */}
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setShowQuickMenu(false);
-                    setNavigationDestinationKey('infinity_pool');
-                    setCurrentState('RT-05');
-                    setIsAutoQrModalOpen(true);
-                    setQrCountdown(15);
-                    speak('Dạ em mở sơ đồ chỉ đường và mã QR di động cho quý khách nhé ạ.');
-                  }}
-                  className="w-full p-2.5 rounded-xl text-left hover:bg-stone-800/90 transition-all cursor-pointer flex items-center gap-3 group active:scale-[0.99]"
-                >
-                  <div className="w-8 h-8 rounded-lg bg-stone-800 border border-stone-700/80 text-stone-300 flex items-center justify-center shrink-0 group-hover:bg-stone-700 group-hover:text-stone-100 group-hover:scale-105 transition-all">
-                    <Navigation className="w-4 h-4 text-stone-300 group-hover:text-stone-100" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-bold text-stone-200 group-hover:text-white transition-colors">Chỉ đường & Quét QR</p>
-                    <p className="text-[10px] text-stone-400 group-hover:text-stone-300 transition-colors">Xem sơ đồ tầng & mã QR lưu trên điện thoại</p>
-                  </div>
-                </button>
 
                 {/* 2. Cơ Sở Vật Chất & Tiện Ích 5 Sao */}
                 <button
@@ -1363,49 +1396,48 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
               <div className="w-[430px] h-[558px] flex flex-col justify-between items-start gap-4 shrink-0">
                 <div className="w-full flex flex-col gap-2">
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-xs font-black text-emerald-800 tracking-wider uppercase">
-                      <Sparkles className="w-4 h-4 text-emerald-600" />
-                      <span>CHỈ ĐƯỜNG THÔNG MINH</span>
-                    </div>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 uppercase">
+                    <span className="text-xs font-bold text-zinc-700 tracking-wider uppercase">
+                      Lộ trình di chuyển
+                    </span>
+                    <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-zinc-200 text-zinc-700 border border-zinc-300 uppercase">
                       {HOTEL_DESTINATIONS[navigationDestinationKey]?.floorLevel || 'TẦNG 5'}
                     </span>
                   </div>
 
                   {/* AI Text Response */}
-                  <div className="p-4 bg-white/95 rounded-2xl border border-stone-200/90 shadow-sm text-sm font-medium text-stone-800 leading-relaxed max-h-[140px] overflow-y-auto custom-scrollbar">
+                  <div className="p-4 bg-white/95 rounded-2xl border border-zinc-200 shadow-sm text-sm font-medium text-zinc-800 leading-relaxed max-h-[140px] overflow-y-auto custom-scrollbar">
                     {aiResponseText || `Lộ trình dẫn tới ${HOTEL_DESTINATIONS[navigationDestinationKey]?.name || 'điểm đến'}. Quý khách vui lòng theo dõi sơ đồ bên trái.`}
                   </div>
                 </div>
 
                 {/* Step checklist */}
                 <div className="w-full flex flex-col gap-2.5">
-                  <div className="p-3.5 bg-white/95 rounded-xl border border-stone-200/90 flex items-center gap-3 shadow-sm">
-                    <div className="w-7 h-7 rounded-full bg-stone-900 text-white flex items-center justify-center font-bold text-xs shrink-0">1</div>
-                    <span className="text-xs font-semibold text-stone-800">
+                  <div className="p-3.5 bg-white rounded-xl border border-zinc-200 flex items-center gap-3 shadow-sm">
+                    <div className="w-7 h-7 rounded-full bg-zinc-800 text-white flex items-center justify-center font-bold text-xs shrink-0">1</div>
+                    <span className="text-xs font-semibold text-zinc-800">
                       {HOTEL_DESTINATIONS[navigationDestinationKey]?.step1Text || 'Đi thẳng tới Thang máy A ở sảnh'}
                     </span>
                   </div>
 
                   {HOTEL_DESTINATIONS[navigationDestinationKey]?.isDifferentFloor ? (
                     <>
-                      <div className="p-3.5 bg-white/95 rounded-xl border border-stone-200/90 flex items-center gap-3 shadow-sm">
-                        <div className="w-7 h-7 rounded-full bg-stone-900 text-white flex items-center justify-center font-bold text-xs shrink-0">2</div>
-                        <span className="text-xs font-semibold text-stone-800">
+                      <div className="p-3.5 bg-white rounded-xl border border-zinc-200 flex items-center gap-3 shadow-sm">
+                        <div className="w-7 h-7 rounded-full bg-zinc-800 text-white flex items-center justify-center font-bold text-xs shrink-0">2</div>
+                        <span className="text-xs font-semibold text-zinc-800">
                           {HOTEL_DESTINATIONS[navigationDestinationKey]?.step2Text || `Ra khỏi thang máy, rẽ theo biển báo tới ${HOTEL_DESTINATIONS[navigationDestinationKey]?.name}`}
                         </span>
                       </div>
-                      <div className="p-3.5 bg-emerald-50 rounded-xl border border-emerald-200 flex items-center gap-3 shadow-sm">
-                        <div className="w-7 h-7 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-xs shrink-0">3</div>
-                        <span className="text-xs font-bold text-emerald-900">
+                      <div className="p-3.5 bg-zinc-100 rounded-xl border border-zinc-300 flex items-center gap-3 shadow-sm">
+                        <div className="w-7 h-7 rounded-full bg-zinc-800 text-white flex items-center justify-center font-bold text-xs shrink-0">3</div>
+                        <span className="text-xs font-bold text-zinc-900">
                           Đến nơi: {HOTEL_DESTINATIONS[navigationDestinationKey]?.name} ({HOTEL_DESTINATIONS[navigationDestinationKey]?.floorLevel})
                         </span>
                       </div>
                     </>
                   ) : (
-                    <div className="p-3.5 bg-emerald-50 rounded-xl border border-emerald-200 flex items-center gap-3 shadow-sm">
-                      <div className="w-7 h-7 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-xs shrink-0">2</div>
-                      <span className="text-xs font-bold text-emerald-900">
+                    <div className="p-3.5 bg-zinc-100 rounded-xl border border-zinc-300 flex items-center gap-3 shadow-sm">
+                      <div className="w-7 h-7 rounded-full bg-zinc-800 text-white flex items-center justify-center font-bold text-xs shrink-0">2</div>
+                      <span className="text-xs font-bold text-zinc-900">
                         Đến nơi: {HOTEL_DESTINATIONS[navigationDestinationKey]?.name} (Tầng Trệt)
                       </span>
                     </div>
@@ -1415,12 +1447,12 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                 {/* Mobile QR Handoff Card (Quét QR mang theo bản đồ trên điện thoại) */}
                 <div
                   onClick={() => setIsAutoQrModalOpen(true)}
-                  className={`w-full p-3 bg-gradient-to-r from-emerald-950/85 via-stone-900/90 to-stone-900/90 rounded-2xl border transition-all duration-300 flex items-center gap-3.5 shadow-md cursor-pointer ${isAutoQrModalOpen
-                    ? 'border-emerald-400 ring-2 ring-emerald-400/50 shadow-emerald-500/20'
-                    : 'border-emerald-500/35 hover:border-emerald-500/60'
+                  className={`w-full p-3 bg-zinc-850 hover:bg-zinc-800 rounded-2xl border transition-all duration-300 flex items-center gap-3.5 shadow-md cursor-pointer ${isAutoQrModalOpen
+                    ? 'border-zinc-400 ring-2 ring-zinc-400/40 shadow-zinc-500/20'
+                    : 'border-zinc-700 hover:border-zinc-500'
                     }`}
                 >
-                  <div className="p-1.5 bg-white rounded-xl shrink-0 shadow-sm flex items-center justify-center">
+                  <div className="p-1.5 bg-white rounded-xl shrink-0 shadow-sm flex items-center justify-center border border-zinc-200">
                     <QRCodeSVG
                       value={qrMapUrl}
                       size={82}
@@ -1430,18 +1462,16 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-1">
-                      <div className="flex items-center gap-1.5 text-emerald-400 font-bold text-xs uppercase tracking-wide">
-                        <Smartphone className="w-3.5 h-3.5" />
-                        <span>Quét QR lưu chỉ dẫn</span>
-                      </div>
+                      <span className="text-zinc-100 font-bold text-xs uppercase tracking-wide">
+                        Quét mã QR lưu chỉ dẫn
+                      </span>
                       {qrCountdown !== null && qrCountdown >= 0 && (
-                        <span className="flex items-center gap-1 text-[10px] font-black text-emerald-300 bg-emerald-500/25 px-2 py-0.5 rounded-full animate-pulse border border-emerald-400/30">
-                          <Clock className="w-3 h-3" />
-                          <span>{qrCountdown}s</span>
+                        <span className="text-[10px] font-mono font-semibold text-zinc-300 bg-zinc-700/80 px-2 py-0.5 rounded border border-zinc-600">
+                          {qrCountdown}s
                         </span>
                       )}
                     </div>
-                    <p className="text-[11px] text-stone-200 font-medium leading-tight mt-1">
+                    <p className="text-[11px] text-zinc-300 font-normal leading-tight mt-1">
                       Quý khách có thể quét mã QR trên màn hình để ghi nhớ 2 chặng chỉ dẫn trên điện thoại nhé ạ.
                     </p>
                   </div>
@@ -1467,6 +1497,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
               <div className="cursor-pointer">
                 <RobotFace
                   mode={robotFaceMode}
+                  eyeExpression={activeEyeExpression}
                   isSpeakingActive={isSpeaking}
                 />
               </div>
@@ -1667,9 +1698,9 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         isOpen={isVideoCallOpen}
         sessionId={videoCallSessionId || sessionId}
         role="guest"
-        callerName="Khách tại Kiosk"
-        calleeName="Tổng Đài Viên Concierge"
-        roomNumber={activeRoomNumber || 'Main Lobby Kiosk'}
+        callerName="Khách hàng"
+        calleeName="Nhân viên hỗ trợ"
+        roomNumber=""
         ticketCode={videoCallTicketCode}
         onClose={() => {
           setIsVideoCallOpen(false);
@@ -1713,6 +1744,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
           setIsFacilitiesModalOpen(false);
           setIsFoodMenuOpen(true);
         }}
+        onSpeak={(text) => speak(text)}
       />
     </div>
   );

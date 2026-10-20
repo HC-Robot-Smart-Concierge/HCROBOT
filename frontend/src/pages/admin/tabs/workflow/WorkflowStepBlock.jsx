@@ -256,6 +256,10 @@ export const WorkflowStepBlock = ({
                 className="bg-stone-50 hover:bg-white text-stone-900 px-2.5 py-1 rounded-lg text-xs font-bold border border-stone-300 focus:outline-none focus:border-stone-700 focus:bg-white cursor-pointer shadow-2xs"
               >
                 <option value="HAPPY_SMILE">Mỉm cười (Happy)</option>
+                <option value="LOOK_UP">Đánh mắt lên (Look Up)</option>
+                <option value="LOOK_LEFT">Liếc sang trái (Look Left)</option>
+                <option value="LOOK_RIGHT">Liếc sang phải (Look Right)</option>
+                <option value="LOOK_AROUND">Đảo mắt sinh động (Look Around)</option>
                 <option value="WELCOME">Chào đón (Welcome)</option>
                 <option value="LISTENING">Lắng nghe (Listening)</option>
               </select>

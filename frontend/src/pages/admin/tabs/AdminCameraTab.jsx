@@ -747,6 +747,14 @@ export const AdminCameraTab = ({ currentUser }) => {
                       ? 'VUI VẺ'
                       : (overrideEmotion || detectedEmotion) === 'unhappy'
                       ? 'KHÓ CHỊU'
+                      : (overrideEmotion || detectedEmotion) === 'look_up'
+                      ? 'MẮT LÊN'
+                      : (overrideEmotion || detectedEmotion) === 'look_left'
+                      ? 'LIẾC TRÁI'
+                      : (overrideEmotion || detectedEmotion) === 'look_right'
+                      ? 'LIẾC PHẢI'
+                      : (overrideEmotion || detectedEmotion) === 'look_around'
+                      ? 'ĐẢO MẮT'
                       : 'BÌNH THƯỜNG'}
                   </span>
                 </div>
@@ -799,6 +807,10 @@ export const AdminCameraTab = ({ currentUser }) => {
                     { id: 'happy', label: 'VUI VẺ' },
                     { id: 'neutral', label: 'BÌNH THƯỜNG' },
                     { id: 'unhappy', label: 'KHÓ CHỊU' },
+                    { id: 'look_up', label: 'MẮT LÊN' },
+                    { id: 'look_left', label: 'LIẾC TRÁI' },
+                    { id: 'look_right', label: 'LIẾC PHẢI' },
+                    { id: 'look_around', label: 'ĐẢO MẮT' },
                   ].map((mode) => (
                     <button
                       key={String(mode.id)}

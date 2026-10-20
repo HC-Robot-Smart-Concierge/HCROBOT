@@ -1238,9 +1238,9 @@ export const ConciergeDashboard = ({
         isOpen={isVideoModalOpen}
         sessionId={activeSession?.id || activeSession?.ticket_code || 'SUP-STAFF'}
         role="staff"
-        callerName={activeSession?.guest_name || 'Khách tại Kiosk'}
-        calleeName={currentUser?.full_name || 'Tổng Đài Viên Concierge'}
-        roomNumber={activeSession?.room_number || 'Sảnh S1'}
+        callerName={activeSession?.guest_name || 'Khách hàng'}
+        calleeName={currentUser?.full_name || 'Nhân viên hỗ trợ'}
+        roomNumber={activeSession?.room_number || ''}
         ticketCode={activeSession?.ticket_code}
         onClose={async () => {
           setIsVideoModalOpen(false);

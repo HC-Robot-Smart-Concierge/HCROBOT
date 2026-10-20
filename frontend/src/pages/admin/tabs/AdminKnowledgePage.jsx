@@ -65,6 +65,7 @@ const DEFAULT_FORM_STATE = {
   response_en: '',
   action_type: 'none',
   destination_key: '',
+  eye_expression: 'none',
   is_fast_path: true,
   is_active: true,
   priority: 50,
@@ -379,6 +380,7 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
     setEditingId(item.id);
     const kwString = Array.isArray(item.match_keywords) ? item.match_keywords.join(', ') : '';
     const destKey = item.action_payload?.destination_key || '';
+    const eyeExpr = item.action_payload?.eye_expression || 'none';
 
     setFormData({
       title: item.title || '',
@@ -389,6 +391,7 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
       response_en: item.response_en || '',
       action_type: item.action_type || 'none',
       destination_key: destKey,
+      eye_expression: eyeExpr,
       is_fast_path: item.is_fast_path !== undefined ? item.is_fast_path : true,
       is_active: item.is_active !== undefined ? item.is_active : true,
       priority: item.priority || 50,
@@ -410,6 +413,15 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
         .map((k) => k.trim())
         .filter(Boolean);
 
+      const actionPayload = {};
+      if (formData.action_type === 'show_map' && formData.destination_key.trim()) {
+        actionPayload.destination_key = formData.destination_key.trim();
+      }
+      if (formData.eye_expression && formData.eye_expression !== 'none') {
+        actionPayload.eye_expression = formData.eye_expression;
+      }
+      const finalPayload = Object.keys(actionPayload).length > 0 ? actionPayload : null;
+
       const payload = {
         title: formData.title.trim(),
         category: formData.category,
@@ -418,10 +430,7 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
         response_vi: formData.response_vi.trim(),
         response_en: formData.response_en.trim() || null,
         action_type: formData.action_type,
-        action_payload:
-          formData.action_type === 'show_map' && formData.destination_key.trim()
-            ? { destination_key: formData.destination_key.trim() }
-            : null,
+        action_payload: finalPayload,
         is_fast_path: formData.is_fast_path,
         is_active: formData.is_active,
         priority: Number(formData.priority) || 0,
@@ -1218,21 +1227,37 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
                             )}
                           </td>
 
-                          {/* Action */}
+                          {/* Action & Eye Expression */}
                           <td className="py-2.5 px-3 text-center">
-                            {item.action_type === 'show_map' ? (
-                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200 inline-flex items-center gap-1">
-                                <MapPin className="w-3 h-3" />
-                                <span>{item.action_payload?.destination_key || 'Sơ đồ'}</span>
-                              </span>
-                            ) : item.action_type === 'call_reception' ? (
-                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-50 text-purple-800 border border-purple-200 inline-flex items-center gap-1">
-                                <Video className="w-3 h-3" />
-                                <span>Video Call</span>
-                              </span>
-                            ) : (
-                              <span className="text-stone-400 text-[11px]">—</span>
-                            )}
+                            <div className="flex flex-col items-center gap-1">
+                              {item.action_type === 'show_map' ? (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200 inline-flex items-center gap-1">
+                                  <MapPin className="w-3 h-3" />
+                                  <span>{item.action_payload?.destination_key || 'Sơ đồ'}</span>
+                                </span>
+                              ) : item.action_type === 'call_reception' ? (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-50 text-purple-800 border border-purple-200 inline-flex items-center gap-1">
+                                  <Video className="w-3 h-3" />
+                                  <span>Video Call</span>
+                                </span>
+                              ) : null}
+
+                              {/* Eye Expression Badge */}
+                              {item.action_payload?.eye_expression && item.action_payload.eye_expression !== 'none' ? (
+                                <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-stone-100 text-stone-700 border border-stone-300 inline-flex items-center gap-1">
+                                  <span>Mắt:</span>
+                                  <span>
+                                    {item.action_payload.eye_expression === 'look_up' && 'Đánh lên'}
+                                    {item.action_payload.eye_expression === 'look_left' && 'Liếc trái'}
+                                    {item.action_payload.eye_expression === 'look_right' && 'Liếc phải'}
+                                    {item.action_payload.eye_expression === 'look_around' && 'Đảo mắt'}
+                                    {item.action_payload.eye_expression === 'happy' && 'Mỉm cười'}
+                                  </span>
+                                </span>
+                              ) : !item.action_type || item.action_type === 'none' ? (
+                                <span className="text-stone-400 text-[11px]">—</span>
+                              ) : null}
+                            </div>
                           </td>
 
                           {/* Fast-Path & Active */}
@@ -1568,21 +1593,39 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
                   </select>
                 </div>
 
-                {formData.action_type === 'show_map' && (
-                  <div>
-                    <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-700 mb-1">
-                      Mã địa điểm (Destination Key)
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.destination_key}
-                      onChange={(e) => setFormData({ ...formData, destination_key: e.target.value })}
-                      placeholder="restaurant, gym, pool, elevator"
-                      className="w-full px-3 py-2 bg-white border border-stone-300 rounded-lg text-stone-900 font-mono text-[11px] focus:outline-none"
-                    />
-                  </div>
-                )}
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-700 mb-1">
+                    Biểu cảm mắt khi nghe từ khóa
+                  </label>
+                  <select
+                    value={formData.eye_expression || 'none'}
+                    onChange={(e) => setFormData({ ...formData, eye_expression: e.target.value })}
+                    className="w-full px-3 py-2 bg-white border border-stone-300 rounded-lg text-stone-900 font-bold focus:outline-none cursor-pointer"
+                  >
+                    <option value="none">Tự nhiên (Mặc định)</option>
+                    <option value="look_up">Đánh mắt lên (Look Up)</option>
+                    <option value="look_left">Liếc sang trái (Look Left)</option>
+                    <option value="look_right">Liếc sang phải (Look Right)</option>
+                    <option value="look_around">Đảo mắt sinh động (Look Around)</option>
+                    <option value="happy">Mỉm cười vui vẻ (Happy Smile)</option>
+                  </select>
+                </div>
               </div>
+
+              {formData.action_type === 'show_map' && (
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-700 mb-1">
+                    Mã địa điểm (Destination Key)
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.destination_key}
+                    onChange={(e) => setFormData({ ...formData, destination_key: e.target.value })}
+                    placeholder="restaurant, gym, pool, elevator"
+                    className="w-full px-3 py-2 bg-white border border-stone-300 rounded-lg text-stone-900 font-mono text-[11px] focus:outline-none"
+                  />
+                </div>
+              )}
 
               <div className="flex items-center gap-6 pt-2">
                 <label className="flex items-center gap-2 cursor-pointer">

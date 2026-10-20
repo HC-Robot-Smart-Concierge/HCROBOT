@@ -81,4 +81,35 @@ describe('RobotFace Component State & Mode Logic', () => {
     expect(getAnimationClass('listening', false)).toBe('animate-pulse');
     expect(getAnimationClass('sleeping', false)).toBe('');
   });
+
+  it('correctly maps eye expressions (look_up, look_left, look_right, look_around)', () => {
+    const getEyeTransform = (eyeExpression) => {
+      if (eyeExpression === 'look_up') return 'translate(0px, -52px) scaleY(0.96)';
+      if (eyeExpression === 'look_left') return 'translate(-65px, 0px)';
+      if (eyeExpression === 'look_right') return 'translate(65px, 0px)';
+      return 'translate(0px, 0px)';
+    };
+
+    expect(getEyeTransform('look_up')).toBe('translate(0px, -52px) scaleY(0.96)');
+    expect(getEyeTransform('look_left')).toBe('translate(-65px, 0px)');
+    expect(getEyeTransform('look_right')).toBe('translate(65px, 0px)');
+    expect(getEyeTransform('default')).toBe('translate(0px, 0px)');
+  });
+
+  it('provides enlarged dimension class for mobile phone landscape viewport', () => {
+    const getSizeClass = (size, compact) => {
+      const isMobileSize = size === 'mobile';
+      const isCompactSize = compact && !isMobileSize;
+      return isCompactSize 
+        ? 'w-[170px] h-[170px]' 
+        : isMobileSize 
+          ? 'w-[220px] h-[220px] sm:w-[245px] sm:h-[245px]' 
+          : 'w-[420px] h-[420px] sm:w-[480px] sm:h-[480px]';
+    };
+
+    expect(getSizeClass('mobile', true)).toBe('w-[220px] h-[220px] sm:w-[245px] sm:h-[245px]');
+    expect(getSizeClass(null, true)).toBe('w-[170px] h-[170px]');
+    expect(getSizeClass(null, false)).toContain('w-[420px]');
+  });
 });
+

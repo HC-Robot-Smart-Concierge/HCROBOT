@@ -166,6 +166,7 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
             logger.info(f"[AIChatService] Service request '{act}' is waiting for room number from guest.")
 
     destination_key = graph_result.get("destination_key") or _detect_destination_poi(request.prompt, reply)
+    eye_expression = graph_result.get("eye_expression")
 
     return ChatResponse(
         response=reply,
@@ -181,6 +182,7 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
         audio_base64=audio_b64,
         mime_type=mime_type or "audio/mp3",
         destination_key=destination_key,
+        eye_expression=eye_expression,
     )
 
 

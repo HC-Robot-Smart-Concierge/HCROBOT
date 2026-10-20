@@ -25,6 +25,7 @@ class ChatResponse(BaseModel):
     audio_base64: Optional[str] = Field(None, description="Âm thanh giọng đọc phát tức thì từ backend cache")
     mime_type: Optional[str] = Field("audio/mp3", description="Định dạng âm thanh")
     destination_key: Optional[str] = Field(None, description="Mã POI điều hướng bản đồ (VD: infinity_pool, restaurant, rooftop_coffee) nếu là câu hỏi chỉ đường/vị trí")
+    eye_expression: Optional[str] = Field(None, description="Biểu cảm cử động mắt của Robot (look_up, look_left, look_right, look_around, happy)")
 
 
 class IntentRequest(BaseModel):

@@ -5,17 +5,11 @@ import {
   Video,
   VideoOff,
   PhoneOff,
-  PhoneCall,
   Volume2,
   VolumeX,
-  Share2,
   Maximize2,
   Minimize2,
-  Disc,
-  User,
-  ShieldCheck,
   AlertCircle,
-  CheckCircle2,
 } from 'lucide-react';
 import { uploadCallRecording, getCallSignalingWsUrl } from '../../services/conciergeApi';
 
@@ -34,9 +28,9 @@ export const MessengerVideoCallModal = ({
   isOpen = false,
   sessionId = 'default-call',
   role = 'guest', // 'guest' (Kiosk/User) | 'staff' (Concierge Specialist)
-  callerName = 'Khách tại Sảnh',
-  calleeName = 'Tổng Đài Viên Concierge',
-  roomNumber = 'Sảnh S1',
+  callerName = 'Khách hàng',
+  calleeName = 'Nhân viên hỗ trợ',
+  roomNumber = '',
   ticketCode = null,
   onClose = () => {},
   onCallEnded = () => {},
@@ -70,41 +64,37 @@ export const MessengerVideoCallModal = ({
   const isEndingRef = useRef(false);
 
   // 1. Tạo Canvas Stream giả lập trong trường hợp máy tính KHÔNG CÓ WEBCAM
-  const createFakeVideoStream = (label = 'Audio Only') => {
+  const createFakeVideoStream = (label = 'Khách hàng') => {
     const canvas = document.createElement('canvas');
     canvas.width = 640;
     canvas.height = 480;
     const ctx = canvas.getContext('2d');
-    let hue = 210;
 
     const draw = () => {
-      hue = (hue + 1) % 360;
-      ctx.fillStyle = '#0f172a';
+      // Nền xám đen tối giản theo theme hệ thống
+      ctx.fillStyle = '#1e1e1e';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      // Gradient Circle
-      const grad = ctx.createRadialGradient(320, 240, 20, 320, 240, 180);
-      grad.addColorStop(0, `hsl(${hue}, 70%, 45%)`);
-      grad.addColorStop(1, '#0f172a');
-      ctx.fillStyle = grad;
+      // Vòng tròn xám trung tính thanh lịch
+      ctx.fillStyle = '#2d2d2d';
       ctx.beginPath();
-      ctx.arc(320, 240, 140, 0, Math.PI * 2);
+      ctx.arc(320, 240, 90, 0, Math.PI * 2);
       ctx.fill();
 
-      // Text Avatar
-      ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 28px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(label, 320, 240);
+      ctx.strokeStyle = '#444444';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
 
-      ctx.fillStyle = '#94a3b8';
-      ctx.font = '16px sans-serif';
-      ctx.fillText('Live Audio Call • Camera Off', 320, 275);
+      // Text Avatar
+      ctx.fillStyle = '#f4f4f5';
+      ctx.font = 'bold 22px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(label, 320, 247);
     };
 
     draw();
-    const interval = setInterval(draw, 100);
-    const stream = canvas.captureStream(15);
+    const interval = setInterval(draw, 500);
+    const stream = canvas.captureStream(5);
     stream._canvasInterval = interval;
     return stream;
   };
@@ -502,50 +492,23 @@ export const MessengerVideoCallModal = ({
   return (
     <div
       ref={modalContainerRef}
-      className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/85 backdrop-blur-md transition-all duration-300 p-0 md:p-6"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-stone-950/80 backdrop-blur-xs transition-all duration-300 p-0 lg:p-6"
     >
-      {/* Video Call Modal Window */}
-      <div className="relative w-full h-[100dvh] md:h-[620px] md:max-w-4xl bg-neutral-900 md:rounded-2xl overflow-hidden shadow-2xl border border-neutral-800 flex flex-col">
+      {/* Video Call Modal Window: Toàn màn hình trên mobile & landscape, cửa sổ nổi sang trọng trên desktop (lg) */}
+      <div className="relative w-full h-full lg:h-[620px] lg:max-w-4xl bg-[#1E1E1E] rounded-none lg:rounded-2xl overflow-hidden shadow-2xl border-0 lg:border lg:border-stone-700/80 flex flex-col">
         {/* TOP BAR */}
-        <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between p-4 bg-gradient-to-b from-black/80 via-black/40 to-transparent">
+        <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-4 py-2.5 sm:py-3 lg:p-4 bg-gradient-to-b from-stone-900/90 via-stone-900/40 to-transparent robot-safe-x">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 font-bold shrink-0">
-              <User className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="text-white text-sm font-bold flex items-center gap-2">
-                {role === 'guest' ? calleeName : callerName}
-                {ticketCode && (
-                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-300 border border-neutral-700">
-                    {ticketCode}
-                  </span>
-                )}
-              </div>
-              <div className="text-neutral-400 text-xs flex items-center gap-1.5">
-                <span>{roomNumber}</span>
-                <span>•</span>
-                <span className="text-emerald-400 flex items-center gap-1">
-                  <ShieldCheck className="w-3 h-3" /> Trực tuyến P2P
-                </span>
-              </div>
+            <div className="text-stone-200 text-xs sm:text-sm font-semibold tracking-wide">
+              {role === 'guest' ? (calleeName || 'Nhân viên hỗ trợ') : (callerName || 'Khách hàng')}
             </div>
           </div>
 
           <div className="flex items-center gap-2">
             {/* CALL DURATION BADGE */}
             {callStatus === 'connected' && (
-              <div
-                className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-mono font-semibold ${
-                  role === 'staff'
-                    ? 'bg-red-500/20 border border-red-500/50 text-red-400'
-                    : 'bg-emerald-500/20 border border-emerald-500/40 text-emerald-300'
-                }`}
-              >
-                <span
-                  className={`w-2 h-2 rounded-full ${
-                    role === 'staff' ? 'bg-red-500 animate-pulse' : 'bg-emerald-400'
-                  }`}
-                />
+              <div className="flex items-center gap-1.5 px-2.5 py-0.5 sm:px-3 sm:py-1 rounded-md text-[11px] sm:text-xs font-mono font-medium bg-stone-800 border border-stone-700 text-stone-200">
+                <span className="w-1.5 h-1.5 rounded-full bg-stone-300 animate-pulse" />
                 <span>
                   {role === 'staff'
                     ? `REC ${formatTime(recordingDuration)}`
@@ -556,16 +519,16 @@ export const MessengerVideoCallModal = ({
 
             <button
               onClick={toggleFullscreen}
-              className="p-2 rounded-full bg-neutral-800/80 hover:bg-neutral-700 text-neutral-300 transition-all cursor-pointer"
+              className="p-1.5 sm:p-2 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-300 border border-stone-700 transition-colors cursor-pointer"
               title="Toàn màn hình"
             >
-              {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+              {isFullscreen ? <Minimize2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> : <Maximize2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
             </button>
           </div>
         </div>
 
         {/* MAIN VIDEO SCREEN */}
-        <div className="relative flex-1 bg-neutral-950 flex items-center justify-center overflow-hidden">
+        <div className="relative flex-1 bg-[#181818] flex items-center justify-center overflow-hidden">
           {/* Remote Video Stream */}
           <video
             ref={remoteVideoRef}
@@ -579,50 +542,36 @@ export const MessengerVideoCallModal = ({
 
           {/* CALLING / RINGING / CONNECTING OVERLAY */}
           {callStatus !== 'connected' && callStatus !== 'ended' && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center z-10 bg-neutral-950/90">
-              <div className="relative mb-6">
-                <div className="w-24 h-24 rounded-full bg-emerald-500/20 border-2 border-emerald-500/40 flex items-center justify-center text-emerald-400 animate-pulse">
-                  <PhoneCall className="w-10 h-10 animate-bounce" />
-                </div>
-                {/* Ripple Circles */}
-                <div className="absolute inset-0 rounded-full border border-emerald-500/30 animate-ping" />
+            <div className="absolute inset-0 flex flex-col items-center justify-center p-4 sm:p-6 text-center z-10 bg-[#181818]/95">
+              <div className="relative mb-3 sm:mb-5">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full border-2 border-stone-700 border-t-stone-300 animate-spin" />
               </div>
 
-              <h2 className="text-white text-lg font-bold mb-1">
-                {role === 'guest'
-                  ? 'Đang kết nối tới Tổng Đài Concierge...'
-                  : 'Cuộc gọi đến từ Robot Kiosk...'}
+              <h2 className="text-stone-100 text-sm sm:text-base font-semibold">
+                Đang kết nối với nhân viên...
               </h2>
-              <p className="text-neutral-400 text-xs max-w-sm mb-4">
-                {hasNoCamera
-                  ? 'Thiết bị không có camera vật lý. Hệ thống tự động kích hoạt chế độ Thoại 2 chiều.'
-                  : 'Đang kết nối tín hiệu video call độ trễ thấp...'}
-              </p>
 
               {errorMessage && (
-                <div className="flex items-center gap-2 text-xs text-red-400 bg-red-950/60 border border-red-800 px-3 py-1.5 rounded-lg">
-                  <AlertCircle className="w-4 h-4" />
+                <div className="mt-2.5 flex items-center gap-2 text-[11px] sm:text-xs text-stone-300 bg-stone-800 border border-stone-700 px-3 py-1.5 rounded-lg">
+                  <AlertCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-stone-400" />
                   {errorMessage}
                 </div>
               )}
             </div>
           )}
 
-          {/* CALL ENDED OVERLAY (KHÔNG HIỆN THỊ CLOUDINARY CHO KHÁCH HÀNG) */}
+          {/* CALL ENDED OVERLAY */}
           {callStatus === 'ended' && (
-            <div className="absolute inset-0 z-30 bg-black/90 flex flex-col items-center justify-center p-6 text-center animate-fadeIn">
-              <div className="w-16 h-16 rounded-full bg-neutral-800 border border-neutral-700 flex items-center justify-center text-red-400 mb-4 shadow-xl">
-                <PhoneOff className="w-8 h-8" />
+            <div className="absolute inset-0 z-30 bg-[#181818]/95 flex flex-col items-center justify-center p-4 sm:p-6 text-center animate-fadeIn">
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-stone-800 border border-stone-700 flex items-center justify-center text-stone-300 mb-2.5 shadow-lg">
+                <PhoneOff className="w-4 h-4 sm:w-5 sm:h-5" />
               </div>
-              <h3 className="text-white text-base font-bold">Cuộc gọi đã kết thúc</h3>
-              <p className="text-neutral-400 text-xs mt-1.5">
-                Cảm ơn bạn đã liên hệ bộ phận Trợ lý Concierge.
-              </p>
+              <h3 className="text-stone-100 text-xs sm:text-sm font-semibold">Cuộc gọi đã kết thúc</h3>
             </div>
           )}
 
           {/* PICTURE-IN-PICTURE: LOCAL SELF VIDEO */}
-          <div className="absolute bottom-28 right-4 w-32 h-44 md:w-44 md:h-60 rounded-xl overflow-hidden bg-neutral-900 border-2 border-neutral-700/80 shadow-2xl z-20 transition-all hover:scale-105">
+          <div className="absolute bottom-16 sm:bottom-18 lg:bottom-24 right-3 sm:right-4 w-24 h-32 sm:w-28 sm:h-36 lg:w-40 lg:h-52 rounded-xl overflow-hidden bg-stone-900 border border-stone-700 shadow-xl z-20 transition-all">
             <video
               ref={localVideoRef}
               autoPlay
@@ -631,42 +580,38 @@ export const MessengerVideoCallModal = ({
               className={`w-full h-full object-cover ${isVideoDisabled ? 'hidden' : 'block'}`}
             />
             {isVideoDisabled && (
-              <div className="w-full h-full flex flex-col items-center justify-center bg-neutral-800 text-neutral-400">
-                <VideoOff className="w-6 h-6 mb-1" />
-                <span className="text-[10px]">Camera tắt</span>
+              <div className="w-full h-full flex flex-col items-center justify-center bg-stone-900 text-stone-400">
+                <VideoOff className="w-4 h-4 mb-1 text-stone-500" />
+                <span className="text-[9px] sm:text-[10px]">Camera tắt</span>
               </div>
             )}
-            <div className="absolute bottom-1.5 left-2 text-[10px] text-white/90 bg-black/60 px-1.5 py-0.5 rounded font-semibold">
+            <div className="absolute bottom-1.5 left-1.5 sm:bottom-2 sm:left-2 text-[9px] sm:text-[10px] text-stone-200 bg-stone-950/80 border border-stone-700/60 px-1.5 py-0.5 rounded font-medium">
               Bạn
             </div>
           </div>
         </div>
 
-        {/* BOTTOM ACTION CONTROLS BAR (FACETIME / MESSENGER STYLE DOCK) */}
-        <div className="px-4 py-3 pb-[max(1.25rem,env(safe-area-inset-bottom))] bg-neutral-900/98 border-t border-neutral-800/80 flex items-center justify-center gap-6 sm:gap-10 z-30 shrink-0 backdrop-blur-md">
-          {/* STAFF ONLY CONTROLS: BẬT/TẮT MIC, CAM, LOA */}
+        {/* BOTTOM ACTION CONTROLS BAR */}
+        <div className="px-4 py-2 sm:py-2.5 lg:py-3 pb-[max(0.5rem,env(safe-area-inset-bottom))] bg-[#1A1A1A] border-t border-stone-800 flex items-center justify-center gap-4 sm:gap-8 z-30 shrink-0 robot-safe-x">
+          {/* STAFF ONLY CONTROLS */}
           {role === 'staff' && (
             <>
               {/* MUTE MIC BUTTON */}
               <button
                 type="button"
                 onClick={toggleMic}
-                className="flex flex-col items-center gap-1.5 focus:outline-none cursor-pointer group"
+                className="flex flex-col items-center gap-1 focus:outline-none cursor-pointer group"
               >
                 <div
-                  className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${
+                  className={`w-9 h-9 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center transition-all ${
                     isMicMuted
-                      ? 'bg-red-500/20 text-red-400 border border-red-500/50 shadow-lg shadow-red-500/20 scale-105'
-                      : 'bg-neutral-800 hover:bg-neutral-700 text-white border border-neutral-700/60'
+                      ? 'bg-stone-800 text-stone-400 border border-stone-700'
+                      : 'bg-stone-800 hover:bg-stone-700 text-stone-200 border border-stone-700'
                   }`}
                 >
-                  {isMicMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+                  {isMicMuted ? <MicOff className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> : <Mic className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
                 </div>
-                <span
-                  className={`text-[11px] font-medium transition-colors ${
-                    isMicMuted ? 'text-red-400 font-semibold' : 'text-neutral-400 group-hover:text-neutral-200'
-                  }`}
-                >
+                <span className="text-[10px] font-medium text-stone-400">
                   {isMicMuted ? 'Bật Mic' : 'Tắt Mic'}
                 </span>
               </button>
@@ -675,22 +620,18 @@ export const MessengerVideoCallModal = ({
               <button
                 type="button"
                 onClick={toggleVideo}
-                className="flex flex-col items-center gap-1.5 focus:outline-none cursor-pointer group"
+                className="flex flex-col items-center gap-1 focus:outline-none cursor-pointer group"
               >
                 <div
-                  className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${
+                  className={`w-9 h-9 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center transition-all ${
                     isVideoDisabled
-                      ? 'bg-red-500/20 text-red-400 border border-red-500/50 shadow-lg shadow-red-500/20 scale-105'
-                      : 'bg-neutral-800 hover:bg-neutral-700 text-white border border-neutral-700/60'
+                      ? 'bg-stone-800 text-stone-400 border border-stone-700'
+                      : 'bg-stone-800 hover:bg-stone-700 text-stone-200 border border-stone-700'
                   }`}
                 >
-                  {isVideoDisabled ? <VideoOff className="w-5 h-5" /> : <Video className="w-5 h-5" />}
+                  {isVideoDisabled ? <VideoOff className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> : <Video className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
                 </div>
-                <span
-                  className={`text-[11px] font-medium transition-colors ${
-                    isVideoDisabled ? 'text-red-400 font-semibold' : 'text-neutral-400 group-hover:text-neutral-200'
-                  }`}
-                >
+                <span className="text-[10px] font-medium text-stone-400">
                   {isVideoDisabled ? 'Bật Cam' : 'Tắt Cam'}
                 </span>
               </button>
@@ -699,49 +640,32 @@ export const MessengerVideoCallModal = ({
               <button
                 type="button"
                 onClick={toggleSpeaker}
-                className="flex flex-col items-center gap-1.5 focus:outline-none cursor-pointer group"
+                className="flex flex-col items-center gap-1 focus:outline-none cursor-pointer group"
               >
                 <div
-                  className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${
+                  className={`w-9 h-9 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center transition-all ${
                     isSpeakerMuted
-                      ? 'bg-amber-500/20 text-amber-400 border border-amber-500/50 shadow-lg shadow-amber-500/20 scale-105'
-                      : 'bg-neutral-800 hover:bg-neutral-700 text-white border border-neutral-700/60'
+                      ? 'bg-stone-800 text-stone-400 border border-stone-700'
+                      : 'bg-stone-800 hover:bg-stone-700 text-stone-200 border border-stone-700'
                   }`}
                 >
-                  {isSpeakerMuted ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
+                  {isSpeakerMuted ? <VolumeX className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> : <Volume2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
                 </div>
-                <span
-                  className={`text-[11px] font-medium transition-colors ${
-                    isSpeakerMuted ? 'text-amber-400 font-semibold' : 'text-neutral-400 group-hover:text-neutral-200'
-                  }`}
-                >
+                <span className="text-[10px] font-medium text-stone-400">
                   {isSpeakerMuted ? 'Bật Loa' : 'Tắt Loa'}
                 </span>
               </button>
             </>
           )}
 
-          {/* END CALL BUTTON (RED HANGUP - HIỂN THỊ CẢ 2 BÊN) */}
+          {/* END CALL BUTTON */}
           <button
             type="button"
             onClick={() => handleEndCall(true)}
-            className="flex flex-col items-center gap-1.5 focus:outline-none cursor-pointer active:scale-95 transition-transform group"
+            className="flex items-center justify-center gap-2 px-6 py-2 sm:px-8 sm:py-2.5 rounded-xl bg-stone-800 hover:bg-stone-700 active:scale-98 text-stone-200 hover:text-white border border-stone-600 transition-all cursor-pointer shadow-sm"
           >
-            <div
-              className={`rounded-full bg-red-600 hover:bg-red-700 flex items-center justify-center text-white shadow-lg shadow-red-600/40 border border-red-500 transition-all ${
-                role === 'guest' ? 'px-8 py-3.5 gap-2.5' : 'w-12 h-12'
-              }`}
-            >
-              <PhoneOff className="w-5 h-5" />
-              {role === 'guest' && (
-                <span className="text-xs font-bold tracking-wide">Kết thúc cuộc gọi</span>
-              )}
-            </div>
-            {role === 'staff' && (
-              <span className="text-[11px] font-bold text-red-400 group-hover:text-red-300">
-                Kết thúc
-              </span>
-            )}
+            <PhoneOff className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-400" />
+            <span className="text-xs font-semibold tracking-wide">Kết thúc cuộc gọi</span>
           </button>
         </div>
       </div>

@@ -569,11 +569,10 @@ export const FloorMap = ({
         <div className="absolute top-2.5 left-2.5 right-2.5 z-30 flex items-center justify-between pointer-events-none gap-2">
           {/* Tên phòng/điểm đến badge nhỏ gọn (Glassmorphism Pill) */}
           <div className="flex items-center gap-1.5 sm:gap-2 bg-stone-950/85 backdrop-blur-md text-white px-2.5 sm:px-3 py-1.5 rounded-full border border-stone-700/80 shadow-xl pointer-events-auto min-w-0">
-            <span className="text-sm shrink-0">{currentDest.icon}</span>
             <span className="font-extrabold text-xs text-white truncate max-w-[140px] sm:max-w-[200px]">
               {currentDest.name}
             </span>
-            <span className="text-[10px] font-black text-emerald-400 bg-emerald-500/20 px-1.5 py-0.5 rounded-full shrink-0 uppercase">
+            <span className="text-[10px] font-mono font-semibold text-zinc-300 bg-zinc-800 px-1.5 py-0.5 rounded border border-zinc-700 shrink-0 uppercase">
               {currentDest.floorLevel}
             </span>
           </div>
@@ -587,13 +586,13 @@ export const FloorMap = ({
                     setActiveStep(1);
                     setAutoPlay(false);
                   }}
-                  className={`px-2 sm:px-2.5 py-1 rounded-full text-[10px] sm:text-xs font-bold transition-all cursor-pointer ${
+                  className={`px-2.5 sm:px-3 py-1 rounded-full text-[10px] sm:text-xs font-bold transition-all cursor-pointer ${
                     activeStep === 1
-                      ? 'bg-emerald-500 text-stone-950 shadow-md'
+                      ? 'bg-zinc-100 text-zinc-950 shadow-md'
                       : 'text-stone-300 hover:text-white'
                   }`}
                 >
-                  <span>🛗 Chặng 1</span>
+                  <span>Chặng 1</span>
                 </button>
 
                 <button
@@ -601,13 +600,13 @@ export const FloorMap = ({
                     setActiveStep(2);
                     setAutoPlay(false);
                   }}
-                  className={`px-2 sm:px-2.5 py-1 rounded-full text-[10px] sm:text-xs font-bold transition-all cursor-pointer ${
+                  className={`px-2.5 sm:px-3 py-1 rounded-full text-[10px] sm:text-xs font-bold transition-all cursor-pointer ${
                     activeStep === 2
-                      ? 'bg-emerald-500 text-stone-950 shadow-md'
+                      ? 'bg-zinc-100 text-zinc-950 shadow-md'
                       : 'text-stone-300 hover:text-white'
                   }`}
                 >
-                  <span>{currentDest.icon} Chặng 2</span>
+                  <span>Chặng 2</span>
                 </button>
               </div>
             )}
@@ -616,7 +615,7 @@ export const FloorMap = ({
             <button
               type="button"
               onClick={() => setShowQrModal(true)}
-              className="h-8 px-2.5 rounded-full bg-stone-900/90 hover:bg-stone-800 text-emerald-400 border border-emerald-500/40 text-[10px] sm:text-xs font-bold flex items-center gap-1 active:scale-95 shadow-xl cursor-pointer"
+              className="h-8 px-2.5 rounded-full bg-stone-900/90 hover:bg-stone-800 text-zinc-200 border border-zinc-700 text-[10px] sm:text-xs font-bold flex items-center gap-1 active:scale-95 shadow-xl cursor-pointer"
               title="Quét mã QR lưu chỉ dẫn trên điện thoại"
             >
               <QrCode className="w-3.5 h-3.5" />
@@ -628,10 +627,9 @@ export const FloorMap = ({
               <button
                 type="button"
                 onClick={onClose}
-                className="h-8 px-3 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] sm:text-xs font-black flex items-center gap-1 active:scale-95 shadow-xl cursor-pointer"
+                className="h-8 px-3 rounded-full bg-zinc-800 hover:bg-zinc-700 text-white text-[11px] sm:text-xs font-bold flex items-center gap-1 active:scale-95 shadow-xl cursor-pointer border border-zinc-700"
                 title="Đóng bản đồ chỉ đường"
               >
-                <span>✓</span>
                 <span>Đã nhớ</span>
               </button>
             )}
@@ -648,7 +646,7 @@ export const FloorMap = ({
           >
             <Plus className="w-3.5 h-3.5" />
           </button>
-          <span className="px-1.5 text-[10px] font-mono font-bold text-emerald-400 select-none">
+          <span className="px-1.5 text-[10px] font-mono font-bold text-zinc-300 select-none">
             {Math.round(zoomLevel * 100)}%
           </span>
           <button
@@ -835,8 +833,8 @@ export const FloorMap = ({
         </svg>
         </div>
 
-        {/* Thanh chọn tầng dọc bên phải (Vertical Floor Picker) */}
-        <div className="absolute right-3.5 top-3.5 flex flex-col gap-1 z-20 bg-stone-900/90 backdrop-blur-md p-1.5 rounded-2xl border border-stone-700/80 shadow-xl">
+        {/* Thanh chọn tầng dọc bên phải (Chỉ hiển thị trên Desktop / màn hình lớn, ẩn trên mobile landscape để tránh che bản đồ) */}
+        <div className="hidden md:flex absolute right-3.5 top-3.5 flex-col gap-1 z-20 bg-stone-900/90 backdrop-blur-md p-1.5 rounded-2xl border border-stone-700/80 shadow-xl">
           <div className="text-[9px] font-black tracking-wider text-stone-400 text-center uppercase pb-1 border-b border-stone-800">
             Tầng
           </div>
@@ -854,7 +852,7 @@ export const FloorMap = ({
                 }}
                 className={`w-9 h-8 rounded-xl text-xs font-black transition-all flex items-center justify-center relative cursor-pointer ${
                   isCurrentlyViewing
-                    ? 'bg-emerald-500 text-stone-950 font-black shadow-md scale-105'
+                    ? 'bg-zinc-100 text-zinc-950 font-black shadow-md scale-105'
                     : isDestinationFloor
                     ? 'bg-red-500/30 text-red-300 border border-red-500/50'
                     : 'text-stone-300 hover:bg-stone-800 hover:text-white'
@@ -872,9 +870,9 @@ export const FloorMap = ({
 
         {/* Hộp chỉ dẫn từng chặng (Turn-by-turn Navigation Banner) dưới đáy bản đồ */}
         {showInstructionBanner ? (
-          <div className="absolute bottom-2 left-2.5 right-14 bg-stone-950/90 backdrop-blur-md rounded-xl p-2 px-3 border border-stone-800/90 text-white flex items-center justify-between z-20 shadow-xl animate-fadeIn">
+          <div className="absolute bottom-2 left-2.5 right-2.5 md:right-14 bg-stone-950/90 backdrop-blur-md rounded-xl p-2 px-3 border border-stone-800/90 text-white flex items-center justify-between z-20 shadow-xl animate-fadeIn">
             <div className="flex items-center gap-2.5 min-w-0 pr-2">
-              <div className="w-6 h-6 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-black text-xs shrink-0 border border-emerald-500/30">
+              <div className="w-6 h-6 rounded-lg bg-zinc-800 text-white flex items-center justify-center font-bold text-xs shrink-0 border border-zinc-700">
                 {activeStep === 1 ? '1' : '2'}
               </div>
               <p className="text-[11px] sm:text-xs font-medium text-stone-100 leading-tight line-clamp-2">
@@ -884,11 +882,11 @@ export const FloorMap = ({
 
             <div className="flex items-center gap-2.5 shrink-0 pl-2.5 border-l border-stone-800 text-[10px] sm:text-xs">
               <span className="flex items-center gap-1 text-stone-300 font-medium">
-                <Clock className="w-3 h-3 text-amber-400" />
+                <Clock className="w-3 h-3 text-zinc-400" />
                 <span>{currentDest.time}</span>
               </span>
               <span className="flex items-center gap-1 text-stone-300 font-medium">
-                <Footprints className="w-3 h-3 text-emerald-400" />
+                <Footprints className="w-3 h-3 text-zinc-400" />
                 <span>{currentDest.distance}</span>
               </span>
               <button
@@ -907,18 +905,18 @@ export const FloorMap = ({
             onClick={() => setShowInstructionBanner(true)}
             className="absolute bottom-2 left-2.5 z-20 px-2.5 py-1 rounded-lg bg-stone-900/90 backdrop-blur-md border border-stone-700 text-stone-200 hover:text-white text-[10px] font-bold flex items-center gap-1.5 shadow-lg cursor-pointer"
           >
-            <ChevronUp className="w-3 h-3 text-emerald-400" />
+            <ChevronUp className="w-3 h-3 text-zinc-400" />
             <span>Chỉ dẫn chặng {activeStep}</span>
           </button>
         )}
 
-        {/* THẺ MÃ QR HIỆN SẴN TRỰC TIẾP TRÊN BẢN ĐỒ (Quét ngay không cần bấm nút) */}
+        {/* THẺ MÃ QR HIỆN SẴN TRỰC TIẾP TRÊN BẢN ĐỒ (Chỉ hiển thị trên màn hình Desktop lớn, ẩn trên mobile để thoáng bản đồ) */}
         <div
           onClick={() => setShowQrModal(true)}
-          className="absolute bottom-16 left-2.5 z-20 bg-stone-950/92 backdrop-blur-md p-2 rounded-2xl border border-emerald-500/50 shadow-2xl flex items-center gap-2.5 cursor-pointer hover:border-emerald-400 hover:scale-[1.03] transition-all group animate-fadeIn"
+          className="hidden md:flex absolute bottom-16 left-2.5 z-20 bg-stone-950/92 backdrop-blur-md p-2 rounded-2xl border border-zinc-700 shadow-2xl items-center gap-2.5 cursor-pointer hover:border-zinc-500 hover:scale-[1.02] transition-all group animate-fadeIn"
           title="Chạm vào để phóng to mã QR"
         >
-          <div className="p-1 bg-white rounded-xl shrink-0 shadow-sm">
+          <div className="p-1 bg-white rounded-xl shrink-0 shadow-sm border border-zinc-200">
             <QRCodeSVG
               value={qrMapUrl}
               size={64}
@@ -927,15 +925,14 @@ export const FloorMap = ({
             />
           </div>
           <div className="flex flex-col pr-1 text-left">
-            <div className="flex items-center gap-1 text-[11px] font-extrabold text-emerald-400 uppercase tracking-wide">
-              <Smartphone className="w-3.5 h-3.5" />
-              <span>Quét Lưu Chỉ Dẫn</span>
-            </div>
-            <p className="text-[10px] text-stone-200 font-medium leading-tight mt-0.5 max-w-[140px]">
+            <span className="text-[11px] font-bold text-zinc-200 uppercase tracking-wide">
+              Quét lưu chỉ dẫn
+            </span>
+            <p className="text-[10px] text-stone-300 font-normal leading-tight mt-0.5 max-w-[140px]">
               Mang theo bản đồ 2 chặng trên điện thoại
             </p>
-            <span className="text-[9px] text-emerald-400/80 font-bold mt-0.5 group-hover:text-emerald-300 transition-colors">
-              Chạm để phóng to ↗
+            <span className="text-[9px] text-zinc-400 font-medium mt-0.5 group-hover:text-zinc-200 transition-colors">
+              Chạm để phóng to
             </span>
           </div>
         </div>
@@ -943,28 +940,27 @@ export const FloorMap = ({
         {/* Modal Quét Mã QR Phóng To Trên Kiosk */}
         {(showQrModal || showQrModalExternal) && (
           <div
-            className="absolute inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4 animate-fadeIn"
+            className="absolute inset-0 z-50 bg-zinc-900/40 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn"
             onClick={() => {
               setShowQrModal(false);
               if (onCloseQrModal) onCloseQrModal();
             }}
           >
             <div
-              className="w-[360px] max-w-[95%] bg-stone-900 border border-emerald-500/40 rounded-3xl p-5 shadow-2xl flex flex-col items-center gap-4 text-center text-white"
+              className="w-[360px] max-w-[95%] bg-zinc-100 border border-zinc-300 rounded-3xl p-5 shadow-2xl flex flex-col items-center gap-4 text-center text-zinc-900"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex items-center justify-between w-full border-b border-stone-800 pb-2.5">
-                <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs uppercase tracking-wider">
-                  <Smartphone className="w-4 h-4" />
-                  <span>Lưu Bản Đồ Trên Điện Thoại</span>
-                </div>
+              <div className="flex items-center justify-between w-full border-b border-zinc-200 pb-2.5">
+                <span className="text-zinc-800 font-bold text-xs uppercase tracking-wider">
+                  Lưu bản đồ trên điện thoại
+                </span>
                 <button
                   type="button"
                   onClick={() => {
                     setShowQrModal(false);
                     if (onCloseQrModal) onCloseQrModal();
                   }}
-                  className="w-7 h-7 rounded-full bg-stone-800 text-stone-300 hover:text-white flex items-center justify-center cursor-pointer"
+                  className="w-7 h-7 rounded-full bg-zinc-200 hover:bg-zinc-300 text-zinc-600 hover:text-zinc-900 border border-zinc-300 flex items-center justify-center cursor-pointer transition-colors"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -972,13 +968,12 @@ export const FloorMap = ({
 
               {/* Countdown badge khi được kích hoạt tự động ở cuối request chỉ đường */}
               {qrCountdown !== null && qrCountdown >= 0 && (
-                <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-xs font-bold animate-pulse">
-                  <Clock className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Tự động đóng sau {qrCountdown}s</span>
+                <div className="px-2.5 py-0.5 rounded-full bg-zinc-200 text-zinc-700 border border-zinc-300 text-xs font-mono font-semibold">
+                  Tự động đóng sau {qrCountdown}s
                 </div>
               )}
 
-              <div className="p-3 bg-white rounded-2xl shadow-xl flex items-center justify-center">
+              <div className="p-3 bg-white rounded-2xl shadow-sm border border-zinc-200 flex items-center justify-center">
                 <QRCodeSVG
                   value={qrMapUrl}
                   size={190}
@@ -988,10 +983,10 @@ export const FloorMap = ({
               </div>
 
               <div className="flex flex-col gap-1">
-                <h4 className="font-extrabold text-sm text-stone-100">
+                <h4 className="font-bold text-sm text-zinc-900">
                   {currentDest.name} ({currentDest.floorLevel})
                 </h4>
-                <p className="text-xs text-stone-300 leading-relaxed">
+                <p className="text-xs text-zinc-600 leading-relaxed">
                   Quý khách vui lòng bật camera điện thoại để quét mã QR và xem sơ đồ 2 chặng đường đi trực tiếp nhé ạ.
                 </p>
               </div>
@@ -1002,7 +997,7 @@ export const FloorMap = ({
                   setShowQrModal(false);
                   if (onCloseQrModal) onCloseQrModal();
                 }}
-                className="w-full py-2.5 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-200 text-xs font-bold transition cursor-pointer"
+                className="w-full py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-900 text-white text-xs font-bold transition cursor-pointer active:scale-95"
               >
                 Đóng
               </button>

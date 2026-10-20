@@ -139,6 +139,10 @@ export const WorkflowSimulatorModal = ({ workflow, isOpen, onClose }) => {
     if (activeStep.type === 'GREET') {
       const exp = activeStep.params?.face_expression || 'HAPPY_SMILE';
       if (exp === 'HAPPY_SMILE' || exp === 'WELCOME') return 'happy';
+      if (exp === 'LOOK_UP') return 'look_up';
+      if (exp === 'LOOK_LEFT') return 'look_left';
+      if (exp === 'LOOK_RIGHT') return 'look_right';
+      if (exp === 'LOOK_AROUND') return 'look_around';
       if (exp === 'LISTENING') return 'listening';
       return 'welcome';
     }

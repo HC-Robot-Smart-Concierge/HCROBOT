@@ -66,8 +66,9 @@ async def fast_path_node(state: ConciergeState) -> Dict[str, Any]:
             action_type, action_payload = None, None
 
         dest_key = action_payload.get("destination_key") if isinstance(action_payload, dict) else None
+        eye_expr = action_payload.get("eye_expression") if isinstance(action_payload, dict) else None
         is_vc = bool(action_type == "trigger_video_call")
-        logger.info(f"[Harness FastPath] Matched dynamic scenario! Fast response in <1ms for: '{prompt[:30]}...'")
+        logger.info(f"[Harness FastPath] Matched dynamic scenario! Fast response in <1ms for: '{prompt[:30]}...' (eye: {eye_expr})")
         return {
             "fast_path_hit": True,
             "response": reply,
@@ -76,6 +77,7 @@ async def fast_path_node(state: ConciergeState) -> Dict[str, Any]:
             "intent_category": "fast_path",
             "action": action_type or "fast_path",
             "destination_key": dest_key,
+            "eye_expression": eye_expr,
             "trigger_video_call": is_vc,
             "missing_room_number": False,
         }

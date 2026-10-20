@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Pagination } from '../../../components/common/Pagination';
+import { useLanguage } from '../../../context/LanguageContext';
 import {
   fetchStaffRoster,
   fetchDepartments,
@@ -22,6 +23,7 @@ const STANDARD_DEPARTMENTS = [
 ];
 
 export const AdminStaffTab = ({ currentUser }) => {
+  const { t, language } = useLanguage();
   const [staffList, setStaffList] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -107,7 +109,7 @@ export const AdminStaffTab = ({ currentUser }) => {
         setDepartments(deptData);
       }
     } catch {
-      showNotification('Không thể tải danh sách nhân sự');
+      showNotification(t('staffNotifyLoadError'));
     } finally {
       setIsLoading(false);
     }
@@ -172,11 +174,11 @@ export const AdminStaffTab = ({ currentUser }) => {
         department_id: editForm.department_id,
         is_fallback_agent: editForm.is_fallback_agent,
       });
-      showNotification(`Đã cập nhật nhân sự ${editForm.full_name}`);
+      showNotification(t('staffNotifyUpdated').replace('{name}', editForm.full_name));
       setSelectedStaff(null);
       await loadData();
     } catch (err) {
-      showNotification('Lỗi khi cập nhật: ' + err.message);
+      showNotification(t('staffNotifyUpdateError').replace('{msg}', err.message));
     } finally {
       setIsLoading(false);
     }
@@ -188,11 +190,11 @@ export const AdminStaffTab = ({ currentUser }) => {
     const cleanUsername = addForm.username.trim().toLowerCase();
 
     if (!cleanFullName) {
-      showNotification('Vui lòng nhập họ và tên nhân viên');
+      showNotification(t('staffNameRequired'));
       return;
     }
     if (!cleanUsername) {
-      showNotification('Vui lòng nhập tên đăng nhập');
+      showNotification(t('staffUsernameRequired'));
       return;
     }
 
@@ -215,7 +217,7 @@ export const AdminStaffTab = ({ currentUser }) => {
         status: 'available',
         location: 'On Site',
       });
-      showNotification(`Đã tạo thành công nhân sự ${cleanFullName}`);
+      showNotification(t('staffNotifyCreated').replace('{name}', cleanFullName));
       setIsAddModalOpen(false);
       const firstDept = deptOptions[0] || { id: '', name: 'Bell Services' };
       setAddForm({
@@ -229,7 +231,7 @@ export const AdminStaffTab = ({ currentUser }) => {
       setSearchQuery(cleanFullName);
       await loadData();
     } catch (err) {
-      showNotification('Lỗi khi tạo nhân sự: ' + err.message);
+      showNotification(t('staffNotifyCreateError').replace('{msg}', err.message));
     } finally {
       setIsLoading(false);
     }
@@ -243,19 +245,19 @@ export const AdminStaffTab = ({ currentUser }) => {
         currentUser.username === targetStaff?.username ||
         (targetStaff?.username === 'admin' && currentUser.role?.toLowerCase().includes('admin')))
     ) {
-      showNotification('Không thể xóa tài khoản quản trị hiện tại đang đăng nhập!');
+      showNotification(t('staffNotifyDeleteSelf'));
       return;
     }
 
-    if (!window.confirm(`Xác nhận xóa nhân sự ${name}?`)) return;
+    if (!window.confirm(t('staffConfirmDelete').replace('{name}', name))) return;
     try {
       setIsLoading(true);
       await deleteStaffMember(staffId);
-      showNotification(`Đã xóa nhân sự ${name}`);
+      showNotification(t('staffNotifyDeleted').replace('{name}', name));
       if (selectedStaff?.id === staffId) setSelectedStaff(null);
       await loadData();
     } catch (err) {
-      showNotification('Lỗi khi xóa: ' + err.message);
+      showNotification(t('staffNotifyDeleteError').replace('{msg}', err.message));
     } finally {
       setIsLoading(false);
     }
@@ -322,10 +324,10 @@ export const AdminStaffTab = ({ currentUser }) => {
       >
         <div className="min-w-0">
           <h2 className="text-sm sm:text-base font-bold tracking-tight leading-tight truncate" style={{ color: '#262626' }}>
-            Tài Khoản Tiếp Nhận & Hỗ Trợ Robot
+            {t('staffTabTitle')}
           </h2>
           <p className="text-[10px] sm:text-[11px] font-normal truncate mt-0.5" style={{ color: '#8C8C8C' }}>
-            Danh sách tài khoản theo bộ phận để robot chuyển tiếp yêu cầu hoặc gọi hỗ trợ khi cần thiết
+            {t('staffTabSubtitle')}
           </p>
         </div>
 
@@ -338,7 +340,7 @@ export const AdminStaffTab = ({ currentUser }) => {
             borderColor: '#262626',
           }}
         >
-          + Thêm tài khoản
+          + {t('staffAddBtn')}
         </button>
       </div>
 
@@ -359,7 +361,7 @@ export const AdminStaffTab = ({ currentUser }) => {
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Tìm theo họ tên, username hoặc mã..."
+        placeholder={t('staffSearchPlaceholder')}
             className="w-full px-3 py-1.5 rounded-lg text-xs font-normal border focus:outline-none"
             style={{
               backgroundColor: '#FFFFFF',
@@ -382,7 +384,7 @@ export const AdminStaffTab = ({ currentUser }) => {
               color: '#262626',
             }}
           >
-            <option value="All">Tất cả bộ phận</option>
+            <option value="All">{t('staffFilterAllDepts')}</option>
             {deptOptions.map((dept) => (
               <option key={dept.id || dept.name} value={dept.id || dept.name}>
                 {dept.name}
@@ -401,9 +403,9 @@ export const AdminStaffTab = ({ currentUser }) => {
               color: '#262626',
             }}
           >
-            <option value="All">Tất cả loại phân công</option>
-            <option value="fallback">Hỗ trợ Robot (Fallback)</option>
-            <option value="standard">Tiêu chuẩn</option>
+            <option value="All">{t('staffFilterAllTypes')}</option>
+            <option value="fallback">{t('staffFilterFallback')}</option>
+            <option value="standard">{t('staffFilterStandard')}</option>
           </select>
         </div>
       </div>
@@ -427,23 +429,23 @@ export const AdminStaffTab = ({ currentUser }) => {
                   color: '#262626',
                 }}
               >
-                <th className="w-1/4 py-2 px-4 text-left">Tài khoản</th>
-                <th className="w-1/4 py-2 px-4 text-center">Bộ phận</th>
-                <th className="w-1/4 py-2 px-4 text-center">Hỗ trợ Robot</th>
-                <th className="w-1/4 py-2 px-4 text-center">Thao tác</th>
+                <th className="w-1/4 py-2 px-4 text-left">{t('staffColAccount')}</th>
+                <th className="w-1/4 py-2 px-4 text-center">{t('staffColDept')}</th>
+                <th className="w-1/4 py-2 px-4 text-center">{t('staffColRobotSupport')}</th>
+                <th className="w-1/4 py-2 px-4 text-center">{t('staffColActions')}</th>
               </tr>
             </thead>
             <tbody className="divide-y text-xs" style={{ borderColor: '#E9E5DC' }}>
               {isLoading && paginatedStaff.length === 0 ? (
                 <tr>
                   <td colSpan={4} className="py-6 text-center" style={{ color: '#8C8C8C' }}>
-                    Đang tải dữ liệu...
+                    {t('staffLoading')}
                   </td>
                 </tr>
               ) : paginatedStaff.length === 0 ? (
                 <tr>
                   <td colSpan={4} className="py-6 text-center" style={{ color: '#8C8C8C' }}>
-                    Không tìm thấy nhân sự phù hợp.
+                    {t('staffEmpty')}
                   </td>
                 </tr>
               ) : (
@@ -473,7 +475,7 @@ export const AdminStaffTab = ({ currentUser }) => {
                           color: '#262626',
                         }}
                       >
-                        {staff.department || 'Chưa phân bộ phận'}
+                        {staff.department || t('staffNoDept')}
                       </span>
                     </td>
 
@@ -488,7 +490,7 @@ export const AdminStaffTab = ({ currentUser }) => {
                             borderColor: '#262626',
                           }}
                         >
-                          Hỗ trợ Robot (Fallback)
+                          {t('staffFallbackBadge')}
                         </span>
                       ) : (
                         <span
@@ -499,7 +501,7 @@ export const AdminStaffTab = ({ currentUser }) => {
                             color: '#8C8C8C',
                           }}
                         >
-                          Tiêu chuẩn
+                          {t('staffStandardBadge')}
                         </span>
                       )}
                     </td>
@@ -516,7 +518,7 @@ export const AdminStaffTab = ({ currentUser }) => {
                             color: '#262626',
                           }}
                         >
-                          Chỉnh sửa
+                          {t('staffEditBtn')}
                         </button>
                         <button
                           onClick={() => handleDelete(staff.id, staff.full_name)}
@@ -527,7 +529,7 @@ export const AdminStaffTab = ({ currentUser }) => {
                             color: '#8C8C8C',
                           }}
                         >
-                          Xóa
+                          {t('staffDeleteBtn')}
                         </button>
                       </div>
                     </td>
@@ -544,7 +546,7 @@ export const AdminStaffTab = ({ currentUser }) => {
           totalItems={filteredStaff.length}
           pageSize={pageSize}
           onPageChange={handlePageChange}
-          itemName="nhân sự"
+          itemName={t('staffItemName')}
         />
       </div>
       </div>
@@ -561,7 +563,7 @@ export const AdminStaffTab = ({ currentUser }) => {
           >
             <div className="flex items-center justify-between border-b pb-3" style={{ borderColor: '#BFBFBD' }}>
               <h3 className="text-sm font-bold" style={{ color: '#262626' }}>
-                Cập nhật nhân sự hỗ trợ
+                {t('staffEditTitle')}
               </h3>
               <button
                 onClick={() => setSelectedStaff(null)}
@@ -572,14 +574,14 @@ export const AdminStaffTab = ({ currentUser }) => {
                   color: '#262626',
                 }}
               >
-                Đóng
+                {t('staffCloseBtn')}
               </button>
             </div>
 
             <form onSubmit={handleSaveEdit} className="space-y-4 text-xs">
               <div>
                 <label className="block text-[11px] font-semibold mb-1" style={{ color: '#8C8C8C' }}>
-                  HỌ VÀ TÊN:
+                  {t('staffLabelFullName')}
                 </label>
                 <input
                   type="text"
@@ -597,7 +599,7 @@ export const AdminStaffTab = ({ currentUser }) => {
 
               <div>
                 <label className="block text-[11px] font-semibold mb-1" style={{ color: '#8C8C8C' }}>
-                  BỘ PHẬN:
+                  {t('staffLabelDept')}
                 </label>
                 <select
                   value={editForm.department_id || editForm.department}
@@ -634,10 +636,10 @@ export const AdminStaffTab = ({ currentUser }) => {
               >
                 <div className="pr-3">
                   <div className="font-semibold text-xs" style={{ color: '#262626' }}>
-                    Tiếp nhận hỗ trợ Robot
+                    {t('staffRobotSupportTitle')}
                   </div>
                   <div className="text-[11px]" style={{ color: '#8C8C8C' }}>
-                    Chuyển tiếp yêu cầu khi Robot Concierge cần hỗ trợ
+                    {t('staffRobotSupportDesc')}
                   </div>
                 </div>
 
@@ -660,7 +662,7 @@ export const AdminStaffTab = ({ currentUser }) => {
                     color: '#262626',
                   }}
                 >
-                  Hủy
+                  {t('staffCancelBtn')}
                 </button>
                 <button
                   type="submit"
@@ -672,7 +674,7 @@ export const AdminStaffTab = ({ currentUser }) => {
                     color: '#F2EFE9',
                   }}
                 >
-                  {isLoading ? 'Đang lưu...' : 'Lưu thay đổi'}
+                  {isLoading ? t('staffSavingBtn') : t('staffSaveBtn')}
                 </button>
               </div>
             </form>
@@ -692,7 +694,7 @@ export const AdminStaffTab = ({ currentUser }) => {
           >
             <div className="flex items-center justify-between border-b pb-3" style={{ borderColor: '#BFBFBD' }}>
               <h3 className="text-sm font-bold" style={{ color: '#262626' }}>
-                Thêm nhân sự mới
+                {t('staffAddTitle')}
               </h3>
               <button
                 onClick={() => setIsAddModalOpen(false)}
@@ -703,21 +705,21 @@ export const AdminStaffTab = ({ currentUser }) => {
                   color: '#262626',
                 }}
               >
-                Đóng
+                {t('staffCloseBtn')}
               </button>
             </div>
 
             <form onSubmit={handleCreateStaff} className="space-y-3 text-xs">
               <div>
                 <label className="block text-[11px] font-semibold mb-1" style={{ color: '#8C8C8C' }}>
-                  HỌ VÀ TÊN:
+                  {t('staffLabelFullName')}
                 </label>
                 <input
                   type="text"
                   required
                   value={addForm.full_name}
                   onChange={(e) => setAddForm({ ...addForm, full_name: e.target.value })}
-                  placeholder="Ví dụ: Nguyễn Văn An"
+                  placeholder={t('staffFullNamePlaceholder')}
                   className="w-full px-3 py-2 rounded-lg border focus:outline-none"
                   style={{
                     backgroundColor: '#FFFFFF',
@@ -730,7 +732,7 @@ export const AdminStaffTab = ({ currentUser }) => {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[11px] font-semibold mb-1" style={{ color: '#8C8C8C' }}>
-                    TÊN ĐĂNG NHẬP:
+                    {t('staffLabelUsername')}
                   </label>
                   <input
                     type="text"
@@ -742,7 +744,7 @@ export const AdminStaffTab = ({ currentUser }) => {
                         username: e.target.value.toLowerCase().replace(/\s+/g, '_'),
                       })
                     }
-                    placeholder="nguyen_an"
+                    placeholder={t('staffUsernamePlaceholder')}
                     className="w-full px-3 py-2 rounded-lg border focus:outline-none font-mono"
                     style={{
                       backgroundColor: '#FFFFFF',
@@ -754,7 +756,7 @@ export const AdminStaffTab = ({ currentUser }) => {
 
                 <div>
                   <label className="block text-[11px] font-semibold mb-1" style={{ color: '#8C8C8C' }}>
-                    MẬT KHẨU:
+                    {t('staffLabelPassword')}
                   </label>
                   <input
                     type="password"
@@ -773,7 +775,7 @@ export const AdminStaffTab = ({ currentUser }) => {
 
               <div>
                 <label className="block text-[11px] font-semibold mb-1" style={{ color: '#8C8C8C' }}>
-                  BỘ PHẬN:
+                  {t('staffLabelDept')}
                 </label>
                 <select
                   value={addForm.department_id || (deptOptions[0]?.id || '')}
@@ -810,10 +812,10 @@ export const AdminStaffTab = ({ currentUser }) => {
               >
                 <div className="pr-3">
                   <div className="font-semibold text-xs" style={{ color: '#262626' }}>
-                    Tiếp nhận hỗ trợ Robot
+                    {t('staffRobotSupportTitle')}
                   </div>
                   <div className="text-[11px]" style={{ color: '#8C8C8C' }}>
-                    Đặt làm nhân sự tiếp nhận khi Robot cần hỗ trợ
+                    {t('staffRobotSupportDescAdd')}
                   </div>
                 </div>
 
@@ -836,7 +838,7 @@ export const AdminStaffTab = ({ currentUser }) => {
                     color: '#262626',
                   }}
                 >
-                  Hủy
+                  {t('staffCancelBtn')}
                 </button>
                 <button
                   type="submit"
@@ -848,7 +850,7 @@ export const AdminStaffTab = ({ currentUser }) => {
                     color: '#F2EFE9',
                   }}
                 >
-                  {isLoading ? 'Đang tạo...' : 'Tạo nhân sự'}
+                  {isLoading ? t('staffCreatingBtn') : t('staffCreateBtn')}
                 </button>
               </div>
             </form>

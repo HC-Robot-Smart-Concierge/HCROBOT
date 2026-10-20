@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
-  Globe,
   Bell,
   CheckCheck,
   Bot,
@@ -19,8 +18,6 @@ export const AuroraHeader = ({
   systemName = 'HCROBOT',
   subtitle = 'Front Desk Operations',
   unreadCount = 0,
-  language = 'EN',
-  onToggleLanguage = () => {},
   referenceLayout = false,
   notifications = [],
   onOpenNotificationsPage = () => {},
@@ -96,21 +93,11 @@ export const AuroraHeader = ({
 
       {/* Right Controls */}
       <div className="flex items-center gap-3 relative" ref={dropdownRef}>
-        {/* Language selector */}
-        <button
-          type="button"
-          onClick={onToggleLanguage}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-[#DDD8CE] text-xs font-semibold text-[#44403C] hover:bg-[#E5E0D5] transition-all cursor-pointer ${referenceLayout ? 'bg-[#F5F4F1]' : 'bg-[#EFECE6]'}`}
-        >
-          <Globe className="w-3.5 h-3.5 text-[#57534E]" />
-          <span>{language}</span>
-        </button>
-
         {/* Notifications Bell Button */}
         <button
           type="button"
           onClick={() => setIsOpen(!isOpen)}
-          title="Xem thông báo phòng ban"
+          title="View department notifications"
           className={`relative p-2 rounded-full text-[#44403C] hover:bg-[#E5E0D5] transition-all cursor-pointer ${
             isOpen ? 'bg-[#E5E0D5] ring-2 ring-stone-400' : ''
           } ${referenceLayout ? 'bg-transparent border-0' : 'bg-[#EFECE6] border border-[#DDD8CE]'}`}
@@ -129,13 +116,13 @@ export const AuroraHeader = ({
             {/* Popover Header */}
             <div className="p-4 border-b border-[#F0ECE3] bg-[#FAF8F5] flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <h3 className="text-xs font-bold text-stone-900">Thông Báo Phòng Ban</h3>
+                <h3 className="text-xs font-bold text-stone-900">Department Notifications</h3>
                 <span className="px-2 py-0.5 rounded-full bg-[#18181B] text-white text-[9px] font-bold">
                   {departmentName}
                 </span>
                 {unreadCount > 0 && (
                   <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-[10px] font-bold">
-                    {unreadCount} mới
+                    {unreadCount} new
                   </span>
                 )}
               </div>
@@ -149,7 +136,7 @@ export const AuroraHeader = ({
                   className="text-[11px] font-semibold text-stone-600 hover:text-stone-900 flex items-center gap-1 hover:underline cursor-pointer"
                 >
                   <CheckCheck className="w-3 h-3" />
-                  <span>Đọc tất cả</span>
+                  <span>Mark all read</span>
                 </button>
               )}
             </div>
@@ -159,7 +146,7 @@ export const AuroraHeader = ({
               {recentNotifications.length === 0 ? (
                 <div className="py-12 px-6 text-center text-stone-400 text-xs">
                   <Bell className="w-8 h-8 mx-auto text-stone-300 mb-2" />
-                  <p>Hiện không có thông báo nào mới.</p>
+                  <p>No new notifications.</p>
                 </div>
               ) : (
                 recentNotifications.map((notif) => {
@@ -194,7 +181,7 @@ export const AuroraHeader = ({
 
                         <div className="flex items-center justify-between pt-1">
                           <span className="text-[10px] text-stone-400 font-medium">
-                            {notif.time || (notif.created_at ? new Date(notif.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : 'Vừa xong')}
+                            {notif.time || (notif.created_at ? new Date(notif.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : 'Just now')}
                           </span>
                           <span className="text-[10px] text-stone-400 font-mono">
                             {notif.id}
@@ -217,7 +204,7 @@ export const AuroraHeader = ({
                 }}
                 className="w-full py-2 px-3 rounded-2xl bg-white hover:bg-stone-100 border border-[#DDD8CE] text-xs font-bold text-stone-800 transition-all flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
               >
-                <span>Xem tất cả trong Trung Tâm Thông Báo</span>
+                <span>View all in Notification Center</span>
                 <ChevronRight className="w-3.5 h-3.5" />
               </button>
             </div>

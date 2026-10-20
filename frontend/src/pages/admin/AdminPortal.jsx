@@ -9,6 +9,7 @@ import { AdminStaffTab } from './tabs/AdminStaffTab';
 import { AdminSettingsTab } from './tabs/AdminSettingsTab';
 import { AdminLogsTab } from './tabs/AdminLogsTab';
 import { AdminAdvertisementsTab } from './tabs/AdminAdvertisementsTab';
+import { useLanguage } from '../../context/LanguageContext';
 import {
   fetchNotifications,
   toggleNotificationRead,
@@ -17,6 +18,7 @@ import {
 } from '../../services/operationsApi';
 
 export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () => {} }) => {
+  const { language, t } = useLanguage();
   const getInitialTab = () => {
     try {
       const params = new URLSearchParams(window.location.search);
@@ -128,7 +130,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
     try {
       await markAllNotificationsRead('All');
       setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
-      onNotify('Đã đánh dấu tất cả thông báo là đã đọc.');
+      onNotify(t('adminMarkAllReadNotice'));
     } catch {}
   };
 
@@ -162,14 +164,14 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
   }, []);
 
   const menuItems = [
-    { id: 'Dashboard',     label: 'Dashboard' },
-    { id: 'Operations',    label: 'Operations' },
-    { id: 'Robot Control', label: 'Robot Control' },
-    { id: 'Knowledge',     label: 'Kho Tri Thức & AI' },
-    { id: 'Advertisements',label: 'Quảng Cáo Robot' },
-    { id: 'Department',    label: 'Department' },
-    { id: 'Account',       label: 'Account' },
-    { id: 'Logs',          label: 'Logs' },
+    { id: 'Dashboard',     label: t('adminDashboard') },
+    { id: 'Operations',    label: t('adminOperations') },
+    { id: 'Robot Control', label: t('adminRobotControl') },
+    { id: 'Knowledge',     label: t('adminKnowledge') },
+    { id: 'Advertisements',label: t('adminAdvertisements') },
+    { id: 'Department',    label: t('adminDepartment') },
+    { id: 'Account',       label: t('adminAccount') },
+    { id: 'Logs',          label: t('adminLogs') },
   ];
 
   return (
@@ -192,7 +194,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
                 HC-ROBOT
               </div>
               <div className="text-[10px] font-semibold tracking-widest truncate" style={{ color: '#8C8C8C' }}>
-                ADMIN PORTAL
+                {t('adminBrandSubtitle')}
               </div>
             </div>
           </div>
@@ -227,7 +229,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
                           color: operationsSubTab === 'support' || operationsSubTab === 'requests' ? '#FFFFFF' : '#8C8C8C',
                         }}
                       >
-                        Technical Support Requests
+                        {t('adminSubTechSupport')}
                       </button>
                     </div>
                   )}
@@ -243,7 +245,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
                           color: robotSubTab === 'lidar' || robotSubTab === 'teleop_odom' ? '#FFFFFF' : '#8C8C8C',
                         }}
                       >
-                        Điều Khiển & Odometry SLAM
+                        {t('adminSubControlOdom')}
                       </button>
                       <button
                         onClick={() => setRobotSubTab('workflows')}
@@ -253,7 +255,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
                           color: robotSubTab === 'workflows' ? '#FFFFFF' : '#8C8C8C',
                         }}
                       >
-                        Quản Lý Step Workflows
+                        {t('adminSubWorkflow')}
                       </button>
                       <button
                         onClick={() => setRobotSubTab('camera')}
@@ -263,7 +265,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
                           color: robotSubTab === 'camera' ? '#FFFFFF' : '#8C8C8C',
                         }}
                       >
-                        Live Camera FPV
+                        {t('adminSubLiveCamera')}
                       </button>
                     </div>
                   )}
@@ -279,7 +281,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
                           color: knowledgeSubTab === 'sources' || knowledgeSubTab === 'vault' ? '#FFFFFF' : '#8C8C8C',
                         }}
                       >
-                        Kho Tài Liệu Tri Thức
+                        {t('adminSubKnowledgeVault')}
                       </button>
                       <button
                         onClick={() => setKnowledgeSubTab('scenarios')}
@@ -289,7 +291,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
                           color: knowledgeSubTab === 'scenarios' ? '#FFFFFF' : '#8C8C8C',
                         }}
                       >
-                        Kịch Bản Fast-Path
+                        {t('adminSubFastPath')}
                       </button>
                     </div>
                   )}
@@ -314,7 +316,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
           >
             <div className="flex items-center gap-2">
               <Bell className="w-3.5 h-3.5 shrink-0" />
-              <span>Notifications</span>
+              <span>{t('adminNotifications')}</span>
             </div>
             {unreadCount > 0 && (
               <span
@@ -341,7 +343,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
             onMouseLeave={e => { if (activeMenu !== 'Settings') { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#8C8C8C'; } }}
           >
             <Settings className="w-3.5 h-3.5 shrink-0" />
-            <span>Settings</span>
+            <span>{t('adminSettings')}</span>
           </button>
 
           {/* User Profile Card with Logout */}
@@ -359,10 +361,14 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
               </div>
               <div className="min-w-0 leading-tight">
                 <div className="text-xs font-bold truncate" style={{ color: '#262626' }}>
-                  {currentUser?.full_name || 'System Admin'}
+                  {language === 'EN' && currentUser?.full_name === 'Bộ phận Quản trị'
+                    ? 'Operations Admin'
+                    : (currentUser?.full_name || t('adminRoleAdmin'))}
                 </div>
                 <div className="text-[10px] font-medium truncate" style={{ color: '#8C8C8C' }}>
-                  {currentUser?.role || 'Admin'}
+                  {language === 'EN' && (currentUser?.role === 'Admin' || currentUser?.role === 'Operations Admin')
+                    ? 'Operations Admin'
+                    : (currentUser?.role === 'Admin' ? t('adminRoleAdmin') : currentUser?.role || t('adminRoleAdmin'))}
                 </div>
               </div>
             </div>
@@ -370,7 +376,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
             {/* Logout button */}
             <button
               onClick={onLogout}
-              title="Đăng xuất"
+              title={t('adminLogout')}
               className="p-1.5 rounded-lg border hover:bg-red-50 hover:border-red-300 hover:text-red-700 transition-all cursor-pointer shrink-0"
               style={{ borderColor: '#BFBFBD', color: '#8C8C8C', backgroundColor: '#F2EFE9' }}
             >
@@ -387,9 +393,9 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
               <div className="p-3 border-b flex items-center justify-between" style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD' }}>
                 <div className="flex items-center gap-2">
                   <Bell className="w-4 h-4" style={{ color: '#262626' }} />
-                  <span className="text-xs font-bold" style={{ color: '#262626' }}>Trung Tâm Thông Báo</span>
+                  <span className="text-xs font-bold" style={{ color: '#262626' }}>Notification Center</span>
                   <span className="px-1.5 py-0.2 rounded-full text-[10px] font-extrabold" style={{ backgroundColor: '#262626', color: '#F2EFE9' }}>
-                    {unreadCount} chưa đọc
+                    {unreadCount} unread
                   </span>
                 </div>
 
@@ -399,10 +405,10 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
                       onClick={handleMarkAllRead}
                       className="text-[10px] font-bold hover:underline p-1 flex items-center gap-0.5 cursor-pointer"
                       style={{ color: '#262626' }}
-                      title="Đọc tất cả"
+                      title="Mark all read"
                     >
                       <CheckCheck className="w-3 h-3" />
-                      <span>Đọc hết</span>
+                      <span>Mark all read</span>
                     </button>
                   )}
                   <button
@@ -418,7 +424,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
               <div className="max-h-80 overflow-y-auto custom-scrollbar divide-y text-xs" style={{ borderColor: '#E9E5DC' }}>
                 {notifications.length === 0 ? (
                   <div className="py-8 text-center text-xs" style={{ color: '#8C8C8C' }}>
-                    Không có thông báo mới
+                    No new notifications
                   </div>
                 ) : (
                   notifications.map((item) => (
@@ -444,7 +450,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
                           {item.description}
                         </p>
                         <span className="text-[10px]" style={{ color: '#8C8C8C' }}>
-                          {item.created_at ? new Date(item.created_at).toLocaleTimeString('vi-VN') : 'Vừa xong'}
+                          {item.created_at ? new Date(item.created_at).toLocaleTimeString('en-US') : 'Just now'}
                         </span>
                       </div>
 

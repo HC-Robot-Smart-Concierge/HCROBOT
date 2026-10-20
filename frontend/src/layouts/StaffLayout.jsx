@@ -36,7 +36,7 @@ export const StaffLayout = () => {
     feedbackSessionId,
   } = useNotifications();
 
-  const { language, toggleLanguage, t } = useLanguage();
+  const { t } = useLanguage();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -117,7 +117,7 @@ export const StaffLayout = () => {
 
   const handleLogout = async () => {
     await logout();
-    showNotification('Đã đăng xuất khỏi phiên làm việc.');
+    showNotification('You have been signed out successfully.');
     navigate('/');
   };
 
@@ -147,15 +147,6 @@ export const StaffLayout = () => {
             hotelName={t('hotelName')}
             systemName="HCROBOT"
             subtitle={`${currentUser?.department || 'Staff'} ${t('portalSubtitle')}`}
-            language={language}
-            onToggleLanguage={() => {
-              toggleLanguage();
-              showNotification(
-                language === 'EN'
-                  ? 'Đã chuyển ngôn ngữ sang Tiếng Việt'
-                  : 'Language switched to English'
-              );
-            }}
             notifications={notifications}
             unreadCount={unreadNotifCount}
             onOpenNotificationsPage={() => navigate('/staff/notifications')}
@@ -203,7 +194,7 @@ export const StaffLayout = () => {
         isOpen={showQuickRequestModal}
         onClose={() => setShowQuickRequestModal(false)}
         onCreated={() => {
-          showNotification('Đã tạo và điều phối yêu cầu thành công!');
+          showNotification('Request created and dispatched successfully!');
         }}
       />
 
@@ -212,7 +203,7 @@ export const StaffLayout = () => {
         onClose={() => setShowProfileModal(false)}
         onUserUpdated={(updated) => {
           setCurrentUser(updated);
-          showNotification('Hồ sơ nhân sự đã được cập nhật thành công!');
+          showNotification('Staff profile updated successfully!');
         }}
       />
     </div>

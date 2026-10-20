@@ -11,8 +11,10 @@ import { NotificationsSection } from './settings/NotificationsSection';
 import { IntegrationsSection } from './settings/IntegrationsSection';
 import { AdvancedSection } from './settings/AdvancedSection';
 import { ResetSettingsModal } from './settings/ResetSettingsModal';
+import { useLanguage } from '../../../context/LanguageContext';
 
 export const AdminSettingsTab = ({ currentUser = {} }) => {
+  const { t } = useLanguage();
   const [activeSubTab, setActiveSubTab] = useState('general'); // 'general' | 'security' | 'notifications' | 'integrations' | 'advanced'
   const [settings, setSettings] = useState(() => {
     try {
@@ -42,32 +44,32 @@ export const AdminSettingsTab = ({ currentUser = {} }) => {
       localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
       setInitialSettings(settings);
       setIsSaving(false);
-      showToast('Đã lưu toàn bộ cấu hình hệ thống thành công!');
+      showToast(t('settingsSavedToast'));
     }, 600);
   };
 
   const handleDiscard = () => {
     setSettings(initialSettings);
-    showToast('Đã hủy bỏ các thay đổi chưa lưu.');
+    showToast('Unsaved changes discarded.');
   };
 
   const handleTestPmsConnection = () => {
     setIsTestingPms(true);
     setTimeout(() => {
       setIsTestingPms(false);
-      showToast('✅ Kết nối cổng PMS Oracle OPERA Cloud: Phản hồi 200 OK (Độ trễ 42ms)');
+      showToast('✅ PMS Oracle OPERA Cloud connection: 200 OK (Latency 42ms)');
     }, 1000);
   };
 
   const handleClearMapCache = () => {
-    showToast('🧹 Đã xóa trắng Cache bản đồ SLAM. Robot đang tải lại bản đồ sàn mới.');
+    showToast('🧹 SLAM map cache cleared. Robot is reloading floor map.');
   };
 
   const handleFactoryReset = () => {
     setSettings(DEFAULT_SETTINGS);
     localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(DEFAULT_SETTINGS));
     setShowResetModal(false);
-    showToast('⚠️ Đã khôi phục toàn bộ cài đặt về trạng thái mặc định của nhà sản xuất.');
+    showToast('⚠️ All settings restored to manufacturer defaults.');
   };
 
   return (
@@ -87,10 +89,10 @@ export const AdminSettingsTab = ({ currentUser = {} }) => {
       >
         <div className="min-w-0">
           <h2 className="text-sm sm:text-base font-bold tracking-tight leading-tight truncate" style={{ color: '#262626' }}>
-            System Settings
+            {t('settingsTitle')}
           </h2>
           <p className="text-[10px] sm:text-[11px] font-normal truncate mt-0.5" style={{ color: '#8C8C8C' }}>
-            Manage global configurations, hotel profiles, and robot fleet defaults
+            {t('settingsSubtitle')}
           </p>
         </div>
       </div>
@@ -165,7 +167,7 @@ export const AdminSettingsTab = ({ currentUser = {} }) => {
           onClick={handleDiscard}
           className="px-5 py-2.5 rounded-xl border border-stone-300 bg-white hover:bg-stone-50 text-stone-700 font-bold text-xs transition-all shadow-sm cursor-pointer"
         >
-          Discard Changes
+          {t('settingsDiscard')}
         </button>
 
         <button
@@ -175,7 +177,7 @@ export const AdminSettingsTab = ({ currentUser = {} }) => {
           className="px-6 py-2.5 rounded-xl bg-stone-900 hover:bg-stone-800 text-white font-bold text-xs shadow-md flex items-center gap-2 transition-all cursor-pointer disabled:opacity-60"
         >
           <Save className="w-3.5 h-3.5 text-indigo-400" />
-          <span>{isSaving ? 'Saving Settings...' : 'Save Settings'}</span>
+          <span>{isSaving ? 'Saving...' : t('settingsSave')}</span>
         </button>
       </div>
 

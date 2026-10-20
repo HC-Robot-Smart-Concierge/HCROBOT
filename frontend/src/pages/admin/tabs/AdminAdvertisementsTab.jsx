@@ -29,8 +29,10 @@ import {
   deleteAdvertisement,
   pushAdvertisementToRobot,
 } from '../../../services/advertisementApi';
+import { useLanguage } from '../../../context/LanguageContext';
 
 export const AdminAdvertisementsTab = ({ currentUser, onNotify = () => {} }) => {
+  const { t, language } = useLanguage();
   const [ads, setAds] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -77,7 +79,7 @@ export const AdminAdvertisementsTab = ({ currentUser, onNotify = () => {} }) => 
         setAds(data);
       }
     } catch (err) {
-      setError(err.message || 'Không thể tải danh sách quảng cáo');
+      setError(err.message || t('adsNotifyLoadError'));
     } finally {
       setLoading(false);
     }
@@ -131,11 +133,11 @@ export const AdminAdvertisementsTab = ({ currentUser, onNotify = () => {} }) => 
   const handleUploadSubmit = async (e) => {
     e.preventDefault();
     if (!uploadFile) {
-      alert('Vui lòng chọn tệp ảnh hoặc video để tải lên');
+      alert(t('adsDropzonePrompt'));
       return;
     }
     if (!formTitle.trim()) {
-      alert('Vui lòng nhập tiêu đề quảng cáo');
+      alert(t('adsLabelTitle'));
       return;
     }
 
@@ -155,9 +157,9 @@ export const AdminAdvertisementsTab = ({ currentUser, onNotify = () => {} }) => 
       setAds((prev) => [created, ...prev]);
       setIsUploadModalOpen(false);
       resetUploadForm();
-      onNotify(`Đã tải lên quảng cáo thành công: "${created.title}"`);
+      onNotify(t('adsNotifyUploadSuccess').replace('{title}', created.title));
     } catch (err) {
-      alert(err.message || 'Lỗi tải lên quảng cáo');
+      alert(err.message || t('adsNotifyUploadError').replace('{msg}', err.message));
     } finally {
       setIsUploading(false);
     }
@@ -166,11 +168,11 @@ export const AdminAdvertisementsTab = ({ currentUser, onNotify = () => {} }) => 
   const handleCreateByUrlSubmit = async (e) => {
     e.preventDefault();
     if (!formMediaUrl.trim()) {
-      alert('Vui lòng nhập đường dẫn URL media');
+      alert(t('adsLabelMediaUrl'));
       return;
     }
     if (!formTitle.trim()) {
-      alert('Vui lòng nhập tiêu đề quảng cáo');
+      alert(t('adsLabelTitle'));
       return;
     }
 
@@ -192,9 +194,9 @@ export const AdminAdvertisementsTab = ({ currentUser, onNotify = () => {} }) => 
       setAds((prev) => [created, ...prev]);
       setIsUrlModalOpen(false);
       resetUploadForm();
-      onNotify(`Đã tạo thành công quảng cáo: "${created.title}"`);
+      onNotify(t('adsNotifyUploadSuccess').replace('{title}', created.title));
     } catch (err) {
-      alert(err.message || 'Lỗi tạo quảng cáo qua URL');
+      alert(err.message || t('adsNotifyUploadError').replace('{msg}', err.message));
     } finally {
       setIsUploading(false);
     }
@@ -205,25 +207,26 @@ export const AdminAdvertisementsTab = ({ currentUser, onNotify = () => {} }) => 
       const updated = await updateAdvertisement(ad.id, { is_active: !ad.is_active });
       setAds((prev) => prev.map((item) => (item.id === ad.id ? updated : item)));
       onNotify(
-        updated.is_active
-          ? `Đã kích hoạt hiển thị: "${ad.title}"`
-          : `Đã tắt quảng cáo: "${ad.title}"`
+        t('adsNotifyToggleActive')
+          .replace('{title}', ad.title)
+          .replace('{status}', updated.is_active ? t('adsNotifyActiveText') : t('adsNotifyInactiveText'))
       );
     } catch (err) {
-      alert(err.message || 'Lỗi khi cập nhật trạng thái');
+      alert(err.message || t('adsNotifyUpdateError').replace('{msg}', err.message));
     }
   };
 
   const handleDelete = async (ad) => {
-    if (!window.confirm(`Xác nhận xóa quảng cáo "${ad.title}" khỏi hệ thống?`)) {
+    const confirmMsg = t('adsNotifyConfirmDelete').replace('{title}', ad.title);
+    if (!window.confirm(confirmMsg)) {
       return;
     }
     try {
       await deleteAdvertisement(ad.id);
       setAds((prev) => prev.filter((item) => item.id !== ad.id));
-      onNotify(`Đã xóa quảng cáo: "${ad.title}"`);
+      onNotify(t('adsNotifyDeleted').replace('{title}', ad.title));
     } catch (err) {
-      alert(err.message || 'Lỗi khi xóa quảng cáo');
+      alert(err.message || t('adsNotifyDeleteError').replace('{msg}', err.message));
     }
   };
 
@@ -231,9 +234,9 @@ export const AdminAdvertisementsTab = ({ currentUser, onNotify = () => {} }) => 
     setPushingAdId(ad.id);
     try {
       await pushAdvertisementToRobot(ad.id);
-      onNotify(`Đã phát lệnh chiếu quảng cáo "${ad.title}" tới toàn bộ màn hình Robot`);
+      onNotify(t('adsNotifyPushSuccess').replace('{title}', ad.title));
     } catch (err) {
-      alert(err.message || 'Lỗi khi đẩy quảng cáo xuống robot');
+      alert(err.message || t('adsNotifyPushError').replace('{msg}', err.message));
     } finally {
       setPushingAdId(null);
     }
@@ -261,9 +264,9 @@ export const AdminAdvertisementsTab = ({ currentUser, onNotify = () => {} }) => 
       const updated = await updateAdvertisement(editingAd.id, payload);
       setAds((prev) => prev.map((item) => (item.id === editingAd.id ? updated : item)));
       setEditingAd(null);
-      onNotify(`Đã cập nhật cấu hình: "${updated.title}"`);
+      onNotify(t('adsNotifyUpdateSuccess').replace('{title}', updated.title));
     } catch (err) {
-      alert(err.message || 'Lỗi lưu thông tin quảng cáo');
+      alert(err.message || t('adsNotifyUpdateError').replace('{msg}', err.message));
     } finally {
       setIsSavingEdit(false);
     }
@@ -286,30 +289,33 @@ export const AdminAdvertisementsTab = ({ currentUser, onNotify = () => {} }) => 
   const totalImages = ads.filter((a) => a.media_type === 'IMAGE').length;
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl mx-auto select-none font-sans" style={{ color: '#262626' }}>
-      {/* Header bar */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b" style={{ borderColor: '#BFBFBD' }}>
-        <div>
+    <div className="w-full flex flex-col min-h-full pb-6 select-none font-sans" style={{ color: '#262626' }}>
+      {/* Header Bar - seamlessly aligned with sidebar brand header */}
+      <div
+        className="h-16 px-5 border-b flex items-center justify-between gap-4 shrink-0 sticky top-0 z-20"
+        style={{ borderColor: '#BFBFBD', backgroundColor: '#F2EFE9' }}
+      >
+        <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <Tv className="w-5 h-5" style={{ color: '#262626' }} />
-            <h1 className="text-xl font-black tracking-tight" style={{ color: '#262626' }}>
-              Quản Lý Quảng Cáo & Media Robot
-            </h1>
+            <Tv className="w-4 h-4 shrink-0" style={{ color: '#262626' }} />
+            <h2 className="text-sm sm:text-base font-bold tracking-tight leading-tight truncate" style={{ color: '#262626' }}>
+              {t('adsTabTitle')}
+            </h2>
           </div>
-          <p className="text-xs mt-1" style={{ color: '#8C8C8C' }}>
-            Lưu trữ và phát sóng hình ảnh, video quảng cáo. Tự động trình chiếu khi màn hình Robot rảnh rỗi (Idle Standby) hoặc theo kịch bản Workflow.
+          <p className="text-[10px] sm:text-[11px] font-normal truncate mt-0.5" style={{ color: '#8C8C8C' }}>
+            {t('adsTabSubtitle')}
           </p>
         </div>
 
         {/* Action buttons */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <button
             onClick={loadData}
-            title="Làm mới danh sách"
-            className="p-2 rounded-lg border hover:bg-black/5 transition-all cursor-pointer"
+            title={t('adsRefreshTooltip')}
+            className="p-1.5 rounded-lg border hover:bg-black/5 transition-all cursor-pointer"
             style={{ borderColor: '#BFBFBD', backgroundColor: '#FFFFFF', color: '#262626' }}
           >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
           </button>
 
           <button
@@ -317,11 +323,11 @@ export const AdminAdvertisementsTab = ({ currentUser, onNotify = () => {} }) => 
               resetUploadForm();
               setIsUrlModalOpen(true);
             }}
-            className="px-3 py-2 rounded-lg border text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer hover:bg-black/5"
+            className="px-3 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer hover:bg-black/5 whitespace-nowrap"
             style={{ borderColor: '#BFBFBD', backgroundColor: '#FFFFFF', color: '#262626' }}
           >
             <LinkIcon className="w-3.5 h-3.5" />
-            <span>Thêm Bằng URL</span>
+            <span>{t('adsBtnAddUrl')}</span>
           </button>
 
           <button
@@ -329,276 +335,279 @@ export const AdminAdvertisementsTab = ({ currentUser, onNotify = () => {} }) => 
               resetUploadForm();
               setIsUploadModalOpen(true);
             }}
-            className="px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all cursor-pointer hover:opacity-90"
+            className="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-all cursor-pointer hover:bg-[#262626]/90 whitespace-nowrap"
             style={{ backgroundColor: '#262626', color: '#FFFFFF' }}
           >
-            <UploadCloud className="w-4 h-4" />
-            <span>Tải Lên Media</span>
+            <UploadCloud className="w-3.5 h-3.5" />
+            <span>{t('adsBtnUploadMedia')}</span>
           </button>
         </div>
       </div>
 
-      {/* Stats counter cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="p-3.5 rounded-xl border bg-white shadow-2xs" style={{ borderColor: '#BFBFBD' }}>
-          <div className="text-[11px] font-bold" style={{ color: '#8C8C8C' }}>Tổng Quảng Cáo</div>
-          <div className="text-xl font-black mt-1" style={{ color: '#262626' }}>{ads.length}</div>
-        </div>
-
-        <div className="p-3.5 rounded-xl border bg-white shadow-2xs" style={{ borderColor: '#BFBFBD' }}>
-          <div className="text-[11px] font-bold" style={{ color: '#8C8C8C' }}>Đang Kích Hoạt (Active)</div>
-          <div className="text-xl font-black mt-1 text-emerald-700">{totalActive}</div>
-        </div>
-
-        <div className="p-3.5 rounded-xl border bg-white shadow-2xs" style={{ borderColor: '#BFBFBD' }}>
-          <div className="text-[11px] font-bold" style={{ color: '#8C8C8C' }}>Video HD</div>
-          <div className="text-xl font-black mt-1" style={{ color: '#262626' }}>{totalVideos}</div>
-        </div>
-
-        <div className="p-3.5 rounded-xl border bg-white shadow-2xs" style={{ borderColor: '#BFBFBD' }}>
-          <div className="text-[11px] font-bold" style={{ color: '#8C8C8C' }}>Hình Ảnh Poster</div>
-          <div className="text-xl font-black mt-1" style={{ color: '#262626' }}>{totalImages}</div>
-        </div>
-      </div>
-
-      {/* Filter and search toolbar */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3 rounded-xl border bg-white shadow-2xs" style={{ borderColor: '#BFBFBD' }}>
-        <div className="flex items-center gap-1.5 w-full sm:w-auto">
-          {['ALL', 'IMAGE', 'VIDEO'].map((type) => (
-            <button
-              key={type}
-              onClick={() => setFilterType(type)}
-              className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer"
-              style={{
-                backgroundColor: filterType === type ? '#262626' : 'transparent',
-                color: filterType === type ? '#FFFFFF' : '#8C8C8C',
-              }}
-            >
-              {type === 'ALL' ? 'Tất Cả' : type === 'IMAGE' ? 'Hình Ảnh' : 'Video'}
-            </button>
-          ))}
-        </div>
-
-        <div className="w-full sm:w-72">
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Tìm theo tiêu đề, mô tả..."
-            className="w-full px-3 py-1.5 text-xs rounded-lg border focus:outline-none focus:ring-1 focus:ring-black"
-            style={{ borderColor: '#BFBFBD', backgroundColor: '#F2EFE9', color: '#262626' }}
-          />
-        </div>
-      </div>
-
-      {/* Content list */}
-      {loading ? (
-        <div className="p-16 text-center text-xs" style={{ color: '#8C8C8C' }}>
-          <div className="inline-block animate-spin w-6 h-6 border-2 border-black border-t-transparent rounded-full mb-2" />
-          <div>Đang tải danh sách quảng cáo...</div>
-        </div>
-      ) : error ? (
-        <div className="p-6 rounded-xl border border-red-300 bg-red-50 text-red-700 text-xs flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <AlertCircle className="w-4 h-4" />
-            <span>{error}</span>
+      {/* Content Body */}
+      <div className="p-4 sm:p-5 space-y-4">
+        {/* Stats counter cards */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="p-3.5 rounded-xl border bg-white shadow-2xs" style={{ borderColor: '#BFBFBD' }}>
+            <div className="text-[11px] font-bold" style={{ color: '#8C8C8C' }}>{t('adsCardTotal')}</div>
+            <div className="text-xl font-black mt-1" style={{ color: '#262626' }}>{ads.length}</div>
           </div>
-          <button onClick={loadData} className="px-3 py-1 rounded bg-red-600 text-white font-bold cursor-pointer">
-            Thử lại
-          </button>
+
+          <div className="p-3.5 rounded-xl border bg-white shadow-2xs" style={{ borderColor: '#BFBFBD' }}>
+            <div className="text-[11px] font-bold" style={{ color: '#8C8C8C' }}>{t('adsCardActive')}</div>
+            <div className="text-xl font-black mt-1 text-emerald-700">{totalActive}</div>
+          </div>
+
+          <div className="p-3.5 rounded-xl border bg-white shadow-2xs" style={{ borderColor: '#BFBFBD' }}>
+            <div className="text-[11px] font-bold" style={{ color: '#8C8C8C' }}>{t('adsCardVideos')}</div>
+            <div className="text-xl font-black mt-1" style={{ color: '#262626' }}>{totalVideos}</div>
+          </div>
+
+          <div className="p-3.5 rounded-xl border bg-white shadow-2xs" style={{ borderColor: '#BFBFBD' }}>
+            <div className="text-[11px] font-bold" style={{ color: '#8C8C8C' }}>{t('adsCardImages')}</div>
+            <div className="text-xl font-black mt-1" style={{ color: '#262626' }}>{totalImages}</div>
+          </div>
         </div>
-      ) : filteredAds.length === 0 ? (
-        <div className="p-16 text-center rounded-2xl border bg-white space-y-3" style={{ borderColor: '#BFBFBD' }}>
-          <Tv className="w-10 h-10 mx-auto stroke-1" style={{ color: '#8C8C8C' }} />
-          <div className="text-sm font-bold" style={{ color: '#262626' }}>Chưa có quảng cáo nào phù hợp</div>
-          <p className="text-xs max-w-sm mx-auto" style={{ color: '#8C8C8C' }}>
-            Tải lên banner hình ảnh hoặc video khuyến mãi để màn hình Robot tự động trình chiếu khi không có khách tương tác.
-          </p>
-          <button
-            onClick={() => {
-              resetUploadForm();
-              setIsUploadModalOpen(true);
-            }}
-            className="px-4 py-2 rounded-lg text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer shadow-sm"
-            style={{ backgroundColor: '#262626', color: '#FFFFFF' }}
-          >
-            <UploadCloud className="w-4 h-4" />
-            <span>Tải Lên Ngay</span>
-          </button>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-          {filteredAds.map((ad) => {
-            const isVideo = ad.media_type === 'VIDEO';
-            return (
-              <div
-                key={ad.id}
-                className={`rounded-2xl border bg-white overflow-hidden shadow-2xs flex flex-col justify-between transition-all hover:shadow-md ${
-                  !ad.is_active ? 'opacity-65' : ''
-                }`}
-                style={{ borderColor: '#BFBFBD' }}
+
+        {/* Filter and search toolbar */}
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3 rounded-xl border bg-white shadow-2xs" style={{ borderColor: '#BFBFBD' }}>
+          <div className="flex items-center gap-1.5 w-full sm:w-auto">
+            {['ALL', 'IMAGE', 'VIDEO'].map((type) => (
+              <button
+                key={type}
+                onClick={() => setFilterType(type)}
+                className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer"
+                style={{
+                  backgroundColor: filterType === type ? '#262626' : 'transparent',
+                  color: filterType === type ? '#FFFFFF' : '#8C8C8C',
+                }}
               >
-                {/* Media Preview Box */}
-                <div className="relative aspect-video bg-neutral-900 overflow-hidden group">
-                  {isVideo ? (
-                    <video
-                      src={ad.media_url}
-                      poster={ad.thumbnail_url || undefined}
-                      className="w-full h-full object-cover"
-                      muted
-                      playsInline
-                      preload="metadata"
-                    />
-                  ) : (
-                    <img
-                      src={ad.media_url}
-                      alt={ad.title}
-                      className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-                      loading="lazy"
-                    />
-                  )}
+                {type === 'ALL' ? t('adsFilterAll') : type === 'IMAGE' ? t('adsFilterImages') : t('adsFilterVideos')}
+              </button>
+            ))}
+          </div>
 
-                  {/* Overlays / Badges */}
-                  <div className="absolute top-2 left-2 flex items-center gap-1.5 z-10">
-                    <span
-                      className="px-2 py-0.5 rounded-md text-[10px] font-black tracking-wider shadow-sm"
-                      style={{
-                        backgroundColor: isVideo ? '#4B2585' : '#1A6B54',
-                        color: '#FFFFFF',
-                      }}
-                    >
-                      {isVideo ? 'VIDEO' : 'IMAGE'}
-                    </span>
+          <div className="w-full sm:w-72">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder={t('adsSearchPlaceholder')}
+              className="w-full px-3 py-1.5 text-xs rounded-lg border focus:outline-none focus:ring-1 focus:ring-black"
+              style={{ borderColor: '#BFBFBD', backgroundColor: '#F2EFE9', color: '#262626' }}
+            />
+          </div>
+        </div>
 
-                    <span
-                      className="px-2 py-0.5 rounded-md text-[10px] font-extrabold shadow-sm"
-                      style={{
-                        backgroundColor: ad.is_active ? '#065F46' : '#525252',
-                        color: '#FFFFFF',
-                      }}
-                    >
-                      {ad.is_active ? 'ĐANG BẬT' : 'ĐÃ TẮT'}
-                    </span>
-                  </div>
-
-                  <div className="absolute top-2 right-2 z-10">
-                    <span
-                      className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-black/70 text-white backdrop-blur-xs"
-                      title="Thời gian phát"
-                    >
-                      {ad.duration_seconds}s
-                    </span>
-                  </div>
-
-                  {/* Quick Action Overlay on Hover */}
-                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 z-20">
-                    <button
-                      onClick={() => setPreviewAd(ad)}
-                      className="p-2 rounded-full bg-white/90 text-black hover:bg-white hover:scale-110 transition-all cursor-pointer shadow-lg"
-                      title="Xem toàn màn hình"
-                    >
-                      <Eye className="w-4 h-4" />
-                    </button>
-
-                    <button
-                      onClick={() => handlePushToRobot(ad)}
-                      disabled={pushingAdId === ad.id}
-                      className="px-3 py-2 rounded-full bg-emerald-600 text-white text-xs font-bold flex items-center gap-1.5 hover:bg-emerald-500 hover:scale-105 transition-all cursor-pointer shadow-lg"
-                      title="Đẩy xuống màn hình robot phát ngay"
-                    >
-                      <Send className={`w-3.5 h-3.5 ${pushingAdId === ad.id ? 'animate-bounce' : ''}`} />
-                      <span>{pushingAdId === ad.id ? 'Đang đẩy...' : 'Phát Ngay'}</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Card Info Content */}
-                <div className="p-4 space-y-2 flex-1 flex flex-col justify-between">
-                  <div className="space-y-1">
-                    <div className="flex items-start justify-between gap-2">
-                      <h3 className="text-sm font-bold line-clamp-1" title={ad.title} style={{ color: '#262626' }}>
-                        {ad.title}
-                      </h3>
-                      <span
-                        className="text-[10px] font-mono font-bold px-1.5 py-0.2 rounded border shrink-0"
-                        style={{ borderColor: '#BFBFBD', backgroundColor: '#F2EFE9', color: '#262626' }}
-                        title="Độ ưu tiên (1-10)"
-                      >
-                        P{ad.priority}
-                      </span>
-                    </div>
-
-                    {ad.description ? (
-                      <p className="text-xs line-clamp-2" style={{ color: '#8C8C8C' }}>
-                        {ad.description}
-                      </p>
+        {/* Content list */}
+        {loading ? (
+          <div className="p-16 text-center text-xs" style={{ color: '#8C8C8C' }}>
+            <div className="inline-block animate-spin w-6 h-6 border-2 border-black border-t-transparent rounded-full mb-2" />
+            <div>{t('adsLoading')}</div>
+          </div>
+        ) : error ? (
+          <div className="p-6 rounded-xl border border-red-300 bg-red-50 text-red-700 text-xs flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4" />
+              <span>{error}</span>
+            </div>
+            <button onClick={loadData} className="px-3 py-1 rounded bg-red-600 text-white font-bold cursor-pointer">
+              {t('adsRetry')}
+            </button>
+          </div>
+        ) : filteredAds.length === 0 ? (
+          <div className="p-16 text-center rounded-2xl border bg-white space-y-3" style={{ borderColor: '#BFBFBD' }}>
+            <Tv className="w-10 h-10 mx-auto stroke-1" style={{ color: '#8C8C8C' }} />
+            <div className="text-sm font-bold" style={{ color: '#262626' }}>{t('adsEmptyTitle')}</div>
+            <p className="text-xs max-w-sm mx-auto" style={{ color: '#8C8C8C' }}>
+              {t('adsEmptySubtitle')}
+            </p>
+            <button
+              onClick={() => {
+                resetUploadForm();
+                setIsUploadModalOpen(true);
+              }}
+              className="px-4 py-2 rounded-lg text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer shadow-sm hover:opacity-90"
+              style={{ backgroundColor: '#262626', color: '#FFFFFF' }}
+            >
+              <UploadCloud className="w-4 h-4" />
+              <span>{t('adsBtnUploadNow')}</span>
+            </button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            {filteredAds.map((ad) => {
+              const isVideo = ad.media_type === 'VIDEO';
+              return (
+                <div
+                  key={ad.id}
+                  className={`rounded-2xl border bg-white overflow-hidden shadow-2xs flex flex-col justify-between transition-all hover:shadow-md ${
+                    !ad.is_active ? 'opacity-65' : ''
+                  }`}
+                  style={{ borderColor: '#BFBFBD' }}
+                >
+                  {/* Media Preview Box */}
+                  <div className="relative aspect-video bg-neutral-900 overflow-hidden group">
+                    {isVideo ? (
+                      <video
+                        src={ad.media_url}
+                        poster={ad.thumbnail_url || undefined}
+                        className="w-full h-full object-cover"
+                        muted
+                        playsInline
+                        preload="metadata"
+                      />
                     ) : (
-                      <p className="text-xs italic" style={{ color: '#BFBFBD' }}>
-                        Không có mô tả
-                      </p>
+                      <img
+                        src={ad.media_url}
+                        alt={ad.title}
+                        className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                        loading="lazy"
+                      />
                     )}
-                  </div>
 
-                  {/* Metadata and Actions footer */}
-                  <div className="pt-3 border-t space-y-2.5" style={{ borderColor: '#E9E5DC' }}>
-                    <div className="flex items-center justify-between text-[11px]" style={{ color: '#8C8C8C' }}>
-                      <span>
-                        Vị trí:{' '}
-                        <strong style={{ color: '#262626' }}>
-                          {ad.display_location === 'ALL'
-                            ? 'Mọi chế độ'
-                            : ad.display_location === 'IDLE_STANDBY'
-                            ? 'Khi rảnh rỗi'
-                            : 'Workflow'}
-                        </strong>
+                    {/* Overlays / Badges */}
+                    <div className="absolute top-2 left-2 flex items-center gap-1.5 z-10">
+                      <span
+                        className="px-2 py-0.5 rounded-md text-[10px] font-black tracking-wider shadow-sm"
+                        style={{
+                          backgroundColor: isVideo ? '#4B2585' : '#1A6B54',
+                          color: '#FFFFFF',
+                        }}
+                      >
+                        {isVideo ? t('adsBadgeVideo') : t('adsBadgeImage')}
                       </span>
-                      <span className="font-mono text-[10px] uppercase text-stone-400">
-                        {ad.media_type === 'VIDEO' ? '1080P' : 'IMAGE'}
+
+                      <span
+                        className="px-2 py-0.5 rounded-md text-[10px] font-extrabold shadow-sm"
+                        style={{
+                          backgroundColor: ad.is_active ? '#065F46' : '#525252',
+                          color: '#FFFFFF',
+                        }}
+                      >
+                        {ad.is_active ? t('adsBadgeActive') : t('adsBadgeInactive')}
                       </span>
                     </div>
 
-                    <div className="flex items-center justify-between pt-1">
-                      {/* Active toggle button */}
-                      <button
-                        onClick={() => handleToggleActive(ad)}
-                        className={`px-2.5 py-1 rounded-md text-[11px] font-bold border transition-all cursor-pointer flex items-center gap-1 ${
-                          ad.is_active
-                            ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
-                            : 'border-neutral-300 bg-neutral-100 text-neutral-600'
-                        }`}
+                    <div className="absolute top-2 right-2 z-10">
+                      <span
+                        className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-black/70 text-white backdrop-blur-xs"
+                        title={t('adsLabelDuration')}
                       >
-                        {ad.is_active ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
-                        <span>{ad.is_active ? 'Đang Bật' : 'Đang Tắt'}</span>
+                        {ad.duration_seconds}s
+                      </span>
+                    </div>
+
+                    {/* Quick Action Overlay on Hover */}
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 z-20">
+                      <button
+                        onClick={() => setPreviewAd(ad)}
+                        className="p-2 rounded-full bg-white/90 text-black hover:bg-white hover:scale-110 transition-all cursor-pointer shadow-lg"
+                        title={t('adsPreviewTooltip')}
+                      >
+                        <Eye className="w-4 h-4" />
                       </button>
 
-                      {/* Edit & Delete action cluster */}
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => handleOpenEdit(ad)}
-                          className="p-1.5 rounded-md border hover:bg-black/5 transition-all cursor-pointer"
-                          style={{ borderColor: '#BFBFBD', color: '#262626' }}
-                          title="Chỉnh sửa thông số"
+                      <button
+                        onClick={() => handlePushToRobot(ad)}
+                        disabled={pushingAdId === ad.id}
+                        className="px-3 py-2 rounded-full bg-emerald-600 text-white text-xs font-bold flex items-center gap-1.5 hover:bg-emerald-500 hover:scale-105 transition-all cursor-pointer shadow-lg"
+                        title={t('adsPushTooltip')}
+                      >
+                        <Send className={`w-3.5 h-3.5 ${pushingAdId === ad.id ? 'animate-bounce' : ''}`} />
+                        <span>{pushingAdId === ad.id ? t('adsPushingBtn') : t('adsPushBtn')}</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Card Info Content */}
+                  <div className="p-4 space-y-2 flex-1 flex flex-col justify-between">
+                    <div className="space-y-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <h3 className="text-sm font-bold line-clamp-1" title={ad.title} style={{ color: '#262626' }}>
+                          {ad.title}
+                        </h3>
+                        <span
+                          className="text-[10px] font-mono font-bold px-1.5 py-0.2 rounded border shrink-0"
+                          style={{ borderColor: '#BFBFBD', backgroundColor: '#F2EFE9', color: '#262626' }}
+                          title={t('adsPriorityLabel')}
                         >
-                          <Edit2 className="w-3.5 h-3.5" />
+                          P{ad.priority}
+                        </span>
+                      </div>
+
+                      {ad.description ? (
+                        <p className="text-xs line-clamp-2" style={{ color: '#8C8C8C' }}>
+                          {ad.description}
+                        </p>
+                      ) : (
+                        <p className="text-xs italic" style={{ color: '#BFBFBD' }}>
+                          {t('adsNoDesc')}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Metadata and Actions footer */}
+                    <div className="pt-3 border-t space-y-2.5" style={{ borderColor: '#E9E5DC' }}>
+                      <div className="flex items-center justify-between text-[11px]" style={{ color: '#8C8C8C' }}>
+                        <span>
+                          {t('adsLocationLabel')}{' '}
+                          <strong style={{ color: '#262626' }}>
+                            {ad.display_location === 'ALL'
+                              ? t('adsLocAll')
+                              : ad.display_location === 'IDLE_STANDBY'
+                              ? t('adsLocIdle')
+                              : t('adsLocWorkflow')}
+                          </strong>
+                        </span>
+                        <span className="font-mono text-[10px] uppercase text-stone-400">
+                          {ad.media_type === 'VIDEO' ? '1080P' : 'IMAGE'}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-between pt-1">
+                        {/* Active toggle button */}
+                        <button
+                          onClick={() => handleToggleActive(ad)}
+                          className={`px-2.5 py-1 rounded-md text-[11px] font-bold border transition-all cursor-pointer flex items-center gap-1 ${
+                            ad.is_active
+                              ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
+                              : 'border-neutral-300 bg-neutral-100 text-neutral-600'
+                          }`}
+                        >
+                          {ad.is_active ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}
+                          <span>{ad.is_active ? t('adsBtnActive') : t('adsBtnInactive')}</span>
                         </button>
 
-                        <button
-                          onClick={() => handleDelete(ad)}
-                          className="p-1.5 rounded-md border hover:bg-red-50 hover:border-red-300 hover:text-red-600 transition-all cursor-pointer"
-                          style={{ borderColor: '#BFBFBD', color: '#8C8C8C' }}
-                          title="Xóa quảng cáo"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        {/* Edit & Delete action cluster */}
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => handleOpenEdit(ad)}
+                            className="p-1.5 rounded-md border hover:bg-black/5 transition-all cursor-pointer"
+                            style={{ borderColor: '#BFBFBD', color: '#262626' }}
+                            title={t('adsEditTooltip')}
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+
+                          <button
+                            onClick={() => handleDelete(ad)}
+                            className="p-1.5 rounded-md border hover:bg-red-50 hover:border-red-300 hover:text-red-600 transition-all cursor-pointer"
+                            style={{ borderColor: '#BFBFBD', color: '#8C8C8C' }}
+                            title={t('adsDeleteTooltip')}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
+              );
+            })}
+          </div>
+        )}
+      </div>
 
       {/* MODAL 1: Upload to Cloudinary */}
       {isUploadModalOpen && (
@@ -611,7 +620,7 @@ export const AdminAdvertisementsTab = ({ currentUser, onNotify = () => {} }) => 
               <div className="flex items-center gap-2">
                 <UploadCloud className="w-5 h-5" style={{ color: '#262626' }} />
                 <h3 className="text-sm font-black" style={{ color: '#262626' }}>
-                  Tải Lên Media Quảng Cáo
+                  {t('adsUploadModalTitle')}
                 </h3>
               </div>
               <button
@@ -652,20 +661,22 @@ export const AdminAdvertisementsTab = ({ currentUser, onNotify = () => {} }) => 
                       )}
                     </div>
                     <div className="text-xs font-bold text-emerald-700">
-                      Đã chọn: {uploadFile?.name} ({(uploadFile?.size / 1024 / 1024).toFixed(2)} MB)
+                      {t('adsDropzoneSelected')
+                        .replace('{name}', uploadFile?.name || '')
+                        .replace('{size}', ((uploadFile?.size || 0) / 1024 / 1024).toFixed(2))}
                     </div>
                     <div className="text-[10px]" style={{ color: '#8C8C8C' }}>
-                      Bấm vào đây để chọn tệp tin khác
+                      {t('adsDropzoneReselect')}
                     </div>
                   </div>
                 ) : (
                   <div className="space-y-2 py-4">
                     <UploadCloud className="w-10 h-10 mx-auto" style={{ color: '#8C8C8C' }} />
                     <div className="text-xs font-bold" style={{ color: '#262626' }}>
-                      Bấm để chọn tệp hình ảnh hoặc video
+                      {t('adsDropzonePrompt')}
                     </div>
                     <div className="text-[11px]" style={{ color: '#8C8C8C' }}>
-                      Hỗ trợ JPG, PNG, WEBP, MP4, WEBM (Tối đa 100MB)
+                      {t('adsDropzoneHint')}
                     </div>
                   </div>
                 )}
@@ -674,14 +685,14 @@ export const AdminAdvertisementsTab = ({ currentUser, onNotify = () => {} }) => 
               {/* Title */}
               <div className="space-y-1">
                 <label className="text-xs font-bold" style={{ color: '#262626' }}>
-                  Tiêu đề quảng cáo <span className="text-red-500">*</span>
+                  {t('adsLabelTitle')} <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
                   required
                   value={formTitle}
                   onChange={(e) => setFormTitle(e.target.value)}
-                  placeholder="Ví dụ: Tiệc Trà Chiều Hoàng Gia, Buffet Tối 5 Sao..."
+                  placeholder={t('adsPlaceholderTitle')}
                   className="w-full px-3 py-2 text-xs rounded-lg border focus:outline-none focus:ring-1 focus:ring-black"
                   style={{ borderColor: '#BFBFBD', backgroundColor: '#F2EFE9', color: '#262626' }}
                 />
@@ -690,13 +701,13 @@ export const AdminAdvertisementsTab = ({ currentUser, onNotify = () => {} }) => 
               {/* Description */}
               <div className="space-y-1">
                 <label className="text-xs font-bold" style={{ color: '#262626' }}>
-                  Mô tả chi tiết / Lời dẫn
+                  {t('adsLabelDesc')}
                 </label>
                 <textarea
                   rows={2}
                   value={formDescription}
                   onChange={(e) => setFormDescription(e.target.value)}
-                  placeholder="Mô tả tóm tắt nội dung thông điệp hoặc chương trình ưu đãi..."
+                  placeholder={t('adsPlaceholderDesc')}
                   className="w-full px-3 py-2 text-xs rounded-lg border focus:outline-none focus:ring-1 focus:ring-black"
                   style={{ borderColor: '#BFBFBD', backgroundColor: '#F2EFE9', color: '#262626' }}
                 />
@@ -706,7 +717,7 @@ export const AdminAdvertisementsTab = ({ currentUser, onNotify = () => {} }) => 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <label className="text-xs font-bold" style={{ color: '#262626' }}>
-                    Thời lượng phát (giây)
+                    {t('adsLabelDuration')}
                   </label>
                   <input
                     type="number"
@@ -721,7 +732,7 @@ export const AdminAdvertisementsTab = ({ currentUser, onNotify = () => {} }) => 
 
                 <div className="space-y-1">
                   <label className="text-xs font-bold" style={{ color: '#262626' }}>
-                    Độ ưu tiên (1-10)
+                    {t('adsLabelPriority')}
                   </label>
                   <input
                     type="number"
@@ -738,7 +749,7 @@ export const AdminAdvertisementsTab = ({ currentUser, onNotify = () => {} }) => 
               {/* Display Location */}
               <div className="space-y-1">
                 <label className="text-xs font-bold" style={{ color: '#262626' }}>
-                  Vị trí & Kịch bản hiển thị
+                  {t('adsLabelLocation')}
                 </label>
                 <select
                   value={formDisplayLocation}
@@ -746,9 +757,9 @@ export const AdminAdvertisementsTab = ({ currentUser, onNotify = () => {} }) => 
                   className="w-full px-3 py-2 text-xs rounded-lg border focus:outline-none focus:ring-1 focus:ring-black"
                   style={{ borderColor: '#BFBFBD', backgroundColor: '#F2EFE9', color: '#262626' }}
                 >
-                  <option value="ALL">Mọi chế độ (Khi rảnh rỗi & Theo kịch bản)</option>
-                  <option value="IDLE_STANDBY">Chỉ phát khi rảnh rỗi (Idle Standby)</option>
-                  <option value="WORKFLOW">Chỉ phát theo kịch bản Workflow</option>
+                  <option value="ALL">{t('adsOptLocAll')}</option>
+                  <option value="IDLE_STANDBY">{t('adsOptLocIdle')}</option>
+                  <option value="WORKFLOW">{t('adsOptLocWorkflow')}</option>
                 </select>
               </div>
 
@@ -762,7 +773,7 @@ export const AdminAdvertisementsTab = ({ currentUser, onNotify = () => {} }) => 
                   className="w-4 h-4 cursor-pointer accent-black"
                 />
                 <label htmlFor="formIsActive" className="text-xs font-bold cursor-pointer" style={{ color: '#262626' }}>
-                  Kích hoạt phát ngay sau khi tải lên
+                  {t('adsLabelActivateUpload')}
                 </label>
               </div>
 
@@ -778,7 +789,7 @@ export const AdminAdvertisementsTab = ({ currentUser, onNotify = () => {} }) => 
                   className="px-4 py-2 rounded-lg border text-xs font-bold cursor-pointer hover:bg-black/5"
                   style={{ borderColor: '#BFBFBD', color: '#8C8C8C' }}
                 >
-                  Hủy
+                  {t('adsBtnCancel')}
                 </button>
 
                 <button
@@ -790,12 +801,12 @@ export const AdminAdvertisementsTab = ({ currentUser, onNotify = () => {} }) => 
                   {isUploading ? (
                     <>
                       <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      <span>Đang tải lên...</span>
+                      <span>{t('adsBtnUploading')}</span>
                     </>
                   ) : (
                     <>
                       <UploadCloud className="w-4 h-4" />
-                      <span>Bắt Đầu Tải Lên</span>
+                      <span>{t('adsBtnStartUpload')}</span>
                     </>
                   )}
                 </button>
@@ -816,7 +827,7 @@ export const AdminAdvertisementsTab = ({ currentUser, onNotify = () => {} }) => 
               <div className="flex items-center gap-2">
                 <LinkIcon className="w-5 h-5" style={{ color: '#262626' }} />
                 <h3 className="text-sm font-black" style={{ color: '#262626' }}>
-                  Thêm Quảng Cáo Bằng URL Trực Tiếp
+                  {t('adsUrlModalTitle')}
                 </h3>
               </div>
               <button
@@ -836,7 +847,7 @@ export const AdminAdvertisementsTab = ({ currentUser, onNotify = () => {} }) => 
               {/* Media URL */}
               <div className="space-y-1">
                 <label className="text-xs font-bold" style={{ color: '#262626' }}>
-                  Đường dẫn Media URL (HTTPS) <span className="text-red-500">*</span>
+                  {t('adsLabelMediaUrl')} <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="url"
@@ -851,7 +862,7 @@ export const AdminAdvertisementsTab = ({ currentUser, onNotify = () => {} }) => 
                       setFormMediaType('IMAGE');
                     }
                   }}
-                  placeholder="https://... đường dẫn ảnh hoặc video trực tiếp"
+                  placeholder={t('adsPlaceholderMediaUrl')}
                   className="w-full px-3 py-2 text-xs rounded-lg border focus:outline-none focus:ring-1 focus:ring-black font-mono"
                   style={{ borderColor: '#BFBFBD', backgroundColor: '#F2EFE9', color: '#262626' }}
                 />
@@ -861,7 +872,7 @@ export const AdminAdvertisementsTab = ({ currentUser, onNotify = () => {} }) => 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <label className="text-xs font-bold" style={{ color: '#262626' }}>
-                    Loại Media
+                    {t('adsLabelMediaType')}
                   </label>
                   <select
                     value={formMediaType}
@@ -869,14 +880,14 @@ export const AdminAdvertisementsTab = ({ currentUser, onNotify = () => {} }) => 
                     className="w-full px-3 py-2 text-xs rounded-lg border focus:outline-none focus:ring-1 focus:ring-black"
                     style={{ borderColor: '#BFBFBD', backgroundColor: '#F2EFE9', color: '#262626' }}
                   >
-                    <option value="IMAGE">Hình ảnh (Banner / Poster)</option>
-                    <option value="VIDEO">Video MP4 / WebM</option>
+                    <option value="IMAGE">{t('adsOptTypeImage')}</option>
+                    <option value="VIDEO">{t('adsOptTypeVideo')}</option>
                   </select>
                 </div>
 
                 <div className="space-y-1">
                   <label className="text-xs font-bold" style={{ color: '#262626' }}>
-                    Thời lượng phát (giây)
+                    {t('adsLabelDuration')}
                   </label>
                   <input
                     type="number"
@@ -893,14 +904,14 @@ export const AdminAdvertisementsTab = ({ currentUser, onNotify = () => {} }) => 
               {/* Title */}
               <div className="space-y-1">
                 <label className="text-xs font-bold" style={{ color: '#262626' }}>
-                  Tiêu đề quảng cáo <span className="text-red-500">*</span>
+                  {t('adsLabelTitle')} <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
                   required
                   value={formTitle}
                   onChange={(e) => setFormTitle(e.target.value)}
-                  placeholder="Ví dụ: Ưu Đãi Spa 30%, Tiệc BBQ Bể Bơi..."
+                  placeholder={t('adsPlaceholderTitle')}
                   className="w-full px-3 py-2 text-xs rounded-lg border focus:outline-none focus:ring-1 focus:ring-black"
                   style={{ borderColor: '#BFBFBD', backgroundColor: '#F2EFE9', color: '#262626' }}
                 />
@@ -909,13 +920,13 @@ export const AdminAdvertisementsTab = ({ currentUser, onNotify = () => {} }) => 
               {/* Description */}
               <div className="space-y-1">
                 <label className="text-xs font-bold" style={{ color: '#262626' }}>
-                  Mô tả chi tiết
+                  {t('adsLabelDesc')}
                 </label>
                 <textarea
                   rows={2}
                   value={formDescription}
                   onChange={(e) => setFormDescription(e.target.value)}
-                  placeholder="Mô tả nội dung chương trình khuyến mãi..."
+                  placeholder={t('adsPlaceholderDesc')}
                   className="w-full px-3 py-2 text-xs rounded-lg border focus:outline-none focus:ring-1 focus:ring-black"
                   style={{ borderColor: '#BFBFBD', backgroundColor: '#F2EFE9', color: '#262626' }}
                 />
@@ -925,7 +936,7 @@ export const AdminAdvertisementsTab = ({ currentUser, onNotify = () => {} }) => 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <label className="text-xs font-bold" style={{ color: '#262626' }}>
-                    Độ ưu tiên (1-10)
+                    {t('adsLabelPriority')}
                   </label>
                   <input
                     type="number"
@@ -940,7 +951,7 @@ export const AdminAdvertisementsTab = ({ currentUser, onNotify = () => {} }) => 
 
                 <div className="space-y-1">
                   <label className="text-xs font-bold" style={{ color: '#262626' }}>
-                    Vị trí hiển thị
+                    {t('adsLabelLocation')}
                   </label>
                   <select
                     value={formDisplayLocation}
@@ -948,9 +959,9 @@ export const AdminAdvertisementsTab = ({ currentUser, onNotify = () => {} }) => 
                     className="w-full px-3 py-2 text-xs rounded-lg border focus:outline-none focus:ring-1 focus:ring-black"
                     style={{ borderColor: '#BFBFBD', backgroundColor: '#F2EFE9', color: '#262626' }}
                   >
-                    <option value="ALL">Mọi chế độ</option>
-                    <option value="IDLE_STANDBY">Khi rảnh rỗi (Idle)</option>
-                    <option value="WORKFLOW">Theo kịch bản</option>
+                    <option value="ALL">{t('adsLocAll')}</option>
+                    <option value="IDLE_STANDBY">{t('adsLocIdle')}</option>
+                    <option value="WORKFLOW">{t('adsLocWorkflow')}</option>
                   </select>
                 </div>
               </div>
@@ -965,7 +976,7 @@ export const AdminAdvertisementsTab = ({ currentUser, onNotify = () => {} }) => 
                   className="w-4 h-4 cursor-pointer accent-black"
                 />
                 <label htmlFor="formUrlIsActive" className="text-xs font-bold cursor-pointer" style={{ color: '#262626' }}>
-                  Kích hoạt quảng cáo ngay
+                  {t('adsLabelActivateUrl')}
                 </label>
               </div>
 
@@ -981,7 +992,7 @@ export const AdminAdvertisementsTab = ({ currentUser, onNotify = () => {} }) => 
                   className="px-4 py-2 rounded-lg border text-xs font-bold cursor-pointer hover:bg-black/5"
                   style={{ borderColor: '#BFBFBD', color: '#8C8C8C' }}
                 >
-                  Hủy
+                  {t('adsBtnCancel')}
                 </button>
 
                 <button
@@ -991,7 +1002,7 @@ export const AdminAdvertisementsTab = ({ currentUser, onNotify = () => {} }) => 
                   style={{ backgroundColor: '#262626', color: '#FFFFFF' }}
                 >
                   <Plus className="w-4 h-4" />
-                  <span>Lưu Quảng Cáo</span>
+                  <span>{t('adsBtnSaveAd')}</span>
                 </button>
               </div>
             </form>
@@ -1010,7 +1021,7 @@ export const AdminAdvertisementsTab = ({ currentUser, onNotify = () => {} }) => 
                 <span className="w-3 h-3 rounded-full bg-yellow-500 inline-block" />
                 <span className="w-3 h-3 rounded-full bg-green-500 inline-block" />
                 <span className="text-xs font-mono font-bold text-neutral-300 ml-2">
-                  GIẢ LẬP MÀN HÌNH ROBOT KIOSK ({previewAd.media_type}) - {previewAd.title}
+                  {t('adsSimModalBar').replace('{type}', previewAd.media_type).replace('{title}', previewAd.title)}
                 </span>
               </div>
 
@@ -1020,7 +1031,7 @@ export const AdminAdvertisementsTab = ({ currentUser, onNotify = () => {} }) => 
                   className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow"
                 >
                   <Send className="w-3.5 h-3.5" />
-                  <span>Đẩy Xuống Robot Thật</span>
+                  <span>{t('adsSimBtnPushReal')}</span>
                 </button>
                 <button
                   onClick={() => setPreviewAd(null)}
@@ -1056,7 +1067,7 @@ export const AdminAdvertisementsTab = ({ currentUser, onNotify = () => {} }) => 
                   <div className="text-[11px] text-neutral-300 line-clamp-1">{previewAd.description}</div>
                 </div>
                 <div className="text-right text-[10px] font-mono text-neutral-400">
-                  Thời lượng: {previewAd.duration_seconds}s | Độ ưu tiên: P{previewAd.priority}
+                  {t('adsSimWatermark').replace('{duration}', previewAd.duration_seconds).replace('{priority}', previewAd.priority)}
                 </div>
               </div>
             </div>
@@ -1075,7 +1086,7 @@ export const AdminAdvertisementsTab = ({ currentUser, onNotify = () => {} }) => 
               <div className="flex items-center gap-2">
                 <Sliders className="w-5 h-5" style={{ color: '#262626' }} />
                 <h3 className="text-sm font-black" style={{ color: '#262626' }}>
-                  Chỉnh Sửa Thông Số Quảng Cáo
+                  {t('adsEditModalTitle')}
                 </h3>
               </div>
               <button
@@ -1089,7 +1100,7 @@ export const AdminAdvertisementsTab = ({ currentUser, onNotify = () => {} }) => 
             <form onSubmit={handleSaveEdit} className="p-5 space-y-4 overflow-y-auto custom-scrollbar flex-1">
               <div className="space-y-1">
                 <label className="text-xs font-bold" style={{ color: '#262626' }}>
-                  Tiêu đề quảng cáo
+                  {t('adsLabelTitle')}
                 </label>
                 <input
                   type="text"
@@ -1103,7 +1114,7 @@ export const AdminAdvertisementsTab = ({ currentUser, onNotify = () => {} }) => 
 
               <div className="space-y-1">
                 <label className="text-xs font-bold" style={{ color: '#262626' }}>
-                  Mô tả chi tiết
+                  {t('adsLabelDesc')}
                 </label>
                 <textarea
                   rows={2}
@@ -1117,7 +1128,7 @@ export const AdminAdvertisementsTab = ({ currentUser, onNotify = () => {} }) => 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <label className="text-xs font-bold" style={{ color: '#262626' }}>
-                    Thời lượng (giây)
+                    {t('adsLabelDuration')}
                   </label>
                   <input
                     type="number"
@@ -1132,7 +1143,7 @@ export const AdminAdvertisementsTab = ({ currentUser, onNotify = () => {} }) => 
 
                 <div className="space-y-1">
                   <label className="text-xs font-bold" style={{ color: '#262626' }}>
-                    Độ ưu tiên (1-10)
+                    {t('adsLabelPriority')}
                   </label>
                   <input
                     type="number"
@@ -1148,7 +1159,7 @@ export const AdminAdvertisementsTab = ({ currentUser, onNotify = () => {} }) => 
 
               <div className="space-y-1">
                 <label className="text-xs font-bold" style={{ color: '#262626' }}>
-                  Vị trí hiển thị
+                  {t('adsLabelLocation')}
                 </label>
                 <select
                   value={editingAd.display_location}
@@ -1156,9 +1167,9 @@ export const AdminAdvertisementsTab = ({ currentUser, onNotify = () => {} }) => 
                   className="w-full px-3 py-2 text-xs rounded-lg border focus:outline-none focus:ring-1 focus:ring-black"
                   style={{ borderColor: '#BFBFBD', backgroundColor: '#F2EFE9', color: '#262626' }}
                 >
-                  <option value="ALL">Mọi chế độ</option>
-                  <option value="IDLE_STANDBY">Khi rảnh rỗi (Idle Standby)</option>
-                  <option value="WORKFLOW">Theo kịch bản Workflow</option>
+                  <option value="ALL">{t('adsOptLocAll')}</option>
+                  <option value="IDLE_STANDBY">{t('adsOptLocIdle')}</option>
+                  <option value="WORKFLOW">{t('adsOptLocWorkflow')}</option>
                 </select>
               </div>
 
@@ -1171,7 +1182,7 @@ export const AdminAdvertisementsTab = ({ currentUser, onNotify = () => {} }) => 
                   className="w-4 h-4 cursor-pointer accent-black"
                 />
                 <label htmlFor="editIsActive" className="text-xs font-bold cursor-pointer" style={{ color: '#262626' }}>
-                  Kích hoạt quảng cáo này
+                  {t('adsLabelActivateEdit')}
                 </label>
               </div>
 
@@ -1183,7 +1194,7 @@ export const AdminAdvertisementsTab = ({ currentUser, onNotify = () => {} }) => 
                   className="px-4 py-2 rounded-lg border text-xs font-bold cursor-pointer hover:bg-black/5"
                   style={{ borderColor: '#BFBFBD', color: '#8C8C8C' }}
                 >
-                  Hủy
+                  {t('adsBtnCancel')}
                 </button>
 
                 <button
@@ -1192,7 +1203,7 @@ export const AdminAdvertisementsTab = ({ currentUser, onNotify = () => {} }) => 
                   className="px-5 py-2 rounded-lg text-xs font-bold flex items-center gap-2 cursor-pointer shadow-sm hover:opacity-90"
                   style={{ backgroundColor: '#262626', color: '#FFFFFF' }}
                 >
-                  {isSavingEdit ? 'Đang lưu...' : 'Lưu Thay Đổi'}
+                  {isSavingEdit ? t('adsBtnSavingEdit') : t('adsBtnSaveEdit')}
                 </button>
               </div>
             </form>

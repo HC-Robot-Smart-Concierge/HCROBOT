@@ -25,6 +25,7 @@ import {
 } from '../../../services/operationsApi';
 import { AdminHumanSupportView } from './AdminHumanSupportView';
 import { Pagination } from '../../../components/common/Pagination';
+import { useLanguage } from '../../../context/LanguageContext';
 
 export const AdminOperationsTab = ({
   currentUser,
@@ -32,6 +33,7 @@ export const AdminOperationsTab = ({
   subTabProp,
   onSelectSubTab,
 }) => {
+  const { t, language } = useLanguage();
   const [localSubTab, setLocalSubTab] = useState('requests');
   const subTab = subTabProp || localSubTab;
   const setSubTab = onSelectSubTab || setLocalSubTab;
@@ -130,11 +132,11 @@ export const AdminOperationsTab = ({
     try {
       const res = await updateAdminTask(ticketId, { status: nextStatus });
       if (res && res.success) {
-        onNotify(`Đã chuyển trạng thái phiếu ${ticketId} sang: ${nextStatus}`);
+        onNotify(t('opsNotifyStatusChanged').replace('{id}', ticketId).replace('{status}', nextStatus));
         loadData();
       }
     } catch (err) {
-      onNotify('Lỗi cập nhật trạng thái phiếu.');
+      onNotify(t('opsNotifyStatusError'));
     }
   };
 
@@ -177,19 +179,19 @@ export const AdminOperationsTab = ({
         note: editTaskForm.note || null,
       });
       if (res && res.success) {
-        onNotify(`Đã cập nhật phiếu ${selectedTask.id} thành công!`);
+        onNotify(t('opsNotifyUpdated').replace('{id}', selectedTask.id));
         setSelectedTask(null);
         loadData();
       }
     } catch {
-      onNotify('Lỗi khi cập nhật phiếu.');
+      onNotify(t('opsNotifyUpdateError'));
     }
   };
 
   const handleDispatchSubmit = async (e) => {
     e.preventDefault();
     if (!dispatchForm.title || !dispatchForm.room_number) {
-      onNotify('Vui lòng nhập đầy đủ tiêu đề và số phòng/vị trí!');
+      onNotify(t('opsNotifyRequiredFields'));
       return;
     }
 
@@ -197,7 +199,7 @@ export const AdminOperationsTab = ({
     try {
       const res = await dispatchAdminTask(dispatchForm);
       if (res && res.id) {
-        onNotify(`Đã phát lệnh thành công! Mã phiếu: ${res.id}`);
+        onNotify(t('opsNotifyDispatched').replace('{id}', res.id));
         setDispatchForm({
           department: 'Housekeeping',
           title: '',
@@ -211,22 +213,29 @@ export const AdminOperationsTab = ({
         loadData();
       }
     } catch (err) {
-      onNotify('Lỗi khi phát lệnh điều phối.');
+      onNotify(t('opsNotifyDispatchError'));
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const deptList = [
-    { id: 'All', label: 'Tất cả', count: summary.all_count },
-    { id: 'Reception', label: 'Lễ tân', count: summary.reception_count },
-    { id: 'Housekeeping', label: 'Buồng phòng', count: summary.housekeeping_count },
-    { id: 'F&B', label: 'Phục vụ phòng (F&B)', count: summary.room_service_count },
-    { id: 'Bell Services', label: 'Hành lý (Bellman)', count: summary.bell_services_count },
-    { id: 'Maintenance', label: 'Kỹ thuật', count: summary.maintenance_count },
-    { id: 'Concierge', label: 'Trợ lý Concierge', count: summary.concierge_count || 0 },
-    { id: 'Taxi', label: 'Đặt xe & Taxi', count: summary.taxi_count || 0 },
-    { id: 'Directive', label: 'Chỉ thị điều phối', count: summary.directives_count || 0 },
+    { id: 'All', label: language === 'VI' ? 'Tất cả' : 'All', count: summary.all_count },
+    { id: 'Reception', label: language === 'VI' ? 'Lễ tân' : 'Reception', count: summary.reception_count },
+    { id: 'Housekeeping', label: language === 'VI' ? 'Buồng phòng' : 'Housekeeping', count: summary.housekeeping_count },
+    { id: 'F&B', label: language === 'VI' ? 'Phục vụ phòng' : 'Room Service', count: summary.room_service_count },
+    { id: 'Bell Services', label: language === 'VI' ? 'Hành lý' : 'Bell Services', count: summary.bell_services_count },
+    { id: 'Maintenance', label: language === 'VI' ? 'Kỹ thuật' : 'Maintenance', count: summary.maintenance_count },
+    { id: 'Concierge', label: language === 'VI' ? 'Trợ lý Concierge' : 'Concierge Assistant', count: summary.concierge_count || 0 },
+    { id: 'Taxi', label: language === 'VI' ? 'Đặt xe & Taxi' : 'Taxi & Transport', count: summary.taxi_count || 0 },
+    { id: 'Directive', label: language === 'VI' ? 'Chỉ thị điều phối' : 'Directives', count: summary.directives_count || 0 },
+  ];
+
+  const statusOptions = [
+    { key: 'All', label: t('opsFilterAllStatus') },
+    { key: 'Pending', label: t('pending') },
+    { key: 'In Progress', label: t('inProgress') },
+    { key: 'Completed', label: t('completed') },
   ];
 
   if (subTab === 'support') {
@@ -246,10 +255,10 @@ export const AdminOperationsTab = ({
       >
         <div className="min-w-0">
           <h2 className="text-sm sm:text-base font-bold tracking-tight leading-tight truncate" style={{ color: '#262626' }}>
-            Quản Lý Yêu Cầu Toàn Khách Sạn (Service Requests)
+            {t('opsTitle')}
           </h2>
           <p className="text-[10px] sm:text-[11px] font-normal truncate mt-0.5" style={{ color: '#8C8C8C' }}>
-            Trung tâm tiếp nhận, điều phối và phân công yêu cầu dịch vụ trên toàn khách sạn
+            {t('opsSubtitle')}
           </p>
         </div>
 
@@ -263,7 +272,7 @@ export const AdminOperationsTab = ({
           }}
         >
           <PlusCircle className="w-3.5 h-3.5" />
-          <span>Tạo Lệnh Điều Phối</span>
+          <span>{t('opsCreateDispatch')}</span>
         </button>
       </div>
 
@@ -281,30 +290,30 @@ export const AdminOperationsTab = ({
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Tìm theo mã phiếu, số phòng, tên khách..."
+                placeholder={t('searchPlaceholder')}
                 className="w-full pl-9 pr-4 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs text-stone-800 placeholder-stone-400 focus:outline-none focus:border-stone-500"
               />
             </form>
 
             {/* Status Filter Pills */}
             <div className="flex items-center gap-2 overflow-x-auto w-full lg:w-auto">
-              {['All', 'Pending', 'In Progress', 'Completed'].map((st) => (
+              {statusOptions.map((st) => (
                 <button
-                  key={st}
-                  onClick={() => setStatusFilter(st)}
+                  key={st.key}
+                  onClick={() => setStatusFilter(st.key)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
-                    statusFilter === st
+                    statusFilter === st.key
                       ? 'bg-stone-900 text-white shadow-sm'
                       : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
                   }`}
                 >
-                  {st === 'All' ? 'Tất Cả Trạng Thái' : st}
+                  {st.label}
                 </button>
               ))}
 
               <button
                 onClick={loadData}
-                title="Làm mới dữ liệu"
+                title={t('opsRefreshTooltip')}
                 className="p-2 bg-stone-100 hover:bg-stone-200 text-stone-700 rounded-lg transition-all ml-1 cursor-pointer"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
@@ -315,7 +324,7 @@ export const AdminOperationsTab = ({
           {/* Department Dropdown Select */}
           <div className="flex items-center gap-3 pt-2 border-t border-stone-100">
             <label className="text-xs font-bold text-stone-500 uppercase tracking-wider shrink-0">
-              LỌC BỘ PHẬN:
+              {t('opsFilterDept')}
             </label>
             <select
               value={deptFilter}
@@ -335,25 +344,25 @@ export const AdminOperationsTab = ({
         {isLoading ? (
           <div className="py-20 text-center text-stone-400 flex flex-col items-center justify-center space-y-2">
             <RefreshCw className="w-8 h-8 animate-spin text-stone-700" />
-            <p className="text-sm font-semibold">Đang tải danh sách yêu cầu toàn khách sạn...</p>
+            <p className="text-sm font-semibold">{t('opsLoading')}</p>
           </div>
         ) : paginatedTasks.length === 0 ? (
           <div className="py-16 text-center bg-white rounded-2xl border border-dashed border-stone-300 text-stone-400 space-y-2">
             <Building2 className="w-10 h-10 mx-auto text-stone-300" />
-            <p className="text-sm font-bold text-stone-700">Không tìm thấy phiếu yêu cầu nào</p>
-            <p className="text-xs text-stone-400">Hãy thử đổi bộ lọc tìm kiếm.</p>
+            <p className="text-sm font-bold text-stone-700">{t('opsEmptyTitle')}</p>
+            <p className="text-xs text-stone-400">{t('opsEmptyDesc')}</p>
           </div>
         ) : (
           <div className="space-y-3.5">
-            {paginatedTasks.map((t) => {
-              const isDone = (t.status || '').toLowerCase() === 'completed';
+            {paginatedTasks.map((task) => {
+              const isDone = (task.status || '').toLowerCase() === 'completed';
               const isInProgress =
-                (t.status || '').toLowerCase().includes('progress') ||
-                (t.status || '').toLowerCase().includes('delivering');
+                (task.status || '').toLowerCase().includes('progress') ||
+                (task.status || '').toLowerCase().includes('delivering');
 
               return (
                 <div
-                  key={t.id}
+                  key={task.id}
                   className="bg-white rounded-2xl border border-stone-200/90 shadow-sm hover:shadow-md transition-all p-5 flex flex-col md:flex-row md:items-center justify-between gap-4"
                 >
                   {/* Left Meta & Content */}
@@ -361,24 +370,24 @@ export const AdminOperationsTab = ({
                     <div className="flex flex-wrap items-center gap-2">
                       {/* ID Badge */}
                       <span className="font-mono text-xs font-extrabold text-stone-900 bg-stone-100 px-2 py-0.5 rounded-md border border-stone-200">
-                        {t.id}
+                        {task.id}
                       </span>
 
                       {/* Department Badge */}
                       <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
-                        {t.department}
+                        {task.department}
                       </span>
 
                       {/* Location / Room */}
                       <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-[#EFECE6] text-stone-800 border border-[#DDD8CE]">
-                        {t.location}
+                        {task.location}
                       </span>
 
                       {/* Robot Indicator */}
-                      {t.assigned_robot && (
+                      {task.assigned_robot && (
                         <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-stone-100 text-stone-700 border border-stone-200 flex items-center gap-1">
                           <Bot className="w-3 h-3 text-stone-600" />
-                          {t.assigned_robot}
+                          {task.assigned_robot}
                         </span>
                       )}
                     </div>
@@ -386,11 +395,11 @@ export const AdminOperationsTab = ({
                     {/* Title & Notes */}
                     <div>
                       <h4 className="text-base font-extrabold text-stone-900 tracking-tight">
-                        {t.title}
+                        {task.title}
                       </h4>
                       <p className="text-xs text-stone-600 mt-0.5">
-                        <span className="font-semibold text-stone-800">{t.guest_name}</span>
-                        {t.notes ? ` — Ghi chú: ${t.notes}` : ''}
+                        <span className="font-semibold text-stone-800">{task.guest_name}</span>
+                        {task.notes ? ` — ${t('opsNotes')}: ${task.notes}` : ''}
                       </p>
                     </div>
 
@@ -398,16 +407,16 @@ export const AdminOperationsTab = ({
                     <div className="flex items-center gap-4 text-[11px] text-stone-400">
                       <span className="flex items-center gap-1">
                         <Clock className="w-3 h-3" />
-                        {t.time}
+                        {task.time}
                       </span>
                       <span>•</span>
-                      <span>Nguồn: {t.source}</span>
-                      {t.assigned_to && (
+                      <span>{t('opsSource')}: {task.source}</span>
+                      {task.assigned_to && (
                         <>
                           <span>•</span>
                           <span className="text-indigo-600 font-semibold flex items-center gap-1">
                             <User className="w-3 h-3" />
-                            {t.assigned_to}
+                            {task.assigned_to}
                           </span>
                         </>
                       )}
@@ -427,17 +436,17 @@ export const AdminOperationsTab = ({
                             : 'bg-stone-100 text-stone-700 border border-stone-200'
                         }`}
                       >
-                        {t.status}
+                        {task.status === 'Completed' ? t('completed') : task.status === 'In Progress' ? t('inProgress') : task.status === 'Pending' ? t('pending') : task.status}
                       </span>
                     </div>
 
-                    {/* Detail button (Admin chỉ xem được request chứ không thể tiếp nhận request) */}
+                    {/* Detail button */}
                     <button
-                      onClick={() => handleOpenTaskDetail(t)}
+                      onClick={() => handleOpenTaskDetail(task)}
                       className="px-3 py-1.5 rounded-xl border border-stone-200 bg-stone-50 hover:bg-stone-100 text-stone-700 text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-all shadow-2xs hover:border-stone-300"
                     >
                       <Eye className="w-3.5 h-3.5 text-stone-500" />
-                      <span>Chi tiết</span>
+                      <span>{t('details')}</span>
                     </button>
                   </div>
                 </div>
@@ -464,13 +473,15 @@ export const AdminOperationsTab = ({
             <div className="flex items-center justify-between border-b border-stone-100 pb-3">
               <div>
                 <h3 className="text-base font-black text-stone-900 tracking-tight flex items-center gap-2">
-                  <span>Chi Tiết Phiếu #{selectedTask.id}</span>
+                  <span>{t('opsModalTaskDetailTitle').replace('{id}', selectedTask.id)}</span>
                   <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
                     {selectedTask.department}
                   </span>
                 </h3>
                 <p className="text-xs text-stone-500 mt-0.5">
-                  Vị trí: {selectedTask.location} • Khách: {selectedTask.guest_name}
+                  {t('opsModalLocationGuest')
+                    .replace('{location}', selectedTask.location)
+                    .replace('{guest}', selectedTask.guest_name)}
                 </p>
               </div>
               <button
@@ -485,9 +496,9 @@ export const AdminOperationsTab = ({
               <div className="p-3.5 bg-stone-50 rounded-2xl border border-stone-200 space-y-1.5">
                 <div className="font-extrabold text-stone-900 text-sm">{selectedTask.title}</div>
                 <div className="flex flex-wrap items-center gap-3 text-[11px] text-stone-500">
-                  <span>Nguồn: <strong>{selectedTask.source}</strong></span>
+                  <span>{t('opsModalSource')}: <strong>{selectedTask.source}</strong></span>
                   <span>•</span>
-                  <span>Tạo lúc: <strong>{selectedTask.time || selectedTask.created_at}</strong></span>
+                  <span>{t('opsModalCreatedAt')}: <strong>{selectedTask.time || selectedTask.created_at}</strong></span>
                 </div>
               </div>
 
@@ -495,7 +506,7 @@ export const AdminOperationsTab = ({
               <div className="grid grid-cols-2 gap-3">
                 <div className="p-3 bg-stone-50 rounded-xl border border-stone-200">
                   <span className="block text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-1">
-                    Trạng Thái Hiện Tại
+                    {t('opsModalCurrentStatus')}
                   </span>
                   <span className="px-2.5 py-0.5 rounded-full text-xs font-extrabold bg-stone-200 text-stone-800">
                     {selectedTask.status}
@@ -504,7 +515,7 @@ export const AdminOperationsTab = ({
 
                 <div className="p-3 bg-stone-50 rounded-xl border border-stone-200">
                   <span className="block text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-1">
-                    Phòng / Vị Trí
+                    {t('opsModalRoomLocation')}
                   </span>
                   <span className="text-xs font-bold text-stone-900">
                     {selectedTask.location}
@@ -515,11 +526,11 @@ export const AdminOperationsTab = ({
               {/* Assigned Staff Display */}
               <div className="p-3 bg-stone-50 rounded-xl border border-stone-200">
                 <span className="block text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-1">
-                  Nhân Sự Phụ Trách
+                  {t('opsModalAssignedStaff')}
                 </span>
                 <span className="text-xs font-bold text-stone-900 flex items-center gap-1.5">
                   <User className="w-3.5 h-3.5 text-indigo-600" />
-                  <span>{selectedTask.assigned_to || 'Chưa phân công (Chờ bộ phận tiếp nhận)'}</span>
+                  <span>{selectedTask.assigned_to || t('opsModalUnassignedStaff')}</span>
                 </span>
               </div>
 
@@ -527,7 +538,7 @@ export const AdminOperationsTab = ({
               {selectedTask.assigned_robot && (
                 <div className="p-3 bg-stone-50 rounded-xl border border-stone-200">
                   <span className="block text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-1">
-                    Robot Điều Phối
+                    {t('opsModalAssignedRobot')}
                   </span>
                   <span className="text-xs font-bold text-stone-900 flex items-center gap-1.5">
                     <Bot className="w-3.5 h-3.5 text-stone-600" />
@@ -540,7 +551,7 @@ export const AdminOperationsTab = ({
               {selectedTask.notes && (
                 <div className="p-3 bg-stone-50 rounded-xl border border-stone-200">
                   <span className="block text-[10px] font-bold text-stone-500 uppercase tracking-wider mb-1">
-                    Ghi Chú Khách Hàng
+                    {t('opsModalGuestNotes')}
                   </span>
                   <p className="text-xs text-stone-700 leading-relaxed font-medium">
                     {selectedTask.notes}
@@ -554,7 +565,7 @@ export const AdminOperationsTab = ({
                   onClick={() => setSelectedTask(null)}
                   className="px-5 py-2 rounded-xl text-xs font-bold bg-stone-900 hover:bg-stone-800 text-white transition-all cursor-pointer shadow-sm"
                 >
-                  Đóng
+                  {t('opsModalClose')}
                 </button>
               </div>
             </div>
@@ -569,7 +580,7 @@ export const AdminOperationsTab = ({
             <div className="flex items-center justify-between border-b border-stone-100 pb-3">
               <h3 className="text-base font-black text-stone-900 tracking-tight flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-indigo-600" />
-                <span>Tạo Yêu Cầu / Phát Lệnh Điều Phối Mới</span>
+                <span>{t('opsCreateDispatchTitle')}</span>
               </h3>
               <button
                 onClick={() => setIsCreateModalOpen(false)}
@@ -583,7 +594,7 @@ export const AdminOperationsTab = ({
               {/* Department Selection */}
               <div>
                 <label className="block text-[11px] font-bold text-stone-700 uppercase tracking-wider mb-1">
-                  BỘ PHẬN TIẾP NHẬN:
+                  {t('opsDispatchDeptLabel')}
                 </label>
                 <div className="grid grid-cols-3 gap-1.5">
                   {['Reception', 'Housekeeping', 'F&B', 'Bell Services', 'Maintenance', 'Concierge', 'Taxi', 'Directive'].map(
@@ -608,14 +619,14 @@ export const AdminOperationsTab = ({
               {/* Task Title */}
               <div>
                 <label className="block text-[11px] font-bold text-stone-700 uppercase tracking-wider mb-1">
-                  TIÊU ĐỀ YÊU CẦU:
+                  {t('opsDispatchTitleLabel')}
                 </label>
                 <input
                   type="text"
                   required
                   value={dispatchForm.title}
                   onChange={(e) => setDispatchForm({ ...dispatchForm, title: e.target.value })}
-                  placeholder="Ví dụ: Mang 2 chai nước khoáng, Dọn phòng 402..."
+                  placeholder={t('opsDispatchTitlePlaceholder')}
                   className="w-full px-3.5 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs text-stone-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                 />
               </div>
@@ -624,26 +635,26 @@ export const AdminOperationsTab = ({
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[11px] font-bold text-stone-700 uppercase tracking-wider mb-1">
-                    SỐ PHÒNG / VỊ TRÍ:
+                    {t('opsDispatchRoomLabel')}
                   </label>
                   <input
                     type="text"
                     required
                     value={dispatchForm.room_number}
                     onChange={(e) => setDispatchForm({ ...dispatchForm, room_number: e.target.value })}
-                    placeholder="Ví dụ: Room 412, Suite 502..."
+                    placeholder={t('opsDispatchRoomPlaceholder')}
                     className="w-full px-3.5 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs text-stone-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                   />
                 </div>
                 <div>
                   <label className="block text-[11px] font-bold text-stone-700 uppercase tracking-wider mb-1">
-                    TÊN KHÁCH HÀNG:
+                    {t('opsDispatchGuestLabel')}
                   </label>
                   <input
                     type="text"
                     value={dispatchForm.guest_name}
                     onChange={(e) => setDispatchForm({ ...dispatchForm, guest_name: e.target.value })}
-                    placeholder="Mr. David Smith / Hotel Guest"
+                    placeholder={t('opsDispatchGuestPlaceholder')}
                     className="w-full px-3.5 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs text-stone-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                   />
                 </div>
@@ -652,7 +663,7 @@ export const AdminOperationsTab = ({
               {/* Assign to Robot */}
               <div>
                 <label className="block text-[11px] font-bold text-stone-700 uppercase tracking-wider mb-1">
-                  GÁN CHO ROBOT (NẾU CẦN):
+                  {t('opsDispatchRobotLabel')}
                 </label>
                 <select
                   value={dispatchForm.assigned_robot_code}
@@ -661,22 +672,22 @@ export const AdminOperationsTab = ({
                   }
                   className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs text-stone-900 font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer"
                 >
-                  <option value="RC-001">Robot Concierge Unit 01 (RC-001)</option>
-                  <option value="Bot Unit Alpha">Bot Unit Alpha (Bellman Service)</option>
-                  <option value="">Không gán Robot (Giao nhân viên)</option>
+                  <option value="RC-001">{t('opsDispatchRobotOpt1')}</option>
+                  <option value="Bot Unit Alpha">{t('opsDispatchRobotOpt2')}</option>
+                  <option value="">{t('opsDispatchRobotOptNone')}</option>
                 </select>
               </div>
 
               {/* Notes */}
               <div>
                 <label className="block text-[11px] font-bold text-stone-700 uppercase tracking-wider mb-1">
-                  CHI TIẾT / GHI CHÚ:
+                  {t('opsDispatchNotesLabel')}
                 </label>
                 <textarea
                   rows={2}
                   value={dispatchForm.description}
                   onChange={(e) => setDispatchForm({ ...dispatchForm, description: e.target.value })}
-                  placeholder="Ghi chú thêm chỉ dẫn cho nhân viên..."
+                  placeholder={t('opsDispatchNotesPlaceholder')}
                   className="w-full px-3.5 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs text-stone-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                 />
               </div>
@@ -688,7 +699,7 @@ export const AdminOperationsTab = ({
                   onClick={() => setIsCreateModalOpen(false)}
                   className="px-4 py-2 rounded-xl text-xs font-bold text-stone-600 hover:bg-stone-100 transition-all cursor-pointer"
                 >
-                  Đóng
+                  {t('opsModalClose')}
                 </button>
                 <button
                   type="submit"
@@ -696,7 +707,7 @@ export const AdminOperationsTab = ({
                   className="px-5 py-2 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
                 >
                   <Send className="w-3.5 h-3.5" />
-                  <span>{isSubmitting ? 'Đang gửi...' : 'Phát Lệnh Ngay'}</span>
+                  <span>{isSubmitting ? t('opsDispatchSubmitting') : t('opsDispatchSubmit')}</span>
                 </button>
               </div>
             </form>

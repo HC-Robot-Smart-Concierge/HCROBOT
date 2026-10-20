@@ -300,10 +300,126 @@ async def auto_create_ticket(
                 request_type="concierge",
                 type="Request",
             )
-            await db.commit()
+        elif action == "cancel_service":
+            # Xử lý HỦY YÊU CẦU: Tìm ticket đang chờ gần nhất của số phòng đó và cập nhật thành 'Cancelled'
+            from sqlalchemy.future import select
+            from sqlalchemy import desc
+            if db:
+                stmt = (
+                    select(SupportRequest)
+                    .where(
+                        SupportRequest.room_number == rm,
+                        SupportRequest.status.in_(["Pending", "Unassigned", "In Progress"]),
+                    )
+                    .order_by(desc(SupportRequest.created_at))
+                    .limit(1)
+                )
+                res = await db.execute(stmt)
+                active_req = res.scalar_one_or_none()
+                if active_req:
+                    active_req.status = "Cancelled"
+                    active_req.description = f"{active_req.description or ''}\n[Khách hủy yêu cầu qua Robot]"
+                    await create_department_notification(
+                        db=db,
+                        department="Reception",
+                        title=f"Robot AI: Khách Phòng {rm} đã HỦY yêu cầu #{active_req.ticket_code}",
+                        description=f"Yêu cầu '{active_req.title}' đã được hủy thành công theo lệnh của khách.",
+                        request_id=active_req.id,
+                        request_type="cancellation",
+                        type="Alert",
+                    )
+                    await db.commit()
+                    logger.info(f"[AITicketService] Cancelled ticket #{active_req.ticket_code} for Room {rm}")
+                    return f"CANCELLED-{active_req.ticket_code}"
+
+            cancel_code = f"CAN-{random.randint(1000, 9999)}"
+            if db:
+                req = SupportRequest(
+                    ticket_code=cancel_code,
+                    source="HCRobot Concierge AI Chat",
+                    title=f"Yêu cầu Hủy dịch vụ từ Phòng {rm}: {items}",
+                    room_number=rm,
+                    description=items or "Khách yêu cầu hủy dịch vụ nhưng không tìm thấy ticket chờ nào",
+                    guest_name=f"Guest (Room {rm})",
+                    department_id="DEP-RECEPTION",
+                    service_type_id="ST-RECEPTION",
+                    status="Pending",
+                )
+                db.add(req)
+                await create_department_notification(
+                    db=db,
+                    department="Reception",
+                    title=f"Robot AI: Yêu cầu Hủy dịch vụ mới #{cancel_code}",
+                    description=f"Phòng {rm}: {items}",
+                    request_id=req.id,
+                    request_type="reception",
+                    type="Alert",
+                )
+                await db.commit()
+            return cancel_code
+
+        elif action == "laundry":
+            ticket_code = f"LD-{random.randint(1000, 99999)}"
+            if db:
+                req = SupportRequest(
+                    ticket_code=ticket_code,
+                    source="HCRobot Concierge AI Chat",
+                    title=f"Yêu cầu Giặt ủi (Phòng {rm}): {items}",
+                    room_number=rm,
+                    description=items,
+                    guest_name=f"Guest (Room {rm})",
+                    department_id="DEP-HOUSEKEEPING",
+                    service_type_id="ST-HOUSEKEEPING",
+                    status="Pending",
+                )
+                db.add(req)
+                await create_department_notification(
+                    db=db,
+                    department="Housekeeping",
+                    title=f"Robot AI: Yêu cầu Giặt ủi mới #{ticket_code}",
+                    description=f"Phòng {rm}: {items}",
+                    request_id=req.id,
+                    request_type="laundry",
+                    type="Request",
+                )
+                await create_department_notification(
+                    db=db,
+                    department="Reception",
+                    title=f"Robot AI: Yêu cầu Giặt ủi từ Khách Phòng {rm}",
+                    description=f"Phiếu #{ticket_code}: {items}",
+                    request_id=req.id,
+                    request_type="laundry",
+                    type="Request",
+                )
+                await db.commit()
             return ticket_code
 
-        else:
+        elif action == "wake_up":
+            ticket_code = f"WU-{random.randint(1000, 99999)}"
+            if db:
+                req = SupportRequest(
+                    ticket_code=ticket_code,
+                    source="HCRobot Concierge AI Chat",
+                    title=f"Yêu cầu Báo thức (Phòng {rm}): {items}",
+                    room_number=rm,
+                    description=items,
+                    guest_name=f"Guest (Room {rm})",
+                    department_id="DEP-RECEPTION",
+                    service_type_id="ST-RECEPTION",
+                    status="Pending",
+                )
+                db.add(req)
+                await create_department_notification(
+                    db=db,
+                    department="Reception",
+                    title=f"Robot AI: Yêu cầu Báo thức mới #{ticket_code}",
+                    description=f"Phòng {rm}: {items}",
+                    request_id=req.id,
+                    request_type="wake_up",
+                    type="Request",
+                )
+                await db.commit()
+            return ticket_code
             # Default Reception & General Service Request
             ticket_code = f"REC-{random.randint(1000, 99999)}"
             req = SupportRequest(

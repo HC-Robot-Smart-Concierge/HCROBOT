@@ -112,6 +112,22 @@ async def intent_router_node(state: ConciergeState) -> Dict[str, Any]:
 
     # 2. Heuristic nhận diện dịch vụ khách sạn (< 0.1ms)
     SERVICE_KEYWORDS = {
+        "cancel_service": [
+            "hủy", "huy", "hủy yêu cầu", "huy yeu cau", "hủy phòng", "huy phong",
+            "hủy đơn", "huy don", "hủy món", "huy mon", "không cần nữa", "khong can nua",
+            "thôi không cần", "thoi khong can", "không lấy nữa", "khong lay nua",
+            "bỏ yêu cầu", "bo yeu cau", "cancel", "cancellation", "cancel request",
+            "cancel order"
+        ],
+        "laundry": [
+            "giặt", "giat", "giặt ủi", "giat ui", "giặt là", "giat la",
+            "giặt sấy", "giat say", "ủi đồ", "ui do", "ủi quần áo", "giặt hấp",
+            "laundry", "dry cleaning", "giặt áo", "giặt quần", "là quần áo"
+        ],
+        "wake_up": [
+            "báo thức", "bao thuc", "gọi dậy", "goi day", "đánh thức", "danh thuc",
+            "wake up", "wake-up", "wake up call"
+        ],
         "housekeeping": [
             "khăn", "khan", "dọn phòng", "don phong", "gối", "goi", "chăn", "chan", 
             "nệm", "nem", "dọn dẹp", "dọn vệ sinh", "vệ sinh phòng", "làm vệ sinh", 
@@ -121,7 +137,7 @@ async def intent_router_node(state: ConciergeState) -> Dict[str, Any]:
         "room_service": [
             "cơm", "com", "nước", "nuoc", "ăn", "an", "uống", "uong", "đồ ăn", "do an", 
             "trà", "tra", "cà phê", "ca phe", "pizza", "phở", "pho", "bánh", "banh", 
-            "food", "drink", "bữa sáng", "gọi món", "đặt món", "thực đơn", "menu", "nước ngọt", "bia", "trái cây"
+            "food", "drink", "bữa sáng", "gọi món", "đặt món", "nước ngọt", "bia", "trái cây"
         ],
         "bellman": [
             "hành lý", "hanh ly", "vali", "túi", "tui", "chuyển phòng", "chuyen phong", 
@@ -153,12 +169,14 @@ async def intent_router_node(state: ConciergeState) -> Dict[str, Any]:
         ],
     }
 
-    # 3. Phân loại Category & FAQ / Facility Keywords
+    # 3. Phân loại Category & FAQ / Facility Keywords (KHÔNG BAO GIỜ HỎI SỐ PHÒNG NẾU LÀ CÂU HỎI THÔNG TIN)
     faq_keywords = [
         "ở đâu", "mấy giờ", "bao nhiêu", "giá", "thế nào", "có không", 
         "where", "when", "how", "what", "giờ nào", "tầng mấy", "bao xa", 
         "chỉ đường", "đường nào", "hướng nào", "đi vệ sinh", "nhà vệ sinh", 
-        "toilet", "wc", "restroom", "washroom", "phòng vệ sinh"
+        "toilet", "wc", "restroom", "washroom", "phòng vệ sinh",
+        "có món gì", "có những gì", "gồm những gì", "những món nào", "xem thực đơn", "xem menu",
+        "thực đơn", "menu", "có dịch vụ gì", "chi phí thế nào", "bảng giá", "quy định", "chính sách"
     ]
     is_asking_info = any(kw in prompt_lower for kw in faq_keywords)
 
@@ -289,6 +307,9 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
                 "restaurant": "restaurant reservation",
                 "taxi": "taxi booking",
                 "reception": "front desk services",
+                "laundry": "laundry and dry cleaning services",
+                "wake_up": "wake-up call scheduling",
+                "cancel_service": "cancelling your request",
             }
             action_en = action_en_map.get(action, "this service")
             ask_reply = f"Certainly! I would be glad to help you with {action_en}. Could you please let me know your room number?"
@@ -301,6 +322,9 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
                 "restaurant": "đặt bàn nhà hàng",
                 "taxi": "đặt xe taxi và di chuyển",
                 "reception": "dịch vụ lễ tân tiền sảnh",
+                "laundry": "dịch vụ giặt ủi buồng phòng",
+                "wake_up": "đặt lịch báo thức",
+                "cancel_service": "hủy yêu cầu dịch vụ",
             }
             action_vn = action_vn_map.get(action, "dịch vụ")
             ask_reply = f"Dạ em sẽ hỗ trợ {action_vn} cho quý khách ngay ạ! Quý khách vui lòng cho em xin số phòng của mình là bao nhiêu ạ?"
@@ -320,6 +344,9 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
         "restaurant": "Nhà hàng & Ẩm thực",
         "taxi": "Vận chuyển & Đặt xe (Taxi)",
         "reception": "Lễ tân (Reception)",
+        "laundry": "Giặt ủi & Buồng phòng (Laundry)",
+        "wake_up": "Lễ tân & Tổng đài (Reception Desk)",
+        "cancel_service": "Điều phối dịch vụ (Operations Dispatch)",
     }
     DEPT_MAP_EN = {
         "housekeeping": "Housekeeping Department",
@@ -329,10 +356,18 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
         "restaurant": "Restaurant & F&B Department",
         "taxi": "Transportation & Taxi Desk",
         "reception": "Front Desk & Reception",
+        "laundry": "Laundry & Housekeeping Department",
+        "wake_up": "Front Desk & Telephone Operator",
+        "cancel_service": "Operations & Service Dispatch",
     }
     dept_name = (DEPT_MAP_EN if lang_code == "en-US" else DEPT_MAP_VI).get(action, "chuyên trách")
 
-    if lang_code == "en-US":
+    if action == "cancel_service":
+        if lang_code == "en-US":
+            confirm_reply = f"Rora has received your cancellation request for Room {current_room}. The relevant department has been notified to cancel your request immediately!"
+        else:
+            confirm_reply = f"Dạ Rora đã tiếp nhận yêu cầu hủy dịch vụ cho Phòng {current_room} rồi ạ! Em đã gửi thông báo hủy tới các bộ phận liên quan ngay lập tức."
+    elif lang_code == "en-US":
         confirm_reply = f"Rora has noted your request for Room {current_room}! The {dept_name} will attend to it right away."
     else:
         confirm_reply = f"Dạ Rora đã ghi nhận yêu cầu cho Phòng {current_room} rồi ạ! Bộ phận {dept_name} sẽ tiếp nhận và hỗ trợ quý khách ngay."

@@ -173,3 +173,99 @@ async def test_ticket_creation_validation():
 
     code_none_room = await auto_create_ticket(None, "housekeeping", None, "2 khăn tắm")
     assert code_none_room == ""
+
+
+@pytest.mark.asyncio
+async def test_cancel_service_flow():
+    """Kiểm tra luồng HỦY YÊU CẦU: Khách yêu cầu hủy -> hỏi số phòng nếu thiếu, xác nhận nếu đã có."""
+    sid = "cancel_service_test_session"
+    session_manager.reset_session(sid)
+    config = {"configurable": {"thread_id": sid}}
+
+    # Lượt 1: Chưa có số phòng mà đòi hủy -> Robot phải hỏi số phòng
+    res1 = await concierge_graph.ainvoke({
+        "session_id": sid,
+        "prompt": "Hủy yêu cầu giúp anh",
+        "room_number": None,
+        "chat_history": [],
+    }, config=config)
+
+    assert res1["missing_room_number"] is True
+    assert "số phòng" in res1["response"].lower()
+    assert session_manager.get_pending_intent(sid)["action"] == "cancel_service"
+
+    # Lượt 2: Cung cấp số phòng 502 -> Robot giải quyết yêu cầu hủy cho phòng 502
+    res2 = await concierge_graph.ainvoke({
+        "session_id": sid,
+        "prompt": "Phòng 502 em ơi",
+        "room_number": None,
+        "chat_history": [],
+    }, config=config)
+
+    assert res2["missing_room_number"] is False
+    assert "502" in res2["response"]
+    assert "hủy" in res2["response"].lower()
+
+    session_manager.reset_session(sid)
+
+
+@pytest.mark.asyncio
+async def test_laundry_and_wake_up_flow():
+    """Kiểm tra dịch vụ Giặt ủi và Báo thức bắt buộc hỏi số phòng."""
+    sid = "laundry_wakeup_test_session"
+    session_manager.reset_session(sid)
+    config = {"configurable": {"thread_id": sid}}
+
+    # Giặt ủi chưa có phòng
+    res_laundry = await concierge_graph.ainvoke({
+        "session_id": sid,
+        "prompt": "Lấy đồ giặt ủi giúp anh",
+        "room_number": None,
+        "chat_history": [],
+    }, config=config)
+    assert res_laundry["missing_room_number"] is True
+    assert "số phòng" in res_laundry["response"].lower()
+
+    # Báo thức chưa có phòng
+    session_manager.reset_session(sid)
+    res_wakeup = await concierge_graph.ainvoke({
+        "session_id": sid,
+        "prompt": "Đặt báo thức cho anh lúc 7h sáng",
+        "room_number": None,
+        "chat_history": [],
+    }, config=config)
+    assert res_wakeup["missing_room_number"] is True
+    assert "số phòng" in res_wakeup["response"].lower()
+
+    session_manager.reset_session(sid)
+
+
+@pytest.mark.asyncio
+async def test_faq_menu_protection_does_not_ask_room():
+    """Kiểm tra câu hỏi thông tin FAQ (thực đơn, menu, giá, wifi, bể bơi) TUYỆT ĐỐI KHÔNG ĐƯỢC HỎI SỐ PHÒNG."""
+    sid = "faq_no_room_test_session"
+    session_manager.reset_session(sid)
+    config = {"configurable": {"thread_id": sid}}
+
+    prompts = [
+        "Thực đơn có những món gì?",
+        "Menu gồm những gì em ơi?",
+        "Hồ bơi ở tầng mấy?",
+        "Mật khẩu wifi là gì?",
+        "Giá phòng một đêm bao nhiêu?",
+    ]
+
+    for p in prompts:
+        res = await concierge_graph.ainvoke({
+            "session_id": sid,
+            "prompt": p,
+            "room_number": None,
+            "chat_history": [],
+        }, config=config)
+
+        # Tuyệt đối không được đánh dấu là missing_room_number hay đòi hỏi số phòng
+        assert res.get("missing_room_number", False) is False, f"Prompt '{p}' should not require room number!"
+        assert "số phòng của mình là bao nhiêu" not in res["response"].lower(), f"Prompt '{p}' should not ask room number!"
+
+    session_manager.reset_session(sid)
+

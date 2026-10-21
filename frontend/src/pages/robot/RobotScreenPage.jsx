@@ -545,6 +545,14 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     }
   }, [isStandby, transcript, currentState]);
 
+  // Dừng nhận diện giọng nói nền và giọng đọc AI khi đang mở Video Call trực tiếp
+  useEffect(() => {
+    if (isVideoCallOpen) {
+      stopSpeaking();
+      stopListening();
+    }
+  }, [isVideoCallOpen, stopSpeaking, stopListening]);
+
   // Khi người dùng lại gần Camera -> Tắt Standby, chuyển về trạng thái sẵn sàng giao tiếp trực tiếp
   const handleGuestApproached = () => {
     setIsStandby(false);

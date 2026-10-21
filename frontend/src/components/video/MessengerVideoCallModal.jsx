@@ -22,10 +22,20 @@ const ICE_SERVERS = {
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
     { urls: 'stun:stun2.l.google.com:19302' },
-    { urls: 'stun:stun3.l.google.com:19302' },
-    { urls: 'stun:stun4.l.google.com:19302' },
     { urls: 'stun:stun.cloudflare.com:3478' },
+    { urls: 'stun:relay.metered.ca:80' },
+    {
+      urls: 'turn:relay.metered.ca:80',
+      username: 'openrelayproject',
+      credential: 'openrelayproject',
+    },
+    {
+      urls: 'turn:relay.metered.ca:80?transport=tcp',
+      username: 'openrelayproject',
+      credential: 'openrelayproject',
+    },
   ],
+  iceCandidatePoolSize: 10,
 };
 
 export const MessengerVideoCallModal = ({
@@ -82,6 +92,7 @@ export const MessengerVideoCallModal = ({
   const callTranscriptsRef = useRef([]);
   const isMicMutedRef = useRef(false);
   const checkPeerIntervalRef = useRef(null);
+  const serverLanIpRef = useRef(null);
 
   // 1. Tạo Canvas Stream giả lập trong trường hợp máy tính KHÔNG CÓ WEBCAM (Tương thích iOS Safari)
   const createFakeVideoStream = (label = 'Khách hàng') => {
@@ -162,7 +173,7 @@ export const MessengerVideoCallModal = ({
     setHasNoCamera(true);
     try {
       const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const fakeVideoStream = createFakeVideoStream(role === 'staff' ? 'Concierge Staff' : 'Hotel Guest');
+      const fakeVideoStream = createFakeVideoStream(role === 'staff' ? 'Nhân viên Concierge' : 'Robot Kiosk');
       return new MediaStream([
         ...audioStream.getAudioTracks(),
         ...fakeVideoStream.getVideoTracks(),
@@ -204,10 +215,9 @@ export const MessengerVideoCallModal = ({
 
       recorder.onstart = () => {
         setIsRecording(true);
-        callStartTimeRef.current = new Date().toISOString();
-        timerIntervalRef.current = setInterval(() => {
-          setRecordingDuration((prev) => prev + 1);
-        }, 1000);
+        if (!callStartTimeRef.current) {
+          callStartTimeRef.current = new Date().toISOString();
+        }
       };
 
       recorder.start(1000); // 1s slice
@@ -268,33 +278,74 @@ export const MessengerVideoCallModal = ({
 
       // Lắng nghe stream từ đối phương (hỗ trợ cả Safari iOS không bọc streams array)
       pc.ontrack = (event) => {
-        console.log('[VideoCall] ontrack received track:', event.track.kind);
-        let stream = event.streams && event.streams[0];
-        if (!stream) {
-          if (!remoteStreamRef.current) {
-            remoteStreamRef.current = new MediaStream();
-          }
-          remoteStreamRef.current.addTrack(event.track);
-          stream = remoteStreamRef.current;
-        } else {
-          remoteStreamRef.current = stream;
+        console.log('[VideoCall] ontrack received track:', event.track.kind, event.track.id);
+
+        // Luôn duy trì 1 MediaStream duy nhất làm nguồn video/audio cho remoteVideoRef
+        if (!remoteStreamRef.current) {
+          remoteStreamRef.current = new MediaStream();
         }
 
+        // Bật track âm thanh / hình ảnh
+        event.track.enabled = true;
+
+        // Thêm track vào remoteStreamRef nếu chưa có
+        if (!remoteStreamRef.current.getTracks().some((t) => t.id === event.track.id)) {
+          remoteStreamRef.current.addTrack(event.track);
+          console.log('[VideoCall] Added track to remoteStreamRef:', event.track.kind, 'total tracks:', remoteStreamRef.current.getTracks().length);
+        }
+
+        // Khi track bắt đầu nhận dữ liệu thực tế (unmute)
+        event.track.onunmute = () => {
+          console.log('[VideoCall] Remote track unmuted (media flowing):', event.track.kind);
+          if (remoteVideoRef.current) {
+            remoteVideoRef.current.play().catch(() => {});
+          }
+        };
+
         if (remoteVideoRef.current) {
-          remoteVideoRef.current.srcObject = stream;
-          remoteVideoRef.current.play().catch((e) => console.warn('[VideoCall] Auto-play video error:', e));
+          if (remoteVideoRef.current.srcObject !== remoteStreamRef.current) {
+            remoteVideoRef.current.srcObject = remoteStreamRef.current;
+          }
+          const playPromise = remoteVideoRef.current.play();
+          if (playPromise !== undefined) {
+            playPromise.catch((e) => {
+              if (e.name !== 'AbortError') {
+                console.warn('[VideoCall] Auto-play video notice:', e);
+                if (e.name === 'NotAllowedError') {
+                  remoteVideoRef.current.muted = true;
+                  remoteVideoRef.current.play().catch(() => {});
+                }
+              }
+            });
+          }
         }
         setCallStatus('connected');
-        if (!mediaRecorderRef.current && stream) {
-          startRecording(stream);
+        if (!mediaRecorderRef.current && remoteStreamRef.current) {
+          startRecording(remoteStreamRef.current);
         }
       };
 
       // Theo dõi trạng thái kết nối WebRTC P2P
-      pc.onconnectionstatechange = () => {
+      pc.onconnectionstatechange = async () => {
         console.log('[VideoCall] Connection state:', pc.connectionState);
         if (pc.connectionState === 'connected') {
           setCallStatus('connected');
+          if (remoteVideoRef.current) {
+            remoteVideoRef.current.play().catch(() => {});
+          }
+        } else if (pc.connectionState === 'failed') {
+          console.warn('[VideoCall] Connection failed, attempting ICE restart...');
+          if (role === 'guest' && pc.restartIce && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+            try {
+              pc.restartIce();
+              const offer = await pc.createOffer({ iceRestart: true });
+              await pc.setLocalDescription(offer);
+              wsRef.current.send(JSON.stringify({ type: 'offer', sdp: offer }));
+              console.log('[VideoCall] Dispatched ICE restart offer');
+            } catch (iceErr) {
+              console.error('[VideoCall] ICE restart error:', iceErr);
+            }
+          }
         }
       };
 
@@ -302,18 +353,50 @@ export const MessengerVideoCallModal = ({
         console.log('[VideoCall] ICE state:', pc.iceConnectionState);
         if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
           setCallStatus('connected');
+          if (remoteVideoRef.current) {
+            remoteVideoRef.current.play().catch(() => {});
+          }
         }
       };
 
-      // Xử lý ICE Candidate
+      // Xử lý ICE Candidate (gửi candidate gốc và de-anonymized candidate cho local LAN)
       pc.onicecandidate = (event) => {
-        if (event.candidate && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-          wsRef.current.send(
-            JSON.stringify({
-              type: 'candidate',
-              candidate: event.candidate,
-            })
-          );
+        if (event.candidate) {
+          console.log(`[VideoCall] [${role}] Generated ICE candidate:`, event.candidate.candidate);
+          if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+            wsRef.current.send(
+              JSON.stringify({
+                type: 'candidate',
+                candidate: event.candidate,
+              })
+            );
+          }
+
+          // Chỉ de-anonymize mDNS candidate nếu ĐÂY LÀ ROBOT KIOSK TRÊN MÁY TÍNH (role === 'guest')
+          // TUYỆT ĐỐI không thay thế cho thiết bị di động (role === 'staff') vì sẽ làm iPhone gửi nhầm IP của PC
+          if (role === 'guest') {
+            const candStr = event.candidate.candidate;
+            const lanIp = serverLanIpRef.current;
+            if (candStr && candStr.includes('.local') && lanIp && lanIp !== '127.0.0.1') {
+              const unmDnsStr = candStr.replace(/[a-zA-Z0-9_\-]+\.local/g, lanIp);
+              if (unmDnsStr !== candStr && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+                console.log(`[VideoCall] [${role}] Dispatched de-anonymized LAN candidate:`, unmDnsStr);
+                wsRef.current.send(
+                  JSON.stringify({
+                    type: 'candidate',
+                    candidate: {
+                      candidate: unmDnsStr,
+                      sdpMid: event.candidate.sdpMid,
+                      sdpMLineIndex: event.candidate.sdpMLineIndex,
+                      usernameFragment: event.candidate.usernameFragment,
+                    },
+                  })
+                );
+              }
+            }
+          }
+        } else {
+          console.log(`[VideoCall] [${role}] ICE candidate gathering finished (null)`);
         }
       };
 
@@ -322,40 +405,39 @@ export const MessengerVideoCallModal = ({
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
-      // Heartbeat kiểm tra đối phương mỗi 2s để tự động kích hoạt Offer/Answer khi cả 2 đã vào phòng
+      // Keepalive ping định kỳ 10s để giữ kết nối WebSocket không bị Cloudflare Tunnel timeout
       if (checkPeerIntervalRef.current) clearInterval(checkPeerIntervalRef.current);
       checkPeerIntervalRef.current = setInterval(() => {
-        if (isEndingRef.current) {
-          if (checkPeerIntervalRef.current) clearInterval(checkPeerIntervalRef.current);
-          return;
-        }
         if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
           try {
-            wsRef.current.send(JSON.stringify({ type: 'check_peer' }));
+            wsRef.current.send(JSON.stringify({ type: 'ping' }));
           } catch (e) {}
         }
-      }, 2000);
+      }, 10000);
 
       ws.onopen = () => {
         console.log('[VideoCall] Signaling WS Connected for session:', sessionId);
         if (role === 'guest') {
           setCallStatus('ringing');
         }
-        // Gửi ngay check_peer khi socket vừa mở
-        try {
-          ws.send(JSON.stringify({ type: 'check_peer' }));
-        } catch (e) {}
       };
 
       ws.onmessage = async (evt) => {
         try {
           const data = JSON.parse(evt.data);
 
-          if (data.type === 'peer_joined') {
-            console.log('[VideoCall] Peer joined:', data.name, 'as role:', data.role);
+          if (data.type === 'server_info' && data.lan_ip) {
+            console.log('[VideoCall] Received server LAN IP:', data.lan_ip);
+            serverLanIpRef.current = data.lan_ip;
+          } else if (data.type === 'peer_joined') {
+            console.log('[VideoCall] Peer joined:', data.name, 'as role:', data.role, 'signalingState:', pc.signalingState);
             if (role === 'guest') {
+              // Chỉ tạo Offer khi signalingState là 'stable' (tránh duplicate offer gây InvalidStateError)
+              if (pc.signalingState !== 'stable') {
+                console.log('[VideoCall] Bỏ qua tạo Offer vì signalingState không phải stable:', pc.signalingState);
+                return;
+              }
               try {
-                // Guest tạo Offer gửi cho Staff (yêu cầu cả âm thanh và video 2 chiều)
                 const offer = await pc.createOffer({
                   offerToReceiveAudio: true,
                   offerToReceiveVideo: true,
@@ -370,8 +452,12 @@ export const MessengerVideoCallModal = ({
               }
             }
           } else if (data.type === 'offer') {
-            console.log('[VideoCall] Received Offer from peer');
+            console.log('[VideoCall] Received Offer from peer, signalingState:', pc.signalingState);
             try {
+              if (pc.signalingState !== 'stable') {
+                console.log('[VideoCall] Rollback local state để nhận offer mới');
+                await pc.setLocalDescription({ type: 'rollback' });
+              }
               await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
 
               // Xử lý hàng đợi ICE candidates đến sớm trước khi remoteDescription sẵn sàng
@@ -394,44 +480,46 @@ export const MessengerVideoCallModal = ({
                 console.log('[VideoCall] Sent Answer to guest');
               }
               setCallStatus('connected');
-              if (checkPeerIntervalRef.current) {
-                clearInterval(checkPeerIntervalRef.current);
-                checkPeerIntervalRef.current = null;
-              }
             } catch (ansErr) {
               console.error('[VideoCall] Error handling offer:', ansErr);
             }
           } else if (data.type === 'answer') {
-            console.log('[VideoCall] Received Answer from peer');
-            try {
-              await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+            console.log('[VideoCall] Received Answer from peer, signalingState:', pc.signalingState);
+            // Quan trọng: Chỉ gọi setRemoteDescription khi đang ở trạng thái 'have-local-offer'
+            if (pc.signalingState === 'have-local-offer') {
+              try {
+                await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
 
-              // Xử lý hàng đợi ICE candidates đến sớm
-              while (iceCandidatesQueueRef.current.length > 0) {
-                const cand = iceCandidatesQueueRef.current.shift();
-                try {
-                  await pc.addIceCandidate(new RTCIceCandidate(cand));
-                } catch (e) {
-                  console.warn('[VideoCall] Error adding queued candidate:', e);
+                // Xử lý hàng đợi ICE candidates đến sớm
+                while (iceCandidatesQueueRef.current.length > 0) {
+                  const cand = iceCandidatesQueueRef.current.shift();
+                  try {
+                    await pc.addIceCandidate(new RTCIceCandidate(cand));
+                  } catch (e) {
+                    console.warn('[VideoCall] Error adding queued candidate:', e);
+                  }
                 }
+              } catch (ansErr) {
+                console.error('[VideoCall] Error applying answer:', ansErr);
               }
-              setCallStatus('connected');
-              if (checkPeerIntervalRef.current) {
-                clearInterval(checkPeerIntervalRef.current);
-                checkPeerIntervalRef.current = null;
-              }
-            } catch (ansErr) {
-              console.error('[VideoCall] Error applying answer:', ansErr);
+            } else {
+              console.log('[VideoCall] Bỏ qua Answer dư thừa vì signalingState là:', pc.signalingState);
             }
+            // Đảm bảo callStatus chuyển sang connected
+            setCallStatus('connected');
           } else if (data.type === 'candidate') {
             if (data.candidate) {
+              const candStr = data.candidate.candidate || data.candidate;
+              console.log(`[VideoCall] [${role}] Received candidate from peer:`, candStr);
               if (pc.remoteDescription && pc.remoteDescription.type) {
                 try {
                   await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+                  console.log(`[VideoCall] [${role}] Successfully applied candidate`);
                 } catch (candErr) {
-                  console.warn('[VideoCall] Error adding ICE candidate:', candErr);
+                  console.warn(`[VideoCall] [${role}] Error adding ICE candidate:`, candErr);
                 }
               } else {
+                console.log(`[VideoCall] [${role}] Queued candidate (waiting for remoteDescription)`);
                 iceCandidatesQueueRef.current.push(data.candidate);
               }
             }
@@ -500,6 +588,22 @@ export const MessengerVideoCallModal = ({
       cleanUpResources();
     };
   }, [isOpen, setupWebRTC]);
+
+  // Độc lập tính thời lượng cuộc gọi khi kết nối thành công (cho cả Kiosk Robot và Staff iPhone)
+  useEffect(() => {
+    let callTimer = null;
+    if (callStatus === 'connected') {
+      if (!callStartTimeRef.current) {
+        callStartTimeRef.current = new Date().toISOString();
+      }
+      callTimer = setInterval(() => {
+        setRecordingDuration((prev) => prev + 1);
+      }, 1000);
+    }
+    return () => {
+      if (callTimer) clearInterval(callTimer);
+    };
+  }, [callStatus]);
 
   // Dọn dẹp tài nguyên
   const cleanUpResources = () => {
@@ -1001,18 +1105,34 @@ export const MessengerVideoCallModal = ({
 
           {/* PICTURE-IN-PICTURE: LOCAL SELF VIDEO */}
           <div className="absolute bottom-16 sm:bottom-18 lg:bottom-24 right-3 sm:right-4 w-24 h-32 sm:w-28 sm:h-36 lg:w-40 lg:h-52 rounded-xl overflow-hidden bg-stone-900 border border-stone-700 shadow-xl z-20 transition-all">
-            <video
-              ref={localVideoRef}
-              autoPlay
-              playsInline
-              muted
-              className={`w-full h-full object-cover ${isVideoDisabled ? 'hidden' : 'block'}`}
-            />
-            {isVideoDisabled && (
-              <div className="w-full h-full flex flex-col items-center justify-center bg-stone-900 text-stone-400">
-                <VideoOff className="w-4 h-4 mb-1 text-stone-500" />
-                <span className="text-[9px] sm:text-[10px]">Camera tắt</span>
+            {hasNoCamera ? (
+              <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-b from-stone-900 to-stone-950 p-2 text-center select-none">
+                <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-full bg-stone-800 border border-stone-700 flex items-center justify-center mb-1.5 shadow-inner">
+                  <Mic className={`w-4 h-4 sm:w-5 sm:h-5 ${isMicMuted ? 'text-red-400' : 'text-emerald-400 animate-pulse'}`} />
+                </div>
+                <span className="text-[10px] sm:text-[11px] font-semibold text-stone-200">
+                  {role === 'guest' ? 'Robot Kiosk' : 'Nhân viên'}
+                </span>
+                <span className="text-[8px] sm:text-[9px] text-stone-400 leading-tight">
+                  {isMicMuted ? 'Micro đã tắt' : 'Đang bật Micro'}
+                </span>
               </div>
+            ) : (
+              <>
+                <video
+                  ref={localVideoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  className={`w-full h-full object-cover ${isVideoDisabled ? 'hidden' : 'block'}`}
+                />
+                {isVideoDisabled && (
+                  <div className="w-full h-full flex flex-col items-center justify-center bg-stone-900 text-stone-400">
+                    <VideoOff className="w-4 h-4 mb-1 text-stone-500" />
+                    <span className="text-[9px] sm:text-[10px]">Camera tắt</span>
+                  </div>
+                )}
+              </>
             )}
             <div className="absolute bottom-1.5 left-1.5 sm:bottom-2 sm:left-2 text-[9px] sm:text-[10px] text-stone-200 bg-stone-950/80 border border-stone-700/60 px-1.5 py-0.5 rounded font-medium">
               Bạn

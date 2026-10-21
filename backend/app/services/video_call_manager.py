@@ -1,9 +1,23 @@
 import json
 import logging
+import socket
 from typing import Dict, Any, Optional, List
 from fastapi import WebSocket
 
 logger = logging.getLogger(__name__)
+
+
+def get_lan_ip() -> str:
+    """Lấy địa chỉ IPv4 LAN thực tế của máy chủ để hỗ trợ WebRTC P2P direct routing."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(('8.8.8.8', 80))
+        ip = s.getsockname()[0]
+    except Exception:
+        ip = '127.0.0.1'
+    finally:
+        s.close()
+    return ip
 
 
 class VideoCallManager:
@@ -57,6 +71,15 @@ class VideoCallManager:
             f"[VideoCall] Peer joined: role='{role}', name='{name}', "
             f"input_session='{session_id}', canonical_room='{canonical_session}'"
         )
+
+        # Gửi thông tin server LAN IP cho peer để hỗ trợ de-anonymize mDNS candidate
+        try:
+            await websocket.send_text(json.dumps({
+                "type": "server_info",
+                "lan_ip": get_lan_ip(),
+            }))
+        except Exception:
+            pass
 
         # Thông báo cho peer còn lại trong phòng (nếu đã vào trước)
         other_role = "staff" if role == "guest" else "guest"
@@ -118,28 +141,53 @@ class VideoCallManager:
         room = self.rooms[canonical_session]
         msg_type = message_data.get("type")
 
-        # Cơ chế tự phục hồi: nếu client gửi check_peer và cả 2 bên đều có mặt, re-broadcast peer_joined
-        if msg_type == "check_peer":
-            if "guest" in room and "staff" in room:
-                guest_peer = room["guest"]
-                staff_peer = room["staff"]
-                try:
-                    await guest_peer["ws"].send_text(json.dumps({
-                        "type": "peer_joined",
-                        "role": "staff",
-                        "name": staff_peer["name"],
-                        "is_initiator": True,
-                    }))
-                    await staff_peer["ws"].send_text(json.dumps({
-                        "type": "peer_joined",
-                        "role": "guest",
-                        "name": guest_peer["name"],
-                        "is_initiator": True,
-                    }))
-                    logger.info(f"[VideoCall] Re-broadcast peer_joined triggered by check_peer in room '{canonical_session}'")
-                except Exception as e:
-                    logger.warning(f"[VideoCall] Error re-broadcasting peer_joined: {e}")
+        # Ping / Keepalive
+        if msg_type in ("check_peer", "ping"):
+            try:
+                await websocket.send_text(json.dumps({"type": "pong"}))
+            except Exception:
+                pass
             return
+
+        # Xác định role của bên gửi tin nhắn
+        sender_role = None
+        for r_name, r_data in room.items():
+            if r_data["ws"] == websocket:
+                sender_role = r_name
+                break
+
+        # De-anonymize mDNS (.local) ICE candidates CHỈ KHI người gửi là Robot Kiosk trên PC (role == 'guest')
+        # Tuyệt đối không thay cho role == 'staff' (iPhone) để tránh iPhone tự xưng IP của PC
+        if msg_type == "candidate" and "candidate" in message_data:
+            cand_obj = message_data.get("candidate")
+            if isinstance(cand_obj, dict) and "candidate" in cand_obj and sender_role == "guest":
+                cand_str = cand_obj.get("candidate", "")
+                if ".local" in cand_str:
+                    lan_ip = get_lan_ip()
+                    if lan_ip and lan_ip != "127.0.0.1":
+                        import re
+                        unmdns_str = re.sub(r'([a-zA-Z0-9_\-]+\.local)', lan_ip, cand_str)
+                        if unmdns_str != cand_str:
+                            logger.info(f"[VideoCall] Forwarding de-anonymized LAN candidate for Robot Kiosk: {lan_ip}")
+                            # Forward candidate gốc trước
+                            for role, data in room.items():
+                                if data["ws"] != websocket:
+                                    try:
+                                        await data["ws"].send_text(json.dumps(message_data))
+                                    except Exception as e:
+                                        logger.warning(f"[VideoCall] Lỗi forward candidate gốc tới {role}: {e}")
+                            # Forward thêm candidate đã de-anonymize sang IP LAN thực tế
+                            alt_msg = dict(message_data)
+                            alt_cand = dict(cand_obj)
+                            alt_cand["candidate"] = unmdns_str
+                            alt_msg["candidate"] = alt_cand
+                            for role, data in room.items():
+                                if data["ws"] != websocket:
+                                    try:
+                                        await data["ws"].send_text(json.dumps(alt_msg))
+                                    except Exception as e:
+                                        logger.warning(f"[VideoCall] Lỗi forward unmdns candidate tới {role}: {e}")
+                            return
 
         for role, data in room.items():
             if data["ws"] != websocket:

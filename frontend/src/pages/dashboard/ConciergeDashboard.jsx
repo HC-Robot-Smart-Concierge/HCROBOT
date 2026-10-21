@@ -1242,6 +1242,7 @@ export const ConciergeDashboard = ({
         calleeName={currentUser?.full_name || 'Nhân viên hỗ trợ'}
         roomNumber={activeSession?.room_number || ''}
         ticketCode={activeSession?.ticket_code}
+        guestLanguage={activeSession?.language || 'Tiếng Việt'}
         onClose={async () => {
           setIsVideoModalOpen(false);
           if (activeSession && activeSession.status === 'Connected') {

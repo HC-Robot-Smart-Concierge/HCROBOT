@@ -17,6 +17,8 @@ from app.schemas.ai import (
     VoiceSettingsResponse,
     FeedbackCreate,
     FeedbackResponse,
+    QuickTranslateRequest,
+    QuickTranslateResponse,
 )
 
 # AI Sub-services
@@ -31,6 +33,7 @@ from app.services.ai.session_manager import session_manager
 from app.services.ai.stt_service import transcribe_audio_wav
 from app.services.ai.tts_service import tts_service
 from app.services.ai.ollama_service import ollama_service
+from app.services.ai.translation_service import translation_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -85,6 +88,27 @@ async def transcribe_speech_endpoint(
     except Exception as e:
         logger.error(f"[STT Endpoint Error] {e}")
         return {"success": False, "text": "", "error": str(e)}
+
+
+@router.post(
+    "/translate",
+    response_model=QuickTranslateResponse,
+    summary="Phiên dịch nhanh câu nói trực tiếp trong cuộc gọi Video Call (Anh - Việt)",
+)
+async def quick_translate_endpoint(request: QuickTranslateRequest):
+    """
+    Endpoint phiên dịch câu thoại thời gian thực cho WebRTC Video Call:
+    - Tự động nhận diện tiếng Anh / tiếng Việt.
+    - Bypass (không dịch) nếu khách và nhân viên cùng nói tiếng Việt (0ms).
+    - Tự động dịch song ngữ 2 chiều: Khách nói tiếng Anh -> Dịch cho nhân viên đọc tiếng Việt; Nhân viên nói tiếng Việt -> Dịch cho khách đọc tiếng Anh.
+    """
+    result = await translation_service.translate(
+        text=request.text,
+        source_lang=request.source_lang or "auto",
+        target_lang=request.target_lang or "vi",
+        sender_role=request.sender_role or "guest",
+    )
+    return QuickTranslateResponse(**result)
 
 
 @router.post("/tts", response_model=TTSResponse, summary="Chuyển văn bản thành âm thanh thoại MP3")

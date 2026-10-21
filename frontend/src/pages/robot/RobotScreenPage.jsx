@@ -1828,6 +1828,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         calleeName="Nhân viên hỗ trợ"
         roomNumber=""
         ticketCode={videoCallTicketCode}
+        guestLanguage={language}
         onClose={() => {
           setIsVideoCallOpen(false);
           setVideoCallSessionId(null);

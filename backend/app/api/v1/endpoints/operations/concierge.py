@@ -345,6 +345,7 @@ async def upload_call_recording(
     duration: int = Form(0, description="Thời lượng cuộc gọi tính bằng giây"),
     call_started_at: Optional[str] = Form(None),
     call_ended_at: Optional[str] = Form(None),
+    messages: Optional[str] = Form(None, description="Danh sách JSON phụ đề và tin nhắn thoại song ngữ"),
     session_repo: SupportSessionRepository = Depends(get_support_session_repository),
     sr_repo: SupportRequestRepository = Depends(get_support_request_repository),
 ):
@@ -381,13 +382,21 @@ async def upload_call_recording(
         )
         await session_repo.create(h_session)
 
-    # 3. Ghi nhận dữ liệu video vào CSDL
+    # 3. Ghi nhận dữ liệu video và tin nhắn phụ đề hội thoại vào CSDL
     h_session.recording_url = cloud_result["secure_url"]
     h_session.recording_public_id = cloud_result["public_id"]
     h_session.recording_duration = cloud_result["duration"] or duration
     h_session.thumbnail_url = cloud_result.get("thumbnail_url")
     h_session.status = "Resolved"
     h_session.call_ended_at = datetime.utcnow()
+
+    if messages:
+        try:
+            parsed_msgs = json.loads(messages)
+            if isinstance(parsed_msgs, list):
+                h_session.messages = parsed_msgs
+        except Exception:
+            pass
 
     if call_started_at:
         try:

@@ -95,3 +95,19 @@ class FeedbackResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+
+class QuickTranslateRequest(BaseModel):
+    text: str = Field(..., description="Văn bản cần dịch trong video call", json_schema_extra={"example": "Where is the swimming pool?"})
+    source_lang: Optional[str] = Field("auto", description="Ngôn ngữ nguồn: 'auto', 'en', 'vi'")
+    target_lang: Optional[str] = Field("vi", description="Ngôn ngữ đích: 'vi', 'en'")
+    session_id: Optional[str] = Field(None, description="Mã phiên cuộc gọi video")
+    sender_role: Optional[str] = Field("guest", description="Vai trò người nói: 'guest' hoặc 'staff'")
+
+
+class QuickTranslateResponse(BaseModel):
+    original_text: str = Field(..., description="Văn bản gốc")
+    translated_text: str = Field(..., description="Văn bản dịch")
+    source_lang: str = Field(..., description="Ngôn ngữ nguồn đã phát hiện ('vi' hoặc 'en')")
+    target_lang: str = Field(..., description="Ngôn ngữ đích ('vi' hoặc 'en')")
+    needs_translation: bool = Field(..., description="True nếu đã dịch, False nếu cùng ngôn ngữ nên bypass")
+

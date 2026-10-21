@@ -84,9 +84,10 @@ class TranslationService:
 
         return "vi"
 
-    async def _translate_via_google_gtx(self, text: str, src_lang: str, target_lang: str) -> Optional[str]:
+    async def _translate_via_google_gtx(self, text: str, src_lang: str, target_lang: str) -> tuple[Optional[str], Optional[str]]:
         """
         Gọi Google Translate Web API siêu tốc (50ms - 150ms).
+        Trả về tuple (translated_text, detected_source_lang).
         """
         try:
             encoded_text = urllib.parse.quote(text)
@@ -94,14 +95,15 @@ class TranslationService:
             res = await self.http_client.get(url)
             if res.status_code == 200:
                 data = res.json()
+                detected = data[2] if len(data) > 2 and data[2] else None
                 if data and isinstance(data, list) and len(data) > 0 and data[0]:
                     parts = [seg[0] for seg in data[0] if seg and len(seg) > 0 and seg[0]]
                     translated = "".join(parts).strip()
                     if translated:
-                        return translated
+                        return translated, detected
         except Exception as e:
             logger.warning(f"[TranslationService] Google GTX failed ({e}), attempting fallback...")
-        return None
+        return None, None
 
     async def _translate_via_gemini_fallback(self, text: str, src_lang: str, target_lang: str) -> Optional[str]:
         """
@@ -132,12 +134,13 @@ class TranslationService:
         source_lang: str = "auto",
         target_lang: str = "vi",
         sender_role: str = "guest",
+        with_audio: bool = False,
     ) -> Dict[str, Any]:
         """
-        Thực hiện dịch thuật thông minh:
-        - Tự động nhận diện ngôn ngữ nếu là 'auto'.
-        - Nếu source == target hoặc cả 2 bên cùng nói tiếng Việt -> Bypass dịch (0ms).
-        - Nếu khác ngôn ngữ -> Dịch và trả về song ngữ.
+        Thực hiện dịch thuật thông minh Zero-Touch:
+        - Tự động nhận diện ngôn ngữ nếu là 'auto' qua Google AI + Diacritics Regex.
+        - Nếu nguồn và đích giống nhau hoặc cùng là tiếng Việt -> Tự động Bypass (không dịch, KHÔNG phát âm TTS).
+        - Nếu khác ngôn ngữ -> Dịch và tổng hợp giọng đọc TTS tương ứng (Hoài My cho VI, Jenny cho EN).
         """
         clean_text = (text or "").strip()
         if not clean_text:
@@ -147,17 +150,22 @@ class TranslationService:
                 "source_lang": "vi",
                 "target_lang": target_lang,
                 "needs_translation": False,
+                "audio_base64": None,
             }
 
-        # 1. Xác định ngôn ngữ nguồn thực tế
+        # 1. Xác định ngôn ngữ nguồn và đích:
         target_code = self.normalize_lang_code(target_lang)
-        if source_lang == "auto" or not source_lang:
-            detected_src = self.detect_language(clean_text)
-        else:
+        
+        # Nếu có dấu tiếng Việt rõ ràng -> Chắc chắn 100% là Tiếng Việt
+        if VIETNAMESE_DIACRITICS_REGEX.search(clean_text):
+            detected_src = "vi"
+        elif source_lang != "auto" and source_lang:
             detected_src = self.normalize_lang_code(source_lang)
+        else:
+            detected_src = self.detect_language(clean_text)
 
         # 2. Quy tắc bypass thông minh:
-        # Nếu nguồn và đích giống nhau -> KHÔNG CẦN DỊCH
+        # Nếu nguồn và đích giống nhau -> KHÔNG CẦN DỊCH, KHÔNG CẦN TTS
         if detected_src == target_code:
             return {
                 "original_text": clean_text,
@@ -165,6 +173,7 @@ class TranslationService:
                 "source_lang": detected_src,
                 "target_lang": target_code,
                 "needs_translation": False,
+                "audio_base64": None,
             }
 
         # Nếu Khách nói tiếng Việt gửi cho Lễ tân (Lễ tân là người Việt) -> KHÔNG CẦN DỊCH
@@ -175,13 +184,28 @@ class TranslationService:
                 "source_lang": "vi",
                 "target_lang": "vi",
                 "needs_translation": False,
+                "audio_base64": None,
             }
 
         # 3. Tiến hành dịch thuật:
-        # Thử Google GTX trước (< 100ms)
-        translated = await self._translate_via_google_gtx(clean_text, detected_src, target_code)
+        # Thử Google GTX trước (< 100ms) với sl=auto để Google nhận diện chính xác
+        src_for_gtx = "auto" if source_lang == "auto" else detected_src
+        translated, gtx_detected = await self._translate_via_google_gtx(clean_text, src_for_gtx, target_code)
+        if gtx_detected:
+            detected_src = self.normalize_lang_code(gtx_detected)
 
-        # Fallback sang Gemini nếu cần
+        # Nếu sau khi đối chiếu ngôn ngữ thực tế trùng với ngôn ngữ đích -> KHÔNG DỊCH, KHÔNG TTS!
+        if detected_src == target_code or translated == clean_text:
+            return {
+                "original_text": clean_text,
+                "translated_text": clean_text,
+                "source_lang": detected_src,
+                "target_lang": target_code,
+                "needs_translation": False,
+                "audio_base64": None,
+            }
+
+        # Fallback sang Gemini nếu Google GTX lỗi
         if not translated:
             translated = await self._translate_via_gemini_fallback(clean_text, detected_src, target_code)
 
@@ -190,12 +214,25 @@ class TranslationService:
             logger.warning("[TranslationService] All translation providers failed, returning original text.")
             translated = clean_text
 
+        needs_translation = (translated != clean_text)
+        audio_b64 = None
+        if needs_translation and with_audio:
+            try:
+                from app.services.ai.tts_service import tts_service
+                audio_b64, _, _ = await tts_service.synthesize(
+                    text=translated,
+                    language=target_code,
+                )
+            except Exception as e:
+                logger.warning(f"[TranslationService] TTS synthesis failed during translation: {e}")
+
         return {
             "original_text": clean_text,
             "translated_text": translated,
             "source_lang": detected_src,
             "target_lang": target_code,
-            "needs_translation": (translated != clean_text),
+            "needs_translation": needs_translation,
+            "audio_base64": audio_b64,
         }
 
 

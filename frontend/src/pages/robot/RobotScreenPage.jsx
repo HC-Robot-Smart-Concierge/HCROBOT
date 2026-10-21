@@ -605,6 +605,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
   // 1. Khi kích hoạt lắng nghe (Bấm nút hoặc Tự động)
   const handleStartTalk = () => {
+    if (isVideoCallOpen) return;
     lastInteractionTimeRef.current = Date.now();
     if (isStandby) setIsStandby(false);
     activeChatRequestIdRef.current += 1;
@@ -635,13 +636,13 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   // Tự động bật mic khi mở màn hình robot (khi vừa vào)
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (!isListening && !isSpeaking && !isProcessing && currentState !== 'RT-05' && !isStandby) {
+      if (!isVideoCallOpen && !isListening && !isSpeaking && !isProcessing && currentState !== 'RT-05' && !isStandby) {
         handleStartTalk();
       }
     }, 700);
 
     return () => clearTimeout(timer);
-  }, []);
+  }, [isVideoCallOpen]);
 
   // 2. Gửi tới Ollama RAG Backend
   const handleStopTalkAndProcess = async (userText) => {
@@ -1125,9 +1126,9 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         }}
       />
 
-      {/* Camera AI (Chạy ngầm 100% nhận diện khách/cảm xúc, không hiển thị trên màn hình robot) */}
+      {/* Camera AI (Chạy ngầm 100% nhận diện khách/cảm xúc; tự động nhường camera khi mở Video Call) */}
       <CameraPreview
-        autoStart={!isPhoneLayout}
+        autoStart={!isPhoneLayout && !isVideoCallOpen}
         controlsClassName="robot-camera-control"
         onGuestApproached={handleGuestApproached}
         onGuestLeft={handleGuestLeft}

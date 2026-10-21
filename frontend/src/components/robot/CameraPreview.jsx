@@ -163,9 +163,23 @@ export const CameraPreview = ({
   }, [isPi5]);
 
   const stopCamera = useCallback(() => {
-    if (!isPi5 && stream) {
-      stream.getTracks().forEach((track) => track.stop());
-      setStream(null);
+    if (!isPi5) {
+      if (stream) {
+        stream.getTracks().forEach((track) => track.stop());
+        setStream(null);
+      }
+      if (offscreenVideoRef.current && offscreenVideoRef.current.srcObject) {
+        try {
+          offscreenVideoRef.current.srcObject.getTracks().forEach((t) => t.stop());
+          offscreenVideoRef.current.srcObject = null;
+        } catch (e) {}
+      }
+      if (previewVideoRef.current && previewVideoRef.current.srcObject) {
+        try {
+          previewVideoRef.current.srcObject.getTracks().forEach((t) => t.stop());
+          previewVideoRef.current.srcObject = null;
+        } catch (e) {}
+      }
     }
     setIsCameraActive(false);
     setIsPersonDetected(false);
@@ -185,16 +199,20 @@ export const CameraPreview = ({
     }
   }, [isPi5, stream, onGuestLeft]);
 
-  // Tự động bật camera nếu autoStart = true
+  // Tự động bật camera nếu autoStart = true, tắt camera giải phóng phần cứng khi autoStart = false
   useEffect(() => {
-    if (autoStart) startCamera();
+    if (autoStart) {
+      startCamera();
+    } else {
+      stopCamera();
+    }
 
     return () => {
       if (stream) {
         stream.getTracks().forEach((track) => track.stop());
       }
     };
-  }, [autoStart, startCamera]);
+  }, [autoStart, startCamera, stopCamera]);
 
   // Gán stream cho các thẻ video và bắt buộc gọi play()
   useEffect(() => {

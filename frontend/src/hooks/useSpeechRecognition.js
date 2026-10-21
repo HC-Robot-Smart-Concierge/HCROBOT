@@ -404,11 +404,12 @@ export const useSpeechRecognition = (callbacks = {}) => {
       };
 
       recognition.onerror = (event) => {
-        console.warn('[SpeechRecognition Error]:', event.error);
-        if (event.error === 'no-speech') {
-          // Bình thường khi không có ai nói trong khoảng 3-5 giây, không coi là lỗi
+        if (event.error === 'no-speech' || event.error === 'aborted') {
+          // 'no-speech': im lặng thông thường
+          // 'aborted': ngắt chủ động khi mở modal, đổi màn hình hoặc dừng nhận diện
           return;
         }
+        console.warn('[SpeechRecognition Error]:', event.error);
         if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
           shouldListenRef.current = false;
           clearRestartTimer();

@@ -453,6 +453,7 @@ export const quickTranslateText = async ({
   targetLang = 'vi',
   sessionId = null,
   senderRole = 'guest',
+  withAudio = true,
 }) => {
   if (!text || !text.trim()) {
     return {
@@ -461,6 +462,7 @@ export const quickTranslateText = async ({
       source_lang: 'vi',
       target_lang: targetLang,
       needs_translation: false,
+      audio_base64: null,
     };
   }
 
@@ -474,6 +476,7 @@ export const quickTranslateText = async ({
         target_lang: targetLang,
         session_id: sessionId,
         sender_role: senderRole,
+        with_audio: withAudio,
       }),
     });
 

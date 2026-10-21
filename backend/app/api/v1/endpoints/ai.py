@@ -107,6 +107,7 @@ async def quick_translate_endpoint(request: QuickTranslateRequest):
         source_lang=request.source_lang or "auto",
         target_lang=request.target_lang or "vi",
         sender_role=request.sender_role or "guest",
+        with_audio=request.with_audio if request.with_audio is not None else True,
     )
     return QuickTranslateResponse(**result)
 

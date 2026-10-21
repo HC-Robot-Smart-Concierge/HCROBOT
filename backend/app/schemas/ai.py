@@ -102,6 +102,7 @@ class QuickTranslateRequest(BaseModel):
     target_lang: Optional[str] = Field("vi", description="Ngôn ngữ đích: 'vi', 'en'")
     session_id: Optional[str] = Field(None, description="Mã phiên cuộc gọi video")
     sender_role: Optional[str] = Field("guest", description="Vai trò người nói: 'guest' hoặc 'staff'")
+    with_audio: Optional[bool] = Field(True, description="Tự động tổng hợp âm thanh giọng đọc TTS nếu cần dịch")
 
 
 class QuickTranslateResponse(BaseModel):
@@ -110,4 +111,5 @@ class QuickTranslateResponse(BaseModel):
     source_lang: str = Field(..., description="Ngôn ngữ nguồn đã phát hiện ('vi' hoặc 'en')")
     target_lang: str = Field(..., description="Ngôn ngữ đích ('vi' hoặc 'en')")
     needs_translation: bool = Field(..., description="True nếu đã dịch, False nếu cùng ngôn ngữ nên bypass")
+    audio_base64: Optional[str] = Field(None, description="Âm thanh đọc TTS MP3 Base64 của câu dịch (nếu có)")
 

@@ -155,7 +155,7 @@ export const StaffLayout = () => {
             departmentName={currentUser?.department || 'Staff'}
           />
 
-          <div className="flex-1 overflow-y-auto pb-20 md:pb-0">
+          <div className="flex-1 min-h-0 relative flex flex-col overflow-hidden pb-16 md:pb-0">
             <Outlet />
           </div>
         </main>

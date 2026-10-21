@@ -99,6 +99,7 @@ async def get_concierge_dashboard(
     """
     now = datetime.utcnow()
     five_minutes_ago = now - timedelta(minutes=5)
+    twenty_minutes_ago = now - timedelta(minutes=20)
 
     # 1. Tự động đóng các phiên gọi Pending đã quá 5 phút thành 'Missed'
     await sr_repo.close_expired_pending(
@@ -106,6 +107,14 @@ async def get_concierge_dashboard(
         service_type_ids=["ST-CONCIERGE"],
         cutoff_time=five_minutes_ago,
         new_status="Missed",
+    )
+
+    # 1.1 Tự động dọn dẹp các phiên In Progress / Connected bị treo quá 20 phút thành 'Closed'
+    await sr_repo.close_stale_active_calls(
+        department_ids=["DEP-CONCIERGE"],
+        service_type_ids=["ST-CONCIERGE"],
+        cutoff_time=twenty_minutes_ago,
+        new_status="Closed",
     )
 
     # 2. Chỉ lấy cuộc gọi đang chờ bắt máy (mới tạo < 5 phút) hoặc đang diễn ra
@@ -166,6 +175,7 @@ async def create_concierge_live_request(
         room_number=room_loc,
         guest_name=guest,
         source="Robot Voice Assistant",
+        priority="High",
         status="Pending",
     )
     await sr_repo.create(new_request)

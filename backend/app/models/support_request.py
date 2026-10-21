@@ -33,6 +33,7 @@ class SupportRequest(Base):
     room_number: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, index=True) # e.g. 'Room 412', 'Lobby', or None
     guest_name: Mapped[str] = mapped_column(String(100), default="Hotel Guest")
     source: Mapped[str] = mapped_column(String(50), default="From HCRobot") # 'From HCRobot', 'Front Desk', 'Guest App'
+    priority: Mapped[str] = mapped_column(String(50), default="Normal") # 'Low', 'Normal', 'High', 'Urgent'
     status: Mapped[str] = mapped_column(String(50), default="Pending") # 'Pending', 'In Progress', 'Completed', 'Cancelled'
     
     # Assignment fields

@@ -1843,7 +1843,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         calleeName="Nhân viên hỗ trợ"
         roomNumber=""
         ticketCode={videoCallTicketCode}
-        guestLanguage={language}
+        guestLanguage="Tiếng Việt"
         onClose={() => {
           setIsVideoCallOpen(false);
           setVideoCallSessionId(null);

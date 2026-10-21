@@ -31,6 +31,11 @@ COMMON_ENGLISH_WORDS = {
     'service', 'towel', 'clean', 'need', 'want', 'thank', 'thanks', 'you'
 }
 
+# Các từ đệm/từ vay mượn ngắn phổ biến không đổi ngôn ngữ (Neutral words/fillers)
+NEUTRAL_WORDS = {
+    'ok', 'okay', 'yes', 'yeah', 'yep', 'no', 'nope', 'ah', 'uh', 'um', 'oh', 'bye', 'alo', 'ha', 'hmm', 'dạ', 'vâng'
+}
+
 
 class TranslationService:
     """
@@ -57,16 +62,21 @@ class TranslationService:
     def detect_language(cls, text: str) -> str:
         """
         Nhận diện nhanh ngôn ngữ giữa Tiếng Việt ('vi') và Tiếng Anh ('en').
+        Trả về 'neutral' nếu câu nói chỉ gồm 1 từ đệm ngắn không đủ tin cậy để đổi ngôn ngữ.
         """
         if not text or not text.strip():
-            return "vi"
+            return "neutral"
+
+        clean_words = set(re.findall(r'\b[a-zA-Zàáảãạâầấẩẫậăằắẳẵặèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ]+\b', text.lower()))
+        if not clean_words:
+            return "neutral"
+
+        # Nếu chỉ có 1 từ đệm trung tính (vd: ok, yeah, ah, hmm) -> Không đổi ngôn ngữ phiên
+        if len(clean_words) <= 1 and clean_words.issubset(NEUTRAL_WORDS):
+            return "neutral"
 
         # 1. Nếu chứa bất kỳ nguyên âm tiếng Việt có dấu nào -> Chắc chắn 100% là Tiếng Việt
         if VIETNAMESE_DIACRITICS_REGEX.search(text):
-            return "vi"
-
-        clean_words = set(re.findall(r'\b[a-zA-Z]+\b', text.lower()))
-        if not clean_words:
             return "vi"
 
         # 2. Đếm số từ trùng khớp trong từ điển thông dụng
@@ -78,7 +88,7 @@ class TranslationService:
         if en_hits > vi_hits:
             return "en"
 
-        # 3. Phân tích ngữ cảnh mặc định: nếu text chỉ gồm ký tự ascii thông thường và độ dài > 2 từ
+        # 3. Phân tích ngữ cảnh mặc định: nếu text chỉ gồm ký tự ascii thông thường và độ dài >= 2 từ
         if len(clean_words) >= 2 and en_hits > 0:
             return "en"
 
@@ -165,6 +175,17 @@ class TranslationService:
             detected_src = self.detect_language(clean_text)
 
         # 2. Quy tắc bypass thông minh:
+        # Nếu là từ đệm trung tính (ok, hmm, ah,...) -> Không dịch, không đổi ngôn ngữ
+        if detected_src == "neutral":
+            return {
+                "original_text": clean_text,
+                "translated_text": clean_text,
+                "source_lang": "neutral",
+                "target_lang": target_code,
+                "needs_translation": False,
+                "audio_base64": None,
+            }
+
         # Nếu nguồn và đích giống nhau -> KHÔNG CẦN DỊCH, KHÔNG CẦN TTS
         if detected_src == target_code:
             return {

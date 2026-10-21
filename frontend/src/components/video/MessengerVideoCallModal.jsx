@@ -128,6 +128,12 @@ export const MessengerVideoCallModal = ({
   const sttSilenceTimerRef = useRef(null);
   const handleProcessSpokenTextRef = useRef(null);
 
+  // Chống lặp vòng lặp âm thanh (Acoustic Echo Loop Prevention) khi loa Kiosk phát giọng đọc AI
+  const isAiSpeakingRef = useRef(false);
+  const ttsActiveUntilRef = useRef(0);
+  const lastPlayedTtsTextRef = useRef('');
+  const [sttStatusMessage, setSttStatusMessage] = useState('');
+
   useEffect(() => {
     activeGuestLanguageRef.current = activeGuestLanguage;
   }, [activeGuestLanguage]);
@@ -224,6 +230,11 @@ export const MessengerVideoCallModal = ({
       ]);
     } catch (audioError) {
       console.warn('[VideoCall] Cả mic và camera đều không truy cập được:', audioError);
+      if (audioError?.name === 'NotAllowedError' || audioError?.name === 'PermissionDeniedError') {
+        setErrorMessage('Quyền Micro hoặc Camera chưa được cấp. Hãy kiểm tra cài đặt trình duyệt trên thiết bị (biểu tượng ổ khóa/Cài đặt Safari) để Cho phép Micro & Camera.');
+      } else if (audioError?.name === 'NotReadableError' || audioError?.name === 'TrackStartError') {
+        setErrorMessage('Camera hoặc Micro đang bị ứng dụng khác chiếm giữ. Hệ thống tự động chuyển sang luồng đàm thoại dự phòng.');
+      }
       return createFakeVideoStream('No Device Available');
     }
   };
@@ -332,16 +343,26 @@ export const MessengerVideoCallModal = ({
         }).catch(() => {});
       } catch (e) {}
     }
-  }, [getOrCreateAudioContext]);
+    // Safari iOS: Đảm bảo âm thanh WebRTC đối phương được mở và play khi người dùng tương tác
+    if (remoteVideoRef.current) {
+      remoteVideoRef.current.muted = isSpeakerMuted;
+      remoteVideoRef.current.play().catch(() => {});
+    }
+  }, [getOrCreateAudioContext, isSpeakerMuted]);
 
-  // Phát âm thanh thông dịch AI (Edge Neural TTS) kèm kỹ thuật Audio Ducking:
+  // Phát âm thanh thông dịch AI (Edge Neural TTS) kèm kỹ thuật Audio Ducking & Chống lặp vòng âm thanh:
   // Tự động hạ volume WebRTC đối phương xuống 10% trong khi AI nói để nghe rõ, rồi hồi phục về 100%
-  const playInterpreterAudio = useCallback(async (audioBase64) => {
+  const playInterpreterAudio = useCallback(async (audioBase64, spokenText = '') => {
     if (!audioBase64 || isSpeakerMuted) return;
 
     try {
       console.log(`[VideoCall Audio] [${role}] Bắt đầu phát âm thanh AI (${audioBase64.length} base64 chars)`);
+      isAiSpeakingRef.current = true;
       setIsAiSpeaking(true);
+      ttsActiveUntilRef.current = Date.now() + 15000;
+      if (spokenText) {
+        lastPlayedTtsTextRef.current = spokenText.trim();
+      }
 
       // Audio Ducking: Giảm volume WebRTC đối phương xuống 10% để nghe rõ tiếng phiên dịch AI
       if (remoteVideoRef.current) {
@@ -351,7 +372,9 @@ export const MessengerVideoCallModal = ({
 
       const handleAudioFinished = () => {
         console.log(`[VideoCall Audio] [${role}] Giọng đọc AI kết thúc -> Hồi phục âm lượng WebRTC về 100%`);
+        isAiSpeakingRef.current = false;
         setIsAiSpeaking(false);
+        ttsActiveUntilRef.current = Date.now() + 850; // 850ms cooldown buffer chống micro thu lại tiếng loa
         if (remoteVideoRef.current) {
           remoteVideoRef.current.volume = 1.0;
         }
@@ -708,7 +731,17 @@ export const MessengerVideoCallModal = ({
               needsTranslation: data.needsTranslation,
               hasAudio: Boolean(data.audioBase64),
             });
-            setActiveSubtitle(data);
+            // Quy tắc 3: Chỉ hiển thị bảng dịch trên màn hình khi có nhu cầu phiên dịch thực sự
+            if (data.needsTranslation) {
+              setActiveSubtitle(data);
+              if (subtitleTimeoutRef.current) clearTimeout(subtitleTimeoutRef.current);
+              subtitleTimeoutRef.current = setTimeout(() => {
+                setActiveSubtitle(null);
+              }, 6000);
+            } else {
+              setActiveSubtitle(null);
+            }
+
             const transcriptItem = {
               speaker: data.senderRole === 'staff' ? 'Staff' : 'Guest',
               speaker_name: data.senderRole === 'staff' ? calleeName : callerName,
@@ -722,22 +755,19 @@ export const MessengerVideoCallModal = ({
             setCallTranscripts((prev) => [...prev, transcriptItem]);
             callTranscriptsRef.current.push(transcriptItem);
 
-            // Tự động phát âm thanh thông dịch AI cho phía nghe nếu có bản dịch & audio
-            if (data.needsTranslation && data.audioBase64 && playInterpreterAudioRef.current) {
-              console.log(`[VideoCall WS] [${role}] Kích hoạt phát âm thanh thông dịch AI cho ${role}!`);
-              playInterpreterAudioRef.current(data.audioBase64);
+            // Quy tắc 2: Tự động phát âm thanh thông dịch AI (Jenny) cho Robot Kiosk khi Staff nói tiếng Việt & có bản dịch tiếng Anh
+            if (role === 'guest' && data.senderRole === 'staff' && data.needsTranslation && data.audioBase64 && playInterpreterAudioRef.current) {
+              console.log(`[VideoCall WS] [guest] Kích hoạt phát âm thanh thông dịch AI (Jenny) cho Robot Kiosk!`);
+              playInterpreterAudioRef.current(data.audioBase64, data.translatedText);
             }
-
-            if (subtitleTimeoutRef.current) clearTimeout(subtitleTimeoutRef.current);
-            subtitleTimeoutRef.current = setTimeout(() => {
-              setActiveSubtitle(null);
-            }, 6000);
           } else if (data.type === 'translate_mode_change') {
             if (data.mode) {
               setTranslateMode(data.mode);
+              translateModeRef.current = data.mode;
             }
             if (data.guestLang) {
               setActiveGuestLanguage(data.guestLang);
+              activeGuestLanguageRef.current = data.guestLang;
             }
           }
         } catch (msgErr) {
@@ -872,9 +902,22 @@ export const MessengerVideoCallModal = ({
   const commitSpokenText = useCallback((text) => {
     if (!text || !text.trim()) return;
     const cleanText = text.trim();
-
-    // Chống lặp câu trong vòng 2.5 giây
     const now = Date.now();
+
+    // 1. Chống lặp âm thanh phản xạ từ loa AI (Acoustic Echo Loop Prevention):
+    // Nếu loa đang phát giọng đọc hoặc vừa dứt lời trong vòng 850ms -> Bỏ qua ngay!
+    if (isAiSpeakingRef.current || now < ttsActiveUntilRef.current) {
+      console.log(`[VideoCall STT] [${role}] Bỏ qua âm phản xạ từ loa AI (Echo loop prevention): "${cleanText}"`);
+      return;
+    }
+
+    // 2. Chống lặp câu trùng khớp với bản dịch AI vừa phát
+    if (lastPlayedTtsTextRef.current && cleanText.toLowerCase() === lastPlayedTtsTextRef.current.toLowerCase()) {
+      console.log(`[VideoCall STT] [${role}] Bỏ qua câu trùng khớp bản dịch AI vừa phát: "${cleanText}"`);
+      return;
+    }
+
+    // 3. Chống lặp câu nói của chính mình trong vòng 2.5 giây
     if (
       cleanText.toLowerCase() === lastProcessedTextRef.current.toLowerCase() &&
       now - lastProcessedTimeRef.current < 2500
@@ -900,6 +943,7 @@ export const MessengerVideoCallModal = ({
     const SpeechRecognitionClass = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognitionClass) {
       console.warn('[VideoCall STT] Web Speech API không được hỗ trợ trên trình duyệt này');
+      setSttStatusMessage('Trình duyệt hiện tại không hỗ trợ nhận diện giọng nói tự động. Bạn vẫn nghe nói và đàm thoại video bình thường.');
       return;
     }
 
@@ -927,8 +971,9 @@ export const MessengerVideoCallModal = ({
       // - Nhân viên (role === 'staff'): Luôn nói tiếng Việt ('vi-VN')
       // - Khách tại Robot Kiosk (role === 'guest'):
       //   + Nếu translateMode === 'bypass' -> Khách nói tiếng Việt ('vi-VN')
-      //   + Mặc định hoặc chế độ 'auto' / 'English' -> Lắng nghe tiếng Anh ('en-US') để bắt trọn câu nói của khách nước ngoài
-      const isGuestEnglish = (activeGuestLanguage === 'English') || (translateMode === 'auto');
+      //   + Nếu activeGuestLanguage === 'English' -> Lắng nghe tiếng Anh ('en-US')
+      //   + Nếu activeGuestLanguage === 'Tiếng Việt' -> Lắng nghe tiếng Việt ('vi-VN')
+      const isGuestEnglish = (activeGuestLanguage === 'English') && (translateMode !== 'bypass');
       const listenLang = role === 'staff'
         ? 'vi-VN'
         : (isGuestEnglish ? 'en-US' : 'vi-VN');
@@ -938,9 +983,15 @@ export const MessengerVideoCallModal = ({
 
       recognition.onstart = () => {
         console.log(`[VideoCall STT] [${role}] Micro STT đang hoạt động và lắng nghe trực tiếp bằng [${listenLang}]`);
+        setSttStatusMessage('');
       };
 
       recognition.onresult = (event) => {
+        // Nếu loa AI đang nói -> Ngăn chặn xử lý input
+        if (isAiSpeakingRef.current || Date.now() < ttsActiveUntilRef.current) {
+          return;
+        }
+
         let interim = '';
         let finalChunk = '';
 
@@ -961,7 +1012,7 @@ export const MessengerVideoCallModal = ({
           console.log(`[VideoCall STT] [${role}] Đang nghe: "${candidate}" (final: ${Boolean(finalChunk)})`);
         }
 
-        // 1. Nếu có final chunk từ Chrome -> Chốt dịch ngay lập tức!
+        // 1. Nếu có final chunk từ Speech API -> Chốt câu ngay lập tức!
         if (finalChunk.trim()) {
           if (sttSilenceTimerRef.current) {
             clearTimeout(sttSilenceTimerRef.current);
@@ -972,7 +1023,7 @@ export const MessengerVideoCallModal = ({
         }
 
         // 2. Nếu là interim kết quả tạm thời:
-        // Đặt silence debounce timer 850ms. Khi người nói dừng lại 850ms mà Chrome chưa emit isFinal,
+        // Đặt silence debounce timer 850ms. Khi người nói dừng lại 850ms mà chưa emit isFinal,
         // hệ thống tự động chốt câu interim này để dịch ngay lập tức (không để bị nuốt chữ)!
         if (sttSilenceTimerRef.current) {
           clearTimeout(sttSilenceTimerRef.current);
@@ -987,7 +1038,11 @@ export const MessengerVideoCallModal = ({
       };
 
       recognition.onerror = (err) => {
-        if (err.error !== 'no-speech' && err.error !== 'aborted') {
+        if (err.error === 'not-allowed' || err.error === 'service-not-allowed') {
+          console.warn(`[VideoCall STT] [${role}] Quyền nhận diện giọng nói bị từ chối hoặc không được cấp:`, err.error);
+          recognition._hasPermError = true;
+          setSttStatusMessage('Quyền nhận diện giọng nói chưa được cấp trên trình duyệt này. Cuộc gọi vẫn tiếp tục bình thường.');
+        } else if (err.error !== 'no-speech' && err.error !== 'aborted') {
           console.warn(`[VideoCall STT] [${role}] Cảnh báo STT:`, err.error);
         }
       };
@@ -1004,10 +1059,10 @@ export const MessengerVideoCallModal = ({
           commitSpokenText(pendingTranscriptRef.current);
         }
 
-        if (!isEndingRef.current && !isMicMutedRef.current && callStatus === 'connected') {
-          // Trì hoãn nhẹ 150ms để Chrome giải phóng audio stream rồi mới khởi động lại
+        if (!isEndingRef.current && !isMicMutedRef.current && callStatus === 'connected' && !recognition._hasPermError) {
+          // Trì hoãn nhẹ 150ms để giải phóng audio stream rồi mới khởi động lại
           setTimeout(() => {
-            if (!recognition._isManualStop && !isEndingRef.current && !isMicMutedRef.current && callStatus === 'connected') {
+            if (!recognition._isManualStop && !isEndingRef.current && !isMicMutedRef.current && callStatus === 'connected' && !recognition._hasPermError) {
               try {
                 recognition.start();
                 console.log(`[VideoCall STT] [${role}] Tự động kích hoạt lại vòng lặp lắng nghe`);
@@ -1023,6 +1078,7 @@ export const MessengerVideoCallModal = ({
       speechRecognitionRef.current = recognition;
     } catch (e) {
       console.warn(`[VideoCall STT] [${role}] Không thể khởi động STT:`, e);
+      setSttStatusMessage('Không thể kích hoạt bộ nhận diện giọng nói trên thiết bị này.');
     }
   }, [role, activeGuestLanguage, translateMode, callStatus, commitSpokenText]);
 
@@ -1085,7 +1141,7 @@ export const MessengerVideoCallModal = ({
           targetLang: 'vi', // Concierge luôn nghe tiếng Việt
           sessionId: sessionId,
           senderRole: role,
-          withAudio: true,
+          withAudio: false, // Quy tắc 1: Nhân viên thấy bản dịch tiếng Việt, không cần phát loa AI đè tiếng khách
         });
 
         console.log(`[VideoCall Translation] [guest] Kết quả backend:`, {
@@ -1093,14 +1149,14 @@ export const MessengerVideoCallModal = ({
           translated: res.translated_text,
           detected_lang: res.source_lang,
           needs_translation: res.needs_translation,
-          has_audio: Boolean(res.audio_base64),
         });
 
         // AI TỰ ĐỘNG CẬP NHẬT TRẠNG THÁI PHIÊN DỰA TRÊN NGÔN NGỮ CÂU NÓI:
         if (res.source_lang === 'en') {
-          // Khách nói tiếng Anh -> Khóa phiên sang English
+          // Khách nói tiếng Anh -> Cập nhật phiên sang English
           if (curGuestLang !== 'English') {
             setActiveGuestLanguage('English');
+            activeGuestLanguageRef.current = 'English';
             if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
               wsRef.current.send(JSON.stringify({
                 type: 'translate_mode_change',
@@ -1109,10 +1165,11 @@ export const MessengerVideoCallModal = ({
               }));
             }
           }
-        } else {
-          // Khách nói tiếng Việt -> Khóa phiên sang Tiếng Việt
+        } else if (res.source_lang === 'vi') {
+          // Khách nói tiếng Việt -> Cập nhật phiên sang Tiếng Việt
           if (curGuestLang !== 'Tiếng Việt') {
             setActiveGuestLanguage('Tiếng Việt');
+            activeGuestLanguageRef.current = 'Tiếng Việt';
             if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
               wsRef.current.send(JSON.stringify({
                 type: 'translate_mode_change',
@@ -1122,6 +1179,7 @@ export const MessengerVideoCallModal = ({
             }
           }
         }
+        // Nếu res.source_lang === 'neutral' (vd: ok, yeah, ah...) -> Không đổi ngôn ngữ phiên
 
         const payload = {
           type: 'live_subtitle',
@@ -1131,13 +1189,13 @@ export const MessengerVideoCallModal = ({
           needsTranslation: Boolean(res.needs_translation),
           sourceLang: res.source_lang || 'vi',
           targetLang: 'vi',
-          audioBase64: res.audio_base64 || null,
+          audioBase64: null,
           timestamp: Date.now(),
         };
 
         if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
           wsRef.current.send(JSON.stringify(payload));
-          console.log(`[VideoCall WS] [guest] Đã phát tán live_subtitle sang màn hình Nhân viên (${payload.audioBase64 ? payload.audioBase64.length : 0} bytes audio)`);
+          console.log(`[VideoCall WS] [guest] Đã phát tán live_subtitle sang màn hình Nhân viên`);
         }
         displaySubtitleLocally(payload);
         return;
@@ -1145,11 +1203,48 @@ export const MessengerVideoCallModal = ({
 
       // 3. NHÂN VIÊN CONCIERGE NÓI (role === 'staff'):
       if (role === 'staff') {
-        const isGuestEnglish = (curGuestLang === 'English');
+        const isGuestSpeakingEnglish = (curGuestLang === 'English') && (curMode !== 'bypass');
 
-        // Nếu khách là người Việt (và phiên chưa ghi nhận tiếng Anh):
-        // KHÔNG DỊCH, KHÔNG PHÁT ÂM AI! (Để khách nghe trực tiếp giọng thật của nhân viên)
-        if (!isGuestEnglish) {
+        if (isGuestSpeakingEnglish) {
+          // Quy tắc 2: Khách đang dùng tiếng Anh -> Dịch câu trả lời của nhân viên sang tiếng Anh và phát giọng Jenny (en-US-JennyNeural) qua loa Robot Kiosk
+          const res = await quickTranslateText({
+            text: spokenText,
+            sourceLang: 'vi',
+            targetLang: 'en',
+            sessionId: sessionId,
+            senderRole: role,
+            withAudio: true,
+          });
+
+          console.log(`[VideoCall Translation] [staff] Dịch sang English cho Robot:`, {
+            original: spokenText,
+            translated: res.translated_text,
+            needs_translation: res.needs_translation,
+            has_audio: Boolean(res.audio_base64),
+          });
+
+          const payload = {
+            type: 'live_subtitle',
+            senderRole: role,
+            originalText: spokenText,
+            translatedText: res.translated_text || spokenText,
+            needsTranslation: Boolean(res.needs_translation),
+            sourceLang: 'vi',
+            targetLang: 'en',
+            audioBase64: res.audio_base64 || null,
+            timestamp: Date.now(),
+          };
+
+          if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+            wsRef.current.send(JSON.stringify(payload));
+            console.log(`[VideoCall WS] [staff] Đã phát tán live_subtitle sang Robot Kiosk (${payload.audioBase64 ? payload.audioBase64.length : 0} bytes audio)`);
+          }
+          displaySubtitleLocally(payload);
+          return;
+        } else {
+          // Quy tắc 3 & 4: Khách đang dùng tiếng Việt -> KHÔNG DỊCH sang tiếng Anh, KHÔNG PHÁT TTS!
+          // Giữ hội thoại tiếng Việt tự nhiên hoàn toàn.
+          console.log(`[VideoCall Translation] [staff] Khách đang nói tiếng Việt -> Giữ nguyên tiếng Việt tự nhiên, không dịch sang tiếng Anh.`);
           const payload = {
             type: 'live_subtitle',
             senderRole: role,
@@ -1168,47 +1263,21 @@ export const MessengerVideoCallModal = ({
           displaySubtitleLocally(payload);
           return;
         }
-
-        // Nếu khách là người nước ngoài nói tiếng Anh:
-        // Tự động dịch câu trả lời của nhân viên sang tiếng Anh và phát âm giọng Jenny cho khách
-        const res = await quickTranslateText({
-          text: spokenText,
-          sourceLang: 'vi',
-          targetLang: 'en',
-          sessionId: sessionId,
-          senderRole: role,
-          withAudio: true,
-        });
-
-        console.log(`[VideoCall Translation] [staff] Kết quả backend:`, {
-          original: spokenText,
-          translated: res.translated_text,
-          detected_lang: res.source_lang,
-          needs_translation: res.needs_translation,
-          has_audio: Boolean(res.audio_base64),
-        });
-
-        const payload = {
-          type: 'live_subtitle',
-          senderRole: role,
-          originalText: spokenText,
-          translatedText: res.translated_text || spokenText,
-          needsTranslation: Boolean(res.needs_translation),
-          sourceLang: 'vi',
-          targetLang: 'en',
-          audioBase64: res.audio_base64 || null,
-          timestamp: Date.now(),
-        };
-
-        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-          wsRef.current.send(JSON.stringify(payload));
-          console.log(`[VideoCall WS] [staff] Đã phát tán live_subtitle sang Robot Kiosk (${payload.audioBase64 ? payload.audioBase64.length : 0} bytes audio)`);
-        }
-        displaySubtitleLocally(payload);
-        return;
       }
     } catch (err) {
       console.warn('[VideoCall] Subtitle process error:', err);
+      // Fail-safe: Lỗi dịch vụ dịch KHÔNG làm gián đoạn cuộc gọi WebRTC!
+      displaySubtitleLocally({
+        type: 'live_subtitle',
+        senderRole: role,
+        originalText: spokenText,
+        translatedText: spokenText,
+        needsTranslation: false,
+        sourceLang: 'vi',
+        targetLang: 'vi',
+        audioBase64: null,
+        timestamp: Date.now(),
+      });
     }
   }, [role, sessionId]);
 
@@ -1262,7 +1331,7 @@ export const MessengerVideoCallModal = ({
 
       // Phát âm thanh tiếng Anh (Jenny) trực tiếp ra loa Kiosk
       if (payload.needsTranslation && payload.audioBase64 && playInterpreterAudioRef.current) {
-        playInterpreterAudioRef.current(payload.audioBase64);
+        playInterpreterAudioRef.current(payload.audioBase64, payload.translatedText);
       }
     } catch (err) {
       console.warn('[VideoCall] Simulate staff speech error:', err);
@@ -1272,7 +1341,7 @@ export const MessengerVideoCallModal = ({
   };
 
   const displaySubtitleLocally = (payload) => {
-    setActiveSubtitle(payload);
+    // 1. Luôn ghi lại nhật ký hội thoại đầy đủ
     const transcriptItem = {
       speaker: payload.senderRole === 'staff' ? 'Staff' : 'Guest',
       speaker_name: payload.senderRole === 'staff' ? calleeName : callerName,
@@ -1286,10 +1355,16 @@ export const MessengerVideoCallModal = ({
     setCallTranscripts((prev) => [...prev, transcriptItem]);
     callTranscriptsRef.current.push(transcriptItem);
 
-    if (subtitleTimeoutRef.current) clearTimeout(subtitleTimeoutRef.current);
-    subtitleTimeoutRef.current = setTimeout(() => {
+    // 2. Quy tắc 3 & 4: Khách nói tiếng Việt hoặc không cần dịch -> KHÔNG hiển thị bảng dịch trên màn hình
+    if (payload.needsTranslation) {
+      setActiveSubtitle(payload);
+      if (subtitleTimeoutRef.current) clearTimeout(subtitleTimeoutRef.current);
+      subtitleTimeoutRef.current = setTimeout(() => {
+        setActiveSubtitle(null);
+      }, 6000);
+    } else {
       setActiveSubtitle(null);
-    }, 6000);
+    }
   };
 
   // Thay đổi chế độ dịch và thông báo cho peer đối diện
@@ -1412,52 +1487,52 @@ export const MessengerVideoCallModal = ({
       {/* Video Call Modal Window: Toàn màn hình trên mobile & landscape, cửa sổ nổi sang trọng trên desktop (lg) */}
       <div className="relative w-full h-full lg:h-[620px] lg:max-w-4xl bg-[#1E1E1E] rounded-none lg:rounded-2xl overflow-hidden shadow-2xl border-0 lg:border lg:border-stone-700/80 flex flex-col">
         {/* TOP BAR */}
-        <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-4 py-2.5 sm:py-3 lg:p-4 bg-gradient-to-b from-stone-900/90 via-stone-900/40 to-transparent robot-safe-x">
-          <div className="flex items-center gap-3">
-            <div className="text-stone-200 text-xs sm:text-sm font-semibold tracking-wide">
+        <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-3 sm:px-4 py-2 sm:py-2.5 lg:p-4 pt-[max(0.75rem,env(safe-area-inset-top))] bg-gradient-to-b from-stone-900/95 via-stone-900/60 to-transparent robot-safe-x">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+            <div className="text-stone-200 text-xs sm:text-sm font-semibold tracking-wide truncate max-w-[110px] sm:max-w-[160px] md:max-w-xs">
               {role === 'guest' ? (calleeName || 'Nhân viên hỗ trợ') : (callerName || 'Khách hàng')}
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             {/* DIRECT 1-CLICK MODE TOGGLES FOR EASY TESTING */}
             {callStatus === 'connected' && (
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1 sm:gap-1.5">
                 <div className="flex items-center bg-stone-900/90 p-0.5 rounded-lg border border-stone-700/80 shadow-inner">
                   {/* 1. NÚT THÔNG DỊCH AI (EN ⇄ VI) */}
                   <button
                     type="button"
                     onClick={() => handleToggleTranslateMode('auto', 'English')}
-                    className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all cursor-pointer ${
+                    className={`flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-md text-[10px] sm:text-[11px] font-semibold transition-all cursor-pointer ${
                       translateMode === 'auto' && activeGuestLanguage === 'English'
                         ? 'bg-amber-500/30 text-amber-300 border border-amber-500/60 shadow-sm'
                         : 'text-stone-400 hover:text-stone-200 hover:bg-stone-800'
                     }`}
                     title="Bật chế độ Thông dịch AI: Khách nói tiếng Anh ➔ Dịch tiếng Việt; Nhân viên nói tiếng Việt ➔ Dịch tiếng Anh"
                   >
-                    <Languages className="w-3.5 h-3.5 text-amber-400" />
-                    <span>Dịch EN ⇄ VI</span>
+                    <Languages className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-400" />
+                    <span>EN ⇄ VI</span>
                   </button>
 
                   {/* 2. NÚT THUẦN VIỆT (KHÔNG DỊCH) */}
                   <button
                     type="button"
                     onClick={() => handleToggleTranslateMode('bypass', 'Tiếng Việt')}
-                    className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all cursor-pointer ${
-                      translateMode === 'bypass'
+                    className={`flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-md text-[10px] sm:text-[11px] font-semibold transition-all cursor-pointer ${
+                      translateMode === 'bypass' || activeGuestLanguage === 'Tiếng Việt'
                         ? 'bg-emerald-500/25 text-emerald-300 border border-emerald-500/60 shadow-sm'
                         : 'text-stone-400 hover:text-stone-200 hover:bg-stone-800'
                     }`}
                     title="Bật chế độ Thuần Việt: Cả 2 bên nói tiếng Việt trực tiếp, không dịch, không phát âm AI"
                   >
-                    <span>🇻🇳 Thuần Việt</span>
+                    <span>Thuần Việt</span>
                   </button>
 
-                  {/* 3. NÚT TEST NHANH GIỌNG ĐỌC AI & PHỤ ĐỀ */}
+                  {/* 3. NÚT TEST NHANH GIỌNG ĐỌC AI & PHỤ ĐỀ (Ẩn trên mobile nhỏ để tránh tràn) */}
                   <button
                     type="button"
                     onClick={() => setShowTestPanel(!showTestPanel)}
-                    className={`flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all cursor-pointer ${
+                    className={`hidden md:flex items-center gap-1 px-2 py-1 rounded-md text-[10px] sm:text-[11px] font-semibold transition-all cursor-pointer ${
                       showTestPanel
                         ? 'bg-amber-500 text-stone-950 font-bold shadow-md'
                         : 'text-stone-400 hover:text-stone-200 hover:bg-stone-800'
@@ -1470,7 +1545,7 @@ export const MessengerVideoCallModal = ({
                 </div>
 
                 {isAiSpeaking && (
-                  <span className="flex items-center gap-1 text-[10px] text-emerald-400 bg-emerald-950/80 px-2 py-1 rounded-md border border-emerald-500/50 animate-pulse font-medium">
+                  <span className="flex items-center gap-1 text-[10px] text-emerald-400 bg-emerald-950/80 px-1.5 sm:px-2 py-1 rounded-md border border-emerald-500/50 animate-pulse font-medium">
                     <Volume2 className="w-3 h-3 text-emerald-400" />
                     <span className="hidden sm:inline">AI Đang nói</span>
                   </span>
@@ -1481,7 +1556,7 @@ export const MessengerVideoCallModal = ({
             {/* LIVE STT LISTENING BADGE */}
             {callStatus === 'connected' && !isMicMuted && (
               <div
-                className="flex items-center gap-1.5 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-md text-[10px] sm:text-xs font-mono font-medium bg-stone-800 border border-stone-700 text-stone-300"
+                className="flex items-center gap-1 px-1.5 py-0.5 sm:px-2.5 sm:py-1 rounded-md text-[10px] sm:text-xs font-mono font-medium bg-stone-800 border border-stone-700 text-stone-300"
                 title={`Micro đang lắng nghe: ${role === 'staff' ? 'vi-VN' : (activeGuestLanguage === 'English' ? 'en-US' : 'vi-VN')}`}
               >
                 <Mic className="w-2.5 h-2.5 text-emerald-400 animate-pulse" />
@@ -1494,7 +1569,7 @@ export const MessengerVideoCallModal = ({
 
             {/* CALL DURATION BADGE */}
             {callStatus === 'connected' && (
-              <div className="flex items-center gap-1.5 px-2.5 py-0.5 sm:px-3 sm:py-1 rounded-md text-[11px] sm:text-xs font-mono font-medium bg-stone-800 border border-stone-700 text-stone-200">
+              <div className="flex items-center gap-1.5 px-2 py-0.5 sm:px-3 sm:py-1 rounded-md text-[10px] sm:text-xs font-mono font-medium bg-stone-800 border border-stone-700 text-stone-200">
                 <span className="w-1.5 h-1.5 rounded-full bg-stone-300 animate-pulse" />
                 <span>
                   {role === 'staff'
@@ -1506,13 +1581,30 @@ export const MessengerVideoCallModal = ({
 
             <button
               onClick={toggleFullscreen}
-              className="p-1.5 sm:p-2 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-300 border border-stone-700 transition-colors cursor-pointer"
+              className="p-1 sm:p-2 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-300 border border-stone-700 transition-colors cursor-pointer"
               title="Toàn màn hình"
             >
               {isFullscreen ? <Minimize2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> : <Maximize2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
             </button>
           </div>
         </div>
+
+        {/* STT Status Warning Notification */}
+        {sttStatusMessage && (
+          <div className="absolute top-14 left-3 right-3 sm:left-4 sm:right-4 z-25 bg-amber-950/85 border border-amber-600/50 text-amber-200 text-xs px-3 py-1.5 rounded-lg flex items-center justify-between shadow-lg backdrop-blur-xs">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+              <span>{sttStatusMessage}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSttStatusMessage('')}
+              className="text-amber-400 hover:text-amber-200 ml-2 px-1 text-sm font-bold"
+            >
+              ✕
+            </button>
+          </div>
+        )}
 
         {/* INTERACTIVE LIVE TRANSLATION & TTS TEST BAR */}
         {callStatus === 'connected' && showTestPanel && (
@@ -1645,18 +1737,18 @@ export const MessengerVideoCallModal = ({
           )}
 
           {/* FLOATING CINEMA SUBTITLE BAR (AUTO-TRANSLATE LIVE CAPTIONS) */}
-          {(activeSubtitle || interimText) && (
+          {((activeSubtitle && activeSubtitle.needsTranslation) || (interimText && activeGuestLanguage === 'English' && translateMode !== 'bypass')) && (
             <div className="absolute bottom-4 sm:bottom-6 lg:bottom-8 left-3 right-3 sm:left-6 sm:right-6 z-25 flex justify-center pointer-events-none animate-in fade-in slide-in-from-bottom-2 duration-300">
               <div className="bg-[#141414]/90 backdrop-blur-md border border-stone-700/80 rounded-2xl px-4 py-2 sm:px-6 sm:py-3 max-w-2xl text-center shadow-2xl space-y-1 pointer-events-auto">
                 {/* Interim Live Speech Feedback */}
-                {interimText && !activeSubtitle && (
+                {interimText && (!activeSubtitle || !activeSubtitle.needsTranslation) && (
                   <p className="text-stone-300 text-xs sm:text-sm italic font-mono animate-pulse">
                     "{interimText}..."
                   </p>
                 )}
 
                 {/* Final Subtitle and Translation */}
-                {activeSubtitle && (
+                {activeSubtitle && activeSubtitle.needsTranslation && (
                   <>
                     <div className="flex items-center justify-center gap-2 mb-0.5">
                       <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-stone-800 text-stone-300 border border-stone-700">
@@ -1664,13 +1756,11 @@ export const MessengerVideoCallModal = ({
                           ? 'Bạn'
                           : (activeSubtitle.senderRole === 'staff' ? calleeName : callerName)}
                       </span>
-                      {activeSubtitle.needsTranslation && (
-                        <span className="text-[10px] font-semibold text-amber-400 flex items-center gap-1">
-                          <Languages className="w-3 h-3" />
-                          <span>{(activeSubtitle.sourceLang || 'en').toUpperCase()} ➔ {(activeSubtitle.targetLang || 'vi').toUpperCase()}</span>
-                        </span>
-                      )}
-                      {activeSubtitle.needsTranslation && activeSubtitle.audioBase64 && (
+                      <span className="text-[10px] font-semibold text-amber-400 flex items-center gap-1">
+                        <Languages className="w-3 h-3" />
+                        <span>{(activeSubtitle.sourceLang || 'en').toUpperCase()} ➔ {(activeSubtitle.targetLang || 'vi').toUpperCase()}</span>
+                      </span>
+                      {activeSubtitle.audioBase64 && (
                         <span className="text-[10px] font-medium text-emerald-400 flex items-center gap-1 bg-emerald-950/60 px-1.5 py-0.5 rounded border border-emerald-500/30">
                           <Volume2 className={`w-2.5 h-2.5 ${isAiSpeaking ? 'animate-bounce text-emerald-300' : ''}`} />
                           <span>AI Voice</span>
@@ -1679,15 +1769,13 @@ export const MessengerVideoCallModal = ({
                     </div>
 
                     {/* Câu gốc (mờ phía trên nếu có bản dịch) */}
-                    {activeSubtitle.needsTranslation && (
-                      <p className="text-stone-400 text-[11px] sm:text-xs italic leading-tight">
-                        "{activeSubtitle.originalText}"
-                      </p>
-                    )}
+                    <p className="text-stone-400 text-[11px] sm:text-xs italic leading-tight">
+                      "{activeSubtitle.originalText}"
+                    </p>
 
-                    {/* Câu dịch nổi bật to rõ (hoặc câu gốc nếu cùng tiếng Việt) */}
+                    {/* Câu dịch nổi bật to rõ */}
                     <p className="text-stone-100 text-xs sm:text-sm md:text-base font-semibold leading-relaxed tracking-wide">
-                      {activeSubtitle.needsTranslation ? activeSubtitle.translatedText : activeSubtitle.originalText}
+                      {activeSubtitle.translatedText}
                     </p>
                   </>
                 )}
@@ -1696,7 +1784,7 @@ export const MessengerVideoCallModal = ({
           )}
 
           {/* PICTURE-IN-PICTURE: LOCAL SELF VIDEO */}
-          <div className="absolute bottom-16 sm:bottom-18 lg:bottom-24 right-3 sm:right-4 w-24 h-32 sm:w-28 sm:h-36 lg:w-40 lg:h-52 rounded-xl overflow-hidden bg-stone-900 border border-stone-700 shadow-xl z-20 transition-all">
+          <div className="absolute bottom-20 sm:bottom-22 lg:bottom-24 right-3 sm:right-4 w-24 h-32 sm:w-28 sm:h-36 lg:w-40 lg:h-52 rounded-xl overflow-hidden bg-stone-900 border border-stone-700 shadow-xl z-20 transition-all">
             {hasNoCamera ? (
               <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-b from-stone-900 to-stone-950 p-2 text-center select-none">
                 <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-full bg-stone-800 border border-stone-700 flex items-center justify-center mb-1.5 shadow-inner">
@@ -1715,6 +1803,7 @@ export const MessengerVideoCallModal = ({
                   ref={localVideoRef}
                   autoPlay
                   playsInline
+                  webkit-playsinline="true"
                   muted
                   className={`w-full h-full object-cover ${isVideoDisabled ? 'hidden' : 'block'}`}
                 />
@@ -1733,7 +1822,7 @@ export const MessengerVideoCallModal = ({
         </div>
 
         {/* BOTTOM ACTION CONTROLS BAR */}
-        <div className="px-4 py-2 sm:py-2.5 lg:py-3 pb-[max(0.5rem,env(safe-area-inset-bottom))] bg-[#1A1A1A] border-t border-stone-800 flex items-center justify-center gap-4 sm:gap-8 z-30 shrink-0 robot-safe-x">
+        <div className="px-3 sm:px-4 py-2 sm:py-2.5 lg:py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] bg-[#1A1A1A] border-t border-stone-800 flex items-center justify-center gap-3 sm:gap-6 lg:gap-8 z-30 shrink-0 robot-safe-x">
           {/* STAFF ONLY CONTROLS */}
           {role === 'staff' && (
             <>
@@ -1741,16 +1830,16 @@ export const MessengerVideoCallModal = ({
               <button
                 type="button"
                 onClick={toggleMic}
-                className="flex flex-col items-center gap-1 focus:outline-none cursor-pointer group"
+                className="flex flex-col items-center gap-1 focus:outline-none cursor-pointer group min-w-[44px] min-h-[44px]"
               >
                 <div
-                  className={`w-9 h-9 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center transition-all ${
+                  className={`w-10 h-10 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center transition-all ${
                     isMicMuted
                       ? 'bg-stone-800 text-stone-400 border border-stone-700'
                       : 'bg-stone-800 hover:bg-stone-700 text-stone-200 border border-stone-700'
                   }`}
                 >
-                  {isMicMuted ? <MicOff className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> : <Mic className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
+                  {isMicMuted ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
                 </div>
                 <span className="text-[10px] font-medium text-stone-400">
                   {isMicMuted ? 'Bật Mic' : 'Tắt Mic'}
@@ -1761,16 +1850,16 @@ export const MessengerVideoCallModal = ({
               <button
                 type="button"
                 onClick={toggleVideo}
-                className="flex flex-col items-center gap-1 focus:outline-none cursor-pointer group"
+                className="flex flex-col items-center gap-1 focus:outline-none cursor-pointer group min-w-[44px] min-h-[44px]"
               >
                 <div
-                  className={`w-9 h-9 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center transition-all ${
+                  className={`w-10 h-10 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center transition-all ${
                     isVideoDisabled
                       ? 'bg-stone-800 text-stone-400 border border-stone-700'
                       : 'bg-stone-800 hover:bg-stone-700 text-stone-200 border border-stone-700'
                   }`}
                 >
-                  {isVideoDisabled ? <VideoOff className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> : <Video className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
+                  {isVideoDisabled ? <VideoOff className="w-4 h-4" /> : <Video className="w-4 h-4" />}
                 </div>
                 <span className="text-[10px] font-medium text-stone-400">
                   {isVideoDisabled ? 'Bật Cam' : 'Tắt Cam'}
@@ -1781,16 +1870,16 @@ export const MessengerVideoCallModal = ({
               <button
                 type="button"
                 onClick={toggleSpeaker}
-                className="flex flex-col items-center gap-1 focus:outline-none cursor-pointer group"
+                className="flex flex-col items-center gap-1 focus:outline-none cursor-pointer group min-w-[44px] min-h-[44px]"
               >
                 <div
-                  className={`w-9 h-9 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center transition-all ${
+                  className={`w-10 h-10 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center transition-all ${
                     isSpeakerMuted
                       ? 'bg-stone-800 text-stone-400 border border-stone-700'
                       : 'bg-stone-800 hover:bg-stone-700 text-stone-200 border border-stone-700'
                   }`}
                 >
-                  {isSpeakerMuted ? <VolumeX className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> : <Volume2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
+                  {isSpeakerMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
                 </div>
                 <span className="text-[10px] font-medium text-stone-400">
                   {isSpeakerMuted ? 'Bật Loa' : 'Tắt Loa'}
@@ -1803,9 +1892,9 @@ export const MessengerVideoCallModal = ({
           <button
             type="button"
             onClick={() => handleEndCall(true)}
-            className="flex items-center justify-center gap-2 px-6 py-2 sm:px-8 sm:py-2.5 rounded-xl bg-stone-800 hover:bg-stone-700 active:scale-98 text-stone-200 hover:text-white border border-stone-600 transition-all cursor-pointer shadow-sm"
+            className="flex items-center justify-center gap-2 px-5 py-2.5 sm:px-8 sm:py-2.5 min-h-[44px] rounded-xl bg-stone-800 hover:bg-stone-700 active:scale-98 text-stone-200 hover:text-white border border-stone-600 transition-all cursor-pointer shadow-sm"
           >
-            <PhoneOff className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-400" />
+            <PhoneOff className="w-4 h-4 text-red-400" />
             <span className="text-xs font-semibold tracking-wide">Kết thúc cuộc gọi</span>
           </button>
         </div>

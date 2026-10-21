@@ -1246,7 +1246,7 @@ export const ConciergeDashboard = ({
       {/* MESSENGER VIDEO CALL MODAL (STAFF CALLEE ROLE) */}
       <MessengerVideoCallModal
         isOpen={isVideoModalOpen}
-        sessionId={activeSession?.id || activeSession?.ticket_code || 'SUP-STAFF'}
+        sessionId={activeSession?.ticket_code || activeSession?.id || 'SUP-STAFF'}
         role="staff"
         callerName={activeSession?.guest_name || 'Khách hàng'}
         calleeName={currentUser?.full_name || 'Nhân viên hỗ trợ'}

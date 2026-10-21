@@ -760,9 +760,9 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
       // Tự động mở video call nếu nhận diện ý định gọi nhân viên
       if (chatRes.trigger_video_call) {
-        const vSession = chatRes.support_session_id || chatRes.session_id || sessionId;
-        setVideoCallSessionId(vSession);
-        setVideoCallTicketCode(chatRes.ticket_code || 'CCG-CALL');
+        const canonicalCode = chatRes.ticket_code || chatRes.support_session_id || chatRes.session_id || sessionId;
+        setVideoCallSessionId(canonicalCode);
+        setVideoCallTicketCode(chatRes.ticket_code || canonicalCode);
         setIsVideoCallOpen(true);
       }
 
@@ -1198,11 +1198,14 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
               guest_name: 'Khách tại Sảnh',
               description: 'Khách bấm gọi hỗ trợ trực tiếp từ màn hình Robot Concierge',
             });
-            setVideoCallSessionId(req.id || `SUP-${Date.now()}`);
-            setVideoCallTicketCode(req.ticket_code || 'CCG-CALL');
+            const canonicalCode = req.ticket_code || req.id || `SUP-${Date.now()}`;
+            setVideoCallSessionId(canonicalCode);
+            setVideoCallTicketCode(req.ticket_code || canonicalCode);
             setIsVideoCallOpen(true);
           } catch (err) {
-            setVideoCallSessionId(`SUP-${Date.now()}`);
+            const fallbackCode = `CCG-${Date.now()}`;
+            setVideoCallSessionId(fallbackCode);
+            setVideoCallTicketCode(fallbackCode);
             setIsVideoCallOpen(true);
           }
         }}
@@ -1402,11 +1405,14 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                         guest_name: 'Khách tại Sảnh',
                         description: 'Khách bấm gọi hỗ trợ trực tiếp từ màn hình Robot Concierge',
                       });
-                      setVideoCallSessionId(req.id || `SUP-${Date.now()}`);
-                      setVideoCallTicketCode(req.ticket_code || 'CCG-CALL');
+                      const canonicalCode = req.ticket_code || req.id || `SUP-${Date.now()}`;
+                      setVideoCallSessionId(canonicalCode);
+                      setVideoCallTicketCode(req.ticket_code || canonicalCode);
                       setIsVideoCallOpen(true);
                     } catch (err) {
-                      setVideoCallSessionId(`SUP-${Date.now()}`);
+                      const fallbackCode = `CCG-${Date.now()}`;
+                      setVideoCallSessionId(fallbackCode);
+                      setVideoCallTicketCode(fallbackCode);
                       setIsVideoCallOpen(true);
                     }
                   }}
@@ -1822,7 +1828,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       {/* MESSENGER VIDEO CALL MODAL & CLOUDINARY RECORDING */}
       <MessengerVideoCallModal
         isOpen={isVideoCallOpen}
-        sessionId={videoCallSessionId || sessionId}
+        sessionId={videoCallTicketCode || videoCallSessionId || sessionId}
         role="guest"
         callerName="Khách hàng"
         calleeName="Nhân viên hỗ trợ"

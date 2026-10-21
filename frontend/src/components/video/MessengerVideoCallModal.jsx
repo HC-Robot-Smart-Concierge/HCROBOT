@@ -81,8 +81,9 @@ export const MessengerVideoCallModal = ({
   const subtitleTimeoutRef = useRef(null);
   const callTranscriptsRef = useRef([]);
   const isMicMutedRef = useRef(false);
+  const checkPeerIntervalRef = useRef(null);
 
-  // 1. Tạo Canvas Stream giả lập trong trường hợp máy tính KHÔNG CÓ WEBCAM
+  // 1. Tạo Canvas Stream giả lập trong trường hợp máy tính KHÔNG CÓ WEBCAM (Tương thích iOS Safari)
   const createFakeVideoStream = (label = 'Khách hàng') => {
     const canvas = document.createElement('canvas');
     canvas.width = 640;
@@ -112,46 +113,67 @@ export const MessengerVideoCallModal = ({
     };
 
     draw();
-    const interval = setInterval(draw, 500);
-    const stream = canvas.captureStream(5);
-    stream._canvasInterval = interval;
+    let stream;
+    if (typeof canvas.captureStream === 'function') {
+      stream = canvas.captureStream(5);
+      stream._canvasInterval = setInterval(draw, 500);
+    } else if (typeof canvas.webkitCaptureStream === 'function') {
+      stream = canvas.webkitCaptureStream(5);
+      stream._canvasInterval = setInterval(draw, 500);
+    } else {
+      // iOS Safari WebKit fallback: MediaStream rỗng không throw lỗi
+      stream = new MediaStream();
+    }
     return stream;
   };
 
-  // 2. Lấy Media Stream của thiết bị (Hỗ trợ fallback thông minh nếu không có Camera)
+  // 2. Lấy Media Stream của thiết bị (Đa tầng fallback cho cả PC và iPhone Safari)
   const acquireLocalMedia = async () => {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      console.warn('[VideoCall] navigator.mediaDevices.getUserMedia không được hỗ trợ');
+      return createFakeVideoStream(role === 'staff' ? 'Concierge Staff' : 'Hotel Guest');
+    }
+
+    // Tầng 1: Thử camera trước + mic tiêu chuẩn
     try {
-      // Thử xin cả video và mic
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+        video: role === 'staff'
+          ? { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } }
+          : { width: { ideal: 1280 }, height: { ideal: 720 } },
         audio: true,
       });
       return stream;
     } catch (videoError) {
-      console.warn('[VideoCall] Không tìm thấy camera thật hoặc bị từ chối:', videoError.name);
-      setHasNoCamera(true);
+      console.warn('[VideoCall] Thử camera tiêu chuẩn thất bại:', videoError.name);
+    }
 
-      // Thử xin chỉ âm thanh (Mic)
-      try {
-        const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        const fakeVideoStream = createFakeVideoStream(role === 'staff' ? 'Concierge Staff' : 'Hotel Guest');
-        
-        // Gộp audio thật + video canvas giả lập
-        const combinedStream = new MediaStream([
-          ...audioStream.getAudioTracks(),
-          ...fakeVideoStream.getVideoTracks(),
-        ]);
-        return combinedStream;
-      } catch (audioError) {
-        console.error('[VideoCall] Cả mic và camera đều không truy cập được:', audioError);
-        // Fallback hoàn toàn bằng canvas
-        const fakeStream = createFakeVideoStream('No Device Available');
-        return fakeStream;
-      }
+    // Tầng 2: Thử video + audio cơ bản không ràng buộc resolution (iOS Safari)
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: true,
+      });
+      return stream;
+    } catch (basicErr) {
+      console.warn('[VideoCall] Thử video+audio cơ bản thất bại:', basicErr.name);
+    }
+
+    // Tầng 3: Thử chỉ Mic + Fake canvas video (nếu không có camera hoặc bị chặn)
+    setHasNoCamera(true);
+    try {
+      const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const fakeVideoStream = createFakeVideoStream(role === 'staff' ? 'Concierge Staff' : 'Hotel Guest');
+      return new MediaStream([
+        ...audioStream.getAudioTracks(),
+        ...fakeVideoStream.getVideoTracks(),
+      ]);
+    } catch (audioError) {
+      console.warn('[VideoCall] Cả mic và camera đều không truy cập được:', audioError);
+      return createFakeVideoStream('No Device Available');
     }
   };
 
-  // 3. Khởi tạo ghi hình cuộc gọi (MediaRecorder)
+  // 3. Khởi tạo ghi hình cuộc gọi (MediaRecorder hỗ trợ cả video/mp4 trên Safari)
   const startRecording = (stream) => {
     try {
       if (!window.MediaRecorder) {
@@ -160,13 +182,20 @@ export const MessengerVideoCallModal = ({
       }
 
       recordedChunksRef.current = [];
-      const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')
-        ? 'video/webm;codecs=vp9,opus'
-        : MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')
-        ? 'video/webm;codecs=vp8,opus'
-        : 'video/webm';
+      let mimeType = '';
+      if (typeof MediaRecorder.isTypeSupported === 'function') {
+        if (MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')) {
+          mimeType = 'video/webm;codecs=vp9,opus';
+        } else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) {
+          mimeType = 'video/webm;codecs=vp8,opus';
+        } else if (MediaRecorder.isTypeSupported('video/webm')) {
+          mimeType = 'video/webm';
+        } else if (MediaRecorder.isTypeSupported('video/mp4')) {
+          mimeType = 'video/mp4';
+        }
+      }
 
-      const recorder = new MediaRecorder(stream, { mimeType });
+      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
       recorder.ondataavailable = (event) => {
         if (event.data && event.data.size > 0) {
           recordedChunksRef.current.push(event.data);
@@ -184,7 +213,7 @@ export const MessengerVideoCallModal = ({
       recorder.start(1000); // 1s slice
       mediaRecorderRef.current = recorder;
     } catch (err) {
-      console.error('[VideoCall] Lỗi khởi tạo MediaRecorder:', err);
+      console.warn('[VideoCall] Lỗi khởi tạo MediaRecorder (bỏ qua ghi hình):', err);
     }
   };
 
@@ -293,11 +322,29 @@ export const MessengerVideoCallModal = ({
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
+      // Heartbeat kiểm tra đối phương mỗi 2s để tự động kích hoạt Offer/Answer khi cả 2 đã vào phòng
+      if (checkPeerIntervalRef.current) clearInterval(checkPeerIntervalRef.current);
+      checkPeerIntervalRef.current = setInterval(() => {
+        if (isEndingRef.current) {
+          if (checkPeerIntervalRef.current) clearInterval(checkPeerIntervalRef.current);
+          return;
+        }
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+          try {
+            wsRef.current.send(JSON.stringify({ type: 'check_peer' }));
+          } catch (e) {}
+        }
+      }, 2000);
+
       ws.onopen = () => {
         console.log('[VideoCall] Signaling WS Connected for session:', sessionId);
         if (role === 'guest') {
           setCallStatus('ringing');
         }
+        // Gửi ngay check_peer khi socket vừa mở
+        try {
+          ws.send(JSON.stringify({ type: 'check_peer' }));
+        } catch (e) {}
       };
 
       ws.onmessage = async (evt) => {
@@ -307,49 +354,75 @@ export const MessengerVideoCallModal = ({
           if (data.type === 'peer_joined') {
             console.log('[VideoCall] Peer joined:', data.name, 'as role:', data.role);
             if (role === 'guest') {
-              // Guest tạo Offer gửi cho Staff (yêu cầu cả âm thanh và video 2 chiều)
-              const offer = await pc.createOffer({
-                offerToReceiveAudio: true,
-                offerToReceiveVideo: true,
-              });
-              await pc.setLocalDescription(offer);
-              ws.send(JSON.stringify({ type: 'offer', sdp: offer }));
+              try {
+                // Guest tạo Offer gửi cho Staff (yêu cầu cả âm thanh và video 2 chiều)
+                const offer = await pc.createOffer({
+                  offerToReceiveAudio: true,
+                  offerToReceiveVideo: true,
+                });
+                await pc.setLocalDescription(offer);
+                if (ws.readyState === WebSocket.OPEN) {
+                  ws.send(JSON.stringify({ type: 'offer', sdp: offer }));
+                  console.log('[VideoCall] Sent Offer to staff');
+                }
+              } catch (offerErr) {
+                console.error('[VideoCall] Create offer error:', offerErr);
+              }
             }
           } else if (data.type === 'offer') {
             console.log('[VideoCall] Received Offer from peer');
-            await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+            try {
+              await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
 
-            // Xử lý hàng đợi ICE candidates đến sớm trước khi remoteDescription sẵn sàng
-            while (iceCandidatesQueueRef.current.length > 0) {
-              const cand = iceCandidatesQueueRef.current.shift();
-              try {
-                await pc.addIceCandidate(new RTCIceCandidate(cand));
-              } catch (e) {
-                console.warn('[VideoCall] Error adding queued candidate:', e);
+              // Xử lý hàng đợi ICE candidates đến sớm trước khi remoteDescription sẵn sàng
+              while (iceCandidatesQueueRef.current.length > 0) {
+                const cand = iceCandidatesQueueRef.current.shift();
+                try {
+                  await pc.addIceCandidate(new RTCIceCandidate(cand));
+                } catch (e) {
+                  console.warn('[VideoCall] Error adding queued candidate:', e);
+                }
               }
-            }
 
-            const answer = await pc.createAnswer({
-              offerToReceiveAudio: true,
-              offerToReceiveVideo: true,
-            });
-            await pc.setLocalDescription(answer);
-            ws.send(JSON.stringify({ type: 'answer', sdp: answer }));
-            setCallStatus('connected');
+              const answer = await pc.createAnswer({
+                offerToReceiveAudio: true,
+                offerToReceiveVideo: true,
+              });
+              await pc.setLocalDescription(answer);
+              if (ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'answer', sdp: answer }));
+                console.log('[VideoCall] Sent Answer to guest');
+              }
+              setCallStatus('connected');
+              if (checkPeerIntervalRef.current) {
+                clearInterval(checkPeerIntervalRef.current);
+                checkPeerIntervalRef.current = null;
+              }
+            } catch (ansErr) {
+              console.error('[VideoCall] Error handling offer:', ansErr);
+            }
           } else if (data.type === 'answer') {
             console.log('[VideoCall] Received Answer from peer');
-            await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+            try {
+              await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
 
-            // Xử lý hàng đợi ICE candidates đến sớm
-            while (iceCandidatesQueueRef.current.length > 0) {
-              const cand = iceCandidatesQueueRef.current.shift();
-              try {
-                await pc.addIceCandidate(new RTCIceCandidate(cand));
-              } catch (e) {
-                console.warn('[VideoCall] Error adding queued candidate:', e);
+              // Xử lý hàng đợi ICE candidates đến sớm
+              while (iceCandidatesQueueRef.current.length > 0) {
+                const cand = iceCandidatesQueueRef.current.shift();
+                try {
+                  await pc.addIceCandidate(new RTCIceCandidate(cand));
+                } catch (e) {
+                  console.warn('[VideoCall] Error adding queued candidate:', e);
+                }
               }
+              setCallStatus('connected');
+              if (checkPeerIntervalRef.current) {
+                clearInterval(checkPeerIntervalRef.current);
+                checkPeerIntervalRef.current = null;
+              }
+            } catch (ansErr) {
+              console.error('[VideoCall] Error applying answer:', ansErr);
             }
-            setCallStatus('connected');
           } else if (data.type === 'candidate') {
             if (data.candidate) {
               if (pc.remoteDescription && pc.remoteDescription.type) {
@@ -430,6 +503,10 @@ export const MessengerVideoCallModal = ({
 
   // Dọn dẹp tài nguyên
   const cleanUpResources = () => {
+    if (checkPeerIntervalRef.current) {
+      clearInterval(checkPeerIntervalRef.current);
+      checkPeerIntervalRef.current = null;
+    }
     if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
 
     if (speechRecognitionRef.current) {
@@ -840,6 +917,7 @@ export const MessengerVideoCallModal = ({
             ref={remoteVideoRef}
             autoPlay
             playsInline
+            webkit-playsinline="true"
             muted={isSpeakerMuted}
             className={`w-full h-full object-cover transition-opacity duration-500 ${
               callStatus === 'connected' ? 'opacity-100' : 'opacity-0'

@@ -208,6 +208,15 @@ async def create_concierge_live_request(
 
     await sr_repo.commit()
     await sr_repo.refresh(new_request)
+
+    # Đăng ký các alias (ticket_code, req.id, human_session.id) vào VideoCallManager
+    video_call_manager.register_alias(
+        ticket_code,
+        new_request.id,
+        human_session.id,
+        human_session.session_code,
+    )
+
     return new_request
 
 
@@ -460,6 +469,16 @@ async def get_local_recording(filename: str):
     return FileResponse(local_path, media_type="video/webm")
 
 
+@router.get("/concierge/ws/video-call/status")
+async def get_video_rooms_status():
+    return {
+        "rooms": {
+            sid: {role: p.get("name") for role, p in peers.items()}
+            for sid, peers in video_call_manager.rooms.items()
+        }
+    }
+
+
 # =====================================================================
 # WEBRTC VIDEO CALL SIGNALING WEBSOCKET HUB
 # =====================================================================
@@ -477,6 +496,37 @@ async def video_call_signaling_endpoint(
     và trạng thái media (camera, mic, chuông gọi) giữa Robot Kiosk và Web Concierge.
     """
     clean_session = session_id.strip()
+
+    # Tự động tra cứu DB nếu session_id chưa có trong alias map và không phải dạng canonical CCG-
+    if clean_session not in video_call_manager.aliases and not clean_session.startswith("CCG-"):
+        try:
+            from app.core.database import AsyncSessionLocal
+            from app.models.support_request import SupportRequest
+            from app.models.support import HumanSupportSession
+            from sqlalchemy import select
+
+            async with AsyncSessionLocal() as db_lookup:
+                if clean_session.startswith("REQ-"):
+                    stmt = select(SupportRequest.ticket_code).where(SupportRequest.id == clean_session)
+                    res = await db_lookup.execute(stmt)
+                    ticket = res.scalar_one_or_none()
+                    if ticket:
+                        video_call_manager.register_alias(ticket, clean_session)
+                elif clean_session.startswith("SUP-") or clean_session.startswith("LIVE-"):
+                    stmt = select(HumanSupportSession.linked_request_id, HumanSupportSession.session_code).where(
+                        (HumanSupportSession.id == clean_session) | (HumanSupportSession.session_code == clean_session)
+                    )
+                    res = await db_lookup.execute(stmt)
+                    row = res.first()
+                    if row and row[0]:
+                        stmt2 = select(SupportRequest.ticket_code).where(SupportRequest.id == row[0])
+                        res2 = await db_lookup.execute(stmt2)
+                        ticket = res2.scalar_one_or_none()
+                        if ticket:
+                            video_call_manager.register_alias(ticket, clean_session, row[0], row[1])
+        except Exception as e:
+            logger.warning(f"[VideoCall] On-demand DB alias resolution error: {e}")
+
     await video_call_manager.connect(websocket, clean_session, role=role, name=name)
 
     try:

@@ -77,7 +77,7 @@ export const AuroraSidebar = ({
 
   return (
     <aside
-      className={`h-full border-r flex flex-col justify-between select-none shrink-0 font-sans ${
+      className={`h-full border-r hidden md:flex flex-col justify-between select-none shrink-0 font-sans ${
         referenceLayout
           ? 'w-[240px] bg-white border-[#F0EEE9] px-[19px] py-5'
           : 'w-64 bg-[#F5F2EB] border-[#E3DFD5] p-5'

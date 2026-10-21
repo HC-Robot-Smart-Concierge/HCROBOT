@@ -127,6 +127,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
   const [language, setLanguage] = useState('Tiếng Việt');
   const [aiResponseText, setAiResponseText] = useState('');
+  const [lastUserPrompt, setLastUserPrompt] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [isFoodMenuOpen, setIsFoodMenuOpen] = useState(() => {
     try {
@@ -144,6 +145,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   const routeGuidanceTimerRef = useRef(null);
   const isProcessingRef = useRef(false);
   const processingSafetyTimerRef = useRef(null);
+  const activeChatRequestIdRef = useRef(0);
+  const chatAbortControllerRef = useRef(null);
 
   // Auto QR Modal 8s Countdown States & Refs for Route Guidance
   const [isAutoQrModalOpen, setIsAutoQrModalOpen] = useState(false);
@@ -255,6 +258,12 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   // Hooks
   const { isListening, transcript, error: speechError, startListening, stopListening, resetTranscript, hasSupport, volumeLevel } = useSpeechRecognition();
   const { speak, prime, cancel: stopSpeaking, isSpeaking, speechRate, updateSpeechRate } = useSpeechSynthesis();
+
+  // Đồng bộ thời gian thực trạng thái phát âm thanh để chống stale closure
+  const isSpeakingRef = useRef(false);
+  useEffect(() => {
+    isSpeakingRef.current = isSpeaking;
+  }, [isSpeaking]);
 
   const toggleLanguage = useCallback((targetLang) => {
     if (typeof targetLang === 'string' && (targetLang === 'English' || targetLang === 'Tiếng Việt')) {
@@ -381,6 +390,11 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
   // Xóa bộ nhớ phiên (Dùng cho nút Khách Mới / Đổi Phòng)
   const handleManualResetSession = async () => {
+    activeChatRequestIdRef.current += 1;
+    if (chatAbortControllerRef.current) {
+      try { chatAbortControllerRef.current.abort(); } catch (e) {}
+      chatAbortControllerRef.current = null;
+    }
     if (processingSafetyTimerRef.current) clearTimeout(processingSafetyTimerRef.current);
     isProcessingRef.current = false;
     setIsProcessing(false);
@@ -395,6 +409,12 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   };
 
   const handleStopSpeaking = () => {
+    activeChatRequestIdRef.current += 1;
+    if (chatAbortControllerRef.current) {
+      try { chatAbortControllerRef.current.abort(); } catch (e) {}
+      chatAbortControllerRef.current = null;
+    }
+    clearRouteGuidanceTimers();
     stopSpeaking();
     setAiResponseText('');
     setCurrentState('RT-03');
@@ -547,26 +567,44 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
   // Khi người dùng đi xa khỏi Camera -> Đóng gói lưu DB, dọn dẹp âm thanh & chuyển sang ngủ nhẹ (RT-01)
   const handleGuestLeft = async () => {
-    if (!isProcessing) {
-      stopSpeaking();
-      stopListening();
-      resetTranscript();
-      try {
-        await flushSession(sessionId);
-      } catch (err) {
-        console.warn('Auto-flush session on guest left:', err);
-      }
-      setActiveRoomNumber(null);
-      setAiResponseText('');
-      resetSession(sessionId);
-      setCurrentState('RT-01');
+    // Tuyệt đối KHÔNG ngắt khi robot đang nói, đang xử lý câu trả lời, hoặc đang hiển thị nội dung
+    if (
+      isSpeaking ||
+      isSpeakingRef.current ||
+      isProcessing ||
+      isProcessingRef.current ||
+      Boolean(aiResponseText) ||
+      currentState === 'RT-05' ||
+      isWorkflowRunning
+    ) {
+      return;
     }
+
+    stopSpeaking();
+    stopListening();
+    resetTranscript();
+    try {
+      await flushSession(sessionId);
+    } catch (err) {
+      console.warn('Auto-flush session on guest left:', err);
+    }
+    setActiveRoomNumber(null);
+    setAiResponseText('');
+    setLastUserPrompt('');
+    resetSession(sessionId);
+    setCurrentState('RT-01');
   };
 
   // 1. Khi kích hoạt lắng nghe (Bấm nút hoặc Tự động)
   const handleStartTalk = () => {
     lastInteractionTimeRef.current = Date.now();
     if (isStandby) setIsStandby(false);
+    activeChatRequestIdRef.current += 1;
+    if (chatAbortControllerRef.current) {
+      try { chatAbortControllerRef.current.abort(); } catch (e) {}
+      chatAbortControllerRef.current = null;
+    }
+    clearRouteGuidanceTimers();
     if (processingSafetyTimerRef.current) clearTimeout(processingSafetyTimerRef.current);
     isProcessingRef.current = false;
     setIsProcessing(false);
@@ -601,7 +639,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   const handleStopTalkAndProcess = async (userText) => {
     lastInteractionTimeRef.current = Date.now();
     if (isStandby) setIsStandby(false);
-    if (isProcessingRef.current || isSpeaking) return;
+    if (isProcessingRef.current || isSpeakingRef.current || isSpeaking) return;
     if (silenceTimerRef.current) {
       clearTimeout(silenceTimerRef.current);
       silenceTimerRef.current = null;
@@ -616,21 +654,41 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       return;
     }
 
+    setLastUserPrompt(query);
+
+    const currentChatId = ++activeChatRequestIdRef.current;
+    if (chatAbortControllerRef.current) {
+      try { chatAbortControllerRef.current.abort(); } catch (e) {}
+      chatAbortControllerRef.current = null;
+    }
+    chatAbortControllerRef.current = new AbortController();
+    const chatSignal = chatAbortControllerRef.current.signal;
+
+    clearRouteGuidanceTimers();
+    stopSpeaking();
+
     isProcessingRef.current = true;
     setIsProcessing(true);
 
-    // Safety timeout: tự động giải phóng sau 12 giây nếu AI hoặc âm thanh bị treo
+    // Safety timeout: tự động giải phóng sau 14 giây nếu AI hoặc âm thanh bị treo
     if (processingSafetyTimerRef.current) clearTimeout(processingSafetyTimerRef.current);
     processingSafetyTimerRef.current = setTimeout(() => {
       if (isProcessingRef.current) {
         console.warn('[SafetyTimeout] Auto-unlocking stuck isProcessing state');
+        activeChatRequestIdRef.current += 1;
+        if (chatAbortControllerRef.current) {
+          try { chatAbortControllerRef.current.abort(); } catch (e) {}
+          chatAbortControllerRef.current = null;
+        }
+        clearRouteGuidanceTimers();
+        stopSpeaking();
         isProcessingRef.current = false;
         setIsProcessing(false);
         if (!isSpeaking) {
           setCurrentState((prev) => (prev === 'RT-04' ? 'RT-02' : prev));
         }
       }
-    }, 12000);
+    }, 14000);
 
     stopListening();
     resetTranscript();
@@ -681,7 +739,12 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
     try {
       // Gửi toàn bộ truy vấn tới RAG Backend duy nhất (Single Source of Truth)
-      const chatRes = await sendChatPrompt(query, null, "auto", guestEmotion, sessionId, activeRoomNumber);
+      const chatRes = await sendChatPrompt(query, null, "auto", guestEmotion, sessionId, activeRoomNumber, chatSignal);
+
+      // Nếu người dùng đã kích hoạt câu nói mới, ngắt lời hoặc timeout xảy ra -> Hủy bỏ câu cũ
+      if (currentChatId !== activeChatRequestIdRef.current || chatRes?.aborted) {
+        return;
+      }
 
       const replyText = chatRes.response || 'Dạ, tôi đã ghi nhận yêu cầu của quý khách.';
       const detectedLang = chatRes.detected_language || 'Tiếng Việt';
@@ -729,13 +792,37 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
       const isFarewell = ['tạm biệt', 'hẹn gặp lại', 'bye', 'goodbye', 'kết thúc', 'xong rồi', 'hết rồi'].some(k => lowerQuery.includes(k));
 
-      // Phát giọng đọc duy nhất từ RAG Backend
+      // 1. Hủy bỏ timer an toàn 14s cũ vì AI Backend đã phản hồi xong
+      if (processingSafetyTimerRef.current) {
+        clearTimeout(processingSafetyTimerRef.current);
+        processingSafetyTimerRef.current = null;
+      }
+
+      // 2. Thiết lập Safety Timer động theo độ dài câu nói thực tế
+      // Tối thiểu 25 giây hoặc 800ms/từ để ngăn chặn câu dài bị timer cắt cụt giữa chừng
+      const wordsCount = replyText.split(/\s+/).length;
+      const speechSafetyMs = Math.max(wordsCount * 800 + 10000, 25000);
+      processingSafetyTimerRef.current = setTimeout(() => {
+        if (isProcessingRef.current && currentChatId === activeChatRequestIdRef.current) {
+          console.warn('[SafetyTimeout] Auto-unlocking stuck speech state after dynamic speech timeout');
+          stopSpeaking();
+          isProcessingRef.current = false;
+          setIsProcessing(false);
+          setAiResponseText('');
+          setCurrentState((prev) => (prev === 'RT-04' ? 'RT-02' : prev));
+        }
+      }, speechSafetyMs);
+
+      // 3. Phát giọng đọc duy nhất từ RAG Backend
       speak(
         replyText,
         langCode,
         () => {
           lastInteractionTimeRef.current = Date.now();
-          if (processingSafetyTimerRef.current) clearTimeout(processingSafetyTimerRef.current);
+          if (processingSafetyTimerRef.current) {
+            clearTimeout(processingSafetyTimerRef.current);
+            processingSafetyTimerRef.current = null;
+          }
           isProcessingRef.current = false;
           setIsProcessing(false);
 
@@ -761,6 +848,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                 (langCode === 'en-US' || detectedLang === 'English') ? 'en-US' : 'vi-VN',
                 null,
                 () => {
+                  stopListening();
+                  resetTranscript();
                   setAiResponseText(qrVoicePrompt);
                 }
               );
@@ -785,7 +874,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
             if (isAutoListen) {
               setTimeout(() => {
                 resetTranscript();
-                startListening(language);
+                handleStartTalk();
               }, 400);
             }
           } else {
@@ -800,13 +889,21 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
           }
         },
         () => {
+          stopListening();
+          resetTranscript();
           setAiResponseText(replyText);
         },
         chatRes.audio_base64
       );
 
     } catch (error) {
-      if (processingSafetyTimerRef.current) clearTimeout(processingSafetyTimerRef.current);
+      if (currentChatId !== activeChatRequestIdRef.current) {
+        return;
+      }
+      if (processingSafetyTimerRef.current) {
+        clearTimeout(processingSafetyTimerRef.current);
+        processingSafetyTimerRef.current = null;
+      }
       isProcessingRef.current = false;
       setIsProcessing(false);
       const fallbackText = 'Xin lỗi quý khách, không thể kết nối tới AI Server.';
@@ -823,6 +920,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
           if (isAutoListen) handleStartTalk();
         },
         () => {
+          stopListening();
+          resetTranscript();
           setAiResponseText(fallbackText);
         }
       );
@@ -1062,10 +1161,26 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         availableWorkflows={availableWorkflows}
         onStartWorkflow={startWorkflow}
         onOpenFacilities={() => {
+          activeChatRequestIdRef.current += 1;
+          if (chatAbortControllerRef.current) {
+            try { chatAbortControllerRef.current.abort(); } catch (e) {}
+            chatAbortControllerRef.current = null;
+          }
+          clearRouteGuidanceTimers();
+          stopSpeaking();
           setIsFacilitiesModalOpen(true);
           speak('Dạ đây là toàn bộ cơ sở vật chất và tiện ích 5 sao của khách sạn ạ.');
         }}
-        onOpenFoodMenu={() => setIsFoodMenuOpen(true)}
+        onOpenFoodMenu={() => {
+          activeChatRequestIdRef.current += 1;
+          if (chatAbortControllerRef.current) {
+            try { chatAbortControllerRef.current.abort(); } catch (e) {}
+            chatAbortControllerRef.current = null;
+          }
+          clearRouteGuidanceTimers();
+          stopSpeaking();
+          setIsFoodMenuOpen(true);
+        }}
         onCloseAiResponse={() => setAiResponseText('')}
         navigationDestinationKey={navigationDestinationKey}
         onSelectDestination={setNavigationDestinationKey}
@@ -1096,12 +1211,11 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       <div
         onClick={() => {
           prime();
-          if (isSpeaking) {
-            stopSpeaking();
-            handleStartTalk();
+          if (isSpeaking || isSpeakingRef.current) {
+            // Không dập tắt giọng đọc robot khi chạm vào khoảng trống màn hình
             return;
           }
-          if ((currentState === 'RT-02' || currentState === 'RT-01') && !isSpeaking && !isProcessing) {
+          if ((currentState === 'RT-02' || currentState === 'RT-01') && !isSpeaking && !isSpeakingRef.current && !isProcessing) {
             handleStartTalk();
           }
         }}
@@ -1514,13 +1628,16 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
               {/* 2. Khi đang nghe (Listening): Hiển thị AudioWave và trạng thái thu âm thực tế */}
               {currentState === 'RT-03' && !aiResponseText && (
                 <div className="mt-6 flex flex-col items-center gap-3 animate-fadeIn">
-                  <div className="px-6 py-3 bg-stone-900/90 backdrop-blur-xl border border-stone-700/80 rounded-2xl shadow-2xl flex items-center gap-4 text-stone-100">
+                  <div className="px-6 py-3.5 bg-stone-900/90 backdrop-blur-xl border border-stone-700/80 rounded-2xl shadow-2xl flex items-center gap-4 text-stone-100 max-w-[620px]">
                     <AudioWave isActive={isListening} volumeLevel={volumeLevel} />
-                    <div className="flex flex-col text-left">
-                      <span className="text-xs font-bold text-stone-200">
-                        {transcript ? `"${transcript}"` : 'Listening... · Đang lắng nghe...'}
+                    <div className="flex flex-col text-left min-w-[240px]">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] uppercase font-bold tracking-wider text-stone-400">Khách nói:</span>
+                      </div>
+                      <span className="text-sm font-bold text-stone-100">
+                        {transcript ? `"${transcript}"` : (volumeLevel > 5 ? 'Đang nhận diện giọng nói...' : 'Listening... · Đang lắng nghe...')}
                       </span>
-                      <span className="text-[10px] text-stone-400 font-medium flex items-center gap-1.5">
+                      <span className="text-[10px] text-stone-400 font-medium flex items-center gap-1.5 mt-0.5">
                         <Globe className="w-3 h-3 text-stone-400" />
                         <span>Auto-detect VI · EN · Tự động nhận diện</span>
                       </span>
@@ -1564,10 +1681,19 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                 </div>
               )}
 
-              {/* 4. Khi đang xử lý (Processing): Hiển thị text trạng thái */}
+              {/* 4. Khi đang xử lý (Processing): Hiển thị rõ câu người dùng đã nói & hiệu ứng đang suy nghĩ */}
               {currentState === 'RT-04' && !aiResponseText && (
-                <div className="mt-4 text-xs font-bold text-stone-400 tracking-wider uppercase animate-pulse">
-                  Đang tìm câu trả lời phù hợp...
+                <div className="mt-5 px-6 py-3.5 bg-stone-900/85 backdrop-blur-md border border-stone-700/60 rounded-2xl flex flex-col items-center gap-2 shadow-xl animate-fadeIn max-w-[600px]">
+                  {lastUserPrompt ? (
+                    <div className="flex items-center gap-2 text-stone-200 text-sm font-semibold text-center">
+                      <span className="text-stone-400 text-xs uppercase tracking-wider font-bold shrink-0">Khách hỏi:</span>
+                      <span className="italic text-stone-100">"{lastUserPrompt}"</span>
+                    </div>
+                  ) : null}
+                  <div className="text-xs font-semibold text-stone-400 tracking-wide flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-stone-400 animate-ping" />
+                    <span>Rora đang suy nghĩ...</span>
+                  </div>
                 </div>
               )}
 

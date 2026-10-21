@@ -210,123 +210,91 @@ export const GuestMapPage = () => {
                 preserveAspectRatio="xMidYMid meet"
               >
                 <defs>
-                  <filter id="guest-neon-glow" x="-30%" y="-30%" width="160%" height="160%">
-                    <feDropShadow dx="0" dy="0" stdDeviation="12" floodColor="#10B981" floodOpacity="0.8" />
-                    <feDropShadow dx="0" dy="0" stdDeviation="4" floodColor="#34D399" floodOpacity="0.9" />
-                  </filter>
-                  <filter id="guest-amber-glow" x="-30%" y="-30%" width="160%" height="160%">
-                    <feDropShadow dx="0" dy="0" stdDeviation="10" floodColor="#F59E0B" floodOpacity="0.8" />
+                  <filter id="guest-sky-glow" x="-30%" y="-30%" width="160%" height="160%">
+                    <feDropShadow dx="0" dy="0" stdDeviation="8" floodColor="#38BDF8" floodOpacity="0.5" />
+                    <feDropShadow dx="0" dy="0" stdDeviation="3" floodColor="#7DD3FC" floodOpacity="0.7" />
                   </filter>
                 </defs>
 
-                {/* CHẶNG 1: TẦNG TRỆT (LOBBY -> THANG MÁY A) */}
+                {/* CHẶNG 1: TẦNG TRỆT (LOBBY -> THANG MÁY A) - Màu xanh nhạt dễ nhìn */}
                 {activeLeg === 1 && (
                   <g>
                     <path
                       d={ROUTE_GROUND_TO_ELEVATOR}
                       fill="none"
-                      stroke="#10B981"
-                      strokeWidth="14"
+                      stroke="#7DD3FC"
+                      strokeWidth="12"
                       strokeLinecap="round"
                       strokeLinejoin="round"
                       opacity="0.3"
-                      filter="url(#guest-neon-glow)"
+                      filter="url(#guest-sky-glow)"
                     />
                     <path
                       d={ROUTE_GROUND_TO_ELEVATOR}
                       fill="none"
-                      stroke="#059669"
-                      strokeWidth="9"
+                      stroke="#38BDF8"
+                      strokeWidth="7"
                       strokeLinecap="round"
                       strokeLinejoin="round"
-                      strokeDasharray="18 14"
+                      strokeDasharray="14 10"
                       className="animate-routeDash"
                     />
 
                     {/* Chấm Bạn Đang Ở Đây tại Lobby */}
                     <g transform="translate(796, 545)">
-                      <circle r="36" fill="#10B981" opacity="0.25" className="animate-ping" />
-                      <circle r="20" fill="#10B981" opacity="0.4" />
-                      <circle r="14" fill="#059669" stroke="#ffffff" strokeWidth="4" />
-                      <rect x="-85" y="-56" width="170" height="32" rx="16" fill="#0f172a" stroke="#10b981" strokeWidth="2" />
-                      <text x="0" y="-35" textAnchor="middle" fill="#ffffff" fontSize="13" fontWeight="bold">
-                        BẠN ĐANG Ở ĐÂY
-                      </text>
+                      <circle r="14" fill="#38BDF8" opacity="0.25" />
+                      <circle r="8" fill="#0EA5E9" stroke="#ffffff" strokeWidth="2.5" />
                     </g>
 
                     {/* Vị trí Thang Máy A */}
                     <g transform="translate(1249, 400)">
-                      <circle r="30" fill="#F59E0B" opacity="0.25" className="animate-ping" />
-                      <circle r="18" fill="#F59E0B" stroke="#ffffff" strokeWidth="4" filter="url(#guest-amber-glow)" />
-                      <text x="0" y="5" textAnchor="middle" fill="#ffffff" fontSize="14" fontWeight="bold">
-                        🛗
-                      </text>
-                      <rect x="-95" y="-54" width="190" height="32" rx="16" fill="#0f172a" stroke="#F59E0B" strokeWidth="2" />
-                      <text x="0" y="-33" textAnchor="middle" fill="#FDE68A" fontSize="13" fontWeight="bold">
-                        THANG MÁY LÊN {currentDest.floorLevel}
-                      </text>
+                      <circle r="14" fill="#38BDF8" opacity="0.25" />
+                      <circle r="8" fill="#38BDF8" stroke="#ffffff" strokeWidth="2.5" />
                     </g>
                   </g>
                 )}
 
-                {/* CHẶNG 2: TẦNG ĐÍCH (THANG MÁY -> ĐIỂM ĐẾN) */}
+                {/* CHẶNG 2: TẦNG ĐÍCH (THANG MÁY -> ĐIỂM ĐẾN) - Màu xanh nhạt dễ nhìn */}
                 {activeLeg === 2 && (
                   <g>
                     <path
                       d={currentDest.routeTarget}
                       fill="none"
-                      stroke="#06B6D4"
-                      strokeWidth="14"
+                      stroke="#7DD3FC"
+                      strokeWidth="12"
                       strokeLinecap="round"
                       strokeLinejoin="round"
                       opacity="0.3"
-                      filter="url(#guest-neon-glow)"
+                      filter="url(#guest-sky-glow)"
                     />
                     <path
                       d={currentDest.routeTarget}
                       fill="none"
-                      stroke="#0284C7"
-                      strokeWidth="9"
+                      stroke="#38BDF8"
+                      strokeWidth="7"
                       strokeLinecap="round"
                       strokeLinejoin="round"
-                      strokeDasharray="18 14"
+                      strokeDasharray="14 10"
                       className="animate-routeDash"
                     />
 
                     {/* Vị trí xuất phát chặng 2 */}
                     {currentDest.isDifferentFloor ? (
                       <g transform="translate(1249, 410)">
-                        <circle r="18" fill="#0ea5e9" stroke="#ffffff" strokeWidth="4" />
-                        <rect x="-90" y="-50" width="180" height="30" rx="15" fill="#0f172a" stroke="#0ea5e9" strokeWidth="2" />
-                        <text x="0" y="-30" textAnchor="middle" fill="#ffffff" fontSize="12" fontWeight="bold">
-                          CỬA THANG MÁY
-                        </text>
+                        <circle r="14" fill="#38BDF8" opacity="0.25" />
+                        <circle r="8" fill="#0EA5E9" stroke="#ffffff" strokeWidth="2.5" />
                       </g>
                     ) : (
                       <g transform="translate(796, 545)">
-                        <circle r="36" fill="#10B981" opacity="0.25" className="animate-ping" />
-                        <circle r="14" fill="#059669" stroke="#ffffff" strokeWidth="4" />
-                        <rect x="-85" y="-56" width="170" height="32" rx="16" fill="#0f172a" stroke="#10b981" strokeWidth="2" />
-                        <text x="0" y="-35" textAnchor="middle" fill="#ffffff" fontSize="13" fontWeight="bold">
-                          BẠN ĐANG Ở ĐÂY
-                        </text>
+                        <circle r="14" fill="#38BDF8" opacity="0.25" />
+                        <circle r="8" fill="#0EA5E9" stroke="#ffffff" strokeWidth="2.5" />
                       </g>
                     )}
 
-                    {/* Ghim đích đến Google Maps */}
+                    {/* Điểm đích: chấm tròn xanh nhạt tinh gọn, không dùng icon mốc ghim to */}
                     <g transform={`translate(${currentDest.coords.x}, ${currentDest.coords.y})`}>
-                      <circle r="32" fill="#ef4444" opacity="0.2" className="animate-ping" />
-                      <path
-                        d="M 0 0 C -16 -16, -24 -36, -24 -52 C -24 -72, -10 -84, 0 -84 C 10 -84, 24 -72, 24 -52 C 24 -36, 16 -16, 0 0 Z"
-                        fill="#dc2626"
-                        stroke="#ffffff"
-                        strokeWidth="3.5"
-                      />
-                      <circle cx="0" cy="-54" r="10" fill="#ffffff" />
-                      <rect x="-105" y="-124" width="210" height="34" rx="17" fill="#0f172a" stroke="#ef4444" strokeWidth="2.5" />
-                      <text x="0" y="-102" textAnchor="middle" fill="#ffffff" fontSize="13" fontWeight="extrabold">
-                        {currentDest.name}
-                      </text>
+                      <circle r="14" fill="#38BDF8" opacity="0.3" />
+                      <circle r="8" fill="#0EA5E9" stroke="#ffffff" strokeWidth="2.5" />
                     </g>
                   </g>
                 )}
@@ -340,9 +308,8 @@ export const GuestMapPage = () => {
           {/* Destination Card Info */}
           <div className="w-full p-3 rounded-2xl bg-gradient-to-r from-stone-900 via-[#18202F] to-stone-900 border border-emerald-500/25 shadow-xl flex flex-col gap-2">
             <div className="flex items-start justify-between gap-2">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <span className="text-xl p-1.5 rounded-xl bg-stone-800/90 border border-stone-700/80 shrink-0">
-                  {currentDest.icon || '📍'}
+                <span className="p-1.5 rounded-xl bg-stone-800/90 border border-stone-700/80 shrink-0 flex items-center justify-center">
+                  <MapPin className="w-5 h-5 text-emerald-400" />
                 </span>
                 <div className="min-w-0">
                   <span className="text-[9px] font-bold uppercase text-emerald-400 tracking-wider">
@@ -470,7 +437,6 @@ export const GuestMapPage = () => {
                         : 'bg-stone-900 text-stone-400 border-stone-800 hover:text-white hover:bg-stone-800'
                     }`}
                   >
-                    <span>{dest.icon}</span>
                     <span>{dest.name}</span>
                   </button>
                 );

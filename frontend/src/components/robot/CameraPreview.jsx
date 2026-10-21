@@ -440,7 +440,9 @@ export const CameraPreview = ({
             drawBoundingBox(null, sourceEl);
           }
 
-          if (negativeFramesRef.current >= 4) {
+          // Yêu cầu ít nhất 16 frames âm tính liên tiếp (~8 giây không thấy bất kỳ ai) mới kích hoạt GuestLeft
+          // để tránh ngắt nhầm phiên hội thoại khi khách chỉ chớp mắt, quay đầu hoặc cúi nhìn điện thoại
+          if (negativeFramesRef.current >= 16) {
             setLatestDetection(null);
             setIsPersonDetected(false);
             if (isTriggeredRef.current) {

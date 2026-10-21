@@ -115,10 +115,19 @@ export const sendChatPrompt = async (
   language = 'auto',
   emotion = 'neutral',
   sessionId = 'default_session',
-  roomNumber = null
+  roomNumber = null,
+  externalSignal = null
 ) => {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 45000);
+  const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+  if (externalSignal) {
+    if (externalSignal.aborted) {
+      controller.abort();
+    } else {
+      externalSignal.addEventListener('abort', () => controller.abort(), { once: true });
+    }
+  }
 
   try {
     const response = await fetch(`${API_BASE_URL}/chat`, {
@@ -147,6 +156,13 @@ export const sendChatPrompt = async (
     return data;
   } catch (error) {
     clearTimeout(timeoutId);
+    if (error?.name === 'AbortError' || controller.signal.aborted) {
+      return {
+        aborted: true,
+        response: '',
+        error: 'Request aborted',
+      };
+    }
     return {
       response: 'Dạ, hiện tại có gián đoạn kết nối tới AI Server.',
       error: error.message,
@@ -223,15 +239,17 @@ export const flushSession = async (sessionId = 'default_session') => {
   }
 };
 
-export const synthesizeSpeech = async (text, optionsOrProvider = 'edge', voice = null, language = 'vi-VN') => {
+export const synthesizeSpeech = async (text, optionsOrProvider = 'edge', voice = null, language = 'vi-VN', optionalSignal = null) => {
   let provider = 'edge';
   let targetVoice = voice;
   let targetLang = language;
+  let signal = optionalSignal;
 
   if (typeof optionsOrProvider === 'object' && optionsOrProvider !== null) {
     provider = optionsOrProvider.provider || 'edge';
     targetVoice = optionsOrProvider.voice || voice;
     targetLang = optionsOrProvider.language || language;
+    signal = optionsOrProvider.signal || optionalSignal || null;
   } else if (typeof optionsOrProvider === 'string') {
     provider = optionsOrProvider;
   }
@@ -242,6 +260,7 @@ export const synthesizeSpeech = async (text, optionsOrProvider = 'edge', voice =
       headers: {
         'Content-Type': 'application/json',
       },
+      signal,
       body: JSON.stringify({
         text,
         provider,
@@ -256,6 +275,14 @@ export const synthesizeSpeech = async (text, optionsOrProvider = 'edge', voice =
 
     return await response.json();
   } catch (error) {
+    if (error?.name === 'AbortError') {
+      return {
+        aborted: true,
+        audio_base64: '',
+        mime_type: 'audio/mp3',
+        error: 'Request aborted',
+      };
+    }
     return {
       audio_base64: '',
       mime_type: 'audio/mp3',

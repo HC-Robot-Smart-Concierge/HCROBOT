@@ -267,30 +267,25 @@ export const RobotFacilitiesModal = ({
       onTouchEnd={() => setIsPaused(false)}
     >
       {/* Header: Tiêu đề + Category Filter Pills + Nút Đóng Kiosk */}
-      <div className="flex items-center justify-between gap-3 pb-2.5 border-b border-[#E3DFD5] shrink-0">
-        {/* Bên trái: Tiêu đề & Badge */}
-        <div className="flex items-center gap-2.5 min-w-0">
-          <div className="w-9 h-9 rounded-xl bg-[#EFECE4] border border-[#E3DFD5] text-stone-700 flex items-center justify-center shrink-0">
-            <Building className="w-5 h-5 text-stone-800" />
+      <div className="flex items-center justify-between gap-2.5 pb-2.5 border-b border-[#E3DFD5] shrink-0">
+        {/* Bên trái: Tiêu đề ngắn gọn & Badge */}
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-[#EFECE4] border border-[#E3DFD5] text-stone-700 flex items-center justify-center shrink-0">
+            <Building className="w-4 h-4 sm:w-5 sm:h-5 text-stone-800" />
           </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <h3 className="text-xs sm:text-sm font-black uppercase tracking-wider text-stone-900 truncate">
-                Cơ Sở Vật Chất & Tiện Ích
-              </h3>
-              <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-stone-200 text-stone-700 border border-stone-300 shrink-0">
-                5 SAO
-              </span>
-            </div>
-            <p className="text-[10px] text-stone-500 font-medium truncate mt-0.5">
-              Chỉ đường 2D & Thông tin chi tiết tiện ích khách sạn
-            </p>
+          <div className="flex items-center gap-1.5">
+            <h3 className="text-xs sm:text-sm font-black uppercase tracking-wider text-stone-900 whitespace-nowrap">
+              Tiện Ích 5 Sao
+            </h3>
+            <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-stone-200 text-stone-700 border border-stone-300">
+              HOTEL
+            </span>
           </div>
         </div>
 
-        {/* Ở giữa: Category Filter Pills */}
+        {/* Ở giữa: Category Filter Pills cuộn ngang mượt mà, không đè nút đóng */}
         {!selectedFacilityForDetail && (
-          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+          <div className="flex-1 min-w-0 flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 px-2">
             {CATEGORIES.map((cat) => {
               const isActive = selectedCategory === cat;
               return (
@@ -298,7 +293,7 @@ export const RobotFacilitiesModal = ({
                   key={cat}
                   type="button"
                   onClick={() => setSelectedCategory(cat)}
-                  className={`px-3 py-1 rounded-full text-xs font-bold transition-all cursor-pointer whitespace-nowrap active:scale-95 ${
+                  className={`px-3 py-1 rounded-full text-xs font-bold transition-all cursor-pointer whitespace-nowrap shrink-0 active:scale-95 ${
                     isActive
                       ? 'bg-[#1A1917] text-white shadow-xs'
                       : 'bg-white hover:bg-stone-50 text-stone-700 border border-[#E3DFD5]'
@@ -311,23 +306,21 @@ export const RobotFacilitiesModal = ({
           </div>
         )}
 
-        {/* Bên phải: Nút Đóng Kiosk */}
-        <div className="flex items-center gap-2 shrink-0">
-          <button
-            type="button"
-            onClick={onClose}
-            className="h-8 sm:h-9 px-4 rounded-full bg-[#1A1917] hover:bg-stone-800 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer active:scale-95 transition-all shadow-sm"
-            title="Đóng menu tiện ích"
-          >
-            <X className="w-4 h-4" />
-            <span>Đóng</span>
-          </button>
-        </div>
+        {/* Bên phải: Nút Đóng Kiosk cố định */}
+        <button
+          type="button"
+          onClick={onClose}
+          className="h-8 px-3.5 rounded-full bg-[#1A1917] hover:bg-stone-800 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer active:scale-95 transition-all shadow-sm shrink-0"
+          title="Đóng menu tiện ích"
+        >
+          <X className="w-3.5 h-3.5" />
+          <span>Đóng</span>
+        </button>
       </div>
 
       {/* Main Content: Lưới tiện ích hoặc màn hình chi tiết */}
       {!selectedFacilityForDetail ? (
-        <div className="flex-1 min-h-0 py-2.5 overflow-y-auto no-scrollbar">
+        <div className="flex-1 min-h-0 py-2 sm:py-2.5 overflow-y-auto no-scrollbar">
           {filteredFacilities.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-center p-6 space-y-2">
               <Search className="w-8 h-8 text-stone-400" />
@@ -338,97 +331,65 @@ export const RobotFacilitiesModal = ({
                   setSelectedCategory('Tất cả');
                   setSearchQuery('');
                 }}
-                className="px-3.5 py-1.5 rounded-full bg-stone-200 text-stone-800 text-xs font-bold"
+                className="px-3.5 py-1.5 rounded-full bg-stone-200 text-stone-800 text-xs font-bold cursor-pointer"
               >
                 Đặt lại bộ lọc
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-2.5 sm:gap-3 content-start">
+            <div className="flex flex-col gap-2 sm:gap-2.5">
               {filteredFacilities.map((facility) => {
                 const Icon = facility.icon;
                 return (
                   <div
                     key={facility.key}
-                    className="p-3 sm:p-3.5 rounded-2xl bg-white hover:bg-stone-50/90 border border-[#E3DFD5] hover:border-stone-400 transition-all flex flex-col justify-between shadow-xs hover:shadow-md group min-h-[96px] h-[104px]"
+                    onClick={() => setSelectedFacilityForDetail(facility)}
+                    className="p-2.5 sm:p-3 rounded-2xl bg-white hover:bg-stone-50/90 border border-[#E3DFD5] hover:border-stone-400 transition-all flex items-center justify-between gap-3 shadow-xs hover:shadow-md group cursor-pointer active:scale-[0.995]"
                   >
-                    {/* Top: Icon + Title + Floor + Hours */}
-                    <div>
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <div className="w-9 h-9 rounded-xl bg-[#EFECE4] border border-[#E3DFD5] text-stone-700 flex items-center justify-center shrink-0 group-hover:bg-[#1A1917] group-hover:text-white transition-all">
-                            <Icon className="w-4.5 h-4.5" />
-                          </div>
-                          <div className="min-w-0">
-                            <h4 className="text-xs sm:text-[13px] font-black text-stone-900 group-hover:text-black truncate leading-tight">
-                              {facility.name}
-                            </h4>
-                            <div className="flex items-center gap-1.5 text-[10px] text-stone-500 mt-0.5">
-                              <span className="font-mono font-bold px-1.5 py-0.5 rounded bg-stone-200 text-stone-700 border border-stone-300 text-[9px]">
-                                {facility.floorLevel}
-                              </span>
-                              <span>·</span>
-                              <span className="truncate">{facility.hours}</span>
-                            </div>
-                          </div>
-                        </div>
+                    {/* Bên trái: Icon */}
+                    <div className="w-10 h-10 rounded-xl bg-[#EFECE4] border border-[#E3DFD5] text-stone-700 flex items-center justify-center shrink-0 group-hover:bg-[#1A1917] group-hover:text-white transition-colors">
+                      <Icon className="w-5 h-5" />
+                    </div>
+
+                    {/* Ở giữa: Thông tin dịch vụ */}
+                    <div className="flex-1 min-w-0 space-y-0.5">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h4 className="text-xs sm:text-sm font-black text-stone-900 group-hover:text-black truncate leading-tight">
+                          {facility.name}
+                        </h4>
+                        <span className="font-mono font-bold px-1.5 py-0.5 rounded bg-stone-200 text-stone-700 border border-stone-300 text-[9px] shrink-0">
+                          {facility.floorLevel}
+                        </span>
+                        <span className="text-[10px] text-stone-500 font-medium shrink-0">
+                          {facility.hours}
+                        </span>
+                        <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-stone-100 text-stone-600 border border-stone-200 shrink-0">
+                          {facility.category}
+                        </span>
                       </div>
 
-                      {/* Description */}
-                      <p className="text-[10px] sm:text-[11px] text-stone-600 line-clamp-1 mt-1.5 leading-snug">
+                      <p className="text-[11px] text-stone-600 truncate leading-snug">
                         {facility.desc}
                       </p>
                     </div>
 
-                    {/* Bottom Actions */}
-                    <div className="pt-2 border-t border-stone-100 flex items-center justify-between gap-2">
-                      <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider">
-                        {facility.category}
-                      </span>
-
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => setSelectedFacilityForDetail(facility)}
-                          className="h-6.5 px-2.5 rounded-full bg-white hover:bg-stone-100 text-stone-700 border border-[#E3DFD5] text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer active:scale-95"
-                          title="Xem thông tin chi tiết"
-                        >
-                          <Info className="w-3 h-3 text-stone-500" />
-                          <span>Chi tiết</span>
-                        </button>
-
-                        {facility.hasMenuAction && onOpenFoodMenu && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              onClose();
-                              onOpenFoodMenu();
-                            }}
-                            className="h-6.5 px-2.5 rounded-full bg-white hover:bg-stone-100 text-stone-800 border border-[#E3DFD5] text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer active:scale-95"
-                            title="Xem thực đơn ẩm thực"
-                          >
-                            <Utensils className="w-3 h-3 text-stone-600" />
-                            <span>Thực đơn</span>
-                          </button>
-                        )}
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            onClose();
-                            if (onNavigateToDestination) {
-                              onNavigateToDestination(facility.key);
-                            }
-                          }}
-                          className="h-6.5 px-3 rounded-full bg-[#1A1917] hover:bg-stone-800 text-white text-[10px] font-bold flex items-center gap-1 transition-all shadow-xs cursor-pointer active:scale-95"
-                          title="Xem sơ đồ 2D và chỉ đường kèm mã QR"
-                        >
-                          <Navigation className="w-3 h-3 text-white" />
-                          <span>Chỉ đường & QR</span>
-                          <ChevronRight className="w-3 h-3 text-stone-400 group-hover:translate-x-0.5 transition-transform" />
-                        </button>
-                      </div>
-                    </div>
+                    {/* Bên phải: Nút Chỉ đường & QR */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onClose();
+                        if (onNavigateToDestination) {
+                          onNavigateToDestination(facility.key);
+                        }
+                      }}
+                      className="h-8 px-3.5 rounded-full bg-[#1A1917] hover:bg-stone-800 text-white text-[11px] font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer active:scale-95 shrink-0"
+                      title="Xem sơ đồ 2D và chỉ đường kèm mã QR"
+                    >
+                      <Navigation className="w-3.5 h-3.5 text-white" />
+                      <span>Chỉ đường & QR</span>
+                      <ChevronRight className="w-3.5 h-3.5 text-stone-400 group-hover:translate-x-0.5 transition-transform" />
+                    </button>
                   </div>
                 );
               })}
@@ -565,10 +526,10 @@ export const RobotFacilitiesModal = ({
       )}
 
       {/* Footer */}
-      <div className="pt-2 border-t border-[#E3DFD5] flex items-center justify-between text-[10px] text-stone-600 shrink-0">
+      <div className="pt-1.5 border-t border-[#E3DFD5] flex items-center justify-between text-[10px] text-stone-600 shrink-0">
         <span className="font-bold text-stone-700">Aurora Grand Hotel · 5-Star Concierge</span>
-        <span className="text-stone-600 font-medium">
-          Chạm "Chỉ đường & QR" để Robot dẫn đường và cấp mã QR di động
+        <span className="text-stone-500 font-medium hidden sm:inline">
+          Chạm vào thẻ để xem chi tiết hoặc bấm "Chỉ đường" để Robot dẫn đường
         </span>
       </div>
     </div>

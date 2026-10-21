@@ -36,6 +36,29 @@ class TTSService:
             logger.warning(f"[TTSService] Cannot create audio_cache dir: {e}")
 
     @staticmethod
+    def clean_text_for_tts(text: str) -> str:
+        """
+        Chuẩn hóa văn bản trước khi đưa vào EdgeTTS:
+        - Loại bỏ markdown, icon, ngoặc
+        - Xóa gạch đầu dòng danh sách (*, -, •)
+        - Thay thế dấu hai chấm (:), dấu chấm phẩy (;) thành dấu phẩy (,) để giọng đọc êm ái, KHÔNG ngắt nghỉ khựng 1 giây
+        - Rút gọn nhiều dấu chấm (...) thành (.)
+        - Gộp khoảng trắng và ngắt dòng
+        """
+        if not text:
+            return ""
+        t = re.sub(r'[*#_`\[\]()~]', '', text)
+        t = re.sub(r'[\U00010000-\U0010ffff]', '', t)
+        t = re.sub(r'^[\s*•\-–—]+\s*', '', t, flags=re.MULTILINE)
+        t = re.sub(r':\s*', ', ', t)
+        t = re.sub(r'\s*;\s*', ', ', t)
+        t = re.sub(r'\.{2,}', '.', t)
+        t = re.sub(r'!{2,}', '!', t)
+        t = re.sub(r'\?{2,}', '?', t)
+        t = re.sub(r'\s+', ' ', t).strip()
+        return t
+
+    @staticmethod
     def rate_float_to_percentage(rate: float) -> str:
         """Chuyển đổi tốc độ float (0.5 - 2.0) sang chuỗi phần trăm EdgeTTS (+10%, -15%, +0%)"""
         clamped = max(0.5, min(2.0, float(rate)))
@@ -126,7 +149,8 @@ class TTSService:
         Tổng hợp giọng đọc từ văn bản kèm bộ đệm âm thanh siêu tốc.
         Trả về: (audio_base64, mime_type, provider_used)
         """
-        if not text or not text.strip():
+        clean_text = self.clean_text_for_tts(text)
+        if not clean_text:
             return "", "audio/mp3", "none"
 
         selected_provider = (provider or settings.TTS_PROVIDER or "edge").lower()
@@ -136,20 +160,20 @@ class TTSService:
         elif language and any(vi in language.lower() for vi in ["vi", "vietnamese"]):
             target_voice = voice or self.default_vi_voice
         else:
-            is_vi = self.is_vietnamese(text)
+            is_vi = self.is_vietnamese(clean_text)
             target_voice = (voice or self.default_vi_voice) if is_vi else (voice or self.default_en_voice)
 
         # 0. KIỂM TRA AUDIO CACHE TRƯỚC (< 1ms)
-        cache_key = self._get_cache_key(text, selected_provider, target_voice, target_rate)
+        cache_key = self._get_cache_key(clean_text, selected_provider, target_voice, target_rate)
         cached_audio = self._get_from_cache(cache_key)
         if cached_audio:
-            logger.info(f"[TTSService Cache Hit] Phục vụ âm thanh từ bộ nhớ đệm (0ms) cho text: '{text[:25]}...'")
+            logger.info(f"[TTSService Cache Hit] Phục vụ âm thanh từ bộ nhớ đệm (0ms) cho text: '{clean_text[:25]}...'")
             return cached_audio, "audio/mp3", f"{selected_provider}_cached"
 
         # 1. Thử nghiệm provider ElevenLabs
         if selected_provider == "elevenlabs" and settings.ELEVENLABS_API_KEY:
             try:
-                audio_b64 = await self._synthesize_elevenlabs(text, voice)
+                audio_b64 = await self._synthesize_elevenlabs(clean_text, voice)
                 if audio_b64:
                     self._save_to_cache(cache_key, audio_b64)
                     return audio_b64, "audio/mp3", "elevenlabs"
@@ -159,7 +183,7 @@ class TTSService:
         # 2. Thử nghiệm provider OpenAI TTS
         if selected_provider == "openai" and settings.OPENAI_API_KEY:
             try:
-                audio_b64 = await self._synthesize_openai(text, voice)
+                audio_b64 = await self._synthesize_openai(clean_text, voice)
                 if audio_b64:
                     self._save_to_cache(cache_key, audio_b64)
                     return audio_b64, "audio/mp3", "openai"
@@ -168,7 +192,7 @@ class TTSService:
 
         # 3. Mặc định dùng EdgeTTS Neural (Siêu tự nhiên & Miễn phí)
         try:
-            audio_b64 = await self._synthesize_edge_tts(text, target_voice, target_rate)
+            audio_b64 = await self._synthesize_edge_tts(clean_text, target_voice, target_rate)
             if audio_b64:
                 self._save_to_cache(cache_key, audio_b64)
                 return audio_b64, "audio/mp3", "edge"
@@ -182,7 +206,7 @@ class TTSService:
         """EdgeTTS Neural Engine."""
         try:
             import edge_tts
-            clean_text = re.sub(r'[*#_`\[\]()]', '', text).strip()
+            clean_text = self.clean_text_for_tts(text)
             if not clean_text:
                 return None
 
@@ -205,7 +229,8 @@ class TTSService:
         Tổng hợp giọng nói cho đoạn text ngắn (1 mệnh đề) → trả raw audio bytes.
         Tối ưu cho Streaming Pipeline: không encode Base64, gửi thẳng qua WebSocket Binary Frame.
         """
-        if not text or not text.strip():
+        clean_text = self.clean_text_for_tts(text)
+        if not clean_text:
             return b""
 
         try:
@@ -215,11 +240,8 @@ class TTSService:
             elif language and any(vi in language.lower() for vi in ["vi", "vietnamese"]):
                 target_voice = voice or self.default_vi_voice
             else:
-                is_vi = self.is_vietnamese(text)
+                is_vi = self.is_vietnamese(clean_text)
                 target_voice = (voice or self.default_vi_voice) if is_vi else (voice or self.default_en_voice)
-            clean_text = re.sub(r'[*#_`\[\]()]', '', text).strip()
-            if not clean_text:
-                return b""
 
             cache_key = self._get_cache_key(clean_text, "edge_chunk", target_voice)
             if cache_key in self._memory_cache:

@@ -8,6 +8,28 @@ export const useSpeechSynthesis = () => {
   const activeUtteranceRef = useRef(null);
   const safetyTimerRef = useRef(null);
 
+  // Epoch ID cho TTS: Ngăn chặn race condition khi câu trước load chậm không được phát lồng vào câu sau
+  const activeSpeechIdRef = useRef(0);
+  const abortControllerRef = useRef(null);
+
+  // Helper dừng và giải phóng hoàn toàn đối tượng Audio HTML5 hiện tại
+  const stopCurrentAudio = useCallback(() => {
+    if (audioRef.current) {
+      try {
+        audioRef.current.onplay = null;
+        audioRef.current.onended = null;
+        audioRef.current.onerror = null;
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+        audioRef.current.src = '';
+      } catch (e) {}
+      audioRef.current = null;
+    }
+    if (typeof window !== 'undefined') {
+      window._activeAudioPlayer = null;
+    }
+  }, []);
+
   // Persistent Speech Rate State (0.5x - 2.0x, default 1.0x)
   const [speechRate, setSpeechRateState] = useState(() => {
     try {
@@ -82,10 +104,17 @@ export const useSpeechSynthesis = () => {
   const onQueueStartCallbackRef = useRef(null);
   const streamLangRef = useRef('vi-VN');
 
-  const speakWebSpeech = (text, language = 'vi-VN', onEndCallback = null, onStartCallback = null, shouldCancel = true, rate = null) => {
+  const speakWebSpeech = (text, language = 'vi-VN', onEndCallback = null, onStartCallback = null, shouldCancel = true, rate = null, targetSpeechId = null, targetSignal = null) => {
+    const speechId = targetSpeechId ?? ++activeSpeechIdRef.current;
+    const signal = targetSignal ?? abortControllerRef.current?.signal;
+
     if (safetyTimerRef.current) {
       clearTimeout(safetyTimerRef.current);
       safetyTimerRef.current = null;
+    }
+
+    if (speechId !== activeSpeechIdRef.current) {
+      return;
     }
 
     // Chuẩn hóa văn bản: loại bỏ ký tự rác, markdown, định dạng danh sách và chuẩn hóa dấu câu
@@ -148,50 +177,85 @@ export const useSpeechSynthesis = () => {
     if (isSupportedEdgeLang) {
       const edgeVoice = langTag.startsWith('vi') ? 'vi-VN-HoaiMyNeural' : 'en-US-JennyNeural';
       const edgeLang = langTag.startsWith('vi') ? 'vi-VN' : 'en-US';
-      synthesizeSpeech(cleanText, { language: edgeLang, voice: edgeVoice })
+      synthesizeSpeech(cleanText, { language: edgeLang, voice: edgeVoice, signal })
         .then((data) => {
+          // Bỏ qua nếu câu nói này đã lỗi thời hoặc request đã bị abort
+          if (speechId !== activeSpeechIdRef.current || data?.aborted) {
+            return;
+          }
+
           if (data?.audio_base64 && data.audio_base64.length > 50) {
-            const audioSrc = `data:audio/mp3;base64,${data.audio_base64}`;
+            stopCurrentAudio();
+            if (speechId !== activeSpeechIdRef.current) return;
+
+            const audioSrc = `data:audio/mpeg;base64,${data.audio_base64}`;
             const audio = new Audio(audioSrc);
             audio.playbackRate = effectiveRate;
             audioRef.current = audio;
+            if (typeof window !== 'undefined') {
+              window._activeAudioPlayer = audio;
+            }
 
             audio.onplay = () => {
+              if (speechId !== activeSpeechIdRef.current) {
+                stopCurrentAudio();
+                return;
+              }
               setIsSpeaking(true);
               if (onStartCallback) onStartCallback();
             };
 
             audio.onended = () => {
-              setIsSpeaking(false);
-              audioRef.current = null;
-              if (onEndCallback) onEndCallback();
+              if (typeof window !== 'undefined') {
+                window._activeAudioPlayer = null;
+              }
+              if (speechId === activeSpeechIdRef.current) {
+                setIsSpeaking(false);
+                audioRef.current = null;
+                if (onEndCallback) onEndCallback();
+              }
             };
 
             audio.onerror = () => {
-              setIsSpeaking(false);
-              audioRef.current = null;
-              if (onEndCallback) onEndCallback();
+              if (typeof window !== 'undefined') {
+                window._activeAudioPlayer = null;
+              }
+              if (speechId === activeSpeechIdRef.current) {
+                setIsSpeaking(false);
+                audioRef.current = null;
+                if (onEndCallback) onEndCallback();
+              }
             };
 
             audio.play().catch(() => {
-              setIsSpeaking(false);
-              if (onEndCallback) onEndCallback();
+              if (speechId === activeSpeechIdRef.current) {
+                setIsSpeaking(false);
+                if (onEndCallback) onEndCallback();
+              }
             });
             return;
           }
           // Fallback if backend returned empty
-          _speakWithBrowserUtterance(cleanText, langTag, targetVoice, onEndCallback, onStartCallback, shouldCancel, effectiveRate);
+          if (speechId === activeSpeechIdRef.current) {
+            _speakWithBrowserUtterance(cleanText, langTag, targetVoice, onEndCallback, onStartCallback, shouldCancel, effectiveRate, speechId);
+          }
         })
         .catch(() => {
-          _speakWithBrowserUtterance(cleanText, langTag, targetVoice, onEndCallback, onStartCallback, shouldCancel, effectiveRate);
+          if (speechId === activeSpeechIdRef.current) {
+            _speakWithBrowserUtterance(cleanText, langTag, targetVoice, onEndCallback, onStartCallback, shouldCancel, effectiveRate, speechId);
+          }
         });
       return;
     }
 
-    _speakWithBrowserUtterance(cleanText, langTag, targetVoice, onEndCallback, onStartCallback, shouldCancel, effectiveRate);
+    _speakWithBrowserUtterance(cleanText, langTag, targetVoice, onEndCallback, onStartCallback, shouldCancel, effectiveRate, speechId);
   };
 
-  const _speakWithBrowserUtterance = (cleanText, langTag, targetVoice, onEndCallback, onStartCallback, shouldCancel, rate = null) => {
+  const _speakWithBrowserUtterance = (cleanText, langTag, targetVoice, onEndCallback, onStartCallback, shouldCancel, rate = null, speechId = null) => {
+    if (speechId && speechId !== activeSpeechIdRef.current) {
+      return;
+    }
+
     if (!('speechSynthesis' in window)) {
       if (onStartCallback) onStartCallback();
       if (onEndCallback) onEndCallback();
@@ -237,13 +301,20 @@ export const useSpeechSynthesis = () => {
         if (typeof window !== 'undefined') {
           window._activeUtterance = null;
         }
-        if (queueRef.current.length === 0 && streamEndedRef.current) {
-          setIsSpeaking(false);
+        if (speechId && speechId !== activeSpeechIdRef.current) {
+          return;
         }
+        setIsSpeaking(false);
         if (onEndCallback) onEndCallback();
       };
 
       utterance.onstart = () => {
+        if (speechId && speechId !== activeSpeechIdRef.current) {
+          try {
+            window.speechSynthesis.cancel();
+          } catch (e) {}
+          return;
+        }
         setIsSpeaking(true);
         if (onStartCallback) onStartCallback();
       };
@@ -258,10 +329,14 @@ export const useSpeechSynthesis = () => {
       };
 
       // Safety timeout: đảm bảo onEndCallback luôn được kích hoạt kể cả khi browser nuốt mất onend
+      // Tính theo tốc độ đọc rate để câu dài không bị timeout cắt ngang giữa chừng
       const wordCount = cleanText.split(/\s+/).length;
-      const maxMs = Math.max(wordCount * 450 + 1500, 3000);
+      const rateFactor = Math.max(0.5, rate || 1.0);
+      const maxMs = Math.max((wordCount / rateFactor) * 700 + 4000, 8000);
       safetyTimerRef.current = setTimeout(() => {
-        finishOnce();
+        if (!speechId || speechId === activeSpeechIdRef.current) {
+          finishOnce();
+        }
       }, maxMs);
 
       window.speechSynthesis.speak(utterance);
@@ -292,6 +367,11 @@ export const useSpeechSynthesis = () => {
     isPlayingQueueRef.current = true;
     const nextItem = queueRef.current.shift();
 
+    if (nextItem.speechId && nextItem.speechId !== activeSpeechIdRef.current) {
+      playNextInQueue();
+      return;
+    }
+
     if (onQueueStartCallbackRef.current) {
       setIsSpeaking(true);
       onQueueStartCallbackRef.current();
@@ -308,18 +388,32 @@ export const useSpeechSynthesis = () => {
       }
     }
 
+    if (nextItem.speechId && nextItem.speechId !== activeSpeechIdRef.current) {
+      playNextInQueue();
+      return;
+    }
+
     if (audioObj) {
+      stopCurrentAudio();
       audioRef.current = audioObj;
       audioObj.onplay = () => {
+        if (nextItem.speechId && nextItem.speechId !== activeSpeechIdRef.current) {
+          stopCurrentAudio();
+          return;
+        }
         setIsSpeaking(true);
       };
       audioObj.onended = () => {
         audioRef.current = null;
-        playNextInQueue();
+        if (!nextItem.speechId || nextItem.speechId === activeSpeechIdRef.current) {
+          playNextInQueue();
+        }
       };
       audioObj.onerror = () => {
         audioRef.current = null;
-        playNextInQueue();
+        if (!nextItem.speechId || nextItem.speechId === activeSpeechIdRef.current) {
+          playNextInQueue();
+        }
       };
 
       try {
@@ -341,7 +435,8 @@ export const useSpeechSynthesis = () => {
         setIsSpeaking(true);
       },
       false,
-      nextItem.rate ?? speechRate
+      nextItem.rate ?? speechRate,
+      nextItem.speechId
     );
   };
 
@@ -363,10 +458,9 @@ export const useSpeechSynthesis = () => {
     if (!rawText) return;
 
     const lang = language || streamLangRef.current || 'vi-VN';
+    const speechId = activeSpeechIdRef.current;
 
     // PRE-FETCH AUDIO NGAY LẬP TỨC TRONG NỀN:
-    // Tải trước file âm thanh của từng câu để sẵn trong RAM.
-    // Khi câu trước đọc xong, câu này cất tiếng ngay lập tức với 0ms độ trễ!
     let preloadedAudio = null;
     let audioPromise = null;
 
@@ -376,8 +470,9 @@ export const useSpeechSynthesis = () => {
       const edgeLang = lang.startsWith('vi') ? 'vi-VN' : 'en-US';
       audioPromise = synthesizeSpeech(rawText, { language: edgeLang, voice: edgeVoice })
         .then((data) => {
+          if (speechId !== activeSpeechIdRef.current) return null;
           if (data?.audio_base64 && data.audio_base64.length > 50) {
-            const audioSrc = `data:audio/mp3;base64,${data.audio_base64}`;
+            const audioSrc = `data:audio/mpeg;base64,${data.audio_base64}`;
             const audio = new Audio(audioSrc);
             audio.preload = 'auto';
             preloadedAudio = audio;
@@ -394,6 +489,7 @@ export const useSpeechSynthesis = () => {
       audioPromise,
       getAudio: () => preloadedAudio,
       rate: chunkRate ?? speechRate,
+      speechId,
     };
 
     queueRef.current.push(queueItem);
@@ -418,36 +514,60 @@ export const useSpeechSynthesis = () => {
       return;
     }
 
+    const currentSpeechId = ++activeSpeechIdRef.current;
+    abortControllerRef.current = new AbortController();
+    const currentSignal = abortControllerRef.current.signal;
+
     const effectiveRate = Math.max(0.5, Math.min(2.0, rate ?? speechRate ?? 1.0));
 
     // 0. ƯU TIÊN PHÁT NGAY LẬP TỨC AUDIO PRELOADED TỪ /chat (0ms Network delay)
     if (preloadedAudioBase64 && preloadedAudioBase64.length > 100) {
       try {
-        const audioSrc = `data:audio/mp3;base64,${preloadedAudioBase64}`;
+        if (currentSpeechId !== activeSpeechIdRef.current) return;
+        stopCurrentAudio();
+
+        const audioSrc = `data:audio/mpeg;base64,${preloadedAudioBase64}`;
         const audio = new Audio(audioSrc);
         audio.playbackRate = effectiveRate;
         audioRef.current = audio;
+        if (typeof window !== 'undefined') {
+          window._activeAudioPlayer = audio;
+        }
 
         let hasStartedPlaying = false;
         audio.onplay = () => {
+          if (currentSpeechId !== activeSpeechIdRef.current) {
+            stopCurrentAudio();
+            return;
+          }
           hasStartedPlaying = true;
           setIsSpeaking(true);
           if (onStartCallback) onStartCallback();
         };
 
         audio.onended = () => {
-          setIsSpeaking(false);
-          audioRef.current = null;
-          if (onEndCallback) onEndCallback();
+          if (typeof window !== 'undefined') {
+            window._activeAudioPlayer = null;
+          }
+          if (currentSpeechId === activeSpeechIdRef.current) {
+            setIsSpeaking(false);
+            audioRef.current = null;
+            if (onEndCallback) onEndCallback();
+          }
         };
 
         audio.onerror = () => {
-          setIsSpeaking(false);
-          audioRef.current = null;
-          if (!hasStartedPlaying) {
-            speakWebSpeech(text, language, onEndCallback, onStartCallback, true, effectiveRate);
-          } else {
-            if (onEndCallback) onEndCallback();
+          if (typeof window !== 'undefined') {
+            window._activeAudioPlayer = null;
+          }
+          if (currentSpeechId === activeSpeechIdRef.current) {
+            setIsSpeaking(false);
+            audioRef.current = null;
+            if (!hasStartedPlaying) {
+              speakWebSpeech(text, language, onEndCallback, onStartCallback, true, effectiveRate, currentSpeechId, currentSignal);
+            } else {
+              if (onEndCallback) onEndCallback();
+            }
           }
         };
 
@@ -459,10 +579,19 @@ export const useSpeechSynthesis = () => {
     }
 
     // 1. INSTANT WebSpeech / EdgeTTS fallback
-    speakWebSpeech(text, language, onEndCallback, onStartCallback, true, effectiveRate);
+    if (currentSpeechId === activeSpeechIdRef.current) {
+      speakWebSpeech(text, language, onEndCallback, onStartCallback, true, effectiveRate, currentSpeechId, currentSignal);
+    }
   };
 
-  const cancel = () => {
+  const cancel = useCallback(() => {
+    activeSpeechIdRef.current += 1;
+    if (abortControllerRef.current) {
+      try {
+        abortControllerRef.current.abort();
+      } catch (e) {}
+      abortControllerRef.current = null;
+    }
     if (safetyTimerRef.current) {
       clearTimeout(safetyTimerRef.current);
       safetyTimerRef.current = null;
@@ -476,18 +605,17 @@ export const useSpeechSynthesis = () => {
     if (typeof window !== 'undefined') {
       window._activeUtterance = null;
     }
-    if (audioRef.current) {
-      try {
-        audioRef.current.pause();
-        audioRef.current.currentTime = 0;
-      } catch (e) {}
-      audioRef.current = null;
+    stopCurrentAudio();
+    if (typeof window !== 'undefined') {
+      window._activeAudioPlayer = null;
     }
     if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
+      try {
+        window.speechSynthesis.cancel();
+      } catch (e) {}
     }
     setIsSpeaking(false);
-  };
+  }, [stopCurrentAudio]);
 
   return {
     speak,

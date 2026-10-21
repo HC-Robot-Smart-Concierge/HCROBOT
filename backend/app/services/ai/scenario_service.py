@@ -29,6 +29,26 @@ DEFAULT_SEED_SCENARIOS = [
         "priority": 100,
     },
     {
+        "id": "scn-hotel-identity",
+        "title": "Tên và Danh tính khách sạn (Hotel Identity)",
+        "category": "facility",
+        "match_keywords": [
+            "khách sạn này là khách sạn nào", "khách sạn này tên gì", "khách sạn tên gì",
+            "tên khách sạn", "khách sạn nào", "đây là khách sạn nào", "đây là đâu",
+            "khách sạn này là gì", "tên khách sạn là gì", "khách sạn tên là gì",
+            "hotel name", "which hotel is this", "what hotel is this", "what is this hotel",
+            "where am i", "tên của khách sạn"
+        ],
+        "match_type": "keyword",
+        "response_vi": "Dạ đây là khách sạn 5 sao Aurora Grand Hotel ạ! Em là Rora, trợ lý Robot Concierge rất hân hạnh được phục vụ và đồng hành cùng quý khách.",
+        "response_en": "This is the 5-star Aurora Grand Hotel! I am Rora, your smart AI Concierge Robot, delighted to assist you during your stay.",
+        "action_type": "none",
+        "action_payload": None,
+        "is_fast_path": True,
+        "is_active": True,
+        "priority": 98,
+    },
+    {
         "id": "scn-wakeup",
         "title": "Gọi tên Robot (Wake-up call)",
         "category": "greeting",
@@ -281,15 +301,37 @@ DEFAULT_SEED_SCENARIOS = [
         "priority": 95,
     },
     {
-        "id": "scn-pool-gym",
-        "title": "Hồ bơi vô cực & Phòng Gym",
+        "id": "scn-pool",
+        "title": "Hồ bơi vô cực (Infinity Pool)",
         "category": "facility",
-        "match_keywords": ["hồ bơi", "bể bơi", "swimming pool", "phòng gym", "tập gym", "thể hình", "hồ bơi ở đâu", "ho boi", "be boi", "phong gym", "tap gym", "ho boi o dau"],
+        "match_keywords": [
+            "hồ bơi", "bể bơi", "swimming pool", "hồ bơi ở đâu", "ho boi",
+            "be boi", "ho boi o dau", "tắm hồ bơi", "bơi lội", "hồ bơi mở cửa",
+            "bể bơi ở đâu", "pool"
+        ],
         "match_type": "keyword",
-        "response_vi": "Dạ hồ bơi vô cực và phòng gym nằm tại Tầng 5. Hồ bơi mở từ 6 giờ sáng đến 22 giờ tối với khăn tắm miễn phí, còn phòng gym mở cửa 24/7 ạ.",
-        "response_en": "The Infinity Pool and Gym are on Level 5. Pool hours are 6:00 AM to 10:00 PM with free towels, Gym is open 24/7.",
+        "response_vi": "Dạ hồ bơi vô cực nằm tại Tầng 5, mở cửa từ 6 giờ sáng đến 22 giờ tối hàng ngày với khăn tắm và nước khoáng phục vụ miễn phí ạ.",
+        "response_en": "The Infinity Pool is located on Level 5, open from 6:00 AM to 10:00 PM daily with complimentary towels and mineral water.",
         "action_type": "show_map",
         "action_payload": {"destination_key": "infinity_pool"},
+        "is_fast_path": True,
+        "is_active": True,
+        "priority": 85,
+    },
+    {
+        "id": "scn-gym",
+        "title": "Phòng tập Gym & Thể hình",
+        "category": "facility",
+        "match_keywords": [
+            "phòng gym", "tập gym", "thể hình", "phong gym", "tap gym",
+            "phòng tập", "phong tap", "fitness", "gym ở đâu", "phòng gym ở đâu",
+            "tập thể dục", "gym"
+        ],
+        "match_type": "keyword",
+        "response_vi": "Dạ phòng Gym và trung tâm thể hình nằm tại Tầng 5, mở cửa phục vụ 24/7 hoàn toàn miễn phí cho khách lưu trú với đầy đủ máy tập Technogym hiện đại ạ.",
+        "response_en": "The Fitness & Gym Center is located on Level 5, open 24/7 complimentary for staying guests with modern Technogym equipment.",
+        "action_type": "show_map",
+        "action_payload": {"destination_key": "gym"},
         "is_fast_path": True,
         "is_active": True,
         "priority": 85,
@@ -471,6 +513,13 @@ class ScenarioService:
             existing_map = {r.id: r for r in records}
 
             has_changes = False
+
+            # Xoa bo kich ban gop cu scn-pool-gym neu ton tai trong DB de tach rieng 2 kich ban
+            if "scn-pool-gym" in existing_map:
+                await db.delete(existing_map["scn-pool-gym"])
+                del existing_map["scn-pool-gym"]
+                has_changes = True
+
             for s_data in DEFAULT_SEED_SCENARIOS:
                 sid = s_data["id"]
                 if sid not in existing_map:

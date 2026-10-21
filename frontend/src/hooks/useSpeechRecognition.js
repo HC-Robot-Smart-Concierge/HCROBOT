@@ -514,12 +514,13 @@ export const useSpeechRecognition = (callbacks = {}) => {
     shouldListenRef.current = false;
     clearRestartTimer();
     liveRef.current = false;
+    inlineCallbacksRef.current = {};
     if (recognitionRef.current) {
       try {
-        recognitionRef.current.stop();
+        recognitionRef.current.abort();
       } catch (err) {
         try {
-          recognitionRef.current.abort();
+          recognitionRef.current.stop();
         } catch (e) {}
       }
     }

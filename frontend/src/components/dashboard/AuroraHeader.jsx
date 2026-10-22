@@ -139,13 +139,14 @@ export const AuroraHeader = ({
             {/* Header: Tách thành 2 hàng rõ ràng khắc phục triệt để lỗi vỡ chữ */}
             <div className="p-4 border-b border-stone-100 bg-white/90 backdrop-blur-md sticky top-0 z-10">
               {/* Hàng 1 (Tiêu đề + Nút thao tác) */}
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2 min-w-0">
-                  <h3 className="text-base font-bold text-zinc-900 whitespace-nowrap">
-                    Department Notifications
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 min-w-0 flex-1 mr-1 overflow-hidden">
+                  <h3 className="text-sm sm:text-base font-bold text-zinc-900 truncate">
+                    <span className="sm:hidden">Notifications</span>
+                    <span className="hidden sm:inline">Department Notifications</span>
                   </h3>
                   {unreadCount > 0 && (
-                    <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-red-50 text-red-600 border border-red-100 whitespace-nowrap">
+                    <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-red-50 text-red-600 border border-red-100 whitespace-nowrap shrink-0">
                       {unreadCount} new
                     </span>
                   )}

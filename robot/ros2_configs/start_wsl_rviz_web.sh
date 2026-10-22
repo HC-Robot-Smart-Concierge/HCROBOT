@@ -16,6 +16,7 @@ pkill -9 -f "async_slam_toolbox_node" 2>/dev/null || true
 pkill -9 -f "lidar_ws_to_ros2.py" 2>/dev/null || true
 pkill -9 -f "slam_toolbox" 2>/dev/null || true
 pkill -9 -f "start_wsl_slam.sh" 2>/dev/null || true
+fuser -k 5900/tcp 6080/tcp 2>/dev/null || true
 rm -f /tmp/.X*-lock /tmp/.X11-unix/X* 2>/dev/null || true
 sleep 1
 
@@ -28,20 +29,20 @@ if netstat -tuln 2>/dev/null | grep -q ":6099 "; then
     fi
 fi
 
+unset WAYLAND_DISPLAY
+export DISPLAY=127.0.0.1:$DISP_NUM
+
 echo "=== [2/5] KHOI DONG X VIRTUAL FRAMEBUFFER (:$DISP_NUM, 1600x900) ==="
 Xvfb :$DISP_NUM -screen 0 1600x900x24 -ac -listen tcp -nolisten unix &
 XVFB_PID=$!
 sleep 1.5
-
-export DISPLAY=127.0.0.1:$DISP_NUM
-unset WAYLAND_DISPLAY
 
 echo "=== [3/5] KHOI DONG OPENBOX & VNC WEBSOCKET (Port 6080) ==="
 openbox &
 OB_PID=$!
 sleep 0.5
 
-x11vnc -display 127.0.0.1:$DISP_NUM -forever -nopw -shared -rfbport 5900 -bg
+x11vnc -display 127.0.0.1:$DISP_NUM -noshm -forever -nopw -shared -rfbport 5900 -bg
 sleep 0.5
 
 websockify --web /usr/share/novnc 0.0.0.0:6080 127.0.0.1:5900 &

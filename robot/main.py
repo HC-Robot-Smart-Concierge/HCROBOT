@@ -14,7 +14,7 @@ from ultrasonic_serial import UltrasonicSerialReader
 logger = logging.getLogger("RobotMain")
 
 
-def start_camera_stream(device=None, width=1280, height=720, fps=15):
+def start_camera_stream(device=None, width=640, height=480, fps=15):
     """Khởi động MJPEG Camera Stream Server trên background thread với Frame Broadcaster và auto-reconnect."""
     try:
         from scripts.camera_stream import (

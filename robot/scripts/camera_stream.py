@@ -27,8 +27,8 @@ logger = logging.getLogger("pi5-camera")
 
 DEFAULT_PORT = 8554
 DEFAULT_FPS = 15
-DEFAULT_WIDTH = 1920
-DEFAULT_HEIGHT = 1080
+DEFAULT_WIDTH = 640
+DEFAULT_HEIGHT = 480
 
 
 def suppress_c_stderr():
@@ -157,9 +157,15 @@ def normalize_video_device(device):
 
 
 class OpenCVBackend(CameraBackend):
-    """Fallback backend sử dụng OpenCV (USB webcam hoặc V4L2) với cơ chế tự động kết nối lại (Auto-reconnect)."""
+    """
+    Fallback backend sử dụng OpenCV (USB webcam hoặc V4L2).
+    Thiết kế với:
+    - Worker thread riêng chuyên gọi cap.read() không gây lock HTTP stream.
+    - Hardware Watchdog: Tự động phát hiện đơ phần cứng / sụt áp (stall > 1.5s) và tái kết nối trong nền.
+    - Non-blocking capture_jpeg(): Trả về frame gần nhất hoặc placeholder trong O(1).
+    """
 
-    def __init__(self, width, height, fps, device=None):
+    def __init__(self, width=640, height=480, fps=15, device=None):
         super().__init__(width, height, fps)
         self.device = device
         self._cap = None
@@ -167,7 +173,11 @@ class OpenCVBackend(CameraBackend):
         self._fail_count = 0
         self._last_reconnect_time = 0.0
         self._last_good_jpeg = None
+        self._last_frame_ts = 0.0
         self._lock = threading.Lock()
+        self._worker_running = False
+        self._worker_thread = None
+        self._reconnecting = False
 
     def start(self):
         with self._lock:
@@ -211,12 +221,12 @@ class OpenCVBackend(CameraBackend):
                     except Exception:
                         pass
 
-                    # Thử độ phân giải mong muốn, nếu camera USB không nhận thì fallback xuống 720p hoặc 480p
+                    # Thử độ phân giải mong muốn, nếu camera USB không nhận thì fallback xuống 480p hoặc 720p
                     res_candidates = [(self.width, self.height)]
-                    if (self.width, self.height) != (1280, 720):
-                        res_candidates.append((1280, 720))
                     if (self.width, self.height) != (640, 480):
                         res_candidates.append((640, 480))
+                    if (self.width, self.height) != (1280, 720):
+                        res_candidates.append((1280, 720))
 
                     for try_w, try_h in res_candidates:
                         cap.set(cv2.CAP_PROP_FRAME_WIDTH, try_w)
@@ -228,6 +238,14 @@ class OpenCVBackend(CameraBackend):
                             actual_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
                             actual_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
                             self._fail_count = 0
+                            try:
+                                _, jpeg = self._cv2.imencode(
+                                    ".jpg", frame, [self._cv2.IMWRITE_JPEG_QUALITY, 75]
+                                )
+                                self._last_good_jpeg = jpeg.tobytes()
+                                self._last_frame_ts = time.time()
+                            except Exception:
+                                pass
                             logger.info(
                                 f"✅ USB Camera kết nối thành công tại device {dev}: "
                                 f"{actual_w}x{actual_h} @ {self.fps}fps"
@@ -244,51 +262,100 @@ class OpenCVBackend(CameraBackend):
                     f"Không thể mở USB camera qua OpenCV (đã thử index {candidates})"
                 )
 
-    def _attempt_reconnect(self):
-        now = time.time()
-        if now - self._last_reconnect_time < 2.0:
-            return
-        self._last_reconnect_time = now
-        logger.warning("🔄 Camera mất tín hiệu hoặc đổi cổng, đang quét và tự động kết nối lại...")
-        self.stop()
-        try:
-            self.start()
-            self._fail_count = 0
-            logger.info("✅ Camera đã tự động kết nối lại thành công!")
-        except Exception as e:
-            logger.debug(f"Thử kết nối lại camera chưa thành công: {e}")
+            # Khởi chạy frame grabber thread độc lập
+            self._worker_running = True
+            self._worker_thread = threading.Thread(target=self._frame_grabber_loop, daemon=True)
+            self._worker_thread.start()
+
+    def _frame_grabber_loop(self):
+        """Worker thread liên tục đọc frame từ hardware mà không lock luồng HTTP."""
+        logger.debug("Bắt đầu background frame grabber cho OpenCV backend.")
+        while self._worker_running:
+            cap = self._cap
+            if cap is None or not cap.isOpened():
+                time.sleep(0.05)
+                continue
+
+            try:
+                ret, frame = cap.read()
+            except Exception as e:
+                logger.debug(f"Exception cap.read: {e}")
+                ret = False
+                frame = None
+
+            if ret and frame is not None:
+                try:
+                    _, jpeg = self._cv2.imencode(
+                        ".jpg", frame, [self._cv2.IMWRITE_JPEG_QUALITY, 75]
+                    )
+                    with self._lock:
+                        self._last_good_jpeg = jpeg.tobytes()
+                        self._last_frame_ts = time.time()
+                        self._fail_count = 0
+                except Exception:
+                    pass
+            else:
+                with self._lock:
+                    self._fail_count += 1
+                time.sleep(0.04)
+
+            time.sleep(0.01)
+
+    def _trigger_async_reconnect(self):
+        """Kích hoạt tiến trình kết nối lại trong nền để không bao giờ làm block HTTP stream."""
+        with self._lock:
+            if self._reconnecting:
+                return
+            now = time.time()
+            if now - self._last_reconnect_time < 2.0:
+                return
+            self._reconnecting = True
+            self._last_reconnect_time = now
+
+        def _reconnect_task():
+            logger.warning("🔄 [Camera Watchdog] Camera USB mất tín hiệu/stall. Đang quét lại cổng và tự động kết nối...")
+            self.stop()
+            time.sleep(0.3)
+            try:
+                self.start()
+                logger.info("✅ [Camera Watchdog] Camera USB đã được khôi phục thành công!")
+            except Exception as e:
+                logger.debug(f"Khôi phục camera chưa thành công: {e}")
+            finally:
+                with self._lock:
+                    self._reconnecting = False
+
+        threading.Thread(target=_reconnect_task, daemon=True).start()
 
     def capture_jpeg(self):
+        """Non-blocking: Lấy frame mới nhất. Nếu đơ quá 1.5s, tự động kích hoạt watchdog reconnect."""
+        now = time.time()
         with self._lock:
-            if not self._cap or not self._cap.isOpened():
-                self._attempt_reconnect()
-                if self._last_good_jpeg:
-                    return self._last_good_jpeg
-                raise RuntimeError("Camera is not opened")
+            last_ts = self._last_frame_ts
+            last_frame = self._last_good_jpeg
+            fail_cnt = self._fail_count
 
-            ret, frame = self._cap.read()
-            if not ret or frame is None:
-                self._fail_count += 1
-                if self._fail_count >= 10:
-                    self._attempt_reconnect()
-                if self._last_good_jpeg:
-                    return self._last_good_jpeg
-                raise RuntimeError("Failed to read frame from camera")
+        # Kiểm tra Watchdog: Quá 1.5s không nhận được frame mới từ USB hoặc fail liên tiếp 15 lần
+        if (now - last_ts > 1.5 and last_ts > 0.0) or fail_cnt >= 15:
+            self._trigger_async_reconnect()
+            if last_frame:
+                return last_frame
+            return generate_placeholder_jpeg("RECOVERING CAMERA SENSOR...")
 
-            self._fail_count = 0
-            _, jpeg = self._cv2.imencode(
-                ".jpg", frame, [self._cv2.IMWRITE_JPEG_QUALITY, 80]
-            )
-            self._last_good_jpeg = jpeg.tobytes()
-            return self._last_good_jpeg
+        if last_frame:
+            return last_frame
+
+        raise RuntimeError("Camera frame not available yet")
 
     def stop(self):
-        if self._cap:
-            try:
-                self._cap.release()
-            except Exception:
-                pass
-            self._cap = None
+        self._worker_running = False
+        with self._lock:
+            if self._cap:
+                try:
+                    self._cap.release()
+                except Exception:
+                    pass
+                self._cap = None
 
 
 def create_camera_backend(width, height, fps, device=None):
@@ -342,7 +409,7 @@ def generate_placeholder_jpeg(text="CAMERA DISCONNECTED / RECONNECTING..."):
 class CameraBroadcaster:
     """Thread nền đọc camera duy nhất và broadcast khung hình mới nhất cho mọi HTTP client."""
 
-    def __init__(self, width=1280, height=720, fps=15, device=None):
+    def __init__(self, width=640, height=480, fps=15, device=None):
         self.width = width
         self.height = height
         self.fps = fps

@@ -270,17 +270,34 @@ class LidarWsToRos2Bridge(Node):
         if abs(self.current_vx) > 0.001 or abs(self.current_wz) > 0.001:
             return
 
-        px = float(pose_dict.get('x', 0.0))
-        py = float(pose_dict.get('y', 0.0))
-        yaw_deg = float(pose_dict.get('yaw', 0.0))
-        if abs(px) > 0.001 or abs(py) > 0.001 or abs(yaw_deg) > 0.001:
-            # Lọc mượt góc xoay tránh bước nhảy góc tức thời (>20 độ trong 1 frame)
-            d_yaw = (yaw_deg - self.current_pose['yaw'] + 540.0) % 360.0 - 180.0
-            if abs(d_yaw) > 20.0:
-                yaw_deg = (self.current_pose['yaw'] + 0.35 * d_yaw) % 360.0
-            self.current_pose = {'x': px, 'y': py, 'yaw': yaw_deg}
-            now = self.get_clock().now().to_msg()
-            self._record_and_publish_state(now, px, py, yaw_deg, broadcast_tf=True)
+        target_x = float(pose_dict.get('x', 0.0))
+        target_y = float(pose_dict.get('y', 0.0))
+        target_yaw = float(pose_dict.get('yaw', 0.0))
+
+        # Lọc mượt góc xoay: Giới hạn bước nhảy tối đa 2.5°/frame để TF odom -> base_link biến thiên liên tục
+        d_yaw = (target_yaw - self.current_pose['yaw'] + 540.0) % 360.0 - 180.0
+        max_yaw_step = 2.5
+        if abs(d_yaw) > max_yaw_step:
+            yaw_deg = (self.current_pose['yaw'] + (max_yaw_step if d_yaw > 0 else -max_yaw_step)) % 360.0
+        else:
+            yaw_deg = target_yaw
+
+        # Lọc mượt tọa độ X, Y: Giới hạn bước nhảy tối đa 4cm/frame tránh hiện tượng teleport
+        dx = target_x - self.current_pose['x']
+        dy = target_y - self.current_pose['y']
+        max_pos_step = 0.04
+        dist = math.hypot(dx, dy)
+        if dist > max_pos_step:
+            ratio = max_pos_step / dist
+            px = self.current_pose['x'] + dx * ratio
+            py = self.current_pose['y'] + dy * ratio
+        else:
+            px = target_x
+            py = target_y
+
+        self.current_pose = {'x': px, 'y': py, 'yaw': yaw_deg}
+        now = self.get_clock().now().to_msg()
+        self._record_and_publish_state(now, px, py, yaw_deg, broadcast_tf=True)
 
     def on_cmd_vel_received(self, msg: Twist):
         self.last_cmd_time = time.monotonic()

@@ -753,11 +753,21 @@ free_thresh: 0.25
             except Exception as e:
                 logger.warning(f"Lỗi motor phần cứng trực tiếp: {e}")
 
-        # 2. UDP Fallback / Sync
+        # 2. UDP Local Sync tới 127.0.0.1:9999 (main.py)
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.settimeout(0.02)
             sock.sendto(cmd.encode("utf-8"), ("127.0.0.1", 9999))
             sock.close()
+        except Exception:
+            pass
+
+        # 3. UDP Sync sang Laptop WSL (100.92.82.61:9998) để RViz2 & SLAM Toolbox cập nhật odometry mượt mà
+        try:
+            wsl_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            wsl_sock.settimeout(0.02)
+            wsl_sock.sendto(cmd_clean.encode("utf-8"), ("100.92.82.61", 9998))
+            wsl_sock.close()
         except Exception:
             pass
 
@@ -890,26 +900,19 @@ free_thresh: 0.25
         self.avoidance_locked_dir = None
 
     def scan_room_360(self, blocking: bool = False):
-        """Quay tròn 360 độ từ tốn để quét toàn cảnh các bức tường xung quanh phòng."""
+        """
+        Quét 360° toàn cảnh ổn định (Stationary Multi-sweep):
+        RPLiDAR A1 tự quay 360° với tần số 5.5 Hz. Robot giữ trạng thái tĩnh tuyệt đối
+        để lấy toàn bộ các tia quét không gian phòng sắc nét, triệt tiêu sụt áp motor và motion distortion.
+        """
         def _scan_worker():
             self.stop_navigation()
             self.status = "SCANNING_360"
-            logger.info("🔄 BẮT ĐẦU QUÉT TOÀN PHÒNG 360 ĐỘ...")
-            self.send_udp_motor_command("speed:30")
-
-            steps = 36  # 36 bước, mỗi bước ~10 độ
-            for i in range(steps):
-                if self.status != "SCANNING_360":
-                    break
-                self.send_udp_motor_command("right")
-                time.sleep(0.08)
-                self.send_udp_motor_command("stop")
-                self.robot_yaw = (self.robot_yaw - 10.0) % 360.0
-                time.sleep(0.12)  # Dừng để LiDAR quét bức tường sắc nét
-
+            logger.info("🔄 Thu thập dữ liệu quét 360° toàn phòng tĩnh (Stationary Multi-sweep)...")
+            self.send_udp_motor_command("stop", force=True)
+            time.sleep(1.5)
             self.status = "IDLE"
-            self.send_udp_motor_command("stop")
-            logger.info("✅ HOÀN THÀNH QUÉT 360 ĐỘ TOÀN PHÒNG!")
+            logger.info("✅ Hoàn thành quét 360° toàn phòng sắc nét!")
 
         if blocking:
             _scan_worker()
@@ -1127,10 +1130,10 @@ free_thresh: 0.25
 
     def _exploration_loop(self, auto_save: bool = True, save_name: str = "auto_explored_map"):
         """Vòng lặp khám phá: tìm frontier → di chuyển → quét → lặp cho đến khi hết frontier."""
-        # 1. Quét 360 tại chỗ ban đầu (chặn hoàn toàn cho tới khi xoay xong 360 độ)
-        logger.info("📡 Quét 360° toàn cảnh tại vị trí xuất phát...")
-        self.scan_room_360(blocking=True)
-        time.sleep(0.5)
+        # 1. Thu thập dữ liệu quét 360° tại chỗ xuất phát (Stationary Multi-sweep)
+        logger.info("📡 Thu thập dữ liệu quét 360° toàn cảnh tại vị trí xuất phát (Stationary Multi-sweep)...")
+        self.send_udp_motor_command("stop", force=True)
+        time.sleep(1.5)
 
         if not self.is_exploring:
             self.send_udp_motor_command("stop", force=True)

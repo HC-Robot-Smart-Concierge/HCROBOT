@@ -95,6 +95,11 @@ class LidarWsToRos2Bridge(Node):
         # Broadcast static transform base_link -> laser & laser_frame
         self.broadcast_static_laser_tf()
 
+        # Cấu hình Pure Scan Matching (Laser-only SLAM cho robot không có encoder bánh xe chuẩn)
+        self.pure_scan_matching = os.getenv("USE_PURE_SCAN_MATCHING", "1").lower() in ("1", "true", "yes")
+        if self.pure_scan_matching:
+            self.get_logger().info("🎯 Che do PURE SCAN MATCHING da bat: Khoa TF odom -> base_link de SLAM Toolbox tu dinh vi 100% qua LiDAR 4 buc tuong!")
+
         # Khởi động UDP listener nhận tín hiệu từ main.py trên Pi 5 (port 9998)
         self.start_pi5_telemetry_udp_server()
 
@@ -263,7 +268,7 @@ class LidarWsToRos2Bridge(Node):
             self.path_pub_.publish(self.trajectory_path)
 
     def update_robot_pose(self, pose_dict):
-        if not pose_dict:
+        if not pose_dict or self.pure_scan_matching:
             return
         # Nếu đang có vận tốc di chuyển (Dead Reckoning từ cmd_vel hoặc telemetry UDP),
         # giữ nguyên odometry mượt để tránh bị giật góc đột ngột làm sai lệch Scan Matching của SLAM
@@ -349,13 +354,20 @@ class LidarWsToRos2Bridge(Node):
                 self.current_wz = 0.0
                 self._send_udp_to_pi5("stop")
 
-        if abs(self.current_vx) > 0.001 or abs(self.current_wz) > 0.001:
-            yaw_deg = self.current_pose['yaw'] + math.degrees(self.current_wz * dt)
-            self.current_pose['yaw'] = yaw_deg % 360.0
+        if not self.pure_scan_matching:
+            if abs(self.current_vx) > 0.001 or abs(self.current_wz) > 0.001:
+                yaw_deg = self.current_pose['yaw'] + math.degrees(self.current_wz * dt)
+                self.current_pose['yaw'] = yaw_deg % 360.0
 
-            yaw_rad = math.radians(self.current_pose['yaw'])
-            self.current_pose['x'] += self.current_vx * math.cos(yaw_rad) * dt
-            self.current_pose['y'] += self.current_vx * math.sin(yaw_rad) * dt
+                yaw_rad = math.radians(self.current_pose['yaw'])
+                self.current_pose['x'] += self.current_vx * math.cos(yaw_rad) * dt
+                self.current_pose['y'] += self.current_vx * math.sin(yaw_rad) * dt
+        else:
+            # Trong chế độ Pure Scan Matching: TF odom -> base_link neo ở gốc (0,0,0)
+            # để SLAM Toolbox hoàn toàn tự chủ Scan Matching 4 bức tường phòng 3x5m mà không bị ảo giác kéo dài hành lang
+            self.current_pose['x'] = 0.0
+            self.current_pose['y'] = 0.0
+            self.current_pose['yaw'] = 0.0
 
         # Luôn phát /odom và TF odom -> base_link đều đặn 30Hz để robot model di chuyển mượt mà trên RViz2
         now = self.get_clock().now().to_msg()

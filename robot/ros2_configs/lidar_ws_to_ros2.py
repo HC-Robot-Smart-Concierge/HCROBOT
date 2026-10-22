@@ -95,10 +95,12 @@ class LidarWsToRos2Bridge(Node):
         # Broadcast static transform base_link -> laser & laser_frame
         self.broadcast_static_laser_tf()
 
-        # Cấu hình Pure Scan Matching (Laser-only SLAM cho robot không có encoder bánh xe chuẩn)
-        self.pure_scan_matching = os.getenv("USE_PURE_SCAN_MATCHING", "1").lower() in ("1", "true", "yes")
+        # Cấu hình Odometry & Scan Matching
+        self.pure_scan_matching = os.getenv("USE_PURE_SCAN_MATCHING", "0").lower() in ("1", "true", "yes")
         if self.pure_scan_matching:
-            self.get_logger().info("🎯 Che do PURE SCAN MATCHING da bat: Khoa TF odom -> base_link de SLAM Toolbox tu dinh vi 100% qua LiDAR 4 buc tuong!")
+            self.get_logger().info("🎯 Chế độ PURE SCAN MATCHING: Khóa TF odom -> base_link tại gốc (0,0,0).")
+        else:
+            self.get_logger().info("🚗 Chế độ REALTIME ODOMETRY: Cho phép Robot Entity di chuyển và quay thực tế trên RViz2!")
 
         # Khởi động UDP listener nhận tín hiệu từ main.py trên Pi 5 (port 9998)
         self.start_pi5_telemetry_udp_server()

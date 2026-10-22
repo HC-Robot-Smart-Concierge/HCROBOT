@@ -362,6 +362,8 @@ export const AppRoutes = () => {
               currentUser={currentUser}
               onNotify={showNotification}
               onUserUpdated={setCurrentUser}
+              onUpdateUser={setCurrentUser}
+              onLogout={handleLogout}
             />
           }
         />

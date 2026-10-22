@@ -24,6 +24,8 @@ export const AuroraHeader = ({
   onToggleRead = () => {},
   onMarkAllRead = () => {},
   departmentName = 'Staff',
+  currentUser = null,
+  onOpenProfilePage = () => {},
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef(null);
@@ -107,6 +109,28 @@ export const AuroraHeader = ({
             <span className="absolute top-0.5 right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-[#EF4444] text-white text-[10px] font-bold flex items-center justify-center ring-2 ring-[#FAF8F5] animate-pulse">
               {unreadCount > 9 ? '9+' : unreadCount}
             </span>
+          )}
+        </button>
+
+        {/* Mobile Profile Avatar Button (1-tap access on mobile PWA) */}
+        <button
+          type="button"
+          onClick={() => {
+            if (typeof onOpenProfilePage === 'function') {
+              onOpenProfilePage();
+            }
+          }}
+          title="Hồ sơ nhân viên & Cài đặt"
+          className="md:hidden flex items-center justify-center w-8 h-8 rounded-full border border-stone-200/90 overflow-hidden bg-zinc-900 text-white text-xs font-semibold shrink-0 hover:ring-2 hover:ring-stone-400 transition-all cursor-pointer shadow-xs active:scale-95"
+        >
+          {currentUser?.avatar_url || currentUser?.avatar ? (
+            <img
+              src={currentUser.avatar_url || currentUser.avatar}
+              alt={currentUser?.name || currentUser?.full_name || 'Staff'}
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <span>{(currentUser?.full_name || currentUser?.name || 'S').charAt(0).toUpperCase()}</span>
           )}
         </button>
 

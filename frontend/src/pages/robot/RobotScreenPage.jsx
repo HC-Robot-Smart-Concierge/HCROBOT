@@ -553,6 +553,31 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     }
   }, [isVideoCallOpen, stopSpeaking, stopListening]);
 
+  // Tự động gửi AI khi người dùng ngừng nói 900ms (VAD Silence Detection tự nhiên, phản hồi siêu tốc như commit b5499898)
+  useEffect(() => {
+    if (
+      !isVideoCallOpen &&
+      isListening &&
+      !isSpeaking &&
+      !isSpeakingRef.current &&
+      !isProcessingRef.current &&
+      !isProcessing &&
+      (currentState === 'RT-03' || currentState === 'RT-05') &&
+      transcript &&
+      transcript.trim().length > 0
+    ) {
+      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = setTimeout(() => {
+        const textToProcess = transcript.trim();
+        resetTranscript();
+        handleStopTalkAndProcess(textToProcess);
+      }, 900);
+    }
+    return () => {
+      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+    };
+  }, [transcript, currentState, isListening, isSpeaking, isProcessing, isVideoCallOpen]);
+
   // Khi người dùng lại gần Camera -> Tắt Standby, chuyển về trạng thái sẵn sàng giao tiếp trực tiếp
   const handleGuestApproached = () => {
     setIsStandby(false);

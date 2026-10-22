@@ -338,15 +338,34 @@ free_thresh: 0.25
 
     def _update_grid_from_scan(self, rx: float, ry: float, scan_points: List[Dict[str, Any]]):
         """
-        Thuật toán Raytracing Bresenham có cơ chế tự làm sạch:
-        - Các ô mà tia laser đi qua ĐƯỢC XÓA THÀNH VÙNG TRỐNG (0).
-        - Chỉ ô cuối cùng nơi tia chạm tường mới được đánh dấu VẬT CẢN (100).
-        - Giúp bản đồ sắc nét, không bị vệt đen tích lũy như cơn lốc.
+        Thuật toán Raytracing Bresenham có cơ chế Wall Latching (Bám tường đen):
+        - Nếu điểm va chạm (ox, oy) nằm sát (trong phạm vi 1 ô xung quanh) với ô tường đen đã có (100),
+          tự động hút điểm va chạm bám chặt vào ô tường đen đó (Snap-to-Wall), chống rung lắc và bóng mờ.
+        - Các ô tia laser đi qua được làm sạch (0), NHƯNG nếu gặp ô tường đen đã tồn tại,
+          tia sẽ dừng lại (Light Barrier) để không làm thủng/xóa mất bức tường đã quét.
+        - Giúp bức tường luôn liền mạch, vững chắc màu đen và robot không bao giờ đi xuyên vào tường.
         """
         gx_robot, gy_robot = self._world_to_grid(rx, ry)
+        w = self.grid_width
+        h = self.grid_height
 
         for pt in scan_points:
             ox, oy = self._world_to_grid(pt["x"], pt["y"])
+
+            # 1. Wall Latching: Snap vào ô tường đen đã có trong phạm vi lân cận 1 ô (8-neighbors)
+            snapped = False
+            for dx_snap in (-1, 0, 1):
+                for dy_snap in (-1, 0, 1):
+                    nx = ox + dx_snap
+                    ny = oy + dy_snap
+                    if 0 <= nx < w and 0 <= ny < h:
+                        nidx = ny * w + nx
+                        if self.grid_data[nidx] == 100:
+                            ox, oy = nx, ny
+                            snapped = True
+                            break
+                if snapped:
+                    break
 
             dx = abs(ox - gx_robot)
             dy = abs(oy - gy_robot)
@@ -360,15 +379,18 @@ free_thresh: 0.25
 
             while step < max_steps:
                 step += 1
-                if 0 <= curr_x < self.grid_width and 0 <= curr_y < self.grid_height:
-                    idx = curr_y * self.grid_width + curr_x
+                if 0 <= curr_x < w and 0 <= curr_y < h:
+                    idx = curr_y * w + curr_x
                     if curr_x == ox and curr_y == oy:
-                        # Điểm va chạm vật cản / bức tường
+                        # Điểm va chạm vật cản / bức tường: Đánh dấu chắc chắn là vật cản (100)
                         self.grid_data[idx] = 100
                         break
                     else:
-                        # Vùng không gian trống mà tia laser xuyên qua
-                        # LÀM SẠCH: xóa vết đen cũ nếu tia hiện tại chứng minh vùng này trống
+                        # Light Barrier: Nếu gặp ô tường đen đã được xác nhận từ trước,
+                        # tia laser không thể xuyên qua bê tông, dừng quét tại đây để không làm thủng tường
+                        if self.grid_data[idx] == 100:
+                            break
+                        # Vùng không gian trống mà tia laser xuyên qua: Làm sạch thành 0
                         self.grid_data[idx] = 0
 
                 if curr_x == ox and curr_y == oy:

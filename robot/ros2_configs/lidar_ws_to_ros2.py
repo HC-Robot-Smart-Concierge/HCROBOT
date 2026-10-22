@@ -486,7 +486,7 @@ class LidarWsToRos2Bridge(Node):
         msg.angle_increment = (2.0 * math.pi) / num_bins
         msg.time_increment = 0.0
         msg.scan_time = 0.1
-        msg.range_min = 0.12
+        msg.range_min = 0.22
         msg.range_max = 12.0
 
         ranges = [float('inf')] * num_bins
@@ -509,16 +509,18 @@ class LidarWsToRos2Bridge(Node):
         msg.ranges = ranges
         msg.intensities = intensities
 
-        # Đồng bộ hóa tức thời TF odom -> base_link đúng với timestamp của LaserScan
-        self._record_and_publish_state(
-            now,
-            self.current_pose['x'],
-            self.current_pose['y'],
-            self.current_pose['yaw'],
-            vx=self.current_vx,
-            wz=self.current_wz,
-            broadcast_tf=True
-        )
+        # Chỉ broadcast TF kèm scan khi KHÔNG ở chế độ Pure Scan Matching
+        # (update_kinematics 30Hz đã broadcast TF rồi, tránh publish trùng gây jitter)
+        if not self.pure_scan_matching:
+            self._record_and_publish_state(
+                now,
+                self.current_pose['x'],
+                self.current_pose['y'],
+                self.current_pose['yaw'],
+                vx=self.current_vx,
+                wz=self.current_wz,
+                broadcast_tf=True
+            )
 
         self.publisher_.publish(msg)
 

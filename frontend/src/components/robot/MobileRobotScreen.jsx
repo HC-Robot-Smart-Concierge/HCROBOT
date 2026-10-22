@@ -522,6 +522,10 @@ export const MobileRobotScreen = ({
                 if (onStartTalk) onStartTalk();
                 return;
               }
+              if (isListening && transcript && onSubmitTalk) {
+                onSubmitTalk();
+                return;
+              }
               if (!isSpeaking && !isBusy && onStartTalk) {
                 onStartTalk();
               }
@@ -549,17 +553,33 @@ export const MobileRobotScreen = ({
               ) : currentState === 'RT-03' || isListening ? (
                 /* 2. Khi đang nghe: Dock âm thanh sóng AudioWave chuẩn Desktop */
                 <div className="mt-2.5 flex flex-col items-center gap-1.5 animate-fadeIn">
-                  <div className="px-5 py-2 sm:px-6 sm:py-2.5 bg-stone-900/90 backdrop-blur-xl border border-stone-700/80 rounded-2xl shadow-xl flex items-center gap-3.5 text-stone-100">
-                    <AudioWave isActive={isListening} volumeLevel={volumeLevel} />
-                    <div className="flex flex-col text-left">
-                      <span className="text-xs font-bold text-stone-200 line-clamp-1 max-w-[220px] sm:max-w-xs">
-                        {transcript ? `"${transcript}"` : (isEn ? 'Listening... Please speak' : 'Listening... · Đang lắng nghe...')}
-                      </span>
-                      <span className="text-[10px] text-stone-400 font-medium flex items-center gap-1.5">
-                        <Globe className="w-3 h-3 text-stone-400" />
-                        <span>{isEn ? 'Auto-detect VI · EN · Bilingual' : 'Auto-detect VI · EN · Tự động nhận diện'}</span>
-                      </span>
+                  <div className="px-5 py-2 sm:px-6 sm:py-2.5 bg-stone-900/90 backdrop-blur-xl border border-stone-700/80 rounded-2xl shadow-xl flex items-center justify-between gap-3 text-stone-100 w-full max-w-sm sm:max-w-md">
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                      <AudioWave isActive={isListening} volumeLevel={volumeLevel} />
+                      <div className="flex flex-col text-left min-w-0">
+                        <span className="text-xs font-bold text-stone-200 line-clamp-1">
+                          {transcript ? `"${transcript}"` : (isEn ? 'Listening... Please speak' : 'Listening... · Đang lắng nghe...')}
+                        </span>
+                        <span className="text-[10px] text-stone-400 font-medium flex items-center gap-1.5">
+                          <Globe className="w-3 h-3 text-stone-400 shrink-0" />
+                          <span className="truncate">{isEn ? 'Auto-detect VI · EN · Bilingual' : 'Auto-detect VI · EN · Tự động nhận diện'}</span>
+                        </span>
+                      </div>
                     </div>
+
+                    {transcript && onSubmitTalk && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSubmitTalk();
+                        }}
+                        className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md transition-all active:scale-95 shrink-0 flex items-center gap-1 cursor-pointer"
+                        title={isEn ? 'Send question' : 'Gửi câu hỏi'}
+                      >
+                        <span>{isEn ? 'Send' : 'Gửi'}</span>
+                      </button>
+                    )}
                   </div>
                   {speechError && (
                     <div className="px-3 py-1 bg-stone-900/90 border border-stone-700 text-stone-300 text-[10px] font-medium rounded-xl">

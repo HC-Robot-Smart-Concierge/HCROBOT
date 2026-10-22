@@ -193,6 +193,53 @@ class OllamaService:
             reply_en = "Goodbye! Wishing you a joyful day and looking forward to seeing you again."
             return (reply_en if is_en else reply_vi), lang_name, lang_code, None, None
 
+        # 5. Hồ bơi / Bể bơi (Pool - Fast-Path <1ms)
+        if re.search(r"\b(hồ bơi|bể bơi|swimming pool|pool)\b", prompt_lower):
+            reply_vi = "Dạ hồ bơi vô cực ngoài trời nằm ở Tầng 5, mở cửa từ 6 giờ sáng đến 22 giờ tối và có sẵn khăn tắm miễn phí ạ."
+            reply_en = "The outdoor infinity pool is located on Level 5, open from 6:00 AM to 10:00 PM with complimentary towels."
+            return (reply_en if is_en else reply_vi), lang_name, lang_code, "show_map", {"destination_key": "infinity_pool"}
+
+        # 6. Nhà hàng / Ăn sáng / Buffet (Restaurant & Breakfast - Fast-Path <1ms)
+        if re.search(r"\b(nhà hàng|bữa sáng|buffet sáng|ăn sáng|restaurant|breakfast)\b", prompt_lower):
+            reply_vi = "Dạ Nhà hàng Aurora nằm ở Tầng 2, phục vụ buffet sáng từ 6 giờ 30 đến 10 giờ sáng hàng ngày ạ."
+            reply_en = "The Aurora Restaurant is located on Level 2, serving breakfast buffet from 6:30 AM to 10:00 AM daily."
+            return (reply_en if is_en else reply_vi), lang_name, lang_code, "show_map", {"destination_key": "restaurant"}
+
+        # 7. Phòng Gym / Thể hình (Gym / Fitness - Fast-Path <1ms)
+        if re.search(r"\b(phòng gym|tập gym|thể dục|gym|fitness)\b", prompt_lower):
+            reply_vi = "Dạ Phòng Gym và trung tâm thể hình nằm ở Tầng 5, mở cửa phục vụ 24 trên 7 miễn phí cho quý khách ạ."
+            reply_en = "The Fitness Center is on Level 5, open 24/7 complimentary for staying guests."
+            return (reply_en if is_en else reply_vi), lang_name, lang_code, "show_map", {"destination_key": "gym"}
+
+        # 8. Spa / Xông hơi (Spa & Sauna - Fast-Path <1ms)
+        if re.search(r"\b(spa|massage|xông hơi|sauna)\b", prompt_lower):
+            reply_vi = "Dạ Aurora Luxury Spa nằm tại Tầng 5, mở cửa phục vụ quý khách từ 9 giờ sáng đến 22 giờ tối ạ."
+            reply_en = "Aurora Luxury Spa is on Level 5, open from 9:00 AM to 10:00 PM."
+            return (reply_en if is_en else reply_vi), lang_name, lang_code, "show_map", {"destination_key": "spa"}
+
+        # 9. Giờ nhận phòng / Trả phòng (Check-in / Check-out - Fast-Path <1ms)
+        if re.search(r"\b(trả phòng|check out|check-out|mấy giờ trả phòng|trả phòng lúc mấy giờ)\b", prompt_lower):
+            reply_vi = "Dạ giờ trả phòng tiêu chuẩn là trước 12 giờ trưa quý khách nhé."
+            reply_en = "Standard check-out time is before 12:00 PM noon."
+            return (reply_en if is_en else reply_vi), lang_name, lang_code, None, None
+
+        if re.search(r"\b(nhận phòng|check in|check-in|mấy giờ nhận phòng|nhận phòng lúc mấy giờ)\b", prompt_lower):
+            reply_vi = "Dạ giờ nhận phòng tiêu chuẩn tại khách sạn Aurora là từ 14 giờ chiều ạ."
+            reply_en = "Standard check-in time at Aurora Hotel is from 2:00 PM."
+            return (reply_en if is_en else reply_vi), lang_name, lang_code, None, None
+
+        # 10. Nhà vệ sinh / Toilet / WC (Fast-Path <1ms)
+        if re.search(r"\b(nhà vệ sinh|toilet|wc|restroom|phòng vệ sinh)\b", prompt_lower):
+            reply_vi = "Dạ nhà vệ sinh sảnh chính nằm ở phía tay phải sau quầy lễ tân tầng 1 ạ."
+            reply_en = "The lobby restrooms are located on the right side behind the Front Desk on Level 1."
+            return (reply_en if is_en else reply_vi), lang_name, lang_code, "show_map", {"destination_key": "restroom_ground"}
+
+        # 11. Bãi đỗ xe (Parking - Fast-Path <1ms)
+        if re.search(r"\b(bãi đỗ xe|đỗ xe|gửi xe|bãi xe|parking)\b", prompt_lower):
+            reply_vi = "Dạ bãi đỗ xe ô tô và xe máy miễn phí nằm ở Tầng hầm B1 và B2 của khách sạn ạ."
+            reply_en = "Complimentary car and motorbike parking is located at Basement B1 and B2."
+            return (reply_en if is_en else reply_vi), lang_name, lang_code, "show_map", {"destination_key": "parking_car"}
+
 
         # 12. Danh tính robot (Who are you)
         if re.search(r"\b(bạn là ai|em là ai|who are you|what is your name)\b", prompt_lower):

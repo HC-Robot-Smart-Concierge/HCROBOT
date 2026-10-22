@@ -338,15 +338,34 @@ free_thresh: 0.25
 
     def _update_grid_from_scan(self, rx: float, ry: float, scan_points: List[Dict[str, Any]]):
         """
-        Thuật toán Raytracing Bresenham có cơ chế tự làm sạch:
-        - Các ô mà tia laser đi qua ĐƯỢC XÓA THÀNH VÙNG TRỐNG (0).
-        - Chỉ ô cuối cùng nơi tia chạm tường mới được đánh dấu VẬT CẢN (100).
-        - Giúp bản đồ sắc nét, không bị vệt đen tích lũy như cơn lốc.
+        Thuật toán Raytracing Bresenham có cơ chế Wall Latching (Bám tường đen):
+        - Nếu điểm va chạm (ox, oy) nằm sát (trong phạm vi 1 ô xung quanh) với ô tường đen đã có (100),
+          tự động hút điểm va chạm bám chặt vào ô tường đen đó (Snap-to-Wall), chống rung lắc và bóng mờ.
+        - Các ô tia laser đi qua được làm sạch (0), NHƯNG nếu gặp ô tường đen đã tồn tại,
+          tia sẽ dừng lại (Light Barrier) để không làm thủng/xóa mất bức tường đã quét.
+        - Giúp bức tường luôn liền mạch, vững chắc màu đen và robot không bao giờ đi xuyên vào tường.
         """
         gx_robot, gy_robot = self._world_to_grid(rx, ry)
+        w = self.grid_width
+        h = self.grid_height
 
         for pt in scan_points:
             ox, oy = self._world_to_grid(pt["x"], pt["y"])
+
+            # 1. Wall Latching: Snap vào ô tường đen đã có trong phạm vi lân cận 1 ô (8-neighbors)
+            snapped = False
+            for dx_snap in (-1, 0, 1):
+                for dy_snap in (-1, 0, 1):
+                    nx = ox + dx_snap
+                    ny = oy + dy_snap
+                    if 0 <= nx < w and 0 <= ny < h:
+                        nidx = ny * w + nx
+                        if self.grid_data[nidx] == 100:
+                            ox, oy = nx, ny
+                            snapped = True
+                            break
+                if snapped:
+                    break
 
             dx = abs(ox - gx_robot)
             dy = abs(oy - gy_robot)
@@ -360,15 +379,18 @@ free_thresh: 0.25
 
             while step < max_steps:
                 step += 1
-                if 0 <= curr_x < self.grid_width and 0 <= curr_y < self.grid_height:
-                    idx = curr_y * self.grid_width + curr_x
+                if 0 <= curr_x < w and 0 <= curr_y < h:
+                    idx = curr_y * w + curr_x
                     if curr_x == ox and curr_y == oy:
-                        # Điểm va chạm vật cản / bức tường
+                        # Điểm va chạm vật cản / bức tường: Đánh dấu chắc chắn là vật cản (100)
                         self.grid_data[idx] = 100
                         break
                     else:
-                        # Vùng không gian trống mà tia laser xuyên qua
-                        # LÀM SẠCH: xóa vết đen cũ nếu tia hiện tại chứng minh vùng này trống
+                        # Light Barrier: Nếu gặp ô tường đen đã được xác nhận từ trước,
+                        # tia laser không thể xuyên qua bê tông, dừng quét tại đây để không làm thủng tường
+                        if self.grid_data[idx] == 100:
+                            break
+                        # Vùng không gian trống mà tia laser xuyên qua: Làm sạch thành 0
                         self.grid_data[idx] = 0
 
                 if curr_x == ox and curr_y == oy:
@@ -560,27 +582,31 @@ free_thresh: 0.25
                     quality = packet[0] >> 2
                     angle_q6 = (packet[1] >> 1) | (packet[2] << 7)
                     raw_angle = angle_q6 / 64.0
-                    # Bù góc 180° do cụm RPLiDAR thực tế trên xe bị xoay ngược 180° so với đầu xe
-                    angle = (raw_angle + 180.0) % 360.0
+                    # 1. Bù góc lắp đặt (mặc định 180° do dây cáp RPLiDAR quay về phía sau xe)
+                    cw_angle = (raw_angle + float(os.environ.get("HCROBOT_LIDAR_OFFSET", "180.0"))) % 360.0
+
+                    # 2. Đổi chiều quay từ chuẩn RPLiDAR Clockwise (CW) sang chuẩn hình học / ROS Counter-Clockwise (CCW):
+                    # 0°: Tiến (+X), 90°: Trái (+Y), 180°: Lùi (-X), 270°: Phải (-Y)
+                    ccw_angle = (360.0 - cw_angle) % 360.0
                     distance_q2 = packet[3] | (packet[4] << 8)
                     dist_m = (distance_q2 / 4.0) / 1000.0
 
                     # 1. Lọc tia khoảng cách hợp lệ (từ 12cm đến 12m)
                     if 0.12 <= dist_m <= 12.0:
-                        # Cập nhật liên tục mảng khoảng cách 360 độ theo thời gian thực
-                        deg = int(round(angle)) % 360
+                        # Cập nhật liên tục mảng khoảng cách 360 độ theo chuẩn CCW (90° = Trái, 270° = Phải)
+                        deg = int(round(ccw_angle)) % 360
                         now_ts = time.time()
                         self.angle_distances[deg] = dist_m
                         self.angle_timestamps[deg] = now_ts
 
-                        # Chuẩn hóa góc và tọa độ theo chuẩn chuẩn Cartesian (+X Tiến, +Y Trái, CCW)
-                        heading = (angle + self.robot_yaw) % 360.0
+                        # Chuẩn hóa góc và tọa độ theo chuẩn Cartesian (+X Tiến, +Y Trái, CCW)
+                        heading = (ccw_angle + self.robot_yaw) % 360.0
                         rad = math.radians(heading)
                         x = self.robot_x + dist_m * math.cos(rad)
                         y = self.robot_y + dist_m * math.sin(rad)
 
                         current_scan_batch.append({
-                            "angle": round(angle, 1),
+                            "angle": round(ccw_angle, 1),
                             "distance": round(dist_m, 2),
                             "x": round(x, 2),
                             "y": round(y, 2),
@@ -749,11 +775,21 @@ free_thresh: 0.25
             except Exception as e:
                 logger.warning(f"Lỗi motor phần cứng trực tiếp: {e}")
 
-        # 2. UDP Fallback / Sync
+        # 2. UDP Local Sync tới 127.0.0.1:9999 (main.py)
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.settimeout(0.02)
             sock.sendto(cmd.encode("utf-8"), ("127.0.0.1", 9999))
             sock.close()
+        except Exception:
+            pass
+
+        # 3. UDP Sync sang Laptop WSL (100.92.82.61:9998) để RViz2 & SLAM Toolbox cập nhật odometry mượt mà
+        try:
+            wsl_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            wsl_sock.settimeout(0.02)
+            wsl_sock.sendto(cmd_clean.encode("utf-8"), ("100.92.82.61", 9998))
+            wsl_sock.close()
         except Exception:
             pass
 
@@ -886,26 +922,19 @@ free_thresh: 0.25
         self.avoidance_locked_dir = None
 
     def scan_room_360(self, blocking: bool = False):
-        """Quay tròn 360 độ từ tốn để quét toàn cảnh các bức tường xung quanh phòng."""
+        """
+        Quét 360° toàn cảnh ổn định (Stationary Multi-sweep):
+        RPLiDAR A1 tự quay 360° với tần số 5.5 Hz. Robot giữ trạng thái tĩnh tuyệt đối
+        để lấy toàn bộ các tia quét không gian phòng sắc nét, triệt tiêu sụt áp motor và motion distortion.
+        """
         def _scan_worker():
             self.stop_navigation()
             self.status = "SCANNING_360"
-            logger.info("🔄 BẮT ĐẦU QUÉT TOÀN PHÒNG 360 ĐỘ...")
-            self.send_udp_motor_command("speed:30")
-
-            steps = 36  # 36 bước, mỗi bước ~10 độ
-            for i in range(steps):
-                if self.status != "SCANNING_360":
-                    break
-                self.send_udp_motor_command("right")
-                time.sleep(0.08)
-                self.send_udp_motor_command("stop")
-                self.robot_yaw = (self.robot_yaw - 10.0) % 360.0
-                time.sleep(0.12)  # Dừng để LiDAR quét bức tường sắc nét
-
+            logger.info("🔄 Thu thập dữ liệu quét 360° toàn phòng tĩnh (Stationary Multi-sweep)...")
+            self.send_udp_motor_command("stop", force=True)
+            time.sleep(1.5)
             self.status = "IDLE"
-            self.send_udp_motor_command("stop")
-            logger.info("✅ HOÀN THÀNH QUÉT 360 ĐỘ TOÀN PHÒNG!")
+            logger.info("✅ Hoàn thành quét 360° toàn phòng sắc nét!")
 
         if blocking:
             _scan_worker()
@@ -1123,10 +1152,10 @@ free_thresh: 0.25
 
     def _exploration_loop(self, auto_save: bool = True, save_name: str = "auto_explored_map"):
         """Vòng lặp khám phá: tìm frontier → di chuyển → quét → lặp cho đến khi hết frontier."""
-        # 1. Quét 360 tại chỗ ban đầu (chặn hoàn toàn cho tới khi xoay xong 360 độ)
-        logger.info("📡 Quét 360° toàn cảnh tại vị trí xuất phát...")
-        self.scan_room_360(blocking=True)
-        time.sleep(0.5)
+        # 1. Thu thập dữ liệu quét 360° tại chỗ xuất phát (Stationary Multi-sweep)
+        logger.info("📡 Thu thập dữ liệu quét 360° toàn cảnh tại vị trí xuất phát (Stationary Multi-sweep)...")
+        self.send_udp_motor_command("stop", force=True)
+        time.sleep(1.5)
 
         if not self.is_exploring:
             self.send_udp_motor_command("stop", force=True)

@@ -308,6 +308,7 @@ export const GuestMapPage = () => {
           {/* Destination Card Info */}
           <div className="w-full p-3 rounded-2xl bg-gradient-to-r from-stone-900 via-[#18202F] to-stone-900 border border-emerald-500/25 shadow-xl flex flex-col gap-2">
             <div className="flex items-start justify-between gap-2">
+              <div className="flex items-center gap-2.5 min-w-0">
                 <span className="p-1.5 rounded-xl bg-stone-800/90 border border-stone-700/80 shrink-0 flex items-center justify-center">
                   <MapPin className="w-5 h-5 text-emerald-400" />
                 </span>

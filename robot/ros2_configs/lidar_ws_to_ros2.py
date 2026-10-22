@@ -95,6 +95,13 @@ class LidarWsToRos2Bridge(Node):
         # Broadcast static transform base_link -> laser & laser_frame
         self.broadcast_static_laser_tf()
 
+        # Cấu hình Odometry & Scan Matching
+        self.pure_scan_matching = os.getenv("USE_PURE_SCAN_MATCHING", "0").lower() in ("1", "true", "yes")
+        if self.pure_scan_matching:
+            self.get_logger().info("🎯 Chế độ PURE SCAN MATCHING: Khóa TF odom -> base_link tại gốc (0,0,0).")
+        else:
+            self.get_logger().info("🚗 Chế độ REALTIME ODOMETRY: Cho phép Robot Entity di chuyển và quay thực tế trên RViz2!")
+
         # Khởi động UDP listener nhận tín hiệu từ main.py trên Pi 5 (port 9998)
         self.start_pi5_telemetry_udp_server()
 
@@ -263,15 +270,41 @@ class LidarWsToRos2Bridge(Node):
             self.path_pub_.publish(self.trajectory_path)
 
     def update_robot_pose(self, pose_dict):
-        if not pose_dict:
+        if not pose_dict or self.pure_scan_matching:
             return
-        px = float(pose_dict.get('x', 0.0))
-        py = float(pose_dict.get('y', 0.0))
-        yaw_deg = float(pose_dict.get('yaw', 0.0))
-        if abs(px) > 0.001 or abs(py) > 0.001 or abs(yaw_deg) > 0.001:
-            self.current_pose = {'x': px, 'y': py, 'yaw': yaw_deg}
-            now = self.get_clock().now().to_msg()
-            self._record_and_publish_state(now, px, py, yaw_deg, broadcast_tf=True)
+        # Nếu đang có vận tốc di chuyển (Dead Reckoning từ cmd_vel hoặc telemetry UDP),
+        # giữ nguyên odometry mượt để tránh bị giật góc đột ngột làm sai lệch Scan Matching của SLAM
+        if abs(self.current_vx) > 0.001 or abs(self.current_wz) > 0.001:
+            return
+
+        target_x = float(pose_dict.get('x', 0.0))
+        target_y = float(pose_dict.get('y', 0.0))
+        target_yaw = float(pose_dict.get('yaw', 0.0))
+
+        # Lọc mượt góc xoay: Giới hạn bước nhảy tối đa 2.5°/frame để TF odom -> base_link biến thiên liên tục
+        d_yaw = (target_yaw - self.current_pose['yaw'] + 540.0) % 360.0 - 180.0
+        max_yaw_step = 2.5
+        if abs(d_yaw) > max_yaw_step:
+            yaw_deg = (self.current_pose['yaw'] + (max_yaw_step if d_yaw > 0 else -max_yaw_step)) % 360.0
+        else:
+            yaw_deg = target_yaw
+
+        # Lọc mượt tọa độ X, Y: Giới hạn bước nhảy tối đa 4cm/frame tránh hiện tượng teleport
+        dx = target_x - self.current_pose['x']
+        dy = target_y - self.current_pose['y']
+        max_pos_step = 0.04
+        dist = math.hypot(dx, dy)
+        if dist > max_pos_step:
+            ratio = max_pos_step / dist
+            px = self.current_pose['x'] + dx * ratio
+            py = self.current_pose['y'] + dy * ratio
+        else:
+            px = target_x
+            py = target_y
+
+        self.current_pose = {'x': px, 'y': py, 'yaw': yaw_deg}
+        now = self.get_clock().now().to_msg()
+        self._record_and_publish_state(now, px, py, yaw_deg, broadcast_tf=True)
 
     def on_cmd_vel_received(self, msg: Twist):
         self.last_cmd_time = time.monotonic()
@@ -323,13 +356,20 @@ class LidarWsToRos2Bridge(Node):
                 self.current_wz = 0.0
                 self._send_udp_to_pi5("stop")
 
-        if abs(self.current_vx) > 0.001 or abs(self.current_wz) > 0.001:
-            yaw_deg = self.current_pose['yaw'] + math.degrees(self.current_wz * dt)
-            self.current_pose['yaw'] = yaw_deg % 360.0
+        if not self.pure_scan_matching:
+            if abs(self.current_vx) > 0.001 or abs(self.current_wz) > 0.001:
+                yaw_deg = self.current_pose['yaw'] + math.degrees(self.current_wz * dt)
+                self.current_pose['yaw'] = yaw_deg % 360.0
 
-            yaw_rad = math.radians(self.current_pose['yaw'])
-            self.current_pose['x'] += self.current_vx * math.cos(yaw_rad) * dt
-            self.current_pose['y'] += self.current_vx * math.sin(yaw_rad) * dt
+                yaw_rad = math.radians(self.current_pose['yaw'])
+                self.current_pose['x'] += self.current_vx * math.cos(yaw_rad) * dt
+                self.current_pose['y'] += self.current_vx * math.sin(yaw_rad) * dt
+        else:
+            # Trong chế độ Pure Scan Matching: TF odom -> base_link neo ở gốc (0,0,0)
+            # để SLAM Toolbox hoàn toàn tự chủ Scan Matching 4 bức tường phòng 3x5m mà không bị ảo giác kéo dài hành lang
+            self.current_pose['x'] = 0.0
+            self.current_pose['y'] = 0.0
+            self.current_pose['yaw'] = 0.0
 
         # Luôn phát /odom và TF odom -> base_link đều đặn 30Hz để robot model di chuyển mượt mà trên RViz2
         now = self.get_clock().now().to_msg()
@@ -370,14 +410,14 @@ class LidarWsToRos2Bridge(Node):
                 return
 
             motion_to_vel = {
-                "forward": (0.35, 0.0),
-                "backward": (-0.35, 0.0),
-                "left": (0.0, 1.2),
-                "right": (0.0, -1.2),
-                "forward_left": (0.25, 0.8),
-                "forward_right": (0.25, -0.8),
-                "backward_left": (-0.25, -0.8),
-                "backward_right": (-0.25, 0.8),
+                "forward": (0.22, 0.0),
+                "backward": (-0.22, 0.0),
+                "left": (0.0, 0.65),
+                "right": (0.0, -0.65),
+                "forward_left": (0.16, 0.45),
+                "forward_right": (0.16, -0.45),
+                "backward_left": (-0.16, -0.45),
+                "backward_right": (-0.16, 0.45),
                 "stop": (0.0, 0.0),
             }
 
@@ -431,12 +471,9 @@ class LidarWsToRos2Bridge(Node):
             quality = pt.get('quality', 0)
 
             if msg.range_min <= dist <= msg.range_max:
-                # Đảo ngược góc từ chuẩn RPLiDAR (CW) sang chuẩn ROS REP-103 (CCW):
-                # 0° -> 0 rad (+X Front)
-                # 90° (Right) -> 270° (-Y Right)
-                # 270° (Left) -> 90° (+Y Left)
-                ros_angle_deg = (360.0 - angle_deg) % 360.0
-                bin_idx = int(ros_angle_deg) % num_bins
+                # angle_deg nhận được đã chuẩn hóa CCW theo chuẩn ROS REP-103:
+                # 0° -> Tiến (+X), 90° -> Trái (+Y), 180° -> Lùi (-X), 270° -> Phải (-Y)
+                bin_idx = int(angle_deg) % num_bins
                 # Giu khoang cach nho nhat neu co nhieu diem trong 1 bin
                 if dist < ranges[bin_idx]:
                     ranges[bin_idx] = float(dist)

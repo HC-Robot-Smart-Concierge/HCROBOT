@@ -14,7 +14,7 @@ from ultrasonic_serial import UltrasonicSerialReader
 logger = logging.getLogger("RobotMain")
 
 
-def start_camera_stream(device=None, width=1280, height=720, fps=15):
+def start_camera_stream(device=None, width=640, height=480, fps=15):
     """Khởi động MJPEG Camera Stream Server trên background thread với Frame Broadcaster và auto-reconnect."""
     try:
         from scripts.camera_stream import (
@@ -613,28 +613,49 @@ def main(argv=None):
 
             snapshot = reader.latest() if reader else None
             now = time.monotonic()
-            if (
-                snapshot
-                and snapshot.sequence != last_status_sequence
-                and now - last_status_at >= 1.0
-            ):
+            if now - last_status_at >= 1.0:
                 last_status_at = now
-                last_status_sequence = snapshot.sequence
-                logger.info(
-                    "DIST cm: front=%s rear=%s left=%s right=%s age=%.2fs",
-                    snapshot.distance("front"),
-                    snapshot.distance("rear"),
-                    snapshot.distance("left"),
-                    snapshot.distance("right"),
-                    snapshot.age_seconds(now),
-                )
-                if snapshot.mpu_available:
+                if snapshot:
+                    last_status_sequence = snapshot.sequence
                     logger.info(
-                        "IMU: accel_g=%s gyro_dps=%s yaw_rate=%s dps",
-                        snapshot.accel,
-                        snapshot.gyro,
-                        snapshot.yaw_rate_dps,
+                        "SONAR cm: front=%s rear=%s left=%s right=%s age=%.2fs",
+                        snapshot.distance("front"),
+                        snapshot.distance("rear"),
+                        snapshot.distance("left"),
+                        snapshot.distance("right"),
+                        snapshot.age_seconds(now),
                     )
+                    if snapshot.mpu_available:
+                        logger.info(
+                            "IMU: accel_g=%s gyro_dps=%s yaw_rate=%s dps",
+                            snapshot.accel,
+                            snapshot.gyro,
+                            snapshot.yaw_rate_dps,
+                        )
+                    if getattr(snapshot, "encoders", None):
+                        encs = snapshot.encoders
+                        logger.info(
+                            "ENCODER: M1=%s M2=%s | M3=%s M4=%s (ticks)",
+                            encs.get("m1", {}).get("ticks", 0),
+                            encs.get("m2", {}).get("ticks", 0),
+                            encs.get("m3", {}).get("ticks", 0),
+                            encs.get("m4", {}).get("ticks", 0),
+                        )
+
+                # Hiển thị khoảng cách vật cản 360° đo bởi RPLiDAR
+                try:
+                    from scripts.lidar_service import slam_core
+                    if getattr(slam_core, "is_running", False) or getattr(slam_core, "is_connected", False):
+                        lf = f"{slam_core.get_front_distance() * 100:.1f}" if slam_core.get_front_distance() < 90 else "clear"
+                        lr = f"{slam_core.get_rear_distance() * 100:.1f}" if slam_core.get_rear_distance() < 90 else "clear"
+                        ll = f"{slam_core.get_left_distance() * 100:.1f}" if slam_core.get_left_distance() < 90 else "clear"
+                        lrg = f"{slam_core.get_right_distance() * 100:.1f}" if slam_core.get_right_distance() < 90 else "clear"
+                        logger.info(
+                            "LIDAR cm: front=%s rear=%s left=%s right=%s (360°)",
+                            lf, lr, ll, lrg,
+                        )
+                except Exception:
+                    pass
 
             char = get_char()
             if not char:

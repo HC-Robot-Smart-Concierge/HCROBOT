@@ -92,6 +92,14 @@ export const useSpeechRecognition = (callbacks = {}) => {
   const hasDetectedVoiceRef = useRef(false);
   const silenceTimerRef = useRef(null);
   const lastFinalTranscriptRef = useRef('');
+  const speechFinalizeTimerRef = useRef(null);
+
+  const clearSpeechFinalizeTimer = useCallback(() => {
+    if (speechFinalizeTimerRef.current) {
+      clearTimeout(speechFinalizeTimerRef.current);
+      speechFinalizeTimerRef.current = null;
+    }
+  }, []);
 
   useEffect(() => {
     callbacksRef.current = callbacks;
@@ -107,6 +115,7 @@ export const useSpeechRecognition = (callbacks = {}) => {
       clearTimeout(silenceTimerRef.current);
       silenceTimerRef.current = null;
     }
+    clearSpeechFinalizeTimer();
     if (scriptProcessorRef.current) {
       try {
         scriptProcessorRef.current.disconnect();
@@ -194,7 +203,13 @@ export const useSpeechRecognition = (callbacks = {}) => {
   const startAudioAnalyser = useCallback(async () => {
     destroyedRef.current = false;
     try {
+      if (typeof window !== 'undefined' && !window.isSecureContext && window.location.hostname !== 'localhost') {
+        setError('Trình duyệt di động yêu cầu kết nối HTTPS để mở Micro. Vui lòng truy cập qua HTTPS hoặc Cloudflare Tunnel.');
+        return false;
+      }
+
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        setError('Không tìm thấy API Microphone (trình duyệt di động yêu cầu HTTPS hoặc quyền truy cập trong Cài đặt).');
         return false;
       }
 
@@ -396,9 +411,23 @@ export const useSpeechRecognition = (callbacks = {}) => {
           }
 
           if (isCurrentFinal) {
+            clearSpeechFinalizeTimer();
             if (cbFinal) cbFinal(trimmed);
           } else {
             if (cbInterim) cbInterim(trimmed);
+
+            // Auto-Finalize Debounce: Tự động chốt câu khi người dùng ngừng nói 1.2s (đặc trị cho iOS Safari không kích hoạt isFinal)
+            clearSpeechFinalizeTimer();
+            speechFinalizeTimerRef.current = setTimeout(() => {
+              speechFinalizeTimerRef.current = null;
+              if (shouldListenRef.current && lastFinalTranscriptRef.current?.trim()) {
+                const textToCommit = lastFinalTranscriptRef.current.trim();
+                const activeCbFinal = inlineCallbacksRef.current?.onFinal || callbacksRef.current?.onFinal;
+                if (activeCbFinal) {
+                  activeCbFinal(textToCommit);
+                }
+              }
+            }, 1200);
           }
         }
       };
@@ -527,15 +556,17 @@ export const useSpeechRecognition = (callbacks = {}) => {
     }
     setIsListening(false);
     setMicLive(false);
+    clearSpeechFinalizeTimer();
     stopAudioAnalyser();
-  }, [stopAudioAnalyser]);
+  }, [stopAudioAnalyser, clearSpeechFinalizeTimer]);
 
   const resetTranscript = useCallback(() => {
+    clearSpeechFinalizeTimer();
     setTranscript('');
     lastFinalTranscriptRef.current = '';
     audioChunksRef.current = [];
     hasDetectedVoiceRef.current = false;
-  }, []);
+  }, [clearSpeechFinalizeTimer]);
 
   // Kích hoạt chốt giọng nói ngay lập tức (dùng khi bấm "Gửi ngay" hoặc "Nói xong")
   const finishVoiceCapture = useCallback(async () => {

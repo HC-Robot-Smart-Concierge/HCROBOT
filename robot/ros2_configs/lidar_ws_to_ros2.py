@@ -32,7 +32,12 @@ class LidarWsToRos2Bridge(Node):
         self.wheel_l_pos = 0.0
         self.wheel_r_pos = 0.0
         self.wheel_radius = 0.033
-        self.wheel_sep = 0.297
+        self.wheel_sep = 0.22
+        self.encoder_cpr = 330.0
+        self.prev_left_ticks = 0.0
+        self.prev_right_ticks = 0.0
+        self.has_prev_ticks = False
+        self.has_encoder_telemetry = False
         self.scan_count = 0
 
         # Lắng nghe topic /cmd_vel để điều khiển xe và di chuyển robot trên RViz
@@ -269,42 +274,52 @@ class LidarWsToRos2Bridge(Node):
             self.last_recorded_pose = {'x': px, 'y': py, 'yaw': yaw_deg}
             self.path_pub_.publish(self.trajectory_path)
 
+    def update_from_encoders(self, encoders: dict):
+        """Tính toán Odometry vòng kín chính xác từ số xung Encoder 4 bánh xe ESP32."""
+        if not encoders or self.pure_scan_matching:
+            return
+        m1 = encoders.get("m1", {})
+        m2 = encoders.get("m2", {})
+        m3 = encoders.get("m3", {})
+        m4 = encoders.get("m4", {})
+
+        # Động cơ 1 & 2 là vế Trái; Động cơ 3 & 4 là vế Phải
+        left_ticks = (m1.get("ticks", 0) + m2.get("ticks", 0)) / 2.0
+        right_ticks = (m3.get("ticks", 0) + m4.get("ticks", 0)) / 2.0
+
+        if not self.has_prev_ticks:
+            self.prev_left_ticks = left_ticks
+            self.prev_right_ticks = right_ticks
+            self.has_prev_ticks = True
+            return
+
+        delta_left_ticks = left_ticks - self.prev_left_ticks
+        delta_right_ticks = right_ticks - self.prev_right_ticks
+        self.prev_left_ticks = left_ticks
+        self.prev_right_ticks = right_ticks
+
+        dist_per_tick = (2.0 * math.pi * self.wheel_radius) / self.encoder_cpr
+        delta_left_m = delta_left_ticks * dist_per_tick
+        delta_right_m = delta_right_ticks * dist_per_tick
+
+        delta_s = (delta_right_m + delta_left_m) / 2.0
+        delta_theta = (delta_right_m - delta_left_m) / self.wheel_sep
+
+        if abs(delta_s) > 0.0001 or abs(delta_theta) > 0.0001:
+            self.has_encoder_telemetry = True
+            current_yaw_rad = math.radians(self.current_pose['yaw'])
+            mid_yaw = current_yaw_rad + (delta_theta / 2.0)
+            self.current_pose['x'] += delta_s * math.cos(mid_yaw)
+            self.current_pose['y'] += delta_s * math.sin(mid_yaw)
+            self.current_pose['yaw'] = (self.current_pose['yaw'] + math.degrees(delta_theta)) % 360.0
+
+            # Cập nhật vị trí quay bánh xe
+            self.wheel_l_pos += delta_left_m / self.wheel_radius
+            self.wheel_r_pos += delta_right_m / self.wheel_radius
+
     def update_robot_pose(self, pose_dict):
-        if not pose_dict or self.pure_scan_matching:
-            return
-        # Nếu đang có vận tốc di chuyển (Dead Reckoning từ cmd_vel hoặc telemetry UDP),
-        # giữ nguyên odometry mượt để tránh bị giật góc đột ngột làm sai lệch Scan Matching của SLAM
-        if abs(self.current_vx) > 0.001 or abs(self.current_wz) > 0.001:
-            return
-
-        target_x = float(pose_dict.get('x', 0.0))
-        target_y = float(pose_dict.get('y', 0.0))
-        target_yaw = float(pose_dict.get('yaw', 0.0))
-
-        # Lọc mượt góc xoay: Giới hạn bước nhảy tối đa 2.5°/frame để TF odom -> base_link biến thiên liên tục
-        d_yaw = (target_yaw - self.current_pose['yaw'] + 540.0) % 360.0 - 180.0
-        max_yaw_step = 2.5
-        if abs(d_yaw) > max_yaw_step:
-            yaw_deg = (self.current_pose['yaw'] + (max_yaw_step if d_yaw > 0 else -max_yaw_step)) % 360.0
-        else:
-            yaw_deg = target_yaw
-
-        # Lọc mượt tọa độ X, Y: Giới hạn bước nhảy tối đa 4cm/frame tránh hiện tượng teleport
-        dx = target_x - self.current_pose['x']
-        dy = target_y - self.current_pose['y']
-        max_pos_step = 0.04
-        dist = math.hypot(dx, dy)
-        if dist > max_pos_step:
-            ratio = max_pos_step / dist
-            px = self.current_pose['x'] + dx * ratio
-            py = self.current_pose['y'] + dy * ratio
-        else:
-            px = target_x
-            py = target_y
-
-        self.current_pose = {'x': px, 'y': py, 'yaw': yaw_deg}
-        now = self.get_clock().now().to_msg()
-        self._record_and_publish_state(now, px, py, yaw_deg, broadcast_tf=True)
+        """Khóa ghi đè nhảy cóc từ Pi 5 để tránh Pose Jump làm rách bản đồ SLAM."""
+        return
 
     def on_cmd_vel_received(self, msg: Twist):
         self.last_cmd_time = time.monotonic()
@@ -357,7 +372,7 @@ class LidarWsToRos2Bridge(Node):
                 self._send_udp_to_pi5("stop")
 
         if not self.pure_scan_matching:
-            if abs(self.current_vx) > 0.001 or abs(self.current_wz) > 0.001:
+            if not self.has_encoder_telemetry and (abs(self.current_vx) > 0.001 or abs(self.current_wz) > 0.001):
                 yaw_deg = self.current_pose['yaw'] + math.degrees(self.current_wz * dt)
                 self.current_pose['yaw'] = yaw_deg % 360.0
 
@@ -366,7 +381,6 @@ class LidarWsToRos2Bridge(Node):
                 self.current_pose['y'] += self.current_vx * math.sin(yaw_rad) * dt
         else:
             # Trong chế độ Pure Scan Matching: TF odom -> base_link neo ở gốc (0,0,0)
-            # để SLAM Toolbox hoàn toàn tự chủ Scan Matching 4 bức tường phòng 3x5m mà không bị ảo giác kéo dài hành lang
             self.current_pose['x'] = 0.0
             self.current_pose['y'] = 0.0
             self.current_pose['yaw'] = 0.0
@@ -383,18 +397,31 @@ class LidarWsToRos2Bridge(Node):
             broadcast_tf=True
         )
 
-        # Tính toán góc quay và phát /joint_states để bánh xe xoay tròn trên RViz2
+        # Tính toán góc quay và phát /joint_states cho cả 4 bánh xe trên RViz2
         v_l = self.current_vx - (self.current_wz * self.wheel_sep / 2.0)
         v_r = self.current_vx + (self.current_wz * self.wheel_sep / 2.0)
-        self.wheel_l_pos += (v_l / self.wheel_radius) * dt
-        self.wheel_r_pos += (v_r / self.wheel_radius) * dt
+        if not self.has_encoder_telemetry:
+            self.wheel_l_pos += (v_l / self.wheel_radius) * dt
+            self.wheel_r_pos += (v_r / self.wheel_radius) * dt
 
         js = JointState()
         js.header.stamp = now
         js.header.frame_id = 'base_link'
-        js.name = ['left_wheel_joint', 'right_wheel_joint']
-        js.position = [float(self.wheel_l_pos), float(self.wheel_r_pos)]
-        js.velocity = [float(v_l / self.wheel_radius), float(v_r / self.wheel_radius)]
+        js.name = [
+            'front_left_wheel_joint', 'rear_left_wheel_joint',
+            'front_right_wheel_joint', 'rear_right_wheel_joint',
+            'left_wheel_joint', 'right_wheel_joint'
+        ]
+        js.position = [
+            float(self.wheel_l_pos), float(self.wheel_l_pos),
+            float(self.wheel_r_pos), float(self.wheel_r_pos),
+            float(self.wheel_l_pos), float(self.wheel_r_pos)
+        ]
+        js.velocity = [
+            float(v_l / self.wheel_radius), float(v_l / self.wheel_radius),
+            float(v_r / self.wheel_radius), float(v_r / self.wheel_radius),
+            float(v_l / self.wheel_radius), float(v_r / self.wheel_radius)
+        ]
         self.joint_pub_.publish(js)
 
     def start_pi5_telemetry_udp_server(self):
@@ -506,9 +533,9 @@ async def ws_loop(node: LidarWsToRos2Bridge, ws_url="ws://100.99.72.51:8000/api/
                         break
                     try:
                         data = json.loads(msg_str)
-                        robot_pose = data.get("robot_pose")
-                        if robot_pose:
-                            node.update_robot_pose(robot_pose)
+                        encoders = data.get("encoders")
+                        if encoders:
+                            node.update_from_encoders(encoders)
                         points = data.get("scan_points", [])
                         if points:
                             node.publish_scan(points)

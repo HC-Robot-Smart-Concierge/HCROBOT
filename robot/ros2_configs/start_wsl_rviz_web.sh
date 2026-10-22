@@ -16,7 +16,10 @@ pkill -9 -f "async_slam_toolbox_node" 2>/dev/null || true
 pkill -9 -f "lidar_ws_to_ros2.py" 2>/dev/null || true
 pkill -9 -f "slam_toolbox" 2>/dev/null || true
 pkill -9 -f "start_wsl_slam.sh" 2>/dev/null || true
+sudo chmod 1777 /tmp/.X11-unix 2>/dev/null || true
 rm -f /tmp/.X*-lock /tmp/.X11-unix/X* 2>/dev/null || true
+mkdir -p /tmp/.X11-unix 2>/dev/null || true
+chmod 1777 /tmp/.X11-unix 2>/dev/null || true
 sleep 1
 
 # Tim display number kha dung (99, 98, hoac 97)
@@ -29,9 +32,9 @@ if [ -e "/tmp/.X11-unix/X99" ] || [ -e "/tmp/.X99-lock" ]; then
 fi
 
 echo "=== [2/5] KHOI DONG X VIRTUAL FRAMEBUFFER (:$DISP_NUM, 1600x900) ==="
-Xvfb :$DISP_NUM -screen 0 1600x900x24 -listen tcp -ac &
+Xvfb :$DISP_NUM -screen 0 1600x900x24 -ac -listen tcp &
 XVFB_PID=$!
-sleep 1
+sleep 1.5
 
 export DISPLAY=:$DISP_NUM
 unset WAYLAND_DISPLAY
@@ -41,7 +44,7 @@ openbox &
 OB_PID=$!
 sleep 0.5
 
-x11vnc -display :$DISP_NUM -forever -nopw -shared -rfbport 5900 -bg
+x11vnc -display :$DISP_NUM -forever -nopw -shared -rfbport 5900 -bg 2>/dev/null || x11vnc -display localhost:$DISP_NUM -forever -nopw -shared -rfbport 5900 -bg
 sleep 0.5
 
 websockify --web /usr/share/novnc 0.0.0.0:6080 127.0.0.1:5900 &

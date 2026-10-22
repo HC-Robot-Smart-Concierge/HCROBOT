@@ -265,10 +265,19 @@ class LidarWsToRos2Bridge(Node):
     def update_robot_pose(self, pose_dict):
         if not pose_dict:
             return
+        # Nếu đang có vận tốc di chuyển (Dead Reckoning từ cmd_vel hoặc telemetry UDP),
+        # giữ nguyên odometry mượt để tránh bị giật góc đột ngột làm sai lệch Scan Matching của SLAM
+        if abs(self.current_vx) > 0.001 or abs(self.current_wz) > 0.001:
+            return
+
         px = float(pose_dict.get('x', 0.0))
         py = float(pose_dict.get('y', 0.0))
         yaw_deg = float(pose_dict.get('yaw', 0.0))
         if abs(px) > 0.001 or abs(py) > 0.001 or abs(yaw_deg) > 0.001:
+            # Lọc mượt góc xoay tránh bước nhảy góc tức thời (>20 độ trong 1 frame)
+            d_yaw = (yaw_deg - self.current_pose['yaw'] + 540.0) % 360.0 - 180.0
+            if abs(d_yaw) > 20.0:
+                yaw_deg = (self.current_pose['yaw'] + 0.35 * d_yaw) % 360.0
             self.current_pose = {'x': px, 'y': py, 'yaw': yaw_deg}
             now = self.get_clock().now().to_msg()
             self._record_and_publish_state(now, px, py, yaw_deg, broadcast_tf=True)
@@ -431,12 +440,9 @@ class LidarWsToRos2Bridge(Node):
             quality = pt.get('quality', 0)
 
             if msg.range_min <= dist <= msg.range_max:
-                # Đảo ngược góc từ chuẩn RPLiDAR (CW) sang chuẩn ROS REP-103 (CCW):
-                # 0° -> 0 rad (+X Front)
-                # 90° (Right) -> 270° (-Y Right)
-                # 270° (Left) -> 90° (+Y Left)
-                ros_angle_deg = (360.0 - angle_deg) % 360.0
-                bin_idx = int(ros_angle_deg) % num_bins
+                # angle_deg nhận được đã chuẩn hóa CCW theo chuẩn ROS REP-103:
+                # 0° -> Tiến (+X), 90° -> Trái (+Y), 180° -> Lùi (-X), 270° -> Phải (-Y)
+                bin_idx = int(angle_deg) % num_bins
                 # Giu khoang cach nho nhat neu co nhieu diem trong 1 bin
                 if dist < ranges[bin_idx]:
                     ranges[bin_idx] = float(dist)

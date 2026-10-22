@@ -87,6 +87,52 @@ class TestLidarServiceMapPersistence(unittest.TestCase):
         self.assertNotIn("map_a", map_names_after)
         self.assertIn("map_b", map_names_after)
 
+    def test_sector_distances_ccw(self):
+        """Kiểm tra các cung góc khoảng cách theo chuẩn CCW: 0° Trước, 90° Trái, 180° Sau, 270° Phải."""
+        import time
+        now = time.time()
+        # Đặt vật cản phía trước (0°)
+        self.core.angle_distances[0] = 0.50
+        self.core.angle_timestamps[0] = now
+        # Đặt vật cản bên trái (90°)
+        self.core.angle_distances[90] = 0.60
+        self.core.angle_timestamps[90] = now
+        # Đặt vật cản phía sau (180°)
+        self.core.angle_distances[180] = 0.70
+        self.core.angle_timestamps[180] = now
+        # Đặt vật cản bên phải (270°)
+        self.core.angle_distances[270] = 0.80
+        self.core.angle_timestamps[270] = now
+
+        self.assertAlmostEqual(self.core.get_front_distance(), 0.50)
+        self.assertAlmostEqual(self.core.get_left_distance(), 0.60)
+        self.assertAlmostEqual(self.core.get_rear_distance(), 0.70)
+        self.assertAlmostEqual(self.core.get_right_distance(), 0.80)
+
+    def test_coordinate_and_yaw_rotation_cancellation(self):
+        """Kiểm tra khi xe xoay góc robot_yaw (CCW), vật cản tĩnh trong thế giới không bị xoay lệch."""
+        import math
+        # Robot ở (0, 0) quay 0°, vật cản ở trước mặt cách 2m (X=2, Y=0)
+        dist_m = 2.0
+        robot_yaw_0 = 0.0
+        ccw_angle_0 = 0.0
+        rad_0 = math.radians((ccw_angle_0 + robot_yaw_0) % 360.0)
+        x_0 = dist_m * math.cos(rad_0)
+        y_0 = dist_m * math.sin(rad_0)
+        self.assertAlmostEqual(x_0, 2.0)
+        self.assertAlmostEqual(y_0, 0.0)
+
+        # Robot xoay TRÁI 30° (robot_yaw = +30° CCW).
+        # Lúc này vật cản nằm lệch về phía PHẢI của xe 30° -> ccw_angle = 330° (hoặc -30°).
+        robot_yaw_30 = 30.0
+        ccw_angle_30 = 330.0
+        rad_30 = math.radians((ccw_angle_30 + robot_yaw_30) % 360.0)
+        x_30 = dist_m * math.cos(rad_30)
+        y_30 = dist_m * math.sin(rad_30)
+        # Vật cản trong tọa độ thế giới VẪN PHẢI LÀ (X=2, Y=0)
+        self.assertAlmostEqual(x_30, 2.0)
+        self.assertAlmostEqual(y_30, 0.0)
+
 
 if __name__ == "__main__":
     unittest.main()

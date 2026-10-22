@@ -10,6 +10,9 @@ echo "=== [1/5] DON DEP CAC TIEN TRINH CU ==="
 killall -9 Xvfb x11vnc websockify rviz2 2>/dev/null || true
 pkill -f "Xvfb :99" 2>/dev/null || true
 pkill -f "websockify.*6080" 2>/dev/null || true
+killall -q rosbridge_websocket async_slam_toolbox_node robot_state_publisher 2>/dev/null || true
+pkill -f "lidar_ws_to_ros2.py" 2>/dev/null || true
+rm -f /tmp/.X99-lock /tmp/.X11-unix/X99 2>/dev/null || true
 sleep 1
 
 echo "=== [2/5] KHOI DONG X VIRTUAL FRAMEBUFFER (:99, 1600x900) ==="

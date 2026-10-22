@@ -560,27 +560,31 @@ free_thresh: 0.25
                     quality = packet[0] >> 2
                     angle_q6 = (packet[1] >> 1) | (packet[2] << 7)
                     raw_angle = angle_q6 / 64.0
-                    # Bù góc 180° do cụm RPLiDAR thực tế trên xe bị xoay ngược 180° so với đầu xe
-                    angle = (raw_angle + 180.0) % 360.0
+                    # 1. Bù góc lắp đặt (mặc định 180° do dây cáp RPLiDAR quay về phía sau xe)
+                    cw_angle = (raw_angle + float(os.environ.get("HCROBOT_LIDAR_OFFSET", "180.0"))) % 360.0
+
+                    # 2. Đổi chiều quay từ chuẩn RPLiDAR Clockwise (CW) sang chuẩn hình học / ROS Counter-Clockwise (CCW):
+                    # 0°: Tiến (+X), 90°: Trái (+Y), 180°: Lùi (-X), 270°: Phải (-Y)
+                    ccw_angle = (360.0 - cw_angle) % 360.0
                     distance_q2 = packet[3] | (packet[4] << 8)
                     dist_m = (distance_q2 / 4.0) / 1000.0
 
                     # 1. Lọc tia khoảng cách hợp lệ (từ 12cm đến 12m)
                     if 0.12 <= dist_m <= 12.0:
-                        # Cập nhật liên tục mảng khoảng cách 360 độ theo thời gian thực
-                        deg = int(round(angle)) % 360
+                        # Cập nhật liên tục mảng khoảng cách 360 độ theo chuẩn CCW (90° = Trái, 270° = Phải)
+                        deg = int(round(ccw_angle)) % 360
                         now_ts = time.time()
                         self.angle_distances[deg] = dist_m
                         self.angle_timestamps[deg] = now_ts
 
-                        # Chuẩn hóa góc và tọa độ theo chuẩn chuẩn Cartesian (+X Tiến, +Y Trái, CCW)
-                        heading = (angle + self.robot_yaw) % 360.0
+                        # Chuẩn hóa góc và tọa độ theo chuẩn Cartesian (+X Tiến, +Y Trái, CCW)
+                        heading = (ccw_angle + self.robot_yaw) % 360.0
                         rad = math.radians(heading)
                         x = self.robot_x + dist_m * math.cos(rad)
                         y = self.robot_y + dist_m * math.sin(rad)
 
                         current_scan_batch.append({
-                            "angle": round(angle, 1),
+                            "angle": round(ccw_angle, 1),
                             "distance": round(dist_m, 2),
                             "x": round(x, 2),
                             "y": round(y, 2),

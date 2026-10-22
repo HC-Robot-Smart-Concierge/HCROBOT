@@ -247,6 +247,16 @@ class TTSService:
             if cache_key in self._memory_cache:
                 return base64.b64decode(self._memory_cache[cache_key])
 
+            # Kiểm tra Redis Cloud Cache trước (< 5ms)
+            try:
+                from app.services.cache.redis_service import redis_service
+                redis_audio = await redis_service.get_tts_audio(cache_key)
+                if redis_audio and len(redis_audio) > 0:
+                    self._memory_cache[cache_key] = base64.b64encode(redis_audio).decode("utf-8")
+                    return redis_audio
+            except Exception:
+                pass
+
             disk_path = os.path.join(self._cache_dir, f"{cache_key}.mp3")
             if os.path.isfile(disk_path):
                 with open(disk_path, "rb") as f:
@@ -266,6 +276,12 @@ class TTSService:
                 try:
                     with open(disk_path, "wb") as f:
                         f.write(audio_bytes)
+                except Exception:
+                    pass
+                # Lưu đồng thời lên Redis Cloud Cache
+                try:
+                    from app.services.cache.redis_service import redis_service
+                    await redis_service.set_tts_audio(cache_key, audio_bytes)
                 except Exception:
                     pass
 

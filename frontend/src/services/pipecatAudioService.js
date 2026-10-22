@@ -26,22 +26,36 @@ class PipecatAudioClient {
     this._audioQueue = [];
     this._isPlaying = false;
     this._audioChunksInCurrentStream = 0;
+    this._isStreamDone = true;
+    this._currentSource = null;
+  }
+
+  prime() {
+    try {
+      const ctx = this._getAudioContext();
+      if (ctx && ctx.state === 'suspended') {
+        ctx.resume();
+      }
+    } catch (e) {}
+  }
+
+  updateCallbacks(callbacks = {}) {
+    if (callbacks.onAudioStream !== undefined) this.onAudioStreamCallback = callbacks.onAudioStream;
+    if (callbacks.onInterrupted !== undefined) this.onInterruptedCallback = callbacks.onInterrupted;
+    if (callbacks.onToken !== undefined) this.onTokenCallback = callbacks.onToken;
+    if (callbacks.onTextChunk !== undefined) this.onTextChunkCallback = callbacks.onTextChunk;
+    if (callbacks.onStreamDone !== undefined) this.onStreamDoneCallback = callbacks.onStreamDone;
+    if (callbacks.onAudioStarted !== undefined) this.onAudioStartedCallback = callbacks.onAudioStarted;
+    if (callbacks.onAudioEnded !== undefined) this.onAudioEndedCallback = callbacks.onAudioEnded;
+    if (callbacks.onSTTInterimEcho !== undefined) this.onSTTInterimEchoCallback = callbacks.onSTTInterimEcho;
+    if (callbacks.onSTTProcessing !== undefined) this.onSTTProcessingCallback = callbacks.onSTTProcessing;
+    if (callbacks.onError !== undefined) this.onErrorCallback = callbacks.onError;
+    this._savedCallbacks = { ...(this._savedCallbacks || {}), ...callbacks };
   }
 
   connect(sessionId = 'pipecat_kiosk', callbacks = {}) {
     this.sessionId = sessionId;
-    this.onAudioStreamCallback = callbacks.onAudioStream || null;
-    this.onInterruptedCallback = callbacks.onInterrupted || null;
-    this.onTokenCallback = callbacks.onToken || null;
-    this.onTextChunkCallback = callbacks.onTextChunk || null;
-    this.onStreamDoneCallback = callbacks.onStreamDone || null;
-    this.onAudioStartedCallback = callbacks.onAudioStarted || null;
-    this.onAudioEndedCallback = callbacks.onAudioEnded || null;
-    this.onSTTInterimEchoCallback = callbacks.onSTTInterimEcho || null;
-    this.onSTTProcessingCallback = callbacks.onSTTProcessing || null;
-    this.onErrorCallback = callbacks.onError || null;
-
-    this._savedCallbacks = callbacks;
+    this.updateCallbacks(callbacks);
     this._manuallyClosed = false;
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -87,6 +101,7 @@ class PipecatAudioClient {
             if (this.onSTTInterimEchoCallback) this.onSTTInterimEchoCallback(data.text);
           } else if (data.event === 'stt_processing') {
             this._audioChunksInCurrentStream = 0;
+            this._isStreamDone = false;
             if (this.onSTTProcessingCallback) this.onSTTProcessingCallback(data.text);
           } else if (data.event === 'audio_stream') {
             // Legacy mode
@@ -94,8 +109,12 @@ class PipecatAudioClient {
           } else if (data.event === 'text' || data.event === 'text_chunk') {
             if (this.onTextChunkCallback) this.onTextChunkCallback(data);
           } else if (data.event === 'stream_done') {
+            this._isStreamDone = true;
             data.audioChunksCount = this._audioChunksInCurrentStream;
             if (this.onStreamDoneCallback) this.onStreamDoneCallback(data);
+            if (!this._isPlaying && this._audioQueue.length === 0) {
+              if (this.onAudioEndedCallback) this.onAudioEndedCallback();
+            }
           } else if (data.event === 'error') {
             console.warn('[PipecatClient] Server error:', data.message);
             if (this.onErrorCallback) this.onErrorCallback(data);
@@ -202,6 +221,7 @@ class PipecatAudioClient {
   sendSpeechStream(text, roomNumber = null, language = 'auto') {
     this._stopAudioQueue();
     this._audioChunksInCurrentStream = 0;
+    this._isStreamDone = false;
 
     if (this.socket && this.socket.readyState === WebSocket.OPEN) {
       this.socket.send(
@@ -266,7 +286,7 @@ class PipecatAudioClient {
     if (!ctx || this._audioQueue.length === 0) {
       const wasPlaying = this._isPlaying;
       this._isPlaying = false;
-      if (wasPlaying && this.onAudioEndedCallback) {
+      if (wasPlaying && this._isStreamDone && this.onAudioEndedCallback) {
         this.onAudioEndedCallback();
       }
       return;
@@ -283,7 +303,11 @@ class PipecatAudioClient {
       const source = ctx.createBufferSource();
       source.buffer = audioBuffer;
       source.connect(ctx.destination);
+      this._currentSource = source;
       source.onended = () => {
+        if (this._currentSource === source) {
+          this._currentSource = null;
+        }
         this._playNextChunk();
       };
       source.start(0);
@@ -294,12 +318,15 @@ class PipecatAudioClient {
         const blob = new Blob([buffer], { type: 'audio/mp3' });
         const url = URL.createObjectURL(blob);
         const audio = new Audio(url);
+        this.audioRef = audio;
         audio.onended = () => {
           URL.revokeObjectURL(url);
+          if (this.audioRef === audio) this.audioRef = null;
           this._playNextChunk();
         };
         audio.onerror = () => {
           URL.revokeObjectURL(url);
+          if (this.audioRef === audio) this.audioRef = null;
           this._playNextChunk();
         };
         await audio.play();
@@ -313,6 +340,17 @@ class PipecatAudioClient {
   _stopAudioQueue() {
     this._audioQueue = [];
     this._isPlaying = false;
+    if (this._currentSource) {
+      try { this._currentSource.stop(); } catch (e) {}
+      this._currentSource = null;
+    }
+    if (this.audioRef) {
+      try {
+        this.audioRef.pause();
+        this.audioRef.currentTime = 0;
+      } catch (e) {}
+      this.audioRef = null;
+    }
   }
 
   disconnect() {

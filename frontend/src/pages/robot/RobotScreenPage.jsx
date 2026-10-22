@@ -15,6 +15,7 @@ import { useNotificationWebSocket } from '../../hooks/useNotificationWebSocket';
 import { useSpeechRecognition } from '../../hooks/useSpeechRecognition';
 import { useSpeechSynthesis } from '../../hooks/useSpeechSynthesis';
 import { sendChatPrompt, sendChatStreamSSE, resetSession, flushSession, getVoiceSettings } from '../../services/aiApi';
+import { pipecatAudioClient } from '../../services/pipecatAudioService';
 
 import { MessengerVideoCallModal } from '../../components/video/MessengerVideoCallModal';
 import { RobotQuickFeedbackModal } from '../../components/robot/RobotQuickFeedbackModal';
@@ -257,13 +258,48 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
   // Hooks
   const { isListening, transcript, error: speechError, startListening, stopListening, resetTranscript, hasSupport, volumeLevel } = useSpeechRecognition();
-  const { speak, prime, cancel: stopSpeaking, isSpeaking, speechRate, updateSpeechRate } = useSpeechSynthesis();
+  const { speak, prime: primeNativeSpeech, cancel: stopNativeSpeaking, isSpeaking: isTtsSpeaking, speechRate, updateSpeechRate } = useSpeechSynthesis();
+  const [isStreamSpeaking, setIsStreamSpeaking] = useState(false);
+  const isSpeaking = isTtsSpeaking || isStreamSpeaking;
+
+  const stopSpeaking = useCallback(() => {
+    stopNativeSpeaking();
+    pipecatAudioClient.sendBargeIn();
+    setIsStreamSpeaking(false);
+  }, [stopNativeSpeaking]);
+
+  const prime = useCallback(() => {
+    primeNativeSpeech();
+    pipecatAudioClient.prime();
+  }, [primeNativeSpeech]);
 
   // Đồng bộ thời gian thực trạng thái phát âm thanh để chống stale closure
   const isSpeakingRef = useRef(false);
   useEffect(() => {
     isSpeakingRef.current = isSpeaking;
   }, [isSpeaking]);
+
+  // Kết nối Streaming WebSocket duy nhất của Pipecat cho Kiosk
+  useEffect(() => {
+    pipecatAudioClient.connect(sessionId, {
+      onAudioStarted: () => {
+        setIsStreamSpeaking(true);
+      },
+      onAudioEnded: () => {
+        setIsStreamSpeaking(false);
+      },
+      onInterrupted: () => {
+        setIsStreamSpeaking(false);
+      },
+      onError: (err) => {
+        console.warn('[Pipecat WS Hub Error]:', err);
+      },
+    });
+
+    return () => {
+      pipecatAudioClient.disconnect();
+    };
+  }, [sessionId]);
 
   const toggleLanguage = useCallback((targetLang) => {
     if (typeof targetLang === 'string' && (targetLang === 'English' || targetLang === 'Tiếng Việt')) {
@@ -545,7 +581,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     }
   }, [isStandby, transcript, currentState]);
 
-  // Tự động gửi AI khi người dùng ngừng nói 900ms (VAD Silence Detection tự nhiên, phản hồi siêu tốc như commit b5499898)
+  // Tự động gửi AI khi người dùng ngừng nói 650ms (VAD Silence Detection tự nhiên, phản hồi siêu tốc)
   useEffect(() => {
     if (
       isListening &&
@@ -562,7 +598,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         const textToProcess = transcript.trim();
         resetTranscript();
         handleStopTalkAndProcess(textToProcess);
-      }, 900);
+      }, 650);
     }
     return () => {
       if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
@@ -761,8 +797,160 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
     setCurrentState('RT-04');
 
+    // =========================================================================
+    // CHẾ ĐỘ STREAMING WEBSOCKET (ƯU TIÊN PHẢN HỒI SIÊU TỐC TTFA < 1S)
+    // =========================================================================
+    if (pipecatAudioClient.isConnected) {
+      setAiResponseText('');
+      let fullStreamText = '';
+      let streamLangCode = language === 'English' ? 'en-US' : 'vi-VN';
+      let streamDoneData = null;
+
+      // Cử động mắt sinh động theo từ khóa người dùng
+      if (['nhìn lên', 'ngước lên', 'đánh mắt lên', 'trên trần', 'đèn trần', 'tầng trên', 'thời tiết hôm nay', 'bầu trời', 'look up'].some(k => lowerQuery.includes(k))) {
+        triggerEyeExpression('look_up');
+      } else if (['bên trái', 'phía trái', 'liếc trái', 'rẽ trái', 'quầy bên trái', 'look left'].some(k => lowerQuery.includes(k))) {
+        triggerEyeExpression('look_left');
+      } else if (['bên phải', 'phía phải', 'liếc phải', 'rẽ phải', 'quầy bên phải', 'look right'].some(k => lowerQuery.includes(k))) {
+        triggerEyeExpression('look_right');
+      } else if (['nhìn quanh', 'đảo mắt', 'xung quanh', 'ngắm nhìn', 'tham quan', 'khách sạn có gì', 'look around'].some(k => lowerQuery.includes(k))) {
+        triggerEyeExpression('look_around');
+      }
+
+      const onStreamAudioFinished = () => {
+        if (currentChatId !== activeChatRequestIdRef.current) return;
+        lastInteractionTimeRef.current = Date.now();
+        if (processingSafetyTimerRef.current) {
+          clearTimeout(processingSafetyTimerRef.current);
+          processingSafetyTimerRef.current = null;
+        }
+        setIsStreamSpeaking(false);
+        isProcessingRef.current = false;
+        setIsProcessing(false);
+
+        const isFarewell = ['tạm biệt', 'hẹn gặp lại', 'bye', 'goodbye', 'kết thúc', 'xong rồi', 'hết rồi'].some(k => lowerQuery.includes(k));
+        const navTargetKey = streamDoneData?.destination_key;
+        const isRouteGuidance = Boolean(navTargetKey);
+
+        if (isFarewell) {
+          setAiResponseText('');
+          setTimeout(() => {
+            handleOpenFeedback();
+          }, 600);
+        } else if (isRouteGuidance || currentState === 'RT-05') {
+          clearRouteGuidanceTimers();
+          routeGuidanceTimerRef.current = setTimeout(() => {
+            setIsAutoQrModalOpen(true);
+            setQrCountdown(15);
+
+            const qrVoicePrompt = (streamLangCode === 'en-US' || language === 'English')
+              ? 'You can scan the QR code on the screen to save directions on your mobile phone.'
+              : 'Quý khách có thể quét mã QR trên màn hình để lưu lại chỉ dẫn đường đi trên điện thoại nhé ạ.';
+
+            speak(
+              qrVoicePrompt,
+              (streamLangCode === 'en-US' || language === 'English') ? 'en-US' : 'vi-VN',
+              null,
+              () => {
+                stopListening();
+                resetTranscript();
+                setAiResponseText(qrVoicePrompt);
+              }
+            );
+
+            let timeLeft = 15;
+            qrCountdownIntervalRef.current = setInterval(() => {
+              timeLeft -= 1;
+              setQrCountdown(timeLeft);
+              if (timeLeft <= 0) {
+                if (qrCountdownIntervalRef.current) clearInterval(qrCountdownIntervalRef.current);
+              }
+            }, 1000);
+
+            qrStageTimerRef.current = setTimeout(() => {
+              clearRouteGuidanceTimers();
+              resetToIdle();
+            }, 15000);
+          }, 16000);
+
+          if (isAutoListen) {
+            setTimeout(() => {
+              resetTranscript();
+              handleStartTalk();
+            }, 400);
+          }
+        } else {
+          setAiResponseText('');
+          setCurrentState('RT-03');
+          if (isAutoListen) {
+            setTimeout(() => {
+              resetTranscript();
+              handleStartTalk();
+            }, 300);
+          }
+        }
+      };
+
+      pipecatAudioClient.updateCallbacks({
+        onToken: (token) => {
+          if (currentChatId !== activeChatRequestIdRef.current) return;
+          fullStreamText += token;
+          setAiResponseText((prev) => (prev ? prev + token : token));
+        },
+        onAudioStarted: () => {
+          if (currentChatId !== activeChatRequestIdRef.current) return;
+          setIsStreamSpeaking(true);
+        },
+        onStreamDone: (data) => {
+          if (currentChatId !== activeChatRequestIdRef.current) return;
+          streamDoneData = data;
+          if (data.full_text) {
+            fullStreamText = data.full_text;
+            setAiResponseText(data.full_text);
+          }
+          if (data.lang_code) {
+            streamLangCode = data.lang_code;
+            setLanguage(data.lang_code === 'en-US' ? 'English' : 'Tiếng Việt');
+          }
+          if (data.room_number) {
+            setActiveRoomNumber(data.room_number);
+          }
+          if (data.destination_key) {
+            setNavigationDestinationKey(data.destination_key);
+            setCurrentState('RT-05');
+          }
+          if (data.trigger_video_call) {
+            setVideoCallSessionId(sessionId);
+            setVideoCallTicketCode('CCG-CALL');
+            setIsVideoCallOpen(true);
+          }
+        },
+        onAudioEnded: () => {
+          onStreamAudioFinished();
+        },
+        onInterrupted: () => {
+          setIsStreamSpeaking(false);
+          isProcessingRef.current = false;
+          setIsProcessing(false);
+        },
+        onError: (err) => {
+          console.warn('[Streaming] Error in Pipecat WS stream:', err);
+        },
+      });
+
+      const streamSent = pipecatAudioClient.sendSpeechStream(
+        query,
+        activeRoomNumber,
+        language === 'English' ? 'en' : 'vi'
+      );
+
+      if (streamSent) {
+        return; // Đã gửi thành công qua Streaming WebSocket!
+      }
+    }
+
     try {
-      // Gửi toàn bộ truy vấn tới RAG Backend duy nhất (Single Source of Truth)
+      // FALLBACK: Gửi tới RAG Backend qua HTTP REST khi WebSocket không sẵn sàng
       const chatRes = await sendChatPrompt(query, null, "auto", guestEmotion, sessionId, activeRoomNumber, chatSignal);
 
       // Nếu người dùng đã kích hoạt câu nói mới, ngắt lời hoặc timeout xảy ra -> Hủy bỏ câu cũ
@@ -952,27 +1140,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     }
   };
 
-  // Tự động gửi AI khi người dùng ngừng nói 900ms (VAD Silence Detection tự nhiên, không cướp lời)
-  useEffect(() => {
-    if (
-      isListening &&
-      !isSpeaking &&
-      !isProcessingRef.current &&
-      !isProcessing &&
-      (currentState === 'RT-03' || currentState === 'RT-05') &&
-      transcript.trim().length > 0
-    ) {
-      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-      silenceTimerRef.current = setTimeout(() => {
-        const textToProcess = transcript.trim();
-        resetTranscript();
-        handleStopTalkAndProcess(textToProcess);
-      }, 900);
-    }
-    return () => {
-      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-    };
-  }, [transcript, currentState, isListening, isSpeaking, isProcessing]);
+
 
   const handleProtectedLogoutSubmit = (e) => {
     if (e) e.preventDefault();

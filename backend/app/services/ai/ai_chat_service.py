@@ -104,6 +104,42 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
     current_room = session_manager.get_room_number(sid)
     history = session_manager.get_history(sid)
 
+    # 0. REDIS CLOUD FAST AI CACHE CHECK (< 5ms)
+    from app.services.cache.redis_service import redis_service
+    cached_ai = await redis_service.get_ai_cache(request.prompt, request.language or "vi")
+    if cached_ai and cached_ai.get("full_text"):
+        reply = cached_ai["full_text"]
+        detected_lang = cached_ai.get("detected_language") or ("English" if "en" in (request.language or "").lower() else "Tiếng Việt")
+        lang_code = cached_ai.get("lang_code") or ("en-US" if detected_lang == "English" else "vi-VN")
+        act = cached_ai.get("action", "conversation")
+        dest_key = cached_ai.get("destination_key")
+
+        session_manager.add_turn(sid, "user", request.prompt, language=lang_code)
+        session_manager.add_turn(sid, "assistant", reply, language=lang_code, intent_action=act)
+
+        try:
+            audio_b64, mime_type, _ = await asyncio.wait_for(
+                tts_service.synthesize(reply, provider="edge", language=lang_code),
+                timeout=12.0
+            )
+        except Exception:
+            audio_b64, mime_type = None, "audio/mp3"
+
+        return ChatResponse(
+            response=reply,
+            model_used="redis_cloud_cache",
+            detected_language=detected_lang,
+            lang_code=lang_code,
+            action=act,
+            session_id=sid,
+            current_room_number=current_room,
+            destination_key=dest_key,
+            trigger_video_call=False,
+            ticket_created=False,
+            audio_base64=audio_b64,
+            mime_type=mime_type or "audio/mp3",
+        )
+
     # Điều phối hội thoại trực tiếp qua LangGraph Harness
     initial_state = {
         "session_id": sid,
@@ -167,6 +203,23 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
 
     destination_key = graph_result.get("destination_key") or _detect_destination_poi(request.prompt, reply)
     eye_expression = graph_result.get("eye_expression")
+
+    # Lưu kết quả vào Redis Cache
+    try:
+        await redis_service.set_ai_cache(
+            request.prompt,
+            lang_code,
+            {
+                "full_text": reply,
+                "detected_language": detected_lang,
+                "lang_code": lang_code,
+                "action": act,
+                "destination_key": destination_key,
+                "trigger_video_call": is_video_call,
+            }
+        )
+    except Exception:
+        pass
 
     return ChatResponse(
         response=reply,

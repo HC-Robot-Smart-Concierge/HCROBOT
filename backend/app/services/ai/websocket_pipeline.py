@@ -94,6 +94,8 @@ async def handle_pipecat_websocket(websocket: WebSocket, session_id: str = "pipe
                         "lang_code": chunk.get("lang_code", "vi-VN"),
                         "action": chunk.get("action"),
                         "room_number": chunk.get("room_number"),
+                        "destination_key": chunk.get("destination_key"),
+                        "trigger_video_call": chunk.get("trigger_video_call", False),
                     })
                 elif chunk_type == "interrupted":
                     await websocket.send_json({

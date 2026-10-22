@@ -61,6 +61,11 @@ class Settings(BaseSettings):
     CLOUDINARY_URL: Optional[str] = None
     CLOUDINARY_FOLDER: str = "hcrobot/call_recordings"
 
+    # Redis Cloud Cache Configuration
+    REDIS_URL: Optional[str] = None
+    ENABLE_REDIS: bool = True
+    REDIS_CACHE_TTL: int = 86400  # Default 24 hours
+
     model_config = SettingsConfigDict(
         env_file=(".env", "backend/.env"), 
         env_file_encoding="utf-8", 

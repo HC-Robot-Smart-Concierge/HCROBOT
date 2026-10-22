@@ -167,10 +167,66 @@ class PipecatPipelineService:
                 lang_code = "en-US" if language.lower() in ["english", "en"] else "vi-VN"
 
             # 2. Lấy bộ nhớ hội thoại và số phòng từ session_manager để giao tiếp tự nhiên đa lượt
-            if room_number:
+            from app.services.ai.session_manager import extract_room_number
+            extracted_room = extract_room_number(user_speech, is_answering_room=True)
+            if extracted_room:
+                session_manager.set_room_number(session_id, extracted_room)
+            elif room_number:
                 session_manager.set_room_number(session_id, room_number)
             current_room = session_manager.get_room_number(session_id)
             history = session_manager.get_history(session_id)
+
+            # 2.5. REDIS CLOUD FAST CACHE CHECK (< 5ms)
+            from app.services.cache.redis_service import redis_service
+            cached_data = await redis_service.get_ai_cache(user_speech, language=lang_code)
+            if cached_data and cached_data.get("full_text"):
+                cached_text = cached_data["full_text"]
+                cached_lang = cached_data.get("lang_code", lang_code)
+                cached_dest = cached_data.get("destination_key")
+                cached_vcall = cached_data.get("trigger_video_call", False)
+
+                yield {"type": "token", "token": cached_text, "lang_code": cached_lang}
+
+                parts = SENTENCE_DELIMITERS.split(cached_text)
+                sub_buf = ""
+                for part in parts:
+                    sub_buf += part
+                    if SENTENCE_DELIMITERS.search(part):
+                        clause = sub_buf.strip()
+                        sub_buf = ""
+                        if clause:
+                            yield {"type": "text_chunk", "text": clause, "lang_code": cached_lang}
+                            try:
+                                audio_bytes = await tts_service.synthesize_chunk(clause, language=cached_lang)
+                                if audio_bytes and not session.get("is_interrupted"):
+                                    yield {"type": "audio_chunk", "data": audio_bytes}
+                            except Exception as e_tts:
+                                logger.warning(f"[PipecatService TTS cache chunk error]: {e_tts}")
+
+                if sub_buf.strip():
+                    rem = sub_buf.strip()
+                    yield {"type": "text_chunk", "text": rem, "lang_code": cached_lang}
+                    try:
+                        audio_bytes = await tts_service.synthesize_chunk(rem, language=cached_lang)
+                        if audio_bytes and not session.get("is_interrupted"):
+                            yield {"type": "audio_chunk", "data": audio_bytes}
+                    except Exception as e_tts:
+                        logger.warning(f"[PipecatService TTS cache chunk error]: {e_tts}")
+
+                session_manager.add_turn(session_id, "user", user_speech, language=lang_code)
+                session_manager.add_turn(session_id, "assistant", cached_text, language=cached_lang, intent_action="conversation")
+
+                yield {
+                    "type": "done",
+                    "full_text": cached_text,
+                    "lang_code": cached_lang,
+                    "action": "conversation",
+                    "room_number": current_room,
+                    "destination_key": cached_dest,
+                    "trigger_video_call": cached_vcall,
+                }
+                session["is_speaking"] = False
+                return
 
             # 3. DIRECT OLLAMA QWEN STREAMING → Token-by-Token + Clause Chunker
             buffer = ""
@@ -224,12 +280,38 @@ class PipecatPipelineService:
             session_manager.add_turn(session_id, "user", user_speech, language=lang_code)
             session_manager.add_turn(session_id, "assistant", full_reply, language=final_lang_code, intent_action="conversation")
 
+            from app.services.ai.ai_chat_service import _detect_destination_poi
+            dest_key = _detect_destination_poi(user_speech, full_reply)
+            is_video_call = any(k in user_speech.lower() for k in [
+                "gặp người", "trợ giúp trực tiếp", "nhân viên hỗ trợ", "live call", "video call",
+                "tổng đài", "gọi cho nhân viên", "gọi nhân viên", "gặp nhân viên", "kết nối nhân viên",
+                "call staff", "call human", "talk to human", "speak to human"
+            ])
+
+            # Tự động lưu vào Redis Cloud Cache để tăng tốc các lượt gọi sau
+            try:
+                await redis_service.set_ai_cache(
+                    user_speech,
+                    final_lang_code,
+                    {
+                        "full_text": full_reply,
+                        "lang_code": final_lang_code,
+                        "action": "conversation",
+                        "destination_key": dest_key,
+                        "trigger_video_call": is_video_call,
+                    }
+                )
+            except Exception:
+                pass
+
             yield {
                 "type": "done",
                 "full_text": full_reply,
                 "lang_code": final_lang_code,
                 "action": "conversation",
                 "room_number": current_room,
+                "destination_key": dest_key,
+                "trigger_video_call": is_video_call,
             }
 
         except Exception as e:

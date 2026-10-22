@@ -302,10 +302,10 @@ export const MobileRobotScreen = ({
           </div>
         </header>
 
-        {/* Nền mờ khi mở Menu Ngôn Ngữ (Click outside to close) */}
+        {/* Overlay trong suốt khi mở Menu Ngôn Ngữ (Click outside to close - không làm tối màn hình) */}
         {isLangMenuOpen && (
           <div
-            className="fixed inset-0 z-40 bg-black/50 backdrop-blur-xs"
+            className="fixed inset-0 z-20"
             onClick={() => setIsLangMenuOpen(false)}
           />
         )}

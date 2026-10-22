@@ -396,14 +396,14 @@ class LidarWsToRos2Bridge(Node):
                 return
 
             motion_to_vel = {
-                "forward": (0.35, 0.0),
-                "backward": (-0.35, 0.0),
-                "left": (0.0, 1.2),
-                "right": (0.0, -1.2),
-                "forward_left": (0.25, 0.8),
-                "forward_right": (0.25, -0.8),
-                "backward_left": (-0.25, -0.8),
-                "backward_right": (-0.25, 0.8),
+                "forward": (0.22, 0.0),
+                "backward": (-0.22, 0.0),
+                "left": (0.0, 0.65),
+                "right": (0.0, -0.65),
+                "forward_left": (0.16, 0.45),
+                "forward_right": (0.16, -0.45),
+                "backward_left": (-0.16, -0.45),
+                "backward_right": (-0.16, 0.45),
                 "stop": (0.0, 0.0),
             }
 

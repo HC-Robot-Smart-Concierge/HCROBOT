@@ -67,6 +67,7 @@ const FloatingCinemaSubtitle = ({ fullText, isSpeaking, onClose }) => {
 
   return (
     <div
+      onClick={(e) => e.stopPropagation()}
       className="relative mt-4 sm:mt-5 w-[640px] max-w-[92vw] px-6 py-3.5 bg-stone-900/60 backdrop-blur-md border border-stone-700/50 rounded-2xl shadow-xl flex items-center justify-center text-center animate-in fade-in zoom-in-95 duration-300 z-20 group"
       role="region"
       aria-label="Phụ đề lời thoại của robot"
@@ -89,10 +90,17 @@ const FloatingCinemaSubtitle = ({ fullText, isSpeaking, onClose }) => {
       {/* Dòng chữ phụ đề điện ảnh: Cỡ chữ 16px - 18px, giới hạn tối đa 2 dòng chữ */}
       <p
         key={currentIndex}
-        className="text-base sm:text-[17px] font-medium text-stone-100 leading-snug sm:leading-relaxed tracking-wide px-7 select-text animate-in fade-in slide-in-from-bottom-1 duration-300 line-clamp-2"
+        onClick={(e) => {
+          e.stopPropagation();
+          if (sentences.length > 1) {
+            setCurrentIndex((prev) => (prev + 1) % sentences.length);
+          }
+        }}
+        className={`text-base sm:text-[17px] font-medium text-stone-100 leading-snug sm:leading-relaxed tracking-wide px-7 select-text animate-in fade-in slide-in-from-bottom-1 duration-300 line-clamp-3 ${sentences.length > 1 ? 'cursor-pointer' : ''}`}
+        title={sentences.length > 1 ? 'Chạm để xem câu tiếp theo' : ''}
         style={{
           display: '-webkit-box',
-          WebkitLineClamp: 2,
+          WebkitLineClamp: 3,
           WebkitBoxOrient: 'vertical',
           overflow: 'hidden',
         }}
@@ -240,6 +248,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   // Dynamic Robot Eye Expression State (look_up, look_left, look_right, look_around)
   const [activeEyeExpression, setActiveEyeExpression] = useState(null);
   const eyeExpressionTimeoutRef = useRef(null);
+  const subtitleDismissTimerRef = useRef(null);
 
   const triggerEyeExpression = useCallback((expr, duration = 3800) => {
     if (!expr || expr === 'none') return;
@@ -257,7 +266,19 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   const [showWorkflowMenu, setShowWorkflowMenu] = useState(false);
 
   // Hooks
-  const { isListening, transcript, error: speechError, startListening, stopListening, resetTranscript, hasSupport, volumeLevel } = useSpeechRecognition();
+  const {
+    isListening,
+    transcript,
+    error: speechError,
+    startListening,
+    stopListening,
+    resetTranscript,
+    hasSupport,
+    volumeLevel,
+    hasMicPermission,
+    requestMicrophonePermission,
+    isTranscribing,
+  } = useSpeechRecognition();
   const { speak, prime: primeNativeSpeech, cancel: stopNativeSpeaking, isSpeaking: isTtsSpeaking, speechRate, updateSpeechRate } = useSpeechSynthesis();
   const [isStreamSpeaking, setIsStreamSpeaking] = useState(false);
   const isSpeaking = isTtsSpeaking || isStreamSpeaking;
@@ -278,6 +299,10 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   useEffect(() => {
     isSpeakingRef.current = isSpeaking;
   }, [isSpeaking]);
+
+  // Bộ nhớ đệm chống gửi lặp câu hỏi & chống tự ngắt tiếng AI (Deduplication within 3.5s)
+  const lastProcessedPromptRef = useRef('');
+  const lastProcessedTimeRef = useRef(0);
 
   // Kết nối Streaming WebSocket duy nhất của Pipecat cho Kiosk
   useEffect(() => {
@@ -300,6 +325,23 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       pipecatAudioClient.disconnect();
     };
   }, [sessionId]);
+
+  // Mở khóa AudioContext cho Web Audio & TTS trên thiết bị di động (Mobile/PWA Touch Gesture Unlock)
+  useEffect(() => {
+    const handleGlobalUserGesture = () => {
+      prime();
+    };
+    window.addEventListener('touchstart', handleGlobalUserGesture, { passive: true });
+    window.addEventListener('touchend', handleGlobalUserGesture, { passive: true });
+    window.addEventListener('pointerdown', handleGlobalUserGesture, { passive: true });
+    window.addEventListener('click', handleGlobalUserGesture, { passive: true });
+    return () => {
+      window.removeEventListener('touchstart', handleGlobalUserGesture);
+      window.removeEventListener('touchend', handleGlobalUserGesture);
+      window.removeEventListener('pointerdown', handleGlobalUserGesture);
+      window.removeEventListener('click', handleGlobalUserGesture);
+    };
+  }, [prime]);
 
   const toggleLanguage = useCallback((targetLang) => {
     if (typeof targetLang === 'string' && (targetLang === 'English' || targetLang === 'Tiếng Việt')) {
@@ -451,6 +493,10 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       chatAbortControllerRef.current = null;
     }
     clearRouteGuidanceTimers();
+    if (subtitleDismissTimerRef.current) {
+      clearTimeout(subtitleDismissTimerRef.current);
+      subtitleDismissTimerRef.current = null;
+    }
     stopSpeaking();
     setAiResponseText('');
     setCurrentState('RT-03');
@@ -581,7 +627,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     }
   }, [isStandby, transcript, currentState]);
 
-  // Tự động gửi AI khi người dùng ngừng nói 650ms (VAD Silence Detection tự nhiên, phản hồi siêu tốc)
+  // Tự động gửi AI khi người dùng ngừng nói 900ms (VAD Silence Detection tự nhiên, chuẩn giao tiếp)
   useEffect(() => {
     if (
       isListening &&
@@ -598,7 +644,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         const textToProcess = transcript.trim();
         resetTranscript();
         handleStopTalkAndProcess(textToProcess);
-      }, 650);
+      }, 900);
     }
     return () => {
       if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
@@ -628,7 +674,9 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   // Khi người dùng đi xa khỏi Camera -> Đóng gói lưu DB, dọn dẹp âm thanh & chuyển sang ngủ nhẹ (RT-01)
   const handleGuestLeft = async () => {
     // Tuyệt đối KHÔNG ngắt khi robot đang nói, đang xử lý câu trả lời, hoặc đang hiển thị nội dung
+    // VÀ tuyệt đối KHÔNG kích hoạt trên thiết bị di động (isPhoneLayout) vì không có camera AI giám sát khách rời đi
     if (
+      isPhoneLayout ||
       isSpeaking ||
       isSpeakingRef.current ||
       isProcessing ||
@@ -666,6 +714,10 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     }
     clearRouteGuidanceTimers();
     if (processingSafetyTimerRef.current) clearTimeout(processingSafetyTimerRef.current);
+    if (subtitleDismissTimerRef.current) {
+      clearTimeout(subtitleDismissTimerRef.current);
+      subtitleDismissTimerRef.current = null;
+    }
     isProcessingRef.current = false;
     setIsProcessing(false);
     prime();
@@ -697,14 +749,6 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
   // 2. Gửi tới Ollama RAG Backend
   const handleStopTalkAndProcess = async (userText) => {
-    lastInteractionTimeRef.current = Date.now();
-    if (isStandby) setIsStandby(false);
-    if (isProcessingRef.current || isSpeakingRef.current || isSpeaking) return;
-    if (silenceTimerRef.current) {
-      clearTimeout(silenceTimerRef.current);
-      silenceTimerRef.current = null;
-    }
-
     const query = (userText || transcript || '').trim();
 
     if (!query || query.length === 0) {
@@ -714,23 +758,55 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       return;
     }
 
-    setLastUserPrompt(query);
+    const lowerQuery = query.toLowerCase();
+    const now = Date.now();
 
-    const currentChatId = ++activeChatRequestIdRef.current;
+    // 1. CHỐNG GỬI LẶP & CHỐNG TỰ ĐỘNG NGẮT TIẾNG (Deduplication Guard):
+    // Khi onFinal và silenceTimer cùng kích hoạt cho 1 câu nói, hoặc mic bắt lại tiếng của câu vừa hỏi,
+    // TUYỆT ĐỐI KHÔNG gửi lại và KHÔNG gọi stopSpeaking() để tiếng của AI không bị ngắt giữa chừng!
+    if (
+      lowerQuery === lastProcessedPromptRef.current.toLowerCase() &&
+      now - lastProcessedTimeRef.current < 3500
+    ) {
+      console.log('[handleStopTalkAndProcess] Ignored duplicate query within 3.5s:', query);
+      return;
+    }
+
+    // 2. BARGE-IN: Chỉ ngắt tiếng robot khi người dùng THỰC SỰ nói câu hỏi mới khác với câu trước
+    if (isSpeaking || isSpeakingRef.current) {
+      stopSpeaking();
+    }
+
+    lastProcessedPromptRef.current = query;
+    lastProcessedTimeRef.current = now;
+    lastInteractionTimeRef.current = now;
+    if (isStandby) setIsStandby(false);
+
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
+
+    // Nếu câu hỏi trước đó đang xử lý dở hoặc bị kẹt luồng, chủ động hủy để phục vụ câu hỏi mới
     if (chatAbortControllerRef.current) {
       try { chatAbortControllerRef.current.abort(); } catch (e) {}
       chatAbortControllerRef.current = null;
     }
+
+    setLastUserPrompt(query);
+
+    const currentChatId = ++activeChatRequestIdRef.current;
     chatAbortControllerRef.current = new AbortController();
     const chatSignal = chatAbortControllerRef.current.signal;
 
     clearRouteGuidanceTimers();
-    stopSpeaking();
+    stopListening();
+    resetTranscript();
 
     isProcessingRef.current = true;
     setIsProcessing(true);
 
-    // Safety timeout: tự động giải phóng sau 14 giây nếu AI hoặc âm thanh bị treo
+    // Safety timeout: tự động giải phóng sau 12 giây nếu AI hoặc âm thanh bị treo
     if (processingSafetyTimerRef.current) clearTimeout(processingSafetyTimerRef.current);
     processingSafetyTimerRef.current = setTimeout(() => {
       if (isProcessingRef.current) {
@@ -744,16 +820,10 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         stopSpeaking();
         isProcessingRef.current = false;
         setIsProcessing(false);
-        if (!isSpeaking) {
-          setCurrentState((prev) => (prev === 'RT-04' ? 'RT-02' : prev));
-        }
+        setIsStreamSpeaking(false);
+        setCurrentState((prev) => (prev === 'RT-04' ? 'RT-02' : prev));
       }
-    }, 14000);
-
-    stopListening();
-    resetTranscript();
-
-    const lowerQuery = query.toLowerCase();
+    }, 12000);
 
     // Xử lý đóng bản đồ chỉ đường RT-05 / Modal QR bằng giọng nói khi khách nói "ok tôi đã nhớ" / "cảm ơn"
     if (currentState === 'RT-05' || isAutoQrModalOpen) {
@@ -838,55 +908,63 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
             handleOpenFeedback();
           }, 600);
         } else if (isRouteGuidance || currentState === 'RT-05') {
+          // Request chỉ đường: Giữ nguyên để khách quan sát sơ đồ lộ trình
           clearRouteGuidanceTimers();
-          routeGuidanceTimerRef.current = setTimeout(() => {
-            setIsAutoQrModalOpen(true);
-            setQrCountdown(15);
+          if (!isPhoneLayout) {
+            routeGuidanceTimerRef.current = setTimeout(() => {
+              setIsAutoQrModalOpen(true);
+              setQrCountdown(15);
 
-            const qrVoicePrompt = (streamLangCode === 'en-US' || language === 'English')
-              ? 'You can scan the QR code on the screen to save directions on your mobile phone.'
-              : 'Quý khách có thể quét mã QR trên màn hình để lưu lại chỉ dẫn đường đi trên điện thoại nhé ạ.';
+              const qrVoicePrompt = (streamLangCode === 'en-US' || language === 'English')
+                ? 'You can scan the QR code on the screen to save directions on your mobile phone.'
+                : 'Quý khách có thể quét mã QR trên màn hình để lưu lại chỉ dẫn đường đi trên điện thoại nhé ạ.';
 
-            speak(
-              qrVoicePrompt,
-              (streamLangCode === 'en-US' || language === 'English') ? 'en-US' : 'vi-VN',
-              null,
-              () => {
-                stopListening();
-                resetTranscript();
-                setAiResponseText(qrVoicePrompt);
-              }
-            );
+              speak(
+                qrVoicePrompt,
+                (streamLangCode === 'en-US' || language === 'English') ? 'en-US' : 'vi-VN',
+                null,
+                () => {
+                  stopListening();
+                  resetTranscript();
+                  setAiResponseText(qrVoicePrompt);
+                }
+              );
 
-            let timeLeft = 15;
-            qrCountdownIntervalRef.current = setInterval(() => {
-              timeLeft -= 1;
-              setQrCountdown(timeLeft);
-              if (timeLeft <= 0) {
-                if (qrCountdownIntervalRef.current) clearInterval(qrCountdownIntervalRef.current);
-              }
-            }, 1000);
+              let timeLeft = 15;
+              qrCountdownIntervalRef.current = setInterval(() => {
+                timeLeft -= 1;
+                setQrCountdown(timeLeft);
+                if (timeLeft <= 0) {
+                  if (qrCountdownIntervalRef.current) clearInterval(qrCountdownIntervalRef.current);
+                }
+              }, 1000);
 
-            qrStageTimerRef.current = setTimeout(() => {
+              qrStageTimerRef.current = setTimeout(() => {
+                clearRouteGuidanceTimers();
+                resetToIdle();
+              }, 15000);
+            }, 16000);
+          } else {
+            // Trên điện thoại di động: Giữ sơ đồ lộ trình 30s để khách xem thoải mái, hoặc bấm nút đóng để về lại robot
+            routeGuidanceTimerRef.current = setTimeout(() => {
               clearRouteGuidanceTimers();
               resetToIdle();
-            }, 15000);
-          }, 16000);
-
-          if (isAutoListen) {
-            setTimeout(() => {
-              resetTranscript();
-              handleStartTalk();
-            }, 400);
+            }, 30000);
           }
         } else {
-          setAiResponseText('');
-          setCurrentState('RT-03');
-          if (isAutoListen) {
+          // Hoàn thành phát âm thanh: GIỮ LẠI phụ đề cho khách đọc, không tự ý dập tắt
+          setCurrentState('RT-02');
+          if (subtitleDismissTimerRef.current) clearTimeout(subtitleDismissTimerRef.current);
+          subtitleDismissTimerRef.current = setTimeout(() => {
+            setAiResponseText('');
+          }, 18000);
+
+          // Chỉ tự động kích hoạt mic tiếp khi ở Kiosk cố định (không phải điện thoại di động PWA)
+          if (isAutoListen && !isPhoneLayout) {
             setTimeout(() => {
               resetTranscript();
               handleStartTalk();
-            }, 300);
+            }, 1500);
           }
         }
       };
@@ -896,14 +974,22 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
           if (currentChatId !== activeChatRequestIdRef.current) return;
           fullStreamText += token;
           setAiResponseText((prev) => (prev ? prev + token : token));
+          // Ngay khi có token trả về, dừng trạng thái loading spinner để hiển thị giao diện đối thoại
+          isProcessingRef.current = false;
+          setIsProcessing(false);
         },
         onAudioStarted: () => {
           if (currentChatId !== activeChatRequestIdRef.current) return;
           setIsStreamSpeaking(true);
+          isProcessingRef.current = false;
+          setIsProcessing(false);
+          setCurrentState((prev) => (prev === 'RT-04' ? 'RT-02' : prev));
         },
         onStreamDone: (data) => {
           if (currentChatId !== activeChatRequestIdRef.current) return;
           streamDoneData = data;
+          isProcessingRef.current = false;
+          setIsProcessing(false);
           if (data.full_text) {
             fullStreamText = data.full_text;
             setAiResponseText(data.full_text);
@@ -935,6 +1021,9 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         },
         onError: (err) => {
           console.warn('[Streaming] Error in Pipecat WS stream:', err);
+          if (currentChatId === activeChatRequestIdRef.current) {
+            onStreamAudioFinished();
+          }
         },
       });
 
@@ -962,6 +1051,10 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       const detectedLang = chatRes.detected_language || 'Tiếng Việt';
       const langCode = chatRes.lang_code || (detectedLang === 'English' ? 'en-US' : 'vi-VN');
       const currentLang = langCode;
+
+      setAiResponseText(replyText);
+      isProcessingRef.current = false;
+      setIsProcessing(false);
 
       const updatedRoom = chatRes.current_room_number;
       if (updatedRoom) {
@@ -1044,59 +1137,65 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
               handleOpenFeedback();
             }, 600);
           } else if (isRouteGuidance || currentState === 'RT-05') {
-            // Request chỉ đường chính: Giữ nguyên 16 giây để khách quan sát sơ đồ lộ trình
+            // Request chỉ đường chính: Giữ nguyên sơ đồ lộ trình
             clearRouteGuidanceTimers();
-            routeGuidanceTimerRef.current = setTimeout(() => {
-              // Kết thúc 16s xem lộ trình chính -> Kích hoạt giai đoạn QR Code 15 giây ở cuối
-              setIsAutoQrModalOpen(true);
-              setQrCountdown(15);
+            if (!isPhoneLayout) {
+              routeGuidanceTimerRef.current = setTimeout(() => {
+                // Kết thúc 16s xem lộ trình chính -> Kích hoạt giai đoạn QR Code 15 giây ở cuối
+                setIsAutoQrModalOpen(true);
+                setQrCountdown(15);
 
-              const qrVoicePrompt = (langCode === 'en-US' || detectedLang === 'English')
-                ? 'You can scan the QR code on the screen to save directions on your mobile phone.'
-                : 'Quý khách có thể quét mã QR trên màn hình để lưu lại chỉ dẫn đường đi trên điện thoại nhé ạ.';
+                const qrVoicePrompt = (langCode === 'en-US' || detectedLang === 'English')
+                  ? 'You can scan the QR code on the screen to save directions on your mobile phone.'
+                  : 'Quý khách có thể quét mã QR trên màn hình để lưu lại chỉ dẫn đường đi trên điện thoại nhé ạ.';
 
-              speak(
-                qrVoicePrompt,
-                (langCode === 'en-US' || detectedLang === 'English') ? 'en-US' : 'vi-VN',
-                null,
-                () => {
-                  stopListening();
-                  resetTranscript();
-                  setAiResponseText(qrVoicePrompt);
-                }
-              );
+                speak(
+                  qrVoicePrompt,
+                  (langCode === 'en-US' || detectedLang === 'English') ? 'en-US' : 'vi-VN',
+                  null,
+                  () => {
+                    stopListening();
+                    resetTranscript();
+                    setAiResponseText(qrVoicePrompt);
+                  }
+                );
 
-              // Đếm ngược 15 giây
-              let timeLeft = 15;
-              qrCountdownIntervalRef.current = setInterval(() => {
-                timeLeft -= 1;
-                setQrCountdown(timeLeft);
-                if (timeLeft <= 0) {
-                  if (qrCountdownIntervalRef.current) clearInterval(qrCountdownIntervalRef.current);
-                }
-              }, 1000);
+                // Đếm ngược 15 giây
+                let timeLeft = 15;
+                qrCountdownIntervalRef.current = setInterval(() => {
+                  timeLeft -= 1;
+                  setQrCountdown(timeLeft);
+                  if (timeLeft <= 0) {
+                    if (qrCountdownIntervalRef.current) clearInterval(qrCountdownIntervalRef.current);
+                  }
+                }, 1000);
 
-              // Hết đúng 15 giây -> Tự động đóng QR và đóng luôn bản đồ chỉ đường (resetToIdle)
-              qrStageTimerRef.current = setTimeout(() => {
+                // Hết đúng 15 giây -> Tự động đóng QR và đóng luôn bản đồ chỉ đường (resetToIdle)
+                qrStageTimerRef.current = setTimeout(() => {
+                  clearRouteGuidanceTimers();
+                  resetToIdle();
+                }, 15000);
+              }, 16000);
+            } else {
+              // Trên điện thoại di động: Giữ sơ đồ lộ trình 30s để khách xem thoải mái, hoặc bấm nút đóng để về lại robot
+              routeGuidanceTimerRef.current = setTimeout(() => {
                 clearRouteGuidanceTimers();
                 resetToIdle();
-              }, 15000);
-            }, 16000);
-
-            if (isAutoListen) {
-              setTimeout(() => {
-                resetTranscript();
-                handleStartTalk();
-              }, 400);
+              }, 30000);
             }
           } else {
-            setAiResponseText('');
-            setCurrentState('RT-03');
-            if (isAutoListen) {
+            // Giữ lại phụ đề câu trả lời cho khách đọc
+            setCurrentState('RT-02');
+            if (subtitleDismissTimerRef.current) clearTimeout(subtitleDismissTimerRef.current);
+            subtitleDismissTimerRef.current = setTimeout(() => {
+              setAiResponseText('');
+            }, 18000);
+
+            if (isAutoListen && !isPhoneLayout) {
               setTimeout(() => {
                 resetTranscript();
                 handleStartTalk();
-              }, 300);
+              }, 1500);
             }
           }
         },
@@ -1373,7 +1472,13 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
           stopSpeaking();
           setIsFoodMenuOpen(true);
         }}
-        onCloseAiResponse={() => setAiResponseText('')}
+        onCloseAiResponse={() => {
+          if (subtitleDismissTimerRef.current) {
+            clearTimeout(subtitleDismissTimerRef.current);
+            subtitleDismissTimerRef.current = null;
+          }
+          setAiResponseText('');
+        }}
         navigationDestinationKey={navigationDestinationKey}
         onSelectDestination={setNavigationDestinationKey}
         showQrModalExternal={isAutoQrModalOpen}
@@ -1408,6 +1513,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
             return;
           }
           if ((currentState === 'RT-02' || currentState === 'RT-01') && !isSpeaking && !isSpeakingRef.current && !isProcessing) {
+            handleStartTalk();
+          } else if (currentState === 'RT-03' && !isListening && !isSpeaking && !isSpeakingRef.current && !isProcessing) {
             handleStartTalk();
           }
         }}
@@ -1820,22 +1927,61 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
               {/* 2. Khi đang nghe (Listening): Hiển thị AudioWave và trạng thái thu âm thực tế */}
               {currentState === 'RT-03' && !aiResponseText && (
                 <div className="mt-6 flex flex-col items-center gap-3 animate-fadeIn">
-                  <div className="px-6 py-3.5 bg-stone-900/90 backdrop-blur-xl border border-stone-700/80 rounded-2xl shadow-2xl flex items-center gap-4 text-stone-100 max-w-[620px]">
+                  <div
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (transcript && transcript.trim().length > 0) {
+                        handleStopTalkAndProcess(transcript.trim());
+                      } else {
+                        handleStartTalk();
+                      }
+                    }}
+                    className="px-6 py-3.5 bg-stone-900/90 hover:bg-stone-850 backdrop-blur-xl border border-stone-700/80 rounded-2xl shadow-2xl flex items-center gap-4 text-stone-100 max-w-[620px] cursor-pointer transition-all active:scale-[0.99]"
+                    title={transcript ? "Bấm để gửi ngay" : "Bấm để khởi động lại Micro"}
+                  >
                     <AudioWave isActive={isListening} volumeLevel={volumeLevel} />
                     <div className="flex flex-col text-left min-w-[240px]">
                       <div className="flex items-center gap-1.5">
                         <span className="text-[10px] uppercase font-bold tracking-wider text-stone-400">Khách nói:</span>
+                        {isTranscribing && (
+                          <span className="text-[10px] text-amber-400 font-semibold animate-pulse">· Đang nhận diện AI...</span>
+                        )}
                       </div>
                       <span className="text-sm font-bold text-stone-100">
-                        {transcript ? `"${transcript}"` : (volumeLevel > 5 ? 'Đang nhận diện giọng nói...' : 'Listening... · Đang lắng nghe...')}
+                        {transcript ? `"${transcript}"` : (volumeLevel > 3 ? 'Đang nhận diện giọng nói...' : 'Listening... · Đang lắng nghe...')}
                       </span>
                       <span className="text-[10px] text-stone-400 font-medium flex items-center gap-1.5 mt-0.5">
                         <Globe className="w-3 h-3 text-stone-400" />
                         <span>Auto-detect VI · EN · Tự động nhận diện</span>
                       </span>
                     </div>
+
+                    {transcript && transcript.trim().length > 0 && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleStopTalkAndProcess(transcript.trim());
+                        }}
+                        className="ml-2 px-3 py-1 bg-stone-800 hover:bg-stone-700 text-stone-100 text-xs font-semibold rounded-lg border border-stone-600 transition-colors shadow-sm"
+                      >
+                        Gửi ngay
+                      </button>
+                    )}
                   </div>
-                  {speechError && (
+
+                  {hasMicPermission === false && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        requestMicrophonePermission().then(() => handleStartTalk());
+                      }}
+                      className="px-4 py-2 bg-amber-900/80 hover:bg-amber-800/90 border border-amber-600 rounded-xl text-amber-100 text-xs font-medium max-w-md text-center shadow-lg cursor-pointer transition-colors"
+                    >
+                      ⚠️ Trình duyệt chưa cấp quyền Micro! Bấm vào đây để cấp quyền
+                    </button>
+                  )}
+
+                  {speechError && hasMicPermission !== false && (
                     <div className="px-4 py-2 bg-red-950/80 border border-red-700/80 rounded-xl text-red-200 text-xs font-medium max-w-md text-center shadow-lg">
                       {speechError}
                     </div>

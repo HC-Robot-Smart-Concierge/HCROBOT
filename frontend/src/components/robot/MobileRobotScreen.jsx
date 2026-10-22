@@ -18,13 +18,13 @@ import {
 
 const getRobotMode = (state, isSpeaking = false, isProcessing = false, isListening = false) => {
   if (state === 'RT-01') return 'sleeping';
-  if (isProcessing || state === 'RT-04') return 'processing';
   if (isSpeaking) return 'speaking';
+  if (isProcessing || state === 'RT-04') return 'processing';
   if (isListening || state === 'RT-03') return 'listening';
   return 'welcome';
 };
 
-const MobileCinemaSubtitle = ({ fullText, isSpeaking, onClose }) => {
+const MobileCinemaSubtitle = ({ fullText, isSpeaking, onClose, isEn = false }) => {
   const sentences = useMemo(() => {
     if (!fullText) return [];
     const raw = String(fullText).trim();
@@ -55,6 +55,7 @@ const MobileCinemaSubtitle = ({ fullText, isSpeaking, onClose }) => {
 
   return (
     <div
+      onClick={(e) => e.stopPropagation()}
       className="relative mt-2.5 max-w-[92vw] sm:max-w-lg px-5 py-2.5 bg-stone-900/85 backdrop-blur-md border border-stone-700/60 rounded-2xl shadow-xl flex items-center justify-center text-center animate-in fade-in zoom-in-95 duration-200 z-20 group"
       role="region"
       aria-label="Phụ đề lời thoại của robot"
@@ -74,7 +75,14 @@ const MobileCinemaSubtitle = ({ fullText, isSpeaking, onClose }) => {
 
       <p
         key={currentIndex}
-        className="text-xs sm:text-[13px] font-medium text-stone-100 leading-snug px-6 select-text animate-in fade-in duration-200 line-clamp-2"
+        onClick={(e) => {
+          e.stopPropagation();
+          if (sentences.length > 1) {
+            setCurrentIndex((prev) => (prev + 1) % sentences.length);
+          }
+        }}
+        className={`text-xs sm:text-[13px] font-medium text-stone-100 leading-snug px-6 select-text animate-in fade-in duration-200 line-clamp-3 ${sentences.length > 1 ? 'cursor-pointer' : ''}`}
+        title={sentences.length > 1 ? (isEn ? 'Tap to see next sentence' : 'Chạm để xem câu tiếp theo') : ''}
       >
         {activeSentence}
       </p>
@@ -84,7 +92,7 @@ const MobileCinemaSubtitle = ({ fullText, isSpeaking, onClose }) => {
           type="button"
           onClick={onClose}
           className="absolute right-2.5 w-4 h-4 rounded-full hover:bg-stone-800 text-stone-400 hover:text-stone-200 flex items-center justify-center transition-all cursor-pointer"
-          title="Ẩn phụ đề"
+          title={isEn ? "Hide subtitle" : "Ẩn phụ đề"}
         >
           <X className="w-3 h-3" />
         </button>
@@ -166,24 +174,10 @@ export const MobileRobotScreen = ({
     if (typeof onStartTalk === 'function' && !isListening && !isSpeaking && !isBusy) {
       timer = setTimeout(() => {
         onStartTalk();
-      }, 500);
+      }, 600);
     }
-
-    const handleFirstTouch = () => {
-      if (typeof onStartTalk === 'function' && !isListening && !isSpeaking && !isBusy) {
-        onStartTalk();
-      }
-      window.removeEventListener('touchstart', handleFirstTouch);
-      window.removeEventListener('click', handleFirstTouch);
-    };
-
-    window.addEventListener('touchstart', handleFirstTouch, { passive: true, once: true });
-    window.addEventListener('click', handleFirstTouch, { passive: true, once: true });
-
     return () => {
       if (timer) clearTimeout(timer);
-      window.removeEventListener('touchstart', handleFirstTouch);
-      window.removeEventListener('click', handleFirstTouch);
     };
   }, []);
 
@@ -507,27 +501,46 @@ export const MobileRobotScreen = ({
                 setIsMapManualOpen(false);
                 onResetToIdle();
               }}
-              showQrModalExternal={showQrModalExternal}
-              qrCountdown={qrCountdown}
+              showQrModalExternal={false}
+              qrCountdown={null}
               onCloseQrModal={onCloseQrModal}
               defaultZoom={1.65}
               className="w-full h-full rounded-none border-none shadow-none"
             />
+
+            {/* Subtitle nổi trên bản đồ khi AI đang nói hoặc vừa nói xong */}
+            {displayText && (
+              <div className="absolute bottom-2.5 left-1/2 -translate-x-1/2 z-40 max-w-[94vw] sm:max-w-lg pointer-events-auto">
+                <MobileCinemaSubtitle
+                  fullText={displayText}
+                  isSpeaking={isSpeaking}
+                  onClose={onCloseAiResponse}
+                  isEn={isEn}
+                />
+              </div>
+            )}
           </main>
         ) : (
           <main
             onClick={() => {
-              if (isSpeaking && onStopSpeaking) {
-                onStopSpeaking();
-                if (onStartTalk) onStartTalk();
+              if (isSpeaking || isBusy) {
+                // Tuyệt đối không ngắt lời AI khi robot đang trả lời hoặc đang xử lý
                 return;
               }
               if (isListening && transcript && onSubmitTalk) {
                 onSubmitTalk();
                 return;
               }
+              if (displayText && !isSpeaking) {
+                // Khi robot đã nói xong hoàn toàn và phụ đề đang hiển thị: Chạm để hỏi câu tiếp theo
+                if (onCloseAiResponse) onCloseAiResponse();
+                if (onStartTalk) onStartTalk();
+                return;
+              }
               if (!isSpeaking && !isBusy && onStartTalk) {
-                onStartTalk();
+                if (currentState === 'RT-01' || currentState === 'RT-02') {
+                  onStartTalk();
+                }
               }
             }}
             className="flex-1 min-h-0 w-full flex flex-col items-center justify-center robot-safe-x robot-safe-bottom cursor-pointer relative px-4 select-none"
@@ -545,15 +558,56 @@ export const MobileRobotScreen = ({
 
               {/* 1. Khi đang nói hoặc có phụ đề trả lời: Subtitle điện ảnh nổi tinh tế */}
               {displayText ? (
-                <MobileCinemaSubtitle
-                  fullText={displayText}
-                  isSpeaking={isSpeaking}
-                  onClose={onCloseAiResponse}
-                />
+                <div className="flex flex-col items-center gap-1.5 animate-fadeIn">
+                  <MobileCinemaSubtitle
+                    fullText={displayText}
+                    isSpeaking={isSpeaking}
+                    onClose={onCloseAiResponse}
+                    isEn={isEn}
+                  />
+                  {!isSpeaking && !isListening && (
+                    <div className="flex items-center gap-2 mt-0.5 flex-wrap justify-center">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (onCloseAiResponse) onCloseAiResponse();
+                          if (onStartTalk) onStartTalk();
+                        }}
+                        className="px-3 py-1 bg-stone-900/80 hover:bg-stone-800 text-stone-200 hover:text-white text-[11px] font-medium rounded-full border border-stone-700/60 backdrop-blur-md flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-md"
+                      >
+                        <Mic className="w-3 h-3 text-stone-300" />
+                        <span>{isEn ? 'Tap to ask next question' : 'Chạm để hỏi tiếp · Speak again'}</span>
+                      </button>
+                      {navigationDestinationKey && HOTEL_DESTINATIONS[navigationDestinationKey] && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setIsMapManualOpen(true);
+                          }}
+                          className="px-3 py-1 bg-stone-900/90 hover:bg-stone-800 text-stone-200 hover:text-white text-[11px] font-bold rounded-full border border-stone-700/60 backdrop-blur-md flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-md"
+                        >
+                          <MapIcon className="w-3 h-3 text-stone-400" />
+                          <span>{isEn ? `View Map (${HOTEL_DESTINATIONS[navigationDestinationKey]?.floorLevel})` : `Xem sơ đồ (${HOTEL_DESTINATIONS[navigationDestinationKey]?.floorLevel})`}</span>
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
               ) : currentState === 'RT-03' || isListening ? (
                 /* 2. Khi đang nghe: Dock âm thanh sóng AudioWave chuẩn Desktop */
                 <div className="mt-2.5 flex flex-col items-center gap-1.5 animate-fadeIn">
-                  <div className="px-5 py-2 sm:px-6 sm:py-2.5 bg-stone-900/90 backdrop-blur-xl border border-stone-700/80 rounded-2xl shadow-xl flex items-center justify-between gap-3 text-stone-100 w-full max-w-sm sm:max-w-md">
+                  <div
+                    onClick={(e) => {
+                      if (transcript && onSubmitTalk) {
+                        e.stopPropagation();
+                        onSubmitTalk();
+                      }
+                    }}
+                    className={`px-5 py-2 sm:px-6 sm:py-2.5 bg-stone-900/90 backdrop-blur-xl border border-stone-700/80 rounded-2xl shadow-xl flex items-center justify-between gap-3 text-stone-100 w-full max-w-sm sm:max-w-md ${transcript ? 'cursor-pointer active:scale-[0.99]' : ''}`}
+                    title={transcript ? (isEn ? 'Tap to send immediately' : 'Chạm để gửi ngay') : ''}
+                  >
                     <div className="flex items-center gap-3 min-w-0 flex-1">
                       <AudioWave isActive={isListening} volumeLevel={volumeLevel} />
                       <div className="flex flex-col text-left min-w-0">
@@ -566,20 +620,6 @@ export const MobileRobotScreen = ({
                         </span>
                       </div>
                     </div>
-
-                    {transcript && onSubmitTalk && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onSubmitTalk();
-                        }}
-                        className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md transition-all active:scale-95 shrink-0 flex items-center gap-1 cursor-pointer"
-                        title={isEn ? 'Send question' : 'Gửi câu hỏi'}
-                      >
-                        <span>{isEn ? 'Send' : 'Gửi'}</span>
-                      </button>
-                    )}
                   </div>
                   {speechError && (
                     <div className="px-3 py-1 bg-stone-900/90 border border-stone-700 text-stone-300 text-[10px] font-medium rounded-xl">

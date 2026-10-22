@@ -220,6 +220,9 @@ export const useSpeechRecognition = (callbacks = {}) => {
         mediaStreamRef.current.getAudioTracks().some((t) => t.readyState === 'live')
       ) {
         setHasMicPermission(true);
+        if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+          await audioContextRef.current.resume().catch(() => {});
+        }
         return true;
       }
 
@@ -248,7 +251,7 @@ export const useSpeechRecognition = (callbacks = {}) => {
           audioContextRef.current = audioCtx;
         }
         if (audioCtx.state === 'suspended') {
-          await audioCtx.resume();
+          await audioCtx.resume().catch(() => {});
         }
 
         // Analyser đo volume visualizer
@@ -290,8 +293,8 @@ export const useSpeechRecognition = (callbacks = {}) => {
           const realVol = Math.min(100, Math.round(rms * 400));
           setVolumeLevel(realVol);
 
-          // VAD (Voice Activity Detection): Phát hiện khi khách nói (RMS > 0.012 hoặc realVol >= 5)
-          const isHumanSpeaking = rms > 0.012 || realVol >= 5;
+          // VAD (Voice Activity Detection): Phát hiện khi khách nói (nhạy hơn: RMS > 0.008 hoặc realVol >= 3)
+          const isHumanSpeaking = rms > 0.008 || realVol >= 3;
 
           if (isHumanSpeaking) {
             consecutiveVoiceFrames++;
@@ -305,7 +308,7 @@ export const useSpeechRecognition = (callbacks = {}) => {
           } else {
             consecutiveVoiceFrames = 0;
             if (hasDetectedVoiceRef.current) {
-              // Khách đã nói xong và im lặng 1.1 giây
+              // Khách đã nói xong và im lặng 900ms
               if (!silenceTimerRef.current) {
                 silenceTimerRef.current = setTimeout(() => {
                   silenceTimerRef.current = null;
@@ -314,7 +317,7 @@ export const useSpeechRecognition = (callbacks = {}) => {
                   if (!lastFinalTranscriptRef.current || lastFinalTranscriptRef.current.trim().length === 0) {
                     processBackendSTT();
                   }
-                }, 1100);
+                }, 900);
               }
             }
           }
@@ -459,9 +462,16 @@ export const useSpeechRecognition = (callbacks = {}) => {
         setMicLive(false);
         // KHÔNG set isListening = false ở đây để tránh giao diện bị nhấp nháy bật/tắt liên tục!
         if (shouldListenRef.current && !destroyedRef.current) {
-          // Nếu Google Speech liên tục lỗi mạng (>2 lần), chuyển hoàn toàn sang Microphone Recorder nội bộ
+          // Nếu Google Speech liên tục lỗi mạng (>2 lần), chuyển sang Backend STT nhưng vẫn định kỳ thử kết nối lại
           if (networkErrorCountRef.current >= 2) {
             setMicLive(true);
+            clearRestartTimer();
+            restartTimerRef.current = setTimeout(() => {
+              if (shouldListenRef.current && !liveRef.current && !destroyedRef.current) {
+                networkErrorCountRef.current = 0;
+                startRecognition();
+              }
+            }, 3500);
             return;
           }
           clearRestartTimer();
@@ -491,8 +501,30 @@ export const useSpeechRecognition = (callbacks = {}) => {
     };
   }, [startRecognition, stopAudioAnalyser]);
 
+  // Tự động mở khóa AudioContext khi có tương tác người dùng (click, touch, keydown)
+  useEffect(() => {
+    const unlockAudio = () => {
+      if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+        audioContextRef.current.resume().catch(() => {});
+      }
+    };
+    window.addEventListener('click', unlockAudio, { passive: true });
+    window.addEventListener('touchstart', unlockAudio, { passive: true });
+    window.addEventListener('pointerdown', unlockAudio, { passive: true });
+    return () => {
+      window.removeEventListener('click', unlockAudio);
+      window.removeEventListener('touchstart', unlockAudio);
+      window.removeEventListener('pointerdown', unlockAudio);
+    };
+  }, []);
+
   const requestMicrophonePermission = useCallback(async () => {
     destroyedRef.current = false;
+    if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+      try {
+        await audioContextRef.current.resume();
+      } catch (e) {}
+    }
     return await startAudioAnalyser();
   }, [startAudioAnalyser]);
 

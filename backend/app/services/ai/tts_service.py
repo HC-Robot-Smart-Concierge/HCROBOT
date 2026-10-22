@@ -7,6 +7,11 @@ from typing import Optional, Tuple, Dict
 
 import httpx
 
+try:
+    import edge_tts
+except ImportError:
+    edge_tts = None
+
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -204,8 +209,11 @@ class TTSService:
 
     async def _synthesize_edge_tts(self, text: str, voice: str, rate: Optional[str] = None) -> Optional[str]:
         """EdgeTTS Neural Engine."""
+        if edge_tts is None:
+            logger.info("[TTSService] edge_tts library not installed.")
+            return None
+
         try:
-            import edge_tts
             clean_text = self.clean_text_for_tts(text)
             if not clean_text:
                 return None
@@ -218,8 +226,6 @@ class TTSService:
                     audio_bytes += chunk["data"]
             if audio_bytes:
                 return base64.b64encode(audio_bytes).decode("utf-8")
-        except ImportError:
-            logger.info("[TTSService] edge_tts library not installed.")
         except Exception as e:
             logger.warning(f"[TTSService] EdgeTTS error: {e}")
         return None
@@ -233,8 +239,10 @@ class TTSService:
         if not clean_text:
             return b""
 
+        if edge_tts is None:
+            return b""
+
         try:
-            import edge_tts
             if language and any(en in language.lower() for en in ["en", "english"]):
                 target_voice = voice or self.default_en_voice
             elif language and any(vi in language.lower() for vi in ["vi", "vietnamese"]):

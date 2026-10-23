@@ -142,7 +142,7 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
           if (listData.active_map_id) setSelectedMapId(listData.active_map_id);
         }
         const currMap = await fetchCurrentMap();
-        if (currMap?.grid_data && currMap.grid_data.length > 0) {
+        if (currMap?.grid_data && currMap.grid_data.some((v) => v !== -1)) {
           setGridData(currMap.grid_data);
           if (currMap.metadata) setGridMetadata(currMap.metadata);
         }

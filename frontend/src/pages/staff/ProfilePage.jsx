@@ -29,7 +29,7 @@ import { changeStaffPassword, updateStaffProfile } from '../../services/operatio
 import { updateStoredUser } from '../../services/authApi';
 import { useAuth } from '../../context/AuthContext';
 
-export const AVATAR_PRESETS = [
+const AVATAR_PRESETS = [
   {
     id: 'p1',
     label: 'Nữ 1',

@@ -168,7 +168,7 @@ class RPLidarService:
                 self.grid_data = list(data["grid_data"])
                 self.static_grid_data = list(data["grid_data"])
                 self.is_map_locked = lock
-                self.last_saved_time = data.get("saved_at")
+                self.last_saved_time = data.get("saved_at") or datetime.utcnow().isoformat()
             logger.info(f"📂 Đã nạp thành công bản đồ cố định '{map_id}' (Locked: {lock})")
             return True
         except Exception as e:

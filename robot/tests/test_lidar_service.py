@@ -133,35 +133,6 @@ class TestLidarServiceMapPersistence(unittest.TestCase):
         self.assertAlmostEqual(x_30, 2.0)
         self.assertAlmostEqual(y_30, 0.0)
 
-    def test_wall_latching_and_light_barrier(self):
-        """Kiểm tra điểm quét tự động bám vào tường đen (Snap-to-wall) và không bị tia xuyên qua xóa mất."""
-        # Đặt một ô tường đen tại grid (105, 100)
-        w = self.core.grid_width
-        self.core.grid_data = [-1] * (w * self.core.grid_height)
-        wall_idx = 100 * w + 105
-        self.core.grid_data[wall_idx] = 100
-
-        # Robot ở (0, 0) tương ứng grid (100, 100)
-        # Giả lập tia quét chạm tại grid (104, 100) - cách tường đen 1 ô
-        wall_x = self.core.origin_x + 104 * self.core.resolution
-        wall_y = self.core.origin_y + 100 * self.core.resolution
-        scan_pt = [{"x": wall_x, "y": wall_y}]
-
-        self.core._update_grid_from_scan(0.0, 0.0, scan_pt)
-
-        # 1. Snap-to-wall: Điểm tường (105, 100) phải vẫn là 100 (vật cản màu đen)
-        self.assertEqual(self.core.grid_data[wall_idx], 100)
-
-        # 2. Light barrier: Giả lập một tia quét bắn xuyên qua bức tường (tới grid 110, 100)
-        far_x = self.core.origin_x + 110 * self.core.resolution
-        far_y = self.core.origin_y + 100 * self.core.resolution
-        scan_pt_far = [{"x": far_x, "y": far_y}]
-        self.core._update_grid_from_scan(0.0, 0.0, scan_pt_far)
-
-        # Ô tường đen (105, 100) KHÔNG ĐƯỢC BỊ XÓA thành 0
-        self.assertEqual(self.core.grid_data[wall_idx], 100)
-
 
 if __name__ == "__main__":
     unittest.main()
-

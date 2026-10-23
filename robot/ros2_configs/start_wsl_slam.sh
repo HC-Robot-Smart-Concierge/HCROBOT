@@ -24,7 +24,6 @@ BRIDGE_PID=$!
 sleep 2
 
 echo "=== [3/4] KHOI DONG LIDAR BRIDGE (Pi 5 WS -> ROS 2 /scan & TF) ==="
-export USE_PURE_SCAN_MATCHING=0
 python3 "$SCRIPT_DIR/lidar_ws_to_ros2.py" &
 LIDAR_PID=$!
 sleep 2

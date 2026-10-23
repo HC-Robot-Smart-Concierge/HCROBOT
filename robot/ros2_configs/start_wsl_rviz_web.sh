@@ -6,66 +6,44 @@ export ROS_DOMAIN_ID=0
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WS_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-echo "=== [1/5] DON DEP CAC TIEN TRINH RVIZ / VNC CU ==="
+echo "=== [1/5] DON DEP CAC TIEN TRINH CU ==="
 killall -9 Xvfb x11vnc websockify rviz2 2>/dev/null || true
-pkill -9 -f "Xvfb" 2>/dev/null || true
-pkill -9 -f "x11vnc" 2>/dev/null || true
-pkill -9 -f "websockify" 2>/dev/null || true
-pkill -9 -f "rviz2" 2>/dev/null || true
-fuser -k 5900/tcp 6080/tcp 2>/dev/null || true
-rm -f /tmp/.X*-lock /tmp/.X11-unix/X9* 2>/dev/null || true
+pkill -f "Xvfb :99" 2>/dev/null || true
+pkill -f "websockify.*6080" 2>/dev/null || true
+killall -q rosbridge_websocket async_slam_toolbox_node robot_state_publisher 2>/dev/null || true
+pkill -f "lidar_ws_to_ros2.py" 2>/dev/null || true
+rm -f /tmp/.X99-lock /tmp/.X11-unix/X99 2>/dev/null || true
 sleep 1
 
-# Kiem tra xem SLAM Stack co dang chay san trong terminal khac khong
-SLAM_RUNNING=0
-if pgrep -f "async_slam_toolbox_node" >/dev/null 2>&1; then
-    SLAM_RUNNING=1
-    echo " -> SLAM Toolbox dang hoat dong san tren he thong. Giu nguyen khong reset."
-else
-    echo " -> Chua co tien trinh SLAM. Se don dep va khoi dong moi SLAM Stack..."
-    killall -9 rosbridge_websocket robot_state_publisher 2>/dev/null || true
-    pkill -9 -f "lidar_ws_to_ros2.py" 2>/dev/null || true
-    pkill -9 -f "start_wsl_slam.sh" 2>/dev/null || true
-    fuser -k 9090/tcp 2>/dev/null || true
-fi
-
-# Tim display number kha dung (99, 98, hoac 97)
-DISP_NUM=99
-if netstat -tuln 2>/dev/null | grep -q ":6099 "; then
-    DISP_NUM=98
-    if netstat -tuln 2>/dev/null | grep -q ":6098 "; then
-        DISP_NUM=97
-    fi
-fi
-
-unset WAYLAND_DISPLAY
-export DISPLAY=127.0.0.1:$DISP_NUM
-
-echo "=== [2/5] KHOI DONG X VIRTUAL FRAMEBUFFER (:$DISP_NUM, 1600x900) ==="
-Xvfb :$DISP_NUM -screen 0 1600x900x24 -ac -listen tcp -nolisten unix &
+echo "=== [2/5] KHOI DONG X VIRTUAL FRAMEBUFFER (:99, 1600x900) ==="
+Xvfb :99 -screen 0 1600x900x24 -listen tcp -ac &
 XVFB_PID=$!
-sleep 1.5
+sleep 1
+
+export DISPLAY=:99
+unset WAYLAND_DISPLAY
 
 echo "=== [3/5] KHOI DONG OPENBOX & VNC WEBSOCKET (Port 6080) ==="
 openbox &
 OB_PID=$!
 sleep 0.5
 
-x11vnc -display 127.0.0.1:$DISP_NUM -noshm -forever -nopw -shared -rfbport 5900 -bg
+x11vnc -display :99 -noshm -forever -nopw -shared -rfbport 5900 -bg
 sleep 0.5
 
 websockify --web /usr/share/novnc 0.0.0.0:6080 127.0.0.1:5900 &
 WS_PID=$!
 sleep 1
 
-if [ "$SLAM_RUNNING" -eq 0 ]; then
-    echo "=== [4/5] KHOI DONG SLAM TOOLBOX & LIDAR BRIDGE ==="
-    echo " -> Khoi dong moi toan bo SLAM Stack voi tham so chuan hoa..."
+echo "=== [4/5] KIEM TRA & KHOI DONG SLAM TOOLBOX & LIDAR BRIDGE ==="
+if ! pgrep -f "lidar_ws_to_ros2.py" > /dev/null; then
+    echo " -> Dang khoi dong SLAM Stack (RobotStatePublisher, Rosbridge, LidarBridge, SlamToolbox)..."
     bash "$SCRIPT_DIR/start_wsl_slam.sh" &
     SLAM_PID=$!
     sleep 3
 else
-    echo "=== [4/5] SLAM TOOLBOX & ROSBRIDGE DA SAN SANG (Bo qua buoc khoi dong lai) ==="
+    echo " -> SLAM Stack & LiDAR Bridge da dang chay san tren he thong."
+    SLAM_PID=""
 fi
 
 echo "=== [5/5] KHOI DONG RVIZ2 3D SLAM ==="
@@ -86,6 +64,6 @@ echo "   - VNC Port: 5900 | Web Port: 6080"
 echo "   - Config: $RVIZ_CFG"
 echo "=========================================================="
 
-trap "kill $XVFB_PID $OB_PID $WS_PID $RVIZ_PID ${SLAM_PID:-} 2>/dev/null || true; killall -9 Xvfb x11vnc websockify rviz2 2>/dev/null || true" EXIT INT TERM
+trap "kill $XVFB_PID $OB_PID $WS_PID $RVIZ_PID $SLAM_PID 2>/dev/null || true; killall -9 Xvfb x11vnc websockify rviz2 2>/dev/null || true" EXIT INT TERM
 
 wait $RVIZ_PID $WS_PID

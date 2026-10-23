@@ -397,7 +397,7 @@ class AutonomousNavigator(Node):
             self.get_logger().info(f">> [STANDBY]: Túc trực tại ({self.current_x:.2f}, {self.current_y:.2f})")
 
     def publish_joint_states(self, linear_vel, angular_vel, dt=0.05):
-        wheel_sep = 0.22
+        wheel_sep = 0.297
         v_l = linear_vel - (angular_vel * wheel_sep / 2.0)
         v_r = linear_vel + (angular_vel * wheel_sep / 2.0)
         
@@ -407,21 +407,9 @@ class AutonomousNavigator(Node):
         js = JointState()
         js.header.stamp = self.get_clock().now().to_msg()
         js.header.frame_id = 'base_link'
-        js.name = [
-            'front_left_wheel_joint', 'rear_left_wheel_joint',
-            'front_right_wheel_joint', 'rear_right_wheel_joint',
-            'left_wheel_joint', 'right_wheel_joint'
-        ]
-        js.position = [
-            float(self.wheel_l_pos), float(self.wheel_l_pos),
-            float(self.wheel_r_pos), float(self.wheel_r_pos),
-            float(self.wheel_l_pos), float(self.wheel_r_pos)
-        ]
-        js.velocity = [
-            float(v_l / self.wheel_radius), float(v_l / self.wheel_radius),
-            float(v_r / self.wheel_radius), float(v_r / self.wheel_radius),
-            float(v_l / self.wheel_radius), float(v_r / self.wheel_radius)
-        ]
+        js.name = ['left_wheel_joint', 'right_wheel_joint']
+        js.position = [float(self.wheel_l_pos), float(self.wheel_r_pos)]
+        js.velocity = [float(v_l / self.wheel_radius), float(v_r / self.wheel_radius)]
         self.joint_pub.publish(js)
 
     def odom_callback(self, msg: Odometry):

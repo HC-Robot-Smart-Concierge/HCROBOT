@@ -153,6 +153,8 @@ export const StaffLayout = () => {
             onToggleRead={handleToggleRead}
             onMarkAllRead={handleMarkAllRead}
             departmentName={currentUser?.department || 'Staff'}
+            currentUser={currentUser}
+            onOpenProfilePage={() => navigate('/staff/profile')}
           />
 
           <div className="flex-1 min-h-0 relative flex flex-col overflow-hidden pb-16 md:pb-0">

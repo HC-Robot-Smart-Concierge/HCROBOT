@@ -16,7 +16,8 @@ pkill -9 -f "async_slam_toolbox_node" 2>/dev/null || true
 pkill -9 -f "lidar_ws_to_ros2.py" 2>/dev/null || true
 pkill -9 -f "slam_toolbox" 2>/dev/null || true
 pkill -9 -f "start_wsl_slam.sh" 2>/dev/null || true
-fuser -k 5900/tcp 6080/tcp 2>/dev/null || true
+fuser -k 5900/tcp 6080/tcp 9090/tcp 2>/dev/null || true
+pkill -9 -f "rosbridge_websocket" 2>/dev/null || true
 rm -f /tmp/.X*-lock /tmp/.X11-unix/X* 2>/dev/null || true
 sleep 1
 

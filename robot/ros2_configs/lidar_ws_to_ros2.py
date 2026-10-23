@@ -274,18 +274,18 @@ class LidarWsToRos2Bridge(Node):
         target_y = float(pose_dict.get('y', 0.0))
         target_yaw = float(pose_dict.get('yaw', 0.0))
 
-        # Lọc mượt góc xoay: Giới hạn bước nhảy tối đa 2.5°/frame để TF odom -> base_link biến thiên liên tục
+        # Lọc mượt góc xoay: Đảm bảo TF theo kịp chuyển động thực tế của robot, tránh trễ pha gây xoay map
         d_yaw = (target_yaw - self.current_pose['yaw'] + 540.0) % 360.0 - 180.0
-        max_yaw_step = 2.5
+        max_yaw_step = 10.0
         if abs(d_yaw) > max_yaw_step:
             yaw_deg = (self.current_pose['yaw'] + (max_yaw_step if d_yaw > 0 else -max_yaw_step)) % 360.0
         else:
             yaw_deg = target_yaw
 
-        # Lọc mượt tọa độ X, Y: Giới hạn bước nhảy tối đa 4cm/frame tránh hiện tượng teleport
+        # Lọc mượt tọa độ X, Y: Giới hạn tối đa 8cm/frame
         dx = target_x - self.current_pose['x']
         dy = target_y - self.current_pose['y']
-        max_pos_step = 0.04
+        max_pos_step = 0.08
         dist = math.hypot(dx, dy)
         if dist > max_pos_step:
             ratio = max_pos_step / dist
@@ -445,7 +445,7 @@ class LidarWsToRos2Bridge(Node):
         msg.angle_increment = (2.0 * math.pi) / num_bins
         msg.time_increment = 0.0
         msg.scan_time = 0.1
-        msg.range_min = 0.12
+        msg.range_min = 0.20
         msg.range_max = 12.0
 
         ranges = [float('inf')] * num_bins

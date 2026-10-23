@@ -31,31 +31,31 @@ slam_toolbox:
     stack_size_to_use: 40000000
     enable_interactive_mode: true
 
-    # General Parameters - Chống lặp/chồng map khi xoay tại chỗ
+    # General Parameters - Chống lặp/chồng map, khóa chặt vào bản đồ gốc
     use_scan_matching: true
     use_scan_barycenter: true
-    minimum_travel_distance: 0.40
-    minimum_travel_heading: 0.60
+    minimum_travel_distance: 0.30
+    minimum_travel_heading: 0.45
     check_min_dist_and_heading_precisely: true
-    scan_buffer_size: 20
-    scan_buffer_maximum_scan_distance: 6.0
-    link_match_minimum_response_fine: 0.45
-    link_match_minimum_response_coarse: 0.35
-    link_scan_maximum_distance: 2.0
-    loop_search_maximum_distance: 4.0
+    scan_buffer_size: 60
+    scan_buffer_maximum_scan_distance: 12.0
+    link_match_minimum_response_fine: 0.30
+    link_match_minimum_response_coarse: 0.20
+    link_scan_maximum_distance: 12.0
+    loop_search_maximum_distance: 12.0
     do_loop_closing: true 
-    loop_match_minimum_chain_size: 10           
+    loop_match_minimum_chain_size: 5           
     loop_match_maximum_variance_coarse: 3.0  
-    loop_match_minimum_response_coarse: 0.35    
-    loop_match_minimum_response_fine: 0.45
+    loop_match_minimum_response_coarse: 0.25    
+    loop_match_minimum_response_fine: 0.30
 
     # Scan Matcher Parameters - Snap chặt tia quét vào bức tường đã có
-    distance_variance_penalty: 0.15      
-    angle_variance_penalty: 0.30    
+    distance_variance_penalty: 0.05      
+    angle_variance_penalty: 0.05    
     fine_search_angle_offset: 0.0873
-    coarse_search_angle_offset: 0.5236
+    coarse_search_angle_offset: 0.349
     coarse_angle_resolution: 0.0174
-    minimum_angle_penalty: 0.15
-    minimum_distance_penalty: 0.15
+    minimum_angle_penalty: 0.05
+    minimum_distance_penalty: 0.05
     use_response_expansion: true
-    occupancy_threshold: 0.1
+    occupancy_threshold: 0.65

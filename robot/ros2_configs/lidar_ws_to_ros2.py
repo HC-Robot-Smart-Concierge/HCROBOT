@@ -14,7 +14,7 @@ from sensor_msgs.msg import LaserScan, JointState
 from nav_msgs.msg import Odometry, Path
 from geometry_msgs.msg import TransformStamped, PoseStamped, Twist
 from std_msgs.msg import Empty, String
-from slam_toolbox.srv import Reset, SaveMap
+from slam_toolbox.srv import Reset, SaveMap, Pause
 from tf2_ros import TransformBroadcaster
 from tf2_ros.static_transform_broadcaster import StaticTransformBroadcaster
 
@@ -70,6 +70,17 @@ class LidarWsToRos2Bridge(Node):
         # Service Clients kết nối tới SLAM Toolbox
         self.slam_reset_client = self.create_client(Reset, '/slam_toolbox/reset')
         self.slam_save_client = self.create_client(SaveMap, '/slam_toolbox/save_map')
+        self.slam_pause_client = self.create_client(Pause, '/slam_toolbox/pause_new_measurements')
+        self.is_mapping_paused = False
+
+        # Lắng nghe topic /robot/pause_map để tạm dừng/tiếp tục quét (Khóa bản đồ gốc)
+        self.pause_sub = self.create_subscription(
+            Empty,
+            '/robot/pause_map',
+            self.on_pause_map_received,
+            10
+        )
+        self.map_status_pub = self.create_publisher(String, '/robot/mapping_status', 10)
 
         # Lưu trạng thái vị trí robot và quỹ đạo đường đi
         self.current_pose = {'x': 0.0, 'y': 0.0, 'yaw': 0.0}
@@ -147,6 +158,20 @@ class LidarWsToRos2Bridge(Node):
             )
         else:
             self.get_logger().warn("⚠️ Service /slam_toolbox/save_map chưa sẵn sàng!")
+
+    def on_pause_map_received(self, msg: Empty = None):
+        """Khóa bản đồ gốc hoặc tiếp tục quét: gọi /slam_toolbox/pause_new_measurements."""
+        if self.slam_pause_client.service_is_ready():
+            req = Pause.Request()
+            future = self.slam_pause_client.call_async(req)
+            self.is_mapping_paused = not self.is_mapping_paused
+            status_str = "PAUSED" if self.is_mapping_paused else "MAPPING"
+            self.get_logger().info(f"🔒 Trạng thái bản đồ SLAM Toolbox: {status_str}")
+            status_msg = String()
+            status_msg.data = status_str
+            self.map_status_pub.publish(status_msg)
+        else:
+            self.get_logger().warn("⚠️ Service /slam_toolbox/pause_new_measurements chưa sẵn sàng!")
 
     def on_goal_pose_received(self, msg: PoseStamped):
         """Nhận mục tiêu điều hướng từ 2D Goal Pose (RViz2) hoặc Web Admin và kích hoạt tự hành."""
@@ -492,9 +517,7 @@ async def ws_loop(node: LidarWsToRos2Bridge, ws_url="ws://100.99.72.51:8000/api/
                         break
                     try:
                         data = json.loads(msg_str)
-                        robot_pose = data.get("robot_pose")
-                        if robot_pose:
-                            node.update_robot_pose(robot_pose)
+                        # Bỏ qua dummy robot_pose từ Pi 5 để không kéo lùi odometry về (0,0) khi xe dừng
                         points = data.get("scan_points", [])
                         if points:
                             node.publish_scan(points)

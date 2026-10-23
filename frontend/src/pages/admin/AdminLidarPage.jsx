@@ -42,6 +42,8 @@ import {
   Download,
   Menu,
   X,
+  Lock,
+  Unlock,
 } from 'lucide-react';
 
 const PI5_IP = import.meta.env.VITE_PI5_IP || '100.99.72.51';
@@ -86,6 +88,7 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
   const [isSavedMapsModalOpen, setIsSavedMapsModalOpen] = useState(false);
   const [savedMapsList, setSavedMapsList] = useState([]);
   const [isSavingMap, setIsSavingMap] = useState(false);
+  const [isMapLocked, setIsMapLocked] = useState(false);
 
   // Frontier Exploration (Quet full phong tu dong bang SLAM)
   const [isExploring, setIsExploring] = useState(false);
@@ -319,6 +322,15 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
       }
     });
 
+    // 7. Subscribe Mapping Status (/robot/mapping_status)
+    const unsubStatus = client.subscribe('/robot/mapping_status', 'std_msgs/String', (msg) => {
+      if (msg?.data === 'PAUSED') {
+        setIsMapLocked(true);
+      } else if (msg?.data === 'MAPPING') {
+        setIsMapLocked(false);
+      }
+    });
+
     return () => {
       unsubMap();
       unsubScan();
@@ -326,6 +338,7 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
       unsubAmcl();
       unsubTelemetry();
       unsubGoal();
+      unsubStatus();
       client.disconnect();
     };
   }, [rosbridgeUrl]);
@@ -383,6 +396,27 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
       setNavNotification(`Lỗi khi xóa bản đồ: ${err.message}`);
     }
     setTimeout(() => setNavNotification(''), 4500);
+  };
+
+  // Khóa bản đồ gốc / Tiếp tục quét
+  const handleToggleLockMap = () => {
+    try {
+      if (rosClientRef.current?.isConnected) {
+        rosClientRef.current.togglePauseMap();
+        const nextLocked = !isMapLocked;
+        setIsMapLocked(nextLocked);
+        setNavNotification(
+          nextLocked
+            ? 'Đã khóa bản đồ gốc: Chỉ giữ 1 map cố định, không đè thêm tường!'
+            : 'Đã mở khóa: Tiếp tục quét cập nhật bản đồ.'
+        );
+      } else {
+        setNavNotification('Chưa kết nối tới Rosbridge 9090!');
+      }
+    } catch (err) {
+      setNavNotification(`Lỗi khi khóa/mở bản đồ: ${err.message}`);
+    }
+    setTimeout(() => setNavNotification(''), 4000);
   };
 
   const handleScan360 = async () => {
@@ -887,7 +921,30 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
           <span style={{ color: '#8C8C8C'}}>RAW: <strong style={{ color: '#262626'}}>{scanPoints.length} PTS</strong></span>
         </div>
 
-        <div className="flex items-center gap-2 relative"ref={menuDropdownRef}>
+        <div className="flex items-center gap-2 relative" ref={menuDropdownRef}>
+          {/* Nút Khóa Bản Đồ Gốc (Freeze / Lock Base Map) */}
+          <button
+            type="button"
+            onClick={handleToggleLockMap}
+            className={`px-2.5 py-1 text-[11px] font-bold rounded-md border flex items-center gap-1.5 transition-all cursor-pointer shadow-xs ${
+              isMapLocked
+                ? 'bg-amber-600 hover:bg-amber-700 text-white border-amber-700 ring-2 ring-amber-300'
+                : 'bg-stone-100 hover:bg-stone-200 text-stone-700 border-stone-300'
+            }`}
+            title={
+              isMapLocked
+                ? 'Bản đồ đang ĐƯỢC KHÓA (chỉ giữ 1 map gốc, dừng nhận quét mới). Bấm để tiếp tục quét.'
+                : 'Bấm để KHÓA BẢN ĐỒ GỐC (ngăn SLAM vẽ đè thêm tường khi di chuyển)'
+            }
+          >
+            {isMapLocked ? (
+              <Lock className="w-3.5 h-3.5 text-white" />
+            ) : (
+              <Unlock className="w-3.5 h-3.5 text-stone-600" />
+            )}
+            <span>{isMapLocked ? 'BẢN ĐỒ GỐC (ĐÃ KHÓA)' : 'KHÓA MAP GỐC'}</span>
+          </button>
+
           {/* Nút Dừng Khẩn Cấp (E-STOP) nhanh trên thanh công cụ */}
           <button
             onClick={handleEmergencyStop}
@@ -953,6 +1010,32 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
                   </div>
                 </button>
               )}
+
+              <div className="h-px bg-stone-200 my-1"/>
+
+              {/* Khóa Bản Đồ Gốc / Tiếp Tục Quét */}
+              <button
+                type="button"
+                onClick={() => {
+                  handleToggleLockMap();
+                  setIsMenuDropdownOpen(false);
+                }}
+                className={`w-full px-3 py-2 text-left text-xs font-semibold flex items-center gap-2.5 transition-colors cursor-pointer ${
+                  isMapLocked ? 'text-amber-800 hover:bg-amber-50' : 'text-stone-800 hover:bg-stone-100'
+                }`}
+              >
+                {isMapLocked ? (
+                  <Lock className="w-4 h-4 text-amber-600 shrink-0"/>
+                ) : (
+                  <Unlock className="w-4 h-4 text-stone-600 shrink-0"/>
+                )}
+                <div className="flex flex-col">
+                  <span className="font-bold">{isMapLocked ? 'Mở Khóa Quét Map' : 'Khóa Bản Đồ Gốc'}</span>
+                  <span className="text-[10px] text-stone-500 font-normal">
+                    {isMapLocked ? 'Tiếp tục nhận quét mở rộng bản đồ' : 'Chỉ giữ 1 bản đồ gốc, không đè thêm tường'}
+                  </span>
+                </div>
+              </button>
 
               <div className="h-px bg-stone-200 my-1"/>
 

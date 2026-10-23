@@ -328,6 +328,10 @@ export class RosbridgeClient {
     const rawName = (mapName || '').trim();
     return this.publish('/robot/save_map', 'std_msgs/String', { data: rawName });
   }
+
+  togglePauseMap() {
+    return this.publish('/robot/pause_map', 'std_msgs/Empty', {});
+  }
 }
 
 

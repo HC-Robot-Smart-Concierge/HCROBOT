@@ -145,12 +145,8 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
 
   const lidarLive = Boolean(sensorHealth?.lidar_live && scanPoints.length > 0);
   const odometryMotionSeen = Boolean(sensorHealth?.encoder_motion_detected);
-  const mapHasContent = mapStats.occupied >= 10 && mapStats.free >= 100;
-  const mappingReadyToSave = mapMode === 'MAPPING'
-    && isWsConnected
-    && lidarLive
-    && hasLiveRosMap
-    && mapHasContent;
+  const mapHasContent = mapStats.occupied > 0 || mapStats.free > 0;
+  const mappingReadyToSave = true; // Luôn cho phép lưu map tự do bất kỳ lúc nào
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -552,16 +548,6 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
   };
 
   const handleOpenSaveMapModal = () => {
-    if (!mappingReadyToSave) {
-      const reasons = [];
-      if (!isWsConnected) reasons.push('Rosbridge chưa kết nối');
-      if (!lidarLive) reasons.push('LiDAR chưa có scan thật');
-      if (!hasLiveRosMap) reasons.push('SLAM chưa phát map mới trong phiên quét này');
-      if (!mapHasContent) reasons.push('map chưa đủ ô tường và vùng trống');
-      setNavNotification(`Chưa thể lưu map: ${reasons.join('; ')}.`);
-      setTimeout(() => setNavNotification(''), 6000);
-      return;
-    }
     setSaveMapName(`map_${new Date().toISOString().slice(0, 10).replace(/-/g, '_')}_${Date.now().toString().slice(-4)}`);
     setIsSaveMapModalOpen(true);
   };
@@ -1344,12 +1330,10 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
             </button>
             <button
               type="button"
-              disabled={isRos2RuntimeBusy || !mappingReadyToSave}
+              disabled={isRos2RuntimeBusy}
               onClick={handleOpenSaveMapModal}
               className="px-3 py-1.5 rounded-lg border border-blue-300 bg-blue-50 hover:bg-blue-100 text-blue-800 font-bold disabled:opacity-40 cursor-pointer flex items-center gap-1.5"
-              title={mappingReadyToSave
-                ? 'Lưu bản đồ đã quét và chuyển sang Navigation'
-                : 'Cần LiDAR live và map ROS 2 có dữ liệu hợp lệ; quét tĩnh không bắt buộc encoder thay đổi'}
+              title="Lưu bản đồ hiện tại và chuyển sang Navigation"
             >
               <Save className="w-3.5 h-3.5"/>
               <span>2. LƯU & KHÓA</span>
@@ -1378,17 +1362,6 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
             </button>
             {isRos2RuntimeBusy && <RefreshCw className="w-4 h-4 text-amber-600 animate-spin shrink-0"/>}
           </div>
-          {mapMode === 'MAPPING' && !mappingReadyToSave && (
-            <div className="shrink-0 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[11px] text-amber-900 font-semibold">
-              Chưa thể lưu: {!lidarLive
-                ? 'Pi/RPLiDAR chưa phát scan thật.'
-                : !hasLiveRosMap
-                    ? ' SLAM chưa phát map mới trong phiên quét này.'
-                    : !mapHasContent
-                    ? ' Bản đồ chưa có đủ tường và vùng trống.'
-                    : ' Đang chờ dữ liệu.'}
-            </div>
-          )}
           {mapMode === 'MAPPING' && lidarLive && !odometryMotionSeen && (
             <div className="shrink-0 rounded-lg border border-orange-300 bg-orange-50 px-3 py-2 text-[11px] text-orange-900 font-semibold">
               LiDAR đang quét tĩnh. Muốn mở rộng bản đồ khi robot chạy, encoder phải phát tick chuyển động;

@@ -9,13 +9,11 @@ MODE="${1:-navigation}"
 MAP_NAME="${2:-phong_lam_viec}"
 
 echo "=== [1/5] DON DEP CAC TIEN TRINH CU ==="
+# Viewer co the duoc mo lai ma khong duoc phep xoa phien mapping dang chay.
+# Chi don cac tien trinh hien thi; vong doi ROS stack duoc xu ly rieng o buoc 4.
 killall -9 Xvfb x11vnc websockify rviz2 2>/dev/null || true
 pkill -f "Xvfb :99" 2>/dev/null || true
 pkill -f "websockify.*6080" 2>/dev/null || true
-killall -q rosbridge_websocket async_slam_toolbox_node robot_state_publisher \
-  map_server amcl controller_server planner_server behavior_server bt_navigator \
-  waypoint_follower lifecycle_manager component_container_isolated 2>/dev/null || true
-pkill -f "lidar_ws_to_ros2.py" 2>/dev/null || true
 rm -f /tmp/.X99-lock /tmp/.X11-unix/X99 2>/dev/null || true
 sleep 1
 
@@ -40,19 +38,33 @@ WS_PID=$!
 sleep 1
 
 echo "=== [4/5] KHOI DONG ROS 2 STACK MODE=$MODE ==="
-if ! pgrep -f "lidar_ws_to_ros2.py" > /dev/null; then
+MAPPING_ALREADY_RUNNING=false
+if { [ "$MODE" = "mapping" ] || [ "$MODE" = "MAPPING" ]; } \
+  && pgrep -f "[l]idar_ws_to_ros2.py" >/dev/null \
+  && pgrep -f "[a]sync_slam_toolbox_node" >/dev/null; then
+    MAPPING_ALREADY_RUNNING=true
+fi
+
+if [ "$MAPPING_ALREADY_RUNNING" = true ]; then
+    echo " -> MAPPING dang chay: giu nguyen pose graph va occupancy map hien tai."
+else
+    # Chuyen mode (hoac khoi dong lan dau) moi duoc dung ROS stack cu.
+    killall -q rosbridge_websocket async_slam_toolbox_node robot_state_publisher \
+      map_server amcl controller_server planner_server behavior_server bt_navigator \
+      waypoint_follower lifecycle_manager component_container_isolated 2>/dev/null || true
+    pkill -f "[l]idar_ws_to_ros2.py" 2>/dev/null || true
+    pkill -f "[s]tatic_transform_publisher" 2>/dev/null || true
+    fuser -k 9090/tcp 2>/dev/null || true
+    sleep 1
+
     if [ "$MODE" = "mapping" ] || [ "$MODE" = "MAPPING" ]; then
         echo " -> MAPPING: Tao mot ban do moi bang SLAM Toolbox."
-        bash "$SCRIPT_DIR/start_wsl_slam.sh" &
+        nohup bash "$SCRIPT_DIR/start_wsl_slam.sh" >/tmp/hcrobot-slam.log 2>&1 &
     else
         echo " -> NAVIGATION: Nap static map '$MAP_NAME', AMCL va Nav2."
-        bash "$SCRIPT_DIR/start_wsl_navigation.sh" "$MAP_NAME" &
+        nohup bash "$SCRIPT_DIR/start_wsl_navigation.sh" "$MAP_NAME" >/tmp/hcrobot-navigation.log 2>&1 &
     fi
-    SLAM_PID=$!
     sleep 5
-else
-    echo " -> ROS 2 Stack & LiDAR Bridge da dang chay san tren he thong."
-    SLAM_PID=""
 fi
 
 echo "=== [5/5] KHOI DONG RVIZ2 3D SLAM ==="
@@ -74,6 +86,6 @@ echo "   - Mode: $MODE | Map: $MAP_NAME"
 echo "   - Config: $RVIZ_CFG"
 echo "=========================================================="
 
-trap "kill $XVFB_PID $OB_PID $WS_PID $RVIZ_PID $SLAM_PID 2>/dev/null || true; killall -9 Xvfb x11vnc websockify rviz2 2>/dev/null || true" EXIT INT TERM
+trap "kill $XVFB_PID $OB_PID $WS_PID $RVIZ_PID 2>/dev/null || true; killall -9 Xvfb x11vnc websockify rviz2 2>/dev/null || true" EXIT INT TERM
 
 wait $RVIZ_PID $WS_PID

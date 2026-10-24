@@ -17,6 +17,7 @@ import {
 import { getVoiceSettings, updateVoiceSettings } from '../../../services/aiApi';
 import { useSpeechSynthesis } from '../../../hooks/useSpeechSynthesis';
 import { Pagination } from '../../../components/common/Pagination';
+import { useLanguage } from '../../../context/LanguageContext';
 import {
   Plus,
   RefreshCw,
@@ -49,11 +50,17 @@ import {
 } from 'lucide-react';
 
 const CATEGORY_MAP = {
-  facility: { label: 'Tiện ích', bg: '#EDE9FE', text: '#6D28D9', border: '#DDD6FE' },
-  faq: { label: 'Hỏi đáp (FAQ)', bg: '#E0F2FE', text: '#0369A1', border: '#BAE6FD' },
-  greeting: { label: 'Lời chào', bg: '#FEF3C7', text: '#B45309', border: '#FDE68A' },
-  service: { label: 'Dịch vụ', bg: '#DCFCE7', text: '#15803D', border: '#BBF7D0' },
-  chitchat: { label: 'Trò chuyện', bg: '#F3F4F6', text: '#374151', border: '#E5E7EB' },
+  facility: { labelVI: 'Tiện ích', labelEN: 'Amenities', bg: '#EDE9FE', text: '#6D28D9', border: '#DDD6FE' },
+  faq: { labelVI: 'Hỏi đáp (FAQ)', labelEN: 'FAQ', bg: '#E0F2FE', text: '#0369A1', border: '#BAE6FD' },
+  greeting: { labelVI: 'Lời chào', labelEN: 'Greetings', bg: '#FEF3C7', text: '#B45309', border: '#FDE68A' },
+  service: { labelVI: 'Dịch vụ', labelEN: 'Services', bg: '#DCFCE7', text: '#15803D', border: '#BBF7D0' },
+  chitchat: { labelVI: 'Trò chuyện', labelEN: 'Small Talk', bg: '#F3F4F6', text: '#374151', border: '#E5E7EB' },
+};
+
+const getCategoryLabel = (cat, isEN) => {
+  const item = CATEGORY_MAP[cat];
+  if (!item) return cat;
+  return isEN ? item.labelEN : item.labelVI;
 };
 
 const DEFAULT_FORM_STATE = {
@@ -65,12 +72,16 @@ const DEFAULT_FORM_STATE = {
   response_en: '',
   action_type: 'none',
   destination_key: '',
+  eye_expression: 'none',
   is_fast_path: true,
   is_active: true,
   priority: 50,
 };
 
 export const AdminKnowledgePage = ({ activeSubView = 'sources', onSelectSubView = () => {} }) => {
+  const { t, language } = useLanguage();
+  const isEN = language === 'EN';
+
   // Navigation View State ('sources' | 'scenarios')
   const [currentTab, setCurrentTab] = useState(() => {
     if (activeSubView === 'scenarios') return 'scenarios';
@@ -96,16 +107,17 @@ export const AdminKnowledgePage = ({ activeSubView = 'sources', onSelectSubView 
   };
 
   // =========================================================================
-  // 1. KNOWLEDGE VAULT & RAG STATE
+  // VIEW 1: RAG KNOWLEDGE VAULT & SOURCES STATE
   // =========================================================================
-  const [sources, setSources] = useState([]);
   const [stats, setStats] = useState({
-    total_documents: 0,
-    total_sources: 0,
+    total_docs: 0,
+    total_chunks: 0,
+    total_kb: 0,
+    vault_files: 0,
     rag_health_percent: 100,
-    categories: {},
-    last_synced: 'Đang tải...',
+    last_synced: isEN ? 'Active' : 'Hoạt động',
   });
+  const [sources, setSources] = useState([]);
   const [isLoadingRAG, setIsLoadingRAG] = useState(false);
 
   // Upload file state
@@ -115,54 +127,57 @@ export const AdminKnowledgePage = ({ activeSubView = 'sources', onSelectSubView 
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef(null);
 
-  // Markdown Source File Editor Modal State
-  const [editingSourceFile, setEditingSourceFile] = useState(null);
+  // Markdown Editor / Preview Modal State
+  const [editingSourceFile, setEditingSourceFile] = useState(null); // { filename, content, isNew }
   const [sourceMarkdownContent, setSourceMarkdownContent] = useState('');
   const [newSourceFileName, setNewSourceFileName] = useState('');
-  const [editorModeTab, setEditorModeTab] = useState('edit');
+  const [editorModeTab, setEditorModeTab] = useState('edit'); // 'edit' | 'preview'
   const [isSavingSource, setIsSavingSource] = useState(false);
 
   // =========================================================================
-  // 2. DIALOGUE SCENARIOS STATE
+  // VIEW 2: FAST-PATH SCENARIOS STATE
   // =========================================================================
   const [scenarios, setScenarios] = useState([]);
   const [isLoadingScenarios, setIsLoadingScenarios] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('All');
+  const [searchQuery, setSearchQuery] = useState('');
   const [fastPathOnly, setFastPathOnly] = useState(false);
-  const [currentPage, setCurrentPage] = useState(1);
-  const scenarioPageSize = 8;
 
-  // Scenario Modal State
+  // Modal State (Create/Edit Scenario)
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [formData, setFormData] = useState(DEFAULT_FORM_STATE);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Pagination State for Scenarios Table
+  const [currentPage, setCurrentPage] = useState(1);
+  const scenarioPageSize = 10;
+
   // =========================================================================
-  // 3. VOICE SETTINGS MODAL STATE
+  // VOICE & SPEED SETTINGS STATE (ROBOT TTS NEURAL)
   // =========================================================================
-  const [isVoiceModalOpen, setIsVoiceModalOpen] = useState(false);
   const [voiceSettings, setVoiceSettings] = useState({
     speech_rate: 1.0,
     rate_percentage: '+0%',
     vi_voice: 'vi-VN-HoaiMyNeural',
-    en_voice: 'en-US-JennyNeural',
   });
+  const [isVoiceModalOpen, setIsVoiceModalOpen] = useState(false);
   const [tempRate, setTempRate] = useState(1.0);
   const [tempVoice, setTempVoice] = useState('vi-VN-HoaiMyNeural');
   const [isSavingVoice, setIsSavingVoice] = useState(false);
+  const [isTestSpeaking, setIsTestSpeaking] = useState(false);
 
-  const { speak: testSpeak, cancel: stopTestSpeak, isSpeaking: isTestSpeaking } = useSpeechSynthesis();
+  // Local Web Speech Synthesis for quick test preview
+  const { speak, stop } = useSpeechSynthesis();
 
-  // Load Voice Settings on Mount
+  // Load Voice Settings from backend
   useEffect(() => {
     getVoiceSettings()
-      .then((data) => {
-        if (data) {
-          setVoiceSettings(data);
-          setTempRate(data.speech_rate || 1.0);
-          setTempVoice(data.vi_voice || 'vi-VN-HoaiMyNeural');
+      .then((cfg) => {
+        if (cfg) {
+          setVoiceSettings(cfg);
+          setTempRate(cfg.speech_rate || 1.0);
+          setTempVoice(cfg.vi_voice || 'vi-VN-HoaiMyNeural');
         }
       })
       .catch((err) => console.warn('Could not load voice settings:', err));
@@ -175,22 +190,31 @@ export const AdminKnowledgePage = ({ activeSubView = 'sources', onSelectSubView 
   };
 
   const handleCloseVoiceModal = () => {
-    stopTestSpeak();
+    stop();
+    setIsTestSpeaking(false);
     setIsVoiceModalOpen(false);
   };
 
   const handleTestVoice = () => {
     if (isTestSpeaking) {
-      stopTestSpeak();
+      stop();
+      setIsTestSpeaking(false);
       return;
     }
-    const sampleText = 'Dạ em chào quý khách! Em là robot lễ tân Rora. Chúc quý khách kỳ nghỉ tuyệt vời tại khách sạn Aurora Grand!';
-    testSpeak(sampleText, 'vi-VN', null, null, null, tempRate);
+    const sampleText = isEN
+      ? 'Welcome to Aurora Grand Hotel. I am Robot Concierge, ready to assist you.'
+      : 'Xin kính chào quý khách đến với khách sạn Aurora Grand. Em là Robot Lễ Tân, rất vui được hỗ trợ quý khách ạ.';
+    setIsTestSpeaking(true);
+    speak(sampleText, {
+      rate: tempRate,
+      lang: isEN ? 'en-US' : 'vi-VN',
+      onEnd: () => setIsTestSpeaking(false),
+      onError: () => setIsTestSpeaking(false),
+    });
   };
 
   const handleSaveVoiceSettings = async () => {
     setIsSavingVoice(true);
-    stopTestSpeak();
     try {
       const updated = await updateVoiceSettings({
         speech_rate: tempRate,
@@ -198,9 +222,9 @@ export const AdminKnowledgePage = ({ activeSubView = 'sources', onSelectSubView 
       });
       setVoiceSettings(updated);
       setIsVoiceModalOpen(false);
-      showNotification(`Đã cập nhật tốc độ nói của Robot: ${tempRate}x (${updated.rate_percentage})`);
+      showNotification(t('knowledgeNotifyVoiceSaved').replace('{rate}', tempRate));
     } catch (err) {
-      showNotification(`Lỗi cập nhật cấu hình giọng nói: ${err.message}`);
+      showNotification(t('knowledgeNotifyVoiceSaveError').replace('{msg}', err.message));
     } finally {
       setIsSavingVoice(false);
     }
@@ -234,7 +258,7 @@ export const AdminKnowledgePage = ({ activeSubView = 'sources', onSelectSubView 
       });
       setScenarios(res.items || []);
     } catch (err) {
-      showNotification(`Lỗi khi tải kịch bản: ${err.message}`);
+      console.warn('Error loading scenarios:', err);
     } finally {
       setIsLoadingScenarios(false);
     }
@@ -260,10 +284,10 @@ export const AdminKnowledgePage = ({ activeSubView = 'sources', onSelectSubView 
     setIsLoadingRAG(true);
     try {
       const res = await syncObsidianVault();
-      showNotification(res.message || 'Đồng bộ Obsidian Vault thành công!');
+      showNotification(t('knowledgeNotifyVaultSyncSuccess').replace('{count}', sources.length));
       await loadRAGData();
     } catch (err) {
-      showNotification(`Lỗi khi đồng bộ Obsidian: ${err.message}`);
+      showNotification(t('knowledgeNotifyVaultSyncError').replace('{msg}', err.message));
     } finally {
       setIsLoadingRAG(false);
     }
@@ -272,19 +296,19 @@ export const AdminKnowledgePage = ({ activeSubView = 'sources', onSelectSubView 
   const handleUploadFileSubmit = async (e) => {
     e?.preventDefault();
     if (!selectedUploadFile) {
-      showNotification('Vui lòng chọn một file tài liệu từ máy tính!');
+      showNotification(t('knowledgeDropzonePrompt'));
       return;
     }
 
     setIsUploading(true);
     try {
       const res = await uploadRAGFile(selectedUploadFile, uploadCategory);
-      showNotification(`✅ ${res.message || 'Nạp file tri thức thành công!'}`);
+      showNotification(`✅ ${t('knowledgeNotifySourceUploaded').replace('{name}', selectedUploadFile.name)}`);
       setSelectedUploadFile(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
       await loadRAGData();
     } catch (err) {
-      showNotification(`❌ Lỗi khi tải file: ${err.message}`);
+      showNotification(t('knowledgeNotifySourceUploadError').replace('{msg}', err.message));
     } finally {
       setIsUploading(false);
     }
@@ -302,15 +326,15 @@ export const AdminKnowledgePage = ({ activeSubView = 'sources', onSelectSubView 
     setNewSourceFileName('');
     setSourceMarkdownContent(
 `---
-title: Tiêu đề tài liệu
+title: ${isEN ? 'Document Title' : 'Tiêu đề tài liệu'}
 category: facilities
-language: vi
+language: ${isEN ? 'en' : 'vi'}
 ---
 
-# Tiêu Đề Tài Liệu Tri Thức Mới
+# ${isEN ? 'New Knowledge Document' : 'Tiêu Đề Tài Liệu Tri Thức Mới'}
 
-## 1. Thông Tin Tổng Quan
-Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Concierge tại đây...
+## 1. ${isEN ? 'Overview' : 'Thông Tin Tổng Quan'}
+${isEN ? 'Enter hotel policies, amenities or directions for Robot Concierge here...' : 'Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Concierge tại đây...'}
 `
     );
     setEditorModeTab('edit');
@@ -323,7 +347,7 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
     if (editingSourceFile.isNew) {
       const cleanName = newSourceFileName.trim();
       if (!cleanName) {
-        showNotification('Vui lòng nhập tên file (ví dụ: quy_dinh_khach_san.md)');
+        showNotification(t('knowledgeModalNewFilePlaceholder'));
         return;
       }
       targetFilename = cleanName.endsWith('.md') || cleanName.endsWith('.txt') ? cleanName : `${cleanName}.md`;
@@ -332,24 +356,24 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
     setIsSavingSource(true);
     try {
       await saveRAGSourceFile(targetFilename, sourceMarkdownContent);
-      showNotification(`✅ Đã lưu file "${targetFilename}" và nạp vào bộ nhớ Robot thành công!`);
+      showNotification(t('knowledgeNotifySourceSaved').replace('{name}', targetFilename));
       setEditingSourceFile(null);
       await loadRAGData();
     } catch (err) {
-      showNotification(`❌ Lỗi khi lưu file: ${err.message}`);
+      showNotification(t('knowledgeNotifySourceSaveError').replace('{msg}', err.message));
     } finally {
       setIsSavingSource(false);
     }
   };
 
   const handleDeleteSourceFile = async (filename) => {
-    if (!window.confirm(`Xác nhận xóa file "${filename}" khỏi kho tri thức Robot?`)) return;
+    if (!window.confirm(t('knowledgeConfirmDeleteSource').replace('{name}', filename))) return;
     try {
       await deleteRAGSource(filename);
-      showNotification(`Đã xóa file "${filename}" thành công!`);
+      showNotification(t('knowledgeNotifySourceDeleted').replace('{name}', filename));
       await loadRAGData();
     } catch (err) {
-      showNotification(`Lỗi khi xóa file: ${err.message}`);
+      showNotification(t('knowledgeNotifySourceDeleteError').replace('{msg}', err.message));
     }
   };
 
@@ -360,10 +384,10 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
     setIsLoadingScenarios(true);
     try {
       const res = await reloadScenariosCache();
-      showNotification(res.message || 'Đã đồng bộ lại toàn bộ kịch bản vào RAM Cache!');
+      showNotification(t('knowledgeNotifyScenarioCacheReloaded').replace('{count}', totalFastPath));
       await loadScenariosData();
     } catch (err) {
-      showNotification(`Lỗi khi reload cache: ${err.message}`);
+      showNotification(t('knowledgeNotifyScenarioCacheError').replace('{msg}', err.message));
     } finally {
       setIsLoadingScenarios(false);
     }
@@ -379,6 +403,7 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
     setEditingId(item.id);
     const kwString = Array.isArray(item.match_keywords) ? item.match_keywords.join(', ') : '';
     const destKey = item.action_payload?.destination_key || '';
+    const eyeExpr = item.action_payload?.eye_expression || 'none';
 
     setFormData({
       title: item.title || '',
@@ -389,6 +414,7 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
       response_en: item.response_en || '',
       action_type: item.action_type || 'none',
       destination_key: destKey,
+      eye_expression: eyeExpr,
       is_fast_path: item.is_fast_path !== undefined ? item.is_fast_path : true,
       is_active: item.is_active !== undefined ? item.is_active : true,
       priority: item.priority || 50,
@@ -399,7 +425,7 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
   const handleSubmitModal = async (e) => {
     e.preventDefault();
     if (!formData.title.trim() || !formData.response_vi.trim()) {
-      showNotification('Vui lòng điền đầy đủ Tiêu đề và Câu trả lời tiếng Việt!');
+      showNotification(t('knowledgePlaceholderScenarioTitle'));
       return;
     }
 
@@ -410,6 +436,15 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
         .map((k) => k.trim())
         .filter(Boolean);
 
+      const actionPayload = {};
+      if (formData.action_type === 'show_map' && formData.destination_key.trim()) {
+        actionPayload.destination_key = formData.destination_key.trim();
+      }
+      if (formData.eye_expression && formData.eye_expression !== 'none') {
+        actionPayload.eye_expression = formData.eye_expression;
+      }
+      const finalPayload = Object.keys(actionPayload).length > 0 ? actionPayload : null;
+
       const payload = {
         title: formData.title.trim(),
         category: formData.category,
@@ -418,10 +453,7 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
         response_vi: formData.response_vi.trim(),
         response_en: formData.response_en.trim() || null,
         action_type: formData.action_type,
-        action_payload:
-          formData.action_type === 'show_map' && formData.destination_key.trim()
-            ? { destination_key: formData.destination_key.trim() }
-            : null,
+        action_payload: finalPayload,
         is_fast_path: formData.is_fast_path,
         is_active: formData.is_active,
         priority: Number(formData.priority) || 0,
@@ -429,29 +461,29 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
 
       if (editingId) {
         await updateScenario(editingId, payload);
-        showNotification(`Đã cập nhật kịch bản "${payload.title}" thành công!`);
+        showNotification(t('knowledgeNotifyScenarioUpdated').replace('{title}', payload.title));
       } else {
         await createScenario(payload);
-        showNotification(`Đã tạo mới kịch bản "${payload.title}" thành công!`);
+        showNotification(t('knowledgeNotifyScenarioCreated').replace('{title}', payload.title));
       }
 
       setIsModalOpen(false);
       await loadScenariosData();
     } catch (err) {
-      showNotification(`Lỗi: ${err.message}`);
+      showNotification(t('knowledgeNotifyScenarioSaveError').replace('{msg}', err.message));
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const handleDeleteScenario = async (id, title) => {
-    if (!window.confirm(`Xác nhận xóa kịch bản "${title}" khỏi hệ thống?`)) return;
+    if (!window.confirm(t('knowledgeConfirmDeleteScenario').replace('{title}', title))) return;
     try {
       await deleteScenario(id);
-      showNotification(`Đã xóa kịch bản "${title}"!`);
+      showNotification(t('knowledgeNotifyScenarioDeleted').replace('{title}', title));
       await loadScenariosData();
     } catch (err) {
-      showNotification(`Lỗi khi xóa: ${err.message}`);
+      showNotification(t('knowledgeNotifyScenarioDeleteError').replace('{msg}', err.message));
     }
   };
 
@@ -470,7 +502,7 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
 
   // Simple Markdown renderer for preview
   const renderMarkdownPreview = (text) => {
-    if (!text) return <p className="text-stone-400 italic">Chưa có nội dung văn bản.</p>;
+    if (!text) return <p className="text-stone-400 italic">{isEN ? 'No document content.' : 'Chưa có nội dung văn bản.'}</p>;
     const lines = text.split('\n');
     return (
       <div className="space-y-2 text-xs leading-relaxed text-stone-800">
@@ -524,8 +556,8 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
           <div className="flex items-center gap-2">
             <h2 className="text-sm sm:text-base font-bold tracking-tight leading-tight truncate" style={{ color: '#262626' }}>
               {currentTab === 'sources'
-                ? 'Kho Tài Liệu Tri Thức Khách Sạn (Knowledge Base)'
-                : 'Kịch Bản Hội Thoại AI & Fast-Path'}
+                ? t('knowledgeSourcesTitle')
+                : t('knowledgeScenariosTitle')}
             </h2>
             <span
               className="px-2 py-0.5 rounded text-[10px] font-bold border tracking-wider uppercase inline-flex items-center gap-1"
@@ -537,19 +569,17 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
             >
               {currentTab === 'sources' ? (
                 <>
-                  <Folder className="w-3 h-3" /> Kho Tri Thức
+                  <Folder className="w-3 h-3" /> {t('knowledgeVaultBadge')}
                 </>
               ) : (
                 <>
-                  <Zap className="w-3 h-3" /> &lt; 1ms In-Memory
+                  <Zap className="w-3 h-3" /> {isEN ? '< 1ms In-Memory' : '< 1ms Trong Bộ Nhớ'}
                 </>
               )}
             </span>
           </div>
           <p className="text-[10px] sm:text-[11px] font-normal truncate mt-0.5" style={{ color: '#8C8C8C' }}>
-            {currentTab === 'sources'
-              ? 'Quản lý, tải lên tài liệu tri thức (Markdown, PDF, TXT) và sơ đồ khách sạn cho Robot Concierge'
-              : 'Quản lý các kịch bản đối thoại FAQ, tiện ích phản xạ tức thì dưới 1ms cho Robot Concierge'}
+            {currentTab === 'sources' ? t('knowledgeSourcesSubtitle') : t('knowledgeScenariosSubtitle')}
           </p>
         </div>
 
@@ -566,24 +596,24 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
                   color: '#262626',
                   borderColor: '#BFBFBD',
                 }}
-                title="Đồng bộ tự động toàn bộ file trong thư mục Vault vào bộ nhớ Robot"
+                title={t('knowledgeBtnSyncVaultTooltip')}
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${isLoadingRAG ? 'animate-spin' : ''}`} />
-                <span>Đồng Bộ Tri Thức Vault</span>
+                <span>{t('knowledgeBtnSyncVault')}</span>
               </button>
 
               <button
                 onClick={handleOpenCreateSourceModal}
-                className="px-3.5 py-1.5 rounded-lg border text-xs font-semibold cursor-pointer transition-colors flex items-center gap-1.5"
+                className="px-3.5 py-1.5 rounded-lg border text-xs font-semibold cursor-pointer transition-colors flex items-center gap-1.5 hover:bg-[#262626]/90"
                 style={{
                   backgroundColor: '#262626',
                   color: '#F2EFE9',
                   borderColor: '#262626',
                 }}
-                title="Tạo file tài liệu Markdown mới trực tiếp trên hệ thống"
+                title={t('knowledgeBtnNewDocTooltip')}
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span>+ Tạo Tài Liệu Mới</span>
+                <span>{t('knowledgeBtnNewDoc')}</span>
               </button>
             </>
           )}
@@ -599,15 +629,15 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
                   color: '#262626',
                   borderColor: '#BFBFBD',
                 }}
-                title="Đồng bộ lại toàn bộ kịch bản từ Database vào bộ nhớ RAM tức thì"
+                title={t('knowledgeBtnReloadCacheTooltip')}
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${isLoadingScenarios ? 'animate-spin' : ''}`} />
-                <span>Tải Lại RAM Cache</span>
+                <span>{t('knowledgeBtnReloadCache')}</span>
               </button>
 
               <button
                 onClick={handleOpenCreateModal}
-                className="px-3.5 py-1.5 rounded-lg border text-xs font-semibold cursor-pointer transition-colors flex items-center gap-1.5"
+                className="px-3.5 py-1.5 rounded-lg border text-xs font-semibold cursor-pointer transition-colors flex items-center gap-1.5 hover:bg-[#262626]/90"
                 style={{
                   backgroundColor: '#262626',
                   color: '#F2EFE9',
@@ -615,7 +645,7 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
                 }}
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span>+ Thêm Kịch Bản</span>
+                <span>{t('knowledgeBtnAddScenario')}</span>
               </button>
             </>
           )}
@@ -629,10 +659,10 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
               color: '#262626',
               borderColor: '#BFBFBD',
             }}
-            title="Cài đặt tốc độ nói và giọng phát âm AI của Robot"
+            title={t('knowledgeBtnSpeechRateTooltip')}
           >
             <Volume2 className="w-3.5 h-3.5 text-indigo-600" />
-            <span>Tốc Độ Nói: {voiceSettings.speech_rate}x</span>
+            <span>{t('knowledgeBtnSpeechRate').replace('{rate}', voiceSettings.speech_rate)}</span>
           </button>
         </div>
       </div>
@@ -652,7 +682,7 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
             }}
           >
             <Folder className="w-3.5 h-3.5" />
-            <span>Kho Tài Liệu Tri Thức</span>
+            <span>{t('knowledgeTabSources')}</span>
             <span
               className="px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold"
               style={{
@@ -673,7 +703,7 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
             }}
           >
             <Zap className="w-3.5 h-3.5" />
-            <span>Kịch Bản Fast-Path</span>
+            <span>{t('knowledgeTabScenarios')}</span>
             <span
               className="px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold"
               style={{
@@ -696,9 +726,9 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <div className="p-3.5 rounded-xl border bg-white flex items-center justify-between" style={{ borderColor: '#BFBFBD' }}>
               <div>
-                <div className="text-[11px] font-semibold" style={{ color: '#8C8C8C' }}>TỔNG FILE TRI THỨC</div>
+                <div className="text-[11px] font-semibold" style={{ color: '#8C8C8C' }}>{t('knowledgeCardTotalFiles')}</div>
                 <div className="text-xl font-black mt-0.5" style={{ color: '#262626' }}>{sources.length}</div>
-                <div className="text-[10px] text-stone-500 mt-0.5">tài liệu sẵn sàng phục vụ</div>
+                <div className="text-[10px] text-stone-500 mt-0.5">{t('knowledgeCardTotalFilesSub')}</div>
               </div>
               <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-blue-50 text-blue-600">
                 <FileText className="w-4 h-4" />
@@ -707,11 +737,11 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
 
             <div className="p-3.5 rounded-xl border bg-white flex items-center justify-between" style={{ borderColor: '#BFBFBD' }}>
               <div>
-                <div className="text-[11px] font-semibold" style={{ color: '#8C8C8C' }}>DUNG LƯỢNG KHO LƯU TRỮ</div>
+                <div className="text-[11px] font-semibold" style={{ color: '#8C8C8C' }}>{t('knowledgeCardStorageSize')}</div>
                 <div className="text-xl font-black mt-0.5" style={{ color: '#262626' }}>
                   {sources.reduce((acc, c) => acc + (Number(c.file_size_kb) || 0), 0).toFixed(1)} KB
                 </div>
-                <div className="text-[10px] text-stone-500 mt-0.5">Markdown, PDF, TXT</div>
+                <div className="text-[10px] text-stone-500 mt-0.5">{t('knowledgeCardStorageSizeSub')}</div>
               </div>
               <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-amber-50 text-amber-700">
                 <Folder className="w-4 h-4" />
@@ -720,9 +750,9 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
 
             <div className="p-3.5 rounded-xl border bg-white flex items-center justify-between" style={{ borderColor: '#BFBFBD' }}>
               <div>
-                <div className="text-[11px] font-semibold" style={{ color: '#8C8C8C' }}>ĐỘ SẴN SÀNG AI</div>
+                <div className="text-[11px] font-semibold" style={{ color: '#8C8C8C' }}>{t('knowledgeCardAiHealth')}</div>
                 <div className="text-xl font-black mt-0.5 text-emerald-600">{stats.rag_health_percent || 100}%</div>
-                <div className="text-[10px] text-stone-500 mt-0.5">truy vấn thời gian thực</div>
+                <div className="text-[10px] text-stone-500 mt-0.5">{t('knowledgeCardAiHealthSub')}</div>
               </div>
               <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-emerald-50 text-emerald-600">
                 <CheckCircle2 className="w-4 h-4" />
@@ -731,9 +761,15 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
 
             <div className="p-3.5 rounded-xl border bg-white flex items-center justify-between" style={{ borderColor: '#BFBFBD' }}>
               <div>
-                <div className="text-[11px] font-semibold" style={{ color: '#8C8C8C' }}>TRẠNG THÁI BỘ NHỚ AI</div>
-                <div className="text-xs font-bold mt-1 text-stone-800 truncate max-w-[130px]">{stats.last_synced || 'Hoạt động'}</div>
-                <div className="text-[10px] text-emerald-600 mt-0.5 font-medium">● Bộ nhớ AI sẵn sàng</div>
+                <div className="text-[11px] font-semibold" style={{ color: '#8C8C8C' }}>{t('knowledgeCardAiMemory')}</div>
+                <div className="text-xs font-bold mt-1 text-stone-800 truncate max-w-[130px]">
+                  {stats.last_synced === 'Vừa đồng bộ'
+                    ? (isEN ? 'Just synced' : 'Vừa đồng bộ')
+                    : stats.last_synced === 'Just now'
+                    ? (isEN ? 'Just now' : 'Vừa xong')
+                    : stats.last_synced || t('knowledgeCardActive')}
+                </div>
+                <div className="text-[10px] text-emerald-600 mt-0.5 font-medium">{t('knowledgeCardAiMemorySub')}</div>
               </div>
               <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-stone-100 text-stone-700">
                 <Sparkles className="w-4 h-4" />
@@ -750,16 +786,18 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
               <div>
                 <h3 className="text-xs font-bold uppercase tracking-wider flex items-center gap-2" style={{ color: '#262626' }}>
                   <UploadCloud className="w-4 h-4 text-indigo-600" />
-                  <span>Tải Lên File Tri Thức Mới Vào Robot (Upload Knowledge File)</span>
+                  <span>{t('knowledgeUploadCardTitle')}</span>
                 </h3>
                 <p className="text-[11px] text-stone-500 mt-0.5">
-                  Hệ thống hỗ trợ file <strong>.md, .txt, .pdf, .docx</strong> và ảnh <strong>(.jpg, .png, .webp)</strong>. File Markdown sẽ tự động lưu vào <code>backend/knowledge_vault/</code> và đồng bộ vào bộ nhớ Robot.
+                  {t('knowledgeUploadCardSub')}
                 </p>
               </div>
 
               {selectedUploadFile && (
                 <span className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
-                  Đã chọn: {selectedUploadFile.name} ({(selectedUploadFile.size / 1024).toFixed(1)} KB)
+                  {t('knowledgeDropzoneSelected')
+                    .replace('{name}', selectedUploadFile.name)
+                    .replace('{size}', (selectedUploadFile.size / 1024).toFixed(1))}
                 </span>
               )}
             </div>
@@ -801,16 +839,18 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
                   {selectedUploadFile ? (
                     <div className="flex items-center gap-2 text-xs font-bold text-emerald-800">
                       <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-                      <span>{selectedUploadFile.name} ({(selectedUploadFile.size / 1024).toFixed(1)} KB) — Bấm để chọn file khác</span>
+                      <span>
+                        {selectedUploadFile.name} ({(selectedUploadFile.size / 1024).toFixed(1)} KB) {t('knowledgeDropzoneReselect')}
+                      </span>
                     </div>
                   ) : (
                     <>
                       <UploadCloud className="w-6 h-6 text-stone-400" />
                       <div className="text-xs font-bold text-stone-800">
-                        Kéo thả file tài liệu vào đây hoặc <span className="text-indigo-600 underline">bấm để chọn file</span>
+                        {t('knowledgeDropzonePrompt')}
                       </div>
                       <div className="text-[10px] text-stone-500">
-                        Hỗ trợ .MD (Markdown Vault), .TXT, .PDF, .DOCX hoặc Ảnh sơ đồ
+                        {t('knowledgeDropzoneHint')}
                       </div>
                     </>
                   )}
@@ -820,39 +860,39 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
                 <div className="flex flex-col justify-between gap-3 p-3 rounded-xl border bg-stone-50" style={{ borderColor: '#E9E5DC' }}>
                   <div>
                     <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-700 mb-1.5">
-                      Phân loại danh mục
+                      {t('knowledgeLabelCategory')}
                     </label>
                     <select
                       value={uploadCategory}
                       onChange={(e) => setUploadCategory(e.target.value)}
                       className="w-full px-3 py-2 bg-white border border-stone-200 rounded-lg text-xs font-bold text-stone-900 focus:outline-none cursor-pointer"
                     >
-                      <option value="facilities">Cơ sở vật chất & Tiện ích</option>
-                      <option value="dining">Ẩm thực & Nhà hàng</option>
-                      <option value="services">Dịch vụ & Tiện nghi phòng</option>
-                      <option value="policies">Chính sách & Quy định</option>
-                      <option value="general">Thông tin tổng quát khách sạn</option>
+                      <option value="facilities">{t('knowledgeOptFacilities')}</option>
+                      <option value="dining">{t('knowledgeOptDining')}</option>
+                      <option value="services">{t('knowledgeOptServices')}</option>
+                      <option value="policies">{t('knowledgeOptPolicies')}</option>
+                      <option value="general">{t('knowledgeOptGeneral')}</option>
                     </select>
                   </div>
 
                   <button
                     type="submit"
                     disabled={isUploading || !selectedUploadFile}
-                    className={`w-full py-2 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                      isUploading || !selectedUploadFile
-                        ? 'bg-stone-300 text-stone-500 cursor-not-allowed'
-                        : 'bg-stone-900 text-white hover:bg-stone-800 shadow-md'
-                    }`}
+                    className="w-full py-2.5 px-4 rounded-xl text-xs font-bold cursor-pointer transition-all flex items-center justify-center gap-2 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-stone-800"
+                    style={{
+                      backgroundColor: '#262626',
+                      color: '#F2EFE9',
+                    }}
                   >
                     {isUploading ? (
                       <>
-                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                        <span>Đang tải & bóc tách...</span>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        <span>{t('knowledgeBtnUploadingIngest')}</span>
                       </>
                     ) : (
                       <>
-                        <UploadCloud className="w-3.5 h-3.5" />
-                        <span>Tải Lên & Nạp Vào Robot</span>
+                        <UploadCloud className="w-4 h-4" />
+                        <span>{t('knowledgeBtnUploadIngest')}</span>
                       </>
                     )}
                   </button>
@@ -861,20 +901,20 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
             </form>
           </div>
 
-          {/* SOURCES TABLE (FILES IN KNOWLEDGE VAULT & UPLOADS) */}
+          {/* ACTIVE SOURCE FILES TABLE */}
           <div
-            className="rounded-2xl border overflow-hidden shadow-sm bg-white"
+            className="rounded-xl border overflow-hidden shadow-none bg-white"
             style={{ borderColor: '#BFBFBD' }}
           >
-            <div className="p-3.5 border-b flex items-center justify-between" style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD' }}>
+            <div className="p-3 border-b flex items-center justify-between" style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD' }}>
               <div className="flex items-center gap-2">
-                <FileCode className="w-4 h-4 text-stone-700" />
-                <span className="text-xs font-bold uppercase tracking-wider text-stone-900">
-                  Danh Sách File Nguồn Đang Hoạt Động ({sources.length} files)
+                <Database className="w-4 h-4" style={{ color: '#262626' }} />
+                <span className="text-xs font-bold uppercase tracking-wider" style={{ color: '#262626' }}>
+                  {t('knowledgeActiveFilesTitle').replace('{count}', sources.length)}
                 </span>
               </div>
-              <span className="text-[10px] text-stone-600 font-mono">
-                Thư mục lưu trữ: backend/knowledge_vault/ & static/uploads/
+              <span className="text-[10px] font-mono text-stone-500">
+                {t('knowledgeStoragePathHint')}
               </span>
             </div>
 
@@ -884,132 +924,89 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
                   <tr
                     className="border-b text-[11px] font-semibold uppercase tracking-wider"
                     style={{
-                      backgroundColor: '#F2EFE9',
+                      backgroundColor: '#E9E5DC',
                       borderColor: '#BFBFBD',
                       color: '#262626',
                     }}
                   >
-                    <th className="py-2.5 px-4">Tên file nguồn</th>
-                    <th className="py-2.5 px-3 w-28 text-center">Định dạng</th>
-                    <th className="py-2.5 px-3 w-28">Dung lượng</th>
-                    <th className="py-2.5 px-3 w-36 text-center">Nguồn lưu trữ</th>
-                    <th className="py-2.5 px-4 w-40">Cập nhật lần cuối</th>
-                    <th className="py-2.5 px-3 w-28 text-center">Trạng thái</th>
-                    <th className="py-2.5 px-4 text-right w-44">Thao tác</th>
+                    <th className="py-2.5 px-4">{t('knowledgeColFilename')}</th>
+                    <th className="py-2.5 px-3 text-center w-24">{t('knowledgeColFormat')}</th>
+                    <th className="py-2.5 px-3 text-center w-28">{t('knowledgeColSize')}</th>
+                    <th className="py-2.5 px-3 text-center w-36">{t('knowledgeColStorage')}</th>
+                    <th className="py-2.5 px-3 text-center w-40">{t('knowledgeColUpdated')}</th>
+                    <th className="py-2.5 px-3 text-center w-28">{t('knowledgeColStatus')}</th>
+                    <th className="py-2.5 px-4 text-right w-28">{t('knowledgeColActions')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y text-xs" style={{ borderColor: '#E9E5DC' }}>
                   {sources.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="py-8 text-center text-xs text-stone-500">
-                        {isLoadingRAG ? 'Đang đọc danh sách file tri thức...' : 'Chưa có file nguồn nào trong thư mục Vault.'}
+                      <td colSpan={7} className="py-8 text-center text-xs" style={{ color: '#8C8C8C' }}>
+                        {t('knowledgeEmptySources')}
                       </td>
                     </tr>
                   ) : (
-                    sources.map((src, idx) => {
-                      const isMarkdown = src.file_type === 'MD' || src.file_type === 'TXT';
-                      return (
-                        <tr
-                          key={idx}
-                          className="transition-colors hover:bg-[#F2EFE9]/50"
-                          style={{ borderBottom: '1px solid #E9E5DC' }}
-                        >
-                          {/* Filename with icon */}
-                          <td className="py-2.5 px-4 font-bold text-xs" style={{ color: '#262626' }}>
-                            <div className="flex items-center gap-2">
-                              {src.file_type === 'MD' ? (
-                                <FileCode className="w-4 h-4 text-indigo-600 shrink-0" />
-                              ) : src.file_type === 'PDF' ? (
-                                <FileText className="w-4 h-4 text-rose-600 shrink-0" />
-                              ) : (
-                                <File className="w-4 h-4 text-amber-600 shrink-0" />
-                              )}
-                              <span className="truncate max-w-xs">{src.filename}</span>
-                            </div>
-                          </td>
-
-                          {/* File Type */}
-                          <td className="py-2.5 px-3 text-center">
-                            <span
-                              className="px-2 py-0.5 rounded text-[10px] font-mono font-bold border inline-block"
+                    sources.map((src) => (
+                      <tr
+                        key={src.filename}
+                        className="transition-colors hover:bg-[#F2EFE9]/40"
+                        style={{ borderBottom: '1px solid #E9E5DC' }}
+                      >
+                        <td className="py-2.5 px-4 font-mono font-bold text-xs" style={{ color: '#262626' }}>
+                          <div className="flex items-center gap-2">
+                            <FileCode className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                            <span className="truncate max-w-md">{src.filename}</span>
+                          </div>
+                        </td>
+                        <td className="py-2.5 px-3 text-center">
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-stone-100 text-stone-700 uppercase">
+                            {src.format || 'MD'}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 text-center font-mono text-[11px] text-stone-600">
+                          {src.file_size_kb || 0} KB
+                        </td>
+                        <td className="py-2.5 px-3 text-center text-[11px] font-semibold text-stone-600">
+                          {src.source_type || 'Knowledge Vault'}
+                        </td>
+                        <td className="py-2.5 px-3 text-center font-mono text-[10px] text-stone-500">
+                          {src.last_modified || '2026-10-20 07:11'}
+                        </td>
+                        <td className="py-2.5 px-3 text-center">
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 inline-flex items-center gap-1">
+                            <Check className="w-3 h-3" /> Synced
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-4 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              onClick={() => handleOpenSourceEditor(src)}
+                              className="px-2 py-1 rounded text-xs font-medium border cursor-pointer hover:bg-stone-100 transition-all flex items-center gap-1"
                               style={{
-                                backgroundColor: src.file_type === 'MD' ? '#EEF2FF' : '#E9E5DC',
-                                borderColor: src.file_type === 'MD' ? '#C7D2FE' : '#BFBFBD',
-                                color: src.file_type === 'MD' ? '#4338CA' : '#262626',
+                                backgroundColor: '#FFFFFF',
+                                borderColor: '#BFBFBD',
+                                color: '#262626',
                               }}
                             >
-                              {src.file_type}
-                            </span>
-                          </td>
-
-                          {/* File Size */}
-                          <td className="py-2.5 px-3 font-mono text-[11px]" style={{ color: '#8C8C8C' }}>
-                            {src.file_size_kb} KB
-                          </td>
-
-                          {/* Storage Location */}
-                          <td className="py-2.5 px-3 text-center font-bold text-[11px]" style={{ color: '#262626' }}>
-                            <span className="px-2 py-0.5 rounded bg-stone-100 border border-stone-200">
-                              {src.file_type === 'MD' ? 'Knowledge Vault' : 'Uploads'}
-                            </span>
-                          </td>
-
-                          {/* Last Modified */}
-                          <td className="py-2.5 px-4 text-[11px] font-mono" style={{ color: '#8C8C8C' }}>
-                            {src.last_modified}
-                          </td>
-
-                          {/* Status */}
-                          <td className="py-2.5 px-3 text-center">
-                            <span
-                              className="px-2 py-0.5 rounded text-[10px] font-bold border inline-flex items-center gap-1"
+                              <Edit2 className="w-3 h-3 text-indigo-600" />
+                              <span>{t('knowledgeBtnViewEdit')}</span>
+                            </button>
+                            <button
+                              onClick={() => handleDeleteSourceFile(src.filename)}
+                              className="p-1 rounded text-xs font-medium border cursor-pointer hover:bg-red-50 hover:border-red-300 hover:text-red-700 transition-all"
                               style={{
-                                backgroundColor: '#DCFCE7',
-                                borderColor: '#BBF7D0',
-                                color: '#15803D',
+                                backgroundColor: '#FFFFFF',
+                                borderColor: '#BFBFBD',
+                                color: '#8C8C8C',
                               }}
+                              title={t('knowledgeDeleteFileTooltip')}
                             >
-                              <Check className="w-3 h-3" />
-                              <span>{src.status || 'Active'}</span>
-                            </span>
-                          </td>
-
-                          {/* Actions */}
-                          <td className="py-2.5 px-4 text-right">
-                            <div className="flex items-center justify-end gap-1.5">
-                              {isMarkdown && (
-                                <button
-                                  onClick={() => handleOpenSourceEditor(src)}
-                                  className="px-2.5 py-1 rounded text-xs font-bold border cursor-pointer hover:bg-stone-100 transition-all flex items-center gap-1"
-                                  style={{
-                                    backgroundColor: '#FFFFFF',
-                                    borderColor: '#BFBFBD',
-                                    color: '#262626',
-                                  }}
-                                  title="Mở trình soạn thảo Markdown trực tiếp"
-                                >
-                                  <Edit2 className="w-3 h-3 text-indigo-600" />
-                                  <span>Xem & sửa</span>
-                                </button>
-                              )}
-
-                              <button
-                                onClick={() => handleDeleteSourceFile(src.filename)}
-                                className="p-1 rounded text-xs font-medium border cursor-pointer hover:bg-rose-50 hover:border-rose-300 hover:text-rose-700 transition-all"
-                                style={{
-                                  backgroundColor: '#FFFFFF',
-                                  borderColor: '#BFBFBD',
-                                  color: '#8C8C8C',
-                                }}
-                                title="Xóa file khỏi kho tri thức"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
                   )}
                 </tbody>
               </table>
@@ -1019,70 +1016,30 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
       )}
 
       {/* =================================================================== */}
-      {/* VIEW 2: KỊCH BẢN HỘI THOẠI & FAST-PATH (SCENARIOS)                 */}
+      {/* VIEW 2: KỊCH BẢN FAST-PATH (SCENARIOS TABLE)                        */}
       {/* =================================================================== */}
       {currentTab === 'scenarios' && (
-        <div className="p-5 space-y-4">
-          {/* KPI STATS BAR */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div className="p-3 rounded-xl border bg-white flex items-center justify-between" style={{ borderColor: '#BFBFBD' }}>
-              <div>
-                <div className="text-[11px] font-medium" style={{ color: '#8C8C8C' }}>Tổng kịch bản</div>
-                <div className="text-lg font-black mt-0.5" style={{ color: '#262626' }}>{scenarios.length}</div>
-              </div>
-              <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-[#F2EFE9]" style={{ color: '#262626' }}>
-                <Layers className="w-4 h-4" />
-              </div>
-            </div>
-
-            <div className="p-3 rounded-xl border bg-white flex items-center justify-between" style={{ borderColor: '#BFBFBD' }}>
-              <div>
-                <div className="text-[11px] font-medium" style={{ color: '#8C8C8C' }}>Phản xạ Fast-Path</div>
-                <div className="text-lg font-black mt-0.5 text-emerald-600">{totalFastPath}</div>
-              </div>
-              <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-emerald-50 text-emerald-600">
-                <Zap className="w-4 h-4" />
-              </div>
-            </div>
-
-            <div className="p-3 rounded-xl border bg-white flex items-center justify-between" style={{ borderColor: '#BFBFBD' }}>
-              <div>
-                <div className="text-[11px] font-medium" style={{ color: '#8C8C8C' }}>Đang hoạt động</div>
-                <div className="text-lg font-black mt-0.5 text-blue-600">{totalActive}</div>
-              </div>
-              <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-blue-50 text-blue-600">
-                <CheckCircle2 className="w-4 h-4" />
-              </div>
-            </div>
-
-            <div className="p-3 rounded-xl border bg-white flex items-center justify-between" style={{ borderColor: '#BFBFBD' }}>
-              <div>
-                <div className="text-[11px] font-medium" style={{ color: '#8C8C8C' }}>Độ trễ đối soát</div>
-                <div className="text-lg font-black mt-0.5 text-indigo-600">&lt; 0.1 ms</div>
-              </div>
-              <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-indigo-50 text-indigo-600">
-                <Sparkles className="w-4 h-4" />
-              </div>
-            </div>
-          </div>
-
-          {/* SEARCH & FILTERS BAR */}
+        <div className="p-5 space-y-3.5">
+          {/* SEARCH & CATEGORY FILTERS TOOLBAR */}
           <div
-            className="p-3 rounded-xl border bg-white flex flex-wrap items-center justify-between gap-3"
-            style={{ borderColor: '#BFBFBD' }}
+            className="p-2.5 rounded-xl border flex flex-col md:flex-row items-center justify-between gap-3"
+            style={{
+              backgroundColor: '#E9E5DC',
+              borderColor: '#BFBFBD',
+            }}
           >
-            {/* Search box */}
-            <div className="relative flex-1 min-w-[240px]">
-              <Search className="w-4 h-4 absolute left-3 top-2.5" style={{ color: '#8C8C8C' }} />
+            {/* Search Input */}
+            <div className="w-full md:w-80 relative">
+              <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-stone-400" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Tìm kiếm kịch bản, từ khóa, câu trả lời..."
-                className="w-full pl-9 pr-3 py-1.5 rounded-lg border text-xs focus:outline-none transition-colors"
+                placeholder={t('knowledgeSearchScenarioPlaceholder')}
+                className="w-full pl-8 pr-3 py-1.5 rounded-lg text-xs font-normal border focus:outline-none"
                 style={{
+                  backgroundColor: '#FFFFFF',
                   borderColor: '#BFBFBD',
-                  backgroundColor: '#F2EFE9',
                   color: '#262626',
                 }}
               />
@@ -1092,7 +1049,7 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
             <div className="flex items-center gap-1 overflow-x-auto">
               {['All', 'facility', 'faq', 'greeting', 'service', 'chitchat'].map((cat) => {
                 const isSelected = categoryFilter === cat;
-                const label = cat === 'All' ? 'Tất cả' : CATEGORY_MAP[cat]?.label || cat;
+                const label = cat === 'All' ? t('all') : getCategoryLabel(cat, isEN);
                 return (
                   <button
                     key={cat}
@@ -1117,7 +1074,7 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
               }`}
             >
               <Zap className="w-3 h-3" />
-              <span>Chỉ Fast-Path</span>
+              <span>{t('knowledgeFastPathOnly')}</span>
             </button>
           </div>
 
@@ -1137,20 +1094,20 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
                       color: '#262626',
                     }}
                   >
-                    <th className="py-2.5 px-4 w-52">Tiêu đề & Danh mục</th>
-                    <th className="py-2.5 px-3 w-64">Từ khóa kích hoạt</th>
-                    <th className="py-2.5 px-3">Phản hồi thoại (VI / EN)</th>
-                    <th className="py-2.5 px-3 w-36 text-center">Hành động</th>
-                    <th className="py-2.5 px-3 w-32 text-center">Cơ chế</th>
-                    <th className="py-2.5 px-3 w-20 text-center">Ưu tiên</th>
-                    <th className="py-2.5 px-4 text-right w-28">Thao tác</th>
+                    <th className="py-2.5 px-4 w-52">{t('knowledgeColTitleCat')}</th>
+                    <th className="py-2.5 px-3 w-64">{t('knowledgeColKeywords')}</th>
+                    <th className="py-2.5 px-3">{t('knowledgeColResponses')}</th>
+                    <th className="py-2.5 px-3 w-36 text-center">{t('knowledgeColAction')}</th>
+                    <th className="py-2.5 px-3 w-32 text-center">{t('knowledgeColMechanism')}</th>
+                    <th className="py-2.5 px-3 w-20 text-center">{t('knowledgeColPriority')}</th>
+                    <th className="py-2.5 px-4 text-right w-28">{t('knowledgeColActions')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y text-xs" style={{ borderColor: '#E9E5DC' }}>
                   {displayScenarios.length === 0 ? (
                     <tr>
                       <td colSpan={7} className="py-8 text-center text-xs" style={{ color: '#8C8C8C' }}>
-                        {isLoadingScenarios ? 'Đang tải dữ liệu kịch bản...' : 'Chưa có kịch bản nào phù hợp với bộ lọc.'}
+                        {isLoadingScenarios ? t('knowledgeLoadingScenarios') : t('knowledgeEmptyScenarios')}
                       </td>
                     </tr>
                   ) : (
@@ -1177,7 +1134,7 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
                                   borderColor: catStyle.border,
                                 }}
                               >
-                                {catStyle.label}
+                                {getCategoryLabel(item.category, isEN)}
                               </span>
                             </div>
                           </td>
@@ -1200,7 +1157,7 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
                               ))}
                               {keywords.length > 4 && (
                                 <span className="text-[10px] font-semibold text-stone-500">
-                                  +{keywords.length - 4} từ
+                                  {t('knowledgeMoreKeywords').replace('{count}', keywords.length - 4)}
                                 </span>
                               )}
                             </div>
@@ -1218,21 +1175,37 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
                             )}
                           </td>
 
-                          {/* Action */}
+                          {/* Action & Eye Expression */}
                           <td className="py-2.5 px-3 text-center">
-                            {item.action_type === 'show_map' ? (
-                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200 inline-flex items-center gap-1">
-                                <MapPin className="w-3 h-3" />
-                                <span>{item.action_payload?.destination_key || 'Sơ đồ'}</span>
-                              </span>
-                            ) : item.action_type === 'call_reception' ? (
-                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-50 text-purple-800 border border-purple-200 inline-flex items-center gap-1">
-                                <Video className="w-3 h-3" />
-                                <span>Video Call</span>
-                              </span>
-                            ) : (
-                              <span className="text-stone-400 text-[11px]">—</span>
-                            )}
+                            <div className="flex flex-col items-center gap-1">
+                              {item.action_type === 'show_map' ? (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200 inline-flex items-center gap-1">
+                                  <MapPin className="w-3 h-3" />
+                                  <span>{item.action_payload?.destination_key || t('knowledgeActionMap')}</span>
+                                </span>
+                              ) : item.action_type === 'call_reception' ? (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-50 text-purple-800 border border-purple-200 inline-flex items-center gap-1">
+                                  <Video className="w-3 h-3" />
+                                  <span>{t('knowledgeActionVideoCall')}</span>
+                                </span>
+                              ) : null}
+
+                              {/* Eye Expression Badge */}
+                              {item.action_payload?.eye_expression && item.action_payload.eye_expression !== 'none' ? (
+                                <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-stone-100 text-stone-700 border border-stone-300 inline-flex items-center gap-1">
+                                  <span>{t('knowledgeEyesPrefix')}</span>
+                                  <span>
+                                    {item.action_payload.eye_expression === 'look_up' && t('knowledgeEyeLookUp')}
+                                    {item.action_payload.eye_expression === 'look_left' && t('knowledgeEyeLookLeft')}
+                                    {item.action_payload.eye_expression === 'look_right' && t('knowledgeEyeLookRight')}
+                                    {item.action_payload.eye_expression === 'look_around' && t('knowledgeEyeLookAround')}
+                                    {item.action_payload.eye_expression === 'happy' && t('knowledgeEyeHappy')}
+                                  </span>
+                                </span>
+                              ) : !item.action_type || item.action_type === 'none' ? (
+                                <span className="text-stone-400 text-[11px]">—</span>
+                              ) : null}
+                            </div>
                           </td>
 
                           {/* Fast-Path & Active */}
@@ -1248,7 +1221,7 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
                                 </span>
                               )}
                               <span className={`text-[10px] font-bold ${item.is_active ? 'text-emerald-600' : 'text-stone-400'}`}>
-                                {item.is_active ? '● Bật' : '○ Tắt'}
+                                {item.is_active ? t('knowledgeStatusActive') : t('knowledgeStatusInactive')}
                               </span>
                             </div>
                           </td>
@@ -1269,7 +1242,7 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
                                   borderColor: '#BFBFBD',
                                   color: '#262626',
                                 }}
-                                title="Sửa kịch bản"
+                                title={t('knowledgeEditScenarioTooltip')}
                               >
                                 <Edit2 className="w-3.5 h-3.5" />
                               </button>
@@ -1281,7 +1254,7 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
                                   borderColor: '#BFBFBD',
                                   color: '#8C8C8C',
                                 }}
-                                title="Xóa kịch bản"
+                                title={t('knowledgeDeleteScenarioTooltip')}
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
@@ -1300,7 +1273,7 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
               totalItems={displayScenarios.length}
               pageSize={scenarioPageSize}
               onPageChange={setCurrentPage}
-              itemName="kịch bản"
+              itemName={t('knowledgeScenarioItemName')}
             />
           </div>
         </div>
@@ -1327,23 +1300,23 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
                 {editingSourceFile.isNew ? (
                   <div className="flex-1 max-w-sm">
                     <label className="block text-[10px] font-bold uppercase tracking-wider text-stone-600 mb-0.5">
-                      Tên file Markdown mới (.md) *
+                      {t('knowledgeModalNewFileLabel')}
                     </label>
                     <input
                       type="text"
                       value={newSourceFileName}
                       onChange={(e) => setNewSourceFileName(e.target.value)}
-                      placeholder="Ví dụ: quy_dinh_khach_san.md"
+                      placeholder={t('knowledgeModalNewFilePlaceholder')}
                       className="w-full px-2.5 py-1 bg-white border border-stone-300 rounded-lg text-xs font-mono font-bold text-stone-900 focus:outline-none focus:border-indigo-600 shadow-2xs"
                     />
                   </div>
                 ) : (
                   <div>
                     <h3 className="text-sm font-bold" style={{ color: '#262626' }}>
-                      Chỉnh sửa file nguồn: <span className="font-mono text-indigo-700">{editingSourceFile.filename}</span>
+                      {t('knowledgeModalEditFileTitle').replace('{filename}', editingSourceFile.filename)}
                     </h3>
                     <p className="text-[10px] text-stone-500">
-                      Nội dung lưu trực tiếp vào <code>backend/knowledge_vault/</code> và tự động nạp vào bộ nhớ Robot
+                      {t('knowledgeModalEditFileSub')}
                     </p>
                   </div>
                 )}
@@ -1360,7 +1333,7 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
                         : 'text-stone-600 hover:text-stone-900'
                     }`}
                   >
-                    Soạn thảo
+                    {t('knowledgeModalTabEdit')}
                   </button>
                   <button
                     onClick={() => setEditorModeTab('preview')}
@@ -1370,7 +1343,7 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
                         : 'text-stone-600 hover:text-stone-900'
                     }`}
                   >
-                    Xem trước (Preview)
+                    {t('knowledgeModalTabPreview')}
                   </button>
                 </div>
 
@@ -1389,7 +1362,7 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
                 <textarea
                   value={sourceMarkdownContent}
                   onChange={(e) => setSourceMarkdownContent(e.target.value)}
-                  placeholder="Nhập nội dung tài liệu Markdown tại đây..."
+                  placeholder={t('knowledgeModalPlaceholderMarkdown')}
                   className="w-full h-full min-h-[340px] font-mono text-xs p-3 bg-white border border-stone-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all resize-y leading-relaxed text-stone-900"
                 />
               ) : (
@@ -1402,7 +1375,9 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
             {/* Modal Footer */}
             <div className="pt-3 border-t flex items-center justify-between" style={{ borderColor: '#E9E5DC' }}>
               <div className="text-[11px] text-stone-500">
-                Độ dài: <strong>{sourceMarkdownContent.length}</strong> ký tự • {sourceMarkdownContent.split('\n').length} dòng
+                {t('knowledgeModalLengthCount')
+                  .replace('{chars}', sourceMarkdownContent.length)
+                  .replace('{lines}', sourceMarkdownContent.split('\n').length)}
               </div>
 
               <div className="flex items-center gap-2">
@@ -1412,7 +1387,7 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
                   className="px-4 py-2 rounded-lg border text-xs font-semibold hover:bg-stone-100 transition-colors cursor-pointer"
                   style={{ borderColor: '#BFBFBD', color: '#262626' }}
                 >
-                  Hủy
+                  {t('knowledgeModalBtnCancel')}
                 </button>
                 <button
                   type="button"
@@ -1427,12 +1402,12 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
                   {isSavingSource ? (
                     <>
                       <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                      <span>Đang lưu & nạp vào Robot...</span>
+                      <span>{t('knowledgeModalBtnSaving')}</span>
                     </>
                   ) : (
                     <>
                       <Save className="w-3.5 h-3.5" />
-                      <span>{editingSourceFile.isNew ? 'Tạo File & Nạp Vào Robot' : 'Lưu Thay Đổi & Nạp Vào Robot'}</span>
+                      <span>{editingSourceFile.isNew ? t('knowledgeModalBtnSaveNew') : t('knowledgeModalBtnSaveEdit')}</span>
                     </>
                   )}
                 </button>
@@ -1453,7 +1428,7 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
           >
             <div className="flex items-center justify-between pb-3 border-b" style={{ borderColor: '#E9E5DC' }}>
               <h3 className="text-sm font-bold" style={{ color: '#262626' }}>
-                {editingId ? 'Cập Nhật Kịch Bản Hội Thoại' : 'Thêm Kịch Bản Hội Thoại Mới'}
+                {editingId ? t('knowledgeModalEditScenarioTitle') : t('knowledgeModalAddScenarioTitle')}
               </h3>
               <button
                 type="button"
@@ -1467,14 +1442,14 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
             <form onSubmit={handleSubmitModal} className="space-y-3.5 text-xs">
               <div>
                 <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-700 mb-1">
-                  Tiêu đề kịch bản *
+                  {t('knowledgeLabelScenarioTitle')}
                 </label>
                 <input
                   type="text"
                   required
                   value={formData.title}
                   onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                  placeholder="Ví dụ: Mật khẩu Wi-Fi sảnh"
+                  placeholder={t('knowledgePlaceholderScenarioTitle')}
                   className="w-full px-3 py-2 bg-white border border-stone-300 rounded-lg text-stone-900 font-semibold focus:outline-none"
                 />
               </div>
@@ -1482,24 +1457,24 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-700 mb-1">
-                    Danh mục
+                    {t('knowledgeLabelScenarioCategory')}
                   </label>
                   <select
                     value={formData.category}
                     onChange={(e) => setFormData({ ...formData, category: e.target.value })}
                     className="w-full px-3 py-2 bg-white border border-stone-300 rounded-lg text-stone-900 font-bold focus:outline-none cursor-pointer"
                   >
-                    <option value="facility">Tiện ích (facility)</option>
-                    <option value="faq">Hỏi đáp (faq)</option>
-                    <option value="greeting">Lời chào (greeting)</option>
-                    <option value="service">Dịch vụ (service)</option>
-                    <option value="chitchat">Trò chuyện (chitchat)</option>
+                    <option value="facility">{getCategoryLabel('facility', isEN)} (facility)</option>
+                    <option value="faq">{getCategoryLabel('faq', isEN)} (faq)</option>
+                    <option value="greeting">{getCategoryLabel('greeting', isEN)} (greeting)</option>
+                    <option value="service">{getCategoryLabel('service', isEN)} (service)</option>
+                    <option value="chitchat">{getCategoryLabel('chitchat', isEN)} (chitchat)</option>
                   </select>
                 </div>
 
                 <div>
                   <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-700 mb-1">
-                    Độ ưu tiên (0 - 100)
+                    {t('knowledgeLabelPriorityRange')}
                   </label>
                   <input
                     type="number"
@@ -1514,40 +1489,40 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
 
               <div>
                 <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-700 mb-1">
-                  Từ khóa kích hoạt (Cách nhau bởi dấu phẩy)
+                  {t('knowledgeLabelKeywords')}
                 </label>
                 <input
                   type="text"
                   value={formData.match_keywords}
                   onChange={(e) => setFormData({ ...formData, match_keywords: e.target.value })}
-                  placeholder="wifi, pass wifi, mật khẩu wifi, kết nối mạng"
+                  placeholder={t('knowledgePlaceholderKeywords')}
                   className="w-full px-3 py-2 bg-white border border-stone-300 rounded-lg text-stone-900 font-mono text-[11px] focus:outline-none"
                 />
               </div>
 
               <div>
                 <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-700 mb-1">
-                  Câu trả lời tiếng Việt *
+                  {t('knowledgeLabelResponseVi')}
                 </label>
                 <textarea
                   required
                   rows={3}
                   value={formData.response_vi}
                   onChange={(e) => setFormData({ ...formData, response_vi: e.target.value })}
-                  placeholder="Dạ wifi miễn phí tại sảnh là Aurora_Guest, mật khẩu là aurora2026 ạ."
+                  placeholder={t('knowledgePlaceholderResponseVi')}
                   className="w-full px-3 py-2 bg-white border border-stone-300 rounded-lg text-stone-900 focus:outline-none leading-relaxed"
                 />
               </div>
 
               <div>
                 <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-700 mb-1">
-                  Câu trả lời tiếng Anh (Tùy chọn)
+                  {t('knowledgeLabelResponseEn')}
                 </label>
                 <textarea
                   rows={2}
                   value={formData.response_en}
                   onChange={(e) => setFormData({ ...formData, response_en: e.target.value })}
-                  placeholder="Complimentary Wi-Fi is Aurora_Guest, password is aurora2026."
+                  placeholder={t('knowledgePlaceholderResponseEn')}
                   className="w-full px-3 py-2 bg-white border border-stone-300 rounded-lg text-stone-900 focus:outline-none leading-relaxed text-[11px]"
                 />
               </div>
@@ -1555,34 +1530,52 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-700 mb-1">
-                    Hành động kèm theo
+                    {t('knowledgeLabelActionType')}
                   </label>
                   <select
                     value={formData.action_type}
                     onChange={(e) => setFormData({ ...formData, action_type: e.target.value })}
                     className="w-full px-3 py-2 bg-white border border-stone-300 rounded-lg text-stone-900 font-bold focus:outline-none cursor-pointer"
                   >
-                    <option value="none">Không có (Chỉ trả lời thoại)</option>
-                    <option value="show_map">Hiện bản đồ / Điều hướng</option>
-                    <option value="call_reception">Gọi Video Call Lễ Tân</option>
+                    <option value="none">{t('knowledgeActionNone')}</option>
+                    <option value="show_map">{t('knowledgeActionShowMap')}</option>
+                    <option value="call_reception">{t('knowledgeActionCallReception')}</option>
                   </select>
                 </div>
 
-                {formData.action_type === 'show_map' && (
-                  <div>
-                    <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-700 mb-1">
-                      Mã địa điểm (Destination Key)
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.destination_key}
-                      onChange={(e) => setFormData({ ...formData, destination_key: e.target.value })}
-                      placeholder="restaurant, gym, pool, elevator"
-                      className="w-full px-3 py-2 bg-white border border-stone-300 rounded-lg text-stone-900 font-mono text-[11px] focus:outline-none"
-                    />
-                  </div>
-                )}
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-700 mb-1">
+                    {t('knowledgeLabelEyeExpression')}
+                  </label>
+                  <select
+                    value={formData.eye_expression || 'none'}
+                    onChange={(e) => setFormData({ ...formData, eye_expression: e.target.value })}
+                    className="w-full px-3 py-2 bg-white border border-stone-300 rounded-lg text-stone-900 font-bold focus:outline-none cursor-pointer"
+                  >
+                    <option value="none">{t('knowledgeEyeNone')}</option>
+                    <option value="look_up">{t('knowledgeEyeLookUp')}</option>
+                    <option value="look_left">{t('knowledgeEyeLookLeft')}</option>
+                    <option value="look_right">{t('knowledgeEyeLookRight')}</option>
+                    <option value="look_around">{t('knowledgeEyeLookAround')}</option>
+                    <option value="happy">{t('knowledgeEyeHappy')}</option>
+                  </select>
+                </div>
               </div>
+
+              {formData.action_type === 'show_map' && (
+                <div>
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-stone-700 mb-1">
+                    {t('knowledgeLabelDestinationKey')}
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.destination_key}
+                    onChange={(e) => setFormData({ ...formData, destination_key: e.target.value })}
+                    placeholder="restaurant, gym, pool, elevator"
+                    className="w-full px-3 py-2 bg-white border border-stone-300 rounded-lg text-stone-900 font-mono text-[11px] focus:outline-none"
+                  />
+                </div>
+              )}
 
               <div className="flex items-center gap-6 pt-2">
                 <label className="flex items-center gap-2 cursor-pointer">
@@ -1592,7 +1585,7 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
                     onChange={(e) => setFormData({ ...formData, is_fast_path: e.target.checked })}
                     className="w-4 h-4 rounded text-stone-900 accent-stone-900 cursor-pointer"
                   />
-                  <span className="font-bold text-stone-800">Bật Fast-Path (&lt; 1ms In-Memory)</span>
+                  <span className="font-bold text-stone-800">{t('knowledgeLabelFastPathToggle')}</span>
                 </label>
 
                 <label className="flex items-center gap-2 cursor-pointer">
@@ -1602,7 +1595,7 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
                     onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
                     className="w-4 h-4 rounded text-stone-900 accent-stone-900 cursor-pointer"
                   />
-                  <span className="font-bold text-stone-800">Kích hoạt kịch bản</span>
+                  <span className="font-bold text-stone-800">{t('knowledgeLabelActiveToggle')}</span>
                 </label>
               </div>
 
@@ -1614,7 +1607,7 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
                   className="px-4 py-2 rounded-lg border text-xs font-semibold hover:bg-gray-100 transition-colors cursor-pointer"
                   style={{ borderColor: '#BFBFBD', color: '#262626' }}
                 >
-                  Hủy
+                  {t('knowledgeModalBtnCancel')}
                 </button>
                 <button
                   type="submit"
@@ -1625,7 +1618,7 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
                     color: '#F2EFE9',
                   }}
                 >
-                  {isSubmitting ? 'Đang lưu...' : editingId ? 'Lưu Thay Đổi' : 'Tạo Kịch Bản'}
+                  {isSubmitting ? t('knowledgeBtnSavingScenario') : editingId ? t('knowledgeBtnSaveScenario') : t('knowledgeBtnCreateScenario')}
                 </button>
               </div>
             </form>
@@ -1649,10 +1642,10 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
                 </div>
                 <div>
                   <h3 className="text-sm font-bold" style={{ color: '#262626' }}>
-                    Cấu Hình Tốc Độ Nói Robot
+                    {t('knowledgeVoiceModalTitle')}
                   </h3>
                   <p className="text-[11px]" style={{ color: '#8C8C8C' }}>
-                    EdgeTTS Neural & Kiosk Speech Synthesis
+                    {t('knowledgeVoiceModalSub')}
                   </p>
                 </div>
               </div>
@@ -1670,10 +1663,10 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
               <div>
                 <div className="flex items-center justify-between mb-1.5">
                   <label className="text-[11px] font-bold uppercase tracking-wider text-stone-700">
-                    Tốc độ phát âm ({tempRate}x)
+                    {t('knowledgeVoiceRateLabel').replace('{rate}', tempRate)}
                   </label>
                   <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
-                    {tempRate === 1.0 ? 'Chuẩn (1.0x)' : tempRate < 1.0 ? `Chậm (${tempRate}x)` : `Nhanh (${tempRate}x)`}
+                    {tempRate === 1.0 ? t('knowledgeVoiceRateNormal') : tempRate < 1.0 ? t('knowledgeVoiceRateSlow').replace('{rate}', tempRate) : t('knowledgeVoiceRateFast').replace('{rate}', tempRate)}
                   </span>
                 </div>
 
@@ -1716,19 +1709,19 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
               {/* Giọng đọc chuẩn của Robot Rora */}
               <div className="flex items-center justify-between p-2.5 bg-white rounded-xl border" style={{ borderColor: '#E9E5DC' }}>
                 <div>
-                  <div className="text-[11px] font-bold text-stone-700">Giọng đọc Robot (Rora)</div>
-                  <div className="text-[10px] text-stone-500">EdgeTTS Hoài My Neural (Chuẩn tự nhiên)</div>
+                  <div className="text-[11px] font-bold text-stone-700">{t('knowledgeVoiceSpeakerLabel')}</div>
+                  <div className="text-[10px] text-stone-500">{t('knowledgeVoiceSpeakerSub')}</div>
                 </div>
                 <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
-                  Hoài My (Nữ)
+                  {t('knowledgeVoiceSpeakerName')}
                 </span>
               </div>
 
               {/* Nút nghe thử trực tiếp */}
               <div className="p-3 bg-stone-100 rounded-xl border flex items-center justify-between gap-3" style={{ borderColor: '#E9E5DC' }}>
                 <div className="min-w-0">
-                  <div className="text-xs font-bold text-stone-800 truncate">Nghe thử câu chào mẫu</div>
-                  <div className="text-[10px] text-stone-500 truncate">Kiểm tra tốc độ trước khi áp dụng</div>
+                  <div className="text-xs font-bold text-stone-800 truncate">{t('knowledgeVoiceTestTitle')}</div>
+                  <div className="text-[10px] text-stone-500 truncate">{t('knowledgeVoiceTestSub')}</div>
                 </div>
                 <button
                   type="button"
@@ -1742,12 +1735,12 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
                   {isTestSpeaking ? (
                     <>
                       <Square className="w-3.5 h-3.5 fill-current" />
-                      <span>Dừng</span>
+                      <span>{t('knowledgeVoiceTestStop')}</span>
                     </>
                   ) : (
                     <>
                       <Play className="w-3.5 h-3.5 fill-current" />
-                      <span>Nghe Thử</span>
+                      <span>{t('knowledgeVoiceTestPlay')}</span>
                     </>
                   )}
                 </button>
@@ -1761,7 +1754,7 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
                 className="px-4 py-2 rounded-lg border text-xs font-semibold hover:bg-gray-100 transition-colors cursor-pointer"
                 style={{ borderColor: '#BFBFBD', color: '#262626' }}
               >
-                Hủy
+                {t('knowledgeModalBtnCancel')}
               </button>
               <button
                 type="button"
@@ -1774,7 +1767,7 @@ Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Conci
                 }}
               >
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                <span>{isSavingVoice ? 'Đang lưu...' : 'Lưu & Áp Dụng Ngay'}</span>
+                <span>{isSavingVoice ? t('knowledgeVoiceBtnSaving') : t('knowledgeVoiceBtnSave')}</span>
               </button>
             </div>
           </div>

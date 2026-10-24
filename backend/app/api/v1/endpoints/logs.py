@@ -27,17 +27,18 @@ def clean_log_message(msg: str) -> str:
     if match:
         actor = match.group(2)
         action = match.group(3).upper()
+        prefix = "Robot" if actor.lower().startswith("robot") else "Nhân viên"
         if action == "LOGIN":
-            return f"Nhân viên '{actor}' đã đăng nhập thành công vào hệ thống."
+            return f"{prefix} '{actor}' đã đăng nhập thành công vào hệ thống."
         elif action == "LOGOUT":
-            return f"Nhân viên '{actor}' đã đăng xuất thành công khỏi hệ thống."
+            return f"{prefix} '{actor}' đã đăng xuất thành công khỏi hệ thống."
         elif action == "CREATE":
-            return f"Nhân viên '{actor}' đã tạo mới dữ liệu."
+            return f"{prefix} '{actor}' đã tạo mới dữ liệu."
         elif action == "UPDATE":
-            return f"Nhân viên '{actor}' đã cập nhật thông tin dữ liệu."
+            return f"{prefix} '{actor}' đã cập nhật thông tin dữ liệu."
         elif action == "DELETE":
-            return f"Nhân viên '{actor}' đã xóa dữ liệu khỏi hệ thống."
-        return f"Nhân viên '{actor}' đã thực hiện thao tác {action.lower()}."
+            return f"{prefix} '{actor}' đã xóa dữ liệu khỏi hệ thống."
+        return f"{prefix} '{actor}' đã thực hiện thao tác {action.lower()}."
 
     msg = re.sub(r"SESSION:[a-zA-Z0-9_\-]+", "Phiên làm việc", msg)
     msg = re.sub(r"token:[a-zA-Z0-9_\-\.]+", "***", msg)

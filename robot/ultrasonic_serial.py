@@ -226,6 +226,12 @@ class UltrasonicSerialReader:
             snapshot = self._snapshot
             if snapshot is None:
                 return None
+            encoders = None
+            if snapshot.encoders is not None:
+                encoders = {
+                    motor: dict(state) if isinstance(state, dict) else state
+                    for motor, state in snapshot.encoders.items()
+                }
             return SensorSnapshot(
                 distances=dict(snapshot.distances),
                 received_at=snapshot.received_at,
@@ -235,7 +241,12 @@ class UltrasonicSerialReader:
                 accel=dict(snapshot.accel) if snapshot.accel is not None else None,
                 gyro=dict(snapshot.gyro) if snapshot.gyro is not None else None,
                 yaw_rate_dps=snapshot.yaw_rate_dps,
+                encoders=encoders,
             )
+
+    def get_snapshot(self) -> Optional[SensorSnapshot]:
+        """Compatibility API used by the LiDAR/WebSocket telemetry bridge."""
+        return self.latest()
 
     def start(self):
         if serial is None:

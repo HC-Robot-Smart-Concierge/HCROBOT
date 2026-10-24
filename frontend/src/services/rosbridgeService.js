@@ -61,7 +61,10 @@ export const parseLaserScan = (msg) => {
 
   for (let i = 0; i < ranges.length; i++) {
     const dist = ranges[i];
-    if (dist >= range_min && dist <= range_max && isFinite(dist)) {
+    // rosbridge serializes ROS +/-Infinity values as null.  The global
+    // isFinite(null) returns true and null.toFixed() then crashes the whole
+    // subscription callback, leaving the UI stuck at "RAW: 0 PTS".
+    if (typeof dist === 'number' && Number.isFinite(dist) && dist >= range_min && dist <= range_max) {
       const angleRad = angle_min + i * angle_increment;
       const angleDeg = (angleRad * (180 / Math.PI)) % 360;
       points.push({
@@ -327,6 +330,10 @@ export class RosbridgeClient {
   saveSlamMap(mapName) {
     const rawName = (mapName || '').trim();
     return this.publish('/robot/save_map', 'std_msgs/String', { data: rawName });
+  }
+
+  togglePauseMap() {
+    return this.publish('/robot/pause_map', 'std_msgs/Empty', {});
   }
 }
 

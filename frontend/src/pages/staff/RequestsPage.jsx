@@ -9,8 +9,10 @@ import {
   createMaintenanceRequest,
   createOperationalDirective,
 } from '../../services/operationsApi';
+import { useLanguage } from '../../context/LanguageContext';
 
 export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = () => {} }) => {
+  const { t } = useLanguage();
   const staffName = currentUser?.full_name || currentUser?.name || 'Elena Rossi';
   const staffDept = currentUser?.department || 'F&B';
   const staffId = currentUser?.id || currentUser?.username || 'user';
@@ -765,13 +767,13 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
         {isLoading ? (
           <div className="py-20 text-center text-stone-400 flex flex-col items-center justify-center space-y-2">
             <RefreshCw className="w-8 h-8 animate-spin text-stone-700" />
-            <p className="text-sm font-semibold text-stone-600">Đang tải danh sách yêu cầu...</p>
+            <p className="text-sm font-semibold text-stone-600">{t('opsLoading')}</p>
           </div>
         ) : (
           <div className="space-y-3.5">
             {paginatedRequests.length === 0 ? (
               <div className="p-12 text-center bg-white rounded-2xl border border-[#E5E1D8] text-xs text-stone-500">
-                Không tìm thấy yêu cầu nào phù hợp với bộ lọc hiện tại.
+                {t('opsEmptyDesc')}
               </div>
             ) : (
               paginatedRequests.map((req) => {

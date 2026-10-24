@@ -48,21 +48,21 @@ export const MobileBottomNav = ({
 
   const navItems = isConcierge
     ? [
-        { id: 'LiveCalls', label: 'Tổng Đài', icon: PhoneCall },
-        { id: 'Taxi', label: 'Đặt Xe', icon: Car },
-        { id: 'Feedback', label: 'Đánh Giá', icon: Star },
-        { id: 'Requests', label: t('menuRequests') || 'Yêu Cầu', icon: Inbox },
-        { id: 'MyTasks', label: 'Cá Nhân', icon: ClipboardCheck },
+        { id: 'LiveCalls', label: 'Live Call', icon: PhoneCall },
+        { id: 'Taxi', label: 'Taxi', icon: Car },
+        { id: 'Feedback', label: 'Feedback', icon: Star },
+        { id: 'Requests', label: t('menuRequests'), icon: Inbox },
+        { id: 'MyTasks', label: t('menuMyTasks'), icon: ClipboardCheck },
         ...(isKitchen ? [{ id: 'KitchenMenu', label: 'Menu', icon: UtensilsCrossed }] : []),
-        { id: 'Notifications', label: t('menuNotifications') || 'Thông Báo', icon: Bell },
+        { id: 'Notifications', label: t('menuNotifications'), icon: Bell },
       ]
     : [
-        { id: 'Dashboard', label: t('menuDashboard') || 'Tổng Quan', icon: LayoutDashboard },
-        { id: 'Requests', label: t('menuRequests') || 'Yêu Cầu', icon: Inbox },
-        { id: 'MyTasks', label: 'Cá Nhân', icon: ClipboardCheck },
+        { id: 'Dashboard', label: t('menuDashboard'), icon: LayoutDashboard },
+        { id: 'Requests', label: t('menuRequests'), icon: Inbox },
+        { id: 'MyTasks', label: t('menuMyTasks'), icon: ClipboardCheck },
         ...(isKitchen ? [{ id: 'KitchenMenu', label: 'Menu', icon: UtensilsCrossed }] : []),
-        { id: 'Notifications', label: t('menuNotifications') || 'Thông Báo', icon: Bell },
-        { id: 'Profile', label: t('menuProfile') || 'Hồ Sơ', icon: User },
+        { id: 'Notifications', label: t('menuNotifications'), icon: Bell },
+        { id: 'Profile', label: t('menuProfile'), icon: User },
       ];
 
   return (

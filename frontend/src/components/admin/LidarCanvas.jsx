@@ -167,30 +167,22 @@ export const LidarCanvas = ({
         const ox = gridMetadata.origin_x || -5.0;
         const oy = gridMetadata.origin_y || -5.0;
         const cellPx = Math.max(gRes * scale, 1.5);
+        const cellCount = Math.min(gridData.length, gWidth * gHeight);
 
-        // Pass 1: Free space (Soft warm lobby floor)
-        ctx.fillStyle = 'rgba(238, 235, 225, 0.45)';
-        for (let gy = 0; gy < gHeight; gy++) {
-          for (let gx = 0; gx < gWidth; gx++) {
-            if (gridData[gy * gWidth + gx] === 0) {
-              const worldX = ox + gx * gRes;
-              const worldY = oy + gy * gRes;
-              const cellCanvas = worldToCanvas(worldX, worldY, width, height);
-              ctx.fillRect(cellCanvas.px, cellCanvas.py - cellPx, cellPx + 0.6, cellPx + 0.6);
-            }
-          }
-        }
-
-        // Pass 2: Obstacles & Walls (Crisp Dark Charcoal)
-        ctx.fillStyle = '#18181B';
-        for (let gy = 0; gy < gHeight; gy++) {
-          for (let gx = 0; gx < gWidth; gx++) {
-            if (gridData[gy * gWidth + gx] === 100) {
-              const worldX = ox + gx * gRes;
-              const worldY = oy + gy * gRes;
-              const cellCanvas = worldToCanvas(worldX, worldY, width, height);
-              ctx.fillRect(cellCanvas.px, cellCanvas.py - cellPx, cellPx + 0.8, cellPx + 0.8);
-            }
+        for (let idx = 0; idx < cellCount; idx++) {
+          const cell = gridData[idx];
+          if (cell !== 0 && cell !== 100) continue;
+          const gx = idx % gWidth;
+          const gy = (idx - gx) / gWidth;
+          const worldX = ox + gx * gRes;
+          const worldY = oy + gy * gRes;
+          const cellCanvas = worldToCanvas(worldX, worldY, width, height);
+          if (cell === 0) {
+            ctx.fillStyle = 'rgba(238, 235, 225, 0.45)';
+            ctx.fillRect(cellCanvas.px, cellCanvas.py - cellPx, cellPx + 0.6, cellPx + 0.6);
+          } else {
+            ctx.fillStyle = '#18181B';
+            ctx.fillRect(cellCanvas.px, cellCanvas.py - cellPx, cellPx + 0.8, cellPx + 0.8);
           }
         }
       }

@@ -21,22 +21,26 @@ class GeminiService:
 
     def __init__(self):
         self.api_key = settings.GEMINI_API_KEY
-        self.model = settings.GEMINI_MODEL or "gemini-flash-latest"
-        # Danh sách model dự phòng ưu tiên các model phản hồi ổn định nhất (đã test 200 OK)
+        self.model = settings.GEMINI_MODEL or "gemini-2.5-flash"
+        # Danh sach model du phong uu tien model on dinh nhat (gemini-2.5-flash)
         self.fallback_models = [
             self.model,
-            "gemini-3-flash-preview",
-            "gemini-3.1-flash-lite-preview",
+            "gemini-2.5-flash",
             "gemini-flash-latest",
+            "gemini-2.0-flash",
         ]
-        # Loại bỏ trùng lặp mà vẫn giữ thứ tự ưu tiên
+        # Loai bo trung lap ma van giu thu tu uu tien
         seen = set()
         self.candidate_models = [m for m in self.fallback_models if not (m in seen or seen.add(m))]
 
     @property
+    def current_api_key(self) -> str:
+        return self.api_key or settings.GEMINI_API_KEY or ""
+
+    @property
     def is_configured(self) -> bool:
-        """Kiểm tra xem Gemini API key đã được cấu hình hay chưa."""
-        return bool(self.api_key and self.api_key.strip())
+        """Kiem tra xem Gemini API key da duoc cau hinh hay chua."""
+        return bool(self.current_api_key.strip())
 
     @staticmethod
     def detect_language(text: str) -> Tuple[str, str]:
@@ -93,6 +97,9 @@ class GeminiService:
         """
         Xây dựng System Instruction tối ưu cho giao tiếp hội thoại tự nhiên của robot Concierge.
         """
+        from app.services.ai.scenario_service import scenario_service
+        hotel_facts = scenario_service.get_hotel_facts_prompt(lang_code)
+
         if lang_code == "en-US":
             prompt = (
                 "You are Rora - a smart, charming, and courteous AI Concierge Robot at the 5-star Aurora Grand Hotel.\n"
@@ -105,16 +112,13 @@ class GeminiService:
                 "   - Whenever the guest makes a room service or amenity request (cleaning, towels, food, repairs, luggage, taxi):\n"
                 "     + If room number is NOT known yet (not in [Room Info]): ALWAYS politely ask for their room number first.\n"
                 "     + If room number IS ALREADY known (in [Room Info]): Confirm the request with their room number and NEVER ask for their room number again during this session.\n"
-                "AURORA GRAND HOTEL AMENITIES & FACTS:\n"
-                "- Level 1: Main Lobby, Front Desk 24/7 (dial 0 from room telephone), and ATM.\n"
-                "- Level 2: Aurora Restaurant (serves breakfast buffet from 6:30 AM to 10:00 AM).\n"
-                "- Level 3: Conference Center & Executive Meeting Rooms.\n"
-                "- Level 4: Infinity Pool (open 6:00 AM to 10:00 PM, free towels) & 24/7 Fitness Center / Gym.\n"
-                "- Level 5: Aurora Luxury Spa & Sauna (open 9:00 AM to 10:00 PM).\n"
-                "- Basement B1: Complimentary parking for staying guests.\n"
-                "- Wi-Fi: Network name 'Aurora_Guest', password 'aurora2026'.\n"
-                "- Hours: Standard check-in from 2:00 PM, check-out before 12:00 PM noon."
+                "6. KNOWLEDGE INTEGRITY (STRICT RAG & FACTS):\n"
+                "   - All factual details regarding hotel amenities, timings, room types, and services are strictly governed by [Hotel Knowledge Base (RAG)] and Admin-configured facts.\n"
+                "   - NEVER hallucinate or invent facilities not documented in the provided knowledge base.\n"
+                "   - If an amenity or inquiry is not found in the documentation, politely advise the guest to check with the Front Desk.\n"
             )
+            if hotel_facts:
+                prompt += f"\n{hotel_facts}\n"
         else:
             prompt = (
                 "Bạn là Rora - Trợ lý Robot Concierge thông minh, lễ phép, duyên dáng và hiếu khách tại khách sạn 5 sao Aurora Grand Hotel.\n"
@@ -125,21 +129,19 @@ class GeminiService:
                 "4. BẮT BUỘC dùng 100% tiếng Việt tự nhiên, chuẩn mực. Tuyệt đối không chèn từ ngoại ngữ vô nghĩa.\n"
                 "5. Tuyệt đối KHÔNG dùng emoji, ký hiệu markdown (*, #, _, -) hay gạch đầu dòng.\n"
                 "6. Viết thời gian rõ ràng: luôn viết bằng chữ như 'từ 6 giờ sáng đến 22 giờ tối', '12 giờ trưa', không viết tắt '6-22h'.\n"
-                "7. QUY TẮC BẮT BUỘC VỀ YÊU CẦU DỊCH VỤ LIÊN QUAN TỚI SỐ PHÒNG:\n"
+                "7. Khi hướng dẫn chỉ đường hoặc giới thiệu vị trí một tiện ích, nhà vệ sinh hay phòng của khách sạn, ở cuối câu hãy luôn thêm câu mời: 'Ngoài ra, Quý khách có thể quét mã QR trên màn hình để lưu lại chỉ dẫn nhé ạ.'\n"
+                "8. QUY TẮC BẮT BUỘC VỀ YÊU CẦU DỊCH VỤ LIÊN QUAN TỚI SỐ PHÒNG:\n"
                 "   - Khi khách yêu cầu bất kỳ dịch vụ phòng nào (khăn tắm, buồng phòng, dọn phòng, chăn gối, đồ dùng, đồ ăn thức uống room service, hành lý bellman, sửa chữa máy lạnh điện nước, đặt xe taxi, v.v.):\n"
                 "     + Nếu CHƯA BIẾT số phòng (chưa có trong [Thông tin phòng]): BẮT BUỘC Rora phải hỏi số phòng của quý khách trước (ví dụ: 'Dạ em sẽ hỗ trợ ... cho quý khách ngay ạ! Quý khách vui lòng cho em xin số phòng của mình là bao nhiêu ạ?').\n"
                 "     + Nếu ĐÃ BIẾT số phòng (đã có trong [Thông tin phòng] hoặc vừa được cung cấp): Ghi nhận yêu cầu KÈM SỐ PHÒNG của khách (ví dụ: 'Dạ Rora đã ghi nhận yêu cầu ... cho Phòng [X] rồi ạ, bộ phận chuyên trách sẽ hỗ trợ quý khách ngay!') và TUYỆT ĐỐI KHÔNG hỏi lại số phòng nữa trong suốt phiên trò chuyện.\n"
-                "   - Toàn bộ các yêu cầu dịch vụ tiếp theo trong phiên này đều tự động gắn với số phòng đã lưu đó.\n\n"
-                "THÔNG TIN TIỆN ÍCH KHÁCH SẠN AURORA GRAND (ĐỂ TƯ VẤN CHO KHÁCH):\n"
-                "- Tầng 1: Sảnh chính, Quầy Lễ tân 24/7 (từ điện thoại phòng bấm phím 0) và máy ATM rút tiền.\n"
-                "- Tầng 2: Nhà hàng Aurora (phục vụ buffet sáng từ 6 giờ 30 đến 10 giờ sáng).\n"
-                "- Tầng 3: Trung tâm hội nghị & phòng họp sự kiện cao cấp.\n"
-                "- Tầng 4: Hồ bơi vô cực ngoài trời (mở từ 6 giờ sáng đến 22 giờ tối, khăn tắm miễn phí) và Phòng Gym (mở cửa 24/7).\n"
-                "- Tầng 5: Aurora Spa thư giãn (mở từ 9 giờ sáng đến 22 giờ tối).\n"
-                "- Tầng hầm B1: Bãi đỗ xe ô tô và xe máy miễn phí cho khách lưu trú.\n"
-                "- Wi-Fi miễn phí: Tên mạng 'Aurora_Guest', mật khẩu là 'aurora2026'.\n"
-                "- Thời gian lưu trú: Nhận phòng từ 14 giờ chiều, trả phòng trước 12 giờ trưa."
+                "   - Toàn bộ các yêu cầu dịch vụ tiếp theo trong phiên này đều tự động gắn với số phòng đã lưu đó.\n"
+                "9. NGUYÊN TẮC BẢO TOÀN THÔNG TIN (RAG VÀ FAST-PATH):\n"
+                "   - Toàn bộ thông tin về cơ sở vật chất, tiện ích, giờ hoạt động và quy định do [Cơ sở tri thức khách sạn (RAG)] và Admin quản lý.\n"
+                "   - Tuyệt đối KHÔNG tự ý suy diễn hoặc bịa đặt các dịch vụ không có trong tài liệu.\n"
+                "   - Nếu thông tin khách hỏi không có trong tài liệu, hãy lịch sự trả lời rằng Rora sẽ liên hệ nhân viên hoặc quầy lễ tân để hỗ trợ quý khách.\n"
             )
+            if hotel_facts:
+                prompt += f"\n{hotel_facts}\n"
 
         if stored_room_number:
             prompt += f"\n[Thông tin phòng]: Quý khách ở phòng {stored_room_number}."
@@ -151,7 +153,7 @@ class GeminiService:
             prompt += "\n[Cảm xúc khách]: Khách đang rất vui vẻ, hãy phản hồi tươi vui và nhiệt tình."
 
         if rag_context:
-            prompt += f"\n[Thông tin bổ sung]:\n{rag_context}"
+            prompt += f"\n[Cơ sở tri thức khách sạn (RAG)]:\n{rag_context}"
 
         return prompt
 
@@ -229,9 +231,9 @@ class GeminiService:
             chat_history=chat_history,
         )
 
-        # Thử lần lượt các candidate model nếu có lỗi
+        # Thu lan luot cac candidate model neu co loi
         for model in self.candidate_models:
-            stream_url = f"{GEMINI_API_BASE}/models/{model}:streamGenerateContent?alt=sse&key={self.api_key}"
+            stream_url = f"{GEMINI_API_BASE}/models/{model}:streamGenerateContent?alt=sse&key={self.current_api_key}"
             try:
                 async with httpx.AsyncClient(timeout=httpx.Timeout(connect=5.0, read=15.0, write=5.0, pool=5.0)) as client:
                     async with client.stream("POST", stream_url, json=payload, headers={"Content-Type": "application/json"}) as resp:
@@ -295,7 +297,7 @@ class GeminiService:
         )
 
         for model in self.candidate_models:
-            url = f"{GEMINI_API_BASE}/models/{model}:generateContent?key={self.api_key}"
+            url = f"{GEMINI_API_BASE}/models/{model}:generateContent?key={self.current_api_key}"
             try:
                 async with httpx.AsyncClient(timeout=httpx.Timeout(connect=5.0, read=15.0, write=5.0, pool=5.0)) as client:
                     resp = await client.post(url, json=payload, headers={"Content-Type": "application/json"})
@@ -319,6 +321,17 @@ class GeminiService:
 
         # Nếu tất cả model Gemini đều không phản hồi, ném ngoại lệ để OllamaService tự động fallback sang Llama
         raise RuntimeError("Tất cả candidate models của Gemini đều không phản hồi generateContent")
+
+    async def generate_reply(self, prompt: str, timeout: float = 5.0) -> str:
+        """
+        Sinh phản hồi văn bản thuần túy (dành cho TranslationService).
+        """
+        try:
+            res = await asyncio.wait_for(self.generate_response(prompt=prompt), timeout=timeout)
+            return res[0] if isinstance(res, tuple) else str(res)
+        except Exception as e:
+            logger.warning(f"[GeminiService] generate_reply error: {e}")
+            return ""
 
     async def extract_intent(self, user_speech: str) -> Dict[str, Any]:
         """
@@ -384,7 +397,7 @@ class GeminiService:
         )
 
         for model in self.candidate_models:
-            url = f"{GEMINI_API_BASE}/models/{model}:generateContent?key={self.api_key}"
+            url = f"{GEMINI_API_BASE}/models/{model}:generateContent?key={self.current_api_key}"
             try:
                 async with httpx.AsyncClient(timeout=httpx.Timeout(connect=5.0, read=12.0, write=5.0, pool=5.0)) as client:
                     resp = await client.post(url, json=payload, headers={"Content-Type": "application/json"})

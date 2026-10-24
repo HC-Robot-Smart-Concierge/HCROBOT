@@ -64,9 +64,22 @@ async def create_live_call_session(
             request_type="concierge",
             type="LiveAssistance",
         )
+
+        from app.services.video_call_manager import video_call_manager
+        video_call_manager.register_alias(
+            call_ticket_code,
+            req.id,
+            human_session.id,
+            human_session.session_code,
+        )
+
         await db.commit()
-        logger.info(f"[AITicketService] Live video call created: session='{support_session_id}', ticket='{call_ticket_code}'")
-        return support_session_id, call_ticket_code
+        logger.info(
+            f"[AITicketService] Live video call created: ticket='{call_ticket_code}', "
+            f"req_id='{req.id}', session_id='{human_session.id}'"
+        )
+        # Trả về call_ticket_code làm support_session_id để Robot và Concierge cùng kết nối phòng CCG-xxxxx
+        return call_ticket_code, call_ticket_code
     except Exception as e:
         logger.error(f"[AITicketService VideoCall Error] {e}")
         await db.rollback()

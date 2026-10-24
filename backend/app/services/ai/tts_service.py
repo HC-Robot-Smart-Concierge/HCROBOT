@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import hashlib
 import logging
@@ -34,6 +35,29 @@ class TTSService:
             os.makedirs(self._cache_dir, exist_ok=True)
         except Exception as e:
             logger.warning(f"[TTSService] Cannot create audio_cache dir: {e}")
+
+    @staticmethod
+    def clean_text_for_tts(text: str) -> str:
+        """
+        Chuẩn hóa văn bản trước khi đưa vào EdgeTTS:
+        - Loại bỏ markdown, icon, ngoặc
+        - Xóa gạch đầu dòng danh sách (*, -, •)
+        - Thay thế dấu hai chấm (:), dấu chấm phẩy (;) thành dấu phẩy (,) để giọng đọc êm ái, KHÔNG ngắt nghỉ khựng 1 giây
+        - Rút gọn nhiều dấu chấm (...) thành (.)
+        - Gộp khoảng trắng và ngắt dòng
+        """
+        if not text:
+            return ""
+        t = re.sub(r'[*#_`\[\]()~]', '', text)
+        t = re.sub(r'[\U00010000-\U0010ffff]', '', t)
+        t = re.sub(r'^[\s*•\-–—]+\s*', '', t, flags=re.MULTILINE)
+        t = re.sub(r':\s*', ', ', t)
+        t = re.sub(r'\s*;\s*', ', ', t)
+        t = re.sub(r'\.{2,}', '.', t)
+        t = re.sub(r'!{2,}', '!', t)
+        t = re.sub(r'\?{2,}', '?', t)
+        t = re.sub(r'\s+', ' ', t).strip()
+        return t
 
     @staticmethod
     def rate_float_to_percentage(rate: float) -> str:
@@ -126,7 +150,8 @@ class TTSService:
         Tổng hợp giọng đọc từ văn bản kèm bộ đệm âm thanh siêu tốc.
         Trả về: (audio_base64, mime_type, provider_used)
         """
-        if not text or not text.strip():
+        clean_text = self.clean_text_for_tts(text)
+        if not clean_text:
             return "", "audio/mp3", "none"
 
         selected_provider = (provider or settings.TTS_PROVIDER or "edge").lower()
@@ -136,20 +161,20 @@ class TTSService:
         elif language and any(vi in language.lower() for vi in ["vi", "vietnamese"]):
             target_voice = voice or self.default_vi_voice
         else:
-            is_vi = self.is_vietnamese(text)
+            is_vi = self.is_vietnamese(clean_text)
             target_voice = (voice or self.default_vi_voice) if is_vi else (voice or self.default_en_voice)
 
         # 0. KIỂM TRA AUDIO CACHE TRƯỚC (< 1ms)
-        cache_key = self._get_cache_key(text, selected_provider, target_voice, target_rate)
+        cache_key = self._get_cache_key(clean_text, selected_provider, target_voice, target_rate)
         cached_audio = self._get_from_cache(cache_key)
         if cached_audio:
-            logger.info(f"[TTSService Cache Hit] Phục vụ âm thanh từ bộ nhớ đệm (0ms) cho text: '{text[:25]}...'")
+            logger.info(f"[TTSService Cache Hit] Phục vụ âm thanh từ bộ nhớ đệm (0ms) cho text: '{clean_text[:25]}...'")
             return cached_audio, "audio/mp3", f"{selected_provider}_cached"
 
         # 1. Thử nghiệm provider ElevenLabs
         if selected_provider == "elevenlabs" and settings.ELEVENLABS_API_KEY:
             try:
-                audio_b64 = await self._synthesize_elevenlabs(text, voice)
+                audio_b64 = await self._synthesize_elevenlabs(clean_text, voice)
                 if audio_b64:
                     self._save_to_cache(cache_key, audio_b64)
                     return audio_b64, "audio/mp3", "elevenlabs"
@@ -159,7 +184,7 @@ class TTSService:
         # 2. Thử nghiệm provider OpenAI TTS
         if selected_provider == "openai" and settings.OPENAI_API_KEY:
             try:
-                audio_b64 = await self._synthesize_openai(text, voice)
+                audio_b64 = await self._synthesize_openai(clean_text, voice)
                 if audio_b64:
                     self._save_to_cache(cache_key, audio_b64)
                     return audio_b64, "audio/mp3", "openai"
@@ -168,7 +193,7 @@ class TTSService:
 
         # 3. Mặc định dùng EdgeTTS Neural (Siêu tự nhiên & Miễn phí)
         try:
-            audio_b64 = await self._synthesize_edge_tts(text, target_voice, target_rate)
+            audio_b64 = await self._synthesize_edge_tts(clean_text, target_voice, target_rate)
             if audio_b64:
                 self._save_to_cache(cache_key, audio_b64)
                 return audio_b64, "audio/mp3", "edge"
@@ -179,25 +204,29 @@ class TTSService:
         return "", "audio/mp3", "browser"
 
     async def _synthesize_edge_tts(self, text: str, voice: str, rate: Optional[str] = None) -> Optional[str]:
-        """EdgeTTS Neural Engine."""
-        try:
-            import edge_tts
-            clean_text = re.sub(r'[*#_`\[\]()]', '', text).strip()
-            if not clean_text:
-                return None
+        """EdgeTTS Neural Engine với auto-retry (3 lần) khi kết nối chập chờn."""
+        clean_text = self.clean_text_for_tts(text)
+        if not clean_text:
+            return None
 
-            selected_rate = rate or getattr(settings, "TTS_RATE", "+0%")
-            communicate = edge_tts.Communicate(clean_text, voice, rate=selected_rate)
-            audio_bytes = b""
-            async for chunk in communicate.stream():
-                if chunk["type"] == "audio":
-                    audio_bytes += chunk["data"]
-            if audio_bytes:
-                return base64.b64encode(audio_bytes).decode("utf-8")
-        except ImportError:
-            logger.info("[TTSService] edge_tts library not installed.")
-        except Exception as e:
-            logger.warning(f"[TTSService] EdgeTTS error: {e}")
+        selected_rate = rate or getattr(settings, "TTS_RATE", "+0%")
+        for attempt in range(3):
+            try:
+                import edge_tts
+                communicate = edge_tts.Communicate(clean_text, voice, rate=selected_rate)
+                audio_bytes = b""
+                async for chunk in communicate.stream():
+                    if chunk["type"] == "audio":
+                        audio_bytes += chunk["data"]
+                if audio_bytes and len(audio_bytes) > 100:
+                    return base64.b64encode(audio_bytes).decode("utf-8")
+            except ImportError:
+                logger.info("[TTSService] edge_tts library not installed.")
+                return None
+            except Exception as e:
+                logger.warning(f"[TTSService] EdgeTTS attempt {attempt + 1}/3 error: {e}")
+                if attempt < 2:
+                    await asyncio.sleep(0.15 * (attempt + 1))
         return None
 
     async def synthesize_chunk(self, text: str, voice: str = None, language: str = None) -> bytes:
@@ -205,7 +234,8 @@ class TTSService:
         Tổng hợp giọng nói cho đoạn text ngắn (1 mệnh đề) → trả raw audio bytes.
         Tối ưu cho Streaming Pipeline: không encode Base64, gửi thẳng qua WebSocket Binary Frame.
         """
-        if not text or not text.strip():
+        clean_text = self.clean_text_for_tts(text)
+        if not clean_text:
             return b""
 
         try:
@@ -215,11 +245,8 @@ class TTSService:
             elif language and any(vi in language.lower() for vi in ["vi", "vietnamese"]):
                 target_voice = voice or self.default_vi_voice
             else:
-                is_vi = self.is_vietnamese(text)
+                is_vi = self.is_vietnamese(clean_text)
                 target_voice = (voice or self.default_vi_voice) if is_vi else (voice or self.default_en_voice)
-            clean_text = re.sub(r'[*#_`\[\]()]', '', text).strip()
-            if not clean_text:
-                return b""
 
             cache_key = self._get_cache_key(clean_text, "edge_chunk", target_voice)
             if cache_key in self._memory_cache:
@@ -296,6 +323,22 @@ class TTSService:
             else:
                 logger.error(f"[TTSService] OpenAI TTS API error {resp.status_code}: {resp.text}")
         return None
+
+    async def warm_up_common_phrases(self):
+        """Pre-cache câu đệm và câu chào phổ biến để phản hồi tức thì 0ms."""
+        common_phrases = [
+            ("Dạ đợi em một tí nhé ạ.", "vi-VN", "vi-VN-HoaiMyNeural"),
+            ("Please wait a moment.", "en-US", "en-US-JennyNeural"),
+            ("Dạ đợi em một tí ạ.", "vi-VN", "vi-VN-HoaiMyNeural"),
+        ]
+        for phrase, lang, voice in common_phrases:
+            try:
+                cache_key = self._get_cache_key(phrase, "edge", voice, "+0%")
+                if not self._get_from_cache(cache_key):
+                    await self.synthesize(phrase, provider="edge", language=lang, voice=voice)
+                    logger.info(f"[TTSService] Pre-cached filler phrase: '{phrase}'")
+            except Exception as e:
+                logger.debug(f"[TTSService] Warmup skip for '{phrase}': {e}")
 
 
 # Singleton Instance

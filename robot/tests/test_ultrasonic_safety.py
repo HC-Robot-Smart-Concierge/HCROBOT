@@ -9,6 +9,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from obstacle_safety import ObstacleSafetyController
 from ultrasonic_serial import (
     SensorSnapshot,
+    UltrasonicSerialReader,
     parse_sensor_packet,
     parse_telemetry_packet,
 )
@@ -119,6 +120,30 @@ class TestSerialPacketParser(unittest.TestCase):
         )
         self.assertFalse(packet.mpu_available)
         self.assertIsNone(packet.accel)
+
+    def test_reader_snapshot_keeps_encoder_telemetry(self):
+        reader = UltrasonicSerialReader(port="/dev/null")
+        encoder_data = {
+            "m1": {"ticks": 101, "rpm": 2.5, "dir": 1},
+            "m2": {"ticks": 102, "rpm": 2.5, "dir": 1},
+            "m3": {"ticks": -99, "rpm": -2.4, "dir": -1},
+            "m4": {"ticks": -98, "rpm": -2.4, "dir": -1},
+        }
+        reader._snapshot = SensorSnapshot(
+            distances={"front": 80.0, "rear": 90.0, "left": 100.0, "right": 110.0},
+            received_at=time.monotonic(),
+            port="/dev/ttyUSB0",
+            sequence=7,
+            encoders=encoder_data,
+        )
+
+        latest = reader.latest()
+        compatible = reader.get_snapshot()
+
+        self.assertEqual(latest.encoders, encoder_data)
+        self.assertEqual(compatible.encoders, encoder_data)
+        self.assertIsNot(latest.encoders, encoder_data)
+        self.assertIsNot(latest.encoders["m1"], encoder_data["m1"])
 
 
 class TestObstacleSafety(unittest.TestCase):

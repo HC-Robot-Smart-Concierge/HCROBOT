@@ -115,10 +115,19 @@ export const sendChatPrompt = async (
   language = 'auto',
   emotion = 'neutral',
   sessionId = 'default_session',
-  roomNumber = null
+  roomNumber = null,
+  externalSignal = null
 ) => {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 45000);
+  const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+  if (externalSignal) {
+    if (externalSignal.aborted) {
+      controller.abort();
+    } else {
+      externalSignal.addEventListener('abort', () => controller.abort(), { once: true });
+    }
+  }
 
   try {
     const response = await fetch(`${API_BASE_URL}/chat`, {
@@ -147,6 +156,13 @@ export const sendChatPrompt = async (
     return data;
   } catch (error) {
     clearTimeout(timeoutId);
+    if (error?.name === 'AbortError' || controller.signal.aborted) {
+      return {
+        aborted: true,
+        response: '',
+        error: 'Request aborted',
+      };
+    }
     return {
       response: 'Dạ, hiện tại có gián đoạn kết nối tới AI Server.',
       error: error.message,
@@ -223,15 +239,17 @@ export const flushSession = async (sessionId = 'default_session') => {
   }
 };
 
-export const synthesizeSpeech = async (text, optionsOrProvider = 'edge', voice = null, language = 'vi-VN') => {
+export const synthesizeSpeech = async (text, optionsOrProvider = 'edge', voice = null, language = 'vi-VN', optionalSignal = null) => {
   let provider = 'edge';
   let targetVoice = voice;
   let targetLang = language;
+  let signal = optionalSignal;
 
   if (typeof optionsOrProvider === 'object' && optionsOrProvider !== null) {
     provider = optionsOrProvider.provider || 'edge';
     targetVoice = optionsOrProvider.voice || voice;
     targetLang = optionsOrProvider.language || language;
+    signal = optionsOrProvider.signal || optionalSignal || null;
   } else if (typeof optionsOrProvider === 'string') {
     provider = optionsOrProvider;
   }
@@ -242,6 +260,7 @@ export const synthesizeSpeech = async (text, optionsOrProvider = 'edge', voice =
       headers: {
         'Content-Type': 'application/json',
       },
+      signal,
       body: JSON.stringify({
         text,
         provider,
@@ -256,6 +275,14 @@ export const synthesizeSpeech = async (text, optionsOrProvider = 'edge', voice =
 
     return await response.json();
   } catch (error) {
+    if (error?.name === 'AbortError') {
+      return {
+        aborted: true,
+        audio_base64: '',
+        mime_type: 'audio/mp3',
+        error: 'Request aborted',
+      };
+    }
     return {
       audio_base64: '',
       mime_type: 'audio/mp3',
@@ -412,6 +439,57 @@ export const updateVoiceSettings = async ({ speech_rate, vi_voice, en_voice }) =
       rate_percentage: '+0%',
       vi_voice: vi_voice || 'vi-VN-HoaiMyNeural',
       en_voice: en_voice || 'en-US-JennyNeural',
+    };
+  }
+};
+
+/**
+ * Phiên dịch nhanh câu nói trực tiếp trong cuộc gọi Video Call (Anh ⇄ Việt)
+ * Tự động nhận diện ngôn ngữ và bỏ qua dịch nếu cùng tiếng Việt
+ */
+export const quickTranslateText = async ({
+  text,
+  sourceLang = 'auto',
+  targetLang = 'vi',
+  sessionId = null,
+  senderRole = 'guest',
+  withAudio = true,
+}) => {
+  if (!text || !text.trim()) {
+    return {
+      original_text: '',
+      translated_text: '',
+      source_lang: 'vi',
+      target_lang: targetLang,
+      needs_translation: false,
+      audio_base64: null,
+    };
+  }
+
+  try {
+    const res = await fetch(`${API_BASE_URL}/translate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text: text.trim(),
+        source_lang: sourceLang,
+        target_lang: targetLang,
+        session_id: sessionId,
+        sender_role: senderRole,
+        with_audio: withAudio,
+      }),
+    });
+
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } catch (err) {
+    console.warn('[AIApi] quickTranslateText fallback:', err.message);
+    return {
+      original_text: text,
+      translated_text: text,
+      source_lang: sourceLang === 'auto' ? 'vi' : sourceLang,
+      target_lang: targetLang,
+      needs_translation: false,
     };
   }
 };

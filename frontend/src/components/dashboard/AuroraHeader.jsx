@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
-  Globe,
   Bell,
   CheckCheck,
   Bot,
@@ -10,7 +9,6 @@ import {
   CookingPot,
   Sparkles,
   ShieldAlert,
-  ExternalLink,
   ChevronRight,
 } from 'lucide-react';
 
@@ -19,14 +17,14 @@ export const AuroraHeader = ({
   systemName = 'HCROBOT',
   subtitle = 'Front Desk Operations',
   unreadCount = 0,
-  language = 'EN',
-  onToggleLanguage = () => {},
   referenceLayout = false,
   notifications = [],
   onOpenNotificationsPage = () => {},
   onToggleRead = () => {},
   onMarkAllRead = () => {},
   departmentName = 'Staff',
+  currentUser = null,
+  onOpenProfilePage = () => {},
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef(null);
@@ -49,24 +47,24 @@ export const AuroraHeader = ({
   const getNotifIcon = (notif) => {
     const type = (notif.type || notif.request_type || '').toLowerCase();
     if (type.includes('urgent') || type.includes('warning')) {
-      return { Icon: AlertTriangle, color: 'bg-red-100 text-red-600' };
+      return { Icon: AlertTriangle, color: 'bg-red-50 text-red-600 border border-red-100' };
     }
     if (type.includes('robot')) {
-      return { Icon: Bot, color: 'bg-sky-100 text-sky-600' };
+      return { Icon: Bot, color: 'bg-sky-50 text-sky-600 border border-sky-100' };
     }
     if (type.includes('room_service') || type.includes('f&b')) {
-      return { Icon: CookingPot, color: 'bg-amber-100 text-amber-700' };
+      return { Icon: CookingPot, color: 'bg-amber-50 text-amber-600 border border-amber-100' };
     }
     if (type.includes('bell')) {
-      return { Icon: Briefcase, color: 'bg-stone-100 text-stone-700' };
+      return { Icon: Briefcase, color: 'bg-stone-100 text-zinc-700 border border-stone-200' };
     }
     if (type.includes('maint')) {
-      return { Icon: Wrench, color: 'bg-orange-100 text-orange-700' };
+      return { Icon: Wrench, color: 'bg-orange-50 text-orange-600 border border-orange-100' };
     }
     if (type.includes('directive')) {
-      return { Icon: ShieldAlert, color: 'bg-purple-100 text-purple-700' };
+      return { Icon: ShieldAlert, color: 'bg-purple-50 text-purple-600 border border-purple-100' };
     }
-    return { Icon: Sparkles, color: 'bg-emerald-100 text-emerald-700' };
+    return { Icon: Sparkles, color: 'bg-emerald-50 text-emerald-600 border border-emerald-100' };
   };
 
   const recentNotifications = notifications.slice(0, 5);
@@ -95,71 +93,93 @@ export const AuroraHeader = ({
       </div>
 
       {/* Right Controls */}
-      <div className="flex items-center gap-3 relative" ref={dropdownRef}>
-        {/* Language selector */}
-        <button
-          type="button"
-          onClick={onToggleLanguage}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-[#DDD8CE] text-xs font-semibold text-[#44403C] hover:bg-[#E5E0D5] transition-all cursor-pointer ${referenceLayout ? 'bg-[#F5F4F1]' : 'bg-[#EFECE6]'}`}
-        >
-          <Globe className="w-3.5 h-3.5 text-[#57534E]" />
-          <span>{language}</span>
-        </button>
-
-        {/* Notifications Bell Button */}
+      <div className="flex items-center gap-2.5 relative" ref={dropdownRef}>
+        {/* 1. Notifications Bell Button */}
         <button
           type="button"
           onClick={() => setIsOpen(!isOpen)}
-          title="Xem thông báo phòng ban"
-          className={`relative p-2 rounded-full text-[#44403C] hover:bg-[#E5E0D5] transition-all cursor-pointer ${
-            isOpen ? 'bg-[#E5E0D5] ring-2 ring-stone-400' : ''
-          } ${referenceLayout ? 'bg-transparent border-0' : 'bg-[#EFECE6] border border-[#DDD8CE]'}`}
+          title="Xem thông báo bộ phận"
+          className={`relative w-10 h-10 rounded-full bg-stone-100 hover:bg-stone-200/80 flex items-center justify-center transition-colors border border-stone-200/60 cursor-pointer ${
+            isOpen ? 'bg-stone-200/90 ring-2 ring-stone-300' : ''
+          }`}
         >
-          <Bell className="w-4 h-4 text-[#44403C]" />
+          <Bell className="w-5 h-5 text-zinc-700" />
           {unreadCount > 0 && (
-            <span className="absolute top-0.5 right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-[#EF4444] text-white text-[10px] font-bold flex items-center justify-center ring-2 ring-[#FAF8F5] animate-pulse">
+            <span className="absolute -top-1 -right-1 min-w-[20px] h-5 px-1.5 rounded-full bg-red-600 text-white text-[11px] font-bold flex items-center justify-center ring-2 ring-[#F8F7F4] animate-pulse">
               {unreadCount > 9 ? '9+' : unreadCount}
             </span>
           )}
         </button>
 
-        {/* Interactive Notification Popover / Dropdown */}
+        {/* 2. Mobile Profile Avatar Button (1-tap access on mobile PWA) */}
+        <button
+          type="button"
+          onClick={() => {
+            if (typeof onOpenProfilePage === 'function') {
+              onOpenProfilePage();
+            }
+          }}
+          title="Hồ sơ nhân viên & Cài đặt"
+          className="md:hidden flex items-center justify-center w-10 h-10 rounded-full border border-stone-200/90 overflow-hidden bg-zinc-900 text-white text-xs font-semibold shrink-0 hover:ring-2 hover:ring-stone-400 transition-all cursor-pointer shadow-xs active:scale-95"
+        >
+          {currentUser?.avatar_url || currentUser?.avatar ? (
+            <img
+              src={currentUser.avatar_url || currentUser.avatar}
+              alt={currentUser?.name || currentUser?.full_name || 'Staff'}
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <span>{(currentUser?.full_name || currentUser?.name || 'S').charAt(0).toUpperCase()}</span>
+          )}
+        </button>
+
+        {/* 3. Interactive Notification Popover / Dropdown */}
         {isOpen && (
-          <div className="absolute right-0 top-12 w-[390px] max-w-[calc(100vw-32px)] bg-white rounded-3xl border border-[#E5E1D8] shadow-2xl overflow-hidden z-50 animate-in fade-in slide-in-from-top-2 duration-150 flex flex-col">
-            {/* Popover Header */}
-            <div className="p-4 border-b border-[#F0ECE3] bg-[#FAF8F5] flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <h3 className="text-xs font-bold text-stone-900">Thông Báo Phòng Ban</h3>
-                <span className="px-2 py-0.5 rounded-full bg-[#18181B] text-white text-[9px] font-bold">
-                  {departmentName}
-                </span>
+          <div className="fixed inset-x-3 top-16 sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:w-[400px] bg-white rounded-2xl shadow-xl shadow-zinc-900/10 border border-stone-200/80 overflow-hidden z-50 flex flex-col animate-in fade-in slide-in-from-top-2 duration-150">
+            {/* Header: Tách thành 2 hàng rõ ràng khắc phục triệt để lỗi vỡ chữ */}
+            <div className="p-4 border-b border-stone-100 bg-white/90 backdrop-blur-md sticky top-0 z-10">
+              {/* Hàng 1 (Tiêu đề + Nút thao tác) */}
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 min-w-0 flex-1 mr-1 overflow-hidden">
+                  <h3 className="text-sm sm:text-base font-bold text-zinc-900 truncate">
+                    <span className="sm:hidden">Notifications</span>
+                    <span className="hidden sm:inline">Department Notifications</span>
+                  </h3>
+                  {unreadCount > 0 && (
+                    <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-red-50 text-red-600 border border-red-100 whitespace-nowrap shrink-0">
+                      {unreadCount} new
+                    </span>
+                  )}
+                </div>
+
                 {unreadCount > 0 && (
-                  <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-[10px] font-bold">
-                    {unreadCount} mới
-                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onMarkAllRead();
+                    }}
+                    className="flex items-center gap-1 text-xs font-medium text-zinc-500 hover:text-zinc-900 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+                  >
+                    <CheckCheck className="w-3.5 h-3.5 text-zinc-400" />
+                    <span>Mark all read</span>
+                  </button>
                 )}
               </div>
 
-              {unreadCount > 0 && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    onMarkAllRead();
-                  }}
-                  className="text-[11px] font-semibold text-stone-600 hover:text-stone-900 flex items-center gap-1 hover:underline cursor-pointer"
-                >
-                  <CheckCheck className="w-3 h-3" />
-                  <span>Đọc tất cả</span>
-                </button>
-              )}
+              {/* Hàng 2 (Tag bộ phận) */}
+              <div className="mt-2 flex items-center">
+                <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-zinc-900 text-white whitespace-nowrap">
+                  {departmentName}
+                </span>
+              </div>
             </div>
 
             {/* Notifications List */}
-            <div className="max-h-[340px] overflow-y-auto custom-scrollbar divide-y divide-[#F5F2EB]">
+            <div className="max-h-[60vh] sm:max-h-[420px] overflow-y-auto divide-y divide-stone-100 custom-scrollbar">
               {recentNotifications.length === 0 ? (
-                <div className="py-12 px-6 text-center text-stone-400 text-xs">
-                  <Bell className="w-8 h-8 mx-auto text-stone-300 mb-2" />
-                  <p>Hiện không có thông báo nào mới.</p>
+                <div className="py-12 px-6 text-center text-zinc-400 text-xs">
+                  <Bell className="w-8 h-8 mx-auto text-zinc-300 mb-2" />
+                  <p>No new notifications.</p>
                 </div>
               ) : (
                 recentNotifications.map((notif) => {
@@ -170,34 +190,47 @@ export const AuroraHeader = ({
                     <div
                       key={notif.id}
                       onClick={() => onToggleRead(notif.id)}
-                      className={`p-3.5 hover:bg-[#F9F7F4] transition-colors cursor-pointer flex items-start gap-3 relative ${
-                        isUnread ? 'bg-amber-50/20' : 'opacity-80'
+                      className={`p-4 hover:bg-stone-50/80 transition-colors flex items-start gap-3.5 cursor-pointer relative ${
+                        isUnread ? 'bg-stone-50/40' : 'opacity-90'
                       }`}
                     >
-                      <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 mt-0.5 ${color}`}>
-                        <Icon className="w-4 h-4" />
+                      {/* Icon bên trái */}
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 mt-0.5 ${color}`}>
+                        <Icon className="w-5 h-5" />
                       </div>
 
-                      <div className="flex-1 min-w-0 space-y-0.5">
+                      {/* Nội dung ở giữa */}
+                      <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between gap-2">
-                          <p className={`text-xs truncate ${isUnread ? 'font-bold text-stone-900' : 'font-medium text-stone-700'}`}>
+                          <p
+                            className={`text-sm truncate pr-2 ${
+                              isUnread ? 'font-bold text-zinc-900' : 'font-medium text-zinc-700'
+                            }`}
+                          >
                             {notif.title}
                           </p>
                           {isUnread && (
-                            <span className="w-2 h-2 rounded-full bg-red-600 shrink-0" />
+                            <span className="w-2 h-2 rounded-full bg-red-500 shrink-0 mt-1.5" />
                           )}
                         </div>
 
-                        <p className="text-[11px] text-stone-500 line-clamp-2 leading-relaxed">
+                        <p className="text-xs text-zinc-500 line-clamp-2 mt-0.5 leading-relaxed">
                           {notif.description}
                         </p>
 
-                        <div className="flex items-center justify-between pt-1">
-                          <span className="text-[10px] text-stone-400 font-medium">
-                            {notif.time || (notif.created_at ? new Date(notif.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : 'Vừa xong')}
+                        {/* Meta info */}
+                        <div className="flex items-center justify-between mt-2 pt-1">
+                          <span className="text-[11px] font-medium text-zinc-400">
+                            {notif.time ||
+                              (notif.created_at
+                                ? new Date(notif.created_at).toLocaleTimeString('vi-VN', {
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                  })
+                                : 'Just now')}
                           </span>
-                          <span className="text-[10px] text-stone-400 font-mono">
-                            {notif.id}
+                          <span className="text-[11px] font-mono text-zinc-400 bg-stone-100 px-1.5 py-0.5 rounded">
+                            {notif.id || 'NOTIF'}
                           </span>
                         </div>
                       </div>
@@ -208,17 +241,17 @@ export const AuroraHeader = ({
             </div>
 
             {/* Popover Footer: View all in Notification Center */}
-            <div className="p-3 border-t border-[#F0ECE3] bg-[#FAF8F5] text-center">
+            <div className="p-3 bg-stone-50/50 border-t border-stone-100">
               <button
                 type="button"
                 onClick={() => {
                   setIsOpen(false);
                   onOpenNotificationsPage();
                 }}
-                className="w-full py-2 px-3 rounded-2xl bg-white hover:bg-stone-100 border border-[#DDD8CE] text-xs font-bold text-stone-800 transition-all flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
+                className="w-full py-2.5 px-4 rounded-xl bg-white hover:bg-stone-100 text-zinc-800 text-xs font-semibold border border-stone-200/80 shadow-2xs flex items-center justify-center gap-1.5 transition-all cursor-pointer"
               >
-                <span>Xem tất cả trong Trung Tâm Thông Báo</span>
-                <ChevronRight className="w-3.5 h-3.5" />
+                <span>View all in Notification Center</span>
+                <ChevronRight className="w-3.5 h-3.5 text-zinc-500" />
               </button>
             </div>
           </div>

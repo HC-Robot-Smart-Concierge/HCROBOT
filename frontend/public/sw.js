@@ -3,7 +3,8 @@ const CACHE_NAME = 'hc-robot-app-cache';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
-  '/manifest.json'
+  '/manifest.json',
+  '/manifest-login.json'
 ];
 
 self.addEventListener('install', (event) => {

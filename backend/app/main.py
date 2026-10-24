@@ -25,8 +25,10 @@ async def lifespan(app: FastAPI):
         logger.info("[OK] Database connection & schema verified.")
         from app.core.database import AsyncSessionLocal
         from app.services.ai.scenario_service import scenario_service
+        from app.services.ai.tts_service import tts_service
         async with AsyncSessionLocal() as db_session:
             await scenario_service.initialize_cache(db_session)
+        asyncio.create_task(tts_service.warm_up_common_phrases())
     except Exception as e:
         logger.warning(f"[WARN] Could not auto-initialize DB on startup (is PostgreSQL running?): {e}")
 

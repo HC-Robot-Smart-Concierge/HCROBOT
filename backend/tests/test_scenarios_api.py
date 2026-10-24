@@ -30,6 +30,24 @@ async def test_scenario_service_in_memory_matching():
     assert hit_vc is not None
     assert hit_vc[3] == "trigger_video_call"
 
+    # 4. Kiem tra Gym doc lap, khong bi gop ho boi
+    hit_gym = scenario_service.match_fast_path("phòng gym ở đâu", "vi-VN")
+    assert hit_gym is not None
+    reply_gym, _, _, act_gym, payload_gym = hit_gym
+    assert "Tầng 5" in reply_gym
+    assert "hồ bơi" not in reply_gym.lower()
+    assert act_gym == "show_map"
+    assert payload_gym == {"destination_key": "gym"}
+
+    # 5. Kiem tra Ho boi doc lap, khong bi gop phong gym
+    hit_pool = scenario_service.match_fast_path("hồ bơi ở đâu", "vi-VN")
+    assert hit_pool is not None
+    reply_pool, _, _, act_pool, payload_pool = hit_pool
+    assert "Tầng 5" in reply_pool
+    assert "gym" not in reply_pool.lower()
+    assert act_pool == "show_map"
+    assert payload_pool == {"destination_key": "infinity_pool"}
+
 
 @pytest.mark.asyncio
 async def test_scenarios_crud_api_and_cache_sync():

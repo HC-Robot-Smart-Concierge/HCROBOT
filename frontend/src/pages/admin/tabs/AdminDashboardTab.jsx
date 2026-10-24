@@ -15,11 +15,13 @@ import {
   fetchNotifications,
   sendRobotControlCommand,
 } from '../../../services/operationsApi';
+import { useLanguage } from '../../../context/LanguageContext';
 
 export const AdminDashboardTab = ({
   onNavigateToOperations = () => {},
   onNavigateToRobots = () => {},
 }) => {
+  const { t } = useLanguage();
   const [data, setData] = useState({
     total_tasks: 0,
     active_tasks: 0,
@@ -81,18 +83,18 @@ export const AdminDashboardTab = ({
   const handleEmergencyStop = async () => {
     try {
       await sendRobotControlCommand('stop');
-      showToast('⚠️ Đã phát lệnh DỪNG KHẨN CẤP tới Robot Concierge RC-001!');
+      showToast(t('dashToastStopSuccess'));
     } catch {
-      showToast('⚠️ Không thể gửi lệnh tới Robot. Vui lòng kiểm tra kết nối mạng!');
+      showToast(t('dashToastStopFail'));
     }
   };
 
   const handleReturnToDock = async () => {
     try {
       await sendRobotControlCommand('dock');
-      showToast('🔋 Đã gửi lệnh điều hướng Robot di chuyển về Dock sạc tự động!');
+      showToast(t('dashToastDockSuccess'));
     } catch {
-      showToast('⚠️ Lỗi gửi lệnh về Dock.');
+      showToast(t('dashToastDockFail'));
     }
   };
 
@@ -100,11 +102,11 @@ export const AdminDashboardTab = ({
 
   const deptEntries = useMemo(() => {
     const raw = [
-      { id: 'Reception', name: 'Lễ tân (Reception)', count: data.dept_distribution?.Reception || 0, color: '#262626' },
-      { id: 'F&B', name: 'Phục vụ phòng (F&B)', count: data.dept_distribution?.['F&B'] || 0, color: '#525252' },
-      { id: 'Housekeeping', name: 'Buồng phòng (Housekeeping)', count: data.dept_distribution?.Housekeeping || 0, color: '#737373' },
-      { id: 'Bell Services', name: 'Hành lý (Bell Services)', count: data.dept_distribution?.['Bell Services'] || 0, color: '#9E9E9C' },
-      { id: 'Maintenance', name: 'Kỹ thuật (Maintenance)', count: data.dept_distribution?.Maintenance || 0, color: '#BFBFBD' },
+      { id: 'Reception', name: t('deptReception'), count: data.dept_distribution?.Reception || 0, color: '#262626' },
+      { id: 'F&B', name: t('deptFB'), count: data.dept_distribution?.['F&B'] || 0, color: '#525252' },
+      { id: 'Housekeeping', name: t('deptHousekeeping'), count: data.dept_distribution?.Housekeeping || 0, color: '#737373' },
+      { id: 'Bell Services', name: t('deptBell'), count: data.dept_distribution?.['Bell Services'] || 0, color: '#9E9E9C' },
+      { id: 'Maintenance', name: t('deptMaintenance'), count: data.dept_distribution?.Maintenance || 0, color: '#BFBFBD' },
     ];
 
     return raw.map((d) => {
@@ -160,10 +162,10 @@ export const AdminDashboardTab = ({
       >
         <div className="min-w-0">
           <h2 className="text-sm sm:text-base font-bold tracking-tight leading-tight truncate" style={{ color: '#262626' }}>
-            Phân Tích & Tổng Quan Vận Hành (Dashboard Analytics)
+            {t('dashTitle')}
           </h2>
           <p className="text-[10px] sm:text-[11px] font-normal truncate mt-0.5" style={{ color: '#8C8C8C' }}>
-            Thống kê trực tiếp từ cơ sở dữ liệu về phiên hội thoại, nhiệm vụ và điều phối nhân sự hỗ trợ
+            {t('dashSubtitle')}
           </p>
         </div>
 
@@ -178,7 +180,7 @@ export const AdminDashboardTab = ({
           }}
         >
           <RotateCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-          <span>{isLoading ? 'Đang cập nhật...' : 'Cập nhật số liệu'}</span>
+          <span>{isLoading ? t('dashRefreshing') : t('dashRefresh')}</span>
         </button>
       </div>
 
@@ -193,7 +195,7 @@ export const AdminDashboardTab = ({
           >
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-semibold" style={{ color: '#8C8C8C' }}>
-                PHIÊN TƯƠNG TÁC ROBOT
+                {t('dashCardSessionsTitle')}
               </span>
               <MessageSquare className="w-3.5 h-3.5" style={{ color: '#8C8C8C' }} />
             </div>
@@ -201,10 +203,10 @@ export const AdminDashboardTab = ({
               <span className="text-2xl font-bold font-mono" style={{ color: '#262626' }}>
                 {data.total_sessions}
               </span>
-              <span className="text-xs" style={{ color: '#8C8C8C' }}>phiên</span>
+              <span className="text-xs" style={{ color: '#8C8C8C' }}>{t('dashCardSessionsUnit')}</span>
             </div>
             <div className="text-[10px]" style={{ color: '#8C8C8C' }}>
-              Tổng {data.total_messages || 0} tin nhắn hội thoại
+              {t('dashCardSessionsMsg').replace('{count}', data.total_messages || 0)}
             </div>
           </div>
 
@@ -215,7 +217,7 @@ export const AdminDashboardTab = ({
           >
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-semibold" style={{ color: '#8C8C8C' }}>
-                YÊU CẦU DỊCH VỤ PHÁT SINH
+                {t('dashCardTasksTitle')}
               </span>
               <FileText className="w-3.5 h-3.5" style={{ color: '#8C8C8C' }} />
             </div>
@@ -223,10 +225,10 @@ export const AdminDashboardTab = ({
               <span className="text-2xl font-bold font-mono" style={{ color: '#262626' }}>
                 {data.total_tasks}
               </span>
-              <span className="text-xs" style={{ color: '#8C8C8C' }}>phiếu</span>
+              <span className="text-xs" style={{ color: '#8C8C8C' }}>{t('dashCardTasksUnit')}</span>
             </div>
             <div className="text-[10px]" style={{ color: '#8C8C8C' }}>
-              {data.active_tasks || 0} đang hoạt động trong CSDL
+              {t('dashCardTasksActive').replace('{count}', data.active_tasks || 0)}
             </div>
           </div>
 
@@ -237,7 +239,7 @@ export const AdminDashboardTab = ({
           >
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-semibold" style={{ color: '#8C8C8C' }}>
-                NHÂN SỰ ĐIỀU PHỐI
+                {t('dashCardStaffTitle')}
               </span>
               <Users className="w-3.5 h-3.5" style={{ color: '#8C8C8C' }} />
             </div>
@@ -245,10 +247,10 @@ export const AdminDashboardTab = ({
               <span className="text-2xl font-bold font-mono" style={{ color: '#262626' }}>
                 {data.total_staff}
               </span>
-              <span className="text-xs" style={{ color: '#8C8C8C' }}>nhân sự</span>
+              <span className="text-xs" style={{ color: '#8C8C8C' }}>{t('dashCardStaffUnit')}</span>
             </div>
             <div className="text-[10px]" style={{ color: '#8C8C8C' }}>
-              Trực vận hành tại 5 bộ phận khách sạn
+              {t('dashCardStaffActive')}
             </div>
           </div>
 
@@ -259,7 +261,7 @@ export const AdminDashboardTab = ({
           >
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-semibold" style={{ color: '#8C8C8C' }}>
-                TỶ LỆ PHÂN BỔ NHIỆM VỤ
+                {t('dashCardRateTitle')}
               </span>
               <Activity className="w-3.5 h-3.5" style={{ color: '#8C8C8C' }} />
             </div>
@@ -267,10 +269,10 @@ export const AdminDashboardTab = ({
               <span className="text-2xl font-bold font-mono" style={{ color: '#262626' }}>
                 {data.human_tasks}
               </span>
-              <span className="text-xs" style={{ color: '#8C8C8C' }}>/ {data.total_tasks} việc</span>
+              <span className="text-xs" style={{ color: '#8C8C8C' }}>{t('dashCardRateUnit').replace('{count}', data.total_tasks)}</span>
             </div>
             <div className="text-[10px]" style={{ color: '#8C8C8C' }}>
-              {data.robot_assigned_tasks || 0} robot hỗ trợ ({data.robot_rate || 0}%)
+              {t('dashCardRateSub').replace('{count}', data.robot_assigned_tasks || 0).replace('{rate}', data.robot_rate || 0)}
             </div>
           </div>
         </div>
@@ -287,10 +289,10 @@ export const AdminDashboardTab = ({
               <div>
                 <div className="text-xs font-bold flex items-center gap-1.5" style={{ color: '#262626' }}>
                   <PieChart className="w-3.5 h-3.5" />
-                  <span>Phân bổ công việc theo 5 bộ phận</span>
+                  <span>{t('dashDeptDistribution')}</span>
                 </div>
                 <div className="text-[10px]" style={{ color: '#8C8C8C' }}>
-                  Tỷ lệ khối lượng yêu cầu dịch vụ thực tế trong CSDL
+                  {t('dashDeptDistributionSub')}
                 </div>
               </div>
             </div>
@@ -330,7 +332,7 @@ export const AdminDashboardTab = ({
                     {data.total_tasks}
                   </div>
                   <div className="text-[8px] font-semibold uppercase tracking-wider mt-0.5" style={{ color: '#8C8C8C' }}>
-                    Tổng Yêu Cầu
+                    {t('dashTotalTasksCenter')}
                   </div>
                 </div>
               </div>
@@ -384,7 +386,7 @@ export const AdminDashboardTab = ({
               style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD' }}
             >
               <span className="font-medium" style={{ color: '#262626' }}>
-                Tổng số yêu cầu đã ghi nhận:
+                {t('dashTotalTasksRecorded')}
               </span>
               <span className="font-bold font-mono" style={{ color: '#262626' }}>
                 {data.total_tasks}
@@ -401,16 +403,16 @@ export const AdminDashboardTab = ({
             <div className="flex items-center justify-between pb-2 border-b" style={{ borderColor: '#E9E5DC' }}>
               <div>
                 <span className="text-xs font-bold" style={{ color: '#262626' }}>
-                  Nhật ký yêu cầu gần đây nhất
+                  {t('dashRecentActivitiesTitle')}
                 </span>
                 <div className="text-[10px]" style={{ color: '#8C8C8C' }}>
-                  Dữ liệu thực từ các bảng nghiệp vụ và robot điều phối
+                  {t('dashRecentActivitiesSub')}
                 </div>
               </div>
               <div className="flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full animate-pulse bg-emerald-600" />
                 <span className="text-[11px] font-mono font-semibold" style={{ color: '#8C8C8C' }}>
-                  Database Live
+                  {t('dashDbLive')}
                 </span>
               </div>
             </div>
@@ -420,18 +422,18 @@ export const AdminDashboardTab = ({
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
                   <tr className="text-[10px] font-semibold uppercase border-b" style={{ borderColor: '#E9E5DC', color: '#8C8C8C' }}>
-                    <th className="py-2 px-1">Mã</th>
-                    <th className="py-2 px-2">Nội dung</th>
-                    <th className="py-2 px-2">Bộ phận</th>
-                    <th className="py-2 px-2">Vị trí</th>
-                    <th className="py-2 px-1 text-right">Trạng thái</th>
+                    <th className="py-2 px-1">{t('dashColId')}</th>
+                    <th className="py-2 px-2">{t('dashColContent')}</th>
+                    <th className="py-2 px-2">{t('dashColDept')}</th>
+                    <th className="py-2 px-2">{t('dashColLocation')}</th>
+                    <th className="py-2 px-1 text-right">{t('dashColStatus')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y text-[11px]" style={{ borderColor: '#E9E5DC' }}>
                   {data.recent_activities.length === 0 ? (
                     <tr>
                       <td colSpan={5} className="py-8 text-center text-xs" style={{ color: '#8C8C8C' }}>
-                        Chưa có yêu cầu nào trong hệ thống.
+                        {t('dashNoActivities')}
                       </td>
                     </tr>
                   ) : (
@@ -480,14 +482,14 @@ export const AdminDashboardTab = ({
             {/* Table Footer with Navigation to Operations */}
             <div className="pt-2 border-t text-[11px] flex justify-between items-center" style={{ borderColor: '#E9E5DC' }}>
               <span className="text-[10px]" style={{ color: '#8C8C8C' }}>
-                Hiển thị {Math.min(data.recent_activities.length, 10)} yêu cầu mới nhất
+                {t('dashShowingLatest').replace('{count}', Math.min(data.recent_activities.length, 10))}
               </span>
               <button
                 onClick={onNavigateToOperations}
                 className="text-xs font-bold hover:underline cursor-pointer flex items-center gap-1"
                 style={{ color: '#262626' }}
               >
-                <span>Xem tất cả phiếu hỗ trợ</span>
+                <span>{t('dashViewAllSupport')}</span>
                 <ArrowUpRight className="w-3.5 h-3.5" />
               </button>
             </div>
@@ -510,11 +512,11 @@ export const AdminDashboardTab = ({
               </div>
               <div>
                 <div className="text-xs font-bold flex items-center gap-1.5" style={{ color: '#262626' }}>
-                  <span>Điều Khiển Robot RC-001 (Bot Alpha)</span>
+                  <span>{t('dashRobotControlTitle')}</span>
                   <span className="w-2 h-2 rounded-full animate-pulse bg-emerald-600" />
                 </div>
                 <div className="text-[10px]" style={{ color: '#8C8C8C' }}>
-                  Trạng thái trực tuyến • Phục vụ tự động & hỗ trợ nhân sự
+                  {t('dashRobotControlSub')}
                 </div>
               </div>
             </div>
@@ -527,7 +529,7 @@ export const AdminDashboardTab = ({
                 className="px-2.5 py-1.5 rounded-lg text-xs font-bold border cursor-pointer transition-all hover:bg-black active:scale-95"
                 style={{ backgroundColor: '#262626', borderColor: '#262626', color: '#F2EFE9' }}
               >
-                Dừng khẩn cấp
+                {t('dashEmergencyStop')}
               </button>
               <button
                 type="button"
@@ -535,7 +537,7 @@ export const AdminDashboardTab = ({
                 className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border cursor-pointer transition-all hover:bg-stone-200 active:scale-95"
                 style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD', color: '#262626' }}
               >
-                Về sạc
+                {t('dashReturnDock')}
               </button>
               <button
                 type="button"
@@ -543,7 +545,7 @@ export const AdminDashboardTab = ({
                 className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border cursor-pointer transition-all hover:bg-stone-200 active:scale-95 flex items-center gap-1"
                 style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD', color: '#262626' }}
               >
-                <span>Bản đồ SLAM</span>
+                <span>{t('dashSlamMap')}</span>
                 <ArrowUpRight className="w-3.5 h-3.5" />
               </button>
             </div>
@@ -558,10 +560,10 @@ export const AdminDashboardTab = ({
               <Activity className="w-4 h-4 shrink-0" style={{ color: '#262626' }} />
               <div className="min-w-0">
                 <div className="text-xs font-bold truncate" style={{ color: '#262626' }}>
-                  {alerts[0]?.title || 'Hệ thống vận hành ổn định'}
+                  {alerts[0]?.title || t('dashSystemStable')}
                 </div>
                 <div className="text-[10px] truncate" style={{ color: '#8C8C8C' }}>
-                  {alerts[0]?.description || 'Tất cả các dịch vụ kết nối cơ sở dữ liệu hoạt động bình thường.'}
+                  {alerts[0]?.description || t('dashSystemStableDesc')}
                 </div>
               </div>
             </div>

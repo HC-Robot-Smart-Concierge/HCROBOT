@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { RotateCw } from 'lucide-react';
 import { Pagination } from '../../../components/common/Pagination';
+import { useLanguage } from '../../../context/LanguageContext';
 import {
   fetchLogs,
   fetchLogStatistics,
@@ -10,6 +11,7 @@ import {
 } from '../../../services/logsApi';
 
 export const AdminLogsTab = () => {
+  const { t, language } = useLanguage();
   const [activeView, setActiveView] = useState('operational'); // 'operational' | 'audit'
   const [logs, setLogs] = useState([]);
   const [totalLogs, setTotalLogs] = useState(0);
@@ -80,29 +82,115 @@ export const AdminLogsTab = () => {
 
   const formatLogMessage = (msg) => {
     if (!msg || typeof msg !== 'string') return '';
+    const isEN = language === 'EN';
+
+    // Helper: translate department or role strings
+    const translateDeptOrRole = (info) => {
+      if (!info) return '';
+      const map = {
+        'Bộ phận Quản trị': 'Operations Admin',
+        'Bộ Phận Quản Trị': 'Operations Admin',
+        'Bộ phận Bếp': 'Kitchen Dept',
+        'Bộ phận Hành lý': 'Bellman Dept',
+        'Bộ phận Nhà hàng': 'Restaurant Dept',
+        'Bộ phận Trợ lý Concierge & Đặt xe': 'Concierge & Taxi Booking',
+        'Bộ phận Buồng phòng': 'Housekeeping Dept',
+        'Bộ phận Lễ tân': 'Reception Dept',
+        'Bộ phận Phục vụ phòng': 'Room Service Dept',
+        'Bộ phận Kỹ thuật': 'Maintenance Dept',
+        'Bộ phận Y tế': 'Medical Dept',
+        'Bộ phận Hậu cần': 'Logistics Dept',
+        'Bộ phận An ninh': 'Security Dept',
+        'Bộ phận Dịch vụ khách hàng': 'Customer Service Dept',
+      };
+      return map[info.trim()] || info;
+    };
+
+    // 1. Raw pattern: [STAFF] admin performed LOGIN on SESSION:...
     const staffMatch = msg.match(/^\[([A-Z_]+)\]\s+([\w\d_-]+)\s+performed\s+([A-Z_]+)(?:\s+on\s+([A-Z_]+):?([^\s]*))?/i);
     if (staffMatch) {
-      const [, , actor, action] = staffMatch;
+      const [, , actor, action, resource] = staffMatch;
       const act = action.toUpperCase();
-      if (act === 'LOGIN') {
-        return `Nhân viên '${actor}' đã đăng nhập thành công vào hệ thống.`;
+      const isRobot = actor.toLowerCase().startsWith('robot');
+
+      if (isEN) {
+        const prefix = isRobot ? 'Robot' : 'Staff';
+        const resStr = resource ? ` (${resource})` : '';
+        if (act === 'LOGIN') return `${prefix} '${actor}' successfully logged into the system.`;
+        if (act === 'LOGOUT') return `${prefix} '${actor}' successfully logged out of the system.`;
+        if (act === 'CREATE') return `${prefix} '${actor}' created new data${resStr}.`;
+        if (act === 'UPDATE') return `${prefix} '${actor}' updated data${resStr}.`;
+        if (act === 'DELETE') return `${prefix} '${actor}' deleted data from the system${resStr}.`;
+        return `${prefix} '${actor}' performed ${action.toLowerCase()} action.`;
+      } else {
+        const prefix = isRobot ? 'Robot' : 'Nhân viên';
+        const resStr = resource ? ` (${resource})` : '';
+        if (act === 'LOGIN') return `${prefix} '${actor}' đã đăng nhập thành công vào hệ thống.`;
+        if (act === 'LOGOUT') return `${prefix} '${actor}' đã đăng xuất thành công khỏi hệ thống.`;
+        if (act === 'CREATE') return `${prefix} '${actor}' đã tạo mới dữ liệu${resStr}.`;
+        if (act === 'UPDATE') return `${prefix} '${actor}' đã cập nhật thông tin dữ liệu${resStr}.`;
+        if (act === 'DELETE') return `${prefix} '${actor}' đã xóa dữ liệu khỏi hệ thống${resStr}.`;
+        return `${prefix} '${actor}' đã thực hiện thao tác ${action.toLowerCase()}.`;
       }
-      if (act === 'LOGOUT') {
-        return `Nhân viên '${actor}' đã đăng xuất thành công khỏi hệ thống.`;
-      }
-      if (act === 'CREATE') {
-        return `Nhân viên '${actor}' đã tạo mới dữ liệu.`;
-      }
-      if (act === 'UPDATE') {
-        return `Nhân viên '${actor}' đã cập nhật thông tin dữ liệu.`;
-      }
-      if (act === 'DELETE') {
-        return `Nhân viên '${actor}' đã xóa dữ liệu khỏi hệ thống.`;
-      }
-      return `Nhân viên '${actor}' đã thực hiện thao tác ${action.toLowerCase()}.`;
     }
 
-    return msg.replace(/SESSION:[a-zA-Z0-9_\-]+/gi, 'Phiên làm việc')
+    // 2. Stored Vietnamese patterns:
+    // e.g. "Nhân viên 'admin' (Bộ phận Quản trị) đã đăng nhập thành công vào hệ thống."
+    //      "Nhân viên 'robot_01' (Robot Kiosk Unit 01) đã đăng nhập thành công vào hệ thống."
+    //      "Nhân viên 'bellman' (Bộ phận Hành lý) đã đăng xuất thành công khỏi hệ thống."
+    //      "Nhân viên 'admin' đã đăng nhập thành công vào hệ thống."
+    const vnStaffRegex = /^(?:Nhân viên|Robot)\s+'([^']+)'(?:\s+\(([^)]+)\))?\s+(.+)$/i;
+    const vnMatch = msg.match(vnStaffRegex);
+    if (vnMatch) {
+      const [, actor, info, actionText] = vnMatch;
+      const isRobot = actor.toLowerCase().startsWith('robot') || (info && info.toLowerCase().includes('robot'));
+
+      if (isEN) {
+        const prefix = isRobot ? 'Robot' : 'Staff';
+        const infoStr = info ? ` (${translateDeptOrRole(info)})` : '';
+
+        if (/đã đăng nhập thành công/i.test(actionText)) {
+          return `${prefix} '${actor}'${infoStr} successfully logged into the system.`;
+        }
+        if (/đã đăng xuất thành công/i.test(actionText)) {
+          return `${prefix} '${actor}'${infoStr} successfully logged out of the system.`;
+        }
+        if (/đã tạo mới dữ liệu/i.test(actionText)) {
+          const res = actionText.match(/\(([^)]+)\)/);
+          return `${prefix} '${actor}'${infoStr} created new data${res ? ` (${res[1]})` : ''}.`;
+        }
+        if (/đã cập nhật/i.test(actionText)) {
+          const res = actionText.match(/\(([^)]+)\)/);
+          return `${prefix} '${actor}'${infoStr} updated data${res ? ` (${res[1]})` : ''}.`;
+        }
+        if (/đã xóa dữ liệu/i.test(actionText)) {
+          const res = actionText.match(/\(([^)]+)\)/);
+          return `${prefix} '${actor}'${infoStr} deleted data from the system${res ? ` (${res[1]})` : ''}.`;
+        }
+        if (/đã thực hiện thao tác/i.test(actionText)) {
+          const actMatch = actionText.match(/đã thực hiện thao tác\s+([^\s.]+)/i);
+          return `${prefix} '${actor}'${infoStr} performed ${actMatch ? actMatch[1] : 'an'} action on the system.`;
+        }
+        return `${prefix} '${actor}'${infoStr} ${actionText}`;
+      } else {
+        if (isRobot && msg.startsWith('Nhân viên')) {
+          return msg.replace(/^Nhân viên/, 'Robot');
+        }
+        return msg;
+      }
+    }
+
+    // 3. Failed login attempt pattern
+    if (!isEN) {
+      const failedMatch = msg.match(/^Failed login attempt for username '([^']+)'/i);
+      if (failedMatch) {
+        return `Đăng nhập thất bại cho tài khoản '${failedMatch[1]}'`;
+      }
+    }
+
+    // 4. Session & token cleanup
+    const sessionText = isEN ? 'Session' : 'Phiên làm việc';
+    return msg.replace(/SESSION:[a-zA-Z0-9_\-]+/gi, sessionText)
               .replace(/token:[a-zA-Z0-9_\-\.]+/gi, '***');
   };
 
@@ -155,9 +243,9 @@ export const AdminLogsTab = () => {
     setIsLoading(true);
     try {
       await Promise.all([loadLogsData(), loadStats()]);
-      showToast('Đã làm mới dữ liệu nhật ký mới nhất.');
+      showToast(language === 'EN' ? 'Refreshed latest log data.' : 'Đã làm mới dữ liệu nhật ký mới nhất.');
     } catch {
-      showToast('Không thể làm mới dữ liệu.');
+      showToast(language === 'EN' ? 'Failed to refresh data.' : 'Không thể làm mới dữ liệu.');
     } finally {
       setIsLoading(false);
     }
@@ -199,7 +287,11 @@ export const AdminLogsTab = () => {
       search: searchQuery,
     });
     window.open(url, '_blank');
-    showToast(`Đang tải xuống tệp Log ${format.toUpperCase()}...`);
+    showToast(
+      language === 'EN'
+        ? `Downloading ${format.toUpperCase()} log file...`
+        : `Đang tải xuống tệp Log ${format.toUpperCase()}...`
+    );
   };
 
   const handleOpenTrace = async (correlationId) => {
@@ -211,10 +303,10 @@ export const AdminLogsTab = () => {
       if (res && res.status === 'success') {
         setActiveTrace(res);
       } else {
-        showToast('Không tìm thấy chuỗi trace tương ứng.');
+        showToast(language === 'EN' ? 'Corresponding trace sequence not found.' : 'Không tìm thấy chuỗi trace tương ứng.');
       }
     } catch {
-      showToast('Lỗi truy vấn trace vòng đời.');
+      showToast(language === 'EN' ? 'Failed to query lifecycle trace.' : 'Lỗi truy vấn trace vòng đời.');
     } finally {
       setIsTraceLoading(false);
     }
@@ -224,7 +316,8 @@ export const AdminLogsTab = () => {
     if (!ts) return '--:--:--';
     try {
       const d = new Date(ts);
-      return d.toLocaleTimeString('vi-VN', { hour12: false }) + ' ' + d.toLocaleDateString('vi-VN');
+      const locale = language === 'EN' ? 'en-US' : 'vi-VN';
+      return d.toLocaleTimeString(locale, { hour12: false }) + ' ' + d.toLocaleDateString(locale);
     } catch {
       return ts;
     }
@@ -276,10 +369,10 @@ export const AdminLogsTab = () => {
       >
         <div className="min-w-0">
           <h2 className="text-sm sm:text-base font-bold tracking-tight leading-tight truncate" style={{ color: '#262626' }}>
-            Nhật Ký Hệ Thống & Kiểm Toán (System Logs & Audit Trail)
+            {t('logsTabTitle')}
           </h2>
           <p className="text-[10px] sm:text-[11px] font-normal truncate mt-0.5" style={{ color: '#8C8C8C' }}>
-            Truy vết trực tiếp từ cơ sở dữ liệu về sự kiện hội thoại AI, điều phối và kiểm toán bảo mật Robot
+            {t('logsTabSubtitle')}
           </p>
         </div>
 
@@ -291,14 +384,14 @@ export const AdminLogsTab = () => {
               className={`px-2.5 py-1 rounded text-xs font-bold transition-all cursor-pointer ${activeView === 'operational' ? 'bg-[#262626] text-white' : 'text-stone-600 hover:text-stone-900'
                 }`}
             >
-              Nhật Ký Vận Hành
+              {t('logsTabOperational')}
             </button>
             <button
               onClick={() => { setActiveView('audit'); setCurrentPage(1); }}
               className={`px-2.5 py-1 rounded text-xs font-bold transition-all cursor-pointer ${activeView === 'audit' ? 'bg-[#262626] text-white' : 'text-stone-600 hover:text-stone-900'
                 }`}
             >
-              Kiểm Toán Bảo Mật
+              {t('logsTabAudit')}
             </button>
           </div>
 
@@ -311,7 +404,7 @@ export const AdminLogsTab = () => {
               color: '#262626',
             }}
           >
-            Xuất CSV
+            {t('logsExportCsv')}
           </button>
           <button
             onClick={() => handleExportLogs('json')}
@@ -322,7 +415,7 @@ export const AdminLogsTab = () => {
               color: '#262626',
             }}
           >
-            Xuất JSON
+            {t('logsExportJson')}
           </button>
         </div>
       </div>
@@ -333,38 +426,38 @@ export const AdminLogsTab = () => {
       {/* 4 Metric Cards (Single Compact Row) */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
         <div className="p-3 rounded-xl border flex flex-col justify-between" style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD' }}>
-          <div className="text-[11px] font-semibold" style={{ color: '#8C8C8C' }}>TỔNG BẢN GHI NHẬT KÝ</div>
+          <div className="text-[11px] font-semibold" style={{ color: '#8C8C8C' }}>{t('logsMetricTotal')}</div>
           <div className="flex items-baseline gap-1.5 my-1">
             <span className="text-2xl font-bold" style={{ color: '#262626' }}>
               {statistics.total || totalLogs}
             </span>
-            <span className="text-xs" style={{ color: '#8C8C8C' }}>sự kiện</span>
+            <span className="text-xs" style={{ color: '#8C8C8C' }}>{t('logsMetricEvents')}</span>
           </div>
           <div className="text-[10px] font-medium" style={{ color: '#8C8C8C' }}></div>
         </div>
 
         <div className="p-3 rounded-xl border flex flex-col justify-between" style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD' }}>
-          <div className="text-[11px] font-semibold" style={{ color: '#8C8C8C' }}>CẢNH BÁO (WARNING)</div>
+          <div className="text-[11px] font-semibold" style={{ color: '#8C8C8C' }}>{t('logsMetricWarning')}</div>
           <div className="flex items-baseline gap-1.5 my-1">
             <span className="text-2xl font-bold" style={{ color: '#262626' }}>{statistics.warnings || 0}</span>
-            <span className="text-xs" style={{ color: '#8C8C8C' }}>cần chú ý</span>
+            <span className="text-xs" style={{ color: '#8C8C8C' }}>{t('logsMetricToReview')}</span>
           </div>
           <div className="text-[10px] font-medium" style={{ color: '#8C8C8C' }}></div>
         </div>
 
         <div className="p-3 rounded-xl border flex flex-col justify-between" style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD' }}>
-          <div className="text-[11px] font-semibold" style={{ color: '#8C8C8C' }}>LỖI HỆ THỐNG (ERROR / CRIT)</div>
+          <div className="text-[11px] font-semibold" style={{ color: '#8C8C8C' }}>{t('logsMetricErrors')}</div>
           <div className="flex items-baseline gap-1.5 my-1">
             <span className="text-2xl font-bold" style={{ color: '#262626' }}>{(statistics.errors || 0) + (statistics.critical || 0)}</span>
-            <span className="text-xs" style={{ color: '#8C8C8C' }}>lỗi</span>
+            <span className="text-xs" style={{ color: '#8C8C8C' }}>{t('logsMetricErrorsUnit')}</span>
           </div>
           <div className="text-[10px] font-medium" style={{ color: '#8C8C8C' }}></div>
         </div>
 
         <div className="p-3 rounded-xl border flex flex-col justify-between" style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD' }}>
-          <div className="text-[11px] font-semibold" style={{ color: '#8C8C8C' }}>TRẠNG THÁI TRUY VẾT</div>
+          <div className="text-[11px] font-semibold" style={{ color: '#8C8C8C' }}>{t('logsMetricTraceStatus')}</div>
           <div className="flex items-baseline gap-1.5 my-1">
-            <span className="text-2xl font-bold" style={{ color: '#262626' }}>{isLiveStreaming ? 'Tự động' : 'Thủ công'}</span>
+            <span className="text-2xl font-bold" style={{ color: '#262626' }}>{isLiveStreaming ? t('logsMetricLiveAuto') : t('logsMetricManual')}</span>
           </div>
         </div>
       </div>
@@ -384,7 +477,7 @@ export const AdminLogsTab = () => {
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Tìm nội dung, tác nhân, correlation ID..."
+                placeholder={t('logsSearchPlaceholder')}
                 className="w-full px-3 py-1.5 rounded-lg text-xs font-normal border focus:outline-none"
                 style={{
                   backgroundColor: '#FFFFFF',
@@ -400,7 +493,7 @@ export const AdminLogsTab = () => {
                 type="button"
                 onClick={handleManualRefresh}
                 disabled={isLoading}
-                title="Làm mới nhật ký"
+                title={t('logsRefreshTooltip')}
                 className="p-2 rounded-lg border text-xs font-medium cursor-pointer transition-all hover:bg-[#E9E5DC] active:scale-95 flex items-center justify-center shrink-0"
                 style={{
                   backgroundColor: '#FFFFFF',
@@ -421,7 +514,7 @@ export const AdminLogsTab = () => {
                   color: '#262626',
                 }}
               >
-                <option value="ALL">Tất cả mức độ</option>
+                <option value="ALL">{t('logsAllLevels')}</option>
                 <option value="INFO">INFO</option>
                 <option value="WARNING">WARNING</option>
                 <option value="ERROR">ERROR</option>
@@ -438,12 +531,12 @@ export const AdminLogsTab = () => {
                   color: '#262626',
                 }}
               >
-                <option value="ALL">Tất cả phân loại</option>
-                <option value="AUDIT">Kiểm toán (AUDIT)</option>
-                <option value="SYSTEM">Hệ thống (SYSTEM)</option>
-                <option value="ROBOT">Robot (ROBOT)</option>
-                <option value="AI">Trí tuệ nhân tạo (AI)</option>
-                <option value="SERVICE">Dịch vụ (SERVICE)</option>
+                <option value="ALL">{t('logsAllCategories')}</option>
+                <option value="AUDIT">{t('logsCatAudit')}</option>
+                <option value="SYSTEM">{t('logsCatSystem')}</option>
+                <option value="ROBOT">{t('logsCatRobot')}</option>
+                <option value="AI">{t('logsCatAi')}</option>
+                <option value="SERVICE">{t('logsCatService')}</option>
               </select>
 
               <select
@@ -456,12 +549,12 @@ export const AdminLogsTab = () => {
                   color: '#262626',
                 }}
               >
-                <option value="ALL">Tất cả bộ phận</option>
-                <option value="reception">Lễ tân</option>
-                <option value="housekeeping">Buồng phòng</option>
-                <option value="room_service">Phục vụ phòng (F&B)</option>
-                <option value="bell_services">Hành lý</option>
-                <option value="maintenance">Kỹ thuật</option>
+                <option value="ALL">{t('logsAllDepartments')}</option>
+                <option value="reception">{t('deptReception')}</option>
+                <option value="housekeeping">{t('deptHousekeeping')}</option>
+                <option value="room_service">{t('deptFB')}</option>
+                <option value="bell_services">{t('deptBell')}</option>
+                <option value="maintenance">{t('deptMaintenance')}</option>
               </select>
             </div>
           </div>
@@ -485,25 +578,25 @@ export const AdminLogsTab = () => {
                       color: '#262626',
                     }}
                   >
-                    <th className="py-2 px-3 w-28">Thời gian</th>
-                    <th className="py-2 px-3 w-24 text-center">Mức độ</th>
-                    <th className="py-2 px-3 w-32">Phân loại</th>
-                    <th className="py-2 px-3 w-32">Tác nhân</th>
-                    <th className="py-2 px-3">Thông điệp nhật ký</th>
-                    <th className="py-2 px-3 w-32 text-right">Hành động</th>
+                    <th className="py-2 px-3 w-28">{t('logsColTime')}</th>
+                    <th className="py-2 px-3 w-24 text-center">{t('logsColLevel')}</th>
+                    <th className="py-2 px-3 w-32">{t('logsColCategory')}</th>
+                    <th className="py-2 px-3 w-32">{t('logsColActor')}</th>
+                    <th className="py-2 px-3">{t('logsColMessage')}</th>
+                    <th className="py-2 px-3 w-32 text-right">{t('logsColAction')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y text-xs" style={{ borderColor: '#E9E5DC' }}>
                   {isLoading && logs.length === 0 ? (
                     <tr>
                       <td colSpan={6} className="py-6 text-center" style={{ color: '#8C8C8C' }}>
-                        Đang tải nhật ký hệ thống...
+                        {t('logsLoading')}
                       </td>
                     </tr>
                   ) : logs.length === 0 ? (
                     <tr>
                       <td colSpan={6} className="py-6 text-center" style={{ color: '#8C8C8C' }}>
-                        Không có nhật ký nào phù hợp với bộ lọc
+                        {t('logsEmpty')}
                       </td>
                     </tr>
                   ) : (
@@ -545,9 +638,9 @@ export const AdminLogsTab = () => {
                                   borderColor: '#BFBFBD',
                                   color: '#262626',
                                 }}
-                                title="Xem Trace vòng đời transaction"
+                                title={t('logsActionTrace')}
                               >
-                                Trace
+                                {t('logsActionTrace')}
                               </button>
                             )}
                             <button
@@ -559,7 +652,7 @@ export const AdminLogsTab = () => {
                                 color: '#262626',
                               }}
                             >
-                              Xem
+                              {t('logsActionView')}
                             </button>
                           </td>
                         </tr>
@@ -599,19 +692,19 @@ export const AdminLogsTab = () => {
                     color: '#262626',
                   }}
                 >
-                  <th className="py-2 px-3 w-32">Thời gian</th>
-                  <th className="py-2 px-3 w-32">Hành động</th>
-                  <th className="py-2 px-3 w-36">Tác nhân</th>
-                  <th className="py-2 px-3 w-32">Tài nguyên</th>
-                  <th className="py-2 px-3">Chi tiết thay đổi</th>
-                  <th className="py-2 px-3 w-28">IP Address</th>
+                  <th className="py-2 px-3 w-32">{t('logsColTime')}</th>
+                  <th className="py-2 px-3 w-32">{t('logsColAction')}</th>
+                  <th className="py-2 px-3 w-36">{t('logsColActor')}</th>
+                  <th className="py-2 px-3 w-32">{t('logsColResource')}</th>
+                  <th className="py-2 px-3">{t('logsColChanges')}</th>
+                  <th className="py-2 px-3 w-28">{t('logsColIp')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y text-xs" style={{ borderColor: '#E9E5DC' }}>
                 {auditLogs.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="py-6 text-center" style={{ color: '#8C8C8C' }}>
-                      Chưa có bản ghi kiểm toán bảo mật nào
+                      {t('logsAuditEmpty')}
                     </td>
                   </tr>
                 ) : (
@@ -665,7 +758,7 @@ export const AdminLogsTab = () => {
           >
             <div className="flex items-center justify-between border-b pb-2" style={{ borderColor: '#BFBFBD' }}>
               <h3 className="text-xs font-bold" style={{ color: '#262626' }}>
-                Chi tiết sự kiện #{selectedLog.id}
+                {t('logsDetailTitle')} #{selectedLog.id}
               </h3>
               <button
                 onClick={() => setSelectedLog(null)}
@@ -676,7 +769,7 @@ export const AdminLogsTab = () => {
                   color: '#262626',
                 }}
               >
-                Đóng
+                {t('logsDetailClose')}
               </button>
             </div>
 
@@ -686,27 +779,27 @@ export const AdminLogsTab = () => {
                   {formatLogMessage(selectedLog.message)}
                 </div>
                 <div className="text-[10px] font-mono" style={{ color: '#8C8C8C' }}>
-                  Thời gian: {selectedLog.timestamp}
+                  {t('logsDetailTime')} {selectedLog.timestamp}
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-2 text-[11px]">
                 <div className="p-2 rounded border" style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD' }}>
-                  <span style={{ color: '#8C8C8C' }}>Mức độ: </span>
+                  <span style={{ color: '#8C8C8C' }}>{t('logsDetailLevel')} </span>
                   <span className="font-bold" style={{ color: '#262626' }}>{selectedLog.level}</span>
                 </div>
                 <div className="p-2 rounded border" style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD' }}>
-                  <span style={{ color: '#8C8C8C' }}>Phân loại: </span>
+                  <span style={{ color: '#8C8C8C' }}>{t('logsDetailCategory')} </span>
                   <span className="font-bold" style={{ color: '#262626' }}>{selectedLog.category}</span>
                 </div>
                 <div className="p-2 rounded border" style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD' }}>
-                  <span style={{ color: '#8C8C8C' }}>Tác nhân: </span>
+                  <span style={{ color: '#8C8C8C' }}>{t('logsDetailActor')} </span>
                   <span className="font-mono font-bold" style={{ color: '#262626' }}>
                     {selectedLog.actor_id || selectedLog.actor_type || 'N/A'}
                   </span>
                 </div>
                 <div className="p-2 rounded border" style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD' }}>
-                  <span style={{ color: '#8C8C8C' }}>Module: </span>
+                  <span style={{ color: '#8C8C8C' }}>{t('logsDetailModule')} </span>
                   <span className="font-mono font-bold" style={{ color: '#262626' }}>{selectedLog.module || 'core'}</span>
                 </div>
               </div>
@@ -714,7 +807,7 @@ export const AdminLogsTab = () => {
               {selectedLog.correlation_id && (
                 <div className="p-2 rounded border flex items-center justify-between" style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD' }}>
                   <div>
-                    <span className="text-[10px] font-bold text-stone-500 block">CORRELATION ID:</span>
+                    <span className="text-[10px] font-bold text-stone-500 block">{t('logsDetailCorrelation')}</span>
                     <span className="font-mono text-xs font-bold text-stone-800">{selectedLog.correlation_id}</span>
                   </div>
                   <button
@@ -725,14 +818,14 @@ export const AdminLogsTab = () => {
                     }}
                     className="px-2.5 py-1 rounded bg-[#262626] text-white text-[11px] font-bold cursor-pointer"
                   >
-                    Xem Toàn Bộ Trace →
+                    {t('logsDetailViewFullTrace')}
                   </button>
                 </div>
               )}
 
               {selectedLog.metadata && (
                 <div>
-                  <div className="text-[10px] font-semibold mb-1" style={{ color: '#8C8C8C' }}>METADATA:</div>
+                  <div className="text-[10px] font-semibold mb-1" style={{ color: '#8C8C8C' }}>{t('logsDetailMetadata')}</div>
                   <pre
                     className="p-2.5 rounded border text-[11px] font-mono overflow-x-auto max-h-40"
                     style={{
@@ -757,7 +850,7 @@ export const AdminLogsTab = () => {
                   color: '#F2EFE9',
                 }}
               >
-                Hoàn tất
+                {t('logsDetailDone')}
               </button>
             </div>
           </div>
@@ -771,10 +864,10 @@ export const AdminLogsTab = () => {
             <div className="flex items-center justify-between border-b pb-3">
               <div>
                 <h3 className="text-sm font-bold text-stone-900">
-                  Trace Vòng Đời Transaction #{activeTrace.correlation_id}
+                  {t('logsTraceTitle')} #{activeTrace.correlation_id}
                 </h3>
                 <p className="text-[11px] text-stone-500">
-                  Tổng {activeTrace.total_steps || activeTrace.timeline?.length || 0} bước xử lý
+                  {t('logsTraceSteps').replace('{count}', activeTrace.total_steps || activeTrace.timeline?.length || 0)}
                 </p>
               </div>
               <button
@@ -787,23 +880,23 @@ export const AdminLogsTab = () => {
 
             <div className="flex-1 overflow-y-auto custom-scrollbar space-y-3 pr-1 text-xs">
               {isTraceLoading ? (
-                <div className="py-10 text-center text-stone-400">Đang truy vấn lịch sử trace...</div>
+                <div className="py-10 text-center text-stone-400">{t('logsTraceLoading')}</div>
               ) : activeTrace.timeline?.length === 0 ? (
-                <div className="py-10 text-center text-stone-400">Không có bản ghi liên kết</div>
+                <div className="py-10 text-center text-stone-400">{t('logsTraceEmpty')}</div>
               ) : (
                 activeTrace.timeline?.map((step, idx) => (
                   <div key={step.id || idx} className="p-3 bg-stone-50 rounded-xl border border-stone-200 space-y-1">
                     <div className="flex items-center justify-between">
                       <span className="font-mono text-[10px] text-indigo-600 font-bold">
-                        BƯỚC {idx + 1} • {step.event_type || step.category}
+                        {t('logsTraceStep')} {idx + 1} • {step.event_type || step.category}
                       </span>
                       <span className="font-mono text-[10px] text-stone-400">
                         {step.timestamp}
                       </span>
                     </div>
-                    <div className="font-semibold text-stone-900">{step.message}</div>
+                    <div className="font-semibold text-stone-900">{formatLogMessage(step.message)}</div>
                     <div className="text-[10px] text-stone-500">
-                      Module: <span className="font-mono">{step.module}</span> • Tác nhân: <span className="font-mono">{step.actor_id || step.actor_type}</span>
+                      Module: <span className="font-mono">{step.module}</span> • {t('logsColActor')}: <span className="font-mono">{step.actor_id || step.actor_type}</span>
                     </div>
                   </div>
                 ))
@@ -815,7 +908,7 @@ export const AdminLogsTab = () => {
                 onClick={() => setActiveTrace(null)}
                 className="px-4 py-2 rounded-xl text-xs font-bold bg-stone-900 text-white cursor-pointer"
               >
-                Đóng
+                {t('logsDetailClose')}
               </button>
             </div>
           </div>

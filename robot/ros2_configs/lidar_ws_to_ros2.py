@@ -5,7 +5,6 @@ import json
 import socket
 import asyncio
 import threading
-import urllib.request
 import websockets
 
 import rclpy
@@ -14,7 +13,9 @@ from sensor_msgs.msg import LaserScan, JointState
 from nav_msgs.msg import Odometry, Path
 from geometry_msgs.msg import TransformStamped, PoseStamped, Twist
 from std_msgs.msg import Empty, String
-from slam_toolbox.srv import Reset, SaveMap
+from slam_toolbox.srv import Reset, SaveMap, Pause
+from nav2_msgs.action import NavigateToPose
+from rclpy.action import ActionClient
 from tf2_ros import TransformBroadcaster
 from tf2_ros.static_transform_broadcaster import StaticTransformBroadcaster
 
@@ -25,15 +26,29 @@ class LidarWsToRos2Bridge(Node):
         self.publisher_ = self.create_publisher(LaserScan, '/scan', 10)
         self.odom_pub_ = self.create_publisher(Odometry, '/odom', 10)
         self.path_pub_ = self.create_publisher(Path, '/robot_path', 10)
-        self.plan_pub_ = self.create_publisher(Path, '/plan', 10)
         self.static_tf_broadcaster = StaticTransformBroadcaster(self)
         self.tf_broadcaster = TransformBroadcaster(self)
         self.joint_pub_ = self.create_publisher(JointState, '/joint_states', 10)
+        self.encoder_telemetry_pub = self.create_publisher(String, '/robot/encoder_telemetry', 10)
+        self.sensor_health_pub = self.create_publisher(String, '/robot/sensor_health', 10)
         self.wheel_l_pos = 0.0
         self.wheel_r_pos = 0.0
         self.wheel_radius = 0.033
-        self.wheel_sep = 0.297
+        self.wheel_sep = float(os.getenv("HCROBOT_WHEEL_BASE", "0.22"))
+        self.encoder_cpr = float(os.getenv("HCROBOT_ENCODER_CPR", "330.0"))
+        # M3 (P-TRƯỚC) đang ngược dấu so với bánh trái khi đi thẳng. Đặt -1 để đảo.
+        # Nếu đã đảo trên ESP32 firmware, set HCROBOT_ENCODER_M3_SIGN=1.
+        self.encoder_m3_sign = float(os.getenv("HCROBOT_ENCODER_M3_SIGN", "-1"))
         self.scan_count = 0
+        self.last_scan_time = 0.0
+        self.last_scan_points = 0
+        self.pi_ws_connected = False
+        self.encoder_packets = 0
+        self.encoder_motion_detected = False
+        self.last_encoder_publish_time = 0.0
+        self.robot_mode = os.getenv("HCROBOT_MODE", "MAPPING").strip().upper()
+        if self.robot_mode not in ("MAPPING", "NAVIGATION"):
+            self.robot_mode = "MAPPING"
 
         # Lắng nghe topic /cmd_vel để điều khiển xe và di chuyển robot trên RViz
         self.cmd_vel_sub = self.create_subscription(
@@ -70,6 +85,19 @@ class LidarWsToRos2Bridge(Node):
         # Service Clients kết nối tới SLAM Toolbox
         self.slam_reset_client = self.create_client(Reset, '/slam_toolbox/reset')
         self.slam_save_client = self.create_client(SaveMap, '/slam_toolbox/save_map')
+        self.slam_pause_client = self.create_client(Pause, '/slam_toolbox/pause_new_measurements')
+        self.is_mapping_paused = False
+
+        # Lắng nghe topic /robot/pause_map để tạm dừng/tiếp tục quét (Khóa bản đồ gốc)
+        self.pause_sub = self.create_subscription(
+            Empty,
+            '/robot/pause_map',
+            self.on_pause_map_received,
+            10
+        )
+        self.map_status_pub = self.create_publisher(String, '/robot/mapping_status', 10)
+        self.status_timer = self.create_timer(1.0, self.publish_map_status)
+        self.sensor_health_timer = self.create_timer(1.0, self.publish_sensor_health)
 
         # Lưu trạng thái vị trí robot và quỹ đạo đường đi
         self.current_pose = {'x': 0.0, 'y': 0.0, 'yaw': 0.0}
@@ -80,14 +108,26 @@ class LidarWsToRos2Bridge(Node):
         # Động học Kinematics phục vụ Dead Reckoning theo thời gian thực (30Hz)
         self.current_vx = 0.0
         self.current_wz = 0.0
+        self.measured_vx = 0.0
+        self.measured_wz = 0.0
         self.last_cmd_time = time.monotonic()
         self.last_kinematics_time = time.monotonic()
+        self.last_encoder_time = 0.0
+        self.prev_left_ticks = 0.0
+        self.prev_right_ticks = 0.0
+        self.has_prev_encoder_ticks = False
+        self.allow_cmd_vel_odom = os.getenv("HCROBOT_ALLOW_CMD_VEL_ODOM", "0") == "1"
         self.last_sent_udp_motion = "stop"
+        self.last_sent_teleop_pwm = None
+        self.teleop_pwm_forward = int(os.getenv("HCROBOT_TELEOP_PWM", "50"))
+        self.teleop_pwm_turn = int(os.getenv("HCROBOT_TELEOP_TURN_PWM", "50"))
+        self._locked_yaw_deg = None
 
         # Cấu hình UDP gửi lệnh sang Pi 5
         self.pi5_ip = os.getenv("PI5_IP", "100.99.72.51")
         self.pi5_port = int(os.getenv("PI5_PORT", "9999"))
         self.udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.nav2_client = ActionClient(self, NavigateToPose, '/navigate_to_pose')
 
         # Timer 30Hz tính toán di chuyển Dead Reckoning
         self.kinematics_timer = self.create_timer(1.0 / 30.0, self.update_kinematics)
@@ -98,7 +138,48 @@ class LidarWsToRos2Bridge(Node):
         # Khởi động UDP listener nhận tín hiệu từ main.py trên Pi 5 (port 9998)
         self.start_pi5_telemetry_udp_server()
 
-        self.get_logger().info("🚀 LidarWsToRos2Bridge da san sang! Ho tro Realtime Teleop Terminal -> RViz2 & Pi 5")
+        self.get_logger().info(
+            f"🚀 LidarWsToRos2Bridge san sang - mode={self.robot_mode}, "
+            f"odom={'encoder/IMU' if not self.allow_cmd_vel_odom else 'encoder + cmd_vel fallback'}"
+        )
+
+    def publish_map_status(self):
+        status_msg = String()
+        if self.robot_mode == "NAVIGATION":
+            status_msg.data = "NAVIGATION"
+        else:
+            status_msg.data = "PAUSED" if self.is_mapping_paused else "MAPPING"
+        self.map_status_pub.publish(status_msg)
+
+    def publish_sensor_health(self):
+        """Publish truthful end-to-end mapping health, not just socket state."""
+        now = time.monotonic()
+        scan_age = None if self.last_scan_time <= 0.0 else max(0.0, now - self.last_scan_time)
+        lidar_live = scan_age is not None and scan_age < 1.5 and self.last_scan_points > 0
+        reasons = []
+        if not self.pi_ws_connected:
+            reasons.append("PI_WEBSOCKET_OFFLINE")
+        if not lidar_live:
+            reasons.append("NO_LIDAR_SCAN")
+        if self.encoder_packets == 0:
+            reasons.append("NO_ENCODER_TELEMETRY")
+        elif not self.encoder_motion_detected:
+            reasons.append("NO_ODOMETRY_MOTION")
+
+        msg = String()
+        msg.data = json.dumps({
+            "pi_ws_connected": self.pi_ws_connected,
+            "lidar_live": lidar_live,
+            "last_scan_age_sec": None if scan_age is None else round(scan_age, 2),
+            "scan_points": self.last_scan_points,
+            "scan_packets": self.scan_count,
+            "encoder_packets": self.encoder_packets,
+            "encoder_motion_detected": self.encoder_motion_detected,
+            "ready_for_static_capture": lidar_live,
+            "ready_for_mobile_mapping": lidar_live and self.encoder_motion_detected,
+            "reasons": reasons,
+        })
+        self.sensor_health_pub.publish(msg)
 
     def on_reset_map_received(self, msg=None):
         """Reset sạch toàn bộ bản đồ SLAM, xóa vết đường đi và đưa robot về (0,0)."""
@@ -107,6 +188,9 @@ class LidarWsToRos2Bridge(Node):
         self.last_recorded_pose = {'x': 0.0, 'y': 0.0, 'yaw': 0.0}
         self.current_vx = 0.0
         self.current_wz = 0.0
+        self._locked_yaw_deg = None
+        self.encoder_motion_detected = False
+        self.has_prev_encoder_ticks = False
         self.last_cmd_time = time.monotonic()
         self._send_udp_to_pi5("stop")
 
@@ -133,7 +217,10 @@ class LidarWsToRos2Bridge(Node):
         """Lưu bản đồ SLAM Toolbox ra file .yaml và .pgm đồng bộ với Web Admin."""
         raw_name = msg.data.strip() if msg and msg.data else "slam_map"
         safe_name = "".join(c for c in raw_name if c.isalnum() or c in ("_", "-")).strip() or "slam_map"
-        map_dir = "/mnt/f/DoAn/HC-Robot/robot/maps"
+        map_dir = os.getenv(
+            "HCROBOT_MAP_DIR",
+            os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "maps")),
+        )
         os.makedirs(map_dir, exist_ok=True)
         map_full_path = os.path.join(map_dir, safe_name)
         self.get_logger().info(f"💾 Đang lưu bản đồ SLAM Toolbox đồng bộ: {map_full_path}.(yaml/pgm)...")
@@ -142,11 +229,38 @@ class LidarWsToRos2Bridge(Node):
             req = SaveMap.Request()
             req.name.data = map_full_path
             future = self.slam_save_client.call_async(req)
-            future.add_done_callback(
-                lambda f: self.get_logger().info(f"✅ Đã lưu thành công bản đồ SLAM Toolbox: {map_full_path}")
-            )
+            future.add_done_callback(lambda f: self._on_map_saved(f, map_full_path))
         else:
             self.get_logger().warn("⚠️ Service /slam_toolbox/save_map chưa sẵn sàng!")
+
+    def _on_map_saved(self, future, map_full_path):
+        try:
+            future.result()
+            self.get_logger().info(f"✅ Đã lưu thành công bản đồ SLAM Toolbox: {map_full_path}")
+        except Exception as exc:
+            self.get_logger().error(f"❌ Lưu bản đồ thất bại: {exc}")
+            return
+
+        # Dong bang SLAM ngay sau khi save. De tu hanh, khoi dong stack
+        # NAVIGATION de map_server + AMCL thay the SLAM Toolbox.
+        if not self.is_mapping_paused and self.slam_pause_client.service_is_ready():
+            self.slam_pause_client.call_async(Pause.Request())
+            self.is_mapping_paused = True
+            self.publish_map_status()
+
+    def on_pause_map_received(self, msg: Empty = None):
+        """Khóa bản đồ gốc hoặc tiếp tục quét: gọi /slam_toolbox/pause_new_measurements."""
+        if self.slam_pause_client.service_is_ready():
+            req = Pause.Request()
+            future = self.slam_pause_client.call_async(req)
+            self.is_mapping_paused = not self.is_mapping_paused
+            status_str = "PAUSED" if self.is_mapping_paused else "MAPPING"
+            self.get_logger().info(f"🔒 Trạng thái bản đồ SLAM Toolbox: {status_str}")
+            status_msg = String()
+            status_msg.data = status_str
+            self.map_status_pub.publish(status_msg)
+        else:
+            self.get_logger().warn("⚠️ Service /slam_toolbox/pause_new_measurements chưa sẵn sàng!")
 
     def on_goal_pose_received(self, msg: PoseStamped):
         """Nhận mục tiêu điều hướng từ 2D Goal Pose (RViz2) hoặc Web Admin và kích hoạt tự hành."""
@@ -154,45 +268,36 @@ class LidarWsToRos2Bridge(Node):
         ty = float(msg.pose.position.y)
         self.get_logger().info(f"🎯 [NAV2 GOAL] Nhận mục tiêu tự hành mới: X={tx:.2f}m, Y={ty:.2f}m")
 
-        # 1. Xuất vệt đường đi toàn cục (Global Plan) lên topic /plan để RViz2 hiển thị đường dẫn màu xanh
-        plan_msg = Path()
-        plan_msg.header.stamp = self.get_clock().now().to_msg()
-        plan_msg.header.frame_id = 'map'
+        if self.robot_mode != "NAVIGATION":
+            self.get_logger().warn("⚠️ Bỏ qua goal: hãy lưu map và chạy chế độ NAVIGATION trước.")
+            return
 
-        # Điểm xuất phát: vị trí robot hiện tại
-        start_pose = PoseStamped()
-        start_pose.header = plan_msg.header
-        start_pose.pose.position.x = float(self.current_pose.get('x', 0.0))
-        start_pose.pose.position.y = float(self.current_pose.get('y', 0.0))
-        start_pose.pose.orientation.w = 1.0
-        plan_msg.poses.append(start_pose)
+        goal = NavigateToPose.Goal()
+        goal.pose = msg
+        goal.pose.header.frame_id = 'map'
+        goal.pose.header.stamp = self.get_clock().now().to_msg()
 
-        # Điểm đích: tọa độ goal
-        end_pose = PoseStamped()
-        end_pose.header = plan_msg.header
-        end_pose.pose = msg.pose
-        plan_msg.poses.append(end_pose)
+        if self.nav2_client.wait_for_server(timeout_sec=0.5):
+            send_future = self.nav2_client.send_goal_async(goal)
+            send_future.add_done_callback(self._on_nav2_goal_response)
+            return
 
-        self.plan_pub_.publish(plan_msg)
+        self.get_logger().warn("⚠️ Nav2 action server chưa sẵn sàng; không gửi lệnh chuyển động thay thế để tránh xung đột bộ điều khiển.")
 
-        # 2. Gửi lệnh tự hành né vật cản tới Pi 5 bất đồng bộ
-        def _send_goal():
-            try:
-                url = f"http://{self.pi5_ip}:8000/api/v1/map/navigate"
-                payload = json.dumps({"target_x": tx, "target_y": ty}).encode('utf-8')
-                req = urllib.request.Request(
-                    url,
-                    data=payload,
-                    headers={"Content-Type": "application/json", "User-Agent": "ROS2-Nav2-Bridge"},
-                    method="POST"
-                )
-                with urllib.request.urlopen(req, timeout=3.0) as resp:
-                    res_data = json.loads(resp.read().decode('utf-8'))
-                    self.get_logger().info(f"🚗 Pi 5 đã nhận lệnh tự hành: {res_data.get('message', 'OK')}")
-            except Exception as e:
-                self.get_logger().warn(f"⚠️ Không thể gửi Nav2 Goal tới Pi 5 ({url}): {e}")
+    def _on_nav2_goal_response(self, future):
+        goal_handle = future.result()
+        if not goal_handle.accepted:
+            self.get_logger().warn("⚠️ Nav2 từ chối mục tiêu.")
+            return
+        self.get_logger().info("✅ Nav2 đã nhận mục tiêu; planner đang tính đường trên static map.")
+        goal_handle.get_result_async().add_done_callback(self._on_nav2_result)
 
-        threading.Thread(target=_send_goal, daemon=True).start()
+    def _on_nav2_result(self, future):
+        try:
+            status = future.result().status
+            self.get_logger().info(f"🏁 Nav2 kết thúc mục tiêu, status={status}")
+        except Exception as exc:
+            self.get_logger().warn(f"⚠️ Không đọc được kết quả Nav2: {exc}")
 
 
     def broadcast_static_laser_tf(self):
@@ -265,13 +370,136 @@ class LidarWsToRos2Bridge(Node):
     def update_robot_pose(self, pose_dict):
         if not pose_dict:
             return
-        px = float(pose_dict.get('x', 0.0))
-        py = float(pose_dict.get('y', 0.0))
-        yaw_deg = float(pose_dict.get('yaw', 0.0))
-        if abs(px) > 0.001 or abs(py) > 0.001 or abs(yaw_deg) > 0.001:
-            self.current_pose = {'x': px, 'y': py, 'yaw': yaw_deg}
-            now = self.get_clock().now().to_msg()
-            self._record_and_publish_state(now, px, py, yaw_deg, broadcast_tf=True)
+        # Nếu đang có vận tốc di chuyển (Dead Reckoning từ cmd_vel hoặc telemetry UDP),
+        # giữ nguyên odometry mượt để tránh bị giật góc đột ngột làm sai lệch Scan Matching của SLAM
+        if abs(self.current_vx) > 0.001 or abs(self.current_wz) > 0.001:
+            return
+
+        target_x = float(pose_dict.get('x', 0.0))
+        target_y = float(pose_dict.get('y', 0.0))
+        target_yaw = float(pose_dict.get('yaw', 0.0))
+
+        # Lọc mượt góc xoay: Đảm bảo TF theo kịp chuyển động thực tế của robot, tránh trễ pha gây xoay map
+        d_yaw = (target_yaw - self.current_pose['yaw'] + 540.0) % 360.0 - 180.0
+        max_yaw_step = 10.0
+        if abs(d_yaw) > max_yaw_step:
+            yaw_deg = (self.current_pose['yaw'] + (max_yaw_step if d_yaw > 0 else -max_yaw_step)) % 360.0
+        else:
+            yaw_deg = target_yaw
+
+        # Lọc mượt tọa độ X, Y: Giới hạn tối đa 8cm/frame
+        dx = target_x - self.current_pose['x']
+        dy = target_y - self.current_pose['y']
+        max_pos_step = 0.08
+        dist = math.hypot(dx, dy)
+        if dist > max_pos_step:
+            ratio = max_pos_step / dist
+            px = self.current_pose['x'] + dx * ratio
+            py = self.current_pose['y'] + dy * ratio
+        else:
+            px = target_x
+            py = target_y
+
+        self.current_pose = {'x': px, 'y': py, 'yaw': yaw_deg}
+        now = self.get_clock().now().to_msg()
+        self._record_and_publish_state(now, px, py, yaw_deg, broadcast_tf=True)
+
+    def update_from_encoder_telemetry(self, encoders, yaw_rate_dps=0.0):
+        """Tinh odom tu encoder that; khong suy dien quang duong tu /cmd_vel."""
+        if not isinstance(encoders, dict):
+            return
+
+        self.encoder_packets += 1
+        now_mono = time.monotonic()
+        if now_mono - self.last_encoder_publish_time >= 0.1:
+            telemetry = dict(encoders)
+            telemetry["yaw_rate_dps"] = yaw_rate_dps
+            telemetry_msg = String()
+            telemetry_msg.data = json.dumps(telemetry)
+            self.encoder_telemetry_pub.publish(telemetry_msg)
+            self.last_encoder_publish_time = now_mono
+
+        try:
+            m1 = encoders.get("m1", {})
+            m2 = encoders.get("m2", {})
+            m3 = encoders.get("m3", {})
+            m4 = encoders.get("m4", {})
+            left_ticks = (float(m1.get("ticks", 0)) + float(m2.get("ticks", 0))) / 2.0
+            right_ticks = (
+                self.encoder_m3_sign * float(m3.get("ticks", 0)) + float(m4.get("ticks", 0))
+            ) / 2.0
+        except (TypeError, ValueError):
+            return
+
+        if not self.has_prev_encoder_ticks:
+            self.prev_left_ticks = left_ticks
+            self.prev_right_ticks = right_ticks
+            self.has_prev_encoder_ticks = True
+            self.last_encoder_time = now_mono
+            return
+
+        dt = now_mono - self.last_encoder_time
+        self.last_encoder_time = now_mono
+        if dt <= 0.0 or dt > 1.0:
+            self.prev_left_ticks = left_ticks
+            self.prev_right_ticks = right_ticks
+            return
+
+        delta_left_ticks = left_ticks - self.prev_left_ticks
+        delta_right_ticks = right_ticks - self.prev_right_ticks
+        self.prev_left_ticks = left_ticks
+        self.prev_right_ticks = right_ticks
+        if abs(delta_left_ticks) >= 1.0 or abs(delta_right_ticks) >= 1.0:
+            self.encoder_motion_detected = True
+
+        # Bo qua packet reset/wrap bat thuong thay vi keo map di mot quang lon.
+        max_ticks_per_packet = self.encoder_cpr * 2.0
+        if abs(delta_left_ticks) > max_ticks_per_packet or abs(delta_right_ticks) > max_ticks_per_packet:
+            self.get_logger().warn("Encoder jump/reset detected; bỏ qua một mẫu odometry.")
+            return
+
+        distance_per_tick = (2.0 * math.pi * self.wheel_radius) / self.encoder_cpr
+        delta_left = delta_left_ticks * distance_per_tick
+        delta_right = delta_right_ticks * distance_per_tick
+        delta_s = (delta_left + delta_right) / 2.0
+        delta_yaw = (delta_right - delta_left) / self.wheel_sep
+        same_wheel_direction = (delta_left * delta_right) > 0.0
+
+        # Đi thẳng/lùi (lệnh hoặc hai bánh cùng chiều): khóa yaw, không cho encoder/IMU xoay model.
+        if self._is_straight_command() or same_wheel_direction:
+            delta_yaw = 0.0
+            if self._locked_yaw_deg is None:
+                self._locked_yaw_deg = self.current_pose['yaw']
+            self.current_pose['yaw'] = self._locked_yaw_deg
+        else:
+            self._locked_yaw_deg = None
+            try:
+                gyro_rate = float(yaw_rate_dps or 0.0)
+            except (TypeError, ValueError):
+                gyro_rate = 0.0
+            if abs(gyro_rate) > 0.5:
+                delta_yaw = 0.7 * (math.radians(gyro_rate) * dt) + 0.3 * delta_yaw
+            yaw_rad_new = math.radians(self.current_pose['yaw']) + delta_yaw
+            self.current_pose['yaw'] = math.degrees(
+                math.atan2(math.sin(yaw_rad_new), math.cos(yaw_rad_new))
+            )
+
+        yaw_rad = math.radians(self.current_pose['yaw'])
+        self.current_pose['x'] += delta_s * math.cos(yaw_rad)
+        self.current_pose['y'] += delta_s * math.sin(yaw_rad)
+        self.measured_vx = delta_s / dt
+        self.measured_wz = delta_yaw / dt
+
+        now = self.get_clock().now().to_msg()
+        self._record_and_publish_state(
+            now,
+            self.current_pose['x'],
+            self.current_pose['y'],
+            self.current_pose['yaw'],
+            vx=self.measured_vx,
+            wz=self.measured_wz,
+            broadcast_tf=True,
+        )
 
     def on_cmd_vel_received(self, msg: Twist):
         self.last_cmd_time = time.monotonic()
@@ -301,9 +529,33 @@ class LidarWsToRos2Bridge(Node):
         else:
             motion = "stop"
 
+        if motion != "stop":
+            pwm = self.teleop_pwm_turn if motion in ("left", "right") else self.teleop_pwm_forward
+            pwm = max(20, min(50, pwm))
+            self._send_udp_speed(pwm)
         self._send_udp_to_pi5(motion)
 
+    def _is_straight_command(self) -> bool:
+        motion = self.last_sent_udp_motion
+        if motion.startswith("speed:"):
+            return False
+        if motion in ("forward", "backward"):
+            return True
+        return abs(self.current_vx) > 0.05 and abs(self.current_wz) < 0.2
+
+    def _send_udp_speed(self, pwm: int):
+        if pwm == self.last_sent_teleop_pwm:
+            return
+        self.last_sent_teleop_pwm = pwm
+        try:
+            self.udp_sock.sendto(f"speed:{pwm}".encode("utf-8"), (self.pi5_ip, self.pi5_port))
+        except Exception as e:
+            self.get_logger().debug(f"Loi gui UDP speed Pi 5: {e}")
+
     def _send_udp_to_pi5(self, motion: str):
+        if motion.startswith("speed:"):
+            self._send_udp_speed(int(motion.split(":", 1)[1]))
+            return
         if motion != self.last_sent_udp_motion:
             self.last_sent_udp_motion = motion
             try:
@@ -323,13 +575,33 @@ class LidarWsToRos2Bridge(Node):
                 self.current_wz = 0.0
                 self._send_udp_to_pi5("stop")
 
-        if abs(self.current_vx) > 0.001 or abs(self.current_wz) > 0.001:
+        encoder_is_fresh = self.has_prev_encoder_ticks and (now_mono - self.last_encoder_time) < 0.5
+
+        # Fallback nay mac dinh TAT. cmd_vel la lenh mong muon, khong phai
+        # chuyen dong da do; dung no lam odom chinh la nguyen nhan map bi chong.
+        if self.allow_cmd_vel_odom and not encoder_is_fresh and (
+            abs(self.current_vx) > 0.001 or abs(self.current_wz) > 0.001
+        ):
             yaw_deg = self.current_pose['yaw'] + math.degrees(self.current_wz * dt)
             self.current_pose['yaw'] = yaw_deg % 360.0
 
             yaw_rad = math.radians(self.current_pose['yaw'])
             self.current_pose['x'] += self.current_vx * math.cos(yaw_rad) * dt
             self.current_pose['y'] += self.current_vx * math.sin(yaw_rad) * dt
+
+        if not encoder_is_fresh:
+            self.measured_vx = self.current_vx if self.allow_cmd_vel_odom else 0.0
+            self.measured_wz = self.current_wz if self.allow_cmd_vel_odom else 0.0
+
+        # Khi LiDAR/SLAM chưa publish map->odom, phát TF identity để RobotModel không biến mất.
+        scan_stale = self.last_scan_time <= 0.0 or (now_mono - self.last_scan_time) > 1.5
+        if scan_stale:
+            map_odom = TransformStamped()
+            map_odom.header.stamp = self.get_clock().now().to_msg()
+            map_odom.header.frame_id = "map"
+            map_odom.child_frame_id = "odom"
+            map_odom.transform.rotation.w = 1.0
+            self.tf_broadcaster.sendTransform(map_odom)
 
         # Luôn phát /odom và TF odom -> base_link đều đặn 30Hz để robot model di chuyển mượt mà trên RViz2
         now = self.get_clock().now().to_msg()
@@ -338,14 +610,14 @@ class LidarWsToRos2Bridge(Node):
             self.current_pose['x'],
             self.current_pose['y'],
             self.current_pose['yaw'],
-            vx=self.current_vx,
-            wz=self.current_wz,
+            vx=self.measured_vx,
+            wz=self.measured_wz,
             broadcast_tf=True
         )
 
         # Tính toán góc quay và phát /joint_states để bánh xe xoay tròn trên RViz2
-        v_l = self.current_vx - (self.current_wz * self.wheel_sep / 2.0)
-        v_r = self.current_vx + (self.current_wz * self.wheel_sep / 2.0)
+        v_l = self.measured_vx - (self.measured_wz * self.wheel_sep / 2.0)
+        v_r = self.measured_vx + (self.measured_wz * self.wheel_sep / 2.0)
         self.wheel_l_pos += (v_l / self.wheel_radius) * dt
         self.wheel_r_pos += (v_r / self.wheel_radius) * dt
 
@@ -405,6 +677,8 @@ class LidarWsToRos2Bridge(Node):
 
         now = self.get_clock().now().to_msg()
         self.scan_count += 1
+        self.last_scan_time = time.monotonic()
+        self.last_scan_points = len(points)
         if self.scan_count % 30 == 1:
             self.get_logger().info(f"📡 Dang publish /scan (packet #{self.scan_count}, {len(points)} tia)")
 
@@ -419,7 +693,7 @@ class LidarWsToRos2Bridge(Node):
         msg.angle_increment = (2.0 * math.pi) / num_bins
         msg.time_increment = 0.0
         msg.scan_time = 0.1
-        msg.range_min = 0.12
+        msg.range_min = 0.20
         msg.range_max = 12.0
 
         ranges = [float('inf')] * num_bins
@@ -431,12 +705,9 @@ class LidarWsToRos2Bridge(Node):
             quality = pt.get('quality', 0)
 
             if msg.range_min <= dist <= msg.range_max:
-                # Đảo ngược góc từ chuẩn RPLiDAR (CW) sang chuẩn ROS REP-103 (CCW):
-                # 0° -> 0 rad (+X Front)
-                # 90° (Right) -> 270° (-Y Right)
-                # 270° (Left) -> 90° (+Y Left)
-                ros_angle_deg = (360.0 - angle_deg) % 360.0
-                bin_idx = int(ros_angle_deg) % num_bins
+                # angle_deg nhận được đã chuẩn hóa CCW theo chuẩn ROS REP-103:
+                # 0° -> Tiến (+X), 90° -> Trái (+Y), 180° -> Lùi (-X), 270° -> Phải (-Y)
+                bin_idx = int(angle_deg) % num_bins
                 # Giu khoang cach nho nhat neu co nhieu diem trong 1 bin
                 if dist < ranges[bin_idx]:
                     ranges[bin_idx] = float(dist)
@@ -451,8 +722,8 @@ class LidarWsToRos2Bridge(Node):
             self.current_pose['x'],
             self.current_pose['y'],
             self.current_pose['yaw'],
-            vx=self.current_vx,
-            wz=self.current_wz,
+            vx=self.measured_vx,
+            wz=self.measured_wz,
             broadcast_tf=True
         )
 
@@ -463,23 +734,30 @@ async def ws_loop(node: LidarWsToRos2Bridge, ws_url="ws://100.99.72.51:8000/api/
     while rclpy.ok():
         try:
             async with websockets.connect(ws_url, ping_interval=10, ping_timeout=5) as ws:
+                node.pi_ws_connected = True
                 node.get_logger().info("✅ Da ket noi thanh cong toi WebSocket LiDAR Pi 5!")
                 async for msg_str in ws:
                     if not rclpy.ok():
                         break
                     try:
                         data = json.loads(msg_str)
-                        robot_pose = data.get("robot_pose")
-                        if robot_pose:
-                            node.update_robot_pose(robot_pose)
+                        node.update_from_encoder_telemetry(
+                            data.get("encoders"),
+                            data.get("yaw_rate_dps", 0.0),
+                        )
+                        # Bỏ qua robot_pose noi suy tren Pi 5; odom phai den tu
+                        # encoder/IMU de scan matching khong keo xeo static map.
                         points = data.get("scan_points", [])
                         if points:
                             node.publish_scan(points)
                     except Exception as e:
                         node.get_logger().warn(f"Loi parse frame: {e}")
         except Exception as e:
+            node.pi_ws_connected = False
             node.get_logger().warn(f"Mat ket noi WS toi Pi 5 ({e}), se thu lai sau 2s...")
             await asyncio.sleep(2.0)
+        finally:
+            node.pi_ws_connected = False
 
 
 def start_asyncio_loop(node):

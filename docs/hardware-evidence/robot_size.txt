@@ -1,0 +1,9 @@
+robot cao tính từ mặt đất đến đỉnh lidar : 30cm
+robot rộng 15cm
+robot dài 25cm
+bán kính bánh 7 cm
+khoảng cách giữa 2 bánh 5 cm
+kích thước các tầng 25.5cm x 15cm 
+các tầng cách nhau 5cm
+từ camera đến tâm robot 13cm
+lidar đặt tại tâm

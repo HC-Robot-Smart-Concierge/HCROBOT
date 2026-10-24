@@ -55,29 +55,29 @@ export const AuroraSidebar = ({
 
   const staffNavItems = isConcierge
     ? [
-        { id: 'LiveCalls', label: 'Tổng đài Live Call', icon: PhoneCall },
-        { id: 'Recordings', label: 'Bản ghi cuộc gọi', icon: Film },
-        { id: 'Taxi', label: 'Điều phối đặt xe', icon: Car },
-        { id: 'Feedback', label: 'Đánh giá dịch vụ', icon: Star },
-        { id: 'Requests', label: t('menuRequests') || 'Yêu cầu', icon: Inbox },
-        { id: 'MyTasks', label: t('menuMyTasks') || 'Yêu cầu cá nhân', icon: ClipboardCheck },
-        ...(isKitchen ? [{ id: 'KitchenMenu', label: 'Quản Lý Menu', icon: UtensilsCrossed }] : []),
-        { id: 'History', label: t('menuHistory') || 'Lịch sử', icon: History },
-        { id: 'Notifications', label: t('menuNotifications') || 'Thông báo', icon: Bell },
-        { id: 'Profile', label: t('menuProfile') || 'Hồ sơ', icon: User },
+        { id: 'LiveCalls', label: 'Live Call Center', icon: PhoneCall },
+        { id: 'Recordings', label: 'Call Recordings', icon: Film },
+        { id: 'Taxi', label: 'Taxi Dispatch', icon: Car },
+        { id: 'Feedback', label: 'Guest Feedback', icon: Star },
+        { id: 'Requests', label: t('menuRequests'), icon: Inbox },
+        { id: 'MyTasks', label: t('menuMyTasks'), icon: ClipboardCheck },
+        ...(isKitchen ? [{ id: 'KitchenMenu', label: t('menuKitchenMenu'), icon: UtensilsCrossed }] : []),
+        { id: 'History', label: t('menuHistory'), icon: History },
+        { id: 'Notifications', label: t('menuNotifications'), icon: Bell },
+        { id: 'Profile', label: t('menuProfile'), icon: User },
       ]
     : [
-        { id: 'Dashboard', label: t('menuDashboard') || 'Tổng quan', icon: LayoutDashboard },
-        { id: 'Requests', label: t('menuRequests') || 'Yêu cầu', icon: Inbox },
-        { id: 'MyTasks', label: t('menuMyTasks') || 'Yêu cầu cá nhân', icon: ClipboardCheck },
-        ...(isKitchen ? [{ id: 'KitchenMenu', label: t('menuKitchenMenu') || 'Quản Lý Menu', icon: UtensilsCrossed }] : []),
-        { id: 'Notifications', label: t('menuNotifications') || 'Thông báo', icon: Bell },
-        { id: 'Profile', label: t('menuProfile') || 'Hồ sơ', icon: User },
+        { id: 'Dashboard', label: t('menuDashboard'), icon: LayoutDashboard },
+        { id: 'Requests', label: t('menuRequests'), icon: Inbox },
+        { id: 'MyTasks', label: t('menuMyTasks'), icon: ClipboardCheck },
+        ...(isKitchen ? [{ id: 'KitchenMenu', label: t('menuKitchenMenu'), icon: UtensilsCrossed }] : []),
+        { id: 'Notifications', label: t('menuNotifications'), icon: Bell },
+        { id: 'Profile', label: t('menuProfile'), icon: User },
       ];
 
   return (
     <aside
-      className={`h-full border-r flex flex-col justify-between select-none shrink-0 font-sans ${
+      className={`h-full border-r hidden md:flex flex-col justify-between select-none shrink-0 font-sans ${
         referenceLayout
           ? 'w-[240px] bg-white border-[#F0EEE9] px-[19px] py-5'
           : 'w-64 bg-[#F5F2EB] border-[#E3DFD5] p-5'
@@ -103,7 +103,7 @@ export const AuroraSidebar = ({
 
           <button
             onClick={onBackToHome}
-            title="Quay lại Trang Chủ"
+            title="Back to Home"
             className={`p-1.5 rounded-xl bg-[#EBE7DE] hover:bg-[#E2DDCF] text-stone-600 hover:text-black transition-all cursor-pointer ${referenceLayout ? 'hidden' : ''}`}
           >
             <Home className="w-4 h-4" />
@@ -188,7 +188,7 @@ export const AuroraSidebar = ({
 
           <button
             onClick={onLogout}
-            title="Đăng xuất"
+            title="Sign Out"
             className={`p-1.5 rounded-xl hover:bg-stone-300 text-stone-500 hover:text-red-600 transition-all cursor-pointer ${referenceLayout ? 'opacity-0 group-hover:opacity-100' : ''}`}
           >
             <LogOut className="w-4 h-4" />

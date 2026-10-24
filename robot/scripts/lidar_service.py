@@ -371,6 +371,126 @@ free_thresh: 0.25
         gy = int((y - self.origin_y) / self.resolution)
         return gx, gy
 
+    def _compute_scan_match_score(
+        self,
+        raw_batch: List[Dict],
+        robot_x: float,
+        robot_y: float,
+        robot_yaw: float,
+        grid_snapshot: List[int],
+    ) -> float:
+        """
+        Tính điểm khớp (likelihood score) giữa scan và map hiện tại.
+        raw_batch: list of {"angle": float, "distance": float}
+        Trả về tỷ lệ [0..1] các điểm chuyển đổi từ raw khớp với ô vật cản (100) trên map.
+        """
+        if not raw_batch or not grid_snapshot:
+            return 0.0
+
+        hit = 0
+        total = 0
+        ox, oy = self.origin_x, self.origin_y
+        res = self.resolution
+        gw, gh = self.grid_width, self.grid_height
+
+        for pt in raw_batch:
+            dist = pt["distance"]
+            if dist < 0.12 or dist > 8.0:
+                continue
+            heading = (pt["angle"] + robot_yaw) % 360.0
+            rad = math.radians(heading)
+            wx = robot_x + dist * math.cos(rad)
+            wy = robot_y + dist * math.sin(rad)
+            gx = int((wx - ox) / res)
+            gy = int((wy - oy) / res)
+            total += 1
+            if 0 <= gx < gw and 0 <= gy < gh:
+                idx = gy * gw + gx
+                if grid_snapshot[idx] == 100:
+                    hit += 2  # chính xác
+                else:
+                    # Kiểm tra 8 lân cận (kernel mềm)
+                    for nx_, ny_ in (
+                        (gx-1,gy),(gx+1,gy),(gx,gy-1),(gx,gy+1),
+                        (gx-1,gy-1),(gx+1,gy-1),(gx-1,gy+1),(gx+1,gy+1),
+                    ):
+                        if 0 <= nx_ < gw and 0 <= ny_ < gh:
+                            if grid_snapshot[ny_ * gw + nx_] == 100:
+                                hit += 1
+                                break
+
+        return hit / max(total * 2, 1)
+
+    def _match_scan_to_map(
+        self,
+        raw_batch: List[Dict],
+        init_x: float,
+        init_y: float,
+        init_yaw: float,
+    ):
+        """
+        Likelihood Field Scan Matching (ICP-lite).
+        Tìm pose (x, y, yaw) tốt nhất trong vùng lân cận bằng grid search 2 bước.
+
+        Bước 1 – Coarse: dải ±20cm step 5cm, ±10° step 2.5°
+        Bước 2 – Fine:   dải ±4cm step 1cm, ±2° step 0.5° quanh kết quả tốt nhất
+        Chỉ chấp nhận nếu cải thiện score > 5%.
+        """
+        # Cần có map đủ dữ liệu để match (>= 80 ô vật cản)
+        with self._lock:
+            occupied = sum(1 for v in self.grid_data if v == 100)
+            grid_snap = list(self.grid_data)
+
+        if occupied < 80 or not raw_batch:
+            return init_x, init_y, init_yaw
+
+        init_score = self._compute_scan_match_score(raw_batch, init_x, init_y, init_yaw, grid_snap)
+
+        # Bước 1: Coarse search
+        best_x, best_y, best_yaw = init_x, init_y, init_yaw
+        best_score = init_score
+        for dx in (-0.20, -0.15, -0.10, -0.05, 0.0, 0.05, 0.10, 0.15, 0.20):
+            for dy in (-0.20, -0.15, -0.10, -0.05, 0.0, 0.05, 0.10, 0.15, 0.20):
+                for dyaw in (-10.0, -7.5, -5.0, -2.5, 0.0, 2.5, 5.0, 7.5, 10.0):
+                    s = self._compute_scan_match_score(
+                        raw_batch,
+                        init_x + dx, init_y + dy,
+                        (init_yaw + dyaw) % 360.0,
+                        grid_snap,
+                    )
+                    if s > best_score:
+                        best_score = s
+                        best_x, best_y = init_x + dx, init_y + dy
+                        best_yaw = (init_yaw + dyaw) % 360.0
+
+        # Bước 2: Fine search quanh kết quả coarse
+        fine_x, fine_y, fine_yaw = best_x, best_y, best_yaw
+        fine_score = best_score
+        for dx in (-0.04, -0.03, -0.02, -0.01, 0.0, 0.01, 0.02, 0.03, 0.04):
+            for dy in (-0.04, -0.03, -0.02, -0.01, 0.0, 0.01, 0.02, 0.03, 0.04):
+                for dyaw in (-2.0, -1.5, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0):
+                    s = self._compute_scan_match_score(
+                        raw_batch,
+                        best_x + dx, best_y + dy,
+                        (best_yaw + dyaw) % 360.0,
+                        grid_snap,
+                    )
+                    if s > fine_score:
+                        fine_score = s
+                        fine_x, fine_y = best_x + dx, best_y + dy
+                        fine_yaw = (best_yaw + dyaw) % 360.0
+
+        # Chỉ áp dụng nếu cải thiện đáng kể (>3%) và di chuyển không quá xa (< 30cm)
+        dist_moved = math.hypot(fine_x - init_x, fine_y - init_y)
+        if fine_score > init_score * 1.03 and dist_moved < 0.30:
+            logger.debug(
+                f"[ScanMatch] ✅ Score {init_score:.3f}→{fine_score:.3f} "
+                f"Δx={fine_x-init_x:+.3f}m Δy={fine_y-init_y:+.3f}m Δyaw={fine_yaw-init_yaw:+.1f}°"
+            )
+            return fine_x, fine_y, fine_yaw
+
+        return init_x, init_y, init_yaw
+
     def _update_grid_from_scan(self, rx: float, ry: float, scan_points: List[Dict[str, Any]]):
         """
         Thuật toán Raytracing Bresenham có cơ chế tự làm sạch:
@@ -545,11 +665,31 @@ free_thresh: 0.25
             buf = bytearray()
             current_scan_batch = []
             last_packet_time = time.time()
+            last_imu_update_time = time.time()  # Thời điểm cập nhật IMU cuối
             stall_retries = 0
 
             while self.is_running and self.ser and self.ser.is_open:
                 chunk = self.ser.read(512)
                 now = time.time()
+
+                # ── IMU Gyro Integration ──────────────────────────────────────
+                # Tích phân yaw_rate_dps từ MPU6050 (ESP32) để cập nhật robot_yaw
+                # liên tục thay vì bước cố định ±8° khi nhấn teleop.
+                # Chỉ tích phân khi MAPPING mode để không làm sai pose navigation.
+                if self.map_mode == "MAPPING":
+                    esp_reader = getattr(self, "esp32_reader", None)
+                    if esp_reader and hasattr(esp_reader, "latest"):
+                        snap = esp_reader.latest()
+                        if snap and snap.mpu_available and snap.yaw_rate_dps is not None:
+                            dt = now - last_imu_update_time
+                            # Ngưỡng nhiễu: bỏ qua nếu gyro < 2 dps (nhiễu trắng khi đứng yên)
+                            if abs(snap.yaw_rate_dps) > 2.0 and 0.0 < dt < 0.5:
+                                # yaw_rate_dps > 0 = quay trái (CCW) theo chuẩn ROS/math
+                                delta_yaw = snap.yaw_rate_dps * dt
+                                with self._lock:
+                                    self.robot_yaw = (self.robot_yaw + delta_yaw) % 360.0
+                last_imu_update_time = now
+                # ─────────────────────────────────────────────────────────────
 
                 if not chunk:
                     # WATCHDOG: Nếu không có dữ liệu > 2.0s (do sụt áp động cơ, brownout hoặc sensor đơ)
@@ -623,21 +763,21 @@ free_thresh: 0.25
                     # 1. Bù góc lắp đặt (mặc định 180° do dây cáp RPLiDAR quay về phía sau xe)
                     cw_angle = (raw_angle + float(os.environ.get("HCROBOT_LIDAR_OFFSET", "180.0"))) % 360.0
 
-                    # 2. Đổi chiều quay từ chuẩn RPLiDAR Clockwise (CW) sang chuẩn hình học / ROS Counter-Clockwise (CCW):
+                    # 2. Đổi chiều quay từ chuẩn RPLiDAR Clockwise (CW) → CCW hình học / ROS:
                     # 0°: Tiến (+X), 90°: Trái (+Y), 180°: Lùi (-X), 270°: Phải (-Y)
                     ccw_angle = (360.0 - cw_angle) % 360.0
                     distance_q2 = packet[3] | (packet[4] << 8)
                     dist_m = (distance_q2 / 4.0) / 1000.0
 
-                    # 1. Lọc tia khoảng cách hợp lệ (từ 12cm đến 12m)
+                    # 3. Lọc tia khoảng cách hợp lệ (12cm → 12m)
                     if 0.12 <= dist_m <= 12.0:
-                        # Cập nhật liên tục mảng khoảng cách 360 độ theo chuẩn CCW (90° = Trái, 270° = Phải)
+                        # Cập nhật buffer khoảng cách 360° (dùng cho safety watchdog)
                         deg = int(round(ccw_angle)) % 360
                         now_ts = time.time()
                         self.angle_distances[deg] = dist_m
                         self.angle_timestamps[deg] = now_ts
 
-                        # Chuẩn hóa góc và tọa độ theo chuẩn Cartesian (+X Tiến, +Y Trái, CCW)
+                        # Tính tọa độ world theo pose hiện tại (sẽ được recompute sau scan matching)
                         heading = (ccw_angle + self.robot_yaw) % 360.0
                         rad = math.radians(heading)
                         x = self.robot_x + dist_m * math.cos(rad)
@@ -651,15 +791,50 @@ free_thresh: 0.25
                             "quality": quality,
                         })
 
-                    # 2. Cập nhật khi hoàn thành nguyên 1 vòng quét 360 độ
+                    # 4. Xử lý khi hoàn thành nguyên 1 vòng quét 360°
                     if (is_new_scan and len(current_scan_batch) >= 60) or len(current_scan_batch) >= 720:
+                        # ── Scan Matching: sửa pose trước khi vẽ map ──────────────────
+                        # Chỉ match khi MAPPING để không làm sai vị trí khi navigation
+                        raw_batch = [
+                            {"angle": p["angle"], "distance": p["distance"]}
+                            for p in current_scan_batch
+                        ]
+                        if self.map_mode == "MAPPING":
+                            corrected_x, corrected_y, corrected_yaw = self._match_scan_to_map(
+                                raw_batch, self.robot_x, self.robot_y, self.robot_yaw
+                            )
+                        else:
+                            corrected_x = self.robot_x
+                            corrected_y = self.robot_y
+                            corrected_yaw = self.robot_yaw
+
+                        # Tính lại toạ độ scan points với pose đã sửa bởi scan matching
+                        corrected_batch = []
+                        for p in current_scan_batch:
+                            h2 = (p["angle"] + corrected_yaw) % 360.0
+                            r2 = math.radians(h2)
+                            corrected_batch.append({
+                                "angle": p["angle"],
+                                "distance": p["distance"],
+                                "x": round(corrected_x + p["distance"] * math.cos(r2), 2),
+                                "y": round(corrected_y + p["distance"] * math.sin(r2), 2),
+                                "quality": p["quality"],
+                            })
+                        # ────────────────────────────────────────────────────────────
+
                         with self._lock:
-                            self._latest_scans = list(current_scan_batch)
+                            if self.map_mode == "MAPPING":
+                                self.robot_x = corrected_x
+                                self.robot_y = corrected_y
+                                self.robot_yaw = corrected_yaw
+                            self._latest_scans = corrected_batch
                             self.last_scan_time = time.time()
                             self.last_scan_points = len(self._latest_scans)
                             self.last_error = ""
-                            self._update_grid_from_scan(self.robot_x, self.robot_y, self._latest_scans)
+                            self._update_grid_from_scan(corrected_x, corrected_y, corrected_batch)
                         current_scan_batch.clear()
+
+
 
         except Exception as e:
             logger.error(f"Lỗi scan loop: {e}")
@@ -746,13 +921,20 @@ free_thresh: 0.25
 
     def get_grid_map(self) -> Dict[str, Any]:
         with self._lock:
+            # Khi đang ở NAVIGATION mode (map đã lock/lưu), trả về static_grid_data
+            # để frontend luôn thấy toàn bộ layout cố định thay vì chỉ vùng LiDAR vừa quét.
+            display_grid = (
+                list(self.static_grid_data)
+                if self.is_map_locked and self.static_grid_data
+                else list(self.grid_data)
+            )
             return {
                 "width": self.grid_width,
                 "height": self.grid_height,
                 "resolution": self.resolution,
                 "origin_x": self.origin_x,
                 "origin_y": self.origin_y,
-                "grid_data": list(self.grid_data),
+                "grid_data": display_grid,
             }
 
     def send_udp_motor_command(self, cmd: str, force: bool = False):
@@ -1728,8 +1910,17 @@ async def teleop_control(req: TeleopCommandRequest):
         spd = req.speed or 35
         slam_core.send_udp_motor_command(f"speed:{spd}")
         slam_core.send_udp_motor_command(cmd)
-        yaw_step = -8.0 if cmd == "right" else 8.0
-        slam_core.robot_yaw = (slam_core.robot_yaw + yaw_step) % 360.0
+        # Nếu có IMU (ESP32 MPU) thì để scan_loop tích phân yaw_rate tự động.
+        # Chỉ fallback bước cố định khi không có IMU hoặc ESP32 chưa kết nối.
+        esp_reader = getattr(slam_core, "esp32_reader", None)
+        has_imu = False
+        if esp_reader and hasattr(esp_reader, "latest"):
+            snap = esp_reader.latest()
+            has_imu = bool(snap and snap.mpu_available and snap.yaw_rate_dps is not None)
+        if not has_imu:
+            # Fallback: ước tính thô ±8° khi không có IMU
+            yaw_step = -8.0 if cmd == "right" else 8.0
+            slam_core.robot_yaw = (slam_core.robot_yaw + yaw_step) % 360.0
     elif cmd in ["forward", "backward"]:
         spd = req.speed or 45
         slam_core.send_udp_motor_command(f"speed:{spd}")
@@ -1982,7 +2173,16 @@ async def map_ws_endpoint(websocket: WebSocket):
                     "right_cm": right_cm,
                     "alert": getattr(slam_core, "last_safety_alert", ""),
                 },
-                "grid_data": slam_core.merge_maps() if slam_core._overlay_active else map_data["grid_data"],
+                # Ưu tiên: overlay > static map (NAVIGATION) > live MAPPING grid
+                "grid_data": (
+                    slam_core.merge_maps()
+                    if slam_core._overlay_active
+                    else (
+                        list(slam_core.static_grid_data)
+                        if slam_core.is_map_locked and slam_core.static_grid_data
+                        else map_data["grid_data"]
+                    )
+                ),
                 "grid_metadata": {
                     "width": map_data["width"],
                     "height": map_data["height"],

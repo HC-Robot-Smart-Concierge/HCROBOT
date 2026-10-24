@@ -183,7 +183,7 @@ class RPLidarSLAMCore:
                 right_backward_pin=23,
                 invert_left_direction=False,
                 invert_right_direction=True,
-                default_speed=25,
+                default_speed=35,
             )
             logger.info("🚗 [LiDAR-SLAM] Đã khởi tạo MotorController trực tiếp trên Raspberry Pi 5 (GPIO 17, 27, 22, 23)!")
         except Exception as e:
@@ -2064,13 +2064,13 @@ async def start_scan_360():
 
 class TeleopCommandRequest(BaseModel):
     command: str  # forward, backward, left, right, stop
-    speed: Optional[int] = 25
+    speed: Optional[int] = 35
 
 
 TELEOP_PWM_MIN = 20
-TELEOP_PWM_MAX = 28
-TELEOP_PWM_FORWARD = 25
-TELEOP_PWM_TURN = 22
+TELEOP_PWM_MAX = 40
+TELEOP_PWM_FORWARD = 35
+TELEOP_PWM_TURN = 32
 
 
 def _clamp_teleop_pwm(speed: Optional[int], default: int) -> int:

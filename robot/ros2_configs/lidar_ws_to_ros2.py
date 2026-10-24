@@ -168,7 +168,8 @@ class LidarWsToRos2Bridge(Node):
             "scan_packets": self.scan_count,
             "encoder_packets": self.encoder_packets,
             "encoder_motion_detected": self.encoder_motion_detected,
-            "healthy_for_mapping": lidar_live and self.encoder_motion_detected,
+            "ready_for_static_capture": lidar_live,
+            "ready_for_mobile_mapping": lidar_live and self.encoder_motion_detected,
             "reasons": reasons,
         })
         self.sensor_health_pub.publish(msg)

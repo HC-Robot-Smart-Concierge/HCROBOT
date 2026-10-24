@@ -149,7 +149,6 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
   const mappingReadyToSave = mapMode === 'MAPPING'
     && isWsConnected
     && lidarLive
-    && odometryMotionSeen
     && hasLiveRosMap
     && mapHasContent;
 
@@ -557,7 +556,6 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
       const reasons = [];
       if (!isWsConnected) reasons.push('Rosbridge chưa kết nối');
       if (!lidarLive) reasons.push('LiDAR chưa có scan thật');
-      if (!odometryMotionSeen) reasons.push('encoder/odometry chưa ghi nhận robot di chuyển');
       if (!hasLiveRosMap) reasons.push('SLAM chưa phát map mới trong phiên quét này');
       if (!mapHasContent) reasons.push('map chưa đủ ô tường và vùng trống');
       setNavNotification(`Chưa thể lưu map: ${reasons.join('; ')}.`);
@@ -1063,7 +1061,7 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
                 ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
                 : 'bg-amber-100 text-amber-800 border-amber-300'
             }`}>
-              {odometryMotionSeen ? 'ODOM: ĐÃ DI CHUYỂN' : 'ODOM: CHƯA CÓ CHUYỂN ĐỘNG'}
+              {odometryMotionSeen ? 'ODOM: ĐÃ DI CHUYỂN' : 'ODOM: ROBOT ĐỨNG YÊN'}
             </span>
           )}
 
@@ -1352,7 +1350,7 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
               className="px-3 py-1.5 rounded-lg border border-blue-300 bg-blue-50 hover:bg-blue-100 text-blue-800 font-bold disabled:opacity-40 cursor-pointer flex items-center gap-1.5"
               title={mappingReadyToSave
                 ? 'Lưu bản đồ đã quét và chuyển sang Navigation'
-                : 'Cần LiDAR live, odometry đã ghi nhận chuyển động và map có dữ liệu hợp lệ'}
+                : 'Cần LiDAR live và map ROS 2 có dữ liệu hợp lệ; quét tĩnh không bắt buộc encoder thay đổi'}
             >
               <Save className="w-3.5 h-3.5"/>
               <span>2. LƯU & KHÓA</span>
@@ -1385,9 +1383,7 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
             <div className="shrink-0 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[11px] text-amber-900 font-semibold">
               Chưa thể lưu: {!lidarLive
                 ? 'Pi/RPLiDAR chưa phát scan thật.'
-                : !odometryMotionSeen
-                  ? ' Hãy di chuyển robot; encoder/odometry hiện chưa đổi.'
-                  : !hasLiveRosMap
+                : !hasLiveRosMap
                     ? ' SLAM chưa phát map mới trong phiên quét này.'
                     : !mapHasContent
                     ? ' Bản đồ chưa có đủ tường và vùng trống.'

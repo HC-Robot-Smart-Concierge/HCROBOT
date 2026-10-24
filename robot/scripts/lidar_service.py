@@ -1927,7 +1927,7 @@ async def map_ws_endpoint(websocket: WebSocket):
 
             encoders_payload = {"m1": {"rpm": 0, "ticks": 0}, "m2": {"rpm": 0, "ticks": 0}, "m3": {"rpm": 0, "ticks": 0}, "m4": {"rpm": 0, "ticks": 0}}
             esp_reader = getattr(slam_core, "esp32_reader", None)
-            snap = esp_reader.get_snapshot() if (esp_reader and hasattr(esp_reader, "get_snapshot")) else None
+            snap = esp_reader.latest() if (esp_reader and hasattr(esp_reader, "latest")) else None
             if snap and snap.encoders:
                 encoders_payload = snap.encoders
 

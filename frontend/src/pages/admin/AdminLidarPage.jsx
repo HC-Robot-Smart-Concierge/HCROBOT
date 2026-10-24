@@ -1390,6 +1390,12 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
                     : ' Đang chờ dữ liệu.'}
             </div>
           )}
+          {mapMode === 'MAPPING' && lidarLive && !odometryMotionSeen && (
+            <div className="shrink-0 rounded-lg border border-orange-300 bg-orange-50 px-3 py-2 text-[11px] text-orange-900 font-semibold">
+              LiDAR đang quét tĩnh. Muốn mở rộng bản đồ khi robot chạy, encoder phải phát tick chuyển động;
+              nếu robot đã chạy mà cảnh báo này vẫn còn thì dừng quét và kiểm tra encoder/odometry trước khi lưu.
+            </div>
+          )}
           <div className="w-full flex-1 relative overflow-hidden">
             <Rviz2WebViewer
               activeMapName={selectedMapId}
@@ -1501,19 +1507,19 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
               <div className="grid grid-cols-2 gap-1 text-[8px] font-mono">
                 <div className="px-1.5 py-0.5 rounded border bg-white border-stone-200 flex justify-between items-center">
                   <span className="text-stone-500 font-sans">M1 (T-TRƯỚC):</span>
-                  <span className="font-bold text-stone-900">{encoders.m1?.rpm || 0} RPM</span>
+                  <span className="font-bold text-stone-900">{encoders.m1?.rpm || 0} RPM · {encoders.m1?.ticks || 0} tick</span>
                 </div>
                 <div className="px-1.5 py-0.5 rounded border bg-white border-stone-200 flex justify-between items-center">
                   <span className="text-stone-500 font-sans">M3 (P-TRƯỚC):</span>
-                  <span className="font-bold text-stone-900">{encoders.m3?.rpm || 0} RPM</span>
+                  <span className="font-bold text-stone-900">{encoders.m3?.rpm || 0} RPM · {encoders.m3?.ticks || 0} tick</span>
                 </div>
                 <div className="px-1.5 py-0.5 rounded border bg-white border-stone-200 flex justify-between items-center">
                   <span className="text-stone-500 font-sans">M2 (T-SAU):</span>
-                  <span className="font-bold text-stone-900">{encoders.m2?.rpm || 0} RPM</span>
+                  <span className="font-bold text-stone-900">{encoders.m2?.rpm || 0} RPM · {encoders.m2?.ticks || 0} tick</span>
                 </div>
                 <div className="px-1.5 py-0.5 rounded border bg-white border-stone-200 flex justify-between items-center">
                   <span className="text-stone-500 font-sans">M4 (P-SAU):</span>
-                  <span className="font-bold text-stone-900">{encoders.m4?.rpm || 0} RPM</span>
+                  <span className="font-bold text-stone-900">{encoders.m4?.rpm || 0} RPM · {encoders.m4?.ticks || 0} tick</span>
                 </div>
               </div>
             </div>

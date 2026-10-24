@@ -719,15 +719,19 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
 
     if (rosClientRef.current?.isConnected) {
       rosClientRef.current.publishCmdVel(lin, ang);
+    } else {
+      fetch(`${PI5_API}/map/teleop`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json'},
+        body: JSON.stringify({ command, speed: 50 }),
+      }).catch(() => {});
     }
-    fetch(`${PI5_API}/map/teleop`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json'},
-      body: JSON.stringify({ command, speed: 50 }),
-    }).catch(() => {});
   };
 
   const startTeleop = (command) => {
+    if (activeTeleopCmdRef.current === command && teleopIntervalRef.current) {
+      return;
+    }
     if (teleopIntervalRef.current) {
       clearInterval(teleopIntervalRef.current);
     }

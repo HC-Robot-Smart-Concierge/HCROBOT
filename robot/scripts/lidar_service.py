@@ -100,9 +100,9 @@ class RPLidarSLAMCore:
         self.origin_x = -10.0
         self.origin_y = -10.0
         self.grid_data = [-1] * (self.grid_width * self.grid_height)
-        # Hit-counter: ô tường cần nhiều tia xuyên qua mới bị xóa (chống nhiễu rách tường).
+        # Hit-counter: Xác nhận vật thể cố định ngay từ tia quét đầu tiên (không cần chờ tường)
         self.grid_hits = [0] * (self.grid_width * self.grid_height)
-        self.wall_hit_confirm = 2
+        self.wall_hit_confirm = 1
         self.wall_clear_hits = 8
         self.wall_hit_cap = 12
         self.occupied_count = 0
@@ -244,16 +244,9 @@ class RPLidarSLAMCore:
         free_count = sum(1 for v in grid_copy if v == 0)
         unknown_count = sum(1 for v in grid_copy if v < 0)
 
-        # Cho phép lưu khi ở chế độ Fixed Layout 3x5m hoặc bản đồ thông thường đã đủ điểm
-        if not getattr(self, "fixed_layout_active", False):
-            if occupied_count < 10 or free_count < 100 or (occupied_count + free_count) < 200:
-                raise ValueError(
-                    "Từ chối lưu map rỗng/chưa hoàn chỉnh "
-                    f"(tường={occupied_count}, vùng trống={free_count})."
-                )
-        else:
-            if occupied_count < 10:
-                raise ValueError("Bản đồ layout cứng chưa có tường hợp lệ.")
+        # Lưu bản đồ ngay khi có bất kỳ dữ liệu quét nào từ LiDAR (vật cản hoặc vùng trống, không bắt buộc tìm tường)
+        if (occupied_count + free_count) < 1:
+            raise ValueError("Từ chối lưu bản đồ rỗng vì chưa nhận được dữ liệu tia quét nào từ LiDAR.")
 
         # 1. Lưu file JSON cho Web Admin
         payload = {
@@ -636,18 +629,6 @@ free_thresh: 0.25
 
         return init_x, init_y, init_yaw
 
-    def _update_grid_from_scan(self, rx: float, ry: float, scan_points: List[Dict[str, Any]]):
-        """
-        Thuật toán Raytracing Bresenham có cơ chế tự làm sạch:
-        - Các ô mà tia laser đi qua ĐƯỢC XÓA THÀNH VÙNG TRỐNG (0).
-        - Chỉ ô cuối cùng nơi tia chạm tường mới được đánh dấu VẬT CẢN (100).
-        - Giúp bản đồ sắc nét, không bị vệt đen tích lũy như cơn lốc.
-        """
-        if self.is_map_locked or self.map_mode != "MAPPING":
-            return
-
-        gx_robot, gy_robot = self._world_to_grid(rx, ry)
-
     def init_fixed_layout_3x5m(self, name: str = "phong_3x5m") -> Dict[str, Any]:
         """
         Khởi tạo layout phòng cứng 3m x 5m cố định chuẩn xác:
@@ -826,10 +807,9 @@ free_thresh: 0.25
                 if 0 <= curr_x < self.grid_width and 0 <= curr_y < self.grid_height:
                     idx = curr_y * self.grid_width + curr_x
                     if curr_x == ox and curr_y == oy:
-                        hits = min(self.grid_hits[idx] + 1, self.wall_hit_cap)
-                        self.grid_hits[idx] = hits
-                        if hits >= self.wall_hit_confirm:
-                            self._set_cell(idx, 100)
+                        hits = min(self.grid_hits[idx] + 2, self.wall_hit_cap)
+                        self.grid_hits[idx] = max(hits, 2)
+                        self._set_cell(idx, 100)
                         break
                     else:
                         # Tia xuyên qua: ô tường đã xác nhận cần nhiều miss mới bị xóa.

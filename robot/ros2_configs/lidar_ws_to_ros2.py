@@ -556,8 +556,14 @@ class LidarWsToRos2Bridge(Node):
         if motion.startswith("speed:"):
             self._send_udp_speed(int(motion.split(":", 1)[1]))
             return
-        if motion != self.last_sent_udp_motion:
+        now = time.monotonic()
+        should_send = (
+            motion != self.last_sent_udp_motion
+            or (motion != "stop" and (now - getattr(self, "_last_udp_send_time", 0.0) >= 0.1))
+        )
+        if should_send:
             self.last_sent_udp_motion = motion
+            self._last_udp_send_time = now
             try:
                 self.udp_sock.sendto(motion.encode("utf-8"), (self.pi5_ip, self.pi5_port))
             except Exception as e:
@@ -568,8 +574,8 @@ class LidarWsToRos2Bridge(Node):
         dt = now_mono - self.last_kinematics_time
         self.last_kinematics_time = now_mono
 
-        # Nếu quá 0.35s không có lệnh điều khiển tiếp, tự động phanh dừng
-        if now_mono - self.last_cmd_time > 0.35:
+        # Nếu quá 0.80s không có lệnh điều khiển tiếp, tự động phanh dừng an toàn
+        if now_mono - self.last_cmd_time > 0.80:
             if self.current_vx != 0.0 or self.current_wz != 0.0:
                 self.current_vx = 0.0
                 self.current_wz = 0.0
@@ -736,8 +742,8 @@ class LidarWsToRos2Bridge(Node):
                     ranges[bin_idx] = float(dist)
                     intensities[bin_idx] = float(quality)
 
-        # Gắn tường bao cố định 3x5m nếu bật HCROBOT_FIXED_LAYOUT_3X5 (mặc định bật)
-        fixed_3x5 = os.getenv("HCROBOT_FIXED_LAYOUT_3X5", "1") == "1"
+        # Gắn tường bao cố định chỉ khi người dùng bật HCROBOT_FIXED_LAYOUT_3X5=1
+        fixed_3x5 = os.getenv("HCROBOT_FIXED_LAYOUT_3X5", "0") == "1"
         rx = self.current_pose['x']
         ry = self.current_pose['y']
         ryaw_rad = math.radians(self.current_pose['yaw'])

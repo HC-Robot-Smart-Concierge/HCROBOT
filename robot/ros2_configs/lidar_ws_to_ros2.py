@@ -121,6 +121,7 @@ class LidarWsToRos2Bridge(Node):
         self.last_sent_teleop_pwm = None
         self.teleop_pwm_forward = int(os.getenv("HCROBOT_TELEOP_PWM", "25"))
         self.teleop_pwm_turn = int(os.getenv("HCROBOT_TELEOP_TURN_PWM", "22"))
+        self._locked_yaw_deg = None
 
         # Cấu hình UDP gửi lệnh sang Pi 5
         self.pi5_ip = os.getenv("PI5_IP", "100.99.72.51")
@@ -187,6 +188,7 @@ class LidarWsToRos2Bridge(Node):
         self.last_recorded_pose = {'x': 0.0, 'y': 0.0, 'yaw': 0.0}
         self.current_vx = 0.0
         self.current_wz = 0.0
+        self._locked_yaw_deg = None
         self.encoder_motion_detected = False
         self.has_prev_encoder_ticks = False
         self.last_cmd_time = time.monotonic()
@@ -461,24 +463,30 @@ class LidarWsToRos2Bridge(Node):
         delta_right = delta_right_ticks * distance_per_tick
         delta_s = (delta_left + delta_right) / 2.0
         delta_yaw = (delta_right - delta_left) / self.wheel_sep
+        same_wheel_direction = (delta_left * delta_right) > 0.0
 
-        # Khi lệnh là đi thẳng/lùi, khóa yaw: encoder lệch 1 bánh không được biến thành cua.
-        if self._is_straight_command():
+        # Đi thẳng/lùi (lệnh hoặc hai bánh cùng chiều): khóa yaw, không cho encoder/IMU xoay model.
+        if self._is_straight_command() or same_wheel_direction:
             delta_yaw = 0.0
+            if self._locked_yaw_deg is None:
+                self._locked_yaw_deg = self.current_pose['yaw']
+            self.current_pose['yaw'] = self._locked_yaw_deg
         else:
+            self._locked_yaw_deg = None
             try:
                 gyro_rate = float(yaw_rate_dps or 0.0)
             except (TypeError, ValueError):
                 gyro_rate = 0.0
             if abs(gyro_rate) > 0.5:
                 delta_yaw = 0.7 * (math.radians(gyro_rate) * dt) + 0.3 * delta_yaw
+            yaw_rad_new = math.radians(self.current_pose['yaw']) + delta_yaw
+            self.current_pose['yaw'] = math.degrees(
+                math.atan2(math.sin(yaw_rad_new), math.cos(yaw_rad_new))
+            )
 
         yaw_rad = math.radians(self.current_pose['yaw'])
-        mid_yaw = yaw_rad + delta_yaw / 2.0
-        self.current_pose['x'] += delta_s * math.cos(mid_yaw)
-        self.current_pose['y'] += delta_s * math.sin(mid_yaw)
-        yaw_rad = math.atan2(math.sin(yaw_rad + delta_yaw), math.cos(yaw_rad + delta_yaw))
-        self.current_pose['yaw'] = math.degrees(yaw_rad)
+        self.current_pose['x'] += delta_s * math.cos(yaw_rad)
+        self.current_pose['y'] += delta_s * math.sin(yaw_rad)
         self.measured_vx = delta_s / dt
         self.measured_wz = delta_yaw / dt
 
@@ -524,18 +532,30 @@ class LidarWsToRos2Bridge(Node):
         if motion != "stop":
             pwm = self.teleop_pwm_turn if motion in ("left", "right") else self.teleop_pwm_forward
             pwm = max(20, min(28, pwm))
-            if pwm != self.last_sent_teleop_pwm:
-                self._send_udp_to_pi5(f"speed:{pwm}")
-                self.last_sent_teleop_pwm = pwm
+            self._send_udp_speed(pwm)
         self._send_udp_to_pi5(motion)
 
     def _is_straight_command(self) -> bool:
         motion = self.last_sent_udp_motion
+        if motion.startswith("speed:"):
+            return False
         if motion in ("forward", "backward"):
             return True
         return abs(self.current_vx) > 0.05 and abs(self.current_wz) < 0.2
 
+    def _send_udp_speed(self, pwm: int):
+        if pwm == self.last_sent_teleop_pwm:
+            return
+        self.last_sent_teleop_pwm = pwm
+        try:
+            self.udp_sock.sendto(f"speed:{pwm}".encode("utf-8"), (self.pi5_ip, self.pi5_port))
+        except Exception as e:
+            self.get_logger().debug(f"Loi gui UDP speed Pi 5: {e}")
+
     def _send_udp_to_pi5(self, motion: str):
+        if motion.startswith("speed:"):
+            self._send_udp_speed(int(motion.split(":", 1)[1]))
+            return
         if motion != self.last_sent_udp_motion:
             self.last_sent_udp_motion = motion
             try:

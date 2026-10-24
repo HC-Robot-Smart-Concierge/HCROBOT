@@ -183,6 +183,7 @@ class RPLidarSLAMCore:
                 right_backward_pin=23,
                 invert_left_direction=False,
                 invert_right_direction=True,
+                default_speed=25,
             )
             logger.info("🚗 [LiDAR-SLAM] Đã khởi tạo MotorController trực tiếp trên Raspberry Pi 5 (GPIO 17, 27, 22, 23)!")
         except Exception as e:
@@ -480,9 +481,22 @@ free_thresh: 0.25
 
         return hit / max(total * 2, 1)
 
-    def _is_straight_motion(self) -> bool:
+    def _is_turn_command(self) -> bool:
         cmd = (self.current_motion_cmd or "stop").split(":")[0]
-        return cmd in ("forward", "backward", "w", "s")
+        return cmd in (
+            "left", "right", "a", "d",
+            "forward_left", "forward_right", "backward_left", "backward_right",
+            "wa", "wd", "sa", "sd",
+        )
+
+    def _is_straight_motion(self, delta_left: float = 0.0, delta_right: float = 0.0) -> bool:
+        if self._is_turn_command():
+            return False
+        cmd = (self.current_motion_cmd or "stop").split(":")[0]
+        if cmd in ("forward", "backward", "w", "s"):
+            return True
+        # Hai bên bánh cùng chiều (cùng tiến hoặc cùng lùi) thì không được cộng yaw.
+        return (delta_left * delta_right) > 0.0
 
     def _encoder_side_ticks(self, encoders: Dict[str, Any]):
         m1 = encoders.get("m1", {}) or {}
@@ -527,7 +541,7 @@ free_thresh: 0.25
         delta_left = delta_left_ticks * dist_per_tick
         delta_right = delta_right_ticks * dist_per_tick
         delta_s = (delta_left + delta_right) / 2.0
-        allow_yaw = update_yaw and not self._is_straight_motion()
+        allow_yaw = update_yaw and not self._is_straight_motion(delta_left, delta_right)
         delta_yaw_rad = (delta_right - delta_left) / self._wheel_sep if allow_yaw else 0.0
 
         yaw_rad = math.radians(self.robot_yaw)
@@ -811,10 +825,10 @@ free_thresh: 0.25
                             )
                             if getattr(snap, "encoders", None):
                                 self._apply_encoder_odometry(
-                                    snap.encoders, dt, update_yaw=not has_imu
+                                    snap.encoders, dt, update_yaw=self._is_turn_command()
                                 )
                             if (
-                                not self._is_straight_motion()
+                                self._is_turn_command()
                                 and has_imu
                                 and abs(snap.yaw_rate_dps) > 2.0
                             ):
@@ -936,7 +950,7 @@ free_thresh: 0.25
                                 self.robot_x,
                                 self.robot_y,
                                 self.robot_yaw,
-                                lock_yaw=self._is_straight_motion(),
+                                lock_yaw=not self._is_turn_command(),
                             )
                         else:
                             corrected_x = self.robot_x
@@ -1108,6 +1122,26 @@ free_thresh: 0.25
                 self.status = "OBSTACLE_STOP"
                 return
 
+        if cmd_clean.startswith("speed:"):
+            try:
+                spd = int(cmd_clean.split(":", 1)[1])
+            except ValueError:
+                return
+            spd = max(20, min(100, spd))
+            if self.pi_motor is not None:
+                try:
+                    self.pi_motor.set_speed(spd)
+                except Exception as e:
+                    logger.warning(f"Lỗi set_speed motor: {e}")
+            try:
+                sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                sock.settimeout(0.02)
+                sock.sendto(f"speed:{spd}".encode("utf-8"), ("127.0.0.1", 9999))
+                sock.close()
+            except Exception:
+                pass
+            return
+
         self.current_motion_cmd = cmd_clean
 
         # 1. Direct hardware execution
@@ -1129,7 +1163,7 @@ free_thresh: 0.25
                     self.pi_motor.turn_backward_left()
                 elif cmd_clean in ("backward_right", "sd", "ds"):
                     self.pi_motor.turn_backward_right()
-                elif cmd_clean in ("stop", "x", "") or cmd_clean.startswith("speed:"):
+                elif cmd_clean in ("stop", "x", ""):
                     self.pi_motor.stop()
             except Exception as e:
                 logger.warning(f"Lỗi motor phần cứng trực tiếp: {e}")

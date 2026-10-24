@@ -62,7 +62,7 @@ class Room(Base):
     status: Mapped[str] = mapped_column(String(50), default="AVAILABLE") # 'AVAILABLE', 'OCCUPIED', 'CLEANING', 'MAINTENANCE'
     current_guest_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     pin_code: Mapped[Optional[str]] = mapped_column(String(10), nullable=True) # e.g. "5678"
-    identity_number: Mapped[Optional[str]] = mapped_column(String(50), nullable=True) # e.g. "079201001234" (CCCD / Passport)
+    tag_code: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, index=True) # e.g. "401" / "1D:28:9A:56:21:10:80" (NFC Tag Code / NDEF Data / UID)
     qr_code: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 

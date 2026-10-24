@@ -21,13 +21,13 @@ class GeminiService:
 
     def __init__(self):
         self.api_key = settings.GEMINI_API_KEY
-        self.model = settings.GEMINI_MODEL or "gemini-2.5-flash"
-        # Danh sach model du phong uu tien model on dinh nhat (gemini-2.5-flash)
+        self.model = settings.GEMINI_MODEL or "gemini-2.0-flash"
+        # Danh sach model du phong uu tien model on dinh nhat (gemini-2.0-flash, gemini-1.5-flash)
         self.fallback_models = [
             self.model,
-            "gemini-2.5-flash",
-            "gemini-flash-latest",
             "gemini-2.0-flash",
+            "gemini-1.5-flash",
+            "gemini-flash-latest",
         ]
         # Loai bo trung lap ma van giu thu tu uu tien
         seen = set()

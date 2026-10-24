@@ -157,9 +157,15 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
   // Room PIN Verification Modal States
   const [isPinModalOpen, setIsPinModalOpen] = useState(false);
-  const [pinModalRoomNumber, setPinModalRoomNumber] = useState('305');
+  const isPinModalOpenRef = useRef(false);
+  const [pinModalRoomNumber, setPinModalRoomNumber] = useState('');
   const [pinModalAction, setPinModalAction] = useState('room_service');
   const [pinModalItems, setPinModalItems] = useState('');
+
+  // Đồng bộ ref chống stale closure khi speech onEnd callback cố bật lại mic
+  useEffect(() => {
+    isPinModalOpenRef.current = isPinModalOpen;
+  }, [isPinModalOpen]);
 
   // Helper dọn dẹp sạch sẽ tất cả timer của luồng chỉ đường & QR
   const clearRouteGuidanceTimers = useCallback(() => {
@@ -458,7 +464,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         showLogoutModal ||
         showQuickMenu ||
         showLangMenu ||
-        isAutoQrModalOpen
+        isAutoQrModalOpen ||
+        isPinModalOpen
       );
 
       const isBusy = (
@@ -554,18 +561,19 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     }
   }, [isStandby, transcript, currentState]);
 
-  // Dừng nhận diện giọng nói nền và giọng đọc AI khi đang mở Video Call trực tiếp
+  // Dừng nhận diện giọng nói nền và giọng đọc AI khi đang mở Video Call hoặc Modal Quẹt Thẻ / PIN
   useEffect(() => {
-    if (isVideoCallOpen) {
+    if (isVideoCallOpen || isPinModalOpen) {
       stopSpeaking();
       stopListening();
     }
-  }, [isVideoCallOpen, stopSpeaking, stopListening]);
+  }, [isVideoCallOpen, isPinModalOpen, stopSpeaking, stopListening]);
 
   // Tự động gửi AI khi người dùng ngừng nói 650ms (VAD Silence Detection tự nhiên, phản hồi siêu tốc)
   useEffect(() => {
     if (
       !isVideoCallOpen &&
+      !isPinModalOpen &&
       isListening &&
       !isSpeaking &&
       !isSpeakingRef.current &&
@@ -639,7 +647,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
   // 1. Khi kích hoạt lắng nghe (Bấm nút hoặc Tự động)
   const handleStartTalk = () => {
-    if (isVideoCallOpen) return;
+    if (isVideoCallOpen || isPinModalOpen || isPinModalOpenRef.current) return;
     lastInteractionTimeRef.current = Date.now();
     if (isStandby) setIsStandby(false);
     activeChatRequestIdRef.current += 1;
@@ -671,7 +679,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   // Tự động bật mic khi mở màn hình robot (khi vừa vào)
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (!isVideoCallOpen && !isListening && !isSpeaking && !isProcessing && currentState !== 'RT-05' && !isStandby) {
+      if (!isVideoCallOpen && !isPinModalOpen && !isListening && !isSpeaking && !isProcessing && currentState !== 'RT-05' && !isStandby) {
         handleStartTalk();
       }
     }, 700);
@@ -875,7 +883,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
         // Tự động mở modal xác thực mã PIN phòng nếu yêu cầu từ AI Backend
         if (chatRes.require_room_pin) {
-          const targetRoom = chatRes.target_room_number || updatedRoom || activeRoomNumber || '305';
+          const targetRoom = chatRes.target_room_number || updatedRoom || activeRoomNumber || '';
           setPinModalRoomNumber(targetRoom);
           setPinModalAction(chatRes.pending_service_action || 'room_service');
           setPinModalItems(chatRes.pending_service_items || query);
@@ -1010,8 +1018,9 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                 }, 16000);
 
                 // Tự động bật micro lắng nghe ngay trong giao diện bản đồ RT-05 mà không làm mất sơ đồ
-                if (isAutoListen) {
+                if (isAutoListen && !isPinModalOpenRef.current) {
                   setTimeout(() => {
+                    if (isPinModalOpenRef.current) return;
                     resetTranscript();
                     startListening(language, {
                       onFinal: (finalText) => {
@@ -1110,9 +1119,12 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     };
   }, [transcript, currentState, isListening, isSpeaking, isProcessing]);
 
-  // Callback khi khách hàng xác thực mã PIN phòng thành công tại Kiosk
+  // Callback khi khách hàng xác thực mã PIN phòng hoặc thẻ NFC thành công tại Kiosk
   const handlePinVerifiedSuccess = useCallback((result) => {
-    const successMsg = result.message || 'Xác thực phòng thành công! Đơn phục vụ đã được tạo.';
+    if (result?.room_number) {
+      setActiveRoomNumber(result.room_number);
+    }
+    const successMsg = result?.message || 'Xác thực phòng thành công! Đơn phục vụ đã được tạo.';
     setAiResponseText(successMsg);
     setCurrentState('RT-02');
     speak(successMsg, language === 'English' ? 'en-US' : 'vi-VN');

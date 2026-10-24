@@ -12,6 +12,7 @@ import { RobotScreenPage } from '../pages/robot/RobotScreenPage';
 import { RobotFoodMenuScreen } from '../components/robot/RobotFoodMenuScreen';
 import { AdminPortal } from '../pages/admin/AdminPortal';
 import { AdminLidarPage } from '../pages/admin/AdminLidarPage';
+import { NfcTestPage } from '../pages/test/NfcTestPage';
 
 // Staff Dashboard Pages
 import { ReceptionDashboard } from '../pages/dashboard/ReceptionDashboard';
@@ -196,6 +197,10 @@ export const AppRoutes = () => {
         path="/food-menu"
         element={<RobotFoodMenuScreen onClose={() => navigate('/robot')} />}
       />
+
+      {/* 3.1 Web NFC Diagnostics & Test Screen */}
+      <Route path="/nfc-test" element={<NfcTestPage />} />
+      <Route path="/nfc" element={<NfcTestPage />} />
 
       {/* 4. Admin Command Portal & LiDAR */}
       <Route

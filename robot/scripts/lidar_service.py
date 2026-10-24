@@ -148,6 +148,12 @@ class RPLidarSLAMCore:
         self._overlay_zones: List[Dict] = []        # Vùng đặc biệt (no-go, lobby...)
         self._overlay_active = False
 
+        # Chế độ Layout Cứng Cố Định (3x5m) & Mở sương mù (Fog of War)
+        self.fixed_layout_active = False
+        self.fixed_wall_indices: set = set()
+        self.room_bounds: Optional[Dict[str, float]] = None
+        self.fog_of_war_mode = False
+
         # Workflow execution
         self.active_workflow: Optional[Dict] = None
         self._workflow_thread: Optional[threading.Thread] = None
@@ -203,6 +209,10 @@ class RPLidarSLAMCore:
             self.active_map_name = None
             self.map_mode = "MAPPING"
             self.is_map_locked = False
+            self.fixed_layout_active = False
+            self.fixed_wall_indices = set()
+            self.room_bounds = None
+            self.fog_of_war_mode = False
             self.robot_x = 0.0
             self.robot_y = 0.0
             self.robot_yaw = 0.0
@@ -234,12 +244,16 @@ class RPLidarSLAMCore:
         free_count = sum(1 for v in grid_copy if v == 0)
         unknown_count = sum(1 for v in grid_copy if v < 0)
 
-        # Never overwrite a good map with an empty/partial sensor frame.
-        if occupied_count < 10 or free_count < 100 or (occupied_count + free_count) < 200:
-            raise ValueError(
-                "Từ chối lưu map rỗng/chưa hoàn chỉnh "
-                f"(tường={occupied_count}, vùng trống={free_count})."
-            )
+        # Cho phép lưu khi ở chế độ Fixed Layout 3x5m hoặc bản đồ thông thường đã đủ điểm
+        if not getattr(self, "fixed_layout_active", False):
+            if occupied_count < 10 or free_count < 100 or (occupied_count + free_count) < 200:
+                raise ValueError(
+                    "Từ chối lưu map rỗng/chưa hoàn chỉnh "
+                    f"(tường={occupied_count}, vùng trống={free_count})."
+                )
+        else:
+            if occupied_count < 10:
+                raise ValueError("Bản đồ layout cứng chưa có tường hợp lệ.")
 
         # 1. Lưu file JSON cho Web Admin
         payload = {
@@ -634,6 +648,166 @@ free_thresh: 0.25
 
         gx_robot, gy_robot = self._world_to_grid(rx, ry)
 
+    def init_fixed_layout_3x5m(self, name: str = "phong_3x5m") -> Dict[str, Any]:
+        """
+        Khởi tạo layout phòng cứng 3m x 5m cố định chuẩn xác:
+        - Chiều ngang (Trục X): 3.0m (từ -1.5m đến +1.5m)
+        - Chiều dọc (Trục Y): 5.0m (từ -2.5m đến +2.5m)
+        - 4 bức tường xung quanh cố định 100% (không bao giờ bị xóa đè)
+        - Vùng xám bên ngoài giữ nguyên không đổi (-1)
+        - Bên trong phòng hoạt động theo cơ chế Fog of War: robot đi đến đâu mở map đến đó
+        """
+        with self._lock:
+            self.grid_data = [-1] * (self.grid_width * self.grid_height)
+            self.grid_hits = [0] * (self.grid_width * self.grid_height)
+            self.fixed_wall_indices = set()
+            self.room_bounds = {"x_min": -1.5, "x_max": 1.5, "y_min": -2.5, "y_max": 2.5}
+            self.fixed_layout_active = True
+            self.fog_of_war_mode = True
+            self.robot_x = 0.0
+            self.robot_y = 0.0
+            self.robot_yaw = 0.0
+            self.status = "IDLE"
+            self.map_mode = "MAPPING"
+            self.is_map_locked = False
+
+            min_gx, min_gy = self._world_to_grid(-1.5, -2.5)
+            max_gx, max_gy = self._world_to_grid(1.5, 2.5)
+
+            # Vẽ 4 bức tường xung quanh dày 2 ô
+            for gx in range(min_gx, max_gx + 1):
+                for dgy in (0, 1):
+                    for gy in (min_gy + dgy, max_gy - dgy):
+                        if 0 <= gx < self.grid_width and 0 <= gy < self.grid_height:
+                            idx = gy * self.grid_width + gx
+                            self.grid_data[idx] = 100
+                            self.grid_hits[idx] = self.wall_hit_cap
+                            self.fixed_wall_indices.add(idx)
+
+            for gy in range(min_gy, max_gy + 1):
+                for dgx in (0, 1):
+                    for gx in (min_gx + dgx, max_gx - dgx):
+                        if 0 <= gx < self.grid_width and 0 <= gy < self.grid_height:
+                            idx = gy * self.grid_width + gx
+                            self.grid_data[idx] = 100
+                            self.grid_hits[idx] = self.wall_hit_cap
+                            self.fixed_wall_indices.add(idx)
+
+            # Mở sàn trống ban đầu quanh tâm robot (0, 0) bán kính 0.5m
+            cgx, cgy = self._world_to_grid(0.0, 0.0)
+            for dy in range(-20, 21):
+                for dx in range(-20, 21):
+                    if dx * dx + dy * dy <= 400:
+                        gx = cgx + dx
+                        gy = cgy + dy
+                        if 0 <= gx < self.grid_width and 0 <= gy < self.grid_height:
+                            idx = gy * self.grid_width + gx
+                            if idx not in self.fixed_wall_indices:
+                                self.grid_data[idx] = 0
+
+            self._rebuild_known_cells()
+
+        logger.info(f"🏢 Đã khởi tạo Layout Cứng 3m x 5m thành công ({len(self.fixed_wall_indices)} ô tường cứng)!")
+        res = self.save_map(name)
+        with self._lock:
+            self.map_mode = "MAPPING"
+            self.is_map_locked = False
+        return res
+
+    def _update_grid_from_scan(self, rx: float, ry: float, scan_points: List[Dict[str, Any]]):
+        """
+        Thuật toán Raytracing có cơ chế tự làm sạch và hỗ trợ Layout Cứng 3x5m:
+        - Nếu ở chế độ Fixed Layout 3x5m:
+          1. 4 bức tường xung quanh được bảo vệ vĩnh viễn, không bao giờ bị xóa đè.
+          2. Vùng xám bên ngoài không bao giờ bị mở rộng ra ngoài phạm vi 3x5m.
+          3. Robot đi đến đâu mở map đến đó (mở sàn trống quanh robot và trong tầm nhìn gần).
+        - Nếu ở chế độ tự do: Raytracing Bresenham tự động cập nhật như bình thường.
+        """
+        if self.is_map_locked or self.map_mode != "MAPPING":
+            return
+
+        gx_robot, gy_robot = self._world_to_grid(rx, ry)
+
+        # ── Chế độ Fog of War / Fixed Layout 3x5m ──────────────────────
+        if getattr(self, "fixed_layout_active", False):
+            bounds = getattr(self, "room_bounds", None) or {"x_min": -1.5, "x_max": 1.5, "y_min": -2.5, "y_max": 2.5}
+            fixed_walls = getattr(self, "fixed_wall_indices", set())
+
+            # 1. Đi đến đâu mở map đến đó: Mở sáng footprint / vết di chuyển quanh robot (bán kính 0.45m)
+            trail_radius = 0.45
+            clear_cells = int(trail_radius / self.resolution)
+            for dy in range(-clear_cells, clear_cells + 1):
+                for dx in range(-clear_cells, clear_cells + 1):
+                    if dx * dx + dy * dy <= clear_cells * clear_cells:
+                        cgx = gx_robot + dx
+                        cgy = gy_robot + dy
+                        if 0 <= cgx < self.grid_width and 0 <= cgy < self.grid_height:
+                            cidx = cgy * self.grid_width + cgx
+                            if cidx not in fixed_walls:
+                                cwx = self.origin_x + cgx * self.resolution
+                                cwy = self.origin_y + cgy * self.resolution
+                                if bounds["x_min"] + 0.05 <= cwx <= bounds["x_max"] - 0.05 and bounds["y_min"] + 0.05 <= cwy <= bounds["y_max"] - 0.05:
+                                    self._set_cell(cidx, 0)
+
+            # 2. Xử lý tia quét LiDAR bên trong khung phòng
+            for pt in scan_points:
+                ox, oy = self._world_to_grid(pt["x"], pt["y"])
+                dx = abs(ox - gx_robot)
+                dy = abs(oy - gy_robot)
+                sx = 1 if gx_robot < ox else -1
+                sy = 1 if gy_robot < oy else -1
+                err = dx - dy
+                curr_x, curr_y = gx_robot, gy_robot
+                max_steps = 300
+                step = 0
+
+                while step < max_steps:
+                    step += 1
+                    if 0 <= curr_x < self.grid_width and 0 <= curr_y < self.grid_height:
+                        idx = curr_y * self.grid_width + curr_x
+                        cwx = self.origin_x + curr_x * self.resolution
+                        cwy = self.origin_y + curr_y * self.resolution
+
+                        # Nếu chạm biên ngoài 3x5m -> dừng tia ngay lập tức (không vẽ ra ngoài)
+                        if cwx < bounds["x_min"] - 0.05 or cwx > bounds["x_max"] + 0.05 or cwy < bounds["y_min"] - 0.05 or cwy > bounds["y_max"] + 0.05:
+                            break
+
+                        # Nếu chạm tường cứng của layout -> dừng tia ngay lập tức, KHÔNG XÓA TƯỜNG CỨNG
+                        if idx in fixed_walls:
+                            break
+
+                        if curr_x == ox and curr_y == oy:
+                            # Vật cản bên trong phòng (ví dụ đồ vật, người)
+                            if bounds["x_min"] + 0.08 <= cwx <= bounds["x_max"] - 0.08 and bounds["y_min"] + 0.08 <= cwy <= bounds["y_max"] - 0.08:
+                                hits = min(self.grid_hits[idx] + 1, self.wall_hit_cap)
+                                self.grid_hits[idx] = hits
+                                if hits >= self.wall_hit_confirm:
+                                    self._set_cell(idx, 100)
+                            break
+                        else:
+                            # Tia quét đi qua bên trong phòng -> mở thành màu trắng (0)
+                            if bounds["x_min"] + 0.05 <= cwx <= bounds["x_max"] - 0.05 and bounds["y_min"] + 0.05 <= cwy <= bounds["y_max"] - 0.05:
+                                if self.grid_data[idx] == 100 and idx not in fixed_walls:
+                                    self.grid_hits[idx] = max(self.grid_hits[idx] - 1, 0)
+                                    if self.grid_hits[idx] <= 0:
+                                        self._set_cell(idx, 0)
+                                elif self.grid_data[idx] != 100:
+                                    self.grid_hits[idx] = 0
+                                    self._set_cell(idx, 0)
+
+                    if curr_x == ox and curr_y == oy:
+                        break
+
+                    e2 = 2 * err
+                    if e2 > -dy:
+                        err -= dy
+                        curr_x += sx
+                    if e2 < dx:
+                        err += dx
+                        curr_y += sy
+            return
+
+        # ── Chế độ Mapping tự do thông thường ─────────────────────────
         for pt in scan_points:
             ox, oy = self._world_to_grid(pt["x"], pt["y"])
 
@@ -2214,6 +2388,13 @@ async def load_overlay(req: OverlayLoadRequest):
 async def disable_overlay():
     slam_core._overlay_active = False
     return {"status": "SUCCESS", "message": "Đã tắt overlay map"}
+
+
+@app.post("/api/v1/map/layout/3x5m")
+async def create_layout_3x5m():
+    """Khởi tạo nhanh Layout Cứng 3m x 5m, cố định 4 bức tường và bật chế độ mở sương mù."""
+    res = slam_core.init_fixed_layout_3x5m("phong_3x5m")
+    return {"status": "SUCCESS", "message": "Đã khởi tạo Layout Cứng 3m x 5m", "data": res}
 
 
 @app.get("/api/v1/map/overlay/template")

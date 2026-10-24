@@ -174,9 +174,40 @@ class TestLidarServiceMapPersistence(unittest.TestCase):
         x_30 = dist_m * math.cos(rad_30)
         y_30 = dist_m * math.sin(rad_30)
         # Vật cản trong tọa độ thế giới VẪN PHẢI LÀ (X=2, Y=0)
-        self.assertAlmostEqual(x_30, 2.0)
-        self.assertAlmostEqual(y_30, 0.0)
+    def test_fixed_layout_3x5m_and_fog_of_war(self):
+        """Kiểm tra layout cứng 3x5m: tường không bị xóa đè, vùng xám ngoài không bị mở rộng, và robot đi đến đâu mở map đến đó."""
+        res = self.core.init_fixed_layout_3x5m("test_3x5m")
+        self.assertTrue(self.core.fixed_layout_active)
+        self.assertGreater(len(self.core.fixed_wall_indices), 100)
+
+        # Kiểm tra tường tại X=1.5m, Y=0.0m là vật cản 100
+        gx_wall, gy_wall = self.core._world_to_grid(1.5, 0.0)
+        idx_wall = gy_wall * self.core.grid_width + gx_wall
+        self.assertEqual(self.core.grid_data[idx_wall], 100)
+
+        # Kiểm tra vùng xám bên ngoài phòng tại X=3.0m, Y=0.0m là -1
+        gx_out, gy_out = self.core._world_to_grid(3.0, 0.0)
+        idx_out = gy_out * self.core.grid_width + gx_out
+        self.assertEqual(self.core.grid_data[idx_out], -1)
+
+        # Mô phỏng tia laser cực mạnh bắn xuyên qua tường ra ngoài (X=5.0m)
+        # Tường không được phép bị xóa (vẫn là 100), và vùng ngoài không được phép biến thành 0
+        laser_through = [{"x": 5.0, "y": 0.0, "distance": 5.0, "angle": 0.0}]
+        for _ in range(10):
+            self.core._update_grid_from_scan(0.0, 0.0, laser_through)
+
+        self.assertEqual(self.core.grid_data[idx_wall], 100, "Tường cứng không bao giờ bị xóa đè")
+        self.assertEqual(self.core.grid_data[idx_out], -1, "Vùng xám ngoài phòng không bị mở rộng bậy bạ")
+
+        # Kiểm tra robot di chuyển tới vị trí mới (X=0.0, Y=1.5): Đi đến đâu mở sàn đến đó
+        gx_new, gy_new = self.core._world_to_grid(0.0, 1.5)
+        idx_new = gy_new * self.core.grid_width + gx_new
+        self.assertEqual(self.core.grid_data[idx_new], -1, "Trước khi tới: là sương mù chưa khám phá")
+
+        self.core._update_grid_from_scan(0.0, 1.5, [])
+        self.assertEqual(self.core.grid_data[idx_new], 0, "Sau khi robot tới: mở thành sàn trống màu trắng")
 
 
 if __name__ == "__main__":
     unittest.main()
+

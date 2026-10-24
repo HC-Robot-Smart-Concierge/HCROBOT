@@ -97,8 +97,51 @@ class RPLidarService:
                     px, py = cgx + dx, cgy + dy
                     if 0 <= px < self.grid_width and 0 <= py < self.grid_height:
                         grid[py * self.grid_width + px] = 100
+    def _create_fixed_3x5m_grid(self) -> List[int]:
+        """Tạo lưới Occupancy Grid chuẩn cố định 3m x 5m (X: [-1.5, +1.5], Y: [-2.5, +2.5])"""
+        grid = [-1] * (self.grid_width * self.grid_height)
+        min_gx, min_gy = self._world_to_grid(-1.5, -2.5)
+        max_gx, max_gy = self._world_to_grid(1.5, 2.5)
+
+        # 4 bức tường xung quanh (dày 2 ô)
+        for x in range(min_gx, max_gx + 1):
+            if 0 <= x < self.grid_width:
+                for dy in (0, 1):
+                    if 0 <= min_gy + dy < self.grid_height:
+                        grid[(min_gy + dy) * self.grid_width + x] = 100
+                    if 0 <= max_gy - dy < self.grid_height:
+                        grid[(max_gy - dy) * self.grid_width + x] = 100
+
+        for y in range(min_gy, max_gy + 1):
+            if 0 <= y < self.grid_height:
+                for dx in (0, 1):
+                    if 0 <= min_gx + dx < self.grid_width:
+                        grid[y * self.grid_width + (min_gx + dx)] = 100
+                    if 0 <= max_gx - dx < self.grid_width:
+                        grid[y * self.grid_width + (max_gx - dx)] = 100
+
+        # Mở sàn trống ban đầu quanh tâm robot (0, 0) bán kính 0.5m
+        cgx, cgy = self._world_to_grid(0.0, 0.0)
+        for dx in range(-8, 9):
+            for dy in range(-8, 9):
+                if dx * dx + dy * dy <= 64:
+                    px, py = cgx + dx, cgy + dy
+                    if min_gx + 2 <= px <= max_gx - 2 and min_gy + 2 <= py <= max_gy - 2:
+                        grid[py * self.grid_width + px] = 0
 
         return grid
+
+    def load_fixed_3x5m_layout(self, lock: bool = False) -> bool:
+        """Nạp layout cứng 3m x 5m vuông vức, cố định 4 bức tường và lưu vào static maps"""
+        grid = self._create_fixed_3x5m_grid()
+        with self._lock:
+            self.saved_map_id = "phong_3x5m"
+            self.grid_data = list(grid)
+            self.static_grid_data = list(grid)
+            self.is_map_locked = lock
+        self.save_map_to_storage("phong_3x5m", name="Bản đồ Phòng 3x5m Cố Định", floor="Phòng 3x5m")
+        logger.info("🏢 Đã tạo và nạp bản đồ Layout Cứng 3m x 5m thành công!")
+        return True
 
     def load_default_saved_map(self) -> bool:
         """Nạp bản đồ sảnh cố định mặc định từ ổ đĩa/CSDL hoặc tạo mới nếu chưa có"""

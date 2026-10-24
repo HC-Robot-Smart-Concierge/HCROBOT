@@ -48,12 +48,13 @@ class TestLidarServiceMapPersistence(unittest.TestCase):
         with open(yaml_file, "r") as f:
             yaml_txt = f.read()
         self.assertIn("image: test_room.pgm", yaml_txt)
-        self.assertIn("resolution: 0.05", yaml_txt)
+        self.assertIn("resolution: 0.025", yaml_txt)
 
         # Verify PGM binary header
+        expected_header = f"P5\n{self.core.grid_width} {self.core.grid_height}\n255\n".encode("ascii")
         with open(pgm_file, "rb") as f:
-            header = f.read(15)
-        self.assertTrue(header.startswith(b"P5\n200 200\n255\n"))
+            header = f.read(len(expected_header))
+        self.assertEqual(header, expected_header)
         self.assertTrue(self.core.is_map_locked)
         self.assertEqual(self.core.map_mode, "NAVIGATION")
 
@@ -107,6 +108,18 @@ class TestLidarServiceMapPersistence(unittest.TestCase):
         map_names_after = [m["name"] for m in maps_after]
         self.assertNotIn("map_a", map_names_after)
         self.assertIn("map_b", map_names_after)
+
+    def test_confirmed_wall_survives_single_clearing_ray(self):
+        wall = [{"x": 1.0, "y": 0.0, "distance": 1.0, "angle": 0.0}]
+        for _ in range(self.core.wall_hit_confirm):
+            self.core._update_grid_from_scan(0.0, 0.0, wall)
+        gx, gy = self.core._world_to_grid(1.0, 0.0)
+        idx = gy * self.core.grid_width + gx
+        self.assertEqual(self.core.grid_data[idx], 100)
+
+        farther = [{"x": 2.0, "y": 0.0, "distance": 2.0, "angle": 0.0}]
+        self.core._update_grid_from_scan(0.0, 0.0, farther)
+        self.assertEqual(self.core.grid_data[idx], 100)
 
     def test_empty_map_is_rejected_without_creating_files(self):
         self.core.grid_data = [-1] * (self.core.grid_width * self.core.grid_height)

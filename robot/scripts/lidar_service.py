@@ -93,13 +93,24 @@ class RPLidarSLAMCore:
         self._latest_scans: List[Dict[str, Any]] = []
         self._scan_thread: Optional[threading.Thread] = None
 
-        # Bản đồ 2D Occupancy Grid: 200x200 ô, 0.05m (5cm)/pixel => 10m x 10m
-        self.grid_width = 200
-        self.grid_height = 200
-        self.resolution = 0.05
-        self.origin_x = -5.0
-        self.origin_y = -5.0
+        # Occupancy Grid: 800x800 ô × 0.025m (2.5cm/pixel) => 20m × 20m
+        self.grid_width = 800
+        self.grid_height = 800
+        self.resolution = 0.025
+        self.origin_x = -10.0
+        self.origin_y = -10.0
         self.grid_data = [-1] * (self.grid_width * self.grid_height)
+        # Hit-counter: ô tường cần nhiều tia xuyên qua mới bị xóa (chống nhiễu rách tường).
+        self.grid_hits = [0] * (self.grid_width * self.grid_height)
+        self.wall_hit_confirm = 2
+        self.wall_clear_hits = 8
+        self.wall_hit_cap = 12
+        self._encoder_cpr = float(os.getenv("HCROBOT_ENCODER_CPR", "330.0"))
+        self._wheel_radius = 0.033
+        self._wheel_sep = float(os.getenv("HCROBOT_WHEEL_BASE", "0.22"))
+        self._encoder_m3_sign = float(os.getenv("HCROBOT_ENCODER_M3_SIGN", "-1"))
+        self._prev_left_ticks: Optional[float] = None
+        self._prev_right_ticks: Optional[float] = None
 
         # Hai che do tach biet:
         # - MAPPING: LaserScan duoc phep cap nhat occupancy grid.
@@ -179,6 +190,9 @@ class RPLidarSLAMCore:
         """Xóa trắng bản đồ 2D về trạng thái ban đầu và đưa vị trí robot về gốc."""
         with self._lock:
             self.grid_data = [-1] * (self.grid_width * self.grid_height)
+            self.grid_hits = [0] * (self.grid_width * self.grid_height)
+            self._prev_left_ticks = None
+            self._prev_right_ticks = None
             self.static_grid_data = None
             self.active_map_name = None
             self.map_mode = "MAPPING"
@@ -306,12 +320,15 @@ free_thresh: 0.25
                 data = json.load(f)
 
             with self._lock:
-                self.grid_width = data.get("width", 200)
-                self.grid_height = data.get("height", 200)
-                self.resolution = data.get("resolution", 0.05)
-                self.origin_x = data.get("origin_x", -5.0)
-                self.origin_y = data.get("origin_y", -5.0)
+                self.grid_width = data.get("width", 800)
+                self.grid_height = data.get("height", 800)
+                self.resolution = data.get("resolution", 0.025)
+                self.origin_x = data.get("origin_x", -10.0)
+                self.origin_y = data.get("origin_y", -10.0)
                 self.grid_data = data.get("grid_data", [-1] * (self.grid_width * self.grid_height))
+                self.grid_hits = [
+                    self.wall_clear_hits if v == 100 else 0 for v in self.grid_data
+                ]
                 self.static_grid_data = list(self.grid_data)
                 self.active_map_name = safe_name
                 self.map_mode = "NAVIGATION"
@@ -344,7 +361,7 @@ free_thresh: 0.25
                         "created_at": data.get("created_at", ""),
                         "width": data.get("width", 200),
                         "height": data.get("height", 200),
-                        "resolution": data.get("resolution", 0.05),
+                        "resolution": data.get("resolution", 0.025),
                         "statistics": data.get("statistics", {}),
                         "has_ros2_yaml": os.path.exists(os.path.join(MAPS_DIR, fname.replace(".json", ".yaml"))),
                     })
@@ -421,20 +438,76 @@ free_thresh: 0.25
 
         return hit / max(total * 2, 1)
 
+    def _is_straight_motion(self) -> bool:
+        cmd = (self.current_motion_cmd or "stop").split(":")[0]
+        return cmd in ("forward", "backward", "w", "s")
+
+    def _encoder_side_ticks(self, encoders: Dict[str, Any]):
+        m1 = encoders.get("m1", {}) or {}
+        m2 = encoders.get("m2", {}) or {}
+        m3 = encoders.get("m3", {}) or {}
+        m4 = encoders.get("m4", {}) or {}
+        left_ticks = (float(m1.get("ticks", 0)) + float(m2.get("ticks", 0))) / 2.0
+        right_ticks = (
+            self._encoder_m3_sign * float(m3.get("ticks", 0)) + float(m4.get("ticks", 0))
+        ) / 2.0
+        return left_ticks, right_ticks
+
+    def _apply_encoder_odometry(
+        self,
+        encoders: Dict[str, Any],
+        dt: float,
+        update_yaw: bool = True,
+    ) -> None:
+        """Cập nhật x/y từ encoder; khóa yaw khi đang đi thẳng/lùi."""
+        if not isinstance(encoders, dict) or dt <= 0.0 or dt > 1.0:
+            return
+        try:
+            left_ticks, right_ticks = self._encoder_side_ticks(encoders)
+        except (TypeError, ValueError):
+            return
+
+        if self._prev_left_ticks is None or self._prev_right_ticks is None:
+            self._prev_left_ticks = left_ticks
+            self._prev_right_ticks = right_ticks
+            return
+
+        delta_left_ticks = left_ticks - self._prev_left_ticks
+        delta_right_ticks = right_ticks - self._prev_right_ticks
+        self._prev_left_ticks = left_ticks
+        self._prev_right_ticks = right_ticks
+
+        max_ticks = self._encoder_cpr * 2.0
+        if abs(delta_left_ticks) > max_ticks or abs(delta_right_ticks) > max_ticks:
+            return
+
+        dist_per_tick = (2.0 * math.pi * self._wheel_radius) / self._encoder_cpr
+        delta_left = delta_left_ticks * dist_per_tick
+        delta_right = delta_right_ticks * dist_per_tick
+        delta_s = (delta_left + delta_right) / 2.0
+        allow_yaw = update_yaw and not self._is_straight_motion()
+        delta_yaw_rad = (delta_right - delta_left) / self._wheel_sep if allow_yaw else 0.0
+
+        yaw_rad = math.radians(self.robot_yaw)
+        mid_yaw = yaw_rad + delta_yaw_rad / 2.0
+        self.robot_x += delta_s * math.cos(mid_yaw)
+        self.robot_y += delta_s * math.sin(mid_yaw)
+        if allow_yaw:
+            self.robot_yaw = (self.robot_yaw + math.degrees(delta_yaw_rad)) % 360.0
+
     def _match_scan_to_map(
         self,
         raw_batch: List[Dict],
         init_x: float,
         init_y: float,
         init_yaw: float,
+        lock_yaw: bool = False,
     ):
         """
         Likelihood Field Scan Matching (ICP-lite).
         Tìm pose (x, y, yaw) tốt nhất trong vùng lân cận bằng grid search 2 bước.
 
-        Bước 1 – Coarse: dải ±20cm step 5cm, ±10° step 2.5°
-        Bước 2 – Fine:   dải ±4cm step 1cm, ±2° step 0.5° quanh kết quả tốt nhất
-        Chỉ chấp nhận nếu cải thiện score > 5%.
+        Khi đi thẳng/lùi (lock_yaw=True) chỉ dịch x/y, không được xoay góc.
         """
         # Cần có map đủ dữ liệu để match (>= 80 ô vật cản)
         with self._lock:
@@ -445,13 +518,15 @@ free_thresh: 0.25
             return init_x, init_y, init_yaw
 
         init_score = self._compute_scan_match_score(raw_batch, init_x, init_y, init_yaw, grid_snap)
+        coarse_yaw_steps = (0.0,) if lock_yaw else (-5.0, -2.5, 0.0, 2.5, 5.0)
+        fine_yaw_steps = (0.0,) if lock_yaw else (-1.0, -0.5, 0.0, 0.5, 1.0)
 
         # Bước 1: Coarse search
         best_x, best_y, best_yaw = init_x, init_y, init_yaw
         best_score = init_score
         for dx in (-0.20, -0.15, -0.10, -0.05, 0.0, 0.05, 0.10, 0.15, 0.20):
             for dy in (-0.20, -0.15, -0.10, -0.05, 0.0, 0.05, 0.10, 0.15, 0.20):
-                for dyaw in (-10.0, -7.5, -5.0, -2.5, 0.0, 2.5, 5.0, 7.5, 10.0):
+                for dyaw in coarse_yaw_steps:
                     s = self._compute_scan_match_score(
                         raw_batch,
                         init_x + dx, init_y + dy,
@@ -468,7 +543,7 @@ free_thresh: 0.25
         fine_score = best_score
         for dx in (-0.04, -0.03, -0.02, -0.01, 0.0, 0.01, 0.02, 0.03, 0.04):
             for dy in (-0.04, -0.03, -0.02, -0.01, 0.0, 0.01, 0.02, 0.03, 0.04):
-                for dyaw in (-2.0, -1.5, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 2.0):
+                for dyaw in fine_yaw_steps:
                     s = self._compute_scan_match_score(
                         raw_batch,
                         best_x + dx, best_y + dy,
@@ -480,9 +555,10 @@ free_thresh: 0.25
                         fine_x, fine_y = best_x + dx, best_y + dy
                         fine_yaw = (best_yaw + dyaw) % 360.0
 
-        # Chỉ áp dụng nếu cải thiện đáng kể (>3%) và di chuyển không quá xa (< 30cm)
         dist_moved = math.hypot(fine_x - init_x, fine_y - init_y)
-        if fine_score > init_score * 1.03 and dist_moved < 0.30:
+        delta_yaw_abs = abs((fine_yaw - init_yaw + 180) % 360 - 180)
+        max_yaw = 0.01 if lock_yaw else 3.0
+        if fine_score > init_score * 1.08 and dist_moved < 0.25 and delta_yaw_abs < max_yaw:
             logger.debug(
                 f"[ScanMatch] ✅ Score {init_score:.3f}→{fine_score:.3f} "
                 f"Δx={fine_x-init_x:+.3f}m Δy={fine_y-init_y:+.3f}m Δyaw={fine_yaw-init_yaw:+.1f}°"
@@ -513,7 +589,7 @@ free_thresh: 0.25
             err = dx - dy
 
             curr_x, curr_y = gx_robot, gy_robot
-            max_steps = 250
+            max_steps = 600
             step = 0
 
             while step < max_steps:
@@ -521,13 +597,20 @@ free_thresh: 0.25
                 if 0 <= curr_x < self.grid_width and 0 <= curr_y < self.grid_height:
                     idx = curr_y * self.grid_width + curr_x
                     if curr_x == ox and curr_y == oy:
-                        # Điểm va chạm vật cản / bức tường
-                        self.grid_data[idx] = 100
+                        hits = min(self.grid_hits[idx] + 1, self.wall_hit_cap)
+                        self.grid_hits[idx] = hits
+                        if hits >= self.wall_hit_confirm:
+                            self.grid_data[idx] = 100
                         break
                     else:
-                        # Vùng không gian trống mà tia laser xuyên qua
-                        # LÀM SẠCH: xóa vết đen cũ nếu tia hiện tại chứng minh vùng này trống
-                        self.grid_data[idx] = 0
+                        # Tia xuyên qua: ô tường đã xác nhận cần nhiều miss mới bị xóa.
+                        if self.grid_data[idx] == 100:
+                            self.grid_hits[idx] = max(self.grid_hits[idx] - 1, 0)
+                            if self.grid_hits[idx] <= 0:
+                                self.grid_data[idx] = 0
+                        else:
+                            self.grid_hits[idx] = 0
+                            self.grid_data[idx] = 0
 
                 if curr_x == ox and curr_y == oy:
                     break
@@ -672,22 +755,29 @@ free_thresh: 0.25
                 chunk = self.ser.read(512)
                 now = time.time()
 
-                # ── IMU Gyro Integration ──────────────────────────────────────
-                # Tích phân yaw_rate_dps từ MPU6050 (ESP32) để cập nhật robot_yaw
-                # liên tục thay vì bước cố định ±8° khi nhấn teleop.
-                # Chỉ tích phân khi MAPPING mode để không làm sai pose navigation.
+                # ── Encoder + IMU odometry ────────────────────────────────────
+                # Encoder cập nhật x/y. Yaw chỉ đổi khi đang quay; đi thẳng thì khóa góc.
                 if self.map_mode == "MAPPING":
                     esp_reader = getattr(self, "esp32_reader", None)
+                    snap = None
                     if esp_reader and hasattr(esp_reader, "latest"):
                         snap = esp_reader.latest()
-                        if snap and snap.mpu_available and snap.yaw_rate_dps is not None:
-                            dt = now - last_imu_update_time
-                            # Ngưỡng nhiễu: bỏ qua nếu gyro < 2 dps (nhiễu trắng khi đứng yên)
-                            if abs(snap.yaw_rate_dps) > 2.0 and 0.0 < dt < 0.5:
-                                # yaw_rate_dps > 0 = quay trái (CCW) theo chuẩn ROS/math
-                                delta_yaw = snap.yaw_rate_dps * dt
-                                with self._lock:
-                                    self.robot_yaw = (self.robot_yaw + delta_yaw) % 360.0
+                    dt = now - last_imu_update_time
+                    if snap is not None and 0.0 < dt < 0.5:
+                        with self._lock:
+                            has_imu = bool(
+                                snap.mpu_available and snap.yaw_rate_dps is not None
+                            )
+                            if getattr(snap, "encoders", None):
+                                self._apply_encoder_odometry(
+                                    snap.encoders, dt, update_yaw=not has_imu
+                                )
+                            if (
+                                not self._is_straight_motion()
+                                and has_imu
+                                and abs(snap.yaw_rate_dps) > 2.0
+                            ):
+                                self.robot_yaw = (self.robot_yaw + snap.yaw_rate_dps * dt) % 360.0
                 last_imu_update_time = now
                 # ─────────────────────────────────────────────────────────────
 
@@ -801,7 +891,11 @@ free_thresh: 0.25
                         ]
                         if self.map_mode == "MAPPING":
                             corrected_x, corrected_y, corrected_yaw = self._match_scan_to_map(
-                                raw_batch, self.robot_x, self.robot_y, self.robot_yaw
+                                raw_batch,
+                                self.robot_x,
+                                self.robot_y,
+                                self.robot_yaw,
+                                lock_yaw=self._is_straight_motion(),
                             )
                         else:
                             corrected_x = self.robot_x
@@ -1457,8 +1551,8 @@ free_thresh: 0.25
         Nạp floor plan JSON cứng (bản đồ overlay).
         Format:
         {
-          "width": 200, "height": 200,
-          "resolution": 0.05, "origin_x": -5.0, "origin_y": -5.0,
+          "width": 800, "height": 800,
+          "resolution": 0.025, "origin_x": -10.0, "origin_y": -10.0,
           "walls": [[gx, gy], ...],          # Ô tường cứng
           "waypoints": [{"name": "Lobby", "x": 1.2, "y": 0.5}, ...],
           "zones": [{"name": "Reception", "type": "poi", "x": 0.5, "y": 1.0, "radius": 0.5}],
@@ -1925,10 +2019,18 @@ async def teleop_control(req: TeleopCommandRequest):
         spd = req.speed or 45
         slam_core.send_udp_motor_command(f"speed:{spd}")
         slam_core.send_udp_motor_command(cmd)
-        step_m = 0.08 if cmd == "forward" else -0.08
-        rad = math.radians(slam_core.robot_yaw)
-        slam_core.robot_x += step_m * math.cos(rad)
-        slam_core.robot_y += step_m * math.sin(rad)
+        # Pose x/y do encoder trong scan_loop; không cộng bước mở khi đã có encoder.
+        # Yaw bị khóa khi đi thẳng nên không cập nhật góc tại đây.
+        has_encoder = False
+        esp_reader = getattr(slam_core, "esp32_reader", None)
+        if esp_reader and hasattr(esp_reader, "latest"):
+            snap = esp_reader.latest()
+            has_encoder = bool(snap and getattr(snap, "encoders", None))
+        if not has_encoder:
+            step_m = 0.08 if cmd == "forward" else -0.08
+            rad = math.radians(slam_core.robot_yaw)
+            slam_core.robot_x += step_m * math.cos(rad)
+            slam_core.robot_y += step_m * math.sin(rad)
     return {"status": "SUCCESS", "command": cmd}
 
 

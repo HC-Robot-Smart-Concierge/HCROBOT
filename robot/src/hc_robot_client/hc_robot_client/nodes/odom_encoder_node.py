@@ -34,6 +34,7 @@ class OdomEncoderNode(Node):
         self.declare_parameter('wheel_radius', 0.033)   # 33mm radius (66mm diameter)
         self.declare_parameter('wheel_base', 0.22)     # 220mm track width
         self.declare_parameter('encoder_cpr', 330.0)   # JGA25-370 CPR
+        self.declare_parameter('encoder_m3_sign', -1.0)  # M3 inverted vs left wheels
         self.declare_parameter('odom_frame', 'odom')
         self.declare_parameter('base_frame', 'base_footprint')
         self.declare_parameter('publish_rate_hz', 20.0)
@@ -41,6 +42,7 @@ class OdomEncoderNode(Node):
         self.wheel_radius = self.get_parameter('wheel_radius').value
         self.wheel_base = self.get_parameter('wheel_base').value
         self.encoder_cpr = self.get_parameter('encoder_cpr').value
+        self.encoder_m3_sign = float(self.get_parameter('encoder_m3_sign').value)
         self.odom_frame = self.get_parameter('odom_frame').value
         self.base_frame = self.get_parameter('base_frame').value
         publish_rate = self.get_parameter('publish_rate_hz').value
@@ -115,7 +117,7 @@ class OdomEncoderNode(Node):
         m4 = encoders.get("m4", {})
 
         left_ticks = (m1.get("ticks", 0) + m2.get("ticks", 0)) / 2.0
-        right_ticks = (m3.get("ticks", 0) + m4.get("ticks", 0)) / 2.0
+        right_ticks = (self.encoder_m3_sign * m3.get("ticks", 0) + m4.get("ticks", 0)) / 2.0
 
         if not self.has_prev_ticks:
             self.prev_left_ticks = left_ticks
@@ -139,8 +141,10 @@ class OdomEncoderNode(Node):
         delta_s = (delta_right_m + delta_left_m) / 2.0
         delta_theta = (delta_right_m - delta_left_m) / self.wheel_base
 
-        # Fuse with gyro yaw rate if active
-        if abs(yaw_rate_dps) > 0.5:
+        going_straight = (delta_left_m * delta_right_m) > 0 and abs(float(yaw_rate_dps or 0.0)) < 8.0
+        if going_straight:
+            delta_theta = 0.0
+        elif abs(yaw_rate_dps) > 0.5:
             gyro_delta_theta = math.radians(yaw_rate_dps) * dt
             delta_theta = 0.7 * gyro_delta_theta + 0.3 * delta_theta
 

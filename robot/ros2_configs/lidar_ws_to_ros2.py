@@ -36,6 +36,9 @@ class LidarWsToRos2Bridge(Node):
         self.wheel_radius = 0.033
         self.wheel_sep = float(os.getenv("HCROBOT_WHEEL_BASE", "0.22"))
         self.encoder_cpr = float(os.getenv("HCROBOT_ENCODER_CPR", "330.0"))
+        # M3 (P-TRƯỚC) đang ngược dấu so với bánh trái khi đi thẳng. Đặt -1 để đảo.
+        # Nếu đã đảo trên ESP32 firmware, set HCROBOT_ENCODER_M3_SIGN=1.
+        self.encoder_m3_sign = float(os.getenv("HCROBOT_ENCODER_M3_SIGN", "-1"))
         self.scan_count = 0
         self.last_scan_time = 0.0
         self.last_scan_points = 0
@@ -417,7 +420,9 @@ class LidarWsToRos2Bridge(Node):
             m3 = encoders.get("m3", {})
             m4 = encoders.get("m4", {})
             left_ticks = (float(m1.get("ticks", 0)) + float(m2.get("ticks", 0))) / 2.0
-            right_ticks = (float(m3.get("ticks", 0)) + float(m4.get("ticks", 0))) / 2.0
+            right_ticks = (
+                self.encoder_m3_sign * float(m3.get("ticks", 0)) + float(m4.get("ticks", 0))
+            ) / 2.0
         except (TypeError, ValueError):
             return
 
@@ -454,12 +459,16 @@ class LidarWsToRos2Bridge(Node):
         delta_s = (delta_left + delta_right) / 2.0
         delta_yaw = (delta_right - delta_left) / self.wheel_sep
 
-        try:
-            gyro_rate = float(yaw_rate_dps or 0.0)
-        except (TypeError, ValueError):
-            gyro_rate = 0.0
-        if abs(gyro_rate) > 0.5:
-            delta_yaw = 0.7 * (math.radians(gyro_rate) * dt) + 0.3 * delta_yaw
+        # Khi lệnh là đi thẳng/lùi, khóa yaw: encoder lệch 1 bánh không được biến thành cua.
+        if self._is_straight_command():
+            delta_yaw = 0.0
+        else:
+            try:
+                gyro_rate = float(yaw_rate_dps or 0.0)
+            except (TypeError, ValueError):
+                gyro_rate = 0.0
+            if abs(gyro_rate) > 0.5:
+                delta_yaw = 0.7 * (math.radians(gyro_rate) * dt) + 0.3 * delta_yaw
 
         yaw_rad = math.radians(self.current_pose['yaw'])
         mid_yaw = yaw_rad + delta_yaw / 2.0
@@ -510,6 +519,12 @@ class LidarWsToRos2Bridge(Node):
             motion = "stop"
 
         self._send_udp_to_pi5(motion)
+
+    def _is_straight_command(self) -> bool:
+        motion = self.last_sent_udp_motion
+        if motion in ("forward", "backward"):
+            return True
+        return abs(self.current_vx) > 0.05 and abs(self.current_wz) < 0.2
 
     def _send_udp_to_pi5(self, motion: str):
         if motion != self.last_sent_udp_motion:

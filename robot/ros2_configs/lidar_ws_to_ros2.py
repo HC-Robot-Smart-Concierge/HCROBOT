@@ -118,6 +118,9 @@ class LidarWsToRos2Bridge(Node):
         self.has_prev_encoder_ticks = False
         self.allow_cmd_vel_odom = os.getenv("HCROBOT_ALLOW_CMD_VEL_ODOM", "0") == "1"
         self.last_sent_udp_motion = "stop"
+        self.last_sent_teleop_pwm = None
+        self.teleop_pwm_forward = int(os.getenv("HCROBOT_TELEOP_PWM", "25"))
+        self.teleop_pwm_turn = int(os.getenv("HCROBOT_TELEOP_TURN_PWM", "22"))
 
         # Cấu hình UDP gửi lệnh sang Pi 5
         self.pi5_ip = os.getenv("PI5_IP", "100.99.72.51")
@@ -518,6 +521,12 @@ class LidarWsToRos2Bridge(Node):
         else:
             motion = "stop"
 
+        if motion != "stop":
+            pwm = self.teleop_pwm_turn if motion in ("left", "right") else self.teleop_pwm_forward
+            pwm = max(20, min(28, pwm))
+            if pwm != self.last_sent_teleop_pwm:
+                self._send_udp_to_pi5(f"speed:{pwm}")
+                self.last_sent_teleop_pwm = pwm
         self._send_udp_to_pi5(motion)
 
     def _is_straight_command(self) -> bool:

@@ -2030,7 +2030,18 @@ async def start_scan_360():
 
 class TeleopCommandRequest(BaseModel):
     command: str  # forward, backward, left, right, stop
-    speed: Optional[int] = 45
+    speed: Optional[int] = 25
+
+
+TELEOP_PWM_MIN = 20
+TELEOP_PWM_MAX = 28
+TELEOP_PWM_FORWARD = 25
+TELEOP_PWM_TURN = 22
+
+
+def _clamp_teleop_pwm(speed: Optional[int], default: int) -> int:
+    raw = default if speed is None else int(speed)
+    return max(TELEOP_PWM_MIN, min(TELEOP_PWM_MAX, raw))
 
 
 @app.post("/api/v1/map/teleop")
@@ -2042,7 +2053,7 @@ async def teleop_control(req: TeleopCommandRequest):
         slam_core.linear_velocity = 0.0
         slam_core.angular_velocity = 0.0
     elif cmd in ["left", "right"]:
-        spd = req.speed or 35
+        spd = _clamp_teleop_pwm(req.speed, TELEOP_PWM_TURN)
         slam_core.send_udp_motor_command(f"speed:{spd}")
         slam_core.send_udp_motor_command(cmd)
         # Nếu có IMU (ESP32 MPU) thì để scan_loop tích phân yaw_rate tự động.
@@ -2057,7 +2068,7 @@ async def teleop_control(req: TeleopCommandRequest):
             yaw_step = -8.0 if cmd == "right" else 8.0
             slam_core.robot_yaw = (slam_core.robot_yaw + yaw_step) % 360.0
     elif cmd in ["forward", "backward"]:
-        spd = req.speed or 45
+        spd = _clamp_teleop_pwm(req.speed, TELEOP_PWM_FORWARD)
         slam_core.send_udp_motor_command(f"speed:{spd}")
         slam_core.send_udp_motor_command(cmd)
         # Pose x/y do encoder trong scan_loop; không cộng bước mở khi đã có encoder.

@@ -45,8 +45,8 @@ class KeyboardTeleopNode(Node):
         self.udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
         # Tốc độ mặc định
-        self.linear_speed = 0.35   # m/s
-        self.angular_speed = 1.2   # rad/s
+        self.linear_speed = 0.16   # m/s (lái thủ công chậm)
+        self.angular_speed = 0.5   # rad/s
 
         self.get_logger().info("✅ Node Teleop đã sẵn sàng. Topic: /cmd_vel, UDP: %s:%d" % (PI5_IP, PI5_PORT))
 

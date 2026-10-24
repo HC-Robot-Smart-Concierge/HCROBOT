@@ -1,9 +1,13 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Rviz2WebViewer } from '../../components/admin/Rviz2WebViewer';
 import {
   fetchCurrentMap,
   loadSavedLidarMap,
   listSavedMaps,
+  fetchRos2RuntimeStatus,
+  startRos2Mapping,
+  saveRos2Map,
+  startRos2Navigation,
 } from '../../services/workflowApi';
 import {
   RosbridgeClient,
@@ -89,6 +93,10 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
   const [savedMapsList, setSavedMapsList] = useState([]);
   const [isSavingMap, setIsSavingMap] = useState(false);
   const [isMapLocked, setIsMapLocked] = useState(false);
+  const [mapMode, setMapMode] = useState('MAPPING');
+  const [isRos2RuntimeBusy, setIsRos2RuntimeBusy] = useState(false);
+  const [sensorHealth, setSensorHealth] = useState(null);
+  const [hasLiveRosMap, setHasLiveRosMap] = useState(false);
 
   // Frontier Exploration (Quet full phong tu dong bang SLAM)
   const [isExploring, setIsExploring] = useState(false);
@@ -125,6 +133,26 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
   const [isMenuDropdownOpen, setIsMenuDropdownOpen] = useState(false);
   const menuDropdownRef = useRef(null);
 
+  const mapStats = useMemo(() => {
+    let occupied = 0;
+    let free = 0;
+    for (const cell of gridData) {
+      if (cell >= 65) occupied += 1;
+      else if (cell === 0) free += 1;
+    }
+    return { occupied, free, known: occupied + free };
+  }, [gridData]);
+
+  const lidarLive = Boolean(sensorHealth?.lidar_live && scanPoints.length > 0);
+  const odometryMotionSeen = Boolean(sensorHealth?.encoder_motion_detected);
+  const mapHasContent = mapStats.occupied >= 10 && mapStats.free >= 100;
+  const mappingReadyToSave = mapMode === 'MAPPING'
+    && isWsConnected
+    && lidarLive
+    && odometryMotionSeen
+    && hasLiveRosMap
+    && mapHasContent;
+
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (menuDropdownRef.current && !menuDropdownRef.current.contains(event.target)) {
@@ -143,6 +171,10 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
         if (listData?.maps && listData.maps.length > 0) {
           setSavedMapsList(listData.maps);
           if (listData.active_map_id) setSelectedMapId(listData.active_map_id);
+        }
+        if (typeof listData?.is_map_locked === 'boolean') {
+          setIsMapLocked(listData.is_map_locked);
+          setMapMode(listData.map_mode || (listData.is_map_locked ? 'NAVIGATION' : 'MAPPING'));
         }
         const currMap = await fetchCurrentMap();
         if (currMap?.grid_data && currMap.grid_data.some((v) => v !== -1)) {
@@ -230,7 +262,7 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
           status: 'ROS2_CONNECTED',
           source: 'ROS2_SLAM_NAV2',
         }));
-        setNavNotification(`[ROS 2] Đã kết nối Rosbridge (${rosbridgeUrl})`);
+        setNavNotification(`[ROS 2] Rosbridge đã kết nối (${rosbridgeUrl}); đang chờ dữ liệu LiDAR thật...`);
       },
       onClose: () => {
         setIsWsConnected(false);
@@ -247,6 +279,7 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
     const unsubMap = client.subscribe(ROS_TOPICS.MAP, ROS_MSG_TYPES.OCCUPANCY_GRID, (msg) => {
       const parsed = parseOccupancyGrid(msg);
       if (parsed) {
+        setHasLiveRosMap(true);
         setGridData(parsed.gridData);
         setGridMetadata(parsed.metadata);
       }
@@ -326,8 +359,24 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
     const unsubStatus = client.subscribe('/robot/mapping_status', 'std_msgs/String', (msg) => {
       if (msg?.data === 'PAUSED') {
         setIsMapLocked(true);
+        setMapMode('PAUSED');
       } else if (msg?.data === 'MAPPING') {
         setIsMapLocked(false);
+        setMapMode('MAPPING');
+      } else if (msg?.data === 'NAVIGATION') {
+        setIsMapLocked(true);
+        setMapMode('NAVIGATION');
+      }
+    });
+
+    // 8. Trạng thái dữ liệu thật xuyên suốt Pi -> ROS 2. Một socket mở chưa
+    // đồng nghĩa LiDAR/encoder đang phát dữ liệu.
+    const unsubSensorHealth = client.subscribe('/robot/sensor_health', 'std_msgs/String', (msg) => {
+      try {
+        const health = typeof msg.data === 'string' ? JSON.parse(msg.data) : msg.data;
+        setSensorHealth(health || null);
+      } catch {
+        setSensorHealth(null);
       }
     });
 
@@ -339,6 +388,7 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
       unsubTelemetry();
       unsubGoal();
       unsubStatus();
+      unsubSensorHealth();
       client.disconnect();
     };
   }, [rosbridgeUrl]);
@@ -353,6 +403,74 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
     }
     setTimeout(() => setNavNotification(''), 4000);
   };
+
+  const waitForRos2Runtime = useCallback(async (expectedMode) => {
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      try {
+        const statusData = await fetchRos2RuntimeStatus();
+        if (statusData?.rosbridge_online && statusData?.rviz_online && statusData?.mode === expectedMode) {
+          return statusData;
+        }
+      } catch {
+        // WSL2/ROS 2 đang khởi động; tiếp tục chờ.
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+    }
+    throw new Error('ROS 2/RViz khởi động quá thời gian chờ. Hãy kiểm tra log backend.');
+  }, []);
+
+  const handleStartMappingFromWeb = useCallback(async () => {
+    if (isRos2RuntimeBusy) return;
+    setIsRos2RuntimeBusy(true);
+    setNavNotification('Đang bật WSL2 + Slam Toolbox + RViz Web để quét map...');
+    try {
+      setGridData(new Array(200 * 200).fill(-1));
+      setScanPoints([]);
+      setSensorHealth(null);
+      setHasLiveRosMap(false);
+      // Yêu cầu Pi mở lại motor/luồng đọc RPLiDAR. ROS bridge sau đó vẫn tự
+      // kiểm tra dữ liệu thực; phản hồi SUCCESS ở đây không được xem là đủ.
+      const lidarResponse = await fetch(`${PI5_API}/map/connect_lidar`, { method: 'POST' });
+      const lidarResult = await lidarResponse.json().catch(() => null);
+      if (!lidarResponse.ok || lidarResult?.status !== 'SUCCESS') {
+        throw new Error(lidarResult?.message || 'Pi đã mở cổng nhưng RPLiDAR không phát dữ liệu scan.');
+      }
+      await startRos2Mapping();
+      await waitForRos2Runtime('MAPPING');
+      setMapMode('MAPPING');
+      setIsMapLocked(false);
+      rosClientRef.current?.connect();
+      setNavNotification('MAPPING đã bật. Chỉ lưu khi LiDAR LIVE và ODOM ĐÃ DI CHUYỂN đều chuyển xanh.');
+    } catch (err) {
+      setNavNotification(`Không bật được chế độ quét map: ${err.message}`);
+    } finally {
+      setIsRos2RuntimeBusy(false);
+      setTimeout(() => setNavNotification(''), 7000);
+    }
+  }, [isRos2RuntimeBusy, waitForRos2Runtime]);
+
+  const handleStartNavigationFromWeb = useCallback(async (requestedMapName = null) => {
+    if (isRos2RuntimeBusy) return;
+    const mapName = typeof requestedMapName === 'string' && requestedMapName
+      ? requestedMapName
+      : (selectedMapId || 'phong_lam_viec');
+    setIsRos2RuntimeBusy(true);
+    setNavNotification(`Đang nạp static map "${mapName}" và khởi động AMCL + Nav2...`);
+    try {
+      await startRos2Navigation(mapName);
+      await waitForRos2Runtime('NAVIGATION');
+      setSelectedMapId(mapName);
+      setMapMode('NAVIGATION');
+      setIsMapLocked(true);
+      rosClientRef.current?.connect();
+      setNavNotification(`NAVIGATION đã sẵn sàng với map tĩnh "${mapName}".`);
+    } catch (err) {
+      setNavNotification(`Không bật được Navigation: ${err.message}`);
+    } finally {
+      setIsRos2RuntimeBusy(false);
+      setTimeout(() => setNavNotification(''), 7000);
+    }
+  }, [isRos2RuntimeBusy, selectedMapId, waitForRos2Runtime]);
 
   // Reset SLAM grid map (Xóa sạch bản đồ trên RViz & SLAM Toolbox)
   const handleResetGridMap = async () => {
@@ -401,10 +519,16 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
   // Khóa bản đồ gốc / Tiếp tục quét
   const handleToggleLockMap = () => {
     try {
+      if (mapMode === 'NAVIGATION') {
+        setNavNotification('Đang ở NAVIGATION: bản đồ đã lưu là read-only. Muốn quét lại, hãy chạy quet_map_mot_lan.bat.');
+        setTimeout(() => setNavNotification(''), 5000);
+        return;
+      }
       if (rosClientRef.current?.isConnected) {
         rosClientRef.current.togglePauseMap();
         const nextLocked = !isMapLocked;
         setIsMapLocked(nextLocked);
+        setMapMode(nextLocked ? 'PAUSED' : 'MAPPING');
         setNavNotification(
           nextLocked
             ? 'Đã khóa bản đồ gốc: Chỉ giữ 1 map cố định, không đè thêm tường!'
@@ -429,6 +553,17 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
   };
 
   const handleOpenSaveMapModal = () => {
+    if (!mappingReadyToSave) {
+      const reasons = [];
+      if (!isWsConnected) reasons.push('Rosbridge chưa kết nối');
+      if (!lidarLive) reasons.push('LiDAR chưa có scan thật');
+      if (!odometryMotionSeen) reasons.push('encoder/odometry chưa ghi nhận robot di chuyển');
+      if (!hasLiveRosMap) reasons.push('SLAM chưa phát map mới trong phiên quét này');
+      if (!mapHasContent) reasons.push('map chưa đủ ô tường và vùng trống');
+      setNavNotification(`Chưa thể lưu map: ${reasons.join('; ')}.`);
+      setTimeout(() => setNavNotification(''), 6000);
+      return;
+    }
     setSaveMapName(`map_${new Date().toISOString().slice(0, 10).replace(/-/g, '_')}_${Date.now().toString().slice(-4)}`);
     setIsSaveMapModalOpen(true);
   };
@@ -467,41 +602,41 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
     const trimmedName = saveMapName.trim();
     if (!trimmedName) return;
     setIsSavingMap(true);
-    setNavNotification(`Đang lưu bản đồ "${trimmedName}"và tải về máy tính...`);
+    setNavNotification(`Đang lưu map ROS 2 "${trimmedName}" ra YAML/PGM...`);
 
-    // 1. Gửi lệnh lưu tới ROS 2 SLAM Toolbox qua Rosbridge
-    if (rosClientRef.current?.isConnected) {
-      rosClientRef.current.saveSlamMap(trimmedName);
-    }
-
-    // 2. Gửi lệnh lưu tới Pi 5 Backend (nếu kết nối)
     try {
-      const res = await fetch(`${PI5_API}/map/save`, {
+      // 1. Backend laptop gọi map_saver_cli và chỉ trả SUCCESS khi YAML/PGM đã tồn tại.
+      await saveRos2Map(trimmedName);
+
+      // 2. Lưu thêm snapshot JSON phía Pi 5 để Web Admin/Pi dùng lại; lỗi Pi không làm mất map ROS 2.
+      await fetch(`${PI5_API}/map/save`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json'},
         body: JSON.stringify({ name: trimmedName }),
-      });
-      const data = await res.json();
-      if (data.status === 'SUCCESS') {
-        setNavNotification(`Đã lưu bản đồ "${trimmedName}"! Đang tải file về máy...`);
-        setIsSaveMapModalOpen(false);
-      }
-    } catch {
-      // Bỏ qua lỗi kết nối Pi 5 nếu đang chạy offline
-    }
+      }).catch(() => null);
 
-    // 3. Tự động tải gói bản đồ (.zip gồm .yaml + .pgm + .json) về thư mục Downloads của máy tính
-    try {
-      setTimeout(async () => {
-        await triggerMapDownload(trimmedName);
-        setNavNotification(`Đã tải file "${trimmedName}_slam_map.zip"về thư mục Downloads của máy tính!`);
-      }, 500);
+      setSelectedMapId(trimmedName);
+      setIsMapLocked(true);
+      setMapMode('PAUSED');
+      setNavNotification(`Đã lưu "${trimmedName}". Đang chuyển sang Navigation map tĩnh...`);
+
+      // 3. Kết thúc mapping và tự nạp đúng map vừa lưu bằng Map Server + AMCL + Nav2.
+      await startRos2Navigation(trimmedName);
+      await waitForRos2Runtime('NAVIGATION');
+      setMapMode('NAVIGATION');
+      rosClientRef.current?.connect();
+
+      // 4. Tải gói map sau khi file thật đã được tạo xong.
+      await triggerMapDownload(trimmedName);
+      const listData = await listSavedMaps().catch(() => null);
+      if (listData?.maps) setSavedMapsList(listData.maps);
+      setNavNotification(`Đã lưu & khóa "${trimmedName}", Navigation đã chạy và gói ZIP đã được tải.`);
+      setIsSaveMapModalOpen(false);
     } catch (err) {
-      console.warn('Lỗi tự động tải file bản đồ:', err);
+      setNavNotification(`Lưu map thất bại: ${err.message}`);
     } finally {
       setIsSavingMap(false);
-      setIsSaveMapModalOpen(false);
-      setTimeout(() => setNavNotification(''), 5500);
+      setTimeout(() => setNavNotification(''), 8000);
     }
   };
 
@@ -909,16 +1044,30 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
               ? { background: '#262626', color: '#FFFFFF', borderColor: '#262626'}
               : { background: '#F2EFE9', color: '#8C8C8C', borderColor: '#BFBFBD'}}>
             <Compass className="w-3.5 h-3.5 text-emerald-400"/>
-            <span>{isWsConnected ? `ROS 2 CONNECTED — ${rosbridgeUrl}`: `ROS 2 OFFLINE — ${rosbridgeUrl}`}</span>
+            <span>{isWsConnected ? `ROSBRIDGE ONLINE — ${rosbridgeUrl}`: `ROSBRIDGE OFFLINE — ${rosbridgeUrl}`}</span>
           </span>
 
           {isWsConnected && (
-            <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold hidden sm:inline-block">
-              TOPICS: /scan & /map & /cmd_vel
+            <span className={`text-[10px] px-2 py-0.5 rounded border font-bold hidden sm:inline-block ${
+              lidarLive
+                ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                : 'bg-red-100 text-red-800 border-red-300'
+            }`}>
+              {lidarLive ? `LIDAR LIVE: ${scanPoints.length} PTS` : 'LIDAR: KHÔNG CÓ SCAN'}
             </span>
           )}
 
-          <span style={{ color: '#8C8C8C'}}>RAW: <strong style={{ color: '#262626'}}>{scanPoints.length} PTS</strong></span>
+          {isWsConnected && (
+            <span className={`text-[10px] px-2 py-0.5 rounded border font-bold hidden sm:inline-block ${
+              odometryMotionSeen
+                ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                : 'bg-amber-100 text-amber-800 border-amber-300'
+            }`}>
+              {odometryMotionSeen ? 'ODOM: ĐÃ DI CHUYỂN' : 'ODOM: CHƯA CÓ CHUYỂN ĐỘNG'}
+            </span>
+          )}
+
+          <span style={{ color: '#8C8C8C'}}>MAP {hasLiveRosMap ? 'LIVE' : 'CHƯA LIVE'}: <strong style={{ color: '#262626'}}>{mapStats.known} ô</strong></span>
         </div>
 
         <div className="flex items-center gap-2 relative" ref={menuDropdownRef}>
@@ -932,7 +1081,9 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
                 : 'bg-stone-100 hover:bg-stone-200 text-stone-700 border-stone-300'
             }`}
             title={
-              isMapLocked
+              mapMode === 'NAVIGATION'
+                ? 'Navigation đang dùng bản đồ tĩnh đã lưu. LaserScan chỉ phục vụ định vị và tránh vật cản.'
+                : isMapLocked
                 ? 'Bản đồ đang ĐƯỢC KHÓA (chỉ giữ 1 map gốc, dừng nhận quét mới). Bấm để tiếp tục quét.'
                 : 'Bấm để KHÓA BẢN ĐỒ GỐC (ngăn SLAM vẽ đè thêm tường khi di chuyển)'
             }
@@ -942,7 +1093,13 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
             ) : (
               <Unlock className="w-3.5 h-3.5 text-stone-600" />
             )}
-            <span>{isMapLocked ? 'BẢN ĐỒ GỐC (ĐÃ KHÓA)' : 'KHÓA MAP GỐC'}</span>
+            <span>
+              {mapMode === 'NAVIGATION'
+                ? 'NAVIGATION • MAP TĨNH'
+                : isMapLocked
+                  ? 'MAPPING ĐANG TẠM DỪNG'
+                  : 'MAPPING • ĐANG QUÉT'}
+            </span>
           </button>
 
           {/* Nút Dừng Khẩn Cấp (E-STOP) nhanh trên thanh công cụ */}
@@ -978,6 +1135,40 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
               className="absolute right-0 top-full mt-1.5 w-64 rounded-xl border shadow-xl py-1.5 z-50 flex flex-col font-sans backdrop-blur-md"
               style={{ background: '#FAF8F5', borderColor: '#BFBFBD'}}
             >
+              <button
+                type="button"
+                disabled={isRos2RuntimeBusy}
+                onClick={() => {
+                  handleStartMappingFromWeb();
+                  setIsMenuDropdownOpen(false);
+                }}
+                className="w-full px-3 py-2 text-left text-xs font-bold flex items-center gap-2.5 text-cyan-800 hover:bg-cyan-50 disabled:opacity-50 transition-colors cursor-pointer"
+              >
+                <Layers className="w-4 h-4 text-cyan-600 shrink-0"/>
+                <div className="flex flex-col">
+                  <span>1. Bắt Đầu Quét Map</span>
+                  <span className="text-[10px] text-stone-500 font-normal">Tự bật WSL2, Slam Toolbox và RViz Web</span>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                disabled={isRos2RuntimeBusy}
+                onClick={() => {
+                  handleStartNavigationFromWeb();
+                  setIsMenuDropdownOpen(false);
+                }}
+                className="w-full px-3 py-2 text-left text-xs font-bold flex items-center gap-2.5 text-amber-800 hover:bg-amber-50 disabled:opacity-50 transition-colors cursor-pointer"
+              >
+                <Compass className="w-4 h-4 text-amber-600 shrink-0"/>
+                <div className="flex flex-col">
+                  <span>3. Chạy Navigation</span>
+                  <span className="text-[10px] text-stone-500 font-normal">Nạp map tĩnh: {selectedMapId || 'chưa chọn'}</span>
+                </div>
+              </button>
+
+              <div className="h-px bg-stone-200 my-1"/>
+
               {/* Quét Full Phòng SLAM / Dừng Quét */}
               {isExploring ? (
                 <button
@@ -1050,8 +1241,8 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
               >
                 <Save className="w-4 h-4 text-blue-600 shrink-0"/>
                 <div className="flex flex-col">
-                  <span className="font-bold">Lưu Bản Đồ</span>
-                  <span className="text-[10px] text-stone-500 font-normal">Tải gói ZIP (.yaml + .pgm) về máy</span>
+                  <span className="font-bold">2. Lưu, Khóa & Chạy Nav</span>
+                  <span className="text-[10px] text-stone-500 font-normal">Lưu YAML/PGM, khóa map và tự chuyển Navigation</span>
                 </div>
               </button>
 
@@ -1144,8 +1335,72 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
       <main className="w-full flex-1 p-4 grid grid-cols-12 gap-4 overflow-hidden">
         {/* Left Column: Dedicated Native RViz2 3D SLAM Stream (8 Cols) */}
         <div className="col-span-8 flex flex-col gap-3 h-full overflow-hidden">
+          <div className="shrink-0 rounded-xl border border-stone-300 bg-white px-3 py-2 flex items-center gap-2 text-[11px] shadow-sm">
+            <button
+              type="button"
+              disabled={isRos2RuntimeBusy}
+              onClick={handleStartMappingFromWeb}
+              className="px-3 py-1.5 rounded-lg border border-cyan-300 bg-cyan-50 hover:bg-cyan-100 text-cyan-800 font-bold disabled:opacity-50 cursor-pointer flex items-center gap-1.5"
+            >
+              <Layers className="w-3.5 h-3.5"/>
+              <span>1. QUÉT MAP</span>
+            </button>
+            <button
+              type="button"
+              disabled={isRos2RuntimeBusy || !mappingReadyToSave}
+              onClick={handleOpenSaveMapModal}
+              className="px-3 py-1.5 rounded-lg border border-blue-300 bg-blue-50 hover:bg-blue-100 text-blue-800 font-bold disabled:opacity-40 cursor-pointer flex items-center gap-1.5"
+              title={mappingReadyToSave
+                ? 'Lưu bản đồ đã quét và chuyển sang Navigation'
+                : 'Cần LiDAR live, odometry đã ghi nhận chuyển động và map có dữ liệu hợp lệ'}
+            >
+              <Save className="w-3.5 h-3.5"/>
+              <span>2. LƯU & KHÓA</span>
+            </button>
+            <select
+              value={selectedMapId}
+              onChange={(e) => setSelectedMapId(e.target.value)}
+              className="min-w-0 flex-1 px-2 py-1.5 rounded-lg border border-stone-300 bg-stone-50 text-stone-700 font-semibold outline-none"
+              title="Bản đồ dùng cho Navigation"
+            >
+              {savedMapsList.length === 0 && <option value="phong_lam_viec">phong_lam_viec</option>}
+              {savedMapsList.map((mapItem) => (
+                <option key={mapItem.map_id || mapItem.name} value={mapItem.map_id || mapItem.name}>
+                  {mapItem.name || mapItem.map_id}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              disabled={isRos2RuntimeBusy}
+              onClick={() => handleStartNavigationFromWeb()}
+              className="px-3 py-1.5 rounded-lg border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold disabled:opacity-50 cursor-pointer flex items-center gap-1.5"
+            >
+              <Compass className="w-3.5 h-3.5"/>
+              <span>3. NAVIGATION</span>
+            </button>
+            {isRos2RuntimeBusy && <RefreshCw className="w-4 h-4 text-amber-600 animate-spin shrink-0"/>}
+          </div>
+          {mapMode === 'MAPPING' && !mappingReadyToSave && (
+            <div className="shrink-0 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[11px] text-amber-900 font-semibold">
+              Chưa thể lưu: {!lidarLive
+                ? 'Pi/RPLiDAR chưa phát scan thật.'
+                : !odometryMotionSeen
+                  ? ' Hãy di chuyển robot; encoder/odometry hiện chưa đổi.'
+                  : !hasLiveRosMap
+                    ? ' SLAM chưa phát map mới trong phiên quét này.'
+                    : !mapHasContent
+                    ? ' Bản đồ chưa có đủ tường và vùng trống.'
+                    : ' Đang chờ dữ liệu.'}
+            </div>
+          )}
           <div className="w-full flex-1 relative overflow-hidden">
-            <Rviz2WebViewer />
+            <Rviz2WebViewer
+              activeMapName={selectedMapId}
+              isRuntimeBusy={isRos2RuntimeBusy}
+              onStartMapping={handleStartMappingFromWeb}
+              onStartNavigation={() => handleStartNavigationFromWeb()}
+            />
             {/* Floating Status HUD khi dang tu hanh quet full phong */}
             {isExploring && (
               <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2.5 px-4 py-2 bg-stone-900/90 border border-emerald-500/60 rounded-full shadow-2xl backdrop-blur-md text-white text-xs font-semibold pointer-events-auto">
@@ -1399,7 +1654,7 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
               <div className="flex items-center gap-2">
                 <Save className="w-4 h-4 text-blue-600"/>
                 <h3 className="text-sm font-bold"style={{ color: '#262626'}}>
-                  Lưu Bản Đồ SLAM LiDAR
+                  Lưu, Khóa Map & Chuyển Navigation
                 </h3>
               </div>
               <button
@@ -1438,7 +1693,7 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
               <div className="p-2.5 rounded-lg border border-blue-200 bg-blue-50 text-[11px] text-blue-800 flex items-center gap-2">
                 <Download className="w-4 h-4 text-blue-600 shrink-0"/>
                 <span>
-                  Hệ thống sẽ <strong>tự động tải file ZIP</strong> bản đồ về thư mục <strong>Downloads</strong> ngay khi bấm Lưu.
+                  Web sẽ lưu map ROS 2 thật, khóa bản đồ, tự chuyển sang <strong>Navigation map tĩnh</strong> và tải ZIP về máy.
                 </span>
               </div>
 
@@ -1458,7 +1713,7 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
                   style={{ backgroundColor: '#262626', color: '#FFFFFF'}}
                 >
                   <Save className="w-3.5 h-3.5"/>
-                  <span>{isSavingMap ? 'Đang lưu...': 'Lưu Bản Đồ'}</span>
+                  <span>{isSavingMap ? 'Đang lưu & chuyển chế độ...': 'Lưu & Chạy Navigation'}</span>
                 </button>
               </div>
             </form>

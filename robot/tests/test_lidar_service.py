@@ -19,10 +19,9 @@ class TestLidarServiceMapPersistence(unittest.TestCase):
         self.core = lidar_service.RPLidarSLAMCore(port="/dev/null")
         # Populate dummy map data
         self.core.grid_data = [-1] * (self.core.grid_width * self.core.grid_height)
-        # Add some occupied and free cells
-        self.core.grid_data[0] = 100
-        self.core.grid_data[1] = 0
-        self.core.grid_data[2] = 100
+        # Add a minimally valid room map (wall cells + ray-traced free space).
+        self.core.grid_data[:10] = [100] * 10
+        self.core.grid_data[10:200] = [0] * 190
         self.core.robot_x = 1.25
         self.core.robot_y = 2.50
         self.core.robot_yaw = 45.0
@@ -34,8 +33,8 @@ class TestLidarServiceMapPersistence(unittest.TestCase):
     def test_save_map_creates_json_yaml_and_pgm(self):
         res = self.core.save_map("test_room")
         self.assertEqual(res["name"], "test_room")
-        self.assertEqual(res["occupied_cells"], 2)
-        self.assertEqual(res["free_cells"], 1)
+        self.assertEqual(res["occupied_cells"], 10)
+        self.assertEqual(res["free_cells"], 190)
 
         json_file = os.path.join(self.temp_maps_dir, "test_room.json")
         yaml_file = os.path.join(self.temp_maps_dir, "test_room.yaml")
@@ -55,6 +54,28 @@ class TestLidarServiceMapPersistence(unittest.TestCase):
         with open(pgm_file, "rb") as f:
             header = f.read(15)
         self.assertTrue(header.startswith(b"P5\n200 200\n255\n"))
+        self.assertTrue(self.core.is_map_locked)
+        self.assertEqual(self.core.map_mode, "NAVIGATION")
+
+    def test_navigation_mode_never_overwrites_saved_grid(self):
+        self.core.save_map("fixed_room")
+        frozen = list(self.core.grid_data)
+
+        self.core._update_grid_from_scan(
+            0.0,
+            0.0,
+            [{"x": 1.0, "y": 0.0, "distance": 1.0, "angle": 0.0}],
+        )
+
+        self.assertEqual(self.core.grid_data, frozen)
+
+    def test_reset_starts_a_new_mapping_session(self):
+        self.core.save_map("fixed_room")
+        self.core.reset_map()
+
+        self.assertFalse(self.core.is_map_locked)
+        self.assertEqual(self.core.map_mode, "MAPPING")
+        self.assertTrue(all(value == -1 for value in self.core.grid_data))
 
     def test_load_map_restores_data(self):
         self.core.save_map("saved_floor")
@@ -67,7 +88,7 @@ class TestLidarServiceMapPersistence(unittest.TestCase):
         ok = self.core.load_map("saved_floor")
         self.assertTrue(ok)
         self.assertEqual(self.core.grid_data[0], 100)
-        self.assertEqual(self.core.grid_data[1], 0)
+        self.assertEqual(self.core.grid_data[10], 0)
         self.assertAlmostEqual(self.core.robot_x, 1.25)
         self.assertAlmostEqual(self.core.robot_y, 2.50)
 
@@ -86,6 +107,16 @@ class TestLidarServiceMapPersistence(unittest.TestCase):
         map_names_after = [m["name"] for m in maps_after]
         self.assertNotIn("map_a", map_names_after)
         self.assertIn("map_b", map_names_after)
+
+    def test_empty_map_is_rejected_without_creating_files(self):
+        self.core.grid_data = [-1] * (self.core.grid_width * self.core.grid_height)
+
+        with self.assertRaisesRegex(ValueError, "Từ chối lưu"):
+            self.core.save_map("must_not_overwrite")
+
+        self.assertFalse(os.path.exists(os.path.join(self.temp_maps_dir, "must_not_overwrite.json")))
+        self.assertFalse(os.path.exists(os.path.join(self.temp_maps_dir, "must_not_overwrite.yaml")))
+        self.assertFalse(os.path.exists(os.path.join(self.temp_maps_dir, "must_not_overwrite.pgm")))
 
     def test_sector_distances_ccw(self):
         """Kiểm tra các cung góc khoảng cách theo chuẩn CCW: 0° Trước, 90° Trái, 180° Sau, 270° Phải."""

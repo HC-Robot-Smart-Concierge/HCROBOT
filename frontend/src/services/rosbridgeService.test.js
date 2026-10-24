@@ -1,5 +1,22 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { RosbridgeClient } from './rosbridgeService';
+import { parseLaserScan, RosbridgeClient } from './rosbridgeService';
+
+describe('parseLaserScan', () => {
+  it('ignores rosbridge null/invalid ranges without crashing', () => {
+    const points = parseLaserScan({
+      angle_min: 0,
+      angle_increment: Math.PI / 2,
+      range_min: 0.1,
+      range_max: 12,
+      ranges: [null, 1.5, '2.0', Number.POSITIVE_INFINITY, 0.05, 13],
+      intensities: [0, 20, 30, 40, 50, 60],
+    });
+
+    expect(points).toEqual([
+      { angle: 90, distance: 1.5, quality: 20 },
+    ]);
+  });
+});
 
 describe('RosbridgeClient Map Management Methods', () => {
   let client;

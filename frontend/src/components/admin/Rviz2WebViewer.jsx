@@ -7,6 +7,9 @@ import {
   AlertCircle,
   Terminal,
   Compass,
+  Play,
+  ScanLine,
+  Loader2,
 } from 'lucide-react';
 
 export const buildRvizVncUrl = (host = '127.0.0.1', port = 6080, options = {}) => {
@@ -23,6 +26,10 @@ export const buildRvizVncUrl = (host = '127.0.0.1', port = 6080, options = {}) =
 export const Rviz2WebViewer = ({
   host = '127.0.0.1',
   port = 6080,
+  onStartMapping,
+  onStartNavigation,
+  isRuntimeBusy = false,
+  activeMapName = 'phong_lam_viec',
 }) => {
   const [iframeKey, setIframeKey] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -167,17 +174,38 @@ export const Rviz2WebViewer = ({
               CHUA KET NOI DUOC VOI RVIZ2 WEB SERVER (:6080)
             </h3>
             <p className="text-xs text-stone-400 max-w-lg mb-4 leading-relaxed">
-              Tien trinh RViz2 noVNC chua duoc bat tren WSL2. Hay chay script sau tren may laptop de bat luong stream RViz2 3D:
+              Chọn chế độ bên dưới. Backend sẽ tự bật WSL2, ROS 2, Rosbridge và RViz; không cần chạy lệnh PowerShell.
             </p>
 
-            <div className="bg-[#1A1E27] border border-[#2D3342] rounded-lg p-3 text-left font-mono text-xs text-emerald-400 max-w-lg w-full mb-4 space-y-1">
-              <div className="text-stone-400 text-[11px] font-sans">Cach 1 (File Batch 1-Click tren Windows):</div>
-              <div className="bg-black/50 p-1.5 rounded select-all font-bold">open_rviz_web.bat</div>
-              <div className="text-stone-400 text-[11px] font-sans pt-1">Cach 2 (Chay truc tiep trong WSL2 terminal):</div>
-              <div className="bg-black/50 p-1.5 rounded select-all font-bold">
-                wsl -d Ubuntu-24.04 bash robot/ros2_configs/start_wsl_rviz_web.sh
-              </div>
+            <div className="grid grid-cols-2 gap-3 max-w-xl w-full mb-4">
+              <button
+                type="button"
+                onClick={onStartMapping}
+                disabled={isRuntimeBusy || !onStartMapping}
+                className="p-3 rounded-xl border border-cyan-500/40 bg-cyan-500/10 hover:bg-cyan-500/20 disabled:opacity-50 text-left transition-colors cursor-pointer"
+              >
+                <ScanLine className="w-5 h-5 text-cyan-300 mb-1.5" />
+                <span className="block text-xs font-bold text-white">BẮT ĐẦU QUÉT MAP</span>
+                <span className="block text-[10px] text-stone-400 mt-1">Slam Toolbox cập nhật vật cản cố định vào map.</span>
+              </button>
+              <button
+                type="button"
+                onClick={onStartNavigation}
+                disabled={isRuntimeBusy || !onStartNavigation}
+                className="p-3 rounded-xl border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 disabled:opacity-50 text-left transition-colors cursor-pointer"
+              >
+                <Play className="w-5 h-5 text-amber-300 mb-1.5" />
+                <span className="block text-xs font-bold text-white">CHẠY NAVIGATION</span>
+                <span className="block text-[10px] text-stone-400 mt-1">Nạp map tĩnh: {activeMapName || 'chưa chọn'}</span>
+              </button>
             </div>
+
+            {isRuntimeBusy && (
+              <div className="flex items-center gap-2 mb-3 text-xs text-amber-300 font-mono">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Đang khởi động ROS 2, vui lòng chờ...</span>
+              </div>
+            )}
 
             <div className="flex items-center gap-3">
               <button

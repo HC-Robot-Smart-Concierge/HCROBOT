@@ -1,0 +1,41 @@
+Design a complete mobile robot physical circuit schematic with the following modules, independent power rails, and wiring:
+
+1. Microcontroller & Central SBC:
+- Raspberry Pi 5 (8GB) with dedicated independent 5V 5A USB-PD Type-C power supply.
+- ESP32 DevKitC (Sensor & Encoder Hub) connected to Raspberry Pi 5 via USB Type-A to Micro-USB cable (for 5V power and 115200 baud serial communication).
+- L298N Dual H-Bridge Motor Driver Module powered by a separate 12V Battery Pack (Li-ion 3S / 12V) connected to VCC and GND.
+
+2. Raspberry Pi 5 USB Peripherals & GPIO:
+- USB Port 1: RPLiDAR A1/C1 360-degree laser scanner module.
+- USB Port 2: USB HD Camera module for computer vision and perception.
+- USB Port 3: Connected to ESP32 DevKitC.
+- GPIO Pin 11 (GPIO 17) -> L298N IN1 (Left forward)
+- GPIO Pin 13 (GPIO 27) -> L298N IN2 (Left backward)
+- GPIO Pin 15 (GPIO 22) -> L298N IN3 (Right forward)
+- GPIO Pin 16 (GPIO 23) -> L298N IN4 (Right backward)
+- GPIO Pin 6/9 (GND) -> Connected to L298N GND and Battery 12V negative terminal to form a Common Star Ground. Jumpers on L298N ENA and ENB kept in place (connected to 5V logic).
+
+3. 4x DC Motors with Quadrature Encoders (JGA25-370):
+- Motor 1 (Front Left): M+/M- to L298N OUT1/OUT2; Encoder Phase A to ESP32 GPIO 4, Phase B to ESP32 GPIO 5.
+- Motor 2 (Rear Left): M+/M- to L298N OUT1/OUT2; Encoder Phase A to ESP32 GPIO 13, Phase B to ESP32 GPIO 14.
+- Motor 3 (Front Right): M+/M- to L298N OUT3/OUT4; Encoder Phase A to ESP32 GPIO 16, Phase B to ESP32 GPIO 17.
+- Motor 4 (Rear Right): M+/M- to L298N OUT3/OUT4; Encoder Phase A to ESP32 GPIO 23, Phase B to ESP32 GPIO 27.
+- All 4 Encoders VCC pins connected to ESP32 3.3V pin (for 3.3V safe square waves).
+- All 4 Encoders GND pins connected to Common Ground.
+
+4. IMU Sensor (MPU-9250 / MPU-6050) to ESP32:
+- VCC to ESP32 3.3V pin (do NOT connect to 5V)
+- GND to Common Ground
+- SDA to ESP32 GPIO 25
+- SCL to ESP32 GPIO 26
+- AD0 to Common Ground (I2C address 0x68)
+
+5. 4x HC-SR04 Ultrasonic Distance Sensors to ESP32:
+- All 4 VCC pins connected to 5V rail; all 4 GND pins connected to Common Ground.
+- Front Sensor: Trig to ESP32 GPIO 18; Echo connected through a 1k/2k ohm voltage divider to ESP32 GPIO 34.
+- Rear Sensor: Trig to ESP32 GPIO 19; Echo connected through a 1k/2k ohm voltage divider to ESP32 GPIO 35.
+- Left Sensor: Trig to ESP32 GPIO 21; Echo connected through a 1k/2k ohm voltage divider to ESP32 GPIO 32.
+- Right Sensor: Trig to ESP32 GPIO 22; Echo connected through a 1k/2k ohm voltage divider to ESP32 GPIO 33.
+
+6. Grounding Rule:
+- Common Star Ground: Connect Raspberry Pi 5 GND, 12V Motor Battery negative (-), L298N GND, ESP32 GND, and sensor GNDs together so all control signals share the same reference potential.

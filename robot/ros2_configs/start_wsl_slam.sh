@@ -7,7 +7,9 @@ export ROS_DOMAIN_ID=0
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 echo "=== [0/4] DON DEP CAC TIEN TRINH CU (NEU CO) ==="
-killall -q rosbridge_websocket async_slam_toolbox_node robot_state_publisher 2>/dev/null || true
+killall -q rosbridge_websocket async_slam_toolbox_node robot_state_publisher \
+  map_server amcl controller_server planner_server behavior_server bt_navigator \
+  waypoint_follower lifecycle_manager component_container_isolated 2>/dev/null || true
 pkill -f "rosbridge_websocket" 2>/dev/null || true
 pkill -f "lidar_ws_to_ros2.py" 2>/dev/null || true
 pkill -f "static_transform_publisher" 2>/dev/null || true
@@ -27,6 +29,8 @@ BRIDGE_PID=$!
 sleep 2
 
 echo "=== [3/4] KHOI DONG LIDAR BRIDGE (Pi 5 WS -> ROS 2 /scan & TF) ==="
+HCROBOT_MODE=MAPPING \
+HCROBOT_MAP_DIR="$SCRIPT_DIR/../maps" \
 python3 "$SCRIPT_DIR/lidar_ws_to_ros2.py" &
 LIDAR_PID=$!
 sleep 2
@@ -40,6 +44,7 @@ echo " HE THONG SLAM DANG HOAT DONG TREN LAPTOP WSL2!"
 echo "   - Robot Model: Load URDF tu robot/description/robot.urdf"
 echo "   - Topic /scan dang nhan tia tu Pi 5 qua Tailscale"
 echo "   - SLAM Toolbox dang dung Occupancy Grid Map tren /map"
+echo "   - MODE=MAPPING: chi dung de tao map mot lan"
 echo "   - Rosbridge WebSocket mo tai ws://127.0.0.1:9090 cho Web Admin"
 echo "=========================================================="
 

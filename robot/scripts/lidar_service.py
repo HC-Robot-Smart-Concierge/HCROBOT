@@ -77,6 +77,8 @@ class RPLidarSLAMCore:
         self.is_connected = False
         self.is_running = False
         self.last_error = ""
+        self.last_scan_time = 0.0
+        self.last_scan_points = 0
 
         self.device_info = {
             "port": self.port,
@@ -98,6 +100,15 @@ class RPLidarSLAMCore:
         self.origin_x = -5.0
         self.origin_y = -5.0
         self.grid_data = [-1] * (self.grid_width * self.grid_height)
+
+        # Hai che do tach biet:
+        # - MAPPING: LaserScan duoc phep cap nhat occupancy grid.
+        # - NAVIGATION: giu nguyen snapshot da luu; scan chi dung de dinh vi,
+        #   tranh vat can va hien thi, tuyet doi khong ve de len ban do goc.
+        self.map_mode = "MAPPING"
+        self.is_map_locked = False
+        self.static_grid_data: Optional[List[int]] = None
+        self.active_map_name: Optional[str] = None
 
         # Trạng thái Robot
         self.robot_x = 0.0
@@ -168,6 +179,10 @@ class RPLidarSLAMCore:
         """Xóa trắng bản đồ 2D về trạng thái ban đầu và đưa vị trí robot về gốc."""
         with self._lock:
             self.grid_data = [-1] * (self.grid_width * self.grid_height)
+            self.static_grid_data = None
+            self.active_map_name = None
+            self.map_mode = "MAPPING"
+            self.is_map_locked = False
             self.robot_x = 0.0
             self.robot_y = 0.0
             self.robot_yaw = 0.0
@@ -198,6 +213,13 @@ class RPLidarSLAMCore:
         occupied_count = sum(1 for v in grid_copy if v == 100)
         free_count = sum(1 for v in grid_copy if v == 0)
         unknown_count = sum(1 for v in grid_copy if v < 0)
+
+        # Never overwrite a good map with an empty/partial sensor frame.
+        if occupied_count < 10 or free_count < 100 or (occupied_count + free_count) < 200:
+            raise ValueError(
+                "Từ chối lưu map rỗng/chưa hoàn chỉnh "
+                f"(tường={occupied_count}, vùng trống={free_count})."
+            )
 
         # 1. Lưu file JSON cho Web Admin
         payload = {
@@ -252,6 +274,15 @@ free_thresh: 0.25
         with open(yaml_path, "w", encoding="utf-8") as f:
             f.write(yaml_content)
 
+        # Luu xong la ket thuc mapping. Tu thoi diem nay grid_data la ban do
+        # tinh; LaserScan van tiep tuc chay de tranh vat can nhung khong duoc
+        # sua cac cell nua.
+        with self._lock:
+            self.static_grid_data = list(grid_copy)
+            self.active_map_name = safe_name
+            self.map_mode = "NAVIGATION"
+            self.is_map_locked = True
+
         logger.info(f"💾 Đã lưu bản đồ '{safe_name}' thành công: JSON, YAML & PGM ({occupied_count} ô vật cản, {free_count} ô trống)")
         return {
             "name": safe_name,
@@ -281,6 +312,10 @@ free_thresh: 0.25
                 self.origin_x = data.get("origin_x", -5.0)
                 self.origin_y = data.get("origin_y", -5.0)
                 self.grid_data = data.get("grid_data", [-1] * (self.grid_width * self.grid_height))
+                self.static_grid_data = list(self.grid_data)
+                self.active_map_name = safe_name
+                self.map_mode = "NAVIGATION"
+                self.is_map_locked = True
                 pose = data.get("robot_pose", {})
                 self.robot_x = pose.get("x", 0.0)
                 self.robot_y = pose.get("y", 0.0)
@@ -343,6 +378,9 @@ free_thresh: 0.25
         - Chỉ ô cuối cùng nơi tia chạm tường mới được đánh dấu VẬT CẢN (100).
         - Giúp bản đồ sắc nét, không bị vệt đen tích lũy như cơn lốc.
         """
+        if self.is_map_locked or self.map_mode != "MAPPING":
+            return
+
         gx_robot, gy_robot = self._world_to_grid(rx, ry)
 
         for pt in scan_points:
@@ -425,6 +463,13 @@ free_thresh: 0.25
                 time.sleep(0.08)
                 desc_health = self.ser.read(7)
 
+            if len(desc_health) != 7 or desc_health[:2] != b"\xa5\x5a":
+                raw_hex = desc_health.hex().upper() or "EMPTY"
+                raise RuntimeError(
+                    "RPLiDAR không phản hồi lệnh GET_HEALTH "
+                    f"(descriptor={raw_hex}). Kiểm tra cáp 4-pin/nguồn motor LiDAR."
+                )
+
             if len(desc_health) == 7 and desc_health[:2] == b"\xa5\x5a":
                 health_data = self.ser.read(3)
                 if len(health_data) >= 3:
@@ -452,6 +497,7 @@ free_thresh: 0.25
         except Exception as e:
             self.is_connected = False
             self.last_error = str(e)
+            self.device_info["health"] = "Error: no sensor response"
             logger.error(f"❌ Lỗi kết nối {self.port}: {e}")
             return False
 
@@ -463,6 +509,11 @@ free_thresh: 0.25
             return
 
         self.is_running = True
+        self.last_error = ""
+        self.last_scan_time = 0.0
+        self.last_scan_points = 0
+        with self._lock:
+            self._latest_scans = []
         self._scan_thread = threading.Thread(target=self._scan_loop, daemon=True)
         self._scan_thread.start()
         if not self._safety_thread or not self._safety_thread.is_alive():
@@ -504,6 +555,10 @@ free_thresh: 0.25
                     # WATCHDOG: Nếu không có dữ liệu > 2.0s (do sụt áp động cơ, brownout hoặc sensor đơ)
                     if now - last_packet_time > 2.0:
                         stall_retries += 1
+                        self.last_error = (
+                            f"RPLiDAR không phát dữ liệu scan trong {now - last_packet_time:.1f}s "
+                            f"(watchdog {stall_retries}/3)"
+                        )
                         logger.warning(
                             f"⚠️ [LiDAR Watchdog] Mất luồng dữ liệu {now - last_packet_time:.1f}s "
                             f"(lần {stall_retries}/3). Kích hoạt soft-reset STOP & SCAN..."
@@ -525,7 +580,12 @@ free_thresh: 0.25
 
                         if stall_retries >= 3:
                             logger.error("🚨 [LiDAR Watchdog] Tín hiệu gián đoạn quá 6s, thực hiện tái kết nối Serial toàn phần...")
-                            self.connect(force=True)
+                            # connect(force=True) calls stop(), therefore preserve the
+                            # requested running state or this scan thread exits while
+                            # the API misleadingly still reports a successful connect.
+                            should_keep_running = self.is_running
+                            reconnected = self.connect(force=True)
+                            self.is_running = bool(should_keep_running and reconnected)
                             stall_retries = 0
                             last_packet_time = time.time()
                             if self.ser and self.ser.is_open:
@@ -595,11 +655,15 @@ free_thresh: 0.25
                     if (is_new_scan and len(current_scan_batch) >= 60) or len(current_scan_batch) >= 720:
                         with self._lock:
                             self._latest_scans = list(current_scan_batch)
+                            self.last_scan_time = time.time()
+                            self.last_scan_points = len(self._latest_scans)
+                            self.last_error = ""
                             self._update_grid_from_scan(self.robot_x, self.robot_y, self._latest_scans)
                         current_scan_batch.clear()
 
         except Exception as e:
             logger.error(f"Lỗi scan loop: {e}")
+            self.last_error = f"Lỗi scan loop: {e}"
             self.is_connected = False
             self.is_running = False
 
@@ -1508,10 +1572,15 @@ async def get_current_map():
 
 @app.get("/api/v1/map/lidar_status")
 async def get_lidar_status():
+    scan_age = None if slam_core.last_scan_time <= 0 else max(0.0, time.time() - slam_core.last_scan_time)
+    data_live = bool(scan_age is not None and scan_age < 1.5 and slam_core.last_scan_points > 0)
     return {
-        "status": "ONLINE" if slam_core.is_connected else "OFFLINE",
+        "status": "LIVE" if data_live else ("NO_SCAN" if slam_core.is_connected else "OFFLINE"),
         "is_connected": slam_core.is_connected,
         "is_running": slam_core.is_running,
+        "data_live": data_live,
+        "scan_points": slam_core.last_scan_points,
+        "last_scan_age_sec": None if scan_age is None else round(scan_age, 2),
         "device_info": slam_core.device_info,
         "last_error": slam_core.last_error,
     }
@@ -1522,7 +1591,22 @@ async def connect_lidar():
     success = slam_core.connect(force=True)
     if success:
         slam_core.start_scanning()
-        return {"status": "SUCCESS", "message": "Đã tái kết nối thành công phần cứng RPLiDAR A1M8", "info": slam_core.device_info}
+        # Serial open/GET_HEALTH is not enough. Wait for a complete 360-degree
+        # scan so callers cannot mistake an open port for live sensor data.
+        for _ in range(25):
+            if slam_core.last_scan_time > 0 and time.time() - slam_core.last_scan_time < 1.0:
+                return {
+                    "status": "SUCCESS",
+                    "message": "RPLiDAR đang phát dữ liệu scan thật",
+                    "scan_points": slam_core.last_scan_points,
+                    "info": slam_core.device_info,
+                }
+            await asyncio.sleep(0.2)
+        return {
+            "status": "FAILED",
+            "message": slam_core.last_error or "Đã mở cổng LiDAR nhưng không nhận được dữ liệu scan.",
+            "info": slam_core.device_info,
+        }
     return {"status": "FAILED", "message": slam_core.last_error or "Không thể kết nối RPLiDAR"}
 
 
@@ -1549,7 +1633,10 @@ class SaveMapRequest(BaseModel):
 @app.post("/api/v1/map/save")
 async def save_map_endpoint(req: Optional[SaveMapRequest] = None):
     map_name = (req.name if req and req.name else None) or f"map_{int(time.time())}"
-    res = slam_core.save_map(map_name)
+    try:
+        res = slam_core.save_map(map_name)
+    except ValueError as exc:
+        return {"status": "FAILED", "message": str(exc)}
     return {
         "status": "SUCCESS",
         "message": f"Đã lưu bản đồ '{map_name}' thành công (JSON + ROS 2 YAML/PGM)",
@@ -1560,11 +1647,22 @@ async def save_map_endpoint(req: Optional[SaveMapRequest] = None):
 @app.get("/api/v1/map/saved_list")
 async def get_saved_maps():
     maps = slam_core.list_saved_maps()
-    return {"status": "SUCCESS", "maps": maps, "count": len(maps)}
+    return {
+        "status": "SUCCESS",
+        "maps": maps,
+        "count": len(maps),
+        "map_mode": slam_core.map_mode,
+        "is_map_locked": slam_core.is_map_locked,
+        "active_map_name": slam_core.active_map_name,
+    }
 
 
 class LoadMapRequest(BaseModel):
     name: str
+
+
+class MapModeRequest(BaseModel):
+    mode: str
 
 
 @app.post("/api/v1/map/load")
@@ -1573,6 +1671,30 @@ async def load_map_endpoint(req: LoadMapRequest):
     if ok:
         return {"status": "SUCCESS", "message": f"Đã nạp bản đồ '{req.name}' vào hệ thống"}
     return {"status": "FAILED", "message": f"Không tìm thấy hoặc không đọc được bản đồ '{req.name}'"}
+
+
+@app.post("/api/v1/map/mode")
+async def set_map_mode(req: MapModeRequest):
+    """Chuyen ro rang giua Mapping va Navigation, khong dung toggle mo ho."""
+    mode = (req.mode or "").strip().upper()
+    if mode not in ("MAPPING", "NAVIGATION"):
+        return {"status": "FAILED", "message": "mode phải là MAPPING hoặc NAVIGATION"}
+
+    with slam_core._lock:
+        if mode == "MAPPING":
+            slam_core.map_mode = "MAPPING"
+            slam_core.is_map_locked = False
+        else:
+            slam_core.static_grid_data = list(slam_core.grid_data)
+            slam_core.map_mode = "NAVIGATION"
+            slam_core.is_map_locked = True
+
+    return {
+        "status": "SUCCESS",
+        "map_mode": slam_core.map_mode,
+        "is_map_locked": slam_core.is_map_locked,
+        "active_map_name": slam_core.active_map_name,
+    }
 
 
 @app.delete("/api/v1/map/saved/{name}")
@@ -1809,6 +1931,10 @@ async def map_ws_endpoint(websocket: WebSocket):
             if snap and snap.encoders:
                 encoders_payload = snap.encoders
 
+            yaw_rate_dps = 0.0
+            if snap and getattr(snap, "yaw_rate_dps", None) is not None:
+                yaw_rate_dps = float(snap.yaw_rate_dps)
+
             front_cm = round(slam_core.get_front_distance() * 100, 1) if slam_core.get_front_distance() < 90 else None
             rear_cm = round(slam_core.get_rear_distance() * 100, 1) if slam_core.get_rear_distance() < 90 else None
             left_cm = round(slam_core.get_left_distance() * 100, 1) if slam_core.get_left_distance() < 90 else None
@@ -1827,7 +1953,7 @@ async def map_ws_endpoint(websocket: WebSocket):
 
             payload = {
                 "type": "telemetry_update",
-                "source": "REAL_RPLIDAR_A1M8_PI5",
+                "source": "REAL_RPLIDAR_A1M8_PI5" if scans else "RPLIDAR_NO_LIVE_SCAN",
                 "device_info": slam_core.device_info,
                 "robot_pose": {
                     "x": round(slam_core.robot_x, 2),
@@ -1845,6 +1971,10 @@ async def map_ws_endpoint(websocket: WebSocket):
                 "overlay_waypoints": slam_core._overlay_waypoints if slam_core._overlay_active else [],
                 "scan_points": scans,
                 "encoders": encoders_payload,
+                "yaw_rate_dps": yaw_rate_dps,
+                "map_mode": slam_core.map_mode,
+                "is_map_locked": slam_core.is_map_locked,
+                "active_map_name": slam_core.active_map_name,
                 "safety": {
                     "front_cm": front_cm,
                     "rear_cm": rear_cm,

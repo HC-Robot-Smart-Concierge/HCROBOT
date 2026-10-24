@@ -5,12 +5,16 @@ source /opt/ros/jazzy/setup.bash 2>/dev/null || true
 export ROS_DOMAIN_ID=0
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WS_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+MODE="${1:-navigation}"
+MAP_NAME="${2:-phong_lam_viec}"
 
 echo "=== [1/5] DON DEP CAC TIEN TRINH CU ==="
 killall -9 Xvfb x11vnc websockify rviz2 2>/dev/null || true
 pkill -f "Xvfb :99" 2>/dev/null || true
 pkill -f "websockify.*6080" 2>/dev/null || true
-killall -q rosbridge_websocket async_slam_toolbox_node robot_state_publisher 2>/dev/null || true
+killall -q rosbridge_websocket async_slam_toolbox_node robot_state_publisher \
+  map_server amcl controller_server planner_server behavior_server bt_navigator \
+  waypoint_follower lifecycle_manager component_container_isolated 2>/dev/null || true
 pkill -f "lidar_ws_to_ros2.py" 2>/dev/null || true
 rm -f /tmp/.X99-lock /tmp/.X11-unix/X99 2>/dev/null || true
 sleep 1
@@ -35,14 +39,19 @@ websockify --web /usr/share/novnc 0.0.0.0:6080 127.0.0.1:5900 &
 WS_PID=$!
 sleep 1
 
-echo "=== [4/5] KIEM TRA & KHOI DONG SLAM TOOLBOX & LIDAR BRIDGE ==="
+echo "=== [4/5] KHOI DONG ROS 2 STACK MODE=$MODE ==="
 if ! pgrep -f "lidar_ws_to_ros2.py" > /dev/null; then
-    echo " -> Dang khoi dong SLAM Stack (RobotStatePublisher, Rosbridge, LidarBridge, SlamToolbox)..."
-    bash "$SCRIPT_DIR/start_wsl_slam.sh" &
+    if [ "$MODE" = "mapping" ] || [ "$MODE" = "MAPPING" ]; then
+        echo " -> MAPPING: Tao mot ban do moi bang SLAM Toolbox."
+        bash "$SCRIPT_DIR/start_wsl_slam.sh" &
+    else
+        echo " -> NAVIGATION: Nap static map '$MAP_NAME', AMCL va Nav2."
+        bash "$SCRIPT_DIR/start_wsl_navigation.sh" "$MAP_NAME" &
+    fi
     SLAM_PID=$!
-    sleep 3
+    sleep 5
 else
-    echo " -> SLAM Stack & LiDAR Bridge da dang chay san tren he thong."
+    echo " -> ROS 2 Stack & LiDAR Bridge da dang chay san tren he thong."
     SLAM_PID=""
 fi
 
@@ -61,6 +70,7 @@ echo "=========================================================="
 echo " RVIZ2 WEB STREAMING SERVER DANG HOAT DONG!"
 echo "   - Web Client: http://localhost:6080/vnc.html?autoconnect=true&resize=scale"
 echo "   - VNC Port: 5900 | Web Port: 6080"
+echo "   - Mode: $MODE | Map: $MAP_NAME"
 echo "   - Config: $RVIZ_CFG"
 echo "=========================================================="
 

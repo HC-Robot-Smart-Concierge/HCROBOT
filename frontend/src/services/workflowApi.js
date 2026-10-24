@@ -214,3 +214,42 @@ export async function listSavedMaps() {
   return res.json();
 }
 
+async function parseRos2RuntimeResponse(res, fallbackMessage) {
+  let data = null;
+  try {
+    data = await res.json();
+  } catch {
+    // Phản hồi lỗi từ backend có thể không phải JSON.
+  }
+  if (!res.ok) throw new Error(data?.detail || data?.message || fallbackMessage);
+  return data;
+}
+
+export async function fetchRos2RuntimeStatus() {
+  const res = await fetch(`${API_BASE}/map/ros2/runtime`);
+  return parseRos2RuntimeResponse(res, 'Không đọc được trạng thái ROS 2/WSL2');
+}
+
+export async function startRos2Mapping() {
+  const res = await fetch(`${API_BASE}/map/ros2/start_mapping`, { method: 'POST' });
+  return parseRos2RuntimeResponse(res, 'Không khởi động được chế độ quét map');
+}
+
+export async function saveRos2Map(mapName) {
+  const res = await fetch(`${API_BASE}/map/ros2/save`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: mapName }),
+  });
+  return parseRos2RuntimeResponse(res, 'Không lưu được bản đồ ROS 2');
+}
+
+export async function startRos2Navigation(mapName) {
+  const res = await fetch(`${API_BASE}/map/ros2/start_navigation`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: mapName }),
+  });
+  return parseRos2RuntimeResponse(res, 'Không khởi động được Navigation');
+}
+

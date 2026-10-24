@@ -9,6 +9,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, status, Depends, Response
 from fastapi.responses import FileResponse, StreamingResponse
+from pydantic import BaseModel
 
 from app.models.workflow import RobotWaypoint, RobotZone
 from app.repositories import MapRepository, get_map_repository
@@ -22,6 +23,10 @@ from app.schemas.map import (
     ZoneSchema,
 )
 from app.services.hardware.rplidar_service import rplidar_service, MAPS_DIR
+from app.services.hardware.ros2_runtime_service import (
+    Ros2RuntimeError,
+    ros2_runtime_service,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -67,6 +72,10 @@ DEFAULT_ZONES: List[dict] = [
 ]
 
 current_robot_pose = Pose2D(x=0.0, y=0.0, yaw=0.0)
+
+
+class Ros2MapRequest(BaseModel):
+    name: str
 
 
 def is_point_in_zone(px: float, py: float, z) -> bool:
@@ -367,6 +376,35 @@ async def delete_zone(zone_id: str, repo: MapRepository = Depends(get_map_reposi
 @router.get("/lidar_status", summary="Kiểm tra trạng thái phần cứng RPLiDAR COM9 thực tế")
 async def get_lidar_status():
     return rplidar_service.get_status()
+
+
+@router.get("/ros2/runtime", summary="Trạng thái WSL2, Rosbridge và RViz Web")
+async def get_ros2_runtime_status():
+    return await asyncio.to_thread(ros2_runtime_service.get_status)
+
+
+@router.post("/ros2/start_mapping", summary="Bật chế độ quét map và RViz Web từ trình duyệt")
+async def start_ros2_mapping():
+    try:
+        return await asyncio.to_thread(ros2_runtime_service.start_mapping)
+    except Ros2RuntimeError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+
+@router.post("/ros2/save", summary="Lưu Occupancy Grid ROS 2 hiện tại thành YAML/PGM")
+async def save_ros2_map(request: Ros2MapRequest):
+    try:
+        return await asyncio.to_thread(ros2_runtime_service.save_map, request.name)
+    except Ros2RuntimeError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+
+@router.post("/ros2/start_navigation", summary="Bật Map Server, AMCL, Nav2 và RViz Web")
+async def start_ros2_navigation(request: Ros2MapRequest):
+    try:
+        return await asyncio.to_thread(ros2_runtime_service.start_navigation, request.name)
+    except Ros2RuntimeError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
 
 @router.post("/save_map", summary="Lưu bản đồ Occupancy Grid hiện tại vào file lưu trữ cố định")

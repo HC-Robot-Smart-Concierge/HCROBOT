@@ -365,7 +365,7 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
       await fetch(`${PI5_API}/map/teleop`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ command, speed: 35 }),
+        body: JSON.stringify({ command, speed: 50 }),
       });
     } catch {}
   };

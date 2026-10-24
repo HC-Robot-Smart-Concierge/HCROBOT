@@ -400,7 +400,7 @@ def main(argv=None):
         gpio_chip=_value(args.gpio_chip, gpio_cfg, "chip", None),
         invert_left_direction=gpio_cfg.get("invert_left_direction", False),
         invert_right_direction=gpio_cfg.get("invert_right_direction", False),
-        default_speed=35,
+        default_speed=50,
     )
 
     if motor.is_mock and not args.mock:

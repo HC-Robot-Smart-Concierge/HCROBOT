@@ -305,8 +305,17 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
             });
           }
           if (data.scan_points) setScanPoints(data.scan_points);
-          if (data.grid_data) setGridData(data.grid_data);
           if (data.grid_metadata) setGridMetadata(data.grid_metadata);
+          if (data.grid_sparse) {
+            const width = data.grid_metadata?.width || 800;
+            const height = data.grid_metadata?.height || 800;
+            const next = new Array(width * height).fill(-1);
+            for (const idx of data.grid_sparse.occ || []) next[idx] = 100;
+            for (const idx of data.grid_sparse.free || []) next[idx] = 0;
+            setGridData(next);
+          } else if (data.grid_data) {
+            setGridData(data.grid_data);
+          }
         }
       } catch {}
     };

@@ -105,6 +105,9 @@ class RPLidarSLAMCore:
         self.wall_hit_confirm = 2
         self.wall_clear_hits = 8
         self.wall_hit_cap = 12
+        self.occupied_count = 0
+        self.known_cells: Dict[int, int] = {}
+        self._ws_cycle = 0
         self._encoder_cpr = float(os.getenv("HCROBOT_ENCODER_CPR", "330.0"))
         self._wheel_radius = 0.033
         self._wheel_sep = float(os.getenv("HCROBOT_WHEEL_BASE", "0.22"))
@@ -191,6 +194,8 @@ class RPLidarSLAMCore:
         with self._lock:
             self.grid_data = [-1] * (self.grid_width * self.grid_height)
             self.grid_hits = [0] * (self.grid_width * self.grid_height)
+            self.occupied_count = 0
+            self.known_cells = {}
             self._prev_left_ticks = None
             self._prev_right_ticks = None
             self.static_grid_data = None
@@ -329,6 +334,7 @@ free_thresh: 0.25
                 self.grid_hits = [
                     self.wall_clear_hits if v == 100 else 0 for v in self.grid_data
                 ]
+                self._rebuild_known_cells()
                 self.static_grid_data = list(self.grid_data)
                 self.active_map_name = safe_name
                 self.map_mode = "NAVIGATION"
@@ -387,6 +393,42 @@ free_thresh: 0.25
         gx = int((x - self.origin_x) / self.resolution)
         gy = int((y - self.origin_y) / self.resolution)
         return gx, gy
+
+    def _rebuild_known_cells(self) -> None:
+        known: Dict[int, int] = {}
+        occupied = 0
+        for idx, value in enumerate(self.grid_data):
+            if value == -1:
+                continue
+            known[idx] = value
+            if value == 100:
+                occupied += 1
+        self.known_cells = known
+        self.occupied_count = occupied
+
+    def _set_cell(self, idx: int, value: int) -> None:
+        old = self.grid_data[idx]
+        if old == value:
+            return
+        if old == 100:
+            self.occupied_count = max(0, self.occupied_count - 1)
+        if value == 100:
+            self.occupied_count += 1
+        self.grid_data[idx] = value
+        if value == -1:
+            self.known_cells.pop(idx, None)
+        else:
+            self.known_cells[idx] = value
+
+    def _grid_sparse_payload(self) -> Dict[str, List[int]]:
+        occ: List[int] = []
+        free: List[int] = []
+        for idx, value in self.known_cells.items():
+            if value == 100:
+                occ.append(idx)
+            elif value == 0:
+                free.append(idx)
+        return {"occ": occ, "free": free}
 
     def _compute_scan_match_score(
         self,
@@ -509,10 +551,9 @@ free_thresh: 0.25
 
         Khi đi thẳng/lùi (lock_yaw=True) chỉ dịch x/y, không được xoay góc.
         """
-        # Cần có map đủ dữ liệu để match (>= 80 ô vật cản)
         with self._lock:
-            occupied = sum(1 for v in self.grid_data if v == 100)
-            grid_snap = list(self.grid_data)
+            occupied = self.occupied_count
+            grid_snap = self.grid_data
 
         if occupied < 80 or not raw_batch:
             return init_x, init_y, init_yaw
@@ -600,17 +641,17 @@ free_thresh: 0.25
                         hits = min(self.grid_hits[idx] + 1, self.wall_hit_cap)
                         self.grid_hits[idx] = hits
                         if hits >= self.wall_hit_confirm:
-                            self.grid_data[idx] = 100
+                            self._set_cell(idx, 100)
                         break
                     else:
                         # Tia xuyên qua: ô tường đã xác nhận cần nhiều miss mới bị xóa.
                         if self.grid_data[idx] == 100:
                             self.grid_hits[idx] = max(self.grid_hits[idx] - 1, 0)
                             if self.grid_hits[idx] <= 0:
-                                self.grid_data[idx] = 0
+                                self._set_cell(idx, 0)
                         else:
                             self.grid_hits[idx] = 0
-                            self.grid_data[idx] = 0
+                            self._set_cell(idx, 0)
 
                 if curr_x == ox and curr_y == oy:
                     break
@@ -2275,16 +2316,6 @@ async def map_ws_endpoint(websocket: WebSocket):
                     "right_cm": right_cm,
                     "alert": getattr(slam_core, "last_safety_alert", ""),
                 },
-                # Ưu tiên: overlay > static map (NAVIGATION) > live MAPPING grid
-                "grid_data": (
-                    slam_core.merge_maps()
-                    if slam_core._overlay_active
-                    else (
-                        list(slam_core.static_grid_data)
-                        if slam_core.is_map_locked and slam_core.static_grid_data
-                        else map_data["grid_data"]
-                    )
-                ),
                 "grid_metadata": {
                     "width": map_data["width"],
                     "height": map_data["height"],
@@ -2293,6 +2324,12 @@ async def map_ws_endpoint(websocket: WebSocket):
                     "origin_y": map_data["origin_y"],
                 },
             }
+
+            # Không gửi 800x800 JSON 25Hz — payload đó làm nghẽn TF/RobotModel trên RViz.
+            slam_core._ws_cycle += 1
+            if slam_core._ws_cycle % 5 == 1:
+                with slam_core._lock:
+                    payload["grid_sparse"] = slam_core._grid_sparse_payload()
 
             await websocket.send_text(json.dumps(payload))
             await asyncio.sleep(0.04)  # 25 Hz

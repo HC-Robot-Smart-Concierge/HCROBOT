@@ -564,6 +564,16 @@ class LidarWsToRos2Bridge(Node):
             self.measured_vx = self.current_vx if self.allow_cmd_vel_odom else 0.0
             self.measured_wz = self.current_wz if self.allow_cmd_vel_odom else 0.0
 
+        # Khi LiDAR/SLAM chưa publish map->odom, phát TF identity để RobotModel không biến mất.
+        scan_stale = self.last_scan_time <= 0.0 or (now_mono - self.last_scan_time) > 1.5
+        if scan_stale:
+            map_odom = TransformStamped()
+            map_odom.header.stamp = self.get_clock().now().to_msg()
+            map_odom.header.frame_id = "map"
+            map_odom.child_frame_id = "odom"
+            map_odom.transform.rotation.w = 1.0
+            self.tf_broadcaster.sendTransform(map_odom)
+
         # Luôn phát /odom và TF odom -> base_link đều đặn 30Hz để robot model di chuyển mượt mà trên RViz2
         now = self.get_clock().now().to_msg()
         self._record_and_publish_state(

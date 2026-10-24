@@ -148,6 +148,10 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
     items = graph_result.get("items") or request.prompt
     is_video_call = bool(graph_result.get("trigger_video_call") or act == "concierge")
     missing_room = bool(graph_result.get("missing_room_number", False))
+    require_pin = bool(graph_result.get("require_room_pin", False))
+    target_room = graph_result.get("target_room_number") or current_room
+    pending_act = graph_result.get("pending_service_action") or act
+    pending_items = graph_result.get("pending_service_items") or items
     support_session_id = None
     call_ticket_code = None
 
@@ -155,8 +159,11 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
         support_session_id, call_ticket_code = await create_live_call_session(
             db, request.prompt, current_room
         )
+    elif require_pin:
+        # Tạm dừng tạo ticket tự động - chờ khách bấm xác thực PIN trên màn hình Kiosk
+        logger.info(f"[AIChatService] Service request '{act}' for Room {target_room} requires Touch PIN verification.")
     elif act and act not in ["chitchat", "conversation", "faq", "fast_path", "provide_room_number", "unknown"]:
-        # CHỈ TẠO TICKET KHI ĐÃ CÓ ĐẦY ĐỦ SỐ PHÒNG CỦA KHÁCH
+        # Chỉ tạo ticket khi đã có số phòng và không cần PIN
         if not missing_room and current_room:
             asyncio.create_task(
                 background_extract_and_create_ticket(items, current_room, act, items)
@@ -181,6 +188,10 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
         audio_base64=audio_b64,
         mime_type=mime_type or "audio/mp3",
         destination_key=destination_key,
+        require_room_pin=require_pin,
+        target_room_number=target_room if require_pin else None,
+        pending_service_action=pending_act if require_pin else None,
+        pending_service_items=pending_items if require_pin else None,
     )
 
 

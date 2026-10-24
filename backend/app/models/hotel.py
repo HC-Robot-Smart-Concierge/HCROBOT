@@ -61,6 +61,8 @@ class Room(Base):
     room_type: Mapped[str] = mapped_column(String(50), default="Deluxe Suite") # 'Standard', 'Deluxe', 'Suite', 'Presidential'
     status: Mapped[str] = mapped_column(String(50), default="AVAILABLE") # 'AVAILABLE', 'OCCUPIED', 'CLEANING', 'MAINTENANCE'
     current_guest_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    pin_code: Mapped[Optional[str]] = mapped_column(String(10), nullable=True) # e.g. "5678"
+    identity_number: Mapped[Optional[str]] = mapped_column(String(50), nullable=True) # e.g. "079201001234" (CCCD / Passport)
     qr_code: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
@@ -74,8 +76,6 @@ class Room(Base):
 
     @property
     def floor(self) -> str:
-        if self.floor_rel and self.floor_rel.name:
-            return self.floor_rel.name
         if self.floor_id:
             num = self.floor_id.replace("FLR-0", "").replace("FLR-", "")
             return f"Tầng {num}"

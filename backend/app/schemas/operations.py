@@ -807,4 +807,41 @@ class TaxiDashboardResponse(BaseModel):
     announcement: Dict[str, Any] = Field(default_factory=dict, description="Thông báo tình trạng giao thông / điều phối")
 
 
+# ---------------------------------------------------------
+# Room PIN Verification & Check-in Schemas
+# ---------------------------------------------------------
+class RoomPinVerifyRequest(BaseModel):
+    room_number: str = Field(..., description="Số phòng cần xác thực (vd: '302', '402')")
+    pin: str = Field(..., description="Mã PIN 4 số hoặc 4 số cuối CCCD/Hộ chiếu")
+    action: Optional[str] = Field(None, description="Hành động dịch vụ: 'room_service', 'housekeeping', 'bellman', 'maintenance'")
+    items: Optional[str] = Field(None, description="Chi tiết món đồ hoặc yêu cầu dịch vụ")
+    note: Optional[str] = Field(None, description="Ghi chú thêm nếu có")
 
+
+class RoomPinVerifyResponse(BaseModel):
+    verified: bool = Field(..., description="True nếu mã PIN/CCCD chính xác")
+    room_number: str = Field(..., description="Số phòng")
+    guest_name: Optional[str] = Field(None, description="Tên khách đang ở")
+    ticket_code: Optional[str] = Field(None, description="Mã ticket được tạo tự động sau khi xác thực thành công")
+    message: str = Field(..., description="Thông báo kết quả")
+
+
+class RoomCheckInRequest(BaseModel):
+    guest_name: str = Field(..., description="Tên khách hàng check-in")
+    identity_number: Optional[str] = Field(None, description="Số CCCD / CMND / Hộ chiếu")
+    pin_code: Optional[str] = Field(None, description="Mã PIN 4 số (nếu không truyền sẽ tự sinh hoặc lấy 4 số cuối CCCD)")
+    status: Optional[str] = Field("OCCUPIED", description="Trạng thái phòng sau check-in")
+
+
+class RoomInfoResponse(BaseModel):
+    id: str
+    room_number: str
+    room_type: str
+    status: str
+    current_guest_name: Optional[str] = None
+    pin_code: Optional[str] = None
+    identity_number: Optional[str] = None
+    qr_code: Optional[str] = None
+    floor: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)

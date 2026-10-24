@@ -39,6 +39,10 @@ class ConciergeState(TypedDict, total=False):
     trigger_video_call: Optional[bool]
     destination_key: Optional[str]
     response: str
+    require_room_pin: Optional[bool]
+    target_room_number: Optional[str]
+    pending_service_action: Optional[str]
+    pending_service_items: Optional[str]
 
 
 # ============================================================================
@@ -56,7 +60,15 @@ async def fast_path_node(state: ConciergeState) -> Dict[str, Any]:
 
     fast_hit = ollama_service.check_fast_path_full(prompt, language)
     if fast_hit:
-        reply, lang_name, lang_code, action_type, action_payload = fast_hit
+        if len(fast_hit) == 5:
+            reply, lang_name, lang_code, action_type, action_payload = fast_hit
+        elif len(fast_hit) == 4:
+            reply, lang_name, lang_code, action_type = fast_hit
+            action_payload = None
+        else:
+            reply, lang_name, lang_code = fast_hit[0], fast_hit[1], fast_hit[2]
+            action_type, action_payload = None, None
+
         dest_key = action_payload.get("destination_key") if isinstance(action_payload, dict) else None
         is_vc = bool(action_type == "trigger_video_call")
         logger.info(f"[Harness FastPath] Matched dynamic scenario! Fast response in <1ms for: '{prompt[:30]}...'")
@@ -368,14 +380,18 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
         else:
             confirm_reply = f"Dạ Rora đã tiếp nhận yêu cầu hủy dịch vụ cho Phòng {current_room} rồi ạ! Em đã gửi thông báo hủy tới các bộ phận liên quan ngay lập tức."
     elif lang_code == "en-US":
-        confirm_reply = f"Rora has noted your request for Room {current_room}! The {dept_name} will attend to it right away."
+        confirm_reply = f"To confirm your request for Room {current_room}, please enter your 4-digit room PIN or the last 4 digits of your ID/Passport on the screen."
     else:
-        confirm_reply = f"Dạ Rora đã ghi nhận yêu cầu cho Phòng {current_room} rồi ạ! Bộ phận {dept_name} sẽ tiếp nhận và hỗ trợ quý khách ngay."
+        confirm_reply = f"Dạ để xác nhận yêu cầu cho Phòng {current_room}, quý khách vui lòng nhập mã PIN phòng (hoặc 4 số cuối CCCD) trên màn hình cảm ứng nhé ạ."
 
     return {
         "missing_room_number": False,
         "room_number": current_room,
         "response": confirm_reply,
+        "require_room_pin": True,
+        "target_room_number": current_room,
+        "pending_service_action": action,
+        "pending_service_items": items,
     }
 
 

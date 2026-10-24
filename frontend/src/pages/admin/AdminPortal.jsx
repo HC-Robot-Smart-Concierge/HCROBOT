@@ -8,6 +8,7 @@ import { AdminDepartmentTab } from './tabs/AdminDepartmentTab';
 import { AdminStaffTab } from './tabs/AdminStaffTab';
 import { AdminSettingsTab } from './tabs/AdminSettingsTab';
 import { AdminLogsTab } from './tabs/AdminLogsTab';
+import { AdminAdvertisementsTab } from './tabs/AdminAdvertisementsTab';
 import {
   fetchNotifications,
   toggleNotificationRead,
@@ -26,6 +27,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
         'Robot Control',
         'Knowledge',
         'Hotel Content',
+        'Advertisements',
         'Department',
         'Account',
         'Staff',
@@ -34,6 +36,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
       ];
       if (tab === 'Analytics') return 'Dashboard';
       if (tab === 'Staff') return 'Account';
+      if (tab === 'Hotel Content') return 'Advertisements';
       return validTabs.includes(tab) ? tab : 'Dashboard';
     } catch {
       return 'Dashboard';
@@ -163,7 +166,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
     { id: 'Operations',    label: 'Operations' },
     { id: 'Robot Control', label: 'Robot Control' },
     { id: 'Knowledge',     label: 'Kho Tri Thức & AI' },
-    { id: 'Hotel Content', label: 'Hotel Content' },
+    { id: 'Advertisements',label: 'Quảng Cáo Robot' },
     { id: 'Department',    label: 'Department' },
     { id: 'Account',       label: 'Account' },
     { id: 'Logs',          label: 'Logs' },
@@ -514,22 +517,8 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
             <AdminLogsTab currentUser={currentUser} />
           )}
 
-          {activeMenu === 'Hotel Content' && (
-            <div className="w-full h-full flex flex-col items-center justify-center p-8 text-center space-y-3">
-              <h3 className="text-lg font-extrabold" style={{ color: '#262626' }}>
-                {activeMenu}
-              </h3>
-              <p className="text-xs max-w-md" style={{ color: '#8C8C8C' }}>
-                Module này sẽ được triển khai trong phiên bản tiếp theo.
-              </p>
-              <button
-                onClick={() => setActiveMenu('Operations')}
-                className="px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer"
-                style={{ background: '#262626', color: '#FFFFFF' }}
-              >
-                Quay lại Operations
-              </button>
-            </div>
+          {(activeMenu === 'Advertisements' || activeMenu === 'Hotel Content') && (
+            <AdminAdvertisementsTab currentUser={currentUser} onNotify={onNotify} />
           )}
         </main>
       </div>

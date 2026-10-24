@@ -712,5 +712,72 @@ export const removeKitchenMenuItem = async (menuId, menuItemId) => {
 };
 
 
+// ---------------------------------------------------------
+// 7. Room PIN Verification & Guest Check-In / Check-Out
+// ---------------------------------------------------------
 
+/**
+ * Xác thực mã PIN 4 số hoặc 4 số cuối CCCD/Hộ chiếu tại Robot Kiosk
+ */
+export const verifyRoomPin = async (roomNumber, pin, action = null, items = null, note = null) => {
+  const response = await fetch(`${BASE_URL}/rooms/verify-pin`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      room_number: String(roomNumber),
+      pin: String(pin),
+      action,
+      items,
+      note,
+    }),
+  });
 
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.detail || 'Mã PIN hoặc 4 số cuối CCCD không chính xác.');
+  }
+
+  return await response.json();
+};
+
+/**
+ * Lấy danh sách toàn bộ phòng và trạng thái check-in, mã PIN
+ */
+export const fetchAllRooms = async () => {
+  return await fetchWithFallback(`${BASE_URL}/rooms`, {}, []);
+};
+
+/**
+ * Lễ tân thực hiện Check-in và cấp mã PIN phòng
+ */
+export const checkInRoom = async (roomId, checkInData) => {
+  const response = await fetch(`${BASE_URL}/rooms/${encodeURIComponent(roomId)}/check-in`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(checkInData),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.detail || 'Lỗi khi thực hiện Check-in.');
+  }
+
+  return await response.json();
+};
+
+/**
+ * Lễ tân thực hiện Check-out và hủy mã PIN phòng
+ */
+export const checkOutRoom = async (roomId) => {
+  const response = await fetch(`${BASE_URL}/rooms/${encodeURIComponent(roomId)}/check-out`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.detail || 'Lỗi khi thực hiện Check-out.');
+  }
+
+  return await response.json();
+};

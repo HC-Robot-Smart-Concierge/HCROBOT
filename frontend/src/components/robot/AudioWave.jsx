@@ -13,10 +13,10 @@ export const AudioWave = ({ isActive = true, volumeLevel = 0 }) => {
   const height5 = isSpeakingLive ? Math.max(6, Math.min(28, Math.round(volumeLevel * 0.20))) : (isActive ? 8 : 4);
 
   const barColor = isSpeakingLive
-    ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]'
+    ? 'bg-stone-200'
     : isActive
-    ? 'bg-cyan-400/80'
-    : 'bg-stone-500/40';
+    ? 'bg-stone-400'
+    : 'bg-stone-600/50';
 
   return (
     <div className="flex items-center justify-center gap-1.5 h-8 px-2" title={`Mức âm thanh: ${volumeLevel}%`}>

@@ -21,9 +21,9 @@ class Settings(BaseSettings):
 
 
     # LLM Engine Configuration ('gemini' or 'ollama')
-    LLM_PROVIDER: str = "gemini"
+    LLM_PROVIDER: str = "ollama"
     GEMINI_API_KEY: Optional[str] = None
-    GEMINI_MODEL: str = "gemini-3.5-flash"
+    GEMINI_MODEL: str = "gemini-2.5-flash"
 
     # Ollama Configuration (Llama / Qwen local)
     # Ollama Configuration (Default for all team members)

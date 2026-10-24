@@ -142,10 +142,13 @@ export const useSpeechSynthesis = () => {
       );
     }
 
-    // 1. VỚI TIẾNG VIỆT: LUÔN LUÔN ƯU TIÊN GỌI Backend EdgeTTS Neural (vi-VN-HoaiMyNeural)
-    // Đảm bảo phát ra giọng đọc tiếng Việt nữ tự nhiên 100%, luyến láy truyền cảm, không giật cục theo dấu câu!
-    if (langTag.startsWith('vi')) {
-      synthesizeSpeech(cleanText, { language: 'vi-VN', voice: 'vi-VN-HoaiMyNeural' })
+    // 1. ƯU TIÊN GỌI Backend EdgeTTS Neural (vi-VN: vi-VN-HoaiMyNeural, en-US: en-US-JennyNeural)
+    // Đảm bảo phát ra giọng đọc nữ tự nhiên 100%, luyến láy truyền cảm, không giật cục theo dấu câu
+    const isSupportedEdgeLang = langTag.startsWith('vi') || langTag.startsWith('en');
+    if (isSupportedEdgeLang) {
+      const edgeVoice = langTag.startsWith('vi') ? 'vi-VN-HoaiMyNeural' : 'en-US-JennyNeural';
+      const edgeLang = langTag.startsWith('vi') ? 'vi-VN' : 'en-US';
+      synthesizeSpeech(cleanText, { language: edgeLang, voice: edgeVoice })
         .then((data) => {
           if (data?.audio_base64 && data.audio_base64.length > 50) {
             const audioSrc = `data:audio/mp3;base64,${data.audio_base64}`;
@@ -177,10 +180,10 @@ export const useSpeechSynthesis = () => {
             return;
           }
           // Fallback if backend returned empty
-          _speakWithBrowserUtterance(cleanText, langTag, null, onEndCallback, onStartCallback, shouldCancel, effectiveRate);
+          _speakWithBrowserUtterance(cleanText, langTag, targetVoice, onEndCallback, onStartCallback, shouldCancel, effectiveRate);
         })
         .catch(() => {
-          _speakWithBrowserUtterance(cleanText, langTag, null, onEndCallback, onStartCallback, shouldCancel, effectiveRate);
+          _speakWithBrowserUtterance(cleanText, langTag, targetVoice, onEndCallback, onStartCallback, shouldCancel, effectiveRate);
         });
       return;
     }
@@ -367,8 +370,11 @@ export const useSpeechSynthesis = () => {
     let preloadedAudio = null;
     let audioPromise = null;
 
-    if (lang.startsWith('vi')) {
-      audioPromise = synthesizeSpeech(rawText, { language: 'vi-VN', voice: 'vi-VN-HoaiMyNeural' })
+    const isSupportedEdgeLang = lang.startsWith('vi') || lang.startsWith('en');
+    if (isSupportedEdgeLang) {
+      const edgeVoice = lang.startsWith('vi') ? 'vi-VN-HoaiMyNeural' : 'en-US-JennyNeural';
+      const edgeLang = lang.startsWith('vi') ? 'vi-VN' : 'en-US';
+      audioPromise = synthesizeSpeech(rawText, { language: edgeLang, voice: edgeVoice })
         .then((data) => {
           if (data?.audio_base64 && data.audio_base64.length > 50) {
             const audioSrc = `data:audio/mp3;base64,${data.audio_base64}`;

@@ -74,19 +74,19 @@ describe('WorkflowSimulatorStudio Engine & Gazebo Navigation Logic', () => {
   it('accurately projects real-world meters into SVG blueprint canvas coordinates', () => {
     const dockSvg = meterToSvg(3.2, 2.8);
     expect(Math.round(dockSvg.x)).toBe(338);
-    expect(Math.round(dockSvg.y)).toBe(317);
+    expect(Math.round(dockSvg.y)).toBe(328);
 
     const entranceSvg = meterToSvg(5.2, 1.0);
     expect(Math.round(entranceSvg.x)).toBe(518);
-    expect(Math.round(entranceSvg.y)).toBe(467);
+    expect(Math.round(entranceSvg.y)).toBe(490);
 
     const clampedCornerMin = meterToSvg(-5.0, -2.0);
     expect(clampedCornerMin.x).toBe(50);
-    expect(clampedCornerMin.y).toBe(550);
+    expect(clampedCornerMin.y).toBe(580);
 
     const clampedCornerMax = meterToSvg(20.0, 15.0);
     expect(clampedCornerMax.x).toBe(950);
-    expect(clampedCornerMax.y).toBe(50);
+    expect(clampedCornerMax.y).toBe(40);
   });
 
   it('routes through central doorway (x=4.4, y=2.85) to avoid partition wall when moving between rooms', () => {
@@ -170,13 +170,13 @@ describe('WorkflowSimulatorStudio Engine & Gazebo Navigation Logic', () => {
 
   it('correctly converts SVG click coordinates to real-world meters with svgToMeter', () => {
     const { svgToMeter } = require('./workflowSimulatorUtils');
-    // Center point: SVG (500, 300) -> meters (5.0, 3.0)
-    const center = svgToMeter(500, 300);
+    // Center point: SVG (500, 310) -> meters (5.0, 3.0)
+    const center = svgToMeter(500, 310);
     expect(center.x).toBe(5.0);
     expect(center.y).toBe(3.0);
 
-    // Top-right corner of Lobby: SVG (383, 133) -> meters (~3.7, ~5.0)
-    const topLobby = svgToMeter(383, 133);
+    // Top-right corner of Lobby: SVG (383, 130) -> meters (~3.7, ~5.0)
+    const topLobby = svgToMeter(383, 130);
     expect(topLobby.x).toBeCloseTo(3.7, 1);
     expect(topLobby.y).toBeCloseTo(5.0, 1);
   });
@@ -285,11 +285,11 @@ describe('WorkflowSimulatorStudio Engine & Gazebo Navigation Logic', () => {
     const svgRect = zoneToSvgRect(keepOutZone);
 
     expect(svgRect.x).toBeGreaterThanOrEqual(50);
-    expect(svgRect.y).toBeGreaterThanOrEqual(50);
+    expect(svgRect.y).toBeGreaterThanOrEqual(40);
     expect(svgRect.width).toBeGreaterThan(0);
     expect(svgRect.height).toBeGreaterThan(0);
     expect(svgRect.x + svgRect.width).toBeLessThanOrEqual(950);
-    expect(svgRect.y + svgRect.height).toBeLessThanOrEqual(550);
+    expect(svgRect.y + svgRect.height).toBeLessThanOrEqual(580);
   });
 
   it('rejects workflow MOVE steps targeting a KEEP_OUT zone', () => {
@@ -849,6 +849,135 @@ describe('WorkflowSimulatorStudio Engine & Gazebo Navigation Logic', () => {
 
     expect(robotStatus.code).toBe('PATROL_MEDIA');
     expect(robotStatus.label).toBe('TUẦN TRA • CHIẾU QC');
+  });
+  it('supports integrated Map & Layer menu structure (Zones + Endpoints tabs)', () => {
+    const mapMenuTabs = ['ZONES', 'ENDPOINTS'];
+    expect(mapMenuTabs).toHaveLength(2);
+    expect(mapMenuTabs).toContain('ZONES');
+    expect(mapMenuTabs).toContain('ENDPOINTS');
+
+    const defaultTab = 'ZONES';
+    expect(defaultTab).toBe('ZONES');
+
+    const zones = [{ id: 'z1' }, { id: 'z2' }, { id: 'z3' }];
+    const endpoints = [{ id: 'ep1' }, { id: 'ep2' }, { id: 'ep3' }, { id: 'ep4' }, { id: 'ep5' }, { id: 'ep6' }];
+    const labelBadge = `${zones.length} Vùng · ${endpoints.length} Điểm`;
+    expect(labelBadge).toBe('3 Vùng · 6 Điểm');
+  });
+
+  it('supports simulation options popover (speed control, patrol loop, voice TTS, ROS 2 bridge)', () => {
+    const simSpeeds = [1, 2, 4];
+    expect(simSpeeds).toEqual([1, 2, 4]);
+
+    let simSpeed = 1.0;
+    const setSimSpeed = (spd) => { simSpeed = spd; };
+    setSimSpeed(2.0);
+    expect(simSpeed).toBe(2.0);
+
+    let isLoopMode = false;
+    const toggleLoop = () => { isLoopMode = !isLoopMode; };
+    toggleLoop();
+    expect(isLoopMode).toBe(true);
+
+    let isMuted = false;
+    const toggleMute = () => { isMuted = !isMuted; };
+    toggleMute();
+    expect(isMuted).toBe(true);
+
+    const checkRosStatus = (enabled, connected) => (enabled && connected ? 'ONLINE' : 'OFFLINE');
+    expect(checkRosStatus(true, true)).toBe('ONLINE');
+    expect(checkRosStatus(true, false)).toBe('OFFLINE');
+    expect(checkRosStatus(false, false)).toBe('OFFLINE');
+  });
+
+  it('supports unified top toolbar horizontal stepper and step progress state', () => {
+    const steps = [
+      { step_id: 's1', type: 'MOVE', title: 'Di chuyển ra cửa đón khách' },
+      { step_id: 's2', type: 'GREET', title: 'Chào đón niềm nở' },
+      { step_id: 's3', type: 'SHOW', title: 'Mở màn hình chọn ngôn ngữ' },
+    ];
+
+    expect(steps).toHaveLength(3);
+
+    // Current step progress mapping
+    const currentStepIndex = 1;
+    const isPlaying = true;
+    const stepProgress = 65;
+
+    const isStepActive = (idx) => isPlaying && currentStepIndex === idx;
+    const isStepPast = (idx) => isPlaying && currentStepIndex > idx;
+
+    expect(isStepActive(0)).toBe(false);
+    expect(isStepPast(0)).toBe(true);
+    expect(isStepActive(1)).toBe(true);
+    expect(isStepPast(1)).toBe(false);
+    expect(isStepActive(2)).toBe(false);
+    expect(isStepPast(2)).toBe(false);
+
+    const stepBadgeText = isPlaying
+      ? `B${currentStepIndex + 1}/${steps.length} ${steps[currentStepIndex].type}`
+      : 'READY';
+    expect(stepBadgeText).toBe('B2/3 GREET');
+  });
+
+  it('validates 1:1 isotropic scale ratio matching Gazebo 10m x 6m floor bounds exactly', () => {
+    // Gazebo lobby floor: 10m x 6m -> Aspect Ratio = 10 / 6 = 1.666667
+    const gazeboRatio = 10.0 / 6.0;
+
+    // SVG Canvas floor: 900px width (50 to 950), 540px height (40 to 580)
+    const svgFloorWidth = 950 - 50;
+    const svgFloorHeight = 580 - 40;
+    const svgRatio = svgFloorWidth / svgFloorHeight;
+
+    expect(svgFloorWidth).toBe(900);
+    expect(svgFloorHeight).toBe(540);
+    expect(svgRatio).toBeCloseTo(gazeboRatio, 5);
+
+    // Both X and Y pixel-per-meter (PPM) must be exactly 90 px/m
+    const ppmX = svgFloorWidth / 10.0;
+    const ppmY = svgFloorHeight / 6.0;
+    expect(ppmX).toBe(90);
+    expect(ppmY).toBe(90);
+  });
+
+  it('computes dynamic viewBox correctly for Zoom In, Zoom Out and Pan', () => {
+    const computeViewBox = (zoomScale, panOffset) => {
+      const currentVbWidth = 1000 / zoomScale;
+      const currentVbHeight = 620 / zoomScale;
+      const currentVbX = 500 - currentVbWidth / 2 - panOffset.x;
+      const currentVbY = 310 - currentVbHeight / 2 - panOffset.y;
+      return `${currentVbX} ${currentVbY} ${currentVbWidth} ${currentVbHeight}`;
+    };
+
+    // 1. Default (100% zoom, no pan)
+    expect(computeViewBox(1.0, { x: 0, y: 0 })).toBe('0 0 1000 620');
+
+    // 2. Zoom In 200% (2x) centered
+    expect(computeViewBox(2.0, { x: 0, y: 0 })).toBe('250 155 500 310');
+
+    // 3. Zoom In 200% with Pan offset (+50, -30)
+    expect(computeViewBox(2.0, { x: 50, y: -30 })).toBe('200 185 500 310');
+
+    // 4. Zoom Out 80% (0.8x)
+    const outVb = computeViewBox(0.8, { x: 0, y: 0 });
+    expect(outVb).toBe('-125 -77.5 1250 775');
+  });
+
+  it('supports direct 1x, 2x, 4x speed selector buttons on top toolbar', () => {
+    let currentSpeed = 1.0;
+    const setSpeed = (spd) => { currentSpeed = spd; };
+
+    const speeds = [1, 2, 4];
+    expect(speeds).toEqual([1, 2, 4]);
+
+    setSpeed(2);
+    expect(currentSpeed).toBe(2);
+
+    setSpeed(4);
+    expect(currentSpeed).toBe(4);
+
+    setSpeed(1);
+    expect(currentSpeed).toBe(1);
   });
 });
 

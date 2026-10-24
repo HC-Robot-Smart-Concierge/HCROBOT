@@ -23,8 +23,11 @@ class ChatResponse(BaseModel):
     support_session_id: Optional[str] = Field(None, description="Mã phiên HumanSupportSession tạo cho cuộc gọi")
     ticket_code: Optional[str] = Field(None, description="Mã ticket CCG được tạo cho cuộc gọi")
     audio_base64: Optional[str] = Field(None, description="Âm thanh giọng đọc phát tức thì từ backend cache")
-    mime_type: Optional[str] = Field("audio/mp3", description="Định dạng âm thanh")
     destination_key: Optional[str] = Field(None, description="Mã POI điều hướng bản đồ (VD: infinity_pool, restaurant, rooftop_coffee) nếu là câu hỏi chỉ đường/vị trí")
+    require_room_pin: Optional[bool] = Field(False, description="True nếu yêu cầu khách nhập mã PIN phòng trên màn hình cảm ứng để xác thực")
+    target_room_number: Optional[str] = Field(None, description="Số phòng mục tiêu cần nhập PIN")
+    pending_service_action: Optional[str] = Field(None, description="Hành động dịch vụ đang chờ xác thực: room_service, housekeeping...")
+    pending_service_items: Optional[str] = Field(None, description="Chi tiết các món đồ đang chờ xác thực")
 
 
 class IntentRequest(BaseModel):

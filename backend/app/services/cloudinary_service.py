@@ -128,4 +128,126 @@ class CloudinaryService:
         }
 
 
+    async def upload_ad_media(
+        self,
+        file_bytes: bytes,
+        filename: str,
+        media_type: str = "IMAGE",
+        folder: Optional[str] = None,
+        duration: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """
+        Upload media quảng cáo (ảnh hoặc video) lên Cloudinary (hoặc fallback lưu local).
+        Trả về dict: { secure_url, public_id, duration, thumbnail_url, storage_provider }
+        """
+        import asyncio
+
+        norm_type = media_type.upper()
+        res_type = "video" if norm_type == "VIDEO" else "image"
+        target_folder = folder or f"{settings.CLOUDINARY_FOLDER or 'hcrobot'}/advertisements"
+
+        if self._is_configured:
+            try:
+                import cloudinary.uploader
+
+                def _do_upload():
+                    file_io = io.BytesIO(file_bytes)
+                    if res_type == "video":
+                        return cloudinary.uploader.upload_large(
+                            file_io,
+                            resource_type="video",
+                            folder=target_folder,
+                            overwrite=True,
+                            chunk_size=6000000,
+                        )
+                    else:
+                        return cloudinary.uploader.upload(
+                            file_io,
+                            resource_type="image",
+                            folder=target_folder,
+                            overwrite=True,
+                        )
+
+                res = await asyncio.to_thread(_do_upload)
+                secure_url = res.get("secure_url", "")
+                public_id = res.get("public_id", "")
+                calc_duration = int(res.get("duration") or duration or (10 if norm_type == "IMAGE" else 15))
+
+                if res_type == "video":
+                    thumbnail_url = secure_url.rsplit(".", 1)[0] + ".jpg" if "." in secure_url else secure_url
+                else:
+                    thumbnail_url = secure_url
+
+                logger.info(f"CloudinaryService: Upload ad ({norm_type}) thanh cong: {secure_url} (id={public_id})")
+                return {
+                    "secure_url": secure_url,
+                    "public_id": public_id,
+                    "duration": calc_duration,
+                    "thumbnail_url": thumbnail_url,
+                    "storage_provider": "cloudinary",
+                }
+            except Exception as ex:
+                logger.error(f"CloudinaryService: Upload ad len Cloudinary loi ({ex}). Kich hoat local fallback...")
+
+        # Fallback local
+        return await self._save_ad_locally(file_bytes, filename, norm_type, duration)
+
+    async def _save_ad_locally(
+        self,
+        file_bytes: bytes,
+        filename: str,
+        media_type: str = "IMAGE",
+        duration: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Lưu file quảng cáo vào thư mục static/uploads/advertisements/."""
+        import asyncio
+
+        def _write():
+            local_dir = os.path.join(os.getcwd(), "static", "uploads", "advertisements")
+            os.makedirs(local_dir, exist_ok=True)
+            safe_name = f"ad_{int(time.time())}_{filename}"
+            target_path = os.path.join(local_dir, safe_name)
+            with open(target_path, "wb") as f:
+                f.write(file_bytes)
+            local_url = f"/static/uploads/advertisements/{safe_name}"
+            return local_url, safe_name
+
+        local_url, safe_name = await asyncio.to_thread(_write)
+        calc_duration = duration or (10 if media_type == "IMAGE" else 15)
+        logger.info(f"CloudinaryService: Ad da luu local tai {safe_name}")
+        return {
+            "secure_url": local_url,
+            "public_id": f"local_{safe_name}",
+            "duration": calc_duration,
+            "thumbnail_url": local_url if media_type == "IMAGE" else None,
+            "storage_provider": "local",
+        }
+
+    async def delete_media(self, public_id: str, media_type: str = "image") -> bool:
+        """Xoa file tren Cloudinary neu da cau hinh."""
+        if not public_id or public_id.startswith("local_"):
+            return True
+
+        if not self._is_configured:
+            return True
+
+        import asyncio
+
+        try:
+            import cloudinary.uploader
+
+            res_type = "video" if media_type.lower() == "video" else "image"
+            result = await asyncio.to_thread(
+                cloudinary.uploader.destroy,
+                public_id,
+                resource_type=res_type,
+            )
+            logger.info(f"CloudinaryService: Xoa media {public_id}: {result}")
+            return result.get("result") in ["ok", "not found"]
+        except Exception as e:
+            logger.warning(f"CloudinaryService: Loi khi xoa media {public_id}: {e}")
+            return False
+
+
 cloudinary_service = CloudinaryService()
+

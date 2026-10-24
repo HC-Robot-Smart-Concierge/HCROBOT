@@ -194,10 +194,11 @@ export const zoneToSvgRect = (zone) => {
   const minX = zx - zw / 2;
   const maxY = zy + zh / 2;
 
-  const svgX = 50 + (minX / 10.0) * 900;
-  const svgY = 550 - (maxY / 6.0) * 500;
-  const svgWidth = (zw / 10.0) * 900;
-  const svgHeight = (zh / 6.0) * 500;
+  // Đồng bộ tỉ lệ 1:1 với Gazebo 10m x 6m: PPM = 90 px/m (X: 50..950, Y: 40..580)
+  const svgX = 50 + minX * 90;
+  const svgY = 580 - maxY * 90;
+  const svgWidth = zw * 90;
+  const svgHeight = zh * 90;
 
   return {
     x: svgX,
@@ -323,23 +324,26 @@ export const resolveNoStopPassthrough = (fromPt, targetPt, zones = SIMULATOR_HOT
   };
 };
 
-// Chuyen toa do Met (ROS: X 0..10m, Y 0..6m) sang Toa do SVG Canvas (1000 x 600)
+// Chuyen toa do Met (ROS: X 0..10m, Y 0..6m) sang Toa do SVG Canvas (PPM = 90 px/m, Canvas 1000 x 620)
 export const meterToSvg = (mx, my) => {
   const safeX = typeof mx === 'number' && !isNaN(mx) ? mx : 3.7;
   const safeY = typeof my === 'number' && !isNaN(my) ? my : 5.0;
   const clampedX = Math.max(0, Math.min(10.0, safeX));
   const clampedY = Math.max(0, Math.min(6.0, safeY));
-  const svgX = 50 + (clampedX / 10.0) * 900;
-  const svgY = 550 - (clampedY / 6.0) * 500;
+  // Đồng bộ tỉ lệ 1:1 chuẩn xác với Gazebo 10m x 6m:
+  // Sàn X: 50 -> 950 (rộng 900px = 10m * 90 px/m)
+  // Sàn Y: 40 -> 580 (cao 540px = 6m * 90 px/m)
+  const svgX = 50 + clampedX * 90;
+  const svgY = 580 - clampedY * 90;
   return { x: svgX, y: svgY };
 };
 
 // Chuyen nguoc tu Toa do SVG Canvas sang Toa do Met (ROS: X 0..10m, Y 0..6m)
 export const svgToMeter = (svgX, svgY) => {
   const clampedSvgX = Math.max(50, Math.min(950, svgX));
-  const clampedSvgY = Math.max(50, Math.min(550, svgY));
-  const mx = ((clampedSvgX - 50) / 900) * 10.0;
-  const my = ((550 - clampedSvgY) / 500) * 6.0;
+  const clampedSvgY = Math.max(40, Math.min(580, svgY));
+  const mx = (clampedSvgX - 50) / 90;
+  const my = (580 - clampedSvgY) / 90;
   return {
     x: Number(mx.toFixed(2)),
     y: Number(my.toFixed(2)),

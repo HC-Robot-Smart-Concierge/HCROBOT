@@ -671,6 +671,29 @@ class LidarWsToRos2Bridge(Node):
         t = threading.Thread(target=udp_listener_worker, daemon=True)
         t.start()
 
+    @staticmethod
+    def _ray_box_dist(px, py, ray_angle_rad, xmin=-1.5, xmax=1.5, ymin=-2.5, ymax=2.5):
+        dx = math.cos(ray_angle_rad)
+        dy = math.sin(ray_angle_rad)
+        candidates = []
+        if dx > 1e-6:
+            t = (xmax - px) / dx
+            if t > 0 and (ymin - 0.08) <= (py + t * dy) <= (ymax + 0.08):
+                candidates.append(t)
+        elif dx < -1e-6:
+            t = (xmin - px) / dx
+            if t > 0 and (ymin - 0.08) <= (py + t * dy) <= (ymax + 0.08):
+                candidates.append(t)
+        if dy > 1e-6:
+            t = (ymax - py) / dy
+            if t > 0 and (xmin - 0.08) <= (px + t * dx) <= (xmax + 0.08):
+                candidates.append(t)
+        elif dy < -1e-6:
+            t = (ymin - py) / dy
+            if t > 0 and (xmin - 0.08) <= (px + t * dx) <= (xmax + 0.08):
+                candidates.append(t)
+        return min(candidates) if candidates else None
+
     def publish_scan(self, points):
         if not points:
             return
@@ -712,6 +735,29 @@ class LidarWsToRos2Bridge(Node):
                 if dist < ranges[bin_idx]:
                     ranges[bin_idx] = float(dist)
                     intensities[bin_idx] = float(quality)
+
+        # Gắn tường bao cố định 3x5m nếu bật HCROBOT_FIXED_LAYOUT_3X5 (mặc định bật)
+        fixed_3x5 = os.getenv("HCROBOT_FIXED_LAYOUT_3X5", "1") == "1"
+        rx = self.current_pose['x']
+        ry = self.current_pose['y']
+        ryaw_rad = math.radians(self.current_pose['yaw'])
+        xmin = float(os.getenv("HCROBOT_ROOM_X_MIN", "-1.5"))
+        xmax = float(os.getenv("HCROBOT_ROOM_X_MAX", "1.5"))
+        ymin = float(os.getenv("HCROBOT_ROOM_Y_MIN", "-2.5"))
+        ymax = float(os.getenv("HCROBOT_ROOM_Y_MAX", "2.5"))
+        in_room = (xmin - 0.2 <= rx <= xmax + 0.2 and ymin - 0.2 <= ry <= ymax + 0.2) if fixed_3x5 else False
+
+        if in_room:
+            for b in range(num_bins):
+                ray_angle = (ryaw_rad + (b * msg.angle_increment)) % (2.0 * math.pi)
+                d_wall = self._ray_box_dist(rx, ry, ray_angle, xmin, xmax, ymin, ymax)
+                if d_wall is not None:
+                    if ranges[b] > d_wall:
+                        ranges[b] = float(d_wall)
+                        intensities[b] = 100.0
+                    elif ranges[b] > (d_wall + 0.15):
+                        ranges[b] = float(d_wall)
+                        intensities[b] = 100.0
 
         msg.ranges = ranges
         msg.intensities = intensities

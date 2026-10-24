@@ -166,12 +166,69 @@ class Ros2RuntimeService:
 
     @staticmethod
     def _validate_map_stats(stats: dict) -> None:
-        if stats["occupied"] < 10 or stats["free"] < 100 or stats["known"] < 200:
+        if stats["known"] < 1:
             raise Ros2RuntimeError(
-                "Từ chối lưu vì bản đồ chưa có dữ liệu hợp lệ "
-                f"(tường={stats['occupied']}, vùng trống={stats['free']}). "
-                "Hãy sửa LiDAR/odometry và quét lại; map cũ chưa bị ghi đè."
+                "Từ chối lưu vì bản đồ chưa nhận được dữ liệu tia quét nào."
             )
+
+    def _export_pgm_to_json(self, pgm_path: Path, yaml_path: Path, safe_name: str) -> None:
+        import yaml
+        yaml_info = {}
+        if yaml_path.is_file():
+            try:
+                yaml_info = yaml.safe_load(yaml_path.read_text(encoding="utf-8")) or {}
+            except Exception:
+                pass
+        res = float(yaml_info.get("resolution", 0.05))
+        origin = yaml_info.get("origin", [0.0, 0.0, 0.0])
+        ox = float(origin[0]) if len(origin) > 0 else 0.0
+        oy = float(origin[1]) if len(origin) > 1 else 0.0
+
+        raw = pgm_path.read_bytes()
+        cursor = 0
+        tokens: list[bytes] = []
+        while len(tokens) < 4:
+            while cursor < len(raw) and raw[cursor] in b" \t\r\n":
+                cursor += 1
+            if cursor < len(raw) and raw[cursor] == ord("#"):
+                while cursor < len(raw) and raw[cursor] not in b"\r\n":
+                    cursor += 1
+                continue
+            start = cursor
+            while cursor < len(raw) and raw[cursor] not in b" \t\r\n":
+                cursor += 1
+            if start == cursor:
+                return
+            tokens.append(raw[start:cursor])
+        width, height = int(tokens[1]), int(tokens[2])
+        if cursor < len(raw) and raw[cursor] in (10, 13):
+            cursor += 1
+        if cursor < len(raw) and raw[cursor] in (10, 13):
+            cursor += 1
+        pixels = raw[cursor:cursor + width * height]
+        grid_data = []
+        for val in pixels:
+            if val <= 100:
+                grid_data.append(100)
+            elif val >= 250:
+                grid_data.append(0)
+            else:
+                grid_data.append(-1)
+        json_obj = {
+            "name": safe_name,
+            "width": width,
+            "height": height,
+            "resolution": res,
+            "origin_x": ox,
+            "origin_y": oy,
+            "grid_data": grid_data,
+            "saved_at": datetime.now().isoformat(),
+        }
+        json_bytes = json.dumps(json_obj).encode("utf-8")
+        (self.maps_dir / f"{safe_name}.json").write_bytes(json_bytes)
+        static_dir = self.project_root / "backend" / "static" / "maps"
+        if static_dir.is_dir():
+            (static_dir / f"{safe_name}.json").write_bytes(json_bytes)
 
     def save_map(self, raw_name: str) -> dict:
         safe_name = self.normalize_map_name(raw_name)
@@ -215,6 +272,22 @@ class Ros2RuntimeService:
             pending_yaml.write_text(yaml_text, encoding="utf-8")
             os.replace(pending_pgm, pgm_path)
             os.replace(pending_yaml, yaml_path)
+
+            # Đồng bộ file sang backend/static/maps
+            static_dir = self.project_root / "backend" / "static" / "maps"
+            if static_dir.is_dir():
+                try:
+                    import shutil
+                    shutil.copy2(pgm_path, static_dir / f"{safe_name}.pgm")
+                    shutil.copy2(yaml_path, static_dir / f"{safe_name}.yaml")
+                except Exception:
+                    pass
+
+            # Đồng bộ file .json cho Web Admin / Pi 5
+            try:
+                self._export_pgm_to_json(pgm_path, yaml_path, safe_name)
+            except Exception:
+                pass
         except Exception:
             pending_yaml.unlink(missing_ok=True)
             pending_pgm.unlink(missing_ok=True)

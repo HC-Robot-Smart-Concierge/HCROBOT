@@ -120,7 +120,7 @@ class LidarWsToRos2Bridge(Node):
         self.last_sent_udp_motion = "stop"
         self.last_sent_teleop_pwm = None
         self.teleop_pwm_forward = int(os.getenv("HCROBOT_TELEOP_PWM", "35"))
-        self.teleop_pwm_turn = int(os.getenv("HCROBOT_TELEOP_TURN_PWM", "32"))
+        self.teleop_pwm_turn = int(os.getenv("HCROBOT_TELEOP_TURN_PWM", "35"))
         self._locked_yaw_deg = None
 
         # Cấu hình UDP gửi lệnh sang Pi 5
@@ -531,7 +531,7 @@ class LidarWsToRos2Bridge(Node):
 
         if motion != "stop":
             pwm = self.teleop_pwm_turn if motion in ("left", "right") else self.teleop_pwm_forward
-            pwm = max(20, min(40, pwm))
+            pwm = max(20, min(45, pwm))
             self._send_udp_speed(pwm)
         self._send_udp_to_pi5(motion)
 

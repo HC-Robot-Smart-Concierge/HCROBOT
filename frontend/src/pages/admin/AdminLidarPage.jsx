@@ -714,8 +714,8 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
     let ang = 0.0;
     if (command === 'forward') lin = 0.13;
     else if (command === 'backward') lin = -0.13;
-    else if (command === 'left') ang = 0.44;
-    else if (command === 'right') ang = -0.44;
+    else if (command === 'left') ang = 0.48;
+    else if (command === 'right') ang = -0.48;
 
     if (rosClientRef.current?.isConnected) {
       rosClientRef.current.publishCmdVel(lin, ang);

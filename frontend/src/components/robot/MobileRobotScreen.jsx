@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { AudioWave } from './AudioWave';
 import { RobotFace } from './RobotFace';
-import { FloorMap, HOTEL_DESTINATIONS } from './FloorMap';
+import { FloorMap, HOTEL_DESTINATIONS, getMobileGuestMapUrl } from './FloorMap';
+import { QRCodeSVG } from 'qrcode.react';
 import {
   Menu,
   ChevronDown,
@@ -108,6 +109,7 @@ export const MobileRobotScreen = ({
   onLogout,
   onResetSession,
   onResetToIdle,
+  onPrime = null,
   onStartTalk,
   onSubmitTalk,
   onStopSpeaking,
@@ -137,6 +139,20 @@ export const MobileRobotScreen = ({
   const isBusy = isProcessing || currentState === 'RT-04';
   const displayText = aiResponseText || spokenSubtitle;
   const isNavigating = currentState === 'RT-05' || isMapManualOpen;
+
+  const qrMapUrl = useMemo(() => {
+    return getMobileGuestMapUrl(navigationDestinationKey);
+  }, [navigationDestinationKey]);
+
+  const currentDestination = HOTEL_DESTINATIONS[navigationDestinationKey] || HOTEL_DESTINATIONS.restroom_ground || {
+    name: 'Điểm Đến Khách Sạn',
+    floorLevel: 'TẦNG TRỆT',
+    time: '2 Phút',
+    distance: '50m',
+    step1Text: 'Đi theo chỉ dẫn hành lang.',
+    step2Text: 'Đến nơi.',
+    isDifferentFloor: false,
+  };
 
   // Secret Multi-Tap Gesture (Chạm 5 lần liên tiếp trong 2s để mở đăng xuất chuẩn Kiosk)
   const tapCountRef = useRef(0);
@@ -170,6 +186,9 @@ export const MobileRobotScreen = ({
     }
 
     const handleFirstTouch = () => {
+      if (typeof onPrime === 'function') {
+        onPrime();
+      }
       if (typeof onStartTalk === 'function' && !isListening && !isSpeaking && !isBusy) {
         onStartTalk();
       }
@@ -189,7 +208,12 @@ export const MobileRobotScreen = ({
 
 
   return (
-    <section className="robot-mobile-ui absolute inset-0 z-20 bg-[#F5F2EB] text-stone-950">
+    <section
+      onPointerDown={() => {
+        if (typeof onPrime === 'function') onPrime();
+      }}
+      className="robot-mobile-ui absolute inset-0 z-20 bg-[#F5F2EB] text-stone-950"
+    >
       <div className="robot-portrait-guard absolute inset-0 z-50 bg-stone-950 text-white items-center justify-center text-center p-8">
         <div>
           <p className="text-xs font-bold tracking-[0.24em] uppercase text-stone-400">HCROBOT</p>
@@ -499,20 +523,170 @@ export const MobileRobotScreen = ({
         )}
 
         {isNavigating ? (
-          <main className="flex-1 min-h-0 w-full h-full relative overflow-hidden bg-white">
-            <FloorMap
-              destinationKey={navigationDestinationKey}
-              onSelectDestination={onSelectDestination}
-              onClose={() => {
-                setIsMapManualOpen(false);
-                onResetToIdle();
-              }}
-              showQrModalExternal={showQrModalExternal}
-              qrCountdown={qrCountdown}
-              onCloseQrModal={onCloseQrModal}
-              defaultZoom={1.65}
-              className="w-full h-full rounded-none border-none shadow-none"
-            />
+          <main className="flex-1 min-h-0 w-full h-full flex flex-row items-stretch justify-between gap-2.5 p-2 bg-[#F5F2EB] select-none relative overflow-hidden">
+            {/* Cột Trái: Bản đồ 2D Wayfinding */}
+            <div className="flex-1 min-h-0 h-full relative rounded-2xl overflow-hidden border border-[#E3DFD5] shadow-sm bg-white">
+              <FloorMap
+                destinationKey={navigationDestinationKey}
+                onSelectDestination={onSelectDestination}
+                onClose={() => {
+                  setIsMapManualOpen(false);
+                  onResetToIdle();
+                }}
+                showQrModalExternal={showQrModalExternal}
+                qrCountdown={qrCountdown}
+                onCloseQrModal={onCloseQrModal}
+                defaultZoom={1.65}
+                className="w-full h-full rounded-none border-none shadow-none"
+              />
+            </div>
+
+            {/* Cột Phải: Bảng Lộ Trình & Thẻ Mã QR & Micro giống Desktop */}
+            <div className="w-[310px] sm:w-[350px] md:w-[380px] h-full flex flex-col justify-between items-start gap-2 p-2.5 sm:p-3 bg-white rounded-2xl border border-[#E3DFD5] shadow-sm shrink-0 overflow-y-auto custom-scrollbar">
+              <div className="w-full flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-stone-700 tracking-wider uppercase">
+                    {isEn ? 'Wayfinding Route' : 'Lộ trình di chuyển'}
+                  </span>
+                  <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-[#EFECE4] text-stone-700 border border-[#E3DFD5] uppercase">
+                    {currentDestination.floorLevel}
+                  </span>
+                </div>
+
+                {/* AI Text Response */}
+                <div className="p-2.5 sm:p-3 bg-[#F5F2EB]/80 rounded-xl border border-[#E3DFD5] text-xs font-medium text-stone-800 leading-relaxed max-h-[85px] overflow-y-auto custom-scrollbar">
+                  {displayText || (isEn ? `Route leading to ${currentDestination.name}. Please follow the floor map.` : `Lộ trình dẫn tới ${currentDestination.name}. Quý khách vui lòng theo dõi sơ đồ bên trái.`)}
+                </div>
+              </div>
+
+              {/* Step Checklist */}
+              <div className="w-full flex flex-col gap-1.5 text-left">
+                <div className="p-2 bg-stone-50 rounded-xl border border-[#E3DFD5] flex items-center gap-2.5">
+                  <div className="w-5 h-5 rounded-full bg-stone-800 text-white flex items-center justify-center font-bold text-[10px] shrink-0">1</div>
+                  <span className="text-[11px] font-semibold text-stone-800 line-clamp-2">
+                    {currentDestination.step1Text || (isEn ? 'Head towards the nearest elevator' : 'Đi theo hành lang theo chỉ dẫn')}
+                  </span>
+                </div>
+
+                {currentDestination.isDifferentFloor ? (
+                  <>
+                    <div className="p-2 bg-stone-50 rounded-xl border border-[#E3DFD5] flex items-center gap-2.5">
+                      <div className="w-5 h-5 rounded-full bg-stone-800 text-white flex items-center justify-center font-bold text-[10px] shrink-0">2</div>
+                      <span className="text-[11px] font-semibold text-stone-800 line-clamp-2">
+                        {currentDestination.step2Text || (isEn ? `Exit elevator and head to ${currentDestination.name}` : `Ra khỏi thang máy và tới ${currentDestination.name}`)}
+                      </span>
+                    </div>
+                    <div className="p-2 bg-[#EFECE4] rounded-xl border border-[#E3DFD5] flex items-center gap-2.5">
+                      <div className="w-5 h-5 rounded-full bg-stone-900 text-white flex items-center justify-center font-bold text-[10px] shrink-0">3</div>
+                      <span className="text-[11px] font-bold text-stone-950 truncate">
+                        {isEn ? `Arrive: ${currentDestination.name}` : `Đến nơi: ${currentDestination.name}`}
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="p-2 bg-[#EFECE4] rounded-xl border border-[#E3DFD5] flex items-center gap-2.5">
+                    <div className="w-5 h-5 rounded-full bg-stone-900 text-white flex items-center justify-center font-bold text-[10px] shrink-0">2</div>
+                    <span className="text-[11px] font-bold text-stone-950 truncate">
+                      {isEn ? `Arrive: ${currentDestination.name}` : `Đến nơi: ${currentDestination.name}`}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Thẻ Quét Mã QR lưu chỉ dẫn chuẩn Desktop */}
+              <div
+                className="w-full p-2.5 bg-stone-900 rounded-xl border border-stone-800 flex items-center gap-2.5 shadow-md text-white"
+              >
+                <div className="p-1 bg-white rounded-lg shrink-0 shadow-xs flex items-center justify-center">
+                  <QRCodeSVG
+                    value={qrMapUrl}
+                    size={64}
+                    level="M"
+                    includeMargin={false}
+                  />
+                </div>
+                <div className="flex-1 min-w-0 text-left">
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="text-white font-bold text-[11px] uppercase tracking-wide truncate">
+                      {isEn ? 'Scan QR for Map' : 'Quét QR lưu chỉ dẫn'}
+                    </span>
+                    {qrCountdown !== null && qrCountdown >= 0 && (
+                      <span className="text-[9px] font-mono font-semibold text-stone-300 bg-stone-800 px-1.5 py-0.5 rounded border border-stone-700">
+                        {qrCountdown}s
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-stone-300 line-clamp-2 mt-0.5 leading-snug">
+                    {isEn ? 'Scan with phone camera to keep directions on mobile.' : 'Quét camera để lưu sơ đồ và di chuyển thuận tiện.'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Đáy: Dock Micro thu âm & Nút Đóng */}
+              <div className="w-full flex flex-col gap-1.5 pt-1">
+                {/* Voice Bar: Khách có thể nói "Cảm ơn" hoặc hỏi tiếp */}
+                <div
+                  onClick={() => {
+                    if (isSpeaking && onStopSpeaking) {
+                      onStopSpeaking();
+                      if (onStartTalk) onStartTalk();
+                      return;
+                    }
+                    if (isListening && transcript && onSubmitTalk) {
+                      onSubmitTalk();
+                      return;
+                    }
+                    if (!isSpeaking && onStartTalk) {
+                      onStartTalk();
+                    }
+                  }}
+                  className={`w-full py-1.5 px-3 rounded-xl border flex items-center justify-between gap-2 cursor-pointer transition-all active:scale-[0.99] ${
+                    isListening
+                      ? 'bg-stone-900 text-white border-stone-700 shadow-sm'
+                      : 'bg-[#EFECE4] hover:bg-stone-200 text-stone-800 border-[#E3DFD5]'
+                  }`}
+                  title={isEn ? 'Touch or speak command' : 'Chạm để nói'}
+                >
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    {isListening ? (
+                      <AudioWave isActive={true} volumeLevel={volumeLevel} />
+                    ) : (
+                      <Mic className="w-3.5 h-3.5 text-stone-600 shrink-0" />
+                    )}
+                    <span className="text-[11px] font-semibold truncate">
+                      {transcript ? `"${transcript}"` : isListening ? (isEn ? 'Listening... Speak now' : 'Đang nghe... Nói để đóng/hỏi tiếp') : (isEn ? 'Touch to speak' : 'Chạm để nói')}
+                    </span>
+                  </div>
+                  {transcript && onSubmitTalk && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onSubmitTalk();
+                      }}
+                      className="px-2 py-0.5 bg-emerald-600 text-white text-[10px] font-bold rounded shadow-xs shrink-0"
+                    >
+                      {isEn ? 'Send' : 'Gửi'}
+                    </button>
+                  )}
+                </div>
+
+                {/* Nút Đóng Bản Đồ */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMapManualOpen(false);
+                    onResetToIdle();
+                  }}
+                  className="w-full py-2 bg-stone-900 hover:bg-stone-800 text-white rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-sm active:scale-98"
+                >
+                  <span>{isEn ? 'I Remembered · Close Map' : 'TÔI ĐÃ NHỚ ĐƯỜNG · ĐÓNG'}</span>
+                </button>
+                <p className="text-[10px] text-center text-stone-500 font-medium">
+                  {isEn ? 'Or say "Thank you" or "I got it" to close.' : 'Nói "Cảm ơn" hoặc "Ok tôi đã nhớ" để đóng.'}
+                </p>
+              </div>
+            </div>
           </main>
         ) : (
           <main

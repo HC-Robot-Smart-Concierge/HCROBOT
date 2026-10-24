@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import hashlib
 import logging
@@ -203,25 +204,29 @@ class TTSService:
         return "", "audio/mp3", "browser"
 
     async def _synthesize_edge_tts(self, text: str, voice: str, rate: Optional[str] = None) -> Optional[str]:
-        """EdgeTTS Neural Engine."""
-        try:
-            import edge_tts
-            clean_text = self.clean_text_for_tts(text)
-            if not clean_text:
-                return None
+        """EdgeTTS Neural Engine với auto-retry (3 lần) khi kết nối chập chờn."""
+        clean_text = self.clean_text_for_tts(text)
+        if not clean_text:
+            return None
 
-            selected_rate = rate or getattr(settings, "TTS_RATE", "+0%")
-            communicate = edge_tts.Communicate(clean_text, voice, rate=selected_rate)
-            audio_bytes = b""
-            async for chunk in communicate.stream():
-                if chunk["type"] == "audio":
-                    audio_bytes += chunk["data"]
-            if audio_bytes:
-                return base64.b64encode(audio_bytes).decode("utf-8")
-        except ImportError:
-            logger.info("[TTSService] edge_tts library not installed.")
-        except Exception as e:
-            logger.warning(f"[TTSService] EdgeTTS error: {e}")
+        selected_rate = rate or getattr(settings, "TTS_RATE", "+0%")
+        for attempt in range(3):
+            try:
+                import edge_tts
+                communicate = edge_tts.Communicate(clean_text, voice, rate=selected_rate)
+                audio_bytes = b""
+                async for chunk in communicate.stream():
+                    if chunk["type"] == "audio":
+                        audio_bytes += chunk["data"]
+                if audio_bytes and len(audio_bytes) > 100:
+                    return base64.b64encode(audio_bytes).decode("utf-8")
+            except ImportError:
+                logger.info("[TTSService] edge_tts library not installed.")
+                return None
+            except Exception as e:
+                logger.warning(f"[TTSService] EdgeTTS attempt {attempt + 1}/3 error: {e}")
+                if attempt < 2:
+                    await asyncio.sleep(0.15 * (attempt + 1))
         return None
 
     async def synthesize_chunk(self, text: str, voice: str = None, language: str = None) -> bytes:
@@ -318,6 +323,22 @@ class TTSService:
             else:
                 logger.error(f"[TTSService] OpenAI TTS API error {resp.status_code}: {resp.text}")
         return None
+
+    async def warm_up_common_phrases(self):
+        """Pre-cache câu đệm và câu chào phổ biến để phản hồi tức thì 0ms."""
+        common_phrases = [
+            ("Dạ đợi em một tí nhé ạ.", "vi-VN", "vi-VN-HoaiMyNeural"),
+            ("Please wait a moment.", "en-US", "en-US-JennyNeural"),
+            ("Dạ đợi em một tí ạ.", "vi-VN", "vi-VN-HoaiMyNeural"),
+        ]
+        for phrase, lang, voice in common_phrases:
+            try:
+                cache_key = self._get_cache_key(phrase, "edge", voice, "+0%")
+                if not self._get_from_cache(cache_key):
+                    await self.synthesize(phrase, provider="edge", language=lang, voice=voice)
+                    logger.info(f"[TTSService] Pre-cached filler phrase: '{phrase}'")
+            except Exception as e:
+                logger.debug(f"[TTSService] Warmup skip for '{phrase}': {e}")
 
 
 # Singleton Instance

@@ -803,8 +803,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
     if (fillerTimerRef.current) clearTimeout(fillerTimerRef.current);
 
-    // Timer 450ms: Nếu câu hỏi không phải Fast-Path (vốn trả lời trong <200ms),
-    // robot lập tức cất giọng: "Dạ đợi em một tí nhé ạ" / "Please wait a moment."
+    // Timer 1800ms: Chỉ khi câu hỏi thực sự cần thời gian suy luận lâu (>1.8s)
+    // robot mới cất giọng câu đệm ("Dạ đợi em một tí nhé ạ"), tránh gây cảm giác chậm trễ cho các câu trả lời thông thường
     fillerTimerRef.current = setTimeout(() => {
       if (hasReceivedResponse || currentChatId !== activeChatRequestIdRef.current) return;
       isPlayingFiller = true;
@@ -833,7 +833,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
           }
         }
       );
-    }, 450);
+    }, 1800);
 
     try {
       // Gửi toàn bộ truy vấn tới RAG Backend duy nhất (Single Source of Truth)
@@ -1055,10 +1055,11 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       };
 
       if (isPlayingFiller) {
-        pendingMainTask = executeMainResponse;
-      } else {
-        executeMainResponse();
+        stopSpeaking();
+        isPlayingFiller = false;
+        pendingMainTask = null;
       }
+      executeMainResponse();
 
     } catch (error) {
       if (fillerTimerRef.current) {

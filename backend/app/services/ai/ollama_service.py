@@ -149,7 +149,7 @@ class OllamaService:
             time_greeting_vi = "Dạ, Rora xin chào buổi tối quý khách! Chúc quý khách buổi tối an lành và thư giãn ạ."
             time_greeting_en = "Good evening! Wishing you a peaceful and relaxing evening."
 
-        # PRE-CHECK: Nếu câu nói chứa từ khóa HÀNH ĐỘNG dịch vụ buồng phòng / bảo trì / ẩm thực / hành lý
+        # PRE-CHECK 1: Nếu câu nói chứa từ khóa HÀNH ĐỘNG dịch vụ buồng phòng / bảo trì / ẩm thực / hành lý
         # → Bỏ qua fast-path để Intent Router + Service FSM xử lý slot-filling số phòng
         service_action_verbs = [
             "đặt", "cần", "muốn", "yêu cầu", "sửa", "cho", "xin", "lấy", "mang", "giao", "gọi", "đổi",
@@ -164,6 +164,17 @@ class OllamaService:
         has_service_noun = any(n in prompt_lower for n in service_nouns)
         if has_action_verb and has_service_noun:
             logger.info(f"[OllamaService Fast-Path Bypass] Service action intent detected, skipping fast-path for: '{prompt[:40]}'")
+            return None
+
+        # PRE-CHECK 2: Nếu câu hỏi về KHÁM PHÁ XUNG QUANH / NGOẠI KHU / CHỢ ĐÊM / ĐI CHƠI
+        # → Bỏ qua fast-path nội khu chung chung để RAG + LLM tra cứu cẩm nang địa điểm chi tiết
+        nearby_exploration_keywords = [
+            "gần đây", "xung quanh", "quanh đây", "gần khách sạn", "ngoại khu", "chợ đêm",
+            "chơi gì", "ăn gì ở đâu", "đi đâu chơi", "địa điểm du lịch", "địa điểm tham quan",
+            "có gì chơi", "quanh khách sạn", "nearby", "around here", "night market", "sightseeing"
+        ]
+        if any(kw in prompt_lower for kw in nearby_exploration_keywords):
+            logger.info(f"[OllamaService Fast-Path Bypass] Nearby exploration query detected, delegating to RAG: '{prompt[:40]}'")
             return None
 
         # 1. Đối soát nhanh từ Dynamic Scenarios Cache trong RAM (do Admin quản lý qua API/DB)
@@ -290,6 +301,14 @@ class OllamaService:
             yield reply
             return
 
+        # Tự động truy vấn tri thức RAG từ ChromaDB nếu chưa có sẵn
+        if rag_context is None:
+            try:
+                from app.services.rag.chroma import query_rag_context
+                rag_context = await query_rag_context(prompt)
+            except Exception:
+                rag_context = ""
+
         # Ưu tiên Gemini LLM Engine nếu được kích hoạt
         if getattr(settings, "is_gemini_active", False):
             try:
@@ -386,6 +405,14 @@ class OllamaService:
         fast_hit = self.check_fast_path(prompt, language)
         if fast_hit:
             return fast_hit
+
+        # Tự động truy vấn tri thức RAG từ ChromaDB nếu chưa có sẵn
+        if rag_context is None:
+            try:
+                from app.services.rag.chroma import query_rag_context
+                rag_context = await query_rag_context(prompt)
+            except Exception:
+                rag_context = ""
 
         # Ưu tiên Gemini LLM Engine nếu được kích hoạt
         if getattr(settings, "is_gemini_active", False):
@@ -500,25 +527,26 @@ class OllamaService:
         if fast_hit:
             return fast_hit[0]
 
-        # 0.1. Ưu tiên dữ liệu từ RAG (ChromaDB / Knowledge Vault) nếu có
+        # 0.1. Ưu tiên dữ liệu từ RAG (ChromaDB / Knowledge Vault) nếu có hoặc tự động truy vấn RAG
+        if not rag_context:
+            try:
+                from app.services.rag.chroma import get_concierge_collection
+                col = get_concierge_collection("concierge_kb")
+                res = col.query(query_texts=[prompt], n_results=1)
+                if res and res.get("documents") and len(res["documents"]) > 0:
+                    docs = res["documents"][0]
+                    if docs and len(docs[0].strip()) > 15:
+                        rag_context = docs[0].strip()
+            except Exception as e_rag:
+                logger.debug(f"[Offline RAG Query Error]: {e_rag}")
+
         if rag_context and len(rag_context.strip()) > 20:
             clean_ctx = re.sub(r'[*#_`]', '', rag_context).strip()
-            first_sentence = clean_ctx.split('.')[0].strip()
-            if len(first_sentence) > 15:
-                return f"Dạ theo thông tin khách sạn: {first_sentence} ạ." if not is_en else f"According to hotel info: {first_sentence}."
+            sentences = [s.strip() for s in clean_ctx.split('.') if len(s.strip()) > 15]
+            if sentences:
+                return f"Dạ theo thông tin khách sạn: {sentences[0]} ạ." if not is_en else f"According to hotel info: {sentences[0]}."
 
-        # 1. Hỗ trợ chỉ đường nhanh thang máy tới phòng 3xx hoặc 4xx
-        room_match = re.search(r'\b(?:phòng|p\.?|phong)?\s*([34]0[1-9])\b', p_lower)
-        if room_match:
-            r_num = room_match.group(1)
-            floor_num = r_num[0]
-            return (
-                f"Room {r_num} is on Level {floor_num}. Please take Elevator A on the left to reach your floor."
-                if is_en else
-                f"Dạ Phòng {r_num} nằm ở Tầng {floor_num} ạ. Quý khách vui lòng đi thẳng tới Thang máy A phía bên trái để lên tầng nhé."
-            )
-
-        # 2. Fallback nhã nhặn khi thông tin không có trong cả Fast-Path lẫn RAG
+        # 1. Fallback nhã nhặn khi thông tin không có trong cả Fast-Path lẫn RAG
         return (
             "I have noted your request. Please contact the Front Desk at Level 1 or dial 0 from your room phone for immediate assistance!"
             if is_en else
@@ -536,25 +564,14 @@ class OllamaService:
         from app.services.ai.session_manager import extract_room_number
         extracted_room_regex = extract_room_number(user_speech, is_answering_room=True)
 
-        # Fast-Path Keyword Check (Nếu khớp từ khóa dịch vụ rõ ràng -> Trả về luôn siêu tốc < 1ms)
+        # Fast-Path Keyword Check từ Centralized Constants (< 1ms)
+        from app.services.ai.constants import SERVICE_KEYWORDS
         lower_speech = user_speech.lower()
         fast_action = None
-        if any(k in lower_speech for k in ["khăn", "khan", "tắm", "tam", "dọn phòng", "don phong", "gối", "goi", "chăn", "chan", "nệm", "nem", "towel", "clean"]):
-            fast_action = "housekeeping"
-        elif any(k in lower_speech for k in ["cơm", "com", "nước", "nuoc", "ăn", "an", "uống", "uong", "đồ ăn", "do an", "trà", "tra", "cà phê", "ca phe", "pizza", "phở", "pho", "bánh", "banh", "food", "drink"]):
-            fast_action = "room_service"
-        elif any(k in lower_speech for k in ["hành lý", "hanh ly", "vali", "túi", "tui", "chuyển phòng", "chuyen phong", "mang đồ", "mang do", "luggage", "bag"]):
-            fast_action = "bellman"
-        elif any(k in lower_speech for k in ["hỏng", "hong", "sửa", "sua", "điều hòa", "dieu hoa", "bóng đèn", "bong den", "nước rò", "nuoc ro", "máy lạnh", "may lanh", "tủ lạnh", "tu lanh", "fix", "repair"]):
-            fast_action = "maintenance"
-        elif any(k in lower_speech for k in ["đặt bàn", "dat ban", "đặt món", "dat mon", "bàn ăn", "ban an", "nhà hàng", "nha hang", "table", "restaurant"]):
-            fast_action = "restaurant"
-        elif any(k in lower_speech for k in ["taxi", "đặt xe", "dat xe", "gọi xe", "goi xe", "sân bay", "san bay", "cab", "ride"]):
-            fast_action = "taxi"
-        elif any(k in lower_speech for k in ["concierge", "gặp người", "gap nguoi", "nhân viên hỗ trợ", "live call", "video call", "tổng đài", "tong dai", "trợ giúp trực tiếp"]):
-            fast_action = "concierge"
-        elif any(k in lower_speech for k in ["lễ tân", "le tan", "check out", "checkout", "check in", "checkin", "đổi phòng", "doi phong", "trả phòng", "tra phong", "front desk", "reception"]):
-            fast_action = "reception"
+        for act, kws in SERVICE_KEYWORDS.items():
+            if any(k in lower_speech for k in kws):
+                fast_action = act
+                break
 
         if fast_action:
             clean_items = user_speech
@@ -659,24 +676,11 @@ class OllamaService:
 
             # Keyword-based Intent Fallback khi LLM offline/timeout
             fallback_action = "unknown"
-            lower_speech = user_speech.lower()
-            if any(k in lower_speech for k in ["khăn", "tắm", "dọn phòng", "gối", "chăn", "nệm", "dọn", "towel", "clean"]):
-                fallback_action = "housekeeping"
-            elif any(k in lower_speech for k in ["cơm", "nước", "ăn", "uống", "đồ ăn", "trà", "cà phê", "pizza", "phở", "bánh", "food", "drink"]):
-                fallback_action = "room_service"
-            elif any(k in lower_speech for k in ["hành lý", "vali", "túi", "chuyển phòng", "mang đồ", "luggage", "bag"]):
-                fallback_action = "bellman"
-            elif any(k in lower_speech for k in ["hỏng", "sửa", "điều hòa", "bóng đèn", "nước rò", "máy lạnh", "tủ lạnh", "fix", "repair"]):
-                fallback_action = "maintenance"
-            elif any(k in lower_speech for k in ["đặt bàn", "đặt món trước", "bàn ăn", "nhà hàng", "table", "restaurant"]):
-                fallback_action = "restaurant"
-            elif any(k in lower_speech for k in ["taxi", "đặt xe", "gọi xe", "sân bay", "cab", "ride"]):
-                fallback_action = "taxi"
-            elif any(k in lower_speech for k in ["concierge", "gặp người", "nhân viên hỗ trợ", "live call", "video call", "tổng đài"]):
-                fallback_action = "concierge"
-            elif any(k in lower_speech for k in ["lễ tân", "check out", "check in", "đổi phòng", "trả phòng", "front desk", "reception"]):
-                fallback_action = "reception"
-            elif extracted_room_regex:
+            for act, kws in SERVICE_KEYWORDS.items():
+                if any(k in lower_speech for k in kws):
+                    fallback_action = act
+                    break
+            if fallback_action == "unknown" and extracted_room_regex:
                 fallback_action = "provide_room_number"
 
             return {

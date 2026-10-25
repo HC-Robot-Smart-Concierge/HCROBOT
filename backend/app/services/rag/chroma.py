@@ -43,3 +43,24 @@ def get_concierge_collection(collection_name: str = "concierge_kb"):
                 metadata={"description": "Hotel Concierge Knowledge Base Vector Store"}
             )
         raise e
+
+
+async def query_rag_context(prompt: str, n_results: int = 2, collection_name: str = "concierge_kb") -> str:
+    """Truy vấn bất đồng bộ lấy ngữ cảnh tri thức khách sạn từ ChromaDB Vector Store."""
+    if not prompt or not prompt.strip():
+        return ""
+    try:
+        import asyncio
+
+        def _sync_query() -> str:
+            col = get_concierge_collection(collection_name)
+            res = col.query(query_texts=[prompt.strip()], n_results=n_results)
+            if res and res.get("documents") and len(res["documents"]) > 0:
+                docs = [d.strip() for d in res["documents"][0] if d and len(d.strip()) > 10]
+                if docs:
+                    return "\n\n".join(docs)
+            return ""
+
+        return await asyncio.to_thread(_sync_query)
+    except Exception:
+        return ""

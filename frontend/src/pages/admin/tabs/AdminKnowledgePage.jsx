@@ -10,6 +10,7 @@ import {
   fetchRAGStats,
   fetchRAGSources,
   syncObsidianVault,
+  syncBilingualKnowledge,
   saveRAGSourceFile,
   uploadRAGFile,
   deleteRAGSource,
@@ -44,10 +45,17 @@ import {
   Save,
   File,
   Check,
-  AlertCircle,
   Database,
   ArrowRight,
+  Table as TableIcon,
+  Maximize2,
+  Minimize2,
+  Languages,
+  BookOpen,
+  AlertTriangle,
+  Copy,
 } from 'lucide-react';
+import { KnowledgeTableEditor } from '../../../components/admin/KnowledgeTableEditor';
 
 const CATEGORY_MAP = {
   facility: { labelVI: 'Tiện ích', labelEN: 'Amenities', bg: '#EDE9FE', text: '#6D28D9', border: '#DDD6FE' },
@@ -131,7 +139,8 @@ export const AdminKnowledgePage = ({ activeSubView = 'sources', onSelectSubView 
   const [editingSourceFile, setEditingSourceFile] = useState(null); // { filename, content, isNew }
   const [sourceMarkdownContent, setSourceMarkdownContent] = useState('');
   const [newSourceFileName, setNewSourceFileName] = useState('');
-  const [editorModeTab, setEditorModeTab] = useState('edit'); // 'edit' | 'preview'
+  const [editorModeTab, setEditorModeTab] = useState('table'); // 'table' | 'edit' | 'preview'
+  const [isSourceModalMaximized, setIsSourceModalMaximized] = useState(false);
   const [isSavingSource, setIsSavingSource] = useState(false);
 
   // =========================================================================
@@ -152,6 +161,14 @@ export const AdminKnowledgePage = ({ activeSubView = 'sources', onSelectSubView 
   // Pagination State for Scenarios Table
   const [currentPage, setCurrentPage] = useState(1);
   const scenarioPageSize = 10;
+
+  // Custom Delete Confirmation Modal State
+  const [deleteConfirmTarget, setDeleteConfirmTarget] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // Markdown Authoring Guide State
+  const [isShowMdGuide, setIsShowMdGuide] = useState(false);
+  const [isTemplateCopied, setIsTemplateCopied] = useState(false);
 
   // =========================================================================
   // VOICE & SPEED SETTINGS STATE (ROBOT TTS NEURAL)
@@ -293,10 +310,38 @@ export const AdminKnowledgePage = ({ activeSubView = 'sources', onSelectSubView 
     }
   };
 
+  const [isSyncingBilingual, setIsSyncingBilingual] = useState(false);
+  const handleSyncBilingual = async () => {
+    setIsSyncingBilingual(true);
+    try {
+      const res = await syncBilingualKnowledge();
+      showNotification(res?.message || t('knowledgeNotifyBilingualSynced'));
+      await loadRAGData();
+    } catch (err) {
+      showNotification(err.message);
+    } finally {
+      setIsSyncingBilingual(false);
+    }
+  };
+
+  const handleSelectFile = (file) => {
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith('.md')) {
+      showNotification(isEN ? 'Only Markdown (.md) files are supported for Knowledge Vault' : 'Hệ thống chỉ hỗ trợ upload file định dạng Markdown (.md)');
+      return;
+    }
+    setSelectedUploadFile(file);
+  };
+
   const handleUploadFileSubmit = async (e) => {
     e?.preventDefault();
     if (!selectedUploadFile) {
       showNotification(t('knowledgeDropzonePrompt'));
+      return;
+    }
+
+    if (!selectedUploadFile.name.toLowerCase().endsWith('.md')) {
+      showNotification(isEN ? 'Only Markdown (.md) files are supported for Knowledge Vault' : 'Hệ thống chỉ hỗ trợ upload file định dạng Markdown (.md)');
       return;
     }
 
@@ -318,7 +363,8 @@ export const AdminKnowledgePage = ({ activeSubView = 'sources', onSelectSubView 
     setEditingSourceFile({ ...src, isNew: false });
     setNewSourceFileName(src.filename);
     setSourceMarkdownContent(src.content || `# ${src.filename}\n\nChưa có nội dung.`);
-    setEditorModeTab('edit');
+    setEditorModeTab('table');
+    setIsSourceModalMaximized(false);
   };
 
   const handleOpenCreateSourceModal = () => {
@@ -337,7 +383,8 @@ language: ${isEN ? 'en' : 'vi'}
 ${isEN ? 'Enter hotel policies, amenities or directions for Robot Concierge here...' : 'Nhập nội dung quy định, tiện ích hoặc hướng dẫn cho Robot Concierge tại đây...'}
 `
     );
-    setEditorModeTab('edit');
+    setEditorModeTab('table');
+    setIsSourceModalMaximized(false);
   };
 
   const handleSaveSourceMarkdown = async () => {
@@ -366,15 +413,78 @@ ${isEN ? 'Enter hotel policies, amenities or directions for Robot Concierge here
     }
   };
 
-  const handleDeleteSourceFile = async (filename) => {
-    if (!window.confirm(t('knowledgeConfirmDeleteSource').replace('{name}', filename))) return;
+  const handleDeleteSourceFile = (filename) => {
+    setDeleteConfirmTarget({ type: 'file', filename, title: filename });
+  };
+
+  const handleExecuteConfirmDelete = async () => {
+    if (!deleteConfirmTarget) return;
+    setIsDeleting(true);
     try {
-      await deleteRAGSource(filename);
-      showNotification(t('knowledgeNotifySourceDeleted').replace('{name}', filename));
-      await loadRAGData();
+      if (deleteConfirmTarget.type === 'file') {
+        await deleteRAGSource(deleteConfirmTarget.filename);
+        showNotification(t('knowledgeNotifySourceDeleted').replace('{name}', deleteConfirmTarget.filename));
+        await loadRAGData();
+      } else if (deleteConfirmTarget.type === 'scenario') {
+        await deleteScenario(deleteConfirmTarget.id);
+        showNotification(t('knowledgeNotifyScenarioDeleted').replace('{title}', deleteConfirmTarget.title));
+        await loadScenariosData();
+      }
+      setDeleteConfirmTarget(null);
     } catch (err) {
-      showNotification(t('knowledgeNotifySourceDeleteError').replace('{msg}', err.message));
+      showNotification(err.message || 'Lỗi khi xóa!');
+    } finally {
+      setIsDeleting(false);
     }
+  };
+
+  const handleCopyStarterTemplate = () => {
+    const templateText = `---
+title: Tiêu Đề Tài Liệu Tri Thức Mới
+category: hotel_facilities
+hotel: Aurora Grand Hotel
+language: ${isEN ? 'en' : 'vi'}
+tags: [tien_nghi, dich_vu, huong_dan]
+---
+
+# TIÊU ĐỀ TÀI LIỆU CHÍNH
+
+Mô tả ngắn gọn về phạm vi và nội dung của tài liệu tại đây.
+
+---
+
+## 1. TÊN KHU VỰC HOẶC DỊCH VỤ — TẦNG X
+
+### Vị trí và Giờ hoạt động
+- **Vị trí:** Tầng X, mô tả lối đi chi tiết.
+- **Giờ mở cửa:** Phục vụ từ **06:00 đến 22:00**.
+- **Đối tượng & Chi phí:** Hoàn toàn MIỄN PHÍ cho khách lưu trú.
+
+### Danh mục trang thiết bị & Tiện ích
+- Liệt kê trang thiết bị chính thứ nhất.
+- Liệt kê trang thiết bị chính thứ hai.
+- Tiện ích miễn phí kèm theo (khăn, nước uống, hướng dẫn viên).
+
+---
+
+## 2. BẢNG TỔNG HỢP TRA CỨU NHANH
+
+| Hạng Mục | Vị Trí | Giờ Phục Vụ | Ghi Chú |
+|---|---|---|---|
+| Dịch vụ 1 | Tầng X | 24/7 | Miễn phí |
+| Dịch vụ 2 | Tầng Y | 06:00 - 22:00 | Đặt trước 30 phút |
+
+---
+
+## 3. KỊCH BẢN HỎI ĐÁP MẪU CHO ROBOT
+
+1. **Khách hỏi:** "Câu hỏi thường gặp của khách lưu trú?"
+   - **Robot trả lời:** "Dạ câu trả lời lễ phép, chu đáo và chính xác theo phong cách 5 sao của Robot Concierge tại đây ạ!"
+`;
+    navigator.clipboard.writeText(templateText);
+    setIsTemplateCopied(true);
+    showNotification(t('knowledgeTemplateCopied'));
+    setTimeout(() => setIsTemplateCopied(false), 2500);
   };
 
   // =========================================================================
@@ -476,15 +586,8 @@ ${isEN ? 'Enter hotel policies, amenities or directions for Robot Concierge here
     }
   };
 
-  const handleDeleteScenario = async (id, title) => {
-    if (!window.confirm(t('knowledgeConfirmDeleteScenario').replace('{title}', title))) return;
-    try {
-      await deleteScenario(id);
-      showNotification(t('knowledgeNotifyScenarioDeleted').replace('{title}', title));
-      await loadScenariosData();
-    } catch (err) {
-      showNotification(t('knowledgeNotifyScenarioDeleteError').replace('{msg}', err.message));
-    }
+  const handleDeleteScenario = (id, title) => {
+    setDeleteConfirmTarget({ type: 'scenario', id, title });
   };
 
   const displayScenarios = scenarios.filter((scn) => {
@@ -600,6 +703,35 @@ ${isEN ? 'Enter hotel policies, amenities or directions for Robot Concierge here
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${isLoadingRAG ? 'animate-spin' : ''}`} />
                 <span>{t('knowledgeBtnSyncVault')}</span>
+              </button>
+
+              <button
+                onClick={handleSyncBilingual}
+                disabled={isSyncingBilingual}
+                className="px-3 py-1.5 rounded-lg border text-xs font-semibold cursor-pointer transition-colors flex items-center gap-1.5 hover:bg-stone-50"
+                style={{
+                  backgroundColor: '#FFFFFF',
+                  color: '#262626',
+                  borderColor: '#BFBFBD',
+                }}
+                title={t('knowledgeBtnSyncBilingualTooltip')}
+              >
+                <Languages className={`w-3.5 h-3.5 text-indigo-600 ${isSyncingBilingual ? 'animate-spin' : ''}`} />
+                <span>{t('knowledgeBtnSyncBilingual')}</span>
+              </button>
+
+              <button
+                onClick={() => setIsShowMdGuide(true)}
+                className="px-3 py-1.5 rounded-lg border text-xs font-semibold cursor-pointer transition-colors flex items-center gap-1.5 hover:bg-stone-50"
+                style={{
+                  backgroundColor: '#FFFFFF',
+                  color: '#262626',
+                  borderColor: '#BFBFBD',
+                }}
+                title={t('knowledgeBtnMdGuideTooltip')}
+              >
+                <BookOpen className="w-3.5 h-3.5 text-indigo-600" />
+                <span>{t('knowledgeBtnMdGuide')}</span>
               </button>
 
               <button
@@ -812,7 +944,7 @@ ${isEN ? 'Enter hotel policies, amenities or directions for Robot Concierge here
                     e.preventDefault();
                     setIsDragOver(false);
                     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-                      setSelectedUploadFile(e.dataTransfer.files[0]);
+                      handleSelectFile(e.dataTransfer.files[0]);
                     }
                   }}
                   onClick={() => fileInputRef.current?.click()}
@@ -827,10 +959,10 @@ ${isEN ? 'Enter hotel policies, amenities or directions for Robot Concierge here
                   <input
                     ref={fileInputRef}
                     type="file"
-                    accept=".md,.txt,.pdf,.docx,.jpg,.jpeg,.png,.webp"
+                    accept=".md"
                     onChange={(e) => {
                       if (e.target.files && e.target.files[0]) {
-                        setSelectedUploadFile(e.target.files[0]);
+                        handleSelectFile(e.target.files[0]);
                       }
                     }}
                     className="hidden"
@@ -956,11 +1088,20 @@ ${isEN ? 'Enter hotel policies, amenities or directions for Robot Concierge here
                           <div className="flex items-center gap-2">
                             <FileCode className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
                             <span className="truncate max-w-md">{src.filename}</span>
+                            {(src.language === 'vi' || src.filename.includes('_vi')) ? (
+                              <span className="px-1.5 py-0.5 rounded text-[9px] font-sans font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                                {t('knowledgeBadgeVI')}
+                              </span>
+                            ) : (
+                              <span className="px-1.5 py-0.5 rounded text-[9px] font-sans font-bold bg-blue-50 text-blue-800 border border-blue-200">
+                                {t('knowledgeBadgeEN')}
+                              </span>
+                            )}
                           </div>
                         </td>
                         <td className="py-2.5 px-3 text-center">
                           <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-stone-100 text-stone-700 uppercase">
-                            {src.format || 'MD'}
+                            {src.file_type || src.format || 'MD'}
                           </span>
                         </td>
                         <td className="py-2.5 px-3 text-center font-mono text-[11px] text-stone-600">
@@ -1283,17 +1424,21 @@ ${isEN ? 'Enter hotel policies, amenities or directions for Robot Concierge here
       {/* MODAL 1: SOẠN THẢO & XEM TRƯỚC FILE MARKDOWN SOURCE                   */}
       {/* =================================================================== */}
       {editingSourceFile && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 animate-in fade-in">
           <div
-            className="max-w-4xl w-full rounded-2xl border p-5 space-y-3.5 shadow-2xl flex flex-col max-h-[90vh]"
+            className={`w-full rounded-2xl border p-5 space-y-3.5 shadow-2xl flex flex-col transition-all duration-200 ${
+              isSourceModalMaximized
+                ? 'fixed inset-3 z-50 h-[calc(100vh-24px)] max-h-none'
+                : 'max-w-6xl max-h-[92vh]'
+            }`}
             style={{
               backgroundColor: '#FFFFFF',
               borderColor: '#BFBFBD',
             }}
           >
             {/* Modal Header */}
-            <div className="flex items-center justify-between border-b pb-3" style={{ borderColor: '#BFBFBD' }}>
-              <div className="flex items-center gap-2.5 flex-1">
+            <div className="flex items-center justify-between border-b pb-3 gap-3" style={{ borderColor: '#BFBFBD' }}>
+              <div className="flex items-center gap-2.5 flex-1 min-w-0">
                 <div className="w-8 h-8 rounded-xl bg-indigo-100 flex items-center justify-center text-indigo-700 shrink-0">
                   <FileCode className="w-4 h-4" />
                 </div>
@@ -1311,62 +1456,145 @@ ${isEN ? 'Enter hotel policies, amenities or directions for Robot Concierge here
                     />
                   </div>
                 ) : (
-                  <div>
-                    <h3 className="text-sm font-bold" style={{ color: '#262626' }}>
-                      {t('knowledgeModalEditFileTitle').replace('{filename}', editingSourceFile.filename)}
-                    </h3>
-                    <p className="text-[10px] text-stone-500">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-sm font-bold truncate" style={{ color: '#262626' }}>
+                        {t('knowledgeModalEditFileTitle').replace('{filename}', editingSourceFile.filename)}
+                      </h3>
+                      {(editingSourceFile.language === 'vi' || editingSourceFile.filename?.includes('_vi')) ? (
+                        <span className="px-1.5 py-0.5 rounded text-[9px] font-sans font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                          {t('knowledgeBadgeVI')}
+                        </span>
+                      ) : (
+                        <span className="px-1.5 py-0.5 rounded text-[9px] font-sans font-bold bg-blue-50 text-blue-800 border border-blue-200">
+                          {t('knowledgeBadgeEN')}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[10px] text-stone-500 truncate">
                       {t('knowledgeModalEditFileSub')}
                     </p>
                   </div>
                 )}
               </div>
 
-              {/* Mode switch & Close */}
+              {/* Mode switch, Maximize & Close */}
               <div className="flex items-center gap-2 shrink-0">
+                {/* Quick Switch to Bilingual Counterpart */}
+                {!editingSourceFile.isNew && (
+                  (() => {
+                    const fname = editingSourceFile.filename;
+                    const isVI = fname.includes('_vi');
+                    let targetName = '';
+                    if (isVI) {
+                      targetName = fname.replace('_vi.md', '_en.md');
+                      if (!sources.some(s => s.filename === targetName)) {
+                        targetName = fname.replace('_vi.md', '_rag.md');
+                      }
+                    } else if (fname.includes('_en')) {
+                      targetName = fname.replace('_en.md', '_vi.md');
+                    } else if (fname.includes('_rag')) {
+                      targetName = fname.replace('_rag.md', '_vi.md');
+                    }
+                    const targetFile = sources.find(s => s.filename === targetName);
+                    if (!targetFile) return null;
+                    return (
+                      <button
+                        type="button"
+                        onClick={() => handleOpenSourceEditor(targetFile)}
+                        className="px-2.5 py-1 rounded-lg border text-xs font-semibold cursor-pointer hover:bg-stone-100 flex items-center gap-1.5 transition-colors bg-stone-50 text-stone-700 shadow-2xs"
+                        title={isVI ? t('knowledgeSwitchToPairEN') : t('knowledgeSwitchToPairVI')}
+                      >
+                        <Languages className="w-3.5 h-3.5 text-indigo-600" />
+                        <span className="hidden sm:inline">
+                          {isVI ? t('knowledgeSwitchToPairEN') : t('knowledgeSwitchToPairVI')}
+                        </span>
+                      </button>
+                    );
+                  })()
+                )}
+
                 <div className="flex items-center gap-1 p-0.5 rounded-lg border bg-stone-100" style={{ borderColor: '#BFBFBD' }}>
                   <button
+                    type="button"
+                    onClick={() => setEditorModeTab('table')}
+                    className={`px-3 py-1 rounded text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                      editorModeTab === 'table'
+                        ? 'bg-stone-900 text-white shadow-xs'
+                        : 'text-stone-600 hover:text-stone-900'
+                    }`}
+                  >
+                    <TableIcon className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>{t('knowledgeModalTabTable')}</span>
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => setEditorModeTab('edit')}
-                    className={`px-3 py-1 rounded text-xs font-bold transition-all cursor-pointer ${
+                    className={`px-3 py-1 rounded text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
                       editorModeTab === 'edit'
                         ? 'bg-stone-900 text-white shadow-xs'
                         : 'text-stone-600 hover:text-stone-900'
                     }`}
                   >
-                    {t('knowledgeModalTabEdit')}
+                    <FileCode className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>{t('knowledgeModalTabEdit')}</span>
                   </button>
                   <button
+                    type="button"
                     onClick={() => setEditorModeTab('preview')}
-                    className={`px-3 py-1 rounded text-xs font-bold transition-all cursor-pointer ${
+                    className={`px-3 py-1 rounded text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
                       editorModeTab === 'preview'
                         ? 'bg-stone-900 text-white shadow-xs'
                         : 'text-stone-600 hover:text-stone-900'
                     }`}
                   >
-                    {t('knowledgeModalTabPreview')}
+                    <Eye className="w-3.5 h-3.5 text-amber-400" />
+                    <span>{t('knowledgeModalTabPreview')}</span>
                   </button>
                 </div>
 
+                {/* Maximize Toggle */}
                 <button
-                  onClick={() => setEditingSourceFile(null)}
-                  className="p-1 rounded-lg hover:bg-stone-100 text-stone-500 cursor-pointer"
+                  type="button"
+                  onClick={() => setIsSourceModalMaximized(!isSourceModalMaximized)}
+                  title={isSourceModalMaximized ? (isEN ? 'Restore size' : 'Thu nhỏ') : (isEN ? 'Maximize' : 'Phóng to toàn màn hình')}
+                  className="p-1 rounded-lg hover:bg-stone-100 text-stone-500 hover:text-stone-900 cursor-pointer transition-colors"
+                >
+                  {isSourceModalMaximized ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+                </button>
+
+                {/* Close Button */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingSourceFile(null);
+                    setIsSourceModalMaximized(false);
+                  }}
+                  className="p-1 rounded-lg hover:bg-stone-100 text-stone-500 hover:text-stone-900 cursor-pointer transition-colors"
                 >
                   <X className="w-4 h-4" />
                 </button>
               </div>
             </div>
 
-            {/* Editor / Preview Content Area */}
-            <div className="flex-1 min-h-[360px] max-h-[55vh] overflow-y-auto custom-scrollbar border rounded-xl p-3 bg-stone-50" style={{ borderColor: '#E9E5DC' }}>
-              {editorModeTab === 'edit' ? (
+            {/* Editor / Table / Preview Content Area */}
+            <div className="flex-1 min-h-[380px] overflow-hidden flex flex-col border rounded-xl p-3 bg-stone-50" style={{ borderColor: '#E9E5DC' }}>
+              {editorModeTab === 'table' ? (
+                <KnowledgeTableEditor
+                  markdown={sourceMarkdownContent}
+                  onChange={setSourceMarkdownContent}
+                  isEN={isEN}
+                  filename={editingSourceFile.filename}
+                />
+              ) : editorModeTab === 'edit' ? (
                 <textarea
                   value={sourceMarkdownContent}
                   onChange={(e) => setSourceMarkdownContent(e.target.value)}
                   placeholder={t('knowledgeModalPlaceholderMarkdown')}
-                  className="w-full h-full min-h-[340px] font-mono text-xs p-3 bg-white border border-stone-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all resize-y leading-relaxed text-stone-900"
+                  className="w-full h-full min-h-[360px] font-mono text-xs p-3 bg-white border border-stone-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all resize-y leading-relaxed text-stone-900"
                 />
               ) : (
-                <div className="p-4 bg-white rounded-lg border border-stone-200 min-h-[340px]">
+                <div className="flex-1 overflow-y-auto p-4 bg-white rounded-lg border border-stone-200 min-h-[360px] custom-scrollbar">
                   {renderMarkdownPreview(sourceMarkdownContent)}
                 </div>
               )}
@@ -1769,6 +1997,268 @@ ${isEN ? 'Enter hotel policies, amenities or directions for Robot Concierge here
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
                 <span>{isSavingVoice ? t('knowledgeVoiceBtnSaving') : t('knowledgeVoiceBtnSave')}</span>
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* CUSTOM IN-APP DELETE CONFIRMATION MODAL */}
+      {/* ========================================================================= */}
+      {deleteConfirmTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl max-w-md w-full border border-stone-200 shadow-2xl p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center text-red-600 shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-base font-bold text-stone-900 truncate">
+                  {deleteConfirmTarget.type === 'file'
+                    ? t('knowledgeConfirmDeleteFileTitle')
+                    : t('knowledgeConfirmDeleteScenarioTitle')}
+                </h3>
+                <p className="text-xs text-stone-500 font-mono truncate">
+                  {deleteConfirmTarget.title}
+                </p>
+              </div>
+            </div>
+
+            <p className="text-xs text-stone-600 leading-relaxed">
+              {deleteConfirmTarget.type === 'file'
+                ? t('knowledgeConfirmDeleteFileDesc').replace('{name}', deleteConfirmTarget.filename)
+                : t('knowledgeConfirmDeleteScenarioDesc').replace('{title}', deleteConfirmTarget.title)}
+            </p>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-stone-100">
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => setDeleteConfirmTarget(null)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-stone-600 hover:bg-stone-100 border border-stone-200 transition-colors cursor-pointer"
+              >
+                {t('knowledgeBtnCancelDelete')}
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={handleExecuteConfirmDelete}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-red-600 hover:bg-red-700 transition-colors cursor-pointer flex items-center gap-1.5 shadow-sm"
+              >
+                {isDeleting ? (
+                  <span>{isEN ? 'Deleting...' : 'Đang xóa...'}</span>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>{t('knowledgeBtnConfirmDelete')}</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* MARKDOWN AUTHORING GUIDE FOR ROBOT AI MODAL */}
+      {/* ========================================================================= */}
+      {isShowMdGuide && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] flex flex-col border border-stone-200 shadow-2xl overflow-hidden">
+            {/* Modal Header */}
+            <div className="px-6 py-4 border-b flex items-center justify-between bg-stone-50 shrink-0" style={{ borderColor: '#E9E5DC' }}>
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-700 shrink-0">
+                  <BookOpen className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-stone-900 tracking-wide">
+                    {t('knowledgeModalMdGuideTitle')}
+                  </h3>
+                  <p className="text-[11px] text-stone-500">
+                    {isEN
+                      ? 'Standards, Chunking Architecture & Best Practices for RAG & ChromaDB'
+                      : 'Quy chuẩn cấu trúc phân đoạn, bóc tách RAG và mẫu văn phong chuẩn cho Robot'}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsShowMdGuide(false)}
+                className="p-1.5 rounded-lg text-stone-400 hover:text-stone-700 hover:bg-stone-200 transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 overflow-y-auto space-y-6 text-xs text-stone-700 leading-relaxed">
+              {/* 1. Principle Card */}
+              <div className="p-4 rounded-xl bg-blue-50/60 border border-blue-200 flex items-start gap-3">
+                <Zap className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <h4 className="font-bold text-blue-900 text-xs uppercase tracking-wide">
+                    {isEN ? '1. Why Markdown (.md) is the fastest format for Robot AI (< 5ms)?' : '1. Vì sao AI đọc Markdown (.md) nhanh nhất (< 5ms)?'}
+                  </h4>
+                  <p className="text-blue-800 text-[11px]">
+                    {isEN
+                      ? 'The backend chunker splits text by markdown header regex \\n(?=#+ ). Each section becomes a clean, independent semantic vector chunk in ChromaDB without parsing noise, OCR errors, or text corruption.'
+                      : 'Hệ thống Backend cắt đoạn (chunking) theo biểu thức chính quy \\n(?=#+ ). Mỗi tiêu đề # hoặc ## biến thành một mẩu tri thức độc lập có ngữ cảnh hoàn chỉnh trong ChromaDB, không bị lẫn rác hay vỡ chữ như file PDF/DOCX.'}
+                  </p>
+                </div>
+              </div>
+
+              {/* 2. Five Essential Parts Grid */}
+              <div className="space-y-2.5">
+                <h4 className="font-bold text-stone-900 uppercase tracking-wider text-xs flex items-center gap-2">
+                  <Layers className="w-4 h-4 text-indigo-600" />
+                  <span>{isEN ? '2. The 5 Core Components of an Ideal Knowledge File' : '2. Năm Thành Phần Cốt Lõi Của Một File Tri Thức Chuẩn'}</span>
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="p-3.5 rounded-xl border border-stone-200 bg-stone-50 space-y-1.5">
+                    <div className="font-bold text-stone-900 flex items-center gap-1.5">
+                      <span className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-[10px]">1</span>
+                      <span>YAML Frontmatter (Metadata)</span>
+                    </div>
+                    <p className="text-[11px] text-stone-600">
+                      {isEN
+                        ? 'Placed at line 1. Contains title, category, tags, and language: en/vi to trigger automatic language badges.'
+                        : 'Đặt ở đầu file giữa 2 dòng ---. Chứa title, category, tags, và quan trọng nhất là language: vi hoặc en để hệ thống tự động gán badge.'}
+                    </p>
+                  </div>
+
+                  <div className="p-3.5 rounded-xl border border-stone-200 bg-stone-50 space-y-1.5">
+                    <div className="font-bold text-stone-900 flex items-center gap-1.5">
+                      <span className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-[10px]">2</span>
+                      <span>{isEN ? 'Header Hierarchy (#, ##, ###)' : 'Phân Cấp Tiêu Đề (#, ##, ###)'}</span>
+                    </div>
+                    <p className="text-[11px] text-stone-600">
+                      {isEN
+                        ? '1 H1 per file. Use ## for each facility/section. Aim for 50 - 300 words per section for optimal embedding retrieval.'
+                        : 'Chỉ 1 tiêu đề # H1 cho toàn file. Dùng ## cho từng dịch vụ/khu vực. Mỗi mục nên chứa từ 50 - 300 từ đủ thông tin độc lập.'}
+                    </p>
+                  </div>
+
+                  <div className="p-3.5 rounded-xl border border-stone-200 bg-stone-50 space-y-1.5">
+                    <div className="font-bold text-stone-900 flex items-center gap-1.5">
+                      <span className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-[10px]">3</span>
+                      <span>{isEN ? 'Markdown Tables (| Col 1 | Col 2 |)' : 'Bảng Biểu Markdown (Tables)'}</span>
+                    </div>
+                    <p className="text-[11px] text-stone-600">
+                      {isEN
+                        ? 'Best for numerical data, operating hours, prices, and fast reference. Edit effortlessly with our Excel Table mode.'
+                        : 'Tối ưu tuyệt đối cho AI tra cứu giờ mở cửa, chi phí, tầng và chỉ dẫn. Chỉnh sửa cực nhanh với chế độ Bảng Excel.'}
+                    </p>
+                  </div>
+
+                  <div className="p-3.5 rounded-xl border border-stone-200 bg-stone-50 space-y-1.5">
+                    <div className="font-bold text-stone-900 flex items-center gap-1.5">
+                      <span className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-[10px]">4</span>
+                      <span>{isEN ? 'Bilingual Suffixes (_vi.md & _en.md)' : 'Đuôi File Song Ngữ (_vi.md & _en.md)'}</span>
+                    </div>
+                    <p className="text-[11px] text-stone-600">
+                      {isEN
+                        ? 'Name files with _vi.md and _en.md to enable instant 1-click bilingual switching in the editor modal.'
+                        : 'Đặt tên có đuôi _vi.md và _en.md để hệ thống tự động ghép cặp song ngữ và kích hoạt nút chuyển đổi nhanh trong Editor.'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* 3. Starter Template Code Block */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-bold text-stone-900 uppercase tracking-wider text-xs flex items-center gap-2">
+                    <FileCode className="w-4 h-4 text-emerald-600" />
+                    <span>{isEN ? '3. Standard Starter Markdown Template' : '3. Mẫu Khung Template Chuẩn Để Sao Chép'}</span>
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={handleCopyStarterTemplate}
+                    className="px-3 py-1 rounded-lg border text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 shadow-2xs"
+                  >
+                    {isTemplateCopied ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>{t('knowledgeTemplateCopied')}</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>{t('knowledgeBtnCopyTemplate')}</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+                <pre className="p-4 rounded-xl bg-stone-900 text-stone-200 font-mono text-[11px] overflow-x-auto leading-relaxed border border-stone-800">
+{`---
+title: Cẩm Nang Dịch Vụ & Tiện Nghi Khách Sạn
+category: hotel_facilities
+hotel: Aurora Grand Hotel
+language: vi
+tags: [gym, spa, ho_boi, nha_hang, bai_xe]
+---
+
+# CẨM NANG DỊCH VỤ & TIỆN NGHI KHÁCH SẠN
+
+Tài liệu cung cấp thông tin tra cứu cho Robot Concierge và khách lưu trú.
+
+---
+
+## 1. HỒ BƠI VÔ CỰC (INFINITY POOL) — TẦNG 5
+
+### Vị trí và Giờ hoạt động
+- **Vị trí:** Sân thượng ngoài trời Tầng 5.
+- **Giờ mở cửa:** Phục vụ hàng ngày từ **06:00 đến 22:00**.
+- **Chi phí:** Hoàn toàn **MIỄN PHÍ** cho khách lưu trú.
+
+### Các tiện ích miễn phí kèm theo
+- Nước uống detox thảo mộc ướp lạnh tự do.
+- Khăn tắm lớn và áo phao bơi đa kích cỡ.
+
+---
+
+## 2. BẢNG TRA CỨU TIỆN ÍCH TỔNG HỢP
+
+| Tên Dịch Vụ | Vị Trí | Giờ Phục Vụ | Chi Phí |
+|---|---|---|---|
+| Hồ Bơi Vô Cực | Tầng 5 | 06:00 - 22:00 | Miễn phí |
+| Phòng Tập Gym | Tầng 5 | Mở cửa 24/7 | Miễn phí |
+| Nhà Hàng Buffet | Tầng 2 | 06:30 - 22:00 | Đã gồm trong phòng / 350.000đ |
+
+---
+
+## 3. KỊCH BẢN ĐỐI THOẠI HỎI ĐÁP MẪU CHO ROBOT
+
+1. **Khách hỏi:** "Hồ bơi khách sạn ở đâu và có nước uống không?"
+   - **Robot trả lời:** "Dạ hồ bơi vô cực nằm tại Tầng 5, mở cửa từ 6 giờ sáng đến 22 giờ tối. Khách sạn có chuẩn bị sẵn nước uống detox thảo mộc và khăn tắm miễn phí cho quý khách ạ!"
+`}
+                </pre>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-6 py-3 border-t bg-stone-50 flex items-center justify-between shrink-0" style={{ borderColor: '#E9E5DC' }}>
+              <div className="text-[11px] text-stone-500 font-mono">
+                {isEN ? 'Saved in backend/knowledge_vault/' : 'Tài liệu được lưu tại backend/knowledge_vault/'}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleCopyStarterTemplate}
+                  className="px-3.5 py-1.5 rounded-lg border text-xs font-semibold cursor-pointer hover:bg-stone-100 flex items-center gap-1.5 bg-white text-stone-700 border-stone-300"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  <span>{t('knowledgeBtnCopyTemplate')}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsShowMdGuide(false)}
+                  className="px-4 py-1.5 rounded-lg text-xs font-bold text-white bg-stone-900 hover:bg-stone-800 transition-colors cursor-pointer"
+                >
+                  {isEN ? 'Close Guide' : 'Đóng Hướng Dẫn'}
+                </button>
+              </div>
             </div>
           </div>
         </div>

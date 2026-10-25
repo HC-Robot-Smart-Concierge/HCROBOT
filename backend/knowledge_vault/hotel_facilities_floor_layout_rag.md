@@ -3,205 +3,240 @@ title: Aurora Grand Hotel - Facilities & Floor Layout Knowledge Base
 category: hotel_facilities
 hotel: Aurora Grand Hotel
 language: en
-tags: [facilities, floor_plan, navigation, pool, gym, spa, rooms, restaurant, parking, wifi]
+tags: [facilities, floor_plan, navigation, pool, gym, spa, rooms, restaurant, parking, wifi, front_desk, elevator]
 ---
 
 # Aurora Grand Hotel — Facilities & Floor Layout Knowledge Base
 
-> **Purpose:** Authoritative reference document for the AI Concierge Robot and RAG knowledge retrieval system.
+> **Purpose:** Authoritative reference document for the AI Concierge Robot (Rora) and RAG (Retrieval-Augmented Generation) knowledge system.
 > **Property:** Aurora Grand Hotel (8-level luxury boutique property).
-> **Primary Navigation Hub:** Ground Floor Lobby, moving via **Elevator A** (located at the upper-right circulation hub).
+> **Primary Navigation Hub:** Ground Floor Lobby — vertical transit via **Elevator A** (located at the upper-right corner of the lobby).
 
 ---
 
-## 1. Property Overview
+## 1. Property Overview & Floor Breakdown
 
 Aurora Grand Hotel is structured into 8 functional levels:
-- **Basement 2 (B2):** Car Parking Lot (24/7, passenger cars).
-- **Basement 1 (B1):** Bike & Motorbike Parking Lot (24/7).
-- **Ground Floor (G):** Main Lobby, Reception & Front Desk, Restrooms, Staff Office.
-- **2nd Floor:** Culinary Hub — Buffet Restaurant, Pickup Area, Kitchen, Food Prep, and Storage.
-- **3rd Floor:** Standard Guest Rooms (Rooms 301 to 309).
-- **4th Floor:** Standard & Deluxe Guest Rooms (Rooms 401 to 409).
-- **5th Floor:** Wellness & Recreation — Infinity Pool, Locker Room, Thao Moc Spa, Fitness & Gym Center.
-- **6th Floor:** Rooftop Entertainment — Rooftop Coffee, Sky Lounge Bar, Gift Shop, VIP Karaoke.
+- **Basement 2 (B2):** Automobile Car Parking (Open 24/7, security guards, CCTV, and EV chargers).
+- **Basement 1 (B1):** Motorbike, Scooter & Bicycle Parking (Open 24/7).
+- **Ground Floor (G):** Main Lobby, Reception & Front Desk, Restrooms, Staff Only Office.
+- **2nd Floor:** Culinary & F&B Hub — Buffet Restaurant & Pickup Area, Commercial Kitchen, Food Preparation Area, Dry & Cold Storage.
+- **3rd Floor:** Standard Guest Rooms (9 rooms: Room 301 to Room 309).
+- **4th Floor:** Deluxe Guest Rooms (9 rooms: Room 401 to Room 409).
+- **5th Floor:** Wellness & Recreation — Infinity Pool, Locker Room & Showers, Thao Moc Herbal Spa & Massage, 24/7 Fitness & Gym Center.
+- **6th Floor:** Rooftop Entertainment — Rooftop Coffee with City View, Sky Lounge Bar, Aurora Gift Shop, VIP Karaoke Rooms.
 
-Vertical circulation across all floors is serviced by **Elevator A** and the main staircase grouped at the upper-right corner of each floor.
+All floors are directly connected via **Elevator A** and the main staircase positioned at the upper-right transit hub.
 
 ---
 
-## 2. Ground Floor — Lobby & Reception
+## 2. Ground Floor (G) — Main Lobby & Reception
 
 ### Identified Spaces & Operational Details
-- **Main Lobby:** Arrival point, seating lounge, and the home station ("You are here") for the Concierge Robot.
-- **Front Desk / Reception:** Located on the lower-right side of the floor plan.
-  - **Operating Hours:** 24/7 continuous operation.
-  - **Check-in Time:** From 14:00 (2:00 PM). Early check-in subject to room availability.
-  - **Check-out Time:** Until 12:00 PM (Noon). Late check-out upon prior request with Front Desk.
-- **Wi-Fi Information:**
+- **Main Lobby:** Arrival lounge, seating area, and home docking station for the Concierge Robot ("You are here").
+- **Front Desk / Reception:** Located on the right-hand side of the main entrance.
+  - **Operating Hours:** Open 24/7 continuously day and night.
+  - **Check-in Time:** From 14:00 (2:00 PM). Early check-in is supported subject to room availability.
+  - **Check-out Time:** Until 12:00 PM (Noon). Late check-out requests should be arranged in advance with the Front Desk.
+- **Wi-Fi Network Information:**
   - **Network Name (SSID):** `Aurora_Guest_5G` or `Aurora_Guest`.
-  - **Password:** `aurora2026`.
-  - **Coverage & Pricing:** 100% complimentary high-speed internet available in all rooms and public spaces.
-- **Restrooms:** Male and female restrooms situated along the upper-right wall adjacent to Elevator A.
-- **Elevator A & Staircase:** Positioned at the upper-right corner; primary vertical transit point to all other floors.
-- **Staff Only Area:** Restricted operational office next to the Front Desk. Guests must never be directed into this zone.
+  - **Access Password:** `aurora2026`.
+  - **Policy:** Complimentary high-speed 100Mbps coverage across all guest rooms, lobby, and public facility floors.
+- **Ground Floor Restrooms:** Male and female restrooms located at the upper-right corner next to Elevator A.
+- **Staff Only Area:** Restricted employee back-office situated beside the Front Desk. Guests must never be directed into this area.
 
-### Guest-Assistant Guidance
-- **Check-in / Check-out inquiries:** Direct the guest to the Front Desk on the Ground Floor right side.
-- **Restroom directions:** Inform guests that restrooms are located on the Ground Floor near Elevator A on the upper-right side.
-- **Wi-Fi inquiries:** Provide network name `Aurora_Guest_5G` and password `aurora2026`.
-- **Security rule:** Do not grant or direct access to the "Staff Only" back office.
+### Robot Concierge Guidance
+- When guests inquire about **check-in/check-out, registration, or luggage storage**: Direct guests to the **Front Desk on the right side of the Ground Floor Lobby**.
+- When guests inquire about **restrooms on the ground floor**: Direct guests toward the **Elevator A transit hub at the upper-right corner**.
+- When guests inquire about **Wi-Fi**: Provide network name `Aurora_Guest_5G` and password `aurora2026`.
+- Direct access to the "Staff Only" back office is strictly prohibited.
 
 ---
 
-## 3. Basement 1 — Bike & Motorbike Parking Lot
+## 3. Basement 1 (B1) — Motorbike & Bike Parking
 
 ### Identified Spaces & Operational Details
-- **Bike Parking:** Designated bays for motorbikes, electric scooters, and bicycles across the floor.
-- **Operating Hours:** 24/7 open access for in-house guests and visitors.
-- **Fees:** Complimentary for all staying hotel guests; nominal parking ticket applies for outside visitors.
-- **Transit:** Connected directly to upper levels via Elevator A and stairs at the upper-right corner.
+- **Motorbike & Bicycle Parking:** Dedicated parking bays for motorcycles, electric scooters, and bicycles for guests and employees.
+- **Operating Hours:** Open 24/7.
+- **Pricing:** 100% complimentary for registered staying hotel guests; standard parking rates apply to outside visitors.
+- **Navigation:** Take Elevator A down to **Basement 1 (B1)**.
 
-### Guest-Assistant Guidance
-- Direct guests asking for motorcycle or bicycle parking to **Basement 1 (B1)** via Elevator A.
+### Robot Concierge Guidance
+- Direct guests inquiring about motorcycle, scooter, or bicycle parking to **Basement 1 (B1)** via Elevator A.
 
 ---
 
-## 4. Basement 2 — Car Parking Lot
+## 4. Basement 2 (B2) — Automobile Car Parking Lot
 
 ### Identified Spaces & Operational Details
-- **Car Parking Bays (P):** Secure indoor parking bays accommodating sedans, SUVs, and standard passenger vehicles.
-- **Operating Hours:** 24/7 security-monitored parking.
-- **Fees:** Free of charge for registered hotel guests. EV charging stations available upon request at Front Desk.
-- **Transit:** Accessible via Elevator A at the upper-right corner.
+- **Automobile Car Parking Bays (P):** Indoor parking bays accommodating sedans, SUVs, and passenger vehicles.
+- **Operating Hours:** Open 24/7 with round-the-clock CCTV surveillance and security staff.
+- **Pricing:** Complimentary parking for registered staying guests. Electric vehicle (EV) charging stations are available upon request at the Front Desk.
+- **Navigation:** Take Elevator A down to **Basement 2 (B2)**.
 
-### Guest-Assistant Guidance
-- Direct vehicle drivers and guests needing automobile parking to **Basement 2 (B2)** via Elevator A.
+### Robot Concierge Guidance
+- Direct drivers and guests inquiring about car parking or EV charging to **Basement 2 (B2)** via Elevator A.
 
 ---
 
-## 5. 2nd Floor — Culinary & Food Service Hub
+## 5. 2nd Floor — Culinary & Food Service Hub (Restaurant & Pickup Area)
 
 ### Identified Spaces & Operational Details
-- **Restaurant & Pickup Area:** Positioned along the upper and central area of the 2nd Floor.
-  - **Breakfast Buffet:** 06:30 - 10:00 daily (Asian and Western fusion breakfast).
-  - **Lunch & Dinner:** 11:30 - 22:00 daily (A la carte, set menus, and room-service pickup).
-  - **Pricing:** Complimentary if included in room reservation; walk-in or room rate add-on is 350,000 VND per person.
-- **Kitchen & Food Preparation Area:** Commercial culinary kitchen and cold preparation zones (left-central area).
-- **Warehouse:** Dry storage and cold pantry area (right-hand side below Elevator A).
-- **Restrooms:** Restrooms located on the lower-right perimeter.
-- **Elevator A & Stairs:** Upper-right entrance into the 2nd-floor reception foyer.
+- **Buffet Restaurant & Pickup Area:**
+  - **Breakfast Buffet:** Served from 06:30 to 10:00 AM daily (Asian and Western fusion buffet).
+  - **Lunch & Dinner:** A la carte dining and in-room dining pickup available from 11:30 AM to 22:00 (10:00 PM).
+  - **Pricing:** Complimentary if included in the room package; walk-in or add-on rate is 350,000 VND per person.
+- **Commercial Kitchen, Food Preparation Area & Storage:** Internal culinary preparation facilities. Strictly restricted to culinary staff; guests are not permitted.
+- **2nd Floor Restrooms:** Located at the lower-right corner of the corridor.
+- **Navigation:** From the Ground Floor Lobby, take Elevator A up to the **2nd Floor**, walk straight along the corridor into the main restaurant foyer.
 
-### Guest-Assistant Guidance
-- **Dining / Breakfast inquiries:** Direct guests to the Restaurant & Pickup Area on the **2nd Floor** via Elevator A.
-- **Restricted back-of-house areas:** Kitchen, Preparation Area, and Warehouse are strictly staff-only. Guests are received only at the Restaurant dining area and Pickup counter.
+### Robot Concierge Guidance
+- Direct guests inquiring about dining, breakfast, or room service food pickup to the **2nd Floor** via Elevator A.
 
 ---
 
-## 6. 3rd Floor — Standard Guest Rooms (301 – 309)
+## 6. 3rd Floor — Standard Guest Rooms (Rooms 301 to 309)
 
 ### Room Configuration
-- **Upper Hallway (Right to Left):** Rooms **301, 302, 303, 304**.
-- **Lower Hallway (Left to Right):** Rooms **305, 306, 307, 308, 309**.
+- **Upper Corridor (from right to left):** Rooms **301, 302, 303, 304**.
+- **Lower Corridor (from left to right):** Rooms **305, 306, 307, 308, 309**.
 - **Total Rooms:** 9 standard guest rooms.
-- **Vertical Access:** Elevator A and stairs located at the upper-right corner.
+- **Navigation:** Take Elevator A up to the **3rd Floor**, step out into the central corridor and follow the room number signs mounted on both walls.
 
-### Guest-Assistant Guidance
-- Direct guests staying in rooms 301 through 309 to take **Elevator A to the 3rd Floor**, then follow the hallway direction boards.
-- Keep directions clear and concise without adding unconfirmed room interior details.
+### Robot Concierge Guidance
+- Direct guests holding keycards for rooms 301 through 309 to take Elevator A to the **3rd Floor**.
 
 ---
 
-## 7. 4th Floor — Standard & Deluxe Guest Rooms (401 – 409)
+## 7. 4th Floor — Deluxe Guest Rooms (Rooms 401 to 409)
 
 ### Room Configuration
-- **Upper Hallway (Right to Left):** Rooms **401, 402, 403, 404**.
-- **Lower Hallway (Left to Right):** Rooms **405, 406, 407, 408, 409**.
+- **Upper Corridor (from right to left):** Rooms **401, 402, 403, 404**.
+- **Lower Corridor (from left to right):** Rooms **405, 406, 407, 408, 409**.
 - **Total Rooms:** 9 deluxe guest rooms.
-- **Vertical Access:** Elevator A and stairs located at the upper-right corner.
+- **Navigation:** Take Elevator A up to the **4th Floor**, step out into the central corridor and follow the directional signage to the room door.
 
-### Guest-Assistant Guidance
-- Direct guests staying in rooms 401 through 409 to take **Elevator A to the 4th Floor**, then follow the hallway signs (Rooms 401-404 along the right-hand corridor; Rooms 405-409 along the left-hand corridor).
-
----
-
-## 8. 5th Floor — Wellness & Recreation Amenities
-
-### Identified Spaces & Operational Details
-- **Infinity Pool (Hồ Bơi Vô Cực):**
-  - **Location:** Upper-left terrace with panoramic skyline views.
-  - **Operating Hours:** 06:00 - 22:00 daily.
-  - **Fees:** Free of charge for all registered hotel guests.
-  - **Amenities:** Complimentary bath towels, sun loungers, and bottled water provided at the poolside counter.
-- **Locker Room (Phòng Thay Đồ):**
-  - **Location:** Left-middle side directly below the pool area.
-  - **Operating Hours:** 06:00 - 22:00 daily.
-  - **Amenities:** Private changing cabins, secure electronic lockers, and fresh shower facilities.
-- **Thao Moc Spa & Massage:**
-  - **Location:** Upper-middle suite area.
-  - **Operating Hours:** 09:00 - 22:00 daily.
-  - **Services:** Himalayan salt-rock sauna, hot stone massage, herbal aromatherapy, skin wellness treatments.
-  - **Pricing:** Packages starting from 500,000 VND per session. 15% discount applies for in-house hotel guests.
-- **Fitness & Gym Center (Phòng Tập Gym):**
-  - **Location:** Right-middle and lower area.
-  - **Operating Hours:** 24/7 continuous access for in-house guests.
-  - **Equipment:** Technogym treadmills, stationary bicycles, multi-cable trainers, free dumbbell weights. Complimentary access for hotel guests.
-- **Elevator A & Stairs:** Grouped at the upper-right corner.
-
-### Guest-Assistant Guidance
-- **Pool or Gym inquiries:** State that both the Infinity Pool and Gym are on the **5th Floor**.
-  - Pool is open 06:00 - 22:00 with free towels.
-  - Gym is open 24/7.
-- **Spa inquiries:** Thao Moc Spa is on the **5th Floor**, open 09:00 - 22:00 with special in-house discounts.
-- **Navigation:** Take Elevator A to the 5th Floor. Turn left through the glass doors for the Pool and Locker Room; turn left 15m for the Spa; walk straight ahead for the Gym.
+### Robot Concierge Guidance
+- Direct guests holding keycards for rooms 401 through 409 to take Elevator A to the **4th Floor**.
 
 ---
 
-## 9. 6th Floor — Rooftop Entertainment & Social Venues
+## 8. 5th Floor — Wellness, Pool, Spa & Fitness Hub
 
 ### Identified Spaces & Operational Details
-- **Rooftop Coffee & View:**
-  - **Location:** Upper-left open-air deck.
-  - **Operating Hours:** 07:00 - 23:00 daily.
-  - **Offerings:** Premium artisan coffee, fresh juices, teas, and pastries with panoramic city views.
+- **Infinity Swimming Pool:**
+  - **Location:** Occupies the upper and central outdoor terrace of the 5th Floor.
+  - **Operating Hours:** Open daily from **06:00 to 22:00**.
+  - **Pricing:** 100% complimentary for staying hotel guests, including complimentary fresh bath towels.
+- **Locker Room & Showers:**
+  - **Location:** Situated directly adjacent to the pool entrance.
+  - **Features:** Secure electronic lockers, private hot showers, hair dryers, and vanity amenities.
+  - **Operating Hours:** 06:00 to 22:00 daily.
+- **Thao Moc Herbal Spa & Massage:**
+  - **Location:** Left wing of the 5th Floor corridor.
+  - **Operating Hours:** Open daily from **09:00 to 22:00**.
+  - **Pricing:** Treatments starting from 500,000 VND. In-house staying guests receive a special 15% discount.
+- **24/7 Fitness & Gym Center:**
+  - **Location:** Straight ahead from the Elevator A foyer.
+  - **Operating Hours:** Open 24/7 continuous access with room keycard.
+  - **Equipment:** Professional Technogym treadmills, ellipticals, free weights, and multi-functional strength training benches. Free chilled drinking water and workout towels provided.
+
+### Navigation to 5th Floor
+- Take Elevator A from Ground Lobby up to the **5th Floor**.
+- Step out of the elevator: Turn left through the glass doors for the **Infinity Pool and Locker Rooms**; turn left 15 meters for **Thao Moc Spa**; walk straight ahead for the **24/7 Gym Center**.
+
+### Robot Concierge Guidance
+- When guests ask about pool or gym: State both are located on the **5th Floor**, pool open 06:00 - 22:00 and gym open 24/7.
+- When guests ask about spa: State Thao Moc Spa is on the **5th Floor**, open 09:00 - 22:00 with a 15% discount for in-house guests.
+
+---
+
+## 9. 6th Floor — Rooftop Entertainment, Coffee, Bar & Karaoke
+
+### Identified Spaces & Operational Details
+- **Rooftop Coffee with City View:**
+  - **Location:** Upper-left open terrace of the 6th Floor.
+  - **Operating Hours:** Open daily from **07:00 to 23:00**.
+  - **Offerings:** Premium artisan coffee, fresh tropical fruit juices, Vietnamese specialty teas, and pastries with panoramic city skyline views.
 - **Sky Lounge Bar:**
-  - **Location:** Upper-middle indoor and balcony area.
-  - **Operating Hours:** 16:30 - 01:00 AM daily.
-  - **Offerings:** Signature cocktails, craft beers, fine wines, light tapas, and ambient background music.
-- **Gift Shop:**
-  - **Location:** Left-middle/lower area below Rooftop Coffee.
-  - **Operating Hours:** 08:00 - 22:00 daily.
-  - **Offerings:** Local artisanal souvenirs, Vietnamese specialty coffee, silk crafts, and travel travel essentials.
-- **VIP Karaoke:**
-  - **Location:** Lower-right enclosed sound-isolated suites.
-  - **Operating Hours:** 14:00 - 00:00 midnight daily.
-  - **Features:** High-fidelity sound systems, private lounge seating, beverage and snack catering. Reservations can be made at Front Desk or 2nd-floor Restaurant.
-- **Elevator A & Stairs:** Grouped at the upper-right corner.
+  - **Location:** Central rooftop lounge and balcony area.
+  - **Operating Hours:** Open daily from **16:30 to 01:00 AM** past midnight.
+  - **Offerings:** Signature cocktails, craft beers, fine imported wines, tapas snacks, and ambient DJ lounge music.
+- **Aurora Gift Shop:**
+  - **Location:** Left wing of the 6th Floor (below Rooftop Coffee).
+  - **Operating Hours:** Open daily from **08:00 to 22:00**.
+  - **Products:** Artisanal Vietnamese handicrafts, specialty coffee beans, silk scarves, and branded Aurora Grand souvenirs.
+- **VIP Karaoke Rooms:**
+  - **Location:** Lower-right enclosed soundproofed entertainment suites.
+  - **Operating Hours:** Open daily from **14:00 to 00:00 (midnight)**.
+  - **Features:** International-standard high-fidelity audio system, large UHD display screens, private beverage and snack service. Reservations can be made at Front Desk or Restaurant.
 
-### Guest-Assistant Guidance
-- Direct guests inquiring about coffee, cocktails, evening entertainment, gifts, or karaoke to the **6th Floor** via Elevator A.
+### Navigation to 6th Floor
+- Take Elevator A from Ground Lobby up to the **6th Floor**.
+- Step out of the elevator: Turn left along the corridor for **Rooftop Coffee & Sky Lounge Bar**; turn left down the wing for **Aurora Gift Shop**; walk straight to the far right wing for **VIP Karaoke Rooms**.
+
+### Robot Concierge Guidance
+- Direct guests inquiring about coffee, scenic cocktails, rooftop views, souvenirs, or evening entertainment to the **6th Floor** via Elevator A.
 
 ---
 
 ## 10. Quick Lookup Master Table
 
-| Floor | Level Code | Facilities & Amenities | Operating Hours | Pricing / Access | Navigation from Lobby |
-|---|---|---|---|---|---|
-| **Basement 2** | B2 | Car Parking Lot | 24/7 | Free for hotel guests | Elevator A down to B2 |
-| **Basement 1** | B1 | Bike & Motorbike Parking | 24/7 | Free for hotel guests | Elevator A down to B1 |
-| **Ground Floor** | G | Lobby, Front Desk, Restrooms, Staff Office | 24/7 (Desk) | Free access | Right side of entrance lobby |
-| **2nd Floor** | 2 | Buffet Restaurant, Pickup Counter, Kitchen, Restrooms | 06:30 - 22:00 | 350,000 VND / Room Package | Elevator A to Floor 2, walk straight |
-| **3rd Floor** | 3 | Guest Rooms 301 – 309 | 24/7 | Keycard access | Elevator A to Floor 3, follow hallway signs |
-| **4th Floor** | 4 | Deluxe Guest Rooms 401 – 409 | 24/7 | Keycard access | Elevator A to Floor 4, follow hallway signs |
-| **5th Floor** | 5 | Infinity Pool, Locker Room, Thao Moc Spa, Gym 24/7 | 06:00 - 22:00 (Pool/Spa), 24/7 (Gym) | Pool/Gym free, Spa from 500k | Elevator A to Floor 5, turn left |
-| **6th Floor** | 6 | Rooftop Coffee, Sky Lounge Bar, Gift Shop, VIP Karaoke | 07:00 - 01:00 AM | Menu prices / Reservation | Elevator A to Floor 6, follow signs |
+| Floor | Facility / Service Name | Operating Hours | Pricing / Access | Navigation & Directions |
+|---|---|---|---|---|
+| **Basement 2** | Automobile Car Parking Lot | Open 24/7 | Free for staying hotel guests | Take Elevator A down to Basement 2 |
+| **Basement 1** | Motorbike & Bike Parking | Open 24/7 | Free for staying hotel guests | Take Elevator A down to Basement 1 |
+| **Ground Floor** | Main Lobby & Reception Desk | Open 24/7 | Free access | Located on the right side of entrance lobby |
+| **2nd Floor** | Buffet Restaurant & Pickup Area | 06:30 - 22:00 | 350,000 VND / Room Package | Take Elevator A to 2nd Floor, walk straight |
+| **3rd Floor** | Standard Guest Rooms (301-309) | Open 24/7 | Room keycard access | Take Elevator A to 3rd Floor, follow hallway signs |
+| **4th Floor** | Deluxe Guest Rooms (401-409) | Open 24/7 | Room keycard access | Take Elevator A to 4th Floor, follow hallway signs |
+| **5th Floor** | Infinity Swimming Pool | 06:00 - 22:00 | Free (towels included) | Take Elevator A to 5th Floor, turn left through glass doors |
+| **5th Floor** | Locker Room & Showers | 06:00 - 22:00 | Free for pool/gym guests | Located adjacent to the 5th-floor pool terrace |
+| **5th Floor** | Thao Moc Herbal Spa & Massage | 09:00 - 22:00 | From 500,000 VND (15% discount) | Take Elevator A to 5th Floor, turn left 15m |
+| **5th Floor** | Fitness & Gym Center | Open 24/7 | Free for staying hotel guests | Take Elevator A to 5th Floor, walk straight into Gym |
+| **6th Floor** | Rooftop Coffee with City View | 07:00 - 23:00 | By beverage menu | Take Elevator A to 6th Floor, turn left |
+| **6th Floor** | Sky Lounge Bar | 16:30 - 01:00 AM | By drink menu | Take Elevator A to 6th Floor, turn left 10m |
+| **6th Floor** | Aurora Gift Shop | 08:00 - 22:00 | By marked retail prices | Located on the left wing of 6th Floor |
+| **6th Floor** | VIP Karaoke Rooms | 14:00 - 00:00 midnight | Hourly room rate (Reserve) | Take Elevator A to 6th Floor, straight to right wing |
 
 ---
 
-## 11. Essential RAG-Ready Facts for Prompt Answering
+## 11. Frequently Asked Questions (FAQ) & Quick Responses for Robot Rora
 
-1. **Hotel Identity:** Aurora Grand Hotel.
-2. **Wi-Fi:** Network `Aurora_Guest_5G` / `Aurora_Guest`, Password `aurora2026` (Free in all areas).
+### Inquiries regarding Wi-Fi Network:
+- **Guest Questions:** *"What is the hotel Wi-Fi password?", "Can I have the Wi-Fi password?", "What is the Wi-Fi name here?"*
+- **Robot Response:** *"Our hotel Wi-Fi network name is **Aurora_Guest_5G**, and the password is **aurora2026**. High-speed Internet is completely complimentary throughout all guest rooms and public spaces!"*
+
+### Inquiries regarding Check-in / Check-out Times:
+- **Guest Questions:** *"What time is check-in?", "When is check-out time?", "Can I check out late?"*
+- **Robot Response:** *"Standard check-in time is from **14:00 (2:00 PM)** and check-out is before **12:00 PM (Noon)**. If you need early check-in or late check-out support, please feel free to contact our Front Desk at the Ground Floor for assistance!"*
+
+### Inquiries regarding Swimming Pool & Gym:
+- **Guest Questions:** *"Where is the swimming pool?", "What time does the pool close?", "Which floor is the gym on?"*
+- **Robot Response:** *"Both our Infinity Pool and Fitness Gym are located on the **5th Floor**. The swimming pool is open from 06:00 to 22:00 daily with complimentary towels provided, and the Gym is open 24/7 for staying guests. Please take Elevator A up to the 5th Floor!"*
+
+### Inquiries regarding Restaurant & Breakfast:
+- **Guest Questions:** *"Where is breakfast served?", "What time is the breakfast buffet?", "What is on the 2nd floor?"*
+- **Robot Response:** *"Our culinary Restaurant is located on the **2nd Floor**. The breakfast buffet is served from **06:30 to 10:00 AM**, and all-day dining is available until 22:00 (10:00 PM). Please take Elevator A to the 2nd Floor right into the restaurant foyer!"*
+
+### Inquiries regarding Parking:
+- **Guest Questions:** *"Where is the car parking lot?", "Where do I park my motorbike?", "Is parking free?"*
+- **Robot Response:** *"We offer motorbike parking at **Basement 1 (B1)** and automobile car parking at **Basement 2 (B2)**. Both lots are open 24/7 and completely free of charge for staying hotel guests. You can take Elevator A down to B1 or B2!"*
+
+### Inquiries regarding Rooftop Coffee & Sky Bar:
+- **Guest Questions:** *"Does the hotel have a cafe?", "Which floor is the sky bar on?", "What entertainment is on the 6th floor?"*
+- **Robot Response:** *"The **6th Floor** is our premier rooftop entertainment hub, featuring **Rooftop Coffee** open from 07:00 to 23:00 with panoramic city views, **Sky Lounge Bar** open from 16:30 to 01:00 AM, private **VIP Karaoke suites**, and the **Aurora Gift Shop**. Please take Elevator A to the 6th Floor to experience them!"*
+
+### Inquiries regarding Finding Guest Rooms (301-309, 401-409):
+- **Guest Questions:** *"How do I get to room 405?", "Which floor is room 302 on?"*
+- **Robot Response:** *"Rooms 301 through 309 are located on the **3rd Floor**, and rooms 401 through 409 are on the **4th Floor**. Simply take Elevator A up to your floor, and as you step out, follow the corridor directional signs directly to your room door!"*
+
+---
+
+## 12. Essential RAG-Ready Facts for Prompt Answering
+
+1. **Hotel Identity:** Aurora Grand Hotel (8-story luxury boutique hotel).
+2. **Wi-Fi:** Network `Aurora_Guest_5G` / `Aurora_Guest`, Password `aurora2026` (Free 100Mbps).
 3. **Check-in / Check-out:** Check-in 14:00, Check-out 12:00 PM at Ground Floor Front Desk.
 4. **Infinity Pool:** 5th Floor, open 06:00 - 22:00 daily, free for in-house guests, complimentary towels provided.
 5. **Fitness & Gym:** 5th Floor, open 24/7 for hotel guests with Technogym equipment.

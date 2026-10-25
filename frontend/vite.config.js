@@ -1,6 +1,5 @@
 import { defineConfig, createLogger } from 'vite';
 import react from '@vitejs/plugin-react';
-import basicSsl from '@vitejs/plugin-basic-ssl';
 import path from 'path';
 
 const customLogger = createLogger();
@@ -55,7 +54,7 @@ const preventEconnresetPlugin = () => ({
 
 export default defineConfig({
   customLogger,
-  plugins: [react(), basicSsl(), preventEconnresetPlugin()],
+  plugins: [react(), preventEconnresetPlugin()],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),

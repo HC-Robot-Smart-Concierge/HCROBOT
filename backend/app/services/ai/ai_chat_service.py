@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import re
+import time
 from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -181,8 +182,10 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
         "destination_key": None,
         "trigger_video_call": False,
     }
+    t_start = time.perf_counter()
     graph_config = {"configurable": {"thread_id": sid}}
     graph_result = await concierge_graph.ainvoke(initial_state, config=graph_config)
+    t_graph = time.perf_counter()
 
     reply = graph_result.get("response", "")
     detected_lang = graph_result.get("lang_name", "Tiếng Việt")
@@ -193,15 +196,18 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
     session_manager.add_turn(sid, "user", request.prompt, language=lang_code)
     session_manager.add_turn(sid, "assistant", reply, language=lang_code, intent_action=act)
 
-    # Lấy audio_base64 từ TTS Service (EdgeTTS với fallback)
+    # Lấy audio_base64 từ TTS Service (EdgeTTS với fallback sang WebSpeech nếu quá 3.5s)
     try:
         audio_b64, mime_type, _ = await asyncio.wait_for(
             tts_service.synthesize(reply, provider="edge", language=lang_code),
-            timeout=8.0
+            timeout=1.8
         )
     except Exception as e_tts:
         logger.warning(f"[AIChatService] TTS online timeout/error, fallback to frontend WebSpeech: {e_tts}")
         audio_b64, mime_type = None, "audio/mp3"
+    t_tts = time.perf_counter()
+    clean_p = request.prompt.encode('ascii', errors='replace').decode('ascii')
+    print(f"\n[TIMING BENCHMARK] prompt='{clean_p}' | Graph: {t_graph - t_start:.3f}s | TTS: {t_tts - t_graph:.3f}s | Total: {t_tts - t_start:.3f}s\n", flush=True)
 
     # Cập nhật số phòng mới nhất từ kết quả Graph hoặc Session Manager
     updated_room = graph_result.get("room_number") or session_manager.get_room_number(sid)

@@ -21,11 +21,11 @@ class GeminiService:
 
     def __init__(self):
         self.api_key = settings.GEMINI_API_KEY
-        self.model = settings.GEMINI_MODEL or "gemini-2.0-flash"
-        # Danh sach model du phong uu tien model on dinh nhat (gemini-2.0-flash, gemini-1.5-flash)
+        self.model = settings.GEMINI_MODEL or "gemini-2.5-flash"
+        # Danh sach model du phong uu tien model on dinh nhat (gemini-2.5-flash, gemini-1.5-flash)
         self.fallback_models = [
             self.model,
-            "gemini-2.0-flash",
+            "gemini-2.5-flash",
             "gemini-1.5-flash",
             "gemini-flash-latest",
         ]
@@ -218,6 +218,14 @@ class GeminiService:
             lang_name = language
             lang_code = "en-US" if language.lower() in ["english", "en"] else "vi-VN"
 
+        # Tự động truy vấn tri thức RAG từ ChromaDB nếu chưa có sẵn
+        if rag_context is None:
+            try:
+                from app.services.rag.chroma import query_rag_context
+                rag_context = await query_rag_context(prompt)
+            except Exception:
+                rag_context = ""
+
         system_prompt = self._build_system_prompt(
             lang_code=lang_code,
             emotion=emotion,
@@ -283,6 +291,14 @@ class GeminiService:
             lang_name = language
             lang_code = "en-US" if language.lower() in ["english", "en"] else "vi-VN"
 
+        # Tự động truy vấn tri thức RAG từ ChromaDB nếu chưa có sẵn
+        if rag_context is None:
+            try:
+                from app.services.rag.chroma import query_rag_context
+                rag_context = await query_rag_context(prompt)
+            except Exception:
+                rag_context = ""
+
         system_prompt = self._build_system_prompt(
             lang_code=lang_code,
             emotion=emotion,
@@ -344,24 +360,14 @@ class GeminiService:
         from app.services.ai.session_manager import extract_room_number
         extracted_room_regex = extract_room_number(user_speech, is_answering_room=True)
 
+        # Fast-Path Keyword Check từ Centralized Constants (< 1ms)
+        from app.services.ai.constants import SERVICE_KEYWORDS
         lower_speech = user_speech.lower()
         fast_action = None
-        if any(k in lower_speech for k in ["khăn", "khan", "tắm", "tam", "dọn phòng", "don phong", "gối", "goi", "chăn", "chan", "nệm", "nem", "towel", "clean"]):
-            fast_action = "housekeeping"
-        elif any(k in lower_speech for k in ["cơm", "com", "nước", "nuoc", "ăn", "an", "uống", "uong", "đồ ăn", "do an", "trà", "tra", "cà phê", "ca phe", "pizza", "phở", "pho", "bánh", "banh", "food", "drink"]):
-            fast_action = "room_service"
-        elif any(k in lower_speech for k in ["hành lý", "hanh ly", "vali", "túi", "tui", "chuyển phòng", "chuyen phong", "mang đồ", "mang do", "luggage", "bag"]):
-            fast_action = "bellman"
-        elif any(k in lower_speech for k in ["hỏng", "hong", "sửa", "sua", "điều hòa", "dieu hoa", "bóng đèn", "bong den", "nước rò", "nuoc ro", "máy lạnh", "may lanh", "tủ lạnh", "tu lanh", "fix", "repair"]):
-            fast_action = "maintenance"
-        elif any(k in lower_speech for k in ["đặt bàn", "dat ban", "đặt món", "dat mon", "bàn ăn", "ban an", "nhà hàng", "nha hang", "table", "restaurant"]):
-            fast_action = "restaurant"
-        elif any(k in lower_speech for k in ["taxi", "đặt xe", "dat xe", "gọi xe", "goi xe", "sân bay", "san bay", "cab", "ride"]):
-            fast_action = "taxi"
-        elif any(k in lower_speech for k in ["concierge", "gặp người", "gap nguoi", "nhân viên hỗ trợ", "live call", "video call", "tổng đài", "tong dai", "trợ giúp trực tiếp"]):
-            fast_action = "concierge"
-        elif any(k in lower_speech for k in ["lễ tân", "le tan", "check out", "checkout", "check in", "checkin", "đổi phòng", "doi phong", "trả phòng", "tra phong", "front desk", "reception"]):
-            fast_action = "reception"
+        for act, kws in SERVICE_KEYWORDS.items():
+            if any(k in lower_speech for k in kws):
+                fast_action = act
+                break
 
         if fast_action:
             clean_items = user_speech
@@ -410,9 +416,13 @@ class GeminiService:
             except Exception as e:
                 logger.warning(f"[GeminiService Intent] Error with model '{model}': {e}")
 
-        # Fallback Heuristic
+        # Fallback Heuristic từ Centralized Constants
         fallback_action = "unknown"
-        if extracted_room_regex:
+        for act, kws in SERVICE_KEYWORDS.items():
+            if any(k in lower_speech for k in kws):
+                fallback_action = act
+                break
+        if fallback_action == "unknown" and extracted_room_regex:
             fallback_action = "provide_room_number"
 
         return {

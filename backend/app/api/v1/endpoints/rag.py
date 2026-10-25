@@ -39,10 +39,9 @@ def get_rag_stats():
                     cat = meta.get("category", "Chung")
                     categories[cat] = categories.get(cat, 0) + 1
 
-        # Đếm số file nguồn
-        vault_files = glob.glob(os.path.join(settings.OBSIDIAN_VAULT_DIR, "*.*"))
-        upload_files = glob.glob("static/uploads/*.*")
-        total_sources = len(vault_files) + len(upload_files)
+        # Đếm số file nguồn (Chỉ quét các file .md trong Obsidian Vault)
+        vault_files = glob.glob(os.path.join(settings.OBSIDIAN_VAULT_DIR, "*.md"))
+        total_sources = len(vault_files)
 
         return RAGStatsResponse(
             total_documents=total_docs,
@@ -65,60 +64,55 @@ def get_rag_sources():
     """
     try:
         sources = []
-        # Quét Obsidian Vault
+        # Quét Obsidian Vault (Chỉ hỗ trợ duy nhất định dạng Markdown .md)
         os.makedirs(settings.OBSIDIAN_VAULT_DIR, exist_ok=True)
-        vault_files = glob.glob(os.path.join(settings.OBSIDIAN_VAULT_DIR, "*.*"))
+        vault_files = glob.glob(os.path.join(settings.OBSIDIAN_VAULT_DIR, "*.md"))
         for fpath in vault_files:
             fname = os.path.basename(fpath)
             fsize = os.path.getsize(fpath) / 1024.0
             mtime = datetime.fromtimestamp(os.path.getmtime(fpath)).strftime("%Y-%m-%d %H:%M")
-            ext = os.path.splitext(fname)[1].lower().replace(".", "")
 
             raw_text = None
-            if ext in ["md", "txt"]:
-                try:
-                    with open(fpath, "r", encoding="utf-8", errors="replace") as f:
-                        raw_text = f.read()
-                except Exception:
-                    pass
+            chunks_count = 1
+            detected_lang = "en"
+            try:
+                with open(fpath, "r", encoding="utf-8", errors="replace") as f:
+                    raw_text = f.read()
+                    import re
+                    sections = [c for c in re.split(r"\n(?=#+ )", raw_text) if len(c.strip()) > 30]
+                    chunks_count = max(len(sections), 1)
+
+                    # Tự động nhận diện ngôn ngữ: 
+                    # 1. Hậu tố tên file
+                    if "_vi" in fname.lower():
+                        detected_lang = "vi"
+                    elif "_en" in fname.lower() or "_rag" in fname.lower():
+                        detected_lang = "en"
+                    else:
+                        # 2. Khai báo YAML frontmatter (language: en / vi)
+                        lang_match = re.search(r"^language:\s*([a-zA-Z]+)", raw_text, re.MULTILINE | re.IGNORECASE)
+                        if lang_match:
+                            detected_lang = lang_match.group(1).lower()
+                        else:
+                            # 3. Phân tích ngữ âm tiếng Việt
+                            vi_chars = set("àáảãạăắằẳẵặâấầẩẫậèéẻẽẹêếềểễệìíỉĩịòóỏõọôốồổỗộơớờởỡợùúủũụưứừửữựỳýỷỹỵđ")
+                            if any(c in vi_chars for c in raw_text.lower()[:1500]):
+                                detected_lang = "vi"
+                            else:
+                                detected_lang = "en"
+            except Exception:
+                pass
 
             sources.append(
                 RAGSourceFileItem(
                     filename=fname,
-                    file_type=ext.upper(),
+                    file_type="MD",
                     file_size_kb=round(fsize, 2),
-                    chunks_count=5,
+                    chunks_count=chunks_count,
                     last_modified=mtime,
                     status="Synced",
                     content=raw_text,
-                )
-            )
-
-        # Quét Uploads
-        upload_files = glob.glob("static/uploads/*.*")
-        for fpath in upload_files:
-            fname = os.path.basename(fpath)
-            fsize = os.path.getsize(fpath) / 1024.0
-            mtime = datetime.fromtimestamp(os.path.getmtime(fpath)).strftime("%Y-%m-%d %H:%M")
-            ext = os.path.splitext(fname)[1].lower().replace(".", "")
-
-            raw_text = None
-            if ext in ["md", "txt"]:
-                try:
-                    with open(fpath, "r", encoding="utf-8", errors="replace") as f:
-                        raw_text = f.read()
-                except Exception:
-                    pass
-
-            sources.append(
-                RAGSourceFileItem(
-                    filename=fname,
-                    file_type=ext.upper(),
-                    file_size_kb=round(fsize, 2),
-                    chunks_count=1 if ext in ["jpg", "png", "webp"] else 3,
-                    last_modified=mtime,
-                    status="Active",
-                    content=raw_text,
+                    language=detected_lang,
                 )
             )
 
@@ -162,6 +156,26 @@ def save_source_file(payload: dict):
         )
 
 
+@router.post("/sources/sync-bilingual", response_model=RAGActionResponse, summary="Đồng bộ song ngữ Anh - Việt cho các file Knowledge Vault")
+def sync_bilingual_sources():
+    """
+    Đồng bộ song ngữ giữa file tiếng Việt và file tiếng Anh trong Knowledge Vault,
+    sau đó nạp lại toàn bộ vector embeddings vào ChromaDB.
+    """
+    try:
+        from app.services.rag.obsidian_service import obsidian_service
+        res = obsidian_service.sync_vault_to_chroma()
+        return RAGActionResponse(
+            message=f"Đã đồng bộ song ngữ và nạp {res.get('chunks_upserted', 0)} đoạn tri thức vào Robot memory!",
+            id="bilingual_sync",
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Lỗi khi đồng bộ song ngữ: {str(e)}",
+        )
+
+
 @router.delete("/sources/{filename}", response_model=RAGActionResponse, summary="Xóa file tài liệu nguồn")
 def delete_source_file(filename: str):
     """
@@ -190,78 +204,47 @@ def delete_source_file(filename: str):
     )
 
 
-@router.post("/upload-file", response_model=RAGFileUploadResponse, summary="Tải file PDF, DOCX, Markdown hoặc Ảnh nạp vào Robot")
+@router.post("/upload-file", response_model=RAGFileUploadResponse, summary="Tải file Markdown (.md) nạp vào Kho tri thức Robot")
 def upload_rag_file(
     file: UploadFile = File(...),
     category: Optional[str] = Form("general"),
 ):
     """
-    Xử lý tải file:
-    - Nếu là ảnh: Lưu vào static/uploads/ để Robot chiếu lên màn hình.
-    - Nếu là tài liệu (.md, .txt, .pdf): Bóc tách chữ, cắt đoạn và nạp vào ChromaDB.
+    Xử lý tải file tri thức:
+    - Chỉ chấp nhận duy nhất file Markdown (.md)
+    - Tự động lưu vào knowledge_vault và đồng bộ vào ChromaDB vector store
     """
     try:
-        os.makedirs("static/uploads", exist_ok=True)
-        filename = file.filename or f"doc_{uuid.uuid4().hex[:6]}"
+        filename = file.filename or f"doc_{uuid.uuid4().hex[:6]}.md"
         ext = os.path.splitext(filename)[1].lower()
 
-        dest_path = os.path.join("static/uploads", filename)
+        if ext != ".md":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Hệ thống chỉ hỗ trợ upload định dạng Markdown (.md). Vui lòng chuyển đổi tài liệu sang file .md trước khi tải lên.",
+            )
+
+        os.makedirs(settings.OBSIDIAN_VAULT_DIR, exist_ok=True)
+        dest_path = os.path.join(settings.OBSIDIAN_VAULT_DIR, filename)
         with open(dest_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
-        # 1. Nếu là file ảnh
-        if ext in [".jpg", ".jpeg", ".png", ".webp"]:
-            image_url = f"/static/uploads/{filename}"
-            return RAGFileUploadResponse(
-                message="Tải ảnh thành công! Đã sẵn sàng hiển thị trên màn hình Robot.",
-                filename=filename,
-                chunks_created=0,
-                image_url=image_url,
-            )
-
-        # 2. Nếu là file văn bản / Markdown / PDF
-        text_content = ""
-        if ext in [".md", ".txt"]:
-            with open(dest_path, "r", encoding="utf-8", errors="replace") as f:
-                text_content = f.read()
-            # Đồng thời sao chép vào knowledge_vault để trở thành file nguồn chính thức có thể chỉnh sửa
-            try:
-                os.makedirs(settings.OBSIDIAN_VAULT_DIR, exist_ok=True)
-                vault_path = os.path.join(settings.OBSIDIAN_VAULT_DIR, filename)
-                with open(vault_path, "w", encoding="utf-8") as fv:
-                    fv.write(text_content)
-            except Exception:
-                pass
-        elif ext == ".pdf":
-            try:
-                import pypdf
-                reader = pypdf.PdfReader(dest_path)
-                text_content = "\n".join([page.extract_text() or "" for page in reader.pages])
-            except Exception:
-                text_content = f"Nội dung file PDF {filename}"
-        else:
-            text_content = f"Tài liệu nạp: {filename}"
-
-        # Cắt đoạn đơn giản và nạp vào ChromaDB
-        collection = get_concierge_collection("concierge_kb")
-        chunks = [c.strip() for c in text_content.split("\n\n") if len(c.strip()) > 30]
-        if not chunks:
-            chunks = [text_content.strip() or f"Tài liệu {filename}"]
-
-        ids = [f"up_{uuid.uuid4().hex[:6]}_{i}" for i in range(len(chunks))]
-        metadatas = [{"source": filename, "category": category, "upload_time": datetime.utcnow().isoformat()} for _ in chunks]
-
-        collection.upsert(ids=ids, documents=chunks, metadatas=metadatas)
+        # Đồng bộ trực tiếp vào ChromaDB qua obsidian_service
+        from app.services.rag.obsidian_service import obsidian_service
+        sync_result = obsidian_service.sync_vault_to_chroma()
+        total_chunks = sync_result.get("total_chunks", 0)
 
         return RAGFileUploadResponse(
-            message=f"Đã bóc tách và nạp thành công {len(chunks)} mẩu tri thức vào Robot!",
+            message=f"Đã lưu và đồng bộ thành công file Markdown '{filename}' vào Kho tri thức Robot!",
             filename=filename,
-            chunks_created=len(chunks),
+            chunks_created=total_chunks,
         )
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Lỗi khi nạp file: {str(e)}",
+            detail=f"Lỗi khi nạp file Markdown: {str(e)}",
         )
 
 

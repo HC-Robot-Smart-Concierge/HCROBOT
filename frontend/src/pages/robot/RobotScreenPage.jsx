@@ -23,6 +23,7 @@ import { RobotFacilitiesModal } from '../../components/robot/RobotFacilitiesModa
 import { createConciergeRequest } from '../../services/conciergeApi';
 import { fetchActiveAdvertisements } from '../../services/advertisementApi';
 import { RobotAdPlayer } from '../../components/robot/RobotAdPlayer';
+import { RoomPinModal } from '../../components/robot/RoomPinModal';
 
 /**
  * FloatingCinemaSubtitle
@@ -75,9 +76,8 @@ const FloatingCinemaSubtitle = ({ fullText, isSpeaking, onClose }) => {
       {/* Chỉ báo phát âm thanh mini & số câu */}
       <div className="absolute left-3.5 flex items-center gap-1.5 opacity-60 group-hover:opacity-100 transition-opacity">
         <span
-          className={`w-2 h-2 rounded-full transition-colors ${
-            isSpeaking ? 'bg-stone-300 animate-pulse' : 'bg-stone-500'
-          }`}
+          className={`w-2 h-2 rounded-full transition-colors ${isSpeaking ? 'bg-stone-300 animate-pulse' : 'bg-stone-500'
+            }`}
           title={isSpeaking ? 'Đang phát qua loa' : 'Đã phát xong'}
         />
         {sentences.length > 1 && (
@@ -156,12 +156,25 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   const processingSafetyTimerRef = useRef(null);
   const activeChatRequestIdRef = useRef(0);
   const chatAbortControllerRef = useRef(null);
+  const fillerTimerRef = useRef(null);
 
   // Auto QR Modal 8s Countdown States & Refs for Route Guidance
   const [isAutoQrModalOpen, setIsAutoQrModalOpen] = useState(false);
   const [qrCountdown, setQrCountdown] = useState(null);
   const qrStageTimerRef = useRef(null);
   const qrCountdownIntervalRef = useRef(null);
+
+  // Room PIN Verification Modal States
+  const [isPinModalOpen, setIsPinModalOpen] = useState(false);
+  const isPinModalOpenRef = useRef(false);
+  const [pinModalRoomNumber, setPinModalRoomNumber] = useState('');
+  const [pinModalAction, setPinModalAction] = useState('room_service');
+  const [pinModalItems, setPinModalItems] = useState('');
+
+  // Đồng bộ ref chống stale closure khi speech onEnd callback cố bật lại mic
+  useEffect(() => {
+    isPinModalOpenRef.current = isPinModalOpen;
+  }, [isPinModalOpen]);
 
   // Helper dọn dẹp sạch sẽ tất cả timer của luồng chỉ đường & QR
   const clearRouteGuidanceTimers = useCallback(() => {
@@ -470,9 +483,10 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   const handleManualResetSession = async () => {
     activeChatRequestIdRef.current += 1;
     if (chatAbortControllerRef.current) {
-      try { chatAbortControllerRef.current.abort(); } catch (e) {}
+      try { chatAbortControllerRef.current.abort(); } catch (e) { }
       chatAbortControllerRef.current = null;
     }
+    if (fillerTimerRef.current) clearTimeout(fillerTimerRef.current);
     if (processingSafetyTimerRef.current) clearTimeout(processingSafetyTimerRef.current);
     isProcessingRef.current = false;
     setIsProcessing(false);
@@ -489,9 +503,10 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   const handleStopSpeaking = () => {
     activeChatRequestIdRef.current += 1;
     if (chatAbortControllerRef.current) {
-      try { chatAbortControllerRef.current.abort(); } catch (e) {}
+      try { chatAbortControllerRef.current.abort(); } catch (e) { }
       chatAbortControllerRef.current = null;
     }
+    if (fillerTimerRef.current) clearTimeout(fillerTimerRef.current);
     clearRouteGuidanceTimers();
     if (subtitleDismissTimerRef.current) {
       clearTimeout(subtitleDismissTimerRef.current);
@@ -531,7 +546,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         showLogoutModal ||
         showQuickMenu ||
         showLangMenu ||
-        isAutoQrModalOpen
+        isAutoQrModalOpen ||
+        isPinModalOpen
       );
 
       const isBusy = (
@@ -627,9 +643,19 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     }
   }, [isStandby, transcript, currentState]);
 
-  // Tự động gửi AI khi người dùng ngừng nói 900ms (VAD Silence Detection tự nhiên, chuẩn giao tiếp)
+  // Dừng nhận diện giọng nói nền và giọng đọc AI khi đang mở Video Call hoặc Modal Quẹt Thẻ / PIN
+  useEffect(() => {
+    if (isVideoCallOpen || isPinModalOpen) {
+      stopSpeaking();
+      stopListening();
+    }
+  }, [isVideoCallOpen, isPinModalOpen, stopSpeaking, stopListening]);
+
+  // Tự động gửi AI khi người dùng ngừng nói 650ms (VAD Silence Detection tự nhiên, phản hồi siêu tốc)
   useEffect(() => {
     if (
+      !isVideoCallOpen &&
+      !isPinModalOpen &&
       isListening &&
       !isSpeaking &&
       !isSpeakingRef.current &&
@@ -644,12 +670,12 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         const textToProcess = transcript.trim();
         resetTranscript();
         handleStopTalkAndProcess(textToProcess);
-      }, 900);
+      }, 650);
     }
     return () => {
       if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
     };
-  }, [transcript, currentState, isListening, isSpeaking, isProcessing]);
+  }, [transcript, currentState, isListening, isSpeaking, isProcessing, isVideoCallOpen]);
 
   // Khi người dùng lại gần Camera -> Tắt Standby, chuyển về trạng thái sẵn sàng giao tiếp trực tiếp
   const handleGuestApproached = () => {
@@ -705,13 +731,15 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
   // 1. Khi kích hoạt lắng nghe (Bấm nút hoặc Tự động)
   const handleStartTalk = () => {
+    if (isVideoCallOpen || isPinModalOpen || isPinModalOpenRef.current) return;
     lastInteractionTimeRef.current = Date.now();
     if (isStandby) setIsStandby(false);
     activeChatRequestIdRef.current += 1;
     if (chatAbortControllerRef.current) {
-      try { chatAbortControllerRef.current.abort(); } catch (e) {}
+      try { chatAbortControllerRef.current.abort(); } catch (e) { }
       chatAbortControllerRef.current = null;
     }
+    if (fillerTimerRef.current) clearTimeout(fillerTimerRef.current);
     clearRouteGuidanceTimers();
     if (processingSafetyTimerRef.current) clearTimeout(processingSafetyTimerRef.current);
     if (subtitleDismissTimerRef.current) {
@@ -739,13 +767,13 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   // Tự động bật mic khi mở màn hình robot (khi vừa vào)
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (!isListening && !isSpeaking && !isProcessing && currentState !== 'RT-05' && !isStandby) {
+      if (!isVideoCallOpen && !isPinModalOpen && !isListening && !isSpeaking && !isProcessing && currentState !== 'RT-05' && !isStandby) {
         handleStartTalk();
       }
     }, 700);
 
     return () => clearTimeout(timer);
-  }, []);
+  }, [isVideoCallOpen]);
 
   // 2. Gửi tới Ollama RAG Backend
   const handleStopTalkAndProcess = async (userText) => {
@@ -789,7 +817,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
     // Nếu câu hỏi trước đó đang xử lý dở hoặc bị kẹt luồng, chủ động hủy để phục vụ câu hỏi mới
     if (chatAbortControllerRef.current) {
-      try { chatAbortControllerRef.current.abort(); } catch (e) {}
+      try { chatAbortControllerRef.current.abort(); } catch (e) { }
       chatAbortControllerRef.current = null;
     }
 
@@ -806,14 +834,14 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     isProcessingRef.current = true;
     setIsProcessing(true);
 
-    // Safety timeout: tự động giải phóng sau 12 giây nếu AI hoặc âm thanh bị treo
+    // Safety timeout: tự động giải phóng sau 35 giây nếu AI hoặc mạng quốc tế xử lý câu hỏi khó
     if (processingSafetyTimerRef.current) clearTimeout(processingSafetyTimerRef.current);
     processingSafetyTimerRef.current = setTimeout(() => {
       if (isProcessingRef.current) {
-        console.warn('[SafetyTimeout] Auto-unlocking stuck isProcessing state');
+        console.warn('[SafetyTimeout] Auto-unlocking stuck isProcessing state after 35s');
         activeChatRequestIdRef.current += 1;
         if (chatAbortControllerRef.current) {
-          try { chatAbortControllerRef.current.abort(); } catch (e) {}
+          try { chatAbortControllerRef.current.abort(); } catch (e) { }
           chatAbortControllerRef.current = null;
         }
         clearRouteGuidanceTimers();
@@ -823,7 +851,10 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         setIsStreamSpeaking(false);
         setCurrentState((prev) => (prev === 'RT-04' ? 'RT-02' : prev));
       }
-    }, 12000);
+    }, 35000);
+
+    stopListening();
+    resetTranscript();
 
     // Xử lý đóng bản đồ chỉ đường RT-05 / Modal QR bằng giọng nói khi khách nói "ok tôi đã nhớ" / "cảm ơn"
     if (currentState === 'RT-05' || isAutoQrModalOpen) {
@@ -1038,176 +1069,300 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       }
     }
 
+    // =========================================================================
+    // FALLBACK HTTP REST KHI WEBSOCKET CHƯA KẾT NỐI
+    // =========================================================================
+    // Nhận diện nhanh ngôn ngữ câu hỏi (Bilingual VI/EN)
+    const isEnQuery = (
+      language === 'English' ||
+      /\b(where|what|when|how|who|why|which|is|are|the|room|hotel|breakfast|pool|gym|wifi|can|could|please|help|check|out|in|service)\b/i.test(query)
+    );
+    const fillerPhrase = isEnQuery ? 'Please wait a moment.' : 'Dạ đợi em một tí nhé ạ.';
+    const fillerLang = isEnQuery ? 'en-US' : 'vi-VN';
+
+    let hasReceivedResponse = false;
+    let isPlayingFiller = false;
+    let pendingMainTask = null;
+
+    if (fillerTimerRef.current) clearTimeout(fillerTimerRef.current);
+
+    // Timer 1800ms: Chỉ khi câu hỏi thực sự cần thời gian suy luận lâu (>1.8s)
+    // robot mới cất giọng câu đệm ("Dạ đợi em một tí nhé ạ"), tránh gây cảm giác chậm trễ cho các câu trả lời thông thường
+    fillerTimerRef.current = setTimeout(() => {
+      if (hasReceivedResponse || currentChatId !== activeChatRequestIdRef.current) return;
+      isPlayingFiller = true;
+      setAiResponseText(fillerPhrase);
+      triggerEyeExpression('look_around');
+
+      // Phát giọng đọc câu đệm khi đợi AI phản hồi
+      speak(
+        fillerPhrase,
+        fillerLang,
+        () => {
+          // onEndCallback của câu đệm:
+          isPlayingFiller = false;
+          if (currentChatId !== activeChatRequestIdRef.current) return;
+          // Nếu câu trả lời chính đã về trong lúc đang nói câu đệm:
+          if (pendingMainTask) {
+            const executeTask = pendingMainTask;
+            pendingMainTask = null;
+            executeTask();
+          }
+        },
+        () => {
+          // onStartCallback của câu đệm:
+          if (currentChatId === activeChatRequestIdRef.current) {
+            setAiResponseText(fillerPhrase);
+          }
+        }
+      );
+    }, 1800);
+
     try {
       // FALLBACK: Gửi tới RAG Backend qua HTTP REST khi WebSocket không sẵn sàng
       const chatRes = await sendChatPrompt(query, null, "auto", guestEmotion, sessionId, activeRoomNumber, chatSignal);
 
       // Nếu người dùng đã kích hoạt câu nói mới, ngắt lời hoặc timeout xảy ra -> Hủy bỏ câu cũ
       if (currentChatId !== activeChatRequestIdRef.current || chatRes?.aborted) {
+        if (fillerTimerRef.current) clearTimeout(fillerTimerRef.current);
         return;
       }
 
-      const replyText = chatRes.response || 'Dạ, tôi đã ghi nhận yêu cầu của quý khách.';
-      const detectedLang = chatRes.detected_language || 'Tiếng Việt';
-      const langCode = chatRes.lang_code || (detectedLang === 'English' ? 'en-US' : 'vi-VN');
-      const currentLang = langCode;
-
-      setAiResponseText(replyText);
-      isProcessingRef.current = false;
-      setIsProcessing(false);
-
-      const updatedRoom = chatRes.current_room_number;
-      if (updatedRoom) {
-        setActiveRoomNumber(updatedRoom);
+      hasReceivedResponse = true;
+      if (fillerTimerRef.current) {
+        clearTimeout(fillerTimerRef.current);
+        fillerTimerRef.current = null;
       }
 
-      setLanguage(detectedLang);
+      const executeMainResponse = () => {
+        if (currentChatId !== activeChatRequestIdRef.current) return;
 
-      // Tự động mở video call nếu nhận diện ý định gọi nhân viên
-      if (chatRes.trigger_video_call) {
-        const vSession = chatRes.support_session_id || chatRes.session_id || sessionId;
-        setVideoCallSessionId(vSession);
-        setVideoCallTicketCode(chatRes.ticket_code || 'CCG-CALL');
-        setIsVideoCallOpen(true);
-      }
-
-      // ĐỒNG BỘ BẢN ĐỒ KHI RAG BACKEND PHÁT HIỆN YÊU CẦU CHỈ ĐƯỜNG (destination_key)
-      const navTargetKey = chatRes.destination_key;
-      const isRouteGuidance = Boolean(navTargetKey);
-
-      if (isRouteGuidance) {
-        setNavigationDestinationKey(navTargetKey);
-        setCurrentState('RT-05');
-      }
-
-      // Cử động mắt sinh động theo kịch bản Admin thiết lập hoặc nhận diện từ khóa tự nhiên
-      if (chatRes.eye_expression && chatRes.eye_expression !== 'none') {
-        triggerEyeExpression(chatRes.eye_expression);
-      } else {
-        if (['nhìn lên', 'ngước lên', 'đánh mắt lên', 'trên trần', 'đèn trần', 'tầng trên', 'thời tiết hôm nay', 'bầu trời', 'look up'].some(k => lowerQuery.includes(k))) {
-          triggerEyeExpression('look_up');
-        } else if (['bên trái', 'phía trái', 'liếc trái', 'rẽ trái', 'quầy bên trái', 'look left'].some(k => lowerQuery.includes(k))) {
-          triggerEyeExpression('look_left');
-        } else if (['bên phải', 'phía phải', 'liếc phải', 'rẽ phải', 'quầy bên phải', 'look right'].some(k => lowerQuery.includes(k))) {
-          triggerEyeExpression('look_right');
-        } else if (['nhìn quanh', 'đảo mắt', 'xung quanh', 'ngắm nhìn', 'tham quan', 'khách sạn có gì', 'look around'].some(k => lowerQuery.includes(k))) {
-          triggerEyeExpression('look_around');
+        // 0. AI Backend đã phản hồi -> Giải phóng trạng thái RT-04 (Processing) ngay lập tức
+        isProcessingRef.current = false;
+        setIsProcessing(false);
+        if (processingSafetyTimerRef.current) {
+          clearTimeout(processingSafetyTimerRef.current);
+          processingSafetyTimerRef.current = null;
         }
-      }
 
-      const isFarewell = ['tạm biệt', 'hẹn gặp lại', 'bye', 'goodbye', 'kết thúc', 'xong rồi', 'hết rồi'].some(k => lowerQuery.includes(k));
+        const replyText = chatRes.response || 'Dạ, tôi đã ghi nhận yêu cầu của quý khách.';
+        const detectedLang = chatRes.detected_language || 'Tiếng Việt';
+        const langCode = chatRes.lang_code || (detectedLang === 'English' ? 'en-US' : 'vi-VN');
 
-      // 1. Hủy bỏ timer an toàn 14s cũ vì AI Backend đã phản hồi xong
-      if (processingSafetyTimerRef.current) {
-        clearTimeout(processingSafetyTimerRef.current);
-        processingSafetyTimerRef.current = null;
-      }
-
-      // 2. Thiết lập Safety Timer động theo độ dài câu nói thực tế
-      // Tối thiểu 25 giây hoặc 800ms/từ để ngăn chặn câu dài bị timer cắt cụt giữa chừng
-      const wordsCount = replyText.split(/\s+/).length;
-      const speechSafetyMs = Math.max(wordsCount * 800 + 10000, 25000);
-      processingSafetyTimerRef.current = setTimeout(() => {
-        if (isProcessingRef.current && currentChatId === activeChatRequestIdRef.current) {
-          console.warn('[SafetyTimeout] Auto-unlocking stuck speech state after dynamic speech timeout');
-          stopSpeaking();
-          isProcessingRef.current = false;
-          setIsProcessing(false);
-          setAiResponseText('');
-          setCurrentState((prev) => (prev === 'RT-04' ? 'RT-02' : prev));
+        const updatedRoom = chatRes.current_room_number;
+        if (updatedRoom) {
+          setActiveRoomNumber(updatedRoom);
         }
-      }, speechSafetyMs);
 
-      // 3. Phát giọng đọc duy nhất từ RAG Backend
-      speak(
-        replyText,
-        langCode,
-        () => {
-          lastInteractionTimeRef.current = Date.now();
-          if (processingSafetyTimerRef.current) {
-            clearTimeout(processingSafetyTimerRef.current);
-            processingSafetyTimerRef.current = null;
+        setLanguage(detectedLang);
+
+        // Tự động mở video call nếu nhận diện ý định gọi nhân viên
+        if (chatRes.trigger_video_call) {
+          const canonicalCode = chatRes.ticket_code || chatRes.support_session_id || chatRes.session_id || sessionId;
+          setVideoCallSessionId(canonicalCode);
+          setVideoCallTicketCode(chatRes.ticket_code || canonicalCode);
+          setIsVideoCallOpen(true);
+        }
+
+        // Tự động mở modal xác thực mã PIN phòng nếu yêu cầu từ AI Backend
+        if (chatRes.require_room_pin) {
+          const targetRoom = chatRes.target_room_number || updatedRoom || activeRoomNumber || '';
+          setPinModalRoomNumber(targetRoom);
+          setPinModalAction(chatRes.pending_service_action || 'room_service');
+          setPinModalItems(chatRes.pending_service_items || query);
+          setIsPinModalOpen(true);
+        }
+
+        // ĐỒNG BỘ BẢN ĐỒ KHI RAG BACKEND PHÁT HIỆN YÊU CẦU CHỈ ĐƯỜNG (destination_key)
+        const navTargetKey = chatRes.destination_key;
+        const isRouteGuidance = Boolean(navTargetKey);
+
+        if (isRouteGuidance) {
+          setNavigationDestinationKey(navTargetKey);
+          setCurrentState('RT-05');
+        } else {
+          // Chuyển ngay từ trạng thái suy nghĩ (RT-04) sang trạng thái tương tác / nói (RT-02) để tắt màn hình quay vòng
+          setCurrentState('RT-02');
+        }
+
+        // Cử động mắt sinh động theo kịch bản Admin thiết lập hoặc nhận diện từ khóa tự nhiên
+        if (chatRes.eye_expression && chatRes.eye_expression !== 'none') {
+          triggerEyeExpression(chatRes.eye_expression);
+        } else {
+          if (['nhìn lên', 'ngước lên', 'đánh mắt lên', 'trên trần', 'đèn trần', 'tầng trên', 'thời tiết hôm nay', 'bầu trời', 'look up'].some(k => lowerQuery.includes(k))) {
+            triggerEyeExpression('look_up');
+          } else if (['bên trái', 'phía trái', 'liếc trái', 'rẽ trái', 'quầy bên trái', 'look left'].some(k => lowerQuery.includes(k))) {
+            triggerEyeExpression('look_left');
+          } else if (['bên phải', 'phía phải', 'liếc phải', 'rẽ phải', 'quầy bên phải', 'look right'].some(k => lowerQuery.includes(k))) {
+            triggerEyeExpression('look_right');
+          } else if (['nhìn quanh', 'đảo mắt', 'xung quanh', 'ngắm nhìn', 'tham quan', 'khách sạn có gì', 'look around'].some(k => lowerQuery.includes(k))) {
+            triggerEyeExpression('look_around');
           }
-          isProcessingRef.current = false;
-          setIsProcessing(false);
+        }
 
-          if (isFarewell) {
+        const isFarewell = ['tạm biệt', 'hẹn gặp lại', 'bye', 'goodbye', 'kết thúc', 'xong rồi', 'hết rồi'].some(k => lowerQuery.includes(k));
+
+        // 2. Thiết lập Safety Timer động theo độ dài câu nói thực tế
+        // Tối thiểu 25 giây hoặc 800ms/từ để ngăn chặn câu dài bị timer cắt cụt giữa chừng
+        const wordsCount = replyText.split(/\s+/).length;
+        const speechSafetyMs = Math.max(wordsCount * 800 + 10000, 25000);
+        processingSafetyTimerRef.current = setTimeout(() => {
+          if (isProcessingRef.current && currentChatId === activeChatRequestIdRef.current) {
+            console.warn('[SafetyTimeout] Auto-unlocking stuck speech state after dynamic speech timeout');
+            stopSpeaking();
+            isProcessingRef.current = false;
+            setIsProcessing(false);
             setAiResponseText('');
-            setTimeout(() => {
-              handleOpenFeedback();
-            }, 600);
-          } else if (isRouteGuidance || currentState === 'RT-05') {
-            // Request chỉ đường chính: Giữ nguyên sơ đồ lộ trình
-            clearRouteGuidanceTimers();
-            if (!isPhoneLayout) {
-              routeGuidanceTimerRef.current = setTimeout(() => {
-                // Kết thúc 16s xem lộ trình chính -> Kích hoạt giai đoạn QR Code 15 giây ở cuối
-                setIsAutoQrModalOpen(true);
-                setQrCountdown(15);
-
-                const qrVoicePrompt = (langCode === 'en-US' || detectedLang === 'English')
-                  ? 'You can scan the QR code on the screen to save directions on your mobile phone.'
-                  : 'Quý khách có thể quét mã QR trên màn hình để lưu lại chỉ dẫn đường đi trên điện thoại nhé ạ.';
-
-                speak(
-                  qrVoicePrompt,
-                  (langCode === 'en-US' || detectedLang === 'English') ? 'en-US' : 'vi-VN',
-                  null,
-                  () => {
-                    stopListening();
-                    resetTranscript();
-                    setAiResponseText(qrVoicePrompt);
-                  }
-                );
-
-                // Đếm ngược 15 giây
-                let timeLeft = 15;
-                qrCountdownIntervalRef.current = setInterval(() => {
-                  timeLeft -= 1;
-                  setQrCountdown(timeLeft);
-                  if (timeLeft <= 0) {
-                    if (qrCountdownIntervalRef.current) clearInterval(qrCountdownIntervalRef.current);
-                  }
-                }, 1000);
-
-                // Hết đúng 15 giây -> Tự động đóng QR và đóng luôn bản đồ chỉ đường (resetToIdle)
-                qrStageTimerRef.current = setTimeout(() => {
-                  clearRouteGuidanceTimers();
-                  resetToIdle();
-                }, 15000);
-              }, 16000);
-            } else {
-              // Trên điện thoại di động: Giữ sơ đồ lộ trình 30s để khách xem thoải mái, hoặc bấm nút đóng để về lại robot
-              routeGuidanceTimerRef.current = setTimeout(() => {
-                clearRouteGuidanceTimers();
-                resetToIdle();
-              }, 30000);
-            }
-          } else {
-            // Giữ lại phụ đề câu trả lời cho khách đọc
-            setCurrentState('RT-02');
-            if (subtitleDismissTimerRef.current) clearTimeout(subtitleDismissTimerRef.current);
-            subtitleDismissTimerRef.current = setTimeout(() => {
-              setAiResponseText('');
-            }, 18000);
-
-            if (isAutoListen && !isPhoneLayout) {
-              setTimeout(() => {
-                resetTranscript();
-                handleStartTalk();
-              }, 1500);
-            }
+            setCurrentState((prev) => (prev === 'RT-04' ? 'RT-02' : prev));
           }
-        },
-        () => {
-          stopListening();
-          resetTranscript();
-          setAiResponseText(replyText);
-        },
-        chatRes.audio_base64
-      );
+        }, speechSafetyMs);
+
+        // 3. Phát giọng đọc và đồng bộ hiển thị phụ đề chính xác cùng thời điểm âm thanh phát ra (Zero Desync)
+        stopListening();
+        resetTranscript();
+
+        let hasRenderedText = false;
+        const revealSubtitle = () => {
+          if (!hasRenderedText && currentChatId === activeChatRequestIdRef.current) {
+            hasRenderedText = true;
+            stopListening();
+            resetTranscript();
+            setAiResponseText(replyText);
+          }
+        };
+
+        // Fallback an toàn: nếu sau 700ms âm thanh chưa kịp bắn onplay (ví dụ mạng chậm hoặc audio bị block), hiển thị phụ đề để không trễ
+        const textSafetyTimer = setTimeout(() => {
+          revealSubtitle();
+        }, 700);
+
+        const speechStartTimestamp = Date.now();
+
+        speak(
+          replyText,
+          langCode,
+          () => {
+            clearTimeout(textSafetyTimer);
+            const waitRemaining = 250;
+
+            setTimeout(() => {
+              if (currentChatId !== activeChatRequestIdRef.current) return;
+              lastInteractionTimeRef.current = Date.now();
+              if (processingSafetyTimerRef.current) {
+                clearTimeout(processingSafetyTimerRef.current);
+                processingSafetyTimerRef.current = null;
+              }
+              isProcessingRef.current = false;
+              setIsProcessing(false);
+
+              if (isFarewell) {
+                setAiResponseText('');
+                setTimeout(() => {
+                  handleOpenFeedback();
+                }, 600);
+              } else if (isRouteGuidance || currentState === 'RT-05') {
+                // Request chỉ đường chính: Giữ nguyên 16 giây để khách quan sát sơ đồ lộ trình
+                clearRouteGuidanceTimers();
+                if (!isPhoneLayout) {
+                  routeGuidanceTimerRef.current = setTimeout(() => {
+                    // Kết thúc 16s xem lộ trình chính -> Kích hoạt giai đoạn QR Code 15 giây ở cuối
+                    setIsAutoQrModalOpen(true);
+                    setQrCountdown(15);
+
+                    const qrVoicePrompt = (langCode === 'en-US' || detectedLang === 'English')
+                      ? 'You can scan the QR code on the screen to save directions on your mobile phone.'
+                      : 'Quý khách có thể quét mã QR trên màn hình để lưu lại chỉ dẫn đường đi trên điện thoại nhé ạ.';
+
+                    speak(
+                      qrVoicePrompt,
+                      (langCode === 'en-US' || detectedLang === 'English') ? 'en-US' : 'vi-VN',
+                      null,
+                      () => {
+                        stopListening();
+                        resetTranscript();
+                        setAiResponseText(qrVoicePrompt);
+                      }
+                    );
+
+                    // Đếm ngược 15 giây
+                    let timeLeft = 15;
+                    qrCountdownIntervalRef.current = setInterval(() => {
+                      timeLeft -= 1;
+                      setQrCountdown(timeLeft);
+                      if (timeLeft <= 0) {
+                        if (qrCountdownIntervalRef.current) clearInterval(qrCountdownIntervalRef.current);
+                      }
+                    }, 1000);
+
+                    // Hết đúng 15 giây -> Tự động đóng QR và đóng luôn bản đồ chỉ đường (resetToIdle)
+                    qrStageTimerRef.current = setTimeout(() => {
+                      clearRouteGuidanceTimers();
+                      resetToIdle();
+                    }, 15000);
+                  }, 16000);
+                } else {
+                  // Trên điện thoại di động: Giữ sơ đồ lộ trình 30s để khách xem thoải mái, hoặc bấm nút đóng để về lại robot
+                  routeGuidanceTimerRef.current = setTimeout(() => {
+                    clearRouteGuidanceTimers();
+                    resetToIdle();
+                  }, 30000);
+                }
+
+                // Tự động bật micro lắng nghe ngay trong giao diện bản đồ RT-05 mà không làm mất sơ đồ
+                if (isAutoListen && !isPinModalOpenRef.current) {
+                  setTimeout(() => {
+                    if (isPinModalOpenRef.current) return;
+                    resetTranscript();
+                    startListening(language, {
+                      onFinal: (finalText) => {
+                        if (finalText && finalText.trim().length > 0) {
+                          setIsStandby(false);
+                          lastInteractionTimeRef.current = Date.now();
+                          handleStopTalkAndProcess(finalText.trim());
+                        }
+                      },
+                    });
+                  }, 300);
+                }
+              } else {
+                // Giữ lại phụ đề câu trả lời cho khách đọc
+                setCurrentState('RT-02');
+                if (subtitleDismissTimerRef.current) clearTimeout(subtitleDismissTimerRef.current);
+                subtitleDismissTimerRef.current = setTimeout(() => {
+                  setAiResponseText('');
+                }, 18000);
+
+                if (isAutoListen && !isPhoneLayout) {
+                  setTimeout(() => {
+                    resetTranscript();
+                    handleStartTalk();
+                  }, 1500);
+                }
+              }
+            }, waitRemaining);
+          },
+          () => {
+            // onStartCallback: KHI ÂM THANH THỰC SỰ BẮT ĐẦU PHÁT RA TIẾNG!
+            clearTimeout(textSafetyTimer);
+            revealSubtitle();
+          },
+          chatRes.audio_base64
+        );
+      };
+
+      if (isPlayingFiller) {
+        stopSpeaking();
+        isPlayingFiller = false;
+        pendingMainTask = null;
+      }
+      executeMainResponse();
 
     } catch (error) {
+      if (fillerTimerRef.current) {
+        clearTimeout(fillerTimerRef.current);
+        fillerTimerRef.current = null;
+      }
+      pendingMainTask = null;
       if (currentChatId !== activeChatRequestIdRef.current) {
         return;
       }
@@ -1240,6 +1395,17 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   };
 
 
+
+  // Callback khi khách hàng xác thực mã PIN phòng hoặc thẻ NFC thành công tại Kiosk
+  const handlePinVerifiedSuccess = useCallback((result) => {
+    if (result?.room_number) {
+      setActiveRoomNumber(result.room_number);
+    }
+    const successMsg = result?.message || 'Xác thực phòng thành công! Đơn phục vụ đã được tạo.';
+    setAiResponseText(successMsg);
+    setCurrentState('RT-02');
+    speak(successMsg, language === 'English' ? 'en-US' : 'vi-VN');
+  }, [language, speak]);
 
   const handleProtectedLogoutSubmit = (e) => {
     if (e) e.preventDefault();
@@ -1324,6 +1490,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   }, [handleSecretTrigger]);
 
   const resetToIdle = () => {
+    if (fillerTimerRef.current) clearTimeout(fillerTimerRef.current);
     if (processingSafetyTimerRef.current) clearTimeout(processingSafetyTimerRef.current);
     isProcessingRef.current = false;
     setIsProcessing(false);
@@ -1408,9 +1575,9 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         }}
       />
 
-      {/* Camera AI (Chạy ngầm 100% nhận diện khách/cảm xúc, không hiển thị trên màn hình robot) */}
+      {/* Camera AI (Chạy ngầm 100% nhận diện khách/cảm xúc; tự động nhường camera khi mở Video Call) */}
       <CameraPreview
-        autoStart={!isPhoneLayout}
+        autoStart={!isPhoneLayout && !isVideoCallOpen}
         controlsClassName="robot-camera-control"
         onGuestApproached={handleGuestApproached}
         onGuestLeft={handleGuestLeft}
@@ -1440,6 +1607,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         }}
         onResetSession={handleManualResetSession}
         onResetToIdle={resetToIdle}
+        onPrime={prime}
         onStartTalk={handleStartTalk}
         onSubmitTalk={() => handleStopTalkAndProcess(transcript)}
         onStopSpeaking={handleStopSpeaking}
@@ -1454,7 +1622,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         onOpenFacilities={() => {
           activeChatRequestIdRef.current += 1;
           if (chatAbortControllerRef.current) {
-            try { chatAbortControllerRef.current.abort(); } catch (e) {}
+            try { chatAbortControllerRef.current.abort(); } catch (e) { }
             chatAbortControllerRef.current = null;
           }
           clearRouteGuidanceTimers();
@@ -1465,7 +1633,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         onOpenFoodMenu={() => {
           activeChatRequestIdRef.current += 1;
           if (chatAbortControllerRef.current) {
-            try { chatAbortControllerRef.current.abort(); } catch (e) {}
+            try { chatAbortControllerRef.current.abort(); } catch (e) { }
             chatAbortControllerRef.current = null;
           }
           clearRouteGuidanceTimers();
@@ -1495,11 +1663,14 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
               guest_name: 'Khách tại Sảnh',
               description: 'Khách bấm gọi hỗ trợ trực tiếp từ màn hình Robot Concierge',
             });
-            setVideoCallSessionId(req.id || `SUP-${Date.now()}`);
-            setVideoCallTicketCode(req.ticket_code || 'CCG-CALL');
+            const canonicalCode = req.ticket_code || req.id || `SUP-${Date.now()}`;
+            setVideoCallSessionId(canonicalCode);
+            setVideoCallTicketCode(req.ticket_code || canonicalCode);
             setIsVideoCallOpen(true);
           } catch (err) {
-            setVideoCallSessionId(`SUP-${Date.now()}`);
+            const fallbackCode = `CCG-${Date.now()}`;
+            setVideoCallSessionId(fallbackCode);
+            setVideoCallTicketCode(fallbackCode);
             setIsVideoCallOpen(true);
           }
         }}
@@ -1567,11 +1738,10 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                     setLanguage('Tiếng Việt');
                     setShowLangMenu(false);
                   }}
-                  className={`w-full px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-between transition-all cursor-pointer ${
-                    language === 'Tiếng Việt'
-                      ? 'bg-stone-800 text-stone-100 border border-stone-600'
-                      : 'text-stone-300 hover:bg-stone-800/60 hover:text-stone-100'
-                  }`}
+                  className={`w-full px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-between transition-all cursor-pointer ${language === 'Tiếng Việt'
+                    ? 'bg-stone-800 text-stone-100 border border-stone-600'
+                    : 'text-stone-300 hover:bg-stone-800/60 hover:text-stone-100'
+                    }`}
                 >
                   <span className="flex items-center gap-2">
                     <span className="text-sm">🇻🇳</span>
@@ -1587,11 +1757,10 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                     setLanguage('English');
                     setShowLangMenu(false);
                   }}
-                  className={`w-full px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-between transition-all cursor-pointer ${
-                    language === 'English'
-                      ? 'bg-stone-800 text-stone-100 border border-stone-600'
-                      : 'text-stone-300 hover:bg-stone-800/60 hover:text-stone-100'
-                  }`}
+                  className={`w-full px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-between transition-all cursor-pointer ${language === 'English'
+                    ? 'bg-stone-800 text-stone-100 border border-stone-600'
+                    : 'text-stone-300 hover:bg-stone-800/60 hover:text-stone-100'
+                    }`}
                 >
                   <span className="flex items-center gap-2">
                     <span className="text-sm">🇬🇧</span>
@@ -1701,11 +1870,14 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                         guest_name: 'Khách tại Sảnh',
                         description: 'Khách bấm gọi hỗ trợ trực tiếp từ màn hình Robot Concierge',
                       });
-                      setVideoCallSessionId(req.id || `SUP-${Date.now()}`);
-                      setVideoCallTicketCode(req.ticket_code || 'CCG-CALL');
+                      const canonicalCode = req.ticket_code || req.id || `SUP-${Date.now()}`;
+                      setVideoCallSessionId(canonicalCode);
+                      setVideoCallTicketCode(req.ticket_code || canonicalCode);
                       setIsVideoCallOpen(true);
                     } catch (err) {
-                      setVideoCallSessionId(`SUP-${Date.now()}`);
+                      const fallbackCode = `CCG-${Date.now()}`;
+                      setVideoCallSessionId(fallbackCode);
+                      setVideoCallTicketCode(fallbackCode);
                       setIsVideoCallOpen(true);
                     }
                   }}
@@ -1787,7 +1959,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                 transcript={transcript}
                 isListening={isListening}
                 silenceRemaining={30}
-                onNextStep={() => {}}
+                onNextStep={() => { }}
               />
             </div>
           ) : currentState === 'RT-05' ? (
@@ -2040,9 +2212,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         </main>
 
         {/* 3. Bottom Dev State Switcher (Chỉ là các hình tròn nhỏ màu xám/trung tính đại diện cho State, không chữ) */}
-        <footer className={`absolute bottom-4 left-1/2 -translate-x-1/2 bg-stone-900/80 px-3.5 py-2 rounded-full flex items-center gap-3 shadow-2xl backdrop-blur-md border border-stone-800/80 z-10 transition-all duration-300 ${
-          aiResponseText || isSpeaking ? 'opacity-0 pointer-events-none' : 'opacity-20 hover:opacity-100'
-        }`}>
+        <footer className={`absolute bottom-4 left-1/2 -translate-x-1/2 bg-stone-900/80 px-3.5 py-2 rounded-full flex items-center gap-3 shadow-2xl backdrop-blur-md border border-stone-800/80 z-10 transition-all duration-300 ${aiResponseText || isSpeaking ? 'opacity-0 pointer-events-none' : 'opacity-20 hover:opacity-100'
+          }`}>
           {[
             { id: 'RT-01', name: 'Sleeping', activeColor: 'bg-stone-300 ring-2 ring-stone-200 scale-125', idleColor: 'bg-stone-700 hover:bg-stone-600' },
             { id: 'RT-02', name: 'Welcome', activeColor: 'bg-stone-100 ring-2 ring-white scale-125', idleColor: 'bg-stone-700 hover:bg-stone-600' },
@@ -2160,12 +2331,13 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       {/* MESSENGER VIDEO CALL MODAL & CLOUDINARY RECORDING */}
       <MessengerVideoCallModal
         isOpen={isVideoCallOpen}
-        sessionId={videoCallSessionId || sessionId}
+        sessionId={videoCallTicketCode || videoCallSessionId || sessionId}
         role="guest"
         callerName="Khách hàng"
         calleeName="Nhân viên hỗ trợ"
         roomNumber=""
         ticketCode={videoCallTicketCode}
+        guestLanguage="Tiếng Việt"
         onClose={() => {
           setIsVideoCallOpen(false);
           setVideoCallSessionId(null);
@@ -2209,6 +2381,16 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
           setIsFoodMenuOpen(true);
         }}
         onSpeak={(text) => speak(text)}
+      />
+
+      {/* ROOM PIN VERIFICATION MODAL (KIOSK TOUCH NUMPAD) */}
+      <RoomPinModal
+        isOpen={isPinModalOpen}
+        onClose={() => setIsPinModalOpen(false)}
+        roomNumber={pinModalRoomNumber}
+        pendingAction={pinModalAction}
+        pendingItems={pinModalItems}
+        onVerifiedSuccess={handlePinVerifiedSuccess}
       />
     </div>
   );

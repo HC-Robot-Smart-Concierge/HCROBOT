@@ -23,8 +23,11 @@ class ChatResponse(BaseModel):
     support_session_id: Optional[str] = Field(None, description="Mã phiên HumanSupportSession tạo cho cuộc gọi")
     ticket_code: Optional[str] = Field(None, description="Mã ticket CCG được tạo cho cuộc gọi")
     audio_base64: Optional[str] = Field(None, description="Âm thanh giọng đọc phát tức thì từ backend cache")
-    mime_type: Optional[str] = Field("audio/mp3", description="Định dạng âm thanh")
     destination_key: Optional[str] = Field(None, description="Mã POI điều hướng bản đồ (VD: infinity_pool, restaurant, rooftop_coffee) nếu là câu hỏi chỉ đường/vị trí")
+    require_room_pin: Optional[bool] = Field(False, description="True nếu yêu cầu khách nhập mã PIN phòng trên màn hình cảm ứng để xác thực")
+    target_room_number: Optional[str] = Field(None, description="Số phòng mục tiêu cần nhập PIN")
+    pending_service_action: Optional[str] = Field(None, description="Hành động dịch vụ đang chờ xác thực: room_service, housekeeping...")
+    pending_service_items: Optional[str] = Field(None, description="Chi tiết các món đồ đang chờ xác thực")
     eye_expression: Optional[str] = Field(None, description="Biểu cảm cử động mắt của Robot (look_up, look_left, look_right, look_around, happy)")
 
 
@@ -94,4 +97,22 @@ class FeedbackResponse(BaseModel):
     room_number: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class QuickTranslateRequest(BaseModel):
+    text: str = Field(..., description="Văn bản cần dịch trong video call", json_schema_extra={"example": "Where is the swimming pool?"})
+    source_lang: Optional[str] = Field("auto", description="Ngôn ngữ nguồn: 'auto', 'en', 'vi'")
+    target_lang: Optional[str] = Field("vi", description="Ngôn ngữ đích: 'vi', 'en'")
+    session_id: Optional[str] = Field(None, description="Mã phiên cuộc gọi video")
+    sender_role: Optional[str] = Field("guest", description="Vai trò người nói: 'guest' hoặc 'staff'")
+    with_audio: Optional[bool] = Field(True, description="Tự động tổng hợp âm thanh giọng đọc TTS nếu cần dịch")
+
+
+class QuickTranslateResponse(BaseModel):
+    original_text: str = Field(..., description="Văn bản gốc")
+    translated_text: str = Field(..., description="Văn bản dịch")
+    source_lang: str = Field(..., description="Ngôn ngữ nguồn đã phát hiện ('vi' hoặc 'en')")
+    target_lang: str = Field(..., description="Ngôn ngữ đích ('vi' hoặc 'en')")
+    needs_translation: bool = Field(..., description="True nếu đã dịch, False nếu cùng ngôn ngữ nên bypass")
+    audio_base64: Optional[str] = Field(None, description="Âm thanh đọc TTS MP3 Base64 của câu dịch (nếu có)")
 

@@ -39,6 +39,10 @@ class ConciergeState(TypedDict, total=False):
     trigger_video_call: Optional[bool]
     destination_key: Optional[str]
     response: str
+    require_room_pin: Optional[bool]
+    target_room_number: Optional[str]
+    pending_service_action: Optional[str]
+    pending_service_items: Optional[str]
 
 
 # ============================================================================
@@ -53,6 +57,22 @@ async def fast_path_node(state: ConciergeState) -> Dict[str, Any]:
     """
     prompt = state.get("prompt", "")
     language = state.get("language")
+    session_id = state.get("session_id") or "default_session"
+
+    # Nếu session đang chờ số phòng cho yêu cầu dịch vụ trước đó -> Bỏ qua fast-path để intent_router bóc tách số phòng
+    pending = session_manager.get_pending_intent(session_id)
+    if pending:
+        logger.info(f"[Harness FastPath Bypass] Session '{session_id}' has pending intent '{pending.get('action')}', bypassing fast-path for: '{prompt}'")
+        if not language or language.lower() in ["auto", ""]:
+            lang_name, lang_code = ollama_service.detect_language(prompt)
+        else:
+            lang_name = language
+            lang_code = "en-US" if language.lower() in ["english", "en"] else "vi-VN"
+        return {
+            "fast_path_hit": False,
+            "lang_name": lang_name,
+            "lang_code": lang_code,
+        }
 
     fast_hit = ollama_service.check_fast_path_full(prompt, language)
     if fast_hit:
@@ -120,57 +140,26 @@ async def intent_router_node(state: ConciergeState) -> Dict[str, Any]:
         current_room = extracted_room
         session_manager.set_room_number(session_id, extracted_room)
 
-    # 2. Heuristic nhận diện dịch vụ khách sạn (< 0.1ms)
-    SERVICE_KEYWORDS = {
-        "housekeeping": [
-            "khăn", "khan", "dọn phòng", "don phong", "gối", "goi", "chăn", "chan", 
-            "nệm", "nem", "dọn dẹp", "dọn vệ sinh", "vệ sinh phòng", "làm vệ sinh", 
-            "towel", "clean room", "cleaning", "bàn ủi", "máy sấy", "dao cạo", "kem đánh răng", 
-            "bàn chải", "dầu gội", "sữa tắm", "giấy vệ sinh", "nước suối trong phòng"
-        ],
-        "room_service": [
-            "cơm", "com", "nước", "nuoc", "ăn", "an", "uống", "uong", "đồ ăn", "do an", 
-            "trà", "tra", "cà phê", "ca phe", "pizza", "phở", "pho", "bánh", "banh", 
-            "food", "drink", "bữa sáng", "gọi món", "đặt món", "thực đơn", "menu", "nước ngọt", "bia", "trái cây"
-        ],
-        "bellman": [
-            "hành lý", "hanh ly", "vali", "túi", "tui", "chuyển phòng", "chuyen phong", 
-            "mang đồ", "xách đồ", "luggage", "bag", "mang hành lý", "gửi hành lý"
-        ],
-        "maintenance": [
-            "hỏng", "hong", "sửa", "sua", "điều hòa", "dieu hoa", "bóng đèn", "bong den", 
-            "nước rò", "nuoc ro", "máy lạnh", "may lanh", "tủ lạnh", "tu lanh", "kẹt", "ket", 
-            "fix", "repair", "vòi sen", "vòi nước", "bồn cầu", "tắc", "mất điện", "không lạnh", "cháy bóng"
-        ],
-        "restaurant": ["đặt bàn", "dat ban", "bàn ăn", "ban an", "nhà hàng", "table", "restaurant"],
-        "taxi": ["taxi", "đặt xe", "dat xe", "gọi xe", "goi xe", "sân bay", "cab", "ride", "xe đón", "grab"],
-        "concierge": [
-            "concierge", "gặp người", "trợ giúp trực tiếp", "nhân viên hỗ trợ", 
-            "live call", "video call", "tổng đài", "gọi cho nhân viên", 
-            "gọi nhân viên", "gặp nhân viên", "kết nối nhân viên", "nói chuyện với nhân viên",
-            "cho tôi gặp nhân viên", "gặp người thật", "nói chuyện với người thật", "kết nối người thật",
-            "gọi tổng đài", "gọi hỗ trợ", "hỗ trợ viên", "gọi video",
-            "gọi cho lễ tân", "gặp trực tiếp", "kết nối trực tiếp", "human support",
-            "nhân viên tư vấn", "cho tôi gặp lễ tân", "gặp trực ban", "gọi trực ban", "gọi can thiệp",
-            "call staff", "call human", "talk to human", "speak to human", 
-            "connect staff", "video call support", "talk to staff", "call receptionist",
-            "human agent", "live agent", "talk to a person", "speak to a person", "live support"
-        ],
-        "reception": [
-            "lễ tân", "check out", "checkout", "check in", "checkin", 
-            "đổi phòng", "doi phong", "trả phòng", "tra phong", "front desk", "reception",
-            "gia hạn phòng", "thẻ phòng", "mất chìa khóa", "khóa phòng"
-        ],
-    }
+    # 2. Heuristic nhận diện dịch vụ khách sạn (< 0.1ms) từ centralized constants
+    from app.services.ai.constants import SERVICE_KEYWORDS
 
-    # 3. Phân loại Category & FAQ / Facility Keywords
+    # 3. Phân loại Category & FAQ / Facility / Nearby Exploration Keywords (KHÔNG BAO GIỜ HỎI SỐ PHÒNG NẾU LÀ CÂU HỎI THÔNG TIN)
     faq_keywords = [
         "ở đâu", "mấy giờ", "bao nhiêu", "giá", "thế nào", "có không", 
         "where", "when", "how", "what", "giờ nào", "tầng mấy", "bao xa", 
         "chỉ đường", "đường nào", "hướng nào", "đi vệ sinh", "nhà vệ sinh", 
-        "toilet", "wc", "restroom", "washroom", "phòng vệ sinh"
+        "toilet", "wc", "restroom", "washroom", "phòng vệ sinh",
+        "có món gì", "có những gì", "gồm những gì", "những món nào", "xem thực đơn", "xem menu",
+        "thực đơn", "menu", "có dịch vụ gì", "chi phí thế nào", "bảng giá", "quy định", "chính sách",
+        # Từ khóa khám phá xung quanh, ngoại khu, chợ đêm, danh thắng
+        "gần đây", "xung quanh", "quanh đây", "gần khách sạn", "ngoại khu", "chợ đêm", "chợ", 
+        "bãi biển", "biển", "tắm biển", "cầu rồng", "hội an", "bà nà", "ngũ hành sơn", "sơn trà",
+        "có gì", "có gì chơi", "chơi gì", "ăn gì", "đi đâu", "tham quan", "du lịch", "địa điểm",
+        "chỗ nào", "quán ăn", "hải sản", "mua sắm", "check in", "checkin", "ngắm cảnh",
+        "nearby", "around here", "night market", "attractions", "sightseeing", "places to visit", "beach"
     ]
-    is_asking_info = any(kw in prompt_lower for kw in faq_keywords)
+    has_co_khong = bool(re.search(r"\bcó\b.+\bkhông\b", prompt_lower))
+    is_asking_info = any(kw in prompt_lower for kw in faq_keywords) or has_co_khong
 
     action = None
     if not is_asking_info:
@@ -223,7 +212,7 @@ async def intent_router_node(state: ConciergeState) -> Dict[str, Any]:
 async def retrieval_node(state: ConciergeState) -> Dict[str, Any]:
     """
     Node 3: Context Retrieval & Pruning (Tối ưu hóa Context cho LLM).
-    Chỉ kích hoạt khi category == 'faq'. Rút gọn context tối đa để LLM sinh từ tức thì.
+    Truy vấn ChromaDB Vector Store lấy ngữ cảnh tri thức phù hợp nhất (Top 2 chunks, tối đa 1200 ký tự).
     """
     # Nếu client đã gửi kèm rag_context sẵn thì giữ nguyên
     existing_ctx = state.get("rag_context")
@@ -238,12 +227,13 @@ async def retrieval_node(state: ConciergeState) -> Dict[str, Any]:
         results = await asyncio.to_thread(
             collection.query,
             query_texts=[prompt],
-            n_results=1
+            n_results=4
         )
         if results and results.get("documents") and results["documents"][0]:
-            raw_chunk = results["documents"][0][0]
-            rag_context = raw_chunk[:1200].strip()
-            logger.info(f"[Harness Retrieval] Pruned context to {len(rag_context)} chars for rapid generation.")
+            docs = [d.strip() for d in results["documents"][0] if d and len(d.strip()) > 50]
+            if docs:
+                rag_context = "\n\n---\n\n".join(docs)[:1800].strip()
+                logger.info(f"[Harness Retrieval] Retrieved {len(docs)} chunks ({len(rag_context)} chars) for rapid generation.")
     except Exception as ex:
         logger.warning(f"[Harness Retrieval Warning] Không thể truy vấn ChromaDB: {ex}")
 
@@ -299,6 +289,9 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
                 "restaurant": "restaurant reservation",
                 "taxi": "taxi booking",
                 "reception": "front desk services",
+                "laundry": "laundry and dry cleaning services",
+                "wake_up": "wake-up call scheduling",
+                "cancel_service": "cancelling your request",
             }
             action_en = action_en_map.get(action, "this service")
             ask_reply = f"Certainly! I would be glad to help you with {action_en}. Could you please let me know your room number?"
@@ -311,6 +304,9 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
                 "restaurant": "đặt bàn nhà hàng",
                 "taxi": "đặt xe taxi và di chuyển",
                 "reception": "dịch vụ lễ tân tiền sảnh",
+                "laundry": "dịch vụ giặt ủi buồng phòng",
+                "wake_up": "đặt lịch báo thức",
+                "cancel_service": "hủy yêu cầu dịch vụ",
             }
             action_vn = action_vn_map.get(action, "dịch vụ")
             ask_reply = f"Dạ em sẽ hỗ trợ {action_vn} cho quý khách ngay ạ! Quý khách vui lòng cho em xin số phòng của mình là bao nhiêu ạ?"
@@ -330,6 +326,9 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
         "restaurant": "Nhà hàng & Ẩm thực",
         "taxi": "Vận chuyển & Đặt xe (Taxi)",
         "reception": "Lễ tân (Reception)",
+        "laundry": "Giặt ủi & Buồng phòng (Laundry)",
+        "wake_up": "Lễ tân & Tổng đài (Reception Desk)",
+        "cancel_service": "Điều phối dịch vụ (Operations Dispatch)",
     }
     DEPT_MAP_EN = {
         "housekeeping": "Housekeeping Department",
@@ -339,18 +338,30 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
         "restaurant": "Restaurant & F&B Department",
         "taxi": "Transportation & Taxi Desk",
         "reception": "Front Desk & Reception",
+        "laundry": "Laundry & Housekeeping Department",
+        "wake_up": "Front Desk & Telephone Operator",
+        "cancel_service": "Operations & Service Dispatch",
     }
     dept_name = (DEPT_MAP_EN if lang_code == "en-US" else DEPT_MAP_VI).get(action, "chuyên trách")
 
-    if lang_code == "en-US":
-        confirm_reply = f"Rora has noted your request for Room {current_room}! The {dept_name} will attend to it right away."
+    if action == "cancel_service":
+        if lang_code == "en-US":
+            confirm_reply = f"Rora has received your cancellation request for Room {current_room}. The relevant department has been notified to cancel your request immediately!"
+        else:
+            confirm_reply = f"Dạ Rora đã tiếp nhận yêu cầu hủy dịch vụ cho Phòng {current_room} rồi ạ! Em đã gửi thông báo hủy tới các bộ phận liên quan ngay lập tức."
+    elif lang_code == "en-US":
+        confirm_reply = f"To confirm your request for Room {current_room}, please enter your 4-digit room PIN or the last 4 digits of your ID/Passport on the screen."
     else:
-        confirm_reply = f"Dạ Rora đã ghi nhận yêu cầu cho Phòng {current_room} rồi ạ! Bộ phận {dept_name} sẽ tiếp nhận và hỗ trợ quý khách ngay."
+        confirm_reply = f"Dạ để xác nhận yêu cầu cho Phòng {current_room}, quý khách vui lòng nhập mã PIN phòng (hoặc 4 số cuối CCCD) trên màn hình cảm ứng nhé ạ."
 
     return {
         "missing_room_number": False,
         "room_number": current_room,
         "response": confirm_reply,
+        "require_room_pin": True,
+        "target_room_number": current_room,
+        "pending_service_action": action,
+        "pending_service_items": items,
     }
 
 
@@ -364,7 +375,7 @@ async def generator_node(state: ConciergeState) -> Dict[str, Any]:
     emotion = state.get("emotion")
     history = state.get("chat_history") or []
     current_room = state.get("room_number")
-    rag_context = state.get("rag_context")
+    rag_context = state.get("rag_context") or ""
 
     reply, detected_lang, final_code = await ollama_service.generate_response(
         prompt=prompt,
@@ -399,7 +410,7 @@ def route_after_fast_path(state: ConciergeState) -> str:
 
 
 def route_after_intent(state: ConciergeState) -> str:
-    """Điều hướng theo kết quả phân loại ý định."""
+    """Điều hướng theo kết quả phân loại ý định: Dịch vụ -> service_fsm, FAQ -> retrieval, Chitchat -> generator."""
     category = state.get("intent_category", "chitchat")
     if category == "service":
         return "service_fsm"

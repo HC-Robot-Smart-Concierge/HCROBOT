@@ -123,7 +123,8 @@ export const uploadRAGFile = async (file, category = 'general') => {
   });
 
   if (!res.ok) {
-    throw new Error(`Upload thất bại với status: ${res.status}`);
+    const errorData = await res.json().catch(() => null);
+    throw new Error(errorData?.detail || `Upload thất bại với status: ${res.status}`);
   }
   return await res.json();
 };
@@ -146,12 +147,35 @@ export const saveRAGSourceFile = async (filename, content) => {
  * Xóa file tài liệu nguồn khỏi knowledge_vault / uploads
  */
 export const deleteRAGSource = async (filename) => {
+  const token = localStorage.getItem('aurora_jwt_token');
+  const headers = {};
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  const res = await fetch(`${RAG_BASE_URL}/sources/${encodeURIComponent(filename)}`, {
+    method: 'DELETE',
+    headers,
+  });
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => null);
+    throw new Error(errorData?.detail || `Xóa file thất bại với status: ${res.status}`);
+  }
+  return await res.json();
+};
+
+/**
+ * Đồng bộ song ngữ Anh - Việt cho các file Knowledge Vault
+ */
+export const syncBilingualKnowledge = async () => {
   return await fetchWithFallback(
-    `${RAG_BASE_URL}/sources/${encodeURIComponent(filename)}`,
+    `${RAG_BASE_URL}/sources/sync-bilingual`,
     {
-      method: 'DELETE',
+      method: 'POST',
     },
-    { message: `Đã xóa file ${filename} thành công!`, id: filename }
+    { message: 'Đã đồng bộ song ngữ Anh - Việt thành công!' }
   );
 };
+
 

@@ -12,6 +12,7 @@ import { RobotScreenPage } from '../pages/robot/RobotScreenPage';
 import { RobotFoodMenuScreen } from '../components/robot/RobotFoodMenuScreen';
 import { AdminPortal } from '../pages/admin/AdminPortal';
 import { AdminLidarPage } from '../pages/admin/AdminLidarPage';
+import { NfcTestPage } from '../pages/test/NfcTestPage';
 
 // Staff Dashboard Pages
 import { ReceptionDashboard } from '../pages/dashboard/ReceptionDashboard';
@@ -67,6 +68,31 @@ export const AppRoutes = () => {
   } = useNotifications();
   const navigate = useNavigate();
   const location = useLocation();
+
+  // Dynamic PWA Manifest switcher: Chuyển giữa manifest-login.json (Nhân viên) và manifest.json (Robot)
+  React.useEffect(() => {
+    try {
+      const p = location.pathname;
+      const s = location.search;
+      const isStaffOrLogin = p.startsWith('/login') || p.startsWith('/staff') || p.startsWith('/admin');
+      const isRobot = p.startsWith('/robot') || s.includes('robot_display');
+
+      const manifestHref = (isStaffOrLogin && !isRobot) ? '/manifest-login.json' : '/manifest.json';
+      const appTitle = (isStaffOrLogin && !isRobot) ? 'HC Staff' : 'HCRobot';
+
+      const manifestEl = document.getElementById('app-manifest') || document.querySelector('link[rel="manifest"]');
+      if (manifestEl && manifestEl.getAttribute('href') !== manifestHref) {
+        manifestEl.setAttribute('href', manifestHref);
+      }
+
+      const titleEl = document.getElementById('app-title') || document.querySelector('meta[name="apple-mobile-web-app-title"]');
+      if (titleEl && titleEl.getAttribute('content') !== appTitle) {
+        titleEl.setAttribute('content', appTitle);
+      }
+    } catch (e) {
+      console.warn('Failed to switch dynamic manifest', e);
+    }
+  }, [location.pathname, location.search]);
 
   // Handle legacy query params e.g. ?view=robot_display
   const queryParams = new URLSearchParams(location.search);
@@ -171,6 +197,10 @@ export const AppRoutes = () => {
         path="/food-menu"
         element={<RobotFoodMenuScreen onClose={() => navigate('/robot')} />}
       />
+
+      {/* 3.1 Web NFC Diagnostics & Test Screen */}
+      <Route path="/nfc-test" element={<NfcTestPage />} />
+      <Route path="/nfc" element={<NfcTestPage />} />
 
       {/* 4. Admin Command Portal & LiDAR */}
       <Route
@@ -337,6 +367,8 @@ export const AppRoutes = () => {
               currentUser={currentUser}
               onNotify={showNotification}
               onUserUpdated={setCurrentUser}
+              onUpdateUser={setCurrentUser}
+              onLogout={handleLogout}
             />
           }
         />

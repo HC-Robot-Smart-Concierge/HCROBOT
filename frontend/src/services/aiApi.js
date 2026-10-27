@@ -443,5 +443,56 @@ export const updateVoiceSettings = async ({ speech_rate, vi_voice, en_voice }) =
   }
 };
 
+/**
+ * Phiên dịch nhanh câu nói trực tiếp trong cuộc gọi Video Call (Anh ⇄ Việt)
+ * Tự động nhận diện ngôn ngữ và bỏ qua dịch nếu cùng tiếng Việt
+ */
+export const quickTranslateText = async ({
+  text,
+  sourceLang = 'auto',
+  targetLang = 'vi',
+  sessionId = null,
+  senderRole = 'guest',
+  withAudio = true,
+}) => {
+  if (!text || !text.trim()) {
+    return {
+      original_text: '',
+      translated_text: '',
+      source_lang: 'vi',
+      target_lang: targetLang,
+      needs_translation: false,
+      audio_base64: null,
+    };
+  }
+
+  try {
+    const res = await fetch(`${API_BASE_URL}/translate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text: text.trim(),
+        source_lang: sourceLang,
+        target_lang: targetLang,
+        session_id: sessionId,
+        sender_role: senderRole,
+        with_audio: withAudio,
+      }),
+    });
+
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } catch (err) {
+    console.warn('[AIApi] quickTranslateText fallback:', err.message);
+    return {
+      original_text: text,
+      translated_text: text,
+      source_lang: sourceLang === 'auto' ? 'vi' : sourceLang,
+      target_lang: targetLang,
+      needs_translation: false,
+    };
+  }
+};
+
 
 

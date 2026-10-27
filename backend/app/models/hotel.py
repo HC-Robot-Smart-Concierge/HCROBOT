@@ -61,6 +61,8 @@ class Room(Base):
     room_type: Mapped[str] = mapped_column(String(50), default="Deluxe Suite") # 'Standard', 'Deluxe', 'Suite', 'Presidential'
     status: Mapped[str] = mapped_column(String(50), default="AVAILABLE") # 'AVAILABLE', 'OCCUPIED', 'CLEANING', 'MAINTENANCE'
     current_guest_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    pin_code: Mapped[Optional[str]] = mapped_column(String(10), nullable=True) # e.g. "5678"
+    tag_code: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, index=True) # e.g. "401" / "1D:28:9A:56:21:10:80" (NFC Tag Code / NDEF Data / UID)
     qr_code: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
@@ -74,8 +76,6 @@ class Room(Base):
 
     @property
     def floor(self) -> str:
-        if self.floor_rel and self.floor_rel.name:
-            return self.floor_rel.name
         if self.floor_id:
             num = self.floor_id.replace("FLR-0", "").replace("FLR-", "")
             return f"Tầng {num}"

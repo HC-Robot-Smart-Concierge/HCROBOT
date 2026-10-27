@@ -7,13 +7,32 @@
     <title>HCRobot - Concierge Robot Interface</title>
 
     <!-- PWA & Mobile Web App Meta Tags -->
-    <link rel="manifest" href="/manifest.json" />
+    <link id="app-manifest" rel="manifest" href="/manifest.json" />
     <meta name="theme-color" content="#171716" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="HCRobot" />
+    <meta id="app-title" name="apple-mobile-web-app-title" content="HCRobot" />
     <link rel="apple-touch-icon" href="/hc-robot-logo.png" />
+    <script>
+      (function() {
+        try {
+          var p = window.location.pathname;
+          var s = window.location.search;
+          var isStaffOrLogin = p.startsWith('/login') || p.startsWith('/staff') || p.startsWith('/admin');
+          var isRobot = p.startsWith('/robot') || s.indexOf('robot_display') !== -1;
+          var manifestEl = document.getElementById('app-manifest') || document.querySelector('link[rel="manifest"]');
+          var titleEl = document.getElementById('app-title') || document.querySelector('meta[name="apple-mobile-web-app-title"]');
+          if (isStaffOrLogin && !isRobot) {
+            if (manifestEl) manifestEl.setAttribute('href', '/manifest-login.json');
+            if (titleEl) titleEl.setAttribute('content', 'HC Staff');
+          } else {
+            if (manifestEl) manifestEl.setAttribute('href', '/manifest.json');
+            if (titleEl) titleEl.setAttribute('content', 'HCRobot');
+          }
+        } catch (e) {}
+      })();
+    </script>
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>

@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { AudioWave } from './AudioWave';
 import { RobotFace } from './RobotFace';
-import { FloorMap, HOTEL_DESTINATIONS } from './FloorMap';
+import { FloorMap, HOTEL_DESTINATIONS, getMobileGuestMapUrl } from './FloorMap';
+import { QRCodeSVG } from 'qrcode.react';
 import {
   Menu,
   ChevronDown,
@@ -116,6 +117,7 @@ export const MobileRobotScreen = ({
   onLogout,
   onResetSession,
   onResetToIdle,
+  onPrime = null,
   onStartTalk,
   onSubmitTalk,
   onStopSpeaking,
@@ -145,6 +147,20 @@ export const MobileRobotScreen = ({
   const isBusy = isProcessing || currentState === 'RT-04';
   const displayText = aiResponseText || spokenSubtitle;
   const isNavigating = currentState === 'RT-05' || isMapManualOpen;
+
+  const qrMapUrl = useMemo(() => {
+    return getMobileGuestMapUrl(navigationDestinationKey);
+  }, [navigationDestinationKey]);
+
+  const currentDestination = HOTEL_DESTINATIONS[navigationDestinationKey] || HOTEL_DESTINATIONS.restroom_ground || {
+    name: 'Điểm Đến Khách Sạn',
+    floorLevel: 'TẦNG TRỆT',
+    time: '2 Phút',
+    distance: '50m',
+    step1Text: 'Đi theo chỉ dẫn hành lang.',
+    step2Text: 'Đến nơi.',
+    isDifferentFloor: false,
+  };
 
   // Secret Multi-Tap Gesture (Chạm 5 lần liên tiếp trong 2s để mở đăng xuất chuẩn Kiosk)
   const tapCountRef = useRef(0);
@@ -176,14 +192,35 @@ export const MobileRobotScreen = ({
         onStartTalk();
       }, 600);
     }
+    const handleFirstTouch = () => {
+      if (typeof onPrime === 'function') {
+        onPrime();
+      }
+      if (typeof onStartTalk === 'function' && !isListening && !isSpeaking && !isBusy) {
+        onStartTalk();
+      }
+      window.removeEventListener('touchstart', handleFirstTouch);
+      window.removeEventListener('click', handleFirstTouch);
+    };
+
+    window.addEventListener('touchstart', handleFirstTouch, { passive: true, once: true });
+    window.addEventListener('click', handleFirstTouch, { passive: true, once: true });
+
     return () => {
       if (timer) clearTimeout(timer);
+      window.removeEventListener('touchstart', handleFirstTouch);
+      window.removeEventListener('click', handleFirstTouch);
     };
   }, []);
 
 
   return (
-    <section className="robot-mobile-ui absolute inset-0 z-20 bg-[#F5F2EB] text-stone-950">
+    <section
+      onPointerDown={() => {
+        if (typeof onPrime === 'function') onPrime();
+      }}
+      className="robot-mobile-ui absolute inset-0 z-20 bg-[#F5F2EB] text-stone-950"
+    >
       <div className="robot-portrait-guard absolute inset-0 z-50 bg-stone-950 text-white items-center justify-center text-center p-8">
         <div>
           <p className="text-xs font-bold tracking-[0.24em] uppercase text-stone-400">HCROBOT</p>

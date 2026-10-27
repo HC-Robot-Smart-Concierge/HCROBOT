@@ -142,6 +142,32 @@ class SupportRequestRepository(BaseRepository[SupportRequest]):
         await self.db.commit()
         return res.rowcount or 0
 
+    async def close_stale_active_calls(
+        self,
+        department_ids: List[str],
+        service_type_ids: List[str],
+        cutoff_time: datetime,
+        new_status: str = "Closed",
+    ) -> int:
+        """Closes stuck in-progress/connected calls older than cutoff_time."""
+        from sqlalchemy import update
+        now = datetime.utcnow()
+        stmt = (
+            update(SupportRequest)
+            .where(
+                or_(
+                    SupportRequest.department_id.in_(department_ids),
+                    SupportRequest.service_type_id.in_(service_type_ids),
+                ),
+                SupportRequest.status.in_(["In Progress", "Connected"]),
+                SupportRequest.created_at < cutoff_time,
+            )
+            .values(status=new_status, updated_at=now)
+        )
+        res = await self.db.execute(stmt)
+        await self.db.commit()
+        return res.rowcount or 0
+
     async def get_active_live_call(
         self,
         department_ids: List[str],

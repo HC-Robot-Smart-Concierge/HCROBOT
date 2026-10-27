@@ -314,6 +314,10 @@ class ObstacleSafetyController:
             self.stop()
             return True
 
+        if motion == self.motion:
+            # Đang di chuyển đúng hướng này, không ngắt dòng điện để tránh cà giật
+            return True
+
         was_blocked = motion in self._blocked_motions
         decision = self.evaluate(motion)
         if not decision.allowed:

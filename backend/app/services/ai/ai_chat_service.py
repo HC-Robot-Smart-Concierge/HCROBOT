@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import re
+import time
 from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,10 +17,17 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 
-def _detect_destination_poi(prompt: str, reply: str) -> str | None:
-    """Nhận diện mã điểm đến POI để đồng bộ bản đồ 8 tầng."""
-    p_lower = prompt.lower()
-    
+def _detect_destination_poi(prompt: str, reply: str = "") -> str | None:
+    """
+    Nhận diện mã điểm đến POI để đồng bộ bản đồ 8 tầng.
+    Chỉ kích hoạt khi câu hỏi của người dùng (prompt) thực sự có ý định hỏi đường/vị trí.
+    Tuyệt đối không tự tiện bật bản đồ khi người dùng chỉ hỏi thông tin dịch vụ thông thường
+    mà câu trả lời của AI có nhắc đến quầy lễ tân hoặc tiện ích.
+    """
+    p_lower = (prompt or "").lower().strip()
+    r_lower = (reply or "").lower().strip()
+    combined = f"{p_lower} {r_lower}".strip()
+
     # Nếu khách hỏi đường tới các địa điểm bên ngoài khách sạn -> Tuyệt đối KHÔNG bật bản đồ trong nhà
     external_places = [
         "sân bay", "airport", "nội bài", "tân sơn nhất", "ga tàu", "ga hà nội",
@@ -30,56 +38,115 @@ def _detect_destination_poi(prompt: str, reply: str) -> str | None:
     if any(k in p_lower for k in external_places):
         return None
 
-    # 1. Nhận diện các phòng Tầng 4 (401 -> 409)
+    # Danh mục từ khóa biểu thị ý định hỏi đường / điều hướng / tìm vị trí
+    nav_intent_phrases = [
+        "ở đâu", "o dau", "chỗ nào", "cho nao", "nơi nào", "noi nao",
+        "tầng mấy", "tang may", "ở tầng", "o tang", "hướng nào", "huong nao",
+        "đường đi", "duong di", "đường đến", "duong den", "đường ra", "duong ra",
+        "chỉ đường", "chi duong", "dẫn đường", "dan duong", "hướng dẫn đường",
+        "lối đi", "loi di", "lối lên", "loi len", "lối xuống", "loi xuong",
+        "làm sao để đến", "lam sao de den", "cách đi", "cach di", "cách đến", "cach den",
+        "đi đến", "di den", "đi tới", "di toi", "đi ra", "di ra", "đi lên", "di len", "đi xuống", "di xuong",
+        "dẫn tôi", "dan toi", "dắt tôi", "cho tôi đến", "cho toi den",
+        "tôi muốn đến", "toi muon den", "tôi muốn đi", "toi muon di",
+        "đưa tôi", "dua toi", "tìm đường", "tim duong", "vị trí", "vi tri", "chỉ tôi", "chi toi",
+        "where is", "where are", "where's", "which floor", "how to get", "how do i get",
+        "way to", "directions to", "show me the way", "take me to", "lead me to", "navigate to"
+    ]
+
+    # Danh mục cụm từ đi tới địa điểm trực tiếp (dù không có chữ 'ở đâu')
+    direct_loc_phrases = [
+        "đi vệ sinh", "di ve sinh", "đi toilet", "di toilet", "đi wc", "di wc",
+        "ra lễ tân", "ra quầy", "lên hồ bơi", "ra hồ bơi", "xuống bãi xe",
+        "vào thang máy", "lên phòng gym", "đi massage", "đi spa"
+    ]
+
+    # Kiểm tra xem câu hỏi có chứa số phòng cụ thể cần tìm (3xx hoặc 4xx)
     room_4xx_match = re.search(r'\b(?:phòng|p\.?|phong)?\s*(40[1-9])\b', p_lower)
+    room_3xx_match = re.search(r'\b(?:phòng|p\.?|phong)?\s*(30[1-9])\b', p_lower)
+
+    # Khách nói cộc lốc tên địa điểm (<= 3 từ) hoặc có ý định hỏi đường rõ ràng
+    p_words = p_lower.split()
+    is_short_location_utterance = len(p_words) <= 3 and any(
+        k in p_lower for k in [
+            "toilet", "vệ sinh", "wc", "hồ bơi", "pool", "gym", "spa",
+            "nhà hàng", "búp phê", "buffet", "lễ tân", "reception", "bãi xe"
+        ]
+    )
+
+    has_nav_intent = (
+        bool(room_4xx_match or room_3xx_match) or
+        any(k in p_lower for k in nav_intent_phrases) or
+        any(k in p_lower for k in direct_loc_phrases) or
+        is_short_location_utterance
+    )
+
+    # NẾU KHÔNG CÓ Ý ĐỊNH HỎI ĐƯỜNG -> TUYỆT ĐỐI KHÔNG BẬT BẢN ĐỒ CHỈ ĐƯỜNG
+    if not has_nav_intent:
+        return None
+
+    # 1. Nhận diện các phòng Tầng 4 (401 -> 409)
     if room_4xx_match:
         return f"room_{room_4xx_match.group(1)}"
+    room_4xx_comb = re.search(r'\b(?:phòng|p\.?|phong)?\s*(40[1-9])\b', combined)
+    if room_4xx_comb:
+        return f"room_{room_4xx_comb.group(1)}"
 
     # 2. Nhận diện các phòng Tầng 3 (301 -> 309)
-    room_3xx_match = re.search(r'\b(?:phòng|p\.?|phong)?\s*(30[1-9])\b', p_lower)
     if room_3xx_match:
         return f"room_{room_3xx_match.group(1)}"
+    room_3xx_comb = re.search(r'\b(?:phòng|p\.?|phong)?\s*(30[1-9])\b', combined)
+    if room_3xx_comb:
+        return f"room_{room_3xx_comb.group(1)}"
 
-    # 3. Khu vực Tầng 2 (Bếp, Nhận món, Kho, Sơ chế, WC)
-    if any(k in p_lower for k in ["nhà bếp", "nha bep", "khu bếp", "bếp chính", "kitchen"]):
+    # 3. Khu vực Vệ Sinh (Toilet / WC / Restroom toàn khách sạn)
+    if any(k in combined for k in [
+        "vệ sinh", "ve sinh", "toilet", "wc", "restroom", "washroom",
+        "nhà vệ sinh", "nha ve sinh", "phòng vệ sinh", "phong ve sinh",
+        "đi vệ sinh", "di ve sinh", "đi toilet"
+    ]):
+        if any(f in combined for f in ["tầng 2", "tang 2", "nhà hàng", "bếp", "kho"]):
+            return "restroom_f2"
+        if any(f in combined for f in ["sảnh", "tầng 1", "trệt", "lễ tân", "ground"]):
+            return "restroom_ground"
+        return "restroom_ground"
+
+    # 4. Khu vực Tầng 2 (Bếp, Nhận món, Kho, Sơ chế, Nhà hàng)
+    if any(k in combined for k in ["nhà bếp", "nha bep", "khu bếp", "bếp chính", "kitchen"]):
         return "kitchen"
-    if any(k in p_lower for k in ["sơ chế", "so che", "chuẩn bị món", "preparation"]):
+    if any(k in combined for k in ["sơ chế", "so che", "chuẩn bị món", "preparation"]):
         return "preparation_area"
-    if any(k in p_lower for k in ["kho hàng", "kho hang", "kho nguyên liệu", "kho thực phẩm", "warehouse"]):
+    if any(k in combined for k in ["kho hàng", "kho hang", "kho nguyên liệu", "kho thực phẩm", "warehouse"]):
         return "warehouse"
-    if any(k in p_lower for k in ["vệ sinh tầng 2", "wc tầng 2", "toilet tầng 2", "restroom tầng 2"]):
-        return "restroom_f2"
-    if any(k in p_lower for k in ["nhà hàng", "nha hang", "buffet", "ăn sáng", "quầy nhận món", "pickup"]):
+    if any(k in combined for k in ["nhà hàng", "nha hang", "buffet", "ăn sáng", "quầy nhận món", "pickup"]):
         return "restaurant"
 
-    # 4. Tiện ích Tầng 5 & Tầng 6
-    if any(k in p_lower for k in ["hồ bơi", "ho boi", "bể bơi", "pool", "bơi"]):
+    # 5. Tiện ích Tầng 5 & Tầng 6
+    if any(k in combined for k in ["hồ bơi", "ho boi", "bể bơi", "pool", "bơi"]):
         return "infinity_pool"
-    if any(k in p_lower for k in ["rooftop", "cafe", "cà phê", "coffee"]):
+    if any(k in combined for k in ["rooftop", "cafe", "cà phê", "coffee"]):
         return "rooftop_coffee"
-    if any(k in p_lower for k in ["quầy bar", "quay bar", "sky bar", "sky lounge", "uống rượu"]):
+    if any(k in combined for k in ["quầy bar", "quay bar", "sky bar", "sky lounge", "uống rượu"]):
         return "bar"
-    if any(k in p_lower for k in ["karaoke", "hát karaoke", "phòng hát"]):
+    if any(k in combined for k in ["karaoke", "hát karaoke", "phòng hát"]):
         return "karaoke"
-    if any(k in p_lower for k in ["gym", "thể hình", "the hinh", "fitness", "tập gym"]):
+    if any(k in combined for k in ["gym", "thể hình", "the hinh", "fitness", "tập gym"]):
         return "gym"
-    if any(k in p_lower for k in ["spa", "massage", "xông hơi", "mát xa"]):
+    if any(k in combined for k in ["spa", "massage", "xông hơi", "mát xa"]):
         return "spa"
-    if any(k in p_lower for k in ["lưu niệm", "gift shop", "cửa hàng quà"]):
+    if any(k in combined for k in ["lưu niệm", "gift shop", "cửa hàng quà"]):
         return "gift_shop"
-    if any(k in p_lower for k in ["thay đồ", "locker", "tủ đồ"]):
+    if any(k in combined for k in ["thay đồ", "locker", "tủ đồ"]):
         return "locker_room"
 
-    # 5. Tiện ích Tầng Trệt & Bãi xe
-    if any(k in p_lower for k in ["lễ tân", "tiếp tân", "quầy lễ tân", "bàn lễ tân", "front desk", "check-in", "check in"]):
+    # 6. Tiện ích Tầng Trệt & Bãi xe
+    if any(k in combined for k in ["lễ tân", "tiếp tân", "quầy lễ tân", "bàn lễ tân", "front desk", "check-in", "check in"]):
         return "front_desk"
-    if any(k in p_lower for k in ["vệ sinh tầng trệt", "vệ sinh ở sảnh", "wc ở sảnh", "toilet sảnh"]):
-        return "restroom_ground"
-    if any(k in p_lower for k in ["xe máy", "gửi xe máy", "bãi xe máy", "xe đạp", "hầm b1"]):
+    if any(k in combined for k in ["xe máy", "gửi xe máy", "bãi xe máy", "xe đạp", "hầm b1"]):
         return "parking_bike"
-    if any(k in p_lower for k in ["đỗ ô tô", "bãi ô tô", "bãi xe ô tô", "hầm b2", "xe hơi"]):
+    if any(k in combined for k in ["đỗ ô tô", "bãi ô tô", "bãi xe ô tô", "hầm b2", "xe hơi"]):
         return "parking_car"
-    if any(k in p_lower for k in ["bãi xe", "đỗ xe", "gửi xe", "parking"]):
+    if any(k in combined for k in ["bãi xe", "đỗ xe", "gửi xe", "parking"]):
         return "parking_car"
 
     return None
@@ -151,8 +218,10 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
         "destination_key": None,
         "trigger_video_call": False,
     }
+    t_start = time.perf_counter()
     graph_config = {"configurable": {"thread_id": sid}}
     graph_result = await concierge_graph.ainvoke(initial_state, config=graph_config)
+    t_graph = time.perf_counter()
 
     reply = graph_result.get("response", "")
     detected_lang = graph_result.get("lang_name", "Tiếng Việt")
@@ -163,15 +232,18 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
     session_manager.add_turn(sid, "user", request.prompt, language=lang_code)
     session_manager.add_turn(sid, "assistant", reply, language=lang_code, intent_action=act)
 
-    # Lấy audio_base64 từ TTS Service (EdgeTTS với fallback)
+    # Lấy audio_base64 từ TTS Service (EdgeTTS với fallback sang WebSpeech nếu quá 3.5s)
     try:
         audio_b64, mime_type, _ = await asyncio.wait_for(
             tts_service.synthesize(reply, provider="edge", language=lang_code),
-            timeout=12.0
+            timeout=1.8
         )
     except Exception as e_tts:
         logger.warning(f"[AIChatService] TTS online timeout/error, fallback to frontend WebSpeech: {e_tts}")
         audio_b64, mime_type = None, "audio/mp3"
+    t_tts = time.perf_counter()
+    clean_p = request.prompt.encode('ascii', errors='replace').decode('ascii')
+    print(f"\n[TIMING BENCHMARK] prompt='{clean_p}' | Graph: {t_graph - t_start:.3f}s | TTS: {t_tts - t_graph:.3f}s | Total: {t_tts - t_start:.3f}s\n", flush=True)
 
     # Cập nhật số phòng mới nhất từ kết quả Graph hoặc Session Manager
     updated_room = graph_result.get("room_number") or session_manager.get_room_number(sid)
@@ -184,6 +256,10 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
     items = graph_result.get("items") or request.prompt
     is_video_call = bool(graph_result.get("trigger_video_call") or act == "concierge")
     missing_room = bool(graph_result.get("missing_room_number", False))
+    require_pin = bool(graph_result.get("require_room_pin", False))
+    target_room = graph_result.get("target_room_number") or current_room
+    pending_act = graph_result.get("pending_service_action") or act
+    pending_items = graph_result.get("pending_service_items") or items
     support_session_id = None
     call_ticket_code = None
 
@@ -191,8 +267,11 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
         support_session_id, call_ticket_code = await create_live_call_session(
             db, request.prompt, current_room
         )
+    elif require_pin:
+        # Tạm dừng tạo ticket tự động - chờ khách bấm xác thực PIN trên màn hình Kiosk
+        logger.info(f"[AIChatService] Service request '{act}' for Room {target_room} requires Touch PIN verification.")
     elif act and act not in ["chitchat", "conversation", "faq", "fast_path", "provide_room_number", "unknown"]:
-        # CHỈ TẠO TICKET KHI ĐÃ CÓ ĐẦY ĐỦ SỐ PHÒNG CỦA KHÁCH
+        # Chỉ tạo ticket khi đã có số phòng và không cần PIN
         if not missing_room and current_room:
             asyncio.create_task(
                 background_extract_and_create_ticket(items, current_room, act, items)
@@ -236,6 +315,10 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
         mime_type=mime_type or "audio/mp3",
         destination_key=destination_key,
         eye_expression=eye_expression,
+        require_room_pin=require_pin,
+        target_room_number=target_room,
+        pending_service_action=pending_act,
+        pending_service_items=pending_items,
     )
 
 

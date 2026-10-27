@@ -87,13 +87,16 @@ export async function fetchHumanSupportSessions(statusFilter = null) {
 /**
  * 5. Upload video ghi hinh cuoc goi (WebM/MP4) len Cloudinary qua Backend
  */
-export async function uploadCallRecording(sessionId, videoBlob, duration = 0, startedAt = null, endedAt = null) {
+export async function uploadCallRecording(sessionId, videoBlob, duration = 0, startedAt = null, endedAt = null, messages = null) {
   try {
     const formData = new FormData();
     formData.append('video_file', videoBlob, `call_${sessionId}.webm`);
     formData.append('duration', Math.round(duration || 0));
     if (startedAt) formData.append('call_started_at', startedAt);
     if (endedAt) formData.append('call_ended_at', endedAt);
+    if (messages) {
+      formData.append('messages', typeof messages === 'string' ? messages : JSON.stringify(messages));
+    }
 
     const token = localStorage.getItem('aurora_jwt_token');
     const response = await fetch(`${BASE_URL}/recordings/${encodeURIComponent(sessionId)}`, {

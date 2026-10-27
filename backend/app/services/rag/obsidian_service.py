@@ -52,31 +52,57 @@ class ObsidianRAGService:
     def chunk_markdown(content: str, filename: str, file_metadata: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
         Chia nhỏ file Markdown thành các đoạn (chunks) theo tiêu đề H1/H2/H3 (#, ##, ###).
+        Tự động gộp các tiêu đề phân cấp rỗng (không có thân bài) vào đoạn con kế tiếp
+        để bảo toàn ngữ cảnh ngữ nghĩa và loại bỏ hoàn toàn các chunk rác chỉ chứa tiêu đề.
         """
-        chunks = []
-        # Tách nội dung theo tiêu đề Markdown
-        sections = re.split(r'\n(?=#+ )', content)
-        
+        raw_sections = re.split(r'\n(?=#+ )', content)
         doc_id_base = os.path.splitext(os.path.basename(filename))[0]
 
-        for idx, section in enumerate(sections):
-            clean_text = section.strip()
-            if not clean_text:
+        merged_sections = []
+        pending_header = ""
+
+        for sec in raw_sections:
+            clean_sec = sec.strip()
+            if not clean_sec:
                 continue
 
-            # Rút trích tiêu đề của section nếu có
+            lines = [l.strip() for l in clean_sec.splitlines() if l.strip()]
+            # Đoạn chỉ chứa 1-2 dòng toàn là tiêu đề markdown (#, ##) và không có nội dung mô tả
+            is_just_header = all(l.startswith("#") for l in lines) and len(clean_sec) < 160
+
+            if is_just_header:
+                pending_header = f"{pending_header}\n{clean_sec}".strip() if pending_header else clean_sec
+                continue
+
+            if pending_header:
+                full_chunk_text = f"{pending_header}\n\n{clean_sec}".strip()
+                pending_header = ""
+            else:
+                full_chunk_text = clean_sec
+
+            merged_sections.append(full_chunk_text)
+
+        if pending_header and merged_sections:
+            merged_sections[-1] = f"{merged_sections[-1]}\n\n{pending_header}"
+        elif pending_header:
+            merged_sections.append(pending_header)
+
+        chunks = []
+        for idx, clean_text in enumerate(merged_sections):
+            if not clean_text or len(clean_text) < 40:
+                continue
+
             first_line = clean_text.splitlines()[0] if clean_text else ""
             section_title = first_line.lstrip("# ").strip() if first_line.startswith("#") else "General"
 
             chunk_id = f"obsidian_{doc_id_base}_section_{idx+1}"
-            
+
             chunk_metadata = {
                 "source": "obsidian",
                 "filename": filename,
                 "section": section_title,
             }
-            
-            # Gộp metadata từ frontmatter (ép về string/number để tương thích ChromaDB metadata)
+
             for k, v in file_metadata.items():
                 if isinstance(v, list):
                     chunk_metadata[k] = ", ".join(map(str, v))
@@ -106,9 +132,9 @@ class ObsidianRAGService:
             os.makedirs(abs_vault_path, exist_ok=True)
             logger.warning(f"Đã tạo mới thư mục Obsidian Vault tại {abs_vault_path}")
 
-        md_files = glob.glob(os.path.join(abs_vault_path, "**", "*.md"), recursive=True)
+        vault_files = glob.glob(os.path.join(abs_vault_path, "**", "*.md"), recursive=True)
 
-        if not md_files:
+        if not vault_files:
             logger.info(f"Không tìm thấy file .md nào trong Obsidian Vault ({abs_vault_path})")
             return {
                 "status": "success",
@@ -122,12 +148,12 @@ class ObsidianRAGService:
         all_metadatas = []
 
         total_files = 0
-        for md_file in md_files:
+        for vault_file in vault_files:
             try:
-                with open(md_file, "r", encoding="utf-8", errors="replace") as f:
+                with open(vault_file, "r", encoding="utf-8", errors="replace") as f:
                     raw_content = f.read()
 
-                rel_filename = os.path.relpath(md_file, abs_vault_path)
+                rel_filename = os.path.relpath(vault_file, abs_vault_path)
                 file_metadata, markdown_text = self.parse_frontmatter(raw_content)
                 chunks = self.chunk_markdown(markdown_text, rel_filename, file_metadata)
 
@@ -138,7 +164,7 @@ class ObsidianRAGService:
 
                 total_files += 1
             except Exception as e:
-                logger.error(f"Lỗi khi đọc file Obsidian {md_file}: {e}")
+                logger.error(f"Lỗi khi đọc file Vault {vault_file}: {e}")
 
         if all_ids:
             from app.services.rag.chroma import get_chroma_client

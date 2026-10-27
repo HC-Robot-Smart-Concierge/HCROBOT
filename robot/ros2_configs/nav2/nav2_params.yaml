@@ -1,12 +1,12 @@
 amcl:
   ros__parameters:
-    use_sim_time: true
+    use_sim_time: false
     alpha1: 0.2
     alpha2: 0.2
     alpha3: 0.2
     alpha4: 0.2
     alpha5: 0.2
-    base_frame_id: base_footprint
+    base_frame_id: base_link
     beam_skip_distance: 0.5
     beam_skip_error_threshold: 0.9
     beam_skip_threshold: 0.3
@@ -38,12 +38,20 @@ amcl:
     z_rand: 0.5
     z_short: 0.05
     scan_topic: scan
+    map_topic: map
+    set_initial_pose: true
+    always_reset_initial_pose: false
+    initial_pose:
+      x: 0.0
+      y: 0.0
+      z: 0.0
+      yaw: 0.0
 bt_navigator:
   ros__parameters:
-    use_sim_time: true
+    use_sim_time: false
     global_frame: map
-    robot_base_frame: base_footprint
-    odom_topic: /diff_cont/odom
+    robot_base_frame: base_link
+    odom_topic: /odom
     navigators:
     - navigate_to_pose
     - navigate_through_poses
@@ -53,7 +61,7 @@ bt_navigator:
       plugin: nav2_bt_navigator::NavigateThroughPosesNavigator
 controller_server:
   ros__parameters:
-    use_sim_time: true
+    use_sim_time: false
     controller_frequency: 10.0
     min_x_velocity_threshold: 0.001
     min_y_velocity_threshold: 0.5
@@ -119,7 +127,7 @@ controller_server:
       RotateToGoal.scale: 32.0
       RotateToGoal.slowing_factor: 5.0
       RotateToGoal.lookahead_time: -1.0
-    odom_topic: /diff_cont/odom
+    odom_topic: /odom
     enable_stamped_cmd_vel: false
 local_costmap:
   local_costmap:
@@ -127,12 +135,12 @@ local_costmap:
       update_frequency: 5.0
       publish_frequency: 2.0
       global_frame: odom
-      robot_base_frame: base_footprint
-      use_sim_time: true
+      robot_base_frame: base_link
+      use_sim_time: false
       rolling_window: true
-      width: 3
-      height: 3
-      resolution: 0.05
+      width: 4
+      height: 4
+      resolution: 0.025
       robot_radius: 0.27
       plugins:
       - obstacle_layer
@@ -151,9 +159,9 @@ local_costmap:
           clearing: true
           marking: true
           data_type: LaserScan
-          raytrace_max_range: 12.0
+          raytrace_max_range: 3.5
           raytrace_min_range: 0.12
-          obstacle_max_range: 10.0
+          obstacle_max_range: 3.0
           obstacle_min_range: 0.12
           inf_is_valid: true
         plugin: nav2_costmap_2d::ObstacleLayer
@@ -163,10 +171,10 @@ global_costmap:
       update_frequency: 1.0
       publish_frequency: 1.0
       global_frame: map
-      robot_base_frame: base_footprint
-      use_sim_time: true
+      robot_base_frame: base_link
+      use_sim_time: false
       robot_radius: 0.27
-      resolution: 0.05
+      resolution: 0.025
       track_unknown_space: true
       plugins:
       - static_layer
@@ -182,9 +190,9 @@ global_costmap:
           clearing: true
           marking: true
           data_type: LaserScan
-          raytrace_max_range: 12.0
+          raytrace_max_range: 3.5
           raytrace_min_range: 0.12
-          obstacle_max_range: 10.0
+          obstacle_max_range: 3.0
           obstacle_min_range: 0.12
           inf_is_valid: true
       static_layer:
@@ -197,11 +205,11 @@ global_costmap:
       always_send_full_costmap: true
 map_server:
   ros__parameters:
-    use_sim_time: true
+    use_sim_time: false
     yaml_filename: ''
 map_saver:
   ros__parameters:
-    use_sim_time: true
+    use_sim_time: false
     save_map_timeout: 5.0
     free_thresh_default: 0.25
     occupied_thresh_default: 0.65
@@ -209,7 +217,7 @@ map_saver:
 planner_server:
   ros__parameters:
     expected_planner_frequency: 20.0
-    use_sim_time: true
+    use_sim_time: false
     planner_plugins:
     - GridBased
     GridBased:
@@ -236,9 +244,9 @@ behavior_server:
       plugin: nav2_behaviors::Wait
     local_frame: odom
     global_frame: map
-    robot_base_frame: base_footprint
+    robot_base_frame: base_link
     transform_timeout: 0.1
-    use_sim_time: true
+    use_sim_time: false
     simulate_ahead_time: 2.0
     max_rotational_vel: 1.0
     min_rotational_vel: 0.4
@@ -255,4 +263,4 @@ waypoint_follower:
       waypoint_pause_duration: 200
 robot_state_publisher:
   ros__parameters:
-    use_sim_time: true
+    use_sim_time: false

@@ -77,6 +77,48 @@ DEFAULT_SEED_SCENARIOS = [
         "priority": 95,
     },
     {
+        "id": "scn-thanks",
+        "title": "Lời cảm ơn (Thanks)",
+        "category": "greeting",
+        "match_keywords": ["cảm ơn", "cam on", "thank you", "thanks", "cảm ơn em", "cảm ơn rora", "thanks rora"],
+        "match_type": "keyword",
+        "response_vi": "Dạ không có gì ạ! Rora rất hân hạnh được hỗ trợ quý khách. Chúc quý khách có những phút giây tuyệt vời tại Aurora Grand!",
+        "response_en": "You are most welcome! Rora is always delighted to assist you. Have a wonderful time at Aurora Grand!",
+        "action_type": "none",
+        "action_payload": None,
+        "is_fast_path": True,
+        "is_active": True,
+        "priority": 95,
+    },
+    {
+        "id": "scn-farewell",
+        "title": "Lời tạm biệt (Farewell)",
+        "category": "greeting",
+        "match_keywords": ["tạm biệt", "tam biet", "goodbye", "bye", "bye bye", "hẹn gặp lại"],
+        "match_type": "keyword",
+        "response_vi": "Dạ tạm biệt quý khách! Chúc quý khách một ngày tràn ngập niềm vui và hẹn sớm gặp lại ạ.",
+        "response_en": "Goodbye! Wishing you a joyful day and looking forward to seeing you again.",
+        "action_type": "none",
+        "action_payload": None,
+        "is_fast_path": True,
+        "is_active": True,
+        "priority": 95,
+    },
+    {
+        "id": "scn-who-are-you",
+        "title": "Danh tính Robot Concierge (Who are you)",
+        "category": "greeting",
+        "match_keywords": ["bạn là ai", "em là ai", "who are you", "what is your name", "tên bạn là gì", "tên em là gì"],
+        "match_type": "keyword",
+        "response_vi": "Dạ em là Rora, trợ lý Robot Concierge thông minh của khách sạn 5 sao Aurora Grand. Rất hân hạnh được phục vụ quý khách ạ!",
+        "response_en": "I am Rora, the smart AI Concierge Robot at Aurora Grand Hotel. It is my pleasure to assist you!",
+        "action_type": "none",
+        "action_payload": None,
+        "is_fast_path": True,
+        "is_active": True,
+        "priority": 95,
+    },
+    {
         "id": "scn-restaurant",
         "title": "Nhà hàng & Quầy Nhận Món (Pickup Area)",
         "category": "facility",
@@ -131,6 +173,24 @@ DEFAULT_SEED_SCENARIOS = [
         "is_fast_path": True,
         "is_active": True,
         "priority": 80,
+    },
+    {
+        "id": "scn-restroom-ground",
+        "title": "Nhà Vệ Sinh Sảnh Chính Tầng 1",
+        "category": "facility",
+        "match_keywords": [
+            "nhà vệ sinh", "nha ve sinh", "đi vệ sinh", "di ve sinh", "toilet", "wc", "restroom", "phòng vệ sinh",
+            "muốn đi vệ sinh", "muon di ve sinh", "buồn đi vệ sinh", "chỗ đi vệ sinh", "nơi đi vệ sinh",
+            "nhà vệ sinh ở đâu", "đi vệ sinh ở đâu", "chỗ rửa tay", "nhà vệ sinh sảnh", "vệ sinh sảnh"
+        ],
+        "match_type": "keyword",
+        "response_vi": "Dạ nhà vệ sinh sảnh chính nằm ở phía tay phải sau quầy lễ tân tầng 1 ạ. Ngoài ra, Quý khách có thể quét mã QR trên màn hình để lưu lại chỉ dẫn nhé ạ.",
+        "response_en": "The lobby restrooms are located on the right side behind the Front Desk on Level 1. In addition, you can scan the QR code on the screen to save the directions!",
+        "action_type": "show_map",
+        "action_payload": {"destination_key": "restroom_ground"},
+        "is_fast_path": True,
+        "is_active": True,
+        "priority": 88,
     },
     {
         "id": "scn-restroom-f2",
@@ -501,58 +561,39 @@ class ScenarioService:
         self._cache.sort(key=lambda x: x.get("priority", 0), reverse=True)
         logger.info(f"[ScenarioService] Da cap nhat In-Memory Cache voi {len(self._cache)} kich ban.")
 
-    async def initialize_cache(self, db: AsyncSession):
+    async def initialize_cache(self, db: AsyncSession, force_reseed: bool = False):
         """
-        Khoi tao In-Memory Cache tu PostgreSQL.
-        Tu dong seed va dong bo cac kich ban mac dinh moi nhat.
+        Khởi tạo In-Memory Cache từ PostgreSQL.
+        Chỉ tự động seed dữ liệu mẫu khi cơ sở dữ liệu trống hoàn toàn (0 records) hoặc khi force_reseed=True.
+        Bảo lưu 100% mọi chỉnh sửa, tạo mới hoặc xóa kịch bản của Admin trong Database.
         """
         try:
             stmt = select(DialogueScenario)
             result = await db.execute(stmt)
             records = result.scalars().all()
-            existing_map = {r.id: r for r in records}
 
-            has_changes = False
-
-            # Xoa bo kich ban gop cu scn-pool-gym neu ton tai trong DB de tach rieng 2 kich ban
-            if "scn-pool-gym" in existing_map:
-                await db.delete(existing_map["scn-pool-gym"])
-                del existing_map["scn-pool-gym"]
-                has_changes = True
-
-            for s_data in DEFAULT_SEED_SCENARIOS:
-                sid = s_data["id"]
-                if sid not in existing_map:
-                    item = DialogueScenario(
-                        id=s_data["id"],
-                        title=s_data["title"],
-                        category=s_data["category"],
-                        match_keywords=s_data["match_keywords"],
-                        match_type=s_data["match_type"],
-                        response_vi=s_data["response_vi"],
-                        response_en=s_data.get("response_en"),
-                        action_type=s_data.get("action_type", "none"),
-                        action_payload=s_data.get("action_payload"),
-                        is_fast_path=s_data.get("is_fast_path", True),
-                        is_active=s_data.get("is_active", True),
-                        priority=s_data.get("priority", 0),
-                    )
-                    db.add(item)
-                    has_changes = True
-                else:
-                    existing = existing_map[sid]
-                    if (existing.match_keywords != s_data["match_keywords"] or
-                        existing.response_vi != s_data["response_vi"] or
-                        existing.action_payload != s_data.get("action_payload")):
-                        existing.match_keywords = s_data["match_keywords"]
-                        existing.response_vi = s_data["response_vi"]
-                        existing.response_en = s_data.get("response_en")
-                        existing.action_type = s_data.get("action_type", "none")
-                        existing.action_payload = s_data.get("action_payload")
-                        existing.priority = s_data.get("priority", existing.priority)
-                        has_changes = True
-
-            if has_changes:
+            # NẾU DATABASE TRỐNG HOÀN TOÀN: MỚI TIẾN HÀNH SEED DỮ LIỆU BAN ĐẦU
+            if len(records) == 0 or force_reseed:
+                logger.info("[ScenarioService] Database kịch bản trống hoặc force_reseed. Tiến hành seed dữ liệu mẫu...")
+                existing_map = {r.id: r for r in records}
+                for s_data in DEFAULT_SEED_SCENARIOS:
+                    sid = s_data["id"]
+                    if sid not in existing_map:
+                        item = DialogueScenario(
+                            id=s_data["id"],
+                            title=s_data["title"],
+                            category=s_data["category"],
+                            match_keywords=s_data["match_keywords"],
+                            match_type=s_data["match_type"],
+                            response_vi=s_data["response_vi"],
+                            response_en=s_data.get("response_en"),
+                            action_type=s_data.get("action_type", "none"),
+                            action_payload=s_data.get("action_payload"),
+                            is_fast_path=s_data.get("is_fast_path", True),
+                            is_active=s_data.get("is_active", True),
+                            priority=s_data.get("priority", 0),
+                        )
+                        db.add(item)
                 await db.commit()
                 result = await db.execute(select(DialogueScenario))
                 records = result.scalars().all()
@@ -577,6 +618,7 @@ class ScenarioService:
 
             self.reload_cache_sync(cache_list)
             self._is_initialized_from_db = True
+            logger.info(f"[ScenarioService] Đồng bộ thành công {len(cache_list)} kịch bản từ Database vào RAM Cache.")
         except Exception as e:
             logger.warning(f"[ScenarioService Warning] Khong the doc kich ban tu DB: {e}. Su dung seed cache.")
 

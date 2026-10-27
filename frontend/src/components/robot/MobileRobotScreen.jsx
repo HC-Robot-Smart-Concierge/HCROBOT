@@ -19,13 +19,13 @@ import {
 
 const getRobotMode = (state, isSpeaking = false, isProcessing = false, isListening = false) => {
   if (state === 'RT-01') return 'sleeping';
-  if (isSpeaking) return 'speaking';
   if (isProcessing || state === 'RT-04') return 'processing';
+  if (isSpeaking) return 'speaking';
   if (isListening || state === 'RT-03') return 'listening';
   return 'welcome';
 };
 
-const MobileCinemaSubtitle = ({ fullText, isSpeaking, onClose, isEn = false }) => {
+const MobileCinemaSubtitle = ({ fullText, isSpeaking, onClose }) => {
   const sentences = useMemo(() => {
     if (!fullText) return [];
     const raw = String(fullText).trim();
@@ -56,7 +56,6 @@ const MobileCinemaSubtitle = ({ fullText, isSpeaking, onClose, isEn = false }) =
 
   return (
     <div
-      onClick={(e) => e.stopPropagation()}
       className="relative mt-2.5 max-w-[92vw] sm:max-w-lg px-5 py-2.5 bg-stone-900/85 backdrop-blur-md border border-stone-700/60 rounded-2xl shadow-xl flex items-center justify-center text-center animate-in fade-in zoom-in-95 duration-200 z-20 group"
       role="region"
       aria-label="Phụ đề lời thoại của robot"
@@ -76,14 +75,7 @@ const MobileCinemaSubtitle = ({ fullText, isSpeaking, onClose, isEn = false }) =
 
       <p
         key={currentIndex}
-        onClick={(e) => {
-          e.stopPropagation();
-          if (sentences.length > 1) {
-            setCurrentIndex((prev) => (prev + 1) % sentences.length);
-          }
-        }}
-        className={`text-xs sm:text-[13px] font-medium text-stone-100 leading-snug px-6 select-text animate-in fade-in duration-200 line-clamp-3 ${sentences.length > 1 ? 'cursor-pointer' : ''}`}
-        title={sentences.length > 1 ? (isEn ? 'Tap to see next sentence' : 'Chạm để xem câu tiếp theo') : ''}
+        className="text-xs sm:text-[13px] font-medium text-stone-100 leading-snug px-6 select-text animate-in fade-in duration-200 line-clamp-2"
       >
         {activeSentence}
       </p>
@@ -93,7 +85,7 @@ const MobileCinemaSubtitle = ({ fullText, isSpeaking, onClose, isEn = false }) =
           type="button"
           onClick={onClose}
           className="absolute right-2.5 w-4 h-4 rounded-full hover:bg-stone-800 text-stone-400 hover:text-stone-200 flex items-center justify-center transition-all cursor-pointer"
-          title={isEn ? "Hide subtitle" : "Ẩn phụ đề"}
+          title="Ẩn phụ đề"
         >
           <X className="w-3 h-3" />
         </button>
@@ -190,8 +182,9 @@ export const MobileRobotScreen = ({
     if (typeof onStartTalk === 'function' && !isListening && !isSpeaking && !isBusy) {
       timer = setTimeout(() => {
         onStartTalk();
-      }, 600);
+      }, 500);
     }
+
     const handleFirstTouch = () => {
       if (typeof onPrime === 'function') {
         onPrime();
@@ -339,10 +332,10 @@ export const MobileRobotScreen = ({
           </div>
         </header>
 
-        {/* Overlay trong suốt khi mở Menu Ngôn Ngữ (Click outside to close - không làm tối màn hình) */}
+        {/* Nền mờ khi mở Menu Ngôn Ngữ (Click outside to close) */}
         {isLangMenuOpen && (
           <div
-            className="fixed inset-0 z-20"
+            className="fixed inset-0 z-40 bg-black/50 backdrop-blur-xs"
             onClick={() => setIsLangMenuOpen(false)}
           />
         )}
@@ -530,54 +523,185 @@ export const MobileRobotScreen = ({
         )}
 
         {isNavigating ? (
-          <main className="flex-1 min-h-0 w-full h-full relative overflow-hidden bg-white">
-            <FloorMap
-              destinationKey={navigationDestinationKey}
-              onSelectDestination={onSelectDestination}
-              onClose={() => {
-                setIsMapManualOpen(false);
-                onResetToIdle();
-              }}
-              showQrModalExternal={false}
-              qrCountdown={null}
-              onCloseQrModal={onCloseQrModal}
-              defaultZoom={1.65}
-              className="w-full h-full rounded-none border-none shadow-none"
-            />
+          <main className="flex-1 min-h-0 w-full h-full flex flex-row items-stretch justify-between gap-2.5 p-2 bg-[#F5F2EB] select-none relative overflow-hidden">
+            {/* Cột Trái: Bản đồ 2D Wayfinding */}
+            <div className="flex-1 min-h-0 h-full relative rounded-2xl overflow-hidden border border-[#E3DFD5] shadow-sm bg-white">
+              <FloorMap
+                destinationKey={navigationDestinationKey}
+                onSelectDestination={onSelectDestination}
+                onClose={() => {
+                  setIsMapManualOpen(false);
+                  onResetToIdle();
+                }}
+                showQrModalExternal={showQrModalExternal}
+                qrCountdown={qrCountdown}
+                onCloseQrModal={onCloseQrModal}
+                defaultZoom={1.65}
+                className="w-full h-full rounded-none border-none shadow-none"
+              />
+            </div>
 
-            {/* Subtitle nổi trên bản đồ khi AI đang nói hoặc vừa nói xong */}
-            {displayText && (
-              <div className="absolute bottom-2.5 left-1/2 -translate-x-1/2 z-40 max-w-[94vw] sm:max-w-lg pointer-events-auto">
-                <MobileCinemaSubtitle
-                  fullText={displayText}
-                  isSpeaking={isSpeaking}
-                  onClose={onCloseAiResponse}
-                  isEn={isEn}
-                />
+            {/* Cột Phải: Bảng Lộ Trình & Thẻ Mã QR & Micro giống Desktop */}
+            <div className="w-[310px] sm:w-[350px] md:w-[380px] h-full flex flex-col justify-between items-start gap-2 p-2.5 sm:p-3 bg-white rounded-2xl border border-[#E3DFD5] shadow-sm shrink-0 overflow-y-auto custom-scrollbar">
+              <div className="w-full flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-stone-700 tracking-wider uppercase">
+                    {isEn ? 'Wayfinding Route' : 'Lộ trình di chuyển'}
+                  </span>
+                  <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-[#EFECE4] text-stone-700 border border-[#E3DFD5] uppercase">
+                    {currentDestination.floorLevel}
+                  </span>
+                </div>
+
+                {/* AI Text Response */}
+                <div className="p-2.5 sm:p-3 bg-[#F5F2EB]/80 rounded-xl border border-[#E3DFD5] text-xs font-medium text-stone-800 leading-relaxed max-h-[85px] overflow-y-auto custom-scrollbar">
+                  {displayText || (isEn ? `Route leading to ${currentDestination.name}. Please follow the floor map.` : `Lộ trình dẫn tới ${currentDestination.name}. Quý khách vui lòng theo dõi sơ đồ bên trái.`)}
+                </div>
               </div>
-            )}
+
+              {/* Step Checklist */}
+              <div className="w-full flex flex-col gap-1.5 text-left">
+                <div className="p-2 bg-stone-50 rounded-xl border border-[#E3DFD5] flex items-center gap-2.5">
+                  <div className="w-5 h-5 rounded-full bg-stone-800 text-white flex items-center justify-center font-bold text-[10px] shrink-0">1</div>
+                  <span className="text-[11px] font-semibold text-stone-800 line-clamp-2">
+                    {currentDestination.step1Text || (isEn ? 'Head towards the nearest elevator' : 'Đi theo hành lang theo chỉ dẫn')}
+                  </span>
+                </div>
+
+                {currentDestination.isDifferentFloor ? (
+                  <>
+                    <div className="p-2 bg-stone-50 rounded-xl border border-[#E3DFD5] flex items-center gap-2.5">
+                      <div className="w-5 h-5 rounded-full bg-stone-800 text-white flex items-center justify-center font-bold text-[10px] shrink-0">2</div>
+                      <span className="text-[11px] font-semibold text-stone-800 line-clamp-2">
+                        {currentDestination.step2Text || (isEn ? `Exit elevator and head to ${currentDestination.name}` : `Ra khỏi thang máy và tới ${currentDestination.name}`)}
+                      </span>
+                    </div>
+                    <div className="p-2 bg-[#EFECE4] rounded-xl border border-[#E3DFD5] flex items-center gap-2.5">
+                      <div className="w-5 h-5 rounded-full bg-stone-900 text-white flex items-center justify-center font-bold text-[10px] shrink-0">3</div>
+                      <span className="text-[11px] font-bold text-stone-950 truncate">
+                        {isEn ? `Arrive: ${currentDestination.name}` : `Đến nơi: ${currentDestination.name}`}
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="p-2 bg-[#EFECE4] rounded-xl border border-[#E3DFD5] flex items-center gap-2.5">
+                    <div className="w-5 h-5 rounded-full bg-stone-900 text-white flex items-center justify-center font-bold text-[10px] shrink-0">2</div>
+                    <span className="text-[11px] font-bold text-stone-950 truncate">
+                      {isEn ? `Arrive: ${currentDestination.name}` : `Đến nơi: ${currentDestination.name}`}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Thẻ Quét Mã QR lưu chỉ dẫn chuẩn Desktop */}
+              <div
+                className="w-full p-2.5 bg-stone-900 rounded-xl border border-stone-800 flex items-center gap-2.5 shadow-md text-white"
+              >
+                <div className="p-1 bg-white rounded-lg shrink-0 shadow-xs flex items-center justify-center">
+                  <QRCodeSVG
+                    value={qrMapUrl}
+                    size={64}
+                    level="M"
+                    includeMargin={false}
+                  />
+                </div>
+                <div className="flex-1 min-w-0 text-left">
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="text-white font-bold text-[11px] uppercase tracking-wide truncate">
+                      {isEn ? 'Scan QR for Map' : 'Quét QR lưu chỉ dẫn'}
+                    </span>
+                    {qrCountdown !== null && qrCountdown >= 0 && (
+                      <span className="text-[9px] font-mono font-semibold text-stone-300 bg-stone-800 px-1.5 py-0.5 rounded border border-stone-700">
+                        {qrCountdown}s
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-stone-300 line-clamp-2 mt-0.5 leading-snug">
+                    {isEn ? 'Scan with phone camera to keep directions on mobile.' : 'Quét camera để lưu sơ đồ và di chuyển thuận tiện.'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Đáy: Dock Micro thu âm & Nút Đóng */}
+              <div className="w-full flex flex-col gap-1.5 pt-1">
+                {/* Voice Bar: Khách có thể nói "Cảm ơn" hoặc hỏi tiếp */}
+                <div
+                  onClick={() => {
+                    if (isSpeaking && onStopSpeaking) {
+                      onStopSpeaking();
+                      if (onStartTalk) onStartTalk();
+                      return;
+                    }
+                    if (isListening && transcript && onSubmitTalk) {
+                      onSubmitTalk();
+                      return;
+                    }
+                    if (!isSpeaking && onStartTalk) {
+                      onStartTalk();
+                    }
+                  }}
+                  className={`w-full py-1.5 px-3 rounded-xl border flex items-center justify-between gap-2 cursor-pointer transition-all active:scale-[0.99] ${
+                    isListening
+                      ? 'bg-stone-900 text-white border-stone-700 shadow-sm'
+                      : 'bg-[#EFECE4] hover:bg-stone-200 text-stone-800 border-[#E3DFD5]'
+                  }`}
+                  title={isEn ? 'Touch or speak command' : 'Chạm để nói'}
+                >
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    {isListening ? (
+                      <AudioWave isActive={true} volumeLevel={volumeLevel} />
+                    ) : (
+                      <Mic className="w-3.5 h-3.5 text-stone-600 shrink-0" />
+                    )}
+                    <span className="text-[11px] font-semibold truncate">
+                      {transcript ? `"${transcript}"` : isListening ? (isEn ? 'Listening... Speak now' : 'Đang nghe... Nói để đóng/hỏi tiếp') : (isEn ? 'Touch to speak' : 'Chạm để nói')}
+                    </span>
+                  </div>
+                  {transcript && onSubmitTalk && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onSubmitTalk();
+                      }}
+                      className="px-2 py-0.5 bg-emerald-600 text-white text-[10px] font-bold rounded shadow-xs shrink-0"
+                    >
+                      {isEn ? 'Send' : 'Gửi'}
+                    </button>
+                  )}
+                </div>
+
+                {/* Nút Đóng Bản Đồ */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMapManualOpen(false);
+                    onResetToIdle();
+                  }}
+                  className="w-full py-2 bg-stone-900 hover:bg-stone-800 text-white rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-sm active:scale-98"
+                >
+                  <span>{isEn ? 'I Remembered · Close Map' : 'TÔI ĐÃ NHỚ ĐƯỜNG · ĐÓNG'}</span>
+                </button>
+                <p className="text-[10px] text-center text-stone-500 font-medium">
+                  {isEn ? 'Or say "Thank you" or "I got it" to close.' : 'Nói "Cảm ơn" hoặc "Ok tôi đã nhớ" để đóng.'}
+                </p>
+              </div>
+            </div>
           </main>
         ) : (
           <main
             onClick={() => {
-              if (isSpeaking || isBusy) {
-                // Tuyệt đối không ngắt lời AI khi robot đang trả lời hoặc đang xử lý
+              if (isSpeaking && onStopSpeaking) {
+                onStopSpeaking();
+                if (onStartTalk) onStartTalk();
                 return;
               }
               if (isListening && transcript && onSubmitTalk) {
                 onSubmitTalk();
                 return;
               }
-              if (displayText && !isSpeaking) {
-                // Khi robot đã nói xong hoàn toàn và phụ đề đang hiển thị: Chạm để hỏi câu tiếp theo
-                if (onCloseAiResponse) onCloseAiResponse();
-                if (onStartTalk) onStartTalk();
-                return;
-              }
               if (!isSpeaking && !isBusy && onStartTalk) {
-                if (currentState === 'RT-01' || currentState === 'RT-02') {
-                  onStartTalk();
-                }
+                onStartTalk();
               }
             }}
             className="flex-1 min-h-0 w-full flex flex-col items-center justify-center robot-safe-x robot-safe-bottom cursor-pointer relative px-4 select-none"
@@ -595,56 +719,15 @@ export const MobileRobotScreen = ({
 
               {/* 1. Khi đang nói hoặc có phụ đề trả lời: Subtitle điện ảnh nổi tinh tế */}
               {displayText ? (
-                <div className="flex flex-col items-center gap-1.5 animate-fadeIn">
-                  <MobileCinemaSubtitle
-                    fullText={displayText}
-                    isSpeaking={isSpeaking}
-                    onClose={onCloseAiResponse}
-                    isEn={isEn}
-                  />
-                  {!isSpeaking && !isListening && (
-                    <div className="flex items-center gap-2 mt-0.5 flex-wrap justify-center">
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (onCloseAiResponse) onCloseAiResponse();
-                          if (onStartTalk) onStartTalk();
-                        }}
-                        className="px-3 py-1 bg-stone-900/80 hover:bg-stone-800 text-stone-200 hover:text-white text-[11px] font-medium rounded-full border border-stone-700/60 backdrop-blur-md flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-md"
-                      >
-                        <Mic className="w-3 h-3 text-stone-300" />
-                        <span>{isEn ? 'Tap to ask next question' : 'Chạm để hỏi tiếp · Speak again'}</span>
-                      </button>
-                      {navigationDestinationKey && HOTEL_DESTINATIONS[navigationDestinationKey] && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setIsMapManualOpen(true);
-                          }}
-                          className="px-3 py-1 bg-stone-900/90 hover:bg-stone-800 text-stone-200 hover:text-white text-[11px] font-bold rounded-full border border-stone-700/60 backdrop-blur-md flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-md"
-                        >
-                          <MapIcon className="w-3 h-3 text-stone-400" />
-                          <span>{isEn ? `View Map (${HOTEL_DESTINATIONS[navigationDestinationKey]?.floorLevel})` : `Xem sơ đồ (${HOTEL_DESTINATIONS[navigationDestinationKey]?.floorLevel})`}</span>
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
+                <MobileCinemaSubtitle
+                  fullText={displayText}
+                  isSpeaking={isSpeaking}
+                  onClose={onCloseAiResponse}
+                />
               ) : currentState === 'RT-03' || isListening ? (
                 /* 2. Khi đang nghe: Dock âm thanh sóng AudioWave chuẩn Desktop */
                 <div className="mt-2.5 flex flex-col items-center gap-1.5 animate-fadeIn">
-                  <div
-                    onClick={(e) => {
-                      if (transcript && onSubmitTalk) {
-                        e.stopPropagation();
-                        onSubmitTalk();
-                      }
-                    }}
-                    className={`px-5 py-2 sm:px-6 sm:py-2.5 bg-stone-900/90 backdrop-blur-xl border border-stone-700/80 rounded-2xl shadow-xl flex items-center justify-between gap-3 text-stone-100 w-full max-w-sm sm:max-w-md ${transcript ? 'cursor-pointer active:scale-[0.99]' : ''}`}
-                    title={transcript ? (isEn ? 'Tap to send immediately' : 'Chạm để gửi ngay') : ''}
-                  >
+                  <div className="px-5 py-2 sm:px-6 sm:py-2.5 bg-stone-900/90 backdrop-blur-xl border border-stone-700/80 rounded-2xl shadow-xl flex items-center justify-between gap-3 text-stone-100 w-full max-w-sm sm:max-w-md">
                     <div className="flex items-center gap-3 min-w-0 flex-1">
                       <AudioWave isActive={isListening} volumeLevel={volumeLevel} />
                       <div className="flex flex-col text-left min-w-0">
@@ -657,6 +740,20 @@ export const MobileRobotScreen = ({
                         </span>
                       </div>
                     </div>
+
+                    {transcript && onSubmitTalk && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSubmitTalk();
+                        }}
+                        className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md transition-all active:scale-95 shrink-0 flex items-center gap-1 cursor-pointer"
+                        title={isEn ? 'Send question' : 'Gửi câu hỏi'}
+                      >
+                        <span>{isEn ? 'Send' : 'Gửi'}</span>
+                      </button>
+                    )}
                   </div>
                   {speechError && (
                     <div className="px-3 py-1 bg-stone-900/90 border border-stone-700 text-stone-300 text-[10px] font-medium rounded-xl">

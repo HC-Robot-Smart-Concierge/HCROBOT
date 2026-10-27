@@ -7,6 +7,7 @@ from typing import AsyncGenerator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.ai import ChatRequest, ChatResponse
+from langchain_core.runnables import RunnableConfig
 from app.services.ai.session_manager import session_manager
 from app.services.ai.concierge_graph import concierge_graph, intent_router_node, service_fsm_node, retrieval_node
 from app.services.ai.tts_service import tts_service
@@ -51,7 +52,8 @@ def _detect_destination_poi(prompt: str, reply: str = "") -> str | None:
         "tôi muốn đến", "toi muon den", "tôi muốn đi", "toi muon di",
         "đưa tôi", "dua toi", "tìm đường", "tim duong", "vị trí", "vi tri", "chỉ tôi", "chi toi",
         "where is", "where are", "where's", "which floor", "how to get", "how do i get",
-        "way to", "directions to", "show me the way", "take me to", "lead me to", "navigate to"
+        "way to", "directions to", "show me the way", "take me to", "lead me to", "navigate to",
+        "giới thiệu", "gioi thieu", "thông tin về", "introduce", "tell me about"
     ]
 
     # Danh mục cụm từ đi tới địa điểm trực tiếp (dù không có chữ 'ở đâu')
@@ -81,6 +83,18 @@ def _detect_destination_poi(prompt: str, reply: str = "") -> str | None:
         is_short_location_utterance
     )
 
+    # Bỏ qua các câu hỏi tổng quan về dịch vụ / tiện ích của khách sạn (không nhắm đến 1 địa điểm cụ thể)
+    general_overview_queries = [
+        "dịch vụ về khách sạn", "dịch vụ của khách sạn", "dịch vụ khách sạn",
+        "các dịch vụ", "tiện ích khách sạn", "các tiện ích", "tiện ích của khách sạn",
+        "cơ sở vật chất", "khách sạn có gì", "khách sạn có những gì", "khách sạn có những dịch vụ gì",
+        "khách sạn có những tiện ích gì", "giới thiệu khách sạn", "giới thiệu về khách sạn",
+        "thông tin về khách sạn", "thông tin khách sạn", "hotel amenities", "hotel facilities",
+        "all services", "ở đây có gì", "có những dịch vụ gì", "có những tiện ích gì"
+    ]
+    if any(k in p_lower for k in general_overview_queries):
+        return None
+
     # NẾU KHÔNG CÓ Ý ĐỊNH HỎI ĐƯỜNG -> TUYỆT ĐỐI KHÔNG BẬT BẢN ĐỒ CHỈ ĐƯỜNG
     if not has_nav_intent:
         return None
@@ -88,65 +102,59 @@ def _detect_destination_poi(prompt: str, reply: str = "") -> str | None:
     # 1. Nhận diện các phòng Tầng 4 (401 -> 409)
     if room_4xx_match:
         return f"room_{room_4xx_match.group(1)}"
-    room_4xx_comb = re.search(r'\b(?:phòng|p\.?|phong)?\s*(40[1-9])\b', combined)
-    if room_4xx_comb:
-        return f"room_{room_4xx_comb.group(1)}"
 
     # 2. Nhận diện các phòng Tầng 3 (301 -> 309)
     if room_3xx_match:
         return f"room_{room_3xx_match.group(1)}"
-    room_3xx_comb = re.search(r'\b(?:phòng|p\.?|phong)?\s*(30[1-9])\b', combined)
-    if room_3xx_comb:
-        return f"room_{room_3xx_comb.group(1)}"
 
     # 3. Khu vực Vệ Sinh (Toilet / WC / Restroom toàn khách sạn)
-    if any(k in combined for k in [
+    if any(k in p_lower for k in [
         "vệ sinh", "ve sinh", "toilet", "wc", "restroom", "washroom",
         "nhà vệ sinh", "nha ve sinh", "phòng vệ sinh", "phong ve sinh",
         "đi vệ sinh", "di ve sinh", "đi toilet"
     ]):
-        if any(f in combined for f in ["tầng 2", "tang 2", "nhà hàng", "bếp", "kho"]):
+        if any(f in p_lower for f in ["tầng 2", "tang 2", "nhà hàng", "bếp", "kho"]):
             return "restroom_f2"
-        if any(f in combined for f in ["sảnh", "tầng 1", "trệt", "lễ tân", "ground"]):
+        if any(f in p_lower for f in ["sảnh", "tầng 1", "trệt", "lễ tân", "ground"]):
             return "restroom_ground"
         return "restroom_ground"
 
     # 4. Khu vực Tầng 2 (Bếp, Nhận món, Kho, Sơ chế, Nhà hàng)
-    if any(k in combined for k in ["nhà bếp", "nha bep", "khu bếp", "bếp chính", "kitchen"]):
+    if any(k in p_lower for k in ["nhà bếp", "nha bep", "khu bếp", "bếp chính", "kitchen"]):
         return "kitchen"
-    if any(k in combined for k in ["sơ chế", "so che", "chuẩn bị món", "preparation"]):
+    if any(k in p_lower for k in ["sơ chế", "so che", "chuẩn bị món", "preparation"]):
         return "preparation_area"
-    if any(k in combined for k in ["kho hàng", "kho hang", "kho nguyên liệu", "kho thực phẩm", "warehouse"]):
+    if any(k in p_lower for k in ["kho hàng", "kho hang", "kho nguyên liệu", "kho thực phẩm", "warehouse"]):
         return "warehouse"
-    if any(k in combined for k in ["nhà hàng", "nha hang", "buffet", "ăn sáng", "quầy nhận món", "pickup"]):
+    if any(k in p_lower for k in ["nhà hàng", "nha hang", "buffet", "ăn sáng", "quầy nhận món", "pickup", "restaurant"]):
         return "restaurant"
 
     # 5. Tiện ích Tầng 5 & Tầng 6
-    if any(k in combined for k in ["hồ bơi", "ho boi", "bể bơi", "pool", "bơi"]):
+    if any(k in p_lower for k in ["hồ bơi", "ho boi", "bể bơi", "pool", "bơi"]):
         return "infinity_pool"
-    if any(k in combined for k in ["rooftop", "cafe", "cà phê", "coffee"]):
+    if any(k in p_lower for k in ["rooftop", "cafe", "cà phê", "coffee"]):
         return "rooftop_coffee"
-    if any(k in combined for k in ["quầy bar", "quay bar", "sky bar", "sky lounge", "uống rượu"]):
+    if any(k in p_lower for k in ["quầy bar", "quay bar", "sky bar", "sky lounge", "uống rượu"]):
         return "bar"
-    if any(k in combined for k in ["karaoke", "hát karaoke", "phòng hát"]):
+    if any(k in p_lower for k in ["karaoke", "hát karaoke", "phòng hát"]):
         return "karaoke"
-    if any(k in combined for k in ["gym", "thể hình", "the hinh", "fitness", "tập gym"]):
+    if any(k in p_lower for k in ["gym", "thể hình", "the hinh", "fitness", "tập gym"]):
         return "gym"
-    if any(k in combined for k in ["spa", "massage", "xông hơi", "mát xa"]):
+    if any(k in p_lower for k in ["spa", "massage", "xông hơi", "mát xa"]):
         return "spa"
-    if any(k in combined for k in ["lưu niệm", "gift shop", "cửa hàng quà"]):
+    if any(k in p_lower for k in ["lưu niệm", "gift shop", "cửa hàng quà"]):
         return "gift_shop"
-    if any(k in combined for k in ["thay đồ", "locker", "tủ đồ"]):
+    if any(k in p_lower for k in ["thay đồ", "locker", "tủ đồ"]):
         return "locker_room"
 
     # 6. Tiện ích Tầng Trệt & Bãi xe
-    if any(k in combined for k in ["lễ tân", "tiếp tân", "quầy lễ tân", "bàn lễ tân", "front desk", "check-in", "check in"]):
+    if any(k in p_lower for k in ["lễ tân", "tiếp tân", "quầy lễ tân", "bàn lễ tân", "front desk", "check-in", "check in"]):
         return "front_desk"
-    if any(k in combined for k in ["xe máy", "gửi xe máy", "bãi xe máy", "xe đạp", "hầm b1"]):
+    if any(k in p_lower for k in ["xe máy", "gửi xe máy", "bãi xe máy", "xe đạp", "hầm b1"]):
         return "parking_bike"
-    if any(k in combined for k in ["đỗ ô tô", "bãi ô tô", "bãi xe ô tô", "hầm b2", "xe hơi"]):
+    if any(k in p_lower for k in ["đỗ ô tô", "bãi ô tô", "bãi xe ô tô", "hầm b2", "xe hơi"]):
         return "parking_car"
-    if any(k in combined for k in ["bãi xe", "đỗ xe", "gửi xe", "parking"]):
+    if any(k in p_lower for k in ["bãi xe", "đỗ xe", "gửi xe", "parking"]):
         return "parking_car"
 
     return None
@@ -180,6 +188,18 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
         lang_code = cached_ai.get("lang_code") or ("en-US" if detected_lang == "English" else "vi-VN")
         act = cached_ai.get("action", "conversation")
         dest_key = cached_ai.get("destination_key")
+
+        # Đảm bảo không bị mất destination_key nếu cache cũ lưu None
+        if not dest_key:
+            from app.services.ai.scenario_service import scenario_service
+            sc_match = scenario_service.match_fast_path(request.prompt)
+            if sc_match and len(sc_match) >= 5:
+                if sc_match[3] == "none":
+                    dest_key = None
+                elif isinstance(sc_match[4], dict):
+                    dest_key = sc_match[4].get("destination_key")
+            if not dest_key and (not sc_match or sc_match[3] != "none"):
+                dest_key = _detect_destination_poi(request.prompt, reply)
 
         session_manager.add_turn(sid, "user", request.prompt, language=lang_code)
         session_manager.add_turn(sid, "assistant", reply, language=lang_code, intent_action=act)
@@ -219,7 +239,7 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
         "trigger_video_call": False,
     }
     t_start = time.perf_counter()
-    graph_config = {"configurable": {"thread_id": sid}}
+    graph_config: RunnableConfig = {"configurable": {"thread_id": sid}}
     graph_result = await concierge_graph.ainvoke(initial_state, config=graph_config)
     t_graph = time.perf_counter()
 

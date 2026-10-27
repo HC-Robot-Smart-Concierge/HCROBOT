@@ -6,9 +6,11 @@ Quản lý luồng xử lý tinh gọn (Fast-Path -> Direct Conversational Gener
 
 import asyncio
 import logging
-from typing import Dict, Any, List, Optional, TypedDict
+from typing import Dict, Any, List, Optional, cast
+from typing_extensions import TypedDict
 
 from langgraph.graph import StateGraph, START, END
+from langgraph.graph.state import CompiledStateGraph
 from langgraph.checkpoint.memory import MemorySaver
 
 from app.services.ai.session_manager import session_manager, extract_room_number
@@ -76,18 +78,15 @@ async def fast_path_node(state: ConciergeState) -> Dict[str, Any]:
 
     fast_hit = ollama_service.check_fast_path_full(prompt, language)
     if fast_hit:
-        if len(fast_hit) == 5:
-            reply, lang_name, lang_code, action_type, action_payload = fast_hit
-        elif len(fast_hit) == 4:
-            reply, lang_name, lang_code, action_type = fast_hit
-            action_payload = None
-        else:
-            reply, lang_name, lang_code = fast_hit[0], fast_hit[1], fast_hit[2]
-            action_type, action_payload = None, None
+        reply = fast_hit[0]
+        lang_name = fast_hit[1]
+        lang_code = fast_hit[2]
+        action_type = fast_hit[3] if len(fast_hit) > 3 else None
+        action_payload = fast_hit[4] if len(fast_hit) > 4 else None
 
         dest_key = action_payload.get("destination_key") if isinstance(action_payload, dict) else None
         eye_expr = action_payload.get("eye_expression") if isinstance(action_payload, dict) else None
-        is_vc = bool(action_type == "trigger_video_call")
+        is_vc = action_type == "trigger_video_call"
         logger.info(f"[Harness FastPath] Matched dynamic scenario! Fast response in <1ms for: '{prompt[:30]}...' (eye: {eye_expr})")
         return {
             "fast_path_hit": True,
@@ -424,9 +423,9 @@ def route_after_intent(state: ConciergeState) -> str:
 # 3. BUILD & COMPILE LANGGRAPH HARNESS
 # ============================================================================
 
-def build_concierge_graph() -> StateGraph:
+def build_concierge_graph() -> CompiledStateGraph:
     """Khởi tạo cấu trúc đồ thị trạng thái Agent Harness."""
-    builder = StateGraph(ConciergeState)
+    builder = StateGraph(cast(Any, ConciergeState))
 
     builder.add_node("fast_path", fast_path_node)
     builder.add_node("intent_router", intent_router_node)

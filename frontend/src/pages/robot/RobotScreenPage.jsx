@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { RobotFace } from '../../components/robot/RobotFace';
 import { AudioWave } from '../../components/robot/AudioWave';
-import { FloorMap, HOTEL_DESTINATIONS, getMobileGuestMapUrl } from '../../components/robot/FloorMap';
+import { FloorMap, HOTEL_DESTINATIONS, getMobileGuestMapUrl, detectDestinationPoi } from '../../components/robot/FloorMap';
 import { PhoneCall, Sparkles, RefreshCw, Smartphone, QrCode, Clock, Utensils, Star, Building, Navigation, Film, Menu, Globe, Check, Volume2, X, Mic } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { CameraPreview } from '../../components/robot/CameraPreview';
@@ -751,23 +751,45 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     if (currentState === 'RT-05' || isAutoQrModalOpen) {
       const isDismissDirectionsPhrase = [
         'đã nhớ', 'nhớ rồi', 'tôi nhớ', 'ok tôi', 'hiểu rồi', 'tôi hiểu',
-        'cảm ơn', 'cảm ơn em', 'cảm ơn robot', 'thank', 'thanks', 'xong rồi',
-        'được rồi', 'biết rồi', 'ok rora', 'ok robot', 'ok em', 'dạ rồi', 'đóng'
+        'cảm ơn', 'cảm ơn em', 'cảm ơn robot', 'cảm ơn nhiều', 'thank', 'thanks', 'thank you',
+        'xong rồi', 'được rồi', 'biết rồi', 'ok rora', 'ok robot', 'ok em', 'dạ rồi', 'đóng',
+        'ok tôi đã nhớ', 'tôi đã nhớ', 'ok đã nhớ', 'ok cảm ơn', 'dạ cảm ơn',
+        'đã rõ', 'rõ rồi', 'mình nhớ rồi', 'mình hiểu rồi', 'mình đã nhớ', 'ok rùi',
+        'got it', 'i got it', 'i understand', 'i remember'
       ].some((k) => lowerQuery.includes(k));
 
       if (isDismissDirectionsPhrase) {
         clearRouteGuidanceTimers();
-        const ackText = language === 'English'
-          ? 'You are welcome! Have a wonderful experience at Aurora Grand Hotel.'
-          : 'Dạ vâng, chúc quý khách đi đường thuận tiện và có trải nghiệm tuyệt vời ạ!';
+        setIsAutoQrModalOpen(false);
+        setQrCountdown(null);
+        setNavigationDestinationKey(null);
+
+        // Chuyển ngay về khuôn mặt Robot để đóng bản đồ tức thì
+        setCurrentState('RT-02');
+
+        const isEn = language === 'English' || /^(thank|thanks|i got it|ok|got it)/i.test(lowerQuery);
+        const ackText = isEn
+          ? 'You are welcome! How may I assist you further?'
+          : 'Dạ vâng, em có thể hỗ trợ gì thêm cho quý khách ạ?';
+
+        stopSpeaking();
+        stopListening();
+        resetTranscript();
+        isProcessingRef.current = false;
+        setIsProcessing(false);
+        setAiResponseText(ackText);
 
         speak(
           ackText,
-          language === 'English' ? 'en-US' : 'vi-VN',
+          isEn ? 'en-US' : 'vi-VN',
           () => {
             isProcessingRef.current = false;
             setIsProcessing(false);
-            resetToIdle();
+            setAiResponseText('');
+            // Chuyển thẳng qua màn hình nói chuyện tiếp (RT-03) và kích hoạt lắng nghe ngay tức thì
+            setTimeout(() => {
+              handleStartTalk();
+            }, 100);
           },
           () => {
             setAiResponseText(ackText);
@@ -787,7 +809,14 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       setIsFacilitiesModalOpen(true);
     }
 
-    setCurrentState('RT-04');
+    // FAST-PATH: Nhận diện nhanh câu hỏi chỉ đường / vị trí để LẬP TỨC chuyển sang RT-05 với 0ms độ trễ
+    const fastDestKey = detectDestinationPoi(query);
+    if (fastDestKey) {
+      setNavigationDestinationKey(fastDestKey);
+      setCurrentState('RT-05');
+    } else {
+      setCurrentState('RT-04');
+    }
 
     // Nhận diện nhanh ngôn ngữ câu hỏi (Bilingual VI/EN)
     const isEnQuery = (
@@ -803,37 +832,38 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
     if (fillerTimerRef.current) clearTimeout(fillerTimerRef.current);
 
-    // Timer 1800ms: Chỉ khi câu hỏi thực sự cần thời gian suy luận lâu (>1.8s)
-    // robot mới cất giọng câu đệm ("Dạ đợi em một tí nhé ạ"), tránh gây cảm giác chậm trễ cho các câu trả lời thông thường
-    fillerTimerRef.current = setTimeout(() => {
-      if (hasReceivedResponse || currentChatId !== activeChatRequestIdRef.current) return;
-      isPlayingFiller = true;
-      setAiResponseText(fillerPhrase);
-      triggerEyeExpression('look_around');
+    // Timer 1800ms: Chỉ chạy câu đệm nếu không phải câu hỏi chỉ đường (vì sơ đồ RT-05 đã lập tức hiển thị)
+    if (!fastDestKey) {
+      fillerTimerRef.current = setTimeout(() => {
+        if (hasReceivedResponse || currentChatId !== activeChatRequestIdRef.current) return;
+        isPlayingFiller = true;
+        setAiResponseText(fillerPhrase);
+        triggerEyeExpression('look_around');
 
-      // Phát giọng đọc câu đệm khi đợi AI phản hồi
-      speak(
-        fillerPhrase,
-        fillerLang,
-        () => {
-          // onEndCallback của câu đệm:
-          isPlayingFiller = false;
-          if (currentChatId !== activeChatRequestIdRef.current) return;
-          // Nếu câu trả lời chính đã về trong lúc đang nói câu đệm:
-          if (pendingMainTask) {
-            const executeTask = pendingMainTask;
-            pendingMainTask = null;
-            executeTask();
+        // Phát giọng đọc câu đệm khi đợi AI phản hồi
+        speak(
+          fillerPhrase,
+          fillerLang,
+          () => {
+            // onEndCallback của câu đệm:
+            isPlayingFiller = false;
+            if (currentChatId !== activeChatRequestIdRef.current) return;
+            // Nếu câu trả lời chính đã về trong lúc đang nói câu đệm:
+            if (pendingMainTask) {
+              const executeTask = pendingMainTask;
+              pendingMainTask = null;
+              executeTask();
+            }
+          },
+          () => {
+            // onStartCallback của câu đệm:
+            if (currentChatId === activeChatRequestIdRef.current) {
+              setAiResponseText(fillerPhrase);
+            }
           }
-        },
-        () => {
-          // onStartCallback của câu đệm:
-          if (currentChatId === activeChatRequestIdRef.current) {
-            setAiResponseText(fillerPhrase);
-          }
-        }
-      );
-    }, 1800);
+        );
+      }, 1800);
+    }
 
     try {
       // Gửi toàn bộ truy vấn tới RAG Backend duy nhất (Single Source of Truth)
@@ -891,7 +921,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         }
 
         // ĐỒNG BỘ BẢN ĐỒ KHI RAG BACKEND PHÁT HIỆN YÊU CẦU CHỈ ĐƯỜNG (destination_key)
-        const navTargetKey = chatRes.destination_key;
+        const navTargetKey = chatRes.destination_key || fastDestKey;
         const isRouteGuidance = Boolean(navTargetKey);
 
         if (isRouteGuidance) {
@@ -1684,12 +1714,19 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
               <FloorMap
                 destinationKey={navigationDestinationKey}
                 onSelectDestination={setNavigationDestinationKey}
-                onClose={resetToIdle}
+                onClose={() => {
+                  clearRouteGuidanceTimers();
+                  setIsAutoQrModalOpen(false);
+                  setNavigationDestinationKey(null);
+                  handleStartTalk();
+                }}
                 showQrModalExternal={isAutoQrModalOpen}
                 qrCountdown={qrCountdown}
                 onCloseQrModal={() => {
                   clearRouteGuidanceTimers();
-                  resetToIdle();
+                  setIsAutoQrModalOpen(false);
+                  setNavigationDestinationKey(null);
+                  handleStartTalk();
                 }}
               />
 
@@ -1781,7 +1818,12 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                 {/* Reset Action */}
                 <div className="w-full flex flex-col gap-2">
                   <button
-                    onClick={resetToIdle}
+                    onClick={() => {
+                      clearRouteGuidanceTimers();
+                      setIsAutoQrModalOpen(false);
+                      setNavigationDestinationKey(null);
+                      handleStartTalk();
+                    }}
                     className="w-full py-4 bg-stone-900 text-white rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-stone-800 active:scale-[0.99] transition-all cursor-pointer shadow-lg"
                   >
                     <span>TÔI ĐÃ NHỚ ĐƯỜNG · ĐÓNG BẢN ĐỒ</span>

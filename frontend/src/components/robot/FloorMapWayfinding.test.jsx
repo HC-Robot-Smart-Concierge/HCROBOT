@@ -76,5 +76,35 @@ describe('FloorMap Wayfinding Logic & Contract Tests', () => {
       expect(HOTEL_DESTINATIONS[fac.key]).toBeDefined();
     });
   });
+
+  it('correctly detects destination POI fast-path for instant RT-05 map activation', async () => {
+    const { detectDestinationPoi } = await import('./FloorMap');
+
+    // Các câu hỏi điều hướng thông dụng
+    expect(detectDestinationPoi('Nhà hàng ở đâu vậy robot')).toBe('restaurant');
+    expect(detectDestinationPoi('Chỉ đường ra hồ bơi')).toBe('infinity_pool');
+    expect(detectDestinationPoi('Phòng 401 ở đâu')).toBe('room_401');
+    expect(detectDestinationPoi('Cho tôi hỏi phòng 305 đi lối nào')).toBe('room_305');
+    expect(detectDestinationPoi('Nhà vệ sinh ở đâu')).toBe('restroom_ground');
+    expect(detectDestinationPoi('Đi toilet tầng 2')).toBe('restroom_f2');
+    expect(detectDestinationPoi('Chỉ tôi đường ra bãi đỗ xe ô tô')).toBe('parking_car');
+    expect(detectDestinationPoi('Phòng tập gym ở đâu')).toBe('gym');
+    expect(detectDestinationPoi('Đi spa massage')).toBe('spa');
+    expect(detectDestinationPoi('Hãy giới thiệu cho tôi về hồ bơi')).toBe('infinity_pool');
+
+    // Không kích hoạt với địa điểm bên ngoài khách sạn
+    expect(detectDestinationPoi('Sân bay Nội Bài ở đâu')).toBeNull();
+    expect(detectDestinationPoi('Chợ Bến Thành đi đường nào')).toBeNull();
+
+    // Không kích hoạt với câu hỏi chào hỏi thông thường
+    expect(detectDestinationPoi('Xin chào robot')).toBeNull();
+    expect(detectDestinationPoi('Thời tiết hôm nay thế nào')).toBeNull();
+
+    // Không kích hoạt với câu hỏi tổng quan dịch vụ / tiện ích của khách sạn
+    expect(detectDestinationPoi('Hãy giới thiệu các dịch vụ về khách sạn')).toBeNull();
+    expect(detectDestinationPoi('Giới thiệu dịch vụ khách sạn')).toBeNull();
+    expect(detectDestinationPoi('Khách sạn có những tiện ích gì')).toBeNull();
+    expect(detectDestinationPoi('Các dịch vụ của khách sạn')).toBeNull();
+  });
 });
 

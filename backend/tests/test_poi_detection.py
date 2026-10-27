@@ -39,6 +39,22 @@ def test_detect_destination_poi_non_nav_queries():
         "Dạ nhân viên sẽ mang bàn ủi lên phòng cho quý khách ngay ạ."
     ) is None
 
+    # Các câu hỏi giới thiệu tổng quan dịch vụ/tiện ích khách sạn -> TUYỆT ĐỐI KHÔNG bật bản đồ đến nhà hàng
+    assert _detect_destination_poi(
+        "Hãy giới thiệu các dịch vụ về khách sạn",
+        "Dạ khách sạn Aurora Grand có đầy đủ tiện ích 5 sao như Nhà hàng buffet Á - Âu tại Tầng 2, Hồ bơi vô cực, Phòng Gym và Spa thư giãn tại Tầng 5, cùng Rooftop Coffee và Sky Bar tại Tầng 6 ạ. Quý khách cần em hỗ trợ chỉ đường tới khu vực nào ạ?"
+    ) is None
+
+    assert _detect_destination_poi(
+        "Giới thiệu dịch vụ khách sạn",
+        "Dạ khách sạn Aurora Grand có đầy đủ tiện ích 5 sao: Nhà hàng buffet Á - Âu tại Tầng 2, Hồ bơi vô cực, Phòng Gym và Spa..."
+    ) is None
+
+    assert _detect_destination_poi(
+        "Khách sạn có những tiện ích gì?",
+        "Dạ khách sạn có hồ bơi, nhà hàng, gym, spa..."
+    ) is None
+
 
 def test_detect_destination_poi_external_places():
     # 3. Địa điểm ngoài khách sạn -> Không bật bản đồ trong nhà

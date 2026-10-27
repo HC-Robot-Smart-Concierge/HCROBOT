@@ -478,6 +478,112 @@ export const getMobileGuestMapUrl = (destKey) => {
   return url;
 };
 
+/**
+ * Nhận diện nhanh điểm đến / POI từ câu nói người dùng ngay trên Client (0ms latency)
+ * để màn hình robot LẬP TỨC chuyển sang chế độ bản đồ chỉ đường RT-05 mà không cần chờ LLM.
+ */
+export const detectDestinationPoi = (rawPrompt) => {
+  if (!rawPrompt || typeof rawPrompt !== 'string') return null;
+  const p = rawPrompt.toLowerCase().trim();
+
+  // Bỏ qua các địa điểm ngoại vi khách sạn
+  const externalPlaces = [
+    'sân bay', 'airport', 'nội bài', 'tân sơn nhất', 'ga tàu', 'ga hà nội',
+    'bến xe', 'bãi biển', 'ra biển', 'chợ', 'chợ đêm', 'bến thành',
+    'phố cổ', 'hồ gươm', 'trung tâm thương mại', 'vincom', 'bệnh viện',
+    'bảo tàng', 'ngoài khách sạn', 'địa điểm du lịch', 'tour', 'bắt taxi', 'bắt xe', 'grab'
+  ];
+  if (externalPlaces.some((k) => p.includes(k))) return null;
+
+  // Bỏ qua các câu hỏi tổng quan về dịch vụ / tiện ích của khách sạn (không nhắm đến 1 địa điểm cụ thể)
+  const generalOverviewKeywords = [
+    'dịch vụ về khách sạn', 'dịch vụ của khách sạn', 'dịch vụ khách sạn',
+    'các dịch vụ', 'tiện ích khách sạn', 'các tiện ích', 'tiện ích của khách sạn',
+    'cơ sở vật chất', 'khách sạn có gì', 'khách sạn có những gì', 'khách sạn có những dịch vụ gì',
+    'khách sạn có những tiện ích gì', 'giới thiệu khách sạn', 'giới thiệu về khách sạn',
+    'thông tin về khách sạn', 'thông tin khách sạn', 'hotel amenities', 'hotel facilities',
+    'all services', 'ở đây có gì', 'có những dịch vụ gì', 'có những tiện ích gì'
+  ];
+  if (generalOverviewKeywords.some((k) => p.includes(k))) return null;
+
+  // Ý định hỏi đường / điều hướng / tìm vị trí
+  const navIntentKeywords = [
+    'ở đâu', 'o dau', 'chỗ nào', 'cho nao', 'nơi nào', 'noi nao',
+    'tầng mấy', 'tang may', 'ở tầng', 'o tang', 'hướng nào', 'huong nao',
+    'đường đi', 'duong di', 'đường đến', 'duong den', 'đường ra', 'duong ra',
+    'chỉ đường', 'chi duong', 'dẫn đường', 'dan duong', 'hướng dẫn đường',
+    'lối đi', 'loi di', 'lối lên', 'loi len', 'lối xuống', 'loi xuong',
+    'làm sao để đến', 'lam sao de den', 'cách đi', 'cach di', 'cách đến', 'cach den',
+    'đi đến', 'di den', 'đi tới', 'di toi', 'đi ra', 'di ra', 'đi lên', 'di len', 'đi xuống', 'di xuong',
+    'dẫn tôi', 'dan toi', 'dắt tôi', 'cho tôi đến', 'cho toi den',
+    'tôi muốn đến', 'toi muon den', 'tôi muốn đi', 'toi muon di',
+    'đưa tôi', 'dua toi', 'tìm đường', 'tim duong', 'vị trí', 'vi tri', 'chỉ tôi', 'chi toi',
+    'where is', 'where are', "where's", 'which floor', 'how to get', 'how do i get',
+    'way to', 'directions to', 'show me the way', 'take me to', 'lead me to', 'navigate to',
+    'giới thiệu', 'gioi thieu', 'thông tin về', 'introduce', 'tell me about',
+    'bản đồ', 'sơ đồ', 'map'
+  ];
+
+  const directLocPhrases = [
+    'đi vệ sinh', 'di ve sinh', 'đi toilet', 'di toilet', 'đi wc', 'di wc',
+    'ra lễ tân', 'ra quầy', 'lên hồ bơi', 'ra hồ bơi', 'xuống bãi xe',
+    'vào thang máy', 'lên phòng gym', 'đi massage', 'đi spa'
+  ];
+
+  const words = p.split(/\s+/);
+  const isShortLocation = words.length <= 4 && [
+    'toilet', 'vệ sinh', 'wc', 'hồ bơi', 'pool', 'gym', 'spa',
+    'nhà hàng', 'buffet', 'lễ tân', 'reception', 'bãi xe', 'bar', 'cà phê', 'cafe'
+  ].some((k) => p.includes(k));
+
+  const room4xxMatch = p.match(/\b(?:phòng|p\.?|phong)?\s*(40[1-9])\b/);
+  const room3xxMatch = p.match(/\b(?:phòng|p\.?|phong)?\s*(30[1-9])\b/);
+
+  const hasNavIntent = Boolean(room4xxMatch || room3xxMatch) ||
+    navIntentKeywords.some((k) => p.includes(k)) ||
+    directLocPhrases.some((k) => p.includes(k)) ||
+    isShortLocation;
+
+  if (!hasNavIntent) return null;
+
+  // 1. Nhận diện phòng 4xx (401 -> 409)
+  if (room4xxMatch) return `room_${room4xxMatch[1]}`;
+
+  // 2. Nhận diện phòng 3xx (301 -> 309)
+  if (room3xxMatch) return `room_${room3xxMatch[1]}`;
+
+  // 3. Nhà vệ sinh
+  if (['vệ sinh', 've sinh', 'toilet', 'wc', 'restroom', 'washroom'].some((k) => p.includes(k))) {
+    if (['tầng 2', 'nhà hàng', 'bếp', 'kho'].some((k) => p.includes(k))) return 'restroom_f2';
+    return 'restroom_ground';
+  }
+
+  // 4. Nhà hàng & F&B
+  if (['nhà bếp', 'nha bep', 'khu bếp', 'bếp chính', 'kitchen'].some((k) => p.includes(k))) return 'kitchen';
+  if (['sơ chế', 'so che', 'chuẩn bị món', 'preparation'].some((k) => p.includes(k))) return 'preparation_area';
+  if (['kho hàng', 'kho hang', 'kho nguyên liệu', 'kho thực phẩm', 'warehouse'].some((k) => p.includes(k))) return 'warehouse';
+  if (['nhà hàng', 'nha hang', 'buffet', 'ăn sáng', 'quầy nhận món', 'pickup', 'restaurant'].some((k) => p.includes(k))) return 'restaurant';
+
+  // 5. Tầng 5 & 6 tiện ích
+  if (['hồ bơi', 'ho boi', 'bể bơi', 'pool', 'bơi'].some((k) => p.includes(k))) return 'infinity_pool';
+  if (['rooftop', 'cafe', 'cà phê', 'coffee'].some((k) => p.includes(k))) return 'rooftop_coffee';
+  if (['quầy bar', 'quay bar', 'sky bar', 'sky lounge', 'uống rượu', 'bar'].some((k) => p.includes(k))) return 'bar';
+  if (['karaoke', 'hát karaoke', 'phòng hát'].some((k) => p.includes(k))) return 'karaoke';
+  if (['gym', 'thể hình', 'the hinh', 'fitness', 'tập gym'].some((k) => p.includes(k))) return 'gym';
+  if (['spa', 'massage', 'xông hơi', 'mát xa'].some((k) => p.includes(k))) return 'spa';
+  if (['lưu niệm', 'gift shop', 'cửa hàng quà'].some((k) => p.includes(k))) return 'gift_shop';
+
+  // 6. Tầng trệt & bãi xe
+  if (['lễ tân', 'tiếp tân', 'quầy lễ tân', 'bàn lễ tân', 'front desk', 'check-in', 'check in', 'reception'].some((k) => p.includes(k))) return 'front_desk';
+  if (['xe máy', 'gửi xe máy', 'bãi xe máy', 'xe đạp', 'hầm b1'].some((k) => p.includes(k))) return 'parking_bike';
+  if (['đỗ ô tô', 'bãi ô tô', 'bãi xe ô tô', 'hầm b2', 'xe hơi', 'bãi xe', 'đỗ xe', 'gửi xe', 'parking'].some((k) => p.includes(k))) return 'parking_car';
+
+  // Nếu người dùng hỏi đường/bản đồ chung chung ("cho tôi xem bản đồ", "chỉ đường cho tôi", "bản đồ khách sạn")
+  if (['bản đồ', 'sơ đồ', 'map', 'chỉ đường', 'directions'].some((k) => p.includes(k))) return 'infinity_pool';
+
+  return null;
+};
+
 // Danh sách các cơ sở vật chất chính của khách sạn cho bộ chọn nhanh
 export const HOTEL_KEY_FACILITIES = [
   { key: 'infinity_pool', name: 'Hồ Bơi Vô Cực Nước Ấm', floor: 'TẦNG 5' },

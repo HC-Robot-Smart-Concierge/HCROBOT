@@ -83,6 +83,11 @@ class PipecatPipelineService:
                 task.cancel()
                 logger.info(f"[PipecatService] Barge-in triggered! Cancelled TTS audio stream for session '{session_id}'")
 
+    def is_session_interrupted(self, session_id: str) -> bool:
+        """Kiểm tra xem phiên có đang bị ngắt lời (Barge-in) không."""
+        session = self.active_sessions.get(session_id)
+        return bool(session and session.get("is_interrupted"))
+
     async def process_user_speech(
         self,
         session_id: str,
@@ -238,9 +243,9 @@ class PipecatPipelineService:
                 chat_history=history,
                 stored_room_number=current_room,
             ):
-                if session.get("is_interrupted"):
-                    yield {"type": "interrupted", "full_text": full_reply}
+                if self.is_session_interrupted(session_id):
                     session["is_speaking"] = False
+                    yield {"type": "interrupted", "full_text": full_reply}
                     return
 
                 full_reply += token
@@ -280,8 +285,14 @@ class PipecatPipelineService:
             session_manager.add_turn(session_id, "user", user_speech, language=lang_code)
             session_manager.add_turn(session_id, "assistant", full_reply, language=final_lang_code, intent_action="conversation")
 
+            from app.services.ai.scenario_service import scenario_service
             from app.services.ai.ai_chat_service import _detect_destination_poi
-            dest_key = _detect_destination_poi(user_speech, full_reply)
+            sc_match = scenario_service.match_fast_path(user_speech)
+            dest_key = None
+            if sc_match and len(sc_match) >= 5 and isinstance(sc_match[4], dict):
+                dest_key = sc_match[4].get("destination_key")
+            if not dest_key:
+                dest_key = _detect_destination_poi(user_speech, full_reply)
             is_video_call = any(k in user_speech.lower() for k in [
                 "gặp người", "trợ giúp trực tiếp", "nhân viên hỗ trợ", "live call", "video call",
                 "tổng đài", "gọi cho nhân viên", "gọi nhân viên", "gặp nhân viên", "kết nối nhân viên",

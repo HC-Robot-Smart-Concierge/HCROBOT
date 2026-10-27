@@ -78,12 +78,17 @@ DEFAULT_SEED_SCENARIOS = [
     },
     {
         "id": "scn-thanks",
-        "title": "Lời cảm ơn (Thanks)",
+        "title": "Lời cảm ơn & Ghi nhớ (Thanks & Acknowledged)",
         "category": "greeting",
-        "match_keywords": ["cảm ơn", "cam on", "thank you", "thanks", "cảm ơn em", "cảm ơn rora", "thanks rora"],
+        "match_keywords": [
+            "cảm ơn", "cam on", "thank you", "thanks", "cảm ơn em", "cảm ơn rora", "thanks rora", "cảm ơn nhiều",
+            "ok tôi đã nhớ", "tôi đã nhớ", "đã nhớ", "nhớ rồi", "tôi hiểu rồi", "hiểu rồi", "đã rõ", "rõ rồi",
+            "mình nhớ rồi", "mình hiểu rồi", "mình đã nhớ", "ok rùi", "dạ cảm ơn",
+            "i got it", "got it", "i remember", "i understand"
+        ],
         "match_type": "keyword",
-        "response_vi": "Dạ không có gì ạ! Rora rất hân hạnh được hỗ trợ quý khách. Chúc quý khách có những phút giây tuyệt vời tại Aurora Grand!",
-        "response_en": "You are most welcome! Rora is always delighted to assist you. Have a wonderful time at Aurora Grand!",
+        "response_vi": "Dạ không có gì ạ! Rora rất hân hạnh được hỗ trợ quý khách. Quý khách có cần em hỗ trợ gì thêm không ạ?",
+        "response_en": "You are most welcome! Rora is always delighted to assist you. How may I assist you further?",
         "action_type": "none",
         "action_payload": None,
         "is_fast_path": True,
@@ -446,7 +451,7 @@ DEFAULT_SEED_SCENARIOS = [
         "id": "scn-facilities-overview",
         "title": "Tổng quan Cơ sở vật chất & Tiện ích",
         "category": "facility",
-        "match_keywords": ["tiện ích", "cơ sở vật chất", "khách sạn có gì", "giới thiệu khách sạn", "dịch vụ khách sạn", "ở đây có gì", "hotel amenities", "facilities"],
+        "match_keywords": ["tiện ích", "cơ sở vật chất", "khách sạn có gì", "giới thiệu khách sạn", "dịch vụ khách sạn", "dịch vụ về khách sạn", "dịch vụ của khách sạn", "các dịch vụ", "các tiện ích", "ở đây có gì", "hotel amenities", "facilities", "khách sạn có những dịch vụ gì", "khách sạn có những tiện ích gì"],
         "match_type": "keyword",
         "response_vi": "Dạ khách sạn Aurora Grand có đầy đủ tiện ích 5 sao: Nhà hàng buffet Á - Âu tại Tầng 2, Hồ bơi vô cực, Phòng Gym và Spa thư giãn tại Tầng 5, cùng Rooftop Coffee & Sky Bar tại Tầng 6. Quý khách cần em hỗ trợ chỉ đường tới khu vực nào ạ?",
         "response_en": "Aurora Grand Hotel offers full 5-star amenities: Buffet Restaurant on Level 2, Infinity Pool, Gym & Spa on Level 5, and Rooftop Coffee & Sky Bar on Level 6. Which area would you like me to guide you to?",
@@ -678,9 +683,10 @@ class ScenarioService:
                         break
 
             if is_matched:
-                action_type = scn.get("action_type", "none")
-                action_payload = scn.get("action_payload")
-                resp_text = (scn.get("response_en") if is_en and scn.get("response_en") else scn.get("response_vi")) or scn.get("response_vi")
+                action_type = str(scn.get("action_type") or "none")
+                raw_payload = scn.get("action_payload")
+                action_payload: Optional[Dict[str, Any]] = raw_payload if isinstance(raw_payload, dict) else None
+                resp_text = str((scn.get("response_en") if is_en and scn.get("response_en") else scn.get("response_vi")) or scn.get("response_vi") or "")
                 logger.info(f"[ScenarioService FastPath Hit] Matched scenario '{scn.get('id')}' - '{scn.get('title')}' in <1ms")
                 return resp_text, lang_name, lang_code, action_type, action_payload
 
@@ -802,7 +808,7 @@ class ScenarioService:
             update_dict = data.model_dump(exclude_unset=True)
             for k, v in update_dict.items():
                 setattr(item, k, v)
-            item.updated_at = datetime.datetime.utcnow()
+            item.updated_at = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
 
             await db.commit()
             await db.refresh(item)

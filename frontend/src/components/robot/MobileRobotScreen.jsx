@@ -531,11 +531,23 @@ export const MobileRobotScreen = ({
                 onSelectDestination={onSelectDestination}
                 onClose={() => {
                   setIsMapManualOpen(false);
-                  onResetToIdle();
+                  if (onStartTalk) {
+                    onStartTalk();
+                  } else {
+                    onResetToIdle();
+                  }
                 }}
                 showQrModalExternal={showQrModalExternal}
                 qrCountdown={qrCountdown}
-                onCloseQrModal={onCloseQrModal}
+                onCloseQrModal={() => {
+                  if (onCloseQrModal) {
+                    onCloseQrModal();
+                  } else if (onStartTalk) {
+                    onStartTalk();
+                  } else {
+                    onResetToIdle();
+                  }
+                }}
                 defaultZoom={1.65}
                 className="w-full h-full rounded-none border-none shadow-none"
               />
@@ -676,7 +688,11 @@ export const MobileRobotScreen = ({
                   type="button"
                   onClick={() => {
                     setIsMapManualOpen(false);
-                    onResetToIdle();
+                    if (onStartTalk) {
+                      onStartTalk();
+                    } else {
+                      onResetToIdle();
+                    }
                   }}
                   className="w-full py-2 bg-stone-900 hover:bg-stone-800 text-white rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-sm active:scale-98"
                 >
@@ -727,7 +743,19 @@ export const MobileRobotScreen = ({
               ) : currentState === 'RT-03' || isListening ? (
                 /* 2. Khi đang nghe: Dock âm thanh sóng AudioWave chuẩn Desktop */
                 <div className="mt-2.5 flex flex-col items-center gap-1.5 animate-fadeIn">
-                  <div className="px-5 py-2 sm:px-6 sm:py-2.5 bg-stone-900/90 backdrop-blur-xl border border-stone-700/80 rounded-2xl shadow-xl flex items-center justify-between gap-3 text-stone-100 w-full max-w-sm sm:max-w-md">
+                  <div
+                    onClick={(e) => {
+                      if (transcript && onSubmitTalk) {
+                        e.stopPropagation();
+                        onSubmitTalk();
+                      } else if (onStartTalk) {
+                        e.stopPropagation();
+                        onStartTalk();
+                      }
+                    }}
+                    className="px-5 py-2 sm:px-6 sm:py-2.5 bg-stone-900/90 hover:bg-stone-850 backdrop-blur-xl border border-stone-700/80 rounded-2xl shadow-xl flex items-center justify-between gap-3 text-stone-100 w-full max-w-sm sm:max-w-md cursor-pointer active:scale-[0.99] transition-all"
+                    title={transcript ? (isEn ? 'Tap to send immediately' : 'Chạm để gửi ngay') : (isEn ? 'Tap to restart mic' : 'Chạm để kích hoạt lại Micro')}
+                  >
                     <div className="flex items-center gap-3 min-w-0 flex-1">
                       <AudioWave isActive={isListening} volumeLevel={volumeLevel} />
                       <div className="flex flex-col text-left min-w-0">

@@ -111,7 +111,12 @@ class RPLidarSLAMCore:
         self._encoder_cpr = float(os.getenv("HCROBOT_ENCODER_CPR", "330.0"))
         self._wheel_radius = 0.033
         self._wheel_sep = float(os.getenv("HCROBOT_WHEEL_BASE", "0.22"))
-        self._encoder_m3_sign = float(os.getenv("HCROBOT_ENCODER_M3_SIGN", "-1"))
+        self._encoder_signs = {
+            "m1": float(os.getenv("HCROBOT_ENCODER_M1_SIGN", "-1")),
+            "m2": float(os.getenv("HCROBOT_ENCODER_M2_SIGN", "1")),
+            "m3": float(os.getenv("HCROBOT_ENCODER_M3_SIGN", "-1")),
+            "m4": float(os.getenv("HCROBOT_ENCODER_M4_SIGN", "1")),
+        }
         self._prev_left_ticks: Optional[float] = None
         self._prev_right_ticks: Optional[float] = None
 
@@ -510,9 +515,13 @@ free_thresh: 0.25
         m2 = encoders.get("m2", {}) or {}
         m3 = encoders.get("m3", {}) or {}
         m4 = encoders.get("m4", {}) or {}
-        left_ticks = (float(m1.get("ticks", 0)) + float(m2.get("ticks", 0))) / 2.0
+        left_ticks = (
+            self._encoder_signs["m1"] * float(m1.get("ticks", 0))
+            + self._encoder_signs["m2"] * float(m2.get("ticks", 0))
+        ) / 2.0
         right_ticks = (
-            self._encoder_m3_sign * float(m3.get("ticks", 0)) + float(m4.get("ticks", 0))
+            self._encoder_signs["m3"] * float(m3.get("ticks", 0))
+            + self._encoder_signs["m4"] * float(m4.get("ticks", 0))
         ) / 2.0
         return left_ticks, right_ticks
 

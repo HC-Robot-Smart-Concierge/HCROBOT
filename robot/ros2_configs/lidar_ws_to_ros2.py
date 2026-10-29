@@ -57,9 +57,15 @@ class LidarWsToRos2Bridge(Node):
         self.wheel_radius = 0.033
         self.wheel_sep = float(os.getenv("HCROBOT_WHEEL_BASE", "0.297"))
         self.encoder_cpr = float(os.getenv("HCROBOT_ENCODER_CPR", "330.0"))
-        # M3 (P-TRƯỚC) đang ngược dấu so với bánh trái khi đi thẳng. Đặt -1 để đảo.
-        # Nếu đã đảo trên ESP32 firmware, set HCROBOT_ENCODER_M3_SIGN=1.
-        self.encoder_m3_sign = float(os.getenv("HCROBOT_ENCODER_M3_SIGN", "-1"))
+        # Encoder trước của mỗi bên (M1/M3) đang đếm ngược dấu so với encoder
+        # sau (M2/M4) trên robot thật. Chuẩn hóa tất cả về cùng quy ước trước
+        # khi tính odometry; có thể override nếu firmware ESP32 đã đảo dấu.
+        self.encoder_signs = {
+            "m1": float(os.getenv("HCROBOT_ENCODER_M1_SIGN", "-1")),
+            "m2": float(os.getenv("HCROBOT_ENCODER_M2_SIGN", "1")),
+            "m3": float(os.getenv("HCROBOT_ENCODER_M3_SIGN", "-1")),
+            "m4": float(os.getenv("HCROBOT_ENCODER_M4_SIGN", "1")),
+        }
         self.scan_count = 0
         self.last_scan_time = 0.0
         self.last_scan_points = 0
@@ -507,9 +513,13 @@ class LidarWsToRos2Bridge(Node):
                 "m3": float(m3.get("ticks", 0)),
                 "m4": float(m4.get("ticks", 0)),
             }
-            left_ticks = (float(m1.get("ticks", 0)) + float(m2.get("ticks", 0))) / 2.0
+            left_ticks = (
+                self.encoder_signs["m1"] * motor_ticks["m1"]
+                + self.encoder_signs["m2"] * motor_ticks["m2"]
+            ) / 2.0
             right_ticks = (
-                self.encoder_m3_sign * float(m3.get("ticks", 0)) + float(m4.get("ticks", 0))
+                self.encoder_signs["m3"] * motor_ticks["m3"]
+                + self.encoder_signs["m4"] * motor_ticks["m4"]
             ) / 2.0
         except (TypeError, ValueError):
             return
@@ -536,7 +546,8 @@ class LidarWsToRos2Bridge(Node):
         self.prev_right_ticks = right_ticks
         previous_motor_ticks = self.prev_motor_ticks or motor_ticks
         motor_deltas = {
-            name: motor_ticks[name] - previous_motor_ticks.get(name, motor_ticks[name])
+            name: self.encoder_signs[name]
+            * (motor_ticks[name] - previous_motor_ticks.get(name, motor_ticks[name]))
             for name in motor_ticks
         }
         self.prev_motor_ticks = motor_ticks
@@ -550,8 +561,9 @@ class LidarWsToRos2Bridge(Node):
             return
 
         distance_per_tick = (2.0 * math.pi * self.wheel_radius) / self.encoder_cpr
-        # M1/M2 là cặp encoder đang đồng nhất trên robot thật. M3/M4 hiện lệch
-        # hàng nghìn tick, nên không được phép kéo pose/map sang một quỹ đạo giả.
+        # M1/M2 là cặp encoder trái dùng làm quãng đường chính. Dấu của từng
+        # encoder đã được chuẩn hóa ở trên, nên hai giá trị phải cộng thay vì
+        # triệt tiêu nhau khi robot tiến thẳng.
         left_reliable_ticks = (motor_deltas["m1"] + motor_deltas["m2"]) / 2.0
         motion = self.last_sent_udp_motion
         linear_sign = -1.0 if motion.startswith("backward") else 1.0

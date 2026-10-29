@@ -174,6 +174,19 @@ class TestLidarServiceMapPersistence(unittest.TestCase):
         x_30 = dist_m * math.cos(rad_30)
         y_30 = dist_m * math.sin(rad_30)
         # Vật cản trong tọa độ thế giới VẪN PHẢI LÀ (X=2, Y=0)
+
+    def test_encoder_front_motor_polarity_is_normalized(self):
+        """M1/M3 âm và M2/M4 dương khi tiến phải cho cùng quãng đường dương."""
+        left_ticks, right_ticks = self.core._encoder_side_ticks({
+            "m1": {"ticks": -100},
+            "m2": {"ticks": 100},
+            "m3": {"ticks": -80},
+            "m4": {"ticks": 80},
+        })
+
+        self.assertEqual(left_ticks, 100.0)
+        self.assertEqual(right_ticks, 80.0)
+
     def test_fixed_layout_3x5m_and_fog_of_war(self):
         """Kiểm tra layout cứng 3x5m: tường không bị xóa đè, vùng xám ngoài không bị mở rộng, và robot đi đến đâu mở map đến đó."""
         res = self.core.init_fixed_layout_3x5m("test_3x5m")

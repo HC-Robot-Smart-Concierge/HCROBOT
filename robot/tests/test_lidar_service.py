@@ -175,12 +175,12 @@ class TestLidarServiceMapPersistence(unittest.TestCase):
         y_30 = dist_m * math.sin(rad_30)
         # Vật cản trong tọa độ thế giới VẪN PHẢI LÀ (X=2, Y=0)
 
-    def test_encoder_front_motor_polarity_is_normalized(self):
-        """M1/M3 âm và M2/M4 dương khi tiến phải cho cùng quãng đường dương."""
+    def test_encoder_forward_polarity_matches_current_firmware(self):
+        """Firmware hiện tại trả cả bốn tick dương khi robot tiến."""
         left_ticks, right_ticks = self.core._encoder_side_ticks({
-            "m1": {"ticks": -100},
+            "m1": {"ticks": 100},
             "m2": {"ticks": 100},
-            "m3": {"ticks": -80},
+            "m3": {"ticks": 80},
             "m4": {"ticks": 80},
         })
 

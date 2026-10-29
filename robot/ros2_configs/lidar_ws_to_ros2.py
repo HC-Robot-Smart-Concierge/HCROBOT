@@ -57,13 +57,13 @@ class LidarWsToRos2Bridge(Node):
         self.wheel_radius = 0.033
         self.wheel_sep = float(os.getenv("HCROBOT_WHEEL_BASE", "0.297"))
         self.encoder_cpr = float(os.getenv("HCROBOT_ENCODER_CPR", "330.0"))
-        # Encoder trước của mỗi bên (M1/M3) đang đếm ngược dấu so với encoder
-        # sau (M2/M4) trên robot thật. Chuẩn hóa tất cả về cùng quy ước trước
-        # khi tính odometry; có thể override nếu firmware ESP32 đã đảo dấu.
+        # Firmware hiện tại đã chuẩn hóa tick: khi tiến, M1/M2 và M3/M4 đều
+        # tăng dương. Giữ override theo biến môi trường để tương thích nếu đổi
+        # dây hoặc nạp lại một firmware dùng quy ước khác.
         self.encoder_signs = {
-            "m1": float(os.getenv("HCROBOT_ENCODER_M1_SIGN", "-1")),
+            "m1": float(os.getenv("HCROBOT_ENCODER_M1_SIGN", "1")),
             "m2": float(os.getenv("HCROBOT_ENCODER_M2_SIGN", "1")),
-            "m3": float(os.getenv("HCROBOT_ENCODER_M3_SIGN", "-1")),
+            "m3": float(os.getenv("HCROBOT_ENCODER_M3_SIGN", "1")),
             "m4": float(os.getenv("HCROBOT_ENCODER_M4_SIGN", "1")),
         }
         self.scan_count = 0

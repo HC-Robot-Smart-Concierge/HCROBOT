@@ -112,9 +112,9 @@ class RPLidarSLAMCore:
         self._wheel_radius = 0.033
         self._wheel_sep = float(os.getenv("HCROBOT_WHEEL_BASE", "0.22"))
         self._encoder_signs = {
-            "m1": float(os.getenv("HCROBOT_ENCODER_M1_SIGN", "-1")),
+            "m1": float(os.getenv("HCROBOT_ENCODER_M1_SIGN", "1")),
             "m2": float(os.getenv("HCROBOT_ENCODER_M2_SIGN", "1")),
-            "m3": float(os.getenv("HCROBOT_ENCODER_M3_SIGN", "-1")),
+            "m3": float(os.getenv("HCROBOT_ENCODER_M3_SIGN", "1")),
             "m4": float(os.getenv("HCROBOT_ENCODER_M4_SIGN", "1")),
         }
         self._prev_left_ticks: Optional[float] = None

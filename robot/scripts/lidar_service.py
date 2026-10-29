@@ -111,7 +111,12 @@ class RPLidarSLAMCore:
         self._encoder_cpr = float(os.getenv("HCROBOT_ENCODER_CPR", "330.0"))
         self._wheel_radius = 0.033
         self._wheel_sep = float(os.getenv("HCROBOT_WHEEL_BASE", "0.22"))
-        self._encoder_m3_sign = float(os.getenv("HCROBOT_ENCODER_M3_SIGN", "-1"))
+        self._encoder_signs = {
+            "m1": float(os.getenv("HCROBOT_ENCODER_M1_SIGN", "1")),
+            "m2": float(os.getenv("HCROBOT_ENCODER_M2_SIGN", "1")),
+            "m3": float(os.getenv("HCROBOT_ENCODER_M3_SIGN", "1")),
+            "m4": float(os.getenv("HCROBOT_ENCODER_M4_SIGN", "1")),
+        }
         self._prev_left_ticks: Optional[float] = None
         self._prev_right_ticks: Optional[float] = None
 
@@ -510,9 +515,13 @@ free_thresh: 0.25
         m2 = encoders.get("m2", {}) or {}
         m3 = encoders.get("m3", {}) or {}
         m4 = encoders.get("m4", {}) or {}
-        left_ticks = (float(m1.get("ticks", 0)) + float(m2.get("ticks", 0))) / 2.0
+        left_ticks = (
+            self._encoder_signs["m1"] * float(m1.get("ticks", 0))
+            + self._encoder_signs["m2"] * float(m2.get("ticks", 0))
+        ) / 2.0
         right_ticks = (
-            self._encoder_m3_sign * float(m3.get("ticks", 0)) + float(m4.get("ticks", 0))
+            self._encoder_signs["m3"] * float(m3.get("ticks", 0))
+            + self._encoder_signs["m4"] * float(m4.get("ticks", 0))
         ) / 2.0
         return left_ticks, right_ticks
 
@@ -2218,13 +2227,13 @@ async def start_scan_360():
 
 class TeleopCommandRequest(BaseModel):
     command: str  # forward, backward, left, right, stop
-    speed: Optional[int] = 50
+    speed: Optional[int] = 30
 
 
 TELEOP_PWM_MIN = 20
 TELEOP_PWM_MAX = 50
-TELEOP_PWM_FORWARD = 50
-TELEOP_PWM_TURN = 50
+TELEOP_PWM_FORWARD = 30
+TELEOP_PWM_TURN = 38
 
 
 def _clamp_teleop_pwm(speed: Optional[int], default: int) -> int:
@@ -2455,6 +2464,8 @@ async def workflow_status():
 async def map_ws_endpoint(websocket: WebSocket):
     await websocket.accept()
     logger.info("🔌 Web Admin LiDAR Canvas đã kết nối WebSocket")
+    ros2_consumer = websocket.query_params.get("consumer", "").lower() == "ros2"
+    ws_cycle = 0
 
     if not slam_core.is_running:
         if slam_core.connect():
@@ -2463,7 +2474,6 @@ async def map_ws_endpoint(websocket: WebSocket):
     try:
         while True:
             scans = slam_core.get_latest_scans()
-            map_data = slam_core.get_grid_map()
 
             encoders_payload = {"m1": {"rpm": 0, "ticks": 0}, "m2": {"rpm": 0, "ticks": 0}, "m3": {"rpm": 0, "ticks": 0}, "m4": {"rpm": 0, "ticks": 0}}
             esp_reader = getattr(slam_core, "esp32_reader", None)
@@ -2472,8 +2482,45 @@ async def map_ws_endpoint(websocket: WebSocket):
                 encoders_payload = snap.encoders
 
             yaw_rate_dps = 0.0
-            if snap and getattr(snap, "yaw_rate_dps", None) is not None:
+            imu_available = bool(
+                snap and getattr(snap, "mpu_available", False)
+                and getattr(snap, "yaw_rate_dps", None) is not None
+            )
+            if imu_available and snap is not None:
                 yaw_rate_dps = float(snap.yaw_rate_dps)
+
+            # ROS 2 chỉ cần scan + encoder/IMU. Không copy/serialize occupancy
+            # grid 800x800 cho kết nối này vì payload lớn gây dồn gói 1-2 giây,
+            # khiến TF nhảy cục và cùng một vòng scan bị publish lặp nhiều lần.
+            if ros2_consumer:
+                payload = {
+                    "type": "ros2_sensor_frame",
+                    "scan_id": slam_core.last_scan_time,
+                    "scan_points": scans,
+                    "encoder_sequence": getattr(snap, "sequence", None) if snap else None,
+                    "encoder_received_at": getattr(snap, "received_at", None) if snap else None,
+                    "encoders": encoders_payload,
+                    "yaw_rate_dps": yaw_rate_dps,
+                    # Cho ROS bridge phân biệt "gyro đo 0" với "không có IMU".
+                    "imu_available": imu_available,
+                    # Tuổi dữ liệu đo bằng đồng hồ Pi ngay lúc gửi, để bridge
+                    # đặt timestamp scan đúng so với odom mà không cần đồng bộ
+                    # giờ Pi/laptop. last_scan_time là time.time() lúc xong vòng.
+                    "scan_age_sec": (
+                        max(0.0, time.time() - slam_core.last_scan_time)
+                        if slam_core.last_scan_time else None
+                    ),
+                    "encoder_age_sec": (
+                        max(0.0, time.monotonic() - snap.received_at)
+                        if snap is not None and getattr(snap, "received_at", None) is not None
+                        else None
+                    ),
+                }
+                await websocket.send_text(json.dumps(payload))
+                await asyncio.sleep(0.04)
+                continue
+
+            map_data = slam_core.get_grid_map()
 
             front_cm = round(slam_core.get_front_distance() * 100, 1) if slam_core.get_front_distance() < 90 else None
             rear_cm = round(slam_core.get_rear_distance() * 100, 1) if slam_core.get_rear_distance() < 90 else None
@@ -2510,7 +2557,9 @@ async def map_ws_endpoint(websocket: WebSocket):
                 "overlay_active": slam_core._overlay_active,
                 "overlay_waypoints": slam_core._overlay_waypoints if slam_core._overlay_active else [],
                 "scan_points": scans,
+                "scan_id": slam_core.last_scan_time,
                 "encoders": encoders_payload,
+                "encoder_sequence": getattr(snap, "sequence", None) if snap else None,
                 "yaw_rate_dps": yaw_rate_dps,
                 "map_mode": slam_core.map_mode,
                 "is_map_locked": slam_core.is_map_locked,
@@ -2532,8 +2581,8 @@ async def map_ws_endpoint(websocket: WebSocket):
             }
 
             # Không gửi 800x800 JSON 25Hz — payload đó làm nghẽn TF/RobotModel trên RViz.
-            slam_core._ws_cycle += 1
-            if slam_core._ws_cycle % 5 == 1:
+            ws_cycle += 1
+            if ws_cycle % 5 == 1:
                 with slam_core._lock:
                     payload["grid_sparse"] = slam_core._grid_sparse_payload()
 

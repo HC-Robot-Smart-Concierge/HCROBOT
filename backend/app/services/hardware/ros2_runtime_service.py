@@ -99,10 +99,11 @@ class Ros2RuntimeService:
         return int(self._launcher.pid)
 
     def start_mapping(self) -> dict:
+        # "Bắt đầu quét map" phải là một phiên SLAM mới. Không đi qua wrapper
+        # reconnect vì wrapper cố ý giữ pose graph cũ khi phát hiện MAPPING đang chạy.
         pid = self._spawn(
-            "start_wsl_rviz_web.sh",
-            "mapping",
-            log_prefix="rviz-mapping-web",
+            "start_wsl_slam.sh",
+            log_prefix="foxglove-mapping-web",
         )
         self._last_mode = "MAPPING"
         self._last_map = None
@@ -110,7 +111,7 @@ class Ros2RuntimeService:
             "status": "STARTING",
             "mode": "MAPPING",
             "pid": pid,
-            "message": "Đang khởi động Slam Toolbox và RViz Web để quét bản đồ.",
+            "message": "Đang khởi động Slam Toolbox và Foxglove để quét bản đồ realtime.",
         }
 
     @staticmethod
@@ -231,6 +232,16 @@ class Ros2RuntimeService:
             (static_dir / f"{safe_name}.json").write_bytes(json_bytes)
 
     def save_map(self, raw_name: str) -> dict:
+        current_mode = self._detect_mode()
+        if current_mode != "MAPPING":
+            if current_mode == "NAVIGATION":
+                raise Ros2RuntimeError(
+                    "Đang ở NAVIGATION: /map là file tĩnh do map_server phát nên không thể ghi thêm layout. "
+                    "Hãy bấm '1. Bắt Đầu Quét Map', lái robot quét đủ khu vực, rồi mới '2. Lưu & Khóa'."
+                )
+            raise Ros2RuntimeError(
+                "SLAM Toolbox chưa chạy ở chế độ MAPPING. Hãy bấm '1. Bắt Đầu Quét Map' trước khi lưu."
+            )
         safe_name = self.normalize_map_name(raw_name)
         timestamp = datetime.now().strftime("%Y%m%d%H%M%S%f")
         pending_name = f"pending_{safe_name}_{timestamp}"
@@ -311,10 +322,10 @@ class Ros2RuntimeService:
             raise Ros2RuntimeError(f"Chưa có bản đồ '{safe_name}'. Hãy quét và lưu map trước.")
 
         pid = self._spawn(
-            "start_wsl_rviz_web.sh",
+            "start_wsl_foxglove.sh",
             "navigation",
             safe_name,
-            log_prefix="rviz-navigation-web",
+            log_prefix="foxglove-navigation-web",
         )
         self._last_mode = "NAVIGATION"
         self._last_map = safe_name
@@ -353,18 +364,28 @@ class Ros2RuntimeService:
 
     def get_status(self) -> dict:
         rosbridge_online = self._port_open(9090)
-        rviz_online = self._port_open(6080)
+        foxglove_online = self._port_open(8765)
         mode = self._detect_mode() if rosbridge_online else "OFFLINE"
         if mode != "OFFLINE":
             self._last_mode = mode
+        if rosbridge_online and foxglove_online:
+            status = "ONLINE"
+        elif rosbridge_online or foxglove_online:
+            status = "STARTING"
+        else:
+            status = "OFFLINE"
         return {
-            "status": "ONLINE" if rosbridge_online else "OFFLINE",
+            "status": status,
             "mode": mode,
             "active_map": self._last_map,
             "rosbridge_online": rosbridge_online,
-            "rviz_online": rviz_online,
+            "foxglove_online": foxglove_online,
             "rosbridge_url": "ws://127.0.0.1:9090",
-            "rviz_url": "http://127.0.0.1:6080/vnc.html?autoconnect=true&resize=scale",
+            "foxglove_ws_url": "ws://127.0.0.1:8765",
+            "foxglove_web_url": (
+                "https://app.foxglove.dev/~/view?ds=foxglove-websocket&"
+                "ds.url=ws%3A%2F%2F127.0.0.1%3A8765"
+            ),
         }
 
 

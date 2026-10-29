@@ -174,6 +174,34 @@ class TestLidarServiceMapPersistence(unittest.TestCase):
         x_30 = dist_m * math.cos(rad_30)
         y_30 = dist_m * math.sin(rad_30)
         # Vật cản trong tọa độ thế giới VẪN PHẢI LÀ (X=2, Y=0)
+
+    def test_encoder_forward_polarity_matches_current_firmware(self):
+        """Firmware hiện tại trả cả bốn tick dương khi robot tiến."""
+        left_ticks, right_ticks = self.core._encoder_side_ticks({
+            "m1": {"ticks": 100},
+            "m2": {"ticks": 100},
+            "m3": {"ticks": 80},
+            "m4": {"ticks": 80},
+        })
+
+        self.assertEqual(left_ticks, 100.0)
+        self.assertEqual(right_ticks, 80.0)
+
+    def test_encoder_turn_updates_yaw_differentially(self):
+        """Quay trái (bánh trái lùi, bánh phải tiến) phải tăng góc yaw."""
+        self.core.robot_yaw = 0.0
+        # Initialize prev ticks
+        self.core._apply_encoder_odometry({
+            "m1": {"ticks": 0}, "m2": {"ticks": 0},
+            "m3": {"ticks": 0}, "m4": {"ticks": 0},
+        }, dt=0.1, update_yaw=True)
+        # Turn left: left motors backward (-50), right motors forward (+50)
+        self.core._apply_encoder_odometry({
+            "m1": {"ticks": -50}, "m2": {"ticks": -50},
+            "m3": {"ticks": 50}, "m4": {"ticks": 50},
+        }, dt=0.1, update_yaw=True)
+        self.assertGreater(self.core.robot_yaw, 0.0)
+
     def test_fixed_layout_3x5m_and_fog_of_war(self):
         """Kiểm tra layout cứng 3x5m: tường không bị xóa đè, vùng xám ngoài không bị mở rộng, và robot đi đến đâu mở map đến đó."""
         res = self.core.init_fixed_layout_3x5m("test_3x5m")

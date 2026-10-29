@@ -378,12 +378,12 @@ async def get_lidar_status():
     return rplidar_service.get_status()
 
 
-@router.get("/ros2/runtime", summary="Trạng thái WSL2, Rosbridge và RViz Web")
+@router.get("/ros2/runtime", summary="Trạng thái WSL2, Rosbridge và Foxglove")
 async def get_ros2_runtime_status():
     return await asyncio.to_thread(ros2_runtime_service.get_status)
 
 
-@router.post("/ros2/start_mapping", summary="Bật chế độ quét map và RViz Web từ trình duyệt")
+@router.post("/ros2/start_mapping", summary="Bật chế độ quét map và Foxglove từ trình duyệt")
 async def start_ros2_mapping():
     try:
         return await asyncio.to_thread(ros2_runtime_service.start_mapping)
@@ -399,7 +399,7 @@ async def save_ros2_map(request: Ros2MapRequest):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
 
-@router.post("/ros2/start_navigation", summary="Bật Map Server, AMCL, Nav2 và RViz Web")
+@router.post("/ros2/start_navigation", summary="Bật Map Server, AMCL, Nav2 và Foxglove")
 async def start_ros2_navigation(request: Ros2MapRequest):
     try:
         return await asyncio.to_thread(ros2_runtime_service.start_navigation, request.name)

@@ -21,33 +21,42 @@ if [ ! -f "$MAP_YAML" ]; then
     exit 2
 fi
 
-echo "=== [0/5] DON STACK MAPPING/NAVIGATION CU ==="
-killall -q rosbridge_websocket async_slam_toolbox_node robot_state_publisher \
+echo "=== [0/6] DON STACK MAPPING/NAVIGATION CU ==="
+killall -q rosbridge_websocket foxglove_bridge async_slam_toolbox_node robot_state_publisher \
   map_server amcl controller_server planner_server behavior_server bt_navigator \
   waypoint_follower lifecycle_manager component_container_isolated 2>/dev/null || true
+pkill -f "[r]os2 launch rosbridge_server" 2>/dev/null || true
+pkill -f "[r]os2 launch foxglove_bridge" 2>/dev/null || true
 pkill -f "lidar_ws_to_ros2.py" 2>/dev/null || true
 fuser -k 9090/tcp 2>/dev/null || true
+fuser -k 8765/tcp 2>/dev/null || true
 sleep 1
 
-echo "=== [1/5] ROBOT STATE PUBLISHER ==="
+echo "=== [1/6] ROBOT STATE PUBLISHER ==="
 URDF_PATH="$SCRIPT_DIR/../description/robot.urdf"
 ros2 run robot_state_publisher robot_state_publisher "$URDF_PATH" &
 RSP_PID=$!
 sleep 1
 
-echo "=== [2/5] ROSBRIDGE :9090 ==="
+echo "=== [2/6] ROSBRIDGE :9090 ==="
 ros2 launch rosbridge_server rosbridge_websocket_launch.xml &
 BRIDGE_PID=$!
 sleep 2
 
-echo "=== [3/5] LIDAR + ENCODER/IMU ODOM BRIDGE ==="
+echo "=== [3/6] FOXGLOVE BRIDGE :8765 ==="
+ros2 launch foxglove_bridge foxglove_bridge_launch.xml \
+  port:=8765 address:=0.0.0.0 use_sim_time:=False &
+FOXGLOVE_PID=$!
+sleep 2
+
+echo "=== [4/6] LIDAR + ENCODER/IMU ODOM BRIDGE ==="
 HCROBOT_MODE=NAVIGATION \
 HCROBOT_MAP_DIR="$MAPS_DIR" \
 python3 "$SCRIPT_DIR/lidar_ws_to_ros2.py" &
 LIDAR_PID=$!
 sleep 2
 
-echo "=== [4/5] MAP SERVER + AMCL + NAV2 ==="
+echo "=== [5/6] MAP SERVER + AMCL + NAV2 ==="
 ros2 launch "$SCRIPT_DIR/nav2/navigation_launch.py" \
   map:="$MAP_YAML" \
   params_file:="$SCRIPT_DIR/nav2/nav2_params.yaml" \
@@ -55,13 +64,14 @@ ros2 launch "$SCRIPT_DIR/nav2/navigation_launch.py" \
   autostart:=True &
 NAV2_PID=$!
 
-echo "=== [5/5] NAVIGATION READY ==="
+echo "=== [6/6] NAVIGATION READY ==="
 echo " Static map: $MAP_YAML"
 echo " /map       : map_server (read-only)"
 echo " /amcl_pose : robot localization"
-echo " /scan      : AMCL + obstacle layers + RViz only"
+echo " /scan      : AMCL + obstacle layers + Foxglove"
 echo " /cmd_vel   : Nav2 -> Pi 5 motor bridge"
+echo " Foxglove   : ws://127.0.0.1:8765"
 echo " Slam Toolbox KHONG chay trong mode nay."
 
-trap "kill $RSP_PID $BRIDGE_PID $LIDAR_PID $NAV2_PID 2>/dev/null || true" EXIT INT TERM
-wait $RSP_PID $BRIDGE_PID $LIDAR_PID $NAV2_PID
+trap "kill $RSP_PID $BRIDGE_PID $FOXGLOVE_PID $LIDAR_PID $NAV2_PID 2>/dev/null || true" EXIT INT TERM
+wait $RSP_PID $BRIDGE_PID $FOXGLOVE_PID $LIDAR_PID $NAV2_PID

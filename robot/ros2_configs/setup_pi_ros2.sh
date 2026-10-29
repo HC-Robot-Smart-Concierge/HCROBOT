@@ -42,10 +42,12 @@ export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 export CYCLONEDDS_URI=file://$HOME/HCROBOT/robot/ros2_configs/cyclonedds.xml
 export ROS_DOMAIN_ID=0
 
-# Phat TF static tu base_link sang laser
-ros2 run tf2_ros static_transform_publisher --x 0.05 --y 0 --z 0.12 --yaw 0 --pitch 0 --roll 0 --frame-id base_link --child-frame-id laser &
+# Phat TF static tu base_link sang laser_frame, khop robot.urdf (LiDAR truoc
+# tam 4 banh 8 cm). Khong phat base_link -> laser: bridge WSL da phat
+# laser_frame -> laser, neu ca hai cung chay thi frame "laser" co 2 parent.
+ros2 run tf2_ros static_transform_publisher --x 0.08 --y 0 --z 0.202 --yaw 0 --pitch 0 --roll 0 --frame-id base_link --child-frame-id laser_frame &
 
-echo "TF static publisher base_link -> laser da khoi dong."
+echo "TF static publisher base_link -> laser_frame da khoi dong."
 EOF
 chmod +x "$CONFIG_DIR/launch_rplidar_tf.sh"
 

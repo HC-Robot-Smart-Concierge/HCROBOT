@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Rviz2WebViewer } from '../../components/admin/Rviz2WebViewer';
+import { FoxgloveWebViewer } from '../../components/admin/FoxgloveWebViewer';
 import {
   fetchCurrentMap,
   loadSavedLidarMap,
@@ -338,14 +338,14 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
       }
     });
 
-    // 6. Subscribe 2D Goal Pose (/goal_pose) tu RViz2 hoac Nav2
+    // 6. Subscribe 2D Goal Pose (/goal_pose) từ Foxglove hoặc Web Admin.
     const unsubGoal = client.subscribe(ROS_TOPICS.GOAL_POSE, ROS_MSG_TYPES.POSE_STAMPED, (msg) => {
       const pos = msg.pose?.position;
       if (pos) {
         const gx = Number(pos.x.toFixed(2));
         const gy = Number(pos.y.toFixed(2));
         setActiveNavGoal({ x: gx, y: gy });
-        setNavNotification(`[NAV2] Đã nhận mục tiêu từ RViz2: X=${gx}m, Y=${gy}m -> Robot đang tự hành tới đích!`);
+        setNavNotification(`[NAV2] Đã nhận mục tiêu từ Foxglove: X=${gx}m, Y=${gy}m -> Robot đang tự hành tới đích!`);
         setTimeout(() => setNavNotification(''), 4500);
       }
     });
@@ -403,7 +403,7 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
     for (let attempt = 0; attempt < 20; attempt += 1) {
       try {
         const statusData = await fetchRos2RuntimeStatus();
-        if (statusData?.rosbridge_online && statusData?.rviz_online && statusData?.mode === expectedMode) {
+        if (statusData?.rosbridge_online && statusData?.foxglove_online && statusData?.mode === expectedMode) {
           return statusData;
         }
       } catch {
@@ -411,13 +411,13 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
       }
       await new Promise((resolve) => setTimeout(resolve, 1500));
     }
-    throw new Error('ROS 2/RViz khởi động quá thời gian chờ. Hãy kiểm tra log backend.');
+    throw new Error('ROS 2/Foxglove khởi động quá thời gian chờ. Hãy kiểm tra log backend.');
   }, []);
 
   const handleStartMappingFromWeb = useCallback(async () => {
     if (isRos2RuntimeBusy) return;
     setIsRos2RuntimeBusy(true);
-    setNavNotification('Đang bật WSL2 + Slam Toolbox + RViz Web để quét map...');
+    setNavNotification('Đang bật WSL2 + Slam Toolbox + Foxglove để quét map realtime...');
     try {
       setGridData(new Array(200 * 200).fill(-1));
       setScanPoints([]);
@@ -467,7 +467,7 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
     }
   }, [isRos2RuntimeBusy, selectedMapId, waitForRos2Runtime]);
 
-  // Reset SLAM grid map (Xóa sạch bản đồ trên RViz & SLAM Toolbox)
+  // Reset SLAM grid map (xóa sạch bản đồ trên Foxglove & SLAM Toolbox).
   const handleResetGridMap = async () => {
     if (!window.confirm('Bạn có chắc chắn muốn xóa sạch bản đồ SLAM hiện tại và đưa robot về tọa độ gốc (0, 0) để bắt đầu quét lại từ đầu?')) {
       return;
@@ -548,6 +548,15 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
   };
 
   const handleOpenSaveMapModal = () => {
+    if (mapMode !== 'MAPPING') {
+      setNavNotification(
+        mapMode === 'NAVIGATION'
+          ? 'Không thể lưu khi đang NAVIGATION: đây là map tĩnh cũ. Hãy bấm "1. BẮT ĐẦU QUÉT MAP" trước.'
+          : 'Bản đồ đang bị khóa. Hãy mở lại chế độ MAPPING rồi mới lưu.'
+      );
+      setTimeout(() => setNavNotification(''), 6500);
+      return;
+    }
     setSaveMapName(`map_${new Date().toISOString().slice(0, 10).replace(/-/g, '_')}_${Date.now().toString().slice(-4)}`);
     setIsSaveMapModalOpen(true);
   };
@@ -583,6 +592,11 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
 
   const handleSaveMap = async (e) => {
     if (e) e.preventDefault();
+    if (mapMode !== 'MAPPING') {
+      setNavNotification('Chỉ lưu map mới khi Slam Toolbox đang ở MAPPING. Navigation chỉ đọc map tĩnh đã lưu.');
+      setTimeout(() => setNavNotification(''), 6500);
+      return;
+    }
     const trimmedName = saveMapName.trim();
     if (!trimmedName) return;
     setIsSavingMap(true);
@@ -592,25 +606,18 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
       // 1. Backend laptop gọi map_saver_cli và chỉ trả SUCCESS khi YAML/PGM đã tồn tại.
       await saveRos2Map(trimmedName);
 
-      // 2. Lưu thêm snapshot JSON phía Pi 5 để Web Admin/Pi dùng lại; lỗi Pi không làm mất map ROS 2.
-      await fetch(`${PI5_API}/map/save`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json'},
-        body: JSON.stringify({ name: trimmedName }),
-      }).catch(() => null);
-
       setSelectedMapId(trimmedName);
       setIsMapLocked(true);
       setMapMode('PAUSED');
       setNavNotification(`Đã lưu "${trimmedName}". Đang chuyển sang Navigation map tĩnh...`);
 
-      // 3. Kết thúc mapping và tự nạp đúng map vừa lưu bằng Map Server + AMCL + Nav2.
+      // 2. Kết thúc mapping và tự nạp đúng map vừa lưu bằng Map Server + AMCL + Nav2.
       await startRos2Navigation(trimmedName);
       await waitForRos2Runtime('NAVIGATION');
       setMapMode('NAVIGATION');
       rosClientRef.current?.connect();
 
-      // 4. Tải gói map sau khi file thật đã được tạo xong.
+      // 3. Tải gói map sau khi file thật đã được tạo xong.
       await triggerMapDownload(trimmedName);
       const listData = await listSavedMaps().catch(() => null);
       if (listData?.maps) setSavedMapsList(listData.maps);
@@ -712,10 +719,10 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
   const sendMotion = (command) => {
     let lin = 0.0;
     let ang = 0.0;
-    if (command === 'forward') lin = 0.20;
-    else if (command === 'backward') lin = -0.20;
-    else if (command === 'left') ang = 0.50;
-    else if (command === 'right') ang = -0.50;
+    if (command === 'forward') lin = 0.10;
+    else if (command === 'backward') lin = -0.10;
+    else if (command === 'left') ang = 0.30;
+    else if (command === 'right') ang = -0.30;
 
     if (rosClientRef.current?.isConnected) {
       rosClientRef.current.publishCmdVel(lin, ang);
@@ -723,7 +730,10 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
       fetch(`${PI5_API}/map/teleop`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json'},
-        body: JSON.stringify({ command, speed: 50 }),
+        body: JSON.stringify({
+          command,
+          speed: command === 'left' || command === 'right' ? 38 : 30,
+        }),
       }).catch(() => {});
     }
   };
@@ -1134,7 +1144,7 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
                 <Layers className="w-4 h-4 text-cyan-600 shrink-0"/>
                 <div className="flex flex-col">
                   <span>1. Bắt Đầu Quét Map</span>
-                  <span className="text-[10px] text-stone-500 font-normal">Tự bật WSL2, Slam Toolbox và RViz Web</span>
+                  <span className="text-[10px] text-stone-500 font-normal">Tự bật WSL2, Slam Toolbox và Foxglove</span>
                 </div>
               </button>
 
@@ -1320,7 +1330,7 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
 
       {/* 2. Main Workspace */}
       <main className="w-full flex-1 p-4 grid grid-cols-12 gap-4 overflow-hidden">
-        {/* Left Column: Dedicated Native RViz2 3D SLAM Stream (8 Cols) */}
+        {/* Left Column: Foxglove ROS 2 SLAM realtime (8 Cols) */}
         <div className="col-span-8 flex flex-col gap-3 h-full overflow-hidden">
           <div className="shrink-0 rounded-xl border border-stone-300 bg-white px-3 py-2 flex items-center gap-2 text-[11px] shadow-sm">
             <button
@@ -1373,7 +1383,7 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
             </div>
           )}
           <div className="w-full flex-1 relative overflow-hidden">
-            <Rviz2WebViewer
+            <FoxgloveWebViewer
               activeMapName={selectedMapId}
               isRuntimeBusy={isRos2RuntimeBusy}
               onStartMapping={handleStartMappingFromWeb}
@@ -1834,7 +1844,7 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
                 <li>Tự động nhận diện ranh giới vùng chưa biết (Frontier) mà xe có thể di chuyển tới.</li>
                 <li>Tự lái xe di chuyển đến các góc phòng, hành lang để quét mở rộng bản đồ.</li>
                 <li>Tránh vật cản theo thời gian thực bằng cảm biến LiDAR A1 360° và cảm biến siêu âm.</li>
-                <li>Mở rộng bản đồ SLAM trên RViz2 theo thời gian thực cho đến khi phủ kín phòng.</li>
+                <li>Mở rộng bản đồ SLAM trên Foxglove theo thời gian thực cho đến khi phủ kín phòng.</li>
               </ul>
               <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-[11px]">
                 ️ Hãy đảm bảo sàn nhà không có bậc thang dốc hoặc hố sâu. Bạn có thể bấm nút "DỪNG QUÉT TỰ HÀNH"bất cứ lúc nào.

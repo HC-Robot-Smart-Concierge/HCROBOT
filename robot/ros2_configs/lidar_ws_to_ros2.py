@@ -9,6 +9,7 @@ import websockets
 
 import rclpy
 from rclpy.node import Node
+from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import LaserScan, JointState
 from nav_msgs.msg import Odometry, Path
 from geometry_msgs.msg import TransformStamped, PoseStamped, Twist
@@ -31,6 +32,19 @@ class LidarWsToRos2Bridge(Node):
         self.joint_pub_ = self.create_publisher(JointState, '/joint_states', 10)
         self.encoder_telemetry_pub = self.create_publisher(String, '/robot/encoder_telemetry', 10)
         self.sensor_health_pub = self.create_publisher(String, '/robot/sensor_health', 10)
+        model_qos = QoSProfile(
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1,
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+        )
+        self.foxglove_model_pub = self.create_publisher(
+            String,
+            '/foxglove/robot_description',
+            model_qos,
+        )
+        self.foxglove_model_xml = self._load_foxglove_robot_description()
+        self.foxglove_model_timer = self.create_timer(2.0, self.publish_foxglove_robot_description)
         self.wheel_l_pos = 0.0
         self.wheel_r_pos = 0.0
         self.wheel_radius = 0.033
@@ -142,6 +156,25 @@ class LidarWsToRos2Bridge(Node):
             f"🚀 LidarWsToRos2Bridge san sang - mode={self.robot_mode}, "
             f"odom={'encoder/IMU' if not self.allow_cmd_vel_odom else 'encoder + cmd_vel fallback'}"
         )
+
+    def _load_foxglove_robot_description(self):
+        model_path = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), '..', 'description', 'foxglove_robot.urdf')
+        )
+        try:
+            with open(model_path, 'r', encoding='utf-8') as model_file:
+                return model_file.read()
+        except OSError as exc:
+            self.get_logger().error(f"Khong doc duoc model Foxglove {model_path}: {exc}")
+            return ''
+
+    def publish_foxglove_robot_description(self):
+        """Publish a stable, lightweight model that follows the real base_link TF."""
+        if not self.foxglove_model_xml:
+            return
+        msg = String()
+        msg.data = self.foxglove_model_xml
+        self.foxglove_model_pub.publish(msg)
 
     def publish_map_status(self):
         status_msg = String()

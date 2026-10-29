@@ -155,7 +155,7 @@ export const FoxgloveWebViewer = ({
                 <li>Trong Foxglove chọn <strong>Layouts → Import from file</strong>.</li>
                 <li>Chọn layout <strong>HCROBOT SLAM 2D</strong>.</li>
                 <li>Fixed frame và Display frame đều là <strong>map</strong>, Follow mode là <strong>Off</strong>.</li>
-                <li>URDF layer đọc topic <strong>/robot_description</strong> và dùng TF để model di chuyển realtime.</li>
+                <li>URDF layer đọc topic <strong>/foxglove/robot_description</strong> và dùng TF <strong>base_link</strong> để model di chuyển realtime.</li>
                 <li>Các lớp local/global costmap, Grid xanh và nhãn TF đã được tắt để bản đồ dễ nhìn.</li>
               </ol>
             </div>
@@ -196,7 +196,7 @@ export const FoxgloveWebViewer = ({
       </div>
 
       <div className="h-7 px-3 bg-[#111317] border-t border-[#2A2E39] flex items-center justify-between text-[11px] text-stone-400 font-mono shrink-0 select-none">
-        <span><strong className="text-cyan-400">TOPICS:</strong> /map • /scan • /tf • /robot_description</span>
+        <span><strong className="text-cyan-400">TOPICS:</strong> /map • /scan • /tf • /foxglove/robot_description</span>
         <span>Viewer: app.foxglove.dev</span>
       </div>
     </div>

@@ -231,6 +231,16 @@ class Ros2RuntimeService:
             (static_dir / f"{safe_name}.json").write_bytes(json_bytes)
 
     def save_map(self, raw_name: str) -> dict:
+        current_mode = self._detect_mode()
+        if current_mode != "MAPPING":
+            if current_mode == "NAVIGATION":
+                raise Ros2RuntimeError(
+                    "Đang ở NAVIGATION: /map là file tĩnh do map_server phát nên không thể ghi thêm layout. "
+                    "Hãy bấm '1. Bắt Đầu Quét Map', lái robot quét đủ khu vực, rồi mới '2. Lưu & Khóa'."
+                )
+            raise Ros2RuntimeError(
+                "SLAM Toolbox chưa chạy ở chế độ MAPPING. Hãy bấm '1. Bắt Đầu Quét Map' trước khi lưu."
+            )
         safe_name = self.normalize_map_name(raw_name)
         timestamp = datetime.now().strftime("%Y%m%d%H%M%S%f")
         pending_name = f"pending_{safe_name}_{timestamp}"

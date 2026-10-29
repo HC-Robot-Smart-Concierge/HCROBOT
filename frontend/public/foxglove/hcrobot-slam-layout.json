@@ -79,7 +79,7 @@
         "/marker": {
           "visible": false
         },
-        "/robot_description": {
+        "/foxglove/robot_description": {
           "visible": true
         },
         "/robot_path": {
@@ -100,7 +100,7 @@
           "layerId": "foxglove.Urdf",
           "label": "HCROBOT Model",
           "sourceType": "topic",
-          "topic": "/robot_description",
+          "topic": "/foxglove/robot_description",
           "framePrefix": "",
           "controlMode": "transforms",
           "displayMode": "visual",

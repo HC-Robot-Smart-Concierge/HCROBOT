@@ -548,6 +548,15 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
   };
 
   const handleOpenSaveMapModal = () => {
+    if (mapMode !== 'MAPPING') {
+      setNavNotification(
+        mapMode === 'NAVIGATION'
+          ? 'Không thể lưu khi đang NAVIGATION: đây là map tĩnh cũ. Hãy bấm "1. BẮT ĐẦU QUÉT MAP" trước.'
+          : 'Bản đồ đang bị khóa. Hãy mở lại chế độ MAPPING rồi mới lưu.'
+      );
+      setTimeout(() => setNavNotification(''), 6500);
+      return;
+    }
     setSaveMapName(`map_${new Date().toISOString().slice(0, 10).replace(/-/g, '_')}_${Date.now().toString().slice(-4)}`);
     setIsSaveMapModalOpen(true);
   };
@@ -583,6 +592,11 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
 
   const handleSaveMap = async (e) => {
     if (e) e.preventDefault();
+    if (mapMode !== 'MAPPING') {
+      setNavNotification('Chỉ lưu map mới khi Slam Toolbox đang ở MAPPING. Navigation chỉ đọc map tĩnh đã lưu.');
+      setTimeout(() => setNavNotification(''), 6500);
+      return;
+    }
     const trimmedName = saveMapName.trim();
     if (!trimmedName) return;
     setIsSavingMap(true);

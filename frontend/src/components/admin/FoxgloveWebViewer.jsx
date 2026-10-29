@@ -1,92 +1,17 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FoxgloveViewer } from '@foxglove/embed';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { fetchRos2RuntimeStatus } from '../../services/workflowApi';
 import {
   AlertCircle,
   CheckCircle2,
+  Download,
   ExternalLink,
   Loader2,
-  Maximize2,
+  MonitorUp,
   Play,
   Radar,
   RefreshCw,
   ScanLine,
 } from 'lucide-react';
-
-const HCROBOT_SLAM_LAYOUT = {
-  version: 1,
-  content: {
-    type: 'panel',
-    panelType: 'ThreeDee',
-    version: 1,
-    title: 'HCROBOT SLAM realtime',
-    config: {
-      fixedFrame: 'map',
-      followTf: 'base_link',
-      followMode: 'follow-position',
-      publish: {
-        type: 'pose',
-        poseTopic: '/goal_pose',
-        poseEstimateTopic: '/initialpose',
-        pointTopic: '/clicked_point',
-        poseEstimateXDeviation: 0.5,
-        poseEstimateYDeviation: 0.5,
-        poseEstimateThetaDeviation: 0.26,
-      },
-      cameraState: {
-        distance: 14,
-        perspective: false,
-        phi: 0,
-        thetaOffset: 0,
-        target: [0, 0, 0],
-        targetOffset: [0, 0, 0],
-      },
-      scene: {
-        backgroundColor: '#111827',
-        transforms: {
-          visible: false,
-          showLabel: false,
-          axisSize: 0.25,
-          lineWidth: 1,
-        },
-      },
-      topics: {
-        '/map': {
-          visible: true,
-          colorMode: 'map',
-          alpha: 1,
-          drawBehind: true,
-          frameLocked: false,
-        },
-        '/scan': {
-          visible: true,
-          pointSize: 4,
-          pointShape: 'circle',
-          decayTime: 0,
-          colorMode: 'flat',
-          flatColor: '#ff2bd6',
-          frameLocked: true,
-        },
-      },
-      layers: {
-        'hcrobot-floor-grid': {
-          instanceId: 'hcrobot-floor-grid',
-          layerId: 'foxglove.Grid',
-          label: 'Lưới tọa độ map',
-          visible: true,
-          frameId: 'map',
-          size: 30,
-          divisions: 60,
-          lineWidth: 1,
-          color: '#47556988',
-          drawBehind: true,
-          position: [0, 0, -0.02],
-          rotation: [0, 0, 0],
-        },
-      },
-    },
-  },
-};
 
 export const buildFoxgloveWsUrl = (host = '127.0.0.1', port = 8765) =>
   `ws://${host}:${port}`;
@@ -95,6 +20,16 @@ export const buildFoxgloveWebUrl = (websocketUrl) => {
   const query = new URLSearchParams({
     ds: 'foxglove-websocket',
     'ds.url': websocketUrl,
+    openIn: 'web',
+  });
+  return `https://app.foxglove.dev/~/view?${query.toString()}`;
+};
+
+export const buildFoxgloveDesktopUrl = (websocketUrl) => {
+  const query = new URLSearchParams({
+    ds: 'foxglove-websocket',
+    'ds.url': websocketUrl,
+    openIn: 'desktop',
   });
   return `https://app.foxglove.dev/~/view?${query.toString()}`;
 };
@@ -107,16 +42,12 @@ export const FoxgloveWebViewer = ({
   isRuntimeBusy = false,
   activeMapName = 'phong_lam_viec',
 }) => {
-  const [viewerKey, setViewerKey] = useState(0);
-  const [isFullscreen, setIsFullscreen] = useState(false);
   const [isBridgeReachable, setIsBridgeReachable] = useState(null);
   const [isChecking, setIsChecking] = useState(false);
-  const [viewerError, setViewerError] = useState('');
-  const containerRef = useRef(null);
-  const viewerParentRef = useRef(null);
 
   const websocketUrl = useMemo(() => buildFoxgloveWsUrl(host, port), [host, port]);
   const foxgloveWebUrl = useMemo(() => buildFoxgloveWebUrl(websocketUrl), [websocketUrl]);
+  const foxgloveDesktopUrl = useMemo(() => buildFoxgloveDesktopUrl(websocketUrl), [websocketUrl]);
 
   const checkConnection = useCallback(async () => {
     setIsChecking(true);
@@ -136,82 +67,19 @@ export const FoxgloveWebViewer = ({
     return () => window.clearInterval(intervalId);
   }, [checkConnection]);
 
-  useEffect(() => {
-    if (!viewerParentRef.current) return undefined;
-
-    setViewerError('');
-    const viewer = new FoxgloveViewer({
-      parent: viewerParentRef.current,
-      orgSlug: import.meta.env.VITE_FOXGLOVE_ORG_SLUG || undefined,
-      colorScheme: 'dark',
-      embeddedViewer: 'React',
-      initialDataSource: {
-        type: 'live',
-        protocol: 'foxglove-websocket',
-        url: websocketUrl,
-      },
-      initialLayoutParams: {
-        storageKey: 'hcrobot-slam-realtime-v1',
-        layout: HCROBOT_SLAM_LAYOUT,
-      },
-    });
-
-    const handleViewerError = (event) => {
-      setViewerError(event.detail || 'Foxglove Embed không tải được.');
-    };
-    viewer.addEventListener('error', handleViewerError);
-
-    const iframe = viewerParentRef.current.querySelector('iframe');
-    if (iframe) {
-      iframe.title = 'Foxglove ROS 2 SLAM realtime';
-      iframe.style.width = '100%';
-      iframe.style.height = '100%';
-      iframe.style.border = '0';
-      iframe.setAttribute('allow', 'fullscreen');
-    }
-
-    return () => {
-      viewer.removeEventListener('error', handleViewerError);
-      viewer.destroy();
-    };
-  }, [viewerKey, websocketUrl]);
-
-  useEffect(() => {
-    const handleFullscreenChange = () => setIsFullscreen(Boolean(document.fullscreenElement));
-    document.addEventListener('fullscreenchange', handleFullscreenChange);
-    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
-  }, []);
-
-  const handleReload = () => {
-    setViewerKey((current) => current + 1);
-    checkConnection();
-  };
-
-  const handleToggleFullscreen = () => {
-    if (!containerRef.current) return;
-    if (!document.fullscreenElement) {
-      containerRef.current.requestFullscreen().catch(() => {});
-    } else {
-      document.exitFullscreen().catch(() => {});
-    }
-  };
-
   return (
-    <div
-      ref={containerRef}
-      className="relative w-full h-full flex flex-col rounded-xl overflow-hidden border border-[#BFBFBD] bg-[#111827]"
-    >
+    <div className="relative w-full h-full flex flex-col rounded-xl overflow-hidden border border-[#BFBFBD] bg-[#111827]">
       <div className="h-10 px-3 bg-[#111317] border-b border-[#2A2E39] flex items-center justify-between text-xs text-[#BFBFBD] shrink-0 select-none">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5 font-bold tracking-wide text-white">
             <Radar className="w-4 h-4 text-cyan-400" />
-            <span>FOXGLOVE ROS 2 • SLAM REALTIME</span>
+            <span>FOXGLOVE ROS 2 • TAB RIÊNG</span>
           </div>
           <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-mono border border-[#333846] bg-[#1A1E27]">
             {isBridgeReachable ? (
               <>
                 <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0" />
-                <span className="text-emerald-300">FOXGLOVE BRIDGE ONLINE (:8765)</span>
+                <span className="text-emerald-300">BRIDGE ONLINE (:8765)</span>
               </>
             ) : isChecking ? (
               <>
@@ -221,110 +89,113 @@ export const FoxgloveWebViewer = ({
             ) : (
               <>
                 <AlertCircle className="w-3 h-3 text-rose-400 shrink-0" />
-                <span className="text-rose-300">OFFLINE (CHƯA BẬT :8765)</span>
+                <span className="text-rose-300">BRIDGE OFFLINE (:8765)</span>
               </>
             )}
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={handleReload}
-            className="px-2.5 py-1 text-[11px] font-semibold rounded bg-[#222733] hover:bg-[#2C3242] text-stone-200 border border-[#384054] flex items-center gap-1.5 transition-all cursor-pointer"
-            title="Tải lại Foxglove"
-          >
-            <RefreshCw className={`w-3 h-3 ${isChecking ? 'animate-spin' : ''}`} />
-            <span>Tải lại</span>
-          </button>
-          <a
-            href={foxgloveWebUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="px-2.5 py-1 text-[11px] font-semibold rounded bg-[#222733] hover:bg-[#2C3242] text-stone-200 border border-[#384054] flex items-center gap-1.5 transition-all cursor-pointer"
-            title="Mở Foxglove trong tab riêng"
-          >
-            <ExternalLink className="w-3 h-3 text-stone-400" />
-            <span>Foxglove riêng</span>
-          </a>
-          <button
-            type="button"
-            onClick={handleToggleFullscreen}
-            className="p-1.5 rounded bg-[#222733] hover:bg-[#2C3242] text-stone-200 border border-[#384054] transition-all cursor-pointer"
-            title={isFullscreen ? 'Thu nhỏ' : 'Toàn màn hình'}
-          >
-            <Maximize2 className="w-3.5 h-3.5 text-stone-400" />
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={checkConnection}
+          className="px-2.5 py-1 text-[11px] font-semibold rounded bg-[#222733] hover:bg-[#2C3242] text-stone-200 border border-[#384054] flex items-center gap-1.5 transition-all cursor-pointer"
+        >
+          <RefreshCw className={`w-3 h-3 ${isChecking ? 'animate-spin' : ''}`} />
+          <span>Kiểm tra lại</span>
+        </button>
       </div>
 
-      <div className="relative flex-1 min-h-0 w-full overflow-hidden bg-[#111827]">
-        <div key={viewerKey} ref={viewerParentRef} className="absolute inset-0" />
-
-        {viewerError && isBridgeReachable && (
-          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 max-w-xl rounded-lg border border-amber-400/40 bg-amber-950/90 px-4 py-2 text-xs text-amber-100 shadow-xl">
-            Không nhúng được Foxglove: {viewerError} Hãy dùng nút <strong>Foxglove riêng</strong>.
-          </div>
-        )}
-
-        {isBridgeReachable === false && (
-          <div className="absolute inset-0 bg-[#111317]/95 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center text-stone-200 z-10">
-            <div className="w-12 h-12 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center mb-3">
-              <Radar className="w-6 h-6 text-cyan-300" />
+      <div className="relative flex-1 min-h-0 overflow-y-auto bg-gradient-to-br from-[#0f172a] via-[#111827] to-[#082f49] px-6 py-8 flex items-center justify-center">
+        <div className="w-full max-w-3xl rounded-2xl border border-cyan-400/20 bg-[#0b1220]/90 shadow-2xl p-6 text-stone-100">
+          <div className="flex flex-col items-center text-center">
+            <div className="w-16 h-16 rounded-2xl bg-cyan-400/10 border border-cyan-300/30 flex items-center justify-center mb-4">
+              <MonitorUp className="w-8 h-8 text-cyan-300" />
             </div>
-            <h3 className="text-sm font-bold text-white mb-1">CHƯA KẾT NỐI FOXGLOVE BRIDGE (:8765)</h3>
-            <p className="text-xs text-stone-400 max-w-lg mb-4 leading-relaxed">
-              Chọn chế độ bên dưới. Backend sẽ tự bật WSL2, ROS 2, Foxglove Bridge và layout map realtime.
+            <h2 className="text-xl font-extrabold text-white">Mở bản đồ realtime trong Foxglove</h2>
+            <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-300">
+              Foxglove không được nhúng trong Web Admin vì tính năng Embed cần gói trả phí.
+              Dữ liệu ROS 2 vẫn truyền trực tiếp từ Foxglove Bridge qua <strong>{websocketUrl}</strong>.
             </p>
 
-            <div className="grid grid-cols-2 gap-3 max-w-xl w-full mb-4">
-              <button
-                type="button"
-                onClick={onStartMapping}
-                disabled={isRuntimeBusy || !onStartMapping}
-                className="p-3 rounded-xl border border-cyan-500/40 bg-cyan-500/10 hover:bg-cyan-500/20 disabled:opacity-50 text-left transition-colors cursor-pointer"
+            <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
+              <a
+                href={foxgloveWebUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-5 py-3 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-extrabold text-sm flex items-center gap-2 shadow-lg shadow-cyan-950/40 transition-colors"
               >
-                <ScanLine className="w-5 h-5 text-cyan-300 mb-1.5" />
-                <span className="block text-xs font-bold text-white">BẮT ĐẦU QUÉT MAP</span>
-                <span className="block text-[10px] text-stone-400 mt-1">SLAM Toolbox cập nhật /map từ LiDAR realtime.</span>
-              </button>
-              <button
-                type="button"
-                onClick={onStartNavigation}
-                disabled={isRuntimeBusy || !onStartNavigation}
-                className="p-3 rounded-xl border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 disabled:opacity-50 text-left transition-colors cursor-pointer"
+                <ExternalLink className="w-4 h-4" />
+                <span>MỞ FOXGLOVE TAB RIÊNG</span>
+              </a>
+              <a
+                href="/foxglove/hcrobot-slam-layout.json"
+                download="hcrobot-slam-layout.json"
+                className="px-4 py-3 rounded-xl border border-emerald-400/40 bg-emerald-400/10 hover:bg-emerald-400/20 text-emerald-200 font-bold text-sm flex items-center gap-2 transition-colors"
               >
-                <Play className="w-5 h-5 text-amber-300 mb-1.5" />
-                <span className="block text-xs font-bold text-white">CHẠY NAVIGATION</span>
-                <span className="block text-[10px] text-stone-400 mt-1">Nạp map tĩnh: {activeMapName || 'chưa chọn'}</span>
-              </button>
+                <Download className="w-4 h-4" />
+                <span>TẢI LAYOUT 2D</span>
+              </a>
+              <a
+                href={foxgloveDesktopUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-4 py-3 rounded-xl border border-slate-500 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-sm flex items-center gap-2 transition-colors"
+              >
+                <MonitorUp className="w-4 h-4" />
+                <span>MỞ APP DESKTOP</span>
+              </a>
+            </div>
+          </div>
+
+          <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="rounded-xl border border-slate-700 bg-slate-900/70 p-4">
+              <h3 className="text-xs font-extrabold text-cyan-300">THIẾT LẬP MỘT LẦN ĐỂ GIỐNG ẢNH MẪU</h3>
+              <ol className="mt-3 list-decimal pl-5 space-y-2 text-xs leading-relaxed text-slate-300">
+                <li>Tải file <strong>hcrobot-slam-layout.json</strong>.</li>
+                <li>Trong Foxglove chọn <strong>Layouts → Import from file</strong>.</li>
+                <li>Chọn layout <strong>HCROBOT SLAM 2D</strong>.</li>
+                <li>Fixed frame là <strong>map</strong>; bật <strong>/map</strong>, <strong>/scan</strong> và robot model.</li>
+              </ol>
             </div>
 
-            {isRuntimeBusy && (
-              <div className="flex items-center gap-2 mb-3 text-xs text-amber-300 font-mono">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Đang khởi động ROS 2 và Foxglove...</span>
+            <div className="rounded-xl border border-slate-700 bg-slate-900/70 p-4">
+              <h3 className="text-xs font-extrabold text-amber-300">KHỞI ĐỘNG ROS 2</h3>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={onStartMapping}
+                  disabled={isRuntimeBusy || !onStartMapping}
+                  className="p-3 rounded-lg border border-cyan-500/40 bg-cyan-500/10 hover:bg-cyan-500/20 disabled:opacity-50 text-left transition-colors cursor-pointer"
+                >
+                  <ScanLine className="w-4 h-4 text-cyan-300 mb-1" />
+                  <span className="block text-xs font-bold text-white">QUÉT MAP</span>
+                  <span className="block text-[10px] text-slate-400 mt-1">SLAM Toolbox realtime</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={onStartNavigation}
+                  disabled={isRuntimeBusy || !onStartNavigation}
+                  className="p-3 rounded-lg border border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/20 disabled:opacity-50 text-left transition-colors cursor-pointer"
+                >
+                  <Play className="w-4 h-4 text-amber-300 mb-1" />
+                  <span className="block text-xs font-bold text-white">NAVIGATION</span>
+                  <span className="block text-[10px] text-slate-400 mt-1">Map: {activeMapName || 'chưa chọn'}</span>
+                </button>
               </div>
-            )}
-
-            <button
-              type="button"
-              onClick={handleReload}
-              className="px-4 py-2 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white transition-all cursor-pointer flex items-center gap-1.5"
-            >
-              <RefreshCw className="w-3.5 h-3.5" />
-              <span>Thử kết nối lại</span>
-            </button>
+              {isRuntimeBusy && (
+                <div className="mt-3 flex items-center gap-2 text-xs text-amber-300">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Đang khởi động ROS 2...</span>
+                </div>
+              )}
+            </div>
           </div>
-        )}
+        </div>
       </div>
 
-      <div className="h-6 px-3 bg-[#111317] border-t border-[#2A2E39] flex items-center justify-between text-[11px] text-stone-400 font-mono shrink-0 select-none">
-        <div className="flex items-center gap-2">
-          <span className="text-cyan-400 font-bold">FOXGLOVE:</span>
-          <span>Fixed frame: map • Hiển thị: /map + /scan + /tf • Robot: /robot_description</span>
-        </div>
-        <span className="text-[10px] text-stone-500">Foxglove WebSocket Protocol</span>
+      <div className="h-7 px-3 bg-[#111317] border-t border-[#2A2E39] flex items-center justify-between text-[11px] text-stone-400 font-mono shrink-0 select-none">
+        <span><strong className="text-cyan-400">TOPICS:</strong> /map • /scan • /tf • /robot_description</span>
+        <span>Viewer: app.foxglove.dev</span>
       </div>
     </div>
   );

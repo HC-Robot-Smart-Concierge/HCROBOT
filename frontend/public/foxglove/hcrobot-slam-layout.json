@@ -1,0 +1,80 @@
+{
+  "configById": {
+    "3D!hcrobot-slam-2d": {
+      "cameraState": {
+        "distance": 18,
+        "perspective": false,
+        "phi": 0,
+        "thetaOffset": 0,
+        "target": [0, 0, 0],
+        "targetOffset": [0, 0, 0],
+        "targetOrientation": [0, 0, 0, 1],
+        "fovy": 45,
+        "near": 0.01,
+        "far": 5000
+      },
+      "fixedFrame": "map",
+      "followTf": "map",
+      "followMode": "follow-none",
+      "scene": {
+        "backgroundColor": "#d9d9d9",
+        "enableStats": false,
+        "transforms": {
+          "visible": false,
+          "showLabel": false,
+          "editable": false
+        }
+      },
+      "transforms": {},
+      "topics": {
+        "/map": {
+          "visible": true,
+          "colorMode": "map",
+          "alpha": 1,
+          "drawBehind": true,
+          "frameLocked": false
+        },
+        "/scan": {
+          "visible": true,
+          "pointSize": 2,
+          "pointShape": "square",
+          "decayTime": 0,
+          "colorMode": "flat",
+          "flatColor": "#666666",
+          "frameLocked": true
+        },
+        "/robot_description": {
+          "visible": true
+        },
+        "/robot_path": {
+          "visible": true,
+          "lineWidth": 2,
+          "gradient": ["#00a6ff", "#0055ff"]
+        },
+        "/plan": {
+          "visible": true,
+          "lineWidth": 2,
+          "gradient": ["#ffb000", "#ff6b00"]
+        }
+      },
+      "layers": {},
+      "publish": {
+        "type": "pose",
+        "poseTopic": "/goal_pose",
+        "pointTopic": "/clicked_point",
+        "poseEstimateTopic": "/initialpose",
+        "poseEstimateXDeviation": 0.5,
+        "poseEstimateYDeviation": 0.5,
+        "poseEstimateThetaDeviation": 0.26179939
+      }
+    }
+  },
+  "globalVariables": {},
+  "userNodes": {},
+  "linkedGlobalVariables": [],
+  "playbackConfig": {
+    "speed": 1,
+    "messageOrder": "receiveTime"
+  },
+  "layout": "3D!hcrobot-slam-2d"
+}

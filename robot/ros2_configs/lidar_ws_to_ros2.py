@@ -14,6 +14,7 @@ from sensor_msgs.msg import LaserScan, JointState
 from nav_msgs.msg import Odometry, Path
 from geometry_msgs.msg import TransformStamped, PoseStamped, Twist
 from std_msgs.msg import Empty, String
+from visualization_msgs.msg import Marker, MarkerArray
 from slam_toolbox.srv import Reset, SaveMap, Pause
 from nav2_msgs.action import NavigateToPose
 from rclpy.action import ActionClient
@@ -32,6 +33,11 @@ class LidarWsToRos2Bridge(Node):
         self.joint_pub_ = self.create_publisher(JointState, '/joint_states', 10)
         self.encoder_telemetry_pub = self.create_publisher(String, '/robot/encoder_telemetry', 10)
         self.sensor_health_pub = self.create_publisher(String, '/robot/sensor_health', 10)
+        self.foxglove_marker_pub = self.create_publisher(
+            MarkerArray,
+            '/foxglove/robot_marker',
+            10,
+        )
         model_qos = QoSProfile(
             history=HistoryPolicy.KEEP_LAST,
             depth=1,
@@ -45,10 +51,11 @@ class LidarWsToRos2Bridge(Node):
         )
         self.foxglove_model_xml = self._load_foxglove_robot_description()
         self.foxglove_model_timer = self.create_timer(2.0, self.publish_foxglove_robot_description)
+        self.foxglove_marker_timer = self.create_timer(0.5, self.publish_foxglove_robot_marker)
         self.wheel_l_pos = 0.0
         self.wheel_r_pos = 0.0
         self.wheel_radius = 0.033
-        self.wheel_sep = float(os.getenv("HCROBOT_WHEEL_BASE", "0.22"))
+        self.wheel_sep = float(os.getenv("HCROBOT_WHEEL_BASE", "0.297"))
         self.encoder_cpr = float(os.getenv("HCROBOT_ENCODER_CPR", "330.0"))
         # M3 (P-TRƯỚC) đang ngược dấu so với bánh trái khi đi thẳng. Đặt -1 để đảo.
         # Nếu đã đảo trên ESP32 firmware, set HCROBOT_ENCODER_M3_SIGN=1.
@@ -129,6 +136,7 @@ class LidarWsToRos2Bridge(Node):
         self.last_encoder_time = 0.0
         self.prev_left_ticks = 0.0
         self.prev_right_ticks = 0.0
+        self.prev_motor_ticks = None
         self.has_prev_encoder_ticks = False
         self.allow_cmd_vel_odom = os.getenv("HCROBOT_ALLOW_CMD_VEL_ODOM", "0") == "1"
         self.last_sent_udp_motion = "stop"
@@ -175,6 +183,41 @@ class LidarWsToRos2Bridge(Node):
         msg = String()
         msg.data = self.foxglove_model_xml
         self.foxglove_model_pub.publish(msg)
+
+    def publish_foxglove_robot_marker(self):
+        """Publish a small top-down robot icon without Foxglove's URDF scaling path."""
+        now = self.get_clock().now().to_msg()
+        marker_array = MarkerArray()
+
+        def cube(marker_id, name, xyz, scale, rgba):
+            marker = Marker()
+            marker.header.frame_id = 'base_link'
+            marker.header.stamp = now
+            marker.ns = 'hcrobot_2d'
+            marker.id = marker_id
+            marker.type = Marker.CUBE
+            marker.action = Marker.ADD
+            marker.pose.position.x = float(xyz[0])
+            marker.pose.position.y = float(xyz[1])
+            marker.pose.position.z = float(xyz[2])
+            marker.pose.orientation.w = 1.0
+            marker.scale.x = float(scale[0])
+            marker.scale.y = float(scale[1])
+            marker.scale.z = float(scale[2])
+            marker.color.r = float(rgba[0])
+            marker.color.g = float(rgba[1])
+            marker.color.b = float(rgba[2])
+            marker.color.a = float(rgba[3])
+            marker.frame_locked = True
+            marker.text = name
+            return marker
+
+        marker_array.markers = [
+            cube(0, 'body', (0.0, 0.0, 0.08), (0.40, 0.30, 0.16), (1.0, 0.30, 0.05, 1.0)),
+            cube(1, 'front', (0.225, 0.0, 0.09), (0.05, 0.14, 0.06), (0.90, 0.05, 0.05, 1.0)),
+            cube(2, 'lidar', (0.08, 0.0, 0.19), (0.08, 0.08, 0.04), (0.05, 0.05, 0.05, 1.0)),
+        ]
+        self.foxglove_marker_pub.publish(marker_array)
 
     def publish_map_status(self):
         status_msg = String()
@@ -224,6 +267,7 @@ class LidarWsToRos2Bridge(Node):
         self._locked_yaw_deg = None
         self.encoder_motion_detected = False
         self.has_prev_encoder_ticks = False
+        self.prev_motor_ticks = None
         self.last_cmd_time = time.monotonic()
         self._send_udp_to_pi5("stop")
 
@@ -457,6 +501,12 @@ class LidarWsToRos2Bridge(Node):
             m2 = encoders.get("m2", {})
             m3 = encoders.get("m3", {})
             m4 = encoders.get("m4", {})
+            motor_ticks = {
+                "m1": float(m1.get("ticks", 0)),
+                "m2": float(m2.get("ticks", 0)),
+                "m3": float(m3.get("ticks", 0)),
+                "m4": float(m4.get("ticks", 0)),
+            }
             left_ticks = (float(m1.get("ticks", 0)) + float(m2.get("ticks", 0))) / 2.0
             right_ticks = (
                 self.encoder_m3_sign * float(m3.get("ticks", 0)) + float(m4.get("ticks", 0))
@@ -468,6 +518,7 @@ class LidarWsToRos2Bridge(Node):
             self.prev_left_ticks = left_ticks
             self.prev_right_ticks = right_ticks
             self.has_prev_encoder_ticks = True
+            self.prev_motor_ticks = motor_ticks
             self.last_encoder_time = now_mono
             return
 
@@ -476,12 +527,19 @@ class LidarWsToRos2Bridge(Node):
         if dt <= 0.0 or dt > 1.0:
             self.prev_left_ticks = left_ticks
             self.prev_right_ticks = right_ticks
+            self.prev_motor_ticks = motor_ticks
             return
 
         delta_left_ticks = left_ticks - self.prev_left_ticks
         delta_right_ticks = right_ticks - self.prev_right_ticks
         self.prev_left_ticks = left_ticks
         self.prev_right_ticks = right_ticks
+        previous_motor_ticks = self.prev_motor_ticks or motor_ticks
+        motor_deltas = {
+            name: motor_ticks[name] - previous_motor_ticks.get(name, motor_ticks[name])
+            for name in motor_ticks
+        }
+        self.prev_motor_ticks = motor_ticks
         if abs(delta_left_ticks) >= 1.0 or abs(delta_right_ticks) >= 1.0:
             self.encoder_motion_detected = True
 
@@ -492,30 +550,45 @@ class LidarWsToRos2Bridge(Node):
             return
 
         distance_per_tick = (2.0 * math.pi * self.wheel_radius) / self.encoder_cpr
-        delta_left = delta_left_ticks * distance_per_tick
-        delta_right = delta_right_ticks * distance_per_tick
-        delta_s = (delta_left + delta_right) / 2.0
-        delta_yaw = (delta_right - delta_left) / self.wheel_sep
-        same_wheel_direction = (delta_left * delta_right) > 0.0
+        # M1/M2 là cặp encoder đang đồng nhất trên robot thật. M3/M4 hiện lệch
+        # hàng nghìn tick, nên không được phép kéo pose/map sang một quỹ đạo giả.
+        left_reliable_ticks = (motor_deltas["m1"] + motor_deltas["m2"]) / 2.0
+        motion = self.last_sent_udp_motion
+        linear_sign = -1.0 if motion.startswith("backward") else 1.0
+        is_linear_motion = motion.startswith("forward") or motion.startswith("backward")
+        is_turn_motion = motion in (
+            "left", "right", "forward_left", "forward_right",
+            "backward_left", "backward_right",
+        )
 
-        # Đi thẳng/lùi (lệnh hoặc hai bánh cùng chiều): khóa yaw, không cho encoder/IMU xoay model.
-        if self._is_straight_command() or same_wheel_direction:
-            delta_yaw = 0.0
-            if self._locked_yaw_deg is None:
-                self._locked_yaw_deg = self.current_pose['yaw']
-            self.current_pose['yaw'] = self._locked_yaw_deg
-        else:
+        delta_s = linear_sign * abs(left_reliable_ticks) * distance_per_tick if is_linear_motion else 0.0
+        delta_yaw = 0.0
+        try:
+            gyro_rate = float(yaw_rate_dps or 0.0)
+        except (TypeError, ValueError):
+            gyro_rate = 0.0
+
+        if is_turn_motion:
             self._locked_yaw_deg = None
-            try:
-                gyro_rate = float(yaw_rate_dps or 0.0)
-            except (TypeError, ValueError):
-                gyro_rate = 0.0
+            turn_sign = 1.0 if self.current_wz > 0.0 or motion == "left" else -1.0
             if abs(gyro_rate) > 0.5:
-                delta_yaw = 0.7 * (math.radians(gyro_rate) * dt) + 0.3 * delta_yaw
+                delta_yaw = turn_sign * abs(math.radians(gyro_rate)) * dt
+            else:
+                # Fallback chỉ dùng độ lớn cặp encoder tốt, hướng lấy từ lệnh.
+                wheel_arc = abs(left_reliable_ticks) * distance_per_tick
+                delta_yaw = turn_sign * wheel_arc / max(self.wheel_sep / 2.0, 0.01)
             yaw_rad_new = math.radians(self.current_pose['yaw']) + delta_yaw
             self.current_pose['yaw'] = math.degrees(
                 math.atan2(math.sin(yaw_rad_new), math.cos(yaw_rad_new))
             )
+        elif is_linear_motion:
+            if self._locked_yaw_deg is None:
+                self._locked_yaw_deg = self.current_pose['yaw']
+            self.current_pose['yaw'] = self._locked_yaw_deg
+        else:
+            # Không có lệnh chuyển động thì bỏ qua tick rung/nhiễu.
+            delta_s = 0.0
+            delta_yaw = 0.0
 
         yaw_rad = math.radians(self.current_pose['yaw'])
         self.current_pose['x'] += delta_s * math.cos(yaw_rad)
@@ -700,6 +773,7 @@ class LidarWsToRos2Bridge(Node):
                         vx, wz = motion_to_vel[cmd]
                         self.current_vx = vx
                         self.current_wz = wz
+                        self.last_sent_udp_motion = cmd
                         self.last_cmd_time = time.monotonic()
                 except socket.timeout:
                     pass

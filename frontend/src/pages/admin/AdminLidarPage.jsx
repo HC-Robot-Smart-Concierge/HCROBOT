@@ -606,25 +606,18 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
       // 1. Backend laptop gọi map_saver_cli và chỉ trả SUCCESS khi YAML/PGM đã tồn tại.
       await saveRos2Map(trimmedName);
 
-      // 2. Lưu thêm snapshot JSON phía Pi 5 để Web Admin/Pi dùng lại; lỗi Pi không làm mất map ROS 2.
-      await fetch(`${PI5_API}/map/save`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json'},
-        body: JSON.stringify({ name: trimmedName }),
-      }).catch(() => null);
-
       setSelectedMapId(trimmedName);
       setIsMapLocked(true);
       setMapMode('PAUSED');
       setNavNotification(`Đã lưu "${trimmedName}". Đang chuyển sang Navigation map tĩnh...`);
 
-      // 3. Kết thúc mapping và tự nạp đúng map vừa lưu bằng Map Server + AMCL + Nav2.
+      // 2. Kết thúc mapping và tự nạp đúng map vừa lưu bằng Map Server + AMCL + Nav2.
       await startRos2Navigation(trimmedName);
       await waitForRos2Runtime('NAVIGATION');
       setMapMode('NAVIGATION');
       rosClientRef.current?.connect();
 
-      // 4. Tải gói map sau khi file thật đã được tạo xong.
+      // 3. Tải gói map sau khi file thật đã được tạo xong.
       await triggerMapDownload(trimmedName);
       const listData = await listSavedMaps().catch(() => null);
       if (listData?.maps) setSavedMapsList(listData.maps);

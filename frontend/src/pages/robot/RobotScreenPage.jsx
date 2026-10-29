@@ -1249,8 +1249,10 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
   // Easter Egg: Ấn 2 lần góc trái dưới màn hình để nói "đụ má mày" liên tục, ấn 2 lần để dừng
   const isLoopSwearingRef = useRef(false);
+  const swearTapCountRef = useRef(0);
+  const swearTapTimerRef = useRef(null);
   const swearTimeoutRef = useRef(null);
-  const lastSwearTapTimeRef = useRef(0);
+
   const lastSwearTouchTimeRef = useRef(0);
 
   const runSwearCycle = useCallback(() => {
@@ -1306,23 +1308,31 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     const now = Date.now();
     if (e?.type === 'touchstart') {
       lastSwearTouchTimeRef.current = now;
-    } else if (e?.type === 'click' && now - lastSwearTouchTimeRef.current < 500) {
+    } else if (e?.type === 'click' && now - lastSwearTouchTimeRef.current < 450) {
       return;
     }
 
-    const delta = now - lastSwearTapTimeRef.current;
-    if (lastSwearTapTimeRef.current > 0 && delta > 40 && delta < 500) {
-      lastSwearTapTimeRef.current = 0;
-      toggleSwearLoop();
-    } else {
-      lastSwearTapTimeRef.current = now;
+    swearTapCountRef.current += 1;
+    if (swearTapTimerRef.current) {
+      clearTimeout(swearTapTimerRef.current);
     }
+
+    if (swearTapCountRef.current >= 2) {
+      swearTapCountRef.current = 0;
+      toggleSwearLoop();
+      return;
+    }
+
+    swearTapTimerRef.current = setTimeout(() => {
+      swearTapCountRef.current = 0;
+    }, 750);
   }, [prime, toggleSwearLoop]);
 
   useEffect(() => {
     return () => {
       isLoopSwearingRef.current = false;
       if (swearTimeoutRef.current) clearTimeout(swearTimeoutRef.current);
+      if (swearTapTimerRef.current) clearTimeout(swearTapTimerRef.current);
     };
   }, []);
 
@@ -1436,12 +1446,14 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       <div
         onClick={handleBottomLeftDoubleTap}
         onTouchStart={handleBottomLeftDoubleTap}
-        className="fixed bottom-0 left-0 w-24 h-24 z-[9999] cursor-default select-none opacity-0 pointer-events-auto"
+        style={{ touchAction: 'manipulation' }}
+        className="fixed bottom-0 left-0 w-28 h-28 z-[9999] cursor-default select-none opacity-0 pointer-events-auto"
         title=""
         aria-hidden="true"
       />
 
       <MobileRobotScreen
+        onDoubleTapEasterEgg={toggleSwearLoop}
         activeRoomNumber={activeRoomNumber}
         guestEmotion={guestEmotion}
         eyeExpression={activeEyeExpression}

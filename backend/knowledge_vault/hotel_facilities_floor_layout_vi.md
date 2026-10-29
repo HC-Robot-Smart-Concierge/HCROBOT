@@ -72,16 +72,20 @@ Tất cả các tầng đều được kết nối thẳng bằng **Thang máy A
 
 ---
 
-## 5. Tầng 2 — Khu Vực Ẩm Thực & Bếp (Restaurant & Pickup Area)
+## 5. Tầng 2 — Khu Vực Bếp Trung Tâm & Ẩm Thực Tận Phòng (Staff Only)
 
 ### Không gian & Thông tin vận hành
-- **Nhà Hàng & Quầy Nhận Món (Pickup Area):**
-  - **Buffet sáng:** Phục vụ từ 06:30 đến 10:00 sáng hàng ngày (thực đơn đa dạng Á - Âu).
-  - **Bữa trưa & Bữa tối:** Phục vụ gọi món (A la carte) và giao đồ ăn tận phòng từ 11:30 đến 22:00.
-  - **Chi phí:** Đã bao gồm trong giá phòng có buffet sáng; khách mua lẻ hoặc khách ngoài: 350.000 VNĐ/người.
-- **Khu Sơ Chế (Preparation Area), Bếp Chính (Kitchen) & Kho (Warehouse):** Khu vực chế biến ẩm thực và kho chứa nguyên liệu thực phẩm. Đây là khu vực tác nghiệp nội bộ của đầu bếp, khách không được tự ý vào.
+- **Chính sách Nhà hàng & Bữa sáng Buffet:**
+  - Khách sạn Aurora Grand hiện **KHÔNG có nhà hàng ăn tại chỗ** và **KHÔNG phục vụ buffet sáng**.
+- **Dịch vụ Gọi Món Tận Phòng 24/7 (Room Service):**
+  - **Thời gian phục vụ:** Hoạt động liên tục 24/7 cả ngày lẫn đêm.
+  - **Chế biến:** Món ăn và đồ uống được các đầu bếp chuẩn bị tại Bếp Trung Tâm Tầng 2 và nhân viên giao tận phòng cho khách.
+  - **Cách đặt món:** Quý khách xem thực đơn điện tử trên màn hình phòng, quét mã QR tại bàn phòng hoặc nhấn phím 1 trên điện thoại bàn của phòng để đặt món.
+- **Khu Sơ Chế, Bếp Chính & Kho (Tầng 2):** Khu vực tác nghiệp nội bộ dành riêng cho nhân viên ẩm thực (Staff Only), khách không được tự ý vào.
 - **Nhà Vệ Sinh Tầng 2:** Nằm ở góc dưới bên phải hành lang.
-- **Chỉ đường:** Từ Sảnh Trệt, đi Thang máy A bấm lên **Tầng 2**, bước ra khỏi cửa thang máy đi thẳng theo hành lang vào sảnh chính Nhà Hàng & Quầy Nhận Món.
+
+### Chỉ dẫn của Robot Concierge
+- Khi khách hỏi về **nhà hàng, buffet sáng, điểm tâm, nơi ăn uống**: Robot giải thích lịch sự rằng khách sạn không có nhà hàng và buffet, mà phục vụ ẩm thực gọi món tận phòng 24/7 (Room Service).
 
 ---
 
@@ -169,7 +173,7 @@ Tất cả các tầng đều được kết nối thẳng bằng **Thang máy A
 | **Hầm B2** | Bãi Đỗ Xe Ô Tô | Mở 24/7 | Miễn phí cho khách lưu trú | Đi Thang máy A bấm xuống Hầm B2 |
 | **Hầm B1** | Bãi Giữ Xe Máy & Xe Đạp | Mở 24/7 | Miễn phí cho khách lưu trú | Đi Thang máy A bấm xuống Hầm B1 |
 | **Tầng Trệt** | Sảnh Chính & Quầy Lễ Tân | Mở 24/7 | Miễn phí | Nằm ngay phía bên phải cửa sảnh vào |
-| **Tầng 2** | Nhà Hàng & Quầy Nhận Món | 06:30 - 22:00 | 350.000 VNĐ / Theo phòng | Đi Thang máy A lên Tầng 2, đi thẳng |
+| **Tầng 2** | Bếp Trung Tâm (Staff Only) | Chuẩn bị món 24/7 | Không có nhà hàng/buffet; phục vụ gọi món tận phòng (Room Service) 24/7 |
 | **Tầng 3** | Phòng Nghỉ Tiêu Chuẩn (301-309) | Phục vụ 24/7 | Theo mã đặt phòng | Đi Thang máy A lên Tầng 3, đi theo hành lang |
 | **Tầng 4** | Phòng Nghỉ Cao Cấp (401-409) | Phục vụ 24/7 | Theo mã đặt phòng | Đi Thang máy A lên Tầng 4, đi theo hành lang |
 | **Tầng 5** | Hồ Bơi Vô Cực | 06:00 - 22:00 | Miễn phí (kèm khăn tắm) | Đi Thang máy A lên Tầng 5, rẽ trái qua cửa kính |
@@ -198,8 +202,8 @@ Tất cả các tầng đều được kết nối thẳng bằng **Thang máy A
 - **Robot trả lời:** *"Dạ Hồ bơi vô cực và Phòng Gym đều nằm tại **Tầng 5**. Hồ bơi mở cửa từ 06:00 đến 22:00 hàng ngày và có phục vụ khăn tắm miễn phí. Còn phòng Gym mở cửa 24/7 cho khách lưu trú ạ. Quý khách vui lòng đi Thang máy A lên Tầng 5 nhé ạ!"*
 
 ### Hỏi về Nhà Hàng & Ăn Sáng:
-- **Câu hỏi của khách:** *"Nhà hàng ăn sáng ở đâu?", "Buffet sáng mấy giờ bắt đầu?", "Tầng 2 có gì?"*
-- **Robot trả lời:** *"Dạ Nhà hàng ẩm thực của khách sạn nằm tại **Tầng 2**. Buffet sáng phục vụ từ **06:30 đến 10:00**, và mở cửa phục vụ các món ăn đến 22:00. Quý khách đi Thang máy A bấm lên Tầng 2 là tới ngay sảnh nhà hàng ạ!"*
+- **Câu hỏi của khách:** *"Nhà hàng ăn sáng ở đâu?", "Buffet sáng mấy giờ bắt đầu?", "Có buffet không?", "Tầng 2 có gì?", "Ăn sáng ở đâu?"*
+- **Robot trả lời:** *"Dạ hiện tại khách sạn không có nhà hàng ăn tại chỗ và không phục vụ buffet sáng ạ. Thay vào đó, khách sạn phục vụ ẩm thực gọi món tận phòng 24/7 (Room Service). Quý khách có thể xem menu điện tử trên màn hình hoặc quét mã QR tại bàn phòng để đặt món giao lên phòng bất cứ lúc nào nhé ạ!"*
 
 ### Hỏi về Đỗ Xe:
 - **Câu hỏi của khách:** *"Bãi đỗ ô tô ở đâu?", "Gửi xe máy ở tầng nào?", "Gửi xe có mất phí không?"*

@@ -223,7 +223,7 @@ export const MobileRobotScreen = ({
       </div>
 
       <div className="robot-landscape-content h-full w-full flex flex-col">
-        <header className="h-11 shrink-0 flex items-center justify-between gap-3 border-b border-stone-200/50 px-4 robot-safe-x bg-[#F5F2EB]/95 backdrop-blur-sm relative z-30">
+        <header className="h-11 shrink-0 flex items-center justify-between gap-3 border-b border-stone-200/50 px-4 robot-safe-x bg-[#F5F2EB]/95 backdrop-blur-sm relative z-50">
           {/* Top-Left Branding chuẩn Desktop theme xám */}
           <div onClick={handleSecretTap} className="flex items-center gap-2 min-w-0 cursor-default select-none" title="Chạm 5 lần để đăng xuất">
             <strong className="text-xs font-black tracking-widest text-stone-600 uppercase">HCROBOT</strong>
@@ -240,13 +240,15 @@ export const MobileRobotScreen = ({
 
             {/* Nút Ngôn ngữ (VI / EN) chuẩn Desktop có Dropdown */}
             {onToggleLanguage && (
-              <div className="relative">
+              <div className="relative z-50">
                 <button
                   type="button"
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.stopPropagation();
                     setIsLangMenuOpen((prev) => !prev);
                     setIsUtilitiesMenuOpen(false);
                   }}
+                  onPointerDown={(e) => e.stopPropagation()}
                   className={`h-7 px-2.5 rounded-full border text-[10px] font-mono font-bold flex items-center gap-1 active:scale-95 shadow-sm cursor-pointer transition-all ${
                     isLangMenuOpen
                       ? 'bg-stone-900 text-white border-stone-900'
@@ -261,7 +263,12 @@ export const MobileRobotScreen = ({
 
                 {/* Dropdown Menu Chọn Ngôn Ngữ */}
                 {isLangMenuOpen && (
-                  <div className="absolute top-9 right-0 z-50 w-44 rounded-2xl bg-stone-900/95 border border-stone-700/80 shadow-2xl p-1.5 backdrop-blur-xl animate-fadeIn space-y-1">
+                  <div
+                    onClick={(e) => e.stopPropagation()}
+                    onTouchStart={(e) => e.stopPropagation()}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    className="absolute top-9 right-0 z-50 w-44 rounded-2xl bg-stone-900/95 border border-stone-700/80 shadow-2xl p-1.5 backdrop-blur-xl animate-fadeIn space-y-1"
+                  >
                     <div className="text-[10px] font-bold uppercase tracking-wider text-stone-400 px-2.5 py-1 border-b border-stone-800 flex items-center justify-between">
                       <span>{isEn ? 'Language' : 'Ngôn ngữ'}</span>
                       <span className="text-[9px] text-stone-500 font-mono">LANG</span>
@@ -270,10 +277,12 @@ export const MobileRobotScreen = ({
                     {/* Tiếng Việt */}
                     <button
                       type="button"
-                      onClick={() => {
+                      onClick={(e) => {
+                        e.stopPropagation();
                         onToggleLanguage('Tiếng Việt');
                         setIsLangMenuOpen(false);
                       }}
+                      onPointerDown={(e) => e.stopPropagation()}
                       className={`w-full px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-between transition-all cursor-pointer ${
                         !isEn
                           ? 'bg-stone-800 text-stone-100 border border-stone-600'
@@ -290,10 +299,12 @@ export const MobileRobotScreen = ({
                     {/* English */}
                     <button
                       type="button"
-                      onClick={() => {
+                      onClick={(e) => {
+                        e.stopPropagation();
                         onToggleLanguage('English');
                         setIsLangMenuOpen(false);
                       }}
+                      onPointerDown={(e) => e.stopPropagation()}
                       className={`w-full px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-between transition-all cursor-pointer ${
                         isEn
                           ? 'bg-stone-800 text-stone-100 border border-stone-600'
@@ -335,8 +346,9 @@ export const MobileRobotScreen = ({
         {/* Nền mờ khi mở Menu Ngôn Ngữ (Click outside to close) */}
         {isLangMenuOpen && (
           <div
-            className="fixed inset-0 z-40 bg-black/50 backdrop-blur-xs"
+            className="fixed inset-0 z-40 bg-black/30 backdrop-blur-xs"
             onClick={() => setIsLangMenuOpen(false)}
+            onPointerDown={() => setIsLangMenuOpen(false)}
           />
         )}
 

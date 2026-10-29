@@ -72,7 +72,7 @@ def _detect_destination_poi(prompt: str, reply: str = "") -> str | None:
     is_short_location_utterance = len(p_words) <= 3 and any(
         k in p_lower for k in [
             "toilet", "vệ sinh", "wc", "hồ bơi", "pool", "gym", "spa",
-            "nhà hàng", "búp phê", "buffet", "lễ tân", "reception", "bãi xe"
+            "lễ tân", "reception", "bãi xe"
         ]
     )
 
@@ -126,8 +126,9 @@ def _detect_destination_poi(prompt: str, reply: str = "") -> str | None:
         return "preparation_area"
     if any(k in p_lower for k in ["kho hàng", "kho hang", "kho nguyên liệu", "kho thực phẩm", "warehouse"]):
         return "warehouse"
-    if any(k in p_lower for k in ["nhà hàng", "nha hang", "buffet", "ăn sáng", "quầy nhận món", "pickup", "restaurant"]):
-        return "restaurant"
+    # Khách sạn không có nhà hàng và buffet, chỉ có bếp nội bộ phục vụ gọi món lên phòng
+    if any(k in p_lower for k in ["quầy nhận món", "quay nhan mon", "pickup"]):
+        return "pickup_area"
 
     # 5. Tiện ích Tầng 5 & Tầng 6
     if any(k in p_lower for k in ["hồ bơi", "ho boi", "bể bơi", "pool", "bơi"]):
@@ -184,15 +185,18 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
     cached_ai = await redis_service.get_ai_cache(request.prompt, request.language or "vi")
     if cached_ai and cached_ai.get("full_text"):
         reply = cached_ai["full_text"]
-        detected_lang = cached_ai.get("detected_language") or ("English" if "en" in (request.language or "").lower() else "Tiếng Việt")
-        lang_code = cached_ai.get("lang_code") or ("en-US" if detected_lang == "English" else "vi-VN")
+        if not request.language or request.language.lower() in ("auto", "bilingual"):
+            detected_lang, lang_code = ollama_service.detect_language(request.prompt)
+        else:
+            detected_lang = cached_ai.get("detected_language") or ("English" if "en" in (request.language or "").lower() else "Tiếng Việt")
+            lang_code = cached_ai.get("lang_code") or ("en-US" if detected_lang == "English" else "vi-VN")
         act = cached_ai.get("action", "conversation")
         dest_key = cached_ai.get("destination_key")
 
         # Đảm bảo không bị mất destination_key nếu cache cũ lưu None
         if not dest_key:
             from app.services.ai.scenario_service import scenario_service
-            sc_match = scenario_service.match_fast_path(request.prompt)
+            sc_match = scenario_service.match_fast_path(request.prompt, lang_code=lang_code)
             if sc_match and len(sc_match) >= 5:
                 if sc_match[3] == "none":
                     dest_key = None
@@ -228,10 +232,18 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
         )
 
     # Điều phối hội thoại trực tiếp qua LangGraph Harness
+    if not request.language or request.language.lower() in ["auto", "bilingual", ""]:
+        cur_lang_name, cur_lang_code = ollama_service.detect_language(request.prompt)
+    else:
+        cur_lang_name = request.language
+        cur_lang_code = "en-US" if (request.language.lower().startswith("en") or "english" in request.language.lower()) else "vi-VN"
+
     initial_state = {
         "session_id": sid,
         "prompt": request.prompt,
         "language": request.language,
+        "lang_name": cur_lang_name,
+        "lang_code": cur_lang_code,
         "emotion": request.emotion,
         "room_number": current_room,
         "chat_history": history,
@@ -256,7 +268,7 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
     try:
         audio_b64, mime_type, _ = await asyncio.wait_for(
             tts_service.synthesize(reply, provider="edge", language=lang_code),
-            timeout=1.8
+            timeout=3.5
         )
     except Exception as e_tts:
         logger.warning(f"[AIChatService] TTS online timeout/error, fallback to frontend WebSpeech: {e_tts}")

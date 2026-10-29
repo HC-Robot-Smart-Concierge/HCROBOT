@@ -216,7 +216,7 @@ class GeminiService:
             lang_name, lang_code = self.detect_language(prompt)
         else:
             lang_name = language
-            lang_code = "en-US" if language.lower() in ["english", "en"] else "vi-VN"
+            lang_code = "en-US" if (language.lower().startswith("en") or "english" in language.lower()) else "vi-VN"
 
         # Tự động truy vấn tri thức RAG từ ChromaDB nếu chưa có sẵn
         if rag_context is None:
@@ -289,7 +289,7 @@ class GeminiService:
             lang_name, lang_code = self.detect_language(prompt)
         else:
             lang_name = language
-            lang_code = "en-US" if language.lower() in ["english", "en"] else "vi-VN"
+            lang_code = "en-US" if (language.lower().startswith("en") or "english" in language.lower()) else "vi-VN"
 
         # Tự động truy vấn tri thức RAG từ ChromaDB nếu chưa có sẵn
         if rag_context is None:

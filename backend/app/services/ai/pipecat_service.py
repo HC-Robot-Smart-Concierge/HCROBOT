@@ -169,7 +169,7 @@ class PipecatPipelineService:
                 lang_name, lang_code = ollama_service.detect_language(user_speech)
             else:
                 lang_name = language
-                lang_code = "en-US" if language.lower() in ["english", "en"] else "vi-VN"
+                lang_code = "en-US" if (language.lower().startswith("en") or "english" in language.lower()) else "vi-VN"
 
             # 2. Lấy bộ nhớ hội thoại và số phòng từ session_manager để giao tiếp tự nhiên đa lượt
             from app.services.ai.session_manager import extract_room_number

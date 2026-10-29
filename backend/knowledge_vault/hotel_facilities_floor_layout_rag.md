@@ -20,7 +20,7 @@ Aurora Grand Hotel is structured into 8 functional levels:
 - **Basement 2 (B2):** Automobile Car Parking (Open 24/7, security guards, CCTV, and EV chargers).
 - **Basement 1 (B1):** Motorbike, Scooter & Bicycle Parking (Open 24/7).
 - **Ground Floor (G):** Main Lobby, Reception & Front Desk, Restrooms, Staff Only Office.
-- **2nd Floor:** Culinary & F&B Hub — Buffet Restaurant & Pickup Area, Commercial Kitchen, Food Preparation Area, Dry & Cold Storage.
+- **2nd Floor:** Central Culinary Operations & In-Room Dining Kitchen (Staff Only) — Note: The hotel does NOT have a dine-in restaurant or breakfast buffet. All food and beverage service is provided exclusively via 24/7 In-Room Dining (Room Service).
 - **3rd Floor:** Standard Guest Rooms (9 rooms: Room 301 to Room 309).
 - **4th Floor:** Deluxe Guest Rooms (9 rooms: Room 401 to Room 409).
 - **5th Floor:** Wellness & Recreation — Infinity Pool, Locker Room & Showers, Thao Moc Herbal Spa & Massage, 24/7 Fitness & Gym Center.
@@ -79,19 +79,22 @@ All floors are directly connected via **Elevator A** and the main staircase posi
 
 ---
 
-## 5. 2nd Floor — Culinary & Food Service Hub (Restaurant & Pickup Area)
+## 5. 2nd Floor — Central Culinary Operations & In-Room Dining Kitchen (Staff Only)
 
 ### Identified Spaces & Operational Details
-- **Buffet Restaurant & Pickup Area:**
-  - **Breakfast Buffet:** Served from 06:30 to 10:00 AM daily (Asian and Western fusion buffet).
-  - **Lunch & Dinner:** A la carte dining and in-room dining pickup available from 11:30 AM to 22:00 (10:00 PM).
-  - **Pricing:** Complimentary if included in the room package; walk-in or add-on rate is 350,000 VND per person.
-- **Commercial Kitchen, Food Preparation Area & Storage:** Internal culinary preparation facilities. Strictly restricted to culinary staff; guests are not permitted.
+- **No On-Site Restaurant or Breakfast Buffet:**
+  - Aurora Grand Hotel operates exclusively on an In-Room Dining model.
+  - There is **NO** public walk-in restaurant, dining hall, or breakfast buffet on property.
+- **24/7 In-Room Dining (Room Service):**
+  - **Operating Hours:** Available 24/7 continuously day and night.
+  - **Culinary Preparation:** All gourmet dishes and beverages are prepared by hotel chefs in the Level 2 Central Commercial Kitchen and delivered directly to guest rooms.
+  - **How to Order:** Guests can browse the interactive digital menu on the in-room tablet/TV screen, scan the room QR code, or press 1 on the room telephone to order.
+- **Commercial Kitchen, Food Preparation Area & Storage (Level 2):**
+  - Strictly an internal culinary operations area (Staff Only). Guests are not permitted entry.
 - **2nd Floor Restrooms:** Located at the lower-right corner of the corridor.
-- **Navigation:** From the Ground Floor Lobby, take Elevator A up to the **2nd Floor**, walk straight along the corridor into the main restaurant foyer.
 
 ### Robot Concierge Guidance
-- Direct guests inquiring about dining, breakfast, or room service food pickup to the **2nd Floor** via Elevator A.
+- When guests inquire about **restaurant, dining hall, breakfast, or buffet**: Politely clarify that the hotel does NOT have a walk-in restaurant or breakfast buffet, but instead offers premium 24/7 In-Room Dining (Room Service) delivered straight to their room.
 
 ---
 
@@ -187,7 +190,7 @@ All floors are directly connected via **Elevator A** and the main staircase posi
 | **Basement 2** | Automobile Car Parking Lot | Open 24/7 | Free for staying hotel guests | Take Elevator A down to Basement 2 |
 | **Basement 1** | Motorbike & Bike Parking | Open 24/7 | Free for staying hotel guests | Take Elevator A down to Basement 1 |
 | **Ground Floor** | Main Lobby & Reception Desk | Open 24/7 | Free access | Located on the right side of entrance lobby |
-| **2nd Floor** | Buffet Restaurant & Pickup Area | 06:30 - 22:00 | 350,000 VND / Room Package | Take Elevator A to 2nd Floor, walk straight |
+| **2nd Floor** | Central Culinary Kitchen (Staff Only) | 24/7 Room Service preparation | No walk-in restaurant/buffet; 24/7 In-Room Dining only |
 | **3rd Floor** | Standard Guest Rooms (301-309) | Open 24/7 | Room keycard access | Take Elevator A to 3rd Floor, follow hallway signs |
 | **4th Floor** | Deluxe Guest Rooms (401-409) | Open 24/7 | Room keycard access | Take Elevator A to 4th Floor, follow hallway signs |
 | **5th Floor** | Infinity Swimming Pool | 06:00 - 22:00 | Free (towels included) | Take Elevator A to 5th Floor, turn left through glass doors |
@@ -216,8 +219,8 @@ All floors are directly connected via **Elevator A** and the main staircase posi
 - **Robot Response:** *"Both our Infinity Pool and Fitness Gym are located on the **5th Floor**. The swimming pool is open from 06:00 to 22:00 daily with complimentary towels provided, and the Gym is open 24/7 for staying guests. Please take Elevator A up to the 5th Floor!"*
 
 ### Inquiries regarding Restaurant & Breakfast:
-- **Guest Questions:** *"Where is breakfast served?", "What time is the breakfast buffet?", "What is on the 2nd floor?"*
-- **Robot Response:** *"Our culinary Restaurant is located on the **2nd Floor**. The breakfast buffet is served from **06:30 to 10:00 AM**, and all-day dining is available until 22:00 (10:00 PM). Please take Elevator A to the 2nd Floor right into the restaurant foyer!"*
+- **Guest Questions:** *"Where is breakfast served?", "What time is the breakfast buffet?", "Is there a restaurant?", "What is on the 2nd floor?", "Where can I eat breakfast?"*
+- **Robot Response:** *"Currently, Aurora Grand Hotel does not feature a walk-in restaurant or breakfast buffet. Instead, we offer 24/7 In-Room Dining (Room Service). You can browse the digital menu on your room screen or scan the QR code in your room to order delicious meals delivered directly to your door!"*
 
 ### Inquiries regarding Parking:
 - **Guest Questions:** *"Where is the car parking lot?", "Where do I park my motorbike?", "Is parking free?"*
@@ -242,7 +245,7 @@ All floors are directly connected via **Elevator A** and the main staircase posi
 5. **Fitness & Gym:** 5th Floor, open 24/7 for hotel guests with Technogym equipment.
 6. **Thao Moc Spa:** 5th Floor, open 09:00 - 22:00, 15% discount for guests, treatments from 500,000 VND.
 7. **Locker Room:** 5th Floor next to the pool, open 06:00 - 22:00, includes secure lockers and private showers.
-8. **Restaurant & Breakfast:** 2nd Floor, breakfast buffet 06:30 - 10:00, dining open until 22:00.
+8. **Dining & Room Service:** No on-site restaurant or buffet; 24/7 In-Room Dining (Room Service) with meals delivered directly to guest rooms.
 9. **Rooftop Coffee & Sky Bar:** 6th Floor, Coffee open 07:00 - 23:00, Sky Bar open 16:30 - 01:00 AM.
 10. **VIP Karaoke & Gift Shop:** 6th Floor, Karaoke open 14:00 - 00:00, Gift Shop open 08:00 - 22:00.
 11. **Guest Rooms:** Rooms 301–309 are on the 3rd Floor; Rooms 401–409 are on the 4th Floor.

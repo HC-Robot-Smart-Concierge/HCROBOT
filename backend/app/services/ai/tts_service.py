@@ -200,13 +200,13 @@ class TTSService:
         try:
             audio_b64 = await asyncio.wait_for(
                 self._synthesize_edge_tts(clean_text, target_voice, target_rate),
-                timeout=1.5
+                timeout=3.0
             )
             if audio_b64:
                 self._save_to_cache(cache_key, audio_b64)
                 return audio_b64, "audio/mp3", "edge"
         except asyncio.TimeoutError:
-            logger.info(f"[TTSService] EdgeTTS timed out (>1.5s) for text, background caching triggered. Returning browser fallback.")
+            logger.info(f"[TTSService] EdgeTTS timed out (>3.0s) for text, background caching triggered. Returning browser fallback.")
             asyncio.create_task(self._background_cache_edge_tts(clean_text, target_voice, target_rate, cache_key))
         except Exception as e:
             logger.warning(f"[TTSService] EdgeTTS synthesis failed: {e}")

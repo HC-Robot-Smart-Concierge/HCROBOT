@@ -181,7 +181,7 @@ export const useSpeechRecognition = (callbacks = {}) => {
       const downsampled = downsampleBuffer(merged, inputSampleRate, 16000);
       const wavBlob = encodeWAV(downsampled, 16000);
 
-      const langParam = currentLanguageRef.current.startsWith('en') ? 'en' : 'vi';
+      const langParam = currentLanguageRef.current.toLowerCase().startsWith('en') ? 'en' : 'auto';
       console.log(`[STT Engine] Fallback Backend STT (Whisper): gửi file ${wavBlob.size} bytes (${(totalLength / inputSampleRate).toFixed(1)}s)...`);
       const recognizedText = await transcribeAudio(wavBlob, langParam);
 

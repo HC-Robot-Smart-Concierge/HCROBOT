@@ -69,7 +69,7 @@ async def fast_path_node(state: ConciergeState) -> Dict[str, Any]:
             lang_name, lang_code = ollama_service.detect_language(prompt)
         else:
             lang_name = language
-            lang_code = "en-US" if language.lower() in ["english", "en"] else "vi-VN"
+            lang_code = "en-US" if (language.lower().startswith("en") or "english" in language.lower()) else "vi-VN"
         return {
             "fast_path_hit": False,
             "lang_name": lang_name,
@@ -106,7 +106,7 @@ async def fast_path_node(state: ConciergeState) -> Dict[str, Any]:
         lang_name, lang_code = ollama_service.detect_language(prompt)
     else:
         lang_name = language
-        lang_code = "en-US" if language.lower() in ["english", "en"] else "vi-VN"
+        lang_code = "en-US" if (language.lower().startswith("en") or "english" in language.lower()) else "vi-VN"
 
     return {
         "fast_path_hit": False,

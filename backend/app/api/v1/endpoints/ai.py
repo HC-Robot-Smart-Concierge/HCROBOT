@@ -73,7 +73,7 @@ async def chat_stream_endpoint(request: ChatRequest):
 @router.post("/stt/transcribe", summary="Nhận diện giọng nói từ file âm thanh WAV")
 async def transcribe_speech_endpoint(
     file: UploadFile = File(...),
-    language: str = Form("vi"),
+    language: str = Form("auto"),
 ):
     """
     Endpoint nhận file âm thanh WAV từ frontend và trả về văn bản tiếng Việt/tiếng Anh.

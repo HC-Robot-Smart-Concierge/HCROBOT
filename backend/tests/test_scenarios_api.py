@@ -16,14 +16,14 @@ async def test_scenario_service_in_memory_matching():
     assert "aurora2026" in reply
     assert lang_code == "vi-VN"
 
-    # 2. Kiem tra tieng Anh
+    # 2. Kiem tra tieng Anh (Khach san khong co nha hang/buffet, chi co room service)
     hit_en = scenario_service.match_fast_path("where is the breakfast buffet?", "en-US")
     assert hit_en is not None
     reply_en, lang_name_en, lang_code_en, act_en, payload_en = hit_en
-    assert "Level 2" in reply_en or "breakfast" in reply_en.lower()
+    assert "room service" in reply_en.lower() or "breakfast" in reply_en.lower()
     assert lang_code_en == "en-US"
-    assert act_en == "show_map"
-    assert payload_en == {"destination_key": "restaurant"}
+    assert act_en == "none"
+    assert payload_en == {"eye_expression": "happy"}
 
     # 3. Kiem tra Video Call
     hit_vc = scenario_service.match_fast_path("tôi muốn gặp nhân viên", "vi-VN")
@@ -61,14 +61,14 @@ async def test_scenarios_crud_api_and_cache_sync():
         assert data_list["total"] >= 1
         initial_count = data_list["total"]
 
-        # 2. POST tao kich ban moi
+        # 2. POST tao kich ban moi (dung dich vu doc lap de khong bi trung seed scenarios)
         new_payload = {
-            "title": "Quầy đổi ngoại tệ",
+            "title": "Dịch vụ thuê trực thăng ngắm cảnh",
             "category": "facility",
-            "match_keywords": ["đổi tiền", "ngoại tệ", "đổi đô", "currency exchange"],
+            "match_keywords": ["thuê trực thăng", "trực thăng ngắm cảnh", "helicopter tour"],
             "match_type": "keyword",
-            "response_vi": "Dạ quầy đổi ngoại tệ nằm ngay cạnh Quầy Lễ tân tại Tầng 1, phục vụ 24/7 ạ.",
-            "response_en": "Currency exchange desk is right next to the Front Desk on Level 1, open 24/7.",
+            "response_vi": "Dạ dịch vụ thuê trực thăng ngắm cảnh khởi hành từ bãi đáp Tầng thượng ạ.",
+            "response_en": "Scenic helicopter tours depart directly from our rooftop helipad.",
             "action_type": "none",
             "action_payload": None,
             "is_fast_path": True,
@@ -79,32 +79,32 @@ async def test_scenarios_crud_api_and_cache_sync():
         assert res_create.status_code == 201
         created_item = res_create.json()
         scenario_id = created_item["id"]
-        assert created_item["title"] == "Quầy đổi ngoại tệ"
+        assert created_item["title"] == "Dịch vụ thuê trực thăng ngắm cảnh"
 
         # Kiem tra RAM cache da cap nhat tuc thi (<1ms) ma khong can restart server!
-        instant_hit = scenario_service.match_fast_path("tôi muốn đổi ngoại tệ ở đâu", "vi-VN")
+        instant_hit = scenario_service.match_fast_path("tôi muốn thuê trực thăng ngắm cảnh", "vi-VN")
         assert instant_hit is not None
-        assert "Tầng 1" in instant_hit[0]
+        assert "Tầng thượng" in instant_hit[0]
 
         # 3. PUT cap nhat kich ban
         update_payload = {
-            "response_vi": "Dạ quầy đổi ngoại tệ đã dời sang sảnh A Tầng 1 ạ."
+            "response_vi": "Dạ dịch vụ trực thăng tạm thời khởi hành từ bãi đáp bờ biển ạ."
         }
         res_update = await ac.put(f"/api/v1/ai/scenarios/{scenario_id}", json=update_payload)
         assert res_update.status_code == 200
-        assert "sảnh A" in res_update.json()["response_vi"]
+        assert "bờ biển" in res_update.json()["response_vi"]
 
         # Kiem tra RAM cache nhan gia tri moi ngay lap tuc
-        updated_hit = scenario_service.match_fast_path("chỗ đổi tiền", "vi-VN")
+        updated_hit = scenario_service.match_fast_path("trực thăng ngắm cảnh", "vi-VN")
         assert updated_hit is not None
-        assert "sảnh A" in updated_hit[0]
+        assert "bờ biển" in updated_hit[0]
 
         # 4. DELETE xoa kich ban
         res_del = await ac.delete(f"/api/v1/ai/scenarios/{scenario_id}")
         assert res_del.status_code == 200
 
         # Kiem tra sau khi xoa thi Fast-Path khong con khop kich ban do nua
-        after_del_hit = scenario_service.match_fast_path("đổi ngoại tệ", "vi-VN")
+        after_del_hit = scenario_service.match_fast_path("thuê trực thăng", "vi-VN")
         assert after_del_hit is None
 
 

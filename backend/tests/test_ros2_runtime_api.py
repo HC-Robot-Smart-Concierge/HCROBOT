@@ -50,7 +50,7 @@ async def test_ros2_runtime_web_endpoints(monkeypatch):
             "status": "ONLINE",
             "mode": "MAPPING",
             "rosbridge_online": True,
-            "rviz_online": True,
+            "foxglove_online": True,
         },
     )
     monkeypatch.setattr(

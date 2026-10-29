@@ -100,9 +100,9 @@ class Ros2RuntimeService:
 
     def start_mapping(self) -> dict:
         pid = self._spawn(
-            "start_wsl_rviz_web.sh",
+            "start_wsl_foxglove.sh",
             "mapping",
-            log_prefix="rviz-mapping-web",
+            log_prefix="foxglove-mapping-web",
         )
         self._last_mode = "MAPPING"
         self._last_map = None
@@ -110,7 +110,7 @@ class Ros2RuntimeService:
             "status": "STARTING",
             "mode": "MAPPING",
             "pid": pid,
-            "message": "Đang khởi động Slam Toolbox và RViz Web để quét bản đồ.",
+            "message": "Đang khởi động Slam Toolbox và Foxglove để quét bản đồ realtime.",
         }
 
     @staticmethod
@@ -311,10 +311,10 @@ class Ros2RuntimeService:
             raise Ros2RuntimeError(f"Chưa có bản đồ '{safe_name}'. Hãy quét và lưu map trước.")
 
         pid = self._spawn(
-            "start_wsl_rviz_web.sh",
+            "start_wsl_foxglove.sh",
             "navigation",
             safe_name,
-            log_prefix="rviz-navigation-web",
+            log_prefix="foxglove-navigation-web",
         )
         self._last_mode = "NAVIGATION"
         self._last_map = safe_name
@@ -353,18 +353,28 @@ class Ros2RuntimeService:
 
     def get_status(self) -> dict:
         rosbridge_online = self._port_open(9090)
-        rviz_online = self._port_open(6080)
+        foxglove_online = self._port_open(8765)
         mode = self._detect_mode() if rosbridge_online else "OFFLINE"
         if mode != "OFFLINE":
             self._last_mode = mode
+        if rosbridge_online and foxglove_online:
+            status = "ONLINE"
+        elif rosbridge_online or foxglove_online:
+            status = "STARTING"
+        else:
+            status = "OFFLINE"
         return {
-            "status": "ONLINE" if rosbridge_online else "OFFLINE",
+            "status": status,
             "mode": mode,
             "active_map": self._last_map,
             "rosbridge_online": rosbridge_online,
-            "rviz_online": rviz_online,
+            "foxglove_online": foxglove_online,
             "rosbridge_url": "ws://127.0.0.1:9090",
-            "rviz_url": "http://127.0.0.1:6080/vnc.html?autoconnect=true&resize=scale",
+            "foxglove_ws_url": "ws://127.0.0.1:8765",
+            "foxglove_web_url": (
+                "https://app.foxglove.dev/~/view?ds=foxglove-websocket&"
+                "ds.url=ws%3A%2F%2F127.0.0.1%3A8765"
+            ),
         }
 
 

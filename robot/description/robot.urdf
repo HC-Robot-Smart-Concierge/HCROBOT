@@ -75,7 +75,7 @@
     </visual>
     <collision>
       <geometry>
-        <sphere radius="0.033"/>
+        <box size="0.066 0.026 0.066"/>
       </geometry>
     </collision>
     <inertial>
@@ -100,7 +100,7 @@
     </visual>
     <collision>
       <geometry>
-        <sphere radius="0.033"/>
+        <box size="0.066 0.026 0.066"/>
       </geometry>
     </collision>
     <inertial>
@@ -118,13 +118,13 @@
   <link name="caster_wheel">
     <visual>
       <geometry>
-        <sphere radius="0.01"/>
+        <box size="0.02 0.02 0.02"/>
       </geometry>
       <material name="white"/>
     </visual>
     <collision>
       <geometry>
-        <sphere radius="0.01"/>
+        <box size="0.02 0.02 0.02"/>
       </geometry>
     </collision>
     <inertial>

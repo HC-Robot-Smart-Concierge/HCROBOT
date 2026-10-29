@@ -104,7 +104,7 @@
         </visual>
         <collision>
             <geometry>
-                <sphere radius="${wheel_radius}"/>
+                <box size="${wheel_radius * 2} ${wheel_thickness} ${wheel_radius * 2}"/>
             </geometry>
         </collision>
         <xacro:inertial_cylinder mass="${wheel_mass}" length="${wheel_thickness}" radius="${wheel_radius}">
@@ -133,7 +133,7 @@
         </visual>
         <collision>
             <geometry>
-                <sphere radius="${wheel_radius}"/>
+                <box size="${wheel_radius * 2} ${wheel_thickness} ${wheel_radius * 2}"/>
             </geometry>
         </collision>
         <xacro:inertial_cylinder mass="${wheel_mass}" length="${wheel_thickness}" radius="${wheel_radius}">
@@ -154,13 +154,13 @@
     <link name="caster_wheel">
         <visual>
             <geometry>
-                <sphere radius="${caster_wheel_radius}"/>
+                <box size="${caster_wheel_radius * 2} ${caster_wheel_radius * 2} ${caster_wheel_radius * 2}"/>
             </geometry>
             <material name="white"/>
         </visual>
         <collision>
             <geometry>
-                <sphere radius="${caster_wheel_radius}"/>
+                <box size="${caster_wheel_radius * 2} ${caster_wheel_radius * 2} ${caster_wheel_radius * 2}"/>
             </geometry>
         </collision>
         <xacro:inertial_sphere mass="${caster_wheel_mass}" radius="${caster_wheel_radius}">

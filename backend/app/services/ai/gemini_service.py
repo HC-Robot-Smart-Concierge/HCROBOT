@@ -25,6 +25,7 @@ class GeminiService:
         # Danh sach model du phong uu tien model on dinh nhat (gemini-2.5-flash, gemini-1.5-flash)
         self.fallback_models = [
             self.model,
+            "gemini-flash-lite-latest",
             "gemini-2.5-flash",
             "gemini-1.5-flash",
             "gemini-flash-latest",

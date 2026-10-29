@@ -18,7 +18,7 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 
-def _detect_destination_poi(prompt: str, reply: str = "") -> str | None:
+def _detect_destination_poi(prompt: str, reply: str = "", room_number: str | None = None) -> str | None:
     """
     Nhận diện mã điểm đến POI để đồng bộ bản đồ 8 tầng.
     Chỉ kích hoạt khi câu hỏi của người dùng (prompt) thực sự có ý định hỏi đường/vị trí.
@@ -64,20 +64,36 @@ def _detect_destination_poi(prompt: str, reply: str = "") -> str | None:
     ]
 
     # Kiểm tra xem câu hỏi có chứa số phòng cụ thể cần tìm (3xx hoặc 4xx)
-    room_4xx_match = re.search(r'\b(?:phòng|p\.?|phong)?\s*(40[1-9])\b', p_lower)
-    room_3xx_match = re.search(r'\b(?:phòng|p\.?|phong)?\s*(30[1-9])\b', p_lower)
+    room_4xx_match = re.search(r'\b(?:phòng|p\.?|phong)?\s*(?:số\s*)?(40[1-9])\b', p_lower)
+    room_3xx_match = re.search(r'\b(?:phòng|p\.?|phong)?\s*(?:số\s*)?(30[1-9])\b', p_lower)
 
-    # Khách nói cộc lốc tên địa điểm (<= 3 từ) hoặc có ý định hỏi đường rõ ràng
+    # Cụm từ hỏi đường lên phòng nghỉ chung chung
+    general_room_phrases = [
+        "phòng của tôi", "phong cua toi", "phòng tôi", "phong toi",
+        "đến phòng", "den phong", "lên phòng", "len phong", "về phòng", "ve phong",
+        "ra phòng", "ra phong", "tìm phòng", "tim phong", "hướng dẫn phòng",
+        "hướng dẫn lên phòng", "hướng dẫn về phòng", "lối lên phòng", "loi len phong",
+        "đường lên phòng", "duong len phong", "đường về phòng", "duong ve phong",
+        "chỉ đường phòng", "chi duong phong", "chỉ đường đến phòng", "chỉ đường về phòng",
+        "cho tôi lên phòng", "cho toi len phong", "cho tôi về phòng", "dẫn tôi lên phòng",
+        "phòng ở đâu", "phòng nghỉ", "khu phòng", "dãy phòng",
+        "my room", "to my room", "to the room", "guest room", "hotel room"
+    ]
+    is_general_room_query = any(k in p_lower for k in general_room_phrases) or (
+        any(k in p_lower for k in ["phòng", "phong", "room"]) and any(k in p_lower for k in nav_intent_phrases)
+    )
+
+    # Khách nói cộc lốc tên địa điểm (<= 4 từ) hoặc có ý định hỏi đường rõ ràng
     p_words = p_lower.split()
-    is_short_location_utterance = len(p_words) <= 3 and any(
+    is_short_location_utterance = len(p_words) <= 4 and any(
         k in p_lower for k in [
             "toilet", "vệ sinh", "wc", "hồ bơi", "pool", "gym", "spa",
-            "nhà hàng", "búp phê", "buffet", "lễ tân", "reception", "bãi xe"
+            "nhà hàng", "búp phê", "buffet", "lễ tân", "reception", "bãi xe", "phòng"
         ]
     )
 
     has_nav_intent = (
-        bool(room_4xx_match or room_3xx_match) or
+        bool(room_4xx_match or room_3xx_match or is_general_room_query) or
         any(k in p_lower for k in nav_intent_phrases) or
         any(k in p_lower for k in direct_loc_phrases) or
         is_short_location_utterance
@@ -92,7 +108,7 @@ def _detect_destination_poi(prompt: str, reply: str = "") -> str | None:
         "thông tin về khách sạn", "thông tin khách sạn", "hotel amenities", "hotel facilities",
         "all services", "ở đây có gì", "có những dịch vụ gì", "có những tiện ích gì"
     ]
-    if any(k in p_lower for k in general_overview_queries):
+    if any(k in p_lower for k in general_overview_queries) and not is_general_room_query:
         return None
 
     # NẾU KHÔNG CÓ Ý ĐỊNH HỎI ĐƯỜNG -> TUYỆT ĐỐI KHÔNG BẬT BẢN ĐỒ CHỈ ĐƯỜNG
@@ -106,6 +122,15 @@ def _detect_destination_poi(prompt: str, reply: str = "") -> str | None:
     # 2. Nhận diện các phòng Tầng 3 (301 -> 309)
     if room_3xx_match:
         return f"room_{room_3xx_match.group(1)}"
+
+    # 2b. Kiểm tra phản hồi của AI nếu có chứa số phòng cụ thể
+    if r_lower:
+        r_4xx = re.search(r'\b(?:phòng|p\.?|phong)?\s*(?:số\s*)?(40[1-9])\b', r_lower)
+        if r_4xx:
+            return f"room_{r_4xx.group(1)}"
+        r_3xx = re.search(r'\b(?:phòng|p\.?|phong)?\s*(?:số\s*)?(30[1-9])\b', r_lower)
+        if r_3xx:
+            return f"room_{r_3xx.group(1)}"
 
     # 3. Khu vực Vệ Sinh (Toilet / WC / Restroom toàn khách sạn)
     if any(k in p_lower for k in [
@@ -157,6 +182,14 @@ def _detect_destination_poi(prompt: str, reply: str = "") -> str | None:
     if any(k in p_lower for k in ["bãi xe", "đỗ xe", "gửi xe", "parking"]):
         return "parking_car"
 
+    # 7. Nếu khách hỏi đường lên phòng nghỉ chung chung (không trùng các tiện ích trên)
+    if is_general_room_query:
+        if room_number:
+            clean_rn = str(room_number).strip()
+            if re.match(r'^(?:40[1-9]|30[1-9])$', clean_rn):
+                return f"room_{clean_rn}"
+        return "room_401"
+
     return None
 
 
@@ -199,7 +232,7 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
                 elif isinstance(sc_match[4], dict):
                     dest_key = sc_match[4].get("destination_key")
             if not dest_key and (not sc_match or sc_match[3] != "none"):
-                dest_key = _detect_destination_poi(request.prompt, reply)
+                dest_key = _detect_destination_poi(request.prompt, reply, current_room)
 
         session_manager.add_turn(sid, "user", request.prompt, language=lang_code)
         session_manager.add_turn(sid, "assistant", reply, language=lang_code, intent_action=act)
@@ -300,7 +333,7 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
         else:
             logger.info(f"[AIChatService] Service request '{act}' is waiting for room number from guest.")
 
-    destination_key = graph_result.get("destination_key") or _detect_destination_poi(request.prompt, reply)
+    destination_key = graph_result.get("destination_key") or _detect_destination_poi(request.prompt, reply, current_room)
     eye_expression = graph_result.get("eye_expression")
 
     # Lưu kết quả vào Redis Cache
@@ -358,10 +391,13 @@ async def generate_chat_stream(request: ChatRequest) -> AsyncGenerator[str, None
         yield f"data: {json.dumps({'event': 'ack', 'status': 'connected'}, ensure_ascii=False)}\n\n"
 
         # 1. KIỂM TRA HARNESS: MEGA FAST-PATH (< 1ms)
-        fast_hit = ollama_service.check_fast_path(request.prompt, request.language)
+        fast_hit = ollama_service.check_fast_path_full(request.prompt, request.language)
         if fast_hit:
-            reply, lang_name, lang_code = fast_hit
-            logger.info(f"[AIChatStream Fast-Path] Trả lời tức thì <1ms cho: '{request.prompt[:30]}'")
+            reply, lang_name, lang_code, act_type, act_payload = fast_hit
+            dest_key = act_payload.get("destination_key") if isinstance(act_payload, dict) else None
+            if not dest_key and act_type != "none":
+                dest_key = _detect_destination_poi(request.prompt, reply, current_room)
+            logger.info(f"[AIChatStream Fast-Path] Trả lời tức thì <1ms cho: '{request.prompt[:30]}' (dest: {dest_key})")
 
             words = reply.split(" ")
             for i, w in enumerate(words):
@@ -370,13 +406,14 @@ async def generate_chat_stream(request: ChatRequest) -> AsyncGenerator[str, None
                 await asyncio.sleep(0.008)
 
             session_manager.add_turn(sid, "user", request.prompt, language=lang_code)
-            session_manager.add_turn(sid, "assistant", reply, language=lang_code, intent_action="fast_path")
+            session_manager.add_turn(sid, "assistant", reply, language=lang_code, intent_action=act_type or "fast_path")
             done_payload = {
                 "event": "done",
                 "full_text": reply,
                 "lang_code": lang_code,
                 "room_number": current_room,
-                "action": "fast_path",
+                "action": act_type or "fast_path",
+                "destination_key": dest_key,
             }
             yield f"data: {json.dumps(done_payload, ensure_ascii=False)}\n\n"
             return

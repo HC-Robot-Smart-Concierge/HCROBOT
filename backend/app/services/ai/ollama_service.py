@@ -20,10 +20,10 @@ class OllamaService:
         self.embed_model = getattr(settings, "OLLAMA_EMBED_MODEL", None)
         self._client = ollama.AsyncClient(host=self.host)
 
-    async def _call_groq(self, messages: List[Dict[str, str]], json_mode: bool = False, max_tokens: int = 60) -> Optional[str]:
+    async def _call_groq(self, messages: List[Dict[str, str]], json_mode: bool = False, max_tokens: int = 150) -> Optional[str]:
         """
         Gọi Groq Cloud API qua HTTP POST (OpenAI format).
-        Chỉ kích hoạt khi AI_PROVIDER='groq' hoặc tự động fallback khi Ollama cục bộ offline.
+        Ưu tiên hàng đầu (Tier 1), phản hồi siêu tốc (< 500ms).
         """
         if not settings.GROQ_API_KEY:
             return None
@@ -32,9 +32,9 @@ class OllamaService:
         headers = {
             "Authorization": f"Bearer {settings.GROQ_API_KEY}",
             "Content-Type": "application/json",
-            "User-Agent": "HC-Robot-Concierge/1.0",
+            "User-Agent": "curl/8.0.1",
         }
-        payload = {
+        payload: Dict[str, Any] = {
             "model": settings.GROQ_MODEL or "qwen/qwen3.8-27b",
             "messages": messages,
             "max_tokens": max_tokens,
@@ -44,7 +44,7 @@ class OllamaService:
             payload["response_format"] = {"type": "json_object"}
 
         try:
-            async with httpx.AsyncClient(timeout=12.0) as client:
+            async with httpx.AsyncClient(timeout=10.0) as client:
                 res = await client.post(url, headers=headers, json=payload)
                 if res.status_code == 200:
                     data = res.json()
@@ -55,6 +55,55 @@ class OllamaService:
         except Exception as e:
             logger.warning(f"[Groq API Error]: {str(e)}")
             return None
+
+    async def _call_groq_stream(self, messages: List[Dict[str, str]], max_tokens: int = 150):
+        """
+        Streaming token từ Groq Cloud API theo chuẩn Server-Sent Events (SSE).
+        """
+        if not settings.GROQ_API_KEY:
+            return
+        import httpx
+        url = "https://api.groq.com/openai/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {settings.GROQ_API_KEY}",
+            "Content-Type": "application/json",
+            "Accept": "text/event-stream",
+            "User-Agent": "curl/8.0.1",
+        }
+        payload: Dict[str, Any] = {
+            "model": settings.GROQ_MODEL or "qwen/qwen3.8-27b",
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": 0.4,
+            "stream": True,
+        }
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                async with client.stream("POST", url, headers=headers, json=payload) as response:
+                    if response.status_code != 200:
+                        err_text = await response.aread()
+                        logger.warning(f"[Groq Stream Warning] status={response.status_code}: {err_text[:120].decode('utf-8', errors='ignore')}")
+                        return
+                    async for line in response.aiter_lines():
+                        if not line:
+                            continue
+                        if line.startswith("data: "):
+                            data_str = line[6:].strip()
+                            if data_str == "[DONE]":
+                                break
+                            try:
+                                chunk = json.loads(data_str)
+                                choices = chunk.get("choices", [])
+                                if choices:
+                                    delta = choices[0].get("delta", {})
+                                    content = delta.get("content", "")
+                                    if content:
+                                        yield content
+                            except json.JSONDecodeError:
+                                continue
+        except Exception as e:
+            logger.warning(f"[Groq Stream Error]: {str(e)}")
+            raise
 
     @staticmethod
     def detect_language(text: str) -> Tuple[str, str]:
@@ -119,7 +168,7 @@ class OllamaService:
 
     def check_fast_path_full(
         self, prompt: str, language: Optional[str] = None
-    ) -> Optional[Tuple[str, str, str, str, Optional[Dict[str, Any]]]]:
+    ) -> Optional[Tuple[str, str, str, Optional[str], Optional[Dict[str, Any]]]]:
         """
         Phản hồi tức thì (<1ms) từ Dynamic Fast-Path In-Memory Cache (do Admin quản lý qua API).
         Bao phủ: chào hỏi, tiện ích, dịch vụ, FAQ, chỉ đường, kích hoạt video call.
@@ -292,7 +341,8 @@ class OllamaService:
         stored_room_number: Optional[str] = None,
     ):
         """
-        Async Generator sinh token theo thời gian thực từ Qwen LLM qua Ollama (stream=True).
+        Async Generator sinh token theo thời gian thực từ Qwen/Groq/Gemini/Ollama (stream=True).
+        Cơ chế Cascading 3 Tầng: Groq Cloud -> Google Gemini Cloud -> Ollama Local -> Offline Factsheet.
         """
         # 0. Kiểm tra Mega Fast-Path tức thì (< 1ms)
         fast_hit = self.check_fast_path(prompt, language)
@@ -308,24 +358,6 @@ class OllamaService:
                 rag_context = await query_rag_context(prompt)
             except Exception:
                 rag_context = ""
-
-        # Ưu tiên Gemini LLM Engine nếu được kích hoạt
-        if getattr(settings, "is_gemini_active", False):
-            try:
-                from app.services.ai.gemini_service import gemini_service
-                if gemini_service.is_configured:
-                    async for token in gemini_service.generate_response_stream(
-                        prompt=prompt,
-                        rag_context=rag_context,
-                        language=language,
-                        emotion=emotion,
-                        chat_history=chat_history,
-                        stored_room_number=stored_room_number,
-                    ):
-                        yield token
-                    return
-            except Exception as e_gemini:
-                logger.warning(f"[OllamaService] Gemini streaming error, fallback to Ollama Llama: {e_gemini}")
 
         if not language or language.lower() in ["auto", ""]:
             lang_name, lang_code = self.detect_language(prompt)
@@ -347,7 +379,55 @@ class OllamaService:
                     messages.append({"role": turn["role"], "content": turn["content"]})
         messages.append({"role": "user", "content": prompt})
 
+        provider = (getattr(settings, "LLM_PROVIDER", "") or getattr(settings, "AI_PROVIDER", "") or "groq").lower()
+
+        # =========================================================================
+        # 1. TIER 1 (Ưu tiên 1): Groq Cloud Streaming siêu tốc (< 200ms TTFT)
+        # =========================================================================
+        if provider not in ["gemini", "ollama"] and bool(settings.GROQ_API_KEY):
+            has_yielded_groq = False
+            try:
+                logger.info(f"[AI Stream Tier 1] Đang gọi Groq Cloud Stream (model: {settings.GROQ_MODEL})...")
+                async for token in self._call_groq_stream(messages, max_tokens=150):
+                    has_yielded_groq = True
+                    yield token
+                if has_yielded_groq:
+                    return
+            except Exception as e_groq:
+                logger.warning(f"[AI Stream Tier 1] Groq Stream không khả dụng ({e_groq}), tự động fallback sang Gemini Cloud...")
+                if has_yielded_groq:
+                    return
+
+        # =========================================================================
+        # 2. TIER 2 (Ưu tiên 2): Google Gemini Cloud Streaming (Fallback từ Groq)
+        # =========================================================================
+        from app.services.ai.gemini_service import gemini_service
+        if provider != "ollama" and gemini_service.is_configured:
+            has_yielded_gemini = False
+            try:
+                logger.info("[AI Stream Tier 2] Đang gọi Gemini Cloud Stream...")
+                async for token in gemini_service.generate_response_stream(
+                    prompt=prompt,
+                    rag_context=rag_context,
+                    language=language,
+                    emotion=emotion,
+                    chat_history=chat_history,
+                    stored_room_number=stored_room_number,
+                ):
+                    has_yielded_gemini = True
+                    yield token
+                if has_yielded_gemini:
+                    return
+            except Exception as e_gemini:
+                logger.warning(f"[AI Stream Tier 2] Gemini Stream không khả dụng ({e_gemini}), tự động fallback sang Ollama Local...")
+                if has_yielded_gemini:
+                    return
+
+        # =========================================================================
+        # 3. TIER 3 (Ưu tiên 3): Ollama Local Streaming (Hoạt động 100% Offline)
+        # =========================================================================
         try:
+            logger.info(f"[AI Stream Tier 3] Đang gọi Ollama Local Stream (model: {self.model})...")
             response_stream = await self._client.chat(
                 model=self.model,
                 messages=messages,
@@ -367,8 +447,9 @@ class OllamaService:
                 token = chunk.get("message", {}).get("content", "")
                 if token:
                     yield token
+            return
         except Exception as e:
-            logger.warning(f"[OllamaService StreamWarning] Ollama offline ({e}), activating Smart Offline Knowledge Fallback...")
+            logger.warning(f"[AI Stream Tier 3] Ollama offline ({e}), kích hoạt Smart Offline Knowledge Fallback...")
             fallback = self.generate_offline_fallback_response(
                 prompt=prompt,
                 lang_code=lang_code,
@@ -400,8 +481,9 @@ class OllamaService:
     ) -> Tuple[str, str, str]:
         """
         Sinh câu trả lời thoại cho Concierge Robot dựa trên câu hỏi của khách và lịch sử phiên.
+        Cơ chế Cascading 3 Tầng: Groq Cloud -> Google Gemini Cloud -> Ollama Local -> Offline Factsheet.
         """
-        # 0. Kiểm tra Fast-Path trước
+        # 0. Kiểm tra Fast-Path trước (< 1ms)
         fast_hit = self.check_fast_path(prompt, language)
         if fast_hit:
             return fast_hit
@@ -413,22 +495,6 @@ class OllamaService:
                 rag_context = await query_rag_context(prompt)
             except Exception:
                 rag_context = ""
-
-        # Ưu tiên Gemini LLM Engine nếu được kích hoạt
-        if getattr(settings, "is_gemini_active", False):
-            try:
-                from app.services.ai.gemini_service import gemini_service
-                if gemini_service.is_configured:
-                    return await gemini_service.generate_response(
-                        prompt=prompt,
-                        rag_context=rag_context,
-                        language=language,
-                        emotion=emotion,
-                        chat_history=chat_history,
-                        stored_room_number=stored_room_number,
-                    )
-            except Exception as e_gemini:
-                logger.warning(f"[OllamaService] Gemini generate error, fallback to Ollama Llama: {e_gemini}")
 
         if not language or language.lower() in ["auto", ""]:
             lang_name, lang_code = self.detect_language(prompt)
@@ -450,22 +516,51 @@ class OllamaService:
                     messages.append({"role": turn["role"], "content": turn["content"]})
         messages.append({"role": "user", "content": prompt})
 
-        # 1. Chế độ Test máy yếu đặc thù qua Groq Cloud (chỉ kích hoạt khi AI_PROVIDER='groq')
-        use_groq = (settings.AI_PROVIDER == "groq" and bool(settings.GROQ_API_KEY))
-        if use_groq:
-            logger.info(f"[OllamaService -> Groq Cloud] Chế độ máy yếu: gọi Groq model {settings.GROQ_MODEL}")
-            groq_reply = await self._call_groq(messages, json_mode=False, max_tokens=60)
-            if groq_reply:
-                reply = self.format_and_clean_reply(groq_reply.strip(), lang_code)
-                final_lang_name, final_lang_code = self.detect_language(reply)
-                return reply, final_lang_name, final_lang_code
-            else:
-                logger.warning("[OllamaService] Groq Cloud API không phản hồi, trả về phản hồi dự phòng nhanh.")
-                fallback = "Xin lỗi quý khách, đường truyền tới AI Server tạm thời gián đoạn." if lang_code == "vi-VN" else "Sorry, connection to AI Server is temporarily unavailable."
-                return fallback, lang_name, lang_code
+        provider = (getattr(settings, "LLM_PROVIDER", "") or getattr(settings, "AI_PROVIDER", "") or "groq").lower()
 
-        # 2. Mặc định cho toàn bộ dự án: Chạy Ollama cục bộ nguyên bản
+        # =========================================================================
+        # 1. TIER 1 (Ưu tiên 1): Groq Cloud (< 300ms)
+        # =========================================================================
+        if provider not in ["gemini", "ollama"] and bool(settings.GROQ_API_KEY):
+            try:
+                logger.info(f"[AI Tier 1] Gửi Groq Cloud (model: {settings.GROQ_MODEL})...")
+                groq_reply = await self._call_groq(messages, json_mode=False, max_tokens=150)
+                if groq_reply and groq_reply.strip():
+                    reply = self.format_and_clean_reply(groq_reply.strip(), lang_code)
+                    final_lang_name, final_lang_code = self.detect_language(reply)
+                    logger.info("[AI Tier 1] Thành công từ Groq Cloud!")
+                    return reply, final_lang_name, final_lang_code
+                else:
+                    logger.warning("[AI Tier 1] Groq Cloud phản hồi rỗng, tự động fallback sang Gemini Cloud...")
+            except Exception as e_groq:
+                logger.warning(f"[AI Tier 1] Groq Cloud không khả dụng ({e_groq}), tự động fallback sang Gemini Cloud...")
+
+        # =========================================================================
+        # 2. TIER 2 (Ưu tiên 2): Google Gemini Cloud (Fallback từ Groq)
+        # =========================================================================
+        from app.services.ai.gemini_service import gemini_service
+        if provider != "ollama" and gemini_service.is_configured:
+            try:
+                logger.info("[AI Tier 2] Gửi Gemini Cloud (Fallback từ Groq)...")
+                gemini_res = await gemini_service.generate_response(
+                    prompt=prompt,
+                    rag_context=rag_context,
+                    language=language,
+                    emotion=emotion,
+                    chat_history=chat_history,
+                    stored_room_number=stored_room_number,
+                )
+                if gemini_res and gemini_res[0]:
+                    logger.info("[AI Tier 2] Thành công từ Gemini Cloud!")
+                    return gemini_res
+            except Exception as e_gemini:
+                logger.warning(f"[AI Tier 2] Gemini Cloud không khả dụng ({e_gemini}), tự động fallback sang Ollama Local...")
+
+        # =========================================================================
+        # 3. TIER 3 (Ưu tiên 3): Ollama Local (Hoạt động 100% Offline)
+        # =========================================================================
         try:
+            logger.info(f"[AI Tier 3] Gửi Ollama Local (model: {self.model})...")
             response = await asyncio.wait_for(
                 self._client.chat(
                     model=self.model,
@@ -485,28 +580,22 @@ class OllamaService:
 
             raw_reply = response["message"]["content"].strip()
             reply = self.format_and_clean_reply(raw_reply, lang_code)
-
             final_lang_name, final_lang_code = self.detect_language(reply)
+            logger.info("[AI Tier 3] Thành công từ Ollama Local!")
             return reply, final_lang_name, final_lang_code
-        except Exception as e:
-            logger.warning(f"[OllamaService Warning] Ollama offline ({e}), activating Smart Offline Knowledge Fallback...")
+        except Exception as e_ollama:
+            logger.warning(f"[AI Tier 3] Ollama Local offline ({e_ollama}), kích hoạt Smart Offline Knowledge Fallback...")
 
-            # Fallback an toàn sang Groq nếu có API key (phòng ngừa máy yếu hết RAM không bật được Ollama)
-            if settings.GROQ_API_KEY:
-                logger.info("[OllamaService Fallback] Tự động chuyển tiếp sang Groq Cloud...")
-                groq_reply = await self._call_groq(messages, json_mode=False, max_tokens=60)
-                if groq_reply:
-                    reply = self.format_and_clean_reply(groq_reply.strip(), lang_code)
-                    final_lang_name, final_lang_code = self.detect_language(reply)
-                    return reply, final_lang_name, final_lang_code
-
-            fallback = self.generate_offline_fallback_response(
-                prompt=prompt,
-                lang_code=lang_code,
-                rag_context=rag_context,
-                stored_room_number=stored_room_number,
-            )
-            return fallback, lang_name, lang_code
+        # =========================================================================
+        # 4. TIER 4: Smart Offline Knowledge Fallback khi toàn bộ AI models gián đoạn
+        # =========================================================================
+        fallback = self.generate_offline_fallback_response(
+            prompt=prompt,
+            lang_code=lang_code,
+            rag_context=rag_context,
+            stored_room_number=stored_room_number,
+        )
+        return fallback, lang_name, lang_code
 
     def generate_offline_fallback_response(
         self,
@@ -555,86 +644,72 @@ class OllamaService:
 
     async def extract_intent(self, user_speech: str) -> Dict[str, Any]:
         """
-        Bóc tách Ý định (Intent) & Thực thể (Entities) từ câu nói của khách hàng ra JSON chuẩn.
+        Phân tích câu nói của khách để bóc tách ý định (action), số phòng (room_number), và yêu cầu/món đồ (items).
+        Cascading Fallback: Groq Cloud -> Gemini Cloud -> Ollama Local -> Heuristic Keywords.
         """
-        # Làm sạch wake-up word 'Rora' nếu có ở đầu câu nói
-        user_speech = re.sub(r'^(?:hey rora|chào rora|chao rora|rora ơi|rora oi|hello rora|hi rora|rora)[\,\.\!\s]*', '', user_speech, flags=re.IGNORECASE).strip() or user_speech
+        lower_speech = user_speech.lower().strip()
+        extracted_room_regex = None
+        match_room = re.search(r'(?:phòng|room|p\.)\s*([0-9]{3,4})', lower_speech)
+        if match_room:
+            extracted_room_regex = match_room.group(1)
 
-        # Bóc tách nhanh số phòng trực tiếp (Ví dụ: "phòng 502", "p.304", "502", "tôi ở 402", "402 ạ")
-        from app.services.ai.session_manager import extract_room_number
-        extracted_room_regex = extract_room_number(user_speech, is_answering_room=True)
+        clean_items = re.sub(r'(?:phòng|room|p\.)\s*[0-9]{3,4}', '', user_speech, flags=re.IGNORECASE).strip()
 
-        # Fast-Path Keyword Check từ Centralized Constants (< 1ms)
-        from app.services.ai.constants import SERVICE_KEYWORDS
-        lower_speech = user_speech.lower()
-        fast_action = None
-        for act, kws in SERVICE_KEYWORDS.items():
-            if any(k in lower_speech for k in kws):
-                fast_action = act
-                break
+        SERVICE_KEYWORDS = {
+            "housekeeping": ["khăn", "dọn", "gối", "chăn", "nệm", "dọn phòng", "towel", "clean", "pillow", "blanket", "housekeeping"],
+            "maintenance": ["hỏng", "sửa", "hư", "máy lạnh", "điều hòa", "bóng đèn", "vòi nước", "kẹt", "tivi", "remote", "broken", "repair", "ac", "air conditioner"],
+            "bellman": ["hành lý", "vali", "xách đồ", "chở đồ", "xe đẩy", "luggage", "baggage", "bellman"],
+            "room_service": ["đồ ăn", "nước uống", "thức ăn", "gọi món", "menu", "cơm", "phở", "bánh mì", "nước suối", "food", "drink", "room service"],
+        }
 
-        if fast_action:
-            clean_items = user_speech
-            if extracted_room_regex:
-                clean_items = re.sub(r'^(?:tôi ở|ở|phòng|p\.|p|phong)?\s*' + re.escape(extracted_room_regex) + r'\s*(?:cần|muốn|cho|lấy|gửi)?\s*', '', clean_items, flags=re.IGNORECASE).strip()
-            return {
-                "action": fast_action,
-                "room_number": extracted_room_regex,
-                "items": clean_items or user_speech,
-            }
-
-        # Fast-Path: Nếu chỉ là chào hỏi, cảm ơn, tạm biệt -> Trả về unknown tức thì, không cần gọi Ollama LLM
-        if any(re.search(p, lower_speech) for p in [r"^(xin chào|chào|hi|hello|helo|alo)\b", r"\b(cảm ơn|thanks|thank you)\b", r"\b(tạm biệt|bye|goodbye)\b", r"\b(bạn là ai|mày là ai|bạn tên gì)\b"]):
-            return {
-                "action": "unknown",
-                "room_number": extracted_room_regex,
-                "items": None,
-            }
-
-        # Ưu tiên Gemini LLM Engine nếu được kích hoạt
-        if getattr(settings, "is_gemini_active", False):
-            try:
-                from app.services.ai.gemini_service import gemini_service
-                if gemini_service.is_configured:
-                    return await gemini_service.extract_intent(user_speech=user_speech)
-            except Exception as e_gemini:
-                logger.warning(f"[OllamaService] Gemini extract_intent error, fallback to Ollama Llama: {e_gemini}")
-
-        system_prompt = (
-            "Bạn là hệ thống trích xuất dữ liệu tự động cho dịch vụ khách sạn. "
-            "Hãy phân tích câu nói của khách và trả về kết quả dưới định dạng JSON duy nhất với các field sau:\n"
-            "- action: một trong các giá trị ['housekeeping', 'room_service', 'bellman', 'maintenance', 'taxi', 'concierge', 'reception', 'restaurant', 'provide_room_number', 'faq', 'unknown']\n"
-            "- room_number: số phòng nếu được nhắc tới (VD: '302', '502'), nếu không có để null\n"
-            "- items: chi tiết món đồ/món ăn/dịch vụ yêu cầu (VD: '2 cái khăn tắm', '1 dĩa cơm chiên'), nếu không có để null\n\n"
-            "Chỉ trả về JSON thuần túy, không kèm bất kỳ câu giải thích nào."
-        )
+        intent_prompt = f"""Bạn là bộ định tuyến AI của khách sạn Aurora Grand.
+Hãy phân tích yêu cầu của khách: "{user_speech}"
+Và trích xuất ra JSON duy nhất theo schema:
+{{
+  "action": "housekeeping" | "maintenance" | "bellman" | "room_service" | "provide_room_number" | "unknown",
+  "room_number": "{extracted_room_regex if extracted_room_regex else ''}",
+  "items": "mô tả đồ vật hoặc yêu cầu"
+}}
+Chỉ trả về JSON thuần túy, không có giải thích, không markdown backticks."""
 
         intent_messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_speech}
+            {"role": "system", "content": "You are an AI intent classifier. Output strictly valid JSON."},
+            {"role": "user", "content": intent_prompt}
         ]
 
-        # 1. Chế độ Test máy yếu đặc thù qua Groq Cloud
-        use_groq = (settings.AI_PROVIDER == "groq" and bool(settings.GROQ_API_KEY))
-        if use_groq:
-            groq_content = await self._call_groq(intent_messages, json_mode=True, max_tokens=60)
-            if groq_content:
-                try:
+        provider = (getattr(settings, "LLM_PROVIDER", "") or getattr(settings, "AI_PROVIDER", "") or "groq").lower()
+
+        # =========================================================================
+        # 1. TIER 1 (Ưu tiên 1): Groq Cloud bóc tách intent JSON (< 200ms)
+        # =========================================================================
+        if provider not in ["gemini", "ollama"] and bool(settings.GROQ_API_KEY):
+            try:
+                groq_content = await self._call_groq(intent_messages, json_mode=True, max_tokens=60)
+                if groq_content:
                     parsed_json = json.loads(groq_content.strip())
                     if extracted_room_regex and not parsed_json.get("room_number"):
                         parsed_json["room_number"] = extracted_room_regex
+                    logger.info(f"[Intent Router Tier 1] Groq phân tích thành công: action={parsed_json.get('action')}")
                     return parsed_json
-                except Exception as je:
-                    logger.warning(f"[Groq JSON parse warning]: {je}")
-            else:
-                logger.warning("[OllamaService] Groq extract_intent không phản hồi, fallback ngay lập tức.")
-                return {
-                    "action": "unknown",
-                    "room_number": extracted_room_regex,
-                    "items": user_speech,
-                }
+            except Exception as e_groq:
+                logger.warning(f"[Intent Router Tier 1] Groq lỗi ({e_groq}), tự động fallback sang Gemini Cloud...")
 
-        # 2. Mặc định cho toàn bộ dự án: Chạy Ollama cục bộ nguyên bản
+        # =========================================================================
+        # 2. TIER 2 (Ưu tiên 2): Google Gemini Cloud bóc tách intent (Fallback từ Groq)
+        # =========================================================================
+        from app.services.ai.gemini_service import gemini_service
+        if provider != "ollama" and gemini_service.is_configured:
+            try:
+                parsed_gemini = await gemini_service.extract_intent(user_speech=user_speech)
+                if parsed_gemini and parsed_gemini.get("action") not in ["unknown", None]:
+                    logger.info(f"[Intent Router Tier 2] Gemini phân tích thành công: action={parsed_gemini.get('action')}")
+                    return parsed_gemini
+            except Exception as e_gemini:
+                logger.warning(f"[Intent Router Tier 2] Gemini lỗi ({e_gemini}), tự động fallback sang Ollama Local...")
+
+        # =========================================================================
+        # 3. TIER 3 (Ưu tiên 3): Ollama Local bóc tách intent (Offline)
+        # =========================================================================
         try:
             response = await asyncio.wait_for(
                 self._client.chat(
@@ -649,45 +724,36 @@ class OllamaService:
                     },
                     keep_alive=-1
                 ),
-                timeout=20.0
+                timeout=15.0
             )
             content = response["message"]["content"].strip()
             parsed_json = json.loads(content)
-            
+
             if extracted_room_regex and not parsed_json.get("room_number"):
                 parsed_json["room_number"] = extracted_room_regex
 
+            logger.info(f"[Intent Router Tier 3] Ollama phân tích thành công: action={parsed_json.get('action')}")
             return parsed_json
-        except Exception as e:
-            err_msg = repr(e) if not str(e) else str(e)
-            logger.warning(f"[OllamaService Warning] Lỗi Ollama khi bóc tách intent: {err_msg}")
-            
-            # Fallback an toàn sang Groq nếu có API key
-            if settings.GROQ_API_KEY:
-                groq_content = await self._call_groq(intent_messages, json_mode=True, max_tokens=60)
-                if groq_content:
-                    try:
-                        parsed_json = json.loads(groq_content.strip())
-                        if extracted_room_regex and not parsed_json.get("room_number"):
-                            parsed_json["room_number"] = extracted_room_regex
-                        return parsed_json
-                    except Exception:
-                        pass
+        except Exception as e_ollama:
+            err_msg = repr(e_ollama) if not str(e_ollama) else str(e_ollama)
+            logger.warning(f"[Intent Router Tier 3] Ollama Local offline ({err_msg}), fallback sang Heuristic Keyword...")
 
-            # Keyword-based Intent Fallback khi LLM offline/timeout
-            fallback_action = "unknown"
-            for act, kws in SERVICE_KEYWORDS.items():
-                if any(k in lower_speech for k in kws):
-                    fallback_action = act
-                    break
-            if fallback_action == "unknown" and extracted_room_regex:
-                fallback_action = "provide_room_number"
+        # =========================================================================
+        # 4. TIER 4 (Fallback cuối cùng): Heuristic Keywords khi toàn bộ LLM offline
+        # =========================================================================
+        fallback_action = "unknown"
+        for act, kws in SERVICE_KEYWORDS.items():
+            if any(k in lower_speech for k in kws):
+                fallback_action = act
+                break
+        if fallback_action == "unknown" and extracted_room_regex:
+            fallback_action = "provide_room_number"
 
-            return {
-                "action": fallback_action,
-                "room_number": extracted_room_regex,
-                "items": user_speech,
-            }
+        return {
+            "action": fallback_action,
+            "room_number": extracted_room_regex,
+            "items": clean_items or user_speech,
+        }
 
     async def get_embedding(self, text: str) -> List[float]:
         """
@@ -695,7 +761,7 @@ class OllamaService:
         """
         try:
             response = await self._client.embeddings(
-                model=self.embed_model,
+                model=self.embed_model or 'bge-m3',
                 prompt=text
             )
             return response["embedding"]

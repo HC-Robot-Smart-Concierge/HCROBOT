@@ -1,3 +1,5 @@
+import os
+from pathlib import Path
 from typing import Optional
 from urllib.parse import quote_plus
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -79,7 +81,9 @@ class Settings(BaseSettings):
 
     @property
     def active_llm_model(self) -> str:
-        """Trả về tên model đang kích hoạt thực tế (Gemini hoặc Ollama Llama)."""
+        """Trả về tên model đang ưu tiên thực tế (Groq -> Gemini -> Ollama)."""
+        if self.GROQ_API_KEY:
+            return self.GROQ_MODEL
         if self.is_gemini_active:
             return self.GEMINI_MODEL
         return self.OLLAMA_MODEL
@@ -98,5 +102,28 @@ class Settings(BaseSettings):
         encoded_password = quote_plus(self.POSTGRES_PASSWORD)
         return f"postgresql+asyncpg://{self.POSTGRES_USER}:{encoded_password}@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
 
+
+
+    @property
+    def resolved_chroma_dir(self) -> str:
+        """Trả về đường dẫn tuyệt đối ổn định đến thư mục ChromaDB."""
+        path = self.CHROMA_PERSIST_DIR
+        if not os.path.isabs(path):
+            backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            candidate = os.path.join(backend_dir, path.lstrip("./\\"))
+            if os.path.exists(candidate) or not os.path.exists(os.path.abspath(path)):
+                return os.path.abspath(candidate)
+        return os.path.abspath(path)
+
+    @property
+    def resolved_obsidian_vault_dir(self) -> str:
+        """Trả về đường dẫn tuyệt đối ổn định đến thư mục Obsidian Vault."""
+        path = self.OBSIDIAN_VAULT_DIR
+        if not os.path.isabs(path):
+            backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            candidate = os.path.join(backend_dir, path.lstrip("./\\"))
+            if os.path.exists(candidate) or not os.path.exists(os.path.abspath(path)):
+                return os.path.abspath(candidate)
+        return os.path.abspath(path)
 
 settings = Settings()

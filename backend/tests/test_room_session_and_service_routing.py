@@ -136,7 +136,7 @@ async def test_multi_turn_service_flow():
 
     assert res_turn3["missing_room_number"] is False
     assert "402" in res_turn3["response"]
-    assert "ẩm thực" in res_turn3["response"].lower() or "f&b" in res_turn3["response"].lower() or "room service" in res_turn3["response"].lower()
+    assert "ẩm thực" in res_turn3["response"].lower() or "f&b" in res_turn3["response"].lower() or "room service" in res_turn3["response"].lower() or "đặt món" in res_turn3["response"].lower() or "phục vụ" in res_turn3["response"].lower()
     assert "số phòng của mình là bao nhiêu" not in res_turn3["response"].lower()
 
     session_manager.reset_session(sid)

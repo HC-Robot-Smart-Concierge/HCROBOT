@@ -93,7 +93,24 @@
           "gradient": ["#ffb000", "#ff6b00"]
         }
       },
-      "layers": {},
+      "layers": {
+        "hcrobot-urdf-model": {
+          "visible": true,
+          "instanceId": "hcrobot-urdf-model",
+          "layerId": "foxglove.Urdf",
+          "label": "HCROBOT Model",
+          "sourceType": "topic",
+          "topic": "/robot_description",
+          "framePrefix": "",
+          "controlMode": "transforms",
+          "displayMode": "visual",
+          "fallbackColor": "#f97316",
+          "showAxis": false,
+          "showOutlines": true,
+          "opacity": 1,
+          "order": 1
+        }
+      },
       "publish": {
         "type": "pose",
         "poseTopic": "/goal_pose",

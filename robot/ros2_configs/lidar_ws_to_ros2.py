@@ -139,6 +139,8 @@ class LidarWsToRos2Bridge(Node):
         self.current_wz = 0.0
         self.measured_vx = 0.0
         self.measured_wz = 0.0
+        self.predicted_distance_since_encoder = 0.0
+        self.predicted_yaw_since_encoder = 0.0
         self.last_cmd_time = time.monotonic()
         self.last_kinematics_time = time.monotonic()
         self.last_encoder_time = 0.0
@@ -276,6 +278,8 @@ class LidarWsToRos2Bridge(Node):
         self.encoder_motion_detected = False
         self.has_prev_encoder_ticks = False
         self.prev_motor_ticks = None
+        self.predicted_distance_since_encoder = 0.0
+        self.predicted_yaw_since_encoder = 0.0
         self.last_cmd_time = time.monotonic()
         self._send_udp_to_pi5("stop")
 
@@ -548,6 +552,8 @@ class LidarWsToRos2Bridge(Node):
             self.prev_left_ticks = left_ticks
             self.prev_right_ticks = right_ticks
             self.prev_motor_ticks = motor_ticks
+            self.predicted_distance_since_encoder = 0.0
+            self.predicted_yaw_since_encoder = 0.0
             return
 
         delta_left_ticks = left_ticks - self.prev_left_ticks
@@ -568,6 +574,8 @@ class LidarWsToRos2Bridge(Node):
         max_ticks_per_packet = self.encoder_cpr * 2.0
         if abs(delta_left_ticks) > max_ticks_per_packet or abs(delta_right_ticks) > max_ticks_per_packet:
             self.get_logger().warn("Encoder jump/reset detected; bỏ qua một mẫu odometry.")
+            self.predicted_distance_since_encoder = 0.0
+            self.predicted_yaw_since_encoder = 0.0
             return
 
         distance_per_tick = (2.0 * math.pi * self.wheel_radius) / self.encoder_cpr
@@ -599,10 +607,6 @@ class LidarWsToRos2Bridge(Node):
                 # Fallback chỉ dùng độ lớn cặp encoder tốt, hướng lấy từ lệnh.
                 wheel_arc = abs(left_reliable_ticks) * distance_per_tick
                 delta_yaw = turn_sign * wheel_arc / max(self.wheel_sep / 2.0, 0.01)
-            yaw_rad_new = math.radians(self.current_pose['yaw']) + delta_yaw
-            self.current_pose['yaw'] = math.degrees(
-                math.atan2(math.sin(yaw_rad_new), math.cos(yaw_rad_new))
-            )
         elif is_linear_motion:
             if self._locked_yaw_deg is None:
                 self._locked_yaw_deg = self.current_pose['yaw']
@@ -612,9 +616,23 @@ class LidarWsToRos2Bridge(Node):
             delta_s = 0.0
             delta_yaw = 0.0
 
+        # Timer 30 Hz đã nội suy một phần quãng đường giữa hai mẫu encoder.
+        # Chỉ áp phần sai số còn lại để tổng quãng đường luôn bám tick thật,
+        # tránh vừa nội suy vừa cộng trùng gây drift.
+        correction_s = delta_s - self.predicted_distance_since_encoder
+        correction_yaw = delta_yaw - self.predicted_yaw_since_encoder
+        self.predicted_distance_since_encoder = 0.0
+        self.predicted_yaw_since_encoder = 0.0
+
+        if is_turn_motion and abs(correction_yaw) > 0.0:
+            yaw_rad_new = math.radians(self.current_pose['yaw']) + correction_yaw
+            self.current_pose['yaw'] = math.degrees(
+                math.atan2(math.sin(yaw_rad_new), math.cos(yaw_rad_new))
+            )
+
         yaw_rad = math.radians(self.current_pose['yaw'])
-        self.current_pose['x'] += delta_s * math.cos(yaw_rad)
-        self.current_pose['y'] += delta_s * math.sin(yaw_rad)
+        self.current_pose['x'] += correction_s * math.cos(yaw_rad)
+        self.current_pose['y'] += correction_s * math.sin(yaw_rad)
         self.measured_vx = delta_s / dt
         self.measured_wz = delta_yaw / dt
 
@@ -710,6 +728,30 @@ class LidarWsToRos2Bridge(Node):
                 self._send_udp_to_pi5("stop")
 
         encoder_is_fresh = self.has_prev_encoder_ticks and (now_mono - self.last_encoder_time) < 0.5
+
+        # Nội suy pose bằng vận tốc đo từ hai mẫu encoder gần nhất. Ở mẫu
+        # encoder kế tiếp, update_from_encoder_telemetry chỉ bù phần sai số,
+        # nên model chạy 30 Hz mà tổng quãng đường vẫn theo tick thật.
+        if encoder_is_fresh:
+            motion = self.last_sent_udp_motion
+            is_linear_motion = motion.startswith("forward") or motion.startswith("backward")
+            is_turn_motion = motion in (
+                "left", "right", "forward_left", "forward_right",
+                "backward_left", "backward_right",
+            )
+            if is_turn_motion and abs(self.measured_wz) > 0.0001:
+                delta_yaw = self.measured_wz * dt
+                yaw_rad_new = math.radians(self.current_pose['yaw']) + delta_yaw
+                self.current_pose['yaw'] = math.degrees(
+                    math.atan2(math.sin(yaw_rad_new), math.cos(yaw_rad_new))
+                )
+                self.predicted_yaw_since_encoder += delta_yaw
+            if is_linear_motion and abs(self.measured_vx) > 0.0001:
+                delta_s = self.measured_vx * dt
+                yaw_rad = math.radians(self.current_pose['yaw'])
+                self.current_pose['x'] += delta_s * math.cos(yaw_rad)
+                self.current_pose['y'] += delta_s * math.sin(yaw_rad)
+                self.predicted_distance_since_encoder += delta_s
 
         # Fallback nay mac dinh TAT. cmd_vel la lenh mong muon, khong phai
         # chuyen dong da do; dung no lam odom chinh la nguyen nhan map bi chong.

@@ -154,7 +154,8 @@ export const FoxgloveWebViewer = ({
                 <li>Tải file <strong>hcrobot-slam-layout.json</strong>.</li>
                 <li>Trong Foxglove chọn <strong>Layouts → Import from file</strong>.</li>
                 <li>Chọn layout <strong>HCROBOT SLAM 2D</strong>.</li>
-                <li>Fixed frame là <strong>map</strong>; bật <strong>/map</strong>, <strong>/scan</strong> và robot model.</li>
+                <li>Fixed frame là <strong>map</strong>; layout chỉ giữ <strong>/map</strong>, <strong>/scan</strong> và robot model.</li>
+                <li>Các lớp local/global costmap, Grid xanh và nhãn TF đã được tắt để bản đồ dễ nhìn.</li>
               </ol>
             </div>
 

@@ -2,7 +2,7 @@
   "configById": {
     "3D!hcrobot-slam-2d": {
       "cameraState": {
-        "distance": 18,
+        "distance": 14,
         "perspective": false,
         "phi": 0,
         "thetaOffset": 0,
@@ -17,7 +17,7 @@
       "followTf": "map",
       "followMode": "follow-none",
       "scene": {
-        "backgroundColor": "#d9d9d9",
+        "backgroundColor": "#e5e7eb",
         "enableStats": false,
         "transforms": {
           "visible": false,
@@ -36,12 +36,48 @@
         },
         "/scan": {
           "visible": true,
-          "pointSize": 2,
+          "pointSize": 1,
           "pointShape": "square",
           "decayTime": 0,
           "colorMode": "flat",
           "flatColor": "#666666",
           "frameLocked": true
+        },
+        "/local_costmap/costmap": {
+          "visible": false
+        },
+        "/local_costmap/costmap_raw": {
+          "visible": false
+        },
+        "/local_costmap/obstacle_layer": {
+          "visible": false
+        },
+        "/local_costmap/obstacle_layer_raw": {
+          "visible": false
+        },
+        "/global_costmap/costmap": {
+          "visible": false
+        },
+        "/global_costmap/costmap_raw": {
+          "visible": false
+        },
+        "/global_costmap/static_layer": {
+          "visible": false
+        },
+        "/global_costmap/static_layer_raw": {
+          "visible": false
+        },
+        "/global_costmap/obstacle_layer": {
+          "visible": false
+        },
+        "/global_costmap/obstacle_layer_raw": {
+          "visible": false
+        },
+        "/particle_cloud": {
+          "visible": false
+        },
+        "/marker": {
+          "visible": false
         },
         "/robot_description": {
           "visible": true
@@ -52,7 +88,7 @@
           "gradient": ["#00a6ff", "#0055ff"]
         },
         "/plan": {
-          "visible": true,
+          "visible": false,
           "lineWidth": 2,
           "gradient": ["#ffb000", "#ff6b00"]
         }

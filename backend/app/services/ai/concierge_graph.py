@@ -211,7 +211,7 @@ async def intent_router_node(state: ConciergeState) -> Dict[str, Any]:
 async def retrieval_node(state: ConciergeState) -> Dict[str, Any]:
     """
     Node 3: Context Retrieval & Pruning (Tối ưu hóa Context cho LLM).
-    Truy vấn ChromaDB Vector Store lấy ngữ cảnh tri thức phù hợp nhất (Top 2 chunks, tối đa 1200 ký tự).
+    Truy vấn ChromaDB Vector Store lấy ngữ cảnh tri thức phù hợp nhất bằng Hybrid Search.
     """
     # Nếu client đã gửi kèm rag_context sẵn thì giữ nguyên
     existing_ctx = state.get("rag_context")
@@ -221,18 +221,10 @@ async def retrieval_node(state: ConciergeState) -> Dict[str, Any]:
     prompt = state.get("prompt", "")
     rag_context = ""
     try:
-        from app.services.rag.chroma import get_concierge_collection
-        collection = get_concierge_collection("concierge_kb")
-        results = await asyncio.to_thread(
-            collection.query,
-            query_texts=[prompt],
-            n_results=4
-        )
-        if results and results.get("documents") and results["documents"][0]:
-            docs = [d.strip() for d in results["documents"][0] if d and len(d.strip()) > 50]
-            if docs:
-                rag_context = "\n\n---\n\n".join(docs)[:1800].strip()
-                logger.info(f"[Harness Retrieval] Retrieved {len(docs)} chunks ({len(rag_context)} chars) for rapid generation.")
+        from app.services.rag.chroma import query_rag_context
+        rag_context = await query_rag_context(prompt, n_results=4)
+        if rag_context:
+            logger.info(f"[Harness Retrieval] Retrieved {len(rag_context)} chars of RAG context via Hybrid Search.")
     except Exception as ex:
         logger.warning(f"[Harness Retrieval Warning] Không thể truy vấn ChromaDB: {ex}")
 
@@ -349,9 +341,9 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
         else:
             confirm_reply = f"Dạ Rora đã tiếp nhận yêu cầu hủy dịch vụ cho Phòng {current_room} rồi ạ! Em đã gửi thông báo hủy tới các bộ phận liên quan ngay lập tức."
     elif lang_code == "en-US":
-        confirm_reply = f"To confirm your request for Room {current_room}, please enter your 4-digit room PIN or the last 4 digits of your ID/Passport on the screen."
+        confirm_reply = f"To confirm your {dept_name} request for Room {current_room}, please enter your 4-digit room PIN or the last 4 digits of your ID/Passport on the screen."
     else:
-        confirm_reply = f"Dạ để xác nhận yêu cầu cho Phòng {current_room}, quý khách vui lòng nhập mã PIN phòng (hoặc 4 số cuối CCCD) trên màn hình cảm ứng nhé ạ."
+        confirm_reply = f"Dạ để xác nhận yêu cầu {dept_name} cho Phòng {current_room}, quý khách vui lòng nhập mã PIN phòng (hoặc 4 số cuối CCCD) trên màn hình cảm ứng nhé ạ."
 
     return {
         "missing_room_number": False,

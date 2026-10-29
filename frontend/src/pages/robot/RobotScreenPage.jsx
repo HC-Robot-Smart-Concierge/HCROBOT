@@ -810,7 +810,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     }
 
     // FAST-PATH: Nhận diện nhanh câu hỏi chỉ đường / vị trí để LẬP TỨC chuyển sang RT-05 với 0ms độ trễ
-    const fastDestKey = detectDestinationPoi(query);
+    const fastDestKey = detectDestinationPoi(query, activeRoomNumber);
     if (fastDestKey) {
       setNavigationDestinationKey(fastDestKey);
       setCurrentState('RT-05');
@@ -921,7 +921,11 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         }
 
         // ĐỒNG BỘ BẢN ĐỒ KHI RAG BACKEND PHÁT HIỆN YÊU CẦU CHỈ ĐƯỜNG (destination_key)
-        const navTargetKey = chatRes.destination_key || fastDestKey;
+        const isRoomDirectionQuery = ['phòng', 'room', 'lên phòng', 'về phòng', 'đến phòng', 'tìm phòng'].some(k => lowerQuery.includes(k));
+        const roomFallbackKey = isRoomDirectionQuery
+          ? ((activeRoomNumber && /^(?:40[1-9]|30[1-9])$/.test(String(activeRoomNumber).trim())) ? `room_${String(activeRoomNumber).trim()}` : 'room_401')
+          : null;
+        const navTargetKey = chatRes.destination_key || fastDestKey || roomFallbackKey;
         const isRouteGuidance = Boolean(navTargetKey);
 
         if (isRouteGuidance) {

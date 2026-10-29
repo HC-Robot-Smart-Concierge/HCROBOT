@@ -7,15 +7,24 @@ from sqlalchemy.pool import NullPool
 
 from app.core.config import settings
 
+connect_args = {}
+# Supabase Pooler (Transaction Mode port 6543 / PgBouncer) requires statement_cache_size=0 for asyncpg
+if "6543" in str(settings.async_database_url) or "pooler.supabase.com" in str(settings.async_database_url):
+    connect_args["statement_cache_size"] = 0
+
 # In tests or CI, use NullPool so connections aren't tied to closed event loops
 engine_kwargs = {
     "echo": False,
     "future": True,
+    "connect_args": connect_args,
 }
 if os.getenv("TESTING") == "1" or "pytest" in sys.modules:
     engine_kwargs["poolclass"] = NullPool
 else:
     engine_kwargs["pool_pre_ping"] = True
+    engine_kwargs["pool_recycle"] = 300
+    engine_kwargs["pool_size"] = 10
+    engine_kwargs["max_overflow"] = 10
 
 # Create Async SQLAlchemy Engine
 engine = create_async_engine(

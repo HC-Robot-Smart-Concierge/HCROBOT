@@ -459,6 +459,17 @@
     const ROUTE_GROUND_TO_ELEVATOR = 'M 796 545 L 930 545 C 960 545, 980 480, 1020 480 L 1232 480 L 1232 415';
 
     const DESTINATIONS = {
+      // === TẦNG 3: PHÒNG NGHỈ 301 - 309 ===
+      room_301: { name: 'Phòng Nghỉ 301', floorId: '5', floorLevel: 'TẦNG 3', isDiff: true, step1: 'Đi từ sảnh ra Thang máy A và bấm lên Tầng 3.', step2: 'Ra khỏi thang máy, rẽ phải vào hành lang tới phòng 301 cạnh thang máy.', coords: {x: 1100, y: 420}, route: 'M 1232 415 L 1232 540 L 1100 540 L 1100 420' },
+      room_302: { name: 'Phòng Nghỉ 302', floorId: '5', floorLevel: 'TẦNG 3', isDiff: true, step1: 'Đi từ sảnh ra Thang máy A và bấm lên Tầng 3.', step2: 'Ra khỏi thang máy, đi theo hành lang bên phải tới phòng 302.', coords: {x: 938, y: 420}, route: 'M 1232 415 L 1232 540 L 938 540 L 938 420' },
+      room_303: { name: 'Phòng Nghỉ 303', floorId: '5', floorLevel: 'TẦNG 3', isDiff: true, step1: 'Đi từ sảnh ra Thang máy A và bấm lên Tầng 3.', step2: 'Đi theo hành lang tầng 3 tới phòng 303 dãy bên phải.', coords: {x: 778, y: 420}, route: 'M 1232 415 L 1232 540 L 778 540 L 778 420' },
+      room_304: { name: 'Phòng Nghỉ 304', floorId: '5', floorLevel: 'TẦNG 3', isDiff: true, step1: 'Đi từ sảnh ra Thang máy A và bấm lên Tầng 3.', step2: 'Đi thẳng tới cuối hành lang phải vào phòng 304 góc cuối dãy.', coords: {x: 618, y: 420}, route: 'M 1232 415 L 1232 540 L 618 540 L 618 420' },
+      room_305: { name: 'Phòng Nghỉ 305', floorId: '5', floorLevel: 'TẦNG 3', isDiff: true, step1: 'Đi từ sảnh ra Thang máy A và bấm lên Tầng 3.', step2: 'Đi thẳng tới cuối hành lang rẽ sang dãy trái vào phòng 305.', coords: {x: 624, y: 660}, route: 'M 1232 415 L 1232 540 L 624 540 L 624 660' },
+      room_306: { name: 'Phòng Nghỉ 306', floorId: '5', floorLevel: 'TẦNG 3', isDiff: true, step1: 'Đi từ sảnh ra Thang máy A và bấm lên Tầng 3.', step2: 'Ra khỏi thang máy, đi dọc hành lang bên trái tới phòng 306.', coords: {x: 795, y: 660}, route: 'M 1232 415 L 1232 540 L 795 540 L 795 660' },
+      room_307: { name: 'Phòng Nghỉ 307', floorId: '5', floorLevel: 'TẦNG 3', isDiff: true, step1: 'Đi từ sảnh ra Thang máy A và bấm lên Tầng 3.', step2: 'Đi theo hành lang tầng 3 tới phòng 307 dãy bên trái.', coords: {x: 964, y: 660}, route: 'M 1232 415 L 1232 540 L 964 540 L 964 660' },
+      room_308: { name: 'Phòng Nghỉ 308', floorId: '5', floorLevel: 'TẦNG 3', isDiff: true, step1: 'Đi từ sảnh ra Thang máy A và bấm lên Tầng 3.', step2: 'Ra khỏi thang máy, rẽ sang dãy bên trái tới phòng 308.', coords: {x: 1133, y: 660}, route: 'M 1232 415 L 1232 540 L 1133 540 L 1133 660' },
+      room_309: { name: 'Phòng Nghỉ 309', floorId: '5', floorLevel: 'TẦNG 3', isDiff: true, step1: 'Đi từ sảnh ra Thang máy A và bấm lên Tầng 3.', step2: 'Phòng 309 nằm ngay đối diện khu thang máy A.', coords: {x: 1299, y: 660}, route: 'M 1232 415 L 1232 540 L 1299 540 L 1299 660' },
+
       // === TẦNG 4: PHÒNG NGHỈ 401 - 409 ===
       room_401: { name: 'Phòng Nghỉ 401', floorId: '6', floorLevel: 'TẦNG 4', isDiff: true, step1: 'Đi từ sảnh ra Thang máy A và bấm lên Tầng 4.', step2: 'Ra khỏi thang máy, rẽ phải vào hành lang tới phòng 401 cạnh thang máy.', coords: {x: 1100, y: 420}, route: 'M 1232 415 L 1232 540 L 1100 540 L 1100 420' },
       room_402: { name: 'Phòng Nghỉ 402', floorId: '6', floorLevel: 'TẦNG 4', isDiff: true, step1: 'Đi từ sảnh ra Thang máy A và bấm lên Tầng 4.', step2: 'Ra khỏi thang máy, đi theo hành lang bên phải tới phòng 402.', coords: {x: 938, y: 420}, route: 'M 1232 415 L 1232 540 L 938 540 L 938 420' },

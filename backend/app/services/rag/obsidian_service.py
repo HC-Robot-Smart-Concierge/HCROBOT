@@ -89,7 +89,7 @@ class ObsidianRAGService:
 
         chunks = []
         for idx, clean_text in enumerate(merged_sections):
-            if not clean_text or len(clean_text) < 40:
+            if not clean_text or len(clean_text) < 15:
                 continue
 
             first_line = clean_text.splitlines()[0] if clean_text else ""
@@ -125,7 +125,7 @@ class ObsidianRAGService:
         """
         Đọc tất cả các file .md từ Obsidian Vault và lưu/cập nhật vào ChromaDB.
         """
-        target_dir = vault_dir or settings.OBSIDIAN_VAULT_DIR
+        target_dir = vault_dir or getattr(settings, 'resolved_obsidian_vault_dir', settings.OBSIDIAN_VAULT_DIR)
         abs_vault_path = os.path.abspath(target_dir)
 
         if not os.path.exists(abs_vault_path):

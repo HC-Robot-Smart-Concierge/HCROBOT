@@ -32,7 +32,7 @@ export const HOTEL_FLOORS = [
   { id: '2', level: 'B1', name: 'Hầm B1 · Bãi Xe Máy', image: '/maps/2.png' },
   { id: '3', level: 'Ground', name: 'Tầng Trệt · Sảnh & Tiếp Tân', image: '/maps/3.png' },
   { id: '4', level: 'Tầng 2', name: 'Tầng 2 · Bếp & Nhà Hàng (Kitchen & Pickup)', image: '/maps/4.png' },
-  { id: '5', level: 'Tầng 3', name: 'Tầng 3 · Phòng Nghỉ (301-306)', image: '/maps/5.png' },
+  { id: '5', level: 'Tầng 3', name: 'Tầng 3 · Phòng Nghỉ (301-309)', image: '/maps/5.png' },
   { id: '6', level: 'Tầng 4', name: 'Tầng 4 · Phòng Nghỉ (401-409)', image: '/maps/6.png' },
   { id: '7', level: 'Tầng 5', name: 'Tầng 5 · Hồ Bơi, Spa & Gym', image: '/maps/7.png' },
   { id: '8', level: 'Tầng 6', name: 'Tầng 6 · Rooftop Coffee & Bar', image: '/maps/8.png' },
@@ -164,8 +164,144 @@ export const HOTEL_DESTINATIONS = {
     routeTarget: 'M 1249 410 L 1249 735 L 1315 735',
   },
 
-  // === TẦNG 4: PHÒNG NGHỈ 401 - 409 (MAP 6.PNG MỚI) ===
-  // === TẦNG 4: PHÒNG NGHỈ 401 - 409 (MAP 6.PNG MỚI) ===
+  // === TẦNG 3: PHÒNG NGHỈ 301 - 309 (MAP 5.PNG) ===
+  room_301: {
+    id: 'room_301',
+    name: 'Phòng Nghỉ 301',
+    floorId: '5',
+    floorLevel: 'TẦNG 3',
+    category: 'Phòng Khách',
+    icon: '',
+    time: '2 Phút',
+    distance: '85m',
+    isDifferentFloor: true,
+    step1Text: 'Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 3.',
+    step2Text: 'Chặng 2: Ra khỏi thang máy, rẽ vào hành lang và bước vào Phòng 301 ngay cạnh thang máy.',
+    coords: { x: 1105, y: 370 },
+    routeTarget: 'M 1249 410 L 1249 540 L 1105 540 L 1105 390',
+  },
+  room_302: {
+    id: 'room_302',
+    name: 'Phòng Nghỉ 302',
+    floorId: '5',
+    floorLevel: 'TẦNG 3',
+    category: 'Phòng Khách',
+    icon: '',
+    time: '2 Phút',
+    distance: '90m',
+    isDifferentFloor: true,
+    step1Text: 'Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 3.',
+    step2Text: 'Chặng 2: Ra khỏi thang máy, đi dọc hành lang rẽ vào Phòng 302 dãy bên phải.',
+    coords: { x: 945, y: 370 },
+    routeTarget: 'M 1249 410 L 1249 540 L 945 540 L 945 390',
+  },
+  room_303: {
+    id: 'room_303',
+    name: 'Phòng Nghỉ 303',
+    floorId: '5',
+    floorLevel: 'TẦNG 3',
+    category: 'Phòng Khách',
+    icon: '',
+    time: '2.5 Phút',
+    distance: '95m',
+    isDifferentFloor: true,
+    step1Text: 'Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 3.',
+    step2Text: 'Chặng 2: Ra khỏi thang máy, đi thẳng theo hành lang tới Phòng 303 bên tay phải.',
+    coords: { x: 785, y: 370 },
+    routeTarget: 'M 1249 410 L 1249 540 L 785 540 L 785 390',
+  },
+  room_304: {
+    id: 'room_304',
+    name: 'Phòng Nghỉ 304',
+    floorId: '5',
+    floorLevel: 'TẦNG 3',
+    category: 'Phòng Khách',
+    icon: '',
+    time: '2.5 Phút',
+    distance: '100m',
+    isDifferentFloor: true,
+    step1Text: 'Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 3.',
+    step2Text: 'Chặng 2: Ra khỏi thang máy, đi hết hành lang tới Phòng 304 góc bên phải cuối dãy.',
+    coords: { x: 620, y: 370 },
+    routeTarget: 'M 1249 410 L 1249 540 L 620 540 L 620 390',
+  },
+  room_305: {
+    id: 'room_305',
+    name: 'Phòng Nghỉ 305',
+    floorId: '5',
+    floorLevel: 'TẦNG 3',
+    category: 'Phòng Khách',
+    icon: '',
+    time: '2.5 Phút',
+    distance: '105m',
+    isDifferentFloor: true,
+    step1Text: 'Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 3.',
+    step2Text: 'Chặng 2: Ra khỏi thang máy, đi hết hành lang sang góc trái dãy dưới là Phòng 305.',
+    coords: { x: 622, y: 705 },
+    routeTarget: 'M 1249 410 L 1249 540 L 622 540 L 622 690',
+  },
+  room_306: {
+    id: 'room_306',
+    name: 'Phòng Nghỉ 306',
+    floorId: '5',
+    floorLevel: 'TẦNG 3',
+    category: 'Phòng Khách',
+    icon: '',
+    time: '2.5 Phút',
+    distance: '100m',
+    isDifferentFloor: true,
+    step1Text: 'Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 3.',
+    step2Text: 'Chặng 2: Ra khỏi thang máy, đi dọc hành lang rẽ vào Phòng 306.',
+    coords: { x: 790, y: 705 },
+    routeTarget: 'M 1249 410 L 1249 540 L 790 540 L 790 690',
+  },
+  room_307: {
+    id: 'room_307',
+    name: 'Phòng Nghỉ 307',
+    floorId: '5',
+    floorLevel: 'TẦNG 3',
+    category: 'Phòng Khách',
+    icon: '',
+    time: '2 Phút',
+    distance: '95m',
+    isDifferentFloor: true,
+    step1Text: 'Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 3.',
+    step2Text: 'Chặng 2: Ra khỏi thang máy, đi dọc hành lang rẽ vào Phòng 307 dãy đối diện.',
+    coords: { x: 960, y: 705 },
+    routeTarget: 'M 1249 410 L 1249 540 L 960 540 L 960 690',
+  },
+  room_308: {
+    id: 'room_308',
+    name: 'Phòng Nghỉ 308',
+    floorId: '5',
+    floorLevel: 'TẦNG 3',
+    category: 'Phòng Khách',
+    icon: '',
+    time: '2 Phút',
+    distance: '90m',
+    isDifferentFloor: true,
+    step1Text: 'Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 3.',
+    step2Text: 'Chặng 2: Ra khỏi thang máy, đi thẳng xuống dãy phòng đối diện để vào Phòng 308.',
+    coords: { x: 1128, y: 705 },
+    routeTarget: 'M 1249 410 L 1249 540 L 1128 540 L 1128 690',
+  },
+  room_309: {
+    id: 'room_309',
+    name: 'Phòng Nghỉ 309',
+    floorId: '5',
+    floorLevel: 'TẦNG 3',
+    category: 'Phòng Khách',
+    icon: '',
+    time: '2 Phút',
+    distance: '85m',
+    isDifferentFloor: true,
+    step1Text: 'Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 3.',
+    step2Text: 'Chặng 2: Ra khỏi thang máy, đi thẳng xuống góc phải dãy phòng đối diện là Phòng 309.',
+    coords: { x: 1296, y: 705 },
+    routeTarget: 'M 1249 410 L 1249 540 L 1296 540 L 1296 690',
+  },
+
+  // === TẦNG 4: PHÒNG NGHỈ 401 - 409 (MAP 6.PNG) ===
   room_401: {
     id: 'room_401',
     name: 'Phòng Nghỉ 401',
@@ -482,7 +618,7 @@ export const getMobileGuestMapUrl = (destKey) => {
  * Nhận diện nhanh điểm đến / POI từ câu nói người dùng ngay trên Client (0ms latency)
  * để màn hình robot LẬP TỨC chuyển sang chế độ bản đồ chỉ đường RT-05 mà không cần chờ LLM.
  */
-export const detectDestinationPoi = (rawPrompt) => {
+export const detectDestinationPoi = (rawPrompt, activeRoomNumber = null) => {
   if (!rawPrompt || typeof rawPrompt !== 'string') return null;
   const p = rawPrompt.toLowerCase().trim();
 
@@ -494,17 +630,6 @@ export const detectDestinationPoi = (rawPrompt) => {
     'bảo tàng', 'ngoài khách sạn', 'địa điểm du lịch', 'tour', 'bắt taxi', 'bắt xe', 'grab'
   ];
   if (externalPlaces.some((k) => p.includes(k))) return null;
-
-  // Bỏ qua các câu hỏi tổng quan về dịch vụ / tiện ích của khách sạn (không nhắm đến 1 địa điểm cụ thể)
-  const generalOverviewKeywords = [
-    'dịch vụ về khách sạn', 'dịch vụ của khách sạn', 'dịch vụ khách sạn',
-    'các dịch vụ', 'tiện ích khách sạn', 'các tiện ích', 'tiện ích của khách sạn',
-    'cơ sở vật chất', 'khách sạn có gì', 'khách sạn có những gì', 'khách sạn có những dịch vụ gì',
-    'khách sạn có những tiện ích gì', 'giới thiệu khách sạn', 'giới thiệu về khách sạn',
-    'thông tin về khách sạn', 'thông tin khách sạn', 'hotel amenities', 'hotel facilities',
-    'all services', 'ở đây có gì', 'có những dịch vụ gì', 'có những tiện ích gì'
-  ];
-  if (generalOverviewKeywords.some((k) => p.includes(k))) return null;
 
   // Ý định hỏi đường / điều hướng / tìm vị trí
   const navIntentKeywords = [
@@ -530,16 +655,43 @@ export const detectDestinationPoi = (rawPrompt) => {
     'vào thang máy', 'lên phòng gym', 'đi massage', 'đi spa'
   ];
 
+  // Cụm từ hỏi đường lên phòng nghỉ chung chung
+  const generalRoomPhrases = [
+    'phòng của tôi', 'phong cua toi', 'phòng tôi', 'phong toi',
+    'đến phòng', 'den phong', 'lên phòng', 'len phong', 'về phòng', 've phong',
+    'ra phòng', 'ra phong', 'tìm phòng', 'tim phong', 'hướng dẫn phòng',
+    'hướng dẫn lên phòng', 'hướng dẫn về phòng', 'lối lên phòng', 'loi len phong',
+    'đường lên phòng', 'duong len phong', 'đường về phòng', 'duong ve phong',
+    'chỉ đường phòng', 'chi duong phong', 'chỉ đường đến phòng', 'chỉ đường về phòng',
+    'cho tôi lên phòng', 'cho toi len phong', 'cho tôi về phòng', 'dẫn tôi lên phòng',
+    'phòng ở đâu', 'phòng nghỉ', 'khu phòng', 'dãy phòng',
+    'my room', 'to my room', 'to the room', 'guest room', 'hotel room'
+  ];
+  const isGeneralRoomQuery = generalRoomPhrases.some((k) => p.includes(k)) || (
+    ['phòng', 'phong', 'room'].some((k) => p.includes(k)) && navIntentKeywords.some((k) => p.includes(k))
+  );
+
+  // Bỏ qua các câu hỏi tổng quan về dịch vụ / tiện ích của khách sạn (trừ phi đang hỏi đường lên phòng)
+  const generalOverviewKeywords = [
+    'dịch vụ về khách sạn', 'dịch vụ của khách sạn', 'dịch vụ khách sạn',
+    'các dịch vụ', 'tiện ích khách sạn', 'các tiện ích', 'tiện ích của khách sạn',
+    'cơ sở vật chất', 'khách sạn có gì', 'khách sạn có những gì', 'khách sạn có những dịch vụ gì',
+    'khách sạn có những tiện ích gì', 'giới thiệu khách sạn', 'giới thiệu về khách sạn',
+    'thông tin về khách sạn', 'thông tin khách sạn', 'hotel amenities', 'hotel facilities',
+    'all services', 'ở đây có gì', 'có những dịch vụ gì', 'có những tiện ích gì'
+  ];
+  if (generalOverviewKeywords.some((k) => p.includes(k)) && !isGeneralRoomQuery) return null;
+
   const words = p.split(/\s+/);
   const isShortLocation = words.length <= 4 && [
     'toilet', 'vệ sinh', 'wc', 'hồ bơi', 'pool', 'gym', 'spa',
-    'nhà hàng', 'buffet', 'lễ tân', 'reception', 'bãi xe', 'bar', 'cà phê', 'cafe'
+    'nhà hàng', 'buffet', 'lễ tân', 'reception', 'bãi xe', 'bar', 'cà phê', 'cafe', 'phòng'
   ].some((k) => p.includes(k));
 
-  const room4xxMatch = p.match(/\b(?:phòng|p\.?|phong)?\s*(40[1-9])\b/);
-  const room3xxMatch = p.match(/\b(?:phòng|p\.?|phong)?\s*(30[1-9])\b/);
+  const room4xxMatch = p.match(/\b(?:phòng|p\.?|phong)?\s*(?:số\s*)?(40[1-9])\b/);
+  const room3xxMatch = p.match(/\b(?:phòng|p\.?|phong)?\s*(?:số\s*)?(30[1-9])\b/);
 
-  const hasNavIntent = Boolean(room4xxMatch || room3xxMatch) ||
+  const hasNavIntent = Boolean(room4xxMatch || room3xxMatch || isGeneralRoomQuery) ||
     navIntentKeywords.some((k) => p.includes(k)) ||
     directLocPhrases.some((k) => p.includes(k)) ||
     isShortLocation;
@@ -586,6 +738,8 @@ export const detectDestinationPoi = (rawPrompt) => {
 
 // Danh sách các cơ sở vật chất chính của khách sạn cho bộ chọn nhanh
 export const HOTEL_KEY_FACILITIES = [
+  { key: 'room_401', name: 'Phòng Nghỉ Cao Cấp (401 - 409)', floor: 'TẦNG 4' },
+  { key: 'room_301', name: 'Phòng Nghỉ Tiêu Chuẩn (301 - 309)', floor: 'TẦNG 3' },
   { key: 'infinity_pool', name: 'Hồ Bơi Vô Cực Nước Ấm', floor: 'TẦNG 5' },
   { key: 'spa', name: 'Thảo Mộc Spa & Massage', floor: 'TẦNG 5' },
   { key: 'gym', name: 'Trung Tâm Fitness & Gym', floor: 'TẦNG 5' },

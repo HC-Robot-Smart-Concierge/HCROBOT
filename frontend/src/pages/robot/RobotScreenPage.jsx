@@ -1247,103 +1247,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleSecretTrigger]);
 
-  // Easter Egg: Ấn 2 lần góc trái dưới màn hình để nói "đụ má mày" liên tục, ấn 2 lần để dừng
-  const isLoopSwearingRef = useRef(false);
-  const swearTapCountRef = useRef(0);
-  const swearTapTimerRef = useRef(null);
-  const swearTimeoutRef = useRef(null);
-
-  const lastSwearTouchTimeRef = useRef(0);
-
-  const runSwearCycle = useCallback(() => {
-    if (!isLoopSwearingRef.current) return;
-
-    const phrase = 'đụ má mày';
-    setAiResponseText(phrase);
-    setCurrentState('RT-05');
-
-    speak(
-      phrase,
-      'vi-VN',
-      () => {
-        if (!isLoopSwearingRef.current) return;
-        swearTimeoutRef.current = setTimeout(() => {
-          if (isLoopSwearingRef.current) {
-            runSwearCycle();
-          }
-        }, 200);
-      },
-      () => {
-        if (isLoopSwearingRef.current) {
-          setAiResponseText(phrase);
-        }
-      }
-    );
-  }, [speak]);
-
-  const toggleSwearLoop = useCallback(() => {
-    if (isLoopSwearingRef.current) {
-      isLoopSwearingRef.current = false;
-      if (swearTimeoutRef.current) {
-        clearTimeout(swearTimeoutRef.current);
-        swearTimeoutRef.current = null;
-      }
-      stopSpeaking();
-      setAiResponseText('');
-      setCurrentState('RT-02');
-    } else {
-      isLoopSwearingRef.current = true;
-      stopListening();
-      stopSpeaking();
-      runSwearCycle();
-    }
-  }, [runSwearCycle, stopSpeaking, stopListening]);
-
-  const handleBottomLeftDoubleTap = useCallback((e) => {
-    if (e) {
-      e.stopPropagation?.();
-    }
-    prime();
-
-    const now = Date.now();
-    if (e?.type === 'touchstart') {
-      lastSwearTouchTimeRef.current = now;
-    } else if (e?.type === 'click' && now - lastSwearTouchTimeRef.current < 450) {
-      return;
-    }
-
-    swearTapCountRef.current += 1;
-    if (swearTapTimerRef.current) {
-      clearTimeout(swearTapTimerRef.current);
-    }
-
-    if (swearTapCountRef.current >= 2) {
-      swearTapCountRef.current = 0;
-      toggleSwearLoop();
-      return;
-    }
-
-    swearTapTimerRef.current = setTimeout(() => {
-      swearTapCountRef.current = 0;
-    }, 750);
-  }, [prime, toggleSwearLoop]);
-
-  useEffect(() => {
-    return () => {
-      isLoopSwearingRef.current = false;
-      if (swearTimeoutRef.current) clearTimeout(swearTimeoutRef.current);
-      if (swearTapTimerRef.current) clearTimeout(swearTapTimerRef.current);
-    };
-  }, []);
 
   const resetToIdle = () => {
-    if (isLoopSwearingRef.current) {
-      isLoopSwearingRef.current = false;
-      if (swearTimeoutRef.current) {
-        clearTimeout(swearTimeoutRef.current);
-        swearTimeoutRef.current = null;
-      }
-    }
     if (fillerTimerRef.current) clearTimeout(fillerTimerRef.current);
     if (processingSafetyTimerRef.current) clearTimeout(processingSafetyTimerRef.current);
     isProcessingRef.current = false;
@@ -1442,18 +1347,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         visible={false}
       />
 
-      {/* Vùng chạm bí mật góc dưới bên trái: Ấn 2 lần để nói "đụ má mày" liên tục / Ấn 2 lần để dừng */}
-      <div
-        onClick={handleBottomLeftDoubleTap}
-        onTouchStart={handleBottomLeftDoubleTap}
-        style={{ touchAction: 'manipulation' }}
-        className="fixed bottom-0 left-0 w-28 h-28 z-[9999] cursor-default select-none opacity-0 pointer-events-auto"
-        title=""
-        aria-hidden="true"
-      />
 
       <MobileRobotScreen
-        onDoubleTapEasterEgg={toggleSwearLoop}
         activeRoomNumber={activeRoomNumber}
         guestEmotion={guestEmotion}
         eyeExpression={activeEyeExpression}

@@ -131,7 +131,6 @@ export const MobileRobotScreen = ({
   showQrModalExternal = false,
   qrCountdown = null,
   onCloseQrModal = null,
-  onDoubleTapEasterEgg = null,
 }) => {
   const isEn = language === 'English';
   const [isMapManualOpen, setIsMapManualOpen] = useState(false);
@@ -177,51 +176,6 @@ export const MobileRobotScreen = ({
     }, 2000);
   }, [onLogout]);
 
-  // Secret Multi-Tap Easter Egg (Chạm 2 lần góc dưới bên trái để kích hoạt / dừng lặp câu nói)
-  const easterEggTapCountRef = useRef(0);
-  const easterEggTimerRef = useRef(null);
-  const lastEasterEggTouchTimeRef = useRef(0);
-
-  const handleEasterEggTap = useCallback((e) => {
-    if (e) {
-      e.stopPropagation?.();
-    }
-    if (typeof onPrime === 'function') {
-      onPrime();
-    }
-
-    const now = Date.now();
-    if (e?.type === 'touchstart') {
-      lastEasterEggTouchTimeRef.current = now;
-    } else if (e?.type === 'click' && now - lastEasterEggTouchTimeRef.current < 450) {
-      return;
-    }
-
-    easterEggTapCountRef.current += 1;
-    if (easterEggTimerRef.current) {
-      clearTimeout(easterEggTimerRef.current);
-    }
-
-    if (easterEggTapCountRef.current >= 2) {
-      easterEggTapCountRef.current = 0;
-      if (typeof onDoubleTapEasterEgg === 'function') {
-        onDoubleTapEasterEgg();
-      }
-      return;
-    }
-
-    easterEggTimerRef.current = setTimeout(() => {
-      easterEggTapCountRef.current = 0;
-    }, 750);
-  }, [onPrime, onDoubleTapEasterEgg]);
-
-  useEffect(() => {
-    return () => {
-      if (easterEggTimerRef.current) {
-        clearTimeout(easterEggTimerRef.current);
-      }
-    };
-  }, []);
 
   // Tự động bật mic khi vào màn hình robot mobile
   useEffect(() => {
@@ -890,14 +844,6 @@ export const MobileRobotScreen = ({
           aria-hidden="true"
         />
 
-        {/* Vùng chạm bí mật góc dưới bên trái cho Mobile (Chạm 2 lần để bật / dừng easter egg) */}
-        <div
-          onClick={handleEasterEggTap}
-          onTouchStart={handleEasterEggTap}
-          style={{ touchAction: 'manipulation' }}
-          className="absolute bottom-0 left-0 w-28 h-28 z-50 select-none opacity-0 cursor-pointer"
-          aria-hidden="true"
-        />
       </div>
     </section>
   );

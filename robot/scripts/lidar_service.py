@@ -2482,7 +2482,11 @@ async def map_ws_endpoint(websocket: WebSocket):
                 encoders_payload = snap.encoders
 
             yaw_rate_dps = 0.0
-            if snap and getattr(snap, "yaw_rate_dps", None) is not None:
+            imu_available = bool(
+                snap and getattr(snap, "mpu_available", False)
+                and getattr(snap, "yaw_rate_dps", None) is not None
+            )
+            if imu_available and snap is not None:
                 yaw_rate_dps = float(snap.yaw_rate_dps)
 
             # ROS 2 chỉ cần scan + encoder/IMU. Không copy/serialize occupancy
@@ -2497,6 +2501,20 @@ async def map_ws_endpoint(websocket: WebSocket):
                     "encoder_received_at": getattr(snap, "received_at", None) if snap else None,
                     "encoders": encoders_payload,
                     "yaw_rate_dps": yaw_rate_dps,
+                    # Cho ROS bridge phân biệt "gyro đo 0" với "không có IMU".
+                    "imu_available": imu_available,
+                    # Tuổi dữ liệu đo bằng đồng hồ Pi ngay lúc gửi, để bridge
+                    # đặt timestamp scan đúng so với odom mà không cần đồng bộ
+                    # giờ Pi/laptop. last_scan_time là time.time() lúc xong vòng.
+                    "scan_age_sec": (
+                        max(0.0, time.time() - slam_core.last_scan_time)
+                        if slam_core.last_scan_time else None
+                    ),
+                    "encoder_age_sec": (
+                        max(0.0, time.monotonic() - snap.received_at)
+                        if snap is not None and getattr(snap, "received_at", None) is not None
+                        else None
+                    ),
                 }
                 await websocket.send_text(json.dumps(payload))
                 await asyncio.sleep(0.04)

@@ -151,10 +151,11 @@
       <child_frame_id>base_link</child_frame_id>
     </plugin>
   </gazebo>
+  <!-- Đồng bộ tay với lidar.xacro: LiDAR trước tâm xoay (tâm 4 bánh) ~8 cm. -->
   <joint name="laser_joint" type="fixed">
-    <parent link="chassis"/>
+    <parent link="base_link"/>
     <child link="laser_frame"/>
-    <origin rpy="0 0 0" xyz="0.122 0 0.212"/>
+    <origin rpy="0 0 0" xyz="0.08 0 0.202"/>
   </joint>
   <link name="laser_frame">
     <visual>

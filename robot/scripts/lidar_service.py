@@ -2233,7 +2233,7 @@ class TeleopCommandRequest(BaseModel):
 TELEOP_PWM_MIN = 20
 TELEOP_PWM_MAX = 50
 TELEOP_PWM_FORWARD = 30
-TELEOP_PWM_TURN = 25
+TELEOP_PWM_TURN = 38
 
 
 def _clamp_teleop_pwm(speed: Optional[int], default: int) -> int:

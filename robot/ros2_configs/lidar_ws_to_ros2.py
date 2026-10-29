@@ -154,7 +154,7 @@ class LidarWsToRos2Bridge(Node):
         # Mapping cần chạy chậm để mỗi vòng LiDAR có đủ overlap cho scan
         # matching. Navigation có thể nhanh hơn nhẹ nhưng vẫn giới hạn an toàn.
         default_forward_pwm = "30" if self.robot_mode == "MAPPING" else "35"
-        default_turn_pwm = "25" if self.robot_mode == "MAPPING" else "30"
+        default_turn_pwm = "38" if self.robot_mode == "MAPPING" else "40"
         self.teleop_pwm_forward = int(os.getenv("HCROBOT_TELEOP_PWM", default_forward_pwm))
         self.teleop_pwm_turn = int(os.getenv("HCROBOT_TELEOP_TURN_PWM", default_turn_pwm))
         self._locked_yaw_deg = None
@@ -583,10 +583,9 @@ class LidarWsToRos2Bridge(Node):
             return
 
         distance_per_tick = (2.0 * math.pi * self.wheel_radius) / self.encoder_cpr
-        # M1/M2 là cặp encoder trái dùng làm quãng đường chính. Dấu của từng
-        # encoder đã được chuẩn hóa ở trên, nên hai giá trị phải cộng thay vì
-        # triệt tiêu nhau khi robot tiến thẳng.
+        # M1/M2 (trái) và M3/M4 (phải) đã chuẩn hóa polarity
         left_reliable_ticks = (motor_deltas["m1"] + motor_deltas["m2"]) / 2.0
+        right_reliable_ticks = (motor_deltas["m3"] + motor_deltas["m4"]) / 2.0
         motion = self.last_sent_udp_motion
         linear_sign = -1.0 if motion.startswith("backward") else 1.0
         is_linear_motion = motion.startswith("forward") or motion.startswith("backward")
@@ -602,21 +601,32 @@ class LidarWsToRos2Bridge(Node):
         except (TypeError, ValueError):
             gyro_rate = 0.0
 
-        if is_turn_motion:
+        if is_turn_motion or abs(gyro_rate) > 0.5:
             self._locked_yaw_deg = None
-            turn_sign = 1.0 if self.current_wz > 0.0 or motion == "left" else -1.0
+            turn_sign = 1.0 if self.current_wz > 0.0 or motion in ("left", "forward_left", "backward_left") else -1.0
             if abs(gyro_rate) > 0.5:
-                delta_yaw = turn_sign * abs(math.radians(gyro_rate)) * dt
+                delta_yaw = math.radians(gyro_rate) * dt
+                if is_turn_motion and (delta_yaw * turn_sign) < 0:
+                    delta_yaw = turn_sign * abs(delta_yaw)
             else:
-                # Fallback chỉ dùng độ lớn cặp encoder tốt, hướng lấy từ lệnh.
-                wheel_arc = abs(left_reliable_ticks) * distance_per_tick
-                delta_yaw = turn_sign * wheel_arc / max(self.wheel_sep / 2.0, 0.01)
+                # Vi sai chuyển động giữa hai bên bánh xe
+                delta_left_m = delta_left_ticks * distance_per_tick
+                delta_right_m = delta_right_ticks * distance_per_tick
+                diff_m = (delta_right_m - delta_left_m) / 2.0
+                if abs(diff_m) > 0.0005:
+                    delta_yaw = (delta_right_m - delta_left_m) / max(self.wheel_sep, 0.05)
+                    if is_turn_motion and (delta_yaw * turn_sign) < 0:
+                        delta_yaw = turn_sign * abs(delta_yaw)
+                else:
+                    wheel_arc = max(abs(left_reliable_ticks), abs(right_reliable_ticks)) * distance_per_tick
+                    delta_yaw = turn_sign * wheel_arc / max(self.wheel_sep / 2.0, 0.01)
         elif is_linear_motion:
             if self._locked_yaw_deg is None:
                 self._locked_yaw_deg = self.current_pose['yaw']
             self.current_pose['yaw'] = self._locked_yaw_deg
         else:
-            # Không có lệnh chuyển động thì bỏ qua tick rung/nhiễu.
+            # Khi đứng yên (stop), reset locked yaw để sẵn sàng nhận góc quay mới
+            self._locked_yaw_deg = None
             delta_s = 0.0
             delta_yaw = 0.0
 
@@ -628,7 +638,7 @@ class LidarWsToRos2Bridge(Node):
         self.predicted_distance_since_encoder = 0.0
         self.predicted_yaw_since_encoder = 0.0
 
-        if is_turn_motion and abs(correction_yaw) > 0.0:
+        if (is_turn_motion or abs(gyro_rate) > 0.5 or abs(self.measured_wz) > 0.001) and abs(correction_yaw) > 0.0:
             yaw_rad_new = math.radians(self.current_pose['yaw']) + correction_yaw
             self.current_pose['yaw'] = math.degrees(
                 math.atan2(math.sin(yaw_rad_new), math.cos(yaw_rad_new))

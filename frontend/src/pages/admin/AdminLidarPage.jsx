@@ -732,7 +732,7 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
         headers: { 'Content-Type': 'application/json'},
         body: JSON.stringify({
           command,
-          speed: command === 'left' || command === 'right' ? 25 : 30,
+          speed: command === 'left' || command === 'right' ? 38 : 30,
         }),
       }).catch(() => {});
     }

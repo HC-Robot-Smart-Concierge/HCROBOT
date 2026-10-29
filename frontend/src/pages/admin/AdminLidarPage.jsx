@@ -719,10 +719,10 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
   const sendMotion = (command) => {
     let lin = 0.0;
     let ang = 0.0;
-    if (command === 'forward') lin = 0.20;
-    else if (command === 'backward') lin = -0.20;
-    else if (command === 'left') ang = 0.50;
-    else if (command === 'right') ang = -0.50;
+    if (command === 'forward') lin = 0.10;
+    else if (command === 'backward') lin = -0.10;
+    else if (command === 'left') ang = 0.30;
+    else if (command === 'right') ang = -0.30;
 
     if (rosClientRef.current?.isConnected) {
       rosClientRef.current.publishCmdVel(lin, ang);
@@ -730,7 +730,10 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
       fetch(`${PI5_API}/map/teleop`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json'},
-        body: JSON.stringify({ command, speed: 50 }),
+        body: JSON.stringify({
+          command,
+          speed: command === 'left' || command === 'right' ? 25 : 30,
+        }),
       }).catch(() => {});
     }
   };

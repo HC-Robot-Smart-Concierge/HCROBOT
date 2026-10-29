@@ -2227,13 +2227,13 @@ async def start_scan_360():
 
 class TeleopCommandRequest(BaseModel):
     command: str  # forward, backward, left, right, stop
-    speed: Optional[int] = 50
+    speed: Optional[int] = 30
 
 
 TELEOP_PWM_MIN = 20
 TELEOP_PWM_MAX = 50
-TELEOP_PWM_FORWARD = 50
-TELEOP_PWM_TURN = 50
+TELEOP_PWM_FORWARD = 30
+TELEOP_PWM_TURN = 25
 
 
 def _clamp_teleop_pwm(speed: Optional[int], default: int) -> int:

@@ -151,8 +151,12 @@ class LidarWsToRos2Bridge(Node):
         self.allow_cmd_vel_odom = os.getenv("HCROBOT_ALLOW_CMD_VEL_ODOM", "0") == "1"
         self.last_sent_udp_motion = "stop"
         self.last_sent_teleop_pwm = None
-        self.teleop_pwm_forward = int(os.getenv("HCROBOT_TELEOP_PWM", "50"))
-        self.teleop_pwm_turn = int(os.getenv("HCROBOT_TELEOP_TURN_PWM", "50"))
+        # Mapping cần chạy chậm để mỗi vòng LiDAR có đủ overlap cho scan
+        # matching. Navigation có thể nhanh hơn nhẹ nhưng vẫn giới hạn an toàn.
+        default_forward_pwm = "30" if self.robot_mode == "MAPPING" else "35"
+        default_turn_pwm = "25" if self.robot_mode == "MAPPING" else "30"
+        self.teleop_pwm_forward = int(os.getenv("HCROBOT_TELEOP_PWM", default_forward_pwm))
+        self.teleop_pwm_turn = int(os.getenv("HCROBOT_TELEOP_TURN_PWM", default_turn_pwm))
         self._locked_yaw_deg = None
 
         # Cấu hình UDP gửi lệnh sang Pi 5

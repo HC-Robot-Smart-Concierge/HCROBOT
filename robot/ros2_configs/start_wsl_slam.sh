@@ -39,6 +39,8 @@ sleep 2
 
 echo "=== [4/5] KHOI DONG LIDAR BRIDGE (Pi 5 WS -> ROS 2 /scan & TF) ==="
 HCROBOT_MODE=MAPPING \
+HCROBOT_TELEOP_PWM=30 \
+HCROBOT_TELEOP_TURN_PWM=25 \
 HCROBOT_MAP_DIR="$SCRIPT_DIR/../maps" \
 python3 "$SCRIPT_DIR/lidar_ws_to_ros2.py" &
 LIDAR_PID=$!

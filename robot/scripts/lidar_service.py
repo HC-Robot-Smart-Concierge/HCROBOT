@@ -2464,6 +2464,8 @@ async def workflow_status():
 async def map_ws_endpoint(websocket: WebSocket):
     await websocket.accept()
     logger.info("🔌 Web Admin LiDAR Canvas đã kết nối WebSocket")
+    ros2_consumer = websocket.query_params.get("consumer", "").lower() == "ros2"
+    ws_cycle = 0
 
     if not slam_core.is_running:
         if slam_core.connect():
@@ -2472,7 +2474,6 @@ async def map_ws_endpoint(websocket: WebSocket):
     try:
         while True:
             scans = slam_core.get_latest_scans()
-            map_data = slam_core.get_grid_map()
 
             encoders_payload = {"m1": {"rpm": 0, "ticks": 0}, "m2": {"rpm": 0, "ticks": 0}, "m3": {"rpm": 0, "ticks": 0}, "m4": {"rpm": 0, "ticks": 0}}
             esp_reader = getattr(slam_core, "esp32_reader", None)
@@ -2483,6 +2484,25 @@ async def map_ws_endpoint(websocket: WebSocket):
             yaw_rate_dps = 0.0
             if snap and getattr(snap, "yaw_rate_dps", None) is not None:
                 yaw_rate_dps = float(snap.yaw_rate_dps)
+
+            # ROS 2 chỉ cần scan + encoder/IMU. Không copy/serialize occupancy
+            # grid 800x800 cho kết nối này vì payload lớn gây dồn gói 1-2 giây,
+            # khiến TF nhảy cục và cùng một vòng scan bị publish lặp nhiều lần.
+            if ros2_consumer:
+                payload = {
+                    "type": "ros2_sensor_frame",
+                    "scan_id": slam_core.last_scan_time,
+                    "scan_points": scans,
+                    "encoder_sequence": getattr(snap, "sequence", None) if snap else None,
+                    "encoder_received_at": getattr(snap, "received_at", None) if snap else None,
+                    "encoders": encoders_payload,
+                    "yaw_rate_dps": yaw_rate_dps,
+                }
+                await websocket.send_text(json.dumps(payload))
+                await asyncio.sleep(0.04)
+                continue
+
+            map_data = slam_core.get_grid_map()
 
             front_cm = round(slam_core.get_front_distance() * 100, 1) if slam_core.get_front_distance() < 90 else None
             rear_cm = round(slam_core.get_rear_distance() * 100, 1) if slam_core.get_rear_distance() < 90 else None
@@ -2519,7 +2539,9 @@ async def map_ws_endpoint(websocket: WebSocket):
                 "overlay_active": slam_core._overlay_active,
                 "overlay_waypoints": slam_core._overlay_waypoints if slam_core._overlay_active else [],
                 "scan_points": scans,
+                "scan_id": slam_core.last_scan_time,
                 "encoders": encoders_payload,
+                "encoder_sequence": getattr(snap, "sequence", None) if snap else None,
                 "yaw_rate_dps": yaw_rate_dps,
                 "map_mode": slam_core.map_mode,
                 "is_map_locked": slam_core.is_map_locked,
@@ -2541,8 +2563,8 @@ async def map_ws_endpoint(websocket: WebSocket):
             }
 
             # Không gửi 800x800 JSON 25Hz — payload đó làm nghẽn TF/RobotModel trên RViz.
-            slam_core._ws_cycle += 1
-            if slam_core._ws_cycle % 5 == 1:
+            ws_cycle += 1
+            if ws_cycle % 5 == 1:
                 with slam_core._lock:
                     payload["grid_sparse"] = slam_core._grid_sparse_payload()
 

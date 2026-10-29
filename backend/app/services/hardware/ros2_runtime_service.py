@@ -99,9 +99,10 @@ class Ros2RuntimeService:
         return int(self._launcher.pid)
 
     def start_mapping(self) -> dict:
+        # "Bắt đầu quét map" phải là một phiên SLAM mới. Không đi qua wrapper
+        # reconnect vì wrapper cố ý giữ pose graph cũ khi phát hiện MAPPING đang chạy.
         pid = self._spawn(
-            "start_wsl_foxglove.sh",
-            "mapping",
+            "start_wsl_slam.sh",
             log_prefix="foxglove-mapping-web",
         )
         self._last_mode = "MAPPING"

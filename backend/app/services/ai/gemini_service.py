@@ -47,6 +47,7 @@ class GeminiService:
     def detect_language(text: str) -> Tuple[str, str]:
         """
         Tự động phân tích câu nói của khách để nhận diện ngôn ngữ và mã lang_code cho TTS.
+        Chỉ hỗ trợ song ngữ Tiếng Việt (vi-VN) và Tiếng Anh (en-US).
         """
         if not text or not text.strip():
             return "Tiếng Việt", "vi-VN"
@@ -55,14 +56,6 @@ class GeminiService:
             return "Tiếng Việt", "vi-VN"
 
         lower_text = text.lower().strip()
-
-        cjk_chars = re.findall(r'[\u4e00-\u9fff]', text)
-        latin_chars = re.findall(r'[a-zA-Z]', text)
-        if len(cjk_chars) > 0 and len(cjk_chars) > len(latin_chars):
-            return "Tiếng Trung", "zh-CN"
-
-        if re.search(r'[\u3040-\u30ff]', text):
-            return "Tiếng Nhật", "ja-JP"
 
         vi_phrases = [
             r'\bphong\s*[0-9]', r'\bphong\b', r'\btoi\b', r'\bmuon\b', r'\bkhan\s*tam\b',
@@ -124,7 +117,7 @@ class GeminiService:
             prompt = (
                 "Bạn là Rora - Trợ lý Robot Concierge thông minh, lễ phép, duyên dáng và hiếu khách tại khách sạn 5 sao Aurora Grand Hotel.\n"
                 "PHONG CÁCH GIAO TIẾP VÀ TRÒ CHUYỆN TỰ NHIÊN:\n"
-                "1. Luôn xưng 'Dạ em' hoặc 'Rora' và gọi người trò chuyện là 'quý khách' hoặc 'anh/chị'.\n"
+                "1. Xưng là 'em' hoặc 'Rora' và gọi người trò chuyện là 'quý khách' hoặc 'anh/chị'. Giao tiếp tự nhiên, lịch sự, có thể mở đầu lời chào bằng 'Dạ' khi phù hợp nhưng không lặp lại từ 'Dạ' ở đầu mỗi câu tiếp theo.\n"
                 "2. Trò chuyện một cách tự nhiên, gần gũi, ấm áp, lưu loát như một nhân viên lễ tân 5 sao chuyên nghiệp.\n"
                 "3. Trả lời đúng trọng tâm, súc tích trong 2 đến 3 câu văn gãy gọn, hoàn chỉnh để phát giọng đọc mượt mà và người nghe dễ nắm bắt nhất.\n"
                 "4. BẮT BUỘC dùng 100% tiếng Việt tự nhiên, chuẩn mực. Tuyệt đối không chèn từ ngoại ngữ vô nghĩa.\n"
@@ -200,6 +193,123 @@ class GeminiService:
 
         return payload
 
+    async def _call_groq_fallback(
+        self,
+        prompt: str,
+        system_prompt: str,
+        chat_history: Optional[List[Dict[str, str]]] = None,
+        json_mode: bool = False,
+        max_tokens: int = 150,
+    ) -> Optional[str]:
+        """
+        Gọi Groq Cloud API dự phòng (Tier 2/Fallback) khi Google Gemini bị Rate Limit 429 hoặc gặp sự cố.
+        """
+        if not settings.is_groq_active:
+            return None
+        url = "https://api.groq.com/openai/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {settings.GROQ_API_KEY}",
+            "Content-Type": "application/json",
+            "User-Agent": "curl/8.0.1",
+        }
+        messages = [{"role": "system", "content": system_prompt}]
+        if chat_history:
+            for turn in chat_history:
+                role = turn.get("role")
+                content = turn.get("content")
+                if content and role in ["user", "assistant"]:
+                    messages.append({"role": role, "content": content})
+        messages.append({"role": "user", "content": prompt})
+
+        payload: Dict[str, Any] = {
+            "model": settings.GROQ_MODEL or "qwen/qwen3.8-27b",
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": 0.0 if json_mode else 0.4,
+        }
+        if json_mode:
+            payload["response_format"] = {"type": "json_object"}
+
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                res = await client.post(url, headers=headers, json=payload)
+                if res.status_code == 200:
+                    data = res.json()
+                    return data["choices"][0]["message"]["content"]
+                elif res.status_code == 429:
+                    logger.warning("[Groq Fallback 429] Rate limited, waiting 0.8s...")
+                    await asyncio.sleep(0.8)
+                    res_retry = await client.post(url, headers=headers, json=payload)
+                    if res_retry.status_code == 200:
+                        return res_retry.json()["choices"][0]["message"]["content"]
+                logger.warning(f"[Groq Fallback] Status {res.status_code}: {res.text[:120]}")
+                return None
+        except Exception as e:
+            logger.warning(f"[Groq Fallback Error]: {e}")
+            return None
+
+    async def _stream_groq_fallback(
+        self,
+        prompt: str,
+        system_prompt: str,
+        chat_history: Optional[List[Dict[str, str]]] = None,
+        max_tokens: int = 150,
+    ) -> AsyncGenerator[str, None]:
+        """
+        Streaming token từ Groq Cloud API dự phòng khi Google Gemini bị Rate Limit.
+        """
+        if not settings.is_groq_active:
+            return
+        url = "https://api.groq.com/openai/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {settings.GROQ_API_KEY}",
+            "Content-Type": "application/json",
+            "Accept": "text/event-stream",
+            "User-Agent": "curl/8.0.1",
+        }
+        messages = [{"role": "system", "content": system_prompt}]
+        if chat_history:
+            for turn in chat_history:
+                role = turn.get("role")
+                content = turn.get("content")
+                if content and role in ["user", "assistant"]:
+                    messages.append({"role": role, "content": content})
+        messages.append({"role": "user", "content": prompt})
+
+        payload: Dict[str, Any] = {
+            "model": settings.GROQ_MODEL or "qwen/qwen3.8-27b",
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": 0.4,
+            "stream": True,
+        }
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                async with client.stream("POST", url, headers=headers, json=payload) as response:
+                    if response.status_code != 200:
+                        err_text = await response.aread()
+                        logger.warning(f"[Groq Stream Fallback] Status {response.status_code}: {err_text[:120].decode('utf-8', errors='ignore')}")
+                        return
+                    async for line in response.aiter_lines():
+                        if not line:
+                            continue
+                        if line.startswith("data: "):
+                            data_str = line[6:].strip()
+                            if data_str == "[DONE]":
+                                break
+                            try:
+                                chunk = json.loads(data_str)
+                                choices = chunk.get("choices", [])
+                                if choices:
+                                    delta = choices[0].get("delta", {})
+                                    content = delta.get("content", "")
+                                    if content:
+                                        yield content
+                            except json.JSONDecodeError:
+                                continue
+        except Exception as e:
+            logger.warning(f"[Groq Stream Fallback Error]: {e}")
+
     async def generate_response_stream(
         self,
         prompt: str,
@@ -212,6 +322,7 @@ class GeminiService:
         """
         Streaming token thời gian thực từ Gemini qua Server-Sent Events (SSE).
         Yield từng token ngay khi API sinh ra.
+        Tự động fallback sang Groq Cloud Stream nếu Gemini gặp lỗi và chưa emit token nào.
         """
         if not language or language.lower() in ["auto", ""]:
             lang_name, lang_code = self.detect_language(prompt)
@@ -240,6 +351,7 @@ class GeminiService:
             chat_history=chat_history,
         )
 
+        has_yielded = False
         # Thu lan luot cac candidate model neu co loi
         for model in self.candidate_models:
             stream_url = f"{GEMINI_API_BASE}/models/{model}:streamGenerateContent?alt=sse&key={self.current_api_key}"
@@ -261,18 +373,38 @@ class GeminiService:
                                         for p in parts:
                                             text_token = p.get("text", "")
                                             if text_token:
+                                                has_yielded = True
                                                 yield text_token
                                 except Exception as e_parse:
                                     logger.debug(f"[GeminiService] Chunk parse error: {e_parse}")
-                            return  # Thành công, kết thúc stream
+                            if has_yielded:
+                                return  # Thành công, kết thúc stream
                         else:
                             err_text = await resp.aread()
                             logger.warning(f"[GeminiService] Model '{model}' stream status {resp.status_code}: {err_text.decode('utf-8', errors='ignore')[:150]}")
             except Exception as e_stream:
                 logger.warning(f"[GeminiService] Model '{model}' streaming failed: {e_stream}")
 
-        # Nếu tất cả model Gemini đều không phản hồi, ném ngoại lệ để OllamaService tự động fallback sang Llama
-        raise RuntimeError("Tất cả candidate models của Gemini đều không phản hồi streaming")
+        # Fallback sang Groq Cloud Stream nếu Gemini lỗi và chưa emit token nào
+        if not has_yielded and settings.is_groq_active:
+            logger.info("[GeminiService Stream] Tất cả candidate Gemini thất bại, fallback sang Groq Cloud Stream...")
+            try:
+                async for token in self._stream_groq_fallback(
+                    prompt=prompt,
+                    system_prompt=system_prompt,
+                    chat_history=chat_history,
+                ):
+                    has_yielded = True
+                    yield token
+                if has_yielded:
+                    return
+            except Exception as e_groq:
+                logger.warning(f"[GeminiService Stream] Groq fallback stream thất bại: {e_groq}")
+                if has_yielded:
+                    return
+
+        # Nếu cả Gemini và Groq đều không phản hồi streaming
+        raise RuntimeError("Tất cả candidate models của Gemini và Groq đều không phản hồi streaming")
 
     async def generate_response(
         self,
@@ -336,8 +468,22 @@ class GeminiService:
             except Exception as e:
                 logger.warning(f"[GeminiService] Request error with model '{model}': {e}")
 
-        # Nếu tất cả model Gemini đều không phản hồi, ném ngoại lệ để OllamaService tự động fallback sang Llama
-        raise RuntimeError("Tất cả candidate models của Gemini đều không phản hồi generateContent")
+        # Fallback sang Groq Cloud nếu tất cả candidate Gemini lỗi
+        if settings.is_groq_active:
+            logger.info("[GeminiService] Tất cả candidate Gemini thất bại, fallback sang Groq Cloud...")
+            groq_reply = await self._call_groq_fallback(
+                prompt=prompt,
+                system_prompt=system_prompt,
+                chat_history=chat_history,
+                max_tokens=150,
+            )
+            if groq_reply and groq_reply.strip():
+                clean_reply = re.sub(r'[*#_`\[\]]', '', groq_reply.strip()).strip()
+                final_lang_name, final_lang_code = self.detect_language(clean_reply)
+                return clean_reply, final_lang_name, final_lang_code
+
+        # Nếu cả Gemini và Groq đều không phản hồi, ném ngoại lệ để OllamaService tự động fallback sang Llama
+        raise RuntimeError("Tất cả candidate models của Gemini và Groq đều không phản hồi generateContent")
 
     async def generate_reply(self, prompt: str, timeout: float = 5.0) -> str:
         """
@@ -416,6 +562,24 @@ class GeminiService:
                         return parsed_json
             except Exception as e:
                 logger.warning(f"[GeminiService Intent] Error with model '{model}': {e}")
+
+        # Fallback sang Groq Cloud Intent Extraction nếu Gemini lỗi
+        if settings.is_groq_active:
+            logger.info("[GeminiService Intent] Gemini thất bại, fallback sang Groq Intent Extraction...")
+            groq_intent = await self._call_groq_fallback(
+                prompt=user_speech,
+                system_prompt=system_prompt,
+                json_mode=True,
+                max_tokens=150,
+            )
+            if groq_intent:
+                try:
+                    parsed_groq = json.loads(groq_intent.strip())
+                    if extracted_room_regex and not parsed_groq.get("room_number"):
+                        parsed_groq["room_number"] = extracted_room_regex
+                    return parsed_groq
+                except Exception as e_groq_json:
+                    logger.warning(f"[GeminiService Intent] Groq JSON parse error: {e_groq_json}")
 
         # Fallback Heuristic từ Centralized Constants
         fallback_action = "unknown"

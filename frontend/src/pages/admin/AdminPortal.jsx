@@ -76,7 +76,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
     let ws = null;
     try {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const host = window.location.hostname === 'localhost' ? 'localhost:8000' : window.location.host;
+      const host = window.location.host;
       ws = new WebSocket(`${protocol}//${host}/api/v1/operations/ws/notifications?department=Admin`);
       wsRef.current = ws;
 
@@ -87,7 +87,8 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
       ws.onmessage = (event) => {
         try {
           if (event.data === 'pong') return;
-          const newNotif = JSON.parse(event.data);
+          const parsed = JSON.parse(event.data);
+          const newNotif = parsed?.type === 'NEW_NOTIFICATION' && parsed.data ? parsed.data : parsed;
           if (newNotif && newNotif.id) {
             setNotifications((prev) => [newNotif, ...prev.filter((n) => n.id !== newNotif.id)]);
             onNotify(`🔔 [${newNotif.department || 'Admin'}] ${newNotif.title}`);

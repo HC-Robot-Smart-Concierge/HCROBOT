@@ -97,7 +97,7 @@ async def notification_websocket_endpoint(
     Kênh WebSocket kết nối Real-time cho Trung tâm Thông báo Phòng ban & Điều phối Nghiệp vụ.
     Param: ?department=Housekeeping / F%26B / Bell%20Services / Maintenance / Reception / All
     """
-    dept_val = department or "All"
+    dept_val = (department or "All").strip() or "All"
     await notification_manager.connect(websocket, department=dept_val)
     try:
         while True:
@@ -106,10 +106,8 @@ async def notification_websocket_endpoint(
             if msg == "ping":
                 await websocket.send_text("pong")
     except WebSocketDisconnect:
-        notification_manager.disconnect(websocket, department=dept_val)
+        pass
     except Exception:
+        pass
+    finally:
         notification_manager.disconnect(websocket, department=dept_val)
-
-
-
-

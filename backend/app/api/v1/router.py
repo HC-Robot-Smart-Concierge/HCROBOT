@@ -1,5 +1,6 @@
+import logging
 from fastapi import APIRouter
-from app.api.v1.endpoints import ai, scenarios, rag, map, operations, auth, logs, workflows, advertisements
+from app.api.v1.endpoints import ai, scenarios, rag, operations, auth, logs, workflows, advertisements
 from app.interceptors import RouteInterceptor
 from app.schemas.response import (
     AUTH_RESPONSES,
@@ -7,6 +8,8 @@ from app.schemas.response import (
     NOT_FOUND_RESPONSES,
     SECURED_CRUD_RESPONSES,
 )
+
+logger = logging.getLogger(__name__)
 
 api_router = APIRouter(route_class=RouteInterceptor)
 
@@ -31,12 +34,16 @@ api_router.include_router(
     responses={**BUSINESS_ERROR_RESPONSES, **NOT_FOUND_RESPONSES},
 )
 
-api_router.include_router(
-    map.router,
-    prefix="/map",
-    tags=["03. Định vị & Bản đồ LiDAR SLAM (Robot Navigation)"],
-    responses={**BUSINESS_ERROR_RESPONSES, **NOT_FOUND_RESPONSES},
-)
+try:
+    from app.api.v1.endpoints import map as map_endpoint
+    api_router.include_router(
+        map_endpoint.router,
+        prefix="/map",
+        tags=["03. Định vị & Bản đồ LiDAR SLAM (Robot Navigation)"],
+        responses={**BUSINESS_ERROR_RESPONSES, **NOT_FOUND_RESPONSES},
+    )
+except Exception as e_map:
+    logger.warning(f"[Router] Map router skipped due to hardware/map init error: {e_map}")
 
 api_router.include_router(
     workflows.router,
@@ -73,5 +80,3 @@ api_router.include_router(
     tags=["18. Quản lý Quảng cáo & Truyền thông Robot (Advertisements & Media)"],
     responses={**BUSINESS_ERROR_RESPONSES, **NOT_FOUND_RESPONSES},
 )
-
-

@@ -28,6 +28,7 @@ class PipecatAudioClient {
     this._audioChunksInCurrentStream = 0;
     this._isStreamDone = true;
     this._currentSource = null;
+    this._messagePromise = Promise.resolve();
   }
 
   prime() {
@@ -82,63 +83,65 @@ class PipecatAudioClient {
         console.log(`[PipecatClient] Connected to Pipecat WebSocket stream (${wsUrl})`);
       };
 
-      this.socket.onmessage = async (event) => {
-        try {
-          if (event.data instanceof Blob) {
-            // Binary Frame → Audio chunk từ Streaming Pipeline
-            const arrayBuffer = await event.data.arrayBuffer();
-            if (arrayBuffer.byteLength > 0) {
-              this._audioChunksInCurrentStream += 1;
-              this._enqueueAudioChunk(arrayBuffer);
+      this.socket.onmessage = (event) => {
+        this._messagePromise = this._messagePromise.then(async () => {
+          try {
+            if (event.data instanceof Blob) {
+              // Binary Frame → Audio chunk từ Streaming Pipeline
+              const arrayBuffer = await event.data.arrayBuffer();
+              if (arrayBuffer.byteLength > 0) {
+                this._audioChunksInCurrentStream += 1;
+                this._enqueueAudioChunk(arrayBuffer);
+              }
+              return;
             }
-            return;
-          }
 
-          const data = JSON.parse(event.data);
+            const data = JSON.parse(event.data);
 
-          if (data.event === 'interrupted') {
-            this._stopAudioQueue();
-            if (this.audioRef) {
-              this.audioRef.pause();
-              this.audioRef = null;
+            if (data.event === 'interrupted') {
+              this._stopAudioQueue();
+              if (this.audioRef) {
+                this.audioRef.pause();
+                this.audioRef = null;
+              }
+              if (this.onInterruptedCallback) this.onInterruptedCallback(data);
+            } else if (data.event === 'token') {
+              if (this.onTokenCallback) this.onTokenCallback(data.token);
+            } else if (data.event === 'stt_interim_echo') {
+              if (this.onSTTInterimEchoCallback) this.onSTTInterimEchoCallback(data.text);
+            } else if (data.event === 'stt_processing') {
+              this._audioChunksInCurrentStream = 0;
+              this._isStreamDone = false;
+              if (this.onSTTProcessingCallback) this.onSTTProcessingCallback(data.text);
+            } else if (data.event === 'audio_stream') {
+              // Legacy mode
+              if (this.onAudioStreamCallback) this.onAudioStreamCallback(data.payload);
+            } else if (data.event === 'text' || data.event === 'text_chunk') {
+              if (this.onTextChunkCallback) this.onTextChunkCallback(data);
+            } else if (data.event === 'stream_done') {
+              this._isStreamDone = true;
+              data.audioChunksCount = this._audioChunksInCurrentStream;
+              if (this.onStreamDoneCallback) this.onStreamDoneCallback(data);
+              if (!this._isPlaying && this._audioQueue.length === 0) {
+                if (this.onAudioEndedCallback) this.onAudioEndedCallback();
+              } else {
+                clearTimeout(this._streamPlaybackSafetyTimer);
+                this._streamPlaybackSafetyTimer = setTimeout(() => {
+                  if (this._isPlaying) {
+                    console.warn('[PipecatClient] Stream playback safety timer expired, forcing audio end');
+                    this._stopAudioQueue();
+                    if (this.onAudioEndedCallback) this.onAudioEndedCallback();
+                  }
+                }, 20000);
+              }
+            } else if (data.event === 'error') {
+              console.warn('[PipecatClient] Server error:', data.message);
+              if (this.onErrorCallback) this.onErrorCallback(data);
             }
-            if (this.onInterruptedCallback) this.onInterruptedCallback(data);
-          } else if (data.event === 'token') {
-            if (this.onTokenCallback) this.onTokenCallback(data.token);
-          } else if (data.event === 'stt_interim_echo') {
-            if (this.onSTTInterimEchoCallback) this.onSTTInterimEchoCallback(data.text);
-          } else if (data.event === 'stt_processing') {
-            this._audioChunksInCurrentStream = 0;
-            this._isStreamDone = false;
-            if (this.onSTTProcessingCallback) this.onSTTProcessingCallback(data.text);
-          } else if (data.event === 'audio_stream') {
-            // Legacy mode
-            if (this.onAudioStreamCallback) this.onAudioStreamCallback(data.payload);
-          } else if (data.event === 'text' || data.event === 'text_chunk') {
-            if (this.onTextChunkCallback) this.onTextChunkCallback(data);
-          } else if (data.event === 'stream_done') {
-            this._isStreamDone = true;
-            data.audioChunksCount = this._audioChunksInCurrentStream;
-            if (this.onStreamDoneCallback) this.onStreamDoneCallback(data);
-            if (!this._isPlaying && this._audioQueue.length === 0) {
-              if (this.onAudioEndedCallback) this.onAudioEndedCallback();
-            } else {
-              clearTimeout(this._streamPlaybackSafetyTimer);
-              this._streamPlaybackSafetyTimer = setTimeout(() => {
-                if (this._isPlaying) {
-                  console.warn('[PipecatClient] Stream playback safety timer expired, forcing audio end');
-                  this._stopAudioQueue();
-                  if (this.onAudioEndedCallback) this.onAudioEndedCallback();
-                }
-              }, 20000);
-            }
-          } else if (data.event === 'error') {
-            console.warn('[PipecatClient] Server error:', data.message);
-            if (this.onErrorCallback) this.onErrorCallback(data);
+          } catch (e) {
+            console.warn('[PipecatClient] Error parsing WebSocket message:', e);
           }
-        } catch (e) {
-          console.warn('[PipecatClient] Error parsing WebSocket message:', e);
-        }
+        });
       };
 
       this.socket.onerror = (err) => {

@@ -305,11 +305,11 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
     session_manager.add_turn(sid, "user", request.prompt, language=lang_code)
     session_manager.add_turn(sid, "assistant", reply, language=lang_code, intent_action=act)
 
-    # Lấy audio_base64 từ TTS Service (EdgeTTS với fallback sang WebSpeech nếu quá 3.5s)
+    # Lấy audio_base64 từ TTS Service (EdgeTTS với fallback sang WebSpeech nếu quá 4.8s)
     try:
         audio_b64, mime_type, _ = await asyncio.wait_for(
             tts_service.synthesize(reply, provider="edge", language=lang_code),
-            timeout=3.5
+            timeout=4.8
         )
     except Exception as e_tts:
         logger.warning(f"[AIChatService] TTS online timeout/error, fallback to frontend WebSpeech: {e_tts}")

@@ -93,6 +93,10 @@ export const useSpeechRecognition = (callbacks = {}) => {
   const silenceTimerRef = useRef(null);
   const lastFinalTranscriptRef = useRef('');
   const speechFinalizeTimerRef = useRef(null);
+  const listenEpochRef = useRef(0);
+  const utteranceCommittedRef = useRef(false);
+  const analyserInitPromiseRef = useRef(null);
+  const isTranscribingRef = useRef(false);
 
   const clearSpeechFinalizeTimer = useCallback(() => {
     if (speechFinalizeTimerRef.current) {
@@ -100,6 +104,18 @@ export const useSpeechRecognition = (callbacks = {}) => {
       speechFinalizeTimerRef.current = null;
     }
   }, []);
+
+  const commitFinalTranscript = useCallback((text) => {
+    if (utteranceCommittedRef.current) return;
+    const clean = (text || '').trim();
+    if (!clean) return;
+    utteranceCommittedRef.current = true;
+    clearSpeechFinalizeTimer();
+    const cbFinal = inlineCallbacksRef.current?.onFinal || callbacksRef.current?.onFinal;
+    if (cbFinal) {
+      cbFinal(clean);
+    }
+  }, [clearSpeechFinalizeTimer]);
 
   useEffect(() => {
     callbacksRef.current = callbacks;
@@ -142,6 +158,12 @@ export const useSpeechRecognition = (callbacks = {}) => {
 
   // Hàm gửi Audio Buffer lên Backend STT khi browser không nhận diện được chữ
   const processBackendSTT = useCallback(async () => {
+    if (isTranscribingRef.current || utteranceCommittedRef.current || !shouldListenRef.current) {
+      audioChunksRef.current = [];
+      hasDetectedVoiceRef.current = false;
+      return;
+    }
+
     // Chỉ gửi khi có ít nhất ~0.7s âm thanh (khoảng 8 chunks) và đã phát hiện tiếng nói
     if (audioChunksRef.current.length < 8 || !hasDetectedVoiceRef.current) {
       audioChunksRef.current = [];
@@ -156,7 +178,10 @@ export const useSpeechRecognition = (callbacks = {}) => {
       return;
     }
 
+    const epochAtStart = listenEpochRef.current;
+
     try {
+      isTranscribingRef.current = true;
       setIsTranscribing(true);
       const audioCtx = audioContextRef.current;
       const inputSampleRate = audioCtx ? audioCtx.sampleRate : 44100;
@@ -185,6 +210,14 @@ export const useSpeechRecognition = (callbacks = {}) => {
       console.log(`[STT Engine] Fallback Backend STT (Whisper): gửi file ${wavBlob.size} bytes (${(totalLength / inputSampleRate).toFixed(1)}s)...`);
       const recognizedText = await transcribeAudio(wavBlob, langParam);
 
+      if (
+        epochAtStart !== listenEpochRef.current ||
+        !shouldListenRef.current ||
+        utteranceCommittedRef.current
+      ) {
+        return;
+      }
+
       if (recognizedText && recognizedText.trim()) {
         const clean = recognizedText.trim();
         console.log('[STT Engine] Backend Whisper nhận diện thành công:', clean);
@@ -192,159 +225,168 @@ export const useSpeechRecognition = (callbacks = {}) => {
         lastFinalTranscriptRef.current = clean;
 
         const cbTranscript = inlineCallbacksRef.current?.onTranscriptChange || callbacksRef.current?.onTranscriptChange;
-        const cbFinal = inlineCallbacksRef.current?.onFinal || callbacksRef.current?.onFinal;
 
         if (cbTranscript) cbTranscript(clean, true);
-        if (cbFinal) cbFinal(clean);
+        commitFinalTranscript(clean);
       }
     } catch (err) {
       console.warn('[STT Engine] Lỗi khi xử lý Backend STT:', err);
     } finally {
+      isTranscribingRef.current = false;
       setIsTranscribing(false);
     }
-  }, []);
+  }, [commitFinalTranscript]);
 
   // Khởi động đo âm lượng thực tế & Recording Buffer từ Hardware Microphone
   const startAudioAnalyser = useCallback(async () => {
-    destroyedRef.current = false;
-    try {
-      if (typeof window !== 'undefined' && !window.isSecureContext && window.location.hostname !== 'localhost') {
-        setError('Trình duyệt di động yêu cầu kết nối HTTPS để mở Micro. Vui lòng truy cập qua HTTPS hoặc Cloudflare Tunnel.');
-        return false;
-      }
+    if (analyserInitPromiseRef.current) {
+      return analyserInitPromiseRef.current;
+    }
+    const initTask = (async () => {
+      destroyedRef.current = false;
+      try {
+        if (typeof window !== 'undefined' && !window.isSecureContext && window.location.hostname !== 'localhost') {
+          setError('Trình duyệt di động yêu cầu kết nối HTTPS để mở Micro. Vui lòng truy cập qua HTTPS hoặc Cloudflare Tunnel.');
+          return false;
+        }
 
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        setError('Không tìm thấy API Microphone (trình duyệt di động yêu cầu HTTPS hoặc quyền truy cập trong Cài đặt).');
-        return false;
-      }
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          setError('Không tìm thấy API Microphone (trình duyệt di động yêu cầu HTTPS hoặc quyền truy cập trong Cài đặt).');
+          return false;
+        }
 
-      // Kiem tra stream hien co neu con hoat dong thi tai su dung
-      if (
-        mediaStreamRef.current &&
-        mediaStreamRef.current.active &&
-        mediaStreamRef.current.getAudioTracks().some((t) => t.readyState === 'live')
-      ) {
+        // Kiem tra stream hien co neu con hoat dong thi tai su dung
+        if (
+          mediaStreamRef.current &&
+          mediaStreamRef.current.active &&
+          mediaStreamRef.current.getAudioTracks().some((t) => t.readyState === 'live')
+        ) {
+          setHasMicPermission(true);
+          if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+            await audioContextRef.current.resume().catch(() => {});
+          }
+          return true;
+        }
+
+        // Xin quyền và lấy stream micro thực
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+        });
+
+        if (destroyedRef.current) {
+          stream.getTracks().forEach((t) => t.stop());
+          return false;
+        }
+
+        mediaStreamRef.current = stream;
         setHasMicPermission(true);
-        if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
-          await audioContextRef.current.resume().catch(() => {});
+
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (AudioContextClass) {
+          let audioCtx = audioContextRef.current;
+          if (!audioCtx || audioCtx.state === 'closed') {
+            audioCtx = new AudioContextClass();
+            audioContextRef.current = audioCtx;
+          }
+          if (audioCtx.state === 'suspended') {
+            await audioCtx.resume().catch(() => {});
+          }
+
+          // Analyser đo volume visualizer
+          const analyser = audioCtx.createAnalyser();
+          analyser.fftSize = 256;
+          analyser.smoothingTimeConstant = 0.5;
+          analyserRef.current = analyser;
+
+          const source = audioCtx.createMediaStreamSource(stream);
+          source.connect(analyser);
+
+          // ScriptProcessorNode thu âm PCM samples song song
+          const bufferSize = 4096;
+          const processor = audioCtx.createScriptProcessor(bufferSize, 1, 1);
+          scriptProcessorRef.current = processor;
+
+          let consecutiveVoiceFrames = 0;
+
+          processor.onaudioprocess = (e) => {
+            if (!shouldListenRef.current) return;
+            const inputData = e.inputBuffer.getChannelData(0);
+            const copy = new Float32Array(inputData.length);
+            copy.set(inputData);
+            audioChunksRef.current.push(copy);
+
+            // Giới hạn buffer tối đa ~10 giây (tránh tràn RAM)
+            const maxChunks = Math.ceil((audioCtx.sampleRate * 10) / bufferSize);
+            if (audioChunksRef.current.length > maxChunks) {
+              audioChunksRef.current.shift();
+            }
+
+            // Tính RMS (Root Mean Square) chính xác theo biên độ sóng âm thanh thực tế
+            let sumSquares = 0;
+            for (let i = 0; i < inputData.length; i++) {
+              sumSquares += inputData[i] * inputData[i];
+            }
+            const rms = Math.sqrt(sumSquares / inputData.length);
+            // Âm lượng từ 0 đến 100
+            const realVol = Math.min(100, Math.round(rms * 400));
+            setVolumeLevel(realVol);
+
+            // VAD (Voice Activity Detection): Phát hiện khi khách nói (nhạy hơn: RMS > 0.008 hoặc realVol >= 3)
+            const isHumanSpeaking = rms > 0.008 || realVol >= 3;
+
+            if (isHumanSpeaking) {
+              consecutiveVoiceFrames++;
+              if (consecutiveVoiceFrames >= 2) {
+                hasDetectedVoiceRef.current = true;
+                if (silenceTimerRef.current) {
+                  clearTimeout(silenceTimerRef.current);
+                  silenceTimerRef.current = null;
+                }
+              }
+            } else {
+              consecutiveVoiceFrames = 0;
+              if (hasDetectedVoiceRef.current) {
+                // Khách đã nói xong và im lặng 900ms
+                if (!silenceTimerRef.current) {
+                  silenceTimerRef.current = setTimeout(() => {
+                    silenceTimerRef.current = null;
+                    // Nếu sau khi nói mà trình duyệt không trả về chữ (do lỗi mạng Google Speech API hoặc không hỗ trợ)
+                    // Tự động chốt file gửi sang Backend Whisper
+                    if (!lastFinalTranscriptRef.current || lastFinalTranscriptRef.current.trim().length === 0) {
+                      processBackendSTT();
+                    }
+                  }, 900);
+                }
+              }
+            }
+          };
+
+          source.connect(processor);
+          const muteGain = audioCtx.createGain();
+          muteGain.gain.value = 0;
+          processor.connect(muteGain);
+          muteGain.connect(audioCtx.destination);
         }
         return true;
-      }
-
-      // Xin quyền và lấy stream micro thực
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-      });
-
-      if (destroyedRef.current) {
-        stream.getTracks().forEach((t) => t.stop());
+      } catch (err) {
+        console.warn('[Microphone] Không thể truy cập Micro phần cứng:', err);
+        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+          setHasMicPermission(false);
+          setError('Trình duyệt chưa được cấp quyền Micro! Vui lòng bấm vào biểu tượng khóa trên thanh địa chỉ và chọn "Cho phép" (Allow).');
+        } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
+          setError('Không tìm thấy thiết bị Microphone trên máy tính! Vui lòng kiểm tra lại mic cắm ngoài hoặc driver âm thanh.');
+        }
         return false;
       }
-
-      mediaStreamRef.current = stream;
-      setHasMicPermission(true);
-
-      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-      if (AudioContextClass) {
-        let audioCtx = audioContextRef.current;
-        if (!audioCtx || audioCtx.state === 'closed') {
-          audioCtx = new AudioContextClass();
-          audioContextRef.current = audioCtx;
-        }
-        if (audioCtx.state === 'suspended') {
-          await audioCtx.resume().catch(() => {});
-        }
-
-        // Analyser đo volume visualizer
-        const analyser = audioCtx.createAnalyser();
-        analyser.fftSize = 256;
-        analyser.smoothingTimeConstant = 0.5;
-        analyserRef.current = analyser;
-
-        const source = audioCtx.createMediaStreamSource(stream);
-        source.connect(analyser);
-
-        // ScriptProcessorNode thu âm PCM samples song song
-        const bufferSize = 4096;
-        const processor = audioCtx.createScriptProcessor(bufferSize, 1, 1);
-        scriptProcessorRef.current = processor;
-
-        let consecutiveVoiceFrames = 0;
-
-        processor.onaudioprocess = (e) => {
-          if (!shouldListenRef.current) return;
-          const inputData = e.inputBuffer.getChannelData(0);
-          const copy = new Float32Array(inputData.length);
-          copy.set(inputData);
-          audioChunksRef.current.push(copy);
-
-          // Giới hạn buffer tối đa ~10 giây (tránh tràn RAM)
-          const maxChunks = Math.ceil((audioCtx.sampleRate * 10) / bufferSize);
-          if (audioChunksRef.current.length > maxChunks) {
-            audioChunksRef.current.shift();
-          }
-
-          // Tính RMS (Root Mean Square) chính xác theo biên độ sóng âm thanh thực tế
-          let sumSquares = 0;
-          for (let i = 0; i < inputData.length; i++) {
-            sumSquares += inputData[i] * inputData[i];
-          }
-          const rms = Math.sqrt(sumSquares / inputData.length);
-          // Âm lượng từ 0 đến 100
-          const realVol = Math.min(100, Math.round(rms * 400));
-          setVolumeLevel(realVol);
-
-          // VAD (Voice Activity Detection): Phát hiện khi khách nói (nhạy hơn: RMS > 0.008 hoặc realVol >= 3)
-          const isHumanSpeaking = rms > 0.008 || realVol >= 3;
-
-          if (isHumanSpeaking) {
-            consecutiveVoiceFrames++;
-            if (consecutiveVoiceFrames >= 2) {
-              hasDetectedVoiceRef.current = true;
-              if (silenceTimerRef.current) {
-                clearTimeout(silenceTimerRef.current);
-                silenceTimerRef.current = null;
-              }
-            }
-          } else {
-            consecutiveVoiceFrames = 0;
-            if (hasDetectedVoiceRef.current) {
-              // Khách đã nói xong và im lặng 900ms
-              if (!silenceTimerRef.current) {
-                silenceTimerRef.current = setTimeout(() => {
-                  silenceTimerRef.current = null;
-                  // Nếu sau khi nói mà trình duyệt không trả về chữ (do lỗi mạng Google Speech API hoặc không hỗ trợ)
-                  // Tự động chốt file gửi sang Backend Whisper
-                  if (!lastFinalTranscriptRef.current || lastFinalTranscriptRef.current.trim().length === 0) {
-                    processBackendSTT();
-                  }
-                }, 900);
-              }
-            }
-          }
-        };
-
-        source.connect(processor);
-        const muteGain = audioCtx.createGain();
-        muteGain.gain.value = 0;
-        processor.connect(muteGain);
-        muteGain.connect(audioCtx.destination);
-      }
-      return true;
-    } catch (err) {
-      console.warn('[Microphone] Không thể truy cập Micro phần cứng:', err);
-      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        setHasMicPermission(false);
-        setError('Trình duyệt chưa được cấp quyền Micro! Vui lòng bấm vào biểu tượng khóa trên thanh địa chỉ và chọn "Cho phép" (Allow).');
-      } else if (err.name === 'NotFoundError' || err.name === 'DevicesNotFoundError') {
-        setError('Không tìm thấy thiết bị Microphone trên máy tính! Vui lòng kiểm tra lại mic cắm ngoài hoặc driver âm thanh.');
-      }
-      return false;
-    }
+    })().finally(() => {
+      analyserInitPromiseRef.current = null;
+    });
+    analyserInitPromiseRef.current = initTask;
+    return initTask;
   }, [processBackendSTT]);
 
   const clearRestartTimer = () => {
@@ -422,9 +464,9 @@ export const useSpeechRecognition = (callbacks = {}) => {
           }
 
           if (isCurrentFinal) {
-            clearSpeechFinalizeTimer();
-            if (cbFinal) cbFinal(trimmed);
+            commitFinalTranscript(trimmed);
           } else {
+            utteranceCommittedRef.current = false;
             if (cbInterim) cbInterim(trimmed);
 
             // Auto-Finalize Debounce: Tự động chốt câu khi người dùng ngừng nói 750ms (đặc trị cho iOS Safari không kích hoạt isFinal)
@@ -432,11 +474,7 @@ export const useSpeechRecognition = (callbacks = {}) => {
             speechFinalizeTimerRef.current = setTimeout(() => {
               speechFinalizeTimerRef.current = null;
               if (shouldListenRef.current && lastFinalTranscriptRef.current?.trim()) {
-                const textToCommit = lastFinalTranscriptRef.current.trim();
-                const activeCbFinal = inlineCallbacksRef.current?.onFinal || callbacksRef.current?.onFinal;
-                if (activeCbFinal) {
-                  activeCbFinal(textToCommit);
-                }
+                commitFinalTranscript(lastFinalTranscriptRef.current.trim());
               }
             }, 750);
           }
@@ -561,6 +599,8 @@ export const useSpeechRecognition = (callbacks = {}) => {
 
   const startListening = async (language = 'vi-VN', inlineCallbacks = null) => {
     destroyedRef.current = false;
+    listenEpochRef.current += 1;
+    utteranceCommittedRef.current = false;
     currentLanguageRef.current = language;
     networkErrorCountRef.current = 0;
     lastFinalTranscriptRef.current = '';
@@ -635,6 +675,7 @@ export const useSpeechRecognition = (callbacks = {}) => {
     lastFinalTranscriptRef.current = '';
     audioChunksRef.current = [];
     hasDetectedVoiceRef.current = false;
+    utteranceCommittedRef.current = false;
   }, [clearSpeechFinalizeTimer]);
 
   // Kích hoạt chốt giọng nói ngay lập tức (dùng khi bấm "Gửi ngay" hoặc "Nói xong")

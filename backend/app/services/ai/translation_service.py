@@ -46,6 +46,11 @@ class TranslationService:
     def __init__(self):
         self.http_client = httpx.AsyncClient(timeout=3.0)
 
+    async def close(self):
+        """Đóng httpx AsyncClient khi ứng dụng tắt."""
+        if self.http_client and not self.http_client.is_closed:
+            await self.http_client.aclose()
+
     @staticmethod
     def normalize_lang_code(lang: str) -> str:
         """Chuẩn hóa mã ngôn ngữ về 'vi' hoặc 'en'."""

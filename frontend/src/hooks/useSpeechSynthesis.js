@@ -272,11 +272,23 @@ export const useSpeechSynthesis = () => {
               window._activeAudioPlayer = audio;
             }
 
+            let hasPlayed = false;
+            let recovered = false;
+            const recoverWebSpeech = () => {
+              if (recovered || hasPlayed) return;
+              recovered = true;
+              if (speechId === activeSpeechIdRef.current) {
+                _speakWithBrowserUtterance(cleanText, langTag, targetVoice, onEndCallback, onStartCallback, shouldCancel, effectiveRate, speechId);
+              }
+            };
+
             audio.onplay = () => {
               if (speechId !== activeSpeechIdRef.current) {
                 stopCurrentAudio();
                 return;
               }
+              hasPlayed = true;
+              recovered = true;
               setIsSpeaking(true);
               if (onStartCallback) onStartCallback();
             };
@@ -297,17 +309,22 @@ export const useSpeechSynthesis = () => {
                 window._activeAudioPlayer = null;
               }
               if (speechId === activeSpeechIdRef.current) {
-                setIsSpeaking(false);
                 audioRef.current = null;
-                if (onEndCallback) onEndCallback();
+                if (!hasPlayed && !recovered) {
+                  stopCurrentAudio();
+                  recoverWebSpeech();
+                } else {
+                  setIsSpeaking(false);
+                  if (onEndCallback) onEndCallback();
+                }
               }
             };
 
             audio.play().catch((playErr) => {
               console.warn('[TTS Audio Play Error]:', playErr);
-              if (speechId === activeSpeechIdRef.current) {
-                if (onStartCallback) onStartCallback();
-                _speakWithBrowserUtterance(cleanText, langTag, targetVoice, onEndCallback, null, shouldCancel, effectiveRate, speechId);
+              if (!hasPlayed && !recovered) {
+                stopCurrentAudio();
+                recoverWebSpeech();
               }
             });
             return;
@@ -583,7 +600,7 @@ export const useSpeechSynthesis = () => {
     }
   };
 
-  const speak = async (text, language = 'vi-VN', onEndCallback = null, onStartCallback = null, preloadedAudioBase64 = null, rate = null) => {
+  const speak = async (text, language = 'vi-VN', onEndCallback = null, onStartCallback = null, preloadedAudioBase64 = null, rate = null, options = {}) => {
     cancel();
 
     if (!text || !text.trim()) {
@@ -597,6 +614,18 @@ export const useSpeechSynthesis = () => {
     const currentSignal = abortControllerRef.current.signal;
 
     const effectiveRate = Math.max(0.5, Math.min(2.0, rate ?? speechRate ?? 1.0));
+    const skipRemoteTts = Boolean(options?.skipRemoteTts);
+
+    let recoveryHandled = false;
+    let hasStartedPlaying = false;
+
+    const triggerSingleRecovery = () => {
+      if (recoveryHandled || hasStartedPlaying) return;
+      recoveryHandled = true;
+      if (currentSpeechId !== activeSpeechIdRef.current) return;
+      stopCurrentAudio();
+      _speakWithBrowserUtterance(text, language, null, onEndCallback, onStartCallback, true, effectiveRate, currentSpeechId);
+    };
 
     // 0. ƯU TIÊN PHÁT NGAY LẬP TỨC AUDIO PRELOADED TỪ /chat (0ms Network delay)
     if (preloadedAudioBase64 && preloadedAudioBase64.length > 100) {
@@ -629,14 +658,14 @@ export const useSpeechSynthesis = () => {
           window._activeAudioPlayer = audio;
         }
 
-        let hasStartedPlaying = false;
         audio.onplay = () => {
           if (currentSpeechId !== activeSpeechIdRef.current) {
             stopCurrentAudio();
             return;
           }
           hasStartedPlaying = true;
-          // Tuyet doi huy Web Speech de tranh 2 giong noi bi long vao nhau
+          recoveryHandled = true;
+          // Tuyệt đối hủy Web Speech để tránh 2 giọng nói bị lồng vào nhau
           if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
             try { window.speechSynthesis.cancel(); } catch (e) {}
           }
@@ -660,12 +689,11 @@ export const useSpeechSynthesis = () => {
             window._activeAudioPlayer = null;
           }
           if (currentSpeechId === activeSpeechIdRef.current) {
-            setIsSpeaking(false);
             audioRef.current = null;
-            if (!hasStartedPlaying) {
-              stopCurrentAudio();
-              _speakWithBrowserUtterance(text, language, null, onEndCallback, onStartCallback, true, effectiveRate, currentSpeechId);
+            if (!hasStartedPlaying && !recoveryHandled) {
+              triggerSingleRecovery();
             } else {
+              setIsSpeaking(false);
               if (onEndCallback) onEndCallback();
             }
           }
@@ -675,8 +703,8 @@ export const useSpeechSynthesis = () => {
         return;
       } catch (playErr) {
         console.warn("[TTS Hook] Cannot play via HTML5 Audio, fallback to Web Audio API / WebSpeech:", playErr);
+        if (currentSpeechId !== activeSpeechIdRef.current || hasStartedPlaying || recoveryHandled) return;
         stopCurrentAudio();
-        if (currentSpeechId !== activeSpeechIdRef.current) return;
 
         // Thử giải mã và phát trực tiếp qua Web Audio API (vượt qua rào cản Safari User Gesture)
         try {
@@ -691,13 +719,18 @@ export const useSpeechSynthesis = () => {
               byteNumbers[i] = byteCharacters.charCodeAt(i);
             }
             const audioBuffer = await ctx.decodeAudioData(byteNumbers.buffer.slice(0));
-            if (currentSpeechId !== activeSpeechIdRef.current) return;
+            if (currentSpeechId !== activeSpeechIdRef.current || hasStartedPlaying || recoveryHandled) return;
 
             const source = ctx.createBufferSource();
             source.buffer = audioBuffer;
             source.playbackRate.value = effectiveRate;
             source.connect(ctx.destination);
             activeSourceNodeRef.current = source;
+
+            // Hủy Web Speech nếu Web Audio API phát
+            if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+              try { window.speechSynthesis.cancel(); } catch (e) {}
+            }
 
             source.onended = () => {
               activeSourceNodeRef.current = null;
@@ -707,6 +740,8 @@ export const useSpeechSynthesis = () => {
               }
             };
 
+            hasStartedPlaying = true;
+            recoveryHandled = true;
             setIsSpeaking(true);
             if (onStartCallback) onStartCallback();
             source.start(0);
@@ -716,16 +751,21 @@ export const useSpeechSynthesis = () => {
           console.warn("[TTS Hook] Web Audio API fallback failed:", ctxErr);
         }
 
-        if (currentSpeechId === activeSpeechIdRef.current) {
-          _speakWithBrowserUtterance(text, language, null, onEndCallback, onStartCallback, true, effectiveRate, currentSpeechId);
+        if (!hasStartedPlaying && !recoveryHandled) {
+          triggerSingleRecovery();
           return;
         }
       }
     }
 
-    // 1. INSTANT WebSpeech / EdgeTTS fallback (khi khong co preloadedAudio)
+    // 1. INSTANT WebSpeech / EdgeTTS fallback (khi không có preloadedAudio)
     if (currentSpeechId === activeSpeechIdRef.current) {
-      speakWebSpeech(text, language, onEndCallback, onStartCallback, true, effectiveRate, currentSpeechId, currentSignal);
+      if (skipRemoteTts) {
+        // Backend đã thử tổng hợp TTS trước đó rồi, dùng ngay WebSpeech cục bộ để tránh gọi mạng 2 lần
+        _speakWithBrowserUtterance(text, language, null, onEndCallback, onStartCallback, true, effectiveRate, currentSpeechId);
+      } else {
+        speakWebSpeech(text, language, onEndCallback, onStartCallback, true, effectiveRate, currentSpeechId, currentSignal);
+      }
     }
   };
 

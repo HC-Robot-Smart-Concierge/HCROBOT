@@ -177,15 +177,8 @@ export const MobileRobotScreen = ({
   }, [onLogout]);
 
 
-  // Tự động bật mic khi vào màn hình robot mobile
+  // Tự động mở khóa audio và kích hoạt lắng nghe khi người dùng chạm lần đầu (tuân thủ iOS Audio Gesture Policy)
   useEffect(() => {
-    let timer = null;
-    if (typeof onStartTalk === 'function' && !isListening && !isSpeaking && !isBusy) {
-      timer = setTimeout(() => {
-        onStartTalk();
-      }, 500);
-    }
-
     const handleFirstTouch = () => {
       if (typeof onPrime === 'function') {
         onPrime();
@@ -201,11 +194,10 @@ export const MobileRobotScreen = ({
     window.addEventListener('click', handleFirstTouch, { passive: true, once: true });
 
     return () => {
-      if (timer) clearTimeout(timer);
       window.removeEventListener('touchstart', handleFirstTouch);
       window.removeEventListener('click', handleFirstTouch);
     };
-  }, []);
+  }, [isBusy, isListening, isSpeaking, onPrime, onStartTalk]);
 
 
   return (

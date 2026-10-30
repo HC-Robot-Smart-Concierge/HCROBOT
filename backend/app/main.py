@@ -16,7 +16,12 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    from app.services.hardware.rplidar_service import rplidar_service
+    rplidar_service = None
+    try:
+        from app.services.hardware.rplidar_service import rplidar_service as _rplidar_service
+        rplidar_service = _rplidar_service
+    except Exception as e_lidar:
+        logger.warning(f"[WARN] RPLidarService unavailable at startup: {e_lidar}")
     from app.core.database import init_db
 
     # 1. Initialize tables only. Seed data is loaded explicitly from scripts/.
@@ -41,7 +46,21 @@ async def lifespan(app: FastAPI):
     logger.info("=" * 60)
 
     yield
-    rplidar_service.stop()
+    try:
+        from app.services.cache.redis_service import redis_service
+        await redis_service.close()
+    except Exception as e_redis_close:
+        logger.debug(f"Redis shutdown close: {e_redis_close}")
+    try:
+        from app.services.ai.translation_service import translation_service
+        await translation_service.close()
+    except Exception as e_trans_close:
+        logger.debug(f"Translation service shutdown close: {e_trans_close}")
+    if rplidar_service is not None:
+        try:
+            rplidar_service.stop()
+        except Exception:
+            pass
 
 
 tags_metadata = [

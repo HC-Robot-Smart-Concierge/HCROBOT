@@ -32,6 +32,7 @@ class TTSService:
         
         # 1. Memory LRU/Cache
         self._memory_cache: Dict[str, str] = {}
+        self._inflight_tasks: Dict[str, asyncio.Task] = {}
         
         # 2. Disk Cache Directory: backend/static/audio_cache
         current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -197,32 +198,44 @@ class TTSService:
                 logger.warning(f"[TTSService] OpenAI TTS synthesis failed: {e}. Fallback to EdgeTTS.")
 
         # 3. Mặc định dùng EdgeTTS Neural (Siêu tự nhiên & Miễn phí)
+        # Deduplicate in-flight requests cho cùng cache_key và dùng shield để không tạo nhiều kết nối trùng lặp
         try:
-            audio_b64 = await asyncio.wait_for(
-                self._synthesize_edge_tts(clean_text, target_voice, target_rate),
-                timeout=3.0
-            )
+            inflight = self._inflight_tasks.get(cache_key)
+            if inflight is None or inflight.done():
+                inflight = asyncio.create_task(
+                    self._synthesize_and_cache_edge_tts(clean_text, target_voice, target_rate, cache_key)
+                )
+                self._inflight_tasks[cache_key] = inflight
+
+            audio_b64 = await asyncio.wait_for(asyncio.shield(inflight), timeout=4.5)
             if audio_b64:
-                self._save_to_cache(cache_key, audio_b64)
                 return audio_b64, "audio/mp3", "edge"
         except asyncio.TimeoutError:
-            logger.info(f"[TTSService] EdgeTTS timed out (>3.0s) for text, background caching triggered. Returning browser fallback.")
-            asyncio.create_task(self._background_cache_edge_tts(clean_text, target_voice, target_rate, cache_key))
+            logger.info(
+                f"[TTSService] EdgeTTS timed out (>4.5s) for '{clean_text[:25]}...', "
+                "in-flight task continues caching in background. Returning browser fallback."
+            )
         except Exception as e:
             logger.warning(f"[TTSService] EdgeTTS synthesis failed: {e}")
 
         # 4. Fallback cuối cùng: Trả về empty để Frontend dùng Web Speech API thiết bị
         return "", "audio/mp3", "browser"
 
-    async def _background_cache_edge_tts(self, clean_text: str, voice: str, rate: str, cache_key: str):
-        """Tải âm thanh EdgeTTS trong tiến trình ngầm để lưu cache cho các lần trò chuyện sau."""
+    async def _synthesize_and_cache_edge_tts(
+        self, clean_text: str, voice: str, rate: str, cache_key: str
+    ) -> Optional[str]:
+        """Thực thi đơn lẻ (single-flight) cho mỗi cache_key và lưu cache ngay khi hoàn tất."""
         try:
             audio_b64 = await self._synthesize_edge_tts(clean_text, voice, rate)
             if audio_b64:
                 self._save_to_cache(cache_key, audio_b64)
-                logger.info(f"[TTSService] Background cached audio for: '{clean_text[:30]}...'")
+                return audio_b64
         except Exception as e:
-            logger.debug(f"[TTSService] Background caching failed: {e}")
+            logger.debug(f"[TTSService] EdgeTTS single-flight task failed: {e}")
+        finally:
+            if self._inflight_tasks.get(cache_key) is asyncio.current_task():
+                self._inflight_tasks.pop(cache_key, None)
+        return None
 
     async def _synthesize_edge_tts(self, text: str, voice: str, rate: Optional[str] = None) -> Optional[str]:
         """EdgeTTS Neural Engine sinh âm thanh trực tiếp."""

@@ -161,7 +161,7 @@ class OllamaService:
     def detect_language(text: str) -> Tuple[str, str]:
         """
         Tự động phân tích câu nói của khách để nhận diện ngôn ngữ và mã lang_code cho TTS.
-        Hỗ trợ song ngữ chuẩn xác 100%: Tiếng Việt (vi-VN), Tiếng Anh (en-US), Tiếng Trung (zh-CN), Tiếng Nhật (ja-JP).
+        Chỉ hỗ trợ song ngữ chuẩn xác: Tiếng Việt (vi-VN) và Tiếng Anh (en-US).
         """
         if not text or not text.strip():
             return "Tiếng Việt", "vi-VN"
@@ -169,16 +169,6 @@ class OllamaService:
         # 1. Ký tự có dấu tiếng Việt đặc trưng -> 100% Tiếng Việt
         if re.search(r'[àáảãạâầấẩẫậăằắẳẵặèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ]', text, re.IGNORECASE):
             return "Tiếng Việt", "vi-VN"
-
-        # 2. Tiếng Trung (Chữ Hán)
-        cjk_chars = re.findall(r'[一-鿿]', text)
-        latin_chars = re.findall(r'[a-zA-Z]', text)
-        if len(cjk_chars) > 0 and len(cjk_chars) > len(latin_chars):
-            return "Tiếng Trung", "zh-CN"
-
-        # 3. Tiếng Nhật (Hiragana / Katakana)
-        if re.search(r'[぀-ヿ]', text):
-            return "Tiếng Nhật", "ja-JP"
 
         lower_text = text.lower().strip()
         words = re.findall(r'[a-zA-Z]+', lower_text)
@@ -200,36 +190,7 @@ class OllamaService:
             if re.search(p, lower_text):
                 return "English", "en-US"
 
-        return "Tiếng Việt", "vi-VN"
-
-        # 1. Ký tự có dấu tiếng Việt đặc trưng -> 100% Tiếng Việt
-        if re.search(r'[àáảãạâầấẩẫậăằắẳẵặèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ]', text, re.IGNORECASE):
-            return "Tiếng Việt", "vi-VN"
-
-        lower_text = text.lower().strip()
-
-        # 2. Tiếng Trung (Chữ Hán)
-        cjk_chars = re.findall(r'[\u4e00-\u9fff]', text)
-        latin_chars = re.findall(r'[a-zA-Z]', text)
-        if len(cjk_chars) > 0 and len(cjk_chars) > len(latin_chars):
-            return "Tiếng Trung", "zh-CN"
-
-        # 3. Tiếng Nhật (Hiragana / Katakana)
-        if re.search(r'[\u3040-\u30ff]', text):
-            return "Tiếng Nhật", "ja-JP"
-
-        # 4. Tiếng Việt không dấu (các cụm từ / từ vựng đặc trưng tránh trùng với tiếng Anh)
-        vi_phrases = [
-            r'\bphong\s*[0-9]', r'\bphong\b', r'\btoi\b', r'\bmuon\b', r'\bkhan\s*tam\b',
-            r'\bdon\s*phong\b', r'\bo\s*dau\b', r'\bkhach\s*san\b', r'\ble\s*tan\b',
-            r'\bbao\s*tri\b', r'\bcam\s*on\b', r'\bchao\s*em\b', r'\bxin\s*chao\b',
-            r'\bquy\s*khach\b', r'\btra\s*phong\b', r'\bnhan\s*phong\b',
-            r'\bgoi\s*xe\b', r'\bthang\s*may\b', r'\bho\s*boi\b', r'\bbe\s*boi\b'
-        ]
-        if any(re.search(pattern, lower_text) for pattern in vi_phrases):
-            return "Tiếng Việt", "vi-VN"
-
-        # 5. Tiếng Anh: kiểm tra các mẫu câu và tập từ vựng tiếng Anh thông dụng
+        # Kiểm tra cụm từ tiếng Anh thông dụng
         english_patterns = [
             r'\b(where|what|when|why|who|how|which|whose)\b',
             r'\b(can|could|would|should|will|do|does|did|is|are|was|were|have|has|had)\b',
@@ -237,10 +198,7 @@ class OllamaService:
             r'\b(hello|hi|hey|good\s+morning|good\s+afternoon|good\s+evening|goodbye|bye)\b',
             r'\b(thank\s+you|thanks|please|excuse\s+me|sorry|pardon)\b',
             r'\b(hotel|room|pool|swimming|wifi|password|breakfast|checkout|checkin|gym|spa)\b',
-            r'\b(luggage|baggage|towel|water|food|drink|restaurant|taxi|airport|service|help|need|want)\b',
-            r'\b(show|tell|guide|find|open|close|order|call|bring|get|take|clean|go|see|look|give|pay|cost|price|menu)\b',
-            r'\b(coffee|tea|beer|bar|cocktail|floor|lobby|elevator|lift|toilet|restroom|bathroom|door|card|key|bill)\b',
-            r'\b(now|today|tonight|tomorrow|time|later|yes|no|ok|okay|sure|fine|sir|madam|assist|recommend|direction)\b'
+            r'\b(luggage|baggage|towel|water|food|drink|restaurant|taxi|airport|service|help|need|want)\b'
         ]
         if any(re.search(pattern, lower_text) for pattern in english_patterns):
             return "English", "en-US"
@@ -392,7 +350,7 @@ class OllamaService:
             prompt = (
                 "Bạn là Rora - Trợ lý Robot Concierge thông minh, lễ phép, duyên dáng và hiếu khách tại khách sạn 5 sao Aurora Grand Hotel.\n"
                 "PHONG CÁCH GIAO TIẾP VÀ TRÒ CHUYỆN TỰ NHIÊN:\n"
-                "1. Luôn xưng 'Dạ em' hoặc 'Rora' và gọi người trò chuyện là 'quý khách' hoặc 'anh/chị'.\n"
+                "1. Xưng là 'em' hoặc 'Rora' và gọi người trò chuyện là 'quý khách' hoặc 'anh/chị'. Giao tiếp tự nhiên, lịch sự, có thể mở đầu lời chào bằng 'Dạ' khi phù hợp nhưng tuyệt đối không lặp lại từ 'Dạ' ở đầu mỗi câu tiếp theo.\n"
                 "2. Trò chuyện một cách tự nhiên, gần gũi, ấm áp, lưu loát như một nhân viên lễ tân 5 sao chuyên nghiệp.\n"
                 "3. Trả lời đúng trọng tâm, súc tích trong 2 đến 3 câu văn gãy gọn, hoàn chỉnh để phát giọng đọc mượt mà và người nghe dễ nắm bắt nhất.\n"
                 "4. BẮT BUỘC dùng 100% tiếng Việt tự nhiên, chuẩn mực. Tuyệt đối không chèn từ ngoại ngữ vô nghĩa.\n"

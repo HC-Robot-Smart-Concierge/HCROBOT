@@ -80,6 +80,11 @@ class Settings(BaseSettings):
         return self.LLM_PROVIDER.lower() == "gemini" and bool(self.GEMINI_API_KEY)
 
     @property
+    def is_groq_active(self) -> bool:
+        """Kiểm tra xem Groq Cloud có đang được cấu hình API key hay không."""
+        return bool(self.GROQ_API_KEY)
+
+    @property
     def active_llm_model(self) -> str:
         """Trả về tên model đang ưu tiên thực tế (Groq -> Gemini -> Ollama)."""
         if self.GROQ_API_KEY:

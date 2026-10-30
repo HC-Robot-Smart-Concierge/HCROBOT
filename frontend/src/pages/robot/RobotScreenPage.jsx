@@ -240,8 +240,13 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
   // Video Call WebRTC & Cloudinary Recording States
   const [isVideoCallOpen, setIsVideoCallOpen] = useState(false);
+  const isVideoCallOpenRef = useRef(false);
   const [videoCallSessionId, setVideoCallSessionId] = useState(null);
   const [videoCallTicketCode, setVideoCallTicketCode] = useState(null);
+
+  useEffect(() => {
+    isVideoCallOpenRef.current = isVideoCallOpen;
+  }, [isVideoCallOpen]);
 
   // Quick Feedback Survey State
   const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
@@ -362,15 +367,6 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     };
   }, []);
 
-  // Listen to WebSocket Hub (đã tắt tự động chạy kịch bản từ xa)
-  useNotificationWebSocket({
-    department: 'All',
-    onNotificationReceived: (_notif) => {
-      // Đã tắt tự động trigger kịch bản để tập trung giao tiếp bình thường
-    },
-    enabled: true,
-  });
-
   // Close menus on outside click
   useEffect(() => {
     if (!showQuickMenu && !showLangMenu) return;
@@ -429,6 +425,9 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       chatAbortControllerRef.current = null;
     }
     if (fillerTimerRef.current) clearTimeout(fillerTimerRef.current);
+    if (processingSafetyTimerRef.current) clearTimeout(processingSafetyTimerRef.current);
+    isProcessingRef.current = false;
+    setIsProcessing(false);
     clearRouteGuidanceTimers();
     stopSpeaking();
     setAiResponseText('');
@@ -647,7 +646,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
   // 1. Khi kích hoạt lắng nghe (Bấm nút hoặc Tự động)
   const handleStartTalk = () => {
-    if (isVideoCallOpen || isPinModalOpen || isPinModalOpenRef.current || isLoopSwearingRef.current) return;
+    if (isVideoCallOpen || isVideoCallOpenRef.current || isPinModalOpen || isPinModalOpenRef.current) return;
     lastInteractionTimeRef.current = Date.now();
     if (isStandby) setIsStandby(false);
     activeChatRequestIdRef.current += 1;
@@ -832,36 +831,11 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
     if (fillerTimerRef.current) clearTimeout(fillerTimerRef.current);
 
-    // Timer 1800ms: Chỉ chạy câu đệm nếu không phải câu hỏi chỉ đường (vì sơ đồ RT-05 đã lập tức hiển thị)
+    // Timer 1800ms: Cử động mắt tự nhiên khi truy vấn cần thêm thời gian, không phát giọng nói đệm để tránh lồng tiếng và cướp lời
     if (!fastDestKey) {
       fillerTimerRef.current = setTimeout(() => {
         if (hasReceivedResponse || currentChatId !== activeChatRequestIdRef.current) return;
-        isPlayingFiller = true;
-        setAiResponseText(fillerPhrase);
         triggerEyeExpression('look_around');
-
-        // Phát giọng đọc câu đệm khi đợi AI phản hồi
-        speak(
-          fillerPhrase,
-          fillerLang,
-          () => {
-            // onEndCallback của câu đệm:
-            isPlayingFiller = false;
-            if (currentChatId !== activeChatRequestIdRef.current) return;
-            // Nếu câu trả lời chính đã về trong lúc đang nói câu đệm:
-            if (pendingMainTask) {
-              const executeTask = pendingMainTask;
-              pendingMainTask = null;
-              executeTask();
-            }
-          },
-          () => {
-            // onStartCallback của câu đệm:
-            if (currentChatId === activeChatRequestIdRef.current) {
-              setAiResponseText(fillerPhrase);
-            }
-          }
-        );
       }, 1800);
     }
 
@@ -908,6 +882,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
           const canonicalCode = chatRes.ticket_code || chatRes.support_session_id || chatRes.session_id || sessionId;
           setVideoCallSessionId(canonicalCode);
           setVideoCallTicketCode(chatRes.ticket_code || canonicalCode);
+          isVideoCallOpenRef.current = true;
           setIsVideoCallOpen(true);
         }
 
@@ -917,6 +892,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
           setPinModalRoomNumber(targetRoom);
           setPinModalAction(chatRes.pending_service_action || 'room_service');
           setPinModalItems(chatRes.pending_service_items || query);
+          isPinModalOpenRef.current = true;
           setIsPinModalOpen(true);
         }
 
@@ -1052,9 +1028,9 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                 }, 16000);
 
                 // Tự động bật micro lắng nghe ngay trong giao diện bản đồ RT-05 mà không làm mất sơ đồ
-                if (isAutoListen && !isPinModalOpenRef.current) {
+                if (isAutoListen && !isPinModalOpenRef.current && !isVideoCallOpenRef.current) {
                   setTimeout(() => {
-                    if (isPinModalOpenRef.current) return;
+                    if (isPinModalOpenRef.current || isVideoCallOpenRef.current) return;
                     resetTranscript();
                     startListening(language, {
                       onFinal: (finalText) => {
@@ -1084,15 +1060,12 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
             clearTimeout(textSafetyTimer);
             revealSubtitle();
           },
-          chatRes.audio_base64
+          chatRes.audio_base64,
+          null,
+          { skipRemoteTts: true }
         );
       };
 
-      if (isPlayingFiller) {
-        stopSpeaking();
-        isPlayingFiller = false;
-        pendingMainTask = null;
-      }
       executeMainResponse();
 
     } catch (error) {
@@ -1131,28 +1104,6 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       );
     }
   };
-
-  // Tự động gửi AI khi người dùng ngừng nói 900ms (VAD Silence Detection tự nhiên, không cướp lời)
-  useEffect(() => {
-    if (
-      isListening &&
-      !isSpeaking &&
-      !isProcessingRef.current &&
-      !isProcessing &&
-      (currentState === 'RT-03' || currentState === 'RT-05') &&
-      transcript.trim().length > 0
-    ) {
-      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-      silenceTimerRef.current = setTimeout(() => {
-        const textToProcess = transcript.trim();
-        resetTranscript();
-        handleStopTalkAndProcess(textToProcess);
-      }, 900);
-    }
-    return () => {
-      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-    };
-  }, [transcript, currentState, isListening, isSpeaking, isProcessing]);
 
   // Callback khi khách hàng xác thực mã PIN phòng hoặc thẻ NFC thành công tại Kiosk
   const handlePinVerifiedSuccess = useCallback((result) => {
@@ -1249,6 +1200,11 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
 
   const resetToIdle = () => {
+    activeChatRequestIdRef.current += 1;
+    if (chatAbortControllerRef.current) {
+      try { chatAbortControllerRef.current.abort(); } catch (e) { }
+      chatAbortControllerRef.current = null;
+    }
     if (fillerTimerRef.current) clearTimeout(fillerTimerRef.current);
     if (processingSafetyTimerRef.current) clearTimeout(processingSafetyTimerRef.current);
     isProcessingRef.current = false;

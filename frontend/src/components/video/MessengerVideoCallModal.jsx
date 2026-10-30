@@ -17,7 +17,7 @@ import {
   Send,
 } from 'lucide-react';
 import { uploadCallRecording, getCallSignalingWsUrl } from '../../services/conciergeApi';
-import { quickTranslateText } from '../../services/aiApi';
+import { quickTranslateText, synthesizeSpeech } from '../../services/aiApi';
 
 const ICE_SERVERS = {
   iceServers: [
@@ -760,6 +760,11 @@ export const MessengerVideoCallModal = ({
               console.log(`[VideoCall WS] [guest] Kích hoạt phát âm thanh thông dịch AI (Jenny) cho Robot Kiosk!`);
               playInterpreterAudioRef.current(data.audioBase64, data.translatedText);
             }
+          } else if (data.type === 'live_audio') {
+            if (role === 'guest' && data.senderRole === 'staff' && data.audioBase64 && playInterpreterAudioRef.current) {
+              console.log(`[VideoCall WS] [guest] Nhận live_audio tách biệt và kích hoạt phát TTS (Jenny)!`);
+              playInterpreterAudioRef.current(data.audioBase64, data.translatedText);
+            }
           } else if (data.type === 'translate_mode_change') {
             if (data.mode) {
               setTranslateMode(data.mode);
@@ -1206,21 +1211,20 @@ export const MessengerVideoCallModal = ({
         const isGuestSpeakingEnglish = (curGuestLang === 'English') && (curMode !== 'bypass');
 
         if (isGuestSpeakingEnglish) {
-          // Quy tắc 2: Khách đang dùng tiếng Anh -> Dịch câu trả lời của nhân viên sang tiếng Anh và phát giọng Jenny (en-US-JennyNeural) qua loa Robot Kiosk
+          // Quy tắc 2: Khách đang dùng tiếng Anh -> Dịch siêu tốc (< 100ms) không đợi TTS
           const res = await quickTranslateText({
             text: spokenText,
             sourceLang: 'vi',
             targetLang: 'en',
             sessionId: sessionId,
             senderRole: role,
-            withAudio: true,
+            withAudio: false,
           });
 
           console.log(`[VideoCall Translation] [staff] Dịch sang English cho Robot:`, {
             original: spokenText,
             translated: res.translated_text,
             needs_translation: res.needs_translation,
-            has_audio: Boolean(res.audio_base64),
           });
 
           const payload = {
@@ -1231,15 +1235,36 @@ export const MessengerVideoCallModal = ({
             needsTranslation: Boolean(res.needs_translation),
             sourceLang: 'vi',
             targetLang: 'en',
-            audioBase64: res.audio_base64 || null,
+            audioBase64: null,
             timestamp: Date.now(),
           };
 
+          // Gửi phụ đề lập tức sang Robot Kiosk và hiển thị cục bộ ngay tức thì (< 100ms)
           if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
             wsRef.current.send(JSON.stringify(payload));
-            console.log(`[VideoCall WS] [staff] Đã phát tán live_subtitle sang Robot Kiosk (${payload.audioBase64 ? payload.audioBase64.length : 0} bytes audio)`);
+            console.log(`[VideoCall WS] [staff] Đã phát tán live_subtitle tức thời sang Robot Kiosk`);
           }
           displaySubtitleLocally(payload);
+
+          // Kích hoạt tổng hợp giọng đọc TTS (Jenny) bất đồng bộ trong nền, không làm chậm hiển thị phụ đề
+          if (res.needs_translation && res.translated_text) {
+            synthesizeSpeech(res.translated_text, { language: 'en-US', voice: 'en-US-JennyNeural' })
+              .then((audioData) => {
+                if (audioData?.audio_base64 && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+                  wsRef.current.send(JSON.stringify({
+                    type: 'live_audio',
+                    senderRole: role,
+                    audioBase64: audioData.audio_base64,
+                    translatedText: res.translated_text,
+                    timestamp: Date.now(),
+                  }));
+                  console.log(`[VideoCall WS] [staff] Đã phát tán live_audio sang Robot Kiosk (${audioData.audio_base64.length} bytes)`);
+                }
+              })
+              .catch((err) => {
+                console.warn('[VideoCall Audio] Background TTS synthesis failed:', err);
+              });
+          }
           return;
         } else {
           // Quy tắc 3 & 4: Khách đang dùng tiếng Việt -> KHÔNG DỊCH sang tiếng Anh, KHÔNG PHÁT TTS!

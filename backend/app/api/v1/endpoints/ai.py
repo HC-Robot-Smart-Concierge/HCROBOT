@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from typing import Optional, List
 from fastapi import APIRouter, HTTPException, Depends, status, WebSocket, UploadFile, File, Form
@@ -83,7 +84,7 @@ async def transcribe_speech_endpoint(
         if not content:
             raise HTTPException(status_code=400, detail="File âm thanh rỗng")
 
-        text = transcribe_audio_wav(content, language=language)
+        text = await asyncio.to_thread(transcribe_audio_wav, content, language)
         return {"success": True, "text": text, "language": language}
     except Exception as e:
         logger.error(f"[STT Endpoint Error] {e}")

@@ -7,17 +7,23 @@ import {
   PhoneOff,
   Volume2,
   VolumeX,
+  Loader2,
   Maximize2,
   Minimize2,
   AlertCircle,
   Languages,
-  Check,
-  Globe,
   Sparkles,
-  Send,
 } from 'lucide-react';
 import { uploadCallRecording, getCallSignalingWsUrl } from '../../services/conciergeApi';
-import { quickTranslateText, synthesizeSpeech } from '../../services/aiApi';
+import { quickTranslateText, synthesizeSpeech, transcribeCallAudio } from '../../services/aiApi';
+import {
+  TTS_ERROR_CODES,
+  evaluateSpokenTextCommit,
+  resolveTranslationTarget,
+  advanceExpectedSeqOnFailure,
+  calculateFrameRms,
+  encodeWavBlobFromFloat32,
+} from './videoCallTranslationHelpers';
 
 const ICE_SERVERS = {
   iceServers: [
@@ -70,14 +76,15 @@ export const MessengerVideoCallModal = ({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
-  const [uploadStatus, setUploadStatus] = useState(null); // { success: true/false, url, message }
+  const [uploadStatus, setUploadStatus] = useState(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [hasNoCamera, setHasNoCamera] = useState(false);
 
   // Live Subtitle & Auto-Translation State (EN ⇄ VI)
   // Mode: 'auto' (Tự động dịch thông minh 2 chiều) | 'bypass' (Thuần Việt - Không dịch)
   const [translateMode, setTranslateMode] = useState('auto');
-  // Mặc định phiên dịch là English để Robot Kiosk bắt trọn câu nói tiếng Anh của khách nước ngoài
+  // Chế độ nhận diện ngôn ngữ đầu vào của Micro: 'auto' (Đa ngữ EN/VI theo âm thanh) | 'en' | 'vi'
+  const [inputLangMode, setInputLangMode] = useState('auto');
   const [activeGuestLanguage, setActiveGuestLanguage] = useState(
     guestLanguage === 'Tiếng Việt' && translateMode === 'bypass' ? 'Tiếng Việt' : 'English'
   );
@@ -106,8 +113,11 @@ export const MessengerVideoCallModal = ({
   const iceCandidatesQueueRef = useRef([]);
   const isEndingRef = useRef(false);
 
-  // Speech Recognition & Subtitle Refs
+  // Speech Recognition, Audio Stream STT Adapter & Subtitle Refs
   const speechRecognitionRef = useRef(null);
+  const audioSttAdapterRef = useRef(null);
+  const lastAudioVadSpeechAtRef = useRef(0);
+  const pendingWebSpeechFallbackTimerRef = useRef(null);
   const subtitleTimeoutRef = useRef(null);
   const callTranscriptsRef = useRef([]);
   const isMicMutedRef = useRef(false);
@@ -117,22 +127,42 @@ export const MessengerVideoCallModal = ({
   const playInterpreterAudioRef = useRef(null);
   const activeGuestLanguageRef = useRef('English');
   const translateModeRef = useRef('auto');
+  const inputLangModeRef = useRef('auto');
 
   // Web Audio Context & Persistent Player for Autoplay Bypass
   const audioContextRef = useRef(null);
   const activeAudioSourceRef = useRef(null);
   const persistentAudioRef = useRef(null);
+  const playbackWatchdogRef = useRef(null);
   const lastProcessedTextRef = useRef('');
   const lastProcessedTimeRef = useRef(0);
   const pendingTranscriptRef = useRef('');
   const sttSilenceTimerRef = useRef(null);
   const handleProcessSpokenTextRef = useRef(null);
 
-  // Chống lặp vòng lặp âm thanh (Acoustic Echo Loop Prevention) khi loa Kiosk phát giọng đọc AI
+  // Chống lặp vòng lặp âm thanh (Acoustic Echo Loop Prevention)
   const isAiSpeakingRef = useRef(false);
   const ttsActiveUntilRef = useRef(0);
   const lastPlayedTtsTextRef = useRef('');
+  const staffTtsSeqRef = useRef(0);
+  const guestTtsSeqRef = useRef(0);
+  const expectedPlaySeqRef = useRef(1);
+  const failedSeqsRef = useRef(new Set());
+  const outOfOrderWaitTimerRef = useRef(null);
+  const callEpochRef = useRef(0);
+  const callStatusRef = useRef('calling');
   const [sttStatusMessage, setSttStatusMessage] = useState('');
+  const [isAudioBlocked, setIsAudioBlocked] = useState(false);
+  const [ttsStatus, setTtsStatus] = useState(null);
+  const isManualLockedRef = useRef(false);
+  const audioQueueRef = useRef([]);
+  const isPlayingAudioRef = useRef(false);
+  const playedUtteranceIdsRef = useRef(new Set());
+  const previousWebRtcVolumeRef = useRef(1.0);
+
+  useEffect(() => {
+    callStatusRef.current = callStatus;
+  }, [callStatus]);
 
   useEffect(() => {
     activeGuestLanguageRef.current = activeGuestLanguage;
@@ -142,6 +172,10 @@ export const MessengerVideoCallModal = ({
     translateModeRef.current = translateMode;
   }, [translateMode]);
 
+  useEffect(() => {
+    inputLangModeRef.current = inputLangMode;
+  }, [inputLangMode]);
+
   // 1. Tạo Canvas Stream giả lập trong trường hợp máy tính KHÔNG CÓ WEBCAM (Tương thích iOS Safari)
   const createFakeVideoStream = (label = 'Khách hàng') => {
     const canvas = document.createElement('canvas');
@@ -150,11 +184,10 @@ export const MessengerVideoCallModal = ({
     const ctx = canvas.getContext('2d');
 
     const draw = () => {
-      // Nền xám đen tối giản theo theme hệ thống
+      if (!ctx) return;
       ctx.fillStyle = '#1e1e1e';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-      // Vòng tròn xám trung tính thanh lịch
       ctx.fillStyle = '#2d2d2d';
       ctx.beginPath();
       ctx.arc(320, 240, 90, 0, Math.PI * 2);
@@ -164,7 +197,6 @@ export const MessengerVideoCallModal = ({
       ctx.lineWidth = 1.5;
       ctx.stroke();
 
-      // Text Avatar
       ctx.fillStyle = '#f4f4f5';
       ctx.font = 'bold 22px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
       ctx.textAlign = 'center';
@@ -180,7 +212,6 @@ export const MessengerVideoCallModal = ({
       stream = canvas.webkitCaptureStream(5);
       stream._canvasInterval = setInterval(draw, 500);
     } else {
-      // iOS Safari WebKit fallback: MediaStream rỗng không throw lỗi
       stream = new MediaStream();
     }
     return stream;
@@ -243,7 +274,6 @@ export const MessengerVideoCallModal = ({
   const startRecording = (stream) => {
     try {
       if (!window.MediaRecorder) {
-        console.warn('[VideoCall] MediaRecorder không được hỗ trợ trên trình duyệt này');
         return;
       }
 
@@ -275,14 +305,14 @@ export const MessengerVideoCallModal = ({
         }
       };
 
-      recorder.start(1000); // 1s slice
+      recorder.start(1000);
       mediaRecorderRef.current = recorder;
     } catch (err) {
       console.warn('[VideoCall] Lỗi khởi tạo MediaRecorder (bỏ qua ghi hình):', err);
     }
   };
 
-  // 4. Dừng ghi hình và tự động lưu trong nền (Hoàn toàn ẩn không hiển thị Cloudinary cho khách)
+  // 4. Dừng ghi hình và tự động lưu trong nền
   const stopRecordingAndUpload = async () => {
     if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
 
@@ -292,7 +322,6 @@ export const MessengerVideoCallModal = ({
       } catch (e) {}
     }
 
-    // Đợi 300ms gom chunk cuối
     await new Promise((resolve) => setTimeout(resolve, 300));
 
     if (recordedChunksRef.current.length > 0) {
@@ -301,7 +330,6 @@ export const MessengerVideoCallModal = ({
       const startedAt = callStartTimeRef.current;
       const endedAt = new Date().toISOString();
 
-      // Upload chạy ngầm không chặn giao diện và lưu kèm bản ghi chép phụ đề hội thoại
       uploadCallRecording(sessionId, blob, durationSec, startedAt, endedAt, callTranscriptsRef.current)
         .then((uploadRes) => {
           onCallEnded(uploadRes);
@@ -312,16 +340,13 @@ export const MessengerVideoCallModal = ({
     }
   };
 
-  // Khởi tạo AudioContext cho Web Audio API (miễn nhiễm với chính sách chặn autoplay của trình duyệt)
+  // Khởi tạo AudioContext cho Web Audio API
   const getOrCreateAudioContext = useCallback(() => {
     try {
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
       if (!AudioCtx) return null;
       if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
         audioContextRef.current = new AudioCtx();
-      }
-      if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
-        audioContextRef.current.resume().catch(() => {});
       }
       return audioContextRef.current;
     } catch (e) {
@@ -334,121 +359,267 @@ export const MessengerVideoCallModal = ({
   const primeAudioContext = useCallback(() => {
     const ctx = getOrCreateAudioContext();
     if (ctx && ctx.state === 'suspended') {
-      ctx.resume().catch(() => {});
+      ctx.resume().then(() => {
+        if (ctx.state === 'running') {
+          setIsAudioBlocked(false);
+        }
+      }).catch(() => {});
+    } else if (ctx && ctx.state === 'running') {
+      setIsAudioBlocked(false);
     }
     if (persistentAudioRef.current) {
       try {
         persistentAudioRef.current.play().then(() => {
           persistentAudioRef.current.pause();
+          setIsAudioBlocked(false);
         }).catch(() => {});
       } catch (e) {}
     }
-    // Safari iOS: Đảm bảo âm thanh WebRTC đối phương được mở và play khi người dùng tương tác
     if (remoteVideoRef.current) {
       remoteVideoRef.current.muted = isSpeakerMuted;
       remoteVideoRef.current.play().catch(() => {});
     }
   }, [getOrCreateAudioContext, isSpeakerMuted]);
 
-  // Phát âm thanh thông dịch AI (Edge Neural TTS) kèm kỹ thuật Audio Ducking & Chống lặp vòng âm thanh:
-  // Tự động hạ volume WebRTC đối phương xuống 10% trong khi AI nói để nghe rõ, rồi hồi phục về 100%
-  const playInterpreterAudio = useCallback(async (audioBase64, spokenText = '') => {
-    if (!audioBase64 || isSpeakerMuted) return;
+  // Hàng đợi phát âm thanh thông dịch AI tuần tự cho cả hai bên (Robot Kiosk & Staff)
+  // Bảo vệ chống treo cờ isPlayingAudioRef / isAiSpeakingRef khi AudioContext.resume() bị treo hoặc lỗi
+  const processAudioQueue = useCallback(async () => {
+    if (isPlayingAudioRef.current) return;
+    if (audioQueueRef.current.length === 0) return;
+    if (isEndingRef.current || callStatusRef.current !== 'connected') {
+      audioQueueRef.current = [];
+      return;
+    }
 
-    try {
-      console.log(`[VideoCall Audio] [${role}] Bắt đầu phát âm thanh AI (${audioBase64.length} base64 chars)`);
+    // Bo qua cac sequence da duoc danh dau la failed truoc do
+    while (failedSeqsRef.current.has(expectedPlaySeqRef.current)) {
+      expectedPlaySeqRef.current += 1;
+    }
+
+    const headItem = audioQueueRef.current[0];
+    if (headItem && headItem.seq && headItem.seq > expectedPlaySeqRef.current) {
+      if (!outOfOrderWaitTimerRef.current) {
+        console.log(`[VideoCall Queue] [${role}] Waiting for seq=${expectedPlaySeqRef.current} (head seq=${headItem.seq}) max 1.2s`);
+        outOfOrderWaitTimerRef.current = setTimeout(() => {
+          outOfOrderWaitTimerRef.current = null;
+          expectedPlaySeqRef.current = headItem.seq;
+          processAudioQueue();
+        }, 1200);
+        return;
+      }
+      return;
+    }
+
+    if (outOfOrderWaitTimerRef.current) {
+      clearTimeout(outOfOrderWaitTimerRef.current);
+      outOfOrderWaitTimerRef.current = null;
+    }
+
+    const currentItem = audioQueueRef.current.shift();
+    if (!currentItem || !currentItem.audioBase64) return;
+
+    if (currentItem.seq) {
+      expectedPlaySeqRef.current = Math.max(expectedPlaySeqRef.current, currentItem.seq + 1);
+    }
+
+    if (currentItem.utteranceId) {
+      playedUtteranceIdsRef.current.add(currentItem.utteranceId);
+    }
+
+    const currentEpoch = callEpochRef.current;
+    isPlayingAudioRef.current = true;
+    let finishedHandled = false;
+
+    const handleAudioFinished = (endReason = 'PLAY_ENDED') => {
+      if (finishedHandled) return;
+      finishedHandled = true;
+
+      if (playbackWatchdogRef.current) {
+        clearTimeout(playbackWatchdogRef.current);
+        playbackWatchdogRef.current = null;
+      }
+
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.volume = previousWebRtcVolumeRef.current;
+      }
+
+      const wasSpeaking = isAiSpeakingRef.current;
+      isAiSpeakingRef.current = false;
+      setIsAiSpeaking(false);
+      // Nếu phát âm thanh thực sự diễn ra, đặt đuôi âm học ngắn 280ms; nếu bị chặn/lỗi thì mở khóa ngay (0ms)
+      ttsActiveUntilRef.current = wasSpeaking && endReason === 'PLAY_ENDED' ? Date.now() + 280 : 0;
+      activeAudioSourceRef.current = null;
+      isPlayingAudioRef.current = false;
+
+      console.log(
+        `[VideoCall Flow] [${role}] utteranceId=${currentItem.utteranceId || 'unknown'} seq=${currentItem.seq || 0} step=${endReason} restoredVolume=${previousWebRtcVolumeRef.current}`
+      );
+
+      if (audioQueueRef.current.length > 0 && !isEndingRef.current && callEpochRef.current === currentEpoch) {
+        setTimeout(processAudioQueue, 120);
+      }
+    };
+
+    const markPlaybackStarted = (durationSec = 4.0, engine = 'web_audio') => {
       isAiSpeakingRef.current = true;
       setIsAiSpeaking(true);
-      ttsActiveUntilRef.current = Date.now() + 15000;
-      if (spokenText) {
-        lastPlayedTtsTextRef.current = spokenText.trim();
+      const boundedMs = Math.min(12000, Math.max(1500, Math.round(durationSec * 1000) + 500));
+      ttsActiveUntilRef.current = Date.now() + boundedMs;
+
+      if (currentItem.spokenText) {
+        lastPlayedTtsTextRef.current = currentItem.spokenText.trim();
       }
 
-      // Audio Ducking: Giảm volume WebRTC đối phương xuống 10% để nghe rõ tiếng phiên dịch AI
       if (remoteVideoRef.current) {
-        console.log(`[VideoCall Audio] [${role}] Đang giảm âm lượng WebRTC đối phương xuống 10% để phát giọng AI`);
-        remoteVideoRef.current.volume = 0.1;
+        previousWebRtcVolumeRef.current = remoteVideoRef.current.volume || 1.0;
+        remoteVideoRef.current.volume = 0.15;
       }
 
-      const handleAudioFinished = () => {
-        console.log(`[VideoCall Audio] [${role}] Giọng đọc AI kết thúc -> Hồi phục âm lượng WebRTC về 100%`);
-        isAiSpeakingRef.current = false;
-        setIsAiSpeaking(false);
-        ttsActiveUntilRef.current = Date.now() + 850; // 850ms cooldown buffer chống micro thu lại tiếng loa
-        if (remoteVideoRef.current) {
-          remoteVideoRef.current.volume = 1.0;
+      if (playbackWatchdogRef.current) {
+        clearTimeout(playbackWatchdogRef.current);
+      }
+      playbackWatchdogRef.current = setTimeout(() => {
+        handleAudioFinished('PLAY_WATCHDOG_TIMEOUT');
+      }, boundedMs + 900);
+
+      console.log(
+        `[VideoCall Flow] [${role}] utteranceId=${currentItem.utteranceId || 'unknown'} seq=${currentItem.seq || 0} step=PLAY_STARTED engine=${engine} ducking=0.15 len=${(currentItem.spokenText || '').length}`
+      );
+    };
+
+    // 1. Dừng nguồn âm thanh cũ nếu đang phát
+    if (activeAudioSourceRef.current) {
+      try {
+        activeAudioSourceRef.current.stop();
+      } catch (e) {}
+      activeAudioSourceRef.current = null;
+    }
+    if (persistentAudioRef.current) {
+      try {
+        persistentAudioRef.current.pause();
+      } catch (e) {}
+    }
+
+    // 2. Thử phát bằng Web Audio API AudioContext (có timeout 400ms chống treo ctx.resume())
+    const ctx = getOrCreateAudioContext();
+    if (ctx) {
+      try {
+        if (ctx.state === 'suspended') {
+          await Promise.race([
+            ctx.resume().catch(() => {}),
+            new Promise((resolve) => setTimeout(resolve, 400)),
+          ]);
         }
-        activeAudioSourceRef.current = null;
-      };
-
-      // 1. Dừng nguồn âm thanh cũ nếu đang phát
-      if (activeAudioSourceRef.current) {
-        try {
-          activeAudioSourceRef.current.stop();
-        } catch (e) {}
-        activeAudioSourceRef.current = null;
-      }
-      if (persistentAudioRef.current) {
-        try {
-          persistentAudioRef.current.pause();
-        } catch (e) {}
-      }
-
-      // 2. Thử phát bằng Web Audio API AudioContext (Miễn nhiễm 100% với lỗi Autoplay trên Safari & Chrome)
-      const ctx = getOrCreateAudioContext();
-      if (ctx) {
-        try {
-          if (ctx.state === 'suspended') {
-            await ctx.resume();
-          }
-          const uint8 = base64ToUint8Array(audioBase64);
+        if (ctx.state === 'running' && callEpochRef.current === currentEpoch) {
+          setIsAudioBlocked(false);
+          const uint8 = base64ToUint8Array(currentItem.audioBase64);
           const arrayBuffer = uint8.buffer.slice(uint8.byteOffset, uint8.byteOffset + uint8.byteLength);
           const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+          if (callEpochRef.current !== currentEpoch || isEndingRef.current) {
+            handleAudioFinished('PLAY_ABORTED');
+            return;
+          }
           const source = ctx.createBufferSource();
           source.buffer = audioBuffer;
           source.connect(ctx.destination);
-          source.onended = handleAudioFinished;
+          source.onended = () => handleAudioFinished('PLAY_ENDED');
           activeAudioSourceRef.current = source;
+          markPlaybackStarted(audioBuffer.duration || 4.0, 'web_audio');
           source.start(0);
-          console.log(`[VideoCall Audio] [${role}] Âm thanh AI đang phát to rõ qua Web Audio API AudioContext!`);
           return;
-        } catch (ctxErr) {
-          console.warn('[VideoCall Audio] Web Audio API decode lỗi, fallback sang HTML5 Audio:', ctxErr);
         }
+      } catch (ctxErr) {
+        console.warn(
+          `[VideoCall Flow] [${role}] utteranceId=${currentItem.utteranceId || 'unknown'} seq=${currentItem.seq || 0} step=PLAYBACK_ERROR code=${TTS_ERROR_CODES.PLAYBACK_DECODE_ERROR} detail="${ctxErr?.message || ctxErr}"`
+        );
       }
+    }
 
-      // 3. Fallback: Phát bằng persistent HTML5 Audio Element
-      if (persistentAudioRef.current) {
-        const audioEl = persistentAudioRef.current;
-        audioEl.src = `data:audio/mp3;base64,${audioBase64}`;
-        audioEl.currentTime = 0;
-        audioEl.onended = handleAudioFinished;
-        audioEl.onerror = (e) => {
-          console.warn('[VideoCall Audio] HTML5 Audio Element lỗi:', e);
-          handleAudioFinished();
-        };
+    // 3. Fallback: Phát bằng persistent HTML5 Audio Element
+    if (persistentAudioRef.current && callEpochRef.current === currentEpoch) {
+      const audioEl = persistentAudioRef.current;
+      audioEl.src = `data:audio/mp3;base64,${currentItem.audioBase64}`;
+      audioEl.currentTime = 0;
+      audioEl.onended = () => handleAudioFinished('PLAY_ENDED');
+      audioEl.onerror = (e) => {
+        console.warn(
+          `[VideoCall Flow] [${role}] utteranceId=${currentItem.utteranceId || 'unknown'} seq=${currentItem.seq || 0} step=PLAYBACK_ERROR code=${TTS_ERROR_CODES.PLAYBACK_DECODE_ERROR} detail="HTML5 Audio error"`
+        );
+        handleAudioFinished(TTS_ERROR_CODES.PLAYBACK_DECODE_ERROR);
+      };
+      try {
         const playPromise = audioEl.play();
         if (playPromise !== undefined) {
           playPromise
             .then(() => {
-              console.log(`[VideoCall Audio] [${role}] Âm thanh AI đang phát to rõ qua HTML5 Audio Element!`);
+              if (callEpochRef.current === currentEpoch) {
+                setIsAudioBlocked(false);
+                markPlaybackStarted(audioEl.duration && Number.isFinite(audioEl.duration) ? audioEl.duration : 4.5, 'html5_audio');
+              } else {
+                handleAudioFinished('PLAY_ABORTED');
+              }
             })
             .catch((err) => {
-              console.warn('[VideoCall Audio] HTML5 Audio autoplay bị chặn:', err);
-              handleAudioFinished();
+              console.warn(
+                `[VideoCall Flow] [${role}] utteranceId=${currentItem.utteranceId || 'unknown'} seq=${currentItem.seq || 0} step=PLAYBACK_ERROR code=${TTS_ERROR_CODES.PLAYBACK_BLOCKED} detail="${err?.message || err}"`
+              );
+              setIsAudioBlocked(true);
+              handleAudioFinished(TTS_ERROR_CODES.PLAYBACK_BLOCKED);
             });
+          return;
         }
-      } else {
-        handleAudioFinished();
-      }
-    } catch (e) {
-      console.warn(`[VideoCall Audio] [${role}] Lỗi phát âm thanh:`, e);
-      setIsAiSpeaking(false);
-      if (remoteVideoRef.current) {
-        remoteVideoRef.current.volume = 1.0;
+      } catch (playErr) {
+        console.warn(
+          `[VideoCall Flow] [${role}] utteranceId=${currentItem.utteranceId || 'unknown'} seq=${currentItem.seq || 0} step=PLAYBACK_ERROR code=${TTS_ERROR_CODES.PLAYBACK_BLOCKED} detail="${playErr?.message || playErr}"`
+        );
       }
     }
-  }, [isSpeakerMuted, role, getOrCreateAudioContext]);
+
+    setIsAudioBlocked(true);
+    handleAudioFinished(TTS_ERROR_CODES.PLAYBACK_BLOCKED);
+  }, [getOrCreateAudioContext, role]);
+
+  const enqueueInterpreterAudio = useCallback((item) => {
+    if (!item?.audioBase64 || isSpeakerMuted) return;
+
+    if (item.utteranceId && playedUtteranceIdsRef.current.has(item.utteranceId)) {
+      console.log(`[VideoCall Queue] Skip already played utteranceId=${item.utteranceId}`);
+      return;
+    }
+
+    if (item.timestamp && Date.now() - item.timestamp > 15000) {
+      console.warn(`[VideoCall Queue] Skip stale audio (>15s) utteranceId=${item.utteranceId || item.seq}`);
+      return;
+    }
+
+    if (item.seq && item.seq < expectedPlaySeqRef.current) {
+      console.warn(`[VideoCall Queue] Skip late audio seq=${item.seq} < expected=${expectedPlaySeqRef.current}`);
+      return;
+    }
+
+    audioQueueRef.current.push({
+      ...item,
+      spokenText: item.translatedText || item.spokenText || '',
+    });
+    audioQueueRef.current.sort((a, b) => (a.seq || 0) - (b.seq || 0));
+
+    if (audioQueueRef.current.length > 3) {
+      audioQueueRef.current = audioQueueRef.current.slice(-3);
+    }
+
+    console.log(
+      `[VideoCall Flow] [${role}] utteranceId=${item.utteranceId || 'unknown'} seq=${item.seq || 0} step=AUDIO_RECEIVED queueLen=${audioQueueRef.current.length}`
+    );
+    processAudioQueue();
+  }, [isSpeakerMuted, processAudioQueue, role]);
+
+  const playInterpreterAudio = useCallback((audioBase64, spokenText = '', meta = {}) => {
+    enqueueInterpreterAudio({
+      audioBase64,
+      spokenText,
+      ...meta,
+    });
+  }, [enqueueInterpreterAudio]);
 
   useEffect(() => {
     playInterpreterAudioRef.current = playInterpreterAudio;
@@ -465,36 +636,27 @@ export const MessengerVideoCallModal = ({
         localVideoRef.current.srcObject = stream;
       }
 
-      // Khởi tạo RTCPeerConnection
       const pc = new RTCPeerConnection(ICE_SERVERS);
       pcRef.current = pc;
 
-      // Thêm các track local vào peer connection
       stream.getTracks().forEach((track) => {
         pc.addTrack(track, stream);
       });
 
-      // Lắng nghe stream từ đối phương (hỗ trợ cả Safari iOS không bọc streams array)
       pc.ontrack = (event) => {
         console.log('[VideoCall] ontrack received track:', event.track.kind, event.track.id);
 
-        // Luôn duy trì 1 MediaStream duy nhất làm nguồn video/audio cho remoteVideoRef
         if (!remoteStreamRef.current) {
           remoteStreamRef.current = new MediaStream();
         }
 
-        // Bật track âm thanh / hình ảnh
         event.track.enabled = true;
 
-        // Thêm track vào remoteStreamRef nếu chưa có
         if (!remoteStreamRef.current.getTracks().some((t) => t.id === event.track.id)) {
           remoteStreamRef.current.addTrack(event.track);
-          console.log('[VideoCall] Added track to remoteStreamRef:', event.track.kind, 'total tracks:', remoteStreamRef.current.getTracks().length);
         }
 
-        // Khi track bắt đầu nhận dữ liệu thực tế (unmute)
         event.track.onunmute = () => {
-          console.log('[VideoCall] Remote track unmuted (media flowing):', event.track.kind);
           if (remoteVideoRef.current) {
             remoteVideoRef.current.play().catch(() => {});
           }
@@ -507,12 +669,9 @@ export const MessengerVideoCallModal = ({
           const playPromise = remoteVideoRef.current.play();
           if (playPromise !== undefined) {
             playPromise.catch((e) => {
-              if (e.name !== 'AbortError') {
-                console.warn('[VideoCall] Auto-play video notice:', e);
-                if (e.name === 'NotAllowedError') {
-                  remoteVideoRef.current.muted = true;
-                  remoteVideoRef.current.play().catch(() => {});
-                }
+              if (e.name !== 'AbortError' && e.name === 'NotAllowedError' && remoteVideoRef.current) {
+                remoteVideoRef.current.muted = true;
+                remoteVideoRef.current.play().catch(() => {});
               }
             });
           }
@@ -523,7 +682,6 @@ export const MessengerVideoCallModal = ({
         }
       };
 
-      // Theo dõi trạng thái kết nối WebRTC P2P
       pc.onconnectionstatechange = async () => {
         console.log('[VideoCall] Connection state:', pc.connectionState);
         if (pc.connectionState === 'connected') {
@@ -532,14 +690,12 @@ export const MessengerVideoCallModal = ({
             remoteVideoRef.current.play().catch(() => {});
           }
         } else if (pc.connectionState === 'failed') {
-          console.warn('[VideoCall] Connection failed, attempting ICE restart...');
           if (role === 'guest' && pc.restartIce && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
             try {
               pc.restartIce();
               const offer = await pc.createOffer({ iceRestart: true });
               await pc.setLocalDescription(offer);
               wsRef.current.send(JSON.stringify({ type: 'offer', sdp: offer }));
-              console.log('[VideoCall] Dispatched ICE restart offer');
             } catch (iceErr) {
               console.error('[VideoCall] ICE restart error:', iceErr);
             }
@@ -548,7 +704,6 @@ export const MessengerVideoCallModal = ({
       };
 
       pc.oniceconnectionstatechange = () => {
-        console.log('[VideoCall] ICE state:', pc.iceConnectionState);
         if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
           setCallStatus('connected');
           if (remoteVideoRef.current) {
@@ -557,10 +712,8 @@ export const MessengerVideoCallModal = ({
         }
       };
 
-      // Xử lý ICE Candidate (gửi candidate gốc và de-anonymized candidate cho local LAN)
       pc.onicecandidate = (event) => {
         if (event.candidate) {
-          console.log(`[VideoCall] [${role}] Generated ICE candidate:`, event.candidate.candidate);
           if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
             wsRef.current.send(
               JSON.stringify({
@@ -570,15 +723,12 @@ export const MessengerVideoCallModal = ({
             );
           }
 
-          // Chỉ de-anonymize mDNS candidate nếu ĐÂY LÀ ROBOT KIOSK TRÊN MÁY TÍNH (role === 'guest')
-          // TUYỆT ĐỐI không thay thế cho thiết bị di động (role === 'staff') vì sẽ làm iPhone gửi nhầm IP của PC
           if (role === 'guest') {
             const candStr = event.candidate.candidate;
             const lanIp = serverLanIpRef.current;
             if (candStr && candStr.includes('.local') && lanIp && lanIp !== '127.0.0.1') {
               const unmDnsStr = candStr.replace(/[a-zA-Z0-9_\-]+\.local/g, lanIp);
               if (unmDnsStr !== candStr && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-                console.log(`[VideoCall] [${role}] Dispatched de-anonymized LAN candidate:`, unmDnsStr);
                 wsRef.current.send(
                   JSON.stringify({
                     type: 'candidate',
@@ -593,17 +743,13 @@ export const MessengerVideoCallModal = ({
               }
             }
           }
-        } else {
-          console.log(`[VideoCall] [${role}] ICE candidate gathering finished (null)`);
         }
       };
 
-      // Mở kết nối WebSocket Signaling
       const wsUrl = getCallSignalingWsUrl(sessionId, role, role === 'guest' ? callerName : calleeName);
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
-      // Keepalive ping định kỳ 10s để giữ kết nối WebSocket không bị Cloudflare Tunnel timeout
       if (checkPeerIntervalRef.current) clearInterval(checkPeerIntervalRef.current);
       checkPeerIntervalRef.current = setInterval(() => {
         if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
@@ -618,6 +764,13 @@ export const MessengerVideoCallModal = ({
         if (role === 'guest') {
           setCallStatus('ringing');
         }
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({
+            type: 'translate_mode_sync',
+            mode: translateModeRef.current,
+            manualLocked: isManualLockedRef.current,
+          }));
+        }
       };
 
       ws.onmessage = async (evt) => {
@@ -625,14 +778,17 @@ export const MessengerVideoCallModal = ({
           const data = JSON.parse(evt.data);
 
           if (data.type === 'server_info' && data.lan_ip) {
-            console.log('[VideoCall] Received server LAN IP:', data.lan_ip);
             serverLanIpRef.current = data.lan_ip;
           } else if (data.type === 'peer_joined') {
-            console.log('[VideoCall] Peer joined:', data.name, 'as role:', data.role, 'signalingState:', pc.signalingState);
+            if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+              wsRef.current.send(JSON.stringify({
+                type: 'translate_mode_sync',
+                mode: translateModeRef.current,
+                manualLocked: isManualLockedRef.current,
+              }));
+            }
             if (role === 'guest') {
-              // Chỉ tạo Offer khi signalingState là 'stable' (tránh duplicate offer gây InvalidStateError)
               if (pc.signalingState !== 'stable') {
-                console.log('[VideoCall] Bỏ qua tạo Offer vì signalingState không phải stable:', pc.signalingState);
                 return;
               }
               try {
@@ -643,29 +799,23 @@ export const MessengerVideoCallModal = ({
                 await pc.setLocalDescription(offer);
                 if (ws.readyState === WebSocket.OPEN) {
                   ws.send(JSON.stringify({ type: 'offer', sdp: offer }));
-                  console.log('[VideoCall] Sent Offer to staff');
                 }
               } catch (offerErr) {
                 console.error('[VideoCall] Create offer error:', offerErr);
               }
             }
           } else if (data.type === 'offer') {
-            console.log('[VideoCall] Received Offer from peer, signalingState:', pc.signalingState);
             try {
               if (pc.signalingState !== 'stable') {
-                console.log('[VideoCall] Rollback local state để nhận offer mới');
                 await pc.setLocalDescription({ type: 'rollback' });
               }
               await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
 
-              // Xử lý hàng đợi ICE candidates đến sớm trước khi remoteDescription sẵn sàng
               while (iceCandidatesQueueRef.current.length > 0) {
                 const cand = iceCandidatesQueueRef.current.shift();
                 try {
                   await pc.addIceCandidate(new RTCIceCandidate(cand));
-                } catch (e) {
-                  console.warn('[VideoCall] Error adding queued candidate:', e);
-                }
+                } catch (e) {}
               }
 
               const answer = await pc.createAnswer({
@@ -675,104 +825,143 @@ export const MessengerVideoCallModal = ({
               await pc.setLocalDescription(answer);
               if (ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify({ type: 'answer', sdp: answer }));
-                console.log('[VideoCall] Sent Answer to guest');
               }
               setCallStatus('connected');
             } catch (ansErr) {
               console.error('[VideoCall] Error handling offer:', ansErr);
             }
           } else if (data.type === 'answer') {
-            console.log('[VideoCall] Received Answer from peer, signalingState:', pc.signalingState);
-            // Quan trọng: Chỉ gọi setRemoteDescription khi đang ở trạng thái 'have-local-offer'
             if (pc.signalingState === 'have-local-offer') {
               try {
                 await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
 
-                // Xử lý hàng đợi ICE candidates đến sớm
                 while (iceCandidatesQueueRef.current.length > 0) {
                   const cand = iceCandidatesQueueRef.current.shift();
                   try {
                     await pc.addIceCandidate(new RTCIceCandidate(cand));
-                  } catch (e) {
-                    console.warn('[VideoCall] Error adding queued candidate:', e);
-                  }
+                  } catch (e) {}
                 }
               } catch (ansErr) {
                 console.error('[VideoCall] Error applying answer:', ansErr);
               }
-            } else {
-              console.log('[VideoCall] Bỏ qua Answer dư thừa vì signalingState là:', pc.signalingState);
             }
-            // Đảm bảo callStatus chuyển sang connected
             setCallStatus('connected');
           } else if (data.type === 'candidate') {
             if (data.candidate) {
-              const candStr = data.candidate.candidate || data.candidate;
-              console.log(`[VideoCall] [${role}] Received candidate from peer:`, candStr);
               if (pc.remoteDescription && pc.remoteDescription.type) {
                 try {
                   await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
-                  console.log(`[VideoCall] [${role}] Successfully applied candidate`);
-                } catch (candErr) {
-                  console.warn(`[VideoCall] [${role}] Error adding ICE candidate:`, candErr);
-                }
+                } catch (candErr) {}
               } else {
-                console.log(`[VideoCall] [${role}] Queued candidate (waiting for remoteDescription)`);
                 iceCandidatesQueueRef.current.push(data.candidate);
               }
             }
           } else if (data.type === 'call_end' || data.type === 'peer_disconnected') {
-            console.log('[VideoCall] Đối phương đã kết thúc cuộc gọi:', data.type);
             handleEndCall(false);
           } else if (data.type === 'live_subtitle') {
-            console.log(`[VideoCall WS] [${role}] Nhận được live_subtitle từ ${data.senderRole}:`, {
-              original: data.originalText,
-              translated: data.translatedText,
-              needsTranslation: data.needsTranslation,
-              hasAudio: Boolean(data.audioBase64),
-            });
-            // Quy tắc 3: Chỉ hiển thị bảng dịch trên màn hình khi có nhu cầu phiên dịch thực sự
-            if (data.needsTranslation) {
-              setActiveSubtitle(data);
-              if (subtitleTimeoutRef.current) clearTimeout(subtitleTimeoutRef.current);
-              subtitleTimeoutRef.current = setTimeout(() => {
+            if (data.senderRole !== role) {
+              console.log(
+                `[VideoCall Flow] [${data.senderRole} -> ${role}] utteranceId=${data.utteranceId || 'unknown'} seq=${data.seq || 0} mode=${translateModeRef.current} step=SUBTITLE_RECEIVED src=${data.sourceLang || 'auto'} tgt=${data.targetLang || 'auto'} needsTrans=${data.needsTranslation}`
+              );
+              // Nếu câu này không cần dịch (sourceLang === targetLang), tiến ngay expectedPlaySeqRef để không chờ live_audio
+              if (!data.needsTranslation && typeof data.seq === 'number' && data.seq > 0) {
+                expectedPlaySeqRef.current = advanceExpectedSeqOnFailure(
+                  expectedPlaySeqRef.current,
+                  data.seq,
+                  failedSeqsRef.current
+                );
+              }
+
+              // Hiển thị phụ đề cho người nhận (kể cả khi giữ nguyên câu gốc cùng ngôn ngữ khi đang ở chế độ dịch)
+              if (data.needsTranslation || translateModeRef.current !== 'bypass') {
+                setActiveSubtitle(data);
+                if (subtitleTimeoutRef.current) clearTimeout(subtitleTimeoutRef.current);
+                subtitleTimeoutRef.current = setTimeout(() => {
+                  setActiveSubtitle(null);
+                }, 6000);
+              } else {
                 setActiveSubtitle(null);
-              }, 6000);
-            } else {
-              setActiveSubtitle(null);
-            }
+              }
 
-            const transcriptItem = {
-              speaker: data.senderRole === 'staff' ? 'Staff' : 'Guest',
-              speaker_name: data.senderRole === 'staff' ? calleeName : callerName,
-              raw_transcript: data.originalText,
-              translated_text: data.translatedText,
-              needs_translation: data.needsTranslation,
-              source_lang: data.sourceLang,
-              target_lang: data.targetLang,
-              timestamp: new Date().toISOString(),
-            };
-            setCallTranscripts((prev) => [...prev, transcriptItem]);
-            callTranscriptsRef.current.push(transcriptItem);
+              const transcriptItem = {
+                speaker: data.senderRole === 'staff' ? 'Staff' : 'Guest',
+                speaker_name: data.senderRole === 'staff' ? calleeName : callerName,
+                raw_transcript: data.originalText,
+                translated_text: data.translatedText,
+                needs_translation: data.needsTranslation,
+                source_lang: data.sourceLang,
+                target_lang: data.targetLang,
+                timestamp: new Date().toISOString(),
+              };
+              setCallTranscripts((prev) => [...prev, transcriptItem]);
+              callTranscriptsRef.current.push(transcriptItem);
 
-            // Quy tắc 2: Tự động phát âm thanh thông dịch AI (Jenny) cho Robot Kiosk khi Staff nói tiếng Việt & có bản dịch tiếng Anh
-            if (role === 'guest' && data.senderRole === 'staff' && data.needsTranslation && data.audioBase64 && playInterpreterAudioRef.current) {
-              console.log(`[VideoCall WS] [guest] Kích hoạt phát âm thanh thông dịch AI (Jenny) cho Robot Kiosk!`);
-              playInterpreterAudioRef.current(data.audioBase64, data.translatedText);
+              if (data.needsTranslation && data.audioBase64 && playInterpreterAudioRef.current) {
+                playInterpreterAudioRef.current(data.audioBase64, data.translatedText, {
+                  utteranceId: data.utteranceId,
+                  seq: data.seq,
+                  timestamp: data.timestamp,
+                });
+              }
             }
           } else if (data.type === 'live_audio') {
-            if (role === 'guest' && data.senderRole === 'staff' && data.audioBase64 && playInterpreterAudioRef.current) {
-              console.log(`[VideoCall WS] [guest] Nhận live_audio tách biệt và kích hoạt phát TTS (Jenny)!`);
-              playInterpreterAudioRef.current(data.audioBase64, data.translatedText);
+            if (data.senderRole !== role && data.audioBase64 && playInterpreterAudioRef.current) {
+              playInterpreterAudioRef.current(data.audioBase64, data.translatedText, {
+                utteranceId: data.utteranceId,
+                seq: data.seq,
+                timestamp: data.timestamp,
+              });
             }
-          } else if (data.type === 'translate_mode_change') {
+          } else if (data.type === 'live_audio_status') {
+            if (data.senderRole !== role && data.status === 'failed') {
+              const errCode = data.errorCode || TTS_ERROR_CODES.TTS_AUDIO_EMPTY;
+              console.warn(
+                `[VideoCall Flow] [${data.senderRole} -> ${role}] utteranceId=${data.utteranceId || 'unknown'} seq=${data.seq || 0} step=LIVE_AUDIO_FAILED code=${errCode} detail="${data.error || ''}"`
+              );
+              // Bỏ qua seq lỗi ngay lập tức để không làm kẹt các câu kế tiếp trong hàng đợi 1.2s
+              expectedPlaySeqRef.current = advanceExpectedSeqOnFailure(
+                expectedPlaySeqRef.current,
+                data.seq,
+                failedSeqsRef.current
+              );
+              if (outOfOrderWaitTimerRef.current) {
+                clearTimeout(outOfOrderWaitTimerRef.current);
+                outOfOrderWaitTimerRef.current = null;
+              }
+              processAudioQueue();
+
+              setTtsStatus({
+                utteranceId: data.utteranceId,
+                status: 'failed',
+                code: errCode,
+                message: `Lỗi âm thanh (${errCode})`,
+              });
+              setTimeout(() => setTtsStatus(null), 3500);
+            }
+          } else if (data.type === 'translate_mode_change' || data.type === 'translate_mode_sync') {
             if (data.mode) {
               setTranslateMode(data.mode);
               translateModeRef.current = data.mode;
             }
-            if (data.guestLang) {
-              setActiveGuestLanguage(data.guestLang);
-              activeGuestLanguageRef.current = data.guestLang;
+            if (data.manualLocked !== undefined) {
+              isManualLockedRef.current = Boolean(data.manualLocked);
+            }
+            if (data.mode === 'bypass') {
+              audioQueueRef.current = [];
+              if (activeAudioSourceRef.current) {
+                try { activeAudioSourceRef.current.stop(); } catch (e) {}
+                activeAudioSourceRef.current = null;
+              }
+              if (persistentAudioRef.current) {
+                try { persistentAudioRef.current.pause(); } catch (e) {}
+              }
+              if (remoteVideoRef.current) {
+                remoteVideoRef.current.volume = 1.0;
+              }
+              setIsAiSpeaking(false);
+              isAiSpeakingRef.current = false;
+              isPlayingAudioRef.current = false;
+              ttsActiveUntilRef.current = 0;
             }
           }
         } catch (msgErr) {
@@ -791,7 +980,7 @@ export const MessengerVideoCallModal = ({
       console.error('[VideoCall] Setup error:', err);
       setErrorMessage(err.message || 'Không thể thiết lập cuộc gọi');
     }
-  }, [sessionId, role, callerName, calleeName]);
+  }, [sessionId, role, callerName, calleeName, primeAudioContext, processAudioQueue]);
 
   // Khởi động khi modal mở
   useEffect(() => {
@@ -814,7 +1003,7 @@ export const MessengerVideoCallModal = ({
     };
   }, [isOpen, setupWebRTC]);
 
-  // Độc lập tính thời lượng cuộc gọi khi kết nối thành công (cho cả Kiosk Robot và Staff iPhone)
+  // Độc lập tính thời lượng cuộc gọi khi kết nối thành công
   useEffect(() => {
     let callTimer = null;
     if (callStatus === 'connected') {
@@ -830,6 +1019,33 @@ export const MessengerVideoCallModal = ({
     };
   }, [callStatus]);
 
+  // Dừng riêng adapter thu âm STT từ localStreamRef (KHÔNG làm dừng track WebRTC gốc)
+  const stopCallAudioSttAdapter = useCallback(() => {
+    if (pendingWebSpeechFallbackTimerRef.current) {
+      clearTimeout(pendingWebSpeechFallbackTimerRef.current);
+      pendingWebSpeechFallbackTimerRef.current = null;
+    }
+    if (audioSttAdapterRef.current) {
+      const { processor, source, ctx } = audioSttAdapterRef.current;
+      audioSttAdapterRef.current.stopped = true;
+      try {
+        if (processor) {
+          processor.onaudioprocess = null;
+          processor.disconnect();
+        }
+      } catch (e) {}
+      try {
+        if (source) source.disconnect();
+      } catch (e) {}
+      try {
+        if (ctx && ctx.state !== 'closed') {
+          ctx.close().catch(() => {});
+        }
+      } catch (e) {}
+      audioSttAdapterRef.current = null;
+    }
+  }, []);
+
   // Dọn dẹp tài nguyên
   const cleanUpResources = () => {
     if (checkPeerIntervalRef.current) {
@@ -842,6 +1058,13 @@ export const MessengerVideoCallModal = ({
       clearTimeout(sttSilenceTimerRef.current);
       sttSilenceTimerRef.current = null;
     }
+
+    if (playbackWatchdogRef.current) {
+      clearTimeout(playbackWatchdogRef.current);
+      playbackWatchdogRef.current = null;
+    }
+
+    stopCallAudioSttAdapter();
 
     if (speechRecognitionRef.current) {
       try {
@@ -900,55 +1123,239 @@ export const MessengerVideoCallModal = ({
     if (remoteVideoRef.current) {
       remoteVideoRef.current.volume = 1.0;
     }
+    callEpochRef.current += 1;
+    if (outOfOrderWaitTimerRef.current) {
+      clearTimeout(outOfOrderWaitTimerRef.current);
+      outOfOrderWaitTimerRef.current = null;
+    }
+    staffTtsSeqRef.current = 0;
+    guestTtsSeqRef.current = 0;
+    expectedPlaySeqRef.current = 1;
+    failedSeqsRef.current.clear();
+    audioQueueRef.current = [];
+    playedUtteranceIdsRef.current.clear();
+    isPlayingAudioRef.current = false;
+    isAiSpeakingRef.current = false;
+    ttsActiveUntilRef.current = 0;
+    lastPlayedTtsTextRef.current = '';
+    pendingTranscriptRef.current = '';
     setIsAiSpeaking(false);
+    setTtsStatus(null);
+    setIsAudioBlocked(false);
   };
 
-  // Chốt câu nói hoàn chỉnh và gửi sang luồng dịch
-  const commitSpokenText = useCallback((text) => {
-    if (!text || !text.trim()) return;
-    const cleanText = text.trim();
+  // Chốt câu nói hoàn chỉnh và gửi sang luồng dịch (mọi nhánh bỏ qua đều ghi log reason rõ ràng)
+  const commitSpokenText = useCallback((text, meta = {}) => {
+    const sttEngine = meta.engine || 'web_speech';
+    const detectedLangHint = meta.detectedLang || null;
     const now = Date.now();
 
-    // 1. Chống lặp âm thanh phản xạ từ loa AI (Acoustic Echo Loop Prevention):
-    // Nếu loa đang phát giọng đọc hoặc vừa dứt lời trong vòng 850ms -> Bỏ qua ngay!
-    if (isAiSpeakingRef.current || now < ttsActiveUntilRef.current) {
-      console.log(`[VideoCall STT] [${role}] Bỏ qua âm phản xạ từ loa AI (Echo loop prevention): "${cleanText}"`);
-      return;
+    const evalRes = evaluateSpokenTextCommit({
+      text,
+      isMicMuted: isMicMutedRef.current,
+      callStatus: callStatusRef.current,
+      isAiSpeaking: isAiSpeakingRef.current,
+      now,
+      ttsActiveUntil: ttsActiveUntilRef.current,
+      lastPlayedTtsText: lastPlayedTtsTextRef.current,
+      lastProcessedText: lastProcessedTextRef.current,
+      lastProcessedTime: lastProcessedTimeRef.current,
+      duplicateWindowMs: 2200,
+    });
+
+    if (!evalRes.allowed) {
+      console.log(
+        `[VideoCall Flow] [${role}] step=STT_SKIPPED reason=${evalRes.reason} engine=${sttEngine} len=${evalRes.cleanText.length}`
+      );
+      return false;
     }
 
-    // 2. Chống lặp câu trùng khớp với bản dịch AI vừa phát
-    if (lastPlayedTtsTextRef.current && cleanText.toLowerCase() === lastPlayedTtsTextRef.current.toLowerCase()) {
-      console.log(`[VideoCall STT] [${role}] Bỏ qua câu trùng khớp bản dịch AI vừa phát: "${cleanText}"`);
-      return;
+    if (pendingWebSpeechFallbackTimerRef.current) {
+      clearTimeout(pendingWebSpeechFallbackTimerRef.current);
+      pendingWebSpeechFallbackTimerRef.current = null;
     }
 
-    // 3. Chống lặp câu nói của chính mình trong vòng 2.5 giây
-    if (
-      cleanText.toLowerCase() === lastProcessedTextRef.current.toLowerCase() &&
-      now - lastProcessedTimeRef.current < 2500
-    ) {
-      console.log(`[VideoCall STT] [${role}] Bỏ qua câu lặp lại: "${cleanText}"`);
-      return;
-    }
-
+    const cleanText = evalRes.cleanText;
     lastProcessedTextRef.current = cleanText;
     lastProcessedTimeRef.current = now;
     pendingTranscriptRef.current = '';
     setInterimText('');
 
-    console.log(`[VideoCall STT] [${role}] ===> CHỐT CÂU NÓI ĐỂ PHIÊN DỊCH: "${cleanText}"`);
+    console.log(
+      `[VideoCall Flow] [${role}] step=COMMITTED engine=${sttEngine} detectedLang=${detectedLangHint || 'auto'} len=${cleanText.length}`
+    );
     if (handleProcessSpokenTextRef.current) {
-      handleProcessSpokenTextRef.current(cleanText);
+      handleProcessSpokenTextRef.current(cleanText, {
+        detectedLang: detectedLangHint,
+        sttEngine,
+      });
     }
+    return true;
   }, [role]);
 
-  // Khởi tạo nhận diện giọng nói Web Speech API (Client-side Streaming có Silence Debounce Timer)
+  // Khởi tạo Call Audio Stream STT Adapter:
+  // Tách các câu nói từ localStreamRef.current (16kHz Mono WAV) khi dừng lời (VAD silence)
+  // và gửi tới Backend Bilingual STT (/api/v1/ai/stt/transcribe) để nhận diện chính xác cả EN & VI từ âm thanh,
+  // đồng thời đảm bảo Staff/Robot luôn nhận diện được tiếng nói ngay cả khi Web Speech API bị trình duyệt abort.
+  const startCallAudioSttAdapter = useCallback(() => {
+    stopCallAudioSttAdapter();
+    if (isEndingRef.current || isMicMutedRef.current || callStatusRef.current !== 'connected') {
+      return;
+    }
+
+    const stream = localStreamRef.current;
+    if (!stream || typeof stream.getAudioTracks !== 'function') return;
+    const audioTracks = stream.getAudioTracks().filter((t) => t.readyState === 'live');
+    if (audioTracks.length === 0) return;
+
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return;
+
+    try {
+      const ctx = new AudioCtx({ sampleRate: 16000 });
+      if (typeof ctx.createMediaStreamSource !== 'function' || typeof ctx.createScriptProcessor !== 'function') {
+        if (ctx.close) ctx.close().catch(() => {});
+        return;
+      }
+
+      // Tạo MediaStream chỉ gồm audio track (không ảnh hưởng tới track WebRTC gốc)
+      const audioOnlyStream = new MediaStream(audioTracks);
+      const source = ctx.createMediaStreamSource(audioOnlyStream);
+      const processor = ctx.createScriptProcessor(4096, 1, 1);
+
+      const state = {
+        ctx,
+        source,
+        processor,
+        stopped: false,
+        isSpeaking: false,
+        speechChunks: [],
+        preRollChunk: null,
+        silenceFrames: 0,
+        speechFrames: 0,
+        inflight: false,
+      };
+      audioSttAdapterRef.current = state;
+
+      const SPEECH_RMS_THRESHOLD = 0.013;
+      const SILENCE_RMS_THRESHOLD = 0.009;
+      // 1 frame = 4096 / 16000 = ~256ms. 3 frames silence = ~768ms; 28 frames max = ~7.1s
+      const SILENCE_FRAMES_TO_FLUSH = 3;
+      const MIN_SPEECH_FRAMES = 2;
+      const MAX_SPEECH_FRAMES = 28;
+
+      const flushAudioSegment = async (chunksToFlush) => {
+        if (!chunksToFlush || chunksToFlush.length < MIN_SPEECH_FRAMES || state.stopped) return;
+        const wavBlob = encodeWavBlobFromFloat32(chunksToFlush, ctx.sampleRate || 16000);
+        if (!wavBlob || wavBlob.size < 2500) return;
+
+        const curInputMode = translateModeRef.current === 'bypass' ? 'vi' : inputLangModeRef.current;
+        const preferredLang = role === 'staff' ? 'vi' : 'en';
+
+        state.inflight = true;
+        try {
+          const sttRes = await transcribeCallAudio(wavBlob, {
+            language: curInputMode,
+            preferredLang,
+          });
+          if (state.stopped || isEndingRef.current || isMicMutedRef.current) return;
+          if (sttRes?.success && sttRes.text) {
+            console.log(
+              `[VideoCall Flow] [${role}] step=STT_RESULT engine=${sttRes.provider || 'audio_stt'} detectedLang=${sttRes.detected_language} conf=${sttRes.confidence} len=${sttRes.text.length}`
+            );
+            commitSpokenText(sttRes.text, {
+              engine: sttRes.provider || 'audio_stt',
+              detectedLang: sttRes.detected_language,
+            });
+          }
+        } catch (err) {
+          console.warn(`[VideoCall STT] [${role}] Audio STT adapter error:`, err?.message || err);
+        } finally {
+          state.inflight = false;
+        }
+      };
+
+      processor.onaudioprocess = (event) => {
+        if (state.stopped || isEndingRef.current || isMicMutedRef.current || callStatusRef.current !== 'connected') {
+          state.isSpeaking = false;
+          state.speechChunks = [];
+          state.speechFrames = 0;
+          state.silenceFrames = 0;
+          return;
+        }
+
+        // Không thu âm khi loa AI đang phát để tránh thu tiếng vọng
+        if (isAiSpeakingRef.current || Date.now() < ttsActiveUntilRef.current) {
+          state.isSpeaking = false;
+          state.speechChunks = [];
+          state.speechFrames = 0;
+          state.silenceFrames = 0;
+          return;
+        }
+
+        const inputBuffer = event.inputBuffer.getChannelData(0);
+        const frameCopy = new Float32Array(inputBuffer.length);
+        frameCopy.set(inputBuffer);
+        const rms = calculateFrameRms(frameCopy);
+
+        if (rms >= SPEECH_RMS_THRESHOLD) {
+          lastAudioVadSpeechAtRef.current = Date.now();
+          if (!state.isSpeaking) {
+            state.isSpeaking = true;
+            state.speechChunks = state.preRollChunk ? [state.preRollChunk] : [];
+            state.speechFrames = 0;
+            state.silenceFrames = 0;
+          }
+          state.speechChunks.push(frameCopy);
+          state.speechFrames += 1;
+          state.silenceFrames = 0;
+
+          if (state.speechFrames >= MAX_SPEECH_FRAMES) {
+            const batch = state.speechChunks;
+            state.isSpeaking = false;
+            state.speechChunks = [];
+            state.speechFrames = 0;
+            state.silenceFrames = 0;
+            flushAudioSegment(batch);
+          }
+        } else if (state.isSpeaking) {
+          state.speechChunks.push(frameCopy);
+          if (rms <= SILENCE_RMS_THRESHOLD) {
+            state.silenceFrames += 1;
+          } else {
+            state.silenceFrames = 0;
+          }
+
+          if (state.silenceFrames >= SILENCE_FRAMES_TO_FLUSH) {
+            const batch = state.speechChunks;
+            const totalSpeechFrames = state.speechFrames;
+            state.isSpeaking = false;
+            state.speechChunks = [];
+            state.speechFrames = 0;
+            state.silenceFrames = 0;
+            if (totalSpeechFrames >= MIN_SPEECH_FRAMES) {
+              flushAudioSegment(batch);
+            }
+          }
+        } else {
+          state.preRollChunk = frameCopy;
+        }
+      };
+
+      source.connect(processor);
+      processor.connect(ctx.destination);
+      console.log(`[VideoCall Flow] [${role}] step=STT_STARTED engine=audio_stream_adapter inputMode=${inputLangModeRef.current}`);
+    } catch (adapterErr) {
+      console.warn(`[VideoCall STT] [${role}] Cannot initialize Audio Stream STT Adapter:`, adapterErr);
+    }
+  }, [role, commitSpokenText, stopCallAudioSttAdapter]);
+
+  // Khởi tạo nhận diện giọng nói Web Speech API (Streaming phụ đề tạm thời + kết hợp Audio Stream Adapter)
   const startSpeechRecognition = useCallback(() => {
     if (isEndingRef.current || isMicMutedRef.current) return;
     const SpeechRecognitionClass = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognitionClass) {
-      console.warn('[VideoCall STT] Web Speech API không được hỗ trợ trên trình duyệt này');
-      setSttStatusMessage('Trình duyệt hiện tại không hỗ trợ nhận diện giọng nói tự động. Bạn vẫn nghe nói và đàm thoại video bình thường.');
+      console.log(`[VideoCall STT] [${role}] Web Speech API unavailable; relying on Audio Stream Bilingual STT Adapter.`);
       return;
     }
 
@@ -957,7 +1364,6 @@ export const MessengerVideoCallModal = ({
       sttSilenceTimerRef.current = null;
     }
 
-    // Dừng sạch sẽ instance cũ để tránh InvalidStateError race-condition
     if (speechRecognitionRef.current) {
       try {
         speechRecognitionRef.current._isManualStop = true;
@@ -972,31 +1378,58 @@ export const MessengerVideoCallModal = ({
       recognition.interimResults = true;
       recognition.maxAlternatives = 1;
 
-      // Xác định ngôn ngữ lắng nghe micro:
-      // - Nhân viên (role === 'staff'): Luôn nói tiếng Việt ('vi-VN')
-      // - Khách tại Robot Kiosk (role === 'guest'):
-      //   + Nếu translateMode === 'bypass' -> Khách nói tiếng Việt ('vi-VN')
-      //   + Nếu activeGuestLanguage === 'English' -> Lắng nghe tiếng Anh ('en-US')
-      //   + Nếu activeGuestLanguage === 'Tiếng Việt' -> Lắng nghe tiếng Việt ('vi-VN')
-      const isGuestEnglish = (activeGuestLanguage === 'English') && (translateMode !== 'bypass');
-      const listenLang = role === 'staff'
-        ? 'vi-VN'
-        : (isGuestEnglish ? 'en-US' : 'vi-VN');
+      // Xác định ngôn ngữ cho Web Speech API:
+      // - Nếu người dùng khóa inputLangMode === 'vi' hoặc translateMode === 'bypass' -> 'vi-VN'
+      // - Nếu khóa inputLangMode === 'en' -> 'en-US'
+      // - Nếu inputLangMode === 'auto' -> mặc định theo vai trò ('vi-VN' cho staff, 'en-US' cho guest),
+      //   trong khi Audio Stream Adapter song ngữ sẽ tự động phân loại cả EN & VI từ âm thanh thực tế.
+      let listenLang = 'en-US';
+      if (translateMode === 'bypass' || inputLangMode === 'vi') {
+        listenLang = 'vi-VN';
+      } else if (inputLangMode === 'en') {
+        listenLang = 'en-US';
+      } else {
+        listenLang = role === 'staff' ? 'vi-VN' : 'en-US';
+      }
       recognition.lang = listenLang;
 
-      console.log(`[VideoCall STT] [${role}] Khởi tạo SpeechRecognition: lang=[${listenLang}], guestLang=[${activeGuestLanguage}], mode=[${translateMode}]`);
-
       recognition.onstart = () => {
-        console.log(`[VideoCall STT] [${role}] Micro STT đang hoạt động và lắng nghe trực tiếp bằng [${listenLang}]`);
+        console.log(
+          `[VideoCall Flow] [${role}] step=STT_STARTED engine=web_speech lang=${listenLang} inputMode=${inputLangMode} mode=${translateMode}`
+        );
         setSttStatusMessage('');
       };
 
-      recognition.onresult = (event) => {
-        // Nếu loa AI đang nói -> Ngăn chặn xử lý input
-        if (isAiSpeakingRef.current || Date.now() < ttsActiveUntilRef.current) {
+      const dispatchWebSpeechTranscript = (transcriptText) => {
+        const clean = (transcriptText || '').trim();
+        if (!clean) return;
+        const fixedHint = listenLang.startsWith('vi') ? 'vi' : 'en';
+
+        // Nếu đang ở chế độ Đa ngữ Tự động ('auto') và bộ thu âm Audio Stream VAD vừa thu được giọng nói thực tế,
+        // ưu tiên chờ kết quả nhận diện song ngữ từ Audio Stream Adapter (tối đa 1250ms) để tránh nhận sai ngôn ngữ
+        // khi khách nói tiếng Việt xen giữa tiếng Anh. Nếu Audio Adapter không phản hồi thì tự động fallback sang kết quả này.
+        const audioVadRecentlyActive = Date.now() - lastAudioVadSpeechAtRef.current < 2400;
+        if (inputLangModeRef.current === 'auto' && translateModeRef.current !== 'bypass' && audioVadRecentlyActive) {
+          if (pendingWebSpeechFallbackTimerRef.current) {
+            clearTimeout(pendingWebSpeechFallbackTimerRef.current);
+          }
+          pendingWebSpeechFallbackTimerRef.current = setTimeout(() => {
+            pendingWebSpeechFallbackTimerRef.current = null;
+            commitSpokenText(clean, {
+              engine: 'web_speech_fallback',
+              detectedLang: 'auto',
+            });
+          }, 1250);
           return;
         }
 
+        commitSpokenText(clean, {
+          engine: 'web_speech',
+          detectedLang: inputLangModeRef.current === 'auto' ? 'auto' : fixedHint,
+        });
+      };
+
+      recognition.onresult = (event) => {
         let interim = '';
         let finalChunk = '';
 
@@ -1011,92 +1444,96 @@ export const MessengerVideoCallModal = ({
         }
 
         const candidate = (finalChunk || interim || '').trim();
-        if (candidate) {
-          pendingTranscriptRef.current = candidate;
-          setInterimText(candidate);
-          console.log(`[VideoCall STT] [${role}] Đang nghe: "${candidate}" (final: ${Boolean(finalChunk)})`);
+        if (!candidate) return;
+
+        // Kiểm tra nếu đang bị chặn bởi loa AI đang phát thì ghi log tường minh thay vì return im lặng
+        if (isAiSpeakingRef.current) {
+          console.log(`[VideoCall Flow] [${role}] step=STT_SKIPPED reason=ECHO_AI_SPEAKING engine=web_speech len=${candidate.length}`);
+          return;
         }
 
-        // 1. Nếu có final chunk từ Speech API -> Chốt câu ngay lập tức!
+        pendingTranscriptRef.current = candidate;
+        setInterimText(candidate);
+        console.log(
+          `[VideoCall Flow] [${role}] step=STT_RESULT engine=web_speech final=${Boolean(finalChunk)} len=${candidate.length}`
+        );
+
         if (finalChunk.trim()) {
           if (sttSilenceTimerRef.current) {
             clearTimeout(sttSilenceTimerRef.current);
             sttSilenceTimerRef.current = null;
           }
-          commitSpokenText(finalChunk.trim());
+          dispatchWebSpeechTranscript(finalChunk.trim());
           return;
         }
 
-        // 2. Nếu là interim kết quả tạm thời:
-        // Đặt silence debounce timer 850ms. Khi người nói dừng lại 850ms mà chưa emit isFinal,
-        // hệ thống tự động chốt câu interim này để dịch ngay lập tức (không để bị nuốt chữ)!
         if (sttSilenceTimerRef.current) {
           clearTimeout(sttSilenceTimerRef.current);
         }
         sttSilenceTimerRef.current = setTimeout(() => {
           sttSilenceTimerRef.current = null;
           if (pendingTranscriptRef.current && pendingTranscriptRef.current.trim().length > 1) {
-            console.log(`[VideoCall STT] [${role}] Người nói đã dừng lời (850ms silence) -> Tự động chốt câu interim!`);
-            commitSpokenText(pendingTranscriptRef.current);
+            dispatchWebSpeechTranscript(pendingTranscriptRef.current);
           }
         }, 850);
       };
 
       recognition.onerror = (err) => {
         if (err.error === 'not-allowed' || err.error === 'service-not-allowed') {
-          console.warn(`[VideoCall STT] [${role}] Quyền nhận diện giọng nói bị từ chối hoặc không được cấp:`, err.error);
           recognition._hasPermError = true;
-          setSttStatusMessage('Quyền nhận diện giọng nói chưa được cấp trên trình duyệt này. Cuộc gọi vẫn tiếp tục bình thường.');
+          console.warn(`[VideoCall Flow] [${role}] step=STT_ERROR reason=${err.error} engine=web_speech`);
         } else if (err.error !== 'no-speech' && err.error !== 'aborted') {
-          console.warn(`[VideoCall STT] [${role}] Cảnh báo STT:`, err.error);
+          console.warn(`[VideoCall Flow] [${role}] step=STT_ERROR reason=${err.error} engine=web_speech`);
         }
       };
 
       recognition.onend = () => {
         if (recognition._isManualStop) {
-          console.log(`[VideoCall STT] [${role}] Đã dừng thủ công instance cũ.`);
           return;
         }
 
-        // Nếu còn câu đang nghe dở trong pendingTranscriptRef khi recognition ngắt:
         if (pendingTranscriptRef.current && pendingTranscriptRef.current.trim().length > 1) {
-          console.log(`[VideoCall STT] [${role}] Chốt câu dở trước khi restart STT: "${pendingTranscriptRef.current}"`);
-          commitSpokenText(pendingTranscriptRef.current);
+          dispatchWebSpeechTranscript(pendingTranscriptRef.current);
         }
 
-        if (!isEndingRef.current && !isMicMutedRef.current && callStatus === 'connected' && !recognition._hasPermError) {
-          // Trì hoãn nhẹ 150ms để giải phóng audio stream rồi mới khởi động lại
+        if (!isEndingRef.current && !isMicMutedRef.current && callStatusRef.current === 'connected' && !recognition._hasPermError) {
           setTimeout(() => {
-            if (!recognition._isManualStop && !isEndingRef.current && !isMicMutedRef.current && callStatus === 'connected' && !recognition._hasPermError) {
+            if (!recognition._isManualStop && !isEndingRef.current && !isMicMutedRef.current && callStatusRef.current === 'connected' && !recognition._hasPermError) {
               try {
                 recognition.start();
-                console.log(`[VideoCall STT] [${role}] Tự động kích hoạt lại vòng lặp lắng nghe`);
               } catch (e) {
-                console.warn(`[VideoCall STT] [${role}] Lỗi restart STT:`, e.message);
+                setTimeout(() => {
+                  if (!isEndingRef.current && !isMicMutedRef.current && callStatusRef.current === 'connected' && !recognition._hasPermError) {
+                    startSpeechRecognition();
+                  }
+                }, 600);
               }
             }
-          }, 150);
+          }, 200);
         }
       };
 
       recognition.start();
       speechRecognitionRef.current = recognition;
     } catch (e) {
-      console.warn(`[VideoCall STT] [${role}] Không thể khởi động STT:`, e);
-      setSttStatusMessage('Không thể kích hoạt bộ nhận diện giọng nói trên thiết bị này.');
+      console.warn(`[VideoCall STT] [${role}] Web Speech init fallback to Audio Stream STT:`, e);
     }
-  }, [role, activeGuestLanguage, translateMode, callStatus, commitSpokenText]);
+  }, [role, translateMode, inputLangMode, commitSpokenText]);
 
-  // Kích hoạt STT khi cuộc gọi đã kết nối thành công
+  // Kích hoạt cả Web Speech API và Audio Stream STT Adapter khi cuộc gọi đã kết nối thành công
   useEffect(() => {
     if (callStatus === 'connected' && !isMicMuted) {
+      startCallAudioSttAdapter();
       startSpeechRecognition();
+    } else {
+      stopCallAudioSttAdapter();
     }
     return () => {
       if (sttSilenceTimerRef.current) {
         clearTimeout(sttSilenceTimerRef.current);
         sttSilenceTimerRef.current = null;
       }
+      stopCallAudioSttAdapter();
       if (speechRecognitionRef.current) {
         try {
           speechRecognitionRef.current._isManualStop = true;
@@ -1105,24 +1542,26 @@ export const MessengerVideoCallModal = ({
         speechRecognitionRef.current = null;
       }
     };
-  }, [callStatus, isMicMuted, startSpeechRecognition]);
+  }, [callStatus, isMicMuted, startSpeechRecognition, startCallAudioSttAdapter, stopCallAudioSttAdapter]);
 
-  // Xử lý dịch và phát tán phụ đề
-  const handleProcessSpokenText = useCallback(async (spokenText) => {
+  // Xử lý dịch và phát tán phụ đề & âm thanh hai chiều (Staff ⇄ Robot)
+  // Tách biệt hoàn toàn Ngôn ngữ câu nói (sourceLang) và Ngôn ngữ đích của phía nhận (targetLang)
+  const handleProcessSpokenText = useCallback(async (spokenText, meta = {}) => {
     if (!spokenText || !spokenText.trim()) return;
 
     try {
       const curMode = translateModeRef.current;
-      const curGuestLang = activeGuestLanguageRef.current; // 'English' | 'Tiếng Việt'
-      console.log(`[VideoCall Translation] [${role}] Bắt đầu dịch: "${spokenText}" (mode: ${curMode}, guestLang: ${curGuestLang})`);
+      const cleanText = spokenText.trim();
+      const targetConfig = resolveTranslationTarget(role, curMode);
+      const { peerRole, targetLang, ttsLangCode, ttsVoice, isBypassMode } = targetConfig;
 
-      // 1. CƯỠNG BỨC THỦ CÔNG: Nếu người dùng bấm nút [ Thuần Việt ] để override test
-      if (curMode === 'bypass') {
+      // 1. CHẾ ĐỘ THUẦN VIỆT (BYPASS DO NGƯỜI DÙNG CHỌN): Không dịch, không phát TTS
+      if (isBypassMode) {
         const payload = {
           type: 'live_subtitle',
           senderRole: role,
-          originalText: spokenText,
-          translatedText: spokenText,
+          originalText: cleanText,
+          translatedText: cleanText,
           needsTranslation: false,
           sourceLang: 'vi',
           targetLang: 'vi',
@@ -1137,161 +1576,182 @@ export const MessengerVideoCallModal = ({
         return;
       }
 
-      // 2. KHÁCH Ở ROBOT KIOSK NÓI (role === 'guest'):
-      if (role === 'guest') {
-        // Gửi lên Backend với source_lang = 'auto' để AI tự động nhận diện tiếng Anh hay tiếng Việt
-        const res = await quickTranslateText({
-          text: spokenText,
-          sourceLang: 'auto',
-          targetLang: 'vi', // Concierge luôn nghe tiếng Việt
-          sessionId: sessionId,
-          senderRole: role,
-          withAudio: false, // Quy tắc 1: Nhân viên thấy bản dịch tiếng Việt, không cần phát loa AI đè tiếng khách
-        });
+      // 2. XÁC ĐỊNH NGÔN NGỮ NGUỒN CỦA CÂU NÓI (THEO TỪNG CÂU, KHÔNG KHÓA CỨNG THEO VAI TRÒ)
+      const hintLang = meta.detectedLang && meta.detectedLang !== 'auto'
+        ? meta.detectedLang
+        : (inputLangModeRef.current !== 'auto' ? inputLangModeRef.current : 'auto');
 
-        console.log(`[VideoCall Translation] [guest] Kết quả backend:`, {
-          original: spokenText,
-          translated: res.translated_text,
-          detected_lang: res.source_lang,
-          needs_translation: res.needs_translation,
-        });
+      const utteranceId = `utt_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      const seqRef = role === 'staff' ? staffTtsSeqRef : guestTtsSeqRef;
+      const currentSeq = ++seqRef.current;
 
-        // AI TỰ ĐỘNG CẬP NHẬT TRẠNG THÁI PHIÊN DỰA TRÊN NGÔN NGỮ CÂU NÓI:
-        if (res.source_lang === 'en') {
-          // Khách nói tiếng Anh -> Cập nhật phiên sang English
-          if (curGuestLang !== 'English') {
-            setActiveGuestLanguage('English');
-            activeGuestLanguageRef.current = 'English';
-            if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-              wsRef.current.send(JSON.stringify({
-                type: 'translate_mode_change',
-                mode: 'auto',
-                guestLang: 'English',
-              }));
-            }
-          }
-        } else if (res.source_lang === 'vi') {
-          // Khách nói tiếng Việt -> Cập nhật phiên sang Tiếng Việt
-          if (curGuestLang !== 'Tiếng Việt') {
-            setActiveGuestLanguage('Tiếng Việt');
-            activeGuestLanguageRef.current = 'Tiếng Việt';
-            if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-              wsRef.current.send(JSON.stringify({
-                type: 'translate_mode_change',
-                mode: 'auto',
-                guestLang: 'Tiếng Việt',
-              }));
-            }
-          }
-        }
-        // Nếu res.source_lang === 'neutral' (vd: ok, yeah, ah...) -> Không đổi ngôn ngữ phiên
+      console.log(
+        `[VideoCall Flow] [${role} -> ${peerRole}] utteranceId=${utteranceId} seq=${currentSeq} mode=${curMode} step=TRANSLATE_REQUEST srcHint=${hintLang} tgt=${targetLang} len=${cleanText.length}`
+      );
 
-        const payload = {
-          type: 'live_subtitle',
-          senderRole: role,
-          originalText: spokenText,
-          translatedText: res.translated_text || spokenText,
-          needsTranslation: Boolean(res.needs_translation),
-          sourceLang: res.source_lang || 'vi',
-          targetLang: 'vi',
-          audioBase64: null,
-          timestamp: Date.now(),
-        };
+      const res = await quickTranslateText({
+        text: cleanText,
+        sourceLang: hintLang,
+        targetLang,
+        sessionId,
+        senderRole: role,
+        withAudio: false,
+      });
 
-        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-          wsRef.current.send(JSON.stringify(payload));
-          console.log(`[VideoCall WS] [guest] Đã phát tán live_subtitle sang màn hình Nhân viên`);
-        }
-        displaySubtitleLocally(payload);
+      const resolvedSourceLang = res.source_lang || (hintLang !== 'auto' ? hintLang : (role === 'staff' ? 'vi' : 'en'));
+      const needsTranslation = Boolean(res.needs_translation) && resolvedSourceLang !== targetLang;
+      const finalTranslatedText = needsTranslation ? (res.translated_text || cleanText) : cleanText;
+
+      console.log(
+        `[VideoCall Flow] [${role} -> ${peerRole}] utteranceId=${utteranceId} seq=${currentSeq} mode=${curMode} step=TRANSLATED src=${resolvedSourceLang} tgt=${targetLang} needsTrans=${needsTranslation}`
+      );
+
+      const payload = {
+        type: 'live_subtitle',
+        senderRole: role,
+        utteranceId,
+        seq: currentSeq,
+        originalText: cleanText,
+        translatedText: finalTranslatedText,
+        needsTranslation,
+        sourceLang: resolvedSourceLang,
+        targetLang,
+        audioBase64: null,
+        timestamp: Date.now(),
+      };
+
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify(payload));
+        console.log(
+          `[VideoCall Flow] [${role} -> ${peerRole}] utteranceId=${utteranceId} seq=${currentSeq} step=SUBTITLE_SENT needsTrans=${needsTranslation}`
+        );
+      }
+      displaySubtitleLocally(payload);
+
+      // 3. Nếu câu nói đã cùng ngôn ngữ với đích nhận (vd: Khách nói tiếng Việt gửi cho Staff target='vi',
+      // hoặc Staff nói tiếng Anh gửi cho Khách target='en'):
+      // Giữ nguyên câu gốc, KHÔNG dịch vòng, KHÔNG gọi TTS thừa, và KHÔNG tự chuyển mode sang Thuần Việt!
+      if (!needsTranslation || !finalTranslatedText.trim()) {
         return;
       }
 
-      // 3. NHÂN VIÊN CONCIERGE NÓI (role === 'staff'):
-      if (role === 'staff') {
-        const isGuestSpeakingEnglish = (curGuestLang === 'English') && (curMode !== 'bypass');
+      // 4. Tổng hợp giọng đọc TTS cho bản dịch (có 1 lần retry nhanh nếu timeout/provider lỗi tạm thời)
+      const currentEpoch = callEpochRef.current;
+      setTtsStatus({ utteranceId, status: 'generating', message: 'Đang tạo âm thanh bản dịch...' });
 
-        if (isGuestSpeakingEnglish) {
-          // Quy tắc 2: Khách đang dùng tiếng Anh -> Dịch siêu tốc (< 100ms) không đợi TTS
-          const res = await quickTranslateText({
-            text: spokenText,
-            sourceLang: 'vi',
-            targetLang: 'en',
-            sessionId: sessionId,
-            senderRole: role,
-            withAudio: false,
-          });
+      console.log(
+        `[VideoCall Flow] [${role} -> ${peerRole}] utteranceId=${utteranceId} seq=${currentSeq} step=TTS_REQUEST lang=${ttsLangCode} voice=${ttsVoice} len=${finalTranslatedText.length}`
+      );
 
-          console.log(`[VideoCall Translation] [staff] Dịch sang English cho Robot:`, {
-            original: spokenText,
-            translated: res.translated_text,
-            needs_translation: res.needs_translation,
-          });
-
-          const payload = {
-            type: 'live_subtitle',
-            senderRole: role,
-            originalText: spokenText,
-            translatedText: res.translated_text || spokenText,
-            needsTranslation: Boolean(res.needs_translation),
-            sourceLang: 'vi',
-            targetLang: 'en',
-            audioBase64: null,
-            timestamp: Date.now(),
-          };
-
-          // Gửi phụ đề lập tức sang Robot Kiosk và hiển thị cục bộ ngay tức thì (< 100ms)
-          if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-            wsRef.current.send(JSON.stringify(payload));
-            console.log(`[VideoCall WS] [staff] Đã phát tán live_subtitle tức thời sang Robot Kiosk`);
-          }
-          displaySubtitleLocally(payload);
-
-          // Kích hoạt tổng hợp giọng đọc TTS (Jenny) bất đồng bộ trong nền, không làm chậm hiển thị phụ đề
-          if (res.needs_translation && res.translated_text) {
-            synthesizeSpeech(res.translated_text, { language: 'en-US', voice: 'en-US-JennyNeural' })
-              .then((audioData) => {
-                if (audioData?.audio_base64 && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-                  wsRef.current.send(JSON.stringify({
-                    type: 'live_audio',
-                    senderRole: role,
-                    audioBase64: audioData.audio_base64,
-                    translatedText: res.translated_text,
-                    timestamp: Date.now(),
-                  }));
-                  console.log(`[VideoCall WS] [staff] Đã phát tán live_audio sang Robot Kiosk (${audioData.audio_base64.length} bytes)`);
-                }
-              })
-              .catch((err) => {
-                console.warn('[VideoCall Audio] Background TTS synthesis failed:', err);
-              });
-          }
-          return;
-        } else {
-          // Quy tắc 3 & 4: Khách đang dùng tiếng Việt -> KHÔNG DỊCH sang tiếng Anh, KHÔNG PHÁT TTS!
-          // Giữ hội thoại tiếng Việt tự nhiên hoàn toàn.
-          console.log(`[VideoCall Translation] [staff] Khách đang nói tiếng Việt -> Giữ nguyên tiếng Việt tự nhiên, không dịch sang tiếng Anh.`);
-          const payload = {
-            type: 'live_subtitle',
-            senderRole: role,
-            originalText: spokenText,
-            translatedText: spokenText,
-            needsTranslation: false,
-            sourceLang: 'vi',
-            targetLang: 'vi',
-            audioBase64: null,
-            timestamp: Date.now(),
-          };
-
-          if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-            wsRef.current.send(JSON.stringify(payload));
-          }
-          displaySubtitleLocally(payload);
-          return;
+      const requestTtsWithRetry = async () => {
+        const firstAttempt = await synthesizeSpeech(finalTranslatedText, {
+          language: ttsLangCode,
+          voice: ttsVoice,
+          timeoutMs: 6500,
+        });
+        if (firstAttempt?.audio_base64) {
+          return firstAttempt;
         }
-      }
+        const retryableCodes = [TTS_ERROR_CODES.TTS_TIMEOUT, TTS_ERROR_CODES.TTS_PROVIDER_ERROR];
+        if (retryableCodes.includes(firstAttempt?.error_code)) {
+          console.log(
+            `[VideoCall Flow] [${role} -> ${peerRole}] utteranceId=${utteranceId} seq=${currentSeq} step=TTS_RETRY reason=${firstAttempt.error_code}`
+          );
+          return await synthesizeSpeech(finalTranslatedText, {
+            language: ttsLangCode,
+            voice: ttsVoice,
+            timeoutMs: 4500,
+          });
+        }
+        return firstAttempt;
+      };
+
+      requestTtsWithRetry()
+        .then((audioData) => {
+          if (
+            isEndingRef.current ||
+            callStatusRef.current !== 'connected' ||
+            translateModeRef.current === 'bypass' ||
+            currentEpoch !== callEpochRef.current
+          ) {
+            return;
+          }
+          if (audioData?.audio_base64 && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+            setTtsStatus(null);
+            console.log(
+              `[VideoCall Flow] [${role} -> ${peerRole}] utteranceId=${utteranceId} seq=${currentSeq} step=TTS_READY provider=${audioData.provider_used || 'edge'} bytes=${audioData.audio_base64.length}`
+            );
+            wsRef.current.send(JSON.stringify({
+              type: 'live_audio',
+              callId: sessionId,
+              utteranceId,
+              seq: currentSeq,
+              senderRole: role,
+              audioBase64: audioData.audio_base64,
+              translatedText: finalTranslatedText,
+              targetLang,
+              timestamp: Date.now(),
+            }));
+            console.log(
+              `[VideoCall Flow] [${role} -> ${peerRole}] utteranceId=${utteranceId} seq=${currentSeq} step=TTS_SENT bytes=${audioData.audio_base64.length}`
+            );
+          } else {
+            const errCode = audioData?.error_code || TTS_ERROR_CODES.TTS_AUDIO_EMPTY;
+            const errDetail = audioData?.error_detail || audioData?.error || 'TTS returned empty audio';
+            console.warn(
+              `[VideoCall Flow] [${role} -> ${peerRole}] utteranceId=${utteranceId} seq=${currentSeq} step=TTS_EMPTY code=${errCode} detail="${errDetail}"`
+            );
+            setTtsStatus({
+              utteranceId,
+              status: 'failed',
+              code: errCode,
+              message: `Không thể tạo âm thanh (${errCode})`,
+            });
+            setTimeout(() => setTtsStatus(null), 3500);
+            if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+              wsRef.current.send(JSON.stringify({
+                type: 'live_audio_status',
+                callId: sessionId,
+                utteranceId,
+                seq: currentSeq,
+                senderRole: role,
+                status: 'failed',
+                errorCode: errCode,
+                error: errDetail,
+                timestamp: Date.now(),
+              }));
+            }
+          }
+        })
+        .catch((err) => {
+          const errCode = TTS_ERROR_CODES.TTS_PROVIDER_ERROR;
+          const errDetail = err?.message || String(err);
+          console.warn(
+            `[VideoCall Flow] [${role} -> ${peerRole}] utteranceId=${utteranceId} seq=${currentSeq} step=TTS_EMPTY code=${errCode} detail="${errDetail}"`
+          );
+          setTtsStatus({
+            utteranceId,
+            status: 'failed',
+            code: errCode,
+            message: `Lỗi tạo âm thanh (${errCode})`,
+          });
+          setTimeout(() => setTtsStatus(null), 3500);
+          if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+            wsRef.current.send(JSON.stringify({
+              type: 'live_audio_status',
+              callId: sessionId,
+              utteranceId,
+              seq: currentSeq,
+              senderRole: role,
+              status: 'failed',
+              errorCode: errCode,
+              error: errDetail,
+              timestamp: Date.now(),
+            }));
+          }
+        });
     } catch (err) {
-      console.warn('[VideoCall] Subtitle process error:', err);
-      // Fail-safe: Lỗi dịch vụ dịch KHÔNG làm gián đoạn cuộc gọi WebRTC!
+      console.warn('[VideoCall Flow] Subtitle/Translation process error:', err);
       displaySubtitleLocally({
         type: 'live_subtitle',
         senderRole: role,
@@ -1310,40 +1770,78 @@ export const MessengerVideoCallModal = ({
     handleProcessSpokenTextRef.current = handleProcessSpokenText;
   }, [handleProcessSpokenText]);
 
-  // Giả lập câu nói của Khách (English hoặc Tiếng Việt) để kiểm tra âm thanh TTS & phụ đề ngay tại Kiosk
+  // Giả lập câu nói của Khách (English hoặc Tiếng Việt) để kiểm tra âm thanh TTS & phụ đề
   const handleSimulateGuestSpeech = async (text) => {
     if (!text || !text.trim() || isTestTranslating) return;
     try {
       setIsTestTranslating(true);
       setInterimText('');
-      await handleProcessSpokenText(text.trim());
+      const clean = text.trim();
+      const res = await quickTranslateText({
+        text: clean,
+        sourceLang: 'auto',
+        targetLang: 'vi',
+        sessionId: sessionId,
+        senderRole: 'guest',
+        withAudio: true,
+      });
+
+      const utteranceId = `sim_guest_${Date.now()}`;
+      const payload = {
+        type: 'live_subtitle',
+        senderRole: 'guest',
+        utteranceId,
+        seq: ++guestTtsSeqRef.current,
+        originalText: clean,
+        translatedText: res.translated_text || clean,
+        needsTranslation: Boolean(res.needs_translation),
+        sourceLang: res.source_lang || 'en',
+        targetLang: 'vi',
+        audioBase64: res.audio_base64 || null,
+        timestamp: Date.now(),
+      };
+
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify(payload));
+      }
+      displaySubtitleLocally(payload);
+
+      if (payload.needsTranslation && payload.audioBase64 && playInterpreterAudioRef.current) {
+        playInterpreterAudioRef.current(payload.audioBase64, payload.translatedText, { utteranceId });
+      }
+    } catch (err) {
+      console.warn('[VideoCall Flow] Simulate guest speech error:', err);
     } finally {
       setIsTestTranslating(false);
     }
   };
 
-  // Giả lập câu nói của Nhân viên (Tiếng Việt -> Dịch sang Tiếng Anh cho Khách) để kiểm tra giọng đọc Jenny tại Kiosk
+  // Giả lập câu nói của Nhân viên (Tiếng Việt -> Dịch sang Tiếng Anh cho Khách) để kiểm tra giọng đọc Jenny
   const handleSimulateStaffSpeech = async (text) => {
     if (!text || !text.trim() || isTestTranslating) return;
     try {
       setIsTestTranslating(true);
       setInterimText('');
+      const clean = text.trim();
       const res = await quickTranslateText({
-        text: text.trim(),
-        sourceLang: 'vi',
+        text: clean,
+        sourceLang: 'auto',
         targetLang: 'en',
         sessionId: sessionId,
         senderRole: 'staff',
         withAudio: true,
       });
 
+      const utteranceId = `sim_staff_${Date.now()}`;
       const payload = {
         type: 'live_subtitle',
         senderRole: 'staff',
-        originalText: text.trim(),
-        translatedText: res.translated_text || text.trim(),
+        utteranceId,
+        seq: ++staffTtsSeqRef.current,
+        originalText: clean,
+        translatedText: res.translated_text || clean,
         needsTranslation: Boolean(res.needs_translation),
-        sourceLang: 'vi',
+        sourceLang: res.source_lang || 'vi',
         targetLang: 'en',
         audioBase64: res.audio_base64 || null,
         timestamp: Date.now(),
@@ -1354,19 +1852,17 @@ export const MessengerVideoCallModal = ({
       }
       displaySubtitleLocally(payload);
 
-      // Phát âm thanh tiếng Anh (Jenny) trực tiếp ra loa Kiosk
       if (payload.needsTranslation && payload.audioBase64 && playInterpreterAudioRef.current) {
-        playInterpreterAudioRef.current(payload.audioBase64, payload.translatedText);
+        playInterpreterAudioRef.current(payload.audioBase64, payload.translatedText, { utteranceId });
       }
     } catch (err) {
-      console.warn('[VideoCall] Simulate staff speech error:', err);
+      console.warn('[VideoCall Flow] Simulate staff speech error:', err);
     } finally {
       setIsTestTranslating(false);
     }
   };
 
   const displaySubtitleLocally = (payload) => {
-    // 1. Luôn ghi lại nhật ký hội thoại đầy đủ
     const transcriptItem = {
       speaker: payload.senderRole === 'staff' ? 'Staff' : 'Guest',
       speaker_name: payload.senderRole === 'staff' ? calleeName : callerName,
@@ -1380,8 +1876,7 @@ export const MessengerVideoCallModal = ({
     setCallTranscripts((prev) => [...prev, transcriptItem]);
     callTranscriptsRef.current.push(transcriptItem);
 
-    // 2. Quy tắc 3 & 4: Khách nói tiếng Việt hoặc không cần dịch -> KHÔNG hiển thị bảng dịch trên màn hình
-    if (payload.needsTranslation) {
+    if (payload.needsTranslation || translateModeRef.current !== 'bypass') {
       setActiveSubtitle(payload);
       if (subtitleTimeoutRef.current) clearTimeout(subtitleTimeoutRef.current);
       subtitleTimeoutRef.current = setTimeout(() => {
@@ -1392,22 +1887,54 @@ export const MessengerVideoCallModal = ({
     }
   };
 
-  // Thay đổi chế độ dịch và thông báo cho peer đối diện
+  // Thay đổi chế độ dịch và đồng bộ cho peer đối diện
   const handleToggleTranslateMode = (newMode, newLang = null) => {
+    isManualLockedRef.current = true;
     setTranslateMode(newMode);
+    translateModeRef.current = newMode;
     const targetLang = newLang || (newMode === 'auto' ? 'English' : 'Tiếng Việt');
     setActiveGuestLanguage(targetLang);
+    activeGuestLanguageRef.current = targetLang;
     setShowTranslateSettings(false);
+
+    if (newMode === 'bypass') {
+      audioQueueRef.current = [];
+      if (activeAudioSourceRef.current) {
+        try { activeAudioSourceRef.current.stop(); } catch (e) {}
+        activeAudioSourceRef.current = null;
+      }
+      if (persistentAudioRef.current) {
+        try { persistentAudioRef.current.pause(); } catch (e) {}
+      }
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.volume = 1.0;
+      }
+      setIsAiSpeaking(false);
+      isAiSpeakingRef.current = false;
+      isPlayingAudioRef.current = false;
+      ttsActiveUntilRef.current = 0;
+    }
+
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({
         type: 'translate_mode_change',
         mode: newMode,
         guestLang: targetLang,
+        manualLocked: true,
       }));
     }
   };
 
-  // Kết thúc cuộc gọi (Đồng bộ ngắt kết nối lập tức cho cả 2 thiết bị)
+  // Chuyển đổi chế độ ngôn ngữ đầu vào của Micro: 'auto' (Đa ngữ EN/VI) -> 'en' -> 'vi'
+  const cycleInputLangMode = () => {
+    const order = ['auto', 'en', 'vi'];
+    const nextIdx = (order.indexOf(inputLangMode) + 1) % order.length;
+    const nextMode = order[nextIdx];
+    setInputLangMode(nextMode);
+    inputLangModeRef.current = nextMode;
+  };
+
+  // Kết thúc cuộc gọi
   const handleEndCall = (notifyPeer = true) => {
     if (isEndingRef.current) return;
     isEndingRef.current = true;
@@ -1420,22 +1947,19 @@ export const MessengerVideoCallModal = ({
 
     setCallStatus('ended');
 
-    // Dừng phát camera và micro ngay lập tức để tắt đèn thiết bị
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach((track) => track.stop());
     }
 
-    // Dừng ghi hình và upload trong nền ngầm
     stopRecordingAndUpload();
 
-    // Tự động đóng modal sau 1.2s hiển thị thông báo kết thúc
     setTimeout(() => {
       cleanUpResources();
       onClose();
     }, 1200);
   };
 
-  // Bật/tắt Loa (Âm thanh từ đối phương)
+  // Bật/tắt Loa
   const toggleSpeaker = () => {
     setIsSpeakerMuted((prev) => {
       const next = !prev;
@@ -1448,22 +1972,29 @@ export const MessengerVideoCallModal = ({
 
   // Bật/tắt Mic
   const toggleMic = () => {
+    const nextMuted = !isMicMuted;
     if (localStreamRef.current) {
-      const audioTrack = localStreamRef.current.getAudioTracks()[0];
-      if (audioTrack) {
-        audioTrack.enabled = !audioTrack.enabled;
-        const nextMuted = !audioTrack.enabled;
-        setIsMicMuted(nextMuted);
-        isMicMutedRef.current = nextMuted;
+      const audioTracks = localStreamRef.current.getAudioTracks();
+      audioTracks.forEach((track) => {
+        track.enabled = !nextMuted;
+      });
+    }
+    setIsMicMuted(nextMuted);
+    isMicMutedRef.current = nextMuted;
 
-        if (nextMuted) {
-          if (speechRecognitionRef.current) {
-            try { speechRecognitionRef.current.stop(); } catch (e) {}
-          }
-        } else {
-          startSpeechRecognition();
-        }
+    if (nextMuted) {
+      stopCallAudioSttAdapter();
+      if (speechRecognitionRef.current) {
+        try {
+          speechRecognitionRef.current._isManualStop = true;
+          speechRecognitionRef.current.abort();
+        } catch (e) {}
       }
+      setInterimText('');
+      pendingTranscriptRef.current = '';
+    } else if (callStatus === 'connected') {
+      startCallAudioSttAdapter();
+      startSpeechRecognition();
     }
   };
 
@@ -1490,7 +2021,6 @@ export const MessengerVideoCallModal = ({
     }
   };
 
-  // Format mm:ss
   const formatTime = (secs) => {
     const m = Math.floor(secs / 60);
     const s = secs % 60;
@@ -1498,6 +2028,10 @@ export const MessengerVideoCallModal = ({
   };
 
   if (!isOpen) return null;
+
+  const micLangBadgeLabel = translateMode === 'bypass'
+    ? 'VI'
+    : (inputLangMode === 'auto' ? 'AUTO EN/VI' : inputLangMode.toUpperCase());
 
   return (
     <div
@@ -1509,7 +2043,7 @@ export const MessengerVideoCallModal = ({
       {/* Thẻ audio cố định để giải phóng autoplay trên iOS Safari / Chrome */}
       <audio ref={persistentAudioRef} playsInline autoPlay={false} style={{ display: 'none' }} />
 
-      {/* Video Call Modal Window: Toàn màn hình trên mobile & landscape, cửa sổ nổi sang trọng trên desktop (lg) */}
+      {/* Video Call Modal Window */}
       <div className="relative w-full h-full lg:h-[620px] lg:max-w-4xl bg-[#1E1E1E] rounded-none lg:rounded-2xl overflow-hidden shadow-2xl border-0 lg:border lg:border-stone-700/80 flex flex-col">
         {/* TOP BAR */}
         <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-3 sm:px-4 py-2 sm:py-2.5 lg:p-4 pt-[max(0.75rem,env(safe-area-inset-top))] bg-gradient-to-b from-stone-900/95 via-stone-900/60 to-transparent robot-safe-x">
@@ -1520,20 +2054,19 @@ export const MessengerVideoCallModal = ({
           </div>
 
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-            {/* DIRECT 1-CLICK MODE TOGGLES FOR EASY TESTING */}
             {callStatus === 'connected' && (
               <div className="flex items-center gap-1 sm:gap-1.5">
                 <div className="flex items-center bg-stone-900/90 p-0.5 rounded-lg border border-stone-700/80 shadow-inner">
                   {/* 1. NÚT THÔNG DỊCH AI (EN ⇄ VI) */}
                   <button
                     type="button"
-                    onClick={() => handleToggleTranslateMode('auto', 'English')}
+                    onClick={() => handleToggleTranslateMode('auto')}
                     className={`flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-md text-[10px] sm:text-[11px] font-semibold transition-all cursor-pointer ${
-                      translateMode === 'auto' && activeGuestLanguage === 'English'
+                      translateMode === 'auto'
                         ? 'bg-amber-500/30 text-amber-300 border border-amber-500/60 shadow-sm'
                         : 'text-stone-400 hover:text-stone-200 hover:bg-stone-800'
                     }`}
-                    title="Bật chế độ Thông dịch AI: Khách nói tiếng Anh ➔ Dịch tiếng Việt; Nhân viên nói tiếng Việt ➔ Dịch tiếng Anh"
+                    title="Bật chế độ Thông dịch AI: Khách nói tiếng Anh ➔ Dịch tiếng Việt (phát âm Hoài My); Nhân viên nói tiếng Việt ➔ Dịch tiếng Anh (phát âm Jenny); Tự động giữ nguyên nếu cùng ngôn ngữ"
                   >
                     <Languages className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-400" />
                     <span>EN ⇄ VI</span>
@@ -1542,9 +2075,9 @@ export const MessengerVideoCallModal = ({
                   {/* 2. NÚT THUẦN VIỆT (KHÔNG DỊCH) */}
                   <button
                     type="button"
-                    onClick={() => handleToggleTranslateMode('bypass', 'Tiếng Việt')}
+                    onClick={() => handleToggleTranslateMode('bypass')}
                     className={`flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-md text-[10px] sm:text-[11px] font-semibold transition-all cursor-pointer ${
-                      translateMode === 'bypass' || activeGuestLanguage === 'Tiếng Việt'
+                      translateMode === 'bypass'
                         ? 'bg-emerald-500/25 text-emerald-300 border border-emerald-500/60 shadow-sm'
                         : 'text-stone-400 hover:text-stone-200 hover:bg-stone-800'
                     }`}
@@ -1553,7 +2086,19 @@ export const MessengerVideoCallModal = ({
                     <span>Thuần Việt</span>
                   </button>
 
-                  {/* 3. NÚT TEST NHANH GIỌNG ĐỌC AI & PHỤ ĐỀ (Ẩn trên mobile nhỏ để tránh tràn) */}
+                  {/* 3. NÚT CHỌN NGÔN NGỮ ĐẦU VÀO MICRO (AUTO EN/VI | EN | VI) */}
+                  {translateMode === 'auto' && (
+                    <button
+                      type="button"
+                      onClick={cycleInputLangMode}
+                      className="hidden sm:flex items-center gap-1 px-2 py-1 rounded-md text-[10px] sm:text-[11px] font-semibold text-sky-300 hover:bg-stone-800 transition-all cursor-pointer"
+                      title="Chuyển chế độ nhận diện ngôn ngữ đầu vào của Micro: Đa ngữ tự động (AUTO EN/VI) / Cố định EN / Cố định VI"
+                    >
+                      <span>Nghe: {inputLangMode === 'auto' ? 'Đa ngữ' : inputLangMode.toUpperCase()}</span>
+                    </button>
+                  )}
+
+                  {/* 4. NÚT TEST NHANH GIỌNG ĐỌC AI & PHỤ ĐỀ */}
                   <button
                     type="button"
                     onClick={() => setShowTestPanel(!showTestPanel)}
@@ -1575,21 +2120,57 @@ export const MessengerVideoCallModal = ({
                     <span className="hidden sm:inline">AI Đang nói</span>
                   </span>
                 )}
+
+                {ttsStatus?.status === 'generating' && (
+                  <span className="flex items-center gap-1 text-[10px] text-amber-300 bg-amber-950/80 px-1.5 sm:px-2 py-1 rounded-md border border-amber-500/50 animate-pulse font-medium">
+                    <Loader2 className="w-3 h-3 animate-spin text-amber-400" />
+                    <span className="hidden sm:inline">Đang tạo giọng...</span>
+                  </span>
+                )}
+
+                {ttsStatus?.status === 'failed' && (
+                  <span
+                    className="flex items-center gap-1 text-[10px] text-rose-300 bg-rose-950/80 px-1.5 sm:px-2 py-1 rounded-md border border-rose-500/50 font-medium"
+                    title={ttsStatus.message}
+                  >
+                    <AlertCircle className="w-3 h-3 text-rose-400" />
+                    <span className="hidden sm:inline">{ttsStatus.code || 'Lỗi TTS'}</span>
+                  </span>
+                )}
               </div>
             )}
 
-            {/* LIVE STT LISTENING BADGE */}
-            {callStatus === 'connected' && !isMicMuted && (
-              <div
-                className="flex items-center gap-1 px-1.5 py-0.5 sm:px-2.5 sm:py-1 rounded-md text-[10px] sm:text-xs font-mono font-medium bg-stone-800 border border-stone-700 text-stone-300"
-                title={`Micro đang lắng nghe: ${role === 'staff' ? 'vi-VN' : (activeGuestLanguage === 'English' ? 'en-US' : 'vi-VN')}`}
+            {/* LIVE STT LISTENING BADGE / 1-CLICK TOGGLE MIC */}
+            {callStatus === 'connected' && (
+              <button
+                type="button"
+                onClick={toggleMic}
+                className={`flex items-center gap-1 px-1.5 py-0.5 sm:px-2.5 sm:py-1 rounded-md text-[10px] sm:text-xs font-mono font-medium border cursor-pointer transition-all active:scale-95 ${
+                  isMicMuted
+                    ? 'bg-red-950/80 text-red-300 border-red-500/70 shadow-sm animate-pulse'
+                    : 'bg-stone-800 hover:bg-stone-700/80 border-stone-700 text-stone-300'
+                }`}
+                title={
+                  isMicMuted
+                    ? 'Micro đang TẮT - Nhấn để BẬT lại micro'
+                    : `Micro đang BẬT (${micLangBadgeLabel}) - Nhấn để TẮT tạm thời`
+                }
               >
-                <Mic className="w-2.5 h-2.5 text-emerald-400 animate-pulse" />
-                <span className="hidden sm:inline">Mic:</span>
-                <span className="text-emerald-300 font-semibold">
-                  {role === 'staff' ? 'VI' : (activeGuestLanguage === 'English' ? 'EN' : 'VI')}
-                </span>
-              </div>
+                {isMicMuted ? (
+                  <>
+                    <MicOff className="w-2.5 h-2.5 text-red-400" />
+                    <span className="font-bold text-red-300">Mic: TẮT</span>
+                  </>
+                ) : (
+                  <>
+                    <Mic className="w-2.5 h-2.5 text-emerald-400 animate-pulse" />
+                    <span className="hidden sm:inline">Mic:</span>
+                    <span className="text-emerald-300 font-semibold">
+                      {micLangBadgeLabel}
+                    </span>
+                  </>
+                )}
+              </button>
             )}
 
             {/* CALL DURATION BADGE */}
@@ -1631,6 +2212,24 @@ export const MessengerVideoCallModal = ({
           </div>
         )}
 
+        {/* AUTOPLAY RESCUE BUTTON */}
+        {isAudioBlocked && (
+          <div className="absolute top-14 left-3 right-3 sm:left-auto sm:right-auto sm:left-1/2 sm:-translate-x-1/2 z-35 animate-bounce">
+            <button
+              type="button"
+              onClick={() => {
+                primeAudioContext();
+                setIsAudioBlocked(false);
+                processAudioQueue();
+              }}
+              className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-stone-950 font-bold text-xs sm:text-sm shadow-2xl border border-amber-300 cursor-pointer"
+            >
+              <Volume2 className="w-4 h-4 text-stone-950" />
+              <span>Nhấn để bật tiếng loa phiên dịch (Autoplay Unlock)</span>
+            </button>
+          </div>
+        )}
+
         {/* INTERACTIVE LIVE TRANSLATION & TTS TEST BAR */}
         {callStatus === 'connected' && showTestPanel && (
           <div className="absolute top-13 sm:top-15 left-3 right-3 sm:left-6 sm:right-6 z-30 bg-[#141414]/95 backdrop-blur-md border border-amber-500/50 rounded-xl p-2.5 sm:p-3 shadow-2xl animate-in fade-in slide-in-from-top-2 duration-200">
@@ -1648,14 +2247,12 @@ export const MessengerVideoCallModal = ({
               </button>
             </div>
 
-            {/* Pre-made quick test chips */}
             <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mb-2">
               <button
                 type="button"
                 disabled={isTestTranslating}
                 onClick={() => handleSimulateGuestSpeech("Where is the swimming pool?")}
                 className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-200 border border-stone-600 text-[11px] font-medium transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
-                title="Giả lập Khách nói tiếng Anh ➔ AI dịch sang Tiếng Việt + Phát âm giọng Hoài My ra loa máy tính"
               >
                 <span>🇺🇸 Khách: "Where is the swimming pool?"</span>
               </button>
@@ -1665,7 +2262,6 @@ export const MessengerVideoCallModal = ({
                 disabled={isTestTranslating}
                 onClick={() => handleSimulateStaffSpeech("Bể bơi nằm ở tầng 3 thưa quý khách")}
                 className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-200 border border-stone-600 text-[11px] font-medium transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
-                title="Giả lập Staff nói tiếng Việt ➔ AI dịch sang Tiếng Anh + Phát âm giọng Jenny ra loa máy tính"
               >
                 <span>🇻🇳 Staff: "Bể bơi nằm ở tầng 3 thưa quý khách"</span>
               </button>
@@ -1675,13 +2271,11 @@ export const MessengerVideoCallModal = ({
                 disabled={isTestTranslating}
                 onClick={() => handleSimulateGuestSpeech("Cho tôi hỏi nhà hàng mở cửa lúc mấy giờ?")}
                 className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-200 border border-stone-600 text-[11px] font-medium transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
-                title="Giả lập Khách Việt nói tiếng Việt ➔ AI nhận diện tiếng Việt, không dịch, không phát âm đè"
               >
                 <span>🇻🇳 Khách: "Nhà hàng mở cửa lúc mấy giờ?"</span>
               </button>
             </div>
 
-            {/* Custom text input test */}
             <div className="flex items-center gap-2">
               <input
                 type="text"
@@ -1700,7 +2294,6 @@ export const MessengerVideoCallModal = ({
                 disabled={!testCustomText.trim() || isTestTranslating}
                 onClick={() => handleSimulateGuestSpeech(testCustomText.trim())}
                 className="px-2.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-xs font-semibold flex items-center gap-1 transition-all disabled:opacity-50 cursor-pointer"
-                title="Test giả lập câu này do Khách nói"
               >
                 <span>Khách nói</span>
               </button>
@@ -1709,7 +2302,6 @@ export const MessengerVideoCallModal = ({
                 disabled={!testCustomText.trim() || isTestTranslating}
                 onClick={() => handleSimulateStaffSpeech(testCustomText.trim())}
                 className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold flex items-center gap-1 transition-all disabled:opacity-50 cursor-pointer"
-                title="Test giả lập câu này do Staff nói"
               >
                 <span>Staff nói</span>
               </button>
@@ -1719,7 +2311,6 @@ export const MessengerVideoCallModal = ({
 
         {/* MAIN VIDEO SCREEN */}
         <div className="relative flex-1 bg-[#181818] flex items-center justify-center overflow-hidden">
-          {/* Remote Video Stream */}
           <video
             ref={remoteVideoRef}
             autoPlay
@@ -1731,7 +2322,6 @@ export const MessengerVideoCallModal = ({
             }`}
           />
 
-          {/* CALLING / RINGING / CONNECTING OVERLAY */}
           {callStatus !== 'connected' && callStatus !== 'ended' && (
             <div className="absolute inset-0 flex flex-col items-center justify-center p-4 sm:p-6 text-center z-10 bg-[#181818]/95">
               <div className="relative mb-3 sm:mb-5">
@@ -1751,7 +2341,6 @@ export const MessengerVideoCallModal = ({
             </div>
           )}
 
-          {/* CALL ENDED OVERLAY */}
           {callStatus === 'ended' && (
             <div className="absolute inset-0 z-30 bg-[#181818]/95 flex flex-col items-center justify-center p-4 sm:p-6 text-center animate-fadeIn">
               <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-stone-800 border border-stone-700 flex items-center justify-center text-stone-300 mb-2.5 shadow-lg">
@@ -1761,19 +2350,17 @@ export const MessengerVideoCallModal = ({
             </div>
           )}
 
-          {/* FLOATING CINEMA SUBTITLE BAR (AUTO-TRANSLATE LIVE CAPTIONS) */}
-          {((activeSubtitle && activeSubtitle.needsTranslation) || (interimText && activeGuestLanguage === 'English' && translateMode !== 'bypass')) && (
+          {/* FLOATING CINEMA SUBTITLE BAR */}
+          {(activeSubtitle || (interimText && translateMode !== 'bypass')) && (
             <div className="absolute bottom-4 sm:bottom-6 lg:bottom-8 left-3 right-3 sm:left-6 sm:right-6 z-25 flex justify-center pointer-events-none animate-in fade-in slide-in-from-bottom-2 duration-300">
               <div className="bg-[#141414]/90 backdrop-blur-md border border-stone-700/80 rounded-2xl px-4 py-2 sm:px-6 sm:py-3 max-w-2xl text-center shadow-2xl space-y-1 pointer-events-auto">
-                {/* Interim Live Speech Feedback */}
-                {interimText && (!activeSubtitle || !activeSubtitle.needsTranslation) && (
+                {interimText && !activeSubtitle && (
                   <p className="text-stone-300 text-xs sm:text-sm italic font-mono animate-pulse">
                     "{interimText}..."
                   </p>
                 )}
 
-                {/* Final Subtitle and Translation */}
-                {activeSubtitle && activeSubtitle.needsTranslation && (
+                {activeSubtitle && (
                   <>
                     <div className="flex items-center justify-center gap-2 mb-0.5">
                       <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-stone-800 text-stone-300 border border-stone-700">
@@ -1783,9 +2370,13 @@ export const MessengerVideoCallModal = ({
                       </span>
                       <span className="text-[10px] font-semibold text-amber-400 flex items-center gap-1">
                         <Languages className="w-3 h-3" />
-                        <span>{(activeSubtitle.sourceLang || 'en').toUpperCase()} ➔ {(activeSubtitle.targetLang || 'vi').toUpperCase()}</span>
+                        <span>
+                          {activeSubtitle.needsTranslation
+                            ? `${(activeSubtitle.sourceLang || 'en').toUpperCase()} ➔ ${(activeSubtitle.targetLang || 'vi').toUpperCase()}`
+                            : `${(activeSubtitle.sourceLang || 'vi').toUpperCase()} (Gốc)`}
+                        </span>
                       </span>
-                      {activeSubtitle.audioBase64 && (
+                      {activeSubtitle.needsTranslation && (
                         <span className="text-[10px] font-medium text-emerald-400 flex items-center gap-1 bg-emerald-950/60 px-1.5 py-0.5 rounded border border-emerald-500/30">
                           <Volume2 className={`w-2.5 h-2.5 ${isAiSpeaking ? 'animate-bounce text-emerald-300' : ''}`} />
                           <span>AI Voice</span>
@@ -1793,14 +2384,14 @@ export const MessengerVideoCallModal = ({
                       )}
                     </div>
 
-                    {/* Câu gốc (mờ phía trên nếu có bản dịch) */}
-                    <p className="text-stone-400 text-[11px] sm:text-xs italic leading-tight">
-                      "{activeSubtitle.originalText}"
-                    </p>
+                    {activeSubtitle.needsTranslation && activeSubtitle.originalText !== activeSubtitle.translatedText && (
+                      <p className="text-stone-400 text-[11px] sm:text-xs italic leading-tight">
+                        "{activeSubtitle.originalText}"
+                      </p>
+                    )}
 
-                    {/* Câu dịch nổi bật to rõ */}
                     <p className="text-stone-100 text-xs sm:text-sm md:text-base font-semibold leading-relaxed tracking-wide">
-                      {activeSubtitle.translatedText}
+                      {activeSubtitle.translatedText || activeSubtitle.originalText}
                     </p>
                   </>
                 )}
@@ -1848,30 +2439,49 @@ export const MessengerVideoCallModal = ({
 
         {/* BOTTOM ACTION CONTROLS BAR */}
         <div className="px-3 sm:px-4 py-2 sm:py-2.5 lg:py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] bg-[#1A1A1A] border-t border-stone-800 flex items-center justify-center gap-3 sm:gap-6 lg:gap-8 z-30 shrink-0 robot-safe-x">
+          {/* MUTE MIC BUTTON */}
+          <button
+            type="button"
+            onClick={toggleMic}
+            className="flex flex-col items-center gap-1 focus:outline-none cursor-pointer group min-w-[44px] min-h-[44px]"
+          >
+            <div
+              className={`w-10 h-10 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center transition-all ${
+                isMicMuted
+                  ? 'bg-red-950/80 text-red-400 border border-red-500/70 shadow-lg animate-pulse'
+                  : 'bg-stone-800 hover:bg-stone-700 text-stone-200 border border-stone-700'
+              }`}
+            >
+              {isMicMuted ? <MicOff className="w-4 h-4 text-red-400" /> : <Mic className="w-4 h-4" />}
+            </div>
+            <span className={`text-[10px] font-medium ${isMicMuted ? 'text-red-400 font-bold' : 'text-stone-400'}`}>
+              {isMicMuted ? 'Bật Mic' : 'Tắt Mic'}
+            </span>
+          </button>
+
+          {/* TOGGLE SPEAKER BUTTON */}
+          <button
+            type="button"
+            onClick={toggleSpeaker}
+            className="flex flex-col items-center gap-1 focus:outline-none cursor-pointer group min-w-[44px] min-h-[44px]"
+          >
+            <div
+              className={`w-10 h-10 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center transition-all ${
+                isSpeakerMuted
+                  ? 'bg-stone-800 text-stone-400 border border-stone-700'
+                  : 'bg-stone-800 hover:bg-stone-700 text-stone-200 border border-stone-700'
+              }`}
+            >
+              {isSpeakerMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+            </div>
+            <span className="text-[10px] font-medium text-stone-400">
+              {isSpeakerMuted ? 'Bật Loa' : 'Tắt Loa'}
+            </span>
+          </button>
+
           {/* STAFF ONLY CONTROLS */}
           {role === 'staff' && (
             <>
-              {/* MUTE MIC BUTTON */}
-              <button
-                type="button"
-                onClick={toggleMic}
-                className="flex flex-col items-center gap-1 focus:outline-none cursor-pointer group min-w-[44px] min-h-[44px]"
-              >
-                <div
-                  className={`w-10 h-10 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center transition-all ${
-                    isMicMuted
-                      ? 'bg-stone-800 text-stone-400 border border-stone-700'
-                      : 'bg-stone-800 hover:bg-stone-700 text-stone-200 border border-stone-700'
-                  }`}
-                >
-                  {isMicMuted ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
-                </div>
-                <span className="text-[10px] font-medium text-stone-400">
-                  {isMicMuted ? 'Bật Mic' : 'Tắt Mic'}
-                </span>
-              </button>
-
-              {/* TOGGLE VIDEO BUTTON */}
               <button
                 type="button"
                 onClick={toggleVideo}
@@ -1888,26 +2498,6 @@ export const MessengerVideoCallModal = ({
                 </div>
                 <span className="text-[10px] font-medium text-stone-400">
                   {isVideoDisabled ? 'Bật Cam' : 'Tắt Cam'}
-                </span>
-              </button>
-
-              {/* TOGGLE SPEAKER BUTTON */}
-              <button
-                type="button"
-                onClick={toggleSpeaker}
-                className="flex flex-col items-center gap-1 focus:outline-none cursor-pointer group min-w-[44px] min-h-[44px]"
-              >
-                <div
-                  className={`w-10 h-10 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center transition-all ${
-                    isSpeakerMuted
-                      ? 'bg-stone-800 text-stone-400 border border-stone-700'
-                      : 'bg-stone-800 hover:bg-stone-700 text-stone-200 border border-stone-700'
-                  }`}
-                >
-                  {isSpeakerMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
-                </div>
-                <span className="text-[10px] font-medium text-stone-400">
-                  {isSpeakerMuted ? 'Bật Loa' : 'Tắt Loa'}
                 </span>
               </button>
             </>

@@ -28,6 +28,7 @@ class PipecatAudioClient {
     this._audioChunksInCurrentStream = 0;
     this._isStreamDone = true;
     this._currentSource = null;
+    this._streamEpoch = 0;
     this._messagePromise = Promise.resolve();
   }
 
@@ -84,41 +85,55 @@ class PipecatAudioClient {
       };
 
       this.socket.onmessage = (event) => {
-        this._messagePromise = this._messagePromise.then(async () => {
-          try {
-            if (event.data instanceof Blob) {
-              // Binary Frame → Audio chunk từ Streaming Pipeline
-              const arrayBuffer = await event.data.arrayBuffer();
-              if (arrayBuffer.byteLength > 0) {
-                this._audioChunksInCurrentStream += 1;
-                this._enqueueAudioChunk(arrayBuffer);
+        try {
+          if (event.data instanceof Blob) {
+            // Binary Frame → Audio chunk từ Streaming Pipeline (xử lý tuần tự blob)
+            const currentEpoch = this._streamEpoch;
+            this._messagePromise = this._messagePromise.then(async () => {
+              if (this._streamEpoch !== currentEpoch) return;
+              try {
+                const arrayBuffer = await event.data.arrayBuffer();
+                if (this._streamEpoch !== currentEpoch) return;
+                if (arrayBuffer.byteLength > 0) {
+                  this._audioChunksInCurrentStream += 1;
+                  this._enqueueAudioChunk(arrayBuffer);
+                }
+              } catch (e) {
+                console.warn('[PipecatClient] Error reading audio blob:', e);
               }
-              return;
+            });
+            return;
+          }
+
+          // JSON Control Frame: Xử lý ngay lập tức, không bị chặn bởi các blob đang đọc
+          const data = JSON.parse(event.data);
+
+          if (data.event === 'interrupted') {
+            this._streamEpoch += 1;
+            this._stopAudioQueue();
+            if (this.audioRef) {
+              this.audioRef.pause();
+              this.audioRef = null;
             }
-
-            const data = JSON.parse(event.data);
-
-            if (data.event === 'interrupted') {
-              this._stopAudioQueue();
-              if (this.audioRef) {
-                this.audioRef.pause();
-                this.audioRef = null;
-              }
-              if (this.onInterruptedCallback) this.onInterruptedCallback(data);
-            } else if (data.event === 'token') {
-              if (this.onTokenCallback) this.onTokenCallback(data.token);
-            } else if (data.event === 'stt_interim_echo') {
-              if (this.onSTTInterimEchoCallback) this.onSTTInterimEchoCallback(data.text);
-            } else if (data.event === 'stt_processing') {
-              this._audioChunksInCurrentStream = 0;
-              this._isStreamDone = false;
-              if (this.onSTTProcessingCallback) this.onSTTProcessingCallback(data.text);
-            } else if (data.event === 'audio_stream') {
-              // Legacy mode
-              if (this.onAudioStreamCallback) this.onAudioStreamCallback(data.payload);
-            } else if (data.event === 'text' || data.event === 'text_chunk') {
-              if (this.onTextChunkCallback) this.onTextChunkCallback(data);
-            } else if (data.event === 'stream_done') {
+            if (this.onInterruptedCallback) this.onInterruptedCallback(data);
+          } else if (data.event === 'token') {
+            if (this.onTokenCallback) this.onTokenCallback(data.token);
+          } else if (data.event === 'stt_interim_echo') {
+            if (this.onSTTInterimEchoCallback) this.onSTTInterimEchoCallback(data.text);
+          } else if (data.event === 'stt_processing') {
+            this._streamEpoch += 1;
+            this._audioChunksInCurrentStream = 0;
+            this._isStreamDone = false;
+            if (this.onSTTProcessingCallback) this.onSTTProcessingCallback(data.text);
+          } else if (data.event === 'audio_stream') {
+            // Legacy mode
+            if (this.onAudioStreamCallback) this.onAudioStreamCallback(data.payload);
+          } else if (data.event === 'text' || data.event === 'text_chunk') {
+            if (this.onTextChunkCallback) this.onTextChunkCallback(data);
+          } else if (data.event === 'stream_done') {
+            const currentEpoch = this._streamEpoch;
+            this._messagePromise = this._messagePromise.then(() => {
+              if (this._streamEpoch !== currentEpoch) return;
               this._isStreamDone = true;
               data.audioChunksCount = this._audioChunksInCurrentStream;
               if (this.onStreamDoneCallback) this.onStreamDoneCallback(data);
@@ -134,14 +149,14 @@ class PipecatAudioClient {
                   }
                 }, 20000);
               }
-            } else if (data.event === 'error') {
-              console.warn('[PipecatClient] Server error:', data.message);
-              if (this.onErrorCallback) this.onErrorCallback(data);
-            }
-          } catch (e) {
-            console.warn('[PipecatClient] Error parsing WebSocket message:', e);
+            });
+          } else if (data.event === 'error') {
+            console.warn('[PipecatClient] Server error:', data.message);
+            if (this.onErrorCallback) this.onErrorCallback(data);
           }
-        });
+        } catch (e) {
+          console.warn('[PipecatClient] Error parsing WebSocket message:', e);
+        }
       };
 
       this.socket.onerror = (err) => {
@@ -166,6 +181,7 @@ class PipecatAudioClient {
   }
 
   sendBargeIn() {
+    this._streamEpoch += 1;
     this._stopAudioQueue();
 
     if (this.audioRef) {

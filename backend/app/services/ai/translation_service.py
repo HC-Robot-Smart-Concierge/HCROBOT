@@ -19,21 +19,29 @@ COMMON_VIETNAMESE_WORDS = {
     'xin', 'chao', 'toi', 'ban', 'anh', 'chi', 'em', 'da', 'vang', 'khong',
     'co', 'o', 'dau', 'phong', 'khach', 'san', 'nhe', 'a', 'gi', 'nay',
     'cho', 'voi', 'cua', 'duoc', 'muon', 'can', 'cam', 'on', 'roi', 'ngay',
-    'dat', 'mon', 'an', 'uong', 'ho', 'boi', 'tang', 'may', 'gio', 'tra'
+    'dat', 'mon', 'an', 'uong', 'ho', 'boi', 'tang', 'may', 'gio', 'tra',
+    'giup', 'le', 'tan', 'nha', 'hang', 'khan', 'tam', 'nuoc', 'don'
 }
 
 # Các từ tiếng Anh thông dụng
 COMMON_ENGLISH_WORDS = {
-    'the', 'is', 'are', 'was', 'were', 'where', 'what', 'how', 'when', 'who',
-    'can', 'could', 'would', 'should', 'please', 'help', 'hotel', 'room',
+    'the', 'is', 'are', 'was', 'were', 'where', 'what', 'how', 'when', 'who', 'why',
+    'can', 'could', 'would', 'should', 'will', 'please', 'help', 'hotel', 'room',
     'pool', 'swimming', 'check', 'in', 'out', 'key', 'card', 'bill', 'breakfast',
-    'lunch', 'dinner', 'restaurant', 'elevator', 'lift', 'floor', 'wifi',
-    'service', 'towel', 'clean', 'need', 'want', 'thank', 'thanks', 'you'
+    'lunch', 'dinner', 'restaurant', 'elevator', 'lift', 'floor', 'wifi', 'password',
+    'service', 'towel', 'towels', 'clean', 'cleaning', 'need', 'want', 'thank', 'thanks',
+    'you', 'your', 'i', 'my', 'me', 'we', 'us', 'he', 'she', 'they', 'it', 'this', 'that',
+    'good', 'morning', 'afternoon', 'evening', 'night', 'excuse', 'sorry', 'hello', 'hi',
+    'yes', 'no', 'taxi', 'airport', 'luggage', 'bag', 'passport', 'phone', 'water',
+    'food', 'menu', 'order', 'book', 'booking', 'reservation', 'late', 'early', 'now',
+    'today', 'tomorrow', 'much', 'many', 'more', 'extra', 'hot', 'cold', 'broken',
+    'work', 'working', 'speak', 'talk', 'understand', 'english', 'vietnamese',
+    'from', 'to', 'at', 'on', 'for', 'with', 'about', 'have', 'has', 'had', 'do', 'does', 'did', 'not'
 }
 
-# Các từ đệm/từ vay mượn ngắn phổ biến không đổi ngôn ngữ (Neutral words/fillers)
+# Các từ cảm thán/đệm ngắn trung tính không cần dịch
 NEUTRAL_WORDS = {
-    'ok', 'okay', 'yes', 'yeah', 'yep', 'no', 'nope', 'ah', 'uh', 'um', 'oh', 'bye', 'alo', 'ha', 'hmm', 'dạ', 'vâng'
+    'ok', 'okay', 'ah', 'uh', 'um', 'oh', 'alo', 'ha', 'hmm'
 }
 
 
@@ -41,6 +49,7 @@ class TranslationService:
     """
     Dịch vụ Phiên dịch Siêu Tốc (Fast Auto-Translation Service)
     tối ưu cho WebRTC Video Call 2 chiều giữa Robot Kiosk (Khách) và Concierge (Lễ tân).
+    Tách biệt hoàn toàn Ngôn ngữ đầu vào (Input Language theo từng câu) và Ngôn ngữ đầu ra (Target Language của người nhận).
     """
 
     def __init__(self):
@@ -67,24 +76,29 @@ class TranslationService:
     def detect_language(cls, text: str) -> str:
         """
         Nhận diện nhanh ngôn ngữ giữa Tiếng Việt ('vi') và Tiếng Anh ('en').
-        Trả về 'neutral' nếu câu nói chỉ gồm 1 từ đệm ngắn không đủ tin cậy để đổi ngôn ngữ.
+        Trả về 'neutral' nếu câu nói chỉ gồm 1 từ cảm thán trung tính (ok, ah, hmm...).
         """
         if not text or not text.strip():
             return "neutral"
 
-        clean_words = set(re.findall(r'\b[a-zA-Zàáảãạâầấẩẫậăằắẳẵặèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ]+\b', text.lower()))
+        clean_words = set(
+            re.findall(
+                r'\b[a-zA-Zàáảãạâầấẩẫậăằắẳẵặèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ]+\b',
+                text.lower()
+            )
+        )
         if not clean_words:
             return "neutral"
 
-        # Nếu chỉ có 1 từ đệm trung tính (vd: ok, yeah, ah, hmm) -> Không đổi ngôn ngữ phiên
+        # 1. Nếu chỉ có 1 từ đệm trung tính (ok, ah, hmm) -> Không dịch
         if len(clean_words) <= 1 and clean_words.issubset(NEUTRAL_WORDS):
             return "neutral"
 
-        # 1. Nếu chứa bất kỳ nguyên âm tiếng Việt có dấu nào -> Chắc chắn 100% là Tiếng Việt
+        # 2. Nếu chứa bất kỳ ký tự tiếng Việt có dấu nào -> Chắc chắn là Tiếng Việt ('vi')
         if VIETNAMESE_DIACRITICS_REGEX.search(text):
             return "vi"
 
-        # 2. Đếm số từ trùng khớp trong từ điển thông dụng
+        # 3. Đếm số từ trùng khớp trong từ điển thông dụng
         vi_hits = len(clean_words.intersection(COMMON_VIETNAMESE_WORDS))
         en_hits = len(clean_words.intersection(COMMON_ENGLISH_WORDS))
 
@@ -93,21 +107,27 @@ class TranslationService:
         if en_hits > vi_hits:
             return "en"
 
-        # 3. Phân tích ngữ cảnh mặc định: nếu text chỉ gồm ký tự ascii thông thường và độ dài >= 2 từ
-        if len(clean_words) >= 2 and en_hits > 0:
+        # 4. Nếu câu hoàn toàn là ASCII không dấu và không khớp từ tiếng Việt nào -> Ưu tiên 'en'
+        if vi_hits == 0:
             return "en"
 
         return "vi"
 
-    async def _translate_via_google_gtx(self, text: str, src_lang: str, target_lang: str) -> tuple[Optional[str], Optional[str]]:
+    async def _translate_via_google_gtx(
+        self, text: str, src_lang: str, target_lang: str
+    ) -> Tuple[Optional[str], Optional[str]]:
         """
         Gọi Google Translate Web API siêu tốc (50ms - 150ms).
         Trả về tuple (translated_text, detected_source_lang).
         """
         try:
             encoded_text = urllib.parse.quote(text)
-            url = f"https://translate.googleapis.com/translate_a/single?client=gtx&sl={src_lang}&tl={target_lang}&dt=t&q={encoded_text}"
-            res = await self.http_client.get(url)
+            url = (
+                f"https://translate.googleapis.com/translate_a/single"
+                f"?client=gtx&sl={src_lang}&tl={target_lang}&dt=t&q={encoded_text}"
+            )
+            async with httpx.AsyncClient(timeout=3.0) as client:
+                res = await client.get(url)
             if res.status_code == 200:
                 data = res.json()
                 detected = data[2] if len(data) > 2 and data[2] else None
@@ -120,7 +140,9 @@ class TranslationService:
             logger.warning(f"[TranslationService] Google GTX failed ({e}), attempting fallback...")
         return None, None
 
-    async def _translate_via_gemini_fallback(self, text: str, src_lang: str, target_lang: str) -> Optional[str]:
+    async def _translate_via_gemini_fallback(
+        self, text: str, src_lang: str, target_lang: str
+    ) -> Optional[str]:
         """
         Dự phòng dịch qua Gemini nếu mạng ngoài Google GTX bị chặn hoặc lỗi.
         """
@@ -152,35 +174,36 @@ class TranslationService:
         with_audio: bool = False,
     ) -> Dict[str, Any]:
         """
-        Thực hiện dịch thuật thông minh Zero-Touch:
-        - Tự động nhận diện ngôn ngữ nếu là 'auto' qua Google AI + Diacritics Regex.
-        - Nếu nguồn và đích giống nhau hoặc cùng là tiếng Việt -> Tự động Bypass (không dịch, KHÔNG phát âm TTS).
-        - Nếu khác ngôn ngữ -> Dịch và tổng hợp giọng đọc TTS tương ứng (Hoài My cho VI, Jenny cho EN).
+        Thực hiện dịch thuật tách biệt Ngôn ngữ câu nói (source_lang) và Ngôn ngữ đích của người nhận (target_lang):
+        - Tự động nhận diện ngôn ngữ câu nói nếu source_lang='auto'.
+        - Nếu ngôn ngữ câu nói trùng với ngôn ngữ đích của người nhận (vd: Khách nói tiếng Việt gửi cho Staff có target='vi',
+          hoặc Staff nói tiếng Anh gửi cho Khách có target='en') -> Giữ nguyên văn bản gốc, needs_translation=False, không gọi TTS.
+        - Nếu khác ngôn ngữ -> Dịch sang target_lang và tổng hợp TTS nếu with_audio=True.
         """
         clean_text = (text or "").strip()
+        target_code = self.normalize_lang_code(target_lang)
+
         if not clean_text:
             return {
                 "original_text": "",
                 "translated_text": "",
                 "source_lang": "vi",
-                "target_lang": target_lang,
+                "target_lang": target_code,
                 "needs_translation": False,
                 "audio_base64": None,
+                "tts_error_code": None,
+                "tts_error_detail": None,
             }
 
-        # 1. Xác định ngôn ngữ nguồn và đích:
-        target_code = self.normalize_lang_code(target_lang)
-        
-        # Nếu có dấu tiếng Việt rõ ràng -> Chắc chắn 100% là Tiếng Việt
+        # 1. Xác định ngôn ngữ nguồn của câu vừa nói:
         if VIETNAMESE_DIACRITICS_REGEX.search(clean_text):
             detected_src = "vi"
-        elif source_lang != "auto" and source_lang:
+        elif source_lang and source_lang.lower() not in ("auto", "bilingual"):
             detected_src = self.normalize_lang_code(source_lang)
         else:
             detected_src = self.detect_language(clean_text)
 
-        # 2. Quy tắc bypass thông minh:
-        # Nếu là từ đệm trung tính (ok, hmm, ah,...) -> Không dịch, không đổi ngôn ngữ
+        # 2. Quy tắc giữ nguyên khi trung tính hoặc cùng ngôn ngữ với đích nhận:
         if detected_src == "neutral":
             return {
                 "original_text": clean_text,
@@ -189,9 +212,10 @@ class TranslationService:
                 "target_lang": target_code,
                 "needs_translation": False,
                 "audio_base64": None,
+                "tts_error_code": None,
+                "tts_error_detail": None,
             }
 
-        # Nếu nguồn và đích giống nhau -> KHÔNG CẦN DỊCH, KHÔNG CẦN TTS
         if detected_src == target_code:
             return {
                 "original_text": clean_text,
@@ -200,28 +224,18 @@ class TranslationService:
                 "target_lang": target_code,
                 "needs_translation": False,
                 "audio_base64": None,
-            }
-
-        # Nếu Khách nói tiếng Việt gửi cho Lễ tân (Lễ tân là người Việt) -> KHÔNG CẦN DỊCH
-        if sender_role == "guest" and detected_src == "vi" and target_code == "vi":
-            return {
-                "original_text": clean_text,
-                "translated_text": clean_text,
-                "source_lang": "vi",
-                "target_lang": "vi",
-                "needs_translation": False,
-                "audio_base64": None,
+                "tts_error_code": None,
+                "tts_error_detail": None,
             }
 
         # 3. Tiến hành dịch thuật:
-        # Thử Google GTX trước (< 100ms) với sl=auto để Google nhận diện chính xác
-        src_for_gtx = "auto" if source_lang == "auto" else detected_src
+        src_for_gtx = "auto" if (not source_lang or source_lang.lower() in ("auto", "bilingual")) else detected_src
         translated, gtx_detected = await self._translate_via_google_gtx(clean_text, src_for_gtx, target_code)
-        if gtx_detected:
+        if gtx_detected and gtx_detected.lower()[:2] in ("vi", "en"):
             detected_src = self.normalize_lang_code(gtx_detected)
 
-        # Nếu sau khi đối chiếu ngôn ngữ thực tế trùng với ngôn ngữ đích -> KHÔNG DỊCH, KHÔNG TTS!
-        if detected_src == target_code or translated == clean_text:
+        # Nếu Google GTX phát hiện ngôn ngữ thực tế trùng với target_code -> Giữ nguyên câu gốc, không cần dịch/TTS
+        if detected_src == target_code:
             return {
                 "original_text": clean_text,
                 "translated_text": clean_text,
@@ -229,27 +243,37 @@ class TranslationService:
                 "target_lang": target_code,
                 "needs_translation": False,
                 "audio_base64": None,
+                "tts_error_code": None,
+                "tts_error_detail": None,
             }
 
         # Fallback sang Gemini nếu Google GTX lỗi
         if not translated:
             translated = await self._translate_via_gemini_fallback(clean_text, detected_src, target_code)
 
-        # Fallback an toàn cuối cùng: Trả lại text gốc nếu mọi dịch vụ đều không phản hồi
         if not translated:
             logger.warning("[TranslationService] All translation providers failed, returning original text.")
             translated = clean_text
+            needs_translation = False
+        else:
+            needs_translation = (translated.strip().lower() != clean_text.strip().lower()) or (detected_src != target_code)
 
-        needs_translation = (translated != clean_text)
         audio_b64 = None
-        if needs_translation and with_audio:
+        tts_err_code = None
+        tts_err_detail = None
+        if needs_translation and with_audio and translated.strip():
             try:
                 from app.services.ai.tts_service import tts_service
-                audio_b64, _, _ = await tts_service.synthesize(
+                tts_res = await tts_service.synthesize_with_details(
                     text=translated,
                     language=target_code,
                 )
+                audio_b64 = tts_res.get("audio_base64") or None
+                tts_err_code = tts_res.get("error_code")
+                tts_err_detail = tts_res.get("error_detail")
             except Exception as e:
+                tts_err_code = "TTS_PROVIDER_ERROR"
+                tts_err_detail = str(e)
                 logger.warning(f"[TranslationService] TTS synthesis failed during translation: {e}")
 
         return {
@@ -259,6 +283,8 @@ class TranslationService:
             "target_lang": target_code,
             "needs_translation": needs_translation,
             "audio_base64": audio_b64,
+            "tts_error_code": tts_err_code,
+            "tts_error_detail": tts_err_detail,
         }
 
 

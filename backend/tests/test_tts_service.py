@@ -1,3 +1,4 @@
+import asyncio
 import pytest
 from app.services.ai.tts_service import TTSService, tts_service
 
@@ -18,7 +19,7 @@ async def test_tts_service_fallback_execution():
         provider="invalid_provider",
         language="vi-VN"
     )
-    assert provider_used in ["edge", "browser", "invalid_provider_cached"] or "cached" in provider_used
+    assert provider_used in ["edge", "browser", "google_fallback", "invalid_provider_cached"] or "cached" in provider_used
 
 
 @pytest.mark.asyncio
@@ -69,4 +70,61 @@ async def test_tts_service_voice_settings_management():
     assert fetched["vi_voice"] == "vi-VN-NamMinhNeural"
 
 
+@pytest.mark.asyncio
+async def test_tts_service_structured_error_codes(monkeypatch):
+    """
+    Scenario 6: Kiểm tra phân loại mã lỗi TTS chuẩn hóa:
+    - TTS_INPUT_EMPTY
+    - TTS_TIMEOUT
+    - TTS_PROVIDER_ERROR
+    - TTS_AUDIO_EMPTY
+    """
+    service = TTSService()
+    service._get_from_cache = lambda k: None
 
+    # 1. TTS_INPUT_EMPTY
+    res_empty = await service.synthesize_with_details("   ***   ", allow_fallback=False)
+    assert res_empty["audio_base64"] == ""
+    assert res_empty["error_code"] == "TTS_INPUT_EMPTY"
+
+    # 2. TTS_TIMEOUT
+    async def _slow_task(*args, **kwargs):
+        await asyncio.sleep(0.5)
+        return None, "TTS_TIMEOUT", "Slow"
+
+    monkeypatch.setattr(service, "_synthesize_and_cache_edge_tts_detailed", _slow_task)
+    res_timeout = await service.synthesize_with_details(
+        "Câu thử nghiệm quá thời gian chờ",
+        language="vi-VN",
+        timeout=0.05,
+        allow_fallback=False,
+    )
+    assert res_timeout["audio_base64"] == ""
+    assert res_timeout["error_code"] == "TTS_TIMEOUT"
+
+    # 3. TTS_PROVIDER_ERROR
+    async def _err_task(*args, **kwargs):
+        return None, "TTS_PROVIDER_ERROR", "NoAudioReceived: WebSocket closed"
+
+    monkeypatch.setattr(service, "_synthesize_and_cache_edge_tts_detailed", _err_task)
+    res_prov = await service.synthesize_with_details(
+        "Câu thử nghiệm lỗi provider",
+        language="en-US",
+        allow_fallback=False,
+    )
+    assert res_prov["audio_base64"] == ""
+    assert res_prov["error_code"] == "TTS_PROVIDER_ERROR"
+    assert "NoAudioReceived" in res_prov["error_detail"]
+
+    # 4. TTS_AUDIO_EMPTY
+    async def _empty_audio_task(*args, **kwargs):
+        return None, "TTS_AUDIO_EMPTY", "0 bytes returned"
+
+    monkeypatch.setattr(service, "_synthesize_and_cache_edge_tts_detailed", _empty_audio_task)
+    res_audio_empty = await service.synthesize_with_details(
+        "Câu thử nghiệm không có dữ liệu âm thanh",
+        language="en-US",
+        allow_fallback=False,
+    )
+    assert res_audio_empty["audio_base64"] == ""
+    assert res_audio_empty["error_code"] == "TTS_AUDIO_EMPTY"

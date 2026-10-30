@@ -95,6 +95,7 @@ export const useSpeechRecognition = (callbacks = {}) => {
   const speechFinalizeTimerRef = useRef(null);
   const listenEpochRef = useRef(0);
   const utteranceCommittedRef = useRef(false);
+  const lastCommittedTextRef = useRef('');
   const analyserInitPromiseRef = useRef(null);
   const isTranscribingRef = useRef(false);
 
@@ -106,10 +107,11 @@ export const useSpeechRecognition = (callbacks = {}) => {
   }, []);
 
   const commitFinalTranscript = useCallback((text) => {
-    if (utteranceCommittedRef.current) return;
     const clean = (text || '').trim();
     if (!clean) return;
+    if (utteranceCommittedRef.current && clean === lastCommittedTextRef.current) return;
     utteranceCommittedRef.current = true;
+    lastCommittedTextRef.current = clean;
     clearSpeechFinalizeTimer();
     const cbFinal = inlineCallbacksRef.current?.onFinal || callbacksRef.current?.onFinal;
     if (cbFinal) {
@@ -157,15 +159,20 @@ export const useSpeechRecognition = (callbacks = {}) => {
   }, [clearSpeechFinalizeTimer]);
 
   // Hàm gửi Audio Buffer lên Backend STT khi browser không nhận diện được chữ
-  const processBackendSTT = useCallback(async () => {
-    if (isTranscribingRef.current || utteranceCommittedRef.current || !shouldListenRef.current) {
+  const processBackendSTT = useCallback(async (force = false) => {
+    if (isTranscribingRef.current || (!force && (utteranceCommittedRef.current || !shouldListenRef.current))) {
       audioChunksRef.current = [];
       hasDetectedVoiceRef.current = false;
       return;
     }
 
-    // Chỉ gửi khi có ít nhất ~0.7s âm thanh (khoảng 8 chunks) và đã phát hiện tiếng nói
-    if (audioChunksRef.current.length < 8 || !hasDetectedVoiceRef.current) {
+    // Chỉ gửi khi có âm thanh: tự động cần ~0.7s (8 chunks) và có voice, chốt thủ công (force) cần ít nhất 2 chunks
+    if (!force && (audioChunksRef.current.length < 8 || !hasDetectedVoiceRef.current)) {
+      audioChunksRef.current = [];
+      hasDetectedVoiceRef.current = false;
+      return;
+    }
+    if (force && audioChunksRef.current.length < 2) {
       audioChunksRef.current = [];
       hasDetectedVoiceRef.current = false;
       return;
@@ -463,6 +470,10 @@ export const useSpeechRecognition = (callbacks = {}) => {
             cbTranscript(trimmed, isCurrentFinal);
           }
 
+          if (trimmed !== lastCommittedTextRef.current) {
+            utteranceCommittedRef.current = false;
+          }
+
           if (isCurrentFinal) {
             commitFinalTranscript(trimmed);
           } else {
@@ -601,6 +612,7 @@ export const useSpeechRecognition = (callbacks = {}) => {
     destroyedRef.current = false;
     listenEpochRef.current += 1;
     utteranceCommittedRef.current = false;
+    lastCommittedTextRef.current = '';
     currentLanguageRef.current = language;
     networkErrorCountRef.current = 0;
     lastFinalTranscriptRef.current = '';
@@ -673,6 +685,7 @@ export const useSpeechRecognition = (callbacks = {}) => {
     clearSpeechFinalizeTimer();
     setTranscript('');
     lastFinalTranscriptRef.current = '';
+    lastCommittedTextRef.current = '';
     audioChunksRef.current = [];
     hasDetectedVoiceRef.current = false;
     utteranceCommittedRef.current = false;
@@ -684,7 +697,7 @@ export const useSpeechRecognition = (callbacks = {}) => {
       clearTimeout(silenceTimerRef.current);
       silenceTimerRef.current = null;
     }
-    await processBackendSTT();
+    await processBackendSTT(true);
   }, [processBackendSTT]);
 
   return {

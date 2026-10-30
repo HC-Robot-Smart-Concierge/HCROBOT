@@ -177,14 +177,14 @@ export const MobileRobotScreen = ({
   }, [onLogout]);
 
 
-  // Tự động mở khóa audio và kích hoạt lắng nghe khi người dùng chạm lần đầu (tuân thủ iOS Audio Gesture Policy)
+  // Tự động mở khóa audio khi người dùng chạm lần đầu (tuân thủ iOS Audio Gesture Policy)
+  const hasPrimedAudioRef = useRef(false);
   useEffect(() => {
     const handleFirstTouch = () => {
+      if (hasPrimedAudioRef.current) return;
+      hasPrimedAudioRef.current = true;
       if (typeof onPrime === 'function') {
         onPrime();
-      }
-      if (typeof onStartTalk === 'function' && !isListening && !isSpeaking && !isBusy) {
-        onStartTalk();
       }
       window.removeEventListener('touchstart', handleFirstTouch);
       window.removeEventListener('click', handleFirstTouch);
@@ -197,7 +197,7 @@ export const MobileRobotScreen = ({
       window.removeEventListener('touchstart', handleFirstTouch);
       window.removeEventListener('click', handleFirstTouch);
     };
-  }, [isBusy, isListening, isSpeaking, onPrime, onStartTalk]);
+  }, [onPrime]);
 
 
   return (

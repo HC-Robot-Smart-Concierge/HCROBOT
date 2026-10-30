@@ -63,6 +63,8 @@ class TTSResponse(BaseModel):
     audio_base64: str = Field(..., description="Dữ liệu âm thanh MP3 mã hóa Base64")
     mime_type: str = Field("audio/mp3", description="MIME type của âm thanh")
     provider_used: str = Field("edge", description="Provider TTS đã được sử dụng thực tế (edge, elevenlabs, openai, browser)")
+    error_code: Optional[str] = Field(None, description="Mã lỗi chuẩn hóa khi TTS không tạo được audio (TTS_INPUT_EMPTY, TTS_TIMEOUT, TTS_PROVIDER_ERROR, TTS_AUDIO_EMPTY)")
+    error_detail: Optional[str] = Field(None, description="Chi tiết lỗi cụ thể từ provider TTS")
 
 
 class VoiceSettingsRequest(BaseModel):
@@ -115,4 +117,5 @@ class QuickTranslateResponse(BaseModel):
     target_lang: str = Field(..., description="Ngôn ngữ đích ('vi' hoặc 'en')")
     needs_translation: bool = Field(..., description="True nếu đã dịch, False nếu cùng ngôn ngữ nên bypass")
     audio_base64: Optional[str] = Field(None, description="Âm thanh đọc TTS MP3 Base64 của câu dịch (nếu có)")
-
+    tts_error_code: Optional[str] = Field(None, description="Mã lỗi TTS nếu có")
+    tts_error_detail: Optional[str] = Field(None, description="Chi tiết lỗi TTS nếu có")

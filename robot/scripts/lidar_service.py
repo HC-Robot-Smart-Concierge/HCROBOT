@@ -192,8 +192,8 @@ class RPLidarSLAMCore:
                 left_backward_pin=27,
                 right_forward_pin=22,
                 right_backward_pin=23,
-                invert_left_direction=False,
-                invert_right_direction=True,
+                invert_left_direction=True,
+                invert_right_direction=False,
                 default_speed=50,
             )
             logger.info("🚗 [LiDAR-SLAM] Đã khởi tạo MotorController trực tiếp trên Raspberry Pi 5 (GPIO 17, 27, 22, 23)!")
@@ -1353,9 +1353,11 @@ free_thresh: 0.25
         except Exception:
             pass
 
-    def navigate_to(self, target_x: float, target_y: float):
-        """Bắt đầu tác vụ tự hành tới tọa độ mục tiêu (target_x, target_y)."""
+    def navigate_to(self, target_x: float, target_y: float, speed: Optional[int] = None, linear_speed: Optional[float] = None):
+        """Bắt đầu tác vụ tự hành tới tọa độ mục tiêu (target_x, target_y) ở tốc độ quét an toàn."""
         self.stop_navigation()
+        self.nav_speed_pwm = speed if speed is not None else 28
+        self.nav_linear_mps = linear_speed if linear_speed is not None else 0.12
         self.active_goal = {"x": target_x, "y": target_y}
         self.is_navigating = True
         self.status = "NAVIGATING"
@@ -1425,7 +1427,7 @@ free_thresh: 0.25
                 turn_cmd = self.avoidance_locked_dir
                 # Xoay dứt khoát 0.35s ở công suất 38% để robot thực sự xoay được góc ~30-35 độ
                 yaw_step = 30.0 if turn_cmd == "left" else -30.0
-                self.send_udp_motor_command("speed:38")
+                self.send_udp_motor_command("speed:32")
                 self.send_udp_motor_command(turn_cmd, force=True)
                 time.sleep(0.35)
                 self.send_udp_motor_command("stop", force=True)
@@ -1438,9 +1440,9 @@ free_thresh: 0.25
 
             # 3. Approach Lock (Khóa góc khi cự ly gần < 40cm để triệt tiêu Waypoint Hunting / xoay lắc tại đích)
             if dist_to_goal < 0.40:
-                self.send_udp_motor_command("speed:30")
+                self.send_udp_motor_command("speed:22")
                 self.send_udp_motor_command("forward")
-                speed_mps = 0.14
+                speed_mps = 0.09
                 rad = math.radians(self.robot_yaw)
                 self.robot_x += speed_mps * dt * math.cos(rad)
                 self.robot_y += speed_mps * dt * math.sin(rad)
@@ -1457,7 +1459,7 @@ free_thresh: 0.25
             if abs(yaw_error) > 15.0:
                 turn_cmd = "left" if yaw_error > 0 else "right"
                 yaw_step = 15.0 if yaw_error > 0 else -15.0
-                self.send_udp_motor_command("speed:35")
+                self.send_udp_motor_command("speed:30")
                 self.send_udp_motor_command(turn_cmd)
                 time.sleep(0.18)
                 self.send_udp_motor_command("stop")
@@ -1468,9 +1470,10 @@ free_thresh: 0.25
                 time.sleep(0.06)
             else:
                 # Góc hướng đã chuẩn trong deadband: Tiến thẳng ổn định
-                self.send_udp_motor_command("speed:45")
+                nav_pwm = getattr(self, "nav_speed_pwm", 28)
+                self.send_udp_motor_command(f"speed:{nav_pwm}")
                 self.send_udp_motor_command("forward")
-                speed_mps = 0.18
+                speed_mps = getattr(self, "nav_linear_mps", 0.12)
                 rad = math.radians(self.robot_yaw)
                 self.robot_x += speed_mps * dt * math.cos(rad)
                 self.robot_y += speed_mps * dt * math.sin(rad)
@@ -1654,7 +1657,7 @@ free_thresh: 0.25
                 turn_cmd = self.avoidance_locked_dir
                 # Xoay dứt khoát 0.35s ở công suất 38% để xe thực sự quay được góc ~30-35 độ
                 yaw_step = 30.0 if turn_cmd == "left" else -30.0
-                self.send_udp_motor_command("speed:38")
+                self.send_udp_motor_command("speed:32")
                 self.send_udp_motor_command(turn_cmd, force=True)
                 time.sleep(0.35)
                 self.send_udp_motor_command("stop", force=True)
@@ -1686,7 +1689,7 @@ free_thresh: 0.25
             if abs(yaw_error) > 15.0:
                 turn_cmd = "left" if yaw_error > 0 else "right"
                 yaw_step = 15.0 if yaw_error > 0 else -15.0
-                self.send_udp_motor_command("speed:35")
+                self.send_udp_motor_command("speed:30")
                 self.send_udp_motor_command(turn_cmd)
                 time.sleep(0.18)
                 self.send_udp_motor_command("stop")
@@ -1696,9 +1699,10 @@ free_thresh: 0.25
                 time.sleep(0.06)
             else:
                 # Góc hướng đã chuẩn trong deadband: Tiến thẳng ổn định
-                self.send_udp_motor_command("speed:45")
+                nav_pwm = getattr(self, "nav_speed_pwm", 28)
+                self.send_udp_motor_command(f"speed:{nav_pwm}")
                 self.send_udp_motor_command("forward")
-                speed_mps = 0.18
+                speed_mps = getattr(self, "nav_linear_mps", 0.12)
                 rad = math.radians(self.robot_yaw)
                 self.robot_x += speed_mps * dt * math.cos(rad)
                 self.robot_y += speed_mps * dt * math.sin(rad)
@@ -2044,6 +2048,8 @@ class NavigateGoalRequest(BaseModel):
     target_x: float
     target_y: float
     target_yaw: Optional[float] = None
+    speed: Optional[int] = 25
+    linear_speed: Optional[float] = 0.12
 
 
 class ExploreStartRequest(BaseModel):
@@ -2234,10 +2240,10 @@ class TeleopCommandRequest(BaseModel):
     speed: Optional[int] = 30
 
 
-TELEOP_PWM_MIN = 20
+TELEOP_PWM_MIN = 15
 TELEOP_PWM_MAX = 50
-TELEOP_PWM_FORWARD = 30
-TELEOP_PWM_TURN = 38
+TELEOP_PWM_FORWARD = 25
+TELEOP_PWM_TURN = 32
 
 
 def _clamp_teleop_pwm(speed: Optional[int], default: int) -> int:
@@ -2289,7 +2295,7 @@ async def teleop_control(req: TeleopCommandRequest):
 
 @app.post("/api/v1/map/navigate")
 async def navigate_to_point(req: NavigateGoalRequest):
-    slam_core.navigate_to(req.target_x, req.target_y)
+    slam_core.navigate_to(req.target_x, req.target_y, speed=req.speed, linear_speed=req.linear_speed)
     return {
         "status": "SUCCESS",
         "message": f"Robot đang tự hành tới (X={req.target_x:.2f}m, Y={req.target_y:.2f}m)",

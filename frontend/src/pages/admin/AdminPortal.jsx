@@ -248,6 +248,16 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
                         {t('adminSubControlOdom')}
                       </button>
                       <button
+                        onClick={() => setRobotSubTab('physical_map')}
+                        className="w-full text-left px-2 py-1.5 rounded text-[11px] font-semibold transition-all cursor-pointer"
+                        style={{
+                          background: robotSubTab === 'physical_map' ? '#262626' : 'transparent',
+                          color: robotSubTab === 'physical_map' ? '#FFFFFF' : '#8C8C8C',
+                        }}
+                      >
+                        {t('adminSubPhysicalMap')}
+                      </button>
+                      <button
                         onClick={() => setRobotSubTab('workflows')}
                         className="w-full text-left px-2 py-1.5 rounded text-[11px] font-semibold transition-all cursor-pointer"
                         style={{

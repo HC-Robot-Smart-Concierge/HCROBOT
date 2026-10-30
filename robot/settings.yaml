@@ -15,9 +15,9 @@ robot:
     right_forward: 22    # GPIO22 -> IN3
     right_backward: 23   # GPIO23 -> IN4
 
-    # Bánh bên phải lắp xoay 180 độ đối xứng với bên trái nên cần đảo chiều bên phải:
-    invert_left_direction: false
-    invert_right_direction: true
+    # Đảo chiều motor để tiến đúng hướng FRONT của robot
+    invert_left_direction: true
+    invert_right_direction: false
 
   ultrasonic_serial:
     port: "auto"          # Hoặc /dev/ttyUSB0, /dev/ttyACM0
@@ -25,9 +25,12 @@ robot:
 
   safety:
     # Ngưỡng khoảng cách phanh dừng trong nhà/phòng hẹp (cm)
-    front_stop_cm: 35
-    rear_stop_cm: 35
-    left_stop_cm: 20
+    front_stop_cm: 30
+    rear_stop_cm: 18
+    left_stop_cm: 15
+    right_stop_cm: 15
+    turn_clearance_cm: 12.0
+    resume_margin_cm: 2.5
     right_stop_cm: 20
     # Khi quay tại chỗ:
     turn_clearance_cm: 20

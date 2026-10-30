@@ -85,7 +85,7 @@ export const CONCIERGE_ZONE_TEMPLATES = [
     type: 'GREETING_ZONE',
     label: 'Vùng Đón Khách AI (Greeting / Interaction Zone)',
     badge: 'GREETING ZONE',
-    color: '#059669',
+    color: '#34D399',
     bgColor: '#ECFDF5',
     borderColor: '#A7F3D0',
     description: 'Sảnh đón khách chính. Bật AI Person Detector chủ động tiếp cận chào khách.',
@@ -111,9 +111,9 @@ export const CONCIERGE_ENDPOINT_TEMPLATES = [
     type: 'WAYPOINT',
     label: 'Waypoint Endpoint (Điểm đường / Điểm trung gian)',
     badge: 'WAYPOINT',
-    color: '#262626',
-    bgColor: '#F2EFE9',
-    borderColor: '#BFBFBD',
+    color: '#94A3B8',
+    bgColor: '#F1F5F9',
+    borderColor: '#CBD5E1',
     defaultTasks: 'MOVE, WAIT',
     description: 'Điểm mốc định vị sảnh để robot di chuyển qua hoặc căn chỉnh hướng hành trình.',
   },
@@ -121,7 +121,7 @@ export const CONCIERGE_ENDPOINT_TEMPLATES = [
     type: 'CHARGER',
     label: 'Charger Endpoint (Điểm sạc)',
     badge: 'CHARGER',
-    color: '#059669',
+    color: '#34D399',
     bgColor: '#ECFDF5',
     borderColor: '#A7F3D0',
     defaultTasks: 'MOVE, DOCK, CHARGE',
@@ -131,9 +131,9 @@ export const CONCIERGE_ENDPOINT_TEMPLATES = [
     type: 'PARK',
     label: 'Park Endpoint (Điểm đỗ / chờ)',
     badge: 'PARK',
-    color: '#71717A',
-    bgColor: '#E9E5DC',
-    borderColor: '#BFBFBD',
+    color: '#60A5FA',
+    bgColor: '#EFF6FF',
+    borderColor: '#CBD5E1',
     defaultTasks: 'MOVE, STANDBY',
     description: 'Vị trí dừng đỗ chờ sẵn của Robot Concierge khi không có nhiệm vụ phục vụ tại sảnh.',
   },
@@ -857,15 +857,15 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
   };
 
   return (
-    <div className="w-full h-full flex flex-col overflow-hidden select-none" style={{ backgroundColor: '#F2EFE9', color: '#262626' }}>
+    <div className="w-full h-full flex flex-col overflow-hidden select-none" style={{ backgroundColor: '#F2EFE9', color: '#94A3B8' }}>
       {/* 1. COMPACT STUDIO HEADER - seamlessly aligned with sidebar brand header */}
       <div
         className="h-16 border-b px-5 shrink-0 flex items-center justify-between gap-3 text-xs"
-        style={{ backgroundColor: '#F2EFE9', borderColor: '#BFBFBD' }}
+        style={{ backgroundColor: '#F2EFE9', borderColor: '#CBD5E1' }}
       >
         {/* Left Status */}
         <div className="flex items-center gap-2">
-          <span className="font-extrabold text-xs tracking-tight" style={{ color: '#262626' }}>
+          <span className="font-extrabold text-xs tracking-tight" style={{ color: '#94A3B8' }}>
             Bản Đồ SLAM
           </span>
           <span
@@ -873,13 +873,13 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
             style={{
               backgroundColor: isWsConnected ? '#262626' : '#FAF8F5',
               color: isWsConnected ? '#FFFFFF' : '#8C8C8C',
-              borderColor: '#BFBFBD',
+              borderColor: '#CBD5E1',
             }}
           >
             {isWsConnected ? 'RPLIDAR ONLINE' : 'SIMULATION MODE'}
           </span>
           {notification && (
-            <span className="text-[11px] font-semibold text-[#262626] animate-pulse pl-2 border-l" style={{ borderColor: '#BFBFBD' }}>
+            <span className="text-[11px] font-semibold text-[#262626] animate-pulse pl-2 border-l" style={{ borderColor: '#CBD5E1' }}>
               {notification}
             </span>
           )}
@@ -894,8 +894,8 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
             className="px-2.5 py-1 rounded text-xs font-bold border transition-colors cursor-pointer flex items-center gap-1.5 hover:bg-[#E9E5DC]"
             style={{
               backgroundColor: '#FFFFFF',
-              color: '#262626',
-              borderColor: '#BFBFBD',
+              color: '#94A3B8',
+              borderColor: '#CBD5E1',
             }}
             title="Xóa sạch bản đồ SLAM hiện tại và đặt lại robot về gốc (0,0)"
           >
@@ -955,7 +955,7 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
             type="button"
             onClick={() => handleOpenAddZoneModal()}
             className="px-2.5 py-1 rounded text-xs font-bold border transition-colors cursor-pointer hover:bg-[#E9E5DC]"
-            style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD', color: '#262626' }}
+            style={{ backgroundColor: '#FFFFFF', borderColor: '#CBD5E1', color: '#94A3B8' }}
             title="Thêm mới Vùng Chức Năng (Vùng cấm, giảm tốc, yên lặng VIP, đón khách AI)"
           >
             + Vùng Chức Năng
@@ -1030,7 +1030,7 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
 
             {/* Floating Manual WASD Teleop D-Pad */}
             {showTeleopPad && (
-              <div className="absolute bottom-4 right-4 z-30 p-3 rounded-2xl border bg-white/95 backdrop-blur-md shadow-2xl flex flex-col items-center gap-2" style={{ borderColor: '#BFBFBD' }}>
+              <div className="absolute bottom-4 right-4 z-30 p-3 rounded-2xl border bg-white/95 backdrop-blur-md shadow-2xl flex flex-col items-center gap-2" style={{ borderColor: '#CBD5E1' }}>
                 <div className="flex items-center justify-between w-full border-b pb-1">
                   <span className="text-[10px] font-bold text-stone-700 uppercase tracking-wider">Lái Quét Phòng (WASD)</span>
                   <button onClick={() => setShowTeleopPad(false)} className="text-stone-400 hover:text-stone-800 text-xs font-bold cursor-pointer">✕</button>
@@ -1102,7 +1102,7 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
                       >
                         {tmpl.badge}
                       </span>
-                      <span className="text-xs font-bold" style={{ color: '#262626' }}>
+                      <span className="text-xs font-bold" style={{ color: '#94A3B8' }}>
                         {selectedWaypoint.name}
                       </span>
                     </div>
@@ -1130,7 +1130,7 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
                       type="button"
                       onClick={() => handleOpenEditEndpointModal(selectedWaypoint)}
                       className="px-2 py-1 rounded text-xs font-bold border cursor-pointer hover:bg-stone-100"
-                      style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD', color: '#262626' }}
+                      style={{ backgroundColor: '#FFFFFF', borderColor: '#CBD5E1', color: '#94A3B8' }}
                       title="Chỉnh sửa thông số Endpoint"
                     >
                       ✎ Sửa
@@ -1139,7 +1139,7 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
                       type="button"
                       onClick={() => handleCanvasClickGoal(selectedWaypoint.x, selectedWaypoint.y)}
                       className="px-2 py-1 rounded text-xs font-bold border cursor-pointer hover:bg-stone-100"
-                      style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD', color: '#262626' }}
+                      style={{ backgroundColor: '#FFFFFF', borderColor: '#CBD5E1', color: '#94A3B8' }}
                       title="Điều khiển robot đến điểm này"
                     >
                       Đến đây
@@ -1148,7 +1148,7 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
                       type="button"
                       onClick={() => handleOpenDeleteConfirm(selectedWaypoint)}
                       className="px-2 py-1 rounded text-xs border cursor-pointer hover:text-red-700"
-                      style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD', color: '#8C8C8C' }}
+                      style={{ backgroundColor: '#FFFFFF', borderColor: '#CBD5E1', color: '#8C8C8C' }}
                       title="Xóa Endpoint khỏi CSDL"
                     >
                       ✕
@@ -1179,7 +1179,7 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
                       >
                         {tmpl.badge}
                       </span>
-                      <span className="text-xs font-bold" style={{ color: '#262626' }}>
+                      <span className="text-xs font-bold" style={{ color: '#94A3B8' }}>
                         {selectedZone.name}
                       </span>
                     </div>
@@ -1194,7 +1194,7 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
                       type="button"
                       onClick={() => handleOpenEditZoneModal(selectedZone)}
                       className="px-2 py-1 rounded text-xs font-bold border cursor-pointer hover:bg-stone-100"
-                      style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD', color: '#262626' }}
+                      style={{ backgroundColor: '#FFFFFF', borderColor: '#CBD5E1', color: '#94A3B8' }}
                       title="Chỉnh sửa Vùng Chức Năng"
                     >
                       ✎ Sửa Vùng
@@ -1203,7 +1203,7 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
                       type="button"
                       onClick={() => handleDeleteZone(selectedZone.id, selectedZone.name)}
                       className="px-2 py-1 rounded text-xs border cursor-pointer hover:text-red-700"
-                      style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD', color: '#8C8C8C' }}
+                      style={{ backgroundColor: '#FFFFFF', borderColor: '#CBD5E1', color: '#8C8C8C' }}
                       title="Xóa Vùng Chức Năng"
                     >
                       ✕ Xóa Vùng
@@ -1217,10 +1217,10 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
             {isPanelOpen && (
               <div
                 className="absolute top-3 right-3 bottom-12 z-30 w-80 sm:w-96 rounded-2xl border shadow-2xl flex flex-col overflow-hidden animate-fadeIn"
-                style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD' }}
+                style={{ backgroundColor: '#FFFFFF', borderColor: '#CBD5E1' }}
               >
           {/* Top Panel Selector */}
-          <div className="p-3 border-b space-y-2 shrink-0" style={{ borderColor: '#BFBFBD', backgroundColor: '#FAF8F5' }}>
+          <div className="p-3 border-b space-y-2 shrink-0" style={{ borderColor: '#CBD5E1', backgroundColor: '#FAF8F5' }}>
             <div className="flex items-center justify-between gap-1">
               <label className="text-[10px] font-bold uppercase tracking-wider truncate" style={{ color: '#8C8C8C' }}>
                 KỊCH BẢN HOẠT ĐỘNG
@@ -1230,7 +1230,7 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
                   type="button"
                   onClick={handleCreateNewWorkflow}
                   className="px-1.5 py-0.5 rounded text-[10px] font-bold border cursor-pointer hover:bg-stone-100 transition-colors"
-                  style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD', color: '#262626' }}
+                  style={{ backgroundColor: '#FFFFFF', borderColor: '#CBD5E1', color: '#94A3B8' }}
                   title="Tạo kịch bản mới"
                 >
                   + Mới
@@ -1240,7 +1240,7 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
                   onClick={handleOpenRenameModal}
                   disabled={!activeWf}
                   className="px-1.5 py-0.5 rounded text-[10px] font-bold border cursor-pointer hover:bg-stone-100 disabled:opacity-40 transition-colors"
-                  style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD', color: '#262626' }}
+                  style={{ backgroundColor: '#FFFFFF', borderColor: '#CBD5E1', color: '#94A3B8' }}
                   title="Đổi tên kịch bản đang chọn"
                 >
                   ✎ Đổi Tên
@@ -1249,7 +1249,7 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
                   type="button"
                   onClick={handleSaveCurrentWorkflow}
                   className="px-2 py-0.5 rounded text-[10px] font-bold border cursor-pointer hover:bg-stone-100 transition-colors"
-                  style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD', color: '#262626' }}
+                  style={{ backgroundColor: '#FFFFFF', borderColor: '#CBD5E1', color: '#94A3B8' }}
                 >
                   Lưu Kịch Bản
                 </button>
@@ -1271,7 +1271,7 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
                 if (found) setActiveWf(found);
               }}
               className="w-full px-2.5 py-1.5 rounded-lg text-xs font-bold border focus:outline-none"
-              style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD', color: '#262626' }}
+              style={{ backgroundColor: '#FFFFFF', borderColor: '#CBD5E1', color: '#94A3B8' }}
             >
               {workflows.map((wf) => (
                 <option key={wf.id} value={wf.id}>
@@ -1281,7 +1281,7 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
             </select>
 
             {/* SubTab Toggle: Workflow Steps vs Endpoints vs Functional Zones */}
-            <div className="flex rounded-lg border overflow-hidden text-xs" style={{ borderColor: '#BFBFBD' }}>
+            <div className="flex rounded-lg border overflow-hidden text-xs" style={{ borderColor: '#CBD5E1' }}>
               <button
                 type="button"
                 onClick={() => setSideTab('workflow')}
@@ -1386,7 +1386,7 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
                           >
                             {step.type}
                           </span>
-                          <span className="font-bold text-xs truncate" style={{ color: '#262626' }}>
+                          <span className="font-bold text-xs truncate" style={{ color: '#94A3B8' }}>
                             {step.title}
                           </span>
                         </div>
@@ -1398,7 +1398,7 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
                             onClick={() => handleMoveStep(idx, -1)}
                             disabled={idx === 0}
                             className="px-1 py-0.2 rounded text-[10px] border disabled:opacity-30 cursor-pointer"
-                            style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD', color: '#262626' }}
+                            style={{ backgroundColor: '#FFFFFF', borderColor: '#CBD5E1', color: '#94A3B8' }}
                           >
                             ↑
                           </button>
@@ -1407,7 +1407,7 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
                             onClick={() => handleMoveStep(idx, 1)}
                             disabled={idx === activeWf.steps.length - 1}
                             className="px-1 py-0.2 rounded text-[10px] border disabled:opacity-30 cursor-pointer"
-                            style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD', color: '#262626' }}
+                            style={{ backgroundColor: '#FFFFFF', borderColor: '#CBD5E1', color: '#94A3B8' }}
                           >
                             ↓
                           </button>
@@ -1415,7 +1415,7 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
                             type="button"
                             onClick={() => handleRemoveStep(idx)}
                             className="px-1.5 py-0.2 rounded text-[10px] border cursor-pointer hover:text-red-700"
-                            style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD', color: '#8C8C8C' }}
+                            style={{ backgroundColor: '#FFFFFF', borderColor: '#CBD5E1', color: '#8C8C8C' }}
                           >
                             ✕
                           </button>
@@ -1519,7 +1519,7 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
                   style={{
                     backgroundColor: templateFilter === 'ALL' ? '#262626' : '#FFFFFF',
                     color: templateFilter === 'ALL' ? '#FFFFFF' : '#8C8C8C',
-                    borderColor: '#BFBFBD',
+                    borderColor: '#CBD5E1',
                   }}
                 >
                   Tất cả ({waypoints.length})
@@ -1577,7 +1577,7 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
                             >
                               {tmpl.badge}
                             </span>
-                            <span className="font-bold text-xs truncate" style={{ color: '#262626' }}>
+                            <span className="font-bold text-xs truncate" style={{ color: '#94A3B8' }}>
                               {wp.name}
                             </span>
                           </div>
@@ -1588,7 +1588,7 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
                               type="button"
                               onClick={() => handleOpenEditEndpointModal(wp)}
                               className="px-1.5 py-0.5 rounded text-[10px] font-bold border cursor-pointer hover:bg-stone-100"
-                              style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD', color: '#262626' }}
+                              style={{ backgroundColor: '#FFFFFF', borderColor: '#CBD5E1', color: '#94A3B8' }}
                               title="Chỉnh sửa Endpoint"
                             >
                               ✎ Sửa
@@ -1606,7 +1606,7 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
                               type="button"
                               onClick={() => handleCanvasClickGoal(wp.x, wp.y)}
                               className="px-1.5 py-0.5 rounded text-[10px] font-bold border cursor-pointer hover:bg-stone-100"
-                              style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD', color: '#262626' }}
+                              style={{ backgroundColor: '#FFFFFF', borderColor: '#CBD5E1', color: '#94A3B8' }}
                               title="Điều khiển robot đến điểm này"
                             >
                               Đến
@@ -1615,7 +1615,7 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
                               type="button"
                               onClick={() => handleOpenDeleteConfirm(wp)}
                               className="px-1.5 py-0.5 rounded text-[10px] border cursor-pointer hover:text-red-700 hover:bg-red-50"
-                              style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD', color: '#8C8C8C' }}
+                              style={{ backgroundColor: '#FFFFFF', borderColor: '#CBD5E1', color: '#8C8C8C' }}
                               title="Xóa Endpoint khỏi CSDL"
                             >
                               ✕
@@ -1690,7 +1690,7 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
                             >
                               {tmpl.badge}
                             </span>
-                            <span className="font-bold text-xs truncate" style={{ color: '#262626' }}>
+                            <span className="font-bold text-xs truncate" style={{ color: '#94A3B8' }}>
                               {z.name}
                             </span>
                           </div>
@@ -1700,7 +1700,7 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
                               type="button"
                               onClick={() => handleOpenEditZoneModal(z)}
                               className="px-1.5 py-0.5 rounded text-[10px] font-bold border cursor-pointer hover:bg-stone-100"
-                              style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD', color: '#262626' }}
+                              style={{ backgroundColor: '#FFFFFF', borderColor: '#CBD5E1', color: '#94A3B8' }}
                               title="Chỉnh sửa Vùng"
                             >
                               ✎ Sửa
@@ -1709,7 +1709,7 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
                               type="button"
                               onClick={() => handleDeleteZone(z.id, z.name)}
                               className="px-1.5 py-0.5 rounded text-[10px] border cursor-pointer hover:text-red-700 hover:bg-red-50"
-                              style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD', color: '#8C8C8C' }}
+                              style={{ backgroundColor: '#FFFFFF', borderColor: '#CBD5E1', color: '#8C8C8C' }}
                               title="Xóa Vùng"
                             >
                               ✕
@@ -1741,13 +1741,13 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
           {/* Bottom Telemetry Mini Bar */}
           <div
             className="h-8 border-t px-4 shrink-0 flex items-center justify-between text-[11px] font-mono"
-            style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD', color: '#8C8C8C' }}
+            style={{ backgroundColor: '#E9E5DC', borderColor: '#CBD5E1', color: '#8C8C8C' }}
           >
             <div className="flex items-center gap-4">
-              <span>X: <strong style={{ color: '#262626' }}>{Number(robotPose.x).toFixed(2)}m</strong></span>
-              <span>Y: <strong style={{ color: '#262626' }}>{Number(robotPose.y).toFixed(2)}m</strong></span>
-              <span>YAW: <strong style={{ color: '#262626' }}>{Number(robotPose.yaw).toFixed(0)}°</strong></span>
-              <span>PIN: <strong style={{ color: '#262626' }}>{robotPose.battery}%</strong></span>
+              <span>X: <strong style={{ color: '#94A3B8' }}>{Number(robotPose.x).toFixed(2)}m</strong></span>
+              <span>Y: <strong style={{ color: '#94A3B8' }}>{Number(robotPose.y).toFixed(2)}m</strong></span>
+              <span>YAW: <strong style={{ color: '#94A3B8' }}>{Number(robotPose.yaw).toFixed(0)}°</strong></span>
+              <span>PIN: <strong style={{ color: '#94A3B8' }}>{robotPose.battery}%</strong></span>
             </div>
             <span>CHẾ ĐỘ TÍCH HỢP BẢN ĐỒ &amp; WORKFLOWS</span>
           </div>
@@ -1759,11 +1759,11 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
         <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
           <div
             className="max-w-md w-full rounded-2xl border p-6 space-y-4 shadow-2xl animate-fadeIn"
-            style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD' }}
+            style={{ backgroundColor: '#FFFFFF', borderColor: '#CBD5E1' }}
           >
-            <div className="flex items-center justify-between border-b pb-3" style={{ borderColor: '#BFBFBD' }}>
+            <div className="flex items-center justify-between border-b pb-3" style={{ borderColor: '#CBD5E1' }}>
               <div>
-                <h3 className="text-sm font-bold" style={{ color: '#262626' }}>
+                <h3 className="text-sm font-bold" style={{ color: '#94A3B8' }}>
                   {endpointModalMode === 'EDIT' ? 'Chỉnh Sửa Endpoint (Hotel Concierge)' : 'Thêm Mới Endpoint (Hotel Concierge)'}
                 </h3>
                 <p className="text-[11px]" style={{ color: '#8C8C8C' }}>
@@ -1774,7 +1774,7 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
                 type="button"
                 onClick={() => setIsEndpointModalOpen(false)}
                 className="text-xs font-bold px-2 py-1 rounded border cursor-pointer hover:bg-stone-100"
-                style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD', color: '#262626' }}
+                style={{ backgroundColor: '#E9E5DC', borderColor: '#CBD5E1', color: '#94A3B8' }}
               >
                 Đóng
               </button>
@@ -1793,7 +1793,7 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
                   onChange={(e) => setEndpointFormData({ ...endpointFormData, name: e.target.value })}
                   placeholder="VD: Quầy Lễ Tân, Sảnh Lounge & Coffee, Bàn VIP 01..."
                   className="w-full px-3 py-2 rounded-lg text-xs border focus:outline-none"
-                  style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD', color: '#262626' }}
+                  style={{ backgroundColor: '#FFFFFF', borderColor: '#CBD5E1', color: '#94A3B8' }}
                 />
               </div>
 
@@ -1806,7 +1806,7 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
                   value={endpointFormData.type}
                   onChange={(e) => setEndpointFormData({ ...endpointFormData, type: e.target.value })}
                   className="w-full px-3 py-2 rounded-lg text-xs font-bold border focus:outline-none"
-                  style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD', color: '#262626' }}
+                  style={{ backgroundColor: '#FFFFFF', borderColor: '#CBD5E1', color: '#94A3B8' }}
                 >
                   {CONCIERGE_ENDPOINT_TEMPLATES.map((tmpl) => (
                     <option key={tmpl.type} value={tmpl.type}>
@@ -1826,7 +1826,7 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
                 </label>
                 <div
                   className="px-3 py-2 rounded-lg text-xs font-mono font-bold truncate border"
-                  style={{ backgroundColor: '#F2EFE9', borderColor: '#BFBFBD', color: '#262626' }}
+                  style={{ backgroundColor: '#F2EFE9', borderColor: '#CBD5E1', color: '#94A3B8' }}
                   title={getEndpointTemplateInfo(endpointFormData.type).defaultTasks}
                 >
                   {getEndpointTemplateInfo(endpointFormData.type).defaultTasks}
@@ -1834,7 +1834,7 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
               </div>
 
               {/* Tọa độ Không Gian X, Y, Yaw */}
-              <div className="p-3 rounded-lg border space-y-2" style={{ backgroundColor: '#FAF8F5', borderColor: '#BFBFBD' }}>
+              <div className="p-3 rounded-lg border space-y-2" style={{ backgroundColor: '#FAF8F5', borderColor: '#CBD5E1' }}>
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#8C8C8C' }}>
                     TỌA ĐỘ KHÔNG GIAN THỰC TẾ:
@@ -1850,7 +1850,7 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
                       });
                     }}
                     className="text-[10px] font-bold px-1.5 py-0.5 rounded border cursor-pointer hover:bg-stone-200"
-                    style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD', color: '#262626' }}
+                    style={{ backgroundColor: '#E9E5DC', borderColor: '#CBD5E1', color: '#94A3B8' }}
                   >
                     Lấy vị trí hiện tại Robot
                   </button>
@@ -1866,7 +1866,7 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
                       value={endpointFormData.x}
                       onChange={(e) => setEndpointFormData({ ...endpointFormData, x: parseFloat(e.target.value) || 0 })}
                       className="w-full px-2 py-1.5 rounded text-xs font-mono border focus:outline-none"
-                      style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD', color: '#262626' }}
+                      style={{ backgroundColor: '#FFFFFF', borderColor: '#CBD5E1', color: '#94A3B8' }}
                     />
                   </div>
 
@@ -1879,7 +1879,7 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
                       value={endpointFormData.y}
                       onChange={(e) => setEndpointFormData({ ...endpointFormData, y: parseFloat(e.target.value) || 0 })}
                       className="w-full px-2 py-1.5 rounded text-xs font-mono border focus:outline-none"
-                      style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD', color: '#262626' }}
+                      style={{ backgroundColor: '#FFFFFF', borderColor: '#CBD5E1', color: '#94A3B8' }}
                     />
                   </div>
 
@@ -1893,7 +1893,7 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
                       value={endpointFormData.yaw}
                       onChange={(e) => setEndpointFormData({ ...endpointFormData, yaw: parseFloat(e.target.value) || 0 })}
                       className="w-full px-2 py-1.5 rounded text-xs font-mono border focus:outline-none"
-                      style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD', color: '#262626' }}
+                      style={{ backgroundColor: '#FFFFFF', borderColor: '#CBD5E1', color: '#94A3B8' }}
                     />
                   </div>
                 </div>
@@ -1910,12 +1910,12 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
                   onChange={(e) => setEndpointFormData({ ...endpointFormData, description: e.target.value })}
                   placeholder="Ghi chú thêm về quy trình phục vụ hoặc đặc điểm vị trí..."
                   className="w-full px-3 py-1.5 rounded-lg text-xs border focus:outline-none"
-                  style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD', color: '#262626' }}
+                  style={{ backgroundColor: '#FFFFFF', borderColor: '#CBD5E1', color: '#94A3B8' }}
                 />
               </div>
 
               {/* Actions Footer */}
-              <div className="flex items-center justify-between pt-3 border-t" style={{ borderColor: '#BFBFBD' }}>
+              <div className="flex items-center justify-between pt-3 border-t" style={{ borderColor: '#CBD5E1' }}>
                 {endpointModalMode === 'EDIT' ? (
                   <button
                     type="button"
@@ -1935,7 +1935,7 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
                     type="button"
                     onClick={() => setIsEndpointModalOpen(false)}
                     className="px-4 py-2 rounded-lg text-xs font-semibold border cursor-pointer hover:bg-stone-100"
-                    style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD', color: '#262626' }}
+                    style={{ backgroundColor: '#FFFFFF', borderColor: '#CBD5E1', color: '#94A3B8' }}
                   >
                     Hủy
                   </button>
@@ -1958,14 +1958,14 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4 backdrop-blur-xs">
           <div
             className="max-w-sm w-full rounded-2xl border p-5 space-y-4 shadow-2xl animate-fadeIn"
-            style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD' }}
+            style={{ backgroundColor: '#FFFFFF', borderColor: '#CBD5E1' }}
           >
             <div className="flex items-start gap-3">
               <div className="w-10 h-10 rounded-full bg-red-100 text-red-600 flex items-center justify-center shrink-0 font-bold text-lg">
                 ✕
               </div>
               <div>
-                <h4 className="text-sm font-bold" style={{ color: '#262626' }}>
+                <h4 className="text-sm font-bold" style={{ color: '#94A3B8' }}>
                   Xác Nhận Xóa Điểm Mốc?
                 </h4>
                 <p className="text-xs text-stone-600 mt-1 leading-relaxed">
@@ -1979,7 +1979,7 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
                 type="button"
                 onClick={handleCancelDelete}
                 className="px-3.5 py-1.5 rounded-lg text-xs font-semibold border cursor-pointer hover:bg-stone-100"
-                style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD', color: '#262626' }}
+                style={{ backgroundColor: '#FFFFFF', borderColor: '#CBD5E1', color: '#94A3B8' }}
               >
                 Hủy Bỏ
               </button>
@@ -2000,17 +2000,17 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
         <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
           <div
             className="max-w-sm w-full rounded-2xl border p-5 space-y-4 shadow-2xl animate-fadeIn"
-            style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD' }}
+            style={{ backgroundColor: '#FFFFFF', borderColor: '#CBD5E1' }}
           >
-            <div className="flex items-center justify-between border-b pb-2.5" style={{ borderColor: '#BFBFBD' }}>
-              <h3 className="text-xs font-bold uppercase tracking-wider" style={{ color: '#262626' }}>
+            <div className="flex items-center justify-between border-b pb-2.5" style={{ borderColor: '#CBD5E1' }}>
+              <h3 className="text-xs font-bold uppercase tracking-wider" style={{ color: '#94A3B8' }}>
                 Đổi Tên Kịch Bản
               </h3>
               <button
                 type="button"
                 onClick={() => setIsRenameWfModalOpen(false)}
                 className="text-xs font-bold px-2 py-0.5 rounded border cursor-pointer hover:bg-stone-100"
-                style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD', color: '#262626' }}
+                style={{ backgroundColor: '#E9E5DC', borderColor: '#CBD5E1', color: '#94A3B8' }}
               >
                 ✕
               </button>
@@ -2029,16 +2029,16 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
                   onChange={(e) => setNewWfName(e.target.value)}
                   placeholder="Nhập tên kịch bản..."
                   className="w-full px-3 py-2 rounded-lg text-xs font-bold border focus:outline-none"
-                  style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD', color: '#262626' }}
+                  style={{ backgroundColor: '#FFFFFF', borderColor: '#CBD5E1', color: '#94A3B8' }}
                 />
               </div>
 
-              <div className="flex justify-end gap-2 pt-2 border-t" style={{ borderColor: '#BFBFBD' }}>
+              <div className="flex justify-end gap-2 pt-2 border-t" style={{ borderColor: '#CBD5E1' }}>
                 <button
                   type="button"
                   onClick={() => setIsRenameWfModalOpen(false)}
                   className="px-3 py-1.5 rounded-lg text-xs font-semibold border cursor-pointer hover:bg-stone-100"
-                  style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD', color: '#8C8C8C' }}
+                  style={{ backgroundColor: '#FFFFFF', borderColor: '#CBD5E1', color: '#8C8C8C' }}
                 >
                   Hủy
                 </button>
@@ -2060,11 +2060,11 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
         <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
           <div
             className="max-w-md w-full rounded-2xl border p-6 space-y-4 shadow-2xl animate-fadeIn"
-            style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD' }}
+            style={{ backgroundColor: '#FFFFFF', borderColor: '#CBD5E1' }}
           >
-            <div className="flex items-center justify-between border-b pb-3" style={{ borderColor: '#BFBFBD' }}>
+            <div className="flex items-center justify-between border-b pb-3" style={{ borderColor: '#CBD5E1' }}>
               <div>
-                <h3 className="text-base font-bold" style={{ color: '#262626' }}>
+                <h3 className="text-base font-bold" style={{ color: '#94A3B8' }}>
                   {zoneModalMode === 'EDIT' ? 'Chỉnh Sửa Vùng Chức Năng' : 'Thêm Mới Vùng Chức Năng (Concierge Zone)'}
                 </h3>
                 <p className="text-[11px] text-stone-500">
@@ -2075,7 +2075,7 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
                 type="button"
                 onClick={() => setIsZoneModalOpen(false)}
                 className="text-xs font-bold px-2 py-1 rounded border cursor-pointer hover:bg-stone-100"
-                style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD', color: '#262626' }}
+                style={{ backgroundColor: '#E9E5DC', borderColor: '#CBD5E1', color: '#94A3B8' }}
               >
                 ✕
               </button>
@@ -2093,7 +2093,7 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
                   onChange={(e) => setZoneFormData({ ...zoneFormData, name: e.target.value })}
                   placeholder="VD: Cầu Thang Bộ B, Khu Giảm Tốc Cửa Sảnh, Silent Area VIP..."
                   className="w-full px-3 py-2 rounded-lg text-xs border focus:outline-none focus:ring-1 focus:ring-stone-400"
-                  style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD', color: '#262626' }}
+                  style={{ backgroundColor: '#FFFFFF', borderColor: '#CBD5E1', color: '#94A3B8' }}
                 />
               </div>
 
@@ -2105,7 +2105,7 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
                   value={zoneFormData.type}
                   onChange={(e) => setZoneFormData({ ...zoneFormData, type: e.target.value })}
                   className="w-full px-3 py-2 rounded-lg text-xs font-bold border focus:outline-none"
-                  style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD', color: '#262626' }}
+                  style={{ backgroundColor: '#FFFFFF', borderColor: '#CBD5E1', color: '#94A3B8' }}
                 >
                   {CONCIERGE_ZONE_TEMPLATES.map((tmpl) => (
                     <option key={tmpl.type} value={tmpl.type}>
@@ -2136,7 +2136,7 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
                     value={zoneFormData.x}
                     onChange={(e) => setZoneFormData({ ...zoneFormData, x: parseFloat(e.target.value) || 0 })}
                     className="w-full px-2.5 py-1.5 rounded-lg text-xs border focus:outline-none font-mono"
-                    style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD', color: '#262626' }}
+                    style={{ backgroundColor: '#FFFFFF', borderColor: '#CBD5E1', color: '#94A3B8' }}
                   />
                 </div>
 
@@ -2151,7 +2151,7 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
                     value={zoneFormData.y}
                     onChange={(e) => setZoneFormData({ ...zoneFormData, y: parseFloat(e.target.value) || 0 })}
                     className="w-full px-2.5 py-1.5 rounded-lg text-xs border focus:outline-none font-mono"
-                    style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD', color: '#262626' }}
+                    style={{ backgroundColor: '#FFFFFF', borderColor: '#CBD5E1', color: '#94A3B8' }}
                   />
                 </div>
 
@@ -2167,7 +2167,7 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
                     value={zoneFormData.width}
                     onChange={(e) => setZoneFormData({ ...zoneFormData, width: parseFloat(e.target.value) || 1.0 })}
                     className="w-full px-2.5 py-1.5 rounded-lg text-xs border focus:outline-none font-mono"
-                    style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD', color: '#262626' }}
+                    style={{ backgroundColor: '#FFFFFF', borderColor: '#CBD5E1', color: '#94A3B8' }}
                   />
                 </div>
 
@@ -2183,7 +2183,7 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
                     value={zoneFormData.height}
                     onChange={(e) => setZoneFormData({ ...zoneFormData, height: parseFloat(e.target.value) || 1.0 })}
                     className="w-full px-2.5 py-1.5 rounded-lg text-xs border focus:outline-none font-mono"
-                    style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD', color: '#262626' }}
+                    style={{ backgroundColor: '#FFFFFF', borderColor: '#CBD5E1', color: '#94A3B8' }}
                   />
                 </div>
               </div>
@@ -2202,7 +2202,7 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
                     value={zoneFormData.speed_limit || 0.3}
                     onChange={(e) => setZoneFormData({ ...zoneFormData, speed_limit: parseFloat(e.target.value) || 0.3 })}
                     className="w-full px-3 py-2 rounded-lg text-xs border focus:outline-none font-mono"
-                    style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD', color: '#262626' }}
+                    style={{ backgroundColor: '#FFFFFF', borderColor: '#CBD5E1', color: '#94A3B8' }}
                   />
                 </div>
               )}
@@ -2217,16 +2217,16 @@ export const AdminUnifiedStudioTab = ({ onSwitchToCamera }) => {
                   onChange={(e) => setZoneFormData({ ...zoneFormData, description: e.target.value })}
                   placeholder="Ghi chú thêm về quy tắc hoạt động của vùng..."
                   className="w-full px-3 py-2 rounded-lg text-xs border focus:outline-none"
-                  style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD', color: '#262626' }}
+                  style={{ backgroundColor: '#FFFFFF', borderColor: '#CBD5E1', color: '#94A3B8' }}
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-3 border-t" style={{ borderColor: '#BFBFBD' }}>
+              <div className="flex items-center justify-end gap-2 pt-3 border-t" style={{ borderColor: '#CBD5E1' }}>
                 <button
                   type="button"
                   onClick={() => setIsZoneModalOpen(false)}
                   className="px-4 py-2 rounded-lg text-xs font-semibold border cursor-pointer hover:bg-stone-50"
-                  style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD', color: '#262626' }}
+                  style={{ backgroundColor: '#FFFFFF', borderColor: '#CBD5E1', color: '#94A3B8' }}
                 >
                   Hủy
                 </button>

@@ -97,11 +97,15 @@ export async function fetchCurrentUser() {
   if (!token) return null;
 
   try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 4000);
     const response = await fetch(`${AUTH_URL}/me`, {
       headers: {
         Authorization: `Bearer ${token}`,
       },
+      signal: controller.signal,
     });
+    clearTimeout(timer);
 
     if (!response.ok) return null;
 

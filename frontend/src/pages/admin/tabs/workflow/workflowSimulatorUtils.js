@@ -1,20 +1,20 @@
-// Danh sach toa do cac diem moc Sanh Tang Tret (Ground Floor - Lobby Arena)
-// Khong co tram sac robot, robot mac dinh o vi tri truc Goc Tren Ben Phai cua Lobby (x: 3.7, y: 5.0)
-export const ROBOT_INITIAL_POSE = { x: 3.7, y: 5.0, yaw: -Math.PI / 2 };
+// Danh sach toa do cac diem moc Sanh Tang Tret (Ground Floor - Lobby Arena 9.80m x 6.30m)
+// Robot mac dinh o vi tri truc Khu Vuc Phia Bac cua Lobby (x: 3.6, y: 4.8)
+export const ROBOT_INITIAL_POSE = { x: 7.2, y: 9.6, yaw: -Math.PI / 2 };
 
 export const GAZEBO_LOBBY_WAYPOINTS = {
   ROBOT_STANDBY: {
-    x: 3.7,
-    y: 5.0,
-    name: 'Vị Trí Chờ Robot (Góc Trên Bên Phải Lobby)',
+    x: 7.2,
+    y: 9.6,
+    name: 'Vị Trí Chờ Robot Sảnh (Phía Bắc)',
     badge: 'Robot Sảnh',
     label: 'Vị Trí Robot Sảnh',
     role: 'standby',
     offset: 'bottom',
   },
   LOBBY_LOUNGE: {
-    x: 2.0,
-    y: 2.8,
+    x: 3.6,
+    y: 7.2,
     name: 'Khu Sofa Sảnh (Lobby Lounge)',
     badge: 'Khu Sofa Sảnh',
     label: 'Khu Sofa Sảnh',
@@ -22,8 +22,8 @@ export const GAZEBO_LOBBY_WAYPOINTS = {
     offset: 'top',
   },
   MAIN_ENTRANCE: {
-    x: 5.2,
-    y: 1.0,
+    x: 8.4,
+    y: 2.0,
     name: 'Cửa Chính Ra Vào Sảnh',
     badge: 'Cửa Chính Sảnh',
     label: 'Cửa Chính Ra Vào Sảnh',
@@ -31,8 +31,8 @@ export const GAZEBO_LOBBY_WAYPOINTS = {
     offset: 'top',
   },
   FRONT_DESK: {
-    x: 5.2,
-    y: 2.0,
+    x: 11.44,
+    y: 2.8,
     name: 'Trước Quầy Lễ Tân (Front Desk)',
     badge: 'Quầy Lễ Tân',
     label: 'Trước Quầy Lễ Tân (Front Desk)',
@@ -40,8 +40,8 @@ export const GAZEBO_LOBBY_WAYPOINTS = {
     offset: 'top',
   },
   ELEVATOR: {
-    x: 7.8,
-    y: 4.5,
+    x: 15.6,
+    y: 6.96,
     name: 'Cụm Thang Máy Tầng 1',
     badge: 'Thang Máy',
     label: 'Cụm Thang Máy',
@@ -49,8 +49,8 @@ export const GAZEBO_LOBBY_WAYPOINTS = {
     offset: 'bottom',
   },
   RESTROOMS: {
-    x: 6.6,
-    y: 4.5,
+    x: 15.2,
+    y: 2.4,
     name: 'Nhà Vệ Sinh Sảnh (Restrooms)',
     badge: 'Nhà Vệ Sinh (WC)',
     label: 'Nhà Vệ Sinh (WC)',
@@ -58,17 +58,17 @@ export const GAZEBO_LOBBY_WAYPOINTS = {
     offset: 'bottom',
   },
   STAIRS: {
-    x: 8.8,
-    y: 4.5,
-    name: 'Cầu Thang Bộ Thoát Hiểm',
-    badge: 'Cầu Thang Bộ',
-    label: 'Cầu Thang Bộ',
+    x: 16.0,
+    y: 4.8,
+    name: 'Lối Thoát Hiểm Khẩn Cấp',
+    badge: 'Thoát Hiểm',
+    label: 'Lối Thoát Hiểm Khẩn Cấp',
     role: 'facility',
     offset: 'bottom',
   },
   STAFF_ONLY: {
-    x: 7.85,
-    y: 2.7,
+    x: 11.44,
+    y: 6.4,
     name: 'Trước Phòng Nội Bộ (Staff Only)',
     badge: 'Phòng Nội Bộ',
     label: 'Trước Phòng Nội Bộ (Staff Only)',
@@ -76,8 +76,8 @@ export const GAZEBO_LOBBY_WAYPOINTS = {
     offset: 'bottom',
   },
   CENTRAL_LOBBY: {
-    x: 5.2,
-    y: 2.8,
+    x: 8.4,
+    y: 6.4,
     name: 'Khu Vực Trung Tâm Sảnh',
     badge: 'Trung Tâm Sảnh',
     label: 'Khu Vực Trung Tâm Sảnh',
@@ -85,44 +85,45 @@ export const GAZEBO_LOBBY_WAYPOINTS = {
     offset: 'top',
   },
   // Backward compatibility aliases
-  ZONE_LOBBY: { x: 5.2, y: 1.0, badge: 'Cửa Chính Sảnh', label: 'Cửa Chính Sảnh' },
-  DOCK_LOBBY: { x: 3.7, y: 5.0, badge: 'Robot Sảnh', label: 'Vị Trí Robot Sảnh' },
-  DOCK_01: { x: 3.7, y: 5.0, badge: 'Robot Sảnh', label: 'Vị Trí Robot Sảnh' },
-  HOTSPOT_LOBBY: { x: 5.2, y: 2.8, badge: 'Trung Tâm Sảnh', label: 'Khu Vực Trung Tâm Sảnh' },
-  RESTAURANT_GATE: { x: 6.4, y: 2.0, badge: 'Quầy Lễ Tân', label: 'Quầy Lễ Tân (Front Desk)' },
-  CORRIDOR_NORTH: { x: 6.6, y: 4.5, badge: 'Nhà Vệ Sinh (WC)', label: 'Nhà Vệ Sinh (WC)' },
-  LOBBY_NORTHEAST: { x: 7.8, y: 4.5, badge: 'Thang Máy', label: 'Cụm Thang Máy' },
-  ELEVATOR_CLUSTER: { x: 7.8, y: 4.5, badge: 'Thang Máy', label: 'Cụm Thang Máy' },
+  ZONE_LOBBY: { x: 8.4, y: 2.0, badge: 'Cửa Chính Sảnh', label: 'Cửa Chính Sảnh' },
+  DOCK_LOBBY: { x: 7.2, y: 9.6, badge: 'Robot Sảnh', label: 'Vị Trí Robot Sảnh' },
+  DOCK_01: { x: 7.2, y: 9.6, badge: 'Robot Sảnh', label: 'Vị Trí Robot Sảnh' },
+  HOTSPOT_LOBBY: { x: 8.4, y: 6.4, badge: 'Trung Tâm Sảnh', label: 'Khu Vực Trung Tâm Sảnh' },
+  RESTAURANT_GATE: { x: 11.44, y: 2.8, badge: 'Quầy Lễ Tân', label: 'Quầy Lễ Tân (Front Desk)' },
+  CORRIDOR_NORTH: { x: 15.2, y: 2.4, badge: 'Nhà Vệ Sinh (WC)', label: 'Nhà Vệ Sinh (WC)' },
+  LOBBY_NORTHEAST: { x: 15.6, y: 6.96, badge: 'Thang Máy', label: 'Cụm Thang Máy' },
+  ELEVATOR_CLUSTER: { x: 15.6, y: 6.96, badge: 'Thang Máy', label: 'Cụm Thang Máy' },
 };
 
 // Danh sach 8 diem moc chuan Lobby de su dung thong nhat giua Builder va Studio
 export const STANDARD_LOBBY_WAYPOINTS = [
-  { id: 'ROBOT_STANDBY', key: 'ROBOT_STANDBY', name: 'Vị Trí Chờ Robot Sảnh', x: 3.7, y: 5.0 },
-  { id: 'MAIN_ENTRANCE', key: 'MAIN_ENTRANCE', name: 'Cửa Chính Sảnh (Main Entrance)', x: 5.2, y: 1.0 },
-  { id: 'FRONT_DESK', key: 'FRONT_DESK', name: 'Trước Quầy Lễ Tân (Front Desk)', x: 5.2, y: 2.0 },
-  { id: 'STAFF_ONLY', key: 'STAFF_ONLY', name: 'Trước Phòng Nội Bộ (Staff Only)', x: 7.85, y: 2.7 },
-  { id: 'ELEVATOR', key: 'ELEVATOR', name: 'Cụm Thang Máy Tầng 1', x: 7.8, y: 4.5 },
-  { id: 'RESTROOMS', key: 'RESTROOMS', name: 'Nhà Vệ Sinh Sảnh (WC)', x: 6.6, y: 4.5 },
-  { id: 'STAIRS', key: 'STAIRS', name: 'Cầu Thang Bộ Thoát Hiểm', x: 8.8, y: 4.5 },
-  { id: 'LOBBY_LOUNGE', key: 'LOBBY_LOUNGE', name: 'Khu Sofa Khách Chờ Sảnh', x: 2.0, y: 2.8 },
+  { id: 'ROBOT_STANDBY', key: 'ROBOT_STANDBY', name: 'Vị Trí Chờ Robot Sảnh', type: 'PARK', x: 7.2, y: 9.6, floor: 'Sảnh Tầng 1' },
+  { id: 'CHARGER_STATION', key: 'CHARGER_STATION', name: 'Trạm Sạc Robot Sảnh', type: 'CHARGER', x: 6.0, y: 9.6, floor: 'Sảnh Tầng 1' },
+  { id: 'MAIN_ENTRANCE', key: 'MAIN_ENTRANCE', name: 'Cửa Chính Sảnh (Main Entrance)', type: 'WAYPOINT', x: 8.4, y: 2.0, floor: 'Sảnh Tầng 1' },
+  { id: 'FRONT_DESK', key: 'FRONT_DESK', name: 'Trước Quầy Lễ Tân (Front Desk)', type: 'WAYPOINT', x: 11.44, y: 2.8, floor: 'Sảnh Tầng 1' },
+  { id: 'STAFF_ONLY', key: 'STAFF_ONLY', name: 'Trước Phòng Nội Bộ (Staff Only)', type: 'WAYPOINT', x: 11.44, y: 6.4, floor: 'Sảnh Tầng 1' },
+  { id: 'ELEVATOR', key: 'ELEVATOR', name: 'Cụm Thang Máy Tầng 1', type: 'WAYPOINT', x: 15.6, y: 6.96, floor: 'Sảnh Tầng 1' },
+  { id: 'RESTROOMS', key: 'RESTROOMS', name: 'Nhà Vệ Sinh Sảnh (WC)', type: 'WAYPOINT', x: 15.2, y: 2.4, floor: 'Sảnh Tầng 1' },
+  { id: 'STAIRS', key: 'STAIRS', name: 'Lối Thoát Hiểm Khẩn Cấp', type: 'WAYPOINT', x: 16.0, y: 4.8, floor: 'Sảnh Tầng 1' },
+  { id: 'LOBBY_LOUNGE', key: 'LOBBY_LOUNGE', name: 'Khu Sofa Khách Chờ Sảnh', type: 'WAYPOINT', x: 3.6, y: 7.2, floor: 'Sảnh Tầng 1' },
 ];
 
-// Danh sach 3 Vung Chuc Nang tieu chuan cho sa ban Gia lap Workflow & Gazebo (10m x 6m)
+// Danh sach 3 Vung Chuc Nang tieu chuan cho sa ban Gia lap Workflow & Gazebo (9.80m x 6.30m)
 export const SIMULATOR_HOTEL_ZONES = [
   {
     id: 'zone-keepout-staff',
-    name: 'Phòng Staff Only (Khu Vực Cấm Vào)',
+    name: 'Phòng Nội Bộ Quầy Lễ Tân (Khu Vực Cấm Vào)',
     type: 'KEEP_OUT',
     badge: 'KEEP OUT',
     color: '#DC2626',
     bgColor: 'rgba(220, 38, 38, 0.16)',
     borderColor: '#DC2626',
-    x: 8.8,
-    y: 1.5,
-    width: 1.5,
-    height: 2.8,
+    x: 11.44,
+    y: 6.4,
+    width: 2.80,
+    height: 3.60,
     speed_limit: 0.0,
-    description: 'Khu vực nội bộ & kỹ thuật, robot tuyệt đối không đi vào hay nhận điểm đến.',
+    description: 'Khu vực quầy lễ tân nội bộ, robot tuyệt đối không đi vào hay nhận điểm đến.',
   },
   {
     id: 'zone-speed-frontdesk',
@@ -132,10 +133,10 @@ export const SIMULATOR_HOTEL_ZONES = [
     color: '#D97706',
     bgColor: 'rgba(217, 119, 6, 0.16)',
     borderColor: '#D97706',
-    x: 5.2,
-    y: 2.2,
-    width: 2.6,
-    height: 2.0,
+    x: 11.44,
+    y: 2.8,
+    width: 4.80,
+    height: 2.40,
     speed_limit: 0.20,
     description: 'Khu vực tiếp đón khách, tốc độ robot tự động hạ tối đa 0.20 m/s để đảm bảo an toàn.',
   },
@@ -147,10 +148,10 @@ export const SIMULATOR_HOTEL_ZONES = [
     color: '#E11D48',
     bgColor: 'rgba(225, 29, 72, 0.16)',
     borderColor: '#E11D48',
-    x: 4.4,
-    y: 2.85,
-    width: 1.4,
-    height: 1.6,
+    x: 12.84,
+    y: 9.8,
+    width: 2.40,
+    height: 2.80,
     speed_limit: 0.30,
     description: 'Lối đi huyết mạch giữa 2 gian sảnh, robot chỉ được phép đi qua, tuyệt đối cấm dừng/chờ.',
   },
@@ -194,11 +195,11 @@ export const zoneToSvgRect = (zone) => {
   const minX = zx - zw / 2;
   const maxY = zy + zh / 2;
 
-  // Đồng bộ tỉ lệ 1:1 với Gazebo 10m x 6m: PPM = 90 px/m (X: 50..950, Y: 40..580)
-  const svgX = 50 + minX * 90;
-  const svgY = 580 - maxY * 90;
-  const svgWidth = zw * 90;
-  const svgHeight = zh * 90;
+  // Dong bo ti le 1:1 voi 19.60m x 12.60m sang canvas 490x315 px (25 px/m) + padding 35px
+  const svgX = 35 + minX * 25;
+  const svgY = 35 + (12.60 - maxY) * 25;
+  const svgWidth = zw * 25;
+  const svgHeight = zh * 25;
 
   return {
     x: svgX,
@@ -261,40 +262,35 @@ export const resolveNoStopPassthrough = (fromPt, targetPt, zones = SIMULATOR_HOT
     return { isNoStop: false, safePoint: targetPt, zone: null };
   }
 
-  const zw = Number(activeZone.width) || 1.4;
-  const zh = Number(activeZone.height) || 1.6;
-  const zx = Number(activeZone.x) || 4.4;
-  const zy = Number(activeZone.y) || 2.85;
+  const zw = Number(activeZone.width) || 1.20;
+  const zh = Number(activeZone.height) || 1.40;
+  const zx = Number(activeZone.x) || 12.84;
+  const zy = Number(activeZone.y) || 9.80;
 
   const minX = zx - zw / 2;
   const maxX = zx + zw / 2;
   const minY = zy - zh / 2;
   const maxY = zy + zh / 2;
 
-  const fromX = typeof fromPt?.x === 'number' ? fromPt.x : zx + 0.8;
+  const fromX = typeof fromPt?.x === 'number' ? fromPt.x : zx + 1.0;
   const fromY = typeof fromPt?.y === 'number' ? fromPt.y : zy;
 
   const dx = targetPt.x - fromX;
   const dy = targetPt.y - fromY;
 
-  const clearance = 0.45; // Khoang dem thoat khoi vung (m)
+  const clearance = 0.50; // Khoang dem thoat khoi vung (m)
   let safeX = targetPt.x;
   let safeY = targetPt.y;
 
-  // Xac dinh truc di chuyen uu tien (Ngang hoac Doc)
   if (Math.abs(dx) >= Math.abs(dy)) {
-    // Di theo truc ngang (qua cua trung tam sanh Dong <-> Tay)
     if (fromX >= zx) {
-      // Robot di tu Phia Dong sang Tay -> Thoat ra phia Tay
       safeX = Number((minX - clearance).toFixed(2));
-      safeY = Number(Math.max(2.4, Math.min(3.2, targetPt.y)).toFixed(2));
+      safeY = Number(Math.max(minY, Math.min(maxY, targetPt.y)).toFixed(2));
     } else {
-      // Robot di tu Phia Tay sang Dong -> Thoat ra phia Dong
       safeX = Number((maxX + clearance).toFixed(2));
-      safeY = Number(Math.max(2.4, Math.min(3.2, targetPt.y)).toFixed(2));
+      safeY = Number(Math.max(minY, Math.min(maxY, targetPt.y)).toFixed(2));
     }
   } else {
-    // Di theo truc doc (Bac <-> Nam)
     if (fromY >= zy) {
       safeY = Number((minY - clearance).toFixed(2));
       safeX = Number(Math.max(minX, Math.min(maxX, targetPt.x)).toFixed(2));
@@ -304,16 +300,13 @@ export const resolveNoStopPassthrough = (fromPt, targetPt, zones = SIMULATOR_HOT
     }
   }
 
-  // Kiem tra gioi han bien mat bang san sanh
-  safeX = Number(Math.max(0.8, Math.min(9.2, safeX)).toFixed(2));
-  safeY = Number(Math.max(0.8, Math.min(5.2, safeY)).toFixed(2));
+  safeX = Number(Math.max(0.8, Math.min(18.0, safeX)).toFixed(2));
+  safeY = Number(Math.max(0.8, Math.min(11.2, safeY)).toFixed(2));
 
-  // Tranh de diem an toan roi vao vung KEEP_OUT
   const keepOutCheck = getActiveSimulatorZone(safeX, safeY, zones);
   if (keepOutCheck && keepOutCheck.type === 'KEEP_OUT') {
-    if (safeX > 4.4) safeX = 5.4;
-    else safeX = 3.2;
-    safeY = 2.85;
+    safeX = 4.2;
+    safeY = 4.9;
   }
 
   return {
@@ -324,193 +317,273 @@ export const resolveNoStopPassthrough = (fromPt, targetPt, zones = SIMULATOR_HOT
   };
 };
 
-// Chuyen toa do Met (ROS: X 0..10m, Y 0..6m) sang Toa do SVG Canvas (PPM = 90 px/m, Canvas 1000 x 620)
+// Chuyen toa do Met (ROS: X 0..9.80m, Y 0..6.30m) sang Toa do SVG Canvas (490x315 px + padding 35px, 50 px/m)
 export const meterToSvg = (mx, my) => {
-  const safeX = typeof mx === 'number' && !isNaN(mx) ? mx : 3.7;
-  const safeY = typeof my === 'number' && !isNaN(my) ? my : 5.0;
-  const clampedX = Math.max(0, Math.min(10.0, safeX));
-  const clampedY = Math.max(0, Math.min(6.0, safeY));
-  // Đồng bộ tỉ lệ 1:1 chuẩn xác với Gazebo 10m x 6m:
-  // Sàn X: 50 -> 950 (rộng 900px = 10m * 90 px/m)
-  // Sàn Y: 40 -> 580 (cao 540px = 6m * 90 px/m)
-  const svgX = 50 + clampedX * 90;
-  const svgY = 580 - clampedY * 90;
+  const safeX = typeof mx === 'number' && !isNaN(mx) ? mx : 7.2;
+  const safeY = typeof my === 'number' && !isNaN(my) ? my : 9.6;
+  const clampedX = Math.max(0, Math.min(19.60, safeX));
+  const clampedY = Math.max(0, Math.min(12.60, safeY));
+  // Dong bo ti le 1:1 voi Gazebo 19.60m x 12.60m va ban do SVG 490x315
+  // San X: 35 -> 525 (rong 490px = 19.60m * 25 px/m)
+  // San Y: 35 -> 350 (cao 315px = 12.60m * 25 px/m)
+  const svgX = 35 + clampedX * 25;
+  const svgY = 35 + (12.60 - clampedY) * 25;
   return { x: svgX, y: svgY };
 };
 
-// Chuyen nguoc tu Toa do SVG Canvas sang Toa do Met (ROS: X 0..10m, Y 0..6m)
+// Chuyen nguoc tu Toa do SVG Canvas sang Toa do Met (ROS: X 0..19.60m, Y 0..12.60m)
 export const svgToMeter = (svgX, svgY) => {
-  const clampedSvgX = Math.max(50, Math.min(950, svgX));
-  const clampedSvgY = Math.max(40, Math.min(580, svgY));
-  const mx = (clampedSvgX - 50) / 90;
-  const my = (580 - clampedSvgY) / 90;
+  const clampedSvgX = Math.max(35, Math.min(525, svgX));
+  const clampedSvgY = Math.max(35, Math.min(350, svgY));
+  const mx = (clampedSvgX - 35) / 25;
+  const my = (350 - clampedSvgY) / 25;
   return {
     x: Number(mx.toFixed(2)),
     y: Number(my.toFixed(2)),
   };
 };
 
-// Tinh toan lo trinh di chuyen co ban trong sanh (Tranh vach ngan trung tam x=4.4m va quay tiep tan)
-const getLobbyBaseWaypoints = (from, to) => {
-  const points = [];
-  const fromIsLeft = from.x < 4.4;
-  const toIsLeft = to.x < 4.4;
+// ========================================================
+// THUAT TOAN DINH TUYEN NE TUONG VA VAT CAN TRONG SANH 19.60m x 12.60m
+// Graph-based roadmap + Line-of-sight collision checking + String-pulling shortcut smoothing
+// ========================================================
 
-  const isEastOrBehindDesk = (pt) => pt.x >= 5.6 && pt.y <= 2.8;
-  const isWestCorridor = (pt) => pt.x < 5.6 && pt.y <= 2.8;
+const LOBBY_OBSTACLES = [
+  { id: 'RECEPTION', minX: 9.70, maxX: 13.10, minY: 4.00, maxY: 8.65 },
+  { id: 'PLANT_POT', minX: 5.60, maxX: 7.45, minY: 5.35, maxY: 7.15 },
+  { id: 'PART_TOP',  minX: 12.50, maxX: 12.85, minY: 11.00, maxY: 12.60 },
+  { id: 'PART_BOT',  minX: 12.60, maxX: 12.95, minY: 0.00, maxY: 1.45 },
+  { id: 'SOFA_TL',   minX: 0.00, maxX: 2.30, minY: 8.30, maxY: 12.60 },
+  { id: 'SOFA_BL',   minX: 0.00, maxX: 4.70, minY: 0.00, maxY: 1.60 },
+  { id: 'SOFA_TR',   minX: 15.30, maxX: 19.60, minY: 7.60, maxY: 10.00 },
+  { id: 'ELEV_EXIT', minX: 17.80, maxX: 19.60, minY: 4.80, maxY: 7.80 },
+  { id: 'WC_EAST',   minX: 17.80, maxX: 19.60, minY: 0.00, maxY: 3.55 },
+  { id: 'WC_SOUTH',  minX: 15.30, maxX: 18.00, minY: 0.00, maxY: 1.90 },
+];
 
-  if (fromIsLeft && !toIsLeft) {
-    // DI TU GIAN TRAI (SOFA / CHARGER) SANG GIAN PHAI (FRONT DESK / WC / STAFF)
-    if (Math.abs(from.y - 2.85) > 0.3 || from.x < 3.6) {
-      points.push({ x: 3.8, y: 2.85 });
-    }
-    points.push({ x: 4.4, y: 2.85 });
-    points.push({ x: 5.1, y: 2.85 });
+const ccw = (A, B, C) => (C.y - A.y) * (B.x - A.x) > (B.y - A.y) * (C.x - A.x);
 
-    if (isEastOrBehindDesk(to)) {
-      // Dich den nam sau hoac ben phai quay Le Tan: Vong qua hanh lang Bac (y=2.85) roi moi xuong
-      points.push({ x: 7.1, y: 2.85 });
-      if (to.y < 2.4) {
-        points.push({ x: 7.1, y: Math.max(0.8, Math.min(to.y, 2.2)) });
-      }
-    } else if (isWestCorridor(to)) {
-      if (to.y < 2.0) {
-        points.push({ x: 5.2, y: 1.8 });
-      }
-    } else if (to.y > 3.6) {
-      points.push({ x: 5.2, y: 4.0 });
-    }
-  } else if (!fromIsLeft && toIsLeft) {
-    // DI TU GIAN PHAI (FRONT DESK / WC / STAFF) SANG GIAN TRAI (SOFA / LOBBY)
-    if (isEastOrBehindDesk(from)) {
-      // Robot dang o sau hoac ben phai quay Le Tan: Phai thoat ra phia Dong (x=7.1) roi moi len hanh lang Bac
-      if (from.x < 7.0) {
-        points.push({ x: 7.1, y: Math.max(0.8, Math.min(from.y, 2.2)) });
-      }
-      points.push({ x: 7.1, y: 2.85 });
-      points.push({ x: 5.1, y: 2.85 });
-    } else if (isWestCorridor(from)) {
-      if (from.y < 2.0) {
-        points.push({ x: 5.2, y: 1.8 });
-      }
-      points.push({ x: 5.1, y: 2.85 });
-    } else {
-      if (from.y > 3.6 && from.x > 6.0) {
-        points.push({ x: 5.2, y: 4.0 });
-      }
-      points.push({ x: 5.1, y: 2.85 });
-    }
+const segmentsIntersect = (A, B, C, D) =>
+  ccw(A, C, D) !== ccw(B, C, D) && ccw(A, B, C) !== ccw(A, B, D);
 
-    // Qua cua thong sanh
-    points.push({ x: 4.4, y: 2.85 });
-    points.push({ x: 3.8, y: 2.85 });
-
-    // Tiep can Gian Trai (tranh bo sofa giua)
-    if (to.y > 3.4 && to.x < 2.0) {
-      points.push({ x: 2.5, y: to.y });
-    }
-  } else if (!fromIsLeft && !toIsLeft) {
-    // DI CHUYEN NOI BO GIAN PHAI
-    const fromEast = isEastOrBehindDesk(from);
-    const toEast = isEastOrBehindDesk(to);
-    const fromWest = isWestCorridor(from);
-    const toWest = isWestCorridor(to);
-
-    if (fromWest && toEast) {
-      // Tu phia Tay quay sang phia Dong quay: Vong qua hanh lang Bac
-      points.push({ x: 5.2, y: 2.85 });
-      points.push({ x: 7.1, y: 2.85 });
-      if (to.y < 2.4) {
-        points.push({ x: 7.1, y: Math.max(0.8, Math.min(to.y, 2.2)) });
-      }
-    } else if (fromEast && toWest) {
-      // Tu phia Dong quay sang phia Tay quay: Vong qua hanh lang Bac
-      if (from.x < 7.0) {
-        points.push({ x: 7.1, y: Math.max(0.8, Math.min(from.y, 2.2)) });
-      }
-      points.push({ x: 7.1, y: 2.85 });
-      points.push({ x: 5.2, y: 2.85 });
-      if (to.y < 2.0) {
-        points.push({ x: 5.2, y: 1.8 });
-      }
-    } else if (fromEast && from.y < 2.8 && to.y > 2.8) {
-      // Tu trong/sau quay di len phia Bac (WC / Thang May)
-      if (from.x < 7.0) {
-        points.push({ x: 7.1, y: Math.max(0.8, Math.min(from.y, 2.2)) });
-      }
-      points.push({ x: 7.1, y: 2.85 });
-    } else if (from.y > 2.8 && toEast && to.y < 2.8) {
-      // Tu phia Bac di xuong trong/sau quay
-      points.push({ x: 7.1, y: 2.85 });
-      if (to.y < 2.4) {
-        points.push({ x: 7.1, y: Math.max(0.8, Math.min(to.y, 2.2)) });
-      }
-    } else {
-      // Kiem tra vuong Quay Front Desk theo truc Doc (Nam <-> Bac o khu vuc hanh lang Tay)
-      const crossesDeskY = (from.y < 2.3 && to.y > 3.5) || (from.y > 3.5 && to.y < 2.3);
-      if (crossesDeskY && (from.x < 5.6 || to.x < 5.6)) {
-        points.push({ x: 5.2, y: 2.85 });
-      }
-    }
-  } else {
-    // DI CHUYEN NOI BO GIAN TRAI (Tranh cac bo sofa ben trai)
-    if (from.x < 1.8 || to.x < 1.8) {
-      points.push({ x: 2.6, y: Number(((from.y + to.y) / 2).toFixed(2)) });
+const isLineOfSightClear = (p1, p2, ignoreReception = false) => {
+  for (const box of LOBBY_OBSTACLES) {
+    if (ignoreReception && box.id === 'RECEPTION') continue;
+    const tl = { x: box.minX, y: box.maxY };
+    const tr = { x: box.maxX, y: box.maxY };
+    const bl = { x: box.minX, y: box.minY };
+    const br = { x: box.maxX, y: box.minY };
+    if (
+      segmentsIntersect(p1, p2, tl, tr) ||
+      segmentsIntersect(p1, p2, tr, br) ||
+      segmentsIntersect(p1, p2, br, bl) ||
+      segmentsIntersect(p1, p2, bl, tl)
+    ) {
+      return false;
     }
   }
-  return points;
+  return true;
 };
 
-// THUAT TOAN DINH TUYEN NE TUONG VA VAT CAN TRONG SANH (Ground Floor Lobby)
-// Tranh vach ngan x=4.4m, quay tiep tan va vach tuong Phong Noi Bo Staff Only
-export const calculateSafeWaypoints = (from, to) => {
-  const points = [{ x: Number(from.x.toFixed(2)), y: Number(from.y.toFixed(2)) }];
+const LOBBY_NAV_NODES = {
+  W_NORTH:     { x: 7.20,  y: 9.60 },
+  W_NORTH_L:   { x: 4.80,  y: 9.60 },
+  W_MID_L:     { x: 4.20,  y: 7.20 },
+  W_MID_POT_W: { x: 4.60,  y: 5.50 },
+  W_SOUTH_L:   { x: 4.80,  y: 3.20 },
+  W_SOUTH:     { x: 7.60,  y: 2.60 },
+  C_NORTH_DOOR:{ x: 12.84, y: 9.80 },
+  C_SOUTH_DOOR:{ x: 12.84, y: 2.60 },
+  C_FRONT_DESK:{ x: 11.44, y: 2.80 },
+  C_STAFF_DOOR:{ x: 11.44, y: 4.20 },
+  C_STAFF_IN:  { x: 11.44, y: 6.40 },
+  E_NORTH:     { x: 15.50, y: 9.80 },
+  E_MID:       { x: 15.60, y: 6.50 },
+  E_SOUTH:     { x: 15.50, y: 2.60 },
+};
 
-  const isInsideStaff = (pt) => pt.x >= 8.2 && pt.y <= 3.05;
-  const fromStaff = isInsideStaff(from);
-  const toStaff = isInsideStaff(to);
+const LOBBY_NAV_EDGES = [
+  ['W_NORTH', 'W_NORTH_L'],
+  ['W_NORTH_L', 'W_MID_L'],
+  ['W_MID_L', 'W_MID_POT_W'],
+  ['W_MID_POT_W', 'W_SOUTH_L'],
+  ['W_SOUTH_L', 'W_SOUTH'],
+  ['W_NORTH', 'C_NORTH_DOOR'],
+  ['W_SOUTH', 'C_FRONT_DESK'],
+  ['W_SOUTH', 'C_SOUTH_DOOR'],
+  ['C_FRONT_DESK', 'C_SOUTH_DOOR'],
+  ['C_FRONT_DESK', 'C_STAFF_DOOR'],
+  ['C_STAFF_DOOR', 'C_STAFF_IN'],
+  ['C_NORTH_DOOR', 'E_NORTH'],
+  ['C_SOUTH_DOOR', 'E_SOUTH'],
+  ['E_NORTH', 'E_MID'],
+  ['E_MID', 'E_SOUTH'],
+];
 
-  // Diem hanh lang tiep can va tam khe cua phong Staff Only
-  const staffApproach = { x: 7.85, y: 2.7 };
-  const staffDoor = { x: 8.35, y: 2.65 };
-
-  if (!fromStaff && toStaff) {
-    // Di tu ngoai sanh VAO phong Staff Only: tap ket truoc cua -> xuyen qua tam cua -> vao dich
-    const approachPts = getLobbyBaseWaypoints(from, staffApproach);
-    points.push(...approachPts);
-    points.push(staffApproach);
-    points.push(staffDoor);
-  } else if (fromStaff && !toStaff) {
-    // Di tu trong phong Staff Only RA ngoai sanh: xuyen qua tam cua -> ra hanh lang truoc cua -> toi dich
-    points.push(staffDoor);
-    points.push(staffApproach);
-    const leavePts = getLobbyBaseWaypoints(staffApproach, to);
-    points.push(...leavePts);
-  } else if (fromStaff && toStaff) {
-    // Di chuyen noi bo trong phong Staff Only
-  } else {
-    // Di chuyen ngoai sanh binh thuong
-    const lobbyPts = getLobbyBaseWaypoints(from, to);
-    points.push(...lobbyPts);
+const findRoadmapPath = (start, goal, ignoreReception = false) => {
+  if (isLineOfSightClear(start, goal, ignoreReception)) {
+    return [start, goal];
   }
 
-  // Them diem dich cuoi cung
-  points.push({ x: Number(to.x.toFixed(2)), y: Number(to.y.toFixed(2)) });
+  const nodeKeys = Object.keys(LOBBY_NAV_NODES);
+  const startEdges = [];
+  const goalEdges = [];
 
-  // Loc bo cac diem trung nhau hoac qua gan (< 0.15m)
-  const filtered = [points[0]];
-  for (let i = 1; i < points.length; i++) {
-    const prev = filtered[filtered.length - 1];
-    const cur = points[i];
-    if (Math.hypot(cur.x - prev.x, cur.y - prev.y) > 0.15) {
-      filtered.push(cur);
+  for (const k of nodeKeys) {
+    const pt = LOBBY_NAV_NODES[k];
+    if (isLineOfSightClear(start, pt, ignoreReception)) {
+      startEdges.push({ node: k, dist: Math.hypot(start.x - pt.x, start.y - pt.y) });
     }
+    if (isLineOfSightClear(goal, pt, ignoreReception)) {
+      goalEdges.push({ node: k, dist: Math.hypot(goal.x - pt.x, goal.y - pt.y) });
+    }
+  }
+
+  if (startEdges.length === 0) {
+    let closestK = nodeKeys[0];
+    let minD = Infinity;
+    for (const k of nodeKeys) {
+      const d = Math.hypot(start.x - LOBBY_NAV_NODES[k].x, start.y - LOBBY_NAV_NODES[k].y);
+      if (d < minD) { minD = d; closestK = k; }
+    }
+    startEdges.push({ node: closestK, dist: minD });
+  }
+
+  if (goalEdges.length === 0) {
+    let closestK = nodeKeys[0];
+    let minD = Infinity;
+    for (const k of nodeKeys) {
+      const d = Math.hypot(goal.x - LOBBY_NAV_NODES[k].x, goal.y - LOBBY_NAV_NODES[k].y);
+      if (d < minD) { minD = d; closestK = k; }
+    }
+    goalEdges.push({ node: closestK, dist: minD });
+  }
+
+  // Build Adjacency list
+  const adj = {};
+  for (const k of nodeKeys) adj[k] = [];
+  for (const [u, v] of LOBBY_NAV_EDGES) {
+    const d = Math.hypot(LOBBY_NAV_NODES[u].x - LOBBY_NAV_NODES[v].x, LOBBY_NAV_NODES[u].y - LOBBY_NAV_NODES[v].y);
+    adj[u].push({ node: v, dist: d });
+    adj[v].push({ node: u, dist: d });
+  }
+
+  adj['START'] = startEdges;
+  adj['GOAL'] = [];
+  for (const ge of goalEdges) {
+    adj[ge.node].push({ node: 'GOAL', dist: ge.dist });
+  }
+
+  // Dijkstra
+  const allNodes = ['START', 'GOAL', ...nodeKeys];
+  const dist = {};
+  const prev = {};
+  const unvisited = new Set(allNodes);
+
+  for (const n of allNodes) dist[n] = Infinity;
+  dist['START'] = 0;
+
+  while (unvisited.size > 0) {
+    let curr = null;
+    let minD = Infinity;
+    for (const n of unvisited) {
+      if (dist[n] < minD) {
+        minD = dist[n];
+        curr = n;
+      }
+    }
+    if (!curr || minD === Infinity || curr === 'GOAL') break;
+    unvisited.delete(curr);
+
+    for (const neighbor of adj[curr] || []) {
+      if (!unvisited.has(neighbor.node)) continue;
+      const alt = dist[curr] + neighbor.dist;
+      if (alt < dist[neighbor.node]) {
+        dist[neighbor.node] = alt;
+        prev[neighbor.node] = curr;
+      }
+    }
+  }
+
+  // Reconstruct path
+  const path = [];
+  let curr = 'GOAL';
+  while (curr) {
+    path.unshift(curr);
+    curr = prev[curr];
+  }
+
+  if (path[0] !== 'START') {
+    return [start, goal];
+  }
+
+  const rawPts = path.map((k) => {
+    if (k === 'START') return start;
+    if (k === 'GOAL') return goal;
+    return LOBBY_NAV_NODES[k];
+  });
+
+  // String-pulling shortcut smoothing
+  if (rawPts.length <= 2) return rawPts;
+  const smoothed = [rawPts[0]];
+  let i = 0;
+  while (i < rawPts.length - 1) {
+    let furthest = i + 1;
+    for (let j = rawPts.length - 1; j > i + 1; j--) {
+      if (isLineOfSightClear(smoothed[smoothed.length - 1], rawPts[j], ignoreReception)) {
+        furthest = j;
+        break;
+      }
+    }
+    smoothed.push(rawPts[furthest]);
+    i = furthest;
+  }
+
+  return smoothed;
+};
+
+export const calculateSafeWaypoints = (from, to) => {
+  const pFrom = { x: Number(from.x.toFixed(2)), y: Number(from.y.toFixed(2)) };
+  const pTo = { x: Number(to.x.toFixed(2)), y: Number(to.y.toFixed(2)) };
+
+  const isInsideStaff = (pt) => pt.x >= 10.04 && pt.x <= 12.82 && pt.y >= 4.40 && pt.y <= 8.40;
+  const fromStaff = isInsideStaff(pFrom);
+  const toStaff = isInsideStaff(pTo);
+
+  const staffApproach = { x: 11.44, y: 2.80 };
+  const staffDoor = { x: 11.44, y: 4.20 };
+
+  let pts = [];
+  if (!fromStaff && toStaff) {
+    const approachRoute = findRoadmapPath(pFrom, staffApproach, false);
+    pts = [...approachRoute, staffDoor, pTo];
+  } else if (fromStaff && !toStaff) {
+    const leaveRoute = findRoadmapPath(staffApproach, pTo, false);
+    pts = [pFrom, staffDoor, staffApproach, ...leaveRoute.slice(1)];
+  } else if (fromStaff && toStaff) {
+    pts = [pFrom, pTo];
+  } else {
+    pts = findRoadmapPath(pFrom, pTo, false);
+  }
+
+  // Deduplicate points that are too close (< 0.15m)
+  const filtered = [pts[0]];
+  for (let i = 1; i < pts.length; i++) {
+    const prev = filtered[filtered.length - 1];
+    const cur = pts[i];
+    if (Math.hypot(cur.x - prev.x, cur.y - prev.y) > 0.15) {
+      filtered.push({ x: Number(cur.x.toFixed(2)), y: Number(cur.y.toFixed(2)) });
+    }
+  }
+
+  // Ensure last point is exactly destination
+  if (Math.hypot(filtered[filtered.length - 1].x - pTo.x, filtered[filtered.length - 1].y - pTo.y) > 0.05) {
+    filtered.push(pTo);
   }
 
   return filtered;
 };
 
-// GIAI MA VA HIEN THI CHI TIET CHO TUNG ENUM BUOC (SHOW, SPEAK, GREET, LISTEN, v.v.)
 export const getStepActionDetail = (step) => {
   if (!step) {
     return {

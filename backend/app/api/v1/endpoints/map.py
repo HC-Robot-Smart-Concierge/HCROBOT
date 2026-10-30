@@ -31,28 +31,119 @@ from app.services.hardware.ros2_runtime_service import (
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-DEFAULT_WAYPOINTS: List[dict] = []
+DEFAULT_WAYPOINTS: List[dict] = [
+    {
+        "id": "ROBOT_STANDBY",
+        "name": "Vị Trí Chờ Robot Sảnh",
+        "type": "PARK",
+        "x": 7.20,
+        "y": 9.60,
+        "yaw": 0.0,
+        "floor": "Sảnh Tầng 1",
+        "description": "Vị trí dừng đỗ chờ sẵn của Robot Concierge.",
+    },
+    {
+        "id": "CHARGER_STATION",
+        "name": "Trạm Sạc Robot Sảnh",
+        "type": "CHARGER",
+        "x": 6.00,
+        "y": 9.60,
+        "yaw": 0.0,
+        "floor": "Sảnh Tầng 1",
+        "description": "Trạm sạc tự động của Robot Concierge.",
+    },
+    {
+        "id": "MAIN_ENTRANCE",
+        "name": "Cửa Chính Sảnh (Main Entrance)",
+        "type": "WAYPOINT",
+        "x": 8.40,
+        "y": 2.00,
+        "yaw": 0.0,
+        "floor": "Sảnh Tầng 1",
+        "description": "Cửa chính ra vào sảnh tầng trệt đón khách.",
+    },
+    {
+        "id": "FRONT_DESK",
+        "name": "Trước Quầy Lễ Tân (Front Desk)",
+        "type": "WAYPOINT",
+        "x": 11.44,
+        "y": 2.80,
+        "yaw": 0.0,
+        "floor": "Sảnh Tầng 1",
+        "description": "Khu vực check-in và đón tiếp khách tại quầy lễ tân.",
+    },
+    {
+        "id": "STAFF_ONLY",
+        "name": "Trước Phòng Nội Bộ (Staff Only)",
+        "type": "WAYPOINT",
+        "x": 11.44,
+        "y": 6.40,
+        "yaw": 0.0,
+        "floor": "Sảnh Tầng 1",
+        "description": "Khu vực sảnh tiếp giáp cửa phòng làm việc nội bộ.",
+    },
+    {
+        "id": "ELEVATOR",
+        "name": "Cụm Thang Máy Tầng 1",
+        "type": "WAYPOINT",
+        "x": 15.60,
+        "y": 6.96,
+        "yaw": 0.0,
+        "floor": "Sảnh Tầng 1",
+        "description": "Cụm thang máy dẫn khách lên các tầng phòng nghỉ.",
+    },
+    {
+        "id": "RESTROOMS",
+        "name": "Nhà Vệ Sinh Sảnh (WC)",
+        "type": "WAYPOINT",
+        "x": 15.20,
+        "y": 2.40,
+        "yaw": 0.0,
+        "floor": "Sảnh Tầng 1",
+        "description": "Khu vực nhà vệ sinh công cộng sảnh tầng trệt.",
+    },
+    {
+        "id": "STAIRS",
+        "name": "Lối Thoát Hiểm Khẩn Cấp",
+        "type": "WAYPOINT",
+        "x": 16.00,
+        "y": 4.80,
+        "yaw": 0.0,
+        "floor": "Sảnh Tầng 1",
+        "description": "Lối thoát hiểm thang bộ khẩn cấp phía Đông.",
+    },
+    {
+        "id": "LOBBY_LOUNGE",
+        "name": "Khu Sofa Khách Chờ Sảnh",
+        "type": "WAYPOINT",
+        "x": 3.60,
+        "y": 7.20,
+        "yaw": 0.0,
+        "floor": "Sảnh Tầng 1",
+        "description": "Khu vực bàn ghế sofa tiếp khách thư giãn sảnh.",
+    },
+]
 DEFAULT_ZONES: List[dict] = [
     {
         "id": "zone-keepout-staff",
-        "name": "Khu Vực Staff Only (Cấm Vào)",
+        "name": "Khu Vực Quầy Lễ Tân Nội Bộ (Cấm Vào)",
         "type": "KEEP_OUT",
-        "x": 8.8,
-        "y": 1.5,
-        "width": 1.5,
-        "height": 2.8,
+        "x": 11.44,
+        "y": 6.4,
+        "width": 2.80,
+        "height": 3.60,
         "speed_limit": 0.0,
         "floor": "Sảnh Tầng 1",
-        "description": "Khu vực kỹ thuật & phòng nhân viên nội bộ, robot tuyệt đối không đi vào.",
+        "description": "Khu vực quầy lễ tân nội bộ, robot tuyệt đối không đi vào.",
     },
     {
         "id": "zone-speed-frontdesk",
         "name": "Khu Vực Quầy Tiếp Tân (Giới Hạn Tốc Độ)",
         "type": "SPEED_ZONE",
-        "x": 5.2,
-        "y": 2.2,
-        "width": 2.6,
-        "height": 2.0,
+        "x": 11.44,
+        "y": 2.8,
+        "width": 4.80,
+        "height": 2.40,
         "speed_limit": 0.20,
         "floor": "Sảnh Tầng 1",
         "description": "Khu vực đón tiếp đông khách, tự động giới hạn tốc độ tối đa 0.20 m/s.",
@@ -61,10 +152,10 @@ DEFAULT_ZONES: List[dict] = [
         "id": "zone-nostop-doorway",
         "name": "Cửa Thông Sảnh Chính (Cấm Dừng)",
         "type": "NO_STOP",
-        "x": 4.4,
-        "y": 2.85,
-        "width": 1.4,
-        "height": 1.6,
+        "x": 12.84,
+        "y": 9.8,
+        "width": 2.40,
+        "height": 2.80,
         "speed_limit": 0.30,
         "floor": "Sảnh Tầng 1",
         "description": "Nút thắt lưu thông chính giữa 2 gian sảnh, robot chỉ được phép đi qua, cấm dừng đỗ.",
@@ -198,6 +289,87 @@ async def get_waypoints(repo: MapRepository = Depends(get_map_repository)):
     ]
 
 
+
+def get_gazebo_model_name_from_info(wp_id: str, name: str, wp_type: str):
+    id_s = str(wp_id or "").lower()
+    nm_s = str(name or "").lower()
+    tp_s = str(wp_type or "").upper()
+
+    # 1. Charger / Tram sac
+    if 'charger' in id_s or 'sạc' in nm_s or 'sac' in nm_s or 'charger' in nm_s or 'dock' in nm_s or tp_s in ('CHARGER', 'DOCKING_TARGET'):
+        return 'wp_marker_charger'
+    # 2. Lounge / Sofa (Uu tien truoc Standby vi Sofa khach cho co chu 'cho')
+    if 'lounge' in id_s or 'sofa' in nm_s or 'sofa' in id_s or 'ghế' in nm_s or 'ghe' in nm_s:
+        return 'wp_marker_lounge'
+    # 3. Reception / Le tan
+    if 'front_desk' in id_s or 'lễ tân' in nm_s or 'le tan' in nm_s or 'tiếp tân' in nm_s or 'tiep tan' in nm_s or 'front desk' in nm_s or 'reception' in nm_s:
+        return 'wp_marker_frontdesk'
+    # 4. Entrance / Cua chinh / Cua ra vao
+    if 'entrance' in id_s or 'cửa' in nm_s or 'cua' in nm_s or 'door' in nm_s or 'gate' in nm_s or 'main' in nm_s:
+        return 'wp_marker_entrance'
+    # 5. Elevator / Thang may
+    if 'elevator' in id_s or 'thang máy' in nm_s or 'thang may' in nm_s or 'lift' in nm_s:
+        return 'wp_marker_elevator'
+    # 6. Restrooms / WC / Toilet
+    if 'restroom' in id_s or 'wc' in nm_s or 'vệ sinh' in nm_s or 've sinh' in nm_s or 'toilet' in nm_s or 'toilet' in id_s:
+        return 'wp_marker_restrooms'
+    # 7. Emergency Exit / Thoat hiem
+    if 'stair' in id_s or 'emergency' in id_s or 'thoát hiểm' in nm_s or 'thoat hiem' in nm_s:
+        return 'wp_marker_emergency'
+    # 8. Staff / Noi bo
+    if 'staff' in id_s or 'nội bộ' in nm_s or 'noi bo' in nm_s or 'service' in nm_s:
+        return 'wp_marker_staff'
+    # 9. Standby / Diem cho / Park
+    if 'standby' in id_s or 'chờ' in nm_s or 'cho' in nm_s or 'đỗ' in nm_s or 'do' in nm_s or 'standby' in nm_s or 'park' in id_s or tp_s in ('PARK', 'PARKING_SPOT'):
+        return 'wp_marker_standby'
+    return None
+
+
+def sync_waypoint_to_world_and_sim(wp_id: str, name: str, wp_type: str, x: float, y: float, z: float = 0.01):
+    """
+    Cap nhat vi tri diem moc truc tiep vao file hotel_room.world va dong bo sang Gazebo Sim.
+    Neu z < 0 (vi du -10.0), model se duoc giau duoi long dat de an khoi sa ban 3D.
+    """
+    model_name = get_gazebo_model_name_from_info(wp_id, name, wp_type)
+    if not model_name:
+        return
+
+    # Cap nhat vao file hotel_room.world
+    try:
+        from pathlib import Path
+        import re
+        world_candidates = [
+            Path("robot/worlds/hotel_room.world"),
+            Path(__file__).resolve().parents[5] / "robot" / "worlds" / "hotel_room.world",
+            Path(__file__).resolve().parents[4] / "robot" / "worlds" / "hotel_room.world",
+        ]
+        world_path = next((p for p in world_candidates if p.exists()), None)
+        if world_path:
+            content = world_path.read_text(encoding="utf-8")
+            pattern = rf'(<model name="{model_name}">\s*<static>true</static>\s*<pose>)([^<]+)(</pose>)'
+            replacement = rf'\g<1>{x:.2f} {y:.2f} {z:.2f} 0 0 0\g<3>'
+            new_content = re.sub(pattern, replacement, content)
+            if new_content != content:
+                world_path.write_text(new_content, encoding="utf-8")
+                logger.info(f"[WORLD SYNC] Da cap nhat file hotel_room.world: {model_name} -> ({x:.2f}, {y:.2f}, {z:.2f})")
+        else:
+            logger.warning("[WORLD SYNC] Khong tim thay file hotel_room.world o bat ky duong dan nao")
+    except Exception as e:
+        logger.warning(f"[WORLD SYNC] Loi ghi file hotel_room.world: {e}")
+
+    # Goi gz service neu Gazebo dang chay trong WSL
+    try:
+        import subprocess
+        req_str = f'name: "{model_name}", position: {{x: {x:.2f}, y: {y:.2f}, z: {z:.2f}}}'
+        bash_cmd = (
+            "source /opt/ros/jazzy/setup.bash && "
+            "export GZ_CONFIG_PATH=/opt/ros/jazzy/opt/gz_sim_vendor/share/gz:/opt/ros/jazzy/opt/gz_gui_vendor/share/gz:/opt/ros/jazzy/opt/gz_msgs_vendor/share/gz:/opt/ros/jazzy/opt/gz_transport_vendor/share/gz:/opt/ros/jazzy/opt/gz_plugin_vendor/share/gz:/opt/ros/jazzy/opt/sdformat_vendor/share/gz:/opt/ros/jazzy/opt/gz_fuel_tools_vendor/share/gz && "
+            f"gz service -s /world/hotel_lobby_world/set_pose --reqtype gz.msgs.Pose --reptype gz.msgs.Boolean --timeout 2000 --req '{req_str}'"
+        )
+        subprocess.run(["wsl", "bash", "-c", bash_cmd], capture_output=True, timeout=3)
+    except Exception as e:
+        logger.debug(f"[GAZEBO SYNC] Loi goi wsl set_pose: {e}")
+
 @router.post("/waypoints", response_model=Waypoint, summary="Tạo mới hoặc cập nhật tọa độ Waypoint / Endpoint")
 async def save_waypoint(wp: Waypoint, repo: MapRepository = Depends(get_map_repository)):
     active_zones = await repo.list_zones()
@@ -223,6 +395,7 @@ async def save_waypoint(wp: Waypoint, repo: MapRepository = Depends(get_map_repo
         type=wp.type or "WAYPOINT",
         description=wp.description,
     )
+    sync_waypoint_to_world_and_sim(saved.id, saved.name, saved.type, saved.x, saved.y)
     return Waypoint(
         id=saved.id,
         name=saved.name,
@@ -264,6 +437,7 @@ async def update_waypoint(waypoint_id: str, wp: Waypoint, repo: MapRepository = 
         type=wp.type or "WAYPOINT",
         description=wp.description,
     )
+    sync_waypoint_to_world_and_sim(saved.id, saved.name, saved.type, saved.x, saved.y)
     return Waypoint(
         id=saved.id,
         name=saved.name,
@@ -278,9 +452,16 @@ async def update_waypoint(waypoint_id: str, wp: Waypoint, repo: MapRepository = 
 
 @router.delete("/waypoints/{waypoint_id}", summary="Xóa điểm Waypoint / Endpoint")
 async def delete_waypoint(waypoint_id: str, repo: MapRepository = Depends(get_map_repository)):
+    existing_wps = await repo.list_waypoints()
+    target_wp = next((w for w in existing_wps if str(w.id) == str(waypoint_id)), None)
+
     deleted = await repo.delete_waypoint(waypoint_id)
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy Waypoint")
+
+    if target_wp:
+        sync_waypoint_to_world_and_sim(target_wp.id, target_wp.name, target_wp.type, 0.0, 0.0, z=-10.0)
+
     return {"status": "SUCCESS", "message": f"Đã xóa waypoint {waypoint_id}"}
 
 

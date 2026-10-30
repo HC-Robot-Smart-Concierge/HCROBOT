@@ -32,6 +32,7 @@ import {
   ROS_MSG_TYPES,
   quaternionToYaw,
   createZoneSyncMsg,
+  createWaypointSyncMsg,
 } from '../../../../services/rosbridgeService';
 import {
   fetchWorkflows,
@@ -65,6 +66,10 @@ import {
   validateWorkflowStepZone,
   resolveNoStopPassthrough,
 } from './workflowSimulatorUtils';
+
+// Kich thuoc ViewBox co so (om sat map 490x315 voi le 3px de anh map to toi da)
+const BASE_VB_WIDTH = 496;
+const BASE_VB_HEIGHT = 321;
 
 export const WorkflowSimulatorStudio = ({
   workflows = [],
@@ -313,7 +318,7 @@ export const WorkflowSimulatorStudio = ({
   const getSvgPointFromClient = useCallback(
     (clientX, clientY) => {
       const svg = svgRef.current;
-      if (!svg) return { x: 500, y: 310 };
+      if (!svg) return { x: 280, y: 192.5 };
       if (typeof svg.createSVGPoint === 'function' && svg.getScreenCTM) {
         try {
           const ctm = svg.getScreenCTM();
@@ -331,10 +336,10 @@ export const WorkflowSimulatorStudio = ({
       const rect = svg.getBoundingClientRect();
       const relX = (clientX - rect.left) / (rect.width || 1);
       const relY = (clientY - rect.top) / (rect.height || 1);
-      const vbW = 1000 / zoomScale;
-      const vbH = 620 / zoomScale;
-      const vbX = 500 - vbW / 2 - panOffset.x;
-      const vbY = 310 - vbH / 2 - panOffset.y;
+      const vbW = BASE_VB_WIDTH / zoomScale;
+      const vbH = BASE_VB_HEIGHT / zoomScale;
+      const vbX = 280 - vbW / 2 - panOffset.x;
+      const vbY = 192.5 - vbH / 2 - panOffset.y;
       return {
         x: vbX + relX * vbW,
         y: vbY + relY * vbH,
@@ -344,10 +349,10 @@ export const WorkflowSimulatorStudio = ({
   );
 
   // ViewBox dong ho tro Zoom & Pan
-  const currentVbWidth = 1000 / zoomScale;
-  const currentVbHeight = 620 / zoomScale;
-  const currentVbX = 500 - currentVbWidth / 2 - panOffset.x;
-  const currentVbY = 310 - currentVbHeight / 2 - panOffset.y;
+  const currentVbWidth = BASE_VB_WIDTH / zoomScale;
+  const currentVbHeight = BASE_VB_HEIGHT / zoomScale;
+  const currentVbX = 280 - currentVbWidth / 2 - panOffset.x;
+  const currentVbY = 192.5 - currentVbHeight / 2 - panOffset.y;
   const dynamicViewBox = `${currentVbX} ${currentVbY} ${currentVbWidth} ${currentVbHeight}`;
 
   // Che do keo tha va thay doi kich thuoc Vung tren sa ban map
@@ -591,8 +596,8 @@ export const WorkflowSimulatorStudio = ({
         ? `Điểm Chờ #${count}`
         : `Điểm Mốc #${count}`;
 
-    const x = customCoords ? Number(customCoords.x.toFixed(2)) : Number(Math.min(9.0, Math.max(1.0, robotPose.x + 0.8)).toFixed(2));
-    const y = customCoords ? Number(customCoords.y.toFixed(2)) : Number(Math.min(5.0, Math.max(1.0, robotPose.y + 0.5)).toFixed(2));
+    const x = customCoords ? Number(customCoords.x.toFixed(2)) : Number(Math.min(18.5, Math.max(1.0, robotPose.x + 0.8)).toFixed(2));
+    const y = customCoords ? Number(customCoords.y.toFixed(2)) : Number(Math.min(11.5, Math.max(1.0, robotPose.y + 0.5)).toFixed(2));
 
     const newEndpoint = {
       id: `wp-${Date.now().toString(36)}`,
@@ -615,6 +620,14 @@ export const WorkflowSimulatorStudio = ({
     saveWaypoint(newEndpoint).catch((err) => {
       console.warn('Lỗi lưu endpoint vào backend:', err.message);
     });
+
+    if (isRosEnabledRef.current && rosClientRef.current?.isConnected) {
+      rosClientRef.current.publish(
+        '/hotel_waypoints',
+        'std_msgs/String',
+        createWaypointSyncMsg([...endpoints, newEndpoint])
+      );
+    }
   };
 
   // Cap nhat thong tin Endpoint (ten, loai)
@@ -622,8 +635,16 @@ export const WorkflowSimulatorStudio = ({
     if (!selectedEndpoint) return;
     const updated = { ...selectedEndpoint, [field]: value };
     setSelectedEndpoint(updated);
-    setEndpoints((prev) => prev.map((e) => (e.id === updated.id ? updated : e)));
+    const nextEndpoints = endpoints.map((e) => (e.id === updated.id ? updated : e));
+    setEndpoints(nextEndpoints);
     setHasUnsavedEndpoints(true);
+    if (isRosEnabledRef.current && rosClientRef.current?.isConnected) {
+      rosClientRef.current.publish(
+        '/hotel_waypoints',
+        'std_msgs/String',
+        createWaypointSyncMsg(nextEndpoints)
+      );
+    }
   };
 
   // Luu endpoint vao CSDL
@@ -640,6 +661,13 @@ export const WorkflowSimulatorStudio = ({
         floor: endpoint.floor || 'Sảnh Tầng 1',
       });
       setHasUnsavedEndpoints(false);
+      if (isRosEnabledRef.current && rosClientRef.current?.isConnected) {
+        rosClientRef.current.publish(
+          '/hotel_waypoints',
+          'std_msgs/String',
+          createWaypointSyncMsg(endpointsRef.current)
+        );
+      }
       onNotify(`Đã lưu Endpoint "${endpoint.name}" vào CSDL.`, 'success');
     } catch (err) {
       onNotify('Lỗi khi lưu Endpoint: ' + err.message, 'warning');
@@ -658,6 +686,14 @@ export const WorkflowSimulatorStudio = ({
       setIsEndpointEditMode(false);
     }
     onNotify(`Đã xóa "${name}" khỏi bản đồ.`, 'info');
+    const remaining = endpoints.filter((e) => e.id !== endpointId);
+    if (isRosEnabledRef.current && rosClientRef.current?.isConnected) {
+      rosClientRef.current.publish(
+        '/hotel_waypoints',
+        'std_msgs/String',
+        createWaypointSyncMsg(remaining)
+      );
+    }
     try {
       await deleteWaypoint(endpointId);
     } catch {
@@ -670,6 +706,13 @@ export const WorkflowSimulatorStudio = ({
     setEndpoints(STANDARD_LOBBY_WAYPOINTS);
     setSelectedEndpoint(null);
     setHasUnsavedEndpoints(true);
+    if (isRosEnabledRef.current && rosClientRef.current?.isConnected) {
+      rosClientRef.current.publish(
+        '/hotel_waypoints',
+        'std_msgs/String',
+        createWaypointSyncMsg(STANDARD_LOBBY_WAYPOINTS)
+      );
+    }
     onNotify('Đã khôi phục danh sách Điểm Đích về thông số chuẩn sảnh 10m x 6m.', 'info');
   };
 
@@ -715,8 +758,8 @@ export const WorkflowSimulatorStudio = ({
       const dx = e.clientX - panStartRef.current.x;
       const dy = e.clientY - panStartRef.current.y;
       const svgRect = svgRef.current?.getBoundingClientRect();
-      const scaleX = (1000 / zoomScale) / (svgRect?.width || 1);
-      const scaleY = (620 / zoomScale) / (svgRect?.height || 1);
+      const scaleX = (BASE_VB_WIDTH / zoomScale) / (svgRect?.width || 1);
+      const scaleY = (BASE_VB_HEIGHT / zoomScale) / (svgRect?.height || 1);
       setPanOffset({
         x: panStartRef.current.initialPan.x + dx * scaleX,
         y: panStartRef.current.initialPan.y + dy * scaleY,
@@ -761,29 +804,30 @@ export const WorkflowSimulatorStudio = ({
     const svgRect = svgRef.current.getBoundingClientRect();
     if (!svgRect.width || !svgRect.height) return;
 
-    const scaleX = (1000 / zoomScale) / svgRect.width;
-    const scaleY = (620 / zoomScale) / svgRect.height;
+    const scaleX = (BASE_VB_WIDTH / zoomScale) / svgRect.width;
+    const scaleY = (BASE_VB_HEIGHT / zoomScale) / svgRect.height;
 
     const deltaSvgX = deltaClientX * scaleX;
     const deltaSvgY = deltaClientY * scaleY;
 
     // Dong bo ti le 1:1 voi Gazebo: PPM = 90 px/m cho ca X va Y
-    const deltaMeterX = deltaSvgX / 90;
-    const deltaMeterY = -deltaSvgY / 90;
+    const deltaMeterX = deltaSvgX / 25.0;
+    const deltaMeterY = -deltaSvgY / 25.0;
 
     // 1. KEO THA ENDPOINT
     if (dragEndpointState) {
       const initEp = dragEndpointState.initialEndpoint;
       const rawX = initEp.x + deltaMeterX;
       const rawY = initEp.y + deltaMeterY;
-      const clampedX = Number(Math.max(0.3, Math.min(9.7, rawX)).toFixed(2));
-      const clampedY = Number(Math.max(0.3, Math.min(5.7, rawY)).toFixed(2));
+      const clampedX = Number(Math.max(0.5, Math.min(19.1, rawX)).toFixed(2));
+      const clampedY = Number(Math.max(0.5, Math.min(12.1, rawY)).toFixed(2));
 
-      setEndpoints((prev) =>
-        prev.map((ep) =>
-          ep.id === dragEndpointState.endpointId ? { ...ep, x: clampedX, y: clampedY } : ep
-        )
+      const updatedEndpoints = endpointsRef.current.map((ep) =>
+        ep.id === dragEndpointState.endpointId ? { ...ep, x: clampedX, y: clampedY } : ep
       );
+      endpointsRef.current = updatedEndpoints;
+
+      setEndpoints(updatedEndpoints);
       setSelectedEndpoint((prev) =>
         prev && prev.id === dragEndpointState.endpointId
           ? { ...prev, x: clampedX, y: clampedY }
@@ -801,12 +845,15 @@ export const WorkflowSimulatorStudio = ({
 
       const rawX = initZone.x + deltaMeterX;
       const rawY = initZone.y + deltaMeterY;
-      const clampedX = Number(Math.max(halfW, Math.min(10.0 - halfW, rawX)).toFixed(2));
-      const clampedY = Number(Math.max(halfH, Math.min(6.0 - halfH, rawY)).toFixed(2));
+      const clampedX = Number(Math.max(halfW, Math.min(19.60 - halfW, rawX)).toFixed(2));
+      const clampedY = Number(Math.max(halfH, Math.min(12.60 - halfH, rawY)).toFixed(2));
 
-      setZones((prev) =>
-        prev.map((z) => (z.id === dragState.zoneId ? { ...z, x: clampedX, y: clampedY } : z))
+      const updatedZones = zonesRef.current.map((z) =>
+        z.id === dragState.zoneId ? { ...z, x: clampedX, y: clampedY } : z
       );
+      zonesRef.current = updatedZones;
+
+      setZones(updatedZones);
       setSelectedZone((prev) =>
         prev && prev.id === dragState.zoneId ? { ...prev, x: clampedX, y: clampedY } : prev
       );
@@ -826,17 +873,17 @@ export const WorkflowSimulatorStudio = ({
       let newTop = top;
 
       if (dragState.type === 'RESIZE_SE') {
-        newRight = Math.max(left + 0.6, Math.min(10.0, right + deltaMeterX));
+        newRight = Math.max(left + 0.6, Math.min(19.60, right + deltaMeterX));
         newBottom = Math.min(top - 0.6, Math.max(0.0, bottom + deltaMeterY));
       } else if (dragState.type === 'RESIZE_SW') {
         newLeft = Math.min(right - 0.6, Math.max(0.0, left + deltaMeterX));
         newBottom = Math.min(top - 0.6, Math.max(0.0, bottom + deltaMeterY));
       } else if (dragState.type === 'RESIZE_NE') {
-        newRight = Math.max(left + 0.6, Math.min(10.0, right + deltaMeterX));
-        newTop = Math.max(bottom + 0.6, Math.min(6.0, top + deltaMeterY));
+        newRight = Math.max(left + 0.6, Math.min(19.60, right + deltaMeterX));
+        newTop = Math.max(bottom + 0.6, Math.min(12.60, top + deltaMeterY));
       } else if (dragState.type === 'RESIZE_NW') {
         newLeft = Math.min(right - 0.6, Math.max(0.0, left + deltaMeterX));
-        newTop = Math.max(bottom + 0.6, Math.min(6.0, top + deltaMeterY));
+        newTop = Math.max(bottom + 0.6, Math.min(12.60, top + deltaMeterY));
       }
 
       const newWidth = Number((newRight - newLeft).toFixed(2));
@@ -852,7 +899,10 @@ export const WorkflowSimulatorStudio = ({
         height: newHeight,
       };
 
-      setZones((prev) => prev.map((z) => (z.id === dragState.zoneId ? updated : z)));
+      const updatedZones = zonesRef.current.map((z) => (z.id === dragState.zoneId ? updated : z));
+      zonesRef.current = updatedZones;
+
+      setZones(updatedZones);
       setSelectedZone(updated);
       setHasUnsavedZones(true);
     }
@@ -880,11 +930,22 @@ export const WorkflowSimulatorStudio = ({
       const curEp = endpointsRef.current.find((ep) => ep.id === dragEndpointState.endpointId);
       if (curEp && wasDraggingRef.current) {
         saveWaypoint(curEp).catch(() => {});
+        if (isRosEnabledRef.current && rosClientRef.current?.isConnected) {
+          rosClientRef.current.publish(
+            '/hotel_waypoints',
+            'std_msgs/String',
+            createWaypointSyncMsg(endpointsRef.current)
+          );
+        }
       }
       setDragEndpointState(null);
     }
 
     if (dragState) {
+      const curZone = zonesRef.current.find((z) => z.id === dragState.zoneId);
+      if (curZone && wasDraggingRef.current) {
+        saveZone(curZone).catch(() => {});
+      }
       if (isRosEnabledRef.current && rosClientRef.current?.isConnected && wasDraggingRef.current) {
         rosClientRef.current.publish(
           '/hotel_zones',
@@ -2606,9 +2667,22 @@ export const WorkflowSimulatorStudio = ({
       {/* KHONG GIAN SA BAN 2D TOAN MAN HINH (FULL-WIDTH GROUND FLOOR VIEWPORT) */}
       <div className="flex-1 min-h-0 flex overflow-hidden">
         <main
-          className="flex-1 w-full h-full relative p-1 sm:p-2 flex items-center justify-center overflow-hidden"
+          className="flex-1 w-full h-full relative p-0 sm:p-1 flex items-center justify-center overflow-hidden"
           style={{ backgroundColor: '#F2EFE9' }}
         >
+        {/* HUD Tieu de Sanh Khach San o goc tren ben trai */}
+        <div className="absolute top-3 left-4 z-10 select-none pointer-events-none flex items-center gap-2">
+          <span
+            className="font-mono font-bold text-xs px-2 py-0.5 rounded-md border shadow-2xs"
+            style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD', color: '#1c1917' }}
+          >
+            Ground
+          </span>
+          <span className="font-mono text-[11px] font-medium" style={{ color: '#78716c' }}>
+            Sảnh Khách Sạn • 19.60m × 12.60m
+          </span>
+        </div>
+
         {/* Thanh huong dan dieu huong truc quan & HUD Trang thai Vung cua Robot */}
         <div className="absolute top-3 right-4 z-10 flex flex-col items-end gap-1.5 select-none pointer-events-none">
           <div
@@ -2780,147 +2854,39 @@ export const WorkflowSimulatorStudio = ({
           </defs>
 
           {/* Nen san co luoi cham */}
-          <rect x="0" y="0" width="1000" height="620" fill="#F2EFE9" />
-          <rect x="50" y="40" width="900" height="540" fill="url(#blueprintDots)" />
+          <rect x="0" y="0" width="560" height="385" fill="#F4F2ED" />
+          <rect x="35" y="35" width="490" height="315" fill="url(#blueprintDots)" />
 
-          <text x="50" y="28" className="text-xs font-mono font-bold tracking-widest uppercase" fill="#8C8C8C" fontFamily="sans-serif">
-            Mặt bằng sảnh khách sạn • 10m x 6m (Tỉ lệ chuẩn Gazebo 1:1)
+          <text x="35" y="24" className="text-xs font-mono font-bold tracking-wider" fill="#1c1917" fontFamily="sans-serif">
+            Ground
+          </text>
+          <text x="95" y="24" className="text-[10px] font-mono" fill="#8C8C8C" fontFamily="sans-serif">
+            Sảnh Khách Sạn • 19.60m x 12.60m (490x315 • Gazebo 1:1)
           </text>
 
-          {/* MAT BANG KIEN TRUC SANH TANG TRET - DONG BO CHINH XAC 100% VOI GAZEBO hotel_room.world */}
-          {/* 1. KHUNG TUONG BAO NGOAI (OUTER WALLS: X 50..950, Y 40..580 tuong ung 10m x 6m PPM=90) */}
+          {/* MAT BANG KIEN TRUC SANH TANG TRET 490x315 - DONG BO CHINH XAC 100% VOI GAZEBO hotel_room.world */}
+          {/* Ban do goc tu file /maps/3.png (726x466) cua khach san */}
+          <image
+            href="/maps/3.png"
+            x="35"
+            y="35"
+            width="490"
+            height="315"
+            preserveAspectRatio="none"
+          />
+          {/* 1. KHUNG TUONG BAO NGOAI (OUTER WALLS: X 35..525, Y 35..350 tuong ung 490 x 315 px) */}
           <rect
-            x="50"
-            y="40"
-            width="900"
-            height="540"
-            fill="#FFFFFF"
-            stroke="#262626"
-            strokeWidth="3.5"
+            x="35"
+            y="35"
+            width="490"
+            height="315"
+            fill="none"
+            stroke="#1c1917"
+            strokeWidth="2.5"
           />
 
-          {/* 2. VACH NGAN CHIA SANH (Gazebo: X = 4.4m -> svgX = 446) */}
-          {/* Vach Bac (Gazebo: Y = 3.3m den 6.0m -> svgY = 283 den 40) */}
-          <line x1="446" y1="40" x2="446" y2="283" stroke="#1c1917" strokeWidth="3.5" />
-          {/* Vach Nam (Gazebo: Y = 0.0m den 2.4m -> svgY = 580 den 364) */}
-          <line x1="446" y1="364" x2="446" y2="580" stroke="#1c1917" strokeWidth="3.5" />
-          {/* Lối Cửa Thông Sảnh (Doorway: Gazebo Y = 2.4m den 3.3m rong 0.9m -> svgY = 283 den 364) */}
-          <line x1="446" y1="283" x2="446" y2="364" stroke="#94a3b8" strokeWidth="1" strokeDasharray="3 3" />
-
-          {/* 3. GIAN TRAI: 3 BO SOFA VA BAN TRA TRON (LOBBY LOUNGE - Chuan Gazebo) */}
-          {/* Bo Sofa 1 (Bac: pose x=0.55, y=5.0; ban tra x=1.3, y=5.0 -> svgY = 130) */}
-          <g>
-            <rect x="73" y="72" width="54" height="116" rx="4" fill="#ffffff" stroke="#1c1917" strokeWidth="2" />
-            <line x1="73" y1="101" x2="127" y2="101" stroke="#64748b" strokeWidth="1" />
-            <line x1="73" y1="159" x2="127" y2="159" stroke="#64748b" strokeWidth="1" />
-            <circle cx="167" cy="130" r="23" fill="#ffffff" stroke="#1c1917" strokeWidth="2" />
-          </g>
-
-          {/* Bo Sofa 2 (Giua: pose x=0.55, y=3.0; ban tra x=1.3, y=3.0 -> svgY = 310) */}
-          <g>
-            <rect x="73" y="252" width="54" height="116" rx="4" fill="#ffffff" stroke="#1c1917" strokeWidth="2" />
-            <line x1="73" y1="281" x2="127" y2="281" stroke="#64748b" strokeWidth="1" />
-            <line x1="73" y1="339" x2="127" y2="339" stroke="#64748b" strokeWidth="1" />
-            <circle cx="167" cy="310" r="23" fill="#ffffff" stroke="#1c1917" strokeWidth="2" />
-          </g>
-
-          {/* Chu Lobby o giua Gian Trai */}
-          <text
-            x="240"
-            y="315"
-            textAnchor="middle"
-            className="text-base font-bold fill-stone-900"
-            fontFamily="sans-serif"
-          >
-            Lobby
-          </text>
-
-          {/* Bo Sofa 3 (Nam: pose x=0.55, y=1.0; ban tra x=1.3, y=1.0 -> svgY = 490) */}
-          <g>
-            <rect x="73" y="432" width="54" height="116" rx="4" fill="#ffffff" stroke="#1c1917" strokeWidth="2" />
-            <line x1="73" y1="461" x2="127" y2="461" stroke="#64748b" strokeWidth="1" />
-            <line x1="73" y1="519" x2="127" y2="519" stroke="#64748b" strokeWidth="1" />
-            <circle cx="167" cy="490" r="23" fill="#ffffff" stroke="#1c1917" strokeWidth="2" />
-          </g>
-
-          {/* 4. GIAN PHAI - PHIA NAM: CUA CHINH, FRONT DESK, STAFF ONLY */}
-          {/* Cua Chinh (Gazebo: x = 4.8m den 5.8m -> svgX = 482 den 572, tam x = 527; Y = 580) */}
-          <g>
-            <rect x="482" y="576" width="90" height="8" fill="#ffffff" />
-            {/* Canh cua mo xoay vao trong */}
-            <line x1="482" y1="580" x2="527" y2="550" stroke="#1c1917" strokeWidth="2" />
-            <path d="M 527 550 A 45 45 0 0 1 527 580" fill="none" stroke="#94a3b8" strokeWidth="1.2" strokeDasharray="2 2" />
-            <line x1="572" y1="580" x2="527" y2="550" stroke="#1c1917" strokeWidth="2" />
-            <path d="M 527 550 A 45 45 0 0 0 527 580" fill="none" stroke="#94a3b8" strokeWidth="1.2" strokeDasharray="2 2" />
-          </g>
-
-          {/* Quay Tiep Tan (Gazebo Front Desk: goc L tai x=5.8m, y=2.5m -> svgX=572, svgY=355) */}
-          <g>
-            {/* Mat truoc quay ngang: x = 5.8m -> 6.8m (svgX 572 -> 662), y = 2.5m (svgY 355) */}
-            <rect x="572" y="340" width="90" height="30" fill="#ffffff" stroke="#1c1917" strokeWidth="3" />
-            {/* Vach doc ben hong: x = 5.8m (svgX 572), y = 0.3m -> 2.5m (svgY 355 -> 553) */}
-            <rect x="572" y="370" width="23" height="183" fill="#ffffff" stroke="#1c1917" strokeWidth="3" />
-            <text x="635" y="440" textAnchor="middle" className="text-sm font-bold fill-stone-900" fontFamily="sans-serif">
-              Front
-            </text>
-            <text x="635" y="462" textAnchor="middle" className="text-sm font-bold fill-stone-900" fontFamily="sans-serif">
-              Desk
-            </text>
-          </g>
-
-          {/* Phong Staff Only (Gazebo: x = 8.35m den 10.0m, y = 0.0m den 3.06m -> svgX = 802 den 950, svgY = 305 den 580) */}
-          <g>
-            {/* Vach ngang phia Bac (Gazebo: y = 3.06m -> svgY = 305) */}
-            <line x1="802" y1="305" x2="950" y2="305" stroke="#1c1917" strokeWidth="3" />
-            {/* Vach dung phia Tay (Gazebo: x = 8.35m, y = 0.0m den 2.25m -> svgY 580 den 375) */}
-            <line x1="802" y1="375" x2="802" y2="580" stroke="#1c1917" strokeWidth="3" />
-            {/* Cua mo vao phong Staff Only (Gazebo: y = 2.25m den 3.06m -> svgY 305 den 375) */}
-            <line x1="802" y1="305" x2="802" y2="375" stroke="#94a3b8" strokeWidth="1.2" strokeDasharray="3 3" />
-            <text x="876" y="455" textAnchor="middle" className="text-sm font-bold fill-stone-900" fontFamily="sans-serif">
-              Staff Only
-            </text>
-          </g>
-
-          {/* 5. GIAN PHAI - PHIA BAC: DAY 3 PHONG (WC, THANG MAY, CAU THANG - Chuan Gazebo) */}
-          {/* Mat truoc: Gazebo y = 4.7m den 6.0m -> svgY = 40 den 157; x = 5.8m den 10.0m -> svgX = 572 den 950 */}
-          <rect x="572" y="40" width="378" height="117" fill="#ffffff" stroke="#1c1917" strokeWidth="3" />
-          {/* Vach ngan giua WC va Thang May (Gazebo: x = 7.2m -> svgX = 698) */}
-          <line x1="698" y1="40" x2="698" y2="157" stroke="#1c1917" strokeWidth="2.5" />
-          {/* Vach ngan giua Thang May va Cau Thang (Gazebo: x = 8.65m -> svgX = 828) */}
-          <line x1="828" y1="40" x2="828" y2="157" stroke="#1c1917" strokeWidth="2.5" />
-
-          {/* (1) Nha Ve Sinh (Restrooms: Gazebo x = 5.8m den 7.2m -> svgX = 572 den 698) */}
-          <g>
-            {/* Nam */}
-            <circle cx="620" cy="74" r="7" fill="#1c1917" />
-            <path d="M 611 85 L 629 85 L 629 114 L 624 114 L 624 139 L 616 139 L 616 114 L 611 114 Z" fill="#1c1917" />
-            {/* Nu */}
-            <circle cx="660" cy="74" r="7" fill="#1c1917" />
-            <path d="M 651 85 L 669 85 L 676 114 L 666 114 L 666 139 L 661 139 L 661 114 L 657 114 L 657 139 L 652 139 L 652 114 L 644 114 Z" fill="#1c1917" />
-          </g>
-
-          {/* (2) Cum Thang May (Elevator: Gazebo x = 7.2m den 8.65m -> svgX = 698 den 828) */}
-          <g>
-            <rect x="736" y="62" width="54" height="74" fill="none" stroke="#1c1917" strokeWidth="2.2" />
-            <line x1="763" y1="62" x2="763" y2="136" stroke="#1c1917" strokeWidth="1.8" />
-            <line x1="758" y1="94" x2="758" y2="104" stroke="#1c1917" strokeWidth="2" strokeLinecap="round" />
-            <line x1="768" y1="94" x2="768" y2="104" stroke="#1c1917" strokeWidth="2" strokeLinecap="round" />
-            {/* Mui ten len / xuong */}
-            <path d="M 752 84 L 752 72 M 748 76 L 752 72 L 756 76" stroke="#1c1917" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-            <path d="M 774 72 L 774 84 M 770 80 L 774 84 L 778 80" stroke="#1c1917" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-          </g>
-
-          {/* (3) Cau Thang Bo (Stairs: Gazebo x = 8.65m den 10.0m -> svgX = 828 den 950) */}
-          <g>
-            <line x1="889" y1="40" x2="889" y2="157" stroke="#1c1917" strokeWidth="2" />
-            {[52, 66, 80, 94, 108, 122, 136, 150].map((sy) => (
-              <g key={sy}>
-                <line x1="835" y1={sy} x2="883" y2={sy} stroke="#64748b" strokeWidth="1.5" />
-                <line x1="895" y1={sy} x2="943" y2={sy} stroke="#64748b" strokeWidth="1.5" />
-              </g>
-            ))}
-          </g>
-
+          {/* TOAN BO MAT BANG KIEN TRUC (SOFA, THANG MAY, THOAT HIEM, WC, LE TAN) */}
+          {/* DUOC HIEN THI TRUC TIEP CHINH XAC 100% TU FILE ANH BAN DO GOC /maps/3.png */}
           {/* LOP 3 VUNG CHUC NANG (KEEP-OUT, SPEED ZONE, NO-STOP) TRUOC MAT BANG SAU TUONG SAN */}
           {showZones &&
             zones.map((zone) => {
@@ -2999,7 +2965,7 @@ export const WorkflowSimulatorStudio = ({
 
                   {/* Chú thích vùng bằng ICON và MÀU RIÊNG ở góc trên bên phải của vùng (Click vao Icon de chon va sua Vung) */}
                   <g
-                    transform={`translate(${rect.x + rect.width - (isSpeed ? 44 : 26)}, ${rect.y + 7})`}
+                    transform={`translate(${rect.x + rect.width - (isSpeed ? 26 : 16)}, ${rect.y + 4})`}
                     className="pointer-events-auto select-none cursor-pointer group"
                     onClick={(e) => {
                       e.stopPropagation();
@@ -3013,36 +2979,36 @@ export const WorkflowSimulatorStudio = ({
                     title={`Click vào Icon để chọn và chỉnh sửa Vùng: ${zone.name}`}
                   >
                     {isKeepOut && (
-                      <g filter="drop-shadow(0 1px 2px rgba(0,0,0,0.25))">
+                      <g filter="drop-shadow(0 1px 2px rgba(0,0,0,0.20))">
                         {/* Vòng nền đỏ riêng biệt */}
-                        <circle cx="10" cy="10" r="9.5" fill="#DC2626" />
+                        <circle cx="6.5" cy="6.5" r="6" fill="#DC2626" />
                         {/* Icon Cấm Vào (Ban / Circle Slash) */}
-                        <circle cx="10" cy="10" r="6" fill="none" stroke="#FFFFFF" strokeWidth="1.6" />
-                        <line x1="5.8" y1="5.8" x2="14.2" y2="14.2" stroke="#FFFFFF" strokeWidth="1.6" />
+                        <circle cx="6.5" cy="6.5" r="3.8" fill="none" stroke="#FFFFFF" strokeWidth="1.1" />
+                        <line x1="3.8" y1="3.8" x2="9.2" y2="9.2" stroke="#FFFFFF" strokeWidth="1.1" />
                       </g>
                     )}
                     {!isKeepOut && !isSpeed && (
-                      <g filter="drop-shadow(0 1px 2px rgba(0,0,0,0.25))">
+                      <g filter="drop-shadow(0 1px 2px rgba(0,0,0,0.20))">
                         {/* Vòng nền hồng đỏ riêng biệt */}
-                        <circle cx="10" cy="10" r="9.5" fill="#E11D48" />
+                        <circle cx="6.5" cy="6.5" r="6" fill="#E11D48" />
                         {/* Icon Cấm Dừng (Stop / Octagon Hand) */}
-                        <polygon points="7,4 13,4 16,7 16,13 13,16 7,16 4,13 4,7" fill="#FFFFFF" />
-                        <rect x="7" y="9.2" width="6" height="1.6" rx="0.4" fill="#E11D48" />
+                        <polygon points="4.5,2.5 8.5,2.5 10.5,4.5 10.5,8.5 8.5,10.5 4.5,10.5 2.5,8.5 2.5,4.5" fill="#FFFFFF" />
+                        <rect x="4.5" y="5.8" width="4" height="1.2" rx="0.3" fill="#E11D48" />
                       </g>
                     )}
                     {isSpeed && (
-                      <g filter="drop-shadow(0 1px 2px rgba(0,0,0,0.25))">
+                      <g filter="drop-shadow(0 1px 2px rgba(0,0,0,0.20))">
                         {/* Pill badge nền cam hổ phách */}
-                        <rect x="0" y="0" width="38" height="18" rx="9" fill="#D97706" />
+                        <rect x="0" y="0" width="24" height="12" rx="6" fill="#D97706" />
                         {/* Gauge arc & needle */}
-                        <path d="M 6 12.5 A 4.5 4.5 0 1 1 14 12.5" fill="none" stroke="#FFFFFF" strokeWidth="1.3" strokeLinecap="round" />
-                        <line x1="10" y1="9.5" x2="12.5" y2="7" stroke="#FFFFFF" strokeWidth="1.3" strokeLinecap="round" />
+                        <path d="M 4 8.5 A 3 3 0 1 1 9 8.5" fill="none" stroke="#FFFFFF" strokeWidth="0.9" strokeLinecap="round" />
+                        <line x1="6.5" y1="6.5" x2="8" y2="5" stroke="#FFFFFF" strokeWidth="0.9" strokeLinecap="round" />
                         <text
-                          x="25"
-                          y="12.5"
+                          x="16"
+                          y="8.5"
                           textAnchor="middle"
                           fill="#FFFFFF"
-                          className="text-[8.5px] font-mono font-bold"
+                          className="text-[5.5px] font-mono font-bold"
                           fontFamily="sans-serif"
                         >
                           {zone.speed_limit || 0.2}
@@ -3109,11 +3075,11 @@ export const WorkflowSimulatorStudio = ({
             const tmpl = getEndpointTemplateInfo(ep.type);
             const epColor = tmpl.color || '#262626';
 
-            // Ten diem moc do nguoi dung dat
+            // Ten diem moc do nguoi dung dat (Ty le nho gon, tinh te)
             const nameText = ep.name || 'Điểm mốc';
-            const badgeWidth = Math.max(70, nameText.length * 7.2 + 20);
+            const badgeWidth = Math.max(20, nameText.length * 2.5 + 8);
             const isTopHalf = ep.y > 3.0;
-            const badgeOffsetY = isTopHalf ? 18 : -18;
+            const badgeOffsetY = isTopHalf ? 7.0 : -7.0;
 
             return (
               <g
@@ -3149,12 +3115,13 @@ export const WorkflowSimulatorStudio = ({
                   <circle
                     cx={wpSvg.x}
                     cy={wpSvg.y}
-                    r="15"
+                    r="13"
                     fill={epColor}
-                    fillOpacity="0.22"
+                    fillOpacity="0.12"
                     stroke={epColor}
-                    strokeWidth="1.8"
-                    strokeDasharray="4 2"
+                    strokeOpacity="0.6"
+                    strokeWidth="1.2"
+                    strokeDasharray="3 2"
                     className="animate-pulse pointer-events-none"
                   />
                 )}
@@ -3169,28 +3136,19 @@ export const WorkflowSimulatorStudio = ({
                   className={isDraggingThis ? 'cursor-grabbing' : 'cursor-grab'}
                 />
 
-                {/* 2. Vong tron ngoai: Mau theo loai Endpoint (Waypoint: Carbon, Charger: Emerald, Park: Slate) */}
+                {/* 2. Diem tron filled dac mau theo loai Endpoint (co vien trang tuong phan ro net) */}
                 <circle
                   cx={wpSvg.x}
                   cy={wpSvg.y}
-                  r={isSelected ? 8.5 : isHovered ? 7.5 : 5.5}
-                  fill="#ffffff"
-                  stroke={epColor}
-                  strokeWidth={isSelected ? '2.8' : isHovered ? '2.2' : '1.8'}
-                  filter="drop-shadow(0 2px 4px rgba(0,0,0,0.18))"
+                  r={isSelected ? 6.5 : isHovered ? 5.8 : 4.8}
+                  fill={epColor}
+                  stroke="#FFFFFF"
+                  strokeWidth={isSelected ? '2.0' : isHovered ? '1.8' : '1.4'}
+                  filter="drop-shadow(0 1px 3px rgba(0,0,0,0.20))"
                   className="transition-all duration-150"
                 />
 
-                {/* 3. Tam tron dinh vi dong mau loai */}
-                <circle
-                  cx={wpSvg.x}
-                  cy={wpSvg.y}
-                  r={isSelected ? 3.5 : isHovered ? 3.0 : 2.2}
-                  fill={epColor}
-                  className="pointer-events-none transition-all duration-150"
-                />
-
-                {/* 4. The Nhan ten Endpoint - Hien khi hover hoac khi duoc chon, click vao cung chon duoc endpoint */}
+                {/* 4. The Nhan ten Endpoint - Ty le nho gon tinh te */}
                 {showLabel && (
                   <g
                     transform={`translate(${wpSvg.x}, ${wpSvg.y + badgeOffsetY})`}
@@ -3199,32 +3157,32 @@ export const WorkflowSimulatorStudio = ({
                     {/* Card nen trang / xam tinh gon */}
                     <rect
                       x={-badgeWidth / 2}
-                      y="-10"
+                      y="-3.8"
                       width={badgeWidth}
-                      height="20"
-                      rx="4"
+                      height="7.6"
+                      rx="1.8"
                       fill={isSelected ? '#18181B' : '#FFFFFF'}
                       stroke={isSelected ? epColor : '#BFBFBD'}
-                      strokeWidth={isSelected ? '1.8' : '1'}
-                      filter="drop-shadow(0 2px 6px rgba(0,0,0,0.22))"
+                      strokeWidth={isSelected ? '0.9' : '0.6'}
+                      filter="drop-shadow(0 1px 2px rgba(0,0,0,0.14))"
                     />
 
                     {/* Dot mau phan biet loai Endpoint */}
                     <circle
-                      cx={-badgeWidth / 2 + 8}
+                      cx={-badgeWidth / 2 + 2.8}
                       cy="0"
-                      r="2.5"
+                      r="0.9"
                       fill={epColor}
                       className="pointer-events-none"
                     />
 
                     {/* Chu ten do nguoi dung dat */}
                     <text
-                      x="4"
-                      y="3.5"
+                      x="1.5"
+                      y="1.1"
                       textAnchor="middle"
                       fill={isSelected ? '#FFFFFF' : '#18181B'}
-                      className="text-[9.5px] font-bold tracking-tight truncate pointer-events-none"
+                      className="text-[3.6px] font-semibold tracking-tight truncate pointer-events-none"
                       fontFamily="sans-serif"
                     >
                       {nameText.length > 24 ? nameText.slice(0, 22) + '...' : nameText}
@@ -3250,7 +3208,7 @@ export const WorkflowSimulatorStudio = ({
               currentPath.targetPoint.y
             );
             const targetLabel = currentPath.label || 'Đích Đến';
-            const labelWidth = Math.max(84, targetLabel.length * 7.5 + 16);
+            const labelWidth = Math.max(42, targetLabel.length * 3.8 + 10);
 
             // Tinh toan vet duong da lan banh qua (bam theo cac waypoints da di qua, tuyet doi khong ve duong thang cat xuyen tuong)
             const traveledPathData = (() => {
@@ -3298,26 +3256,27 @@ export const WorkflowSimulatorStudio = ({
 
             return (
               <g>
-                {/* 1. Duong dan huong ne tuong (Polyline uon quanh qua cua mo) */}
+                {/* 1. Duong dan huong ne tuong (Polyline uon quanh qua cua mo - Mau nhat thanh lich) */}
                 <path
                   d={pathData}
                   fill="none"
-                  stroke="#71717a"
-                  strokeWidth="2.5"
-                  strokeDasharray="5 4"
+                  stroke="#94A3B8"
+                  strokeWidth="1.6"
+                  strokeDasharray="4 3"
                   strokeLinecap="round"
                   strokeLinejoin="round"
-                  opacity="0.75"
+                  opacity="0.55"
                 />
 
-                {/* 2. Vet duong robot da lan banh qua toi vi tri hien tai (Bam sat polyline ne tuong, khong cat xuyen tuong) */}
+                {/* 2. Vet duong robot da lan banh qua toi vi tri hien tai (Mau Slate nhat diu mat, khong bi dam den) */}
                 <path
                   d={traveledPathData}
                   fill="none"
-                  stroke="#18181b"
-                  strokeWidth="3.5"
+                  stroke="#475569"
+                  strokeWidth="2.0"
                   strokeLinecap="round"
                   strokeLinejoin="round"
+                  opacity="0.65"
                 />
 
                 {/* 3. Vong tron dich den tinh gon gang */}
@@ -3325,29 +3284,31 @@ export const WorkflowSimulatorStudio = ({
                   <circle
                     cx={targetSvg.x}
                     cy={targetSvg.y}
-                    r="12"
-                    fill="rgba(24, 24, 27, 0.05)"
-                    stroke="#18181b"
-                    strokeWidth="1.5"
+                    r="10"
+                    fill="rgba(71, 85, 105, 0.04)"
+                    stroke="#64748B"
+                    strokeWidth="1.2"
                     strokeDasharray="3 3"
+                    strokeOpacity="0.55"
                   />
-                  <g transform={`translate(${targetSvg.x}, ${targetSvg.y - 18})`}>
+                  <g transform={`translate(${targetSvg.x}, ${targetSvg.y - 9.5})`}>
                     <rect
                       x={-labelWidth / 2}
-                      y="-8.5"
+                      y="-5"
                       width={labelWidth}
-                      height="17"
-                      rx="3"
-                      fill="#18181b"
-                      stroke="#27272a"
-                      strokeWidth="1"
-                      filter="drop-shadow(0 2px 4px rgba(0,0,0,0.12))"
+                      height="10"
+                      rx="2"
+                      fill="#334155"
+                      fillOpacity="0.92"
+                      stroke="#475569"
+                      strokeWidth="0.8"
+                      filter="drop-shadow(0 1px 2px rgba(0,0,0,0.10))"
                     />
                     <text
                       x="0"
-                      y="3.2"
+                      y="1.8"
                       textAnchor="middle"
-                      className="text-[9px] font-bold fill-white tracking-wide"
+                      className="text-[5.2px] font-bold fill-white tracking-wide"
                       fontFamily="sans-serif"
                     >
                       {targetLabel}
@@ -3365,43 +3326,43 @@ export const WorkflowSimulatorStudio = ({
 
             return (
               <g transform={`translate(${robotSvg.x}, ${robotSvg.y})`}>
-                {/* BONG BONG TRANG THAI TINH GON TREN DAU ROBOT (CHI HIEN THI TRANG THAI, KHONG HIEN CHI TIET DIEN DEN) */}
+                {/* BONG BONG TRANG THAI TINH GON TREN DAU ROBOT (Ty le nho gon, tinh te) */}
                 {(() => {
                   const statusText = robotStatus.label;
-                  const pillWidth = Math.max(86, statusText.length * 8.0 + 26);
+                  const pillWidth = Math.max(46, statusText.length * 4.2 + 14);
                   return (
-                    <g transform="translate(0, -32)" className="pointer-events-none select-none">
+                    <g transform="translate(0, -12)" className="pointer-events-none select-none">
                       {/* Card nen trang tinh te */}
                       <rect
                         x={-pillWidth / 2}
-                        y="-11"
+                        y="-5.5"
                         width={pillWidth}
-                        height="22"
-                        rx="5"
+                        height="11"
+                        rx="2.5"
                         fill="#FFFFFF"
                         stroke="#BFBFBD"
-                        strokeWidth="1.2"
-                        filter="drop-shadow(0 2px 5px rgba(0,0,0,0.12))"
+                        strokeWidth="0.8"
+                        filter="drop-shadow(0 1px 3px rgba(0,0,0,0.12))"
                       />
                       {/* Mui ten tro xuong robot */}
-                      <polygon points="-4,11 4,11 0,16" fill="#FFFFFF" stroke="#BFBFBD" strokeWidth="1.2" />
-                      <line x1="-3.5" y1="11" x2="3.5" y2="11" stroke="#FFFFFF" strokeWidth="2" />
+                      <polygon points="-2,5.5 2,5.5 0,8.5" fill="#FFFFFF" stroke="#BFBFBD" strokeWidth="0.8" />
+                      <line x1="-1.8" y1="5.5" x2="1.8" y2="5.5" stroke="#FFFFFF" strokeWidth="1.2" />
 
                       {/* Dot trang thai nho */}
                       <circle
-                        cx={-pillWidth / 2 + 10}
+                        cx={-pillWidth / 2 + 5.5}
                         cy="0"
-                        r="3"
+                        r="1.6"
                         fill={robotStatus.dotColor}
                         className={robotStatus.isMoving ? 'animate-pulse' : ''}
                       />
 
                       {/* Chu trang thai cua robot */}
                       <text
-                        x="4"
-                        y="3.5"
+                        x="2"
+                        y="1.8"
                         textAnchor="middle"
-                        className="text-[9.5px] font-bold tracking-wider uppercase"
+                        className="text-[5.5px] font-bold tracking-wider uppercase"
                         fill="#262626"
                         fontFamily="sans-serif"
                       >
@@ -3411,31 +3372,31 @@ export const WorkflowSimulatorStudio = ({
                   );
                 })()}
 
-                {/* Robot hinh chu nhat mau xam don gian, toi gian ky thuat */}
+                {/* Robot hinh chu nhat mau xam don gian, toi gian ky thuat (Kich thuoc nho gon hon) */}
                 <g transform={`rotate(${svgAngle})`}>
                   {/* 2 Banh xe mau xam den o 2 ben hong xe */}
-                  <rect x="-8" y="-14" width="16" height="3.5" rx="1" fill="#18181b" />
-                  <rect x="-8" y="10.5" width="16" height="3.5" rx="1" fill="#18181b" />
+                  <rect x="-5" y="-8.5" width="10" height="2.2" rx="0.5" fill="#18181b" />
+                  <rect x="-5" y="6.3" width="10" height="2.2" rx="0.5" fill="#18181b" />
 
                   {/* Than xe hinh chu nhat mau xam toi gian */}
                   <rect
-                    x="-14"
-                    y="-11"
-                    width="28"
-                    height="22"
-                    rx="3"
+                    x="-8"
+                    y="-6"
+                    width="16"
+                    height="12"
+                    rx="2"
                     fill="#64748b"
                     stroke="#334155"
-                    strokeWidth="1.5"
-                    filter="drop-shadow(0 2px 4px rgba(0,0,0,0.15))"
+                    strokeWidth="1.2"
+                    filter="drop-shadow(0 1px 3px rgba(0,0,0,0.15))"
                   />
 
                   {/* Tam LiDAR nho mau xam dam */}
-                  <circle cx="-3" cy="0" r="3.5" fill="#334155" stroke="#94a3b8" strokeWidth="0.8" />
-                  <circle cx="-3" cy="0" r="1.2" fill="#cbd5e1" />
+                  <circle cx="-2" cy="0" r="2.2" fill="#334155" stroke="#94a3b8" strokeWidth="0.6" />
+                  <circle cx="-2" cy="0" r="0.8" fill="#cbd5e1" />
 
                   {/* Mui ten chi huong dau xe (+X) mau trang tinh gon */}
-                  <polygon points="11,0 6,-3.5 6,3.5" fill="#ffffff" />
+                  <polygon points="6,0 3,-2.2 3,2.2" fill="#ffffff" />
                 </g>
               </g>
             );

@@ -141,6 +141,12 @@ export const createZoneSyncMsg = (zones = []) => {
   };
 };
 
+export const createWaypointSyncMsg = (waypoints = []) => {
+  return {
+    data: JSON.stringify(waypoints),
+  };
+};
+
 /**
  * Rosbridge WebSocket Client Class
  */

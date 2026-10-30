@@ -542,7 +542,7 @@ def main(argv=None):
             _value(args.resume_packets, safety_cfg, "resume_valid_packets", 3)
         )
         turn_clearance = float(
-            _value(args.turn_clearance, safety_cfg, "turn_clearance_cm", 25.0)
+            _value(args.turn_clearance, safety_cfg, "turn_clearance_cm", 14.0)
         )
 
         ignored = [s.strip().lower() for s in args.ignore_sensors.split(",") if s.strip()]

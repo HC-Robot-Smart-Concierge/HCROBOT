@@ -6,7 +6,7 @@
     <!-- BASE LINK / CHASSIS -->
     <link name="base_link">
       <inertial>
-        <pose>-0.0585 0 0.059 0 0 0</pose>
+        <pose>-0.038 0 0.045 0 0 0</pose>
         <mass>1.2</mass>
         <inertia>
           <ixx>0.01</ixx>
@@ -20,10 +20,10 @@
 
       <!-- Chassis Visual (Orange Body) -->
       <visual name="chassis_visual">
-        <pose>-0.0585 0 0.059 0 0 0</pose>
+        <pose>-0.038 0 0.045 0 0 0</pose>
         <geometry>
           <box>
-            <size>0.335 0.265 0.138</size>
+            <size>0.22 0.18 0.09</size>
           </box>
         </geometry>
         <material>
@@ -34,20 +34,20 @@
       </visual>
 
       <collision name="chassis_collision">
-        <pose>-0.0585 0 0.059 0 0 0</pose>
+        <pose>-0.038 0 0.045 0 0 0</pose>
         <geometry>
           <box>
-            <size>0.335 0.265 0.138</size>
+            <size>0.22 0.18 0.09</size>
           </box>
         </geometry>
       </collision>
 
       <!-- Caster Wheel (White Low-Friction Ball) -->
       <visual name="caster_visual">
-        <pose>-0.151 0 -0.023 0 0 0</pose>
+        <pose>-0.095 0 -0.016 0 0 0</pose>
         <geometry>
           <sphere>
-            <radius>0.01</radius>
+            <radius>0.008</radius>
           </sphere>
         </geometry>
         <material>
@@ -57,10 +57,10 @@
       </visual>
 
       <collision name="caster_collision">
-        <pose>-0.151 0 -0.023 0 0 0</pose>
+        <pose>-0.095 0 -0.016 0 0 0</pose>
         <geometry>
           <sphere>
-            <radius>0.01</radius>
+            <radius>0.008</radius>
           </sphere>
         </geometry>
         <surface>
@@ -73,46 +73,7 @@
         </surface>
       </collision>
 
-      <!-- LiDAR Sensor Stand & Puck -->
-      <visual name="lidar_stand">
-        <pose>-0.104 0 0.15 0 0 0</pose>
-        <geometry>
-          <cylinder>
-            <radius>0.01</radius>
-            <length>0.1</length>
-          </cylinder>
-        </geometry>
-        <material>
-          <ambient>0.1 0.1 0.1 1</ambient>
-          <diffuse>0.1 0.1 0.1 1</diffuse>
-        </material>
-      </visual>
-
-      <visual name="lidar_puck">
-        <pose>-0.104 0 0.20 0 0 0</pose>
-        <geometry>
-          <cylinder>
-            <radius>0.05</radius>
-            <length>0.04</length>
-          </cylinder>
-        </geometry>
-        <material>
-          <ambient>0.05 0.7 0.9 1</ambient>
-          <diffuse>0.05 0.7 0.9 1</diffuse>
-        </material>
-      </visual>
-
-      <collision name="lidar_collision">
-        <pose>-0.104 0 0.20 0 0 0</pose>
-        <geometry>
-          <cylinder>
-            <radius>0.05</radius>
-            <length>0.04</length>
-          </cylinder>
-        </geometry>
-      </collision>
-
-      <!-- Camera Mount -->
+      <!-- Camera Mount Visual -->
       <visual name="camera_visual">
         <pose>0.11 0 0.14 0 0.18 0</pose>
         <geometry>
@@ -172,36 +133,6 @@
         </material>
       </visual>
 
-      <!-- LiDAR Sensor Plugin (Visual 360 Rays Enabled, 8m Range Capped to Room) -->
-      <sensor name="laser" type="gpu_lidar">
-        <pose>-0.104 0 0.20 0 0 0</pose>
-        <visualize>true</visualize>
-        <update_rate>15</update_rate>
-        <topic>/scan</topic>
-        <gz_frame_id>laser_frame</gz_frame_id>
-        <lidar>
-          <scan>
-            <horizontal>
-              <samples>360</samples>
-              <resolution>1</resolution>
-              <min_angle>-3.14159</min_angle>
-              <max_angle>3.14159</max_angle>
-            </horizontal>
-            <vertical>
-              <samples>1</samples>
-              <resolution>1</resolution>
-              <min_angle>0.0</min_angle>
-              <max_angle>0.0</max_angle>
-            </vertical>
-          </scan>
-          <range>
-            <min>0.12</min>
-            <max>8.0</max>
-            <resolution>0.01</resolution>
-          </range>
-        </lidar>
-      </sensor>
-
       <!-- Camera Sensor Plugin (Matched to camera.xacro pose and optical frame) -->
       <sensor name="camera" type="camera">
         <pose>0.11 0 0.14 0 0.18 0</pose>
@@ -225,9 +156,122 @@
       </sensor>
     </link>
 
+    <!-- LIDAR LINK & SENSOR (Explicit link with fixed joint to base_link) -->
+    <link name="laser_frame">
+      <pose relative_to="base_link">-0.065 0 0.17 0 0 0</pose>
+      <inertial>
+        <mass>0.05</mass>
+        <inertia>
+          <ixx>0.0001</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.0001</iyy>
+          <iyz>0</iyz>
+          <izz>0.0001</izz>
+        </inertia>
+      </inertial>
+
+      <!-- LiDAR Stand (Visual connecting base to puck) -->
+      <visual name="lidar_stand">
+        <pose>0 0 -0.045 0 0 0</pose>
+        <geometry>
+          <cylinder>
+            <radius>0.008</radius>
+            <length>0.07</length>
+          </cylinder>
+        </geometry>
+        <material>
+          <ambient>0.1 0.1 0.1 1</ambient>
+          <diffuse>0.1 0.1 0.1 1</diffuse>
+        </material>
+      </visual>
+
+      <!-- LiDAR Puck Visual (Cyan puck cylinder) -->
+      <visual name="lidar_puck">
+        <pose>0 0 0 0 0 0</pose>
+        <geometry>
+          <cylinder>
+            <radius>0.035</radius>
+            <length>0.025</length>
+          </cylinder>
+        </geometry>
+        <material>
+          <ambient>0.05 0.7 0.9 1</ambient>
+          <diffuse>0.05 0.7 0.9 1</diffuse>
+        </material>
+      </visual>
+
+      <collision name="lidar_collision">
+        <pose>0 0 0 0 0 0</pose>
+        <geometry>
+          <cylinder>
+            <radius>0.035</radius>
+            <length>0.025</length>
+          </cylinder>
+        </geometry>
+      </collision>
+
+      <!-- LiDAR Sensor Plugin (Elevated 360 Rays, Clean Clearance, Range Min 0.22m) -->
+      <sensor name="laser" type="gpu_lidar">
+        <pose>0 0 0 0 0 0</pose>
+        <visualize>true</visualize>
+        <update_rate>15</update_rate>
+        <topic>/scan</topic>
+        <gz_frame_id>laser_frame</gz_frame_id>
+        <lidar>
+          <scan>
+            <horizontal>
+              <samples>360</samples>
+              <resolution>1</resolution>
+              <min_angle>-3.14159</min_angle>
+              <max_angle>3.14159</max_angle>
+            </horizontal>
+            <vertical>
+              <samples>1</samples>
+              <resolution>1</resolution>
+              <min_angle>0.0</min_angle>
+              <max_angle>0.0</max_angle>
+            </vertical>
+          </scan>
+          <range>
+            <min>0.22</min>
+            <max>12.0</max>
+            <resolution>0.01</resolution>
+          </range>
+        </lidar>
+      </sensor>
+    </link>
+
+    <!-- FIXED JOINT FOR LIDAR SENSOR -->
+    <joint name="laser_joint" type="fixed">
+      <parent>base_link</parent>
+      <child>laser_frame</child>
+    </joint>
+
+    <!-- CAMERA OPTICAL LINK FOR TF RESOLUTION -->
+    <link name="camera_link_optical">
+      <pose relative_to="base_link">0.11 0 0.14 0 0.18 0</pose>
+      <inertial>
+        <mass>0.005</mass>
+        <inertia>
+          <ixx>0.00001</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>0.00001</iyy>
+          <iyz>0</iyz>
+          <izz>0.00001</izz>
+        </inertia>
+      </inertial>
+    </link>
+
+    <joint name="camera_optical_joint" type="fixed">
+      <parent>base_link</parent>
+      <child>camera_link_optical</child>
+    </joint>
+
     <!-- LEFT WHEEL -->
     <link name="left_wheel">
-      <pose>0 0.1485 0 -1.5708 0 0</pose>
+      <pose>0 0.10 0 -1.5708 0 0</pose>
       <inertial>
         <mass>0.08</mass>
         <inertia>
@@ -242,8 +286,8 @@
       <visual name="visual">
         <geometry>
           <cylinder>
-            <radius>0.033</radius>
-            <length>0.026</length>
+            <radius>0.024</radius>
+            <length>0.018</length>
           </cylinder>
         </geometry>
         <material>
@@ -254,7 +298,7 @@
       <collision name="collision">
         <geometry>
           <sphere>
-            <radius>0.033</radius>
+            <radius>0.024</radius>
           </sphere>
         </geometry>
         <surface>
@@ -270,7 +314,7 @@
 
     <!-- RIGHT WHEEL -->
     <link name="right_wheel">
-      <pose>0 -0.1485 0 1.5708 0 0</pose>
+      <pose>0 -0.10 0 1.5708 0 0</pose>
       <inertial>
         <mass>0.08</mass>
         <inertia>
@@ -285,8 +329,8 @@
       <visual name="visual">
         <geometry>
           <cylinder>
-            <radius>0.033</radius>
-            <length>0.026</length>
+            <radius>0.024</radius>
+            <length>0.018</length>
           </cylinder>
         </geometry>
         <material>
@@ -297,7 +341,7 @@
       <collision name="collision">
         <geometry>
           <sphere>
-            <radius>0.033</radius>
+            <radius>0.024</radius>
           </sphere>
         </geometry>
         <surface>
@@ -340,8 +384,8 @@
     <plugin filename="gz-sim-diff-drive-system" name="gz::sim::systems::DiffDrive">
       <left_joint>left_wheel_joint</left_joint>
       <right_joint>right_wheel_joint</right_joint>
-      <wheel_separation>0.297</wheel_separation>
-      <wheel_radius>0.033</wheel_radius>
+      <wheel_separation>0.20</wheel_separation>
+      <wheel_radius>0.024</wheel_radius>
       <topic>cmd_vel</topic>
       <odom_topic>odom</odom_topic>
       <tf_topic>tf</tf_topic>

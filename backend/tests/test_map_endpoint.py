@@ -100,20 +100,23 @@ async def test_hotel_zone_rules_and_navigation_rejection():
         assert "SPEED_ZONE" in zone_types
         assert "NO_STOP" in zone_types
 
-        # 2. Test từ chối điều hướng vào vùng cấm (KEEP_OUT: x=8.8, y=1.5)
+        keepout_zone = next(z for z in zones if z["type"] == "KEEP_OUT")
+        nostop_zone = next(z for z in zones if z["type"] == "NO_STOP")
+
+        # 2. Test từ chối điều hướng vào vùng cấm (KEEP_OUT)
         nav_keepout = await client.post(
             "/api/v1/map/navigate",
-            json={"target_x": 8.8, "target_y": 1.5, "target_yaw": 0.0},
+            json={"target_x": keepout_zone["x"], "target_y": keepout_zone["y"], "target_yaw": 0.0},
         )
         assert nav_keepout.status_code == 200
         keepout_data = nav_keepout.json()
         assert keepout_data["status"] == "REJECTED"
         assert "Khu vực cấm vào" in keepout_data["message"]
 
-        # 3. Test từ chối điều hướng kết thúc tại vùng cấm dừng (NO_STOP: x=4.4, y=2.85)
+        # 3. Test từ chối điều hướng kết thúc tại vùng cấm dừng (NO_STOP)
         nav_nostop = await client.post(
             "/api/v1/map/navigate",
-            json={"target_x": 4.4, "target_y": 2.85, "target_yaw": 0.0},
+            json={"target_x": nostop_zone["x"], "target_y": nostop_zone["y"], "target_yaw": 0.0},
         )
         assert nav_nostop.status_code == 200
         nostop_data = nav_nostop.json()
@@ -127,8 +130,8 @@ async def test_hotel_zone_rules_and_navigation_rejection():
                 "id": "wp_test_invalid_keepout",
                 "name": "Điểm Test Cấm",
                 "type": "NORMAL",
-                "x": 8.8,
-                "y": 1.5,
+                "x": keepout_zone["x"],
+                "y": keepout_zone["y"],
                 "yaw": 0.0,
                 "floor": "Sảnh Tầng 1",
             },
@@ -143,8 +146,8 @@ async def test_hotel_zone_rules_and_navigation_rejection():
                 "id": "wp_test_invalid_nostop",
                 "name": "Bãi đỗ cấm",
                 "type": "PARKING_SPOT",
-                "x": 4.4,
-                "y": 2.85,
+                "x": nostop_zone["x"],
+                "y": nostop_zone["y"],
                 "yaw": 0.0,
                 "floor": "Sảnh Tầng 1",
             },

@@ -49,9 +49,9 @@ class ObstacleSafetyController:
         stale_timeout=0.4,
         invalid_grace=0.2,
         allowed_null_packets=1,
-        resume_margin_cm=2.5,
-        resume_valid_packets=2,
-        turn_clearance_cm=12.0,
+        resume_margin_cm=10.0,
+        resume_valid_packets=3,
+        turn_clearance_cm=25.0,
         ignored_sensors=(),
     ):
         self.motor = motor
@@ -98,7 +98,7 @@ class ObstacleSafetyController:
             return (
                 (side, self.thresholds_cm[side]),
                 ("front", self.turn_clearance_cm),
-                ("rear", 12.0),
+                ("rear", self.turn_clearance_cm),
             )
         elif motion == "forward_left":
             return (

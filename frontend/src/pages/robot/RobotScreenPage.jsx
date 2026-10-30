@@ -923,7 +923,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         // ĐỒNG BỘ BẢN ĐỒ KHI RAG BACKEND PHÁT HIỆN YÊU CẦU CHỈ ĐƯỜNG (destination_key)
         const isRoomDirectionQuery = ['phòng', 'room', 'lên phòng', 'về phòng', 'đến phòng', 'tìm phòng'].some(k => lowerQuery.includes(k));
         const roomFallbackKey = isRoomDirectionQuery
-          ? ((activeRoomNumber && /^(?:40[1-9]|30[1-9])$/.test(String(activeRoomNumber).trim())) ? `room_${String(activeRoomNumber).trim()}` : 'room_401')
+          ? ((activeRoomNumber && /^(?:40[1-9]|30[1-9])$/.test(String(activeRoomNumber).trim())) ? `room_${String(activeRoomNumber).trim()}` : null)
           : null;
         const navTargetKey = chatRes.destination_key || fastDestKey || roomFallbackKey;
         const isRouteGuidance = Boolean(navTargetKey);

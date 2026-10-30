@@ -123,21 +123,29 @@ def _detect_destination_poi(prompt: str, reply: str = "", room_number: str | Non
     if room_3xx_match:
         return f"room_{room_3xx_match.group(1)}"
 
-    # 2b. Kiểm tra phản hồi của AI nếu có chứa số phòng cụ thể
-    if r_lower:
-        r_4xx = re.search(r'\b(?:phòng|p\.?|phong)?\s*(?:số\s*)?(40[1-9])\b', r_lower)
-        if r_4xx:
-            return f"room_{r_4xx.group(1)}"
-        r_3xx = re.search(r'\b(?:phòng|p\.?|phong)?\s*(?:số\s*)?(30[1-9])\b', r_lower)
-        if r_3xx:
-            return f"room_{r_3xx.group(1)}"
+    # 2b. Kiểm tra phản hồi của AI nếu có chứa số phòng cụ thể (không áp dụng khi hỏi chung chung)
+    if not is_general_room_query and r_lower:
+        if "từ phòng" not in r_lower and "đến phòng" not in r_lower:
+            r_4xx = re.search(r'\b(?:phòng|p\.?|phong)?\s*(?:số\s*)?(40[1-9])\b', r_lower)
+            if r_4xx:
+                return f"room_{r_4xx.group(1)}"
+            r_3xx = re.search(r'\b(?:phòng|p\.?|phong)?\s*(?:số\s*)?(30[1-9])\b', r_lower)
+            if r_3xx:
+                return f"room_{r_3xx.group(1)}"
 
     # 3. Khu vực Vệ Sinh (Toilet / WC / Restroom toàn khách sạn)
-    if any(k in p_lower for k in [
-        "vệ sinh", "ve sinh", "toilet", "wc", "restroom", "washroom",
+    # Phân định rõ ràng: Chỉ nhận diện là Toilet khi khách thực sự tìm nhà vệ sinh / đi vệ sinh,
+    # tuyệt đối loại trừ các câu hỏi về đồ dùng cá nhân (băng vệ sinh, đồ vệ sinh cá nhân, dọn vệ sinh phòng...)
+    is_toilet_query = any(k in p_lower for k in [
         "nhà vệ sinh", "nha ve sinh", "phòng vệ sinh", "phong ve sinh",
-        "đi vệ sinh", "di ve sinh", "đi toilet"
-    ]):
+        "đi vệ sinh", "di ve sinh", "toilet", "wc", "restroom", "washroom",
+        "đi toilet", "chỗ rửa tay", "nơi rửa tay"
+    ]) or (
+        ("vệ sinh" in p_lower or "ve sinh" in p_lower)
+        and any(w in p_lower for w in ["đi", "di", "lối", "loi", "hướng", "huong"])
+        and not any(neg in p_lower for neg in ["băng", "bang", "đồ", "do", "dọn", "don", "mua", "bán", "ban", "cá nhân", "ca nhan", "tạp hóa", "siêu thị", "tampon", "tiện ích", "giấy"])
+    )
+    if is_toilet_query:
         if any(f in p_lower for f in ["tầng 2", "tang 2", "nhà hàng", "bếp", "kho"]):
             return "restroom_f2"
         if any(f in p_lower for f in ["sảnh", "tầng 1", "trệt", "lễ tân", "ground"]):
@@ -189,7 +197,7 @@ def _detect_destination_poi(prompt: str, reply: str = "", room_number: str | Non
             clean_rn = str(room_number).strip()
             if re.match(r'^(?:40[1-9]|30[1-9])$', clean_rn):
                 return f"room_{clean_rn}"
-        return "room_401"
+        return None
 
     return None
 
@@ -345,7 +353,12 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
         else:
             logger.info(f"[AIChatService] Service request '{act}' is waiting for room number from guest.")
 
-    destination_key = graph_result.get("destination_key") or _detect_destination_poi(request.prompt, reply, current_room)
+    fast_hit_matched = graph_result.get("fast_path_hit")
+    fast_action = graph_result.get("action")
+    if fast_hit_matched and fast_action == "none":
+        destination_key = None
+    else:
+        destination_key = graph_result.get("destination_key") or _detect_destination_poi(request.prompt, reply, current_room)
     eye_expression = graph_result.get("eye_expression")
 
     # Lưu kết quả vào Redis Cache

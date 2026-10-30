@@ -79,6 +79,8 @@ export const AdminCameraTab = ({ currentUser }) => {
   const [controlIp, setControlIp] = useState(() => import.meta.env.VITE_PI5_IP || '100.99.72.51');
   const [speed, setSpeed] = useState(75);
   const speedRef = useRef(75);
+  // Giá trị tạm khi đang kéo thanh trượt; chỉ gửi lên Pi khi thả tay
+  const [speedDraft, setSpeedDraft] = useState(null);
 
   // Live Movement Logs
   const [movementLogs, setMovementLogs] = useState([
@@ -929,9 +931,10 @@ export const AdminCameraTab = ({ currentUser }) => {
           {/* Speed Presets Selector */}
           <div className="flex items-center gap-1 bg-black/40 p-0.5 rounded-lg border border-white/10">
             {[
-              { val: 50, label: '50%' },
-              { val: 75, label: '75%' },
-              { val: 100, label: '100%' },
+              { val: 30, label: '30%', title: 'Vận tốc 30% (chậm, dùng khi quét map)' },
+              { val: 50, label: '50%', title: 'Vận tốc 50% (Phím: 1)' },
+              { val: 75, label: '75%', title: 'Vận tốc 75% (Phím: 2)' },
+              { val: 100, label: '100%', title: 'Vận tốc 100% (Phím: 3)' },
             ].map((lvl) => (
               <button
                 key={lvl.val}
@@ -941,11 +944,36 @@ export const AdminCameraTab = ({ currentUser }) => {
                     ? 'bg-[#F2EFE9] text-[#262626] shadow-xs'
                     : 'text-stone-400 hover:text-white'
                 }`}
-                title={`Vận tốc ${lvl.label} (Phím: ${lvl.val === 50 ? '1' : lvl.val === 75 ? '2' : '3'})`}
+                title={lvl.title}
               >
                 {lvl.label}
               </button>
             ))}
+          </div>
+
+          {/* Thanh trượt tốc độ chi tiết 20-100% (gửi khi thả tay) */}
+          <div className="w-full flex items-center gap-2 px-1">
+            <input
+              type="range"
+              min={20}
+              max={100}
+              step={5}
+              value={speedDraft ?? speed}
+              onChange={(e) => setSpeedDraft(Number(e.target.value))}
+              onPointerUp={(e) => {
+                handleSpeedChange(Number(e.currentTarget.value));
+                setSpeedDraft(null);
+              }}
+              onKeyUp={(e) => {
+                handleSpeedChange(Number(e.currentTarget.value));
+                setSpeedDraft(null);
+              }}
+              className="flex-1 h-1 accent-[#F2EFE9] cursor-pointer"
+              title="Kéo để chỉnh tốc độ motor (20% - 100%)"
+            />
+            <span className="w-8 text-right font-mono text-[9px] font-bold text-stone-200">
+              {speedDraft ?? speed}%
+            </span>
           </div>
 
           {/* Cross D-Pad Cluster (W, A, S, D + STOP) */}

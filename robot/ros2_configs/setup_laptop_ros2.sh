@@ -21,7 +21,9 @@ cat << 'EOF' > "$CONFIG_DIR/cyclonedds.xml"
 <CycloneDDS xmlns="https://cdds.io/config">
     <Domain>
         <General>
-                <NetworkInterface address="100.92.82.61" />
+            <Interfaces>
+                <NetworkInterface name="eth0" />
+            </Interfaces>
             <AllowMulticast>false</AllowMulticast>
         </General>
         <Discovery>

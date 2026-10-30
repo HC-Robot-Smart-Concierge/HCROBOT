@@ -65,6 +65,10 @@ class LidarWsToRos2Bridge(Node):
         # quay đúng 360° rồi chỉnh tới khi yaw encoder khớp.
         self.yaw_track = float(os.getenv("HCROBOT_EFFECTIVE_TRACK", str(self.wheel_sep)))
         self.gyro_deadband_dps = float(os.getenv("HCROBOT_GYRO_DEADBAND_DPS", "0.3"))
+        # IMU đang lắp úp (accel z ≈ -1 g khi đứng yên) nên gyro z ngược chiều
+        # yaw ROS. Đo 2026-10-29: lệnh quay trái, LiDAR thấy +87° còn gyro -87.5°.
+        # Đặt 1 nếu lắp lại IMU đúng chiều hoặc đã sửa ROBOT_AXIS_MAP trong firmware.
+        self.gyro_sign = float(os.getenv("HCROBOT_GYRO_SIGN", "-1"))
         self.imu_seen = False
         self.last_encoder_sample_time = None
         self.encoder_cpr = float(os.getenv("HCROBOT_ENCODER_CPR", "330.0"))
@@ -584,7 +588,7 @@ class LidarWsToRos2Bridge(Node):
             return
 
         try:
-            gyro_rate = float(yaw_rate_dps or 0.0)
+            gyro_rate = self.gyro_sign * float(yaw_rate_dps or 0.0)
         except (TypeError, ValueError):
             gyro_rate = 0.0
         if imu_available is None:
@@ -653,7 +657,7 @@ class LidarWsToRos2Bridge(Node):
 
             # Gyro là nguồn yaw chính: đo trực tiếp, không bị trượt bánh skid-steer.
             # Không ép dấu theo lệnh điều khiển; nếu gyro ngược chiều xe thật thì
-            # sửa ROBOT_AXIS_MAP trong firmware, không che lỗi ở đây.
+            # chỉnh HCROBOT_GYRO_SIGN hoặc ROBOT_AXIS_MAP trong firmware.
             if use_gyro:
                 delta_yaw = math.radians(gyro_rate) * dt if abs(gyro_rate) > self.gyro_deadband_dps else 0.0
             else:

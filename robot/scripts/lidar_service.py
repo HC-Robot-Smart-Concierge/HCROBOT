@@ -1340,11 +1340,15 @@ free_thresh: 0.25
         except Exception:
             pass
 
-        # 3. UDP Sync sang Laptop WSL (100.92.82.61:9998) để RViz2 & SLAM Toolbox cập nhật odometry mượt mà
+        # 3. UDP Sync sang Laptop WSL để RViz2 & SLAM Toolbox cập nhật odometry mượt mà
         try:
             wsl_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             wsl_sock.settimeout(0.02)
-            wsl_sock.sendto(cmd_clean.encode("utf-8"), ("100.92.82.61", 9998))
+            for target_ip in ("100.92.82.61", "100.74.176.94"):
+                try:
+                    wsl_sock.sendto(cmd_clean.encode("utf-8"), (target_ip, 9998))
+                except Exception:
+                    pass
             wsl_sock.close()
         except Exception:
             pass

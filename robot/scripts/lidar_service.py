@@ -47,6 +47,9 @@ import sys
 if ROBOT_DIR not in sys.path:
     sys.path.insert(0, ROBOT_DIR)
 
+from scripts.pi_battery_estimator import PiBatteryEstimator  # noqa: E402
+from scripts.pi_power_monitor import PiPowerMonitor  # noqa: E402
+
 
 def find_rplidar_port() -> str:
     """Tự động tìm kiếm cổng Serial của RPLiDAR A1M8 (ưu tiên CP2102 UART Bridge)."""
@@ -2020,6 +2023,12 @@ free_thresh: 0.25
 
 # Khởi tạo singleton Core
 slam_core = RPLidarSLAMCore()
+pi_power_monitor = PiPowerMonitor()
+pi_battery_estimator = PiBatteryEstimator(
+    state_path=os.path.join(ROBOT_DIR, "config", "pi_battery_session.json"),
+    minutes_per_percent=float(os.getenv("HCROBOT_PI_BATTERY_MIN_PER_PERCENT", "5.0")),
+    start_percent=float(os.getenv("HCROBOT_PI_BATTERY_START_PERCENT", "100")),
+)
 
 # Khởi tạo FastAPI Server cho Web Admin (hoặc DummyApp nếu chạy test offline)
 if HAS_FASTAPI:
@@ -2070,6 +2079,11 @@ class WorkflowCreateRequest(BaseModel):
 
 class OverlayLoadRequest(BaseModel):
     map_name: str  # Tên file overlay (trong MAPS_DIR): ví dụ "floor_plan_overlay"
+
+
+class BatterySyncRequest(BaseModel):
+    percent: Optional[float] = None  # % đang hiện trên cục pin dự phòng
+    minutes_per_percent: Optional[float] = None  # đặt tay tốc độ tụt
 
 
 @app.get("/api/v1/map/current")
@@ -2126,6 +2140,28 @@ async def connect_lidar():
             "info": slam_core.device_info,
         }
     return {"status": "FAILED", "message": slam_core.last_error or "Không thể kết nối RPLiDAR"}
+
+
+@app.get("/api/v1/system/power")
+def get_pi_power():
+    """Nguồn cấp Pi 5 đọc từ PMIC. Hàm sync để FastAPI chạy vcgencmd trong threadpool."""
+    return {
+        "status": "SUCCESS",
+        "power": pi_power_monitor.get(),
+        "battery": pi_battery_estimator.snapshot(),
+    }
+
+
+@app.post("/api/v1/system/battery/sync")
+def sync_pi_battery(req: BatterySyncRequest):
+    """Nhập % trên cục pin dự phòng để đặt lại mốc ước tính (tự học tốc độ tụt)."""
+    if req.percent is None and req.minutes_per_percent is None:
+        return {"status": "FAILED", "message": "Cần percent hoặc minutes_per_percent"}
+    try:
+        battery = pi_battery_estimator.sync(req.percent, req.minutes_per_percent)
+    except RuntimeError as exc:
+        return {"status": "FAILED", "message": str(exc)}
+    return {"status": "SUCCESS", "battery": battery}
 
 
 @app.post("/api/v1/system/restart")
@@ -2542,6 +2578,9 @@ async def map_ws_endpoint(websocket: WebSocket):
                 if right_cm is None and snap.distances.get("right") is not None:
                     right_cm = round(snap.distances["right"], 1)
 
+            battery_est = pi_battery_estimator.snapshot()
+            battery_percent = None if battery_est["percent"] is None else round(battery_est["percent"])
+
             payload = {
                 "type": "telemetry_update",
                 "source": "REAL_RPLIDAR_A1M8_PI5" if scans else "RPLIDAR_NO_LIVE_SCAN",
@@ -2551,7 +2590,7 @@ async def map_ws_endpoint(websocket: WebSocket):
                     "y": round(slam_core.robot_y, 2),
                     "yaw": round(slam_core.robot_yaw, 1),
                 },
-                "battery": 98,
+                "battery": battery_percent,
                 "linear_velocity": round(slam_core.linear_velocity, 2),
                 "angular_velocity": round(slam_core.angular_velocity, 1),
                 "status": slam_core.status,

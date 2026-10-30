@@ -119,6 +119,9 @@ pnpm-debug.log*
 robot/build/
 robot/install/
 robot/log/
+# Mốc ước tính pin Pi 5 theo phiên cấp nguồn, sinh ra lúc chạy trên robot
+robot/config/pi_battery_session.json
+robot/config/pi_battery_session.json.tmp
 install/
 **/install/
 log/

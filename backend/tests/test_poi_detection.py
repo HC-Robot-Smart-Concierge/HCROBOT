@@ -60,3 +60,38 @@ def test_detect_destination_poi_external_places():
     # 3. Địa điểm ngoài khách sạn -> Không bật bản đồ trong nhà
     assert _detect_destination_poi("Đường ra sân bay Nội Bài đi hướng nào?", "Dạ sân bay cách đây khoảng 30km.") is None
     assert _detect_destination_poi("Bắt taxi ra chợ đêm ở đâu?", "Dạ quý khách có thể đón taxi trước cổng khách sạn.") is None
+
+
+def test_detect_destination_poi_rooms():
+    # 4. Khi khách hỏi chung chung về phòng (không có số phòng) -> Không hardcode 401, trả về None để hỏi lại số phòng
+    assert _detect_destination_poi("Chỉ đường đến phòng", "Dạ quý khách muốn tìm đường đến phòng số mấy ạ?") is None
+    assert _detect_destination_poi("Đường về phòng", "Dạ quý khách cho em xin số phòng ạ.") is None
+    assert _detect_destination_poi("Chỉ đường lên phòng") is None
+    assert _detect_destination_poi("Tìm phòng") is None
+    assert _detect_destination_poi("Phòng ở đâu") is None
+
+    # Khi có ngữ cảnh số phòng của phiên (ví dụ phòng 405)
+    assert _detect_destination_poi("Chỉ đường đến phòng", room_number="405") == "room_405"
+    assert _detect_destination_poi("Đường về phòng", room_number="302") == "room_302"
+
+    # Khi khách hỏi số phòng cụ thể -> Trả về đúng phòng đó
+    assert _detect_destination_poi("Chỉ đường đến phòng 401") == "room_401"
+    assert _detect_destination_poi("401") == "room_401"
+    assert _detect_destination_poi("Chỉ đường đến phòng 301") == "room_301"
+    assert _detect_destination_poi("301") == "room_301"
+    assert _detect_destination_poi("Phòng 402 ở đâu") == "room_402"
+    assert _detect_destination_poi("Tìm phòng 305") == "room_305"
+
+
+def test_detect_destination_poi_sanitary_and_cleaning_disambiguation():
+    # 5. Các câu hỏi về đồ dùng cá nhân (băng vệ sinh, đồ vệ sinh cá nhân, dọn vệ sinh) -> TUYỆT ĐỐI không kích hoạt bản đồ Toilet
+    assert _detect_destination_poi("Mua băng vệ sinh ở đâu") is None
+    assert _detect_destination_poi("Khách sạn có bán băng vệ sinh không") is None
+    assert _detect_destination_poi("Tôi cần băng vệ sinh khẩn cấp") is None
+    assert _detect_destination_poi("Dọn vệ sinh phòng giúp tôi") is None
+    assert _detect_destination_poi("Đồ vệ sinh cá nhân lấy ở đâu") is None
+
+    # Các câu hỏi tìm nhà vệ sinh / toilet thực sự -> Vẫn kích hoạt bình thường
+    assert _detect_destination_poi("Nhà vệ sinh ở đâu") == "restroom_ground"
+    assert _detect_destination_poi("Đi vệ sinh") == "restroom_ground"
+    assert _detect_destination_poi("Toilet tầng 2 ở đâu") == "restroom_f2"

@@ -704,8 +704,11 @@ export const detectDestinationPoi = (rawPrompt, activeRoomNumber = null) => {
   // 2. Nhận diện phòng 3xx (301 -> 309)
   if (room3xxMatch) return `room_${room3xxMatch[1]}`;
 
-  // 3. Nhà vệ sinh
-  if (['vệ sinh', 've sinh', 'toilet', 'wc', 'restroom', 'washroom'].some((k) => p.includes(k))) {
+  // 3. Nhà vệ sinh (Chỉ kích hoạt khi hỏi nhà vệ sinh / đi vệ sinh, loại trừ đồ vệ sinh cá nhân, băng vệ sinh, dọn dẹp)
+  const isToiletQuery = ['nhà vệ sinh', 'nha ve sinh', 'phòng vệ sinh', 'phong ve sinh', 'đi vệ sinh', 'di ve sinh', 'toilet', 'wc', 'restroom', 'washroom', 'đi toilet', 'chỗ rửa tay'].some((k) => p.includes(k)) ||
+    ((p.includes('vệ sinh') || p.includes('ve sinh')) && ['đi', 'di', 'lối', 'loi', 'hướng', 'huong'].some((w) => p.includes(w)) && !['băng', 'bang', 'đồ', 'do', 'dọn', 'don', 'mua', 'bán', 'ban', 'cá nhân', 'ca nhan', 'tạp hóa', 'siêu thị', 'tampon', 'giấy'].some((neg) => p.includes(neg)));
+
+  if (isToiletQuery) {
     if (['tầng 2', 'nhà hàng', 'bếp', 'kho'].some((k) => p.includes(k))) return 'restroom_f2';
     return 'restroom_ground';
   }
@@ -729,6 +732,14 @@ export const detectDestinationPoi = (rawPrompt, activeRoomNumber = null) => {
   if (['lễ tân', 'tiếp tân', 'quầy lễ tân', 'bàn lễ tân', 'front desk', 'check-in', 'check in', 'reception'].some((k) => p.includes(k))) return 'front_desk';
   if (['xe máy', 'gửi xe máy', 'bãi xe máy', 'xe đạp', 'hầm b1'].some((k) => p.includes(k))) return 'parking_bike';
   if (['đỗ ô tô', 'bãi ô tô', 'bãi xe ô tô', 'hầm b2', 'xe hơi', 'bãi xe', 'đỗ xe', 'gửi xe', 'parking'].some((k) => p.includes(k))) return 'parking_car';
+
+  // 7. Nếu người dùng hỏi đường về phòng chung chung (không có số phòng cụ thể)
+  if (isGeneralRoomQuery) {
+    if (activeRoomNumber && /^(?:40[1-9]|30[1-9])$/.test(String(activeRoomNumber).trim())) {
+      return `room_${String(activeRoomNumber).trim()}`;
+    }
+    return null; // Không hardcode bất kỳ phòng nào, để robot hỏi lại số phòng
+  }
 
   // Nếu người dùng hỏi đường/bản đồ chung chung ("cho tôi xem bản đồ", "chỉ đường cho tôi", "bản đồ khách sạn")
   if (['bản đồ', 'sơ đồ', 'map', 'chỉ đường', 'directions'].some((k) => p.includes(k))) return 'infinity_pool';

@@ -46,8 +46,12 @@ def _notify_wsl_motion(motion: str):
             import socket
             _wsl_sync_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             _wsl_sync_sock.settimeout(0.02)
-        # Gửi sang laptop WSL để RViz2 cập nhật chuyển động tức thời
-        _wsl_sync_sock.sendto(motion.encode('utf-8'), ("100.92.82.61", 9998))
+        # Gửi sang laptop WSL để RViz2 cập nhật chuyển động tức thời (hỗ trợ cả 2 laptop qua Tailscale)
+        for target_ip in ("100.92.82.61", "100.74.176.94"):
+            try:
+                _wsl_sync_sock.sendto(motion.encode('utf-8'), (target_ip, 9998))
+            except Exception:
+                pass
     except Exception:
         pass
 

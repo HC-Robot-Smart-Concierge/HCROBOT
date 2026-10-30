@@ -1,7 +1,7 @@
-image: phong_lam_viec.pgm
+image: map_2026_10_30_5317.pgm
 mode: trinary
 resolution: 0.050
-origin: [-3.384, -4.074, 0]
+origin: [-2.694, -2.841, 0]
 negate: 0
 occupied_thresh: 0.65
 free_thresh: 0.196

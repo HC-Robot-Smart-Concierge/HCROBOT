@@ -86,6 +86,40 @@ async def test_download_map_file():
 
 
 @pytest.mark.asyncio
+async def test_map_layouts_list_and_image():
+    """Danh sách map cho ô chọn map đọc đúng kích thước/gốc từ layout2.yaml + .pgm."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        res = await client.get("/api/v1/map/layouts")
+        assert res.status_code == 200
+        layouts = {m["map_id"]: m for m in res.json()["maps"]}
+        layout2 = layouts["layout2"]
+        assert (layout2["width"], layout2["height"]) == (111, 71)
+        assert layout2["resolution"] == pytest.approx(0.05)
+        assert (layout2["origin_x"], layout2["origin_y"]) == (pytest.approx(-0.711), pytest.approx(-1.765))
+        assert not any(name.startswith("pending_") for name in layouts)
+
+        img = await client.get("/api/v1/map/layouts/layout2/image")
+        assert img.status_code == 200
+        assert img.content.startswith(b"P5")
+
+        missing = await client.get("/api/v1/map/layouts/khong_ton_tai/image")
+        assert missing.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_waypoints_and_zones_filter_by_map_id():
+    """Lọc theo map chỉ đọc CSDL: map lạ trả rỗng, layout2 là tập con của toàn bộ."""
+    await init_db()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        for path in ("/api/v1/map/waypoints", "/api/v1/map/zones"):
+            all_ids = {item["id"] for item in (await client.get(path)).json()}
+            layout2 = (await client.get(path, params={"map_id": "layout2"})).json()
+            assert {item["id"] for item in layout2} <= all_ids
+            unknown = (await client.get(path, params={"map_id": "__map_khong_ton_tai__"})).json()
+            assert unknown == []
+
+
+@pytest.mark.asyncio
 async def test_hotel_zone_rules_and_navigation_rejection():
     """Test các ràng buộc an toàn của Hotel Zones: cấm vào (KEEP_OUT) và cấm dừng (NO_STOP)."""
     await init_db()

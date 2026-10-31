@@ -9,7 +9,47 @@ import {
   LAB_GEOMETRIC_OBSTACLES,
   transformWorldToCanvas,
   transformCanvasToWorld,
+  layoutToMapConfig,
 } from './AdminPhysicalMapTab';
+
+describe('AdminPhysicalMapTab - Map selector', () => {
+  it('builds the same config as LAYOUT2_CONFIG from /map/layouts metadata', () => {
+    const cfg = layoutToMapConfig({
+      map_id: 'layout2',
+      name: 'layout2',
+      width: 111,
+      height: 71,
+      resolution: 0.05,
+      origin_x: -0.711,
+      origin_y: -1.765,
+    });
+    expect(cfg.mapId).toBe('layout2');
+    expect(cfg.widthCells).toBe(LAYOUT2_CONFIG.widthCells);
+    expect(cfg.heightCells).toBe(LAYOUT2_CONFIG.heightCells);
+    expect(cfg.widthMeters).toBeCloseTo(LAYOUT2_CONFIG.widthMeters, 6);
+    expect(cfg.heightMeters).toBeCloseTo(LAYOUT2_CONFIG.heightMeters, 6);
+    expect(cfg.originX).toBe(LAYOUT2_CONFIG.originX);
+    expect(cfg.originY).toBe(LAYOUT2_CONFIG.originY);
+  });
+
+  it('maps a new map origin corner to the bottom-left of the drawn area', () => {
+    const cfg = layoutToMapConfig({
+      map_id: 'lab_v2',
+      name: 'lab_v2',
+      width: 200,
+      height: 100,
+      resolution: 0.05,
+      origin_x: -2.0,
+      origin_y: -1.0,
+    });
+    const bottomLeft = transformWorldToCanvas(cfg.originX, cfg.originY, 1000, 600, cfg);
+    const back = transformCanvasToWorld(bottomLeft.x, bottomLeft.y, 1000, 600, cfg);
+    expect(back.worldX).toBeCloseTo(-2.0, 6);
+    expect(back.worldY).toBeCloseTo(-1.0, 6);
+    // 10m x 5m ve vua khung 920 x 520 (pad 40) => scale theo chieu ngang 92 px/m
+    expect(bottomLeft.scale).toBeCloseTo(92, 6);
+  });
+});
 
 describe('AdminPhysicalMapTab - Physical Lab Map (layout2)', () => {
   it('correctly loads layout2 configuration matching layout2.yaml parameters', () => {

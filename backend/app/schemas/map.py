@@ -17,6 +17,7 @@ class Waypoint(BaseModel):
     floor: str = "Sảnh Tầng 1"
     type: str = Field("WAYPOINT", description="Mẫu Endpoint Concierge: WAYPOINT, CHARGER, PARK")
     description: Optional[str] = None
+    map_id: Optional[str] = Field(None, description="Tên map SLAM chứa điểm này (vd: layout2)")
 
 
 class ZoneSchema(BaseModel):
@@ -30,6 +31,7 @@ class ZoneSchema(BaseModel):
     speed_limit: Optional[float] = Field(0.2, description="Tốc độ tối đa cho phép (m/s) nếu là SPEED_ZONE / SLOW_SPEED")
     floor: str = "Sảnh Tầng 1"
     description: Optional[str] = None
+    map_id: Optional[str] = Field(None, description="Tên map SLAM chứa vùng này (vd: layout2)")
 
 
 class MapMetaData(BaseModel):

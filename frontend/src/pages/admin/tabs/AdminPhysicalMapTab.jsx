@@ -18,6 +18,8 @@ import {
   fetchZones,
   saveZone,
   deleteZone,
+  listMapLayouts,
+  fetchMapLayoutImage,
 } from '../../../services/workflowApi';
 import {
   OTTO_ENDPOINT_TEMPLATES,
@@ -73,6 +75,21 @@ export const LAYOUT2_CONFIG = {
   originX: -0.711,
   originY: -1.765,
 };
+
+const SELECTED_MAP_STORAGE_KEY = 'hcrobot.physicalMap.mapId';
+
+// Doi thong so tu API /map/layouts (doc tu .yaml + .pgm) sang cau hinh ve canvas
+export const layoutToMapConfig = (layout) => ({
+  mapId: layout.map_id,
+  name: layout.name,
+  widthCells: layout.width,
+  heightCells: layout.height,
+  resolution: layout.resolution,
+  widthMeters: Number((layout.width * layout.resolution).toFixed(3)),
+  heightMeters: Number((layout.height * layout.resolution).toFixed(3)),
+  originX: layout.origin_x,
+  originY: layout.origin_y,
+});
 
 // Toc do quet an toan mac dinh de RPLiDAR A1M8 (5.5Hz) quet net 360 do, triet tieu truot banh va meo point cloud
 export const DEFAULT_SAFE_SPEED_PERCENT = 25;
@@ -282,53 +299,112 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
   const [dragState, setDragState] = useState(null);
   const isDraggingRef = useRef(false);
 
-  // Anh map tinh layout2.png
+  // Ban do dang chon (thong so tu .yaml) va anh map (.pgm giai ma thanh canvas)
+  const [mapLayouts, setMapLayouts] = useState([]);
+  const [mapConfig, setMapConfig] = useState(LAYOUT2_CONFIG);
   const [mapImage, setMapImage] = useState(null);
+  const isLegacyMap = mapConfig.mapId === LAYOUT2_CONFIG.mapId;
 
-  // Load anh layout2.png va lay danh sach toa do diem tu layout2.json va API backend
+  // Danh sach map SLAM da luu (robot/maps/*.yaml) cho o chon map
   useEffect(() => {
     let isMounted = true;
-    const img = new Image();
-    img.src = '/maps/layout2.png';
-    img.onload = () => {
-      if (isMounted) setMapImage(img);
+    listMapLayouts()
+      .then((layouts) => {
+        if (!isMounted) return;
+        setMapLayouts(layouts);
+        const storedId = localStorage.getItem(SELECTED_MAP_STORAGE_KEY);
+        const stored = layouts.find((m) => m.map_id === storedId);
+        if (stored) setMapConfig(layoutToMapConfig(stored));
+      })
+      .catch((err) => console.warn('[AdminPhysicalMapTab] Failed to list map layouts:', err));
+    return () => {
+      isMounted = false;
     };
-    img.onerror = () => console.warn('[AdminPhysicalMapTab] Failed to load /maps/layout2.png');
+  }, []);
+
+  const handleSelectMap = (mapId) => {
+    if (mapId === mapConfig.mapId) return;
+    if (
+      (hasUnsavedEndpoints || hasUnsavedZones) &&
+      !window.confirm('Điểm mốc / vùng của map hiện tại chưa lưu. Vẫn chuyển map và bỏ thay đổi?')
+    ) {
+      return;
+    }
+    const layout = mapLayouts.find((m) => m.map_id === mapId);
+    if (!layout) return;
+    localStorage.setItem(SELECTED_MAP_STORAGE_KEY, mapId);
+    setMapConfig(layoutToMapConfig(layout));
+    setSelectedEndpoint(null);
+    setSelectedZone(null);
+    setSelectedGoal(null);
+    setPoseDraft(null);
+    setTrail([]);
+    setHasUnsavedEndpoints(false);
+    setHasUnsavedZones(false);
+    setNavStatus(`Đã chuyển sang bản đồ "${layout.name}"`);
+  };
+
+  // Nap anh map + diem moc / vung cua map dang chon
+  useEffect(() => {
+    let isMounted = true;
+    const mapId = mapConfig.mapId;
+    const isLegacy = mapId === LAYOUT2_CONFIG.mapId;
+    setMapImage(null);
+    setEndpoints(isLegacy ? DEFAULT_LAB_WAYPOINTS : []);
+    setZones(isLegacy ? DEFAULT_LAB_ZONES : []);
+
+    fetchMapLayoutImage(mapId)
+      .then((img) => {
+        if (isMounted) setMapImage(img);
+      })
+      .catch((err) => {
+        console.warn(`[AdminPhysicalMapTab] Failed to load map image "${mapId}":`, err);
+        if (!isLegacy) return;
+        // Du phong khi backend chua chay: anh tinh layout2.png trong frontend/public
+        const img = new Image();
+        img.src = '/maps/layout2.png';
+        img.onload = () => {
+          if (isMounted) setMapImage(img);
+        };
+      });
 
     const loadData = async () => {
-      try {
-        // 1. Thu tai tu file layout2.json
-        const res = await fetch('/maps/layout2.json');
-        if (res.ok) {
-          const data = await res.json();
-          if (isMounted && Array.isArray(data.waypoints) && data.waypoints.length > 0) {
-            setEndpoints(data.waypoints);
+      if (isLegacy) {
+        try {
+          // Diem moc mac dinh di kem layout2.json
+          const res = await fetch('/maps/layout2.json');
+          if (res.ok) {
+            const data = await res.json();
+            if (isMounted && Array.isArray(data.waypoints) && data.waypoints.length > 0) {
+              setEndpoints(data.waypoints);
+            }
+            if (isMounted && Array.isArray(data.zones) && data.zones.length > 0) {
+              setZones(data.zones);
+            }
           }
-          if (isMounted && Array.isArray(data.zones) && data.zones.length > 0) {
-            setZones(data.zones);
-          }
+        } catch (err) {
+          console.warn('[AdminPhysicalMapTab] Failed to fetch /maps/layout2.json:', err);
         }
-      } catch (err) {
-        console.warn('[AdminPhysicalMapTab] Failed to fetch /maps/layout2.json:', err);
       }
 
-      // 2. Thu dong bo tu backend CSDL
+      // Dong bo tu CSDL, chi lay diem / vung thuoc map dang chon.
+      // layout2 giu mac dinh neu CSDL rong; map moi thi danh sach rong la dung.
       try {
-        const dbWps = await fetchWaypoints();
-        if (isMounted && Array.isArray(dbWps) && dbWps.length > 0) {
+        const dbWps = await fetchWaypoints(mapId);
+        if (isMounted && Array.isArray(dbWps) && (dbWps.length > 0 || !isLegacy)) {
           setEndpoints(dbWps);
         }
       } catch (e) {
-        // Giu default endpoints neu API loi
+        // Giu danh sach hien tai neu API loi
       }
 
       try {
-        const dbZones = await fetchZones();
-        if (isMounted && Array.isArray(dbZones) && dbZones.length > 0) {
+        const dbZones = await fetchZones(mapId);
+        if (isMounted && Array.isArray(dbZones) && (dbZones.length > 0 || !isLegacy)) {
           setZones(dbZones);
         }
       } catch (e) {
-        // Giu default zones neu API loi
+        // Giu danh sach hien tai neu API loi
       }
     };
 
@@ -337,7 +413,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [mapConfig.mapId]);
 
   // 1. KET NOI XE THAT (Pi 5 WebSocket: ws://100.99.72.51:8000/api/v1/map/ws)
   useEffect(() => {
@@ -511,15 +587,15 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
   // Chuyen doi Toa do Thuc (Meters) sang Canvas Pixels
   const worldToCanvas = useCallback(
     (worldX, worldY, canvasWidth, canvasHeight) =>
-      transformWorldToCanvas(worldX, worldY, canvasWidth, canvasHeight, LAYOUT2_CONFIG),
-    []
+      transformWorldToCanvas(worldX, worldY, canvasWidth, canvasHeight, mapConfig),
+    [mapConfig]
   );
 
   // Chuyen doi Canvas Pixels sang Toa do Thuc (Meters)
   const canvasToWorld = useCallback(
     (canvasX, canvasY, canvasWidth, canvasHeight) =>
-      transformCanvasToWorld(canvasX, canvasY, canvasWidth, canvasHeight, LAYOUT2_CONFIG),
-    []
+      transformCanvasToWorld(canvasX, canvasY, canvasWidth, canvasHeight, mapConfig),
+    [mapConfig]
   );
 
   // ==========================================
@@ -536,6 +612,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
       y: 0.00,
       yaw: 0.0,
       color: tmpl.color || '#3B82F6',
+      map_id: mapConfig.mapId,
     };
     const nextList = [...endpoints, newEp];
     setEndpoints(nextList);
@@ -574,7 +651,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     setIsSavingEndpoints(true);
     try {
       for (const ep of endpoints) {
-        await saveWaypoint(ep);
+        await saveWaypoint({ ...ep, map_id: mapConfig.mapId });
       }
       setHasUnsavedEndpoints(false);
       setNavStatus('Đã lưu toàn bộ điểm mốc vào CSDL');
@@ -629,6 +706,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
       height: 1.00,
       speed_limit: tmpl.defaultSpeed,
       description: tmpl.description,
+      map_id: mapConfig.mapId,
     };
     const nextList = [...zones, newZone];
     setZones(nextList);
@@ -663,7 +741,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     setIsSavingZones(true);
     try {
       for (const z of zones) {
-        await saveZone(z);
+        await saveZone({ ...z, map_id: mapConfig.mapId });
       }
       setHasUnsavedZones(false);
       setNavStatus('Đã lưu toàn bộ vùng chức năng vào CSDL');
@@ -725,18 +803,18 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     const pad = 40;
     const availWidth = width - pad * 2;
     const availHeight = height - pad * 2;
-    const scale = Math.min(availWidth / LAYOUT2_CONFIG.widthMeters, availHeight / LAYOUT2_CONFIG.heightMeters);
-    const offsetX = pad + (availWidth - LAYOUT2_CONFIG.widthMeters * scale) / 2;
-    const offsetY = pad + (availHeight - LAYOUT2_CONFIG.heightMeters * scale) / 2;
+    const scale = Math.min(availWidth / mapConfig.widthMeters, availHeight / mapConfig.heightMeters);
+    const offsetX = pad + (availWidth - mapConfig.widthMeters * scale) / 2;
+    const offsetY = pad + (availHeight - mapConfig.heightMeters * scale) / 2;
 
-    const roomW = LAYOUT2_CONFIG.widthMeters * scale;
-    const roomH = LAYOUT2_CONFIG.heightMeters * scale;
+    const roomW = mapConfig.widthMeters * scale;
+    const roomH = mapConfig.heightMeters * scale;
 
     // Nen phong Lab
     ctx.fillStyle = '#1E293B';
     ctx.fillRect(offsetX, offsetY, roomW, roomH);
 
-    // 3. Render Ban do SLAM thuc te layout2.png
+    // 3. Render Ban do SLAM cua map dang chon
     if (mapImage) {
       ctx.save();
       ctx.globalAlpha = 0.95;
@@ -747,14 +825,14 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     // Luoi toa do 0.5m
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.06)';
     ctx.lineWidth = 1;
-    for (let x = 0; x <= LAYOUT2_CONFIG.widthMeters; x += 0.5) {
+    for (let x = 0; x <= mapConfig.widthMeters; x += 0.5) {
       const px = offsetX + x * scale;
       ctx.beginPath();
       ctx.moveTo(px, offsetY);
       ctx.lineTo(px, offsetY + roomH);
       ctx.stroke();
     }
-    for (let y = 0; y <= LAYOUT2_CONFIG.heightMeters; y += 0.5) {
+    for (let y = 0; y <= mapConfig.heightMeters; y += 0.5) {
       const py = offsetY + y * scale;
       ctx.beginPath();
       ctx.moveTo(offsetX, py);
@@ -1056,6 +1134,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     ctx.fillText('Dock (0,0)', opx + 6, opy + 12);
   }, [
     mapImage,
+    mapConfig,
     robotPose,
     scanPoints,
     showLaserScan,
@@ -1169,7 +1248,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
       return;
     }
 
-    const { scale } = transformWorldToCanvas(0, 0, canvas.width, canvas.height, LAYOUT2_CONFIG);
+    const { scale } = transformWorldToCanvas(0, 0, canvas.width, canvas.height, mapConfig);
     const dxMeters = (canvasX - dragState.mouseStartX) / scale;
     const dyMeters = -(canvasY - dragState.mouseStartY) / scale;
 
@@ -1412,11 +1491,30 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
           </div>
         </div>
 
-        {/* Center: Che do ban do SLAM goc layout2 */}
-        <div className="hidden lg:flex items-center bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800 text-xs">
-          <Layers className="w-3.5 h-3.5 text-cyan-400 mr-1.5" />
-          <span className="text-[11px] font-semibold text-slate-300">Bản Đồ SLAM Gốc Lab (layout2.png)</span>
-        </div>
+        {/* Center: O chon ban do SLAM (robot/maps/*.yaml) */}
+        <label
+          className="hidden md:flex items-center bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800 text-xs"
+          title={`${mapConfig.widthMeters}m × ${mapConfig.heightMeters}m • ${mapConfig.resolution}m/ô • gốc (${mapConfig.originX}, ${mapConfig.originY})`}
+        >
+          <Layers className="w-3.5 h-3.5 text-cyan-400 mr-1.5 shrink-0" />
+          <span className="text-[11px] font-semibold text-slate-400 mr-1.5">Bản đồ:</span>
+          <select
+            value={mapConfig.mapId}
+            onChange={(e) => handleSelectMap(e.target.value)}
+            disabled={mapLayouts.length === 0}
+            className="bg-slate-900 text-[11px] font-semibold text-slate-200 outline-none cursor-pointer disabled:cursor-not-allowed max-w-[220px]"
+          >
+            {mapLayouts.length === 0 && (
+              <option value={mapConfig.mapId}>{mapConfig.mapId}{isLegacyMap ? ' (gốc Lab)' : ''}</option>
+            )}
+            {mapLayouts.map((m) => (
+              <option key={m.map_id} value={m.map_id}>
+                {m.name}
+                {m.map_id === LAYOUT2_CONFIG.mapId ? ' (gốc Lab)' : ''} • {m.width_m}×{m.height_m}m
+              </option>
+            ))}
+          </select>
+        </label>
 
         {/* Right: Target Selector (Pi 5 vs ROS 2) & Status Pill */}
         <div className="flex items-center gap-2">
@@ -1783,7 +1881,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
 
           {/* Bottom helper text */}
           <div className="mt-2 text-[11px] text-slate-400 flex items-center gap-3">
-            <span>Kéo thả để di chuyển Điểm mốc / Vùng • Click vùng trống để chọn đích đến ({LAYOUT2_CONFIG.widthMeters}m × {LAYOUT2_CONFIG.heightMeters}m)</span>
+            <span>Kéo thả để di chuyển Điểm mốc / Vùng • Click vùng trống để chọn đích đến ({mapConfig.widthMeters}m × {mapConfig.heightMeters}m)</span>
             {selectedGoal && (
               <button
                 onClick={() => setSelectedGoal(null)}

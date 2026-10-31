@@ -1,10 +1,12 @@
 const API_BASE = '/api/v1';
 
+const mapQuery = (mapId) => (mapId ? `?${new URLSearchParams({ map_id: mapId })}` : '');
+
 /**
- * Fetch all persistent LiDAR waypoints from database
+ * Fetch persistent LiDAR waypoints from database (only those of mapId when given)
  */
-export async function fetchWaypoints() {
-  const res = await fetch(`${API_BASE}/map/waypoints`);
+export async function fetchWaypoints(mapId = null) {
+  const res = await fetch(`${API_BASE}/map/waypoints${mapQuery(mapId)}`);
   if (!res.ok) throw new Error('Không thể tải danh sách Waypoints');
   return res.json();
 }
@@ -104,10 +106,73 @@ export async function executeWorkflow(workflowId, payload = {}) {
 /**
  * Fetch all persistent functional zones from database
  */
-export async function fetchZones() {
-  const res = await fetch(`${API_BASE}/map/zones`);
+export async function fetchZones(mapId = null) {
+  const res = await fetch(`${API_BASE}/map/zones${mapQuery(mapId)}`);
   if (!res.ok) throw new Error('Không thể tải danh sách Vùng Chức Năng');
   return res.json();
+}
+
+/**
+ * Danh sách map SLAM (.yaml + .pgm) kèm kích thước, độ phân giải và gốc tọa độ
+ */
+export async function listMapLayouts() {
+  const res = await fetch(`${API_BASE}/map/layouts`);
+  if (!res.ok) throw new Error('Không thể tải danh sách bản đồ');
+  const data = await res.json();
+  return data.maps || [];
+}
+
+/**
+ * Giải mã PGM binary (P5) thành canvas để vẽ bằng drawImage (hàng 0 là đỉnh ảnh)
+ */
+export function decodePgmToCanvas(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let pos = 0;
+  const tokens = [];
+  while (tokens.length < 4 && pos < bytes.length) {
+    while (pos < bytes.length && /\s/.test(String.fromCharCode(bytes[pos]))) pos += 1;
+    if (bytes[pos] === 0x23) {
+      while (pos < bytes.length && bytes[pos] !== 0x0a) pos += 1;
+      continue;
+    }
+    let token = '';
+    while (pos < bytes.length && !/\s/.test(String.fromCharCode(bytes[pos]))) {
+      token += String.fromCharCode(bytes[pos]);
+      pos += 1;
+    }
+    tokens.push(token);
+  }
+  pos += 1; // một ký tự trắng ngăn header và pixel
+  const [magic, w, h, maxVal] = tokens;
+  const width = Number(w);
+  const height = Number(h);
+  if (magic !== 'P5' || !width || !height || Number(maxVal) > 255 || bytes.length < pos + width * height) {
+    throw new Error('File PGM không hợp lệ');
+  }
+
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  const img = ctx.createImageData(width, height);
+  for (let i = 0; i < width * height; i += 1) {
+    const v = bytes[pos + i];
+    img.data[i * 4] = v;
+    img.data[i * 4 + 1] = v;
+    img.data[i * 4 + 2] = v;
+    img.data[i * 4 + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+  return canvas;
+}
+
+/**
+ * Tải ảnh map SLAM và trả về canvas sẵn sàng cho drawImage
+ */
+export async function fetchMapLayoutImage(mapId) {
+  const res = await fetch(`${API_BASE}/map/layouts/${encodeURIComponent(mapId)}/image`);
+  if (!res.ok) throw new Error(`Không tải được ảnh bản đồ "${mapId}"`);
+  return decodePgmToCanvas(await res.arrayBuffer());
 }
 
 /**

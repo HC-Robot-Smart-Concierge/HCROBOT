@@ -28,6 +28,8 @@ killall -q rosbridge_websocket foxglove_bridge async_slam_toolbox_node robot_sta
 pkill -f "[r]os2 launch rosbridge_server" 2>/dev/null || true
 pkill -f "[r]os2 launch foxglove_bridge" 2>/dev/null || true
 pkill -f "lidar_ws_to_ros2.py" 2>/dev/null || true
+pkill -f "costmap_filter_info_server" 2>/dev/null || true
+pkill -f "lifecycle_manager_costmap_filters" 2>/dev/null || true
 fuser -k 9090/tcp 2>/dev/null || true
 fuser -k 8765/tcp 2>/dev/null || true
 sleep 1
@@ -56,6 +58,30 @@ python3 "$SCRIPT_DIR/lidar_ws_to_ros2.py" &
 LIDAR_PID=$!
 sleep 2
 
+echo "=== [4b/6] KEEPOUT FILTER (VUNG CAM TU WEB ADMIN) ==="
+# Mask do backend tao: POST /api/v1/map/ros2/keepout_mask/<map> (tu dong khi bat Navigation tu Web)
+MAP_BASENAME="$(basename "${MAP_YAML%.yaml}")"
+MASK_YAML="$MAPS_DIR/keepout/$MAP_BASENAME.yaml"
+MASK_PID=""; FILTER_INFO_PID=""; FILTER_LM_PID=""
+if [ -f "$MASK_YAML" ]; then
+    FILTER_PARAMS="$SCRIPT_DIR/nav2/keepout_filter_params.yaml"
+    ros2 run nav2_map_server map_server --ros-args -r __node:=filter_mask_server \
+      --params-file "$FILTER_PARAMS" -p yaml_filename:="$MASK_YAML" &
+    MASK_PID=$!
+    ros2 run nav2_map_server costmap_filter_info_server --ros-args \
+      -r __node:=costmap_filter_info_server --params-file "$FILTER_PARAMS" &
+    FILTER_INFO_PID=$!
+    ros2 run nav2_lifecycle_manager lifecycle_manager --ros-args \
+      -r __node:=lifecycle_manager_costmap_filters -p use_sim_time:=false -p autostart:=true \
+      -p "node_names:=['filter_mask_server','costmap_filter_info_server']" &
+    FILTER_LM_PID=$!
+    echo " Keepout mask: $MASK_YAML"
+else
+    echo " Chua co mask vung cam ($MASK_YAML): Nav2 chay KHONG co vung KEEP_OUT."
+    echo " Tao mask: luu Vung tren Web Admin, hoac bat Navigation tu Web."
+fi
+sleep 1
+
 echo "=== [5/6] MAP SERVER + AMCL + NAV2 ==="
 ros2 launch "$SCRIPT_DIR/nav2/navigation_launch.py" \
   map:="$MAP_YAML" \
@@ -73,5 +99,5 @@ echo " /cmd_vel   : Nav2 -> Pi 5 motor bridge"
 echo " Foxglove   : ws://127.0.0.1:8765"
 echo " Slam Toolbox KHONG chay trong mode nay."
 
-trap "kill $RSP_PID $BRIDGE_PID $FOXGLOVE_PID $LIDAR_PID $NAV2_PID 2>/dev/null || true" EXIT INT TERM
+trap "kill $RSP_PID $BRIDGE_PID $FOXGLOVE_PID $LIDAR_PID $NAV2_PID $MASK_PID $FILTER_INFO_PID $FILTER_LM_PID 2>/dev/null || true" EXIT INT TERM
 wait $RSP_PID $BRIDGE_PID $FOXGLOVE_PID $LIDAR_PID $NAV2_PID

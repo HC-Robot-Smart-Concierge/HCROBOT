@@ -49,6 +49,7 @@ if ROBOT_DIR not in sys.path:
 
 from scripts.pi_battery_estimator import PiBatteryEstimator  # noqa: E402
 from scripts.pi_power_monitor import PiPowerMonitor  # noqa: E402
+from scripts.nav_planner import PlanGrid, plan_path, point_in_zone, zones_of_type  # noqa: E402
 
 
 def find_rplidar_port() -> str:
@@ -151,6 +152,11 @@ class RPLidarSLAMCore:
         self.active_goal: Optional[Dict[str, float]] = None
         self.nav_thread: Optional[threading.Thread] = None
         self.is_navigating = False
+        # Vung chuc nang tu Web Admin (KEEP_OUT / SPEED_ZONE / NO_STOP) va duong di A* hien tai
+        self.nav_zones: List[Dict[str, Any]] = []
+        self.nav_path: List[tuple] = []
+        self.nav_path_index = 0
+        self._nav_replan = False
 
         # Frontier Exploration
         self.is_exploring = False
@@ -996,10 +1002,11 @@ free_thresh: 0.25
 
                 # ── Encoder + IMU odometry ────────────────────────────────────
                 # Encoder cập nhật x/y. Yaw chỉ đổi khi đang quay; đi thẳng thì khóa góc.
-                if self.map_mode == "MAPPING":
-                    esp_reader = getattr(self, "esp32_reader", None)
+                # Chạy cả ở NAVIGATION: tự hành trên Pi cần vị trí đo thật, không ước đoán.
+                esp_reader = getattr(self, "esp32_reader", None)
+                if esp_reader is not None:
                     snap = None
-                    if esp_reader and hasattr(esp_reader, "latest"):
+                    if hasattr(esp_reader, "latest"):
                         snap = esp_reader.latest()
                     dt = now - last_imu_update_time
                     if snap is not None and dt > 0.0:
@@ -1381,22 +1388,90 @@ free_thresh: 0.25
         except Exception:
             pass
 
-    def navigate_to(self, target_x: float, target_y: float, speed: Optional[int] = None, linear_speed: Optional[float] = None):
-        """Bắt đầu tác vụ tự hành tới tọa độ mục tiêu (target_x, target_y) ở tốc độ quét an toàn."""
+    def set_nav_zones(self, zones: List[Dict[str, Any]]) -> int:
+        """Nhan danh sach vung chuc nang tu Web Admin (thay the toan bo)."""
+        clean = []
+        for z in zones or []:
+            try:
+                clean.append({
+                    "id": str(z.get("id", "")),
+                    "name": str(z.get("name", "")),
+                    "type": str(z.get("type", "KEEP_OUT")).upper(),
+                    "x": float(z.get("x", 0.0)),
+                    "y": float(z.get("y", 0.0)),
+                    "width": float(z.get("width", 0.0)),
+                    "height": float(z.get("height", 0.0)),
+                    "speed_limit": z.get("speed_limit"),
+                })
+            except (TypeError, ValueError):
+                continue
+        with self._lock:
+            self.nav_zones = clean
+        logger.info(f"🧭 Đã nhận {len(clean)} vùng chức năng từ Web Admin")
+        return len(clean)
+
+    def _has_live_odometry(self) -> bool:
+        """Co encoder ESP32 moi (<1s) thi vi tri do scan_loop cap nhat, khong uoc doan."""
+        reader = getattr(self, "esp32_reader", None)
+        snap = reader.latest() if reader is not None and hasattr(reader, "latest") else None
+        if snap is None or not getattr(snap, "encoders", None):
+            return False
+        received_at = getattr(snap, "received_at", None)
+        return received_at is None or (time.monotonic() - received_at) < 1.0
+
+    def plan_route(self, target_x: float, target_y: float):
+        """Lap duong A* tu vi tri hien tai toi dich tren ban do tinh + vung cam. Tra (path, message)."""
+        with self._lock:
+            grid = self.static_grid_data if self.is_map_locked and self.static_grid_data else self.grid_data
+            grid = list(grid)
+            w, h, res = self.grid_width, self.grid_height, self.resolution
+            ox, oy = self.origin_x, self.origin_y
+            start = (self.robot_x, self.robot_y)
+            keepout = zones_of_type(self.nav_zones, "KEEP_OUT")
+        if not any(v == 100 for v in grid):
+            # Chua co ban do: chi di thang + ne phan xa nhu truoc.
+            return [(target_x, target_y)], "Pi chưa nạp bản đồ: đi thẳng tới đích, chỉ né vật cản bằng LiDAR."
+        pg = PlanGrid(grid, w, h, res, ox, oy, keepout_zones=keepout)
+        return plan_path(pg, start, (target_x, target_y))
+
+    def navigate_to(self, target_x: float, target_y: float, speed: Optional[int] = None, linear_speed: Optional[float] = None) -> Dict[str, Any]:
+        """Lap duong di tranh tuong/vung cam roi bat dau tu hanh. Tra ket qua cho Web."""
         self.stop_navigation()
+        for zone in self.nav_zones:
+            ztype = zone["type"]
+            if ztype == "KEEP_OUT" and point_in_zone(target_x, target_y, zone):
+                return {"ok": False, "message": f"Điểm đích nằm trong vùng cấm vào '{zone['name']}'."}
+            if ztype == "NO_STOP" and point_in_zone(target_x, target_y, zone):
+                return {"ok": False, "message": f"Điểm đích nằm trong vùng cấm dừng '{zone['name']}'."}
+
+        t0 = time.time()
+        path, message = self.plan_route(target_x, target_y)
+        if path is None:
+            logger.warning(f"🚫 Không lập được đường tới ({target_x:.2f}, {target_y:.2f}): {message}")
+            return {"ok": False, "message": message}
+
         self.nav_speed_pwm = speed if speed is not None else 28
         self.nav_linear_mps = linear_speed if linear_speed is not None else 0.12
+        self.nav_path = path
+        self.nav_path_index = 0
+        self._nav_replan = False
         self.active_goal = {"x": target_x, "y": target_y}
         self.is_navigating = True
         self.status = "NAVIGATING"
         self.nav_thread = threading.Thread(target=self._navigation_loop, daemon=True)
         self.nav_thread.start()
-        logger.info(f"🎯 BẮT ĐẦU TỰ HÀNH: Đích đến X={target_x:.2f}m, Y={target_y:.2f}m")
+        logger.info(
+            f"🎯 BẮT ĐẦU TỰ HÀNH: Đích X={target_x:.2f}m, Y={target_y:.2f}m "
+            f"({len(path)} chặng, lập đường {time.time() - t0:.2f}s)"
+        )
+        return {"ok": True, "message": message, "path": [[round(px, 3), round(py, 3)] for px, py in path]}
 
     def stop_navigation(self):
         """Dừng tác vụ tự hành ngay lập tức."""
         self.is_navigating = False
         self.active_goal = None
+        self.nav_path = []
+        self.nav_path_index = 0
         self.status = "IDLE"
         self.linear_velocity = 0.0
         self.angular_velocity = 0.0
@@ -1509,29 +1584,47 @@ free_thresh: 0.25
     def _navigation_loop(self):
         """
         Vòng lặp điều khiển Tự hành (Autonomous Navigation Loop):
-        1. Tính vector hướng đến mục tiêu (dx, dy).
-        2. Dùng LiDAR quét góc trước mặt (-30° đến +30°): nếu gặp vật cản < 0.45m => phanh / rẽ tránh.
-        3. Tự động quay mũi về mục tiêu và tiến tới đích.
-        4. Dừng khi cự ly < 0.15m (Goal Reached).
+        1. Đi lần lượt qua các chặng của đường A* (tránh tường trên map + vùng cấm).
+        2. LiDAR phía trước (±45°) thấy vật cản mới < 0.40m => dừng, lùi/xoay tránh rồi lập lại đường.
+        3. Quay mũi về chặng hiện tại và tiến tới; tới chặng cuối thì dừng (Goal Reached).
+        Vị trí lấy từ encoder/IMU (scan_loop); chỉ tự ước đoán khi không có ESP32.
         """
         rate_hz = 10
         dt = 1.0 / rate_hz
 
         while self.is_navigating and self.active_goal:
-            gx = self.active_goal["x"]
-            gy = self.active_goal["y"]
+            fake_odom = not self._has_live_odometry()
+
+            # 0. Lập lại đường sau khi phải né vật cản mới
+            if self._nav_replan:
+                self._nav_replan = False
+                path, message = self.plan_route(self.active_goal["x"], self.active_goal["y"])
+                if path is not None:
+                    self.nav_path, self.nav_path_index = path, 0
+                    logger.info(f"🔁 Lập lại đường đi: {len(path)} chặng")
+                else:
+                    logger.warning(f"🔁 Không lập lại được đường ({message}), tiếp tục theo đường cũ")
+
+            path = self.nav_path or [(self.active_goal["x"], self.active_goal["y"])]
+            idx = min(self.nav_path_index, len(path) - 1)
+            gx, gy = path[idx]
+            is_final = idx == len(path) - 1
 
             dx = gx - self.robot_x
             dy = gy - self.robot_y
             dist_to_goal = math.hypot(dx, dy)
 
-            # 1. Đã đến đích (Goal Reached)
-            if dist_to_goal < 0.22:
+            # 1. Tới chặng trung gian: chuyển chặng; tới chặng cuối: Goal Reached
+            if not is_final and dist_to_goal < 0.15:
+                self.nav_path_index = idx + 1
+                continue
+            if is_final and dist_to_goal < 0.22:
                 logger.info(f"🏁 ĐÃ ĐẾN ĐÍCH X={gx:.2f}m, Y={gy:.2f}m!")
                 self.send_udp_motor_command("stop")
                 self.status = "GOAL_REACHED"
                 self.is_navigating = False
                 self.active_goal = None
+                self.nav_path = []
                 self.avoidance_locked_dir = None
                 break
 
@@ -1557,27 +1650,36 @@ free_thresh: 0.25
                     self.avoidance_locked_dir = "left" if left_dist >= right_dist else "right"
 
                 turn_cmd = self.avoidance_locked_dir
-                # Xoay dứt khoát 0.35s ở công suất 38% để robot thực sự xoay được góc ~30-35 độ
+                # Xoay dứt khoát 0.35s để robot thực sự xoay được góc ~30-35 độ
                 yaw_step = 30.0 if turn_cmd == "left" else -30.0
                 self.send_udp_motor_command("speed:32")
                 self.send_udp_motor_command(turn_cmd, force=True)
                 time.sleep(0.35)
                 self.send_udp_motor_command("stop", force=True)
-                self.robot_yaw = (self.robot_yaw + yaw_step) % 360.0
+                if fake_odom:
+                    self.robot_yaw = (self.robot_yaw + yaw_step) % 360.0
                 time.sleep(0.10)
+                self._nav_replan = True
                 continue
             else:
                 if front_obstacle_dist > 0.50:
                     self.avoidance_locked_dir = None
 
-            # 3. Approach Lock (Khóa góc khi cự ly gần < 40cm để triệt tiêu Waypoint Hunting / xoay lắc tại đích)
-            if dist_to_goal < 0.40:
+            # Vùng giới hạn tốc độ: giảm PWM khi robot đang ở trong vùng
+            in_speed_zone = any(
+                z["type"] in ("SPEED_ZONE", "SLOW_SPEED") and point_in_zone(self.robot_x, self.robot_y, z)
+                for z in self.nav_zones
+            )
+
+            # 3. Approach Lock (chỉ ở chặng cuối, < 40cm) để triệt tiêu xoay lắc tại đích
+            if is_final and dist_to_goal < 0.40:
                 self.send_udp_motor_command("speed:22")
                 self.send_udp_motor_command("forward")
                 speed_mps = 0.09
-                rad = math.radians(self.robot_yaw)
-                self.robot_x += speed_mps * dt * math.cos(rad)
-                self.robot_y += speed_mps * dt * math.sin(rad)
+                if fake_odom:
+                    rad = math.radians(self.robot_yaw)
+                    self.robot_x += speed_mps * dt * math.cos(rad)
+                    self.robot_y += speed_mps * dt * math.sin(rad)
                 self.linear_velocity = speed_mps
                 self.angular_velocity = 0.0
                 time.sleep(dt)
@@ -1587,7 +1689,7 @@ free_thresh: 0.25
             desired_yaw = (math.degrees(math.atan2(dy, dx)) + 360.0) % 360.0
             yaw_error = (desired_yaw - self.robot_yaw + 540.0) % 360.0 - 180.0
 
-            # 5. Điều khiển bám mục tiêu kèm Deadband 15°
+            # 5. Điều khiển bám chặng hiện tại kèm Deadband 15°
             if abs(yaw_error) > 15.0:
                 turn_cmd = "left" if yaw_error > 0 else "right"
                 yaw_step = 15.0 if yaw_error > 0 else -15.0
@@ -1596,19 +1698,23 @@ free_thresh: 0.25
                 time.sleep(0.18)
                 self.send_udp_motor_command("stop")
 
-                self.robot_yaw = (self.robot_yaw + yaw_step) % 360.0
+                if fake_odom:
+                    self.robot_yaw = (self.robot_yaw + yaw_step) % 360.0
                 self.angular_velocity = yaw_step
                 self.linear_velocity = 0.0
                 time.sleep(0.06)
             else:
                 # Góc hướng đã chuẩn trong deadband: Tiến thẳng ổn định
                 nav_pwm = getattr(self, "nav_speed_pwm", 28)
+                if in_speed_zone:
+                    nav_pwm = min(nav_pwm, 22)
                 self.send_udp_motor_command(f"speed:{nav_pwm}")
                 self.send_udp_motor_command("forward")
                 speed_mps = getattr(self, "nav_linear_mps", 0.12)
-                rad = math.radians(self.robot_yaw)
-                self.robot_x += speed_mps * dt * math.cos(rad)
-                self.robot_y += speed_mps * dt * math.sin(rad)
+                if fake_odom:
+                    rad = math.radians(self.robot_yaw)
+                    self.robot_x += speed_mps * dt * math.cos(rad)
+                    self.robot_y += speed_mps * dt * math.sin(rad)
                 self.linear_velocity = speed_mps
                 self.angular_velocity = 0.0
                 time.sleep(dt)
@@ -2467,13 +2573,36 @@ async def teleop_control(req: TeleopCommandRequest):
 
 @app.post("/api/v1/map/navigate")
 async def navigate_to_point(req: NavigateGoalRequest):
-    slam_core.navigate_to(req.target_x, req.target_y, speed=req.speed, linear_speed=req.linear_speed)
+    # Lap duong A* co the mat ~1s tren Pi => chay ngoai event loop
+    result = await asyncio.to_thread(
+        slam_core.navigate_to, req.target_x, req.target_y, req.speed, req.linear_speed
+    )
+    if not result.get("ok"):
+        return {
+            "status": "REJECTED",
+            "message": result.get("message", "Không lập được đường đi"),
+            "target_x": req.target_x,
+            "target_y": req.target_y,
+        }
     return {
         "status": "SUCCESS",
         "message": f"Robot đang tự hành tới (X={req.target_x:.2f}m, Y={req.target_y:.2f}m)",
+        "detail": result.get("message"),
+        "path": result.get("path", []),
         "target_x": req.target_x,
         "target_y": req.target_y,
     }
+
+
+class NavZonesRequest(BaseModel):
+    zones: List[Dict[str, Any]] = []
+
+
+@app.post("/api/v1/map/zones")
+async def set_nav_zones(req: NavZonesRequest):
+    """Web Admin gui vung KEEP_OUT / SPEED_ZONE / NO_STOP cua map dang dung."""
+    count = slam_core.set_nav_zones(req.zones)
+    return {"status": "SUCCESS", "count": count}
 
 
 @app.post("/api/v1/map/set_pose")
@@ -2770,6 +2899,11 @@ async def map_ws_endpoint(websocket: WebSocket):
                 "map_mode": slam_core.map_mode,
                 "is_map_locked": slam_core.is_map_locked,
                 "active_map_name": slam_core.active_map_name,
+                "nav_path": (
+                    [[round(px, 3), round(py, 3)] for px, py in slam_core.nav_path[slam_core.nav_path_index:]]
+                    if slam_core.is_navigating else []
+                ),
+                "nav_zone_count": len(slam_core.nav_zones),
                 "safety": {
                     "front_cm": front_cm,
                     "rear_cm": rear_cm,

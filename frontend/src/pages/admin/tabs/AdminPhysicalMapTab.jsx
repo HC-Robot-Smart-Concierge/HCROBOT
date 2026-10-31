@@ -269,6 +269,9 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
   const [selectedGoal, setSelectedGoal] = useState(null);
   const [navStatus, setNavStatus] = useState('Sẵn sàng');
   const [isNavigating, setIsNavigating] = useState(false);
+  // Duong di A* Pi dang bam theo (cac chang con lai) va map Pi dang nap
+  const [navPath, setNavPath] = useState([]);
+  const piStateRef = useRef({ activeMapName: null, status: null });
 
   // Toc do dieu khien: Giam ve 25% (0.12 m/s) de RPLiDAR A1M8 quet tron ven 360 do
   const [speedPercent, setSpeedPercent] = useState(DEFAULT_SAFE_SPEED_PERCENT);
@@ -337,6 +340,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     setSelectedEndpoint(null);
     setSelectedZone(null);
     setSelectedGoal(null);
+    setNavPath([]);
     setPoseDraft(null);
     setTrail([]);
     setHasUnsavedEndpoints(false);
@@ -415,6 +419,39 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     };
   }, [mapConfig.mapId]);
 
+  // Gui vung chuc nang xuong Pi de tu hanh tranh KEEP_OUT, giam toc SPEED_ZONE, cam dung NO_STOP.
+  // Debounce de khong gui lien tuc khi dang keo tha vung.
+  useEffect(() => {
+    if (connectionMode !== 'pi5' || !isWsConnected) return undefined;
+    const timer = setTimeout(() => {
+      fetch(`http://${pi5Ip}:8000/api/v1/map/zones`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ zones }),
+      }).catch((err) => console.warn('[AdminPhysicalMapTab] Sync zones to Pi failed:', err));
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [zones, connectionMode, isWsConnected, pi5Ip]);
+
+  // Pi phai dung cung ban do voi map dang chon thi lap duong / dinh vi moi dung.
+  // Tra ve true neu vua phai nap map moi len Pi (vi tri robot tren Pi bi dat lai).
+  const ensurePiMapLoaded = async () => {
+    if (piStateRef.current.activeMapName === mapConfig.mapId) return false;
+    const res = await fetch(`http://${pi5Ip}:8000/api/v1/map/load`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: mapConfig.mapId }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.status !== 'SUCCESS') {
+      throw new Error(
+        `Pi chưa có bản đồ "${mapConfig.mapId}" (robot/maps/${mapConfig.mapId}.json). Hãy git pull trên Pi rồi thử lại.`
+      );
+    }
+    piStateRef.current = { ...piStateRef.current, activeMapName: mapConfig.mapId };
+    return true;
+  };
+
   // 1. KET NOI XE THAT (Pi 5 WebSocket: ws://100.99.72.51:8000/api/v1/map/ws)
   useEffect(() => {
     if (connectionMode !== 'pi5') return;
@@ -463,6 +500,20 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
 
             if (typeof data.battery === 'number') {
               setHardwareInfo((prev) => ({ ...prev, battery: data.battery }));
+            }
+
+            if (Array.isArray(data.nav_path)) {
+              setNavPath(data.nav_path);
+            }
+            const prevPiStatus = piStateRef.current.status;
+            piStateRef.current = {
+              activeMapName: data.active_map_name ?? null,
+              status: data.status ?? null,
+            };
+            if (data.status === 'GOAL_REACHED' && prevPiStatus === 'NAVIGATING') {
+              setNavStatus('Đã tới đích');
+              setIsNavigating(false);
+              setSelectedGoal(null);
             }
 
             if (data.hardware_info) {
@@ -1030,6 +1081,31 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
       }
     }
 
+    // 7b. Ve duong di A* Pi dang bam theo (tu robot qua cac chang con lai)
+    if (navPath.length > 0) {
+      const startPt = worldToCanvas(robotPose.x, robotPose.y, width, height);
+      ctx.save();
+      ctx.setLineDash([7, 5]);
+      ctx.strokeStyle = '#22D3EE';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(startPt.x, startPt.y);
+      for (const [px, py] of navPath) {
+        const p = worldToCanvas(px, py, width, height);
+        ctx.lineTo(p.x, p.y);
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#22D3EE';
+      for (const [px, py] of navPath.slice(0, -1)) {
+        const p = worldToCanvas(px, py, width, height);
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 3.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
     // 8. Ve Diem Dich Den (Selected Goal)
     if (selectedGoal) {
       const { x: gpx, y: gpy } = worldToCanvas(selectedGoal.x, selectedGoal.y, width, height);
@@ -1143,6 +1219,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     showEndpoints,
     trail,
     selectedGoal,
+    navPath,
     endpoints,
     zones,
     selectedEndpoint,
@@ -1288,6 +1365,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
 
     try {
       if (connectionMode === 'pi5') {
+        await ensurePiMapLoaded();
         const res = await fetch(`http://${pi5Ip}:8000/api/v1/map/set_pose`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1367,23 +1445,49 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     setIsNavigating(true);
     setNavStatus(`Đang di chuyển tới (${gx.toFixed(2)}, ${gy.toFixed(2)})...`);
 
-    // WebSocket /map/ws tren Pi 5 chi phat telemetry, khong doc lenh => gui dich qua REST
+    // WebSocket /map/ws tren Pi 5 chi phat telemetry, khong doc lenh => gui dich qua REST.
+    // Pi lap duong A* tren ban do (tranh tuong + vung cam) va tu choi dich khong hop le.
     if (connectionMode === 'pi5') {
-      fetch(`http://${pi5Ip}:8000/api/v1/map/navigate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          target_x: gx,
-          target_y: gy,
-          target_yaw: gyaw,
-          speed: speedPercent,
-          linear_speed: maxLinearSpeed,
-        }),
-      }).catch((err) => {
-        console.warn('[AdminPhysicalMapTab] Pi5 send goal error:', err);
-        setNavStatus(`Lỗi gửi đích tới Pi 5: ${err.message}`);
+      const cancelGoal = (message) => {
+        setNavStatus(message);
         setIsNavigating(false);
-      });
+        setSelectedGoal(null);
+      };
+      (async () => {
+        try {
+          if (await ensurePiMapLoaded()) {
+            cancelGoal(
+              `Đã nạp bản đồ "${mapConfig.mapId}" lên Pi. Hãy đặt vị trí ban đầu (Chọn trên map) rồi chọn đích lại.`
+            );
+            return;
+          }
+          const res = await fetch(`http://${pi5Ip}:8000/api/v1/map/navigate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              target_x: gx,
+              target_y: gy,
+              target_yaw: gyaw,
+              speed: speedPercent,
+              linear_speed: maxLinearSpeed,
+            }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok || data.status !== 'SUCCESS') {
+            cancelGoal(`Không đi được tới đích: ${data.message || `HTTP ${res.status}`}`);
+            return;
+          }
+          if (Array.isArray(data.path)) setNavPath(data.path);
+          setNavStatus(
+            `Đang đi tới (${gx.toFixed(2)}, ${gy.toFixed(2)}) theo ${data.path?.length || 1} chặng${
+              data.detail && data.detail !== 'OK' ? ` • ${data.detail}` : ''
+            }`
+          );
+        } catch (err) {
+          console.warn('[AdminPhysicalMapTab] Pi5 send goal error:', err);
+          cancelGoal(`Lỗi gửi đích tới Pi 5: ${err.message}`);
+        }
+      })();
     }
 
     if (connectionMode === 'ros2' && rosClientRef.current && isWsConnected) {
@@ -1429,6 +1533,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     sendTeleopCommand('stop', 0.0, 0.0);
     setIsNavigating(false);
     setSelectedGoal(null);
+    setNavPath([]);
     setNavStatus('Đã dừng khẩn cấp (STOP)');
   };
 
@@ -1884,7 +1989,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
             <span>Kéo thả để di chuyển Điểm mốc / Vùng • Click vùng trống để chọn đích đến ({mapConfig.widthMeters}m × {mapConfig.heightMeters}m)</span>
             {selectedGoal && (
               <button
-                onClick={() => setSelectedGoal(null)}
+                onClick={handleStop}
                 className="text-rose-400 hover:underline cursor-pointer text-[10px]"
               >
                 Hủy đích

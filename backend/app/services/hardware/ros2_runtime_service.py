@@ -325,11 +325,81 @@ class Ros2RuntimeService:
             "message": f"Đã lưu và xác thực bản đồ '{safe_name}', sẵn sàng chuyển sang Navigation.",
         }
 
-    def start_navigation(self, raw_name: str) -> dict:
+    def keepout_mask_paths(self, safe_name: str) -> tuple[Path, Path]:
+        # Thu muc con rieng de mask khong lan vao danh sach map (/map/layouts quet *.yaml).
+        mask_dir = self.maps_dir / "keepout"
+        return mask_dir / f"{safe_name}.yaml", mask_dir / f"{safe_name}.pgm"
+
+    def write_keepout_mask(self, raw_name: str, zones: list[dict], robot_radius: float = 0.16) -> dict:
+        """
+        Tao mask Keepout Filter cho Nav2 tu cac vung KEEP_OUT cua map (cung kich thuoc/goc voi map).
+        O trong vung (noi rong them ban kinh robot) = den (0, vat can) => Nav2 khong lap duong vao.
+        """
+        import yaml
+
+        safe_name = self.normalize_map_name(raw_name)
+        map_yaml = self.maps_dir / f"{safe_name}.yaml"
+        if not map_yaml.is_file():
+            raise Ros2RuntimeError(f"Chưa có bản đồ '{safe_name}'.")
+        meta = yaml.safe_load(map_yaml.read_text(encoding="utf-8")) or {}
+        stats = self._read_pgm_stats(map_yaml.parent / str(meta.get("image", f"{safe_name}.pgm")))
+        width, height = stats["width"], stats["height"]
+        res = float(meta.get("resolution", 0.05))
+        origin = meta.get("origin") or [0.0, 0.0, 0.0]
+        ox, oy = float(origin[0]), float(origin[1])
+
+        pixels = bytearray([254]) * (width * height)
+        keepout = [z for z in zones if str(z.get("type", "")).upper() == "KEEP_OUT"]
+        for z in keepout:
+            half_w = float(z.get("width") or 0.0) / 2.0 + robot_radius
+            half_h = float(z.get("height") or 0.0) / 2.0 + robot_radius
+            zx, zy = float(z.get("x") or 0.0), float(z.get("y") or 0.0)
+            x0 = max(0, int((zx - half_w - ox) / res))
+            x1 = min(width - 1, int((zx + half_w - ox) / res))
+            y0 = max(0, int((zy - half_h - oy) / res))
+            y1 = min(height - 1, int((zy + half_h - oy) / res))
+            for gy in range(y0, y1 + 1):
+                row = (height - 1 - gy) * width  # PGM: hang 0 la dinh anh (y lon nhat)
+                for gx in range(x0, x1 + 1):
+                    pixels[row + gx] = 0
+
+        mask_yaml, mask_pgm = self.keepout_mask_paths(safe_name)
+        mask_yaml.parent.mkdir(parents=True, exist_ok=True)
+        mask_pgm.write_bytes(f"P5\n{width} {height}\n255\n".encode("ascii") + bytes(pixels))
+        mask_yaml.write_text(
+            f"image: {mask_pgm.name}\nmode: trinary\nresolution: {res}\n"
+            f"origin: [{ox}, {oy}, 0.0]\nnegate: 0\noccupied_thresh: 0.65\nfree_thresh: 0.25\n",
+            encoding="utf-8",
+        )
+        logger.info("Keepout mask '%s': %d vùng KEEP_OUT", safe_name, len(keepout))
+        return {"map_name": safe_name, "keepout_zones": len(keepout), "mask_yaml": str(mask_yaml)}
+
+    def reload_keepout_mask(self, raw_name: str) -> bool:
+        """Nav2 dang chay thi nap lai mask ngay (khong can khoi dong lai Navigation)."""
+        if self._detect_mode() != "NAVIGATION":
+            return False
+        mask_yaml, _ = self.keepout_mask_paths(self.normalize_map_name(raw_name))
+        command = [
+            "wsl.exe", "-d", self.distro, "--", "bash", "-lc",
+            "source /opt/ros/jazzy/setup.bash && ros2 service call /filter_mask_server/load_map "
+            f"nav2_msgs/srv/LoadMap \"{{map_url: '{self._to_wsl_path(mask_yaml)}'}}\"",
+        ]
+        try:
+            result = subprocess.run(
+                command, capture_output=True, text=True, timeout=20, creationflags=self._creation_flags
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            logger.warning("Không nạp lại được keepout mask: %s", exc)
+            return False
+        return result.returncode == 0 and "result=0" in result.stdout.replace(" ", "")
+
+    def start_navigation(self, raw_name: str, keepout_zones: Optional[list[dict]] = None) -> dict:
         safe_name = self.normalize_map_name(raw_name)
         yaml_path = self.maps_dir / f"{safe_name}.yaml"
         if not yaml_path.is_file():
             raise Ros2RuntimeError(f"Chưa có bản đồ '{safe_name}'. Hãy quét và lưu map trước.")
+        if keepout_zones is not None:
+            self.write_keepout_mask(safe_name, keepout_zones)
 
         pid = self._spawn(
             "start_wsl_foxglove.sh",

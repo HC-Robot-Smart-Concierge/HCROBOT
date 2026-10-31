@@ -47,6 +47,9 @@ import sys
 if ROBOT_DIR not in sys.path:
     sys.path.insert(0, ROBOT_DIR)
 
+from scripts.pi_battery_estimator import PiBatteryEstimator  # noqa: E402
+from scripts.pi_power_monitor import PiPowerMonitor  # noqa: E402
+
 
 def find_rplidar_port() -> str:
     """Tự động tìm kiếm cổng Serial của RPLiDAR A1M8 (ưu tiên CP2102 UART Bridge)."""
@@ -192,8 +195,8 @@ class RPLidarSLAMCore:
                 left_backward_pin=27,
                 right_forward_pin=22,
                 right_backward_pin=23,
-                invert_left_direction=False,
-                invert_right_direction=True,
+                invert_left_direction=True,
+                invert_right_direction=False,
                 default_speed=50,
             )
             logger.info("🚗 [LiDAR-SLAM] Đã khởi tạo MotorController trực tiếp trên Raspberry Pi 5 (GPIO 17, 27, 22, 23)!")
@@ -1353,9 +1356,11 @@ free_thresh: 0.25
         except Exception:
             pass
 
-    def navigate_to(self, target_x: float, target_y: float):
-        """Bắt đầu tác vụ tự hành tới tọa độ mục tiêu (target_x, target_y)."""
+    def navigate_to(self, target_x: float, target_y: float, speed: Optional[int] = None, linear_speed: Optional[float] = None):
+        """Bắt đầu tác vụ tự hành tới tọa độ mục tiêu (target_x, target_y) ở tốc độ quét an toàn."""
         self.stop_navigation()
+        self.nav_speed_pwm = speed if speed is not None else 28
+        self.nav_linear_mps = linear_speed if linear_speed is not None else 0.12
         self.active_goal = {"x": target_x, "y": target_y}
         self.is_navigating = True
         self.status = "NAVIGATING"
@@ -1425,7 +1430,7 @@ free_thresh: 0.25
                 turn_cmd = self.avoidance_locked_dir
                 # Xoay dứt khoát 0.35s ở công suất 38% để robot thực sự xoay được góc ~30-35 độ
                 yaw_step = 30.0 if turn_cmd == "left" else -30.0
-                self.send_udp_motor_command("speed:38")
+                self.send_udp_motor_command("speed:32")
                 self.send_udp_motor_command(turn_cmd, force=True)
                 time.sleep(0.35)
                 self.send_udp_motor_command("stop", force=True)
@@ -1438,9 +1443,9 @@ free_thresh: 0.25
 
             # 3. Approach Lock (Khóa góc khi cự ly gần < 40cm để triệt tiêu Waypoint Hunting / xoay lắc tại đích)
             if dist_to_goal < 0.40:
-                self.send_udp_motor_command("speed:30")
+                self.send_udp_motor_command("speed:22")
                 self.send_udp_motor_command("forward")
-                speed_mps = 0.14
+                speed_mps = 0.09
                 rad = math.radians(self.robot_yaw)
                 self.robot_x += speed_mps * dt * math.cos(rad)
                 self.robot_y += speed_mps * dt * math.sin(rad)
@@ -1457,7 +1462,7 @@ free_thresh: 0.25
             if abs(yaw_error) > 15.0:
                 turn_cmd = "left" if yaw_error > 0 else "right"
                 yaw_step = 15.0 if yaw_error > 0 else -15.0
-                self.send_udp_motor_command("speed:35")
+                self.send_udp_motor_command("speed:30")
                 self.send_udp_motor_command(turn_cmd)
                 time.sleep(0.18)
                 self.send_udp_motor_command("stop")
@@ -1468,9 +1473,10 @@ free_thresh: 0.25
                 time.sleep(0.06)
             else:
                 # Góc hướng đã chuẩn trong deadband: Tiến thẳng ổn định
-                self.send_udp_motor_command("speed:45")
+                nav_pwm = getattr(self, "nav_speed_pwm", 28)
+                self.send_udp_motor_command(f"speed:{nav_pwm}")
                 self.send_udp_motor_command("forward")
-                speed_mps = 0.18
+                speed_mps = getattr(self, "nav_linear_mps", 0.12)
                 rad = math.radians(self.robot_yaw)
                 self.robot_x += speed_mps * dt * math.cos(rad)
                 self.robot_y += speed_mps * dt * math.sin(rad)
@@ -1654,7 +1660,7 @@ free_thresh: 0.25
                 turn_cmd = self.avoidance_locked_dir
                 # Xoay dứt khoát 0.35s ở công suất 38% để xe thực sự quay được góc ~30-35 độ
                 yaw_step = 30.0 if turn_cmd == "left" else -30.0
-                self.send_udp_motor_command("speed:38")
+                self.send_udp_motor_command("speed:32")
                 self.send_udp_motor_command(turn_cmd, force=True)
                 time.sleep(0.35)
                 self.send_udp_motor_command("stop", force=True)
@@ -1686,7 +1692,7 @@ free_thresh: 0.25
             if abs(yaw_error) > 15.0:
                 turn_cmd = "left" if yaw_error > 0 else "right"
                 yaw_step = 15.0 if yaw_error > 0 else -15.0
-                self.send_udp_motor_command("speed:35")
+                self.send_udp_motor_command("speed:30")
                 self.send_udp_motor_command(turn_cmd)
                 time.sleep(0.18)
                 self.send_udp_motor_command("stop")
@@ -1696,9 +1702,10 @@ free_thresh: 0.25
                 time.sleep(0.06)
             else:
                 # Góc hướng đã chuẩn trong deadband: Tiến thẳng ổn định
-                self.send_udp_motor_command("speed:45")
+                nav_pwm = getattr(self, "nav_speed_pwm", 28)
+                self.send_udp_motor_command(f"speed:{nav_pwm}")
                 self.send_udp_motor_command("forward")
-                speed_mps = 0.18
+                speed_mps = getattr(self, "nav_linear_mps", 0.12)
                 rad = math.radians(self.robot_yaw)
                 self.robot_x += speed_mps * dt * math.cos(rad)
                 self.robot_y += speed_mps * dt * math.sin(rad)
@@ -2020,6 +2027,12 @@ free_thresh: 0.25
 
 # Khởi tạo singleton Core
 slam_core = RPLidarSLAMCore()
+pi_power_monitor = PiPowerMonitor()
+pi_battery_estimator = PiBatteryEstimator(
+    state_path=os.path.join(ROBOT_DIR, "config", "pi_battery_session.json"),
+    minutes_per_percent=float(os.getenv("HCROBOT_PI_BATTERY_MIN_PER_PERCENT", "5.0")),
+    start_percent=float(os.getenv("HCROBOT_PI_BATTERY_START_PERCENT", "100")),
+)
 
 # Khởi tạo FastAPI Server cho Web Admin (hoặc DummyApp nếu chạy test offline)
 if HAS_FASTAPI:
@@ -2044,6 +2057,8 @@ class NavigateGoalRequest(BaseModel):
     target_x: float
     target_y: float
     target_yaw: Optional[float] = None
+    speed: Optional[int] = 25
+    linear_speed: Optional[float] = 0.12
 
 
 class ExploreStartRequest(BaseModel):
@@ -2070,6 +2085,11 @@ class WorkflowCreateRequest(BaseModel):
 
 class OverlayLoadRequest(BaseModel):
     map_name: str  # Tên file overlay (trong MAPS_DIR): ví dụ "floor_plan_overlay"
+
+
+class BatterySyncRequest(BaseModel):
+    percent: Optional[float] = None  # % đang hiện trên cục pin dự phòng
+    minutes_per_percent: Optional[float] = None  # đặt tay tốc độ tụt
 
 
 @app.get("/api/v1/map/current")
@@ -2126,6 +2146,28 @@ async def connect_lidar():
             "info": slam_core.device_info,
         }
     return {"status": "FAILED", "message": slam_core.last_error or "Không thể kết nối RPLiDAR"}
+
+
+@app.get("/api/v1/system/power")
+def get_pi_power():
+    """Nguồn cấp Pi 5 đọc từ PMIC. Hàm sync để FastAPI chạy vcgencmd trong threadpool."""
+    return {
+        "status": "SUCCESS",
+        "power": pi_power_monitor.get(),
+        "battery": pi_battery_estimator.snapshot(),
+    }
+
+
+@app.post("/api/v1/system/battery/sync")
+def sync_pi_battery(req: BatterySyncRequest):
+    """Nhập % trên cục pin dự phòng để đặt lại mốc ước tính (tự học tốc độ tụt)."""
+    if req.percent is None and req.minutes_per_percent is None:
+        return {"status": "FAILED", "message": "Cần percent hoặc minutes_per_percent"}
+    try:
+        battery = pi_battery_estimator.sync(req.percent, req.minutes_per_percent)
+    except RuntimeError as exc:
+        return {"status": "FAILED", "message": str(exc)}
+    return {"status": "SUCCESS", "battery": battery}
 
 
 @app.post("/api/v1/system/restart")
@@ -2234,10 +2276,10 @@ class TeleopCommandRequest(BaseModel):
     speed: Optional[int] = 30
 
 
-TELEOP_PWM_MIN = 20
+TELEOP_PWM_MIN = 15
 TELEOP_PWM_MAX = 50
-TELEOP_PWM_FORWARD = 30
-TELEOP_PWM_TURN = 38
+TELEOP_PWM_FORWARD = 25
+TELEOP_PWM_TURN = 32
 
 
 def _clamp_teleop_pwm(speed: Optional[int], default: int) -> int:
@@ -2289,7 +2331,7 @@ async def teleop_control(req: TeleopCommandRequest):
 
 @app.post("/api/v1/map/navigate")
 async def navigate_to_point(req: NavigateGoalRequest):
-    slam_core.navigate_to(req.target_x, req.target_y)
+    slam_core.navigate_to(req.target_x, req.target_y, speed=req.speed, linear_speed=req.linear_speed)
     return {
         "status": "SUCCESS",
         "message": f"Robot đang tự hành tới (X={req.target_x:.2f}m, Y={req.target_y:.2f}m)",
@@ -2542,6 +2584,9 @@ async def map_ws_endpoint(websocket: WebSocket):
                 if right_cm is None and snap.distances.get("right") is not None:
                     right_cm = round(snap.distances["right"], 1)
 
+            battery_est = pi_battery_estimator.snapshot()
+            battery_percent = None if battery_est["percent"] is None else round(battery_est["percent"])
+
             payload = {
                 "type": "telemetry_update",
                 "source": "REAL_RPLIDAR_A1M8_PI5" if scans else "RPLIDAR_NO_LIVE_SCAN",
@@ -2551,7 +2596,7 @@ async def map_ws_endpoint(websocket: WebSocket):
                     "y": round(slam_core.robot_y, 2),
                     "yaw": round(slam_core.robot_yaw, 1),
                 },
-                "battery": 98,
+                "battery": battery_percent,
                 "linear_velocity": round(slam_core.linear_velocity, 2),
                 "angular_velocity": round(slam_core.angular_velocity, 1),
                 "status": slam_core.status,

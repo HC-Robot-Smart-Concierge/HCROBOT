@@ -97,6 +97,9 @@ class RPLidarService:
                     px, py = cgx + dx, cgy + dy
                     if 0 <= px < self.grid_width and 0 <= py < self.grid_height:
                         grid[py * self.grid_width + px] = 100
+
+        return grid
+
     def _create_fixed_3x5m_grid(self) -> List[int]:
         """Tạo lưới Occupancy Grid chuẩn cố định 3m x 5m (X: [-1.5, +1.5], Y: [-2.5, +2.5])"""
         grid = [-1] * (self.grid_width * self.grid_height)

@@ -60,38 +60,34 @@ describe('WorkflowSimulatorStudio Engine & Gazebo Navigation Logic', () => {
     expect(supportedTypes).toContain('FEEDBACK');
   });
 
-  it('correctly maps waypoints to 10m x 6m Ground Floor Lobby bounds', () => {
+  it('correctly maps waypoints to 19.60m x 12.60m Ground Floor Lobby bounds', () => {
     expect(GAZEBO_LOBBY_WAYPOINTS).toBeDefined();
 
     Object.values(GAZEBO_LOBBY_WAYPOINTS).forEach((wp) => {
       expect(wp.x).toBeGreaterThanOrEqual(0.0);
-      expect(wp.x).toBeLessThanOrEqual(10.0);
+      expect(wp.x).toBeLessThanOrEqual(19.60);
       expect(wp.y).toBeGreaterThanOrEqual(0.0);
-      expect(wp.y).toBeLessThanOrEqual(6.0);
+      expect(wp.y).toBeLessThanOrEqual(12.60);
     });
   });
 
   it('accurately projects real-world meters into SVG blueprint canvas coordinates', () => {
-    const dockSvg = meterToSvg(3.2, 2.8);
-    expect(Math.round(dockSvg.x)).toBe(338);
-    expect(Math.round(dockSvg.y)).toBe(328);
-
-    const entranceSvg = meterToSvg(5.2, 1.0);
-    expect(Math.round(entranceSvg.x)).toBe(518);
-    expect(Math.round(entranceSvg.y)).toBe(490);
+    const centerSvg = meterToSvg(9.80, 6.30);
+    expect(Math.round(centerSvg.x)).toBe(280);
+    expect(Math.round(centerSvg.y)).toBe(193);
 
     const clampedCornerMin = meterToSvg(-5.0, -2.0);
-    expect(clampedCornerMin.x).toBe(50);
-    expect(clampedCornerMin.y).toBe(580);
+    expect(clampedCornerMin.x).toBe(35);
+    expect(clampedCornerMin.y).toBe(350);
 
     const clampedCornerMax = meterToSvg(20.0, 15.0);
-    expect(clampedCornerMax.x).toBe(950);
-    expect(clampedCornerMax.y).toBe(40);
+    expect(clampedCornerMax.x).toBe(525);
+    expect(clampedCornerMax.y).toBe(35);
   });
 
-  it('routes through central doorway (x=4.4, y=2.85) to avoid partition wall when moving between rooms', () => {
-    const fromDock = { x: 3.2, y: 2.8 }; // Gian Trai
-    const toEntrance = { x: 5.2, y: 1.0 }; // Gian Phai
+  it('routes through central doorway (x=6.42, y=4.90) to avoid partition wall when moving between rooms', () => {
+    const fromDock = { x: 7.2, y: 9.6 }; // Gian Trai
+    const toEntrance = { x: 15.6, y: 6.96 }; // Gian Phai
 
     const waypoints = calculateSafeWaypoints(fromDock, toEntrance);
 
@@ -99,14 +95,14 @@ describe('WorkflowSimulatorStudio Engine & Gazebo Navigation Logic', () => {
     expect(waypoints.length).toBeGreaterThan(2);
 
     // One waypoint must pass through doorway at x=4.4
-    const doorwayPoint = waypoints.find((p) => Math.abs(p.x - 4.4) < 0.1);
+    const doorwayPoint = waypoints.find((p) => Math.abs(p.x - 12.84) < 0.1);
     expect(doorwayPoint).toBeDefined();
-    expect(doorwayPoint.y).toBeCloseTo(2.85, 1);
+    expect(doorwayPoint.y).toBeCloseTo(9.80, 1);
 
     // Final point must match destination
     const lastPoint = waypoints[waypoints.length - 1];
-    expect(lastPoint.x).toBe(5.2);
-    expect(lastPoint.y).toBe(1.0);
+    expect(lastPoint.x).toBe(15.6);
+    expect(lastPoint.y).toBe(6.96);
   });
 
   it('provides rich descriptive subtitles and details for all step enums including SHOW', () => {
@@ -164,37 +160,36 @@ describe('WorkflowSimulatorStudio Engine & Gazebo Navigation Logic', () => {
   it('verifies robot initial pose is at top-right corner of Lobby without dock station', () => {
     // Initial pose should be top-right corner of Lobby (3.7m, 5.0m) facing downward
     expect(GAZEBO_LOBBY_WAYPOINTS.ROBOT_STANDBY).toBeDefined();
-    expect(GAZEBO_LOBBY_WAYPOINTS.ROBOT_STANDBY.x).toBe(3.7);
-    expect(GAZEBO_LOBBY_WAYPOINTS.ROBOT_STANDBY.y).toBe(5.0);
+    expect(GAZEBO_LOBBY_WAYPOINTS.ROBOT_STANDBY.x).toBe(7.2);
+    expect(GAZEBO_LOBBY_WAYPOINTS.ROBOT_STANDBY.y).toBe(9.6);
   });
 
   it('correctly converts SVG click coordinates to real-world meters with svgToMeter', () => {
     const { svgToMeter } = require('./workflowSimulatorUtils');
     // Center point: SVG (500, 310) -> meters (5.0, 3.0)
-    const center = svgToMeter(500, 310);
-    expect(center.x).toBe(5.0);
-    expect(center.y).toBe(3.0);
+    const center = svgToMeter(280, 192.5);
+    expect(center.x).toBe(9.80);
+    expect(center.y).toBe(6.30);
 
-    // Top-right corner of Lobby: SVG (383, 130) -> meters (~3.7, ~5.0)
-    const topLobby = svgToMeter(383, 130);
-    expect(topLobby.x).toBeCloseTo(3.7, 1);
-    expect(topLobby.y).toBeCloseTo(5.0, 1);
+    // North standby of Lobby: SVG (215, 110) -> meters (1.8, 2.4)
+    const standby = svgToMeter(215, 110);
+    expect(standby.x).toBeCloseTo(7.2, 1);
+    expect(standby.y).toBeCloseTo(9.6, 1);
   });
 
-  it('calculates obstacle avoidance path from top-right of Lobby (3.7, 5.0) to Main Entrance (5.2, 1.0)', () => {
-    const startPose = { x: 3.7, y: 5.0 };
-    const goalPose = { x: 5.2, y: 1.0 };
+  it('calculates obstacle avoidance path from North Standby (3.6, 4.8) to Elevator (7.8, 3.48)', () => {
+    const startPose = { x: 7.2, y: 9.6 };
+    const goalPose = { x: 15.6, y: 6.96 };
     const route = calculateSafeWaypoints(startPose, goalPose);
 
-    // Route must pass through central partition doorway (x=4.4, y=2.85) to enter right room
     expect(route.length).toBeGreaterThanOrEqual(3);
-    const doorwayPoint = route.find((p) => Math.abs(p.x - 4.4) < 0.1);
+    const doorwayPoint = route.find((p) => Math.abs(p.x - 12.84) < 0.1);
     expect(doorwayPoint).toBeDefined();
-    expect(doorwayPoint.y).toBeCloseTo(2.85, 1);
+    expect(doorwayPoint.y).toBeCloseTo(9.80, 1);
 
     const endPoint = route[route.length - 1];
-    expect(endPoint.x).toBe(5.2);
-    expect(endPoint.y).toBe(1.0);
+    expect(endPoint.x).toBe(15.6);
+    expect(endPoint.y).toBe(6.96);
   });
 
   it('ensures step action details display Robot instead of Kiosk', () => {
@@ -226,7 +221,7 @@ describe('WorkflowSimulatorStudio Engine & Gazebo Navigation Logic', () => {
     expect(types).toContain('NO_STOP');
 
     const staffKeepOut = SIMULATOR_HOTEL_ZONES.find((z) => z.type === 'KEEP_OUT');
-    expect(staffKeepOut.name).toContain('Staff Only');
+    expect(staffKeepOut.name).toContain('Quầy Lễ Tân');
     expect(staffKeepOut.speed_limit).toBe(0.0);
 
     const speedZone = SIMULATOR_HOTEL_ZONES.find((z) => z.type === 'SPEED_ZONE');
@@ -238,24 +233,24 @@ describe('WorkflowSimulatorStudio Engine & Gazebo Navigation Logic', () => {
   });
 
   it('accurately identifies active zone for robot poses', () => {
-    // Staff room is at x=8.8, y=1.5 (w=1.5, h=2.8) -> Inside KEEP_OUT
-    const inStaffZone = getActiveSimulatorZone(8.8, 1.5, SIMULATOR_HOTEL_ZONES);
+    // Reception room is at x=5.72, y=3.2 (w=1.4, h=1.8) -> Inside KEEP_OUT
+    const inStaffZone = getActiveSimulatorZone(11.44, 6.4, SIMULATOR_HOTEL_ZONES);
     expect(inStaffZone).not.toBeNull();
     expect(inStaffZone.type).toBe('KEEP_OUT');
 
-    // Front Desk corridor is at x=5.2, y=2.2 (w=2.6, h=2.0) -> Inside SPEED_ZONE
-    const inFrontDeskSpeed = getActiveSimulatorZone(5.2, 2.2, SIMULATOR_HOTEL_ZONES);
+    // Front Desk corridor is at x=5.72, y=1.4 (w=2.4, h=1.2) -> Inside SPEED_ZONE
+    const inFrontDeskSpeed = getActiveSimulatorZone(11.44, 2.8, SIMULATOR_HOTEL_ZONES);
     expect(inFrontDeskSpeed).not.toBeNull();
     expect(inFrontDeskSpeed.type).toBe('SPEED_ZONE');
     expect(inFrontDeskSpeed.speed_limit).toBe(0.20);
 
-    // Doorway connector is at x=4.4, y=2.85 (w=1.4, h=1.6) -> Inside NO_STOP
-    const inDoorway = getActiveSimulatorZone(4.4, 2.85, SIMULATOR_HOTEL_ZONES);
+    // Doorway connector is at x=6.42, y=4.90 (w=1.2, h=1.4) -> Inside NO_STOP
+    const inDoorway = getActiveSimulatorZone(12.84, 9.80, SIMULATOR_HOTEL_ZONES);
     expect(inDoorway).not.toBeNull();
     expect(inDoorway.type).toBe('NO_STOP');
 
-    // Standby location (3.7, 5.0) is in free lobby area
-    const inLobby = getActiveSimulatorZone(3.7, 5.0, SIMULATOR_HOTEL_ZONES);
+    // Standby location (3.6, 4.8) is in free lobby area
+    const inLobby = getActiveSimulatorZone(7.2, 9.6, SIMULATOR_HOTEL_ZONES);
     expect(inLobby).toBeNull();
   });
 
@@ -284,12 +279,12 @@ describe('WorkflowSimulatorStudio Engine & Gazebo Navigation Logic', () => {
     const keepOutZone = SIMULATOR_HOTEL_ZONES.find((z) => z.type === 'KEEP_OUT');
     const svgRect = zoneToSvgRect(keepOutZone);
 
-    expect(svgRect.x).toBeGreaterThanOrEqual(50);
-    expect(svgRect.y).toBeGreaterThanOrEqual(40);
+    expect(svgRect.x).toBeGreaterThanOrEqual(35);
+    expect(svgRect.y).toBeGreaterThanOrEqual(35);
     expect(svgRect.width).toBeGreaterThan(0);
     expect(svgRect.height).toBeGreaterThan(0);
-    expect(svgRect.x + svgRect.width).toBeLessThanOrEqual(950);
-    expect(svgRect.y + svgRect.height).toBeLessThanOrEqual(580);
+    expect(svgRect.x + svgRect.width).toBeLessThanOrEqual(525);
+    expect(svgRect.y + svgRect.height).toBeLessThanOrEqual(350);
   });
 
   it('rejects workflow MOVE steps targeting a KEEP_OUT zone', () => {
@@ -297,8 +292,8 @@ describe('WorkflowSimulatorStudio Engine & Gazebo Navigation Logic', () => {
       type: 'MOVE',
       title: 'Đi vào phòng nội bộ',
       params: {
-        target_x: 8.8,
-        target_y: 1.5,
+        target_x: 11.44,
+        target_y: 6.4,
         waypoint_name: 'Phòng Staff Only',
       },
     };
@@ -314,8 +309,8 @@ describe('WorkflowSimulatorStudio Engine & Gazebo Navigation Logic', () => {
       type: 'MOVE',
       title: 'Đón khách tại Cửa Chính',
       params: {
-        target_x: 5.2,
-        target_y: 1.0,
+        target_x: 8.4,
+        target_y: 2.0,
       },
     };
     const safeResult = validateWorkflowStepZone(safeStep, SIMULATOR_HOTEL_ZONES);
@@ -326,8 +321,8 @@ describe('WorkflowSimulatorStudio Engine & Gazebo Navigation Logic', () => {
       type: 'MOVE',
       title: 'Dừng ở Lối Cửa Thông Sảnh',
       params: {
-        target_x: 4.4,
-        target_y: 2.85,
+        target_x: 12.84,
+        target_y: 9.80,
       },
     };
     const noStopResult = validateWorkflowStepZone(noStopStep, SIMULATOR_HOTEL_ZONES);
@@ -341,27 +336,27 @@ describe('WorkflowSimulatorStudio Engine & Gazebo Navigation Logic', () => {
       const halfH = (Number(initialZone.height) || 2.0) / 2;
       const rawX = initialZone.x + deltaX;
       const rawY = initialZone.y + deltaY;
-      const clampedX = Number(Math.max(halfW, Math.min(10.0 - halfW, rawX)).toFixed(2));
-      const clampedY = Number(Math.max(halfH, Math.min(6.0 - halfH, rawY)).toFixed(2));
+      const clampedX = Number(Math.max(halfW, Math.min(19.60 - halfW, rawX)).toFixed(2));
+      const clampedY = Number(Math.max(halfH, Math.min(12.60 - halfH, rawY)).toFixed(2));
       return { x: clampedX, y: clampedY };
     };
 
-    const zone = { x: 5.2, y: 2.2, width: 2.6, height: 2.0 };
+    const zone = { x: 5.72, y: 1.40, width: 2.40, height: 1.20 };
 
     // Normal drag
-    const moved = calculateDragMove(zone, 1.0, 0.5);
-    expect(moved.x).toBe(6.2);
-    expect(moved.y).toBe(2.7);
+    const moved = calculateDragMove(zone, 0.8, 0.6);
+    expect(moved.x).toBe(6.52);
+    expect(moved.y).toBe(2.0);
 
-    // Over upper-right boundary (max X = 10 - 1.3 = 8.7, max Y = 6 - 1.0 = 5.0)
-    const clampedMax = calculateDragMove(zone, 10.0, 10.0);
-    expect(clampedMax.x).toBe(8.7);
-    expect(clampedMax.y).toBe(5.0);
+    // Over upper-right boundary (max X = 9.80 - 1.20 = 8.60, max Y = 6.30 - 0.60 = 5.70)
+    const clampedMax = calculateDragMove(zone, 20.0, 20.0);
+    expect(clampedMax.x).toBe(18.40);
+    expect(clampedMax.y).toBe(12.00);
 
-    // Under lower-left boundary (min X = 1.3, min Y = 1.0)
-    const clampedMin = calculateDragMove(zone, -10.0, -10.0);
-    expect(clampedMin.x).toBe(1.3);
-    expect(clampedMin.y).toBe(1.0);
+    // Under lower-left boundary (min X = 1.20, min Y = 0.60)
+    const clampedMin = calculateDragMove(zone, -20.0, -20.0);
+    expect(clampedMin.x).toBe(1.20);
+    expect(clampedMin.y).toBe(0.60);
   });
 
   it('accurately computes resized zone bounds and center coordinate for all 4 corners', () => {

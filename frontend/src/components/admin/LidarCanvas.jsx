@@ -396,13 +396,13 @@ export const LidarCanvas = ({
           switch (norm) {
             case 'CHARGER':
             case 'DOCKING_TARGET':
-              return '#059669';
+              return '#34D399';
             case 'PARK':
             case 'PARKING_SPOT':
-              return '#71717A';
+              return '#60A5FA';
             case 'WAYPOINT':
             default:
-              return '#262626';
+              return '#94A3B8';
           }
         };
 

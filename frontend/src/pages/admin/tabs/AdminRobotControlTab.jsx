@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { AdminLidarPage } from '../AdminLidarPage';
 import { AdminCameraTab } from './AdminCameraTab';
 import { AdminWorkflowTab } from './AdminWorkflowTab';
+import { AdminPhysicalMapTab } from './AdminPhysicalMapTab';
 
 export const AdminRobotControlTab = ({
   currentUser,
@@ -11,6 +12,7 @@ export const AdminRobotControlTab = ({
   const [localSubTab, setLocalSubTab] = useState(() => {
     if (subTabProp === 'camera') return 'camera';
     if (subTabProp === 'workflows') return 'workflows';
+    if (subTabProp === 'physical_map') return 'physical_map';
     return 'teleop_odom';
   });
 
@@ -21,6 +23,8 @@ export const AdminRobotControlTab = ({
           ? 'camera'
           : subTabProp === 'workflows'
           ? 'workflows'
+          : subTabProp === 'physical_map'
+          ? 'physical_map'
           : 'teleop_odom';
       if (target !== localSubTab) {
         setLocalSubTab(target);
@@ -43,6 +47,10 @@ export const AdminRobotControlTab = ({
           <div className="w-full h-full overflow-hidden">
             <AdminLidarPage onSwitchToCamera={() => handleSwitchTab('camera')} />
           </div>
+        ) : localSubTab === 'physical_map' ? (
+          <div className="w-full h-full overflow-hidden">
+            <AdminPhysicalMapTab currentUser={currentUser} />
+          </div>
         ) : localSubTab === 'workflows' ? (
           <div className="w-full h-full overflow-y-auto custom-scrollbar">
             <AdminWorkflowTab />
@@ -56,4 +64,3 @@ export const AdminRobotControlTab = ({
     </div>
   );
 };
-

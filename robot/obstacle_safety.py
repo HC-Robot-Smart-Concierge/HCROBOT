@@ -11,10 +11,10 @@ logger = logging.getLogger("ObstacleSafety")
 SENSOR_NAMES = ("front", "rear", "left", "right")
 
 DEFAULT_THRESHOLDS_CM = {
-    "forward": 65.0,
-    "backward": 65.0,
-    "left": 25.0,
-    "right": 25.0,
+    "forward": 45.0,
+    "backward": 40.0,
+    "left": 18.0,
+    "right": 18.0,
 }
 
 
@@ -93,15 +93,10 @@ class ObstacleSafetyController:
             return (("front", self.thresholds_cm["forward"]),)
         elif motion == "backward":
             return (("rear", self.thresholds_cm["backward"]),)
-        elif motion == "left":
+        elif motion in ("left", "right"):
+            side = "left" if motion == "left" else "right"
             return (
-                ("left", self.thresholds_cm["left"]),
-                ("front", self.turn_clearance_cm),
-                ("rear", self.turn_clearance_cm),
-            )
-        elif motion == "right":
-            return (
-                ("right", self.thresholds_cm["right"]),
+                (side, self.thresholds_cm[side]),
                 ("front", self.turn_clearance_cm),
                 ("rear", self.turn_clearance_cm),
             )

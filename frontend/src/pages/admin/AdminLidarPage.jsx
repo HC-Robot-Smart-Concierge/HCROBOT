@@ -54,6 +54,29 @@ const PI5_IP = import.meta.env.VITE_PI5_IP || '100.99.72.51';
 const PI5_API = `http://${PI5_IP}:8000/api/v1`;
 const ROSBRIDGE_DEFAULT_URL = import.meta.env.VITE_ROSBRIDGE_URL || 'ws://127.0.0.1:9090';
 
+// Trạng thái nguồn Pi 5 do robot/scripts/pi_power_monitor.py phân loại.
+const PI_POWER_BADGES = {
+  OK: { label: 'ỔN ĐỊNH', className: 'bg-emerald-100 text-emerald-800' },
+  LOW_VOLTAGE: { label: 'ÁP THẤP', className: 'bg-amber-100 text-amber-800' },
+  UNDERVOLTAGE: { label: 'THIẾU ÁP', className: 'bg-red-100 text-red-700 animate-pulse' },
+  UNDERVOLTAGE_OCCURRED: { label: 'TỪNG THIẾU ÁP', className: 'bg-amber-100 text-amber-800' },
+  THROTTLED: { label: 'ĐANG GIẢM XUNG', className: 'bg-amber-100 text-amber-800' },
+  UNAVAILABLE: { label: 'CHƯA ĐỌC ĐƯỢC', className: 'bg-stone-100 text-stone-600' },
+  OFFLINE: { label: 'MẤT KẾT NỐI PI', className: 'bg-stone-100 text-stone-600' },
+};
+
+const formatPowerValue = (value, digits, unit) => (
+  typeof value === 'number' ? `${value.toFixed(digits)}${unit}` : '---'
+);
+
+const formatDuration = (minutes) => {
+  if (typeof minutes !== 'number') return '---';
+  const total = Math.max(0, Math.round(minutes));
+  const hours = Math.floor(total / 60);
+  const mins = total % 60;
+  return hours > 0 ? `${hours}h${String(mins).padStart(2, '0')}` : `${mins} phút`;
+};
+
 export const AdminLidarPage = ({ onSwitchToCamera }) => {
   const [hardwareInfo, setHardwareInfo] = useState(null);
   const [isWsConnected, setIsWsConnected] = useState(false);
@@ -69,12 +92,20 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
     x: 0.0,
     y: 0.0,
     yaw: 0.0,
-    battery: 98,
     linearVelocity: 0.0,
     angularVelocity: 0.0,
     status: 'WAITING_FOR_ROS2_CONNECTION',
     source: 'ROS2_SLAM_NAV2',
   });
+
+  // Nguồn cấp Pi 5 (PMIC); null khi chưa gọi được Pi.
+  const [piPower, setPiPower] = useState(null);
+  // % pin dự phòng ước tính theo thời gian cấp nguồn (robot/scripts/pi_battery_estimator.py).
+  const [piBattery, setPiBattery] = useState(null);
+  const [isBatteryEditOpen, setIsBatteryEditOpen] = useState(false);
+  const [batteryInputPercent, setBatteryInputPercent] = useState('');
+  const [batteryInputRate, setBatteryInputRate] = useState('');
+  const [isSyncingBattery, setIsSyncingBattery] = useState(false);
 
   const [encoders, setEncoders] = useState({
     m1: { ticks: 0, rpm: 0.0, dir: 0 },
@@ -148,6 +179,25 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
   const mapHasContent = mapStats.occupied > 0 || mapStats.free > 0;
   const mappingReadyToSave = true; // Luôn cho phép lưu map tự do bất kỳ lúc nào
 
+  const piPowerBadge = PI_POWER_BADGES[piPower ? piPower.status : 'OFFLINE'] || PI_POWER_BADGES.UNAVAILABLE;
+  const piVoltageLow = piPower?.status === 'UNDERVOLTAGE' || piPower?.status === 'LOW_VOLTAGE';
+  const piBatteryPercent = typeof piBattery?.percent === 'number' ? piBattery.percent : null;
+  let piBatteryBarColor = 'bg-stone-800';
+  if (piBatteryPercent !== null && piBatteryPercent < 20) piBatteryBarColor = 'bg-red-500';
+  else if (piBatteryPercent !== null && piBatteryPercent < 50) piBatteryBarColor = 'bg-amber-500';
+  const piPowerNotes = [];
+  if (!piPower) {
+    piPowerNotes.push('Không gọi được Pi 5 (port 8000).');
+  } else {
+    if (piPower.message) piPowerNotes.push(piPower.message);
+    if (typeof piPower.psu_max_current_ma === 'number' && piPower.psu_max_current_ma < 3000) {
+      piPowerNotes.push(
+        `Nguồn chỉ khai báo ${(piPower.psu_max_current_ma / 1000).toFixed(1)} A cho Pi`
+        + `${piPower.psu_usb_pd === false ? ' (không USB-PD)' : ''}.`
+      );
+    }
+  }
+
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (menuDropdownRef.current && !menuDropdownRef.current.contains(event.target)) {
@@ -219,6 +269,68 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
       clearInterval(timer);
     };
   }, []);
+
+  // Nguồn Pi 5 đọc thẳng từ Pi (port 8000), không phụ thuộc ROS 2 có chạy hay không.
+  useEffect(() => {
+    let isMounted = true;
+    const pollPiPower = async () => {
+      try {
+        const res = await fetch(`${PI5_API}/system/power`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (isMounted) {
+          setPiPower(data.power || null);
+          setPiBattery(data.battery || null);
+        }
+      } catch {
+        if (isMounted) {
+          setPiPower(null);
+          setPiBattery(null);
+        }
+      }
+    };
+
+    const timer = setInterval(pollPiPower, 2000);
+    pollPiPower();
+    return () => {
+      isMounted = false;
+      clearInterval(timer);
+    };
+  }, []);
+
+  // Ô để trống thì không gửi: chỉ nhập % thì Pi tự học tốc độ tụt giữa các lần nhập.
+  const handleSyncBattery = async () => {
+    const body = {};
+    if (batteryInputPercent !== '') body.percent = Number(batteryInputPercent);
+    if (batteryInputRate !== '') body.minutes_per_percent = Number(batteryInputRate);
+    if (Object.keys(body).length === 0) {
+      setIsBatteryEditOpen(false);
+      return;
+    }
+
+    setIsSyncingBattery(true);
+    try {
+      const res = await fetch(`${PI5_API}/system/battery/sync`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok || data.status !== 'SUCCESS') throw new Error(data.message || `HTTP ${res.status}`);
+      setPiBattery(data.battery);
+      setBatteryInputPercent('');
+      setBatteryInputRate('');
+      setIsBatteryEditOpen(false);
+      setNavNotification(
+        `Đã cập nhật pin Pi 5: ${Math.round(data.battery.percent)}%`
+        + (data.battery.calibrated ? ` · tự hiệu chỉnh ${data.battery.minutes_per_percent} phút/1%` : '')
+      );
+    } catch (err) {
+      setNavNotification(`Lỗi cập nhật pin Pi 5: ${err.message}`);
+    } finally {
+      setIsSyncingBattery(false);
+    }
+  };
 
   const handleSelectMap = async (mapId) => {
     try {
@@ -1510,13 +1622,105 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
               </div>
             </div>
 
-            {/* Battery - Gọn thanh ngang */}
-            <div className="flex items-center gap-2 pt-0.5">
-              <span className="text-[8.5px] font-bold text-stone-500 tracking-wider font-sans">PIN:</span>
-              <div className="flex-1 h-2 rounded-full overflow-hidden bg-stone-200">
-                <div className="h-full transition-all duration-300 bg-stone-800"style={{ width: `${telemetry.battery}%`}} />
+            {/* Nguồn cấp Pi 5 - đọc PMIC thật qua /api/v1/system/power */}
+            <div className="p-1.5 rounded-lg border flex flex-col gap-1 bg-[#FAF8F5] border-stone-200">
+              <div className="flex items-center justify-between text-[8.5px]">
+                <span
+                  className="font-bold tracking-wider uppercase text-stone-700 flex items-center gap-1 font-sans"
+                  title="Đo sau cổng USB-C của Pi. Pin dự phòng giữ 5V tới lúc cắt nên không suy ra được % pin từ số đo này."
+                >
+                  <BatteryCharging className="w-3 h-3 text-stone-600"/>
+                  NGUỒN PI 5 (PMIC)
+                </span>
+                <span className={`font-bold px-1 rounded text-[7.5px] ${piPowerBadge.className}`}>
+                  {piPowerBadge.label}
+                </span>
               </div>
-              <span className="text-[9px] font-mono font-bold text-stone-800">{telemetry.battery}%</span>
+              <div className="grid grid-cols-4 gap-1 text-[9px] text-center font-mono">
+                <div className={`py-0.5 rounded border ${piVoltageLow ? 'bg-red-50 border-red-300 text-red-700 font-bold' : 'bg-white border-stone-200 text-stone-800'}`}>
+                  <div className="text-[7px] text-stone-500 font-sans">ĐIỆN ÁP VÀO</div>
+                  <div className="font-bold">{formatPowerValue(piPower?.ext5v_v, 2, 'V')}</div>
+                </div>
+                <div
+                  className="py-0.5 rounded border bg-white border-stone-200 text-stone-800"
+                  title="Tổng các rail PMIC, chưa gồm thiết bị cắm USB (LiDAR, ESP32, camera)."
+                >
+                  <div className="text-[7px] text-stone-500 font-sans">CÔNG SUẤT</div>
+                  <div className="font-bold">{formatPowerValue(piPower?.pmic_power_w, 2, 'W')}</div>
+                </div>
+                <div
+                  className="py-0.5 rounded border bg-white border-stone-200 text-stone-800"
+                  title="Công suất PMIC chia điện áp vào; dòng thật lớn hơn vì còn thiết bị USB."
+                >
+                  <div className="text-[7px] text-stone-500 font-sans">DÒNG ≈</div>
+                  <div className="font-bold">{formatPowerValue(piPower?.est_current_a, 2, 'A')}</div>
+                </div>
+                <div className="py-0.5 rounded border bg-white border-stone-200 text-stone-800">
+                  <div className="text-[7px] text-stone-500 font-sans">NHIỆT CPU</div>
+                  <div className="font-bold">{formatPowerValue(piPower?.cpu_temp_c, 0, '°C')}</div>
+                </div>
+              </div>
+              {/* Pin dự phòng: ước tính theo thời gian Pi đã được cấp nguồn (uptime) */}
+              <div className="flex items-center gap-2 pt-0.5">
+                <span
+                  className="text-[8.5px] font-bold text-stone-500 tracking-wider font-sans"
+                  title="Ước tính: % lúc cắm trừ thời gian Pi đã chạy chia số phút tụt 1%. Bấm CHỈNH để nhập % đang hiện trên cục pin."
+                >
+                  PIN ≈
+                </span>
+                <div className="flex-1 h-2 rounded-full overflow-hidden bg-stone-200">
+                  <div className={`h-full transition-all duration-300 ${piBatteryBarColor}`} style={{ width: `${piBatteryPercent ?? 0}%` }} />
+                </div>
+                <span className="text-[9px] font-mono font-bold text-stone-800">
+                  {piBatteryPercent !== null ? `${Math.round(piBatteryPercent)}%` : '---'}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setIsBatteryEditOpen((open) => !open)}
+                  disabled={!piBattery?.available}
+                  className="text-[7.5px] font-bold px-1 rounded border bg-white border-stone-300 text-stone-600 hover:bg-stone-100 disabled:opacity-40 font-sans"
+                >
+                  CHỈNH
+                </button>
+              </div>
+              {piBattery?.available && (
+                <div className="text-[7.5px] leading-snug text-stone-500 font-sans">
+                  Đã cấp nguồn {formatDuration(piBattery.session_min)} · còn ~{formatDuration(piBattery.remaining_min)}
+                  {' · '}{piBattery.minutes_per_percent} phút/1%
+                  {piBattery.anchor_source === 'assumed' && ' · đang giả định lúc cắm pin đầy 100%'}
+                </div>
+              )}
+              {isBatteryEditOpen && (
+                <div className="flex flex-wrap items-center gap-1 text-[8px] font-sans">
+                  <span className="text-stone-500">% trên cục pin</span>
+                  <input
+                    type="number" min="0" max="100" step="1"
+                    value={batteryInputPercent}
+                    placeholder={piBatteryPercent !== null ? String(Math.round(piBatteryPercent)) : ''}
+                    onChange={(e) => setBatteryInputPercent(e.target.value)}
+                    className="w-12 px-1 py-0.5 rounded border border-stone-300 bg-white font-mono text-[9px]"
+                  />
+                  <span className="text-stone-500">phút/1%</span>
+                  <input
+                    type="number" min="0.5" max="120" step="0.5"
+                    value={batteryInputRate}
+                    placeholder={String(piBattery?.minutes_per_percent ?? '')}
+                    onChange={(e) => setBatteryInputRate(e.target.value)}
+                    className="w-12 px-1 py-0.5 rounded border border-stone-300 bg-white font-mono text-[9px]"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSyncBattery}
+                    disabled={isSyncingBattery}
+                    className="px-1.5 py-0.5 rounded bg-stone-800 text-white font-bold disabled:opacity-50"
+                  >
+                    {isSyncingBattery ? '...' : 'LƯU'}
+                  </button>
+                </div>
+              )}
+              {piPowerNotes.length > 0 && (
+                <div className="text-[7.5px] leading-snug text-stone-500 font-sans">{piPowerNotes.join(' · ')}</div>
+              )}
             </div>
           </div>
 

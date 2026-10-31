@@ -12,6 +12,8 @@ import sys
 import math
 import time
 import json
+import heapq
+import subprocess
 import urllib.request
 import threading
 import rclpy
@@ -27,23 +29,23 @@ from tf2_ros import TransformBroadcaster
 DEFAULT_HOTEL_ZONES = [
     {
         "id": "zone-keepout-staff",
-        "name": "Khu Vực Staff Only (Cấm Vào)",
+        "name": "Khu Vực Quầy Lễ Tân Nội Bộ (Cấm Vào)",
         "type": "KEEP_OUT",
-        "x": 8.8,
-        "y": 1.5,
-        "width": 1.5,
-        "height": 2.8,
+        "x": 11.44,
+        "y": 6.4,
+        "width": 2.80,
+        "height": 3.60,
         "speed_limit": 0.0,
-        "description": "Khu vực kỹ thuật & phòng nhân viên nội bộ, robot tuyệt đối không đi vào.",
+        "description": "Khu vực quầy lễ tân nội bộ, robot tuyệt đối không đi vào.",
     },
     {
         "id": "zone-speed-frontdesk",
         "name": "Khu Vực Quầy Tiếp Tân (Giới Hạn Tốc Độ)",
         "type": "SPEED_ZONE",
-        "x": 5.2,
-        "y": 2.2,
-        "width": 2.6,
-        "height": 2.0,
+        "x": 11.44,
+        "y": 2.8,
+        "width": 4.80,
+        "height": 2.40,
         "speed_limit": 0.20,
         "description": "Khu vực đón tiếp đông khách, tự động giới hạn tốc độ tối đa 0.20 m/s.",
     },
@@ -51,32 +53,47 @@ DEFAULT_HOTEL_ZONES = [
         "id": "zone-nostop-doorway",
         "name": "Cửa Thông Sảnh Chính (Cấm Dừng)",
         "type": "NO_STOP",
-        "x": 4.4,
-        "y": 2.85,
-        "width": 1.4,
-        "height": 1.6,
+        "x": 12.84,
+        "y": 9.8,
+        "width": 2.40,
+        "height": 2.80,
         "speed_limit": 0.30,
         "description": "Nút thắt lưu thông chính giữa 2 gian sảnh, robot chỉ được phép đi qua, cấm dừng đỗ.",
     },
 ]
 
-# Sơ đồ Mặt Bằng Sảnh Tầng Trệt (Ground Floor - Lobby Arena)
-# Không có trạm sạc robot, robot xuất phát và túc trực tại góc trên bên phải của Lobby (3.7, 5.0)
+# Sơ đồ Mặt Bằng Sảnh Tầng Trệt (Ground Floor - Lobby Arena 9.80m x 6.30m)
+# Robot xuất phát và túc trực tại Khu vực Phía Bắc của Lobby (3.6, 4.8)
 WAYPOINTS = [
-    (3.7, 5.0, "1. Vị Trí Chờ Robot (Góc Trên Bên Phải Lobby)"),
-    (2.0, 2.8, "2. Khu Sofa Khách Chờ Sảnh (Lobby Lounge)"),
-    (5.2, 1.0, "3. Cửa Chính Ra Vào Sảnh (Main Entrance)"),
-    (5.2, 2.0, "4. Trước Quầy Tiếp Tân (Front Desk)"),
-    (7.8, 4.5, "5. Cụm Thang Máy Tầng 1 (Elevator)"),
-    (6.6, 4.5, "6. Khu Vệ Sinh Sảnh (Restrooms)"),
-    (7.85, 2.7, "7. Trước Phòng Nhân Viên (Staff Only)"),
-    (3.7, 5.0, "8. Vị Trí Chờ Robot (Góc Trên Bên Phải Lobby)"),
+    (7.2, 9.6, "1. Vị Trí Chờ Robot Sảnh (Phía Bắc)", "PARK", "ROBOT_STANDBY"),
+    (6.0, 9.6, "2. Trạm Sạc Robot Sảnh", "CHARGER", "CHARGER_STATION"),
+    (3.6, 7.2, "3. Khu Sofa Khách Chờ Sảnh (Lobby Lounge)", "WAYPOINT", "LOBBY_LOUNGE"),
+    (8.4, 2.0, "4. Cửa Chính Ra Vào Sảnh (Main Entrance)", "WAYPOINT", "MAIN_ENTRANCE"),
+    (11.44, 2.8, "5. Trước Quầy Tiếp Tân (Front Desk)", "WAYPOINT", "FRONT_DESK"),
+    (11.44, 6.4, "6. Trước Phòng Nội Bộ (Staff Only)", "WAYPOINT", "STAFF_ONLY"),
+    (15.6, 6.96, "7. Cụm Thang Máy Tầng 1 (Elevator)", "WAYPOINT", "ELEVATOR"),
+    (15.2, 2.4, "8. Khu Vệ Sinh Sảnh (Restrooms)", "WAYPOINT", "RESTROOMS"),
+    (16.0, 4.8, "9. Lối Thoát Hiểm Khẩn Cấp (Emergency Exit)", "WAYPOINT", "STAIRS"),
 ]
 
-# Tọa độ xuất phát ban đầu tại Góc Trên Bên Phải Lobby (3.7m, 5.0m, Yaw: -90° quay mũi xuống Nam)
-SPAWN_X = 3.7
-SPAWN_Y = 5.0
-SPAWN_YAW = -math.pi / 2  # -1.5707963267948966 rad
+# Tọa độ xuất phát ban đầu tại Phía Bắc Lobby (3.6m, 4.8m, Yaw: -90° quay mũi xuống Nam)
+SPAWN_X = 7.2
+SPAWN_Y = 9.6
+SPAWN_YAW = -math.pi / 2
+
+# Danh sach toan bo 9 Model Marker chuan trong Gazebo
+ALL_GAZEBO_MARKERS = [
+    'wp_marker_standby',
+    'wp_marker_charger',
+    'wp_marker_frontdesk',
+    'wp_marker_entrance',
+    'wp_marker_elevator',
+    'wp_marker_restrooms',
+    'wp_marker_emergency',
+    'wp_marker_lounge',
+    'wp_marker_staff',
+]
+
 
 class AutonomousNavigator(Node):
     def __init__(self):
@@ -100,13 +117,16 @@ class AutonomousNavigator(Node):
         self.zone_sub = self.create_subscription(String, '/hotel_zones', self.zones_callback, 10)
         self.zone_telemetry_pub = self.create_publisher(String, '/zone_telemetry', 10)
         self.zone_marker_pub = self.create_publisher(MarkerArray, '/zone_markers', 10)
+        self.waypoint_marker_pub = self.create_publisher(MarkerArray, '/waypoint_markers', 10)
+        self.waypoint_sub = self.create_subscription(String, '/hotel_waypoints', self.waypoints_callback, 10)
         self.last_zone_telemetry_time = 0.0
         self.last_speed_zone_log_id = None
         self.no_stop_stop_detected = 0.0
         self.zone_violation_msg = None
         self.clearing_no_stop = False
-        self.marker_timer = self.create_timer(1.0, self.publish_zone_markers)
+        self.marker_timer = self.create_timer(1.0, self.publish_all_markers)
         self.fetch_backend_zones_async()
+        self.fetch_backend_waypoints_async()
         
         # Robot position & orientation (Khoi tao tai Goc Tren Ben Phai Lobby: 3.7, 5.0, -90°)
         self.current_x = SPAWN_X
@@ -183,6 +203,23 @@ class AutonomousNavigator(Node):
                 self.publish_zone_markers()
         except Exception as e:
             self.get_logger().error(f"Lỗi khi giải mã /hotel_zones: {e}")
+
+    def fetch_backend_waypoints_async(self):
+        def _fetch():
+            try:
+                req = urllib.request.Request("http://127.0.0.1:8000/api/v1/map/waypoints", headers={'User-Agent': 'HC-Robot-Nav'})
+                with urllib.request.urlopen(req, timeout=2.0) as resp:
+                    if resp.status == 200:
+                        data = json.loads(resp.read().decode('utf-8'))
+                        if isinstance(data, list) and len(data) > 0:
+                            msg = String()
+                            msg.data = json.dumps(data)
+                            self.waypoints_callback(msg)
+                            self.get_logger().info(f"[WAYPOINTS CSDL] Đã tải và đồng bộ thành công {len(data)} điểm mốc từ Backend!")
+            except Exception:
+                pass
+        t = threading.Thread(target=_fetch, daemon=True)
+        t.start()
 
     def fetch_backend_zones_async(self):
         def _fetch():
@@ -265,80 +302,346 @@ class AutonomousNavigator(Node):
 
         self.zone_marker_pub.publish(ma)
 
-    def get_lobby_base_path(self, start_x, start_y, target_x, target_y):
-        """Sinh chuoi waypoint co ban ne vach ngan x=4.4m va quay tiep tan."""
-        pts = []
-        from_is_left = start_x < 4.4
-        to_is_left = target_x < 4.4
+    def publish_waypoint_markers(self):
+        if not WAYPOINTS:
+            return
+        now_msg = self.get_clock().now().to_msg()
+        ma = MarkerArray()
 
-        if from_is_left and not to_is_left:
-            # Gian Trai -> Gian Phai: Phai qua Cua Thong Sanh o tam (4.4, 2.85)
-            if abs(start_y - 2.85) > 0.3 or start_x < 3.6:
-                pts.append((3.8, 2.85, "Cửa Thông Sảnh (Tây)"))
-            pts.append((4.4, 2.85, "Cửa Thông Sảnh (Tâm)"))
-            pts.append((5.1, 2.85, "Cửa Thông Sảnh (Đông)"))
-            if target_y < 2.0:
-                pts.append((5.2, 1.8, "Hành lang Nam"))
-            elif target_y > 3.6:
-                pts.append((5.2, 4.0, "Hành lang Bắc"))
-        elif not from_is_left and to_is_left:
-            # Gian Phai -> Gian Trai
-            if start_y < 2.0:
-                pts.append((5.2, 1.8, "Hành lang Nam"))
-            elif start_y > 3.6:
-                pts.append((5.2, 4.0, "Hành lang Bắc"))
-            pts.append((5.1, 2.85, "Cửa Thông Sảnh (Đông)"))
-            pts.append((4.4, 2.85, "Cửa Thông Sảnh (Tâm)"))
-            pts.append((3.8, 2.85, "Cửa Thông Sảnh (Tây)"))
-        elif not from_is_left and not to_is_left:
-            # Cung o Gian Phai: Kiem tra vuong Quay Front Desk theo 2 truc
-            crosses_y = (start_y < 2.3 and target_y > 3.5) or (start_y > 3.5 and target_y < 2.3)
-            min_x = min(start_x, target_x)
-            max_x = max(start_x, target_x)
-            crosses_x = min_x < 5.6 and max_x > 6.8 and (start_y < 2.65 or target_y < 2.65)
+        for idx, wp in enumerate(WAYPOINTS):
+            wx = float(wp[0])
+            wy = float(wp[1])
+            name = str(wp[2])
+            wp_type = (wp[3] if len(wp) > 3 else "WAYPOINT").upper()
 
-            if crosses_x:
-                if start_x < target_x:
-                    if start_y < 2.7:
-                        pts.append((5.2, 2.85, "Hành lang Bắc Quầy"))
-                else:
-                    if target_y < 2.7:
-                        pts.append((5.2, 2.85, "Hành lang Bắc Quầy"))
-            elif crosses_y:
-                pts.append((5.2, 2.5 if start_y < 2.3 else 3.5, "Né Quầy Tiếp Tân"))
-                pts.append((5.2, 3.5 if start_y < 2.3 else 2.5, "Hành lang Quầy"))
-        else:
-            # Cung o Gian Trai: Tranh sofa sat tuong tay (x <= 1.5)
-            if start_x < 1.8 or target_x < 1.8:
-                pts.append((2.6, (start_y + target_y) / 2.0, "Hành lang Sofa"))
+            # Cylinder ground beacon
+            disk = Marker()
+            disk.header.stamp = now_msg
+            disk.header.frame_id = 'map'
+            disk.ns = 'hotel_waypoint_disk'
+            disk.id = idx * 2
+            disk.type = Marker.CYLINDER
+            disk.action = Marker.ADD
+            disk.pose.position.x = wx
+            disk.pose.position.y = wy
+            disk.pose.position.z = 0.02
+            disk.pose.orientation.w = 1.0
+            disk.scale.x = 0.50
+            disk.scale.y = 0.50
+            disk.scale.z = 0.04
 
-        return pts
+            # Cung loai thi cung mau:
+            # - CHARGER: Xanh ngoc / La nhat (Mint Green)
+            # - PARK: Diem cho sanh -> Xanh duong nhat (Light Blue)
+            # - WAYPOINT: End thuong -> Xam nhat (Light Gray)
+            if wp_type in ("CHARGER", "DOCKING_TARGET"):
+                disk.color.r, disk.color.g, disk.color.b, disk.color.a = 0.20, 0.83, 0.60, 0.85
+            elif wp_type in ("PARK", "PARKING_SPOT"):
+                disk.color.r, disk.color.g, disk.color.b, disk.color.a = 0.38, 0.65, 0.98, 0.85
+            else:
+                disk.color.r, disk.color.g, disk.color.b, disk.color.a = 0.58, 0.64, 0.72, 0.85
+            ma.markers.append(disk)
+
+            # Floating text
+            txt = Marker()
+            txt.header.stamp = now_msg
+            txt.header.frame_id = 'map'
+            txt.ns = 'hotel_waypoint_text'
+            txt.id = idx * 2 + 1
+            txt.type = Marker.TEXT_VIEW_FACING
+            txt.action = Marker.ADD
+            txt.pose.position.x = wx
+            txt.pose.position.y = wy
+            txt.pose.position.z = 0.60
+            txt.pose.orientation.w = 1.0
+            txt.scale.z = 0.25
+            txt.color.r, txt.color.g, txt.color.b, txt.color.a = 1.0, 1.0, 1.0, 0.95
+            txt.text = f"[{wp_type}] {name}" if wp_type in ("CHARGER", "PARK") else name
+            ma.markers.append(txt)
+
+        self.waypoint_marker_pub.publish(ma)
+
+    def get_gazebo_model_name(self, wp_id, name, wp_type):
+        """Map tu ID / Ten sang ten Model trong file hotel_room.world de set_pose."""
+        id_str = str(wp_id or "").lower()
+        name_str = str(name or "").lower()
+        type_str = str(wp_type or "").upper()
+
+        # 1. Charger / Tram sac
+        if 'charger' in id_str or 'sạc' in name_str or 'sac' in name_str or 'charger' in name_str or 'dock' in name_str or type_str in ('CHARGER', 'DOCKING_TARGET'):
+            return 'wp_marker_charger'
+        # 2. Lounge / Sofa / Khach cho (Uu tien truoc Standby vi Sofa khach cho co chu 'cho')
+        if 'lounge' in id_str or 'sofa' in name_str or 'sofa' in id_str or 'lounge' in name_str or 'khách chờ' in name_str or 'khach cho' in name_str:
+            return 'wp_marker_lounge'
+        # 3. Reception / Le tan
+        if 'front_desk' in id_str or 'lễ tân' in name_str or 'le tan' in name_str or 'tiếp tân' in name_str or 'tiep tan' in name_str or 'front desk' in name_str or 'reception' in name_str:
+            return 'wp_marker_frontdesk'
+        # 4. Entrance / Cua chinh / Cua ra vao
+        if 'entrance' in id_str or 'cửa' in name_str or 'cua' in name_str or 'door' in name_str or 'gate' in name_str or 'main' in name_str:
+            return 'wp_marker_entrance'
+        # 5. Elevator / Thang may
+        if 'elevator' in id_str or 'thang máy' in name_str or 'thang may' in name_str or 'lift' in name_str:
+            return 'wp_marker_elevator'
+        # 6. Restrooms / WC / Toilet
+        if 'restroom' in id_str or 'wc' in name_str or 'vệ sinh' in name_str or 've sinh' in name_str or 'toilet' in name_str or 'toilet' in id_str:
+            return 'wp_marker_restrooms'
+        # 7. Emergency Exit / Thoat hiem
+        if 'stair' in id_str or 'emergency' in id_str or 'thoát hiểm' in name_str or 'thoat hiem' in name_str:
+            return 'wp_marker_emergency'
+        # 8. Staff / Phong noi bo
+        if 'staff' in id_str or 'nội bộ' in name_str or 'noi bo' in name_str:
+            return 'wp_marker_staff'
+        # 9. Standby / Diem cho / Park
+        if 'standby' in id_str or 'chờ' in name_str or 'cho' in name_str or 'đỗ' in name_str or 'do' in name_str or 'standby' in name_str or 'park' in id_str or tp_s in ('PARK', 'PARKING_SPOT'):
+            return 'wp_marker_standby'
+
+        return None
+
+    def sync_gazebo_marker_pose(self, model_name, x, y, z=0.01):
+        """Goi truc tiep dich vu Gazebo set_pose de di chuyen model tren sa ban 3D."""
+        if not model_name:
+            return
+        
+        req_str = f'name: "{model_name}", position: {{x: {x:.2f}, y: {y:.2f}, z: {z:.2f}}}'
+        bash_cmd = (
+            "source /opt/ros/jazzy/setup.bash && "
+            "export GZ_CONFIG_PATH=/opt/ros/jazzy/opt/gz_sim_vendor/share/gz:/opt/ros/jazzy/opt/gz_gui_vendor/share/gz:/opt/ros/jazzy/opt/gz_msgs_vendor/share/gz:/opt/ros/jazzy/opt/gz_transport_vendor/share/gz:/opt/ros/jazzy/opt/gz_plugin_vendor/share/gz:/opt/ros/jazzy/opt/sdformat_vendor/share/gz:/opt/ros/jazzy/opt/gz_fuel_tools_vendor/share/gz && "
+            f"gz service -s /world/hotel_lobby_world/set_pose --reqtype gz.msgs.Pose --reptype gz.msgs.Boolean --timeout 2000 --req '{req_str}'"
+        )
+        try:
+            res = subprocess.run(["bash", "-c", bash_cmd], capture_output=True, text=True, timeout=3)
+            if res.returncode == 0:
+                self.get_logger().info(f"[GAZEBO POSE] Da cap nhat '{model_name}' -> ({x:.2f}, {y:.2f}, {z:.2f})")
+            else:
+                self.get_logger().debug(f"[GAZEBO POSE] set_pose res: {res.stderr.strip() or res.stdout.strip()}")
+        except Exception as e:
+            self.get_logger().debug(f"[GAZEBO POSE] Exception: {e}")
+
+    def waypoints_callback(self, msg):
+        """Dong bo danh sach Waypoints / Endpoints tu Web sang Gazebo va bo dieu huong PID."""
+        try:
+            data = json.loads(msg.data)
+            if not isinstance(data, list):
+                return
+            self.get_logger().info(f"[DONG BO WAYPOINTS] Nhan {len(data)} diem moc tu Web Admin!")
+
+            new_waypoints = []
+            active_models = set()
+            for item in data:
+                x = float(item.get('x', 0.0))
+                y = float(item.get('y', 0.0))
+                name = str(item.get('name', 'Waypoint'))
+                wp_type = (item.get('type') or 'WAYPOINT').upper()
+                wp_id = str(item.get('id', ''))
+                new_waypoints.append((x, y, name, wp_type, wp_id))
+
+                # Cap nhat vi tri 3D beacon trong Gazebo thoi gian thuc tren mat san
+                model_name = self.get_gazebo_model_name(wp_id, name, wp_type)
+                if model_name:
+                    active_models.add(model_name)
+                    self.sync_gazebo_marker_pose(model_name, x, y, z=0.01)
+
+            # An tat ca cac model marker khong co tren Web (dua xuong z = -10.0m)
+            for m in ALL_GAZEBO_MARKERS:
+                if m not in active_models:
+                    self.sync_gazebo_marker_pose(m, 0.0, 0.0, z=-10.0)
+
+            global WAYPOINTS
+            WAYPOINTS = new_waypoints
+            self.publish_waypoint_markers()
+        except Exception as e:
+            self.get_logger().error(f"[DONG BO WAYPOINTS] Loi phan tich json: {e}")
+
+    def publish_all_markers(self):
+        self.publish_zone_markers()
+        self.publish_waypoint_markers()
 
     def calculate_safe_path(self, start_x, start_y, target_x, target_y):
-        """Sinh chuoi waypoint trung gian ne vach ngan x=4.4m, quay le tan va tuong Staff Only."""
-        pts = []
-        is_inside_staff = lambda x, y: x >= 8.2 and y <= 3.05
-        from_staff = is_inside_staff(start_x, start_y)
-        to_staff = is_inside_staff(target_x, target_y)
+        """Sinh chuoi waypoint toi uu ne vat can trong sanh 19.60m x 12.60m bang Roadmap + Shortcut Smoothing."""
+        start = (float(start_x), float(start_y))
+        goal = (float(target_x), float(target_y))
 
-        staff_approach = (7.85, 2.7, "Hành lang trước Cửa Staff Only")
-        staff_door = (8.35, 2.65, "Tâm Cửa Phòng Staff Only")
+        obstacles = [
+            (9.70, 13.10, 4.00, 8.65, "RECEPTION"),
+            (5.60, 7.45, 5.35, 7.15, "PLANT_POT"),
+            (12.50, 12.85, 11.00, 12.60, "PART_TOP"),
+            (12.60, 12.95, 0.00, 1.45, "PART_BOT"),
+            (0.00, 2.30, 8.30, 12.60, "SOFA_TL"),
+            (0.00, 4.70, 0.00, 1.60, "SOFA_BL"),
+            (15.30, 19.60, 7.60, 10.00, "SOFA_TR"),
+            (17.80, 19.60, 4.80, 7.80, "ELEV_EXIT"),
+            (17.80, 19.60, 0.00, 3.55, "WC_EAST"),
+            (15.30, 18.00, 0.00, 1.90, "WC_SOUTH"),
+        ]
+
+        def ccw(A, B, C):
+            return (C[1] - A[1]) * (B[0] - A[0]) > (B[1] - A[1]) * (C[0] - A[0])
+
+        def seg_intersect(A, B, C, D):
+            return ccw(A, C, D) != ccw(B, C, D) and ccw(A, B, C) != ccw(A, B, D)
+
+        def is_line_clear(p1, p2, ignore_rec=False):
+            for minX, maxX, minY, maxY, name in obstacles:
+                if ignore_rec and name == "RECEPTION":
+                    continue
+                tl, tr, bl, br = (minX, maxY), (maxX, maxY), (minX, minY), (maxX, minY)
+                if (seg_intersect(p1, p2, tl, tr) or
+                    seg_intersect(p1, p2, tr, br) or
+                    seg_intersect(p1, p2, br, bl) or
+                    seg_intersect(p1, p2, bl, tl)):
+                    return False
+            return True
+
+        nav_nodes = {
+            'W_NORTH':     (7.20,  9.60,  "Hành lang Bắc Tây (Standby)"),
+            'W_NORTH_L':   (4.80,  9.60,  "Hành lang Tây Bắc"),
+            'W_MID_L':     (4.20,  7.20,  "Khu Sofa Khách Chờ Sảnh"),
+            'W_MID_POT_W': (4.60,  5.50,  "Hành lang Tây né Cây cảnh"),
+            'W_SOUTH_L':   (4.80,  3.20,  "Hành lang Tây Nam"),
+            'W_SOUTH':     (7.60,  2.60,  "Hành lang Nam Tây"),
+            'C_NORTH_DOOR':(12.84, 9.80,  "Cửa Thông Sảnh Bắc"),
+            'C_SOUTH_DOOR':(12.84, 2.60,  "Hành lang Sảnh Nam"),
+            'C_FRONT_DESK':(11.44, 2.80,  "Trước Quầy Lễ Tân"),
+            'C_STAFF_DOOR':(11.44, 4.20,  "Cửa Phòng Nội Bộ"),
+            'C_STAFF_IN':  (11.44, 6.40,  "Phòng Nội Bộ Quầy Lễ Tân"),
+            'E_NORTH':     (15.50, 9.80,  "Hành lang Bắc Đông"),
+            'E_MID':       (15.60, 6.50,  "Hành lang Cụm Thang Máy"),
+            'E_SOUTH':     (15.50, 2.60,  "Hành lang Nhà Vệ Sinh"),
+        }
+
+        nav_edges = [
+            ('W_NORTH', 'W_NORTH_L'),
+            ('W_NORTH_L', 'W_MID_L'),
+            ('W_MID_L', 'W_MID_POT_W'),
+            ('W_MID_POT_W', 'W_SOUTH_L'),
+            ('W_SOUTH_L', 'W_SOUTH'),
+            ('W_NORTH', 'C_NORTH_DOOR'),
+            ('W_SOUTH', 'C_FRONT_DESK'),
+            ('W_SOUTH', 'C_SOUTH_DOOR'),
+            ('C_FRONT_DESK', 'C_SOUTH_DOOR'),
+            ('C_FRONT_DESK', 'C_STAFF_DOOR'),
+            ('C_STAFF_DOOR', 'C_STAFF_IN'),
+            ('C_NORTH_DOOR', 'E_NORTH'),
+            ('C_SOUTH_DOOR', 'E_SOUTH'),
+            ('E_NORTH', 'E_MID'),
+            ('E_MID', 'E_SOUTH'),
+        ]
+
+        is_inside_staff = lambda p: 10.04 <= p[0] <= 12.82 and 4.40 <= p[1] <= 8.40
+        from_staff = is_inside_staff(start)
+        to_staff = is_inside_staff(goal)
+
+        staff_approach = (11.44, 2.80, "Trước Quầy Lễ Tân")
+        staff_door = (11.44, 4.20, "Cửa Phòng Nội Bộ")
+
+        def find_raw_path(p_start, p_goal, ignore_rec=False):
+            if is_line_clear(p_start, p_goal, ignore_rec):
+                return [(p_start[0], p_start[1], "Xuất phát"), (p_goal[0], p_goal[1], "Mục tiêu")]
+
+            node_keys = list(nav_nodes.keys())
+            start_edges = []
+            goal_edges = []
+            for k in node_keys:
+                pos = (nav_nodes[k][0], nav_nodes[k][1])
+                if is_line_clear(p_start, pos, ignore_rec):
+                    start_edges.append((k, math.hypot(p_start[0] - pos[0], p_start[1] - pos[1])))
+                if is_line_clear(p_goal, pos, ignore_rec):
+                    goal_edges.append((k, math.hypot(p_goal[0] - pos[0], p_goal[1] - pos[1])))
+
+            if not start_edges:
+                closest_k = min(node_keys, key=lambda k: math.hypot(p_start[0] - nav_nodes[k][0], p_start[1] - nav_nodes[k][1]))
+                start_edges.append((closest_k, math.hypot(p_start[0] - nav_nodes[closest_k][0], p_start[1] - nav_nodes[closest_k][1])))
+            if not goal_edges:
+                closest_k = min(node_keys, key=lambda k: math.hypot(p_goal[0] - nav_nodes[k][0], p_goal[1] - nav_nodes[k][1]))
+                goal_edges.append((closest_k, math.hypot(p_goal[0] - nav_nodes[closest_k][0], p_goal[1] - nav_nodes[closest_k][1])))
+
+            adj = {k: [] for k in node_keys}
+            for u, v in nav_edges:
+                d = math.hypot(nav_nodes[u][0] - nav_nodes[v][0], nav_nodes[u][1] - nav_nodes[v][1])
+                adj[u].append((v, d))
+                adj[v].append((u, d))
+
+            adj['START'] = start_edges
+            adj['GOAL'] = []
+            for ge_node, ge_dist in goal_edges:
+                adj[ge_node].append(('GOAL', ge_dist))
+
+            all_n = ['START', 'GOAL'] + node_keys
+            dist = {k: float('inf') for k in all_n}
+            prev = {k: None for k in all_n}
+            dist['START'] = 0.0
+            pq = [(0.0, 'START')]
+
+            while pq:
+                d, u = heapq.heappop(pq)
+                if d > dist[u]:
+                    continue
+                if u == 'GOAL':
+                    break
+                for v, weight in adj.get(u, []):
+                    if dist[u] + weight < dist[v]:
+                        dist[v] = dist[u] + weight
+                        prev[v] = u
+                        heapq.heappush(pq, (dist[v], v))
+
+            curr = 'GOAL'
+            path_keys = []
+            while curr:
+                path_keys.append(curr)
+                curr = prev.get(curr)
+            path_keys.reverse()
+
+            if not path_keys or path_keys[0] != 'START':
+                return [(p_start[0], p_start[1], "Xuất phát"), (p_goal[0], p_goal[1], "Mục tiêu")]
+
+            raw_pts = []
+            for k in path_keys:
+                if k == 'START':
+                    raw_pts.append((p_start[0], p_start[1], "Xuất phát"))
+                elif k == 'GOAL':
+                    raw_pts.append((p_goal[0], p_goal[1], "Mục tiêu"))
+                else:
+                    raw_pts.append(nav_nodes[k])
+
+            # String-pulling smoothing
+            if len(raw_pts) <= 2:
+                return raw_pts
+            smoothed = [raw_pts[0]]
+            i = 0
+            while i < len(raw_pts) - 1:
+                furthest = i + 1
+                for j in range(len(raw_pts) - 1, i + 1, -1):
+                    if is_line_clear((smoothed[-1][0], smoothed[-1][1]), (raw_pts[j][0], raw_pts[j][1]), ignore_rec):
+                        furthest = j
+                        break
+                smoothed.append(raw_pts[furthest])
+                i = furthest
+
+            return smoothed
 
         if not from_staff and to_staff:
-            pts.extend(self.get_lobby_base_path(start_x, start_y, staff_approach[0], staff_approach[1]))
-            pts.append(staff_approach)
-            pts.append(staff_door)
+            approach_route = find_raw_path(start, (staff_approach[0], staff_approach[1]), False)
+            pts = approach_route + [staff_door, (goal[0], goal[1], f"Mục tiêu ({goal[0]:.2f}, {goal[1]:.2f})")]
         elif from_staff and not to_staff:
-            pts.append(staff_door)
-            pts.append(staff_approach)
-            pts.extend(self.get_lobby_base_path(staff_approach[0], staff_approach[1], target_x, target_y))
+            leave_route = find_raw_path((staff_approach[0], staff_approach[1]), goal, False)
+            pts = [(start[0], start[1], "Xuất phát"), staff_door, staff_approach] + leave_route[1:]
         elif from_staff and to_staff:
-            pass
+            pts = [(start[0], start[1], "Xuất phát"), (goal[0], goal[1], f"Mục tiêu ({goal[0]:.2f}, {goal[1]:.2f})")]
         else:
-            pts.extend(self.get_lobby_base_path(start_x, start_y, target_x, target_y))
+            pts = find_raw_path(start, goal, False)
 
-        pts.append((target_x, target_y, f"Đích đến ({target_x:.2f}, {target_y:.2f})"))
-        return pts
+        # Deduplicate
+        filtered = [pts[0]]
+        for i in range(1, len(pts)):
+            prev = filtered[-1]
+            cur = pts[i]
+            if math.hypot(cur[0] - prev[0], cur[1] - prev[1]) > 0.15:
+                filtered.append(cur)
+
+        if math.hypot(filtered[-1][0] - goal[0], filtered[-1][1] - goal[1]) > 0.05:
+            filtered.append((goal[0], goal[1], f"Đích đến ({goal[0]:.2f}, {goal[1]:.2f})"))
+
+        return filtered
 
     def goal_callback(self, msg: PoseStamped):
         """Tiếp nhận điểm đích A -> B từ RViz2 '2D Goal Pose' hoặc Web API."""
@@ -391,7 +694,7 @@ class AutonomousNavigator(Node):
             tx, ty, name = self.custom_goal
             self.get_logger().info(f">> [ĐÍCH ĐẾN A -> B]: {name}")
         elif self.mode == "PATROL":
-            tx, ty, name = WAYPOINTS[self.target_idx]
+            tx, ty, name = WAYPOINTS[self.target_idx][:3]
             self.get_logger().info(f">> [TUẦN TRA {self.target_idx + 1}/{len(WAYPOINTS)}] Đang hướng tới: {name} (X={tx:.2f}, Y={ty:.2f})")
         else:
             self.get_logger().info(f">> [STANDBY]: Túc trực tại ({self.current_x:.2f}, {self.current_y:.2f})")
@@ -484,7 +787,8 @@ class AutonomousNavigator(Node):
             norm_ang = math.atan2(math.sin(angle), math.cos(angle))
             deg = math.degrees(norm_ang)
 
-            valid = (not math.isnan(r)) and (msg.range_min <= r <= msg.range_max)
+            # Loc bo tia phan xa tu chinh than xe / camera mount cua robot (ban kinh ~0.22m)
+            valid = (not math.isnan(r)) and (r > 0.22) and (r <= msg.range_max)
             if valid:
                 if -40.0 <= deg <= 40.0:
                     front_ranges.append(r)
@@ -549,7 +853,7 @@ class AutonomousNavigator(Node):
         if self.mode == "POINT_TO_POINT" and self.custom_goal:
             tx, ty, name = self.custom_goal
         else:
-            tx, ty, name = WAYPOINTS[self.target_idx]
+            tx, ty, name = WAYPOINTS[self.target_idx][:3]
         
         dx = tx - self.current_x
         dy = ty - self.current_y
@@ -611,14 +915,18 @@ class AutonomousNavigator(Node):
         d_safe = 0.65       # Vùng cảnh báo vật cản 65cm
         d_stop = 0.25       # Khoảng cách phanh dừng khẩn cấp 25cm
 
-        # Kiểm tra vật cản phía trước bằng LiDAR
+        # Kiểm tra vật cản phía trước bằng LiDAR (co deadband chong dao huong giat lac)
         avoidance_offset = 0.0
         if self.min_front_dist < d_safe:
             if now > self.avoidance_locked_until:
-                self.avoidance_dir = 1.0 if self.min_left_dist >= self.min_right_dist else -1.0
-                self.avoidance_locked_until = now + 1.5
+                # Chi dao huong khi do chenh lech khoang trong trai/phai vuot qua 0.15m
+                if abs(self.min_left_dist - self.min_right_dist) > 0.15:
+                    self.avoidance_dir = 1.0 if self.min_left_dist > self.min_right_dist else -1.0
+                elif self.avoidance_dir == 0.0:
+                    self.avoidance_dir = 1.0 if angle_diff >= 0 else -1.0
+                self.avoidance_locked_until = now + 2.0
             obstacle_urgency = max(0.0, min(1.0, (d_safe - self.min_front_dist) / (d_safe - d_stop)))
-            avoidance_offset = self.avoidance_dir * (1.30 * obstacle_urgency)
+            avoidance_offset = self.avoidance_dir * (1.10 * obstacle_urgency)
         else:
             if now > self.avoidance_locked_until:
                 self.avoidance_dir = 0.0
@@ -648,10 +956,10 @@ class AutonomousNavigator(Node):
         angle_diff = desired_yaw - self.current_yaw
         angle_diff = math.atan2(math.sin(angle_diff), math.cos(angle_diff))
 
-        # 5. Áp dụng Giới Hạn Tốc Độ (Speed Zone)
-        max_allowed_linear = 0.38
+        # 5. Áp dụng Giới Hạn Tốc Độ (Speed Zone) - Tốc độ an toàn giúp LiDAR quét nét ổn định
+        max_allowed_linear = 0.22
         if active_zone and active_zone.get('type') in ('SPEED_ZONE', 'SLOW_SPEED'):
-            zone_limit = float(active_zone.get('speed_limit') or 0.20)
+            zone_limit = float(active_zone.get('speed_limit') or 0.15)
             max_allowed_linear = min(max_allowed_linear, zone_limit)
             if self.last_speed_zone_log_id != active_zone.get('id'):
                 self.last_speed_zone_log_id = active_zone.get('id')

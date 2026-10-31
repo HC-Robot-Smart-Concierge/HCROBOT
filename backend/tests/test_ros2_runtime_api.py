@@ -40,6 +40,25 @@ def test_runtime_service_rejects_empty_ros_map(tmp_path: Path):
         Ros2RuntimeService._validate_map_stats(stats)
 
 
+def test_export_pgm_to_json_uses_bottom_row_as_origin(tmp_path: Path):
+    """PGM hàng 0 là đỉnh ảnh; JSON grid_data hàng 0 phải là đáy (origin_y)."""
+    import json
+
+    service = Ros2RuntimeService(project_root=tmp_path)
+    service.maps_dir.mkdir(parents=True)
+    pgm_path = service.maps_dir / "flip.pgm"
+    yaml_path = service.maps_dir / "flip.yaml"
+    # 2x2: hàng trên cùng của ảnh là vật cản, hàng dưới là vùng trống.
+    _write_pgm(pgm_path, 2, 2, bytes([0, 0, 254, 254]))
+    yaml_path.write_text("image: flip.pgm\nresolution: 0.05\norigin: [-1.0, -2.0, 0.0]\n", encoding="utf-8")
+
+    service._export_pgm_to_json(pgm_path, yaml_path, "flip")
+
+    data = json.loads((service.maps_dir / "flip.json").read_text(encoding="utf-8"))
+    assert data["grid_data"] == [0, 0, 100, 100]
+    assert (data["origin_x"], data["origin_y"], data["resolution"]) == (-1.0, -2.0, 0.05)
+
+
 @pytest.mark.asyncio
 async def test_ros2_runtime_web_endpoints(monkeypatch):
     service = map_endpoint.ros2_runtime_service

@@ -132,6 +132,13 @@ class RPLidarSLAMCore:
         self.static_grid_data: Optional[List[int]] = None
         self.active_map_name: Optional[str] = None
 
+        # SLAM noi bo tren Pi (scan matching + raytracing) rat nang voi CPython:
+        # chay trong thread doc serial se lam LiDAR bi don goi khi quay. Khi
+        # SLAM Toolbox (laptop) dang nhan scan qua WS ?consumer=ros2 thi map noi
+        # bo khong duoc dung, nen tat di. HCROBOT_PI_INTERNAL_SLAM=auto|on|off.
+        self.internal_slam_policy = os.getenv("HCROBOT_PI_INTERNAL_SLAM", "auto").strip().lower()
+        self.external_slam_consumers = 0
+
         # Trạng thái Robot
         self.robot_x = 0.0
         self.robot_y = 0.0
@@ -495,6 +502,15 @@ free_thresh: 0.25
                                 break
 
         return hit / max(total * 2, 1)
+
+    def internal_slam_enabled(self) -> bool:
+        """SLAM noi bo chi chay khi khong co SLAM Toolbox nhan scan (hoac bi ep bat/tat)."""
+        if self.internal_slam_policy == "off":
+            return False
+        if self.internal_slam_policy == "on" or self.is_exploring:
+            # Frontier exploration doc grid noi bo nen luon can SLAM noi bo.
+            return True
+        return self.external_slam_consumers <= 0
 
     def _is_turn_command(self) -> bool:
         cmd = (self.current_motion_cmd or "stop").split(":")[0]
@@ -984,18 +1000,23 @@ free_thresh: 0.25
                     if esp_reader and hasattr(esp_reader, "latest"):
                         snap = esp_reader.latest()
                     dt = now - last_imu_update_time
-                    if snap is not None and 0.0 < dt < 0.5:
+                    if snap is not None and dt > 0.0:
                         with self._lock:
                             has_imu = bool(
                                 snap.mpu_available and snap.yaw_rate_dps is not None
                             )
+                            turning = self._is_turn_command()
                             if getattr(snap, "encoders", None):
+                                # Encoder tick la luy ke nen van ap dung duoc khi loop bi
+                                # tre; yaw lay tu gyro neu co, tranh cong 2 lan khi quay.
                                 self._apply_encoder_odometry(
-                                    snap.encoders, dt, update_yaw=self._is_turn_command()
+                                    snap.encoders, min(dt, 1.0),
+                                    update_yaw=turning and not has_imu,
                                 )
                             if (
-                                self._is_turn_command()
+                                turning
                                 and has_imu
+                                and dt < 0.5
                                 and abs(snap.yaw_rate_dps) > 2.0
                             ):
                                 self.robot_yaw = (self.robot_yaw + snap.yaw_rate_dps * dt) % 360.0
@@ -1110,7 +1131,8 @@ free_thresh: 0.25
                             {"angle": p["angle"], "distance": p["distance"]}
                             for p in current_scan_batch
                         ]
-                        if self.map_mode == "MAPPING":
+                        internal_slam = self.internal_slam_enabled()
+                        if self.map_mode == "MAPPING" and internal_slam:
                             corrected_x, corrected_y, corrected_yaw = self._match_scan_to_map(
                                 raw_batch,
                                 self.robot_x,
@@ -1146,7 +1168,8 @@ free_thresh: 0.25
                             self.last_scan_time = time.time()
                             self.last_scan_points = len(self._latest_scans)
                             self.last_error = ""
-                            self._update_grid_from_scan(corrected_x, corrected_y, corrected_batch)
+                            if internal_slam:
+                                self._update_grid_from_scan(corrected_x, corrected_y, corrected_batch)
                         current_scan_batch.clear()
 
 
@@ -1376,6 +1399,110 @@ free_thresh: 0.25
         self.linear_velocity = 0.0
         self.angular_velocity = 0.0
         self.send_udp_motor_command("stop")
+
+    def set_pose(self, x: float, y: float, yaw_deg: float, refine: bool = True) -> Dict[str, Any]:
+        """
+        Dat vi tri ban dau (initial pose) cho robot tren ban do da quet.
+        - Dung robot truoc, ghi de pose odometry bang pose nguoi dung chon.
+        - refine=True: quet LiDAR hien tai duoc khop voi ban do tinh quanh pose
+          vua chon (±0.4m, ±20°) de sua sai so dat tay.
+        """
+        self.stop_navigation()
+        with self._lock:
+            self.robot_x = float(x)
+            self.robot_y = float(y)
+            self.robot_yaw = float(yaw_deg) % 360.0
+
+        result: Dict[str, Any] = {
+            "x": round(self.robot_x, 3),
+            "y": round(self.robot_y, 3),
+            "yaw": round(self.robot_yaw, 1),
+            "refined": False,
+            "score_before": None,
+            "score_after": None,
+        }
+        if refine:
+            result.update(self.localize_pose())
+        logger.info(
+            f"📍 Đặt vị trí ban đầu: X={result['x']:.2f}m Y={result['y']:.2f}m "
+            f"Yaw={result['yaw']:.1f}° (refined={result['refined']})"
+        )
+        return result
+
+    def localize_pose(self, xy_radius: float = 0.4, yaw_radius: float = 20.0) -> Dict[str, Any]:
+        """
+        Dinh vi lai pose hien tai bang cach khop vong quet LiDAR moi nhat voi
+        ban do tinh (grid search 2 buoc, rong hon _match_scan_to_map vi pose dat
+        tay co the lech vai chuc cm / vai chuc do).
+        """
+        with self._lock:
+            grid_snap = (
+                self.static_grid_data
+                if self.is_map_locked and self.static_grid_data
+                else self.grid_data
+            )
+            raw_batch = [
+                {"angle": p["angle"], "distance": p["distance"]}
+                for p in self._latest_scans
+            ]
+            init_x, init_y, init_yaw = self.robot_x, self.robot_y, self.robot_yaw
+
+        base: Dict[str, Any] = {
+            "x": round(init_x, 3),
+            "y": round(init_y, 3),
+            "yaw": round(init_yaw, 1),
+            "refined": False,
+            "score_before": None,
+            "score_after": None,
+        }
+        if len(raw_batch) < 60 or not any(v == 100 for v in grid_snap):
+            base["message"] = "Chưa có vòng quét LiDAR hoặc bản đồ rỗng, giữ nguyên pose đặt tay."
+            return base
+
+        # Grid search ~5000 ung vien: lay mau toi da 180 tia de chay < 2s tren Pi 5.
+        stride = max(1, len(raw_batch) // 180)
+        raw_batch = raw_batch[::stride]
+
+        score = lambda px, py, pyaw: self._compute_scan_match_score(raw_batch, px, py, pyaw % 360.0, grid_snap)
+        init_score = score(init_x, init_y, init_yaw)
+
+        def search(cx, cy, cyaw, xy_step, xy_r, yaw_step, yaw_r, best):
+            n_xy = int(round(xy_r / xy_step))
+            n_yaw = int(round(yaw_r / yaw_step))
+            best_pose, best_score = best
+            for i in range(-n_xy, n_xy + 1):
+                for j in range(-n_xy, n_xy + 1):
+                    for k in range(-n_yaw, n_yaw + 1):
+                        px, py, pyaw = cx + i * xy_step, cy + j * xy_step, cyaw + k * yaw_step
+                        s = score(px, py, pyaw)
+                        if s > best_score:
+                            best_pose, best_score = (px, py, pyaw), s
+            return best_pose, best_score
+
+        best = ((init_x, init_y, init_yaw), init_score)
+        best = search(init_x, init_y, init_yaw, 0.05, xy_radius, 2.5, yaw_radius, best)
+        bx, by, byaw = best[0]
+        best = search(bx, by, byaw, 0.01, 0.04, 0.5, 2.0, best)
+        (fx, fy, fyaw), final_score = best
+
+        base["score_before"] = round(init_score, 3)
+        base["score_after"] = round(final_score, 3)
+        # Chi chap nhan khi diem khop tang ro ret, tranh nhay sang vi tri sai.
+        if final_score > init_score * 1.05 and final_score > 0.0:
+            with self._lock:
+                self.robot_x = fx
+                self.robot_y = fy
+                self.robot_yaw = fyaw % 360.0
+            base.update({
+                "x": round(fx, 3),
+                "y": round(fy, 3),
+                "yaw": round(fyaw % 360.0, 1),
+                "refined": True,
+                "message": "Đã khớp LiDAR với bản đồ và tinh chỉnh vị trí.",
+            })
+        else:
+            base["message"] = "Pose đặt tay đã khớp tốt nhất với bản đồ, không cần chỉnh."
+        return base
 
     def _navigation_loop(self):
         """
@@ -2061,6 +2188,13 @@ class NavigateGoalRequest(BaseModel):
     linear_speed: Optional[float] = 0.12
 
 
+class SetPoseRequest(BaseModel):
+    x: float
+    y: float
+    yaw: float = 0.0  # độ (degree), cùng đơn vị với robot_pose trong telemetry
+    refine: bool = True  # khớp LiDAR với bản đồ để tinh chỉnh pose đặt tay
+
+
 class ExploreStartRequest(BaseModel):
     auto_save: bool = True
     save_name: str = "auto_explored_map"
@@ -2340,6 +2474,20 @@ async def navigate_to_point(req: NavigateGoalRequest):
     }
 
 
+@app.post("/api/v1/map/set_pose")
+async def set_initial_pose(req: SetPoseRequest):
+    """Đặt vị trí ban đầu của robot trên bản đồ đã quét (giống 2D Pose Estimate của RViz)."""
+    result = await asyncio.to_thread(slam_core.set_pose, req.x, req.y, req.yaw, req.refine)
+    return {"status": "SUCCESS", **result}
+
+
+@app.post("/api/v1/map/localize")
+async def localize_current_pose():
+    """Khớp vòng quét LiDAR hiện tại với bản đồ quanh pose hiện tại để sửa trôi odometry."""
+    result = await asyncio.to_thread(slam_core.localize_pose)
+    return {"status": "SUCCESS", **result}
+
+
 # ─── FRONTIER EXPLORATION ────────────────────────────────────────────────────
 
 @app.post("/api/v1/map/explore/start")
@@ -2517,6 +2665,15 @@ async def map_ws_endpoint(websocket: WebSocket):
         if slam_core.connect():
             slam_core.start_scanning()
 
+    if ros2_consumer:
+        # SLAM Toolbox dang nhan scan: tat SLAM noi bo (che do auto) de Pi chi doc LiDAR.
+        with slam_core._lock:
+            slam_core.external_slam_consumers += 1
+        logger.info(
+            f"🤖 Bridge ROS 2 đã kết nối ({slam_core.external_slam_consumers}); "
+            f"SLAM nội bộ Pi: {'BẬT' if slam_core.internal_slam_enabled() else 'TẮT'}"
+        )
+
     try:
         while True:
             scans = slam_core.get_latest_scans()
@@ -2565,8 +2722,6 @@ async def map_ws_endpoint(websocket: WebSocket):
                 await websocket.send_text(json.dumps(payload))
                 await asyncio.sleep(0.04)
                 continue
-
-            map_data = slam_core.get_grid_map()
 
             front_cm = round(slam_core.get_front_distance() * 100, 1) if slam_core.get_front_distance() < 90 else None
             rear_cm = round(slam_core.get_rear_distance() * 100, 1) if slam_core.get_rear_distance() < 90 else None
@@ -2620,13 +2775,15 @@ async def map_ws_endpoint(websocket: WebSocket):
                     "right_cm": right_cm,
                     "alert": getattr(slam_core, "last_safety_alert", ""),
                 },
+                # Chi can metadata; khong copy ca grid 640k o moi 40ms (giu lock, ton CPU Pi).
                 "grid_metadata": {
-                    "width": map_data["width"],
-                    "height": map_data["height"],
-                    "resolution": map_data["resolution"],
-                    "origin_x": map_data["origin_x"],
-                    "origin_y": map_data["origin_y"],
+                    "width": slam_core.grid_width,
+                    "height": slam_core.grid_height,
+                    "resolution": slam_core.resolution,
+                    "origin_x": slam_core.origin_x,
+                    "origin_y": slam_core.origin_y,
                 },
+                "internal_slam": slam_core.internal_slam_enabled(),
             }
 
             # Không gửi 800x800 JSON 25Hz — payload đó làm nghẽn TF/RobotModel trên RViz.
@@ -2640,6 +2797,14 @@ async def map_ws_endpoint(websocket: WebSocket):
 
     except WebSocketDisconnect:
         logger.info("🔌 Web Admin LiDAR Canvas ngắt kết nối WebSocket")
+    finally:
+        if ros2_consumer:
+            with slam_core._lock:
+                slam_core.external_slam_consumers = max(0, slam_core.external_slam_consumers - 1)
+            logger.info(
+                f"🤖 Bridge ROS 2 ngắt kết nối; SLAM nội bộ Pi: "
+                f"{'BẬT' if slam_core.internal_slam_enabled() else 'TẮT'}"
+            )
 
 
 def run_lidar_server(host="0.0.0.0", port=8000):

@@ -9,6 +9,7 @@ export const ROS_TOPICS = {
   ODOM: '/odom',
   AMCL_POSE: '/amcl_pose',
   GOAL_POSE: '/goal_pose',
+  INITIAL_POSE: '/initialpose',
   CMD_VEL: '/cmd_vel',
   GOAL_REACHED: '/goal_reached',
   HOTEL_ZONES: '/hotel_zones',
@@ -112,6 +113,19 @@ export const createGoalPoseMsg = (x, y, yaw = 0, frameId = 'map') => {
       },
     },
   };
+};
+
+/**
+ * Tạo message vị trí ban đầu /initialpose cho AMCL (tương đương "2D Pose Estimate" của RViz)
+ * Covariance: ±0.25m (var 0.0625) cho x/y, ±~15° (var 0.068) cho yaw.
+ */
+export const createInitialPoseMsg = (x, y, yaw = 0, frameId = 'map') => {
+  const { header, pose } = createGoalPoseMsg(x, y, yaw, frameId);
+  const covariance = new Array(36).fill(0);
+  covariance[0] = 0.0625;
+  covariance[7] = 0.0625;
+  covariance[35] = 0.06853891945200942;
+  return { header, pose: { pose, covariance } };
 };
 
 /**

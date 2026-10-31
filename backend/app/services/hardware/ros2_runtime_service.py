@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import logging
 import os
 import re
 import socket
@@ -10,6 +12,8 @@ import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 
 class Ros2RuntimeError(RuntimeError):
@@ -207,14 +211,19 @@ class Ros2RuntimeService:
         if cursor < len(raw) and raw[cursor] in (10, 13):
             cursor += 1
         pixels = raw[cursor:cursor + width * height]
+        if len(pixels) != width * height:
+            raise Ros2RuntimeError("File PGM bị thiếu dữ liệu pixel.")
+        # PGM: hàng 0 là đỉnh ảnh. OccupancyGrid/Web JSON: hàng 0 là đáy (origin_y),
+        # nên duyệt hàng ảnh từ dưới lên (giống convert_ros2_map_to_web.py).
         grid_data = []
-        for val in pixels:
-            if val <= 100:
-                grid_data.append(100)
-            elif val >= 250:
-                grid_data.append(0)
-            else:
-                grid_data.append(-1)
+        for row in range(height - 1, -1, -1):
+            for val in pixels[row * width:(row + 1) * width]:
+                if val <= 100:
+                    grid_data.append(100)
+                elif val >= 250:
+                    grid_data.append(0)
+                else:
+                    grid_data.append(-1)
         json_obj = {
             "name": safe_name,
             "width": width,
@@ -297,8 +306,9 @@ class Ros2RuntimeService:
             # Đồng bộ file .json cho Web Admin / Pi 5
             try:
                 self._export_pgm_to_json(pgm_path, yaml_path, safe_name)
-            except Exception:
-                pass
+            except Exception as exc:
+                # YAML/PGM đã lưu xong; JSON chỉ là bản phụ cho Web, không làm hỏng lần lưu.
+                logger.warning("Không xuất được JSON cho map '%s': %s", safe_name, exc)
         except Exception:
             pending_yaml.unlink(missing_ok=True)
             pending_pgm.unlink(missing_ok=True)

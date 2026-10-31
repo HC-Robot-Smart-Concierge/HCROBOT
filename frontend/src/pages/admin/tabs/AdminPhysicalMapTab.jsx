@@ -7,6 +7,7 @@ import {
   parseLaserScan,
   quaternionToYaw,
   createGoalPoseMsg,
+  createInitialPoseMsg,
   createWaypointSyncMsg,
   createZoneSyncMsg,
 } from '../../../services/rosbridgeService';
@@ -51,6 +52,8 @@ import {
   X,
   Edit2,
   AlertTriangle,
+  Crosshair,
+  Home,
 } from 'lucide-react';
 
 const PI5_IP = import.meta.env.VITE_PI5_IP || '100.99.72.51';
@@ -269,6 +272,12 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
   // Tab hien thi o Right Control Panel: 'WAYPOINTS' | 'ZONES' | 'TELEOP'
   const [activeRightTab, setActiveRightTab] = useState('WAYPOINTS');
 
+  // Dat vi tri ban dau (2D Pose Estimate): click chon vi tri, keo de chon huong dau xe
+  const [isPoseSetMode, setIsPoseSetMode] = useState(false);
+  const [poseDraft, setPoseDraft] = useState(null); // { x, y, yaw } toa do the gioi, yaw radian
+  const [refinePoseWithLidar, setRefinePoseWithLidar] = useState(true);
+  const [isSettingPose, setIsSettingPose] = useState(false);
+
   // Keo tha tren Canvas
   const [dragState, setDragState] = useState(null);
   const isDraggingRef = useRef(false);
@@ -361,8 +370,8 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
                 x: Number(data.robot_pose.x || 0.0),
                 y: Number(data.robot_pose.y || 0.0),
                 yaw: ryawRad,
-                linearVelocity: Number(data.robot_pose.linear_velocity || 0.0),
-                angularVelocity: Number(data.robot_pose.angular_velocity || 0.0),
+                linearVelocity: Number(data.linear_velocity ?? data.robot_pose.linear_velocity ?? 0.0),
+                angularVelocity: Number(data.angular_velocity ?? data.robot_pose.angular_velocity ?? 0.0),
               });
               setTrail((prev) => [
                 ...prev.slice(-150),
@@ -370,8 +379,14 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
               ]);
             }
 
-            if (Array.isArray(data.lidar_scan)) {
-              setScanPoints(data.lidar_scan);
+            // Pi 5 (robot/scripts/lidar_service.py) gui 'scan_points' da quy doi sang toa do the gioi (x, y)
+            const lidarPoints = Array.isArray(data.scan_points) ? data.scan_points : data.lidar_scan;
+            if (Array.isArray(lidarPoints)) {
+              setScanPoints(lidarPoints);
+            }
+
+            if (typeof data.battery === 'number') {
+              setHardwareInfo((prev) => ({ ...prev, battery: data.battery }));
             }
 
             if (data.hardware_info) {
@@ -452,7 +467,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
         const pos = msg?.pose?.pose?.position;
         const ori = msg?.pose?.pose?.orientation;
         if (pos) {
-          const yaw = quaternionToYaw(ori);
+          const yaw = quaternionToYaw(ori?.z ?? 0, ori?.w ?? 1);
           setRobotPose((prev) => ({
             ...prev,
             x: pos.x,
@@ -989,6 +1004,47 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
 
     ctx.restore();
 
+    // 9b. Vi tri ban dau dang chon (2D Pose Estimate): vong tron + mui ten huong dau xe
+    if (poseDraft) {
+      const { x: dpx, y: dpy } = worldToCanvas(poseDraft.x, poseDraft.y, width, height);
+      const arrowLen = 0.45 * scale;
+      const ax = dpx + arrowLen * Math.cos(poseDraft.yaw);
+      const ay = dpy - arrowLen * Math.sin(poseDraft.yaw);
+
+      ctx.beginPath();
+      ctx.arc(dpx, dpy, 0.22 * scale, 0, Math.PI * 2);
+      ctx.strokeStyle = '#22C55E';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([4, 3]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.beginPath();
+      ctx.moveTo(dpx, dpy);
+      ctx.lineTo(ax, ay);
+      ctx.strokeStyle = '#22C55E';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+
+      const head = 9;
+      ctx.beginPath();
+      ctx.moveTo(ax, ay);
+      ctx.lineTo(ax - head * Math.cos(poseDraft.yaw - 0.45), ay + head * Math.sin(poseDraft.yaw - 0.45));
+      ctx.lineTo(ax - head * Math.cos(poseDraft.yaw + 0.45), ay + head * Math.sin(poseDraft.yaw + 0.45));
+      ctx.closePath();
+      ctx.fillStyle = '#22C55E';
+      ctx.fill();
+
+      ctx.fillStyle = '#22C55E';
+      ctx.font = 'bold 10px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(
+        `Start (${poseDraft.x.toFixed(2)}, ${poseDraft.y.toFixed(2)}, ${((poseDraft.yaw * 180) / Math.PI).toFixed(0)}°)`,
+        dpx,
+        dpy + 0.22 * scale + 14
+      );
+    }
+
     // 10. Toa do truc goc Oxy (0, 0)
     const { x: opx, y: opy } = worldToCanvas(0.0, 0.0, width, height);
     ctx.beginPath();
@@ -1013,6 +1069,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     selectedEndpoint,
     selectedZone,
     invertHeading,
+    poseDraft,
     worldToCanvas,
   ]);
 
@@ -1025,6 +1082,15 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     const rect = canvas.getBoundingClientRect();
     const canvasX = (e.clientX - rect.left) * (canvas.width / rect.width);
     const canvasY = (e.clientY - rect.top) * (canvas.height / rect.height);
+
+    // 0. Che do Dat vi tri ban dau: click = vi tri, keo = huong dau xe
+    if (isPoseSetMode) {
+      const { worldX, worldY } = canvasToWorld(canvasX, canvasY, canvas.width, canvas.height);
+      setPoseDraft({ x: worldX, y: worldY, yaw: robotPose.yaw });
+      setDragState({ type: 'POSE', mouseStartX: canvasX, mouseStartY: canvasY });
+      isDraggingRef.current = true;
+      return;
+    }
 
     // 1. Kiem tra click trúng Endpoint (r <= 16px)
     if (showEndpoints) {
@@ -1093,6 +1159,16 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     const canvasX = (e.clientX - rect.left) * (canvas.width / rect.width);
     const canvasY = (e.clientY - rect.top) * (canvas.height / rect.height);
 
+    if (dragState.type === 'POSE') {
+      const dx = canvasX - dragState.mouseStartX;
+      const dy = canvasY - dragState.mouseStartY;
+      // Truc Y canvas huong xuong, truc Y the gioi huong len => dao dau dy
+      if (Math.hypot(dx, dy) > 8) {
+        setPoseDraft((prev) => (prev ? { ...prev, yaw: Math.atan2(-dy, dx) } : prev));
+      }
+      return;
+    }
+
     const { scale } = transformWorldToCanvas(0, 0, canvas.width, canvas.height, LAYOUT2_CONFIG);
     const dxMeters = (canvasX - dragState.mouseStartX) / scale;
     const dyMeters = -(canvasY - dragState.mouseStartY) / scale;
@@ -1115,8 +1191,95 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
   };
 
   const handleCanvasMouseUp = () => {
+    const wasPoseDrag = dragState?.type === 'POSE';
     setDragState(null);
     isDraggingRef.current = false;
+    if (wasPoseDrag && poseDraft) {
+      handleApplyInitialPose(poseDraft.x, poseDraft.y, poseDraft.yaw);
+    }
+  };
+
+  // ==========================================
+  // DAT VI TRI BAN DAU (INITIAL POSE) TREN BAN DO DA QUET
+  // ==========================================
+  const handleApplyInitialPose = async (px, py, pyawRad) => {
+    setIsSettingPose(true);
+    setPoseDraft({ x: px, y: py, yaw: pyawRad });
+    setNavStatus(`Đang đặt vị trí ban đầu (${px.toFixed(2)}, ${py.toFixed(2)})...`);
+
+    try {
+      if (connectionMode === 'pi5') {
+        const res = await fetch(`http://${pi5Ip}:8000/api/v1/map/set_pose`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            x: px,
+            y: py,
+            yaw: (pyawRad * 180) / Math.PI, // Pi 5 dung don vi do
+            refine: refinePoseWithLidar,
+          }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const finalYaw = (Number(data.yaw ?? 0) * Math.PI) / 180;
+        setRobotPose((prev) => ({ ...prev, x: Number(data.x ?? px), y: Number(data.y ?? py), yaw: finalYaw }));
+        setNavStatus(
+          data.refined
+            ? `Đã định vị: (${Number(data.x).toFixed(2)}, ${Number(data.y).toFixed(2)}, ${Number(data.yaw).toFixed(0)}°) — LiDAR khớp ${data.score_before} → ${data.score_after}`
+            : `Đã đặt vị trí ban đầu (${Number(data.x).toFixed(2)}, ${Number(data.y).toFixed(2)}, ${Number(data.yaw).toFixed(0)}°). ${data.message || ''}`
+        );
+      } else if (rosClientRef.current?.isConnected) {
+        rosClientRef.current.publish(
+          ROS_TOPICS.INITIAL_POSE,
+          ROS_MSG_TYPES.POSE_WITH_COVARIANCE,
+          createInitialPoseMsg(px, py, pyawRad)
+        );
+        setNavStatus(`Đã gửi /initialpose (${px.toFixed(2)}, ${py.toFixed(2)}) cho AMCL`);
+      } else {
+        throw new Error('Chưa kết nối robot');
+      }
+
+      // Pose da duoc dat dung huong that => khong can dao dau xe 180° tren giao dien nua
+      setInvertHeading(false);
+      setTrail([]);
+      setIsPoseSetMode(false);
+      setPoseDraft(null);
+    } catch (err) {
+      console.warn('[AdminPhysicalMapTab] Set initial pose error:', err);
+      setNavStatus(`Lỗi đặt vị trí ban đầu: ${err.message}`);
+    } finally {
+      setIsSettingPose(false);
+    }
+  };
+
+  const handleSetPoseAtDock = () => {
+    const dock =
+      endpoints.find((ep) => ep.id === 'dock') ||
+      endpoints.find((ep) => ['CHARGER', 'dock'].includes(ep.type)) ||
+      { x: 0, y: 0, yaw: 0 };
+    handleApplyInitialPose(Number(dock.x) || 0, Number(dock.y) || 0, Number(dock.yaw) || 0);
+  };
+
+  const handleRelocalize = async () => {
+    if (connectionMode !== 'pi5') {
+      setNavStatus('Định vị lại bằng LiDAR chỉ hỗ trợ xe thật Pi 5 (ROS 2 dùng AMCL tự động).');
+      return;
+    }
+    setIsSettingPose(true);
+    try {
+      const res = await fetch(`http://${pi5Ip}:8000/api/v1/map/localize`, { method: 'POST' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setNavStatus(
+        data.refined
+          ? `Đã định vị lại: (${Number(data.x).toFixed(2)}, ${Number(data.y).toFixed(2)}, ${Number(data.yaw).toFixed(0)}°)`
+          : data.message || 'Pose hiện tại đã khớp bản đồ.'
+      );
+    } catch (err) {
+      setNavStatus(`Lỗi định vị lại: ${err.message}`);
+    } finally {
+      setIsSettingPose(false);
+    }
   };
 
   // Gui toa do dich den toi Pi 5 hoac ROS 2
@@ -1125,20 +1288,23 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     setIsNavigating(true);
     setNavStatus(`Đang di chuyển tới (${gx.toFixed(2)}, ${gy.toFixed(2)})...`);
 
-    if (connectionMode === 'pi5' && pi5WsRef.current && isWsConnected) {
-      try {
-        pi5WsRef.current.send(
-          JSON.stringify({
-            command: 'navigate_goal',
-            target_x: gx,
-            target_y: gy,
-            target_yaw: gyaw,
-            speed_percent: speedPercent,
-          })
-        );
-      } catch (err) {
+    // WebSocket /map/ws tren Pi 5 chi phat telemetry, khong doc lenh => gui dich qua REST
+    if (connectionMode === 'pi5') {
+      fetch(`http://${pi5Ip}:8000/api/v1/map/navigate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          target_x: gx,
+          target_y: gy,
+          target_yaw: gyaw,
+          speed: speedPercent,
+          linear_speed: maxLinearSpeed,
+        }),
+      }).catch((err) => {
         console.warn('[AdminPhysicalMapTab] Pi5 send goal error:', err);
-      }
+        setNavStatus(`Lỗi gửi đích tới Pi 5: ${err.message}`);
+        setIsNavigating(false);
+      });
     }
 
     if (connectionMode === 'ros2' && rosClientRef.current && isWsConnected) {
@@ -1385,8 +1551,14 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
             onMouseUp={handleCanvasMouseUp}
             className={`w-full h-full max-w-[960px] max-h-[640px] rounded-xl border border-slate-800 shadow-2xl bg-slate-900 object-contain ${
               dragState ? 'cursor-grabbing' : 'cursor-crosshair'
-            }`}
+            } ${isPoseSetMode ? 'ring-2 ring-emerald-500/70' : ''}`}
           />
+
+          {isPoseSetMode && (
+            <div className="absolute top-16 left-1/2 -translate-x-1/2 z-10 px-3 py-1.5 rounded-lg bg-emerald-950/90 border border-emerald-700 text-[11px] font-semibold text-emerald-300 shadow-xl">
+              Đặt vị trí ban đầu: click chỗ robot đứng → kéo theo hướng mũi xe → thả chuột
+            </div>
+          )}
 
           {/* FLOATING ACTION BAR O DAY CANAS: CHINH SUA ZONE HOAC ENDPOINT Y CHANG GIA LAP */}
           {selectedZone && (
@@ -1668,6 +1840,77 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
                 {hardwareInfo.battery}%
               </span>
             </div>
+          </div>
+
+          {/* Card 2: Dat vi tri ban dau (Initial Pose / 2D Pose Estimate) */}
+          <div className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 space-y-2">
+            <div className="flex items-center justify-between text-xs font-bold text-slate-300">
+              <span className="flex items-center gap-1.5">
+                <Crosshair className="w-3.5 h-3.5 text-emerald-400" />
+                Vị Trí Ban Đầu Robot
+              </span>
+              {isSettingPose && <RefreshCw className="w-3.5 h-3.5 text-emerald-400 animate-spin" />}
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsPoseSetMode((prev) => !prev);
+                  setPoseDraft(null);
+                  setSelectedEndpoint(null);
+                  setSelectedZone(null);
+                }}
+                disabled={isSettingPose}
+                className={`px-2 py-1.5 rounded text-[11px] font-semibold flex items-center justify-center gap-1.5 cursor-pointer transition-colors border ${
+                  isPoseSetMode
+                    ? 'bg-emerald-600 text-white border-emerald-500 animate-pulse'
+                    : 'bg-slate-800 text-slate-200 border-slate-700 hover:bg-slate-700'
+                }`}
+                title="Click vào vị trí robot trên bản đồ, giữ chuột kéo theo hướng mũi xe rồi thả"
+              >
+                <Crosshair className="w-3 h-3" />
+                {isPoseSetMode ? 'Hủy chọn' : 'Chọn trên map'}
+              </button>
+              <button
+                type="button"
+                onClick={handleSetPoseAtDock}
+                disabled={isSettingPose}
+                className="px-2 py-1.5 rounded text-[11px] font-semibold flex items-center justify-center gap-1.5 cursor-pointer transition-colors border bg-slate-800 text-slate-200 border-slate-700 hover:bg-slate-700"
+                title="Robot đang đứng tại Trạm Sạc (Home), mũi xe theo hướng yaw của điểm dock"
+              >
+                <Home className="w-3 h-3" />
+                Đặt tại Dock
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between gap-2">
+              <label className="flex items-center gap-1.5 text-[11px] text-slate-400 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={refinePoseWithLidar}
+                  onChange={(e) => setRefinePoseWithLidar(e.target.checked)}
+                  className="accent-emerald-500"
+                />
+                Tinh chỉnh bằng LiDAR
+              </label>
+              <button
+                type="button"
+                onClick={handleRelocalize}
+                disabled={isSettingPose || connectionMode !== 'pi5'}
+                className="px-2 py-1 rounded text-[10px] font-semibold flex items-center gap-1 cursor-pointer transition-colors border bg-slate-900 text-cyan-300 border-slate-700 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed"
+                title="Khớp lại tia LiDAR với bản đồ quanh vị trí hiện tại để sửa trôi odometry"
+              >
+                <RefreshCw className="w-3 h-3" />
+                Định vị lại
+              </button>
+            </div>
+
+            {isPoseSetMode && (
+              <p className="text-[10px] text-emerald-300/90 leading-snug">
+                Click vào chỗ robot đang đứng, giữ chuột và kéo theo hướng mũi xe, rồi thả chuột.
+              </p>
+            )}
           </div>
 
           {/* TAB SELECTOR: WAYPOINTS vs ZONES vs TELEOP */}

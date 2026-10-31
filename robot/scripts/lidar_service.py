@@ -196,14 +196,16 @@ class RPLidarSLAMCore:
         if self.pi_motor is not None:
             return self.pi_motor
         try:
-            from motor_controller import MotorController
+            from motor_controller import MotorController, load_config
+            # Dung chung robot/settings.yaml voi main.py de chieu motor khong bi lech nhau.
+            gpio_cfg = load_config().get("robot", {}).get("gpio", {})
             self.pi_motor = MotorController(
-                left_forward_pin=17,
-                left_backward_pin=27,
-                right_forward_pin=22,
-                right_backward_pin=23,
-                invert_left_direction=True,
-                invert_right_direction=False,
+                left_forward_pin=gpio_cfg.get("left_forward", 17),
+                left_backward_pin=gpio_cfg.get("left_backward", 27),
+                right_forward_pin=gpio_cfg.get("right_forward", 22),
+                right_backward_pin=gpio_cfg.get("right_backward", 23),
+                invert_left_direction=gpio_cfg.get("invert_left_direction", False),
+                invert_right_direction=gpio_cfg.get("invert_right_direction", False),
                 default_speed=50,
             )
             logger.info("🚗 [LiDAR-SLAM] Đã khởi tạo MotorController trực tiếp trên Raspberry Pi 5 (GPIO 17, 27, 22, 23)!")

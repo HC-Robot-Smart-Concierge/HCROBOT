@@ -15,9 +15,11 @@ robot:
     right_forward: 22    # GPIO22 -> IN3
     right_backward: 23   # GPIO23 -> IN4
 
-    # Đảo chiều motor để tiến đúng hướng FRONT của robot
-    invert_left_direction: true
-    invert_right_direction: false
+    # Đảo chiều motor để tiến đúng hướng FRONT của robot (phía ngược dây cáp LiDAR).
+    # Kiểm tra bằng: sudo python3 main.py --drive-test forward (kê bánh lên trước).
+    # Cả hai bên quay lùi -> đảo cả hai cờ; chỉ một bên quay lùi -> đảo cờ bên đó.
+    invert_left_direction: false
+    invert_right_direction: true
 
   ultrasonic_serial:
     port: "auto"          # Hoặc /dev/ttyUSB0, /dev/ttyACM0

@@ -222,8 +222,18 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
     history = session_manager.get_history(sid)
 
     # 0. REDIS CLOUD FAST AI CACHE CHECK (< 5ms)
-    from app.services.cache.redis_service import redis_service
-    cached_ai = await redis_service.get_ai_cache(request.prompt, request.language or "vi")
+    # Bỏ qua Redis Cache nếu:
+    # 1. Session đang có pending_intent chờ khách bổ sung số phòng
+    # 2. Câu hỏi kiểm tra tiến độ/trạng thái đơn món (cần dữ liệu DB thời gian thực của bếp)
+    from app.services.ai.constants import SERVICE_KEYWORDS
+    prompt_lower_req = (request.prompt or "").lower()
+    is_status_query_req = any(k in prompt_lower_req for k in SERVICE_KEYWORDS.get("query_order_status", []))
+    pending_intent_exist = bool(session_manager.get_pending_intent(sid))
+
+    cached_ai = None
+    if not pending_intent_exist and not is_status_query_req:
+        from app.services.cache.redis_service import redis_service
+        cached_ai = await redis_service.get_ai_cache(request.prompt, request.language or "vi")
     if cached_ai and cached_ai.get("full_text"):
         reply = cached_ai["full_text"]
         if not request.language or request.language.lower() in ("auto", "bilingual"):
@@ -309,7 +319,7 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
     try:
         audio_b64, mime_type, _ = await asyncio.wait_for(
             tts_service.synthesize(reply, provider="edge", language=lang_code),
-            timeout=4.8
+            timeout=7.0
         )
     except Exception as e_tts:
         logger.warning(f"[AIChatService] TTS online timeout/error, fallback to frontend WebSpeech: {e_tts}")
@@ -333,6 +343,7 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
     target_room = graph_result.get("target_room_number") or current_room
     pending_act = graph_result.get("pending_service_action") or act
     pending_items = graph_result.get("pending_service_items") or items
+    status_q_type = graph_result.get("status_query_type")
     support_session_id = None
     call_ticket_code = None
 
@@ -343,7 +354,7 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
     elif require_pin:
         # Tạm dừng tạo ticket tự động - chờ khách bấm xác thực PIN trên màn hình Kiosk
         logger.info(f"[AIChatService] Service request '{act}' for Room {target_room} requires Touch PIN verification.")
-    elif act and act not in ["chitchat", "conversation", "faq", "fast_path", "provide_room_number", "unknown"]:
+    elif act and act not in ["chitchat", "conversation", "faq", "fast_path", "provide_room_number", "query_order_status", "unknown"]:
         # Chỉ tạo ticket khi đã có số phòng và không cần PIN
         if not missing_room and current_room:
             asyncio.create_task(
@@ -357,32 +368,36 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
     fast_action = graph_result.get("action")
     if fast_hit_matched and fast_action == "none":
         destination_key = None
+    elif act == "query_order_status":
+        destination_key = None
     else:
         destination_key = graph_result.get("destination_key") or _detect_destination_poi(request.prompt, reply, current_room)
     eye_expression = graph_result.get("eye_expression")
 
-    # Lưu kết quả vào Redis Cache
-    try:
-        await redis_service.set_ai_cache(
-            request.prompt,
-            lang_code,
-            {
-                "full_text": reply,
-                "detected_language": detected_lang,
-                "lang_code": lang_code,
-                "action": act,
-                "destination_key": destination_key,
-                "trigger_video_call": is_video_call,
-            }
-        )
-    except Exception:
-        pass
+    # Lưu kết quả vào Redis Cache (bỏ qua nếu là câu hỏi tra cứu trạng thái đơn món thời gian thực)
+    if act != "query_order_status":
+        try:
+            await redis_service.set_ai_cache(
+                request.prompt,
+                lang_code,
+                {
+                    "full_text": reply,
+                    "detected_language": detected_lang,
+                    "lang_code": lang_code,
+                    "action": act,
+                    "destination_key": destination_key,
+                    "trigger_video_call": is_video_call,
+                }
+            )
+        except Exception:
+            pass
 
     return ChatResponse(
         response=reply,
         model_used=settings.active_llm_model,
         detected_language=detected_lang,
         lang_code=lang_code,
+        action=act,
         session_id=sid,
         current_room_number=current_room,
         missing_room_number=missing_room,
@@ -397,6 +412,7 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
         target_room_number=target_room,
         pending_service_action=pending_act,
         pending_service_items=pending_items,
+        status_query_type=status_q_type,
     )
 
 
@@ -416,7 +432,14 @@ async def generate_chat_stream(request: ChatRequest) -> AsyncGenerator[str, None
         yield f"data: {json.dumps({'event': 'ack', 'status': 'connected'}, ensure_ascii=False)}\n\n"
 
         # 1. KIỂM TRA HARNESS: MEGA FAST-PATH (< 1ms)
-        fast_hit = ollama_service.check_fast_path_full(request.prompt, request.language)
+        # Bỏ qua Fast-Path tĩnh nếu câu hỏi mang tính yêu cầu dịch vụ / đồ dùng buồng phòng
+        prompt_l = request.prompt.lower()
+        is_action_svc = bool(re.search(
+            r'(cho (tôi|mình|em)|xin|lấy|mang|đem|gửi|thêm|mượn|cần|muốn|đặt|yêu cầu|order|bring|send|give me|need)',
+            prompt_l,
+            re.IGNORECASE
+        )) and any(k in prompt_l for k in ["khăn", "khan", "gối", "chăn", "nệm", "dép", "bàn chải", "dầu gội", "sữa tắm", "massage", "giặt ủi", "dọn phòng", "món", "cơm", "nước", "đồ ăn"])
+        fast_hit = None if is_action_svc else ollama_service.check_fast_path_full(request.prompt, request.language)
         if fast_hit:
             reply, lang_name, lang_code, act_type, act_payload = fast_hit
             dest_key = act_payload.get("destination_key") if isinstance(act_payload, dict) else None

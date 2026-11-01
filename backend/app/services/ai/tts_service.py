@@ -554,10 +554,35 @@ class TTSService:
 
     async def warm_up_common_phrases(self):
         """Pre-cache câu đệm và câu chào phổ biến để phản hồi tức thì 0ms."""
+
         common_phrases = [
+
             ("Dạ đợi em một tí nhé ạ.", "vi-VN", "vi-VN-HoaiMyNeural"),
+
             ("Please wait a moment.", "en-US", "en-US-JennyNeural"),
+
             ("Dạ đợi em một tí ạ.", "vi-VN", "vi-VN-HoaiMyNeural"),
+
+            ("Rora cảm ơn quý khách! Quý khách chấm điểm dịch vụ giúp em nhé.", "vi-VN", "vi-VN-HoaiMyNeural"),
+
+            ("Rora cảm ơn quý khách! Chúc quý khách kỳ nghỉ tuyệt vời.", "vi-VN", "vi-VN-HoaiMyNeural"),
+
+            ("Rora xin ghi nhận ý kiến để hoàn thiện hơn. Cảm ơn quý khách.", "vi-VN", "vi-VN-HoaiMyNeural"),
+
+            ("Dạ đây là toàn bộ cơ sở vật chất và tiện ích 5 sao của khách sạn ạ.", "vi-VN", "vi-VN-HoaiMyNeural"),
+
+            ("Xin lỗi quý khách, không thể kết nối tới AI Server.", "vi-VN", "vi-VN-HoaiMyNeural"),
+
+            ("Xác thực phòng thành công! Đơn phục vụ đã được tạo.", "vi-VN", "vi-VN-HoaiMyNeural"),
+
+            ("Quý khách có thể quét mã QR trên màn hình để lưu lại chỉ dẫn đường đi trên điện thoại nhé ạ.", "vi-VN", "vi-VN-HoaiMyNeural"),
+
+            ("You can scan the QR code on the screen to save directions on your mobile phone.", "en-US", "en-US-JennyNeural"),
+
+            ("Dạ em đã hiểu ạ.", "vi-VN", "vi-VN-HoaiMyNeural"),
+
+            ("I understand.", "en-US", "en-US-JennyNeural"),
+
         ]
         for phrase, lang, voice in common_phrases:
             try:

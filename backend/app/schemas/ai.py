@@ -29,6 +29,8 @@ class ChatResponse(BaseModel):
     pending_service_action: Optional[str] = Field(None, description="Hành động dịch vụ đang chờ xác thực: room_service, housekeeping...")
     pending_service_items: Optional[str] = Field(None, description="Chi tiết các món đồ đang chờ xác thực")
     eye_expression: Optional[str] = Field(None, description="Biểu cảm cử động mắt của Robot (look_up, look_left, look_right, look_around, happy)")
+    action: Optional[str] = Field(None, description="Tên action/intent dịch vụ được phân loại: query_order_status, room_service, ...")
+    status_query_type: Optional[str] = Field(None, description="Loại tra cứu trạng thái: service | food")
 
 
 class IntentRequest(BaseModel):

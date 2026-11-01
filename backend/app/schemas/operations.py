@@ -835,6 +835,7 @@ class RoomNfcVerifyRequest(BaseModel):
 
 class RoomPinVerifyResponse(BaseModel):
     verified: bool = Field(..., description="True nếu mã PIN/CCCD/NFC chính xác")
+    success: bool = Field(True, description="True nếu xác thực thành công")
     room_number: str = Field(..., description="Số phòng")
     guest_name: Optional[str] = Field(None, description="Tên khách đang ở")
     ticket_code: Optional[str] = Field(None, description="Mã ticket được tạo tự động sau khi xác thực thành công")

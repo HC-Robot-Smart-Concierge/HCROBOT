@@ -632,7 +632,7 @@ class OllamaService:
                     },
                     keep_alive="30m"
                 ),
-                timeout=25.0
+                timeout=4.0
             )
 
             raw_reply = response["message"]["content"].strip()

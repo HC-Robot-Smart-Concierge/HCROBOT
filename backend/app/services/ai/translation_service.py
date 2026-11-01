@@ -158,7 +158,7 @@ class TranslationService:
                 f"Provide ONLY the direct translated sentence without quotes, explanations or extra words.\n\n"
                 f"Original: {text}"
             )
-            reply = await gemini_service.generate_reply(prompt=prompt, timeout=3.5)
+            reply = await gemini_service.generate_reply(prompt=prompt, timeout=8.0)
             if reply and reply.strip():
                 return reply.strip().strip('"').strip("'")
         except Exception as e:

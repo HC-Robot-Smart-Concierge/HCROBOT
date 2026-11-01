@@ -866,7 +866,7 @@ DEFAULT_SEED_SCENARIOS = [
         "id": "scn-extra-toiletries",
         "title": "Đồ dùng vệ sinh & Tiện ích buồng phòng (Toiletries & Amenities)",
         "category": "facility",
-        "match_keywords": ["bàn chải", "kem đánh răng", "dầu gội", "sữa tắm", "dép", "khăn tắm", "dao cạo râu", "ban chai", "kem danh rang", "dau goi", "sua tam", "dep", "khan tam", "toothbrush", "toothpaste", "shampoo", "shower gel", "slippers", "extra towel", "amenities", "shaving kit"],
+        "match_keywords": ["đồ dùng vệ sinh", "tiện ích buồng phòng", "trong phòng có gì", "có khăn tắm không", "có bàn chải không", "có dầu gội không", "có máy sấy không", "tiện nghi trong phòng", "tiện nghi buồng phòng", "do dung ve sinh", "tien ich buong phong", "toiletries", "room amenities", "what amenities", "hotel amenities"],
         "match_type": "keyword",
         "response_vi": "Dạ khách sạn chuẩn bị đầy đủ khăn tắm cotton, bàn chải, dầu gội và dép đi trong phòng. Nếu quý khách muốn bổ sung thêm, Rora sẽ gửi yêu cầu tới đội ngũ buồng phòng mang lên ngay ạ!",
         "response_en": "All essential amenities including soft towels, toothbrushes, shampoo, body wash, and slippers are replenished daily. Our Housekeeping team is delighted to bring extra items to your room anytime!",
@@ -1344,6 +1344,20 @@ class ScenarioService:
         # 2. Duyet cac kich ban da sap xep theo priority giam dan
         for scn in self._cache:
             if not scn.get("is_active", True) or not scn.get("is_fast_path", True):
+                continue
+
+            # Bypass fast-path nếu khách đang đưa ra yêu cầu hành động / gọi đồ buồng phòng nhưng kịch bản là FAQ tĩnh (action_type == 'none')
+            is_service_action_call = bool(re.search(
+                r'(cho (tôi|mình|em)|xin|lấy|mang|đem|gửi|thêm|mượn|cần|muốn|đặt|yêu cầu|order|bring|send|give me|need)',
+                normalized,
+                re.IGNORECASE
+            ))
+            is_room_item = bool(re.search(
+                r'(khăn|gối|chăn|nệm|dép|bàn chải|dao cạo|dầu gội|sữa tắm|nước|massage|mát xa|giặt|ủi|dọn|vệ sinh|towel|pillow|blanket|slippers|laundry)',
+                normalized,
+                re.IGNORECASE
+            ))
+            if is_service_action_call and is_room_item and str(scn.get("action_type") or "none") == "none":
                 continue
 
             keywords = scn.get("match_keywords") or []

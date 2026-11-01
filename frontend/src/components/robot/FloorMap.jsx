@@ -622,6 +622,17 @@ export const detectDestinationPoi = (rawPrompt, activeRoomNumber = null) => {
   if (!rawPrompt || typeof rawPrompt !== 'string') return null;
   const p = rawPrompt.toLowerCase().trim();
 
+  // Tuyệt đối không điều hướng bản đồ khi người dùng đang hỏi về tiến độ / trạng thái đơn món & dịch vụ
+  const orderStatusPhrases = [
+    'tình trạng', 'tinh trang', 'tiến độ', 'tien do', 'làm món', 'lam mon',
+    'món ăn', 'mon an', 'đồ ăn', 'do an', 'thức ăn', 'thuc an',
+    'làm tới đâu', 'lam toi dau', 'đến đâu rồi', 'den dau roi', 'tới đâu rồi', 'toi dau roi',
+    'xong chưa', 'xong chua', 'làm xong chưa', 'lam xong chua', 'nấu xong chưa', 'chế biến',
+    'giao chưa', 'giao chua', 'kiểm tra đơn', 'kiem tra don', 'kiểm tra món', 'kiem tra mon',
+    'đơn hàng', 'don hang', 'order status', 'food status'
+  ];
+  if (orderStatusPhrases.some((k) => p.includes(k))) return null;
+
   // Bỏ qua các địa điểm ngoại vi khách sạn
   const externalPlaces = [
     'sân bay', 'airport', 'nội bài', 'tân sơn nhất', 'ga tàu', 'ga hà nội',
@@ -735,8 +746,14 @@ export const detectDestinationPoi = (rawPrompt, activeRoomNumber = null) => {
 
   // 7. Nếu người dùng hỏi đường về phòng chung chung (không có số phòng cụ thể)
   if (isGeneralRoomQuery) {
-    if (activeRoomNumber && /^(?:40[1-9]|30[1-9])$/.test(String(activeRoomNumber).trim())) {
-      return `room_${String(activeRoomNumber).trim()}`;
+    const explicitNavWords = [
+      'chỉ đường', 'chi duong', 'đường lên', 'duong len', 'đường về', 'duong ve',
+      'dẫn tôi', 'dan toi', 'lối lên', 'loi len', 'hướng dẫn lên', 'về phòng', 'lên phòng'
+    ];
+    if (explicitNavWords.some((w) => p.includes(w))) {
+      if (activeRoomNumber && /^(?:40[1-9]|30[1-9])$/.test(String(activeRoomNumber).trim())) {
+        return `room_${String(activeRoomNumber).trim()}`;
+      }
     }
     return null; // Không hardcode bất kỳ phòng nào, để robot hỏi lại số phòng
   }

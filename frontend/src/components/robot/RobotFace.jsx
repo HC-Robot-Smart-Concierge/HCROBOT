@@ -37,8 +37,8 @@ export const RobotFace = ({
     return (
       <div className={`relative flex items-center justify-center transition-all duration-500 select-none ${isMiniSize ? 'w-8 h-8' : isCompactSize ? 'py-4 px-2 min-h-[116px]' : isMobileSize ? 'py-4 px-2 min-h-[140px]' : 'py-12 px-6 min-h-[180px]'} ${className}`}>
         <div className={`relative z-10 flex items-center justify-center transition-all duration-500 ${isMiniSize ? 'gap-2' : isCompactSize ? 'gap-8' : isMobileSize ? 'gap-12' : 'gap-20'}`}>
-          <div className={`${isMiniSize ? 'w-[10px] h-[3px]' : isCompactSize ? 'w-[105px]' : isMobileSize ? 'w-[135px]' : 'w-[170px]'} bg-stone-600/70 rounded-full transition-all duration-500 translate-y-1 shadow-sm`} />
-          <div className={`${isMiniSize ? 'w-[10px] h-[3px]' : isCompactSize ? 'w-[105px]' : isMobileSize ? 'w-[135px]' : 'w-[170px]'} bg-stone-600/70 rounded-full transition-all duration-500 translate-y-1 shadow-sm`} />
+          <div className={`${isMiniSize ? 'w-[10px] h-[3px]' : isCompactSize ? 'w-[105px] h-[6px]' : isMobileSize ? 'w-[135px] h-[7px]' : 'w-[170px] h-[8px]'} bg-stone-600/70 rounded-full transition-all duration-500 translate-y-1 shadow-sm`} />
+          <div className={`${isMiniSize ? 'w-[10px] h-[3px]' : isCompactSize ? 'w-[105px] h-[6px]' : isMobileSize ? 'w-[135px] h-[7px]' : 'w-[170px] h-[8px]'} bg-stone-600/70 rounded-full transition-all duration-500 translate-y-1 shadow-sm`} />
         </div>
       </div>
     );
@@ -46,7 +46,7 @@ export const RobotFace = ({
 
   // 2. Processing Mode (Loading dots spinner xoay mờ dần)
   if (isProcessing) {
-    const spinnerSize = isMiniSize ? 28 : isCompactSize ? 160 : isMobileSize ? 210 : 300;
+    const spinnerSize = isMiniSize ? 28 : isCompactSize ? 160 : isMobileSize ? 180 : 300;
     const dotsCount = 12;
     const center = 100;
     const radius = 62;
@@ -54,7 +54,7 @@ export const RobotFace = ({
 
     return (
       <div 
-        className={`relative flex flex-col items-center justify-center select-none ${isMiniSize ? 'w-8 h-8 sm:w-9 sm:h-9' : isCompactSize ? 'w-[170px] h-[170px]' : isMobileSize ? 'w-[220px] h-[220px] sm:w-[245px] sm:h-[245px]' : 'w-[420px] h-[420px] md:w-[540px] md:h-[540px]'} ${className}`}
+        className={`relative flex flex-col items-center justify-center select-none ${isMiniSize ? 'w-8 h-8 sm:w-9 sm:h-9' : isCompactSize ? 'w-[170px] h-[170px]' : isMobileSize ? 'w-[190px] h-[190px] sm:w-[220px] sm:h-[220px] max-h-[50vh]' : 'w-[420px] h-[420px] md:w-[540px] md:h-[540px]'} ${className}`}
         data-testid="robot-face-processing"
       >
         <svg 
@@ -92,7 +92,7 @@ export const RobotFace = ({
     : isCompactSize 
       ? 'w-[170px] h-[170px]' 
       : isMobileSize 
-        ? 'w-[220px] h-[220px] sm:w-[245px] sm:h-[245px]' 
+        ? 'w-[190px] h-[190px] sm:w-[220px] sm:h-[220px] max-h-[50vh]' 
         : 'w-[420px] h-[420px] sm:w-[480px] sm:h-[480px] md:w-[560px] md:h-[560px] lg:w-[620px] lg:h-[620px]';
 
   // Xác định transform cho mắt theo biểu cảm
@@ -151,9 +151,19 @@ export const RobotFace = ({
             transform: translate(0px, -52px);
           }
         }
-        .robot-blink-twice {
+        .robot-blink-left {
+          transform-box: fill-box;
           transform-origin: center;
+          -webkit-transform-origin: 261px 500px;
           animation: robotBlinkTwice 4.2s infinite ease-in-out;
+          will-change: transform;
+        }
+        .robot-blink-right {
+          transform-box: fill-box;
+          transform-origin: center;
+          -webkit-transform-origin: 739px 500px;
+          animation: robotBlinkTwice 4.2s infinite ease-in-out;
+          will-change: transform;
         }
         .robot-talking-mouth {
           transform-origin: 500px 760px;
@@ -176,7 +186,7 @@ export const RobotFace = ({
 
       <svg 
         viewBox="0 0 1000 1000" 
-        className={`w-full h-full transition-colors duration-300 ${isListening ? 'animate-pulse' : ''}`}
+        className={`w-full h-full transition-colors duration-300 block ${isListening ? 'animate-pulse' : ''}`}
         style={{ animationDuration: isListening ? '2.5s' : undefined }}
       >
         {/* Nhóm hai mắt chuyển động theo biểu cảm */}
@@ -184,29 +194,39 @@ export const RobotFace = ({
           className={`robot-eyes-group ${eyesAnimationClass}`}
           style={{ transform: eyesAnimationClass ? undefined : eyesTransform }}
         >
-          {/* Mắt Trái (Hình chữ nhật bo tròn dạng đứng) */}
-          <rect 
-            x="224" 
-            y="350" 
-            width="74" 
-            height="300" 
-            rx="24" 
-            ry="24" 
-            fill={color} 
-            className={`transition-all duration-300 ${isWelcome && !activeEye ? 'robot-blink-twice' : ''}`}
-          />
+          {/* Mắt Trái */}
+          <g 
+            className={`robot-eye-left ${isWelcome && !activeEye ? 'robot-blink-left' : ''}`}
+            style={{ transformOrigin: '261px 500px' }}
+          >
+            <rect 
+              x="224" 
+              y="350" 
+              width="74" 
+              height="300" 
+              rx="24" 
+              ry="24" 
+              fill={color} 
+              className="transition-all duration-300"
+            />
+          </g>
 
-          {/* Mắt Phải (Hình chữ nhật bo tròn dạng đứng) */}
-          <rect 
-            x="702" 
-            y="350" 
-            width="74" 
-            height="300" 
-            rx="24" 
-            ry="24" 
-            fill={color} 
-            className={`transition-all duration-300 ${isWelcome && !activeEye ? 'robot-blink-twice' : ''}`}
-          />
+          {/* Mắt Phải */}
+          <g 
+            className={`robot-eye-right ${isWelcome && !activeEye ? 'robot-blink-right' : ''}`}
+            style={{ transformOrigin: '739px 500px' }}
+          >
+            <rect 
+              x="702" 
+              y="350" 
+              width="74" 
+              height="300" 
+              rx="24" 
+              ry="24" 
+              fill={color} 
+              className="transition-all duration-300"
+            />
+          </g>
         </g>
 
         {/* Miệng Robot có hiệu ứng Transition chuyển đổi mượt mà giữa không miệng và có miệng */}

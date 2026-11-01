@@ -17,6 +17,7 @@ import {
   Home,
 } from 'lucide-react';
 import { createRoomServiceOrder } from '../../services/operationsApi';
+import { RoomPinModal } from './RoomPinModal';
 
 export const INITIAL_MENU_CATEGORIES = [
   { id: 'appetizers', name: 'Khai vị & Ăn nhẹ', icon: '🥟' },
@@ -711,6 +712,7 @@ export const RobotFoodMenuScreen = ({
   onClose = () => {},
   onOrderSuccess = () => {},
   onRoomChange = () => {},
+  onNotCheckedIn = () => {},
 }) => {
   const [selectedCategory, setSelectedCategory] = useState(INITIAL_MENU_CATEGORIES[0]?.id || 'appetizers');
   const [searchQuery, setSearchQuery] = useState('');
@@ -721,39 +723,16 @@ export const RobotFoodMenuScreen = ({
     if (activeRoomNumber && String(activeRoomNumber).trim()) {
       return String(activeRoomNumber).trim();
     }
-    try {
-      const saved = localStorage.getItem('robot_delivery_room');
-      if (saved && saved.trim() && saved.trim() !== '304') {
-        return saved.trim();
-      }
-    } catch {}
     return '';
   });
-  const [isRoomModalOpen, setIsRoomModalOpen] = useState(false);
-  const [tempRoomInput, setTempRoomInput] = useState(deliveryRoom);
-  const [roomError, setRoomError] = useState('');
+  const [isPinModalOpen, setIsPinModalOpen] = useState(false);
+  const [isPinModalSelectingRoom, setIsPinModalSelectingRoom] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [orderSuccessData, setOrderSuccessData] = useState(null);
 
   const handleOpenRoomModal = () => {
-    setTempRoomInput(deliveryRoom);
-    setRoomError('');
-    setIsRoomModalOpen(true);
-  };
-
-  const handleSaveRoom = (roomToSave = tempRoomInput) => {
-    const trimmed = String(roomToSave || '').trim();
-    setDeliveryRoom(trimmed);
-    setRoomError('');
-    setIsRoomModalOpen(false);
-    try {
-      if (trimmed) {
-        localStorage.setItem('robot_delivery_room', trimmed);
-      } else {
-        localStorage.removeItem('robot_delivery_room');
-      }
-    } catch {}
-    onRoomChange(trimmed);
+    setIsPinModalSelectingRoom(true);
+    setIsPinModalOpen(true);
   };
 
   const mainScrollRef = useRef(null);
@@ -940,16 +919,9 @@ export const RobotFoodMenuScreen = ({
     });
   };
 
-  const handleConfirmOrder = async () => {
-    if (totalItemsCount === 0 || isSubmitting) return;
-
-    if (!deliveryRoom || !deliveryRoom.trim()) {
-      setIsRoomModalOpen(true);
-      setRoomError('Vui lòng nhập số phòng nhận món trước khi đặt');
-      return;
-    }
-
+  const executePlaceOrder = async (targetRoom) => {
     setIsSubmitting(true);
+    const roomToUse = targetRoom || deliveryRoom;
     const orderItemsPayload = Object.values(cart).map((entry) => ({
       name: entry.item.name,
       qty: entry.qty,
@@ -959,30 +931,31 @@ export const RobotFoodMenuScreen = ({
 
     try {
       const res = await createRoomServiceOrder({
-        room_number: deliveryRoom,
+        room_number: roomToUse,
         guest_name: 'Quý Khách',
-        special_instructions: orderNote || 'Đặt món qua màn hình Robot AI',
+        special_instructions: orderNote || 'Đặt món qua màn hình Robot AI (Đã xác thực PIN)',
         items: orderItemsPayload,
         total_amount: totalPrice,
       });
 
       setOrderSuccessData({
-        orderCode: res?.ticket_code || res?.id || `ORD-${Math.floor(1000 + Math.random() * 9000)}`,
-        room: deliveryRoom,
+        orderCode: res?.ticket_code || res?.id || `ORD-${Math.floor(100000 + Math.random() * 900000)}`,
+        room: roomToUse,
         totalAmount: totalPrice,
         itemCount: totalItemsCount,
       });
 
-      // Clear cart
       setCart({});
       setOrderNote('');
+      setDeliveryRoom('');
+      onRoomChange('');
+      try { localStorage.removeItem('robot_delivery_room'); } catch {}
       setIsReviewModalOpen(false);
       onOrderSuccess(res);
     } catch {
-      // Fallback local success
       setOrderSuccessData({
-        orderCode: `ORD-${Math.floor(1000 + Math.random() * 9000)}`,
-        room: deliveryRoom,
+        orderCode: `ORD-${Math.floor(100000 + Math.random() * 900000)}`,
+        room: roomToUse,
         totalAmount: totalPrice,
         itemCount: totalItemsCount,
       });
@@ -991,6 +964,14 @@ export const RobotFoodMenuScreen = ({
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleConfirmOrder = () => {
+    if (totalItemsCount === 0 || isSubmitting) return;
+
+    // BẮT BUỘC MỞ BÀN PHÍM PIN 6 SỐ XÁC NHẬN TRƯỚC KHI TẠO ĐƠN
+    setIsPinModalSelectingRoom(!deliveryRoom || !deliveryRoom.trim());
+    setIsPinModalOpen(true);
   };
 
   return (
@@ -1400,91 +1381,39 @@ export const RobotFoodMenuScreen = ({
         </div>
       )}
 
-      {/* MODAL THAY ĐỔI SỐ PHÒNG NHẬN MÓN */}
-      {isRoomModalOpen && (
-        <div
-          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn overscroll-none touch-none"
-          onClick={() => setIsRoomModalOpen(false)}
-        >
-          <div
-            className="bg-white border border-[#E3DFD5] rounded-3xl p-5 sm:p-6 max-w-sm w-full shadow-2xl space-y-4 animate-in zoom-in-95 duration-150"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between border-b border-stone-100 pb-3">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-stone-100 text-stone-700 flex items-center justify-center">
-                  <Home className="w-4 h-4" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-black text-stone-900">Phòng Nhận Món</h3>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsRoomModalOpen(false)}
-                className="w-7 h-7 rounded-full hover:bg-stone-100 flex items-center justify-center text-stone-400 hover:text-stone-700 transition-colors cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                handleSaveRoom();
-              }}
-              className="space-y-4"
-            >
-              <div>
-                <label className="block text-[11px] font-bold text-stone-600 uppercase tracking-wider mb-1.5">
-                  Nhập số phòng của quý khách:
-                </label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    value={tempRoomInput}
-                    onChange={(e) => {
-                      setTempRoomInput(e.target.value);
-                      if (roomError) setRoomError('');
-                    }}
-                    placeholder="VD: 304, 502, Villa 01..."
-                    autoFocus
-                    className="w-full px-4 py-2.5 rounded-2xl bg-[#FAF8F5] border border-[#E0DCD3] text-base font-black text-stone-900 tracking-wide outline-none focus:border-stone-800 focus:bg-white transition-all text-center"
-                  />
-                  {tempRoomInput && (
-                    <button
-                      type="button"
-                      onClick={() => setTempRoomInput('')}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600 text-xs w-5 h-5 flex items-center justify-center rounded-full hover:bg-stone-200"
-                    >
-                      ✕
-                    </button>
-                  )}
-                </div>
-                {roomError && (
-                  <p className="text-[11px] font-bold text-red-600 mt-1.5 text-center">{roomError}</p>
-                )}
-              </div>
-
-              <div className="flex gap-2.5 pt-1">
-                <button
-                  type="button"
-                  onClick={() => setIsRoomModalOpen(false)}
-                  className="flex-1 py-2.5 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-800 text-xs font-bold transition-all cursor-pointer"
-                >
-                  Hủy bỏ
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 py-2.5 rounded-full bg-[#1A1917] hover:bg-stone-800 text-white text-xs font-bold shadow-md transition-all cursor-pointer"
-                >
-                  Xác Nhận Số Phòng
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      {/* MODAL MÃ PIN PHÒNG 6 SỐ CẢM ỨNG & CHỌN PHÒNG (100% TOUCH UI NUMPAD) */}
+      <RoomPinModal
+        isOpen={isPinModalOpen}
+        onClose={() => {
+          setIsPinModalOpen(false);
+          setIsPinModalSelectingRoom(false);
+        }}
+        roomNumber={deliveryRoom}
+        isSelectingRoomInitial={isPinModalSelectingRoom}
+        onRoomSelect={(room) => {
+          setDeliveryRoom(room);
+          onRoomChange(room);
+          try { localStorage.setItem('robot_delivery_room', room); } catch {}
+        }}
+        pendingAction="room_service"
+        pendingItems={Object.values(cart).map((c) => `${c.qty}x ${c.item.name}`).join(', ')}
+        initialTab="pin"
+        onVerifiedSuccess={(res, verifiedRoom) => {
+          const finalRoom = verifiedRoom || res?.room_number || deliveryRoom;
+          setDeliveryRoom(finalRoom);
+          onRoomChange(finalRoom);
+          setIsPinModalOpen(false);
+          setIsPinModalSelectingRoom(false);
+          // ĐÃ XÁC THỰC MÃ PIN HỢP LỆ -> TIẾN HÀNH ĐẶT MÓN
+          executePlaceOrder(finalRoom);
+        }}
+        onNotCheckedIn={(info) => {
+          setIsPinModalOpen(false);
+          setIsReviewModalOpen(false);
+          onClose();
+          onNotCheckedIn(info);
+        }}
+      />
 
       {/* POPUP THÔNG BÁO ĐẶT MÓN THÀNH CÔNG */}
       {orderSuccessData && (
@@ -1507,9 +1436,14 @@ export const RobotFoodMenuScreen = ({
               </p>
             </div>
 
-            <div className="p-3 bg-stone-50 rounded-2xl border border-stone-200 text-xs flex justify-between font-bold">
-              <span className="text-stone-500">Tổng thanh toán:</span>
-              <span className="text-stone-900">{formatCurrency(orderSuccessData.totalAmount)} đ</span>
+            <div className="p-3.5 bg-stone-50 rounded-2xl border border-stone-200 text-xs flex flex-col gap-1.5 text-left">
+              <div className="flex justify-between font-bold items-center">
+                <span className="text-stone-500">Ghi vào hóa đơn phòng:</span>
+                <span className="text-stone-900 text-sm">{formatCurrency(orderSuccessData.totalAmount)} đ</span>
+              </div>
+              <p className="text-[11px] text-stone-500 leading-normal font-normal">
+                Hóa đơn đã được chuyển về quầy Lễ tân. Quý khách thanh toán khi làm thủ tục trả phòng (không thanh toán tại chỗ).
+              </p>
             </div>
 
             <div className="flex gap-2">

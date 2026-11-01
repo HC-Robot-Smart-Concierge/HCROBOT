@@ -737,7 +737,14 @@ export const verifyRoomPin = async (roomNumber, pin = null, action = null, items
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.detail || 'Mã PIN, 4 số CCCD hoặc thẻ NFC không chính xác.');
+    const detail = errorData.detail;
+    const msg = typeof detail === 'object' && detail ? detail.message : (detail || 'Mã PIN 4 số, số CCCD hoặc thẻ NFC không chính xác.');
+    const err = new Error(msg);
+    err.data = typeof detail === 'object' ? detail : errorData;
+    err.not_checked_in = Boolean(err.data?.not_checked_in);
+    err.destination_key = err.data?.destination_key || (err.not_checked_in ? 'front_desk' : null);
+    err.room_number = err.data?.room_number || roomNumber;
+    throw err;
   }
 
   return await response.json();
@@ -806,6 +813,23 @@ export const checkOutRoom = async (roomId) => {
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
     throw new Error(errorData.detail || 'Lỗi khi thực hiện Check-out.');
+  }
+
+  return await response.json();
+};
+
+/**
+ * Đồng bộ danh sách phòng trực tiếp từ file RAG hệ thống
+ */
+export const syncRoomsFromRAG = async () => {
+  const response = await fetch(`${BASE_URL}/rooms/sync-rag`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.detail || 'Lỗi khi đồng bộ phòng từ file RAG.');
   }
 
   return await response.json();

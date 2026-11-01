@@ -98,6 +98,7 @@ export const useSpeechRecognition = (callbacks = {}) => {
   const lastCommittedTextRef = useRef('');
   const analyserInitPromiseRef = useRef(null);
   const isTranscribingRef = useRef(false);
+  const webSpeechBlockedRef = useRef(false);
 
   const clearSpeechFinalizeTimer = useCallback(() => {
     if (speechFinalizeTimerRef.current) {
@@ -500,30 +501,21 @@ export const useSpeechRecognition = (callbacks = {}) => {
         }
         console.warn('[SpeechRecognition Error]:', event.error);
         if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
-          // Kiểm tra xem Hardware Microphone Stream có đang hoạt động không
-          const isHardwareStreamAlive =
-            mediaStreamRef.current &&
-            mediaStreamRef.current.active &&
-            mediaStreamRef.current.getAudioTracks().some((t) => t.readyState === 'live');
+          // Đặc trị cho iOS Safari / iPhone WebKit: Trình duyệt chặn SpeechRecognition nếu không có direct User Gesture.
+          // Đánh dấu cờ chặn để recognition.onend KHÔNG loop restart gây đơ Microphone!
+          console.log('[SpeechRecognition] WebSpeech blocked by browser gesture policy (iOS/Mobile). Seamlessly switching to Hardware Whisper STT.');
+          webSpeechBlockedRef.current = true;
+          liveRef.current = false;
+          setIsListening(true);
+          setMicLive(true);
+          setError(null);
 
-          if (isHardwareStreamAlive && shouldListenRef.current) {
-            // Khi người dùng đã cấp quyền micro nhưng trình duyệt chặn Web Speech API vì cử chỉ tay hết hạn sau câu hỏi khó
-            // TỰ ĐỘNG CHUYỂN SANG HARDWARE RECORDER + BACKEND STT (Whisper)
-            console.log('[SpeechRecognition] Browser WebSpeech blocked due to gesture timeout. Auto-switching to Hardware Whisper STT.');
-            liveRef.current = false;
-            setIsListening(true);
-            setMicLive(true);
-            setError(null);
-            return;
+          if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+            audioContextRef.current.resume().catch(() => {});
           }
 
-          shouldListenRef.current = false;
-          clearRestartTimer();
-          liveRef.current = false;
-          setIsListening(false);
-          setMicLive(false);
-          setHasMicPermission(false);
-          setError('Trình duyệt chưa được cấp quyền Micro! Vui lòng bấm vào biểu tượng khóa trên thanh URL để Cấp quyền Micro.');
+          startAudioAnalyser().catch(() => {});
+          return;
         } else if (event.error === 'network') {
           networkErrorCountRef.current += 1;
           console.warn(`[SpeechRecognition] Lỗi mạng Google Speech (${networkErrorCountRef.current}). Hệ thống tự động kích hoạt Backend STT Fallback.`);
@@ -538,6 +530,22 @@ export const useSpeechRecognition = (callbacks = {}) => {
 
       recognition.onend = () => {
         liveRef.current = false;
+        // Nếu WebSpeech tạm thời bị chặn cử chỉ tay (iOS/Mobile), tiếp tục lắng nghe bằng Hardware Recorder
+        // và tự động thử kết nối lại WebSpeech sau 1.2s
+        if (webSpeechBlockedRef.current) {
+          if (shouldListenRef.current && !destroyedRef.current) {
+            setIsListening(true);
+            setMicLive(true);
+            clearRestartTimer();
+            restartTimerRef.current = setTimeout(() => {
+              if (shouldListenRef.current && !liveRef.current && !destroyedRef.current) {
+                webSpeechBlockedRef.current = false;
+                startRecognition();
+              }
+            }, 1200);
+          }
+          return;
+        }
         // KHÔNG set isListening = false ở đây để tránh giao diện bị nhấp nháy bật/tắt liên tục!
         if (shouldListenRef.current && !destroyedRef.current) {
           // Nếu Google Speech liên tục lỗi mạng (>2 lần), chuyển sang Backend STT nhưng vẫn định kỳ thử kết nối lại
@@ -584,6 +592,7 @@ export const useSpeechRecognition = (callbacks = {}) => {
   // Tự động mở khóa AudioContext khi có tương tác người dùng (click, touch, keydown)
   useEffect(() => {
     const unlockAudio = () => {
+      webSpeechBlockedRef.current = false;
       if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
         audioContextRef.current.resume().catch(() => {});
       }
@@ -610,6 +619,7 @@ export const useSpeechRecognition = (callbacks = {}) => {
 
   const startListening = async (language = 'vi-VN', inlineCallbacks = null) => {
     destroyedRef.current = false;
+    webSpeechBlockedRef.current = false;
     listenEpochRef.current += 1;
     utteranceCommittedRef.current = false;
     lastCommittedTextRef.current = '';

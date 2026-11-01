@@ -485,7 +485,7 @@ class GeminiService:
         # Nếu cả Gemini và Groq đều không phản hồi, ném ngoại lệ để OllamaService tự động fallback sang Llama
         raise RuntimeError("Tất cả candidate models của Gemini và Groq đều không phản hồi generateContent")
 
-    async def generate_reply(self, prompt: str, timeout: float = 5.0) -> str:
+    async def generate_reply(self, prompt: str, timeout: float = 8.0) -> str:
         """
         Sinh phản hồi văn bản thuần túy (dành cho TranslationService).
         """

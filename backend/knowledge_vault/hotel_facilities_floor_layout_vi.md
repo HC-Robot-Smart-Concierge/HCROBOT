@@ -21,8 +21,8 @@ Khách sạn Aurora Grand gồm có 8 tầng chức năng được phân bổ nh
 - **Tầng Hầm B1 (Basement 1):** Bãi Giữ Xe Máy & Xe Đạp (Mở 24/7).
 - **Tầng Trệt (Ground Floor):** Sảnh Chính (Lobby), Quầy Lễ Tân (Front Desk), Nhà Vệ Sinh, Phòng Nội Bộ Nhân Viên (Staff Only).
 - **Tầng 2:** Khu Vực Ẩm Thực (F&B) — Nhà Hàng Buffet & Quầy Nhận Món (Pickup Area), Bếp Chính, Khu Sơ Chế, Kho Thực Phẩm.
-- **Tầng 3:** Tầng Phòng Nghỉ Tiêu Chuẩn (Gồm 9 phòng: Từ Phòng 301 đến Phòng 309).
-- **Tầng 4:** Tầng Phòng Nghỉ Cao Cấp (Gồm 9 phòng: Từ Phòng 401 đến Phòng 409).
+- **Tầng 3:** Tầng Phòng Nghỉ Tiêu Chuẩn (Gồm 10 phòng: Từ Phòng 301 đến Phòng 310).
+- **Tầng 4:** Tầng Phòng Nghỉ Tiêu Chuẩn (Gồm 10 phòng: Từ Phòng 401 đến Phòng 410).
 - **Tầng 5:** Khu Chăm Sóc Sức Khỏe & Thư Giãn (Wellness) — Hồ Bơi Vô Cực, Phòng Thay Đồ (Locker Room), Thảo Mộc Spa & Massage, Phòng Tập Gym 24/7.
 - **Tầng 6:** Khu Giải Trí Cao Cấp (Entertainment) — Rooftop Coffee Ngắm Thành Phố, Sky Lounge Bar, Cửa Hàng Lưu Niệm (Gift Shop), Phòng VIP Karaoke.
 
@@ -89,23 +89,23 @@ Tất cả các tầng đều được kết nối thẳng bằng **Thang máy A
 
 ---
 
-## 6. Tầng 3 — Phòng Nghỉ Tiêu Chuẩn (Phòng 301 đến 309)
+## 6. Tầng 3 — Phòng Nghỉ Tiêu Chuẩn (Phòng 301 đến 310)
 
 ### Bố trí phòng nghỉ
-- **Dãy hành lang phía trên (từ phải qua trái):** Phòng **301, 302, 303, 304**.
-- **Dãy hành lang phía dưới (từ trái qua phải):** Phòng **305, 306, 307, 308, 309**.
-- **Tổng số phòng:** 9 phòng nghỉ tiêu chuẩn.
+- **Dãy hành lang phía trên (từ phải qua trái):** Phòng **301, 302, 303, 304, 305**.
+- **Dãy hành lang phía dưới (từ trái qua phải):** Phòng **306, 307, 308, 309, 310**.
+- **Tổng số phòng:** 10 phòng nghỉ tiêu chuẩn.
 - **Chỉ đường:** Khách đi Thang máy A lên **Tầng 3**, bước ra khỏi thang máy rẽ vào hành lang trung tâm và đi theo biển số phòng gắn dọc 2 bên tường.
 
 ---
 
-## 7. Tầng 4 — Phòng Nghỉ Cao Cấp (Phòng 401 đến 409)
+## 7. Tầng 4 — Phòng Nghỉ Tiêu Chuẩn (Phòng 401 đến 410)
 
 ### Bố trí phòng nghỉ
-- **Dãy hành lang phía trên (từ phải qua trái):** Phòng **401, 402, 403, 404**.
-- **Dãy hành lang phía dưới (từ trái qua phải):** Phòng **405, 406, 407, 408, 409**.
-- **Tổng số phòng:** 9 phòng nghỉ cao cấp Deluxe & Suite.
-- **Chỉ đường:** Khách đi Thang máy A lên **Tầng 4**, bước ra khỏi thang máy rẽ vào hành lang (Dãy phòng 401-404 ở nhánh bên phải; Dãy phòng 405-409 ở nhánh bên trái).
+- **Dãy hành lang phía trên (từ phải qua trái):** Phòng **401, 402, 403, 404, 405**.
+- **Dãy hành lang phía dưới (từ trái qua phải):** Phòng **406, 407, 408, 409, 410**.
+- **Tổng số phòng:** 10 phòng nghỉ tiêu chuẩn.
+- **Chỉ đường:** Khách đi Thang máy A lên **Tầng 4**, bước ra khỏi thang máy rẽ vào hành lang và đi theo biển số phòng gắn dọc 2 bên tường.
 
 ---
 
@@ -174,8 +174,8 @@ Tất cả các tầng đều được kết nối thẳng bằng **Thang máy A
 | **Hầm B1** | Bãi Giữ Xe Máy & Xe Đạp | Mở 24/7 | Miễn phí cho khách lưu trú | Đi Thang máy A bấm xuống Hầm B1 |
 | **Tầng Trệt** | Sảnh Chính & Quầy Lễ Tân | Mở 24/7 | Miễn phí | Nằm ngay phía bên phải cửa sảnh vào |
 | **Tầng 2** | Bếp Trung Tâm (Staff Only) | Chuẩn bị món 24/7 | Không có nhà hàng/buffet; phục vụ gọi món tận phòng (Room Service) 24/7 |
-| **Tầng 3** | Phòng Nghỉ Tiêu Chuẩn (301-309) | Phục vụ 24/7 | Theo mã đặt phòng | Đi Thang máy A lên Tầng 3, đi theo hành lang |
-| **Tầng 4** | Phòng Nghỉ Cao Cấp (401-409) | Phục vụ 24/7 | Theo mã đặt phòng | Đi Thang máy A lên Tầng 4, đi theo hành lang |
+| **Tầng 3** | Phòng Nghỉ Tiêu Chuẩn (301-310) | Phục vụ 24/7 | Theo mã đặt phòng | Đi Thang máy A lên Tầng 3, đi theo hành lang |
+| **Tầng 4** | Phòng Nghỉ Cao Cấp (401-410) | Phục vụ 24/7 | Theo mã đặt phòng | Đi Thang máy A lên Tầng 4, đi theo hành lang |
 | **Tầng 5** | Hồ Bơi Vô Cực | 06:00 - 22:00 | Miễn phí (kèm khăn tắm) | Đi Thang máy A lên Tầng 5, rẽ trái qua cửa kính |
 | **Tầng 5** | Phòng Thay Đồ & Tắm (Locker) | 06:00 - 22:00 | Miễn phí cho khách bơi/gym | Nằm ngay dưới khu vực hồ bơi Tầng 5 |
 | **Tầng 5** | Thảo Mộc Spa & Massage | 09:00 - 22:00 | Từ 500.000 VNĐ (Giảm 15%) | Đi Thang máy A lên Tầng 5, rẽ trái 15m |
@@ -213,6 +213,6 @@ Tất cả các tầng đều được kết nối thẳng bằng **Thang máy A
 - **Câu hỏi của khách:** *"Khách sạn có quán cafe không?", "Sky bar ở tầng mấy?", "Tầng 6 có gì chơi?"*
 - **Robot trả lời:** *"Dạ Tầng 6 là khu vui chơi giải trí cao cấp, gồm có **Rooftop Coffee** mở từ 07:00 đến 23:00 với view ngắm toàn cảnh thành phố, **Sky Lounge Bar** mở từ 16:30 đến 01:00 đêm, phòng **VIP Karaoke** và **Cửa hàng lưu niệm Gift Shop** ạ. Quý khách đi Thang máy A lên Tầng 6 để trải nghiệm nhé ạ!"*
 
-### Hỏi về Tìm Phòng Nghỉ (301-309, 401-409):
+### Hỏi về Tìm Phòng Nghỉ (301-310, 401-410):
 - **Câu hỏi của khách:** *"Chỉ đường lên phòng 405", "Phòng 302 ở tầng mấy?"*
-- **Robot trả lời:** *"Dạ các phòng từ 301 đến 309 nằm ở **Tầng 3**, còn các phòng từ 401 đến 409 nằm ở **Tầng 4**. Quý khách chỉ cần đi Thang máy A lên đúng tầng của mình, bước ra cửa thang máy sẽ có biển chỉ dẫn hành lang 2 bên dẫn thẳng tới cửa phòng ạ!"*
+- **Robot trả lời:** *"Dạ các phòng từ 301 đến 310 nằm ở **Tầng 3**, còn các phòng từ 401 đến 410 nằm ở **Tầng 4**. Quý khách chỉ cần đi Thang máy A lên đúng tầng của mình, bước ra cửa thang máy sẽ có biển chỉ dẫn hành lang 2 bên dẫn thẳng tới cửa phòng ạ!"*

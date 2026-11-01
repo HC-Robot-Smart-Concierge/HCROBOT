@@ -23,13 +23,13 @@ class Settings(BaseSettings):
 
 
     # LLM Engine Configuration ('gemini' or 'ollama')
-    LLM_PROVIDER: str = "ollama"
+    LLM_PROVIDER: str = "groq"
     GEMINI_API_KEY: Optional[str] = None
     GEMINI_MODEL: str = "gemini-2.5-flash"
 
     # Ollama Configuration (Llama / Qwen local)
     # Ollama Configuration (Default for all team members)
-    AI_PROVIDER: str = "ollama"  # Options: 'ollama' (default local) | 'groq' (cloud fallback/low-spec test)
+    AI_PROVIDER: str = "groq"  # Options: 'ollama' (default local) | 'groq' (cloud fallback/low-spec test)
     OLLAMA_HOST: str = "http://127.0.0.1:11434"
     OLLAMA_MODEL: str = "llama3.2:3b"
     OLLAMA_EMBED_MODEL: Optional[str] = None

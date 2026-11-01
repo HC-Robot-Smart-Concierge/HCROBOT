@@ -4,6 +4,7 @@ import { RobotFace } from './RobotFace';
 import { FloorMap, HOTEL_DESTINATIONS, getMobileGuestMapUrl } from './FloorMap';
 import { QRCodeSVG } from 'qrcode.react';
 import {
+  Clock,
   Menu,
   ChevronDown,
   X,
@@ -15,6 +16,7 @@ import {
   Building,
   Check,
   ChevronRight,
+  ConciergeBell,
 } from 'lucide-react';
 
 const getRobotMode = (state, isSpeaking = false, isProcessing = false, isListening = false) => {
@@ -121,6 +123,9 @@ export const MobileRobotScreen = ({
   workflowTrigger,
   onOpenFacilities,
   onOpenFoodMenu,
+  onOpenRoomService,
+  onOpenOrderStatus,
+  onOpenServiceStatus,
   navigationDestinationKey = 'infinity_pool',
   onSelectDestination,
   availableWorkflows = [],
@@ -378,7 +383,7 @@ export const MobileRobotScreen = ({
                     <>
                       <span className="w-2 h-2 rounded-full bg-stone-400 animate-pulse shrink-0" />
                       <span className="text-[11px] font-medium text-stone-500 truncate">
-                        {isEn ? 'Robot speaking...' : 'Robot đang trả lời...'}
+                        {isEn ? 'Robot speaking · Tap to interrupt' : 'Robot đang nói · Chạm để ngắt lời'}
                       </span>
                     </>
                   ) : isBusy ? (
@@ -484,6 +489,81 @@ export const MobileRobotScreen = ({
                       </p>
                       <p className="text-[10px] sm:text-[11px] text-stone-600 font-medium group-hover:text-stone-800 transition-colors truncate mt-0.5">
                         {isEn ? 'Order culinary & drinks to room' : 'Gọi món ăn & đồ uống lên phòng'}
+                      </p>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-stone-400 group-hover:text-stone-700 group-hover:translate-x-0.5 transition-all shrink-0" />
+                  </button>
+                )}
+
+                {/* 4. Dịch vụ phòng (Room Service: Khăn tắm, gối chăn, massage tại phòng) */}
+                {onOpenRoomService && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onOpenRoomService();
+                      setIsUtilitiesMenuOpen(false);
+                    }}
+                    className="p-3 sm:p-3.5 rounded-2xl bg-white hover:bg-stone-50 active:scale-[0.98] border border-[#E3DFD5] hover:border-stone-400 transition-all cursor-pointer flex items-center gap-3.5 group text-left shadow-xs hover:shadow-md min-h-[64px]"
+                  >
+                    <div className="w-11 h-11 rounded-xl bg-[#EFECE4] border border-[#E3DFD5] text-stone-700 flex items-center justify-center shrink-0 group-hover:bg-[#1A1917] group-hover:text-white group-hover:scale-105 transition-all">
+                      <ConciergeBell className="w-5 h-5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs sm:text-sm font-extrabold text-stone-900 group-hover:text-black transition-colors truncate">
+                        {isEn ? 'In-Room Services & Amenities' : 'Dịch vụ phòng (Room Service)'}
+                      </p>
+                      <p className="text-[10px] sm:text-[11px] text-stone-600 font-medium group-hover:text-stone-800 transition-colors truncate mt-0.5">
+                        {isEn ? 'Towels, extra bedding, in-room spa massage' : 'Thêm khăn tắm, gối chăn, massage tại phòng'}
+                      </p>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-stone-400 group-hover:text-stone-700 group-hover:translate-x-0.5 transition-all shrink-0" />
+                  </button>
+                )}
+
+                                {/* 5. Kiểm tra trạng thái món ăn */}
+                {onOpenOrderStatus && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onOpenOrderStatus();
+                      setIsUtilitiesMenuOpen(false);
+                    }}
+                    className="p-3 sm:p-3.5 rounded-2xl bg-white hover:bg-stone-50 active:scale-[0.98] border border-[#E3DFD5] hover:border-stone-400 transition-all cursor-pointer flex items-center gap-3.5 group text-left shadow-xs hover:shadow-md min-h-[64px]"
+                  >
+                    <div className="w-11 h-11 rounded-xl bg-[#EFECE4] border border-[#E3DFD5] text-stone-700 flex items-center justify-center shrink-0 group-hover:bg-[#1A1917] group-hover:text-white group-hover:scale-105 transition-all">
+                      <Clock className="w-5 h-5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs sm:text-sm font-extrabold text-stone-900 group-hover:text-black transition-colors truncate">
+                        {isEn ? 'Food Order Status' : 'Tiến độ món ăn'}
+                      </p>
+                      <p className="text-[10px] sm:text-[11px] text-stone-600 font-medium group-hover:text-stone-800 transition-colors truncate mt-0.5">
+                        {isEn ? 'Check kitchen cooking progress' : 'Tra cứu tình trạng chế biến'}
+                      </p>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-stone-400 group-hover:text-stone-700 group-hover:translate-x-0.5 transition-all shrink-0" />
+                  </button>
+                )}
+
+                {/* 5b. Kiểm tra tiến độ dịch vụ phòng & dọn phòng */}
+                {onOpenServiceStatus && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onOpenServiceStatus();
+                      setIsUtilitiesMenuOpen(false);
+                    }}
+                    className="p-3 sm:p-3.5 rounded-2xl bg-white hover:bg-stone-50 active:scale-[0.98] border border-[#E3DFD5] hover:border-stone-400 transition-all cursor-pointer flex items-center gap-3.5 group text-left shadow-xs hover:shadow-md min-h-[64px]"
+                  >
+                    <div className="w-11 h-11 rounded-xl bg-[#EFECE4] border border-[#E3DFD5] text-stone-700 flex items-center justify-center shrink-0 group-hover:bg-[#1A1917] group-hover:text-white group-hover:scale-105 transition-all">
+                      <Sparkles className="w-5 h-5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs sm:text-sm font-extrabold text-stone-900 group-hover:text-black transition-colors truncate">
+                        {isEn ? 'Housekeeping & Service Status' : 'Tiến độ dọn phòng & dịch vụ'}
+                      </p>
+                      <p className="text-[10px] sm:text-[11px] text-stone-600 font-medium group-hover:text-stone-800 transition-colors truncate mt-0.5">
+                        {isEn ? 'Check room cleaning & amenities progress' : 'Tra cứu dọn phòng, khăn tắm, massage'}
                       </p>
                     </div>
                     <ChevronRight className="w-4 h-4 text-stone-400 group-hover:text-stone-700 group-hover:translate-x-0.5 transition-all shrink-0" />
@@ -714,7 +794,6 @@ export const MobileRobotScreen = ({
             onClick={() => {
               if (isSpeaking && onStopSpeaking) {
                 onStopSpeaking();
-                if (onStartTalk) onStartTalk();
                 return;
               }
               if (isListening && transcript && onSubmitTalk) {
@@ -722,6 +801,7 @@ export const MobileRobotScreen = ({
                 return;
               }
               if (!isSpeaking && !isBusy && onStartTalk) {
+                if (onPrime) onPrime();
                 onStartTalk();
               }
             }}
@@ -762,7 +842,7 @@ export const MobileRobotScreen = ({
                     title={transcript ? (isEn ? 'Tap to send immediately' : 'Chạm để gửi ngay') : (isEn ? 'Tap to restart mic' : 'Chạm để kích hoạt lại Micro')}
                   >
                     <div className="flex items-center gap-3 min-w-0 flex-1">
-                      <AudioWave isActive={isListening} volumeLevel={volumeLevel} />
+                      <AudioWave isActive={isListening || currentState === "RT-03"} volumeLevel={volumeLevel} />
                       <div className="flex flex-col text-left min-w-0">
                         <span className="text-xs font-bold text-stone-200 line-clamp-1">
                           {transcript ? `"${transcript}"` : (isEn ? 'Listening... Please speak' : 'Listening... · Đang lắng nghe...')}
@@ -803,12 +883,14 @@ export const MobileRobotScreen = ({
               ) : (
                 /* 4. Trạng thái chờ: Nút chạm nói thanh lịch chuẩn Desktop */
                 <div className="mt-2.5 flex flex-col items-center gap-1.5 animate-fadeIn">
-                  <div
+                  <button
+                    type="button"
                     onClick={(e) => {
                       e.stopPropagation();
+                      if (onPrime) onPrime();
                       if (onStartTalk) onStartTalk();
                     }}
-                    className="px-4 py-2 bg-stone-900/85 hover:bg-stone-800 backdrop-blur-xl border border-stone-700/80 rounded-full shadow-lg flex items-center gap-2.5 cursor-pointer active:scale-95 transition-all text-stone-300 hover:text-stone-100 group"
+                    className="px-4 py-2 bg-stone-900/85 hover:bg-stone-800 backdrop-blur-xl border border-stone-700/80 rounded-full shadow-lg flex items-center gap-2.5 cursor-pointer active:scale-95 transition-all text-stone-300 hover:text-stone-100 group outline-none"
                     title={isEn ? 'Touch or speak to begin' : 'Chạm hoặc nói chuyện để bắt đầu'}
                   >
                     <span className="w-2 h-2 rounded-full bg-stone-300 animate-pulse group-hover:scale-125 transition-transform" />
@@ -822,7 +904,7 @@ export const MobileRobotScreen = ({
                       <Globe className="w-2.5 h-2.5 text-stone-400" />
                       <span>VI · EN</span>
                     </div>
-                  </div>
+                  </button>
                 </div>
               )}
             </div>

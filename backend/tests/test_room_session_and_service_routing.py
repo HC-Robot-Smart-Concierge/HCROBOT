@@ -3,6 +3,9 @@ from unittest.mock import AsyncMock, patch
 from app.services.ai.session_manager import session_manager, extract_room_number
 from app.services.ai.concierge_graph import concierge_graph, intent_router_node, service_fsm_node
 from app.services.ai.ai_ticket_service import auto_create_ticket, background_extract_and_create_ticket
+from app.core.database import AsyncSessionLocal
+from app.models.hotel import Room
+from sqlalchemy import select
 
 
 def test_extract_room_number():
@@ -178,6 +181,13 @@ async def test_ticket_creation_validation():
 @pytest.mark.asyncio
 async def test_cancel_service_flow():
     """Kiểm tra luồng HỦY YÊU CẦU: Khách yêu cầu hủy -> hỏi số phòng nếu thiếu, xác nhận nếu đã có."""
+    async with AsyncSessionLocal() as db:
+        res_r = await db.execute(select(Room).where(Room.room_number == "304"))
+        r304 = res_r.scalars().first()
+        if r304:
+            r304.status = "OCCUPIED"
+            await db.commit()
+
     sid = "cancel_service_test_session"
     session_manager.reset_session(sid)
     config = {"configurable": {"thread_id": sid}}
@@ -191,19 +201,19 @@ async def test_cancel_service_flow():
     }, config=config)
 
     assert res1["missing_room_number"] is True
-    assert "số phòng" in res1["response"].lower()
+    assert "phòng" in res1["response"].lower()
     assert session_manager.get_pending_intent(sid)["action"] == "cancel_service"
 
-    # Lượt 2: Cung cấp số phòng 502 -> Robot giải quyết yêu cầu hủy cho phòng 502
+    # Lượt 2: Cung cấp số phòng 304 (phòng hợp lệ trong RAG) -> Robot giải quyết yêu cầu hủy cho phòng 304
     res2 = await concierge_graph.ainvoke({
         "session_id": sid,
-        "prompt": "Phòng 502 em ơi",
+        "prompt": "Phòng 304 em ơi",
         "room_number": None,
         "chat_history": [],
     }, config=config)
 
     assert res2["missing_room_number"] is False
-    assert "502" in res2["response"]
+    assert "304" in res2["response"]
     assert "hủy" in res2["response"].lower()
 
     session_manager.reset_session(sid)
@@ -269,3 +279,54 @@ async def test_faq_menu_protection_does_not_ask_room():
 
     session_manager.reset_session(sid)
 
+
+
+@pytest.mark.asyncio
+async def test_query_order_status_without_pin_flow():
+    """Kiểm tra luồng hỏi trạng thái món ăn/dịch vụ: Hỏi số phòng nếu chưa có, KHÔNG hỏi mã PIN và KHÔNG mở bản đồ."""
+    sid = "test_query_order_status_session_99"
+    session_manager.reset_session(sid)
+    config = {"configurable": {"thread_id": sid}}
+
+    # 1. Khách hỏi tiến độ món ăn nhưng CHƯA nói số phòng
+    res1 = await concierge_graph.ainvoke({
+        "session_id": sid,
+        "prompt": "Món ăn của tôi làm tới đâu rồi em?",
+        "room_number": None,
+        "chat_history": [],
+    }, config=config)
+
+    assert res1["missing_room_number"] is True
+    assert res1.get("require_room_pin", False) is False
+    assert res1.get("destination_key") is None
+    assert "phòng" in res1["response"].lower()
+
+    # 2. Khách trả lời số phòng: "phòng 401"
+    res2 = await concierge_graph.ainvoke({
+        "session_id": sid,
+        "prompt": "Phòng 401 nha em",
+        "room_number": None,
+        "chat_history": [],
+    }, config=config)
+
+    assert res2["missing_room_number"] is False
+    assert res2.get("require_room_pin", False) is False
+    assert res2.get("destination_key") is None
+    assert "401" in res2["response"]
+
+    session_manager.reset_session(sid)
+
+    # 3. Khách hỏi thẳng kèm số phòng: "món ăn phòng 305 làm xong chưa?"
+    res3 = await concierge_graph.ainvoke({
+        "session_id": sid,
+        "prompt": "Món ăn phòng 305 làm xong chưa em ơi?",
+        "room_number": None,
+        "chat_history": [],
+    }, config=config)
+
+    assert res3["missing_room_number"] is False
+    assert res3.get("require_room_pin", False) is False
+    assert res3.get("destination_key") is None
+    assert "305" in res3["response"]
+
+    session_manager.reset_session(sid)

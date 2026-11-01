@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import { RefreshCw, UtensilsCrossed, ChefHat, CheckCircle2, Clock } from 'lucide-react';
 import { Pagination } from '../../components/common/Pagination';
 import { INITIAL_ROOM_SERVICE_DATA } from '../../data/mockHotelData';
 import {
@@ -62,7 +63,7 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
   const staffName = currentUser?.full_name || currentUser?.name || 'Elena Rossi';
   const [data, setData] = useState({
     ...INITIAL_ROOM_SERVICE_DATA,
-    orders: INITIAL_ROOM_SERVICE_DATA.orders.map(normalizeOrder),
+    orders: [],
     deliveryFleet: INITIAL_ROOM_SERVICE_DATA.deliveryFleet.map(normalizeFleet),
     lowStockAlerts: INITIAL_ROOM_SERVICE_DATA.lowStockAlerts.map(normalizeStock),
   });
@@ -74,12 +75,15 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
     setCurrentPage(1);
   }, [filter]);
 
-  useEffect(() => {
-    const loadData = async () => {
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const loadData = useCallback(async (isManual = false) => {
+    if (isManual) setIsRefreshing(true);
+    try {
       const response = await fetchRoomServiceDashboard();
       if (!response) return;
 
-      const hasLiveOrders = Array.isArray(response.orders) && response.orders.length > 0;
+      const hasLiveOrders = Array.isArray(response.orders);
       const hasLiveFleet =
         Array.isArray(response.delivery_fleet) && response.delivery_fleet.length > 0;
       const hasLiveStock =
@@ -87,8 +91,8 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
 
       setData((previous) => ({
         ...previous,
-        kpis: hasLiveOrders && response.kpis ? response.kpis : previous.kpis,
-        orders: hasLiveOrders ? response.orders.map(normalizeOrder) : previous.orders,
+        kpis: response.kpis || previous.kpis,
+        orders: hasLiveOrders ? response.orders.map(normalizeOrder) : [],
         deliveryFleet: hasLiveFleet
           ? response.delivery_fleet.map(normalizeFleet)
           : previous.deliveryFleet,
@@ -96,32 +100,117 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
           ? response.low_stock_alerts.map(normalizeStock)
           : previous.lowStockAlerts,
       }));
-    };
-
-    loadData();
+    } catch (err) {
+      console.error('Error fetching room service dashboard:', err);
+    } finally {
+      if (isManual) {
+        setTimeout(() => setIsRefreshing(false), 500);
+      }
+    }
   }, []);
+
+  // Tự động làm mới dữ liệu theo thời gian thực mỗi 4 giây (Auto-polling real-time)
+  useEffect(() => {
+    loadData();
+    const interval = setInterval(() => {
+      loadData(false);
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [loadData]);
+
+  // Thống kê số lượng theo từng phân loại Tab
+  const tabCounts = useMemo(() => {
+    const orders = data.orders || [];
+    return {
+      All: orders.length,
+      Pending: orders.filter((o) => {
+        const s = (o.status || '').toLowerCase().trim();
+        return s === 'pending' || s === 'unassigned' || s === 'chờ tiếp nhận';
+      }).length,
+      Cooking: orders.filter((o) => {
+        const s = (o.status || '').toLowerCase().trim();
+        return (
+          s === 'cooking' ||
+          s === 'in preparation' ||
+          s === 'in progress' ||
+          s === 'sent to kitchen' ||
+          s === 'sent_to_kitchen' ||
+          s === 'đã chuyển bếp'
+        );
+      }).length,
+      Ready: orders.filter((o) => {
+        const s = (o.status || '').toLowerCase().trim();
+        return (
+          s === 'ready' ||
+          s === 'món đã nấu xong' ||
+          s === 'food ready' ||
+          s === 'sẵn sàng' ||
+          s === 'đã nấu xong'
+        );
+      }).length,
+      Delivering: orders.filter((o) => {
+        const s = (o.status || '').toLowerCase().trim();
+        return s === 'delivering' || s === 'in transit' || s === 'đang giao';
+      }).length,
+      Completed: orders.filter((o) => {
+        const s = (o.status || '').toLowerCase().trim();
+        return s === 'completed' || s === 'delivered' || s === 'hoàn tất';
+      }).length,
+    };
+  }, [data.orders]);
 
   const filteredOrders = useMemo(() => {
     let list = data.orders || [];
     if (filter !== 'All') {
-      const filterLower = filter.toLowerCase();
+      const filterLower = filter.toLowerCase().trim();
       list = list.filter((order) => {
-        const s = (order.status || '').toLowerCase();
-        if (filterLower === 'pending') return s === 'pending' || s === 'unassigned';
-        if (filterLower === 'cooking') return s === 'cooking' || s === 'in preparation' || s === 'in progress' || s === 'sent to kitchen' || s === 'ready';
-        if (filterLower === 'delivering') return s === 'delivering' || s === 'in transit';
-        if (filterLower === 'completed') return s === 'completed' || s === 'delivered';
+        const s = (order.status || '').toLowerCase().trim();
+        if (filterLower === 'pending') {
+          return s === 'pending' || s === 'unassigned' || s === 'chờ tiếp nhận';
+        }
+        if (filterLower === 'cooking') {
+          return (
+            s === 'cooking' ||
+            s === 'in preparation' ||
+            s === 'in progress' ||
+            s === 'sent to kitchen' ||
+            s === 'sent_to_kitchen' ||
+            s === 'đã chuyển bếp'
+          );
+        }
+        if (filterLower === 'ready') {
+          return (
+            s === 'ready' ||
+            s === 'món đã nấu xong' ||
+            s === 'food ready' ||
+            s === 'sẵn sàng' ||
+            s === 'đã nấu xong'
+          );
+        }
+        if (filterLower === 'delivering') {
+          return s === 'delivering' || s === 'in transit' || s === 'đang giao' || s === 'ready';
+        }
+        if (filterLower === 'completed') {
+          return s === 'completed' || s === 'delivered' || s === 'hoàn tất';
+        }
         return s === filterLower;
       });
     }
 
-    // Sắp xếp: Đơn nào Done / Completed thì để xuống cuối cùng
+    // Sắp xếp thông minh: Đơn Bếp đã xong (Ready) và Chờ tiếp nhận (Pending) đưa lên đầu tiên để Room Service xử lý ngay
     return [...list].sort((a, b) => {
-      const isDoneA = ['completed', 'delivered'].includes((a.status || '').toLowerCase().trim());
-      const isDoneB = ['completed', 'delivered'].includes((b.status || '').toLowerCase().trim());
-      if (isDoneA && !isDoneB) return 1;
-      if (!isDoneA && isDoneB) return -1;
-      return 0;
+      const sA = (a.status || '').toLowerCase().trim();
+      const sB = (b.status || '').toLowerCase().trim();
+
+      const getPriority = (st) => {
+        if (st === 'ready' || st === 'món đã nấu xong' || st === 'food ready' || st === 'đã nấu xong') return 1;
+        if (st === 'pending' || st === 'unassigned') return 2;
+        if (st === 'delivering' || st === 'in transit') return 3;
+        if (st === 'cooking' || st === 'sent to kitchen') return 4;
+        return 5;
+      };
+
+      return getPriority(sA) - getPriority(sB);
     });
   }, [data.orders, filter]);
 
@@ -275,11 +364,23 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
   return (
     <main className="flex-1 overflow-y-auto custom-scrollbar bg-[#FCFAF7] font-sans">
       <div className="w-full max-w-[1180px] mx-auto px-4 md:px-8 pt-3 pb-8">
-        <header>
-          <h2 className="text-[15px] font-semibold text-[#2C2926]">{t('rsTitle')}</h2>
-          <p className="mt-0.5 text-[12px] text-[#77726D]">
-            {t('rsSubtitle')}
-          </p>
+        <header className="flex items-center justify-between gap-4">
+          <div>
+            <h2 className="text-[15px] font-semibold text-[#2C2926]">{t('rsTitle')}</h2>
+            <p className="mt-0.5 text-[12px] text-[#77726D]">
+              {t('rsSubtitle')}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => loadData(true)}
+            disabled={isRefreshing}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#D4D0CB] bg-white hover:bg-[#F7F5F2] text-[11px] font-semibold text-[#444] transition-colors cursor-pointer shadow-xs active:scale-95"
+            title="Làm mới danh sách đơn phục vụ phòng"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-indigo-600' : 'text-stone-500'}`} />
+            <span>{isRefreshing ? 'Đang tải...' : 'Làm mới'}</span>
+          </button>
         </header>
 
         <section className="mt-6 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
@@ -307,28 +408,46 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
             <div className="mb-3 flex items-center justify-between gap-4">
               <h3 className="text-[13px] font-semibold text-[#36322F]">{t('activeOrders')}</h3>
               <div className="flex items-center gap-1 flex-wrap">
-                {['All', 'Pending', 'Cooking', 'Delivering', 'Completed'].map((tab) => (
-                  <button
-                    key={tab}
-                    type="button"
-                    onClick={() => setFilter(tab)}
-                    className={`rounded-lg px-3 py-1 text-[11px] font-semibold transition-colors cursor-pointer ${
-                      filter === tab
-                        ? 'bg-[#EAE8E4] text-[#494540]'
-                        : 'text-[#77726D] hover:bg-[#F0EEEA]'
-                    }`}
-                  >
-                    {tab === 'All'
-                      ? t('all')
-                      : tab === 'Pending'
-                      ? t('pending')
-                      : tab === 'Cooking'
-                      ? t('inProgress')
-                      : tab === 'Delivering'
-                      ? t('delivering')
-                      : t('completed')}
-                  </button>
-                ))}
+                {[
+                  { key: 'All', label: t('all') || 'Tất Cả' },
+                  { key: 'Pending', label: t('pending') || 'Chờ Tiếp Nhận' },
+                  { key: 'Cooking', label: 'Bếp Đang Nấu' },
+                  { key: 'Ready', label: 'Bếp Đã Xong (Chờ Giao)' },
+                  { key: 'Delivering', label: t('delivering') || 'Đang Giao' },
+                  { key: 'Completed', label: t('completed') || 'Đã Hoàn Tất' },
+                ].map(({ key, label }) => {
+                  const count = tabCounts[key] || 0;
+                  const isReadyTab = key === 'Ready';
+                  const isPendingTab = key === 'Pending';
+
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setFilter(key)}
+                      className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+                        filter === key
+                          ? 'bg-[#EAE8E4] text-[#2C2926] shadow-xs'
+                          : 'text-[#77726D] hover:bg-[#F0EEEA]'
+                      }`}
+                    >
+                      <span>{label}</span>
+                      {count > 0 && (
+                        <span
+                          className={`px-1.5 py-0.2 rounded-full text-[9px] font-bold ${
+                            isReadyTab
+                              ? 'bg-emerald-600 text-white animate-pulse shadow-xs'
+                              : isPendingTab
+                              ? 'bg-amber-600 text-white'
+                              : 'bg-stone-200 text-stone-700'
+                          }`}
+                        >
+                          {count}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 

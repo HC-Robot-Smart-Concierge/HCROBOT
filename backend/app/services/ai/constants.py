@@ -56,6 +56,26 @@ SERVICE_KEYWORDS: Dict[str, List[str]] = {
         "connect staff", "video call support", "talk to staff", "call receptionist",
         "human agent", "live agent", "talk to a person", "speak to a person", "live support"
     ],
+    "query_order_status": [
+        "trạng thái", "trang thai", "tiến độ", "tien do",
+        "đến đâu rồi", "den dau roi", "tới đâu rồi", "toi dau roi", "tới đâu", "toi dau", "đến đâu", "den dau",
+        "xong chưa", "xong chua", "làm xong chưa", "lam xong chua", "nấu xong chưa", "nau xong chua", "chế biến",
+        "làm tới đâu", "lam toi dau", "làm đến đâu", "lam den dau", "nấu tới đâu", "nau toi dau",
+        "dọn phòng tới đâu", "don phong toi dau", "dọn phòng xong chưa", "don phong xong chua",
+        "tiến độ dọn phòng", "tien do don phong", "trạng thái dọn phòng", "trang thai don phong",
+        "dọn phòng đến đâu", "don phong den dau", "dọn dẹp tới đâu", "don dep toi dau", "dọn dẹp xong chưa",
+        "khăn tắm mang lên chưa", "khan tam mang len chua", "tiến độ dịch vụ", "tien do dich vu",
+        "tiến độ room service", "tien do room service", "room service tới đâu", "room service xong chưa",
+        "tình trạng phục vụ phòng", "tinh trang phuc vu phong", "tình trạng dọn phòng", "tinh trang don phong",
+        "housekeeping status", "room cleaning status",
+        "giao chưa", "giao chua", "đang giao chưa", "đem lên chưa", "mang lên chưa",
+        "khi nào có", "bao giờ có", "sắp có chưa", "chờ lâu", "đợi lâu",
+        "kiểm tra đơn", "kiem tra don", "kiểm tra món", "kiem tra mon", "kiểm tra đồ ăn", "kiem tra do an",
+        "tình trạng đơn", "tinh trang don", "tình trạng món", "tinh trang mon", "tình trạng dịch vụ", "tinh trang dich vu",
+        "đơn hàng của tôi", "món ăn của tôi", "đồ ăn của tôi", "món tôi đặt", "đồ tôi đặt", "đơn tôi đặt",
+        "order status", "food status", "status of my order", "where is my order", "is my order ready",
+        "check my order", "check order"
+    ],
     "reception": [
         "lễ tân", "check out", "checkout", "check in", "checkin",
         "đổi phòng", "doi phong", "trả phòng", "tra phong", "front desk", "reception",

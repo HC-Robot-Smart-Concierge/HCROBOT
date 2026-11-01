@@ -203,7 +203,17 @@ async def create_room_service_order(
         db=db,
         department="Room Service",
         title=f"Đơn Room Service mới #{order_num}",
-        description=f"{order_in.room_number}: {items_desc or order_in.note or 'Yêu cầu phục vụ phòng mới'}",
+        description=f"Phòng {order_in.room_number}: {items_desc or order_in.note or 'Yêu cầu phục vụ phòng mới'}",
+        request_id=new_order.id,
+        request_type="room_service",
+        type="Request",
+    )
+    # Đồng bộ thông báo hóa đơn dịch vụ phòng về Quầy Lễ Tân (Reception) đối soát khi check-out
+    await create_department_notification(
+        db=db,
+        department="Reception",
+        title=f"Hóa đơn Room Service #{order_num} - Phòng {order_in.room_number}",
+        description=f"Phòng {order_in.room_number}: {items_desc or 'Yêu cầu dịch vụ phòng'}. Chi phí: {total_amount:,.0f} đ (Ghi nợ hóa đơn phòng, thu khi check-out).",
         request_id=new_order.id,
         request_type="room_service",
         type="Request",
@@ -368,3 +378,27 @@ async def list_all_order_items(
         menu_item_id=menu_item_id,
     )
 
+
+
+@router.delete(
+    "/room-service/orders/clear-all",
+    tags=TAG_FB,
+    summary="Xóa sạch toàn bộ đơn món ăn của bộ phận bếp / Room Service",
+)
+async def clear_all_room_service_orders(
+    db: AsyncSession = Depends(get_db),
+):
+    """Xóa toàn bộ các đơn đặt món ăn và order items để reset hàng đợi bếp."""
+    from sqlalchemy import delete, or_
+    await db.execute(delete(OrderItemModel))
+    await db.execute(delete(RoomServiceOrder))
+    await db.execute(delete(SupportRequest).where(
+        or_(
+            SupportRequest.service_type_id == "ST-ROOM-SERVICE",
+            SupportRequest.department_id == "DEP-ROOMSERVICE",
+            SupportRequest.service_type_id == "room_service",
+            SupportRequest.department_id == "Room Service",
+        )
+    ))
+    await db.commit()
+    return {"status": "success", "message": "Đã xóa sạch toàn bộ đơn món ăn bên bộ phận bếp."}

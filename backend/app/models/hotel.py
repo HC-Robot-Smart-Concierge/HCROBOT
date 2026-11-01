@@ -58,7 +58,7 @@ class Room(Base):
     hotel_id: Mapped[str] = mapped_column(String(50), ForeignKey("hotels.id", ondelete="CASCADE"), nullable=False, index=True)
     floor_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("floors.id", ondelete="SET NULL"), nullable=True, index=True)
     room_number: Mapped[str] = mapped_column(String(20), unique=True, index=True) # e.g. "402", "305", "502"
-    room_type: Mapped[str] = mapped_column(String(50), default="Deluxe Suite") # 'Standard', 'Deluxe', 'Suite', 'Presidential'
+    room_type: Mapped[str] = mapped_column(String(50), default="Phòng Tiêu Chuẩn (Standard)") # 'Standard', 'Deluxe', 'Suite', 'Presidential'
     status: Mapped[str] = mapped_column(String(50), default="AVAILABLE") # 'AVAILABLE', 'OCCUPIED', 'CLEANING', 'MAINTENANCE'
     current_guest_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     pin_code: Mapped[Optional[str]] = mapped_column(String(10), nullable=True) # e.g. "5678"

@@ -2,11 +2,12 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { RobotFace } from '../../components/robot/RobotFace';
 import { AudioWave } from '../../components/robot/AudioWave';
 import { FloorMap, HOTEL_DESTINATIONS, getMobileGuestMapUrl, detectDestinationPoi } from '../../components/robot/FloorMap';
-import { PhoneCall, Sparkles, RefreshCw, Smartphone, QrCode, Clock, Utensils, Star, Building, Navigation, Film, Menu, Globe, Check, Volume2, X, Mic } from 'lucide-react';
+import { PhoneCall, Sparkles, RefreshCw, Smartphone, QrCode, Clock, Utensils, ConciergeBell, Star, Building, Navigation, Film, Menu, Globe, Check, Volume2, X, Mic } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { CameraPreview } from '../../components/robot/CameraPreview';
 import { MobileRobotScreen } from '../../components/robot/MobileRobotScreen';
 import { RobotFoodMenuScreen } from '../../components/robot/RobotFoodMenuScreen';
+import { RobotRoomServiceScreen } from '../../components/robot/RobotRoomServiceScreen';
 import { useWorkflowRunner } from '../../hooks/useWorkflowRunner';
 import { KioskDisplayPreview } from '../admin/tabs/workflow/KioskDisplayPreview';
 import { fetchWorkflows } from '../../services/workflowApi';
@@ -15,6 +16,7 @@ import { useNotificationWebSocket } from '../../hooks/useNotificationWebSocket';
 import { useSpeechRecognition } from '../../hooks/useSpeechRecognition';
 import { useSpeechSynthesis } from '../../hooks/useSpeechSynthesis';
 import { sendChatPrompt, sendChatStreamSSE, resetSession, flushSession, getVoiceSettings } from '../../services/aiApi';
+import { playEarcon } from '../../utils/audioFeedback';
 
 import { MessengerVideoCallModal } from '../../components/video/MessengerVideoCallModal';
 import { RobotQuickFeedbackModal } from '../../components/robot/RobotQuickFeedbackModal';
@@ -23,6 +25,7 @@ import { createConciergeRequest } from '../../services/conciergeApi';
 import { fetchActiveAdvertisements } from '../../services/advertisementApi';
 import { RobotAdPlayer } from '../../components/robot/RobotAdPlayer';
 import { RoomPinModal } from '../../components/robot/RoomPinModal';
+import { RoomPickerModal } from '../../components/robot/RoomPickerModal';
 
 /**
  * FloatingCinemaSubtitle
@@ -117,7 +120,14 @@ const FloatingCinemaSubtitle = ({ fullText, isSpeaking, onClose }) => {
 
 export const RobotScreenPage = ({ onLogout = () => { } }) => {
   // States: 'RT-01' | 'RT-02' | 'RT-03' | 'RT-04' | 'RT-05'
-  const [currentState, setCurrentState] = useState('RT-01');
+  const [currentState, setCurrentState] = useState(() => {
+    try {
+      const isMobile = window.matchMedia('(max-width: 767px), (max-height: 600px) and (max-width: 1024px)').matches;
+      return isMobile ? 'RT-02' : 'RT-01';
+    } catch {
+      return 'RT-01';
+    }
+  });
   const [navigationDestinationKey, setNavigationDestinationKey] = useState('infinity_pool');
 
   // Giữ mã QR URL cố định để không bị giật ma trận khi đồng hồ 8s đếm ngược re-render
@@ -137,6 +147,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       return false;
     }
   });
+  const [isRoomServiceMenuOpen, setIsRoomServiceMenuOpen] = useState(false);
 
   // Auto-Listen Hands-Free State
   const [isAutoListen, setIsAutoListen] = useState(true);
@@ -161,6 +172,22 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   const [pinModalRoomNumber, setPinModalRoomNumber] = useState('');
   const [pinModalAction, setPinModalAction] = useState('room_service');
   const [pinModalItems, setPinModalItems] = useState('');
+
+  // Room Picker Modal States (Tra cứu trạng thái đơn hàng & dịch vụ cảm ứng không cần mã PIN)
+  const [isRoomPickerOpen, setIsRoomPickerOpen] = useState(false);
+  const [statusQueryType, setStatusQueryType] = useState('general'); // 'general' | 'service' | 'food'
+  const statusQueryTypeRef = useRef('general');
+  const isRoomPickerOpenRef = useRef(false);
+  const isWaitingRoomForStatusQueryRef = useRef(false);
+
+  const updateStatusQueryType = useCallback((type) => {
+    statusQueryTypeRef.current = type || 'general';
+    setStatusQueryType(type || 'general');
+  }, []);
+
+  useEffect(() => {
+    isRoomPickerOpenRef.current = isRoomPickerOpen;
+  }, [isRoomPickerOpen]);
 
   // Đồng bộ ref chống stale closure khi speech onEnd callback cố bật lại mic
   useEffect(() => {
@@ -426,12 +453,16 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     }
     if (fillerTimerRef.current) clearTimeout(fillerTimerRef.current);
     if (processingSafetyTimerRef.current) clearTimeout(processingSafetyTimerRef.current);
-    isProcessingRef.current = false;
-    setIsProcessing(false);
     clearRouteGuidanceTimers();
     stopSpeaking();
+    playEarcon('barge_in');
+    isProcessingRef.current = false;
+    setIsProcessing(false);
     setAiResponseText('');
     setCurrentState('RT-03');
+    setTimeout(() => {
+      handleStartTalk();
+    }, 60);
   };
 
   // Tự động chuyển sang Poster Standby khi rảnh rỗi không có người tương tác
@@ -644,9 +675,11 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     setCurrentState('RT-01');
   };
 
-  // 1. Khi kích hoạt lắng nghe (Bấm nút hoặc Tự động)
-  const handleStartTalk = () => {
+  // 1. Khi kích hoạt lắng nghe (Bấm nút hoặc Tự động rảnh tay)
+  const handleStartTalk = (options = {}) => {
+    const isSilent = Boolean(options?.silent);
     if (isVideoCallOpen || isVideoCallOpenRef.current || isPinModalOpen || isPinModalOpenRef.current) return;
+    // Khi RoomPickerModal mở, KHÔNG chặn mic: Cho phép khách nói số phòng bằng giọng nói song song với chạm cảm ứng
     lastInteractionTimeRef.current = Date.now();
     if (isStandby) setIsStandby(false);
     activeChatRequestIdRef.current += 1;
@@ -659,10 +692,12 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     if (processingSafetyTimerRef.current) clearTimeout(processingSafetyTimerRef.current);
     isProcessingRef.current = false;
     setIsProcessing(false);
-    prime();
     stopSpeaking();
     resetTranscript();
     setAiResponseText('');
+    if (!isSilent) {
+      playEarcon('start_listening');
+    }
     setCurrentState('RT-03');
     startListening(language, {
       onFinal: (finalText) => {
@@ -687,16 +722,38 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   }, [isVideoCallOpen]);
 
   // 2. Gửi tới Ollama RAG Backend
-  const handleStopTalkAndProcess = async (userText) => {
+  const handleStopTalkAndProcess = async (userText, options = {}) => {
+    const force = Boolean(options?.force);
     lastInteractionTimeRef.current = Date.now();
     if (isStandby) setIsStandby(false);
-    if (isProcessingRef.current || isSpeakingRef.current || isSpeaking) return;
+
+    if (force) {
+      activeChatRequestIdRef.current += 1;
+      if (chatAbortControllerRef.current) {
+        try { chatAbortControllerRef.current.abort(); } catch (e) { }
+        chatAbortControllerRef.current = null;
+      }
+      stopSpeaking();
+      isSpeakingRef.current = false;
+      isProcessingRef.current = false;
+      setIsProcessing(false);
+    } else if (isProcessingRef.current || isSpeakingRef.current || isSpeaking) {
+      return;
+    }
     if (silenceTimerRef.current) {
       clearTimeout(silenceTimerRef.current);
       silenceTimerRef.current = null;
     }
 
-    const query = (userText || transcript || '').trim();
+    let query = (userText || transcript || '').trim();
+
+    // Nếu RoomPickerModal đang mở và khách trả lời số phòng bằng giọng nói
+    if (isRoomPickerOpenRef.current || isWaitingRoomForStatusQueryRef.current) {
+      isRoomPickerOpenRef.current = false;
+      isWaitingRoomForStatusQueryRef.current = false;
+      setIsRoomPickerOpen(false);
+      // Giữ nguyên câu khách nói (ví dụ: "301" hoặc "phòng 301") để Backend Session Memory phân giải đúng ý định
+    }
 
     if (!query || query.length === 0) {
       if (currentState !== 'RT-05') {
@@ -706,6 +763,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     }
 
     setLastUserPrompt(query);
+    playEarcon('chime');
 
     const currentChatId = ++activeChatRequestIdRef.current;
     if (chatAbortControllerRef.current) {
@@ -798,18 +856,42 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       }
     }
 
-    // Mở menu thực đơn nếu khách yêu cầu đặt món
-    if (lowerQuery.includes('đặt món') || lowerQuery.includes('chọn món') || lowerQuery.includes('thực đơn') || lowerQuery.includes('menu') || lowerQuery.includes('gọi món') || lowerQuery.includes('room service') || lowerQuery.includes('đồ ăn')) {
+    // FAST-PATH: Phân biệt rõ ràng giữa ý định TRA CỨU TIẾN ĐỘ / TRẠNG THÁI (query_order_status) và ý định ĐẶT MÓN / ĐẶT DỊCH VỤ (order/service)
+    const isStatusQueryPrompt = /tiến độ|trạng thái|xong chưa|nấu xong|làm xong|dọn xong|dọn tới|dọn đến|dọn phòng|nấu tới|làm tới|khi nào có|bao giờ có|tới đâu|đến đâu|kiểm tra đơn|kiểm tra món|tình trạng món|tình trạng dọn|tiến độ dọn|khăn tắm mang lên|mang lên chưa|giao chưa|tình trạng dịch vụ|tiến độ dịch vụ/i.test(lowerQuery);
+    const isOrderIntent = !isStatusQueryPrompt && /đặt món|gọi món|order|chọn món|thực đơn|menu|muốn ăn|đặt đồ ăn|gọi đồ ăn/i.test(lowerQuery);
+
+    // CHỈ mở menu thực đơn nếu khách có ý định xem menu / đặt món rõ ràng và TUYỆT ĐỐI KHÔNG mở khi đang tra cứu trạng thái
+    const isExplicitFoodMenuIntent = !isStatusQueryPrompt && (
+      /^(mở |xem )?(menu|thực đơn)$/i.test(lowerQuery) ||
+      /mở (thực đơn|menu)|xem (thực đơn|menu)|đặt món|chọn món|gọi món|gọi đồ ăn|đặt đồ ăn|order món|muốn đặt món/i.test(lowerQuery)
+    );
+    if (isExplicitFoodMenuIntent) {
       setIsFoodMenuOpen(true);
     }
 
-    // Mở danh mục cơ sở vật chất nếu khách hỏi tiện ích / dịch vụ khách sạn
-    if (lowerQuery.includes('cơ sở vật chất') || lowerQuery.includes('tiện ích') || lowerQuery.includes('khách sạn có gì') || lowerQuery.includes('dịch vụ gì')) {
+    // CHỈ mở menu dịch vụ phòng nếu khách có ý định yêu cầu dịch vụ / tiện ích rõ ràng và TUYỆT ĐỐI KHÔNG mở khi đang tra cứu trạng thái
+    const isExplicitRoomServiceIntent = !isStatusQueryPrompt && (
+      /^(mở |xem )?(dịch vụ phòng|room service)$/i.test(lowerQuery) ||
+      /dịch vụ phòng|room service/i.test(lowerQuery) ||
+      /(cho (tôi|mình|em)|xin|lấy|mang|đem|gửi|thêm|mượn|cần|muốn|đặt|yêu cầu).*(khăn|gối|chăn|nệm|dép|bàn chải|dao cạo|dầu gội|sữa tắm|nước|massage|mát xa|giặt|ủi|dọn|vệ sinh|bàn là|bàn ủi|máy sấy|áo choàng)/i.test(lowerQuery) ||
+      /(khăn tắm|thêm khăn|khăn mặt|bộ khăn|massage tại phòng|mát xa tại phòng|giặt ủi|ủi đồ|dọn phòng giúp|vệ sinh phòng|mượn bàn là|mượn bàn ủi)/i.test(lowerQuery)
+    );
+    if (isExplicitRoomServiceIntent) {
+      setIsRoomServiceMenuOpen(true);
+    }
+
+    // CHỈ mở danh mục cơ sở vật chất nếu khách yêu cầu xem cơ sở vật chất / tiện ích khách sạn và TUYỆT ĐỐI KHÔNG mở khi đang tra cứu trạng thái
+    const isExplicitFacilitiesIntent = !isStatusQueryPrompt && (
+      /mở tiện ích|xem tiện ích|danh mục tiện ích|cơ sở vật chất của khách sạn|khách sạn có những tiện ích gì|xem cơ sở vật chất/i.test(lowerQuery)
+    );
+    if (isExplicitFacilitiesIntent) {
       setIsFacilitiesModalOpen(true);
     }
 
-    // FAST-PATH: Nhận diện nhanh câu hỏi chỉ đường / vị trí để LẬP TỨC chuyển sang RT-05 với 0ms độ trễ
-    const fastDestKey = detectDestinationPoi(query, activeRoomNumber);
+    const isAnsweringRoomForStatus = isWaitingRoomForStatusQueryRef.current || isRoomPickerOpenRef.current;
+    const shouldBlockRouteGuidance = isStatusQueryPrompt || isAnsweringRoomForStatus;
+
+    const fastDestKey = shouldBlockRouteGuidance ? null : detectDestinationPoi(query, activeRoomNumber);
     if (fastDestKey) {
       setNavigationDestinationKey(fastDestKey);
       setCurrentState('RT-05');
@@ -871,7 +953,34 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         const langCode = chatRes.lang_code || (detectedLang === 'English' ? 'en-US' : 'vi-VN');
 
         const updatedRoom = chatRes.current_room_number;
-        if (updatedRoom) {
+        const isStatusAction = chatRes.action === 'query_order_status';
+        const isAskRoomQuestion = chatRes.missing_room_number || /ở phòng bao nhiêu|xin số phòng|cho rora biết mình đang ở phòng|room number so i can check/i.test(replyText);
+
+        if ((isStatusAction || (isAskRoomQuestion && isStatusQueryPrompt)) && !isOrderIntent) {
+          setIsFoodMenuOpen(false);
+          setIsRoomServiceMenuOpen(false);
+          setIsFacilitiesModalOpen(false);
+          setActiveRoomNumber(null);
+          const isHousekeepingQuery = /dọn|don|buồng|buong|khăn|khan|gối|goi|chăn|chan|massage|giặt|giat|dịch vụ|dich vu|room service|buồng phòng/i.test(lowerQuery);
+          const isFoodQuery = /món|mon|món ăn|mon an|bếp|bep|nấu|nau|uống|uong|đồ ăn|do an|cơm|com|phở|pho|pizza/i.test(lowerQuery);
+          let detectedQueryType = chatRes.status_query_type;
+          if (!detectedQueryType) {
+            if (isHousekeepingQuery && !isFoodQuery) detectedQueryType = 'service';
+            else if (isFoodQuery && !isHousekeepingQuery) detectedQueryType = 'food';
+            else detectedQueryType = 'general';
+          }
+          updateStatusQueryType(detectedQueryType);
+          if (chatRes.missing_room_number || isAskRoomQuestion) {
+            isWaitingRoomForStatusQueryRef.current = true;
+            isRoomPickerOpenRef.current = true;
+            setIsRoomPickerOpen(true);
+          } else {
+            isWaitingRoomForStatusQueryRef.current = false;
+            isRoomPickerOpenRef.current = false;
+            setIsRoomPickerOpen(false);
+          }
+        } else if (updatedRoom && !isStatusAction) {
+          isWaitingRoomForStatusQueryRef.current = false;
           setActiveRoomNumber(updatedRoom);
         }
 
@@ -894,14 +1003,18 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
           setPinModalItems(chatRes.pending_service_items || query);
           isPinModalOpenRef.current = true;
           setIsPinModalOpen(true);
+        } else if (!isStatusAction && !isStatusQueryPrompt && ['room_service', 'housekeeping', 'laundry', 'open_room_service_menu'].includes(chatRes.action)) {
+          // Tự động mở menu dịch vụ phòng khi backend nhận diện yêu cầu dịch vụ buồng phòng
+          setIsRoomServiceMenuOpen(true);
         }
 
         // ĐỒNG BỘ BẢN ĐỒ KHI RAG BACKEND PHÁT HIỆN YÊU CẦU CHỈ ĐƯỜNG (destination_key)
-        const isRoomDirectionQuery = ['phòng', 'room', 'lên phòng', 'về phòng', 'đến phòng', 'tìm phòng'].some(k => lowerQuery.includes(k));
+        const isStatusInquiry = isStatusAction || isStatusQueryPrompt || isWaitingRoomForStatusQueryRef.current;
+        const isRoomDirectionQuery = !isStatusInquiry && ['phòng', 'room', 'lên phòng', 'về phòng', 'đến phòng', 'tìm phòng'].some(k => lowerQuery.includes(k));
         const roomFallbackKey = isRoomDirectionQuery
           ? ((activeRoomNumber && /^(?:40[1-9]|30[1-9])$/.test(String(activeRoomNumber).trim())) ? `room_${String(activeRoomNumber).trim()}` : null)
           : null;
-        const navTargetKey = chatRes.destination_key || fastDestKey || roomFallbackKey;
+        const navTargetKey = isStatusInquiry ? null : (chatRes.destination_key || fastDestKey || roomFallbackKey);
         const isRouteGuidance = Boolean(navTargetKey);
 
         if (isRouteGuidance) {
@@ -958,10 +1071,10 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
           }
         };
 
-        // Fallback an toàn: nếu sau 700ms âm thanh chưa kịp bắn onplay (ví dụ mạng chậm hoặc audio bị block), hiển thị phụ đề để không trễ
+        // Fallback an toàn: nếu sau 2.0s âm thanh chưa kịp bắn onplay (ví dụ mạng chậm hoặc audio bị block), hiển thị phụ đề để không trễ
         const textSafetyTimer = setTimeout(() => {
           revealSubtitle();
-        }, 700);
+        }, 2000);
 
         const speechStartTimestamp = Date.now();
 
@@ -1049,8 +1162,9 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                 if (isAutoListen) {
                   setTimeout(() => {
                     resetTranscript();
-                    handleStartTalk();
-                  }, 200);
+                    // silent: true giúp mic bật ngay mà không thu lại tiếng bíp của chính nó
+                    handleStartTalk({ silent: true });
+                  }, 120);
                 }
               }
             }, waitRemaining);
@@ -1105,6 +1219,28 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     }
   };
 
+
+  // Xử lý khi khách chọn số phòng từ bảng RoomPickerModal để kiểm tra đơn món hoặc dịch vụ
+  const handleRoomPickerSelect = (roomNum) => {
+    try {
+      if (prime) prime();
+    } catch {}
+    isWaitingRoomForStatusQueryRef.current = false;
+    isRoomPickerOpenRef.current = false;
+    setIsRoomPickerOpen(false);
+    stopSpeaking();
+    const currentQType = statusQueryTypeRef.current || statusQueryType;
+    let promptText;
+    if (currentQType === 'service') {
+      promptText = `Kiểm tra tiến độ dọn phòng và dịch vụ phòng ${roomNum}`;
+    } else if (currentQType === 'food') {
+      promptText = `Kiểm tra tình trạng món ăn phòng ${roomNum}`;
+    } else {
+      promptText = `Kiểm tra tiến độ đơn hàng và dịch vụ phòng ${roomNum}`;
+    }
+    handleStopTalkAndProcess(promptText, { force: true });
+  };
+
   // Callback khi khách hàng xác thực mã PIN phòng hoặc thẻ NFC thành công tại Kiosk
   const handlePinVerifiedSuccess = useCallback((result) => {
     if (result?.room_number) {
@@ -1114,6 +1250,14 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     setAiResponseText(successMsg);
     setCurrentState('RT-02');
     speak(successMsg, language === 'English' ? 'en-US' : 'vi-VN');
+  }, [language, speak]);
+
+  const handlePinNotCheckedIn = useCallback((info) => {
+    const notCheckedInMsg = info?.message || `Dạ phòng ${info?.roomNumber || ''} hiện chưa làm thủ tục nhận phòng. Quý khách vui lòng qua quầy Lễ tân để check-in rồi mới được đặt món nhé ạ.`;
+    setAiResponseText(notCheckedInMsg);
+    setNavigationDestinationKey(info?.destination_key || 'front_desk');
+    setCurrentState('RT-05');
+    speak(notCheckedInMsg, language === 'English' ? 'en-US' : 'vi-VN');
   }, [language, speak]);
 
   const handleProtectedLogoutSubmit = (e) => {
@@ -1252,6 +1396,39 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       <RobotFoodMenuScreen
         activeRoomNumber={activeRoomNumber || ''}
         onClose={() => setIsFoodMenuOpen(false)}
+        onRoomChange={(room) => setActiveRoomNumber(room)}
+        onOrderSuccess={(order) => {
+          isWaitingRoomForStatusQueryRef.current = false;
+          isRoomPickerOpenRef.current = false;
+          setIsRoomPickerOpen(false);
+          const roomToMention = order?.room_number || activeRoomNumber;
+          const msg = `Dạ đơn đặt món cho phòng ${roomToMention ? roomToMention : 'của quý khách'} đã được gửi tới nhà bếp thành công rồi ạ!`;
+          setAiResponseText(msg);
+          setCurrentState('RT-02');
+          speak(msg, language === 'English' ? 'en-US' : 'vi-VN');
+        }}
+        onNotCheckedIn={handlePinNotCheckedIn}
+      />
+    );
+  }
+
+  if (isRoomServiceMenuOpen) {
+    return (
+      <RobotRoomServiceScreen
+        activeRoomNumber={activeRoomNumber || ''}
+        onClose={() => setIsRoomServiceMenuOpen(false)}
+        onRoomChange={(room) => setActiveRoomNumber(room)}
+        onRequestSuccess={(req) => {
+          isWaitingRoomForStatusQueryRef.current = false;
+          isRoomPickerOpenRef.current = false;
+          setIsRoomPickerOpen(false);
+          const roomToMention = req?.room_number || activeRoomNumber;
+          const msg = `Dạ yêu cầu dịch vụ phòng cho phòng ${roomToMention ? roomToMention : 'của quý khách'} đã được gửi tới bộ phận phục vụ phòng Room Service rồi ạ! Chi phí sẽ được ghi nhận vào hóa đơn để Lễ tân thanh toán khi trả phòng ạ.`;
+          setAiResponseText(msg);
+          setCurrentState('RT-02');
+          speak(msg, language === 'English' ? 'en-US' : 'vi-VN');
+        }}
+        onNotCheckedIn={handlePinNotCheckedIn}
       />
     );
   }
@@ -1346,6 +1523,16 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
           setIsFacilitiesModalOpen(true);
           speak('Dạ đây là toàn bộ cơ sở vật chất và tiện ích 5 sao của khách sạn ạ.');
         }}
+        onOpenOrderStatus={() => {
+          updateStatusQueryType('food');
+          isRoomPickerOpenRef.current = true;
+          setIsRoomPickerOpen(true);
+        }}
+        onOpenServiceStatus={() => {
+          updateStatusQueryType('service');
+          isRoomPickerOpenRef.current = true;
+          setIsRoomPickerOpen(true);
+        }}
         onOpenFoodMenu={() => {
           activeChatRequestIdRef.current += 1;
           if (chatAbortControllerRef.current) {
@@ -1355,6 +1542,16 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
           clearRouteGuidanceTimers();
           stopSpeaking();
           setIsFoodMenuOpen(true);
+        }}
+        onOpenRoomService={() => {
+          activeChatRequestIdRef.current += 1;
+          if (chatAbortControllerRef.current) {
+            try { chatAbortControllerRef.current.abort(); } catch (e) { }
+            chatAbortControllerRef.current = null;
+          }
+          clearRouteGuidanceTimers();
+          stopSpeaking();
+          setIsRoomServiceMenuOpen(true);
         }}
         onCloseAiResponse={() => setAiResponseText('')}
         navigationDestinationKey={navigationDestinationKey}
@@ -1543,6 +1740,46 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-bold text-stone-200 group-hover:text-white transition-colors">Thực đơn món ăn</p>
                     <p className="text-[10px] text-stone-400 group-hover:text-stone-300 transition-colors">Danh mục món ăn & đặt ẩm thực tại phòng</p>
+                  </div>
+                </button>
+
+                {/* 3b. Dịch Vụ Phòng (Room Service) */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowQuickMenu(false);
+                    setIsRoomServiceMenuOpen(true);
+                  }}
+                  className="w-full p-2.5 rounded-xl text-left hover:bg-stone-800/90 transition-all cursor-pointer flex items-center gap-3 group active:scale-[0.99]"
+                >
+                  <div className="w-8 h-8 rounded-lg bg-stone-800 border border-stone-700/80 text-stone-300 flex items-center justify-center shrink-0 group-hover:bg-stone-700 group-hover:text-stone-100 group-hover:scale-105 transition-all">
+                    <ConciergeBell className="w-4 h-4 text-stone-300 group-hover:text-stone-100" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-bold text-stone-200 group-hover:text-white transition-colors">Dịch vụ phòng</p>
+                    <p className="text-[10px] text-stone-400 group-hover:text-stone-300 transition-colors">Khăn tắm, gối chăn, massage tại phòng & giặt ủi</p>
+                  </div>
+                </button>
+
+                {/* 3c. Kiểm tra tiến độ dịch vụ phòng & dọn phòng */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowQuickMenu(false);
+                    updateStatusQueryType('service');
+                    isRoomPickerOpenRef.current = true;
+                    setIsRoomPickerOpen(true);
+                  }}
+                  className="w-full p-2.5 rounded-xl text-left hover:bg-stone-800/90 transition-all cursor-pointer flex items-center gap-3 group active:scale-[0.99]"
+                >
+                  <div className="w-8 h-8 rounded-lg bg-stone-800 border border-stone-700/80 text-stone-300 flex items-center justify-center shrink-0 group-hover:bg-stone-700 group-hover:text-stone-100 group-hover:scale-105 transition-all">
+                    <Clock className="w-4 h-4 text-stone-300 group-hover:text-stone-100" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-bold text-stone-200 group-hover:text-white transition-colors">Tiến độ dọn phòng & dịch vụ</p>
+                    <p className="text-[10px] text-stone-400 group-hover:text-stone-300 transition-colors">Tra cứu tiến độ dọn phòng, thêm khăn & massage</p>
                   </div>
                 </button>
 
@@ -1799,7 +2036,17 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
           ) : (
             <div className="flex flex-col items-center justify-center relative scale-95 transition-transform duration-500">
               {/* Khuôn mặt Robot */}
-              <div className="cursor-pointer">
+              <div
+                onClick={() => {
+                  if (isSpeaking) {
+                    handleStopSpeaking();
+                  } else if (currentState === 'RT-01' || currentState === 'RT-02') {
+                    handleStartTalk();
+                  }
+                }}
+                className={`cursor-pointer transition-transform duration-300 ${isSpeaking ? 'active:scale-95' : ''}`}
+                title={isSpeaking ? 'Chạm để ngắt lời / Tap to interrupt' : 'Chạm để nói chuyện'}
+              >
                 <RobotFace
                   mode={robotFaceMode}
                   eyeExpression={activeEyeExpression}
@@ -2064,6 +2311,31 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         onSpeak={(text) => speak(text)}
       />
 
+      {/* ROOM PICKER MODAL (KIỂM TRA TIẾN ĐỘ ĐƠN MÓN & DỊCH VỤ DỌN PHÒNG - 100% CẢM ỨNG ON-SCREEN) */}
+      <RoomPickerModal
+        isOpen={isRoomPickerOpen}
+        onClose={() => {
+          isRoomPickerOpenRef.current = false;
+          setIsRoomPickerOpen(false);
+        }}
+        onSelectRoom={handleRoomPickerSelect}
+        title={
+          statusQueryType === 'service'
+            ? (language === 'English' ? 'Check Housekeeping & Room Service Status' : 'Kiểm Tra Tiến Độ Dịch Vụ & Dọn Phòng')
+            : (statusQueryType === 'food'
+                ? (language === 'English' ? 'Check Food Order Status' : 'Kiểm Tra Trạng Thái Món Ăn')
+                : (language === 'English' ? 'Check Order & Service Status' : 'Kiểm Tra Tiến Độ Đơn Hàng & Dịch Vụ'))
+        }
+        subtitle={
+          statusQueryType === 'service'
+            ? (language === 'English' ? 'Please choose your room number so Rora can check housekeeping progress' : 'Quý khách vui lòng chọn số phòng để Rora báo tiến độ dọn phòng và dịch vụ phòng ạ')
+            : (statusQueryType === 'food'
+                ? (language === 'English' ? 'Please choose your room number so Rora can check cooking progress' : 'Quý khách vui lòng chọn số phòng để Rora báo tiến độ đơn món ngay ạ')
+                : (language === 'English' ? 'Please choose your room number so Rora can check your order and request progress' : 'Quý khách vui lòng chọn số phòng để Rora kiểm tra tiến độ ngay ạ'))
+        }
+        iconType={statusQueryType === 'service' ? 'concierge' : (statusQueryType === 'food' ? 'utensils' : 'concierge')}
+      />
+
       {/* ROOM PIN VERIFICATION MODAL (KIOSK TOUCH NUMPAD) */}
       <RoomPinModal
         isOpen={isPinModalOpen}
@@ -2072,6 +2344,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         pendingAction={pinModalAction}
         pendingItems={pinModalItems}
         onVerifiedSuccess={handlePinVerifiedSuccess}
+        onNotCheckedIn={handlePinNotCheckedIn}
+        initialTab="pin"
       />
     </div>
   );

@@ -1,3 +1,4 @@
+import re
 import random
 from datetime import datetime
 from typing import Optional, List, Dict, Any
@@ -186,7 +187,12 @@ async def verify_room_pin(
     if room.status != "OCCUPIED":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Phòng {room.room_number} hiện đang ở trạng thái '{room.status}' (chưa có khách check-in). Vui lòng liên hệ quầy lễ tân để được hỗ trợ."
+            detail={
+                "message": f"Dạ phòng {room.room_number} hiện chưa làm thủ tục nhận phòng. Quý khách vui lòng qua quầy Lễ tân để check-in rồi mới được đặt món nhé ạ.",
+                "not_checked_in": True,
+                "room_number": room.room_number,
+                "destination_key": "front_desk",
+            }
         )
 
     entered_pin = (payload.pin or "").strip()
@@ -195,13 +201,14 @@ async def verify_room_pin(
     room_tag = normalize_nfc_uid(room.tag_code)
 
     is_pin_matched = bool(room.pin_code and entered_pin == room.pin_code.strip())
-    is_cccd_matched = bool(room.identity_number and entered_pin == room.identity_number.strip()[-4:])
+    identity_num = getattr(room, 'identity_number', None)
+    is_cccd_matched = bool(identity_num and (entered_pin == identity_num.strip()[-4:] or entered_pin == identity_num.strip()[-6:]))
     is_nfc_matched = bool(room_tag and norm_input and (norm_input == room_tag or norm_input == normalize_nfc_uid(room.room_number)))
 
     if not (is_pin_matched or is_cccd_matched or is_nfc_matched):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Mã PIN phòng, 4 số cuối CCCD hoặc Thẻ NFC không chính xác. Quý khách vui lòng thử lại."
+            detail="Mã PIN phòng (4 số cuối CCCD) hoặc Thẻ NFC không chính xác. Quý khách vui lòng thử lại."
         )
 
     verification_type = "NFC" if is_nfc_matched else ("CCCD" if is_cccd_matched else "PIN")
@@ -349,7 +356,30 @@ async def list_all_rooms(db: AsyncSession = Depends(get_db)):
     """Trả về danh sách tất cả các phòng để phục vụ Lễ tân quản lý và xem mã PIN/CCCD/tagCode."""
     stmt = select(Room).order_by(Room.room_number)
     res = await db.execute(stmt)
-    return res.scalars().all()
+    rooms = res.scalars().all()
+
+    # Tự động đồng bộ với file RAG nếu chưa đủ 20 phòng chuẩn (301-310, 401-410)
+    valid_rn = {f"{f}{i:02d}" for f in (3, 4) for i in range(1, 11)}
+    current_rn = {r.room_number for r in rooms}
+    if not rooms or not valid_rn.issubset(current_rn):
+        from app.services.rag.room_sync_service import sync_rooms_with_rag
+        await sync_rooms_with_rag(db)
+        res = await db.execute(stmt)
+        rooms = res.scalars().all()
+
+    return rooms
+
+
+@router.post(
+    "/rooms/sync-rag",
+    tags=TAG_REC,
+    summary="Đồng bộ danh sách phòng từ file RAG hệ thống (Obsidian Vault)",
+)
+async def sync_rooms_from_rag_endpoint(db: AsyncSession = Depends(get_db)):
+    """Đồng bộ trực tiếp danh sách phòng trong CSDL theo file RAG (301-310, 401-410)."""
+    from app.services.rag.room_sync_service import sync_rooms_with_rag
+    result = await sync_rooms_with_rag(db)
+    return {"message": "Đồng bộ phòng từ file RAG thành công!", "detail": result}
 
 
 @router.post(
@@ -377,16 +407,28 @@ async def check_in_room(
     if not room:
         raise HTTPException(status_code=404, detail="Không tìm thấy phòng")
 
-    # Sinh mã PIN 4 số ngẫu nhiên nếu không truyền
-    generated_pin = payload.pin_code
-    if not generated_pin:
-        if payload.identity_number and len(payload.identity_number.strip()) >= 4:
-            generated_pin = payload.identity_number.strip()[-4:]
-        else:
-            generated_pin = f"{random.randint(1000, 9999)}"
+    # Yêu cầu bắt buộc nhập CCCD / Hộ chiếu và tự động tạo mã PIN từ 4 số cuối CCCD
+    clean_id = (payload.identity_number or "").strip()
+    if not clean_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Vui lòng nhập số CCCD / Hộ chiếu của khách để làm thủ tục nhận phòng."
+        )
+
+    digits = re.sub(r'\D', '', clean_id)
+    if len(digits) >= 4:
+        generated_pin = digits[-4:]
+    elif len(clean_id) >= 4:
+        generated_pin = clean_id[-4:]
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Số CCCD / Hộ chiếu phải có ít nhất 4 ký tự để tạo mã PIN phòng."
+        )
 
     room.current_guest_name = payload.guest_name.strip()
-    room.identity_number = payload.identity_number.strip() if payload.identity_number else None
+    if hasattr(room, 'identity_number'):
+        room.identity_number = payload.identity_number.strip() if payload.identity_number else None
     room.pin_code = generated_pin
     tag_val = payload.tag_code or payload.nfc_card_uid
     if tag_val is not None:

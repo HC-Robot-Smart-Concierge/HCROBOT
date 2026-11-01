@@ -28,6 +28,7 @@ import {
   fetchAllRooms,
   checkInRoom,
   checkOutRoom,
+  syncRoomsFromRAG,
 } from '../../services/operationsApi';
 
 const normalizeRequest = (request = {}) => ({
@@ -71,6 +72,7 @@ export const ReceptionDashboard = ({ currentUser, onNotify = () => {}, onNavigat
   const [roomSearchQuery, setRoomSearchQuery] = useState('');
   const [roomStatusFilter, setRoomStatusFilter] = useState('all'); // 'all' | 'occupied' | 'available'
   const [revealedPins, setRevealedPins] = useState({});
+  const [isSyncingRAG, setIsSyncingRAG] = useState(false);
   const [checkInModalOpen, setCheckInModalOpen] = useState(false);
   const [checkInTargetRoom, setCheckInTargetRoom] = useState(null);
   const [checkInForm, setCheckInForm] = useState({
@@ -155,17 +157,16 @@ export const ReceptionDashboard = ({ currentUser, onNotify = () => {}, onNavigat
   // Check-in & Check-out handlers
   const handleOpenCheckIn = (room) => {
     setCheckInTargetRoom(room);
-    const randomPin = Math.floor(1000 + Math.random() * 9000).toString();
     setCheckInForm({
       guest_name: '',
       identity_number: '',
-      pin_code: randomPin,
+      pin_code: '',
     });
     setCheckInModalOpen(true);
   };
 
   const handleGenerateNewPin = () => {
-    const randomPin = Math.floor(1000 + Math.random() * 9000).toString();
+    const randomPin = Math.floor(100000 + Math.random() * 900000).toString();
     setCheckInForm((prev) => ({ ...prev, pin_code: randomPin }));
   };
 
@@ -175,6 +176,15 @@ export const ReceptionDashboard = ({ currentUser, onNotify = () => {}, onNavigat
     if (!checkInForm.guest_name.trim()) {
       onNotify('Vui lòng nhập họ tên khách lưu trú.');
       return;
+    }
+    if (!checkInForm.identity_number || checkInForm.identity_number.trim().length < 4) {
+      onNotify('Vui lòng nhập số CCCD / Hộ chiếu (tối thiểu 4 số) để tạo mã PIN.');
+      return;
+    }
+    const cleanDigits = checkInForm.identity_number.replace(/\D/g, '');
+    const expectedPin = cleanDigits.length >= 4 ? cleanDigits.slice(-4) : checkInForm.identity_number.trim().slice(-4);
+    if (!checkInForm.pin_code || checkInForm.pin_code.trim().length !== 4) {
+      checkInForm.pin_code = expectedPin;
     }
     setIsSubmittingRoom(true);
     try {
@@ -218,7 +228,7 @@ export const ReceptionDashboard = ({ currentUser, onNotify = () => {}, onNavigat
   const handleCopyPin = (pin, roomNum) => {
     if (!pin) return;
     navigator.clipboard.writeText(pin);
-    onNotify(`Đã sao chép mã PIN phòng ${roomNum}: ${pin}`);
+    onNotify(`Đã sao chép mã PIN 4 số phòng ${roomNum}: ${pin}`);
   };
 
   const isCompleted = activeRequest?.status === 'Completed';
@@ -242,23 +252,38 @@ export const ReceptionDashboard = ({ currentUser, onNotify = () => {}, onNavigat
     return recentRequests.slice(start, start + pageSize);
   }, [recentRequests, currentPage, pageSize]);
 
+  const handleSyncFromRAG = async () => {
+    setIsSyncingRAG(true);
+    try {
+      const res = await syncRoomsFromRAG();
+      onNotify(res.message || 'Đã đồng bộ phòng từ file RAG hệ thống!');
+      await loadRooms();
+    } catch (err) {
+      console.error('Lỗi khi đồng bộ phòng từ RAG:', err);
+      onNotify('Lỗi khi đồng bộ phòng từ RAG');
+    } finally {
+      setIsSyncingRAG(false);
+    }
+  };
+
   const roomStats = useMemo(() => {
     const total = rooms.length;
-    const occupied = rooms.filter((r) => r.status === 'occupied').length;
-    const available = rooms.filter((r) => r.status === 'available').length;
+    const occupied = rooms.filter((r) => (r.status || '').toLowerCase() === 'occupied').length;
+    const available = rooms.filter((r) => (r.status || '').toLowerCase() === 'available').length;
     const occupancyRate = total > 0 ? Math.round((occupied / total) * 100) : 0;
     return { total, occupied, available, occupancyRate };
   }, [rooms]);
 
   const filteredRooms = useMemo(() => {
     return rooms.filter((room) => {
-      if (roomStatusFilter !== 'all' && room.status !== roomStatusFilter) {
+      const statusLower = (room.status || '').toLowerCase();
+      if (roomStatusFilter !== 'all' && statusLower !== roomStatusFilter.toLowerCase()) {
         return false;
       }
       if (!roomSearchQuery.trim()) return true;
       const q = roomSearchQuery.toLowerCase().trim();
       const matchRoom = (room.room_number || '').toLowerCase().includes(q);
-      const matchGuest = (room.guest_name || '').toLowerCase().includes(q);
+      const matchGuest = (room.guest_name || room.current_guest_name || '').toLowerCase().includes(q);
       const matchId = (room.identity_number || '').toLowerCase().includes(q);
       const matchType = (room.room_type || '').toLowerCase().includes(q);
       return matchRoom || matchGuest || matchId || matchType;
@@ -722,6 +747,17 @@ export const ReceptionDashboard = ({ currentUser, onNotify = () => {}, onNavigat
                 >
                   Trống ({roomStats.available})
                 </button>
+
+                <button
+                  type="button"
+                  onClick={handleSyncFromRAG}
+                  disabled={isSyncingRAG}
+                  className="inline-flex items-center gap-1.5 px-3 py-1 text-xs rounded-lg font-medium bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 transition-colors cursor-pointer disabled:opacity-50 ml-2"
+                  title="Đồng bộ danh sách phòng từ file RAG hệ thống (301-310, 401-410)"
+                >
+                  <RefreshCw className={`h-3 w-3 ${isSyncingRAG ? 'animate-spin' : ''}`} />
+                  <span>Đồng bộ từ RAG</span>
+                </button>
               </div>
             </div>
 
@@ -755,7 +791,7 @@ export const ReceptionDashboard = ({ currentUser, onNotify = () => {}, onNavigat
                       </tr>
                     ) : (
                       filteredRooms.map((room) => {
-                        const isOccupied = room.status === 'occupied';
+                        const isOccupied = (room.status || '').toLowerCase() === 'occupied';
                         const isPinRevealed = !!revealedPins[room.id];
 
                         return (
@@ -771,7 +807,7 @@ export const ReceptionDashboard = ({ currentUser, onNotify = () => {}, onNavigat
                                     {room.room_type || 'Standard'}
                                   </div>
                                   <div className="text-[10px] text-stone-400">
-                                    Tầng {room.floor || '—'}
+                                    {room.floor?.startsWith('Tầng') ? room.floor : `Tầng ${room.floor || '—'}`}
                                   </div>
                                 </div>
                               </div>
@@ -823,7 +859,7 @@ export const ReceptionDashboard = ({ currentUser, onNotify = () => {}, onNavigat
                                 <div className="inline-flex items-center gap-1.5 bg-stone-100 px-2 py-1 rounded-lg border border-stone-200">
                                   <KeyRound className="h-3 w-3 text-amber-600" />
                                   <span className="font-mono font-bold tracking-widest text-xs text-stone-900">
-                                    {isPinRevealed ? room.pin_code : '••••'}
+                                    {isPinRevealed ? room.pin_code : '••••••'}
                                   </span>
                                   <button
                                     type="button"
@@ -896,7 +932,7 @@ export const ReceptionDashboard = ({ currentUser, onNotify = () => {}, onNavigat
                       Check-in Phòng {checkInTargetRoom.room_number}
                     </h3>
                     <p className="text-[11px] text-stone-500">
-                      {checkInTargetRoom.room_type || 'Standard'} • Tầng {checkInTargetRoom.floor || '—'}
+                      {checkInTargetRoom.room_type || 'Standard'} • {checkInTargetRoom.floor?.startsWith('Tầng') ? checkInTargetRoom.floor : `Tầng ${checkInTargetRoom.floor || '—'}`}
                     </p>
                   </div>
                 </div>
@@ -926,13 +962,23 @@ export const ReceptionDashboard = ({ currentUser, onNotify = () => {}, onNavigat
 
                 <div>
                   <label className="block text-xs font-bold text-stone-700 mb-1">
-                    Số CCCD / Hộ chiếu (Tùy chọn)
+                    Số CCCD / Hộ chiếu <span className="text-rose-500">*</span>
                   </label>
                   <input
                     type="text"
-                    placeholder="VD: 079201012345 (Robot có thể dùng 4 số cuối để xác thực)"
+                    required
+                    placeholder="VD: 079201012345 (Bắt buộc để tạo mã PIN)"
                     value={checkInForm.identity_number}
-                    onChange={(e) => setCheckInForm((prev) => ({ ...prev, identity_number: e.target.value }))}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      const digits = val.replace(/\D/g, '');
+                      const autoPin = digits.length >= 4 ? digits.slice(-4) : (val.trim().length >= 4 ? val.trim().slice(-4) : '');
+                      setCheckInForm((prev) => ({
+                        ...prev,
+                        identity_number: val,
+                        pin_code: autoPin || prev.pin_code,
+                      }));
+                    }}
                     className="w-full px-3 py-2 text-xs rounded-lg border border-stone-300 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 bg-white"
                   />
                 </div>
@@ -940,27 +986,19 @@ export const ReceptionDashboard = ({ currentUser, onNotify = () => {}, onNavigat
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="block text-xs font-bold text-stone-700">
-                      Mã PIN Kiosk 4 số
+                      Mã PIN Kiosk 4 số (Tự động từ CCCD) <span className="text-rose-500">*</span>
                     </label>
-                    <button
-                      type="button"
-                      onClick={handleGenerateNewPin}
-                      className="text-[11px] font-semibold text-amber-700 hover:text-amber-800 flex items-center gap-1 cursor-pointer"
-                    >
-                      <RefreshCw className="h-3 w-3" />
-                      Tạo mã mới
-                    </button>
                   </div>
                   <input
                     type="text"
-                    maxLength={10}
-                    placeholder="Mã PIN 4 số"
+                    maxLength={4}
+                    placeholder="4 số cuối CCCD"
                     value={checkInForm.pin_code}
                     onChange={(e) => setCheckInForm((prev) => ({ ...prev, pin_code: e.target.value }))}
                     className="w-full font-mono font-bold tracking-widest text-center px-3 py-2 text-sm rounded-lg border border-stone-300 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 bg-amber-50/30 text-stone-900"
                   />
                   <p className="mt-1 text-[10px] text-stone-500">
-                    Khách sẽ nhập mã PIN này trên màn hình Robot Kiosk khi yêu cầu gửi dịch vụ lên phòng.
+                    Mã PIN 4 số tự động tạo từ 4 số cuối của CCCD để khách xác thực đặt món tại Robot Kiosk.
                   </p>
                 </div>
 

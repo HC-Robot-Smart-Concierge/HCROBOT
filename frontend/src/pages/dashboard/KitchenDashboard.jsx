@@ -112,7 +112,7 @@ export const KitchenDashboard = ({ currentUser, onNotify = () => {} }) => {
 
   const [data, setData] = useState({
     ...INITIAL_ROOM_SERVICE_DATA,
-    orders: INITIAL_ROOM_SERVICE_DATA.orders.map(normalizeOrder),
+    orders: [],
     deliveryFleet: INITIAL_ROOM_SERVICE_DATA.deliveryFleet.map(normalizeFleet),
     lowStockAlerts: [
       { id: 's1', name: 'Bò Wagyu A5 (Thịt tươi)', count: 'Còn 2 phần', level: 'danger' },
@@ -151,14 +151,14 @@ export const KitchenDashboard = ({ currentUser, onNotify = () => {} }) => {
     try {
       const response = await fetchRoomServiceDashboard();
       if (response) {
-        const hasLiveOrders = Array.isArray(response.orders) && response.orders.length > 0;
+        const hasLiveOrders = Array.isArray(response.orders);
         const hasLiveFleet =
           Array.isArray(response.delivery_fleet) && response.delivery_fleet.length > 0;
 
         setData((previous) => ({
           ...previous,
-          kpis: hasLiveOrders && response.kpis ? response.kpis : previous.kpis,
-          orders: hasLiveOrders ? response.orders.map(normalizeOrder) : previous.orders,
+          kpis: response.kpis || previous.kpis,
+          orders: hasLiveOrders ? response.orders.map(normalizeOrder) : [],
           deliveryFleet: hasLiveFleet
             ? response.delivery_fleet.map(normalizeFleet)
             : previous.deliveryFleet,
@@ -182,10 +182,7 @@ export const KitchenDashboard = ({ currentUser, onNotify = () => {} }) => {
   // Bộ phận Bếp chỉ tiếp nhận các đơn đã được Room Service duyệt và chuyển sang Bếp (Sent to Kitchen trở đi)
   // Các đơn khách mới gọi (Pending / Chưa chuyển bếp) chỉ Room Service phụ trách tiếp nhận.
   const kitchenScopedOrders = useMemo(() => {
-    return (data.orders || []).filter((order) => {
-      const s = (order.status || '').toLowerCase().trim();
-      return !(s === 'pending' || s === 'unassigned' || s === 'waiting' || s === 'chờ tiếp nhận');
-    });
+    return data.orders || [];
   }, [data.orders]);
 
   // Lọc và sắp xếp danh sách đơn chế biến
@@ -211,7 +208,14 @@ export const KitchenDashboard = ({ currentUser, onNotify = () => {} }) => {
       list = list.filter((order) => {
         const s = (order.status || '').toLowerCase();
         if (filterLower === 'pending') {
-          return s === 'sent to kitchen' || s === 'sent_to_kitchen' || s === 'đã chuyển bếp';
+          return (
+            s === 'pending' ||
+            s === 'sent to kitchen' ||
+            s === 'sent_to_kitchen' ||
+            s === 'đã chuyển bếp' ||
+            s === 'chờ tiếp nhận' ||
+            s === 'unassigned'
+          );
         }
         if (filterLower === 'cooking') {
           return s === 'cooking' || s === 'in preparation' || s === 'in progress';
@@ -333,7 +337,14 @@ export const KitchenDashboard = ({ currentUser, onNotify = () => {} }) => {
   // Tính toán KPIs thực tế dựa trên danh sách đơn Bếp (Phương án 2: Tách biệt Bếp & Room Service)
   const pendingCount = kitchenScopedOrders.filter((o) => {
     const s = (o.status || '').toLowerCase().trim();
-    return s === 'sent to kitchen' || s === 'sent_to_kitchen' || s === 'đã chuyển bếp';
+    return (
+      s === 'pending' ||
+      s === 'sent to kitchen' ||
+      s === 'sent_to_kitchen' ||
+      s === 'đã chuyển bếp' ||
+      s === 'chờ tiếp nhận' ||
+      s === 'unassigned'
+    );
   }).length;
 
   const cookingCount = kitchenScopedOrders.filter((o) => {

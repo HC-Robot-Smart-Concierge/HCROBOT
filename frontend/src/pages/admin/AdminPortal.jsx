@@ -242,11 +242,11 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
                         onClick={() => setRobotSubTab('lidar')}
                         className="w-full text-left px-2 py-1.5 rounded text-[11px] font-semibold transition-all cursor-pointer"
                         style={{
-                          background: robotSubTab === 'lidar' || robotSubTab === 'teleop_odom' ? '#262626' : 'transparent',
-                          color: robotSubTab === 'lidar' || robotSubTab === 'teleop_odom' ? '#FFFFFF' : '#8C8C8C',
+                          background: ['lidar', 'teleop_odom', 'camera'].includes(robotSubTab) ? '#262626' : 'transparent',
+                          color: ['lidar', 'teleop_odom', 'camera'].includes(robotSubTab) ? '#FFFFFF' : '#8C8C8C',
                         }}
                       >
-                        {t('adminSubControlOdom')}
+                        {t('adminSubControlCamera')}
                       </button>
                       <button
                         onClick={() => setRobotSubTab('physical_map')}
@@ -267,16 +267,6 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
                         }}
                       >
                         {t('adminSubWorkflow')}
-                      </button>
-                      <button
-                        onClick={() => setRobotSubTab('camera')}
-                        className="w-full text-left px-2 py-1.5 rounded text-[11px] font-semibold transition-all cursor-pointer"
-                        style={{
-                          background: robotSubTab === 'camera' ? '#262626' : 'transparent',
-                          color: robotSubTab === 'camera' ? '#FFFFFF' : '#8C8C8C',
-                        }}
-                      >
-                        {t('adminSubLiveCamera')}
                       </button>
                     </div>
                   )}

@@ -1,3 +1,5 @@
+import { RobotManualControls } from '../../components/admin/RobotManualControls';
+import { DEFAULT_SLAM_SPEED, clampTeleopSpeed, getSlamTeleopMotion } from '../../utils/slamTeleop';
 import { useRobotControlText } from '../../context/RobotControlLanguage';
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { AdminCameraTab } from './tabs/AdminCameraTab';
@@ -34,10 +36,7 @@ import {
   Trash2,
   Video,
   Plus,
-  ChevronUp,
   ChevronDown,
-  ChevronLeft,
-  ChevronRight,
   RotateCw,
   Server,
   Compass,
@@ -831,26 +830,31 @@ export const AdminLidarPage = ({ currentUser, initialView = 'slam' }) => {
     }
   };
 
+  const [slamSpeed, setSlamSpeed] = useState(DEFAULT_SLAM_SPEED);
+  const [slamSpeedDraft, setSlamSpeedDraft] = useState(null);
+  const [slamActiveMotion, setSlamActiveMotion] = useState('stop');
+  const slamSpeedRef = useRef(DEFAULT_SLAM_SPEED);
+  const handleSlamSpeedChange = (value) => {
+    const speed = clampTeleopSpeed(value);
+    slamSpeedRef.current = speed;
+    setSlamSpeed(speed);
+  };
+
   const teleopIntervalRef = useRef(null);
   const activeTeleopCmdRef = useRef(null);
 
   const sendMotion = (command) => {
-    let lin = 0.0;
-    let ang = 0.0;
-    if (command === 'forward') lin = 0.10;
-    else if (command === 'backward') lin = -0.10;
-    else if (command === 'left') ang = 0.30;
-    else if (command === 'right') ang = -0.30;
+    const motion = getSlamTeleopMotion(command, slamSpeedRef.current);
 
     if (rosClientRef.current?.isConnected) {
-      rosClientRef.current.publishCmdVel(lin, ang);
+      rosClientRef.current.publishCmdVel(motion.linear, motion.angular);
     } else {
       fetch(`${PI5_API}/map/teleop`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json'},
         body: JSON.stringify({
           command,
-          speed: command === 'left' || command === 'right' ? 38 : 30,
+          speed: motion.speed,
         }),
       }).catch(() => {});
     }
@@ -864,6 +868,7 @@ export const AdminLidarPage = ({ currentUser, initialView = 'slam' }) => {
       clearInterval(teleopIntervalRef.current);
     }
     activeTeleopCmdRef.current = command;
+    setSlamActiveMotion({ forward: 'w', backward: 's', left: 'a', right: 'd' }[command] || 'stop');
     sendMotion(command);
     teleopIntervalRef.current = setInterval(() => {
       sendMotion(command);
@@ -876,6 +881,7 @@ export const AdminLidarPage = ({ currentUser, initialView = 'slam' }) => {
       teleopIntervalRef.current = null;
     }
     activeTeleopCmdRef.current = null;
+    setSlamActiveMotion('stop');
     sendMotion('stop');
   };
 
@@ -891,14 +897,19 @@ export const AdminLidarPage = ({ currentUser, initialView = 'slam' }) => {
   useEffect(() => {
     if (activeView !== 'slam') return;
     const handleKeyDown = (e) => {
-      if (['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
       const key = e.key.toLowerCase();
+      if (['1', '2', '3', '+', '=', '-', '_'].includes(key)) {
+        const presets = { '1': 50, '2': 75, '3': 100 };
+        handleSlamSpeedChange(presets[key] ?? (slamSpeedRef.current + (key === '-' || key === '_' ? -10 : 10)));
+        return;
+      }
       let targetCmd = null;
       if (key === 'w'|| key === 'arrowup') targetCmd = 'forward';
       else if (key === 's'|| key === 'arrowdown') targetCmd = 'backward';
       else if (key === 'a'|| key === 'arrowleft') targetCmd = 'left';
       else if (key === 'd'|| key === 'arrowright') targetCmd = 'right';
-      else if (key === ''|| key === 'x') {
+      else if (key === ' '|| key === 'x') {
         stopTeleop();
         return;
       }
@@ -909,7 +920,7 @@ export const AdminLidarPage = ({ currentUser, initialView = 'slam' }) => {
     };
 
     const handleKeyUp = (e) => {
-      if (['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
       const key = e.key.toLowerCase();
       if (['w', 's', 'a', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key)) {
         stopTeleop();
@@ -948,6 +959,10 @@ export const AdminLidarPage = ({ currentUser, initialView = 'slam' }) => {
   };
 
   const handleEmergencyStop = async () => {
+    if (teleopIntervalRef.current) clearInterval(teleopIntervalRef.current);
+    teleopIntervalRef.current = null;
+    activeTeleopCmdRef.current = null;
+    setSlamActiveMotion('stop');
     setEmergencyStopVersion((version) => version + 1);
     // 1. Cập nhật state UI ngay lập tức
     setIsExploring(false);
@@ -1722,68 +1737,16 @@ export const AdminLidarPage = ({ currentUser, initialView = 'slam' }) => {
                 </div>
                 {activeNavGoal && <div className="robot-nav-goal">NAV GOAL · X: {activeNavGoal.x.toFixed(2)}m · Y: {activeNavGoal.y.toFixed(2)}m</div>}
                 {activeView === 'camera' ? cameraControls : (
-                  <>
-            {/* Manual WASD D-Pad Teleop */}
-            <div className="robot-slam-controls flex flex-col items-center gap-1.5 p-2 rounded-lg border bg-[#FAF8F5]"style={{ borderColor: '#BFBFBD'}}>
-              <span className="text-[10px] font-bold text-stone-600"> {rc("Manual mapping control · W-A-S-D")} </span>
-              <div className="flex flex-col items-center gap-1">
-                <button
-                  onMouseDown={() => startTeleop('forward')}
-                  onMouseUp={stopTeleop}
-                  onMouseLeave={stopTeleop}
-                  onTouchStart={(e) => { e.preventDefault(); startTeleop('forward'); }}
-                  onTouchEnd={stopTeleop}
-                  className="p-2 rounded-lg border bg-white shadow-sm hover:bg-stone-100 active:scale-95 cursor-pointer text-stone-800"
-                  title={rc("Forward (W)")}
-                >
-                  <ChevronUp className="w-4 h-4"/>
-                </button>
-                <div className="flex items-center gap-1">
-                  <button
-                    onMouseDown={() => startTeleop('left')}
-                    onMouseUp={stopTeleop}
-                    onMouseLeave={stopTeleop}
-                    onTouchStart={(e) => { e.preventDefault(); startTeleop('left'); }}
-                    onTouchEnd={stopTeleop}
-                    className="p-2 rounded-lg border bg-white shadow-sm hover:bg-stone-100 active:scale-95 cursor-pointer text-stone-800"
-                    title={rc("Turn Left (A)")}
-                  >
-                    <ChevronLeft className="w-4 h-4"/>
-                  </button>
-                  <button
-                    onClick={stopTeleop}
-                    className="px-2 py-1.5 rounded-lg border bg-stone-200 text-[10px] font-bold shadow-sm hover:bg-stone-300 active:scale-95 cursor-pointer text-stone-800"
-                    title={rc("Stop (Space/X)")}
-                  >
-                    STOP
-                  </button>
-                  <button
-                    onMouseDown={() => startTeleop('right')}
-                    onMouseUp={stopTeleop}
-                    onMouseLeave={stopTeleop}
-                    onTouchStart={(e) => { e.preventDefault(); startTeleop('right'); }}
-                    onTouchEnd={stopTeleop}
-                    className="p-2 rounded-lg border bg-white shadow-sm hover:bg-stone-100 active:scale-95 cursor-pointer text-stone-800"
-                    title={rc("Turn Right (D)")}
-                  >
-                    <ChevronRight className="w-4 h-4"/>
-                  </button>
-                </div>
-                <button
-                  onMouseDown={() => startTeleop('backward')}
-                  onMouseUp={stopTeleop}
-                  onMouseLeave={stopTeleop}
-                  onTouchStart={(e) => { e.preventDefault(); startTeleop('backward'); }}
-                  onTouchEnd={stopTeleop}
-                  className="p-2 rounded-lg border bg-white shadow-sm hover:bg-stone-100 active:scale-95 cursor-pointer text-stone-800"
-                  title={rc("Backward (S)")}
-                >
-                  <ChevronDown className="w-4 h-4"/>
-                </button>
-              </div>
-            </div>
-
-                  </>
+                  <RobotManualControls
+                    speed={slamSpeed}
+                    speedDraft={slamSpeedDraft}
+                    onSpeedDraftChange={setSlamSpeedDraft}
+                    onSpeedChange={handleSlamSpeedChange}
+                    activeMotion={slamActiveMotion}
+                    onMove={(key) => startTeleop({ w: 'forward', s: 'backward', a: 'left', d: 'right' }[key])}
+                    onStop={stopTeleop}
+                    stopOnLeave
+                  />
                 )}
             <button
               onClick={handleEmergencyStop}

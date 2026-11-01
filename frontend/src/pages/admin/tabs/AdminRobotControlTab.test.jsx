@@ -31,6 +31,11 @@ describe('Unified Robot Control presentation', () => {
     expect(html).toContain('Control &amp; SLAM');
     expect(html).toContain('Live Camera');
     expect(html).toContain('Manual control');
+    expect(html).toContain('Drive speed');
+    expect(html).toContain('Hold to move · Release to stop');
+    expect(html).toContain('Forward (W / Up arrow)');
+    expect(html.match(/class="robot-manual-controls /g)).toHaveLength(1);
+    expect(html).not.toContain('robot-slam-controls');
     expect(html).toContain('Pi offline');
     expect(html.match(/class="robot-telemetry /g)).toHaveLength(1);
     expect(html).not.toContain('LỆNH ĐIỀU KHIỂN');
@@ -45,7 +50,7 @@ describe('Unified Robot Control presentation', () => {
     expect(html).toContain('Take snapshot');
     expect(html).toContain('EMERGENCY STOP');
     expect(html).toContain('4-wheel encoders (ESP32)');
-    expect(html.match(/class="robot-camera-controls /g)).toHaveLength(1);
+    expect(html.match(/class="robot-manual-controls /g)).toHaveLength(1);
     expect(html).not.toContain('robot-slam-controls');
   });
 

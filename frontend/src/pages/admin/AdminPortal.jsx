@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Settings, LogOut, Sparkles, Bell, CheckCheck, Trash2, X, Activity, User } from 'lucide-react';
+import { Settings, LogOut, Sparkles, Bell, CheckCheck, Trash2, X, Activity, User, Menu } from 'lucide-react';
 import { AdminDashboardTab } from './tabs/AdminDashboardTab';
 import { AdminOperationsTab } from './tabs/AdminOperationsTab';
 import { AdminRobotControlTab } from './tabs/AdminRobotControlTab';
@@ -46,6 +46,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
   };
 
   const [activeMenu, setActiveMenu] = useState(getInitialTab);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [operationsSubTab, setOperationsSubTab] = useState('requests');
   const [robotSubTab, setRobotSubTab] = useState('lidar');
   const [knowledgeSubTab, setKnowledgeSubTab] = useState('sources');
@@ -176,21 +177,22 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
   ];
 
   return (
-    <div className="w-full h-screen overflow-hidden text-[#262626] flex font-sans select-none" style={{ background: '#F2EFE9' }}>
+    <div className="w-full h-screen overflow-hidden text-[#262626] flex font-sans select-none" style={{ background: '#F2EFE9', '--admin-header-height': '4rem', '--admin-header-border': '#BFBFBD' }}>
 
       {/* SIDEBAR */}
-      <aside className="w-56 h-full flex flex-col justify-between shrink-0 border-r z-30"
-        style={{ background: '#E9E5DC', borderColor: '#BFBFBD' }}>
+      <aside className="h-full flex flex-col justify-between shrink-0 border-r z-30 transition-[width] duration-200 motion-reduce:transition-none"
+        style={{ width: isSidebarCollapsed ? '3.5rem' : '14rem', background: '#E9E5DC', borderColor: '#BFBFBD' }}>
 
         {/* Brand */}
         <div>
-          <div className="h-16 px-4 border-b flex items-center gap-2.5 shrink-0" style={{ borderColor: '#BFBFBD' }}>
+          <div className="px-3 border-b flex items-center gap-2 shrink-0" style={{ height: 'var(--admin-header-height)', borderColor: 'var(--admin-header-border)' }}>
+            {!isSidebarCollapsed && <>
             <img
               src="/hc-robot-logo.png"
               alt="HC-Robot Logo"
               className="w-8 h-8 object-contain shrink-0 drop-shadow-xs"
             />
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <div className="text-sm font-black tracking-tight truncate" style={{ color: '#262626' }}>
                 HC-ROBOT
               </div>
@@ -198,10 +200,22 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
                 {t('adminBrandSubtitle')}
               </div>
             </div>
+            </>}
+            <button
+              type="button"
+              onClick={() => setIsSidebarCollapsed((collapsed) => !collapsed)}
+              aria-expanded={!isSidebarCollapsed}
+              aria-controls="admin-sidebar-navigation admin-sidebar-actions"
+              aria-label={t(isSidebarCollapsed ? 'adminExpandSidebar' : 'adminCollapseSidebar')}
+              title={t(isSidebarCollapsed ? 'adminExpandSidebar' : 'adminCollapseSidebar')}
+              className="ml-auto w-7 h-7 shrink-0 flex items-center justify-center rounded-md text-stone-600 hover:bg-black/5 hover:text-stone-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-600 transition-colors cursor-pointer"
+            >
+              <Menu className="w-4 h-4" aria-hidden="true" />
+            </button>
           </div>
 
           {/* Nav Items */}
-          <nav className="p-3 space-y-0.5">
+          <nav id="admin-sidebar-navigation" hidden={isSidebarCollapsed} className="p-3 space-y-0.5">
             {menuItems.map((item) => {
               const isActive = activeMenu === item.id;
               return (
@@ -303,7 +317,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
         </div>
 
         {/* Bottom Sidebar: Notifications, Settings & Admin Profile */}
-        <div className="p-3 border-t space-y-1.5 relative" style={{ borderColor: '#BFBFBD' }}>
+        <div id="admin-sidebar-actions" hidden={isSidebarCollapsed} className="p-3 border-t space-y-1.5 relative" style={{ borderColor: '#BFBFBD' }}>
           {/* Notifications Nav Item */}
           <button
             onClick={() => setIsNotifOpen(!isNotifOpen)}
@@ -473,7 +487,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
       </aside>
 
       {/* MAIN CONTENT AREA */}
-      <div className="flex-1 flex flex-col h-full min-h-0 overflow-hidden">
+      <div className="flex-1 flex flex-col h-full min-h-0 min-w-0 overflow-hidden">
         {/* Dynamic Tab Body */}
         <main className={`flex-1 min-h-0 ${activeMenu === 'Robot Control' ? 'overflow-hidden' : 'overflow-y-auto custom-scrollbar'} relative`}>
 

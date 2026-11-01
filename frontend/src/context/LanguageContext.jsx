@@ -128,6 +128,8 @@ const translations = {
 
     // Admin Portal Sidebar & Layout
     adminBrandSubtitle: 'ADMIN PORTAL',
+    adminCollapseSidebar: 'Collapse sidebar',
+    adminExpandSidebar: 'Expand sidebar',
     adminDashboard: 'Dashboard',
     adminOperations: 'Operations',
     adminRobotControl: 'Robot Control',
@@ -825,6 +827,8 @@ const translations = {
 
     // Admin Portal Sidebar & Layout
     adminBrandSubtitle: 'CỔNG QUẢN TRỊ',
+    adminCollapseSidebar: 'Thu gọn thanh bên',
+    adminExpandSidebar: 'Mở rộng thanh bên',
     adminDashboard: 'Bảng Điều Khiển',
     adminOperations: 'Vận Hành',
     adminRobotControl: 'Điều Khiển Robot',

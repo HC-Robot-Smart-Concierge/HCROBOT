@@ -128,6 +128,8 @@ const translations = {
 
     // Admin Portal Sidebar & Layout
     adminBrandSubtitle: 'ADMIN PORTAL',
+    adminCollapseSidebar: 'Collapse sidebar',
+    adminExpandSidebar: 'Expand sidebar',
     adminDashboard: 'Dashboard',
     adminOperations: 'Operations',
     adminRobotControl: 'Robot Control',
@@ -139,6 +141,7 @@ const translations = {
     adminNotifications: 'Notifications',
     adminSettings: 'Settings',
     adminSubTechSupport: 'Technical Support Requests',
+    adminSubControlCamera: 'Control & Camera',
     adminSubControlOdom: 'Control & Odometry SLAM',
     adminSubPhysicalMap: 'Physical Lab Map (layout2)',
     adminSubWorkflow: 'Workflow Step Management',
@@ -824,6 +827,8 @@ const translations = {
 
     // Admin Portal Sidebar & Layout
     adminBrandSubtitle: 'CỔNG QUẢN TRỊ',
+    adminCollapseSidebar: 'Thu gọn thanh bên',
+    adminExpandSidebar: 'Mở rộng thanh bên',
     adminDashboard: 'Bảng Điều Khiển',
     adminOperations: 'Vận Hành',
     adminRobotControl: 'Điều Khiển Robot',
@@ -835,6 +840,7 @@ const translations = {
     adminNotifications: 'Thông Báo',
     adminSettings: 'Cài Đặt',
     adminSubTechSupport: 'Yêu Cầu Hỗ Trợ Kỹ Thuật',
+    adminSubControlCamera: 'Điều khiển & Camera',
     adminSubControlOdom: 'Điều Khiển & SLAM Odometry',
     adminSubPhysicalMap: 'Bản Đồ Thực Tế (Phòng Lab)',
     adminSubWorkflow: 'Quản Lý Quy Trình',

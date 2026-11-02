@@ -152,7 +152,11 @@ async def create_room_service_order(
     items_desc = ", ".join([f"{it.qty}x {it.name}" for it in (order_in.items or [])])
 
     # Tra cứu thông tin khách và số điện thoại liên lạc từ phòng check-in
-    guest_name_val = order_in.guest_name or (room.current_guest_name if room else None) or f"Khách Phòng {order_in.room_number}"
+    raw_gn = order_in.guest_name
+    if not raw_gn or str(raw_gn).lower().strip() in ["quý khách", "hotel guest", "khách lưu trú", ""]:
+        guest_name_val = (room.current_guest_name if room else None) or raw_gn or f"Khách Phòng {order_in.room_number}"
+    else:
+        guest_name_val = raw_gn
     guest_phone_val = order_in.guest_phone or (getattr(room, "current_guest_phone", None) if room else None)
     room_phone_val = order_in.room_phone or (getattr(room, "room_phone", None) if room else None) or f"Ext {order_in.room_number}"
 

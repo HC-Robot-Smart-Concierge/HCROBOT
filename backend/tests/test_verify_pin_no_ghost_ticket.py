@@ -58,3 +58,4 @@ async def test_verify_pin_skip_ticket_creation_prevents_duplicate_requests():
         count_stmt = select(func.count()).select_from(SupportRequest).where(SupportRequest.room_number == test_room_num)
         count_after = (await db.execute(count_stmt)).scalar() or 0
         assert count_after == count_before, "Số lượng ticket không được tăng lên khi verify PIN có cờ skip_ticket_creation"
+

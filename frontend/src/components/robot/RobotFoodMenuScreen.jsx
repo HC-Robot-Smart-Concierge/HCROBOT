@@ -919,7 +919,7 @@ export const RobotFoodMenuScreen = ({
     });
   };
 
-  const executePlaceOrder = async (targetRoom) => {
+  const executePlaceOrder = async (targetRoom, guestNameOverride) => {
     setIsSubmitting(true);
     const roomToUse = targetRoom || deliveryRoom;
     const orderItemsPayload = Object.values(cart).map((entry) => ({
@@ -932,7 +932,7 @@ export const RobotFoodMenuScreen = ({
     try {
       const res = await createRoomServiceOrder({
         room_number: roomToUse,
-        guest_name: 'Quý Khách',
+        guest_name: guestNameOverride || undefined,
         special_instructions: orderNote || 'Đặt món qua màn hình Robot AI (Đã xác thực PIN)',
         items: orderItemsPayload,
         total_amount: totalPrice,
@@ -1406,7 +1406,7 @@ export const RobotFoodMenuScreen = ({
           setIsPinModalOpen(false);
           setIsPinModalSelectingRoom(false);
           // ĐÃ XÁC THỰC MÃ PIN HỢP LỆ -> TIẾN HÀNH ĐẶT MÓN
-          executePlaceOrder(finalRoom);
+          executePlaceOrder(finalRoom, res?.guest_name);
         }}
         onNotCheckedIn={(info) => {
           setIsPinModalOpen(false);

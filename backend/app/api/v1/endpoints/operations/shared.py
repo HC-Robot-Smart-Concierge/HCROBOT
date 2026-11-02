@@ -93,9 +93,14 @@ async def _fetch_all_raw_requests(db: AsyncSession) -> List[Dict[str, Any]]:
     unified = []
 
     from app.repositories import SupportRequestRepository, DirectiveRepository
+    from app.models.hotel import Room
 
     # 1. Fetch from SupportRequest table (HK, Bell, Taxi, Maintenance, Concierge, Reception)
     try:
+        rooms_stmt = select(Room)
+        rooms_res = await db.execute(rooms_stmt)
+        rooms_map = {r.room_number: r for r in rooms_res.scalars().all()}
+
         sr_repo = SupportRequestRepository(db)
         sr_res = await sr_repo.list_all_with_relations()
         for sr, st, dep in sr_res:
@@ -131,6 +136,25 @@ async def _fetch_all_raw_requests(db: AsyncSession) -> List[Dict[str, Any]]:
             room_str = sr.room_number or "Main Lobby"
             loc_label = f"ROOM {room_str}" if room_str.isdigit() else room_str
 
+            room_obj = rooms_map.get(sr.room_number) if sr.room_number else None
+            raw_guest = sr.guest_name
+            if not raw_guest or str(raw_guest).lower().strip() in ["quý khách", "hotel guest", "khách lưu trú", "khách", ""]:
+                guest_display = (room_obj.current_guest_name if room_obj else None) or raw_guest or "Quý Khách"
+            else:
+                guest_display = raw_guest
+
+            final_guest_phone = (
+                getattr(sr, "guest_phone", None)
+                or (sr.extra_data or {}).get("guest_phone")
+                or (room_obj.current_guest_phone if room_obj else None)
+            )
+            final_room_phone = (
+                getattr(sr, "room_phone", None)
+                or (sr.extra_data or {}).get("room_phone")
+                or (room_obj.room_phone if room_obj else None)
+                or (f"Ext {sr.room_number}" if sr.room_number else None)
+            )
+
             unified.append({
                 "id": ticket_display,
                 "raw_id": sr.id,
@@ -139,12 +163,12 @@ async def _fetch_all_raw_requests(db: AsyncSession) -> List[Dict[str, Any]]:
                 "table_type": tbl_type,
                 "title": sr.title,
                 "location": loc_label,
-                "guestName": sr.guest_name or "Hotel Guest",
-                "guest_name": sr.guest_name or "Hotel Guest",
-                "guestPhone": getattr(sr, "guest_phone", None) or (sr.extra_data or {}).get("guest_phone"),
-                "guest_phone": getattr(sr, "guest_phone", None) or (sr.extra_data or {}).get("guest_phone"),
-                "roomPhone": getattr(sr, "room_phone", None) or (sr.extra_data or {}).get("room_phone") or (f"Ext {sr.room_number}" if sr.room_number else None),
-                "room_phone": getattr(sr, "room_phone", None) or (sr.extra_data or {}).get("room_phone") or (f"Ext {sr.room_number}" if sr.room_number else None),
+                "guestName": guest_display,
+                "guest_name": guest_display,
+                "guestPhone": final_guest_phone,
+                "guest_phone": final_guest_phone,
+                "roomPhone": final_room_phone,
+                "room_phone": final_room_phone,
                 "status": sr.status or "Pending",
                 "time": sr.created_at.strftime("%I:%M %p").lstrip("0") if sr.created_at else "Recent",
                 "time_label": sr.created_at.strftime("%H:%M") if sr.created_at else "Recent",

@@ -326,7 +326,7 @@ export const RobotRoomServiceScreen = ({
     return new Intl.NumberFormat('vi-VN').format(val) + ' đ';
   };
 
-  const executeSubmitRequest = async (verifiedRoom) => {
+  const executeSubmitRequest = async (verifiedRoom, guestNameOverride) => {
     setIsSubmitting(true);
     const roomToUse = verifiedRoom || targetRoom;
     const itemsPayload = Object.values(cart).map((entry) => ({
@@ -341,7 +341,7 @@ export const RobotRoomServiceScreen = ({
     try {
       const res = await createRoomServiceOrder({
         room_number: roomToUse,
-        guest_name: 'Quý Khách',
+        guest_name: guestNameOverride || undefined,
         special_instructions: requestNote
           ? `[Dịch vụ phòng Room Service] ${requestNote}`
           : `[Dịch vụ phòng Room Service] Yêu cầu ${itemsSummary}`,
@@ -766,7 +766,7 @@ export const RobotRoomServiceScreen = ({
             loadStatusForRoom(finalRoom);
           } else {
             // Xác thực PIN thành công -> Tiến hành tạo đơn Room Service
-            executeSubmitRequest(finalRoom);
+            executeSubmitRequest(finalRoom, res?.guest_name);
           }
         }}
         onNotCheckedIn={(info) => {

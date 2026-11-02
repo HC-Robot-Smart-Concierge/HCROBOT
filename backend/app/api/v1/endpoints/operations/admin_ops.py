@@ -146,6 +146,11 @@ async def get_tasks(
             "total_amount": t.get("total_amount") or 0,
             "progress": t.get("progress") or 0,
             "est_completion": t.get("est_completion"),
+            "guest_phone": t.get("guest_phone") or t.get("guestPhone"),
+            "guestPhone": t.get("guestPhone") or t.get("guest_phone"),
+            "room_phone": t.get("room_phone") or t.get("roomPhone"),
+            "roomPhone": t.get("roomPhone") or t.get("room_phone"),
+            "is_service_request": bool(t.get("is_service_request")),
         })
 
     # Room number filter
@@ -276,6 +281,11 @@ async def get_task_detail(
                 "total_amount": t.get("total_amount") or 0,
                 "progress": t.get("progress") or 0,
                 "est_completion": t.get("est_completion"),
+                "guest_phone": t.get("guest_phone") or t.get("guestPhone"),
+                "guestPhone": t.get("guestPhone") or t.get("guest_phone"),
+                "room_phone": t.get("room_phone") or t.get("roomPhone"),
+                "roomPhone": t.get("roomPhone") or t.get("room_phone"),
+                "is_service_request": bool(t.get("is_service_request")),
             }
 
     raise HTTPException(status_code=404, detail=f"Không tìm thấy yêu cầu #{ticket_id}")

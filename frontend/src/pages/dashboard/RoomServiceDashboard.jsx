@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { RefreshCw, UtensilsCrossed, ChefHat, CheckCircle2, Clock } from 'lucide-react';
+import { RefreshCw, UtensilsCrossed, ChefHat, CheckCircle2, Clock, Phone, User } from 'lucide-react';
 import { Pagination } from '../../components/common/Pagination';
 import { INITIAL_ROOM_SERVICE_DATA } from '../../data/mockHotelData';
 import {
@@ -556,14 +556,27 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
 
                       <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-stone-100/80 text-[11px]">
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-semibold text-stone-900">{order.guest_name || order.guestName || 'Khách lưu trú'}</span>
+                          <span className="font-semibold text-stone-900 flex items-center gap-1">
+                            <User className="w-3 h-3 text-stone-500" />
+                            <span>{order.guest_name || order.guestName || 'Khách lưu trú'}</span>
+                          </span>
                           {(order.guest_phone || order.guestPhone) && (
-                            <span className="bg-emerald-50 text-emerald-800 border border-emerald-200 px-1.5 py-0.2 rounded text-[10px] font-mono">
-                              ĐT: {order.guest_phone || order.guestPhone}
-                            </span>
+                            <a
+                              href={`tel:${order.guest_phone || order.guestPhone}`}
+                              onClick={(e) => e.stopPropagation()}
+                              className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded text-[11px] font-mono font-bold transition-colors cursor-pointer shadow-2xs"
+                              title="Bấm để gọi điện thoại xác nhận đơn với khách"
+                            >
+                              <Phone className="w-3 h-3 text-emerald-600" />
+                              <span>ĐT: {order.guest_phone || order.guestPhone}</span>
+                            </a>
                           )}
-                          <span className="bg-amber-50 text-amber-900 border border-amber-200 px-1.5 py-0.2 rounded text-[10px] font-mono font-medium">
-                            {order.room_phone || order.roomPhone || `Ext ${order.room}`}
+                          <span
+                            className="inline-flex items-center gap-1 bg-amber-50 text-amber-900 border border-amber-200 px-2 py-0.5 rounded text-[11px] font-mono font-medium shadow-2xs"
+                            title="Số máy nhánh phòng khách"
+                          >
+                            <Phone className="w-3 h-3 text-amber-600" />
+                            <span>{order.room_phone || order.roomPhone || `Ext ${order.room}`}</span>
                           </span>
                         </div>
                         <span className="text-[10px] text-[#888]">{order.orderedAt || 'Vừa đặt'}</span>

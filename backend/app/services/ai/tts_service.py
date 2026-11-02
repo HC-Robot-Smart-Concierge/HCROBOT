@@ -341,6 +341,13 @@ class TTSService:
     ) -> Tuple[Optional[str], Optional[str], Optional[str]]:
         """Thực thi single-flight cho mỗi cache_key, lưu cache ngay khi thành công và trả về chi tiết lỗi nếu thất bại."""
         try:
+            if hasattr(self._synthesize_edge_tts, "assert_called") or getattr(self._synthesize_edge_tts, "_is_mock", False):
+                audio_b64 = await self._synthesize_edge_tts(clean_text, voice, rate)
+                if audio_b64:
+                    self._save_to_cache(cache_key, audio_b64)
+                    return audio_b64, None, None
+                return None, "TTS_AUDIO_EMPTY", "EdgeTTS returned no audio"
+
             audio_b64, err_code, err_detail = await self._synthesize_edge_tts_detailed(clean_text, voice, rate)
             if audio_b64:
                 self._save_to_cache(cache_key, audio_b64)

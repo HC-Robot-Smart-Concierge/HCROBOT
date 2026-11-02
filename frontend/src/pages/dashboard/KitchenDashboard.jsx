@@ -39,6 +39,9 @@ const normalizeOrder = (order) => {
     id: orderNumber,
     rawId: order.id,
     room: order.room_number || order.room || initialOrder.room,
+    guestName: order.guest_name || order.guestName || initialOrder.guestName || 'Khách lưu trú',
+    guestPhone: order.guest_phone || order.guestPhone || initialOrder.guestPhone || '',
+    roomPhone: order.room_phone || order.roomPhone || initialOrder.roomPhone || '',
     imageUrl: order.image_url || order.imageUrl || initialOrder.imageUrl,
     isServiceRequest:
       order.is_service_request ?? order.isServiceRequest ?? initialOrder.isServiceRequest ?? false,
@@ -174,8 +177,25 @@ export const KitchenDashboard = ({ currentUser, onNotify = () => {} }) => {
 
   useEffect(() => {
     loadData();
-    const interval = setInterval(loadData, 20000);
+    const interval = setInterval(loadData, 30000);
     return () => clearInterval(interval);
+  }, []);
+
+  // Real-time WebSocket listener for instant Kitchen KDS updates
+  useEffect(() => {
+    const handleLiveEvent = () => {
+      loadData();
+    };
+
+    window.addEventListener('app:task_status_updated', handleLiveEvent);
+    window.addEventListener('app:order_created', handleLiveEvent);
+    window.addEventListener('app:orders_cleared', handleLiveEvent);
+
+    return () => {
+      window.removeEventListener('app:task_status_updated', handleLiveEvent);
+      window.removeEventListener('app:order_created', handleLiveEvent);
+      window.removeEventListener('app:orders_cleared', handleLiveEvent);
+    };
   }, []);
 
   // TÁCH BIỆT THEO PHƯƠNG ÁN 2:
@@ -296,7 +316,7 @@ export const KitchenDashboard = ({ currentUser, onNotify = () => {} }) => {
       est_completion: '15 mins',
       assigned_staff_name: staffName,
     });
-    onNotify(`👨‍🍳 Bếp đã tiếp nhận đơn #${order.id} và bắt đầu chế biến!`);
+    onNotify(`‍ Bếp đã tiếp nhận đơn #${order.id} và bắt đầu chế biến!`);
   };
 
   // 2. Nấu xong - Sẵn sàng lấy món (Mark Ready)
@@ -313,14 +333,14 @@ export const KitchenDashboard = ({ currentUser, onNotify = () => {} }) => {
       est_completion: 'Đã nấu xong',
       assigned_staff_name: staffName,
     });
-    onNotify(`🍽️ Món ăn đơn #${order.id} đã hoàn tất! Đã gửi thông báo cho Room Service đến lấy.`);
+    onNotify(`️ Món ăn đơn #${order.id} đã hoàn tất! Đã gửi thông báo cho Room Service đến lấy.`);
   };
 
   // 3. Từ chối / Hết nguyên liệu (Reject)
   const handleReject = async (order) => {
     updateOrderLocally(order.id, { status: 'Rejected' });
     await updateRoomServiceOrderStatus(order.rawId || order.id, { status: 'Rejected' });
-    onNotify(`❌ Bếp từ chối tiếp nhận đơn #${order.id}`);
+    onNotify(` Bếp từ chối tiếp nhận đơn #${order.id}`);
   };
 
   // Toggle nhanh tình trạng món ăn của bếp
@@ -569,6 +589,21 @@ export const KitchenDashboard = ({ currentUser, onNotify = () => {} }) => {
                         </span>
                       </div>
 
+                      {/* Thông tin Khách & Số máy liên hệ */}
+                      <div className="flex flex-wrap items-center gap-2 mt-2 pt-2 border-t border-stone-100 text-[11px]">
+                        <span className="font-semibold text-stone-800">
+                          {order.guestName || order.guest_name || 'Khách lưu trú'}
+                        </span>
+                        {(order.guestPhone || order.guest_phone) && (
+                          <span className="bg-emerald-50 text-emerald-800 border border-emerald-200 px-1.5 py-0.2 rounded text-[10px] font-mono">
+                            ĐT: {order.guestPhone || order.guest_phone}
+                          </span>
+                        )}
+                        <span className="bg-amber-50 text-amber-900 border border-amber-200 px-1.5 py-0.2 rounded text-[10px] font-mono font-medium">
+                          {order.roomPhone || order.room_phone || (order.room ? `Ext ${order.room}` : 'Máy nhánh')}
+                        </span>
+                      </div>
+
                       {/* Chi Tiết Món Ăn Trong Đơn */}
                       <div className="mt-3.5 space-y-2">
                         {Array.isArray(order.items) && order.items.length > 0 ? (
@@ -591,7 +626,7 @@ export const KitchenDashboard = ({ currentUser, onNotify = () => {} }) => {
                                     </h4>
                                     {(it.notes || it.note) && (
                                       <p className="mt-0.5 text-[11px] font-semibold text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200/60 inline-block">
-                                        ⚠️ {it.notes || it.note}
+                                        ️ {it.notes || it.note}
                                       </p>
                                     )}
                                   </div>

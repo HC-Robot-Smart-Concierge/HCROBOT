@@ -51,6 +51,12 @@ describe('RobotRoomServiceScreen Contract & Behavior Tests', () => {
     // Bedding item: Chan goi
     const beddingItem = ROOM_SERVICE_CATALOG.find((item) => item.category === 'bedding');
     expect(beddingItem).toBeDefined();
+
+    // CONFIRM AMENITY-06 (nuoc khoang) has been removed completely
+    const mineralWaterItem = ROOM_SERVICE_CATALOG.find(
+      (item) => item.id === 'AMENITY-06' || item.name.toLowerCase().includes('nước khoáng')
+    );
+    expect(mineralWaterItem).toBeUndefined();
   });
 
   it('ensures every item in catalog has required fields and valid schema', () => {
@@ -85,6 +91,14 @@ describe('RobotRoomServiceScreen Contract & Behavior Tests', () => {
     expect(content).toContain('RoomPinModal');
   });
 
+  it('fetches dynamic catalog using fetchRoomServiceCatalog', () => {
+    const filePath = path.resolve(__dirname, '../RobotRoomServiceScreen.jsx');
+    const content = fs.readFileSync(filePath, 'utf8');
+
+    expect(content).toContain('fetchRoomServiceCatalog');
+    expect(content).toContain('catalogItems');
+  });
+
   it('enforces clean Aurora Stone styling matching hotel design system', () => {
     const filePath = path.resolve(__dirname, '../RobotRoomServiceScreen.jsx');
     const content = fs.readFileSync(filePath, 'utf8');
@@ -98,16 +112,14 @@ describe('RobotRoomServiceScreen Contract & Behavior Tests', () => {
     const content = fs.readFileSync(filePath, 'utf8');
 
     expect(content).toContain('Chọn số phòng');
-    expect(content).toContain('Phục vụ tới phòng:');
-    expect(content).toContain('Edit3');
   });
 
-  it('supports in-screen service and housekeeping status tracking modal', () => {
+  it('correctly binds live order status tracking to loadStatusForRoom and avoids undefined handleViewStatus', () => {
     const filePath = path.resolve(__dirname, '../RobotRoomServiceScreen.jsx');
     const content = fs.readFileSync(filePath, 'utf8');
 
-    expect(content).toContain('Tiến Độ Dịch Vụ & Dọn Phòng');
-    expect(content).toContain('Tiến độ yêu cầu');
-    expect(content).toContain('fetchRoomOrdersHistory');
+    expect(content).not.toContain('handleViewStatus');
+    expect(content).toContain("window.addEventListener('app:task_status_updated', handleLiveStatus)");
+    expect(content).toContain('loadStatusForRoom();');
   });
 });

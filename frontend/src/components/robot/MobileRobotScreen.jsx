@@ -17,6 +17,7 @@ import {
   Check,
   ChevronRight,
   ConciergeBell,
+  Sparkles,
 } from 'lucide-react';
 
 const getRobotMode = (state, isSpeaking = false, isProcessing = false, isListening = false) => {

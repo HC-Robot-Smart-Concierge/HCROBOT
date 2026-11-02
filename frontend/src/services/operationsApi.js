@@ -132,6 +132,84 @@ export const fetchRoomOrderedItemsSummary = async (roomNumber) => {
 };
 
 // ---------------------------------------------------------
+// 1B. Room Service Catalog Management (Thực đơn / Dịch vụ phòng)
+// ---------------------------------------------------------
+export const fetchRoomServiceCatalog = async ({ category = null, is_available = null } = {}) => {
+  try {
+    const params = new URLSearchParams();
+    if (category && category !== 'All') params.append('category', category);
+    if (is_available !== null && is_available !== undefined) params.append('is_available', is_available);
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    return await fetchWithFallback(`${BASE_URL}/room-service/services${qs}`, {}, []);
+  } catch (error) {
+    console.warn('[OperationsAPI] Error fetching room service catalog:', error.message);
+    return [];
+  }
+};
+
+export const createRoomServiceCatalogItem = async (itemData) => {
+  try {
+    return await fetchWithFallback(
+      `${BASE_URL}/room-service/services`,
+      {
+        method: 'POST',
+        body: JSON.stringify(itemData),
+      },
+      { id: `SVC-${Date.now()}`, ...itemData }
+    );
+  } catch (error) {
+    console.error('[OperationsAPI] Error creating room service item:', error.message);
+    throw error;
+  }
+};
+
+export const updateRoomServiceCatalogItem = async (itemId, updateData) => {
+  try {
+    return await fetchWithFallback(
+      `${BASE_URL}/room-service/services/${encodeURIComponent(itemId)}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(updateData),
+      },
+      { id: itemId, ...updateData }
+    );
+  } catch (error) {
+    console.error('[OperationsAPI] Error updating room service item:', error.message);
+    throw error;
+  }
+};
+
+export const deleteRoomServiceCatalogItem = async (itemId) => {
+  try {
+    return await fetchWithFallback(
+      `${BASE_URL}/room-service/services/${encodeURIComponent(itemId)}`,
+      {
+        method: 'DELETE',
+      },
+      { id: itemId, detail: 'Đã xóa dịch vụ' }
+    );
+  } catch (error) {
+    console.error('[OperationsAPI] Error deleting room service item:', error.message);
+    throw error;
+  }
+};
+
+export const toggleRoomServiceCatalogItem = async (itemId) => {
+  try {
+    return await fetchWithFallback(
+      `${BASE_URL}/room-service/services/${encodeURIComponent(itemId)}/toggle`,
+      {
+        method: 'PATCH',
+      },
+      { id: itemId }
+    );
+  } catch (error) {
+    console.error('[OperationsAPI] Error toggling room service item:', error.message);
+    throw error;
+  }
+};
+
+// ---------------------------------------------------------
 // 2. Housekeeping
 // ---------------------------------------------------------
 export const fetchHousekeepingDashboard = async () => {

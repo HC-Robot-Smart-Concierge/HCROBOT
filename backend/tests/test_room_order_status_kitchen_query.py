@@ -42,6 +42,14 @@ async def test_order_status_kitchen_progress_reporting():
     session_manager.reset_session(sid)
 
     async with AsyncSessionLocal() as db:
+        # Đảm bảo phòng 305 ở trạng thái OCCUPIED
+        res_r = await db.execute(select(Room).where(Room.room_number == "305"))
+        room_305 = res_r.scalars().first()
+        prev_status = room_305.status if room_305 else "AVAILABLE"
+        if room_305:
+            room_305.status = "OCCUPIED"
+            room_305.current_guest_name = "Khách Test"
+
         # Chuẩn bị dữ liệu đơn bếp (order_number <= 20 ký tự)
         ord = RoomServiceOrder(
             order_number="ORD-KIT-305",
@@ -69,6 +77,10 @@ async def test_order_status_kitchen_progress_reporting():
         finally:
             await db.delete(item)
             await db.delete(ord)
+            if room_305:
+                room_305.status = prev_status
+                if prev_status == "AVAILABLE":
+                    room_305.current_guest_name = None
             await db.commit()
 
 
@@ -79,9 +91,48 @@ async def test_order_status_when_no_active_kitchen_order():
     session_manager.reset_session(sid)
 
     async with AsyncSessionLocal() as db:
-        await process_chat_request(db, ChatRequest(prompt="kiểm tra món ăn", session_id=sid, language="Tiếng Việt"))
-        res = await process_chat_request(db, ChatRequest(prompt="401", session_id=sid, language="Tiếng Việt"))
+        res_r = await db.execute(select(Room).where(Room.room_number == "401"))
+        room_401 = res_r.scalars().first()
+        prev_status = room_401.status if room_401 else "AVAILABLE"
+        if room_401:
+            room_401.status = "OCCUPIED"
+            room_401.current_guest_name = "Khách Test 401"
+            await db.commit()
 
-        assert res.action == "query_order_status"
-        assert res.destination_key is None
-        assert "không có đơn đặt món nào trong nhà bếp" in res.response or "không có đơn đặt món" in res.response
+        try:
+            await process_chat_request(db, ChatRequest(prompt="kiểm tra món ăn", session_id=sid, language="Tiếng Việt"))
+            res = await process_chat_request(db, ChatRequest(prompt="401", session_id=sid, language="Tiếng Việt"))
+
+            assert res.action == "query_order_status"
+            assert res.destination_key is None
+            assert "không có đơn đặt món nào trong nhà bếp" in res.response or "không có đơn đặt món" in res.response
+        finally:
+            if room_401:
+                room_401.status = prev_status
+                if prev_status == "AVAILABLE":
+                    room_401.current_guest_name = None
+                await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_massage_and_drinks_status_queries():
+    """Kiểm tra câu hỏi 'mát xa đã tới phòng chưa' và 'nước uống đã tới phòng chưa' nhận diện đúng query_order_status."""
+    sid_massage = "test_massage_inquiry"
+    session_manager.reset_session(sid_massage)
+
+    async with AsyncSessionLocal() as db:
+        # 1. Mát xa đã tới phòng chưa -> action == query_order_status, type == service
+        res_massage = await process_chat_request(db, ChatRequest(prompt="mát xa đã tới phòng chưa", session_id=sid_massage, language="Tiếng Việt"))
+        assert res_massage.action == "query_order_status"
+        assert res_massage.missing_room_number is True
+        assert res_massage.status_query_type == "service"
+        assert res_massage.destination_key is None
+
+        # 2. Nước uống đã tới phòng chưa -> action == query_order_status, type == food
+        sid_drink = "test_drink_inquiry"
+        session_manager.reset_session(sid_drink)
+        res_drink = await process_chat_request(db, ChatRequest(prompt="nước uống đã tới phòng chưa", session_id=sid_drink, language="Tiếng Việt"))
+        assert res_drink.action == "query_order_status"
+        assert res_drink.missing_room_number is True
+        assert res_drink.status_query_type == "food"
+        assert res_drink.destination_key is None

@@ -4,7 +4,7 @@ from app.models.account import Account
 from app.models.staff import Staff
 from app.models.service_type import ServiceType
 from app.models.support_request import SupportRequest, HousekeepingRequest, BellRequest, MaintenanceRequest, ReceptionRequest
-from app.models.room_service import RoomServiceOrder, OrderItem
+from app.models.room_service import RoomServiceOrder, OrderItem, RoomServiceCatalogItem
 from app.models.robot import Robot
 from app.models.job import Job, JobStep, JobEvent
 from app.models.directive import ManagementDirective, ManageDirective
@@ -34,6 +34,7 @@ __all__ = [
     "ReceptionRequest",
     "RoomServiceOrder",
     "OrderItem",
+    "RoomServiceCatalogItem",
     "Robot",
     "Job",
     "JobStep",

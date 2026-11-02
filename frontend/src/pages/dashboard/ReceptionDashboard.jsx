@@ -77,6 +77,8 @@ export const ReceptionDashboard = ({ currentUser, onNotify = () => {}, onNavigat
   const [checkInTargetRoom, setCheckInTargetRoom] = useState(null);
   const [checkInForm, setCheckInForm] = useState({
     guest_name: '',
+    guest_phone: '',
+    room_phone: '',
     identity_number: '',
     pin_code: '',
   });
@@ -159,6 +161,8 @@ export const ReceptionDashboard = ({ currentUser, onNotify = () => {}, onNavigat
     setCheckInTargetRoom(room);
     setCheckInForm({
       guest_name: '',
+      guest_phone: room.current_guest_phone || '',
+      room_phone: room.room_phone || `Ext ${room.room_number}`,
       identity_number: '',
       pin_code: '',
     });
@@ -190,6 +194,8 @@ export const ReceptionDashboard = ({ currentUser, onNotify = () => {}, onNavigat
     try {
       const res = await checkInRoom(checkInTargetRoom.id, {
         guest_name: checkInForm.guest_name.trim(),
+        guest_phone: checkInForm.guest_phone.trim() || undefined,
+        room_phone: checkInForm.room_phone.trim() || undefined,
         identity_number: checkInForm.identity_number.trim() || undefined,
         pin_code: checkInForm.pin_code.trim() || undefined,
       });
@@ -831,11 +837,21 @@ export const ReceptionDashboard = ({ currentUser, onNotify = () => {}, onNavigat
                             {/* Khách lưu trú */}
                             <td className="py-3 px-4">
                               {isOccupied ? (
-                                <div className="flex items-center gap-1.5">
-                                  <User className="h-3 w-3 text-stone-400" />
-                                  <span className="font-semibold text-stone-800">
-                                    {room.guest_name || 'Khách lưu trú'}
-                                  </span>
+                                <div>
+                                  <div className="flex items-center gap-1.5">
+                                    <User className="h-3 w-3 text-stone-400" />
+                                    <span className="font-semibold text-stone-800">
+                                      {room.guest_name || 'Khách lưu trú'}
+                                    </span>
+                                  </div>
+                                  <div className="text-[10px] text-stone-500 font-mono mt-0.5 space-x-1.5">
+                                    {(room.current_guest_phone || room.guest_phone) && (
+                                      <span>ĐT: {room.current_guest_phone || room.guest_phone}</span>
+                                    )}
+                                    {(room.room_phone || room.roomPhone) && (
+                                      <span className="text-amber-800 font-medium">({room.room_phone || room.roomPhone})</span>
+                                    )}
+                                  </div>
                                 </div>
                               ) : (
                                 <span className="text-stone-400 italic">—</span>
@@ -958,6 +974,33 @@ export const ReceptionDashboard = ({ currentUser, onNotify = () => {}, onNavigat
                     onChange={(e) => setCheckInForm((prev) => ({ ...prev, guest_name: e.target.value }))}
                     className="w-full px-3 py-2 text-xs rounded-lg border border-stone-300 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 bg-white"
                   />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-stone-700 mb-1">
+                      SĐT di động khách <span className="text-stone-400 font-normal">(Gọi mở cửa)</span>
+                    </label>
+                    <input
+                      type="tel"
+                      placeholder="VD: 0901234567"
+                      value={checkInForm.guest_phone}
+                      onChange={(e) => setCheckInForm((prev) => ({ ...prev, guest_phone: e.target.value }))}
+                      className="w-full px-3 py-2 text-xs rounded-lg border border-stone-300 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-stone-700 mb-1">
+                      Máy nhánh phòng <span className="text-stone-400 font-normal">(Gọi nội bộ)</span>
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="VD: Ext 301"
+                      value={checkInForm.room_phone}
+                      onChange={(e) => setCheckInForm((prev) => ({ ...prev, room_phone: e.target.value }))}
+                      className="w-full px-3 py-2 text-xs rounded-lg border border-stone-300 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 bg-white"
+                    />
+                  </div>
                 </div>
 
                 <div>

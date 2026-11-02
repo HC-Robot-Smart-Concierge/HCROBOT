@@ -242,12 +242,53 @@ class OrderItemResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+class RoomServiceCatalogItemBase(BaseModel):
+    name: str = Field(..., description="Tên dịch vụ/tiện ích")
+    category: str = Field(default="bath", description="Phân loại: bath, spa, bedding, housekeeping, laundry")
+    price: float = Field(default=0.0, description="Giá dịch vụ (0 = Miễn phí)")
+    unit: Optional[str] = Field(None, description="Đơn vị tính")
+    prep_time: int = Field(default=10, description="Thời gian chuẩn bị (phút)")
+    badge: Optional[str] = Field(None, description="Huy hiệu hiển thị")
+    description: Optional[str] = Field(None, description="Mô tả chi tiết")
+    image_url: Optional[str] = Field(None, description="Link hình ảnh minh họa")
+    is_available: bool = Field(default=True, description="Đang phục vụ")
+    display_order: int = Field(default=0, description="Thứ tự hiển thị")
+
+
+class RoomServiceCatalogItemCreate(RoomServiceCatalogItemBase):
+    id: Optional[str] = None
+
+
+class RoomServiceCatalogItemUpdate(BaseModel):
+    name: Optional[str] = None
+    category: Optional[str] = None
+    price: Optional[float] = None
+    unit: Optional[str] = None
+    prep_time: Optional[int] = None
+    badge: Optional[str] = None
+    description: Optional[str] = None
+    image_url: Optional[str] = None
+    is_available: Optional[bool] = None
+    display_order: Optional[int] = None
+
+
+class RoomServiceCatalogItemResponse(RoomServiceCatalogItemBase):
+    id: str
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class RoomServiceOrderCreate(BaseModel):
     room_number: str
     items: List[OrderItem]
     note: Optional[str] = None
     image_url: Optional[str] = None
     is_service_request: bool = False
+    guest_name: Optional[str] = None
+    guest_phone: Optional[str] = None
+    room_phone: Optional[str] = None
 
 class RoomServiceOrderStatusUpdate(BaseModel):
     status: str # 'Pending', 'Cooking', 'Ready', 'Delivering', 'Completed', 'Rejected'
@@ -273,6 +314,9 @@ class RoomServiceOrderResponse(BaseModel):
     assigned_staff_name: Optional[str]
     total_amount: Optional[float] = 0.0
     created_at: datetime
+    guest_name: Optional[str] = None
+    guest_phone: Optional[str] = None
+    room_phone: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -848,6 +892,8 @@ class RoomPinVerifyResponse(BaseModel):
 
 class RoomCheckInRequest(BaseModel):
     guest_name: str = Field(..., description="Tên khách hàng check-in")
+    guest_phone: Optional[str] = Field(None, alias="guestPhone", description="Số điện thoại di động của khách lưu trú")
+    room_phone: Optional[str] = Field(None, alias="roomPhone", description="Số máy nhánh nội bộ phòng (ví dụ: Ext 301 hoặc 028...)")
     identity_number: Optional[str] = Field(None, description="Số CCCD / CMND / Hộ chiếu")
     pin_code: Optional[str] = Field(None, description="Mã PIN 4 số (nếu không truyền sẽ tự sinh hoặc lấy 4 số cuối CCCD)")
     tag_code: Optional[str] = Field(None, alias="tagCode", description="Mã thẻ phòng NFC / TagCode cấp cho khách lưu trú")
@@ -863,6 +909,9 @@ class RoomInfoResponse(BaseModel):
     room_type: str
     status: str
     current_guest_name: Optional[str] = None
+    current_guest_phone: Optional[str] = None
+    guest_phone: Optional[str] = None
+    room_phone: Optional[str] = None
     pin_code: Optional[str] = None
     identity_number: Optional[str] = None
     tag_code: Optional[str] = None

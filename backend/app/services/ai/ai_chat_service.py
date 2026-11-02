@@ -413,6 +413,7 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
         pending_service_action=pending_act,
         pending_service_items=pending_items,
         status_query_type=status_q_type,
+        trigger_menu=graph_result.get("trigger_menu"),
     )
 
 

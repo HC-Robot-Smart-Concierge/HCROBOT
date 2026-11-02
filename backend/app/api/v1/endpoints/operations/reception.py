@@ -427,6 +427,10 @@ async def check_in_room(
         )
 
     room.current_guest_name = payload.guest_name.strip()
+    if hasattr(room, 'current_guest_phone'):
+        room.current_guest_phone = payload.guest_phone.strip() if payload.guest_phone else None
+    if hasattr(room, 'room_phone'):
+        room.room_phone = payload.room_phone.strip() if payload.room_phone else f"Ext {room.room_number}"
     if hasattr(room, 'identity_number'):
         room.identity_number = payload.identity_number.strip() if payload.identity_number else None
     room.pin_code = generated_pin
@@ -463,6 +467,8 @@ async def check_out_room(
         raise HTTPException(status_code=404, detail="Không tìm thấy phòng")
 
     room.current_guest_name = None
+    if hasattr(room, 'current_guest_phone'):
+        room.current_guest_phone = None
     room.identity_number = None
     room.pin_code = None
     room.tag_code = None

@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import random
 import re
@@ -8,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc, or_
 
 from app.core.database import get_db
+from app.services.notification_manager import notification_manager
 from app.models import (
     Staff,
     ManagementDirective,
@@ -524,10 +526,11 @@ async def update_task_status(
 
         await db.commit()
         await db.refresh(sr)
-        return {
+        sr_result = {
             "success": True,
             "type": "support_request",
             "id": sr.id,
+            "raw_id": sr.id,
             "ticket_code": sr.ticket_code or sr.id,
             "status": sr.status,
             "progress": sr.progress,
@@ -543,11 +546,21 @@ async def update_task_status(
             "title": sr.title,
             "room_number": sr.room_number or "",
             "guest_name": sr.guest_name or "Hotel Guest",
+            "guestName": sr.guest_name or "Hotel Guest",
+            "guest_phone": getattr(sr, "guest_phone", None) or (sr.extra_data or {}).get("guest_phone"),
+            "guestPhone": getattr(sr, "guest_phone", None) or (sr.extra_data or {}).get("guest_phone"),
+            "room_phone": getattr(sr, "room_phone", None) or (sr.extra_data or {}).get("room_phone") or (f"Ext {sr.room_number}" if sr.room_number else None),
+            "roomPhone": getattr(sr, "room_phone", None) or (sr.extra_data or {}).get("room_phone") or (f"Ext {sr.room_number}" if sr.room_number else None),
             "department_id": sr.department_id,
+            "department": sr.department_id,
             "request_type": sr.service_type_id or "General",
-            "created_at": sr.created_at,
-            "updated_at": sr.updated_at,
+            "created_at": sr.created_at.isoformat() if sr.created_at else None,
+            "updated_at": sr.updated_at.isoformat() if sr.updated_at else None,
         }
+        asyncio.create_task(
+            notification_manager.broadcast_status_update(sr_result, department="All")
+        )
+        return sr_result
 
     # 2. Tra cứu và cập nhật bảng ManagementDirective (Chỉ thị vận hành)
     d = await directive_repo.get_by_id_or_code(raw_id)
@@ -565,16 +578,24 @@ async def update_task_status(
             d.description = str(target_note).strip()
         await db.commit()
         await db.refresh(d)
-        return {
+        d_result = {
             "success": True,
             "type": "directive",
             "id": d.id,
+            "raw_id": d.id,
             "code": d.code,
+            "ticket_code": d.code,
             "status": d.status,
             "assigned_to": d.assigned_staff_name,
             "notes": d.description,
             "note": d.description,
+            "title": d.title,
+            "department": d.department,
         }
+        asyncio.create_task(
+            notification_manager.broadcast_status_update(d_result, department="All")
+        )
+        return d_result
 
     # 3. Tra cứu trực tiếp bảng RoomServiceOrder (nếu không có trong SupportRequest)
     rso = await rs_repo.get_order_by_id_or_number(raw_id)
@@ -592,14 +613,23 @@ async def update_task_status(
             rso.assigned_staff_name = target_assigned_to
         await db.commit()
         await db.refresh(rso)
-        return {
+        rso_result = {
             "success": True,
             "type": "room_service_order",
             "id": rso.id,
+            "raw_id": rso.id,
             "order_number": rso.order_number,
+            "ticket_code": rso.order_number,
             "status": rso.status,
+            "progress": rso.progress,
             "assigned_to": rso.assigned_staff_name,
+            "room_number": rso.room_number,
+            "department": "F&B",
         }
+        asyncio.create_task(
+            notification_manager.broadcast_status_update(rso_result, department="All")
+        )
+        return rso_result
 
     raise HTTPException(status_code=404, detail=f"Không tìm thấy yêu cầu #{ticket_id}")
 

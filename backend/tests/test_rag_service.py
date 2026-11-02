@@ -44,7 +44,8 @@ async def test_ollama_auto_inject_rag_context():
     service = OllamaService()
     mock_chat_response = {"message": {"content": "Khách sạn có dịch vụ gửi đồ ạ."}}
 
-    with patch("app.services.rag.chroma.query_rag_context", return_value="Dịch vụ giữ hành lý qua đêm tại sảnh.") as mock_rag, \
+    with patch.object(service, "check_fast_path", return_value=None), \
+         patch("app.services.rag.chroma.query_rag_context", return_value="Dịch vụ giữ hành lý qua đêm tại sảnh.") as mock_rag, \
          patch("ollama.AsyncClient.chat", new_callable=MagicMock) as mock_chat:
         mock_chat.return_value = mock_chat_response
 

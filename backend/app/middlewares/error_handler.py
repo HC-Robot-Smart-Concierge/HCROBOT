@@ -23,10 +23,17 @@ class GlobalExceptionMiddleware(BaseHTTPMiddleware):
             corr_id = getattr(request.state, "correlation_id", "N/A")
             req_id = getattr(request.state, "request_id", "N/A")
 
+            tb_str = traceback.format_exc()
+            try:
+                with open("unhandled_exception.log", "a", encoding="utf-8") as f:
+                    f.write(f"\n--- {datetime.now(timezone.utc).isoformat()} ---\n{exc}\n{tb_str}\n")
+            except Exception:
+                pass
+
             logger.error(
                 f"[UNHANDLED EXCEPTION] {request.method} {request.url.path} "
                 f"[Correlation: {corr_id}] [Request: {req_id}]: {exc}\n"
-                f"{traceback.format_exc()}"
+                f"{tb_str}"
             )
 
             headers = {

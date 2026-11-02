@@ -672,29 +672,32 @@ class OllamaService:
         p_lower = prompt.lower().strip()
         is_en = lang_code == "en-US"
 
-        # 0. Ưu tiên Fast-Path động do Admin quản lý từ DB
-        fast_hit = scenario_service.match_fast_path(prompt, lang_code)
-        if fast_hit:
-            return fast_hit[0]
-
-        # 0.1. Ưu tiên dữ liệu từ RAG (ChromaDB / Knowledge Vault) nếu có hoặc tự động truy vấn RAG
-        if not rag_context:
-            try:
-                from app.services.rag.chroma import get_concierge_collection
-                col = get_concierge_collection("concierge_kb")
-                res = col.query(query_texts=[prompt], n_results=1)
-                if res and res.get("documents") and len(res["documents"]) > 0:
-                    docs = res["documents"][0]
-                    if docs and len(docs[0].strip()) > 15:
-                        rag_context = docs[0].strip()
-            except Exception as e_rag:
-                logger.debug(f"[Offline RAG Query Error]: {e_rag}")
-
+        # 0. Ưu tiên dữ liệu từ RAG (ChromaDB / Knowledge Vault) nếu caller đã truyền sẵn
         if rag_context and len(rag_context.strip()) > 20:
             clean_ctx = re.sub(r'[*#_`]', '', rag_context).strip()
             sentences = [s.strip() for s in clean_ctx.split('.') if len(s.strip()) > 15]
             if sentences:
                 return f"Dạ theo thông tin khách sạn: {sentences[0]} ạ." if not is_en else f"According to hotel info: {sentences[0]}."
+
+        # 1. Ưu tiên Fast-Path động do Admin quản lý từ DB
+        fast_hit = scenario_service.match_fast_path(prompt, lang_code)
+        if fast_hit:
+            return fast_hit[0]
+
+        # 2. Tự động truy vấn RAG nếu chưa có rag_context
+        try:
+            from app.services.rag.chroma import get_concierge_collection
+            col = get_concierge_collection("concierge_kb")
+            res = col.query(query_texts=[prompt], n_results=1)
+            if res and res.get("documents") and len(res["documents"]) > 0:
+                docs = res["documents"][0]
+                if docs and len(docs[0].strip()) > 15:
+                    clean_ctx = re.sub(r'[*#_`]', '', docs[0].strip()).strip()
+                    sentences = [s.strip() for s in clean_ctx.split('.') if len(s.strip()) > 15]
+                    if sentences:
+                        return f"Dạ theo thông tin khách sạn: {sentences[0]} ạ." if not is_en else f"According to hotel info: {sentences[0]}."
+        except Exception as e_rag:
+            logger.debug(f"[Offline RAG Query Error]: {e_rag}")
 
         # 1. Fallback nhã nhặn khi thông tin không có trong cả Fast-Path lẫn RAG
         return (

@@ -622,6 +622,10 @@ export const detectDestinationPoi = (rawPrompt, activeRoomNumber = null) => {
   if (!rawPrompt || typeof rawPrompt !== 'string') return null;
   const p = rawPrompt.toLowerCase().trim();
 
+  // Tuyệt đối không điều hướng bản đồ khi người dùng đang đặt dịch vụ phòng hoặc hỏi tiến độ
+  const serviceOrderPhrases = ['đặt dịch vụ', 'dat dich vu', 'dịch vụ lên phòng', 'dich vu len phong', 'đặt thêm dịch vụ', 'dat them dich vu', 'muốn đặt dịch vụ', 'muon dat dich vu'];
+  if (serviceOrderPhrases.some((k) => p.includes(k))) return null;
+
   // Tuyệt đối không điều hướng bản đồ khi người dùng đang hỏi về tiến độ / trạng thái đơn món & dịch vụ
   const orderStatusPhrases = [
     'tình trạng', 'tinh trang', 'tiến độ', 'tien do', 'làm món', 'lam mon',
@@ -629,6 +633,9 @@ export const detectDestinationPoi = (rawPrompt, activeRoomNumber = null) => {
     'làm tới đâu', 'lam toi dau', 'đến đâu rồi', 'den dau roi', 'tới đâu rồi', 'toi dau roi',
     'xong chưa', 'xong chua', 'làm xong chưa', 'lam xong chua', 'nấu xong chưa', 'chế biến',
     'giao chưa', 'giao chua', 'kiểm tra đơn', 'kiem tra don', 'kiểm tra món', 'kiem tra mon',
+    'tới phòng chưa', 'toi phong chua', 'đến phòng chưa', 'den phong chua', 'lên phòng chưa', 'len phong chua',
+    'tới chưa', 'toi chua', 'đến chưa', 'den chua', 'mang tới chưa', 'mang toi chua', 'giao tới chưa', 'giao toi chua',
+    'có chưa', 'co chua',
     'đơn hàng', 'don hang', 'order status', 'food status'
   ];
   if (orderStatusPhrases.some((k) => p.includes(k))) return null;

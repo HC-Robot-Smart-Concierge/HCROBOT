@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   X,
   Plus,
@@ -18,7 +18,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { RoomPinModal } from './RoomPinModal';
-import { createRoomServiceOrder, fetchRoomOrdersHistory } from '../../services/operationsApi';
+import { createRoomServiceOrder, fetchRoomOrdersHistory, fetchRoomServiceCatalog } from '../../services/operationsApi';
 
 export const ROOM_SERVICE_CATALOG = [
   // 1. KHĂN & TIỆN ÍCH BUỒNG PHÒNG
@@ -76,17 +76,6 @@ export const ROOM_SERVICE_CATALOG = [
     badge: 'Miễn phí',
     description: 'Bàn chải than hoạt tính, kem đánh răng thảo mộc, dao cạo kép và lược gỗ tự nhiên.',
     image_url: 'https://images.unsplash.com/photo-1583947215259-38e31be8751f?w=500&auto=format&fit=crop&q=80',
-  },
-  {
-    id: 'AMENITY-06',
-    name: 'Nước khoáng Aurora đóng chai',
-    category: 'bath',
-    price: 0,
-    unit: '2 chai (500ml)',
-    prep_time: 8,
-    badge: 'Miễn phí',
-    description: 'Nước khoáng thiên nhiên đóng chai thủy tinh cao cấp phục vụ thêm tại phòng.',
-    image_url: 'https://images.unsplash.com/photo-1548839140-29a749e1bc4e?w=500&auto=format&fit=crop&q=80',
   },
 
   // 2. MASSAGE & TRỊ LIỆU TẠI PHÒNG (IN-ROOM SPA & WELLNESS)
@@ -223,6 +212,32 @@ export const RobotRoomServiceScreen = ({
   onNotCheckedIn,
 }) => {
   const [activeCategory, setActiveCategory] = useState('all');
+  const [catalogItems, setCatalogItems] = useState(() =>
+    ROOM_SERVICE_CATALOG.filter(
+      (it) => !it.name?.toLowerCase().includes('nước khoáng') && !it.name?.toLowerCase().includes('nuoc khoang')
+    )
+  );
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadCatalog = async () => {
+      try {
+        const items = await fetchRoomServiceCatalog({ is_available: true });
+        if (isMounted && Array.isArray(items) && items.length > 0) {
+          const cleaned = items.filter(
+            (it) => !it.name?.toLowerCase().includes('nước khoáng') && !it.name?.toLowerCase().includes('nuoc khoang')
+          );
+          setCatalogItems(cleaned);
+        }
+      } catch (err) {
+        console.warn('[RobotRoomServiceScreen] Failed to load catalog from server, using fallback', err);
+      }
+    };
+    loadCatalog();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
   const [cart, setCart] = useState({});
   const [requestNote, setRequestNote] = useState('');
   const [targetRoom, setTargetRoom] = useState(activeRoomNumber || '');
@@ -254,10 +269,24 @@ export const RobotRoomServiceScreen = ({
     }
   }, [targetRoom]);
 
+  // Real-time WebSocket listener for order status tracking modal
+  useEffect(() => {
+    const handleLiveStatus = () => {
+      if (isStatusModalOpen) {
+        loadStatusForRoom();
+      }
+    };
+    window.addEventListener('app:task_status_updated', handleLiveStatus);
+    return () => {
+      window.removeEventListener('app:task_status_updated', handleLiveStatus);
+    };
+  }, [isStatusModalOpen, loadStatusForRoom]);
+
   const filteredServices = useMemo(() => {
-    if (activeCategory === 'all') return ROOM_SERVICE_CATALOG;
-    return ROOM_SERVICE_CATALOG.filter((item) => item.category === activeCategory);
-  }, [activeCategory]);
+    const list = catalogItems.length > 0 ? catalogItems : ROOM_SERVICE_CATALOG;
+    if (activeCategory === 'all') return list;
+    return list.filter((item) => item.category === activeCategory);
+  }, [catalogItems, activeCategory]);
 
   const totalItemsCount = useMemo(() => {
     return Object.values(cart).reduce((sum, entry) => sum + entry.qty, 0);

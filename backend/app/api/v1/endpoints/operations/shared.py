@@ -141,6 +141,10 @@ async def _fetch_all_raw_requests(db: AsyncSession) -> List[Dict[str, Any]]:
                 "location": loc_label,
                 "guestName": sr.guest_name or "Hotel Guest",
                 "guest_name": sr.guest_name or "Hotel Guest",
+                "guestPhone": getattr(sr, "guest_phone", None) or (sr.extra_data or {}).get("guest_phone"),
+                "guest_phone": getattr(sr, "guest_phone", None) or (sr.extra_data or {}).get("guest_phone"),
+                "roomPhone": getattr(sr, "room_phone", None) or (sr.extra_data or {}).get("room_phone") or (f"Ext {sr.room_number}" if sr.room_number else None),
+                "room_phone": getattr(sr, "room_phone", None) or (sr.extra_data or {}).get("room_phone") or (f"Ext {sr.room_number}" if sr.room_number else None),
                 "status": sr.status or "Pending",
                 "time": sr.created_at.strftime("%I:%M %p").lstrip("0") if sr.created_at else "Recent",
                 "time_label": sr.created_at.strftime("%H:%M") if sr.created_at else "Recent",
@@ -157,6 +161,8 @@ async def _fetch_all_raw_requests(db: AsyncSession) -> List[Dict[str, Any]]:
                 "progress": sr.progress or 0,
                 "est_completion": sr.est_completion,
                 "room_number": sr.room_number,
+                "is_service_request": bool((sr.extra_data or {}).get("is_service_request")) or ("dịch vụ phòng" in (sr.title or "").lower()) or ("dịch vụ phòng" in (sr.description or "").lower()),
+                "extra_data": sr.extra_data or {},
             })
     except Exception as e:
         logger.error(f"Error fetching SupportRequests: {e}")

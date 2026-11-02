@@ -59,6 +59,8 @@ function playNotificationChime() {
 export function useNotificationWebSocket({
   department = 'All',
   onNotificationReceived,
+  onStatusUpdated,
+  onOrderCreated,
   enabled = true,
 }) {
   const socketRef = useRef(null);
@@ -67,11 +69,21 @@ export function useNotificationWebSocket({
   const pingIntervalRef = useRef(null);
   const isMountedRef = useRef(false);
   const onNotificationReceivedRef = useRef(onNotificationReceived);
+  const onStatusUpdatedRef = useRef(onStatusUpdated);
+  const onOrderCreatedRef = useRef(onOrderCreated);
 
   // Giữ callback mới nhất mà không trigger re-connect
   useEffect(() => {
     onNotificationReceivedRef.current = onNotificationReceived;
   }, [onNotificationReceived]);
+
+  useEffect(() => {
+    onStatusUpdatedRef.current = onStatusUpdated;
+  }, [onStatusUpdated]);
+
+  useEffect(() => {
+    onOrderCreatedRef.current = onOrderCreated;
+  }, [onOrderCreated]);
 
   const clearTimers = useCallback(() => {
     if (reconnectTimeoutRef.current) {
@@ -140,7 +152,7 @@ export function useNotificationWebSocket({
 
       ws.onopen = () => {
         if (!isMountedRef.current || socketRef.current !== ws) return;
-        console.log(`🔔 [NotificationWS] Connected to Hub for dept: '${department}'`);
+        console.log(` [NotificationWS] Connected to Hub for dept: '${department}'`);
         // Bắt đầu heartbeat ping mỗi 25s để giữ kết nối qua router/firewall
         if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
         pingIntervalRef.current = setInterval(() => {
@@ -161,15 +173,41 @@ export function useNotificationWebSocket({
 
           const payload = JSON.parse(event.data);
           if (payload.type === 'NEW_NOTIFICATION' && payload.data) {
-            console.log('⚡ [NotificationWS] Incoming real-time notification:', payload.data);
+            console.log('[NotificationWS] Incoming real-time notification:', payload.data);
             playNotificationChime();
             if (onNotificationReceivedRef.current) {
               onNotificationReceivedRef.current(payload.data);
             }
           } else if (payload.type === 'ADVERTISEMENT_PUSH') {
-            console.log('📺 [NotificationWS] Incoming advertisement push:', payload);
+            console.log('[NotificationWS] Incoming advertisement push:', payload);
             if (onNotificationReceivedRef.current) {
               onNotificationReceivedRef.current(payload);
+            }
+          } else if (payload.type === 'TASK_STATUS_UPDATED') {
+            console.log('[NotificationWS] Incoming task status update:', payload.data);
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('app:task_status_updated', { detail: payload.data }));
+            }
+            if (onStatusUpdatedRef.current) {
+              onStatusUpdatedRef.current(payload.data);
+            }
+          } else if (payload.type === 'NEW_ORDER_CREATED') {
+            console.log('[NotificationWS] Incoming new order created:', payload.data);
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('app:order_created', { detail: payload.data }));
+            }
+            if (onOrderCreatedRef.current) {
+              onOrderCreatedRef.current(payload.data);
+            }
+          } else if (payload.type === 'NEW_REQUEST_CREATED') {
+            console.log('[NotificationWS] Incoming new request created:', payload.data);
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('app:request_created', { detail: payload.data }));
+            }
+          } else if (payload.type === 'ORDERS_CLEARED') {
+            console.log('[NotificationWS] Incoming orders cleared event');
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('app:orders_cleared'));
             }
           }
         } catch (err) {
@@ -186,7 +224,7 @@ export function useNotificationWebSocket({
           pingIntervalRef.current = null;
         }
         if (!enabled) return;
-        console.log(`⚠️ [NotificationWS] Closed. Reconnecting in 3s... (dept: ${department})`);
+        console.log(`️ [NotificationWS] Closed. Reconnecting in 3s... (dept: ${department})`);
         if (reconnectTimeoutRef.current) {
           clearTimeout(reconnectTimeoutRef.current);
         }

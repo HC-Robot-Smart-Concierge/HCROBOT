@@ -22,12 +22,16 @@ SERVICE_KEYWORDS: Dict[str, List[str]] = {
         "khăn", "khan", "dọn phòng", "don phong", "gối", "goi", "chăn", "chan",
         "nệm", "nem", "dọn dẹp", "dọn vệ sinh", "vệ sinh phòng", "làm vệ sinh",
         "towel", "clean room", "cleaning", "bàn ủi", "máy sấy", "dao cạo", "kem đánh răng",
-        "bàn chải", "dầu gội", "sữa tắm", "giấy vệ sinh", "nước suối trong phòng"
+        "bàn chải", "dầu gội", "sữa tắm", "giấy vệ sinh", "nước suối trong phòng", "mát xa", "mat xa", "massage", "spa"
     ],
     "room_service": [
         "cơm", "com", "nước", "nuoc", "ăn", "an", "uống", "uong", "đồ ăn", "do an",
         "trà", "tra", "cà phê", "ca phe", "pizza", "phở", "pho", "bánh", "banh",
-        "food", "drink", "bữa sáng", "gọi món", "đặt món", "nước ngọt", "bia", "trái cây"
+        "food", "drink", "nước uống", "nuoc uong", "bữa sáng", "gọi món", "đặt món", "nước ngọt", "bia", "trái cây",
+        "đặt dịch vụ", "dat dich vu", "đặt thêm dịch vụ", "dat them dich vu",
+        "dịch vụ lên phòng", "dich vu len phong", "dịch vụ phòng", "dich vu phong",
+        "muốn đặt dịch vụ", "muon dat dich vu", "muốn đặt thêm", "muon dat them",
+        "thêm dịch vụ", "them dich vu", "room service", "tiện ích phòng", "tien ich phong"
     ],
     "bellman": [
         "hành lý", "hanh ly", "vali", "túi", "tui", "chuyển phòng", "chuyen phong",
@@ -69,6 +73,14 @@ SERVICE_KEYWORDS: Dict[str, List[str]] = {
         "tình trạng phục vụ phòng", "tinh trang phuc vu phong", "tình trạng dọn phòng", "tinh trang don phong",
         "housekeeping status", "room cleaning status",
         "giao chưa", "giao chua", "đang giao chưa", "đem lên chưa", "mang lên chưa",
+        "tới phòng chưa", "toi phong chua", "đến phòng chưa", "den phong chua",
+        "đã tới phòng chưa", "da toi phong chua", "đã đến phòng chưa", "da den phong chua",
+        "lên phòng chưa", "len phong chua", "đã lên phòng chưa", "da len phong chua",
+        "tới chưa", "toi chua", "đến chưa", "den chua", "đã tới chưa", "da toi chua",
+        "đã đến chưa", "da den chua", "mang tới chưa", "mang toi chua",
+        "giao tới chưa", "giao toi chua", "có chưa", "co chua", "đã có chưa", "da co chua",
+        "mát xa tới chưa", "mat xa toi chua", "massage tới chưa", "massage toi chua",
+        "nước uống tới chưa", "nuoc uong toi chua", "đồ ăn tới chưa", "do an toi chua",
         "khi nào có", "bao giờ có", "sắp có chưa", "chờ lâu", "đợi lâu",
         "kiểm tra đơn", "kiem tra don", "kiểm tra món", "kiem tra mon", "kiểm tra đồ ăn", "kiem tra do an",
         "tình trạng đơn", "tinh trang don", "tình trạng món", "tinh trang mon", "tình trạng dịch vụ", "tinh trang dich vu",

@@ -28,6 +28,7 @@ import { StaffOverviewDashboard } from '../pages/dashboard/StaffOverviewDashboar
 import { RequestsPage } from '../pages/staff/RequestsPage';
 import { MyTasksPage } from '../pages/staff/MyTasksPage';
 import { KitchenMenuManagementPage } from '../pages/staff/KitchenMenuManagementPage';
+import { RoomServiceMenuManagementPage } from '../pages/staff/RoomServiceMenuManagementPage';
 import { HistoryPage } from '../pages/staff/HistoryPage';
 import { NotificationsPage } from '../pages/staff/NotificationsPage';
 import { ProfilePage } from '../pages/staff/ProfilePage';
@@ -335,6 +336,15 @@ export const AppRoutes = () => {
               currentUser={currentUser}
               onNotify={showNotification}
               onNavigate={(menu) => navigate(`/staff/${menu.toLowerCase().replace('_', '-')}`)}
+            />
+          }
+        />
+        <Route
+          path="room-service-menu"
+          element={
+            <RoomServiceMenuManagementPage
+              currentUser={currentUser}
+              onNotify={showNotification}
             />
           }
         />

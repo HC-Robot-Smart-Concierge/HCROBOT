@@ -58,6 +58,7 @@ export const StaffLayout = () => {
   if (path === '/staff/requests') activeMenu = 'Requests';
   else if (path === '/staff/my-tasks') activeMenu = 'MyTasks';
   else if (path === '/staff/kitchen-menu') activeMenu = 'KitchenMenu';
+  else if (path === '/staff/room-service-menu') activeMenu = 'RoomServiceMenu';
   else if (path === '/staff/history') activeMenu = 'History';
   else if (path === '/staff/notifications') activeMenu = 'Notifications';
   else if (path === '/staff/profile') activeMenu = 'Profile';
@@ -88,6 +89,9 @@ export const StaffLayout = () => {
         break;
       case 'KitchenMenu':
         navigate('/staff/kitchen-menu');
+        break;
+      case 'RoomServiceMenu':
+        navigate('/staff/room-service-menu');
         break;
       case 'History':
         navigate('/staff/history');

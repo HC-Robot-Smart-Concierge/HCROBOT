@@ -156,16 +156,25 @@ export const sendChatPrompt = async (
     return data;
   } catch (error) {
     clearTimeout(timeoutId);
-    if (error?.name === 'AbortError' || controller.signal.aborted) {
+    const isAborted =
+      Boolean(controller.signal.aborted) ||
+      Boolean(externalSignal?.aborted) ||
+      error?.name === 'AbortError' ||
+      error?.code === 20 ||
+      /abort|cancel/i.test(error?.message || '');
+
+    if (isAborted) {
       return {
         aborted: true,
         response: '',
         error: 'Request aborted',
       };
     }
+
+    console.error('[AIApi] sendChatPrompt error:', error?.message || error);
     return {
       response: 'Dạ, hiện tại có gián đoạn kết nối tới AI Server.',
-      error: error.message,
+      error: error?.message || 'Unknown network error',
     };
   }
 };

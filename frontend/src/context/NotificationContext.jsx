@@ -48,14 +48,14 @@ export function NotificationProvider({ children }) {
   // Real-time WebSocket connection
   useNotificationWebSocket({
     department: activeDepartment,
-    enabled: !!currentUser,
+    enabled: true,
     onNotificationReceived: useCallback((newNotif) => {
       if (!newNotif || !newNotif.id) return;
       if (seenNotificationIdsRef.current.has(newNotif.id)) return;
       seenNotificationIdsRef.current.add(newNotif.id);
 
       setNotifications((prev) => [newNotif, ...prev.filter((n) => n.id !== newNotif.id)]);
-      showNotification(`🔔 [${newNotif.department}] ${newNotif.title}`);
+      showNotification(`[${newNotif.department}] ${newNotif.title}`);
     }, [showNotification]),
   });
 

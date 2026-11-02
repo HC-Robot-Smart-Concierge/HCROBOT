@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from datetime import datetime
 from typing import Optional, List
 from fastapi import APIRouter, HTTPException, Depends, status, WebSocket, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
@@ -50,8 +51,17 @@ async def chat_with_robot(request: ChatRequest, db: AsyncSession = Depends(get_d
     Điều phối luồng qua AIChatService (LangGraph Harness, Session Memory, TTS, Auto Ticket/Live Call).
     """
     try:
-        return await process_chat_request(db=db, request=request)
+        with open("ai_chat_debug.log", "a", encoding="utf-8") as f:
+            f.write(f"[{datetime.utcnow().isoformat()}] INCOMING CHAT: prompt='{request.prompt}', session='{request.session_id}', room='{request.room_number}'\n")
+        res = await process_chat_request(db=db, request=request)
+        with open("ai_chat_debug.log", "a", encoding="utf-8") as f:
+            f.write(f"[{datetime.utcnow().isoformat()}] OK CHAT: action='{res.action}', resp_len={len(res.response or '')}\n")
+        return res
     except Exception as e:
+        import traceback
+        err_detail = f"[{datetime.utcnow().isoformat()}] AIChat Error: {str(e)}\n{traceback.format_exc()}\n"
+        with open("ai_chat_debug.log", "a", encoding="utf-8") as f:
+            f.write(err_detail)
         logger.error(f"[AIChat Error] {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

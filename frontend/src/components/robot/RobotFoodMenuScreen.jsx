@@ -1395,7 +1395,8 @@ export const RobotFoodMenuScreen = ({
           onRoomChange(room);
           try { localStorage.setItem('robot_delivery_room', room); } catch {}
         }}
-        pendingAction="room_service"
+        pendingAction="verify_only"
+        skipTicketCreation={true}
         pendingItems={Object.values(cart).map((c) => `${c.qty}x ${c.item.name}`).join(', ')}
         initialTab="pin"
         onVerifiedSuccess={(res, verifiedRoom) => {

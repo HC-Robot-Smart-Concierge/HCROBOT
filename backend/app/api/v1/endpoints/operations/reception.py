@@ -213,9 +213,19 @@ async def verify_room_pin(
 
     verification_type = "NFC" if is_nfc_matched else ("CCCD" if is_cccd_matched else "PIN")
 
-    # Khởi tạo ticket SupportRequest nếu có action / items
+    # Khởi tạo ticket SupportRequest nếu có action / items và không có cờ bỏ qua tạo ticket
     ticket_code = None
-    if payload.action and payload.action not in ["chitchat", "conversation", "faq", "unknown"]:
+    should_create_ticket = (
+        not getattr(payload, "skip_ticket_creation", False)
+        and getattr(payload, "create_ticket", True) is not False
+        and bool(payload.action)
+        and payload.action not in [
+            "chitchat", "conversation", "faq", "unknown",
+            "verify_only", "auth_only", "food_menu", "food_order",
+            "room_service", "room_service_menu", "amenity_order"
+        ]
+    )
+    if should_create_ticket:
         code_num = random.randint(1000, 99999)
         dept_id = "DEP-ROOMSERVICE" if any(k in payload.action for k in ["room", "fb", "food", "dining"]) else "DEP-HOUSEKEEPING"
         svc_id = "ST-ROOM-SERVICE" if dept_id == "DEP-ROOMSERVICE" else "ST-HOUSEKEEPING"
@@ -300,9 +310,19 @@ async def verify_room_nfc(
             detail=f"Mã thẻ (tagCode: '{tag_input}') không tồn tại trên hệ thống hoặc phòng chưa được check-in."
         )
 
-    # Khởi tạo ticket SupportRequest nếu có action / items
+    # Khởi tạo ticket SupportRequest nếu có action / items và không có cờ bỏ qua tạo ticket
     ticket_code = None
-    if payload.action and payload.action not in ["chitchat", "conversation", "faq", "unknown"]:
+    should_create_ticket = (
+        not getattr(payload, "skip_ticket_creation", False)
+        and getattr(payload, "create_ticket", True) is not False
+        and bool(payload.action)
+        and payload.action not in [
+            "chitchat", "conversation", "faq", "unknown",
+            "verify_only", "auth_only", "food_menu", "food_order",
+            "room_service", "room_service_menu", "amenity_order"
+        ]
+    )
+    if should_create_ticket:
         code_num = random.randint(1000, 99999)
         dept_id = "DEP-ROOMSERVICE" if any(k in payload.action for k in ["room", "fb", "food", "dining"]) else "DEP-HOUSEKEEPING"
         svc_id = "ST-ROOM-SERVICE" if dept_id == "DEP-ROOMSERVICE" else "ST-HOUSEKEEPING"

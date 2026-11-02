@@ -72,6 +72,8 @@ describe('Operations API verifyRoomPin 6-Digits & Check-in Logic', () => {
           action: 'room_service',
           items: 'Phở bò',
           note: null,
+          skip_ticket_creation: false,
+          create_ticket: true,
         }),
       })
     );

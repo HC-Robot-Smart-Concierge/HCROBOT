@@ -862,6 +862,8 @@ class RoomPinVerifyRequest(BaseModel):
     action: Optional[str] = Field(None, description="Hành động dịch vụ: 'room_service', 'housekeeping', 'bellman', 'maintenance'")
     items: Optional[str] = Field(None, description="Chi tiết món đồ hoặc yêu cầu dịch vụ")
     note: Optional[str] = Field(None, description="Ghi chú thêm nếu có")
+    skip_ticket_creation: Optional[bool] = Field(False, description="Nếu True, chỉ xác thực PIN/NFC mà không tạo SupportRequest tự động")
+    create_ticket: Optional[bool] = Field(True, description="Nếu False, chỉ xác thực PIN/NFC mà không tạo SupportRequest tự động")
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -873,6 +875,8 @@ class RoomNfcVerifyRequest(BaseModel):
     action: Optional[str] = Field(None, description="Hành động dịch vụ: 'room_service', 'housekeeping', 'bellman', 'maintenance'")
     items: Optional[str] = Field(None, description="Chi tiết món đồ hoặc yêu cầu dịch vụ")
     note: Optional[str] = Field(None, description="Ghi chú thêm nếu có")
+    skip_ticket_creation: Optional[bool] = Field(False, description="Nếu True, chỉ xác thực PIN/NFC mà không tạo SupportRequest tự động")
+    create_ticket: Optional[bool] = Field(True, description="Nếu False, chỉ xác thực PIN/NFC mà không tạo SupportRequest tự động")
 
     model_config = ConfigDict(populate_by_name=True)
 

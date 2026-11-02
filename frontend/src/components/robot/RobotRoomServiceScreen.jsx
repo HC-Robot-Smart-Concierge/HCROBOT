@@ -752,7 +752,8 @@ export const RobotRoomServiceScreen = ({
           setTargetRoom(room);
           if (onRoomChange) onRoomChange(room);
         }}
-        pendingAction="room_service"
+        pendingAction="verify_only"
+        skipTicketCreation={true}
         pendingItems={Object.values(cart).map((c) => `${c.qty}x ${c.item.name}`).join(', ')}
         initialTab="pin"
         onVerifiedSuccess={(res, verifiedRoom) => {

@@ -28,6 +28,7 @@ export const RoomPinModal = ({
   onNotCheckedIn,
   initialTab = 'pin',
   isSelectingRoomInitial = false,
+  skipTicketCreation = true,
 }) => {
   const [selectedRoom, setSelectedRoom] = useState(roomNumber || '');
   const [isSelectingRoom, setIsSelectingRoom] = useState(Boolean(isSelectingRoomInitial || !roomNumber));
@@ -109,7 +110,9 @@ export const RoomPinModal = ({
               tagCode,
               selectedRoom || null,
               pendingAction,
-              pendingItems
+              pendingItems,
+              null,
+              skipTicketCreation
             );
             setIsSuccess(true);
             setSuccessInfo(res);
@@ -167,7 +170,9 @@ export const RoomPinModal = ({
           scannedCode,
           selectedRoom || null,
           pendingAction,
-          pendingItems
+          pendingItems,
+          null,
+          skipTicketCreation
         );
         setIsSuccess(true);
         setSuccessInfo(res);
@@ -280,7 +285,10 @@ export const RoomPinModal = ({
             selectedRoom,
             pin,
             pendingAction,
-            pendingItems
+            pendingItems,
+            null,
+            null,
+            skipTicketCreation
           );
           setIsSuccess(true);
           setSuccessInfo(res);

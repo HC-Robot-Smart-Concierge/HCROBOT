@@ -48,4 +48,22 @@ describe('RoomPinModal Minimal Gray Theme & 4-Digit UX', () => {
     // Thông báo lỗi 4 số cuối CCCD
     expect(content).toContain('Mã PIN 4 số không chính xác (4 số cuối CCCD)');
   });
+
+  it('supports skipTicketCreation to prevent duplicate ghost support requests', () => {
+    const modalPath = path.resolve(__dirname, '../RoomPinModal.jsx');
+    const modalContent = fs.readFileSync(modalPath, 'utf8');
+
+    expect(modalContent).toContain('skipTicketCreation = true');
+    expect(modalContent).toContain('skipTicketCreation');
+
+    const foodMenuPath = path.resolve(__dirname, '../RobotFoodMenuScreen.jsx');
+    const foodContent = fs.readFileSync(foodMenuPath, 'utf8');
+    expect(foodContent).toContain('skipTicketCreation={true}');
+    expect(foodContent).toContain('pendingAction="verify_only"');
+
+    const roomServicePath = path.resolve(__dirname, '../RobotRoomServiceScreen.jsx');
+    const roomContent = fs.readFileSync(roomServicePath, 'utf8');
+    expect(roomContent).toContain('skipTicketCreation={true}');
+    expect(roomContent).toContain('pendingAction="verify_only"');
+  });
 });

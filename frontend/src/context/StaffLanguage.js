@@ -1,8 +1,14 @@
 import { useCallback, useRef } from 'react';
 import { useLanguage } from './LanguageContext';
+import { receptionVietnamese } from './ReceptionLanguage';
 
 // Display text only. API statuses, category IDs and guest-entered content stay unchanged.
 export const staffVietnamese = {
+  ...receptionVietnamese,
+  'RECEPTION PORTAL': 'CỔNG LỄ TÂN',
+  'Reception navigation': 'Điều hướng lễ tân',
+  'Reception staff': 'Nhân viên lễ tân',
+  'Display preferences for the Reception portal.': 'Tùy chỉnh hiển thị cho cổng lễ tân.',
   'Complimentary': 'Miễn phí',
   'Staff': 'Nhân viên',
   'Another chef': 'Đầu bếp khác',
@@ -383,6 +389,7 @@ export function translateStaffText(language, text, ...values) {
 export function staffDepartmentLabel(department) {
   const value = String(department || '').toLowerCase().replace(/[_-]/g, ' ').trim();
   if (['housekeeping', 'buồng phòng', 'room service', 'roomservice', 'phục vụ phòng', 'f&b'].includes(value)) return 'Room Service';
+  if (['reception', 'front desk', 'front desk & reception', 'lễ tân', 'lễ tân & tiền sảnh'].includes(value)) return 'Reception';
   return department;
 }
 

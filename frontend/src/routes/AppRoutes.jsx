@@ -257,7 +257,7 @@ export const AppRoutes = () => {
           path="housekeeping"
           element={<Navigate to="/staff/room-service" replace />}
         />
-        <Route path="settings" element={<StaffSettingsPage />} />
+        <Route path="settings" element={<StaffSettingsPage portal={resolveStaffDashboard(currentUser)} />} />
         <Route
           path="bell-services"
           element={

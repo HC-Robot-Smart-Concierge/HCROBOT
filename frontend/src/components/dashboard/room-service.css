@@ -78,7 +78,6 @@
 .room-service-content .staff-page-container > :first-child,
 .room-service-content > .staff-page-body > :first-child { margin-top: 0; }
 .room-service-content article { border-color: var(--portal-border); }
-.room-service-dashboard-grid { grid-template-columns: minmax(0, 1fr) 300px; }
 .room-service-settings-card { max-width: 760px; border: 1px solid var(--portal-border); border-radius: 12px; background: #fff; padding: 20px; }
 .room-service-language-options { display: flex; gap: 12px; margin-top: 16px; }
 .room-service-language-options button { flex: 1; padding: 18px; border: 1px solid var(--portal-border); border-radius: 8px; text-align: left; font-size: 13px; cursor: pointer; }
@@ -86,7 +85,6 @@
 .room-service-language-options small { display: block; font-size: 11px; color: #78716c; margin-top: 4px; }
 .room-service-backdrop { display: none; }
 @media (max-width: 1200px) {
-  .room-service-dashboard-grid { grid-template-columns: minmax(0, 1fr); }
   .room-service-page-header .staff-header-details { display: none; }
 }
 @media (max-width: 767px) {

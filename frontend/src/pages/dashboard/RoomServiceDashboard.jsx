@@ -47,11 +47,6 @@ const normalizeFleet = (unit) => ({
   battery: unit.battery_level ?? unit.battery,
 });
 
-const normalizeStock = (item) => ({
-  ...item,
-  count: item.count_label || item.count,
-});
-
 const matchesOrder = (order, orderId) => order.id === orderId || order.rawId === orderId;
 
 const KpiCard = ({ label, value, detail }) => {
@@ -74,7 +69,6 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
     ...INITIAL_ROOM_SERVICE_DATA,
     orders: [],
     deliveryFleet: INITIAL_ROOM_SERVICE_DATA.deliveryFleet.map(normalizeFleet),
-    lowStockAlerts: INITIAL_ROOM_SERVICE_DATA.lowStockAlerts.map(normalizeStock),
   });
   const [filter, setFilter] = useState('All');
   const [currentPage, setCurrentPage] = useState(1);
@@ -95,8 +89,6 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
       const hasLiveOrders = Array.isArray(response.orders);
       const hasLiveFleet =
         Array.isArray(response.delivery_fleet) && response.delivery_fleet.length > 0;
-      const hasLiveStock =
-        Array.isArray(response.low_stock_alerts) && response.low_stock_alerts.length > 0;
 
       setData((previous) => ({
         ...previous,
@@ -105,9 +97,6 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
         deliveryFleet: hasLiveFleet
           ? response.delivery_fleet.map(normalizeFleet)
           : previous.deliveryFleet,
-        lowStockAlerts: hasLiveStock
-          ? response.low_stock_alerts.map(normalizeStock)
-          : previous.lowStockAlerts,
       }));
     } catch (err) {
       console.error('Error fetching room service dashboard:', err);
@@ -445,7 +434,7 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
           />
         </section>
 
-        <section className="room-service-dashboard-grid mt-4 grid gap-4">
+        <section className="mt-4">
           <div className="min-w-0">
             <div className="mb-3 flex items-center justify-between gap-4">
               <h3 className="text-[13px] font-semibold text-[#36322F]">{t('activeOrders')}</h3>
@@ -717,22 +706,6 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
             )}
           </div>
 
-          <aside className="space-y-4">
-
-            <article className="rounded-xl bg-[#F4F3F0] p-4 border border-[#E8E5E0]">
-              <h3 className="text-[11px] font-bold uppercase tracking-wider text-[#3E3A36]">{t('rsLowStockAlerts')}</h3>
-              <div className="mt-3 space-y-2">
-                {(data.lowStockAlerts || []).map((item) => (
-                  <div key={item.id} className="flex items-center justify-between text-[11px] py-1 border-b border-[#E0DDD8] last:border-0">
-                    <span className="text-[#444]">{item.name}</span>
-                    <span className="font-semibold text-amber-700">
-                      {item.count}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </article>
-          </aside>
         </section>
       </div>
 

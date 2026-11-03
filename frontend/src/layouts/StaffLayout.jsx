@@ -6,6 +6,7 @@ import { useLanguage } from '../context/LanguageContext';
 
 import { AuroraSidebar } from '../components/dashboard/AuroraSidebar';
 import { AuroraHeader } from '../components/dashboard/AuroraHeader';
+import { RoomServiceFrame } from '../components/dashboard/RoomServiceFrame';
 import { MobileBottomNav } from '../components/common/MobileBottomNav';
 import { ToastNotification } from '../components/dashboard/ToastNotification';
 
@@ -42,13 +43,13 @@ export const StaffLayout = () => {
 
   // Determine activeView & activeMenu from current path
   const path = location.pathname;
-  const staffDefaultView = resolveStaffDashboard ? resolveStaffDashboard(currentUser) : 'housekeeping';
+  const staffDefaultView = resolveStaffDashboard ? resolveStaffDashboard(currentUser) : 'room_service';
   let activeView = staffDefaultView;
   let activeMenu = 'Dashboard';
 
   if (path.includes('/staff/reception')) activeView = 'reception';
   else if (path.includes('/staff/room-service')) activeView = 'room_service';
-  else if (path.includes('/staff/housekeeping')) activeView = 'housekeeping';
+  else if (path.includes('/staff/housekeeping')) activeView = 'room_service';
   else if (path.includes('/staff/bell-services')) activeView = 'bell_services';
   else if (path.includes('/staff/maintenance')) activeView = 'maintenance';
   else if (path.includes('/staff/kitchen')) activeView = 'kitchen';
@@ -62,6 +63,7 @@ export const StaffLayout = () => {
   else if (path === '/staff/history') activeMenu = 'History';
   else if (path === '/staff/notifications') activeMenu = 'Notifications';
   else if (path === '/staff/profile') activeMenu = 'Profile';
+  else if (path === '/staff/settings') activeMenu = 'Settings';
   else {
     const searchParams = new URLSearchParams(location.search);
     const tab = searchParams.get('tab');
@@ -74,6 +76,8 @@ export const StaffLayout = () => {
       activeMenu = 'Dashboard';
     }
   }
+
+  const isRoomServicePortal = activeView === 'room_service';
 
   // Handle sidebar navigation
   const handleSelectMenu = (menuId) => {
@@ -101,6 +105,9 @@ export const StaffLayout = () => {
         break;
       case 'Profile':
         navigate('/staff/profile');
+        break;
+      case 'Settings':
+        navigate('/staff/settings');
         break;
       case 'LiveCalls':
         navigate('/staff/concierge?tab=live_call');
@@ -131,7 +138,12 @@ export const StaffLayout = () => {
       <ToastNotification message={toastMessage} />
 
       {/* Main Staff Frame: Sidebar + Content */}
-      <div className="flex-1 flex overflow-hidden">
+      {isRoomServicePortal ? (
+        <RoomServiceFrame activeMenu={activeMenu} onSelectMenu={handleSelectMenu}
+          currentUser={currentUser} onLogout={handleLogout} unreadNotifCount={unreadNotifCount}>
+          <Outlet />
+        </RoomServiceFrame>
+      ) : <div className="flex-1 flex overflow-hidden">
         {/* Left Sidebar */}
         <AuroraSidebar
           activeMenu={activeMenu}
@@ -165,16 +177,16 @@ export const StaffLayout = () => {
             <Outlet />
           </div>
         </main>
-      </div>
+      </div>}
 
       {/* Mobile Bottom Navigation */}
-      <MobileBottomNav
+      {!isRoomServicePortal && <MobileBottomNav
         activeMenu={activeMenu}
         onSelectMenu={handleSelectMenu}
         unreadNotifCount={unreadNotifCount}
         currentUser={currentUser}
         activeView={activeView}
-      />
+      />}
 
       {/* Global Modals */}
       <FeedbackModal

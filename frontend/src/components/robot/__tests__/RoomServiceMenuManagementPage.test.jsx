@@ -1,13 +1,17 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { describe, it, expect } from 'vitest';
+import React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { RoomServiceMenuManagementPage } from '../../../pages/staff/RoomServiceMenuManagementPage';
+import { LanguageProvider } from '../../../context/LanguageContext';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 describe('RoomServiceMenuManagementPage Component & Contract Tests', () => {
+  afterEach(() => vi.unstubAllGlobals());
   it('exports RoomServiceMenuManagementPage as a valid React functional component', () => {
     expect(typeof RoomServiceMenuManagementPage).toBe('function');
     expect(RoomServiceMenuManagementPage.name).toBe('RoomServiceMenuManagementPage');
@@ -32,17 +36,14 @@ describe('RoomServiceMenuManagementPage Component & Contract Tests', () => {
     expect(content).toContain('toggleRoomServiceCatalogItem');
   });
 
-  it('includes KPI cards, filter pills, search input and modals', () => {
-    const filePath = path.resolve(__dirname, '../../../pages/staff/RoomServiceMenuManagementPage.jsx');
-    const content = fs.readFileSync(filePath, 'utf8');
-
-    // UI elements
-    expect(content).toContain('Tổng Dịch Vụ');
-    expect(content).toContain('Đang Phục Vụ');
-    expect(content).toContain('Tạm Ngưng');
-    expect(content).toContain('Miễn Phí Buồng Phòng');
-    expect(content).toContain('Thêm Dịch Vụ Mới');
-    expect(content).toContain('Xóa Dịch Vụ Phòng');
+  it.each([
+    [null, ['Total services', 'Available services', 'Paused services', 'Complimentary services', 'New service', 'Room cleaning']],
+    ['VI', ['Tổng Dịch Vụ', 'Đang Phục Vụ', 'Tạm Ngưng', 'Miễn Phí Buồng Phòng', 'Thêm Dịch Vụ Mới', 'Dọn Phòng Nhanh']],
+  ])('renders catalog controls in the chosen language (%s)', (language, labels) => {
+    vi.stubGlobal('localStorage', { getItem: () => language });
+    const content = renderToStaticMarkup(<LanguageProvider><RoomServiceMenuManagementPage /></LanguageProvider>);
+    for (const label of labels) expect(content).toContain(label);
+    expect(content).toContain('type="text"');
   });
 
   it('filters out any mineral water item if present', () => {

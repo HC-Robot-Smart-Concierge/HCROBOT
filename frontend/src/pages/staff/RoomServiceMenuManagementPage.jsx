@@ -1,3 +1,5 @@
+import { useStaffText } from '../../context/StaffLanguage';
+import { StaffPageHeader } from '../../components/dashboard/RoomServiceFrame';
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   ConciergeBell,
@@ -30,6 +32,7 @@ import {
 } from '../../services/operationsApi';
 
 export const RoomServiceMenuManagementPage = ({ currentUser, onNotify = () => {} }) => {
+  const st = useStaffText();
   const staffName = currentUser?.full_name || currentUser?.name || 'Nhân Viên Phục Vụ Phòng';
 
   const [isLoading, setIsLoading] = useState(false);
@@ -58,12 +61,12 @@ export const RoomServiceMenuManagementPage = ({ currentUser, onNotify = () => {}
   });
 
   const CATEGORY_OPTIONS = [
-    { id: 'all', name: 'Tất Cả Phân Loại', icon: Sparkles },
-    { id: 'bath', name: 'Khăn & Tiện Ích', icon: Bath },
-    { id: 'spa', name: 'Massage Tại Phòng', icon: HeartHandshake },
-    { id: 'bedding', name: 'Gối & Chăn Ấm', icon: BedDouble },
-    { id: 'housekeeping', name: 'Dọn Phòng Nhanh', icon: ConciergeBell },
-    { id: 'laundry', name: 'Giặt Ủi', icon: Shirt },
+    { id: 'all', name: st("All categories"), icon: Sparkles },
+    { id: 'bath', name: st("Towels & amenities"), icon: Bath },
+    { id: 'spa', name: st("In-room massage"), icon: HeartHandshake },
+    { id: 'bedding', name: st("Pillows & blankets"), icon: BedDouble },
+    { id: 'housekeeping', name: st("Room cleaning"), icon: ConciergeBell },
+    { id: 'laundry', name: st("Laundry"), icon: Shirt },
   ];
 
   const loadServices = useCallback(async () => {
@@ -78,7 +81,7 @@ export const RoomServiceMenuManagementPage = ({ currentUser, onNotify = () => {}
         setServices(cleaned);
       }
     } catch {
-      onNotify('Lỗi: Không thể nạp danh mục dịch vụ phòng từ máy chủ');
+      onNotify(st("Unable to load the service catalog."));
     } finally {
       setIsLoading(false);
     }
@@ -149,7 +152,7 @@ export const RoomServiceMenuManagementPage = ({ currentUser, onNotify = () => {}
     e.preventDefault();
     if (isSubmitting) return;
     if (!formData.name.trim()) {
-      onNotify('Vui lòng nhập tên dịch vụ phòng');
+      onNotify(st("Enter a service name."));
       return;
     }
 
@@ -171,7 +174,7 @@ export const RoomServiceMenuManagementPage = ({ currentUser, onNotify = () => {}
       if (editingService) {
         const updated = await updateRoomServiceCatalogItem(editingService.id, payload);
         setServices((prev) => prev.map((s) => (s.id === editingService.id ? { ...s, ...updated } : s)));
-        onNotify(`Đã cập nhật dịch vụ: ${payload.name}`);
+        onNotify(st("Service updated: {0}", payload.name));
       } else {
         const created = await createRoomServiceCatalogItem(payload);
         setServices((prev) => {
@@ -179,11 +182,11 @@ export const RoomServiceMenuManagementPage = ({ currentUser, onNotify = () => {}
           const filtered = prev.filter((s) => s.id !== created.id);
           return [...filtered, created];
         });
-        onNotify(`Đã thêm dịch vụ mới: ${payload.name}`);
+        onNotify(st("Service added: {0}", payload.name));
       }
       setServiceModalOpen(false);
     } catch {
-      onNotify('Lỗi: Không thể lưu dịch vụ phòng');
+      onNotify(st("Unable to save the service."));
     } finally {
       setIsSubmitting(false);
     }
@@ -195,9 +198,9 @@ export const RoomServiceMenuManagementPage = ({ currentUser, onNotify = () => {}
       setServices((prev) =>
         prev.map((s) => (s.id === service.id ? { ...s, is_available: updated.is_available } : s))
       );
-      onNotify(`Đã chuyển trạng thái dịch vụ ${service.name}: ${updated.is_available ? 'Đang phục vụ' : 'Tạm ngưng'}`);
+      onNotify(st("Service {0} updated: {1}", service.name, updated.is_available ? st('Available') : st('Paused')));
     } catch {
-      onNotify('Lỗi: Không thể cập nhật trạng thái dịch vụ');
+      onNotify(st("Unable to update service availability."));
     }
   };
 
@@ -206,34 +209,30 @@ export const RoomServiceMenuManagementPage = ({ currentUser, onNotify = () => {}
     try {
       await deleteRoomServiceCatalogItem(deleteConfirm.id);
       setServices((prev) => prev.filter((s) => s.id !== deleteConfirm.id));
-      onNotify(`Đã xóa vĩnh viễn dịch vụ: ${deleteConfirm.name}`);
+      onNotify(st("Service deleted: {0}", deleteConfirm.name));
       setDeleteConfirm(null);
     } catch {
-      onNotify('Lỗi: Không thể xóa dịch vụ phòng');
+      onNotify(st("Unable to delete the service."));
     }
   };
 
   const formatCurrency = (amount) => {
-    if (Number(amount) === 0) return 'Miễn phí';
+    if (Number(amount) === 0) return st('Complimentary');
     return new Intl.NumberFormat('vi-VN').format(amount) + ' đ';
   };
 
   return (
-    <div className="flex-1 overflow-y-auto custom-scrollbar min-h-0 bg-[#FAF8F5] p-6 lg:p-8 space-y-6 pb-28 md:pb-12">
+    <div className="staff-page-body flex-1 overflow-y-auto custom-scrollbar min-h-0 bg-[#FAF8F5] p-6 lg:p-8 space-y-6 pb-28 md:pb-12">
       {/* Top Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#E8E2D9] pb-6">
+      <StaffPageHeader className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#E8E2D9] pb-6">
         <div>
           <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-[#4A3E3D] text-white rounded-xl shadow-sm">
+            <div className="staff-heading-decoration p-2.5 bg-[#4A3E3D] text-white rounded-xl shadow-sm">
               <ConciergeBell className="w-6 h-6" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-[#2C2420] tracking-tight">
-                Quản Lý Dịch Vụ Phục Vụ Phòng
-              </h1>
-              <p className="text-sm text-[#7D716A]">
-                Bộ phận Room Service • Quản lý danh mục khăn, tiện ích, massage spa và giặt ủi hiển thị trên Robot
-              </p>
+              <h1 className="text-2xl font-bold text-[#2C2420] tracking-tight">{st("Service Management")} </h1>
+              <p className="text-sm text-[#7D716A]">{st("Manage room amenities, cleaning, spa and laundry services shown on the robot.")} </p>
             </div>
           </div>
         </div>
@@ -244,35 +243,31 @@ export const RoomServiceMenuManagementPage = ({ currentUser, onNotify = () => {}
             disabled={isLoading}
             className="flex items-center gap-2 px-4 py-2.5 bg-white border border-[#DDD5CA] text-[#4A3E3D] rounded-xl hover:bg-[#F5EFEB] transition-all text-sm font-medium shadow-sm disabled:opacity-50"
           >
-            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
-            Làm mới
-          </button>
+            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />{st("Refresh")} </button>
           <button
             onClick={handleOpenCreateModal}
             className="flex items-center gap-2 px-4 py-2.5 bg-[#4A3E3D] text-white rounded-xl hover:bg-[#382E2D] transition-all text-sm font-semibold shadow-sm"
           >
-            <Plus className="w-4 h-4" />
-            Thêm Dịch Vụ Mới
-          </button>
+            <Plus className="w-4 h-4" />{st("New service")} </button>
         </div>
-      </div>
+      </StaffPageHeader>
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-white p-5 rounded-2xl border border-[#E8E2D9] shadow-sm">
-          <p className="text-xs font-medium text-[#7D716A] uppercase tracking-wider">Tổng Dịch Vụ</p>
+          <p className="text-xs font-medium text-[#7D716A] uppercase tracking-wider">{st("Total services")}</p>
           <p className="text-3xl font-bold text-[#2C2420] mt-1">{stats.total}</p>
         </div>
         <div className="bg-white p-5 rounded-2xl border border-[#E8E2D9] shadow-sm">
-          <p className="text-xs font-medium text-emerald-600 uppercase tracking-wider">Đang Phục Vụ</p>
+          <p className="text-xs font-medium text-emerald-600 uppercase tracking-wider">{st("Available services")}</p>
           <p className="text-3xl font-bold text-emerald-700 mt-1">{stats.available}</p>
         </div>
         <div className="bg-white p-5 rounded-2xl border border-[#E8E2D9] shadow-sm">
-          <p className="text-xs font-medium text-amber-600 uppercase tracking-wider">Tạm Ngưng</p>
+          <p className="text-xs font-medium text-amber-600 uppercase tracking-wider">{st("Paused services")}</p>
           <p className="text-3xl font-bold text-amber-700 mt-1">{stats.paused}</p>
         </div>
         <div className="bg-white p-5 rounded-2xl border border-[#E8E2D9] shadow-sm">
-          <p className="text-xs font-medium text-blue-600 uppercase tracking-wider">Miễn Phí Buồng Phòng</p>
+          <p className="text-xs font-medium text-blue-600 uppercase tracking-wider">{st("Complimentary services")}</p>
           <p className="text-3xl font-bold text-blue-700 mt-1">{stats.free}</p>
         </div>
       </div>
@@ -284,7 +279,7 @@ export const RoomServiceMenuManagementPage = ({ currentUser, onNotify = () => {}
             <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-[#7D716A]" />
             <input
               type="text"
-              placeholder="Tìm kiếm theo tên dịch vụ, mô tả..."
+              placeholder={st("Search services or descriptions...")}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-10 pr-4 py-2 bg-[#F9F7F4] border border-[#DDD5CA] rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#4A3E3D] text-[#2C2420]"
@@ -292,7 +287,7 @@ export const RoomServiceMenuManagementPage = ({ currentUser, onNotify = () => {}
           </div>
           <div className="flex items-center gap-3 self-end md:self-auto">
             <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold text-[#7D716A] whitespace-nowrap">Phân loại:</span>
+              <span className="text-xs font-semibold text-[#7D716A] whitespace-nowrap">{st("Category:")}</span>
               <select
                 value={selectedCategory}
                 onChange={(e) => setSelectedCategory(e.target.value)}
@@ -305,9 +300,7 @@ export const RoomServiceMenuManagementPage = ({ currentUser, onNotify = () => {}
                 ))}
               </select>
             </div>
-            <div className="text-xs text-[#7D716A] whitespace-nowrap">
-              Hiển thị <span className="font-semibold text-[#2C2420]">{filteredServices.length}</span> / {services.length} dịch vụ
-            </div>
+            <div className="text-xs text-[#7D716A] whitespace-nowrap">{st("Showing")} <span className="font-semibold text-[#2C2420]">{filteredServices.length}</span> / {services.length} {st("services")} </div>
           </div>
         </div>
 
@@ -339,29 +332,27 @@ export const RoomServiceMenuManagementPage = ({ currentUser, onNotify = () => {}
         {isLoading ? (
           <div className="py-20 flex flex-col items-center justify-center space-y-3">
             <RefreshCw className="w-8 h-8 text-[#7D716A] animate-spin" />
-            <p className="text-sm text-[#7D716A]">Đang nạp danh mục dịch vụ phòng...</p>
+            <p className="text-sm text-[#7D716A]">{st("Loading service catalog...")}</p>
           </div>
         ) : filteredServices.length === 0 ? (
           <div className="py-16 text-center space-y-3">
             <div className="w-12 h-12 bg-[#F5EFEB] text-[#7D716A] rounded-2xl flex items-center justify-center mx-auto">
               <ConciergeBell className="w-6 h-6" />
             </div>
-            <p className="text-base font-semibold text-[#2C2420]">Không tìm thấy dịch vụ phòng nào</p>
-            <p className="text-xs text-[#7D716A] max-w-sm mx-auto">
-              Không có mục nào phù hợp với bộ lọc hiện tại hoặc danh mục đang trống.
-            </p>
+            <p className="text-base font-semibold text-[#2C2420]">{st("No services found")}</p>
+            <p className="text-xs text-[#7D716A] max-w-sm mx-auto">{st("No services match your filters, or the catalog is empty.")} </p>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse text-sm">
               <thead>
                 <tr className="border-b border-[#E8E2D9] bg-[#FAF8F5] text-xs font-semibold text-[#7D716A] uppercase tracking-wider">
-                  <th className="py-3.5 px-4">Dịch Vụ & Mô Tả</th>
-                  <th className="py-3.5 px-4">Phân Loại</th>
-                  <th className="py-3.5 px-4">Đơn Giá & Đơn Vị</th>
-                  <th className="py-3.5 px-4">Thời Gian Phục Vụ</th>
-                  <th className="py-3.5 px-4 text-center">Trạng Thái</th>
-                  <th className="py-3.5 px-4 text-right">Thao Tác</th>
+                  <th className="py-3.5 px-4">{st("Service & description")}</th>
+                  <th className="py-3.5 px-4">{st("Category")}</th>
+                  <th className="py-3.5 px-4">{st("Price & unit")}</th>
+                  <th className="py-3.5 px-4">{st("Service time")}</th>
+                  <th className="py-3.5 px-4 text-center">{st("Status")}</th>
+                  <th className="py-3.5 px-4 text-right">{st("Actions")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#E8E2D9]">
@@ -397,8 +388,7 @@ export const RoomServiceMenuManagementPage = ({ currentUser, onNotify = () => {}
                               {service.description}
                             </p>
                           )}
-                          <span className="text-[10px] font-mono text-[#A89F97] mt-0.5 block">
-                            Mã: {service.id}
+                          <span className="text-[10px] font-mono text-[#A89F97] mt-0.5 block">{st("ID:")} {service.id}
                           </span>
                         </div>
                       </div>
@@ -406,11 +396,11 @@ export const RoomServiceMenuManagementPage = ({ currentUser, onNotify = () => {}
 
                     <td className="py-4 px-4 whitespace-nowrap">
                       <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#F5EFEB] text-xs font-medium text-[#4A3E3D]">
-                        {service.category === 'bath' && 'Khăn & Tiện Ích'}
-                        {service.category === 'spa' && 'Massage Tại Phòng'}
-                        {service.category === 'bedding' && 'Gối & Chăn Ấm'}
-                        {service.category === 'housekeeping' && 'Dọn Phòng Nhanh'}
-                        {service.category === 'laundry' && 'Giặt Ủi'}
+                        {service.category === 'bath' && st("Towels & amenities")}
+                        {service.category === 'spa' && st("In-room massage")}
+                        {service.category === 'bedding' && st("Pillows & blankets")}
+                        {service.category === 'housekeeping' && st("Room cleaning")}
+                        {service.category === 'laundry' && st("Laundry")}
                         {!['bath', 'spa', 'bedding', 'housekeeping', 'laundry'].includes(service.category) && service.category}
                       </span>
                     </td>
@@ -425,7 +415,7 @@ export const RoomServiceMenuManagementPage = ({ currentUser, onNotify = () => {}
                     <td className="py-4 px-4 whitespace-nowrap">
                       <div className="flex items-center gap-1.5 text-xs text-[#635750]">
                         <Clock className="w-3.5 h-3.5 text-[#7D716A]" />
-                        <span>{service.prep_time} phút</span>
+                        <span>{service.prep_time} {st("min")}</span>
                       </div>
                     </td>
 
@@ -437,18 +427,14 @@ export const RoomServiceMenuManagementPage = ({ currentUser, onNotify = () => {}
                             ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
                             : 'bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200'
                         }`}
-                        title="Bấm để chuyển đổi trạng thái phục vụ"
+                        title={st("Toggle service availability")}
                       >
                         {service.is_available ? (
                           <>
-                            <CheckCircle2 className="w-3.5 h-3.5" />
-                            Đang phục vụ
-                          </>
+                            <CheckCircle2 className="w-3.5 h-3.5" />{st("Available")} </>
                         ) : (
                           <>
-                            <XCircle className="w-3.5 h-3.5" />
-                            Tạm ngưng
-                          </>
+                            <XCircle className="w-3.5 h-3.5" />{st("Paused")} </>
                         )}
                       </button>
                     </td>
@@ -458,14 +444,14 @@ export const RoomServiceMenuManagementPage = ({ currentUser, onNotify = () => {}
                         <button
                           onClick={() => handleOpenEditModal(service)}
                           className="p-1.5 rounded-lg text-[#635750] hover:text-[#2C2420] hover:bg-[#F5EFEB] transition-all"
-                          title="Chỉnh sửa dịch vụ"
+                          title={st("Edit service")}
                         >
                           <Edit3 className="w-4 h-4" />
                         </button>
                         <button
                           onClick={() => setDeleteConfirm(service)}
                           className="p-1.5 rounded-lg text-rose-500 hover:text-rose-700 hover:bg-rose-50 transition-all"
-                          title="Xóa dịch vụ"
+                          title={st("Delete service")}
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -489,7 +475,7 @@ export const RoomServiceMenuManagementPage = ({ currentUser, onNotify = () => {}
                   <ConciergeBell className="w-5 h-5" />
                 </div>
                 <h2 className="text-lg font-bold text-[#2C2420]">
-                  {editingService ? 'Chỉnh Sửa Dịch Vụ Phòng' : 'Thêm Dịch Vụ Phòng Mới'}
+                  {editingService ? st("Edit room service") : st("Add room service")}
                 </h2>
               </div>
               <button
@@ -502,13 +488,12 @@ export const RoomServiceMenuManagementPage = ({ currentUser, onNotify = () => {}
 
             <form onSubmit={handleSaveService} className="p-6 space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-[#4A3E3D] mb-1">
-                  Tên Dịch Vụ / Tiện Ích <span className="text-rose-500">*</span>
+                <label className="block text-xs font-semibold text-[#4A3E3D] mb-1">{st("Service / amenity name")} <span className="text-rose-500">*</span>
                 </label>
                 <input
                   type="text"
                   required
-                  placeholder="Ví dụ: Khăn tắm lớn cao cấp, Massage toàn thân Thụy Điển..."
+                  placeholder={st("e.g. Premium bath towel, Swedish full-body massage...")}
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   className="w-full px-3.5 py-2.5 bg-[#F9F7F4] border border-[#DDD5CA] rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#4A3E3D] text-[#2C2420]"
@@ -517,29 +502,25 @@ export const RoomServiceMenuManagementPage = ({ currentUser, onNotify = () => {}
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-[#4A3E3D] mb-1">
-                    Phân Loại Dịch Vụ
-                  </label>
+                  <label className="block text-xs font-semibold text-[#4A3E3D] mb-1">{st("Service category")} </label>
                   <select
                     value={formData.category}
                     onChange={(e) => setFormData({ ...formData, category: e.target.value })}
                     className="w-full px-3.5 py-2.5 bg-[#F9F7F4] border border-[#DDD5CA] rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#4A3E3D] text-[#2C2420]"
                   >
-                    <option value="bath">Khăn & Tiện Ích Buồng Phòng</option>
-                    <option value="spa">Massage & Trị Liệu Tại Phòng</option>
-                    <option value="bedding">Gối & Chăn Ấm Bổ Sung</option>
-                    <option value="housekeeping">Dọn Phòng & Khử Mùi Nhanh</option>
-                    <option value="laundry">Giặt Ủi & Chăm Sóc Trang Phục</option>
+                    <option value="bath">{st("Room towels & amenities")}</option>
+                    <option value="spa">{st("In-room massage & treatments")}</option>
+                    <option value="bedding">{st("Extra pillows & blankets")}</option>
+                    <option value="housekeeping">{st("Room cleaning & freshening")}</option>
+                    <option value="laundry">{st("Laundry & garment care")}</option>
                   </select>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-[#4A3E3D] mb-1">
-                    Đơn Vị Tính
-                  </label>
+                  <label className="block text-xs font-semibold text-[#4A3E3D] mb-1">{st("Unit")} </label>
                   <input
                     type="text"
-                    placeholder="Chiếc, Bộ, Suất 60 phút, Lượt..."
+                    placeholder={st("Item, set, 60-minute session, visit...")}
                     value={formData.unit}
                     onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
                     className="w-full px-3.5 py-2.5 bg-[#F9F7F4] border border-[#DDD5CA] rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#4A3E3D] text-[#2C2420]"
@@ -549,8 +530,7 @@ export const RoomServiceMenuManagementPage = ({ currentUser, onNotify = () => {}
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-[#4A3E3D] mb-1">
-                    Đơn Giá (VNĐ) <span className="text-xs text-[#7D716A]">(0 = Miễn phí)</span>
+                  <label className="block text-xs font-semibold text-[#4A3E3D] mb-1">{st("Unit price (VND)")} <span className="text-xs text-[#7D716A]">{st("(0 = Complimentary)")}</span>
                   </label>
                   <input
                     type="number"
@@ -563,9 +543,7 @@ export const RoomServiceMenuManagementPage = ({ currentUser, onNotify = () => {}
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-[#4A3E3D] mb-1">
-                    Thời Gian Chuẩn Bị (Phút)
-                  </label>
+                  <label className="block text-xs font-semibold text-[#4A3E3D] mb-1">{st("Preparation time (minutes)")} </label>
                   <input
                     type="number"
                     min="1"
@@ -579,12 +557,10 @@ export const RoomServiceMenuManagementPage = ({ currentUser, onNotify = () => {}
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-[#4A3E3D] mb-1">
-                    Huy Hiệu Nhãn (Badge)
-                  </label>
+                  <label className="block text-xs font-semibold text-[#4A3E3D] mb-1">{st("Badge")} </label>
                   <input
                     type="text"
-                    placeholder="Miễn phí, Phổ biến, Được yêu thích, Cao cấp..."
+                    placeholder={st("Complimentary, Popular, Recommended, Premium...")}
                     value={formData.badge}
                     onChange={(e) => setFormData({ ...formData, badge: e.target.value })}
                     className="w-full px-3.5 py-2.5 bg-[#F9F7F4] border border-[#DDD5CA] rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#4A3E3D] text-[#2C2420]"
@@ -592,9 +568,7 @@ export const RoomServiceMenuManagementPage = ({ currentUser, onNotify = () => {}
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-[#4A3E3D] mb-1">
-                    Thứ Tự Hiển Thị
-                  </label>
+                  <label className="block text-xs font-semibold text-[#4A3E3D] mb-1">{st("Display order")} </label>
                   <input
                     type="number"
                     min="1"
@@ -606,9 +580,7 @@ export const RoomServiceMenuManagementPage = ({ currentUser, onNotify = () => {}
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-[#4A3E3D] mb-1">
-                  Đường Dẫn Hình Ảnh (URL)
-                </label>
+                <label className="block text-xs font-semibold text-[#4A3E3D] mb-1">{st("Image URL")} </label>
                 <input
                   type="url"
                   placeholder="https://images.unsplash.com/..."
@@ -619,12 +591,10 @@ export const RoomServiceMenuManagementPage = ({ currentUser, onNotify = () => {}
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-[#4A3E3D] mb-1">
-                  Mô Tả Chi Tiết
-                </label>
+                <label className="block text-xs font-semibold text-[#4A3E3D] mb-1">{st("Description")} </label>
                 <textarea
                   rows="3"
-                  placeholder="Mô tả công dụng, chất liệu hoặc quy trình phục vụ..."
+                  placeholder={st("Describe the service, materials or preparation process...")}
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                   className="w-full px-3.5 py-2 bg-[#F9F7F4] border border-[#DDD5CA] rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#4A3E3D] text-[#2C2420] resize-none"
@@ -639,9 +609,7 @@ export const RoomServiceMenuManagementPage = ({ currentUser, onNotify = () => {}
                   onChange={(e) => setFormData({ ...formData, is_available: e.target.checked })}
                   className="w-4 h-4 text-[#4A3E3D] rounded border-[#DDD5CA] focus:ring-[#4A3E3D]"
                 />
-                <label htmlFor="modal_is_available" className="text-sm font-medium text-[#2C2420] select-none cursor-pointer">
-                  Kích hoạt sẵn sàng phục vụ khách ngay lập tức
-                </label>
+                <label htmlFor="modal_is_available" className="text-sm font-medium text-[#2C2420] select-none cursor-pointer">{st("Make this service available to guests")} </label>
               </div>
 
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-[#E8E2D9]">
@@ -650,16 +618,14 @@ export const RoomServiceMenuManagementPage = ({ currentUser, onNotify = () => {}
                   disabled={isSubmitting}
                   onClick={() => setServiceModalOpen(false)}
                   className="px-4 py-2 border border-[#DDD5CA] rounded-xl text-sm font-medium text-[#635750] hover:bg-[#F5EFEB] transition-all disabled:opacity-50"
-                >
-                  Hủy bỏ
-                </button>
+                >{st("Cancel")} </button>
                 <button
                   type="submit"
                   disabled={isSubmitting}
                   className="px-5 py-2 bg-[#4A3E3D] text-white rounded-xl text-sm font-semibold hover:bg-[#382E2D] transition-all shadow-sm disabled:opacity-50 flex items-center gap-2"
                 >
                   {isSubmitting && <RefreshCw className="w-4 h-4 animate-spin" />}
-                  {editingService ? (isSubmitting ? 'Đang lưu...' : 'Lưu Thay Đổi') : (isSubmitting ? 'Đang thêm...' : 'Thêm Dịch Vụ')}
+                  {editingService ? (isSubmitting ? st("Saving...") : st("Save changes")) : (isSubmitting ? st("Adding...") : st("Add service"))}
                 </button>
               </div>
             </form>
@@ -675,26 +641,19 @@ export const RoomServiceMenuManagementPage = ({ currentUser, onNotify = () => {}
               <Trash2 className="w-6 h-6" />
             </div>
             <div className="text-center space-y-1">
-              <h3 className="text-lg font-bold text-[#2C2420]">Xóa Dịch Vụ Phòng</h3>
-              <p className="text-sm text-[#7D716A]">
-                Ông chủ có chắc chắn muốn xóa dịch vụ{' '}
-                <span className="font-semibold text-[#2C2420]">"{deleteConfirm.name}"</span>?
-                Dịch vụ này sẽ không còn hiển thị trên Robot và ứng dụng của khách.
-              </p>
+              <h3 className="text-lg font-bold text-[#2C2420]">{st("Delete room service")}</h3>
+              <p className="text-sm text-[#7D716A]">{st("Are you sure you want to delete")}{' '}
+                <span className="font-semibold text-[#2C2420]">"{deleteConfirm.name}"</span>{st("? This service will no longer appear on the robot or guest app.")} </p>
             </div>
             <div className="flex items-center justify-center gap-3 pt-2">
               <button
                 onClick={() => setDeleteConfirm(null)}
                 className="px-4 py-2 border border-[#DDD5CA] rounded-xl text-sm font-medium text-[#635750] hover:bg-[#F5EFEB] transition-all"
-              >
-                Hủy bỏ
-              </button>
+              >{st("Cancel")} </button>
               <button
                 onClick={handleDeleteService}
                 className="px-5 py-2 bg-rose-600 text-white rounded-xl text-sm font-semibold hover:bg-rose-700 transition-all shadow-sm"
-              >
-                Xác Nhận Xóa
-              </button>
+              >{st("Confirm deletion")} </button>
             </div>
           </div>
         </div>

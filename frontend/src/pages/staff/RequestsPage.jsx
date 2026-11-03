@@ -1,3 +1,5 @@
+import { useStaffText, staffDepartmentLabel, staffStatusLabel } from '../../context/StaffLanguage';
+import { StaffPageHeader } from '../../components/dashboard/RoomServiceFrame';
 import React, { useState, useEffect } from 'react';
 import { Search, RefreshCw, Clock, CheckCircle2, Check, Eye, User, MapPin, Utensils, ChefHat, Send, Truck, ArrowRight, Sparkles, ConciergeBell, Phone } from 'lucide-react';
 import { NewDirectiveModal } from '../../components/dashboard/Modals';
@@ -12,6 +14,7 @@ import {
 import { useLanguage } from '../../context/LanguageContext';
 
 export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = () => {} }) => {
+  const st = useStaffText();
   const { t } = useLanguage();
   const staffName = currentUser?.full_name || currentUser?.name || 'Elena Rossi';
   const staffDept = currentUser?.department || 'F&B';
@@ -334,12 +337,12 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
   };
 
   const FOOD_STEPS = [
-    { step: 1, title: 'Khách Đặt' },
-    { step: 2, title: 'Chuyển Bếp' },
-    { step: 3, title: 'Bếp Nấu' },
-    { step: 4, title: 'Món Xong' },
-    { step: 5, title: 'Giao Phòng' },
-    { step: 6, title: 'Hoàn Tất' },
+    { step: 1, title: st("Guest orders") },
+    { step: 2, title: st("Send to kitchen") },
+    { step: 3, title: st("Cooking") },
+    { step: 4, title: st("Ready") },
+    { step: 5, title: st("Room delivery") },
+    { step: 6, title: st("Completed") },
   ];
 
   const getFoodOrderStage = (status) => {
@@ -353,14 +356,14 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
     ) {
       return {
         step: 1,
-        label: 'Chờ Tiếp Nhận',
+        label: st("Pending"),
         badgeClass: 'bg-amber-100 text-amber-800 border-amber-200',
         nextStatus: 'Sent to Kitchen',
-        nextActionName: 'Chuyển Sang Bếp',
+        nextActionName: st("Send to kitchen"),
         nextIcon: ChefHat,
         actionBtnClass: 'bg-indigo-600 hover:bg-indigo-700 text-white',
-        deptNote: 'Room Service kiểm tra đơn và gửi Bếp',
-        roleBadge: 'Room Service',
+        deptNote: st("Room Service reviews the order and sends it to the kitchen"),
+        roleBadge: st('Room Service'),
       };
     }
     if (
@@ -371,14 +374,14 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
     ) {
       return {
         step: 2,
-        label: 'Đã Chuyển Bếp',
+        label: st("Sent to kitchen"),
         badgeClass: 'bg-blue-100 text-blue-800 border-blue-200',
         nextStatus: 'Cooking',
-        nextActionName: 'Bếp Nhận Nấu',
+        nextActionName: st("Accept and cook"),
         nextIcon: ChefHat,
         actionBtnClass: 'bg-amber-600 hover:bg-amber-700 text-white',
-        deptNote: 'Bếp tiếp nhận chế biến món',
-        roleBadge: 'Kitchen',
+        deptNote: st("The kitchen accepts and prepares the food"),
+        roleBadge: st('Kitchen'),
       };
     }
     if (
@@ -390,14 +393,14 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
     ) {
       return {
         step: 3,
-        label: 'Bếp Đang Nấu',
+        label: st("In preparation"),
         badgeClass: 'bg-amber-100 text-amber-800 border-amber-200',
         nextStatus: 'Ready',
-        nextActionName: 'Món Đã Nấu Xong',
+        nextActionName: st("Food ready"),
         nextIcon: Sparkles,
         actionBtnClass: 'bg-emerald-600 hover:bg-emerald-700 text-white',
-        deptNote: 'Bếp nấu xong, báo Room Service',
-        roleBadge: 'Kitchen',
+        deptNote: st("Food ready; notify Room Service"),
+        roleBadge: st('Kitchen'),
       };
     }
     if (
@@ -408,14 +411,14 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
     ) {
       return {
         step: 4,
-        label: 'Món Đã Nấu Xong',
+        label: st("Food ready"),
         badgeClass: 'bg-emerald-100 text-emerald-800 border-emerald-200',
         nextStatus: 'Delivering',
-        nextActionName: 'Lấy Món & Giao Phòng',
+        nextActionName: st("Collect and deliver"),
         nextIcon: Truck,
         actionBtnClass: 'bg-sky-600 hover:bg-sky-700 text-white',
-        deptNote: 'Room Service lấy món và chuẩn bị dụng cụ giao phòng',
-        roleBadge: 'Room Service',
+        deptNote: st("Room Service collects food and utensils for delivery"),
+        roleBadge: st('Room Service'),
       };
     }
     if (
@@ -426,34 +429,34 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
     ) {
       return {
         step: 5,
-        label: 'Đang Giao Phòng',
+        label: st("Delivering to room"),
         badgeClass: 'bg-purple-100 text-purple-800 border-purple-200',
         nextStatus: 'Completed',
-        nextActionName: 'Xác Nhận Đã Giao',
+        nextActionName: st("Confirm delivery"),
         nextIcon: CheckCircle2,
         actionBtnClass: 'bg-emerald-600 hover:bg-emerald-700 text-white',
-        deptNote: 'Giao món và đồ dùng lên phòng thành công',
-        roleBadge: 'Room Service',
+        deptNote: st("Food and items delivered to the room"),
+        roleBadge: st('Room Service'),
       };
     }
     return {
       step: 6,
-      label: 'Đã Hoàn Tất',
+      label: st("Completed"),
       badgeClass: 'bg-emerald-100 text-emerald-800 border-emerald-200',
       nextStatus: null,
       nextActionName: null,
       nextIcon: null,
       actionBtnClass: '',
-      deptNote: 'Đơn hàng đã phục vụ xong',
-      roleBadge: 'Hoàn Thành',
+      deptNote: st("Order fulfilled"),
+      roleBadge: st("Complete task"),
     };
   };
 
   const SERVICE_STEPS = [
-    { step: 1, title: 'Khách Đặt' },
-    { step: 2, title: 'Tiếp Nhận' },
-    { step: 3, title: 'Giao Phòng' },
-    { step: 4, title: 'Hoàn Tất' },
+    { step: 1, title: st("Guest orders") },
+    { step: 2, title: st("Accepted") },
+    { step: 3, title: st("Room delivery") },
+    { step: 4, title: st("Completed") },
   ];
 
   const getDirectServiceStage = (status) => {
@@ -467,14 +470,14 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
     ) {
       return {
         step: 1,
-        label: 'Chờ Tiếp Nhận',
+        label: st("Pending"),
         badgeClass: 'bg-amber-100 text-amber-800 border-amber-200',
         nextStatus: 'In Progress',
-        nextActionName: 'Tiếp Nhận Xử Lý',
+        nextActionName: st("Accept request"),
         nextIcon: ConciergeBell,
         actionBtnClass: 'bg-indigo-600 hover:bg-indigo-700 text-white',
-        deptNote: 'Room Service tiếp nhận và chuẩn bị đồ/dịch vụ',
-        roleBadge: 'Room Service',
+        deptNote: st("Room Service accepts and prepares the requested service"),
+        roleBadge: st('Room Service'),
       };
     }
     if (
@@ -488,14 +491,14 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
     ) {
       return {
         step: 2,
-        label: 'Đang Chuẩn Bị',
+        label: st("Preparing"),
         badgeClass: 'bg-sky-100 text-sky-800 border-sky-200',
         nextStatus: 'Delivering',
-        nextActionName: 'Giao Lên Phòng',
+        nextActionName: st("Deliver to room"),
         nextIcon: Truck,
         actionBtnClass: 'bg-sky-600 hover:bg-sky-700 text-white',
-        deptNote: 'Đã chuẩn bị xong, nhân viên mang lên phòng cho khách',
-        roleBadge: 'Room Service',
+        deptNote: st("Ready for staff to deliver to the room"),
+        roleBadge: st('Room Service'),
       };
     }
     if (
@@ -506,26 +509,26 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
     ) {
       return {
         step: 3,
-        label: 'Đang Giao Phòng',
+        label: st("Delivering to room"),
         badgeClass: 'bg-purple-100 text-purple-800 border-purple-200',
         nextStatus: 'Completed',
-        nextActionName: 'Xác Nhận Đã Giao',
+        nextActionName: st("Confirm delivery"),
         nextIcon: CheckCircle2,
         actionBtnClass: 'bg-emerald-600 hover:bg-emerald-700 text-white',
-        deptNote: 'Đang mang lên phòng. Xác nhận khi giao thành công',
-        roleBadge: 'Room Service',
+        deptNote: st("Delivery in progress. Confirm when delivered."),
+        roleBadge: st('Room Service'),
       };
     }
     return {
       step: 4,
-      label: 'Đã Hoàn Tất',
+      label: st("Completed"),
       badgeClass: 'bg-emerald-100 text-emerald-800 border-emerald-200',
       nextStatus: null,
       nextActionName: null,
       nextIcon: null,
       actionBtnClass: '',
-      deptNote: 'Dịch vụ buồng phòng đã phục vụ xong',
-      roleBadge: 'Hoàn Thành',
+      deptNote: st("Room service completed"),
+      roleBadge: st("Complete task"),
     };
   };
 
@@ -738,7 +741,7 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
     // Nếu là bước nhận đơn mới (từ Chờ Tiếp Nhận) và đã đạt giới hạn 3 đơn
     if (targetReq && isTaskPending(targetReq) && isTaskLimitReached) {
       onNotify(
-        `Bạn đang phụ trách ${activeTaskCount}/${MAX_CONCURRENT_TASKS} đơn (${myActiveTasks.map((t) => '#' + t.id).join(', ')}). Vui lòng hoàn tất hoặc giao bớt đơn trước khi nhận thêm!`
+        st("You have {0}/{1} active orders ({2}). Complete or deliver an order before accepting more.", activeTaskCount, MAX_CONCURRENT_TASKS, myActiveTasks.map((t) => '#' + t.id).join(', '))
       );
       return;
     }
@@ -776,21 +779,21 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
     await updateGenericRequestStatus(reqId, nextStatus, finalAssignedTo);
 
     const statusMessages = {
-      'Sent to Kitchen': `Đã chuyển phiếu #${reqId} sang bộ phận Bếp và lưu vào mục [Yêu Cầu Cá Nhân]!`,
-      'Cooking': `Bếp đã tiếp nhận và đang chế biến phiếu #${reqId}`,
-      'Ready': `Bếp đã làm xong món cho phiếu #${reqId}! Sẵn sàng giao phòng`,
-      'Delivering': `Room Service đang giao phiếu #${reqId} lên phòng`,
-      'Completed': `Đã hoàn thành và giao thành công phiếu #${reqId}!`,
-      'In Progress': `Đã nhận xử lý phiếu #${reqId} và lưu vào mục [Yêu Cầu Cá Nhân]!`,
+      'Sent to Kitchen': st("Request #{0} sent to the kitchen and added to My Tasks.", reqId),
+      'Cooking': st("The kitchen is preparing request #{0}.", reqId),
+      'Ready': st("Request #{0} is ready for room delivery.", reqId),
+      'Delivering': st("Room Service is delivering request #{0}.", reqId),
+      'Completed': st("Request #{0} completed and delivered.", reqId),
+      'In Progress': st("Request #{0} accepted and added to My Tasks.", reqId),
     };
-    onNotify(statusMessages[nextStatus] || `Đã cập nhật trạng thái phiếu #${reqId}: ${nextStatus}`);
+    onNotify(statusMessages[nextStatus] || st("Request #{0} updated: {1}", reqId, nextStatus));
   };
 
   // Action: Self-Claim Request -> Persists to Database with Max-3 Tasks Guard
   const handleClaim = async (reqId) => {
     if (isTaskLimitReached) {
       onNotify(
-        `Bạn đang phụ trách ${activeTaskCount}/${MAX_CONCURRENT_TASKS} yêu cầu (${myActiveTasks.map((t) => '#' + t.id).join(', ')}). Vui lòng hoàn tất bớt việc trước khi nhận thêm!`
+        st("You have {0}/{1} active requests ({2}). Complete a task before accepting more.", activeTaskCount, MAX_CONCURRENT_TASKS, myActiveTasks.map((t) => '#' + t.id).join(', '))
       );
       return;
     }
@@ -845,41 +848,39 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
       });
     }
 
-    onNotify(`Đã tạo phiếu yêu cầu mới: #${created.id}`);
+    onNotify(st("Request #{0} created.", created.id));
   };
 
   return (
-    <div className="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-8 bg-[#FAF8F5] font-sans">
-      <div className="max-w-7xl mx-auto space-y-6">
+    <div className="staff-page-body flex-1 overflow-y-auto custom-scrollbar p-4 md:p-8 bg-[#FAF8F5] font-sans">
+      <div className="staff-page-container max-w-7xl mx-auto space-y-6">
         {/* Header & New Request Button */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <StaffPageHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-xl font-bold text-[#1A1917]">
-                {isExecutive ? 'Quản Lý Yêu Cầu Toàn Khách Sạn' : `Yêu Cầu Dịch Vụ - Bộ Phận ${staffDept}`}
+                {isExecutive ? st("Hotel service requests") : st("Service requests — {0}", st(staffDepartmentLabel(staffDept)))}
               </h2>
               <span className="px-2.5 py-0.5 rounded-full bg-[#EFECE6] border border-[#DDD8CE] text-xs font-bold text-stone-700">
-                {filtered.length} phiếu
-              </span>
+                {filtered.length} {st("requests")} </span>
             </div>
             <p className="text-xs text-[#78716C] mt-1">
               {isExecutive
-                ? 'Trung tâm tiếp nhận, điều phối và phân công yêu cầu dịch vụ trên toàn khách sạn.'
-                : `Hàng đợi yêu cầu từ Robot HCRobot gửi về bộ phận ${staffDept} • Nhân viên nhận trực tiếp (Self-Claim).`}
+                ? st("Receive, coordinate and assign service requests across the hotel.")
+                : st("Requests sent by HCRobot to {0}. Staff can claim tasks directly.", st(staffDepartmentLabel(staffDept)))}
             </p>
           </div>
 
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 text-xs font-bold text-stone-700 bg-white px-4 py-2 rounded-full border border-[#DDD8CE] shadow-sm">
-              <span>Trực ca: {staffName}</span>
+            <div className="staff-header-details flex items-center gap-2 text-xs font-bold text-stone-700 bg-white px-4 py-2 rounded-full border border-[#DDD8CE] shadow-sm">
+              <span>{st("On duty:")} {staffName}</span>
               <span
                 className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
                   isTaskLimitReached
                     ? 'bg-amber-100 text-amber-900 border border-amber-300'
                     : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
                 }`}
-              >
-                Đang nhận: {activeTaskCount}/{MAX_CONCURRENT_TASKS}
+              >{st("Active:")} {activeTaskCount}/{MAX_CONCURRENT_TASKS}
               </span>
             </div>
 
@@ -888,11 +889,11 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
                 onClick={() => setIsNewModalOpen(true)}
                 className="px-5 py-2 rounded-full bg-[#18181B] hover:bg-black text-white text-xs font-bold transition-all shadow-sm flex items-center gap-2 cursor-pointer"
               >
-                <span>Tạo Yêu Cầu Mới</span>
+                <span>{st("New request")}</span>
               </button>
             )}
           </div>
-        </div>
+        </StaffPageHeader>
 
         {/* Filter Controls Bar */}
         <div className="p-4 rounded-2xl bg-white border border-[#E5E1D8] shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
@@ -902,7 +903,7 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
               <Search className="w-4 h-4 text-stone-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
-                placeholder="Tìm theo mã phiếu, số phòng, tên khách..."
+                placeholder={st("Search by request ID, room or guest...")}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-9 pr-4 py-1.5 rounded-xl bg-[#FAF8F5] border border-[#E0DCD3] text-xs font-medium text-stone-900 outline-none focus:border-stone-400"
@@ -910,7 +911,7 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
             </div>
             <button
               onClick={loadRequestsFromDb}
-              title="Làm mới dữ liệu"
+              title={st("Refresh data")}
               className="p-2 bg-[#FAF8F5] hover:bg-[#EFECE6] border border-[#E0DCD3] text-stone-700 rounded-xl transition-all cursor-pointer shrink-0"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
@@ -920,7 +921,7 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
           {/* Department Filter Pills (ONLY visible for Executive / Admin) */}
           {isExecutive && (
             <div className="flex flex-wrap items-center gap-1.5 w-full md:w-auto">
-              <span className="text-[11px] font-bold text-stone-500 uppercase mr-1">Bộ phận:</span>
+              <span className="text-[11px] font-bold text-stone-500 uppercase mr-1">{st("Department:")}</span>
               {['All', 'Reception', 'Housekeeping', 'F&B', 'Bell Services', 'Maintenance', 'Concierge', 'Taxi'].map((dept) => (
                 <button
                   key={dept}
@@ -939,19 +940,19 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
 
           {/* Status Filter Dropdown (Gray select) */}
           <div className="flex items-center gap-2 w-full md:w-auto">
-            <label className="text-xs font-bold text-stone-500 shrink-0">Trạng thái:</label>
+            <label className="text-xs font-bold text-stone-500 shrink-0">{st("Status:")}</label>
             <select
               value={statusFilter}
               onChange={(e) => {
                 setStatusFilter(e.target.value);
-                onNotify(`Đã lọc: ${e.target.value}`);
+                onNotify(st("Filtered: {0}", e.target.value));
               }}
               className="w-full md:w-56 px-3.5 py-1.5 rounded-xl bg-[#FAF8F5] border border-[#E0DCD3] text-xs font-semibold text-stone-900 outline-none cursor-pointer focus:border-stone-400"
             >
-              <option value="All">Tất Cả ({deptScopedRequests.length})</option>
-              <option value="Pending">Chờ Tiếp Nhận ({pendingCount})</option>
-              <option value="In Progress">Đang Xử Lý ({inProgressCount})</option>
-              <option value="Completed">Đã Hoàn Tất ({completedCount})</option>
+              <option value="All">{st("All (")}{deptScopedRequests.length})</option>
+              <option value="Pending">{st("Pending (")}{pendingCount})</option>
+              <option value="In Progress">{st("In progress (")}{inProgressCount})</option>
+              <option value="Completed">{st("Completed (")}{completedCount})</option>
             </select>
           </div>
         </div>
@@ -1006,19 +1007,15 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
                           {req.location}
                         </span>
                         <span className="px-2 py-0.5 rounded-full bg-[#EFECE6] text-stone-800 text-[10px] font-bold">
-                          {req.department}
+                          {st(staffDepartmentLabel(req.department))}
                         </span>
                         {isFood && (
                           <span className="px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200 text-[10px] font-bold flex items-center gap-1">
-                            <Utensils className="w-2.5 h-2.5 text-amber-600" />
-                            Đơn Món Bếp
-                          </span>
+                            <Utensils className="w-2.5 h-2.5 text-amber-600" />{st("Food order")} </span>
                         )}
                         {isDirectSvc && (
                           <span className="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-800 border border-indigo-200 text-[10px] font-bold flex items-center gap-1">
-                            <ConciergeBell className="w-2.5 h-2.5 text-indigo-600" />
-                            Dịch Vụ Buồng Phòng
-                          </span>
+                            <ConciergeBell className="w-2.5 h-2.5 text-indigo-600" />{st("Room service")} </span>
                         )}
                       </div>
 
@@ -1031,8 +1028,7 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
                               {stage.label}
                             </span>
                             {stage.roleBadge && stage.step < currentSteps.length && (
-                              <span className="hidden sm:inline-block px-2 py-0.5 rounded-full bg-stone-100 text-stone-600 text-[10px] font-semibold border border-stone-200">
-                                Phụ trách: {stage.roleBadge}
+                              <span className="hidden sm:inline-block px-2 py-0.5 rounded-full bg-stone-100 text-stone-600 text-[10px] font-semibold border border-stone-200">{st("Assigned to:")} {stage.roleBadge}
                               </span>
                             )}
                           </>
@@ -1046,7 +1042,7 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
                                 : 'bg-sky-100 text-sky-800'
                             }`}
                           >
-                            {req.status}
+                            {st(staffStatusLabel(req.status))}
                           </span>
                         )}
                       </div>
@@ -1118,7 +1114,7 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
                             <Utensils className="w-3.5 h-3.5 text-amber-600 shrink-0" />
                           )}
                           <span className="font-semibold text-stone-800 text-[11px]">
-                            {isDirectSvc ? 'Dịch vụ yêu cầu:' : 'Danh sách món:'}
+                            {isDirectSvc ? st("Requested services:") : st("Order items:")}
                           </span>
                           {req.items.map((it, idx) => (
                             <span
@@ -1130,8 +1126,7 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
                           ))}
                         </div>
                         {req.total_amount > 0 && (
-                          <span className="font-bold text-stone-900 bg-amber-50 text-amber-900 px-2.5 py-0.5 rounded-lg border border-amber-200 text-[11px]">
-                            Tổng: {Number(req.total_amount).toLocaleString('vi-VN')} ₫
+                          <span className="font-bold text-stone-900 bg-amber-50 text-amber-900 px-2.5 py-0.5 rounded-lg border border-amber-200 text-[11px]">{st("Total:")} {Number(req.total_amount).toLocaleString('vi-VN')} ₫
                           </span>
                         )}
                       </div>
@@ -1141,29 +1136,29 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
                     <div className="flex flex-wrap items-center gap-2 text-xs text-[#78716C]">
                       <span className="font-semibold text-stone-900 flex items-center gap-1">
                         <User className="w-3.5 h-3.5 text-stone-500" />
-                        <span>{req.guestName || req.guest_name || 'Khách lưu trú'}</span>
+                        <span>{req.guestName || req.guest_name || st("Hotel guest")}</span>
                       </span>
                       {(req.guestPhone || req.guest_phone) && (
                         <a
                           href={`tel:${req.guestPhone || req.guest_phone}`}
                           onClick={(e) => e.stopPropagation()}
                           className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded text-[11px] font-mono font-bold transition-colors cursor-pointer shadow-2xs"
-                          title="Bấm để gọi điện thoại xác nhận đơn với khách"
+                          title={st("Call the guest to confirm the order")}
                         >
                           <Phone className="w-3 h-3 text-emerald-600" />
-                          <span>ĐT: {req.guestPhone || req.guest_phone}</span>
+                          <span>{st("Phone:")} {req.guestPhone || req.guest_phone}</span>
                         </a>
                       )}
                       {(req.roomPhone || req.room_phone) && (
                         <span
                           className="inline-flex items-center gap-1 bg-amber-50 text-amber-900 border border-amber-200 px-2 py-0.5 rounded text-[11px] font-mono font-medium shadow-2xs"
-                          title="Số máy nhánh phòng khách"
+                          title={st("Room extension")}
                         >
                           <Phone className="w-3 h-3 text-amber-600" />
                           <span>{req.roomPhone || req.room_phone}</span>
                         </span>
                       )}
-                      {req.notes && <span className="text-stone-500">• Ghi chú: {req.notes}</span>}
+                      {req.notes && <span className="text-stone-500">{st("• Notes:")} {req.notes}</span>}
                     </div>
 
                     {/* Bottom Action Bar: Compact & Responsive */}
@@ -1172,11 +1167,11 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
                         {isMultiStep ? (
                           stage.deptNote
                         ) : isPending ? (
-                          'Chờ tiếp nhận'
+                          st("Awaiting acceptance")
                         ) : isInProgress ? (
-                          `Đang xử lý: ${handlerName}`
+                          st("In progress: {0}", handlerName)
                         ) : (
-                          `Hoàn tất bởi: ${handlerName}`
+                          st("Completed by: {0}", handlerName)
                         )}
                       </span>
 
@@ -1191,17 +1186,15 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
                                   type="button"
                                   onClick={() => handleUpdateTaskStatus(req.id, 'Completed')}
                                   className="px-3 py-1.5 rounded-full text-xs font-semibold text-stone-600 bg-white hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 border border-stone-200 transition-all cursor-pointer shadow-2xs"
-                                  title="Đánh dấu đã hoàn tất và giao thành công cho khách ngay lập tức"
-                                >
-                                  Hoàn Tất Nhanh
-                                </button>
+                                  title={st("Mark as completed and delivered to the guest")}
+                                >{st("Quick complete")} </button>
                               )}
 
                               <button
                                 onClick={() => {
                                   if (stage.step === 1 && isTaskLimitReached) {
                                     onNotify(
-                                      `Bạn đang phụ trách ${activeTaskCount}/${MAX_CONCURRENT_TASKS} đơn (${myActiveTasks.map((t) => '#' + t.id).join(', ')}). Vui lòng hoàn tất hoặc giao bớt đơn trước khi nhận thêm!`
+                                      st("You have {0}/{1} active orders ({2}). Complete or deliver an order before accepting more.", activeTaskCount, MAX_CONCURRENT_TASKS, myActiveTasks.map((t) => '#' + t.id).join(', '))
                                     );
                                     return;
                                   }
@@ -1214,7 +1207,7 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
                                 }`}
                                 title={
                                   stage.step === 1 && isTaskLimitReached
-                                    ? `Đã đạt giới hạn tối đa ${MAX_CONCURRENT_TASKS} đơn cùng lúc (${activeTaskCount}/${MAX_CONCURRENT_TASKS})`
+                                    ? st("Maximum of {0} concurrent orders reached ({1}/{2})", MAX_CONCURRENT_TASKS, activeTaskCount, MAX_CONCURRENT_TASKS)
                                     : stage.deptNote
                                 }
                               >
@@ -1230,49 +1223,47 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
                           ) : (
                             /* Không thuộc quyền bộ phận hiện tại -> hiển thị chip trạng thái chờ trực quan */
                             isDirectSvc ? (
-                              <span className="px-3 py-1.5 rounded-full bg-stone-100 text-stone-600 text-xs font-semibold border border-stone-200">
-                                Chờ {stage.roleBadge}
+                              <span className="px-3 py-1.5 rounded-full bg-stone-100 text-stone-600 text-xs font-semibold border border-stone-200">{st("Waiting")} {stage.roleBadge}
                               </span>
                             ) : (
                               stage.step === 2 ? (
                                 <span
                                   className="px-3 py-1.5 rounded-full bg-blue-50 text-blue-800 text-[11px] font-bold border border-blue-200 flex items-center gap-1.5 select-none shadow-2xs"
-                                  title="Đơn đã gửi sang Bếp. Chỉ nhân viên Bếp mới có quyền nhận nấu món!"
+                                  title={st("This order has been sent to the kitchen. Kitchen staff must accept it.")}
                                 >
                                   <Clock className="w-3.5 h-3.5 text-blue-600" />
-                                  <span>Chờ Bếp Nhận Nấu</span>
+                                  <span>{st("Awaiting kitchen acceptance")}</span>
                                 </span>
                               ) : stage.step === 3 ? (
                                 <span
                                   className="px-3 py-1.5 rounded-full bg-amber-50 text-amber-800 text-[11px] font-bold border border-amber-200 flex items-center gap-1.5 select-none shadow-2xs"
                                   title={
                                     isKitchenStaff
-                                      ? `Đơn này do ${handlerName} nhận nấu. Chỉ ${handlerName} mới có quyền bấm món nấu xong.`
-                                      : 'Bếp đang chế biến món ăn. Khi hoàn tất, Bếp sẽ bấm xác nhận để báo cho Room Service.'
+                                      ? st("This order is assigned to {0}. Only {1} can mark it ready.", handlerName, handlerName)
+                                      : st("The kitchen is preparing the food and will notify Room Service when it is ready.")
                                   }
                                 >
                                   <ChefHat className="w-3.5 h-3.5 text-amber-600 animate-pulse" />
-                                  <span>{isKitchenStaff ? `Đang nấu bởi: ${handlerName}` : 'Bếp Đang Nấu Món...'}</span>
+                                  <span>{isKitchenStaff ? st("Prepared by: {0}", handlerName) : st("Kitchen is cooking...")}</span>
                                 </span>
                               ) : stage.step === 4 ? (
                                 <span
                                   className="px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-800 text-[11px] font-bold border border-emerald-200 flex items-center gap-1.5 select-none shadow-2xs"
-                                  title="Món đã nấu xong! Đang chờ Room Service đến lấy món và giao lên phòng."
+                                  title={st("Food is ready for Room Service to collect and deliver.")}
                                 >
                                   <Utensils className="w-3.5 h-3.5 text-emerald-600" />
-                                  <span>Chờ Room Service Lấy Món</span>
+                                  <span>{st("Awaiting Room Service collection")}</span>
                                 </span>
                               ) : stage.step === 5 ? (
                                 <span
                                   className="px-3 py-1.5 rounded-full bg-purple-50 text-purple-800 text-[11px] font-bold border border-purple-200 flex items-center gap-1.5 select-none shadow-2xs"
-                                  title="Room Service đang mang món lên phòng cho khách."
+                                  title={st("Room Service is delivering the food to the guest.")}
                                 >
                                   <Truck className="w-3.5 h-3.5 text-purple-600" />
-                                  <span>Room Service Đang Giao</span>
+                                  <span>{st("Room Service is delivering")}</span>
                                 </span>
                               ) : (
-                                <span className="px-3 py-1.5 rounded-full bg-stone-100 text-stone-600 text-xs font-semibold border border-stone-200">
-                                  Chờ {stage.roleBadge}
+                                <span className="px-3 py-1.5 rounded-full bg-stone-100 text-stone-600 text-xs font-semibold border border-stone-200">{st("Waiting")} {stage.roleBadge}
                                 </span>
                               )
                             )
@@ -1283,7 +1274,7 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
                         {isMultiStep && !stage.nextStatus && (
                           <span className="px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold border border-emerald-200 flex items-center gap-1">
                             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                            <span>{isDirectSvc ? 'Đã Giao Xong' : 'Đã Hoàn Tất Đơn'}</span>
+                            <span>{isDirectSvc ? st("Delivered") : st("Order completed")}</span>
                           </span>
                         )}
 
@@ -1298,11 +1289,11 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
                             }`}
                             title={
                               isTaskLimitReached
-                                ? `Bạn đang xử lý ${activeTaskCount}/${MAX_CONCURRENT_TASKS} việc (${myActiveTasks.map((t) => '#' + t.id).join(', ')}). Hãy hoàn thành trước khi nhận thêm!`
-                                : 'Bấm để nhận xử lý yêu cầu'
+                                ? st("You have {0}/{1} active tasks ({2}). Complete one before accepting more.", activeTaskCount, MAX_CONCURRENT_TASKS, myActiveTasks.map((t) => '#' + t.id).join(', '))
+                                : st("Claim this request")
                             }
                           >
-                            <span>Nhận Việc</span>
+                            <span>{st("Claim task")}</span>
                             {isTaskLimitReached && (
                               <span className="text-[10px] ml-1 bg-stone-300 px-1.5 py-0.2 rounded-full text-stone-700">
                                 {activeTaskCount}/{MAX_CONCURRENT_TASKS}
@@ -1317,7 +1308,7 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
                             onClick={() => handleMarkCompleted(req.id)}
                             className="px-4 py-1.5 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all shadow-sm cursor-pointer active:scale-95"
                           >
-                            <span>Hoàn Thành</span>
+                            <span>{st("Complete task")}</span>
                           </button>
                         )}
 
@@ -1326,10 +1317,10 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
                           <button
                             onClick={() => onNavigate('MyTasks')}
                             className="px-3.5 py-1.5 rounded-full bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 text-xs font-bold transition-all shadow-2xs cursor-pointer flex items-center gap-1.5"
-                            title="Chuyển sang trang Yêu Cầu Cá Nhân để theo dõi"
+                            title={st("Open My Tasks to track this request")}
                           >
                             <User className="w-3.5 h-3.5 text-amber-700" />
-                            <span>Yêu Cầu Cá Nhân</span>
+                            <span>{st("My Tasks")}</span>
                           </button>
                         )}
 
@@ -1337,9 +1328,9 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
                         <button
                           onClick={() => setSelectedDetailReq(req)}
                           className="px-4 py-1.5 rounded-full bg-[#FAF8F5] hover:bg-[#EFECE6] text-stone-900 border border-[#E0DCD3] text-xs font-bold transition-all shadow-sm cursor-pointer"
-                          title="Bấm để xem chi tiết yêu cầu"
+                          title={st("View request details")}
                         >
-                          <span>Xem Chi Tiết</span>
+                          <span>{st("View details")}</span>
                         </button>
                       </div>
                     </div>
@@ -1413,19 +1404,18 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
                   <div>
                     <h3 className="text-base font-black text-stone-900 tracking-tight">
                       {isModalDirectSvc
-                        ? `Dịch Vụ Buồng Phòng #${selectedDetailReq.id}`
+                        ? st("Service request #{0}", selectedDetailReq.id)
                         : isModalFood
-                        ? `Đơn Món Room Service #${selectedDetailReq.id}`
+                        ? st("Room Service order #{0}", selectedDetailReq.id)
                         : isModalCompleted
-                        ? 'Chi Tiết Phiếu Yêu Cầu Đã Hoàn Tất'
-                        : `Chi Tiết Phiếu Yêu Cầu #${selectedDetailReq.id}`}
+                        ? st("Completed request details")
+                        : st("Request details #{0}", selectedDetailReq.id)}
                     </h3>
                     <div className="flex flex-wrap items-center gap-2 text-[11px] text-stone-500 font-mono mt-0.5">
-                      <span>Vị trí: {selectedDetailReq.location}</span>
-                      <span>• Khách: {selectedDetailReq.guestName || selectedDetailReq.guest_name || 'Khách lưu trú'}</span>
+                      <span>{st("Location:")} {selectedDetailReq.location}</span>
+                      <span>{st("• Guest:")} {selectedDetailReq.guestName || selectedDetailReq.guest_name || st("Hotel guest")}</span>
                       {(selectedDetailReq.guestPhone || selectedDetailReq.guest_phone) && (
-                        <span className="bg-emerald-50 text-emerald-800 border border-emerald-200 px-1.5 py-0.2 rounded text-[10px]">
-                          ĐT: {selectedDetailReq.guestPhone || selectedDetailReq.guest_phone}
+                        <span className="bg-emerald-50 text-emerald-800 border border-emerald-200 px-1.5 py-0.2 rounded text-[10px]">{st("Phone:")} {selectedDetailReq.guestPhone || selectedDetailReq.guest_phone}
                         </span>
                       )}
                       {(selectedDetailReq.roomPhone || selectedDetailReq.room_phone) && (
@@ -1448,8 +1438,7 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
               <div className="space-y-4 text-xs">
                 {/* Badges Bar */}
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-800 font-bold text-[11px] border border-indigo-100">
-                    Bộ phận: {selectedDetailReq.department}
+                  <span className="px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-800 font-bold text-[11px] border border-indigo-100">{st("Department:")} {selectedDetailReq.department}
                   </span>
                   <span className="px-2.5 py-1 rounded-full bg-stone-900 text-white font-bold text-[11px] flex items-center gap-1">
                     <MapPin className="w-3 h-3 text-amber-400" />
@@ -1464,8 +1453,7 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
                         {modalStage.label}
                       </span>
                       {modalStage.roleBadge && (
-                        <span className="px-2.5 py-1 rounded-full bg-stone-100 text-stone-700 font-semibold text-[11px] border border-stone-200">
-                          Phụ trách: {modalStage.roleBadge}
+                        <span className="px-2.5 py-1 rounded-full bg-stone-100 text-stone-700 font-semibold text-[11px] border border-stone-200">{st("Assigned to:")} {modalStage.roleBadge}
                         </span>
                       )}
                     </>
@@ -1479,7 +1467,7 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
                           : 'bg-sky-100 text-sky-800 border-sky-200'
                       }`}
                     >
-                      {selectedDetailReq.status}
+                      {st(staffStatusLabel(selectedDetailReq.status))}
                     </span>
                   )}
                 </div>
@@ -1488,7 +1476,7 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
                 {isModalMultiStep && (
                   <div className="py-2.5 px-3.5 bg-[#FAF8F5] rounded-2xl border border-stone-200">
                     <div className="text-[11px] font-bold text-stone-700 mb-2 flex items-center justify-between">
-                      <span>TIẾN ĐỘ THỰC HIỆN:</span>
+                      <span>{st("PROGRESS:")}</span>
                       <span className="text-amber-800 font-extrabold">{modalStage.deptNote}</span>
                     </div>
                     <div className="flex items-center justify-between relative mt-1">
@@ -1541,8 +1529,8 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
                 {isModalMultiStep && modalItems.length > 0 && (
                   <div className="p-3.5 rounded-2xl bg-white border border-stone-200 space-y-2 shadow-2xs">
                     <div className="flex items-center justify-between font-bold text-stone-800 text-[11px] pb-1.5 border-b border-stone-100">
-                      <span>{isModalDirectSvc ? 'DỊCH VỤ / VẬT DỤNG' : 'MÓN ĂN ĐÃ GỌI'}</span>
-                      <span>SỐ LƯỢNG & ĐƠN GIÁ</span>
+                      <span>{isModalDirectSvc ? st("SERVICES / ITEMS") : st("FOOD ORDERED")}</span>
+                      <span>{st("QUANTITY & UNIT PRICE")}</span>
                     </div>
                     <div className="divide-y divide-stone-100">
                       {modalItems.map((it, idx) => {
@@ -1570,7 +1558,7 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
                     </div>
                     {selectedDetailReq.total_amount > 0 && (
                       <div className="pt-2 border-t border-stone-200 flex items-center justify-between font-black text-xs text-stone-900">
-                        <span>TỔNG CỘNG:</span>
+                        <span>{st("TOTAL:")}</span>
                         <span className="text-amber-900 text-sm">
                           {Number(selectedDetailReq.total_amount).toLocaleString('vi-VN')} ₫
                         </span>
@@ -1586,28 +1574,25 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
                   </h4>
                   <div className="text-stone-600 space-y-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-semibold text-stone-800">
-                        Khách hàng / Người yêu cầu:{' '}
+                      <span className="font-semibold text-stone-800">{st("Guest / requester:")}{' '}
                       </span>
                       <span className="font-medium text-stone-900">
                         {selectedDetailReq.guestName ||
                           selectedDetailReq.guest_name ||
-                          'Khách lưu trú'}
+                          st("Hotel guest")}
                       </span>
                       {(selectedDetailReq.guestPhone || selectedDetailReq.guest_phone) && (
-                        <span className="bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded text-[11px] font-mono">
-                          ĐT di động: {selectedDetailReq.guestPhone || selectedDetailReq.guest_phone}
+                        <span className="bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded text-[11px] font-mono">{st("Mobile phone:")} {selectedDetailReq.guestPhone || selectedDetailReq.guest_phone}
                         </span>
                       )}
                       {(selectedDetailReq.roomPhone || selectedDetailReq.room_phone) && (
-                        <span className="bg-amber-50 text-amber-900 border border-amber-200 px-2 py-0.5 rounded text-[11px] font-mono font-medium">
-                          Máy nhánh: {selectedDetailReq.roomPhone || selectedDetailReq.room_phone}
+                        <span className="bg-amber-50 text-amber-900 border border-amber-200 px-2 py-0.5 rounded text-[11px] font-mono font-medium">{st("Extension:")} {selectedDetailReq.roomPhone || selectedDetailReq.room_phone}
                         </span>
                       )}
                     </div>
                     {selectedDetailReq.notes && (
                       <p>
-                        <span className="font-semibold text-stone-800">Ghi chú chi tiết: </span>
+                        <span className="font-semibold text-stone-800">{st("Detailed notes:")} </span>
                         {selectedDetailReq.notes}
                       </p>
                     )}
@@ -1618,30 +1603,30 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
                 <div className="p-4 rounded-2xl bg-stone-50 border border-stone-200 space-y-2.5">
                   <div className="flex items-center gap-2 text-stone-900 font-bold text-xs">
                     <User className="w-4 h-4 text-stone-700" />
-                    <span>THÔNG TIN THỰC HIỆN & PHỤ TRÁCH</span>
+                    <span>{st("ASSIGNMENT DETAILS")}</span>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-stone-700">
                     <div>
-                      <span className="text-stone-500 text-[11px] block">Nhân viên phụ trách:</span>
+                      <span className="text-stone-500 text-[11px] block">{st("Assigned staff:")}</span>
                       <span className="font-bold text-stone-900 text-xs">
                         {getTaskHandlerName(selectedDetailReq)}
                       </span>
                     </div>
                     <div>
-                      <span className="text-stone-500 text-[11px] block">Thời gian:</span>
+                      <span className="text-stone-500 text-[11px] block">{st("Time:")}</span>
                       <span className="font-bold text-stone-900 text-xs">
-                        {selectedDetailReq.time || 'Vừa xong'}
+                        {selectedDetailReq.time || st("Just completed")}
                       </span>
                     </div>
                     <div>
-                      <span className="text-stone-500 text-[11px] block">Nguồn tiếp nhận:</span>
+                      <span className="text-stone-500 text-[11px] block">{st("Source:")}</span>
                       <span className="font-medium text-stone-800 text-xs">
                         {selectedDetailReq.source || 'Robot App / Front Desk'}
                       </span>
                     </div>
                     {selectedDetailReq.assigned_robot && (
                       <div>
-                        <span className="text-stone-500 text-[11px] block">Robot phối hợp:</span>
+                        <span className="text-stone-500 text-[11px] block">{st("Assigned robot:")}</span>
                         <span className="font-medium text-sky-700 text-xs">
                           {selectedDetailReq.assigned_robot}
                         </span>
@@ -1654,9 +1639,7 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
                   <div className="p-3 rounded-xl bg-stone-100 border border-stone-200 text-[11px] text-stone-600 flex items-center gap-2">
                     <span className="text-sm"></span>
                     <span>
-                      <strong>Hồ sơ chỉ đọc:</strong> Phiếu đã hoàn thành và lưu trữ an toàn trong
-                      nhật ký kiểm toán.
-                    </span>
+                      <strong>{st("Read-only record:")}</strong> {st("This completed request is saved in the audit log.")} </span>
                   </div>
                 )}
               </div>
@@ -1667,9 +1650,7 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
                   type="button"
                   onClick={() => setSelectedDetailReq(null)}
                   className="px-4 py-2 rounded-xl text-xs font-bold bg-stone-200 hover:bg-stone-300 text-stone-800 transition-all cursor-pointer shadow-xs"
-                >
-                  Đóng
-                </button>
+                >{st("Close")} </button>
 
                 <div className="flex items-center gap-2">
                   {/* Multi-step action button inside modal */}
@@ -1688,9 +1669,7 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
                               }));
                             }}
                             className="px-4 py-2 rounded-xl text-xs font-bold bg-white border border-stone-300 text-stone-700 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 transition-all cursor-pointer shadow-xs"
-                          >
-                            Hoàn Tất Nhanh
-                          </button>
+                          >{st("Quick complete")} </button>
                         )}
                         <button
                           type="button"
@@ -1712,9 +1691,7 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
                         </button>
                       </div>
                     ) : (
-                      <span className="px-4 py-2 rounded-xl bg-stone-100 text-stone-700 text-xs font-semibold border border-stone-200 flex items-center gap-1.5 shadow-2xs">
-                        Giai đoạn này do bộ phận {modalStage.roleBadge} thực hiện
-                      </span>
+                      <span className="px-4 py-2 rounded-xl bg-stone-100 text-stone-700 text-xs font-semibold border border-stone-200 flex items-center gap-1.5 shadow-2xs">{st("This step is handled by")} {modalStage.roleBadge} {st("staff")} </span>
                     )
                   )}
 
@@ -1731,9 +1708,7 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
                         }));
                       }}
                       className="px-5 py-2 rounded-xl text-xs font-bold bg-[#18181B] hover:bg-black text-white transition-all cursor-pointer shadow-sm"
-                    >
-                      Nhận Việc
-                    </button>
+                    >{st("Claim task")} </button>
                   )}
 
                   {!isModalMultiStep && isModalInProgress && (
@@ -1748,9 +1723,7 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
                         }));
                       }}
                       className="px-5 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white transition-all cursor-pointer shadow-sm"
-                    >
-                      Hoàn Thành
-                    </button>
+                    >{st("Complete task")} </button>
                   )}
                 </div>
               </div>

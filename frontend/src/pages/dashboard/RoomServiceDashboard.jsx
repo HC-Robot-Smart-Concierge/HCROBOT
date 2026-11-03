@@ -64,7 +64,7 @@ const KpiCard = ({ label, value, detail }) => {
   );
 };
 
-export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
+export const RoomServiceDashboard = ({ currentUser, onNotify = () => { } }) => {
   const { t } = useLanguage();
   const staffName = currentUser?.full_name || currentUser?.name || 'Elena Rossi';
   const [data, setData] = useState({
@@ -261,8 +261,8 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
         value: Math.max(
           0,
           (kpis.pendingOrders?.value || 0) -
-            (oldNormalized === 'pending' ? 1 : 0) +
-            (nextNormalized === 'pending' ? 1 : 0)
+          (oldNormalized === 'pending' ? 1 : 0) +
+          (nextNormalized === 'pending' ? 1 : 0)
         ),
       },
       inPreparation: {
@@ -270,8 +270,8 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
         value: Math.max(
           0,
           (kpis.inPreparation?.value || 0) -
-            (oldNormalized === 'cooking' ? 1 : 0) +
-            (nextNormalized === 'cooking' ? 1 : 0)
+          (oldNormalized === 'cooking' ? 1 : 0) +
+          (nextNormalized === 'cooking' ? 1 : 0)
         ),
       },
       completedToday: {
@@ -279,7 +279,7 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
         value:
           (kpis.completedToday?.value || 0) +
           (['ready', 'completed', 'delivered'].includes(nextNormalized) &&
-          !['ready', 'completed', 'delivered'].includes(oldNormalized)
+            !['ready', 'completed', 'delivered'].includes(oldNormalized)
             ? 1
             : 0),
       },
@@ -464,22 +464,20 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
                       key={key}
                       type="button"
                       onClick={() => setFilter(key)}
-                      className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
-                        filter === key
+                      className={`rounded-lg px-2.5 py-1 text-[11px] font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${filter === key
                           ? 'bg-[#EAE8E4] text-[#2C2926] shadow-xs'
                           : 'text-[#77726D] hover:bg-[#F0EEEA]'
-                      }`}
+                        }`}
                     >
                       <span>{label}</span>
                       {count > 0 && (
                         <span
-                          className={`px-1.5 py-0.2 rounded-full text-[9px] font-bold ${
-                            isReadyTab
+                          className={`px-1.5 py-0.2 rounded-full text-[9px] font-bold ${isReadyTab
                               ? 'bg-emerald-600 text-white animate-pulse shadow-xs'
                               : isPendingTab
-                              ? 'bg-amber-600 text-white'
-                              : 'bg-stone-200 text-stone-700'
-                          }`}
+                                ? 'bg-amber-600 text-white'
+                                : 'bg-stone-200 text-stone-700'
+                            }`}
                         >
                           {count}
                         </span>
@@ -524,33 +522,37 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
                           <span className="rounded bg-[#E3E0DB] px-1.5 py-0.5 text-[10px] text-[#69645E]">
                             Phòng {order.room}
                           </span>
+                          {((order.note || '').includes('Gộp thêm') || order.is_merged) && (
+                            <span className="rounded bg-indigo-50 text-indigo-700 border border-indigo-200 px-1.5 py-0.2 text-[9px] font-bold">
+                              Đơn gộp
+                            </span>
+                          )}
                         </div>
                         <span
-                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                            isPending
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${isPending
                               ? 'bg-amber-100 text-amber-800 border-amber-200'
                               : isSentToKitchen
-                              ? 'bg-blue-100 text-blue-800 border-blue-200'
-                              : isCooking
-                              ? 'bg-amber-100 text-amber-800 border-amber-200'
-                              : isReady
-                              ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
-                              : isDelivering
-                              ? 'bg-purple-100 text-purple-800 border-purple-200'
-                              : 'bg-emerald-100 text-emerald-800 border-emerald-200'
-                          }`}
+                                ? 'bg-blue-100 text-blue-800 border-blue-200'
+                                : isCooking
+                                  ? 'bg-amber-100 text-amber-800 border-amber-200'
+                                  : isReady
+                                    ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                                    : isDelivering
+                                      ? 'bg-purple-100 text-purple-800 border-purple-200'
+                                      : 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                            }`}
                         >
                           {isPending
                             ? 'Chờ Tiếp Nhận'
                             : isSentToKitchen
-                            ? 'Đã Chuyển Bếp'
-                            : isCooking
-                            ? 'Bếp Đang Nấu'
-                            : isReady
-                            ? 'Món Đã Nấu Xong'
-                            : isDelivering
-                            ? 'Đang Giao Phòng'
-                            : 'Đã Hoàn Tất'}
+                              ? 'Đã Chuyển Bếp'
+                              : isCooking
+                                ? 'Bếp Đang Nấu'
+                                : isReady
+                                  ? 'Món Đã Nấu Xong'
+                                  : isDelivering
+                                    ? 'Đang Giao Phòng'
+                                    : 'Đã Hoàn Tất'}
                         </span>
                       </div>
 
@@ -599,35 +601,23 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
                           {isPending
                             ? (order.isServiceRequest ? 'Room Service tiếp nhận' : 'Room Service kiểm tra đơn')
                             : isSentToKitchen
-                            ? 'Chờ Bếp chế biến'
-                            : isCooking
-                            ? (order.isServiceRequest ? 'Đang chuẩn bị dịch vụ' : 'Bếp đang làm món')
-                            : isReady
-                            ? 'Lấy món & chuẩn bị dụng cụ'
-                            : isDelivering
-                            ? 'Đang giao lên phòng'
-                            : 'Hoàn tất'}
+                              ? 'Chờ Bếp chế biến'
+                              : isCooking
+                                ? (order.isServiceRequest ? 'Đang chuẩn bị dịch vụ' : 'Bếp đang làm món')
+                                : isReady
+                                  ? 'Lấy món & chuẩn bị dụng cụ'
+                                  : isDelivering
+                                    ? 'Đang giao lên phòng'
+                                    : 'Hoàn tất'}
                         </span>
 
                         <div className="flex items-center gap-2">
-                          {/* 1. Pending: Food -> Reject & Chuyển Sang Bếp */}
+                          {/* 1. Pending: Food -> Bep tu tiep nhan truc tiep */}
                           {isPending && !order.isServiceRequest && (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => handleReject(order)}
-                                className="rounded-lg border border-[#D4D0CB] bg-white px-3 py-1.5 text-[11px] text-[#444] hover:bg-[#F7F5F2] cursor-pointer"
-                              >
-                                {t('reject')}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleSendToKitchen(order)}
-                                className="rounded-lg bg-indigo-600 hover:bg-indigo-700 px-3.5 py-1.5 text-[11px] font-bold text-white cursor-pointer shadow-xs"
-                              >
-                                Chuyển Sang Bếp
-                              </button>
-                            </>
+                            <span className="px-3 py-1.5 rounded-lg bg-amber-50 text-amber-800 text-[11px] font-bold border border-amber-200 flex items-center gap-1.5">
+                              <ChefHat className="w-3.5 h-3.5 text-amber-600 animate-pulse" />
+                              <span>Bếp Tiếp Nhận Trực Tiếp</span>
+                            </span>
                           )}
 
                           {/* 1b. Pending: Direct Service Request -> Reject & Tiếp Nhận */}

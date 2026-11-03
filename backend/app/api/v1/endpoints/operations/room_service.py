@@ -160,6 +160,128 @@ async def create_room_service_order(
     guest_phone_val = order_in.guest_phone or (getattr(room, "current_guest_phone", None) if room else None)
     room_phone_val = order_in.room_phone or (getattr(room, "room_phone", None) if room else None) or f"Ext {order_in.room_number}"
 
+    # Phuong an A: Tu dong gop don neu phong nay da co don Pending dang cho xu ly
+    clean_room = order_in.room_number.upper().replace("ROOM", "").strip()
+    existing_pending_stmt = (
+        select(RoomServiceOrder)
+        .options(selectinload(RoomServiceOrder.order_items))
+        .where(
+            or_(
+                RoomServiceOrder.room_number == order_in.room_number,
+                RoomServiceOrder.room_number == clean_room,
+            ),
+            RoomServiceOrder.status.in_(["Pending", "pending", "Chờ tiếp nhận", "unassigned"]),
+            RoomServiceOrder.is_service_request == order_in.is_service_request,
+        )
+        .order_by(desc(RoomServiceOrder.created_at))
+    )
+    existing_res = await db.execute(existing_pending_stmt)
+    existing_order = existing_res.scalars().first()
+
+    if existing_order:
+        # 1. Cong don tong tien
+        existing_order.total_amount = float(existing_order.total_amount or 0.0) + total_amount
+
+        # 2. Cap nhat ghi chu
+        if order_in.note and str(order_in.note).strip():
+            clean_new_note = str(order_in.note).strip()
+            if existing_order.note:
+                existing_order.note = f"{existing_order.note}; Gộp thêm: {clean_new_note}"
+            else:
+                existing_order.note = f"Gộp thêm: {clean_new_note}"
+
+        # 3. Tao cac ban ghi OrderItemModel moi gan truc tiep vao don cu
+        for oi_data in order_items_to_create:
+            order_item = OrderItemModel(
+                order_id=existing_order.id,
+                menu_item_id=oi_data["menu_item_id"],
+                food_item_id=oi_data["food_item_id"],
+                item_name=oi_data["item_name"],
+                quantity=oi_data["quantity"],
+                unit_price=oi_data["unit_price"],
+                subtotal=oi_data["subtotal"],
+                notes=oi_data["notes"],
+            )
+            db.add(order_item)
+
+        existing_order.updated_at = datetime.utcnow()
+
+        # 4. Cap nhat SupportRequest tuong ung
+        sr = await db.get(SupportRequest, existing_order.id)
+        if not sr and existing_order.support_request_id:
+            sr = await db.get(SupportRequest, existing_order.support_request_id)
+
+        if sr:
+            sr.total_amount = existing_order.total_amount
+            current_sr_items = list(sr.items or [])
+            current_sr_items.extend(items_payload)
+            sr.items = current_sr_items
+            sr.description = f"{sr.description}, {items_desc}" if sr.description else items_desc
+            sr.updated_at = datetime.utcnow()
+
+        # 5. Thong bao phong ban lien quan
+        dept_target = "Kitchen" if not order_in.is_service_request else "Room Service"
+        await create_department_notification(
+            db=db,
+            department=dept_target,
+            title=f"Đơn gộp món #{existing_order.order_number} - Phòng {order_in.room_number}",
+            description=f"Phòng {order_in.room_number} ({guest_name_val}): Khách gộp thêm {items_desc}. Tổng tiền mới: {existing_order.total_amount:,.0f} đ. Bếp chế biến và Robot giao cùng 1 chuyến.",
+            request_id=existing_order.id,
+            request_type="room_service",
+            type="Request",
+        )
+        await create_department_notification(
+            db=db,
+            department="Reception",
+            title=f"Cập nhật hóa đơn gộp #{existing_order.order_number} - Phòng {order_in.room_number}",
+            description=f"Phòng {order_in.room_number}: Gộp thêm {items_desc} ({total_amount:,.0f} đ). Tổng hóa đơn phòng mới: {existing_order.total_amount:,.0f} đ.",
+            request_id=existing_order.id,
+            request_type="room_service",
+            type="Request",
+        )
+
+        await db.commit()
+        await db.refresh(existing_order)
+
+        # 6. Real-time WebSocket Broadcast thong bao cap nhat don
+        merged_broadcast_payload = {
+            "id": existing_order.id,
+            "raw_id": existing_order.id,
+            "ticket_code": (sr.ticket_code if sr else None) or f"ORD-{existing_order.order_number}",
+            "order_number": existing_order.order_number,
+            "room_number": existing_order.room_number,
+            "room": existing_order.room_number,
+            "status": existing_order.status or "Pending",
+            "progress": existing_order.progress or 0,
+            "total_amount": existing_order.total_amount,
+            "title": (sr.title if sr else None) or f"Room Service Order #{existing_order.order_number}",
+            "description": sr.description if sr else existing_order.note,
+            "notes": existing_order.note,
+            "items": existing_order.items,
+            "is_service_request": existing_order.is_service_request,
+            "is_merged": True,
+            "image_url": existing_order.image_url,
+            "created_at": existing_order.created_at.isoformat() if existing_order.created_at else datetime.utcnow().isoformat(),
+            "updated_at": existing_order.updated_at.isoformat() if existing_order.updated_at else datetime.utcnow().isoformat(),
+            "guest_name": existing_order.guest_name,
+            "guestName": existing_order.guest_name,
+            "guest_phone": existing_order.guest_phone,
+            "guestPhone": existing_order.guest_phone,
+            "room_phone": existing_order.room_phone,
+            "roomPhone": existing_order.room_phone,
+            "department": "F&B",
+            "table_type": "room_service",
+        }
+        asyncio.create_task(
+            notification_manager.broadcast_order_created(merged_broadcast_payload, department="All")
+        )
+        asyncio.create_task(
+            notification_manager.broadcast_status_update(merged_broadcast_payload, department="All")
+        )
+
+        setattr(existing_order, "is_merged", True)
+        return existing_order
+
     # 1. Tạo SupportRequest phục vụ Unified Dashboard, Robot & Webhook
     new_order = SupportRequest(
         id=order_id,
@@ -220,6 +342,18 @@ async def create_room_service_order(
             notes=oi_data["notes"],
         )
         db.add(order_item)
+
+    # Thong bao truc tiep toi bo phan Bep neu la don mon an am thuc
+    if not order_in.is_service_request:
+        await create_department_notification(
+            db=db,
+            department="Kitchen",
+            title=f"Đơn món ăn mới #{order_num} - Phòng {order_in.room_number}",
+            description=f"Phòng {order_in.room_number} ({guest_name_val} - SĐT: {guest_phone_val or 'Chưa có'}): {items_desc or 'Đơn món ăn mới'}. Bếp vui lòng tiếp nhận và chế biến.",
+            request_id=new_order.id,
+            request_type="room_service",
+            type="Request",
+        )
 
     await create_department_notification(
         db=db,

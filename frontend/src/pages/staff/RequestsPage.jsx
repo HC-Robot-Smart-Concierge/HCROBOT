@@ -288,20 +288,20 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
     }
 
     if (step === 1) {
-      // Room Service kiểm tra và chuyển cho Bếp
-      return isRoomServiceStaff || (!isKitchenStaff);
+      // Bếp hoặc Room Service đều có thể tiếp nhận và bắt đầu nấu
+      return isKitchenStaff || isRoomServiceStaff || (!isKitchenStaff);
     }
     if (step === 2) {
       // Bếp nhận nấu: Đầu bếp trực ca có thể tiếp nhận đơn
-      return isKitchenStaff;
+      return isKitchenStaff || isRoomServiceStaff;
     }
     if (step === 3) {
       // Bếp nấu xong -> Món đã nấu xong: CHỈ người nhận request mới được bấm!
       return isKitchenStaff && isTaskAssignedToMe(req);
     }
     if (step === 4 || step === 5) {
-      // Bếp nấu xong -> Room Service lấy món đi giao và xác nhận hoàn tất: CHỈ Room Service mới được bấm!
-      return isRoomServiceStaff || (!isKitchenStaff);
+      // Bếp nấu xong -> Bếp hoặc Room Service lấy món đi giao và xác nhận hoàn tất
+      return isKitchenStaff || isRoomServiceStaff || (!isKitchenStaff);
     }
     return false;
   };
@@ -586,10 +586,7 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
       if (isFoodOrder(r)) {
         const stage = getFoodOrderStage(r.status);
         if (isKitchenStaff) {
-          // Bước 1: Khách đặt -> Room Service duyệt (Bếp không thấy)
-          if (stage.step === 1) {
-            return false;
-          }
+          // Bước 1: Khách đặt -> Bếp hiển thị ngay để Bếp tự nhận nấu trực tiếp
           // Bước 3: Bếp đang nấu -> Đã có người nhận, ẩn khỏi người KHÁC (!isTaskAssignedToMe)
           if (stage.step === 3 && !isTaskAssignedToMe(r)) {
             return false;

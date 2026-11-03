@@ -938,11 +938,13 @@ export const RobotFoodMenuScreen = ({
         total_amount: totalPrice,
       });
 
+      const isMerged = Boolean(res?.is_merged);
       setOrderSuccessData({
-        orderCode: res?.ticket_code || res?.id || `ORD-${Math.floor(100000 + Math.random() * 900000)}`,
+        orderCode: res?.ticket_code || res?.order_number || res?.id || `ORD-${Math.floor(100000 + Math.random() * 900000)}`,
         room: roomToUse,
-        totalAmount: totalPrice,
+        totalAmount: res?.total_amount || totalPrice,
         itemCount: totalItemsCount,
+        isMerged,
       });
 
       setCart({});
@@ -1427,14 +1429,31 @@ export const RobotFoodMenuScreen = ({
               ✓
             </div>
             <div>
-              <h3 className="text-base font-black text-stone-900">Đặt Món Thành Công!</h3>
-              <p className="text-xs text-stone-500 mt-1">
-                Mã đơn: <span className="font-mono font-bold text-stone-800">{orderSuccessData.orderCode}</span>
-              </p>
-              <p className="text-xs text-stone-600 mt-2 leading-relaxed">
-                Đơn hàng của quý khách đã được ghi nhận. Món ăn sẽ được giao đến{' '}
-                <strong className="text-stone-900">{orderSuccessData.room ? `phòng ${orderSuccessData.room}` : 'phòng của quý khách'}</strong> ngay sau khi hoàn tất.
-              </p>
+              {orderSuccessData.isMerged ? (
+                <>
+                  <span className="inline-block px-3 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 text-[11px] font-bold mb-1.5">
+                    Đã Tự Động Gộp Vào Đơn Hiện Tại
+                  </span>
+                  <h3 className="text-base font-black text-stone-900">Gộp Món Thành Công!</h3>
+                  <p className="text-xs text-stone-500 mt-1">
+                    Mã đơn: <span className="font-mono font-bold text-stone-800">{orderSuccessData.orderCode}</span>
+                  </p>
+                  <p className="text-xs text-stone-600 mt-2 leading-relaxed">
+                    Phòng <strong className="text-stone-900">{orderSuccessData.room}</strong> đang có đơn món chờ Bếp nấu. Hệ thống đã tự động gộp các món mới đặt vào chung đơn này để Bếp chế biến và Robot giao cùng một chuyến duy nhất.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <h3 className="text-base font-black text-stone-900">Đặt Món Thành Công!</h3>
+                  <p className="text-xs text-stone-500 mt-1">
+                    Mã đơn: <span className="font-mono font-bold text-stone-800">{orderSuccessData.orderCode}</span>
+                  </p>
+                  <p className="text-xs text-stone-600 mt-2 leading-relaxed">
+                    Đơn hàng đã được chuyển trực tiếp đến Bếp chế biến. Nhân viên bếp sẽ liên hệ với quý khách qua SĐT hoặc máy nhánh nếu cần trao đổi thêm. Món ăn sẽ được giao đến{' '}
+                    <strong className="text-stone-900">{orderSuccessData.room ? `phòng ${orderSuccessData.room}` : 'phòng của quý khách'}</strong> ngay sau khi hoàn tất.
+                  </p>
+                </>
+              )}
             </div>
 
             <div className="p-3.5 bg-stone-50 rounded-2xl border border-stone-200 text-xs flex flex-col gap-1.5 text-left">

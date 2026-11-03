@@ -289,6 +289,7 @@ class RoomServiceOrderCreate(BaseModel):
     guest_name: Optional[str] = None
     guest_phone: Optional[str] = None
     room_phone: Optional[str] = None
+    is_merged: Optional[bool] = False
 
 class RoomServiceOrderStatusUpdate(BaseModel):
     status: str # 'Pending', 'Cooking', 'Ready', 'Delivering', 'Completed', 'Rejected'
@@ -317,6 +318,7 @@ class RoomServiceOrderResponse(BaseModel):
     guest_name: Optional[str] = None
     guest_phone: Optional[str] = None
     room_phone: Optional[str] = None
+    is_merged: Optional[bool] = False
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -916,6 +918,7 @@ class RoomInfoResponse(BaseModel):
     current_guest_phone: Optional[str] = None
     guest_phone: Optional[str] = None
     room_phone: Optional[str] = None
+    is_merged: Optional[bool] = False
     pin_code: Optional[str] = None
     identity_number: Optional[str] = None
     tag_code: Optional[str] = None

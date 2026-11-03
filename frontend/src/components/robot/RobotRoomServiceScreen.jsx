@@ -351,14 +351,16 @@ export const RobotRoomServiceScreen = ({
         is_service_request: true,
       });
 
-      const orderCode = res?.ticket_code || res?.id || `RS-${Math.floor(1000 + Math.random() * 9000)}`;
+      const isMerged = Boolean(res?.is_merged);
+      const orderCode = res?.ticket_code || res?.order_number || res?.id || `RS-${Math.floor(1000 + Math.random() * 9000)}`;
 
       setSuccessData({
         orderCode,
         room: roomToUse,
-        totalAmount: totalPrice,
+        totalAmount: res?.total_amount || totalPrice,
         itemCount: totalItemsCount,
         itemsSummary,
+        isMerged,
       });
 
       setCart({});
@@ -789,14 +791,31 @@ export const RobotRoomServiceScreen = ({
             </div>
 
             <div>
-              <h3 className="text-base font-bold text-stone-100">Yêu Cầu Dịch Vụ Thành Công!</h3>
-              <p className="text-xs text-stone-400 mt-1">
-                Mã yêu cầu: <span className="font-mono font-bold text-stone-200">{successData.orderCode}</span>
-              </p>
-              <p className="text-xs text-stone-300 mt-2 leading-relaxed">
-                Yêu cầu đã được chuyển tới bộ phận <strong>Room Service</strong> để phục vụ đến{' '}
-                <strong>phòng {successData.room}</strong> trong ít phút tới.
-              </p>
+              {successData.isMerged ? (
+                <>
+                  <span className="inline-block px-3 py-0.5 rounded-full bg-indigo-900/60 text-indigo-300 border border-indigo-700/60 text-[11px] font-bold mb-1.5">
+                    Đã Tự Động Gộp Vào Yêu Cầu Hiện Tại
+                  </span>
+                  <h3 className="text-base font-bold text-stone-100">Gộp Yêu Cầu Thành Công!</h3>
+                  <p className="text-xs text-stone-400 mt-1">
+                    Mã yêu cầu: <span className="font-mono font-bold text-stone-200">{successData.orderCode}</span>
+                  </p>
+                  <p className="text-xs text-stone-300 mt-2 leading-relaxed">
+                    Phòng <strong>{successData.room}</strong> đang có yêu cầu chờ xử lý. Hệ thống đã tự động gộp các dịch vụ này vào chung đơn để phục vụ cùng một chuyến duy nhất.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <h3 className="text-base font-bold text-stone-100">Yêu Cầu Dịch Vụ Thành Công!</h3>
+                  <p className="text-xs text-stone-400 mt-1">
+                    Mã yêu cầu: <span className="font-mono font-bold text-stone-200">{successData.orderCode}</span>
+                  </p>
+                  <p className="text-xs text-stone-300 mt-2 leading-relaxed">
+                    Yêu cầu đã được chuyển tới bộ phận <strong>Room Service</strong> để phục vụ đến{' '}
+                    <strong>phòng {successData.room}</strong> trong ít phút tới.
+                  </p>
+                </>
+              )}
             </div>
 
             <div className="p-3 bg-stone-800/80 rounded-xl border border-stone-700/50 text-xs flex flex-col gap-1 text-left">
@@ -904,10 +923,14 @@ export const RobotRoomServiceScreen = ({
                   let progressPercent = 20;
 
                   if (s === 'cooking' || s === 'in progress' || s === 'assigned') {
-                    statusLabel = ord.is_service_request ? 'Đang dọn phòng / xử lý' : 'Đang chế biến';
+                    statusLabel = ord.is_service_request ? 'Đang dọn phòng / xử lý' : 'Bếp đang nấu món';
                     statusBg = 'bg-indigo-900/40 text-indigo-300 border-indigo-700/60';
                     progressPercent = 50;
-                  } else if (s === 'ready' || s === 'delivering') {
+                  } else if (s === 'ready') {
+                    statusLabel = ord.is_service_request ? 'Đã chuẩn bị xong' : 'Món đã nấu xong';
+                    statusBg = 'bg-emerald-900/40 text-emerald-300 border-emerald-700/60';
+                    progressPercent = 75;
+                  } else if (s === 'delivering') {
                     statusLabel = 'Đang giao lên phòng';
                     statusBg = 'bg-blue-900/40 text-blue-300 border-blue-700/60';
                     progressPercent = 85;

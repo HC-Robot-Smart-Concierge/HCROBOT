@@ -16,6 +16,10 @@ import {
   Bell,
   Eye,
   SlidersHorizontal,
+  Phone,
+  PhoneCall,
+  User,
+  Truck,
 } from 'lucide-react';
 import { Pagination } from '../../components/common/Pagination';
 import { INITIAL_ROOM_SERVICE_DATA } from '../../data/mockHotelData';
@@ -198,28 +202,28 @@ export const KitchenDashboard = ({ currentUser, onNotify = () => {} }) => {
     };
   }, []);
 
-  // TÁCH BIỆT THEO PHƯƠNG ÁN 2:
-  // Bộ phận Bếp chỉ tiếp nhận các đơn đã được Room Service duyệt và chuyển sang Bếp (Sent to Kitchen trở đi)
-  // Các đơn khách mới gọi (Pending / Chưa chuyển bếp) chỉ Room Service phụ trách tiếp nhận.
+  // Bo phan Bep tiep nhan va truc tiep quan ly toan bo vong doi don mon an am thuc
   const kitchenScopedOrders = useMemo(() => {
-    return data.orders || [];
+    return (data.orders || []).filter((order) => !order.isServiceRequest);
   }, [data.orders]);
 
-  // Lọc và sắp xếp danh sách đơn chế biến
+  // Loc va sap xep danh sach don che bien
   const filteredOrders = useMemo(() => {
     let list = kitchenScopedOrders;
 
-    // Lọc theo từ khóa tìm kiếm (số phòng, mã đơn, tên món)
+    // Loc theo tu khoa tim kiem (so phong, ma don, ten mon, ten khach, sdt)
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
       list = list.filter((order) => {
         const idMatch = String(order.id || '').toLowerCase().includes(q);
         const roomMatch = String(order.room || '').toLowerCase().includes(q);
         const nameMatch = String(order.name || '').toLowerCase().includes(q);
+        const guestMatch = String(order.guestName || order.guest_name || '').toLowerCase().includes(q);
+        const phoneMatch = String(order.guestPhone || order.guest_phone || '').toLowerCase().includes(q);
         const itemsMatch = Array.isArray(order.items)
           ? order.items.some((it) => String(it.name || '').toLowerCase().includes(q))
           : false;
-        return idMatch || roomMatch || nameMatch || itemsMatch;
+        return idMatch || roomMatch || nameMatch || guestMatch || phoneMatch || itemsMatch;
       });
     }
 
@@ -241,43 +245,39 @@ export const KitchenDashboard = ({ currentUser, onNotify = () => {} }) => {
           return s === 'cooking' || s === 'in preparation' || s === 'in progress';
         }
         if (filterLower === 'ready') {
-          return s === 'ready' || s === 'món đã nấu xong';
+          return s === 'ready' || s === 'món đã nấu xong' || s === 'sẵn sàng';
+        }
+        if (filterLower === 'delivering') {
+          return s === 'delivering' || s === 'in transit' || s === 'đang giao';
         }
         if (filterLower === 'completed') {
-          return s === 'completed' || s === 'delivered' || s === 'delivering';
+          return s === 'completed' || s === 'delivered' || s === 'hoàn tất';
         }
         return s === filterLower;
       });
     }
 
-    // Sắp xếp: Với Bếp, khi đơn chuyển đến 'Món Xong' (Ready) thì xem như đã xong phần phụ trách của Bếp!
-    // Các đơn Bếp đang phụ trách (Cooking, Sent to Kitchen) được ưu tiên hiển thị trước.
-    // Các đơn đã xong phần Bếp (Ready, Delivering, Completed) trôi xuống dưới cùng.
+    // Sap xep uu tien cho Bep truc ca:
+    // 1. Cooking (Dang nau)
+    // 2. Pending (Cho nau/moi nhan)
+    // 3. Ready (Nau xong, can xuat giao nong hoi)
+    // 4. Delivering (Dang tren duong giao phong)
+    // 5. Completed / Done (Da hoan tat)
     return [...list].sort((a, b) => {
-      const isDoneA = ['completed', 'delivered', 'done', 'đã hoàn tất', 'ready', 'món đã nấu xong', 'delivering'].includes(
-        (a.status || '').toLowerCase().trim()
-      );
-      const isDoneB = ['completed', 'delivered', 'done', 'đã hoàn tất', 'ready', 'món đã nấu xong', 'delivering'].includes(
-        (b.status || '').toLowerCase().trim()
-      );
-
-      // Đơn đã xong phần Bếp luôn nằm dưới cùng
-      if (isDoneA && !isDoneB) return 1;
-      if (!isDoneA && isDoneB) return -1;
-
-      // Với các đơn Bếp đang chế biến:
       const getCookingStatusRank = (order) => {
         const s = (order.status || '').toLowerCase().trim();
-        if (s === 'cooking' || s === 'in preparation') return 1; // Đang nấu trên bếp (ưu tiên cao nhất)
-        if (s === 'pending' || s === 'sent to kitchen' || s === 'sent_to_kitchen') return 2; // Mới nhận cần nấu
-        return 3;
+        if (s === 'cooking' || s === 'in preparation' || s === 'in progress') return 1;
+        if (s === 'pending' || s === 'sent to kitchen' || s === 'sent_to_kitchen' || s === 'unassigned') return 2;
+        if (s === 'ready' || s === 'món đã nấu xong' || s === 'sẵn sàng') return 3;
+        if (s === 'delivering' || s === 'in transit' || s === 'đang giao') return 4;
+        return 5;
       };
 
       return getCookingStatusRank(a) - getCookingStatusRank(b);
     });
   }, [kitchenScopedOrders, filter, searchQuery]);
 
-  // Đảm bảo currentPage luôn hợp lệ khi lọc danh sách
+  // Dam bao currentPage luon hop le khi loc danh sach
   const totalPages = Math.max(1, Math.ceil(filteredOrders.length / pageSize));
   useEffect(() => {
     if (currentPage > totalPages) {
@@ -285,7 +285,7 @@ export const KitchenDashboard = ({ currentUser, onNotify = () => {} }) => {
     }
   }, [currentPage, totalPages]);
 
-  // Phân trang danh sách đơn hàng (Slicing giống như RequestsPage)
+  // Phan trang danh sach don hang
   const paginatedOrders = useMemo(() => {
     const start = (currentPage - 1) * pageSize;
     return filteredOrders.slice(start, start + pageSize);
@@ -302,45 +302,99 @@ export const KitchenDashboard = ({ currentUser, onNotify = () => {} }) => {
     });
   };
 
-  // 1. Nhận đơn & Bắt đầu nấu (Start Cooking)
+  // 1. Nhan don & Bat dau nau (Start Cooking)
   const handleStartCooking = async (order) => {
-    updateOrderLocally(order.id, {
-      status: 'Cooking',
-      progress: 50,
-      estCompletion: '15 mins',
-      assignedTo: staffName,
-    });
-    await updateRoomServiceOrderStatus(order.rawId || order.id, {
-      status: 'Cooking',
-      progress: 50,
-      est_completion: '15 mins',
-      assigned_staff_name: staffName,
-    });
-    onNotify(`‍ Bếp đã tiếp nhận đơn #${order.id} và bắt đầu chế biến!`);
+    try {
+      updateOrderLocally(order.id, {
+        status: 'Cooking',
+        progress: 50,
+        estCompletion: '15 mins',
+        assignedTo: staffName,
+      });
+      await updateRoomServiceOrderStatus(order.rawId || order.id, {
+        status: 'Cooking',
+        progress: 50,
+        est_completion: '15 mins',
+        assigned_staff_name: staffName,
+      });
+      onNotify(`Bếp đã tiếp nhận đơn #${order.id} và bắt đầu chế biến!`);
+    } catch (err) {
+      onNotify(`Không thể cập nhật đơn #${order.id}: ${err?.message || 'Lỗi mạng'}`);
+    }
   };
 
-  // 2. Nấu xong - Sẵn sàng lấy món (Mark Ready)
+  // 2. Nau xong - San sang lay mon (Mark Ready)
   const handleMarkReady = async (order) => {
-    updateOrderLocally(order.id, {
-      status: 'Ready',
-      progress: 75,
-      estCompletion: 'Đã nấu xong',
-      assignedTo: staffName,
-    });
-    await updateRoomServiceOrderStatus(order.rawId || order.id, {
-      status: 'Ready',
-      progress: 75,
-      est_completion: 'Đã nấu xong',
-      assigned_staff_name: staffName,
-    });
-    onNotify(`️ Món ăn đơn #${order.id} đã hoàn tất! Đã gửi thông báo cho Room Service đến lấy.`);
+    try {
+      updateOrderLocally(order.id, {
+        status: 'Ready',
+        progress: 75,
+        estCompletion: 'Đã nấu xong',
+        assignedTo: staffName,
+      });
+      await updateRoomServiceOrderStatus(order.rawId || order.id, {
+        status: 'Ready',
+        progress: 75,
+        est_completion: 'Đã nấu xong',
+        assigned_staff_name: staffName,
+      });
+      onNotify(`Món ăn đơn #${order.id} đã hoàn tất, sẵn sàng giao lên phòng!`);
+    } catch (err) {
+      onNotify(`Không thể cập nhật đơn #${order.id}: ${err?.message || 'Lỗi mạng'}`);
+    }
   };
 
-  // 3. Từ chối / Hết nguyên liệu (Reject)
+  // 3. Bat dau giao mon len phong (Start Delivery)
+  const handleStartDelivery = async (order) => {
+    try {
+      updateOrderLocally(order.id, {
+        status: 'Delivering',
+        progress: 85,
+        estCompletion: '5 mins',
+        assignedTo: staffName,
+      });
+      await updateRoomServiceOrderStatus(order.rawId || order.id, {
+        status: 'Delivering',
+        progress: 85,
+        est_completion: '5 mins',
+        assigned_staff_name: staffName,
+      });
+      onNotify(`Đang giao món đơn #${order.id} lên phòng ${order.room}!`);
+    } catch (err) {
+      onNotify(`Không thể cập nhật đơn #${order.id}: ${err?.message || 'Lỗi mạng'}`);
+    }
+  };
+
+  // 4. Xac nhan da giao thanh cong / Hoan tat (Complete Order)
+  const handleCompleteOrder = async (order) => {
+    try {
+      updateOrderLocally(order.id, {
+        status: 'Completed',
+        progress: 100,
+        estCompletion: 'Hoàn tất',
+        assignedTo: staffName,
+      });
+      await updateRoomServiceOrderStatus(order.rawId || order.id, {
+        status: 'Completed',
+        progress: 100,
+        est_completion: 'Hoàn tất',
+        assigned_staff_name: staffName,
+      });
+      onNotify(`Đã giao thành công món ăn đơn #${order.id} lên phòng ${order.room}!`);
+    } catch (err) {
+      onNotify(`Không thể hoàn tất đơn #${order.id}: ${err?.message || 'Lỗi mạng'}`);
+    }
+  };
+
+  // 5. Tu choi / Het nguyen lieu (Reject)
   const handleReject = async (order) => {
-    updateOrderLocally(order.id, { status: 'Rejected' });
-    await updateRoomServiceOrderStatus(order.rawId || order.id, { status: 'Rejected' });
-    onNotify(` Bếp từ chối tiếp nhận đơn #${order.id}`);
+    try {
+      updateOrderLocally(order.id, { status: 'Rejected' });
+      await updateRoomServiceOrderStatus(order.rawId || order.id, { status: 'Rejected' });
+      onNotify(`Bếp từ chối tiếp nhận đơn #${order.id}`);
+    } catch (err) {
+      onNotify(`Không thể từ chối đơn #${order.id}: ${err?.message || 'Lỗi mạng'}`);
+    }
   };
 
   // Toggle nhanh tình trạng món ăn của bếp
@@ -354,7 +408,7 @@ export const KitchenDashboard = ({ currentUser, onNotify = () => {} }) => {
     }
   };
 
-  // Tính toán KPIs thực tế dựa trên danh sách đơn Bếp (Phương án 2: Tách biệt Bếp & Room Service)
+  // Tinh toan KPIs thuc te dua tren danh sach don Bep
   const pendingCount = kitchenScopedOrders.filter((o) => {
     const s = (o.status || '').toLowerCase().trim();
     return (
@@ -374,12 +428,17 @@ export const KitchenDashboard = ({ currentUser, onNotify = () => {} }) => {
 
   const readyCount = kitchenScopedOrders.filter((o) => {
     const s = (o.status || '').toLowerCase().trim();
-    return s === 'ready' || s === 'món đã nấu xong';
+    return s === 'ready' || s === 'món đã nấu xong' || s === 'sẵn sàng';
+  }).length;
+
+  const deliveringCount = kitchenScopedOrders.filter((o) => {
+    const s = (o.status || '').toLowerCase().trim();
+    return s === 'delivering' || s === 'in transit' || s === 'đang giao';
   }).length;
 
   const completedCount = kitchenScopedOrders.filter((o) => {
     const s = (o.status || '').toLowerCase().trim();
-    return s === 'completed' || s === 'delivered' || s === 'delivering';
+    return s === 'completed' || s === 'delivered' || s === 'hoàn tất';
   }).length;
 
   return (
@@ -475,7 +534,8 @@ export const KitchenDashboard = ({ currentUser, onNotify = () => {} }) => {
                   { id: 'All', label: language === 'EN' ? 'All' : 'Tất Cả', count: kitchenScopedOrders.length },
                   { id: 'Pending', label: language === 'EN' ? 'To Cook' : 'Chờ Nấu', count: pendingCount },
                   { id: 'Cooking', label: language === 'EN' ? 'Cooking' : 'Đang Nấu', count: cookingCount },
-                  { id: 'Ready', label: language === 'EN' ? 'Ready' : 'Đã Xong', count: readyCount },
+                  { id: 'Ready', label: language === 'EN' ? 'Ready' : 'Món Đã Xong', count: readyCount },
+                  { id: 'Delivering', label: language === 'EN' ? 'Delivering' : 'Đang Giao', count: deliveringCount },
                   { id: 'Completed', label: language === 'EN' ? 'Done' : 'Hoàn Tất', count: completedCount },
                 ].map((tab) => (
                   <button
@@ -553,12 +613,17 @@ export const KitchenDashboard = ({ currentUser, onNotify = () => {} }) => {
                           <span className="font-mono text-xs font-bold text-[#1A1917]">
                             #{order.id}
                           </span>
-                          <span className="rounded-lg bg-stone-100 px-2 py-0.5 text-xs font-bold text-stone-700 border border-stone-200">
-                            {order.room || 'Phòng Khách'}
+                          <span className="rounded-lg bg-stone-900 text-white px-2.5 py-0.5 text-xs font-black shadow-2xs">
+                            Phòng {order.room || 'Khách'}
                           </span>
                           <span className="text-[11px] text-stone-500 font-medium">
                             • {order.orderedAt || 'Vừa đặt'}
                           </span>
+                          {((order.note || '').includes('Gộp thêm') || order.is_merged) && (
+                            <span className="rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 text-[10px] font-bold">
+                              Đơn gộp món (Giao 1 chuyến)
+                            </span>
+                          )}
                         </div>
 
                         {/* Badge Trạng Thái */}
@@ -589,18 +654,37 @@ export const KitchenDashboard = ({ currentUser, onNotify = () => {} }) => {
                         </span>
                       </div>
 
-                      {/* Thông tin Khách & Số máy liên hệ */}
-                      <div className="flex flex-wrap items-center gap-2 mt-2 pt-2 border-t border-stone-100 text-[11px]">
-                        <span className="font-semibold text-stone-800">
-                          {order.guestName || order.guest_name || 'Khách lưu trú'}
-                        </span>
-                        {(order.guestPhone || order.guest_phone) && (
-                          <span className="bg-emerald-50 text-emerald-800 border border-emerald-200 px-1.5 py-0.2 rounded text-[10px] font-mono">
-                            ĐT: {order.guestPhone || order.guest_phone}
+                      {/* Thong tin Khach & So may lien he truc tiep de nhan vien chu dong lien lac */}
+                      <div className="flex flex-wrap items-center justify-between gap-2 mt-2 pt-2 border-t border-stone-100 text-[11px]">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-bold text-stone-900 flex items-center gap-1">
+                            <User className="w-3.5 h-3.5 text-stone-600" />
+                            <span>{order.guestName || order.guest_name || 'Khách lưu trú'}</span>
                           </span>
-                        )}
-                        <span className="bg-amber-50 text-amber-900 border border-amber-200 px-1.5 py-0.2 rounded text-[10px] font-mono font-medium">
-                          {order.roomPhone || order.room_phone || (order.room ? `Ext ${order.room}` : 'Máy nhánh')}
+
+                          {(order.guestPhone || order.guest_phone) && (
+                            <a
+                              href={`tel:${order.guestPhone || order.guest_phone}`}
+                              onClick={(e) => e.stopPropagation()}
+                              className="inline-flex items-center gap-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded text-[11px] font-mono font-bold transition-all shadow-2xs cursor-pointer active:scale-95"
+                              title="Bấm để gọi điện thoại trực tiếp cho khách"
+                            >
+                              <Phone className="w-3 h-3 text-emerald-600" />
+                              <span>SĐT: {order.guestPhone || order.guest_phone}</span>
+                            </a>
+                          )}
+
+                          <span
+                            className="inline-flex items-center gap-1 bg-amber-50 text-amber-900 border border-amber-200 px-2 py-0.5 rounded text-[11px] font-mono font-medium shadow-2xs"
+                            title="Số máy nhánh điện thoại bàn trong phòng khách"
+                          >
+                            <PhoneCall className="w-3 h-3 text-amber-700" />
+                            <span>{order.roomPhone || order.room_phone || (order.room ? `Ext ${order.room}` : 'Máy nhánh')}</span>
+                          </span>
+                        </div>
+
+                        <span className="text-[10px] text-stone-400 font-medium">
+                          Nhân viên liên lạc trực tiếp
                         </span>
                       </div>
 
@@ -626,7 +710,7 @@ export const KitchenDashboard = ({ currentUser, onNotify = () => {} }) => {
                                     </h4>
                                     {(it.notes || it.note) && (
                                       <p className="mt-0.5 text-[11px] font-semibold text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200/60 inline-block">
-                                        ️ {it.notes || it.note}
+                                        Ghi chú: {it.notes || it.note}
                                       </p>
                                     )}
                                   </div>
@@ -667,14 +751,14 @@ export const KitchenDashboard = ({ currentUser, onNotify = () => {} }) => {
                               : isCooking
                               ? 'Thời gian ước tính: 15 phút'
                               : isReady
-                              ? 'Món tại quầy Ra Đĩa (Pass Counter) - Chờ Room Service lấy món'
+                              ? 'Món tại quầy Ra Đĩa - Sẵn sàng giao lên phòng'
                               : isDelivering
-                              ? 'Room Service đang vận chuyển lên phòng khách'
+                              ? 'Đang vận chuyển giao món lên phòng khách'
                               : 'Đã hoàn tất chu đáo'}
                           </span>
                         </div>
 
-                        {/* Các Nút Hành Động Đặc Thù Cho Bếp */}
+                        {/* Các Nút Hành Động Trực Tiếp Cho Bếp */}
                         <div className="flex items-center gap-2 self-end sm:self-auto">
                           {/* 1. Trạng thái Chờ Nấu -> Bắt Đầu Nấu */}
                           {isPending && !order.isServiceRequest && (
@@ -697,7 +781,7 @@ export const KitchenDashboard = ({ currentUser, onNotify = () => {} }) => {
                             </>
                           )}
 
-                          {/* 2. Trạng thái Đang Nấu -> Nấu Xong (Báo Lấy Món): CHỈ người nhận đơn mới bấm được */}
+                          {/* 2. Trạng thái Đang Nấu -> Nấu Xong */}
                           {isCooking && (
                             isOrderAssignedToMe(order) ? (
                               <button
@@ -706,12 +790,12 @@ export const KitchenDashboard = ({ currentUser, onNotify = () => {} }) => {
                                 className="px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-xs font-bold text-white flex items-center gap-1.5 cursor-pointer shadow-xs transition-all"
                               >
                                 <CheckCircle2 className="w-3.5 h-3.5" />
-                                <span>Nấu Xong (Báo Lấy)</span>
+                                <span>Nấu Xong (Sẵn Sàng Giao)</span>
                               </button>
                             ) : (
                               <span
                                 className="px-3.5 py-1.5 rounded-xl bg-amber-50 text-amber-800 text-xs font-bold border border-amber-200 flex items-center gap-1.5 select-none"
-                                title={`Đơn này do ${order.assignedTo || order.assigned_staff_name || 'đầu bếp khác'} nhận nấu. Chỉ người nhận mới có quyền bấm hoàn tất.`}
+                                title={`Đơn này do ${order.assignedTo || order.assigned_staff_name || 'đầu bếp khác'} nhận nấu.`}
                               >
                                 <ChefHat className="w-3.5 h-3.5 text-amber-600 animate-pulse" />
                                 <span>Đang nấu bởi: {order.assignedTo || order.assigned_staff_name || 'Đầu bếp khác'}</span>
@@ -719,33 +803,47 @@ export const KitchenDashboard = ({ currentUser, onNotify = () => {} }) => {
                             )
                           )}
 
-                          {/* 3. Trạng thái Đã Nấu Xong -> Chờ Room Service Lấy Món (Bếp không can thiệp việc giao món của Room Service) */}
+                          {/* 3. Trạng thái Đã Nấu Xong -> Bếp tự bấm Giao Phòng hoặc Hoàn Tất */}
                           {isReady && (
-                            <span
-                              className="px-3.5 py-1.5 rounded-xl bg-emerald-50 text-emerald-800 text-xs font-bold border border-emerald-200 flex items-center gap-1.5 select-none shadow-2xs"
-                              title="Món đã nấu xong! Đang chờ nhân viên Room Service đến quầy lấy món và giao lên phòng khách."
-                            >
-                              <UtensilsCrossed className="w-3.5 h-3.5 text-emerald-600" />
-                              <span>Chờ Room Service Lấy Món</span>
-                            </span>
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => handleStartDelivery(order)}
+                                className="px-3.5 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-xs font-bold text-white flex items-center gap-1.5 cursor-pointer shadow-xs transition-all"
+                                title="Bấm khi bắt đầu mang món lên phòng khách"
+                              >
+                                <Truck className="w-3.5 h-3.5" />
+                                <span>Giao Lên Phòng</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleCompleteOrder(order)}
+                                className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-xs font-bold text-white flex items-center gap-1 cursor-pointer shadow-xs transition-all"
+                                title="Xác nhận khách đã nhận món"
+                              >
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                                <span>Đã Giao Xong</span>
+                              </button>
+                            </div>
                           )}
 
-                          {/* 4. Trạng thái Đang Giao -> Room Service Đang Giao (Bếp chỉ theo dõi) */}
+                          {/* 4. Trạng thái Đang Giao -> Xác nhận đã giao */}
                           {isDelivering && (
-                            <span
-                              className="px-3.5 py-1.5 rounded-xl bg-purple-50 text-purple-800 text-xs font-bold border border-purple-200 flex items-center gap-1.5 select-none shadow-2xs"
-                              title="Nhân viên Room Service đang mang món lên phòng cho khách."
+                            <button
+                              type="button"
+                              onClick={() => handleCompleteOrder(order)}
+                              className="px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-xs font-bold text-white flex items-center gap-1.5 cursor-pointer shadow-xs transition-all"
                             >
-                              <Clock className="w-3.5 h-3.5 text-purple-600" />
-                              <span>Room Service Đang Giao</span>
-                            </span>
+                              <Check className="w-3.5 h-3.5" />
+                              <span>Xác Nhận Đã Giao</span>
+                            </button>
                           )}
 
                           {/* 5. Trạng thái Hoàn Tất */}
                           {isCompleted && (
                             <span className="px-3 py-1 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-bold flex items-center gap-1">
                               <Check className="w-3.5 h-3.5" />
-                              <span>Đã Phục Vụ</span>
+                              <span>Đã Phục Vụ Xong</span>
                             </span>
                           )}
                         </div>

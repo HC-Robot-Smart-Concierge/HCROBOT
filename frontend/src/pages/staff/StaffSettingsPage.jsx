@@ -4,13 +4,13 @@ import { StaffPageHeader } from '../../components/dashboard/RoomServiceFrame';
 import { useLanguage } from '../../context/LanguageContext';
 import { useStaffText } from '../../context/StaffLanguage';
 
-export function StaffSettingsPage() {
+export function StaffSettingsPage({ portal = 'room_service' }) {
   const { language, setLanguage, t } = useLanguage();
   const st = useStaffText();
   return (
     <div className="staff-page-body flex-1 overflow-y-auto p-4">
       <StaffPageHeader className="mb-6">
-        <div><h1>{t('adminSettings')}</h1><p>{st('Display preferences for the Room Service portal.')}</p></div>
+        <div><h1>{t('adminSettings')}</h1><p>{st(portal === 'reception' ? 'Display preferences for the Reception portal.' : 'Display preferences for the Room Service portal.')}</p></div>
       </StaffPageHeader>
       <section className="room-service-settings-card">
         <h2 className="text-sm font-bold flex items-center gap-2"><Globe size={16} />{t('settingsSystemLang')}</h2>

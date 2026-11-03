@@ -77,7 +77,7 @@ export const StaffLayout = () => {
     }
   }
 
-  const isRoomServicePortal = activeView === 'room_service';
+  const usesAdminStylePortal = ['room_service', 'reception'].includes(activeView);
 
   // Handle sidebar navigation
   const handleSelectMenu = (menuId) => {
@@ -138,8 +138,8 @@ export const StaffLayout = () => {
       <ToastNotification message={toastMessage} />
 
       {/* Main Staff Frame: Sidebar + Content */}
-      {isRoomServicePortal ? (
-        <RoomServiceFrame activeMenu={activeMenu} onSelectMenu={handleSelectMenu}
+      {usesAdminStylePortal ? (
+        <RoomServiceFrame portal={activeView} activeMenu={activeMenu} onSelectMenu={handleSelectMenu}
           currentUser={currentUser} onLogout={handleLogout} unreadNotifCount={unreadNotifCount}>
           <Outlet />
         </RoomServiceFrame>
@@ -180,7 +180,7 @@ export const StaffLayout = () => {
       </div>}
 
       {/* Mobile Bottom Navigation */}
-      {!isRoomServicePortal && <MobileBottomNav
+      {!usesAdminStylePortal && <MobileBottomNav
         activeMenu={activeMenu}
         onSelectMenu={handleSelectMenu}
         unreadNotifCount={unreadNotifCount}

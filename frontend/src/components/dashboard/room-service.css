@@ -84,6 +84,12 @@
 .room-service-language-options button[aria-pressed="true"] { border-color: #262626; background: #f2efe9; box-shadow: inset 0 0 0 1px #262626; }
 .room-service-language-options small { display: block; font-size: 11px; color: #78716c; margin-top: 4px; }
 .room-service-backdrop { display: none; }
+.reception-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--portal-border); margin-bottom: 16px; overflow-x: auto; }
+.reception-tabs button { display: inline-flex; align-items: center; flex-shrink: 0; gap: 8px; padding: 12px 14px; border-bottom: 2px solid transparent; color: #8c8c8c; font-size: 12px; font-weight: 600; cursor: pointer; }
+.reception-tabs button:hover { color: #262626; background: #e9e5dc; }
+.reception-tabs button[aria-pressed="true"] { border-bottom-color: #262626; color: #262626; }
+.reception-panel { border-color: var(--portal-border); border-radius: 12px; box-shadow: none; }
+.reception-request-actions { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 12px; margin-top: 20px; }
 @media (max-width: 1200px) {
   .room-service-page-header .staff-header-details { display: none; }
 }

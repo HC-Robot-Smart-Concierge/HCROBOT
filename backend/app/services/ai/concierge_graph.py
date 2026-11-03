@@ -347,7 +347,7 @@ async def retrieval_node(state: ConciergeState) -> Dict[str, Any]:
 async def query_room_order_status_db(room_num: str, is_en: bool = False) -> Dict[str, Any]:
     """Helper truy vấn CSDL trạng thái phòng và đơn hàng F&B / dịch vụ gần nhất."""
     import re
-    from sqlalchemy import select, desc
+    from sqlalchemy import select, desc, or_
     from sqlalchemy.orm import selectinload
     from app.core.database import AsyncSessionLocal
     from app.models.hotel import Room
@@ -382,86 +382,164 @@ async def query_room_order_status_db(room_num: str, is_en: bool = False) -> Dict
                     "message": msg,
                 }
 
-            # Tìm danh sách đơn RoomServiceOrder mới nhất kèm danh sách món
-            stmt_order = (
-                select(RoomServiceOrder)
-                .options(selectinload(RoomServiceOrder.order_items))
-                .where(RoomServiceOrder.room_number == room.room_number)
-                .order_by(desc(RoomServiceOrder.created_at))
-                .limit(5)
-            )
-            res_order = await db.execute(stmt_order)
-            recent_orders = res_order.scalars().all()
-
-            # Tìm yêu cầu SupportRequest mới nhất
-            stmt_req = (
-                select(SupportRequest)
-                .where(SupportRequest.room_number == room.room_number)
-                .order_by(desc(SupportRequest.created_at))
-                .limit(5)
-            )
-            res_req = await db.execute(stmt_req)
-            recent_requests = res_req.scalars().all()
-
-            order_data = None
-            latest_food_data = None
-            latest_service_data = None
-
-            for ord_item in recent_orders:
-                items_summary = ""
-                if ord_item.order_items:
-                    items_summary = ", ".join([f"{it.quantity}x {it.item_name}" for it in ord_item.order_items if it.item_name])
-                elif ord_item.note:
-                    items_summary = ord_item.note
-
-                data_entry = {
-                    "order_number": ord_item.order_number,
-                    "status": ord_item.status,
-                    "created_at": ord_item.created_at,
-                    "items_summary": items_summary,
-                    "is_service_request": bool(ord_item.is_service_request),
-                    "progress": ord_item.progress or 0,
-                    "note": ord_item.note or "",
-                }
-                if order_data is None:
-                    order_data = data_entry
-                if ord_item.is_service_request and latest_service_data is None:
-                    latest_service_data = data_entry
-                elif not ord_item.is_service_request and latest_food_data is None:
-                    latest_food_data = data_entry
-
-            req_data = None
-            for req_item in recent_requests:
-                r_entry = {
-                    "ticket_code": req_item.ticket_code,
-                    "title": req_item.title,
-                    "status": req_item.status,
-                    "created_at": req_item.created_at,
-                    "department_id": req_item.department_id,
-                    "description": req_item.description or "",
-                }
-                if req_data is None:
-                    req_data = r_entry
-                if latest_service_data is None and (req_item.department_id in ["DEP-ROOMSERVICE", "DEP-HOUSEKEEPING"] or "dọn" in (req_item.title or "").lower()):
-                    latest_service_data = {
-                        "order_number": req_item.ticket_code,
-                        "status": req_item.status,
-                        "created_at": req_item.created_at,
-                        "items_summary": req_item.title or "Dịch vụ phòng",
-                        "is_service_request": True,
-                        "progress": req_item.progress or 0,
-                        "note": req_item.description or "",
-                    }
-
-            return {
-                "exists": True,
-                "is_occupied": True,
-                "room_number": room.room_number,
-                "latest_order": order_data,
-                "latest_food_order": latest_food_data,
-                "latest_service_order": latest_service_data,
-                "latest_request": req_data,
-            }
+            # Tạo danh sách các biến thể số phòng để query linh hoạt
+            room_clean_num = clean_room
+            room_actual_num = room.room_number or clean_room
+            room_variants = {
+                room_actual_num,
+                room_clean_num,
+                f"Room {room_clean_num}",
+                f"ROOM {room_clean_num}",
+                f"Phòng {room_clean_num}",
+                f"PHÒNG {room_clean_num}",
+            }
+            if room.id:
+                room_variants.add(room.id)
+
+            # Các trạng thái đang hoạt động (chưa hoàn tất/hủy)
+            ACTIVE_STATUS_SET = {
+                "pending", "waiting", "unassigned", "chờ tiếp nhận", "chờ xử lý",
+                "sent to kitchen", "sent_to_kitchen", "đã chuyển bếp",
+                "cooking", "in preparation", "in_progress", "in progress", "bếp đang nấu", "đang xử lý",
+                "ready", "food ready", "món đã nấu xong", "sẵn sàng",
+                "delivering", "in transit", "đang giao", "đang giao phòng", "đang mang lên"
+            }
+
+            # Tìm danh sách đơn RoomServiceOrder
+            stmt_order = (
+                select(RoomServiceOrder)
+                .options(selectinload(RoomServiceOrder.order_items))
+                .where(
+                    or_(
+                        RoomServiceOrder.room_number.in_(room_variants),
+                        RoomServiceOrder.room_number.ilike(f"%{room_clean_num}%"),
+                        (RoomServiceOrder.room_id == room.id) if room.id else False,
+                    )
+                )
+                .order_by(desc(RoomServiceOrder.created_at))
+                .limit(10)
+            )
+            res_order = await db.execute(stmt_order)
+            recent_orders = res_order.scalars().all()
+
+            # Tìm danh sách yêu cầu SupportRequest
+            stmt_req = (
+                select(SupportRequest)
+                .where(
+                    or_(
+                        SupportRequest.room_number.in_(room_variants),
+                        SupportRequest.room_number.ilike(f"%{room_clean_num}%"),
+                        (SupportRequest.room_id == room.id) if room.id else False,
+                    )
+                )
+                .order_by(desc(SupportRequest.created_at))
+                .limit(10)
+            )
+            res_req = await db.execute(stmt_req)
+            recent_requests = res_req.scalars().all()
+
+            food_orders_list: List[Dict[str, Any]] = []
+            service_orders_list: List[Dict[str, Any]] = []
+
+            for ord_item in recent_orders:
+                items_summary = ""
+                if ord_item.order_items:
+                    items_summary = ", ".join([f"{it.quantity}x {it.item_name}" for it in ord_item.order_items if it.item_name])
+                elif ord_item.note:
+                    items_summary = ord_item.note
+
+                data_entry = {
+                    "order_number": ord_item.order_number,
+                    "status": ord_item.status or "Pending",
+                    "created_at": ord_item.created_at,
+                    "items_summary": items_summary,
+                    "is_service_request": bool(ord_item.is_service_request),
+                    "progress": ord_item.progress or 0,
+                    "note": ord_item.note or "",
+                    "source_id": ord_item.id,
+                }
+
+                if ord_item.is_service_request:
+                    service_orders_list.append(data_entry)
+                else:
+                    food_orders_list.append(data_entry)
+
+            # Phân loại thêm từ SupportRequest nếu đơn tạo qua AI Chat hoặc kênh ngoài
+            for req_item in recent_requests:
+                t_code = req_item.ticket_code or req_item.id or ""
+                # Bỏ qua nếu đã có trong danh sách từ RoomServiceOrder
+                if any(t_code and (t_code in (fo.get("order_number") or "") or (fo.get("order_number") or "") in t_code or t_code == fo.get("source_id")) for fo in food_orders_list):
+                    continue
+                if any(t_code and (t_code in (so.get("order_number") or "") or (so.get("order_number") or "") in t_code or t_code == so.get("source_id")) for so in service_orders_list):
+                    continue
+
+                items_summary = req_item.title or ""
+                if req_item.items and isinstance(req_item.items, list):
+                    it_names = [f"{it.get('qty', 1)}x {it.get('name', '')}" for it in req_item.items if isinstance(it, dict) and it.get('name')]
+                    if it_names:
+                        items_summary = ", ".join(it_names)
+
+                sr_entry = {
+                    "order_number": req_item.ticket_code,
+                    "status": req_item.status or "Pending",
+                    "created_at": req_item.created_at,
+                    "items_summary": items_summary,
+                    "progress": req_item.progress or 0,
+                    "note": req_item.description or "",
+                    "source_id": req_item.id,
+                }
+
+                dep_up = (req_item.department_id or "").upper()
+                svc_up = (req_item.service_type_id or "").upper()
+                tit_low = (req_item.title or "").lower()
+
+                is_food_sr = False
+                if any(k in dep_up for k in ["ROOMSERVICE", "F&B", "FB", "KITCHEN"]):
+                    if not any(k in tit_low for k in ["dọn", "vệ sinh", "khăn", "gối", "chăn", "buồng"]):
+                        is_food_sr = True
+                elif any(k in svc_up for k in ["ROOM-SERVICE", "FOOD", "RESTAURANT"]):
+                    is_food_sr = True
+                elif req_item.items and len(req_item.items) > 0 and not any(k in tit_low for k in ["dọn", "vệ sinh"]):
+                    is_food_sr = True
+
+                if is_food_sr:
+                    sr_entry["is_service_request"] = False
+                    food_orders_list.append(sr_entry)
+                else:
+                    sr_entry["is_service_request"] = True
+                    service_orders_list.append(sr_entry)
+
+            # TÁCH ĐƠN ĐANG ACTIVE VÀ ĐƠN ĐÃ HOÀN THÀNH / HỦY
+            active_food = [f for f in food_orders_list if (f.get("status") or "").lower().strip() in ACTIVE_STATUS_SET]
+            completed_food = [f for f in food_orders_list if (f.get("status") or "").lower().strip() not in ACTIVE_STATUS_SET]
+
+            # Ưu tiên tuyệt đối đơn món ĐANG NẤU / ĐANG GIAO / CHỜ TIẾP NHẬN
+            latest_food_data = active_food[0] if active_food else (completed_food[0] if completed_food else None)
+
+            active_service = [s for s in service_orders_list if (s.get("status") or "").lower().strip() in ACTIVE_STATUS_SET]
+            completed_service = [s for s in service_orders_list if (s.get("status") or "").lower().strip() not in ACTIVE_STATUS_SET]
+
+            # Ưu tiên tuyệt đối dịch vụ ĐANG LÀM / CHỜ XỬ LÝ
+            latest_service_data = active_service[0] if active_service else (completed_service[0] if completed_service else None)
+
+            # Chọn đơn tổng hợp mới nhất (ưu tiên active trước)
+            all_active = active_food + active_service
+            all_active.sort(key=lambda x: x.get("created_at") or datetime.min, reverse=True)
+            all_any = food_orders_list + service_orders_list
+            all_any.sort(key=lambda x: x.get("created_at") or datetime.min, reverse=True)
+
+            order_data = all_active[0] if all_active else (all_any[0] if all_any else None)
+            req_data = recent_requests[0] if recent_requests else None
+
+            return {
+                "exists": True,
+                "is_occupied": True,
+                "room_number": room.room_number,
+                "latest_order": order_data,
+                "latest_food_order": latest_food_data,
+                "latest_service_order": latest_service_data,
+                "latest_request": req_data,
+            }
     except Exception as ex:
         logger.warning(f"[ConciergeGraph] DB query error for room {clean_room}: {ex}")
         return {"exists": True, "is_occupied": True, "room_number": clean_room, "latest_order": None, "latest_request": None}
@@ -576,10 +654,38 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
         elif is_asking_food:
             target_ord = latest_food
             is_service_mode = False
-        else:
-            target_ord = latest_service if (latest_service and not latest_food) else (latest_food or latest_ord)
-            is_service_mode = bool(target_ord and target_ord.get("is_service_request"))
-
+        else:
+            # Câu hỏi chung (không chỉ rõ món hay dịch vụ buồng phòng):
+            # Nếu 1 bên đang ACTIVE và bên kia đã COMPLETED -> Ưu tiên bên ACTIVE!
+            ACTIVE_SET = {
+                "pending", "waiting", "unassigned", "chờ tiếp nhận", "chờ xử lý",
+                "sent to kitchen", "sent_to_kitchen", "đã chuyển bếp",
+                "cooking", "in preparation", "in_progress", "in progress", "bếp đang nấu", "đang xử lý",
+                "ready", "food ready", "món đã nấu xong", "sẵn sàng",
+                "delivering", "in transit", "đang giao", "đang giao phòng", "đang mang lên"
+            }
+            food_is_active = bool(latest_food and (latest_food.get("status") or "").lower().strip() in ACTIVE_SET)
+            svc_is_active = bool(latest_service and (latest_service.get("status") or "").lower().strip() in ACTIVE_SET)
+
+            if food_is_active and not svc_is_active:
+                target_ord = latest_food
+                is_service_mode = False
+            elif svc_is_active and not food_is_active:
+                target_ord = latest_service
+                is_service_mode = True
+            elif food_is_active and svc_is_active:
+                t_f = latest_food.get("created_at") or datetime.min
+                t_s = latest_service.get("created_at") or datetime.min
+                if t_f >= t_s:
+                    target_ord = latest_food
+                    is_service_mode = False
+                else:
+                    target_ord = latest_service
+                    is_service_mode = True
+            else:
+                target_ord = latest_food or latest_service or latest_ord
+                is_service_mode = bool(target_ord and target_ord.get("is_service_request"))
+
         STATUS_VN_MAP = {
             "pending": "đang chờ tiếp nhận",
             "waiting": "đang chờ xử lý",

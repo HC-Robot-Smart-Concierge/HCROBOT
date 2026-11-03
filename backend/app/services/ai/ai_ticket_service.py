@@ -104,9 +104,12 @@ async def auto_create_ticket(
 
     try:
         if action in ["room_service", "restaurant"]:
+            import uuid
             order_num = str(random.randint(1043, 9999))
             ticket_code = f"ORD-{order_num}"
+            order_id = f"ORD-{uuid.uuid4().hex[:8]}"
             order = SupportRequest(
+                id=order_id,
                 ticket_code=ticket_code,
                 title=f"Đơn Room Service (Phòng {rm}): {items}",
                 room_number=rm,
@@ -120,6 +123,30 @@ async def auto_create_ticket(
                 progress=0,
             )
             db.add(order)
+
+            # Đồng bộ tạo thêm RoomServiceOrder và OrderItem để Bếp nhận đơn
+            from app.models.room_service import RoomServiceOrder, OrderItem
+            rs_order = RoomServiceOrder(
+                id=order_id,
+                order_number=order_num,
+                room_number=rm,
+                support_request_id=order_id,
+                guest_name=f"Guest (Room {rm})",
+                status="Pending",
+                is_service_request=False,
+                total_amount=0.0,
+                note=items or "Yêu cầu từ AI Chat",
+            )
+            db.add(rs_order)
+            oi = OrderItem(
+                order_id=order_id,
+                item_name=items or "Món ăn",
+                quantity=1,
+                unit_price=0.0,
+                subtotal=0.0,
+                notes=items,
+            )
+            db.add(oi)
             await create_department_notification(
                 db=db,
                 department="F&B",

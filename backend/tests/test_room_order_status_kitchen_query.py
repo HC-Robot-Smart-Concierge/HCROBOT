@@ -136,3 +136,68 @@ async def test_massage_and_drinks_status_queries():
         assert res_drink.missing_room_number is True
         assert res_drink.status_query_type == "food"
         assert res_drink.destination_key is None
+
+
+@pytest.mark.asyncio
+async def test_active_order_prioritized_over_old_completed_order():
+    """Đảm bảo khi phòng vừa có đơn cũ 'Completed' và đơn mới 'Cooking'/'Pending',
+    hỏi trạng thái món ăn luôn trả về tiến độ của đơn mới đang xử lý, không trả về đơn cũ đã hoàn thành.
+    """
+    sid = "test_kitchen_active_over_completed"
+    session_manager.reset_session(sid)
+
+    async with AsyncSessionLocal() as db:
+        res_r = await db.execute(select(Room).where(Room.room_number == "302"))
+        room_302 = res_r.scalars().first()
+        prev_status = room_302.status if room_302 else "AVAILABLE"
+        if room_302:
+            room_302.status = "OCCUPIED"
+            room_302.current_guest_name = "Khách Test 302"
+
+        # 1. Tạo đơn cũ đã hoàn thành (Completed)
+        old_ord = RoomServiceOrder(
+            order_number="ORD-OLD-COMPLETED",
+            room_number="302",
+            status="Completed",
+            total_amount=95000,
+        )
+        db.add(old_ord)
+        await db.flush()
+        old_item = OrderItem(order_id=old_ord.id, item_name="Bún bò Huế", quantity=1, unit_price=95000)
+        db.add(old_item)
+
+        # 2. Tạo đơn mới đang nấu (Cooking)
+        new_ord = RoomServiceOrder(
+            order_number="ORD-NEW-COOKING",
+            room_number="Room 302",
+            status="Cooking",
+            total_amount=150000,
+        )
+        db.add(new_ord)
+        await db.flush()
+        new_item = OrderItem(order_id=new_ord.id, item_name="Pizza hải sản", quantity=1, unit_price=150000)
+        db.add(new_item)
+        await db.commit()
+
+        try:
+            # Lượt 1: Hỏi trạng thái món ăn
+            await process_chat_request(db, ChatRequest(prompt="trạng thái món ăn của tôi thế nào rồi", session_id=sid, language="Tiếng Việt"))
+            # Lượt 2: Cung cấp số phòng 302
+            res = await process_chat_request(db, ChatRequest(prompt="Phòng 302", session_id=sid, language="Tiếng Việt"))
+
+            assert res.action == "query_order_status"
+            # Phải báo đơn mới đang chế biến, KHÔNG ĐƯỢC báo đã hoàn thành của đơn cũ
+            assert "chế biến" in res.response or "sắp xong" in res.response or "nhà bếp" in res.response
+            assert "đã hoàn thành và được giao thành công" not in res.response
+            assert "Pizza hải sản" in res.response or "302" in res.response
+        finally:
+            await db.delete(old_item)
+            await db.delete(old_ord)
+            await db.delete(new_item)
+            await db.delete(new_ord)
+            if room_302:
+                room_302.status = prev_status
+                if prev_status == "AVAILABLE":
+                    room_302.current_guest_name = None
+            await db.commit()
+

@@ -1,3 +1,5 @@
+import { useStaffText } from '../../context/StaffLanguage';
+import { StaffPageHeader } from '../../components/dashboard/RoomServiceFrame';
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { RefreshCw, UtensilsCrossed, ChefHat, CheckCircle2, Clock, Phone, User } from 'lucide-react';
 import { Pagination } from '../../components/common/Pagination';
@@ -28,8 +30,8 @@ const normalizeOrder = (order) => {
     estCompletion: order.est_completion || order.estCompletion || initialOrder.estCompletion,
     assignedTo: order.assigned_staff_name || order.assignedTo,
     orderedAt: order.orderedAt || initialOrder.orderedAt || 'Just now',
-    guestName: order.guest_name || order.guestName || initialOrder.guestName || 'Khách lưu trú',
-    guest_name: order.guest_name || order.guestName || initialOrder.guestName || 'Khách lưu trú',
+    guestName: order.guest_name || order.guestName || initialOrder.guestName,
+    guest_name: order.guest_name || order.guestName || initialOrder.guestName,
     guestPhone: order.guest_phone || order.guestPhone || initialOrder.guestPhone,
     guest_phone: order.guest_phone || order.guestPhone || initialOrder.guestPhone,
     roomPhone: order.room_phone || order.roomPhone || initialOrder.roomPhone || `Ext ${order.room_number || order.room}`,
@@ -65,6 +67,7 @@ const KpiCard = ({ label, value, detail }) => {
 };
 
 export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
+  const st = useStaffText();
   const { t } = useLanguage();
   const staffName = currentUser?.full_name || currentUser?.name || 'Elena Rossi';
   const [data, setData] = useState({
@@ -315,7 +318,7 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
       est_completion: '20 mins',
       assigned_staff_name: staffName,
     });
-    onNotify(`Đã kiểm tra và chuyển đơn #${order.id} sang cho Bếp chế biến!`);
+    onNotify(st("Order #{0} was reviewed and sent to the kitchen.", order.id));
   };
 
   const handleAcceptServiceRequest = async (order) => {
@@ -331,7 +334,7 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
       est_completion: '10 mins',
       assigned_staff_name: staffName,
     });
-    onNotify(`Room Service đã tiếp nhận và đang chuẩn bị dịch vụ cho phòng ${order.room}!`);
+    onNotify(st("Service accepted and being prepared for room {0}.", order.room));
   };
 
   const handleStartCooking = async (order) => {
@@ -347,7 +350,7 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
       est_completion: '15 mins',
       assigned_staff_name: staffName,
     });
-    onNotify(`Bếp đã nhận và bắt đầu nấu đơn #${order.id}`);
+    onNotify(st("The kitchen has started preparing order #{0}.", order.id));
   };
 
   const handleMarkReady = async (order) => {
@@ -363,7 +366,7 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
       est_completion: 'Sẵn sàng',
       assigned_staff_name: staffName,
     });
-    onNotify(`Món ăn đơn #${order.id} đã nấu xong! Thông báo Room Service lấy món.`);
+    onNotify(st("Order #{0} is ready for Room Service to collect.", order.id));
   };
 
   const handleStartDelivery = async (order) => {
@@ -379,13 +382,13 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
       est_completion: '5 mins',
       assigned_staff_name: staffName,
     });
-    onNotify(`Room Service đã lấy món, chuẩn bị dụng cụ và đang giao lên phòng ${order.room}`);
+    onNotify(st("Room Service is delivering the order to room {0}.", order.room));
   };
 
   const handleReject = async (order) => {
     updateOrderLocally(order.id, { status: 'Rejected' });
     await updateRoomServiceOrderStatus(order.rawId || order.id, { status: 'Rejected' });
-    onNotify(`Từ chối đơn #${order.id}`);
+    onNotify(st("Order #{0} rejected.", order.id));
   };
 
   const handleCompleteOrder = async (order) => {
@@ -395,15 +398,15 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
       progress: 100,
       assigned_staff_name: staffName,
     });
-    onNotify(`Đã giao thành công và hoàn tất đơn hàng #${order.id}!`);
+    onNotify(st("Order #{0} delivered and completed.", order.id));
   };
 
   const kpis = data.kpis || INITIAL_ROOM_SERVICE_DATA.kpis;
 
   return (
-    <main className="flex-1 overflow-y-auto custom-scrollbar bg-[#FCFAF7] font-sans">
-      <div className="w-full max-w-[1180px] mx-auto px-4 md:px-8 pt-3 pb-8">
-        <header className="flex items-center justify-between gap-4">
+    <div className="staff-page-body flex-1 overflow-y-auto custom-scrollbar bg-[#FCFAF7] font-sans">
+      <div className="staff-page-container w-full max-w-[1180px] mx-auto px-4 md:px-8 pt-3 pb-8">
+        <StaffPageHeader className="flex items-center justify-between gap-4">
           <div>
             <h2 className="text-[15px] font-semibold text-[#2C2926]">{t('rsTitle')}</h2>
             <p className="mt-0.5 text-[12px] text-[#77726D]">
@@ -415,12 +418,12 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
             onClick={() => loadData(true)}
             disabled={isRefreshing}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#D4D0CB] bg-white hover:bg-[#F7F5F2] text-[11px] font-semibold text-[#444] transition-colors cursor-pointer shadow-xs active:scale-95"
-            title="Làm mới danh sách đơn phục vụ phòng"
+            title={st("Refresh room service orders")}
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-indigo-600' : 'text-stone-500'}`} />
-            <span>{isRefreshing ? 'Đang tải...' : 'Làm mới'}</span>
+            <span>{isRefreshing ? st("Loading...") : st("Refresh")}</span>
           </button>
-        </header>
+        </StaffPageHeader>
 
         <section className="mt-6 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
           <KpiCard
@@ -442,18 +445,18 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
           />
         </section>
 
-        <section className="mt-8 grid grid-cols-1 xl:grid-cols-[minmax(0,2.12fr)_minmax(225px,0.9fr)] gap-5">
+        <section className="room-service-dashboard-grid mt-4 grid gap-4">
           <div className="min-w-0">
             <div className="mb-3 flex items-center justify-between gap-4">
               <h3 className="text-[13px] font-semibold text-[#36322F]">{t('activeOrders')}</h3>
               <div className="flex items-center gap-1 flex-wrap">
                 {[
-                  { key: 'All', label: t('all') || 'Tất Cả' },
-                  { key: 'Pending', label: t('pending') || 'Chờ Tiếp Nhận' },
-                  { key: 'Cooking', label: 'Bếp Đang Nấu' },
-                  { key: 'Ready', label: 'Bếp Đã Xong (Chờ Giao)' },
-                  { key: 'Delivering', label: t('delivering') || 'Đang Giao' },
-                  { key: 'Completed', label: t('completed') || 'Đã Hoàn Tất' },
+                  { key: 'All', label: t('all') || st("All") },
+                  { key: 'Pending', label: t('pending') || st("Pending") },
+                  { key: 'Cooking', label: st("In preparation") },
+                  { key: 'Ready', label: st("Ready for delivery") },
+                  { key: 'Delivering', label: t('delivering') || st("Delivering") },
+                  { key: 'Completed', label: t('completed') || st("Completed") },
                 ].map(({ key, label }) => {
                   const count = tabCounts[key] || 0;
                   const isReadyTab = key === 'Ready';
@@ -521,8 +524,7 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
                       <div className="flex items-center justify-between gap-4">
                         <div className="flex items-center gap-2 text-[11px] font-bold text-[#3A3530]">
                           <span>#{order.id}</span>
-                          <span className="rounded bg-[#E3E0DB] px-1.5 py-0.5 text-[10px] text-[#69645E]">
-                            Phòng {order.room}
+                          <span className="rounded bg-[#E3E0DB] px-1.5 py-0.5 text-[10px] text-[#69645E]">{st("Room")} {order.room}
                           </span>
                         </div>
                         <span
@@ -541,16 +543,16 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
                           }`}
                         >
                           {isPending
-                            ? 'Chờ Tiếp Nhận'
+                            ? st("Pending")
                             : isSentToKitchen
-                            ? 'Đã Chuyển Bếp'
+                            ? st("Sent to kitchen")
                             : isCooking
-                            ? 'Bếp Đang Nấu'
+                            ? st("In preparation")
                             : isReady
-                            ? 'Món Đã Nấu Xong'
+                            ? st("Food ready")
                             : isDelivering
-                            ? 'Đang Giao Phòng'
-                            : 'Đã Hoàn Tất'}
+                            ? st("Delivering to room")
+                            : st("Completed")}
                         </span>
                       </div>
 
@@ -558,37 +560,37 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="font-semibold text-stone-900 flex items-center gap-1">
                             <User className="w-3 h-3 text-stone-500" />
-                            <span>{order.guest_name || order.guestName || 'Khách lưu trú'}</span>
+                            <span>{order.guest_name || order.guestName || st("Hotel guest")}</span>
                           </span>
                           {(order.guest_phone || order.guestPhone) && (
                             <a
                               href={`tel:${order.guest_phone || order.guestPhone}`}
                               onClick={(e) => e.stopPropagation()}
                               className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded text-[11px] font-mono font-bold transition-colors cursor-pointer shadow-2xs"
-                              title="Bấm để gọi điện thoại xác nhận đơn với khách"
+                              title={st("Call the guest to confirm the order")}
                             >
                               <Phone className="w-3 h-3 text-emerald-600" />
-                              <span>ĐT: {order.guest_phone || order.guestPhone}</span>
+                              <span>{st("Phone:")} {order.guest_phone || order.guestPhone}</span>
                             </a>
                           )}
                           <span
                             className="inline-flex items-center gap-1 bg-amber-50 text-amber-900 border border-amber-200 px-2 py-0.5 rounded text-[11px] font-mono font-medium shadow-2xs"
-                            title="Số máy nhánh phòng khách"
+                            title={st("Room extension")}
                           >
                             <Phone className="w-3 h-3 text-amber-600" />
                             <span>{order.room_phone || order.roomPhone || `Ext ${order.room}`}</span>
                           </span>
                         </div>
-                        <span className="text-[10px] text-[#888]">{order.orderedAt || 'Vừa đặt'}</span>
+                        <span className="text-[10px] text-[#888]">{order.orderedAt === 'Just now' ? st('Just now') : order.orderedAt || st('Just now')}</span>
                       </div>
 
                       <div className="flex items-center justify-between gap-4">
                         <div>
                           <h4 className="text-[12px] font-semibold text-[#322F2C]">
-                            {order.name || (Array.isArray(order.items) && order.items.map(it => it.name).join(', ')) || 'Yêu cầu Room Service'}
+                            {order.name || (Array.isArray(order.items) && order.items.map(it => it.name).join(', ')) || st("Room Service request")}
                           </h4>
                           <p className="text-[11px] text-[#746F69]">
-                            {order.notes || 'Không có ghi chú đặc biệt'}
+                            {order.notes || st("No special notes")}
                           </p>
                         </div>
                         <span className="text-[11px] font-bold text-[#444]">x{order.qty || 1}</span>
@@ -597,16 +599,16 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
                       <div className="pt-3 border-t border-[#F0ECE6] flex items-center justify-between gap-2">
                         <span className="text-[10px] text-stone-500 font-medium">
                           {isPending
-                            ? (order.isServiceRequest ? 'Room Service tiếp nhận' : 'Room Service kiểm tra đơn')
+                            ? (order.isServiceRequest ? st("Awaiting service acceptance") : st("Awaiting order review"))
                             : isSentToKitchen
-                            ? 'Chờ Bếp chế biến'
+                            ? st("Waiting for kitchen preparation")
                             : isCooking
-                            ? (order.isServiceRequest ? 'Đang chuẩn bị dịch vụ' : 'Bếp đang làm món')
+                            ? (order.isServiceRequest ? st("Preparing service") : st("Kitchen is preparing the food"))
                             : isReady
-                            ? 'Lấy món & chuẩn bị dụng cụ'
+                            ? st("Collect food and prepare utensils")
                             : isDelivering
-                            ? 'Đang giao lên phòng'
-                            : 'Hoàn tất'}
+                            ? st("Delivery in progress")
+                            : st("Complete")}
                         </span>
 
                         <div className="flex items-center gap-2">
@@ -624,9 +626,7 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
                                 type="button"
                                 onClick={() => handleSendToKitchen(order)}
                                 className="rounded-lg bg-indigo-600 hover:bg-indigo-700 px-3.5 py-1.5 text-[11px] font-bold text-white cursor-pointer shadow-xs"
-                              >
-                                Chuyển Sang Bếp
-                              </button>
+                              >{st("Send to kitchen")} </button>
                             </>
                           )}
 
@@ -644,9 +644,7 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
                                 type="button"
                                 onClick={() => handleAcceptServiceRequest(order)}
                                 className="rounded-lg bg-indigo-600 hover:bg-indigo-700 px-3.5 py-1.5 text-[11px] font-bold text-white cursor-pointer shadow-xs"
-                              >
-                                Tiếp Nhận Xử Lý
-                              </button>
+                              >{st("Accept request")} </button>
                             </>
                           )}
 
@@ -654,7 +652,7 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
                           {isSentToKitchen && (
                             <span className="px-3 py-1.5 rounded-lg bg-blue-50 text-blue-800 text-[11px] font-bold border border-blue-200 flex items-center gap-1.5">
                               <Clock className="w-3.5 h-3.5 text-blue-600" />
-                              <span>Chờ Bếp Nhận Nấu</span>
+                              <span>{st("Awaiting kitchen acceptance")}</span>
                             </span>
                           )}
 
@@ -665,13 +663,11 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
                                 type="button"
                                 onClick={() => handleStartDelivery(order)}
                                 className="rounded-lg bg-sky-600 hover:bg-sky-700 px-3.5 py-1.5 text-[11px] font-bold text-white cursor-pointer shadow-xs"
-                              >
-                                Giao Lên Phòng
-                              </button>
+                              >{st("Deliver to room")} </button>
                             ) : (
                               <span className="px-3 py-1.5 rounded-lg bg-amber-50 text-amber-800 text-[11px] font-bold border border-amber-200 flex items-center gap-1.5">
                                 <ChefHat className="w-3.5 h-3.5 text-amber-600 animate-pulse" />
-                                <span>Bếp Đang Nấu Món...</span>
+                                <span>{st("Kitchen is cooking...")}</span>
                               </span>
                             )
                           )}
@@ -682,9 +678,7 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
                               type="button"
                               onClick={() => handleStartDelivery(order)}
                               className="rounded-lg bg-sky-600 hover:bg-sky-700 px-3.5 py-1.5 text-[11px] font-bold text-white cursor-pointer shadow-xs"
-                            >
-                              Lấy Món & Giao Phòng
-                            </button>
+                            >{st("Collect and deliver")} </button>
                           )}
 
                           {/* 5. Delivering -> Xác Nhận Đã Giao */}
@@ -693,9 +687,7 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
                               type="button"
                               onClick={() => handleCompleteOrder(order)}
                               className="rounded-lg bg-emerald-600 hover:bg-emerald-700 px-3.5 py-1.5 text-[11px] font-bold text-white cursor-pointer shadow-xs"
-                            >
-                              Xác Nhận Đã Giao
-                            </button>
+                            >{st("Confirm delivery")} </button>
                           )}
 
                           {/* 6. Completed */}
@@ -719,7 +711,7 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
                 totalItems={filteredOrders.length}
                 pageSize={pageSize}
                 onPageChange={setCurrentPage}
-                itemName="đơn"
+                itemName={st("orders")}
                 className="mt-3 rounded-2xl border border-[#E5E1D8] shadow-xs bg-white"
               />
             )}
@@ -744,7 +736,7 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
         </section>
       </div>
 
-    </main>
+    </div>
   );
 };
 

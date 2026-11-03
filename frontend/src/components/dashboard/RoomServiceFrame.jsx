@@ -61,18 +61,12 @@ export function RoomServiceFrame({ activeMenu, onSelectMenu, currentUser, onLogo
             {navButton('MyTasks', t('menuMyTasks'))}
           </div>}
           {navButton('RoomServiceMenu', t('menuRoomServiceMenu'))}
-          {activeMenu === 'RoomServiceMenu' && <div className="room-service-subnav">
-            {navButton('RoomServiceMenu', st('Service catalog'))}
-          </div>}
         </nav>
 
         <div id="room-service-sidebar-actions" className="room-service-sidebar-actions" hidden={collapsed}>
           {navButton('Notifications', <><Bell size={14} /><span>{t('menuNotifications')}</span>
             {unreadNotifCount > 0 && <span className="room-service-count">{unreadNotifCount > 99 ? '99+' : unreadNotifCount}</span>}</>)}
           {navButton('Settings', <><Settings size={14} /><span>{t('adminSettings')}</span></>)}
-          {activeMenu === 'Settings' && <div className="room-service-subnav">
-            {navButton('Settings', st('General'))}
-          </div>}
           <div className="room-service-user-card">
             <button type="button" className="room-service-user" onClick={() => select('Profile')} title={t('menuProfile')} aria-current={activeMenu === 'Profile' ? 'page' : undefined}>
               {currentUser?.avatar_url || currentUser?.avatar

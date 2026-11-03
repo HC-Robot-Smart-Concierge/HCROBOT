@@ -12,12 +12,11 @@ import { RobotScreenPage } from '../pages/robot/RobotScreenPage';
 import { RobotFoodMenuScreen } from '../components/robot/RobotFoodMenuScreen';
 import { AdminPortal } from '../pages/admin/AdminPortal';
 import { AdminLidarPage } from '../pages/admin/AdminLidarPage';
-import { NfcTestPage } from '../pages/test/NfcTestPage';
+
 
 // Staff Dashboard Pages
 import { ReceptionDashboard } from '../pages/dashboard/ReceptionDashboard';
 import { RoomServiceDashboard } from '../pages/dashboard/RoomServiceDashboard';
-import { HousekeepingDashboard } from '../pages/dashboard/HousekeepingDashboard';
 import { BellServicesDashboard } from '../pages/dashboard/BellServicesDashboard';
 import { MaintenanceDashboard } from '../pages/dashboard/MaintenanceDashboard';
 import { KitchenDashboard } from '../pages/dashboard/KitchenDashboard';
@@ -32,6 +31,7 @@ import { RoomServiceMenuManagementPage } from '../pages/staff/RoomServiceMenuMan
 import { HistoryPage } from '../pages/staff/HistoryPage';
 import { NotificationsPage } from '../pages/staff/NotificationsPage';
 import { ProfilePage } from '../pages/staff/ProfilePage';
+import { StaffSettingsPage } from '../pages/staff/StaffSettingsPage';
 
 // Wrapper for Concierge subtabs
 function ConciergeRouteWrapper() {
@@ -199,9 +199,6 @@ export const AppRoutes = () => {
         element={<RobotFoodMenuScreen onClose={() => navigate('/robot')} />}
       />
 
-      {/* 3.1 Web NFC Diagnostics & Test Screen */}
-      <Route path="/nfc-test" element={<NfcTestPage />} />
-      <Route path="/nfc" element={<NfcTestPage />} />
 
       {/* 4. Admin Command Portal & LiDAR */}
       <Route
@@ -258,13 +255,9 @@ export const AppRoutes = () => {
         />
         <Route
           path="housekeeping"
-          element={
-            <HousekeepingDashboard
-              currentUser={currentUser}
-              onNotify={showNotification}
-            />
-          }
+          element={<Navigate to="/staff/room-service" replace />}
         />
+        <Route path="settings" element={<StaffSettingsPage />} />
         <Route
           path="bell-services"
           element={

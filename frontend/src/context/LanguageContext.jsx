@@ -176,7 +176,7 @@ const translations = {
     dashTotalTasksRecorded: 'Total recorded service requests:',
     dashRecentActivitiesTitle: 'Recent Service Request Logs',
     dashRecentActivitiesSub: 'Live operational records from departments and robot dispatch',
-    dashDbLive: 'Database Live',
+    dashDbLive: 'Live',
     dashColId: 'Code',
     dashColContent: 'Content',
     dashColDept: 'Department',

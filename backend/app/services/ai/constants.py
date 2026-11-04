@@ -22,7 +22,8 @@ SERVICE_KEYWORDS: Dict[str, List[str]] = {
         "khăn", "khan", "dọn phòng", "don phong", "gối", "goi", "chăn", "chan",
         "nệm", "nem", "dọn dẹp", "dọn vệ sinh", "vệ sinh phòng", "làm vệ sinh",
         "towel", "clean room", "cleaning", "bàn ủi", "máy sấy", "dao cạo", "kem đánh răng",
-        "bàn chải", "dầu gội", "sữa tắm", "giấy vệ sinh", "nước suối trong phòng", "mát xa", "mat xa", "massage", "spa"
+        "bàn chải", "dầu gội", "sữa tắm", "giấy vệ sinh", "nước suối trong phòng",
+        "massage tại phòng", "mát xa tại phòng", "mat xa tai phong", "đặt massage", "gọi massage", "spa tại phòng"
     ],
     "room_service": [
         "cơm", "com", "nước", "nuoc", "ăn", "an", "uống", "uong", "đồ ăn", "do an",

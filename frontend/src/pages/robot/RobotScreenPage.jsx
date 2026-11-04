@@ -974,12 +974,19 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       setIsRoomServiceMenuOpen(false);
     }
 
-    // CHỈ mở menu dịch vụ phòng nếu khách có ý định yêu cầu dịch vụ / tiện ích rõ ràng và TUYỆT ĐỐI KHÔNG mở khi đang tra cứu trạng thái hoặc đặt món
-    const isExplicitRoomServiceIntent = !isStatusQueryPrompt && !isExplicitFoodMenuIntent && (
+    // Kiểm tra xem có phải câu hỏi chỉ đường / điều hướng cơ sở vật chất (Spa, Gym, Pool, Toilet, v.v.) không
+    const isNavigationWayfindingIntent = (
+      /đi tới|đi đến|đến|tới|chỉ đường|dẫn đường|ở đâu|lối đi|đường đến|vị trí|hướng dẫn đường|tầng mấy/i.test(lowerQuery) &&
+      /spa|massage|mát xa|gym|hồ bơi|pool|nhà hàng|restaurant|lễ tân|reception|toilet|vệ sinh|wc|bar/i.test(lowerQuery) &&
+      !/(tại|lên|về) phòng|phục vụ tại phòng/i.test(lowerQuery)
+    );
+
+    // CHỈ mở menu dịch vụ phòng nếu khách có ý định yêu cầu dịch vụ / tiện ích rõ ràng và TUYỆT ĐỐI KHÔNG mở khi đang tra cứu trạng thái, đặt món, hoặc hỏi đường đi
+    const isExplicitRoomServiceIntent = !isStatusQueryPrompt && !isExplicitFoodMenuIntent && !isNavigationWayfindingIntent && (
       /^(mở |xem )?(dịch vụ phòng|room service)$/i.test(lowerQuery) ||
       /dịch vụ phòng|room service/i.test(lowerQuery) ||
       /(dịch vụ|tiện ích) (lên |về |tại )?phòng|đặt (thêm )?(tiện ích|dịch vụ)|yêu cầu (thêm )?(tiện ích|dịch vụ)|muốn (đặt|thêm|yêu cầu) (tiện ích|dịch vụ)/i.test(lowerQuery) ||
-      /(cho (tôi|mình|em)|xin|lấy|mang|đem|gửi|thêm|mượn|cần|muốn|đặt|yêu cầu).*(khăn|gối|chăn|nệm|dép|bàn chải|dao cạo|dầu gội|sữa tắm|massage|mát xa|giặt|ủi|dọn|vệ sinh|bàn là|bàn ủi|máy sấy|áo choàng)/i.test(lowerQuery) ||
+      /(cho (tôi|mình|em)|xin|lấy|mang|đem|gửi|thêm|mượn|cần|muốn|đặt|yêu cầu).*(khăn|gối|chăn|nệm|dép|bàn chải|dao cạo|dầu gội|sữa tắm|massage tại phòng|mát xa tại phòng|giặt|ủi|dọn|vệ sinh|bàn là|bàn ủi|máy sấy|áo choàng)/i.test(lowerQuery) ||
       /(khăn tắm|thêm khăn|khăn mặt|bộ khăn|massage tại phòng|mát xa tại phòng|giặt ủi|ủi đồ|dọn phòng giúp|vệ sinh phòng|mượn bàn là|mượn bàn ủi)/i.test(lowerQuery)
     );
     if (isExplicitRoomServiceIntent) {
@@ -1137,9 +1144,11 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
             setIsRoomServiceMenuOpen(false);
             setIsTaxiModalOpen(false);
           } else if (
-            chatRes.trigger_menu === 'room_service' ||
+            (chatRes.trigger_menu === 'room_service' ||
             chatRes.action === 'open_room_service_menu' ||
-            ['housekeeping', 'laundry'].includes(chatRes.action)
+            ['housekeeping', 'laundry'].includes(chatRes.action)) &&
+            chatRes.action !== 'show_map' &&
+            !chatRes.destination_key
           ) {
             // Tự động mở menu dịch vụ phòng (Khăn tắm, chăn gối, massage)
             setIsRoomServiceMenuOpen(true);

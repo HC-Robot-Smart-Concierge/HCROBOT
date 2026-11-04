@@ -60,7 +60,7 @@ def _detect_destination_poi(prompt: str, reply: str = "", room_number: str | Non
     direct_loc_phrases = [
         "đi vệ sinh", "di ve sinh", "đi toilet", "di toilet", "đi wc", "di wc",
         "ra lễ tân", "ra quầy", "lên hồ bơi", "ra hồ bơi", "xuống bãi xe",
-        "vào thang máy", "lên phòng gym", "đi massage", "đi spa"
+        "vào thang máy", "lên phòng gym", "đi massage", "đi spa", "đi tới spa", "đi đến spa", "đến spa", "tới spa", "lên spa", "chỉ đường tới spa"
     ]
 
     # Kiểm tra xem câu hỏi có chứa số phòng cụ thể cần tìm (3xx hoặc 4xx)

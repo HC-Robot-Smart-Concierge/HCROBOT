@@ -718,7 +718,14 @@ async def fast_path_node(state: ConciergeState) -> Dict[str, Any]:
 
 
 
-    faq_kws_fp = ["ở đâu", "mấy giờ", "bao nhiêu", "giá", "thế nào", "có không", "where", "when", "how", "what", "giờ nào", "tầng mấy", "bảng giá", "quy định", "chính sách"]
+    faq_kws_fp = [
+        "ở đâu", "o dau", "mấy giờ", "may gio", "bao nhiêu", "bao nhieu", "giá", "gia", "thế nào", "the nao", "có không", "co khong",
+        "where", "when", "how", "what", "giờ nào", "tầng mấy", "tang may", "bảng giá", "quy định", "chính sách",
+        "đi tới", "di toi", "đi đến", "di den", "tới", "toi", "đến", "den", "chỉ đường", "chi duong",
+        "dẫn đường", "dan duong", "hướng dẫn đường", "lối đi", "loi di", "lối lên", "loi len", "lối xuống", "loi xuong",
+        "đường đến", "duong den", "đường đi", "duong di", "đường ra", "duong ra", "vị trí", "vi tri", "chỉ tôi", "chi toi",
+        "dẫn tôi", "dan toi", "cách đi", "cach di", "làm sao để đến", "lam sao de den"
+    ]
 
 
 
@@ -2098,7 +2105,10 @@ async def intent_router_node(state: ConciergeState) -> Dict[str, Any]:
 
 
 
-        "chỉ đường", "đường nào", "hướng nào", "đi vệ sinh", "nhà vệ sinh", 
+        "chỉ đường", "đường nào", "hướng nào", "đi vệ sinh", "nhà vệ sinh",
+        "đi tới", "di toi", "đi đến", "di den", "tới", "đến", "dẫn đường", "dan duong",
+        "lối đi", "loi di", "lối lên", "loi len", "lối xuống", "đường đến", "duong den",
+        "đường đi", "duong di", "đường ra", "vị trí", "vi tri", "chỉ tôi", "dẫn tôi", "cách đi", "làm sao để đến", 
 
 
 

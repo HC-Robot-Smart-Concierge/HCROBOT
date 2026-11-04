@@ -2295,7 +2295,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
               </div>
             </div>
           ) : (
-            <div className="flex flex-col items-center justify-center relative scale-95 transition-transform duration-500">
+            <div className="flex flex-col items-center justify-center relative scale-100 sm:scale-105 transition-transform duration-500">
               {/* Khuôn mặt Robot */}
               <div
                 onClick={() => {

@@ -9,6 +9,24 @@ export const staffVietnamese = {
   'Reception navigation': 'Điều hướng lễ tân',
   'Reception staff': 'Nhân viên lễ tân',
   'Display preferences for the Reception portal.': 'Tùy chỉnh hiển thị cho cổng lễ tân.',
+  'MAINTENANCE PORTAL': 'CỔNG KỸ THUẬT',
+  'Maintenance navigation': 'Điều hướng kỹ thuật',
+  'Maintenance staff': 'Nhân viên kỹ thuật',
+  'Display preferences for the Maintenance portal.': 'Tùy chỉnh hiển thị cho cổng kỹ thuật.',
+  'Complete your current task ({0}) before claiming another request.': 'Vui lòng hoàn thành nhiệm vụ đang xử lý ({0}) trước khi nhận yêu cầu mới.',
+  'Request {0} claimed.': 'Đã nhận xử lý yêu cầu {0}.',
+  'Request {0} declined.': 'Đã từ chối yêu cầu {0}.',
+  'Request {0} completed.': 'Đã hoàn tất yêu cầu {0}.',
+  'Assigned:': 'Phụ trách:',
+  'Received from HCRobot': 'Tiếp nhận từ HCRobot',
+  'Staff / Guest': 'Nhân viên / Khách',
+  'Declined': 'Đã từ chối',
+  'Off Shift': 'Ngoài ca',
+  'Shift Leader': 'Trưởng ca',
+  'HVAC Tech': 'Kỹ thuật viên điều hòa',
+  'HVAC Tech & Maintenance': 'Kỹ thuật viên điều hòa & bảo trì',
+  'Maintenance Technician': 'Kỹ thuật viên bảo trì',
+  'Technician': 'Kỹ thuật viên',
   'Complimentary': 'Miễn phí',
   'Staff': 'Nhân viên',
   'Another chef': 'Đầu bếp khác',
@@ -390,13 +408,18 @@ export function staffDepartmentLabel(department) {
   const value = String(department || '').toLowerCase().replace(/[_-]/g, ' ').trim();
   if (['housekeeping', 'buồng phòng', 'room service', 'roomservice', 'phục vụ phòng', 'f&b'].includes(value)) return 'Room Service';
   if (['reception', 'front desk', 'front desk & reception', 'lễ tân', 'lễ tân & tiền sảnh'].includes(value)) return 'Reception';
+  if (['maintenance', 'kỹ thuật', 'bảo trì', 'kỹ thuật & bảo trì', 'kỹ thuật và bảo trì'].includes(value)) return 'Maintenance';
   return department;
 }
 
 export function staffStatusLabel(status) {
   const labels = {
     pending: 'Pending', unassigned: 'Pending', 'chờ tiếp nhận': 'Pending',
-    'in progress': 'In Progress', 'đang xử lý': 'In Progress',
+    'in progress': 'In Progress', in_progress: 'In Progress', 'đang xử lý': 'In Progress',
+    declined: 'Declined', 'đã từ chối': 'Declined',
+    available: 'Available', 'sẵn sàng': 'Available',
+    busy: 'Busy', 'đang bận': 'Busy',
+    'off shift': 'Off Shift', 'ngoài ca': 'Off Shift',
     cooking: 'In preparation', 'bếp đang nấu': 'In preparation',
     'sent to kitchen': 'Sent to kitchen', sent_to_kitchen: 'Sent to kitchen', 'đã chuyển bếp': 'Sent to kitchen',
     ready: 'Ready', 'món đã nấu xong': 'Ready',

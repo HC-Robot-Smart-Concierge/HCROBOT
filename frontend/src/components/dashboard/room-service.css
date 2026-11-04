@@ -90,6 +90,11 @@
 .reception-tabs button[aria-pressed="true"] { border-bottom-color: #262626; color: #262626; }
 .reception-panel { border-color: var(--portal-border); border-radius: 12px; box-shadow: none; }
 .reception-request-actions { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 12px; margin-top: 20px; }
+.maintenance-panel { border-color: var(--portal-border); }
+.maintenance-filters { display: flex; flex-wrap: wrap; gap: 4px; }
+.maintenance-filters button { padding: 6px 10px; border: 1px solid transparent; border-radius: 6px; color: #8c8c8c; font-size: 11px; font-weight: 600; cursor: pointer; }
+.maintenance-filters button:hover { background: #e9e5dc; color: #262626; }
+.maintenance-filters button[aria-pressed="true"] { background: #262626; color: #fff; }
 @media (max-width: 1200px) {
   .room-service-page-header .staff-header-details { display: none; }
 }

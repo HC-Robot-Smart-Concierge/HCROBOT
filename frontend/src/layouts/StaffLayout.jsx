@@ -77,7 +77,7 @@ export const StaffLayout = () => {
     }
   }
 
-  const usesAdminStylePortal = ['room_service', 'reception'].includes(activeView);
+  const usesAdminStylePortal = ['room_service', 'reception', 'maintenance'].includes(activeView);
 
   // Handle sidebar navigation
   const handleSelectMenu = (menuId) => {

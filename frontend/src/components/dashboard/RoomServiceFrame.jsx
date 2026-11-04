@@ -19,8 +19,12 @@ export function RoomServiceFrame({ activeMenu, onSelectMenu, currentUser, onLogo
   const st = useStaffText();
   const [collapsed, setCollapsed] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
   const [headerTarget, setHeaderTarget] = useState(null);
-  const isReception = portal === 'reception';
-  const name = currentUser?.full_name || currentUser?.name || st(isReception ? 'Reception staff' : 'Room Service staff');
+  const portalLabels = {
+    room_service: { brand: 'ROOM SERVICE PORTAL', staff: 'Room Service staff', navigation: 'Room Service navigation', department: 'Room Service' },
+    reception: { brand: 'RECEPTION PORTAL', staff: 'Reception staff', navigation: 'Reception navigation', department: 'Reception' },
+    maintenance: { brand: 'MAINTENANCE PORTAL', staff: 'Maintenance staff', navigation: 'Maintenance navigation', department: 'Maintenance' },
+  }[portal] || { brand: 'ROOM SERVICE PORTAL', staff: 'Room Service staff', navigation: 'Room Service navigation', department: 'Room Service' };
+  const name = currentUser?.full_name || currentUser?.name || st(portalLabels.staff);
   const operationsActive = ['Requests', 'MyTasks'].includes(activeMenu);
   const select = (id) => {
     onSelectMenu(id);
@@ -42,7 +46,7 @@ export function RoomServiceFrame({ activeMenu, onSelectMenu, currentUser, onLogo
             <img src="/hc-robot-logo.png" alt="HC-ROBOT" width="32" height="32" />
             <div className="min-w-0 flex-1">
               <strong>HC-ROBOT</strong>
-              <span>{st(isReception ? 'RECEPTION PORTAL' : 'ROOM SERVICE PORTAL')}</span>
+              <span>{st(portalLabels.brand)}</span>
             </div>
           </>}
           <button type="button" className="room-service-icon-button" onClick={() => setCollapsed(value => !value)}
@@ -53,7 +57,7 @@ export function RoomServiceFrame({ activeMenu, onSelectMenu, currentUser, onLogo
           </button>
         </div>
 
-        <nav id="room-service-navigation" className="room-service-navigation" hidden={collapsed} aria-label={st(isReception ? 'Reception navigation' : 'Room Service navigation')}>
+        <nav id="room-service-navigation" className="room-service-navigation" hidden={collapsed} aria-label={st(portalLabels.navigation)}>
           {navButton('Dashboard', t('menuDashboard'))}
           <button type="button" className="room-service-nav-item" data-active={operationsActive}
             aria-expanded={operationsActive} onClick={() => select('Requests')}>{t('adminOperations')}</button>
@@ -61,7 +65,7 @@ export function RoomServiceFrame({ activeMenu, onSelectMenu, currentUser, onLogo
             {navButton('Requests', t('menuRequests'))}
             {navButton('MyTasks', t('menuMyTasks'))}
           </div>}
-          {!isReception && navButton('RoomServiceMenu', t('menuRoomServiceMenu'))}
+          {portal === 'room_service' && navButton('RoomServiceMenu', t('menuRoomServiceMenu'))}
         </nav>
 
         <div id="room-service-sidebar-actions" className="room-service-sidebar-actions" hidden={collapsed}>
@@ -73,7 +77,7 @@ export function RoomServiceFrame({ activeMenu, onSelectMenu, currentUser, onLogo
               {currentUser?.avatar_url || currentUser?.avatar
                 ? <img src={currentUser.avatar_url || currentUser.avatar} alt="" />
                 : <span className="room-service-avatar">{name.charAt(0).toUpperCase()}</span>}
-              <span className="min-w-0"><strong>{name}</strong><small>{st(isReception ? 'Reception' : 'Room Service')}</small></span>
+              <span className="min-w-0"><strong>{name}</strong><small>{st(portalLabels.department)}</small></span>
             </button>
             <button type="button" className="room-service-icon-button" onClick={onLogout} aria-label={t('menuLogout')} title={t('menuLogout')}><LogOut size={14} /></button>
           </div>

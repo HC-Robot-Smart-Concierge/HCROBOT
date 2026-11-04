@@ -73,7 +73,7 @@ describe('MobileRobotScreen Component & UX Tests', () => {
     expect(content).toContain('LogOut className="w-3 h-3 text-rose-400"');
   });
 
-  it('renders large modal popup for language selector matching other service modals', () => {
+  it('renders large minimalist modal popup for language selector with flag icons only and concise labels', () => {
     const filePath = path.resolve(__dirname, '../MobileRobotScreen.jsx');
     const content = fs.readFileSync(filePath, 'utf8');
 
@@ -82,18 +82,22 @@ describe('MobileRobotScreen Component & UX Tests', () => {
 
     // Sử dụng modal lớn căn giữa màn hình với backdrop mờ
     expect(content).toContain('fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md');
-    expect(content).toContain('max-w-sm sm:max-w-md bg-stone-900 border border-stone-700/80 rounded-3xl shadow-2xl');
+    expect(content).toContain('rounded-3xl shadow-2xl');
 
-    // Tiêu đề modal và nút đóng lớn
-    expect(content).toContain('Chọn Ngôn Ngữ');
-    expect(content).toContain('Select Language');
-    expect(content).toContain('<X className="w-5 h-5" />');
+    // Nút đóng
+    expect(content).toContain('<X className="w-4 h-4" />');
 
-    // 2 Thẻ bấm kích thước lớn chuẩn touch screen
-    expect(content).toContain('VN');
+    // Icon cờ chuẩn SVG không dùng emoji
+    expect(content).toContain('fill="#DA251D"');
+    expect(content).toContain('fill="#FFFF00"');
+    expect(content).toContain('fill="#012169"');
+
+    // Nhãn tên ngôn ngữ ngắn gọn, không chữ phụ rườm rà
     expect(content).toContain('Tiếng Việt');
-    expect(content).toContain('EN');
     expect(content).toContain('English');
+    expect(content).not.toContain('Vietnamese · Giọng đọc');
+    expect(content).not.toContain('International hotel guest support');
+    expect(content).not.toContain('Giao tiếp giọng nói và hiển thị');
   });
 });
 

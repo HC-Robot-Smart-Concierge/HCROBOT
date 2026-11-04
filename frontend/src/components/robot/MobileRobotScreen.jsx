@@ -295,7 +295,7 @@ export const MobileRobotScreen = ({
           </div>
         </header>
 
-        {/* Modal Chọn Ngôn Ngữ Cỡ Lớn Chuẩn Kiosk & Touch Display (Đồng bộ phong cách Modal Đặt món / Tiện ích) */}
+        {/* Modal Chọn Ngôn Ngữ Cỡ Lớn Chuẩn Kiosk & Touch Display (Tối giản, chỉ icon cờ và tên ngôn ngữ) */}
         {isLangMenuOpen && (
           <div
             className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in select-none"
@@ -303,41 +303,34 @@ export const MobileRobotScreen = ({
             onPointerDown={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
-            aria-label={isEn ? 'Select Language' : 'Chọn ngôn ngữ'}
+            aria-label={isEn ? 'Language' : 'Ngôn ngữ'}
           >
             <div
               onClick={(e) => e.stopPropagation()}
               onPointerDown={(e) => e.stopPropagation()}
-              className="w-full max-w-sm sm:max-w-md bg-stone-900 border border-stone-700/80 rounded-3xl shadow-2xl p-5 sm:p-6 text-stone-100 flex flex-col gap-4 animate-in zoom-in-95 duration-150"
+              className="w-full max-w-xs sm:max-w-sm bg-stone-900 border border-stone-700/80 rounded-3xl shadow-2xl p-4 sm:p-5 text-stone-100 flex flex-col gap-3.5 animate-in zoom-in-95 duration-150"
             >
               {/* Header Modal */}
-              <div className="flex items-center justify-between pb-3.5 border-b border-stone-800">
-                <div className="flex items-center gap-3">
-                  <div className="w-11 h-11 rounded-2xl bg-stone-800 border border-stone-700 flex items-center justify-center text-stone-200 shrink-0">
-                    <Globe className="w-5 h-5 text-stone-300" />
-                  </div>
-                  <div>
-                    <h2 className="text-base sm:text-lg font-bold text-white tracking-wide">
-                      {isEn ? 'Select Language' : 'Chọn Ngôn Ngữ'}
-                    </h2>
-                    <p className="text-xs text-stone-400">
-                      {isEn ? 'Voice & Screen display' : 'Giao tiếp giọng nói và hiển thị'}
-                    </p>
-                  </div>
+              <div className="flex items-center justify-between pb-2.5 border-b border-stone-800">
+                <div className="flex items-center gap-2">
+                  <Globe className="w-4 h-4 text-stone-300" />
+                  <h2 className="text-sm font-bold text-white tracking-wide">
+                    {isEn ? 'Language' : 'Ngôn ngữ'}
+                  </h2>
                 </div>
                 <button
                   type="button"
                   onClick={() => setIsLangMenuOpen(false)}
-                  className="w-9 h-9 rounded-full bg-stone-800 hover:bg-stone-700 text-stone-400 hover:text-white flex items-center justify-center active:scale-95 transition-all cursor-pointer"
+                  className="w-8 h-8 rounded-full bg-stone-800 hover:bg-stone-700 text-stone-400 hover:text-white flex items-center justify-center active:scale-95 transition-all cursor-pointer"
                   title={isEn ? 'Close' : 'Đóng'}
                   aria-label={isEn ? 'Close' : 'Đóng'}
                 >
-                  <X className="w-5 h-5" />
+                  <X className="w-4 h-4" />
                 </button>
               </div>
 
-              {/* Thân Modal: 2 Thẻ Ngôn Ngữ Kích Thước Lớn Chuẩn Touch Screen */}
-              <div className="flex flex-col gap-3">
+              {/* Thân Modal: Chỉ icon cờ và tên ngôn ngữ, không chữ phụ rườm rà */}
+              <div className="flex flex-col gap-2.5">
                 {/* 1. Tiếng Việt */}
                 <button
                   type="button"
@@ -345,36 +338,25 @@ export const MobileRobotScreen = ({
                     onToggleLanguage('Tiếng Việt');
                     setIsLangMenuOpen(false);
                   }}
-                  className={`w-full p-4 rounded-2xl border text-left transition-all cursor-pointer flex items-center justify-between active:scale-[0.98] ${
+                  className={`w-full p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex items-center justify-between active:scale-[0.98] ${
                     !isEn
                       ? 'bg-stone-800/90 border-stone-500 ring-2 ring-stone-400/40 text-white shadow-lg'
                       : 'bg-stone-800/40 border-stone-700/60 hover:bg-stone-800/70 text-stone-300 hover:text-white'
                   }`}
                 >
-                  <div className="flex items-center gap-3.5 min-w-0">
-                    <div className="w-12 h-12 rounded-xl bg-rose-950/60 border border-rose-800/60 flex items-center justify-center shrink-0">
-                      <span className="text-sm font-black tracking-wider text-rose-300 font-mono">VN</span>
-                    </div>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-base font-bold text-white">Tiếng Việt</span>
-                        {!isEn && (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-stone-700 text-stone-200 border border-stone-600">
-                            Đang chọn
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-xs text-stone-400 truncate mt-0.5">
-                        Vietnamese · Giọng đọc và nhận diện tự nhiên
-                      </p>
-                    </div>
+                  <div className="flex items-center gap-3">
+                    <svg viewBox="0 0 32 24" className="w-10 h-7 rounded-md overflow-hidden shadow-xs border border-rose-800/60 shrink-0">
+                      <rect width="32" height="24" fill="#DA251D" />
+                      <polygon points="16,4 17.8,9.7 23.8,9.7 19,13.2 20.8,19 16,15.5 11.2,19 13,13.2 8.2,9.7 14.2,9.7" fill="#FFFF00" />
+                    </svg>
+                    <span className="text-base font-bold text-white">Tiếng Việt</span>
                   </div>
                   {!isEn ? (
-                    <div className="w-7 h-7 rounded-full bg-stone-200 text-stone-900 flex items-center justify-center shrink-0 shadow-sm">
-                      <Check className="w-4 h-4 stroke-[3]" />
+                    <div className="w-6 h-6 rounded-full bg-stone-200 text-stone-900 flex items-center justify-center shrink-0 shadow-sm">
+                      <Check className="w-3.5 h-3.5 stroke-[3]" />
                     </div>
                   ) : (
-                    <div className="w-7 h-7 rounded-full border border-stone-700 shrink-0" />
+                    <div className="w-6 h-6 rounded-full border border-stone-700 shrink-0" />
                   )}
                 </button>
 
@@ -385,45 +367,30 @@ export const MobileRobotScreen = ({
                     onToggleLanguage('English');
                     setIsLangMenuOpen(false);
                   }}
-                  className={`w-full p-4 rounded-2xl border text-left transition-all cursor-pointer flex items-center justify-between active:scale-[0.98] ${
+                  className={`w-full p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex items-center justify-between active:scale-[0.98] ${
                     isEn
                       ? 'bg-stone-800/90 border-stone-500 ring-2 ring-stone-400/40 text-white shadow-lg'
                       : 'bg-stone-800/40 border-stone-700/60 hover:bg-stone-800/70 text-stone-300 hover:text-white'
                   }`}
                 >
-                  <div className="flex items-center gap-3.5 min-w-0">
-                    <div className="w-12 h-12 rounded-xl bg-blue-950/60 border border-blue-800/60 flex items-center justify-center shrink-0">
-                      <span className="text-sm font-black tracking-wider text-blue-300 font-mono">EN</span>
-                    </div>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-base font-bold text-white">English</span>
-                        {isEn && (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-stone-700 text-stone-200 border border-stone-600">
-                            Active
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-xs text-stone-400 truncate mt-0.5">
-                        English · International hotel guest support
-                      </p>
-                    </div>
+                  <div className="flex items-center gap-3">
+                    <svg viewBox="0 0 32 24" className="w-10 h-7 rounded-md overflow-hidden shadow-xs border border-blue-900/60 shrink-0">
+                      <rect width="32" height="24" fill="#012169" />
+                      <path d="M0,0 L32,24 M32,0 L0,24" stroke="#FFFFFF" strokeWidth="4" />
+                      <path d="M0,0 L32,24 M32,0 L0,24" stroke="#C8102E" strokeWidth="1.6" />
+                      <path d="M16,0 V24 M0,12 H32" stroke="#FFFFFF" strokeWidth="6" />
+                      <path d="M16,0 V24 M0,12 H32" stroke="#C8102E" strokeWidth="3.6" />
+                    </svg>
+                    <span className="text-base font-bold text-white">English</span>
                   </div>
                   {isEn ? (
-                    <div className="w-7 h-7 rounded-full bg-stone-200 text-stone-900 flex items-center justify-center shrink-0 shadow-sm">
-                      <Check className="w-4 h-4 stroke-[3]" />
+                    <div className="w-6 h-6 rounded-full bg-stone-200 text-stone-900 flex items-center justify-center shrink-0 shadow-sm">
+                      <Check className="w-3.5 h-3.5 stroke-[3]" />
                     </div>
                   ) : (
-                    <div className="w-7 h-7 rounded-full border border-stone-700 shrink-0" />
+                    <div className="w-6 h-6 rounded-full border border-stone-700 shrink-0" />
                   )}
                 </button>
-              </div>
-
-              {/* Footer Hint */}
-              <div className="pt-2 text-center text-[11px] text-stone-500 border-t border-stone-800/60">
-                {isEn
-                  ? 'Language applies immediately to robot speech and screen display'
-                  : 'Ngôn ngữ sẽ áp dụng ngay cho giọng nói robot và màn hình'}
               </div>
             </div>
           </div>

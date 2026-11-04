@@ -1,11 +1,12 @@
 import asyncio
 import random
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc, or_
+from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
 from app.services.notification_manager import notification_manager
@@ -49,11 +50,24 @@ router = APIRouter()
     summary="Xem Dashboard Phục vụ phòng (Room Service)",
 )
 async def get_room_service_dashboard(
+    is_service_request: Optional[bool] = Query(None, description="Lọc dịch vụ phòng (True) hoặc món ăn bếp (False)"),
+    type: Optional[str] = Query(None, description="Lọc theo 'food' hoặc 'service'"),
+    department: Optional[str] = Query(None, description="Lọc theo 'room_service' hoặc 'kitchen'"),
     rs_repo: RoomServiceRepository = Depends(get_room_service_repository),
 ):
-    """Returns real-time KPIs, active orders, delivery fleet, and low stock alerts for Room Service."""
+    """Returns real-time KPIs, active orders, delivery fleet, and low stock alerts for Room Service or Kitchen."""
     # 1. Fetch Orders directly from RoomServiceOrder repository
-    orders = await rs_repo.list_orders()
+    all_orders = await rs_repo.list_orders()
+
+    # Phân loại và cô lập triệt để đơn hàng: Món ăn chỉ gửi Bếp, Dịch vụ chỉ gửi Room Service
+    if is_service_request is not None:
+        orders = [o for o in all_orders if bool(o.is_service_request) == is_service_request]
+    elif type == "food" or department == "kitchen":
+        orders = [o for o in all_orders if not o.is_service_request]
+    elif type == "service" or department == "room_service":
+        orders = [o for o in all_orders if o.is_service_request]
+    else:
+        orders = list(all_orders)
 
     # 2. Fetch Robots (Deprecated - returning empty list)
     delivery_fleet = []
@@ -61,19 +75,18 @@ async def get_room_service_dashboard(
     # 3. Stock (Table dropped per schema cleanup)
     low_stock_alerts = []
 
-    # 4. Calculate dynamic KPIs
-    pending_count = sum(1 for o in orders if o.status == "Pending")
-    in_prep_count = sum(1 for o in orders if o.status == "Cooking")
-    delivering_count = sum(1 for o in orders if o.status in ["Delivering", "Ready"])
-    completed_count = sum(1 for o in orders if o.status in ["Completed", "Delivered"])
+    # 4. Calculate dynamic KPIs theo 3 trạng thái chuẩn hoá: Chờ tiếp nhận, Đang xử lý, Hoàn tất
+    pending_count = sum(1 for o in orders if (o.status or "").lower().strip() in ["pending", "unassigned", "chờ tiếp nhận", "sent to kitchen", "sent_to_kitchen"])
+    in_prep_count = sum(1 for o in orders if (o.status or "").lower().strip() in ["in progress", "in_progress", "cooking", "in preparation", "delivering", "ready", "đang xử lý", "đang chuẩn bị", "đang giao"])
+    completed_count = sum(1 for o in orders if (o.status or "").lower().strip() in ["completed", "delivered", "hoàn tất", "hoàn thành"])
 
     kpis = {
         "pendingOrders": {"value": pending_count, "delta": "+0", "status": "neutral"},
-        "inPreparation": {"value": in_prep_count, "avgTime": "12m"},
-        "delivering": {"value": delivering_count, "label": "In Transit"},
+        "inPreparation": {"value": in_prep_count, "label": "Đang xử lý", "avgTime": "10m"},
+        "delivering": {"value": 0, "label": "In Transit"},
         "completedToday": {"value": completed_count},
+        "totalOrders": {"value": len(orders)},
     }
-
     return {
         "kpis": kpis,
         "orders": orders,
@@ -160,8 +173,9 @@ async def create_room_service_order(
     guest_phone_val = order_in.guest_phone or (getattr(room, "current_guest_phone", None) if room else None)
     room_phone_val = order_in.room_phone or (getattr(room, "room_phone", None) if room else None) or f"Ext {order_in.room_number}"
 
-    # Phuong an A: Tu dong gop don neu phong nay da co don Pending dang cho xu ly
+    # Phuong an A: Tu dong gop don neu phong nay da co don Pending trong vong 10 phut gan nhat
     clean_room = order_in.room_number.upper().replace("ROOM", "").strip()
+    merge_window_start = datetime.utcnow() - timedelta(minutes=10)
     existing_pending_stmt = (
         select(RoomServiceOrder)
         .options(selectinload(RoomServiceOrder.order_items))
@@ -172,6 +186,7 @@ async def create_room_service_order(
             ),
             RoomServiceOrder.status.in_(["Pending", "pending", "Chờ tiếp nhận", "unassigned"]),
             RoomServiceOrder.is_service_request == order_in.is_service_request,
+            RoomServiceOrder.created_at >= merge_window_start,
         )
         .order_by(desc(RoomServiceOrder.created_at))
     )
@@ -186,23 +201,38 @@ async def create_room_service_order(
         if order_in.note and str(order_in.note).strip():
             clean_new_note = str(order_in.note).strip()
             if existing_order.note:
-                existing_order.note = f"{existing_order.note}; Gộp thêm: {clean_new_note}"
+                if clean_new_note not in existing_order.note:
+                    existing_order.note = f"{existing_order.note}; Gộp thêm: {clean_new_note}"
             else:
                 existing_order.note = f"Gộp thêm: {clean_new_note}"
 
-        # 3. Tao cac ban ghi OrderItemModel moi gan truc tiep vao don cu
+        # 3. Khử trùng và cộng dồn số lượng món vào đơn cũ (Deduplication & Quantity Aggregation)
+        existing_items_map = {}
+        for oi in existing_order.order_items:
+            key = oi.food_item_id or oi.menu_item_id or oi.item_name.lower().strip()
+            existing_items_map[key] = oi
+
         for oi_data in order_items_to_create:
-            order_item = OrderItemModel(
-                order_id=existing_order.id,
-                menu_item_id=oi_data["menu_item_id"],
-                food_item_id=oi_data["food_item_id"],
-                item_name=oi_data["item_name"],
-                quantity=oi_data["quantity"],
-                unit_price=oi_data["unit_price"],
-                subtotal=oi_data["subtotal"],
-                notes=oi_data["notes"],
-            )
-            db.add(order_item)
+            key = oi_data["food_item_id"] or oi_data["menu_item_id"] or oi_data["item_name"].lower().strip()
+            if key in existing_items_map:
+                existing_oi = existing_items_map[key]
+                existing_oi.quantity += oi_data["quantity"]
+                existing_oi.subtotal = float(existing_oi.subtotal or 0.0) + oi_data["subtotal"]
+                if oi_data["notes"] and oi_data["notes"] not in (existing_oi.notes or ""):
+                    existing_oi.notes = f"{existing_oi.notes}; {oi_data['notes']}" if existing_oi.notes else oi_data["notes"]
+            else:
+                order_item = OrderItemModel(
+                    order_id=existing_order.id,
+                    menu_item_id=oi_data["menu_item_id"],
+                    food_item_id=oi_data["food_item_id"],
+                    item_name=oi_data["item_name"],
+                    quantity=oi_data["quantity"],
+                    unit_price=oi_data["unit_price"],
+                    subtotal=oi_data["subtotal"],
+                    notes=oi_data["notes"],
+                )
+                db.add(order_item)
+                existing_items_map[key] = order_item
 
         existing_order.updated_at = datetime.utcnow()
 
@@ -213,10 +243,19 @@ async def create_room_service_order(
 
         if sr:
             sr.total_amount = existing_order.total_amount
-            current_sr_items = list(sr.items or [])
-            current_sr_items.extend(items_payload)
-            sr.items = current_sr_items
-            sr.description = f"{sr.description}, {items_desc}" if sr.description else items_desc
+            # Gom nhom danh sach items cua SupportRequest gon gang, tinh tong so luong
+            sr_items_dict = {}
+            for it in (sr.items or []):
+                name = it.get("name") or it.get("item_name")
+                if name:
+                    sr_items_dict[name] = sr_items_dict.get(name, 0) + int(it.get("qty") or it.get("quantity") or 1)
+            for it in items_payload:
+                name = it.get("name") or it.get("item_name")
+                if name:
+                    sr_items_dict[name] = sr_items_dict.get(name, 0) + int(it.get("qty") or it.get("quantity") or 1)
+
+            sr.items = [{"name": k, "qty": v} for k, v in sr_items_dict.items()]
+            sr.description = ", ".join([f"{v}x {k}" if v > 1 else k for k, v in sr_items_dict.items()])
             sr.updated_at = datetime.utcnow()
 
         # 5. Thong bao phong ban lien quan
@@ -283,13 +322,20 @@ async def create_room_service_order(
         return existing_order
 
     # 1. Tạo SupportRequest phục vụ Unified Dashboard, Robot & Webhook
+    assigned_dept_id = "DEP-KITCHEN" if not order_in.is_service_request else "DEP-ROOMSERVICE"
+    order_title = (
+        f"Kitchen Food Order #{order_num}"
+        if not order_in.is_service_request
+        else f"Room Service Order #{order_num}"
+    )
+
     new_order = SupportRequest(
         id=order_id,
         ticket_code=ticket_code,
-        title=f"Room Service Order #{order_num}",
-        description=order_in.note or items_desc or "Yêu cầu phục vụ phòng",
+        title=order_title,
+        description=order_in.note or items_desc or ("Đơn gọi món bếp" if not order_in.is_service_request else "Yêu cầu phục vụ phòng"),
         service_type_id="ST-ROOM-SERVICE",
-        department_id="DEP-ROOMSERVICE",
+        department_id=assigned_dept_id,
         room_id=room_id,
         room_number=order_in.room_number,
         guest_name=guest_name_val,
@@ -301,7 +347,7 @@ async def create_room_service_order(
         total_amount=total_amount,
         items=items_payload,
         extra_data={
-            "is_service_request": order_in.is_service_request,
+            "is_service_request": bool(order_in.is_service_request),
             "image_url": order_in.image_url,
             "guest_phone": guest_phone_val,
             "room_phone": room_phone_val,

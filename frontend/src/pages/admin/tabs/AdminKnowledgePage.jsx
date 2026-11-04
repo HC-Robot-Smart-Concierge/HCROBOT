@@ -30,6 +30,9 @@ import {
   XCircle,
   MapPin,
   Video,
+  Utensils,
+  ConciergeBell,
+  Car,
   Bot,
   Layers,
   X,
@@ -1329,6 +1332,21 @@ Mô tả ngắn gọn về phạm vi và nội dung của tài liệu tại đâ
                                   <Video className="w-3 h-3" />
                                   <span>{t('knowledgeActionVideoCall')}</span>
                                 </span>
+                              ) : item.action_type === 'open_food_menu' ? (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-orange-50 text-orange-800 border border-orange-200 inline-flex items-center gap-1">
+                                  <Utensils className="w-3 h-3" />
+                                  <span>{t('knowledgeBadgeFoodMenu')}</span>
+                                </span>
+                              ) : item.action_type === 'open_room_service_menu' ? (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-800 border border-blue-200 inline-flex items-center gap-1">
+                                  <ConciergeBell className="w-3 h-3" />
+                                  <span>{t('knowledgeBadgeRoomService')}</span>
+                                </span>
+                              ) : item.action_type === 'book_taxi' ? (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 inline-flex items-center gap-1">
+                                  <Car className="w-3 h-3" />
+                                  <span>{t('knowledgeBadgeTaxi')}</span>
+                                </span>
                               ) : null}
 
                               {/* Eye Expression Badge */}
@@ -1768,6 +1786,9 @@ Mô tả ngắn gọn về phạm vi và nội dung của tài liệu tại đâ
                     <option value="none">{t('knowledgeActionNone')}</option>
                     <option value="show_map">{t('knowledgeActionShowMap')}</option>
                     <option value="call_reception">{t('knowledgeActionCallReception')}</option>
+                    <option value="open_food_menu">{t('knowledgeActionFoodMenu')}</option>
+                    <option value="open_room_service_menu">{t('knowledgeActionRoomService')}</option>
+                    <option value="book_taxi">{t('knowledgeActionBookTaxi')}</option>
                   </select>
                 </div>
 

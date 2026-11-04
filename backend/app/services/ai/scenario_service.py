@@ -15,6 +15,27 @@ logger = logging.getLogger(__name__)
 # Danh muc kich ban mac dinh ban dau (Seed Scenarios)
 DEFAULT_SEED_SCENARIOS = [
     {
+        "id": "scn-forgot-pin",
+        "title": "Quên mã PIN phòng (Forgot Room PIN)",
+        "category": "reception",
+        "match_keywords": [
+            "quên mã pin", "quen ma pin", "quên pin", "quen pin",
+            "không nhớ pin", "khong nho pin", "không nhớ mã pin", "khong nho ma pin",
+            "mất mã pin", "mat ma pin", "lấy lại mã pin", "lay lai ma pin",
+            "quên mật khẩu phòng", "quen mat khau phong", "không có mã pin", "khong co ma pin",
+            "mã pin là gì", "ma pin la gi", "mã pin phòng ở đâu", "ma pin phong o dau",
+            "forgot pin", "forgot room pin", "lost pin", "reset pin", "forgot my pin", "reset room pin"
+        ],
+        "match_type": "keyword",
+        "response_vi": "Dạ vì lý do an toàn và bảo mật thông tin phòng lưu trú, Robot không được phép cung cấp hoặc cấp lại mã PIN phòng. Quý khách vui lòng đến quầy Lễ tân (Front Desk) tại sảnh chính để được nhân viên xác minh và hỗ trợ cấp lại mã PIN nhé ạ.",
+        "response_en": "For your room security and privacy, the robot cannot provide or reset room PINs. Please visit the Front Desk reception in the main lobby, where our staff will verify your details and assist you with your PIN.",
+        "action_type": "show_map",
+        "action_payload": {"destination_key": "front_desk"},
+        "is_fast_path": True,
+        "is_active": True,
+        "priority": 95,
+    },
+    {
         "id": "scn-wifi",
         "title": "Mật khẩu Wi-Fi",
         "category": "facility",
@@ -529,16 +550,30 @@ DEFAULT_SEED_SCENARIOS = [
     {
         "id": "scn-room-service-menu",
         "title": "Thực đơn phục vụ tại phòng (In-room Dining & Room Service)",
-        "category": "facility",
-        "match_keywords": ["thực đơn phòng", "gọi món về phòng", "gọi món lên phòng", "gọi món", "gọi đồ ăn", "order đồ ăn", "thực đơn gọi món", "thuc don phong", "goi mon ve phong", "goi mon len phong", "goi mon", "goi do an", "do an dem", "do an khuya", "room service", "in room dining", "room service menu", "midnight snack", "late night dining", "order food to room"],
+        "category": "service",
+        "match_keywords": ["thực đơn", "menu", "đặt món", "gọi món", "thực đơn phòng", "menu phòng", "ăn gì", "thuc don", "dat mon", "goi mon", "room service menu", "in room dining", "food menu", "xem menu", "xem thực đơn"],
         "match_type": "keyword",
-        "response_vi": "Dạ dịch vụ ẩm thực tại phòng hoạt động 24 trên 7. Quý khách có thể xem menu điện tử trên màn hình hoặc quét mã QR ở bàn phòng, hoặc nhấn phím 1 trên điện thoại phòng để đặt món ạ!",
-        "response_en": "In-room dining is available 24/7. You can browse the digital menu on the screen or scan the QR code in your room, or simply press 1 on your room phone to order delicious dishes directly!",
-        "action_type": "none",
+        "response_vi": "Dạ em xin gửi thực đơn món ăn tại phòng đến quý khách ạ. Quý khách vui lòng chọn món trực tiếp trên màn hình nhé!",
+        "response_en": "Here is our 24/7 in-room dining menu. Please select your favorite dishes directly on the screen!",
+        "action_type": "open_food_menu",
         "action_payload": {'eye_expression': 'happy'},
         "is_fast_path": True,
         "is_active": True,
-        "priority": 93,
+        "priority": 95,
+    },
+    {
+        "id": "scn-room-service-amenities",
+        "title": "Tiện ích phòng & Dịch vụ buồng phòng (Room Amenities & Housekeeping)",
+        "category": "service",
+        "match_keywords": ["dịch vụ phòng", "tiện ích phòng", "tiện ích buồng phòng", "yêu cầu tiện ích", "xem tiện ích", "danh mục tiện ích", "dich vu phong", "tien ich phong", "tien ich buong phong", "room service", "room amenities", "housekeeping service"],
+        "match_type": "keyword",
+        "response_vi": "Dạ em xin gửi danh mục tiện ích phòng đến quý khách ạ! Quý khách có thể yêu cầu khăn tắm, chăn gối hoặc dọn phòng trực tiếp trên màn hình nhé.",
+        "response_en": "Here is our room amenities catalog! You can request extra towels, pillows, or schedule housekeeping directly on the screen.",
+        "action_type": "open_room_service_menu",
+        "action_payload": {'eye_expression': 'happy'},
+        "is_fast_path": True,
+        "is_active": True,
+        "priority": 94,
     },
     {
         "id": "scn-dragon-bridge",
@@ -571,16 +606,16 @@ DEFAULT_SEED_SCENARIOS = [
     {
         "id": "scn-airport-shuttle",
         "title": "Xe đưa đón sân bay & Đặt taxi (Airport Shuttle & Taxi Transfer)",
-        "category": "facility",
+        "category": "service",
         "match_keywords": ["xe sân bay", "đưa đón sân bay", "xe đưa đón", "đặt taxi", "gọi taxi", "xe ra sân bay", "xe san bay", "dua don san bay", "xe dua don", "dat taxi", "goi taxi", "airport shuttle", "airport transfer", "taxi", "cab", "book taxi", "airport pickup", "airport dropoff"],
         "match_type": "keyword",
-        "response_vi": "Dạ khách sạn có dịch vụ xe riêng đưa đón Sân bay Quốc tế Đà Nẵng chỉ cách 15 phút di chuyển. Ngoài ra, Rora hoặc lễ tân có thể gọi taxi 4 chỗ hoặc 7 chỗ tới sảnh đón quý khách trong vòng 3 phút ạ!",
-        "response_en": "We provide private airport transfer to Da Nang International Airport, just 15 minutes away. In addition, Rora or the Concierge desk can arrange a reliable 4-seater or 7-seater taxi arriving at the lobby in under 3 minutes!",
-        "action_type": "none",
+        "response_vi": "Dạ em đã mở biểu mẫu đặt xe taxi nhanh cho quý khách. Quý khách vui lòng chọn điểm đến và xác nhận gọi xe trên màn hình, đội xe sẽ có mặt tại sảnh sau 3 đến 5 phút ạ!",
+        "response_en": "I have opened the instant taxi booking screen for you. Please confirm your destination on the screen, and our taxi will arrive at the main lobby within 3 to 5 minutes!",
+        "action_type": "book_taxi",
         "action_payload": {'eye_expression': 'happy'},
         "is_fast_path": True,
         "is_active": True,
-        "priority": 91,
+        "priority": 95,
     },
     {
         "id": "scn-bana-hills",
@@ -1346,19 +1381,38 @@ class ScenarioService:
             if not scn.get("is_active", True) or not scn.get("is_fast_path", True):
                 continue
 
-            # Bypass fast-path nếu khách đang đưa ra yêu cầu hành động / gọi đồ buồng phòng nhưng kịch bản là FAQ tĩnh (action_type == 'none')
-            is_service_action_call = bool(re.search(
-                r'(cho (tôi|mình|em)|xin|lấy|mang|đem|gửi|thêm|mượn|cần|muốn|đặt|yêu cầu|order|bring|send|give me|need)',
+            # Bypass fast-path nếu khách đang đưa ra yêu cầu gọi đồ / giao đồ / đặt món vật lý lên phòng
+            # nhưng kịch bản là FAQ tĩnh (action_type == 'none')
+            is_physical_item_delivery = bool(re.search(
+                r'(cho\s+(tôi|toi|mình|minh|em)|xin|lấy|lay|mang|đem|dem|gửi|gui|thêm|them|mượn|muon|đặt|dat)\s+(thêm\s+|them\s+)?(khăn|khan|gối|goi|chăn|chan|nệm|nem|nước|nuoc|bàn ủi|ban ui|máy sấy|may say|bàn chải|ban chai|kem đánh răng|kem danh rang|dao cạo|dao cao|dép|dep|ly|tách|tach|dọn phòng|don phong|cơm|com|phở|pho|món|mon|đồ ăn|do an|nước uống|nuoc uong|thức uống|thuc uong|pizza)',
                 normalized,
                 re.IGNORECASE
             ))
-            is_room_item = bool(re.search(
-                r'(khăn|gối|chăn|nệm|dép|bàn chải|dao cạo|dầu gội|sữa tắm|nước|massage|mát xa|giặt|ủi|dọn|vệ sinh|towel|pillow|blanket|slippers|laundry)',
+            is_faq_inquiry = bool(re.search(
+                r'(ở đâu|o dau|mấy giờ|may gio|bao nhiêu|bao nhieu|giá|gia|thế nào|the nao|có không|co khong|có gì|co gi|giới thiệu|gioi thieu|where|when|how|what|tell me|recommend|mật khẩu|mat khau|pass|wifi)',
                 normalized,
                 re.IGNORECASE
             ))
-            if is_service_action_call and is_room_item and str(scn.get("action_type") or "none") == "none":
+            if is_physical_item_delivery and not is_faq_inquiry and str(scn.get("action_type") or "none") == "none":
                 continue
+
+            # Bypass fast-path chi duong phong neu khach dang goi do / dat mon / yeu cau dich vu len phong
+            is_order_or_service = bool(re.search(
+                r'(đặt|dat|order|gọi món|goi mon|gọi|goi|mang|giao|lấy|lay|đem|gửi|thêm|mượn|cần|can|muốn|xin|cho (tôi|mình|em)|yêu cầu)',
+                normalized,
+                re.IGNORECASE
+            ))
+            has_explicit_nav = bool(re.search(
+                r'(ở đâu|o dau|chỗ nào|cho nao|chỉ đường|chi duong|dẫn đường|dan duong|hướng dẫn đường|lối đi|loi di|đường đến|duong den|đường lên|tìm phòng|tim phong|làm sao để đến|where is|how do i get|show me the way)',
+                normalized,
+                re.IGNORECASE
+            ))
+            if is_order_or_service and not has_explicit_nav:
+                dest = (scn.get("action_payload") or {}).get("destination_key", "")
+                if str(scn.get("action_type")) == "show_map" and str(dest).startswith("room_"):
+                    continue
+                if re.match(r"^scn-room-\d+", str(scn.get("id", ""))):
+                    continue
 
             keywords = scn.get("match_keywords") or []
             match_type = scn.get("match_type", "keyword")
@@ -1506,8 +1560,22 @@ class ScenarioService:
             await db.commit()
             await db.refresh(item)
 
-            # Cap nhat lai In-Memory Cache
-            await self.initialize_cache(db)
+            # Đồng bộ ngay lập tức vào In-Memory RAM Cache
+            self._cache.append({
+                "id": item.id,
+                "title": item.title,
+                "category": item.category,
+                "match_keywords": item.match_keywords or [],
+                "match_type": item.match_type,
+                "response_vi": item.response_vi,
+                "response_en": item.response_en,
+                "action_type": item.action_type,
+                "action_payload": item.action_payload,
+                "is_fast_path": item.is_fast_path,
+                "is_active": item.is_active,
+                "priority": item.priority,
+            })
+            self._cache.sort(key=lambda x: x.get("priority", 0), reverse=True)
             return item
         except Exception as e:
             await db.rollback()
@@ -1531,8 +1599,13 @@ class ScenarioService:
             await db.commit()
             await db.refresh(item)
 
-            # Cap nhat lai In-Memory Cache
-            await self.initialize_cache(db)
+            # Đồng bộ trực tiếp vào In-Memory Cache tức thì (<0.1ms)
+            for entry in self._cache:
+                if entry.get("id") == scenario_id:
+                    for k, v in update_dict.items():
+                        entry[k] = v
+                    break
+            self._cache.sort(key=lambda x: x.get("priority", 0), reverse=True)
             return item
         except Exception as e:
             await db.rollback()
@@ -1549,8 +1622,13 @@ class ScenarioService:
             await db.delete(item)
             await db.commit()
 
-            # Cap nhat lai In-Memory Cache
-            await self.initialize_cache(db)
+            # Xóa trực tiếp khỏi In-Memory Cache tức thì (<0.1ms)
+            self._cache = [e for e in self._cache if e.get("id") != scenario_id]
+
+            try:
+                await self.initialize_cache(db)
+            except Exception:
+                pass
             return True
         except Exception as e:
             await db.rollback()

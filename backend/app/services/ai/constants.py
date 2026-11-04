@@ -27,11 +27,15 @@ SERVICE_KEYWORDS: Dict[str, List[str]] = {
     "room_service": [
         "cơm", "com", "nước", "nuoc", "ăn", "an", "uống", "uong", "đồ ăn", "do an",
         "trà", "tra", "cà phê", "ca phe", "pizza", "phở", "pho", "bánh", "banh",
+        "mì", "mi", "mì xào", "mi xao", "hải sản", "hai san", "bún", "bun", "cháo", "chao", "súp", "sup",
+        "món", "mon", "món ăn", "mon an", "đồ ăn thức uống",
         "food", "drink", "nước uống", "nuoc uong", "bữa sáng", "gọi món", "đặt món", "nước ngọt", "bia", "trái cây",
+        "đặt", "dat", "order", "gọi", "goi", "mang lên", "giao lên", "đem lên",
         "đặt dịch vụ", "dat dich vu", "đặt thêm dịch vụ", "dat them dich vu",
         "dịch vụ lên phòng", "dich vu len phong", "dịch vụ phòng", "dich vu phong",
         "muốn đặt dịch vụ", "muon dat dich vu", "muốn đặt thêm", "muon dat them",
-        "thêm dịch vụ", "them dich vu", "room service", "tiện ích phòng", "tien ich phong"
+        "thêm dịch vụ", "them dich vu", "room service", "tiện ích phòng", "tien ich phong",
+        "ly", "tách", "muỗng", "nĩa", "chén", "đĩa", "đá lạnh", "xô đá", "tableware", "ice"
     ],
     "bellman": [
         "hành lý", "hanh ly", "vali", "túi", "tui", "chuyển phòng", "chuyen phong",
@@ -61,7 +65,7 @@ SERVICE_KEYWORDS: Dict[str, List[str]] = {
         "human agent", "live agent", "talk to a person", "speak to a person", "live support"
     ],
     "query_order_status": [
-        "trạng thái", "trang thai", "tiến độ", "tien do",
+        "trạng thái", "trang thai", "tình trạng", "tinh trang", "tiến độ", "tien do", "kiểm tra món", "kiem tra mon", "kiểm tra đơn", "kiem tra don",
         "đến đâu rồi", "den dau roi", "tới đâu rồi", "toi dau roi", "tới đâu", "toi dau", "đến đâu", "den dau",
         "xong chưa", "xong chua", "làm xong chưa", "lam xong chua", "nấu xong chưa", "nau xong chua", "chế biến",
         "làm tới đâu", "lam toi dau", "làm đến đâu", "lam den dau", "nấu tới đâu", "nau toi dau",
@@ -85,6 +89,13 @@ SERVICE_KEYWORDS: Dict[str, List[str]] = {
         "kiểm tra đơn", "kiem tra don", "kiểm tra món", "kiem tra mon", "kiểm tra đồ ăn", "kiem tra do an",
         "tình trạng đơn", "tinh trang don", "tình trạng món", "tinh trang mon", "tình trạng dịch vụ", "tinh trang dich vu",
         "đơn hàng của tôi", "món ăn của tôi", "đồ ăn của tôi", "món tôi đặt", "đồ tôi đặt", "đơn tôi đặt",
+        "tại sao từ chối", "tai sao tu choi", "sao từ chối", "sao tu choi", "sao lại từ chối", "sao lai tu choi",
+        "vì sao từ chối", "vi sao tu choi", "tại sao bị từ chối", "tai sao bi tu choi", "sao bị từ chối", "sao bi tu choi",
+        "vì sao bị từ chối", "vi sao bi tu choi", "lý do từ chối", "ly do tu choi", "lý do bị từ chối", "ly do bi tu choi",
+        "lý do gì", "ly do gi", "sao món của tôi bị từ chối", "tại sao món của tôi bị từ chối", "sao đơn của tôi bị từ chối",
+        "tại sao đơn của tôi bị từ chối", "sao không nhận đơn", "sao khong nhan don", "tại sao không nhận", "tai sao khong nhan",
+        "tại sao bị hủy", "tai sao bi huy", "sao bị hủy", "sao bi huy", "lý do hủy", "ly do huy", "lý do bị hủy",
+        "why was it rejected", "why was my order rejected", "reason for rejection", "why declined", "why rejected",
         "order status", "food status", "status of my order", "where is my order", "is my order ready",
         "check my order", "check order"
     ],

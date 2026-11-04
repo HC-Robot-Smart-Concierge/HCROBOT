@@ -358,12 +358,12 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
         step: 1,
         label: st("Pending"),
         badgeClass: 'bg-amber-100 text-amber-800 border-amber-200',
-        nextStatus: 'Sent to Kitchen',
-        nextActionName: st("Send to kitchen"),
+        nextStatus: isKitchenStaff ? 'Cooking' : 'Sent to Kitchen',
+        nextActionName: isKitchenStaff ? st("Accept and cook") : st("Send to kitchen"),
         nextIcon: ChefHat,
-        actionBtnClass: 'bg-indigo-600 hover:bg-indigo-700 text-white',
-        deptNote: st("Room Service reviews the order and sends it to the kitchen"),
-        roleBadge: st('Room Service'),
+        actionBtnClass: isKitchenStaff ? 'bg-amber-600 hover:bg-amber-700 text-white' : 'bg-indigo-600 hover:bg-indigo-700 text-white',
+        deptNote: isKitchenStaff ? st("The kitchen accepts and prepares the food") : st("Room Service reviews the order and sends it to the kitchen"),
+        roleBadge: isKitchenStaff ? st('Kitchen') : st('Room Service'),
       };
     }
     if (
@@ -482,45 +482,32 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
     }
     if (
       s === 'in progress' ||
+      s === 'in_progress' ||
       s === 'in preparation' ||
       s === 'tiếp nhận' ||
       s === 'đang xử lý' ||
       s === 'đang chuẩn bị' ||
       s === 'sent to kitchen' ||
-      s === 'ready'
-    ) {
-      return {
-        step: 2,
-        label: st("Preparing"),
-        badgeClass: 'bg-sky-100 text-sky-800 border-sky-200',
-        nextStatus: 'Delivering',
-        nextActionName: st("Deliver to room"),
-        nextIcon: Truck,
-        actionBtnClass: 'bg-sky-600 hover:bg-sky-700 text-white',
-        deptNote: st("Ready for staff to deliver to the room"),
-        roleBadge: st('Room Service'),
-      };
-    }
-    if (
+      s === 'ready' ||
       s === 'delivering' ||
       s === 'in transit' ||
       s === 'đang giao' ||
       s === 'đang giao phòng'
     ) {
       return {
-        step: 3,
-        label: st("Delivering to room"),
-        badgeClass: 'bg-purple-100 text-purple-800 border-purple-200',
+        step: 2,
+        label: st("In Progress") || "Đang xử lý",
+        badgeClass: 'bg-sky-100 text-sky-800 border-sky-200',
         nextStatus: 'Completed',
-        nextActionName: st("Confirm delivery"),
+        nextActionName: st("Complete") || "Hoàn thành",
         nextIcon: CheckCircle2,
         actionBtnClass: 'bg-emerald-600 hover:bg-emerald-700 text-white',
-        deptNote: st("Delivery in progress. Confirm when delivered."),
+        deptNote: st("Staff is performing the service for the room"),
         roleBadge: st('Room Service'),
       };
     }
     return {
-      step: 4,
+      step: 3,
       label: st("Completed"),
       badgeClass: 'bg-emerald-100 text-emerald-800 border-emerald-200',
       nextStatus: null,
@@ -587,27 +574,18 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
 
       // 2. Đơn món ăn ẩm thực (Qua Bếp)
       if (isFoodOrder(r)) {
+        if (!isKitchenStaff) {
+          // Room Service hoặc các bộ phận khác TUYỆT ĐỐI KHÔNG nhận và KHÔNG thấy đơn món ăn của Bếp!
+          return false;
+        }
         const stage = getFoodOrderStage(r.status);
-        if (isKitchenStaff) {
-          // Bước 1: Khách đặt -> Bếp hiển thị ngay để Bếp tự nhận nấu trực tiếp
-          // Bước 3: Bếp đang nấu -> Đã có người nhận, ẩn khỏi người KHÁC (!isTaskAssignedToMe)
-          if (stage.step === 3 && !isTaskAssignedToMe(r)) {
-            return false;
-          }
-          // Bước 4, 5: Món xong / Giao phòng -> Ẩn khỏi người KHÁC (!isTaskAssignedToMe)
-          if ((stage.step === 4 || stage.step === 5) && !isTaskAssignedToMe(r)) {
-            return false;
-          }
-        } else {
-          // Với Room Service / Bộ phận khác:
-          // Bước 3: Bếp đang nấu -> Ẩn khỏi Requests của Room Service (Bếp đang nấu)
-          if (stage.step === 3) {
-            return false;
-          }
-          // Bước 5: Đang giao phòng -> Đã có người nhận đi giao, ẩn khỏi người KHÁC
-          if (stage.step === 5 && !isTaskAssignedToMe(r)) {
-            return false;
-          }
+        // Bước 3: Bếp đang nấu -> Đã có người nhận, ẩn khỏi người KHÁC (!isTaskAssignedToMe)
+        if (stage.step === 3 && !isTaskAssignedToMe(r)) {
+          return false;
+        }
+        // Bước 4, 5: Món xong / Giao phòng -> Ẩn khỏi người KHÁC (!isTaskAssignedToMe)
+        if ((stage.step === 4 || stage.step === 5) && !isTaskAssignedToMe(r)) {
+          return false;
         }
       } else {
         // Đơn thông thường (Non-Food, Housekeeping, Bell, MNT...):
@@ -625,7 +603,7 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
   const isReqPendingForUser = (r) => {
     if (isKitchenStaff && isFoodOrder(r)) {
       const stage = getFoodOrderStage(r.status);
-      return stage.step === 2; // Đã chuyển bếp, chờ Bếp bấm nhận nấu
+      return stage.step === 1 || stage.step === 2; // Khách vừa đặt (step 1) hoặc Đã chuyển bếp (step 2), Bếp đều nhận việc được ngay
     }
     if (isDirectServiceOrder(r)) {
       const stage = getDirectServiceStage(r.status);

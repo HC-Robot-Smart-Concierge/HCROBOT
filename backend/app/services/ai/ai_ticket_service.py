@@ -105,22 +105,117 @@ async def auto_create_ticket(
     try:
         if action in ["room_service", "restaurant"]:
             import uuid
+            from datetime import timedelta
+            from sqlalchemy import select, or_, desc
+            from sqlalchemy.orm import selectinload
+            from app.models.room_service import RoomServiceOrder, OrderItem
+
+            service_kw = [
+                "khăn", "khan", "gối", "goi", "chăn", "chan", "nệm", "nem",
+                "dọn phòng", "don phong", "vệ sinh", "ve sinh", "massage", "mát xa", "spa",
+                "giặt", "giat", "ủi", "ui", "bàn ủi", "bàn là", "tiện ích", "amenity",
+                "dịch vụ phòng", "dép", "bàn chải", "dao cạo", "lược", "dầu gội", "sữa tắm",
+                "ly", "tách", "muỗng", "nĩa", "chén", "đĩa", "đá lạnh", "tableware", "ice", "glass"
+            ]
+            items_lower = (items or "").lower()
+            is_svc = any(k in items_lower for k in service_kw)
+            assigned_dept_id = "DEP-ROOMSERVICE" if is_svc else "DEP-KITCHEN"
+            target_dept_name = "Room Service" if is_svc else "Kitchen"
+            clean_room = rm.upper().replace("ROOM", "").strip()
+
+            # Kiểm tra gộp đơn trong vòng 10 phút gần nhất nếu đã có đơn Pending
+            merge_window_start = datetime.utcnow() - timedelta(minutes=10)
+            existing_pending_stmt = (
+                select(RoomServiceOrder)
+                .options(selectinload(RoomServiceOrder.order_items))
+                .where(
+                    or_(
+                        RoomServiceOrder.room_number == rm,
+                        RoomServiceOrder.room_number == clean_room,
+                    ),
+                    RoomServiceOrder.status.in_(["Pending", "pending", "Chờ tiếp nhận", "unassigned"]),
+                    RoomServiceOrder.is_service_request == is_svc,
+                    RoomServiceOrder.created_at >= merge_window_start,
+                )
+                .order_by(desc(RoomServiceOrder.created_at))
+            )
+            existing_res = await db.execute(existing_pending_stmt)
+            existing_order = existing_res.scalars().first()
+
+            if existing_order:
+                item_name_clean = items or ("Dịch vụ phòng" if is_svc else "Món ăn")
+                found_item = None
+                for oi in existing_order.order_items:
+                    if oi.item_name.lower().strip() == item_name_clean.lower().strip():
+                        found_item = oi
+                        break
+                if found_item:
+                    found_item.quantity += 1
+                else:
+                    new_oi = OrderItem(
+                        order_id=existing_order.id,
+                        item_name=item_name_clean,
+                        quantity=1,
+                        unit_price=0.0,
+                        subtotal=0.0,
+                        notes=items,
+                    )
+                    db.add(new_oi)
+
+                existing_order.updated_at = datetime.utcnow()
+                if items and (not existing_order.note or items not in existing_order.note):
+                    existing_order.note = f"{existing_order.note}; Gộp thêm: {items}" if existing_order.note else f"Gộp thêm: {items}"
+
+                # Cập nhật SupportRequest tương ứng
+                sr = await db.get(SupportRequest, existing_order.id)
+                if not sr and existing_order.support_request_id:
+                    sr = await db.get(SupportRequest, existing_order.support_request_id)
+                if sr:
+                    sr_items_dict = {}
+                    for it in (sr.items or []):
+                        name = it.get("name") or it.get("item_name")
+                        if name:
+                            sr_items_dict[name] = sr_items_dict.get(name, 0) + int(it.get("qty") or it.get("quantity") or 1)
+                    sr_items_dict[item_name_clean] = sr_items_dict.get(item_name_clean, 0) + 1
+                    sr.items = [{"name": k, "qty": v} for k, v in sr_items_dict.items()]
+                    sr.description = ", ".join([f"{v}x {k}" if v > 1 else k for k, v in sr_items_dict.items()])
+                    sr.updated_at = datetime.utcnow()
+
+                await create_department_notification(
+                    db=db,
+                    department=target_dept_name,
+                    title=f"Robot AI: Gộp thêm yêu cầu #{existing_order.order_number} - Phòng {rm}",
+                    description=f"Phòng {rm}: Khách gộp thêm {items}",
+                    request_id=existing_order.id,
+                    request_type="room_service",
+                    type="Request",
+                )
+                await db.commit()
+                return f"ORD-{existing_order.order_number}"
+
             order_num = str(random.randint(1043, 9999))
             ticket_code = f"ORD-{order_num}"
             order_id = f"ORD-{uuid.uuid4().hex[:8]}"
+            order_title = (
+                f"Yêu cầu Room Service (Phòng {rm}): {items}"
+                if is_svc
+                else f"Đơn món ăn Bếp (Phòng {rm}): {items}"
+            )
+
             order = SupportRequest(
                 id=order_id,
                 ticket_code=ticket_code,
-                title=f"Đơn Room Service (Phòng {rm}): {items}",
+                title=order_title,
                 room_number=rm,
                 description=items or "Yêu cầu gửi từ HCRobot Concierge AI Chat",
                 guest_name=f"Guest (Room {rm})",
-                department_id="DEP-ROOMSERVICE",
+                department_id=assigned_dept_id,
                 service_type_id="ST-ROOM-SERVICE",
                 items=[{"name": items, "qty": 1}],
                 source="HCRobot Concierge AI Chat",
                 status="Pending",
                 progress=0,
+                extra_data={"is_service_request": is_svc},
             )
             db.add(order)
 
@@ -133,14 +228,14 @@ async def auto_create_ticket(
                 support_request_id=order_id,
                 guest_name=f"Guest (Room {rm})",
                 status="Pending",
-                is_service_request=False,
+                is_service_request=is_svc,
                 total_amount=0.0,
                 note=items or "Yêu cầu từ AI Chat",
             )
             db.add(rs_order)
             oi = OrderItem(
                 order_id=order_id,
-                item_name=items or "Món ăn",
+                item_name=items or ("Dịch vụ phòng" if is_svc else "Món ăn"),
                 quantity=1,
                 unit_price=0.0,
                 subtotal=0.0,
@@ -149,13 +244,23 @@ async def auto_create_ticket(
             db.add(oi)
             await create_department_notification(
                 db=db,
-                department="F&B",
-                title=f"Robot AI: Yêu cầu F&B mới từ Phòng {rm}",
+                department=target_dept_name,
+                title=f"Robot AI: Yêu cầu {target_dept_name} mới từ Phòng {rm}",
                 description=f"{items}",
                 request_id=order.id,
                 request_type="room_service",
                 type="Request",
             )
+            if not is_svc:
+                await create_department_notification(
+                    db=db,
+                    department="Room Service",
+                    title=f"Robot AI: Đơn món ăn mới từ Phòng {rm}",
+                    description=f"{items}",
+                    request_id=order.id,
+                    request_type="room_service",
+                    type="Request",
+                )
             await create_department_notification(
                 db=db,
                 department="Reception",

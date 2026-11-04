@@ -109,26 +109,26 @@ async def test_multi_turn_service_flow():
     assert pending["action"] == "housekeeping"
     assert "khăn tắm" in pending["items"]
 
-    # --- LƯỢT 2: Khách trả lời số phòng "402" ---
+    # --- LƯỢT 2: Khách trả lời số phòng "304" ---
     state_turn2 = {
         "session_id": sid,
-        "prompt": "402 nha em",
+        "prompt": "304 nha em",
         "room_number": None,  # Client chưa kịp cập nhật, harness tự lấy từ session
         "chat_history": [],
     }
     res_turn2 = await concierge_graph.ainvoke(state_turn2, config=config)
 
-    # Session phải được lưu số phòng 402
-    assert session_manager.get_room_number(sid) == "402"
-    # Robot phải xác nhận dịch vụ cho phòng 402
+    # Session phải được lưu số phòng 304
+    assert session_manager.get_room_number(sid) == "304"
+    # Robot phải xác nhận dịch vụ cho phòng 304
     assert res_turn2["missing_room_number"] is False
-    assert "402" in res_turn2["response"]
+    assert "304" in res_turn2["response"]
     assert "buồng phòng" in res_turn2["response"].lower() or "housekeeping" in res_turn2["response"].lower()
     # Pending intent phải được xóa sạch sau khi giải quyết
     assert session_manager.get_pending_intent(sid) is None
 
     # --- LƯỢT 3: Khách tiếp tục yêu cầu đồ ăn trong cùng session ---
-    # Robot ĐÃ NHỚ phòng 402, không được hỏi lại số phòng nữa!
+    # Robot ĐÃ NHỚ phòng 304, không được hỏi lại số phòng nữa!
     state_turn3 = {
         "session_id": sid,
         "prompt": "Mang cho anh 1 đĩa cơm chiên hải sản",
@@ -138,7 +138,7 @@ async def test_multi_turn_service_flow():
     res_turn3 = await concierge_graph.ainvoke(state_turn3, config=config)
 
     assert res_turn3["missing_room_number"] is False
-    assert "402" in res_turn3["response"]
+    assert "304" in res_turn3["response"]
     assert "ẩm thực" in res_turn3["response"].lower() or "f&b" in res_turn3["response"].lower() or "room service" in res_turn3["response"].lower() or "đặt món" in res_turn3["response"].lower() or "phục vụ" in res_turn3["response"].lower()
     assert "số phòng của mình là bao nhiêu" not in res_turn3["response"].lower()
 
@@ -328,5 +328,65 @@ async def test_query_order_status_without_pin_flow():
     assert res3.get("require_room_pin", False) is False
     assert res3.get("destination_key") is None
     assert "305" in res3["response"]
+
+    session_manager.reset_session(sid)
+
+
+@pytest.mark.asyncio
+async def test_authenticated_room_session_skips_pin():
+    """Kiểm tra khi phòng đã được xác thực mã PIN (is_room_authenticated=True): Robot nhận đơn ngay, require_room_pin=False."""
+    sid = "test_auth_room_session_skips_pin"
+    session_manager.reset_session(sid)
+    config = {"configurable": {"thread_id": sid}}
+
+    # Khách đã xác thực phòng 301 từ trước trong session
+    res = await concierge_graph.ainvoke({
+        "session_id": sid,
+        "prompt": "Cho tôi thêm 2 cái khăn tắm",
+        "room_number": "301",
+        "is_room_authenticated": True,
+        "chat_history": [],
+    }, config=config)
+
+    assert res["missing_room_number"] is False
+    assert res.get("require_room_pin", False) is False
+    assert "301" in res["response"]
+    assert "tiếp nhận" in res["response"].lower() or "received" in res["response"].lower()
+
+    session_manager.reset_session(sid)
+
+
+@pytest.mark.asyncio
+async def test_order_status_preserves_session_room_number_single_ask():
+    """
+    Kịch bản: Khách mới đặt món cho phòng 301.
+    Sau khi đặt món xong, khách hỏi 'trạng thái món tới đâu'.
+    Robot phải nhớ phòng 301 từ session, KHÔNG được hỏi lại số phòng lần 2.
+    Sau khi trả lời, session vẫn phải lưu số phòng 301.
+    """
+    sid = "test_order_status_single_ask_session"
+    session_manager.reset_session(sid)
+    config = {"configurable": {"thread_id": sid}}
+
+    # Giả lập: Khách vừa đặt món xong cho phòng 301 -> session đã có room_number 301
+    session_manager.set_room_number(sid, "301")
+    assert session_manager.get_room_number(sid) == "301"
+
+    # Khách hỏi tiếp bằng giọng nói: "trạng thái món tới đâu" (câu hỏi không nhắc lại số 301)
+    res = await concierge_graph.ainvoke({
+        "session_id": sid,
+        "prompt": "trạng thái món tới đâu rồi",
+        "room_number": "301",
+        "chat_history": [],
+    }, config=config)
+
+    # Robot KHÔNG được báo thiếu số phòng
+    assert res.get("missing_room_number") is False, "Robot không được hỏi lại số phòng khi session đã có số phòng"
+    assert res.get("room_number") == "301"
+    assert "phòng bao nhiêu" not in res["response"].lower()
+    assert "xin số phòng" not in res["response"].lower()
+
+    # Session vẫn phải ghi nhớ số phòng 301 cho các câu hỏi tiếp theo
+    assert session_manager.get_room_number(sid) == "301", "Session manager phải duy trì số phòng 301"
 
     session_manager.reset_session(sid)

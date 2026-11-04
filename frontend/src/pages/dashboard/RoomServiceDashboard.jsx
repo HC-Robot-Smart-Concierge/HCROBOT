@@ -1,8 +1,9 @@
 import { useStaffText } from '../../context/StaffLanguage';
 import { StaffPageHeader } from '../../components/dashboard/RoomServiceFrame';
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
-import { RefreshCw, UtensilsCrossed, ChefHat, CheckCircle2, Clock, Phone, User } from 'lucide-react';
+import { RefreshCw, UtensilsCrossed, CheckCircle2, Clock, Phone, User } from 'lucide-react';
 import { Pagination } from '../../components/common/Pagination';
+import { RejectReasonModal } from '../../components/dashboard/RejectReasonModal';
 import { INITIAL_ROOM_SERVICE_DATA } from '../../data/mockHotelData';
 import {
   fetchRoomServiceDashboard,
@@ -71,6 +72,7 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
     deliveryFleet: INITIAL_ROOM_SERVICE_DATA.deliveryFleet.map(normalizeFleet),
   });
   const [filter, setFilter] = useState('All');
+  const [rejectingOrder, setRejectingOrder] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 10;
 
@@ -83,7 +85,7 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
   const loadData = useCallback(async (isManual = false) => {
     if (isManual) setIsRefreshing(true);
     try {
-      const response = await fetchRoomServiceDashboard();
+      const response = await fetchRoomServiceDashboard({ is_service_request: true });
       if (!response) return;
 
       const hasLiveOrders = Array.isArray(response.orders);
@@ -133,49 +135,46 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
     };
   }, [loadData]);
 
-  // Thống kê số lượng theo từng phân loại Tab
+  // Cô lập triệt để đơn hàng: Room Service CHỈ nhận và quản lý các yêu cầu Dịch Vụ Phòng, TUYỆT ĐỐI KHÔNG nhận món ăn của Bếp
+  const roomServiceScopedOrders = useMemo(() => {
+    return (data.orders || []).filter((order) => Boolean(order.isServiceRequest));
+  }, [data.orders]);
+
+  // Thống kê số lượng theo từng phân loại Tab (Chỉ tính các yêu cầu Dịch Vụ Phòng)
   const tabCounts = useMemo(() => {
-    const orders = data.orders || [];
+    const orders = roomServiceScopedOrders;
     return {
       All: orders.length,
       Pending: orders.filter((o) => {
         const s = (o.status || '').toLowerCase().trim();
         return s === 'pending' || s === 'unassigned' || s === 'chờ tiếp nhận';
       }).length,
-      Cooking: orders.filter((o) => {
+      InProgress: orders.filter((o) => {
         const s = (o.status || '').toLowerCase().trim();
         return (
+          s === 'in progress' ||
+          s === 'in_progress' ||
           s === 'cooking' ||
           s === 'in preparation' ||
-          s === 'in progress' ||
-          s === 'sent to kitchen' ||
-          s === 'sent_to_kitchen' ||
-          s === 'đã chuyển bếp'
-        );
-      }).length,
-      Ready: orders.filter((o) => {
-        const s = (o.status || '').toLowerCase().trim();
-        return (
+          s === 'preparing' ||
           s === 'ready' ||
-          s === 'món đã nấu xong' ||
-          s === 'food ready' ||
-          s === 'sẵn sàng' ||
-          s === 'đã nấu xong'
+          s === 'delivering' ||
+          s === 'in transit' ||
+          s === 'đang xử lý' ||
+          s === 'đang chuẩn bị' ||
+          s === 'đang giao' ||
+          s === 'đang mang lên'
         );
-      }).length,
-      Delivering: orders.filter((o) => {
-        const s = (o.status || '').toLowerCase().trim();
-        return s === 'delivering' || s === 'in transit' || s === 'đang giao';
       }).length,
       Completed: orders.filter((o) => {
         const s = (o.status || '').toLowerCase().trim();
-        return s === 'completed' || s === 'delivered' || s === 'hoàn tất';
+        return s === 'completed' || s === 'delivered' || s === 'hoàn tất' || s === 'hoàn thành' || s === 'đã giao';
       }).length,
     };
-  }, [data.orders]);
+  }, [roomServiceScopedOrders]);
 
   const filteredOrders = useMemo(() => {
-    let list = data.orders || [];
+    let list = roomServiceScopedOrders;
     if (filter !== 'All') {
       const filterLower = filter.toLowerCase().trim();
       list = list.filter((order) => {
@@ -183,51 +182,43 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
         if (filterLower === 'pending') {
           return s === 'pending' || s === 'unassigned' || s === 'chờ tiếp nhận';
         }
-        if (filterLower === 'cooking') {
+        if (filterLower === 'inprogress' || filterLower === 'in progress' || filterLower === 'đang xử lý') {
           return (
+            s === 'in progress' ||
+            s === 'in_progress' ||
             s === 'cooking' ||
             s === 'in preparation' ||
-            s === 'in progress' ||
-            s === 'sent to kitchen' ||
-            s === 'sent_to_kitchen' ||
-            s === 'đã chuyển bếp'
-          );
-        }
-        if (filterLower === 'ready') {
-          return (
+            s === 'preparing' ||
             s === 'ready' ||
-            s === 'món đã nấu xong' ||
-            s === 'food ready' ||
-            s === 'sẵn sàng' ||
-            s === 'đã nấu xong'
+            s === 'delivering' ||
+            s === 'in transit' ||
+            s === 'đang xử lý' ||
+            s === 'đang chuẩn bị' ||
+            s === 'đang giao' ||
+            s === 'đang mang lên'
           );
-        }
-        if (filterLower === 'delivering') {
-          return s === 'delivering' || s === 'in transit' || s === 'đang giao' || s === 'ready';
         }
         if (filterLower === 'completed') {
-          return s === 'completed' || s === 'delivered' || s === 'hoàn tất';
+          return s === 'completed' || s === 'delivered' || s === 'hoàn tất' || s === 'hoàn thành' || s === 'đã giao';
         }
         return s === filterLower;
       });
     }
 
-    // Sắp xếp thông minh: Đơn Bếp đã xong (Ready) và Chờ tiếp nhận (Pending) đưa lên đầu tiên để Room Service xử lý ngay
+    // Sắp xếp: Chờ tiếp nhận (Pending) và Đang xử lý (In Progress) đưa lên đầu
     return [...list].sort((a, b) => {
       const sA = (a.status || '').toLowerCase().trim();
       const sB = (b.status || '').toLowerCase().trim();
 
       const getPriority = (st) => {
-        if (st === 'ready' || st === 'món đã nấu xong' || st === 'food ready' || st === 'đã nấu xong') return 1;
-        if (st === 'pending' || st === 'unassigned') return 2;
-        if (st === 'delivering' || st === 'in transit') return 3;
-        if (st === 'cooking' || st === 'sent to kitchen') return 4;
-        return 5;
+        if (st === 'pending' || st === 'unassigned' || st === 'chờ tiếp nhận') return 1;
+        if (['in progress', 'in_progress', 'cooking', 'in preparation', 'delivering', 'in transit', 'ready', 'đang xử lý'].includes(st)) return 2;
+        return 3;
       };
 
       return getPriority(sA) - getPriority(sB);
     });
-  }, [data.orders, filter]);
+  }, [roomServiceScopedOrders, filter]);
 
   const totalPages = Math.max(1, Math.ceil(filteredOrders.length / pageSize));
   useEffect(() => {
@@ -294,100 +285,53 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
     });
   };
 
-  const handleSendToKitchen = async (order) => {
-    updateOrderLocally(order.id, {
-      status: 'Sent to Kitchen',
-      progress: 25,
-      estCompletion: '20 mins',
-      assignedTo: staffName,
-    });
-    await updateRoomServiceOrderStatus(order.rawId || order.id, {
-      status: 'Sent to Kitchen',
-      progress: 25,
-      est_completion: '20 mins',
-      assigned_staff_name: staffName,
-    });
-    onNotify(st("Order #{0} was reviewed and sent to the kitchen.", order.id));
-  };
-
   const handleAcceptServiceRequest = async (order) => {
     updateOrderLocally(order.id, {
       status: 'In Progress',
-      progress: 40,
-      estCompletion: '10 mins',
+      progress: 50,
+      estCompletion: 'Đang xử lý',
       assignedTo: staffName,
     });
     await updateRoomServiceOrderStatus(order.rawId || order.id, {
       status: 'In Progress',
-      progress: 40,
-      est_completion: '10 mins',
-      assigned_staff_name: staffName,
-    });
-    onNotify(st("Service accepted and being prepared for room {0}.", order.room));
-  };
-
-  const handleStartCooking = async (order) => {
-    updateOrderLocally(order.id, {
-      status: 'Cooking',
       progress: 50,
-      estCompletion: '15 mins',
-      assignedTo: staffName,
-    });
-    await updateRoomServiceOrderStatus(order.rawId || order.id, {
-      status: 'Cooking',
-      progress: 50,
-      est_completion: '15 mins',
+      est_completion: 'Đang xử lý',
       assigned_staff_name: staffName,
     });
-    onNotify(st("The kitchen has started preparing order #{0}.", order.id));
-  };
-
-  const handleMarkReady = async (order) => {
-    updateOrderLocally(order.id, {
-      status: 'Ready',
-      progress: 75,
-      estCompletion: 'Sẵn sàng',
-      assignedTo: staffName,
-    });
-    await updateRoomServiceOrderStatus(order.rawId || order.id, {
-      status: 'Ready',
-      progress: 75,
-      est_completion: 'Sẵn sàng',
-      assigned_staff_name: staffName,
-    });
-    onNotify(st("Order #{0} is ready for Room Service to collect.", order.id));
-  };
-
-  const handleStartDelivery = async (order) => {
-    updateOrderLocally(order.id, {
-      status: 'Delivering',
-      progress: 85,
-      estCompletion: '5 mins',
-      assignedTo: staffName,
-    });
-    await updateRoomServiceOrderStatus(order.rawId || order.id, {
-      status: 'Delivering',
-      progress: 85,
-      est_completion: '5 mins',
-      assigned_staff_name: staffName,
-    });
-    onNotify(st("Room Service is delivering the order to room {0}.", order.room));
-  };
-
-  const handleReject = async (order) => {
-    updateOrderLocally(order.id, { status: 'Rejected' });
-    await updateRoomServiceOrderStatus(order.rawId || order.id, { status: 'Rejected' });
-    onNotify(st("Order #{0} rejected.", order.id));
+    onNotify(st("Đã tiếp nhận yêu cầu phòng {0}, đang xử lý.", order.room));
   };
 
   const handleCompleteOrder = async (order) => {
-    updateOrderLocally(order.id, { status: 'Completed', progress: 100, assignedTo: staffName });
+    updateOrderLocally(order.id, { status: 'Completed', progress: 100, assignedTo: staffName, estCompletion: 'Hoàn tất' });
     await updateRoomServiceOrderStatus(order.rawId || order.id, {
       status: 'Completed',
       progress: 100,
+      est_completion: 'Hoàn tất',
       assigned_staff_name: staffName,
     });
-    onNotify(st("Order #{0} delivered and completed.", order.id));
+    onNotify(st("Yêu cầu của phòng {0} đã hoàn thành.", order.room));
+  };
+
+  const handleOpenRejectModal = (order) => {
+    setRejectingOrder(order);
+  };
+  const handleReject = handleOpenRejectModal;
+
+  const handleConfirmReject = async (reason) => {
+    if (!rejectingOrder) return;
+    const targetOrder = rejectingOrder;
+    setRejectingOrder(null);
+    try {
+      updateOrderLocally(targetOrder.id, { status: 'Rejected', note: reason, reject_reason: reason });
+      await updateRoomServiceOrderStatus(targetOrder.rawId || targetOrder.id, {
+        status: 'Rejected',
+        note: reason,
+        reject_reason: reason,
+      });
+      onNotify(st("Yêu cầu #{0} đã bị từ chối: {1}", targetOrder.id, reason));
+    } catch (err) {
+      onNotify(`Không thể từ chối yêu cầu #${targetOrder.id}: ${err?.message || 'Lỗi mạng'}`);
+    }
   };
 
   const kpis = data.kpis || INITIAL_ROOM_SERVICE_DATA.kpis;
@@ -416,21 +360,21 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
 
         <section className="mt-6 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
           <KpiCard
-            label={t('kpiPendingOrders')}
-            value={kpis.pendingOrders?.value ?? 0}
+            label={st("Pending Orders") || "Chờ tiếp nhận"}
+            value={tabCounts.Pending}
           />
           <KpiCard
-            label={t('kpiInPreparation')}
-            value={kpis.inPreparation?.value ?? 0}
-            detail={`avg ${kpis.inPreparation?.avgTime || '12m'}`}
+            label={st("In Progress") || "Đang xử lý"}
+            value={tabCounts.InProgress}
+            detail="avg 10m"
           />
           <KpiCard
-            label={t('delivering')}
-            value={kpis.delivering?.value ?? 0}
+            label={st("Completed Today") || "Hoàn thành hôm nay"}
+            value={tabCounts.Completed}
           />
           <KpiCard
-            label={t('kpiCompletedToday')}
-            value={kpis.completedToday?.value ?? 0}
+            label={st("Total Requests") || "Tổng yêu cầu"}
+            value={tabCounts.All}
           />
         </section>
 
@@ -440,15 +384,12 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
               <h3 className="text-[13px] font-semibold text-[#36322F]">{t('activeOrders')}</h3>
               <div className="flex items-center gap-1 flex-wrap">
                 {[
-                  { key: 'All', label: t('all') || st("All") },
-                  { key: 'Pending', label: t('pending') || st("Pending") },
-                  { key: 'Cooking', label: st("In preparation") },
-                  { key: 'Ready', label: st("Ready for delivery") },
-                  { key: 'Delivering', label: t('delivering') || st("Delivering") },
-                  { key: 'Completed', label: t('completed') || st("Completed") },
+                  { key: 'All', label: st("All") || "Tất cả" },
+                  { key: 'Pending', label: st("Pending") || "Chờ tiếp nhận" },
+                  { key: 'InProgress', label: st("In Progress") || "Đang xử lý" },
+                  { key: 'Completed', label: st("Completed") || "Hoàn tất" },
                 ].map(({ key, label }) => {
                   const count = tabCounts[key] || 0;
-                  const isReadyTab = key === 'Ready';
                   const isPendingTab = key === 'Pending';
 
                   return (
@@ -464,12 +405,15 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
                       <span>{label}</span>
                       {count > 0 && (
                         <span
-                          className={`px-1.5 py-0.2 rounded-full text-[9px] font-bold ${isReadyTab
-                              ? 'bg-emerald-600 text-white animate-pulse shadow-xs'
-                              : isPendingTab
-                                ? 'bg-amber-600 text-white'
-                                : 'bg-stone-200 text-stone-700'
-                            }`}
+                          className={`px-1.5 py-0.2 rounded-full text-[9px] font-bold ${
+                            isPendingTab
+                              ? 'bg-amber-600 text-white'
+                              : key === 'InProgress'
+                              ? 'bg-indigo-600 text-white'
+                              : key === 'Completed'
+                              ? 'bg-emerald-600 text-white'
+                              : 'bg-stone-200 text-stone-700'
+                          }`}
                         >
                           {count}
                         </span>
@@ -487,21 +431,18 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
                 </div>
               ) : (
                 paginatedOrders.map((order) => {
-                  const normalizedStatus = (order.status || '').toLowerCase();
+                  const normalizedStatus = (order.status || '').toLowerCase().trim();
                   const isPending =
-                    normalizedStatus === 'pending' || normalizedStatus === 'unassigned';
-                  const isSentToKitchen =
-                    normalizedStatus === 'sent to kitchen' || normalizedStatus === 'sent_to_kitchen';
-                  const isCooking =
-                    normalizedStatus === 'cooking' ||
-                    normalizedStatus === 'in progress' ||
-                    normalizedStatus === 'in preparation';
-                  const isReady =
-                    normalizedStatus === 'ready' || normalizedStatus === 'món đã nấu xong';
-                  const isDelivering =
-                    normalizedStatus === 'delivering' || normalizedStatus === 'in transit';
+                    normalizedStatus === 'pending' ||
+                    normalizedStatus === 'unassigned' ||
+                    normalizedStatus === 'chờ tiếp nhận';
                   const isCompleted =
-                    normalizedStatus === 'completed' || normalizedStatus === 'delivered';
+                    normalizedStatus === 'completed' ||
+                    normalizedStatus === 'delivered' ||
+                    normalizedStatus === 'hoàn tất' ||
+                    normalizedStatus === 'hoàn thành' ||
+                    normalizedStatus === 'đã giao';
+                  const isInProgress = !isPending && !isCompleted;
 
                   return (
                     <article
@@ -522,28 +463,16 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
                         <span
                           className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${isPending
                               ? 'bg-amber-100 text-amber-800 border-amber-200'
-                              : isSentToKitchen
-                                ? 'bg-blue-100 text-blue-800 border-blue-200'
-                                : isCooking
-                                  ? 'bg-amber-100 text-amber-800 border-amber-200'
-                                  : isReady
-                                    ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
-                                    : isDelivering
-                                      ? 'bg-purple-100 text-purple-800 border-purple-200'
-                                      : 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                              : isInProgress
+                                ? 'bg-sky-100 text-sky-800 border-sky-200'
+                                : 'bg-emerald-100 text-emerald-800 border-emerald-200'
                             }`}
                         >
                           {isPending
-                            ? st("Pending")
-                            : isSentToKitchen
-                            ? st("Sent to kitchen")
-                            : isCooking
-                            ? st("In preparation")
-                            : isReady
-                            ? st("Food ready")
-                            : isDelivering
-                            ? st("Delivering to room")
-                            : st("Completed")}
+                            ? (st("Pending") || "Chờ tiếp nhận")
+                            : isInProgress
+                            ? (st("In Progress") || "Đang xử lý")
+                            : (st("Completed") || "Hoàn tất")}
                         </span>
                       </div>
 
@@ -575,106 +504,96 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
                         <span className="text-[10px] text-[#888]">{order.orderedAt === 'Just now' ? st('Just now') : order.orderedAt || st('Just now')}</span>
                       </div>
 
-                      <div className="flex items-center justify-between gap-4">
-                        <div>
-                          <h4 className="text-[12px] font-semibold text-[#322F2C]">
-                            {order.name || (Array.isArray(order.items) && order.items.map(it => it.name).join(', ')) || st("Room Service request")}
-                          </h4>
-                          <p className="text-[11px] text-[#746F69]">
-                            {order.notes || st("No special notes")}
-                          </p>
-                        </div>
-                        <span className="text-[11px] font-bold text-[#444]">x{order.qty || 1}</span>
-                      </div>
+                      {(() => {
+                        const rawItems = Array.isArray(order.items) && order.items.length > 0 ? order.items : [];
+                        const groupedMap = new Map();
+                        for (const it of rawItems) {
+                          const itemName = it.name || it.item_name || (typeof it === 'string' ? it : null);
+                          if (!itemName) continue;
+                          const q = Number(it.qty || it.quantity || 1);
+                          groupedMap.set(itemName, (groupedMap.get(itemName) || 0) + q);
+                        }
+                        const displayItems = Array.from(groupedMap.entries());
+                        const totalQty = displayItems.reduce((acc, [, q]) => acc + q, 0) || order.qty || 1;
+
+                        return (
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="space-y-1.5 flex-1 min-w-0">
+                              {displayItems.length > 0 ? (
+                                <div className="flex flex-wrap gap-1.5 items-center">
+                                  {displayItems.map(([name, q], idx) => (
+                                    <span
+                                      key={idx}
+                                      className="inline-flex items-center gap-1.5 bg-[#F7F5F0] text-[#322F2C] border border-[#E8E5E0] px-2 py-0.5 rounded-md text-[11px] font-medium"
+                                    >
+                                      <span className="font-bold text-amber-800 bg-amber-100/80 px-1 py-0.2 rounded text-[10px]">
+                                        {q}x
+                                      </span>
+                                      <span>{name}</span>
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : (
+                                <h4 className="text-[12px] font-semibold text-[#322F2C]">
+                                  {order.name || st("Room Service request")}
+                                </h4>
+                              )}
+                              <p className="text-[11px] text-[#746F69]">
+                                {order.notes || st("No special notes")}
+                              </p>
+                            </div>
+                            <span className="text-[11px] font-bold text-[#444] shrink-0 pt-0.5">x{totalQty}</span>
+                          </div>
+                        );
+                      })()}
 
                       <div className="pt-3 border-t border-[#F0ECE6] flex items-center justify-between gap-2">
                         <span className="text-[10px] text-stone-500 font-medium">
                           {isPending
-                            ? (order.isServiceRequest ? st("Awaiting service acceptance") : st("Awaiting order review"))
-                            : isSentToKitchen
-                            ? st("Waiting for kitchen preparation")
-                            : isCooking
-                            ? (order.isServiceRequest ? st("Preparing service") : st("Kitchen is preparing the food"))
-                            : isReady
-                            ? st("Collect food and prepare utensils")
-                            : isDelivering
-                            ? st("Delivery in progress")
-                            : st("Complete")}
+                            ? (st("Awaiting acceptance") || "Chờ nhân viên tiếp nhận")
+                            : isInProgress
+                            ? (st("In progress") || "Đang xử lý yêu cầu")
+                            : (st("Completed") || "Đã hoàn thành")}
                         </span>
 
                         <div className="flex items-center gap-2">
-                          {/* 1. Pending: Food -> Bep tu tiep nhan truc tiep */}
-                          {isPending && !order.isServiceRequest && (
-                            <span className="px-3 py-1.5 rounded-lg bg-amber-50 text-amber-800 text-[11px] font-bold border border-amber-200 flex items-center gap-1.5">
-                              <ChefHat className="w-3.5 h-3.5 text-amber-600 animate-pulse" />
-                              <span>Bếp Tiếp Nhận Trực Tiếp</span>
-                            </span>
-                          )}
-
-                          {/* 1b. Pending: Direct Service Request -> Reject & Tiếp Nhận */}
-                          {isPending && order.isServiceRequest && (
+                          {/* 1. Pending: Từ chối hoặc Tiếp nhận xử lý */}
+                          {isPending && (
                             <>
                               <button
                                 type="button"
-                                onClick={() => handleReject(order)}
+                                onClick={() => handleOpenRejectModal(order)}
                                 className="rounded-lg border border-[#D4D0CB] bg-white px-3 py-1.5 text-[11px] text-[#444] hover:bg-[#F7F5F2] cursor-pointer"
                               >
-                                {t('reject')}
+                                {t('reject') || st("Reject") || "Từ chối"}
                               </button>
                               <button
                                 type="button"
                                 onClick={() => handleAcceptServiceRequest(order)}
                                 className="rounded-lg bg-indigo-600 hover:bg-indigo-700 px-3.5 py-1.5 text-[11px] font-bold text-white cursor-pointer shadow-xs"
-                              >{st("Accept request")} </button>
+                              >
+                                {st("Accept request") || "Tiếp nhận"}
+                              </button>
                             </>
                           )}
 
-                          {/* 2. Sent to Kitchen (Chờ Bếp, Room Service không bấm được) */}
-                          {isSentToKitchen && (
-                            <span className="px-3 py-1.5 rounded-lg bg-blue-50 text-blue-800 text-[11px] font-bold border border-blue-200 flex items-center gap-1.5">
-                              <Clock className="w-3.5 h-3.5 text-blue-600" />
-                              <span>{st("Awaiting kitchen acceptance")}</span>
-                            </span>
-                          )}
-
-                          {/* 3. Cooking / In Progress */}
-                          {isCooking && (
-                            order.isServiceRequest ? (
-                              <button
-                                type="button"
-                                onClick={() => handleStartDelivery(order)}
-                                className="rounded-lg bg-sky-600 hover:bg-sky-700 px-3.5 py-1.5 text-[11px] font-bold text-white cursor-pointer shadow-xs"
-                              >{st("Deliver to room")} </button>
-                            ) : (
-                              <span className="px-3 py-1.5 rounded-lg bg-amber-50 text-amber-800 text-[11px] font-bold border border-amber-200 flex items-center gap-1.5">
-                                <ChefHat className="w-3.5 h-3.5 text-amber-600 animate-pulse" />
-                                <span>{st("Kitchen is cooking...")}</span>
-                              </span>
-                            )
-                          )}
-
-                          {/* 4. Ready -> Lấy Món & Giao Phòng */}
-                          {isReady && (
-                            <button
-                              type="button"
-                              onClick={() => handleStartDelivery(order)}
-                              className="rounded-lg bg-sky-600 hover:bg-sky-700 px-3.5 py-1.5 text-[11px] font-bold text-white cursor-pointer shadow-xs"
-                            >{st("Collect and deliver")} </button>
-                          )}
-
-                          {/* 5. Delivering -> Xác Nhận Đã Giao */}
-                          {isDelivering && (
+                          {/* 2. In Progress: Đang xử lý -> Hoàn thành */}
+                          {isInProgress && (
                             <button
                               type="button"
                               onClick={() => handleCompleteOrder(order)}
-                              className="rounded-lg bg-emerald-600 hover:bg-emerald-700 px-3.5 py-1.5 text-[11px] font-bold text-white cursor-pointer shadow-xs"
-                            >{st("Confirm delivery")} </button>
+                              className="rounded-lg bg-emerald-600 hover:bg-emerald-700 px-3.5 py-1.5 text-[11px] font-bold text-white cursor-pointer shadow-xs flex items-center gap-1.5"
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              <span>{st("Complete") || "Hoàn thành"}</span>
+                            </button>
                           )}
 
-                          {/* 6. Completed */}
+                          {/* 3. Completed: Đã hoàn tất */}
                           {isCompleted && (
-                            <span className="rounded bg-emerald-50 text-emerald-800 px-3 py-1 text-[11px] font-bold border border-emerald-200">
-                              {t('orderCompleted')}
+                            <span className="flex items-center gap-1.5 text-[11px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-md">
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              <span>{st("Completed") || "Đã hoàn tất"}</span>
                             </span>
                           )}
                         </div>
@@ -701,6 +620,13 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
         </section>
       </div>
 
+      <RejectReasonModal
+        isOpen={Boolean(rejectingOrder)}
+        onClose={() => setRejectingOrder(null)}
+        onConfirm={handleConfirmReject}
+        order={rejectingOrder}
+        department="room_service"
+      />
     </div>
   );
 };

@@ -105,6 +105,11 @@ async def _fetch_all_raw_requests(db: AsyncSession) -> List[Dict[str, Any]]:
         sr_res = await sr_repo.list_all_with_relations()
         for sr, st, dep in sr_res:
             dep_code = (dep.code if dep else (st.code if st else "")).upper()
+            is_svc_req = (
+                bool((sr.extra_data or {}).get("is_service_request"))
+                or ("dịch vụ phòng" in (sr.title or "").lower())
+                or ("dịch vụ phòng" in (sr.description or "").lower())
+            )
             if "HOUSEKEEPING" in dep_code:
                 dept_label = "Housekeeping"
                 tbl_type = "housekeeping"
@@ -123,8 +128,11 @@ async def _fetch_all_raw_requests(db: AsyncSession) -> List[Dict[str, Any]]:
             elif "RECEPTION" in dep_code:
                 dept_label = "Reception"
                 tbl_type = "reception"
-            elif "FB" in dep_code or "ROOM_SERVICE" in dep_code:
-                dept_label = "F&B"
+            elif "KITCHEN" in dep_code:
+                dept_label = "Kitchen"
+                tbl_type = "room_service"
+            elif "ROOMSERVICE" in dep_code or "ROOM_SERVICE" in dep_code or "FB" in dep_code:
+                dept_label = "Room Service" if is_svc_req else "Kitchen"
                 tbl_type = "room_service"
             else:
                 dept_label = dep.name if dep else (st.name if st else "General")
@@ -185,7 +193,7 @@ async def _fetch_all_raw_requests(db: AsyncSession) -> List[Dict[str, Any]]:
                 "progress": sr.progress or 0,
                 "est_completion": sr.est_completion,
                 "room_number": sr.room_number,
-                "is_service_request": bool((sr.extra_data or {}).get("is_service_request")) or ("dịch vụ phòng" in (sr.title or "").lower()) or ("dịch vụ phòng" in (sr.description or "").lower()),
+                "is_service_request": is_svc_req,
                 "extra_data": sr.extra_data or {},
             })
     except Exception as e:

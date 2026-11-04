@@ -33,23 +33,15 @@ describe('Kitchen Direct Order Status & Guest Contact Workflow Tests', () => {
   });
 
   it('verifies Kitchen has full autonomous lifecycle actions without Room Service handoff', () => {
-    // 1. Start cooking
+    // 1. Start cooking / processing
     expect(kitchenContent).toContain('handleStartCooking');
-    expect(kitchenContent).toContain('Bắt Đầu Nấu');
+    expect(kitchenContent).toMatch(/Tiếp Nhận & Chế Biến|Bắt Đầu Nấu/);
 
-    // 2. Mark ready
-    expect(kitchenContent).toContain('handleMarkReady');
-    expect(kitchenContent).toContain('Nấu Xong (Sẵn Sàng Giao)');
-
-    // 3. Start delivery
-    expect(kitchenContent).toContain('handleStartDelivery');
-    expect(kitchenContent).toContain('Giao Lên Phòng');
-
-    // 4. Complete order
+    // 2. Complete order directly
     expect(kitchenContent).toContain('handleCompleteOrder');
-    expect(kitchenContent).toContain('Xác Nhận Đã Giao');
+    expect(kitchenContent).toMatch(/Hoàn Thành|Xác Nhận Đã Giao/);
 
-    // 5. Reject order
+    // 3. Reject order
     expect(kitchenContent).toContain('handleReject');
   });
 
@@ -69,17 +61,16 @@ describe('Kitchen Direct Order Status & Guest Contact Workflow Tests', () => {
     expect(kitchenContent).toContain('Nhân viên liên lạc trực tiếp');
   });
 
-  it('verifies RoomServiceDashboard removes the blocking handoff button for food orders', () => {
-    // Food orders are now directly received by Kitchen without requiring Chuyển Sang Bếp button
-    expect(roomServiceContent).toContain('Bếp Tiếp Nhận Trực Tiếp');
+  it('verifies RoomServiceDashboard isolates food orders exclusively to Kitchen', () => {
+    // Room Service only manages service requests (isServiceRequest) and does not receive food dishes
+    expect(roomServiceContent).toContain('roomServiceScopedOrders');
+    expect(roomServiceContent).not.toContain('Bếp Tiếp Nhận Trực Tiếp');
   });
 
   it('supports full lifecycle tab filtering in KitchenDashboard', () => {
     expect(kitchenContent).toContain("id: 'All'");
     expect(kitchenContent).toContain("id: 'Pending'");
-    expect(kitchenContent).toContain("id: 'Cooking'");
-    expect(kitchenContent).toContain("id: 'Ready'");
-    expect(kitchenContent).toContain("id: 'Delivering'");
+    expect(kitchenContent).toMatch(/id: 'InProgress'|id: 'Cooking'/);
     expect(kitchenContent).toContain("id: 'Completed'");
   });
 
@@ -99,5 +90,25 @@ describe('Kitchen Direct Order Status & Guest Contact Workflow Tests', () => {
     // Robot Room Service screen handles merged confirmation
     expect(robotServiceContent).toContain('Đã Tự Động Gộp Vào Yêu Cầu Hiện Tại');
     expect(robotServiceContent).toContain('Gộp Yêu Cầu Thành Công!');
+  });
+
+  it('integrates RejectReasonModal in both Kitchen and Room Service Dashboards', () => {
+    // Both dashboards import RejectReasonModal
+    expect(kitchenContent).toContain('RejectReasonModal');
+    expect(roomServiceContent).toContain('RejectReasonModal');
+
+    // Both dashboards manage rejectingOrder state and confirm logic
+    expect(kitchenContent).toContain('handleOpenRejectModal');
+    expect(kitchenContent).toContain('handleConfirmReject');
+    expect(roomServiceContent).toContain('handleOpenRejectModal');
+    expect(roomServiceContent).toContain('handleConfirmReject');
+
+    // RejectReasonModal file exists and exports component
+    const rejectModalPath = path.resolve(__dirname, '../../../components/dashboard/RejectReasonModal.jsx');
+    const rejectModalContent = fs.readFileSync(rejectModalPath, 'utf8');
+    expect(rejectModalContent).toContain('export const RejectReasonModal');
+    expect(rejectModalContent).toContain('Lý do từ chối cụ thể');
+    expect(rejectModalContent).toContain('Hết nguyên liệu chế biến');
+    expect(rejectModalContent).toContain('Tạm hết đồ dùng / vật dụng yêu cầu');
   });
 });

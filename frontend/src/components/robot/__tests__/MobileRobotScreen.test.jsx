@@ -119,6 +119,26 @@ describe('MobileRobotScreen Component & UX Tests', () => {
     // Thanh chỉ dẫn nổi tinh giản ở đáy
     expect(content).toContain('absolute bottom-2.5 left-2.5 right-2.5 z-30');
     expect(content).toContain('currentDestination.isDifferentFloor');
+
+    // Zoom bản đồ được đặt 1.0 tự nhiên, tránh vỡ hạt do zoom quá đà
+    expect(content).toContain('defaultZoom={1.0}');
+  });
+
+  it('preserves active room session when closing map or when directions timer completes', () => {
+    const mobileScreenPath = path.resolve(__dirname, '../MobileRobotScreen.jsx');
+    const mobileContent = fs.readFileSync(mobileScreenPath, 'utf8');
+
+    // Mobile screen hỗ trợ onCloseDirections và không hủy session
+    expect(mobileContent).toContain('onCloseDirections');
+    expect(mobileContent).toContain('handleDismissMap');
+
+    const robotPagePath = path.resolve(__dirname, '../../../pages/robot/RobotScreenPage.jsx');
+    const robotPageContent = fs.readFileSync(robotPagePath, 'utf8');
+
+    // Đóng bản đồ gọi handleCloseDirections, không xóa phòng
+    expect(robotPageContent).toContain('handleCloseDirections');
+    expect(robotPageContent).toContain('onCloseDirections={handleCloseDirections}');
+    expect(robotPageContent).not.toContain('qrStageTimerRef.current = setTimeout(() => {\n                    clearRouteGuidanceTimers();\n                    resetToIdle();');
   });
 });
 

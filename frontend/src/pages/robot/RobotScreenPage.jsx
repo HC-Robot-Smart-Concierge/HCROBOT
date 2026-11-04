@@ -543,6 +543,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       // LƯU Ý: isListening (micro bật chờ), aiResponseText (chữ hiển thị cũ), hay modal mở mà không chạm
       // KHÔNG ĐƯỢC tính là bận, để đảm bảo quá 30 giây không tương tác sẽ tự động thoát phiên!
       const isUserTalking = Boolean(transcript && transcript.trim().length > 0);
+      const isViewingMap = currentState === 'RT-05' || isAutoQrModalOpen;
       const isBusy = Boolean(
         isSpeaking ||
         isSpeakingRef.current ||
@@ -550,7 +551,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         isProcessingRef.current ||
         isUserTalking ||
         isVideoCallOpen ||
-        isWorkflowRunning
+        isWorkflowRunning ||
+        isViewingMap
       );
 
       if (isBusy) {
@@ -834,6 +836,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     const chatSignal = chatAbortControllerRef.current.signal;
 
     clearRouteGuidanceTimers();
+    clearFollowUpTimer();
+    setIsWaitingFollowUp(false);
     stopSpeaking();
 
     isProcessingRef.current = true;
@@ -1283,10 +1287,9 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                     }
                   }, 1000);
 
-                  // Hết đúng 15 giây -> Tự động đóng QR và đóng luôn bản đồ chỉ đường (resetToIdle)
+                  // Hết đúng 15 giây -> Tự động đóng QR và đóng luôn bản đồ chỉ đường (giữ nguyên session phòng)
                   qrStageTimerRef.current = setTimeout(() => {
-                    clearRouteGuidanceTimers();
-                    resetToIdle();
+                    handleCloseDirections();
                   }, 15000);
                 }, 16000);
 
@@ -1530,6 +1533,15 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   }, [handleSecretTrigger]);
 
 
+  const handleCloseDirections = useCallback(() => {
+    clearRouteGuidanceTimers();
+    setNavigationDestinationKey(null);
+    setIsAutoQrModalOpen(false);
+    setQrCountdown(null);
+    setCurrentState('RT-02');
+    lastInteractionTimeRef.current = Date.now();
+  }, [clearRouteGuidanceTimers]);
+
   const resetToIdle = () => {
     activeChatRequestIdRef.current += 1;
     if (chatAbortControllerRef.current) {
@@ -1538,18 +1550,19 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     }
     if (fillerTimerRef.current) clearTimeout(fillerTimerRef.current);
     if (processingSafetyTimerRef.current) clearTimeout(processingSafetyTimerRef.current);
+    clearFollowUpTimer();
+    setIsWaitingFollowUp(false);
     isProcessingRef.current = false;
     setIsProcessing(false);
     clearRouteGuidanceTimers();
+    setNavigationDestinationKey(null);
     setIsFacilitiesModalOpen(false);
     stopSpeaking();
     stopListening();
     resetTranscript();
     setAiResponseText('');
-    setActiveRoomNumber(null);
-    flushSession(sessionId).catch(() => {});
-    setSessionId('session_kiosk_' + Math.random().toString(36).substring(2, 9));
     setCurrentState('RT-02');
+    lastInteractionTimeRef.current = Date.now();
   };
 
   useEffect(() => {
@@ -1780,10 +1793,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         onSelectDestination={setNavigationDestinationKey}
         showQrModalExternal={isAutoQrModalOpen}
         qrCountdown={qrCountdown}
-        onCloseQrModal={() => {
-          clearRouteGuidanceTimers();
-          resetToIdle();
-        }}
+        onCloseQrModal={handleCloseDirections}
+        onCloseDirections={handleCloseDirections}
         onCallStaff={async () => {
           try {
             const req = await createConciergeRequest({
@@ -2174,20 +2185,11 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
               <FloorMap
                 destinationKey={navigationDestinationKey}
                 onSelectDestination={setNavigationDestinationKey}
-                onClose={() => {
-                  clearRouteGuidanceTimers();
-                  setIsAutoQrModalOpen(false);
-                  setNavigationDestinationKey(null);
-                  handleStartTalk();
-                }}
+                onClose={handleCloseDirections}
                 showQrModalExternal={isAutoQrModalOpen}
                 qrCountdown={qrCountdown}
-                onCloseQrModal={() => {
-                  clearRouteGuidanceTimers();
-                  setIsAutoQrModalOpen(false);
-                  setNavigationDestinationKey(null);
-                  handleStartTalk();
-                }}
+                onCloseQrModal={handleCloseDirections}
+                defaultZoom={1.0}
               />
 
               {/* Right: AI Answer & Step Instructions */}

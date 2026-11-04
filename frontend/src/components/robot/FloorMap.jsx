@@ -789,7 +789,7 @@ export const FloorMap = ({
   onSelectDestination,
   className = '',
   onClose,
-  defaultZoom = 2.2,
+  defaultZoom = 1.0,
   showQrModalExternal = false,
   qrCountdown = null,
   onCloseQrModal = null,
@@ -1074,7 +1074,7 @@ export const FloorMap = ({
             <img
               src={activeFloor.image}
               alt={activeFloor.name}
-              className="w-full h-full object-contain pointer-events-none select-none"
+              className="w-full h-full object-contain pointer-events-none select-none" style={{ imageRendering: '-webkit-optimize-contrast' }}
             />
 
             {/* Lớp SVG Chỉ Đường: Tập trung vào đường đi, không nhảy nhót */}

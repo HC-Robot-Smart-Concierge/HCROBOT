@@ -112,6 +112,7 @@ export const MobileRobotScreen = ({
   onLogout,
   onResetSession,
   onResetToIdle,
+  onCloseDirections = null,
   onPrime = null,
   onStartTalk,
   onSubmitTalk,
@@ -143,6 +144,19 @@ export const MobileRobotScreen = ({
   const [isUtilitiesMenuOpen, setIsUtilitiesMenuOpen] = useState(false);
   const [isLangMenuOpen, setIsLangMenuOpen] = useState(false);
   const isBusy = isProcessing || currentState === 'RT-04';
+
+  const handleDismissMap = () => {
+    setIsMapManualOpen(false);
+    if (onCloseDirections) {
+      onCloseDirections();
+    } else if (onCloseQrModal) {
+      onCloseQrModal();
+    } else if (onStartTalk) {
+      onStartTalk();
+    } else if (onResetToIdle) {
+      onResetToIdle();
+    }
+  };
   const displayText = aiResponseText || spokenSubtitle;
   const isNavigating = currentState === 'RT-05' || isMapManualOpen;
 
@@ -655,26 +669,11 @@ export const MobileRobotScreen = ({
               <FloorMap
                 destinationKey={navigationDestinationKey}
                 onSelectDestination={onSelectDestination}
-                onClose={() => {
-                  setIsMapManualOpen(false);
-                  if (onStartTalk) {
-                    onStartTalk();
-                  } else {
-                    onResetToIdle();
-                  }
-                }}
+                onClose={handleDismissMap}
                 showQrModalExternal={showQrModalExternal}
                 qrCountdown={qrCountdown}
-                onCloseQrModal={() => {
-                  if (onCloseQrModal) {
-                    onCloseQrModal();
-                  } else if (onStartTalk) {
-                    onStartTalk();
-                  } else {
-                    onResetToIdle();
-                  }
-                }}
-                defaultZoom={1.65}
+                onCloseQrModal={handleDismissMap}
+                defaultZoom={1.0}
                 className="w-full h-full rounded-none border-none shadow-none"
               />
 
@@ -692,14 +691,7 @@ export const MobileRobotScreen = ({
                 {/* Nút Đóng nhanh */}
                 <button
                   type="button"
-                  onClick={() => {
-                    setIsMapManualOpen(false);
-                    if (onResetToIdle) {
-                      onResetToIdle();
-                    } else if (onStartTalk) {
-                      onStartTalk();
-                    }
-                  }}
+                  onClick={handleDismissMap}
                   className="pointer-events-auto h-8 px-3.5 rounded-2xl bg-stone-900 hover:bg-stone-800 text-white border border-stone-700/80 shadow-xl text-xs font-bold transition-all active:scale-95 cursor-pointer shrink-0 flex items-center gap-1.5"
                   title={isEn ? 'Close Map' : 'Đóng bản đồ'}
                   aria-label={isEn ? 'Close' : 'Đóng'}

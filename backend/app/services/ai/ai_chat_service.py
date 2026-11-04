@@ -92,8 +92,24 @@ def _detect_destination_poi(prompt: str, reply: str = "", room_number: str | Non
         ]
     )
 
+    # Phân biệt yêu cầu dịch vụ / đặt món (có kèm số phòng) với câu hỏi đường lên phòng
+    service_order_indicators = [
+        "đặt", "dat", "gọi", "goi", "order", "mang", "giao", "lấy", "lay",
+        "dọn", "don", "sửa", "sua", "hỏng", "hong", "báo thức", "cần", "can",
+        "xin", "cho tôi", "cho toi", "làm phiền", "giúp tôi", "giup toi"
+    ]
+    explicit_nav_phrases = [
+        "ở đâu", "o dau", "chỗ nào", "cho nao", "chỉ đường", "chi duong",
+        "dẫn đường", "dan duong", "hướng dẫn đường", "lối đi", "loi di",
+        "đường đến", "duong den", "làm sao để đến", "lam sao de den", "cách đi",
+        "tìm phòng", "tim phong", "where is", "how do i get", "show me the way"
+    ]
+    is_service_order_context = any(w in p_lower for w in service_order_indicators)
+    has_explicit_nav = any(w in p_lower for w in explicit_nav_phrases)
+    room_nav_match = bool((room_4xx_match or room_3xx_match or is_general_room_query) and (not is_service_order_context or has_explicit_nav))
+
     has_nav_intent = (
-        bool(room_4xx_match or room_3xx_match or is_general_room_query) or
+        room_nav_match or
         any(k in p_lower for k in nav_intent_phrases) or
         any(k in p_lower for k in direct_loc_phrases) or
         is_short_location_utterance
@@ -115,12 +131,12 @@ def _detect_destination_poi(prompt: str, reply: str = "", room_number: str | Non
     if not has_nav_intent:
         return None
 
-    # 1. Nhận diện các phòng Tầng 4 (401 -> 409)
-    if room_4xx_match:
+    # 1. Nhận diện các phòng Tầng 4 (401 -> 409) khi có ý định hỏi đường
+    if room_nav_match and room_4xx_match:
         return f"room_{room_4xx_match.group(1)}"
 
-    # 2. Nhận diện các phòng Tầng 3 (301 -> 309)
-    if room_3xx_match:
+    # 2. Nhận diện các phòng Tầng 3 (301 -> 309) khi có ý định hỏi đường
+    if room_nav_match and room_3xx_match:
         return f"room_{room_3xx_match.group(1)}"
 
     # 2b. Kiểm tra phản hồi của AI nếu có chứa số phòng cụ thể (không áp dụng khi hỏi chung chung)
@@ -297,6 +313,7 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
         "lang_code": cur_lang_code,
         "emotion": request.emotion,
         "room_number": current_room,
+        "is_room_authenticated": bool(request.room_number and str(request.room_number).strip() == str(current_room or "").strip()),
         "chat_history": history,
         "destination_key": None,
         "trigger_video_call": False,

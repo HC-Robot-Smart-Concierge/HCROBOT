@@ -434,13 +434,13 @@ export const MyTasksPage = ({ currentUser, onNotify = () => {}, onNavigate = () 
       if (step === 2 || step === 3) return isRoomServiceStaff || (!isKitchenStaff);
       return false;
     }
-    if (step === 1) return isRoomServiceStaff || (!isKitchenStaff);
-    if (step === 2) return isKitchenStaff;
+    if (step === 1) return isKitchenStaff || isRoomServiceStaff || (!isKitchenStaff);
+    if (step === 2) return isKitchenStaff || isRoomServiceStaff;
     if (step === 3) {
       // Bước 3 (Bếp nấu xong -> Món đã nấu xong): CHỈ người nhận request (đầu bếp phụ trách) mới được bấm!
       return isKitchenStaff && isTaskAssignedToMe(req);
     }
-    if (step === 4 || step === 5) return isRoomServiceStaff || (!isKitchenStaff);
+    if (step === 4 || step === 5) return isKitchenStaff || isRoomServiceStaff || (!isKitchenStaff);
     return false;
   };
 

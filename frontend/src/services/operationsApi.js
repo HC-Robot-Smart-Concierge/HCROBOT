@@ -84,8 +84,10 @@ export const fetchReceptionRequestById = async (requestId) => {
 // ---------------------------------------------------------
 // 1. Room Service / F&B
 // ---------------------------------------------------------
-export const fetchRoomServiceDashboard = async () => {
-  return await fetchWithFallback(`${BASE_URL}/dashboard/room-service`, {}, INITIAL_ROOM_SERVICE_DATA);
+export const fetchRoomServiceDashboard = async (params = {}) => {
+  const query = new URLSearchParams(params).toString();
+  const url = query ? `${BASE_URL}/dashboard/room-service?${query}` : `${BASE_URL}/dashboard/room-service`;
+  return await fetchWithFallback(url, {}, INITIAL_ROOM_SERVICE_DATA);
 };
 
 export const createRoomServiceOrder = async (orderData) => {

@@ -232,9 +232,20 @@ export const MobileRobotScreen = ({
 
           <div className="flex items-center gap-2">
             {activeRoomNumber && (
-              <span className="text-[10px] font-mono font-bold text-stone-600 bg-stone-200/80 px-2 py-0.5 rounded-full border border-stone-300">
-                {isEn ? `Rm.${activeRoomNumber}` : `P.${activeRoomNumber}`}
-              </span>
+              <div className="flex items-center gap-1.5 animate-fadeIn">
+                <span className="text-[11px] font-mono font-bold text-stone-700 bg-stone-200/90 px-2.5 py-1 rounded-full border border-stone-300 shadow-2xs flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  {isEn ? `Rm.${activeRoomNumber}` : `P.${activeRoomNumber}`}
+                </span>
+                <button
+                  type="button"
+                  onClick={onResetSession}
+                  title={isEn ? "End session / New guest" : "Kết thúc phiên / Khách mới"}
+                  className="h-6 px-2 rounded-full border border-stone-300 bg-white/80 hover:bg-stone-100 text-stone-600 hover:text-stone-900 text-[10px] font-medium transition-all cursor-pointer shadow-2xs active:scale-95"
+                >
+                  {isEn ? "New ✕" : "Khách mới ✕"}
+                </button>
+              </div>
             )}
 
             {/* Nút Ngôn ngữ (VI / EN) chuẩn Desktop có Dropdown */}

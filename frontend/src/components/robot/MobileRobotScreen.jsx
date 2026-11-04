@@ -18,6 +18,7 @@ import {
   ChevronRight,
   ConciergeBell,
   Sparkles,
+  LogOut,
 } from 'lucide-react';
 
 const getRobotMode = (state, isSpeaking = false, isProcessing = false, isListening = false) => {
@@ -239,11 +240,16 @@ export const MobileRobotScreen = ({
                 </span>
                 <button
                   type="button"
-                  onClick={onResetSession}
-                  title={isEn ? "End session / New guest" : "Kết thúc phiên / Khách mới"}
-                  className="h-6 px-2 rounded-full border border-stone-300 bg-white/80 hover:bg-stone-100 text-stone-600 hover:text-stone-900 text-[10px] font-medium transition-all cursor-pointer shadow-2xs active:scale-95"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (onResetSession) onResetSession();
+                  }}
+                  title={isEn ? `Exit session for room ${activeRoomNumber}` : `Thoát phiên phòng ${activeRoomNumber}`}
+                  aria-label={isEn ? "Exit session" : "Thoát phiên"}
+                  className="h-7 px-2.5 rounded-full border border-rose-300/80 bg-rose-50/90 hover:bg-rose-100 text-rose-700 hover:text-rose-900 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs active:scale-95 touch-manipulation"
                 >
-                  {isEn ? "New ✕" : "Khách mới ✕"}
+                  <LogOut className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                  <span className="text-[11px] font-semibold">{isEn ? "Exit" : "Thoát phiên"}</span>
                 </button>
               </div>
             )}
@@ -919,6 +925,64 @@ export const MobileRobotScreen = ({
                   </button>
                 </div>
               )}
+              {/* Quick Action Dock: Chạm nhanh các dịch vụ cốt lõi không cần vào menu sâu */}
+              <div
+                onClick={(e) => e.stopPropagation()}
+                className="mt-3 flex items-center justify-center gap-2 flex-wrap max-w-full px-2"
+              >
+                {onOpenFoodMenu && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onOpenFoodMenu();
+                    }}
+                    className="h-7.5 px-3 rounded-full bg-white/90 hover:bg-white text-stone-800 border border-[#E3DFD5] shadow-2xs hover:shadow-xs text-[11px] font-bold flex items-center gap-1.5 active:scale-95 cursor-pointer touch-manipulation transition-all"
+                  >
+                    <Utensils className="w-3.5 h-3.5 text-stone-600" />
+                    <span>{isEn ? 'Dining Menu' : 'Thực đơn'}</span>
+                  </button>
+                )}
+                {onOpenRoomService && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onOpenRoomService();
+                    }}
+                    className="h-7.5 px-3 rounded-full bg-white/90 hover:bg-white text-stone-800 border border-[#E3DFD5] shadow-2xs hover:shadow-xs text-[11px] font-bold flex items-center gap-1.5 active:scale-95 cursor-pointer touch-manipulation transition-all"
+                  >
+                    <ConciergeBell className="w-3.5 h-3.5 text-stone-600" />
+                    <span>{isEn ? 'Room Service' : 'Dịch vụ phòng'}</span>
+                  </button>
+                )}
+                {onOpenFacilities && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onOpenFacilities();
+                    }}
+                    className="h-7.5 px-3 rounded-full bg-white/90 hover:bg-white text-stone-800 border border-[#E3DFD5] shadow-2xs hover:shadow-xs text-[11px] font-bold flex items-center gap-1.5 active:scale-95 cursor-pointer touch-manipulation transition-all"
+                  >
+                    <Building className="w-3.5 h-3.5 text-stone-600" />
+                    <span>{isEn ? 'Amenities' : 'Tiện ích'}</span>
+                  </button>
+                )}
+                {onCallStaff && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onCallStaff();
+                    }}
+                    className="h-7.5 px-3 rounded-full bg-white/90 hover:bg-white text-stone-800 border border-[#E3DFD5] shadow-2xs hover:shadow-xs text-[11px] font-bold flex items-center gap-1.5 active:scale-95 cursor-pointer touch-manipulation transition-all"
+                  >
+                    <PhoneCall className="w-3.5 h-3.5 text-stone-600" />
+                    <span>{isEn ? 'Call Staff' : 'Gọi hỗ trợ'}</span>
+                  </button>
+                )}
+              </div>
             </div>
           </main>
         )}

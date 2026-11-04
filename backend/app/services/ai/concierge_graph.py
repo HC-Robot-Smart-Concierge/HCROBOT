@@ -818,7 +818,7 @@ async def fast_path_node(state: ConciergeState) -> Dict[str, Any]:
 
 
 
-        "hủy", "huy", "bị hủy", "bi huy",
+        "bị hủy", "bi huy",
 
 
 
@@ -1522,7 +1522,7 @@ async def intent_router_node(state: ConciergeState) -> Dict[str, Any]:
 
 
 
-        "hủy", "huy", "bị hủy", "bi huy",
+        "bị hủy", "bi huy",
 
 
 
@@ -4566,7 +4566,7 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
 
 
 
-                "hủy", "huy", "bị hủy", "bi huy",
+                "bị hủy", "bi huy",
 
 
 

@@ -72,5 +72,28 @@ describe('MobileRobotScreen Component & UX Tests', () => {
     // Desktop header có hiển thị nút Thoát phiên với icon LogOut
     expect(content).toContain('LogOut className="w-3 h-3 text-rose-400"');
   });
+
+  it('renders large modal popup for language selector matching other service modals', () => {
+    const filePath = path.resolve(__dirname, '../MobileRobotScreen.jsx');
+    const content = fs.readFileSync(filePath, 'utf8');
+
+    // Không còn dùng dropdown menu nhỏ w-44
+    expect(content).not.toContain('w-44 rounded-2xl bg-stone-900/95');
+
+    // Sử dụng modal lớn căn giữa màn hình với backdrop mờ
+    expect(content).toContain('fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md');
+    expect(content).toContain('max-w-sm sm:max-w-md bg-stone-900 border border-stone-700/80 rounded-3xl shadow-2xl');
+
+    // Tiêu đề modal và nút đóng lớn
+    expect(content).toContain('Chọn Ngôn Ngữ');
+    expect(content).toContain('Select Language');
+    expect(content).toContain('<X className="w-5 h-5" />');
+
+    // 2 Thẻ bấm kích thước lớn chuẩn touch screen
+    expect(content).toContain('VN');
+    expect(content).toContain('Tiếng Việt');
+    expect(content).toContain('EN');
+    expect(content).toContain('English');
+  });
 });
 

@@ -255,85 +255,24 @@ export const MobileRobotScreen = ({
 
             {/* Nút Ngôn ngữ (VI / EN) chỉ icon */}
             {onToggleLanguage && (
-              <div className="relative z-50">
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setIsLangMenuOpen((prev) => !prev);
-                    setIsUtilitiesMenuOpen(false);
-                  }}
-                  onPointerDown={(e) => e.stopPropagation()}
-                  className={`w-7 h-7 rounded-full border flex items-center justify-center active:scale-95 shadow-sm cursor-pointer transition-all touch-manipulation ${
-                    isLangMenuOpen
-                      ? 'bg-stone-900 text-white border-stone-900'
-                      : 'bg-stone-900/90 hover:bg-stone-800 text-stone-300 hover:text-white border-stone-700/80'
-                  }`}
-                  title={isEn ? 'Switch Language' : 'Chọn ngôn ngữ'}
-                  aria-label={isEn ? 'Switch Language' : 'Chọn ngôn ngữ'}
-                >
-                  <Globe className="w-3.5 h-3.5 text-stone-300" />
-                </button>
-
-                {/* Dropdown Menu Chọn Ngôn Ngữ */}
-                {isLangMenuOpen && (
-                  <div
-                    onClick={(e) => e.stopPropagation()}
-                    onTouchStart={(e) => e.stopPropagation()}
-                    onPointerDown={(e) => e.stopPropagation()}
-                    className="absolute top-9 right-0 z-50 w-44 rounded-2xl bg-stone-900/95 border border-stone-700/80 shadow-2xl p-1.5 backdrop-blur-xl animate-fadeIn space-y-1"
-                  >
-                    <div className="text-[10px] font-bold uppercase tracking-wider text-stone-400 px-2.5 py-1 border-b border-stone-800 flex items-center justify-between">
-                      <span>{isEn ? 'Language' : 'Ngôn ngữ'}</span>
-                      <span className="text-[9px] text-stone-500 font-mono">LANG</span>
-                    </div>
-
-                    {/* Tiếng Việt */}
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onToggleLanguage('Tiếng Việt');
-                        setIsLangMenuOpen(false);
-                      }}
-                      onPointerDown={(e) => e.stopPropagation()}
-                      className={`w-full px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-between transition-all cursor-pointer ${
-                        !isEn
-                          ? 'bg-stone-800 text-stone-100 border border-stone-600'
-                          : 'text-stone-300 hover:bg-stone-800/60 hover:text-stone-100'
-                      }`}
-                    >
-                      <span className="flex items-center gap-2">
-                        <span className="text-sm">🇻🇳</span>
-                        <span>Tiếng Việt</span>
-                      </span>
-                      {!isEn && <Check className="w-3.5 h-3.5 text-stone-200" />}
-                    </button>
-
-                    {/* English */}
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onToggleLanguage('English');
-                        setIsLangMenuOpen(false);
-                      }}
-                      onPointerDown={(e) => e.stopPropagation()}
-                      className={`w-full px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-between transition-all cursor-pointer ${
-                        isEn
-                          ? 'bg-stone-800 text-stone-100 border border-stone-600'
-                          : 'text-stone-300 hover:bg-stone-800/60 hover:text-stone-100'
-                      }`}
-                    >
-                      <span className="flex items-center gap-2">
-                        <span className="text-sm">🇬🇧</span>
-                        <span>English</span>
-                      </span>
-                      {isEn && <Check className="w-3.5 h-3.5 text-stone-200" />}
-                    </button>
-                  </div>
-                )}
-              </div>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsLangMenuOpen((prev) => !prev);
+                  setIsUtilitiesMenuOpen(false);
+                }}
+                onPointerDown={(e) => e.stopPropagation()}
+                className={`w-7 h-7 rounded-full border flex items-center justify-center active:scale-95 shadow-sm cursor-pointer transition-all touch-manipulation ${
+                  isLangMenuOpen
+                    ? 'bg-stone-900 text-white border-stone-900'
+                    : 'bg-stone-900/90 hover:bg-stone-800 text-stone-300 hover:text-white border-stone-700/80'
+                }`}
+                title={isEn ? 'Switch Language' : 'Chọn ngôn ngữ'}
+                aria-label={isEn ? 'Switch Language' : 'Chọn ngôn ngữ'}
+              >
+                <Globe className="w-3.5 h-3.5 text-stone-300" />
+              </button>
             )}
 
             {/* Nút Menu Dịch Vụ / Tiện ích chỉ icon */}
@@ -356,13 +295,138 @@ export const MobileRobotScreen = ({
           </div>
         </header>
 
-        {/* Nền mờ khi mở Menu Ngôn Ngữ (Click outside to close) */}
+        {/* Modal Chọn Ngôn Ngữ Cỡ Lớn Chuẩn Kiosk & Touch Display (Đồng bộ phong cách Modal Đặt món / Tiện ích) */}
         {isLangMenuOpen && (
           <div
-            className="fixed inset-0 z-40 bg-black/30 backdrop-blur-xs"
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in select-none"
             onClick={() => setIsLangMenuOpen(false)}
-            onPointerDown={() => setIsLangMenuOpen(false)}
-          />
+            onPointerDown={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label={isEn ? 'Select Language' : 'Chọn ngôn ngữ'}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              onPointerDown={(e) => e.stopPropagation()}
+              className="w-full max-w-sm sm:max-w-md bg-stone-900 border border-stone-700/80 rounded-3xl shadow-2xl p-5 sm:p-6 text-stone-100 flex flex-col gap-4 animate-in zoom-in-95 duration-150"
+            >
+              {/* Header Modal */}
+              <div className="flex items-center justify-between pb-3.5 border-b border-stone-800">
+                <div className="flex items-center gap-3">
+                  <div className="w-11 h-11 rounded-2xl bg-stone-800 border border-stone-700 flex items-center justify-center text-stone-200 shrink-0">
+                    <Globe className="w-5 h-5 text-stone-300" />
+                  </div>
+                  <div>
+                    <h2 className="text-base sm:text-lg font-bold text-white tracking-wide">
+                      {isEn ? 'Select Language' : 'Chọn Ngôn Ngữ'}
+                    </h2>
+                    <p className="text-xs text-stone-400">
+                      {isEn ? 'Voice & Screen display' : 'Giao tiếp giọng nói và hiển thị'}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsLangMenuOpen(false)}
+                  className="w-9 h-9 rounded-full bg-stone-800 hover:bg-stone-700 text-stone-400 hover:text-white flex items-center justify-center active:scale-95 transition-all cursor-pointer"
+                  title={isEn ? 'Close' : 'Đóng'}
+                  aria-label={isEn ? 'Close' : 'Đóng'}
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Thân Modal: 2 Thẻ Ngôn Ngữ Kích Thước Lớn Chuẩn Touch Screen */}
+              <div className="flex flex-col gap-3">
+                {/* 1. Tiếng Việt */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    onToggleLanguage('Tiếng Việt');
+                    setIsLangMenuOpen(false);
+                  }}
+                  className={`w-full p-4 rounded-2xl border text-left transition-all cursor-pointer flex items-center justify-between active:scale-[0.98] ${
+                    !isEn
+                      ? 'bg-stone-800/90 border-stone-500 ring-2 ring-stone-400/40 text-white shadow-lg'
+                      : 'bg-stone-800/40 border-stone-700/60 hover:bg-stone-800/70 text-stone-300 hover:text-white'
+                  }`}
+                >
+                  <div className="flex items-center gap-3.5 min-w-0">
+                    <div className="w-12 h-12 rounded-xl bg-rose-950/60 border border-rose-800/60 flex items-center justify-center shrink-0">
+                      <span className="text-sm font-black tracking-wider text-rose-300 font-mono">VN</span>
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-base font-bold text-white">Tiếng Việt</span>
+                        {!isEn && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-stone-700 text-stone-200 border border-stone-600">
+                            Đang chọn
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-stone-400 truncate mt-0.5">
+                        Vietnamese · Giọng đọc và nhận diện tự nhiên
+                      </p>
+                    </div>
+                  </div>
+                  {!isEn ? (
+                    <div className="w-7 h-7 rounded-full bg-stone-200 text-stone-900 flex items-center justify-center shrink-0 shadow-sm">
+                      <Check className="w-4 h-4 stroke-[3]" />
+                    </div>
+                  ) : (
+                    <div className="w-7 h-7 rounded-full border border-stone-700 shrink-0" />
+                  )}
+                </button>
+
+                {/* 2. English */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    onToggleLanguage('English');
+                    setIsLangMenuOpen(false);
+                  }}
+                  className={`w-full p-4 rounded-2xl border text-left transition-all cursor-pointer flex items-center justify-between active:scale-[0.98] ${
+                    isEn
+                      ? 'bg-stone-800/90 border-stone-500 ring-2 ring-stone-400/40 text-white shadow-lg'
+                      : 'bg-stone-800/40 border-stone-700/60 hover:bg-stone-800/70 text-stone-300 hover:text-white'
+                  }`}
+                >
+                  <div className="flex items-center gap-3.5 min-w-0">
+                    <div className="w-12 h-12 rounded-xl bg-blue-950/60 border border-blue-800/60 flex items-center justify-center shrink-0">
+                      <span className="text-sm font-black tracking-wider text-blue-300 font-mono">EN</span>
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-base font-bold text-white">English</span>
+                        {isEn && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-stone-700 text-stone-200 border border-stone-600">
+                            Active
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-stone-400 truncate mt-0.5">
+                        English · International hotel guest support
+                      </p>
+                    </div>
+                  </div>
+                  {isEn ? (
+                    <div className="w-7 h-7 rounded-full bg-stone-200 text-stone-900 flex items-center justify-center shrink-0 shadow-sm">
+                      <Check className="w-4 h-4 stroke-[3]" />
+                    </div>
+                  ) : (
+                    <div className="w-7 h-7 rounded-full border border-stone-700 shrink-0" />
+                  )}
+                </button>
+              </div>
+
+              {/* Footer Hint */}
+              <div className="pt-2 text-center text-[11px] text-stone-500 border-t border-stone-800/60">
+                {isEn
+                  ? 'Language applies immediately to robot speech and screen display'
+                  : 'Ngôn ngữ sẽ áp dụng ngay cho giọng nói robot và màn hình'}
+              </div>
+            </div>
+          </div>
         )}
 
         {/* Full-Screen Utilities Menu (Phương án 2: Kiosk Landscape Grid với Mini Robot Face Header - Theme Xám Trắng) */}

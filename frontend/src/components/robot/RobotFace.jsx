@@ -92,7 +92,7 @@ export const RobotFace = ({
     : isCompactSize 
       ? 'w-[170px] h-[170px]' 
       : isMobileSize 
-        ? 'w-[190px] h-[190px] sm:w-[220px] sm:h-[220px] max-h-[50vh]' 
+        ? 'w-[260px] h-[260px] sm:w-[320px] sm:h-[320px] max-h-[60vh]' 
         : 'w-[420px] h-[420px] sm:w-[480px] sm:h-[480px] md:w-[560px] md:h-[560px] lg:w-[620px] lg:h-[620px]';
 
   // Xác định transform cho mắt theo biểu cảm

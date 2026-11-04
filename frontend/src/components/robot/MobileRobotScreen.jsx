@@ -233,28 +233,27 @@ export const MobileRobotScreen = ({
 
           <div className="flex items-center gap-2">
             {activeRoomNumber && (
-              <div className="flex items-center gap-1.5 animate-fadeIn">
-                <span className="text-[11px] font-mono font-bold text-stone-700 bg-stone-200/90 px-2.5 py-1 rounded-full border border-stone-300 shadow-2xs flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  {isEn ? `Rm.${activeRoomNumber}` : `P.${activeRoomNumber}`}
-                </span>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (onResetSession) onResetSession();
-                  }}
-                  title={isEn ? `Exit session for room ${activeRoomNumber}` : `Thoát phiên phòng ${activeRoomNumber}`}
-                  aria-label={isEn ? "Exit session" : "Thoát phiên"}
-                  className="h-7 px-2.5 rounded-full border border-rose-300/80 bg-rose-50/90 hover:bg-rose-100 text-rose-700 hover:text-rose-900 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs active:scale-95 touch-manipulation"
-                >
-                  <LogOut className="w-3.5 h-3.5 text-rose-600 shrink-0" />
-                  <span className="text-[11px] font-semibold">{isEn ? "Exit" : "Thoát phiên"}</span>
-                </button>
-              </div>
+              <span className="h-7 px-2.5 rounded-full bg-stone-200/90 text-stone-800 text-xs font-mono font-bold border border-stone-300 shadow-2xs flex items-center justify-center animate-fadeIn select-none">
+                {activeRoomNumber}
+              </span>
+            )}
+            {activeRoomNumber && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (onResetSession) onResetSession();
+                }}
+                title={isEn ? `Exit session for room ${activeRoomNumber}` : `Thoát phiên phòng ${activeRoomNumber}`}
+                aria-label={isEn ? "Exit session" : "Thoát phiên"}
+                className="h-7 px-2.5 rounded-full border border-stone-700/80 bg-stone-900/90 hover:bg-stone-800 text-stone-200 hover:text-white text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm active:scale-95 touch-manipulation animate-fadeIn"
+              >
+                <LogOut className="w-3.5 h-3.5 text-stone-300 shrink-0" />
+                <span className="text-[11px] font-semibold">{isEn ? "Exit" : "Thoát phiên"}</span>
+              </button>
             )}
 
-            {/* Nút Ngôn ngữ (VI / EN) chuẩn Desktop có Dropdown */}
+            {/* Nút Ngôn ngữ (VI / EN) chỉ icon */}
             {onToggleLanguage && (
               <div className="relative z-50">
                 <button
@@ -265,16 +264,15 @@ export const MobileRobotScreen = ({
                     setIsUtilitiesMenuOpen(false);
                   }}
                   onPointerDown={(e) => e.stopPropagation()}
-                  className={`h-7 px-2.5 rounded-full border text-[10px] font-mono font-bold flex items-center gap-1 active:scale-95 shadow-sm cursor-pointer transition-all ${
+                  className={`w-7 h-7 rounded-full border flex items-center justify-center active:scale-95 shadow-sm cursor-pointer transition-all touch-manipulation ${
                     isLangMenuOpen
                       ? 'bg-stone-900 text-white border-stone-900'
                       : 'bg-stone-900/90 hover:bg-stone-800 text-stone-300 hover:text-white border-stone-700/80'
                   }`}
                   title={isEn ? 'Switch Language' : 'Chọn ngôn ngữ'}
+                  aria-label={isEn ? 'Switch Language' : 'Chọn ngôn ngữ'}
                 >
-                  <Globe className="w-3 h-3 text-stone-400" />
-                  <span>{isEn ? 'EN' : 'VI'}</span>
-                  <ChevronDown className={`w-2.5 h-2.5 text-stone-400 transition-transform ${isLangMenuOpen ? 'rotate-180' : ''}`} />
+                  <Globe className="w-3.5 h-3.5 text-stone-300" />
                 </button>
 
                 {/* Dropdown Menu Chọn Ngôn Ngữ */}
@@ -338,23 +336,22 @@ export const MobileRobotScreen = ({
               </div>
             )}
 
-            {/* Nút Menu Dịch Vụ / Tiện ích chuẩn theme xám */}
+            {/* Nút Menu Dịch Vụ / Tiện ích chỉ icon */}
             <button
               type="button"
               onClick={() => {
                 setIsUtilitiesMenuOpen((prev) => !prev);
                 setIsLangMenuOpen(false);
               }}
-              className={`h-7 px-2.5 rounded-full border text-[10px] font-bold flex items-center gap-1.5 active:scale-95 shadow-xs cursor-pointer transition-all ${
+              className={`w-7 h-7 rounded-full border flex items-center justify-center active:scale-95 shadow-sm cursor-pointer transition-all touch-manipulation ${
                 isUtilitiesMenuOpen || isNavigating
                   ? 'bg-stone-900 text-white border-stone-900 shadow-sm'
-                  : 'bg-stone-900/90 hover:bg-stone-800 text-stone-200 border-stone-700/80'
+                  : 'bg-stone-900/90 hover:bg-stone-800 text-stone-300 hover:text-white border-stone-700/80'
               }`}
               title={isEn ? 'Utilities Menu' : 'Menu Dịch vụ và Tiện ích'}
+              aria-label={isEn ? 'Utilities Menu' : 'Menu Dịch vụ và Tiện ích'}
             >
-              <Menu className="w-3 h-3 text-stone-300" />
-              <span>{isEn ? 'Utilities' : 'Tiện ích'}</span>
-              <ChevronDown className={`w-3 h-3 transition-transform duration-200 ${isUtilitiesMenuOpen ? 'rotate-180' : ''}`} />
+              <Menu className="w-3.5 h-3.5 text-stone-300" />
             </button>
           </div>
         </header>
@@ -826,8 +823,8 @@ export const MobileRobotScreen = ({
             className="flex-1 min-h-0 w-full flex flex-col items-center justify-center robot-safe-x robot-safe-bottom cursor-pointer relative px-4 select-none"
           >
             <div className="w-full max-w-lg flex flex-col items-center justify-center py-0.5">
-              {/* Khuôn mặt Robot */}
-              <div className="w-full flex items-center justify-center transition-transform active:scale-95 duration-200">
+              {/* Khuôn mặt Robot to rõ nổi bật */}
+              <div className="w-full flex items-center justify-center transition-transform active:scale-95 duration-200 scale-110 sm:scale-125">
                 <RobotFace
                   mode={getRobotMode(currentState, isSpeaking, isProcessing, isListening)}
                   eyeExpression={eyeExpression}
@@ -844,7 +841,7 @@ export const MobileRobotScreen = ({
                   onClose={onCloseAiResponse}
                 />
               ) : currentState === 'RT-03' || isListening ? (
-                /* 2. Khi đang nghe: Dock âm thanh sóng AudioWave chuẩn Desktop */
+                /* 2. Khi đang nghe: Dock âm thanh sóng AudioWave tinh giản tối đa từ ngữ */
                 <div className="mt-2.5 flex flex-col items-center gap-1.5 animate-fadeIn">
                   <div
                     onClick={(e) => {
@@ -856,20 +853,14 @@ export const MobileRobotScreen = ({
                         onStartTalk();
                       }
                     }}
-                    className="px-5 py-2 sm:px-6 sm:py-2.5 bg-stone-900/90 hover:bg-stone-850 backdrop-blur-xl border border-stone-700/80 rounded-2xl shadow-xl flex items-center justify-between gap-3 text-stone-100 w-full max-w-sm sm:max-w-md cursor-pointer active:scale-[0.99] transition-all"
+                    className="px-4 py-2 bg-stone-900/90 hover:bg-stone-850 backdrop-blur-xl border border-stone-700/80 rounded-2xl shadow-xl flex items-center justify-between gap-3 text-stone-100 w-auto min-w-[200px] max-w-sm cursor-pointer active:scale-[0.99] transition-all touch-manipulation"
                     title={transcript ? (isEn ? 'Tap to send immediately' : 'Chạm để gửi ngay') : (isEn ? 'Tap to restart mic' : 'Chạm để kích hoạt lại Micro')}
                   >
-                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
                       <AudioWave isActive={isListening || currentState === "RT-03"} volumeLevel={volumeLevel} />
-                      <div className="flex flex-col text-left min-w-0">
-                        <span className="text-xs font-bold text-stone-200 line-clamp-1">
-                          {transcript ? `"${transcript}"` : (isEn ? 'Listening... Please speak' : 'Listening... · Đang lắng nghe...')}
-                        </span>
-                        <span className="text-[10px] text-stone-400 font-medium flex items-center gap-1.5">
-                          <Globe className="w-3 h-3 text-stone-400 shrink-0" />
-                          <span className="truncate">{isEn ? 'Auto-detect VI · EN · Bilingual' : 'Auto-detect VI · EN · Tự động nhận diện'}</span>
-                        </span>
-                      </div>
+                      <span className="text-xs font-semibold text-stone-200 truncate">
+                        {transcript ? `"${transcript}"` : (isEn ? 'Listening...' : 'Đang lắng nghe...')}
+                      </span>
                     </div>
 
                     {transcript && onSubmitTalk && (
@@ -879,7 +870,7 @@ export const MobileRobotScreen = ({
                           e.stopPropagation();
                           onSubmitTalk();
                         }}
-                        className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md transition-all active:scale-95 shrink-0 flex items-center gap-1 cursor-pointer"
+                        className="px-2.5 py-1 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md transition-all active:scale-95 shrink-0 flex items-center gap-1 cursor-pointer"
                         title={isEn ? 'Send question' : 'Gửi câu hỏi'}
                       >
                         <span>{isEn ? 'Send' : 'Gửi'}</span>
@@ -893,13 +884,13 @@ export const MobileRobotScreen = ({
                   )}
                 </div>
               ) : isBusy ? (
-                /* 3. Khi đang suy nghĩ / xử lý: Dock xám tối giản */
-                <div className="mt-2.5 flex items-center gap-2.5 px-4 py-2 bg-stone-900/90 backdrop-blur-xl border border-stone-700/80 rounded-full shadow-lg text-stone-200 text-xs font-medium animate-fadeIn">
+                /* 3. Khi đang suy nghĩ / xử lý: Dock xám tối giản từ ngữ */
+                <div className="mt-2.5 flex items-center gap-2 px-3.5 py-1.5 bg-stone-900/90 backdrop-blur-xl border border-stone-700/80 rounded-full shadow-lg text-stone-200 text-xs font-medium animate-fadeIn">
                   <span className="w-2 h-2 rounded-full bg-stone-300 animate-ping" />
-                  <span>{isEn ? 'Processing your question...' : 'Đang xử lý câu hỏi... · Processing...'}</span>
+                  <span>{isEn ? 'Processing...' : 'Đang xử lý...'}</span>
                 </div>
               ) : (
-                /* 4. Trạng thái chờ: Nút chạm nói thanh lịch chuẩn Desktop */
+                /* 4. Trạng thái chờ: Nút chạm nói tối giản từ ngữ */
                 <div className="mt-2.5 flex flex-col items-center gap-1.5 animate-fadeIn">
                   <button
                     type="button"
@@ -908,81 +899,16 @@ export const MobileRobotScreen = ({
                       if (onPrime) onPrime();
                       if (onStartTalk) onStartTalk();
                     }}
-                    className="px-4 py-2 bg-stone-900/85 hover:bg-stone-800 backdrop-blur-xl border border-stone-700/80 rounded-full shadow-lg flex items-center gap-2.5 cursor-pointer active:scale-95 transition-all text-stone-300 hover:text-stone-100 group outline-none"
-                    title={isEn ? 'Touch or speak to begin' : 'Chạm hoặc nói chuyện để bắt đầu'}
+                    className="px-4 py-2 bg-stone-900/90 hover:bg-stone-800 backdrop-blur-xl border border-stone-700/80 rounded-full shadow-lg flex items-center gap-2 cursor-pointer active:scale-95 transition-all text-stone-200 hover:text-white group outline-none touch-manipulation"
+                    title={isEn ? 'Touch or speak' : 'Chạm hoặc nói'}
                   >
-                    <span className="w-2 h-2 rounded-full bg-stone-300 animate-pulse group-hover:scale-125 transition-transform" />
-                    <div className="flex items-center gap-1.5 text-stone-200 group-hover:text-white transition-colors">
-                      <Mic className="w-3.5 h-3.5 text-stone-300 group-hover:text-white" />
-                      <span className="text-xs font-semibold tracking-wide">
-                        {isEn ? 'Touch or Speak to begin' : 'Touch or Speak · Chạm hoặc Nói'}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1 text-[9px] text-stone-400 bg-stone-800/90 px-1.5 py-0.5 rounded-full border border-stone-700/60 font-mono">
-                      <Globe className="w-2.5 h-2.5 text-stone-400" />
-                      <span>VI · EN</span>
-                    </div>
+                    <Mic className="w-3.5 h-3.5 text-stone-300 group-hover:text-white" />
+                    <span className="text-xs font-semibold">
+                      {isEn ? 'Touch or speak' : 'Chạm hoặc nói'}
+                    </span>
                   </button>
                 </div>
               )}
-              {/* Quick Action Dock: Chạm nhanh các dịch vụ cốt lõi không cần vào menu sâu */}
-              <div
-                onClick={(e) => e.stopPropagation()}
-                className="mt-3 flex items-center justify-center gap-2 flex-wrap max-w-full px-2"
-              >
-                {onOpenFoodMenu && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onOpenFoodMenu();
-                    }}
-                    className="h-7.5 px-3 rounded-full bg-white/90 hover:bg-white text-stone-800 border border-[#E3DFD5] shadow-2xs hover:shadow-xs text-[11px] font-bold flex items-center gap-1.5 active:scale-95 cursor-pointer touch-manipulation transition-all"
-                  >
-                    <Utensils className="w-3.5 h-3.5 text-stone-600" />
-                    <span>{isEn ? 'Dining Menu' : 'Thực đơn'}</span>
-                  </button>
-                )}
-                {onOpenRoomService && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onOpenRoomService();
-                    }}
-                    className="h-7.5 px-3 rounded-full bg-white/90 hover:bg-white text-stone-800 border border-[#E3DFD5] shadow-2xs hover:shadow-xs text-[11px] font-bold flex items-center gap-1.5 active:scale-95 cursor-pointer touch-manipulation transition-all"
-                  >
-                    <ConciergeBell className="w-3.5 h-3.5 text-stone-600" />
-                    <span>{isEn ? 'Room Service' : 'Dịch vụ phòng'}</span>
-                  </button>
-                )}
-                {onOpenFacilities && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onOpenFacilities();
-                    }}
-                    className="h-7.5 px-3 rounded-full bg-white/90 hover:bg-white text-stone-800 border border-[#E3DFD5] shadow-2xs hover:shadow-xs text-[11px] font-bold flex items-center gap-1.5 active:scale-95 cursor-pointer touch-manipulation transition-all"
-                  >
-                    <Building className="w-3.5 h-3.5 text-stone-600" />
-                    <span>{isEn ? 'Amenities' : 'Tiện ích'}</span>
-                  </button>
-                )}
-                {onCallStaff && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onCallStaff();
-                    }}
-                    className="h-7.5 px-3 rounded-full bg-white/90 hover:bg-white text-stone-800 border border-[#E3DFD5] shadow-2xs hover:shadow-xs text-[11px] font-bold flex items-center gap-1.5 active:scale-95 cursor-pointer touch-manipulation transition-all"
-                  >
-                    <PhoneCall className="w-3.5 h-3.5 text-stone-600" />
-                    <span>{isEn ? 'Call Staff' : 'Gọi hỗ trợ'}</span>
-                  </button>
-                )}
-              </div>
             </div>
           </main>
         )}

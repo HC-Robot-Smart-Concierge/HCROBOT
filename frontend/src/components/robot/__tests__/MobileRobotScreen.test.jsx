@@ -34,16 +34,24 @@ describe('MobileRobotScreen Component & UX Tests', () => {
     expect(content).toContain('Exit');
   });
 
-  it('provides Quick Action Dock on mobile screen for direct thumb access', () => {
+  it('enforces minimalist mobile header with black exit button, icon-only buttons, room number only, and large face scale', () => {
     const filePath = path.resolve(__dirname, '../MobileRobotScreen.jsx');
     const content = fs.readFileSync(filePath, 'utf8');
 
-    // Chạm nhanh các dịch vụ không cần vào menu sâu
-    expect(content).toContain('onOpenFoodMenu');
-    expect(content).toContain('onOpenRoomService');
-    expect(content).toContain('onOpenFacilities');
-    expect(content).toContain('onCallStaff');
-    expect(content).toContain('touch-manipulation');
+    // Phòng chỉ hiện số phòng, không còn chấm màu xanh
+    expect(content).not.toContain('bg-emerald-500 animate-pulse');
+    expect(content).toContain('{activeRoomNumber}');
+
+    // Nút thoát phiên dùng màu đen đồng bộ hệ thống
+    expect(content).toContain('bg-stone-900/90');
+    expect(content).toContain('LogOut');
+
+    // Thanh nói chuyện tinh giản tối đa từ ngữ
+    expect(content).toContain('Chạm hoặc nói');
+    expect(content).not.toContain('Auto-detect VI · EN · Tự động nhận diện');
+
+    // Mặt robot to hơn trên mobile
+    expect(content).toContain('scale-110 sm:scale-125');
   });
 
   it('enforces 30s session idle timeout and unblocked idle check in RobotScreenPage.jsx', () => {

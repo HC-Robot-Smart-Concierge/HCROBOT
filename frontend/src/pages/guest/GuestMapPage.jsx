@@ -205,7 +205,7 @@ export const GuestMapPage = () => {
 
               {/* Lớp SVG Chỉ Đường Động Đúng Tọa Độ 1920 x 1080 */}
               <svg
-                viewBox="0 0 1920 1080"
+                viewBox="0 0 1840 1174"
                 className="absolute inset-0 w-full h-full pointer-events-none z-10"
                 preserveAspectRatio="xMidYMid meet"
               >
@@ -241,13 +241,13 @@ export const GuestMapPage = () => {
                     />
 
                     {/* Chấm Bạn Đang Ở Đây tại Lobby */}
-                    <g transform="translate(796, 545)">
+                    <g transform="translate(350, 580)">
                       <circle r="14" fill="#38BDF8" opacity="0.25" />
                       <circle r="8" fill="#0EA5E9" stroke="#ffffff" strokeWidth="2.5" />
                     </g>
 
                     {/* Vị trí Thang Máy A */}
-                    <g transform="translate(1249, 400)">
+                    <g transform="translate(1715, 560)">
                       <circle r="14" fill="#38BDF8" opacity="0.25" />
                       <circle r="8" fill="#38BDF8" stroke="#ffffff" strokeWidth="2.5" />
                     </g>
@@ -280,12 +280,12 @@ export const GuestMapPage = () => {
 
                     {/* Vị trí xuất phát chặng 2 */}
                     {currentDest.isDifferentFloor ? (
-                      <g transform="translate(1249, 410)">
+                      <g transform="translate(1715, 560)">
                         <circle r="14" fill="#38BDF8" opacity="0.25" />
                         <circle r="8" fill="#0EA5E9" stroke="#ffffff" strokeWidth="2.5" />
                       </g>
                     ) : (
-                      <g transform="translate(796, 545)">
+                      <g transform="translate(350, 580)">
                         <circle r="14" fill="#38BDF8" opacity="0.25" />
                         <circle r="8" fill="#0EA5E9" stroke="#ffffff" strokeWidth="2.5" />
                       </g>

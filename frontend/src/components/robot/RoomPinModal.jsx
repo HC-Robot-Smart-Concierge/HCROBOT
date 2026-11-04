@@ -668,749 +668,270 @@ export const RoomPinModal = ({
 
   if (!isOpen) return null;
 
-
-
   return (
-
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150 select-none overscroll-contain">
-
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150 select-none overscroll-contain">
       <div
-
-        className={`relative w-full max-w-[340px] sm:max-w-sm max-h-[92vh] overflow-y-auto p-4 sm:p-5 rounded-2xl bg-stone-900 border border-stone-800 shadow-2xl text-stone-100 transition-all ${
-
+        className={`relative w-full max-w-[340px] sm:max-w-sm max-h-[92vh] overflow-y-auto p-5 sm:p-6 rounded-3xl bg-white border border-[#E3DFD5] shadow-2xl text-stone-900 transition-all ${
           isShaking ? 'animate-shake' : ''
-
         } ${isSuccess ? 'border-emerald-500/60' : ''}`}
-
       >
-
-        {/* Nut dong */}
-
+        {/* Nút đóng */}
         <button
-
           type="button"
-
           onClick={onClose}
-
           disabled={isLoading || isSuccess}
-
-          className="absolute top-3 right-3 z-10 p-1.5 rounded-lg bg-stone-800/80 hover:bg-stone-700 text-stone-400 hover:text-stone-200 transition-colors cursor-pointer"
-
+          className="absolute top-3.5 right-3.5 z-10 w-8 h-8 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-500 hover:text-stone-800 transition-colors flex items-center justify-center cursor-pointer"
           title="Đóng"
-
         >
-
           <X className="w-4 h-4" />
-
         </button>
 
-
-
-        {/* 1. MAN HINH THANH CONG */}
-
+        {/* 1. MÀN HÌNH THÀNH CÔNG */}
         {isSuccess ? (
-
-          <div className="text-center py-5 space-y-3">
-
-            <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-stone-800 border border-emerald-500/40 text-emerald-400">
-
-              <CheckCircle2 className="w-6 h-6 animate-pulse" />
-
+          <div className="text-center py-6 space-y-3">
+            <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-600 mx-auto">
+              <CheckCircle2 className="w-7 h-7" />
             </div>
-
             <div>
-
-              <h3 className="text-base font-bold text-stone-100">
-
+              <h3 className="text-base sm:text-lg font-extrabold text-stone-900">
                 Xác Thực Thành Công
-
               </h3>
-
-              <p className="mt-1 text-xs text-stone-400">
-
+              <p className="mt-1 text-xs text-stone-600">
                 Chào mừng {successInfo?.guest_name || 'quý khách'}! Đã xác nhận phòng {successInfo?.room_number || selectedRoom}.
-
               </p>
-
             </div>
-
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-stone-800/90 border border-stone-700 text-[11px] text-stone-300">
-
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-
-              <span>Đang gửi yêu cầu phục vụ...</span>
-
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-stone-100 border border-stone-200 text-[11px] font-semibold text-stone-700">
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Đang gửi yêu cầu...</span>
             </div>
-
           </div>
-
-        ) : activeTab === 'nfc' ? (
-
-          /* 2. CHE DO QUET THE NFC */
-
-          <div className="space-y-3">
-
-            <div className="text-center space-y-1">
-
-              <div className="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-stone-800 border border-stone-700 text-stone-300 mx-auto">
-
-                <Radio className="w-5 h-5 animate-pulse" />
-
-              </div>
-
-              <h3 className="text-sm sm:text-base font-bold text-stone-100">
-
-                Chạm Thẻ Phòng NFC
-
-              </h3>
-
-              <p className="text-[11px] text-stone-400">
-
-                Áp thẻ phòng vào mặt lưng điện thoại để hệ thống nhận diện
-
-              </p>
-
-            </div>
-
-
-
-            <div
-
-              onClick={() => {
-
-                if (nfcStatus !== 'scanning') startWebNfcScan();
-
-              }}
-
-              className={`rounded-xl border p-3.5 text-center flex flex-col items-center justify-center cursor-pointer select-none active:scale-[0.98] transition-all ${
-
-                nfcStatus === 'scanning'
-
-                  ? 'bg-stone-800/80 border-emerald-500/60'
-
-                  : 'bg-stone-800/40 border-stone-700/60 hover:border-stone-600'
-
-              }`}
-
-            >
-
-              <div className="w-10 h-10 rounded-lg flex items-center justify-center mb-1.5 bg-stone-800 border border-stone-700 text-stone-300">
-
-                <CreditCard className="w-5 h-5" />
-
-              </div>
-
-              <div className="text-xs text-stone-300 leading-relaxed">
-
-                {nfcStatusMsg || 'Áp thẻ phòng NFC vào mặt lưng điện thoại'}
-
-              </div>
-
-            </div>
-
-
-
-            <button
-
-              type="button"
-
-              onClick={() => startWebNfcScan()}
-
-              disabled={isLoading || nfcStatus === 'scanning'}
-
-              className="w-full py-2.5 px-4 rounded-xl font-bold flex items-center justify-center gap-2 bg-stone-100 hover:bg-stone-200 text-stone-900 shadow-sm active:scale-95 transition-all cursor-pointer text-xs"
-
-            >
-
-              <Radio className="w-3.5 h-3.5 animate-pulse" />
-
-              <span>{nfcStatus === 'scanning' ? 'ĐANG LẮNG NGHE THẺ...' : 'BẬT ĐẦU ĐỌC QUÉT THẺ'}</span>
-
-            </button>
-
-
-
-            <div className="text-center pt-1">
-
-              <button
-
-                type="button"
-
-                onClick={() => {
-
-                  setActiveTab('pin');
-
-                  setErrorMessage('');
-
-                }}
-
-                className="text-xs text-stone-400 hover:text-stone-200 underline underline-offset-4 transition-colors cursor-pointer"
-
-              >
-
-                Không mang thẻ? Nhập mã PIN phòng 4 số
-
-              </button>
-
-            </div>
-
-          </div>
-
         ) : isForgotPinView ? (
-
-          /* BƯỚC FALLBACK: QUÊN MÃ PIN PHÒNG -> HƯỚNG DẪN RA LỄ TÂN */
-
+          /* 2. FALLBACK: QUÊN MÃ PIN PHÒNG -> HƯỚNG DẪN RA LỄ TÂN */
           <div className="space-y-4 py-2 text-center">
-
-            <div className="w-12 h-12 rounded-2xl mx-auto bg-stone-800 border border-stone-700 text-stone-200 flex items-center justify-center">
-
+            <div className="w-12 h-12 rounded-2xl mx-auto bg-stone-100 border border-stone-200 text-stone-700 flex items-center justify-center">
               <ShieldCheck className="w-6 h-6" />
-
             </div>
-
-
 
             <div>
-
-              <h3 className="text-base font-bold text-stone-100">
-
+              <h3 className="text-base font-extrabold text-stone-900">
                 Quên Mã PIN Phòng?
-
               </h3>
-
-              <p className="text-xs text-stone-300 mt-2 leading-relaxed px-2">
-
-                Vì lý do an ninh và bảo mật thông tin phòng lưu trú, Robot không được phép cung cấp hoặc cấp lại mã PIN phòng.
-
+              <p className="text-xs text-stone-600 mt-2 leading-relaxed px-1">
+                Vì lý do bảo mật, Robot không được phép cấp lại mã PIN. Quý khách vui lòng liên hệ quầy Lễ tân tại sảnh chính để được nhân viên hỗ trợ cấp lại mã PIN nhé ạ.
               </p>
-
-              <p className="text-xs text-stone-300 mt-1.5 font-medium px-2">
-
-                Quý khách vui lòng liên hệ quầy Lễ tân tại sảnh chính để được nhân viên xác minh và hỗ trợ cấp lại mã PIN nhé ạ.
-
-              </p>
-
             </div>
-
-
 
             <div className="flex flex-col gap-2 pt-2">
-
               <button
-
                 type="button"
-
                 onClick={() => {
-
                   if (onForgotPin) {
-
                     onForgotPin({ destination_key: 'front_desk', roomNumber: selectedRoom });
-
                   }
-
                   onClose();
-
                 }}
-
-                className="w-full py-2.5 px-4 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-900 font-bold text-xs sm:text-sm shadow-md transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-1.5"
-
+                className="w-full py-2.5 px-4 rounded-2xl bg-[#1A1917] hover:bg-stone-800 text-white font-bold text-xs sm:text-sm shadow-md transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-1.5"
               >
-
                 <span>Chỉ đường đến Quầy Lễ Tân</span>
-
               </button>
 
-
-
               <button
-
                 type="button"
-
                 onClick={() => setIsForgotPinView(false)}
-
-                className="w-full py-2 px-4 rounded-xl bg-stone-800 hover:bg-stone-750 text-stone-300 hover:text-stone-100 text-xs font-semibold transition-all cursor-pointer"
-
+                className="w-full py-2 px-4 rounded-2xl bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-semibold transition-all cursor-pointer"
               >
-
                 Quay lại nhập mã PIN
-
               </button>
-
             </div>
-
           </div>
-
         ) : isSelectingRoom ? (
-
-          /* 3. BƯỚC 1: CHỌN SỐ PHÒNG (MINIMAL TOUCH UI) */
-
-          <div className="space-y-3">
-
+          /* 3. BƯỚC 1: CHỌN SỐ PHÒNG (MINIMAL TOUCH UI SÁNG) */
+          <div className="space-y-3.5">
             <div className="text-center">
-
-              <h3 className="text-sm sm:text-base font-bold text-stone-100">
-
-                {pendingAction === 'query_order_status'
-
-                  ? 'Chọn Phòng Tra Cứu Món Ăn'
-
-                  : pendingAction === 'query_service_status'
-
-                  ? 'Chọn Phòng Tra Cứu Dịch Vụ'
-
-                  : 'Chọn Số Phòng Lưu Trú'}
-
+              <h3 className="text-sm sm:text-base font-extrabold text-stone-900">
+                Chọn Số Phòng Lưu Trú
               </h3>
-
-              <p className="text-[11px] text-stone-400 mt-0.5">
-
-                {pendingAction === 'query_order_status'
-
-                  ? 'Chạm chọn số phòng để kiểm tra trạng thái món ăn'
-
-                  : pendingAction === 'query_service_status'
-
-                  ? 'Chạm chọn số phòng để kiểm tra tiến độ dọn phòng'
-
-                  : 'Chạm chọn số phòng để xác định vị trí giao'}
-
+              <p className="text-[11px] text-stone-500 mt-0.5">
+                Chạm chọn số phòng của quý khách
               </p>
-
             </div>
 
-
-
-            {/* Tab chọn tầng */}
-
-            <div className="flex gap-1.5 p-1 bg-stone-800/80 rounded-xl border border-stone-700/60">
-
+            {/* Tab chuyển tầng 3 và tầng 4 */}
+            <div className="grid grid-cols-2 gap-1.5 p-1 bg-stone-100 border border-stone-200 rounded-xl">
               <button
-
                 type="button"
-
                 onClick={() => setRoomFloorTab('3')}
-
-                className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-
+                className={`py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
                   roomFloorTab === '3'
-
-                    ? 'bg-stone-100 text-stone-900 shadow-sm'
-
-                    : 'text-stone-400 hover:text-stone-200'
-
+                    ? 'bg-white text-stone-900 shadow-xs'
+                    : 'text-stone-600 hover:text-stone-900'
                 }`}
-
               >
-
-                Tầng 3 (301 - 310)
-
+                Tầng 3 (P.301 - 310)
               </button>
-
               <button
-
                 type="button"
-
                 onClick={() => setRoomFloorTab('4')}
-
-                className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-
+                className={`py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
                   roomFloorTab === '4'
-
-                    ? 'bg-stone-100 text-stone-900 shadow-sm'
-
-                    : 'text-stone-400 hover:text-stone-200'
-
+                    ? 'bg-white text-stone-900 shadow-xs'
+                    : 'text-stone-600 hover:text-stone-900'
                 }`}
-
               >
-
-                Tầng 4 (401 - 410)
-
+                Tầng 4 (P.401 - 410)
               </button>
-
             </div>
 
-
-
-            {/* Lưới 10 phòng của tầng */}
-
+            {/* Grid 10 phòng / tầng */}
             <div className="grid grid-cols-5 gap-1.5">
-
               {(roomFloorTab === '3' ? OFFICIAL_ROOMS.floor3 : OFFICIAL_ROOMS.floor4).map((rNum) => {
-
                 const isSelected = selectedRoom === rNum;
-
                 return (
-
                   <button
-
                     key={rNum}
-
                     type="button"
-
                     onClick={() => {
-
                       setSelectedRoom(rNum);
-
                       if (onRoomSelect) onRoomSelect(rNum);
-
                       setIsSelectingRoom(false);
-
                       setPin('');
-
                       setErrorMessage('');
-
                     }}
-
                     className={`py-2 rounded-xl font-bold text-xs sm:text-sm transition-all cursor-pointer select-none active:scale-95 ${
-
                       isSelected
-
-                        ? 'bg-stone-100 text-stone-900 shadow-sm ring-1 ring-stone-200'
-
-                        : 'bg-stone-800/80 hover:bg-stone-750 text-stone-200 border border-stone-700/60'
-
+                        ? 'bg-[#1A1917] text-white shadow-sm'
+                        : 'bg-stone-50 hover:bg-stone-100 text-stone-900 border border-stone-200/80'
                     }`}
-
                   >
-
                     {rNum}
-
                   </button>
-
                 );
-
               })}
-
             </div>
-
           </div>
-
         ) : (
-
-          /* 4. BƯỚC 2: NHẬP MÃ PIN 4 SỐ (TỐI ƯU CỰC ĐẠI CHO MOBILE UX) */
-
-          <div className="space-y-2.5">
-
-            {/* Header thông tin */}
-
+          /* 4. BƯỚC 2: NHẬP MÃ PIN 4 SỐ (TỐI GIẢN ICON & CHỮ, TONE SÁNG) */
+          <div className="space-y-3">
+            {/* Header thông tin ngắn gọn */}
             <div className="flex flex-col items-center text-center">
-
-              <div className="w-9 h-9 rounded-xl mb-1 bg-stone-800 border border-stone-700/60 text-stone-300 flex items-center justify-center">
-
-                <KeyRound className="w-4 h-4 text-stone-300" />
-
-              </div>
-
-
-
-              <h3 className="text-sm sm:text-base font-bold text-stone-100">
-
-                {pendingAction === 'query_order_status'
-
-                  ? 'Tra Cứu Trạng Thái Món Ăn'
-
-                  : pendingAction === 'query_service_status'
-
-                  ? 'Tra Cứu Tiến Độ Dịch Vụ Phòng'
-
-                  : pendingAction === 'room_service'
-
-                  ? 'Xác Nhận Dịch Vụ Phòng'
-
-                  : 'Xác Nhận Đặt Món'}
-
+              <h3 className="text-base sm:text-lg font-extrabold text-stone-900">
+                {selectedRoom ? `Mã PIN Phòng ${selectedRoom}` : 'Nhập Mã PIN Phòng'}
               </h3>
 
-
-
-              <p className="text-[11px] text-stone-400 mt-0.5">
-
-                Nhập 4 số cuối CCCD của phòng lưu trú
-
+              <p className="text-xs text-stone-500 mt-0.5">
+                4 số cuối CCCD của khách lưu trú
               </p>
-
-
-
-              {/* Chi tiết món ăn */}
-
-              {pendingItems && (
-
-                <div className="mt-1 px-2.5 py-0.5 rounded-lg bg-stone-800/80 border border-stone-700/50 text-[10px] text-stone-300 font-medium max-w-full truncate">
-
-                  {pendingItems}
-
-                </div>
-
-              )}
-
-
 
               {/* Thanh hiển thị phòng đang chọn kèm nút đổi phòng */}
-
-              <div className="mt-1.5 w-full flex items-center justify-between px-2.5 py-1 rounded-xl bg-stone-800/60 border border-stone-700/50">
-
-                <div className="flex items-center gap-1.5">
-
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-
-                  <span className="text-[10px] sm:text-xs text-stone-400">
-
-                    {pendingAction && pendingAction.startsWith('query_') ? 'Phòng tra cứu:' : 'Phòng:'}
-
-                  </span>
-
-                  <span className="text-xs sm:text-sm font-bold text-stone-100">
-
+              <div className="mt-2 w-full flex items-center justify-between px-3 py-1.5 rounded-2xl bg-stone-50 border border-stone-200">
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                  <span className="text-xs font-bold text-stone-900">
                     Phòng {selectedRoom}
-
                   </span>
-
                 </div>
-
                 <button
-
                   type="button"
-
                   onClick={() => {
-
                     setIsSelectingRoom(true);
-
                     setPin('');
-
                     setErrorMessage('');
-
                   }}
-
-                  className="text-[10px] font-medium text-stone-300 hover:text-stone-100 px-2 py-0.5 rounded-md bg-stone-700/70 hover:bg-stone-700 transition-colors cursor-pointer"
-
+                  className="text-[11px] font-semibold text-stone-700 hover:text-stone-900 px-2 py-0.5 rounded-lg bg-stone-200 hover:bg-stone-300 transition-colors cursor-pointer"
                 >
-
                   Đổi phòng
-
                 </button>
-
               </div>
-
-
 
               {/* Trạng thái / lỗi */}
-
               <div className="min-h-[16px] mt-1 text-center">
-
                 {isLoading && (
-
-                  <span className="text-[11px] text-stone-300 animate-pulse font-medium">
-
+                  <span className="text-[11px] text-stone-600 animate-pulse font-medium">
                     Đang xác thực mã PIN...
-
                   </span>
-
                 )}
-
                 {errorMessage && !isLoading && (
-
-                  <div className="flex items-center justify-center gap-1 text-[11px] text-rose-400 font-medium">
-
-                    <AlertCircle className="w-3 h-3 flex-shrink-0" />
-
+                  <div className="flex items-center justify-center gap-1 text-[11px] text-rose-500 font-semibold">
+                    <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
                     <span className="line-clamp-2">{errorMessage}</span>
-
                   </div>
-
                 )}
-
               </div>
-
             </div>
-
-
 
             {/* 4 Ô chỉ báo mã PIN */}
-
-            <div className="flex justify-center items-center gap-2 py-0.5">
-
+            <div className="flex justify-center items-center gap-2.5 py-1">
               {[0, 1, 2, 3].map((index) => {
-
                 const isFilled = pin.length > index;
-
                 return (
-
                   <div
-
                     key={index}
-
-                    className={`w-3 h-3 rounded-full transition-all duration-150 ${
-
+                    className={`w-3.5 h-3.5 rounded-full transition-all duration-150 ${
                       isFilled
-
-                        ? 'bg-stone-100 ring-2 ring-stone-400/30 scale-105'
-
-                        : 'bg-stone-800 border border-stone-600'
-
+                        ? 'bg-stone-900 ring-2 ring-stone-900/20 scale-105'
+                        : 'bg-stone-200 border border-stone-300'
                     }`}
-
                   />
-
                 );
-
               })}
-
             </div>
 
-
-
-            {/* Bàn phím số Numpad cảm ứng tinh giản */}
-
-            <div className="grid grid-cols-3 gap-1.5 w-full max-w-[240px] mx-auto">
-
+            {/* Bàn phím số Numpad cảm ứng tone sáng */}
+            <div className="grid grid-cols-3 gap-2 w-full max-w-[240px] mx-auto pt-1">
               {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
-
                 <button
-
                   key={num}
-
                   type="button"
-
                   onClick={() => handleKeyPress(String(num))}
-
                   disabled={isLoading || isSuccess}
-
-                  className="h-10 rounded-xl bg-stone-800/90 hover:bg-stone-750 active:bg-stone-700 border border-stone-700/50 text-base font-semibold text-stone-100 shadow-sm active:scale-95 transition-all flex items-center justify-center select-none cursor-pointer"
-
+                  className="h-11 rounded-2xl bg-stone-50 hover:bg-stone-100 active:bg-stone-200 border border-stone-200/90 text-lg font-bold text-stone-900 shadow-2xs active:scale-95 transition-all flex items-center justify-center select-none cursor-pointer"
                 >
-
                   {num}
-
                 </button>
-
               ))}
 
-
-
               <button
-
                 type="button"
-
                 onClick={handleClear}
-
                 disabled={isLoading || isSuccess || pin.length === 0}
-
-                className="h-10 rounded-xl bg-stone-850/60 hover:bg-stone-800 border border-stone-700/30 text-[11px] font-medium text-stone-400 hover:text-stone-200 uppercase tracking-wider active:scale-95 transition-all flex items-center justify-center select-none disabled:opacity-20 cursor-pointer"
-
+                className="h-11 rounded-2xl bg-stone-100/70 hover:bg-stone-100 border border-stone-200/50 text-[11px] font-bold text-stone-500 hover:text-stone-800 uppercase tracking-wider active:scale-95 transition-all flex items-center justify-center select-none disabled:opacity-30 cursor-pointer"
               >
-
                 Xóa
-
               </button>
 
-
-
               <button
-
                 type="button"
-
                 onClick={() => handleKeyPress('0')}
-
                 disabled={isLoading || isSuccess}
-
-                className="h-10 rounded-xl bg-stone-800/90 hover:bg-stone-750 active:bg-stone-700 border border-stone-700/50 text-base font-semibold text-stone-100 shadow-sm active:scale-95 transition-all flex items-center justify-center select-none cursor-pointer"
-
+                className="h-11 rounded-2xl bg-stone-50 hover:bg-stone-100 active:bg-stone-200 border border-stone-200/90 text-lg font-bold text-stone-900 shadow-2xs active:scale-95 transition-all flex items-center justify-center select-none cursor-pointer"
               >
-
                 0
-
               </button>
 
-
-
               <button
-
                 type="button"
-
                 onClick={handleDelete}
-
                 disabled={isLoading || isSuccess || pin.length === 0}
-
-                className="h-10 rounded-xl bg-stone-850/60 hover:bg-stone-800 border border-stone-700/30 text-stone-400 hover:text-stone-200 active:scale-95 transition-all flex items-center justify-center select-none disabled:opacity-20 cursor-pointer"
-
+                className="h-11 rounded-2xl bg-stone-100/70 hover:bg-stone-100 border border-stone-200/50 text-stone-600 hover:text-stone-900 active:scale-95 transition-all flex items-center justify-center select-none disabled:opacity-30 cursor-pointer"
+                title="Xóa lùi"
               >
-
                 <Delete className="w-4 h-4" />
-
               </button>
-
             </div>
 
-
-
-            {/* Quên PIN & Quẹt thẻ NFC options */}
-
-            <div className="flex items-center justify-center gap-3 pt-1">
-
+            {/* Quên PIN tinh giản */}
+            <div className="flex items-center justify-center pt-2">
               <button
-
                 type="button"
-
                 onClick={() => setIsForgotPinView(true)}
-
-                className="text-[11px] text-stone-400 hover:text-stone-200 underline underline-offset-4 transition-colors cursor-pointer font-medium"
-
+                className="text-xs text-stone-500 hover:text-stone-900 underline underline-offset-4 transition-colors cursor-pointer font-semibold"
               >
-
                 Quên mã PIN?
-
               </button>
-
-              <span className="text-stone-600 text-[10px]">•</span>
-
-              <button
-
-                type="button"
-
-                onClick={() => {
-
-                  setActiveTab('nfc');
-
-                  setErrorMessage('');
-
-                }}
-
-                className="text-[11px] text-stone-400 hover:text-stone-200 underline underline-offset-4 transition-colors cursor-pointer"
-
-              >
-
-                Quẹt thẻ phòng NFC
-
-              </button>
-
             </div>
-
           </div>
-
         )}
-
-
-
-        {/* Chú thích chân modal */}
-
-        <div className="mt-2 text-center">
-
-          <p className="text-[10px] text-stone-400 flex items-center justify-center gap-1">
-
-            <Lock className="w-2.5 h-2.5 text-stone-400" />
-
-            <span>Bảo mật quyền riêng tư phòng lưu trú</span>
-
-          </p>
-
-        </div>
-
       </div>
-
     </div>
-
   );
-
 };
-

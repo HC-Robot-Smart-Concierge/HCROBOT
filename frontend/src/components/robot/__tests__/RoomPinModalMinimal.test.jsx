@@ -29,16 +29,16 @@ describe('RoomPinModal Minimal Gray Theme & 4-Digit UX', () => {
     expect(emojiRegex.test(content)).toBe(false);
   });
 
-  it('enforces 4-digit PIN indicator and clean gray stone theme classes', () => {
+  it('enforces 4-digit PIN indicator and clean light theme classes with minimal icons', () => {
     const filePath = path.resolve(__dirname, '../RoomPinModal.jsx');
     const content = fs.readFileSync(filePath, 'utf8');
 
     // 4 ô chỉ báo
     expect(content).toContain('[0, 1, 2, 3].map');
 
-    // Tone xám tối giản
-    expect(content).toContain('bg-stone-900');
-    expect(content).toContain('border-stone-800');
+    // Tone màu sáng tối giản đồng bộ hệ thống
+    expect(content).toContain('bg-white border border-[#E3DFD5]');
+    expect(content).not.toContain('bg-stone-900 border border-stone-800');
 
     // Tuyệt đối không còn class sặc sỡ amber và indigo trong modal
     expect(content).not.toContain('bg-amber-400');

@@ -629,32 +629,32 @@ export const RobotRoomServiceScreen = ({
       {/* MODAL XEM LẠI YÊU CẦU TRƯỚC KHI NHẬP PIN */}
       {isReviewModalOpen && (
         <div
-          className="fixed inset-0 z-40 bg-black/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4"
+          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4"
           onClick={() => setIsReviewModalOpen(false)}
         >
           <div
-            className="w-full max-w-sm sm:max-w-md bg-stone-900 border border-stone-800 text-stone-100 rounded-2xl p-4 sm:p-5 shadow-2xl space-y-3.5"
+            className="w-full max-w-sm sm:max-w-md bg-white border border-[#E3DFD5] text-[#1A1917] rounded-3xl p-5 shadow-2xl space-y-3.5"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between border-b border-stone-800 pb-2.5">
+            <div className="flex items-center justify-between border-b border-[#E3DFD5] pb-3">
               <div className="flex items-center gap-2">
-                <ConciergeBell className="w-4 h-4 text-stone-300" />
-                <h3 className="text-sm font-bold text-stone-100">Xác Nhận Dịch Vụ Phòng</h3>
+                <ConciergeBell className="w-4 h-4 text-stone-700" />
+                <h3 className="text-sm sm:text-base font-extrabold text-stone-900">Xác Nhận Dịch Vụ Phòng</h3>
               </div>
               <button
                 type="button"
                 onClick={() => setIsReviewModalOpen(false)}
-                className="p-1 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-400"
+                className="w-8 h-8 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-500 hover:text-stone-800 transition-colors flex items-center justify-center cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             {/* Vị trí phục vụ - Chọn số phòng nhận dịch vụ */}
-            <div className="flex justify-between items-center text-xs p-2.5 bg-stone-800/80 rounded-xl border border-stone-700/60">
+            <div className="flex justify-between items-center text-xs p-3 bg-stone-50 rounded-2xl border border-stone-200">
               <div className="flex items-center gap-2">
-                <span className={`w-2 h-2 rounded-full ${targetRoom ? 'bg-emerald-400' : 'bg-stone-500'}`} />
-                <span className="text-stone-400 font-medium">Phục vụ tới phòng:</span>
+                <span className={`w-2 h-2 rounded-full ${targetRoom ? 'bg-emerald-500' : 'bg-stone-400'}`} />
+                <span className="text-stone-600 font-medium">Phục vụ tới phòng:</span>
               </div>
               <button
                 type="button"
@@ -663,66 +663,52 @@ export const RobotRoomServiceScreen = ({
                   setIsPinModalSelectingRoom(true);
                   setIsPinModalOpen(true);
                 }}
-                className="font-bold text-stone-100 hover:text-white flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-stone-700/70 hover:bg-stone-700 border border-stone-600/80 cursor-pointer transition-colors active:scale-95"
+                className="font-bold text-stone-900 hover:text-stone-700 flex items-center gap-1.5 px-3 py-1 rounded-xl bg-white hover:bg-stone-100 border border-stone-200 shadow-2xs cursor-pointer transition-colors active:scale-95"
                 title="Bấm để chọn hoặc đổi số phòng"
               >
                 <span>{targetRoom ? `Phòng ${targetRoom}` : 'Chưa chọn phòng'}</span>
-                <Edit3 className="w-3.5 h-3.5 text-stone-300" />
+                <Edit3 className="w-3.5 h-3.5 text-stone-500" />
               </button>
             </div>
 
             {/* Danh sách items */}
-            <div className="max-h-48 overflow-y-auto space-y-1.5 custom-scrollbar pr-1">
+            <div className="max-h-48 overflow-y-auto space-y-2 custom-scrollbar pr-1">
               {Object.values(cart).map(({ item, qty }) => (
                 <div
                   key={item.id}
-                  className="p-2.5 rounded-xl bg-stone-800/80 border border-stone-700/50 flex items-center justify-between text-xs"
+                  className="p-3 rounded-2xl bg-stone-50 border border-stone-200 flex items-center justify-between text-xs"
                 >
                   <div className="min-w-0 flex-1">
-                    <p className="font-bold text-stone-200 truncate">{item.name}</p>
-                    <p className="text-[10px] text-stone-400">{item.unit}</p>
+                    <p className="font-bold text-stone-900 truncate">{item.name}</p>
+                    <p className="text-[10px] text-stone-500">{item.unit}</p>
                   </div>
                   <div className="text-right ml-3 shrink-0">
-                    <p className="font-bold text-stone-100">
+                    <p className={`font-bold ${item.price > 0 ? 'text-stone-900' : 'text-emerald-700'}`}>
                       {item.price > 0 ? formatCurrency(item.price * qty) : 'Miễn phí'}
                     </p>
-                    <p className="text-[10px] text-stone-400">SL: {qty}</p>
+                    <p className="text-[10px] text-stone-500">SL: {qty}</p>
                   </div>
                 </div>
               ))}
             </div>
 
-            {/* Ghi chú thêm */}
-            <div>
-              <label className="block text-[11px] text-stone-400 font-medium mb-1">
-                Ghi chú thêm cho nhân viên phục vụ:
-              </label>
-              <input
-                type="text"
-                value={requestNote}
-                onChange={(e) => setRequestNote(e.target.value)}
-                placeholder="Ví dụ: Giao lúc 20h, cần thêm 2 áo choàng tắm..."
-                className="w-full px-3 py-2 rounded-xl bg-stone-800 border border-stone-700 text-xs text-stone-100 placeholder-stone-500 focus:outline-hidden focus:border-stone-500"
-              />
-            </div>
-
             {/* Thông báo thanh toán */}
-            <div className="p-3 rounded-xl bg-stone-800/50 border border-stone-700/40 text-[11px] text-stone-300 space-y-1">
-              <div className="flex justify-between font-bold text-xs text-stone-100">
+            <div className="p-3.5 rounded-2xl bg-[#EFECE4]/50 border border-[#E3DFD5] text-[11px] text-stone-700 space-y-1">
+              <div className="flex justify-between font-extrabold text-xs text-stone-900">
                 <span>Tổng chi phí phát sinh:</span>
                 <span>{formatCurrency(totalPrice)}</span>
               </div>
-              <p className="text-[10px] text-stone-400">
-                Chi phí (nếu có) được ghi nhận vào hóa đơn phòng. Quý khách thanh toán tại quầy Lễ tân khi trả phòng (không thanh toán tại chỗ).
+              <p className="text-[10px] text-stone-500 leading-snug">
+                Chi phí (nếu có) được ghi nhận vào hóa đơn phòng khi trả phòng tại Lễ tân.
               </p>
             </div>
 
-            {/* Nút bấm xác nhận gửi yêu cầu (hoặc nhập PIN nếu chưa có phòng) */}
-            <div className="flex gap-2 pt-1">
+            {/* Nút bấm xác nhận gửi yêu cầu */}
+            <div className="flex gap-2.5 pt-1">
               <button
                 type="button"
                 onClick={() => setIsReviewModalOpen(false)}
-                className="flex-1 py-2 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-300 text-xs font-bold transition-all cursor-pointer"
+                className="flex-1 py-2.5 rounded-2xl bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-bold transition-all cursor-pointer"
               >
                 Chọn thêm
               </button>
@@ -736,23 +722,23 @@ export const RobotRoomServiceScreen = ({
                     executeSubmitRequest(roomToUse);
                   } else {
                     setIsReviewModalOpen(false);
+                    setPinModalAction('room_service');
                     setIsPinModalSelectingRoom(true);
                     setIsPinModalOpen(true);
                   }
                 }}
-                className="flex-1 py-2 rounded-xl bg-stone-100 hover:bg-stone-200 disabled:opacity-50 text-stone-900 text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-md"
+                className="flex-1 py-2.5 rounded-2xl bg-[#1A1917] hover:bg-stone-800 disabled:opacity-50 text-white text-xs font-bold shadow-md transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-1.5"
               >
                 {isSubmitting ? (
                   <span>Đang gửi...</span>
-                ) : (targetRoom || activeRoomNumber) ? (
-                  <>
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                    <span>Gửi Yêu Cầu (Phòng {targetRoom || activeRoomNumber})</span>
-                  </>
                 ) : (
                   <>
-                    <ShieldCheck className="w-4 h-4" />
-                    <span>Nhập PIN Phòng</span>
+                    <CheckCircle2 className="w-4 h-4 text-stone-300" />
+                    <span>
+                      {targetRoom || activeRoomNumber
+                        ? `Gửi Yêu Cầu (Phòng ${targetRoom || activeRoomNumber})`
+                        : 'Tiếp Tục'}
+                    </span>
                   </>
                 )}
               </button>

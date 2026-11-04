@@ -1,13 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Pagination } from '../../components/common/Pagination';
-import { NewDirectiveModal } from '../../components/dashboard/Modals';
+import { StaffPageHeader } from '../../components/dashboard/RoomServiceFrame';
 import { INITIAL_MAINTENANCE_DATA } from '../../data/mockHotelData';
 import {
-  createMaintenanceRequest,
   fetchMaintenanceDashboard,
   updateMaintenanceStatus,
 } from '../../services/operationsApi';
 import { useLanguage } from '../../context/LanguageContext';
+import { staffStatusLabel, useStaffText } from '../../context/StaffLanguage';
 
 const normalizeRequest = (request) => ({
   ...request,
@@ -24,6 +24,8 @@ const statusMeta = {
 };
 
 export const MaintenanceDashboard = ({ currentUser, onNotify = () => {} }) => {
+  const { language, t } = useLanguage();
+  const st = useStaffText();
   const staffName = currentUser?.full_name || currentUser?.name || 'James D.';
   const [data, setData] = useState({
     ...INITIAL_MAINTENANCE_DATA,
@@ -33,7 +35,6 @@ export const MaintenanceDashboard = ({ currentUser, onNotify = () => {} }) => {
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 10;
   const [sortNewestFirst, setSortNewestFirst] = useState(true);
-  const [isNewRequestModalOpen, setIsNewRequestModalOpen] = useState(false);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -106,29 +107,51 @@ export const MaintenanceDashboard = ({ currentUser, onNotify = () => {} }) => {
     );
     if (activeTask) {
       onNotify(
-        `⚠️ Bạn đang có nhiệm vụ đang xử lý (${activeTask.title || activeTask.id}). Vui lòng hoàn thành công việc hiện tại trước khi nhận thêm nhiệm vụ mới!`
+        st('Complete your current task ({0}) before claiming another request.', activeTask.title || activeTask.id)
       );
       return;
     }
 
     updateRequestLocally(requestId, 'In Progress', staffName);
     await updateMaintenanceStatus(requestId, 'In Progress', staffName);
-    onNotify(`Đã nhận xử lý yêu cầu ${requestId}`);
+    onNotify(st('Request {0} claimed.', requestId));
   };
 
   const handleDecline = async (requestId) => {
     updateRequestLocally(requestId, 'Declined');
     await updateMaintenanceStatus(requestId, 'Declined');
-    onNotify(`Đã từ chối yêu cầu ${requestId}`);
+    onNotify(st('Request {0} declined.', requestId));
   };
 
   const handleComplete = async (requestId) => {
     updateRequestLocally(requestId, 'Completed', staffName);
     await updateMaintenanceStatus(requestId, 'Completed', staffName);
-    onNotify(`Đã hoàn tất yêu cầu ${requestId}`);
+    onNotify(st('Request {0} completed.', requestId));
   };
 
-  const { t } = useLanguage();
+  // Localize known server labels at render time without changing request data.
+  const reportedTimeLabel = (value) => {
+    const text = String(value || '').trim();
+    const relativeUnits = [
+      [/^(\d+)\s*(?:mins?|minutes?)\s+ago$|^(\d+)\s*phút trước$/i, 'minute'],
+      [/^(\d+)\s*(?:hrs?|hours?)\s+ago$|^(\d+)\s*giờ trước$/i, 'hour'],
+      [/^(\d+)\s*days?\s+ago$|^(\d+)\s*ngày trước$/i, 'day'],
+    ];
+    for (const [pattern, unit] of relativeUnits) {
+      const match = text.match(pattern);
+      if (match) return new Intl.RelativeTimeFormat(language === 'VI' ? 'vi' : 'en').format(-Number(match[1] || match[2]), unit);
+    }
+    if (/^(just now|vừa xong|vừa đặt)$/i.test(text)) return st('Just now');
+    return text;
+  };
+  const availabilityLabel = (value) => {
+    const match = String(value || '').match(/^([^()]*?)(\s*\(.*\))?$/);
+    return match ? `${st(staffStatusLabel(match[1].trim()))}${match[2] || ''}` : value;
+  };
+  const sourceLabel = (source) => {
+    if (!source || /^(received from hcrobot|tiếp nhận từ hcrobot)$/i.test(source)) return st('Received from HCRobot');
+    return st(source);
+  };
 
   const metrics = [
     {
@@ -150,46 +173,42 @@ export const MaintenanceDashboard = ({ currentUser, onNotify = () => {} }) => {
   ];
 
   return (
-    <main className="flex-1 overflow-y-auto custom-scrollbar bg-[#FCFAF7] font-sans">
-      <div className="w-full max-w-[1180px] mx-auto px-4 md:px-8 pt-3 pb-8">
-        <section className="flex items-start justify-between gap-6">
+    <div className="staff-page-body maintenance-dashboard flex-1 overflow-y-auto custom-scrollbar font-sans">
+      <div className="staff-page-container">
+        <StaffPageHeader>
           <div>
             <h2 className="text-[15px] font-semibold text-[#282522]">{t('mnTitle')}</h2>
             <p className="mt-0.5 text-[12px] text-[#69645F]">
               {t('mnSubtitle')}
             </p>
           </div>
-        </section>
+        </StaffPageHeader>
 
-        <section className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
+        <section className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {metrics.map(({ label, value }) => (
             <article
               key={label}
               className="rounded-xl bg-white px-5 py-4 border border-[#E8E5E0]"
             >
-              <p className="text-[11px] font-semibold text-[#6C6863]">
+              <p className="text-[11px] font-semibold uppercase text-[#8C8C8C]">
                 {label}
               </p>
-              <p className="mt-2 text-[18px] font-bold text-[#3C3936]">{value}</p>
+              <p className="mt-2 text-[22px] font-bold text-[#262626]">{value}</p>
             </article>
           ))}
         </section>
 
-        <section className="grid grid-cols-1 lg:grid-cols-[minmax(0,2.08fr)_minmax(225px,1fr)] gap-5 mt-8">
+        <section className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_300px] gap-4 mt-4">
           <div className="min-w-0">
-            <div className="h-9 mb-3 flex items-center justify-between gap-4">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
               <h3 className="text-[13px] font-semibold text-[#403D39]">{t('activeRequests')}</h3>
-              <div className="flex items-center gap-1 flex-wrap">
+              <div className="maintenance-filters" role="group" aria-label={t('activeRequests')}>
                 {['All', 'Pending', 'In Progress', 'Completed'].map((tab) => (
                   <button
                     key={tab}
                     type="button"
                     onClick={() => setFilter(tab)}
-                    className={`rounded-lg px-3 py-1 text-[11px] font-semibold transition-colors cursor-pointer ${
-                      filter === tab
-                        ? 'bg-[#EAE8E4] text-[#494540]'
-                        : 'text-[#77726D] hover:bg-[#F0EEEA]'
-                    }`}
+                    aria-pressed={filter === tab}
                   >
                     {tab === 'All'
                       ? t('all')
@@ -206,7 +225,8 @@ export const MaintenanceDashboard = ({ currentUser, onNotify = () => {} }) => {
             <div className="space-y-3">
               {paginatedRequests.map((request) => {
                 const status = request.status || 'Pending';
-                const meta = statusMeta[status] || statusMeta.Pending;
+                const displayStatus = staffStatusLabel(status);
+                const meta = statusMeta[displayStatus] || statusMeta.Pending;
                 const isPending = status === 'Pending' || status === 'Unassigned';
                 const isInProgress = status === 'In Progress';
                 const isCompleted = status === 'Completed';
@@ -216,28 +236,29 @@ export const MaintenanceDashboard = ({ currentUser, onNotify = () => {} }) => {
                     key={request.id}
                     className="rounded-xl bg-white px-5 py-4 border border-[#E8E5E0]"
                   >
-                    <div className="flex items-start justify-between gap-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <h4 className="text-[13px] font-semibold text-[#3F3B38]">{request.title}</h4>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h4 className="text-[13px] font-semibold text-[#3F3B38] break-words">{request.title}</h4>
                           <span className="text-[10px] text-[#888] font-mono">[{request.id}]</span>
                         </div>
-                        <p className="mt-1 text-[12px] leading-relaxed text-[#666]">
+                        <p className="mt-1 text-[12px] leading-relaxed text-[#666] break-words">
                           {request.location} • {request.description}
                         </p>
                       </div>
 
                       <div className="shrink-0 text-right">
-                        <p className="text-[10px] text-[#888]">{request.reportedTime}</p>
-                        <span className="mt-1 inline-block rounded bg-[#F0EFEC] px-2 py-0.5 text-[10px] font-semibold text-[#555]">
-                          {isCompleted ? t('completed') : isInProgress ? t('inProgress') : t('pending')}
+                        <p className="text-[10px] text-[#888]">{reportedTimeLabel(request.reportedTime)}</p>
+                        <span className="mt-1 inline-flex items-center gap-1.5 rounded bg-[#F0EFEC] px-2 py-0.5 text-[10px] font-semibold text-[#555]">
+                          <span className={`h-1.5 w-1.5 rounded-full ${meta.dot}`} aria-hidden="true" />
+                          {st(displayStatus)}
                         </span>
                       </div>
                     </div>
 
-                    <div className="mt-3 border-t border-[#F0ECE6] pt-3 flex items-center justify-between gap-4">
+                    <div className="mt-3 border-t border-[#E9E5DC] pt-3 flex flex-wrap items-center justify-between gap-3">
                       <span className="text-[11px] text-[#777]">
-                        {request.source || 'RECEIVED FROM HCROBOT'}
+                        {sourceLabel(request.source)}
                       </span>
 
                       {isPending && (
@@ -252,7 +273,7 @@ export const MaintenanceDashboard = ({ currentUser, onNotify = () => {} }) => {
                           <button
                             type="button"
                             onClick={() => handleClaim(request.id)}
-                            className="rounded-lg bg-black px-4 py-1.5 text-[11px] font-bold text-white hover:bg-[#252525] cursor-pointer"
+                            className="rounded-lg bg-[#262626] px-4 py-1.5 text-[11px] font-bold text-white hover:bg-[#404040] cursor-pointer"
                           >
                             {t('claimTask')}
                           </button>
@@ -260,9 +281,9 @@ export const MaintenanceDashboard = ({ currentUser, onNotify = () => {} }) => {
                       )}
 
                       {isInProgress && (
-                        <div className="flex items-center gap-3">
+                        <div className="flex flex-wrap items-center gap-3">
                           <span className="text-[11px] text-[#68635E]">
-                            Assigned: <strong>{request.assignedTo || staffName}</strong>
+                            {st('Assigned:')} <strong>{request.assignedTo || staffName}</strong>
                           </span>
                           <button
                             type="button"
@@ -285,7 +306,7 @@ export const MaintenanceDashboard = ({ currentUser, onNotify = () => {} }) => {
               })}
 
               {visibleRequests.length === 0 && (
-                <div className="rounded-xl bg-white px-6 py-10 text-center text-[12px] text-[#888] border border-[#E8E5E0]">
+                <div className="maintenance-panel rounded-xl bg-white px-6 py-10 text-center text-[12px] text-[#888] border">
                   {t('noDataMatch')}
                 </div>
               )}
@@ -298,14 +319,14 @@ export const MaintenanceDashboard = ({ currentUser, onNotify = () => {} }) => {
                 totalItems={visibleRequests.length}
                 pageSize={pageSize}
                 onPageChange={setCurrentPage}
-                itemName="yêu cầu"
-                className="mt-3 rounded-2xl border border-[#E5E1D8] shadow-xs bg-white"
+                itemName={st('requests')}
+                className="mt-3 rounded-xl border bg-white"
               />
             )}
           </div>
 
           <aside className="min-w-0 space-y-4">
-            <section className="rounded-xl bg-[#F4F3F0] p-4 border border-[#E8E5E0]">
+            <section className="maintenance-panel rounded-xl bg-white p-4 border">
               <h3 className="text-[11px] font-bold uppercase tracking-wider text-[#403D39]">{t('mnStaffAvailability')}</h3>
 
               <div className="mt-3 space-y-2">
@@ -316,9 +337,9 @@ export const MaintenanceDashboard = ({ currentUser, onNotify = () => {} }) => {
                   >
                     <div>
                       <p className="font-semibold text-[#333]">{staff.name}</p>
-                      <p className="text-[10px] text-[#777]">{staff.role || staff.specialty}</p>
+                      <p className="text-[10px] text-[#777]">{st(staff.role || staff.specialty)}</p>
                     </div>
-                    <span className="text-[10px] font-semibold text-[#666]">{staff.status}</span>
+                    <span className="text-[10px] font-semibold text-[#666]">{availabilityLabel(staff.status)}</span>
                   </div>
                 ))}
               </div>
@@ -327,7 +348,7 @@ export const MaintenanceDashboard = ({ currentUser, onNotify = () => {} }) => {
         </section>
       </div>
 
-    </main>
+    </div>
   );
 };
 

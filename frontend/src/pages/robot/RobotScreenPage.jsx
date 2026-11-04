@@ -1551,6 +1551,11 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     lastInteractionTimeRef.current = Date.now();
   }, [clearRouteGuidanceTimers]);
 
+  const handleCloseQrModalOnly = useCallback(() => {
+    setIsAutoQrModalOpen(false);
+    setQrCountdown(null);
+  }, []);
+
   const resetToIdle = () => {
     activeChatRequestIdRef.current += 1;
     if (chatAbortControllerRef.current) {
@@ -1802,7 +1807,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         onSelectDestination={setNavigationDestinationKey}
         showQrModalExternal={isAutoQrModalOpen}
         qrCountdown={qrCountdown}
-        onCloseQrModal={handleCloseDirections}
+        onCloseQrModal={handleCloseQrModalOnly}
         onCloseDirections={handleCloseDirections}
         onCallStaff={async () => {
           try {
@@ -2197,7 +2202,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                 onClose={handleCloseDirections}
                 showQrModalExternal={isAutoQrModalOpen}
                 qrCountdown={qrCountdown}
-                onCloseQrModal={handleCloseDirections}
+                onCloseQrModal={handleCloseQrModalOnly}
                 defaultZoom={1.0}
               />
 
@@ -2610,10 +2615,10 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
           setIsFacilitiesModalOpen(false);
           setNavigationDestinationKey(destKey);
           setCurrentState('RT-05');
-          setIsAutoQrModalOpen(true);
-          setQrCountdown(15);
+          setIsAutoQrModalOpen(false);
+          setQrCountdown(null);
           const destName = HOTEL_DESTINATIONS[destKey]?.name || 'tiện ích';
-          speak(`Dạ đây là lộ trình tới ${destName}. Quý khách quét mã QR trên màn hình để mang theo trên điện thoại nhé ạ.`);
+          speak(`Dạ đây là lộ trình tới ${destName}. Quý khách có thể xem bản đồ hoặc quét mã QR trên màn hình nhé ạ.`);
         }}
         onOpenFoodMenu={() => {
           setIsFacilitiesModalOpen(false);

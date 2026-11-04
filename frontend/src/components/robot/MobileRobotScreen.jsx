@@ -672,7 +672,7 @@ export const MobileRobotScreen = ({
                 onClose={handleDismissMap}
                 showQrModalExternal={showQrModalExternal}
                 qrCountdown={qrCountdown}
-                onCloseQrModal={handleDismissMap}
+                onCloseQrModal={onCloseQrModal || (() => {})}
                 defaultZoom={1.0}
                 className="w-full h-full rounded-none border-none shadow-none"
               />

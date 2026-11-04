@@ -979,8 +979,10 @@ export const FloorMap = ({
             <button
               type="button"
               onClick={() => {
-                if (onCloseQrModal) onCloseQrModal();
                 setActiveMode('map');
+                if (onCloseQrModal) {
+                  try { onCloseQrModal(); } catch (e) { }
+                }
               }}
               className={`px-2.5 sm:px-3 py-1 rounded-full text-[10px] sm:text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
                 activeMode === 'map'
@@ -1245,8 +1247,10 @@ export const FloorMap = ({
                 <button
                   type="button"
                   onClick={() => {
-                    if (onCloseQrModal) onCloseQrModal();
                     setActiveMode('map');
+                    if (onCloseQrModal) {
+                      try { onCloseQrModal(); } catch (e) { }
+                    }
                   }}
                   className="w-full py-2 px-3 rounded-xl bg-[#EFECE4] hover:bg-stone-200 text-stone-800 text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 border border-[#E3DFD5] active:scale-95"
                 >

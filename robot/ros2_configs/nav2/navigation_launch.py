@@ -1,95 +1,82 @@
-"""HC-Robot static-map localization and Nav2 launch for ROS 2 Jazzy."""
+"""HC-Robot Nav2 launch for ROS 2 Jazzy.
+
+- slam:=false (mac dinh): map tinh + AMCL (map_server nap file YAML, AMCL dinh vi).
+- slam:=true: dung cung SLAM Toolbox (SLAM phat /map va TF map->odom), nen KHONG
+  chay map_server/AMCL. Dung cho tu kham pha (frontier exploration) luc dang quet.
+"""
 
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
+from launch.actions import DeclareLaunchArgument, OpaqueFunction
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
+NAV_NODES = [
+    ("nav2_controller", "controller_server"),
+    ("nav2_planner", "planner_server"),
+    ("nav2_behaviors", "behavior_server"),
+    ("nav2_bt_navigator", "bt_navigator"),
+    ("nav2_waypoint_follower", "waypoint_follower"),
+]
 
-def generate_launch_description():
+
+def _launch_setup(context, *args, **kwargs):
     params_file = LaunchConfiguration("params_file")
     map_yaml = LaunchConfiguration("map")
     use_sim_time = LaunchConfiguration("use_sim_time")
     autostart = LaunchConfiguration("autostart")
+    with_slam = LaunchConfiguration("slam").perform(context).strip().lower() in ("true", "1", "yes")
 
     common_params = [params_file, {"use_sim_time": use_sim_time}]
-    managed_nodes = [
-        "map_server",
-        "amcl",
-        "controller_server",
-        "planner_server",
-        "behavior_server",
-        "bt_navigator",
-        "waypoint_follower",
-    ]
+    actions = []
+    managed_nodes = []
 
-    return LaunchDescription(
-        [
-            DeclareLaunchArgument("map"),
-            DeclareLaunchArgument("params_file"),
-            DeclareLaunchArgument("use_sim_time", default_value="false"),
-            DeclareLaunchArgument("autostart", default_value="true"),
-            Node(
-                package="nav2_map_server",
-                executable="map_server",
-                name="map_server",
-                output="screen",
-                parameters=[params_file, {"yaml_filename": map_yaml, "use_sim_time": use_sim_time}],
-            ),
-            Node(
-                package="nav2_amcl",
-                executable="amcl",
-                name="amcl",
-                output="screen",
-                parameters=common_params,
-            ),
-            Node(
-                package="nav2_controller",
-                executable="controller_server",
-                name="controller_server",
-                output="screen",
-                parameters=common_params,
-            ),
-            Node(
-                package="nav2_planner",
-                executable="planner_server",
-                name="planner_server",
-                output="screen",
-                parameters=common_params,
-            ),
-            Node(
-                package="nav2_behaviors",
-                executable="behavior_server",
-                name="behavior_server",
-                output="screen",
-                parameters=common_params,
-            ),
-            Node(
-                package="nav2_bt_navigator",
-                executable="bt_navigator",
-                name="bt_navigator",
-                output="screen",
-                parameters=common_params,
-            ),
-            Node(
-                package="nav2_waypoint_follower",
-                executable="waypoint_follower",
-                name="waypoint_follower",
-                output="screen",
-                parameters=common_params,
-            ),
-            Node(
-                package="nav2_lifecycle_manager",
-                executable="lifecycle_manager",
-                name="lifecycle_manager_hc_robot",
-                output="screen",
-                parameters=[
-                    {
-                        "use_sim_time": use_sim_time,
-                        "autostart": autostart,
-                        "node_names": managed_nodes,
-                    }
-                ],
-            ),
-        ]
-    )
+    if not with_slam:
+        actions.append(Node(
+            package="nav2_map_server",
+            executable="map_server",
+            name="map_server",
+            output="screen",
+            parameters=[params_file, {"yaml_filename": map_yaml, "use_sim_time": use_sim_time}],
+        ))
+        actions.append(Node(
+            package="nav2_amcl",
+            executable="amcl",
+            name="amcl",
+            output="screen",
+            parameters=common_params,
+        ))
+        managed_nodes += ["map_server", "amcl"]
+
+    for package, name in NAV_NODES:
+        actions.append(Node(
+            package=package,
+            executable=name,
+            name=name,
+            output="screen",
+            parameters=common_params,
+        ))
+        managed_nodes.append(name)
+
+    actions.append(Node(
+        package="nav2_lifecycle_manager",
+        executable="lifecycle_manager",
+        name="lifecycle_manager_hc_robot",
+        output="screen",
+        parameters=[{
+            "use_sim_time": use_sim_time,
+            "autostart": autostart,
+            "node_names": managed_nodes,
+        }],
+    ))
+    return actions
+
+
+def generate_launch_description():
+    return LaunchDescription([
+        DeclareLaunchArgument("map", default_value=""),
+        DeclareLaunchArgument("params_file"),
+        DeclareLaunchArgument("use_sim_time", default_value="false"),
+        DeclareLaunchArgument("autostart", default_value="true"),
+        DeclareLaunchArgument("slam", default_value="false"),
+        OpaqueFunction(function=_launch_setup),
+    ])

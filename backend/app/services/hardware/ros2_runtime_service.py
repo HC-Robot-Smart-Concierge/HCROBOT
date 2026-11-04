@@ -9,6 +9,7 @@ import re
 import socket
 import subprocess
 import threading
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -61,26 +62,29 @@ class Ros2RuntimeService:
             getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
         )
 
-    def _wsl_command(self, script_name: str, *args: str) -> list[str]:
+    def _wsl_command(self, script_name: str, *args: str, env: Optional[dict] = None) -> list[str]:
         script_path = self.scripts_dir / script_name
         if not script_path.is_file():
             raise Ros2RuntimeError(f"Không tìm thấy script ROS 2: {script_path}")
+        # Biến môi trường Windows không tự sang WSL: truyền qua `env K=V bash script`.
+        env_prefix = ["env", *(f"{k}={v}" for k, v in env.items())] if env else []
         return [
             "wsl.exe",
             "-d",
             self.distro,
             "--",
+            *env_prefix,
             "bash",
             self._to_wsl_path(script_path),
             *args,
         ]
 
-    def _spawn(self, script_name: str, *args: str, log_prefix: str) -> int:
+    def _spawn(self, script_name: str, *args: str, log_prefix: str, env: Optional[dict] = None) -> int:
         self.runtime_dir.mkdir(parents=True, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         stdout_path = self.runtime_dir / f"{log_prefix}-{timestamp}.out.log"
         stderr_path = self.runtime_dir / f"{log_prefix}-{timestamp}.err.log"
-        command = self._wsl_command(script_name, *args)
+        command = self._wsl_command(script_name, *args, env=env)
 
         with self._lock:
             stdout_handle = open(stdout_path, "a", encoding="utf-8")
@@ -116,6 +120,74 @@ class Ros2RuntimeService:
             "mode": "MAPPING",
             "pid": pid,
             "message": "Đang khởi động Slam Toolbox và Foxglove để quét bản đồ realtime.",
+        }
+
+    def start_exploration(self, raw_name: str, auto_save: bool = True) -> dict:
+        """Xe THẬT tự đi quét map: SLAM + Nav2 + frontier explorer (start_wsl_slam.sh EXPLORE=1).
+
+        Script tự kiểm tra Pi/LiDAR/encoder trước (không đạt thì xe đứng yên), đếm
+        ngược 10 s rồi mới cho xe chạy; quét xong tự lưu map nếu có tên.
+        """
+        safe_name = self.normalize_map_name(raw_name) if auto_save else ""
+        env = {"EXPLORE": "1", "EXPLORE_SAVE": safe_name}
+        if os.getenv("PI5_IP"):
+            env["PI5_IP"] = os.environ["PI5_IP"]
+        pid = self._spawn("start_wsl_slam.sh", log_prefix="explore-web", env=env)
+        self._last_mode = "EXPLORING"
+        self._last_map = safe_name or None
+        return {
+            "status": "STARTING",
+            "mode": "EXPLORING",
+            "map_name": safe_name or None,
+            "pid": pid,
+            "message": (
+                "Đang bật SLAM + Nav2. Kiểm tra cảm biến xong, robot sẽ TỰ CHẠY sau khoảng 10 giây "
+                "đếm ngược. Bấm Dừng Quét hoặc E-STOP để dừng."
+            ),
+        }
+
+    def _send_udp_stop(self, repeats: int = 5) -> None:
+        """Gửi thẳng 'stop' tới main.py trên Pi (UDP 9999), không phụ thuộc bridge ROS."""
+        target = (os.getenv("PI5_IP", "100.99.72.51"), int(os.getenv("PI5_PORT", "9999")))
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            for _ in range(repeats):
+                try:
+                    sock.sendto(b"stop", target)
+                except OSError as exc:
+                    logger.warning("Không gửi được UDP stop tới %s: %s", target, exc)
+                time.sleep(0.1)
+        finally:
+            sock.close()
+
+    def stop_exploration(self) -> dict:
+        """Dừng xe tự quét: tắt explorer + Nav2 (ngừng /cmd_vel) rồi gửi stop tới Pi.
+
+        GIỮ SLAM + bridge chạy để map đang quét dở vẫn còn và lưu được.
+        """
+        kill_cmd = (
+            "pkill -f '[f]rontier_explorer.py'; "
+            "pkill -f '[n]avigation_launch.py'; "
+            "killall -q controller_server planner_server behavior_server bt_navigator "
+            "waypoint_follower lifecycle_manager; true"
+        )
+        try:
+            subprocess.run(
+                ["wsl.exe", "-d", self.distro, "--", "bash", "-lc", kill_cmd],
+                capture_output=True,
+                text=True,
+                timeout=15,
+                creationflags=self._creation_flags,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            logger.warning("Không tắt được explorer/Nav2 trong WSL: %s", exc)
+        finally:
+            self._send_udp_stop()
+        self._last_mode = "MAPPING"
+        return {
+            "status": "STOPPED",
+            "mode": "MAPPING",
+            "message": "Đã dừng tự quét, robot đứng yên. SLAM vẫn chạy: có thể lưu map hoặc lái tay tiếp.",
         }
 
     @staticmethod
@@ -425,7 +497,8 @@ class Ros2RuntimeService:
             "--",
             "bash",
             "-lc",
-            "if pgrep -f '[a]sync_slam_toolbox_node' >/dev/null; then echo MAPPING; "
+            "if pgrep -f '[f]rontier_explorer.py' >/dev/null; then echo EXPLORING; "
+            "elif pgrep -f '[a]sync_slam_toolbox_node' >/dev/null; then echo MAPPING; "
             "elif pgrep -f '[m]ap_server' >/dev/null && pgrep -f '[a]mcl' >/dev/null; then echo NAVIGATION; "
             "else echo OFFLINE; fi",
         ]
@@ -438,7 +511,7 @@ class Ros2RuntimeService:
                 creationflags=self._creation_flags,
             )
             detected = result.stdout.strip().splitlines()[-1] if result.stdout.strip() else "OFFLINE"
-            return detected if detected in {"MAPPING", "NAVIGATION"} else "OFFLINE"
+            return detected if detected in {"MAPPING", "EXPLORING", "NAVIGATION"} else "OFFLINE"
         except (OSError, subprocess.TimeoutExpired):
             return "OFFLINE"
 

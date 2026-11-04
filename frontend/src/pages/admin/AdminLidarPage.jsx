@@ -8,6 +8,8 @@ import {
   startRos2Mapping,
   saveRos2Map,
   startRos2Navigation,
+  startRos2Explore,
+  stopRos2Explore,
 } from '../../services/workflowApi';
 import {
   RosbridgeClient,
@@ -52,6 +54,9 @@ import {
 
 const PI5_IP = import.meta.env.VITE_PI5_IP || '100.99.72.51';
 const PI5_API = `http://${PI5_IP}:8000/api/v1`;
+// Tu quet xe that: tu luc bam den khi frontier_explorer chay mat ~20-30 s
+// (kiem tra Pi/LiDAR/encoder + bat Nav2 + dem nguoc 10 s an toan).
+const EXPLORE_START_GRACE_MS = 60000;
 const ROSBRIDGE_DEFAULT_URL = import.meta.env.VITE_ROSBRIDGE_URL || 'ws://127.0.0.1:9090';
 
 // Trạng thái nguồn Pi 5 do robot/scripts/pi_power_monitor.py phân loại.
@@ -161,6 +166,8 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
   const [safetyInfo, setSafetyInfo] = useState({ front_cm: null, rear_cm: null, left_cm: null, right_cm: null, alert: ''});
 
   const rosClientRef = useRef(null);
+  const exploreStartedAtRef = useRef(0); // Date.now() luc bam "Quet Full Phong" (0 = khong cho)
+  const exploreSeenRef = useRef(false); // da thay backend bao EXPLORING trong phien nay
   const [isMenuDropdownOpen, setIsMenuDropdownOpen] = useState(false);
   const menuDropdownRef = useRef(null);
 
@@ -233,36 +240,35 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
     initMaps();
   }, []);
 
-  // Polling dong bo trang thai SLAM Frontier Exploration tu Pi 5
+  // Dong bo trang thai tu quet tu backend ROS 2 (frontier_explorer chay -> mode EXPLORING).
+  // Sau khi bam bat dau, stack can ~20-30 s (kiem tra cam bien + Nav2 + dem nguoc 10 s)
+  // moi co explorer: giu isExploring=true trong luc cho de nut khong nhay ve "Quet".
   useEffect(() => {
     let isMounted = true;
     const pollExploreStatus = async () => {
       try {
-        const res = await fetch(`${PI5_API}/map/explore/status`);
-        if (res.ok) {
-          const data = await res.json();
-          if (isMounted && data.status === 'SUCCESS') {
-            setIsExploring(Boolean(data.is_exploring));
-            if (typeof data.explored_count === 'number') {
-              setExploredCount(data.explored_count);
-            }
+        const data = await fetchRos2RuntimeStatus();
+        if (!isMounted) return;
+        const startedAt = exploreStartedAtRef.current;
+        const waitingForExplorer = startedAt > 0 && Date.now() - startedAt < EXPLORE_START_GRACE_MS;
+        if (data?.mode === 'EXPLORING') {
+          exploreSeenRef.current = true;
+          setIsExploring(true);
+        } else if (!waitingForExplorer) {
+          if (exploreSeenRef.current && data?.mode === 'MAPPING') {
+            setNavNotification('Robot đã tự quét xong (hoặc dừng). Xem log terminal / Foxglove; map tự lưu nếu đã bật.');
+            setTimeout(() => setNavNotification(''), 8000);
           }
-        } else {
-          // Fallback sang endpoint workflow status de dong bo robot_status
-          const fallbackRes = await fetch(`${PI5_API}/workflow/status`);
-          if (fallbackRes.ok) {
-            const fbData = await fallbackRes.json();
-            if (isMounted) {
-              setIsExploring(fbData.robot_status === 'EXPLORING');
-            }
-          }
+          exploreSeenRef.current = false;
+          exploreStartedAtRef.current = 0;
+          setIsExploring(false);
         }
       } catch {
-        // Bo qua loi khi Pi 5 dang ban
+        // Backend/WSL dang ban: giu nguyen trang thai
       }
     };
 
-    const timer = setInterval(pollExploreStatus, 1500);
+    const timer = setInterval(pollExploreStatus, 3000);
     pollExploreStatus();
     return () => {
       isMounted = false;
@@ -515,7 +521,10 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
     for (let attempt = 0; attempt < 20; attempt += 1) {
       try {
         const statusData = await fetchRos2RuntimeStatus();
-        if (statusData?.rosbridge_online && statusData?.foxglove_online && statusData?.mode === expectedMode) {
+        const modeOk = Array.isArray(expectedMode)
+          ? expectedMode.includes(statusData?.mode)
+          : statusData?.mode === expectedMode;
+        if (statusData?.rosbridge_online && statusData?.foxglove_online && modeOk) {
           return statusData;
         }
       } catch {
@@ -941,6 +950,11 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
   };
 
   const handleEmergencyStop = async () => {
+    // 0. Tắt ngay bộ tự quét ROS 2 (explorer + Nav2) để ngừng phát /cmd_vel; backend còn
+    //    gửi UDP "stop" thẳng tới Pi. Không await để các bước dừng bên dưới chạy ngay.
+    exploreStartedAtRef.current = 0;
+    stopRos2Explore().catch((err) => console.warn('Lỗi dừng tự quét ROS 2:', err));
+
     // 1. Cập nhật state UI ngay lập tức
     setIsExploring(false);
     setActiveNavGoal(null);
@@ -994,34 +1008,60 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
   };
 
   // ─── Frontier Exploration (SLAM Tu Hanh Quet Full Phong) ────────────────
+  // Xe THAT tu quet: SLAM Toolbox + Nav2 + frontier explorer tren laptop (backend chay
+  // start_wsl_slam.sh EXPLORE=1). KHONG dung bo tu quet cu tren Pi (/map/explore/start):
+  // hai bo cung lai xe se tranh lenh motor.
   const handleStartExplore = async () => {
+    if (isRos2RuntimeBusy) return;
+    setIsRos2RuntimeBusy(true);
+    setIsExploreModalOpen(false);
+    setNavNotification('Đang bật SLAM + Nav2 để robot tự quét map...');
     try {
-      setNavNotification('Bắt đầu SLAM Frontier Exploration: Robot tự hành tìm đường và quét full phòng...');
-      const res = await fetch(`${PI5_API}/map/explore/start`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json'},
-        body: JSON.stringify({ auto_save: exploreAutoSave, save_name: exploreSaveName }),
-      });
-      const data = await res.json();
+      // Tat bo tu quet cu tren Pi neu dang chay (bo qua loi neu Pi khong co).
+      await fetch(`${PI5_API}/map/explore/stop`, { method: 'POST' }).catch(() => null);
+      const lidarResponse = await fetch(`${PI5_API}/map/connect_lidar`, { method: 'POST' });
+      const lidarResult = await lidarResponse.json().catch(() => null);
+      if (!lidarResponse.ok || lidarResult?.status !== 'SUCCESS') {
+        throw new Error(lidarResult?.message || 'Pi đã mở cổng nhưng RPLiDAR không phát dữ liệu scan.');
+      }
+      setGridData(new Array(200 * 200).fill(-1));
+      setScanPoints([]);
+      setHasLiveRosMap(false);
+      const result = await startRos2Explore(exploreSaveName, exploreAutoSave);
+      setExploredCount(0);
+      exploreStartedAtRef.current = Date.now();
+      exploreSeenRef.current = false;
       setIsExploring(true);
-      setIsExploreModalOpen(false);
-      setNavNotification(`${data.message || 'Robot đang tự động di chuyển quét full toàn bộ phòng...'}`);
+      await waitForRos2Runtime(['MAPPING', 'EXPLORING']);
+      setMapMode('MAPPING');
+      setIsMapLocked(false);
+      rosClientRef.current?.connect();
+      setNavNotification(
+        result?.message
+          || 'Robot sẽ TỰ CHẠY sau khi kiểm tra cảm biến và đếm ngược 10 giây. Đứng xa robot; bấm Dừng Quét / E-STOP để dừng.'
+      );
     } catch (err) {
-      setNavNotification(`Lỗi khởi động tự hành: ${err.message}`);
+      exploreStartedAtRef.current = 0;
+      setIsExploring(false);
+      setNavNotification(`Không bật được chế độ tự quét: ${err.message}`);
+    } finally {
+      setIsRos2RuntimeBusy(false);
+      setTimeout(() => setNavNotification(''), 10000);
     }
-    setTimeout(() => setNavNotification(''), 5000);
   };
 
   const handleStopExplore = async () => {
+    exploreStartedAtRef.current = 0;
+    setIsExploring(false);
+    publishCmdVel(0, 0);
     try {
-      await fetch(`${PI5_API}/map/explore/stop`, { method: 'POST'});
-      setIsExploring(false);
-      publishCmdVel(0, 0);
-      setNavNotification('Đã dừng quét tự động. Robot đang đứng yên an toàn.');
+      await stopRos2Explore();
+      await fetch(`${PI5_API}/map/explore/stop`, { method: 'POST' }).catch(() => null);
+      setNavNotification('Đã dừng tự quét, robot đứng yên. SLAM vẫn chạy: có thể Lưu map hoặc lái tay tiếp.');
     } catch (err) {
-      setNavNotification(`Lỗi dừng khám phá: ${err.message}`);
+      setNavNotification(`Lỗi dừng tự quét: ${err.message}. Bấm E-STOP nếu robot còn chạy!`);
     }
-    setTimeout(() => setNavNotification(''), 3500);
+    setTimeout(() => setNavNotification(''), 6000);
   };
 
   // ─── Workflow Manager ────────────────────────────────────────────────
@@ -1291,7 +1331,7 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
                   <AlertTriangle className="w-4 h-4 text-red-600 shrink-0"/>
                   <div className="flex flex-col">
                     <span>Dừng Quét Tự Hành</span>
-                    <span className="text-[10px] text-red-500 font-normal">Đã khám phá {exploredCount || 0} điểm</span>
+                    <span className="text-[10px] text-red-500 font-normal">Robot đang tự quét (SLAM + Nav2) · bấm để dừng</span>
                   </div>
                 </button>
               ) : (

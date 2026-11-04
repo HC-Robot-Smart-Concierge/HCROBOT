@@ -309,6 +309,22 @@ export async function saveRos2Map(mapName) {
   return parseRos2RuntimeResponse(res, 'Không lưu được bản đồ ROS 2');
 }
 
+// Xe THAT tu di quet map: backend chay start_wsl_slam.sh EXPLORE=1 (SLAM + Nav2 + frontier).
+export async function startRos2Explore(mapName, autoSave = true) {
+  const res = await fetch(`${API_BASE}/map/ros2/start_explore`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: mapName || 'auto_explored_map', auto_save: autoSave }),
+  });
+  return parseRos2RuntimeResponse(res, 'Không khởi động được chế độ tự quét map');
+}
+
+// Dung xe tu quet: tat explorer + Nav2, gui stop toi Pi; GIU SLAM de con luu map.
+export async function stopRos2Explore() {
+  const res = await fetch(`${API_BASE}/map/ros2/stop_explore`, { method: 'POST' });
+  return parseRos2RuntimeResponse(res, 'Không dừng được chế độ tự quét map');
+}
+
 export async function startRos2Navigation(mapName) {
   const res = await fetch(`${API_BASE}/map/ros2/start_navigation`, {
     method: 'POST',

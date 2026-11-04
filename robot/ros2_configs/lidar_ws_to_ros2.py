@@ -22,6 +22,10 @@ from rclpy.action import ActionClient
 from tf2_ros import TransformBroadcaster
 from tf2_ros.static_transform_broadcaster import StaticTransformBroadcaster
 
+import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from diff_drive import DiffDriveConfig, twist_to_wheel_pwm  # noqa: E402
+
 
 class LidarWsToRos2Bridge(Node):
     def __init__(self):
@@ -69,6 +73,11 @@ class LidarWsToRos2Bridge(Node):
         # yaw ROS. Đo 2026-10-29: lệnh quay trái, LiDAR thấy +87° còn gyro -87.5°.
         # Đặt 1 nếu lắp lại IMU đúng chiều hoặc đã sửa ROBOT_AXIS_MAP trong firmware.
         self.gyro_sign = float(os.getenv("HCROBOT_GYRO_SIGN", "-1"))
+        # ESP32 chỉ hiệu chỉnh bias gyro một lần lúc boot; bias còn sót / trôi
+        # theo nhiệt làm yaw tự xoay khi xe đứng yên. Khi đứng yên (không lệnh,
+        # encoder không nhích) thì không tích phân yaw và học lại bias bằng EMA.
+        self.gyro_bias_dps = 0.0
+        self.gyro_bias_alpha = float(os.getenv("HCROBOT_GYRO_BIAS_ALPHA", "0.02"))
         self.imu_seen = False
         self.last_encoder_sample_time = None
         self.encoder_cpr = float(os.getenv("HCROBOT_ENCODER_CPR", "330.0"))
@@ -185,6 +194,20 @@ class LidarWsToRos2Bridge(Node):
         self.scan_max_turn_dps = float(os.getenv("HCROBOT_SCAN_MAX_TURN_DPS", "15" if is_mapping else "0"))
         self.scan_extra_latency_sec = float(os.getenv("HCROBOT_SCAN_EXTRA_LATENCY_SEC", "0.0"))
         self.desired_motion = "stop"
+        # Cách đổi /cmd_vel thành lệnh motor:
+        # - diff (mặc định NAVIGATION): PWM riêng từng bên theo vận tốc Nav2, rẽ cung mượt.
+        # - discrete (mặc định MAPPING): tiến/xoay/dừng + cắt xung xoay để scan không méo.
+        self.cmd_vel_mode = os.getenv(
+            "HCROBOT_CMD_VEL_MODE", "discrete" if is_mapping else "diff"
+        ).strip().lower()
+        self.diff_cfg = DiffDriveConfig(
+            track_m=self.yaw_track,
+            mps_per_pct=float(os.getenv("HCROBOT_DIFF_MPS_PER_PCT", "0.0048")),
+            min_pwm=int(os.getenv("HCROBOT_DIFF_MIN_PWM", "22")),
+            spin_min_pwm=int(os.getenv("HCROBOT_DIFF_SPIN_MIN_PWM", "38")),
+            max_pwm=int(os.getenv("HCROBOT_DIFF_MAX_PWM", "50")),
+        )
+        self.identity_map_odom_on_stale = os.getenv("HCROBOT_IDENTITY_MAP_ODOM_ON_STALE", "0") == "1"
         self._turn_pulse_started = None
         self._last_fast_turn_time = 0.0
         self.dropped_turn_scans = 0
@@ -658,8 +681,23 @@ class LidarWsToRos2Bridge(Node):
             # Gyro là nguồn yaw chính: đo trực tiếp, không bị trượt bánh skid-steer.
             # Không ép dấu theo lệnh điều khiển; nếu gyro ngược chiều xe thật thì
             # chỉnh HCROBOT_GYRO_SIGN hoặc ROBOT_AXIS_MAP trong firmware.
-            if use_gyro:
-                delta_yaw = math.radians(gyro_rate) * dt if abs(gyro_rate) > self.gyro_deadband_dps else 0.0
+            is_stationary = (
+                self.desired_motion == "stop"
+                and abs(delta_left_ticks) < 1.0
+                and abs(delta_right_ticks) < 1.0
+            )
+            if use_gyro and is_stationary:
+                # Zero-velocity update: xe đứng yên thì yaw không đổi; mọi số đo
+                # gyro lúc này là bias, dùng để học bias trừ đi khi xe chạy.
+                self.gyro_bias_dps += self.gyro_bias_alpha * (gyro_rate - self.gyro_bias_dps)
+                delta_yaw = 0.0
+            elif use_gyro:
+                corrected_rate = gyro_rate - self.gyro_bias_dps
+                delta_yaw = (
+                    math.radians(corrected_rate) * dt
+                    if abs(corrected_rate) > self.gyro_deadband_dps
+                    else 0.0
+                )
             else:
                 delta_yaw = (delta_right_m - delta_left_m) / max(self.yaw_track, 0.05)
 
@@ -688,6 +726,14 @@ class LidarWsToRos2Bridge(Node):
         self.last_cmd_time = time.monotonic()
         self.current_vx = msg.linear.x
         self.current_wz = msg.angular.z
+
+        if self.cmd_vel_mode == "diff":
+            left, right = twist_to_wheel_pwm(msg.linear.x, msg.angular.z, self.diff_cfg)
+            moving = left != 0 or right != 0
+            self.desired_motion = "drive" if moving else "stop"
+            self._turn_pulse_started = None
+            self._send_udp_to_pi5(f"drive:{left}:{right}" if moving else "stop")
+            return
 
         # Phân loại lệnh di chuyển để gửi UDP sang Pi 5
         motion = "stop"
@@ -838,9 +884,13 @@ class LidarWsToRos2Bridge(Node):
             vx = self.measured_vx
             wz = self.measured_wz
 
-        # Khi LiDAR/SLAM chưa publish map->odom, phát TF identity để RobotModel không biến mất.
-        scan_stale = self.last_scan_time <= 0.0 or (now_mono - self.last_scan_time) > 1.5
-        if scan_stale:
+        # TF identity map->odom chỉ phát TRƯỚC scan đầu tiên để RobotModel hiện ngay
+        # lúc khởi động. Sau đó SLAM Toolbox (MAPPING) / AMCL (NAVIGATION) là nguồn
+        # map->odom duy nhất: phát chồng identity khi LiDAR chập chờn sẽ làm map
+        # nhảy về gốc. HCROBOT_IDENTITY_MAP_ODOM_ON_STALE=1 để dùng lại hành vi cũ.
+        never_scanned = self.last_scan_time <= 0.0
+        scan_stale = (now_mono - self.last_scan_time) > 1.5
+        if never_scanned or (self.identity_map_odom_on_stale and scan_stale):
             map_odom = TransformStamped()
             map_odom.header.stamp = self.get_clock().now().to_msg()
             map_odom.header.frame_id = "map"
@@ -976,8 +1026,11 @@ class LidarWsToRos2Bridge(Node):
 
         # 360 do: tu 0 den 2*PI, do phan giai 1 do (360 bins)
         num_bins = 360
-        msg.angle_min = 0.0
         msg.angle_increment = (2.0 * math.pi) / num_bins
+        # Bin b gom các điểm có góc trong [b°, b+1°) (int() làm tròn xuống), nên
+        # góc đại diện là tâm bin b+0.5°. Đặt angle_min = 0 sẽ xoay cả scan lệch
+        # -0.5° so với thực tế (sai số cố định như lắp LiDAR lệch góc).
+        msg.angle_min = 0.5 * msg.angle_increment
         # angle_max là góc của tia CUỐI: (n-1)*increment. Đặt 2π sẽ làm
         # slam_toolbox suy ra 361 tia trong khi ranges chỉ có 360.
         msg.angle_max = msg.angle_min + (num_bins - 1) * msg.angle_increment
@@ -1016,7 +1069,7 @@ class LidarWsToRos2Bridge(Node):
 
         if in_room:
             for b in range(num_bins):
-                ray_angle = (ryaw_rad + (b * msg.angle_increment)) % (2.0 * math.pi)
+                ray_angle = (ryaw_rad + msg.angle_min + (b * msg.angle_increment)) % (2.0 * math.pi)
                 d_wall = self._ray_box_dist(rx, ry, ray_angle, xmin, xmax, ymin, ymax)
                 if d_wall is not None:
                     if ranges[b] > d_wall:
@@ -1082,7 +1135,9 @@ async def ws_loop(node: LidarWsToRos2Bridge, ws_url="ws://100.99.72.51:8000/api/
 
 
 def start_asyncio_loop(node):
-    asyncio.run(ws_loop(node))
+    # Cung IP voi lenh motor UDP (PI5_IP): truoc day WS ghi cung IP Tailscale nen
+    # dat PI5_IP=<IP LAN> thi xe nhan lenh chay nhung laptop khong nhan scan/encoder.
+    asyncio.run(ws_loop(node, f"ws://{node.pi5_ip}:8000/api/v1/map/ws?consumer=ros2"))
 
 
 def main(args=None):

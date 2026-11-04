@@ -197,7 +197,7 @@ export class RosbridgeClient {
 
         // Resubscribe to all topics with explicit type specification
         this.subscriptions.forEach((sub, topic) => {
-          this.sendSubscribeOp(topic, sub.type);
+          this.sendSubscribeOp(topic, sub.type, sub.throttleRate);
         });
       };
 
@@ -267,20 +267,22 @@ export class RosbridgeClient {
     return false;
   }
 
-  sendSubscribeOp(topic, type) {
+  sendSubscribeOp(topic, type, throttleRate) {
     const payload = {
       op: 'subscribe',
       topic,
     };
     if (type) payload.type = type;
+    // rosbridge: so ms toi thieu giua 2 message gui ve client
+    if (throttleRate) payload.throttle_rate = throttleRate;
     return this.send(payload);
   }
 
-  subscribe(topic, type, callback) {
+  subscribe(topic, type, callback, options = {}) {
     if (!this.subscriptions.has(topic)) {
-      this.subscriptions.set(topic, { type, callbacks: new Set() });
+      this.subscriptions.set(topic, { type, throttleRate: options.throttleRate, callbacks: new Set() });
       if (this.isConnected) {
-        this.sendSubscribeOp(topic, type);
+        this.sendSubscribeOp(topic, type, options.throttleRate);
       }
     }
     const sub = this.subscriptions.get(topic);

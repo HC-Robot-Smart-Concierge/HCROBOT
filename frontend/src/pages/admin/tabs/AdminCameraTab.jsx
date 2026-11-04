@@ -81,6 +81,9 @@ export const AdminCameraTab = ({ currentUser }) => {
   const speedRef = useRef(75);
   // Giá trị tạm khi đang kéo thanh trượt; chỉ gửi lên Pi khi thả tay
   const [speedDraft, setSpeedDraft] = useState(null);
+  // Tốc độ xoay tại chỗ (A/D) tách riêng với tốc độ tiến/lùi
+  const [turnSpeed, setTurnSpeed] = useState(50);
+  const turnSpeedRef = useRef(50);
 
   // Live Movement Logs
   const [movementLogs, setMovementLogs] = useState([
@@ -302,6 +305,9 @@ export const AdminCameraTab = ({ currentUser }) => {
 
       const info = MOTION_CONFIG[cmd] || { label: cmd, eng: cmd };
       const nowStr = new Date().toLocaleTimeString('vi-VN', { hour12: false });
+      // Xoay tại chỗ (A/D) dùng thanh "Tốc độ quay", còn lại dùng tốc độ chạy.
+      const isSpin = cmd === 'a' || cmd === 'd';
+      const cmdSpeed = isSpin ? turnSpeedRef.current : speedRef.current;
 
       setMovementLogs((prev) => [
         {
@@ -309,7 +315,7 @@ export const AdminCameraTab = ({ currentUser }) => {
           time: nowStr,
           cmd,
           label: `${info.label} (${info.eng})`,
-          speed: speedRef.current,
+          speed: cmdSpeed,
           type: cmd === 'stop' ? 'stop' : 'move',
         },
         ...prev.slice(0, 24),
@@ -323,7 +329,7 @@ export const AdminCameraTab = ({ currentUser }) => {
             command: cmd,
             target_ip: controlIp,
             port: 9999,
-            speed: speedRef.current,
+            speed: cmdSpeed,
           }),
         });
       } catch (err) {
@@ -973,6 +979,29 @@ export const AdminCameraTab = ({ currentUser }) => {
             />
             <span className="w-8 text-right font-mono text-[9px] font-bold text-stone-200">
               {speedDraft ?? speed}%
+            </span>
+          </div>
+
+          {/* Thanh trượt tốc độ quay tại chỗ (A/D), áp dụng ở lần bấm quay tiếp theo */}
+          <div className="w-full flex items-center gap-2 px-1">
+            <span className="font-mono text-[9px] font-bold text-cyan-300 shrink-0">Quay</span>
+            <input
+              type="range"
+              min={20}
+              max={100}
+              step={5}
+              value={turnSpeed}
+              onChange={(e) => {
+                const val = Number(e.target.value);
+                setTurnSpeed(val);
+                turnSpeedRef.current = val;
+              }}
+              aria-label="Tốc độ quay"
+              className="flex-1 h-1 accent-cyan-400 cursor-pointer"
+              title="Tốc độ quay trái/phải tại chỗ (20% - 100%)"
+            />
+            <span className="w-8 text-right font-mono text-[9px] font-bold text-cyan-300">
+              {turnSpeed}%
             </span>
           </div>
 

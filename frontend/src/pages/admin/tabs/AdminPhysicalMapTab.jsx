@@ -56,6 +56,7 @@ import {
   AlertTriangle,
   Crosshair,
   Home,
+  Square,
 } from 'lucide-react';
 
 const PI5_IP = import.meta.env.VITE_PI5_IP || '100.99.72.51';
@@ -94,7 +95,6 @@ export const layoutToMapConfig = (layout) => ({
 // Toc do quet an toan mac dinh de RPLiDAR A1M8 (5.5Hz) quet net 360 do, triet tieu truot banh va meo point cloud
 export const DEFAULT_SAFE_SPEED_PERCENT = 25;
 export const DEFAULT_SAFE_LINEAR_SPEED = 0.12;
-
 // Danh sach diem moc co dinh phong Lab dong bo voi robot/maps/layout2.json
 export const DEFAULT_LAB_WAYPOINTS = [
   { id: 'dock', name: 'Trạm Sạc (Home)', x: 0.0, y: 0.0, yaw: 0.0, type: 'CHARGER', color: '#10B981' },
@@ -276,10 +276,16 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
   // Toc do dieu khien: Giam ve 25% (0.12 m/s) de RPLiDAR A1M8 quet tron ven 360 do
   const [speedPercent, setSpeedPercent] = useState(DEFAULT_SAFE_SPEED_PERCENT);
   const [maxLinearSpeed, setMaxLinearSpeed] = useState(DEFAULT_SAFE_LINEAR_SPEED);
-
   // Danh sach Endpoints (Waypoints) va Zones quan ly thoi gian thuc
   const [endpoints, setEndpoints] = useState(DEFAULT_LAB_WAYPOINTS);
   const [zones, setZones] = useState(DEFAULT_LAB_ZONES);
+
+  // Che do Ghim nhieu Endpoint truc tiep tren ban do (Click de them)
+  const [isAddEndpointMode, setIsAddEndpointMode] = useState(false);
+  const [addEndpointType, setAddEndpointType] = useState('WAYPOINT'); // 'WAYPOINT' | 'CHARGER' | 'PARK'
+  const [navigatingEndpointId, setNavigatingEndpointId] = useState(null);
+  const [hoveredEndpointId, setHoveredEndpointId] = useState(null);
+  const clickStartRef = useRef(null);
 
   // Che do chon va sua Endpoint / Zone
   const [selectedEndpoint, setSelectedEndpoint] = useState(null);
@@ -340,6 +346,8 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     setSelectedEndpoint(null);
     setSelectedZone(null);
     setSelectedGoal(null);
+    setNavigatingEndpointId(null);
+    setIsAddEndpointMode(false);
     setNavPath([]);
     setPoseDraft(null);
     setTrail([]);
@@ -514,6 +522,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
               setNavStatus('Đã tới đích');
               setIsNavigating(false);
               setSelectedGoal(null);
+              setNavigatingEndpointId(null);
             }
 
             if (data.hardware_info) {
@@ -529,6 +538,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
               if (data.nav_status.includes('Đã tới đích')) {
                 setIsNavigating(false);
                 setSelectedGoal(null);
+                setNavigatingEndpointId(null);
               }
             }
           } catch (err) {
@@ -587,10 +597,54 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     rosClientRef.current = client;
     client.connect();
 
+    // Vi tri xe tren map = (map -> odom tu /tf) ∘ (odom -> base_link tu /odom).
+    // map -> odom do SLAM Toolbox (che do quet map) hoac AMCL (Navigation) phat,
+    // nen cach nay chay ca khi quet map, luc chua co /amcl_pose.
+    const mapToOdom = { x: 0, y: 0, yaw: 0 };
+    let lastOdomPoseAt = 0;
+    const stripSlash = (frame) => String(frame || '').replace(/^\//, '');
+
+    client.subscribe(
+      '/tf',
+      'tf2_msgs/TFMessage',
+      (msg) => {
+        for (const t of msg?.transforms || []) {
+          if (stripSlash(t?.header?.frame_id) !== 'map' || stripSlash(t?.child_frame_id) !== 'odom') continue;
+          const tr = t.transform?.translation;
+          const rot = t.transform?.rotation;
+          mapToOdom.x = tr?.x ?? 0;
+          mapToOdom.y = tr?.y ?? 0;
+          mapToOdom.yaw = quaternionToYaw(rot?.z ?? 0, rot?.w ?? 1);
+        }
+      }
+      // Khong throttle /tf: map->odom xen giua cac TF khac, throttle co the lam roi mat no.
+    );
+
+    client.subscribe(
+      ROS_TOPICS.ODOM,
+      ROS_MSG_TYPES.ODOMETRY,
+      (msg) => {
+        const pos = msg?.pose?.pose?.position;
+        const ori = msg?.pose?.pose?.orientation;
+        if (!pos) return;
+        const c = Math.cos(mapToOdom.yaw);
+        const s = Math.sin(mapToOdom.yaw);
+        const x = mapToOdom.x + c * pos.x - s * pos.y;
+        const y = mapToOdom.y + s * pos.x + c * pos.y;
+        const yaw = mapToOdom.yaw + quaternionToYaw(ori?.z ?? 0, ori?.w ?? 1);
+        lastOdomPoseAt = Date.now();
+        setRobotPose((prev) => ({ ...prev, x, y, yaw }));
+        setTrail((prev) => [...prev.slice(-150), { x, y }]);
+      },
+      { throttleRate: 50 }
+    );
+
     client.subscribe(
       ROS_TOPICS.AMCL_POSE,
       ROS_MSG_TYPES.POSE_WITH_COVARIANCE,
       (msg) => {
+        // Chi dung /amcl_pose khi khong co /odom (vd. Nav2 voi nguon odom khac)
+        if (Date.now() - lastOdomPoseAt < 1000) return;
         const pos = msg?.pose?.pose?.position;
         const ori = msg?.pose?.pose?.orientation;
         if (pos) {
@@ -625,6 +679,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
           setNavStatus(`Đã tới đích: ${msg.data}`);
           setIsNavigating(false);
           setSelectedGoal(null);
+          setNavigatingEndpointId(null);
         }
       }
     );
@@ -652,15 +707,16 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
   // ==========================================
   // QUAN LY ENDPOINTS (WAYPOINTS)
   // ==========================================
-  const handleAddEndpoint = (type = 'WAYPOINT') => {
+  const handleAddEndpoint = (type = 'WAYPOINT', customCoords = null) => {
     const tmpl = getEndpointTemplateInfo(type);
     const count = endpoints.length + 1;
+    const typeLabel = type === 'CHARGER' ? 'Trạm Sạc' : type === 'PARK' ? 'Điểm Đỗ' : 'Điểm Mốc';
     const newEp = {
-      id: `wp-${Date.now().toString(36)}`,
-      name: `Điểm Mốc #${count}`,
+      id: `wp-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+      name: `${typeLabel} #${count}`,
       type,
-      x: 1.50,
-      y: 0.00,
+      x: customCoords ? Number(customCoords.x.toFixed(2)) : 1.50,
+      y: customCoords ? Number(customCoords.y.toFixed(2)) : 0.00,
       yaw: 0.0,
       color: tmpl.color || '#3B82F6',
       map_id: mapConfig.mapId,
@@ -671,6 +727,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     setSelectedZone(null);
     setHasUnsavedEndpoints(true);
     setActiveRightTab('WAYPOINTS');
+    setNavStatus(`Đã tạo ${newEp.name} tại (${newEp.x}m, ${newEp.y}m)`);
 
     saveWaypoint(newEp).catch((err) => {
       console.warn('Lỗi lưu endpoint vào backend:', err.message);
@@ -679,6 +736,15 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     if (rosClientRef.current?.isConnected) {
       rosClientRef.current.publish('/hotel_waypoints', 'std_msgs/String', createWaypointSyncMsg(nextList));
     }
+  };
+
+  const handleNavigateToEndpoint = (ep) => {
+    if (!ep) return;
+    setSelectedEndpoint(ep);
+    setSelectedZone(null);
+    setNavigatingEndpointId(ep.id);
+    handleSendGoal(Number(ep.x) || 0.0, Number(ep.y) || 0.0, Number(ep.yaw) || 0.0);
+    setNavStatus(`Bấm chọn '${ep.name}' → Đang điều hướng robot tới (${Number(ep.x).toFixed(2)}, ${Number(ep.y).toFixed(2)})...`);
   };
 
   const handleUpdateSelectedEndpoint = (field, value) => {
@@ -727,6 +793,11 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     setEndpoints(nextList);
     if (selectedEndpoint?.id === id) {
       setSelectedEndpoint(null);
+    }
+    if (navigatingEndpointId === id) {
+      setNavigatingEndpointId(null);
+      setIsNavigating(false);
+      setSelectedGoal(null);
     }
     setHasUnsavedEndpoints(true);
 
@@ -1032,11 +1103,30 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
       for (const ep of endpoints) {
         const { x: wpx, y: wpy } = worldToCanvas(ep.x, ep.y, width, height);
         const isSelected = selectedEndpoint?.id === ep.id;
+        const isHovered = hoveredEndpointId === ep.id;
+        const isNavTarget =
+          isNavigating &&
+          (navigatingEndpointId === ep.id ||
+            (selectedGoal && Math.hypot(ep.x - selectedGoal.x, ep.y - selectedGoal.y) < 0.15));
         const tmpl = getEndpointTemplateInfo(ep.type);
         const epColor = tmpl.color || ep.color || '#3B82F6';
 
-        // Halo khi duoc chon
-        if (isSelected) {
+        // Halo khi dang di toi, hover hoac duoc chon
+        if (isNavTarget) {
+          ctx.beginPath();
+          ctx.arc(wpx, wpy, 16, 0, Math.PI * 2);
+          ctx.strokeStyle = '#22D3EE';
+          ctx.lineWidth = 2.5;
+          ctx.setLineDash([4, 3]);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        } else if (isHovered) {
+          ctx.beginPath();
+          ctx.arc(wpx, wpy, 14, 0, Math.PI * 2);
+          ctx.strokeStyle = '#38BDF8';
+          ctx.lineWidth = 1.8;
+          ctx.stroke();
+        } else if (isSelected) {
           ctx.beginPath();
           ctx.arc(wpx, wpy, 13, 0, Math.PI * 2);
           ctx.strokeStyle = epColor;
@@ -1048,36 +1138,36 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
 
         // Diem tron filled
         ctx.beginPath();
-        ctx.arc(wpx, wpy, isSelected ? 6.5 : 5.0, 0, Math.PI * 2);
-        ctx.fillStyle = epColor;
+        ctx.arc(wpx, wpy, isNavTarget ? 8.0 : isHovered ? 6.5 : isSelected ? 6.5 : 5.0, 0, Math.PI * 2);
+        ctx.fillStyle = isNavTarget ? '#22D3EE' : epColor;
         ctx.fill();
         ctx.strokeStyle = '#FFFFFF';
-        ctx.lineWidth = 1.5;
+        ctx.lineWidth = isNavTarget ? 2.0 : 1.5;
         ctx.stroke();
 
         // Nhãn tên điểm mốc nhỏ gọn, tinh tế
-        const nameText = ep.name || 'Điểm mốc';
-        const badgeW = Math.max(22, nameText.length * 5.0 + 12);
-        const badgeH = 13;
+        const nameText = isNavTarget ? `🎯 ${ep.name}` : ep.name || 'Điểm mốc';
+        const badgeW = Math.max(22, nameText.length * 5.2 + 12);
+        const badgeH = 14;
         const bx = wpx - badgeW / 2;
-        const by = wpy - 18;
+        const by = wpy - 20;
 
-        ctx.fillStyle = isSelected ? '#18181B' : '#0F172A';
+        ctx.fillStyle = isNavTarget ? '#083344' : isSelected ? '#18181B' : isHovered ? '#1E293B' : '#0F172A';
         ctx.fillRect(bx, by, badgeW, badgeH);
-        ctx.strokeStyle = isSelected ? epColor : '#475569';
-        ctx.lineWidth = 0.8;
+        ctx.strokeStyle = isNavTarget ? '#22D3EE' : isSelected ? epColor : isHovered ? '#38BDF8' : '#475569';
+        ctx.lineWidth = isNavTarget ? 1.5 : 0.8;
         ctx.strokeRect(bx, by, badgeW, badgeH);
 
         // Dot mau loai
         ctx.beginPath();
         ctx.arc(bx + 4.5, by + badgeH / 2, 2.0, 0, Math.PI * 2);
-        ctx.fillStyle = epColor;
+        ctx.fillStyle = isNavTarget ? '#22D3EE' : epColor;
         ctx.fill();
 
-        ctx.fillStyle = isSelected ? '#FFFFFF' : '#CBD5E1';
+        ctx.fillStyle = isNavTarget ? '#67E8F9' : isSelected || isHovered ? '#FFFFFF' : '#CBD5E1';
         ctx.font = 'bold 8.5px sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText(nameText.length > 20 ? nameText.slice(0, 18) + '...' : nameText, bx + badgeW / 2 + 2, by + 9.5);
+        ctx.fillText(nameText.length > 22 ? nameText.slice(0, 20) + '...' : nameText, bx + badgeW / 2 + 2, by + 10);
       }
     }
 
@@ -1103,6 +1193,19 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
         ctx.arc(p.x, p.y, 3.5, 0, Math.PI * 2);
         ctx.fill();
       }
+      ctx.restore();
+    } else if (isNavigating && selectedGoal) {
+      // Khi Pi chua tra ve nav_path, ve duong dinh huong net dut thang toi muc tieu
+      const startPt = worldToCanvas(robotPose.x, robotPose.y, width, height);
+      const goalPt = worldToCanvas(selectedGoal.x, selectedGoal.y, width, height);
+      ctx.save();
+      ctx.setLineDash([5, 4]);
+      ctx.strokeStyle = '#22D3EE';
+      ctx.lineWidth = 2.0;
+      ctx.beginPath();
+      ctx.moveTo(startPt.x, startPt.y);
+      ctx.lineTo(goalPt.x, goalPt.y);
+      ctx.stroke();
       ctx.restore();
     }
 
@@ -1227,6 +1330,9 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     invertHeading,
     poseDraft,
     worldToCanvas,
+    isNavigating,
+    navigatingEndpointId,
+    hoveredEndpointId,
   ]);
 
   // ==========================================
@@ -1238,25 +1344,38 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     const rect = canvas.getBoundingClientRect();
     const canvasX = (e.clientX - rect.left) * (canvas.width / rect.width);
     const canvasY = (e.clientY - rect.top) * (canvas.height / rect.height);
+    const { worldX, worldY } = canvasToWorld(canvasX, canvasY, canvas.width, canvas.height);
 
     // 0. Che do Dat vi tri ban dau: click = vi tri, keo = huong dau xe
     if (isPoseSetMode) {
-      const { worldX, worldY } = canvasToWorld(canvasX, canvasY, canvas.width, canvas.height);
       setPoseDraft({ x: worldX, y: worldY, yaw: robotPose.yaw });
       setDragState({ type: 'POSE', mouseStartX: canvasX, mouseStartY: canvasY });
       isDraggingRef.current = true;
       return;
     }
 
-    // 1. Kiem tra click trúng Endpoint (r <= 16px)
+    // 0b. Che do Ghim Endpoint: Click de dat endpoint moi ngay tai vi tri click tren ban do
+    if (isAddEndpointMode) {
+      handleAddEndpoint(addEndpointType, { x: worldX, y: worldY });
+      return;
+    }
+
+    // 1. Kiem tra click trúng Endpoint (r <= 18px)
     if (showEndpoints) {
       for (const ep of endpoints) {
         const { x: epx, y: epy } = worldToCanvas(ep.x, ep.y, canvas.width, canvas.height);
         const dist = Math.hypot(canvasX - epx, canvasY - epy);
-        if (dist <= 16) {
+        if (dist <= 18) {
           setSelectedEndpoint(ep);
           setSelectedZone(null);
           setActiveRightTab('WAYPOINTS');
+          clickStartRef.current = {
+            type: 'ENDPOINT',
+            ep,
+            startX: canvasX,
+            startY: canvasY,
+            hasMoved: false,
+          };
           setDragState({
             type: 'ENDPOINT',
             id: ep.id,
@@ -1284,6 +1403,13 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
           setSelectedZone(zone);
           setSelectedEndpoint(null);
           setActiveRightTab('ZONES');
+          clickStartRef.current = {
+            type: 'ZONE',
+            zone,
+            startX: canvasX,
+            startY: canvasY,
+            hasMoved: false,
+          };
           setDragState({
             type: 'ZONE',
             id: zone.id,
@@ -1298,22 +1424,40 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
       }
     }
 
-    // 3. Neu khong trung: Bo chon va dat Selected Goal
+    // 3. Neu khong trung: Bo chon (Khong tu dong chay robot khi click vung trong)
     setSelectedEndpoint(null);
     setSelectedZone(null);
-
-    const { worldX, worldY } = canvasToWorld(canvasX, canvasY, canvas.width, canvas.height);
-    setSelectedGoal({ x: worldX, y: worldY });
-    handleSendGoal(worldX, worldY, 0.0);
+    clickStartRef.current = null;
   };
 
   const handleCanvasMouseMove = (e) => {
-    if (!dragState) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
     const canvasX = (e.clientX - rect.left) * (canvas.width / rect.width);
     const canvasY = (e.clientY - rect.top) * (canvas.height / rect.height);
+
+    // Kiem tra hover len Endpoint khi khong keo tha de tao con tro chuot pointer
+    if (!dragState && showEndpoints) {
+      let hovered = null;
+      for (const ep of endpoints) {
+        const { x: epx, y: epy } = worldToCanvas(ep.x, ep.y, canvas.width, canvas.height);
+        if (Math.hypot(canvasX - epx, canvasY - epy) <= 18) {
+          hovered = ep.id;
+          break;
+        }
+      }
+      setHoveredEndpointId(hovered);
+    }
+
+    if (!dragState) return;
+
+    if (clickStartRef.current) {
+      const moved = Math.hypot(canvasX - clickStartRef.current.startX, canvasY - clickStartRef.current.startY);
+      if (moved > 6) {
+        clickStartRef.current.hasMoved = true;
+      }
+    }
 
     if (dragState.type === 'POSE') {
       const dx = canvasX - dragState.mouseStartX;
@@ -1348,10 +1492,20 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
 
   const handleCanvasMouseUp = () => {
     const wasPoseDrag = dragState?.type === 'POSE';
+    const clickCandidate = clickStartRef.current;
+
     setDragState(null);
     isDraggingRef.current = false;
+    clickStartRef.current = null;
+
     if (wasPoseDrag && poseDraft) {
       handleApplyInitialPose(poseDraft.x, poseDraft.y, poseDraft.yaw);
+      return;
+    }
+
+    // Neu nguoi dung click vao Endpoint (khong phai keo di xa > 6px) -> Robot di chuyen toi endpoint do!
+    if (clickCandidate?.type === 'ENDPOINT' && !clickCandidate.hasMoved) {
+      handleNavigateToEndpoint(clickCandidate.ep);
     }
   };
 
@@ -1452,6 +1606,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
         setNavStatus(message);
         setIsNavigating(false);
         setSelectedGoal(null);
+        setNavigatingEndpointId(null);
       };
       (async () => {
         try {
@@ -1504,13 +1659,16 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
   const sendTeleopCommand = (commandDirection, linearVel, angularVel) => {
     if (connectionMode === 'pi5') {
       try {
+        // Thanh trượt chỉ áp dụng cho tiến/lùi. Xoay tại chỗ gửi speed=null để
+        // Pi dùng TELEOP_PWM_TURN riêng (lidar_service.py).
+        const isTurn = commandDirection === 'left' || commandDirection === 'right';
+        let speed = speedPercent;
+        if (commandDirection === 'stop') speed = 0;
+        else if (isTurn) speed = null;
         fetch(`${PI5_API}/map/teleop`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            command: commandDirection,
-            speed: commandDirection === 'stop' ? 0 : speedPercent,
-          }),
+          body: JSON.stringify({ command: commandDirection, speed }),
         });
       } catch (err) {
         console.warn('[AdminPhysicalMapTab] Pi5 teleop error:', err);
@@ -1533,6 +1691,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     sendTeleopCommand('stop', 0.0, 0.0);
     setIsNavigating(false);
     setSelectedGoal(null);
+    setNavigatingEndpointId(null);
     setNavPath([]);
     setNavStatus('Đã dừng khẩn cấp (STOP)');
   };
@@ -1673,8 +1832,99 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
       <div className="flex-1 flex overflow-hidden">
         {/* Left: Canvas Lab Viewport */}
         <div className="flex-1 relative flex flex-col items-center justify-center p-3 bg-slate-950 overflow-hidden select-none">
+          {/* Quick Endpoint Strip & Mode Toggle */}
+          <div className="w-full max-w-[960px] mb-2 z-20 flex items-center justify-between gap-2 px-3 py-1.5 rounded-xl bg-slate-900/95 border border-slate-800 shadow-lg text-xs backdrop-blur-md">
+            {/* Left: Nut bat/tat che do Ghim Endpoint */}
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => setIsAddEndpointMode(!isAddEndpointMode)}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold flex items-center gap-1.5 cursor-pointer transition-all shadow-sm ${
+                  isAddEndpointMode
+                    ? 'bg-emerald-600 hover:bg-emerald-500 text-white ring-2 ring-emerald-400 animate-pulse'
+                    : 'bg-blue-600 hover:bg-blue-500 text-white'
+                }`}
+                title={isAddEndpointMode ? 'Nhấn để tắt chế độ ghim' : 'Bật để click thêm nhiều điểm mốc trực tiếp trên bản đồ'}
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>{isAddEndpointMode ? 'Đang Ghim (Click Map)' : '+ Ghim Endpoint'}</span>
+              </button>
+
+              {isAddEndpointMode && (
+                <div className="flex items-center gap-1 bg-slate-800 p-0.5 rounded-lg border border-slate-700">
+                  <button
+                    type="button"
+                    onClick={() => setAddEndpointType('WAYPOINT')}
+                    className={`px-2 py-0.5 rounded text-[10px] font-bold transition-colors cursor-pointer ${
+                      addEndpointType === 'WAYPOINT' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    Waypoint
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAddEndpointType('CHARGER')}
+                    className={`px-2 py-0.5 rounded text-[10px] font-bold transition-colors cursor-pointer ${
+                      addEndpointType === 'CHARGER' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    Trạm Sạc
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAddEndpointType('PARK')}
+                    className={`px-2 py-0.5 rounded text-[10px] font-bold transition-colors cursor-pointer ${
+                      addEndpointType === 'PARK' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    Điểm Đỗ
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Right: Quick Endpoint Navigation Pills */}
+            <div className="flex items-center gap-1.5 overflow-x-auto max-w-full py-0.5 scrollbar-thin">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 shrink-0">
+                Bấm để tới:
+              </span>
+              {endpoints.length === 0 ? (
+                <span className="text-[10px] text-slate-500 italic">Chưa có điểm mốc nào</span>
+              ) : (
+                endpoints.map((ep) => {
+                  const tmpl = getEndpointTemplateInfo(ep.type);
+                  const isNavTarget = isNavigating && navigatingEndpointId === ep.id;
+                  const isSelected = selectedEndpoint?.id === ep.id;
+
+                  return (
+                    <button
+                      key={ep.id}
+                      type="button"
+                      onClick={() => handleNavigateToEndpoint(ep)}
+                      className={`px-2 py-1 rounded-lg text-[10px] font-semibold flex items-center gap-1.5 shrink-0 cursor-pointer transition-all border ${
+                        isNavTarget
+                          ? 'bg-cyan-600 text-white border-cyan-400 shadow-md ring-2 ring-cyan-400/50 animate-pulse'
+                          : isSelected
+                          ? 'bg-slate-800 text-cyan-300 border-cyan-500'
+                          : 'bg-slate-800/80 hover:bg-slate-700 text-slate-200 border-slate-700 hover:border-slate-600'
+                      }`}
+                      title={`Bấm để robot di chuyển ngay tới ${ep.name} (${ep.x.toFixed(2)}m, ${ep.y.toFixed(2)}m)`}
+                    >
+                      <span
+                        className="w-2 h-2 rounded-full shrink-0"
+                        style={{ backgroundColor: tmpl.color || ep.color }}
+                      />
+                      <span className="truncate max-w-[100px]">{ep.name}</span>
+                      {isNavTarget && <Navigation className="w-2.5 h-2.5 text-white animate-spin" />}
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>
+
           {/* Floating Controls Overlay o goc tren trai */}
-          <div className="absolute top-5 left-5 z-10 flex items-center gap-2 bg-slate-900/90 backdrop-blur-md p-1.5 rounded-lg border border-slate-800 shadow-xl text-xs">
+          <div className="absolute top-14 left-5 z-10 flex items-center gap-2 bg-slate-900/90 backdrop-blur-md p-1.5 rounded-lg border border-slate-800 shadow-xl text-xs">
             <button
               onClick={() => setShowLaserScan(!showLaserScan)}
               className={`px-2.5 py-1 rounded text-[11px] font-semibold flex items-center gap-1.5 cursor-pointer transition-colors ${
@@ -1752,14 +2002,37 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
             onMouseDown={handleCanvasMouseDown}
             onMouseMove={handleCanvasMouseMove}
             onMouseUp={handleCanvasMouseUp}
+            onMouseLeave={() => setHoveredEndpointId(null)}
             className={`w-full h-full max-w-[960px] max-h-[640px] rounded-xl border border-slate-800 shadow-2xl bg-slate-900 object-contain ${
-              dragState ? 'cursor-grabbing' : 'cursor-crosshair'
-            } ${isPoseSetMode ? 'ring-2 ring-emerald-500/70' : ''}`}
+              dragState
+                ? 'cursor-grabbing'
+                : isPoseSetMode
+                ? 'cursor-crosshair'
+                : isAddEndpointMode
+                ? 'cursor-copy'
+                : hoveredEndpointId
+                ? 'cursor-pointer'
+                : 'cursor-default'
+            } ${isPoseSetMode ? 'ring-2 ring-emerald-500/70' : isAddEndpointMode ? 'ring-2 ring-blue-500/70' : ''}`}
           />
 
           {isPoseSetMode && (
             <div className="absolute top-16 left-1/2 -translate-x-1/2 z-10 px-3 py-1.5 rounded-lg bg-emerald-950/90 border border-emerald-700 text-[11px] font-semibold text-emerald-300 shadow-xl">
               Đặt vị trí ban đầu: click chỗ robot đứng → kéo theo hướng mũi xe → thả chuột
+            </div>
+          )}
+
+          {isAddEndpointMode && (
+            <div className="absolute top-16 left-1/2 -translate-x-1/2 z-10 px-3.5 py-1.5 rounded-lg bg-blue-950/95 border border-blue-500 text-xs font-semibold text-blue-200 shadow-2xl flex items-center gap-2">
+              <MapPin className="w-3.5 h-3.5 text-blue-400 animate-bounce" />
+              <span>Chế độ ghim Endpoint: Click vị trí bất kỳ trên bản đồ để thêm {addEndpointType === 'CHARGER' ? 'Trạm Sạc' : addEndpointType === 'PARK' ? 'Điểm Đỗ' : 'Waypoint'}</span>
+              <button
+                type="button"
+                onClick={() => setIsAddEndpointMode(false)}
+                className="ml-2 px-2 py-0.5 rounded bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-bold cursor-pointer transition-colors"
+              >
+                Xong
+              </button>
             </div>
           )}
 
@@ -1884,6 +2157,19 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
             </div>
           )}
 
+          {/* NUT DUNG NOI: luon hien khi robot dang tu hanh toi dich */}
+          {isNavigating && (
+            <button
+              type="button"
+              onClick={handleStop}
+              className="absolute top-5 right-5 z-30 px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-extrabold text-sm flex items-center gap-2 shadow-2xl border border-rose-400 cursor-pointer"
+              title="Dừng robot ngay (Space)"
+            >
+              <Square className="w-4 h-4 fill-current" />
+              <span>DỪNG</span>
+            </button>
+          )}
+
           {/* FLOATING ACTION BAR: CHINH SUA ENDPOINT */}
           {selectedEndpoint && (
             <div className="absolute bottom-5 left-1/2 -translate-x-1/2 z-20 flex items-center flex-nowrap whitespace-nowrap gap-2 px-3.5 py-2 rounded-xl border shadow-2xl backdrop-blur-md bg-slate-900/95 border-slate-700 text-xs text-slate-100 max-w-[95%] overflow-x-auto">
@@ -1936,16 +2222,28 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
                 <span>m</span>
               </div>
 
-              {/* Nut Dieu Huong Toi Day */}
-              <button
-                type="button"
-                onClick={() => handleSendGoal(selectedEndpoint.x, selectedEndpoint.y, selectedEndpoint.yaw || 0.0)}
-                className="px-2.5 py-1 rounded bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs flex items-center gap-1 cursor-pointer transition-colors shrink-0"
-                title="Điều hướng robot chạy tới điểm này"
-              >
-                <Navigation className="w-3.5 h-3.5" />
-                <span>Tới Đích</span>
-              </button>
+              {/* Nut Dieu Huong Toi Day / Dung khi dang chay */}
+              {isNavigating && navigatingEndpointId === selectedEndpoint.id ? (
+                <button
+                  type="button"
+                  onClick={handleStop}
+                  className="px-2.5 py-1 rounded bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs flex items-center gap-1 cursor-pointer transition-colors shrink-0"
+                  title="Dừng robot ngay (Space)"
+                >
+                  <Square className="w-3.5 h-3.5 fill-current" />
+                  <span>Dừng</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => handleNavigateToEndpoint(selectedEndpoint)}
+                  className="px-2.5 py-1 rounded bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs flex items-center gap-1 cursor-pointer transition-colors shrink-0"
+                  title="Điều hướng robot chạy tới điểm này"
+                >
+                  <Navigation className="w-3.5 h-3.5" />
+                  <span>Tới Đích</span>
+                </button>
+              )}
 
               {/* Nut Luu Endpoint */}
               <button
@@ -1985,14 +2283,19 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
           )}
 
           {/* Bottom helper text */}
-          <div className="mt-2 text-[11px] text-slate-400 flex items-center gap-3">
-            <span>Kéo thả để di chuyển Điểm mốc / Vùng • Click vùng trống để chọn đích đến ({mapConfig.widthMeters}m × {mapConfig.heightMeters}m)</span>
-            {selectedGoal && (
+          <div className="mt-2 text-[11px] text-slate-400 flex items-center justify-between w-full max-w-[960px]">
+            <span className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-cyan-400 inline-block animate-pulse" />
+              <span>Bấm vào điểm mốc bất kỳ để điều hướng robot tới đó • Bật <strong>'Ghim Endpoint'</strong> để click tạo nhiều điểm mốc trên bản đồ ({mapConfig.widthMeters}m × {mapConfig.heightMeters}m)</span>
+            </span>
+            {isNavigating && (
               <button
+                type="button"
                 onClick={handleStop}
-                className="text-rose-400 hover:underline cursor-pointer text-[10px]"
+                className="px-2 py-0.5 rounded bg-rose-950/80 hover:bg-rose-900 border border-rose-700 text-rose-300 font-bold cursor-pointer text-[10px] flex items-center gap-1 transition-colors"
               >
-                Hủy đích
+                <Square className="w-2.5 h-2.5 fill-current" />
+                <span>Dừng xe</span>
               </button>
             )}
           </div>
@@ -2160,6 +2463,20 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-1">
                   <button
+                    type="button"
+                    onClick={() => setIsAddEndpointMode(!isAddEndpointMode)}
+                    className={`px-2 py-1 rounded text-[10px] font-bold cursor-pointer transition-colors flex items-center gap-1 ${
+                      isAddEndpointMode
+                        ? 'bg-emerald-600 text-white animate-pulse ring-1 ring-emerald-300'
+                        : 'bg-indigo-600/80 hover:bg-indigo-600 text-white'
+                    }`}
+                    title="Bật chế độ ghim để click tạo điểm mốc trực tiếp trên bản đồ"
+                  >
+                    <Crosshair className="w-3 h-3" />
+                    <span>{isAddEndpointMode ? 'Đang Ghim' : 'Ghim Map'}</span>
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => handleAddEndpoint('WAYPOINT')}
                     className="px-2 py-1 rounded bg-blue-600/80 hover:bg-blue-600 text-white text-[10px] font-bold cursor-pointer transition-colors flex items-center gap-1"
                     title="Thêm điểm Waypoint trung gian"
@@ -2168,6 +2485,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
                     <span>Waypoint</span>
                   </button>
                   <button
+                    type="button"
                     onClick={() => handleAddEndpoint('CHARGER')}
                     className="px-2 py-1 rounded bg-emerald-600/80 hover:bg-emerald-600 text-white text-[10px] font-bold cursor-pointer transition-colors flex items-center gap-1"
                     title="Thêm trạm sạc pin"
@@ -2176,6 +2494,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
                     <span>Trạm Sạc</span>
                   </button>
                   <button
+                    type="button"
                     onClick={() => handleAddEndpoint('PARK')}
                     className="px-2 py-1 rounded bg-slate-700 hover:bg-slate-600 text-white text-[10px] font-bold cursor-pointer transition-colors flex items-center gap-1"
                     title="Thêm điểm đỗ chờ"
@@ -2186,6 +2505,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
                 </div>
 
                 <button
+                  type="button"
                   onClick={handleSaveEndpoints}
                   disabled={isSavingEndpoints || !hasUnsavedEndpoints}
                   className={`px-2.5 py-1 rounded text-[10px] font-bold flex items-center gap-1 cursor-pointer transition-all ${
@@ -2205,15 +2525,15 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
                 {endpoints.map((ep) => {
                   const tmpl = getEndpointTemplateInfo(ep.type);
                   const isSelected = selectedEndpoint?.id === ep.id;
+                  const isNavTarget = isNavigating && navigatingEndpointId === ep.id;
                   return (
                     <div
                       key={ep.id}
-                      onClick={() => {
-                        setSelectedEndpoint(ep);
-                        setSelectedZone(null);
-                      }}
+                      onClick={() => handleNavigateToEndpoint(ep)}
                       className={`p-2 rounded-lg border flex items-center justify-between transition-colors cursor-pointer ${
-                        isSelected
+                        isNavTarget
+                          ? 'bg-cyan-950/80 border-cyan-500 shadow-md ring-1 ring-cyan-400'
+                          : isSelected
                           ? 'bg-blue-950/60 border-blue-500 shadow-sm'
                           : 'bg-slate-900 hover:bg-slate-850 border-slate-800'
                       }`}
@@ -2224,7 +2544,14 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
                           style={{ backgroundColor: tmpl.color || ep.color }}
                         />
                         <div className="truncate">
-                          <span className="text-xs font-semibold text-slate-200 block truncate">{ep.name}</span>
+                          <span className="text-xs font-semibold text-slate-200 block truncate flex items-center gap-1.5">
+                            <span>{ep.name}</span>
+                            {isNavTarget && (
+                              <span className="px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300 text-[9px] font-bold border border-cyan-500/40">
+                                Đang tới...
+                              </span>
+                            )}
+                          </span>
                           <span className="text-[10px] text-slate-400 font-mono block">
                             ({Number(ep.x).toFixed(2)}m, {Number(ep.y).toFixed(2)}m) • {tmpl.type}
                           </span>
@@ -2233,15 +2560,23 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
 
                       <div className="flex items-center gap-1 shrink-0 ml-1">
                         <button
+                          type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleSendGoal(ep.x, ep.y, ep.yaw || 0.0);
+                            handleNavigateToEndpoint(ep);
                           }}
-                          className="px-2 py-1 rounded bg-slate-800 hover:bg-cyan-600 text-slate-300 hover:text-white text-[10px] font-bold cursor-pointer transition-colors"
+                          className={`px-2 py-1 rounded text-[10px] font-bold cursor-pointer transition-colors flex items-center gap-1 ${
+                            isNavTarget
+                              ? 'bg-cyan-600 text-white shadow-sm'
+                              : 'bg-slate-800 hover:bg-cyan-600 text-slate-300 hover:text-white'
+                          }`}
+                          title="Bấm để robot di chuyển tới điểm này"
                         >
-                          Tới
+                          <Navigation className="w-3 h-3" />
+                          <span>Tới</span>
                         </button>
                         <button
+                          type="button"
                           onClick={(e) => {
                             e.stopPropagation();
                             handleDeleteEndpoint(ep.id);
@@ -2461,8 +2796,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
                 <p className="mt-1 text-[9px] text-slate-400 italic">
                   * Giảm tốc độ giúp RPLiDAR A1M8 (5.5Hz) quét đủ mật độ điểm, chống trượt bánh và chống méo bản đồ.
                 </p>
-              </div>
-            </div>
+              </div>            </div>
           )}
 
           {/* Hardware connection info */}

@@ -137,6 +137,15 @@
           <property type="string" key="state">docked</property>
         </gz-gui>
       </plugin>
+
+      <!-- Lai xe ao ngay trong Gazebo: publish gz.msgs.Twist len /cmd_vel (DiffDrive cua hc_robot) -->
+      <plugin filename="Teleop" name="Teleop">
+        <gz-gui>
+          <title>Teleop</title>
+          <property type="string" key="state">docked</property>
+        </gz-gui>
+        <topic>/cmd_vel</topic>
+      </plugin>
     </gui>
 
     <!-- Lighting -->
@@ -483,7 +492,7 @@
     <!-- Waypoint 1: Vi Tri Cho Robot Sanh (ROBOT_STANDBY - PARK: Amber) -->
     <model name="wp_marker_standby">
       <static>true</static>
-      <pose>4.56 11.98 0.01 0 0 0</pose>
+      <pose>1.50 0.00 0.01 0 0 0</pose>
       <link name="link">
         <visual name="floor_ring">
           <geometry><cylinder><radius>0.40</radius><length>0.005</length></cylinder></geometry>
@@ -499,7 +508,7 @@
     <!-- Waypoint 2: Tram Sac Robot Sanh (CHARGER - CHARGER: Emerald Green) -->
     <model name="wp_marker_charger">
       <static>true</static>
-      <pose>0.00 0.00 -10.00 0 0 0</pose>
+      <pose>1.50 0.00 0.01 0 0 0</pose>
       <link name="link">
         <visual name="floor_ring">
           <geometry><cylinder><radius>0.40</radius><length>0.005</length></cylinder></geometry>
@@ -563,7 +572,7 @@
     <!-- Waypoint 6: Cum Thang May Tang 1 (ELEVATOR - WAYPOINT: Royal Blue) -->
     <model name="wp_marker_elevator">
       <static>true</static>
-      <pose>17.49 6.86 0.01 0 0 0</pose>
+      <pose>0.00 0.00 -10.00 0 0 0</pose>
       <link name="link">
         <visual name="floor_ring">
           <geometry><cylinder><radius>0.40</radius><length>0.005</length></cylinder></geometry>
@@ -579,7 +588,7 @@
     <!-- Waypoint 7: Nha Ve Sinh Sanh WC (RESTROOMS - WAYPOINT: Royal Blue) -->
     <model name="wp_marker_restrooms">
       <static>true</static>
-      <pose>17.32 3.73 0.01 0 0 0</pose>
+      <pose>0.00 0.00 -10.00 0 0 0</pose>
       <link name="link">
         <visual name="floor_ring">
           <geometry><cylinder><radius>0.40</radius><length>0.005</length></cylinder></geometry>
@@ -611,7 +620,7 @@
     <!-- Waypoint 9: Khu Sofa Sanh (LOBBY_LOUNGE - WAYPOINT: Royal Blue) -->
     <model name="wp_marker_lounge">
       <static>true</static>
-      <pose>18.55 11.18 0.01 0 0 0</pose>
+      <pose>0.00 0.00 -10.00 0 0 0</pose>
       <link name="link">
         <visual name="floor_ring">
           <geometry><cylinder><radius>0.40</radius><length>0.005</length></cylinder></geometry>

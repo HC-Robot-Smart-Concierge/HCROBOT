@@ -50,6 +50,7 @@ if ROBOT_DIR not in sys.path:
 from scripts.pi_battery_estimator import PiBatteryEstimator  # noqa: E402
 from scripts.pi_power_monitor import PiPowerMonitor  # noqa: E402
 from scripts.nav_planner import PlanGrid, plan_path, point_in_zone, zones_of_type  # noqa: E402
+from scripts.ros_map_io import load_ros_map_yaml, read_ros_map_info  # noqa: E402
 
 
 def find_rplidar_port() -> str:
@@ -138,6 +139,9 @@ class RPLidarSLAMCore:
         # SLAM Toolbox (laptop) dang nhan scan qua WS ?consumer=ros2 thi map noi
         # bo khong duoc dung, nen tat di. HCROBOT_PI_INTERNAL_SLAM=auto|on|off.
         self.internal_slam_policy = os.getenv("HCROBOT_PI_INTERNAL_SLAM", "auto").strip().lower()
+        # Định vị liên tục khi tự hành: khớp mỗi vòng scan vào map tĩnh đã khóa.
+        # Đặt HCROBOT_NAV_SCAN_LOCALIZE=0 nếu Pi quá tải (LiDAR bị dồn gói).
+        self.nav_scan_localize = os.getenv("HCROBOT_NAV_SCAN_LOCALIZE", "1").strip() != "0"
         self.external_slam_consumers = 0
 
         # Trạng thái Robot
@@ -319,8 +323,10 @@ resolution: {res}
 origin: [{ox}, {oy}, 0.0]
 negate: 0
 occupied_thresh: 0.65
-free_thresh: 0.25
+free_thresh: 0.196
 """
+        # free_thresh phải < (255-205)/255 = 0.19608: ô chưa biết ghi màu 205,
+        # với 0.25 map_server/Nav2 sẽ coi vùng chưa quét là đường trống.
         with open(yaml_path, "w", encoding="utf-8") as f:
             f.write(yaml_content)
 
@@ -343,25 +349,57 @@ free_thresh: 0.25
             "free_cells": free_count,
         }
 
-    def load_map(self, name: str) -> bool:
-        """Nạp bản đồ đã lưu từ file JSON vào bộ nhớ runtime."""
-        safe_name = "".join(c for c in name if c.isalnum() or c in ("_", "-")).strip()
+    def _read_map_file(self, safe_name: str) -> Optional[Dict[str, Any]]:
+        """Đọc map theo thứ tự: .json (lidar_service / web) rồi .yaml+.pgm (SLAM Toolbox).
+
+        Trả về dict có width/height/resolution/origin_x/origin_y/grid_data hợp lệ,
+        hoặc None nếu không có file đọc được.
+        """
         json_path = os.path.join(MAPS_DIR, f"{safe_name}.json")
-        if not os.path.exists(json_path):
-            logger.warning(f"Không tìm thấy file bản đồ {json_path}")
+        yaml_path = os.path.join(MAPS_DIR, f"{safe_name}.yaml")
+
+        if os.path.exists(json_path):
+            try:
+                with open(json_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                # Một số file cũ (vd. phong_3x5m) lưu lưới dưới khóa "data".
+                grid = data.get("grid_data") or data.get("data") or []
+                w, h = int(data.get("width", 0)), int(data.get("height", 0))
+                if w > 0 and h > 0 and len(grid) == w * h:
+                    data["grid_data"] = grid
+                    return data
+                logger.warning(
+                    f"File {json_path} không có lưới hợp lệ ({len(grid)} ô, cần {w}x{h}); thử .yaml/.pgm"
+                )
+            except Exception as e:
+                logger.warning(f"Lỗi đọc {json_path}: {e}; thử .yaml/.pgm")
+
+        if os.path.exists(yaml_path):
+            try:
+                data = load_ros_map_yaml(yaml_path)
+                logger.info(f"📂 Nạp map ROS 2 '{safe_name}' từ .yaml/.pgm ({data['width']}x{data['height']})")
+                return data
+            except Exception as e:
+                logger.error(f"Lỗi đọc map ROS 2 {yaml_path}: {e}")
+
+        logger.warning(f"Không tìm thấy file bản đồ '{safe_name}' (.json hoặc .yaml/.pgm) trong {MAPS_DIR}")
+        return None
+
+    def load_map(self, name: str) -> bool:
+        """Nạp bản đồ đã lưu (.json hoặc .yaml/.pgm của SLAM Toolbox) vào bộ nhớ runtime."""
+        safe_name = "".join(c for c in name if c.isalnum() or c in ("_", "-")).strip()
+        data = self._read_map_file(safe_name)
+        if data is None:
             return False
 
         try:
-            with open(json_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-
             with self._lock:
                 self.grid_width = data.get("width", 800)
                 self.grid_height = data.get("height", 800)
                 self.resolution = data.get("resolution", 0.025)
                 self.origin_x = data.get("origin_x", -10.0)
                 self.origin_y = data.get("origin_y", -10.0)
-                self.grid_data = data.get("grid_data", [-1] * (self.grid_width * self.grid_height))
+                self.grid_data = list(data["grid_data"])
                 self.grid_hits = [
                     self.wall_clear_hits if v == 100 else 0 for v in self.grid_data
                 ]
@@ -378,7 +416,7 @@ free_thresh: 0.25
             logger.info(f"📂 Đã nạp bản đồ '{safe_name}' vào SLAM core thành công!")
             return True
         except Exception as e:
-            logger.error(f"Lỗi khi đọc file bản đồ {json_path}: {e}")
+            logger.error(f"Lỗi khi nạp bản đồ '{safe_name}': {e}")
             return False
 
     def list_saved_maps(self) -> List[Dict[str, Any]]:
@@ -404,6 +442,29 @@ free_thresh: 0.25
                     })
                 except Exception:
                     pass
+
+        # Map chỉ có .yaml/.pgm (lưu từ SLAM Toolbox) vẫn nạp được qua load_map().
+        json_stems = {f[:-5] for f in os.listdir(MAPS_DIR) if f.endswith(".json")}
+        for fname in sorted(os.listdir(MAPS_DIR)):
+            stem = fname[:-5]
+            if not fname.endswith(".yaml") or stem in json_stems:
+                continue
+            if not os.path.exists(os.path.join(MAPS_DIR, f"{stem}.pgm")):
+                continue
+            try:
+                info = read_ros_map_info(os.path.join(MAPS_DIR, fname))
+            except Exception:
+                continue
+            maps.append({
+                "name": stem,
+                "created_at": "",
+                "width": info["width"],
+                "height": info["height"],
+                "resolution": info["resolution"],
+                "statistics": {},
+                "has_ros2_yaml": True,
+                "source": "ros2_yaml",
+            })
         return maps
 
     def delete_map(self, name: str) -> bool:
@@ -1141,7 +1202,15 @@ free_thresh: 0.25
                             for p in current_scan_batch
                         ]
                         internal_slam = self.internal_slam_enabled()
-                        if self.map_mode == "MAPPING" and internal_slam:
+                        # NAVIGATION: map đã khóa nên khớp scan vào map tĩnh để định vị
+                        # liên tục; không có bước này pose chỉ là encoder+gyro, trôi dần
+                        # và xe "đi xuyên tường" trên map dù đường A* đúng.
+                        nav_localize = (
+                            self.nav_scan_localize
+                            and self.map_mode == "NAVIGATION"
+                            and self.is_map_locked
+                        )
+                        if (self.map_mode == "MAPPING" and internal_slam) or nav_localize:
                             corrected_x, corrected_y, corrected_yaw = self._match_scan_to_map(
                                 raw_batch,
                                 self.robot_x,
@@ -1169,7 +1238,7 @@ free_thresh: 0.25
                         # ────────────────────────────────────────────────────────────
 
                         with self._lock:
-                            if self.map_mode == "MAPPING":
+                            if self.map_mode == "MAPPING" or nav_localize:
                                 self.robot_x = corrected_x
                                 self.robot_y = corrected_y
                                 self.robot_yaw = corrected_yaw
@@ -1829,6 +1898,46 @@ free_thresh: 0.25
 
         return best_frontier
 
+    def _plan_frontier_route(self, fx: float, fy: float) -> Optional[List[tuple]]:
+        """Lap duong A* tu robot toi frontier tren map dang quet (chi di qua o da biet la trong).
+
+        Tuong duoc noi rong theo ban kinh robot, o chua biet bi chan, vung KEEP_OUT bi chan.
+        Tra ve danh sach diem trung gian, hoac None neu khong lap duoc duong.
+        """
+        with self._lock:
+            grid = list(self.grid_data)
+            w, h, res = self.grid_width, self.grid_height, self.resolution
+            ox, oy = self.origin_x, self.origin_y
+            start = (self.robot_x, self.robot_y)
+            keepout = zones_of_type(self.nav_zones, "KEEP_OUT")
+        try:
+            pg = PlanGrid(grid, w, h, res, ox, oy, keepout_zones=keepout)
+            path, message = plan_path(pg, start, (fx, fy))
+        except Exception as exc:  # planner loi khong duoc lam dung kham pha
+            logger.warning(f"⚠️ Lập đường tới frontier lỗi: {exc}")
+            return None
+        if path is None:
+            logger.info(f"🧭 Không lập được đường A* tới frontier ({fx:.2f}, {fy:.2f}): {message}")
+        return path
+
+    def _drive_to_frontier(self, fx: float, fy: float) -> bool:
+        """Di toi frontier theo duong A* (vong qua tuong); khong co duong thi chay thang + ne phan xa."""
+        route = self._plan_frontier_route(fx, fy)
+        if not route:
+            return self._navigate_to_sync(fx, fy, timeout=25.0, goal_radius=0.30)
+
+        logger.info(f"🧭 Đường A* tới frontier: {len(route)} chặng")
+        for i, (wx, wy) in enumerate(route):
+            is_last = i == len(route) - 1
+            ok = self._navigate_to_sync(
+                wx, wy,
+                timeout=25.0,
+                goal_radius=0.30 if is_last else 0.15,
+            )
+            if not ok:
+                return False
+        return True
+
     def _navigate_to_sync(self, target_x: float, target_y: float,
                           timeout: float = 30.0, goal_radius: float = 0.25) -> bool:
         """
@@ -2005,7 +2114,7 @@ free_thresh: 0.25
             frontier_count += 1
             logger.info(f"🧭 [{frontier_count}] Di chuyển tới frontier ({fx:.2f}, {fy:.2f})...")
 
-            success = self._navigate_to_sync(fx, fy, timeout=25.0, goal_radius=0.30)
+            success = self._drive_to_frontier(fx, fy)
             frontier_key = (round(fx, 1), round(fy, 1))
             self.explored_frontiers.append(frontier_key)
 

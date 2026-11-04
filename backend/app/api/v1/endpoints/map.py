@@ -169,6 +169,11 @@ class Ros2MapRequest(BaseModel):
     name: str
 
 
+class Ros2ExploreRequest(BaseModel):
+    name: str = "auto_explored_map"
+    auto_save: bool = True
+
+
 def is_point_in_zone(px: float, py: float, z) -> bool:
     """Kiểm tra một tọa độ (px, py) có nằm trong vùng hình chữ nhật z hay không."""
     half_w = (getattr(z, "width", 2.0) or 2.0) / 2.0
@@ -540,6 +545,21 @@ async def start_ros2_mapping():
         return await asyncio.to_thread(ros2_runtime_service.start_mapping)
     except Ros2RuntimeError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+
+@router.post("/ros2/start_explore", summary="Xe thật TỰ ĐI quét map (SLAM + Nav2 + frontier explorer)")
+async def start_ros2_explore(request: Ros2ExploreRequest):
+    try:
+        return await asyncio.to_thread(
+            ros2_runtime_service.start_exploration, request.name, auto_save=request.auto_save
+        )
+    except Ros2RuntimeError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+
+@router.post("/ros2/stop_explore", summary="Dừng xe tự quét (giữ SLAM để còn lưu map)")
+async def stop_ros2_explore():
+    return await asyncio.to_thread(ros2_runtime_service.stop_exploration)
 
 
 @router.post("/ros2/save", summary="Lưu Occupancy Grid ROS 2 hiện tại thành YAML/PGM")

@@ -59,6 +59,106 @@ def test_export_pgm_to_json_uses_bottom_row_as_origin(tmp_path: Path):
     assert (data["origin_x"], data["origin_y"], data["resolution"]) == (-1.0, -2.0, 0.05)
 
 
+def _fake_scripts(tmp_path: Path) -> Ros2RuntimeService:
+    service = Ros2RuntimeService(project_root=tmp_path)
+    service.scripts_dir.mkdir(parents=True)
+    (service.scripts_dir / "start_wsl_slam.sh").write_text("#!/bin/bash\n", encoding="utf-8")
+    return service
+
+
+def test_start_exploration_launches_slam_script_with_explore_env(tmp_path: Path, monkeypatch):
+    service = _fake_scripts(tmp_path)
+    launched = {}
+
+    class FakePopen:
+        pid = 4242
+
+        def __init__(self, command, **kwargs):
+            launched["command"] = command
+
+    monkeypatch.setattr("app.services.hardware.ros2_runtime_service.subprocess.Popen", FakePopen)
+
+    result = service.start_exploration("Phòng khách")
+
+    cmd = launched["command"]
+    assert cmd[:4] == ["wsl.exe", "-d", "Ubuntu-24.04", "--"]
+    assert cmd[4] == "env" and "EXPLORE=1" in cmd and "EXPLORE_SAVE=Ph_ng_kh_ch" in cmd
+    assert cmd[-1].endswith("/robot/ros2_configs/start_wsl_slam.sh")
+    assert result["mode"] == "EXPLORING" and result["map_name"] == "Ph_ng_kh_ch"
+
+
+def test_start_exploration_without_auto_save_passes_empty_save_name(tmp_path: Path, monkeypatch):
+    service = _fake_scripts(tmp_path)
+    launched = {}
+
+    class FakePopen:
+        pid = 1
+
+        def __init__(self, command, **kwargs):
+            launched["command"] = command
+
+    monkeypatch.setattr("app.services.hardware.ros2_runtime_service.subprocess.Popen", FakePopen)
+    service.start_exploration("ignored", auto_save=False)
+    assert "EXPLORE_SAVE=" in launched["command"]
+
+
+def test_stop_exploration_kills_explorer_and_nav2_but_keeps_slam_and_stops_motors(tmp_path: Path, monkeypatch):
+    service = _fake_scripts(tmp_path)
+    ran, sent = [], []
+
+    def fake_run(command, **kwargs):
+        ran.append(command)
+
+        class R:
+            returncode, stdout, stderr = 0, "", ""
+
+        return R()
+
+    class FakeSock:
+        def __init__(self, *a, **k):
+            pass
+
+        def sendto(self, data, addr):
+            sent.append((data, addr))
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr("app.services.hardware.ros2_runtime_service.subprocess.run", fake_run)
+    monkeypatch.setattr("app.services.hardware.ros2_runtime_service.socket.socket", FakeSock)
+    monkeypatch.setattr("app.services.hardware.ros2_runtime_service.time.sleep", lambda s: None)
+    monkeypatch.setenv("PI5_IP", "10.0.0.7")
+
+    result = service.stop_exploration()
+
+    shell = ran[0][-1]
+    assert "rontier_explorer.py" in shell and "controller_server" in shell  # '[f]rontier...' cho pkill
+    assert "slam_toolbox" not in shell  # giu SLAM de con luu duoc map
+    assert sent and all(d == b"stop" and a == ("10.0.0.7", 9999) for d, a in sent)
+    assert result["mode"] == "MAPPING"
+
+
+@pytest.mark.asyncio
+async def test_ros2_explore_endpoints(monkeypatch):
+    service = map_endpoint.ros2_runtime_service
+    monkeypatch.setattr(
+        service,
+        "start_exploration",
+        lambda name, auto_save=True: {"status": "STARTING", "mode": "EXPLORING", "map_name": name,
+                                      "auto_save": auto_save},
+    )
+    monkeypatch.setattr(service, "stop_exploration", lambda: {"status": "STOPPED", "mode": "MAPPING"})
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        res = await client.post("/api/v1/map/ros2/start_explore", json={"name": "phong_a", "auto_save": False})
+        assert res.status_code == 200
+        assert res.json() == {"status": "STARTING", "mode": "EXPLORING", "map_name": "phong_a", "auto_save": False}
+
+        res = await client.post("/api/v1/map/ros2/stop_explore")
+        assert res.status_code == 200 and res.json()["status"] == "STOPPED"
+
+
 @pytest.mark.asyncio
 async def test_ros2_runtime_web_endpoints(monkeypatch):
     service = map_endpoint.ros2_runtime_service
@@ -85,7 +185,7 @@ async def test_ros2_runtime_web_endpoints(monkeypatch):
     monkeypatch.setattr(
         service,
         "start_navigation",
-        lambda name: {"status": "STARTING", "mode": "NAVIGATION", "map_name": name},
+        lambda name, zones=None: {"status": "STARTING", "mode": "NAVIGATION", "map_name": name},
     )
 
     transport = ASGITransport(app=app)

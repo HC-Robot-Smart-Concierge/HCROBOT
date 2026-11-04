@@ -7,7 +7,7 @@ import threading
 import time
 
 from motor_controller import MotorController, get_char, load_config, run_wasd_controller
-from obstacle_safety import ObstacleSafetyController
+from obstacle_safety import ObstacleSafetyController, classify_wheel_motion
 from ultrasonic_serial import UltrasonicSerialReader
 
 
@@ -80,11 +80,21 @@ def start_udp_control_listener(safety, port=9999):
         "x": "stop", "stop": "stop", " ": "stop"
     }
 
+    # Mat lenh qua HCROBOT_UDP_CMD_TIMEOUT giay (mac dinh 1.0, 0 = tat) thi dung motor:
+    # laptop treo / mat mang / script bi tat truoc khi gui "stop" khong lam xe chay mai.
+    from udp_command_watchdog import UdpCommandWatchdog
+    watchdog = UdpCommandWatchdog(float(os.getenv("HCROBOT_UDP_CMD_TIMEOUT", "1.0")))
+
     try:
         while True:
+            if watchdog.should_stop(time.monotonic()):
+                logger.warning("UDP watchdog: mất lệnh điều khiển > %.1fs -> DỪNG ĐỘNG CƠ", watchdog.timeout)
+                safety.stop()
             try:
                 data, _ = sock.recvfrom(1024)
                 cmd = data.decode("utf-8", errors="ignore").strip().lower()
+                if cmd.startswith(("speed:", "speed_", "drive:")) or cmd in motion_map:
+                    watchdog.on_command(cmd, time.monotonic())
                 if cmd.startswith("speed:") or cmd.startswith("speed_"):
                     val_str = cmd.replace("speed:", "").replace("speed_", "").strip()
                     try:
@@ -93,6 +103,18 @@ def start_udp_control_listener(safety, port=9999):
                             safety.set_speed(spd)
                     except ValueError:
                         pass
+                    continue
+
+                # Lệnh vi sai từ Nav2: "drive:<trái %>:<phải %>" (có dấu, -100..100)
+                if cmd.startswith("drive:"):
+                    parts = cmd.split(":")
+                    try:
+                        left_pct = int(float(parts[1]))
+                        right_pct = int(float(parts[2]))
+                    except (IndexError, ValueError):
+                        continue
+                    if hasattr(safety, "drive"):
+                        safety.drive(left_pct, right_pct)
                     continue
 
                 if cmd in motion_map:
@@ -142,6 +164,18 @@ class DirectMotorSafetyWrapper:
         if self.motion != "stop":
             self.motor.stop()
             self.motion = "stop"
+
+    def drive(self, left: int, right: int) -> bool:
+        """Lệnh vi sai (Nav2) khi không có lớp an toàn cảm biến."""
+        motion = classify_wheel_motion(int(left), int(right))
+        if motion == "stop":
+            self.stop()
+            return True
+        if not hasattr(self.motor, "drive_wheels"):
+            return self.command(motion)
+        self.motor.drive_wheels(int(left), int(right))
+        self.motion = motion
+        return True
 
     def set_speed(self, speed_percent: int) -> int:
         if hasattr(self.motor, "set_speed"):

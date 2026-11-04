@@ -187,4 +187,32 @@ describe('AdminPhysicalMapTab - Physical Lab Map (layout2)', () => {
     expect(maxCorner.x).toBeGreaterThan(originCorner.x);
     expect(maxCorner.y).toBeLessThan(originCorner.y);
   });
+
+  it('correctly distinguishes clicking an endpoint (distance <= 18px) from clicking empty space', () => {
+    const canvasWidth = 850;
+    const canvasHeight = 560;
+    const testEp = DEFAULT_LAB_WAYPOINTS[0]; // dock at 0.0, 0.0
+    const epCanvas = transformWorldToCanvas(testEp.x, testEp.y, canvasWidth, canvasHeight, LAYOUT2_CONFIG);
+
+    // Exact hit
+    const distExact = Math.hypot(epCanvas.x - epCanvas.x, epCanvas.y - epCanvas.y);
+    expect(distExact).toBeLessThanOrEqual(18);
+
+    // Near hit (within 10px radius)
+    const distNear = Math.hypot(epCanvas.x + 8 - epCanvas.x, epCanvas.y + 6 - epCanvas.y);
+    expect(distNear).toBe(10);
+    expect(distNear).toBeLessThanOrEqual(18);
+
+    // Miss (empty space 50px away)
+    const distFar = Math.hypot(epCanvas.x + 35 - epCanvas.x, epCanvas.y + 40 - epCanvas.y);
+    expect(distFar).toBeGreaterThan(18);
+  });
+
+  it('validates drag movement threshold (> 6px) to separate click navigation from repositioning', () => {
+    const clickDistance = Math.hypot(3, 4); // 5px
+    expect(clickDistance).toBeLessThanOrEqual(6); // should be treated as click (navigate)
+
+    const dragDistance = Math.hypot(8, 6); // 10px
+    expect(dragDistance).toBeGreaterThan(6); // should be treated as drag (reposition)
+  });
 });

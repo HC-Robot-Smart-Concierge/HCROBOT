@@ -99,5 +99,26 @@ describe('MobileRobotScreen Component & UX Tests', () => {
     expect(content).not.toContain('International hotel guest support');
     expect(content).not.toContain('Giao tiếp giọng nói và hiển thị');
   });
+
+  it('renders full-screen wayfinding map without redundant right column, step text, or duplicated QR card', () => {
+    const filePath = path.resolve(__dirname, '../MobileRobotScreen.jsx');
+    const content = fs.readFileSync(filePath, 'utf8');
+
+    // Không còn chia 2 cột với cột phải cồng kềnh
+    expect(content).not.toContain('w-[310px] sm:w-[350px] md:w-[380px]');
+
+    // Không còn chữ Chặng 1, Chặng 2 hay thẻ Quét QR lưu chỉ dẫn thừa
+    expect(content).not.toContain('Quét QR lưu chỉ dẫn');
+    expect(content).not.toContain('Quét camera để lưu sơ đồ');
+    expect(content).not.toContain('TÔI ĐÃ NHỚ ĐƯỜNG · ĐÓNG');
+
+    // Bản đồ hiển thị full width & height
+    expect(content).toContain('w-full h-full relative rounded-2xl overflow-hidden');
+    expect(content).toContain('FloorMap');
+
+    // Thanh chỉ dẫn nổi tinh giản ở đáy
+    expect(content).toContain('absolute bottom-2.5 left-2.5 right-2.5 z-30');
+    expect(content).toContain('currentDestination.isDifferentFloor');
+  });
 });
 

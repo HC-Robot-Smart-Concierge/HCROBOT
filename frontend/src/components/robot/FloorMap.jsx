@@ -28,14 +28,14 @@ import { QRCodeSVG } from 'qrcode.react';
 
 // Danh sách cấu hình 8 Tầng trong khách sạn
 export const HOTEL_FLOORS = [
-  { id: '1', level: 'B2', name: 'Hầm B2 · Bãi Đỗ Xe Ô Tô', image: '/maps/1.png' },
-  { id: '2', level: 'B1', name: 'Hầm B1 · Bãi Xe Máy', image: '/maps/2.png' },
+  { id: '1', level: 'B2', name: 'Hầm B2 · Bãi Đỗ Xe Ô Tô', image: '/maps/floor_b2.png' },
+  { id: '2', level: 'B1', name: 'Hầm B1 · Bãi Xe Máy', image: '/maps/floor_b1.png' },
   { id: '3', level: 'Ground', name: 'Tầng Trệt · Sảnh & Tiếp Tân', image: '/maps/floor_1.png' },
   { id: '4', level: 'Tầng 2', name: 'Tầng 2 · Bếp & Nhà Hàng (Kitchen & Pickup)', image: '/maps/floor_2.png' },
   { id: '5', level: 'Tầng 3', name: 'Tầng 3 · Phòng Nghỉ (301-310)', image: '/maps/floor_3.png' },
   { id: '6', level: 'Tầng 4', name: 'Tầng 4 · Phòng Nghỉ (401-410)', image: '/maps/floor_4.png' },
   { id: '7', level: 'Tầng 5', name: 'Tầng 5 · Hồ Bơi, Spa & Gym', image: '/maps/floor_5.png' },
-  { id: '8', level: 'Tầng 6', name: 'Tầng 6 · Rooftop Coffee & Bar', image: '/maps/8.png' },
+  { id: '8', level: 'Tầng 6', name: 'Tầng 6 · Rooftop Coffee & Bar', image: '/maps/floor_6.png' },
 ];
 
 // Danh bạ các điểm đến (POI) nổi bật
@@ -454,7 +454,7 @@ export const HOTEL_DESTINATIONS = {
     routeTarget: 'M 1715 560 L 1288 560 L 1288 920',
   },
 
-  // === TẦNG 6 ===
+  // === TẦNG 6: ROOFTOP COFFEE, BAR, GIFT SHOP & KARAOKE (MAP 8.PNG) ===
   rooftop_coffee: {
     id: 'rooftop_coffee',
     name: 'Rooftop Coffee & View',
@@ -466,9 +466,9 @@ export const HOTEL_DESTINATIONS = {
     distance: '130m',
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Di chuyển tới Thang máy A và bấm lên Tầng 6 (Cao nhất).',
-    step2Text: 'Chặng 2: Rẽ trái theo hành lang sang khu vực cafe view toàn cảnh thành phố.',
-    coords: { x: 740, y: 380 },
-    routeTarget: 'M 1249 410 L 1249 470 C 1249 480, 1235 480, 1220 480 L 960 480 C 930 480, 915 510, 908 560 C 900 600, 850 590, 820 560 L 820 450 C 820 420, 790 390, 740 380',
+    step2Text: 'Chặng 2: Ra khỏi thang máy, đi thẳng theo hành lang qua cửa trung tâm vào khu vực Rooftop Coffee.',
+    coords: { x: 380, y: 230 },
+    routeTarget: 'M 1715 560 L 760 560 L 760 500 L 540 500 L 540 460 L 380 230',
   },
   bar: {
     id: 'bar',
@@ -481,9 +481,9 @@ export const HOTEL_DESTINATIONS = {
     distance: '120m',
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Đi tới Thang máy A và bấm lên Tầng 6.',
-    step2Text: 'Chặng 2: Ra khỏi thang máy, rẽ trái 10m là đến Quầy Bar.',
-    coords: { x: 1040, y: 380 },
-    routeTarget: 'M 1249 410 L 1249 470 C 1249 480, 1235 480, 1220 480 L 1080 480 C 1080 450, 1060 420, 1040 380',
+    step2Text: 'Chặng 2: Ra khỏi thang máy, đi dọc hành lang rẽ vào Quầy Bar ở giữa.',
+    coords: { x: 1080, y: 230 },
+    routeTarget: 'M 1715 560 L 1030 560 L 1030 460 L 1080 230',
   },
   karaoke: {
     id: 'karaoke',
@@ -496,9 +496,9 @@ export const HOTEL_DESTINATIONS = {
     distance: '125m',
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Đi tới Thang máy A và bấm lên Tầng 6.',
-    step2Text: 'Chặng 2: Ra khỏi thang máy, đi thẳng xuống cuối hành lang vào Phòng Karaoke.',
-    coords: { x: 1140, y: 680 },
-    routeTarget: 'M 1249 410 L 1249 550 C 1249 570, 1230 600, 1200 630 L 1140 680',
+    step2Text: 'Chặng 2: Ra khỏi thang máy, rẽ trái theo hành lang vào Phòng VIP Karaoke.',
+    coords: { x: 1450, y: 920 },
+    routeTarget: 'M 1715 560 L 1510 560 L 1510 680 L 1450 920',
   },
 
   // === TẦNG TRỆT & HẦM ===
@@ -543,9 +543,9 @@ export const HOTEL_DESTINATIONS = {
     distance: '90m',
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Di chuyển tới Thang máy A và bấm xuống Hầm B2.',
-    step2Text: 'Chặng 2: Ra khỏi thang máy, rẽ trái để vào khu vực đỗ xe ô tô.',
-    coords: { x: 950, y: 520 },
-    routeTarget: 'M 1249 410 L 1249 470 C 1249 480, 1220 480, 1150 480 L 950 520',
+    step2Text: 'Chặng 2: Ra khỏi thang máy, đi thẳng theo hành lang tới khu vực đỗ xe ô tô Hầm B2.',
+    coords: { x: 880, y: 850 },
+    routeTarget: 'M 1715 560 L 880 560 L 880 750 L 880 850',
   },
   parking_bike: {
     id: 'parking_bike',
@@ -558,9 +558,9 @@ export const HOTEL_DESTINATIONS = {
     distance: '85m',
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Di chuyển tới Thang máy A và bấm xuống Hầm B1.',
-    step2Text: 'Chặng 2: Ra khỏi thang máy, rẽ phải vào khu vực giữ xe máy an toàn.',
-    coords: { x: 950, y: 520 },
-    routeTarget: 'M 1249 410 L 1249 470 C 1249 480, 1220 480, 1150 480 L 950 520',
+    step2Text: 'Chặng 2: Ra khỏi thang máy, đi thẳng theo làn di chuyển vào Bãi đỗ xe máy Hầm B1.',
+    coords: { x: 920, y: 500 },
+    routeTarget: 'M 1715 560 L 920 560 L 920 500',
   },
   gift_shop: {
     id: 'gift_shop',
@@ -573,9 +573,9 @@ export const HOTEL_DESTINATIONS = {
     distance: '120m',
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Di chuyển tới Thang máy A và bấm lên Tầng 6.',
-    step2Text: 'Chặng 2: Ra khỏi thang máy, rẽ trái đi vào sảnh trung tâm là đến Quầy quà lưu niệm.',
-    coords: { x: 950, y: 420 },
-    routeTarget: 'M 1249 410 L 1249 470 C 1249 480, 1220 480, 1150 480 L 950 420',
+    step2Text: 'Chặng 2: Ra khỏi thang máy, đi qua cửa trung tâm và rẽ vào Cửa Hàng Lưu Niệm bên trái.',
+    coords: { x: 200, y: 850 },
+    routeTarget: 'M 1715 560 L 760 560 L 760 730 L 370 730 L 200 850',
   },
 };
 

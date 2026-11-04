@@ -184,6 +184,12 @@ describe('FloorMap Wayfinding Logic & Contract Tests', () => {
 
     expect(detectDestinationPoi('Hãy giới thiệu cho tôi về hồ bơi')).toBe('infinity_pool');
 
+    expect(detectDestinationPoi('Chỉ đường lên Rooftop Coffee')).toBe('rooftop_coffee');
+    expect(detectDestinationPoi('Quầy bar ở đâu')).toBe('bar');
+    expect(detectDestinationPoi('Phòng karaoke ở tầng mấy')).toBe('karaoke');
+    expect(detectDestinationPoi('Cửa hàng lưu niệm ở đâu')).toBe('gift_shop');
+    expect(detectDestinationPoi('Bãi giữ xe máy ở đâu')).toBe('parking_bike');
+
 
 
     // Không kích hoạt với địa điểm bên ngoài khách sạn

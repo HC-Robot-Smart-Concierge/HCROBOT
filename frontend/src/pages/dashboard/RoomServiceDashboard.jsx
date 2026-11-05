@@ -10,6 +10,7 @@ import {
   updateRoomServiceOrderStatus,
 } from '../../services/operationsApi';
 import { useLanguage } from '../../context/LanguageContext';
+import { formatTimeAgo } from '../../utils/timeAgo';
 
 const initialOrdersByNumber = new Map(
   INITIAL_ROOM_SERVICE_DATA.orders.map((order) => [order.id, order])
@@ -30,7 +31,8 @@ const normalizeOrder = (order) => {
       order.is_service_request ?? order.isServiceRequest ?? initialOrder.isServiceRequest ?? false,
     estCompletion: order.est_completion || order.estCompletion || initialOrder.estCompletion,
     assignedTo: order.assigned_staff_name || order.assignedTo,
-    orderedAt: order.orderedAt || initialOrder.orderedAt || 'Just now',
+    created_at: order.created_at || order.createdAt || initialOrder.created_at,
+    orderedAt: formatTimeAgo(order.created_at || order.createdAt, order.orderedAt || initialOrder.orderedAt || 'Just now', 'vi'),
     guestName: order.guest_name || order.guestName || initialOrder.guestName,
     guest_name: order.guest_name || order.guestName || initialOrder.guestName,
     guestPhone: order.guest_phone || order.guestPhone || initialOrder.guestPhone,
@@ -501,7 +503,7 @@ export const RoomServiceDashboard = ({ currentUser, onNotify = () => {} }) => {
                             <span>{order.room_phone || order.roomPhone || `Ext ${order.room}`}</span>
                           </span>
                         </div>
-                        <span className="text-[10px] text-[#888]">{order.orderedAt === 'Just now' ? st('Just now') : order.orderedAt || st('Just now')}</span>
+                        <span className="text-[10px] text-[#888]">{formatTimeAgo(order.created_at || order.orderedAt, st('Just now'), 'vi')}</span>
                       </div>
 
                       {(() => {

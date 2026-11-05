@@ -29,6 +29,7 @@ import {
   updateRoomServiceOrderStatus,
 } from '../../services/operationsApi';
 import { useLanguage } from '../../context/LanguageContext';
+import { formatTimeAgo } from '../../utils/timeAgo';
 
 const initialOrdersByNumber = new Map(
   INITIAL_ROOM_SERVICE_DATA.orders.map((order) => [order.id, order])
@@ -52,7 +53,8 @@ const normalizeOrder = (order) => {
       order.is_service_request ?? order.isServiceRequest ?? initialOrder.isServiceRequest ?? false,
     estCompletion: order.est_completion || order.estCompletion || initialOrder.estCompletion || '15 mins',
     assignedTo: order.assigned_staff_name || order.assignedTo,
-    orderedAt: order.orderedAt || initialOrder.orderedAt || 'Vừa đặt',
+    created_at: order.created_at || order.createdAt || initialOrder.created_at,
+    orderedAt: formatTimeAgo(order.created_at || order.createdAt, order.orderedAt || initialOrder.orderedAt || 'Vừa đặt', 'vi'),
   };
 };
 
@@ -624,7 +626,7 @@ export const KitchenDashboard = ({ currentUser, onNotify = () => {} }) => {
                             Phòng {order.room || 'Khách'}
                           </span>
                           <span className="text-[11px] text-stone-500 font-medium">
-                            • {order.orderedAt || 'Vừa đặt'}
+                            • {formatTimeAgo(order.created_at || order.orderedAt, 'Vừa đặt', 'vi')}
                           </span>
                           {((order.note || '').includes('Gộp thêm') || order.is_merged) && (
                             <span className="rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200 px-2 py-0.5 text-[10px] font-bold">

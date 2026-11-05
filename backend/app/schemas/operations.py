@@ -866,6 +866,7 @@ class RoomPinVerifyRequest(BaseModel):
     note: Optional[str] = Field(None, description="Ghi chú thêm nếu có")
     skip_ticket_creation: Optional[bool] = Field(False, description="Nếu True, chỉ xác thực PIN/NFC mà không tạo SupportRequest tự động")
     create_ticket: Optional[bool] = Field(True, description="Nếu False, chỉ xác thực PIN/NFC mà không tạo SupportRequest tự động")
+    session_id: Optional[str] = Field(None, description="Session ID hiện tại của Kiosk để ghi nhớ xác thực trong phiên")
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -879,6 +880,7 @@ class RoomNfcVerifyRequest(BaseModel):
     note: Optional[str] = Field(None, description="Ghi chú thêm nếu có")
     skip_ticket_creation: Optional[bool] = Field(False, description="Nếu True, chỉ xác thực PIN/NFC mà không tạo SupportRequest tự động")
     create_ticket: Optional[bool] = Field(True, description="Nếu False, chỉ xác thực PIN/NFC mà không tạo SupportRequest tự động")
+    session_id: Optional[str] = Field(None, description="Session ID hiện tại của Kiosk để ghi nhớ xác thực trong phiên")
 
     model_config = ConfigDict(populate_by_name=True)
 

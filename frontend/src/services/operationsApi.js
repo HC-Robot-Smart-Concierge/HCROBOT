@@ -799,7 +799,7 @@ export const removeKitchenMenuItem = async (menuId, menuItemId) => {
 /**
  * Xác thực mã PIN 4 số hoặc 4 số cuối CCCD/Hộ chiếu hoặc thẻ NFC tại Robot Kiosk
  */
-export const verifyRoomPin = async (roomNumber, pin = null, action = null, items = null, note = null, tagCode = null, skipTicketCreation = false) => {
+export const verifyRoomPin = async (roomNumber, pin = null, action = null, items = null, note = null, tagCode = null, skipTicketCreation = false, sessionId = null) => {
   const response = await fetch(`${BASE_URL}/rooms/verify-pin`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -814,6 +814,7 @@ export const verifyRoomPin = async (roomNumber, pin = null, action = null, items
       note,
       skip_ticket_creation: Boolean(skipTicketCreation),
       create_ticket: !skipTicketCreation,
+      session_id: sessionId ? String(sessionId) : null,
     }),
   });
 
@@ -835,7 +836,7 @@ export const verifyRoomPin = async (roomNumber, pin = null, action = null, items
 /**
  * Xác thực bằng thẻ từ NFC / NDEF tagCode tại Robot Kiosk (Hỗ trợ quẹt tự động không cần nhập số phòng)
  */
-export const verifyRoomNfc = async (tagCode, roomNumber = null, action = null, items = null, note = null, skipTicketCreation = false) => {
+export const verifyRoomNfc = async (tagCode, roomNumber = null, action = null, items = null, note = null, skipTicketCreation = false, sessionId = null) => {
   const response = await fetch(`${BASE_URL}/rooms/verify-nfc`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -849,6 +850,7 @@ export const verifyRoomNfc = async (tagCode, roomNumber = null, action = null, i
       note,
       skip_ticket_creation: Boolean(skipTicketCreation),
       create_ticket: !skipTicketCreation,
+      session_id: sessionId ? String(sessionId) : null,
     }),
   });
 

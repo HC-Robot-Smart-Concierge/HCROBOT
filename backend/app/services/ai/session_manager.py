@@ -128,6 +128,8 @@ class SessionMemoryManager:
             self._sessions[session_id] = {
                 "chat_history": [],
                 "room_number": None,
+                "authenticated_room": None,
+                "is_room_authenticated": False,
                 "guest_name": None,
                 "pending_intent": None,
                 "last_active": now,
@@ -287,9 +289,36 @@ class SessionMemoryManager:
         if clean_room != old_room:
             logger.info(f"[SessionMemory] Room set/updated in session '{session_id}': {old_room} -> {clean_room}")
             session["room_number"] = clean_room
+            if session.get("authenticated_room") != clean_room:
+                session["is_room_authenticated"] = False
             return True
 
         return False
+
+    def is_room_authenticated(self, session_id: str = "default_session", room_number: Optional[str] = None) -> bool:
+        """Kiểm tra xem phòng đã được xác thực PIN trong session hay chưa."""
+        session = self.get_session(session_id)
+        auth_room = session.get("authenticated_room")
+        is_auth = bool(session.get("is_room_authenticated", False))
+        if not auth_room or not is_auth:
+            return False
+        if room_number:
+            return str(auth_room).strip() == str(room_number).strip()
+        return True
+
+    def set_room_authenticated(self, session_id: str, room_number: str):
+        """Đánh dấu phòng đã xác thực PIN thành công trong session."""
+        session = self.get_session(session_id)
+        clean = str(room_number).strip()
+        session["authenticated_room"] = clean
+        session["is_room_authenticated"] = True
+        logger.info(f"[SessionMemory] Room '{clean}' authenticated in session '{session_id}'")
+
+    def clear_room_authentication(self, session_id: str = "default_session"):
+        """Xóa trạng thái xác thực PIN phòng trong session."""
+        session = self.get_session(session_id)
+        session["authenticated_room"] = None
+        session["is_room_authenticated"] = False
 
     def get_pending_intent(self, session_id: str = "default_session") -> Optional[Dict[str, Any]]:
         """Lấy ý định dịch vụ đang chờ bổ sung số phòng."""

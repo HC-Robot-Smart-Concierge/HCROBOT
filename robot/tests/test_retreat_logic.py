@@ -139,12 +139,27 @@ class TestReverseFollower(unittest.TestCase):
         self.assertLess(vx, 0)
         self.assertGreater(wz, 0)
 
-    def test_real_lateral_deviation_and_wrong_heading_still_stop(self):
+    def test_real_lateral_deviation_and_odom_jump_still_stop(self):
         route = [(1.0 - i * 0.08, 0, 0) for i in range(11)]
-        for pose in ((1.0, 0.13, 0), (1.0, 0, math.pi / 2), (0.5, 0, 0)):
+        for pose in ((1.0, 0.13, 0), (0.5, 0, 0)):
             follower = ReverseFollower(route)
             self.assertEqual(follower.command(pose), (0, 0, "path_lost"))
             self.assertTrue(follower.diagnostic)
+
+    def test_reported_43_degree_error_requests_alignment_then_reverse(self):
+        angle = math.radians(43.7)
+        target = (-0.213 * math.cos(angle), -0.213 * math.sin(angle), 0)
+        follower = ReverseFollower([target])
+        vx, wz, reason = follower.command((0, 0, 0))
+        self.assertEqual(reason, "align")
+        self.assertEqual(vx, 0)
+        self.assertGreater(wz, 0)
+        self.assertAlmostEqual(follower.heading_error, angle)
+        # Alignment has hysteresis; do not oscillate between spin and reverse.
+        self.assertEqual(follower.command((0, 0, angle - 0.3))[2], "align")
+        vx, wz, reason = follower.command((0, 0, angle - 0.1))
+        self.assertEqual(reason, "moving")
+        self.assertLess(vx, 0)
 
     def test_loop_near_anchor_cannot_skip_remaining_route(self):
         # A crossed/looped trail must not jump to its far end just because it is nearby.

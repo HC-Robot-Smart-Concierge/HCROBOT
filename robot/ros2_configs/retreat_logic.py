@@ -98,6 +98,8 @@ class ReverseFollower:
         self.speed = min(0.10, max(0.04, speed))
         self.progress = 0.0
         self.diagnostic = ""
+        self.heading_error = 0.0
+        self.aligning = False
 
     def _target(self, pose):
         """Project onto the ordered polyline, then aim 20 cm farther along it.
@@ -139,7 +141,7 @@ class ReverseFollower:
         return self.route[-1][:2], closest[0], total - self.progress
 
     def command(self, pose):
-        """Return (vx, wz, reason). Never spin or drive forward to regain a lost path."""
+        """Return a tracking/alignment request; the caller checks its swept footprint."""
         if not self.route:
             return 0.0, 0.0, "arrived"
         target, cross_track, remaining = self._target(pose)
@@ -152,11 +154,19 @@ class ReverseFollower:
         dx, dy = target[0] - pose[0], target[1] - pose[1]
         distance = math.hypot(dx, dy)
         error = angle_error(math.atan2(-dy, -dx), pose[2])
-        if abs(error) > 0.60 or distance > 0.30:
+        self.heading_error = error
+        if distance > 0.30:
             self.diagnostic = f"lệch hướng {math.degrees(error):+.1f}°, mốc ngắm cách {distance * 100:.1f} cm"
             return 0.0, 0.0, "path_lost"
+        if abs(error) > 0.60:
+            self.aligning = True
+        if self.aligning and abs(error) > 0.15:
+            self.diagnostic = f"chỉnh hướng {math.degrees(error):+.1f}° trước khi lùi"
+            return 0.0, math.copysign(0.5, error), "align"
+        self.aligning = False
         # Reverse pure pursuit; keep radius >= 0.5 m so the bridge never turns this
-        # into an in-place rotation. A sharp corner requires stopping for assistance.
+        # into an unexpected in-place rotation. Larger heading errors instead emit
+        # an explicit alignment request for the caller's costmap collision checks.
         wz = max(-self.speed * 2, min(self.speed * 2,
                  2 * self.speed * math.sin(error) / max(distance, 0.10)))
         return -self.speed, wz, "moving"

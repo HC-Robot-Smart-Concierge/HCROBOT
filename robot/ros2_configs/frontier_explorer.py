@@ -10,7 +10,8 @@ Chống kẹt (xe thật: sonar trên Pi chặn lệnh khi sát vật cản, Nav
 - Đích luôn ở chỗ thoáng; không bao giờ lao thẳng vào ô frontier (thường sát vật cản).
 - Tới gần đích (reach_radius_m) là tự dừng, khỏi chờ Nav2 xoay đúng hướng đích.
 - Ghi đường đi bằng odom; quét xong/kẹt trong khe thì lùi theo đường cũ về chỗ rộng.
-- Khi thiếu đường cũ, cảm biến hoặc khoảng hở: dừng tự hành và báo lý do.
+- Quay/rẽ qua kiểm tra vùng quét của LiDAR + local costmap; vướng thì chọn đường khác.
+- Thiếu cảm biến/costmap kéo dài: dừng tự hành và báo lý do.
 
 Chạy (đã có SLAM Toolbox + Nav2 slam:=true):
   python3 frontier_explorer.py --ros-args -p use_sim_time:=true -p save_map_name:=map_ao
@@ -41,8 +42,9 @@ from frontier_logic import (  # noqa: E402
 )
 from robot_status import lidar_clearances  # noqa: E402
 from retreat_logic import (  # noqa: E402
-    RetreatTrail, ReverseFollower, body_scan, reverse_clear, turn_clear,
+    RetreatTrail, ReverseFollower, body_scan, turn_clear,
 )
+from recovery_costmap import CostmapGrid, grid_sweep_clear, scan_sweep_clear  # noqa: E402
 
 
 def _yaw_from_quat(q):
@@ -62,10 +64,9 @@ class FrontierExplorer(Node):
         # Het cho de di ma van con frontier: mo lai cac cho da bo, thu them toi da N vong.
         self.max_retry_rounds = int(p("max_retry_rounds", 2).value)
         self.retry_rounds = 0
-        # Tam xe cach vat can >= muc nay o dich. Dung o dich phai XOAY duoc de sang dich ke:
-        # RotationShim can ~0.36 m (footprint + padding 0.13 quay), Pi can hong > 11 cm.
-        # LiDAR quet 12 m nen dung xa vat can van ve map du, khong can lai sat tuong.
-        self.goal_clearance_m = float(p("goal_clearance_m", 0.40).value)
+        # Mapping uses the measured body + 4 cm padding (~23.3 cm turning radius).
+        # Nav2 and recovery check the actual swept body before changing heading.
+        self.goal_clearance_m = float(p("goal_clearance_m", 0.24).value)
         self.goal_search_radius_m = float(p("goal_search_radius_m", 1.5).value)
         # Cho dung thoang gan nhat ma cach xe < muc nay => xe dang dung o cho nhin tot nhat.
         self.min_travel_m = float(p("min_travel_m", 0.35).value)
@@ -77,11 +78,15 @@ class FrontierExplorer(Node):
         self.unstick_dist_m = float(p("unstick_dist_m", 0.15).value)
         self.unstick_speed = float(p("unstick_speed", 0.12).value)
         self.retreat_speed = float(p("retreat_speed", 0.08).value)
-        self.turn_radius_m = float(p("retreat_turn_radius_m", 0.40).value)
+        self.turn_radius_m = float(p("retreat_turn_radius_m", 0.24).value)
         self.scan_timeout_sec = float(p("retreat_scan_timeout_sec", 0.8).value)
         self.trail = RetreatTrail(max_length=float(p("retreat_history_m", 8.0).value))
         self.scan_received_at = None
         self.recovery_blocked = False
+        self.retreat_retry_after = 0.0
+        self.last_frontier = None
+        self.costmap_msg = None
+        self.costmap_received_at = None
         # Dang chay ma frontier dich da duoc LiDAR quet lo ra thi doi dich (kiem tra moi N giay).
         self.replan_check_sec = float(p("replan_check_sec", 2.0).value)
         # BT rieng cho kham pha: khong Wait 5 s / Spin (Pi chan xoay sat tuong), chi lui ra.
@@ -117,6 +122,7 @@ class FrontierExplorer(Node):
         map_qos = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL,
                              reliability=ReliabilityPolicy.RELIABLE)
         self.create_subscription(OccupancyGrid, "/map", self._on_map, map_qos)
+        self.create_subscription(OccupancyGrid, "/local_costmap/costmap", self._on_costmap, map_qos)
         self.create_subscription(LaserScan, "/scan", self._on_scan,
                                  QoSProfile(depth=1, reliability=ReliabilityPolicy.BEST_EFFORT))
         self.cmd_pub = self.create_publisher(Twist, "/cmd_vel", 10)
@@ -139,6 +145,48 @@ class FrontierExplorer(Node):
 
     def _on_map(self, msg):
         self.map_msg = msg
+
+    def _on_costmap(self, msg):
+        self.costmap_msg = msg
+        self.costmap_received_at = self._now()
+
+    def _costmap_snapshot(self, now):
+        msg = self.costmap_msg
+        if msg is None or self.costmap_received_at is None:
+            return None
+        stamp = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
+        if not (0 <= now - self.costmap_received_at <= 1.5 and 0 <= now - stamp <= 1.5):
+            return None
+        if msg.header.frame_id == "odom":
+            pose = self._odom_pose()
+        else:
+            tf = self._lookup(msg.header.frame_id, "base_link")
+            if tf is None:
+                return None
+            tf_stamp = tf.header.stamp.sec + tf.header.stamp.nanosec * 1e-9
+            if not 0 <= now - tf_stamp <= 1.0:
+                return None
+            tr = tf.transform.translation
+            pose = (tr.x, tr.y, _yaw_from_quat(tf.transform.rotation))
+        if pose is None:
+            return None
+        origin = msg.info.origin
+        grid = CostmapGrid(msg.info.width, msg.info.height, msg.info.resolution,
+                           (origin.position.x, origin.position.y, _yaw_from_quat(origin.orientation)), msg.data)
+        return grid, pose
+
+    def _motion_allowed(self, vx, wz, points, coverage, snapshot, rotation=None):
+        grid, pose = snapshot
+        # Account for the real motor's PWM floor, rather than assuming it travels
+        # at the smaller velocity requested by the recovery controller.
+        if abs(vx) > 1e-6:
+            ratio = max(1.0, 0.18 / abs(vx))
+            check_vx, check_wz, duration = vx * ratio, wz * ratio, 0.6
+        else:
+            check_vx, check_wz = 0.0, math.copysign(0.8, wz)
+            duration = max(0.5, (abs(rotation or 0.0) + 0.18) / 0.8)
+        return (scan_sweep_clear(points, coverage, check_vx, check_wz, duration)
+                and grid_sweep_clear(grid, pose, check_vx, check_wz, duration))
 
     def _on_stop(self, _msg):
         self.finished = True
@@ -165,6 +213,8 @@ class FrontierExplorer(Node):
         return body_scan(s.angle_min, s.angle_increment, s.ranges, s.range_min, s.range_max)
 
     def _needs_retreat(self):
+        if self._now() < self.retreat_retry_after:
+            return False
         points, coverage = self._retreat_scan(self._now())
         return (coverage and not turn_clear(points, coverage, self.turn_radius_m)
                 and bool(self.trail.route(self._odom_pose())))
@@ -405,6 +455,7 @@ class FrontierExplorer(Node):
         if not self.busy or (seq is not None and seq != self.goal_seq):
             return
         spot = self.goal_frontier
+        self.last_frontier = spot
         self.busy = False
         self.goal_handle = None
         self.goal_point = None
@@ -451,20 +502,20 @@ class FrontierExplorer(Node):
                 "follower": ReverseFollower(route, self.retreat_speed),
                 "start": start, "until": now + 120.0,
                 "watchdog": MotionWatchdog(5.0, min_move_m=0.025, min_turn_rad=10.0),
+                "turn_watchdog": MotionWatchdog(6.0, min_move_m=0.025, min_turn_rad=0.08),
             }
             self.maneuver["watchdog"].reset(now, start)
+            self.maneuver["turn_watchdog"].reset(now, start)
             self.get_logger().info(
-                f"↩️ Lùi theo {len(route)} mốc đường cũ tới chỗ đủ rộng; không xoay trong khe"
+                f"↩️ Thoát theo {len(route)} mốc đường cũ; quay/chỉnh hướng theo LiDAR + costmap xe thật"
             )
             return True
         if not coverage or start is None:
             self._stop_recovery("Thiếu LiDAR đủ vòng hoặc odom mới để thoát kẹt")
             return True
         c = self._clearances()
-        direction = choose_unstick_direction(c.get("front"), c.get("rear"))
-        if not turn_clear(points, coverage, self.turn_radius_m):
-            self._stop_recovery("Đang ở chỗ hẹp nhưng không còn đường lùi đã ghi tới chỗ rộng")
-            return True
+        direction = choose_unstick_direction(c.get("front"), c.get("rear"),
+                                             min_front_cm=24.0, min_rear_cm=20.0)
         if direction is None or start is None:
             self.get_logger().warn(
                 f"Kẹt cả trước (≈{self._cm(c.get('front'))} cm) lẫn sau (≈{self._cm(c.get('rear'))} cm): "
@@ -493,6 +544,26 @@ class FrontierExplorer(Node):
         self.recovery_blocked = True
         self.get_logger().error(f"⛔ Tạm dừng tự hành: {reason}. Kiểm tra/lái tay ra chỗ rộng rồi khởi động lại tự quét.")
 
+    def _retry_navigation(self, now, reason):
+        self._publish_vx(0.0)
+        self.maneuver = None
+        self.pending_unstick = False
+        self.retreat_retry_after = now + 8.0
+        if self.last_frontier is not None:
+            self.memory.give_up(self.last_frontier)
+        self.get_logger().warn(f"Đổi đường/đích quét: {reason}; giao lại Nav2 với costmap")
+
+    def _wait_recovery(self, now, reason, fatal=False):
+        self._publish_vx(0.0)
+        m = self.maneuver
+        since = m.setdefault("blocked_since", now)
+        self.get_logger().warn(reason, throttle_duration_sec=2.0)
+        if now - since >= (5.0 if fatal else 2.0):
+            if fatal:
+                self._stop_recovery(reason)
+            else:
+                self._retry_navigation(now, reason)
+
     def _maneuver_step(self):
         m = self.maneuver
         now = self._now()
@@ -506,7 +577,11 @@ class FrontierExplorer(Node):
                     self.trail.record(pose, turn_clear(points, coverage, self.turn_radius_m))
             return
         if pose is None or not coverage:
-            self._stop_recovery("Mất odom hoặc LiDAR mới/đủ vòng trong lúc thoát khe")
+            self._wait_recovery(now, "Chờ odom/LiDAR mới để thoát khe", fatal=True)
+            return
+        snapshot = self._costmap_snapshot(now)
+        if snapshot is None:
+            self._wait_recovery(now, "Chờ local costmap xe thật (quá 1.5 s hoặc chưa nhận)", fatal=True)
             return
         if "follower" in m:
             vx, wz, reason = m["follower"].command(pose)
@@ -515,27 +590,48 @@ class FrontierExplorer(Node):
                 self.maneuver = None
                 self.trail.points.clear()
                 if not turn_clear(points, coverage, self.turn_radius_m):
-                    self._stop_recovery("Đã về mốc cũ nhưng hiện tại chưa đủ khoảng hở để quay")
+                    self._retry_navigation(now, "Đã về mốc cũ; để Nav2 chọn hướng qua costmap hiện tại")
                 else:
                     self.get_logger().info("↩️ Đã lùi ra chỗ đủ rộng, tiếp tục chọn frontier")
                 return
-            if reason != "moving":
-                self._stop_recovery(
-                    "Lệch đường lùi hoặc góc cua quá gắt, không tự xoay trong khe: "
-                    + m["follower"].diagnostic
-                )
+            if reason == "path_lost":
+                self._retry_navigation(now, m["follower"].diagnostic)
                 return
+            if reason == "align":
+                m["watchdog"].reset(now, pose)
+                if m["turn_watchdog"].is_stuck(now, pose):
+                    self._retry_navigation(now, "Quay không tiến triển (sonar hoặc motor chặn)")
+                    return
+                # Try in-place alignment, then a short reverse/forward arc if its
+                # complete swept footprint fits. A large angle alone is no veto.
+                sign = math.copysign(1.0, wz)
+                candidates = [(0.0, wz), (-self.retreat_speed, sign * self.retreat_speed * 2),
+                              (self.retreat_speed, sign * self.retreat_speed * 2)]
+                for vx_try, wz_try in candidates:
+                    if self._motion_allowed(vx_try, wz_try, points, coverage, snapshot,
+                                            rotation=m["follower"].heading_error):
+                        m.pop("blocked_since", None)
+                        if not m.get("align_logged"):
+                            self.get_logger().info(f"↪️ {m['follower'].diagnostic}; vùng quay đã kiểm tra bằng costmap + LiDAR")
+                            m["align_logged"] = True
+                        self._publish_motion(vx_try, wz_try)
+                        return
+                self._wait_recovery(now, "Vùng quay/rẽ đang vướng vật cản; thử đường khác")
+                return
+            m["turn_watchdog"].reset(now, pose)
+            m.pop("align_logged", None)
             if now > m["until"] or m["watchdog"].is_stuck(now, pose):
-                self._stop_recovery("Lùi không có tiến triển hoặc quá thời gian")
+                self._retry_navigation(now, "Lùi không có tiến triển hoặc quá thời gian")
                 return
-            # Check full rear swept width, not just the central rear sector.
-            if not reverse_clear(points, coverage):
-                self._stop_recovery("Có vật cản sau xe hoặc sát hông trên đường lùi")
+            if not self._motion_allowed(vx, wz, points, coverage, snapshot):
+                self._wait_recovery(now, "Vật cản trên đường lùi theo costmap/LiDAR")
                 return
+            m.pop("blocked_since", None)
             self._publish_motion(vx, wz)
             return
-        if m["dir"] == "backward" and not reverse_clear(points, coverage):
-            self._stop_recovery("Vật cản trên đường lùi ngắn")
+        vx = self.unstick_speed if m["dir"] == "forward" else -self.unstick_speed
+        if not self._motion_allowed(vx, 0.0, points, coverage, snapshot):
+            self._wait_recovery(now, "Vật cản trên đoạn thoát kẹt ngắn theo costmap/LiDAR")
             return
         moved = 0.0 if pose is None else math.hypot(pose[0] - m["start"][0], pose[1] - m["start"][1])
         side = "front" if m["dir"] == "forward" else "rear"
@@ -547,7 +643,8 @@ class FrontierExplorer(Node):
             self.maneuver = None
             self.get_logger().info(f"↩️ Thoát kẹt xong: đã đi {moved:.2f} m")
             return
-        self._publish_vx(self.unstick_speed if m["dir"] == "forward" else -self.unstick_speed)
+        m.pop("blocked_since", None)
+        self._publish_vx(vx)
 
     # ------------------------------------------------------------------ kết thúc
     def _finish(self, frontiers):

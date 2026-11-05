@@ -1,6 +1,7 @@
 """Exercise explorer action callbacks without requiring a ROS installation."""
 
 import ast
+import math
 from pathlib import Path
 from types import SimpleNamespace
 import unittest
@@ -10,6 +11,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "ros2_configs"))
 from retreat_logic import RetreatTrail, ReverseFollower, body_scan, reverse_clear, turn_clear
 from frontier_logic import MotionWatchdog, choose_unstick_direction
+from recovery_costmap import CostmapGrid, grid_sweep_clear, scan_sweep_clear
 
 
 def explorer_class():
@@ -19,14 +21,18 @@ def explorer_class():
     # Keep the real orchestration methods; ROS imports and node setup are unnecessary here.
     methods = {"_on_nav_result", "_goal_finished", "_tick", "_watch_goal",
                "_retreat_scan", "_needs_retreat", "_start_unstick", "_maneuver_step",
-               "_stop_recovery", "_publish_vx", "_on_stop"}
+               "_stop_recovery", "_publish_vx", "_on_stop", "_costmap_snapshot",
+               "_motion_allowed", "_retry_navigation", "_wait_recovery"}
     cls.body = [n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name in methods]
     cls.bases = []
     namespace = {"math": __import__("math"), "ReverseFollower": ReverseFollower,
                  "body_scan": body_scan, "reverse_clear": reverse_clear,
                  "turn_clear": turn_clear, "MotionWatchdog": MotionWatchdog,
-                 "choose_unstick_direction": choose_unstick_direction}
-    exec(compile(ast.Module(body=[cls], type_ignores=[]), str(source), "exec"), namespace)
+                 "choose_unstick_direction": choose_unstick_direction,
+                 "CostmapGrid": CostmapGrid, "grid_sweep_clear": grid_sweep_clear,
+                 "scan_sweep_clear": scan_sweep_clear}
+    yaw_helper = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "_yaw_from_quat")
+    exec(compile(ast.Module(body=[yaw_helper, cls], type_ignores=[]), str(source), "exec"), namespace)
     return namespace["FrontierExplorer"]
 
 
@@ -41,6 +47,8 @@ class TestFrontierRecovery(unittest.TestCase):
         n.goal_point = (2.0, 1.0)
         n.pending_unstick = False
         n.recovery_blocked = False
+        n.retreat_retry_after = 0.0
+        n.last_frontier = None
         n.memory = Mock()
         n.memory.record_failure.return_value = False
         n.get_logger = Mock()
@@ -56,6 +64,8 @@ class TestFrontierRecovery(unittest.TestCase):
         n.scan_received_at = None
         n._odom_pose = Mock(return_value=(1.0, 0.0, 0.0))
         n._publish_motion = Mock()
+        grid = CostmapGrid(160, 160, 0.025, (-1.0, -2.0, 0), [0] * (160 * 160))
+        n._costmap_snapshot = Mock(return_value=(grid, (1, 0, 0)))
 
     def result(self, status, seq=7):
         future = Mock()
@@ -143,16 +153,18 @@ class TestFrontierRecovery(unittest.TestCase):
         self.assertLess(vx, 0)
         self.assertEqual(wz, 0)
 
-    def test_new_rear_obstacle_stops_and_latches_auto_pause(self):
+    def test_new_rear_obstacle_stops_then_replans_instead_of_latching(self):
         n = self.corridor()
         n._start_unstick(10.0)
         n._retreat_scan.return_value = ([(-0.23, 0.11)], True)
         n._maneuver_step()
-        self.assertTrue(n.recovery_blocked)
-        self.assertIsNone(n.maneuver)
+        self.assertFalse(n.recovery_blocked)
         n._publish_motion.assert_called_with(0.0, 0.0)
-        n.finished = False
-        n._tick()  # Remains paused; cannot dispatch another Nav2 goal.
+        n._now.return_value = 12.1
+        n._maneuver_step()
+        self.assertIsNone(n.maneuver)
+        self.assertFalse(n.recovery_blocked)
+        self.assertGreater(n.retreat_retry_after, 12.1)
 
     def test_lost_scan_or_odom_stops_reverse(self):
         for lost in ("scan", "odom"):
@@ -165,10 +177,13 @@ class TestFrontierRecovery(unittest.TestCase):
                 else:
                     n._odom_pose.return_value = None
                 n._maneuver_step()
-                self.assertTrue(n.recovery_blocked)
+                self.assertFalse(n.recovery_blocked)
                 n._publish_motion.assert_called_with(0.0, 0.0)
+                n._now.return_value = 15.1
+                n._maneuver_step()
+                self.assertTrue(n.recovery_blocked)
 
-    def test_wide_anchor_releases_nav_but_changed_anchor_does_not(self):
+    def test_anchor_releases_nav_to_use_current_costmap(self):
         for wide in (True, False):
             with self.subTest(wide=wide):
                 self.setUp()
@@ -179,7 +194,7 @@ class TestFrontierRecovery(unittest.TestCase):
                 n._retreat_scan.return_value = ([(2.0, 0.0)] if wide else [(0, 0.20)], True)
                 n._maneuver_step()
                 self.assertIsNone(n.maneuver)
-                self.assertEqual(n.recovery_blocked, not wide)
+                self.assertFalse(n.recovery_blocked)
                 n._publish_motion.assert_called_with(0.0, 0.0)
 
     def test_recent_receipt_cannot_hide_old_sensor_timestamp(self):
@@ -201,13 +216,80 @@ class TestFrontierRecovery(unittest.TestCase):
         n._publish_motion.assert_called_with(0.0, 0.0)
         n._tick()
 
-    def test_motor_block_without_translation_pauses_instead_of_looping(self):
+    def test_motor_block_without_translation_replans_instead_of_looping(self):
         n = self.corridor()
         n._start_unstick(10.0)
         n._now.return_value = 15.1
         n._maneuver_step()
-        self.assertTrue(n.recovery_blocked)
+        self.assertFalse(n.recovery_blocked)
+        self.assertIsNone(n.maneuver)
         n._publish_motion.assert_called_with(0.0, 0.0)
+
+    def alignment(self):
+        n = self.corridor()
+        n._start_unstick(10.0)
+        angle = math.radians(43.7)
+        n.maneuver["follower"].route = [(1 - 0.213 * math.cos(angle),
+                                        -0.213 * math.sin(angle), 0)]
+        return n
+
+    def test_reported_43_degree_error_rotates_when_lidar_and_costmap_allow(self):
+        n = self.alignment()
+        n._retreat_scan.return_value = ([], True)
+        n._maneuver_step()
+        self.assertFalse(n.recovery_blocked)
+        self.assertIsNotNone(n.maneuver)
+        vx, wz = n._publish_motion.call_args.args
+        self.assertEqual(vx, 0)
+        self.assertGreater(wz, 0)
+
+    def test_blocked_rotation_tries_reverse_arc(self):
+        n = self.alignment()
+        n._retreat_scan.return_value = ([(0.12, 0.17)], True)
+        n._maneuver_step()
+        vx, wz = n._publish_motion.call_args.args
+        self.assertLess(vx, 0)
+        self.assertGreater(wz, 0)
+        self.assertFalse(n.recovery_blocked)
+
+    def test_costmap_obstacle_can_veto_alignment_despite_empty_lidar(self):
+        n = self.alignment()
+        n._retreat_scan.return_value = ([], True)
+        grid, pose = n._costmap_snapshot.return_value
+        grid.data[:] = [100] * len(grid.data)
+        n._maneuver_step()
+        n._publish_motion.assert_called_with(0.0, 0.0)
+        n._now.return_value = 12.1
+        n._maneuver_step()
+        self.assertIsNone(n.maneuver)
+        self.assertFalse(n.recovery_blocked)
+
+    def test_stale_costmap_holds_motion_and_cannot_be_bypassed(self):
+        n = self.alignment()
+        n._retreat_scan.return_value = ([], True)
+        n._costmap_snapshot.return_value = None
+        n._maneuver_step()
+        n._publish_motion.assert_called_with(0.0, 0.0)
+        n._now.return_value = 15.1
+        n._maneuver_step()
+        self.assertTrue(n.recovery_blocked)
+
+    def test_costmap_snapshot_uses_matching_odom_frame_and_rejects_old_data(self):
+        n = self.node
+        del n._costmap_snapshot
+        n.costmap_received_at = 10.0
+        n.costmap_msg = SimpleNamespace(
+            header=SimpleNamespace(frame_id="odom", stamp=SimpleNamespace(sec=10, nanosec=0)),
+            info=SimpleNamespace(width=2, height=2, resolution=0.025,
+                                 origin=SimpleNamespace(position=SimpleNamespace(x=0, y=0),
+                                                        orientation=SimpleNamespace(x=0, y=0, z=0, w=1))),
+            data=[0, 0, 0, 0])
+        grid, pose = n._costmap_snapshot(10.0)
+        self.assertEqual(pose, (1.0, 0.0, 0.0))
+        self.assertEqual(grid.origin, (0, 0, 0))
+        self.assertIsNone(n._costmap_snapshot(12.0))
+        n.costmap_received_at = 12.0
+        self.assertIsNone(n._costmap_snapshot(12.0))
 
 
 if __name__ == "__main__":

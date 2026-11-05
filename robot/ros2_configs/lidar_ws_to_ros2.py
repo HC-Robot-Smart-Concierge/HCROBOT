@@ -366,6 +366,7 @@ class LidarWsToRos2Bridge(Node):
             "scans_dropped_while_turning": self.dropped_turn_scans,
             "scan_period_sec": round(self.scan_period_sec, 3),
             "encoder_packets": self.encoder_packets,
+            "last_encoder_age_sec": None if self.last_encoder_time <= 0 else round(now - self.last_encoder_time, 3),
             "encoder_motion_detected": self.encoder_motion_detected,
             "ready_for_static_capture": lidar_live,
             "ready_for_mobile_mapping": lidar_live and self.encoder_motion_detected,

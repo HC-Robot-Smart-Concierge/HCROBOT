@@ -325,11 +325,11 @@ export async function stopRos2Explore() {
   return parseRos2RuntimeResponse(res, 'Không dừng được chế độ tự quét map');
 }
 
-export async function startRos2Navigation(mapName) {
+export async function startRos2Navigation(mapName, piIp = null) {
   const res = await fetch(`${API_BASE}/map/ros2/start_navigation`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name: mapName }),
+    body: JSON.stringify({ name: mapName, ...(piIp ? { pi_ip: piIp } : {}) }),
   });
   return parseRos2RuntimeResponse(res, 'Không khởi động được Navigation');
 }

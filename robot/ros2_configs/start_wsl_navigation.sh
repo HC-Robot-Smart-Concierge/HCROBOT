@@ -21,7 +21,26 @@ if [ ! -f "$MAP_YAML" ]; then
     exit 2
 fi
 
+RSP_PID=""; BRIDGE_PID=""; FOXGLOVE_PID=""; LIDAR_PID=""; NAV2_PID=""
+MASK_PID=""; FILTER_INFO_PID=""; FILTER_LM_PID=""
+stop_robot() {
+    for _ in 1 2 3; do
+        echo -n stop > "/dev/udp/${PI5_IP:-100.99.72.51}/9999" 2>/dev/null || true
+        sleep 0.1
+    done
+}
+cleanup() {
+    kill $NAV2_PID 2>/dev/null || true
+    stop_robot
+    kill $RSP_PID $BRIDGE_PID $FOXGLOVE_PID $LIDAR_PID $MASK_PID $FILTER_INFO_PID $FILTER_LM_PID 2>/dev/null || true
+    stop_robot
+}
+trap cleanup EXIT INT TERM
+
 echo "=== [0/6] DON STACK MAPPING/NAVIGATION CU ==="
+pkill -f "[f]rontier_explorer.py" 2>/dev/null || true
+pkill -f "[n]avigation_launch.py" 2>/dev/null || true
+stop_robot
 killall -q rosbridge_websocket foxglove_bridge async_slam_toolbox_node robot_state_publisher \
   map_server amcl controller_server planner_server behavior_server bt_navigator \
   waypoint_follower lifecycle_manager component_container_isolated 2>/dev/null || true
@@ -102,5 +121,4 @@ echo " /cmd_vel   : Nav2 -> Pi 5 motor bridge"
 echo " Foxglove   : ws://127.0.0.1:8765"
 echo " Slam Toolbox KHONG chay trong mode nay."
 
-trap "kill $RSP_PID $BRIDGE_PID $FOXGLOVE_PID $LIDAR_PID $NAV2_PID $MASK_PID $FILTER_INFO_PID $FILTER_LM_PID 2>/dev/null || true" EXIT INT TERM
 wait $RSP_PID $BRIDGE_PID $FOXGLOVE_PID $LIDAR_PID $NAV2_PID

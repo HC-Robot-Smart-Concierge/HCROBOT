@@ -465,7 +465,8 @@ class Ros2RuntimeService:
             return False
         return result.returncode == 0 and "result=0" in result.stdout.replace(" ", "")
 
-    def start_navigation(self, raw_name: str, keepout_zones: Optional[list[dict]] = None) -> dict:
+    def start_navigation(self, raw_name: str, keepout_zones: Optional[list[dict]] = None,
+                         pi_ip: Optional[str] = None) -> dict:
         safe_name = self.normalize_map_name(raw_name)
         yaml_path = self.maps_dir / f"{safe_name}.yaml"
         if not yaml_path.is_file():
@@ -473,11 +474,13 @@ class Ros2RuntimeService:
         if keepout_zones is not None:
             self.write_keepout_mask(safe_name, keepout_zones)
 
+        env = {"PI5_IP": pi_ip or os.environ["PI5_IP"]} if pi_ip or os.getenv("PI5_IP") else None
         pid = self._spawn(
             "start_wsl_foxglove.sh",
             "navigation",
             safe_name,
             log_prefix="foxglove-navigation-web",
+            env=env,
         )
         self._last_mode = "NAVIGATION"
         self._last_map = safe_name

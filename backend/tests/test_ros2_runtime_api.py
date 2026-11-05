@@ -102,6 +102,25 @@ def test_start_exploration_without_auto_save_passes_empty_save_name(tmp_path: Pa
     assert "EXPLORE_SAVE=" in launched["command"]
 
 
+def test_navigation_forwards_selected_pi_to_motor_bridge(tmp_path: Path, monkeypatch):
+    service = Ros2RuntimeService(project_root=tmp_path)
+    service.maps_dir.mkdir(parents=True)
+    (service.maps_dir / "phong_test.yaml").write_text("image: phong_test.pgm\n", encoding="utf-8")
+    calls = []
+    monkeypatch.setattr(service, "_spawn", lambda *args, **kwargs: calls.append((args, kwargs)) or 123)
+    result = service.start_navigation("phong_test", pi_ip="100.99.72.51")
+    assert result["mode"] == "NAVIGATION" and result["map_name"] == "phong_test"
+    assert calls[0][0] == ("start_wsl_foxglove.sh", "navigation", "phong_test")
+    assert calls[0][1]["env"] == {"PI5_IP": "100.99.72.51"}
+
+
+def test_navigation_request_validates_pi_address():
+    from pydantic import ValidationError
+    assert str(map_endpoint.Ros2MapRequest(name="phong_test", pi_ip="100.99.72.51").pi_ip) == "100.99.72.51"
+    with pytest.raises(ValidationError):
+        map_endpoint.Ros2MapRequest(name="phong_test", pi_ip="100.99.72.51; reboot")
+
+
 def test_stop_exploration_kills_explorer_and_nav2_but_keeps_slam_and_stops_motors(tmp_path: Path, monkeypatch):
     service = _fake_scripts(tmp_path)
     ran, sent = [], []

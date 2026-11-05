@@ -33,6 +33,8 @@ def _launch_setup(context, *args, **kwargs):
         # Mapping has no selected static map/keepout mask. Keep filters enabled
         # for normal navigation, where start_wsl_navigation.sh starts mask servers.
         common_params.insert(1, os.path.join(os.path.dirname(__file__), "mapping_filter_overrides.yaml"))
+    else:
+        common_params.insert(1, os.path.join(os.path.dirname(__file__), "physical_navigation_overrides.yaml"))
     actions = []
     managed_nodes = []
 

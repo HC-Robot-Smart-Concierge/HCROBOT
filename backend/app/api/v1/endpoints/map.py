@@ -5,6 +5,7 @@ import logging
 import os
 import zipfile
 from datetime import datetime
+from ipaddress import IPv4Address
 from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, status, Depends, Response
@@ -167,6 +168,7 @@ current_robot_pose = Pose2D(x=0.0, y=0.0, yaw=0.0)
 
 class Ros2MapRequest(BaseModel):
     name: str
+    pi_ip: Optional[IPv4Address] = None
 
 
 class Ros2ExploreRequest(BaseModel):
@@ -579,7 +581,8 @@ async def _keepout_zones_for(repo: MapRepository, map_name: str) -> List[dict]:
 async def start_ros2_navigation(request: Ros2MapRequest, repo: MapRepository = Depends(get_map_repository)):
     try:
         zones = await _keepout_zones_for(repo, request.name)
-        return await asyncio.to_thread(ros2_runtime_service.start_navigation, request.name, zones)
+        kwargs = {"pi_ip": str(request.pi_ip)} if request.pi_ip is not None else {}
+        return await asyncio.to_thread(ros2_runtime_service.start_navigation, request.name, zones, **kwargs)
     except Ros2RuntimeError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 

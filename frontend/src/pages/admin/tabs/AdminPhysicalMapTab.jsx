@@ -6,7 +6,6 @@ import {
   RosbridgeClient,
   parseLaserScan,
   quaternionToYaw,
-  createGoalPoseMsg,
   createInitialPoseMsg,
   createWaypointSyncMsg,
   createZoneSyncMsg,
@@ -25,6 +24,7 @@ import {
   updateRos2KeepoutMask,
 } from '../../../services/workflowApi';
 import { buildCostmapImage, pathMsgToPoints } from './physicalMapCostmap';
+import { composeMapPose, laserPointToMap, sendNav2Endpoint } from './physicalMapNavigation';
 import {
   OTTO_ENDPOINT_TEMPLATES,
   getEndpointTemplateInfo,
@@ -233,12 +233,17 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
   const rosClientRef = useRef(null);
   const pi5WsRef = useRef(null);
 
-  // Che do ket noi: 'pi5' (Xe that Raspberry Pi 5) hoac 'ros2' (Gia lap Rosbridge Port 9090)
+  // Hardware telemetry is direct from Pi; both views navigate through Nav2.
   const [connectionMode, setConnectionMode] = useState('pi5');
   const [pi5Ip, setPi5Ip] = useState(PI5_IP);
 
   // Trang thai ket noi
-  const [isWsConnected, setIsWsConnected] = useState(false);
+  const [isPiConnected, setIsPiConnected] = useState(false);
+  const [isRosConnected, setIsRosConnected] = useState(false);
+  const isWsConnected = connectionMode === 'pi5' ? isPiConnected : isRosConnected;
+  const [localizationReady, setLocalizationReady] = useState(false);
+  const localizationRef = useRef({ mapId: null, requestedAt: 0, confirmed: false });
+  const navigationRef = useRef({ poseAt: 0, costmapAt: 0, costmap: null, healthAt: 0, health: null });
   const [hardwareInfo, setHardwareInfo] = useState({
     model: 'RPLiDAR A1M8',
     port: '/dev/ttyUSB1',
@@ -275,7 +280,6 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
   const [isNavigating, setIsNavigating] = useState(false);
   // Duong di A* Pi dang bam theo (cac chang con lai) va map Pi dang nap
   const [navPath, setNavPath] = useState([]);
-  const piStateRef = useRef({ activeMapName: null, status: null });
 
   // Che do ROS 2 (Nav2 tren laptop WSL): trang thai stack, lop costmap, thoi diem gui goal
   const [nav2Runtime, setNav2Runtime] = useState({ mode: 'OFFLINE', activeMap: null });
@@ -313,7 +317,6 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
   // Dat vi tri ban dau (2D Pose Estimate): click chon vi tri, keo de chon huong dau xe
   const [isPoseSetMode, setIsPoseSetMode] = useState(false);
   const [poseDraft, setPoseDraft] = useState(null); // { x, y, yaw } toa do the gioi, yaw radian
-  const [refinePoseWithLidar, setRefinePoseWithLidar] = useState(true);
   const [isSettingPose, setIsSettingPose] = useState(false);
 
   // Keo tha tren Canvas
@@ -325,6 +328,8 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
   const [mapConfig, setMapConfig] = useState(LAYOUT2_CONFIG);
   const [mapImage, setMapImage] = useState(null);
   const isLegacyMap = mapConfig.mapId === LAYOUT2_CONFIG.mapId;
+  const navigationMapReady = isRosConnected && nav2Runtime.mode === 'NAVIGATION' && nav2Runtime.activeMap === mapConfig.mapId;
+  const dockEndpoint = endpoints.find((ep) => ep.id === 'dock' || ['CHARGER', 'dock'].includes(ep.type));
 
   // Danh sach map SLAM da luu (robot/maps/*.yaml) cho o chon map
   useEffect(() => {
@@ -354,6 +359,9 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     const layout = mapLayouts.find((m) => m.map_id === mapId);
     if (!layout) return;
     localStorage.setItem(SELECTED_MAP_STORAGE_KEY, mapId);
+    handleStop();
+    localizationRef.current = { mapId: null, requestedAt: 0, confirmed: false };
+    setLocalizationReady(false);
     setMapConfig(layoutToMapConfig(layout));
     setSelectedEndpoint(null);
     setSelectedZone(null);
@@ -439,38 +447,14 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     };
   }, [mapConfig.mapId]);
 
-  // Gui vung chuc nang xuong Pi de tu hanh tranh KEEP_OUT, giam toc SPEED_ZONE, cam dung NO_STOP.
-  // Debounce de khong gui lien tuc khi dang keo tha vung.
+  // Nav2's map-specific keepout mask is updated when zones are saved below.
   useEffect(() => {
-    if (connectionMode !== 'pi5' || !isWsConnected) return undefined;
+    if (!rosClientRef.current?.isConnected) return undefined;
     const timer = setTimeout(() => {
-      fetch(`http://${pi5Ip}:8000/api/v1/map/zones`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ zones }),
-      }).catch((err) => console.warn('[AdminPhysicalMapTab] Sync zones to Pi failed:', err));
+      rosClientRef.current.publish('/hotel_zones', 'std_msgs/String', createZoneSyncMsg(zones));
     }, 400);
     return () => clearTimeout(timer);
-  }, [zones, connectionMode, isWsConnected, pi5Ip]);
-
-  // Pi phai dung cung ban do voi map dang chon thi lap duong / dinh vi moi dung.
-  // Tra ve true neu vua phai nap map moi len Pi (vi tri robot tren Pi bi dat lai).
-  const ensurePiMapLoaded = async () => {
-    if (piStateRef.current.activeMapName === mapConfig.mapId) return false;
-    const res = await fetch(`http://${pi5Ip}:8000/api/v1/map/load`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: mapConfig.mapId }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || data.status !== 'SUCCESS') {
-      throw new Error(
-        `Pi chưa có bản đồ "${mapConfig.mapId}" (robot/maps/${mapConfig.mapId}.json). Hãy git pull trên Pi rồi thử lại.`
-      );
-    }
-    piStateRef.current = { ...piStateRef.current, activeMapName: mapConfig.mapId };
-    return true;
-  };
+  }, [zones, isRosConnected]);
 
   // 1. KET NOI XE THAT (Pi 5 WebSocket: ws://100.99.72.51:8000/api/v1/map/ws)
   useEffect(() => {
@@ -488,54 +472,20 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
 
         ws.onopen = () => {
           if (!isMounted) return;
-          setIsWsConnected(true);
-          setNavStatus('Đã kết nối xe thật Pi 5');
+          setIsPiConnected(true);
         };
 
         ws.onmessage = (event) => {
           if (!isMounted) return;
           try {
             const data = JSON.parse(event.data);
-            if (data.robot_pose) {
-              const ryawDeg = Number(data.robot_pose.yaw || 0.0);
-              const ryawRad = (ryawDeg * Math.PI) / 180.0;
-              setRobotPose({
-                x: Number(data.robot_pose.x || 0.0),
-                y: Number(data.robot_pose.y || 0.0),
-                yaw: ryawRad,
-                linearVelocity: Number(data.linear_velocity ?? data.robot_pose.linear_velocity ?? 0.0),
-                angularVelocity: Number(data.angular_velocity ?? data.robot_pose.angular_velocity ?? 0.0),
-              });
-              setTrail((prev) => [
-                ...prev.slice(-150),
-                { x: Number(data.robot_pose.x || 0.0), y: Number(data.robot_pose.y || 0.0) },
-              ]);
-            }
-
-            // Pi 5 (robot/scripts/lidar_service.py) gui 'scan_points' da quy doi sang toa do the gioi (x, y)
-            const lidarPoints = Array.isArray(data.scan_points) ? data.scan_points : data.lidar_scan;
-            if (Array.isArray(lidarPoints)) {
-              setScanPoints(lidarPoints);
-            }
+            // Pi robot_pose and scan_points use the Pi's independent odom frame.
+            // Only ROS map-frame poses/scans may drive the map overlay.
 
             if (typeof data.battery === 'number') {
               setHardwareInfo((prev) => ({ ...prev, battery: data.battery }));
             }
 
-            if (Array.isArray(data.nav_path)) {
-              setNavPath(data.nav_path);
-            }
-            const prevPiStatus = piStateRef.current.status;
-            piStateRef.current = {
-              activeMapName: data.active_map_name ?? null,
-              status: data.status ?? null,
-            };
-            if (data.status === 'GOAL_REACHED' && prevPiStatus === 'NAVIGATING') {
-              setNavStatus('Đã tới đích');
-              setIsNavigating(false);
-              setSelectedGoal(null);
-              setNavigatingEndpointId(null);
-            }
 
             if (data.hardware_info) {
               setHardwareInfo((prev) => ({
@@ -545,14 +495,6 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
               }));
             }
 
-            if (data.nav_status) {
-              setNavStatus(data.nav_status);
-              if (data.nav_status.includes('Đã tới đích')) {
-                setIsNavigating(false);
-                setSelectedGoal(null);
-                setNavigatingEndpointId(null);
-              }
-            }
           } catch (err) {
             console.warn('[AdminPhysicalMapTab] Pi5 WS parse error:', err);
           }
@@ -560,18 +502,17 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
 
         ws.onclose = () => {
           if (!isMounted) return;
-          setIsWsConnected(false);
-          setNavStatus('Mất kết nối Pi 5. Đang thử lại...');
+          setIsPiConnected(false);
           reconnectTimeout = setTimeout(connectPi5Ws, 2500);
         };
 
         ws.onerror = () => {
           if (!isMounted) return;
-          setIsWsConnected(false);
+          setIsPiConnected(false);
         };
       } catch (err) {
         if (!isMounted) return;
-        setIsWsConnected(false);
+        setIsPiConnected(false);
         reconnectTimeout = setTimeout(connectPi5Ws, 3000);
       }
     };
@@ -580,6 +521,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
 
     return () => {
       isMounted = false;
+      setIsPiConnected(false);
       if (reconnectTimeout) clearTimeout(reconnectTimeout);
       if (ws) {
         ws.close();
@@ -588,21 +530,26 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     };
   }, [connectionMode, pi5Ip]);
 
-  // 2. KET NOI ROS 2 GIA LAP (Rosbridge WebSocket: ws://127.0.0.1:9090)
+  // Localization, planning and obstacle avoidance use ROS in both hardware views.
   useEffect(() => {
-    if (connectionMode !== 'ros2') return;
-
+    let active = true;
     const client = new RosbridgeClient(ROSBRIDGE_DEFAULT_URL, {
-      onConnect: () => {
-        setIsWsConnected(true);
-        setNavStatus('Đã kết nối ROS 2 Rosbridge (Port 9090)');
+      onOpen: () => {
+        if (!active) return;
+        setIsRosConnected(true);
+        setNavStatus('Đã kết nối Nav2. Bật Navigation với map đã chọn và đặt vị trí ban đầu.');
       },
-      onDisconnect: () => {
-        setIsWsConnected(false);
-        setNavStatus('Mất kết nối ROS 2');
+      onClose: () => {
+        if (!active) return;
+        setIsRosConnected(false);
+        localizationRef.current.confirmed = false;
+        setLocalizationReady(false);
+        navigationRef.current.poseAt = 0;
+        navigationRef.current.costmapAt = 0;
       },
       onError: () => {
-        setIsWsConnected(false);
+        if (!active) return;
+        setIsRosConnected(false);
       },
     });
 
@@ -612,9 +559,20 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     // Vi tri xe tren map = (map -> odom tu /tf) ∘ (odom -> base_link tu /odom).
     // map -> odom do SLAM Toolbox (che do quet map) hoac AMCL (Navigation) phat,
     // nen cach nay chay ca khi quet map, luc chua co /amcl_pose.
-    const mapToOdom = { x: 0, y: 0, yaw: 0 };
-    let lastOdomPoseAt = 0;
+    let mapToOdom = null;
+    let odom = null;
+    navigationRef.current = { poseAt: 0, costmapAt: 0, costmap: null, healthAt: 0, health: null };
+    localizationRef.current = { mapId: null, requestedAt: 0, confirmed: false };
+    setLocalizationReady(false);
     const stripSlash = (frame) => String(frame || '').replace(/^\//, '');
+    const updateMapPose = () => {
+      if (!mapToOdom || !odom || Date.now() - mapToOdom.receivedAt > 2000 || Date.now() - odom.receivedAt > 1000) return;
+      const pose = composeMapPose(mapToOdom, odom);
+      if (!pose) return;
+      navigationRef.current.poseAt = Date.now();
+      setRobotPose(pose);
+      setTrail((prev) => [...prev.slice(-150), { x: pose.x, y: pose.y }]);
+    };
 
     client.subscribe(
       '/tf',
@@ -624,9 +582,9 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
           if (stripSlash(t?.header?.frame_id) !== 'map' || stripSlash(t?.child_frame_id) !== 'odom') continue;
           const tr = t.transform?.translation;
           const rot = t.transform?.rotation;
-          mapToOdom.x = tr?.x ?? 0;
-          mapToOdom.y = tr?.y ?? 0;
-          mapToOdom.yaw = quaternionToYaw(rot?.z ?? 0, rot?.w ?? 1);
+          mapToOdom = { x: tr?.x ?? 0, y: tr?.y ?? 0,
+            yaw: quaternionToYaw(rot?.z ?? 0, rot?.w ?? 1), receivedAt: Date.now() };
+          updateMapPose();
         }
       }
       // Khong throttle /tf: map->odom xen giua cac TF khac, throttle co the lam roi mat no.
@@ -638,15 +596,11 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
       (msg) => {
         const pos = msg?.pose?.pose?.position;
         const ori = msg?.pose?.pose?.orientation;
-        if (!pos) return;
-        const c = Math.cos(mapToOdom.yaw);
-        const s = Math.sin(mapToOdom.yaw);
-        const x = mapToOdom.x + c * pos.x - s * pos.y;
-        const y = mapToOdom.y + s * pos.x + c * pos.y;
-        const yaw = mapToOdom.yaw + quaternionToYaw(ori?.z ?? 0, ori?.w ?? 1);
-        lastOdomPoseAt = Date.now();
-        setRobotPose((prev) => ({ ...prev, x, y, yaw }));
-        setTrail((prev) => [...prev.slice(-150), { x, y }]);
+        if (!pos || stripSlash(msg?.header?.frame_id) !== 'odom') return;
+        odom = { x: pos.x, y: pos.y, yaw: quaternionToYaw(ori?.z ?? 0, ori?.w ?? 1),
+          receivedAt: Date.now(),
+          linearVelocity: msg?.twist?.twist?.linear?.x || 0, angularVelocity: msg?.twist?.twist?.angular?.z || 0 };
+        updateMapPose();
       },
       { throttleRate: 50 }
     );
@@ -655,11 +609,18 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
       ROS_TOPICS.AMCL_POSE,
       ROS_MSG_TYPES.POSE_WITH_COVARIANCE,
       (msg) => {
-        // Chi dung /amcl_pose khi khong co /odom (vd. Nav2 voi nguon odom khac)
-        if (Date.now() - lastOdomPoseAt < 1000) return;
+        if (stripSlash(msg?.header?.frame_id) !== 'map') return;
         const pos = msg?.pose?.pose?.position;
         const ori = msg?.pose?.pose?.orientation;
         if (pos) {
+          navigationRef.current.poseAt = Date.now();
+          const request = localizationRef.current;
+          const stamp = Number(msg?.header?.stamp?.sec || 0) * 1000 + Number(msg?.header?.stamp?.nanosec || 0) / 1e6;
+          if (!request.confirmed && request.mapId === mapConfig.mapId && request.requestedAt && stamp >= request.requestedAt - 50) {
+            request.confirmed = true;
+            setLocalizationReady(true);
+            setNavStatus('AMCL đã xác nhận vị trí trên map. Có thể chọn endpoint để đi.');
+          }
           const yaw = quaternionToYaw(ori?.z ?? 0, ori?.w ?? 1);
           setRobotPose((prev) => ({
             ...prev,
@@ -672,6 +633,13 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
       },
       { throttleRate: 50 }
     );
+
+    client.subscribe('/robot/sensor_health', ROS_MSG_TYPES.STRING, (msg) => {
+      try {
+        navigationRef.current.health = JSON.parse(msg.data);
+        navigationRef.current.healthAt = Date.now();
+      } catch { /* Wait for a valid health sample. */ }
+    });
 
     client.subscribe(
       ROS_TOPICS.SCAN,
@@ -733,7 +701,9 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
       ROS_MSG_TYPES.OCCUPANCY_GRID,
       (msg) => {
         const img = buildCostmapImage(msg);
-        if (!img) return;
+        if (!img || stripSlash(msg?.header?.frame_id) !== 'map') return;
+        navigationRef.current.costmap = msg;
+        navigationRef.current.costmapAt = Date.now();
         const off = document.createElement('canvas');
         off.width = img.width;
         off.height = img.height;
@@ -751,15 +721,16 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     );
 
     return () => {
+      active = false;
       client.disconnect();
+      setIsRosConnected(false);
       rosClientRef.current = null;
       costmapRef.current = null;
     };
-  }, [connectionMode]);
+  }, [connectionMode, mapConfig.mapId]);
 
   // Trang thai stack ROS 2 tren laptop (OFFLINE / MAPPING / EXPLORING / NAVIGATION + map dang nap)
   useEffect(() => {
-    if (connectionMode !== 'ros2') return undefined;
     let alive = true;
     const poll = () =>
       fetchRos2RuntimeStatus()
@@ -775,7 +746,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
       alive = false;
       clearInterval(timer);
     };
-  }, [connectionMode]);
+  }, []);
 
   // Bat map_server + AMCL + Nav2 voi map dang chon (backend sinh lai mask vung cam truoc).
   const handleStartNav2 = async () => {
@@ -787,9 +758,13 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
       return;
     }
     setIsStartingNav2(true);
+    localizationRef.current = { mapId: null, requestedAt: 0, confirmed: false };
+    setLocalizationReady(false);
+    navigationRef.current.poseAt = 0;
+    navigationRef.current.costmapAt = 0;
     setNavStatus(`Đang bật Nav2 với map "${mapConfig.mapId}" (map_server + AMCL + Nav2, ~20-30 giây)...`);
     try {
-      await startRos2Navigation(mapConfig.mapId);
+      await startRos2Navigation(mapConfig.mapId, connectionMode === 'pi5' ? pi5Ip : null);
       setNav2Runtime({ mode: 'STARTING', activeMap: mapConfig.mapId });
       setNavStatus(
         `Đang khởi động Nav2 cho "${mapConfig.mapId}". Khi báo NAVIGATION: đặt vị trí ban đầu (Chọn trên map), kiểm tra chấm LiDAR nằm đè lên tường, rồi bấm Tới.`
@@ -1074,7 +1049,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
 
     // 3b. Lop costmap Nav2 (che do ROS 2): do = vat can/vung cam, cam = vung noi an toan
     const costmap = costmapRef.current;
-    if (showCostmap && connectionMode === 'ros2' && costmap) {
+    if (showCostmap && costmap) {
       const tl = worldToCanvas(costmap.originX, costmap.originY + costmap.heightM, width, height);
       const br = worldToCanvas(costmap.originX + costmap.widthM, costmap.originY, width, height);
       ctx.save();
@@ -1185,20 +1160,11 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     const { x: rpx, y: rpy } = worldToCanvas(robotPose.x, robotPose.y, width, height);
     const effectiveYaw = robotPose.yaw + (invertHeading ? Math.PI : 0);
 
-    if (showLaserScan && scanPoints.length > 0) {
+    if (showLaserScan && navigationRef.current.poseAt && scanPoints.length > 0) {
       for (const pt of scanPoints) {
-        let wx = 0.0;
-        let wy = 0.0;
-        if (pt.x !== undefined && pt.y !== undefined) {
-          wx = pt.x;
-          wy = pt.y;
-        } else if (pt.range !== undefined && pt.angle !== undefined) {
-          const globalAngle = effectiveYaw + pt.angle;
-          wx = robotPose.x + pt.range * Math.cos(globalAngle);
-          wy = robotPose.y + pt.range * Math.sin(globalAngle);
-        } else {
-          continue;
-        }
+        const hit = laserPointToMap(pt, { ...robotPose, yaw: effectiveYaw });
+        if (!hit) continue;
+        const { x: wx, y: wy } = hit;
 
         const { x: lpx, y: lpy } = worldToCanvas(wx, wy, width, height);
 
@@ -1333,19 +1299,6 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
         ctx.fill();
       }
       ctx.restore();
-    } else if (isNavigating && selectedGoal) {
-      // Khi Pi chua tra ve nav_path, ve duong dinh huong net dut thang toi muc tieu
-      const startPt = worldToCanvas(robotPose.x, robotPose.y, width, height);
-      const goalPt = worldToCanvas(selectedGoal.x, selectedGoal.y, width, height);
-      ctx.save();
-      ctx.setLineDash([5, 4]);
-      ctx.strokeStyle = '#22D3EE';
-      ctx.lineWidth = 2.0;
-      ctx.beginPath();
-      ctx.moveTo(startPt.x, startPt.y);
-      ctx.lineTo(goalPt.x, goalPt.y);
-      ctx.stroke();
-      ctx.restore();
     }
 
     // 8. Ve Diem Dich Den (Selected Goal)
@@ -1374,10 +1327,10 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     ctx.translate(rpx, rpy);
     ctx.rotate(-effectiveYaw);
 
-    const robW = 0.40 * scale;
-    const robH = 0.30 * scale;
+    const robW = 0.32 * scale;
+    const robH = 0.16 * scale;
 
-    ctx.fillStyle = '#F59E0B';
+    ctx.fillStyle = navigationRef.current.poseAt ? '#F59E0B' : '#64748B';
     ctx.fillRect(-robW / 2, -robH / 2, robW, robH);
     ctx.strokeStyle = '#FFFFFF';
     ctx.lineWidth = 2;
@@ -1449,7 +1402,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     ctx.fill();
     ctx.fillStyle = '#10B981';
     ctx.font = 'bold 9px monospace';
-    ctx.fillText('Dock (0,0)', opx + 6, opy + 12);
+    ctx.fillText('Gốc map (0,0)', opx + 6, opy + 12);
   }, [
     mapImage,
     mapConfig,
@@ -1660,37 +1613,24 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     setNavStatus(`Đang đặt vị trí ban đầu (${px.toFixed(2)}, ${py.toFixed(2)})...`);
 
     try {
-      if (connectionMode === 'pi5') {
-        await ensurePiMapLoaded();
-        const res = await fetch(`http://${pi5Ip}:8000/api/v1/map/set_pose`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            x: px,
-            y: py,
-            yaw: (pyawRad * 180) / Math.PI, // Pi 5 dung don vi do
-            refine: refinePoseWithLidar,
-          }),
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        const finalYaw = (Number(data.yaw ?? 0) * Math.PI) / 180;
-        setRobotPose((prev) => ({ ...prev, x: Number(data.x ?? px), y: Number(data.y ?? py), yaw: finalYaw }));
-        setNavStatus(
-          data.refined
-            ? `Đã định vị: (${Number(data.x).toFixed(2)}, ${Number(data.y).toFixed(2)}, ${Number(data.yaw).toFixed(0)}°) — LiDAR khớp ${data.score_before} → ${data.score_after}`
-            : `Đã đặt vị trí ban đầu (${Number(data.x).toFixed(2)}, ${Number(data.y).toFixed(2)}, ${Number(data.yaw).toFixed(0)}°). ${data.message || ''}`
-        );
-      } else if (rosClientRef.current?.isConnected) {
-        rosClientRef.current.publish(
+      if (!rosClientRef.current?.isConnected) throw new Error('Chưa kết nối Nav2. Bật Nav2 với map này trước.');
+      if (nav2Runtime.mode !== 'NAVIGATION' || nav2Runtime.activeMap !== mapConfig.mapId) {
+        throw new Error('Bật Navigation với đúng map đang chọn trước khi đặt vị trí.');
+      }
+      rosClientRef.current.publish('/robot/nav_cancel', 'std_msgs/Empty', {});
+      localizationRef.current = { mapId: mapConfig.mapId, requestedAt: Date.now(), confirmed: false };
+      setLocalizationReady(false);
+      const sent = rosClientRef.current.publish(
           ROS_TOPICS.INITIAL_POSE,
           ROS_MSG_TYPES.POSE_WITH_COVARIANCE,
           createInitialPoseMsg(px, py, pyawRad)
         );
-        setNavStatus(`Đã gửi /initialpose (${px.toFixed(2)}, ${py.toFixed(2)}) cho AMCL`);
-      } else {
-        throw new Error('Chưa kết nối robot');
-      }
+      if (!sent) throw new Error('Không gửi được vị trí tới AMCL.');
+      setNavStatus(`Đã gửi vị trí (${px.toFixed(2)}, ${py.toFixed(2)}); chờ AMCL khớp LiDAR với map.`);
+      setIsNavigating(false);
+      setNavPath([]);
+      setSelectedGoal(null);
+      setNavigatingEndpointId(null);
 
       // Pose da duoc dat dung huong that => khong can dao dau xe 180° tren giao dien nua
       setInvertHeading(false);
@@ -1706,120 +1646,49 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
   };
 
   const handleSetPoseAtDock = () => {
-    const dock =
-      endpoints.find((ep) => ep.id === 'dock') ||
-      endpoints.find((ep) => ['CHARGER', 'dock'].includes(ep.type)) ||
-      { x: 0, y: 0, yaw: 0 };
+    const dock = dockEndpoint;
+    if (!dock) {
+      setNavStatus('Map này chưa có điểm Dock. Dùng “Chọn trên map” tại đúng vị trí xe đang đứng.');
+      return;
+    }
     handleApplyInitialPose(Number(dock.x) || 0, Number(dock.y) || 0, Number(dock.yaw) || 0);
   };
 
   const handleRelocalize = async () => {
-    if (connectionMode !== 'pi5') {
-      setNavStatus('Định vị lại bằng LiDAR chỉ hỗ trợ xe thật Pi 5 (ROS 2 dùng AMCL tự động).');
+    if (!navigationRef.current.poseAt) {
+      setNavStatus('Chưa có vị trí trên map. Dùng “Chọn trên map” để đặt vị trí trước.');
       return;
     }
-    setIsSettingPose(true);
-    try {
-      const res = await fetch(`http://${pi5Ip}:8000/api/v1/map/localize`, { method: 'POST' });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      setNavStatus(
-        data.refined
-          ? `Đã định vị lại: (${Number(data.x).toFixed(2)}, ${Number(data.y).toFixed(2)}, ${Number(data.yaw).toFixed(0)}°)`
-          : data.message || 'Pose hiện tại đã khớp bản đồ.'
-      );
-    } catch (err) {
-      setNavStatus(`Lỗi định vị lại: ${err.message}`);
-    } finally {
-      setIsSettingPose(false);
-    }
+    await handleApplyInitialPose(robotPose.x, robotPose.y, robotPose.yaw);
   };
 
-  // Gui toa do dich den toi Pi 5 hoac ROS 2
+  // Every endpoint uses map-frame localization and Nav2's live obstacle costmap.
   const handleSendGoal = (gx, gy, gyaw = 0.0) => {
-    setSelectedGoal({ x: gx, y: gy });
-    setIsNavigating(true);
-    setNavStatus(`Đang di chuyển tới (${gx.toFixed(2)}, ${gy.toFixed(2)})...`);
-
-    // WebSocket /map/ws tren Pi 5 chi phat telemetry, khong doc lenh => gui dich qua REST.
-    // Pi lap duong A* tren ban do (tranh tuong + vung cam) va tu choi dich khong hop le.
-    if (connectionMode === 'pi5') {
-      const cancelGoal = (message) => {
-        setNavStatus(message);
-        setIsNavigating(false);
-        setSelectedGoal(null);
-        setNavigatingEndpointId(null);
-      };
-      (async () => {
-        try {
-          if (await ensurePiMapLoaded()) {
-            cancelGoal(
-              `Đã nạp bản đồ "${mapConfig.mapId}" lên Pi. Hãy đặt vị trí ban đầu (Chọn trên map) rồi chọn đích lại.`
-            );
-            return;
-          }
-          const res = await fetch(`http://${pi5Ip}:8000/api/v1/map/navigate`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              target_x: gx,
-              target_y: gy,
-              target_yaw: gyaw,
-              speed: speedPercent,
-              linear_speed: maxLinearSpeed,
-            }),
-          });
-          const data = await res.json().catch(() => ({}));
-          if (!res.ok || data.status !== 'SUCCESS') {
-            cancelGoal(`Không đi được tới đích: ${data.message || `HTTP ${res.status}`}`);
-            return;
-          }
-          if (Array.isArray(data.path)) setNavPath(data.path);
-          setNavStatus(
-            `Đang đi tới (${gx.toFixed(2)}, ${gy.toFixed(2)}) theo ${data.path?.length || 1} chặng${
-              data.detail && data.detail !== 'OK' ? ` • ${data.detail}` : ''
-            }`
-          );
-        } catch (err) {
-          console.warn('[AdminPhysicalMapTab] Pi5 send goal error:', err);
-          cancelGoal(`Lỗi gửi đích tới Pi 5: ${err.message}`);
-        }
-      })();
-    }
-
-    if (connectionMode === 'ros2' && rosClientRef.current && isWsConnected) {
-      const cancelRosGoal = (message) => {
-        setNavStatus(message);
-        setIsNavigating(false);
-        setSelectedGoal(null);
-        setNavigatingEndpointId(null);
-      };
-      if (nav2Runtime.mode !== 'NAVIGATION') {
-        cancelRosGoal(
-          `Nav2 chưa chạy (trạng thái: ${nav2Runtime.mode}). Bấm "Bật Nav2 với map này" rồi đặt vị trí ban đầu trước.`
-        );
-        return;
-      }
-      if (nav2Runtime.activeMap && nav2Runtime.activeMap !== mapConfig.mapId) {
-        cancelRosGoal(
-          `Nav2 đang chạy map "${nav2Runtime.activeMap}", khác map đang chọn "${mapConfig.mapId}". Bật lại Nav2 với map này.`
-        );
-        return;
-      }
-      try {
-        lastGoalSentAtRef.current = Date.now();
-        setNavPath([]);
-        const goalMsg = createGoalPoseMsg(gx, gy, gyaw);
-        rosClientRef.current.publish(ROS_TOPICS.GOAL_POSE, ROS_MSG_TYPES.POSE_STAMPED, goalMsg);
-      } catch (err) {
-        console.warn('[AdminPhysicalMapTab] ROS2 send goal error:', err);
-      }
+    try {
+      sendNav2Endpoint(rosClientRef.current, {
+        runtime: nav2Runtime, mapId: mapConfig.mapId, physical: connectionMode === 'pi5',
+        localized: localizationRef.current.confirmed && localizationRef.current.mapId === mapConfig.mapId,
+        ...navigationRef.current,
+      }, { x: gx, y: gy, yaw: gyaw }, mapConfig, navigationRef.current.costmap);
+      lastGoalSentAtRef.current = Date.now();
+      setSelectedGoal({ x: gx, y: gy });
+      setIsNavigating(true);
+      setNavPath([]);
+      setNavStatus(`Nav2 đang lập đường tránh vật cản tới (${gx.toFixed(2)}, ${gy.toFixed(2)})...`);
+    } catch (err) {
+      setNavStatus(err.message);
+      setIsNavigating(false);
+      setSelectedGoal(null);
+      setNavigatingEndpointId(null);
     }
   };
 
   // Dieu khien Teleop thu cong
   const sendTeleopCommand = (commandDirection, linearVel, angularVel) => {
     if (connectionMode === 'pi5') {
+      if (rosClientRef.current?.isConnected) {
+        rosClientRef.current.publish('/robot/nav_cancel', 'std_msgs/Empty', {});
+      }
       try {
         // Thanh trượt chỉ áp dụng cho tiến/lùi. Xoay tại chỗ gửi speed=null để
         // Pi dùng TELEOP_PWM_TURN riêng (lidar_service.py).
@@ -1827,7 +1696,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
         let speed = speedPercent;
         if (commandDirection === 'stop') speed = 0;
         else if (isTurn) speed = null;
-        fetch(`${PI5_API}/map/teleop`, {
+        fetch(`http://${pi5Ip}:8000/api/v1/map/teleop`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ command: commandDirection, speed }),
@@ -1835,9 +1704,10 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
       } catch (err) {
         console.warn('[AdminPhysicalMapTab] Pi5 teleop error:', err);
       }
+      return;
     }
 
-    if (rosClientRef.current && isWsConnected) {
+    if (rosClientRef.current?.isConnected) {
       try {
         rosClientRef.current.publish(ROS_TOPICS.CMD_VEL, ROS_MSG_TYPES.TWIST, {
           linear: { x: linearVel, y: 0.0, z: 0.0 },
@@ -1852,7 +1722,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
   const handleStop = () => {
     // Che do ROS 2: huy goal Nav2 (bridge goi cancel_goal + gui stop cho Pi); chi /cmd_vel=0
     // thi controller Nav2 van phat lenh va xe chay tiep.
-    if (connectionMode === 'ros2' && rosClientRef.current?.isConnected) {
+    if (rosClientRef.current?.isConnected) {
       rosClientRef.current.publish('/robot/nav_cancel', 'std_msgs/Empty', {});
     }
     sendTeleopCommand('stop', 0.0, 0.0);
@@ -1971,7 +1841,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
               }`}
             >
               <Activity className="w-3 h-3" />
-              <span>ROS 2 Giả Lập</span>
+              <span>ROS 2</span>
             </button>
           </div>
 
@@ -2135,7 +2005,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
               <span>Điểm ({endpoints.length})</span>
             </button>
 
-            {connectionMode === 'ros2' && (
+            {(
               <button
                 onClick={() => setShowCostmap(!showCostmap)}
                 className={`px-2.5 py-1 rounded text-[11px] font-semibold flex items-center gap-1.5 cursor-pointer transition-colors ${
@@ -2495,7 +2365,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
                   isNavigating ? 'bg-amber-950 text-amber-400 border border-amber-800' : 'bg-slate-800 text-slate-400'
                 }`}
               >
-                {isNavigating ? 'Đang Di Chuyển' : 'Sẵn Sàng'}
+                {isNavigating ? 'Đang Di Chuyển' : navigationMapReady && localizationReady ? 'Đã Định Vị' : 'Chưa Sẵn Sàng Đi'}
               </span>
             </div>
 
@@ -2529,12 +2399,12 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
           </div>
 
           {/* Card Nav2 (che do ROS 2): bat map_server + AMCL + Nav2 voi map dang chon */}
-          {connectionMode === 'ros2' && (
+          {(
             <div className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 space-y-2">
               <div className="flex items-center justify-between text-xs font-bold text-slate-300">
                 <span className="flex items-center gap-1.5">
                   <Navigation className="w-3.5 h-3.5 text-orange-400" />
-                  Nav2 (Laptop WSL)
+                  {connectionMode === 'pi5' ? 'Xe thật • Nav2 + tránh vật cản' : 'Nav2'}
                 </span>
                 <span
                   className={`px-1.5 py-0.5 rounded text-[10px] font-mono ${
@@ -2560,7 +2430,10 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
                   : `Bật Nav2 với map "${mapConfig.mapId}"`}
               </button>
               <p className="text-[10px] leading-snug text-slate-500">
-                Sau khi bật: đặt vị trí ban đầu bên dưới, đợi chấm LiDAR nằm đè lên tường đen rồi mới bấm Tới.
+                1. Bật Navigation → 2. Chọn đúng chỗ xe đang đứng và kéo theo hướng mũi xe → 3. Đợi AMCL xác nhận rồi bấm Tới.
+              </p>
+              <p role="status" aria-live="polite" className="text-[11px] leading-relaxed text-cyan-200 bg-slate-900 rounded px-2 py-1.5 break-words">
+                {navStatus}
               </p>
             </div>
           )}
@@ -2570,7 +2443,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
             <div className="flex items-center justify-between text-xs font-bold text-slate-300">
               <span className="flex items-center gap-1.5">
                 <Crosshair className="w-3.5 h-3.5 text-emerald-400" />
-                Vị Trí Ban Đầu Robot
+                2. Vị Trí Ban Đầu Robot
               </span>
               {isSettingPose && <RefreshCw className="w-3.5 h-3.5 text-emerald-400 animate-spin" />}
             </div>
@@ -2584,7 +2457,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
                   setSelectedEndpoint(null);
                   setSelectedZone(null);
                 }}
-                disabled={isSettingPose}
+                disabled={isSettingPose || !navigationMapReady}
                 className={`px-2 py-1.5 rounded text-[11px] font-semibold flex items-center justify-center gap-1.5 cursor-pointer transition-colors border ${
                   isPoseSetMode
                     ? 'bg-emerald-600 text-white border-emerald-500 animate-pulse'
@@ -2598,7 +2471,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
               <button
                 type="button"
                 onClick={handleSetPoseAtDock}
-                disabled={isSettingPose}
+                disabled={isSettingPose || !navigationMapReady || !dockEndpoint}
                 className="px-2 py-1.5 rounded text-[11px] font-semibold flex items-center justify-center gap-1.5 cursor-pointer transition-colors border bg-slate-800 text-slate-200 border-slate-700 hover:bg-slate-700"
                 title="Robot đang đứng tại Trạm Sạc (Home), mũi xe theo hướng yaw của điểm dock"
               >
@@ -2608,19 +2481,14 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
             </div>
 
             <div className="flex items-center justify-between gap-2">
-              <label className="flex items-center gap-1.5 text-[11px] text-slate-400 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={refinePoseWithLidar}
-                  onChange={(e) => setRefinePoseWithLidar(e.target.checked)}
-                  className="accent-emerald-500"
-                />
-                Tinh chỉnh bằng LiDAR
-              </label>
+              <span className={`flex items-center gap-1.5 text-[11px] ${localizationReady ? 'text-emerald-400' : 'text-slate-400'}`}>
+                <ShieldCheck className="w-3 h-3" />
+                {localizationReady ? 'AMCL đã định vị bằng LiDAR' : 'Chưa xác nhận vị trí trên map'}
+              </span>
               <button
                 type="button"
                 onClick={handleRelocalize}
-                disabled={isSettingPose || connectionMode !== 'pi5'}
+                disabled={isSettingPose || !navigationMapReady}
                 className="px-2 py-1 rounded text-[10px] font-semibold flex items-center gap-1 cursor-pointer transition-colors border bg-slate-900 text-cyan-300 border-slate-700 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed"
                 title="Khớp lại tia LiDAR với bản đồ quanh vị trí hiện tại để sửa trôi odometry"
               >
@@ -2629,6 +2497,13 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
               </button>
             </div>
 
+            <p className="text-[10px] text-slate-400 leading-relaxed">
+              {!navigationMapReady
+                ? 'Hiện chưa có Navigation đúng map. Bật Nav2 ở bước 1 trước; chế độ MAPPING chỉ dùng để quét.'
+                : !dockEndpoint
+                  ? 'Map chưa có Dock. Gốc (0,0) không phải vị trí mặc định của xe; hãy dùng Chọn trên map.'
+                  : 'Chỉ dùng Đặt tại Dock khi xe thật đang đứng đúng điểm Dock đã lưu.'}
+            </p>
             {isPoseSetMode && (
               <p className="text-[10px] text-emerald-300/90 leading-snug">
                 Click vào chỗ robot đang đứng, giữ chuột và kéo theo hướng mũi xe, rồi thả chuột.

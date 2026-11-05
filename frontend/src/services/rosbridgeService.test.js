@@ -18,6 +18,28 @@ describe('parseLaserScan', () => {
   });
 });
 
+describe('RosbridgeClient connection events', () => {
+  it('signals connection readiness using the onOpen/onClose API used by the map screen', () => {
+    const Original = globalThis.WebSocket;
+    class FakeSocket { static OPEN = 1; static CONNECTING = 0; close() {} }
+    globalThis.WebSocket = FakeSocket;
+    try {
+      const onOpen = vi.fn();
+      const onClose = vi.fn();
+      const client = new RosbridgeClient('ws://test', { onOpen, onClose, autoReconnect: false });
+      client.connect();
+      client.ws.onopen();
+      expect(client.isConnected).toBe(true);
+      expect(onOpen).toHaveBeenCalledOnce();
+      client.ws.onclose();
+      expect(client.isConnected).toBe(false);
+      expect(onClose).toHaveBeenCalledOnce();
+    } finally {
+      globalThis.WebSocket = Original;
+    }
+  });
+});
+
 describe('RosbridgeClient Map Management Methods', () => {
   let client;
   let sentMessages;

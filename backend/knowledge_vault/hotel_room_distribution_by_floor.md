@@ -79,3 +79,4 @@ tags: [so_luong_phong, phan_bo_phong, phong_theo_tang, tang_3, tang_4, room_coun
 ### Khách hỏi: "Tầng 5 có phòng nghỉ không?" / "Tầng 2 có phòng ngủ không?"
 - **Tiếng Việt:** Dạ không ạ. Tầng 5 là khu tiện ích thư giãn bao gồm Hồ bơi vô cực, Phòng Gym và Spa; còn Tầng 2 là khu vực Bếp trung tâm nấu ăn. Cả hai tầng này đều không có phòng ngủ lưu trú. Phòng nghỉ của khách chỉ nằm ở Tầng 3 và Tầng 4 ạ.
 - **English:** No, Level 5 is dedicated to the Infinity Pool, Fitness Gym, and Spa, while Level 2 is our central culinary kitchen. Neither has guest rooms. All guest accommodations are on Level 3 and Level 4.
+

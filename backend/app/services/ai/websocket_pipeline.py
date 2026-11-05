@@ -129,7 +129,7 @@ async def handle_pipecat_websocket(websocket: WebSocket, session_id: str = "pipe
         Server-side VAD: Chờ đủ thời gian im lặng mới chốt câu và chạy pipeline.
         Tránh cắt ngang khi khách dừng lại lấy hơi hoặc đang nghĩ dở câu.
         """
-        vad_ms = max(getattr(settings, "VAD_SILENCE_MS", 500) / 1000.0, 0.4)
+        vad_ms = max(getattr(settings, "VAD_SILENCE_MS", 2000) / 1000.0, 1.8)
         await asyncio.sleep(vad_ms)
 
         final_text = pipecat_service.get_stt_text(session_id)

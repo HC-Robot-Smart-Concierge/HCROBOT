@@ -666,7 +666,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     }
   }, [isVideoCallOpen, isPinModalOpen, stopSpeaking, stopListening]);
 
-  // Tự động gửi AI khi người dùng ngừng nói 650ms (VAD Silence Detection tự nhiên, phản hồi siêu tốc)
+  // Tự động gửi AI khi người dùng ngừng nói đủ lâu (VAD Silence Detection tự nhiên: 1800ms)
+  // Tránh ngắt lời khi khách đang dừng lấy hơi hoặc suy nghĩ giữa câu
   useEffect(() => {
     if (
       !isVideoCallOpen &&
@@ -685,7 +686,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         const textToProcess = transcript.trim();
         resetTranscript();
         handleStopTalkAndProcess(textToProcess);
-      }, 650);
+      }, 1800);
     }
     return () => {
       if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);

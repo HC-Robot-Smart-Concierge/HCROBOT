@@ -51,7 +51,7 @@ class Settings(BaseSettings):
     PIPECAT_SAMPLE_RATE: int = 16000
 
     # STT Streaming VAD Configuration (Wait 1.5s of silence before finalizing speech)
-    VAD_SILENCE_MS: int = 1500  # Milliseconds of silence before triggering LLM processing
+    VAD_SILENCE_MS: int = 2000  # Milliseconds of silence before triggering LLM processing
 
     # Pi5 Camera Stream Configuration (MJPEG over SSH Tunnel)
     PI5_CAMERA_STREAM_URL: str = "http://localhost:8554/stream"

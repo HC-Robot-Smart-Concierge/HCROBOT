@@ -59,6 +59,15 @@ function encodeWAV(samples, sampleRate = 16000) {
 }
 
 // ============================================================
+// Timing Configuration: Thoi gian cho im lang (Silence / Pause Duration)
+// ============================================================
+// Nguoi Viet va khach du lich thuong ngat nghi 1 - 1.5 giay giua cac ve cau de suy nghi hoac lay hoi.
+// Tang thoi gian cho len 1800ms - 2200ms de dam bao khong bi cuop loi khi khach dang noi do dang.
+export const SPEECH_FINAL_SILENCE_MS = 1800; // Khi trinh duyet bao isFinal: van cho 1.8s xem khach co noi tiep ve sau khong
+export const INTERIM_FINALIZE_DEBOUNCE_MS = 2200; // Khi chi co interim transcript (iOS/Safari): cho 2.2s im lang
+export const HARDWARE_VAD_SILENCE_MS = 2000; // Khi thu am truc tiep qua Micro (VAD/Whisper): cho 2.0s im lang
+
+// ============================================================
 // Main Hook: useSpeechRecognition (Dual-Engine: Browser + Backend STT)
 // ============================================================
 export const useSpeechRecognition = (callbacks = {}) => {
@@ -358,7 +367,7 @@ export const useSpeechRecognition = (callbacks = {}) => {
             } else {
               consecutiveVoiceFrames = 0;
               if (hasDetectedVoiceRef.current) {
-                // Khách đã nói xong và im lặng 900ms
+                // Khách đã nói xong và im lặng HARDWARE_VAD_SILENCE_MS (2000ms)
                 if (!silenceTimerRef.current) {
                   silenceTimerRef.current = setTimeout(() => {
                     silenceTimerRef.current = null;
@@ -367,7 +376,7 @@ export const useSpeechRecognition = (callbacks = {}) => {
                     if (!lastFinalTranscriptRef.current || lastFinalTranscriptRef.current.trim().length === 0) {
                       processBackendSTT();
                     }
-                  }, 900);
+                  }, HARDWARE_VAD_SILENCE_MS);
                 }
               }
             }
@@ -475,21 +484,21 @@ export const useSpeechRecognition = (callbacks = {}) => {
             utteranceCommittedRef.current = false;
           }
 
-          if (isCurrentFinal) {
-            commitFinalTranscript(trimmed);
-          } else {
-            utteranceCommittedRef.current = false;
-            if (cbInterim) cbInterim(trimmed);
-
-            // Auto-Finalize Debounce: Tự động chốt câu khi người dùng ngừng nói 750ms (đặc trị cho iOS Safari không kích hoạt isFinal)
-            clearSpeechFinalizeTimer();
-            speechFinalizeTimerRef.current = setTimeout(() => {
-              speechFinalizeTimerRef.current = null;
-              if (shouldListenRef.current && lastFinalTranscriptRef.current?.trim()) {
-                commitFinalTranscript(lastFinalTranscriptRef.current.trim());
-              }
-            }, 750);
+          if (!isCurrentFinal && cbInterim) {
+            cbInterim(trimmed);
           }
+
+          // Auto-Finalize Debounce: Tự động chốt câu khi người dùng thực sự ngừng nói.
+          // Tuyệt đối KHÔNG chốt tức thì ngay khi isCurrentFinal = true vì Web Speech API thường
+          // ngắt isFinal giữa các vế câu khi khách chỉ mới ngắt nghỉ lấy hơi 300ms - 500ms.
+          // Chờ đủ thời gian im lặng (1800ms cho isFinal hoặc 2200ms cho interim) trước khi kích hoạt onFinal.
+          clearSpeechFinalizeTimer();
+          speechFinalizeTimerRef.current = setTimeout(() => {
+            speechFinalizeTimerRef.current = null;
+            if (shouldListenRef.current && lastFinalTranscriptRef.current?.trim()) {
+              commitFinalTranscript(lastFinalTranscriptRef.current.trim());
+            }
+          }, isCurrentFinal ? SPEECH_FINAL_SILENCE_MS : INTERIM_FINALIZE_DEBOUNCE_MS);
         }
       };
 
@@ -703,12 +712,17 @@ export const useSpeechRecognition = (callbacks = {}) => {
 
   // Kích hoạt chốt giọng nói ngay lập tức (dùng khi bấm "Gửi ngay" hoặc "Nói xong")
   const finishVoiceCapture = useCallback(async () => {
+    clearSpeechFinalizeTimer();
     if (silenceTimerRef.current) {
       clearTimeout(silenceTimerRef.current);
       silenceTimerRef.current = null;
     }
-    await processBackendSTT(true);
-  }, [processBackendSTT]);
+    if (lastFinalTranscriptRef.current?.trim()) {
+      commitFinalTranscript(lastFinalTranscriptRef.current.trim());
+    } else {
+      await processBackendSTT(true);
+    }
+  }, [clearSpeechFinalizeTimer, commitFinalTranscript, processBackendSTT]);
 
   return {
     isListening,

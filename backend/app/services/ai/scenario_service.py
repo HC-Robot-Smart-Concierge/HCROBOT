@@ -50,6 +50,10 @@ DEFAULT_SEED_SCENARIOS = [
 
             "mã pin là gì", "ma pin la gi", "mã pin phòng ở đâu", "ma pin phong o dau",
 
+            "mất chìa khóa", "mat chia khoa", "quên chìa khóa", "quen chia khoa",
+
+            "mất khóa", "mat khoa", "lost key", "forgot key",
+
             "forgot pin", "forgot room pin", "lost pin", "reset pin", "forgot my pin", "reset room pin"
 
         ],
@@ -1255,34 +1259,6 @@ DEFAULT_SEED_SCENARIOS = [
         "action_type": "none",
 
         "action_payload": {'eye_expression': 'look_up'},
-
-        "is_fast_path": True,
-
-        "is_active": True,
-
-        "priority": 91,
-
-    },
-
-    {
-
-        "id": "scn-lost-keycard",
-
-        "title": "Thẻ phòng & Khóa từ (Key Card & Replacement)",
-
-        "category": "service",
-
-        "match_keywords": ["mất thẻ", "mất chìa khóa", "quên thẻ", "thẻ phòng", "làm lại thẻ", "kẹt thẻ", "mat the", "mat chia khoa", "quen the", "the phong", "lam lai the", "lost key card", "lost card", "replace key card", "forgot key", "keycard not working"],
-
-        "match_type": "keyword",
-
-        "response_vi": "Dạ nếu quý khách làm thất lạc hoặc quên thẻ phòng, quý khách chỉ cần ghé Quầy Lễ tân sảnh Tầng 1 và xuất trình giấy tờ tùy thân, nhân viên sẽ cấp lại thẻ mới ngay trong 1 phút ạ!",
-
-        "response_en": "If you have misplaced or locked your key card inside, simply visit the Front Desk at Level 1 with your ID/Passport, and our team will issue a new replacement card in less than a minute!",
-
-        "action_type": "none",
-
-        "action_payload": {'eye_expression': 'happy'},
 
         "is_fast_path": True,
 
@@ -2676,7 +2652,12 @@ class ScenarioService:
             }
             has_db_updates = False
             for r in records:
-                if r.id in cleaned_keywords_map:
+                if r.id == "scn-lost-keycard":
+                    if r.is_active or r.is_fast_path:
+                        r.is_active = False
+                        r.is_fast_path = False
+                        has_db_updates = True
+                elif r.id in cleaned_keywords_map:
                     target_kw = cleaned_keywords_map[r.id]
                     if r.match_keywords != target_kw and any(bad in (r.match_keywords or []) for bad in ["bơi lội", "hát", "đặc sản"]):
                         r.match_keywords = target_kw
@@ -2691,7 +2672,7 @@ class ScenarioService:
 
             for r in records:
 
-                if r.is_active:
+                if r.is_active and r.id != "scn-lost-keycard":
 
                     cache_list.append({
 

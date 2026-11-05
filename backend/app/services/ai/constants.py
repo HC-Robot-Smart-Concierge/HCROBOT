@@ -122,6 +122,6 @@ SERVICE_KEYWORDS: Dict[str, List[str]] = {
     "reception": [
         "lễ tân", "check out", "checkout", "check in", "checkin",
         "đổi phòng", "doi phong", "trả phòng", "tra phong", "front desk", "reception",
-        "gia hạn phòng", "thẻ phòng", "mất chìa khóa", "khóa phòng"
+        "gia hạn phòng", "mất chìa khóa", "khóa phòng"
     ],
 }

@@ -1557,7 +1557,17 @@ async def intent_router_node(state: ConciergeState) -> Dict[str, Any]:
 
 
 
-    is_explicit_order_intent = (not is_reject_inquiry) and any(k in prompt_lower for k in [
+    is_review_order = any(k in prompt_lower for k in [
+        "xem lại", "xem lai", "cho tôi xem", "cho toi xem", "cho xem",
+        "xem món", "xem mon", "xem đơn", "xem don", "xem đồ", "xem do",
+        "món đồ đặc", "mon do dac", "món đồ đạc", "mon do dac",
+        "món đã đặt", "mon da dat", "đơn đã đặt", "don da dat", "đồ đã đặt", "do da dat",
+        "tôi đã đặt", "toi da dat", "tôi đã gọi", "toi da goi",
+        "đã đặt những gì", "da dat nhung gi", "đã gọi những gì", "da goi nhung gi",
+        "review order", "show order", "view order", "what did i order", "see what i ordered"
+    ])
+
+    is_explicit_order_intent = (not is_reject_inquiry) and (not is_review_order) and any(k in prompt_lower for k in [
 
 
 
@@ -1641,7 +1651,7 @@ async def intent_router_node(state: ConciergeState) -> Dict[str, Any]:
 
 
 
-    is_query_status = (is_reject_inquiry or any(k in prompt_lower for k in query_status_kws)) and (not is_explicit_order_intent or has_status_timing_kw or is_reject_inquiry)
+    is_query_status = (is_reject_inquiry or is_review_order or any(k in prompt_lower for k in query_status_kws)) and (not is_explicit_order_intent or has_status_timing_kw or is_reject_inquiry or is_review_order)
 
 
 

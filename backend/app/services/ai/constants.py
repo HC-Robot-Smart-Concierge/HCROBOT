@@ -65,7 +65,25 @@ SERVICE_KEYWORDS: Dict[str, List[str]] = {
         "connect staff", "video call support", "talk to staff", "call receptionist",
         "human agent", "live agent", "talk to a person", "speak to a person", "live support"
     ],
-    "query_order_status": [
+        "query_order_status": [
+        # Xem lại món / đơn đã đặt (Review placed orders)
+        "xem lại", "xem lai", "xem lại món", "xem lai mon", "xem lại đơn", "xem lai don", "xem lại đồ", "xem lai do",
+        "cho tôi xem lại", "cho toi xem lai", "cho tôi xem lại món", "cho toi xem lai mon",
+        "cho tôi xem lại đơn", "cho toi xem lai don", "cho tôi xem món", "cho toi xem mon",
+        "cho tôi xem đơn", "cho toi xem don", "cho xem món", "cho xem don", "cho tôi xem", "cho toi xem", "cho xem",
+        "xem món", "xem mon", "xem đơn", "xem don",
+        "xem lại món đồ đặc", "xem lai mon do dac", "xem lại món đồ đạc", "xem lai mon do dac",
+        "món đồ đặc", "mon do dac", "món đồ đạc", "mon do dac", "đồ đặc", "do dac", "đồ đạc",
+        "món đã đặt", "mon da dat", "đơn đã đặt", "don da dat", "đồ đã đặt", "do da dat",
+        "món nào đã đặt", "mon nao da dat", "những món đã đặt", "nhung mon da dat",
+        "tôi đã đặt món gì", "toi da dat mon gi", "tôi đã gọi món gì", "toi da goi mon gi",
+        "tôi đã đặt những gì", "toi da dat nhung gi", "tôi đã gọi những gì", "toi da goi nhung gi",
+        "đã đặt món gì", "da dat mon gi", "đã gọi món gì", "da goi mon gi",
+        "đã đặt những gì", "da dat nhung gi", "đã gọi những gì", "da goi nhung gi",
+        "danh sách món đã đặt", "danh sach mon da dat", "danh sách đồ đã đặt", "danh sach do da dat",
+        "danh sách món", "danh sach mon", "danh sách đơn", "danh sach don",
+        "review my order", "review order", "show my order", "view my order", "what did i order",
+        "check my order", "check order", "see my order", "see what i ordered",
         "trạng thái", "trang thai", "tình trạng", "tinh trang", "tiến độ", "tien do", "kiểm tra món", "kiem tra mon", "kiểm tra đơn", "kiem tra don",
         "đến đâu rồi", "den dau roi", "tới đâu rồi", "toi dau roi", "tới đâu", "toi dau", "đến đâu", "den dau",
         "xong chưa", "xong chua", "làm xong chưa", "lam xong chua", "nấu xong chưa", "nau xong chua", "chế biến",

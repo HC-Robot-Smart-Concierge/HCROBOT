@@ -118,6 +118,16 @@ async def auto_create_ticket(
                 "ly", "tách", "muỗng", "nĩa", "chén", "đĩa", "đá lạnh", "tableware", "ice", "glass"
             ]
             items_lower = (items or "").lower()
+            non_orderable_kw = [
+                "xem lại", "xem lai", "cho tôi xem", "cho toi xem", "cho xem",
+                "kiểm tra", "kiem tra", "trạng thái", "trang thai", "tiến độ", "tien do",
+                "xong chưa", "xong chua", "khi nào", "bao giờ", "tại sao", "tai sao",
+                "vì sao", "vi sao", "lý do", "ly do", "món đồ đặc", "mon do dac", "món đồ đạc",
+                "đã đặt", "da dat", "đã gọi", "da goi"
+            ]
+            if any(k in items_lower for k in non_orderable_kw):
+                logger.warning(f"[AITicketService] Bỏ qua tạo/gộp món rác từ câu hỏi tra cứu: '{items}'")
+                return ""
             is_svc = any(k in items_lower for k in service_kw)
             assigned_dept_id = "DEP-ROOMSERVICE" if is_svc else "DEP-KITCHEN"
             target_dept_name = "Room Service" if is_svc else "Kitchen"
@@ -613,7 +623,19 @@ async def background_extract_and_create_ticket(
         return
 
     # Không tạo ticket nếu là chào hỏi, giới thiệu phòng hoặc câu hỏi thông tin chung
-    if action in ["provide_room_number", "chitchat", "conversation", "faq", "fast_path", "unknown"]:
+    if action in ["provide_room_number", "chitchat", "conversation", "faq", "fast_path", "unknown", "query_order_status"]:
+        return
+
+    items_desc_check = (items or prompt or "").lower()
+    non_orderable_kw = [
+        "xem lại", "xem lai", "cho tôi xem", "cho toi xem", "cho xem",
+        "kiểm tra", "kiem tra", "trạng thái", "trang thai", "tiến độ", "tien do",
+        "xong chưa", "xong chua", "khi nào", "bao giờ", "tại sao", "tai sao",
+        "vì sao", "vi sao", "lý do", "ly do", "món đồ đặc", "mon do dac", "món đồ đạc",
+        "đã đặt", "da dat", "đã gọi", "da goi"
+    ]
+    if any(k in items_desc_check for k in non_orderable_kw):
+        logger.warning(f"[AITicketService] Skipping background ticket creation for non-orderable inquiry: '{items or prompt}'")
         return
 
     try:

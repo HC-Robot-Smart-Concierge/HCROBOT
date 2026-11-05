@@ -27,8 +27,8 @@ robot:
 
   safety:
     # Sonar là lớp PHANH KHẨN CẤP cuối cùng; tránh vật cản thường ngày do Nav2 + LiDAR lo.
-    # Ngưỡng lấy theo hình học thật của xe (dài 32 x rộng 16 cm, xoay quanh tâm: góc xe
-    # quét bán kính ~17.9 cm = lố ~10 cm ra ngoài hông, ~2 cm ra ngoài đầu/đuôi) + chút dư.
+    # Xe đo thực tế dài 33 x rộng 17 cm (cả bánh), xoay quanh tâm: góc xe
+    # quét bán kính ~18.6 cm = lố ~10.1 cm ra ngoài hông, ~2.1 cm ngoài đầu/đuôi) + dư.
     # Ngưỡng to hơn mức xe thật cần => Pi chặn lệnh Nav2 cho là an toàn => xe đứng yên
     # tới hết timeout (log 05/11: trước 27 < 30 chặn tiến, phải 18 < 20 chặn xoay...).
     front_stop_cm: 15

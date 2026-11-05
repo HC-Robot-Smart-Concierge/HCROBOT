@@ -1,4 +1,4 @@
-# Real-robot mapping: physical 32 x 16 cm body with 4 cm collision padding.
+# Real-robot mapping: measured 33 x 17 cm body with 4 cm collision padding.
 # Applied only with slam:=true. Static-map navigation retains its configuration.
 controller_server:
   ros__parameters:

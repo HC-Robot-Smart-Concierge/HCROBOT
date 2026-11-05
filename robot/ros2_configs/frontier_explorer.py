@@ -45,6 +45,7 @@ from retreat_logic import (  # noqa: E402
     RetreatTrail, ReverseFollower, body_scan, turn_clear,
 )
 from recovery_costmap import CostmapGrid, grid_sweep_clear, scan_sweep_clear  # noqa: E402
+from robot_geometry import TURN_CLEARANCE_RADIUS_M  # noqa: E402
 
 
 def _yaw_from_quat(q):
@@ -64,9 +65,9 @@ class FrontierExplorer(Node):
         # Het cho de di ma van con frontier: mo lai cac cho da bo, thu them toi da N vong.
         self.max_retry_rounds = int(p("max_retry_rounds", 2).value)
         self.retry_rounds = 0
-        # Mapping uses the measured body + 4 cm padding (~23.3 cm turning radius).
+        # Measured 33 x 17 cm body + 4 cm padding (~24.1 cm turning radius).
         # Nav2 and recovery check the actual swept body before changing heading.
-        self.goal_clearance_m = float(p("goal_clearance_m", 0.24).value)
+        self.goal_clearance_m = float(p("goal_clearance_m", TURN_CLEARANCE_RADIUS_M).value)
         self.goal_search_radius_m = float(p("goal_search_radius_m", 1.5).value)
         # Cho dung thoang gan nhat ma cach xe < muc nay => xe dang dung o cho nhin tot nhat.
         self.min_travel_m = float(p("min_travel_m", 0.35).value)
@@ -78,7 +79,7 @@ class FrontierExplorer(Node):
         self.unstick_dist_m = float(p("unstick_dist_m", 0.15).value)
         self.unstick_speed = float(p("unstick_speed", 0.12).value)
         self.retreat_speed = float(p("retreat_speed", 0.08).value)
-        self.turn_radius_m = float(p("retreat_turn_radius_m", 0.24).value)
+        self.turn_radius_m = float(p("retreat_turn_radius_m", TURN_CLEARANCE_RADIUS_M).value)
         self.scan_timeout_sec = float(p("retreat_scan_timeout_sec", 0.8).value)
         self.trail = RetreatTrail(max_length=float(p("retreat_history_m", 8.0).value))
         self.scan_received_at = None

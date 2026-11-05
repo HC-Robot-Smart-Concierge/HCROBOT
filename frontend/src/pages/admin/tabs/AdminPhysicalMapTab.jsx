@@ -1327,8 +1327,8 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     ctx.translate(rpx, rpy);
     ctx.rotate(-effectiveYaw);
 
-    const robW = 0.32 * scale;
-    const robH = 0.16 * scale;
+    const robW = 0.33 * scale;
+    const robH = 0.17 * scale;
 
     ctx.fillStyle = navigationRef.current.poseAt ? '#F59E0B' : '#64748B';
     ctx.fillRect(-robW / 2, -robH / 2, robW, robH);

@@ -2,6 +2,7 @@
 
 import math
 from dataclasses import dataclass
+from robot_geometry import HALF_LENGTH_M, HALF_WIDTH_M, COLLISION_MARGIN_M
 
 
 @dataclass
@@ -29,19 +30,19 @@ def motion_samples(pose, vx, wz, duration, step=0.05):
         yield x, y, angle
 
 
-def scan_sweep_clear(points, coverage, vx, wz, duration, margin=0.04):
+def scan_sweep_clear(points, coverage, vx, wz, duration, margin=COLLISION_MARGIN_M):
     if not coverage:
         return False
     for x, y, yaw in motion_samples((0.0, 0.0, 0.0), vx, wz, duration):
         c, s = math.cos(yaw), math.sin(yaw)
         for px, py in points:
             dx, dy = px - x, py - y
-            if abs(c * dx + s * dy) <= 0.16 + margin and abs(-s * dx + c * dy) <= 0.08 + margin:
+            if abs(c * dx + s * dy) <= HALF_LENGTH_M + margin and abs(-s * dx + c * dy) <= HALF_WIDTH_M + margin:
                 return False
     return True
 
 
-def grid_sweep_clear(grid, pose, vx, wz, duration, margin=0.04):
+def grid_sweep_clear(grid, pose, vx, wz, duration, margin=COLLISION_MARGIN_M):
     """Reject unknown/lethal cells under the whole body at every sampled pose.
 
     Nav2's OccupancyGrid encodes lethal obstacles as 100; 1..99 is soft inflation
@@ -54,7 +55,7 @@ def grid_sweep_clear(grid, pose, vx, wz, duration, margin=0.04):
     ox, oy, origin_yaw = grid.origin
     co, so = math.cos(origin_yaw), math.sin(origin_yaw)
     cell_margin = grid.resolution / math.sqrt(2)
-    half_x, half_y = 0.16 + margin, 0.08 + margin
+    half_x, half_y = HALF_LENGTH_M + margin, HALF_WIDTH_M + margin
     for x, y, yaw in motion_samples(pose, vx, wz, duration):
         gx = co * (x - ox) + so * (y - oy)
         gy = -so * (x - ox) + co * (y - oy)

@@ -161,8 +161,8 @@ local_costmap:
       width: 4
       height: 4
       resolution: 0.025
-      # Xe that hinh chu nhat dai 0.32 m x rong 0.16 m, tam xoay (tam 4 banh) o giua.
-      footprint: "[[0.16, 0.08], [0.16, -0.08], [-0.16, -0.08], [-0.16, 0.08]]"
+      # Xe that dai 0.33 m x rong 0.17 m (ke ca banh); base_link o tam xoay.
+      footprint: "[[0.165, 0.085], [0.165, -0.085], [-0.165, -0.085], [-0.165, 0.085]]"
       # Bien an toan: Pi (sonar) chan xoay/re khi hong xe < 12 cm. Khong padding thi
       # Nav2 lap duong sat tuong, xe ket vi moi lenh xoay bi chan (xem settings.yaml).
       # Da thu 0.06 de qua khe hep: xe ket o khe (Pi chan xoay) -> giu 0.13.
@@ -206,8 +206,8 @@ global_costmap:
       global_frame: map
       robot_base_frame: base_link
       use_sim_time: false
-      # Xe that hinh chu nhat dai 0.32 m x rong 0.16 m, tam xoay (tam 4 banh) o giua.
-      footprint: "[[0.16, 0.08], [0.16, -0.08], [-0.16, -0.08], [-0.16, 0.08]]"
+      # Xe that dai 0.33 m x rong 0.17 m (ke ca banh); base_link o tam xoay.
+      footprint: "[[0.165, 0.085], [0.165, -0.085], [-0.165, -0.085], [-0.165, 0.085]]"
       # Bien an toan: Pi (sonar) chan xoay/re khi hong xe < 12 cm. Khong padding thi
       # Nav2 lap duong sat tuong, xe ket vi moi lenh xoay bi chan (xem settings.yaml).
       # Da thu 0.06 de qua khe hep: xe ket o khe (Pi chan xoay) -> giu 0.13.

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import math
 from typing import Dict, Iterable, Optional
+from robot_geometry import HALF_LENGTH_M, HALF_WIDTH_M, LIDAR_X_M
 
 SIDES = ("front", "rear", "left", "right")
 SIDE_VI = {"front": "trước", "rear": "sau", "left": "trái", "right": "phải"}
@@ -18,9 +19,9 @@ SECTOR_CENTER = {"front": 0.0, "left": 90.0, "rear": 180.0, "right": 270.0}
 
 def lidar_clearances(
     points: Iterable[dict],
-    lidar_x: float = 0.08,
-    half_length: float = 0.16,
-    half_width: float = 0.08,
+    lidar_x: float = LIDAR_X_M,
+    half_length: float = HALF_LENGTH_M,
+    half_width: float = HALF_WIDTH_M,
     sector_half_deg: float = 25.0,
 ) -> Dict[str, Optional[float]]:
     """Khoảng hở nhỏ nhất (cm) từ MÉP thân xe tới vật cản ở 4 phía.

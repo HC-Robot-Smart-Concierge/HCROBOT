@@ -5,7 +5,7 @@
 Nav2/SLAM/costmap chạy trên laptop WSL, Pi 5 nhận lệnh motor qua UDP và giữ sonar/watchdog.
 Khởi động lại Nav2 và explorer để nạp code lẫn cấu hình mới; không cần cài ROS lên Pi.
 
-Mapping dùng thân xe 32 × 16 cm với đệm 4 cm, thêm critic `ObstacleFootprint` để
+Mapping dùng thân xe đo thực tế 33 × 17 cm (kể cả bánh), với đệm 4 cm, thêm critic `ObstacleFootprint` để
 kiểm tra cả hình chữ nhật khi Nav2 chạy. Cấu hình navigation với map tĩnh giữ nguyên.
 
 Robot ghi các mốc odom cách nhau khoảng 8 cm và đánh dấu vị trí có đủ khoảng trống
@@ -23,15 +23,17 @@ toàn bộ vùng thân xe quét qua khi quay/tiến/lùi không có vật cản.
 inflation 1..99 vẫn là chi phí ưu tiên, không cộng thành vật cản vật lý lần thứ hai.
 Kiểm tra chuyển động tính cả sàn PWM thực tế. Sonar/Pi tiếp tục áp dụng phanh sẵn có.
 LiDAR phải có dữ liệu ở cả 24 vùng góc quanh xe; vùng thiếu số đo không coi là trống.
-Hình học dùng thân xe 32 x 16 cm và LiDAR lệch trước tâm xe 8 cm, khớp lidar.xacro.
+Hình học thân xe tập trung ở `robot/ros2_configs/robot_geometry.py` (nửa dài 0.165 m,
+nửa rộng 0.085 m). Footprint Nav2 đồng bộ các góc này; LiDAR vẫn lệch trước tâm xe
+8 cm theo lidar.xacro, không suy ra lại vị trí cảm biến từ số đo thân xe.
 
 Các tham số ROS của explorer:
 
 | Tham số | Mặc định | Ý nghĩa |
 | --- | --- | --- |
 | `retreat_speed` | 0.08 m/s | Vận tốc lùi yêu cầu, giới hạn 0.04–0.10 m/s |
-| `goal_clearance_m` | 0.24 m | Khoảng hở khi chọn chỗ quét |
-| `retreat_turn_radius_m` | 0.24 m | Bán kính vùng trống quanh tâm xe để đánh dấu chỗ xoay |
+| `goal_clearance_m` | 0.25 m | Khoảng hở khi chọn chỗ quét |
+| `retreat_turn_radius_m` | 0.25 m | Bán kính vùng trống quanh tâm xe để đánh dấu chỗ xoay |
 | `retreat_history_m` | 8.0 m | Độ dài lịch sử đường đi tối đa |
 | `retreat_scan_timeout_sec` | 0.8 s | Tuổi tối đa của scan, xét cả thời điểm nhận và timestamp |
 

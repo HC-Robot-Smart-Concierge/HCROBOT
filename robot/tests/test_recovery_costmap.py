@@ -19,6 +19,11 @@ def set_cell(grid, x, y, value):
 
 
 class TestRecoveryCostmap(unittest.TestCase):
+    def test_new_33_by_17_cm_edges_are_included_in_collision_checks(self):
+        # The former 32 x 16 cm body with 4 cm margin missed these contacts.
+        for point in ((0.2025, 0), (-0.2025, 0), (0, 0.1225), (0, -0.1225)):
+            self.assertFalse(scan_sweep_clear([point], True, 0, 0, 0.1))
+
     def test_real_reported_angle_can_rotate_in_free_space(self):
         duration = math.radians(43.7) / 0.5
         self.assertTrue(scan_sweep_clear([], True, 0, 0.5, duration))

@@ -1,11 +1,12 @@
 """Bounded odometry breadcrumbs and reverse-only escape, independent of ROS.
 
-Distances use the current 32 x 16 cm body and laser offset in lidar.xacro.
+Distances use the measured 33 x 17 cm body and laser offset in lidar.xacro.
 Unknown scan sectors are not evidence of free space.
 """
 
 import math
 from dataclasses import dataclass
+from robot_geometry import HALF_LENGTH_M, HALF_WIDTH_M, LIDAR_X_M, TURN_CLEARANCE_RADIUS_M
 
 
 def angle_error(target, current):
@@ -27,18 +28,18 @@ def body_scan(angle_min, angle_increment, ranges, range_min, range_max):
         angle = angle_min + i * angle_increment
         sectors.add(int((angle % (2 * math.pi)) / (2 * math.pi) * 24) % 24)
         if math.isfinite(distance):
-            points.append((0.08 + distance * math.cos(angle), distance * math.sin(angle)))
+            points.append((LIDAR_X_M + distance * math.cos(angle), distance * math.sin(angle)))
     return points, len(sectors) == 24
 
 
-def turn_clear(points, coverage, radius=0.40):
+def turn_clear(points, coverage, radius=TURN_CLEARANCE_RADIUS_M):
     return coverage and all(math.hypot(x, y) > radius for x, y in points)
 
 
 def reverse_clear(points, coverage, distance=0.12, side_margin=0.04):
     """Conservative swept rectangle, including rear corners and both flanks."""
     return coverage and not any(
-        -0.16 - distance <= x <= 0.16 and abs(y) <= 0.08 + side_margin
+        -HALF_LENGTH_M - distance <= x <= HALF_LENGTH_M and abs(y) <= HALF_WIDTH_M + side_margin
         for x, y in points
     )
 

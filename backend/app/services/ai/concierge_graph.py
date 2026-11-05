@@ -400,6 +400,7 @@ class ConciergeState(TypedDict, total=False):
 
 
     is_room_authenticated: Optional[bool]
+    trigger_menu: Optional[str]
 
 
 
@@ -6225,21 +6226,8 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
 
 
             "room_number": current_room,
-
-
-
-
-
-
-
+            "target_room_number": current_room,
             "response": food_reply,
-
-
-
-
-
-
-
             "trigger_menu": "food_menu",
 
 
@@ -6385,21 +6373,8 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
 
 
             "room_number": current_room,
-
-
-
-
-
-
-
+            "target_room_number": current_room,
             "response": svc_reply,
-
-
-
-
-
-
-
             "trigger_menu": "room_service",
 
 

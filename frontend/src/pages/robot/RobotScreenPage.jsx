@@ -27,6 +27,7 @@ import { fetchActiveAdvertisements } from '../../services/advertisementApi';
 import { RobotAdPlayer } from '../../components/robot/RobotAdPlayer';
 import { RoomPinModal } from '../../components/robot/RoomPinModal';
 import { RoomPickerModal } from '../../components/robot/RoomPickerModal';
+import { extractSpokenRoomNumber } from '../../utils/roomHelper';
 
 /**
  * FloatingCinemaSubtitle
@@ -964,10 +965,17 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     const isStatusQueryPrompt = hasRealStatusKeyword && (!hasExplicitOrderVerb || /chưa|tới đâu|đến đâu|tiến độ|trạng thái|xong chưa/i.test(lowerQuery));
     const isOrderIntent = !isStatusQueryPrompt && /đặt món|gọi món|order|chọn món|thực đơn|menu|muốn ăn|đặt đồ ăn|gọi đồ ăn|đặt dịch vụ|thêm dịch vụ/i.test(lowerQuery);
 
+    // Trích xuất số phòng trực tiếp từ giọng nói (hỗ trợ cả chữ số và số nói tiếng Việt)
+    const spokenRoomDetected = extractSpokenRoomNumber(query);
+    if (spokenRoomDetected) {
+      setActiveRoomNumber(spokenRoomDetected);
+    }
+    const effectiveRoomNumber = spokenRoomDetected || activeRoomNumber;
+
     // CHỈ mở menu thực đơn nếu khách có ý định xem menu / đặt món rõ ràng và TUYỆT ĐỐI KHÔNG mở khi đang tra cứu trạng thái
     const isExplicitFoodMenuIntent = !isStatusQueryPrompt && (
       /^(mở |xem )?(menu|thực đơn)$/i.test(lowerQuery) ||
-      /mở (thực đơn|menu)|xem (thực đơn|menu)|đặt món|chọn món|gọi món|gọi đồ ăn|đặt đồ ăn|order món|muốn đặt món/i.test(lowerQuery)
+      /mở (thực đơn|menu)|xem (thực đơn|menu)|đặt món|chọn món|gọi món|gọi đồ ăn|đặt đồ ăn|order món|muốn đặt món|order đồ ăn|order thức ăn|đặt thức ăn|gọi thức ăn|muốn order/i.test(lowerQuery)
     );
     if (isExplicitFoodMenuIntent) {
       setIsFoodMenuOpen(true);
@@ -1037,7 +1045,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
     try {
       // Gửi toàn bộ truy vấn tới RAG Backend duy nhất (Single Source of Truth)
-      const chatRes = await sendChatPrompt(query, null, "auto", guestEmotion, sessionId, activeRoomNumber, chatSignal);
+      const chatRes = await sendChatPrompt(query, null, "auto", guestEmotion, sessionId, effectiveRoomNumber, chatSignal);
 
       // Nếu người dùng đã kích hoạt câu nói mới, ngắt lời hoặc timeout xảy ra -> Hủy bỏ câu cũ
       if (currentChatId !== activeChatRequestIdRef.current || chatRes?.aborted) {
@@ -1066,7 +1074,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         const detectedLang = chatRes.detected_language || 'Tiếng Việt';
         const langCode = chatRes.lang_code || (detectedLang === 'English' ? 'en-US' : 'vi-VN');
 
-        const updatedRoom = chatRes.current_room_number;
+        const updatedRoom = chatRes.target_room_number || chatRes.current_room_number || spokenRoomDetected;
         const isStatusAction = chatRes.action === 'query_order_status';
         const isAskRoomQuestion = chatRes.missing_room_number || /ở phòng bao nhiêu|xin số phòng|cho rora biết mình đang ở phòng|room number so i can check/i.test(replyText);
 
@@ -1140,6 +1148,9 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
           }
         } else if (!isStatusAction) {
           if (chatRes.trigger_menu === 'food_menu' || chatRes.action === 'open_food_menu') {
+            if (updatedRoom) {
+              setActiveRoomNumber(updatedRoom);
+            }
             setIsFoodMenuOpen(true);
             setIsRoomServiceMenuOpen(false);
             setIsTaxiModalOpen(false);
@@ -1151,6 +1162,9 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
             !chatRes.destination_key
           ) {
             // Tự động mở menu dịch vụ phòng (Khăn tắm, chăn gối, massage)
+            if (updatedRoom) {
+              setActiveRoomNumber(updatedRoom);
+            }
             setIsRoomServiceMenuOpen(true);
             setIsFoodMenuOpen(false);
             setIsTaxiModalOpen(false);
@@ -1162,6 +1176,9 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
             // Backend action 'room_service' là Ẩm thực F&B -> Chỉ mở menu đồ ăn nếu khách có ý định chọn món, TUYỆT ĐỐI KHÔNG mở dịch vụ phòng
             const isFoodIntent = /đặt món|gọi món|thực đơn|menu|đồ ăn|món ăn|cơm|phở|uống|ăn|pizza/i.test(lowerQuery);
             if (isFoodIntent) {
+              if (updatedRoom) {
+                setActiveRoomNumber(updatedRoom);
+              }
               setIsFoodMenuOpen(true);
               setIsRoomServiceMenuOpen(false);
               setIsTaxiModalOpen(false);

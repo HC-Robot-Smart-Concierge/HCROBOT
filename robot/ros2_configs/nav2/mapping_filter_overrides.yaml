@@ -1,0 +1,11 @@
+# Applied only with slam:=true. Static-map navigation retains keepout filtering.
+local_costmap:
+  local_costmap:
+    ros__parameters:
+      keepout_filter:
+        enabled: false
+global_costmap:
+  global_costmap:
+    ros__parameters:
+      keepout_filter:
+        enabled: false

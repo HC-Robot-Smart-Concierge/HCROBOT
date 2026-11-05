@@ -520,7 +520,10 @@ class FrontierExplorer(Node):
                     self.get_logger().info("↩️ Đã lùi ra chỗ đủ rộng, tiếp tục chọn frontier")
                 return
             if reason != "moving":
-                self._stop_recovery("Lệch đường lùi hoặc góc cua quá gắt, không tự xoay trong khe")
+                self._stop_recovery(
+                    "Lệch đường lùi hoặc góc cua quá gắt, không tự xoay trong khe: "
+                    + m["follower"].diagnostic
+                )
                 return
             if now > m["until"] or m["watchdog"].is_stuck(now, pose):
                 self._stop_recovery("Lùi không có tiến triển hoặc quá thời gian")

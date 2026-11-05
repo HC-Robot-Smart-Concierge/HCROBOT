@@ -7,7 +7,10 @@ Khởi động lại phiên tự quét để nạp code mới. Không cần thay
 Robot ghi các mốc odom cách nhau khoảng 8 cm và đánh dấu vị trí có đủ khoảng trống
 để xoay. Sau khi quét ở khu hẹp, hoặc khi Nav2 thất bại/kẹt, robot chờ action Nav2
 kết thúc rồi lùi qua các mốc theo thứ tự ngược về vị trí rộng gần nhất. Robot chỉ
-hiệu chỉnh hướng nhẹ trong lúc lùi, không xoay tại chỗ để tìm lại đường.
+hiệu chỉnh hướng nhẹ trong lúc lùi, không xoay tại chỗ để tìm lại đường. Bộ bám
+đường chiếu vị trí lên đoạn đường cũ và ngắm trước 20 cm theo chiều lùi, tránh
+nhầm mốc vừa đi quá thành đích nằm trước mũi xe. Lệch đường quá 12 cm, sai hướng
+trên khoảng 34 độ hoặc nhảy tiến trình quá 30 cm trong một lần cập nhật vẫn bị dừng.
 
 Đường cũ chỉ là đường tham chiếu: LiDAR hiện tại vẫn phải xác nhận vùng thân xe,
 hai góc sau và đoạn sắp lùi không có vật cản. Sonar/Pi tiếp tục áp dụng phanh sẵn có.
@@ -35,6 +38,9 @@ của Web cũng tắt explorer như trước.
 Log bình thường: `Lùi theo ... mốc đường cũ tới chỗ đủ rộng` rồi
 `Đã lùi ra chỗ đủ rộng, tiếp tục chọn frontier`.
 Log cần kiểm tra: `Tạm dừng tự hành: ...`.
+Lỗi lệch đường ghi thêm độ lệch ngang hoặc góc/hướng tới mốc ngắm để chẩn đoán.
+Khi `slam:=true`, launch tắt keepout filter vì chưa chọn map tĩnh/mask vùng cấm;
+chế độ navigation với map tĩnh vẫn giữ bộ lọc vùng cấm.
 
 Kiểm thử logic không cần ROS:
 

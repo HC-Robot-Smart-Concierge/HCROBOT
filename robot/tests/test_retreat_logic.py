@@ -123,6 +123,53 @@ class TestReverseFollower(unittest.TestCase):
         self.assertLess(vx, 0)
         self.assertGreater(wz, 0)
 
+    def test_passing_a_breadcrumb_between_callbacks_does_not_require_a_turn(self):
+        route = [(1.0 - i * 0.08, 0, 0) for i in range(11)]
+        follower = ReverseFollower(route)
+        vx, wz, reason = follower.command((0.84, 0, 0))
+        self.assertEqual(reason, "moving")
+        self.assertLess(vx, 0)
+        self.assertEqual(wz, 0)
+        self.assertAlmostEqual(follower.progress, 0.16)
+
+    def test_nearby_odom_noise_does_not_make_the_passed_point_a_reverse_goal(self):
+        route = [(1.0 - i * 0.08, 0, 0) for i in range(11)]
+        vx, wz, reason = ReverseFollower(route).command((0.93, 0.045, 0))
+        self.assertEqual(reason, "moving")
+        self.assertLess(vx, 0)
+        self.assertGreater(wz, 0)
+
+    def test_real_lateral_deviation_and_wrong_heading_still_stop(self):
+        route = [(1.0 - i * 0.08, 0, 0) for i in range(11)]
+        for pose in ((1.0, 0.13, 0), (1.0, 0, math.pi / 2), (0.5, 0, 0)):
+            follower = ReverseFollower(route)
+            self.assertEqual(follower.command(pose), (0, 0, "path_lost"))
+            self.assertTrue(follower.diagnostic)
+
+    def test_loop_near_anchor_cannot_skip_remaining_route(self):
+        # A crossed/looped trail must not jump to its far end just because it is nearby.
+        route = [(0, 0, 0), (-0.2, 0, 0), (-0.2, 0.2, 0), (0, 0.2, 0), (0, 0, 0)]
+        follower = ReverseFollower(route)
+        self.assertEqual(follower.command((0, 0, 0))[2], "moving")
+        self.assertEqual(follower.progress, 0.0)
+
+    def test_reverse_with_odom_noise_and_faster_actual_motor(self):
+        route = [(2.0 - i * 0.08, 0, 0) for i in range(24)]
+        follower = ReverseFollower(route)
+        pose = [2.0, 0.0, 0.0]
+        for step in range(300):
+            measured = (pose[0] + 0.01 * math.sin(step),
+                        pose[1] + 0.025 * math.sin(step * 0.7), pose[2])
+            vx, wz, reason = follower.command(measured)
+            if reason == "arrived":
+                break
+            self.assertEqual(reason, "moving", follower.diagnostic)
+            # The PWM floor can make the real motor faster than the requested vx.
+            pose[0] += 1.8 * vx * math.cos(pose[2]) * 0.2
+            pose[1] += 1.8 * vx * math.sin(pose[2]) * 0.2
+            pose[2] += wz * 0.2
+        self.assertEqual(reason, "arrived")
+
 
 if __name__ == "__main__":
     unittest.main()

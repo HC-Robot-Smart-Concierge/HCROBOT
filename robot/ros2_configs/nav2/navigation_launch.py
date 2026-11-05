@@ -5,6 +5,8 @@
   chay map_server/AMCL. Dung cho tu kham pha (frontier exploration) luc dang quet.
 """
 
+import os
+
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, OpaqueFunction
 from launch.substitutions import LaunchConfiguration
@@ -27,6 +29,10 @@ def _launch_setup(context, *args, **kwargs):
     with_slam = LaunchConfiguration("slam").perform(context).strip().lower() in ("true", "1", "yes")
 
     common_params = [params_file, {"use_sim_time": use_sim_time}]
+    if with_slam:
+        # Mapping has no selected static map/keepout mask. Keep filters enabled
+        # for normal navigation, where start_wsl_navigation.sh starts mask servers.
+        common_params.insert(1, os.path.join(os.path.dirname(__file__), "mapping_filter_overrides.yaml"))
     actions = []
     managed_nodes = []
 

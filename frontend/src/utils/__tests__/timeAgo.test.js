@@ -42,4 +42,14 @@ describe('formatTimeAgo utility', () => {
     const naiveIso = dateUtc.toISOString().replace('Z', '');
     expect(formatTimeAgo(naiveIso, 'Vừa đặt', 'vi')).toBe('10 phút trước');
   });
+
+  it('normalizes space-separated dates and prevents future skew from returning "Vừa đặt"', () => {
+    const dateUtc = new Date(Date.now() - 15 * 60 * 1000);
+    const spaceDate = dateUtc.toISOString().replace('T', ' ').replace('Z', '');
+    expect(formatTimeAgo(spaceDate, 'Vừa đặt', 'vi')).toBe('15 phút trước');
+
+    // Future skew should not return "Vừa đặt"
+    const futureDate = new Date(Date.now() + 2 * 60 * 60 * 1000);
+    expect(formatTimeAgo(futureDate.toISOString(), 'Vừa đặt', 'vi')).not.toBe('Vừa đặt');
+  });
 });

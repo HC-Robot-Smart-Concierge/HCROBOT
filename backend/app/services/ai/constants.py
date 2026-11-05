@@ -86,6 +86,7 @@ SERVICE_KEYWORDS: Dict[str, List[str]] = {
         "check my order", "check order", "see my order", "see what i ordered",
         "trạng thái", "trang thai", "tình trạng", "tinh trang", "tiến độ", "tien do", "kiểm tra món", "kiem tra mon", "kiểm tra đơn", "kiem tra don",
         "đến đâu rồi", "den dau roi", "tới đâu rồi", "toi dau roi", "tới đâu", "toi dau", "đến đâu", "den dau",
+        "thế nào rồi", "the nao roi", "sao rồi", "sao roi", "như thế nào rồi", "nhu the nao roi", "ra sao rồi", "ra sao roi",
         "xong chưa", "xong chua", "làm xong chưa", "lam xong chua", "nấu xong chưa", "nau xong chua", "chế biến",
         "làm tới đâu", "lam toi dau", "làm đến đâu", "lam den dau", "nấu tới đâu", "nau toi dau",
         "dọn phòng tới đâu", "don phong toi dau", "dọn phòng xong chưa", "don phong xong chua",

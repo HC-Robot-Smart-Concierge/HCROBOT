@@ -1,3 +1,4 @@
+import re
 from typing import Optional, List, Sequence, Tuple
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -160,8 +161,13 @@ class RoomServiceRepository(BaseRepository[RoomServiceOrder]):
             conditions.append(RoomServiceOrder.support_request_id == support_request_id)
             conditions.append(RoomServiceOrder.id == support_request_id)
         if order_identifier:
-            conditions.append(RoomServiceOrder.order_number == order_identifier)
-            conditions.append(RoomServiceOrder.id == order_identifier)
+            raw_id = str(order_identifier).strip()
+            conditions.append(RoomServiceOrder.order_number == raw_id)
+            conditions.append(RoomServiceOrder.id == raw_id)
+            clean_num = re.sub(r"^(REQ-)?(ORD-)?", "", raw_id, flags=re.IGNORECASE).strip()
+            if clean_num and clean_num != raw_id:
+                conditions.append(RoomServiceOrder.order_number == clean_num)
+                conditions.append(RoomServiceOrder.id == clean_num)
         if not conditions:
             return None
         stmt = select(RoomServiceOrder).where(or_(*conditions))

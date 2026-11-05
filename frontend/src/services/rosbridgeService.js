@@ -150,6 +150,22 @@ export const createWaypointSyncMsg = (waypoints = []) => {
 /**
  * Rosbridge WebSocket Client Class
  */
+const WS_CONNECTING = 0;
+const WS_OPEN = 1;
+
+const isWsConnectingOrOpen = (ws) => {
+  if (!ws) return false;
+  const openState = typeof WebSocket !== 'undefined' ? WebSocket.OPEN : WS_OPEN;
+  const connectingState = typeof WebSocket !== 'undefined' ? WebSocket.CONNECTING : WS_CONNECTING;
+  return ws.readyState === openState || ws.readyState === connectingState;
+};
+
+const isWsOpen = (ws) => {
+  if (!ws) return false;
+  const openState = typeof WebSocket !== 'undefined' ? WebSocket.OPEN : WS_OPEN;
+  return ws.readyState === openState;
+};
+
 export class RosbridgeClient {
   constructor(url, options = {}) {
     this.url = url;
@@ -164,7 +180,7 @@ export class RosbridgeClient {
 
   connect() {
     try {
-      if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
+      if (isWsConnectingOrOpen(this.ws)) {
         return;
       }
 
@@ -246,7 +262,7 @@ export class RosbridgeClient {
   }
 
   send(payload) {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+    if (isWsOpen(this.ws)) {
       this.ws.send(JSON.stringify(payload));
       return true;
     }

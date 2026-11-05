@@ -22,7 +22,7 @@ def explorer_class():
     methods = {"_on_nav_result", "_goal_finished", "_tick", "_watch_goal",
                "_retreat_scan", "_needs_retreat", "_start_unstick", "_maneuver_step",
                "_stop_recovery", "_publish_vx", "_on_stop", "_costmap_snapshot",
-               "_motion_allowed", "_retry_navigation", "_wait_recovery"}
+               "_motion_allowed", "_retry_navigation", "_wait_recovery", "_recovery_missing"}
     cls.body = [n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name in methods]
     cls.bases = []
     namespace = {"math": __import__("math"), "ReverseFollower": ReverseFollower,
@@ -290,6 +290,70 @@ class TestFrontierRecovery(unittest.TestCase):
         self.assertIsNone(n._costmap_snapshot(12.0))
         n.costmap_received_at = 12.0
         self.assertIsNone(n._costmap_snapshot(12.0))
+
+    def test_post_cancel_scan_gap_waits_then_recovers_without_manual_restart(self):
+        n = self.corridor()
+        n._retreat_scan.return_value = ([], False)
+        n._start_unstick(10.0)
+        self.assertTrue(n.maneuver["awaiting_sensors"])
+        self.assertFalse(n.recovery_blocked)
+        n._publish_motion.assert_called_with(0.0, 0.0)
+        n._now.return_value = 11.0
+        n._retreat_scan.return_value = ([(0.0, 0.20), (0.0, -0.20)], True)
+        n._maneuver_step()
+        self.assertTrue(n.maneuver["awaiting_sensors"])
+        n._now.return_value = 11.4
+        n._maneuver_step()
+        self.assertIn("follower", n.maneuver)
+        self.assertFalse(n.recovery_blocked)
+        n._maneuver_step()
+        self.assertLess(n._publish_motion.call_args.args[0], 0)
+
+    def test_start_without_odom_times_out_with_specific_reason_and_no_motion(self):
+        n = self.corridor()
+        n._odom_pose.return_value = None
+        n._start_unstick(10.0)
+        self.assertFalse(n.recovery_blocked)
+        n._now.return_value = 15.1
+        n._maneuver_step()
+        self.assertTrue(n.recovery_blocked)
+        self.assertIn("odom->base_link", n.get_logger().error.call_args.args[0])
+        for call in n._publish_motion.call_args_list:
+            self.assertEqual(call.args, (0.0, 0.0))
+
+    def test_start_without_costmap_does_not_release_motion_when_scan_recovers(self):
+        n = self.corridor()
+        n._costmap_snapshot.return_value = None
+        n._start_unstick(10.0)
+        n._now.return_value = 11.0
+        n._maneuver_step()
+        self.assertTrue(n.maneuver["awaiting_sensors"])
+        n._publish_motion.assert_called_with(0.0, 0.0)
+
+    def test_brief_scan_gap_keeps_existing_route_anchors(self):
+        n = self.corridor()
+        count = len(n.trail.points)
+        n._retreat_scan.return_value = ([], False)
+        n._maneuver_step()
+        self.assertEqual(len(n.trail.points), count)
+
+    def test_stop_button_while_waiting_cannot_resume_recovery(self):
+        n = self.corridor()
+        n._retreat_scan.return_value = ([], False)
+        n._start_unstick(10.0)
+        n._on_stop(None)
+        self.assertIsNone(n.maneuver)
+        self.assertTrue(n.finished)
+
+    def test_diagnostics_distinguish_stale_scan_from_partial_coverage(self):
+        n = self.node
+        n.scan_received_at = 10.0
+        n.scan_msg = SimpleNamespace(header=SimpleNamespace(stamp=SimpleNamespace(sec=9, nanosec=0)))
+        snapshot = n._costmap_snapshot.return_value
+        reason = n._recovery_missing(10.0, (1, 0, 0), False, snapshot)
+        self.assertIn("timestamp 1.00 s", reason)
+        n.scan_msg.header.stamp.sec = 10
+        self.assertIn("24 vùng góc", n._recovery_missing(10.0, (1, 0, 0), False, snapshot))
 
 
 if __name__ == "__main__":

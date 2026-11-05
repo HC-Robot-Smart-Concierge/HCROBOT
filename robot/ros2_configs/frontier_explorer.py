@@ -493,9 +493,38 @@ class FrontierExplorer(Node):
         self.memory.mark_blind(spot)
 
     # ------------------------------------------------------------------ thoát kẹt
+    def _recovery_missing(self, now, pose, coverage, snapshot):
+        missing = []
+        if pose is None:
+            missing.append("TF odom->base_link thiếu hoặc cũ hơn 1.0 s")
+        if not coverage:
+            s = self.scan_msg
+            if s is None or self.scan_received_at is None:
+                missing.append("chưa nhận /scan")
+            else:
+                stamp = s.header.stamp.sec + s.header.stamp.nanosec * 1e-9
+                receive_age, scan_age = now - self.scan_received_at, now - stamp
+                if not (0 <= receive_age <= self.scan_timeout_sec and 0 <= scan_age <= self.scan_timeout_sec):
+                    missing.append(f"scan chưa mới: nhận {receive_age:.2f} s, timestamp {scan_age:.2f} s "
+                                   f"(giới hạn {self.scan_timeout_sec:.2f} s)")
+                else:
+                    missing.append("scan chưa đủ 24 vùng góc")
+        if snapshot is None:
+            missing.append("local costmap chưa sẵn sàng/mới trong 1.5 s")
+        return "; ".join(missing)
+
     def _start_unstick(self, now):
         points, coverage = self._retreat_scan(now)
         start = self._odom_pose()
+        snapshot = self._costmap_snapshot(now)
+        missing = self._recovery_missing(now, start, coverage, snapshot)
+        if missing:
+            # Just after canceling a turn, the bridge may still be suppressing
+            # distorted scans. Hold still and let fresh scans/TF arrive first.
+            self.maneuver = {"awaiting_sensors": True, "blocked_since": now}
+            self._publish_vx(0.0)
+            self.get_logger().warn(f"Chờ dữ liệu mới trước khi thoát kẹt: {missing}")
+            return True
         route = self.trail.route(start)
         if route and not turn_clear(points, coverage, self.turn_radius_m):
             self.maneuver = {
@@ -509,9 +538,6 @@ class FrontierExplorer(Node):
             self.get_logger().info(
                 f"↩️ Thoát theo {len(route)} mốc đường cũ; quay/chỉnh hướng theo LiDAR + costmap xe thật"
             )
-            return True
-        if not coverage or start is None:
-            self._stop_recovery("Thiếu LiDAR đủ vòng hoặc odom mới để thoát kẹt")
             return True
         c = self._clearances()
         direction = choose_unstick_direction(c.get("front"), c.get("rear"),
@@ -570,16 +596,27 @@ class FrontierExplorer(Node):
         pose = self._odom_pose()
         points, coverage = self._retreat_scan(now)
         if m is None:
-            if not self.recovery_blocked:
-                if not coverage:
-                    self.trail.points.clear()
-                else:
-                    self.trail.record(pose, turn_clear(points, coverage, self.turn_radius_m))
-            return
-        if pose is None or not coverage:
-            self._wait_recovery(now, "Chờ odom/LiDAR mới để thoát khe", fatal=True)
+            if not self.recovery_blocked and coverage and pose is not None:
+                # Preserve valid anchors through a brief scan/TF gap. record()
+                # still rejects an odometry jump once observations resume.
+                self.trail.record(pose, turn_clear(points, coverage, self.turn_radius_m))
             return
         snapshot = self._costmap_snapshot(now)
+        if m.get("awaiting_sensors"):
+            self._publish_vx(0.0)
+            missing = self._recovery_missing(now, pose, coverage, snapshot)
+            if missing:
+                m.pop("ready_since", None)
+                self._wait_recovery(now, f"Chờ dữ liệu mới trước khi thoát kẹt: {missing}", fatal=True)
+            elif now - m.setdefault("ready_since", now) >= 0.3:
+                self.maneuver = None
+                self.get_logger().info("LiDAR, odom và costmap đã sẵn sàng ổn định; tiếp tục thoát kẹt")
+                self._start_unstick(now)
+            return
+        if pose is None or not coverage:
+            missing = self._recovery_missing(now, pose, coverage, snapshot)
+            self._wait_recovery(now, f"Chờ dữ liệu để thoát khe: {missing}", fatal=True)
+            return
         if snapshot is None:
             self._wait_recovery(now, "Chờ local costmap xe thật (quá 1.5 s hoặc chưa nhận)", fatal=True)
             return

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useLanguage } from '../../context/LanguageContext';
 
 /**
  * Reusable Pagination Component (20 items/page by default)
@@ -13,6 +14,7 @@ export const Pagination = ({
   itemName = 'mục',
   className = '',
 }) => {
+  const { t } = useLanguage();
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
   const [jumpPage, setJumpPage] = useState(currentPage);
 
@@ -63,9 +65,9 @@ export const Pagination = ({
     >
       {/* Left: Range text */}
       <div className="text-[11px]" style={{ color: '#8C8C8C' }}>
-        Hiển thị <span className="font-bold" style={{ color: '#262626' }}>{startItem}</span> -{' '}
-        <span className="font-bold" style={{ color: '#262626' }}>{endItem}</span> /{' '}
-        <span className="font-bold" style={{ color: '#262626' }}>{totalItems}</span> {itemName} ({pageSize} / trang)
+        {t('pagShowing')} <span className="font-bold" style={{ color: '#262626' }}>{startItem}</span> -{' '}
+        <span className="font-bold" style={{ color: '#262626' }}>{endItem}</span> {t('pagOf')}{' '}
+        <span className="font-bold" style={{ color: '#262626' }}>{totalItems}</span> {itemName === 'mục' ? t('pagItems') : itemName} ({pageSize} {t('pagPerPage')})
       </div>
 
       {/* Right: Pagination buttons and Jump Input */}
@@ -83,7 +85,7 @@ export const Pagination = ({
               borderColor: '#BFBFBD',
               color: '#262626',
             }}
-            title="Trang trước"
+            title={t('pagPrev')}
           >
             ‹
           </button>
@@ -131,7 +133,7 @@ export const Pagination = ({
               borderColor: '#BFBFBD',
               color: '#262626',
             }}
-            title="Trang tiếp theo"
+            title={t('pagNext')}
           >
             ›
           </button>
@@ -169,7 +171,7 @@ export const Pagination = ({
               color: '#F2EFE9',
             }}
           >
-            Đến
+            {t('pagGo')}
           </button>
         </div>
       </div>

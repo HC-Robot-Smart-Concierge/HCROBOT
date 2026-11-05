@@ -349,16 +349,6 @@ class MotorController:
         left_speed=None,
         right_speed=None,
     ):
-        """Đổi hướng an toàn: hạ cả bốn IN trước khi bật trạng thái mới."""
-        devices = (
-            self.left_forward_dev,
-            self.left_backward_dev,
-            self.right_forward_dev,
-            self.right_backward_dev,
-        )
-        for device in devices:
-            device.off()
-
         states = [left_forward, left_backward, right_forward, right_backward]
         l_spd = self.speed if left_speed is None else left_speed
         r_spd = self.speed if right_speed is None else right_speed
@@ -371,9 +361,24 @@ class MotorController:
             states[2], states[3] = states[3], states[2]
             speeds[2], speeds[3] = speeds[3], speeds[2]
 
+        new_sig = (tuple(states), tuple(speeds))
+        if getattr(self, "_current_sig", None) == new_sig:
+            return tuple(states)
+
+        devices = (
+            self.left_forward_dev,
+            self.left_backward_dev,
+            self.right_forward_dev,
+            self.right_backward_dev,
+        )
+        for device in devices:
+            device.off()
+
         for device, active, spd in zip(devices, states, speeds):
             if active:
                 device.on(spd)
+
+        self._current_sig = new_sig
         return tuple(states)
 
     def set_speed(self, speed_percent: int) -> int:
@@ -502,6 +507,7 @@ class MotorController:
                 device.off()
         was_moving = self.motion != "stop"
         self.motion = "stop"
+        self._current_sig = None
         if was_moving or getattr(self, "_last_logged_motion", None) != "STOP":
             self._last_logged_motion = "STOP"
             logger.info("🛑 [DI CHUYỂN] Dừng lại")

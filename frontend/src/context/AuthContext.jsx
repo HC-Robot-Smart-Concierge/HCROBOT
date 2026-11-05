@@ -52,7 +52,8 @@ export const resolveStaffDashboard = (user) => {
 
   // 1. Check department strictly
   const dept = String(user.department || '').toLowerCase();
-  if (dept.includes('housekeeping') || dept.includes('buồng')) return 'housekeeping';
+  // Legacy housekeeping accounts now use the unified Room Service interface.
+  if (dept.includes('housekeeping') || dept.includes('buồng')) return 'room_service';
   if (dept.includes('reception') || dept.includes('lễ tân') || dept.includes('front')) return 'reception';
   if (dept.includes('bell') || dept.includes('hành lý')) return 'bell_services';
   if (dept.includes('maintenance') || dept.includes('kỹ thuật')) return 'maintenance';
@@ -62,7 +63,7 @@ export const resolveStaffDashboard = (user) => {
 
   // 2. Check username
   const username = String(user.username || '').toLowerCase();
-  if (username.includes('housekeeping')) return 'housekeeping';
+  if (username.includes('housekeeping')) return 'room_service';
   if (username.includes('reception')) return 'reception';
   if (username.includes('bell')) return 'bell_services';
   if (username.includes('maintenance')) return 'maintenance';
@@ -72,7 +73,7 @@ export const resolveStaffDashboard = (user) => {
 
   // 3. Check role
   const role = String(user.role || '').toLowerCase();
-  if (role.includes('housekeeping') || role.includes('buồng')) return 'housekeeping';
+  if (role.includes('housekeeping') || role.includes('buồng')) return 'room_service';
   if (role.includes('reception') || role.includes('lễ tân')) return 'reception';
   if (role.includes('bell') || role.includes('hành lý')) return 'bell_services';
   if (role.includes('maintenance') || role.includes('kỹ thuật')) return 'maintenance';
@@ -86,7 +87,7 @@ export const resolveStaffDashboard = (user) => {
     return normalizeLegacyView(dash, user);
   }
 
-  return 'housekeeping';
+  return 'room_service';
 };
 
 export const normalizeLegacyView = (view, user) => {
@@ -109,7 +110,7 @@ export const normalizeLegacyView = (view, user) => {
     return 'bell_services';
   }
   if (['housekeeping', 'clean'].includes(clean)) {
-    return 'housekeeping';
+    return 'room_service';
   }
   if (['maintenance', 'tech', 'technician'].includes(clean)) {
     return 'maintenance';

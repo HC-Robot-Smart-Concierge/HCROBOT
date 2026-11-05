@@ -1,4 +1,6 @@
+import asyncio
 import logging
+from datetime import datetime
 from typing import Optional, List
 from fastapi import APIRouter, HTTPException, Depends, status, WebSocket, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
@@ -17,6 +19,8 @@ from app.schemas.ai import (
     VoiceSettingsResponse,
     FeedbackCreate,
     FeedbackResponse,
+    QuickTranslateRequest,
+    QuickTranslateResponse,
 )
 
 # AI Sub-services
@@ -28,9 +32,10 @@ from app.services.ai.ai_ticket_service import (
 from app.services.ai.feedback_service import submit_guest_feedback, get_feedbacks
 from app.services.ai.websocket_pipeline import handle_pipecat_websocket
 from app.services.ai.session_manager import session_manager
-from app.services.ai.stt_service import transcribe_audio_wav
+from app.services.ai.stt_service import transcribe_audio_wav, transcribe_audio_wav_detailed
 from app.services.ai.tts_service import tts_service
 from app.services.ai.ollama_service import ollama_service
+from app.services.ai.translation_service import translation_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -46,8 +51,17 @@ async def chat_with_robot(request: ChatRequest, db: AsyncSession = Depends(get_d
     Điều phối luồng qua AIChatService (LangGraph Harness, Session Memory, TTS, Auto Ticket/Live Call).
     """
     try:
-        return await process_chat_request(db=db, request=request)
+        with open("ai_chat_debug.log", "a", encoding="utf-8") as f:
+            f.write(f"[{datetime.utcnow().isoformat()}] INCOMING CHAT: prompt='{request.prompt}', session='{request.session_id}', room='{request.room_number}'\n")
+        res = await process_chat_request(db=db, request=request)
+        with open("ai_chat_debug.log", "a", encoding="utf-8") as f:
+            f.write(f"[{datetime.utcnow().isoformat()}] OK CHAT: action='{res.action}', resp_len={len(res.response or '')}\n")
+        return res
     except Exception as e:
+        import traceback
+        err_detail = f"[{datetime.utcnow().isoformat()}] AIChat Error: {str(e)}\n{traceback.format_exc()}\n"
+        with open("ai_chat_debug.log", "a", encoding="utf-8") as f:
+            f.write(err_detail)
         logger.error(f"[AIChat Error] {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -70,31 +84,71 @@ async def chat_stream_endpoint(request: ChatRequest):
 @router.post("/stt/transcribe", summary="Nhận diện giọng nói từ file âm thanh WAV")
 async def transcribe_speech_endpoint(
     file: UploadFile = File(...),
-    language: str = Form("vi"),
+    language: str = Form("auto"),
+    preferred_lang: str = Form("en"),
 ):
     """
-    Endpoint nhận file âm thanh WAV từ frontend và trả về văn bản tiếng Việt/tiếng Anh.
+    Endpoint nhận file âm thanh WAV từ frontend và trả về văn bản tiếng Việt/tiếng Anh
+    kèm ngôn ngữ phát hiện từ tín hiệu âm thanh (detected_language, confidence, provider).
     """
     try:
         content = await file.read()
         if not content:
             raise HTTPException(status_code=400, detail="File âm thanh rỗng")
 
-        text = transcribe_audio_wav(content, language=language)
-        return {"success": True, "text": text, "language": language}
+        stt_res = await asyncio.to_thread(
+            transcribe_audio_wav_detailed, content, language, preferred_lang
+        )
+        return {
+            "success": True,
+            "text": stt_res.get("text", ""),
+            "language": language,
+            "detected_language": stt_res.get("detected_language", preferred_lang),
+            "confidence": stt_res.get("confidence", 0.0),
+            "provider": stt_res.get("provider", "none"),
+        }
     except Exception as e:
         logger.error(f"[STT Endpoint Error] {e}")
-        return {"success": False, "text": "", "error": str(e)}
+        return {
+            "success": False,
+            "text": "",
+            "language": language,
+            "detected_language": preferred_lang,
+            "confidence": 0.0,
+            "provider": "none",
+            "error": str(e),
+        }
+
+
+@router.post(
+    "/translate",
+    response_model=QuickTranslateResponse,
+    summary="Phiên dịch nhanh câu nói trực tiếp trong cuộc gọi Video Call (Anh - Việt)",
+)
+async def quick_translate_endpoint(request: QuickTranslateRequest):
+    """
+    Endpoint phiên dịch câu thoại thời gian thực cho WebRTC Video Call:
+    - Tự động nhận diện tiếng Anh / tiếng Việt.
+    - Bypass (không dịch) nếu ngôn ngữ câu nói trùng với ngôn ngữ đích của người nhận.
+    - Tự động dịch song ngữ 2 chiều: Khách nói tiếng Anh -> Dịch cho nhân viên đọc tiếng Việt; Nhân viên nói tiếng Việt -> Dịch cho khách đọc tiếng Anh.
+    """
+    result = await translation_service.translate(
+        text=request.text,
+        source_lang=request.source_lang or "auto",
+        target_lang=request.target_lang or "vi",
+        sender_role=request.sender_role or "guest",
+        with_audio=request.with_audio if request.with_audio is not None else True,
+    )
+    return QuickTranslateResponse(**result)
 
 
 @router.post("/tts", response_model=TTSResponse, summary="Chuyển văn bản thành âm thanh thoại MP3")
 async def synthesize_voice_speech(request: TTSRequest):
     """
-    Endpoint nhận văn bản và tổng hợp giọng thoại MP3 mã hóa Base64 siêu mượt.
-    Tự động fallback giữa ElevenLabs -> OpenAI -> EdgeTTS Neural -> Browser Web Speech.
+    Endpoint nhận văn bản và tổng hợp giọng thoại MP3 mã hóa Base64 kèm mã lỗi chuẩn hóa nếu không tạo được audio.
     """
     try:
-        audio_b64, mime, provider_used = await tts_service.synthesize(
+        tts_res = await tts_service.synthesize_with_details(
             text=request.text,
             provider=request.provider,
             voice=request.voice,
@@ -102,15 +156,20 @@ async def synthesize_voice_speech(request: TTSRequest):
             rate=request.rate,
         )
         return TTSResponse(
-            audio_base64=audio_b64,
-            mime_type=mime,
-            provider_used=provider_used,
+            audio_base64=tts_res.get("audio_base64", ""),
+            mime_type=tts_res.get("mime_type", "audio/mp3"),
+            provider_used=tts_res.get("provider_used", "none"),
+            error_code=tts_res.get("error_code"),
+            error_detail=tts_res.get("error_detail"),
         )
     except Exception as e:
         logger.error(f"[TTS Endpoint Error] {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e),
+        return TTSResponse(
+            audio_base64="",
+            mime_type="audio/mp3",
+            provider_used="none",
+            error_code="TTS_PROVIDER_ERROR",
+            error_detail=str(e),
         )
 
 

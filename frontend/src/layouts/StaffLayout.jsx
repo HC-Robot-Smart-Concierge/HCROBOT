@@ -6,6 +6,7 @@ import { useLanguage } from '../context/LanguageContext';
 
 import { AuroraSidebar } from '../components/dashboard/AuroraSidebar';
 import { AuroraHeader } from '../components/dashboard/AuroraHeader';
+import { RoomServiceFrame } from '../components/dashboard/RoomServiceFrame';
 import { MobileBottomNav } from '../components/common/MobileBottomNav';
 import { ToastNotification } from '../components/dashboard/ToastNotification';
 
@@ -36,19 +37,19 @@ export const StaffLayout = () => {
     feedbackSessionId,
   } = useNotifications();
 
-  const { language, toggleLanguage, t } = useLanguage();
+  const { t } = useLanguage();
   const navigate = useNavigate();
   const location = useLocation();
 
   // Determine activeView & activeMenu from current path
   const path = location.pathname;
-  const staffDefaultView = resolveStaffDashboard ? resolveStaffDashboard(currentUser) : 'housekeeping';
+  const staffDefaultView = resolveStaffDashboard ? resolveStaffDashboard(currentUser) : 'room_service';
   let activeView = staffDefaultView;
   let activeMenu = 'Dashboard';
 
   if (path.includes('/staff/reception')) activeView = 'reception';
   else if (path.includes('/staff/room-service')) activeView = 'room_service';
-  else if (path.includes('/staff/housekeeping')) activeView = 'housekeeping';
+  else if (path.includes('/staff/housekeeping')) activeView = 'room_service';
   else if (path.includes('/staff/bell-services')) activeView = 'bell_services';
   else if (path.includes('/staff/maintenance')) activeView = 'maintenance';
   else if (path.includes('/staff/kitchen')) activeView = 'kitchen';
@@ -58,9 +59,11 @@ export const StaffLayout = () => {
   if (path === '/staff/requests') activeMenu = 'Requests';
   else if (path === '/staff/my-tasks') activeMenu = 'MyTasks';
   else if (path === '/staff/kitchen-menu') activeMenu = 'KitchenMenu';
+  else if (path === '/staff/room-service-menu') activeMenu = 'RoomServiceMenu';
   else if (path === '/staff/history') activeMenu = 'History';
   else if (path === '/staff/notifications') activeMenu = 'Notifications';
   else if (path === '/staff/profile') activeMenu = 'Profile';
+  else if (path === '/staff/settings') activeMenu = 'Settings';
   else {
     const searchParams = new URLSearchParams(location.search);
     const tab = searchParams.get('tab');
@@ -73,6 +76,8 @@ export const StaffLayout = () => {
       activeMenu = 'Dashboard';
     }
   }
+
+  const usesAdminStylePortal = ['room_service', 'reception', 'maintenance'].includes(activeView);
 
   // Handle sidebar navigation
   const handleSelectMenu = (menuId) => {
@@ -89,6 +94,9 @@ export const StaffLayout = () => {
       case 'KitchenMenu':
         navigate('/staff/kitchen-menu');
         break;
+      case 'RoomServiceMenu':
+        navigate('/staff/room-service-menu');
+        break;
       case 'History':
         navigate('/staff/history');
         break;
@@ -97,6 +105,9 @@ export const StaffLayout = () => {
         break;
       case 'Profile':
         navigate('/staff/profile');
+        break;
+      case 'Settings':
+        navigate('/staff/settings');
         break;
       case 'LiveCalls':
         navigate('/staff/concierge?tab=live_call');
@@ -117,7 +128,7 @@ export const StaffLayout = () => {
 
   const handleLogout = async () => {
     await logout();
-    showNotification('Đã đăng xuất khỏi phiên làm việc.');
+    showNotification('You have been signed out successfully.');
     navigate('/');
   };
 
@@ -127,7 +138,12 @@ export const StaffLayout = () => {
       <ToastNotification message={toastMessage} />
 
       {/* Main Staff Frame: Sidebar + Content */}
-      <div className="flex-1 flex overflow-hidden">
+      {usesAdminStylePortal ? (
+        <RoomServiceFrame portal={activeView} activeMenu={activeMenu} onSelectMenu={handleSelectMenu}
+          currentUser={currentUser} onLogout={handleLogout} unreadNotifCount={unreadNotifCount}>
+          <Outlet />
+        </RoomServiceFrame>
+      ) : <div className="flex-1 flex overflow-hidden">
         {/* Left Sidebar */}
         <AuroraSidebar
           activeMenu={activeMenu}
@@ -147,37 +163,30 @@ export const StaffLayout = () => {
             hotelName={t('hotelName')}
             systemName="HCROBOT"
             subtitle={`${currentUser?.department || 'Staff'} ${t('portalSubtitle')}`}
-            language={language}
-            onToggleLanguage={() => {
-              toggleLanguage();
-              showNotification(
-                language === 'EN'
-                  ? 'Đã chuyển ngôn ngữ sang Tiếng Việt'
-                  : 'Language switched to English'
-              );
-            }}
             notifications={notifications}
             unreadCount={unreadNotifCount}
             onOpenNotificationsPage={() => navigate('/staff/notifications')}
             onToggleRead={handleToggleRead}
             onMarkAllRead={handleMarkAllRead}
             departmentName={currentUser?.department || 'Staff'}
+            currentUser={currentUser}
+            onOpenProfilePage={() => navigate('/staff/profile')}
           />
 
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 min-h-0 relative flex flex-col overflow-hidden pb-16 md:pb-0">
             <Outlet />
           </div>
         </main>
-      </div>
+      </div>}
 
       {/* Mobile Bottom Navigation */}
-      <MobileBottomNav
+      {!usesAdminStylePortal && <MobileBottomNav
         activeMenu={activeMenu}
         onSelectMenu={handleSelectMenu}
         unreadNotifCount={unreadNotifCount}
         currentUser={currentUser}
         activeView={activeView}
-      />
+      />}
 
       {/* Global Modals */}
       <FeedbackModal
@@ -203,7 +212,7 @@ export const StaffLayout = () => {
         isOpen={showQuickRequestModal}
         onClose={() => setShowQuickRequestModal(false)}
         onCreated={() => {
-          showNotification('Đã tạo và điều phối yêu cầu thành công!');
+          showNotification('Request created and dispatched successfully!');
         }}
       />
 
@@ -212,7 +221,7 @@ export const StaffLayout = () => {
         onClose={() => setShowProfileModal(false)}
         onUserUpdated={(updated) => {
           setCurrentUser(updated);
-          showNotification('Hồ sơ nhân sự đã được cập nhật thành công!');
+          showNotification('Staff profile updated successfully!');
         }}
       />
     </div>

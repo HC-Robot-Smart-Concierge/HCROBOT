@@ -26,22 +26,46 @@ class PipecatAudioClient {
     this._audioQueue = [];
     this._isPlaying = false;
     this._audioChunksInCurrentStream = 0;
+    this._isStreamDone = true;
+    this._currentSource = null;
+    this._streamEpoch = 0;
+    this._messagePromise = Promise.resolve();
+  }
+
+  prime() {
+    try {
+      const ctx = this._getAudioContext();
+      if (ctx) {
+        if (ctx.state === 'suspended') {
+          ctx.resume();
+        }
+        // Unlock iOS / Android mobile browser Web Audio pipeline
+        const buffer = ctx.createBuffer(1, 1, 22050);
+        const source = ctx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(ctx.destination);
+        source.start(0);
+      }
+    } catch (e) {}
+  }
+
+  updateCallbacks(callbacks = {}) {
+    if (callbacks.onAudioStream !== undefined) this.onAudioStreamCallback = callbacks.onAudioStream;
+    if (callbacks.onInterrupted !== undefined) this.onInterruptedCallback = callbacks.onInterrupted;
+    if (callbacks.onToken !== undefined) this.onTokenCallback = callbacks.onToken;
+    if (callbacks.onTextChunk !== undefined) this.onTextChunkCallback = callbacks.onTextChunk;
+    if (callbacks.onStreamDone !== undefined) this.onStreamDoneCallback = callbacks.onStreamDone;
+    if (callbacks.onAudioStarted !== undefined) this.onAudioStartedCallback = callbacks.onAudioStarted;
+    if (callbacks.onAudioEnded !== undefined) this.onAudioEndedCallback = callbacks.onAudioEnded;
+    if (callbacks.onSTTInterimEcho !== undefined) this.onSTTInterimEchoCallback = callbacks.onSTTInterimEcho;
+    if (callbacks.onSTTProcessing !== undefined) this.onSTTProcessingCallback = callbacks.onSTTProcessing;
+    if (callbacks.onError !== undefined) this.onErrorCallback = callbacks.onError;
+    this._savedCallbacks = { ...(this._savedCallbacks || {}), ...callbacks };
   }
 
   connect(sessionId = 'pipecat_kiosk', callbacks = {}) {
     this.sessionId = sessionId;
-    this.onAudioStreamCallback = callbacks.onAudioStream || null;
-    this.onInterruptedCallback = callbacks.onInterrupted || null;
-    this.onTokenCallback = callbacks.onToken || null;
-    this.onTextChunkCallback = callbacks.onTextChunk || null;
-    this.onStreamDoneCallback = callbacks.onStreamDone || null;
-    this.onAudioStartedCallback = callbacks.onAudioStarted || null;
-    this.onAudioEndedCallback = callbacks.onAudioEnded || null;
-    this.onSTTInterimEchoCallback = callbacks.onSTTInterimEcho || null;
-    this.onSTTProcessingCallback = callbacks.onSTTProcessing || null;
-    this.onErrorCallback = callbacks.onError || null;
-
-    this._savedCallbacks = callbacks;
+    this.updateCallbacks(callbacks);
     this._manuallyClosed = false;
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -60,21 +84,32 @@ class PipecatAudioClient {
         console.log(`[PipecatClient] Connected to Pipecat WebSocket stream (${wsUrl})`);
       };
 
-      this.socket.onmessage = async (event) => {
+      this.socket.onmessage = (event) => {
         try {
           if (event.data instanceof Blob) {
-            // Binary Frame → Audio chunk từ Streaming Pipeline
-            const arrayBuffer = await event.data.arrayBuffer();
-            if (arrayBuffer.byteLength > 0) {
-              this._audioChunksInCurrentStream += 1;
-              this._enqueueAudioChunk(arrayBuffer);
-            }
+            // Binary Frame → Audio chunk từ Streaming Pipeline (xử lý tuần tự blob)
+            const currentEpoch = this._streamEpoch;
+            this._messagePromise = this._messagePromise.then(async () => {
+              if (this._streamEpoch !== currentEpoch) return;
+              try {
+                const arrayBuffer = await event.data.arrayBuffer();
+                if (this._streamEpoch !== currentEpoch) return;
+                if (arrayBuffer.byteLength > 0) {
+                  this._audioChunksInCurrentStream += 1;
+                  this._enqueueAudioChunk(arrayBuffer);
+                }
+              } catch (e) {
+                console.warn('[PipecatClient] Error reading audio blob:', e);
+              }
+            });
             return;
           }
 
+          // JSON Control Frame: Xử lý ngay lập tức, không bị chặn bởi các blob đang đọc
           const data = JSON.parse(event.data);
 
           if (data.event === 'interrupted') {
+            this._streamEpoch += 1;
             this._stopAudioQueue();
             if (this.audioRef) {
               this.audioRef.pause();
@@ -86,7 +121,9 @@ class PipecatAudioClient {
           } else if (data.event === 'stt_interim_echo') {
             if (this.onSTTInterimEchoCallback) this.onSTTInterimEchoCallback(data.text);
           } else if (data.event === 'stt_processing') {
+            this._streamEpoch += 1;
             this._audioChunksInCurrentStream = 0;
+            this._isStreamDone = false;
             if (this.onSTTProcessingCallback) this.onSTTProcessingCallback(data.text);
           } else if (data.event === 'audio_stream') {
             // Legacy mode
@@ -94,8 +131,25 @@ class PipecatAudioClient {
           } else if (data.event === 'text' || data.event === 'text_chunk') {
             if (this.onTextChunkCallback) this.onTextChunkCallback(data);
           } else if (data.event === 'stream_done') {
-            data.audioChunksCount = this._audioChunksInCurrentStream;
-            if (this.onStreamDoneCallback) this.onStreamDoneCallback(data);
+            const currentEpoch = this._streamEpoch;
+            this._messagePromise = this._messagePromise.then(() => {
+              if (this._streamEpoch !== currentEpoch) return;
+              this._isStreamDone = true;
+              data.audioChunksCount = this._audioChunksInCurrentStream;
+              if (this.onStreamDoneCallback) this.onStreamDoneCallback(data);
+              if (!this._isPlaying && this._audioQueue.length === 0) {
+                if (this.onAudioEndedCallback) this.onAudioEndedCallback();
+              } else {
+                clearTimeout(this._streamPlaybackSafetyTimer);
+                this._streamPlaybackSafetyTimer = setTimeout(() => {
+                  if (this._isPlaying) {
+                    console.warn('[PipecatClient] Stream playback safety timer expired, forcing audio end');
+                    this._stopAudioQueue();
+                    if (this.onAudioEndedCallback) this.onAudioEndedCallback();
+                  }
+                }, 20000);
+              }
+            });
           } else if (data.event === 'error') {
             console.warn('[PipecatClient] Server error:', data.message);
             if (this.onErrorCallback) this.onErrorCallback(data);
@@ -127,6 +181,7 @@ class PipecatAudioClient {
   }
 
   sendBargeIn() {
+    this._streamEpoch += 1;
     this._stopAudioQueue();
 
     if (this.audioRef) {
@@ -202,6 +257,7 @@ class PipecatAudioClient {
   sendSpeechStream(text, roomNumber = null, language = 'auto') {
     this._stopAudioQueue();
     this._audioChunksInCurrentStream = 0;
+    this._isStreamDone = false;
 
     if (this.socket && this.socket.readyState === WebSocket.OPEN) {
       this.socket.send(
@@ -242,14 +298,17 @@ class PipecatAudioClient {
   _getAudioContext() {
     if (!this._audioContext || this._audioContext.state === 'closed') {
       try {
-        this._audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (AudioCtx) {
+          this._audioContext = new AudioCtx();
+        }
       } catch (e) {
         console.warn('[PipecatClient] AudioContext not supported:', e);
         return null;
       }
     }
-    if (this._audioContext.state === 'suspended') {
-      this._audioContext.resume();
+    if (this._audioContext && this._audioContext.state === 'suspended') {
+      this._audioContext.resume().catch(() => {});
     }
     return this._audioContext;
   }
@@ -266,7 +325,7 @@ class PipecatAudioClient {
     if (!ctx || this._audioQueue.length === 0) {
       const wasPlaying = this._isPlaying;
       this._isPlaying = false;
-      if (wasPlaying && this.onAudioEndedCallback) {
+      if (wasPlaying && this._isStreamDone && this.onAudioEndedCallback) {
         this.onAudioEndedCallback();
       }
       return;
@@ -278,41 +337,92 @@ class PipecatAudioClient {
     this._isPlaying = true;
     const buffer = this._audioQueue.shift();
 
+    let chunkTimer = null;
+    let chunkEnded = false;
+    const advanceNext = () => {
+      if (chunkEnded) return;
+      chunkEnded = true;
+      if (chunkTimer) {
+        clearTimeout(chunkTimer);
+        chunkTimer = null;
+      }
+      if (this._currentSource) {
+        this._currentSource = null;
+      }
+      if (this.audioRef) {
+        try { this.audioRef.pause(); } catch (e) {}
+        this.audioRef = null;
+      }
+      this._playNextChunk();
+    };
+
     try {
+      if (ctx.state === 'suspended') {
+        await ctx.resume().catch(() => {});
+      }
       const audioBuffer = await ctx.decodeAudioData(buffer.slice(0));
       const source = ctx.createBufferSource();
       source.buffer = audioBuffer;
       source.connect(ctx.destination);
-      source.onended = () => {
-        this._playNextChunk();
-      };
+      this._currentSource = source;
+      source.onended = advanceNext;
       source.start(0);
+
+      // Duration safety timeout: chỉ can thiệp nếu audio bị treo cứng không bắn onended (dự phòng thêm 3s)
+      const durationMs = Math.max(3500, ((audioBuffer.duration || 4) + 3.0) * 1000);
+      chunkTimer = setTimeout(() => {
+        if (!chunkEnded && this._currentSource === source) {
+          advanceNext();
+        }
+      }, durationMs);
+
     } catch (e) {
-      // MP3 decodeAudioData có thể fail trên 1 số browser cũ
-      // Fallback: dùng Audio element
+      // Fallback: dùng HTML Audio element
       try {
         const blob = new Blob([buffer], { type: 'audio/mp3' });
         const url = URL.createObjectURL(blob);
         const audio = new Audio(url);
-        audio.onended = () => {
+        this.audioRef = audio;
+        
+        const onFallbackEnded = () => {
           URL.revokeObjectURL(url);
-          this._playNextChunk();
+          advanceNext();
         };
-        audio.onerror = () => {
-          URL.revokeObjectURL(url);
-          this._playNextChunk();
-        };
-        await audio.play();
+
+        audio.onended = onFallbackEnded;
+        audio.onerror = onFallbackEnded;
+
+        // Kích hoạt phát âm thanh fallback và bắt lỗi chặn autoplay trên mobile
+        const playPromise = audio.play();
+        if (playPromise !== undefined) {
+          playPromise.catch((playErr) => {
+            console.warn('[PipecatClient] Audio play() blocked on mobile:', playErr);
+            setTimeout(onFallbackEnded, 1500);
+          });
+        }
       } catch (fallbackErr) {
-        console.warn('[PipecatClient] Audio playback fallback failed:', fallbackErr);
-        this._playNextChunk();
+        console.warn('[PipecatClient] Audio playback fallback failed on mobile:', fallbackErr);
+        setTimeout(advanceNext, 1200);
       }
     }
   }
 
   _stopAudioQueue() {
+    clearTimeout(this._streamPlaybackSafetyTimer);
     this._audioQueue = [];
     this._isPlaying = false;
+    this._isStreamDone = true;
+    if (this._currentSource) {
+      try { this._currentSource.stop(); } catch (e) {}
+      this._currentSource = null;
+    }
+    if (this.audioRef) {
+      try {
+        this.audioRef.pause();
+        this.audioRef.currentTime = 0;
+      } catch (e) {}
+      this.audioRef = null;
+    }
   }
 
   disconnect() {

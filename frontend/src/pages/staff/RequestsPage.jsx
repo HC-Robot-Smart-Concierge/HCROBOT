@@ -1,5 +1,7 @@
+import { useStaffText, staffDepartmentLabel, staffStatusLabel } from '../../context/StaffLanguage';
+import { StaffPageHeader } from '../../components/dashboard/RoomServiceFrame';
 import React, { useState, useEffect } from 'react';
-import { Search, RefreshCw, Clock, CheckCircle2, Eye, User, MapPin, Utensils, ChefHat, Send, Truck, ArrowRight, Sparkles } from 'lucide-react';
+import { Search, RefreshCw, Clock, CheckCircle2, Check, Eye, User, MapPin, Utensils, ChefHat, Send, Truck, ArrowRight, Sparkles, ConciergeBell, Phone } from 'lucide-react';
 import { NewDirectiveModal } from '../../components/dashboard/Modals';
 import { Pagination } from '../../components/common/Pagination';
 import {
@@ -9,8 +11,11 @@ import {
   createMaintenanceRequest,
   createOperationalDirective,
 } from '../../services/operationsApi';
+import { useLanguage } from '../../context/LanguageContext';
 
 export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = () => {} }) => {
+  const st = useStaffText();
+  const { t } = useLanguage();
   const staffName = currentUser?.full_name || currentUser?.name || 'Elena Rossi';
   const staffDept = currentUser?.department || 'F&B';
   const staffId = currentUser?.id || currentUser?.username || 'user';
@@ -91,6 +96,57 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
     loadRequestsFromDb();
   }, []);
 
+  // Real-time WebSocket Listeners for Instant Status Workflows
+  useEffect(() => {
+    const handleStatusUpdate = (e) => {
+      const updated = e.detail;
+      if (!updated) return;
+      setRequests((prev) =>
+        prev.map((r) => {
+          const isMatch =
+            r.id === updated.id ||
+            r.id === updated.raw_id ||
+            r.id === `REQ-${updated.id}` ||
+            r.id === `REQ-${updated.ticket_code}` ||
+            r.raw_id === updated.id ||
+            r.raw_id === updated.raw_id ||
+            (updated.ticket_code && r.ticket_code === updated.ticket_code);
+          if (isMatch) {
+            return {
+              ...r,
+              status: updated.status || r.status,
+              progress: updated.progress !== undefined ? updated.progress : r.progress,
+              assignedTo: updated.assigned_to || updated.assigned_staff_name || r.assignedTo,
+              assigned_to: updated.assigned_to || updated.assigned_staff_name || r.assigned_to,
+              assigned_staff_name: updated.assigned_staff_name || r.assigned_staff_name,
+            };
+          }
+          return r;
+        })
+      );
+    };
+
+    const handleNewOrderOrRequest = () => {
+      loadRequestsFromDb();
+    };
+
+    const handleOrdersCleared = () => {
+      setRequests((prev) => prev.filter((r) => r.department !== 'F&B' && r.table_type !== 'room_service'));
+    };
+
+    window.addEventListener('app:task_status_updated', handleStatusUpdate);
+    window.addEventListener('app:order_created', handleNewOrderOrRequest);
+    window.addEventListener('app:request_created', handleNewOrderOrRequest);
+    window.addEventListener('app:orders_cleared', handleOrdersCleared);
+
+    return () => {
+      window.removeEventListener('app:task_status_updated', handleStatusUpdate);
+      window.removeEventListener('app:order_created', handleNewOrderOrRequest);
+      window.removeEventListener('app:request_created', handleNewOrderOrRequest);
+      window.removeEventListener('app:orders_cleared', handleOrdersCleared);
+    };
+  }, []);
+
   // Department Role Filtering & Multi-Department Authorization
   const userDeptLower = String(currentUser?.department || staffDept || '').toLowerCase();
   const userNameLower = String(currentUser?.username || '').toLowerCase();
@@ -159,31 +215,42 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
     );
   };
 
-  // Phân quyền chặt chẽ theo từng giai đoạn (Stage-based Authorization):
-  // - Bước 1 (Khách đặt -> Chuyển sang bếp): CHỈ Room Service (hoặc Executive/Admin)
-  // - Bước 2 (Đã chuyển bếp -> Bếp nhận nấu): CHỈ Kitchen / Đầu Bếp (hoặc Executive/Admin)
-  // - Bước 3 (Bếp đang nấu -> Món đã nấu xong): CHỈ người nhận request (đầu bếp phụ trách) mới được bấm!
-  // - Bước 4 (Món đã nấu xong -> Lấy món & giao phòng): CHỈ Room Service (hoặc Executive/Admin)
-  // - Bước 5 (Đang giao phòng -> Xác nhận đã giao): CHỈ Room Service (hoặc Executive/Admin)
-  const canUserActOnStage = (step, req = null) => {
-    if (isExecutive) return true; // Quản lý khách sạn có quyền can thiệp/kiểm thử toàn trình
-    if (step === 1) {
-      // Room Service kiểm tra và chuyển cho Bếp
-      return isRoomServiceStaff || (!isKitchenStaff);
-    }
-    if (step === 2) {
-      // Bếp nhận nấu: Đầu bếp trực ca có thể tiếp nhận đơn
-      return isKitchenStaff;
-    }
-    if (step === 3) {
-      // Bếp nấu xong -> Món đã nấu xong: CHỈ người nhận request mới được bấm!
-      return isKitchenStaff && isTaskAssignedToMe(req);
-    }
-    if (step === 4 || step === 5) {
-      // Bếp nấu xong -> Room Service lấy món đi giao và xác nhận hoàn tất: CHỈ Room Service mới được bấm!
-      return isRoomServiceStaff || (!isKitchenStaff);
-    }
-    return false;
+  // Helper to determine if a request is a direct Room Service request (Towels, Amenities, Massage, Cleaning, etc.)
+  // Direct Room Service does NOT go through Kitchen!
+  const isDirectServiceOrder = (r) => {
+    if (!r) return false;
+    if (r.is_service_request === true || r.extra_data?.is_service_request === true) return true;
+    const title = (r.title || '').toLowerCase();
+    const desc = (r.description || r.notes || '').toLowerCase();
+    const itemsText = (Array.isArray(r.items) ? r.items.map((it) => it.name || it.item_name || '').join(' ') : '').toLowerCase();
+    const combined = `${title} ${desc} ${itemsText}`;
+    const serviceKeywords = [
+      'khăn', 'khan', 'gối', 'goi', 'chăn', 'chan', 'nệm', 'nem',
+      'dọn phòng', 'don phong', 'vệ sinh', 've sinh', 'massage', 'mát xa', 'spa',
+      'giặt', 'giat', 'ủi', 'ui', 'bàn ủi', 'bàn là', 'tiện ích', 'amenity',
+      'dịch vụ phòng', 'dich vu phong', 'súc bình xăng', 'binh xang', 'dép', 'bàn chải'
+    ];
+    return serviceKeywords.some((k) => combined.includes(k));
+  };
+
+  // Helper to determine if a request is a Room Service food order (F&B / Kitchen)
+  const isFoodOrder = (r) => {
+    if (!r) return false;
+    if (isDirectServiceOrder(r)) return false; // Dịch vụ phòng trực tiếp không phải món ăn của Bếp!
+    const dept = (r.department || '').toLowerCase();
+    const id = (r.id || '').toUpperCase();
+    const title = (r.title || '').toLowerCase();
+    return (
+      dept.includes('room') ||
+      dept.includes('f&b') ||
+      dept.includes('ẩm thực') ||
+      dept.includes('kitchen') ||
+      dept.includes('bếp') ||
+      id.includes('ORD') ||
+      title.includes('room service') ||
+      title.includes('order') ||
+      r.table_type === 'room_service'
+    );
   };
 
   // Helper to get unified handler name for both list view and detail modal
@@ -202,23 +269,44 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
     );
   };
 
-  // Helper to determine if a request is a Room Service food order
-  const isFoodOrder = (r) => {
-    if (!r) return false;
-    const dept = (r.department || '').toLowerCase();
-    const id = (r.id || '').toUpperCase();
-    const title = (r.title || '').toLowerCase();
-    return (
-      dept.includes('room') ||
-      dept.includes('f&b') ||
-      dept.includes('ẩm thực') ||
-      dept.includes('kitchen') ||
-      dept.includes('bếp') ||
-      id.includes('ORD') ||
-      title.includes('room service') ||
-      title.includes('order') ||
-      r.table_type === 'room_service'
-    );
+  // Phân quyền chặt chẽ theo từng giai đoạn (Stage-based Authorization):
+  // - Đơn Dịch Vụ Phòng Trực Tiếp (4 bước):
+  //   + Bước 1 (Chờ Tiếp Nhận -> Tiếp Nhận): Room Service
+  //   + Bước 2 (Đang Chuẩn Bị -> Giao Lên Phòng): Room Service
+  //   + Bước 3 (Đang Giao Phòng -> Xác Nhận Đã Giao): Room Service
+  // - Đơn Món Ăn Bếp (6 bước):
+  //   + Bước 1 (Khách đặt -> Chuyển sang bếp): CHỈ Room Service (hoặc Executive/Admin)
+  //   + Bước 2 (Đã chuyển bếp -> Bếp nhận nấu): CHỈ Kitchen / Đầu Bếp (hoặc Executive/Admin)
+  //   + Bước 3 (Bếp đang nấu -> Món đã nấu xong): CHỈ người nhận request (đầu bếp phụ trách) mới được bấm!
+  //   + Bước 4 (Món đã nấu xong -> Lấy món & giao phòng): CHỈ Room Service (hoặc Executive/Admin)
+  //   + Bước 5 (Đang giao phòng -> Xác nhận đã giao): CHỈ Room Service (hoặc Executive/Admin)
+  const canUserActOnStage = (step, req = null, isDirectSvc = false) => {
+    if (isExecutive) return true; // Quản lý khách sạn có quyền can thiệp/kiểm thử toàn trình
+
+    if (isDirectSvc) {
+      if (isKitchenStaff) return false; // Bếp tuyệt đối không can thiệp vào đơn dịch vụ phòng trực tiếp!
+      if (step === 1) return isRoomServiceStaff || (!isKitchenStaff);
+      if (step === 2 || step === 3) return isRoomServiceStaff || (!isKitchenStaff);
+      return false;
+    }
+
+    if (step === 1) {
+      // Bếp hoặc Room Service đều có thể tiếp nhận và bắt đầu nấu
+      return isKitchenStaff || isRoomServiceStaff || (!isKitchenStaff);
+    }
+    if (step === 2) {
+      // Bếp nhận nấu: Đầu bếp trực ca có thể tiếp nhận đơn
+      return isKitchenStaff || isRoomServiceStaff;
+    }
+    if (step === 3) {
+      // Bếp nấu xong -> Món đã nấu xong: CHỈ người nhận request mới được bấm!
+      return isKitchenStaff && isTaskAssignedToMe(req);
+    }
+    if (step === 4 || step === 5) {
+      // Bếp nấu xong -> Bếp hoặc Room Service lấy món đi giao và xác nhận hoàn tất
+      return isKitchenStaff || isRoomServiceStaff || (!isKitchenStaff);
+    }
+    return false;
   };
 
   // Helper to check task status categories
@@ -249,12 +337,12 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
   };
 
   const FOOD_STEPS = [
-    { step: 1, title: 'Khách Đặt' },
-    { step: 2, title: 'Chuyển Bếp' },
-    { step: 3, title: 'Bếp Nấu' },
-    { step: 4, title: 'Món Xong' },
-    { step: 5, title: 'Giao Phòng' },
-    { step: 6, title: 'Hoàn Tất' },
+    { step: 1, title: st("Guest orders") },
+    { step: 2, title: st("Send to kitchen") },
+    { step: 3, title: st("Cooking") },
+    { step: 4, title: st("Ready") },
+    { step: 5, title: st("Room delivery") },
+    { step: 6, title: st("Completed") },
   ];
 
   const getFoodOrderStage = (status) => {
@@ -268,14 +356,14 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
     ) {
       return {
         step: 1,
-        label: 'Chờ Tiếp Nhận',
+        label: st("Pending"),
         badgeClass: 'bg-amber-100 text-amber-800 border-amber-200',
-        nextStatus: 'Sent to Kitchen',
-        nextActionName: 'Chuyển Sang Bếp',
+        nextStatus: isKitchenStaff ? 'Cooking' : 'Sent to Kitchen',
+        nextActionName: isKitchenStaff ? st("Accept and cook") : st("Send to kitchen"),
         nextIcon: ChefHat,
-        actionBtnClass: 'bg-indigo-600 hover:bg-indigo-700 text-white',
-        deptNote: 'Room Service kiểm tra đơn và gửi Bếp',
-        roleBadge: 'Room Service',
+        actionBtnClass: isKitchenStaff ? 'bg-amber-600 hover:bg-amber-700 text-white' : 'bg-indigo-600 hover:bg-indigo-700 text-white',
+        deptNote: isKitchenStaff ? st("The kitchen accepts and prepares the food") : st("Room Service reviews the order and sends it to the kitchen"),
+        roleBadge: isKitchenStaff ? st('Kitchen') : st('Room Service'),
       };
     }
     if (
@@ -286,14 +374,14 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
     ) {
       return {
         step: 2,
-        label: 'Đã Chuyển Bếp',
+        label: st("Sent to kitchen"),
         badgeClass: 'bg-blue-100 text-blue-800 border-blue-200',
         nextStatus: 'Cooking',
-        nextActionName: 'Bếp Nhận Nấu',
+        nextActionName: st("Accept and cook"),
         nextIcon: ChefHat,
         actionBtnClass: 'bg-amber-600 hover:bg-amber-700 text-white',
-        deptNote: 'Bếp tiếp nhận chế biến món',
-        roleBadge: 'Kitchen',
+        deptNote: st("The kitchen accepts and prepares the food"),
+        roleBadge: st('Kitchen'),
       };
     }
     if (
@@ -305,14 +393,14 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
     ) {
       return {
         step: 3,
-        label: 'Bếp Đang Nấu',
+        label: st("In preparation"),
         badgeClass: 'bg-amber-100 text-amber-800 border-amber-200',
         nextStatus: 'Ready',
-        nextActionName: 'Món Đã Nấu Xong',
+        nextActionName: st("Food ready"),
         nextIcon: Sparkles,
         actionBtnClass: 'bg-emerald-600 hover:bg-emerald-700 text-white',
-        deptNote: 'Bếp nấu xong, báo Room Service',
-        roleBadge: 'Kitchen',
+        deptNote: st("Food ready; notify Room Service"),
+        roleBadge: st('Kitchen'),
       };
     }
     if (
@@ -323,14 +411,14 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
     ) {
       return {
         step: 4,
-        label: 'Món Đã Nấu Xong',
+        label: st("Food ready"),
         badgeClass: 'bg-emerald-100 text-emerald-800 border-emerald-200',
         nextStatus: 'Delivering',
-        nextActionName: 'Lấy Món & Giao Phòng',
+        nextActionName: st("Collect and deliver"),
         nextIcon: Truck,
         actionBtnClass: 'bg-sky-600 hover:bg-sky-700 text-white',
-        deptNote: 'Room Service lấy món và chuẩn bị dụng cụ giao phòng',
-        roleBadge: 'Room Service',
+        deptNote: st("Room Service collects food and utensils for delivery"),
+        roleBadge: st('Room Service'),
       };
     }
     if (
@@ -341,26 +429,93 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
     ) {
       return {
         step: 5,
-        label: 'Đang Giao Phòng',
+        label: st("Delivering to room"),
         badgeClass: 'bg-purple-100 text-purple-800 border-purple-200',
         nextStatus: 'Completed',
-        nextActionName: 'Xác Nhận Đã Giao',
+        nextActionName: st("Confirm delivery"),
         nextIcon: CheckCircle2,
         actionBtnClass: 'bg-emerald-600 hover:bg-emerald-700 text-white',
-        deptNote: 'Giao món và đồ dùng lên phòng thành công',
-        roleBadge: 'Room Service',
+        deptNote: st("Food and items delivered to the room"),
+        roleBadge: st('Room Service'),
       };
     }
     return {
       step: 6,
-      label: 'Đã Hoàn Tất',
+      label: st("Completed"),
       badgeClass: 'bg-emerald-100 text-emerald-800 border-emerald-200',
       nextStatus: null,
       nextActionName: null,
       nextIcon: null,
       actionBtnClass: '',
-      deptNote: 'Đơn hàng đã phục vụ xong',
-      roleBadge: 'Hoàn Thành',
+      deptNote: st("Order fulfilled"),
+      roleBadge: st("Complete task"),
+    };
+  };
+
+  const SERVICE_STEPS = [
+    { step: 1, title: st("Guest orders") },
+    { step: 2, title: st("Accepted") },
+    { step: 3, title: st("Room delivery") },
+    { step: 4, title: st("Completed") },
+  ];
+
+  const getDirectServiceStage = (status) => {
+    const s = (status || '').toLowerCase().trim();
+    if (
+      s === 'pending' ||
+      s === 'pending action' ||
+      s === 'unassigned' ||
+      s === 'waiting' ||
+      s === 'chờ tiếp nhận'
+    ) {
+      return {
+        step: 1,
+        label: st("Pending"),
+        badgeClass: 'bg-amber-100 text-amber-800 border-amber-200',
+        nextStatus: 'In Progress',
+        nextActionName: st("Accept request"),
+        nextIcon: ConciergeBell,
+        actionBtnClass: 'bg-indigo-600 hover:bg-indigo-700 text-white',
+        deptNote: st("Room Service accepts and prepares the requested service"),
+        roleBadge: st('Room Service'),
+      };
+    }
+    if (
+      s === 'in progress' ||
+      s === 'in_progress' ||
+      s === 'in preparation' ||
+      s === 'tiếp nhận' ||
+      s === 'đang xử lý' ||
+      s === 'đang chuẩn bị' ||
+      s === 'sent to kitchen' ||
+      s === 'ready' ||
+      s === 'delivering' ||
+      s === 'in transit' ||
+      s === 'đang giao' ||
+      s === 'đang giao phòng'
+    ) {
+      return {
+        step: 2,
+        label: st("In Progress") || "Đang xử lý",
+        badgeClass: 'bg-sky-100 text-sky-800 border-sky-200',
+        nextStatus: 'Completed',
+        nextActionName: st("Complete") || "Hoàn thành",
+        nextIcon: CheckCircle2,
+        actionBtnClass: 'bg-emerald-600 hover:bg-emerald-700 text-white',
+        deptNote: st("Staff is performing the service for the room"),
+        roleBadge: st('Room Service'),
+      };
+    }
+    return {
+      step: 3,
+      label: st("Completed"),
+      badgeClass: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+      nextStatus: null,
+      nextActionName: null,
+      nextIcon: null,
+      actionBtnClass: '',
+      deptNote: st("Room service completed"),
+      roleBadge: st("Complete task"),
     };
   };
 
@@ -389,7 +544,10 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
 
   // Base list scoped to department & task visibility rules:
   // - Phương án 2 (Tách biệt hàng đợi Bếp & Room Service):
-  //   + Nhân viên Bếp (Kitchen):
+  //   + Đơn Dịch Vụ Phòng Trực Tiếp (Khăn tắm, Massage, Dọn phòng...):
+  //     * Bếp (isKitchenStaff): ẨN HOÀN TOÀN khỏi hàng đợi của Bếp!
+  //     * Room Service: Tiếp nhận (step 1), Chuẩn bị & Giao phòng (step 2, 3), Hoàn tất (step 4).
+  //   + Đơn Món Ăn Bếp (Kitchen):
   //     * Bước 1 (Khách Đặt): Chưa chuyển bếp -> Bếp không thấy.
   //     * Bước 2 (Đã Chuyển Bếp): Chờ nhận nấu -> Hiển thị cho tất cả đầu bếp để nhận việc.
   //     * Bước 3 (Bếp Đang Nấu): Đã có người nhận -> Ẩn đối với người khác (!isTaskAssignedToMe), chỉ người nhận mới thấy.
@@ -402,34 +560,35 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
     }
 
     if (!isExecutive) {
-      if (isFoodOrder(r)) {
-        const stage = getFoodOrderStage(r.status);
+      // 1. Đơn dịch vụ buồng phòng trực tiếp (Không qua Bếp)
+      if (isDirectServiceOrder(r)) {
         if (isKitchenStaff) {
-          // 1. Bước 1: Khách đặt -> Room Service duyệt (Bếp không thấy)
-          if (stage.step === 1) {
-            return false;
-          }
-          // 2. Bước 3: Bếp đang nấu -> Đã có người nhận, ẩn khỏi người KHÁC (!isTaskAssignedToMe)
-          if (stage.step === 3 && !isTaskAssignedToMe(r)) {
-            return false;
-          }
-          // 3. Bước 4, 5: Món xong / Giao phòng -> Ẩn khỏi người KHÁC (!isTaskAssignedToMe)
-          if ((stage.step === 4 || stage.step === 5) && !isTaskAssignedToMe(r)) {
-            return false;
-          }
-        } else {
-          // Với Room Service / Bộ phận khác:
-          // - Bước 3: Bếp đang nấu -> Ẩn khỏi Requests của Room Service (Bếp đang nấu)
-          if (stage.step === 3) {
-            return false;
-          }
-          // - Bước 5: Đang giao phòng -> Đã có người nhận đi giao, ẩn khỏi người KHÁC
-          if (stage.step === 5 && !isTaskAssignedToMe(r)) {
-            return false;
-          }
+          return false; // Bếp không nhận và không thấy đơn dịch vụ phòng!
+        }
+        const stage = getDirectServiceStage(r.status);
+        if ((stage.step === 2 || stage.step === 3) && !isTaskAssignedToMe(r)) {
+          return false;
+        }
+        return true;
+      }
+
+      // 2. Đơn món ăn ẩm thực (Qua Bếp)
+      if (isFoodOrder(r)) {
+        if (!isKitchenStaff) {
+          // Room Service hoặc các bộ phận khác TUYỆT ĐỐI KHÔNG nhận và KHÔNG thấy đơn món ăn của Bếp!
+          return false;
+        }
+        const stage = getFoodOrderStage(r.status);
+        // Bước 3: Bếp đang nấu -> Đã có người nhận, ẩn khỏi người KHÁC (!isTaskAssignedToMe)
+        if (stage.step === 3 && !isTaskAssignedToMe(r)) {
+          return false;
+        }
+        // Bước 4, 5: Món xong / Giao phòng -> Ẩn khỏi người KHÁC (!isTaskAssignedToMe)
+        if ((stage.step === 4 || stage.step === 5) && !isTaskAssignedToMe(r)) {
+          return false;
         }
       } else {
-        // Đơn thông thường (Non-Food):
+        // Đơn thông thường (Non-Food, Housekeeping, Bell, MNT...):
         // Khi task đã có người nhận (In Progress) mà KHÔNG PHẢI TÔI NHẬN -> Ẩn khỏi Requests!
         if (isTaskInProgress(r) && !isTaskAssignedToMe(r)) {
           return false;
@@ -444,7 +603,11 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
   const isReqPendingForUser = (r) => {
     if (isKitchenStaff && isFoodOrder(r)) {
       const stage = getFoodOrderStage(r.status);
-      return stage.step === 2; // Đã chuyển bếp, chờ Bếp bấm nhận nấu
+      return stage.step === 1 || stage.step === 2; // Khách vừa đặt (step 1) hoặc Đã chuyển bếp (step 2), Bếp đều nhận việc được ngay
+    }
+    if (isDirectServiceOrder(r)) {
+      const stage = getDirectServiceStage(r.status);
+      return stage.step === 1;
     }
     return isTaskPending(r);
   };
@@ -452,9 +615,11 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
   const isReqInProgressForUser = (r) => {
     if (isKitchenStaff && isFoodOrder(r)) {
       const stage = getFoodOrderStage(r.status);
-      // Với Bếp: Chỉ 'Đang Xử Lý' khi bếp đang chế biến (step 3).
-      // Khi đã đến 'Món Xong' (step >= 4), xem như Bếp đã xong phần phụ trách, phần còn lại là của Room Service!
       return stage.step === 3;
+    }
+    if (isDirectServiceOrder(r)) {
+      const stage = getDirectServiceStage(r.status);
+      return stage.step === 2 || stage.step === 3;
     }
     return isTaskInProgress(r);
   };
@@ -462,7 +627,11 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
   const isReqCompletedForUser = (r) => {
     if (isKitchenStaff && isFoodOrder(r)) {
       const stage = getFoodOrderStage(r.status);
-      return stage.step >= 4; // Món đã nấu xong -> xong phần phụ trách của Bếp
+      return stage.step >= 4;
+    }
+    if (isDirectServiceOrder(r)) {
+      const stage = getDirectServiceStage(r.status);
+      return stage.step === 4;
     }
     return isTaskCompleted(r);
   };
@@ -532,6 +701,10 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
       const stage = getFoodOrderStage(r.status);
       return stage.step === 2 || stage.step === 3;
     }
+    if (isDirectServiceOrder(r)) {
+      const stage = getDirectServiceStage(r.status);
+      return stage.step === 2 || stage.step === 3;
+    }
     return isTaskInProgress(r);
   });
   const activeTaskCount = myActiveTasks.length;
@@ -543,7 +716,7 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
     // Nếu là bước nhận đơn mới (từ Chờ Tiếp Nhận) và đã đạt giới hạn 3 đơn
     if (targetReq && isTaskPending(targetReq) && isTaskLimitReached) {
       onNotify(
-        `⚠️ Bạn đang phụ trách ${activeTaskCount}/${MAX_CONCURRENT_TASKS} đơn (${myActiveTasks.map((t) => '#' + t.id).join(', ')}). Vui lòng hoàn tất hoặc giao bớt đơn trước khi nhận thêm!`
+        st("You have {0}/{1} active orders ({2}). Complete or deliver an order before accepting more.", activeTaskCount, MAX_CONCURRENT_TASKS, myActiveTasks.map((t) => '#' + t.id).join(', '))
       );
       return;
     }
@@ -581,21 +754,21 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
     await updateGenericRequestStatus(reqId, nextStatus, finalAssignedTo);
 
     const statusMessages = {
-      'Sent to Kitchen': `Đã chuyển phiếu #${reqId} sang bộ phận Bếp và lưu vào mục [Yêu Cầu Cá Nhân]!`,
-      'Cooking': `Bếp đã tiếp nhận và đang chế biến phiếu #${reqId}`,
-      'Ready': `Bếp đã làm xong món cho phiếu #${reqId}! Sẵn sàng giao phòng`,
-      'Delivering': `Room Service đang giao phiếu #${reqId} lên phòng`,
-      'Completed': `Đã hoàn thành và giao thành công phiếu #${reqId}!`,
-      'In Progress': `Đã nhận xử lý phiếu #${reqId} và lưu vào mục [Yêu Cầu Cá Nhân]!`,
+      'Sent to Kitchen': st("Request #{0} sent to the kitchen and added to My Tasks.", reqId),
+      'Cooking': st("The kitchen is preparing request #{0}.", reqId),
+      'Ready': st("Request #{0} is ready for room delivery.", reqId),
+      'Delivering': st("Room Service is delivering request #{0}.", reqId),
+      'Completed': st("Request #{0} completed and delivered.", reqId),
+      'In Progress': st("Request #{0} accepted and added to My Tasks.", reqId),
     };
-    onNotify(statusMessages[nextStatus] || `Đã cập nhật trạng thái phiếu #${reqId}: ${nextStatus}`);
+    onNotify(statusMessages[nextStatus] || st("Request #{0} updated: {1}", reqId, nextStatus));
   };
 
   // Action: Self-Claim Request -> Persists to Database with Max-3 Tasks Guard
   const handleClaim = async (reqId) => {
     if (isTaskLimitReached) {
       onNotify(
-        `⚠️ Bạn đang phụ trách ${activeTaskCount}/${MAX_CONCURRENT_TASKS} yêu cầu (${myActiveTasks.map((t) => '#' + t.id).join(', ')}). Vui lòng hoàn tất bớt việc trước khi nhận thêm!`
+        st("You have {0}/{1} active requests ({2}). Complete a task before accepting more.", activeTaskCount, MAX_CONCURRENT_TASKS, myActiveTasks.map((t) => '#' + t.id).join(', '))
       );
       return;
     }
@@ -650,41 +823,39 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
       });
     }
 
-    onNotify(`Đã tạo phiếu yêu cầu mới: #${created.id}`);
+    onNotify(st("Request #{0} created.", created.id));
   };
 
   return (
-    <div className="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-8 bg-[#FAF8F5] font-sans">
-      <div className="max-w-7xl mx-auto space-y-6">
+    <div className="staff-page-body flex-1 overflow-y-auto custom-scrollbar p-4 md:p-8 bg-[#FAF8F5] font-sans">
+      <div className="staff-page-container max-w-7xl mx-auto space-y-6">
         {/* Header & New Request Button */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <StaffPageHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-xl font-bold text-[#1A1917]">
-                {isExecutive ? 'Quản Lý Yêu Cầu Toàn Khách Sạn' : `Yêu Cầu Dịch Vụ - Bộ Phận ${staffDept}`}
+                {isExecutive ? st("Hotel service requests") : st("Service requests — {0}", st(staffDepartmentLabel(staffDept)))}
               </h2>
               <span className="px-2.5 py-0.5 rounded-full bg-[#EFECE6] border border-[#DDD8CE] text-xs font-bold text-stone-700">
-                {filtered.length} phiếu
-              </span>
+                {filtered.length} {st("requests")} </span>
             </div>
             <p className="text-xs text-[#78716C] mt-1">
               {isExecutive
-                ? 'Trung tâm tiếp nhận, điều phối và phân công yêu cầu dịch vụ trên toàn khách sạn.'
-                : `Hàng đợi yêu cầu từ Robot HCRobot gửi về bộ phận ${staffDept} • Nhân viên nhận trực tiếp (Self-Claim).`}
+                ? st("Receive, coordinate and assign service requests across the hotel.")
+                : st("Requests sent by HCRobot to {0}. Staff can claim tasks directly.", st(staffDepartmentLabel(staffDept)))}
             </p>
           </div>
 
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 text-xs font-bold text-stone-700 bg-white px-4 py-2 rounded-full border border-[#DDD8CE] shadow-sm">
-              <span>Trực ca: {staffName}</span>
+            <div className="staff-header-details flex items-center gap-2 text-xs font-bold text-stone-700 bg-white px-4 py-2 rounded-full border border-[#DDD8CE] shadow-sm">
+              <span>{st("On duty:")} {staffName}</span>
               <span
                 className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
                   isTaskLimitReached
                     ? 'bg-amber-100 text-amber-900 border border-amber-300'
                     : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
                 }`}
-              >
-                Đang nhận: {activeTaskCount}/{MAX_CONCURRENT_TASKS}
+              >{st("Active:")} {activeTaskCount}/{MAX_CONCURRENT_TASKS}
               </span>
             </div>
 
@@ -693,11 +864,11 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
                 onClick={() => setIsNewModalOpen(true)}
                 className="px-5 py-2 rounded-full bg-[#18181B] hover:bg-black text-white text-xs font-bold transition-all shadow-sm flex items-center gap-2 cursor-pointer"
               >
-                <span>Tạo Yêu Cầu Mới</span>
+                <span>{st("New request")}</span>
               </button>
             )}
           </div>
-        </div>
+        </StaffPageHeader>
 
         {/* Filter Controls Bar */}
         <div className="p-4 rounded-2xl bg-white border border-[#E5E1D8] shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
@@ -707,7 +878,7 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
               <Search className="w-4 h-4 text-stone-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
-                placeholder="Tìm theo mã phiếu, số phòng, tên khách..."
+                placeholder={st("Search by request ID, room or guest...")}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-9 pr-4 py-1.5 rounded-xl bg-[#FAF8F5] border border-[#E0DCD3] text-xs font-medium text-stone-900 outline-none focus:border-stone-400"
@@ -715,7 +886,7 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
             </div>
             <button
               onClick={loadRequestsFromDb}
-              title="Làm mới dữ liệu"
+              title={st("Refresh data")}
               className="p-2 bg-[#FAF8F5] hover:bg-[#EFECE6] border border-[#E0DCD3] text-stone-700 rounded-xl transition-all cursor-pointer shrink-0"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
@@ -725,7 +896,7 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
           {/* Department Filter Pills (ONLY visible for Executive / Admin) */}
           {isExecutive && (
             <div className="flex flex-wrap items-center gap-1.5 w-full md:w-auto">
-              <span className="text-[11px] font-bold text-stone-500 uppercase mr-1">Bộ phận:</span>
+              <span className="text-[11px] font-bold text-stone-500 uppercase mr-1">{st("Department:")}</span>
               {['All', 'Reception', 'Housekeeping', 'F&B', 'Bell Services', 'Maintenance', 'Concierge', 'Taxi'].map((dept) => (
                 <button
                   key={dept}
@@ -744,19 +915,19 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
 
           {/* Status Filter Dropdown (Gray select) */}
           <div className="flex items-center gap-2 w-full md:w-auto">
-            <label className="text-xs font-bold text-stone-500 shrink-0">Trạng thái:</label>
+            <label className="text-xs font-bold text-stone-500 shrink-0">{st("Status:")}</label>
             <select
               value={statusFilter}
               onChange={(e) => {
                 setStatusFilter(e.target.value);
-                onNotify(`Đã lọc: ${e.target.value}`);
+                onNotify(st("Filtered: {0}", e.target.value));
               }}
               className="w-full md:w-56 px-3.5 py-1.5 rounded-xl bg-[#FAF8F5] border border-[#E0DCD3] text-xs font-semibold text-stone-900 outline-none cursor-pointer focus:border-stone-400"
             >
-              <option value="All">Tất Cả ({deptScopedRequests.length})</option>
-              <option value="Pending">Chờ Tiếp Nhận ({pendingCount})</option>
-              <option value="In Progress">Đang Xử Lý ({inProgressCount})</option>
-              <option value="Completed">Đã Hoàn Tất ({completedCount})</option>
+              <option value="All">{st("All (")}{deptScopedRequests.length})</option>
+              <option value="Pending">{st("Pending (")}{pendingCount})</option>
+              <option value="In Progress">{st("In progress (")}{inProgressCount})</option>
+              <option value="Completed">{st("Completed (")}{completedCount})</option>
             </select>
           </div>
         </div>
@@ -765,13 +936,13 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
         {isLoading ? (
           <div className="py-20 text-center text-stone-400 flex flex-col items-center justify-center space-y-2">
             <RefreshCw className="w-8 h-8 animate-spin text-stone-700" />
-            <p className="text-sm font-semibold text-stone-600">Đang tải danh sách yêu cầu...</p>
+            <p className="text-sm font-semibold text-stone-600">{t('opsLoading')}</p>
           </div>
         ) : (
           <div className="space-y-3.5">
             {paginatedRequests.length === 0 ? (
               <div className="p-12 text-center bg-white rounded-2xl border border-[#E5E1D8] text-xs text-stone-500">
-                Không tìm thấy yêu cầu nào phù hợp với bộ lọc hiện tại.
+                {t('opsEmptyDesc')}
               </div>
             ) : (
               paginatedRequests.map((req) => {
@@ -780,17 +951,20 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
                 const isCompleted = isTaskCompleted(req);
                 const isMine = isTaskAssignedToMe(req);
                 const handlerName = getTaskHandlerName(req);
-                const isFood = isFoodOrder(req);
-                const stage = isFood ? getFoodOrderStage(req.status) : null;
+                const isDirectSvc = isDirectServiceOrder(req);
+                const isFood = !isDirectSvc && isFoodOrder(req);
+                const isMultiStep = isFood || isDirectSvc;
+                const currentSteps = isDirectSvc ? SERVICE_STEPS : (isFood ? FOOD_STEPS : null);
+                const stage = isDirectSvc ? getDirectServiceStage(req.status) : (isFood ? getFoodOrderStage(req.status) : null);
 
                 return (
                   <div
                     key={req.id}
                     className={`bg-white rounded-2xl border border-[#E5E1D8] p-4 md:p-5 shadow-sm space-y-3.5 transition-all hover:shadow-md ${
-                      isFood
-                        ? stage.step === 4
+                      isMultiStep
+                        ? (isDirectSvc ? stage.step === 3 : stage.step === 4)
                           ? 'border-l-4 border-l-emerald-500 bg-emerald-50/10'
-                          : stage.step === 5
+                          : (isDirectSvc ? stage.step === 2 : stage.step === 5)
                           ? 'border-l-4 border-l-purple-500'
                           : isInProgress
                           ? 'border-l-4 border-l-sky-500'
@@ -808,27 +982,28 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
                           {req.location}
                         </span>
                         <span className="px-2 py-0.5 rounded-full bg-[#EFECE6] text-stone-800 text-[10px] font-bold">
-                          {req.department}
+                          {st(staffDepartmentLabel(req.department))}
                         </span>
                         {isFood && (
                           <span className="px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200 text-[10px] font-bold flex items-center gap-1">
-                            <Utensils className="w-2.5 h-2.5 text-amber-600" />
-                            Đơn Room Service
-                          </span>
+                            <Utensils className="w-2.5 h-2.5 text-amber-600" />{st("Food order")} </span>
+                        )}
+                        {isDirectSvc && (
+                          <span className="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-800 border border-indigo-200 text-[10px] font-bold flex items-center gap-1">
+                            <ConciergeBell className="w-2.5 h-2.5 text-indigo-600" />{st("Room service")} </span>
                         )}
                       </div>
 
                       <div className="flex items-center gap-1.5">
-                        {isFood ? (
+                        {isMultiStep ? (
                           <>
                             <span
                               className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border shrink-0 ${stage.badgeClass}`}
                             >
                               {stage.label}
                             </span>
-                            {stage.roleBadge && stage.step < 6 && (
-                              <span className="hidden sm:inline-block px-2 py-0.5 rounded-full bg-stone-100 text-stone-600 text-[10px] font-semibold border border-stone-200">
-                                Phụ trách: {stage.roleBadge}
+                            {stage.roleBadge && stage.step < currentSteps.length && (
+                              <span className="hidden sm:inline-block px-2 py-0.5 rounded-full bg-stone-100 text-stone-600 text-[10px] font-semibold border border-stone-200">{st("Assigned to:")} {stage.roleBadge}
                               </span>
                             )}
                           </>
@@ -842,7 +1017,7 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
                                 : 'bg-sky-100 text-sky-800'
                             }`}
                           >
-                            {req.status}
+                            {st(staffStatusLabel(req.status))}
                           </span>
                         )}
                       </div>
@@ -851,8 +1026,8 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
                     {/* Request Title (Bold & Clean) */}
                     <h4 className="text-sm font-bold text-[#1A1917] leading-snug">{req.title}</h4>
 
-                    {/* Food Stepper Component: 6-stage Visual Progress Bar */}
-                    {isFood && (
+                    {/* Stepper Component: Visual Progress Bar */}
+                    {isMultiStep && (
                       <div className="py-2 px-3 bg-[#FAF8F5] rounded-xl border border-stone-200/80">
                         <div className="flex items-center justify-between relative">
                           {/* Background connecting line */}
@@ -862,12 +1037,12 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
                             style={{
                               width: `${Math.min(
                                 100,
-                                Math.max(0, ((stage.step - 1) / (FOOD_STEPS.length - 1)) * 100)
+                                Math.max(0, ((stage.step - 1) / (currentSteps.length - 1)) * 100)
                               )}%`,
                             }}
                           />
 
-                          {FOOD_STEPS.map((s) => {
+                          {currentSteps.map((s) => {
                             const isPast = stage.step > s.step;
                             const isCurrent = stage.step === s.step;
                             return (
@@ -884,7 +1059,7 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
                                       : 'bg-white text-stone-400 border border-stone-300'
                                   }`}
                                 >
-                                  {isPast ? '✓' : s.step}
+                                  {isPast ? <Check className="w-3 h-3 stroke-[3]" /> : s.step}
                                 </div>
                                 <span
                                   className={`text-[9px] md:text-[10px] mt-1 font-semibold whitespace-nowrap ${
@@ -904,12 +1079,18 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
                       </div>
                     )}
 
-                    {/* Ordered Items Pill Preview */}
-                    {isFood && Array.isArray(req.items) && req.items.length > 0 && (
+                    {/* Ordered Items / Services Pill Preview */}
+                    {isMultiStep && Array.isArray(req.items) && req.items.length > 0 && (
                       <div className="p-2.5 rounded-xl bg-stone-50/80 border border-stone-200/80 text-xs flex flex-wrap items-center justify-between gap-2">
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          <Utensils className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                          <span className="font-semibold text-stone-800 text-[11px]">Danh sách món:</span>
+                          {isDirectSvc ? (
+                            <ConciergeBell className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                          ) : (
+                            <Utensils className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                          )}
+                          <span className="font-semibold text-stone-800 text-[11px]">
+                            {isDirectSvc ? st("Requested services:") : st("Order items:")}
+                          </span>
                           {req.items.map((it, idx) => (
                             <span
                               key={idx}
@@ -920,124 +1101,160 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
                           ))}
                         </div>
                         {req.total_amount > 0 && (
-                          <span className="font-bold text-stone-900 bg-amber-50 text-amber-900 px-2.5 py-0.5 rounded-lg border border-amber-200 text-[11px]">
-                            Tổng: {Number(req.total_amount).toLocaleString('vi-VN')} ₫
+                          <span className="font-bold text-stone-900 bg-amber-50 text-amber-900 px-2.5 py-0.5 rounded-lg border border-amber-200 text-[11px]">{st("Total:")} {Number(req.total_amount).toLocaleString('vi-VN')} ₫
                           </span>
                         )}
                       </div>
                     )}
 
-                    {/* Desktop Extra Detail */}
-                    <div className="hidden md:block text-xs text-[#78716C]">
-                      <span className="font-semibold text-stone-800">
-                        {req.guestName || 'Khách lưu trú'}
+                    {/* Guest & Phone Detail */}
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-[#78716C]">
+                      <span className="font-semibold text-stone-900 flex items-center gap-1">
+                        <User className="w-3.5 h-3.5 text-stone-500" />
+                        <span>{req.guestName || req.guest_name || st("Hotel guest")}</span>
                       </span>
-                      {req.notes && ` • Ghi chú: ${req.notes}`}
+                      {(req.guestPhone || req.guest_phone) && (
+                        <a
+                          href={`tel:${req.guestPhone || req.guest_phone}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded text-[11px] font-mono font-bold transition-colors cursor-pointer shadow-2xs"
+                          title={st("Call the guest to confirm the order")}
+                        >
+                          <Phone className="w-3 h-3 text-emerald-600" />
+                          <span>{st("Phone:")} {req.guestPhone || req.guest_phone}</span>
+                        </a>
+                      )}
+                      {(req.roomPhone || req.room_phone) && (
+                        <span
+                          className="inline-flex items-center gap-1 bg-amber-50 text-amber-900 border border-amber-200 px-2 py-0.5 rounded text-[11px] font-mono font-medium shadow-2xs"
+                          title={st("Room extension")}
+                        >
+                          <Phone className="w-3 h-3 text-amber-600" />
+                          <span>{req.roomPhone || req.room_phone}</span>
+                        </span>
+                      )}
+                      {req.notes && <span className="text-stone-500">{st("• Notes:")} {req.notes}</span>}
                     </div>
 
                     {/* Bottom Action Bar: Compact & Responsive */}
                     <div className="pt-2 border-t border-[#F5F2EB] flex items-center justify-between gap-2 text-xs">
                       <span className="text-[11px] text-[#78716C] font-medium hidden md:inline">
-                        {isFood ? (
+                        {isMultiStep ? (
                           stage.deptNote
                         ) : isPending ? (
-                          'Chờ tiếp nhận'
+                          st("Awaiting acceptance")
                         ) : isInProgress ? (
-                          `Đang xử lý: ${handlerName}`
+                          st("In progress: {0}", handlerName)
                         ) : (
-                          `Hoàn tất bởi: ${handlerName}`
+                          st("Completed by: {0}", handlerName)
                         )}
                       </span>
 
                       <div className="flex items-center gap-2 w-full md:w-auto justify-end">
-                        {/* 1. Food Order Action Button for the current stage */}
-                        {isFood && stage.nextStatus && (
-                          canUserActOnStage(stage.step, req) ? (
-                            <button
-                              onClick={() => {
-                                if (stage.step === 1 && isTaskLimitReached) {
-                                  onNotify(
-                                    `⚠️ Bạn đang phụ trách ${activeTaskCount}/${MAX_CONCURRENT_TASKS} đơn (${myActiveTasks.map((t) => '#' + t.id).join(', ')}). Vui lòng hoàn tất hoặc giao bớt đơn trước khi nhận thêm!`
-                                  );
-                                  return;
-                                }
-                                handleUpdateTaskStatus(req.id, stage.nextStatus);
-                              }}
-                              className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all shadow-sm cursor-pointer active:scale-95 flex items-center gap-1.5 ${
-                                stage.step === 1 && isTaskLimitReached
-                                  ? 'bg-stone-200 text-stone-500 hover:bg-stone-300 border border-stone-300'
-                                  : stage.actionBtnClass
-                              }`}
-                              title={
-                                stage.step === 1 && isTaskLimitReached
-                                  ? `Đã đạt giới hạn tối đa ${MAX_CONCURRENT_TASKS} đơn cùng lúc (${activeTaskCount}/${MAX_CONCURRENT_TASKS})`
-                                  : stage.deptNote
-                              }
-                            >
-                              {stage.nextIcon && <stage.nextIcon className="w-3.5 h-3.5" />}
-                              <span>{stage.nextActionName}</span>
-                              {stage.step === 1 && isTaskLimitReached && (
-                                <span className="text-[10px] ml-1 bg-stone-300/80 px-1.5 py-0.2 rounded-full text-stone-700">
-                                  {activeTaskCount}/{MAX_CONCURRENT_TASKS}
-                                </span>
+                        {/* 1. Multi-Step (Food or Direct Service) Action Button */}
+                        {isMultiStep && stage.nextStatus && (
+                          canUserActOnStage(stage.step, req, isDirectSvc) ? (
+                            <div className="flex items-center gap-1.5">
+                              {/* Tùy chọn Hoàn Tất Nhanh cho Direct Service nếu nhân viên muốn kết thúc đơn ngay */}
+                              {isDirectSvc && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleUpdateTaskStatus(req.id, 'Completed')}
+                                  className="px-3 py-1.5 rounded-full text-xs font-semibold text-stone-600 bg-white hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 border border-stone-200 transition-all cursor-pointer shadow-2xs"
+                                  title={st("Mark as completed and delivered to the guest")}
+                                >{st("Quick complete")} </button>
                               )}
-                            </button>
+
+                              <button
+                                onClick={() => {
+                                  if (stage.step === 1 && isTaskLimitReached) {
+                                    onNotify(
+                                      st("You have {0}/{1} active orders ({2}). Complete or deliver an order before accepting more.", activeTaskCount, MAX_CONCURRENT_TASKS, myActiveTasks.map((t) => '#' + t.id).join(', '))
+                                    );
+                                    return;
+                                  }
+                                  handleUpdateTaskStatus(req.id, stage.nextStatus);
+                                }}
+                                className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all shadow-sm cursor-pointer active:scale-95 flex items-center gap-1.5 ${
+                                  stage.step === 1 && isTaskLimitReached
+                                    ? 'bg-stone-200 text-stone-500 hover:bg-stone-300 border border-stone-300'
+                                    : stage.actionBtnClass
+                                }`}
+                                title={
+                                  stage.step === 1 && isTaskLimitReached
+                                    ? st("Maximum of {0} concurrent orders reached ({1}/{2})", MAX_CONCURRENT_TASKS, activeTaskCount, MAX_CONCURRENT_TASKS)
+                                    : stage.deptNote
+                                }
+                              >
+                                {stage.nextIcon && <stage.nextIcon className="w-3.5 h-3.5" />}
+                                <span>{stage.nextActionName}</span>
+                                {stage.step === 1 && isTaskLimitReached && (
+                                  <span className="text-[10px] ml-1 bg-stone-300/80 px-1.5 py-0.2 rounded-full text-stone-700">
+                                    {activeTaskCount}/{MAX_CONCURRENT_TASKS}
+                                  </span>
+                                )}
+                              </button>
+                            </div>
                           ) : (
                             /* Không thuộc quyền bộ phận hiện tại -> hiển thị chip trạng thái chờ trực quan */
-                            stage.step === 2 ? (
-                              <span
-                                className="px-3 py-1.5 rounded-full bg-blue-50 text-blue-800 text-[11px] font-bold border border-blue-200 flex items-center gap-1.5 select-none shadow-2xs"
-                                title="Đơn đã gửi sang Bếp. Chỉ nhân viên Bếp mới có quyền nhận nấu món!"
-                              >
-                                <Clock className="w-3.5 h-3.5 text-blue-600" />
-                                <span>Chờ Bếp Nhận Nấu</span>
-                              </span>
-                            ) : stage.step === 3 ? (
-                              <span
-                                className="px-3 py-1.5 rounded-full bg-amber-50 text-amber-800 text-[11px] font-bold border border-amber-200 flex items-center gap-1.5 select-none shadow-2xs"
-                                title={
-                                  isKitchenStaff
-                                    ? `Đơn này do ${handlerName} nhận nấu. Chỉ ${handlerName} mới có quyền bấm món nấu xong.`
-                                    : 'Bếp đang chế biến món ăn. Khi hoàn tất, Bếp sẽ bấm xác nhận để báo cho Room Service.'
-                                }
-                              >
-                                <ChefHat className="w-3.5 h-3.5 text-amber-600 animate-pulse" />
-                                <span>{isKitchenStaff ? `Đang nấu bởi: ${handlerName}` : 'Bếp Đang Nấu Món...'}</span>
-                              </span>
-                            ) : stage.step === 4 ? (
-                              <span
-                                className="px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-800 text-[11px] font-bold border border-emerald-200 flex items-center gap-1.5 select-none shadow-2xs"
-                                title="Món đã nấu xong! Đang chờ Room Service đến lấy món và giao lên phòng."
-                              >
-                                <Utensils className="w-3.5 h-3.5 text-emerald-600" />
-                                <span>Chờ Room Service Lấy Món</span>
-                              </span>
-                            ) : stage.step === 5 ? (
-                              <span
-                                className="px-3 py-1.5 rounded-full bg-purple-50 text-purple-800 text-[11px] font-bold border border-purple-200 flex items-center gap-1.5 select-none shadow-2xs"
-                                title="Room Service đang mang món lên phòng cho khách."
-                              >
-                                <Truck className="w-3.5 h-3.5 text-purple-600" />
-                                <span>Room Service Đang Giao</span>
+                            isDirectSvc ? (
+                              <span className="px-3 py-1.5 rounded-full bg-stone-100 text-stone-600 text-xs font-semibold border border-stone-200">{st("Waiting")} {stage.roleBadge}
                               </span>
                             ) : (
-                              <span className="px-3 py-1.5 rounded-full bg-stone-100 text-stone-600 text-xs font-semibold border border-stone-200">
-                                Chờ {stage.roleBadge}
-                              </span>
+                              stage.step === 2 ? (
+                                <span
+                                  className="px-3 py-1.5 rounded-full bg-blue-50 text-blue-800 text-[11px] font-bold border border-blue-200 flex items-center gap-1.5 select-none shadow-2xs"
+                                  title={st("This order has been sent to the kitchen. Kitchen staff must accept it.")}
+                                >
+                                  <Clock className="w-3.5 h-3.5 text-blue-600" />
+                                  <span>{st("Awaiting kitchen acceptance")}</span>
+                                </span>
+                              ) : stage.step === 3 ? (
+                                <span
+                                  className="px-3 py-1.5 rounded-full bg-amber-50 text-amber-800 text-[11px] font-bold border border-amber-200 flex items-center gap-1.5 select-none shadow-2xs"
+                                  title={
+                                    isKitchenStaff
+                                      ? st("This order is assigned to {0}. Only {1} can mark it ready.", handlerName, handlerName)
+                                      : st("The kitchen is preparing the food and will notify Room Service when it is ready.")
+                                  }
+                                >
+                                  <ChefHat className="w-3.5 h-3.5 text-amber-600 animate-pulse" />
+                                  <span>{isKitchenStaff ? st("Prepared by: {0}", handlerName) : st("Kitchen is cooking...")}</span>
+                                </span>
+                              ) : stage.step === 4 ? (
+                                <span
+                                  className="px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-800 text-[11px] font-bold border border-emerald-200 flex items-center gap-1.5 select-none shadow-2xs"
+                                  title={st("Food is ready for Room Service to collect and deliver.")}
+                                >
+                                  <Utensils className="w-3.5 h-3.5 text-emerald-600" />
+                                  <span>{st("Awaiting Room Service collection")}</span>
+                                </span>
+                              ) : stage.step === 5 ? (
+                                <span
+                                  className="px-3 py-1.5 rounded-full bg-purple-50 text-purple-800 text-[11px] font-bold border border-purple-200 flex items-center gap-1.5 select-none shadow-2xs"
+                                  title={st("Room Service is delivering the food to the guest.")}
+                                >
+                                  <Truck className="w-3.5 h-3.5 text-purple-600" />
+                                  <span>{st("Room Service is delivering")}</span>
+                                </span>
+                              ) : (
+                                <span className="px-3 py-1.5 rounded-full bg-stone-100 text-stone-600 text-xs font-semibold border border-stone-200">{st("Waiting")} {stage.roleBadge}
+                                </span>
+                              )
                             )
                           )
                         )}
 
-                        {/* Food Order Completed indicator */}
-                        {isFood && !stage.nextStatus && (
+                        {/* Multi-step Completed indicator */}
+                        {isMultiStep && !stage.nextStatus && (
                           <span className="px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold border border-emerald-200 flex items-center gap-1">
                             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                            <span>Đã Hoàn Tất Đơn</span>
+                            <span>{isDirectSvc ? st("Delivered") : st("Order completed")}</span>
                           </span>
                         )}
 
                         {/* 2. Standard Non-Food: Claim button */}
-                        {!isFood && isPending && (
+                        {!isMultiStep && isPending && (
                           <button
                             onClick={() => handleClaim(req.id)}
                             className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all shadow-sm cursor-pointer active:scale-95 ${
@@ -1047,11 +1264,11 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
                             }`}
                             title={
                               isTaskLimitReached
-                                ? `Bạn đang xử lý ${activeTaskCount}/${MAX_CONCURRENT_TASKS} việc (${myActiveTasks.map((t) => '#' + t.id).join(', ')}). Hãy hoàn thành trước khi nhận thêm!`
-                                : 'Bấm để nhận xử lý yêu cầu'
+                                ? st("You have {0}/{1} active tasks ({2}). Complete one before accepting more.", activeTaskCount, MAX_CONCURRENT_TASKS, myActiveTasks.map((t) => '#' + t.id).join(', '))
+                                : st("Claim this request")
                             }
                           >
-                            <span>Nhận Việc</span>
+                            <span>{st("Claim task")}</span>
                             {isTaskLimitReached && (
                               <span className="text-[10px] ml-1 bg-stone-300 px-1.5 py-0.2 rounded-full text-stone-700">
                                 {activeTaskCount}/{MAX_CONCURRENT_TASKS}
@@ -1061,12 +1278,12 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
                         )}
 
                         {/* 3. Standard Non-Food: Complete button */}
-                        {!isFood && isInProgress && (isMine || isExecutive) && (
+                        {!isMultiStep && isInProgress && (isMine || isExecutive) && (
                           <button
                             onClick={() => handleMarkCompleted(req.id)}
                             className="px-4 py-1.5 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all shadow-sm cursor-pointer active:scale-95"
                           >
-                            <span>Hoàn Thành</span>
+                            <span>{st("Complete task")}</span>
                           </button>
                         )}
 
@@ -1075,10 +1292,10 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
                           <button
                             onClick={() => onNavigate('MyTasks')}
                             className="px-3.5 py-1.5 rounded-full bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 text-xs font-bold transition-all shadow-2xs cursor-pointer flex items-center gap-1.5"
-                            title="Chuyển sang trang Yêu Cầu Cá Nhân để theo dõi"
+                            title={st("Open My Tasks to track this request")}
                           >
                             <User className="w-3.5 h-3.5 text-amber-700" />
-                            <span>Yêu Cầu Cá Nhân</span>
+                            <span>{st("My Tasks")}</span>
                           </button>
                         )}
 
@@ -1086,9 +1303,9 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
                         <button
                           onClick={() => setSelectedDetailReq(req)}
                           className="px-4 py-1.5 rounded-full bg-[#FAF8F5] hover:bg-[#EFECE6] text-stone-900 border border-[#E0DCD3] text-xs font-bold transition-all shadow-sm cursor-pointer"
-                          title="Bấm để xem chi tiết yêu cầu"
+                          title={st("View request details")}
                         >
-                          <span>Xem Chi Tiết</span>
+                          <span>{st("View details")}</span>
                         </button>
                       </div>
                     </div>
@@ -1120,8 +1337,13 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
 
       {/* 2. Modal: Detail View & Direct Action for any task status */}
       {selectedDetailReq && (() => {
-        const isModalFood = isFoodOrder(selectedDetailReq);
-        const modalStage = isModalFood ? getFoodOrderStage(selectedDetailReq.status) : null;
+        const isModalDirectSvc = isDirectServiceOrder(selectedDetailReq);
+        const isModalFood = !isModalDirectSvc && isFoodOrder(selectedDetailReq);
+        const isModalMultiStep = isModalFood || isModalDirectSvc;
+        const currentModalSteps = isModalDirectSvc ? SERVICE_STEPS : (isModalFood ? FOOD_STEPS : null);
+        const modalStage = isModalDirectSvc
+          ? getDirectServiceStage(selectedDetailReq.status)
+          : (isModalFood ? getFoodOrderStage(selectedDetailReq.status) : null);
         const isModalCompleted = isTaskCompleted(selectedDetailReq);
         const isModalPending = isTaskPending(selectedDetailReq);
         const isModalInProgress = isTaskInProgress(selectedDetailReq);
@@ -1135,14 +1357,18 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
                 <div className="flex items-center gap-2.5">
                   <div
                     className={`w-9 h-9 rounded-2xl flex items-center justify-center ${
-                      isModalFood
+                      isModalDirectSvc
+                        ? 'bg-indigo-100 text-indigo-900'
+                        : isModalFood
                         ? 'bg-amber-100 text-amber-900'
                         : isModalCompleted
                         ? 'bg-emerald-100 text-emerald-800'
                         : 'bg-stone-100 text-stone-800'
                     }`}
                   >
-                    {isModalFood ? (
+                    {isModalDirectSvc ? (
+                      <ConciergeBell className="w-5 h-5 text-indigo-700" />
+                    ) : isModalFood ? (
                       <ChefHat className="w-5 h-5 text-amber-700" />
                     ) : isModalCompleted ? (
                       <CheckCircle2 className="w-5 h-5" />
@@ -1152,23 +1378,34 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
                   </div>
                   <div>
                     <h3 className="text-base font-black text-stone-900 tracking-tight">
-                      {isModalFood
-                        ? `Đơn Món Room Service #${selectedDetailReq.id}`
+                      {isModalDirectSvc
+                        ? st("Service request #{0}", selectedDetailReq.id)
+                        : isModalFood
+                        ? st("Room Service order #{0}", selectedDetailReq.id)
                         : isModalCompleted
-                        ? 'Chi Tiết Phiếu Yêu Cầu Đã Hoàn Tất'
-                        : `Chi Tiết Phiếu Yêu Cầu #${selectedDetailReq.id}`}
+                        ? st("Completed request details")
+                        : st("Request details #{0}", selectedDetailReq.id)}
                     </h3>
-                    <p className="text-[11px] text-stone-500 font-mono">
-                      Vị trí: {selectedDetailReq.location} • Khách:{' '}
-                      {selectedDetailReq.guestName || selectedDetailReq.guest_name || 'Khách lưu trú'}
-                    </p>
+                    <div className="flex flex-wrap items-center gap-2 text-[11px] text-stone-500 font-mono mt-0.5">
+                      <span>{st("Location:")} {selectedDetailReq.location}</span>
+                      <span>{st("• Guest:")} {selectedDetailReq.guestName || selectedDetailReq.guest_name || st("Hotel guest")}</span>
+                      {(selectedDetailReq.guestPhone || selectedDetailReq.guest_phone) && (
+                        <span className="bg-emerald-50 text-emerald-800 border border-emerald-200 px-1.5 py-0.2 rounded text-[10px]">{st("Phone:")} {selectedDetailReq.guestPhone || selectedDetailReq.guest_phone}
+                        </span>
+                      )}
+                      {(selectedDetailReq.roomPhone || selectedDetailReq.room_phone) && (
+                        <span className="bg-amber-50 text-amber-900 border border-amber-200 px-1.5 py-0.2 rounded text-[10px] font-medium">
+                          {selectedDetailReq.roomPhone || selectedDetailReq.room_phone}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
                 <button
                   onClick={() => setSelectedDetailReq(null)}
                   className="w-8 h-8 rounded-full bg-stone-100 text-stone-500 hover:bg-stone-200 flex items-center justify-center font-bold text-xs cursor-pointer transition-colors"
                 >
-                  ✕
+                  X
                 </button>
               </div>
 
@@ -1176,15 +1413,14 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
               <div className="space-y-4 text-xs">
                 {/* Badges Bar */}
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-800 font-bold text-[11px] border border-indigo-100">
-                    Bộ phận: {selectedDetailReq.department}
+                  <span className="px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-800 font-bold text-[11px] border border-indigo-100">{st("Department:")} {selectedDetailReq.department}
                   </span>
                   <span className="px-2.5 py-1 rounded-full bg-stone-900 text-white font-bold text-[11px] flex items-center gap-1">
                     <MapPin className="w-3 h-3 text-amber-400" />
                     {selectedDetailReq.location}
                   </span>
 
-                  {isModalFood ? (
+                  {isModalMultiStep ? (
                     <>
                       <span
                         className={`px-2.5 py-1 rounded-full font-bold text-[11px] border ${modalStage.badgeClass}`}
@@ -1192,8 +1428,7 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
                         {modalStage.label}
                       </span>
                       {modalStage.roleBadge && (
-                        <span className="px-2.5 py-1 rounded-full bg-stone-100 text-stone-700 font-semibold text-[11px] border border-stone-200">
-                          Phụ trách: {modalStage.roleBadge}
+                        <span className="px-2.5 py-1 rounded-full bg-stone-100 text-stone-700 font-semibold text-[11px] border border-stone-200">{st("Assigned to:")} {modalStage.roleBadge}
                         </span>
                       )}
                     </>
@@ -1207,16 +1442,16 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
                           : 'bg-sky-100 text-sky-800 border-sky-200'
                       }`}
                     >
-                      {selectedDetailReq.status}
+                      {st(staffStatusLabel(selectedDetailReq.status))}
                     </span>
                   )}
                 </div>
 
-                {/* Stepper for Food Orders */}
-                {isModalFood && (
+                {/* Stepper for Direct Service or Food Orders */}
+                {isModalMultiStep && (
                   <div className="py-2.5 px-3.5 bg-[#FAF8F5] rounded-2xl border border-stone-200">
                     <div className="text-[11px] font-bold text-stone-700 mb-2 flex items-center justify-between">
-                      <span>TIẾN ĐỘ THỰC HIỆN ĐƠN HÀNG:</span>
+                      <span>{st("PROGRESS:")}</span>
                       <span className="text-amber-800 font-extrabold">{modalStage.deptNote}</span>
                     </div>
                     <div className="flex items-center justify-between relative mt-1">
@@ -1226,12 +1461,12 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
                         style={{
                           width: `${Math.min(
                             100,
-                            Math.max(0, ((modalStage.step - 1) / (FOOD_STEPS.length - 1)) * 100)
+                            Math.max(0, ((modalStage.step - 1) / (currentModalSteps.length - 1)) * 100)
                           )}%`,
                         }}
                       />
 
-                      {FOOD_STEPS.map((s) => {
+                      {currentModalSteps.map((s) => {
                         const isPast = modalStage.step > s.step;
                         const isCurrent = modalStage.step === s.step;
                         return (
@@ -1245,7 +1480,7 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
                                   : 'bg-white text-stone-400 border border-stone-300'
                               }`}
                             >
-                              {isPast ? '✓' : s.step}
+                              {isPast ? <Check className="w-3 h-3 stroke-[3]" /> : s.step}
                             </div>
                             <span
                               className={`text-[9px] md:text-[10px] mt-1 font-semibold whitespace-nowrap ${
@@ -1265,12 +1500,12 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
                   </div>
                 )}
 
-                {/* Ordered Items Detailed Table */}
-                {isModalFood && modalItems.length > 0 && (
+                {/* Ordered Items / Services Detailed Table */}
+                {isModalMultiStep && modalItems.length > 0 && (
                   <div className="p-3.5 rounded-2xl bg-white border border-stone-200 space-y-2 shadow-2xs">
                     <div className="flex items-center justify-between font-bold text-stone-800 text-[11px] pb-1.5 border-b border-stone-100">
-                      <span>MÓN ĂN ĐÃ GỌI</span>
-                      <span>SỐ LƯỢNG & ĐƠN GIÁ</span>
+                      <span>{isModalDirectSvc ? st("SERVICES / ITEMS") : st("FOOD ORDERED")}</span>
+                      <span>{st("QUANTITY & UNIT PRICE")}</span>
                     </div>
                     <div className="divide-y divide-stone-100">
                       {modalItems.map((it, idx) => {
@@ -1298,7 +1533,7 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
                     </div>
                     {selectedDetailReq.total_amount > 0 && (
                       <div className="pt-2 border-t border-stone-200 flex items-center justify-between font-black text-xs text-stone-900">
-                        <span>TỔNG CỘNG:</span>
+                        <span>{st("TOTAL:")}</span>
                         <span className="text-amber-900 text-sm">
                           {Number(selectedDetailReq.total_amount).toLocaleString('vi-VN')} ₫
                         </span>
@@ -1313,17 +1548,26 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
                     {selectedDetailReq.title}
                   </h4>
                   <div className="text-stone-600 space-y-1">
-                    <p>
-                      <span className="font-semibold text-stone-800">
-                        Khách hàng / Người yêu cầu:{' '}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-semibold text-stone-800">{st("Guest / requester:")}{' '}
                       </span>
-                      {selectedDetailReq.guestName ||
-                        selectedDetailReq.guest_name ||
-                        'Khách lưu trú'}
-                    </p>
+                      <span className="font-medium text-stone-900">
+                        {selectedDetailReq.guestName ||
+                          selectedDetailReq.guest_name ||
+                          st("Hotel guest")}
+                      </span>
+                      {(selectedDetailReq.guestPhone || selectedDetailReq.guest_phone) && (
+                        <span className="bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded text-[11px] font-mono">{st("Mobile phone:")} {selectedDetailReq.guestPhone || selectedDetailReq.guest_phone}
+                        </span>
+                      )}
+                      {(selectedDetailReq.roomPhone || selectedDetailReq.room_phone) && (
+                        <span className="bg-amber-50 text-amber-900 border border-amber-200 px-2 py-0.5 rounded text-[11px] font-mono font-medium">{st("Extension:")} {selectedDetailReq.roomPhone || selectedDetailReq.room_phone}
+                        </span>
+                      )}
+                    </div>
                     {selectedDetailReq.notes && (
                       <p>
-                        <span className="font-semibold text-stone-800">Ghi chú chi tiết: </span>
+                        <span className="font-semibold text-stone-800">{st("Detailed notes:")} </span>
                         {selectedDetailReq.notes}
                       </p>
                     )}
@@ -1334,30 +1578,30 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
                 <div className="p-4 rounded-2xl bg-stone-50 border border-stone-200 space-y-2.5">
                   <div className="flex items-center gap-2 text-stone-900 font-bold text-xs">
                     <User className="w-4 h-4 text-stone-700" />
-                    <span>THÔNG TIN THỰC HIỆN & PHỤ TRÁCH</span>
+                    <span>{st("ASSIGNMENT DETAILS")}</span>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-stone-700">
                     <div>
-                      <span className="text-stone-500 text-[11px] block">Nhân viên phụ trách:</span>
+                      <span className="text-stone-500 text-[11px] block">{st("Assigned staff:")}</span>
                       <span className="font-bold text-stone-900 text-xs">
                         {getTaskHandlerName(selectedDetailReq)}
                       </span>
                     </div>
                     <div>
-                      <span className="text-stone-500 text-[11px] block">Thời gian:</span>
+                      <span className="text-stone-500 text-[11px] block">{st("Time:")}</span>
                       <span className="font-bold text-stone-900 text-xs">
-                        {selectedDetailReq.time || 'Vừa xong'}
+                        {selectedDetailReq.time || st("Just completed")}
                       </span>
                     </div>
                     <div>
-                      <span className="text-stone-500 text-[11px] block">Nguồn tiếp nhận:</span>
+                      <span className="text-stone-500 text-[11px] block">{st("Source:")}</span>
                       <span className="font-medium text-stone-800 text-xs">
                         {selectedDetailReq.source || 'Robot App / Front Desk'}
                       </span>
                     </div>
                     {selectedDetailReq.assigned_robot && (
                       <div>
-                        <span className="text-stone-500 text-[11px] block">Robot phối hợp:</span>
+                        <span className="text-stone-500 text-[11px] block">{st("Assigned robot:")}</span>
                         <span className="font-medium text-sky-700 text-xs">
                           {selectedDetailReq.assigned_robot}
                         </span>
@@ -1368,11 +1612,9 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
 
                 {isModalCompleted && (
                   <div className="p-3 rounded-xl bg-stone-100 border border-stone-200 text-[11px] text-stone-600 flex items-center gap-2">
-                    <span className="text-sm">🔒</span>
+                    <span className="text-sm"></span>
                     <span>
-                      <strong>Hồ sơ chỉ đọc:</strong> Phiếu đã hoàn thành và lưu trữ an toàn trong
-                      nhật ký kiểm toán.
-                    </span>
+                      <strong>{st("Read-only record:")}</strong> {st("This completed request is saved in the audit log.")} </span>
                   </div>
                 )}
               </div>
@@ -1383,41 +1625,53 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
                   type="button"
                   onClick={() => setSelectedDetailReq(null)}
                   className="px-4 py-2 rounded-xl text-xs font-bold bg-stone-200 hover:bg-stone-300 text-stone-800 transition-all cursor-pointer shadow-xs"
-                >
-                  Đóng
-                </button>
+                >{st("Close")} </button>
 
                 <div className="flex items-center gap-2">
-                  {/* Food order next step button inside modal */}
-                  {isModalFood && modalStage.nextStatus && (
-                    canUserActOnStage(modalStage.step, selectedDetailReq) ? (
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          await handleUpdateTaskStatus(
-                            selectedDetailReq.id,
-                            modalStage.nextStatus
-                          );
-                          setSelectedDetailReq((prev) => ({
-                            ...prev,
-                            status: modalStage.nextStatus,
-                            assignedTo: prev.assignedTo || staffName,
-                          }));
-                        }}
-                        className={`px-5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-sm flex items-center gap-2 ${modalStage.actionBtnClass}`}
-                      >
-                        {modalStage.nextIcon && <modalStage.nextIcon className="w-4 h-4" />}
-                        <span>{modalStage.nextActionName}</span>
-                      </button>
+                  {/* Multi-step action button inside modal */}
+                  {isModalMultiStep && modalStage.nextStatus && (
+                    canUserActOnStage(modalStage.step, selectedDetailReq, isModalDirectSvc) ? (
+                      <div className="flex items-center gap-2">
+                        {isModalDirectSvc && (
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              await handleUpdateTaskStatus(selectedDetailReq.id, 'Completed');
+                              setSelectedDetailReq((prev) => ({
+                                ...prev,
+                                status: 'Completed',
+                                assignedTo: prev.assignedTo || staffName,
+                              }));
+                            }}
+                            className="px-4 py-2 rounded-xl text-xs font-bold bg-white border border-stone-300 text-stone-700 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300 transition-all cursor-pointer shadow-xs"
+                          >{st("Quick complete")} </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            await handleUpdateTaskStatus(
+                              selectedDetailReq.id,
+                              modalStage.nextStatus
+                            );
+                            setSelectedDetailReq((prev) => ({
+                              ...prev,
+                              status: modalStage.nextStatus,
+                              assignedTo: prev.assignedTo || staffName,
+                            }));
+                          }}
+                          className={`px-5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-sm flex items-center gap-2 ${modalStage.actionBtnClass}`}
+                        >
+                          {modalStage.nextIcon && <modalStage.nextIcon className="w-4 h-4" />}
+                          <span>{modalStage.nextActionName}</span>
+                        </button>
+                      </div>
                     ) : (
-                      <span className="px-4 py-2 rounded-xl bg-stone-100 text-stone-700 text-xs font-semibold border border-stone-200 flex items-center gap-1.5 shadow-2xs">
-                        🔒 Giai đoạn này do bộ phận {modalStage.roleBadge} thực hiện
-                      </span>
+                      <span className="px-4 py-2 rounded-xl bg-stone-100 text-stone-700 text-xs font-semibold border border-stone-200 flex items-center gap-1.5 shadow-2xs">{st("This step is handled by")} {modalStage.roleBadge} {st("staff")} </span>
                     )
                   )}
 
-                  {/* Standard non-food buttons inside modal */}
-                  {!isModalFood && isModalPending && (
+                  {/* Standard non-multi-step buttons inside modal */}
+                  {!isModalMultiStep && isModalPending && (
                     <button
                       type="button"
                       onClick={async () => {
@@ -1429,12 +1683,10 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
                         }));
                       }}
                       className="px-5 py-2 rounded-xl text-xs font-bold bg-[#18181B] hover:bg-black text-white transition-all cursor-pointer shadow-sm"
-                    >
-                      Nhận Việc
-                    </button>
+                    >{st("Claim task")} </button>
                   )}
 
-                  {!isModalFood && isModalInProgress && (
+                  {!isModalMultiStep && isModalInProgress && (
                     <button
                       type="button"
                       onClick={async () => {
@@ -1446,9 +1698,7 @@ export const RequestsPage = ({ currentUser, onNotify = () => {}, onNavigate = ()
                         }));
                       }}
                       className="px-5 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white transition-all cursor-pointer shadow-sm"
-                    >
-                      Hoàn Thành
-                    </button>
+                    >{st("Complete task")} </button>
                   )}
                 </div>
               </div>

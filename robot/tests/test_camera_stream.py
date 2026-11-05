@@ -77,3 +77,17 @@ def test_create_camera_backend_uses_opencv_when_picamera_absent():
             assert isinstance(backend, OpenCVBackend)
             assert backend.device == 1
             mock_cv_start.assert_called_once()
+
+
+def test_opencv_backend_capture_jpeg_watchdog_nonblocking():
+    backend = OpenCVBackend(width=640, height=480, fps=15, device=0)
+    fake_jpeg = b"\xff\xd8\xff\xe0fakejpeg"
+    backend._last_good_jpeg = fake_jpeg
+    backend._last_frame_ts = 100.0  # cũ
+
+    # Khi frame bị stall (cũ hơn 1.5s), capture_jpeg vẫn trả về frame gần nhất hoặc placeholder ngay tức thì
+    with patch("scripts.camera_stream.OpenCVBackend._trigger_async_reconnect") as mock_reconnect:
+        frame = backend.capture_jpeg()
+        assert frame == fake_jpeg
+        mock_reconnect.assert_called_once()
+

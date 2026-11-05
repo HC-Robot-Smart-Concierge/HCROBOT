@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Pagination } from '../../../components/common/Pagination';
+import { useLanguage } from '../../../context/LanguageContext';
 import {
   fetchDepartments,
   createDepartment,
@@ -7,7 +8,83 @@ import {
   deleteDepartment,
 } from '../../../services/departmentApi';
 
+// Standard hotel department localizations for bilingual display
+const DEPARTMENT_LOCALIZATIONS = {
+  BELL: {
+    nameEN: 'Bell Services',
+    nameVI: 'Hành Lý & Tiền Sảnh',
+    descEN: 'Luggage assistance, luggage storage & lobby guest coordination',
+    descVI: 'Bộ phận Hành lý & Tiền sảnh',
+  },
+  CONCIERGE: {
+    nameEN: 'Concierge & Live Support',
+    nameVI: 'Trợ Lý Concierge & Kiosk',
+    descEN: 'Robot Kiosk Concierge desk & live guest video call assistance',
+    descVI: 'Bộ phận Trợ lý Concierge & Live Call Robot Kiosk',
+  },
+  EXECUTIVE: {
+    nameEN: 'Executive & Management',
+    nameVI: 'Ban Quản Trị & Điều Hành',
+    descEN: 'Hotel executive administration & system operations',
+    descVI: 'Ban Quản trị và Điều hành hệ thống khách sạn',
+  },
+  HOUSEKEEPING: {
+    nameEN: 'Housekeeping',
+    nameVI: 'Buồng Phòng & Vệ Sinh',
+    descEN: 'Room turnover, priority sanitization & robotic cleaning fleet',
+    descVI: 'Bộ phận Buồng phòng & Vệ sinh',
+  },
+  KITCHEN: {
+    nameEN: 'Kitchen Operations',
+    nameVI: 'Bếp & Chế Biến Ẩm Thực',
+    descEN: 'Culinary preparation, order tickets & kitchen dispatch',
+    descVI: 'Bộ phận Bếp & Chế biến ẩm thực (Kitchen Operations)',
+  },
+  MAINTENANCE: {
+    nameEN: 'Maintenance & Engineering',
+    nameVI: 'Kỹ Thuật & Bảo Trì',
+    descEN: 'Facility repair, electrical/mechanical maintenance & troubleshooting',
+    descVI: 'Bộ phận Kỹ thuật & Bảo trì sự cố',
+  },
+  RECEPTION: {
+    nameEN: 'Front Desk & Reception',
+    nameVI: 'Lễ Tân & Tiếp Đón',
+    descEN: 'Guest reception, check-in/out and front desk coordination',
+    descVI: 'Bộ phận Lễ tân & Tiếp đón khách hàng',
+  },
+  ROOMSERVICE: {
+    nameEN: 'Room Service & In-Room Dining',
+    nameVI: 'Phục Vụ Phòng',
+    descEN: 'In-room food & beverage orders delivery and coordination',
+    descVI: 'Bộ phận Phục vụ phòng (Room Service)',
+  },
+  TAXI: {
+    nameEN: 'Taxi & Transportation',
+    nameVI: 'Vận Chuyển & Đặt Xe',
+    descEN: 'Guest transportation, taxi booking & airport shuttles',
+    descVI: 'Bộ phận Đặt xe & Vận chuyển đưa đón khách',
+  },
+};
+
+const getLocalizedDept = (dept, isEN) => {
+  const codeKey = (dept?.code || '').toUpperCase().replace(/^DEP[-_]/, '');
+  const idKey = (dept?.id || '').toUpperCase().replace(/^DEP[-_]/, '');
+  const config = DEPARTMENT_LOCALIZATIONS[codeKey] || DEPARTMENT_LOCALIZATIONS[idKey];
+  if (!config) {
+    return {
+      displayName: dept?.name || '',
+      displayDesc: dept?.description || '',
+    };
+  }
+  return {
+    displayName: isEN ? (config.nameEN || dept?.name) : (config.nameVI || dept?.name),
+    displayDesc: isEN ? (config.descEN || dept?.description) : (config.descVI || dept?.description),
+  };
+};
+
 export const AdminDepartmentTab = ({ currentUser }) => {
+  const { t, language } = useLanguage();
+  const isEN = language === 'EN';
   const [departments, setDepartments] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -75,7 +152,7 @@ export const AdminDepartmentTab = ({ currentUser }) => {
       const data = await fetchDepartments(null); // Fetch all including inactive
       setDepartments(Array.isArray(data) ? data : []);
     } catch {
-      showNotification('Không thể tải danh sách bộ phận');
+      showNotification(t('deptNotifyLoadError'));
     } finally {
       setIsLoading(false);
     }
@@ -110,7 +187,7 @@ export const AdminDepartmentTab = ({ currentUser }) => {
     if (!selectedDept) return;
     const cleanName = editForm.name.trim();
     if (!cleanName) {
-      showNotification('Vui lòng nhập tên bộ phận');
+      showNotification(t('deptNotifyNameRequired'));
       return;
     }
 
@@ -122,11 +199,11 @@ export const AdminDepartmentTab = ({ currentUser }) => {
         description: editForm.description ? editForm.description.trim() : '',
         is_active: editForm.is_active,
       });
-      showNotification(`Đã cập nhật bộ phận ${cleanName}`);
+      showNotification(t('deptNotifyUpdated').replace('{name}', cleanName));
       setSelectedDept(null);
       await loadData();
     } catch (err) {
-      showNotification('Lỗi khi cập nhật: ' + err.message);
+      showNotification(t('deptNotifyUpdateError').replace('{msg}', err.message));
     } finally {
       setIsLoading(false);
     }
@@ -136,7 +213,7 @@ export const AdminDepartmentTab = ({ currentUser }) => {
     e.preventDefault();
     const cleanName = addForm.name.trim();
     if (!cleanName) {
-      showNotification('Vui lòng nhập tên bộ phận');
+      showNotification(t('deptNotifyNameRequired'));
       return;
     }
 
@@ -148,7 +225,7 @@ export const AdminDepartmentTab = ({ currentUser }) => {
         description: addForm.description ? addForm.description.trim() : '',
         is_active: addForm.is_active,
       });
-      showNotification(`Đã tạo thành công bộ phận ${cleanName}`);
+      showNotification(t('deptNotifyCreated').replace('{name}', cleanName));
       setIsAddModalOpen(false);
       setAddForm({
         name: '',
@@ -159,22 +236,23 @@ export const AdminDepartmentTab = ({ currentUser }) => {
       setSearchQuery(cleanName);
       await loadData();
     } catch (err) {
-      showNotification('Lỗi khi tạo bộ phận: ' + err.message);
+      showNotification(t('deptNotifyCreateError').replace('{msg}', err.message));
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleDelete = async (deptId, name) => {
-    if (!window.confirm(`Xác nhận vô hiệu hóa bộ phận "${name}"?`)) return;
+    const confirmMsg = t('deptNotifyConfirmDeactivate').replace('{name}', name);
+    if (!window.confirm(confirmMsg)) return;
     try {
       setIsLoading(true);
       await deleteDepartment(deptId);
-      showNotification(`Đã vô hiệu hóa bộ phận ${name}`);
+      showNotification(t('deptNotifyDeactivated').replace('{name}', name));
       if (selectedDept?.id === deptId) setSelectedDept(null);
       await loadData();
     } catch (err) {
-      showNotification('Lỗi khi vô hiệu hóa: ' + err.message);
+      showNotification(t('deptNotifyDeactivateError').replace('{msg}', err.message));
     } finally {
       setIsLoading(false);
     }
@@ -182,13 +260,16 @@ export const AdminDepartmentTab = ({ currentUser }) => {
 
   // Filter departments
   const filteredDepartments = departments.filter((d) => {
-    const q = searchQuery.toLowerCase();
+    const q = searchQuery.toLowerCase().trim();
+    const { displayName, displayDesc } = getLocalizedDept(d, isEN);
     const matchesSearch =
       !q ||
       (d.name || '').toLowerCase().includes(q) ||
+      displayName.toLowerCase().includes(q) ||
       (d.code || '').toLowerCase().includes(q) ||
       (d.id || '').toLowerCase().includes(q) ||
-      (d.description || '').toLowerCase().includes(q);
+      (d.description || '').toLowerCase().includes(q) ||
+      displayDesc.toLowerCase().includes(q);
 
     const matchesStatus =
       statusFilter === 'All' ||
@@ -235,10 +316,10 @@ export const AdminDepartmentTab = ({ currentUser }) => {
       >
         <div className="min-w-0">
           <h2 className="text-sm sm:text-base font-bold tracking-tight leading-tight truncate" style={{ color: '#262626' }}>
-            Quản Lý Bộ Phận Khách Sạn
+            {t('deptTabTitle')}
           </h2>
           <p className="text-[10px] sm:text-[11px] font-normal truncate mt-0.5" style={{ color: '#8C8C8C' }}>
-            Danh sách các bộ phận và phòng ban vận hành kết nối điều phối nhiệm vụ và tiếp nhận hỗ trợ Robot
+            {t('deptTabSubtitle')}
           </p>
         </div>
 
@@ -251,7 +332,7 @@ export const AdminDepartmentTab = ({ currentUser }) => {
             borderColor: '#262626',
           }}
         >
-          + Thêm bộ phận
+          + {t('deptAddBtn')}
         </button>
       </div>
 
@@ -271,7 +352,7 @@ export const AdminDepartmentTab = ({ currentUser }) => {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Tìm theo tên, mã code hoặc mô tả..."
+              placeholder={t('deptSearchPlaceholder')}
               className="w-full px-3 py-1.5 rounded-lg text-xs font-normal border focus:outline-none"
               style={{
                 backgroundColor: '#FFFFFF',
@@ -293,9 +374,9 @@ export const AdminDepartmentTab = ({ currentUser }) => {
                 color: '#262626',
               }}
             >
-              <option value="All">Tất cả trạng thái</option>
-              <option value="active">Đang hoạt động</option>
-              <option value="inactive">Tạm ngưng</option>
+              <option value="All">{t('deptFilterAllStatus')}</option>
+              <option value="active">{t('deptFilterActive')}</option>
+              <option value="inactive">{t('deptFilterInactive')}</option>
             </select>
           </div>
         </div>
@@ -319,124 +400,127 @@ export const AdminDepartmentTab = ({ currentUser }) => {
                     color: '#262626',
                   }}
                 >
-                  <th className="w-[28%] py-2 px-4 text-left">Bộ phận</th>
-                  <th className="w-[34%] py-2 px-4 text-left">Mô tả nhiệm vụ</th>
-                  <th className="w-[14%] py-2 px-4 text-center">Quy mô</th>
-                  <th className="w-[12%] py-2 px-4 text-center">Trạng thái</th>
-                  <th className="w-[12%] py-2 px-4 text-center">Thao tác</th>
+                  <th className="w-[28%] py-2 px-4 text-left">{t('deptColName')}</th>
+                  <th className="w-[34%] py-2 px-4 text-left">{t('deptColDesc')}</th>
+                  <th className="w-[14%] py-2 px-4 text-center">{t('deptColScale')}</th>
+                  <th className="w-[12%] py-2 px-4 text-center">{t('deptColStatus')}</th>
+                  <th className="w-[12%] py-2 px-4 text-center">{t('deptColActions')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y text-xs" style={{ borderColor: '#E9E5DC' }}>
                 {isLoading && paginatedDepartments.length === 0 ? (
                   <tr>
                     <td colSpan={5} className="py-6 text-center" style={{ color: '#8C8C8C' }}>
-                      Đang tải dữ liệu...
+                      {t('deptLoading')}
                     </td>
                   </tr>
                 ) : paginatedDepartments.length === 0 ? (
                   <tr>
                     <td colSpan={5} className="py-6 text-center" style={{ color: '#8C8C8C' }}>
-                      Không tìm thấy bộ phận phù hợp.
+                      {t('deptEmpty')}
                     </td>
                   </tr>
                 ) : (
-                  paginatedDepartments.map((dept) => (
-                    <tr
-                      key={dept.id}
-                      className="transition-colors hover:bg-[#F2EFE9]/40"
-                      style={{ borderBottom: '1px solid #E9E5DC' }}
-                    >
-                      {/* Column 1: Department Name & Code */}
-                      <td className="w-[28%] py-2 px-4 text-left">
-                        <div className="font-semibold text-xs truncate" style={{ color: '#262626' }}>
-                          {dept.name}
-                        </div>
-                        <div className="text-[11px] font-mono truncate" style={{ color: '#8C8C8C' }}>
-                          {dept.id || `@${dept.code}`}
-                        </div>
-                      </td>
+                  paginatedDepartments.map((dept) => {
+                    const { displayName, displayDesc } = getLocalizedDept(dept, isEN);
+                    return (
+                      <tr
+                        key={dept.id}
+                        className="transition-colors hover:bg-[#F2EFE9]/40"
+                        style={{ borderBottom: '1px solid #E9E5DC' }}
+                      >
+                        {/* Column 1: Department Name & Code */}
+                        <td className="w-[28%] py-2 px-4 text-left">
+                          <div className="font-semibold text-xs truncate" style={{ color: '#262626' }}>
+                            {displayName}
+                          </div>
+                          <div className="text-[11px] font-mono truncate" style={{ color: '#8C8C8C' }}>
+                            {dept.id || `@${dept.code}`}
+                          </div>
+                        </td>
 
-                      {/* Column 2: Description */}
-                      <td className="w-[34%] py-2 px-4 text-left">
-                        <p className="text-xs text-stone-600 line-clamp-2" title={dept.description || 'Chưa có mô tả'}>
-                          {dept.description || (
-                            <span className="italic" style={{ color: '#8C8C8C' }}>
-                              Chưa có mô tả nhiệm vụ
-                            </span>
-                          )}
-                        </p>
-                      </td>
+                        {/* Column 2: Description */}
+                        <td className="w-[34%] py-2 px-4 text-left">
+                          <p className="text-xs text-stone-600 line-clamp-2" title={displayDesc || t('deptNoDesc')}>
+                            {displayDesc || (
+                              <span className="italic" style={{ color: '#8C8C8C' }}>
+                                {t('deptNoDesc')}
+                              </span>
+                            )}
+                          </p>
+                        </td>
 
-                      {/* Column 3: Staff Count */}
-                      <td className="w-[14%] py-2 px-4 text-center">
-                        <span
-                          className="inline-flex items-center justify-center px-2.5 py-1 rounded text-[11px] font-medium border text-center"
-                          style={{
-                            backgroundColor: '#E9E5DC',
-                            borderColor: '#BFBFBD',
-                            color: '#262626',
-                          }}
-                        >
-                          {dept.staff_count ?? 0} nhân sự
-                        </span>
-                      </td>
-
-                      {/* Column 4: Status */}
-                      <td className="w-[12%] py-2 px-4 text-center">
-                        {dept.is_active ? (
+                        {/* Column 3: Staff Count */}
+                        <td className="w-[14%] py-2 px-4 text-center">
                           <span
-                            className="inline-flex items-center justify-center px-2 py-0.5 rounded text-[10px] font-semibold border"
+                            className="inline-flex items-center justify-center px-2.5 py-1 rounded text-[11px] font-medium border text-center"
                             style={{
-                              backgroundColor: '#262626',
-                              color: '#F2EFE9',
-                              borderColor: '#262626',
-                            }}
-                          >
-                            Hoạt động
-                          </span>
-                        ) : (
-                          <span
-                            className="inline-flex items-center justify-center px-2 py-0.5 rounded text-[10px] font-medium border"
-                            style={{
-                              backgroundColor: '#FFFFFF',
-                              borderColor: '#BFBFBD',
-                              color: '#8C8C8C',
-                            }}
-                          >
-                            Tạm ngưng
-                          </span>
-                        )}
-                      </td>
-
-                      {/* Column 5: Actions */}
-                      <td className="w-[12%] py-2 px-4 text-center">
-                        <div className="flex items-center justify-center gap-1.5">
-                          <button
-                            onClick={() => handleOpenEditModal(dept)}
-                            className="px-2 py-1 rounded text-[11px] font-medium border cursor-pointer hover:opacity-80 transition-all whitespace-nowrap"
-                            style={{
-                              backgroundColor: '#FFFFFF',
+                              backgroundColor: '#E9E5DC',
                               borderColor: '#BFBFBD',
                               color: '#262626',
                             }}
                           >
-                            Chỉnh sửa
-                          </button>
-                          <button
-                            onClick={() => handleDelete(dept.id, dept.name)}
-                            className="px-2 py-1 rounded text-[11px] font-medium border cursor-pointer hover:bg-red-50 hover:border-red-300 hover:text-red-700 transition-all whitespace-nowrap"
-                            style={{
-                              backgroundColor: '#FFFFFF',
-                              borderColor: '#BFBFBD',
-                              color: '#8C8C8C',
-                            }}
-                          >
-                            Xóa
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
+                            {dept.staff_count ?? 0} {t('deptStaffUnit')}
+                          </span>
+                        </td>
+
+                        {/* Column 4: Status */}
+                        <td className="w-[12%] py-2 px-4 text-center">
+                          {dept.is_active ? (
+                            <span
+                              className="inline-flex items-center justify-center px-2 py-0.5 rounded text-[10px] font-semibold border"
+                              style={{
+                                backgroundColor: '#262626',
+                                color: '#F2EFE9',
+                                borderColor: '#262626',
+                              }}
+                            >
+                              {t('deptStatusActive')}
+                            </span>
+                          ) : (
+                            <span
+                              className="inline-flex items-center justify-center px-2 py-0.5 rounded text-[10px] font-medium border"
+                              style={{
+                                backgroundColor: '#FFFFFF',
+                                borderColor: '#BFBFBD',
+                                color: '#8C8C8C',
+                              }}
+                            >
+                              {t('deptStatusInactive')}
+                            </span>
+                          )}
+                        </td>
+
+                        {/* Column 5: Actions */}
+                        <td className="w-[12%] py-2 px-4 text-center">
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button
+                              onClick={() => handleOpenEditModal(dept)}
+                              className="px-2 py-1 rounded text-[11px] font-medium border cursor-pointer hover:opacity-80 transition-all whitespace-nowrap"
+                              style={{
+                                backgroundColor: '#FFFFFF',
+                                borderColor: '#BFBFBD',
+                                color: '#262626',
+                              }}
+                            >
+                              {t('deptBtnEdit')}
+                            </button>
+                            <button
+                              onClick={() => handleDelete(dept.id, displayName || dept.name)}
+                              className="px-2 py-1 rounded text-[11px] font-medium border cursor-pointer hover:bg-red-50 hover:border-red-300 hover:text-red-700 transition-all whitespace-nowrap"
+                              style={{
+                                backgroundColor: '#FFFFFF',
+                                borderColor: '#BFBFBD',
+                                color: '#8C8C8C',
+                              }}
+                            >
+                              {t('deptBtnDelete')}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
@@ -448,7 +532,7 @@ export const AdminDepartmentTab = ({ currentUser }) => {
             totalItems={filteredDepartments.length}
             pageSize={pageSize}
             onPageChange={handlePageChange}
-            itemName="bộ phận"
+            itemName={t('deptItemName')}
           />
         </div>
       </div>
@@ -465,7 +549,7 @@ export const AdminDepartmentTab = ({ currentUser }) => {
           >
             <div className="flex items-center justify-between border-b pb-3" style={{ borderColor: '#BFBFBD' }}>
               <h3 className="text-sm font-bold" style={{ color: '#262626' }}>
-                Cập nhật thông tin bộ phận
+                {t('deptModalEditTitle')}
               </h3>
               <button
                 onClick={() => setSelectedDept(null)}
@@ -476,14 +560,14 @@ export const AdminDepartmentTab = ({ currentUser }) => {
                   color: '#262626',
                 }}
               >
-                Đóng
+                {t('deptModalClose')}
               </button>
             </div>
 
             <form onSubmit={handleSaveEdit} className="space-y-3.5 text-xs">
               <div>
                 <label className="block text-[11px] font-semibold mb-1" style={{ color: '#8C8C8C' }}>
-                  TÊN BỘ PHẬN:
+                  {t('deptLabelName')}
                 </label>
                 <input
                   type="text"
@@ -501,7 +585,7 @@ export const AdminDepartmentTab = ({ currentUser }) => {
 
               <div>
                 <label className="block text-[11px] font-semibold mb-1" style={{ color: '#8C8C8C' }}>
-                  MÃ CODE:
+                  {t('deptLabelCode')}
                 </label>
                 <input
                   type="text"
@@ -518,13 +602,13 @@ export const AdminDepartmentTab = ({ currentUser }) => {
 
               <div>
                 <label className="block text-[11px] font-semibold mb-1" style={{ color: '#8C8C8C' }}>
-                  MÔ TẢ NHIỆM VỤ:
+                  {t('deptLabelDesc')}
                 </label>
                 <textarea
                   rows={3}
                   value={editForm.description}
                   onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
-                  placeholder="Mô tả chức năng nhiệm vụ của bộ phận..."
+                  placeholder={t('deptPlaceholderDesc')}
                   className="w-full px-3 py-2 rounded-lg border focus:outline-none resize-none"
                   style={{
                     backgroundColor: '#FFFFFF',
@@ -543,10 +627,10 @@ export const AdminDepartmentTab = ({ currentUser }) => {
               >
                 <div>
                   <div className="font-semibold text-xs" style={{ color: '#262626' }}>
-                    Trạng thái hoạt động
+                    {t('deptActiveTitle')}
                   </div>
                   <div className="text-[11px]" style={{ color: '#8C8C8C' }}>
-                    Cho phép điều phối công việc và tiếp nhận nhiệm vụ
+                    {t('deptActiveDescEdit')}
                   </div>
                 </div>
 
@@ -569,7 +653,7 @@ export const AdminDepartmentTab = ({ currentUser }) => {
                     color: '#262626',
                   }}
                 >
-                  Hủy
+                  {t('deptBtnCancel')}
                 </button>
                 <button
                   type="submit"
@@ -581,7 +665,7 @@ export const AdminDepartmentTab = ({ currentUser }) => {
                     color: '#F2EFE9',
                   }}
                 >
-                  {isLoading ? 'Đang lưu...' : 'Lưu thay đổi'}
+                  {isLoading ? t('deptBtnSaving') : t('deptBtnSave')}
                 </button>
               </div>
             </form>
@@ -601,7 +685,7 @@ export const AdminDepartmentTab = ({ currentUser }) => {
           >
             <div className="flex items-center justify-between border-b pb-3" style={{ borderColor: '#BFBFBD' }}>
               <h3 className="text-sm font-bold" style={{ color: '#262626' }}>
-                Thêm bộ phận mới
+                {t('deptModalAddTitle')}
               </h3>
               <button
                 onClick={() => setIsAddModalOpen(false)}
@@ -612,21 +696,21 @@ export const AdminDepartmentTab = ({ currentUser }) => {
                   color: '#262626',
                 }}
               >
-                Đóng
+                {t('deptModalClose')}
               </button>
             </div>
 
             <form onSubmit={handleCreateDepartment} className="space-y-3.5 text-xs">
               <div>
                 <label className="block text-[11px] font-semibold mb-1" style={{ color: '#8C8C8C' }}>
-                  TÊN BỘ PHẬN:
+                  {t('deptLabelName')}
                 </label>
                 <input
                   type="text"
                   required
                   value={addForm.name}
                   onChange={(e) => setAddForm({ ...addForm, name: e.target.value })}
-                  placeholder="Ví dụ: Security & Loss Prevention"
+                  placeholder={t('deptPlaceholderAddName')}
                   className="w-full px-3 py-2 rounded-lg border focus:outline-none"
                   style={{
                     backgroundColor: '#FFFFFF',
@@ -638,13 +722,13 @@ export const AdminDepartmentTab = ({ currentUser }) => {
 
               <div>
                 <label className="block text-[11px] font-semibold mb-1" style={{ color: '#8C8C8C' }}>
-                  MÃ CODE (TÙY CHỌN):
+                  {t('deptLabelCodeAdd')}
                 </label>
                 <input
                   type="text"
                   value={addForm.code}
                   onChange={(e) => setAddForm({ ...addForm, code: e.target.value.toUpperCase().replace(/\s+/g, '_') })}
-                  placeholder="SECURITY (để trống sẽ tự động sinh)"
+                  placeholder={t('deptPlaceholderAddCode')}
                   className="w-full px-3 py-2 rounded-lg border focus:outline-none font-mono"
                   style={{
                     backgroundColor: '#FFFFFF',
@@ -656,13 +740,13 @@ export const AdminDepartmentTab = ({ currentUser }) => {
 
               <div>
                 <label className="block text-[11px] font-semibold mb-1" style={{ color: '#8C8C8C' }}>
-                  MÔ TẢ NHIỆM VỤ:
+                  {t('deptLabelDesc')}
                 </label>
                 <textarea
                   rows={3}
                   value={addForm.description}
                   onChange={(e) => setAddForm({ ...addForm, description: e.target.value })}
-                  placeholder="Mô tả chức năng nhiệm vụ của bộ phận..."
+                  placeholder={t('deptPlaceholderDesc')}
                   className="w-full px-3 py-2 rounded-lg border focus:outline-none resize-none"
                   style={{
                     backgroundColor: '#FFFFFF',
@@ -681,10 +765,10 @@ export const AdminDepartmentTab = ({ currentUser }) => {
               >
                 <div>
                   <div className="font-semibold text-xs" style={{ color: '#262626' }}>
-                    Trạng thái hoạt động
+                    {t('deptActiveTitle')}
                   </div>
                   <div className="text-[11px]" style={{ color: '#8C8C8C' }}>
-                    Kích hoạt hoạt động ngay sau khi tạo
+                    {t('deptActiveDescAdd')}
                   </div>
                 </div>
 
@@ -707,7 +791,7 @@ export const AdminDepartmentTab = ({ currentUser }) => {
                     color: '#262626',
                   }}
                 >
-                  Hủy
+                  {t('deptBtnCancel')}
                 </button>
                 <button
                   type="submit"
@@ -719,7 +803,7 @@ export const AdminDepartmentTab = ({ currentUser }) => {
                     color: '#F2EFE9',
                   }}
                 >
-                  {isLoading ? 'Đang tạo...' : 'Tạo bộ phận'}
+                  {isLoading ? t('deptBtnCreating') : t('deptBtnCreate')}
                 </button>
               </div>
             </form>

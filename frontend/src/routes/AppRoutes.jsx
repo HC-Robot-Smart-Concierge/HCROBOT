@@ -13,10 +13,10 @@ import { RobotFoodMenuScreen } from '../components/robot/RobotFoodMenuScreen';
 import { AdminPortal } from '../pages/admin/AdminPortal';
 import { AdminLidarPage } from '../pages/admin/AdminLidarPage';
 
+
 // Staff Dashboard Pages
 import { ReceptionDashboard } from '../pages/dashboard/ReceptionDashboard';
 import { RoomServiceDashboard } from '../pages/dashboard/RoomServiceDashboard';
-import { HousekeepingDashboard } from '../pages/dashboard/HousekeepingDashboard';
 import { BellServicesDashboard } from '../pages/dashboard/BellServicesDashboard';
 import { MaintenanceDashboard } from '../pages/dashboard/MaintenanceDashboard';
 import { KitchenDashboard } from '../pages/dashboard/KitchenDashboard';
@@ -27,9 +27,11 @@ import { StaffOverviewDashboard } from '../pages/dashboard/StaffOverviewDashboar
 import { RequestsPage } from '../pages/staff/RequestsPage';
 import { MyTasksPage } from '../pages/staff/MyTasksPage';
 import { KitchenMenuManagementPage } from '../pages/staff/KitchenMenuManagementPage';
+import { RoomServiceMenuManagementPage } from '../pages/staff/RoomServiceMenuManagementPage';
 import { HistoryPage } from '../pages/staff/HistoryPage';
 import { NotificationsPage } from '../pages/staff/NotificationsPage';
 import { ProfilePage } from '../pages/staff/ProfilePage';
+import { StaffSettingsPage } from '../pages/staff/StaffSettingsPage';
 
 // Wrapper for Concierge subtabs
 function ConciergeRouteWrapper() {
@@ -67,6 +69,31 @@ export const AppRoutes = () => {
   } = useNotifications();
   const navigate = useNavigate();
   const location = useLocation();
+
+  // Dynamic PWA Manifest switcher: Chuyển giữa manifest-login.json (Nhân viên) và manifest.json (Robot)
+  React.useEffect(() => {
+    try {
+      const p = location.pathname;
+      const s = location.search;
+      const isStaffOrLogin = p.startsWith('/login') || p.startsWith('/staff') || p.startsWith('/admin');
+      const isRobot = p.startsWith('/robot') || s.includes('robot_display');
+
+      const manifestHref = (isStaffOrLogin && !isRobot) ? '/manifest-login.json' : '/manifest.json';
+      const appTitle = (isStaffOrLogin && !isRobot) ? 'HC Staff' : 'HCRobot';
+
+      const manifestEl = document.getElementById('app-manifest') || document.querySelector('link[rel="manifest"]');
+      if (manifestEl && manifestEl.getAttribute('href') !== manifestHref) {
+        manifestEl.setAttribute('href', manifestHref);
+      }
+
+      const titleEl = document.getElementById('app-title') || document.querySelector('meta[name="apple-mobile-web-app-title"]');
+      if (titleEl && titleEl.getAttribute('content') !== appTitle) {
+        titleEl.setAttribute('content', appTitle);
+      }
+    } catch (e) {
+      console.warn('Failed to switch dynamic manifest', e);
+    }
+  }, [location.pathname, location.search]);
 
   // Handle legacy query params e.g. ?view=robot_display
   const queryParams = new URLSearchParams(location.search);
@@ -172,6 +199,7 @@ export const AppRoutes = () => {
         element={<RobotFoodMenuScreen onClose={() => navigate('/robot')} />}
       />
 
+
       {/* 4. Admin Command Portal & LiDAR */}
       <Route
         path="/admin/portal"
@@ -227,13 +255,9 @@ export const AppRoutes = () => {
         />
         <Route
           path="housekeeping"
-          element={
-            <HousekeepingDashboard
-              currentUser={currentUser}
-              onNotify={showNotification}
-            />
-          }
+          element={<Navigate to="/staff/room-service" replace />}
         />
+        <Route path="settings" element={<StaffSettingsPage portal={resolveStaffDashboard(currentUser)} />} />
         <Route
           path="bell-services"
           element={
@@ -309,6 +333,15 @@ export const AppRoutes = () => {
           }
         />
         <Route
+          path="room-service-menu"
+          element={
+            <RoomServiceMenuManagementPage
+              currentUser={currentUser}
+              onNotify={showNotification}
+            />
+          }
+        />
+        <Route
           path="history"
           element={
             <HistoryPage
@@ -337,6 +370,8 @@ export const AppRoutes = () => {
               currentUser={currentUser}
               onNotify={showNotification}
               onUserUpdated={setCurrentUser}
+              onUpdateUser={setCurrentUser}
+              onLogout={handleLogout}
             />
           }
         />

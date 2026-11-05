@@ -34,6 +34,7 @@ class RAGSourceFileItem(BaseModel):
     last_modified: str
     status: str = "Synced"
     content: Optional[str] = None
+    language: Optional[str] = "en"
 
 
 class RAGSourceFilesResponse(BaseModel):

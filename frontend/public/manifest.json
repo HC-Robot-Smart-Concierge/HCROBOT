@@ -7,11 +7,17 @@
   "start_url": "/?view=robot_display",
   "scope": "/",
   "display": "standalone",
-  "display_override": ["fullscreen", "standalone"],
+  "display_override": [
+    "fullscreen",
+    "standalone"
+  ],
   "background_color": "#F5F2EB",
   "theme_color": "#171716",
   "orientation": "landscape",
-  "categories": ["travel", "utilities"],
+  "categories": [
+    "travel",
+    "utilities"
+  ],
   "icons": [
     {
       "src": "/icon-192.png",

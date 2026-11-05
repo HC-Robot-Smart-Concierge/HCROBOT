@@ -9,7 +9,7 @@ sudo apt install -y \
   ros-jazzy-navigation2 \
   ros-jazzy-nav2-bringup \
   ros-jazzy-rosbridge-server \
-  ros-jazzy-rviz2 \
+  ros-jazzy-foxglove-bridge \
   ros-jazzy-tf2-tools
 
 echo "=== [2/4] CAU HINH CYCLONEDDS UNICAST CHO LAPTOP ==="
@@ -21,7 +21,9 @@ cat << 'EOF' > "$CONFIG_DIR/cyclonedds.xml"
 <CycloneDDS xmlns="https://cdds.io/config">
     <Domain>
         <General>
-                <NetworkInterface address="100.92.82.61" />
+            <Interfaces>
+                <NetworkInterface name="eth0" />
+            </Interfaces>
             <AllowMulticast>false</AllowMulticast>
         </General>
         <Discovery>
@@ -44,7 +46,7 @@ echo "export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp" >> ~/.bashrc
 echo "export CYCLONEDDS_URI=file://$CONFIG_DIR/cyclonedds.xml" >> ~/.bashrc
 echo "export ROS_DOMAIN_ID=0" >> ~/.bashrc
 
-echo "=== [4/4] TAO FILE CHAY SLAM & NAV2 & ROSBRIDGE ==="
+echo "=== [4/4] TAO FILE CHAY SLAM, ROSBRIDGE & FOXGLOVE ==="
 cat << 'EOF' > "$CONFIG_DIR/start_laptop_stack.sh"
 #!/bin/bash
 source /opt/ros/jazzy/setup.bash
@@ -56,12 +58,16 @@ echo "1. Khoi dong Rosbridge WebSocket tren port 9090..."
 ros2 launch rosbridge_server rosbridge_websocket_launch.xml &
 ROSBRIDGE_PID=$!
 
-echo "2. Khoi dong Slam Toolbox (Online Async)..."
+echo "2. Khoi dong Foxglove Bridge tren port 8765..."
+ros2 launch foxglove_bridge foxglove_bridge_launch.xml port:=8765 address:=0.0.0.0 &
+FOXGLOVE_PID=$!
+
+echo "3. Khoi dong Slam Toolbox (Online Async)..."
 ros2 launch slam_toolbox online_async_launch.py use_sim_time:=False &
 SLAM_PID=$!
 
-echo "He thong Backend ROS 2 dang chay! Nhan Ctrl+C de dung."
-wait $ROSBRIDGE_PID $SLAM_PID
+echo "He thong ROS 2 dang chay: rosbridge=:9090, foxglove=:8765."
+wait $ROSBRIDGE_PID $FOXGLOVE_PID $SLAM_PID
 EOF
 chmod +x "$CONFIG_DIR/start_laptop_stack.sh"
 

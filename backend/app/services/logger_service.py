@@ -209,18 +209,20 @@ def audit(
     # Also log operational log with user-friendly message
     act_upper = action.upper()
     act_name = actor_name or str(actor_id)
+    is_robot = str(actor_id).lower().startswith("robot") or (actor_name and "robot" in actor_name.lower())
+    prefix = "Robot" if is_robot else "Nhân viên"
     if act_upper == "LOGIN":
-        vn_msg = f"Nhân viên '{actor_id}' ({act_name}) đã đăng nhập thành công vào hệ thống."
+        vn_msg = f"{prefix} '{actor_id}' ({act_name}) đã đăng nhập thành công vào hệ thống."
     elif act_upper == "LOGOUT":
-        vn_msg = f"Nhân viên '{actor_id}' ({act_name}) đã đăng xuất thành công khỏi hệ thống."
+        vn_msg = f"{prefix} '{actor_id}' ({act_name}) đã đăng xuất thành công khỏi hệ thống."
     elif act_upper == "CREATE":
-        vn_msg = f"Nhân viên '{actor_id}' ({act_name}) đã tạo mới dữ liệu ({resource_type})."
+        vn_msg = f"{prefix} '{actor_id}' ({act_name}) đã tạo mới dữ liệu ({resource_type})."
     elif act_upper == "UPDATE":
-        vn_msg = f"Nhân viên '{actor_id}' ({act_name}) đã cập nhật dữ liệu ({resource_type})."
+        vn_msg = f"{prefix} '{actor_id}' ({act_name}) đã cập nhật dữ liệu ({resource_type})."
     elif act_upper == "DELETE":
-        vn_msg = f"Nhân viên '{actor_id}' ({act_name}) đã xóa dữ liệu ({resource_type})."
+        vn_msg = f"{prefix} '{actor_id}' ({act_name}) đã xóa dữ liệu ({resource_type})."
     else:
-        vn_msg = f"Nhân viên '{actor_id}' ({act_name}) đã thực hiện thao tác {action.lower()} trên hệ thống."
+        vn_msg = f"{prefix} '{actor_id}' ({act_name}) đã thực hiện thao tác {action.lower()} trên hệ thống."
 
     log_event(
         level=LogLevelEnum.INFO,

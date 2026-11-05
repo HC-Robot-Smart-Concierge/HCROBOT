@@ -95,3 +95,17 @@ def test_bilingual_fast_path_responses():
     assert "Aurora_Guest" in en_reply
     assert "Complimentary Wi-Fi" in en_reply
 
+    # Fast-path nhà vệ sinh & đi vệ sinh
+    restroom_hit1 = service.check_fast_path("nhà vệ sinh ở đâu")
+    assert restroom_hit1 is not None
+    assert "nhà vệ sinh sảnh chính" in restroom_hit1[0]
+
+    restroom_hit2 = service.check_fast_path("tôi muốn đi vệ sinh")
+    assert restroom_hit2 is not None
+    assert "nhà vệ sinh sảnh chính" in restroom_hit2[0]
+
+    restroom_full = service.check_fast_path_full("muốn đi vệ sinh")
+    assert restroom_full is not None
+    assert restroom_full[3] == "show_map"
+    assert restroom_full[4] == {"destination_key": "restroom_ground"}
+

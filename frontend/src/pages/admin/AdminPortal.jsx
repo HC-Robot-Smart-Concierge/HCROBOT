@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Settings, LogOut, Sparkles, Bell, CheckCheck, Trash2, X, Activity, User } from 'lucide-react';
+import { Settings, LogOut, Sparkles, Bell, CheckCheck, Trash2, X, Activity, User, Menu } from 'lucide-react';
 import { AdminDashboardTab } from './tabs/AdminDashboardTab';
 import { AdminOperationsTab } from './tabs/AdminOperationsTab';
 import { AdminRobotControlTab } from './tabs/AdminRobotControlTab';
@@ -9,6 +9,7 @@ import { AdminStaffTab } from './tabs/AdminStaffTab';
 import { AdminSettingsTab } from './tabs/AdminSettingsTab';
 import { AdminLogsTab } from './tabs/AdminLogsTab';
 import { AdminAdvertisementsTab } from './tabs/AdminAdvertisementsTab';
+import { useLanguage } from '../../context/LanguageContext';
 import {
   fetchNotifications,
   toggleNotificationRead,
@@ -17,6 +18,7 @@ import {
 } from '../../services/operationsApi';
 
 export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () => {} }) => {
+  const { language, t } = useLanguage();
   const getInitialTab = () => {
     try {
       const params = new URLSearchParams(window.location.search);
@@ -44,6 +46,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
   };
 
   const [activeMenu, setActiveMenu] = useState(getInitialTab);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [operationsSubTab, setOperationsSubTab] = useState('requests');
   const [robotSubTab, setRobotSubTab] = useState('lidar');
   const [knowledgeSubTab, setKnowledgeSubTab] = useState('sources');
@@ -74,7 +77,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
     let ws = null;
     try {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const host = window.location.hostname === 'localhost' ? 'localhost:8000' : window.location.host;
+      const host = window.location.host;
       ws = new WebSocket(`${protocol}//${host}/api/v1/operations/ws/notifications?department=Admin`);
       wsRef.current = ws;
 
@@ -85,7 +88,8 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
       ws.onmessage = (event) => {
         try {
           if (event.data === 'pong') return;
-          const newNotif = JSON.parse(event.data);
+          const parsed = JSON.parse(event.data);
+          const newNotif = parsed?.type === 'NEW_NOTIFICATION' && parsed.data ? parsed.data : parsed;
           if (newNotif && newNotif.id) {
             setNotifications((prev) => [newNotif, ...prev.filter((n) => n.id !== newNotif.id)]);
             onNotify(`🔔 [${newNotif.department || 'Admin'}] ${newNotif.title}`);
@@ -128,7 +132,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
     try {
       await markAllNotificationsRead('All');
       setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
-      onNotify('Đã đánh dấu tất cả thông báo là đã đọc.');
+      onNotify(t('adminMarkAllReadNotice'));
     } catch {}
   };
 
@@ -162,43 +166,56 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
   }, []);
 
   const menuItems = [
-    { id: 'Dashboard',     label: 'Dashboard' },
-    { id: 'Operations',    label: 'Operations' },
-    { id: 'Robot Control', label: 'Robot Control' },
-    { id: 'Knowledge',     label: 'Kho Tri Thức & AI' },
-    { id: 'Advertisements',label: 'Quảng Cáo Robot' },
-    { id: 'Department',    label: 'Department' },
-    { id: 'Account',       label: 'Account' },
-    { id: 'Logs',          label: 'Logs' },
+    { id: 'Dashboard',     label: t('adminDashboard') },
+    { id: 'Operations',    label: t('adminOperations') },
+    { id: 'Robot Control', label: t('adminRobotControl') },
+    { id: 'Knowledge',     label: t('adminKnowledge') },
+    { id: 'Advertisements',label: t('adminAdvertisements') },
+    { id: 'Department',    label: t('adminDepartment') },
+    { id: 'Account',       label: t('adminAccount') },
+    { id: 'Logs',          label: t('adminLogs') },
   ];
 
   return (
-    <div className="w-full h-screen overflow-hidden text-[#262626] flex font-sans select-none" style={{ background: '#F2EFE9' }}>
+    <div className="w-full h-screen overflow-hidden text-[#262626] flex font-sans select-none" style={{ background: '#F2EFE9', '--admin-header-height': '4rem', '--admin-header-border': '#BFBFBD' }}>
 
       {/* SIDEBAR */}
-      <aside className="w-56 h-full flex flex-col justify-between shrink-0 border-r z-30"
-        style={{ background: '#E9E5DC', borderColor: '#BFBFBD' }}>
+      <aside className="h-full flex flex-col justify-between shrink-0 border-r z-30 transition-[width] duration-200 motion-reduce:transition-none"
+        style={{ width: isSidebarCollapsed ? '3.5rem' : '14rem', background: '#E9E5DC', borderColor: '#BFBFBD' }}>
 
         {/* Brand */}
         <div>
-          <div className="h-16 px-4 border-b flex items-center gap-2.5 shrink-0" style={{ borderColor: '#BFBFBD' }}>
+          <div className="px-3 border-b flex items-center gap-2 shrink-0" style={{ height: 'var(--admin-header-height)', borderColor: 'var(--admin-header-border)' }}>
+            {!isSidebarCollapsed && <>
             <img
               src="/hc-robot-logo.png"
               alt="HC-Robot Logo"
               className="w-8 h-8 object-contain shrink-0 drop-shadow-xs"
             />
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <div className="text-sm font-black tracking-tight truncate" style={{ color: '#262626' }}>
                 HC-ROBOT
               </div>
               <div className="text-[10px] font-semibold tracking-widest truncate" style={{ color: '#8C8C8C' }}>
-                ADMIN PORTAL
+                {t('adminBrandSubtitle')}
               </div>
             </div>
+            </>}
+            <button
+              type="button"
+              onClick={() => setIsSidebarCollapsed((collapsed) => !collapsed)}
+              aria-expanded={!isSidebarCollapsed}
+              aria-controls="admin-sidebar-navigation admin-sidebar-actions"
+              aria-label={t(isSidebarCollapsed ? 'adminExpandSidebar' : 'adminCollapseSidebar')}
+              title={t(isSidebarCollapsed ? 'adminExpandSidebar' : 'adminCollapseSidebar')}
+              className="ml-auto w-7 h-7 shrink-0 flex items-center justify-center rounded-md text-stone-600 hover:bg-black/5 hover:text-stone-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-600 transition-colors cursor-pointer"
+            >
+              <Menu className="w-4 h-4" aria-hidden="true" />
+            </button>
           </div>
 
           {/* Nav Items */}
-          <nav className="p-3 space-y-0.5">
+          <nav id="admin-sidebar-navigation" hidden={isSidebarCollapsed} className="p-3 space-y-0.5">
             {menuItems.map((item) => {
               const isActive = activeMenu === item.id;
               return (
@@ -227,7 +244,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
                           color: operationsSubTab === 'support' || operationsSubTab === 'requests' ? '#FFFFFF' : '#8C8C8C',
                         }}
                       >
-                        Technical Support Requests
+                        {t('adminSubTechSupport')}
                       </button>
                     </div>
                   )}
@@ -239,11 +256,21 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
                         onClick={() => setRobotSubTab('lidar')}
                         className="w-full text-left px-2 py-1.5 rounded text-[11px] font-semibold transition-all cursor-pointer"
                         style={{
-                          background: robotSubTab === 'lidar' || robotSubTab === 'teleop_odom' ? '#262626' : 'transparent',
-                          color: robotSubTab === 'lidar' || robotSubTab === 'teleop_odom' ? '#FFFFFF' : '#8C8C8C',
+                          background: ['lidar', 'teleop_odom', 'camera'].includes(robotSubTab) ? '#262626' : 'transparent',
+                          color: ['lidar', 'teleop_odom', 'camera'].includes(robotSubTab) ? '#FFFFFF' : '#8C8C8C',
                         }}
                       >
-                        Điều Khiển & Odometry SLAM
+                        {t('adminSubControlCamera')}
+                      </button>
+                      <button
+                        onClick={() => setRobotSubTab('physical_map')}
+                        className="w-full text-left px-2 py-1.5 rounded text-[11px] font-semibold transition-all cursor-pointer"
+                        style={{
+                          background: robotSubTab === 'physical_map' ? '#262626' : 'transparent',
+                          color: robotSubTab === 'physical_map' ? '#FFFFFF' : '#8C8C8C',
+                        }}
+                      >
+                        {t('adminSubPhysicalMap')}
                       </button>
                       <button
                         onClick={() => setRobotSubTab('workflows')}
@@ -253,17 +280,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
                           color: robotSubTab === 'workflows' ? '#FFFFFF' : '#8C8C8C',
                         }}
                       >
-                        Quản Lý Step Workflows
-                      </button>
-                      <button
-                        onClick={() => setRobotSubTab('camera')}
-                        className="w-full text-left px-2 py-1.5 rounded text-[11px] font-semibold transition-all cursor-pointer"
-                        style={{
-                          background: robotSubTab === 'camera' ? '#262626' : 'transparent',
-                          color: robotSubTab === 'camera' ? '#FFFFFF' : '#8C8C8C',
-                        }}
-                      >
-                        Live Camera FPV
+                        {t('adminSubWorkflow')}
                       </button>
                     </div>
                   )}
@@ -279,7 +296,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
                           color: knowledgeSubTab === 'sources' || knowledgeSubTab === 'vault' ? '#FFFFFF' : '#8C8C8C',
                         }}
                       >
-                        Kho Tài Liệu Tri Thức
+                        {t('adminSubKnowledgeVault')}
                       </button>
                       <button
                         onClick={() => setKnowledgeSubTab('scenarios')}
@@ -289,7 +306,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
                           color: knowledgeSubTab === 'scenarios' ? '#FFFFFF' : '#8C8C8C',
                         }}
                       >
-                        Kịch Bản Fast-Path
+                        {t('adminSubFastPath')}
                       </button>
                     </div>
                   )}
@@ -300,7 +317,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
         </div>
 
         {/* Bottom Sidebar: Notifications, Settings & Admin Profile */}
-        <div className="p-3 border-t space-y-1.5 relative" style={{ borderColor: '#BFBFBD' }}>
+        <div id="admin-sidebar-actions" hidden={isSidebarCollapsed} className="p-3 border-t space-y-1.5 relative" style={{ borderColor: '#BFBFBD' }}>
           {/* Notifications Nav Item */}
           <button
             onClick={() => setIsNotifOpen(!isNotifOpen)}
@@ -314,7 +331,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
           >
             <div className="flex items-center gap-2">
               <Bell className="w-3.5 h-3.5 shrink-0" />
-              <span>Notifications</span>
+              <span>{t('adminNotifications')}</span>
             </div>
             {unreadCount > 0 && (
               <span
@@ -341,7 +358,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
             onMouseLeave={e => { if (activeMenu !== 'Settings') { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#8C8C8C'; } }}
           >
             <Settings className="w-3.5 h-3.5 shrink-0" />
-            <span>Settings</span>
+            <span>{t('adminSettings')}</span>
           </button>
 
           {/* User Profile Card with Logout */}
@@ -359,10 +376,14 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
               </div>
               <div className="min-w-0 leading-tight">
                 <div className="text-xs font-bold truncate" style={{ color: '#262626' }}>
-                  {currentUser?.full_name || 'System Admin'}
+                  {language === 'EN' && currentUser?.full_name === 'Bộ phận Quản trị'
+                    ? 'Operations Admin'
+                    : (currentUser?.full_name || t('adminRoleAdmin'))}
                 </div>
                 <div className="text-[10px] font-medium truncate" style={{ color: '#8C8C8C' }}>
-                  {currentUser?.role || 'Admin'}
+                  {language === 'EN' && (currentUser?.role === 'Admin' || currentUser?.role === 'Operations Admin')
+                    ? 'Operations Admin'
+                    : (currentUser?.role === 'Admin' ? t('adminRoleAdmin') : currentUser?.role || t('adminRoleAdmin'))}
                 </div>
               </div>
             </div>
@@ -370,7 +391,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
             {/* Logout button */}
             <button
               onClick={onLogout}
-              title="Đăng xuất"
+              title={t('adminLogout')}
               className="p-1.5 rounded-lg border hover:bg-red-50 hover:border-red-300 hover:text-red-700 transition-all cursor-pointer shrink-0"
               style={{ borderColor: '#BFBFBD', color: '#8C8C8C', backgroundColor: '#F2EFE9' }}
             >
@@ -387,9 +408,9 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
               <div className="p-3 border-b flex items-center justify-between" style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD' }}>
                 <div className="flex items-center gap-2">
                   <Bell className="w-4 h-4" style={{ color: '#262626' }} />
-                  <span className="text-xs font-bold" style={{ color: '#262626' }}>Trung Tâm Thông Báo</span>
+                  <span className="text-xs font-bold" style={{ color: '#262626' }}>Notification Center</span>
                   <span className="px-1.5 py-0.2 rounded-full text-[10px] font-extrabold" style={{ backgroundColor: '#262626', color: '#F2EFE9' }}>
-                    {unreadCount} chưa đọc
+                    {unreadCount} unread
                   </span>
                 </div>
 
@@ -399,10 +420,10 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
                       onClick={handleMarkAllRead}
                       className="text-[10px] font-bold hover:underline p-1 flex items-center gap-0.5 cursor-pointer"
                       style={{ color: '#262626' }}
-                      title="Đọc tất cả"
+                      title="Mark all read"
                     >
                       <CheckCheck className="w-3 h-3" />
-                      <span>Đọc hết</span>
+                      <span>Mark all read</span>
                     </button>
                   )}
                   <button
@@ -418,7 +439,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
               <div className="max-h-80 overflow-y-auto custom-scrollbar divide-y text-xs" style={{ borderColor: '#E9E5DC' }}>
                 {notifications.length === 0 ? (
                   <div className="py-8 text-center text-xs" style={{ color: '#8C8C8C' }}>
-                    Không có thông báo mới
+                    No new notifications
                   </div>
                 ) : (
                   notifications.map((item) => (
@@ -444,7 +465,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
                           {item.description}
                         </p>
                         <span className="text-[10px]" style={{ color: '#8C8C8C' }}>
-                          {item.created_at ? new Date(item.created_at).toLocaleTimeString('vi-VN') : 'Vừa xong'}
+                          {item.created_at ? new Date(item.created_at).toLocaleTimeString('en-US') : 'Just now'}
                         </span>
                       </div>
 
@@ -466,7 +487,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
       </aside>
 
       {/* MAIN CONTENT AREA */}
-      <div className="flex-1 flex flex-col h-full min-h-0 overflow-hidden">
+      <div className="flex-1 flex flex-col h-full min-h-0 min-w-0 overflow-hidden">
         {/* Dynamic Tab Body */}
         <main className={`flex-1 min-h-0 ${activeMenu === 'Robot Control' ? 'overflow-hidden' : 'overflow-y-auto custom-scrollbar'} relative`}>
 

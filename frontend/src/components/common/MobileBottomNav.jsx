@@ -1,5 +1,6 @@
 import React from 'react';
 import {
+  ConciergeBell,
   LayoutDashboard,
   Inbox,
   ClipboardCheck,
@@ -46,23 +47,42 @@ export const MobileBottomNav = ({
     roleLower.includes('admin') ||
     usernameLower === 'admin';
 
+  const isRoomService =
+    activeView === 'room_service' ||
+    activeView === 'room-service' ||
+    deptLower.includes('room service') ||
+    deptLower.includes('roomservice') ||
+    deptLower.includes('phục vụ phòng') ||
+    deptLower.includes('phuc vu phong') ||
+    roleLower.includes('room service') ||
+    roleLower.includes('roomservice') ||
+    usernameLower.includes('roomservice') ||
+    usernameLower.includes('room_service') ||
+    defaultDashLower === 'room_service' ||
+    defaultDashLower === 'room-service' ||
+    deptLower.includes('executive') ||
+    roleLower.includes('admin') ||
+    usernameLower === 'admin';
+
   const navItems = isConcierge
     ? [
-        { id: 'LiveCalls', label: 'Tổng Đài', icon: PhoneCall },
-        { id: 'Taxi', label: 'Đặt Xe', icon: Car },
-        { id: 'Feedback', label: 'Đánh Giá', icon: Star },
-        { id: 'Requests', label: t('menuRequests') || 'Yêu Cầu', icon: Inbox },
-        { id: 'MyTasks', label: 'Cá Nhân', icon: ClipboardCheck },
+        { id: 'LiveCalls', label: 'Live Call', icon: PhoneCall },
+        { id: 'Taxi', label: 'Taxi', icon: Car },
+        { id: 'Feedback', label: 'Feedback', icon: Star },
+        { id: 'Requests', label: t('menuRequests'), icon: Inbox },
+        { id: 'MyTasks', label: t('menuMyTasks'), icon: ClipboardCheck },
         ...(isKitchen ? [{ id: 'KitchenMenu', label: 'Menu', icon: UtensilsCrossed }] : []),
-        { id: 'Notifications', label: t('menuNotifications') || 'Thông Báo', icon: Bell },
+        ...(isRoomService ? [{ id: 'RoomServiceMenu', label: 'Dịch Vụ', icon: ConciergeBell }] : []),
+        { id: 'Notifications', label: t('menuNotifications'), icon: Bell },
       ]
     : [
-        { id: 'Dashboard', label: t('menuDashboard') || 'Tổng Quan', icon: LayoutDashboard },
-        { id: 'Requests', label: t('menuRequests') || 'Yêu Cầu', icon: Inbox },
-        { id: 'MyTasks', label: 'Cá Nhân', icon: ClipboardCheck },
+        { id: 'Dashboard', label: t('menuDashboard'), icon: LayoutDashboard },
+        { id: 'Requests', label: t('menuRequests'), icon: Inbox },
+        { id: 'MyTasks', label: t('menuMyTasks'), icon: ClipboardCheck },
         ...(isKitchen ? [{ id: 'KitchenMenu', label: 'Menu', icon: UtensilsCrossed }] : []),
-        { id: 'Notifications', label: t('menuNotifications') || 'Thông Báo', icon: Bell },
-        { id: 'Profile', label: t('menuProfile') || 'Hồ Sơ', icon: User },
+        ...(isRoomService ? [{ id: 'RoomServiceMenu', label: 'Dịch Vụ', icon: ConciergeBell }] : []),
+        { id: 'Notifications', label: t('menuNotifications'), icon: Bell },
+        { id: 'Profile', label: t('menuProfile'), icon: User },
       ];
 
   return (

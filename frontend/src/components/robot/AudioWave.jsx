@@ -13,9 +13,9 @@ export const AudioWave = ({ isActive = true, volumeLevel = 0 }) => {
   const height5 = isSpeakingLive ? Math.max(6, Math.min(28, Math.round(volumeLevel * 0.20))) : (isActive ? 8 : 4);
 
   const barColor = isSpeakingLive
-    ? 'bg-stone-200'
+    ? 'bg-stone-100'
     : isActive
-    ? 'bg-stone-400'
+    ? 'bg-stone-300'
     : 'bg-stone-600/50';
 
   return (

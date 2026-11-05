@@ -13,6 +13,49 @@ from app.services.ai.scenario_service import scenario_service
 logger = logging.getLogger(__name__)
 
 
+COMMON_EN_WORDS = frozenset("""
+the be to of and a in that have i it for not on with he as you do at this but his by from they we say her she
+or an will my one all would there their what so up out if about who get which go me when make can like time no
+just him know take people into year your good some could them see other than then now look only come its over
+think also back after use two how our work first well way even new want because any these give day most us
+is are was were am been being has had did does doing
+hotel room rooms pool swimming gym spa bar restaurant food drink coffee tea breakfast lunch dinner
+towel towels blanket pillow pillows bed beds sleep key card door light lights ac air conditioner
+tv phone wifi internet password luggage bag taxi car airport flight bill pay price cost cash credit
+check checkout checkin help assist please thank thanks hello hi hey morning afternoon evening night bye
+welcome book order service staff receptionist reception front desk lobby floor elevator lift stairs
+toilet restroom bathroom shower water bath soap shampoo toothbrush toothpaste slippers hair dryer
+clean cleaning dirty fix repair broken working open close hours time today tomorrow tonight tour
+beach sea view map location guide doctor emergency cold hot warm quiet noisy extra free cancel
+turn on off late bag board instructions gel bottle wine size ancient town city
+yes ok okay sure fine sir madam recommend direction where what when why who how which whose
+can could would should will do does did is are was were have has had may might must
+luggage baggage towel water food drink restaurant taxi airport service need want
+show tell guide find open close order call bring get take clean go see look give pay cost price menu
+coffee tea beer bar cocktail floor lobby elevator lift toilet restroom bathroom door card key bill
+now today tonight tomorrow time later yes no ok okay sure fine sir madam assist recommend direction
+attraction attractions sightseeing places visit night market sea view ocean view lake view street
+broken not working leak leaking noisy loud dark cold freeze freezing hot boiled
+pillow blanket mattress sheet sheets hanger iron iron board adapter plug charger socket
+slippers bathrobe bathrobes umbrella laundry dry dry cleaning laundry bag wash washing
+room rate price list deposit receipt invoice luggage storage bellman wake up wake call
+service request amenities facility facilities elevator gym pool swimming pool
+""".split())
+
+COMMON_VI_WORDS = frozenset("""
+la cua va co khong duoc cho voi ve tu den o trong tai cac nhung mot hai ba bon nam sau bay tam chin muoi
+phong khach san toi minh ban anh em chi chu bac da roi chua dang se muon can xin hoi giup lam on cam
+chao hen gap lai bao nhieu tien gia may gio dau nao sao nhu the dat mang them giat ui sua ket bi hong
+hu mat dep tot xau ngon do an uong nuoc tra cafe ca phe an sang com goi xe dua don san bay thang may
+ve sinh nha tam khan men chieu nem giuong chia khoa the tu mat khau be boi ho boi le tan buong phong
+""".split())
+
+EN_SUBSTRING_PATTERNS = [
+    r'\b(wh[a-z]+|th[a-z]+|sh[a-z]+|ch[a-z]+)\b',
+    r'[a-z]+(tion|sion|ment|ness|able|ible|less|ful|ing|ed)\b',
+    r'\b[a-z]+(ck|ght|ould|ight)\b',
+]
+
 class OllamaService:
     def __init__(self):
         self.host = settings.OLLAMA_HOST
@@ -20,10 +63,10 @@ class OllamaService:
         self.embed_model = getattr(settings, "OLLAMA_EMBED_MODEL", None)
         self._client = ollama.AsyncClient(host=self.host)
 
-    async def _call_groq(self, messages: List[Dict[str, str]], json_mode: bool = False, max_tokens: int = 60) -> Optional[str]:
+    async def _call_groq(self, messages: List[Dict[str, str]], json_mode: bool = False, max_tokens: int = 150) -> Optional[str]:
         """
         Gọi Groq Cloud API qua HTTP POST (OpenAI format).
-        Chỉ kích hoạt khi AI_PROVIDER='groq' hoặc tự động fallback khi Ollama cục bộ offline.
+        Ưu tiên hàng đầu (Tier 1), phản hồi siêu tốc (< 500ms).
         """
         if not settings.GROQ_API_KEY:
             return None
@@ -32,9 +75,9 @@ class OllamaService:
         headers = {
             "Authorization": f"Bearer {settings.GROQ_API_KEY}",
             "Content-Type": "application/json",
-            "User-Agent": "HC-Robot-Concierge/1.0",
+            "User-Agent": "curl/8.0.1",
         }
-        payload = {
+        payload: Dict[str, Any] = {
             "model": settings.GROQ_MODEL or "qwen/qwen3.8-27b",
             "messages": messages,
             "max_tokens": max_tokens,
@@ -44,11 +87,20 @@ class OllamaService:
             payload["response_format"] = {"type": "json_object"}
 
         try:
-            async with httpx.AsyncClient(timeout=12.0) as client:
+            async with httpx.AsyncClient(timeout=10.0) as client:
                 res = await client.post(url, headers=headers, json=payload)
                 if res.status_code == 200:
                     data = res.json()
                     return data["choices"][0]["message"]["content"]
+                elif res.status_code == 429:
+                    logger.warning("[Groq 429 Rate Limit] Token bucket full, waiting 0.8s for fast auto-recovery...")
+                    await asyncio.sleep(0.8)
+                    res_retry = await client.post(url, headers=headers, json=payload)
+                    if res_retry.status_code == 200:
+                        return res_retry.json()["choices"][0]["message"]["content"]
+                    else:
+                        logger.warning(f"[Groq Retry Failed] status={res_retry.status_code}")
+                        return None
                 else:
                     logger.warning(f"[Groq API Warning] status={res.status_code}: {res.text[:120]}")
                     return None
@@ -56,11 +108,60 @@ class OllamaService:
             logger.warning(f"[Groq API Error]: {str(e)}")
             return None
 
+    async def _call_groq_stream(self, messages: List[Dict[str, str]], max_tokens: int = 150):
+        """
+        Streaming token từ Groq Cloud API theo chuẩn Server-Sent Events (SSE).
+        """
+        if not settings.GROQ_API_KEY:
+            return
+        import httpx
+        url = "https://api.groq.com/openai/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {settings.GROQ_API_KEY}",
+            "Content-Type": "application/json",
+            "Accept": "text/event-stream",
+            "User-Agent": "curl/8.0.1",
+        }
+        payload: Dict[str, Any] = {
+            "model": settings.GROQ_MODEL or "qwen/qwen3.8-27b",
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": 0.4,
+            "stream": True,
+        }
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                async with client.stream("POST", url, headers=headers, json=payload) as response:
+                    if response.status_code != 200:
+                        err_text = await response.aread()
+                        logger.warning(f"[Groq Stream Warning] status={response.status_code}: {err_text[:120].decode('utf-8', errors='ignore')}")
+                        return
+                    async for line in response.aiter_lines():
+                        if not line:
+                            continue
+                        if line.startswith("data: "):
+                            data_str = line[6:].strip()
+                            if data_str == "[DONE]":
+                                break
+                            try:
+                                chunk = json.loads(data_str)
+                                choices = chunk.get("choices", [])
+                                if choices:
+                                    delta = choices[0].get("delta", {})
+                                    content = delta.get("content", "")
+                                    if content:
+                                        yield content
+                            except json.JSONDecodeError:
+                                continue
+        except Exception as e:
+            logger.warning(f"[Groq Stream Error]: {str(e)}")
+            raise
+
     @staticmethod
     def detect_language(text: str) -> Tuple[str, str]:
         """
         Tự động phân tích câu nói của khách để nhận diện ngôn ngữ và mã lang_code cho TTS.
-        Nhận biết chính xác Tiếng Việt (vi-VN), Tiếng Anh (en-US), Tiếng Trung (zh-CN), Tiếng Nhật (ja-JP).
+        Chỉ hỗ trợ song ngữ chuẩn xác: Tiếng Việt (vi-VN) và Tiếng Anh (en-US).
         """
         if not text or not text.strip():
             return "Tiếng Việt", "vi-VN"
@@ -70,29 +171,26 @@ class OllamaService:
             return "Tiếng Việt", "vi-VN"
 
         lower_text = text.lower().strip()
-
-        # 2. Tiếng Trung (Chữ Hán)
-        cjk_chars = re.findall(r'[\u4e00-\u9fff]', text)
-        latin_chars = re.findall(r'[a-zA-Z]', text)
-        if len(cjk_chars) > 0 and len(cjk_chars) > len(latin_chars):
-            return "Tiếng Trung", "zh-CN"
-
-        # 3. Tiếng Nhật (Hiragana / Katakana)
-        if re.search(r'[\u3040-\u30ff]', text):
-            return "Tiếng Nhật", "ja-JP"
-
-        # 4. Tiếng Việt không dấu (các cụm từ / từ vựng đặc trưng tránh trùng với tiếng Anh)
-        vi_phrases = [
-            r'\bphong\s*[0-9]', r'\bphong\b', r'\btoi\b', r'\bmuon\b', r'\bkhan\s*tam\b',
-            r'\bdon\s*phong\b', r'\bo\s*dau\b', r'\bkhach\s*san\b', r'\ble\s*tan\b',
-            r'\bbao\s*tri\b', r'\bcam\s*on\b', r'\bchao\s*em\b', r'\bxin\s*chao\b',
-            r'\bquy\s*khach\b', r'\btra\s*phong\b', r'\bnhan\s*phong\b',
-            r'\bgoi\s*xe\b', r'\bthang\s*may\b', r'\bho\s*boi\b', r'\bbe\s*boi\b'
-        ]
-        if any(re.search(pattern, lower_text) for pattern in vi_phrases):
+        words = re.findall(r'[a-zA-Z]+', lower_text)
+        if not words:
             return "Tiếng Việt", "vi-VN"
 
-        # 5. Tiếng Anh: kiểm tra các mẫu câu và tập từ vựng tiếng Anh thông dụng
+        en_score = sum(1 for w in words if w in COMMON_EN_WORDS)
+        vi_score = sum(1 for w in words if w in COMMON_VI_WORDS)
+
+        if en_score > vi_score:
+            return "English", "en-US"
+        if vi_score > en_score:
+            return "Tiếng Việt", "vi-VN"
+        if en_score > 0:
+            return "English", "en-US"
+
+        # Kiểm tra hình thái học tiếng Anh (morphology patterns)
+        for p in EN_SUBSTRING_PATTERNS:
+            if re.search(p, lower_text):
+                return "English", "en-US"
+
+        # Kiểm tra cụm từ tiếng Anh thông dụng
         english_patterns = [
             r'\b(where|what|when|why|who|how|which|whose)\b',
             r'\b(can|could|would|should|will|do|does|did|is|are|was|were|have|has|had)\b',
@@ -119,7 +217,7 @@ class OllamaService:
 
     def check_fast_path_full(
         self, prompt: str, language: Optional[str] = None
-    ) -> Optional[Tuple[str, str, str, str, Optional[Dict[str, Any]]]]:
+    ) -> Optional[Tuple[str, str, str, Optional[str], Optional[Dict[str, Any]]]]:
         """
         Phản hồi tức thì (<1ms) từ Dynamic Fast-Path In-Memory Cache (do Admin quản lý qua API).
         Bao phủ: chào hỏi, tiện ích, dịch vụ, FAQ, chỉ đường, kích hoạt video call.
@@ -132,7 +230,7 @@ class OllamaService:
             lang_name, lang_code = self.detect_language(prompt)
         else:
             lang_name = language
-            lang_code = "en-US" if language.lower() in ["english", "en"] else "vi-VN"
+            lang_code = "en-US" if (language.lower().startswith("en") or "english" in language.lower()) else "vi-VN"
 
         prompt_lower = prompt.lower().strip()
         is_en = lang_code == "en-US"
@@ -149,7 +247,7 @@ class OllamaService:
             time_greeting_vi = "Dạ, Rora xin chào buổi tối quý khách! Chúc quý khách buổi tối an lành và thư giãn ạ."
             time_greeting_en = "Good evening! Wishing you a peaceful and relaxing evening."
 
-        # PRE-CHECK: Nếu câu nói chứa từ khóa HÀNH ĐỘNG dịch vụ buồng phòng / bảo trì / ẩm thực / hành lý
+        # PRE-CHECK 1: Nếu câu nói chứa từ khóa HÀNH ĐỘNG dịch vụ buồng phòng / bảo trì / ẩm thực / hành lý
         # → Bỏ qua fast-path để Intent Router + Service FSM xử lý slot-filling số phòng
         service_action_verbs = [
             "đặt", "cần", "muốn", "yêu cầu", "sửa", "cho", "xin", "lấy", "mang", "giao", "gọi", "đổi",
@@ -166,85 +264,25 @@ class OllamaService:
             logger.info(f"[OllamaService Fast-Path Bypass] Service action intent detected, skipping fast-path for: '{prompt[:40]}'")
             return None
 
-        # Đối soát nhanh từ Dynamic Scenarios Cache trong RAM (< 0.1ms)
+        # PRE-CHECK 2: Nếu câu hỏi về KHÁM PHÁ XUNG QUANH / NGOẠI KHU / CHỢ ĐÊM / ĐI CHƠI
+        # → Bỏ qua fast-path nội khu chung chung để RAG + LLM tra cứu cẩm nang địa điểm chi tiết
+        nearby_exploration_keywords = [
+            "gần đây", "xung quanh", "quanh đây", "gần khách sạn", "ngoại khu", "chợ đêm",
+            "chơi gì", "ăn gì ở đâu", "đi đâu chơi", "địa điểm du lịch", "địa điểm tham quan",
+            "có gì chơi", "quanh khách sạn", "nearby", "around here", "night market", "sightseeing"
+        ]
+        if any(kw in prompt_lower for kw in nearby_exploration_keywords):
+            logger.info(f"[OllamaService Fast-Path Bypass] Nearby exploration query detected, delegating to RAG: '{prompt[:40]}'")
+            return None
+
+        # 1. Đối soát nhanh từ Dynamic Scenarios Cache trong RAM (do Admin quản lý qua API/DB)
         dynamic_hit = scenario_service.match_fast_path(prompt, lang_code)
         if dynamic_hit:
             return dynamic_hit
 
-        # 2. Lời chào chung (Greetings)
+        # 2. Lời chào chung theo thời gian thực (Real-time Clock Greetings)
         if re.search(r"^(xin chào|xin chao|chào em|chao em|chào robot|chao robot|chào bạn|chao ban|chào rora|chao rora|hello|hi|hey|good morning|good afternoon|good evening)[\?\.\!\s]*$", prompt_lower):
             return (time_greeting_en if is_en else time_greeting_vi), lang_name, lang_code, None, None
-
-        # 2.1. Hỏi thăm sức khỏe (How are you)
-        if re.search(r"\b(khỏe không|khoe khong|bạn khỏe không|ban khoe khong|em khỏe không|em khoe khong|bạn có khỏe không|ban co khoe khong|how are you|how are you doing)\b", prompt_lower):
-            reply_vi = "Dạ em khỏe ạ! Cảm ơn quý khách đã quan tâm. Em có thể hỗ trợ gì cho kỳ nghỉ của mình hôm nay ạ?"
-            reply_en = "I am doing great, thank you for asking! How may I assist you with your stay today?"
-            return (reply_en if is_en else reply_vi), lang_name, lang_code, None, None
-
-        # 3. Lời cảm ơn (Thanks)
-        if re.search(r"\b(cảm ơn|cam on|thank you|thanks|cảm ơn em|cảm ơn rora)\b", prompt_lower):
-            reply_vi = "Dạ không có gì ạ! Rora rất hân hạnh được hỗ trợ quý khách. Chúc quý khách có những phút giây tuyệt vời tại Aurora!"
-            reply_en = "You are most welcome! Rora is always delighted to assist you. Have a wonderful time at Aurora!"
-            return (reply_en if is_en else reply_vi), lang_name, lang_code, None, None
-
-        # 4. Tạm biệt (Farewell)
-        if re.search(r"\b(tạm biệt|tam biet|goodbye|bye|bye bye|hẹn gặp lại)\b", prompt_lower):
-            reply_vi = "Dạ tạm biệt quý khách! Chúc quý khách một ngày tràn ngập niềm vui và hẹn sớm gặp lại ạ."
-            reply_en = "Goodbye! Wishing you a joyful day and looking forward to seeing you again."
-            return (reply_en if is_en else reply_vi), lang_name, lang_code, None, None
-
-        # 5. Hồ bơi / Bể bơi (Pool)
-        if re.search(r"\b(hồ bơi|bể bơi|swimming pool|pool)\b", prompt_lower):
-            reply_vi = "Dạ hồ bơi vô cực ngoài trời nằm ở Tầng 4, mở cửa từ 6 giờ sáng đến 22 giờ tối và có sẵn khăn tắm miễn phí ạ."
-            reply_en = "The outdoor infinity pool is located on Level 4, open from 6:00 AM to 10:00 PM with complimentary towels."
-            return (reply_en if is_en else reply_vi), lang_name, lang_code, None, None
-
-        # 6. Nhà hàng / Ăn sáng / Buffet (Restaurant & Breakfast)
-        if re.search(r"\b(nhà hàng|bữa sáng|buffet sáng|ăn sáng|restaurant|breakfast)\b", prompt_lower):
-            reply_vi = "Dạ Nhà hàng Aurora nằm ở Tầng 2, phục vụ buffet sáng từ 6 giờ 30 đến 10 giờ sáng hàng ngày ạ."
-            reply_en = "The Aurora Restaurant is located on Level 2, serving breakfast buffet from 6:30 AM to 10:00 AM daily."
-            return (reply_en if is_en else reply_vi), lang_name, lang_code, None, None
-
-        # 7. Phòng Gym / Thể hình (Gym / Fitness)
-        if re.search(r"\b(phòng gym|tập gym|thể dục|gym|fitness)\b", prompt_lower):
-            reply_vi = "Dạ Phòng Gym và trung tâm thể hình nằm ở Tầng 4, mở cửa phục vụ 24 trên 7 miễn phí cho quý khách ạ."
-            reply_en = "The Fitness Center is on Level 4, open 24/7 complimentary for staying guests."
-            return (reply_en if is_en else reply_vi), lang_name, lang_code, None, None
-
-        # 8. Spa / Xông hơi (Spa & Sauna)
-        if re.search(r"\b(spa|massage|xông hơi|sauna)\b", prompt_lower):
-            reply_vi = "Dạ Aurora Luxury Spa nằm tại Tầng 5, mở cửa phục vụ quý khách từ 9 giờ sáng đến 22 giờ tối ạ."
-            reply_en = "Aurora Luxury Spa is on Level 5, open from 9:00 AM to 10:00 PM."
-            return (reply_en if is_en else reply_vi), lang_name, lang_code, None, None
-
-        # 9. Giờ nhận phòng / Trả phòng (Check-in / Check-out)
-        if re.search(r"\b(trả phòng|check out|check-out|mấy giờ trả phòng|trả phòng lúc mấy giờ)\b", prompt_lower):
-            reply_vi = "Dạ giờ trả phòng tiêu chuẩn là trước 12 giờ trưa quý khách nhé."
-            reply_en = "Standard check-out time is before 12:00 PM noon."
-            return (reply_en if is_en else reply_vi), lang_name, lang_code, None, None
-
-        if re.search(r"\b(nhận phòng|check in|check-in|mấy giờ nhận phòng|nhận phòng lúc mấy giờ)\b", prompt_lower):
-            reply_vi = "Dạ giờ nhận phòng tiêu chuẩn tại khách sạn Aurora là từ 14 giờ chiều ạ."
-            reply_en = "Standard check-in time at Aurora Hotel is from 2:00 PM."
-            return (reply_en if is_en else reply_vi), lang_name, lang_code, None, None
-
-        # 10. Nhà vệ sinh / Toilet / WC
-        if re.search(r"\b(nhà vệ sinh|toilet|wc|restroom|phòng vệ sinh)\b", prompt_lower):
-            reply_vi = "Dạ nhà vệ sinh sảnh chính nằm ở phía tay phải sau quầy lễ tân tầng 1 ạ."
-            reply_en = "The lobby restrooms are located on the right side behind the Front Desk on Level 1."
-            return (reply_en if is_en else reply_vi), lang_name, lang_code, None, None
-
-        # 11. Bãi đỗ xe (Parking)
-        if re.search(r"\b(bãi đỗ xe|đỗ xe|gửi xe|bãi xe|parking)\b", prompt_lower):
-            reply_vi = "Dạ bãi đỗ xe ô tô và xe máy miễn phí nằm ở Tầng hầm B1 của khách sạn ạ."
-            reply_en = "Complimentary car and motorbike parking is located at Basement B1."
-            return (reply_en if is_en else reply_vi), lang_name, lang_code, None, None
-
-        # 12. Danh tính robot (Who are you)
-        if re.search(r"\b(bạn là ai|em là ai|tên gì|who are you|what is your name)\b", prompt_lower):
-            reply_vi = "Dạ em là Rora, trợ lý Robot Concierge thông minh của khách sạn 5 sao Aurora Grand. Rất hân hạnh được phục vụ quý khách ạ!"
-            reply_en = "I am Rora, the smart AI Concierge Robot at Aurora Grand Hotel. It is my pleasure to assist you!"
-            return (reply_en if is_en else reply_vi), lang_name, lang_code, None, None
 
         return None
 
@@ -287,6 +325,10 @@ class OllamaService:
         if lang_code == "en-US":
             prompt = (
                 "You are Rora - a smart, charming, and courteous AI Concierge Robot at the 5-star Aurora Grand Hotel.\n"
+                "CRITICAL LANGUAGE DIRECTIVE:\n"
+                "- The guest is communicating in ENGLISH. You MUST ALWAYS respond in 100% fluent, natural ENGLISH.\n"
+                "- NEVER reply in Vietnamese or any other language when the guest speaks English.\n"
+                "- Even though the hotel knowledge base and reference facts below are written in Vietnamese, you MUST translate and summarize all facts into natural English for the guest.\n\n"
                 "CONVERSATIONAL GUIDELINES:\n"
                 "1. Always communicate naturally, warmly, and politely in 2 to 3 clear, complete sentences.\n"
                 "2. Speak directly and helpfully as a professional 5-star concierge. Answer questions accurately and concisely.\n"
@@ -297,27 +339,18 @@ class OllamaService:
                 "   - Whenever the guest makes a room service or amenity request (cleaning, towels, food, repairs, luggage, taxi):\n"
                 "     + If room number is NOT known yet (not in [Room Info]): ALWAYS politely ask for their room number first.\n"
                 "     + If room number IS ALREADY known (in [Room Info]): Confirm the request with their room number and NEVER ask for their room number again during this session.\n"
+                "7. KNOWLEDGE INTEGRITY (STRICT RAG & FACTS):\n"
+                "   - All factual details regarding hotel amenities, timings, room types, and services are strictly governed by [Hotel Knowledge Base (RAG)] and Admin-configured facts.\n"
+                "   - NEVER hallucinate or invent facilities not documented in the provided knowledge base.\n"
+                "   - If an amenity or inquiry is not found in the documentation, politely advise the guest to check with the Front Desk.\n"
             )
             if hotel_facts:
                 prompt += f"\n{hotel_facts}\n"
-            else:
-                prompt += (
-                    "AURORA GRAND HOTEL AMENITIES & FACTS:\n"
-                    "- Level 1 (Ground): Main Lobby, Front Desk 24/7 (dial 0 from room telephone), and ATM.\n"
-                    "- Level 2: Culinary Floor - Aurora Restaurant & Pickup Area (breakfast buffet 6:30 AM to 10:00 AM), Main Kitchen, Warehouse, and Restrooms.\n"
-                    "- Level 3: Guest Rooms 301 to 306.\n"
-                    "- Level 4: Premium Guest Rooms 401 to 409 (Deluxe, Executive King, and President Suite 406).\n"
-                    "- Level 5: Infinity Pool (6:00 AM to 10:00 PM, free towels), Herbal Spa & Sauna (9:00 AM to 10:00 PM), and 24/7 Fitness Center / Gym.\n"
-                    "- Level 6: Rooftop Coffee, Sky Lounge Bar (4:30 PM to 1:00 AM), VIP Karaoke, and Gift Shop.\n"
-                    "- Basement B1 & B2: B1 Motorbike parking; B2 Car parking (complimentary for staying guests).\n"
-                    "- Wi-Fi: Network name 'Aurora_Guest', password 'aurora2026'.\n"
-                    "- Hours: Standard check-in from 2:00 PM, check-out before 12:00 PM noon.\n"
-                )
         else:
             prompt = (
                 "Bạn là Rora - Trợ lý Robot Concierge thông minh, lễ phép, duyên dáng và hiếu khách tại khách sạn 5 sao Aurora Grand Hotel.\n"
                 "PHONG CÁCH GIAO TIẾP VÀ TRÒ CHUYỆN TỰ NHIÊN:\n"
-                "1. Luôn xưng 'Dạ em' hoặc 'Rora' và gọi người trò chuyện là 'quý khách' hoặc 'anh/chị'.\n"
+                "1. Xưng là 'em' hoặc 'Rora' và gọi người trò chuyện là 'quý khách' hoặc 'anh/chị'. Giao tiếp tự nhiên, lịch sự, có thể mở đầu lời chào bằng 'Dạ' khi phù hợp nhưng tuyệt đối không lặp lại từ 'Dạ' ở đầu mỗi câu tiếp theo.\n"
                 "2. Trò chuyện một cách tự nhiên, gần gũi, ấm áp, lưu loát như một nhân viên lễ tân 5 sao chuyên nghiệp.\n"
                 "3. Trả lời đúng trọng tâm, súc tích trong 2 đến 3 câu văn gãy gọn, hoàn chỉnh để phát giọng đọc mượt mà và người nghe dễ nắm bắt nhất.\n"
                 "4. BẮT BUỘC dùng 100% tiếng Việt tự nhiên, chuẩn mực. Tuyệt đối không chèn từ ngoại ngữ vô nghĩa.\n"
@@ -329,24 +362,13 @@ class OllamaService:
                 "     + Nếu CHƯA BIẾT số phòng (chưa có trong [Thông tin phòng]): BẮT BUỘC Rora phải hỏi số phòng của quý khách trước (ví dụ: 'Dạ em sẽ hỗ trợ ... cho quý khách ngay ạ! Quý khách vui lòng cho em xin số phòng của mình là bao nhiêu ạ?').\n"
                 "     + Nếu ĐÃ BIẾT số phòng (đã có trong [Thông tin phòng] hoặc vừa được cung cấp): Ghi nhận yêu cầu KÈM SỐ PHÒNG của khách (ví dụ: 'Dạ Rora đã ghi nhận yêu cầu ... cho Phòng [X] rồi ạ, bộ phận chuyên trách sẽ hỗ trợ quý khách ngay!') và TUYỆT ĐỐI KHÔNG hỏi lại số phòng nữa trong suốt phiên trò chuyện.\n"
                 "   - Toàn bộ các yêu cầu dịch vụ tiếp theo trong phiên này đều tự động gắn với số phòng đã lưu đó.\n"
+                "9. NGUYÊN TẮC BẢO TOÀN THÔNG TIN (RAG VÀ FAST-PATH):\n"
+                "   - Toàn bộ thông tin về cơ sở vật chất, tiện ích, giờ hoạt động và quy định do [Cơ sở tri thức khách sạn (RAG)] và Admin quản lý.\n"
+                "   - Tuyệt đối KHÔNG tự ý suy diễn hoặc bịa đặt các dịch vụ không có trong tài liệu.\n"
+                "   - Nếu thông tin khách hỏi không có trong tài liệu, hãy lịch sự trả lời rằng Rora sẽ liên hệ nhân viên hoặc quầy lễ tân để hỗ trợ quý khách.\n"
             )
             if hotel_facts:
                 prompt += f"\n{hotel_facts}\n"
-            else:
-                prompt += (
-                    "\nTHÔNG TIN TIỆN ÍCH KHÁCH SẠN AURORA GRAND (ĐỂ TƯ VẤN CHO KHÁCH):\n"
-                    "- Tầng 1 (Trệt): Sảnh chính, Quầy Lễ tân 24/7 (từ điện thoại phòng bấm phím 0) và máy ATM rút tiền.\n"
-                    "- Tầng 2: Tầng ẩm thực - Nhà hàng Aurora & Quầy nhận món Pickup (buffet sáng từ 6 giờ 30 đến 10 giờ sáng), Khu Bếp Chính, Kho thực phẩm và Nhà vệ sinh tầng 2.\n"
-                    "- Tầng 3: Khu phòng nghỉ tiêu chuẩn từ Phòng 301 đến 309. Toàn bộ các phòng đều cùng một loại phòng nghỉ tiêu chuẩn.\n"
-                    "- Tầng 4: Khu phòng nghỉ tiêu chuẩn từ Phòng 401 đến 409. Toàn bộ các phòng đều cùng một loại phòng nghỉ tiêu chuẩn.\n"
-                    "- Tầng 5: Hồ bơi vô cực ngoài trời (mở từ 6 giờ sáng đến 22 giờ tối), Thảo Mộc Spa (9 giờ sáng đến 22 giờ tối) và Phòng Gym (mở cửa 24/7).\n"
-                    "- Tầng 6: Rooftop Coffee, Sky Lounge Bar (16 giờ 30 đến 1 giờ đêm), Phòng VIP Karaoke và Cửa hàng quà lưu niệm Gift Shop.\n"
-                    "- Tầng hầm: Hầm B1 bãi xe máy, Hầm B2 bãi đỗ xe ô tô miễn phí cho khách lưu trú.\n"
-                    "- Wi-Fi miễn phí: Tên mạng 'Aurora_Guest', mật khẩu là 'aurora2026'.\n"
-                    "- QUY TẮC CHỈ ĐƯỜNG:\n"
-                    "  + Khi khách hỏi đường đến các phòng (301-309 hoặc 401-409): Hãy trả lời ngắn gọn, súc tích chỉ đường (nêu số tầng và hướng đi Thang máy A), tuyệt đối KHÔNG đọc thêm thông tin tiện nghi hay loại phòng dư thừa.\n"
-                    "  + Khi khách hỏi đường đến các địa điểm bên ngoài khách sạn (như sân bay, chợ, bãi biển, điểm tham quan): Trả lời lịch sự hướng dẫn hoặc gợi ý khách liên hệ quầy lễ tân để hỗ trợ gọi xe, không trả lời như thể địa điểm đó nằm trong khách sạn.\n"
-                )
 
         if stored_room_number:
             prompt += f"\n[Thông tin phòng]: Quý khách ở phòng {stored_room_number}."
@@ -358,7 +380,8 @@ class OllamaService:
             prompt += "\n[Cảm xúc khách]: Khách đang rất vui vẻ, hãy phản hồi tươi vui và nhiệt tình."
 
         if rag_context:
-            prompt += f"\n[Thông tin bổ sung]:\n{rag_context}"
+            kb_label = "[Hotel Knowledge Base (Reference Facts)]" if lang_code == "en-US" else "[Cơ sở tri thức khách sạn (RAG)]"
+            prompt += f"\n{kb_label}:\n{rag_context}"
 
         return prompt
 
@@ -372,7 +395,8 @@ class OllamaService:
         stored_room_number: Optional[str] = None,
     ):
         """
-        Async Generator sinh token theo thời gian thực từ Qwen LLM qua Ollama (stream=True).
+        Async Generator sinh token theo thời gian thực từ Qwen/Groq/Gemini/Ollama (stream=True).
+        Cơ chế Cascading 3 Tầng: Groq Cloud -> Google Gemini Cloud -> Ollama Local -> Offline Factsheet.
         """
         # 0. Kiểm tra Mega Fast-Path tức thì (< 1ms)
         fast_hit = self.check_fast_path(prompt, language)
@@ -381,29 +405,19 @@ class OllamaService:
             yield reply
             return
 
-        # Ưu tiên Gemini LLM Engine nếu được kích hoạt
-        if getattr(settings, "is_gemini_active", False):
+        # Tự động truy vấn tri thức RAG từ ChromaDB nếu chưa có sẵn
+        if rag_context is None:
             try:
-                from app.services.ai.gemini_service import gemini_service
-                if gemini_service.is_configured:
-                    async for token in gemini_service.generate_response_stream(
-                        prompt=prompt,
-                        rag_context=rag_context,
-                        language=language,
-                        emotion=emotion,
-                        chat_history=chat_history,
-                        stored_room_number=stored_room_number,
-                    ):
-                        yield token
-                    return
-            except Exception as e_gemini:
-                logger.warning(f"[OllamaService] Gemini streaming error, fallback to Ollama Llama: {e_gemini}")
+                from app.services.rag.chroma import query_rag_context
+                rag_context = await query_rag_context(prompt)
+            except Exception:
+                rag_context = ""
 
         if not language or language.lower() in ["auto", ""]:
             lang_name, lang_code = self.detect_language(prompt)
         else:
             lang_name = language
-            lang_code = "en-US" if language.lower() in ["english", "en"] else "vi-VN"
+            lang_code = "en-US" if (language.lower().startswith("en") or "english" in language.lower()) else "vi-VN"
 
         system_prompt = self._build_system_prompt(
             lang_code=lang_code,
@@ -419,7 +433,55 @@ class OllamaService:
                     messages.append({"role": turn["role"], "content": turn["content"]})
         messages.append({"role": "user", "content": prompt})
 
+        provider = (getattr(settings, "LLM_PROVIDER", "") or getattr(settings, "AI_PROVIDER", "") or "groq").lower()
+
+        # =========================================================================
+        # 1. TIER 1 (Ưu tiên 1): Groq Cloud Streaming siêu tốc (< 200ms TTFT)
+        # =========================================================================
+        if provider not in ["gemini", "ollama"] and bool(settings.GROQ_API_KEY):
+            has_yielded_groq = False
+            try:
+                logger.info(f"[AI Stream Tier 1] Đang gọi Groq Cloud Stream (model: {settings.GROQ_MODEL})...")
+                async for token in self._call_groq_stream(messages, max_tokens=150):
+                    has_yielded_groq = True
+                    yield token
+                if has_yielded_groq:
+                    return
+            except Exception as e_groq:
+                logger.warning(f"[AI Stream Tier 1] Groq Stream không khả dụng ({e_groq}), tự động fallback sang Gemini Cloud...")
+                if has_yielded_groq:
+                    return
+
+        # =========================================================================
+        # 2. TIER 2 (Ưu tiên 2): Google Gemini Cloud Streaming (Fallback từ Groq)
+        # =========================================================================
+        from app.services.ai.gemini_service import gemini_service
+        if provider != "ollama" and gemini_service.is_configured:
+            has_yielded_gemini = False
+            try:
+                logger.info("[AI Stream Tier 2] Đang gọi Gemini Cloud Stream...")
+                async for token in gemini_service.generate_response_stream(
+                    prompt=prompt,
+                    rag_context=rag_context,
+                    language=language,
+                    emotion=emotion,
+                    chat_history=chat_history,
+                    stored_room_number=stored_room_number,
+                ):
+                    has_yielded_gemini = True
+                    yield token
+                if has_yielded_gemini:
+                    return
+            except Exception as e_gemini:
+                logger.warning(f"[AI Stream Tier 2] Gemini Stream không khả dụng ({e_gemini}), tự động fallback sang Ollama Local...")
+                if has_yielded_gemini:
+                    return
+
+        # =========================================================================
+        # 3. TIER 3 (Ưu tiên 3): Ollama Local Streaming (Hoạt động 100% Offline)
+        # =========================================================================
         try:
+            logger.info(f"[AI Stream Tier 3] Đang gọi Ollama Local Stream (model: {self.model})...")
             response_stream = await self._client.chat(
                 model=self.model,
                 messages=messages,
@@ -439,8 +501,9 @@ class OllamaService:
                 token = chunk.get("message", {}).get("content", "")
                 if token:
                     yield token
+            return
         except Exception as e:
-            logger.warning(f"[OllamaService StreamWarning] Ollama offline ({e}), activating Smart Offline Knowledge Fallback...")
+            logger.warning(f"[AI Stream Tier 3] Ollama offline ({e}), kích hoạt Smart Offline Knowledge Fallback...")
             fallback = self.generate_offline_fallback_response(
                 prompt=prompt,
                 lang_code=lang_code,
@@ -472,33 +535,26 @@ class OllamaService:
     ) -> Tuple[str, str, str]:
         """
         Sinh câu trả lời thoại cho Concierge Robot dựa trên câu hỏi của khách và lịch sử phiên.
+        Cơ chế Cascading 3 Tầng: Groq Cloud -> Google Gemini Cloud -> Ollama Local -> Offline Factsheet.
         """
-        # 0. Kiểm tra Fast-Path trước
+        # 0. Kiểm tra Fast-Path trước (< 1ms)
         fast_hit = self.check_fast_path(prompt, language)
         if fast_hit:
             return fast_hit
 
-        # Ưu tiên Gemini LLM Engine nếu được kích hoạt
-        if getattr(settings, "is_gemini_active", False):
+        # Tự động truy vấn tri thức RAG từ ChromaDB nếu chưa có sẵn
+        if rag_context is None:
             try:
-                from app.services.ai.gemini_service import gemini_service
-                if gemini_service.is_configured:
-                    return await gemini_service.generate_response(
-                        prompt=prompt,
-                        rag_context=rag_context,
-                        language=language,
-                        emotion=emotion,
-                        chat_history=chat_history,
-                        stored_room_number=stored_room_number,
-                    )
-            except Exception as e_gemini:
-                logger.warning(f"[OllamaService] Gemini generate error, fallback to Ollama Llama: {e_gemini}")
+                from app.services.rag.chroma import query_rag_context
+                rag_context = await query_rag_context(prompt)
+            except Exception:
+                rag_context = ""
 
         if not language or language.lower() in ["auto", ""]:
             lang_name, lang_code = self.detect_language(prompt)
         else:
             lang_name = language
-            lang_code = "en-US" if language.lower() in ["english", "en"] else "vi-VN"
+            lang_code = "en-US" if (language.lower().startswith("en") or "english" in language.lower()) else "vi-VN"
 
         system_prompt = self._build_system_prompt(
             lang_code=lang_code,
@@ -514,22 +570,54 @@ class OllamaService:
                     messages.append({"role": turn["role"], "content": turn["content"]})
         messages.append({"role": "user", "content": prompt})
 
-        # 1. Chế độ Test máy yếu đặc thù qua Groq Cloud (chỉ kích hoạt khi AI_PROVIDER='groq')
-        use_groq = (settings.AI_PROVIDER == "groq" and bool(settings.GROQ_API_KEY))
-        if use_groq:
-            logger.info(f"[OllamaService -> Groq Cloud] Chế độ máy yếu: gọi Groq model {settings.GROQ_MODEL}")
-            groq_reply = await self._call_groq(messages, json_mode=False, max_tokens=60)
-            if groq_reply:
-                reply = self.format_and_clean_reply(groq_reply.strip(), lang_code)
-                final_lang_name, final_lang_code = self.detect_language(reply)
-                return reply, final_lang_name, final_lang_code
-            else:
-                logger.warning("[OllamaService] Groq Cloud API không phản hồi, trả về phản hồi dự phòng nhanh.")
-                fallback = "Xin lỗi quý khách, đường truyền tới AI Server tạm thời gián đoạn." if lang_code == "vi-VN" else "Sorry, connection to AI Server is temporarily unavailable."
-                return fallback, lang_name, lang_code
+        provider = (getattr(settings, "LLM_PROVIDER", "") or getattr(settings, "AI_PROVIDER", "") or "groq").lower()
 
-        # 2. Mặc định cho toàn bộ dự án: Chạy Ollama cục bộ nguyên bản
+        # =========================================================================
+        # 1. TIER 1 (Ưu tiên 1): Groq Cloud (< 300ms)
+        # =========================================================================
+        if provider not in ["gemini", "ollama"] and bool(settings.GROQ_API_KEY):
+            try:
+                logger.info(f"[AI Tier 1] Gửi Groq Cloud (model: {settings.GROQ_MODEL})...")
+                groq_reply = await self._call_groq(messages, json_mode=False, max_tokens=150)
+                if groq_reply and groq_reply.strip():
+                    reply = self.format_and_clean_reply(groq_reply.strip(), lang_code)
+                    if lang_code == "en-US" and not re.search(r"[àáảãạâầấẩẫậăằắẳẵặèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ]", reply, re.IGNORECASE):
+                        final_lang_name, final_lang_code = "English", "en-US"
+                    else:
+                        final_lang_name, final_lang_code = self.detect_language(reply)
+                    logger.info("[AI Tier 1] Thành công từ Groq Cloud!")
+                    return reply, final_lang_name, final_lang_code
+                else:
+                    logger.warning("[AI Tier 1] Groq Cloud phản hồi rỗng, tự động fallback sang Gemini Cloud...")
+            except Exception as e_groq:
+                logger.warning(f"[AI Tier 1] Groq Cloud không khả dụng ({e_groq}), tự động fallback sang Gemini Cloud...")
+
+        # =========================================================================
+        # 2. TIER 2 (Ưu tiên 2): Google Gemini Cloud (Fallback từ Groq)
+        # =========================================================================
+        from app.services.ai.gemini_service import gemini_service
+        if provider != "ollama" and gemini_service.is_configured:
+            try:
+                logger.info("[AI Tier 2] Gửi Gemini Cloud (Fallback từ Groq)...")
+                gemini_res = await gemini_service.generate_response(
+                    prompt=prompt,
+                    rag_context=rag_context,
+                    language=language,
+                    emotion=emotion,
+                    chat_history=chat_history,
+                    stored_room_number=stored_room_number,
+                )
+                if gemini_res and gemini_res[0]:
+                    logger.info("[AI Tier 2] Thành công từ Gemini Cloud!")
+                    return gemini_res
+            except Exception as e_gemini:
+                logger.warning(f"[AI Tier 2] Gemini Cloud không khả dụng ({e_gemini}), tự động fallback sang Ollama Local...")
+
+        # =========================================================================
+        # 3. TIER 3 (Ưu tiên 3): Ollama Local (Hoạt động 100% Offline)
+        # =========================================================================
         try:
+            logger.info(f"[AI Tier 3] Gửi Ollama Local (model: {self.model})...")
             response = await asyncio.wait_for(
                 self._client.chat(
                     model=self.model,
@@ -544,33 +632,31 @@ class OllamaService:
                     },
                     keep_alive="30m"
                 ),
-                timeout=25.0
+                timeout=4.0
             )
 
             raw_reply = response["message"]["content"].strip()
             reply = self.format_and_clean_reply(raw_reply, lang_code)
 
-            final_lang_name, final_lang_code = self.detect_language(reply)
+            if lang_code == "en-US" and not re.search(r"[àáảãạâầấẩẫậăằắẳẵặèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ]", reply, re.IGNORECASE):
+                final_lang_name, final_lang_code = "English", "en-US"
+            else:
+                final_lang_name, final_lang_code = self.detect_language(reply)
+            logger.info("[AI Tier 3] Thành công từ Ollama Local!")
             return reply, final_lang_name, final_lang_code
-        except Exception as e:
-            logger.warning(f"[OllamaService Warning] Ollama offline ({e}), activating Smart Offline Knowledge Fallback...")
+        except Exception as e_ollama:
+            logger.warning(f"[AI Tier 3] Ollama Local offline ({e_ollama}), kích hoạt Smart Offline Knowledge Fallback...")
 
-            # Fallback an toàn sang Groq nếu có API key (phòng ngừa máy yếu hết RAM không bật được Ollama)
-            if settings.GROQ_API_KEY:
-                logger.info("[OllamaService Fallback] Tự động chuyển tiếp sang Groq Cloud...")
-                groq_reply = await self._call_groq(messages, json_mode=False, max_tokens=60)
-                if groq_reply:
-                    reply = self.format_and_clean_reply(groq_reply.strip(), lang_code)
-                    final_lang_name, final_lang_code = self.detect_language(reply)
-                    return reply, final_lang_name, final_lang_code
-
-            fallback = self.generate_offline_fallback_response(
-                prompt=prompt,
-                lang_code=lang_code,
-                rag_context=rag_context,
-                stored_room_number=stored_room_number,
-            )
-            return fallback, lang_name, lang_code
+        # =========================================================================
+        # 4. TIER 4: Smart Offline Knowledge Fallback khi toàn bộ AI models gián đoạn
+        # =========================================================================
+        fallback = self.generate_offline_fallback_response(
+            prompt=prompt,
+            lang_code=lang_code,
+            rag_context=rag_context,
+            stored_room_number=stored_room_number,
+        )
+        return fallback, lang_name, lang_code
 
     def generate_offline_fallback_response(
         self,
@@ -586,97 +672,34 @@ class OllamaService:
         p_lower = prompt.lower().strip()
         is_en = lang_code == "en-US"
 
-        # 1. Wifi & Mật khẩu
-        if any(k in p_lower for k in ["wifi", "wi-fi", "mật khẩu", "mat khau", "pass wifi", "password", "mạng"]):
-            return (
-                "The complimentary Wi-Fi is 'Aurora_Guest' with password 'aurora2026'."
-                if is_en else
-                "Dạ mạng Wi-Fi miễn phí của khách sạn là 'Aurora_Guest' và mật khẩu là 'aurora2026' quý khách nhé."
-            )
-
-        # 2. Bữa sáng, Nhà hàng, Ăn uống
-        if any(k in p_lower for k in ["ăn sáng", "an sang", "bữa sáng", "bua sang", "buffet", "nhà hàng", "nha hang", "breakfast", "restaurant"]):
-            return (
-                "The Aurora Restaurant is on Level 2, serving breakfast buffet from 6:30 AM to 10:00 AM daily."
-                if is_en else
-                "Dạ Nhà hàng Aurora nằm tại Tầng 2, phục vụ buffet sáng từ 6 giờ 30 đến 10 giờ sáng hàng ngày ạ."
-            )
-
-        # 3. Hồ bơi / Bể bơi
-        if any(k in p_lower for k in ["hồ bơi", "ho boi", "bể bơi", "be boi", "bơi", "pool", "swimming"]):
-            return (
-                "The outdoor infinity pool is on Level 5, open from 6:00 AM to 10:00 PM with complimentary towels."
-                if is_en else
-                "Dạ hồ bơi vô cực ngoài trời nằm ở Tầng 5, mở cửa từ 6 giờ sáng đến 22 giờ tối và có sẵn khăn tắm miễn phí ạ."
-            )
-
-        # 4. Phòng Gym / Thể hình
-        if any(k in p_lower for k in ["gym", "fitness", "thể hình", "the hinh", "tập gym"]):
-            return (
-                "The Fitness Center is on Level 5, open 24/7 complimentary for staying guests."
-                if is_en else
-                "Dạ phòng Gym và trung tâm thể hình nằm ở Tầng 5, mở cửa phục vụ 24 trên 7 miễn phí cho quý khách ạ."
-            )
-
-        # 5. Spa / Massage / Xông hơi
-        if any(k in p_lower for k in ["spa", "massage", "xông hơi", "xong hoi", "sauna"]):
-            return (
-                "Herbal Spa & Sauna is located on Level 5, open from 9:00 AM to 10:00 PM."
-                if is_en else
-                "Dạ Thảo Mộc Spa nằm tại Tầng 5, mở cửa phục vụ quý khách từ 9 giờ sáng đến 22 giờ tối ạ."
-            )
-
-        # 6. Bar / Rooftop / Cafe / Karaoke
-        if any(k in p_lower for k in ["rooftop", "bar", "cafe", "cà phê", "sky lounge", "karaoke"]):
-            return (
-                "Sky Lounge Bar and Rooftop Coffee are on Level 6, open from 4:30 PM to 1:00 AM."
-                if is_en else
-                "Dạ Sky Lounge Bar và Rooftop Coffee nằm ở Tầng 6, mở cửa phục vụ từ 16 giờ 30 đến 1 giờ sáng ạ."
-            )
-
-        # 7. Nhận phòng / Trả phòng
-        if any(k in p_lower for k in ["nhận phòng", "nhan phong", "trả phòng", "tra phong", "check in", "check out", "check-in", "check-out"]):
-            return (
-                "Standard check-in time is from 2:00 PM and check-out is before 12:00 PM noon."
-                if is_en else
-                "Dạ giờ nhận phòng tiêu chuẩn là từ 14 giờ chiều và giờ trả phòng là trước 12 giờ trưa quý khách nhé."
-            )
-
-        # 8. Bãi đỗ xe
-        if any(k in p_lower for k in ["bãi xe", "bai xe", "đỗ xe", "do xe", "gửi xe", "gui xe", "parking"]):
-            return (
-                "Motorbike parking is at Basement B1 and car parking is at Basement B2, both complimentary for staying guests."
-                if is_en else
-                "Dạ bãi xe máy ở Hầm B1 và bãi ô tô ở Hầm B2 của khách sạn hoàn toàn miễn phí cho khách lưu trú ạ."
-            )
-
-        # 9. Lễ tân / Giúp đỡ
-        if any(k in p_lower for k in ["lễ tân", "le tan", "tiếp tân", "front desk", "reception"]):
-            return (
-                "The Front Desk is located on Level 1, available 24/7. You can also dial 0 from your room phone."
-                if is_en else
-                "Dạ Quầy Lễ tân nằm tại Tầng 1 sảnh chính, phục vụ 24 trên 7. Quý khách cũng có thể bấm phím 0 từ phòng để được hỗ trợ ạ."
-            )
-
-        # 10. Tìm phòng 3xx hoặc 4xx
-        room_match = re.search(r'\b(?:phòng|p\.?|phong)?\s*([34]0[1-9])\b', p_lower)
-        if room_match:
-            r_num = room_match.group(1)
-            floor_num = r_num[0]
-            return (
-                f"Room {r_num} is on Level {floor_num}. Please take Elevator A on the left to reach your floor."
-                if is_en else
-                f"Dạ Phòng {r_num} nằm ở Tầng {floor_num} ạ. Quý khách vui lòng đi thẳng tới Thang máy A phía bên trái để lên tầng nhé."
-            )
-
-        # 11. Nếu có rag_context từ ChromaDB, dùng ngay
+        # 0. Ưu tiên dữ liệu từ RAG (ChromaDB / Knowledge Vault) nếu caller đã truyền sẵn
         if rag_context and len(rag_context.strip()) > 20:
             clean_ctx = re.sub(r'[*#_`]', '', rag_context).strip()
-            first_sentence = clean_ctx.split('.')[0].strip()
-            if len(first_sentence) > 15:
-                return f"Dạ theo thông tin khách sạn: {first_sentence} ạ." if not is_en else f"According to hotel info: {first_sentence}."
+            sentences = [s.strip() for s in clean_ctx.split('.') if len(s.strip()) > 15]
+            if sentences:
+                return f"Dạ theo thông tin khách sạn: {sentences[0]} ạ." if not is_en else f"According to hotel info: {sentences[0]}."
 
-        # 12. Fallback nhã nhặn, không báo lỗi máy chủ
+        # 1. Ưu tiên Fast-Path động do Admin quản lý từ DB
+        fast_hit = scenario_service.match_fast_path(prompt, lang_code)
+        if fast_hit:
+            return fast_hit[0]
+
+        # 2. Tự động truy vấn RAG nếu chưa có rag_context
+        try:
+            from app.services.rag.chroma import get_concierge_collection
+            col = get_concierge_collection("concierge_kb")
+            res = col.query(query_texts=[prompt], n_results=1)
+            if res and res.get("documents") and len(res["documents"]) > 0:
+                docs = res["documents"][0]
+                if docs and len(docs[0].strip()) > 15:
+                    clean_ctx = re.sub(r'[*#_`]', '', docs[0].strip()).strip()
+                    sentences = [s.strip() for s in clean_ctx.split('.') if len(s.strip()) > 15]
+                    if sentences:
+                        return f"Dạ theo thông tin khách sạn: {sentences[0]} ạ." if not is_en else f"According to hotel info: {sentences[0]}."
+        except Exception as e_rag:
+            logger.debug(f"[Offline RAG Query Error]: {e_rag}")
+
+        # 1. Fallback nhã nhặn khi thông tin không có trong cả Fast-Path lẫn RAG
         return (
             "I have noted your request. Please contact the Front Desk at Level 1 or dial 0 from your room phone for immediate assistance!"
             if is_en else
@@ -685,97 +708,72 @@ class OllamaService:
 
     async def extract_intent(self, user_speech: str) -> Dict[str, Any]:
         """
-        Bóc tách Ý định (Intent) & Thực thể (Entities) từ câu nói của khách hàng ra JSON chuẩn.
+        Phân tích câu nói của khách để bóc tách ý định (action), số phòng (room_number), và yêu cầu/món đồ (items).
+        Cascading Fallback: Groq Cloud -> Gemini Cloud -> Ollama Local -> Heuristic Keywords.
         """
-        # Làm sạch wake-up word 'Rora' nếu có ở đầu câu nói
-        user_speech = re.sub(r'^(?:hey rora|chào rora|chao rora|rora ơi|rora oi|hello rora|hi rora|rora)[\,\.\!\s]*', '', user_speech, flags=re.IGNORECASE).strip() or user_speech
+        lower_speech = user_speech.lower().strip()
+        extracted_room_regex = None
+        match_room = re.search(r'(?:phòng|room|p\.)\s*([0-9]{3,4})', lower_speech)
+        if match_room:
+            extracted_room_regex = match_room.group(1)
 
-        # Bóc tách nhanh số phòng trực tiếp (Ví dụ: "phòng 502", "p.304", "502", "tôi ở 402", "402 ạ")
-        from app.services.ai.session_manager import extract_room_number
-        extracted_room_regex = extract_room_number(user_speech, is_answering_room=True)
+        clean_items = re.sub(r'(?:phòng|room|p\.)\s*[0-9]{3,4}', '', user_speech, flags=re.IGNORECASE).strip()
 
-        # Fast-Path Keyword Check (Nếu khớp từ khóa dịch vụ rõ ràng -> Trả về luôn siêu tốc < 1ms)
-        lower_speech = user_speech.lower()
-        fast_action = None
-        if any(k in lower_speech for k in ["khăn", "khan", "tắm", "tam", "dọn phòng", "don phong", "gối", "goi", "chăn", "chan", "nệm", "nem", "towel", "clean"]):
-            fast_action = "housekeeping"
-        elif any(k in lower_speech for k in ["cơm", "com", "nước", "nuoc", "ăn", "an", "uống", "uong", "đồ ăn", "do an", "trà", "tra", "cà phê", "ca phe", "pizza", "phở", "pho", "bánh", "banh", "food", "drink"]):
-            fast_action = "room_service"
-        elif any(k in lower_speech for k in ["hành lý", "hanh ly", "vali", "túi", "tui", "chuyển phòng", "chuyen phong", "mang đồ", "mang do", "luggage", "bag"]):
-            fast_action = "bellman"
-        elif any(k in lower_speech for k in ["hỏng", "hong", "sửa", "sua", "điều hòa", "dieu hoa", "bóng đèn", "bong den", "nước rò", "nuoc ro", "máy lạnh", "may lanh", "tủ lạnh", "tu lanh", "fix", "repair"]):
-            fast_action = "maintenance"
-        elif any(k in lower_speech for k in ["đặt bàn", "dat ban", "đặt món", "dat mon", "bàn ăn", "ban an", "nhà hàng", "nha hang", "table", "restaurant"]):
-            fast_action = "restaurant"
-        elif any(k in lower_speech for k in ["taxi", "đặt xe", "dat xe", "gọi xe", "goi xe", "sân bay", "san bay", "cab", "ride"]):
-            fast_action = "taxi"
-        elif any(k in lower_speech for k in ["concierge", "gặp người", "gap nguoi", "nhân viên hỗ trợ", "live call", "video call", "tổng đài", "tong dai", "trợ giúp trực tiếp"]):
-            fast_action = "concierge"
-        elif any(k in lower_speech for k in ["lễ tân", "le tan", "check out", "checkout", "check in", "checkin", "đổi phòng", "doi phong", "trả phòng", "tra phong", "front desk", "reception"]):
-            fast_action = "reception"
+        SERVICE_KEYWORDS = {
+            "housekeeping": ["khăn", "dọn", "gối", "chăn", "nệm", "dọn phòng", "towel", "clean", "pillow", "blanket", "housekeeping"],
+            "maintenance": ["hỏng", "sửa", "hư", "máy lạnh", "điều hòa", "bóng đèn", "vòi nước", "kẹt", "tivi", "remote", "broken", "repair", "ac", "air conditioner"],
+            "bellman": ["hành lý", "vali", "xách đồ", "chở đồ", "xe đẩy", "luggage", "baggage", "bellman"],
+            "room_service": ["đồ ăn", "nước uống", "thức ăn", "gọi món", "menu", "cơm", "phở", "bánh mì", "nước suối", "food", "drink", "room service"],
+        }
 
-        if fast_action:
-            clean_items = user_speech
-            if extracted_room_regex:
-                clean_items = re.sub(r'^(?:tôi ở|ở|phòng|p\.|p|phong)?\s*' + re.escape(extracted_room_regex) + r'\s*(?:cần|muốn|cho|lấy|gửi)?\s*', '', clean_items, flags=re.IGNORECASE).strip()
-            return {
-                "action": fast_action,
-                "room_number": extracted_room_regex,
-                "items": clean_items or user_speech,
-            }
-
-        # Fast-Path: Nếu chỉ là chào hỏi, cảm ơn, tạm biệt -> Trả về unknown tức thì, không cần gọi Ollama LLM
-        if any(re.search(p, lower_speech) for p in [r"^(xin chào|chào|hi|hello|helo|alo)\b", r"\b(cảm ơn|thanks|thank you)\b", r"\b(tạm biệt|bye|goodbye)\b", r"\b(bạn là ai|mày là ai|bạn tên gì)\b"]):
-            return {
-                "action": "unknown",
-                "room_number": extracted_room_regex,
-                "items": None,
-            }
-
-        # Ưu tiên Gemini LLM Engine nếu được kích hoạt
-        if getattr(settings, "is_gemini_active", False):
-            try:
-                from app.services.ai.gemini_service import gemini_service
-                if gemini_service.is_configured:
-                    return await gemini_service.extract_intent(user_speech=user_speech)
-            except Exception as e_gemini:
-                logger.warning(f"[OllamaService] Gemini extract_intent error, fallback to Ollama Llama: {e_gemini}")
-
-        system_prompt = (
-            "Bạn là hệ thống trích xuất dữ liệu tự động cho dịch vụ khách sạn. "
-            "Hãy phân tích câu nói của khách và trả về kết quả dưới định dạng JSON duy nhất với các field sau:\n"
-            "- action: một trong các giá trị ['housekeeping', 'room_service', 'bellman', 'maintenance', 'taxi', 'concierge', 'reception', 'restaurant', 'provide_room_number', 'faq', 'unknown']\n"
-            "- room_number: số phòng nếu được nhắc tới (VD: '302', '502'), nếu không có để null\n"
-            "- items: chi tiết món đồ/món ăn/dịch vụ yêu cầu (VD: '2 cái khăn tắm', '1 dĩa cơm chiên'), nếu không có để null\n\n"
-            "Chỉ trả về JSON thuần túy, không kèm bất kỳ câu giải thích nào."
-        )
+        intent_prompt = f"""Bạn là bộ định tuyến AI của khách sạn Aurora Grand.
+Hãy phân tích yêu cầu của khách: "{user_speech}"
+Và trích xuất ra JSON duy nhất theo schema:
+{{
+  "action": "housekeeping" | "maintenance" | "bellman" | "room_service" | "provide_room_number" | "unknown",
+  "room_number": "{extracted_room_regex if extracted_room_regex else ''}",
+  "items": "mô tả đồ vật hoặc yêu cầu"
+}}
+Chỉ trả về JSON thuần túy, không có giải thích, không markdown backticks."""
 
         intent_messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_speech}
+            {"role": "system", "content": "You are an AI intent classifier. Output strictly valid JSON."},
+            {"role": "user", "content": intent_prompt}
         ]
 
-        # 1. Chế độ Test máy yếu đặc thù qua Groq Cloud
-        use_groq = (settings.AI_PROVIDER == "groq" and bool(settings.GROQ_API_KEY))
-        if use_groq:
-            groq_content = await self._call_groq(intent_messages, json_mode=True, max_tokens=60)
-            if groq_content:
-                try:
+        provider = (getattr(settings, "LLM_PROVIDER", "") or getattr(settings, "AI_PROVIDER", "") or "groq").lower()
+
+        # =========================================================================
+        # 1. TIER 1 (Ưu tiên 1): Groq Cloud bóc tách intent JSON (< 200ms)
+        # =========================================================================
+        if provider not in ["gemini", "ollama"] and bool(settings.GROQ_API_KEY):
+            try:
+                groq_content = await self._call_groq(intent_messages, json_mode=True, max_tokens=60)
+                if groq_content:
                     parsed_json = json.loads(groq_content.strip())
                     if extracted_room_regex and not parsed_json.get("room_number"):
                         parsed_json["room_number"] = extracted_room_regex
+                    logger.info(f"[Intent Router Tier 1] Groq phân tích thành công: action={parsed_json.get('action')}")
                     return parsed_json
-                except Exception as je:
-                    logger.warning(f"[Groq JSON parse warning]: {je}")
-            else:
-                logger.warning("[OllamaService] Groq extract_intent không phản hồi, fallback ngay lập tức.")
-                return {
-                    "action": "unknown",
-                    "room_number": extracted_room_regex,
-                    "items": user_speech,
-                }
+            except Exception as e_groq:
+                logger.warning(f"[Intent Router Tier 1] Groq lỗi ({e_groq}), tự động fallback sang Gemini Cloud...")
 
-        # 2. Mặc định cho toàn bộ dự án: Chạy Ollama cục bộ nguyên bản
+        # =========================================================================
+        # 2. TIER 2 (Ưu tiên 2): Google Gemini Cloud bóc tách intent (Fallback từ Groq)
+        # =========================================================================
+        from app.services.ai.gemini_service import gemini_service
+        if provider != "ollama" and gemini_service.is_configured:
+            try:
+                parsed_gemini = await gemini_service.extract_intent(user_speech=user_speech)
+                if parsed_gemini and parsed_gemini.get("action") not in ["unknown", None]:
+                    logger.info(f"[Intent Router Tier 2] Gemini phân tích thành công: action={parsed_gemini.get('action')}")
+                    return parsed_gemini
+            except Exception as e_gemini:
+                logger.warning(f"[Intent Router Tier 2] Gemini lỗi ({e_gemini}), tự động fallback sang Ollama Local...")
+
+        # =========================================================================
+        # 3. TIER 3 (Ưu tiên 3): Ollama Local bóc tách intent (Offline)
+        # =========================================================================
         try:
             response = await asyncio.wait_for(
                 self._client.chat(
@@ -790,58 +788,36 @@ class OllamaService:
                     },
                     keep_alive=-1
                 ),
-                timeout=20.0
+                timeout=15.0
             )
             content = response["message"]["content"].strip()
             parsed_json = json.loads(content)
-            
+
             if extracted_room_regex and not parsed_json.get("room_number"):
                 parsed_json["room_number"] = extracted_room_regex
 
+            logger.info(f"[Intent Router Tier 3] Ollama phân tích thành công: action={parsed_json.get('action')}")
             return parsed_json
-        except Exception as e:
-            err_msg = repr(e) if not str(e) else str(e)
-            logger.warning(f"[OllamaService Warning] Lỗi Ollama khi bóc tách intent: {err_msg}")
-            
-            # Fallback an toàn sang Groq nếu có API key
-            if settings.GROQ_API_KEY:
-                groq_content = await self._call_groq(intent_messages, json_mode=True, max_tokens=60)
-                if groq_content:
-                    try:
-                        parsed_json = json.loads(groq_content.strip())
-                        if extracted_room_regex and not parsed_json.get("room_number"):
-                            parsed_json["room_number"] = extracted_room_regex
-                        return parsed_json
-                    except Exception:
-                        pass
+        except Exception as e_ollama:
+            err_msg = repr(e_ollama) if not str(e_ollama) else str(e_ollama)
+            logger.warning(f"[Intent Router Tier 3] Ollama Local offline ({err_msg}), fallback sang Heuristic Keyword...")
 
-            # Keyword-based Intent Fallback khi LLM offline/timeout
-            fallback_action = "unknown"
-            lower_speech = user_speech.lower()
-            if any(k in lower_speech for k in ["khăn", "tắm", "dọn phòng", "gối", "chăn", "nệm", "dọn", "towel", "clean"]):
-                fallback_action = "housekeeping"
-            elif any(k in lower_speech for k in ["cơm", "nước", "ăn", "uống", "đồ ăn", "trà", "cà phê", "pizza", "phở", "bánh", "food", "drink"]):
-                fallback_action = "room_service"
-            elif any(k in lower_speech for k in ["hành lý", "vali", "túi", "chuyển phòng", "mang đồ", "luggage", "bag"]):
-                fallback_action = "bellman"
-            elif any(k in lower_speech for k in ["hỏng", "sửa", "điều hòa", "bóng đèn", "nước rò", "máy lạnh", "tủ lạnh", "fix", "repair"]):
-                fallback_action = "maintenance"
-            elif any(k in lower_speech for k in ["đặt bàn", "đặt món trước", "bàn ăn", "nhà hàng", "table", "restaurant"]):
-                fallback_action = "restaurant"
-            elif any(k in lower_speech for k in ["taxi", "đặt xe", "gọi xe", "sân bay", "cab", "ride"]):
-                fallback_action = "taxi"
-            elif any(k in lower_speech for k in ["concierge", "gặp người", "nhân viên hỗ trợ", "live call", "video call", "tổng đài"]):
-                fallback_action = "concierge"
-            elif any(k in lower_speech for k in ["lễ tân", "check out", "check in", "đổi phòng", "trả phòng", "front desk", "reception"]):
-                fallback_action = "reception"
-            elif extracted_room_regex:
-                fallback_action = "provide_room_number"
+        # =========================================================================
+        # 4. TIER 4 (Fallback cuối cùng): Heuristic Keywords khi toàn bộ LLM offline
+        # =========================================================================
+        fallback_action = "unknown"
+        for act, kws in SERVICE_KEYWORDS.items():
+            if any(k in lower_speech for k in kws):
+                fallback_action = act
+                break
+        if fallback_action == "unknown" and extracted_room_regex:
+            fallback_action = "provide_room_number"
 
-            return {
-                "action": fallback_action,
-                "room_number": extracted_room_regex,
-                "items": user_speech,
-            }
+        return {
+            "action": fallback_action,
+            "room_number": extracted_room_regex,
+            "items": clean_items or user_speech,
+        }
 
     async def get_embedding(self, text: str) -> List[float]:
         """
@@ -849,7 +825,7 @@ class OllamaService:
         """
         try:
             response = await self._client.embeddings(
-                model=self.embed_model,
+                model=self.embed_model or 'bge-m3',
                 prompt=text
             )
             return response["embedding"]

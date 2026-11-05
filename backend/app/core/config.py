@@ -1,3 +1,5 @@
+import os
+from pathlib import Path
 from typing import Optional
 from urllib.parse import quote_plus
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -21,13 +23,13 @@ class Settings(BaseSettings):
 
 
     # LLM Engine Configuration ('gemini' or 'ollama')
-    LLM_PROVIDER: str = "ollama"
+    LLM_PROVIDER: str = "groq"
     GEMINI_API_KEY: Optional[str] = None
     GEMINI_MODEL: str = "gemini-2.5-flash"
 
     # Ollama Configuration (Llama / Qwen local)
     # Ollama Configuration (Default for all team members)
-    AI_PROVIDER: str = "ollama"  # Options: 'ollama' (default local) | 'groq' (cloud fallback/low-spec test)
+    AI_PROVIDER: str = "groq"  # Options: 'ollama' (default local) | 'groq' (cloud fallback/low-spec test)
     OLLAMA_HOST: str = "http://127.0.0.1:11434"
     OLLAMA_MODEL: str = "llama3.2:3b"
     OLLAMA_EMBED_MODEL: Optional[str] = None
@@ -61,6 +63,11 @@ class Settings(BaseSettings):
     CLOUDINARY_URL: Optional[str] = None
     CLOUDINARY_FOLDER: str = "hcrobot/call_recordings"
 
+    # Redis Cloud Cache Configuration
+    REDIS_URL: Optional[str] = None
+    ENABLE_REDIS: bool = True
+    REDIS_CACHE_TTL: int = 86400  # Default 24 hours
+
     model_config = SettingsConfigDict(
         env_file=(".env", "backend/.env"), 
         env_file_encoding="utf-8", 
@@ -73,8 +80,15 @@ class Settings(BaseSettings):
         return self.LLM_PROVIDER.lower() == "gemini" and bool(self.GEMINI_API_KEY)
 
     @property
+    def is_groq_active(self) -> bool:
+        """Kiểm tra xem Groq Cloud có đang được cấu hình API key hay không."""
+        return bool(self.GROQ_API_KEY)
+
+    @property
     def active_llm_model(self) -> str:
-        """Trả về tên model đang kích hoạt thực tế (Gemini hoặc Ollama Llama)."""
+        """Trả về tên model đang ưu tiên thực tế (Groq -> Gemini -> Ollama)."""
+        if self.GROQ_API_KEY:
+            return self.GROQ_MODEL
         if self.is_gemini_active:
             return self.GEMINI_MODEL
         return self.OLLAMA_MODEL
@@ -93,5 +107,28 @@ class Settings(BaseSettings):
         encoded_password = quote_plus(self.POSTGRES_PASSWORD)
         return f"postgresql+asyncpg://{self.POSTGRES_USER}:{encoded_password}@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
 
+
+
+    @property
+    def resolved_chroma_dir(self) -> str:
+        """Trả về đường dẫn tuyệt đối ổn định đến thư mục ChromaDB."""
+        path = self.CHROMA_PERSIST_DIR
+        if not os.path.isabs(path):
+            backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            candidate = os.path.join(backend_dir, path.lstrip("./\\"))
+            if os.path.exists(candidate) or not os.path.exists(os.path.abspath(path)):
+                return os.path.abspath(candidate)
+        return os.path.abspath(path)
+
+    @property
+    def resolved_obsidian_vault_dir(self) -> str:
+        """Trả về đường dẫn tuyệt đối ổn định đến thư mục Obsidian Vault."""
+        path = self.OBSIDIAN_VAULT_DIR
+        if not os.path.isabs(path):
+            backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            candidate = os.path.join(backend_dir, path.lstrip("./\\"))
+            if os.path.exists(candidate) or not os.path.exists(os.path.abspath(path)):
+                return os.path.abspath(candidate)
+        return os.path.abspath(path)
 
 settings = Settings()

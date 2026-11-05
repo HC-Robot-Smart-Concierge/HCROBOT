@@ -1,3 +1,5 @@
+import { useStaffText, staffDepartmentLabel } from '../../context/StaffLanguage';
+import { StaffPageHeader } from '../../components/dashboard/RoomServiceFrame';
 import React, { useState, useEffect } from 'react';
 import {
   Bell,
@@ -11,7 +13,7 @@ import {
   Wrench,
   RefreshCw,
   Inbox,
-  CheckCircle2,
+  Search,
 } from 'lucide-react';
 import { Pagination } from '../../components/common/Pagination';
 import { useNotifications } from '../../context/NotificationContext';
@@ -25,6 +27,7 @@ export const NotificationsPage = ({
   onMarkAllRead: propMarkAllRead = null,
   onRefresh: propRefresh = null,
 }) => {
+  const st = useStaffText();
   const { currentUser: authUser } = useAuth();
   const notifCtx = useNotifications();
 
@@ -38,6 +41,7 @@ export const NotificationsPage = ({
   const [filter, setFilter] = useState('All'); // 'All' | 'Unread' | 'Robot' | 'Warning'
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const pageSize = 10;
 
   const userDept = currentUser?.department || 'Staff';
@@ -52,27 +56,37 @@ export const NotificationsPage = ({
     setCurrentPage(1);
   }, [filter, searchQuery]);
 
+  const handleRefreshClick = async () => {
+    setIsRefreshing(true);
+    try {
+      await onRefresh();
+      onNotify(st("Notifications refreshed."));
+    } finally {
+      setTimeout(() => setIsRefreshing(false), 500);
+    }
+  };
+
   const getNotifIcon = (notif) => {
     const type = (notif.type || notif.request_type || '').toLowerCase();
     if (type.includes('urgent') || type.includes('warning')) {
-      return { Icon: AlertTriangle, color: 'bg-red-100 text-red-600' };
+      return { Icon: AlertTriangle, color: 'bg-red-50 text-red-600 border border-red-100' };
     }
     if (type.includes('robot')) {
-      return { Icon: Bot, color: 'bg-sky-100 text-sky-600' };
+      return { Icon: Bot, color: 'bg-sky-50 text-sky-600 border border-sky-100' };
     }
     if (type.includes('room_service') || type.includes('f&b')) {
-      return { Icon: CookingPot, color: 'bg-amber-100 text-amber-700' };
+      return { Icon: CookingPot, color: 'bg-amber-50 text-amber-600 border border-amber-100' };
     }
     if (type.includes('bell')) {
-      return { Icon: Briefcase, color: 'bg-stone-100 text-stone-700' };
+      return { Icon: Briefcase, color: 'bg-stone-100 text-zinc-700 border border-stone-200' };
     }
     if (type.includes('maint')) {
-      return { Icon: Wrench, color: 'bg-orange-100 text-orange-700' };
+      return { Icon: Wrench, color: 'bg-orange-50 text-orange-600 border border-orange-100' };
     }
     if (type.includes('directive')) {
-      return { Icon: ShieldAlert, color: 'bg-purple-100 text-purple-700' };
+      return { Icon: ShieldAlert, color: 'bg-purple-50 text-purple-600 border border-purple-100' };
     }
-    return { Icon: Sparkles, color: 'bg-emerald-100 text-emerald-700' };
+    return { Icon: Sparkles, color: 'bg-emerald-50 text-emerald-600 border border-emerald-100' };
   };
 
   const filtered = notifications.filter((n) => {
@@ -102,70 +116,81 @@ export const NotificationsPage = ({
   );
 
   return (
-    <div className="flex-1 overflow-y-auto custom-scrollbar p-8 bg-[#FAF8F5] font-sans select-none">
-      <div className="max-w-5xl mx-auto space-y-6">
-        {/* Top Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="staff-page-body flex-1 overflow-y-auto custom-scrollbar p-4 sm:p-6 lg:p-8 pb-28 lg:pb-10 bg-[#FAF8F5] font-sans select-none">
+      <div className="staff-page-container max-w-5xl mx-auto space-y-6">
+        {/* 1. Tái cấu trúc Header: Khắc phục triệt để lỗi bóp méo Badge trên mobile */}
+        <StaffPageHeader className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 mb-6">
+          {/* Khối bên trái: Thông tin tiêu đề & Badges */}
           <div>
-            <div className="flex items-center gap-2.5">
-              <h2 className="text-xl font-bold text-[#1A1917]">Trung Tâm Thông Báo &amp; Cảnh Báo</h2>
-              <span className="px-3 py-1 rounded-full bg-[#18181B] text-white text-xs font-bold">
-                {userDept}
+            {/* Hàng 1 (Badges): Đặt 2 badge nằm ngang gọn gàng phía trên tiêu đề */}
+            <div className="staff-heading-decoration flex flex-wrap items-center gap-2 mb-2">
+              <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-zinc-900 text-white whitespace-nowrap">
+                {st(staffDepartmentLabel(userDept))}
               </span>
               {unreadCount > 0 && (
-                <span className="px-2.5 py-0.5 rounded-full bg-red-600 text-white text-xs font-bold animate-pulse">
-                  {unreadCount} chưa đọc
-                </span>
+                <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold bg-red-50 text-red-600 border border-red-200/60 whitespace-nowrap">
+                  {unreadCount} {st("unread")} </span>
               )}
             </div>
-            <p className="text-xs text-[#78716C] mt-1">
-              Thông báo và chỉ thị điều phối thời gian thực dành riêng cho bộ phận <strong className="text-stone-800">{userDept}</strong>.
+
+            {/* Hàng 2: Tiêu đề chính */}
+            <h1 className="text-2xl sm:text-3xl font-bold text-zinc-900 tracking-tight">{st("Notifications & alerts")} </h1>
+
+            {/* Hàng 3: Mô tả */}
+            <p className="text-sm text-zinc-500 mt-1">{st("Live notifications and coordination updates for")}{' '}
+              <strong className="text-zinc-800 font-semibold">{st(staffDepartmentLabel(userDept))}</strong>.
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
+          {/* Khối bên phải: Cụm nút hành động (Refresh & Đọc Tất Cả) */}
+          <div className="flex items-center gap-2.5 shrink-0 self-start lg:self-auto">
+            {/* Nút Refresh */}
             <button
               type="button"
-              onClick={onRefresh}
-              className="p-2 rounded-full bg-white border border-[#DDD8CE] text-stone-700 hover:bg-[#F5F2EB] transition-all shadow-sm cursor-pointer"
-              title="Làm mới thông báo"
+              onClick={handleRefreshClick}
+              className="w-10 h-10 rounded-xl bg-white border border-stone-200/80 hover:bg-stone-50 flex items-center justify-center text-zinc-700 shadow-2xs transition-all shrink-0 cursor-pointer active:scale-95"
+              title={st("Refresh notifications")}
             >
-              <RefreshCw className="w-4 h-4" />
+              <RefreshCw
+                className={`w-4 h-4 transition-transform ${isRefreshing ? 'animate-spin text-zinc-900' : ''}`}
+              />
             </button>
 
+            {/* Nút Đọc Tất Cả */}
             {unreadCount > 0 && (
               <button
                 type="button"
                 onClick={() => {
                   onMarkAllRead();
-                  onNotify('Đã đánh dấu tất cả thông báo của phòng ban là đã đọc');
+                  onNotify(st("All department notifications marked as read."));
                 }}
-                className="px-4 py-2 rounded-full bg-white border border-[#DDD8CE] text-xs font-bold text-stone-700 hover:bg-[#F5F2EB] transition-all flex items-center gap-1.5 shadow-sm cursor-pointer"
+                className="h-10 px-4 rounded-xl bg-white border border-stone-200/80 hover:bg-stone-50 text-zinc-800 text-sm font-medium flex items-center gap-2 shadow-2xs transition-all whitespace-nowrap cursor-pointer active:scale-95"
               >
-                <CheckCheck className="w-3.5 h-3.5" />
-                <span>Đọc Tất Cả</span>
+                <CheckCheck className="w-4 h-4 text-zinc-500" />
+                <span>{st("Mark all as read")}</span>
               </button>
             )}
           </div>
-        </div>
+        </StaffPageHeader>
 
-        {/* Search & Filter Pills */}
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-2 bg-[#EFECE6] p-1 rounded-full border border-[#DDD8CE] w-fit">
+        {/* 2. Thanh Công Cụ: Filter Tabs & Ô Tìm Kiếm (Toolbar) */}
+        <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 mb-6">
+          {/* Filter Tabs cuộn ngang mượt mà, không gãy chữ */}
+          <div className="flex items-center gap-1 p-1 bg-stone-200/60 rounded-xl overflow-x-auto no-scrollbar">
             {[
-              { id: 'All', label: 'Tất Cả' },
-              { id: 'Unread', label: `Chưa Đọc (${unreadCount})` },
+              { id: 'All', label: st("All") },
+              { id: 'Unread', label: st("Unread ({0})", unreadCount) },
               { id: 'Robot', label: 'Robot Telemetry' },
-              { id: 'Warning', label: 'Cảnh Báo' },
+              { id: 'Warning', label: st("Warnings") },
             ].map((tab) => (
               <button
                 key={tab.id}
                 type="button"
                 onClick={() => setFilter(tab.id)}
-                className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${
+                className={`whitespace-nowrap shrink-0 px-3.5 py-2 rounded-lg text-xs sm:text-sm font-medium transition-all cursor-pointer ${
                   filter === tab.id
-                    ? 'bg-white text-[#1A1917] shadow-sm'
-                    : 'text-[#78716C] hover:text-[#1A1917]'
+                    ? 'bg-white text-zinc-900 shadow-2xs font-semibold'
+                    : 'text-zinc-600 hover:text-zinc-900'
                 }`}
               >
                 {tab.label}
@@ -173,27 +198,31 @@ export const NotificationsPage = ({
             ))}
           </div>
 
-          <div className="w-64">
+          {/* Ô Tìm Kiếm (100% mobile width, có icon kính lúp) */}
+          <div className="relative w-full md:w-72">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 pointer-events-none" />
             <input
               type="text"
-              placeholder="Tìm kiếm thông báo..."
+              placeholder={st("Search notifications...")}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full px-4 py-2 rounded-full bg-white border border-[#DDD8CE] text-xs font-medium text-stone-900 outline-none focus:border-stone-500 shadow-sm"
+              className="w-full h-10 pl-10 pr-4 bg-white border border-stone-200/80 rounded-xl text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900/10 focus:border-zinc-900 transition-all shadow-2xs"
             />
           </div>
         </div>
 
-        {/* Notifications List Container */}
-        <div className="bg-white rounded-3xl border border-[#E5E1D8] shadow-sm overflow-hidden divide-y divide-[#F0ECE3]">
-          {filtered.length === 0 ? (
-            <div className="p-12 text-center text-xs text-stone-500 space-y-2">
-              <Inbox className="w-8 h-8 mx-auto text-stone-300" />
-              <p className="font-semibold text-stone-700">Không có thông báo nào trong mục này.</p>
-              <p className="text-stone-400">Khi có yêu cầu hoặc chỉ thị mới gửi đến phòng ban, hệ thống sẽ tự động cập nhật ngay tại đây.</p>
+        {/* 3. Danh Sách Card Thông Báo Gọn Gàng & Hiện Đại */}
+        {filtered.length === 0 ? (
+          <div className="bg-white rounded-2xl p-12 text-center border border-stone-200/80 shadow-2xs space-y-2">
+            <div className="w-12 h-12 rounded-xl bg-stone-100 text-zinc-400 flex items-center justify-center mx-auto mb-3">
+              <Inbox className="w-6 h-6" />
             </div>
-          ) : (
-            paginatedNotifications.map((notif) => {
+            <p className="font-semibold text-zinc-800 text-sm">{st("No notifications in this view.")} </p>
+            <p className="text-zinc-500 text-xs max-w-sm mx-auto">{st("New requests and department updates will appear here automatically.")} </p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {paginatedNotifications.map((notif) => {
               const { Icon, color } = getNotifIcon(notif);
               const isUnread = notif.is_read === false || notif.isRead === false;
 
@@ -201,84 +230,105 @@ export const NotificationsPage = ({
                 <div
                   key={notif.id}
                   onClick={() => onToggleRead(notif.id)}
-                  className={`p-5 transition-all flex items-start justify-between gap-4 cursor-pointer hover:bg-[#FAF8F5] ${
-                    isUnread
-                      ? 'bg-amber-50/25 border-l-4 border-l-stone-900'
-                      : 'opacity-75'
+                  className={`group relative bg-white rounded-2xl p-4 sm:p-5 border border-stone-200/80 shadow-2xs hover:shadow-md transition-all overflow-hidden cursor-pointer ${
+                    isUnread ? 'bg-stone-50/30' : 'opacity-90'
                   }`}
                 >
-                  <div className="flex items-start gap-4">
-                    <div className={`w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 ${color}`}>
+                  {/* Chỉ báo chưa đọc (Unread vertical line) */}
+                  {isUnread && (
+                    <span className="absolute left-0 inset-y-0 w-1 bg-zinc-900" />
+                  )}
+
+                  <div className="flex items-start gap-3.5 sm:gap-4">
+                    {/* Cột 1: Icon nhận diện */}
+                    <div
+                      className={`w-10 h-10 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center shrink-0 mt-0.5 ${color}`}
+                    >
                       <Icon className="w-5 h-5" />
                     </div>
 
-                    <div className="space-y-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-mono text-[11px] font-bold text-stone-600">{notif.id}</span>
-                        <span className="px-2.5 py-0.5 rounded-full bg-[#EFECE6] text-stone-800 text-[10px] font-bold">
-                          {notif.department}
+                    {/* Cột 2: Nội dung chính */}
+                    <div className="flex-1 min-w-0">
+                      {/* Dòng 1 (Meta Header): Gộp các nhãn phụ lên cùng 1 hàng */}
+                      <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                        <span className="px-2 py-0.5 rounded-md bg-stone-100 text-zinc-700 text-[11px] font-semibold">
+                          {notif.department || userDept}
                         </span>
-                        <h4 className={`text-sm ${isUnread ? 'font-bold text-[#1A1917]' : 'font-semibold text-stone-700'}`}>
-                          {notif.title}
-                        </h4>
                         {isUnread ? (
-                          <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-700 text-[10px] font-bold">
-                            Chưa đọc
-                          </span>
+                          <span className="px-2 py-0.5 rounded-md bg-red-50 text-red-600 text-[11px] font-semibold">{st("Unread")} </span>
                         ) : (
-                          <span className="px-2 py-0.5 rounded-full bg-stone-100 text-stone-500 text-[10px] font-medium">
-                            Đã đọc
-                          </span>
+                          <span className="px-2 py-0.5 rounded-md bg-stone-100 text-zinc-400 text-[11px] font-medium">{st("Read")} </span>
                         )}
+                        <span className="text-[11px] font-mono text-zinc-400 ml-auto hidden sm:inline-block">
+                          {notif.id}
+                        </span>
                       </div>
 
-                      <p className="text-xs text-[#78716C] leading-relaxed max-w-3xl">{notif.description}</p>
-                      
-                      <div className="flex items-center gap-4 text-[11px] text-stone-400 font-medium pt-1">
+                      {/* Dòng 2: Tiêu đề */}
+                      <h3
+                        className={`text-base font-bold leading-snug ${
+                          isUnread ? 'text-zinc-900' : 'text-zinc-800'
+                        }`}
+                      >
+                        {notif.title}
+                      </h3>
+
+                      {/* Dòng 3: Nội dung chi tiết */}
+                      <p className="text-sm text-zinc-600 mt-1 leading-relaxed">
+                        {notif.description}
+                      </p>
+
+                      {/* Dòng 4 (Footer của Card): Thời gian & Mã ID trên mobile */}
+                      <div className="flex flex-wrap items-center gap-3 mt-2.5 text-xs text-zinc-400">
                         <span>
-                          {notif.time || (notif.created_at ? new Date(notif.created_at).toLocaleString('vi-VN') : 'Vừa xong')}
+                          {notif.time ||
+                            (notif.created_at
+                              ? new Date(notif.created_at).toLocaleString('vi-VN')
+                              : st("Just completed"))}
+                        </span>
+                        <span className="sm:hidden font-mono bg-stone-100 text-zinc-500 px-1.5 py-0.5 rounded text-[11px]">
+                          {notif.id}
                         </span>
                         {notif.request_id && (
-                          <span className="text-stone-500 font-mono">Mã yêu cầu: {notif.request_id}</span>
+                          <span className="font-mono text-zinc-500">{st("ID:")} {notif.request_id}
+                          </span>
                         )}
                       </div>
                     </div>
-                  </div>
 
-                  {/* Action: Only mark read/unread allowed for staff */}
-                  <div className="flex items-center gap-2 shrink-0">
+                    {/* Cột 3: Nút đánh dấu đã đọc (Icon dấu tích đôi) */}
                     <button
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
                         onToggleRead(notif.id);
-                        onNotify(isUnread ? 'Đã đánh dấu đã đọc' : 'Đã đánh dấu chưa đọc');
+                        onNotify(isUnread ? st("Marked as read.") : st("Marked as unread."));
                       }}
-                      className={`p-2 rounded-xl border transition-all cursor-pointer ${
+                      className={`w-8 h-8 sm:w-9 sm:h-9 rounded-lg flex items-center justify-center shrink-0 transition-all shadow-2xs cursor-pointer active:scale-95 ${
                         isUnread
-                          ? 'bg-stone-900 text-white border-stone-900 hover:bg-stone-800'
-                          : 'bg-white text-stone-400 border-[#DDD8CE] hover:bg-stone-100 hover:text-stone-700'
+                          ? 'bg-zinc-900 hover:bg-zinc-800 text-white'
+                          : 'bg-stone-100 text-zinc-400 hover:bg-stone-200 hover:text-zinc-700 border border-stone-200/80'
                       }`}
-                      title={isUnread ? 'Đánh dấu đã đọc' : 'Đánh dấu chưa đọc'}
+                      title={isUnread ? st("Mark as read") : st("Mark as unread")}
                     >
                       <CheckCheck className="w-4 h-4" />
                     </button>
                   </div>
                 </div>
               );
-            })
-          )}
+            })}
 
-          {/* Pagination Footer */}
-          {filtered.length > 0 && (
-            <Pagination
-              currentPage={currentPage}
-              totalItems={filtered.length}
-              pageSize={pageSize}
-              onPageChange={setCurrentPage}
-            />
-          )}
-        </div>
+            {/* Phân trang (Pagination) */}
+            <div className="pt-2">
+              <Pagination
+                currentPage={currentPage}
+                totalItems={filtered.length}
+                pageSize={pageSize}
+                onPageChange={setCurrentPage}
+              />
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

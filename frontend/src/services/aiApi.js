@@ -115,10 +115,19 @@ export const sendChatPrompt = async (
   language = 'auto',
   emotion = 'neutral',
   sessionId = 'default_session',
-  roomNumber = null
+  roomNumber = null,
+  externalSignal = null
 ) => {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 45000);
+  const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+  if (externalSignal) {
+    if (externalSignal.aborted) {
+      controller.abort();
+    } else {
+      externalSignal.addEventListener('abort', () => controller.abort(), { once: true });
+    }
+  }
 
   try {
     const response = await fetch(`${API_BASE_URL}/chat`, {
@@ -147,9 +156,25 @@ export const sendChatPrompt = async (
     return data;
   } catch (error) {
     clearTimeout(timeoutId);
+    const isAborted =
+      Boolean(controller.signal.aborted) ||
+      Boolean(externalSignal?.aborted) ||
+      error?.name === 'AbortError' ||
+      error?.code === 20 ||
+      /abort|cancel/i.test(error?.message || '');
+
+    if (isAborted) {
+      return {
+        aborted: true,
+        response: '',
+        error: 'Request aborted',
+      };
+    }
+
+    console.error('[AIApi] sendChatPrompt error:', error?.message || error);
     return {
       response: 'Dạ, hiện tại có gián đoạn kết nối tới AI Server.',
-      error: error.message,
+      error: error?.message || 'Unknown network error',
     };
   }
 };
@@ -223,17 +248,50 @@ export const flushSession = async (sessionId = 'default_session') => {
   }
 };
 
-export const synthesizeSpeech = async (text, optionsOrProvider = 'edge', voice = null, language = 'vi-VN') => {
+export const synthesizeSpeech = async (text, optionsOrProvider = 'edge', voice = null, language = 'vi-VN', optionalSignal = null) => {
   let provider = 'edge';
   let targetVoice = voice;
   let targetLang = language;
+  let externalSignal = optionalSignal;
+  let timeoutMs = 7000;
 
   if (typeof optionsOrProvider === 'object' && optionsOrProvider !== null) {
     provider = optionsOrProvider.provider || 'edge';
     targetVoice = optionsOrProvider.voice || voice;
     targetLang = optionsOrProvider.language || language;
+    externalSignal = optionsOrProvider.signal || optionalSignal || null;
+    if (typeof optionsOrProvider.timeoutMs === 'number' && optionsOrProvider.timeoutMs > 0) {
+      timeoutMs = optionsOrProvider.timeoutMs;
+    }
   } else if (typeof optionsOrProvider === 'string') {
     provider = optionsOrProvider;
+  }
+
+  const cleanText = typeof text === 'string' ? text.trim() : '';
+  if (!cleanText) {
+    return {
+      audio_base64: '',
+      mime_type: 'audio/mp3',
+      provider_used: 'none',
+      error_code: 'TTS_INPUT_EMPTY',
+      error_detail: 'Input text is empty before calling /tts',
+      error: 'TTS_INPUT_EMPTY: Input text is empty before calling /tts',
+    };
+  }
+
+  const controller = new AbortController();
+  let timedOut = false;
+  const timeoutId = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
+
+  if (externalSignal) {
+    if (externalSignal.aborted) {
+      controller.abort();
+    } else {
+      externalSignal.addEventListener('abort', () => controller.abort(), { once: true });
+    }
   }
 
   try {
@@ -242,25 +300,93 @@ export const synthesizeSpeech = async (text, optionsOrProvider = 'edge', voice =
       headers: {
         'Content-Type': 'application/json',
       },
+      signal: controller.signal,
       body: JSON.stringify({
-        text,
+        text: cleanText,
         provider,
         voice: targetVoice,
         language: targetLang,
       }),
     });
 
+    clearTimeout(timeoutId);
+
     if (!response.ok) {
-      throw new Error(`TTS Server returned status ${response.status}`);
+      const statusDetail = `TTS Server returned HTTP ${response.status}`;
+      return {
+        audio_base64: '',
+        mime_type: 'audio/mp3',
+        provider_used: 'none',
+        error_code: 'TTS_PROVIDER_ERROR',
+        error_detail: statusDetail,
+        error: `TTS_PROVIDER_ERROR: ${statusDetail}`,
+      };
     }
 
-    return await response.json();
+    let data = null;
+    try {
+      data = await response.json();
+    } catch (parseErr) {
+      return {
+        audio_base64: '',
+        mime_type: 'audio/mp3',
+        provider_used: 'none',
+        error_code: 'TTS_RESPONSE_INVALID',
+        error_detail: `Invalid JSON from /tts: ${parseErr.message}`,
+        error: `TTS_RESPONSE_INVALID: ${parseErr.message}`,
+      };
+    }
+
+    if (!data || typeof data !== 'object' || typeof data.audio_base64 !== 'string') {
+      return {
+        audio_base64: '',
+        mime_type: 'audio/mp3',
+        provider_used: 'none',
+        error_code: 'TTS_RESPONSE_INVALID',
+        error_detail: 'Missing audio_base64 field in /tts response',
+        error: 'TTS_RESPONSE_INVALID: Missing audio_base64 field in /tts response',
+      };
+    }
+
+    if (!data.audio_base64.trim()) {
+      const errCode = data.error_code || 'TTS_AUDIO_EMPTY';
+      const errDetail = data.error_detail || `Provider ${data.provider_used || provider} returned empty audio_base64`;
+      return {
+        ...data,
+        audio_base64: '',
+        error_code: errCode,
+        error_detail: errDetail,
+        error: `${errCode}: ${errDetail}`,
+      };
+    }
+
+    return {
+      ...data,
+      error_code: null,
+      error_detail: null,
+    };
   } catch (error) {
+    clearTimeout(timeoutId);
+    if (error?.name === 'AbortError' || controller.signal.aborted) {
+      const code = timedOut ? 'TTS_TIMEOUT' : 'TTS_ABORTED';
+      const detail = timedOut ? `TTS request timed out after ${timeoutMs}ms` : 'TTS request aborted by caller';
+      return {
+        aborted: !timedOut,
+        audio_base64: '',
+        mime_type: 'audio/mp3',
+        provider_used: 'none',
+        error_code: code,
+        error_detail: detail,
+        error: `${code}: ${detail}`,
+      };
+    }
     return {
       audio_base64: '',
       mime_type: 'audio/mp3',
-      provider_used: 'browser',
-      error: error.message,
+      provider_used: 'none',
+      error_code: 'TTS_PROVIDER_ERROR',
+      error_detail: error.message || 'Network error calling /tts',
+      error: `TTS_PROVIDER_ERROR: ${error.message || 'Network error calling /tts'}`,
     };
   }
 };
@@ -336,17 +462,22 @@ export const fetchFeedbacks = async (category = null, limit = 50) => {
 
 /**
  * Chuyển đổi file âm thanh WAV thành văn bản thông qua Backend STT Engine
- * (Dual-Engine Fallback: Google Speech + Faster-Whisper Offline 100%)
+ * (Hỗ trợ nhận diện đa ngữ EN/VI trực tiếp từ tín hiệu âm thanh).
  */
-export const transcribeAudio = async (audioBlob, language = 'vi') => {
+export const transcribeCallAudio = async (
+  audioBlob,
+  { language = 'auto', preferredLang = 'en', signal = null } = {}
+) => {
   try {
     const formData = new FormData();
-    formData.append('file', audioBlob, 'speech.wav');
+    formData.append('file', audioBlob, 'call_speech.wav');
     formData.append('language', language);
+    formData.append('preferred_lang', preferredLang);
 
     const response = await fetch(`${API_BASE_URL}/stt/transcribe`, {
       method: 'POST',
       body: formData,
+      signal,
     });
 
     if (!response.ok) {
@@ -354,11 +485,34 @@ export const transcribeAudio = async (audioBlob, language = 'vi') => {
     }
 
     const data = await response.json();
-    return data?.text || '';
+    return {
+      success: Boolean(data?.success),
+      text: (data?.text || '').trim(),
+      detected_language: data?.detected_language || preferredLang,
+      confidence: typeof data?.confidence === 'number' ? data.confidence : 0,
+      provider: data?.provider || 'backend_stt',
+    };
   } catch (error) {
-    console.warn('[AIApi] transcribeAudio error:', error.message);
-    return '';
+    return {
+      success: false,
+      text: '',
+      detected_language: preferredLang,
+      confidence: 0,
+      provider: 'none',
+      error: error.message,
+    };
   }
+};
+
+/**
+ * Chuyển đổi file âm thanh WAV thành văn bản thông qua Backend STT Engine (tương thích ngược)
+ */
+export const transcribeAudio = async (audioBlob, language = 'vi') => {
+  const res = await transcribeCallAudio(audioBlob, {
+    language,
+    preferredLang: language === 'en' ? 'en' : 'vi',
+  });
+  return res.text || '';
 };
 
 /**
@@ -416,5 +570,54 @@ export const updateVoiceSettings = async ({ speech_rate, vi_voice, en_voice }) =
   }
 };
 
+/**
+ * Phiên dịch nhanh câu nói trực tiếp trong cuộc gọi Video Call (Anh ⇄ Việt)
+ * Tự động nhận diện ngôn ngữ và bỏ qua dịch nếu cùng ngôn ngữ đích
+ */
+export const quickTranslateText = async ({
+  text,
+  sourceLang = 'auto',
+  targetLang = 'vi',
+  sessionId = null,
+  senderRole = 'guest',
+  withAudio = true,
+}) => {
+  if (!text || !text.trim()) {
+    return {
+      original_text: '',
+      translated_text: '',
+      source_lang: 'vi',
+      target_lang: targetLang,
+      needs_translation: false,
+      audio_base64: null,
+    };
+  }
 
+  try {
+    const res = await fetch(`${API_BASE_URL}/translate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text: text.trim(),
+        source_lang: sourceLang,
+        target_lang: targetLang,
+        session_id: sessionId,
+        sender_role: senderRole,
+        with_audio: withAudio,
+      }),
+    });
 
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } catch (err) {
+    console.warn('[AIApi] quickTranslateText fallback:', err.message);
+    return {
+      original_text: text,
+      translated_text: text,
+      source_lang: sourceLang === 'auto' ? 'vi' : sourceLang,
+      target_lang: targetLang,
+      needs_translation: false,
+      error: err.message,
+    };
+  }
+};

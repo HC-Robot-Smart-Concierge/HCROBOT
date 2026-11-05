@@ -99,6 +99,7 @@ async def get_concierge_dashboard(
     """
     now = datetime.utcnow()
     five_minutes_ago = now - timedelta(minutes=5)
+    twenty_minutes_ago = now - timedelta(minutes=20)
 
     # 1. Tự động đóng các phiên gọi Pending đã quá 5 phút thành 'Missed'
     await sr_repo.close_expired_pending(
@@ -106,6 +107,14 @@ async def get_concierge_dashboard(
         service_type_ids=["ST-CONCIERGE"],
         cutoff_time=five_minutes_ago,
         new_status="Missed",
+    )
+
+    # 1.1 Tự động dọn dẹp các phiên In Progress / Connected bị treo quá 20 phút thành 'Closed'
+    await sr_repo.close_stale_active_calls(
+        department_ids=["DEP-CONCIERGE"],
+        service_type_ids=["ST-CONCIERGE"],
+        cutoff_time=twenty_minutes_ago,
+        new_status="Closed",
     )
 
     # 2. Chỉ lấy cuộc gọi đang chờ bắt máy (mới tạo < 5 phút) hoặc đang diễn ra
@@ -166,6 +175,7 @@ async def create_concierge_live_request(
         room_number=room_loc,
         guest_name=guest,
         source="Robot Voice Assistant",
+        priority="High",
         status="Pending",
     )
     await sr_repo.create(new_request)
@@ -198,6 +208,15 @@ async def create_concierge_live_request(
 
     await sr_repo.commit()
     await sr_repo.refresh(new_request)
+
+    # Đăng ký các alias (ticket_code, req.id, human_session.id) vào VideoCallManager
+    video_call_manager.register_alias(
+        ticket_code,
+        new_request.id,
+        human_session.id,
+        human_session.session_code,
+    )
+
     return new_request
 
 
@@ -345,6 +364,7 @@ async def upload_call_recording(
     duration: int = Form(0, description="Thời lượng cuộc gọi tính bằng giây"),
     call_started_at: Optional[str] = Form(None),
     call_ended_at: Optional[str] = Form(None),
+    messages: Optional[str] = Form(None, description="Danh sách JSON phụ đề và tin nhắn thoại song ngữ"),
     session_repo: SupportSessionRepository = Depends(get_support_session_repository),
     sr_repo: SupportRequestRepository = Depends(get_support_request_repository),
 ):
@@ -381,13 +401,21 @@ async def upload_call_recording(
         )
         await session_repo.create(h_session)
 
-    # 3. Ghi nhận dữ liệu video vào CSDL
+    # 3. Ghi nhận dữ liệu video và tin nhắn phụ đề hội thoại vào CSDL
     h_session.recording_url = cloud_result["secure_url"]
     h_session.recording_public_id = cloud_result["public_id"]
     h_session.recording_duration = cloud_result["duration"] or duration
     h_session.thumbnail_url = cloud_result.get("thumbnail_url")
     h_session.status = "Resolved"
     h_session.call_ended_at = datetime.utcnow()
+
+    if messages:
+        try:
+            parsed_msgs = json.loads(messages)
+            if isinstance(parsed_msgs, list):
+                h_session.messages = parsed_msgs
+        except Exception:
+            pass
 
     if call_started_at:
         try:
@@ -441,6 +469,16 @@ async def get_local_recording(filename: str):
     return FileResponse(local_path, media_type="video/webm")
 
 
+@router.get("/concierge/ws/video-call/status")
+async def get_video_rooms_status():
+    return {
+        "rooms": {
+            sid: {role: p.get("name") for role, p in peers.items()}
+            for sid, peers in video_call_manager.rooms.items()
+        }
+    }
+
+
 # =====================================================================
 # WEBRTC VIDEO CALL SIGNALING WEBSOCKET HUB
 # =====================================================================
@@ -458,6 +496,37 @@ async def video_call_signaling_endpoint(
     và trạng thái media (camera, mic, chuông gọi) giữa Robot Kiosk và Web Concierge.
     """
     clean_session = session_id.strip()
+
+    # Tự động tra cứu DB nếu session_id chưa có trong alias map và không phải dạng canonical CCG-
+    if clean_session not in video_call_manager.aliases and not clean_session.startswith("CCG-"):
+        try:
+            from app.core.database import AsyncSessionLocal
+            from app.models.support_request import SupportRequest
+            from app.models.support import HumanSupportSession
+            from sqlalchemy import select
+
+            async with AsyncSessionLocal() as db_lookup:
+                if clean_session.startswith("REQ-"):
+                    stmt = select(SupportRequest.ticket_code).where(SupportRequest.id == clean_session)
+                    res = await db_lookup.execute(stmt)
+                    ticket = res.scalar_one_or_none()
+                    if ticket:
+                        video_call_manager.register_alias(ticket, clean_session)
+                elif clean_session.startswith("SUP-") or clean_session.startswith("LIVE-"):
+                    stmt = select(HumanSupportSession.linked_request_id, HumanSupportSession.session_code).where(
+                        (HumanSupportSession.id == clean_session) | (HumanSupportSession.session_code == clean_session)
+                    )
+                    res = await db_lookup.execute(stmt)
+                    row = res.first()
+                    if row and row[0]:
+                        stmt2 = select(SupportRequest.ticket_code).where(SupportRequest.id == row[0])
+                        res2 = await db_lookup.execute(stmt2)
+                        ticket = res2.scalar_one_or_none()
+                        if ticket:
+                            video_call_manager.register_alias(ticket, clean_session, row[0], row[1])
+        except Exception as e:
+            logger.warning(f"[VideoCall] On-demand DB alias resolution error: {e}")
+
     await video_call_manager.connect(websocket, clean_session, role=role, name=name)
 
     try:

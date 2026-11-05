@@ -1,7 +1,10 @@
 import React from 'react';
-import { Volume1, Volume2, ChevronDown } from 'lucide-react';
+import { Volume1, Volume2, ChevronDown, Globe } from 'lucide-react';
+import { useLanguage } from '../../../../context/LanguageContext';
 
 export const GeneralSection = ({ settings, setSettings }) => {
+  const { language, setLanguage, t } = useLanguage();
+
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
       {/* Card 1: Hotel Profile */}
@@ -65,20 +68,85 @@ export const GeneralSection = ({ settings, setSettings }) => {
         </div>
       </div>
 
+      {/* Card: Staff Portal Language */}
+      <div className="bg-white rounded-3xl border border-indigo-100 shadow-sm overflow-hidden ring-1 ring-indigo-50">
+        <div className="p-6 border-b border-stone-100 bg-indigo-50/30">
+          <div className="flex items-center gap-2">
+            <Globe className="w-4 h-4 text-indigo-500" />
+            <h3 className="text-base font-extrabold text-stone-900">{t('settingsSystemLang')}</h3>
+          </div>
+          <p className="text-xs text-stone-500 mt-0.5">
+            {t('settingsSystemLangDesc')}
+          </p>
+        </div>
+        <div className="p-6 text-xs">
+          <label className="block text-[11px] font-black text-stone-600 uppercase tracking-wider mb-3">
+            {t('settingsInterfaceLang')}
+          </label>
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                setLanguage('EN');
+                localStorage.setItem('aurora_language', 'EN');
+              }}
+              className={`flex-1 flex flex-col items-center gap-2 py-4 px-3 rounded-2xl border-2 transition-all cursor-pointer ${
+                language === 'EN'
+                  ? 'border-indigo-500 bg-indigo-50 shadow-md shadow-indigo-100'
+                  : 'border-stone-200 bg-stone-50 hover:border-stone-300 hover:bg-stone-100'
+              }`}
+            >
+              <span className="text-2xl">🇺🇸</span>
+              <div className="text-center">
+                <p className={`text-xs font-extrabold ${language === 'EN' ? 'text-indigo-700' : 'text-stone-700'}`}>English</p>
+                <p className={`text-[10px] ${language === 'EN' ? 'text-indigo-500' : 'text-stone-400'}`}>United States</p>
+              </div>
+              {language === 'EN' && (
+                <span className="px-2 py-0.5 rounded-full bg-indigo-600 text-white text-[9px] font-bold uppercase tracking-wide">{t('settingsLangActive')}</span>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setLanguage('VI');
+                localStorage.setItem('aurora_language', 'VI');
+              }}
+              className={`flex-1 flex flex-col items-center gap-2 py-4 px-3 rounded-2xl border-2 transition-all cursor-pointer ${
+                language === 'VI'
+                  ? 'border-indigo-500 bg-indigo-50 shadow-md shadow-indigo-100'
+                  : 'border-stone-200 bg-stone-50 hover:border-stone-300 hover:bg-stone-100'
+              }`}
+            >
+              <span className="text-2xl">🇻🇳</span>
+              <div className="text-center">
+                <p className={`text-xs font-extrabold ${language === 'VI' ? 'text-indigo-700' : 'text-stone-700'}`}>Tiếng Việt</p>
+                <p className={`text-[10px] ${language === 'VI' ? 'text-indigo-500' : 'text-stone-400'}`}>Vietnamese</p>
+              </div>
+              {language === 'VI' && (
+                <span className="px-2 py-0.5 rounded-full bg-indigo-600 text-white text-[9px] font-bold uppercase tracking-wide">{t('settingsLangActive')}</span>
+              )}
+            </button>
+          </div>
+          <p className="text-[10px] text-stone-400 mt-3 text-center">
+            {t('settingsLangNotice')}
+          </p>
+        </div>
+      </div>
+
       {/* Card 2: Robot Global Preferences */}
       <div className="bg-white rounded-3xl border border-stone-200 shadow-sm overflow-hidden">
         <div className="p-6 border-b border-stone-100 bg-stone-50/40">
-          <h3 className="text-base font-extrabold text-stone-900">Robot Global Preferences</h3>
+          <h3 className="text-base font-extrabold text-stone-900">{t('settingsRobotPrefs')}</h3>
           <p className="text-xs text-stone-500 mt-0.5">
-            Fleet-wide defaults for interactions and operations.
+            {t('settingsRobotPrefsDesc')}
           </p>
         </div>
 
         <div className="p-6 space-y-5 text-xs">
-          {/* Default Language */}
+          {/* (Legacy defaultLanguage field removed – language is now controlled above) */}
           <div>
             <label className="block text-[11px] font-black text-stone-600 uppercase tracking-wider mb-1.5">
-              DEFAULT LANGUAGE
+              {t('settingsDefaultLang')}
             </label>
             <div className="relative">
               <select

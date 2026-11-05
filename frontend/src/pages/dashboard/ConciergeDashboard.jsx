@@ -223,12 +223,12 @@ export const ConciergeDashboard = ({
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full overflow-hidden bg-palette-cream">
+    <div className="flex-1 flex flex-col min-h-0 overflow-hidden bg-palette-cream">
       {/* Top Header */}
-      <div className="bg-white border-b border-palette-silver px-6 py-4">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <div className="bg-white border-b border-palette-silver px-3.5 py-2.5 sm:px-6 sm:py-4">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2.5 sm:gap-4">
           <div>
-            <h1 className="text-xl font-bold text-palette-charcoal flex items-center gap-2">
+            <h1 className="text-base sm:text-xl font-bold text-palette-charcoal flex items-center gap-2">
               {activeSubTab === 'recordings' ? (
                 <>
                   <Film className="w-5 h-5 text-sky-600" />
@@ -251,7 +251,7 @@ export const ConciergeDashboard = ({
                 </>
               )}
             </h1>
-            <p className="text-xs text-palette-slate mt-0.5">
+            <p className="text-[11px] sm:text-xs text-palette-slate mt-0.5 line-clamp-1 sm:line-clamp-none">
               {activeSubTab === 'recordings'
                 ? 'Danh sách video ghi hình tự động các phiên hỗ trợ trực tiếp giữa Robot Kiosk và Nhân viên'
                 : activeSubTab === 'taxi'
@@ -266,27 +266,27 @@ export const ConciergeDashboard = ({
             <button
               onClick={loadData}
               disabled={isLoading}
-              className="p-2 rounded-lg bg-palette-stone text-palette-charcoal hover:bg-palette-silver border border-palette-silver text-xs font-semibold flex items-center gap-1 transition-all"
+              className="p-1.5 sm:p-2 rounded-lg bg-palette-stone text-palette-charcoal hover:bg-palette-silver border border-palette-silver text-[11px] sm:text-xs font-semibold flex items-center gap-1 transition-all cursor-pointer"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-              Làm mới
+              <span>Làm mới</span>
             </button>
             {activeSubTab === 'live_call' && (
               <button
                 onClick={() => setIsTestModalOpen(true)}
-                className="px-3 py-1.5 rounded-lg bg-palette-charcoal hover:bg-neutral-800 text-palette-cream text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-all"
+                className="px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-lg bg-palette-charcoal hover:bg-neutral-800 text-palette-cream text-[11px] sm:text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5" />
-                Mô phỏng gọi từ Kiosk
+                <span>Mô phỏng gọi</span>
               </button>
             )}
             {activeSubTab === 'taxi' && (
               <button
                 onClick={() => setIsTaxiModalOpen(true)}
-                className="px-3 py-1.5 rounded-lg bg-palette-charcoal hover:bg-neutral-800 text-palette-cream text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-all"
+                className="px-2.5 py-1.5 sm:px-3 sm:py-1.5 rounded-lg bg-palette-charcoal hover:bg-neutral-800 text-palette-cream text-[11px] sm:text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5" />
-                Đặt xe mới
+                <span>Đặt xe mới</span>
               </button>
             )}
           </div>
@@ -367,46 +367,46 @@ export const ConciergeDashboard = ({
       </div>
 
       {/* Main Content Area */}
-      <div className="flex-1 overflow-y-auto p-6">
+      <div className="flex-1 overflow-y-auto custom-scrollbar p-3.5 sm:p-6 pb-6">
         {/* SUBTAB 1: LIVE CALL */}
         {activeSubTab === 'live_call' && (
-          <div className="space-y-6">
+          <div className="space-y-4 sm:space-y-6">
             {/* Live Call Metric Banner */}
-            <div className="flex items-center gap-3 bg-palette-stone/50 border border-palette-silver rounded-xl p-3">
-              <span className="w-3 h-3 rounded-full bg-emerald-500 animate-pulse shrink-0" />
-              <div className="flex-1">
-                <span className="text-xs font-bold text-palette-charcoal">
+            <div className="flex items-center gap-2.5 sm:gap-3 bg-palette-stone/50 border border-palette-silver rounded-xl p-2.5 sm:p-3">
+              <span className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+              <div className="flex-1 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-0.5">
+                <span className="text-[11px] sm:text-xs font-bold text-palette-charcoal">
                   Trạng thái Trực Tổng Đài: Sẵn Sàng (Live Concierge Online)
                 </span>
-                <span className="text-xs text-palette-slate ml-2">
+                <span className="text-[10px] sm:text-xs text-palette-slate">
                   Đang có <strong className="text-palette-charcoal">{activeCount}</strong> phiên hỗ trợ cần xử lý
                 </span>
               </div>
             </div>
 
             {activeSession ? (
-              <div className="max-w-3xl mx-auto bg-white rounded-xl border border-palette-silver p-6 shadow-sm">
-                <div className="flex items-start justify-between border-b border-palette-silver/40 pb-4">
+              <div className="max-w-3xl mx-auto bg-white rounded-2xl border border-palette-silver p-3.5 sm:p-6 shadow-sm">
+                <div className="flex items-start justify-between border-b border-palette-silver/40 pb-3 sm:pb-4">
                   <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-xs font-bold bg-palette-stone text-palette-charcoal border border-palette-silver px-2 py-0.5 rounded">
+                    <div className="flex items-center gap-1.5 sm:gap-2">
+                      <span className="font-mono text-[11px] sm:text-xs font-bold bg-palette-stone text-palette-charcoal border border-palette-silver px-2 py-0.5 rounded">
                         {activeSession.ticket_code || activeSession.id}
                       </span>
-                      <span className="text-sm font-bold text-palette-charcoal">
+                      <span className="text-xs sm:text-sm font-bold text-palette-charcoal">
                         {activeSession.guest_name || 'Khách tại Kiosk'}
                       </span>
-                      <span className="text-xs text-palette-slate">
+                      <span className="text-[11px] sm:text-xs text-palette-slate">
                         ({activeSession.room_number || 'Sảnh S1'})
                       </span>
                     </div>
-                    <div className="text-xs text-palette-slate mt-1 flex items-center gap-2">
+                    <div className="text-[10px] sm:text-xs text-palette-slate mt-1 flex items-center gap-1.5">
                       <Clock className="w-3 h-3" />
-                      Khởi tạo: {activeSession.created_at || 'Vừa xong'}
+                      <span>Khởi tạo: {activeSession.created_at || 'Vừa xong'}</span>
                     </div>
                   </div>
 
                   <span
-                    className={`text-xs font-bold px-3 py-1 rounded-full ${
+                    className={`text-[10px] sm:text-xs font-bold px-2.5 py-1 rounded-full ${
                       activeSession.status === 'Connected'
                         ? 'bg-emerald-100 text-emerald-800 animate-pulse'
                         : activeSession.status === 'Closed'
@@ -419,59 +419,69 @@ export const ConciergeDashboard = ({
                 </div>
 
                 {/* Conversation Transcript */}
-                <div className="my-6">
-                  <label className="text-xs font-bold text-palette-charcoal uppercase tracking-wider flex items-center gap-1.5 mb-2">
+                <div className="my-3 sm:my-5">
+                  <label className="text-[10px] sm:text-xs font-bold text-palette-charcoal uppercase tracking-wider flex items-center gap-1.5 mb-1.5">
                     <MessageSquare className="w-3.5 h-3.5 text-palette-charcoal" />
-                    Nội Dung Hội Thoại Chuyển Tiếp Từ Robot
+                    <span>Nội Dung Hội Thoại Chuyển Tiếp Từ Robot</span>
                   </label>
-                  <div className="bg-palette-cream/70 border border-palette-silver rounded-lg p-4 text-xs text-palette-charcoal leading-relaxed font-sans">
+                  <div className="bg-palette-cream/70 border border-palette-silver rounded-xl p-3 sm:p-4 text-xs text-palette-charcoal leading-relaxed font-sans max-h-40 sm:max-h-none overflow-y-auto">
                     {activeSession.description || 'Không có mô tả hội thoại.'}
                   </div>
                 </div>
 
                 {/* Action Bar */}
-                <div className="flex items-center justify-end gap-3 pt-4 border-t border-palette-silver/50">
-                  {activeSession.status !== 'Connected' && activeSession.status !== 'Closed' && (
-                    <button
-                      onClick={async () => {
-                        await handleUpdateStatus('Connected');
-                        setIsVideoModalOpen(true);
-                      }}
-                      className="px-4 py-2 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold flex items-center gap-2 shadow-sm transition-all"
-                    >
-                      <Video className="w-4 h-4" />
-                      Tiếp nhận cuộc gọi Video
-                    </button>
-                  )}
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 sm:gap-3 pt-3 sm:pt-4 border-t border-palette-silver/50">
+                  <div className="hidden sm:flex items-center gap-2 text-xs text-palette-slate">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    <span>Sẵn sàng kết nối video call trực tiếp</span>
+                  </div>
 
-                  {activeSession.status === 'Connected' && (
-                    <button
-                      onClick={() => setIsVideoModalOpen(true)}
-                      className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-2 shadow-sm transition-all"
-                    >
-                      <Video className="w-4 h-4" />
-                      Mở Màn Hình Cuộc Gọi
-                    </button>
-                  )}
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                    {activeSession.status !== 'Connected' && activeSession.status !== 'Closed' && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          await handleUpdateStatus('Connected');
+                          setIsVideoModalOpen(true);
+                        }}
+                        className="flex-1 sm:flex-initial w-full sm:w-auto px-5 py-3 sm:py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 active:bg-emerald-900 text-white text-xs sm:text-sm font-bold flex items-center justify-center gap-2 shadow-sm transition-all active:scale-95 cursor-pointer"
+                      >
+                        <Video className="w-4 h-4" />
+                        <span>Tiếp nhận cuộc gọi Video</span>
+                      </button>
+                    )}
 
-                  {activeSession.status === 'Connected' && (
-                    <button
-                      onClick={async () => {
-                        setIsVideoModalOpen(false);
-                        await handleUpdateStatus('Closed');
-                      }}
-                      className="px-4 py-2 rounded-lg bg-neutral-700 hover:bg-neutral-800 text-white text-xs font-bold flex items-center gap-2 shadow-sm transition-all"
-                    >
-                      <PhoneOff className="w-4 h-4" />
-                      Kết thúc phiên hỗ trợ
-                    </button>
-                  )}
+                    {activeSession.status === 'Connected' && (
+                      <button
+                        type="button"
+                        onClick={() => setIsVideoModalOpen(true)}
+                        className="flex-1 sm:flex-initial w-full sm:w-auto px-5 py-3 sm:py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-xs sm:text-sm font-bold flex items-center justify-center gap-2 shadow-sm transition-all active:scale-95 cursor-pointer"
+                      >
+                        <Video className="w-4 h-4" />
+                        <span>Mở Màn Hình Cuộc Gọi</span>
+                      </button>
+                    )}
 
-                  {activeSession.status === 'Closed' && (
-                    <span className="text-xs text-palette-slate font-semibold">
-                      Phiên hỗ trợ này đã hoàn tất.
-                    </span>
-                  )}
+                    {activeSession.status === 'Connected' && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          setIsVideoModalOpen(false);
+                          await handleUpdateStatus('Closed');
+                        }}
+                        className="px-4 py-3 sm:py-2 rounded-xl bg-neutral-700 hover:bg-neutral-800 active:bg-neutral-900 text-white text-xs sm:text-sm font-bold flex items-center justify-center gap-2 shadow-sm transition-all active:scale-95 cursor-pointer"
+                      >
+                        <PhoneOff className="w-4 h-4" />
+                        <span>Kết thúc</span>
+                      </button>
+                    )}
+
+                    {activeSession.status === 'Closed' && (
+                      <span className="text-xs text-palette-slate font-semibold">
+                        Phiên hỗ trợ này đã hoàn tất.
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
             ) : (
@@ -1236,12 +1246,13 @@ export const ConciergeDashboard = ({
       {/* MESSENGER VIDEO CALL MODAL (STAFF CALLEE ROLE) */}
       <MessengerVideoCallModal
         isOpen={isVideoModalOpen}
-        sessionId={activeSession?.id || activeSession?.ticket_code || 'SUP-STAFF'}
+        sessionId={activeSession?.ticket_code || activeSession?.id || 'SUP-STAFF'}
         role="staff"
         callerName={activeSession?.guest_name || 'Khách hàng'}
         calleeName={currentUser?.full_name || 'Nhân viên hỗ trợ'}
         roomNumber={activeSession?.room_number || ''}
         ticketCode={activeSession?.ticket_code}
+        guestLanguage={activeSession?.language || 'Tiếng Việt'}
         onClose={async () => {
           setIsVideoModalOpen(false);
           if (activeSession && activeSession.status === 'Connected') {

@@ -474,6 +474,25 @@ async def auto_create_ticket(
                 if active_req:
                     active_req.status = "Cancelled"
                     active_req.description = f"{active_req.description or ''}\n[Khách hủy yêu cầu qua Robot]"
+
+                    # Đồng bộ sang RoomServiceOrder nếu đây là đơn phòng/ẩm thực
+                    try:
+                        clean_t_code = (active_req.ticket_code or "").replace("ORD-", "").replace("REQ-", "").strip()
+                        stmt_rs = select(RoomServiceOrder).where(
+                            or_(
+                                RoomServiceOrder.support_request_id == active_req.id,
+                                RoomServiceOrder.id == active_req.id,
+                                (RoomServiceOrder.order_number == clean_t_code) if clean_t_code else False,
+                            )
+                        )
+                        res_rs = await db.execute(stmt_rs)
+                        linked_rs = res_rs.scalars().first()
+                        if linked_rs:
+                            linked_rs.status = "Cancelled"
+                            linked_rs.note = f"{linked_rs.note or ''}\n[Khách hủy yêu cầu qua Robot]"
+                    except Exception as ex_sync:
+                        logger.warning(f"[AITicketService] Sync RoomServiceOrder cancel error: {ex_sync}")
+
                     await create_department_notification(
                         db=db,
                         department="Reception",

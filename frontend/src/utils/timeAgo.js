@@ -13,6 +13,9 @@ export const formatTimeAgo = (dateInput, fallback = 'Vừa đặt', lang = 'vi')
   try {
     let normalized = String(dateInput).trim();
 
+    // Chuẩn hoá khoảng trắng giữa ngày và giờ thành ký tự 'T' chuẩn ISO
+    normalized = normalized.replace(/^(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2}:\d{2})/, '$1T$2');
+
     // If ISO date string without explicit timezone, treat as UTC from backend datetime.utcnow()
     if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(normalized) && !normalized.endsWith('Z') && !/[+-]\d{2}(?::\d{2})?$/.test(normalized)) {
       normalized += 'Z';
@@ -27,9 +30,14 @@ export const formatTimeAgo = (dateInput, fallback = 'Vừa đặt', lang = 'vi')
     const diffMs = now.getTime() - date.getTime();
     const isEn = String(lang).toLowerCase().startsWith('en');
 
-    // If timestamp is slightly in the future due to small server clock drift (< 30s)
-    if (diffMs < 60000) {
+    // Sai lệch nhỏ giữa đồng hồ server và client (< 60s) coi như vừa đặt
+    if (diffMs >= -60000 && diffMs < 60000) {
       return isEn ? 'Just now' : 'Vừa đặt';
+    }
+
+    // Nếu thời gian nằm ở tương lai quá 1 phút do lệch múi giờ, hiển thị giờ phút cụ thể thay vì báo vừa đặt
+    if (diffMs < -60000) {
+      return date.toLocaleTimeString(isEn ? 'en-US' : 'vi-VN', { hour: '2-digit', minute: '2-digit' });
     }
 
     const diffMinutes = Math.floor(diffMs / 60000);

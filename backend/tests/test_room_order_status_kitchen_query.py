@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta
 import pytest
 
 from sqlalchemy import select
@@ -846,5 +847,86 @@ async def test_review_placed_orders_does_not_order_dish():
             await db.delete(oi1)
             await db.delete(rso)
             room_test.status = prev_status
+            await db.commit()
+            session_manager.reset_session(sid)
+
+
+@pytest.mark.asyncio
+async def test_newest_completed_order_prioritized_over_older_pending_and_dish_match():
+    """Đảm bảo:
+    1. Khi khách có đơn cũ bị Pending/hủy và vừa có đơn mới Completed, hỏi trạng thái món ăn
+       báo chính xác đơn mới nhất đã hoàn thành thay vì báo đơn cũ vẫn trong hàng chờ.
+    2. Khi khách hỏi đích danh tên món (vd 'Sake chiên giòn'), robot tự động khớp đúng đơn của món đó.
+    """
+    sid = "test_completed_over_pending_dish_match"
+    session_manager.reset_session(sid)
+    test_room_num = "308"
+
+    async with AsyncSessionLocal() as db:
+        res_r = await db.execute(select(Room).where(Room.room_number == test_room_num))
+        room_test = res_r.scalars().first()
+        prev_status = room_test.status if room_test else "AVAILABLE"
+        if room_test:
+            room_test.status = "OCCUPIED"
+            room_test.current_guest_name = "Khách Test 308"
+
+        # 1. Đơn cũ (tạo trước 30 phút, bị Pending / Treo)
+        old_ord = RoomServiceOrder(
+            order_number="ORD-OLD-PEND",
+            room_number=test_room_num,
+            status="Pending",
+            created_at=datetime.utcnow() - timedelta(minutes=30),
+            total_amount=150000.0,
+        )
+        db.add(old_ord)
+        await db.flush()
+        old_item = OrderItem(order_id=old_ord.id, item_name="Bò nướng sốt nấm / tiêu", quantity=1, unit_price=150000.0)
+        db.add(old_item)
+
+        # 2. Đơn mới nhất (tạo sau, bếp đã làm xong và Đã Hoàn Tất)
+        new_ord = RoomServiceOrder(
+            order_number="ORD-NEW-COMP",
+            room_number=test_room_num,
+            status="Completed",
+            created_at=datetime.utcnow() - timedelta(minutes=2),
+            total_amount=85000.0,
+        )
+        db.add(new_ord)
+        await db.flush()
+        new_item = OrderItem(order_id=new_ord.id, item_name="Sake chiên giòn", quantity=1, unit_price=85000.0)
+        db.add(new_item)
+        await db.commit()
+
+        try:
+            # A. Hỏi chung về món ăn phòng 308: phải báo đơn mới nhất (Sake chiên giòn) đã hoàn tất!
+            res1 = await process_chat_request(db, ChatRequest(
+                prompt="món ăn của phòng 308 xong chưa",
+                session_id=sid,
+                room_number=test_room_num,
+                language="Tiếng Việt"
+            ))
+            assert res1.action == "query_order_status"
+            # Phải báo hoàn thành / giao thành công, KHÔNG được báo đang xếp hàng chờ
+            assert "hoàn thành" in res1.response or "hoàn tất" in res1.response or "Sake chiên giòn" in res1.response
+            assert "đang xếp hàng chờ" not in res1.response
+
+            # B. Hỏi đích danh món Sake chiên giòn
+            session_manager.reset_session(sid)
+            res2 = await process_chat_request(db, ChatRequest(
+                prompt="Sake chiên giòn của tôi thế nào rồi",
+                session_id=sid,
+                room_number=test_room_num,
+                language="Tiếng Việt"
+            ))
+            assert res2.action == "query_order_status"
+            assert "Sake chiên giòn" in res2.response
+            assert "hoàn thành" in res2.response or "giao thành công" in res2.response
+        finally:
+            await db.delete(old_item)
+            await db.delete(old_ord)
+            await db.delete(new_item)
+            await db.delete(new_ord)
+            if room_test:
+                room_test.status = prev_status
             await db.commit()
             session_manager.reset_session(sid)

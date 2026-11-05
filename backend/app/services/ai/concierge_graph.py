@@ -1,4 +1,5 @@
 import re
+from datetime import datetime, timedelta
 
 
 
@@ -3419,88 +3420,64 @@ async def query_room_order_status_db(room_num: str, is_en: bool = False, is_reje
 
 
             for ord_item in recent_orders:
-
-
-
                 items_summary = ""
-
-
-
                 if ord_item.order_items:
-
-
-
                     items_summary = ", ".join([f"{it.quantity}x {it.item_name}" for it in ord_item.order_items if it.item_name])
-
-
-
                 elif (ord_item.status or "").lower().strip() in ["rejected", "cancelled"]:
-
-
-
                     items_summary = ""
-
-
-
                 elif ord_item.note:
-
-
-
                     items_summary = ord_item.note
 
+                cur_status = ord_item.status or "Pending"
+                reject_reason = ord_item.note or ""
 
+                # Đồng bộ trạng thái nếu SupportRequest liên kết đã hoàn tất, hủy hoặc từ chối
+                matching_req = next(
+                    (
+                        r for r in recent_requests
+                        if (ord_item.support_request_id and r.id == ord_item.support_request_id)
+                        or (r.id == ord_item.id)
+                        or (r.ticket_code and ord_item.order_number and ord_item.order_number in r.ticket_code)
+                    ),
+                    None
+                )
+                if matching_req and matching_req.status:
+                    req_st = matching_req.status.strip()
+                    req_st_lower = req_st.lower()
+                    cur_st_lower = cur_status.lower()
+                    if cur_st_lower in ("pending", "waiting", "unassigned") and req_st_lower not in ("pending", "waiting", "unassigned"):
+                        cur_status = req_st
+                        if req_st_lower in ("rejected", "cancelled"):
+                            reject_reason = (
+                                (matching_req.extra_data or {}).get("reject_reason")
+                                or (matching_req.extra_data or {}).get("reason")
+                                or matching_req.description
+                                or reject_reason
+                            )
+                        try:
+                            if ord_item.status != req_st:
+                                ord_item.status = req_st
+                                ord_item.updated_at = datetime.utcnow()
+                        except Exception:
+                            pass
 
-
-
-
+                # Lọc đơn chờ quá hạn (> 12 giờ): đơn pending từ hôm qua xem như hết hạn/hủy
+                now_utc = datetime.utcnow()
+                if ord_item.created_at and (now_utc - ord_item.created_at).total_seconds() > 12 * 3600:
+                    if cur_status.lower() in ("pending", "waiting", "unassigned"):
+                        cur_status = "Cancelled"
 
                 data_entry = {
-
-
-
                     "order_number": ord_item.order_number,
-
-
-
-                    "status": ord_item.status or "Pending",
-
-
-
+                    "status": cur_status,
                     "created_at": ord_item.created_at,
-
-
-
                     "items_summary": items_summary,
-
-
-
                     "is_service_request": bool(ord_item.is_service_request),
-
-
-
                     "progress": ord_item.progress or 0,
-
-
-
                     "note": ord_item.note or "",
-
-
-
-                    "reject_reason": ord_item.note or "",
-
-
-
+                    "reject_reason": reject_reason,
                     "source_id": ord_item.id,
-
-
-
                 }
-
-
-
-
-
-
 
                 if ord_item.is_service_request:
 
@@ -3814,37 +3791,34 @@ async def query_room_order_status_db(room_num: str, is_en: bool = False, is_reje
 
 
 
-                latest_food_data = active_food[0] if active_food else (completed_food[0] if completed_food else None)
+                if active_food and completed_food:
+                    t_act = active_food[0].get("created_at") or datetime.min
+                    t_comp = completed_food[0].get("created_at") or datetime.min
+                    # Nếu đơn active mới hơn hoặc bằng đơn hoàn tất -> báo đơn active
+                    # Nếu đơn hoàn tất được tạo sau đơn active (khách vừa hoàn tất đơn mới) -> báo đơn hoàn tất mới nhất
+                    latest_food_data = active_food[0] if t_act >= t_comp else completed_food[0]
+                else:
+                    latest_food_data = active_food[0] if active_food else (completed_food[0] if completed_food else None)
 
-
-
-                latest_service_data = active_service[0] if active_service else (completed_service[0] if completed_service else None)
-
-
+                if active_service and completed_service:
+                    t_act_s = active_service[0].get("created_at") or datetime.min
+                    t_comp_s = completed_service[0].get("created_at") or datetime.min
+                    latest_service_data = active_service[0] if t_act_s >= t_comp_s else completed_service[0]
+                else:
+                    latest_service_data = active_service[0] if active_service else (completed_service[0] if completed_service else None)
 
                 all_active = active_food + active_service
-
-
-
                 all_active.sort(key=lambda x: x.get("created_at") or datetime.min, reverse=True)
 
-
-
                 all_any = food_orders_list + service_orders_list
-
-
-
                 all_any.sort(key=lambda x: x.get("created_at") or datetime.min, reverse=True)
 
-
-
-                order_data = all_active[0] if all_active else (all_any[0] if all_any else None)
-
-
-
-
-
-
+                if all_active and all_any:
+                    t_act_all = all_active[0].get("created_at") or datetime.min
+                    t_any_all = all_any[0].get("created_at") or datetime.min
+                    order_data = all_active[0] if t_act_all >= t_any_all else all_any[0]
+                else:
+                    order_data = all_active[0] if all_active else (all_any[0] if all_any else None)
 
             req_data = recent_requests[0] if recent_requests else None
 
@@ -3891,6 +3865,8 @@ async def query_room_order_status_db(room_num: str, is_en: bool = False, is_reje
 
 
                 "latest_rejected_service": latest_rejected_service,
+                "food_orders": food_orders_list,
+                "service_orders": service_orders_list,
 
 
 
@@ -4800,60 +4776,30 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
 
         target_ord = None
 
+        # Ưu tiên khớp đúng món ăn khách hỏi đích danh trong câu thoại
+        inquiry_lower = inquiry_text.lower()
+        matched_by_dish = None
+        for f_cand in (room_info.get("food_orders") or []):
+            f_sum = (f_cand.get("items_summary") or "").lower()
+            if f_sum:
+                tokens = [tk.strip() for tk in re.split(r"[,;|\n]", f_sum) if len(tk.strip()) >= 3]
+                clean_tokens = [re.sub(r"^\d+\s*x\s*", "", tk).strip() for tk in tokens]
+                if any(tk in inquiry_lower for tk in clean_tokens if len(tk) >= 3):
+                    matched_by_dish = f_cand
+                    break
+            if "sake" in f_sum and "sake" in inquiry_lower:
+                matched_by_dish = f_cand
+                break
 
-
-
-
-
-
-        if is_asking_service:
-
-
-
-
-
-
-
-            target_ord = latest_service
-
-
-
-
-
-
-
-            is_service_mode = True
-
-
-
-
-
-
-
-        elif is_asking_food:
-
-
-
-
-
-
-
-            target_ord = latest_food
-
-
-
-
-
-
-
+        if matched_by_dish:
+            target_ord = matched_by_dish
             is_service_mode = False
-
-
-
-
-
-
-
+        elif is_asking_service:
+            target_ord = latest_service
+            is_service_mode = True
+        elif is_asking_food:
+            target_ord = latest_food
+            is_service_mode = False
         else:
 
 

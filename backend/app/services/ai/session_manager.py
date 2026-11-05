@@ -5,6 +5,19 @@ from typing import Dict, Any, List, Optional
 
 logger = logging.getLogger(__name__)
 
+WORD_TO_DIGIT = {
+    'không': '0', 'khong': '0', 'linh': '0', 'lẻ': '0', 'le': '0',
+    'một': '1', 'mot': '1', 'mốt': '1', '1': '1',
+    'hai': '2', '2': '2',
+    'ba': '3', '3': '3',
+    'bốn': '4', 'bon': '4', 'tư': '4', 'tu': '4', '4': '4',
+    'năm': '5', 'nam': '5', 'lăm': '5', 'lam': '5', '5': '5',
+    'sáu': '6', 'sau': '6', '6': '6',
+    'bảy': '7', 'bay': '7', 'bẩy': '7', '7': '7',
+    'tám': '8', 'tam': '8', '8': '8',
+    'chín': '9', 'chin': '9', '9': '9',
+}
+
 
 def extract_room_number(text: str, is_answering_room: bool = False) -> Optional[str]:
     """
@@ -47,7 +60,31 @@ def extract_room_number(text: str, is_answering_room: bool = False) -> Optional[
     if pattern_stay:
         return pattern_stay.group(1)
 
-    # 4. Khi đang trong trạng thái chờ khách bổ sung số phòng (is_answering_room=True)
+    # 4. Nhận diện số phòng bằng chữ nói tiếng Việt: "ba lẻ một", "ba lẻ 1", "ba không một", "ba trăm lẻ một", "bốn lẻ hai", "năm linh ba"
+    pat_spoken1 = re.search(
+        r'(?:phòng|phong|room|p\.|p)?\s*(?:số|so)?\s*\b(một|hai|ba|bốn|tư|năm|sáu|bảy|bẩy|tám|chín|[1-9])\s+(?:trăm\s+)?(?:lẻ|linh|không|khong|le)\s+(một|mốt|hai|ba|bốn|tư|năm|lăm|sáu|bảy|bẩy|tám|chín|[0-9])\b',
+        clean,
+        re.IGNORECASE
+    )
+    if pat_spoken1:
+        d1 = WORD_TO_DIGIT.get(pat_spoken1.group(1).lower())
+        d2 = WORD_TO_DIGIT.get(pat_spoken1.group(2).lower())
+        if d1 and d2:
+            return f"{d1}0{d2}"
+
+    pat_spoken2 = re.search(
+        r'(?:phòng|phong|room|p\.|p)\s*(?:số|so)?\s*\b(một|hai|ba|bốn|tư|năm|sáu|bảy|bẩy|tám|chín|[1-9])\s+(không|khong|linh|một|hai|ba|bốn|tư|năm|sáu|bảy|bẩy|tám|chín|[0-9])\s+(một|mốt|hai|ba|bốn|tư|năm|lăm|sáu|bảy|bẩy|tám|chín|[0-9])\b',
+        clean,
+        re.IGNORECASE
+    )
+    if pat_spoken2:
+        d1 = WORD_TO_DIGIT.get(pat_spoken2.group(1).lower())
+        d2 = WORD_TO_DIGIT.get(pat_spoken2.group(2).lower())
+        d3 = WORD_TO_DIGIT.get(pat_spoken2.group(3).lower())
+        if d1 and d2 and d3:
+            return f"{d1}{d2}{d3}"
+
+    # 5. Khi đang trong trạng thái chờ khách bổ sung số phòng (is_answering_room=True)
     if is_answering_room:
         # Bắt số 3-4 chữ số trong câu (ngoại trừ các năm dương lịch 2020-2035)
         matches = re.findall(r'\b([1-9][0-9]{2,3})\b', clean)

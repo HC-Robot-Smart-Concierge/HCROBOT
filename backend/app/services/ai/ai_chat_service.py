@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.ai import ChatRequest, ChatResponse
 from langchain_core.runnables import RunnableConfig
-from app.services.ai.session_manager import session_manager
+from app.services.ai.session_manager import session_manager, extract_room_number
 from app.services.ai.concierge_graph import concierge_graph, intent_router_node, service_fsm_node, retrieval_node
 from app.services.ai.tts_service import tts_service
 from app.services.ai.ollama_service import ollama_service
@@ -230,9 +230,12 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
     """
     sid = request.session_id or "default_session"
 
-    # Cập nhật số phòng nếu truyền trực tiếp
+    # Cập nhật số phòng nếu truyền trực tiếp hoặc bóc tách từ câu nói
+    extracted_from_prompt = extract_room_number(request.prompt)
     if request.room_number:
         session_manager.set_room_number(sid, request.room_number)
+    elif extracted_from_prompt:
+        session_manager.set_room_number(sid, extracted_from_prompt)
 
     current_room = session_manager.get_room_number(sid)
     history = session_manager.get_history(sid)
@@ -241,13 +244,21 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
     # Bỏ qua Redis Cache nếu:
     # 1. Session đang có pending_intent chờ khách bổ sung số phòng
     # 2. Câu hỏi kiểm tra tiến độ/trạng thái đơn món (cần dữ liệu DB thời gian thực của bếp)
+    # 3. Yêu cầu dịch vụ cụ thể hoặc câu nói có số phòng hoặc mở menu
     from app.services.ai.constants import SERVICE_KEYWORDS
     prompt_lower_req = (request.prompt or "").lower()
     is_status_query_req = any(k in prompt_lower_req for k in SERVICE_KEYWORDS.get("query_order_status", []))
     pending_intent_exist = bool(session_manager.get_pending_intent(sid))
+    has_room_in_prompt = bool(extracted_from_prompt or request.room_number)
+    is_actionable_service = any(
+        any(k in prompt_lower_req for k in kws)
+        for act_key, kws in SERVICE_KEYWORDS.items()
+        if act_key not in ["chitchat", "faq"]
+    )
+    is_menu_action = any(k in prompt_lower_req for k in ["menu", "thực đơn", "thuc don", "đặt món", "gọi món", "order", "đồ ăn", "thức ăn", "dịch vụ phòng", "room service"])
 
     cached_ai = None
-    if not pending_intent_exist and not is_status_query_req:
+    if not pending_intent_exist and not is_status_query_req and not has_room_in_prompt and not is_actionable_service and not is_menu_action:
         from app.services.cache.redis_service import redis_service
         cached_ai = await redis_service.get_ai_cache(request.prompt, request.language or "vi")
     if cached_ai and cached_ai.get("full_text"):
@@ -391,8 +402,8 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
         destination_key = graph_result.get("destination_key") or _detect_destination_poi(request.prompt, reply, current_room)
     eye_expression = graph_result.get("eye_expression")
 
-    # Lưu kết quả vào Redis Cache (bỏ qua nếu là câu hỏi tra cứu trạng thái đơn món thời gian thực)
-    if act != "query_order_status":
+    # Lưu kết quả vào Redis Cache (bỏ qua nếu là câu hỏi tra cứu trạng thái đơn món, yêu cầu dịch vụ hoặc có số phòng)
+    if act not in ["query_order_status", "open_food_menu", "open_room_service_menu", "room_service", "housekeeping", "laundry"] and not has_room_in_prompt and not is_menu_action:
         try:
             await redis_service.set_ai_cache(
                 request.prompt,
@@ -441,8 +452,11 @@ async def generate_chat_stream(request: ChatRequest) -> AsyncGenerator[str, None
     """
     try:
         sid = request.session_id or "default_session"
+        extracted_from_prompt = extract_room_number(request.prompt)
         if request.room_number:
             session_manager.set_room_number(sid, request.room_number)
+        elif extracted_from_prompt:
+            session_manager.set_room_number(sid, extracted_from_prompt)
         current_room = session_manager.get_room_number(sid)
         history = session_manager.get_history(sid)
 

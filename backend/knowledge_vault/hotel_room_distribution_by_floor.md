@@ -38,7 +38,7 @@ tags: [so_luong_phong, phan_bo_phong, phong_theo_tang, tang_3, tang_4, room_coun
 | **Tầng 4** | FLR-04 | Tầng phòng nghỉ lưu trú | **10 phòng** | **401, 402, 403, 404, 405, 406, 407, 408, 409, 410** | Phòng Tiêu Chuẩn & Cao Cấp (Deluxe Ocean View), diện tích 35m2/phòng |
 | **Tầng 5** | FLR-05 | Khu thư giãn, Thể thao & Spa | **0 phòng** | Không có phòng lưu trú | Hồ bơi vô cực (Infinity Pool), Phòng Gym, Aurora Luxury Spa & Sauna |
 | **Tầng 6** | FLR-06 | Giải trí tầng thượng & Cafe | **0 phòng** | Không có phòng lưu trú | Quán Rooftop Coffee & View, Sky Lounge Bar, Phòng VIP Karaoke |
-| **TỔNG CỘNG** | **8 Tầng** | **Toàn bộ khách sạn** | **20 PHÒNG** | **20 phòng (301-310 và 401-410)** | **100% phòng được trang bị khóa thẻ từ NFC và mã PIN 4 số** |
+| **TỔNG CỘNG** | **8 Tầng** | **Toàn bộ khách sạn** | **20 PHÒNG** | **20 phòng (301-310 và 401-410)** | **100% phòng được trang bị khóa điện tử thông minh và mã PIN bảo mật** |
 
 ---
 

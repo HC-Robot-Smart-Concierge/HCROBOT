@@ -107,7 +107,7 @@ All floors are directly connected via **Elevator A** and the main staircase posi
 - **Navigation:** Take Elevator A up to the **3rd Floor**, step out into the central corridor and follow the room number signs mounted on both walls.
 
 ### Robot Concierge Guidance
-- Direct guests holding keycards for rooms 301 through 310 to take Elevator A to the **3rd Floor**.
+- Direct guests staying in rooms 301 through 310 to take Elevator A to the **3rd Floor**.
 
 ---
 
@@ -120,7 +120,7 @@ All floors are directly connected via **Elevator A** and the main staircase posi
 - **Navigation:** Take Elevator A up to the **4th Floor**, step out into the central corridor and follow the directional signage to the room door.
 
 ### Robot Concierge Guidance
-- Direct guests holding keycards for rooms 401 through 410 to take Elevator A to the **4th Floor**.
+- Direct guests staying in rooms 401 through 410 to take Elevator A to the **4th Floor**.
 
 ---
 
@@ -141,7 +141,7 @@ All floors are directly connected via **Elevator A** and the main staircase posi
   - **Pricing:** Treatments starting from 500,000 VND. In-house staying guests receive a special 15% discount.
 - **24/7 Fitness & Gym Center:**
   - **Location:** Straight ahead from the Elevator A foyer.
-  - **Operating Hours:** Open 24/7 continuous access with room keycard.
+  - **Operating Hours:** Open 24/7 continuous access for staying guests.
   - **Equipment:** Professional Technogym treadmills, ellipticals, free weights, and multi-functional strength training benches. Free chilled drinking water and workout towels provided.
 
 ### Navigation to 5th Floor
@@ -191,8 +191,8 @@ All floors are directly connected via **Elevator A** and the main staircase posi
 | **Basement 1** | Motorbike & Bike Parking | Open 24/7 | Free for staying hotel guests | Take Elevator A down to Basement 1 |
 | **Ground Floor** | Main Lobby & Reception Desk | Open 24/7 | Free access | Located on the right side of entrance lobby |
 | **2nd Floor** | Central Culinary Kitchen (Staff Only) | 24/7 Room Service preparation | No walk-in restaurant/buffet; 24/7 In-Room Dining only |
-| **3rd Floor** | Standard Guest Rooms (301-310) | Open 24/7 | Room keycard access | Take Elevator A to 3rd Floor, follow hallway signs |
-| **4th Floor** | Deluxe Guest Rooms (401-410) | Open 24/7 | Room keycard access | Take Elevator A to 4th Floor, follow hallway signs |
+| **3rd Floor** | Standard Guest Rooms (301-310) | Open 24/7 | Room PIN & electronic lock access | Take Elevator A to 3rd Floor, follow hallway signs |
+| **4th Floor** | Deluxe Guest Rooms (401-410) | Open 24/7 | Room PIN & electronic lock access | Take Elevator A to 4th Floor, follow hallway signs |
 | **5th Floor** | Infinity Swimming Pool | 06:00 - 22:00 | Free (towels included) | Take Elevator A to 5th Floor, turn left through glass doors |
 | **5th Floor** | Locker Room & Showers | 06:00 - 22:00 | Free for pool/gym guests | Located adjacent to the 5th-floor pool terrace |
 | **5th Floor** | Thao Moc Herbal Spa & Massage | 09:00 - 22:00 | From 500,000 VND (15% discount) | Take Elevator A to 5th Floor, turn left 15m |

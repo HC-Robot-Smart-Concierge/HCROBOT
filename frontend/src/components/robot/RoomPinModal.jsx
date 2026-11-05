@@ -61,7 +61,7 @@ export const RoomPinModal = ({
   isSelectingRoomInitial = false,
 
   skipTicketCreation = true,
-
+  sessionId = null,
 }) => {
 
   const [selectedRoom, setSelectedRoom] = useState(roomNumber || '');
@@ -339,19 +339,13 @@ export const RoomPinModal = ({
       try {
 
         const res = await verifyRoomNfc(
-
           scannedCode,
-
           selectedRoom || null,
-
           pendingAction,
-
           pendingItems,
-
           null,
-
-          skipTicketCreation
-
+          skipTicketCreation,
+          sessionId
         );
 
         setIsSuccess(true);
@@ -571,21 +565,14 @@ export const RoomPinModal = ({
         try {
 
           const res = await verifyRoomPin(
-
             selectedRoom,
-
             pin,
-
             pendingAction,
-
             pendingItems,
-
             null,
-
             null,
-
-            skipTicketCreation
-
+            skipTicketCreation,
+            sessionId
           );
 
           setIsSuccess(true);

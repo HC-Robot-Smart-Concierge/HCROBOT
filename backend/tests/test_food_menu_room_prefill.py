@@ -40,3 +40,4 @@ async def test_food_menu_prefills_room_number_in_chat_response():
         assert res2.trigger_menu == "food_menu"
         assert "301" in res2.response
         break
+

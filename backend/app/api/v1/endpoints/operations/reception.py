@@ -258,6 +258,12 @@ async def verify_room_pin(
         )
         await db.commit()
 
+    session_id = getattr(payload, "session_id", None)
+    if session_id:
+        from app.services.ai.session_manager import session_manager
+        session_manager.set_room_authenticated(session_id, room.room_number)
+        session_manager.set_room_number(session_id, room.room_number)
+
     return RoomPinVerifyResponse(
         verified=True,
         room_number=room.room_number,
@@ -354,6 +360,12 @@ async def verify_room_nfc(
             request_type="room_service" if dept_id == "DEP-ROOMSERVICE" else "housekeeping",
         )
         await db.commit()
+
+    session_id = getattr(payload, "session_id", None)
+    if session_id:
+        from app.services.ai.session_manager import session_manager
+        session_manager.set_room_authenticated(session_id, matched_room.room_number)
+        session_manager.set_room_number(session_id, matched_room.room_number)
 
     return RoomPinVerifyResponse(
         verified=True,

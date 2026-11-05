@@ -259,6 +259,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   // Session Memory & Room Number States
   const [sessionId, setSessionId] = useState(() => 'session_kiosk_' + Math.random().toString(36).substring(2, 9));
   const [activeRoomNumber, setActiveRoomNumber] = useState(null);
+  const [authenticatedRoom, setAuthenticatedRoom] = useState(null);
 
   // Robot Kiosk Protected Logout States
   const [showLogoutModal, setShowLogoutModal] = useState(false);
@@ -458,6 +459,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     }
     flushSession(sessionId).catch(() => { });
     setActiveRoomNumber(null);
+    setAuthenticatedRoom(null);
     setSessionId('session_kiosk_' + Math.random().toString(36).substring(2, 9));
     setCurrentState('RT-02');
   }, [sessionId, speak]);
@@ -466,6 +468,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     setIsFeedbackModalOpen(false);
     flushSession(sessionId).catch(() => { });
     setActiveRoomNumber(null);
+    setAuthenticatedRoom(null);
     setSessionId('session_kiosk_' + Math.random().toString(36).substring(2, 9));
     setCurrentState('RT-02');
   }, [sessionId]);
@@ -496,6 +499,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     stopListening();
     resetTranscript();
     setActiveRoomNumber(null);
+    setAuthenticatedRoom(null);
     setAiResponseText('');
     await resetSession(sessionId);
     setSessionId('session_kiosk_' + Math.random().toString(36).substring(2, 9));
@@ -572,6 +576,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
           resetTranscript();
           setAiResponseText('');
           setActiveRoomNumber(null);
+          setAuthenticatedRoom(null);
           clearRouteGuidanceTimers();
           setIsFoodMenuOpen(false);
           setIsRoomServiceMenuOpen(false);
@@ -596,6 +601,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         if (idleDuration >= STANDBY_IDLE_TIMEOUT_MS) {
           setIsStandby(true);
           setActiveRoomNumber(null);
+          setAuthenticatedRoom(null);
           flushSession(sessionId).catch(() => {});
           setSessionId('session_kiosk_' + Math.random().toString(36).substring(2, 9));
         }
@@ -730,6 +736,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       console.warn('Auto-flush session on guest left:', err);
     }
     setActiveRoomNumber(null);
+    setAuthenticatedRoom(null);
     setAiResponseText('');
     setLastUserPrompt('');
     resetSession(sessionId);
@@ -1428,6 +1435,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     const verifiedRoom = result?.room_number || pinModalRoomNumber;
     if (verifiedRoom) {
       setActiveRoomNumber(verifiedRoom);
+      setAuthenticatedRoom(verifiedRoom);
     }
     setIsPinModalOpen(false);
     isPinModalOpenRef.current = false;
@@ -1629,11 +1637,19 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     return (
       <RobotFoodMenuScreen
         activeRoomNumber={activeRoomNumber || ''}
+        authenticatedRoom={authenticatedRoom}
+        onPinVerifiedSuccess={(room) => setAuthenticatedRoom(room)}
+        sessionId={sessionId}
         onClose={() => {
           setIsFoodMenuOpen(false);
           setIsRoomServiceMenuOpen(false);
         }}
-        onRoomChange={(room) => setActiveRoomNumber(room)}
+        onRoomChange={(room) => {
+          setActiveRoomNumber(room);
+          if (authenticatedRoom && String(authenticatedRoom).trim() !== String(room).trim()) {
+            setAuthenticatedRoom(null);
+          }
+        }}
         onOrderSuccess={(order) => {
           setIsFoodMenuOpen(false);
           isWaitingRoomForStatusQueryRef.current = false;
@@ -1643,6 +1659,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
           const roomToMention = order?.room_number || activeRoomNumber;
           if (roomToMention) {
             setActiveRoomNumber(roomToMention);
+            setAuthenticatedRoom(roomToMention);
           }
           const isEn = language === 'English';
           const msg = isEn
@@ -1659,11 +1676,19 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     return (
       <RobotRoomServiceScreen
         activeRoomNumber={activeRoomNumber || ''}
+        authenticatedRoom={authenticatedRoom}
+        onPinVerifiedSuccess={(room) => setAuthenticatedRoom(room)}
+        sessionId={sessionId}
         onClose={() => {
           setIsRoomServiceMenuOpen(false);
           setIsFoodMenuOpen(false);
         }}
-        onRoomChange={(room) => setActiveRoomNumber(room)}
+        onRoomChange={(room) => {
+          setActiveRoomNumber(room);
+          if (authenticatedRoom && String(authenticatedRoom).trim() !== String(room).trim()) {
+            setAuthenticatedRoom(null);
+          }
+        }}
         onRequestSuccess={(req) => {
           isWaitingRoomForStatusQueryRef.current = false;
           isRoomPickerOpenRef.current = false;
@@ -1673,6 +1698,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
           const roomToMention = req?.room_number || activeRoomNumber;
           if (roomToMention) {
             setActiveRoomNumber(roomToMention);
+            setAuthenticatedRoom(roomToMention);
           }
           const isEn = language === 'English';
           const msg = isEn

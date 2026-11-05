@@ -32,3 +32,4 @@ describe('extractSpokenRoomNumber', () => {
     expect(extractSpokenRoomNumber(null)).toBeNull();
   });
 });
+

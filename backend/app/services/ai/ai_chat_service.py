@@ -324,7 +324,7 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
         "lang_code": cur_lang_code,
         "emotion": request.emotion,
         "room_number": current_room,
-        "is_room_authenticated": bool(request.room_number and str(request.room_number).strip() == str(current_room or "").strip()),
+        "is_room_authenticated": bool(current_room and session_manager.is_room_authenticated(sid, current_room)),
         "chat_history": history,
         "destination_key": None,
         "trigger_video_call": False,

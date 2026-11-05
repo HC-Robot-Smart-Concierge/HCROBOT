@@ -74,6 +74,7 @@ describe('Operations API verifyRoomPin 6-Digits & Check-in Logic', () => {
           note: null,
           skip_ticket_creation: false,
           create_ticket: true,
+          session_id: null,
         }),
       })
     );

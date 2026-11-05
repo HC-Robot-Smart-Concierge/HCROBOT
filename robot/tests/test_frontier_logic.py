@@ -5,7 +5,9 @@ import unittest
 ROBOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(ROBOT_DIR, "ros2_configs"))
 
-from frontier_logic import Frontier, choose_frontier, find_frontiers  # noqa: E402
+from frontier_logic import (  # noqa: E402
+    Frontier, choose_frontier, find_frontiers, frontier_still_open, safe_goal,
+)
 
 RES = 0.1
 
@@ -73,6 +75,59 @@ class TestChooseFrontier(unittest.TestCase):
     def test_big_cluster_can_beat_slightly_closer_small_one(self):
         big = Frontier(goal=(1.5, 0.0), size=100, centroid=(1.5, 0.0))
         self.assertIs(choose_frontier([self.near, big], (0, 0)), big)
+
+
+class TestSafeGoal(unittest.TestCase):
+    # Hanh lang rong 7 o (0.7 m), tuong tren/duoi, ben phai chua biet.
+    ROWS = [
+        "############",
+        "#.........??",
+        "#.........??",
+        "#.........??",
+        "#.........??",
+        "#.........??",
+        "#.........??",
+        "#.........??",
+        "############",
+    ]
+
+    def _grid(self):
+        return grid_from_rows(self.ROWS)
+
+    def _cell(self, p):
+        return int(p[0] / RES), int(p[1] / RES)
+
+    def test_goal_near_wall_is_pulled_away_from_wall(self):
+        data, w, h = self._grid()
+        # Frontier sat tuong duoi (hang 1), robot o giua hanh lang ben trai.
+        goal = safe_goal(data, w, h, RES, (0, 0), (0.95, 0.15), (0.25, 0.45), clearance_m=0.2)
+        self.assertIsNotNone(goal)
+        cx, cy = self._cell(goal)
+        self.assertEqual(data[cy * w + cx], 0)
+        self.assertGreaterEqual(cy, 3, "phai cach tuong duoi >= 2 o")
+
+    def test_goal_with_enough_clearance_is_kept(self):
+        data, w, h = self._grid()
+        goal = safe_goal(data, w, h, RES, (0, 0), (0.95, 0.45), (0.25, 0.45), clearance_m=0.2)
+        self.assertEqual(self._cell(goal), (9, 4))
+
+    def test_no_safe_cell_returns_none(self):
+        data, w, h = self._grid()
+        # Hanh lang 0.7 m khong the cach ca hai tuong 0.4 m.
+        self.assertIsNone(
+            safe_goal(data, w, h, RES, (0, 0), (0.95, 0.45), (0.25, 0.45), clearance_m=0.4)
+        )
+
+
+class TestFrontierStillOpen(unittest.TestCase):
+    def test_open_when_a_frontier_is_near_target(self):
+        fronts = [Frontier(goal=(2.0, 0.1), size=10, centroid=(2.0, 0.1))]
+        self.assertTrue(frontier_still_open(fronts, (2.0, 0.0), radius=0.5))
+
+    def test_closed_when_lidar_already_revealed_it(self):
+        fronts = [Frontier(goal=(5.0, 0.0), size=10, centroid=(5.0, 0.0))]
+        self.assertFalse(frontier_still_open(fronts, (2.0, 0.0), radius=0.5))
+        self.assertFalse(frontier_still_open([], (2.0, 0.0), radius=0.5))
 
 
 if __name__ == "__main__":

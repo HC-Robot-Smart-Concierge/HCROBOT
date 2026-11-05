@@ -148,6 +148,9 @@ local_costmap:
       resolution: 0.025
       # Xe that hinh chu nhat dai 0.32 m x rong 0.16 m, tam xoay (tam 4 banh) o giua.
       footprint: "[[0.16, 0.08], [0.16, -0.08], [-0.16, -0.08], [-0.16, 0.08]]"
+      # Bien an toan: Pi (sonar) chan xoay/re khi hong xe < 12 cm. Khong padding thi
+      # Nav2 lap duong sat tuong, xe ket vi moi lenh xoay bi chan (xem settings.yaml).
+      footprint_padding: 0.13
       transform_tolerance: 3.0   # mac dinh 0.3; TF map->odom cu toi ~2.5 s khi xe quay (xem controller_server)
       plugins:
       - obstacle_layer
@@ -189,6 +192,9 @@ global_costmap:
       use_sim_time: false
       # Xe that hinh chu nhat dai 0.32 m x rong 0.16 m, tam xoay (tam 4 banh) o giua.
       footprint: "[[0.16, 0.08], [0.16, -0.08], [-0.16, -0.08], [-0.16, 0.08]]"
+      # Bien an toan: Pi (sonar) chan xoay/re khi hong xe < 12 cm. Khong padding thi
+      # Nav2 lap duong sat tuong, xe ket vi moi lenh xoay bi chan (xem settings.yaml).
+      footprint_padding: 0.13
       transform_tolerance: 3.0   # mac dinh 0.3; TF map->odom cu toi ~2.5 s khi xe quay (xem controller_server)
       resolution: 0.025
       track_unknown_space: true

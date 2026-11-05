@@ -1,5 +1,6 @@
 import { useStaffText } from '../../context/StaffLanguage';
 import { StaffPageHeader } from '../../components/dashboard/RoomServiceFrame';
+import { handleNumberInputBlockExponent } from '../../utils/numberInputHelper';
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   ConciergeBell,
@@ -537,6 +538,7 @@ export const RoomServiceMenuManagementPage = ({ currentUser, onNotify = () => {}
                     min="0"
                     step="1000"
                     value={formData.price}
+                    onKeyDown={(e) => handleNumberInputBlockExponent(e)}
                     onChange={(e) => setFormData({ ...formData, price: e.target.value })}
                     className="w-full px-3.5 py-2.5 bg-[#F9F7F4] border border-[#DDD5CA] rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#4A3E3D] text-[#2C2420]"
                   />
@@ -549,6 +551,7 @@ export const RoomServiceMenuManagementPage = ({ currentUser, onNotify = () => {}
                     min="1"
                     max="300"
                     value={formData.prep_time}
+                    onKeyDown={(e) => handleNumberInputBlockExponent(e, { allowDecimal: false })}
                     onChange={(e) => setFormData({ ...formData, prep_time: e.target.value })}
                     className="w-full px-3.5 py-2.5 bg-[#F9F7F4] border border-[#DDD5CA] rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#4A3E3D] text-[#2C2420]"
                   />
@@ -573,6 +576,7 @@ export const RoomServiceMenuManagementPage = ({ currentUser, onNotify = () => {}
                     type="number"
                     min="1"
                     value={formData.display_order}
+                    onKeyDown={(e) => handleNumberInputBlockExponent(e, { allowDecimal: false })}
                     onChange={(e) => setFormData({ ...formData, display_order: e.target.value })}
                     className="w-full px-3.5 py-2.5 bg-[#F9F7F4] border border-[#DDD5CA] rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#4A3E3D] text-[#2C2420]"
                   />

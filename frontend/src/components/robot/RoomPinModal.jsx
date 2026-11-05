@@ -26,6 +26,39 @@ import { verifyRoomPin, verifyRoomNfc } from '../../services/operationsApi';
 
 
 
+
+export const PIN_LOCKOUT_MAX_ATTEMPTS = 5;
+export const PIN_LOCKOUT_DURATION_SEC = 60;
+export const DEFAULT_WRONG_PIN_ERROR_MSG = 'Mã PIN phòng không chính xác. Quý khách vui lòng thử lại sau.';
+
+export const getRoomLockoutState = (roomNumber) => {
+  if (!roomNumber || typeof window === 'undefined' || typeof sessionStorage === 'undefined') return { count: 0, lockedUntil: 0 };
+  try {
+    const raw = sessionStorage.getItem(`room_pin_lock_${roomNumber}`);
+    if (raw) {
+      const data = JSON.parse(raw);
+      if (data && typeof data.lockedUntil === 'number' && data.lockedUntil > Date.now()) {
+        return data;
+      }
+    }
+  } catch (e) { }
+  return { count: 0, lockedUntil: 0 };
+};
+
+export const setRoomLockoutState = (roomNumber, state) => {
+  if (!roomNumber || typeof window === 'undefined' || typeof sessionStorage === 'undefined') return;
+  try {
+    sessionStorage.setItem(`room_pin_lock_${roomNumber}`, JSON.stringify(state));
+  } catch (e) { }
+};
+
+export const clearRoomLockoutState = (roomNumber) => {
+  if (!roomNumber || typeof window === 'undefined' || typeof sessionStorage === 'undefined') return;
+  try {
+    sessionStorage.removeItem(`room_pin_lock_${roomNumber}`);
+  } catch (e) { }
+};
+
 export const OFFICIAL_ROOMS = {
 
   floor3: ['301', '302', '303', '304', '305', '306', '307', '308', '309', '310'],
@@ -93,6 +126,42 @@ export const RoomPinModal = ({
   const [successInfo, setSuccessInfo] = useState(null);
 
   const [isShaking, setIsShaking] = useState(false);
+  const [lockoutRemaining, setLockoutRemaining] = useState(0);
+
+  // Dong bo trang thai lockout khi selectedRoom thay doi hoac modal mo
+  useEffect(() => {
+    if (!selectedRoom || !isOpen) {
+      setLockoutRemaining(0);
+      return;
+    }
+    const state = getRoomLockoutState(selectedRoom);
+    if (state.lockedUntil > Date.now()) {
+      const remainingSec = Math.ceil((state.lockedUntil - Date.now()) / 1000);
+      setLockoutRemaining(remainingSec);
+      setErrorMessage(`Quý khách đã nhập sai mã PIN 5 lần. Hệ thống tạm khóa 1 phút. Quý khách vui lòng thử lại sau (${remainingSec}s).`);
+    } else {
+      setLockoutRemaining(0);
+    }
+  }, [selectedRoom, isOpen]);
+
+  // Bo dem giam dan lockout 1 phut (60s)
+  useEffect(() => {
+    if (lockoutRemaining <= 0) return;
+    const timer = setInterval(() => {
+      setLockoutRemaining((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          clearRoomLockoutState(selectedRoom);
+          setErrorMessage('');
+          return 0;
+        }
+        const next = prev - 1;
+        setErrorMessage(`Quý khách đã nhập sai mã PIN 5 lần. Hệ thống tạm khóa 1 phút. Quý khách vui lòng thử lại sau (${next}s).`);
+        return next;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [lockoutRemaining, selectedRoom]);
 
 
 
@@ -230,7 +299,7 @@ export const RoomPinModal = ({
 
               null,
 
-              skipTicketCreation
+              (skipTicketCreation || ["taxi", "book_taxi", "taxi_booking", "query_order_status", "query_service_status", "query_taxi_status"].includes(pendingAction))
 
             );
 
@@ -344,7 +413,7 @@ export const RoomPinModal = ({
           pendingAction,
           pendingItems,
           null,
-          skipTicketCreation,
+          (skipTicketCreation || ["taxi", "book_taxi", "taxi_booking", "query_order_status", "query_service_status", "query_taxi_status"].includes(pendingAction)),
           sessionId
         );
 
@@ -518,37 +587,37 @@ export const RoomPinModal = ({
 
   const handleKeyPress = useCallback((digit) => {
 
-    if (isLoading || isSuccess) return;
+    if (isLoading || isSuccess || lockoutRemaining > 0) return;
 
     setErrorMessage('');
 
     setPin((prev) => (prev.length < 4 ? prev + digit : prev));
 
-  }, [isLoading, isSuccess]);
+  }, [isLoading, isSuccess, lockoutRemaining]);
 
 
 
   const handleDelete = useCallback(() => {
 
-    if (isLoading || isSuccess) return;
+    if (isLoading || isSuccess || lockoutRemaining > 0) return;
 
     setErrorMessage('');
 
     setPin((prev) => prev.slice(0, -1));
 
-  }, [isLoading, isSuccess]);
+  }, [isLoading, isSuccess, lockoutRemaining]);
 
 
 
   const handleClear = useCallback(() => {
 
-    if (isLoading || isSuccess) return;
+    if (isLoading || isSuccess || lockoutRemaining > 0) return;
 
     setErrorMessage('');
 
     setPin('');
 
-  }, [isLoading, isSuccess]);
+  }, [isLoading, isSuccess, lockoutRemaining]);
 
 
 
@@ -571,9 +640,13 @@ export const RoomPinModal = ({
             pendingItems,
             null,
             null,
-            skipTicketCreation,
+            (skipTicketCreation || ["taxi", "book_taxi", "taxi_booking", "query_order_status", "query_service_status", "query_taxi_status"].includes(pendingAction)),
             sessionId
           );
+
+          // Xoa trang thai lockout va dem loi khi xac thuc thanh cong
+          clearRoomLockoutState(selectedRoom);
+          setLockoutRemaining(0);
 
           setIsSuccess(true);
 
@@ -631,7 +704,31 @@ export const RoomPinModal = ({
 
           }
 
-          setErrorMessage(err.message || 'Mã PIN 4 số không chính xác (4 số cuối CCCD). Quý khách vui lòng thử lại.');
+          // Xu ly neu backend tra ve HTTP 429 lockout
+          if (err.data?.status === 429 || err.message?.includes('khóa 1 phút') || err.message?.includes('spam')) {
+            const lockedUntil = Date.now() + PIN_LOCKOUT_DURATION_SEC * 1000;
+            setRoomLockoutState(selectedRoom, { count: PIN_LOCKOUT_MAX_ATTEMPTS, lockedUntil });
+            setLockoutRemaining(PIN_LOCKOUT_DURATION_SEC);
+            setErrorMessage(err.message || `Quý khách đã nhập sai mã PIN 5 lần. Hệ thống tạm khóa 1 phút. Quý khách vui lòng thử lại sau (${PIN_LOCKOUT_DURATION_SEC}s).`);
+            setIsShaking(true);
+            setTimeout(() => setIsShaking(false), 500);
+            setPin('');
+            return;
+          }
+
+          // Cap nhat so lan nhap sai cho phong dang chon (Mã PIN 4 số không chính xác (4 số cuối CCCD))
+          const currentLock = getRoomLockoutState(selectedRoom);
+          const nextCount = (currentLock.count || 0) + 1;
+
+          if (nextCount >= PIN_LOCKOUT_MAX_ATTEMPTS) {
+            const lockedUntil = Date.now() + PIN_LOCKOUT_DURATION_SEC * 1000;
+            setRoomLockoutState(selectedRoom, { count: nextCount, lockedUntil });
+            setLockoutRemaining(PIN_LOCKOUT_DURATION_SEC);
+            setErrorMessage(`Quý khách đã nhập sai mã PIN 5 lần. Hệ thống tạm khóa 1 phút. Quý khách vui lòng thử lại sau (${PIN_LOCKOUT_DURATION_SEC}s).`);
+          } else {
+            setRoomLockoutState(selectedRoom, { count: nextCount, lockedUntil: 0 });
+            setErrorMessage(err.message || DEFAULT_WRONG_PIN_ERROR_MSG);
+          }
 
           setIsShaking(true);
 
@@ -837,7 +934,13 @@ export const RoomPinModal = ({
                     Đang xác thực mã PIN...
                   </span>
                 )}
-                {errorMessage && !isLoading && (
+                {lockoutRemaining > 0 && !isLoading && (
+                  <div className="flex items-center justify-center gap-1.5 text-[11px] text-rose-600 font-bold bg-rose-50 border border-rose-200/80 rounded-xl py-1.5 px-2.5">
+                    <Lock className="w-3.5 h-3.5 flex-shrink-0 text-rose-600" />
+                    <span>Đã khóa 1 phút: Thử lại sau {lockoutRemaining}s</span>
+                  </div>
+                )}
+                {errorMessage && !isLoading && lockoutRemaining <= 0 && (
                   <div className="flex items-center justify-center gap-1 text-[11px] text-rose-500 font-semibold">
                     <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
                     <span className="line-clamp-2">{errorMessage}</span>
@@ -870,7 +973,7 @@ export const RoomPinModal = ({
                   key={num}
                   type="button"
                   onClick={() => handleKeyPress(String(num))}
-                  disabled={isLoading || isSuccess}
+                  disabled={isLoading || isSuccess || lockoutRemaining > 0}
                   className="h-11 rounded-2xl bg-stone-50 hover:bg-stone-100 active:bg-stone-200 border border-stone-200/90 text-lg font-bold text-stone-900 shadow-2xs active:scale-95 transition-all flex items-center justify-center select-none cursor-pointer"
                 >
                   {num}
@@ -880,7 +983,7 @@ export const RoomPinModal = ({
               <button
                 type="button"
                 onClick={handleClear}
-                disabled={isLoading || isSuccess || pin.length === 0}
+                disabled={isLoading || isSuccess || pin.length === 0 || lockoutRemaining > 0}
                 className="h-11 rounded-2xl bg-stone-100/70 hover:bg-stone-100 border border-stone-200/50 text-[11px] font-bold text-stone-500 hover:text-stone-800 uppercase tracking-wider active:scale-95 transition-all flex items-center justify-center select-none disabled:opacity-30 cursor-pointer"
               >
                 Xóa
@@ -889,7 +992,7 @@ export const RoomPinModal = ({
               <button
                 type="button"
                 onClick={() => handleKeyPress('0')}
-                disabled={isLoading || isSuccess}
+                disabled={isLoading || isSuccess || lockoutRemaining > 0}
                 className="h-11 rounded-2xl bg-stone-50 hover:bg-stone-100 active:bg-stone-200 border border-stone-200/90 text-lg font-bold text-stone-900 shadow-2xs active:scale-95 transition-all flex items-center justify-center select-none cursor-pointer"
               >
                 0
@@ -898,7 +1001,7 @@ export const RoomPinModal = ({
               <button
                 type="button"
                 onClick={handleDelete}
-                disabled={isLoading || isSuccess || pin.length === 0}
+                disabled={isLoading || isSuccess || pin.length === 0 || lockoutRemaining > 0}
                 className="h-11 rounded-2xl bg-stone-100/70 hover:bg-stone-100 border border-stone-200/50 text-stone-600 hover:text-stone-900 active:scale-95 transition-all flex items-center justify-center select-none disabled:opacity-30 cursor-pointer"
                 title="Xóa lùi"
               >

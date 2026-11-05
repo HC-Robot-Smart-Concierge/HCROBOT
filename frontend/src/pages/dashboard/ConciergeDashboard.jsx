@@ -10,7 +10,6 @@ import {
   Car,
   MapPin,
   Navigation,
-  UserCheck,
   Check,
   Users,
   Disc,
@@ -30,6 +29,7 @@ import {
 } from '../../services/conciergeApi';
 import { fetchFeedbacks, fetchSessionMessages } from '../../services/aiApi';
 import { MessengerVideoCallModal } from '../../components/video/MessengerVideoCallModal';
+import { handleNumericKeyDown, handleNumberInputBlockExponent, sanitizeDigitsOnly } from '../../utils/numberInputHelper';
 import {
   fetchTaxiDashboard,
   fetchTaxiRequests,
@@ -75,7 +75,6 @@ export const ConciergeDashboard = ({
   });
   const [taxiRequests, setTaxiRequests] = useState([]);
   const [isTaxiModalOpen, setIsTaxiModalOpen] = useState(false);
-  const [assignModal, setAssignModal] = useState({ open: false, reqId: null, driver: '' });
   const [taxiForm, setTaxiForm] = useState({
     guest_name: '',
     room_number: '',
@@ -207,18 +206,19 @@ export const ConciergeDashboard = ({
     }
   };
 
-  const handleUpdateTaxiStatus = async (reqId, newStatus, driver = null) => {
-    const res = await updateTaxiRequestStatus(reqId, newStatus, driver);
+  const handleUpdateTaxiStatus = async (reqId, newStatus, note = null) => {
+    const res = await updateTaxiRequestStatus(reqId, newStatus, note);
     if (res) {
-      onNotify(`Cập nhật trạng thái chuyến xe: ${newStatus}`);
+      const statusMsg =
+        newStatus === 'Calling'
+          ? 'Concierge đã nhận yêu cầu và đang gọi xe taxi cho khách'
+          : newStatus === 'Completed'
+          ? 'Đã hoàn tất cuộc gọi xe taxi thành công'
+          : `Cập nhật trạng thái yêu cầu taxi: ${newStatus}`;
+      onNotify(statusMsg);
       setTaxiRequests((prev) =>
-        prev.map((r) =>
-          r.id === reqId ? { ...r, status: newStatus, assigned_driver: driver || r.assigned_driver } : r
-        )
+        prev.map((r) => (r.id === reqId ? { ...r, status: newStatus } : r))
       );
-      if (assignModal.open) {
-        setAssignModal({ open: false, reqId: null, driver: '' });
-      }
     }
   };
 
@@ -237,7 +237,7 @@ export const ConciergeDashboard = ({
               ) : activeSubTab === 'taxi' ? (
                 <>
                   <Car className="w-5 h-5 text-emerald-600" />
-                  Điều Phối Dịch Vụ Đặt Xe & Vận Chuyển
+                  Tiếp Nhận & Gọi Xe Taxi Cho Khách
                 </>
               ) : activeSubTab === 'feedback' ? (
                 <>
@@ -338,7 +338,7 @@ export const ConciergeDashboard = ({
               }`}
             >
               <Car className="w-3.5 h-3.5" />
-              <span>Điều phối Đặt xe & Vận chuyển</span>
+              <span>Yêu cầu gọi Taxi</span>
               {taxiKpis.pendingRequests > 0 && (
                 <span className="bg-palette-stone text-palette-charcoal border border-palette-silver text-[10px] px-1.5 py-0.2 rounded-full font-bold">
                   {taxiKpis.pendingRequests}
@@ -611,30 +611,44 @@ export const ConciergeDashboard = ({
             {/* Metric KPI Cards */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <div className="bg-palette-stone/40 border border-palette-silver rounded-xl p-3">
-                <div className="text-[11px] font-semibold text-palette-slate">Tổng cuốc xe</div>
+                <div className="text-[11px] font-semibold text-palette-slate">Tổng yêu cầu</div>
                 <div className="text-xl font-bold text-palette-charcoal mt-1">
                   {taxiRequests.length || taxiKpis.totalRequests}
                 </div>
               </div>
               <div className="bg-palette-stone/40 border border-palette-silver rounded-xl p-3">
-                <div className="text-[11px] font-semibold text-palette-slate">Chờ điều phối</div>
+                <div className="text-[11px] font-semibold text-palette-slate">Chờ tiếp nhận</div>
                 <div className="text-xl font-bold text-palette-charcoal mt-1">
-                  {taxiRequests.filter((r) => r.status === 'Pending' || r.status === 'Unassigned').length ||
-                    taxiKpis.pendingRequests}
-                </div>
-              </div>
-              <div className="bg-palette-stone/40 border border-palette-silver rounded-xl p-3">
-                <div className="text-[11px] font-semibold text-palette-slate">Đang di chuyển</div>
-                <div className="text-xl font-bold text-sky-600 mt-1">
                   {taxiRequests.filter(
-                    (r) => r.status === 'In Progress' || r.status === 'On The Way' || r.status === 'Driver Assigned'
-                  ).length || taxiKpis.activeTrips}
+                    (r) =>
+                      (r.status || '').toLowerCase() === 'pending' ||
+                      (r.status || '').toLowerCase() === 'unassigned' ||
+                      (r.status || '').toLowerCase() === 'chờ tiếp nhận'
+                  ).length || taxiKpis.pendingRequests}
                 </div>
               </div>
               <div className="bg-palette-stone/40 border border-palette-silver rounded-xl p-3">
-                <div className="text-[11px] font-semibold text-palette-slate">Đã hoàn thành</div>
+                <div className="text-[11px] font-semibold text-palette-slate">Đang gọi xe</div>
+                <div className="text-xl font-bold text-sky-600 mt-1">
+                  {taxiRequests.filter((r) => {
+                    const st = (r.status || '').toLowerCase();
+                    return (
+                      st === 'calling' ||
+                      st === 'in progress' ||
+                      st === 'đang gọi' ||
+                      st === 'driver assigned' ||
+                      st === 'on the way'
+                    );
+                  }).length || taxiKpis.callingRequests || taxiKpis.activeTrips}
+                </div>
+              </div>
+              <div className="bg-palette-stone/40 border border-palette-silver rounded-xl p-3">
+                <div className="text-[11px] font-semibold text-palette-slate">Gọi thành công</div>
                 <div className="text-xl font-bold text-emerald-600 mt-1">
-                  {taxiRequests.filter((r) => r.status === 'Completed').length || taxiKpis.completedTrips}
+                  {taxiRequests.filter((r) => {
+                    const st = (r.status || '').toLowerCase();
+                    return st === 'completed' || st === 'thành công' || st === 'success' || st === 'done';
+                  }).length || taxiKpis.completedTrips}
                 </div>
               </div>
             </div>
@@ -642,100 +656,132 @@ export const ConciergeDashboard = ({
             {/* Taxi Request List */}
             <div className="bg-white rounded-xl border border-palette-silver shadow-sm overflow-hidden">
               <div className="p-4 border-b border-palette-silver/50 flex items-center justify-between">
-                <span className="text-xs font-bold text-palette-charcoal">Danh Sách Yêu Cầu Đặt Xe & Điều Phối</span>
-                <span className="text-[11px] text-palette-slate">Hiển thị {taxiRequests.length} chuyến xe</span>
+                <span className="text-xs font-bold text-palette-charcoal">Danh Sách Yêu Cầu Gọi Xe Taxi</span>
+                <span className="text-[11px] text-palette-slate">Hiển thị {taxiRequests.length} yêu cầu</span>
               </div>
 
               {taxiRequests.length === 0 ? (
                 <div className="p-8 text-center text-xs text-palette-slate">
-                  Hiện chưa có yêu cầu đặt xe nào trong hệ thống.
+                  Hiện chưa có yêu cầu gọi taxi nào trong hệ thống.
                 </div>
               ) : (
                 <div className="divide-y divide-palette-silver/30">
-                  {taxiRequests.map((trip) => (
-                    <div
-                      key={trip.id}
-                      className="p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3 hover:bg-palette-cream/40 transition-all"
-                    >
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-mono font-bold text-palette-charcoal bg-palette-stone border border-palette-silver px-2 py-0.5 rounded">
-                            {trip.ticket_code || trip.id}
-                          </span>
-                          <span className="text-xs font-bold text-palette-charcoal">{trip.guest_name}</span>
-                          {trip.room_number && (
-                            <span className="text-[11px] text-palette-slate">(Phòng {trip.room_number})</span>
+                  {taxiRequests.map((trip) => {
+                    const stLower = (trip.status || '').toLowerCase();
+                    const isPending =
+                      stLower === 'pending' || stLower === 'unassigned' || stLower === 'chờ tiếp nhận';
+                    const isCalling =
+                      stLower === 'calling' ||
+                      stLower === 'in progress' ||
+                      stLower === 'đang gọi' ||
+                      stLower === 'driver assigned' ||
+                      stLower === 'on the way';
+                    const isCompleted =
+                      stLower === 'completed' ||
+                      stLower === 'thành công' ||
+                      stLower === 'success' ||
+                      stLower === 'done';
+                    const isCancelled =
+                      stLower === 'cancelled' || stLower === 'đã hủy' || stLower === 'rejected';
+
+                    return (
+                      <div
+                        key={trip.id}
+                        className="p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3 hover:bg-palette-cream/40 transition-all"
+                      >
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-mono font-bold text-palette-charcoal bg-palette-stone border border-palette-silver px-2 py-0.5 rounded">
+                              {trip.ticket_code || trip.id}
+                            </span>
+                            <span className="text-xs font-bold text-palette-charcoal">{trip.guest_name}</span>
+                            {trip.room_number && (
+                              <span className="text-[11px] text-palette-slate">(Phòng {trip.room_number})</span>
+                            )}
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-4 text-xs text-palette-slate mt-2">
+                            <span className="flex items-center gap-1 text-palette-charcoal">
+                              <MapPin className="w-3.5 h-3.5 text-red-500 shrink-0" />
+                              Đón: <strong className="font-semibold">{trip.pickup_location}</strong>
+                            </span>
+                            <span className="flex items-center gap-1 text-palette-charcoal">
+                              <Navigation className="w-3.5 h-3.5 text-sky-500 shrink-0" />
+                              Đến: <strong className="font-semibold">{trip.destination}</strong>
+                            </span>
+                            <span className="flex items-center gap-1 text-palette-slate">
+                              <Clock className="w-3.5 h-3.5 shrink-0" />
+                              {trip.pickup_time || 'Ngay bây giờ'}
+                            </span>
+                            <span className="flex items-center gap-1 text-palette-slate">
+                              <Car className="w-3.5 h-3.5 shrink-0" />
+                              {trip.vehicle_type || '4 chỗ'} ({trip.party_size || 2} khách)
+                            </span>
+                          </div>
+
+                          {trip.notes && (
+                            <div className="mt-2 text-[11px] text-palette-slate italic">
+                              Ghi chú: {trip.notes}
+                            </div>
                           )}
                         </div>
 
-                        <div className="flex flex-wrap items-center gap-4 text-xs text-palette-slate mt-2">
-                          <span className="flex items-center gap-1 text-palette-charcoal">
-                            <MapPin className="w-3.5 h-3.5 text-red-500 shrink-0" />
-                            Đón: <strong className="font-semibold">{trip.pickup_location}</strong>
+                        <div className="flex items-center gap-2 self-start md:self-center">
+                          {/* Status Badge */}
+                          <span
+                            className={`text-[11px] font-bold px-2.5 py-1 rounded-full ${
+                              isCompleted
+                                ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                : isCalling
+                                ? 'bg-sky-100 text-sky-800 border border-sky-200 animate-pulse'
+                                : isCancelled
+                                ? 'bg-neutral-100 text-neutral-700'
+                                : 'bg-amber-100 text-amber-800 border border-amber-200'
+                            }`}
+                          >
+                            {isCompleted
+                              ? 'Thành công'
+                              : isCalling
+                              ? 'Đang gọi'
+                              : isCancelled
+                              ? 'Đã hủy'
+                              : 'Chờ tiếp nhận'}
                           </span>
-                          <span className="flex items-center gap-1 text-palette-charcoal">
-                            <Navigation className="w-3.5 h-3.5 text-sky-500 shrink-0" />
-                            Đến: <strong className="font-semibold">{trip.destination}</strong>
-                          </span>
-                          <span className="flex items-center gap-1 text-palette-slate">
-                            <Clock className="w-3.5 h-3.5 shrink-0" />
-                            {trip.pickup_time || 'Ngay bây giờ'}
-                          </span>
-                          <span className="flex items-center gap-1 text-palette-slate">
-                            <Car className="w-3.5 h-3.5 shrink-0" />
-                            {trip.vehicle_type || '4 chỗ'} ({trip.party_size || 2} khách)
-                          </span>
+
+                          {/* Action Button 1: Khi còn Pending -> Concierge nhận yêu cầu và chuyển sang Đang gọi */}
+                          {isPending && (
+                            <button
+                              onClick={() => handleUpdateTaxiStatus(trip.id, 'Calling')}
+                              className="px-3 py-1.5 text-xs font-bold rounded-lg bg-sky-600 hover:bg-sky-700 text-white transition-all flex items-center gap-1.5 shadow-sm"
+                              title="Concierge tiếp nhận và gọi xe cho khách"
+                            >
+                              <PhoneCall className="w-3.5 h-3.5" />
+                              Nhận yêu cầu
+                            </button>
+                          )}
+
+                          {/* Action Button 2: Khi đang Gọi -> Concierge gọi xong bấm Thành công */}
+                          {isCalling && (
+                            <button
+                              onClick={() => handleUpdateTaxiStatus(trip.id, 'Completed')}
+                              className="px-3 py-1.5 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-all flex items-center gap-1.5 shadow-sm"
+                              title="Xác nhận đã gọi taxi thành công cho khách"
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                              Thành công
+                            </button>
+                          )}
+
+                          {isCompleted && (
+                            <span className="text-[11px] font-semibold text-emerald-600 flex items-center gap-1">
+                              <Check className="w-3.5 h-3.5" />
+                              Đã gọi xong
+                            </span>
+                          )}
                         </div>
-
-                        {trip.assigned_driver && (
-                          <div className="mt-2 flex items-center gap-2 text-[11px] text-palette-charcoal">
-                            <span className="font-semibold">Tài xế:</span> {trip.assigned_driver}
-                            {trip.license_plate && (
-                              <span className="font-mono bg-palette-stone text-palette-charcoal px-1.5 py-0.5 rounded border border-palette-silver">
-                                {trip.license_plate}
-                              </span>
-                            )}
-                          </div>
-                        )}
                       </div>
-
-                      <div className="flex items-center gap-2 self-start md:self-center">
-                        <span
-                          className={`text-[11px] font-bold px-2 py-0.5 rounded ${
-                            trip.status === 'Completed'
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : trip.status === 'On The Way' || trip.status === 'Driver Assigned'
-                              ? 'bg-sky-100 text-sky-800'
-                              : 'bg-palette-stone text-palette-charcoal border border-palette-silver'
-                          }`}
-                        >
-                          {trip.status}
-                        </span>
-
-                        {trip.status === 'Pending' && (
-                          <button
-                            onClick={() =>
-                              setAssignModal({ open: true, reqId: trip.id, driver: 'Mai Linh Taxi - Tài xế Tuấn' })
-                            }
-                            className="px-2.5 py-1 text-[11px] font-bold rounded bg-palette-charcoal hover:bg-neutral-800 text-palette-cream transition-all flex items-center gap-1 shadow-sm"
-                          >
-                            <UserCheck className="w-3 h-3" />
-                            Gán tài xế
-                          </button>
-                        )}
-
-                        {(trip.status === 'Driver Assigned' || trip.status === 'On The Way') && (
-                          <button
-                            onClick={() => handleUpdateTaxiStatus(trip.id, 'Completed')}
-                            className="px-2.5 py-1 text-[11px] font-bold rounded bg-emerald-600 hover:bg-emerald-700 text-white transition-all flex items-center gap-1"
-                          >
-                            <Check className="w-3 h-3" />
-                            Đã đón xong
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -942,8 +988,11 @@ export const ConciergeDashboard = ({
                   <label className="text-xs font-semibold text-palette-charcoal">Số phòng</label>
                   <input
                     type="text"
+                    inputMode="numeric"
+                    maxLength={6}
                     value={taxiForm.room_number}
-                    onChange={(e) => setTaxiForm({ ...taxiForm, room_number: e.target.value })}
+                    onKeyDown={(e) => handleNumericKeyDown(e)}
+                    onChange={(e) => setTaxiForm({ ...taxiForm, room_number: sanitizeDigitsOnly(e.target.value, 6) })}
                     className="w-full mt-1 px-3 py-1.5 border border-palette-silver rounded-lg text-xs outline-none focus:border-palette-charcoal"
                     placeholder="Vd: 501"
                   />
@@ -955,7 +1004,11 @@ export const ConciergeDashboard = ({
                     min="1"
                     max="16"
                     value={taxiForm.party_size}
-                    onChange={(e) => setTaxiForm({ ...taxiForm, party_size: parseInt(e.target.value) || 1 })}
+                    onKeyDown={(e) => handleNumberInputBlockExponent(e, { allowDecimal: false })}
+                    onChange={(e) => {
+                      const val = sanitizeDigitsOnly(e.target.value);
+                      setTaxiForm({ ...taxiForm, party_size: val ? Math.min(16, Math.max(1, parseInt(val, 10))) : 1 });
+                    }}
                     className="w-full mt-1 px-3 py-1.5 border border-palette-silver rounded-lg text-xs outline-none focus:border-palette-charcoal"
                   />
                 </div>
@@ -1028,42 +1081,6 @@ export const ConciergeDashboard = ({
         </div>
       )}
 
-      {/* MODAL: GÁN TÀI XẾ */}
-      {assignModal.open && (
-        <div className="fixed inset-0 z-50 bg-palette-charcoal/70 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl max-w-sm w-full p-5 shadow-xl border border-palette-silver">
-            <h2 className="text-sm font-bold text-palette-charcoal mb-3">Điều Phối Tài Xế Cho Chuyến Đi</h2>
-            <div className="space-y-3">
-              <div>
-                <label className="text-xs font-semibold text-palette-charcoal">Tên tài xế & Hãng xe</label>
-                <input
-                  type="text"
-                  value={assignModal.driver}
-                  onChange={(e) => setAssignModal({ ...assignModal, driver: e.target.value })}
-                  className="w-full mt-1 px-3 py-1.5 border border-palette-silver rounded-lg text-xs outline-none focus:border-palette-charcoal"
-                  placeholder="Vd: Anh Nam (Mai Linh - 43A-123.45)"
-                />
-              </div>
-              <div className="flex items-center justify-end gap-2 pt-2">
-                <button
-                  onClick={() => setAssignModal({ open: false, reqId: null, driver: '' })}
-                  className="px-3 py-1.5 text-xs text-palette-slate hover:text-palette-charcoal hover:bg-palette-stone rounded-lg font-semibold transition-all"
-                >
-                  Huỷ
-                </button>
-                <button
-                  onClick={() =>
-                    handleUpdateTaxiStatus(assignModal.reqId, 'Driver Assigned', assignModal.driver)
-                  }
-                  className="px-4 py-1.5 text-xs bg-palette-charcoal hover:bg-neutral-800 text-palette-cream rounded-lg font-semibold transition-all shadow-sm"
-                >
-                  Lưu & Báo khách
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
       {/* MODAL XEM LẠI VIDEO GHI HÌNH TỪ CLOUDINARY */}
       {playingVideo && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">

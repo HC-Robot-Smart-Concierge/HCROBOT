@@ -821,7 +821,7 @@ export const verifyRoomPin = async (roomNumber, pin = null, action = null, items
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
     const detail = errorData.detail;
-    const msg = typeof detail === 'object' && detail ? detail.message : (detail || 'Mã PIN 4 số, số CCCD hoặc thẻ NFC không chính xác.');
+    const msg = typeof detail === 'object' && detail ? detail.message : (detail || 'Mã PIN phòng không chính xác. Quý khách vui lòng thử lại sau.');
     const err = new Error(msg);
     err.data = typeof detail === 'object' ? detail : errorData;
     err.not_checked_in = Boolean(err.data?.not_checked_in);

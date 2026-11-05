@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
+import { handleNumberInputBlockExponent, sanitizeDigitsOnly } from '../../utils/numberInputHelper';
 
 /**
  * Reusable Pagination Component (20 items/page by default)
@@ -146,13 +147,14 @@ export const Pagination = ({
             min={1}
             max={totalPages}
             value={jumpPage}
-            onChange={(e) => setJumpPage(e.target.value)}
             onKeyDown={(e) => {
+              handleNumberInputBlockExponent(e, { allowDecimal: false });
               if (e.key === 'Enter') {
                 e.preventDefault();
                 handleJump(e);
               }
             }}
+            onChange={(e) => setJumpPage(sanitizeDigitsOnly(e.target.value))}
             className="w-10 py-0.5 px-1 text-center font-mono text-xs rounded border focus:outline-none"
             style={{
               backgroundColor: '#FFFFFF',

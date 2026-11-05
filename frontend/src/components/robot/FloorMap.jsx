@@ -668,7 +668,7 @@ export const detectDestinationPoi = (rawPrompt, activeRoomNumber = null) => {
   // Ý định hỏi đường / điều hướng / tìm vị trí
   const navIntentKeywords = [
     'ở đâu', 'o dau', 'chỗ nào', 'cho nao', 'nơi nào', 'noi nao',
-    'tầng mấy', 'tang may', 'ở tầng', 'o tang', 'hướng nào', 'huong nao',
+    'tầng mấy', 'tang may', 'ở tầng', 'o tang', 'tầng 1', 'tầng 2', 'tầng 3', 'tầng 4', 'tầng 5', 'tầng 6', 'lầu 1', 'lầu 2', 'tang 1', 'tang 2', 'floor 1', 'floor 2', 'floor 3', 'floor 4', 'floor 5', 'floor 6', 'f1', 'f2', 'f3', 'f4', 'f5', 'f6', 'hướng nào', 'huong nao',
     'đường đi', 'duong di', 'đường đến', 'duong den', 'đường ra', 'duong ra',
     'chỉ đường', 'chi duong', 'dẫn đường', 'dan duong', 'hướng dẫn đường',
     'lối đi', 'loi di', 'lối lên', 'loi len', 'lối xuống', 'loi xuong',
@@ -684,7 +684,7 @@ export const detectDestinationPoi = (rawPrompt, activeRoomNumber = null) => {
   ];
 
   const directLocPhrases = [
-    'đi vệ sinh', 'di ve sinh', 'đi toilet', 'di toilet', 'đi wc', 'di wc',
+    'đi vệ sinh', 'di ve sinh', 'đi toilet', 'di toilet', 'đi tolet', 'đi toa lét', 'đi to lét', 'đi wc', 'di wc',
     'ra lễ tân', 'ra quầy', 'lên hồ bơi', 'ra hồ bơi', 'xuống bãi xe',
     'vào thang máy', 'lên phòng gym', 'đi massage', 'đi spa'
   ];
@@ -717,13 +717,13 @@ export const detectDestinationPoi = (rawPrompt, activeRoomNumber = null) => {
   if (generalOverviewKeywords.some((k) => p.includes(k)) && !isGeneralRoomQuery) return null;
 
   const words = p.split(/\s+/);
-  const isShortLocation = words.length <= 4 && [
-    'toilet', 'vệ sinh', 'wc', 'hồ bơi', 'pool', 'gym', 'spa',
+  const isShortLocation = words.length <= 6 && [
+    'toilet', 'tolet', 'toa lét', 'to lét', 'toilét', 'toalet', 'tô lét', 'toilette', 'vệ sinh', 'wc', 'restroom', 'washroom', 'hồ bơi', 'pool', 'gym', 'spa',
     'nhà hàng', 'buffet', 'lễ tân', 'reception', 'bãi xe', 'bar', 'cà phê', 'cafe', 'phòng'
   ].some((k) => p.includes(k));
 
-  const room4xxMatch = p.match(/\b(?:phòng|p\.?|phong)?\s*(?:số\s*)?(40[1-9])\b/);
-  const room3xxMatch = p.match(/\b(?:phòng|p\.?|phong)?\s*(?:số\s*)?(30[1-9])\b/);
+  const room4xxMatch = p.match(/\b(?:phòng|p\.?|phong)?\s*(?:số\s*)?(40[1-9]|410)\b/);
+  const room3xxMatch = p.match(/\b(?:phòng|p\.?|phong)?\s*(?:số\s*)?(30[1-9]|310)\b/);
 
   const hasNavIntent = Boolean(room4xxMatch || room3xxMatch || isGeneralRoomQuery) ||
     navIntentKeywords.some((k) => p.includes(k)) ||
@@ -739,11 +739,11 @@ export const detectDestinationPoi = (rawPrompt, activeRoomNumber = null) => {
   if (room3xxMatch) return `room_${room3xxMatch[1]}`;
 
   // 3. Nhà vệ sinh (Chỉ kích hoạt khi hỏi nhà vệ sinh / đi vệ sinh, loại trừ đồ vệ sinh cá nhân, băng vệ sinh, dọn dẹp)
-  const isToiletQuery = ['nhà vệ sinh', 'nha ve sinh', 'phòng vệ sinh', 'phong ve sinh', 'đi vệ sinh', 'di ve sinh', 'toilet', 'wc', 'restroom', 'washroom', 'đi toilet', 'chỗ rửa tay'].some((k) => p.includes(k)) ||
-    ((p.includes('vệ sinh') || p.includes('ve sinh')) && ['đi', 'di', 'lối', 'loi', 'hướng', 'huong'].some((w) => p.includes(w)) && !['băng', 'bang', 'đồ', 'do', 'dọn', 'don', 'mua', 'bán', 'ban', 'cá nhân', 'ca nhan', 'tạp hóa', 'siêu thị', 'tampon', 'giấy'].some((neg) => p.includes(neg)));
+  const isToiletQuery = ['nhà vệ sinh', 'nha ve sinh', 'phòng vệ sinh', 'phong ve sinh', 'đi vệ sinh', 'di ve sinh', 'toilet', 'tolet', 'toa lét', 'to lét', 'toilét', 'toalet', 'tô lét', 'toilette', 'wc', 'restroom', 'rest room', 'washroom', 'đi toilet', 'đi tolet', 'đi toa lét', 'chỗ rửa tay', 'nơi rửa tay', 'chỗ đi vệ sinh', 'nơi đi vệ sinh'].some((k) => p.includes(k)) ||
+    ((p.includes('vệ sinh') || p.includes('ve sinh')) && ['đi', 'di', 'lối', 'loi', 'hướng', 'huong', 'tầng', 'tang', 'lầu', 'lau', 'ở đâu', 'o dau', 'chỗ', 'cho', 'nơi', 'noi'].some((w) => p.includes(w)) && !['băng', 'bang', 'đồ', 'do', 'dọn', 'don', 'mua', 'bán', 'ban', 'cá nhân', 'ca nhan', 'tạp hóa', 'siêu thị', 'tampon', 'giấy'].some((neg) => p.includes(neg)));
 
   if (isToiletQuery) {
-    if (['tầng 2', 'nhà hàng', 'bếp', 'kho'].some((k) => p.includes(k))) return 'restroom_f2';
+    if (['tầng 2', 'tang 2', 'lầu 2', 'lau 2', 'f2', 'floor 2', 'nhà hàng', 'bếp', 'kho'].some((k) => p.includes(k))) return 'restroom_f2';
     return 'restroom_ground';
   }
 
@@ -774,7 +774,7 @@ export const detectDestinationPoi = (rawPrompt, activeRoomNumber = null) => {
       'dẫn tôi', 'dan toi', 'lối lên', 'loi len', 'hướng dẫn lên', 'về phòng', 'lên phòng'
     ];
     if (explicitNavWords.some((w) => p.includes(w))) {
-      if (activeRoomNumber && /^(?:40[1-9]|30[1-9])$/.test(String(activeRoomNumber).trim())) {
+      if (activeRoomNumber && /^(?:40[1-9]|410|30[1-9]|310)$/.test(String(activeRoomNumber).trim())) {
         return `room_${String(activeRoomNumber).trim()}`;
       }
     }

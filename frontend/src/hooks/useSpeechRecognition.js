@@ -664,9 +664,17 @@ export const useSpeechRecognition = (callbacks = {}) => {
       setTranscript('');
       const isEn = typeof language === 'string' && (language.toLowerCase().includes('en') || language.toLowerCase() === 'english');
       const targetLang = isEn ? 'en-US' : 'vi-VN';
+      const langChanged = recognitionRef.current.lang !== targetLang;
       try {
         recognitionRef.current.lang = targetLang;
       } catch (e) {}
+
+      if (liveRef.current && langChanged) {
+        try {
+          recognitionRef.current.abort();
+        } catch (e) {}
+        liveRef.current = false;
+      }
 
       if (!liveRef.current) {
         startRecognition();

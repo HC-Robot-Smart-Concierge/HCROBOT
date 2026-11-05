@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 
 from app.models.scenario import DialogueScenario
+from app.services.ai.session_manager import is_valid_hotel_room, extract_room_number
 
 from app.schemas.scenario import DialogueScenarioCreate, DialogueScenarioUpdate
 
@@ -29,6 +30,105 @@ logger = logging.getLogger(__name__)
 # Danh muc kich ban mac dinh ban dau (Seed Scenarios)
 
 DEFAULT_SEED_SCENARIOS = [
+    {
+
+        "id": "scn-switch-to-english",
+
+        "title": "Chuyển Đổi Ngôn Ngữ Sang Tiếng Anh (Switch Language to English)",
+
+        "category": "language",
+
+        "match_keywords": [
+            "chuyển sang tiếng anh", "chuyen sang tieng anh", "nói tiếng anh đi", "noi tieng anh di",
+            "đổi sang tiếng anh", "doi sang tieng anh", "giao tiếp bằng tiếng anh", "giao tiep bang tieng anh",
+            "bạn có thể nói tiếng anh không", "ban co the noi tieng anh khong", "dùng tiếng anh", "dung tieng anh",
+            "tiếng anh đi", "tieng anh di", "nói tiếng anh", "noi tieng anh",
+            "switch to english", "speak english please", "speak english", "can you speak english", "change language to english", "english please"
+        ],
+
+        "match_type": "keyword",
+
+        "response_vi": "Sure! I have switched our conversation language to English. How may I assist you today?",
+
+        "response_en": "Sure! I have switched our conversation language to English. How may I assist you today?",
+
+        "action_type": "switch_language",
+
+        "action_payload": {"target_language": "English", "lang_code": "en-US"},
+
+        "is_fast_path": True,
+
+        "is_active": True,
+
+        "priority": 99,
+
+    },
+
+    {
+
+        "id": "scn-switch-to-vietnamese",
+
+        "title": "Chuyển Đổi Ngôn Ngữ Sang Tiếng Việt (Switch Language to Vietnamese)",
+
+        "category": "language",
+
+        "match_keywords": [
+            "switch to vietnamese", "speak vietnamese please", "speak vietnamese", "can you speak vietnamese",
+            "change language to vietnamese", "vietnamese please",
+            "chuyển sang tiếng việt", "chuyen sang tieng viet", "nói tiếng việt đi", "noi tieng viet di",
+            "đổi sang tiếng việt", "doi sang tieng viet", "đổi qua tiếng việt", "doi qua tieng viet",
+            "giao tiếp bằng tiếng việt", "giao tiep bang tieng viet", "dùng tiếng việt", "dung tieng viet",
+            "tiếng việt đi", "tieng viet di", "nói tiếng việt", "noi tieng viet"
+        ],
+
+        "match_type": "keyword",
+
+        "response_vi": "Dạ vâng, Rora đã chuyển sang giao tiếp bằng Tiếng Việt rồi ạ. Em có thể hỗ trợ gì cho mình ạ?",
+
+        "response_en": "Dạ vâng, Rora đã chuyển sang giao tiếp bằng Tiếng Việt rồi ạ. Em có thể hỗ trợ gì cho mình ạ?",
+
+        "action_type": "switch_language",
+
+        "action_payload": {"target_language": "Tiếng Việt", "lang_code": "vi-VN"},
+
+        "is_fast_path": True,
+
+        "is_active": True,
+
+        "priority": 99,
+
+    },
+
+    {
+
+        "id": "scn-toggle-language",
+
+        "title": "Đổi Ngôn Ngữ Giao Tiếp (Toggle Language EN / VI)",
+
+        "category": "language",
+
+        "match_keywords": [
+            "đổi ngôn ngữ", "doi ngon ngu", "chuyển ngôn ngữ", "chuyen ngon ngu",
+            "thay đổi ngôn ngữ", "thay doi ngon ngu", "switch language", "change language", "toggle language"
+        ],
+
+        "match_type": "keyword",
+
+        "response_vi": "I have switched to English. How can I help you?",
+
+        "response_en": "Dạ em đã chuyển sang Tiếng Việt rồi ạ. Em có thể giúp gì cho quý khách?",
+
+        "action_type": "switch_language",
+
+        "action_payload": {"target_language": "toggle"},
+
+        "is_fast_path": True,
+
+        "is_active": True,
+
+        "priority": 98,
+
+    },
 
     {
 
@@ -738,6 +838,34 @@ DEFAULT_SEED_SCENARIOS = [
 
     {
 
+        "id": "scn-room-410",
+
+        "title": "Chỉ đường Phòng 410",
+
+        "category": "facility",
+
+        "match_keywords": ['410', 'phòng 410', 'p410', 'p.410', 'phong 410', 'phòng số 410', 'phong so 410', 'phòng 410 ở đâu', 'tìm phòng 410', 'chỉ đường phòng 410', 'chỉ đường đến phòng 410', 'room 410'],
+
+        "match_type": "keyword",
+
+        "response_vi": "Dạ Phòng 410 nằm tại Tầng 4, ở cuối hành lang đối diện thang máy ạ.",
+
+        "response_en": "Room 410 is on Level 4, located at the end of the corridor across from the elevator.",
+
+        "action_type": "show_map",
+
+        "action_payload": {'destination_key': 'room_410'},
+
+        "is_fast_path": True,
+
+        "is_active": True,
+
+        "priority": 95,
+
+    },
+
+    {
+
         "id": "scn-thanks",
 
         "title": "Lời cảm ơn & Ghi nhớ (Thanks & Acknowledged)",
@@ -1074,6 +1202,34 @@ DEFAULT_SEED_SCENARIOS = [
 
     {
 
+        "id": "scn-room-310",
+
+        "title": "Chỉ đường Phòng 310",
+
+        "category": "facility",
+
+        "match_keywords": ['310', 'phòng 310', 'p310', 'p.310', 'phong 310', 'phòng số 310', 'phong so 310', 'phòng 310 ở đâu', 'tìm phòng 310', 'chỉ đường phòng 310', 'chỉ đường đến phòng 310', 'room 310'],
+
+        "match_type": "keyword",
+
+        "response_vi": "Dạ Phòng 310 nằm tại Tầng 3, ở cuối hành lang bên phải đối diện thang máy ạ.",
+
+        "response_en": "Room 310 is on Level 3, at the end of the right corridor across from the elevator.",
+
+        "action_type": "show_map",
+
+        "action_payload": {'destination_key': 'room_310'},
+
+        "is_fast_path": True,
+
+        "is_active": True,
+
+        "priority": 95,
+
+    },
+
+    {
+
         "id": "scn-restaurant",
 
         "title": "Chính sách Ẩm thực & Bữa sáng (Dining, Breakfast & Room Service)",
@@ -1360,7 +1516,7 @@ DEFAULT_SEED_SCENARIOS = [
 
         "category": "faq",
 
-        "match_keywords": ["chợ đêm sơn trà", "chợ đêm", "chợ hàn", "chợ cồn", "mua sắm", "mua quà", "cho dem son tra", "cho dem", "cho han", "cho con", "mua sam", "mua qua", "night market", "han market", "con market", "souvenir shopping", "local market", "son tra night market"],
+        "match_keywords": ["chợ đêm sơn trà", "chợ đêm", "chợ hàn", "chợ cồn", "mua sắm chợ đêm", "mua quà đặc sản", "mua đặc sản", "cho dem son tra", "cho dem", "cho han", "cho con", "mua sam cho dem", "mua qua dac san", "night market", "han market", "con market", "souvenir shopping", "local market", "son tra night market"],
 
         "match_type": "keyword",
 
@@ -1472,7 +1628,7 @@ DEFAULT_SEED_SCENARIOS = [
 
         "category": "service",
 
-        "match_keywords": ["gặp người thật", "gặp nhân viên", "nói chuyện với nhân viên", "kết nối nhân viên", "video call", "live call", "gọi video", "gọi cho nhân viên", "gặp lễ tân", "gọi lễ tân", "cho tôi gặp nhân viên", "talk to human", "speak to human", "call staff"],
+        "match_keywords": ["gặp người thật", "gặp nhân viên", "nói chuyện với nhân viên", "kết nối nhân viên", "video call", "live call", "gọi video", "gọi cho nhân viên", "kết nối lễ tân", "gọi video lễ tân", "gọi lễ tân", "cho tôi gặp nhân viên", "talk to human", "speak to human", "call staff"],
 
         "match_type": "keyword",
 
@@ -1752,7 +1908,16 @@ DEFAULT_SEED_SCENARIOS = [
 
         "category": "facility",
 
-        "match_keywords": ["nhà vệ sinh", "nha ve sinh", "đi vệ sinh", "di ve sinh", "toilet", "wc", "restroom", "phòng vệ sinh", "muốn đi vệ sinh", "muon di ve sinh", "buồn đi vệ sinh", "chỗ đi vệ sinh", "nơi đi vệ sinh", "nhà vệ sinh ở đâu", "đi vệ sinh ở đâu", "chỗ rửa tay", "nhà vệ sinh sảnh", "vệ sinh sảnh"],
+        "match_keywords": [
+            "nhà vệ sinh", "nha ve sinh", "đi vệ sinh", "di ve sinh",
+            "toilet", "tolet", "toa lét", "to lét", "toilét", "toalet", "tô lét", "toilette", "wc", "restroom", "rest room", "washroom",
+            "phòng vệ sinh", "phong ve sinh", "muốn đi vệ sinh", "muon di ve sinh", "buồn đi vệ sinh", "buon di ve sinh",
+            "chỗ đi vệ sinh", "nơi đi vệ sinh", "nhà vệ sinh ở đâu", "nha ve sinh o dau", "đi vệ sinh ở đâu",
+            "toilet ở đâu", "toilet o dau", "tolet ở đâu", "tolet o dau", "toa lét ở đâu", "toa let o dau", "to lét ở đâu", "to let o dau", "wc ở đâu", "wc o dau",
+            "where is the toilet", "where is toilet", "where is the restroom", "where is restroom", "where is the washroom", "where is washroom",
+            "toilet please", "restroom please", "find toilet", "find restroom",
+            "chỗ rửa tay", "nơi rửa tay", "nhà vệ sinh sảnh", "vệ sinh sảnh"
+        ],
 
         "match_type": "keyword",
 
@@ -1780,7 +1945,7 @@ DEFAULT_SEED_SCENARIOS = [
 
         "category": "facility",
 
-        "match_keywords": ["đồ dùng vệ sinh", "tiện ích buồng phòng", "trong phòng có gì", "có khăn tắm không", "có bàn chải không", "có dầu gội không", "có máy sấy không", "tiện nghi trong phòng", "tiện nghi buồng phòng", "do dung ve sinh", "tien ich buong phong", "toiletries", "room amenities", "what amenities", "hotel amenities"],
+        "match_keywords": ["đồ dùng vệ sinh", "trong phòng có gì", "có khăn tắm không", "có bàn chải không", "có dầu gội không", "có máy sấy không", "tiện nghi trong phòng", "tiện nghi buồng phòng", "do dung ve sinh", "toiletries", "what amenities", "personal amenities"],
 
         "match_type": "keyword",
 
@@ -2060,7 +2225,7 @@ DEFAULT_SEED_SCENARIOS = [
 
         "category": "chitchat",
 
-        "match_keywords": ["ăn cơm chưa", "ăn gì", "robot ăn gì", "bạn ăn gì", "ăn tối chưa", "ăn trưa chưa", "an com chua", "an gi", "robot an gi", "ban an gi", "what do you eat", "have you eaten", "do you eat food", "did you eat"],
+        "match_keywords": ["ăn cơm chưa", "robot ăn gì", "bạn ăn gì", "em ăn gì", "rora ăn gì", "ăn tối chưa", "ăn trưa chưa", "an com chua", "robot an gi", "ban an gi", "em an gi", "rora an gi", "what do you eat", "have you eaten", "do you eat food", "did you eat"],
 
         "match_type": "keyword",
 
@@ -2076,7 +2241,7 @@ DEFAULT_SEED_SCENARIOS = [
 
         "is_active": True,
 
-        "priority": 86,
+        "priority": 96,
 
     },
 
@@ -2116,7 +2281,7 @@ DEFAULT_SEED_SCENARIOS = [
 
         "category": "facility",
 
-        "match_keywords": ["cửa hàng lưu niệm", "quà lưu niệm", "lưu niệm", "gift shop", "mua quà", "mua quà lưu niệm", "souvenir"],
+        "match_keywords": ["cửa hàng lưu niệm", "quà lưu niệm", "lưu niệm", "gift shop", "mua quà", "mua quà lưu niệm", "mua quà ở đâu", "mua qua", "souvenir", "hotel gift shop"],
 
         "match_type": "keyword",
 
@@ -2132,7 +2297,7 @@ DEFAULT_SEED_SCENARIOS = [
 
         "is_active": True,
 
-        "priority": 85,
+        "priority": 91,
 
     },
 
@@ -2228,7 +2393,11 @@ DEFAULT_SEED_SCENARIOS = [
 
         "category": "facility",
 
-        "match_keywords": ["vệ sinh tầng 2", "wc tầng 2", "toilet tầng 2", "nhà vệ sinh tầng 2", "restroom tầng 2"],
+        "match_keywords": [
+            "vệ sinh tầng 2", "ve sinh tang 2", "wc tầng 2", "wc tang 2", "toilet tầng 2", "tolet tầng 2", "toa lét tầng 2", "to lét tầng 2",
+            "nhà vệ sinh tầng 2", "nha ve sinh tang 2", "restroom tầng 2", "restroom floor 2", "toilet floor 2", "restroom f2", "toilet f2",
+            "vệ sinh lầu 2", "toilet lầu 2", "nhà vệ sinh lầu 2"
+        ],
 
         "match_type": "keyword",
 
@@ -2336,11 +2505,11 @@ DEFAULT_SEED_SCENARIOS = [
 
         "id": "scn-kids-club",
 
-        "title": "Khu vui chơi trẻ em & Nôi em bé (Kids Club & Baby Cots)",
+        "title": "Khu vui chơi trẻ em (Kids Club & Children Play Area)",
 
         "category": "facility",
 
-        "match_keywords": ["khu trẻ em", "khu vui chơi", "khu vui chơi trẻ em", "trẻ em", "nôi em bé", "ghế em bé", "khu tre em", "khu vui choi", "tre em", "noi em be", "kids club", "children playground", "baby cot", "crib", "children play area", "high chair"],
+        "match_keywords": ["khu trẻ em", "khu vui chơi", "khu vui chơi trẻ em", "trẻ em", "ghế em bé", "khu tre em", "khu vui choi", "tre em", "kids club", "children playground", "children play area", "high chair"],
 
         "match_type": "keyword",
 
@@ -2761,6 +2930,27 @@ class ScenarioService:
 
         lang_name = "English" if is_en else "Tiếng Việt"
 
+        # 1c. Kiem tra neu khach hoi duong di hoac thong tin ve phong KHONG TON TAI trong khach san
+        room_candidate = extract_room_number(normalized)
+        if room_candidate and not is_valid_hotel_room(room_candidate):
+            is_room_intent = bool(re.search(
+                r'(phòng|phong|room|p\.|p\b|số\s+phòng|so\s+phong|chỉ đường|chi duong|ở đâu|o dau|đường đến|duong den|đường lên|duong len|đường về|duong ve|lối lên|loi len|tìm phòng|tim phong|hướng dẫn|huong dan|tầng mấy|tang may|ở tầng|o tang|thông tin|thong tin|giá|gia|ban công|ban cong|giường|giuong|view|tiện nghi|tien nghi|diện tích|dien tich|mấy người|may nguoi|where is|how to get|directions|tell me about|information)',
+                normalized,
+                re.IGNORECASE
+            ))
+            if is_room_intent:
+                msg_vi = f"Dạ khách sạn Aurora Grand hiện không có phòng {room_candidate} ạ. Khách sạn chỉ có các phòng lưu trú từ 301 đến 310 tại Tầng 3 và từ 401 đến 410 tại Tầng 4. Quý khách vui lòng kiểm tra lại số phòng nhé ạ."
+                msg_en = f"Aurora Grand Hotel does not have room {room_candidate}. Our guest rooms are located on Level 3 (rooms 301 to 310) and Level 4 (rooms 401 to 410). Please double check your room number."
+                reply_text = msg_en if is_en else msg_vi
+                logger.info(f"[ScenarioService FastPath] Non-existent room query intercepted for '{room_candidate}'. Rejecting session room save.")
+                return (
+                    reply_text,
+                    lang_name,
+                    lang_code,
+                    "conversation",
+                    {"destination_key": None, "invalid_room": room_candidate}
+                )
+
 
 
         # 2. Duyet cac kich ban da sap xep theo priority giam dan
@@ -2849,7 +3039,27 @@ class ScenarioService:
 
                     continue
 
+                        # Neu kich ban la scn-restroom-ground, bo qua neu khach dang hoi ve nha ve sinh tang 2
+            if scn.get("id") == "scn-restroom-ground":
+                is_f2_query = bool(re.search(
+                    r'\b(tầng 2|tang 2|lầu 2|lau 2|floor 2|level 2|f2)\b',
+                    normalized,
+                    re.IGNORECASE
+                ))
+                if is_f2_query:
+                    continue
+
             # Neu kich ban la scn-rooms-general, bo qua neu khach dang tim phong chuc nang / tien ich khac
+                        # Neu kich ban la book_taxi / scn-airport-shuttle, bo qua neu khach dang hoi kiem tra trang thai dat xe
+            if scn.get("action_type") == "book_taxi" or scn.get("id") == "scn-airport-shuttle":
+                is_taxi_status_check = bool(re.search(
+                    r'(trạng thái|trang thai|kiểm tra|kiem tra|tới chưa|toi chua|đến chưa|den chua|sao rồi|sao roi|đang ở đâu|dang o dau|tới đâu|toi dau|check|status|\b(đã|da)?\s*(đặt|dat|gọi|goi)\b.*\b(chưa|chua)\b)',
+                    normalized,
+                    re.IGNORECASE
+                ))
+                if is_taxi_status_check:
+                    continue
+
             if scn.get("id") == "scn-rooms-general":
                 non_bedroom_facilities = [
                     "gym", "karaoke", "họp", "hop", "xông hơi", "xong hoi", "spa", "bếp", "bep",
@@ -2941,6 +3151,31 @@ class ScenarioService:
                 raw_payload = scn.get("action_payload")
 
                 action_payload: Optional[Dict[str, Any]] = raw_payload if isinstance(raw_payload, dict) else None
+
+                # Xu ly dac thu cho kich ban chuyen doi ngon ngu
+                if action_type == "switch_language":
+                    target_lang = (action_payload or {}).get("target_language")
+                    if target_lang == "toggle":
+                        if is_en:
+                            target_lang = "Tiếng Việt"
+                            target_lang_code = "vi-VN"
+                        else:
+                            target_lang = "English"
+                            target_lang_code = "en-US"
+                    elif target_lang == "English" or (target_lang and "en" in str(target_lang).lower()):
+                        target_lang = "English"
+                        target_lang_code = "en-US"
+                    else:
+                        target_lang = "Tiếng Việt"
+                        target_lang_code = "vi-VN"
+
+                    lang_name = target_lang
+                    lang_code = target_lang_code
+                    if target_lang_code == "en-US":
+                        response_text = str(scn.get("response_en") or scn.get("response_vi") or "Sure! I have switched to English.")
+                    else:
+                        response_text = str(scn.get("response_vi") or "Dạ vâng, em đã chuyển sang Tiếng Việt rồi ạ.")
+
 
                 resp_text = str((scn.get("response_en") if is_en and scn.get("response_en") else scn.get("response_vi")) or scn.get("response_vi") or "")
 

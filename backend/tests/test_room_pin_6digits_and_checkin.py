@@ -74,4 +74,4 @@ async def test_room_checkin_requires_cccd_and_generates_4_digit_pin_from_cccd():
             "pin": "0000",
         })
         assert wrong_res.status_code == 400
-        assert "4 số cuối CCCD" in wrong_res.json()["detail"]
+        assert "Mã PIN phòng không chính xác" in wrong_res.json()["detail"] or "4 số cuối CCCD" in wrong_res.json()["detail"]

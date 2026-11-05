@@ -1,6 +1,6 @@
 from typing import Optional, List, Dict, Any
 from datetime import datetime
-from pydantic import BaseModel, Field, ConfigDict, model_validator
+from pydantic import BaseModel, Field, ConfigDict, model_validator, field_validator
 
 
 # ---------------------------------------------------------
@@ -812,6 +812,7 @@ class NotificationResponse(BaseModel):
 # Taxi & Transportation Schemas
 # ---------------------------------------------------------
 class TaxiRequestCreate(BaseModel):
+    room_number: Optional[str] = Field(None, description="Số phòng của khách yêu cầu", json_schema_extra={"example": "301"})
     guest_name: str = Field("Hotel Guest", description="Tên khách hàng yêu cầu xe", json_schema_extra={"example": "Mr. David Miller"})
     pickup_location: str = Field("Main Lobby", description="Điểm đón khách (vd: 'Main Lobby', 'Cổng trước', 'Room 502')", json_schema_extra={"example": "Main Lobby & Front Entrance"})
     destination: str = Field(..., description="Điểm đến (vd: 'Sân bay Quốc tế Đà Nẵng', 'Bà Nà Hills')", json_schema_extra={"example": "Sân bay Quốc tế Đà Nẵng (DAD)"})
@@ -833,6 +834,7 @@ class TaxiRequestResponse(BaseModel):
     ticket_code: str = Field(..., description="Mã vé / Mã chuyến xe (vd: 'TX-102')")
     guest_name: str = Field(..., description="Tên khách hàng")
     pickup_location: str = Field(..., description="Điểm đón khách")
+    room_number: Optional[str] = Field(None, description="Số phòng của khách yêu cầu")
     destination: str = Field(..., description="Điểm đến")
     pickup_time: str = Field(..., description="Thời gian đón")
     party_size: int = Field(..., description="Số lượng khách")
@@ -902,11 +904,24 @@ class RoomCheckInRequest(BaseModel):
     guest_name: str = Field(..., description="Tên khách hàng check-in")
     guest_phone: Optional[str] = Field(None, alias="guestPhone", description="Số điện thoại di động của khách lưu trú")
     room_phone: Optional[str] = Field(None, alias="roomPhone", description="Số máy nhánh nội bộ phòng (ví dụ: Ext 301 hoặc 028...)")
-    identity_number: Optional[str] = Field(None, description="Số CCCD / CMND / Hộ chiếu")
+    identity_number: Optional[str] = Field(None, description="Số CCCD / CMND / Hộ chiếu (chỉ gồm chữ số 0-9)")
     pin_code: Optional[str] = Field(None, description="Mã PIN 4 số (nếu không truyền sẽ tự sinh hoặc lấy 4 số cuối CCCD)")
     tag_code: Optional[str] = Field(None, alias="tagCode", description="Mã thẻ phòng NFC / TagCode cấp cho khách lưu trú")
     nfc_card_uid: Optional[str] = Field(None, description="Mã thẻ phòng NFC (legacy)")
     status: Optional[str] = Field("OCCUPIED", description="Trạng thái phòng sau check-in")
+
+    @field_validator("identity_number")
+    @classmethod
+    def validate_identity_number(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            clean = v.strip()
+            if clean:
+                if not clean.isdigit():
+                    raise ValueError("Số CCCD / Hộ chiếu chỉ được chứa các chữ số (0-9).")
+                if len(clean) < 4:
+                    raise ValueError("Số CCCD / Hộ chiếu phải có ít nhất 4 chữ số để tạo mã PIN phòng.")
+            return clean or None
+        return v
 
     model_config = ConfigDict(populate_by_name=True)
 

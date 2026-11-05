@@ -1,3 +1,4 @@
+import time
 import re
 import random
 from datetime import datetime
@@ -22,6 +23,11 @@ from app.schemas.operations import (
 )
 from app.repositories import SupportRequestRepository, get_support_request_repository
 from .shared import TAG_REC, create_department_notification
+
+# Anti-bruteforce: Khoa 1 phut (60s) sau 5 lan nhap sai ma PIN
+ROOM_PIN_ATTEMPTS: Dict[str, Dict[str, Any]] = {}
+PIN_LOCKOUT_MAX_ATTEMPTS = 5
+PIN_LOCKOUT_DURATION_SEC = 60
 
 router = APIRouter()
 
@@ -173,7 +179,17 @@ async def verify_room_pin(
     - So khớp mã PIN 4 số của phòng HOẶC 4 số cuối của CCCD/Hộ chiếu.
     - Nếu hợp lệ: Tự động khởi tạo ticket SupportRequest tương ứng.
     """
+    now_ts = time.time()
     clean_room = payload.room_number.replace("Phòng", "").replace("phòng", "").replace("Room", "").replace("room", "").strip()
+
+    # Kiem tra lockout neu phong da bi khoa do nhap sai qua 5 lan
+    attempt_info = ROOM_PIN_ATTEMPTS.get(clean_room, {"count": 0, "locked_until": 0.0})
+    if attempt_info.get("locked_until", 0.0) > now_ts:
+        remaining_sec = int(attempt_info["locked_until"] - now_ts) + 1
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Quý khách đã nhập sai mã PIN 5 lần. Hệ thống tạm khóa 1 phút. Quý khách vui lòng thử lại sau ({remaining_sec}s).",
+        )
     stmt = select(Room).where(Room.room_number == clean_room)
     res = await db.execute(stmt)
     room = res.scalars().first()
@@ -206,10 +222,22 @@ async def verify_room_pin(
     is_nfc_matched = bool(room_tag and norm_input and (norm_input == room_tag or norm_input == normalize_nfc_uid(room.room_number)))
 
     if not (is_pin_matched or is_cccd_matched or is_nfc_matched):
+        attempt_info["count"] = attempt_info.get("count", 0) + 1
+        if attempt_info["count"] >= PIN_LOCKOUT_MAX_ATTEMPTS:
+            attempt_info["locked_until"] = now_ts + PIN_LOCKOUT_DURATION_SEC
+            ROOM_PIN_ATTEMPTS[clean_room] = attempt_info
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Quý khách đã nhập sai mã PIN 5 lần. Hệ thống tạm khóa 1 phút. Quý khách vui lòng thử lại sau.",
+            )
+        ROOM_PIN_ATTEMPTS[clean_room] = attempt_info
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Mã PIN phòng (4 số cuối CCCD) hoặc Thẻ NFC không chính xác. Quý khách vui lòng thử lại."
+            detail="Mã PIN phòng không chính xác. Quý khách vui lòng thử lại sau.",
         )
+
+    # Đăng nhập thành công -> Xóa lịch sử nhập sai
+    ROOM_PIN_ATTEMPTS.pop(clean_room, None)
 
     verification_type = "NFC" if is_nfc_matched else ("CCCD" if is_cccd_matched else "PIN")
 
@@ -222,7 +250,9 @@ async def verify_room_pin(
         and payload.action not in [
             "chitchat", "conversation", "faq", "unknown",
             "verify_only", "auth_only", "food_menu", "food_order",
-            "room_service", "room_service_menu", "amenity_order"
+            "room_service", "room_service_menu", "amenity_order",
+            "taxi", "book_taxi", "taxi_booking",
+            "query_order_status", "query_service_status", "query_taxi_status"
         ]
     )
     if should_create_ticket:
@@ -264,6 +294,17 @@ async def verify_room_pin(
         session_manager.set_room_authenticated(session_id, room.room_number)
         session_manager.set_room_number(session_id, room.room_number)
 
+    is_no_ticket = (
+        getattr(payload, "skip_ticket_creation", False)
+        or not should_create_ticket
+        or payload.action in [
+            "taxi", "book_taxi", "taxi_booking",
+            "query_order_status", "query_service_status", "query_taxi_status",
+            "food_menu", "room_service_menu", "verify_only", "auth_only"
+        ]
+    )
+    pin_success_msg = f"Xác thực phòng {room.room_number} thành công!" if is_no_ticket else f"Xác thực phòng {room.room_number} thành công! Yêu cầu đã được chuyển tới bộ phận liên quan."
+
     return RoomPinVerifyResponse(
         verified=True,
         room_number=room.room_number,
@@ -271,7 +312,7 @@ async def verify_room_pin(
         ticket_code=ticket_code,
         verification_type=verification_type,
         tag_code=room.tag_code,
-        message=f"Xác thực phòng {room.room_number} thành công! Yêu cầu đã được chuyển tới bộ phận liên quan."
+        message=pin_success_msg
     )
 
 
@@ -325,7 +366,9 @@ async def verify_room_nfc(
         and payload.action not in [
             "chitchat", "conversation", "faq", "unknown",
             "verify_only", "auth_only", "food_menu", "food_order",
-            "room_service", "room_service_menu", "amenity_order"
+            "room_service", "room_service_menu", "amenity_order",
+            "taxi", "book_taxi", "taxi_booking",
+            "query_order_status", "query_service_status", "query_taxi_status"
         ]
     )
     if should_create_ticket:
@@ -367,6 +410,17 @@ async def verify_room_nfc(
         session_manager.set_room_authenticated(session_id, matched_room.room_number)
         session_manager.set_room_number(session_id, matched_room.room_number)
 
+    is_no_ticket_nfc = (
+        getattr(payload, "skip_ticket_creation", False)
+        or not should_create_ticket
+        or payload.action in [
+            "taxi", "book_taxi", "taxi_booking",
+            "query_order_status", "query_service_status", "query_taxi_status",
+            "food_menu", "room_service_menu", "verify_only", "auth_only"
+        ]
+    )
+    nfc_success_msg = f"Xác thực thẻ phòng {matched_room.room_number} thành công!" if is_no_ticket_nfc else f"Xác thực thẻ phòng {matched_room.room_number} thành công! Yêu cầu đã được chuyển tới bộ phận liên quan."
+
     return RoomPinVerifyResponse(
         verified=True,
         room_number=matched_room.room_number,
@@ -374,7 +428,7 @@ async def verify_room_nfc(
         ticket_code=ticket_code,
         verification_type="NFC",
         tag_code=matched_room.tag_code,
-        message=f"Xác thực thẻ phòng {matched_room.room_number} thành công! Yêu cầu đã được chuyển tới bộ phận liên quan."
+        message=nfc_success_msg
     )
 
 
@@ -447,16 +501,19 @@ async def check_in_room(
             detail="Vui lòng nhập số CCCD / Hộ chiếu của khách để làm thủ tục nhận phòng."
         )
 
-    digits = re.sub(r'\D', '', clean_id)
-    if len(digits) >= 4:
-        generated_pin = digits[-4:]
-    elif len(clean_id) >= 4:
-        generated_pin = clean_id[-4:]
-    else:
+    if not clean_id.isdigit():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Số CCCD / Hộ chiếu phải có ít nhất 4 ký tự để tạo mã PIN phòng."
+            detail="Số CCCD / Hộ chiếu chỉ được chứa các chữ số (0-9)."
         )
+
+    if len(clean_id) < 4:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Số CCCD / Hộ chiếu phải có ít nhất 4 chữ số để tạo mã PIN phòng."
+        )
+
+    generated_pin = clean_id[-4:]
 
     room.current_guest_name = payload.guest_name.strip()
     if hasattr(room, 'current_guest_phone'):
@@ -464,7 +521,7 @@ async def check_in_room(
     if hasattr(room, 'room_phone'):
         room.room_phone = payload.room_phone.strip() if payload.room_phone else f"Ext {room.room_number}"
     if hasattr(room, 'identity_number'):
-        room.identity_number = payload.identity_number.strip() if payload.identity_number else None
+        room.identity_number = clean_id
     room.pin_code = generated_pin
     tag_val = payload.tag_code or payload.nfc_card_uid
     if tag_val is not None:

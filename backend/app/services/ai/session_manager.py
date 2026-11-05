@@ -18,6 +18,20 @@ WORD_TO_DIGIT = {
     'chín': '9', 'chin': '9', '9': '9',
 }
 
+# Danh sách chuẩn 20 phòng lưu trú của khách sạn Aurora Grand (Tầng 3: 301-310, Tầng 4: 401-410)
+VALID_HOTEL_ROOMS = {
+    "301", "302", "303", "304", "305", "306", "307", "308", "309", "310",
+    "401", "402", "403", "404", "405", "406", "407", "408", "409", "410"
+}
+
+
+def is_valid_hotel_room(room_number: Optional[str]) -> bool:
+    """Kiểm tra xem số phòng có tồn tại hợp lệ trong danh mục phòng lưu trú của khách sạn hay không."""
+    if not room_number:
+        return False
+    return str(room_number).strip() in VALID_HOTEL_ROOMS
+
+
 
 def extract_room_number(text: str, is_answering_room: bool = False) -> Optional[str]:
     """
@@ -132,6 +146,7 @@ class SessionMemoryManager:
                 "is_room_authenticated": False,
                 "guest_name": None,
                 "pending_intent": None,
+                "language": None,
                 "last_active": now,
             }
         else:
@@ -283,6 +298,11 @@ class SessionMemoryManager:
             return False
 
         clean_room = str(room_number).strip()
+        # Chặn tuyệt đối không lưu phòng không tồn tại vào phiên hội thoại
+        if not is_valid_hotel_room(clean_room):
+            logger.warning(f"[SessionMemory] Refusing to set non-existent room '{clean_room}' in session '{session_id}'")
+            return False
+
         session = self.get_session(session_id)
         old_room = session.get("room_number")
 
@@ -338,6 +358,20 @@ class SessionMemoryManager:
         """Xóa ý định dịch vụ chờ sau khi đã xử lý xong hoặc tạo ticket."""
         session = self.get_session(session_id)
         session["pending_intent"] = None
+
+    def get_language(self, session_id: str = "default_session") -> Optional[str]:
+        """Lấy ngôn ngữ giao tiếp đã được lưu cho phiên (nếu có)."""
+        session = self.get_session(session_id)
+        return session.get("language")
+
+    def set_language(self, session_id: str, language: str):
+        """Cập nhật ngôn ngữ giao tiếp cho phiên hội thoại (VD: 'English', 'Tiếng Việt')."""
+        if not language:
+            return
+        clean_lang = str(language).strip()
+        session = self.get_session(session_id)
+        session["language"] = clean_lang
+        logger.info(f"[SessionMemory] Session '{session_id}' language set to '{clean_lang}'")
 
     def reset_session(self, session_id: str = "default_session"):
         """Xoá sạch bộ nhớ phiên (Dùng khi bấm nút Khách Mới / Đổi Phòng)."""

@@ -31,7 +31,7 @@ SERVICE_KEYWORDS: Dict[str, List[str]] = {
         "mì", "mi", "mì xào", "mi xao", "hải sản", "hai san", "bún", "bun", "cháo", "chao", "súp", "sup",
         "món", "mon", "món ăn", "mon an", "đồ ăn thức uống",
         "food", "drink", "nước uống", "nuoc uong", "bữa sáng", "gọi món", "đặt món", "nước ngọt", "bia", "trái cây",
-        "đặt", "dat", "order", "gọi", "goi", "mang lên", "giao lên", "đem lên",
+        "đặt đồ ăn", "dat do an", "gọi đồ ăn", "goi do an", "order món", "order đồ ăn", "mang lên", "giao lên", "đem lên",
         "đặt dịch vụ", "dat dich vu", "đặt thêm dịch vụ", "dat them dich vu",
         "dịch vụ lên phòng", "dich vu len phong", "dịch vụ phòng", "dich vu phong",
         "muốn đặt dịch vụ", "muon dat dich vu", "muốn đặt thêm", "muon dat them",
@@ -51,7 +51,9 @@ SERVICE_KEYWORDS: Dict[str, List[str]] = {
         "đặt bàn", "dat ban", "bàn ăn", "ban an", "nhà hàng", "table", "restaurant"
     ],
     "taxi": [
-        "taxi", "đặt xe", "dat xe", "gọi xe", "goi xe", "sân bay", "cab", "ride", "xe đón", "grab"
+        "đặt taxi", "dat taxi", "gọi taxi", "goi taxi", "bắt taxi", "bat taxi",
+        "xe taxi", "taxi", "đặt xe", "dat xe", "gọi xe", "goi xe",
+        "sân bay", "cab", "ride", "xe đón", "xe dua don", "xe đưa đón", "grab", "book taxi"
     ],
     "concierge": [
         "concierge", "gặp người", "trợ giúp trực tiếp", "nhân viên hỗ trợ",
@@ -66,6 +68,12 @@ SERVICE_KEYWORDS: Dict[str, List[str]] = {
         "human agent", "live agent", "talk to a person", "speak to a person", "live support"
     ],
         "query_order_status": [
+        # Taxi & Vận chuyển (Taxi & Transport status query)
+        "taxi tới chưa", "taxi toi chua", "taxi đến chưa", "taxi den chua", "xe tới chưa", "xe toi chua",
+        "xe đến chưa", "xe den chua", "trạng thái taxi", "trang thai taxi", "kiểm tra taxi", "kiem tra taxi",
+        "kiểm tra đặt taxi", "kiem tra dat taxi", "trạng thái đặt taxi", "trang thai dat taxi",
+        "đã đặt taxi chưa", "da dat taxi chua", "xe taxi tới đâu rồi", "xe taxi toi dau roi",
+        "taxi status", "check taxi", "cab status",
         # Xem lại món / đơn đã đặt (Review placed orders)
         "xem lại", "xem lai", "xem lại món", "xem lai mon", "xem lại đơn", "xem lai don", "xem lại đồ", "xem lai do",
         "cho tôi xem lại", "cho toi xem lai", "cho tôi xem lại món", "cho toi xem lai mon",

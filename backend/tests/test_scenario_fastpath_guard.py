@@ -50,3 +50,4 @@ def test_detect_destination_poi_general_knowledge_guard():
     assert _detect_destination_poi("vận động viên bơi lội nổi tiếng nhất hiện nay là ai") is None
     assert _detect_destination_poi("ai là người bơi giỏi nhất", "Michael Phelps là kình ngư vĩ đại.") is None
     assert _detect_destination_poi("cầu thủ bóng đá xuất sắc nhất hiện nay") is None
+

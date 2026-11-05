@@ -39,6 +39,15 @@ def _detect_destination_poi(prompt: str, reply: str = "", room_number: str | Non
     if any(k in p_lower for k in external_places):
         return None
 
+    # Khong bat ban do voi cau hoi ve nhan vat, kien thuc chung, van dong vien, thuc the ngoai khach san
+    is_general_knowledge = bool(re.search(
+        r'\b(vận động viên|van dong vien|cầu thủ|cau thu|ca sĩ|ca si|diễn viên|dien vien|nhạc sĩ|nhac si|tác giả|tac gia|nhà văn|nha van|nhà thơ|nha tho|tổng thống|tong thong|thủ tướng|thu tuong|chủ tịch|chu tich|người nổi tiếng|nguoi noi tieng|nhân vật|nhan vat|ông là ai|bà là ai|anh là ai|chị là ai|họ là ai|là ai|ai là|ai thế|ai vậy|who is|who are|who was|bài hát|bai hat|bài thơ|bai tho|bộ phim|bo phim|cuốn sách|cuon sach|lịch sử|lich su|tiểu sử|tieu su|nguồn gốc|nguon goc|định nghĩa|dinh nghia|khái niệm|khai niem|thế nào là|the nao la|ý nghĩa là|công thức|cong thuc|tại sao|tai sao|vì sao|vi sao|lý do gì|ly do gi)\b',
+        p_lower,
+        re.IGNORECASE
+    ))
+    if is_general_knowledge:
+        return None
+
     # Danh mục từ khóa biểu thị ý định hỏi đường / điều hướng / tìm vị trí
     nav_intent_phrases = [
         "ở đâu", "o dau", "chỗ nào", "cho nao", "nơi nào", "noi nao",
@@ -180,7 +189,7 @@ def _detect_destination_poi(prompt: str, reply: str = "", room_number: str | Non
         return "pickup_area"
 
     # 5. Tiện ích Tầng 5 & Tầng 6
-    if any(k in p_lower for k in ["hồ bơi", "ho boi", "bể bơi", "pool", "bơi"]):
+    if any(k in p_lower for k in ["hồ bơi", "ho boi", "bể bơi", "swimming pool", "infinity pool"]):
         return "infinity_pool"
     if any(k in p_lower for k in ["rooftop", "cafe", "cà phê", "coffee"]):
         return "rooftop_coffee"

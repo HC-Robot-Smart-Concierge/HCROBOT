@@ -95,3 +95,14 @@ def test_detect_destination_poi_sanitary_and_cleaning_disambiguation():
     assert _detect_destination_poi("Nhà vệ sinh ở đâu") == "restroom_ground"
     assert _detect_destination_poi("Đi vệ sinh") == "restroom_ground"
     assert _detect_destination_poi("Toilet tầng 2 ở đâu") == "restroom_f2"
+
+
+def test_detect_destination_poi_general_knowledge_and_entities():
+    # 6. Các câu hỏi về nhân vật, vận động viên, ca sĩ, kiến thức chung -> TUYỆT ĐỐI không kích hoạt POI hay bản đồ
+    assert _detect_destination_poi("vận động viên bơi lội nổi tiếng nhất hiện nay là ai") is None
+    assert _detect_destination_poi("ai là người bơi giỏi nhất thế giới", "Michael Phelps là kình ngư vĩ đại nhất.") is None
+    assert _detect_destination_poi("cầu thủ bóng đá xuất sắc nhất hiện nay", "Lionel Messi và Cristiano Ronaldo.") is None
+    assert _detect_destination_poi("Michael Phelps là ai", "Ông là vận động viên bơi lội nổi tiếng người Mỹ.") is None
+    assert _detect_destination_poi("ca sĩ nào hát bài này hay nhất") is None
+    assert _detect_destination_poi("tại sao nước biển lại mặn") is None
+    assert _detect_destination_poi("bộ phim nào đạt giải oscar năm nay") is None

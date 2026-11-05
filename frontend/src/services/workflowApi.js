@@ -334,3 +334,11 @@ export async function startRos2Navigation(mapName) {
   return parseRos2RuntimeResponse(res, 'Không khởi động được Navigation');
 }
 
+// Ghi lai mask vung cam (KEEP_OUT) cua map tu CSDL; Nav2 dang chay thi nap lai ngay.
+export async function updateRos2KeepoutMask(mapName) {
+  const res = await fetch(`${API_BASE}/map/ros2/keepout_mask/${encodeURIComponent(mapName)}`, {
+    method: 'POST',
+  });
+  return parseRos2RuntimeResponse(res, 'Không cập nhật được vùng cấm cho Nav2');
+}
+

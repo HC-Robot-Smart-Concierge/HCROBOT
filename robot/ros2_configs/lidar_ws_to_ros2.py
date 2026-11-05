@@ -17,14 +17,20 @@ from geometry_msgs.msg import TransformStamped, PoseStamped, Twist
 from std_msgs.msg import Empty, String
 from visualization_msgs.msg import Marker, MarkerArray
 from slam_toolbox.srv import Reset, SaveMap, Pause
-from nav2_msgs.action import NavigateToPose
-from rclpy.action import ActionClient
+from action_msgs.msg import GoalStatusArray
+from action_msgs.srv import CancelGoal
 from tf2_ros import TransformBroadcaster
 from tf2_ros.static_transform_broadcaster import StaticTransformBroadcaster
 
 import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from diff_drive import DiffDriveConfig, twist_to_wheel_pwm  # noqa: E402
+from diff_drive import (  # noqa: E402
+    DiffDriveConfig, StraightDriveConfig, twist_to_straight_command, twist_to_wheel_pwm,
+)
+from nav_result_tracker import NavResultTracker  # noqa: E402
+from robot_status import (  # noqa: E402
+    diagnose_stuck, format_status_line, lidar_clearances, threshold_warnings,
+)
 
 
 class LidarWsToRos2Bridge(Node):
@@ -127,13 +133,30 @@ class LidarWsToRos2Bridge(Node):
             10
         )
 
-        # Lắng nghe topic /goal_pose từ RViz2 (2D Goal Pose) hoặc Web Admin
+        # /goal_pose (Web Admin, Foxglove 2D Goal Pose): bt_navigator Jazzy TU nhan topic nay
+        # va tu gui goal. Bridge chi ghi log, khong gui them goal (truoc day gui trung => moi
+        # lan bam "Toi" Nav2 nhan 2 goal, goal sau huy goal truoc).
         self.goal_sub = self.create_subscription(
             PoseStamped,
             '/goal_pose',
             self.on_goal_pose_received,
             10
         )
+        # Ket qua goal Nav2 (moi nguon goal) -> /robot/nav_result cho Web Admin.
+        self.nav_result_tracker = NavResultTracker()
+        self.nav_result_pub = self.create_publisher(String, '/robot/nav_result', 10)
+        self.goal_reached_pub = self.create_publisher(String, '/goal_reached', 10)
+        self.nav_status_sub = self.create_subscription(
+            GoalStatusArray,
+            '/navigate_to_pose/_action/status',
+            self.on_nav2_status,
+            QoSProfile(depth=10, reliability=ReliabilityPolicy.RELIABLE,
+                       durability=DurabilityPolicy.TRANSIENT_LOCAL),
+        )
+        # Nut "Dung" tren Web (che do ROS 2): huy MOI goal Nav2. Chi gui /cmd_vel=0 thi
+        # controller van phat lenh 10 Hz va xe chay tiep.
+        self.nav_cancel_client = self.create_client(CancelGoal, '/navigate_to_pose/_action/cancel_goal')
+        self.nav_cancel_sub = self.create_subscription(Empty, '/robot/nav_cancel', self.on_nav_cancel, 10)
 
         # Service Clients kết nối tới SLAM Toolbox
         self.slam_reset_client = self.create_client(Reset, '/slam_toolbox/reset')
@@ -151,6 +174,18 @@ class LidarWsToRos2Bridge(Node):
         self.map_status_pub = self.create_publisher(String, '/robot/mapping_status', 10)
         self.status_timer = self.create_timer(1.0, self.publish_map_status)
         self.sensor_health_timer = self.create_timer(1.0, self.publish_sensor_health)
+
+        # Dong trang thai len terminal (1 s khi dang co lenh, 10 s khi ranh): lenh Nav2 ->
+        # lenh gui Pi -> xe do duoc chay -> khoang ho LiDAR 4 phia -> sonar + lan chan cua Pi.
+        # HCROBOT_STATUS_LOG=0 de tat.
+        self.status_log_enabled = os.getenv("HCROBOT_STATUS_LOG", "1") != "0"
+        self.pi_status = None
+        self.pi_status_time = 0.0
+        self.last_clearances = {}
+        self._last_moving_time = 0.0
+        self._cmd_started = 0.0
+        self._last_status_print = 0.0
+        self.drive_status_timer = self.create_timer(1.0, self.print_drive_status)
 
         # Lưu trạng thái vị trí robot và quỹ đạo đường đi
         self.current_pose = {'x': 0.0, 'y': 0.0, 'yaw': 0.0}
@@ -197,9 +232,18 @@ class LidarWsToRos2Bridge(Node):
         # Cách đổi /cmd_vel thành lệnh motor:
         # - diff (mặc định NAVIGATION): PWM riêng từng bên theo vận tốc Nav2, rẽ cung mượt.
         # - discrete (mặc định MAPPING): tiến/xoay/dừng + cắt xung xoay để scan không méo.
+        # - straight (tự quét xe thật): xoay tại chỗ (như lái tay, có cắt xung) khi Nav2 chỉ
+        #   muốn xoay; còn lại chạy tiến/lùi hai bên >= sàn PWM, lệch tốc nhẹ để rẽ cung.
         self.cmd_vel_mode = os.getenv(
             "HCROBOT_CMD_VEL_MODE", "discrete" if is_mapping else "diff"
         ).strip().lower()
+        self.straight_cfg = StraightDriveConfig(
+            track_m=self.yaw_track,
+            mps_per_pct=float(os.getenv("HCROBOT_DIFF_MPS_PER_PCT", "0.0048")),
+            min_pwm=int(os.getenv("HCROBOT_STRAIGHT_MIN_PWM", str(self.teleop_pwm_forward))),
+            max_pwm=int(os.getenv("HCROBOT_DIFF_MAX_PWM", "50")),
+            spin_radius_m=float(os.getenv("HCROBOT_STRAIGHT_SPIN_RADIUS", "0.15")),
+        )
         self.diff_cfg = DiffDriveConfig(
             track_m=self.yaw_track,
             mps_per_pct=float(os.getenv("HCROBOT_DIFF_MPS_PER_PCT", "0.0048")),
@@ -217,7 +261,8 @@ class LidarWsToRos2Bridge(Node):
         self.pi5_ip = os.getenv("PI5_IP", "100.99.72.51")
         self.pi5_port = int(os.getenv("PI5_PORT", "9999"))
         self.udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.nav2_client = ActionClient(self, NavigateToPose, '/navigate_to_pose')
+        # Bind cong tam ngay de luong nhan pi_status (Pi tra loi ve dung cong nguon cua lenh).
+        self.udp_sock.bind(("0.0.0.0", 0))
 
         # Timer 30Hz tính toán di chuyển Dead Reckoning
         self.kinematics_timer = self.create_timer(1.0 / 30.0, self.update_kinematics)
@@ -227,6 +272,7 @@ class LidarWsToRos2Bridge(Node):
 
         # Khởi động UDP listener nhận tín hiệu từ main.py trên Pi 5 (port 9998)
         self.start_pi5_telemetry_udp_server()
+        self.start_pi_status_receiver()
 
         self.get_logger().info(
             f"🚀 LidarWsToRos2Bridge san sang - mode={self.robot_mode}, "
@@ -419,42 +465,101 @@ class LidarWsToRos2Bridge(Node):
             self.get_logger().warn("⚠️ Service /slam_toolbox/pause_new_measurements chưa sẵn sàng!")
 
     def on_goal_pose_received(self, msg: PoseStamped):
-        """Nhận mục tiêu điều hướng từ 2D Goal Pose (RViz2) hoặc Web Admin và kích hoạt tự hành."""
+        """Chi ghi log: bt_navigator tu nhan /goal_pose va gui goal NavigateToPose."""
         tx = float(msg.pose.position.x)
         ty = float(msg.pose.position.y)
-        self.get_logger().info(f"🎯 [NAV2 GOAL] Nhận mục tiêu tự hành mới: X={tx:.2f}m, Y={ty:.2f}m")
-
         if self.robot_mode != "NAVIGATION":
-            self.get_logger().warn("⚠️ Bỏ qua goal: hãy lưu map và chạy chế độ NAVIGATION trước.")
+            self.get_logger().warn(
+                f"⚠️ Nhận /goal_pose ({tx:.2f}, {ty:.2f}) nhưng bridge không ở chế độ NAVIGATION."
+            )
             return
+        self.get_logger().info(f"🎯 [NAV2 GOAL] /goal_pose X={tx:.2f}m, Y={ty:.2f}m (bt_navigator xử lý)")
 
-        goal = NavigateToPose.Goal()
-        goal.pose = msg
-        goal.pose.header.frame_id = 'map'
-        goal.pose.header.stamp = self.get_clock().now().to_msg()
-
-        if self.nav2_client.wait_for_server(timeout_sec=0.5):
-            send_future = self.nav2_client.send_goal_async(goal)
-            send_future.add_done_callback(self._on_nav2_goal_response)
-            return
-
-        self.get_logger().warn("⚠️ Nav2 action server chưa sẵn sàng; không gửi lệnh chuyển động thay thế để tránh xung đột bộ điều khiển.")
-
-    def _on_nav2_goal_response(self, future):
-        goal_handle = future.result()
-        if not goal_handle.accepted:
-            self.get_logger().warn("⚠️ Nav2 từ chối mục tiêu.")
-            return
-        self.get_logger().info("✅ Nav2 đã nhận mục tiêu; planner đang tính đường trên static map.")
-        goal_handle.get_result_async().add_done_callback(self._on_nav2_result)
-
-    def _on_nav2_result(self, future):
+    def _handle_pi_status(self, raw: str) -> bool:
+        """Goi JSON 'pi_status' tu main.py tren Pi. True neu da xu ly (khong phai lenh chu)."""
+        if not raw.startswith("{"):
+            return False
         try:
-            status = future.result().status
-            self.get_logger().info(f"🏁 Nav2 kết thúc mục tiêu, status={status}")
-        except Exception as exc:
-            self.get_logger().warn(f"⚠️ Không đọc được kết quả Nav2: {exc}")
+            status = json.loads(raw)
+        except ValueError:
+            return True
+        if isinstance(status, dict) and status.get("type") == "pi_status":
+            self.pi_status = status
+            self.pi_status_time = time.monotonic()
+        return True
 
+    def start_pi_status_receiver(self):
+        """Nghe pi_status tren chinh socket gui lenh (Pi tra ve dia chi + cong nguon)."""
+        def worker():
+            self.udp_sock.settimeout(0.5)
+            while rclpy.ok():
+                try:
+                    data, _ = self.udp_sock.recvfrom(4096)
+                except socket.timeout:
+                    continue
+                except OSError:
+                    break
+                self._handle_pi_status(data.decode("utf-8", errors="ignore").strip())
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def print_drive_status(self):
+        if not self.status_log_enabled:
+            return
+        now = time.monotonic()
+        cmd_active = (now - self.last_cmd_time) < 0.8 and (
+            abs(self.current_vx) > 0.02 or abs(self.current_wz) > 0.1
+        )
+        turning = self.desired_motion in ("left", "right")
+        sent = self.desired_motion if turning else self.last_sent_udp_motion
+        sending = turning or self.last_sent_udp_motion != "stop"
+        stuck_for = 0.0
+        if cmd_active and sending:
+            stuck_for = now - max(self._last_moving_time, self._cmd_started)
+        interval = 1.0 if cmd_active else 10.0
+        if now - self._last_status_print < interval - 0.05:
+            return
+        self._last_status_print = now
+
+        pi_age = (now - self.pi_status_time) if self.pi_status is not None else None
+        fresh_pi = self.pi_status if pi_age is not None and pi_age < 3.0 else None
+        line = format_status_line(
+            self.current_vx, self.current_wz, cmd_active, sent,
+            self.measured_vx, self.measured_wz, self.last_clearances, self.pi_status, pi_age,
+        )
+        warn = threshold_warnings(self.last_clearances, fresh_pi)
+        self.get_logger().info("🩺 " + line + (f" | ⚠ {warn}" if warn else ""))
+        if stuck_for >= 2.0:
+            encoder_fresh = self.has_prev_encoder_ticks and (now - self.last_encoder_time) < 0.5
+            self.get_logger().warn(
+                f"⛔ XE ĐỨNG YÊN {stuck_for:.0f}s dù có lệnh chạy -> "
+                + diagnose_stuck(encoder_fresh, self.pi_status, pi_age, sent)
+            )
+
+    def on_nav_cancel(self, _msg=None):
+        self.get_logger().warn("🛑 Web yêu cầu DỪNG: huỷ mọi goal Nav2 + dừng motor")
+        if self.nav_cancel_client.service_is_ready():
+            # goal_info rong (uuid 0, stamp 0) = huy tat ca goal dang chay
+            self.nav_cancel_client.call_async(CancelGoal.Request())
+        else:
+            self.get_logger().warn("⚠️ Nav2 chưa chạy (không có cancel_goal), chỉ dừng motor")
+        self.current_vx = 0.0
+        self.current_wz = 0.0
+        self.desired_motion = "stop"
+        self._turn_pulse_started = None
+        self._send_udp_to_pi5("stop")
+
+    def on_nav2_status(self, msg: GoalStatusArray):
+        statuses = [(bytes(s.goal_info.goal_id.uuid), int(s.status)) for s in msg.status_list]
+        for _uuid, result in self.nav_result_tracker.update(statuses):
+            self.get_logger().info(f"🏁 Nav2 kết thúc goal: {result}")
+            out = String()
+            out.data = json.dumps({"status": result, "stamp": time.time()})
+            self.nav_result_pub.publish(out)
+            if result == "SUCCEEDED":
+                reached = String()
+                reached.data = "Nav2"
+                self.goal_reached_pub.publish(reached)
 
     def broadcast_static_laser_tf(self):
         # Alias static transform laser_frame -> laser (tương thích cả 2 tên frame)
@@ -723,7 +828,13 @@ class LidarWsToRos2Bridge(Node):
             # tránh TF trùng/lệch timestamp.
 
     def on_cmd_vel_received(self, msg: Twist):
-        self.last_cmd_time = time.monotonic()
+        now = time.monotonic()
+        was_active = (now - self.last_cmd_time) < 0.8 and (
+            abs(self.current_vx) > 0.02 or abs(self.current_wz) > 0.1
+        )
+        if not was_active:
+            self._cmd_started = now
+        self.last_cmd_time = now
         self.current_vx = msg.linear.x
         self.current_wz = msg.angular.z
 
@@ -733,6 +844,20 @@ class LidarWsToRos2Bridge(Node):
             self.desired_motion = "drive" if moving else "stop"
             self._turn_pulse_started = None
             self._send_udp_to_pi5(f"drive:{left}:{right}" if moving else "stop")
+            return
+
+        if self.cmd_vel_mode == "straight":
+            kind, left, right = twist_to_straight_command(msg.linear.x, msg.angular.z, self.straight_cfg)
+            if kind == "drive":
+                self.desired_motion = "drive"
+                self._turn_pulse_started = None
+                self._send_udp_to_pi5(f"drive:{left}:{right}")
+                return
+            if kind in ("left", "right"):
+                # Xoay tai cho dung lenh roi rac nhu lai tay (PWM xoay da kiem chung + cat xung).
+                self._send_udp_speed(max(20, min(50, self.teleop_pwm_turn)))
+            self.desired_motion = kind
+            self._send_udp_to_pi5(self._gate_turn_pulse(kind, self.last_cmd_time))
             return
 
         # Phân loại lệnh di chuyển để gửi UDP sang Pi 5
@@ -820,6 +945,8 @@ class LidarWsToRos2Bridge(Node):
 
     def update_kinematics(self):
         now_mono = time.monotonic()
+        if abs(self.measured_vx) > 0.01 or abs(self.measured_wz) > math.radians(3.0):
+            self._last_moving_time = now_mono
         dt = now_mono - self.last_kinematics_time
         self.last_kinematics_time = now_mono
 
@@ -938,8 +1065,11 @@ class LidarWsToRos2Bridge(Node):
 
             while rclpy.ok():
                 try:
-                    data, _ = sock.recvfrom(1024)
-                    cmd = data.decode("utf-8", errors="ignore").strip().lower()
+                    data, _ = sock.recvfrom(4096)
+                    raw = data.decode("utf-8", errors="ignore").strip()
+                    if self._handle_pi_status(raw):
+                        continue
+                    cmd = raw.lower()
                     if cmd in motion_to_vel:
                         vx, wz = motion_to_vel[cmd]
                         self.current_vx = vx
@@ -998,6 +1128,8 @@ class LidarWsToRos2Bridge(Node):
     def publish_scan(self, points, scan_age_sec=None, encoder_age_sec=None):
         if not points:
             return
+        # Khoang ho 4 phia cho dong trang thai (ke ca scan bi bo khi xoay).
+        self.last_clearances = lidar_clearances(points)
 
         now_mono = time.monotonic()
         self.scan_count += 1

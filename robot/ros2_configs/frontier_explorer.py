@@ -1,9 +1,16 @@
 #!/usr/bin/env python3
 """Tự khám phá (frontier exploration) bằng SLAM Toolbox + Nav2.
 
-Vòng lặp: đọc /map -> tìm cụm frontier -> gửi NavigateToPose cho Nav2 -> chờ
-xong/lỗi/timeout -> đánh dấu điểm đã thử -> lặp lại tới khi hết frontier.
-Hết frontier thì (tuỳ chọn) gọi /slam_toolbox/save_map để lưu map.
+Vòng lặp: đọc /map -> tìm cụm frontier -> chọn chỗ đứng THOÁNG gần frontier (cách vật
+cản >= goal_clearance_m) -> gửi NavigateToPose -> tới nơi thì đứng yên settle_sec cho
+LiDAR/SLAM cập nhật -> xét frontier còn hay không -> lặp lại tới khi hết frontier.
+Hết frontier thì (tuỳ chọn) lưu map bằng map_saver_cli.
+
+Chống kẹt (xe thật: sonar trên Pi chặn lệnh khi sát vật cản, Nav2 không biết):
+- Đích luôn ở chỗ thoáng; không bao giờ lao thẳng vào ô frontier (thường sát vật cản).
+- Tới gần đích (reach_radius_m) là tự dừng, khỏi chờ Nav2 xoay đúng hướng đích.
+- Ghi đường đi bằng odom; quét xong/kẹt trong khe thì lùi theo đường cũ về chỗ rộng.
+- Khi thiếu đường cũ, cảm biến hoặc khoảng hở: dừng tự hành và báo lý do.
 
 Chạy (đã có SLAM Toolbox + Nav2 slam:=true):
   python3 frontier_explorer.py --ros-args -p use_sim_time:=true -p save_map_name:=map_ao
@@ -11,7 +18,9 @@ Chạy (đã có SLAM Toolbox + Nav2 slam:=true):
 
 import math
 import os
+import subprocess
 import sys
+import threading
 
 import rclpy
 from rclpy.action import ActionClient
@@ -20,64 +29,109 @@ from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from rclpy.time import Time
 from nav_msgs.msg import OccupancyGrid
 from nav2_msgs.action import NavigateToPose
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PoseStamped, Twist
+from sensor_msgs.msg import LaserScan
+from std_msgs.msg import Empty
 from tf2_ros import Buffer, TransformListener
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from frontier_logic import (  # noqa: E402
-    GoalFailureTracker, choose_frontier, find_frontiers, frontier_still_open, safe_goal,
+    FrontierMemory, MotionWatchdog, choose_frontier, choose_unstick_direction, find_frontiers,
+    frontier_still_open, safe_goal, scan_to_points,
+)
+from robot_status import lidar_clearances  # noqa: E402
+from retreat_logic import (  # noqa: E402
+    RetreatTrail, ReverseFollower, body_scan, reverse_clear, turn_clear,
 )
 
-try:
-    from slam_toolbox.srv import SaveMap
-except ImportError:  # slam_toolbox chưa cài: vẫn khám phá được, chỉ không tự lưu
-    SaveMap = None
+
+def _yaw_from_quat(q):
+    return math.atan2(2.0 * (q.w * q.z + q.x * q.y), 1.0 - 2.0 * (q.y * q.y + q.z * q.z))
 
 
 class FrontierExplorer(Node):
     def __init__(self):
         super().__init__("frontier_explorer")
-        self.min_cluster_cells = int(self.declare_parameter("min_cluster_cells", 8).value)
-        self.goal_timeout_sec = float(self.declare_parameter("goal_timeout_sec", 30.0).value)
-        self.done_checks = int(self.declare_parameter("done_checks", 3).value)
-        self.save_map_name = str(self.declare_parameter("save_map_name", "").value)
-        # Thu lai mot cho toi da N lan truoc khi bo (loi tam thoi cua Nav2 tren xe that)
-        self.failures = GoalFailureTracker(int(self.declare_parameter("max_goal_failures", 2).value))
-        # Tam xe phai cach tuong > muc nay: nua be rong 0.08 + footprint_padding 0.13 (nav2_params).
-        self.goal_clearance_m = float(self.declare_parameter("goal_clearance_m", 0.22).value)
+        p = self.declare_parameter
+        self.min_cluster_cells = int(p("min_cluster_cells", 8).value)
+        # Chỉ chặn trường hợp đi rất lâu mà vẫn nhúc nhích; kẹt thì stuck_timeout_sec lo.
+        self.goal_timeout_sec = float(p("goal_timeout_sec", 60.0).value)
+        self.done_checks = int(p("done_checks", 3).value)
+        self.save_map_name = str(p("save_map_name", "").value)
+        self.memory = FrontierMemory(int(p("max_goal_failures", 2).value))
+        # Het cho de di ma van con frontier: mo lai cac cho da bo, thu them toi da N vong.
+        self.max_retry_rounds = int(p("max_retry_rounds", 2).value)
+        self.retry_rounds = 0
+        # Tam xe cach vat can >= muc nay o dich. Dung o dich phai XOAY duoc de sang dich ke:
+        # RotationShim can ~0.36 m (footprint + padding 0.13 quay), Pi can hong > 11 cm.
+        # LiDAR quet 12 m nen dung xa vat can van ve map du, khong can lai sat tuong.
+        self.goal_clearance_m = float(p("goal_clearance_m", 0.40).value)
+        self.goal_search_radius_m = float(p("goal_search_radius_m", 1.5).value)
+        # Cho dung thoang gan nhat ma cach xe < muc nay => xe dang dung o cho nhin tot nhat.
+        self.min_travel_m = float(p("min_travel_m", 0.35).value)
+        # Toi gan dich trong ban kinh nay la tinh toi noi (> xy_goal_tolerance 0.25 cua Nav2).
+        self.reach_radius_m = float(p("reach_radius_m", 0.30).value)
+        # Toi noi: dung yen cho LiDAR/SLAM cap nhat roi moi xet frontier con hay khong.
+        self.settle_sec = float(p("settle_sec", 2.0).value)
+        self.stuck_timeout_sec = float(p("stuck_timeout_sec", 8.0).value)
+        self.unstick_dist_m = float(p("unstick_dist_m", 0.15).value)
+        self.unstick_speed = float(p("unstick_speed", 0.12).value)
+        self.retreat_speed = float(p("retreat_speed", 0.08).value)
+        self.turn_radius_m = float(p("retreat_turn_radius_m", 0.40).value)
+        self.scan_timeout_sec = float(p("retreat_scan_timeout_sec", 0.8).value)
+        self.trail = RetreatTrail(max_length=float(p("retreat_history_m", 8.0).value))
+        self.scan_received_at = None
+        self.recovery_blocked = False
         # Dang chay ma frontier dich da duoc LiDAR quet lo ra thi doi dich (kiem tra moi N giay).
-        self.replan_check_sec = float(self.declare_parameter("replan_check_sec", 2.0).value)
+        self.replan_check_sec = float(p("replan_check_sec", 2.0).value)
         # BT rieng cho kham pha: khong Wait 5 s / Spin (Pi chan xoay sat tuong), chi lui ra.
-        self.bt_xml = str(self.declare_parameter(
+        self.bt_xml = str(p(
             "bt_xml", os.path.join(os.path.dirname(os.path.abspath(__file__)), "nav2", "explore_navigate.xml")
         ).value)
-        self.map_dir = str(self.declare_parameter(
+        self.map_dir = str(p(
             "map_dir", os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "maps"))
         ).value)
 
         self.map_msg = None
-        self.blacklist = []
+        self.scan_msg = None
         self.goal_handle = None
+        self.result_future = None
         self.goal_point = None
-        self.goal_frontier = None  # diem frontier goc (goal_point la diem da doi xa tuong)
+        self.goal_frontier = None  # diem frontier goc (goal_point la cho dung thoang gui Nav2)
         self.last_replan_check = 0.0
         self.goal_seq = 0
         self.goal_started = 0.0
         self.busy = False
+        # Sau khi huy goal: cho goal cu ket thuc han roi moi gui goal moi / tu lai xe.
+        self.draining_future = None
+        self.draining_deadline = 0.0
+        self.pending_unstick = False
+        self.settle = None  # (frontier, het_gio)
+        self.maneuver = None  # thoat ket: {"dir", "start", "until"}
+        self.watchdog = MotionWatchdog(self.stuck_timeout_sec)
         self.empty_checks = 0
         self.finished = False
         self.visited = 0
+        self.stuck_count = 0
 
-        qos = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL,
-                         reliability=ReliabilityPolicy.RELIABLE)
-        self.create_subscription(OccupancyGrid, "/map", self._on_map, qos)
+        map_qos = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL,
+                             reliability=ReliabilityPolicy.RELIABLE)
+        self.create_subscription(OccupancyGrid, "/map", self._on_map, map_qos)
+        self.create_subscription(LaserScan, "/scan", self._on_scan,
+                                 QoSProfile(depth=1, reliability=ReliabilityPolicy.BEST_EFFORT))
+        self.cmd_pub = self.create_publisher(Twist, "/cmd_vel", 10)
+        self.create_subscription(Empty, "/robot/nav_cancel", self._on_stop, 10)
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
         self.nav = ActionClient(self, NavigateToPose, "navigate_to_pose")
-        self.save_client = self.create_client(SaveMap, "/slam_toolbox/save_map") if SaveMap else None
         self.create_timer(1.0, self._tick)
-        self.get_logger().info("🧭 Frontier explorer sẵn sàng, chờ /map và Nav2...")
+        self.create_timer(0.1, self._maneuver_step)
+        self.get_logger().info(
+            f"🧭 Frontier explorer sẵn sàng (đích cách vật cản ≥ {self.goal_clearance_m:.2f} m, "
+            f"đứng yên {self.stuck_timeout_sec:.0f} s là thoát kẹt), chờ /map và Nav2..."
+        )
 
+    # ------------------------------------------------------------------ tiện ích
     def _now(self):
         # Dong ho cua node: use_sim_time:=true thi la gio MO PHONG. Gazebo trong WSL
         # thuong chi chay ~0.3x, dem bang gio that thi xe chua kip toi da bi huy dich.
@@ -86,61 +140,62 @@ class FrontierExplorer(Node):
     def _on_map(self, msg):
         self.map_msg = msg
 
-    def _robot_xy(self):
+    def _on_stop(self, _msg):
+        self.finished = True
+        self.pending_unstick = False
+        self.maneuver = None
+        self.busy = False
+        if self.goal_handle is not None:
+            self.goal_handle.cancel_goal_async()
+        self._publish_vx(0.0)
+        self.get_logger().info("Đã dừng tự quét và lùi thoát khe theo yêu cầu")
+
+    def _on_scan(self, msg):
+        self.scan_msg = msg
+        self.scan_received_at = self._now()
+
+    def _retreat_scan(self, now):
+        s = self.scan_msg
+        if s is None or self.scan_received_at is None:
+            return [], False
+        stamp = s.header.stamp.sec + s.header.stamp.nanosec * 1e-9
+        if not (0 <= now - self.scan_received_at <= self.scan_timeout_sec
+                and 0 <= now - stamp <= self.scan_timeout_sec):
+            return [], False
+        return body_scan(s.angle_min, s.angle_increment, s.ranges, s.range_min, s.range_max)
+
+    def _needs_retreat(self):
+        points, coverage = self._retreat_scan(self._now())
+        return (coverage and not turn_clear(points, coverage, self.turn_radius_m)
+                and bool(self.trail.route(self._odom_pose())))
+
+    def _lookup(self, parent, child):
         try:
-            t = self.tf_buffer.lookup_transform("map", "base_link", Time())
+            return self.tf_buffer.lookup_transform(parent, child, Time())
         except Exception:
             return None
-        return (t.transform.translation.x, t.transform.translation.y)
 
-    def _tick(self):
-        if self.finished:
-            return
-        now = self._now()
-        if self.busy:
-            if now - self.goal_started > self.goal_timeout_sec and self.goal_handle:
-                self.get_logger().warn("⏱️ Quá thời gian tới frontier, huỷ và thử chỗ khác")
-                self.goal_handle.cancel_goal_async()
-                self._goal_finished(success=False, seq=self.goal_seq)
-                return
-            if (self.goal_handle is None or self.map_msg is None
-                    or now - self.last_replan_check < self.replan_check_sec):
-                return
-            self.last_replan_check = now
-            if frontier_still_open(self._frontiers(), self.goal_frontier):
-                return
-            # LiDAR da quet lo vung nay tu xa: coi nhu xong, doi dich ngay thay vi chay not.
-            self.get_logger().info("👀 Frontier đích đã quét xong từ xa, chuyển sang frontier kế tiếp")
-            self.goal_handle.cancel_goal_async()
-            self._goal_finished(success=True, seq=self.goal_seq)
-        if self.map_msg is None or not self.nav.server_is_ready():
-            return
-        robot = self._robot_xy()
-        if robot is None:
-            return
+    def _robot_xy(self):
+        t = self._lookup("map", "base_link")
+        return None if t is None else (t.transform.translation.x, t.transform.translation.y)
 
-        frontiers = self._frontiers()
-        goal = None
-        while True:
-            target = choose_frontier(frontiers, robot, self.blacklist)
-            if target is None:
-                break
-            goal = self._safe_goal(target.goal, robot)
-            if goal is not None:
-                break
-            # Khong co cho dung du xa tuong gan frontier nay (khe hep): bo luon.
-            self.get_logger().warn(
-                f"Bỏ frontier ({target.goal[0]:.2f}, {target.goal[1]:.2f}): không có chỗ đứng cách tường "
-                f"> {self.goal_clearance_m:.2f} m"
-            )
-            self.blacklist.append(target.goal)
-        if target is None:
-            self.empty_checks += 1
-            if self.empty_checks >= self.done_checks:
-                self._finish(len(frontiers))
-            return
-        self.empty_checks = 0
-        self._send_goal(goal, target.goal, robot, len(frontiers))
+    def _odom_pose(self):
+        """Pose theo odom (encoder/IMU): đo xe có nhúc nhích không, không bị SLAM chỉnh nhảy."""
+        t = self._lookup("odom", "base_link")
+        if t is None:
+            return None
+        stamp = t.header.stamp.sec + t.header.stamp.nanosec * 1e-9
+        if not 0 <= self._now() - stamp <= 1.0:
+            return None
+        tr = t.transform.translation
+        return (tr.x, tr.y, _yaw_from_quat(t.transform.rotation))
+
+    def _clearances(self):
+        """Khoảng hở (cm) từ mép xe tới vật cản 4 phía theo /scan mới nhất."""
+        s = self.scan_msg
+        if s is None:
+            return {}
+        return lidar_clearances(scan_to_points(s.angle_min, s.angle_increment, s.ranges))
 
     def _frontiers(self):
         info = self.map_msg.info
@@ -154,9 +209,140 @@ class FrontierExplorer(Node):
         return safe_goal(
             self.map_msg.data, info.width, info.height, info.resolution,
             (info.origin.position.x, info.origin.position.y), frontier_goal, robot,
-            clearance_m=self.goal_clearance_m,
+            clearance_m=self.goal_clearance_m, search_radius_m=self.goal_search_radius_m,
         )
 
+    def _cancel_current(self, now):
+        """Huy goal dang chay va doi no ket thuc truoc khi gui goal moi / tu lai xe."""
+        if self.goal_handle is not None:
+            self.goal_handle.cancel_goal_async()
+        self.draining_future = self.result_future
+        self.draining_deadline = now + 3.0
+
+    # ------------------------------------------------------------------ vòng chính
+    def _tick(self):
+        if self.finished or self.recovery_blocked or self.maneuver is not None:
+            return
+        now = self._now()
+        if self.draining_future is not None:
+            # Never race a still-running Nav2 action with our reverse publisher.
+            if not self.draining_future.done():
+                if now >= self.draining_deadline:
+                    self.get_logger().error("Chờ Nav2 xác nhận dừng; chưa cho phép tự lùi")
+                    self.draining_deadline = now + 5.0
+                return
+            self.draining_future = None
+        if self.pending_unstick:
+            self.pending_unstick = False
+            if self._start_unstick(now):
+                return
+        if self.settle is not None:
+            spot, until = self.settle
+            if now < until:
+                return
+            self.settle = None
+            self._judge_reached(spot)
+            if self._needs_retreat():
+                self.pending_unstick = True
+                return
+        if self.busy:
+            self._watch_goal(now)
+            return
+        if self._needs_retreat():
+            self._start_unstick(now)
+            return
+        if self.map_msg is None:
+            self.get_logger().warn("Chờ /map từ SLAM; chưa gửi đích tự quét", throttle_duration_sec=5.0)
+            return
+        if not self.nav.server_is_ready():
+            self.get_logger().warn("Chờ Nav2 active (navigate_to_pose); chưa gửi đích tự quét", throttle_duration_sec=5.0)
+            return
+        robot = self._robot_xy()
+        if robot is None:
+            return
+
+        frontiers = self._frontiers()
+        goal = None
+        while True:
+            target = choose_frontier(frontiers, robot, self.memory.blacklist())
+            if target is None:
+                break
+            goal = self._safe_goal(target.goal, robot)
+            if goal is None:
+                # Không có chỗ đứng thoáng gần frontier này (khe hẹp, góc chật): tạm bỏ.
+                self.get_logger().warn(
+                    f"Bỏ frontier ({target.goal[0]:.2f}, {target.goal[1]:.2f}): không có chỗ đứng cách "
+                    f"vật cản ≥ {self.goal_clearance_m:.2f} m trong {self.goal_search_radius_m:.1f} m"
+                )
+                self.memory.give_up(target.goal)
+                continue
+            if math.hypot(goal[0] - robot[0], goal[1] - robot[1]) < self.min_travel_m:
+                self._mark_blind(target.goal)
+                goal = None
+                continue
+            break
+        if target is None:
+            if frontiers and self.retry_rounds < self.max_retry_rounds:
+                reopened = self.memory.retry_round()
+                if reopened:
+                    self.retry_rounds += 1
+                    self.empty_checks = 0
+                    self.get_logger().info(
+                        f"🔁 Hết chỗ để đi nhưng còn {len(frontiers)} cụm frontier: thử lại {reopened} chỗ "
+                        f"đã bỏ (vòng {self.retry_rounds}/{self.max_retry_rounds})"
+                    )
+                    return
+            self.empty_checks += 1
+            if self.empty_checks >= self.done_checks:
+                self._finish(frontiers)
+            return
+        self.empty_checks = 0
+        self._send_goal(goal, target.goal, robot, len(frontiers))
+
+    def _watch_goal(self, now):
+        # 1. Tới gần đích: tự dừng (khỏi chờ Nav2 xoay đúng hướng đích - sát tường Pi chặn xoay).
+        robot = self._robot_xy()
+        if (robot is not None and self.goal_point is not None
+                and math.hypot(self.goal_point[0] - robot[0], self.goal_point[1] - robot[1]) <= self.reach_radius_m):
+            self._cancel_current(now)
+            self._goal_finished(success=True, seq=self.goal_seq)
+            return
+        # 2. Đứng yên quá lâu dù đang có đích: Pi chặn lệnh / vướng => huỷ, thoát kẹt, chọn chỗ khác.
+        if self.goal_handle is not None and self.watchdog.is_stuck(now, self._odom_pose()):
+            self.stuck_count += 1
+            c = self._clearances()
+            self.get_logger().warn(
+                f"⛔ Xe đứng yên {self.stuck_timeout_sec:.0f} s dù có đích (Pi chặn lệnh hoặc vướng). "
+                f"Khoảng hở LiDAR(cm) trước {self._cm(c.get('front'))} sau {self._cm(c.get('rear'))} "
+                f"trái {self._cm(c.get('left'))} phải {self._cm(c.get('right'))} -> huỷ, thoát kẹt, thử chỗ khác"
+            )
+            self._cancel_current(now)
+            self.pending_unstick = True
+            self._goal_finished(success=False, seq=self.goal_seq)
+            return
+        # 3. Quá lâu (vẫn nhúc nhích nhưng không tới).
+        if now - self.goal_started > self.goal_timeout_sec and self.goal_handle:
+            self.get_logger().warn("⏱️ Quá thời gian tới frontier, huỷ và thử chỗ khác")
+            self._cancel_current(now)
+            self.pending_unstick = True
+            self._goal_finished(success=False, seq=self.goal_seq)
+            return
+        # 4. LiDAR đã quét lộ frontier đích từ xa: đổi đích (tick sau, khi goal cũ đã dừng).
+        if (self.goal_handle is None or self.map_msg is None
+                or now - self.last_replan_check < self.replan_check_sec):
+            return
+        self.last_replan_check = now
+        if frontier_still_open(self._frontiers(), self.goal_frontier):
+            return
+        self.get_logger().info("👀 Frontier đích đã quét xong từ xa, chuyển sang frontier kế tiếp")
+        self._cancel_current(now)
+        self._goal_finished(success=True, seq=self.goal_seq, vanished=True)
+
+    @staticmethod
+    def _cm(v):
+        return "-" if v is None else f"{v:.0f}"
+
+    # ------------------------------------------------------------------ goal Nav2
     def _send_goal(self, goal, frontier, robot, n_frontiers):
         pose = PoseStamped()
         pose.header.frame_id = "map"
@@ -175,72 +361,237 @@ class FrontierExplorer(Node):
         seq = self.goal_seq
         self.goal_point = goal
         self.goal_frontier = frontier
+        self.goal_handle = None
+        self.result_future = None
         self.goal_started = self._now()
         self.last_replan_check = self.goal_started
+        self.watchdog.reset(self.goal_started, self._odom_pose())
         self.get_logger().info(
-            f"➡️ Frontier ({goal[0]:.2f}, {goal[1]:.2f}) - còn {n_frontiers} cụm, đã thăm {self.visited}"
+            f"➡️ Tới chỗ quét ({goal[0]:.2f}, {goal[1]:.2f}) cho frontier ({frontier[0]:.2f}, {frontier[1]:.2f})"
+            f" - còn {n_frontiers} cụm, đã thăm {self.visited}"
         )
         self.nav.send_goal_async(msg).add_done_callback(lambda f: self._on_goal_response(f, seq))
 
     def _on_goal_response(self, future, seq):
         handle = future.result()
-        if seq != self.goal_seq:
-            return  # đích cũ đã bị timeout/thay thế
+        if seq != self.goal_seq or not self.busy:
+            # Dich da bi bo (timeout / toi noi / thay the) truoc khi Nav2 kip nhan: huy no luon.
+            if handle.accepted:
+                handle.cancel_goal_async()
+            return
         if not handle.accepted:
             self.get_logger().warn("Nav2 từ chối đích, bỏ qua frontier này")
             self._goal_finished(success=False, seq=seq)
             return
         self.goal_handle = handle
-        handle.get_result_async().add_done_callback(
-            lambda f: self._goal_finished(success=(f.result().status == 4), seq=seq)  # 4 = SUCCEEDED
+        self.result_future = handle.get_result_async()
+        self.result_future.add_done_callback(
+            lambda f: self._on_nav_result(f, seq)
         )
 
-    def _goal_finished(self, success, seq=None):
+    def _on_nav_result(self, future, seq):
+        # Nav2 co the ABORT truoc watchdog 8 s (khong tim duoc quy dao / xoay bi chan).
+        # Neu chi doi frontier, moi goal moi lai reset watchdog va xe khong bao gio lui.
+        # Ket qua goal cu / goal da huy khong duoc kich hoat thoat ket cho goal moi.
+        if not self.busy or seq != self.goal_seq:
+            return
+        status = future.result().status
+        if status == 6:  # action_msgs/GoalStatus.STATUS_ABORTED
+            self.get_logger().warn("Nav2 báo thất bại: thử thoát kẹt thẳng trước khi chọn đích khác")
+            self.pending_unstick = True
+        self._goal_finished(success=(status == 4), seq=seq)
+
+    def _goal_finished(self, success, seq=None, vanished=False):
         if not self.busy or (seq is not None and seq != self.goal_seq):
             return
         spot = self.goal_frontier
-        if spot is not None:
-            # Danh dau theo diem frontier goc: choose_frontier so blacklist voi frontier,
-            # khong phai voi dich da doi xa tuong.
-            if success:
-                self.blacklist.append(spot)  # tới rồi thì không nhắm lại
-            elif self.failures.record_failure(spot):
-                self.get_logger().warn(
-                    f"Bỏ frontier ({spot[0]:.2f}, {spot[1]:.2f}) sau "
-                    f"{self.failures.max_failures} lần Nav2 thất bại"
-                )
-                self.blacklist.append(spot)
-            else:
-                self.get_logger().warn("Nav2 chưa tới được, sẽ thử lại chỗ này")
-        if success:
-            self.visited += 1
         self.busy = False
         self.goal_handle = None
         self.goal_point = None
         self.goal_frontier = None
+        if spot is None:
+            return
+        if vanished:
+            self.visited += 1
+            self.memory.mark_done(spot)
+            if self._needs_retreat():
+                self.pending_unstick = True
+        elif success:
+            self.visited += 1
+            # Đứng yên cho LiDAR/SLAM cập nhật rồi mới xét (xem _judge_reached).
+            self.settle = (spot, self._now() + self.settle_sec)
+        elif self.memory.record_failure(spot):
+            self.get_logger().warn(
+                f"Bỏ frontier ({spot[0]:.2f}, {spot[1]:.2f}) sau {self.memory.max_attempts} lần chưa tới được"
+            )
+        else:
+            self.get_logger().warn("Chưa tới được chỗ quét, sẽ thử lại sau")
 
-    def _finish(self, n_left):
+    def _judge_reached(self, spot):
+        if self.map_msg is not None and frontier_still_open(self._frontiers(), spot):
+            self._mark_blind(spot)
+        else:
+            self.memory.mark_done(spot)
+
+    def _mark_blind(self, spot):
+        # Đã đứng ở chỗ nhìn tốt nhất mà vẫn chưa biết: kính, đồ màu đen, gầm tủ, khe xe không vào được.
+        self.get_logger().info(
+            f"🙈 Đứng ở chỗ nhìn tốt nhất mà frontier ({spot[0]:.2f}, {spot[1]:.2f}) vẫn còn "
+            "(điểm mù LiDAR / khe hẹp): bỏ qua"
+        )
+        self.memory.mark_blind(spot)
+
+    # ------------------------------------------------------------------ thoát kẹt
+    def _start_unstick(self, now):
+        points, coverage = self._retreat_scan(now)
+        start = self._odom_pose()
+        route = self.trail.route(start)
+        if route and not turn_clear(points, coverage, self.turn_radius_m):
+            self.maneuver = {
+                "follower": ReverseFollower(route, self.retreat_speed),
+                "start": start, "until": now + 120.0,
+                "watchdog": MotionWatchdog(5.0, min_move_m=0.025, min_turn_rad=10.0),
+            }
+            self.maneuver["watchdog"].reset(now, start)
+            self.get_logger().info(
+                f"↩️ Lùi theo {len(route)} mốc đường cũ tới chỗ đủ rộng; không xoay trong khe"
+            )
+            return True
+        if not coverage or start is None:
+            self._stop_recovery("Thiếu LiDAR đủ vòng hoặc odom mới để thoát kẹt")
+            return True
+        c = self._clearances()
+        direction = choose_unstick_direction(c.get("front"), c.get("rear"))
+        if not turn_clear(points, coverage, self.turn_radius_m):
+            self._stop_recovery("Đang ở chỗ hẹp nhưng không còn đường lùi đã ghi tới chỗ rộng")
+            return True
+        if direction is None or start is None:
+            self.get_logger().warn(
+                f"Kẹt cả trước (≈{self._cm(c.get('front'))} cm) lẫn sau (≈{self._cm(c.get('rear'))} cm): "
+                "không tự thoát, thử chỗ khác (nếu vẫn kẹt hãy dời xe ra chỗ thoáng)"
+            )
+            return False
+        self.maneuver = {"dir": direction, "start": start, "until": now + 4.0}
+        self.get_logger().info(
+            f"↩️ Thoát kẹt: {'tiến' if direction == 'forward' else 'lùi'} thẳng {self.unstick_dist_m:.2f} m "
+            f"(trước {self._cm(c.get('front'))} cm, sau {self._cm(c.get('rear'))} cm)"
+        )
+        return True
+
+    def _publish_vx(self, vx):
+        self._publish_motion(vx, 0.0)
+
+    def _publish_motion(self, vx, wz):
+        t = Twist()
+        t.linear.x = float(vx)
+        t.angular.z = float(wz)
+        self.cmd_pub.publish(t)
+
+    def _stop_recovery(self, reason):
+        self._publish_vx(0.0)
+        self.maneuver = None
+        self.recovery_blocked = True
+        self.get_logger().error(f"⛔ Tạm dừng tự hành: {reason}. Kiểm tra/lái tay ra chỗ rộng rồi khởi động lại tự quét.")
+
+    def _maneuver_step(self):
+        m = self.maneuver
+        now = self._now()
+        pose = self._odom_pose()
+        points, coverage = self._retreat_scan(now)
+        if m is None:
+            if not self.recovery_blocked:
+                if not coverage:
+                    self.trail.points.clear()
+                else:
+                    self.trail.record(pose, turn_clear(points, coverage, self.turn_radius_m))
+            return
+        if pose is None or not coverage:
+            self._stop_recovery("Mất odom hoặc LiDAR mới/đủ vòng trong lúc thoát khe")
+            return
+        if "follower" in m:
+            vx, wz, reason = m["follower"].command(pose)
+            if reason == "arrived":
+                self._publish_vx(0.0)
+                self.maneuver = None
+                self.trail.points.clear()
+                if not turn_clear(points, coverage, self.turn_radius_m):
+                    self._stop_recovery("Đã về mốc cũ nhưng hiện tại chưa đủ khoảng hở để quay")
+                else:
+                    self.get_logger().info("↩️ Đã lùi ra chỗ đủ rộng, tiếp tục chọn frontier")
+                return
+            if reason != "moving":
+                self._stop_recovery("Lệch đường lùi hoặc góc cua quá gắt, không tự xoay trong khe")
+                return
+            if now > m["until"] or m["watchdog"].is_stuck(now, pose):
+                self._stop_recovery("Lùi không có tiến triển hoặc quá thời gian")
+                return
+            # Check full rear swept width, not just the central rear sector.
+            if not reverse_clear(points, coverage):
+                self._stop_recovery("Có vật cản sau xe hoặc sát hông trên đường lùi")
+                return
+            self._publish_motion(vx, wz)
+            return
+        if m["dir"] == "backward" and not reverse_clear(points, coverage):
+            self._stop_recovery("Vật cản trên đường lùi ngắn")
+            return
+        moved = 0.0 if pose is None else math.hypot(pose[0] - m["start"][0], pose[1] - m["start"][1])
+        side = "front" if m["dir"] == "forward" else "rear"
+        gap = self._clearances().get(side)
+        too_close = gap is not None and gap < (22.0 if side == "front" else 16.0)
+        if moved >= self.unstick_dist_m or now > m["until"] or too_close:
+            for _ in range(3):
+                self._publish_vx(0.0)
+            self.maneuver = None
+            self.get_logger().info(f"↩️ Thoát kẹt xong: đã đi {moved:.2f} m")
+            return
+        self._publish_vx(self.unstick_speed if m["dir"] == "forward" else -self.unstick_speed)
+
+    # ------------------------------------------------------------------ kết thúc
+    def _finish(self, frontiers):
         self.finished = True
+        left = ", ".join(f"({f.goal[0]:.2f}, {f.goal[1]:.2f})" for f in frontiers[:6])
         if self.visited == 0:
             # Chưa tới được điểm nào: gần như chắc chắn Nav2/TF/motor có lỗi chứ không
             # phải đã quét xong. Không lưu để khỏi ghi đè bằng một map gần như trống.
             self.get_logger().error(
-                f"❌ Dừng khám phá: chưa tới được frontier nào ({n_left} cụm còn lại). "
+                f"❌ Dừng khám phá: chưa tới được frontier nào ({len(frontiers)} cụm còn lại: {left}). "
                 "Kiểm tra log Nav2 (controller_server/bt_navigator) và motor. KHÔNG lưu map."
             )
             return
         self.get_logger().info(
-            f"🎉 Khám phá xong: đã thăm {self.visited} frontier, còn {n_left} cụm không tới được"
+            f"🎉 Khám phá xong: đã thăm {self.visited} chỗ, thoát kẹt {self.stuck_count} lần, "
+            f"còn {len(frontiers)} cụm không tới/không thấy được" + (f": {left}" if left else "")
         )
-        if self.save_map_name and self.save_client is not None:
-            if not self.save_client.wait_for_service(timeout_sec=3.0):
-                self.get_logger().warn("Không có /slam_toolbox/save_map, chưa lưu map")
+        if self.save_map_name:
+            self._save_map()
+
+    def _save_map(self):
+        """Lưu /map bằng map_saver_cli (danh sách đối số, không qua shell).
+
+        Không dùng /slam_toolbox/save_map: SLAM Toolbox ghép đường dẫn vào lệnh shell
+        không có ngoặc kép, thư mục dự án có dấu cách + ngoặc => lệnh vỡ, không ra file.
+        """
+        path = os.path.join(self.map_dir, self.save_map_name)
+        os.makedirs(self.map_dir, exist_ok=True)
+        logger = self.get_logger()
+
+        def worker():
+            cmd = [
+                "ros2", "run", "nav2_map_server", "map_saver_cli", "-f", path,
+                "--ros-args", "-p", "map_subscribe_transient_local:=true",
+            ]
+            try:
+                proc = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                logger.error(f"❌ Không lưu được map {path}: {exc}")
                 return
-            req = SaveMap.Request()
-            req.name.data = os.path.join(self.map_dir, self.save_map_name)
-            self.save_client.call_async(req).add_done_callback(
-                lambda f: self.get_logger().info(f"💾 Đã lưu map: {req.name.data}.yaml/.pgm")
-            )
+            if proc.returncode == 0 and os.path.isfile(path + ".yaml") and os.path.isfile(path + ".pgm"):
+                logger.info(f"💾 Đã lưu map: {path}.yaml / .pgm")
+            else:
+                tail = (proc.stderr or proc.stdout or "").strip().splitlines()[-3:]
+                logger.error(f"❌ Lưu map thất bại (mã {proc.returncode}): {' | '.join(tail)}")
+
+        threading.Thread(target=worker, daemon=True).start()
 
 
 def main():
@@ -251,6 +602,7 @@ def main():
     except KeyboardInterrupt:
         pass
     finally:
+        node._publish_vx(0.0)
         node.destroy_node()
         rclpy.try_shutdown()
 

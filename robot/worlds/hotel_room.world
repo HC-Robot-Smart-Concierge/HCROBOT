@@ -492,7 +492,7 @@
     <!-- Waypoint 1: Vi Tri Cho Robot Sanh (ROBOT_STANDBY - PARK: Amber) -->
     <model name="wp_marker_standby">
       <static>true</static>
-      <pose>1.50 0.00 0.01 0 0 0</pose>
+      <pose>0.00 0.00 -10.00 0 0 0</pose>
       <link name="link">
         <visual name="floor_ring">
           <geometry><cylinder><radius>0.40</radius><length>0.005</length></cylinder></geometry>
@@ -508,7 +508,7 @@
     <!-- Waypoint 2: Tram Sac Robot Sanh (CHARGER - CHARGER: Emerald Green) -->
     <model name="wp_marker_charger">
       <static>true</static>
-      <pose>1.50 0.00 0.01 0 0 0</pose>
+      <pose>0.00 0.00 -10.00 0 0 0</pose>
       <link name="link">
         <visual name="floor_ring">
           <geometry><cylinder><radius>0.40</radius><length>0.005</length></cylinder></geometry>
@@ -540,7 +540,7 @@
     <!-- Waypoint 4: Cua Chinh Ra Vao Sanh (MAIN_ENTRANCE - WAYPOINT: Royal Blue) -->
     <model name="wp_marker_entrance">
       <static>true</static>
-      <pose>1.56 6.09 0.01 0 0 0</pose>
+      <pose>0.00 0.00 -10.00 0 0 0</pose>
       <link name="link">
         <visual name="floor_ring">
           <geometry><cylinder><radius>0.40</radius><length>0.005</length></cylinder></geometry>

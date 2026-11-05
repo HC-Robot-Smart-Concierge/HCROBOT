@@ -52,7 +52,10 @@ FOXGLOVE_PID=$!
 sleep 2
 
 echo "=== [4/6] LIDAR + ENCODER/IMU ODOM BRIDGE ==="
+# Xe that chi chay duoc xoay tai cho hoac di thang (cung PWM thap kieu drive:0:22 khong
+# lan) -> doi lenh Nav2 thanh xoay/di thang, giong che do tu quet (xem diff_drive.py).
 HCROBOT_MODE=NAVIGATION \
+HCROBOT_CMD_VEL_MODE="${HCROBOT_CMD_VEL_MODE:-straight}" \
 HCROBOT_MAP_DIR="$MAPS_DIR" \
 python3 "$SCRIPT_DIR/lidar_ws_to_ros2.py" &
 LIDAR_PID=$!

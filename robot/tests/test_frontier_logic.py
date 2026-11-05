@@ -1,3 +1,4 @@
+import math
 import os
 import sys
 import unittest
@@ -6,7 +7,8 @@ ROBOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(ROBOT_DIR, "ros2_configs"))
 
 from frontier_logic import (  # noqa: E402
-    Frontier, choose_frontier, find_frontiers, frontier_still_open, safe_goal,
+    Frontier, FrontierMemory, MotionWatchdog, choose_frontier, choose_unstick_direction, find_frontiers,
+    frontier_still_open, safe_goal, scan_to_points,
 )
 
 RES = 0.1
@@ -128,6 +130,69 @@ class TestFrontierStillOpen(unittest.TestCase):
         fronts = [Frontier(goal=(5.0, 0.0), size=10, centroid=(5.0, 0.0))]
         self.assertFalse(frontier_still_open(fronts, (2.0, 0.0), radius=0.5))
         self.assertFalse(frontier_still_open([], (2.0, 0.0), radius=0.5))
+
+
+class TestFrontierMemory(unittest.TestCase):
+    def test_done_blind_and_given_up_are_blacklisted(self):
+        m = FrontierMemory()
+        m.mark_done((1.0, 1.0))
+        m.mark_blind((2.0, 2.0))
+        m.give_up((3.0, 3.0))
+        self.assertEqual(len(m.blacklist()), 3)
+
+    def test_gives_up_after_max_failures(self):
+        m = FrontierMemory(max_attempts=2)
+        self.assertFalse(m.record_failure((1.0, 0.0)))
+        self.assertEqual(m.blacklist(), [])
+        self.assertTrue(m.record_failure((1.05, 0.0)))
+        self.assertEqual(len(m.blacklist()), 1)
+
+    def test_retry_round_reopens_done_and_given_up_but_not_blind(self):
+        m = FrontierMemory(max_attempts=1)
+        m.mark_done((5.0, 5.0))
+        m.mark_blind((6.0, 6.0))
+        m.record_failure((1.0, 0.0))
+        self.assertEqual(m.retry_round(), 2)
+        self.assertEqual(m.blacklist(), [(6.0, 6.0)])
+        # dem lai tu dau sau vong thu lai
+        self.assertTrue(m.record_failure((1.0, 0.0)))
+
+
+class TestMotionWatchdog(unittest.TestCase):
+    def test_standing_still_becomes_stuck(self):
+        w = MotionWatchdog(timeout_sec=8.0)
+        w.reset(0.0, (0.0, 0.0, 0.0))
+        self.assertFalse(w.is_stuck(5.0, (0.01, 0.0, 0.02)))
+        self.assertTrue(w.is_stuck(8.5, (0.02, 0.0, 0.03)))
+
+    def test_rotation_counts_as_progress(self):
+        w = MotionWatchdog(timeout_sec=8.0)
+        w.reset(0.0, (0.0, 0.0, 0.0))
+        self.assertFalse(w.is_stuck(6.0, (0.0, 0.0, 0.3)))   # xoay 17 do => moc moi
+        self.assertFalse(w.is_stuck(12.0, (0.0, 0.0, 0.3)))  # moi dung yen 6 s
+        self.assertTrue(w.is_stuck(14.5, (0.0, 0.0, 0.3)))
+
+    def test_yaw_wraparound(self):
+        w = MotionWatchdog(timeout_sec=8.0)
+        w.reset(0.0, (0.0, 0.0, 3.13))
+        self.assertTrue(w.is_stuck(9.0, (0.0, 0.0, -3.13)))  # chi lech 0.02 rad
+
+
+class TestUnstick(unittest.TestCase):
+    def test_goes_to_the_open_end(self):
+        self.assertEqual(choose_unstick_direction(88.0, 1.0), "forward")   # duoi xe sat vat (log 14:12)
+        self.assertEqual(choose_unstick_direction(20.0, 47.0), "backward")
+        self.assertEqual(choose_unstick_direction(None, 10.0), "forward")  # khong thay gi phia truoc
+
+    def test_boxed_in_returns_none(self):
+        self.assertIsNone(choose_unstick_direction(20.0, 12.0))
+
+
+class TestScanToPoints(unittest.TestCase):
+    def test_skips_invalid_and_converts_angles(self):
+        pts = scan_to_points(0.0, math.radians(90.0), [1.0, float("inf"), 0.01, 2.0])
+        self.assertEqual([round(p["angle"]) for p in pts], [0, 270])
+        self.assertEqual([p["distance"] for p in pts], [1.0, 2.0])
 
 
 if __name__ == "__main__":

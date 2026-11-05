@@ -6,7 +6,9 @@ ROBOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, ROBOT_DIR)
 sys.path.insert(0, os.path.join(ROBOT_DIR, "ros2_configs"))
 
-from diff_drive import DiffDriveConfig, twist_to_wheel_pwm  # noqa: E402
+from diff_drive import (  # noqa: E402
+    DiffDriveConfig, StraightDriveConfig, twist_to_straight_command, twist_to_wheel_pwm,
+)
 from motor_controller import MotorController  # noqa: E402
 from obstacle_safety import ObstacleSafetyController, classify_wheel_motion  # noqa: E402
 from test_ultrasonic_safety import FakeMotor, FakeReader, snapshot  # noqa: E402
@@ -49,6 +51,61 @@ class TestTwistToWheelPwm(unittest.TestCase):
         left, right = twist_to_wheel_pwm(0.10, 0.10 / (CFG.track_m / 2.0), CFG)
         self.assertEqual(left, 0)
         self.assertGreater(right, 0)
+
+
+SCFG = StraightDriveConfig()
+
+
+class TestTwistToStraightCommand(unittest.TestCase):
+    """Che do 'straight' (tu quet xe that): chi xoay tai cho hoac chay thang."""
+
+    def test_zero_twist_is_stop(self):
+        self.assertEqual(twist_to_straight_command(0.0, 0.0, SCFG), ("stop", 0, 0))
+        self.assertEqual(twist_to_straight_command(0.01, 0.05, SCFG), ("stop", 0, 0))
+
+    def test_pure_rotation_is_spin(self):
+        self.assertEqual(twist_to_straight_command(0.0, 0.32, SCFG)[0], "left")
+        self.assertEqual(twist_to_straight_command(0.0, -0.32, SCFG)[0], "right")
+
+    def test_almost_pure_rotation_is_spin(self):
+        # RotationShim / RotateToGoal: van toc tien rat nho so voi toc do xoay
+        self.assertEqual(twist_to_straight_command(0.02, 0.80, SCFG)[0], "left")
+        self.assertEqual(twist_to_straight_command(0.02, -0.80, SCFG)[0], "right")
+
+    def test_arc_with_forward_speed_drives_both_sides_not_spin(self):
+        # Truoc day ra drive:0:22 (xe dung im) roi doi thanh xoay (sat tuong bi Pi chan).
+        # Gio: tien, hai ben >= san PWM, ben ngoai cung nhanh hon (Pi chi xet phia truoc).
+        for vx, wz in ((0.05, 0.32), (0.10, -0.32), (0.20, -0.46)):
+            kind, left, right = twist_to_straight_command(vx, wz, SCFG)
+            self.assertEqual(kind, "drive", (vx, wz))
+            self.assertGreaterEqual(min(left, right), SCFG.min_pwm)
+            if wz > 0:
+                self.assertGreater(right, left)
+            else:
+                self.assertGreater(left, right)
+
+    def test_straight_uses_floor_on_both_sides(self):
+        kind, left, right = twist_to_straight_command(0.05, 0.0, SCFG)
+        self.assertEqual(kind, "drive")
+        self.assertEqual((left, right), (SCFG.min_pwm, SCFG.min_pwm))
+
+    def test_gentle_correction_keeps_both_sides_above_floor(self):
+        kind, left, right = twist_to_straight_command(0.15, 0.1, SCFG)
+        self.assertEqual(kind, "drive")
+        self.assertGreaterEqual(left, SCFG.min_pwm)
+        self.assertGreater(right, left)
+        self.assertLessEqual(right, SCFG.max_pwm)
+        self.assertLessEqual(right / left, SCFG.max_side_ratio + 1e-9)
+
+    def test_fast_straight_capped(self):
+        kind, left, right = twist_to_straight_command(0.4, 0.0, SCFG)
+        self.assertEqual((kind, left, right), ("drive", SCFG.max_pwm, SCFG.max_pwm))
+
+    def test_backward_is_straight_backward(self):
+        kind, left, right = twist_to_straight_command(-0.10, 0.0, SCFG)
+        self.assertEqual(kind, "drive")
+        self.assertLessEqual(left, -SCFG.min_pwm)
+        self.assertEqual(left, right)
 
 
 class TestClassifyWheelMotion(unittest.TestCase):

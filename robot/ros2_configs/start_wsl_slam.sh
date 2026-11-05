@@ -16,9 +16,10 @@ export ROS_DOMAIN_ID=0
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 EXPLORE="${EXPLORE:-0}"
 if [ "$EXPLORE" = "1" ]; then
-  # Nav2 xuat van toc lien tuc -> PWM ti le tung ben (diff) de bam duong; lai tay
-  # dung discrete (tien/xoay/dung + cat xung xoay). Scan khi xoay > 15 do/s van bi bo.
-  DEFAULT_CMD_VEL_MODE=diff
+  # Tu quet xe that di theo DOAN THANG: xoay tai cho (38%, cat xung nhu lai tay) roi
+  # chay thang (moi ben >= 30%). Che do diff cu phat cung PWM thap (vd drive:0:22) ma
+  # xe that khong lan duoc -> Nav2 "Failed to make progress", xe dung im.
+  DEFAULT_CMD_VEL_MODE=straight
 else
   DEFAULT_CMD_VEL_MODE=discrete
 fi
@@ -70,11 +71,35 @@ LIDAR_PID=$!
 sleep 2
 
 echo "=== [5/5] KHOI DONG SLAM TOOLBOX ONLINE ASYNC ==="
-ros2 launch slam_toolbox online_async_launch.py use_sim_time:=False slam_params_file:="$SCRIPT_DIR/slam_toolbox_params.yaml" &
+# Drive lifecycle transitions explicitly. The launch autostart can miss the
+# configuring -> inactive event, leaving SLAM inactive and Nav2 without /map.
+ros2 launch slam_toolbox online_async_launch.py autostart:=False use_sim_time:=False slam_params_file:="$SCRIPT_DIR/slam_toolbox_params.yaml" &
 SLAM_PID=$!
 
+SLAM_READY=0
+for _ in $(seq 1 20); do
+  SLAM_STATE="$(timeout 5 ros2 lifecycle get /slam_toolbox 2>/dev/null || true)"
+  case "$SLAM_STATE" in
+    *"unconfigured [1]"*)
+      timeout 10 ros2 lifecycle set /slam_toolbox configure || true
+      ;;
+    *"inactive [2]"*)
+      timeout 10 ros2 lifecycle set /slam_toolbox activate || true
+      ;;
+    *"active [3]"*)
+      SLAM_READY=1
+      break
+      ;;
+  esac
+  echo "   ...cho SLAM active: ${SLAM_STATE:-node chua san sang}"
+  sleep 1
+done
+if [ "$SLAM_READY" != "1" ]; then
+  echo "!!! SLAM chua active -> khong bat tu hanh. Xem log /slam_toolbox."
+fi
+
 NAV_PID=""; EXPLORE_PID=""
-if [ "$EXPLORE" = "1" ]; then
+if [ "$EXPLORE" = "1" ] && [ "$SLAM_READY" = "1" ]; then
   echo "=== [6/6] TU KHAM PHA: kiem tra cam bien truoc khi cho xe chay ==="
   # Chi cho xe tu chay khi Pi da ket noi, LiDAR co du lieu va co encoder. Khong dat
   # trong 60 s thi bo qua che do tu chay (xe dung yen, SLAM van chay de lai tay).
@@ -94,6 +119,16 @@ if [ "$EXPLORE" = "1" ]; then
     echo "!!! Cam bien CHUA SAN SANG sau 60 s -> KHONG cho xe tu chay."
     echo "    Kiem tra Pi (sudo python3 main.py), PI5_IP, LiDAR. SLAM van chay de lai tay."
   else
+    # Sensor health alone does not guarantee that SLAM has published a map.
+    # Starting Nav2 too early makes planner_server activation time out forever.
+    echo ">> Cho ban do dau tien tu SLAM..."
+    if ! timeout 30 ros2 topic echo --once /map nav_msgs/msg/OccupancyGrid \
+        --field info --qos-durability transient_local >/dev/null; then
+      echo "!!! Khong nhan /map tu SLAM -> KHONG cho xe tu chay. Kiem tra SLAM/TF."
+      READY=0
+    fi
+  fi
+  if [ "$READY" = "1" ]; then
     echo ">> Cam bien OK. Bat Nav2 (dung map cua SLAM, khong AMCL)..."
     ros2 launch "$SCRIPT_DIR/nav2/navigation_launch.py" slam:=true use_sim_time:=False \
       params_file:="$SCRIPT_DIR/nav2/nav2_params.yaml" autostart:=True &

@@ -144,21 +144,19 @@ def safe_goal(
                     return False
         return True
 
-    best = None
-    best_key = None
+    # Xét ứng viên theo thứ tự (gần frontier nhất, rồi gần robot nhất); dừng ở ô an toàn đầu tiên.
+    cands = []
     for cy in range(max(0, gy - search), min(height, gy + search + 1)):
         for cx in range(max(0, gx - search), min(width, gx + search + 1)):
             d2 = (cx - gx) ** 2 + (cy - gy) ** 2
-            if d2 > search * search:
+            if d2 > search * search or data[cy * width + cx] != 0:
                 continue
-            key = (d2, (cx - rx) ** 2 + (cy - ry) ** 2)
-            if best_key is not None and key >= best_key:
-                continue
-            if is_safe(cx, cy):
-                best, best_key = (cx, cy), key
-    if best is None:
-        return None
-    return (ox + (best[0] + 0.5) * resolution, oy + (best[1] + 0.5) * resolution)
+            cands.append((d2, (cx - rx) ** 2 + (cy - ry) ** 2, cx, cy))
+    cands.sort()
+    for _d2, _dr, cx, cy in cands:
+        if is_safe(cx, cy):
+            return (ox + (cx + 0.5) * resolution, oy + (cy + 0.5) * resolution)
+    return None
 
 
 def frontier_still_open(frontiers: Iterable[Frontier], target: Point, radius: float = 0.6) -> bool:
@@ -195,3 +193,124 @@ class GoalFailureTracker:
                 return spot[2] >= self.max_failures
         self._spots.append([goal[0], goal[1], 1])
         return self.max_failures <= 1
+
+
+class FrontierMemory:
+    """Nhớ các chỗ frontier đã nhắm.
+
+    - done: frontier đã biến mất (quét xong) => không nhắm lại (retry_round mở lại, phòng
+      SLAM cập nhật làm nó hiện lại).
+    - blind: đã ĐỨNG Ở CHỖ NHÌN TỐT NHẤT (đích an toàn) mà frontier vẫn còn => điểm mù
+      LiDAR (kính, đồ màu đen, gầm tủ) hoặc khe xe không vào được => bỏ hẳn. Không lao
+      thẳng vào ô frontier nữa: ô đó thường sát vật cản, Pi chặn và xe kẹt ở đó.
+    - given_up: thất bại đủ max_attempts lần (Nav2 không tới được / xe kẹt).
+    """
+
+    def __init__(self, max_attempts: int = 2, radius: float = 0.4):
+        self.max_attempts = max(1, int(max_attempts))
+        self.radius = float(radius)
+        self.done: List[Point] = []
+        self.blind: List[Point] = []
+        self.given_up: List[Point] = []
+        self._attempts = GoalFailureTracker(self.max_attempts, self.radius)
+
+    def blacklist(self) -> List[Point]:
+        return self.done + self.blind + self.given_up
+
+    def mark_done(self, spot: Point) -> None:
+        self.done.append(spot)
+
+    def mark_blind(self, spot: Point) -> None:
+        self.blind.append(spot)
+
+    def give_up(self, spot: Point) -> None:
+        self.given_up.append(spot)
+
+    def record_failure(self, spot: Point) -> bool:
+        """Ghi một lần thất bại. True nếu vừa bỏ chỗ này (đủ max_attempts)."""
+        if self._attempts.record_failure(spot):
+            self.given_up.append(spot)
+            return True
+        return False
+
+    def retry_round(self) -> int:
+        """Hết chỗ để đi mà vẫn còn frontier: mở lại done + given_up (xe đã đổi vị trí,
+        map đã thêm chi tiết). Giữ blind. Trả về số chỗ được mở lại."""
+        n = len(self.done) + len(self.given_up)
+        self.done = []
+        self.given_up = []
+        self._attempts = GoalFailureTracker(self.max_attempts, self.radius)
+        return n
+
+
+def _yaw_diff(a: float, b: float) -> float:
+    return abs((a - b + math.pi) % (2.0 * math.pi) - math.pi)
+
+
+class MotionWatchdog:
+    """Phát hiện xe đứng yên khi đang có đích (Pi chặn lệnh, kẹt bánh...).
+
+    Tính cả XOAY là có tiến triển (khác progress checker của Nav2 chỉ tính quãng
+    đường) để không báo kẹt oan lúc RotationShim đang xoay chậm theo xung.
+    Dùng pose odom (encoder/IMU), không dùng map: SLAM chỉnh map->odom làm pose map
+    nhảy dù xe đứng yên.
+    """
+
+    def __init__(self, timeout_sec: float = 8.0, min_move_m: float = 0.05, min_turn_rad: float = 0.15):
+        self.timeout_sec = float(timeout_sec)
+        self.min_move_m = float(min_move_m)
+        self.min_turn_rad = float(min_turn_rad)
+        self._mark = None  # (t, x, y, yaw)
+
+    def reset(self, now: float, pose: Optional[Tuple[float, float, float]]) -> None:
+        self._mark = None if pose is None else (now, pose[0], pose[1], pose[2])
+
+    def stuck_for(self, now: float, pose: Optional[Tuple[float, float, float]]) -> float:
+        """Số giây đã đứng yên (0 nếu vừa có tiến triển). Cập nhật mốc khi xe nhúc nhích."""
+        if pose is None:
+            return 0.0
+        if self._mark is None:
+            self.reset(now, pose)
+            return 0.0
+        t0, x0, y0, yaw0 = self._mark
+        if (math.hypot(pose[0] - x0, pose[1] - y0) >= self.min_move_m
+                or _yaw_diff(pose[2], yaw0) >= self.min_turn_rad):
+            self.reset(now, pose)
+            return 0.0
+        return now - t0
+
+    def is_stuck(self, now: float, pose: Optional[Tuple[float, float, float]]) -> bool:
+        return self.stuck_for(now, pose) >= self.timeout_sec
+
+
+def choose_unstick_direction(
+    front_cm: Optional[float],
+    rear_cm: Optional[float],
+    min_front_cm: float = 35.0,
+    min_rear_cm: float = 30.0,
+) -> Optional[str]:
+    """Thoát kẹt: chạy THẲNG ra phía thoáng hơn (tiến/lùi không cần hông trống như xoay).
+
+    Khoảng hở tính từ mép xe (None = LiDAR không thấy gì phía đó => coi là rất thoáng).
+    Trả về "forward" / "backward" / None (kẹt cả hai đầu: để Nav2/người xử lý).
+    """
+    front = 999.0 if front_cm is None else front_cm
+    rear = 999.0 if rear_cm is None else rear_cm
+    if front >= min_front_cm and front >= rear:
+        return "forward"
+    if rear >= min_rear_cm:
+        return "backward"
+    if front >= min_front_cm:
+        return "forward"
+    return None
+
+
+def scan_to_points(angle_min: float, angle_increment: float, ranges: Sequence[float],
+                   range_min: float = 0.05, range_max: float = 12.0) -> List[dict]:
+    """LaserScan -> [{'angle': độ CCW (0 = trước), 'distance': m}] (bỏ inf/NaN/ngoài tầm)."""
+    pts = []
+    for i, r in enumerate(ranges):
+        if r is None or not math.isfinite(r) or r < range_min or r > range_max:
+            continue
+        pts.append({"angle": math.degrees(angle_min + i * angle_increment) % 360.0, "distance": float(r)})
+    return pts

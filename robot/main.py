@@ -85,16 +85,38 @@ def start_udp_control_listener(safety, port=9999):
     from udp_command_watchdog import UdpCommandWatchdog
     watchdog = UdpCommandWatchdog(float(os.getenv("HCROBOT_UDP_CMD_TIMEOUT", "1.0")))
 
+    # Gui trang thai an toan (sonar, huong dang chay, ly do bi chan) 2 lan/giay ve DUNG dia
+    # chi + cong nguon cua lenh UDP, qua chinh socket nay: goi tra loi di qua NAT (WSL2,
+    # Tailscale) nhu luong da mo. Bridge in len terminal de biet vi sao xe dung yen.
+    # Chi gui khi co lenh trong 10 s gan nhat.
+    controller_addr = {"addr": None, "at": 0.0}
+
+    def _status_sender():
+        import json
+        while True:
+            time.sleep(0.5)
+            addr = controller_addr["addr"]
+            if not addr or time.monotonic() - controller_addr["at"] > 10.0 or not hasattr(safety, "status"):
+                continue
+            try:
+                payload = {"type": "pi_status", **safety.status()}
+                sock.sendto(json.dumps(payload).encode("utf-8"), addr)
+            except Exception as exc:  # khong de loi gui lam chet luong
+                logger.debug("Gui pi_status loi: %s", exc)
+
+    threading.Thread(target=_status_sender, daemon=True).start()
+
     try:
         while True:
             if watchdog.should_stop(time.monotonic()):
                 logger.warning("UDP watchdog: mất lệnh điều khiển > %.1fs -> DỪNG ĐỘNG CƠ", watchdog.timeout)
                 safety.stop()
             try:
-                data, _ = sock.recvfrom(1024)
+                data, addr = sock.recvfrom(1024)
                 cmd = data.decode("utf-8", errors="ignore").strip().lower()
                 if cmd.startswith(("speed:", "speed_", "drive:")) or cmd in motion_map:
                     watchdog.on_command(cmd, time.monotonic())
+                    controller_addr["addr"], controller_addr["at"] = addr, time.monotonic()
                 if cmd.startswith("speed:") or cmd.startswith("speed_"):
                     val_str = cmd.replace("speed:", "").replace("speed_", "").strip()
                     try:

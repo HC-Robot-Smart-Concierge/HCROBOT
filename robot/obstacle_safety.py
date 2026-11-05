@@ -90,6 +90,8 @@ class ObstacleSafetyController:
         self.ignored_sensors = set(ignored_sensors or ())
 
         self.motion = "stop"
+        # Lan chan gan nhat (monotonic, huong, ly do) de gui ve laptop hien len terminal.
+        self.last_block = None
         self._sensor_states = {name: _SensorState() for name in SENSOR_NAMES}
         self._last_snapshot_key = None
         self._blocked_motions = set()
@@ -340,6 +342,7 @@ class ObstacleSafetyController:
             self._blocked_motions.add(motion)
             if not was_blocked:
                 self._clear_streak[motion] = 0
+            self._note_block(motion, decision.reason)
             logger.warning("SAFETY BLOCK %s: %s", motion.upper(), decision.reason)
             return False
 
@@ -381,6 +384,7 @@ class ObstacleSafetyController:
                 self._blocked_motions.add(motion)
                 if not was_blocked:
                     self._clear_streak[motion] = 0
+                self._note_block(motion, decision.reason)
                 logger.warning("SAFETY BLOCK DRIVE %s: %s", motion.upper(), decision.reason)
                 return False
             self._blocked_motions.discard(motion)
@@ -405,12 +409,33 @@ class ObstacleSafetyController:
         self.motion = "stop"
         self._blocked_motions.add(stopped_motion)
         self._clear_streak[stopped_motion] = 0
+        self._note_block(stopped_motion, decision.reason)
         logger.error("SAFETY STOP %s: %s", stopped_motion.upper(), decision.reason)
         return False
 
     def stop(self):
         self.motor.stop()
         self.motion = "stop"
+
+    def _note_block(self, motion: str, reason: str):
+        self.last_block = (time.monotonic(), motion, reason)
+
+    def status(self, now: Optional[float] = None) -> dict:
+        """Trang thai gon cho laptop: huong dang chay, so do sonar (cm), lan chan gan nhat."""
+        now = time.monotonic() if now is None else now
+        snapshot = self.sensor_reader.latest() if self.sensor_reader else None
+        sonar = {name: (snapshot.distance(name) if snapshot else None) for name in SENSOR_NAMES}
+        block = None
+        if self.last_block is not None:
+            at, motion, reason = self.last_block
+            block = {"motion": motion, "reason": reason, "age": round(now - at, 2)}
+        return {
+            "motion": self.motion,
+            "sonar": sonar,
+            "sonar_age": round(snapshot.age_seconds(now), 2) if snapshot else None,
+            "block": block,
+            "thresholds": {**self.thresholds_cm, "turn_clearance": self.turn_clearance_cm},
+        }
 
     def set_speed(self, speed_percent: int) -> int:
         """Cài đặt mức vận tốc xuống motor."""

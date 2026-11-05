@@ -20,7 +20,11 @@ import {
   deleteZone,
   listMapLayouts,
   fetchMapLayoutImage,
+  fetchRos2RuntimeStatus,
+  startRos2Navigation,
+  updateRos2KeepoutMask,
 } from '../../../services/workflowApi';
+import { buildCostmapImage, pathMsgToPoints } from './physicalMapCostmap';
 import {
   OTTO_ENDPOINT_TEMPLATES,
   getEndpointTemplateInfo,
@@ -272,6 +276,14 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
   // Duong di A* Pi dang bam theo (cac chang con lai) va map Pi dang nap
   const [navPath, setNavPath] = useState([]);
   const piStateRef = useRef({ activeMapName: null, status: null });
+
+  // Che do ROS 2 (Nav2 tren laptop WSL): trang thai stack, lop costmap, thoi diem gui goal
+  const [nav2Runtime, setNav2Runtime] = useState({ mode: 'OFFLINE', activeMap: null });
+  const [isStartingNav2, setIsStartingNav2] = useState(false);
+  const [showCostmap, setShowCostmap] = useState(true);
+  const costmapRef = useRef(null); // { canvas, originX, originY, widthM, heightM }
+  const [costmapVersion, setCostmapVersion] = useState(0);
+  const lastGoalSentAtRef = useRef(0);
 
   // Toc do dieu khien: Giam ve 25% (0.12 m/s) de RPLiDAR A1M8 quet tron ven 360 do
   const [speedPercent, setSpeedPercent] = useState(DEFAULT_SAFE_SPEED_PERCENT);
@@ -684,11 +696,110 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
       }
     );
 
+    // Duong Nav2 vua lap (planner, ~1 Hz khi dang chay) => ve len map thay cho duong thang.
+    client.subscribe(
+      '/plan',
+      'nav_msgs/Path',
+      (msg) => {
+        const pts = pathMsgToPoints(msg);
+        if (pts.length > 0) setNavPath(pts);
+      },
+      { throttleRate: 500 }
+    );
+
+    // Ket qua goal Nav2 do bridge doc tu /navigate_to_pose/_action/status.
+    client.subscribe('/robot/nav_result', ROS_MSG_TYPES.STRING, (msg) => {
+      let result = null;
+      try {
+        result = JSON.parse(msg?.data || '{}').status || null;
+      } catch {
+        result = null;
+      }
+      if (!result) return;
+      // Gui goal moi khi dang chay => Nav2 huy goal cu (ABORTED); bo qua de khong xoa goal moi.
+      if (result !== 'SUCCEEDED' && Date.now() - lastGoalSentAtRef.current < 1500) return;
+      setIsNavigating(false);
+      setSelectedGoal(null);
+      setNavigatingEndpointId(null);
+      setNavPath([]);
+      if (result === 'SUCCEEDED') setNavStatus('Nav2: đã tới đích');
+      else if (result === 'CANCELED') setNavStatus('Nav2: đã huỷ đường đi');
+      else setNavStatus('Nav2: không tới được đích (ABORTED). Kiểm tra vị trí ban đầu, vùng cấm, hoặc log Nav2.');
+    });
+
+    // Costmap toan cuc cua Nav2 (tuong + vung noi + vung cam) ve chong len map.
+    client.subscribe(
+      '/global_costmap/costmap',
+      ROS_MSG_TYPES.OCCUPANCY_GRID,
+      (msg) => {
+        const img = buildCostmapImage(msg);
+        if (!img) return;
+        const off = document.createElement('canvas');
+        off.width = img.width;
+        off.height = img.height;
+        off.getContext('2d').putImageData(new ImageData(img.rgba, img.width, img.height), 0, 0);
+        costmapRef.current = {
+          canvas: off,
+          originX: img.originX,
+          originY: img.originY,
+          widthM: img.width * img.resolution,
+          heightM: img.height * img.resolution,
+        };
+        setCostmapVersion((v) => v + 1);
+      },
+      { throttleRate: 2000 }
+    );
+
     return () => {
       client.disconnect();
       rosClientRef.current = null;
+      costmapRef.current = null;
     };
   }, [connectionMode]);
+
+  // Trang thai stack ROS 2 tren laptop (OFFLINE / MAPPING / EXPLORING / NAVIGATION + map dang nap)
+  useEffect(() => {
+    if (connectionMode !== 'ros2') return undefined;
+    let alive = true;
+    const poll = () =>
+      fetchRos2RuntimeStatus()
+        .then((d) => {
+          if (alive) setNav2Runtime({ mode: d?.mode || 'OFFLINE', activeMap: d?.active_map || null });
+        })
+        .catch(() => {
+          if (alive) setNav2Runtime({ mode: 'OFFLINE', activeMap: null });
+        });
+    poll();
+    const timer = setInterval(poll, 5000);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, [connectionMode]);
+
+  // Bat map_server + AMCL + Nav2 voi map dang chon (backend sinh lai mask vung cam truoc).
+  const handleStartNav2 = async () => {
+    if (isStartingNav2) return;
+    if (
+      ['MAPPING', 'EXPLORING'].includes(nav2Runtime.mode) &&
+      !window.confirm('Đang quét map. Bật Navigation sẽ dừng phiên quét (map chưa lưu sẽ mất). Tiếp tục?')
+    ) {
+      return;
+    }
+    setIsStartingNav2(true);
+    setNavStatus(`Đang bật Nav2 với map "${mapConfig.mapId}" (map_server + AMCL + Nav2, ~20-30 giây)...`);
+    try {
+      await startRos2Navigation(mapConfig.mapId);
+      setNav2Runtime({ mode: 'STARTING', activeMap: mapConfig.mapId });
+      setNavStatus(
+        `Đang khởi động Nav2 cho "${mapConfig.mapId}". Khi báo NAVIGATION: đặt vị trí ban đầu (Chọn trên map), kiểm tra chấm LiDAR nằm đè lên tường, rồi bấm Tới.`
+      );
+    } catch (err) {
+      setNavStatus(`Không bật được Nav2: ${err.message}`);
+    } finally {
+      setIsStartingNav2(false);
+    }
+  };
 
   // Chuyen doi Toa do Thuc (Meters) sang Canvas Pixels
   const worldToCanvas = useCallback(
@@ -859,6 +970,20 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     }
   };
 
+  // Vung KEEP_OUT -> mask Keepout Filter cua Nav2 (robot/maps/keepout/<map>.pgm); Nav2 dang
+  // chay thi nap lai ngay, khong thi dung khi bat Navigation lan sau.
+  const refreshNav2Keepout = (prefix) => {
+    updateRos2KeepoutMask(mapConfig.mapId)
+      .then((res) =>
+        setNavStatus(
+          `${prefix} • Nav2: ${res?.keepout_zones ?? 0} vùng cấm ${
+            res?.reloaded ? 'đã nạp lại ngay' : 'sẽ áp dụng khi bật Navigation'
+          }`
+        )
+      )
+      .catch((err) => console.warn('[AdminPhysicalMapTab] Cập nhật keepout mask lỗi:', err.message));
+  };
+
   const handleSaveZones = async () => {
     setIsSavingZones(true);
     try {
@@ -867,6 +992,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
       }
       setHasUnsavedZones(false);
       setNavStatus('Đã lưu toàn bộ vùng chức năng vào CSDL');
+      refreshNav2Keepout('Đã lưu vùng chức năng');
 
       if (rosClientRef.current?.isConnected) {
         rosClientRef.current.publish('/hotel_zones', 'std_msgs/String', createZoneSyncMsg(zones));
@@ -891,9 +1017,11 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     }
     setHasUnsavedZones(true);
 
-    deleteZone(id).catch((err) => {
-      console.warn('Lỗi xóa zone ở backend:', err.message);
-    });
+    deleteZone(id)
+      .then(() => refreshNav2Keepout(`Đã xóa vùng "${target?.name || id}"`))
+      .catch((err) => {
+        console.warn('Lỗi xóa zone ở backend:', err.message);
+      });
 
     if (rosClientRef.current?.isConnected) {
       rosClientRef.current.publish('/hotel_zones', 'std_msgs/String', createZoneSyncMsg(nextList));
@@ -941,6 +1069,17 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
       ctx.save();
       ctx.globalAlpha = 0.95;
       ctx.drawImage(mapImage, offsetX, offsetY, roomW, roomH);
+      ctx.restore();
+    }
+
+    // 3b. Lop costmap Nav2 (che do ROS 2): do = vat can/vung cam, cam = vung noi an toan
+    const costmap = costmapRef.current;
+    if (showCostmap && connectionMode === 'ros2' && costmap) {
+      const tl = worldToCanvas(costmap.originX, costmap.originY + costmap.heightM, width, height);
+      const br = worldToCanvas(costmap.originX + costmap.widthM, costmap.originY, width, height);
+      ctx.save();
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(costmap.canvas, tl.x, tl.y, br.x - tl.x, br.y - tl.y);
       ctx.restore();
     }
 
@@ -1314,6 +1453,9 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
   }, [
     mapImage,
     mapConfig,
+    showCostmap,
+    costmapVersion,
+    connectionMode,
     robotPose,
     scanPoints,
     showLaserScan,
@@ -1646,7 +1788,27 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     }
 
     if (connectionMode === 'ros2' && rosClientRef.current && isWsConnected) {
+      const cancelRosGoal = (message) => {
+        setNavStatus(message);
+        setIsNavigating(false);
+        setSelectedGoal(null);
+        setNavigatingEndpointId(null);
+      };
+      if (nav2Runtime.mode !== 'NAVIGATION') {
+        cancelRosGoal(
+          `Nav2 chưa chạy (trạng thái: ${nav2Runtime.mode}). Bấm "Bật Nav2 với map này" rồi đặt vị trí ban đầu trước.`
+        );
+        return;
+      }
+      if (nav2Runtime.activeMap && nav2Runtime.activeMap !== mapConfig.mapId) {
+        cancelRosGoal(
+          `Nav2 đang chạy map "${nav2Runtime.activeMap}", khác map đang chọn "${mapConfig.mapId}". Bật lại Nav2 với map này.`
+        );
+        return;
+      }
       try {
+        lastGoalSentAtRef.current = Date.now();
+        setNavPath([]);
         const goalMsg = createGoalPoseMsg(gx, gy, gyaw);
         rosClientRef.current.publish(ROS_TOPICS.GOAL_POSE, ROS_MSG_TYPES.POSE_STAMPED, goalMsg);
       } catch (err) {
@@ -1688,6 +1850,11 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
   };
 
   const handleStop = () => {
+    // Che do ROS 2: huy goal Nav2 (bridge goi cancel_goal + gui stop cho Pi); chi /cmd_vel=0
+    // thi controller Nav2 van phat lenh va xe chay tiep.
+    if (connectionMode === 'ros2' && rosClientRef.current?.isConnected) {
+      rosClientRef.current.publish('/robot/nav_cancel', 'std_msgs/Empty', {});
+    }
     sendTeleopCommand('stop', 0.0, 0.0);
     setIsNavigating(false);
     setSelectedGoal(null);
@@ -1967,6 +2134,19 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
               <MapPin className="w-3 h-3" />
               <span>Điểm ({endpoints.length})</span>
             </button>
+
+            {connectionMode === 'ros2' && (
+              <button
+                onClick={() => setShowCostmap(!showCostmap)}
+                className={`px-2.5 py-1 rounded text-[11px] font-semibold flex items-center gap-1.5 cursor-pointer transition-colors ${
+                  showCostmap ? 'bg-orange-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'
+                }`}
+                title="Costmap Nav2: đỏ = vật cản / vùng cấm (xe chạm là va chạm), cam = vùng nới an toàn quanh vật cản"
+              >
+                <Layers className="w-3 h-3" />
+                <span>Costmap{costmapVersion === 0 ? ' (chưa có)' : ''}</span>
+              </button>
+            )}
 
             <button
               onClick={() => setTrail([])}
@@ -2347,6 +2527,43 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
               </span>
             </div>
           </div>
+
+          {/* Card Nav2 (che do ROS 2): bat map_server + AMCL + Nav2 voi map dang chon */}
+          {connectionMode === 'ros2' && (
+            <div className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 space-y-2">
+              <div className="flex items-center justify-between text-xs font-bold text-slate-300">
+                <span className="flex items-center gap-1.5">
+                  <Navigation className="w-3.5 h-3.5 text-orange-400" />
+                  Nav2 (Laptop WSL)
+                </span>
+                <span
+                  className={`px-1.5 py-0.5 rounded text-[10px] font-mono ${
+                    nav2Runtime.mode === 'NAVIGATION'
+                      ? 'bg-emerald-900/60 text-emerald-300'
+                      : 'bg-slate-800 text-slate-400'
+                  }`}
+                >
+                  {nav2Runtime.mode}
+                  {nav2Runtime.activeMap ? ` • ${nav2Runtime.activeMap}` : ''}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={handleStartNav2}
+                disabled={isStartingNav2}
+                className="w-full px-2 py-1.5 rounded text-[11px] font-semibold flex items-center justify-center gap-1.5 cursor-pointer transition-colors border bg-orange-600/90 text-white border-orange-500 hover:bg-orange-500 disabled:opacity-60"
+                title="Nạp map đang chọn vào map_server, bật AMCL + Nav2 và vùng cấm (KEEP_OUT)"
+              >
+                {isStartingNav2 ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Navigation className="w-3 h-3" />}
+                {nav2Runtime.mode === 'NAVIGATION' && nav2Runtime.activeMap === mapConfig.mapId
+                  ? 'Khởi động lại Nav2'
+                  : `Bật Nav2 với map "${mapConfig.mapId}"`}
+              </button>
+              <p className="text-[10px] leading-snug text-slate-500">
+                Sau khi bật: đặt vị trí ban đầu bên dưới, đợi chấm LiDAR nằm đè lên tường đen rồi mới bấm Tới.
+              </p>
+            </div>
+          )}
 
           {/* Card 2: Dat vi tri ban dau (Initial Pose / 2D Pose Estimate) */}
           <div className="p-3 rounded-lg bg-slate-950/70 border border-slate-800 space-y-2">

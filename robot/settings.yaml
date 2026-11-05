@@ -26,26 +26,26 @@ robot:
     baudrate: 115200
 
   safety:
-    # Ngưỡng khoảng cách phanh dừng trong nhà/phòng hẹp (cm)
-    # Xe dài 32 x rộng 16 cm, xoay quanh tâm: góc xe quét bán kính ~17.9 cm, tức
-    # lố ~10 cm ra ngoài cạnh hông nhưng chỉ ~2 cm ra ngoài đầu/đuôi xe.
-    # Nav2 giữ xe cách tường >= 13 cm (footprint_padding trong nav2_params.yaml),
-    # nên ngưỡng hông phải NHỎ hơn mức đó, không thì Pi khoá mọi lệnh xoay/rẽ khi
-    # Nav2 đi sát tường và xe đứng chờ recovery tới hết timeout.
-    front_stop_cm: 30
-    rear_stop_cm: 18
-    left_stop_cm: 12
-    right_stop_cm: 12
+    # Sonar là lớp PHANH KHẨN CẤP cuối cùng; tránh vật cản thường ngày do Nav2 + LiDAR lo.
+    # Ngưỡng lấy theo hình học thật của xe (dài 32 x rộng 16 cm, xoay quanh tâm: góc xe
+    # quét bán kính ~17.9 cm = lố ~10 cm ra ngoài hông, ~2 cm ra ngoài đầu/đuôi) + chút dư.
+    # Ngưỡng to hơn mức xe thật cần => Pi chặn lệnh Nav2 cho là an toàn => xe đứng yên
+    # tới hết timeout (log 05/11: trước 27 < 30 chặn tiến, phải 18 < 20 chặn xoay...).
+    front_stop_cm: 15
+    rear_stop_cm: 12
+    # Hông chỉ dùng khi XOAY / rẽ một bên (góc xe lố ~10 cm ra ngoài hông).
+    left_stop_cm: 11
+    right_stop_cm: 11
     # Khi quay tại chỗ: ngoài bên quay, đầu/đuôi xe phải trống hơn mức này.
-    turn_clearance_cm: 8
+    turn_clearance_cm: 6
 
     # Cho phép tối đa 4 packet null nếu số đo hợp lệ gần nhất chưa quá 0.6 giây.
     allowed_null_packets: 4
     invalid_grace_seconds: 0.6
     stale_timeout_seconds: 0.8
 
-    # Sau khi bị chặn, chỉ cần 2 packet sạch cao hơn ngưỡng dừng 3 cm.
-    resume_margin_cm: 3
+    # Sau khi bị chặn, chỉ cần 2 packet sạch cao hơn ngưỡng dừng 2 cm.
+    resume_margin_cm: 2
     resume_valid_packets: 2
 
 topics:

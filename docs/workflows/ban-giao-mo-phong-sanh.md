@@ -94,4 +94,6 @@ Mở Gazebo bằng [open_gazebo.bat](../../open_gazebo.bat). Khi backend và fro
 - [Bộ chạy trong Studio](../../frontend/src/pages/admin/tabs/workflow/WorkflowSimulatorStudio.jsx) và [bộ chạy trên màn hình robot](../../frontend/src/hooks/useWorkflowRunner.js).
 - [Sa bàn Gazebo](../../robot/worlds/hotel_room.world) và [bộ điều hướng mô phỏng](../../robot/scripts/autonomous_navigator.py).
 
-File world vẫn có một thay đổi cục bộ ở marker trạm sạc, từ `(1.33, 6.08)` sang `(2.33, 5.96)`. Thay đổi này do lệnh `GET /api/v1/map/waypoints` ghi lại marker từ ba waypoint thử nghiệm nêu ở mục 6. Nó không phản ánh waypoint chuẩn, nên chưa được đưa vào commit nào.
+Commit `ac8d27c` ghi thay đổi marker trạm sạc trong file world, từ `(1.33, 6.08)` sang `(2.33, 5.96)`. Thay đổi này do lệnh `GET /api/v1/map/waypoints` ghi lại marker từ ba waypoint thử nghiệm nêu ở mục 6. Nó không phản ánh waypoint chuẩn.
+
+Những gì đã làm trong ngày 06/11/2026 được tóm tắt ở [tong-ket-cong-viec-2026-11-06.md](tong-ket-cong-viec-2026-11-06.md).

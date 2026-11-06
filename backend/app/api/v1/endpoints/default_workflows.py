@@ -68,6 +68,36 @@ def upgrade_legacy_move_step(step: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     return upgraded
 
 
+def upgrade_guest_service_steps(workflow_id, steps):
+    """Update old guest-service templates without changing their custom links or other workflows."""
+    templates = {
+        "wf-03-room-service": ("wf3", "UI_SERVICE_FORM", "Khách đăng ký dọn phòng và chuẩn bị xe taxi tại sảnh"),
+        "wf-08-wakeup": ("wf8", "UI_WAKEUP_FORM", "Gọi báo thức lúc 06:30 sáng cho khách"),
+    }
+    if workflow_id not in templates:
+        return steps
+    prefix, form_id, old_note = templates[workflow_id]
+    form_step, ask_step, send_step = (f"{prefix}-step-{n}" for n in (1, 2, 3))
+    original_sequence = [(s.get("step_id"), s.get("type")) for s in steps[:3]] == [
+        (form_step, "SHOW"), (ask_step, "COMMUNICATE"), (send_step, "CREATE_REQUEST")
+    ]
+    result = []
+    for step in steps:
+        params = dict(step.get("params") or {})
+        if step.get("step_id") == send_step and step.get("type") == "CREATE_REQUEST":
+            if params.get("room_number") == "304":
+                params.pop("room_number")
+                params["room_source"] = "verified_guest"
+            if params.get("note") == old_note:
+                params.pop("note")
+        if original_sequence and step.get("step_id") == form_step and params.get("content_id") == form_id:
+            # The verified form already collected the room and service details.
+            if steps[1].get("params", {}).get("output_var") in ("request_data", "wakeup_time"):
+                params.setdefault("next_step_id", send_step)
+        result.append({**step, "params": params} if params != (step.get("params") or {}) else step)
+    return result
+
+
 CORE_WORKFLOWS = [
     {
         "id": "wf-01-welcome",
@@ -205,6 +235,7 @@ CORE_WORKFLOWS = [
                 "params": {
                     "screen_type": "MENU",
                     "content_id": "UI_SERVICE_FORM",
+                    "next_step_id": "wf3-step-3",
                     "timeout": 30
                 }
             },
@@ -222,11 +253,10 @@ CORE_WORKFLOWS = [
             {
                 "step_id": "wf3-step-3",
                 "type": "CREATE_REQUEST",
-                "title": "3. Đóng gói phiếu gửi bộ phận lễ tân & bellman",
+                "title": "3. Xác nhận và gửi yêu cầu tới bộ phận phụ trách",
                 "params": {
                     "service_type": "HOUSEKEEPING",
-                    "room_number": "304",
-                    "note": "Khách đăng ký dọn phòng và chuẩn bị xe taxi tại sảnh",
+                    "room_source": "verified_guest",
                     "urgency": "NORMAL",
                     "target_department": "Housekeeping"
                 }
@@ -457,6 +487,7 @@ CORE_WORKFLOWS = [
                 "params": {
                     "screen_type": "MENU",
                     "content_id": "UI_WAKEUP_FORM",
+                    "next_step_id": "wf8-step-3",
                     "timeout": 20
                 }
             },
@@ -477,8 +508,7 @@ CORE_WORKFLOWS = [
                 "title": "3. Đóng gói phiếu gửi hệ thống lễ tân",
                 "params": {
                     "service_type": "WAKEUP_CALL",
-                    "room_number": "304",
-                    "note": "Gọi báo thức lúc 06:30 sáng cho khách",
+                    "room_source": "verified_guest",
                     "urgency": "NORMAL",
                     "target_department": "Reception"
                 }

@@ -9,6 +9,8 @@ import { MobileRobotScreen } from '../../components/robot/MobileRobotScreen';
 import { RobotFoodMenuScreen } from '../../components/robot/RobotFoodMenuScreen';
 import { RobotRoomServiceScreen } from '../../components/robot/RobotRoomServiceScreen';
 import { RobotTaxiModal } from '../../components/robot/RobotTaxiModal';
+import { guestRequestPhase } from '../../utils/workflowGuestRequest';
+import { WorkflowGuestRequestPanel } from '../admin/tabs/workflow/WorkflowGuestRequestPanel';
 import { useWorkflowRunner } from '../../hooks/useWorkflowRunner';
 import { KioskDisplayPreview } from '../admin/tabs/workflow/KioskDisplayPreview';
 import { fetchWorkflows } from '../../services/workflowApi';
@@ -262,7 +264,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   useNotificationWebSocket({
     department: 'All',
     onNotificationReceived: (event) => {
-      if (event && event.type === 'ADVERTISEMENT_PUSH' && event.advertisement) {
+      if (event && event.type === 'ADVERTISEMENT_PUSH' && event.advertisement && !isServingGuest && !guestPresent && batteryGuard.canStartGuestSession) {
         setPushedAd(event.advertisement);
         setIsStandby(true);
       }
@@ -272,6 +274,10 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       // Pin yếu: chỉ nhận kịch bản về trạm sạc
       if (!batteryGuard.canStartGuestSession && event?.workflow?.id !== chargeRoutine.id) return;
       if (Array.isArray(event?.workflow?.steps) && event.workflow.steps.length > 0) {
+        if (event.workflow.id === 'wf-06-idle-promo' && (guestPresent || isServingGuest)) {
+          pausedPromo.current = { workflow: event.workflow, index: 0 };
+          return;
+        }
         setIsStandby(false);
         startWorkflow(event.workflow);
       }
@@ -330,6 +336,9 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       setActiveEyeExpression(null);
     }, duration);
   }, []);
+
+  const [guestPresent, setGuestPresent] = useState(false);
+  const pausedPromo = useRef(null);
 
   // Available Workflows State (for AUTO_DETECT and manual triggers)
   const [availableWorkflows, setAvailableWorkflows] = useState([]);
@@ -395,6 +404,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
   // Workflow Native Runner Hook (tích hợp Micro & Loa máy tính)
   const {
+    stepRun, guestRequest, setGuestRequest,
     activeWorkflow,
     isWorkflowRunning,
     currentStepIndex,
@@ -418,15 +428,18 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
   // Pin yếu: cùng quy tắc với Studio (utils/batteryPolicy). Pin ước tính từ Pi 5 đại diện cho cả pin động cơ.
   const batteryPercent = useRobotBattery();
+  const requestPhase = guestRequestPhase(activeWorkflow?.id, activeStep);
   const chargeRoutine = useMemo(() => findChargeRoutine(availableWorkflows), [availableWorkflows]);
   const isChargeRoutineRunning = isWorkflowRunning && activeWorkflow?.id === chargeRoutine.id;
-  const isServingGuest = (isWorkflowRunning && !isChargeRoutineRunning) || currentState !== 'RT-01' || isVideoCallOpen;
+  const isIdlePromo = isWorkflowRunning && activeWorkflow?.id === 'wf-06-idle-promo';
+  const isServingGuest = (isWorkflowRunning && !isChargeRoutineRunning && !isIdlePromo) || currentState !== 'RT-01' || isVideoCallOpen;
   const batteryGuard = useLowBatteryGuard({
     percent: batteryPercent,
     routine: chargeRoutine,
     isRoutineRunning: isChargeRoutineRunning,
     isServingGuest,
     startRoutine: (routine) => {
+      pausedPromo.current = null;
       setIsStandby(false);
       startWorkflow(routine);
     },
@@ -455,6 +468,31 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     isWaitingForCharge: batteryGuard.isWaitingForCharge,
     english: language === 'English',
   });
+  const pausePromoForGuest = () => {
+    if (!isIdlePromo) return;
+    pausedPromo.current = { workflow: activeWorkflow, index: currentStepIndex };
+    stopWorkflow();
+    setIsStandby(false);
+    lastInteractionTimeRef.current = Date.now();
+    setCurrentState('RT-02');
+  };
+
+  // Return to the interrupted promo step only after the guest session ends.
+  useEffect(() => {
+    if (guestPresent || currentState !== 'RT-01' || isWorkflowRunning || !batteryGuard.canStartGuestSession ||
+        isProcessing || isSpeaking || isVideoCallOpen || isPinModalOpen || isTaxiModalOpen ||
+        isFoodMenuOpen || isRoomServiceMenuOpen || isFeedbackModalOpen || activeRoomNumber) return;
+    const checkpoint = pausedPromo.current;
+    const routine = checkpoint?.workflow || (isStandby && availableWorkflows.find(
+      wf => wf.id === 'wf-06-idle-promo' && wf.is_active && wf.trigger_type === 'SCHEDULE'));
+    if (!routine) return;
+    pausedPromo.current = null;
+    setIsStandby(false);
+    startWorkflow(routine, checkpoint?.index ?? 0);
+  }, [guestPresent, currentState, isStandby, isWorkflowRunning, batteryGuard.canStartGuestSession,
+      isProcessing, isSpeaking, isVideoCallOpen, isPinModalOpen, isTaxiModalOpen, isFoodMenuOpen,
+      isRoomServiceMenuOpen, isFeedbackModalOpen, activeRoomNumber, availableWorkflows]);
+
   const lowBatteryNoticeAtRef = useRef(0);
   const announceLowBattery = () => {
     if (Date.now() - lowBatteryNoticeAtRef.current < 30000) return;
@@ -724,6 +762,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   useEffect(() => {
     if (transcript && transcript.trim().length > 0) {
       lastInteractionTimeRef.current = Date.now();
+      if (isIdlePromo) pausePromoForGuest();
       if (isStandby) {
         setIsStandby(false);
         if (currentState === 'RT-01') {
@@ -731,15 +770,15 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         }
       }
     }
-  }, [isStandby, transcript, currentState]);
+  }, [isStandby, transcript, currentState, isIdlePromo]);
 
   // Dừng nhận diện giọng nói nền và giọng đọc AI khi đang mở Video Call hoặc Modal Quẹt Thẻ / PIN
   useEffect(() => {
-    if (isVideoCallOpen || isPinModalOpen) {
+    if (isVideoCallOpen || isPinModalOpen || requestPhase) {
       stopSpeaking();
       stopListening();
     }
-  }, [isVideoCallOpen, isPinModalOpen, stopSpeaking, stopListening]);
+  }, [isVideoCallOpen, isPinModalOpen, requestPhase, stopSpeaking, stopListening]);
 
   // Tự động gửi AI khi người dùng ngừng nói đủ lâu (VAD Silence Detection tự nhiên: 1800ms)
   // Tránh ngắt lời khi khách đang dừng lấy hơi hoặc suy nghĩ giữa câu
@@ -770,6 +809,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
   // Khi người dùng lại gần Camera -> Tắt Standby, chuyển về trạng thái sẵn sàng giao tiếp trực tiếp
   const handleGuestApproached = () => {
+    setGuestPresent(true);
     // Pin yếu: không mở phiên mới, không dừng kịch bản về trạm sạc, chỉ báo khách
     if (!batteryGuard.canStartGuestSession) {
       announceLowBattery();
@@ -778,10 +818,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     setIsStandby(false);
     resetStandbyTimer();
 
-    // Dừng kịch bản ngay lập tức nếu đang có kịch bản chạy
-    if (isWorkflowRunning) {
-      stopWorkflow();
-    }
+    if (isIdlePromo) pausePromoForGuest();
+    else if (isWorkflowRunning) return;
 
     if (currentState === 'RT-01') {
       setCurrentState('RT-02');
@@ -794,7 +832,28 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   };
 
   // Khi người dùng đi xa khỏi Camera -> Đóng gói lưu DB, dọn dẹp âm thanh & chuyển sang ngủ nhẹ (RT-01)
+  const handleGuestApproachedByTouch = () => {
+    if (!batteryGuard.canStartGuestSession) { announceLowBattery(); return; }
+    pausePromoForGuest();
+    handleStartTalk();
+  };
+
   const handleGuestLeft = async () => {
+    setGuestPresent(false);
+    if (requestPhase) {
+      // Close the verified session when the visitor leaves the service form.
+      stopWorkflow();
+      stopListening();
+      resetTranscript();
+      setActiveRoomNumber(null);
+      setAuthenticatedRoom(null);
+      setAiResponseText('');
+      setLastUserPrompt('');
+      flushSession(sessionId).catch(() => {});
+      setSessionId('session_kiosk_' + Math.random().toString(36).substring(2, 9));
+      setCurrentState('RT-01');
+      return;
+    }
     // Tuyệt đối KHÔNG ngắt khi robot đang nói, đang xử lý câu trả lời, hoặc đang hiển thị nội dung
     if (
       isSpeaking ||
@@ -827,7 +886,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   // 1. Khi kích hoạt lắng nghe (Bấm nút hoặc Tự động rảnh tay)
   const handleStartTalk = (options = {}) => {
     const isSilent = Boolean(options?.silent);
-    if (isVideoCallOpen || isVideoCallOpenRef.current || isPinModalOpen || isPinModalOpenRef.current) return;
+    if (requestPhase || isVideoCallOpen || isVideoCallOpenRef.current || isPinModalOpen || isPinModalOpenRef.current) return;
     // Pin yếu: khách đang trò chuyện được nói tiếp; không mở phiên mới, và dưới 10% thì không nghe nữa
     if (batteryGuard.mode === BATTERY_MODE.CRITICAL || (!batteryGuard.canStartGuestSession && currentState === 'RT-01')) {
       if (!isSilent) announceLowBattery();
@@ -877,8 +936,9 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
   // Kích hoạt luồng đặt xe taxi: kiểm tra session phòng, nếu chưa có thì hỏi số phòng & PIN, nếu có rồi thì hiển thị 2 option
   const handleTriggerTaxiBooking = useCallback((specifiedRoom = null) => {
-    const currentRoom = specifiedRoom || authenticatedRoom || activeRoomNumber;
-    if (authenticatedRoom) {
+    const requested = typeof specifiedRoom === 'string' ? specifiedRoom.trim() : '';
+    const currentRoom = requested || authenticatedRoom || activeRoomNumber;
+    if (authenticatedRoom && (!requested || requested === String(authenticatedRoom))) {
       // Đã trong session: không hỏi lại mã PIN, mở thẳng modal với 2 option
       setIsTaxiModalOpen(true);
       setIsFoodMenuOpen(false);
@@ -895,7 +955,6 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       setPinModalRoomNumber(currentRoom || '');
       setPinModalAction('book_taxi');
       setPinModalItems('Yêu cầu đặt xe Taxi');
-      setPinModalNote('Xác thực phòng để đặt xe taxi');
       setIsPinModalOpen(true);
       isPinModalOpenRef.current = true;
       const isEn = language === 'English';
@@ -1563,8 +1622,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   };
 
   // Callback khi khách hàng xác thực mã PIN phòng hoặc thẻ NFC thành công tại Kiosk
-  const handlePinVerifiedSuccess = useCallback((result) => {
-    const verifiedRoom = result?.room_number || pinModalRoomNumber;
+  const handlePinVerifiedSuccess = useCallback((result, selectedRoom) => {
+    const verifiedRoom = result?.room_number || selectedRoom || pinModalRoomNumber;
     if (verifiedRoom) {
       setActiveRoomNumber(verifiedRoom);
       setAuthenticatedRoom(verifiedRoom);
@@ -1879,7 +1938,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     <div className="w-full h-[100dvh] bg-aurora-canvas overflow-hidden font-sans select-none relative">
       {/* Màn hình Trình chiếu Quảng cáo Cloudinary (Khi rảnh rỗi hoặc nhận lệnh push từ Admin) */}
       <RobotAdPlayer
-        isOpen={isStandby}
+        isOpen={isStandby && !isWorkflowRunning && !guestPresent}
         onClose={() => {
           setIsStandby(false);
           resetStandbyTimer();
@@ -2380,7 +2439,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         <main className="w-full flex-1 px-16 py-[54px] flex items-center justify-center gap-16 overflow-hidden">
 
           {/* Render Workflow Kiosk Interface trực tiếp tại trung tâm màn hình robot */}
-          {isWorkflowRunning && (activeStep?.type === 'SHOW' || activeStep?.type === 'FEEDBACK' || activeStep?.type === 'MOVE' || activeStep?.type === 'LISTEN' || activeStep?.type === 'COMMUNICATE' || activeStep?.type === 'RECOMMEND' || activeStep?.type === 'CREATE_REQUEST' || activeStep?.type === 'CHOICE') ? (
+          {requestPhase ? null : isWorkflowRunning && (activeStep?.type === 'SHOW' || activeStep?.type === 'FEEDBACK' || activeStep?.type === 'MOVE' || activeStep?.type === 'LISTEN' || activeStep?.type === 'COMMUNICATE' || activeStep?.type === 'RECOMMEND' || activeStep?.type === 'CREATE_REQUEST' || activeStep?.type === 'CHOICE') ? (
             <div className="w-[700px] max-h-[610px] bg-white/98 backdrop-blur-2xl border-2 border-stone-200/90 rounded-3xl shadow-2xl p-4 sm:p-5 flex flex-col overflow-hidden animate-fadeIn">
               <KioskDisplayPreview
                 activeStep={activeStep}
@@ -2772,6 +2831,33 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         </div>
       )}
 
+      {requestPhase && (
+        <div className="fixed inset-0 z-[80] grid place-items-center bg-black/40 p-3" role="dialog" aria-modal="true" aria-label={language === 'English' ? 'Guest service' : 'Dịch vụ khách'}>
+          <div className="max-h-[90dvh] w-full max-w-md overflow-y-auto rounded-xl bg-white p-5 text-stone-900 shadow-xl">
+            <WorkflowGuestRequestPanel key={activeWorkflow.id + ':' + stepRun} workflowId={activeWorkflow.id}
+              phase={requestPhase} session={guestRequest} setSession={setGuestRequest}
+              english={language === 'English'} verifiedRoom={authenticatedRoom} sessionId={sessionId}
+              onRoomVerified={room => { setAuthenticatedRoom(room); setActiveRoomNumber(room); }}
+              onNext={() => {
+                nextStep();
+                if (requestPhase === 'wait' && currentStepIndex === totalSteps - 1) handleOpenFeedback();
+              }} onCancel={stopWorkflow} />
+          </div>
+        </div>
+      )}
+
+      {isIdlePromo && isPhoneLayout && activeStep?.type === 'SHOW' && (
+        <div className="fixed inset-0 z-40 flex flex-col justify-center bg-stone-50 p-4 pb-20">
+          <KioskDisplayPreview activeStep={activeStep} />
+        </div>
+      )}
+      {isIdlePromo && (
+        <div className="fixed bottom-4 inset-x-0 z-50 flex justify-center pointer-events-none">
+          <button className="pointer-events-auto rounded-full bg-stone-900 px-5 py-3 text-white shadow-lg"
+            onClick={handleGuestApproachedByTouch}>{language === 'English' ? 'Talk to the robot' : 'Trò chuyện với robot'}</button>
+        </div>
+      )}
+
       {/* MESSENGER VIDEO CALL MODAL & CLOUDINARY RECORDING */}
       <MessengerVideoCallModal
         isOpen={isVideoCallOpen}
@@ -2862,6 +2948,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         roomNumber={pinModalRoomNumber}
         onRoomSelect={(room) => setPinModalRoomNumber(room)}
         pendingAction={pinModalAction}
+        sessionId={sessionId}
         pendingItems={pinModalItems}
         onVerifiedSuccess={handlePinVerifiedSuccess}
         onNotCheckedIn={handlePinNotCheckedIn}

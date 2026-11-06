@@ -27,6 +27,9 @@ export const CameraPreview = ({
   onClose,
 }) => {
   const isPi5 = source === 'pi5';
+  // Guest-session updates change the handlers, but must not restart the camera.
+  const presenceHandlers = useRef({});
+  presenceHandlers.current = { onGuestApproached, onGuestLeft };
 
   const offscreenVideoRef = useRef(null);
   const previewVideoRef = useRef(null);
@@ -188,7 +191,7 @@ export const CameraPreview = ({
     setPi5StreamError(false);
     if (isTriggeredRef.current) {
       isTriggeredRef.current = false;
-      if (onGuestLeft) onGuestLeft();
+      presenceHandlers.current.onGuestLeft?.();
     }
 
     // Xóa overlay canvas
@@ -197,7 +200,7 @@ export const CameraPreview = ({
       const ctx = canvas.getContext('2d');
       if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
     }
-  }, [isPi5, stream, onGuestLeft]);
+  }, [isPi5, stream]);
 
   // Tự động bật camera nếu autoStart = true, tắt camera giải phóng phần cứng khi autoStart = false
   useEffect(() => {
@@ -447,9 +450,7 @@ export const CameraPreview = ({
 
           if (!isTriggeredRef.current) {
             isTriggeredRef.current = true;
-            if (onGuestApproached) {
-              onGuestApproached(result);
-            }
+            presenceHandlers.current.onGuestApproached?.(result);
           }
         } else {
           negativeFramesRef.current++;
@@ -465,9 +466,7 @@ export const CameraPreview = ({
             setIsPersonDetected(false);
             if (isTriggeredRef.current) {
               isTriggeredRef.current = false;
-              if (onGuestLeft) {
-                onGuestLeft();
-              }
+              presenceHandlers.current.onGuestLeft?.();
             }
           }
         }
@@ -538,8 +537,6 @@ export const CameraPreview = ({
     };
   }, [
     isCameraActive,
-    onGuestApproached,
-    onGuestLeft,
     onEmotionChange,
     drawBoundingBox,
     getActiveSource,

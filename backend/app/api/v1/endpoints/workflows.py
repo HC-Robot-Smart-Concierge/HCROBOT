@@ -20,7 +20,7 @@ from app.schemas.workflow import (
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-from app.api.v1.endpoints.default_workflows import CORE_WORKFLOWS, upgrade_legacy_move_step
+from app.api.v1.endpoints.default_workflows import CORE_WORKFLOWS, upgrade_legacy_move_step, upgrade_guest_service_steps
 
 _workflows_seeded = False
 
@@ -32,9 +32,9 @@ async def ensure_default_workflow(repo: WorkflowRepository):
         return
 
     await repo.seed_defaults(CORE_WORKFLOWS)
-    upgraded = await repo.upgrade_steps(upgrade_legacy_move_step)
+    upgraded = await repo.upgrade_steps(upgrade_legacy_move_step, upgrade_guest_service_steps)
     if upgraded:
-        logger.info("Moved legacy lobby MOVE targets onto current waypoints in: %s", ", ".join(upgraded))
+        logger.info("Updated legacy lobby workflow steps in: %s", ", ".join(upgraded))
     _workflows_seeded = True
 
 

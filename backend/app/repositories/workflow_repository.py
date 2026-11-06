@@ -49,15 +49,19 @@ class WorkflowRepository(BaseRepository[RobotWorkflow]):
                 self.db.add(new_wf)
         await self.db.commit()
 
-    async def upgrade_steps(self, upgrade_step: Callable[[Dict[str, Any]], Optional[Dict[str, Any]]]) -> List[str]:
+    async def upgrade_steps(self, upgrade_step: Callable[[Dict[str, Any]], Optional[Dict[str, Any]]],
+                            upgrade_workflow=None) -> List[str]:
         """Apply upgrade_step to every saved step; it returns a replacement step or None.
         Returns the ids of workflows that were rewritten."""
         changed = []
         for wf in await self.list_workflows():
             steps = list(wf.steps or [])
             replaced = [upgrade_step(s) for s in steps]
-            if any(r is not None for r in replaced):
-                wf.steps = [r if r is not None else s for s, r in zip(steps, replaced)]
+            updated = [r if r is not None else s for s, r in zip(steps, replaced)]
+            if upgrade_workflow:
+                updated = upgrade_workflow(wf.id, updated)
+            if updated != steps:
+                wf.steps = updated
                 wf.updated_at = datetime.utcnow()
                 changed.append(wf.id)
         if changed:

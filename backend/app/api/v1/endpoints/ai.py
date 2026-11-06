@@ -2,7 +2,7 @@ import asyncio
 import logging
 from datetime import datetime
 from typing import Optional, List
-from fastapi import APIRouter, HTTPException, Depends, status, WebSocket, UploadFile, File, Form
+from fastapi import APIRouter, HTTPException, Depends, status, WebSocket, UploadFile, File, Form, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -292,11 +292,12 @@ async def submit_feedback(fb_in: FeedbackCreate, db: AsyncSession = Depends(get_
 @router.get("/feedback", response_model=List[FeedbackResponse], summary="Xem danh sách phản hồi và đánh giá của khách hàng")
 async def get_all_feedbacks(
     category: Optional[str] = None,
-    limit: int = 50,
+    limit: int = Query(50, ge=1, le=100, description="Số lượng bản ghi tối đa"),
+    skip: int = Query(0, ge=0, description="Số lượng bản ghi bỏ qua (Offset)"),
     db: AsyncSession = Depends(get_db),
 ):
-    """Lấy danh sách đánh giá của khách hàng."""
-    return await get_feedbacks(db=db, category=category, limit=limit)
+    """Lấy danh sách đánh giá của khách hàng hỗ trợ phân trang SQL Limit/Offset."""
+    return await get_feedbacks(db=db, category=category, limit=limit, skip=skip)
 
 
 # -----------------------------------------------------------------------------

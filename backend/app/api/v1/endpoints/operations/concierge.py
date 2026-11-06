@@ -326,14 +326,16 @@ async def update_concierge_request(
     summary="Lấy danh sách các phiên hỗ trợ người thật & video call đã ghi hình",
 )
 async def get_human_support_sessions(
-    limit: int = 50,
+    limit: int = Query(50, ge=1, le=100, description="Số lượng bản ghi tối đa"),
+    skip: int = Query(0, ge=0, description="Số lượng bản ghi bỏ qua (Offset)"),
     status_filter: Optional[str] = None,
     session_repo: SupportSessionRepository = Depends(get_support_session_repository),
 ):
     """
-    Truy vấn danh sách các phiên HumanSupportSession bao gồm link video Cloudinary, thời lượng, trạng thái.
+    Truy vấn danh sách các phiên HumanSupportSession bao gồm link video Cloudinary, thời lượng, trạng thái
+    hỗ trợ phân trang SQL Limit/Offset.
     """
-    return await session_repo.list_sessions(limit=limit, status_filter=status_filter)
+    return await session_repo.list_sessions(limit=limit, skip=skip, status_filter=status_filter)
 
 
 @router.get(

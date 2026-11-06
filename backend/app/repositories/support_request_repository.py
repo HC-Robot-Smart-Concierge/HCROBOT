@@ -98,9 +98,10 @@ class SupportRequestRepository(BaseRepository[SupportRequest]):
         department_ids: List[str],
         service_type_ids: List[str],
         limit: int = 10,
+        skip: int = 0,
     ) -> Sequence[SupportRequest]:
         """
-        Retrieves recent requests for the given department / service types.
+        Retrieves recent requests for the given department / service types with SQL offset/limit pagination.
         """
         stmt = (
             select(SupportRequest)
@@ -111,10 +112,29 @@ class SupportRequestRepository(BaseRepository[SupportRequest]):
                 )
             )
             .order_by(desc(SupportRequest.created_at))
+            .offset(skip)
             .limit(limit)
         )
         res = await self.db.execute(stmt)
         return res.scalars().all()
+
+    async def count_by_department(
+        self,
+        department_ids: List[str],
+        service_type_ids: List[str],
+    ) -> int:
+        """Returns total count of requests for given department/service types."""
+        stmt = (
+            select(func.count(SupportRequest.id))
+            .where(
+                or_(
+                    SupportRequest.department_id.in_(department_ids),
+                    SupportRequest.service_type_id.in_(service_type_ids),
+                )
+            )
+        )
+        res = await self.db.execute(stmt)
+        return res.scalar() or 0
 
     async def close_expired_pending(
         self,

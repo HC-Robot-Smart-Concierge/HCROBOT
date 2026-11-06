@@ -84,6 +84,7 @@ import {
   findChargeRoutine,
 } from '../../../../utils/batteryPolicy';
 import { useLowBatteryGuard } from '../../../../hooks/useLowBatteryGuard';
+import { useWorkflowZoomPan } from './useWorkflowZoomPan';
 
 // Kich thuoc ViewBox co so (om sat map 490x315 voi le 3px de anh map to toi da)
 const BASE_VB_WIDTH = 496;
@@ -316,71 +317,32 @@ export const WorkflowSimulatorStudio = ({
   const [selectedZone, setSelectedZone] = useState(null);
   const [zoneAlert, setZoneAlert] = useState(null);
 
-  // Zoom & Pan state cho ban do tren web (ho tro phong to, thu nho, di chuyen view)
-  const [zoomScale, setZoomScale] = useState(1.0);
-  const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
-  const [isPanning, setIsPanning] = useState(false);
-  const panStartRef = useRef({ x: 0, y: 0, initialPan: { x: 0, y: 0 } });
-
-  const handleZoomIn = useCallback(() => {
-    setZoomScale((prev) => Math.min(2.5, Number((prev + 0.25).toFixed(2))));
-  }, []);
-
-  const handleZoomOut = useCallback(() => {
-    setZoomScale((prev) => Math.max(0.75, Number((prev - 0.25).toFixed(2))));
-  }, []);
-
-  const handleResetZoom = useCallback(() => {
-    setZoomScale(1.0);
-    setPanOffset({ x: 0, y: 0 });
-  }, []);
-
-  const handleWheelZoom = useCallback((e) => {
-    e.preventDefault();
-    const zoomDelta = e.deltaY < 0 ? 0.15 : -0.15;
-    setZoomScale((prev) => Math.max(0.75, Math.min(2.5, Number((prev + zoomDelta).toFixed(2)))));
-  }, []);
-
-  // Chuyen doi toa do chuot Client sang toa do SVG ViewBox tinh den Zoom & Pan
-  const getSvgPointFromClient = useCallback(
-    (clientX, clientY) => {
-      const svg = svgRef.current;
-      if (!svg) return { x: 280, y: 192.5 };
-      if (typeof svg.createSVGPoint === 'function' && svg.getScreenCTM) {
-        try {
-          const ctm = svg.getScreenCTM();
-          if (ctm) {
-            const pt = svg.createSVGPoint();
-            pt.x = clientX;
-            pt.y = clientY;
-            const p = pt.matrixTransform(ctm.inverse());
-            return { x: p.x, y: p.y };
-          }
-        } catch {
-          // Fallback bên dưới
-        }
-      }
-      const rect = svg.getBoundingClientRect();
-      const relX = (clientX - rect.left) / (rect.width || 1);
-      const relY = (clientY - rect.top) / (rect.height || 1);
-      const vbW = BASE_VB_WIDTH / zoomScale;
-      const vbH = BASE_VB_HEIGHT / zoomScale;
-      const vbX = 280 - vbW / 2 - panOffset.x;
-      const vbY = 192.5 - vbH / 2 - panOffset.y;
-      return {
-        x: vbX + relX * vbW,
-        y: vbY + relY * vbH,
-      };
-    },
-    [zoomScale, panOffset]
-  );
-
-  // ViewBox dong ho tro Zoom & Pan
-  const currentVbWidth = BASE_VB_WIDTH / zoomScale;
-  const currentVbHeight = BASE_VB_HEIGHT / zoomScale;
-  const currentVbX = 280 - currentVbWidth / 2 - panOffset.x;
-  const currentVbY = 192.5 - currentVbHeight / 2 - panOffset.y;
-  const dynamicViewBox = `${currentVbX} ${currentVbY} ${currentVbWidth} ${currentVbHeight}`;
+  const svgRef = useRef(null);
+  const {
+    zoomScale,
+    setZoomScale,
+    panOffset,
+    setPanOffset,
+    isPanning,
+    setIsPanning,
+    panStartRef,
+    handleZoomIn,
+    handleZoomOut,
+    handleResetZoom,
+    handleWheelZoom,
+    getSvgPointFromClient,
+    currentVbWidth,
+    currentVbHeight,
+    currentVbX,
+    currentVbY,
+    viewBoxString: dynamicViewBox,
+  } = useWorkflowZoomPan({
+    baseWidth: BASE_VB_WIDTH,
+    baseHeight: BASE_VB_HEIGHT,
+    centerX: 280,
+    centerY: 192.5,
+    svgRef,
+  });
 
   // Che do keo tha va thay doi kich thuoc Vung tren sa ban map
   const [isZoneEditMode, setIsZoneEditMode] = useState(false);
@@ -1029,7 +991,6 @@ export const WorkflowSimulatorStudio = ({
   const { speak, cancel: stopSpeaking } = useSpeechSynthesis();
 
   // Refs de tranh re-render loop va dong bo trang thai thoi gian thuc
-  const svgRef = useRef(null);
   const timerRef = useRef(null);
   const animFrameRef = useRef(null);
   const rosClientRef = useRef(null);

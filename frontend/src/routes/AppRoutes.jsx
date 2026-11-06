@@ -1,37 +1,48 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { Routes, Route, Navigate, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { useAuth, resolveStaffDashboard, isRobotUser } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
 import { ProtectedRoute } from './ProtectedRoute';
 import { StaffLayout } from '../layouts/StaffLayout';
 
-// Public & Top-Level Pages
-import { LandingHomePage } from '../pages/home/LandingHomePage';
-import { LoginPage } from '../pages/auth/LoginPage';
-import { RobotScreenPage } from '../pages/robot/RobotScreenPage';
-import { RobotFoodMenuScreen } from '../components/robot/RobotFoodMenuScreen';
-import { AdminPortal } from '../pages/admin/AdminPortal';
-import { AdminLidarPage } from '../pages/admin/AdminLidarPage';
+// Loading fallback spinner with smooth pulse
+const PageLoadingFallback = () => (
+  <div className="min-h-screen bg-palette-cream/40 flex items-center justify-center p-6">
+    <div className="flex flex-col items-center gap-3">
+      <div className="w-9 h-9 border-3 border-palette-charcoal/20 border-t-palette-charcoal rounded-full animate-spin" />
+      <span className="text-xs font-mono font-medium text-palette-slate tracking-wide">
+        Đang tải giao diện...
+      </span>
+    </div>
+  </div>
+);
 
+// Public & Top-Level Pages (Lazy-loaded for optimal initial bundle size)
+const LandingHomePage = lazy(() => import('../pages/home/LandingHomePage').then(m => ({ default: m.LandingHomePage })));
+const LoginPage = lazy(() => import('../pages/auth/LoginPage').then(m => ({ default: m.LoginPage })));
+const RobotScreenPage = lazy(() => import('../pages/robot/RobotScreenPage').then(m => ({ default: m.RobotScreenPage })));
+const RobotFoodMenuScreen = lazy(() => import('../components/robot/RobotFoodMenuScreen').then(m => ({ default: m.RobotFoodMenuScreen })));
+const AdminPortal = lazy(() => import('../pages/admin/AdminPortal').then(m => ({ default: m.AdminPortal })));
+const AdminLidarPage = lazy(() => import('../pages/admin/AdminLidarPage').then(m => ({ default: m.AdminLidarPage })));
 
-// Staff Dashboard Pages
-import { ReceptionDashboard } from '../pages/dashboard/ReceptionDashboard';
-import { RoomServiceDashboard } from '../pages/dashboard/RoomServiceDashboard';
-import { BellServicesDashboard } from '../pages/dashboard/BellServicesDashboard';
-import { MaintenanceDashboard } from '../pages/dashboard/MaintenanceDashboard';
-import { KitchenDashboard } from '../pages/dashboard/KitchenDashboard';
-import { ConciergeDashboard } from '../pages/dashboard/ConciergeDashboard';
-import { StaffOverviewDashboard } from '../pages/dashboard/StaffOverviewDashboard';
+// Staff Dashboard Pages (Lazy-loaded)
+const ReceptionDashboard = lazy(() => import('../pages/dashboard/ReceptionDashboard').then(m => ({ default: m.ReceptionDashboard })));
+const RoomServiceDashboard = lazy(() => import('../pages/dashboard/RoomServiceDashboard').then(m => ({ default: m.RoomServiceDashboard })));
+const BellServicesDashboard = lazy(() => import('../pages/dashboard/BellServicesDashboard').then(m => ({ default: m.BellServicesDashboard })));
+const MaintenanceDashboard = lazy(() => import('../pages/dashboard/MaintenanceDashboard').then(m => ({ default: m.MaintenanceDashboard })));
+const KitchenDashboard = lazy(() => import('../pages/dashboard/KitchenDashboard').then(m => ({ default: m.KitchenDashboard })));
+const ConciergeDashboard = lazy(() => import('../pages/dashboard/ConciergeDashboard').then(m => ({ default: m.ConciergeDashboard })));
+const StaffOverviewDashboard = lazy(() => import('../pages/dashboard/StaffOverviewDashboard').then(m => ({ default: m.StaffOverviewDashboard })));
 
-// Staff Sub-pages
-import { RequestsPage } from '../pages/staff/RequestsPage';
-import { MyTasksPage } from '../pages/staff/MyTasksPage';
-import { KitchenMenuManagementPage } from '../pages/staff/KitchenMenuManagementPage';
-import { RoomServiceMenuManagementPage } from '../pages/staff/RoomServiceMenuManagementPage';
-import { HistoryPage } from '../pages/staff/HistoryPage';
-import { NotificationsPage } from '../pages/staff/NotificationsPage';
-import { ProfilePage } from '../pages/staff/ProfilePage';
-import { StaffSettingsPage } from '../pages/staff/StaffSettingsPage';
+// Staff Sub-pages (Lazy-loaded)
+const RequestsPage = lazy(() => import('../pages/staff/RequestsPage').then(m => ({ default: m.RequestsPage })));
+const MyTasksPage = lazy(() => import('../pages/staff/MyTasksPage').then(m => ({ default: m.MyTasksPage })));
+const KitchenMenuManagementPage = lazy(() => import('../pages/staff/KitchenMenuManagementPage').then(m => ({ default: m.KitchenMenuManagementPage })));
+const RoomServiceMenuManagementPage = lazy(() => import('../pages/staff/RoomServiceMenuManagementPage').then(m => ({ default: m.RoomServiceMenuManagementPage })));
+const HistoryPage = lazy(() => import('../pages/staff/HistoryPage').then(m => ({ default: m.HistoryPage })));
+const NotificationsPage = lazy(() => import('../pages/staff/NotificationsPage').then(m => ({ default: m.NotificationsPage })));
+const ProfilePage = lazy(() => import('../pages/staff/ProfilePage').then(m => ({ default: m.ProfilePage })));
+const StaffSettingsPage = lazy(() => import('../pages/staff/StaffSettingsPage').then(m => ({ default: m.StaffSettingsPage })));
 
 // Wrapper for Concierge subtabs
 function ConciergeRouteWrapper() {
@@ -129,7 +140,8 @@ export const AppRoutes = () => {
   };
 
   return (
-    <Routes>
+    <Suspense fallback={<PageLoadingFallback />}>
+      <Routes>
       {/* 1. Landing Page */}
       <Route
         path="/"
@@ -380,5 +392,6 @@ export const AppRoutes = () => {
       {/* Fallback Catch-All Route */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+  </Suspense>
   );
 };

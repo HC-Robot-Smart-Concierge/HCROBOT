@@ -99,9 +99,27 @@ export default defineConfig({
     },
   },
 
-  test: {
+    test: {
     globals: true,
     environment: 'node',
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            if (id.includes('@tensorflow') || id.includes('@mediapipe')) {
+              return 'vendor-vision';
+            }
+            if (id.includes('lucide-react')) {
+              return 'vendor-icons';
+            }
+            return 'vendor-core';
+          }
+        },
+      },
+    },
+    chunkSizeWarningLimit: 1200,
   },
 });
 

@@ -239,18 +239,20 @@ async def create_taxi_request(
 async def list_taxi_requests(
     search: Optional[str] = Query(None, description="Tìm kiếm theo số phòng, mã vé, điểm đón, điểm đến hoặc tên khách"),
     status: Optional[str] = Query(None, description="Lọc theo trạng thái chuyến xe"),
-    limit: int = Query(50, ge=1, le=100),
+    limit: int = Query(50, ge=1, le=100, description="Số lượng bản ghi tối đa"),
+    skip: int = Query(0, ge=0, description="Số lượng bản ghi bỏ qua (Offset)"),
     sr_repo: SupportRequestRepository = Depends(get_support_request_repository),
 ):
     """
     ### Mô tả nghiệp vụ:
     Tra cứu danh sách các cuốc xe taxi / đưa đón do Robot hoặc Lễ tân tạo ra.
-    Hỗ trợ lọc theo từ khóa tìm kiếm (số phòng, mã vé, điểm đến) và trạng thái.
+    Hỗ trợ phân trang chuẩn SQL (offset/limit), lọc theo từ khóa tìm kiếm (số phòng, mã vé, điểm đến) và trạng thái.
     """
     raw_requests = await sr_repo.get_recent_by_department(
         department_ids=["DEP-TAXI"],
         service_type_ids=["ST-TAXI"],
         limit=limit,
+        skip=skip,
     )
     formatted = [_format_taxi_request(r) for r in raw_requests]
     if search:

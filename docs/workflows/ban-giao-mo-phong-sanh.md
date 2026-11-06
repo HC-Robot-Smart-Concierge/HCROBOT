@@ -1,6 +1,6 @@
 # Bàn giao bản đồ sảnh và kịch bản phục vụ khách
 
-Ngày 06/11/2026 · Nhánh `lobby-map-doors` · Commit bản đồ `2694dad` · Đích di chuyển `5db5332` · Rẽ nhánh `f5865fb` · Demo ăn tối `b171848`
+Ngày 06/11/2026 · Nhánh `lobby-map-doors` · Commit bản đồ `2694dad` · Đích di chuyển `5db5332` · Rẽ nhánh `f5865fb` · Demo ăn tối `b171848` · Pin yếu `7f1f066`
 
 Web và Gazebo đã dùng chung mặt bằng sảnh có cửa trước và cửa sau. Các đích di chuyển cũ đã được chuyển sang waypoint hiện tại. Workflow đã có bước chờ khách chọn và rẽ nhánh, và kịch bản khách hỏi chỗ ăn tối đã có trong danh sách. **Việc tiếp theo là chạy thử demo trên UI cùng Gazebo, sau đó làm luồng yêu cầu dịch vụ.**
 
@@ -14,13 +14,14 @@ Web và Gazebo đã dùng chung mặt bằng sảnh có cửa trước và cửa
 | Đích di chuyển | Workflow mẫu lấy đích từ `LOBBY_WAYPOINTS` trong backend. Bảng này khớp với waypoint trên web và trong bộ điều hướng ROS. Khi danh sách workflow được tải lần đầu, backend chuyển các bản đã lưu còn giữ đúng tọa độ mẫu cũ, hoặc điểm `(0, 0)`, sang waypoint hiện tại. Bước người dùng đã chỉnh đích được giữ nguyên. Hàm `resolveMoveTarget` trên web áp dụng cùng quy tắc. |
 | Rẽ nhánh | Loại bước mới `CHOICE` hiện các nút lựa chọn, nghe khách nói từ khóa và chuyển tới bước của lựa chọn đó. Bước này có đích riêng khi hết giờ và khi khách hủy. Mọi bước có thể đặt `next_step_id` để các nhánh nhập lại. Studio và màn hình robot cùng dùng `resolveNextStepIndex` để chọn bước kế tiếp và cùng hiển thị `KioskChoicePrompt`. Workflow không dùng các trường này vẫn chạy tuần tự như trước. Trình soạn workflow đã chỉnh được lựa chọn và bước kế tiếp. |
 | Gửi kịch bản tới màn hình robot | Màn hình robot nay nhận lệnh `WORKFLOW_DISPATCH` khi bấm nút "Phát kịch bản xuống Robot" trong Studio. Màn hình robot cũng đọc lời thuyết minh của bước SHOW và lời phát khi di chuyển của bước MOVE, giống Studio. |
+| Pin yếu | Robot không có mạch đo pin. Một số phần trăm ước lượng đại diện cho cả pin động cơ và pin Pi 5, vì hai bộ có cùng dung lượng và được sạc cùng lúc. Từ 20%, robot không nhận khách mới, phục vụ xong khách hiện tại rồi chạy WF10 về trạm sạc. Từ 10%, robot dừng phiên ngay để về sạc. Sau đó robot chờ ở trạm sạc và chỉ nhận khách lại khi pin đạt 80%. Studio và màn hình robot dùng chung quy tắc trong `batteryPolicy.js`. |
 | Kiểm tra đã chạy | Frontend build thành công. Test backend trong `tests/test_workflows_lobby.py` và test frontend về đích di chuyển, rẽ nhánh và khung lựa chọn đều qua. Bộ quyết định trên web đã đi đúng các nhánh của WF09 lấy từ API đang chạy. Gazebo đã nạp đúng hai cửa, và web cùng bộ điều hướng ROS tính ra cùng tuyến giữa hai cửa. **Chưa chạy thử trên UI.** |
 
 ## Kết quả đối chiếu kịch bản
 
 Tài liệu đăng ký đề tài *Intelligent Hotel Concierge Robot*, mục 3.1, yêu cầu khách có thể chọn ngôn ngữ, hỏi và nhận tư vấn, gửi yêu cầu, theo dõi tiến độ, nhờ nhân viên và đánh giá sau tương tác. Vì vậy, tiêu chí của demo là **khách nhận được kết quả và nhân viên thấy đúng yêu cầu**. Số bước chỉ giúp ước lượng độ dài của kịch bản.
 
-Sau khi nâng cấp, API `GET /api/v1/workflows` trả về **11 workflow, tổng cộng 59 bước**. Chỉ WF06 đang bật. Các tọa độ dưới đây tính bằng mét, theo thứ tự `(x, y)`.
+Sau khi nâng cấp, API `GET /api/v1/workflows` trả về **12 workflow, tổng cộng 61 bước**. Chỉ WF06 đang bật. Các tọa độ dưới đây tính bằng mét, theo thứ tự `(x, y)`.
 
 | Workflow | Bước | Trạng thái |
 |---|---:|---|
@@ -33,6 +34,7 @@ Sau khi nâng cấp, API `GET /api/v1/workflows` trả về **11 workflow, tổn
 | WF07 · Dẫn tới thang máy | 5 | Đã chuyển tới thang máy `(15.60, 6.96)`. Bước về trạm đã chuyển như WF05. |
 | WF08 · Báo thức | 5 | Chưa sửa. Số phòng vẫn cố định là `304`. |
 | WF09 · Khách hỏi chỗ ăn tối | 15 | Mới, đang tắt. Có hai bước `CHOICE`. |
+| WF10 · Pin yếu, về trạm sạc | 2 | Mới. Kịch bản hệ thống có `trigger_type` là `LOW_BATTERY`, chỉ chạy khi pin yếu. Bước MOVE loại `CHARGER` đi tới điểm trạm sạc đang hiện trên map, nếu không có thì tới `(6.00, 9.60)`. |
 | Đón Khách & Hướng Dẫn Dịch Vụ Sảnh Chính | 8 | Bước đầu từng trỏ tới `(0, 0)` với waypoint `wp-reception` đã bị xóa. Bước này đã chuyển tới điểm trước quầy lễ tân `(11.44, 2.80)`, vì tên đích đã lưu là "Quầy Lễ Tân". |
 | Kịch bản phục vụ khách mới | 1 | Không đổi. Hiện chỉ có bước chào. |
 
@@ -57,6 +59,14 @@ flowchart TD
   G -->|Không, hết giờ hoặc hủy| I[Đánh giá, chào và về vị trí chờ]
 ```
 
+## Pin yếu và về trạm sạc
+
+- **Nguồn số pin.** Màn hình robot đọc phần trăm ước lượng từ `GET /system/power` trên Pi 5, mỗi 15 giây. Số này tính theo thời gian chạy trong [pi_battery_estimator.py](../../robot/scripts/pi_battery_estimator.py). Gazebo không mô phỏng pin, nên Studio dùng thanh kéo **Pin giả lập** trong Tùy chọn mô phỏng.
+- **Khi chưa đọc được pin.** Robot giữ nguyên trạng thái trước đó. Robot đang bình thường thì vẫn phục vụ bình thường.
+- **Chặn khách mới.** Khi pin yếu, màn hình robot không mở phiên mới khi khách lại gần hoặc chạm nói chuyện, mà đọc lời báo khách tới quầy lễ tân. Khách đang trò chuyện vẫn nói tiếp được cho tới khi phiên kết thúc. Lệnh gửi kịch bản phục vụ từ Studio cũng bị bỏ qua.
+- **Gọi nhân viên.** Khi WF10 kết thúc, màn hình robot tạo một phiếu Maintenance thật tên "Robot cần cắm sạc". Studio chỉ hiện thông báo. Nếu người vận hành dừng WF10 giữa chừng, robot cũng coi như đã tới trạm và chờ sạc.
+- **Sau khi sạc.** Nhân viên cắm sạc cả hai bộ pin, rồi nhập lại phần trăm pin trong Robot Control. Cách khác là cấp nguồn lại cho Pi, khi đó bộ ước lượng coi pin là đầy.
+
 ## Thứ tự làm tiếp
 
 1. **Chạy thử WF09 trên UI cùng Gazebo.** Làm theo mục nghiệm thu bên dưới. Ghi lại những chỗ thời gian chờ hoặc từ khóa giọng nói chưa hợp lý.
@@ -64,7 +74,7 @@ flowchart TD
 3. **Làm luồng gặp nhân viên từ WF01 + WF04 + WF05.** Khi khách yêu cầu hỗ trợ, xác nhận nhu cầu, chuyển nội dung cho lễ tân và chờ nhân viên tiếp nhận. Dùng phần kết thúc chung để khách đánh giá sau khi được hỗ trợ.
 4. **Hoàn thiện chế độ rảnh WF06.** Cho phép tạm dừng quảng cáo khi bắt đầu phục vụ khách và tiếp tục sau khi phiên kết thúc.
 5. **Cho bước MOVE trên màn hình robot chờ tới đích.** Màn hình robot chưa nhận tín hiệu tới đích, nên nhánh dẫn đường ở đó chỉ chờ theo thời gian.
-6. **Dọn waypoint trong DB.** Bảng waypoint hiện chỉ có ba điểm thử nghiệm: hai điểm "Điểm Mốc #1" và một điểm "Trạm Sạc #2". Studio thay danh sách waypoint chuẩn bằng ba điểm này khi DB có dữ liệu. Backend cũng ghi chúng vào marker Gazebo theo thứ tự, không theo loại điểm.
+6. **Dọn waypoint trong DB.** Bảng waypoint hiện chỉ có ba điểm thử nghiệm: hai điểm "Điểm Mốc #1" và một điểm "Trạm Sạc #2" tại `(3.95, 6.60)`. Studio thay danh sách waypoint chuẩn bằng ba điểm này khi DB có dữ liệu, nên WF10 hiện đưa robot tới `(3.95, 6.60)`. Backend cũng ghi các điểm này vào marker Gazebo theo thứ tự, không theo loại điểm. Vì vậy marker trạm sạc trong Gazebo đang nằm ở chỗ khác với điểm trạm sạc trên web.
 
 ## Cách nghiệm thu trên UI
 
@@ -72,6 +82,7 @@ Mở Gazebo bằng [open_gazebo.bat](../../open_gazebo.bat). Khi backend và fro
 
 - **Bản đồ và đích di chuyển:** So sánh hai cửa trên web và trong Gazebo. Chạy WF01 để kiểm tra robot dừng phía trong cửa trước. Chạy WF04 và WF07, quan sát robot dừng trước quầy lễ tân hoặc trước thang máy, rồi kiểm tra hành trình về vị trí chờ.
 - **Rẽ nhánh với WF09:** Chọn Workflow 9 và chạy. Ở bước 7, khung lựa chọn hiện trên sa bàn. Lượt đầu chọn **Xem bản đồ** và kiểm tra robot đứng yên ở cửa trước. Lượt sau chọn **Dẫn tới thang máy** và kiểm tra bước 10 chỉ bắt đầu khi Gazebo báo tới đích. Lượt thứ ba bấm **Hủy** hoặc để hết giờ, rồi kiểm tra robot sang bước hỏi thêm. Ở mọi lượt, robot chỉ về vị trí chờ một lần.
+- **Pin yếu trong Studio:** Chạy WF09, rồi kéo Pin giả lập xuống 20% khi robot đang phục vụ. Robot cần chạy hết WF09, sau đó tự chạy WF10 từ vị trí hiện tại tới điểm trạm sạc trên map. Lượt sau kéo xuống 10% giữa chừng và kiểm tra robot dừng ngay để về sạc. Khi pin chưa tới 80%, bấm chạy một kịch bản phục vụ phải bị từ chối.
 - **Trên màn hình robot:** Mở màn hình robot, rồi bấm "Phát kịch bản xuống Robot" trong Studio khi đang chọn WF09. Màn hình robot cần hiện cùng khung lựa chọn và nhận cả chạm lẫn giọng nói.
 - **Sau khi nối nghiệp vụ:** Dùng số phòng thử khác 304. Gửi yêu cầu từ kiosk, mở đúng màn hình nhân viên để tiếp nhận, đổi trạng thái, rồi quay lại kiosk tra cứu. Với đánh giá, kiểm tra kết quả đã lưu sau khi kết thúc phiên.
 
@@ -79,6 +90,7 @@ Mở Gazebo bằng [open_gazebo.bat](../../open_gazebo.bat). Khi backend và fro
 
 - [Workflow mẫu và hàm nâng cấp bản đã lưu](../../backend/app/api/v1/endpoints/default_workflows.py), [định nghĩa waypoint cùng hàm xác định đích trên web](../../frontend/src/pages/admin/tabs/workflow/workflowSimulatorUtils.js).
 - [Bộ quyết định chuyển bước dùng chung](../../frontend/src/utils/workflowFlow.js) và [khung lựa chọn của bước CHOICE](../../frontend/src/pages/admin/tabs/workflow/KioskChoicePrompt.jsx).
+- [Quy tắc pin yếu](../../frontend/src/utils/batteryPolicy.js) và [hook áp dụng quy tắc trên từng màn hình](../../frontend/src/hooks/useLowBatteryGuard.js).
 - [Bộ chạy trong Studio](../../frontend/src/pages/admin/tabs/workflow/WorkflowSimulatorStudio.jsx) và [bộ chạy trên màn hình robot](../../frontend/src/hooks/useWorkflowRunner.js).
 - [Sa bàn Gazebo](../../robot/worlds/hotel_room.world) và [bộ điều hướng mô phỏng](../../robot/scripts/autonomous_navigator.py).
 

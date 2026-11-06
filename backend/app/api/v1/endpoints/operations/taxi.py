@@ -92,13 +92,13 @@ async def get_taxi_dashboard(
     Dữ liệu được lưu trữ chuẩn hóa trong bảng `support_requests` với `service_type_id = 'ST-TAXI'` và `department_id = 'DEP-TAXI'`.
     """
     raw_requests = await sr_repo.get_recent_by_department(
-        department_ids=["DEP-TAXI", "DEP-CONCIERGE"],
+        department_ids=["DEP-TAXI"],
         service_type_ids=["ST-TAXI"],
         limit=100,
     )
     requests = [_format_taxi_request(r) for r in raw_requests]
 
-    pending_count = sum(1 for r in requests if (r.status or "").lower() in ["pending", "unassigned", "chờ tiếp nhận"])
+    pending_count = sum(1 for r in requests if (r.status or "").lower() in ["pending", "unassigned", "chờ tiếp nhận", "missed"])
     calling_count = sum(1 for r in requests if (r.status or "").lower() in ["calling", "in progress", "driver assigned", "on the way", "đang gọi"])
     completed_count = sum(1 for r in requests if (r.status or "").lower() in ["completed", "thành công", "success", "done"])
 
@@ -199,7 +199,7 @@ async def create_taxi_request(
         guest_name=req_in.guest_name,
         source="From HCRobot",
         description=description,
-        department_id="DEP-CONCIERGE",
+        department_id="DEP-TAXI",
         service_type_id="ST-TAXI",
         status="Pending",
     )
@@ -207,6 +207,15 @@ async def create_taxi_request(
     await create_department_notification(
         db=db,
         department="Concierge",
+        title=f"Yêu cầu Đặt xe mới #{ticket_code}",
+        description=f"Phòng {resolved_room or req_in.pickup_location}: {req_in.destination} ({req_in.vehicle_type})",
+        request_id=new_req.id,
+        request_type="taxi",
+        type="Request",
+    )
+    await create_department_notification(
+        db=db,
+        department="Taxi",
         title=f"Yêu cầu Đặt xe mới #{ticket_code}",
         description=f"Phòng {resolved_room or req_in.pickup_location}: {req_in.destination} ({req_in.vehicle_type})",
         request_id=new_req.id,
@@ -239,7 +248,7 @@ async def list_taxi_requests(
     Hỗ trợ lọc theo từ khóa tìm kiếm (số phòng, mã vé, điểm đến) và trạng thái.
     """
     raw_requests = await sr_repo.get_recent_by_department(
-        department_ids=["DEP-TAXI", "DEP-CONCIERGE"],
+        department_ids=["DEP-TAXI"],
         service_type_ids=["ST-TAXI"],
         limit=limit,
     )

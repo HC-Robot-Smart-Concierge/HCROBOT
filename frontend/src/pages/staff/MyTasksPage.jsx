@@ -36,7 +36,7 @@ export const MyTasksPage = ({ currentUser, onNotify = () => {}, onNavigate = () 
   const [selectedDetailReq, setSelectedDetailReq] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 15;
+  const pageSize = 10;
 
   const [requests, setRequests] = useState([]);
 
@@ -228,6 +228,69 @@ export const MyTasksPage = ({ currentUser, onNotify = () => {}, onNavigate = () 
 
   const isTaskInProgress = (r) => {
     return !isTaskCompleted(r) && !isTaskPending(r);
+  };
+
+  const KITCHEN_STEPS = [
+    { step: 1, title: st("Pending") },
+    { step: 2, title: st("Cooking") },
+    { step: 3, title: st("Done") },
+  ];
+
+  const getKitchenOrderStage = (status) => {
+    const s = (status || '').toLowerCase().trim();
+    if (
+      s === 'pending' ||
+      s === 'pending action' ||
+      s === 'unassigned' ||
+      s === 'waiting' ||
+      s === 'chờ tiếp nhận' ||
+      s === 'sent to kitchen' ||
+      s === 'sent_to_kitchen' ||
+      s === 'chuyển sang bếp' ||
+      s === 'đã chuyển bếp'
+    ) {
+      return {
+        step: 1,
+        label: st("Pending"),
+        badgeClass: 'bg-amber-100 text-amber-800 border-amber-200',
+        nextStatus: 'Cooking',
+        nextActionName: st("Accept and cook"),
+        nextIcon: ChefHat,
+        actionBtnClass: 'bg-amber-600 hover:bg-amber-700 text-white',
+        deptNote: st("The kitchen accepts and prepares the food"),
+        roleBadge: st('Kitchen'),
+      };
+    }
+    if (
+      s === 'cooking' ||
+      s === 'in preparation' ||
+      s === 'in progress' ||
+      s === 'đang nấu' ||
+      s === 'bếp đang nấu'
+    ) {
+      return {
+        step: 2,
+        label: st("Cooking"),
+        badgeClass: 'bg-orange-100 text-orange-800 border-orange-200',
+        nextStatus: 'Completed',
+        nextActionName: st("Complete"),
+        nextIcon: CheckCircle2,
+        actionBtnClass: 'bg-emerald-600 hover:bg-emerald-700 text-white',
+        deptNote: st("Bếp đang chế biến món ăn"),
+        roleBadge: st('Kitchen'),
+      };
+    }
+    return {
+      step: 3,
+      label: st("Done"),
+      badgeClass: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+      nextStatus: null,
+      nextActionName: null,
+      nextIcon: null,
+      actionBtnClass: '',
+      deptNote: st("Đã hoàn tất chu đáo"),
+      roleBadge: st('Kitchen'),
+    };
   };
 
   const FOOD_STEPS = [
@@ -434,6 +497,10 @@ export const MyTasksPage = ({ currentUser, onNotify = () => {}, onNavigate = () 
       if (step === 2 || step === 3) return isRoomServiceStaff || (!isKitchenStaff);
       return false;
     }
+    const isKitchenOrder = (isKitchenStaff || req?.department === 'Kitchen' || req?.department === 'DEP-KITCHEN');
+    if (isKitchenOrder) {
+      return true;
+    }
     if (step === 1) return isKitchenStaff || isRoomServiceStaff || (!isKitchenStaff);
     if (step === 2) return isKitchenStaff || isRoomServiceStaff;
     if (step === 3) {
@@ -448,13 +515,13 @@ export const MyTasksPage = ({ currentUser, onNotify = () => {}, onNavigate = () 
   const myAssignedRequests = requests.filter((r) => isTaskAssignedToMe(r));
 
   // Phân định trách nhiệm hoàn thành theo bộ phận:
-  // - Bộ phận Bếp (Kitchen): Khi chuyển request đến 'Món Xong' (Ready, step >= 4) thì XEM NHƯ ĐÃ XONG PHẦN PHỤ TRÁCH, phần còn lại (giao phòng) là của Room Service!
-  //   Do đó: Bếp chỉ 'Đang Phụ Trách' khi đang chế biến (Cooking / Sent to Kitchen).
+  // - Bộ phận Bếp (Kitchen): 3 trạng thái chuẩn hoá (Pending -> Cooking -> Done).
   // - Room Service: Phụ trách toàn trình từ tiếp nhận tới giao phòng thành công.
   const isTaskActiveForUser = (r) => {
-    if (isKitchenStaff && isFoodOrder(r)) {
-      const stage = getFoodOrderStage(r.status);
-      return stage.step === 2 || stage.step === 3;
+    if (isTaskCompleted(r)) return false;
+    if ((isKitchenStaff || r?.department === 'Kitchen' || r?.department === 'DEP-KITCHEN') && isFoodOrder(r)) {
+      const stage = getKitchenOrderStage(r.status);
+      return stage.step === 2; // Cooking
     }
     if (isDirectServiceOrder(r)) {
       const stage = getDirectServiceStage(r.status);
@@ -464,9 +531,10 @@ export const MyTasksPage = ({ currentUser, onNotify = () => {}, onNavigate = () 
   };
 
   const isTaskDoneForUser = (r) => {
-    if (isKitchenStaff && isFoodOrder(r)) {
-      const stage = getFoodOrderStage(r.status);
-      return stage.step >= 4; // Món đã nấu xong, đã xong phần phụ trách của Bếp
+    if (isTaskCompleted(r)) return true;
+    if ((isKitchenStaff || r?.department === 'Kitchen' || r?.department === 'DEP-KITCHEN') && isFoodOrder(r)) {
+      const stage = getKitchenOrderStage(r.status);
+      return stage.step === 3; // Done
     }
     if (isDirectServiceOrder(r)) {
       const stage = getDirectServiceStage(r.status);
@@ -518,6 +586,13 @@ export const MyTasksPage = ({ currentUser, onNotify = () => {}, onNavigate = () 
     if (isCompA !== isCompB) return isCompA ? 1 : -1;
     return (b.id || '').localeCompare(a.id || '');
   });
+
+  const totalPages = Math.max(1, Math.ceil(sortedRequests.length / pageSize));
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
 
   const paginatedRequests = sortedRequests.slice(
     (currentPage - 1) * pageSize,
@@ -678,17 +753,19 @@ export const MyTasksPage = ({ currentUser, onNotify = () => {}, onNavigate = () 
 
           {/* Tab Filter Pills */}
           <div className="flex flex-wrap items-center gap-1.5 w-full md:w-auto">
-            {[
-              { key: 'All', label: st("All ({0})", myAssignedRequests.length) },
-              { key: 'In Progress', label: st("In progress ({0})", activeCount) },
-              { key: 'Ready', label: st("Ready for collection ({0})", readyCount) },
-              {
-                key: 'Completed',
-                label: isKitchenStaff
-                  ? st("Kitchen completed ({0})", completedCount)
-                  : st("Delivered ({0})", completedCount),
-              },
-            ].map((tab) => (
+            {(isKitchenStaff
+              ? [
+                  { key: 'All', label: st("All ({0})", myAssignedRequests.length) },
+                  { key: 'In Progress', label: st("Cooking ({0})", activeCount) },
+                  { key: 'Completed', label: st("Done ({0})", completedCount) },
+                ]
+              : [
+                  { key: 'All', label: st("All ({0})", myAssignedRequests.length) },
+                  { key: 'In Progress', label: st("In progress ({0})", activeCount) },
+                  { key: 'Ready', label: st("Ready for collection ({0})", readyCount) },
+                  { key: 'Completed', label: st("Delivered ({0})", completedCount) },
+                ]
+            ).map((tab) => (
               <button
                 key={tab.key}
                 onClick={() => setStatusFilter(tab.key)}
@@ -730,18 +807,37 @@ export const MyTasksPage = ({ currentUser, onNotify = () => {}, onNavigate = () 
                 const isCompleted = isTaskCompleted(req);
                 const isDirectSvc = isDirectServiceOrder(req);
                 const isFood = !isDirectSvc && isFoodOrder(req);
+                const isKitchenOrder = (isKitchenStaff || req.department === 'Kitchen' || req.department === 'DEP-KITCHEN') && isFood;
                 const isMultiStep = isFood || isDirectSvc;
-                const currentSteps = isDirectSvc ? SERVICE_STEPS : (isFood ? FOOD_STEPS : null);
-                const stage = isDirectSvc ? getDirectServiceStage(req.status) : (isFood ? getFoodOrderStage(req.status) : null);
+                const currentSteps = isKitchenOrder
+                  ? KITCHEN_STEPS
+                  : isDirectSvc
+                  ? SERVICE_STEPS
+                  : isFood
+                  ? FOOD_STEPS
+                  : null;
+                const stage = isKitchenOrder
+                  ? getKitchenOrderStage(req.status)
+                  : isDirectSvc
+                  ? getDirectServiceStage(req.status)
+                  : isFood
+                  ? getFoodOrderStage(req.status)
+                  : null;
 
                 return (
                   <div
                     key={req.id}
                     className={`bg-white rounded-2xl border border-[#E5E1D8] p-4 md:p-5 shadow-xs space-y-3.5 transition-all hover:shadow-md ${
                       isMultiStep
-                        ? (isDirectSvc ? stage.step === 3 : stage.step === 4)
+                        ? isKitchenOrder
+                          ? stage.step === 3
+                            ? 'border-l-4 border-l-emerald-500 bg-emerald-50/15'
+                            : stage.step === 2
+                            ? 'border-l-4 border-l-amber-500'
+                            : ''
+                          : (isDirectSvc ? stage.step === 4 : stage.step === 4)
                           ? 'border-l-4 border-l-emerald-500 bg-emerald-50/15'
-                          : (isDirectSvc ? stage.step === 2 : stage.step === 5)
+                          : (isDirectSvc ? stage.step === 3 : stage.step === 5)
                           ? 'border-l-4 border-l-purple-500 bg-purple-50/10'
                           : isInProgress
                           ? 'border-l-4 border-l-sky-500'

@@ -938,33 +938,36 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   const handleTriggerTaxiBooking = useCallback((specifiedRoom = null) => {
     const requested = typeof specifiedRoom === 'string' ? specifiedRoom.trim() : '';
     const currentRoom = requested || authenticatedRoom || activeRoomNumber;
-    if (authenticatedRoom && (!requested || requested === String(authenticatedRoom))) {
-      // Đã trong session: không hỏi lại mã PIN, mở thẳng modal với 2 option
-      setIsTaxiModalOpen(true);
-      setIsFoodMenuOpen(false);
-      setIsRoomServiceMenuOpen(false);
-      const isEn = language === 'English';
-      const msg = isEn
-        ? `Room ${authenticatedRoom}. Would you like our partner taxi hotlines to book directly, or would you like Concierge to arrange a taxi for you?`
-        : `Dạ phòng ${authenticatedRoom}. Quý khách muốn tự gọi xe taxi theo số điện thoại đối tác hay nhờ bộ phận Concierge đặt xe giùm quý khách ạ?`;
-      setAiResponseText(msg);
-      setCurrentState('RT-02');
-      speak(msg, isEn ? 'en-US' : 'vi-VN');
-    } else {
-      // Chưa trong session: hỏi lại số phòng và mã PIN
-      setPinModalRoomNumber(currentRoom || '');
-      setPinModalAction('book_taxi');
-      setPinModalItems('Yêu cầu đặt xe Taxi');
-      setIsPinModalOpen(true);
-      isPinModalOpenRef.current = true;
-      const isEn = language === 'English';
-      const msg = isEn
-        ? 'To assist with taxi booking, please enter your room number and PIN on the screen.'
-        : 'Dạ để hỗ trợ đặt xe taxi, quý khách vui lòng nhập số phòng và mã PIN xác thực trên màn hình ạ.';
-      setAiResponseText(msg);
-      setCurrentState('RT-02');
-      speak(msg, isEn ? 'en-US' : 'vi-VN');
+    if (authenticatedRoom) {
+      if (!requested || requested === String(authenticatedRoom)) {
+        // Đã trong session: không hỏi lại mã PIN, mở thẳng modal với 2 option
+        setIsTaxiModalOpen(true);
+        setIsFoodMenuOpen(false);
+        setIsRoomServiceMenuOpen(false);
+        const isEn = language === 'English';
+        const msg = isEn
+          ? `Room ${authenticatedRoom}. Would you like our partner taxi hotlines to book directly, or would you like Concierge to arrange a taxi for you?`
+          : `Dạ phòng ${authenticatedRoom}. Quý khách muốn tự gọi xe taxi theo số điện thoại đối tác hay nhờ bộ phận Concierge đặt xe giùm quý khách ạ?`;
+        setAiResponseText(msg);
+        setCurrentState('RT-02');
+        speak(msg, isEn ? 'en-US' : 'vi-VN');
+        return;
+      }
     }
+
+    // Chưa trong session: hỏi lại số phòng và mã PIN
+    setPinModalRoomNumber(currentRoom || '');
+    setPinModalAction('book_taxi');
+    setPinModalItems('Yêu cầu đặt xe Taxi');
+    setIsPinModalOpen(true);
+    isPinModalOpenRef.current = true;
+    const isEn = language === 'English';
+    const msg = isEn
+      ? 'To assist with taxi booking, please enter your room number and PIN on the screen.'
+      : 'Dạ để hỗ trợ đặt xe taxi, quý khách vui lòng nhập số phòng và mã PIN xác thực trên màn hình ạ.';
+    setAiResponseText(msg);
+    setCurrentState('RT-02');
+    speak(msg, isEn ? 'en-US' : 'vi-VN');
   }, [authenticatedRoom, activeRoomNumber, language, speak]);
 
   // 2. Gửi tới Ollama RAG Backend

@@ -49,5 +49,26 @@ describe('Concierge Taxi Reception & Calling Workflow Tests', () => {
     expect(conciergeContent).toContain('Yêu cầu gọi Taxi');
     expect(conciergeContent).toContain('Danh Sách Yêu Cầu Gọi Xe Taxi');
   });
+
+  it('verifies pagination is integrated for call recordings, taxi requests, and guest feedback', () => {
+    expect(conciergeContent).toContain("import { Pagination } from '../../components/common/Pagination';");
+    expect(conciergeContent).toContain('paginatedRecordings');
+    expect(conciergeContent).toContain('paginatedTaxiRequests');
+    expect(conciergeContent).toContain('paginatedFeedbacks');
+    expect(conciergeContent).toContain('recordingsPage');
+    expect(conciergeContent).toContain('taxiPage');
+    expect(conciergeContent).toContain('feedbackPage');
+  });
+
+  it('verifies guest feedback filtering, search, and sorting mechanisms are integrated', () => {
+    expect(conciergeContent).toContain('feedbackRatingFilter');
+    expect(conciergeContent).toContain('feedbackSearchQuery');
+    expect(conciergeContent).toContain('feedbackSortOrder');
+    expect(conciergeContent).toContain('filteredFeedbacks');
+    expect(conciergeContent).toContain('Cần can thiệp');
+    expect(conciergeContent).toContain('Hài lòng (4-5 sao)');
+    expect(conciergeContent).toContain('Điểm thấp trước');
+    expect(conciergeContent).toContain('Điểm cao trước');
+  });
 });
 

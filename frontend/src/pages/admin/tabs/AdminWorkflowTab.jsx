@@ -189,13 +189,13 @@ export const AdminWorkflowTab = () => {
       step_id: `step-${Date.now()}`,
       type: stepDef.type,
       title: stepDef.label,
-      params: { ...stepDef.defaultParams },
+      params: JSON.parse(JSON.stringify(stepDef.defaultParams)),
     };
 
-    setEditingWorkflow({
-      ...editingWorkflow,
-      steps: [...(editingWorkflow.steps || []), newStep],
-    });
+    setEditingWorkflow((prev) => ({
+      ...prev,
+      steps: [...(prev.steps || []), newStep],
+    }));
   };
 
   const handleRemoveStep = (index) => {
@@ -214,16 +214,19 @@ export const AdminWorkflowTab = () => {
     setEditingWorkflow({ ...editingWorkflow, steps: updated });
   };
 
+  // Functional update: one edit may change several params in a row (e.g. picking a MOVE target)
   const handleStepParamChange = (stepIndex, paramKey, val) => {
-    const updated = [...editingWorkflow.steps];
-    updated[stepIndex] = {
-      ...updated[stepIndex],
-      params: {
-        ...(updated[stepIndex].params || {}),
-        [paramKey]: val,
-      },
-    };
-    setEditingWorkflow({ ...editingWorkflow, steps: updated });
+    setEditingWorkflow((prev) => {
+      const updated = [...prev.steps];
+      updated[stepIndex] = {
+        ...updated[stepIndex],
+        params: {
+          ...(updated[stepIndex].params || {}),
+          [paramKey]: val,
+        },
+      };
+      return { ...prev, steps: updated };
+    });
   };
 
   const handleWorkflowMetaChange = (key, val) => {

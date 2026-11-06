@@ -196,23 +196,91 @@
       </link>
 
       <!-- 2. TUONG BAO NGOAI (OUTER WALLS: Cao 1.4m, Day 0.20m) -->
-      <!-- Tuong Tay (West Wall: x = 0.0) -->
-      <link name="wall_west">
-        <pose>0.0 6.30 0.7 0 0 0</pose>
-        <collision name="col"><geometry><box><size>0.20 12.60 1.4</size></box></geometry></collision>
+      <!-- Front entrance on the west wall: y = 5.55 to 6.95 m. -->
+      <link name="wall_west_south">
+        <pose>0.00 2.775 0.7 0 0 0</pose>
+        <collision name="col"><geometry><box><size>0.20 5.55 1.4</size></box></geometry></collision>
         <visual name="vis">
-          <geometry><box><size>0.20 12.60 1.4</size></box></geometry>
+          <geometry><box><size>0.20 5.55 1.4</size></box></geometry>
           <material><ambient>0.22 0.22 0.24 1</ambient><diffuse>0.22 0.22 0.24 1</diffuse></material>
         </visual>
       </link>
-
-      <!-- Tuong Dong (East Wall: x = 19.60) -->
-      <link name="wall_east">
-        <pose>19.60 6.30 0.7 0 0 0</pose>
-        <collision name="col"><geometry><box><size>0.20 12.60 1.4</size></box></geometry></collision>
+      <link name="wall_west_north">
+        <pose>0.00 9.775 0.7 0 0 0</pose>
+        <collision name="col"><geometry><box><size>0.20 5.65 1.4</size></box></geometry></collision>
         <visual name="vis">
-          <geometry><box><size>0.20 12.60 1.4</size></box></geometry>
+          <geometry><box><size>0.20 5.65 1.4</size></box></geometry>
           <material><ambient>0.22 0.22 0.24 1</ambient><diffuse>0.22 0.22 0.24 1</diffuse></material>
+        </visual>
+      </link>
+      <link name="front_door">
+        <pose>0.00 6.25 0 0 0 0</pose>
+        <collision name="south_leaf_collision">
+          <pose>0.32 -0.70 0.55 0 0 0</pose>
+          <geometry><box><size>0.64 0.06 1.10</size></box></geometry>
+        </collision>
+        <visual name="south_leaf">
+          <pose>0.32 -0.70 0.55 0 0 0</pose>
+          <geometry><box><size>0.64 0.06 1.10</size></box></geometry>
+          <material><ambient>0.20 0.55 0.70 1</ambient><diffuse>0.20 0.55 0.70 1</diffuse></material>
+        </visual>
+        <collision name="north_leaf_collision">
+          <pose>0.32 0.70 0.55 0 0 0</pose>
+          <geometry><box><size>0.64 0.06 1.10</size></box></geometry>
+        </collision>
+        <visual name="north_leaf">
+          <pose>0.32 0.70 0.55 0 0 0</pose>
+          <geometry><box><size>0.64 0.06 1.10</size></box></geometry>
+          <material><ambient>0.20 0.55 0.70 1</ambient><diffuse>0.20 0.55 0.70 1</diffuse></material>
+        </visual>
+        <visual name="threshold">
+          <pose>0 0 0.014 0 0 0</pose>
+          <geometry><box><size>0.22 1.40 0.004</size></box></geometry>
+          <material><ambient>0.20 0.55 0.70 1</ambient><diffuse>0.20 0.55 0.70 1</diffuse></material>
+        </visual>
+      </link>
+
+      <!-- Rear exit between the lift and WC: y = 2.80 to 4.26 m. -->
+      <link name="wall_east_south">
+        <pose>19.60 1.40 0.7 0 0 0</pose>
+        <collision name="col"><geometry><box><size>0.20 2.80 1.4</size></box></geometry></collision>
+        <visual name="vis">
+          <geometry><box><size>0.20 2.80 1.4</size></box></geometry>
+          <material><ambient>0.22 0.22 0.24 1</ambient><diffuse>0.22 0.22 0.24 1</diffuse></material>
+        </visual>
+      </link>
+      <link name="wall_east_north">
+        <pose>19.60 8.43 0.7 0 0 0</pose>
+        <collision name="col"><geometry><box><size>0.20 8.34 1.4</size></box></geometry></collision>
+        <visual name="vis">
+          <geometry><box><size>0.20 8.34 1.4</size></box></geometry>
+          <material><ambient>0.22 0.22 0.24 1</ambient><diffuse>0.22 0.22 0.24 1</diffuse></material>
+        </visual>
+      </link>
+      <link name="rear_door">
+        <pose>19.60 3.53 0 0 0 0</pose>
+        <collision name="south_leaf_collision">
+          <pose>-0.32 -0.73 0.55 0 0 0</pose>
+          <geometry><box><size>0.64 0.06 1.10</size></box></geometry>
+        </collision>
+        <visual name="south_leaf">
+          <pose>-0.32 -0.73 0.55 0 0 0</pose>
+          <geometry><box><size>0.64 0.06 1.10</size></box></geometry>
+          <material><ambient>0.15 0.58 0.35 1</ambient><diffuse>0.15 0.58 0.35 1</diffuse></material>
+        </visual>
+        <collision name="north_leaf_collision">
+          <pose>-0.32 0.73 0.55 0 0 0</pose>
+          <geometry><box><size>0.64 0.06 1.10</size></box></geometry>
+        </collision>
+        <visual name="north_leaf">
+          <pose>-0.32 0.73 0.55 0 0 0</pose>
+          <geometry><box><size>0.64 0.06 1.10</size></box></geometry>
+          <material><ambient>0.15 0.58 0.35 1</ambient><diffuse>0.15 0.58 0.35 1</diffuse></material>
+        </visual>
+        <visual name="threshold">
+          <pose>0 0 0.014 0 0 0</pose>
+          <geometry><box><size>0.22 1.46 0.004</size></box></geometry>
+          <material><ambient>0.15 0.58 0.35 1</ambient><diffuse>0.15 0.58 0.35 1</diffuse></material>
         </visual>
       </link>
 
@@ -421,20 +489,20 @@
 
       <!-- 10. CUA THOAT HIEM KHAN CAP (EMERGENCY EXIT) -->
       <link name="emergency_exit_block">
-        <pose>18.92 5.46 0.70 0 0 0</pose>
-        <collision name="col"><geometry><box><size>1.35 1.00 1.40</size></box></geometry></collision>
+        <pose>18.92 4.93 0.70 0 0 0</pose>
+        <collision name="col"><geometry><box><size>1.35 1.34 1.40</size></box></geometry></collision>
         <visual name="vis">
-          <geometry><box><size>1.35 1.00 1.40</size></box></geometry>
+          <geometry><box><size>1.35 1.34 1.40</size></box></geometry>
           <material><ambient>0.15 0.55 0.25 1</ambient><diffuse>0.15 0.55 0.25 1</diffuse></material>
         </visual>
       </link>
 
       <!-- 11. CUM NHA VE SINH (RESTROOMS WC 1 & WC 2 - GOC DONG NAM) -->
       <link name="wc_east">
-        <pose>18.92 1.70 0.70 0 0 0</pose>
-        <collision name="col"><geometry><box><size>1.35 3.40 1.40</size></box></geometry></collision>
+        <pose>18.92 1.40 0.70 0 0 0</pose>
+        <collision name="col"><geometry><box><size>1.35 2.80 1.40</size></box></geometry></collision>
         <visual name="vis">
-          <geometry><box><size>1.35 3.40 1.40</size></box></geometry>
+          <geometry><box><size>1.35 2.80 1.40</size></box></geometry>
           <material><ambient>0.35 0.35 0.38 1</ambient><diffuse>0.35 0.35 0.38 1</diffuse></material>
         </visual>
       </link>
@@ -545,7 +613,7 @@
     <!-- Waypoint 2: Tram Sac Robot Sanh (CHARGER - CHARGER: Emerald Green) -->
     <model name="wp_marker_charger">
       <static>true</static>
-      <pose>1.33 6.08 0.01 0 0 0</pose>
+      <pose>2.33 5.96 0.01 0 0 0</pose>
       <link name="link">
         <visual name="floor_ring">
           <geometry><cylinder><radius>0.40</radius><length>0.005</length></cylinder></geometry>

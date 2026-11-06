@@ -20,7 +20,7 @@ from app.schemas.workflow import (
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-from app.api.v1.endpoints.default_workflows import CORE_WORKFLOWS
+from app.api.v1.endpoints.default_workflows import CORE_WORKFLOWS, upgrade_legacy_move_step
 
 _workflows_seeded = False
 
@@ -32,6 +32,9 @@ async def ensure_default_workflow(repo: WorkflowRepository):
         return
 
     await repo.seed_defaults(CORE_WORKFLOWS)
+    upgraded = await repo.upgrade_steps(upgrade_legacy_move_step)
+    if upgraded:
+        logger.info("Moved legacy lobby MOVE targets onto current waypoints in: %s", ", ".join(upgraded))
     _workflows_seeded = True
 
 
@@ -196,6 +199,10 @@ async def execute_workflow(
             logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] [CREATE_REQUEST] Đóng gói phiếu dịch vụ [{urgency}] gửi {dept} (Phòng: {room}, Ghi chú: {note})")
         elif step_type == "FEEDBACK":
             logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] [FEEDBACK] Mở màn hình khảo sát 1-5 sao. Ghi nhận đánh giá thành công!")
+        elif step_type == "CHOICE":
+            options = [o for o in params.get("options", []) if isinstance(o, dict)]
+            labels = " / ".join(str(o.get("label") or o.get("id")) for o in options)
+            logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] [CHOICE] Chờ khách chọn: {labels} (Timeout: {params.get('timeout_sec', 30)}s)")
         else:
             logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] [{step_type}] Thực thi {step_title}")
 

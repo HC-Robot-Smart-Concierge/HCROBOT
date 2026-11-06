@@ -1,8 +1,72 @@
 """
-Default Seed Definitions for 8 Standard Core Workflows from Stepflow.md
+Default Seed Definitions for the Standard Core Workflows (WF01-WF08 from Stepflow.md, WF09 dinner demo, WF10 low-battery routine)
 Tất cả các workflow và điểm di chuyển (MOVE) đều diễn ra tại Sảnh Chính (Ground Floor - Lobby).
 Phù hợp 100% với sơ đồ kiến trúc mặt bằng sảnh khách sạn.
 """
+
+import copy
+from typing import Any, Dict, Optional
+
+# Lobby destinations in metres on the 19.60 x 12.60 m Gazebo/web map.
+# Keep in sync with GAZEBO_LOBBY_WAYPOINTS in the web simulator utils and
+# WAYPOINTS in robot/scripts/autonomous_navigator.py.
+LOBBY_WAYPOINTS: Dict[str, Dict[str, Any]] = {
+    "MAIN_ENTRANCE": {"x": 0.90, "y": 6.25, "name": "Cửa Chính Ra Vào Sảnh (Main Entrance)"},
+    "FRONT_DESK": {"x": 11.44, "y": 2.80, "name": "Trước Quầy Lễ Tân (Front Desk)"},
+    "ELEVATOR": {"x": 15.60, "y": 6.96, "name": "Cụm Thang Máy Tầng 1 (Elevator)"},
+    "CENTRAL_LOBBY": {"x": 8.40, "y": 6.40, "name": "Khu Vực Trung Tâm Sảnh"},
+    "ROBOT_STANDBY": {"x": 7.20, "y": 9.60, "name": "Vị Trí Chờ Robot Sảnh"},
+    "CHARGER_STATION": {"x": 6.00, "y": 9.60, "name": "Trạm Sạc Robot Sảnh"},
+}
+
+# Targets written by earlier stock templates for the old 10 x 6 m lobby.
+# A saved MOVE step that still holds one of these exact points was never
+# re-targeted by a user, so it can be moved onto today's waypoint.
+# (0, 0) is treated as an unset placeholder for every known key.
+_LEGACY_TARGET_ALIASES = {
+    "DOCK_LOBBY": "ROBOT_STANDBY",
+    "DOCK_01": "ROBOT_STANDBY",
+    "wp-reception": "FRONT_DESK",
+}
+_LEGACY_TARGET_POINTS = {
+    "MAIN_ENTRANCE": [(5.2, 1.0)],
+    "FRONT_DESK": [(6.4, 2.0), (5.2, 2.0)],
+    "ELEVATOR": [(7.7, 4.2), (7.8, 4.5)],
+    "CENTRAL_LOBBY": [(4.8, 2.5)],
+    "ROBOT_STANDBY": [(3.2, 2.8)],
+}
+
+
+def _move_target(key: str) -> Dict[str, Any]:
+    wp = LOBBY_WAYPOINTS[key]
+    return {"target_value": key, "waypoint_name": wp["name"], "target_x": wp["x"], "target_y": wp["y"]}
+
+
+def upgrade_legacy_move_step(step: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Return a re-targeted copy of a MOVE step that still points at an old stock
+    coordinate, or None when the step should be left as it is."""
+    if not isinstance(step, dict) or step.get("type") != "MOVE":
+        return None
+    params = step.get("params") or {}
+    raw_key = params.get("target_waypoint_id") or params.get("target_value")
+    key = _LEGACY_TARGET_ALIASES.get(raw_key, raw_key)
+    if key not in LOBBY_WAYPOINTS:
+        return None
+    try:
+        x, y = float(params.get("target_x")), float(params.get("target_y"))
+    except (TypeError, ValueError):
+        return None
+    old_points = _LEGACY_TARGET_POINTS.get(key, []) + [(0.0, 0.0)]
+    if not any(abs(x - ox) < 0.005 and abs(y - oy) < 0.005 for ox, oy in old_points):
+        return None
+
+    upgraded = copy.deepcopy(step)
+    new_params = upgraded.setdefault("params", {})
+    new_params.update(_move_target(key))
+    if params.get("target_waypoint_id"):
+        new_params["target_waypoint_id"] = key
+    return upgraded
+
 
 CORE_WORKFLOWS = [
     {
@@ -18,10 +82,7 @@ CORE_WORKFLOWS = [
                 "title": "1. Di chuyển ra Cửa chính đón khách",
                 "params": {
                     "target_type": "LOCATION",
-                    "target_value": "MAIN_ENTRANCE",
-                    "waypoint_name": "Cửa Chính Ra Vào Sảnh (Main Entrance)",
-                    "target_x": 5.2,
-                    "target_y": 1.0,
+                    **_move_target("MAIN_ENTRANCE"),
                     "speed": 0.35
                 }
             },
@@ -215,10 +276,7 @@ CORE_WORKFLOWS = [
                 "title": "2. Dẫn khách tới Quầy Lễ Tân (Front Desk)",
                 "params": {
                     "target_type": "LOCATION",
-                    "target_value": "FRONT_DESK",
-                    "waypoint_name": "Quầy Lễ Tân (Front Desk)",
-                    "target_x": 6.4,
-                    "target_y": 2.0,
+                    **_move_target("FRONT_DESK"),
                     "speed": 0.3
                 }
             },
@@ -287,13 +345,10 @@ CORE_WORKFLOWS = [
             {
                 "step_id": "wf5-step-4",
                 "type": "MOVE",
-                "title": "4. Robot trở về Trạm Chờ Sofa Sảnh",
+                "title": "4. Robot trở về Vị Trí Chờ Sảnh",
                 "params": {
                     "target_type": "STANDBY",
-                    "target_value": "DOCK_LOBBY",
-                    "waypoint_name": "Trạm Sạc Robot Sảnh",
-                    "target_x": 3.2,
-                    "target_y": 2.8,
+                    **_move_target("ROBOT_STANDBY"),
                     "speed": 0.4
                 }
             }
@@ -312,10 +367,7 @@ CORE_WORKFLOWS = [
                 "title": "1. Di chuyển ra Trung Tâm Sảnh đón tiếp",
                 "params": {
                     "target_type": "LOCATION",
-                    "target_value": "CENTRAL_LOBBY",
-                    "waypoint_name": "Khu Vực Trung Tâm Sảnh",
-                    "target_x": 4.8,
-                    "target_y": 2.5,
+                    **_move_target("CENTRAL_LOBBY"),
                     "speed": 0.35
                 }
             },
@@ -365,10 +417,7 @@ CORE_WORKFLOWS = [
                 "title": "3. Dẫn đường tới Cụm Thang Máy",
                 "params": {
                     "target_type": "LOCATION",
-                    "target_value": "ELEVATOR",
-                    "waypoint_name": "Cụm Thang Máy Tầng 1 (Elevator)",
-                    "target_x": 7.7,
-                    "target_y": 4.2,
+                    **_move_target("ELEVATOR"),
                     "speed": 0.3
                 }
             },
@@ -385,13 +434,10 @@ CORE_WORKFLOWS = [
             {
                 "step_id": "wf7-step-5",
                 "type": "MOVE",
-                "title": "5. Robot quay về vị trí trực trạm chờ Sofa",
+                "title": "5. Robot quay về Vị Trí Chờ Sảnh",
                 "params": {
                     "target_type": "STANDBY",
-                    "target_value": "DOCK_LOBBY",
-                    "waypoint_name": "Trạm Sạc Robot Sảnh",
-                    "target_x": 3.2,
-                    "target_y": 2.8,
+                    **_move_target("ROBOT_STANDBY"),
                     "speed": 0.4
                 }
             }
@@ -458,5 +504,233 @@ CORE_WORKFLOWS = [
                 }
             }
         ]
-    }
+    },
+    {
+        # Demo đầu tiên: ghép WF01 + WF02 + WF07 + WF05, có rẽ nhánh theo lựa chọn của khách.
+        # Hai nhánh cùng quay về bước hỏi khách còn cần gì, rồi đánh giá và về vị trí chờ một lần.
+        "id": "wf-09-dinner-guide",
+        "name": "Workflow 9: Khách hỏi chỗ ăn tối, xem bản đồ hoặc được dẫn tới thang máy",
+        "description": "Đón khách ở cửa trước, gợi ý nhà hàng Tầng 2, cho khách chọn xem bản đồ tại chỗ hoặc được dẫn tới cụm thang máy, rồi hỏi thêm, đánh giá và về vị trí chờ.",
+        "trigger_type": "AUTO_DETECT",
+        "is_active": False,
+        "steps": [
+            {
+                "step_id": "wf9-move-entrance",
+                "type": "MOVE",
+                "title": "1. Ra cửa chính đón khách",
+                "params": {"target_type": "LOCATION", **_move_target("MAIN_ENTRANCE"), "speed": 0.35},
+            },
+            {
+                "step_id": "wf9-greet",
+                "type": "GREET",
+                "title": "2. Chào đón khách",
+                "params": {
+                    "template_id": "TPL_WELCOME",
+                    "language": "vi",
+                    "expression": "SMILE",
+                    "greeting_text": "Dạ em chào quý khách! Chào mừng quý khách đến với khách sạn Aurora.",
+                },
+            },
+            {
+                "step_id": "wf9-language",
+                "type": "SHOW",
+                "title": "3. Khách chọn ngôn ngữ",
+                "params": {"screen_type": "LANGUAGE_SELECT", "content_id": "UI_LANG", "timeout": 10},
+            },
+            {
+                "step_id": "wf9-ask",
+                "type": "COMMUNICATE",
+                "title": "4. Hỏi nhu cầu của khách",
+                "params": {
+                    "input_source": "BOTH",
+                    "silence_timeout_sec": 30,
+                    "output_var": "guest_request",
+                    "initial_prompt": "Quý khách cần em hỗ trợ gì ạ? Ví dụ quý khách có thể hỏi em nên ăn tối ở đâu.",
+                },
+            },
+            {
+                "step_id": "wf9-recommend",
+                "type": "RECOMMEND",
+                "title": "5. Gợi ý nhà hàng cho bữa tối",
+                "params": {
+                    "category": "DINING",
+                    "limit": 3,
+                    "filter": {"type": "restaurant"},
+                    "highlight_item": "Nhà hàng Tầng 2 · Buffet Hải Sản buổi tối",
+                },
+            },
+            {
+                "step_id": "wf9-dining-list",
+                "type": "SHOW",
+                "title": "6. Chiếu danh sách gợi ý ẩm thực",
+                "params": {"screen_type": "MENU", "content_id": "UI_RECOMMEND_LIST", "timeout": 15},
+            },
+            {
+                "step_id": "wf9-route-choice",
+                "type": "CHOICE",
+                "title": "7. Khách chọn xem bản đồ hoặc được dẫn đường",
+                "params": {
+                    "prompt": "Nhà hàng ở Tầng 2, đi bằng cụm thang máy sau quầy lễ tân. Quý khách muốn xem bản đồ hay để em dẫn tới thang máy ạ?",
+                    "prompt_en": "The restaurant is on Floor 2, by the lifts behind the front desk. Would you like the map, or shall I walk you there?",
+                    "timeout_sec": 30,
+                    "options": [
+                        {
+                            "id": "map",
+                            "label": "Xem bản đồ",
+                            "label_en": "Show me the map",
+                            "keywords": ["bản đồ", "sơ đồ", "map"],
+                            "next_step_id": "wf9-show-map",
+                        },
+                        {
+                            "id": "guide",
+                            "label": "Dẫn tới thang máy",
+                            "label_en": "Walk me there",
+                            "keywords": ["dẫn đường", "dẫn tôi", "đưa tôi", "đi cùng", "thang máy", "walk me", "take me"],
+                            "next_step_id": "wf9-guide-move",
+                        },
+                    ],
+                    "timeout_next_step_id": "wf9-anything-else",
+                    "cancel_next_step_id": "wf9-anything-else",
+                },
+            },
+            {
+                "step_id": "wf9-show-map",
+                "type": "SHOW",
+                "title": "8. Nhánh bản đồ: hiển thị đường tới nhà hàng tại chỗ",
+                "params": {
+                    "screen_type": "MAP",
+                    "content_id": "MAP_LOBBY_GROUND",
+                    "destination_key": "restaurant",
+                    "timeout": 20,
+                    "speech_text": "Dạ đây là đường tới nhà hàng. Quý khách đi qua quầy lễ tân tới cụm thang máy rồi lên Tầng 2 ạ. Quý khách có thể quét mã QR để xem đường trên điện thoại.",
+                    "next_step_id": "wf9-anything-else",
+                },
+            },
+            {
+                "step_id": "wf9-guide-move",
+                "type": "MOVE",
+                "title": "9. Nhánh dẫn đường: đưa khách tới cụm thang máy",
+                "params": {
+                    "target_type": "LOCATION",
+                    **_move_target("ELEVATOR"),
+                    "speed": 0.3,
+                    "broadcast_speech": "Mời quý khách đi theo em tới cụm thang máy ạ.",
+                },
+            },
+            {
+                "step_id": "wf9-guide-arrived",
+                "type": "SHOW",
+                "title": "10. Báo đã tới thang máy",
+                "params": {
+                    "screen_type": "MAP",
+                    "content_id": "MAP_LOBBY_GROUND",
+                    "destination_key": "restaurant",
+                    "timeout": 10,
+                    "speech_text": "Dạ chúng ta đã tới cụm thang máy. Quý khách lên Tầng 2 là tới nhà hàng ạ.",
+                },
+            },
+            {
+                "step_id": "wf9-anything-else",
+                "type": "CHOICE",
+                "title": "11. Hỏi khách còn cần hỗ trợ gì",
+                "params": {
+                    "prompt": "Quý khách còn cần em hỗ trợ gì thêm không ạ?",
+                    "prompt_en": "Is there anything else I can help with?",
+                    "timeout_sec": 20,
+                    "options": [
+                        {
+                            "id": "done",
+                            "label": "Không, cảm ơn",
+                            "label_en": "No, thank you",
+                            "keywords": ["cảm ơn", "xong rồi", "hết rồi", "không cần", "thank"],
+                            "next_step_id": "wf9-feedback",
+                        },
+                        {
+                            "id": "more",
+                            "label": "Hỏi thêm",
+                            "label_en": "Ask something else",
+                            "keywords": ["hỏi thêm", "còn nữa", "có ạ", "more", "yes"],
+                            "next_step_id": "wf9-free-talk",
+                        },
+                    ],
+                    "timeout_next_step_id": "wf9-feedback",
+                    "cancel_next_step_id": "wf9-feedback",
+                },
+            },
+            {
+                "step_id": "wf9-free-talk",
+                "type": "COMMUNICATE",
+                "title": "12. Trò chuyện thêm với khách",
+                "params": {
+                    "input_source": "BOTH",
+                    "silence_timeout_sec": 30,
+                    "ai_agent_enabled": True,
+                    "initial_prompt": "Dạ quý khách cứ hỏi, em đang nghe ạ.",
+                    "next_step_id": "wf9-anything-else",
+                },
+            },
+            {
+                "step_id": "wf9-feedback",
+                "type": "FEEDBACK",
+                "title": "13. Khách đánh giá sau tương tác",
+                "params": {
+                    "scale": 5,
+                    "timeout": 15,
+                    "output_var": "score",
+                    "question_text": "Quý khách có hài lòng với sự hỗ trợ của em không ạ?",
+                },
+            },
+            {
+                "step_id": "wf9-goodbye",
+                "type": "GREET",
+                "title": "14. Chào tạm biệt khách",
+                "params": {
+                    "language": "vi",
+                    "expression": "SMILE",
+                    "greeting_text": "Cảm ơn quý khách! Chúc quý khách bữa tối ngon miệng tại Aurora.",
+                },
+            },
+            {
+                "step_id": "wf9-return",
+                "type": "MOVE",
+                "title": "15. Robot về Vị Trí Chờ Sảnh",
+                "params": {"target_type": "STANDBY", **_move_target("ROBOT_STANDBY"), "speed": 0.4},
+            },
+        ],
+    },
+    {
+        # Kịch bản hệ thống: Studio và màn hình robot tự chạy khi pin ước tính còn 20%
+        # (sau khi phục vụ xong khách) hoặc 10% (dừng ngay). Xem frontend/src/utils/batteryPolicy.js.
+        # MOVE loại CHARGER đi tới điểm trạm sạc đang hiển thị trên map.
+        "id": "wf-10-low-battery",
+        "name": "Workflow 10: Pin yếu, robot về trạm sạc chờ nhân viên cắm sạc",
+        "description": "Robot về trạm sạc trên sảnh và báo nhân viên tới cắm sạc tay cho cả pin động cơ và pin Pi 5.",
+        "trigger_type": "LOW_BATTERY",
+        "is_active": True,
+        "steps": [
+            {
+                "step_id": "wf10-go-charger",
+                "type": "MOVE",
+                "title": "1. Về trạm sạc",
+                "params": {
+                    "target_type": "CHARGER",
+                    **_move_target("CHARGER_STATION"),
+                    "speed": 0.35,
+                    "broadcast_speech": "Em sắp hết pin nên xin phép về trạm sạc. Quý khách cần hỗ trợ vui lòng tới quầy lễ tân ạ.",
+                },
+            },
+            {
+                "step_id": "wf10-call-staff",
+                "type": "CREATE_REQUEST",
+                "title": "2. Báo nhân viên cắm sạc",
+                "params": {
+                    "service_type": "ROBOT_CHARGING",
+                    "room_number": "Trạm Sạc Robot Sảnh",
+                    "note": "Robot sắp hết pin và đang chờ ở trạm sạc. Nhờ nhân viên cắm sạc cả pin động cơ và pin Pi 5.",
+                    "urgency": "HIGH",
+                    "target_department": "Maintenance",
+                },
+            },
+        ],
+    },
 ]

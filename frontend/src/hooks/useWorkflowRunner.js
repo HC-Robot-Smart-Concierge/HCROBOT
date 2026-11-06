@@ -1,8 +1,16 @@
 import { useState, useEffect, useRef } from 'react';
+import {
+  OUTCOME,
+  getChoiceTimeoutSec,
+  isCancelSpeech,
+  matchChoiceFromSpeech,
+  resolveNextStepIndex,
+} from '../utils/workflowFlow';
 
 /**
  * Custom Hook điều phối chu trình Workflow trực tiếp trên màn hình Robot
  * Tích hợp Micro & Loa trực tiếp trên máy tính qua Web Speech API
+ * Bước kế tiếp được chọn bởi resolveNextStepIndex, giống bộ chạy trong Studio.
  */
 export function useWorkflowRunner({
   speak,
@@ -16,14 +24,20 @@ export function useWorkflowRunner({
   const [activeWorkflow, setActiveWorkflow] = useState(null);
   const [isWorkflowRunning, setIsWorkflowRunning] = useState(false);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
+  // Tăng mỗi lần vào bước, để bước nhảy về chính nó vẫn chạy lại
+  const [stepRun, setStepRun] = useState(0);
   const timerRef = useRef(null);
   const speechEndDebounceRef = useRef(null);
 
   const [silenceRemaining, setSilenceRemaining] = useState(30);
+  const [choiceRemaining, setChoiceRemaining] = useState(null);
   const silenceIntervalRef = useRef(null);
 
   const steps = activeWorkflow?.steps || [];
   const activeStep = isWorkflowRunning && currentStepIndex < steps.length ? steps[currentStepIndex] : null;
+
+  const flowRef = useRef({ steps, index: currentStepIndex });
+  flowRef.current = { steps, index: currentStepIndex };
 
   const cleanupTimers = () => {
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -39,6 +53,7 @@ export function useWorkflowRunner({
 
     setActiveWorkflow(wf);
     setCurrentStepIndex(0);
+    setStepRun((n) => n + 1);
     setIsWorkflowRunning(true);
   };
 
@@ -50,20 +65,27 @@ export function useWorkflowRunner({
     setActiveWorkflow(null);
     setCurrentStepIndex(0);
     setSilenceRemaining(30);
+    setChoiceRemaining(null);
   };
 
-  const nextStep = () => {
+  const finishStep = (outcome = { type: OUTCOME.DONE }) => {
     cleanupTimers();
     if (stopSpeaking) stopSpeaking();
     if (stopListening) stopListening();
 
-    const nextIdx = currentStepIndex + 1;
-    if (nextIdx < steps.length) {
+    const { steps: list, index } = flowRef.current;
+    const nextIdx = resolveNextStepIndex(list, index, outcome);
+    if (nextIdx >= 0) {
       setCurrentStepIndex(nextIdx);
+      setStepRun((n) => n + 1);
     } else {
       stopWorkflow();
     }
   };
+
+  const nextStep = () => finishStep({ type: OUTCOME.DONE });
+  const chooseOption = (optionId) => finishStep({ type: OUTCOME.CHOSEN, optionId });
+  const cancelChoice = () => finishStep({ type: OUTCOME.CANCEL });
 
   // Tự động nhận diện khi người dùng nói xong trong bước LISTEN (kế thừa) hoặc phát hiện từ khóa tạm biệt trong COMMUNICATE
   useEffect(() => {
@@ -86,6 +108,18 @@ export function useWorkflowRunner({
           nextStep();
         }, 1500);
       }
+    } else if (activeStep.type === 'CHOICE') {
+      // Khách nói tên lựa chọn -> rẽ nhánh; nói hủy -> nhánh hủy
+      const optionId = matchChoiceFromSpeech(activeStep, transcript);
+      const outcome = optionId
+        ? { type: OUTCOME.CHOSEN, optionId }
+        : isCancelSpeech(transcript)
+        ? { type: OUTCOME.CANCEL }
+        : null;
+      if (outcome) {
+        if (speechEndDebounceRef.current) clearTimeout(speechEndDebounceRef.current);
+        speechEndDebounceRef.current = setTimeout(() => finishStep(outcome), 900);
+      }
     } else if (activeStep.type === 'LISTEN') {
       // Trong bước LISTEN cũ: ngưng nói 2.2s -> chuyển bước
       if (speechEndDebounceRef.current) clearTimeout(speechEndDebounceRef.current);
@@ -107,10 +141,15 @@ export function useWorkflowRunner({
 
     let durationMs = 5000;
     const isCommunicate = activeStep.type === 'COMMUNICATE';
+    const isChoice = activeStep.type === 'CHOICE';
+    setChoiceRemaining(null);
 
-    if (isCommunicate) {
-      const silenceTimeoutSec = activeStep.params?.silence_timeout_sec || activeStep.params?.timeout || 30;
-      setSilenceRemaining(silenceTimeoutSec);
+    if (isCommunicate || isChoice) {
+      const timeoutSec = isChoice
+        ? getChoiceTimeoutSec(activeStep)
+        : activeStep.params?.silence_timeout_sec || activeStep.params?.timeout || 30;
+      if (isChoice) setChoiceRemaining(timeoutSec);
+      else setSilenceRemaining(timeoutSec);
 
       // Kích hoạt Micro thu âm trực tiếp
       if (resetTranscript) resetTranscript();
@@ -118,20 +157,20 @@ export function useWorkflowRunner({
         startListening(activeStep.params?.language || 'vi-VN');
       }
 
-      // Khởi động đếm ngược im lặng mỗi 1 giây
-      let currentSilence = silenceTimeoutSec;
+      // Đếm ngược mỗi 1 giây; hết giờ -> COMMUNICATE sang bước kế, CHOICE theo nhánh hết giờ
+      let remaining = timeoutSec;
       silenceIntervalRef.current = setInterval(() => {
-        currentSilence -= 1;
-        setSilenceRemaining(Math.max(0, currentSilence));
+        remaining -= 1;
+        if (isChoice) setChoiceRemaining(Math.max(0, remaining));
+        else setSilenceRemaining(Math.max(0, remaining));
 
-        // Hết 30s không có tín hiệu nói -> Tự động chuyển bước kế tiếp
-        if (currentSilence <= 0) {
+        if (remaining <= 0) {
           clearInterval(silenceIntervalRef.current);
-          nextStep();
+          finishStep({ type: isChoice ? OUTCOME.TIMEOUT : OUTCOME.DONE });
         }
       }, 1000);
 
-      // Không dùng timer tĩnh durationMs vì bước COMMUNICATE được điều khiển bởi Silence Timeout
+      // Không dùng timer tĩnh durationMs vì các bước này được điều khiển bởi đếm ngược
       durationMs = null;
     } else if (activeStep.type === 'MOVE') {
       const moveTimeout = activeStep.params?.timeout || activeStep.params?.timeout_sec || 6;
@@ -157,14 +196,19 @@ export function useWorkflowRunner({
       durationMs = 6000;
     }
 
-    // Xử lý phát giọng nói qua Loa máy tính cho GREET, SPEAK & COMMUNICATE
+    // Xử lý phát giọng nói qua Loa máy tính, cùng quy tắc với Studio:
+    // GREET, SPEAK, COMMUNICATE, CHOICE, SHOW có thuyết minh và MOVE có lời phát khi di chuyển
     const voiceText =
       activeStep.type === 'COMMUNICATE'
         ? (activeStep.params?.initial_prompt || activeStep.params?.speech_text || activeStep.params?.text)
         : activeStep.type === 'GREET'
         ? (activeStep.params?.greeting_text || activeStep.params?.text)
-        : activeStep.type === 'SPEAK'
+        : activeStep.type === 'SPEAK' || activeStep.type === 'SHOW'
         ? (activeStep.params?.speech_text || activeStep.params?.text)
+        : activeStep.type === 'MOVE'
+        ? (activeStep.params?.broadcast_speech || activeStep.params?.speech_text)
+        : isChoice
+        ? activeStep.params?.prompt
         : null;
 
     const voiceSpeed = parseFloat(activeStep.params?.voice_speed) || 1.0;
@@ -174,23 +218,16 @@ export function useWorkflowRunner({
     }
 
     if (durationMs !== null) {
-      timerRef.current = setTimeout(() => {
-        const nextIdx = currentStepIndex + 1;
-        if (nextIdx < steps.length) {
-          setCurrentStepIndex(nextIdx);
-        } else {
-          stopWorkflow();
-        }
-      }, durationMs);
+      timerRef.current = setTimeout(() => finishStep({ type: OUTCOME.DONE }), durationMs);
     }
 
     return () => {
       cleanupTimers();
-      if ((activeStep?.type === 'LISTEN' || activeStep?.type === 'COMMUNICATE') && stopListening) {
+      if ((activeStep?.type === 'LISTEN' || activeStep?.type === 'COMMUNICATE' || activeStep?.type === 'CHOICE') && stopListening) {
         stopListening();
       }
     };
-  }, [isWorkflowRunning, currentStepIndex, activeWorkflow?.id]);
+  }, [isWorkflowRunning, currentStepIndex, activeWorkflow?.id, stepRun]);
 
   return {
     activeWorkflow,
@@ -199,8 +236,11 @@ export function useWorkflowRunner({
     activeStep,
     totalSteps: steps.length,
     silenceRemaining,
+    choiceRemaining,
     startWorkflow,
     stopWorkflow,
     nextStep,
+    chooseOption,
+    cancelChoice,
   };
 }

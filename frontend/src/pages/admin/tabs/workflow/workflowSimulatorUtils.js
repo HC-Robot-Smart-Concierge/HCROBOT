@@ -1,6 +1,7 @@
 // Danh sach toa do cac diem moc Sanh Tang Tret (Ground Floor - Lobby Arena 9.80m x 6.30m)
 // Robot mac dinh o vi tri truc Khu Vuc Phia Bac cua Lobby (x: 3.6, y: 4.8)
 export const ROBOT_INITIAL_POSE = { x: 7.2, y: 9.6, yaw: -Math.PI / 2 };
+const FRONT_DOOR_APPROACH = { x: 0.90, y: 6.25 };
 
 export const GAZEBO_LOBBY_WAYPOINTS = {
   ROBOT_STANDBY: {
@@ -10,6 +11,15 @@ export const GAZEBO_LOBBY_WAYPOINTS = {
     badge: 'Robot Sảnh',
     label: 'Vị Trí Robot Sảnh',
     role: 'standby',
+    offset: 'bottom',
+  },
+  CHARGER_STATION: {
+    x: 6.0,
+    y: 9.6,
+    name: 'Trạm Sạc Robot Sảnh',
+    badge: 'Trạm Sạc',
+    label: 'Trạm Sạc Robot Sảnh',
+    role: 'charger',
     offset: 'bottom',
   },
   LOBBY_LOUNGE: {
@@ -22,8 +32,7 @@ export const GAZEBO_LOBBY_WAYPOINTS = {
     offset: 'top',
   },
   MAIN_ENTRANCE: {
-    x: 8.4,
-    y: 2.0,
+    ...FRONT_DOOR_APPROACH,
     name: 'Cửa Chính Ra Vào Sảnh',
     badge: 'Cửa Chính Sảnh',
     label: 'Cửa Chính Ra Vào Sảnh',
@@ -85,7 +94,7 @@ export const GAZEBO_LOBBY_WAYPOINTS = {
     offset: 'top',
   },
   // Backward compatibility aliases
-  ZONE_LOBBY: { x: 8.4, y: 2.0, badge: 'Cửa Chính Sảnh', label: 'Cửa Chính Sảnh' },
+  ZONE_LOBBY: { ...FRONT_DOOR_APPROACH, badge: 'Cửa Chính Sảnh', label: 'Cửa Chính Sảnh' },
   DOCK_LOBBY: { x: 7.2, y: 9.6, badge: 'Robot Sảnh', label: 'Vị Trí Robot Sảnh' },
   DOCK_01: { x: 7.2, y: 9.6, badge: 'Robot Sảnh', label: 'Vị Trí Robot Sảnh' },
   HOTSPOT_LOBBY: { x: 8.4, y: 6.4, badge: 'Trung Tâm Sảnh', label: 'Khu Vực Trung Tâm Sảnh' },
@@ -99,7 +108,7 @@ export const GAZEBO_LOBBY_WAYPOINTS = {
 export const STANDARD_LOBBY_WAYPOINTS = [
   { id: 'ROBOT_STANDBY', key: 'ROBOT_STANDBY', name: 'Vị Trí Chờ Robot Sảnh', type: 'PARK', x: 7.2, y: 9.6, floor: 'Sảnh Tầng 1' },
   { id: 'CHARGER_STATION', key: 'CHARGER_STATION', name: 'Trạm Sạc Robot Sảnh', type: 'CHARGER', x: 6.0, y: 9.6, floor: 'Sảnh Tầng 1' },
-  { id: 'MAIN_ENTRANCE', key: 'MAIN_ENTRANCE', name: 'Cửa Chính Sảnh (Main Entrance)', type: 'WAYPOINT', x: 8.4, y: 2.0, floor: 'Sảnh Tầng 1' },
+  { id: 'MAIN_ENTRANCE', key: 'MAIN_ENTRANCE', name: 'Cửa Chính Sảnh (Main Entrance)', type: 'WAYPOINT', ...FRONT_DOOR_APPROACH, floor: 'Sảnh Tầng 1' },
   { id: 'FRONT_DESK', key: 'FRONT_DESK', name: 'Trước Quầy Lễ Tân (Front Desk)', type: 'WAYPOINT', x: 11.44, y: 2.8, floor: 'Sảnh Tầng 1' },
   { id: 'STAFF_ONLY', key: 'STAFF_ONLY', name: 'Trước Phòng Nội Bộ (Staff Only)', type: 'WAYPOINT', x: 11.44, y: 6.4, floor: 'Sảnh Tầng 1' },
   { id: 'ELEVATOR', key: 'ELEVATOR', name: 'Cụm Thang Máy Tầng 1', type: 'WAYPOINT', x: 15.6, y: 6.96, floor: 'Sảnh Tầng 1' },
@@ -209,22 +218,56 @@ export const zoneToSvgRect = (zone) => {
   };
 };
 
+// Targets written by earlier stock templates for the old 10 x 6 m lobby.
+// A MOVE step that still holds one of these exact points was never re-targeted,
+// so it runs at today's waypoint. (0, 0) is an unset placeholder for every key.
+// Mirrors upgrade_legacy_move_step in backend default_workflows.py.
+const LEGACY_TARGET_ALIASES = { DOCK_LOBBY: 'ROBOT_STANDBY', DOCK_01: 'ROBOT_STANDBY', 'wp-reception': 'FRONT_DESK' };
+const LEGACY_TARGET_POINTS = {
+  MAIN_ENTRANCE: [[5.2, 1.0]],
+  FRONT_DESK: [[6.4, 2.0], [5.2, 2.0]],
+  ELEVATOR: [[7.7, 4.2], [7.8, 4.5]],
+  CENTRAL_LOBBY: [[4.8, 2.5]],
+  ROBOT_STANDBY: [[3.2, 2.8]],
+};
+
+const findLegacyMoveTarget = (params, x, y) => {
+  const rawKey = params.target_waypoint_id || params.target_value;
+  const key = LEGACY_TARGET_ALIASES[rawKey] || rawKey;
+  if (!LEGACY_TARGET_POINTS[key] && !(key in GAZEBO_LOBBY_WAYPOINTS)) return null;
+  const oldPoints = [...(LEGACY_TARGET_POINTS[key] || []), [0, 0]];
+  const isOld = oldPoints.some(([ox, oy]) => Math.abs(x - ox) < 0.005 && Math.abs(y - oy) < 0.005);
+  return isOld ? GAZEBO_LOBBY_WAYPOINTS[key] : null;
+};
+
+const isChargerEndpoint = (e) => ['CHARGER', 'DOCKING_TARGET'].includes(String(e?.type || '').toUpperCase());
+
+export function resolveMoveTarget(step, endpoints = []) {
+  const params = step?.params || {};
+  // Going to charge follows the charging station shown on the map, wherever it was placed.
+  if (String(params.target_type || '').toUpperCase() === 'CHARGER') {
+    const charger = Array.isArray(endpoints) ? endpoints.find(isChargerEndpoint) : null;
+    if (charger && Number.isFinite(Number(charger.x)) && Number.isFinite(Number(charger.y))) {
+      return { x: Number(charger.x), y: Number(charger.y) };
+    }
+  }
+  const x = parseFloat(params.target_x);
+  const y = parseFloat(params.target_y);
+  if (Number.isFinite(x) && Number.isFinite(y)) {
+    const legacy = findLegacyMoveTarget(params, x, y);
+    return legacy ? { x: legacy.x, y: legacy.y } : { x, y };
+  }
+  const key = params.target_value || params.target_waypoint_id;
+  const endpoint = key && endpoints?.find(e => [e.id, e.key, e.name].includes(key));
+  return endpoint || GAZEBO_LOBBY_WAYPOINTS[key] || GAZEBO_LOBBY_WAYPOINTS.FRONT_DESK;
+}
+
 export const validateWorkflowStepZone = (step, zones = SIMULATOR_HOTEL_ZONES, customEndpoints = null) => {
   if (!step) return { valid: true };
   const stepType = step.type || '';
-  const params = step.params || {};
 
   if (stepType === 'MOVE') {
-    let targetX = parseFloat(params.target_x);
-    let targetY = parseFloat(params.target_y);
-    if (isNaN(targetX) || isNaN(targetY)) {
-      const customWp = Array.isArray(customEndpoints)
-        ? customEndpoints.find((e) => e.id === params.target_value || e.key === params.target_value || e.name === params.target_value)
-        : null;
-      const wp = customWp || GAZEBO_LOBBY_WAYPOINTS[params.target_value] || GAZEBO_LOBBY_WAYPOINTS.FRONT_DESK;
-      targetX = wp?.x ?? 5.2;
-      targetY = wp?.y ?? 2.0;
-    }
+    const { x: targetX, y: targetY } = resolveMoveTarget(step, customEndpoints);
 
     const zone = getActiveSimulatorZone(targetX, targetY, zones);
     if (zone && zone.type === 'KEEP_OUT') {
@@ -349,6 +392,11 @@ export const svgToMeter = (svgX, svgY) => {
 // ========================================================
 
 const LOBBY_OBSTACLES = [
+  // Wall segments leave the west entrance (y=6.25) and east exit (y=3.53) clear.
+  { id: 'WEST_SOUTH', minX: 0, maxX: 0.25, minY: 0, maxY: 5.75 },
+  { id: 'WEST_NORTH', minX: 0, maxX: 0.25, minY: 6.75, maxY: 12.60 },
+  { id: 'EAST_SOUTH', minX: 19.35, maxX: 19.60, minY: 0, maxY: 3.00 },
+  { id: 'EAST_NORTH', minX: 19.35, maxX: 19.60, minY: 4.06, maxY: 12.60 },
   { id: 'RECEPTION', minX: 9.70, maxX: 13.10, minY: 4.00, maxY: 8.65 },
   { id: 'PLANT_POT', minX: 5.60, maxX: 7.45, minY: 5.35, maxY: 7.15 },
   { id: 'PART_TOP',  minX: 12.50, maxX: 12.85, minY: 11.00, maxY: 12.60 },
@@ -356,8 +404,8 @@ const LOBBY_OBSTACLES = [
   { id: 'SOFA_TL',   minX: 0.00, maxX: 2.30, minY: 8.30, maxY: 12.60 },
   { id: 'SOFA_BL',   minX: 0.00, maxX: 4.70, minY: 0.00, maxY: 1.60 },
   { id: 'SOFA_TR',   minX: 15.30, maxX: 19.60, minY: 7.60, maxY: 10.00 },
-  { id: 'ELEV_EXIT', minX: 17.80, maxX: 19.60, minY: 4.80, maxY: 7.80 },
-  { id: 'WC_EAST',   minX: 17.80, maxX: 19.60, minY: 0.00, maxY: 3.55 },
+  { id: 'ELEV_EXIT', minX: 17.80, maxX: 19.60, minY: 4.06, maxY: 7.80 },
+  { id: 'WC_EAST',   minX: 17.80, maxX: 19.60, minY: 0.00, maxY: 3.00 },
   { id: 'WC_SOUTH',  minX: 15.30, maxX: 18.00, minY: 0.00, maxY: 1.90 },
 ];
 
@@ -386,6 +434,8 @@ const isLineOfSightClear = (p1, p2, ignoreReception = false) => {
 };
 
 const LOBBY_NAV_NODES = {
+  W_ENTRY:     FRONT_DOOR_APPROACH,
+  E_EXIT:      { x: 17.30, y: 3.53 },
   W_NORTH:     { x: 7.20,  y: 9.60 },
   W_NORTH_L:   { x: 4.80,  y: 9.60 },
   W_MID_L:     { x: 4.20,  y: 7.20 },
@@ -403,6 +453,8 @@ const LOBBY_NAV_NODES = {
 };
 
 const LOBBY_NAV_EDGES = [
+  ['W_ENTRY', 'W_MID_L'],
+  ['E_EXIT', 'E_SOUTH'],
   ['W_NORTH', 'W_NORTH_L'],
   ['W_NORTH_L', 'W_MID_L'],
   ['W_MID_L', 'W_MID_POT_W'],
@@ -718,6 +770,19 @@ export const getStepActionDetail = (step) => {
       };
     }
 
+    case 'CHOICE': {
+      const options = Array.isArray(params.options) ? params.options : [];
+      const prompt = params.prompt || rawTitle || 'Chờ khách lựa chọn';
+      const labels = options.map((o) => o?.label || o?.id).filter(Boolean).join(' / ');
+      return {
+        label: 'CHOICE',
+        shortChip: `CHOICE: ${options.length} lựa chọn`,
+        detailText: `Chờ khách chọn: ${labels || prompt}`,
+        bubbleTitle: 'CHỜ KHÁCH LỰA CHỌN (CHOICE)',
+        bubbleBody: prompt,
+      };
+    }
+
     case 'FEEDBACK': {
       const q = params.question || 'Khao sat danh gia chat luong phuc vu tai sanh';
       return {
@@ -786,8 +851,8 @@ export const BUILTIN_SIMULATOR_WORKFLOWS = [
           target_type: 'LOCATION',
           target_value: 'MAIN_ENTRANCE',
           waypoint_name: 'Cửa Chính Ra Vào Sảnh (Main Entrance)',
-          target_x: 5.2,
-          target_y: 1.0,
+          target_x: FRONT_DOOR_APPROACH.x,
+          target_y: FRONT_DOOR_APPROACH.y,
           speed: 0.35,
         },
       },
@@ -858,8 +923,8 @@ export const BUILTIN_SIMULATOR_WORKFLOWS = [
           target_type: 'LOCATION',
           target_value: 'FRONT_DESK',
           waypoint_name: 'Trước Quầy Lễ Tân (Front Desk)',
-          target_x: 5.2,
-          target_y: 2.0,
+          target_x: GAZEBO_LOBBY_WAYPOINTS.FRONT_DESK.x,
+          target_y: GAZEBO_LOBBY_WAYPOINTS.FRONT_DESK.y,
           speed: 0.35,
         },
       },
@@ -907,8 +972,8 @@ export const BUILTIN_SIMULATOR_WORKFLOWS = [
           target_type: 'LOCATION',
           target_value: 'ELEVATOR',
           waypoint_name: 'Cum Thang May (Elevator)',
-          target_x: 7.8,
-          target_y: 4.5,
+          target_x: GAZEBO_LOBBY_WAYPOINTS.ELEVATOR.x,
+          target_y: GAZEBO_LOBBY_WAYPOINTS.ELEVATOR.y,
           speed: 0.35,
         },
       },
@@ -948,13 +1013,13 @@ export const BUILTIN_SIMULATOR_WORKFLOWS = [
       {
         step_id: 'wf5-step-3',
         type: 'MOVE',
-        title: '3. Robot tro ve Tram Sac Robot Sanh',
+        title: '3. Robot tro ve Vi Tri Cho Sanh',
         params: {
-          target_type: 'LOCATION',
-          target_value: 'DOCK_LOBBY',
-          waypoint_name: 'Trạm Sạc Robot Sảnh',
-          target_x: 3.2,
-          target_y: 2.8,
+          target_type: 'STANDBY',
+          target_value: 'ROBOT_STANDBY',
+          waypoint_name: 'Vị Trí Chờ Robot Sảnh',
+          target_x: GAZEBO_LOBBY_WAYPOINTS.ROBOT_STANDBY.x,
+          target_y: GAZEBO_LOBBY_WAYPOINTS.ROBOT_STANDBY.y,
           speed: 0.35,
         },
       },

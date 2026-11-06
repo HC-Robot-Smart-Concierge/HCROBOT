@@ -3,9 +3,11 @@ import io
 import json
 import logging
 import os
+import re
 import zipfile
 from datetime import datetime
-from typing import List, Optional
+from pathlib import Path
+from typing import Any, List, Optional
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, status, Depends, Response
 from fastapi.responses import FileResponse, StreamingResponse
@@ -274,6 +276,7 @@ async def get_current_map(repo: MapRepository = Depends(get_map_repository)):
 @router.get("/waypoints", response_model=List[Waypoint], summary="Lấy danh sách các điểm Waypoints / Endpoints")
 async def get_waypoints(repo: MapRepository = Depends(get_map_repository)):
     wps = await repo.list_waypoints()
+    sync_all_waypoints_from_db_to_world_and_sim(wps)
     return [
         Waypoint(
             id=w.id,
@@ -290,85 +293,107 @@ async def get_waypoints(repo: MapRepository = Depends(get_map_repository)):
 
 
 
-def get_gazebo_model_name_from_info(wp_id: str, name: str, wp_type: str):
-    id_s = str(wp_id or "").lower()
-    nm_s = str(name or "").lower()
-    tp_s = str(wp_type or "").upper()
-
-    # 1. Charger / Tram sac
-    if 'charger' in id_s or 'sạc' in nm_s or 'sac' in nm_s or 'charger' in nm_s or 'dock' in nm_s or tp_s in ('CHARGER', 'DOCKING_TARGET'):
-        return 'wp_marker_charger'
-    # 2. Lounge / Sofa (Uu tien truoc Standby vi Sofa khach cho co chu 'cho')
-    if 'lounge' in id_s or 'sofa' in nm_s or 'sofa' in id_s or 'ghế' in nm_s or 'ghe' in nm_s:
-        return 'wp_marker_lounge'
-    # 3. Reception / Le tan
-    if 'front_desk' in id_s or 'lễ tân' in nm_s or 'le tan' in nm_s or 'tiếp tân' in nm_s or 'tiep tan' in nm_s or 'front desk' in nm_s or 'reception' in nm_s:
-        return 'wp_marker_frontdesk'
-    # 4. Entrance / Cua chinh / Cua ra vao
-    if 'entrance' in id_s or 'cửa' in nm_s or 'cua' in nm_s or 'door' in nm_s or 'gate' in nm_s or 'main' in nm_s:
-        return 'wp_marker_entrance'
-    # 5. Elevator / Thang may
-    if 'elevator' in id_s or 'thang máy' in nm_s or 'thang may' in nm_s or 'lift' in nm_s:
-        return 'wp_marker_elevator'
-    # 6. Restrooms / WC / Toilet
-    if 'restroom' in id_s or 'wc' in nm_s or 'vệ sinh' in nm_s or 've sinh' in nm_s or 'toilet' in nm_s or 'toilet' in id_s:
-        return 'wp_marker_restrooms'
-    # 7. Emergency Exit / Thoat hiem
-    if 'stair' in id_s or 'emergency' in id_s or 'thoát hiểm' in nm_s or 'thoat hiem' in nm_s:
-        return 'wp_marker_emergency'
-    # 8. Staff / Noi bo
-    if 'staff' in id_s or 'nội bộ' in nm_s or 'noi bo' in nm_s or 'service' in nm_s:
-        return 'wp_marker_staff'
-    # 9. Standby / Diem cho / Park
-    if 'standby' in id_s or 'chờ' in nm_s or 'cho' in nm_s or 'đỗ' in nm_s or 'do' in nm_s or 'standby' in nm_s or 'park' in id_s or tp_s in ('PARK', 'PARKING_SPOT'):
-        return 'wp_marker_standby'
-    return None
+GAZEBO_WAYPOINT_POOL = [
+    ("wp_marker_standby", "PARK", (0.38, 0.65, 0.98, 0.9), (0.25, 0.50, 0.80, 1.0)),
+    ("wp_marker_charger", "CHARGER", (0.20, 0.83, 0.60, 0.9), (0.15, 0.65, 0.45, 1.0)),
+    ("wp_marker_frontdesk", "WAYPOINT", (0.58, 0.64, 0.72, 0.9), (0.45, 0.50, 0.58, 1.0)),
+    ("wp_marker_entrance", "WAYPOINT", (0.58, 0.64, 0.72, 0.9), (0.45, 0.50, 0.58, 1.0)),
+    ("wp_marker_staff", "WAYPOINT", (0.58, 0.64, 0.72, 0.9), (0.45, 0.50, 0.58, 1.0)),
+    ("wp_marker_elevator", "WAYPOINT", (0.58, 0.64, 0.72, 0.9), (0.45, 0.50, 0.58, 1.0)),
+    ("wp_marker_restrooms", "WAYPOINT", (0.58, 0.64, 0.72, 0.9), (0.45, 0.50, 0.58, 1.0)),
+    ("wp_marker_emergency", "WAYPOINT", (0.58, 0.64, 0.72, 0.9), (0.45, 0.50, 0.58, 1.0)),
+    ("wp_marker_lounge", "WAYPOINT", (0.58, 0.64, 0.72, 0.9), (0.45, 0.50, 0.58, 1.0)),
+]
 
 
-def sync_waypoint_to_world_and_sim(wp_id: str, name: str, wp_type: str, x: float, y: float, z: float = 0.01):
-    """
-    Cap nhat vi tri diem moc truc tiep vao file hotel_room.world va dong bo sang Gazebo Sim.
-    Neu z < 0 (vi du -10.0), model se duoc giau duoi long dat de an khoi sa ban 3D.
-    """
-    model_name = get_gazebo_model_name_from_info(wp_id, name, wp_type)
-    if not model_name:
-        return
+def _find_hotel_world_path() -> Optional[Path]:
+    """Tìm đường dẫn chính xác tới file hotel_room.world."""
+    world_candidates = [
+        Path("robot/worlds/hotel_room.world"),
+        Path(__file__).resolve().parents[5] / "robot" / "worlds" / "hotel_room.world" if len(Path(__file__).resolve().parents) > 5 else None,
+        Path(__file__).resolve().parents[4] / "robot" / "worlds" / "hotel_room.world" if len(Path(__file__).resolve().parents) > 4 else None,
+    ]
+    return next((p for p in world_candidates if p and p.exists()), None)
 
-    # Cap nhat vao file hotel_room.world
-    try:
-        from pathlib import Path
-        import re
-        world_candidates = [
-            Path("robot/worlds/hotel_room.world"),
-            Path(__file__).resolve().parents[5] / "robot" / "worlds" / "hotel_room.world",
-            Path(__file__).resolve().parents[4] / "robot" / "worlds" / "hotel_room.world",
-        ]
-        world_path = next((p for p in world_candidates if p.exists()), None)
-        if world_path:
-            content = world_path.read_text(encoding="utf-8")
-            pattern = rf'(<model name="{model_name}">\s*<static>true</static>\s*<pose>)([^<]+)(</pose>)'
-            replacement = rf'\g<1>{x:.2f} {y:.2f} {z:.2f} 0 0 0\g<3>'
-            new_content = re.sub(pattern, replacement, content)
-            if new_content != content:
-                world_path.write_text(new_content, encoding="utf-8")
-                logger.info(f"[WORLD SYNC] Da cap nhat file hotel_room.world: {model_name} -> ({x:.2f}, {y:.2f}, {z:.2f})")
-        else:
-            logger.warning("[WORLD SYNC] Khong tim thay file hotel_room.world o bat ky duong dan nao")
-    except Exception as e:
-        logger.warning(f"[WORLD SYNC] Loi ghi file hotel_room.world: {e}")
 
-    # Goi gz service neu Gazebo dang chay trong WSL
+def _send_gz_pose_wsl(model_name: str, x: float, y: float, z: float) -> bool:
+    """Gửi service lệnh set_pose trực tiếp tới Gazebo Harmonic qua WSL."""
     try:
         import subprocess
         req_str = f'name: "{model_name}", position: {{x: {x:.2f}, y: {y:.2f}, z: {z:.2f}}}'
         bash_cmd = (
             "source /opt/ros/jazzy/setup.bash && "
-            "export GZ_CONFIG_PATH=/opt/ros/jazzy/opt/gz_sim_vendor/share/gz:/opt/ros/jazzy/opt/gz_gui_vendor/share/gz:/opt/ros/jazzy/opt/gz_msgs_vendor/share/gz:/opt/ros/jazzy/opt/gz_transport_vendor/share/gz:/opt/ros/jazzy/opt/gz_plugin_vendor/share/gz:/opt/ros/jazzy/opt/sdformat_vendor/share/gz:/opt/ros/jazzy/opt/gz_fuel_tools_vendor/share/gz && "
             f"gz service -s /world/hotel_lobby_world/set_pose --reqtype gz.msgs.Pose --reptype gz.msgs.Boolean --timeout 2000 --req '{req_str}'"
         )
-        subprocess.run(["wsl", "bash", "-c", bash_cmd], capture_output=True, timeout=3)
+        res = subprocess.run(["wsl", "bash", "-c", bash_cmd], capture_output=True, timeout=3)
+        return res.returncode == 0
     except Exception as e:
-        logger.debug(f"[GAZEBO SYNC] Loi goi wsl set_pose: {e}")
+        logger.debug(f"[GAZEBO SYNC] Loi goi wsl set_pose cho {model_name}: {e}")
+        return False
+
+
+def _get_material_for_type(wp_type: str):
+    """Trả về màu sắc material tương ứng với loại Waypoint."""
+    tp = str(wp_type or "").upper()
+    if tp in ("PARK", "PARKING_SPOT"):
+        return (0.38, 0.65, 0.98, 0.9), (0.25, 0.50, 0.80, 1.0)
+    elif tp in ("CHARGER", "DOCKING_TARGET"):
+        return (0.20, 0.83, 0.60, 0.9), (0.15, 0.65, 0.45, 1.0)
+    else:
+        return (0.58, 0.64, 0.72, 0.9), (0.45, 0.50, 0.58, 1.0)
+
+
+def sync_all_waypoints_from_db_to_world_and_sim(waypoints: List[Any]):
+    """
+    Đồng bộ 100% danh sách Waypoints từ Web/DB sang Gazebo Sim và file hotel_room.world.
+    - Duyệt qua từng model trong pool (9 điểm).
+    - Điểm nào có trên Web -> set_pose z=0.01 tại (x, y), đồng thời cập nhật màu theo type.
+    - Điểm nào bị xóa trên Web -> ẩn xuống z=-10.00.
+    """
+    total_slots = len(GAZEBO_WAYPOINT_POOL)
+    active_count = min(len(waypoints), total_slots)
+
+    world_path = _find_hotel_world_path()
+    file_content = world_path.read_text(encoding="utf-8") if world_path else None
+
+    for idx, (model_name, default_type, _, _) in enumerate(GAZEBO_WAYPOINT_POOL):
+        if idx < active_count:
+            wp = waypoints[idx]
+            target_x = float(wp.x)
+            target_y = float(wp.y)
+            target_z = 0.01
+            wp_type = getattr(wp, "type", default_type) or default_type
+            diffuse, emissive = _get_material_for_type(wp_type)
+        else:
+            target_x = 0.0
+            target_y = 0.0
+            target_z = -10.00
+            diffuse, emissive = None, None
+
+        # 1. Cập nhật vị trí vào file hotel_room.world
+        if file_content:
+            pattern = rf'(<model name="{model_name}">\s*<static>true</static>\s*<pose>)([^<]+)(</pose>)'
+            replacement = rf'\g<1>{target_x:.2f} {target_y:.2f} {target_z:.2f} 0 0 0\g<3>'
+            file_content = re.sub(pattern, replacement, file_content)
+
+            if diffuse and emissive:
+                mat_pattern = rf'(<model name="{model_name}">[\s\S]*?<material>[\s\S]*?<ambient>)[^<]+(</ambient>[\s\S]*?<diffuse>)[^<]+(</diffuse>[\s\S]*?<emissive>)[^<]+(</emissive>)'
+                mat_replace = (
+                    rf'\g<1>{diffuse[0]} {diffuse[1]} {diffuse[2]} {diffuse[3]}\g<2>'
+                    rf'{diffuse[0]} {diffuse[1]} {diffuse[2]} {diffuse[3]}\g<3>'
+                    rf'{emissive[0]} {emissive[1]} {emissive[2]} {emissive[3]}\g<4>'
+                )
+                file_content = re.sub(mat_pattern, mat_replace, file_content)
+
+        # 2. Gửi lệnh trực tiếp tới Gazebo Sim đang chạy
+        _send_gz_pose_wsl(model_name, target_x, target_y, target_z)
+
+    if file_content and world_path:
+        try:
+            world_path.write_text(file_content, encoding="utf-8")
+            logger.info(f"[WORLD SYNC] Đã đồng bộ toàn bộ {active_count} điểm mốc vào {world_path.name}")
+        except Exception as e:
+            logger.warning(f"[WORLD SYNC] Lỗi ghi file {world_path}: {e}")
 
 @router.post("/waypoints", response_model=Waypoint, summary="Tạo mới hoặc cập nhật tọa độ Waypoint / Endpoint")
 async def save_waypoint(wp: Waypoint, repo: MapRepository = Depends(get_map_repository)):
@@ -395,7 +420,8 @@ async def save_waypoint(wp: Waypoint, repo: MapRepository = Depends(get_map_repo
         type=wp.type or "WAYPOINT",
         description=wp.description,
     )
-    sync_waypoint_to_world_and_sim(saved.id, saved.name, saved.type, saved.x, saved.y)
+    all_wps = await repo.list_waypoints()
+    sync_all_waypoints_from_db_to_world_and_sim(all_wps)
     return Waypoint(
         id=saved.id,
         name=saved.name,
@@ -437,7 +463,8 @@ async def update_waypoint(waypoint_id: str, wp: Waypoint, repo: MapRepository = 
         type=wp.type or "WAYPOINT",
         description=wp.description,
     )
-    sync_waypoint_to_world_and_sim(saved.id, saved.name, saved.type, saved.x, saved.y)
+    all_wps = await repo.list_waypoints()
+    sync_all_waypoints_from_db_to_world_and_sim(all_wps)
     return Waypoint(
         id=saved.id,
         name=saved.name,
@@ -452,15 +479,12 @@ async def update_waypoint(waypoint_id: str, wp: Waypoint, repo: MapRepository = 
 
 @router.delete("/waypoints/{waypoint_id}", summary="Xóa điểm Waypoint / Endpoint")
 async def delete_waypoint(waypoint_id: str, repo: MapRepository = Depends(get_map_repository)):
-    existing_wps = await repo.list_waypoints()
-    target_wp = next((w for w in existing_wps if str(w.id) == str(waypoint_id)), None)
-
     deleted = await repo.delete_waypoint(waypoint_id)
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy Waypoint")
 
-    if target_wp:
-        sync_waypoint_to_world_and_sim(target_wp.id, target_wp.name, target_wp.type, 0.0, 0.0, z=-10.0)
+    all_wps = await repo.list_waypoints()
+    sync_all_waypoints_from_db_to_world_and_sim(all_wps)
 
     return {"status": "SUCCESS", "message": f"Đã xóa waypoint {waypoint_id}"}
 

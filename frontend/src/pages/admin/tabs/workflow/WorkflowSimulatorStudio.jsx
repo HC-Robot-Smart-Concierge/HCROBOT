@@ -27,6 +27,7 @@ import {
   BatteryLow,
 } from 'lucide-react';
 import { useSpeechSynthesis } from '../../../../hooks/useSpeechSynthesis';
+import { useRobotControlText } from '../../../../context/RobotControlLanguage';
 import { LobbyFloorPlan } from './LobbyFloorPlan';
 import {
   RosbridgeClient,
@@ -69,6 +70,9 @@ import {
   resolveMoveTarget,
   resolveNoStopPassthrough,
 } from './workflowSimulatorUtils';
+import { guestRequestPhase } from '../../../../utils/workflowGuestRequest';
+import { WorkflowGuestRequestPanel } from './WorkflowGuestRequestPanel';
+import { useLanguage } from '../../../../context/LanguageContext';
 import { KioskChoicePrompt } from './KioskChoicePrompt';
 import { OUTCOME, findBrokenFlowLinks, getChoiceTimeoutSec, resolveNextStepIndex } from '../../../../utils/workflowFlow';
 import {
@@ -92,6 +96,9 @@ export const WorkflowSimulatorStudio = ({
   onNotify = () => {},
   onWorkflowUpdated = null,
 }) => {
+  const rc = useRobotControlText();
+  const { language } = useLanguage();
+  const [guestRequest, setGuestRequest] = useState({});
   // Khoi tao danh sach workflow thuc te tu props (Khong dung fallback seed gia lap)
   const [localWorkflows, setLocalWorkflows] = useState(() =>
     Array.isArray(workflows) && workflows.length > 0 ? workflows : []
@@ -292,6 +299,7 @@ export const WorkflowSimulatorStudio = ({
   const [visitedSteps, setVisitedSteps] = useState(() => new Set());
   // Pin gia lap (Gazebo khong mo phong pin); cung quy tac pin yeu voi man hinh robot
   const [simBatteryPercent, setSimBatteryPercent] = useState(100);
+  const [simGuestPresent, setSimGuestPresent] = useState(false);
 
   // Duong di hien tai cua robot: { waypoints: [{x, y}], label: string }
   const [currentPath, setCurrentPath] = useState(null);
@@ -1104,6 +1112,8 @@ export const WorkflowSimulatorStudio = ({
   }, []);
 
   const activeStep = isPlaying && currentStepIndex < steps.length ? steps[currentStepIndex] : null;
+  const showingIdlePromo = activeWorkflow?.id === 'wf-06-idle-promo' && activeStep?.type === 'SHOW';
+  const requestPhase = guestRequestPhase(activeWorkflow?.id, activeStep);
   const isMoving = Boolean(currentPath && currentPath.waypoints && currentPath.waypoints.length > 0);
 
   // Xac dinh trang thai gon gang cua robot (Chi the hien trang thai, khong ghi chi tiet toa do/dieu huong toi dau)
@@ -1542,7 +1552,7 @@ export const WorkflowSimulatorStudio = ({
 
   // Thuc thi buoc hien tai (Chi trigger khi chuyen buoc hoac bam Play/Pause)
   useEffect(() => {
-    if (!isPlaying || isPaused || !activeStep) return;
+    if (!isPlaying || isPaused || !activeStep || (showingIdlePromo && simGuestPresent)) return;
 
     if (timerRef.current) clearTimeout(timerRef.current);
     if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
@@ -1562,6 +1572,7 @@ export const WorkflowSimulatorStudio = ({
 
     setStepProgress(0);
     setVisitedSteps((prev) => (prev.has(currentStepIndex) ? prev : new Set(prev).add(currentStepIndex)));
+    if (requestPhase) return;
     const stepType = activeStep.type;
     const params = activeStep.params || {};
 
@@ -1668,12 +1679,12 @@ export const WorkflowSimulatorStudio = ({
       if (timerRef.current) clearTimeout(timerRef.current);
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     };
-  }, [isPlaying, isPaused, currentStepIndex, stepRun, selectedWorkflowId, handleStepFinish, handleNavigateToGoal]);
+  }, [isPlaying, isPaused, currentStepIndex, stepRun, selectedWorkflowId, handleStepFinish, handleNavigateToGoal, simGuestPresent, showingIdlePromo]);
 
   // PIN YEU: tu chay kich ban ve tram sac theo utils/batteryPolicy (giong man hinh robot)
   const chargeRoutine = useMemo(() => findChargeRoutine(localWorkflows), [localWorkflows]);
   const isChargeRoutineRunning = isPlaying && activeWorkflow?.id === chargeRoutine.id;
-  const isServingGuestInSim = isPlaying && !isChargeRoutineRunning;
+  const isServingGuestInSim = isPlaying && !isChargeRoutineRunning && activeWorkflow?.id !== 'wf-06-idle-promo';
   const pendingAutoStartRef = useRef(null);
 
   // Dung kich ban dang chay ma khong dua robot ve vi tri xuat phat
@@ -1730,6 +1741,8 @@ export const WorkflowSimulatorStudio = ({
       );
       return;
     }
+    setGuestRequest({});
+    setSimGuestPresent(false);
     setIsPlaying(true);
     setIsPaused(false);
     setCurrentStepIndex(0);
@@ -1885,7 +1898,7 @@ export const WorkflowSimulatorStudio = ({
     <div className="flex flex-col h-full w-full overflow-hidden select-none" style={{ backgroundColor: '#F2EFE9' }}>
       {/* THANH DIEU KHIEN CHINH - Gọn gàng, phân nhóm trực quan chuẩn UX */}
       <div
-        className="h-14 px-3 sm:px-4 border-b flex items-center justify-between gap-2 shrink-0 select-none"
+        className="relative z-20 min-h-14 px-3 sm:px-5 py-2 border-b flex flex-wrap items-center justify-between gap-2 shrink-0 select-none"
         style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD' }}
       >
         {/* NHOM 1: CHON KICH BAN VA QUAN LY LOP BAN DO */}
@@ -1899,13 +1912,13 @@ export const WorkflowSimulatorStudio = ({
                 setIsMapMenuOpen(false);
                 setIsSettingsMenuOpen(false);
               }}
-              className={`h-8.5 px-3 rounded-lg border text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer ${
+              className={`h-8 px-3 rounded-lg border text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer ${
                 isWorkflowMenuOpen
                   ? 'bg-[#262626] text-white border-[#262626]'
                   : 'text-[#262626] hover:bg-[#FAF8F5]'
               }`}
               style={!isWorkflowMenuOpen ? { backgroundColor: '#F2EFE9', borderColor: '#BFBFBD' } : {}}
-              title={activeWorkflow?.name ? `Kịch bản hiện tại: ${activeWorkflow.name}` : 'Chọn kịch bản'}
+              title={activeWorkflow?.name || rc('Select workflow')}
             >
               <span>
                 Workflow {localWorkflows.findIndex((w) => w.id === selectedWorkflowId) >= 0 ? localWorkflows.findIndex((w) => w.id === selectedWorkflowId) + 1 : 1}
@@ -1996,7 +2009,7 @@ export const WorkflowSimulatorStudio = ({
                 setIsWorkflowMenuOpen(false);
                 setIsSettingsMenuOpen(false);
               }}
-              className={`h-8.5 px-2.5 rounded-lg border text-xs font-bold flex items-center gap-1 shadow-xs transition-all cursor-pointer ${
+              className={`h-8 px-2.5 rounded-lg border text-xs font-bold flex items-center gap-1 shadow-xs transition-all cursor-pointer ${
                 isMapMenuOpen || selectedZone || selectedEndpoint
                   ? 'bg-[#262626] text-white border-[#262626]'
                   : 'text-[#262626] hover:bg-[#FAF8F5]'
@@ -2237,7 +2250,7 @@ export const WorkflowSimulatorStudio = ({
         </div>
 
         {/* NHOM 2: BỘ ĐIỀU KHIỂN CHẠY & TIẾN TRÌNH WORKFLOW HỢP NHẤT TRÊN THANH CÔNG CỤ */}
-        <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 max-w-2xl">
+        <div className="order-last xl:order-none w-full xl:w-auto xl:flex-1 flex flex-wrap sm:flex-nowrap items-center justify-center gap-2 min-w-0">
           {/* Cụm Nút Playback Controls: ĐỒNG BỘ 4 NÚT CÙNG TỈ LỆ VÀ KÍCH THƯỚC (32x32px) */}
           <div className="flex items-center gap-1 bg-[#F2EFE9] p-1 rounded-xl border shrink-0" style={{ borderColor: '#BFBFBD' }}>
             {/* 1. Nút Chạy / Tạm dừng */}
@@ -2251,10 +2264,10 @@ export const WorkflowSimulatorStudio = ({
               }`}
               title={
                 isPlaying && !isPaused
-                  ? 'Tạm dừng mô phỏng'
+                  ? rc('Pause simulation')
                   : isPlaying && isPaused
-                  ? 'Tiếp tục mô phỏng'
-                  : 'Chạy thử nghiệm kịch bản'
+                  ? rc('Resume simulation')
+                  : rc('Run simulation')
               }
             >
               {isPlaying && !isPaused ? (
@@ -2270,7 +2283,7 @@ export const WorkflowSimulatorStudio = ({
               onClick={isPlaying ? handleNextStep : handleStartSim}
               className="h-8 w-8 rounded-lg text-white flex items-center justify-center shadow-xs cursor-pointer hover:bg-[#363636] transition-colors"
               style={{ backgroundColor: '#262626' }}
-              title={isPlaying ? 'Chuyển sang bước tiếp theo' : 'Bắt đầu kịch bản'}
+              title={rc(isPlaying ? 'Next step' : 'Run simulation')}
             >
               <SkipForward className="w-3.5 h-3.5" />
             </button>
@@ -2280,7 +2293,7 @@ export const WorkflowSimulatorStudio = ({
               type="button"
               onClick={handleStopSim}
               className="h-8 w-8 rounded-lg bg-red-700 hover:bg-red-800 text-white flex items-center justify-center shadow-xs cursor-pointer transition-colors"
-              title="Dừng hẳn phiên mô phỏng"
+              title={rc('Stop simulation')}
             >
               <Square className="w-3.5 h-3.5 fill-current" />
             </button>
@@ -2291,7 +2304,7 @@ export const WorkflowSimulatorStudio = ({
               onClick={handleReset}
               className="h-8 w-8 rounded-lg border bg-white hover:bg-[#FAF8F5] text-[#262626] shadow-xs flex items-center justify-center cursor-pointer transition-colors"
               style={{ borderColor: '#BFBFBD' }}
-              title="Đặt Robot về vị trí chờ ban đầu"
+              title={rc('Reset robot position')}
             >
               <RotateCcw className="w-3.5 h-3.5" />
             </button>
@@ -2303,7 +2316,7 @@ export const WorkflowSimulatorStudio = ({
             style={{ borderColor: '#BFBFBD' }}
           >
             {/* Dãy Stepper các bước ngang (Horizontal Steps) */}
-            <div className="flex items-center gap-1 shrink-0 overflow-x-auto py-0.5">
+            <div className="flex items-center gap-1 min-w-0 overflow-x-auto py-0.5">
               {steps.map((st, idx) => {
                 const isActive = isPlaying && currentStepIndex === idx;
                 const isPast = isPlaying && !isActive && visitedSteps.has(idx);
@@ -2320,7 +2333,7 @@ export const WorkflowSimulatorStudio = ({
                       setIsMapMenuOpen(false);
                       setIsSettingsMenuOpen(false);
                     }}
-                    className={`h-7 min-w-7 px-1.5 rounded-lg flex items-center justify-center text-[10.5px] font-mono font-bold transition-all cursor-pointer ${
+                    className={`h-7 min-w-7 shrink-0 px-1.5 rounded-lg flex items-center justify-center text-[10.5px] font-mono font-bold transition-all cursor-pointer ${
                       isActive
                         ? 'bg-[#262626] text-white shadow-xs ring-2 ring-emerald-500/60 animate-pulse'
                         : isPast
@@ -2340,7 +2353,7 @@ export const WorkflowSimulatorStudio = ({
             <div className="w-px h-5 bg-[#BFBFBD] shrink-0" />
 
             {/* Chip Trạng thái & Tiến độ bước thời gian thực */}
-            <div className="flex flex-col justify-center min-w-0 shrink">
+            <div className="flex flex-col justify-center min-w-0 shrink-0 max-w-[35vw]">
               <div className="flex items-center gap-1.5 text-xs">
                 <span
                   className="px-1.5 py-0.2 rounded text-[9.5px] font-mono font-bold tracking-wider shrink-0"
@@ -2355,9 +2368,9 @@ export const WorkflowSimulatorStudio = ({
                 <span
                   className="font-bold text-[11px] truncate max-w-[120px] sm:max-w-[200px]"
                   style={{ color: '#262626' }}
-                  title={activeStep ? (activeStep.title || activeDetail.shortChip) : 'Robot ở trạng thái chờ lệnh'}
+                  title={activeStep ? (activeStep.title || activeDetail.shortChip) : rc('Robot ready')}
                 >
-                  {activeStep ? (activeStep.title || activeDetail.shortChip) : 'Robot chờ lệnh'}
+                  {activeStep ? (activeStep.title || activeDetail.shortChip) : rc('Robot ready')}
                 </span>
                 {isPlaying && (
                   <span className="font-mono font-bold text-[11px] text-[#262626] shrink-0">
@@ -2435,7 +2448,7 @@ export const WorkflowSimulatorStudio = ({
                           }}
                         >
                           <div className="flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-2 min-w-0">
+                            <div className="flex-1 flex items-center gap-2 min-w-0">
                               <span
                                 className={`w-5 h-5 rounded-md flex items-center justify-center font-mono font-bold text-[10px] shrink-0 ${
                                   isActive
@@ -2447,13 +2460,16 @@ export const WorkflowSimulatorStudio = ({
                               >
                                 {idx + 1}
                               </span>
+                              {/* Nhãn loại bước rộng cố định để tiêu đề các bước thẳng một cột */}
                               <span
-                                className="px-1.5 py-0.2 rounded text-[9px] font-mono font-bold tracking-wider border shrink-0"
+                                className="w-[78px] px-1 py-0.5 rounded text-[9px] text-center truncate font-mono font-bold tracking-wider border shrink-0"
                                 style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD', color: '#262626' }}
+                                title={stDetail.label}
                               >
-                                {stDetail.label}
+                                {stDetail.label === 'CREATE_REQUEST' ? 'REQUEST' : stDetail.label}
                               </span>
-                              <span className="font-bold text-xs truncate" title={st.title || stDetail.shortChip}>
+                              {/* Tiêu đề dài tự xuống dòng, không cắt bằng dấu ba chấm */}
+                              <span className="flex-1 min-w-0 font-bold text-xs leading-snug break-words">
                                 {st.title || stDetail.shortChip}
                               </span>
                             </div>
@@ -2599,7 +2615,7 @@ export const WorkflowSimulatorStudio = ({
                 setIsMapMenuOpen(false);
                 setIsWorkflowMenuOpen(false);
               }}
-              className={`h-8.5 w-8.5 rounded-lg border text-xs font-bold flex items-center justify-center shadow-xs cursor-pointer transition-all ${
+              className={`h-8 w-8 rounded-lg border text-xs font-bold flex items-center justify-center shadow-xs cursor-pointer transition-all ${
                 isSettingsMenuOpen
                   ? 'bg-[#262626] text-white border-[#262626]'
                   : 'hover:bg-[#FAF8F5]'
@@ -2763,9 +2779,9 @@ export const WorkflowSimulatorStudio = ({
           <button
             type="button"
             onClick={handleDispatchToRobot}
-            className="h-8.5 w-8.5 rounded-lg text-white flex items-center justify-center shadow-xs transition-all cursor-pointer shrink-0 hover:bg-[#363636]"
+            className="h-8 w-8 rounded-lg text-white flex items-center justify-center shadow-xs transition-all cursor-pointer shrink-0 hover:bg-[#363636]"
             style={{ backgroundColor: '#262626' }}
-            title="Phát kịch bản xuống Robot"
+            title={rc('Send workflow to robot')}
           >
             <Send className="w-3.5 h-3.5" />
           </button>
@@ -2775,9 +2791,9 @@ export const WorkflowSimulatorStudio = ({
             <button
               type="button"
               onClick={onClose}
-              className="h-8.5 w-8.5 rounded-lg border flex items-center justify-center cursor-pointer shadow-xs hover:bg-[#FAF8F5]"
+              className="h-8 w-8 rounded-lg border flex items-center justify-center cursor-pointer shadow-xs hover:bg-[#FAF8F5]"
               style={{ backgroundColor: '#F2EFE9', borderColor: '#BFBFBD', color: '#262626' }}
-              title="Đóng giả lập"
+              title={rc('Close simulator')}
             >
               <X className="w-4 h-4" />
             </button>
@@ -2916,6 +2932,19 @@ export const WorkflowSimulatorStudio = ({
           )}
         </div>
 
+        {showingIdlePromo && (
+          <button type="button" aria-pressed={simGuestPresent} onClick={() => setSimGuestPresent(value => !value)}
+            className="absolute bottom-16 left-1/2 z-30 -translate-x-1/2 rounded-lg border bg-white px-4 py-2 text-xs font-semibold shadow">
+            {rc(simGuestPresent ? 'Guest left · resume promotion' : 'Guest arrived · pause promotion')}
+          </button>
+        )}
+        {requestPhase && !isPaused && (
+          <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 w-[min(440px,94%)] max-h-[90%] overflow-y-auto rounded-xl border bg-white p-4 shadow-xl">
+            <WorkflowGuestRequestPanel key={activeStep.step_id + ':' + stepRun} workflowId={activeWorkflow.id} phase={requestPhase}
+              session={guestRequest} setSession={setGuestRequest} preview english={language === 'EN'}
+              onNext={() => handleStepFinish()} onCancel={handleStopSim} />
+          </div>
+        )}
         {/* KHUNG LUA CHON CUA KHACH (BUOC CHOICE) - dung chung voi man hinh robot */}
         {activeStep?.type === 'CHOICE' && (
           <div

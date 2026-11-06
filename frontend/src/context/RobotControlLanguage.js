@@ -3,6 +3,22 @@ import { useLanguage } from './LanguageContext';
 
 // English is the source language. Vietnamese is selected only via admin Settings.
 const vietnamese = {
+  "Guest arrived · pause promotion": "Khách đến · tạm dừng quảng cáo",
+  "Guest left · resume promotion": "Khách rời đi · tiếp tục quảng cáo",
+  "Workflow views": "Chế độ xem kịch bản",
+  "Workflow list": "Danh sách kịch bản",
+  "Simulator": "Giả lập",
+  "New workflow": "Tạo kịch bản mới",
+  "Select workflow": "Chọn kịch bản",
+  "Robot ready": "Robot chờ lệnh",
+  "Send workflow to robot": "Phát kịch bản xuống robot",
+  "Close simulator": "Đóng giả lập",
+  "Stop simulation": "Dừng mô phỏng",
+  "Run simulation": "Chạy mô phỏng",
+  "Pause simulation": "Tạm dừng mô phỏng",
+  "Resume simulation": "Tiếp tục mô phỏng",
+  "Next step": "Bước tiếp theo",
+  "Reset robot position": "Đặt robot về vị trí chờ",
   "Floor 1 patrol": "Tuần tra tầng 1",
   "Point A": "Điểm A",
   "Wait": "Dừng chờ",

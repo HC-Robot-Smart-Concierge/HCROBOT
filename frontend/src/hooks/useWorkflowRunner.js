@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { guestRequestPhase } from '../utils/workflowGuestRequest';
 import {
   OUTCOME,
   getChoiceTimeoutSec,
@@ -26,6 +27,7 @@ export function useWorkflowRunner({
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   // Tăng mỗi lần vào bước, để bước nhảy về chính nó vẫn chạy lại
   const [stepRun, setStepRun] = useState(0);
+  const [guestRequest, setGuestRequest] = useState({});
   const timerRef = useRef(null);
   const speechEndDebounceRef = useRef(null);
 
@@ -45,14 +47,15 @@ export function useWorkflowRunner({
     if (silenceIntervalRef.current) clearInterval(silenceIntervalRef.current);
   };
 
-  const startWorkflow = (wf) => {
+  const startWorkflow = (wf, startIndex = 0) => {
     if (!wf || !wf.steps || wf.steps.length === 0) return;
     cleanupTimers();
     if (stopSpeaking) stopSpeaking();
     if (stopListening) stopListening();
 
+    setGuestRequest({});
     setActiveWorkflow(wf);
-    setCurrentStepIndex(0);
+    setCurrentStepIndex(Number.isInteger(startIndex) && wf.steps[startIndex] ? startIndex : 0);
     setStepRun((n) => n + 1);
     setIsWorkflowRunning(true);
   };
@@ -90,6 +93,7 @@ export function useWorkflowRunner({
   // Tự động nhận diện khi người dùng nói xong trong bước LISTEN (kế thừa) hoặc phát hiện từ khóa tạm biệt trong COMMUNICATE
   useEffect(() => {
     if (!isWorkflowRunning || !activeStep || !transcript || !transcript.trim()) return;
+    if (guestRequestPhase(activeWorkflow.id, activeStep)) return;
 
     const lowerTranscript = transcript.toLowerCase();
 
@@ -138,6 +142,8 @@ export function useWorkflowRunner({
     if (!isWorkflowRunning || !activeStep) return;
 
     cleanupTimers();
+
+    if (guestRequestPhase(activeWorkflow.id, activeStep)) return;
 
     let durationMs = 5000;
     const isCommunicate = activeStep.type === 'COMMUNICATE';
@@ -230,6 +236,7 @@ export function useWorkflowRunner({
   }, [isWorkflowRunning, currentStepIndex, activeWorkflow?.id, stepRun]);
 
   return {
+    stepRun, guestRequest, setGuestRequest,
     activeWorkflow,
     isWorkflowRunning,
     currentStepIndex,

@@ -32,6 +32,14 @@ describe('resolveMoveTarget', () => {
     expect(resolveMoveTarget(move({ target_value: 'ELEVATOR' }))).toMatchObject(at('ELEVATOR'));
   });
 
+  it('sends charger moves to the charging station shown on the map', () => {
+    const goCharge = move({ target_type: 'CHARGER', target_value: 'CHARGER_STATION', target_x: 6.0, target_y: 9.6 });
+    const mapped = [{ id: 'wp-a', type: 'WAYPOINT', x: 1, y: 1 }, { id: 'wp-c', type: 'CHARGER', x: 3.95, y: 6.6 }];
+    expect(resolveMoveTarget(goCharge, mapped)).toEqual({ x: 3.95, y: 6.6 });
+    expect(resolveMoveTarget(goCharge, [])).toEqual({ x: 6.0, y: 9.6 });
+    expect(resolveMoveTarget(move({ target_type: 'CHARGER', target_value: 'CHARGER_STATION' }), [])).toMatchObject(at('CHARGER_STATION'));
+  });
+
   it('built-in fallback workflows only use current lobby waypoints', () => {
     const moves = BUILTIN_SIMULATOR_WORKFLOWS.flatMap((wf) => wf.steps).filter((s) => s.type === 'MOVE');
     for (const step of moves) {

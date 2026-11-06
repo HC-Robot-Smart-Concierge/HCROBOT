@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   Play,
   Pause,
@@ -24,6 +24,7 @@ import {
   ZoomIn,
   ZoomOut,
   Maximize2,
+  BatteryLow,
 } from 'lucide-react';
 import { useSpeechSynthesis } from '../../../../hooks/useSpeechSynthesis';
 import { LobbyFloorPlan } from './LobbyFloorPlan';
@@ -70,6 +71,15 @@ import {
 } from './workflowSimulatorUtils';
 import { KioskChoicePrompt } from './KioskChoicePrompt';
 import { OUTCOME, findBrokenFlowLinks, getChoiceTimeoutSec, resolveNextStepIndex } from '../../../../utils/workflowFlow';
+import {
+  BATTERY_CRITICAL_PERCENT,
+  BATTERY_LOW_PERCENT,
+  BATTERY_MODE,
+  BATTERY_RESUME_PERCENT,
+  describeBatteryStatus,
+  findChargeRoutine,
+} from '../../../../utils/batteryPolicy';
+import { useLowBatteryGuard } from '../../../../hooks/useLowBatteryGuard';
 
 // Kich thuoc ViewBox co so (om sat map 490x315 voi le 3px de anh map to toi da)
 const BASE_VB_WIDTH = 496;
@@ -280,6 +290,8 @@ export const WorkflowSimulatorStudio = ({
   // Tang moi lan vao buoc de buoc nhay ve chinh no van chay lai; cac buoc da chay that su (co re nhanh)
   const [stepRun, setStepRun] = useState(0);
   const [visitedSteps, setVisitedSteps] = useState(() => new Set());
+  // Pin gia lap (Gazebo khong mo phong pin); cung quy tac pin yeu voi man hinh robot
+  const [simBatteryPercent, setSimBatteryPercent] = useState(100);
 
   // Duong di hien tai cua robot: { waypoints: [{x, y}], label: string }
   const [currentPath, setCurrentPath] = useState(null);
@@ -1658,10 +1670,64 @@ export const WorkflowSimulatorStudio = ({
     };
   }, [isPlaying, isPaused, currentStepIndex, stepRun, selectedWorkflowId, handleStepFinish, handleNavigateToGoal]);
 
+  // PIN YEU: tu chay kich ban ve tram sac theo utils/batteryPolicy (giong man hinh robot)
+  const chargeRoutine = useMemo(() => findChargeRoutine(localWorkflows), [localWorkflows]);
+  const isChargeRoutineRunning = isPlaying && activeWorkflow?.id === chargeRoutine.id;
+  const isServingGuestInSim = isPlaying && !isChargeRoutineRunning;
+  const pendingAutoStartRef = useRef(null);
+
+  // Dung kich ban dang chay ma khong dua robot ve vi tri xuat phat
+  const haltSimulation = useCallback(() => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+    if (stopSpeakingRef.current) stopSpeakingRef.current();
+    if (rosClientRef.current?.isConnected) rosClientRef.current.publishCmdVel(0.0, 0.0);
+    setIsPlaying(false);
+    setIsPaused(false);
+    setCurrentPath(null);
+    currentPathRef.current = null;
+  }, []);
+
+  const startChargeRoutine = useCallback((routine) => {
+    if (!routine) return;
+    setLocalWorkflows((prev) => (prev.some((w) => w.id === routine.id) ? prev : [...prev, routine]));
+    pendingAutoStartRef.current = routine.id;
+    setSelectedWorkflowId(routine.id);
+  }, []);
+
+  const batteryGuard = useLowBatteryGuard({
+    percent: simBatteryPercent,
+    routine: chargeRoutine,
+    isRoutineRunning: isChargeRoutineRunning,
+    isServingGuest: isServingGuestInSim,
+    startRoutine: startChargeRoutine,
+    interruptGuest: () => {
+      haltSimulation();
+      onNotify(`Pin dưới ${BATTERY_CRITICAL_PERCENT}%: dừng kịch bản đang chạy để về trạm sạc.`, 'warning');
+    },
+    onChargeNeeded: () =>
+      onNotify('Robot đã tới trạm sạc. Trên robot thật, màn hình robot gửi phiếu Maintenance để nhân viên tới cắm sạc.', 'info'),
+  });
+  const batteryStatusText = describeBatteryStatus({
+    mode: batteryGuard.mode,
+    percent: simBatteryPercent,
+    isRoutineRunning: isChargeRoutineRunning,
+    isWaitingForCharge: batteryGuard.isWaitingForCharge,
+  });
+
   // Bo dieu khien
-  const handleStartSim = () => {
+  // options.keepPose: bat dau tu vi tri hien tai (kich ban ve tram sac tu chay)
+  const handleStartSim = (options = {}) => {
+    const keepPose = options?.keepPose === true;
     if (!steps || steps.length === 0) {
       onNotify('Kịch bản hiện tại chưa có bước thực thi nào', 'warning');
+      return;
+    }
+    if (!batteryGuard.canStartGuestSession && activeWorkflow?.id !== chargeRoutine.id) {
+      onNotify(
+        `Pin giả lập còn ${simBatteryPercent}%. Robot không nhận kịch bản phục vụ mới cho tới khi pin đạt ${BATTERY_RESUME_PERCENT}%.`,
+        'warning'
+      );
       return;
     }
     setIsPlaying(true);
@@ -1692,9 +1758,26 @@ export const WorkflowSimulatorStudio = ({
       }
     }
 
-    robotPoseRef.current = initialPose;
-    setRobotPose(initialPose);
+    if (!keepPose) {
+      robotPoseRef.current = initialPose;
+      setRobotPose(initialPose);
+    }
   };
+
+  // Chay kich ban ve tram sac ngay khi no da duoc chon lam kich ban hien tai
+  useEffect(() => {
+    const pendingId = pendingAutoStartRef.current;
+    if (!pendingId || isPlaying) return;
+    if (selectedWorkflowId !== pendingId) {
+      if (localWorkflows.some((w) => w.id === pendingId)) setSelectedWorkflowId(pendingId);
+      return;
+    }
+    if (activeWorkflow?.id === pendingId) {
+      pendingAutoStartRef.current = null;
+      onNotify(`Pin giả lập còn ${simBatteryPercent}%: robot tự chạy kịch bản về trạm sạc.`, 'warning');
+      handleStartSim({ keepPose: true });
+    }
+  });
 
   const handlePauseSim = () => {
     setIsPaused((prev) => !prev);
@@ -2620,6 +2703,26 @@ export const WorkflowSimulatorStudio = ({
                   </span>
                 </button>
 
+                {/* 3b. Pin giả lập (cùng ngưỡng với màn hình robot) */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-[#8C8C8C]">
+                    <span>Pin giả lập</span>
+                    <span className="font-mono text-[#262626]">{simBatteryPercent}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={simBatteryPercent}
+                    onChange={(e) => setSimBatteryPercent(Number(e.target.value))}
+                    className="w-full cursor-pointer accent-[#262626]"
+                  />
+                  <p className="text-[10px] leading-snug text-[#8C8C8C]">
+                    Từ {BATTERY_LOW_PERCENT}%: xong khách hiện tại rồi về trạm sạc. Từ {BATTERY_CRITICAL_PERCENT}%: dừng ngay để về sạc. Nhận khách lại khi đạt {BATTERY_RESUME_PERCENT}%.
+                  </p>
+                </div>
+
                 {/* 4. Cổng kết nối ROS 2 */}
                 <div className="pt-2 border-t space-y-1.5" style={{ borderColor: '#E9E5DC' }}>
                   <div className="flex items-center justify-between">
@@ -2723,6 +2826,19 @@ export const WorkflowSimulatorStudio = ({
             >
               {robotPose.x}m, {robotPose.y}m
             </span>
+            <span
+              className={`font-mono font-bold px-1.5 py-0.5 rounded border text-[11px] ${
+                batteryGuard.mode === BATTERY_MODE.CRITICAL
+                  ? 'bg-red-100 text-red-800 border-red-300'
+                  : batteryGuard.mode === BATTERY_MODE.LOW
+                  ? 'bg-amber-100 text-amber-900 border-amber-300'
+                  : ''
+              }`}
+              style={batteryGuard.mode === BATTERY_MODE.OK ? { backgroundColor: '#F2EFE9', borderColor: '#BFBFBD', color: '#262626' } : {}}
+              title="Pin giả lập, đổi trong Tùy chọn mô phỏng"
+            >
+              Pin {simBatteryPercent}%
+            </span>
 
             {/* Chip HUD Trang thai Vung hien tai cua Robot */}
             {activeRobotZone ? (
@@ -2765,6 +2881,17 @@ export const WorkflowSimulatorStudio = ({
               </span>
             )}
           </div>
+
+          {/* Trạng thái pin yếu */}
+          {batteryStatusText && (
+            <div
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border shadow-xs text-[11px] font-semibold max-w-md"
+              style={{ backgroundColor: '#FFFBEB', borderColor: '#FCD34D', color: '#92400E' }}
+            >
+              <BatteryLow className="w-3.5 h-3.5 shrink-0" />
+              <span>{batteryStatusText}</span>
+            </div>
+          )}
 
           {/* Toast Cảnh Báo An Toàn Vùng (Nổi khi vi phạm hoặc click vùng cấm) */}
           {zoneAlert && (

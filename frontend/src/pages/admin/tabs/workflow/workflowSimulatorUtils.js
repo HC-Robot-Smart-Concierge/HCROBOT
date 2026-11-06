@@ -13,6 +13,15 @@ export const GAZEBO_LOBBY_WAYPOINTS = {
     role: 'standby',
     offset: 'bottom',
   },
+  CHARGER_STATION: {
+    x: 6.0,
+    y: 9.6,
+    name: 'Trạm Sạc Robot Sảnh',
+    badge: 'Trạm Sạc',
+    label: 'Trạm Sạc Robot Sảnh',
+    role: 'charger',
+    offset: 'bottom',
+  },
   LOBBY_LOUNGE: {
     x: 3.6,
     y: 7.2,
@@ -231,8 +240,17 @@ const findLegacyMoveTarget = (params, x, y) => {
   return isOld ? GAZEBO_LOBBY_WAYPOINTS[key] : null;
 };
 
+const isChargerEndpoint = (e) => ['CHARGER', 'DOCKING_TARGET'].includes(String(e?.type || '').toUpperCase());
+
 export function resolveMoveTarget(step, endpoints = []) {
   const params = step?.params || {};
+  // Going to charge follows the charging station shown on the map, wherever it was placed.
+  if (String(params.target_type || '').toUpperCase() === 'CHARGER') {
+    const charger = Array.isArray(endpoints) ? endpoints.find(isChargerEndpoint) : null;
+    if (charger && Number.isFinite(Number(charger.x)) && Number.isFinite(Number(charger.y))) {
+      return { x: Number(charger.x), y: Number(charger.y) };
+    }
+  }
   const x = parseFloat(params.target_x);
   const y = parseFloat(params.target_y);
   if (Number.isFinite(x) && Number.isFinite(y)) {

@@ -1,5 +1,5 @@
 """
-Default Seed Definitions for the Standard Core Workflows (WF01-WF08 from Stepflow.md, WF09 dinner demo)
+Default Seed Definitions for the Standard Core Workflows (WF01-WF08 from Stepflow.md, WF09 dinner demo, WF10 low-battery routine)
 Tất cả các workflow và điểm di chuyển (MOVE) đều diễn ra tại Sảnh Chính (Ground Floor - Lobby).
 Phù hợp 100% với sơ đồ kiến trúc mặt bằng sảnh khách sạn.
 """
@@ -16,6 +16,7 @@ LOBBY_WAYPOINTS: Dict[str, Dict[str, Any]] = {
     "ELEVATOR": {"x": 15.60, "y": 6.96, "name": "Cụm Thang Máy Tầng 1 (Elevator)"},
     "CENTRAL_LOBBY": {"x": 8.40, "y": 6.40, "name": "Khu Vực Trung Tâm Sảnh"},
     "ROBOT_STANDBY": {"x": 7.20, "y": 9.60, "name": "Vị Trí Chờ Robot Sảnh"},
+    "CHARGER_STATION": {"x": 6.00, "y": 9.60, "name": "Trạm Sạc Robot Sảnh"},
 }
 
 # Targets written by earlier stock templates for the old 10 x 6 m lobby.
@@ -694,6 +695,41 @@ CORE_WORKFLOWS = [
                 "type": "MOVE",
                 "title": "15. Robot về Vị Trí Chờ Sảnh",
                 "params": {"target_type": "STANDBY", **_move_target("ROBOT_STANDBY"), "speed": 0.4},
+            },
+        ],
+    },
+    {
+        # Kịch bản hệ thống: Studio và màn hình robot tự chạy khi pin ước tính còn 20%
+        # (sau khi phục vụ xong khách) hoặc 10% (dừng ngay). Xem frontend/src/utils/batteryPolicy.js.
+        # MOVE loại CHARGER đi tới điểm trạm sạc đang hiển thị trên map.
+        "id": "wf-10-low-battery",
+        "name": "Workflow 10: Pin yếu, robot về trạm sạc chờ nhân viên cắm sạc",
+        "description": "Robot về trạm sạc trên sảnh và báo nhân viên tới cắm sạc tay cho cả pin động cơ và pin Pi 5.",
+        "trigger_type": "LOW_BATTERY",
+        "is_active": True,
+        "steps": [
+            {
+                "step_id": "wf10-go-charger",
+                "type": "MOVE",
+                "title": "1. Về trạm sạc",
+                "params": {
+                    "target_type": "CHARGER",
+                    **_move_target("CHARGER_STATION"),
+                    "speed": 0.35,
+                    "broadcast_speech": "Em sắp hết pin nên xin phép về trạm sạc. Quý khách cần hỗ trợ vui lòng tới quầy lễ tân ạ.",
+                },
+            },
+            {
+                "step_id": "wf10-call-staff",
+                "type": "CREATE_REQUEST",
+                "title": "2. Báo nhân viên cắm sạc",
+                "params": {
+                    "service_type": "ROBOT_CHARGING",
+                    "room_number": "Trạm Sạc Robot Sảnh",
+                    "note": "Robot sắp hết pin và đang chờ ở trạm sạc. Nhờ nhân viên cắm sạc cả pin động cơ và pin Pi 5.",
+                    "urgency": "HIGH",
+                    "target_department": "Maintenance",
+                },
             },
         ],
     },

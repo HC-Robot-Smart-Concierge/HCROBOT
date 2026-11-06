@@ -12,7 +12,7 @@ from app.api.v1.endpoints.default_workflows import (
 @pytest.mark.asyncio
 async def test_lobby_workflows_definition():
     """Kiểm tra toàn bộ workflows mặc định đều diễn ra tại Sảnh Ground Floor."""
-    assert len(CORE_WORKFLOWS) == 9
+    assert len(CORE_WORKFLOWS) == 10
 
     # Danh sách các khu vực hợp lệ tại Sảnh
     valid_lobby_locations = {
@@ -22,6 +22,7 @@ async def test_lobby_workflows_definition():
         "RESTROOMS",
         "DOCK_LOBBY",
         "ROBOT_STANDBY",
+        "CHARGER_STATION",
         "LOBBY_LOUNGE",
         "CENTRAL_LOBBY",
         "ZONE_LOBBY",
@@ -123,6 +124,17 @@ def test_dinner_demo_branches_rejoin_and_return_once():
     assert ask_more.count("wf9-anything-else") == 1  # hết giờ ở bước hỏi thêm thì sang đánh giá
     looped = _walk(steps, {"wf9-route-choice": ("CHOSEN", "map"), "wf9-anything-else": ("CHOSEN", "more")})
     assert "wf9-free-talk" in looped and looped.count("wf9-anything-else") > 1
+
+
+def test_low_battery_routine_goes_to_charger_and_calls_staff():
+    routines = [w for w in CORE_WORKFLOWS if w["trigger_type"] == "LOW_BATTERY"]
+    assert [w["id"] for w in routines] == ["wf-10-low-battery"]
+    steps = routines[0]["steps"]
+    move = steps[0]["params"]
+    assert move["target_type"] == "CHARGER"
+    assert (move["target_x"], move["target_y"]) == (6.0, 9.6)
+    assert steps[-1]["type"] == "CREATE_REQUEST"
+    assert steps[-1]["params"]["target_department"] == "Maintenance"
 
 
 def test_upgrade_moves_untouched_legacy_targets():

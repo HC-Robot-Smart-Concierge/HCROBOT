@@ -199,6 +199,10 @@ async def execute_workflow(
             logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] [CREATE_REQUEST] Đóng gói phiếu dịch vụ [{urgency}] gửi {dept} (Phòng: {room}, Ghi chú: {note})")
         elif step_type == "FEEDBACK":
             logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] [FEEDBACK] Mở màn hình khảo sát 1-5 sao. Ghi nhận đánh giá thành công!")
+        elif step_type == "CHOICE":
+            options = [o for o in params.get("options", []) if isinstance(o, dict)]
+            labels = " / ".join(str(o.get("label") or o.get("id")) for o in options)
+            logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] [CHOICE] Chờ khách chọn: {labels} (Timeout: {params.get('timeout_sec', 30)}s)")
         else:
             logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] [{step_type}] Thực thi {step_title}")
 

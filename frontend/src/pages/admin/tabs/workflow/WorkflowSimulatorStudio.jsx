@@ -68,6 +68,8 @@ import {
   resolveMoveTarget,
   resolveNoStopPassthrough,
 } from './workflowSimulatorUtils';
+import { KioskChoicePrompt } from './KioskChoicePrompt';
+import { OUTCOME, findBrokenFlowLinks, getChoiceTimeoutSec, resolveNextStepIndex } from '../../../../utils/workflowFlow';
 
 // Kich thuoc ViewBox co so (om sat map 490x315 voi le 3px de anh map to toi da)
 const BASE_VB_WIDTH = 496;
@@ -275,6 +277,9 @@ export const WorkflowSimulatorStudio = ({
   const [isMuted, setIsMuted] = useState(false);
   const [isLoopMode, setIsLoopMode] = useState(false);
   const [stepProgress, setStepProgress] = useState(0);
+  // Tang moi lan vao buoc de buoc nhay ve chinh no van chay lai; cac buoc da chay that su (co re nhanh)
+  const [stepRun, setStepRun] = useState(0);
+  const [visitedSteps, setVisitedSteps] = useState(() => new Set());
 
   // Duong di hien tai cua robot: { waypoints: [{x, y}], label: string }
   const [currentPath, setCurrentPath] = useState(null);
@@ -1208,7 +1213,8 @@ export const WorkflowSimulatorStudio = ({
     : getStepActionDetail(null);
 
   // Chuyen buoc ke tiep
-  const handleStepFinish = useCallback(() => {
+  // outcome: { type: 'CHOSEN' | 'TIMEOUT' | 'CANCEL', optionId } cho buoc CHOICE; bo trong = xong buoc
+  const handleStepFinish = useCallback((outcome) => {
     if (timerRef.current) clearTimeout(timerRef.current);
     if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     if (stopSpeakingRef.current) stopSpeakingRef.current();
@@ -1224,9 +1230,9 @@ export const WorkflowSimulatorStudio = ({
     currentPathRef.current = null;
 
     setCurrentStepIndex((prev) => {
-      const nextIdx = prev + 1;
       const totalSteps = stepsRef.current?.length || 0;
-      if (nextIdx < totalSteps) {
+      const nextIdx = resolveNextStepIndex(stepsRef.current, prev, outcome);
+      if (nextIdx >= 0) {
         return nextIdx;
       } else if (isLoopModeRef.current && totalSteps > 0) {
         onNotify?.('Đã hết chu trình, tự động lặp lại hành trình tuần tra', 'info');
@@ -1237,6 +1243,7 @@ export const WorkflowSimulatorStudio = ({
         return 0;
       }
     });
+    setStepRun((n) => n + 1);
   }, []);
 
   // Ket noi ROS 2 Bridge ngam (Co autoReconnect de luon dong bo voi Gazebo)
@@ -1542,6 +1549,7 @@ export const WorkflowSimulatorStudio = ({
     }
 
     setStepProgress(0);
+    setVisitedSteps((prev) => (prev.has(currentStepIndex) ? prev : new Set(prev).add(currentStepIndex)));
     const stepType = activeStep.type;
     const params = activeStep.params || {};
 
@@ -1552,11 +1560,14 @@ export const WorkflowSimulatorStudio = ({
       !isMutedRef.current &&
       (stepType === 'GREET' ||
         stepType === 'SPEAK' ||
+        (stepType === 'CHOICE' && Boolean(params.prompt)) ||
         (stepType === 'SHOW' && Boolean(params.speech_text || params.text)))
     ) {
       const voiceText =
         stepType === 'GREET'
           ? params.greeting_text || params.text || 'Xin chao quy khach'
+          : stepType === 'CHOICE'
+          ? params.prompt
           : params.speech_text || params.text || '';
       const voiceSpeed = parseFloat(params.speed || params.voice_speed) || 1.0;
       const lang = params.language || 'vi-VN';
@@ -1615,6 +1626,9 @@ export const WorkflowSimulatorStudio = ({
         waitDurationSec = 3;
       } else if (stepType === 'FEEDBACK') {
         waitDurationSec = 3.5;
+      } else if (stepType === 'CHOICE') {
+        // Cho khach chon tren khung lua chon; het gio thi theo nhanh het gio
+        waitDurationSec = getChoiceTimeoutSec(activeStep);
       }
 
       const currentSpeed = simSpeedRef.current || 1.0;
@@ -1632,14 +1646,17 @@ export const WorkflowSimulatorStudio = ({
       };
 
       animFrameRef.current = requestAnimationFrame(animateProgress);
-      timerRef.current = setTimeout(handleStepFinish, totalMs);
+      timerRef.current = setTimeout(
+        () => handleStepFinish(stepType === 'CHOICE' ? { type: OUTCOME.TIMEOUT } : undefined),
+        totalMs
+      );
     }
 
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     };
-  }, [isPlaying, isPaused, currentStepIndex, selectedWorkflowId, handleStepFinish, handleNavigateToGoal]);
+  }, [isPlaying, isPaused, currentStepIndex, stepRun, selectedWorkflowId, handleStepFinish, handleNavigateToGoal]);
 
   // Bo dieu khien
   const handleStartSim = () => {
@@ -1652,6 +1669,14 @@ export const WorkflowSimulatorStudio = ({
     setCurrentStepIndex(0);
     setStepProgress(0);
     setManualNavLabel(null);
+    setVisitedSteps(new Set());
+    const brokenLinks = findBrokenFlowLinks(steps);
+    if (brokenLinks.length > 0) {
+      onNotify(
+        `Kịch bản có ${brokenLinks.length} liên kết rẽ nhánh trỏ tới bước không còn tồn tại. Robot sẽ kết thúc phiên khi đi vào các liên kết này.`,
+        'warning'
+      );
+    }
 
     // Xac dinh vi tri xuat phat cua Robot cho buoc dau tien:
     // Neu buoc 1 co from_waypoint (A -> B), dat robot ngay tai vi tri A
@@ -1684,6 +1709,7 @@ export const WorkflowSimulatorStudio = ({
     setIsPlaying(false);
     setIsPaused(false);
     setCurrentStepIndex(0);
+    setVisitedSteps(new Set());
     setStepProgress(0);
     setCurrentPath(null);
     setManualNavLabel(null);
@@ -2197,7 +2223,7 @@ export const WorkflowSimulatorStudio = ({
             <div className="flex items-center gap-1 shrink-0 overflow-x-auto py-0.5">
               {steps.map((st, idx) => {
                 const isActive = isPlaying && currentStepIndex === idx;
-                const isPast = isPlaying && currentStepIndex > idx;
+                const isPast = isPlaying && !isActive && visitedSteps.has(idx);
                 const stDetail = getStepActionDetail(st);
 
                 return (
@@ -2313,7 +2339,7 @@ export const WorkflowSimulatorStudio = ({
                   <div className="max-h-80 overflow-y-auto space-y-2 pr-1">
                     {steps.map((st, idx) => {
                       const isActive = isPlaying && currentStepIndex === idx;
-                      const isPast = isPlaying && currentStepIndex > idx;
+                      const isPast = isPlaying && !isActive && visitedSteps.has(idx);
                       const stDetail = getStepActionDetail(st);
 
                       return (
@@ -2762,6 +2788,22 @@ export const WorkflowSimulatorStudio = ({
             </div>
           )}
         </div>
+
+        {/* KHUNG LUA CHON CUA KHACH (BUOC CHOICE) - dung chung voi man hinh robot */}
+        {activeStep?.type === 'CHOICE' && (
+          <div
+            className="absolute bottom-16 left-1/2 -translate-x-1/2 z-30 w-[min(520px,92%)] rounded-2xl border shadow-2xl p-3 bg-white/95 backdrop-blur-xs"
+            style={{ borderColor: '#BFBFBD' }}
+          >
+            <KioskChoicePrompt
+              step={activeStep}
+              disabled={isPaused}
+              remainingSec={Math.ceil(((getChoiceTimeoutSec(activeStep) / (simSpeed || 1)) * (100 - stepProgress)) / 100)}
+              onChoose={(optionId) => handleStepFinish({ type: OUTCOME.CHOSEN, optionId })}
+              onCancel={() => handleStepFinish({ type: OUTCOME.CANCEL })}
+            />
+          </div>
+        )}
 
         {/* FLOATING ZOOM CONTROLS (PHÓNG TO / THU NHỎ / RESET ZOOM TRÊN BẢN ĐỒ) */}
         <div

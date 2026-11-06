@@ -752,6 +752,19 @@ export const getStepActionDetail = (step) => {
       };
     }
 
+    case 'CHOICE': {
+      const options = Array.isArray(params.options) ? params.options : [];
+      const prompt = params.prompt || rawTitle || 'Chờ khách lựa chọn';
+      const labels = options.map((o) => o?.label || o?.id).filter(Boolean).join(' / ');
+      return {
+        label: 'CHOICE',
+        shortChip: `CHOICE: ${options.length} lựa chọn`,
+        detailText: `Chờ khách chọn: ${labels || prompt}`,
+        bubbleTitle: 'CHỜ KHÁCH LỰA CHỌN (CHOICE)',
+        bubbleBody: prompt,
+      };
+    }
+
     case 'FEEDBACK': {
       const q = params.question || 'Khao sat danh gia chat luong phuc vu tai sanh';
       return {

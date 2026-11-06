@@ -1,13 +1,37 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronUp, ChevronDown, Trash2, Megaphone, Film, Image as ImageIcon, QrCode, Navigation } from 'lucide-react';
+import { ChevronUp, ChevronDown, Trash2, Megaphone, Film, Image as ImageIcon, QrCode, Navigation, Plus, CornerDownRight } from 'lucide-react';
 import { STEP_SCRATCH_THEMES, WAYFINDING_DESTINATIONS } from './workflowConstants';
 import { STANDARD_LOBBY_WAYPOINTS } from './workflowSimulatorUtils';
 import { fetchActiveAdvertisements } from '../../../../services/advertisementApi';
+import { FLOW_END, getChoiceOptions } from '../../../../utils/workflowFlow';
+
+const FLOW_SELECT_CLASS =
+  'bg-stone-50 hover:bg-white text-stone-900 px-2.5 py-1 rounded-lg text-xs font-bold border border-stone-300 focus:outline-none focus:border-stone-700 focus:bg-white cursor-pointer shadow-2xs max-w-[260px]';
+const FLOW_INPUT_CLASS =
+  'bg-stone-50 hover:bg-white text-stone-900 px-2.5 py-1 rounded-lg text-xs font-semibold border border-stone-300 focus:outline-none focus:border-stone-700 focus:bg-white shadow-2xs';
+
+// Chon buoc dich cho lien ket re nhanh: '' = buoc ke tiep theo thu tu, FLOW_END = ket thuc phien
+const FlowTargetSelect = ({ value, onChange, targets, sequentialLabel = null }) => {
+  const isDangling = Boolean(value) && value !== FLOW_END && !targets.some((t) => t.value === value);
+  return (
+    <select value={value || ''} onChange={(e) => onChange(e.target.value)} className={FLOW_SELECT_CLASS}>
+      {sequentialLabel && <option value="">{sequentialLabel}</option>}
+      {targets.map((t) => (
+        <option key={t.value} value={t.value}>
+          {t.label}
+        </option>
+      ))}
+      <option value={FLOW_END}>Kết thúc phiên phục vụ</option>
+      {isDangling && <option value={value}>Bước đã bị xóa, cần chọn lại</option>}
+    </select>
+  );
+};
 
 export const WorkflowStepBlock = ({
   step,
   index,
   totalSteps,
+  allSteps = [],
   waypoints = [],
   onParamChange,
   onMoveUp,
@@ -40,6 +64,15 @@ export const WorkflowStepBlock = ({
   const handleFieldChange = (key, value) => {
     onParamChange(index, key, value);
   };
+
+  const flowTargets = allSteps
+    .map((s, i) => ({ value: s.step_id, label: `Bước ${i + 1}: ${(s.title || s.type || '').replace(/^\d+\.\s*/, '')}` }))
+    .filter((t) => t.value && t.value !== step.step_id);
+
+  const choiceOptions = step.type === 'CHOICE' ? getChoiceOptions(step) : [];
+  const setChoiceOptions = (next) => handleFieldChange('options', next);
+  const updateChoiceOption = (i, patch) =>
+    setChoiceOptions(choiceOptions.map((o, idx) => (idx === i ? { ...o, ...patch } : o)));
 
   return (
     <div className="relative group select-none transition-all duration-200">
@@ -570,7 +603,116 @@ export const WorkflowStepBlock = ({
               />
             </>
           )}
+
+          {step.type === 'CHOICE' && (
+            <div className="w-full space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-semibold text-stone-700">Câu hỏi</span>
+                <input
+                  type="text"
+                  value={params.prompt || ''}
+                  onChange={(e) => handleFieldChange('prompt', e.target.value)}
+                  placeholder="Quý khách muốn xem bản đồ hay để em dẫn đường ạ?"
+                  className={`flex-1 min-w-[260px] ${FLOW_INPUT_CLASS}`}
+                />
+              </div>
+
+              {choiceOptions.map((option, i) => (
+                <div key={option.id} className="flex flex-wrap items-center gap-2 p-2 rounded-lg bg-stone-50 border border-stone-200">
+                  <span className="font-mono font-bold text-[10px] text-stone-500">#{i + 1}</span>
+                  <input
+                    type="text"
+                    value={option.label || ''}
+                    onChange={(e) => updateChoiceOption(i, { label: e.target.value })}
+                    placeholder="Nhãn nút"
+                    className={`w-[150px] ${FLOW_INPUT_CLASS}`}
+                  />
+                  <input
+                    type="text"
+                    defaultValue={(option.keywords || []).join(', ')}
+                    onBlur={(e) =>
+                      updateChoiceOption(i, {
+                        keywords: e.target.value.split(',').map((k) => k.trim()).filter(Boolean),
+                      })
+                    }
+                    placeholder="Từ khóa giọng nói, cách nhau bởi dấu phẩy"
+                    title="Khách nói một trong các từ này thì robot chọn nút tương ứng"
+                    className={`flex-1 min-w-[180px] ${FLOW_INPUT_CLASS}`}
+                  />
+                  <span>chuyển tới</span>
+                  <FlowTargetSelect
+                    value={option.next_step_id}
+                    onChange={(v) => updateChoiceOption(i, { next_step_id: v })}
+                    targets={flowTargets}
+                    sequentialLabel="Bước kế tiếp theo thứ tự"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setChoiceOptions(choiceOptions.filter((_, idx) => idx !== i))}
+                    disabled={choiceOptions.length <= 1}
+                    className="p-1 rounded-md text-stone-400 hover:text-red-600 hover:bg-red-50 disabled:opacity-20 cursor-pointer"
+                    title="Xóa lựa chọn"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+
+              <button
+                type="button"
+                onClick={() =>
+                  setChoiceOptions([
+                    ...choiceOptions,
+                    { id: `option-${Date.now().toString(36)}`, label: `Lựa chọn ${choiceOptions.length + 1}`, keywords: [], next_step_id: '' },
+                  ])
+                }
+                className="px-2.5 py-1 rounded-lg border border-stone-300 bg-white hover:bg-stone-100 text-stone-800 text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Thêm lựa chọn
+              </button>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <span>Chờ</span>
+                <input
+                  type="number"
+                  min="5"
+                  max="300"
+                  value={params.timeout_sec ?? 30}
+                  onChange={(e) => handleFieldChange('timeout_sec', Number(e.target.value) || 30)}
+                  className={`w-16 ${FLOW_INPUT_CLASS}`}
+                />
+                <span>giây, hết giờ chuyển tới</span>
+                <FlowTargetSelect
+                  value={params.timeout_next_step_id ?? FLOW_END}
+                  onChange={(v) => handleFieldChange('timeout_next_step_id', v)}
+                  targets={flowTargets}
+                  sequentialLabel="Bước kế tiếp theo thứ tự"
+                />
+                <span>khách hủy chuyển tới</span>
+                <FlowTargetSelect
+                  value={params.cancel_next_step_id ?? FLOW_END}
+                  onChange={(v) => handleFieldChange('cancel_next_step_id', v)}
+                  targets={flowTargets}
+                  sequentialLabel="Bước kế tiếp theo thứ tự"
+                />
+              </div>
+            </div>
+          )}
         </div>
+
+        {step.type !== 'CHOICE' && flowTargets.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 mt-2.5 pt-2 border-t border-dashed border-stone-200 text-xs text-stone-600">
+            <CornerDownRight className="w-3.5 h-3.5 text-stone-400" />
+            <span className="font-semibold text-stone-700">Sau bước này</span>
+            <FlowTargetSelect
+              value={params.next_step_id}
+              onChange={(v) => handleFieldChange('next_step_id', v)}
+              targets={flowTargets}
+              sequentialLabel="Bước kế tiếp theo thứ tự"
+            />
+          </div>
+        )}
       </div>
     </div>
   );

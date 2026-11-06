@@ -168,6 +168,7 @@ export const WorkflowBuilderModal = ({
                   step={step}
                   index={idx}
                   totalSteps={workflow.steps.length}
+                  allSteps={workflow.steps}
                   waypoints={waypoints}
                   onParamChange={onStepParamChange}
                   onMoveUp={(i) => onMoveStep(i, -1)}

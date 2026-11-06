@@ -258,6 +258,13 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         setIsStandby(true);
       }
     },
+    // Studio "Gửi tới robot" -> chạy kịch bản trên màn hình này bằng cùng bộ quyết định rẽ nhánh
+    onWorkflowDispatch: (event) => {
+      if (Array.isArray(event?.workflow?.steps) && event.workflow.steps.length > 0) {
+        setIsStandby(false);
+        startWorkflow(event.workflow);
+      }
+    },
   });
 
   // Session Memory & Room Number States
@@ -382,9 +389,12 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     currentStepIndex,
     activeStep,
     totalSteps,
+    choiceRemaining,
     startWorkflow,
     stopWorkflow,
     nextStep,
+    chooseOption,
+    cancelChoice,
   } = useWorkflowRunner({
     speak,
     stopSpeaking,
@@ -2295,7 +2305,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         <main className="w-full flex-1 px-16 py-[54px] flex items-center justify-center gap-16 overflow-hidden">
 
           {/* Render Workflow Kiosk Interface trực tiếp tại trung tâm màn hình robot */}
-          {isWorkflowRunning && (activeStep?.type === 'SHOW' || activeStep?.type === 'FEEDBACK' || activeStep?.type === 'MOVE' || activeStep?.type === 'LISTEN' || activeStep?.type === 'COMMUNICATE' || activeStep?.type === 'RECOMMEND' || activeStep?.type === 'CREATE_REQUEST') ? (
+          {isWorkflowRunning && (activeStep?.type === 'SHOW' || activeStep?.type === 'FEEDBACK' || activeStep?.type === 'MOVE' || activeStep?.type === 'LISTEN' || activeStep?.type === 'COMMUNICATE' || activeStep?.type === 'RECOMMEND' || activeStep?.type === 'CREATE_REQUEST' || activeStep?.type === 'CHOICE') ? (
             <div className="w-[700px] max-h-[610px] bg-white/98 backdrop-blur-2xl border-2 border-stone-200/90 rounded-3xl shadow-2xl p-4 sm:p-5 flex flex-col overflow-hidden animate-fadeIn">
               <KioskDisplayPreview
                 activeStep={activeStep}
@@ -2303,6 +2313,9 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                 isListening={isListening}
                 silenceRemaining={30}
                 onNextStep={() => { }}
+                choiceRemaining={choiceRemaining}
+                onChooseOption={chooseOption}
+                onCancelChoice={cancelChoice}
               />
             </div>
           ) : currentState === 'RT-05' ? (

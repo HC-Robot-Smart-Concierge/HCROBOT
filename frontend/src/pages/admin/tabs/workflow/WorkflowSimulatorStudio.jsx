@@ -2447,11 +2447,13 @@ export const WorkflowSimulatorStudio = ({
                               >
                                 {idx + 1}
                               </span>
+                              {/* Nhãn loại bước rộng cố định để tiêu đề các bước thẳng một cột */}
                               <span
-                                className="px-1.5 py-0.2 rounded text-[9px] font-mono font-bold tracking-wider border shrink-0"
+                                className="w-[78px] px-1 py-0.5 rounded text-[9px] text-center truncate font-mono font-bold tracking-wider border shrink-0"
                                 style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD', color: '#262626' }}
+                                title={stDetail.label}
                               >
-                                {stDetail.label}
+                                {stDetail.label === 'CREATE_REQUEST' ? 'REQUEST' : stDetail.label}
                               </span>
                               <span className="font-bold text-xs truncate" title={st.title || stDetail.shortChip}>
                                 {st.title || stDetail.shortChip}

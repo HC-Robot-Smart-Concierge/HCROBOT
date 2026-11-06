@@ -26,6 +26,7 @@ import {
   Maximize2,
 } from 'lucide-react';
 import { useSpeechSynthesis } from '../../../../hooks/useSpeechSynthesis';
+import { LobbyFloorPlan } from './LobbyFloorPlan';
 import {
   RosbridgeClient,
   ROS_TOPICS,
@@ -64,6 +65,7 @@ import {
   getActiveSimulatorZone,
   zoneToSvgRect,
   validateWorkflowStepZone,
+  resolveMoveTarget,
   resolveNoStopPassthrough,
 } from './workflowSimulatorUtils';
 
@@ -1566,18 +1568,8 @@ export const WorkflowSimulatorStudio = ({
 
     // XU LY DI CHUYEN NE TUONG (MOVE)
     if (stepType === 'MOVE') {
-      let targetX = parseFloat(params.target_x);
-      let targetY = parseFloat(params.target_y);
+      const { x: targetX, y: targetY } = resolveMoveTarget(activeStep, endpointsRef.current);
       const wpName = params.waypoint_name || params.target_value || 'Điểm đến';
-
-      if (isNaN(targetX) || isNaN(targetY)) {
-        const wp =
-          endpointsRef.current.find((e) => e.id === params.target_value || e.key === params.target_value || e.name === params.target_value) ||
-          GAZEBO_LOBBY_WAYPOINTS[params.target_value] ||
-          GAZEBO_LOBBY_WAYPOINTS.FRONT_DESK;
-        targetX = wp?.x ?? 5.2;
-        targetY = wp?.y ?? 2.0;
-      }
 
       let startOverride = null;
       if (params.from_waypoint && params.from_waypoint !== 'CURRENT') {
@@ -2836,9 +2828,6 @@ export const WorkflowSimulatorStudio = ({
           }`}
         >
           <defs>
-            <pattern id="blueprintDots" width="20" height="20" patternUnits="userSpaceOnUse">
-              <circle cx="2" cy="2" r="1.2" fill="#BFBFBD" />
-            </pattern>
             {/* Pattern soc cheo do nhe cho KEEP_OUT */}
             <pattern id="keepoutStripes" width="16" height="16" patternTransform="rotate(45 0 0)" patternUnits="userSpaceOnUse">
               <line x1="0" y1="0" x2="0" y2="16" stroke="#EF4444" strokeWidth="2" opacity="0.16" />
@@ -2853,9 +2842,7 @@ export const WorkflowSimulatorStudio = ({
             </pattern>
           </defs>
 
-          {/* Nen san co luoi cham */}
           <rect x="0" y="0" width="560" height="385" fill="#F4F2ED" />
-          <rect x="35" y="35" width="490" height="315" fill="url(#blueprintDots)" />
 
           <text x="35" y="24" className="text-xs font-mono font-bold tracking-wider" fill="#1c1917" fontFamily="sans-serif">
             Ground
@@ -2864,29 +2851,7 @@ export const WorkflowSimulatorStudio = ({
             Sảnh Khách Sạn • 19.60m x 12.60m (490x315 • Gazebo 1:1)
           </text>
 
-          {/* MAT BANG KIEN TRUC SANH TANG TRET 490x315 - DONG BO CHINH XAC 100% VOI GAZEBO hotel_room.world */}
-          {/* Ban do goc tu file /maps/3.png (726x466) cua khach san */}
-          <image
-            href="/maps/3.png"
-            x="35"
-            y="35"
-            width="490"
-            height="315"
-            preserveAspectRatio="none"
-          />
-          {/* 1. KHUNG TUONG BAO NGOAI (OUTER WALLS: X 35..525, Y 35..350 tuong ung 490 x 315 px) */}
-          <rect
-            x="35"
-            y="35"
-            width="490"
-            height="315"
-            fill="none"
-            stroke="#1c1917"
-            strokeWidth="2.5"
-          />
-
-          {/* TOAN BO MAT BANG KIEN TRUC (SOFA, THANG MAY, THOAT HIEM, WC, LE TAN) */}
-          {/* DUOC HIEN THI TRUC TIEP CHINH XAC 100% TU FILE ANH BAN DO GOC /maps/3.png */}
+          <LobbyFloorPlan />
           {/* LOP 3 VUNG CHUC NANG (KEEP-OUT, SPEED ZONE, NO-STOP) TRUOC MAT BANG SAU TUONG SAN */}
           {showZones &&
             zones.map((zone) => {

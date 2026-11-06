@@ -1,6 +1,7 @@
 // Danh sach toa do cac diem moc Sanh Tang Tret (Ground Floor - Lobby Arena 9.80m x 6.30m)
 // Robot mac dinh o vi tri truc Khu Vuc Phia Bac cua Lobby (x: 3.6, y: 4.8)
 export const ROBOT_INITIAL_POSE = { x: 7.2, y: 9.6, yaw: -Math.PI / 2 };
+const FRONT_DOOR_APPROACH = { x: 0.90, y: 6.25 };
 
 export const GAZEBO_LOBBY_WAYPOINTS = {
   ROBOT_STANDBY: {
@@ -22,8 +23,7 @@ export const GAZEBO_LOBBY_WAYPOINTS = {
     offset: 'top',
   },
   MAIN_ENTRANCE: {
-    x: 8.4,
-    y: 2.0,
+    ...FRONT_DOOR_APPROACH,
     name: 'Cửa Chính Ra Vào Sảnh',
     badge: 'Cửa Chính Sảnh',
     label: 'Cửa Chính Ra Vào Sảnh',
@@ -85,7 +85,7 @@ export const GAZEBO_LOBBY_WAYPOINTS = {
     offset: 'top',
   },
   // Backward compatibility aliases
-  ZONE_LOBBY: { x: 8.4, y: 2.0, badge: 'Cửa Chính Sảnh', label: 'Cửa Chính Sảnh' },
+  ZONE_LOBBY: { ...FRONT_DOOR_APPROACH, badge: 'Cửa Chính Sảnh', label: 'Cửa Chính Sảnh' },
   DOCK_LOBBY: { x: 7.2, y: 9.6, badge: 'Robot Sảnh', label: 'Vị Trí Robot Sảnh' },
   DOCK_01: { x: 7.2, y: 9.6, badge: 'Robot Sảnh', label: 'Vị Trí Robot Sảnh' },
   HOTSPOT_LOBBY: { x: 8.4, y: 6.4, badge: 'Trung Tâm Sảnh', label: 'Khu Vực Trung Tâm Sảnh' },
@@ -99,7 +99,7 @@ export const GAZEBO_LOBBY_WAYPOINTS = {
 export const STANDARD_LOBBY_WAYPOINTS = [
   { id: 'ROBOT_STANDBY', key: 'ROBOT_STANDBY', name: 'Vị Trí Chờ Robot Sảnh', type: 'PARK', x: 7.2, y: 9.6, floor: 'Sảnh Tầng 1' },
   { id: 'CHARGER_STATION', key: 'CHARGER_STATION', name: 'Trạm Sạc Robot Sảnh', type: 'CHARGER', x: 6.0, y: 9.6, floor: 'Sảnh Tầng 1' },
-  { id: 'MAIN_ENTRANCE', key: 'MAIN_ENTRANCE', name: 'Cửa Chính Sảnh (Main Entrance)', type: 'WAYPOINT', x: 8.4, y: 2.0, floor: 'Sảnh Tầng 1' },
+  { id: 'MAIN_ENTRANCE', key: 'MAIN_ENTRANCE', name: 'Cửa Chính Sảnh (Main Entrance)', type: 'WAYPOINT', ...FRONT_DOOR_APPROACH, floor: 'Sảnh Tầng 1' },
   { id: 'FRONT_DESK', key: 'FRONT_DESK', name: 'Trước Quầy Lễ Tân (Front Desk)', type: 'WAYPOINT', x: 11.44, y: 2.8, floor: 'Sảnh Tầng 1' },
   { id: 'STAFF_ONLY', key: 'STAFF_ONLY', name: 'Trước Phòng Nội Bộ (Staff Only)', type: 'WAYPOINT', x: 11.44, y: 6.4, floor: 'Sảnh Tầng 1' },
   { id: 'ELEVATOR', key: 'ELEVATOR', name: 'Cụm Thang Máy Tầng 1', type: 'WAYPOINT', x: 15.6, y: 6.96, floor: 'Sảnh Tầng 1' },
@@ -209,22 +209,25 @@ export const zoneToSvgRect = (zone) => {
   };
 };
 
+export function resolveMoveTarget(step, endpoints = []) {
+  const params = step?.params || {};
+  const x = parseFloat(params.target_x);
+  const y = parseFloat(params.target_y);
+  // Older copies of the stock welcome step stored the entrance as a fixed point.
+  if (step?.step_id === 'wf1-step-1' && params.target_value === 'MAIN_ENTRANCE' &&
+      !params.target_waypoint_id && x === 5.2 && y === 1) return FRONT_DOOR_APPROACH;
+  if (Number.isFinite(x) && Number.isFinite(y)) return { x, y };
+  const key = params.target_value;
+  const endpoint = key && endpoints?.find(e => [e.id, e.key, e.name].includes(key));
+  return endpoint || GAZEBO_LOBBY_WAYPOINTS[key] || GAZEBO_LOBBY_WAYPOINTS.FRONT_DESK;
+}
+
 export const validateWorkflowStepZone = (step, zones = SIMULATOR_HOTEL_ZONES, customEndpoints = null) => {
   if (!step) return { valid: true };
   const stepType = step.type || '';
-  const params = step.params || {};
 
   if (stepType === 'MOVE') {
-    let targetX = parseFloat(params.target_x);
-    let targetY = parseFloat(params.target_y);
-    if (isNaN(targetX) || isNaN(targetY)) {
-      const customWp = Array.isArray(customEndpoints)
-        ? customEndpoints.find((e) => e.id === params.target_value || e.key === params.target_value || e.name === params.target_value)
-        : null;
-      const wp = customWp || GAZEBO_LOBBY_WAYPOINTS[params.target_value] || GAZEBO_LOBBY_WAYPOINTS.FRONT_DESK;
-      targetX = wp?.x ?? 5.2;
-      targetY = wp?.y ?? 2.0;
-    }
+    const { x: targetX, y: targetY } = resolveMoveTarget(step, customEndpoints);
 
     const zone = getActiveSimulatorZone(targetX, targetY, zones);
     if (zone && zone.type === 'KEEP_OUT') {
@@ -349,6 +352,11 @@ export const svgToMeter = (svgX, svgY) => {
 // ========================================================
 
 const LOBBY_OBSTACLES = [
+  // Wall segments leave the west entrance (y=6.25) and east exit (y=3.53) clear.
+  { id: 'WEST_SOUTH', minX: 0, maxX: 0.25, minY: 0, maxY: 5.75 },
+  { id: 'WEST_NORTH', minX: 0, maxX: 0.25, minY: 6.75, maxY: 12.60 },
+  { id: 'EAST_SOUTH', minX: 19.35, maxX: 19.60, minY: 0, maxY: 3.00 },
+  { id: 'EAST_NORTH', minX: 19.35, maxX: 19.60, minY: 4.06, maxY: 12.60 },
   { id: 'RECEPTION', minX: 9.70, maxX: 13.10, minY: 4.00, maxY: 8.65 },
   { id: 'PLANT_POT', minX: 5.60, maxX: 7.45, minY: 5.35, maxY: 7.15 },
   { id: 'PART_TOP',  minX: 12.50, maxX: 12.85, minY: 11.00, maxY: 12.60 },
@@ -356,8 +364,8 @@ const LOBBY_OBSTACLES = [
   { id: 'SOFA_TL',   minX: 0.00, maxX: 2.30, minY: 8.30, maxY: 12.60 },
   { id: 'SOFA_BL',   minX: 0.00, maxX: 4.70, minY: 0.00, maxY: 1.60 },
   { id: 'SOFA_TR',   minX: 15.30, maxX: 19.60, minY: 7.60, maxY: 10.00 },
-  { id: 'ELEV_EXIT', minX: 17.80, maxX: 19.60, minY: 4.80, maxY: 7.80 },
-  { id: 'WC_EAST',   minX: 17.80, maxX: 19.60, minY: 0.00, maxY: 3.55 },
+  { id: 'ELEV_EXIT', minX: 17.80, maxX: 19.60, minY: 4.06, maxY: 7.80 },
+  { id: 'WC_EAST',   minX: 17.80, maxX: 19.60, minY: 0.00, maxY: 3.00 },
   { id: 'WC_SOUTH',  minX: 15.30, maxX: 18.00, minY: 0.00, maxY: 1.90 },
 ];
 
@@ -386,6 +394,8 @@ const isLineOfSightClear = (p1, p2, ignoreReception = false) => {
 };
 
 const LOBBY_NAV_NODES = {
+  W_ENTRY:     FRONT_DOOR_APPROACH,
+  E_EXIT:      { x: 17.30, y: 3.53 },
   W_NORTH:     { x: 7.20,  y: 9.60 },
   W_NORTH_L:   { x: 4.80,  y: 9.60 },
   W_MID_L:     { x: 4.20,  y: 7.20 },
@@ -403,6 +413,8 @@ const LOBBY_NAV_NODES = {
 };
 
 const LOBBY_NAV_EDGES = [
+  ['W_ENTRY', 'W_MID_L'],
+  ['E_EXIT', 'E_SOUTH'],
   ['W_NORTH', 'W_NORTH_L'],
   ['W_NORTH_L', 'W_MID_L'],
   ['W_MID_L', 'W_MID_POT_W'],
@@ -786,8 +798,8 @@ export const BUILTIN_SIMULATOR_WORKFLOWS = [
           target_type: 'LOCATION',
           target_value: 'MAIN_ENTRANCE',
           waypoint_name: 'Cửa Chính Ra Vào Sảnh (Main Entrance)',
-          target_x: 5.2,
-          target_y: 1.0,
+          target_x: FRONT_DOOR_APPROACH.x,
+          target_y: FRONT_DOOR_APPROACH.y,
           speed: 0.35,
         },
       },

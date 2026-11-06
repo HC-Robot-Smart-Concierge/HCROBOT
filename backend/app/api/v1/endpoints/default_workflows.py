@@ -20,8 +20,8 @@ CORE_WORKFLOWS = [
                     "target_type": "LOCATION",
                     "target_value": "MAIN_ENTRANCE",
                     "waypoint_name": "Cửa Chính Ra Vào Sảnh (Main Entrance)",
-                    "target_x": 5.2,
-                    "target_y": 1.0,
+                    "target_x": 0.90,
+                    "target_y": 6.25,
                     "speed": 0.35
                 }
             },

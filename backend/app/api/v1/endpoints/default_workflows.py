@@ -4,6 +4,69 @@ Tất cả các workflow và điểm di chuyển (MOVE) đều diễn ra tại S
 Phù hợp 100% với sơ đồ kiến trúc mặt bằng sảnh khách sạn.
 """
 
+import copy
+from typing import Any, Dict, Optional
+
+# Lobby destinations in metres on the 19.60 x 12.60 m Gazebo/web map.
+# Keep in sync with GAZEBO_LOBBY_WAYPOINTS in the web simulator utils and
+# WAYPOINTS in robot/scripts/autonomous_navigator.py.
+LOBBY_WAYPOINTS: Dict[str, Dict[str, Any]] = {
+    "MAIN_ENTRANCE": {"x": 0.90, "y": 6.25, "name": "Cửa Chính Ra Vào Sảnh (Main Entrance)"},
+    "FRONT_DESK": {"x": 11.44, "y": 2.80, "name": "Trước Quầy Lễ Tân (Front Desk)"},
+    "ELEVATOR": {"x": 15.60, "y": 6.96, "name": "Cụm Thang Máy Tầng 1 (Elevator)"},
+    "CENTRAL_LOBBY": {"x": 8.40, "y": 6.40, "name": "Khu Vực Trung Tâm Sảnh"},
+    "ROBOT_STANDBY": {"x": 7.20, "y": 9.60, "name": "Vị Trí Chờ Robot Sảnh"},
+}
+
+# Targets written by earlier stock templates for the old 10 x 6 m lobby.
+# A saved MOVE step that still holds one of these exact points was never
+# re-targeted by a user, so it can be moved onto today's waypoint.
+# (0, 0) is treated as an unset placeholder for every known key.
+_LEGACY_TARGET_ALIASES = {
+    "DOCK_LOBBY": "ROBOT_STANDBY",
+    "DOCK_01": "ROBOT_STANDBY",
+    "wp-reception": "FRONT_DESK",
+}
+_LEGACY_TARGET_POINTS = {
+    "MAIN_ENTRANCE": [(5.2, 1.0)],
+    "FRONT_DESK": [(6.4, 2.0), (5.2, 2.0)],
+    "ELEVATOR": [(7.7, 4.2), (7.8, 4.5)],
+    "CENTRAL_LOBBY": [(4.8, 2.5)],
+    "ROBOT_STANDBY": [(3.2, 2.8)],
+}
+
+
+def _move_target(key: str) -> Dict[str, Any]:
+    wp = LOBBY_WAYPOINTS[key]
+    return {"target_value": key, "waypoint_name": wp["name"], "target_x": wp["x"], "target_y": wp["y"]}
+
+
+def upgrade_legacy_move_step(step: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Return a re-targeted copy of a MOVE step that still points at an old stock
+    coordinate, or None when the step should be left as it is."""
+    if not isinstance(step, dict) or step.get("type") != "MOVE":
+        return None
+    params = step.get("params") or {}
+    raw_key = params.get("target_waypoint_id") or params.get("target_value")
+    key = _LEGACY_TARGET_ALIASES.get(raw_key, raw_key)
+    if key not in LOBBY_WAYPOINTS:
+        return None
+    try:
+        x, y = float(params.get("target_x")), float(params.get("target_y"))
+    except (TypeError, ValueError):
+        return None
+    old_points = _LEGACY_TARGET_POINTS.get(key, []) + [(0.0, 0.0)]
+    if not any(abs(x - ox) < 0.005 and abs(y - oy) < 0.005 for ox, oy in old_points):
+        return None
+
+    upgraded = copy.deepcopy(step)
+    new_params = upgraded.setdefault("params", {})
+    new_params.update(_move_target(key))
+    if params.get("target_waypoint_id"):
+        new_params["target_waypoint_id"] = key
+    return upgraded
+
+
 CORE_WORKFLOWS = [
     {
         "id": "wf-01-welcome",
@@ -18,10 +81,7 @@ CORE_WORKFLOWS = [
                 "title": "1. Di chuyển ra Cửa chính đón khách",
                 "params": {
                     "target_type": "LOCATION",
-                    "target_value": "MAIN_ENTRANCE",
-                    "waypoint_name": "Cửa Chính Ra Vào Sảnh (Main Entrance)",
-                    "target_x": 0.90,
-                    "target_y": 6.25,
+                    **_move_target("MAIN_ENTRANCE"),
                     "speed": 0.35
                 }
             },
@@ -215,10 +275,7 @@ CORE_WORKFLOWS = [
                 "title": "2. Dẫn khách tới Quầy Lễ Tân (Front Desk)",
                 "params": {
                     "target_type": "LOCATION",
-                    "target_value": "FRONT_DESK",
-                    "waypoint_name": "Quầy Lễ Tân (Front Desk)",
-                    "target_x": 6.4,
-                    "target_y": 2.0,
+                    **_move_target("FRONT_DESK"),
                     "speed": 0.3
                 }
             },
@@ -287,13 +344,10 @@ CORE_WORKFLOWS = [
             {
                 "step_id": "wf5-step-4",
                 "type": "MOVE",
-                "title": "4. Robot trở về Trạm Chờ Sofa Sảnh",
+                "title": "4. Robot trở về Vị Trí Chờ Sảnh",
                 "params": {
                     "target_type": "STANDBY",
-                    "target_value": "DOCK_LOBBY",
-                    "waypoint_name": "Trạm Sạc Robot Sảnh",
-                    "target_x": 3.2,
-                    "target_y": 2.8,
+                    **_move_target("ROBOT_STANDBY"),
                     "speed": 0.4
                 }
             }
@@ -312,10 +366,7 @@ CORE_WORKFLOWS = [
                 "title": "1. Di chuyển ra Trung Tâm Sảnh đón tiếp",
                 "params": {
                     "target_type": "LOCATION",
-                    "target_value": "CENTRAL_LOBBY",
-                    "waypoint_name": "Khu Vực Trung Tâm Sảnh",
-                    "target_x": 4.8,
-                    "target_y": 2.5,
+                    **_move_target("CENTRAL_LOBBY"),
                     "speed": 0.35
                 }
             },
@@ -365,10 +416,7 @@ CORE_WORKFLOWS = [
                 "title": "3. Dẫn đường tới Cụm Thang Máy",
                 "params": {
                     "target_type": "LOCATION",
-                    "target_value": "ELEVATOR",
-                    "waypoint_name": "Cụm Thang Máy Tầng 1 (Elevator)",
-                    "target_x": 7.7,
-                    "target_y": 4.2,
+                    **_move_target("ELEVATOR"),
                     "speed": 0.3
                 }
             },
@@ -385,13 +433,10 @@ CORE_WORKFLOWS = [
             {
                 "step_id": "wf7-step-5",
                 "type": "MOVE",
-                "title": "5. Robot quay về vị trí trực trạm chờ Sofa",
+                "title": "5. Robot quay về Vị Trí Chờ Sảnh",
                 "params": {
                     "target_type": "STANDBY",
-                    "target_value": "DOCK_LOBBY",
-                    "waypoint_name": "Trạm Sạc Robot Sảnh",
-                    "target_x": 3.2,
-                    "target_y": 2.8,
+                    **_move_target("ROBOT_STANDBY"),
                     "speed": 0.4
                 }
             }

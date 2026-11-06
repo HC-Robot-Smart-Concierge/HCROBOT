@@ -209,15 +209,37 @@ export const zoneToSvgRect = (zone) => {
   };
 };
 
+// Targets written by earlier stock templates for the old 10 x 6 m lobby.
+// A MOVE step that still holds one of these exact points was never re-targeted,
+// so it runs at today's waypoint. (0, 0) is an unset placeholder for every key.
+// Mirrors upgrade_legacy_move_step in backend default_workflows.py.
+const LEGACY_TARGET_ALIASES = { DOCK_LOBBY: 'ROBOT_STANDBY', DOCK_01: 'ROBOT_STANDBY', 'wp-reception': 'FRONT_DESK' };
+const LEGACY_TARGET_POINTS = {
+  MAIN_ENTRANCE: [[5.2, 1.0]],
+  FRONT_DESK: [[6.4, 2.0], [5.2, 2.0]],
+  ELEVATOR: [[7.7, 4.2], [7.8, 4.5]],
+  CENTRAL_LOBBY: [[4.8, 2.5]],
+  ROBOT_STANDBY: [[3.2, 2.8]],
+};
+
+const findLegacyMoveTarget = (params, x, y) => {
+  const rawKey = params.target_waypoint_id || params.target_value;
+  const key = LEGACY_TARGET_ALIASES[rawKey] || rawKey;
+  if (!LEGACY_TARGET_POINTS[key] && !(key in GAZEBO_LOBBY_WAYPOINTS)) return null;
+  const oldPoints = [...(LEGACY_TARGET_POINTS[key] || []), [0, 0]];
+  const isOld = oldPoints.some(([ox, oy]) => Math.abs(x - ox) < 0.005 && Math.abs(y - oy) < 0.005);
+  return isOld ? GAZEBO_LOBBY_WAYPOINTS[key] : null;
+};
+
 export function resolveMoveTarget(step, endpoints = []) {
   const params = step?.params || {};
   const x = parseFloat(params.target_x);
   const y = parseFloat(params.target_y);
-  // Older copies of the stock welcome step stored the entrance as a fixed point.
-  if (step?.step_id === 'wf1-step-1' && params.target_value === 'MAIN_ENTRANCE' &&
-      !params.target_waypoint_id && x === 5.2 && y === 1) return FRONT_DOOR_APPROACH;
-  if (Number.isFinite(x) && Number.isFinite(y)) return { x, y };
-  const key = params.target_value;
+  if (Number.isFinite(x) && Number.isFinite(y)) {
+    const legacy = findLegacyMoveTarget(params, x, y);
+    return legacy ? { x: legacy.x, y: legacy.y } : { x, y };
+  }
+  const key = params.target_value || params.target_waypoint_id;
   const endpoint = key && endpoints?.find(e => [e.id, e.key, e.name].includes(key));
   return endpoint || GAZEBO_LOBBY_WAYPOINTS[key] || GAZEBO_LOBBY_WAYPOINTS.FRONT_DESK;
 }
@@ -870,8 +892,8 @@ export const BUILTIN_SIMULATOR_WORKFLOWS = [
           target_type: 'LOCATION',
           target_value: 'FRONT_DESK',
           waypoint_name: 'Trước Quầy Lễ Tân (Front Desk)',
-          target_x: 5.2,
-          target_y: 2.0,
+          target_x: GAZEBO_LOBBY_WAYPOINTS.FRONT_DESK.x,
+          target_y: GAZEBO_LOBBY_WAYPOINTS.FRONT_DESK.y,
           speed: 0.35,
         },
       },
@@ -919,8 +941,8 @@ export const BUILTIN_SIMULATOR_WORKFLOWS = [
           target_type: 'LOCATION',
           target_value: 'ELEVATOR',
           waypoint_name: 'Cum Thang May (Elevator)',
-          target_x: 7.8,
-          target_y: 4.5,
+          target_x: GAZEBO_LOBBY_WAYPOINTS.ELEVATOR.x,
+          target_y: GAZEBO_LOBBY_WAYPOINTS.ELEVATOR.y,
           speed: 0.35,
         },
       },
@@ -960,13 +982,13 @@ export const BUILTIN_SIMULATOR_WORKFLOWS = [
       {
         step_id: 'wf5-step-3',
         type: 'MOVE',
-        title: '3. Robot tro ve Tram Sac Robot Sanh',
+        title: '3. Robot tro ve Vi Tri Cho Sanh',
         params: {
-          target_type: 'LOCATION',
-          target_value: 'DOCK_LOBBY',
-          waypoint_name: 'Trạm Sạc Robot Sảnh',
-          target_x: 3.2,
-          target_y: 2.8,
+          target_type: 'STANDBY',
+          target_value: 'ROBOT_STANDBY',
+          waypoint_name: 'Vị Trí Chờ Robot Sảnh',
+          target_x: GAZEBO_LOBBY_WAYPOINTS.ROBOT_STANDBY.x,
+          target_y: GAZEBO_LOBBY_WAYPOINTS.ROBOT_STANDBY.y,
           speed: 0.35,
         },
       },

@@ -143,6 +143,7 @@ export const MobileRobotScreen = ({
   const [isMapManualOpen, setIsMapManualOpen] = useState(false);
   const [isUtilitiesMenuOpen, setIsUtilitiesMenuOpen] = useState(false);
   const [isLangMenuOpen, setIsLangMenuOpen] = useState(false);
+  const [navActiveStep, setNavActiveStep] = useState(1);
   const isBusy = isProcessing || currentState === 'RT-04';
 
   const handleDismissMap = () => {
@@ -673,17 +674,20 @@ export const MobileRobotScreen = ({
                 showQrModalExternal={showQrModalExternal}
                 qrCountdown={qrCountdown}
                 onCloseQrModal={onCloseQrModal || (() => {})}
+                onStepChange={setNavActiveStep}
                 defaultZoom={1.0}
                 className="w-full h-full rounded-none border-none shadow-none"
               />
 
-              {/* Thanh chỉ dẫn nổi tinh gọn ở đáy màn hình: 1 câu tóm tắt duy nhất, không Chặng 1/Chặng 2/QR thừa */}
+              {/* Thanh chỉ dẫn nổi tinh gọn ở đáy màn hình: hiển thị chỉ dẫn tương ứng theo Chặng 1 hoặc Chặng 2 */}
               <div className="absolute bottom-2.5 left-2.5 right-2.5 z-30 pointer-events-none flex items-center justify-between gap-2.5">
                 <div className="pointer-events-auto flex-1 min-w-0 max-w-xl bg-stone-900/90 text-stone-100 backdrop-blur-md px-3.5 py-1.5 rounded-2xl border border-stone-700/80 shadow-xl flex items-center gap-2.5">
                   <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0 animate-pulse" />
                   <span className="text-xs font-semibold text-stone-100 truncate">
                     {currentDestination.isDifferentFloor
-                      ? `Thang máy A lên ${currentDestination.floorLevel} → ${currentDestination.step2Text || `tới ${currentDestination.name}`}`
+                      ? (navActiveStep === 1
+                          ? `${currentDestination.step1Text || 'Chặng 1: Đi tới Thang máy A và bấm lên tầng mục tiêu.'}`
+                          : `${currentDestination.step2Text || `Chặng 2: Ra khỏi thang máy tới ${currentDestination.name}.`}`)
                       : `${currentDestination.step1Text || `Đi theo hành lang tới ${currentDestination.name}`}`}
                   </span>
                 </div>

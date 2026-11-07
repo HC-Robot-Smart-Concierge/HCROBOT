@@ -928,11 +928,29 @@ DEFAULT_SEED_SCENARIOS = [
 
         "category": "greeting",
 
-        "match_keywords": ["bạn là ai", "em là ai", "who are you", "what is your name", "tên bạn là gì", "tên em là gì"],
+        "match_keywords": [
+            "bạn là ai", "ban la ai", "em là ai", "em la ai", "mày là ai", "may la ai",
+            "rora là ai", "rora la ai", "robot là ai", "robot la ai",
+            "who are you", "what is your name", "who is rora", "what are you",
+            "tên bạn là gì", "ten ban la gi", "tên em là gì", "ten em la gi",
+            "bạn tên gì", "ban ten gi", "em tên gì", "em ten gi",
+            "giới thiệu bản thân", "gioi thieu ban than",
+            "giới thiệu về bản thân", "gioi thieu ve ban than",
+            "giới thiệu về bạn", "gioi thieu ve ban",
+            "giới thiệu về em", "gioi thieu ve em",
+            "giới thiệu về mình", "gioi thieu ve minh",
+            "bạn giới thiệu bản thân được không", "ban gioi thieu ban than duoc khong",
+            "bạn có thể giới thiệu bản thân", "ban co the gioi thieu ban than",
+            "bạn có thể giới thiệu về bản thân", "ban co the gioi thieu ve ban than",
+            "bạn có thể giới thiệu bản thân được không", "ban co the gioi thieu ban than duoc khong",
+            "bạn có thể giới thiệu về bản thân được không", "ban co the gioi thieu ve ban than duoc khong",
+            "tự giới thiệu", "tu gioi thieu", "giới thiệu rora", "gioi thieu rora",
+            "introduce yourself", "tell me about yourself", "can you introduce yourself"
+        ],
 
         "match_type": "keyword",
 
-        "response_vi": "Dạ em là Rora, trợ lý Robot Concierge thông minh của khách sạn 5 sao Aurora Grand. Rất hân hạnh được phục vụ quý khách ạ!",
+        "response_vi": "Dạ em là Rora, trợ lý Robot Concierge thông minh của khách sạn 5 sao Aurora Grand. Rất hân hạnh được phục vụ và đồng hành cùng quý khách ạ!",
 
         "response_en": "I am Rora, the smart AI Concierge Robot at Aurora Grand Hotel. It is my pleasure to assist you!",
 
@@ -1874,19 +1892,45 @@ DEFAULT_SEED_SCENARIOS = [
 
     {
 
+        "id": "scn-coffee-hours",
+
+        "title": "Giờ mở cửa Rooftop Coffee",
+
+        "category": "facility",
+
+        "match_keywords": ["coffee mở cửa", "cà phê mở cửa", "cafe mở cửa", "rooftop coffee mở cửa", "quán cà phê mấy giờ mở cửa", "giờ mở cửa quán cafe"],
+
+        "match_type": "keyword",
+
+        "response_vi": "Dạ quán Rooftop Coffee tại Tầng 6 mở cửa từ 7 giờ sáng đến 23 giờ đêm với view ngắm trọn toàn cảnh thành phố ạ.",
+
+        "response_en": "Rooftop Coffee on Level 6 is open from 7:00 AM to 11:00 PM with panoramic skyline views.",
+
+        "action_type": "none",
+
+        "is_fast_path": True,
+
+        "is_active": True,
+
+        "priority": 95,
+
+    },
+
+    {
+
         "id": "scn-rooftop-coffee",
 
         "title": "Quán Rooftop Coffee & View",
 
         "category": "facility",
 
-        "match_keywords": ["quán coffee", "quán cà phê", "quán cafe", "cà phê", "cafe", "coffee", "rooftop coffee", "uống cà phê"],
+        "match_keywords": ["quán coffee", "quán cà phê", "quán cafe", "cà phê", "cafe", "coffee", "rooftop coffee", "uống cà phê", "cafe ở đâu", "cà phê ở đâu", "coffee ở đâu"],
 
         "match_type": "keyword",
 
-        "response_vi": "Dạ quán Rooftop Coffee nằm tại Tầng 6 (Sân thượng), mở cửa từ 7 giờ sáng đến 23 giờ đêm với view ngắm trọn toàn cảnh thành phố ạ. Ngoài ra, Quý khách có thể quét mã QR trên màn hình để ghi nhớ chỉ dẫn nhé ạ!",
+        "response_vi": "Dạ em xin hướng dẫn đường đi tới Quán Rooftop Coffee tại Tầng 6: Chặng 1, Quý khách di chuyển từ sảnh tiếp tân tới Thang máy A và bấm lên Tầng 6 ạ.",
 
-        "response_en": "Rooftop Coffee is located on Level 6 (Rooftop), open from 7:00 AM to 11:00 PM with panoramic skyline views. In addition, you can scan the QR code on the screen to save the directions!",
+        "response_en": "Here are the directions to Rooftop Coffee on Level 6: Step 1, please proceed to Elevator A in the lobby and take it up to Level 6.",
 
         "action_type": "show_map",
 
@@ -2285,9 +2329,9 @@ DEFAULT_SEED_SCENARIOS = [
 
         "match_type": "keyword",
 
-        "response_vi": "Dạ cửa hàng quà lưu niệm Gift Shop tọa lạc tại Tầng 6, mở cửa từ 8 giờ sáng đến 22 giờ tối với các sản phẩm quà tặng và đặc sản tinh tế ạ. Ngoài ra, Quý khách có thể quét mã QR trên màn hình để ghi nhớ chỉ dẫn nhé ạ!",
+        "response_vi": "Dạ em xin hướng dẫn đường đi tới Cửa Hàng Lưu Niệm Gift Shop tại Tầng 6: Chặng 1, Quý khách di chuyển từ sảnh tiếp tân tới Thang máy A và bấm lên Tầng 6 ạ.",
 
-        "response_en": "The Gift Shop is located on Level 6, open from 8:00 AM to 10:00 PM with premium souvenirs and gifts. In addition, you can scan the QR code on the screen to save the directions!",
+        "response_en": "Here are the directions to the Gift Shop on Level 6: Step 1, please proceed to Elevator A in the lobby and take it up to Level 6.",
 
         "action_type": "show_map",
 
@@ -2303,6 +2347,32 @@ DEFAULT_SEED_SCENARIOS = [
 
     {
 
+        "id": "scn-gym-hours",
+
+        "title": "Giờ mở cửa Fitness & Gym",
+
+        "category": "facility",
+
+        "match_keywords": ["gym mở cửa", "phòng gym mở cửa", "giờ mở cửa phòng gym", "gym mấy giờ mở cửa", "giờ hoạt động phòng gym"],
+
+        "match_type": "keyword",
+
+        "response_vi": "Dạ phòng Gym và trung tâm thể hình tại Tầng 5 mở cửa phục vụ 24/7 hoàn toàn miễn phí cho khách lưu trú với đầy đủ máy tập Technogym hiện đại ạ.",
+
+        "response_en": "The Fitness & Gym Center on Level 5 is open 24/7 complimentary for staying guests with modern Technogym equipment.",
+
+        "action_type": "none",
+
+        "is_fast_path": True,
+
+        "is_active": True,
+
+        "priority": 95,
+
+    },
+
+    {
+
         "id": "scn-gym",
 
         "title": "Phòng tập Gym & Thể hình",
@@ -2313,9 +2383,9 @@ DEFAULT_SEED_SCENARIOS = [
 
         "match_type": "keyword",
 
-        "response_vi": "Dạ phòng Gym và trung tâm thể hình nằm tại Tầng 5, mở cửa phục vụ 24/7 hoàn toàn miễn phí cho khách lưu trú với đầy đủ máy tập Technogym hiện đại ạ.",
+        "response_vi": "Dạ em xin hướng dẫn đường đi tới Trung tâm Fitness & Gym tại Tầng 5: Chặng 1, Quý khách di chuyển từ sảnh tiếp tân tới Thang máy A và bấm lên Tầng 5 ạ.",
 
-        "response_en": "The Fitness & Gym Center is located on Level 5, open 24/7 complimentary for staying guests with modern Technogym equipment.",
+        "response_en": "Here are the directions to the Fitness & Gym Center on Level 5: Step 1, please proceed to Elevator A in the lobby and take it up to Level 5.",
 
         "action_type": "show_map",
 
@@ -2331,19 +2401,45 @@ DEFAULT_SEED_SCENARIOS = [
 
     {
 
+        "id": "scn-pool-hours",
+
+        "title": "Giờ mở cửa Hồ bơi vô cực",
+
+        "category": "facility",
+
+        "match_keywords": ["hồ bơi mở cửa", "giờ mở cửa hồ bơi", "hồ bơi mấy giờ mở cửa", "hồ bơi mở cửa mấy giờ", "hồ bơi đóng cửa lúc mấy giờ", "thời gian mở cửa hồ bơi"],
+
+        "match_type": "keyword",
+
+        "response_vi": "Dạ hồ bơi vô cực tại Tầng 5 mở cửa từ 6 giờ sáng đến 22 giờ tối hàng ngày với khăn tắm và nước khoáng phục vụ miễn phí ạ.",
+
+        "response_en": "The Infinity Pool on Level 5 is open from 6:00 AM to 10:00 PM daily with complimentary towels and mineral water.",
+
+        "action_type": "none",
+
+        "is_fast_path": True,
+
+        "is_active": True,
+
+        "priority": 95,
+
+    },
+
+    {
+
         "id": "scn-pool",
 
         "title": "Hồ bơi vô cực (Infinity Pool)",
 
         "category": "facility",
 
-        "match_keywords": ["hồ bơi", "bể bơi", "swimming pool", "hồ bơi ở đâu", "ho boi", "be boi", "ho boi o dau", "tắm hồ bơi", "tắm bơi", "hồ bơi mở cửa", "bể bơi ở đâu", "hồ bơi vô cực", "infinity pool"],
+        "match_keywords": ["hồ bơi", "bể bơi", "swimming pool", "hồ bơi ở đâu", "ho boi", "be boi", "ho boi o dau", "tắm hồ bơi", "tắm bơi", "bể bơi ở đâu", "hồ bơi vô cực", "infinity pool"],
 
         "match_type": "keyword",
 
-        "response_vi": "Dạ hồ bơi vô cực nằm tại Tầng 5, mở cửa từ 6 giờ sáng đến 22 giờ tối hàng ngày với khăn tắm và nước khoáng phục vụ miễn phí ạ.",
+        "response_vi": "Dạ em xin hướng dẫn đường đi tới Hồ Bơi Vô Cực tại Tầng 5: Chặng 1, Quý khách di chuyển từ sảnh tiếp tân tới Thang máy A và bấm lên Tầng 5 ạ.",
 
-        "response_en": "The Infinity Pool is located on Level 5, open from 6:00 AM to 10:00 PM daily with complimentary towels and mineral water.",
+        "response_en": "Here are the directions to the Infinity Pool on Level 5: Step 1, please proceed to Elevator A in the lobby and take it up to Level 5.",
 
         "action_type": "show_map",
 
@@ -2429,9 +2525,9 @@ DEFAULT_SEED_SCENARIOS = [
 
         "match_type": "keyword",
 
-        "response_vi": "Dạ bãi giữ xe máy của khách sạn nằm tại Hầm B1, mở cửa 24/7 và hoàn toàn miễn phí cho quý khách lưu trú ạ. Ngoài ra, Quý khách có thể quét mã QR trên màn hình để ghi nhớ chỉ dẫn nhé ạ!",
+        "response_vi": "Dạ em xin hướng dẫn đường đi tới Bãi Giữ Xe Máy tại Hầm B1: Chặng 1, Quý khách di chuyển từ sảnh tiếp tân tới Thang máy A và bấm xuống Hầm B1 ạ.",
 
-        "response_en": "Motorbike parking is at Basement B1, open 24/7 and complimentary for staying guests. In addition, you can scan the QR code on the screen to save the directions!",
+        "response_en": "Here are the directions to the Motorbike Parking at Basement B1: Step 1, please proceed to Elevator A in the lobby and take it down to Basement B1.",
 
         "action_type": "show_map",
 
@@ -2447,19 +2543,48 @@ DEFAULT_SEED_SCENARIOS = [
 
     {
 
+        "id": "scn-bar-hours",
+
+        "title": "Giờ mở cửa Sky Lounge Bar",
+
+        "category": "facility",
+
+        "match_keywords": ["bar mở cửa", "quầy bar mở cửa", "sky bar mở cửa", "bar mấy giờ mở cửa", "giờ mở cửa quán bar", "quầy bar mở lúc mấy giờ"],
+
+        "match_type": "keyword",
+
+        "response_vi": "Dạ Sky Lounge Bar nằm tại Tầng 6, mở cửa từ 16 giờ 30 chiều đến 1 giờ đêm phục vụ các loại cocktail và rượu vang thượng hạng với tầm nhìn ngắm trọn thành phố ạ.",
+
+        "response_en": "Sky Lounge Bar is on Level 6, open from 4:30 PM to 1:00 AM midnight with breathtaking skyline views and premium beverages.",
+
+        "action_type": "none",
+
+        "is_fast_path": True,
+
+        "is_active": True,
+
+        "priority": 95,
+
+    },
+
+    {
+
         "id": "scn-rooftop-bar",
 
         "title": "Sky Lounge Bar",
 
         "category": "facility",
 
-        "match_keywords": ["quầy bar", "sky bar", "sky lounge", "uống rượu", "quán bar", "cocktail", "bar"],
+        "match_keywords": [
+            "quầy bar", "sky bar", "sky lounge", "uống rượu", "quán bar", "cocktail", "bar",
+            "ba ở đâu", "ba o dau", "quầy ba", "quay ba", "quán ba", "quan ba", "sky ba", "rooftop ba", "lên ba", "len ba", "đi ba", "di ba", "uống ở ba"
+        ],
 
         "match_type": "keyword",
 
-        "response_vi": "Dạ Sky Lounge Bar nằm tại Tầng 6, mở cửa từ 16 giờ 30 chiều đến 1 giờ đêm phục vụ các loại cocktail và rượu vang thượng hạng với tầm nhìn ngắm trọn thành phố ạ. Ngoài ra, Quý khách có thể quét mã QR trên màn hình để ghi nhớ chỉ dẫn nhé ạ!",
+        "response_vi": "Dạ em xin hướng dẫn đường đi tới Sky Lounge Bar tại Tầng 6: Chặng 1, Quý khách di chuyển từ sảnh tiếp tân tới Thang máy A và bấm lên Tầng 6 ạ.",
 
-        "response_en": "Sky Lounge Bar is on Level 6, open from 4:30 PM to 1:00 AM midnight with breathtaking skyline views and premium beverages. In addition, you can scan the QR code on the screen to save the directions!",
+        "response_en": "Here are the directions to Sky Lounge Bar on Level 6: Step 1, please proceed to Elevator A in the lobby and take it up to Level 6.",
 
         "action_type": "show_map",
 
@@ -2559,19 +2684,45 @@ DEFAULT_SEED_SCENARIOS = [
 
     {
 
-        "id": "scn-spa",
+        "id": "scn-spa-hours",
 
-        "title": "Aurora Luxury Spa & Sauna",
+        "title": "Giờ mở cửa Spa & Massage",
 
         "category": "facility",
 
-        "match_keywords": ["spa", "sauna", "massage", "xông hơi", "chăm sóc da", "spa ở đâu"],
+        "match_keywords": ["spa mở cửa", "massage mở cửa", "giờ mở cửa spa", "spa mấy giờ mở cửa", "giờ mở cửa massage"],
 
         "match_type": "keyword",
 
         "response_vi": "Dạ Thảo Mộc Spa & Massage nằm tại Tầng 5 (cùng tầng với Hồ bơi vô cực), mở cửa phục vụ từ 9 giờ sáng đến 22 giờ tối hàng ngày ạ.",
 
         "response_en": "Aurora Luxury Spa & Sauna is on Level 5, open from 9:00 AM to 10:00 PM daily.",
+
+        "action_type": "none",
+
+        "is_fast_path": True,
+
+        "is_active": True,
+
+        "priority": 95,
+
+    },
+
+    {
+
+        "id": "scn-spa",
+
+        "title": "Aurora Luxury Spa & Sauna",
+
+        "category": "facility",
+
+        "match_keywords": ["spa", "sauna", "massage", "xông hơi", "chăm sóc da", "spa ở đâu", "massage ở đâu"],
+
+        "match_type": "keyword",
+
+        "response_vi": "Dạ em xin hướng dẫn đường đi tới Thảo Mộc Spa & Massage tại Tầng 5: Chặng 1, Quý khách di chuyển từ sảnh tiếp tân tới Thang máy A và bấm lên Tầng 5 ạ.",
+
+        "response_en": "Here are the directions to Aurora Luxury Spa & Sauna on Level 5: Step 1, please proceed to Elevator A in the lobby and take it up to Level 5.",
 
         "action_type": "show_map",
 
@@ -2653,9 +2804,9 @@ DEFAULT_SEED_SCENARIOS = [
 
         "match_type": "keyword",
 
-        "response_vi": "Dạ bãi đỗ xe ô tô nằm tại Hầm B2, mở cửa 24/7 và hoàn toàn miễn phí cho khách lưu trú ạ. Ngoài ra, Quý khách có thể quét mã QR trên màn hình để ghi nhớ chỉ dẫn nhé ạ!",
+        "response_vi": "Dạ em xin hướng dẫn đường đi tới Bãi Đỗ Xe Ô Tô tại Hầm B2: Chặng 1, Quý khách di chuyển từ sảnh tiếp tân tới Thang máy A và bấm xuống Hầm B2 ạ.",
 
-        "response_en": "Car parking is at Basement B2, open 24/7 and complimentary for staying guests. In addition, you can scan the QR code on the screen to save the directions!",
+        "response_en": "Here are the directions to the Car Parking at Basement B2: Step 1, please proceed to Elevator A in the lobby and take it down to Basement B2.",
 
         "action_type": "show_map",
 
@@ -2814,10 +2965,30 @@ class ScenarioService:
 
 
             # Đồng bộ và chuẩn hóa từ khóa các kịch bản mặc định nếu trong DB cũ còn chứa từ khóa bẫy
+            who_are_you_keywords = [
+                "bạn là ai", "ban la ai", "em là ai", "em la ai", "mày là ai", "may la ai",
+                "rora là ai", "rora la ai", "robot là ai", "robot la ai",
+                "who are you", "what is your name", "who is rora", "what are you",
+                "tên bạn là gì", "ten ban la gi", "tên em là gì", "ten em la gi",
+                "bạn tên gì", "ban ten gi", "em tên gì", "em ten gi",
+                "giới thiệu bản thân", "gioi thieu ban than",
+                "giới thiệu về bản thân", "gioi thieu ve ban than",
+                "giới thiệu về bạn", "gioi thieu ve ban",
+                "giới thiệu về em", "gioi thieu ve em",
+                "giới thiệu về mình", "gioi thieu ve minh",
+                "bạn giới thiệu bản thân được không", "ban gioi thieu ban than duoc khong",
+                "bạn có thể giới thiệu bản thân", "ban co the gioi thieu ban than",
+                "bạn có thể giới thiệu về bản thân", "ban co the gioi thieu ve ban than",
+                "bạn có thể giới thiệu bản thân được không", "ban co the gioi thieu ban than duoc khong",
+                "bạn có thể giới thiệu về bản thân được không", "ban co the gioi thieu ve ban than duoc khong",
+                "tự giới thiệu", "tu gioi thieu", "giới thiệu rora", "gioi thieu rora",
+                "introduce yourself", "tell me about yourself", "can you introduce yourself"
+            ]
             cleaned_keywords_map = {
                 "scn-pool": ["hồ bơi", "bể bơi", "swimming pool", "hồ bơi ở đâu", "ho boi", "be boi", "ho boi o dau", "tắm hồ bơi", "tắm bơi", "hồ bơi mở cửa", "bể bơi ở đâu", "hồ bơi vô cực", "infinity pool"],
                 "scn-karaoke": ["karaoke", "phòng karaoke", "hát karaoke", "phòng hát", "vip karaoke"],
                 "scn-gift-shop": ["cửa hàng lưu niệm", "quà lưu niệm", "lưu niệm", "gift shop", "mua quà", "mua quà lưu niệm", "souvenir"],
+                "scn-who-are-you": who_are_you_keywords,
             }
             has_db_updates = False
             for r in records:
@@ -2825,6 +2996,11 @@ class ScenarioService:
                     if r.is_active or r.is_fast_path:
                         r.is_active = False
                         r.is_fast_path = False
+                        has_db_updates = True
+                elif r.id == "scn-who-are-you":
+                    if not any(k in (r.match_keywords or []) for k in ["giới thiệu bản thân", "bạn giới thiệu bản thân được không"]):
+                        r.match_keywords = who_are_you_keywords
+                        r.response_vi = "Dạ em là Rora, trợ lý Robot Concierge thông minh của khách sạn 5 sao Aurora Grand. Rất hân hạnh được phục vụ và đồng hành cùng quý khách ạ!"
                         has_db_updates = True
                 elif r.id in cleaned_keywords_map:
                     target_kw = cleaned_keywords_map[r.id]
@@ -2916,13 +3092,19 @@ class ScenarioService:
         normalized = re.sub(r'\s+', ' ', normalized).strip()
 
         # 1b. Khong kich hoat Fast-Path khach san voi cac cau hoi ve kien thuc chung, nhan vat, thuc the ngoai khach san
-        is_general_knowledge = bool(re.search(
-            r'\b(vận động viên|van dong vien|cầu thủ|cau thu|ca sĩ|ca si|diễn viên|dien vien|nhạc sĩ|nhac si|tác giả|tac gia|nhà văn|nha van|nhà thơ|nha tho|tổng thống|tong thong|thủ tướng|thu tuong|chủ tịch|chu tich|người nổi tiếng|nguoi noi tieng|nhân vật|nhan vat|ông là ai|bà là ai|anh là ai|chị là ai|họ là ai|là ai|ai là|ai thế|ai vậy|who is|who are|who was|bài hát|bai hat|bài thơ|bai tho|bộ phim|bo phim|cuốn sách|cuon sach|lịch sử|lich su|tiểu sử|tieu su|nguồn gốc|nguon goc|định nghĩa|dinh nghia|khái niệm|khai niem|thế nào là|the nao la|ý nghĩa là|công thức|cong thuc|tại sao|tai sao|vì sao|vi sao|lý do gì|ly do gi)\b',
+        is_who_are_you_self = bool(re.search(
+            r'\b(bạn là ai|ban la ai|em là ai|em la ai|mày là ai|may la ai|rora là ai|rora la ai|robot là ai|robot la ai|tên bạn là gì|ten ban la gi|tên em là gì|ten em la gi|bạn tên gì|ban ten gi|em tên gì|em ten gi|giới thiệu bản thân|gioi thieu ban than|giới thiệu về bản thân|gioi thieu ve ban than|giới thiệu về bạn|gioi thieu ve ban|giới thiệu về em|gioi thieu ve em|giới thiệu về mình|gioi thieu ve minh|tự giới thiệu|tu gioi thieu|giới thiệu rora|who are you|what is your name|who is rora|tell me about yourself|introduce yourself)\b',
             normalized,
             re.IGNORECASE
         ))
-        if is_general_knowledge:
-            return None
+        if not is_who_are_you_self:
+            is_general_knowledge = bool(re.search(
+                r'\b(vận động viên|van dong vien|cầu thủ|cau thu|ca sĩ|ca si|diễn viên|dien vien|nhạc sĩ|nhac si|tác giả|tac gia|nhà văn|nha van|nhà thơ|nha tho|tổng thống|tong thong|thủ tướng|thu tuong|chủ tịch|chu tich|người nổi tiếng|nguoi noi tieng|nhân vật|nhan vat|ông là ai|bà là ai|anh là ai|chị là ai|họ là ai|bài hát|bai hat|bài thơ|bai tho|bộ phim|bo phim|cuốn sách|cuon sach|lịch sử|lich su|tiểu sử|tieu su|nguồn gốc|nguon goc|định nghĩa|dinh nghia|khái niệm|khai niem|thế nào là|the nao la|ý nghĩa là|công thức|cong thuc|tại sao|tai sao|vì sao|vi sao|lý do gì|ly do gi)\b',
+                normalized,
+                re.IGNORECASE
+            ))
+            if is_general_knowledge:
+                return None
 
 
 

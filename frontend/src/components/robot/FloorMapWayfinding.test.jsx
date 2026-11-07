@@ -186,6 +186,10 @@ describe('FloorMap Wayfinding Logic & Contract Tests', () => {
 
     expect(detectDestinationPoi('Chỉ đường lên Rooftop Coffee')).toBe('rooftop_coffee');
     expect(detectDestinationPoi('Quầy bar ở đâu')).toBe('bar');
+    expect(detectDestinationPoi('bar ở đâu')).toBe('bar');
+    expect(detectDestinationPoi('ba ở đâu')).toBe('bar');
+    expect(detectDestinationPoi('quầy ba')).toBe('bar');
+    expect(detectDestinationPoi('sky ba')).toBe('bar');
     expect(detectDestinationPoi('Phòng karaoke ở tầng mấy')).toBe('karaoke');
     expect(detectDestinationPoi('Cửa hàng lưu niệm ở đâu')).toBe('gift_shop');
     expect(detectDestinationPoi('Bãi giữ xe máy ở đâu')).toBe('parking_bike');
@@ -263,6 +267,17 @@ describe('FloorMap Wayfinding Logic & Contract Tests', () => {
 
     expect(detectDestinationPoi('402')).toBe('room_402');
 
+  });
+
+  it('ensures all hotel destinations have complete step1 and step2 routing data for 10s multi-stage guidance', () => {
+    Object.entries(HOTEL_DESTINATIONS).forEach(([key, dest]) => {
+      expect(dest.id).toBe(key);
+      expect(dest.name).toBeTruthy();
+      expect(dest.step1Text).toBeTruthy();
+      if (dest.isDifferentFloor) {
+        expect(dest.step2Text).toBeTruthy();
+      }
+    });
   });
 
 });

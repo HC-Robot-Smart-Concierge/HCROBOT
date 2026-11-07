@@ -4,6 +4,8 @@ import logging
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from typing import Optional, Dict, Any, Tuple
 
+from app.core.config import settings
+
 logger = logging.getLogger(__name__)
 
 # Lazy loaded whisper model to save RAM until first use
@@ -31,18 +33,111 @@ EN_ANCHOR_WORDS_RE = re.compile(
 )
 
 
+HOTEL_STT_INITIAL_PROMPT = (
+    "Khách sạn Aurora Grand. Các phòng lưu trú: 301, 302, 303, 304, 305, 306, 307, 308, 309, 310, "
+    "401, 402, 403, 404, 405, 406, 407, 408, 409, 410. "
+    "Dịch vụ: lễ tân, buồng phòng, dọn phòng, khăn tắm, bàn ủi, nước suối, hồ bơi vô cực, "
+    "nhà hàng, thực đơn, menu, gọi món, taxi, đón xe, spa, gym, toilet, WC, wifi."
+)
+
+WORD_TO_DIGIT_D1 = {"ba": "3", "pha": "3", "bốn": "4", "bon": "4", "tư": "4"}
+WORD_TO_DIGIT_D3 = {
+    "một": "1", "mot": "1", "mốt": "1", "1": "1",
+    "hai": "2", "2": "2",
+    "ba": "3", "3": "3",
+    "bốn": "4", "bon": "4", "tư": "4", "4": "4",
+    "năm": "5", "nam": "5", "lăm": "5", "lam": "5", "5": "5",
+    "sáu": "6", "sau": "6", "6": "6",
+    "bảy": "7", "bay": "7", "bẩy": "7", "7": "7",
+    "tám": "8", "tam": "8", "8": "8",
+    "chín": "9", "chin": "9", "9": "9",
+}
+
+WHISPER_HALLUCINATION_PATTERNS = [
+    re.compile(r"cảm ơn (?:quý vị |các bạn )?đã theo dõi.*", re.IGNORECASE),
+    re.compile(r"hãy like và subscribe.*", re.IGNORECASE),
+    re.compile(r"thank you for watching.*", re.IGNORECASE),
+    re.compile(r"thanks for watching.*", re.IGNORECASE),
+    re.compile(r"subtitles by.*", re.IGNORECASE),
+]
+
+
+def normalize_hotel_stt_transcript(text: str) -> str:
+    """
+    Chuẩn hóa văn bản đầu ra từ STT cho ngữ cảnh khách sạn:
+    1. Chuyển đổi số phòng nói tiếng Việt (ba không một, ba linh hai, pha không một, bốn lẻ ba...) thành số chuẩn (301, 302, 403).
+    2. Sửa lỗi âm học thường gặp (pha 401 -> phòng 401, tolet -> toilet, rum sơ vít -> room service).
+    3. Loại bỏ ảo giác lặp từ (hallucination loops) của Whisper trên âm thanh rỗng/nhiễu.
+    """
+    if not text:
+        return ""
+    clean = text.strip()
+
+    for pat in WHISPER_HALLUCINATION_PATTERNS:
+        clean = pat.sub("", clean).strip()
+
+    def _rep_room_3digits(m: re.Match) -> str:
+        d1 = WORD_TO_DIGIT_D1.get(m.group(1).lower(), "3")
+        d3 = WORD_TO_DIGIT_D3.get(m.group(2).lower(), "1")
+        return f"{d1}0{d3}"
+
+    # 1. Chuyển đổi số phòng ba chữ số: [ba|pha|bốn] [linh|không|lẻ] [một..chín] -> 301..409
+    clean = re.sub(
+        r'\b(ba|pha|bốn|bon|tư)\s+(?:trăm\s+)?(?:linh|không|khong|lẻ|le)\s+(một|mot|mốt|hai|ba|bốn|bon|tư|năm|nam|lăm|sáu|sau|bảy|bay|bẩy|tám|tam|chín|chin|[1-9])\b',
+        _rep_room_3digits,
+        clean,
+        flags=re.IGNORECASE,
+    )
+
+    # 2. Chuyển đổi phòng 310, 410: [ba|bốn] [mười|một không] -> 310 / 410
+    clean = re.sub(
+        r'\b(ba|pha|bốn|bon|tư)\s+(?:trăm\s+)?(?:mười|muoi|mươi|một không|mot khong)\b',
+        lambda m: "310" if m.group(1).lower() in ["ba", "pha"] else "410",
+        clean,
+        flags=re.IGNORECASE,
+    )
+
+    # 3. Sửa lỗi âm học "pha" đứng trước số phòng -> "phòng"
+    clean = re.sub(r'\bpha\s+(?:phòng\s+)?([34][01][0-9])\b', r'phòng \1', clean, flags=re.IGNORECASE)
+
+    # 4. Sửa lỗi âm học tiếng Việt: "bar" bị nghe nhầm thành "ba"
+    clean = re.sub(r'\b(sky|rooftop)\s+ba\b', r'\1 bar', clean, flags=re.IGNORECASE)
+    clean = re.sub(r'\b(quầy|quay|quán|quan)\s+ba\b', r'\1 bar', clean, flags=re.IGNORECASE)
+    clean = re.sub(r'\b(lên|ra|đi|vào|uống ở)\s+ba\b', r'\1 bar', clean, flags=re.IGNORECASE)
+    clean = re.sub(r'\bba\s+(ở đâu|o dau|chỗ nào|cho nao|tầng mấy|tang may|hướng nào|huong nao|lối nào|loi nao)\b', r'quầy bar \1', clean, flags=re.IGNORECASE)
+
+    # 5. Sửa lỗi chính tả/từ mượn tiếng Anh phổ biến
+    clean = re.sub(r'\b(tolet|to lét|toa lét|toilét|toalet)\b', 'toilet', clean, flags=re.IGNORECASE)
+    clean = re.sub(r'\b(rum sơ vít|room sơ vít|room sơ vit|rum sơ vit)\b', 'room service', clean, flags=re.IGNORECASE)
+    clean = re.sub(r'\b(pát wifi|bát wifi|mật khẩu goai phai)\b', 'pass wifi', clean, flags=re.IGNORECASE)
+
+    return clean.strip()
+
+
 def get_whisper_model():
     global _whisper_model, _whisper_load_attempted
     if _whisper_model is None and not _whisper_load_attempted:
         _whisper_load_attempted = True
+        preferred_model = getattr(settings, "WHISPER_MODEL", "base") or "base"
         try:
             import faster_whisper
-            logger.info("[STT Service] Loading faster_whisper tiny model on CPU...")
-            _whisper_model = faster_whisper.WhisperModel("tiny", device="cpu", compute_type="int8")
-            logger.info("[STT Service] faster_whisper tiny model loaded successfully.")
+            logger.info(f"[STT Service] Loading faster_whisper {preferred_model} model on CPU...")
+            _whisper_model = faster_whisper.WhisperModel(preferred_model, device="cpu", compute_type="int8")
+            logger.info(f"[STT Service] faster_whisper {preferred_model} model loaded successfully.")
         except Exception as e:
-            logger.info(f"[STT Service] faster_whisper unavailable ({e}); using Google Bilingual STT.")
-            return None
+            if preferred_model != "tiny":
+                try:
+                    import faster_whisper
+                    logger.warning(f"[STT Service] Failed to load {preferred_model} ({e}), falling back to tiny model on CPU...")
+                    _whisper_model = faster_whisper.WhisperModel("tiny", device="cpu", compute_type="int8")
+                    logger.info("[STT Service] faster_whisper tiny model loaded successfully as fallback.")
+                    return _whisper_model
+                except Exception as e_tiny:
+                    logger.info(f"[STT Service] faster_whisper unavailable ({e_tiny}); using Google Bilingual STT.")
+                    return None
+            else:
+                logger.info(f"[STT Service] faster_whisper unavailable ({e}); using Google Bilingual STT.")
+                return None
     return _whisper_model
 
 
@@ -157,17 +252,19 @@ def transcribe_audio_wav_detailed(
                     beam_size=2,
                     vad_filter=True,
                     vad_parameters=dict(min_silence_duration_ms=400),
+                    initial_prompt=HOTEL_STT_INITIAL_PROMPT,
                 )
                 results = [seg.text.strip() for seg in segments if seg.text.strip()]
                 full_text = " ".join(results).strip()
-                if full_text:
+                normalized_text = normalize_hotel_stt_transcript(full_text)
+                if normalized_text:
                     det_lang = "vi" if str(info.language).lower().startswith("vi") else "en"
                     prob = round(float(getattr(info, "language_probability", 0.85)), 3)
                     logger.info(
-                        f"[STT Service - Whisper Auto] lang={det_lang} prob={prob} len={len(full_text)}"
+                        f"[STT Service - Whisper Auto] lang={det_lang} prob={prob} len={len(normalized_text)}"
                     )
                     return {
-                        "text": full_text,
+                        "text": normalized_text,
                         "detected_language": det_lang,
                         "confidence": prob,
                         "provider": "faster_whisper_auto",
@@ -206,13 +303,14 @@ def transcribe_audio_wav_detailed(
             chosen_text, det_lang, final_conf = _score_bilingual_candidates(
                 vi_text, vi_conf, en_text, en_conf, preferred_lang=pref
             )
-            if chosen_text:
+            normalized_chosen = normalize_hotel_stt_transcript(chosen_text)
+            if normalized_chosen:
                 logger.info(
                     f"[STT Service - Google Bilingual] detected={det_lang} conf={final_conf} "
                     f"vi_len={len(vi_text)} en_len={len(en_text)}"
                 )
                 return {
-                    "text": chosen_text,
+                    "text": normalized_chosen,
                     "detected_language": det_lang,
                     "confidence": final_conf,
                     "provider": "google_bilingual",
@@ -243,10 +341,11 @@ def transcribe_audio_wav_detailed(
                 try:
                     raw = future.result(timeout=2.5)
                     text, conf = _parse_google_result(raw)
-                    if text:
-                        logger.info(f"[STT Service - Google {lang_code}] conf={conf:.2f} len={len(text)}")
+                    normalized_text = normalize_hotel_stt_transcript(text)
+                    if normalized_text:
+                        logger.info(f"[STT Service - Google {lang_code}] conf={conf:.2f} len={len(normalized_text)}")
                         return {
-                            "text": text,
+                            "text": normalized_text,
                             "detected_language": whisper_lang,
                             "confidence": round(conf, 3),
                             "provider": f"google_{whisper_lang}",
@@ -268,13 +367,15 @@ def transcribe_audio_wav_detailed(
                 beam_size=2,
                 vad_filter=True,
                 vad_parameters=dict(min_silence_duration_ms=400),
+                initial_prompt=HOTEL_STT_INITIAL_PROMPT,
             )
             results = [seg.text.strip() for seg in segments if seg.text.strip()]
             full_text = " ".join(results).strip()
-            if full_text:
-                logger.info(f"[STT Service - Whisper {whisper_lang}] len={len(full_text)}")
+            normalized_text = normalize_hotel_stt_transcript(full_text)
+            if normalized_text:
+                logger.info(f"[STT Service - Whisper {whisper_lang}] len={len(normalized_text)}")
                 return {
-                    "text": full_text,
+                    "text": normalized_text,
                     "detected_language": whisper_lang,
                     "confidence": 0.85,
                     "provider": f"faster_whisper_{whisper_lang}",

@@ -189,6 +189,10 @@ Tất cả các tầng đều được kết nối thẳng bằng **Thang máy A
 
 ## 11. Các Câu Hỏi Thường Gặp (FAQ) & Kịch Bản Trả Lời Nhanh Cho Robot Rora
 
+### Hỏi về Danh tính Robot Concierge & Giới thiệu bản thân (Who Are You / Self Introduction):
+- **Câu hỏi của khách:** *"Bạn là ai?", "Bạn có thể giới thiệu bản thân được không?", "Giới thiệu về bạn", "Tên bạn là gì?", "Bạn tên gì?", "Em là ai?", "Rora là ai?", "Bạn giới thiệu về mình đi"*
+- **Robot trả lời:** *"Dạ em là Rora, trợ lý Robot Concierge thông minh của khách sạn 5 sao Aurora Grand. Rất hân hạnh được phục vụ và đồng hành cùng quý khách trong suốt kỳ nghỉ ạ!"*
+
 ### Hỏi về Mạng Wi-Fi:
 - **Câu hỏi của khách:** *"Pass wifi khách sạn là gì?", "Cho tôi xin mật khẩu wifi", "Wifi ở đây tên gì?"*
 - **Robot trả lời:** *"Dạ mạng Wi-Fi của khách sạn là **Aurora_Guest_5G**, mật khẩu truy cập là **aurora2026**. Quý khách có thể sử dụng hoàn toàn miễn phí tại phòng và toàn bộ các khu vực công cộng ạ!"*

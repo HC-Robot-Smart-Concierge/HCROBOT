@@ -25,17 +25,18 @@ import {
   Map as MapIcon,
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
+import { calculateFloorRoute } from '../../services/indoorNavigation/index.js';
 
 // Danh sách cấu hình 8 Tầng trong khách sạn
 export const HOTEL_FLOORS = [
-  { id: '1', level: 'B2', name: 'Hầm B2 · Bãi Đỗ Xe Ô Tô', image: '/maps/floor_b2.png' },
-  { id: '2', level: 'B1', name: 'Hầm B1 · Bãi Xe Máy', image: '/maps/floor_b1.png' },
-  { id: '3', level: 'Ground', name: 'Tầng Trệt · Sảnh & Tiếp Tân', image: '/maps/floor_1.png' },
-  { id: '4', level: 'Tầng 2', name: 'Tầng 2 · Bếp & Nhà Hàng (Kitchen & Pickup)', image: '/maps/floor_2.png' },
-  { id: '5', level: 'Tầng 3', name: 'Tầng 3 · Phòng Nghỉ (301-310)', image: '/maps/floor_3.png' },
-  { id: '6', level: 'Tầng 4', name: 'Tầng 4 · Phòng Nghỉ (401-410)', image: '/maps/floor_4.png' },
-  { id: '7', level: 'Tầng 5', name: 'Tầng 5 · Hồ Bơi, Spa & Gym', image: '/maps/floor_5.png' },
-  { id: '8', level: 'Tầng 6', name: 'Tầng 6 · Rooftop Coffee & Bar', image: '/maps/floor_6.png' },
+  { id: '1', level: 'B2', name: 'Hầm B2 · Bãi Đỗ Xe Ô Tô', image: '/maps/floor_b2.png', width: 1840, height: 1174 },
+  { id: '2', level: 'B1', name: 'Hầm B1 · Bãi Xe Máy', image: '/maps/floor_b1.png', width: 1840, height: 1174 },
+  { id: '3', level: 'Ground', name: 'Tầng Trệt · Sảnh & Tiếp Tân', image: '/maps/floor_1.png', width: 1840, height: 1174 },
+  { id: '4', level: 'Tầng 2', name: 'Tầng 2 · Bếp & Nhà Hàng (Kitchen & Pickup)', image: '/maps/floor_2.png', width: 1840, height: 1174 },
+  { id: '5', level: 'Tầng 3', name: 'Tầng 3 · Phòng Nghỉ (301-310)', image: '/maps/floor_3.png', width: 1840, height: 1174 },
+  { id: '6', level: 'Tầng 4', name: 'Tầng 4 · Phòng Nghỉ (401-410)', image: '/maps/floor_4.png', width: 1840, height: 1174 },
+  { id: '7', level: 'Tầng 5', name: 'Tầng 5 · Hồ Bơi, Spa & Gym', image: '/maps/floor_5.png', width: 1840, height: 1174 },
+  { id: '8', level: 'Tầng 6', name: 'Tầng 6 · Rooftop Coffee & Bar', image: '/maps/floor_6.png', width: 1840, height: 1174 },
 ];
 
 // Danh bạ các điểm đến (POI) nổi bật
@@ -54,7 +55,7 @@ export const HOTEL_DESTINATIONS = {
     step1Text: 'Chặng 1: Đi từ sảnh Lobby đến Thang máy A và bấm lên Tầng 5.',
     step2Text: 'Chặng 2: Ra khỏi thang máy, rẽ trái đi hết hành lang qua cửa kính là đến Hồ bơi vô cực.',
     coords: { x: 380, y: 230 },
-    routeTarget: 'M 1715 560 L 540 560 L 540 320 L 380 230',
+    routeTarget: 'M 1715 560 L 690 627 Q 670 628, 658 612 L 380 230',
   },
   gym: {
     id: 'gym',
@@ -68,8 +69,8 @@ export const HOTEL_DESTINATIONS = {
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Đi tới Thang máy A và bấm lên Tầng 5.',
     step2Text: 'Chặng 2: Ra khỏi thang máy, đi thẳng xuống phía dưới để vào Phòng Gym.',
-    coords: { x: 1450, y: 940 },
-    routeTarget: 'M 1715 560 L 1510 560 L 1510 740 L 1450 940',
+    coords: { x: 1450, y: 880 },
+    routeTarget: 'M 1715 560 L 1467 705 Q 1450 715, 1450 735 L 1450 880',
   },
   spa: {
     id: 'spa',
@@ -84,7 +85,7 @@ export const HOTEL_DESTINATIONS = {
     step1Text: 'Chặng 1: Đi tới Thang máy A và bấm lên Tầng 5.',
     step2Text: 'Chặng 2: Ra khỏi thang máy, rẽ trái 15m vào cửa phòng Spa.',
     coords: { x: 1080, y: 230 },
-    routeTarget: 'M 1715 560 L 1080 560 L 1080 320 L 1080 230',
+    routeTarget: 'M 1715 560 L 1100 461 Q 1080 458, 1080 438 L 1080 230',
   },
 
   // === TẦNG 2: BẾP, NHÀ HÀNG & F&B (MAP 4.PNG MỚI) ===
@@ -101,7 +102,7 @@ export const HOTEL_DESTINATIONS = {
     step1Text: 'Chặng 1: Đi từ sảnh tiếp tân ra Thang máy A và bấm lên Tầng 2.',
     step2Text: 'Chặng 2: Ra khỏi thang máy, đi thẳng theo hành lang vào Quầy Nhận Món & Nhà hàng.',
     coords: { x: 800, y: 260 },
-    routeTarget: 'M 1715 560 L 1450 560 L 1450 380 L 800 260',
+    routeTarget: 'M 1715 560 L 1391 322 Q 1375 310, 1356 304 L 1239 266 Q 1220 260, 1200 260 L 800 260',
   },
   kitchen: {
     id: 'kitchen',
@@ -116,7 +117,7 @@ export const HOTEL_DESTINATIONS = {
     step1Text: 'Chặng 1: Đi từ sảnh tiếp tân ra Thang máy A và bấm lên Tầng 2.',
     step2Text: 'Chặng 2: Ra khỏi thang máy, đi dọc hành lang bên phải rẽ vào cửa Khu Bếp Chính.',
     coords: { x: 680, y: 850 },
-    routeTarget: 'M 1715 560 L 1450 560 L 1450 750 L 680 850',
+    routeTarget: 'M 1715 560 L 1393 711 Q 1375 720, 1355 722 L 1120 748 Q 1100 750, 1081 755 L 680 850',
   },
   preparation_area: {
     id: 'preparation_area',
@@ -131,7 +132,7 @@ export const HOTEL_DESTINATIONS = {
     step1Text: 'Chặng 1: Đi tới Thang máy A và bấm lên Tầng 2.',
     step2Text: 'Chặng 2: Đi qua sảnh nhận món sang phòng sơ chế thực phẩm góc bên trái.',
     coords: { x: 180, y: 260 },
-    routeTarget: 'M 1715 560 L 1450 560 L 1450 380 L 180 260',
+    routeTarget: 'M 1715 560 L 1391 322 Q 1375 310, 1356 304 L 1239 266 Q 1220 260, 1200 260 L 375 260 Q 355 260, 335 260 L 180 260',
   },
   warehouse: {
     id: 'warehouse',
@@ -146,7 +147,7 @@ export const HOTEL_DESTINATIONS = {
     step1Text: 'Chặng 1: Đi tới Thang máy A và bấm lên Tầng 2.',
     step2Text: 'Chặng 2: Ra khỏi thang máy, đi thẳng theo hành lang vào Kho thực phẩm bên tay phải.',
     coords: { x: 1600, y: 160 },
-    routeTarget: 'M 1715 560 L 1600 560 L 1600 240 L 1600 160',
+    routeTarget: 'M 1715 560 L 1561 327 Q 1550 310, 1556 291 L 1600 160',
   },
   restroom_f2: {
     id: 'restroom_f2',
@@ -160,8 +161,8 @@ export const HOTEL_DESTINATIONS = {
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Đi tới Thang máy A và bấm lên Tầng 2.',
     step2Text: 'Chặng 2: Ra khỏi thang máy, đi thẳng xuống cuối hành lang để vào Nhà Vệ Sinh Nam/Nữ.',
-    coords: { x: 1600, y: 950 },
-    routeTarget: 'M 1715 560 L 1600 560 L 1600 950',
+    coords: { x: 1650, y: 960 },
+    routeTarget: 'M 1715 560 L 1654 850 Q 1650 870, 1650 890 L 1650 960',
   },
 
   // === TẦNG 3: PHÒNG NGHỈ 301 - 309 (MAP 5.PNG) ===
@@ -177,8 +178,8 @@ export const HOTEL_DESTINATIONS = {
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 3.',
     step2Text: 'Chặng 2: Ra khỏi thang máy, rẽ vào hành lang và bước vào Phòng 301 ngay cạnh thang máy.',
-    coords: { x: 1656, y: 185 },
-    routeTarget: 'M 1715 560 L 1656 560 L 1656 220',
+    coords: { x: 1656, y: 220 },
+    routeTarget: 'M 1715 560 L 1676 560 Q 1656 560, 1656 540 L 1656 220',
   },
   room_302: {
     id: 'room_302',
@@ -192,8 +193,8 @@ export const HOTEL_DESTINATIONS = {
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 3.',
     step2Text: 'Chặng 2: Ra khỏi thang máy, đi dọc hành lang rẽ vào Phòng 302 dãy bên phải.',
-    coords: { x: 1288, y: 185 },
-    routeTarget: 'M 1715 560 L 1288 560 L 1288 220',
+    coords: { x: 1288, y: 220 },
+    routeTarget: 'M 1715 560 L 1676 560 Q 1656 560, 1656 540 L 1656 240 Q 1656 220, 1636 220 L 1288 220',
   },
   room_303: {
     id: 'room_303',
@@ -207,8 +208,8 @@ export const HOTEL_DESTINATIONS = {
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 3.',
     step2Text: 'Chặng 2: Ra khỏi thang máy, đi thẳng theo hành lang tới Phòng 303 bên tay phải.',
-    coords: { x: 920, y: 185 },
-    routeTarget: 'M 1715 560 L 920 560 L 920 220',
+    coords: { x: 920, y: 220 },
+    routeTarget: 'M 1715 560 L 1676 560 Q 1656 560, 1656 540 L 1656 240 Q 1656 220, 1636 220 L 920 220',
   },
   room_304: {
     id: 'room_304',
@@ -222,8 +223,8 @@ export const HOTEL_DESTINATIONS = {
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 3.',
     step2Text: 'Chặng 2: Ra khỏi thang máy, đi hết hành lang tới Phòng 304 góc bên phải cuối dãy.',
-    coords: { x: 552, y: 185 },
-    routeTarget: 'M 1715 560 L 552 560 L 552 220',
+    coords: { x: 552, y: 220 },
+    routeTarget: 'M 1715 560 L 1676 560 Q 1656 560, 1656 540 L 1656 240 Q 1656 220, 1636 220 L 552 220',
   },
   room_305: {
     id: 'room_305',
@@ -237,8 +238,8 @@ export const HOTEL_DESTINATIONS = {
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 3.',
     step2Text: 'Chặng 2: Ra khỏi thang máy, đi hết hành lang sang góc trái dãy dưới là Phòng 305.',
-    coords: { x: 184, y: 185 },
-    routeTarget: 'M 1715 560 L 184 560 L 184 220',
+    coords: { x: 184, y: 220 },
+    routeTarget: 'M 1715 560 L 1676 560 Q 1656 560, 1656 540 L 1656 240 Q 1656 220, 1636 220 L 184 220',
   },
   room_306: {
     id: 'room_306',
@@ -252,8 +253,8 @@ export const HOTEL_DESTINATIONS = {
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 3.',
     step2Text: 'Chặng 2: Ra khỏi thang máy, đi dọc hành lang rẽ vào Phòng 306.',
-    coords: { x: 184, y: 960 },
-    routeTarget: 'M 1715 560 L 184 560 L 184 920',
+    coords: { x: 184, y: 920 },
+    routeTarget: 'M 1715 560 L 1676 560 Q 1656 560, 1656 580 L 1656 900 Q 1656 920, 1636 920 L 184 920',
   },
   room_307: {
     id: 'room_307',
@@ -267,8 +268,8 @@ export const HOTEL_DESTINATIONS = {
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 3.',
     step2Text: 'Chặng 2: Ra khỏi thang máy, đi dọc hành lang rẽ vào Phòng 307 dãy đối diện.',
-    coords: { x: 552, y: 960 },
-    routeTarget: 'M 1715 560 L 552 560 L 552 920',
+    coords: { x: 552, y: 920 },
+    routeTarget: 'M 1715 560 L 1676 560 Q 1656 560, 1656 580 L 1656 900 Q 1656 920, 1636 920 L 552 920',
   },
   room_308: {
     id: 'room_308',
@@ -282,8 +283,8 @@ export const HOTEL_DESTINATIONS = {
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 3.',
     step2Text: 'Chặng 2: Ra khỏi thang máy, đi thẳng xuống dãy phòng đối diện để vào Phòng 308.',
-    coords: { x: 920, y: 960 },
-    routeTarget: 'M 1715 560 L 920 560 L 920 920',
+    coords: { x: 920, y: 920 },
+    routeTarget: 'M 1715 560 L 1676 560 Q 1656 560, 1656 580 L 1656 900 Q 1656 920, 1636 920 L 920 920',
   },
   room_309: {
     id: 'room_309',
@@ -297,8 +298,8 @@ export const HOTEL_DESTINATIONS = {
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 3.',
     step2Text: 'Chặng 2: Ra khỏi thang máy, đi thẳng xuống góc phải dãy phòng đối diện là Phòng 309.',
-    coords: { x: 1288, y: 960 },
-    routeTarget: 'M 1715 560 L 1288 560 L 1288 920',
+    coords: { x: 1288, y: 920 },
+    routeTarget: 'M 1715 560 L 1676 560 Q 1656 560, 1656 580 L 1656 900 Q 1656 920, 1636 920 L 1288 920',
   },
 
   room_310: {
@@ -313,11 +314,11 @@ export const HOTEL_DESTINATIONS = {
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 3.',
     step2Text: 'Chặng 2: Ra khỏi thang máy, rẽ vào Phòng 310 ngay cạnh thang máy dãy đối diện.',
-    coords: { x: 1656, y: 960 },
-    routeTarget: 'M 1715 560 L 1656 560 L 1656 920',
+    coords: { x: 1656, y: 920 },
+    routeTarget: 'M 1715 560 L 1676 560 Q 1656 560, 1656 580 L 1656 920',
   },
 
-  // === TẦNG 4: PHÒNG NGHỈ 401 - 409 (MAP 6.PNG) ===
+  // === TẦNG 4: PHÒNG NGHỈ 401 - 410 (MAP 6.PNG) ===
   room_401: {
     id: 'room_401',
     name: 'Phòng Nghỉ 401',
@@ -330,8 +331,8 @@ export const HOTEL_DESTINATIONS = {
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 4.',
     step2Text: 'Chặng 2: Ra khỏi thang máy, rẽ vào hành lang và bước vào Phòng 401 ngay cạnh thang máy.',
-    coords: { x: 1656, y: 185 },
-    routeTarget: 'M 1715 560 L 1656 560 L 1656 220',
+    coords: { x: 1656, y: 220 },
+    routeTarget: 'M 1715 560 L 1676 560 Q 1656 560, 1656 540 L 1656 220',
   },
   room_402: {
     id: 'room_402',
@@ -345,8 +346,8 @@ export const HOTEL_DESTINATIONS = {
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 4.',
     step2Text: 'Chặng 2: Ra khỏi thang máy, đi dọc hành lang rẽ vào Phòng 402 dãy bên phải.',
-    coords: { x: 1288, y: 185 },
-    routeTarget: 'M 1715 560 L 1288 560 L 1288 220',
+    coords: { x: 1288, y: 220 },
+    routeTarget: 'M 1715 560 L 1676 560 Q 1656 560, 1656 540 L 1656 240 Q 1656 220, 1636 220 L 1288 220',
   },
   room_403: {
     id: 'room_403',
@@ -360,8 +361,8 @@ export const HOTEL_DESTINATIONS = {
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 4.',
     step2Text: 'Chặng 2: Ra khỏi thang máy, đi thẳng theo hành lang tới Phòng 403 bên tay phải.',
-    coords: { x: 920, y: 185 },
-    routeTarget: 'M 1715 560 L 920 560 L 920 220',
+    coords: { x: 920, y: 220 },
+    routeTarget: 'M 1715 560 L 1676 560 Q 1656 560, 1656 540 L 1656 240 Q 1656 220, 1636 220 L 920 220',
   },
   room_404: {
     id: 'room_404',
@@ -375,8 +376,8 @@ export const HOTEL_DESTINATIONS = {
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 4.',
     step2Text: 'Chặng 2: Ra khỏi thang máy, đi hết hành lang tới Phòng 404 góc bên phải cuối dãy.',
-    coords: { x: 552, y: 185 },
-    routeTarget: 'M 1715 560 L 552 560 L 552 220',
+    coords: { x: 552, y: 220 },
+    routeTarget: 'M 1715 560 L 1676 560 Q 1656 560, 1656 540 L 1656 240 Q 1656 220, 1636 220 L 552 220',
   },
   room_405: {
     id: 'room_405',
@@ -390,8 +391,8 @@ export const HOTEL_DESTINATIONS = {
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 4.',
     step2Text: 'Chặng 2: Ra khỏi thang máy, đi hết hành lang sang góc trái dãy dưới là Phòng 405.',
-    coords: { x: 184, y: 185 },
-    routeTarget: 'M 1715 560 L 184 560 L 184 220',
+    coords: { x: 184, y: 220 },
+    routeTarget: 'M 1715 560 L 1676 560 Q 1656 560, 1656 540 L 1656 240 Q 1656 220, 1636 220 L 184 220',
   },
   room_406: {
     id: 'room_406',
@@ -405,8 +406,8 @@ export const HOTEL_DESTINATIONS = {
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 4.',
     step2Text: 'Chặng 2: Ra khỏi thang máy, đi dọc hành lang rẽ vào Phòng 406.',
-    coords: { x: 184, y: 960 },
-    routeTarget: 'M 1715 560 L 184 560 L 184 920',
+    coords: { x: 184, y: 920 },
+    routeTarget: 'M 1715 560 L 1676 560 Q 1656 560, 1656 580 L 1656 900 Q 1656 920, 1636 920 L 184 920',
   },
   room_407: {
     id: 'room_407',
@@ -420,8 +421,8 @@ export const HOTEL_DESTINATIONS = {
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 4.',
     step2Text: 'Chặng 2: Ra khỏi thang máy, đi dọc hành lang rẽ vào Phòng 407 dãy đối diện.',
-    coords: { x: 552, y: 960 },
-    routeTarget: 'M 1715 560 L 552 560 L 552 920',
+    coords: { x: 552, y: 920 },
+    routeTarget: 'M 1715 560 L 1676 560 Q 1656 560, 1656 580 L 1656 900 Q 1656 920, 1636 920 L 552 920',
   },
   room_408: {
     id: 'room_408',
@@ -435,8 +436,8 @@ export const HOTEL_DESTINATIONS = {
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 4.',
     step2Text: 'Chặng 2: Ra khỏi thang máy, đi thẳng xuống dãy phòng đối diện để vào Phòng 408.',
-    coords: { x: 920, y: 960 },
-    routeTarget: 'M 1715 560 L 920 560 L 920 920',
+    coords: { x: 920, y: 920 },
+    routeTarget: 'M 1715 560 L 1676 560 Q 1656 560, 1656 580 L 1656 900 Q 1656 920, 1636 920 L 920 920',
   },
   room_409: {
     id: 'room_409',
@@ -450,8 +451,23 @@ export const HOTEL_DESTINATIONS = {
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 4.',
     step2Text: 'Chặng 2: Ra khỏi thang máy, đi thẳng xuống góc phải dãy phòng đối diện là Phòng 409.',
-    coords: { x: 1288, y: 960 },
-    routeTarget: 'M 1715 560 L 1288 560 L 1288 920',
+    coords: { x: 1288, y: 920 },
+    routeTarget: 'M 1715 560 L 1676 560 Q 1656 560, 1656 580 L 1656 900 Q 1656 920, 1636 920 L 1288 920',
+  },
+  room_410: {
+    id: 'room_410',
+    name: 'Phòng Nghỉ 410',
+    floorId: '6',
+    floorLevel: 'TẦNG 4',
+    category: 'Phòng Khách',
+    icon: '',
+    time: '2.5 Phút',
+    distance: '85m',
+    isDifferentFloor: true,
+    step1Text: 'Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 4.',
+    step2Text: 'Chặng 2: Ra khỏi thang máy, rẽ vào Phòng 410 ngay cạnh thang máy dãy đối diện.',
+    coords: { x: 1656, y: 920 },
+    routeTarget: 'M 1715 560 L 1676 560 Q 1656 560, 1656 580 L 1656 920',
   },
 
   // === TẦNG 6: ROOFTOP COFFEE, BAR, GIFT SHOP & KARAOKE (MAP 8.PNG) ===
@@ -468,7 +484,7 @@ export const HOTEL_DESTINATIONS = {
     step1Text: 'Chặng 1: Di chuyển tới Thang máy A và bấm lên Tầng 6 (Cao nhất).',
     step2Text: 'Chặng 2: Ra khỏi thang máy, đi thẳng theo hành lang qua cửa trung tâm vào khu vực Rooftop Coffee.',
     coords: { x: 380, y: 230 },
-    routeTarget: 'M 1715 560 L 760 560 L 760 500 L 540 500 L 540 460 L 380 230',
+    routeTarget: 'M 1715 560 L 690 627 Q 670 628, 658 612 L 380 230',
   },
   bar: {
     id: 'bar',
@@ -483,7 +499,7 @@ export const HOTEL_DESTINATIONS = {
     step1Text: 'Chặng 1: Đi tới Thang máy A và bấm lên Tầng 6.',
     step2Text: 'Chặng 2: Ra khỏi thang máy, đi dọc hành lang rẽ vào Quầy Bar ở giữa.',
     coords: { x: 1080, y: 230 },
-    routeTarget: 'M 1715 560 L 1030 560 L 1030 460 L 1080 230',
+    routeTarget: 'M 1715 560 L 1100 461 Q 1080 458, 1080 438 L 1080 230',
   },
   karaoke: {
     id: 'karaoke',
@@ -497,8 +513,8 @@ export const HOTEL_DESTINATIONS = {
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Đi tới Thang máy A và bấm lên Tầng 6.',
     step2Text: 'Chặng 2: Ra khỏi thang máy, rẽ trái theo hành lang vào Phòng VIP Karaoke.',
-    coords: { x: 1450, y: 920 },
-    routeTarget: 'M 1715 560 L 1510 560 L 1510 680 L 1450 920',
+    coords: { x: 1450, y: 880 },
+    routeTarget: 'M 1715 560 L 1467 705 Q 1450 715, 1450 735 L 1450 880',
   },
 
   // === TẦNG TRỆT & HẦM ===
@@ -514,8 +530,8 @@ export const HOTEL_DESTINATIONS = {
     isDifferentFloor: false,
     step1Text: 'Đi thẳng qua cửa kính sảnh chính, quầy lễ tân nằm ngay bên tay phải bạn.',
     step2Text: '',
-    coords: { x: 995, y: 620 },
-    routeTarget: 'M 796 545 L 930 545 C 960 545, 970 620, 995 620',
+    coords: { x: 880, y: 570 },
+    routeTarget: 'M 350 580 L 350 860 Q 350 880, 370 880 L 780 880 Q 800 880, 805 861 L 880 570',
   },
   restroom_ground: {
     id: 'restroom_ground',
@@ -529,8 +545,8 @@ export const HOTEL_DESTINATIONS = {
     isDifferentFloor: false,
     step1Text: 'Từ sảnh chính, đi về phía tay phải sau quầy lễ tân để vào Nhà Vệ Sinh.',
     step2Text: '',
-    coords: { x: 1045, y: 640 },
-    routeTarget: 'M 796 545 L 930 545 C 960 545, 970 620, 1045 640',
+    coords: { x: 1600, y: 1000 },
+    routeTarget: 'M 350 580 L 350 860 Q 350 880, 370 882 L 1600 1000',
   },
   parking_car: {
     id: 'parking_car',
@@ -545,7 +561,7 @@ export const HOTEL_DESTINATIONS = {
     step1Text: 'Chặng 1: Di chuyển tới Thang máy A và bấm xuống Hầm B2.',
     step2Text: 'Chặng 2: Ra khỏi thang máy, đi thẳng theo hành lang tới khu vực đỗ xe ô tô Hầm B2.',
     coords: { x: 880, y: 850 },
-    routeTarget: 'M 1715 560 L 880 560 L 880 750 L 880 850',
+    routeTarget: 'M 1715 560 L 880 850',
   },
   parking_bike: {
     id: 'parking_bike',
@@ -560,7 +576,7 @@ export const HOTEL_DESTINATIONS = {
     step1Text: 'Chặng 1: Di chuyển tới Thang máy A và bấm xuống Hầm B1.',
     step2Text: 'Chặng 2: Ra khỏi thang máy, đi thẳng theo làn di chuyển vào Bãi đỗ xe máy Hầm B1.',
     coords: { x: 920, y: 500 },
-    routeTarget: 'M 1715 560 L 920 560 L 920 500',
+    routeTarget: 'M 1715 560 L 920 500',
   },
   gift_shop: {
     id: 'gift_shop',
@@ -574,13 +590,13 @@ export const HOTEL_DESTINATIONS = {
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Di chuyển tới Thang máy A và bấm lên Tầng 6.',
     step2Text: 'Chặng 2: Ra khỏi thang máy, đi qua cửa trung tâm và rẽ vào Cửa Hàng Lưu Niệm bên trái.',
-    coords: { x: 200, y: 850 },
-    routeTarget: 'M 1715 560 L 760 560 L 760 730 L 370 730 L 200 850',
+    coords: { x: 200, y: 750 },
+    routeTarget: 'M 1715 560 L 390 634 Q 370 635, 353 646 L 200 750',
   },
 };
 
-// Tuyến đường chuẩn chặng 1: Từ Lobby (Ground) -> Thang máy A (đi thẳng qua cửa sảnh x=908 rồi mới lượn lên hành lang thang máy, hoàn toàn không chạm tường)
-export const ROUTE_GROUND_TO_ELEVATOR = 'M 350 580 L 700 580 C 800 580, 850 440, 950 440 L 1350 440 C 1450 440, 1550 560, 1715 560';
+// Tuyến đường chuẩn chặng 1: Từ Lobby (Ground) -> Thang máy A (đi vòng tránh bồn cây và quầy lễ tân)
+export const ROUTE_GROUND_TO_ELEVATOR = 'M 350 580 L 350 860 Q 350 880, 370 880 L 1330 880 Q 1350 880, 1362 864 L 1568 576 Q 1580 560, 1600 560 L 1715 560';
 
 // Tạo vé chỉ đường dùng 1 lần (Ephemeral One-time Ticket có thời hạn 15 phút)
 export const createEphemeralTicket = (destKey) => {
@@ -809,6 +825,7 @@ export const FloorMap = ({
   showQrModalExternal = false,
   qrCountdown = null,
   onCloseQrModal = null,
+  onStepChange = null,
 }) => {
   // Điểm đến được chọn (hỗ trợ chuyển đổi nhanh trực tiếp giữa các cơ sở vật chất)
   const [selectedDestKey, setSelectedDestKey] = useState(destinationKey);
@@ -832,6 +849,29 @@ export const FloorMap = ({
   const [activeStep, setActiveStep] = useState(currentDest.isDifferentFloor ? 1 : 2);
   const [autoPlay, setAutoPlay] = useState(true);
   const [isHovering, setIsHovering] = useState(false);
+
+  // Thông báo thay đổi chặng lên component cha (Mobile / Kiosk)
+  useEffect(() => {
+    if (onStepChange) {
+      onStepChange(activeStep);
+    }
+  }, [activeStep, onStepChange]);
+
+  // Tính toán lộ trình động thông minh với wall-clearance & graph-search
+  const activeRoute = useMemo(() => {
+    if (activeStep === 1) {
+      return { pathString: ROUTE_GROUND_TO_ELEVATOR, isValid: true };
+    }
+    if (currentDest.routeTarget) {
+      return { pathString: currentDest.routeTarget, isValid: true };
+    }
+    const r = calculateFloorRoute(
+      currentDest.isDifferentFloor ? 'ELEVATOR' : 'STANDBY',
+      currentDest.coords,
+      currentDest.floorId
+    );
+    return { pathString: r.pathString || currentDest.routeTarget, isValid: r.isValid };
+  }, [activeStep, currentDest]);
 
   // Zoom & Pan state để phóng to loại bỏ viền trắng thừa của Canva
   const [zoomLevel, setZoomLevel] = useState(defaultZoom);
@@ -1088,16 +1128,18 @@ export const FloorMap = ({
               transformOrigin: 'center center',
             }}
           >
-            {/* Ảnh mặt bằng gốc của tầng */}
+            {/* Ảnh mặt bằng gốc của tầng - key bắt buộc để mobile Safari render lại texture khi đổi tầng */}
             <img
+              key={activeFloor.image}
               src={activeFloor.image}
               alt={activeFloor.name}
-              className="w-full h-full object-contain pointer-events-none select-none" style={{ imageRendering: '-webkit-optimize-contrast' }}
+              className="w-full h-full object-contain pointer-events-none select-none"
+              style={{ imageRendering: '-webkit-optimize-contrast' }}
             />
 
-            {/* Lớp SVG Chỉ Đường: Tập trung vào đường đi, không nhảy nhót */}
+            {/* Lớp SVG Chỉ Đường: Đồng bộ viewBox với kích thước thực tế */}
             <svg
-              viewBox="0 0 1840 1174"
+              viewBox={`0 0 ${activeFloor.width || 1840} ${activeFloor.height || 1174}`}
               className="absolute inset-0 w-full h-full pointer-events-none z-10"
               preserveAspectRatio="xMidYMid meet"
             >
@@ -1112,7 +1154,7 @@ export const FloorMap = ({
               {activeStep === 1 && (
                 <g className="animate-fadeIn">
                   <path
-                    d={ROUTE_GROUND_TO_ELEVATOR}
+                    d={activeRoute.pathString || ROUTE_GROUND_TO_ELEVATOR}
                     fill="none"
                     stroke="#7DD3FC"
                     strokeWidth="12"
@@ -1122,7 +1164,7 @@ export const FloorMap = ({
                     filter="url(#sky-glow)"
                   />
                   <path
-                    d={ROUTE_GROUND_TO_ELEVATOR}
+                    d={activeRoute.pathString || ROUTE_GROUND_TO_ELEVATOR}
                     fill="none"
                     stroke="#38BDF8"
                     strokeWidth="7"
@@ -1148,7 +1190,7 @@ export const FloorMap = ({
               {activeStep === 2 && (
                 <g className="animate-fadeIn">
                   <path
-                    d={currentDest.routeTarget}
+                    d={activeRoute.pathString || currentDest.routeTarget}
                     fill="none"
                     stroke="#7DD3FC"
                     strokeWidth="12"
@@ -1158,7 +1200,7 @@ export const FloorMap = ({
                     filter="url(#sky-glow)"
                   />
                   <path
-                    d={currentDest.routeTarget}
+                    d={activeRoute.pathString || currentDest.routeTarget}
                     fill="none"
                     stroke="#38BDF8"
                     strokeWidth="7"

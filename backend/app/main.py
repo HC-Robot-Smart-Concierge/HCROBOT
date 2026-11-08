@@ -3,7 +3,9 @@ import logging
 import os
 from contextlib import asynccontextmanager
 
+from pathlib import Path
 from fastapi import FastAPI
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
@@ -105,6 +107,24 @@ register_middlewares(app)
 # Mount Static Files for Uploads and Media
 os.makedirs("static/uploads", exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# Mount Guest Map static assets (/maps/*.png & /map.html) over clean HTTP (Port 8000)
+# Giúp điện thoại quét QR qua Wi-Fi / Tailscale mở thẳng bản đồ tức thì, không bị cảnh báo SSL tự ký hay kẹt Service Worker cũ ở port 3000
+_FRONTEND_PUBLIC_DIR = Path(__file__).resolve().parents[2] / "frontend" / "public"
+_MAPS_DIR = _FRONTEND_PUBLIC_DIR / "maps"
+_MAP_HTML_FILE = _FRONTEND_PUBLIC_DIR / "map.html"
+if _MAPS_DIR.is_dir():
+    app.mount("/maps", StaticFiles(directory=str(_MAPS_DIR)), name="guest_maps")
+
+
+@app.api_route("/map.html", methods=["GET", "HEAD"], include_in_schema=False)
+@app.api_route("/map", methods=["GET", "HEAD"], include_in_schema=False)
+async def serve_guest_qr_map():
+    return FileResponse(
+        str(_MAP_HTML_FILE),
+        media_type="text/html; charset=utf-8",
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"},
+    )
 
 # Attach Routers
 app.include_router(api_router, prefix="/api/v1")

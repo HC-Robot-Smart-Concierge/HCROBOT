@@ -47,6 +47,94 @@ const normalizeDestKey = (rawKey) => {
   return resolveKnownDestKey(rawKey) || 'infinity_pool';
 };
 
+export const computeOrthogonalHeadingAngle = (startPt, endPt) => {
+  const dx = endPt.x - startPt.x;
+  const dy = endPt.y - startPt.y;
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    return dx >= 0 ? -90 : 90;
+  }
+  return dy <= 0 ? 0 : 180;
+};
+
+export const computeSmartRouteFrame = (pathStr, startPt, endPt, mode = 'focus25d') => {
+  const nums = (String(pathStr || '').match(/-?\d+(\.\d+)?/g) || []).map(Number);
+  let minX = Math.min(startPt.x, endPt.x);
+  let maxX = Math.max(startPt.x, endPt.x);
+  let minY = Math.min(startPt.y, endPt.y);
+  let maxY = Math.max(startPt.y, endPt.y);
+
+  for (let i = 0; i < nums.length - 1; i += 2) {
+    const px = nums[i];
+    const py = nums[i + 1];
+    if (px < minX) minX = px;
+    if (px > maxX) maxX = px;
+    if (py < minY) minY = py;
+    if (py > maxY) maxY = py;
+  }
+
+  const midX = Math.round((minX + maxX) / 2);
+  const midY = Math.round((minY + maxY) / 2);
+  const spanW = Math.max(420, maxX - minX);
+  const spanH = Math.max(360, maxY - minY);
+
+  const isHeading = mode === 'heading';
+  const rotZ = isHeading ? computeOrthogonalHeadingAngle(startPt, endPt) : 0;
+  const isRotated90 = Math.abs(rotZ) === 90;
+  const effSpanW = isRotated90 ? spanH : spanW;
+  const effSpanH = isRotated90 ? spanW : spanH;
+
+  const baseW = Math.max(1050, Math.min(1840, effSpanW + 560));
+  const baseH = Math.max(950, Math.min(1650, effSpanH + 580));
+
+  const normOffsetX = (920 - midX) / 1840;
+  const normOffsetY = (587 - midY) / 1174;
+
+  if (mode === 'flat2d') {
+    return {
+      midX,
+      midY,
+      baseW,
+      baseH,
+      zoom: 1.05,
+      panX: Math.round(normOffsetX * 70),
+      panY: Math.round(normOffsetY * 45),
+      tiltX: 0,
+      rotZ: 0,
+    };
+  }
+
+  const spanRatio = Math.max(effSpanW / 1840, effSpanH / 1174);
+  const smartZoom = Number(Math.min(1.52, Math.max(1.22, 1.56 - spanRatio * 0.42)).toFixed(2));
+  const panX = Math.max(-95, Math.min(95, Math.round(normOffsetX * 220)));
+  const panY = Math.max(-65, Math.min(65, Math.round(normOffsetY * 145)));
+
+  if (isHeading) {
+    return {
+      midX,
+      midY,
+      baseW,
+      baseH,
+      zoom: Number(Math.min(1.42, smartZoom).toFixed(2)),
+      panX: Math.round(panX * 0.6),
+      panY: Math.round(panY * 0.6),
+      tiltX: 20,
+      rotZ,
+    };
+  }
+
+  return {
+    midX,
+    midY,
+    baseW,
+    baseH,
+    zoom: smartZoom,
+    panX,
+    panY,
+    tiltX: 20,
+    rotZ: 0,
+  };
+};
+
 export const parseGuestMapParams = (searchStr = '') => {
   let destKey = 'infinity_pool';
   let expiresAt = Date.now() + 15 * 60 * 1000;
@@ -138,10 +226,14 @@ export const GuestMapPage = () => {
   const [isIphoneMockup, setIsIphoneMockup] = useState(false);
   const [mockupOrientation, setMockupOrientation] = useState('portrait');
 
-  // Zoom & Pan state cho màn hình điện thoại
-  const [zoomLevel, setZoomLevel] = useState(1);
-  const [pan, setPan] = useState({ x: 0, y: 0 });
-  const [isCopied, setIsCopied] = useState(false);
+  // Trạng thái Camera chuẩn Google Maps:
+  // - isHeadingUp: Xoay bản đồ theo bội số vuông góc 90° gần nhất (0, 90, -90, 180) để không bao giờ méo tường
+  // - is3D: Bật/tắt góc nghiêng 3D nhẹ (20°) tách biệt ở lớp stage ngoài
+  const [isHeadingUp, setIsHeadingUp] = useState(false);
+  const [is3D, setIs3D] = useState(false);
+  const [userZoom, setUserZoom] = useState(1.0);
+  const [panSvg, setPanSvg] = useState({ x: 0, y: 0 });
+  const [dragState, setDragState] = useState(null);
 
   // Đếm ngược thời hạn vé 15 phút
   useEffect(() => {
@@ -155,8 +247,6 @@ export const GuestMapPage = () => {
   // Khi đổi điểm đến -> tự động đặt chặng phù hợp
   useEffect(() => {
     setActiveLeg(currentDest.isDifferentFloor ? 1 : 2);
-    setZoomLevel(1);
-    setPan({ x: 0, y: 0 });
   }, [currentDest]);
 
   // Tầng hiển thị tương ứng với chặng đang chọn
@@ -166,6 +256,26 @@ export const GuestMapPage = () => {
     }
     const targetFloorId = activeLeg === 1 ? '3' : currentDest.floorId;
     return HOTEL_FLOORS.find((f) => f.id === targetFloorId) || HOTEL_FLOORS[2];
+  }, [activeLeg, currentDest]);
+
+  // Tọa độ đầu & cuối của chặng đang hiển thị
+  const activeEndpoints = useMemo(() => {
+    if (activeLeg === 1) {
+      return {
+        start: { x: 350, y: 580, label: 'BẠN Ở ĐÂY' },
+        end: { x: 1715, y: 560, label: 'THANG MÁY A' },
+      };
+    }
+    return {
+      start: currentDest.isDifferentFloor
+        ? { x: 1715, y: 560, label: 'RA THANG MÁY' }
+        : { x: 350, y: 580, label: 'BẠN Ở ĐÂY' },
+      end: {
+        x: currentDest.coords.x,
+        y: currentDest.coords.y,
+        label: (currentDest.name || 'ĐÍCH ĐẾN').toUpperCase().slice(0, 16),
+      },
+    };
   }, [activeLeg, currentDest]);
 
   // Tính toán đường đi chuẩn qua cửa
@@ -193,11 +303,26 @@ export const GuestMapPage = () => {
     return leg2.valid && leg2.pathString ? leg2.pathString : currentDest.routeTarget;
   }, [activeLeg, currentDest]);
 
-  const handleZoomIn = () => setZoomLevel((z) => Math.min(z + 0.35, 3.0));
-  const handleZoomOut = () => setZoomLevel((z) => Math.max(z - 0.35, 0.85));
-  const handleResetZoom = () => {
-    setZoomLevel(1);
-    setPan({ x: 0, y: 0 });
+  const currentFrame = useMemo(() => {
+    return computeSmartRouteFrame(
+      activeRoutePath,
+      activeEndpoints.start,
+      activeEndpoints.end,
+      isHeadingUp ? 'heading' : 'focus25d'
+    );
+  }, [activeRoutePath, activeEndpoints, isHeadingUp]);
+
+  // Khi chuyển chặng hoặc đổi điểm đến -> reset zoom & pan về chính giữa lộ trình
+  useEffect(() => {
+    setUserZoom(1.0);
+    setPanSvg({ x: 0, y: 0 });
+  }, [activeLeg, currentDest, isHeadingUp]);
+
+  const handleZoomIn = () => setUserZoom((z) => Math.min(Number((z + 0.22).toFixed(2)), 2.6));
+  const handleZoomOut = () => setUserZoom((z) => Math.max(Number((z - 0.22).toFixed(2)), 0.65));
+  const handleRecenter = () => {
+    setUserZoom(1.0);
+    setPanSvg({ x: 0, y: 0 });
   };
 
   const handleFinishTicket = () => {
@@ -222,24 +347,6 @@ export const GuestMapPage = () => {
     setIsManualDismissed(false);
   };
 
-  const handleShare = async () => {
-    if (navigator.share) {
-      try {
-        await navigator.share({
-          title: `Chỉ đường đến ${currentDest.name} - Aurora Grand Hotel`,
-          text: `Sơ đồ chỉ đường 2 chặng đến ${currentDest.name} (${currentDest.floorLevel}).`,
-          url: window.location.href,
-        });
-      } catch {
-        // User cancelled
-      }
-    } else {
-      navigator.clipboard?.writeText(window.location.href);
-      setIsCopied(true);
-      setTimeout(() => setIsCopied(false), 2500);
-    }
-  };
-
   const formattedRemaining = useMemo(() => {
     const m = Math.floor(remainingSeconds / 60);
     const s = remainingSeconds % 60;
@@ -248,56 +355,16 @@ export const GuestMapPage = () => {
 
   const isExpired = remainingSeconds <= 0;
 
-  // Nội dung chính giao diện Bản đồ Mobile (Trắng sữa & Đen đồng bộ 100% với Web & map.html)
+  const vbW = Math.round(currentFrame.baseW / userZoom);
+  const vbH = Math.round(currentFrame.baseH / userZoom);
+  const vbX = Math.round(currentFrame.midX - vbW / 2 - panSvg.x);
+  const vbY = Math.round(currentFrame.midY - vbH / 2 - panSvg.y);
+
+  // Giao diện Bản đồ Toàn màn hình chuẩn Google Maps (Bản đồ chiếm 100% diện tích, các nút nổi nhỏ gọn)
   const renderMobileContent = () => (
-    <div className="w-full min-h-screen bg-[#FAF8F5] text-[#1C1917] flex flex-col font-sans select-none antialiased">
-      {/* 1. Header Khách Sạn Trắng Sữa & Đen */}
-      <header className="w-full bg-[#FAF8F5]/95 border-b border-[#E3DFD5] px-3.5 py-2.5 sticky top-0 z-40 backdrop-blur-md flex items-center justify-between">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <div className="w-8 h-8 rounded-xl bg-[#1C1917] flex items-center justify-center text-[#FAF8F5] shadow-sm shrink-0">
-            <Compass className="w-4 h-4" />
-          </div>
-          <div className="min-w-0">
-            <div className="text-[10px] font-bold tracking-widest uppercase text-[#78716C]">
-              Aurora Grand Hotel
-            </div>
-            <h1 className="text-xs sm:text-sm font-extrabold text-[#1C1917] truncate leading-tight">
-              {currentDest.name}
-            </h1>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-1.5 shrink-0">
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#EFECE6] border border-[#E3DFD5] text-[11px] font-bold text-[#1C1917]">
-            <span className="w-2 h-2 rounded-full bg-[#1C1917] animate-pulse" />
-            <span>{formattedRemaining}</span>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setIsIphoneMockup(!isIphoneMockup)}
-            className="hidden md:flex p-1.5 px-2.5 rounded-xl bg-[#EFECE6] hover:bg-[#E3DFD5] text-[#1C1917] border border-[#E3DFD5] transition cursor-pointer items-center gap-1 text-[11px] font-bold"
-            title="Đổi chế độ xem khung iPhone"
-          >
-            {isIphoneMockup ? <Monitor className="w-3.5 h-3.5" /> : <Smartphone className="w-3.5 h-3.5" />}
-            <span>{isIphoneMockup ? 'Mở Rộng' : 'Khung iPhone'}</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={handleShare}
-            className="p-1.5 px-2 rounded-xl bg-[#EFECE6] hover:bg-[#E3DFD5] text-[#1C1917] border border-[#E3DFD5] transition cursor-pointer flex items-center gap-1 text-[11px] font-semibold"
-            title="Chia sẻ lộ trình"
-          >
-            <Share2 className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">{isCopied ? 'Đã sao chép' : 'Chia sẻ'}</span>
-          </button>
-        </div>
-      </header>
-
-      {/* Màn hình khi khách bấm đóng hoặc vé hết hạn (Có nút Alternative Flow mở lại ngay nếu lỡ tay bấm) */}
+    <div className="w-full h-[100dvh] bg-[#EFECE6] text-[#1C1917] relative overflow-hidden font-sans select-none antialiased">
       {(isExpired || isManualDismissed) ? (
-        <main className="flex-1 flex items-center justify-center p-5 bg-[#FAF8F5]">
+        <main className="w-full h-full flex items-center justify-center p-5 bg-[#FAF8F5]">
           <div className="bg-white border border-[#E3DFD5] rounded-3xl p-6 max-w-sm w-full text-center shadow-lg flex flex-col items-center gap-3">
             <div className="w-14 h-14 rounded-full bg-[#EFECE6] border border-[#E3DFD5] flex items-center justify-center text-[#1C1917]">
               <Clock className="w-6 h-6" />
@@ -322,303 +389,338 @@ export const GuestMapPage = () => {
           </div>
         </main>
       ) : (
-        /* 2. Container Nội Dung Chính */
-        <main className="w-full max-w-xl landscape:max-w-6xl mx-auto flex-1 px-3 py-2.5 flex flex-col landscape:flex-row landscape:items-stretch gap-3">
-          {/* Cột Bản Đồ */}
-          <div className="flex-1 flex flex-col gap-2 min-w-0">
-            {/* Chuyển Chặng (2 Segmented Tabs) */}
-            {currentDest.isDifferentFloor && (
-              <div className="w-full grid grid-cols-2 p-1 bg-[#EFECE6] rounded-2xl border border-[#E3DFD5]">
-                <button
-                  type="button"
-                  onClick={() => setActiveLeg(1)}
-                  className={`py-2 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                    activeLeg === 1
-                      ? 'bg-[#1C1917] text-[#FAF8F5] shadow-sm'
-                      : 'text-[#78716C] hover:text-[#1C1917]'
-                  }`}
-                >
-                  <span
-                    className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-extrabold ${
-                      activeLeg === 1 ? 'bg-white/20 text-white' : 'bg-black/10 text-[#57534E]'
-                    }`}
-                  >
-                    1
-                  </span>
-                  <span className="truncate">Chặng 1: Sảnh → Thang máy</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setActiveLeg(2)}
-                  className={`py-2 px-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                    activeLeg === 2
-                      ? 'bg-[#1C1917] text-[#FAF8F5] shadow-sm'
-                      : 'text-[#78716C] hover:text-[#1C1917]'
-                  }`}
-                >
-                  <span
-                    className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-extrabold ${
-                      activeLeg === 2 ? 'bg-white/20 text-white' : 'bg-black/10 text-[#57534E]'
-                    }`}
-                  >
-                    2
-                  </span>
-                  <span className="truncate">Chặng 2: Ra {currentDest.floorLevel}</span>
-                </button>
-              </div>
-            )}
-
-            {/* Khung Bản Đồ */}
-            <div
-              className={`w-full rounded-2xl bg-[#F5F2EB] border border-[#E3DFD5] overflow-hidden relative shadow-sm transition-all ${
-                isFullscreen
-                  ? 'fixed inset-0 z-50 rounded-none border-none'
-                  : 'h-[280px] sm:h-[350px] landscape:h-[calc(100vh-125px)] landscape:min-h-[260px]'
-              }`}
-            >
-              {/* Badge Tầng Hiện Tại Góc Trên Trái */}
-              <div className="absolute top-2.5 left-2.5 z-20 flex items-center gap-1.5 bg-white/92 backdrop-blur-md px-2.5 py-1 rounded-lg border border-[#E3DFD5] text-[10px] font-extrabold text-[#1C1917] shadow-xs uppercase tracking-wide">
-                <Building2 className="w-3 h-3 text-[#1C1917]" />
-                <span>
-                  {activeLeg === 1 ? 'TẦNG TRỆT · SẢNH & TIẾP TÂN' : `${currentDest.floorLevel} · ${currentDest.name}`}
-                </span>
-              </div>
-
-              {/* Quick Zoom Controls Góc Phải Trên */}
-              <div className="absolute top-2.5 right-2.5 z-20 flex flex-col gap-1">
-                <button
-                  type="button"
-                  onClick={handleZoomIn}
-                  className="w-8 h-8 rounded-lg bg-white/92 hover:bg-[#EFECE6] text-[#1C1917] border border-[#E3DFD5] shadow-xs flex items-center justify-center cursor-pointer"
-                  title="Phóng to"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  type="button"
-                  onClick={handleZoomOut}
-                  className="w-8 h-8 rounded-lg bg-white/92 hover:bg-[#EFECE6] text-[#1C1917] border border-[#E3DFD5] shadow-xs flex items-center justify-center cursor-pointer"
-                  title="Thu nhỏ"
-                >
-                  <Minus className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  type="button"
-                  onClick={handleResetZoom}
-                  className="w-8 h-8 rounded-lg bg-white/92 hover:bg-[#EFECE6] text-[#1C1917] border border-[#E3DFD5] shadow-xs flex items-center justify-center cursor-pointer"
-                  title="Khôi phục"
-                >
-                  <RotateCcw className="w-3 h-3" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsFullscreen(!isFullscreen)}
-                  className="w-8 h-8 rounded-lg bg-white/92 hover:bg-[#EFECE6] text-[#1C1917] border border-[#E3DFD5] shadow-xs flex items-center justify-center cursor-pointer"
-                  title="Toàn màn hình"
-                >
-                  {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
-                </button>
-              </div>
-
-              {/* Map Layer Zoomable Container */}
-              <div
-                className="w-full h-full relative transition-transform duration-150 p-1.5"
-                style={{
-                  transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoomLevel})`,
-                  transformOrigin: 'center center',
-                }}
-              >
-                <img
-                  key={activeFloor.image}
-                  src={activeFloor.image}
-                  alt={activeFloor.name}
-                  className="w-full h-full object-contain pointer-events-none select-none rounded-lg"
-                />
-
-                <svg
-                  viewBox="0 0 1840 1174"
-                  className="absolute inset-0 w-full h-full pointer-events-none z-10 p-1.5"
-                  preserveAspectRatio="xMidYMid meet"
-                >
-                  <defs>
-                    <filter id="guest-sky-glow" x="-30%" y="-30%" width="160%" height="160%">
-                      <feDropShadow dx="0" dy="0" stdDeviation="8" floodColor="#38BDF8" floodOpacity="0.5" />
-                      <feDropShadow dx="0" dy="0" stdDeviation="3" floodColor="#7DD3FC" floodOpacity="0.7" />
-                    </filter>
-                  </defs>
-
-                  {activeLeg === 1 && (
-                    <g>
-                      <path
-                        d={activeRoutePath}
-                        fill="none"
-                        stroke="#38BDF8"
-                        strokeWidth="14"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        opacity="0.35"
-                        filter="url(#guest-sky-glow)"
-                      />
-                      <path
-                        d={activeRoutePath}
-                        fill="none"
-                        stroke="#0EA5E9"
-                        strokeWidth="6.5"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeDasharray="12 8"
-                        className="animate-routeDash"
-                      />
-                      <circle cx="350" cy="580" r="14" fill="#1C1917" stroke="#FFFFFF" strokeWidth="3.5" />
-                      <circle cx="1715" cy="560" r="14" fill="#0EA5E9" stroke="#FFFFFF" strokeWidth="3.5" />
-                    </g>
-                  )}
-
-                  {activeLeg === 2 && (
-                    <g>
-                      <path
-                        d={activeRoutePath}
-                        fill="none"
-                        stroke="#38BDF8"
-                        strokeWidth="14"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        opacity="0.35"
-                        filter="url(#guest-sky-glow)"
-                      />
-                      <path
-                        d={activeRoutePath}
-                        fill="none"
-                        stroke="#0EA5E9"
-                        strokeWidth="6.5"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeDasharray="12 8"
-                        className="animate-routeDash"
-                      />
-                      {currentDest.isDifferentFloor ? (
-                        <circle cx="1715" cy="560" r="14" fill="#1C1917" stroke="#FFFFFF" strokeWidth="3.5" />
-                      ) : (
-                        <circle cx="350" cy="580" r="14" fill="#1C1917" stroke="#FFFFFF" strokeWidth="3.5" />
-                      )}
-                      <circle
-                        cx={currentDest.coords.x}
-                        cy={currentDest.coords.y}
-                        r="14"
-                        fill="#0EA5E9"
-                        stroke="#FFFFFF"
-                        strokeWidth="3.5"
-                      />
-                    </g>
-                  )}
-                </svg>
-              </div>
-            </div>
-          </div>
-
-          {/* Cột Chi Tiết Chỉ Dẫn & Nút Bấm */}
-          <div className="w-full landscape:w-[340px] landscape:max-h-[calc(100vh-110px)] landscape:overflow-y-auto flex flex-col gap-2.5">
-            {/* Thẻ Hướng Dẫn Chi Tiết Chặng Đang Xem */}
-            <div className="w-full p-3.5 rounded-2xl bg-white border border-[#E3DFD5] shadow-xs flex flex-col gap-2.5">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-[#78716C]">
-                  Lộ trình chi tiết
-                </span>
-                <span className="px-2.5 py-0.5 rounded-md bg-[#EFECE6] border border-[#E3DFD5] text-[#1C1917] font-extrabold text-[10px] uppercase tracking-wide">
-                  {currentDest.floorLevel}
-                </span>
-              </div>
-
-              <div className="p-2.5 rounded-xl bg-[#FAF8F5] border border-[#E3DFD5] flex items-start gap-2.5">
-                <div className="w-6 h-6 rounded-lg bg-[#1C1917] text-[#FAF8F5] font-extrabold text-xs flex items-center justify-center shrink-0">
+        <>
+          {/* 1. Thanh Điều Hướng Nổi Nhỏ Gọn Phía Trên (Google Maps Top Pill) */}
+          <div className="absolute top-2.5 left-2.5 right-2.5 max-w-lg mx-auto z-30 bg-white/95 backdrop-blur-md border border-[#E3DFD5] rounded-2xl px-3 py-2 shadow-md flex flex-col gap-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0 flex-1">
+                <div className="w-7 h-7 rounded-lg bg-[#1C1917] text-[#FAF8F5] font-extrabold text-xs flex items-center justify-center shrink-0">
                   {activeLeg}
                 </div>
-                <p className="text-xs font-medium text-[#1C1917] leading-relaxed">
-                  {activeLeg === 1
-                    ? currentDest.step1Text || 'Đi từ sảnh Lobby đến Thang máy A và bấm lên tầng mục tiêu.'
-                    : currentDest.step2Text || `Ra khỏi thang máy, đi theo biển chỉ dẫn tới ${currentDest.name}.`}
-                </p>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1 text-[9.5px] font-extrabold uppercase tracking-wider text-[#78716C]">
+                    <span>{activeLeg === 1 ? 'SẢNH TRỆT' : currentDest.floorLevel}</span>
+                    <span>·</span>
+                    <span>ĐÍCH: {currentDest.floorLevel}</span>
+                  </div>
+                  <h1 className="text-[13px] font-extrabold text-[#1C1917] truncate leading-tight">
+                    {currentDest.name}
+                  </h1>
+                </div>
               </div>
 
-              <div className="flex items-center justify-between pt-1 text-[11px] text-[#78716C] font-medium">
-                <div className="flex items-center gap-2">
-                  <span className="flex items-center gap-1">
-                    <Clock className="w-3.5 h-3.5 text-[#1C1917]" />
-                    <span>{currentDest.time || '2 Phút'}</span>
-                  </span>
-                  <span>·</span>
-                  <span className="flex items-center gap-1">
-                    <Footprints className="w-3.5 h-3.5 text-[#1C1917]" />
-                    <span>{currentDest.distance || '90m'}</span>
-                  </span>
-                </div>
-
-                {currentDest.isDifferentFloor && (
+              {/* Nút Switch Chặng Siêu Nhỏ Gọn (Chuẩn Google Maps Pill) */}
+              {currentDest.isDifferentFloor && (
+                <div className="inline-flex items-center bg-[#EFECE6] border border-[#E3DFD5] rounded-full p-0.5 gap-0.5 shrink-0">
                   <button
                     type="button"
-                    onClick={() => setActiveLeg(activeLeg === 1 ? 2 : 1)}
-                    className="text-[11px] font-bold text-[#1C1917] hover:underline flex items-center gap-1 cursor-pointer"
+                    onClick={() => setActiveLeg(1)}
+                    className={`px-2.5 py-1 rounded-full text-[10.5px] font-extrabold transition cursor-pointer ${
+                      activeLeg === 1
+                        ? 'bg-[#1C1917] text-[#FAF8F5] shadow-2xs'
+                        : 'text-[#57534E] hover:text-[#1C1917]'
+                    }`}
                   >
-                    <span>{activeLeg === 1 ? 'Xem Chặng 2' : 'Xem Chặng 1'}</span>
-                    <ArrowRight className="w-3 h-3" />
+                    Chặng 1
                   </button>
-                )}
-              </div>
+                  <button
+                    type="button"
+                    onClick={() => setActiveLeg(2)}
+                    className={`px-2.5 py-1 rounded-full text-[10.5px] font-extrabold transition cursor-pointer ${
+                      activeLeg === 2
+                        ? 'bg-[#1C1917] text-[#FAF8F5] shadow-2xs'
+                        : 'text-[#57534E] hover:text-[#1C1917]'
+                    }`}
+                  >
+                    Chặng 2
+                  </button>
+                </div>
+              )}
             </div>
 
-            {/* Quick Switcher Các Điểm Khác */}
-            <div className="w-full flex flex-col gap-1 pt-0.5">
-              <div className="text-[10px] font-bold uppercase tracking-wider text-[#78716C] px-1">
-                Chuyển nhanh điểm khác
-              </div>
-              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 custom-scrollbar">
-                {Object.values(HOTEL_DESTINATIONS).map((dest) => {
-                  const isSelected = dest.id === currentDest.id;
-                  return (
-                    <button
-                      type="button"
-                      key={dest.id}
-                      onClick={() => {
-                        setCurrentDestKey(dest.id);
-                      }}
-                      className={`px-2.5 py-1.5 rounded-xl text-[11px] font-bold shrink-0 transition-all flex items-center gap-1 cursor-pointer border ${
-                        isSelected
-                          ? 'bg-[#1C1917] text-[#FAF8F5] border-[#1C1917] shadow-xs'
-                          : 'bg-white text-[#57534E] border-[#E3DFD5] hover:text-[#1C1917] hover:bg-[#EFECE6]'
-                      }`}
-                    >
-                      <span>{dest.name}</span>
-                    </button>
-                  );
-                })}
-              </div>
+            <div className="pt-1 border-t border-[#F0EDE6] text-[11.5px] font-semibold text-[#292524] leading-snug">
+              {activeLeg === 1
+                ? currentDest.step1Text || 'Đi từ sảnh Lobby đến Thang máy A và bấm lên tầng mục tiêu.'
+                : currentDest.step2Text || `Ra khỏi thang máy, đi theo chỉ dẫn tới ${currentDest.name}.`}
             </div>
           </div>
-        </main>
-      )}
 
-      {/* 3. Footer Đóng Chỉ Dẫn / Gọi Lễ Tân */}
-      {!isExpired && !isManualDismissed && (
-        <footer className="w-full bg-[#FAF8F5] border-t border-[#E3DFD5] px-3.5 py-2.5 sticky bottom-0 z-30 flex items-center gap-2 max-w-xl landscape:max-w-6xl mx-auto">
-          <button
-            type="button"
-            onClick={handleFinishTicket}
-            className="flex-1 py-3 px-4 rounded-xl bg-[#1C1917] hover:bg-stone-800 text-[#FAF8F5] text-xs sm:text-sm font-bold flex items-center justify-center gap-2 shadow-sm active:scale-98 transition cursor-pointer"
+          {/* 2. Bản Đồ Toàn Màn Hình (100% Diện Tích, Xoay Vuông Góc 90° Trong SVG Không Bao Giờ Méo) */}
+          <div
+            className="absolute inset-0 w-full h-full touch-none cursor-grab active:cursor-grabbing overflow-hidden"
+            style={{
+              background: 'radial-gradient(circle at 50% 45%, #FAF8F5 0%, #EFECE6 75%, #E5E0D5 100%)',
+            }}
+            onPointerDown={(e) => {
+              if (e.target.closest('button')) return;
+              setDragState({
+                startX: e.clientX,
+                startY: e.clientY,
+                startPanX: panSvg.x,
+                startPanY: panSvg.y,
+                width: e.currentTarget.clientWidth || 375,
+              });
+            }}
+            onPointerMove={(e) => {
+              if (!dragState) return;
+              const scaleSvgPerPx = (currentFrame.baseW / userZoom) / dragState.width;
+              const dx = (e.clientX - dragState.startX) * scaleSvgPerPx;
+              const dy = (e.clientY - dragState.startY) * scaleSvgPerPx;
+              setPanSvg({
+                x: Math.max(-950, Math.min(950, dragState.startPanX + dx)),
+                y: Math.max(-750, Math.min(750, dragState.startPanY + dy)),
+              });
+            }}
+            onPointerUp={() => setDragState(null)}
+            onPointerCancel={() => setDragState(null)}
           >
-            <Check className="w-4 h-4" />
-            <span>Tôi đã nhớ đường · Đóng chỉ dẫn</span>
-          </button>
+            <div
+              className="w-full h-full transition-transform duration-300 ease-out"
+              style={{
+                transform: is3D ? 'perspective(1200px) rotateX(20deg) scale(1.03)' : 'none',
+                transformOrigin: '50% 52%',
+              }}
+            >
+              <svg
+                viewBox={`${vbX} ${vbY} ${vbW} ${vbH}`}
+                className="w-full h-full block"
+                preserveAspectRatio="xMidYMid meet"
+              >
+                <defs>
+                  <pattern id="guestArchGrid" width="60" height="60" patternUnits="userSpaceOnUse">
+                    <path d="M 60 0 L 0 0 0 60" fill="none" stroke="rgba(28,25,23,0.045)" strokeWidth="1.5" />
+                  </pattern>
+                  <filter id="guest-sky-glow" x="-25%" y="-25%" width="150%" height="150%">
+                    <feDropShadow dx="0" dy="3" stdDeviation="6" floodColor="#0284C7" floodOpacity="0.45" />
+                  </filter>
+                  <filter id="guest-pin-shadow" x="-30%" y="-30%" width="160%" height="160%">
+                    <feDropShadow dx="0" dy="3" stdDeviation="4" floodColor="#1C1917" floodOpacity="0.26" />
+                  </filter>
+                  <filter id="guest-board-shadow" x="-10%" y="-10%" width="120%" height="120%">
+                    <feDropShadow dx="0" dy="14" stdDeviation="20" floodColor="#1C1917" floodOpacity="0.11" />
+                  </filter>
+                </defs>
 
-          <a
-            href="tel:02438886666"
-            className="py-3 px-3.5 rounded-xl bg-[#EFECE6] hover:bg-[#E3DFD5] text-[#1C1917] border border-[#E3DFD5] text-xs font-bold flex items-center justify-center gap-1.5 shrink-0 active:scale-95 transition cursor-pointer"
-            title="Gọi Lễ Tân"
-          >
-            <PhoneCall className="w-4 h-4" />
-            <span className="hidden sm:inline">Lễ Tân</span>
-          </a>
-        </footer>
+                <rect x="-3000" y="-3000" width="8000" height="8000" fill="url(#guestArchGrid)" />
+
+                <g transform={`rotate(${currentFrame.rotZ} ${currentFrame.midX} ${currentFrame.midY})`}>
+                  <rect
+                    x="0"
+                    y="0"
+                    width="1840"
+                    height="1174"
+                    rx="22"
+                    fill="#FFFFFF"
+                    stroke="#E3DFD5"
+                    strokeWidth="4"
+                    filter="url(#guest-board-shadow)"
+                  />
+                  <image
+                    href={activeFloor.image}
+                    x="0"
+                    y="0"
+                    width="1840"
+                    height="1174"
+                    preserveAspectRatio="none"
+                  />
+
+                  {/* 1. Lớp hào quang lộ trình */}
+                  <path
+                    d={activeRoutePath}
+                    fill="none"
+                    stroke="#38BDF8"
+                    strokeWidth="20"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    opacity="0.28"
+                    filter="url(#guest-sky-glow)"
+                  />
+                  {/* 2. Lớp nền lộ trình */}
+                  <path
+                    d={activeRoutePath}
+                    fill="none"
+                    stroke="#E0F2FE"
+                    strokeWidth="10"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    opacity="0.95"
+                  />
+                  {/* 3. Tuyến đường nét đứt chuyển động */}
+                  <path
+                    d={activeRoutePath}
+                    fill="none"
+                    stroke="#0284C7"
+                    strokeWidth="6.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeDasharray="14 10"
+                    className="animate-routeDash"
+                  />
+
+                  {/* 4. Hạt dẫn đường chuyển động dọc theo lộ trình */}
+                  <g filter="url(#guest-pin-shadow)">
+                    <circle r="14" fill="#0EA5E9" opacity="0.24" />
+                    <circle r="8.5" fill="#1C1917" stroke="#FFFFFF" strokeWidth="2.5" />
+                    <path d="M -2.5 -3 L 4 0 L -2.5 3 Z" fill="#FAF8F5" />
+                    <animateMotion
+                      key={`${activeLeg}-${currentDest.id}`}
+                      dur="3.4s"
+                      repeatCount="indefinite"
+                      rotate="auto"
+                      path={activeRoutePath}
+                    />
+                  </g>
+
+                  {/* 5. Điểm xuất phát + Nhãn nổi nhỏ gọn tự giữ chữ nằm ngang */}
+                  <g transform={`translate(${activeEndpoints.start.x}, ${activeEndpoints.start.y})`}>
+                    <circle r="10.5" fill="#1C1917" stroke="#FFFFFF" strokeWidth="3" filter="url(#guest-pin-shadow)" />
+                    <g transform={`rotate(${-currentFrame.rotZ})`}>
+                      <rect
+                        x="-56"
+                        y="-38"
+                        width="112"
+                        height="22"
+                        rx="11"
+                        fill="#1C1917"
+                        stroke="#FAF8F5"
+                        strokeWidth="1.8"
+                        filter="url(#guest-pin-shadow)"
+                      />
+                      <text
+                        x="0"
+                        y="-23"
+                        textAnchor="middle"
+                        fill="#FAF8F5"
+                        fontSize="10.5"
+                        fontWeight="800"
+                      >
+                        {activeEndpoints.start.label}
+                      </text>
+                    </g>
+                  </g>
+
+                  {/* 6. Điểm kết thúc + Nhãn nổi nhỏ gọn tự giữ chữ nằm ngang */}
+                  <g transform={`translate(${activeEndpoints.end.x}, ${activeEndpoints.end.y})`}>
+                    <circle r="11.5" fill="#0284C7" stroke="#FFFFFF" strokeWidth="3" filter="url(#guest-pin-shadow)" />
+                    <circle r="4" fill="#FFFFFF" />
+                    <g transform={`rotate(${-currentFrame.rotZ})`}>
+                      <rect
+                        x="-72"
+                        y="-40"
+                        width="144"
+                        height="24"
+                        rx="12"
+                        fill="#FFFFFF"
+                        stroke="#1C1917"
+                        strokeWidth="2"
+                        filter="url(#guest-pin-shadow)"
+                      />
+                      <text
+                        x="0"
+                        y="-24"
+                        textAnchor="middle"
+                        fill="#1C1917"
+                        fontSize="11"
+                        fontWeight="800"
+                      >
+                        {activeEndpoints.end.label}
+                      </text>
+                    </g>
+                  </g>
+                </g>
+              </svg>
+            </div>
+          </div>
+
+          {/* 3. Cụm Nút Điều Khiển Nổi Nhỏ Gọn Bên Phải (Chuẩn Google Maps 38x38px) */}
+          <div className="absolute right-2.5 bottom-[72px] z-30 flex flex-col items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsHeadingUp((v) => !v)}
+              className={`w-[38px] h-[38px] rounded-full border shadow-md flex flex-col items-center justify-center text-[11px] font-extrabold leading-none transition cursor-pointer ${
+                isHeadingUp
+                  ? 'bg-[#1C1917] text-[#FAF8F5] border-[#1C1917]'
+                  : 'bg-white/95 text-[#1C1917] border-[#E3DFD5]'
+              }`}
+              title="Xoay hướng bước đi lên trên"
+            >
+              <span>↑</span>
+              <span className="text-[8px] mt-0.5">Hướng</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setIs3D((v) => !v)}
+              className={`w-[38px] h-[38px] rounded-full border shadow-md flex items-center justify-center text-[11px] font-extrabold transition cursor-pointer ${
+                is3D
+                  ? 'bg-[#1C1917] text-[#FAF8F5] border-[#1C1917]'
+                  : 'bg-white/95 text-[#1C1917] border-[#E3DFD5]'
+              }`}
+              title="Bật/Tắt góc nghiêng 3D"
+            >
+              {is3D ? '3D' : '2D'}
+            </button>
+
+            <button
+              type="button"
+              onClick={handleRecenter}
+              className="w-[38px] h-[38px] rounded-full bg-white/95 text-[#1C1917] border border-[#E3DFD5] shadow-md flex items-center justify-center cursor-pointer"
+              title="Căn giữa lộ trình"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+            </button>
+
+            <div className="flex flex-col bg-white/95 border border-[#E3DFD5] rounded-full shadow-md overflow-hidden">
+              <button
+                type="button"
+                onClick={handleZoomIn}
+                className="w-9 h-8 flex items-center justify-center text-[#1C1917] border-b border-[#EFECE6] active:bg-[#EFECE6] cursor-pointer"
+                title="Phóng to"
+              >
+                <Plus className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={handleZoomOut}
+                className="w-9 h-8 flex items-center justify-center text-[#1C1917] active:bg-[#EFECE6] cursor-pointer"
+                title="Thu nhỏ"
+              >
+                <Minus className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+
+          {/* 4. Thanh Nổi Đáy Màn Hình Tối Giản (Google Maps Bottom Pill) */}
+          <div className="absolute bottom-3 left-2.5 right-2.5 max-w-lg mx-auto z-30 bg-white/95 backdrop-blur-md border border-[#E3DFD5] rounded-full py-1.5 pl-3.5 pr-2 shadow-lg flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 text-[11px] font-bold text-[#57534E] truncate">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-pulse shrink-0" />
+              <span>{currentDest.time || '2 Phút'}</span>
+              <span>·</span>
+              <span>{formattedRemaining}</span>
+            </div>
+
+            <div className="flex items-center gap-1.5 shrink-0">
+              {currentDest.isDifferentFloor && (
+                <button
+                  type="button"
+                  onClick={() => setActiveLeg(activeLeg === 1 ? 2 : 1)}
+                  className="h-8 px-3 rounded-full bg-[#1C1917] text-[#FAF8F5] text-[11px] font-extrabold flex items-center gap-1 active:scale-95 transition cursor-pointer"
+                >
+                  <span>{activeLeg === 1 ? 'Chặng 2 →' : '← Chặng 1'}</span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={handleFinishTicket}
+                className="h-8 px-2.5 rounded-full bg-[#EFECE6] border border-[#E3DFD5] text-[#1C1917] text-[11px] font-extrabold flex items-center gap-1 active:scale-95 transition cursor-pointer"
+              >
+                <Check className="w-3 h-3" />
+                <span>Đóng</span>
+              </button>
+            </div>
+          </div>
+        </>
       )}
     </div>
   );

@@ -55,7 +55,7 @@ export const HOTEL_DESTINATIONS = {
     step1Text: 'Chặng 1: Đi từ sảnh Lobby đến Thang máy A và bấm lên Tầng 5.',
     step2Text: 'Chặng 2: Ra khỏi thang máy, rẽ trái đi hết hành lang qua cửa kính là đến Hồ bơi vô cực.',
     coords: { x: 380, y: 230 },
-    routeTarget: 'M 1715 560 L 690 627 Q 670 628, 658 612 L 380 230',
+    routeTarget: 'M 1715 560 L 1005 560 Q 940 560, 900 620 L 870 700 Q 855 745, 820 745 L 680 745 Q 600 745, 600 680 L 600 360 Q 600 270, 520 250 L 380 230',
   },
   gym: {
     id: 'gym',
@@ -70,7 +70,7 @@ export const HOTEL_DESTINATIONS = {
     step1Text: 'Chặng 1: Đi tới Thang máy A và bấm lên Tầng 5.',
     step2Text: 'Chặng 2: Ra khỏi thang máy, đi thẳng xuống phía dưới để vào Phòng Gym.',
     coords: { x: 1450, y: 880 },
-    routeTarget: 'M 1715 560 L 1467 705 Q 1450 715, 1450 735 L 1450 880',
+    routeTarget: 'M 1715 560 L 1490 560 Q 1450 560, 1450 600 L 1450 715 L 1450 880',
   },
   spa: {
     id: 'spa',
@@ -85,7 +85,7 @@ export const HOTEL_DESTINATIONS = {
     step1Text: 'Chặng 1: Đi tới Thang máy A và bấm lên Tầng 5.',
     step2Text: 'Chặng 2: Ra khỏi thang máy, rẽ trái 15m vào cửa phòng Spa.',
     coords: { x: 1080, y: 230 },
-    routeTarget: 'M 1715 560 L 1100 461 Q 1080 458, 1080 438 L 1080 230',
+    routeTarget: 'M 1715 560 L 1120 560 Q 1080 560, 1080 520 L 1080 458 L 1080 230',
   },
 
   // === TẦNG 2: BẾP, NHÀ HÀNG & F&B (MAP 4.PNG MỚI) ===
@@ -484,7 +484,7 @@ export const HOTEL_DESTINATIONS = {
     step1Text: 'Chặng 1: Di chuyển tới Thang máy A và bấm lên Tầng 6 (Cao nhất).',
     step2Text: 'Chặng 2: Ra khỏi thang máy, đi thẳng theo hành lang qua cửa trung tâm vào khu vực Rooftop Coffee.',
     coords: { x: 380, y: 230 },
-    routeTarget: 'M 1715 560 L 690 627 Q 670 628, 658 612 L 380 230',
+    routeTarget: 'M 1715 560 L 1005 560 Q 940 560, 900 620 L 870 700 Q 855 745, 820 745 L 680 745 Q 600 745, 600 680 L 600 360 Q 600 270, 520 250 L 380 230',
   },
   bar: {
     id: 'bar',
@@ -499,7 +499,7 @@ export const HOTEL_DESTINATIONS = {
     step1Text: 'Chặng 1: Đi tới Thang máy A và bấm lên Tầng 6.',
     step2Text: 'Chặng 2: Ra khỏi thang máy, đi dọc hành lang rẽ vào Quầy Bar ở giữa.',
     coords: { x: 1080, y: 230 },
-    routeTarget: 'M 1715 560 L 1100 461 Q 1080 458, 1080 438 L 1080 230',
+    routeTarget: 'M 1715 560 L 1120 560 Q 1080 560, 1080 520 L 1080 458 L 1080 230',
   },
   karaoke: {
     id: 'karaoke',
@@ -514,7 +514,7 @@ export const HOTEL_DESTINATIONS = {
     step1Text: 'Chặng 1: Đi tới Thang máy A và bấm lên Tầng 6.',
     step2Text: 'Chặng 2: Ra khỏi thang máy, rẽ trái theo hành lang vào Phòng VIP Karaoke.',
     coords: { x: 1450, y: 880 },
-    routeTarget: 'M 1715 560 L 1467 705 Q 1450 715, 1450 735 L 1450 880',
+    routeTarget: 'M 1715 560 L 1490 560 Q 1450 560, 1450 600 L 1450 715 L 1450 880',
   },
 
   // === TẦNG TRỆT & HẦM ===

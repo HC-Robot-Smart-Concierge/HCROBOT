@@ -10,7 +10,12 @@
 #   WORLD=$PWD/robot/worlds/explore_room.world bash ...     # chon world khac (mac dinh hotel_room)
 #   CMD_TIMEOUT=0.3 bash ...                                # xe ao tu dung khi mat lenh > 0.3 s (mac dinh 0.5)
 #   SLAM_PARAMS=/duong/dan/khac.yaml bash ...             # thu cau hinh SLAM khac (mac dinh: file cua XE THAT)
+#   MAP=ten_map bash ...                                    # KHONG quet: nap map DA LUU + AMCL + Nav2 (test costmap)
+#   MAP=ten_map INIT_X=0 INIT_Y=0 INIT_YAW=0 bash ...       # vi tri xe ao tren map luc dau (mac dinh 0 0 0 =
+#                                                           #   cho xe xuat phat khi quet map do bang Gazebo)
 #
+# MAP=...: map phai quet tu CUNG world Gazebo (map xe that khong khop tuong ao -> AMCL lac).
+# Nav2 dung cau hinh xe that + sim_navigation_overrides.yaml de can huong dich trong Gazebo.
 # Foxglove: ws://127.0.0.1:8765 - Teleop panel publish /cmd_vel (geometry_msgs/Twist).
 # Web Admin (ROS 2 Gia Lap): ws://127.0.0.1:9090.
 set -e
@@ -32,6 +37,21 @@ ROBOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 WORLD="${WORLD:-$ROBOT_DIR/worlds/hotel_room.world}"
 export GZ_SIM_RESOURCE_PATH="$ROBOT_DIR/models:${GZ_SIM_RESOURCE_PATH:-}"
 
+MAP_YAML=""
+if [ -n "${MAP:-}" ]; then
+  if [ -f "$MAP" ]; then MAP_YAML="$(realpath "$MAP")"; else MAP_YAML="$ROBOT_DIR/maps/${MAP%.yaml}.yaml"; fi
+  if [ ! -f "$MAP_YAML" ]; then
+    echo "ERROR: Khong tim thay map: $MAP_YAML" >&2
+    echo "Map co san: $(cd "$ROBOT_DIR/maps" && ls *.yaml | sed 's/\.yaml$//' | tr '\n' ' ')" >&2
+    exit 2
+  fi
+  if [ "${EXPLORE:-0}" = "1" ]; then
+    echo "ERROR: MAP=... (nap map da luu) khong di cung EXPLORE=1 (quet map moi)." >&2
+    exit 2
+  fi
+  SLAM=0   # map da co san: map_server + AMCL thay cho SLAM Toolbox
+fi
+
 echo "=== [0/6] TAT STACK XE THAT (khong gui lenh UDP sang Pi) VA MO PHONG CU ==="
 pkill -f "lidar_ws_to_ros2.py" 2>/dev/null || true
 pkill -f "sim_cmd_watchdog.py" 2>/dev/null || true
@@ -42,6 +62,9 @@ pkill -f "[r]os2 launch rosbridge_server" 2>/dev/null || true
 pkill -f "[r]os2 launch foxglove_bridge" 2>/dev/null || true
 pkill -f "[r]os2 launch slam_toolbox" 2>/dev/null || true
 pkill -f "static_transform_publisher" 2>/dev/null || true
+pkill -f "[n]avigation_launch.py" 2>/dev/null || true
+pkill -f "[z]one_filters_launch.py" 2>/dev/null || true
+pkill -f "costmap_filter_info_server" 2>/dev/null || true
 pkill -9 -f "gz sim" 2>/dev/null || true
 pkill -9 -f "parameter_bridge" 2>/dev/null || true
 fuser -k 9090/tcp 8765/tcp 2>/dev/null || true
@@ -132,9 +155,34 @@ if [ "${EXPLORE:-0}" = "1" ]; then
   EXPLORE_PID=$!
 fi
 
+MASK_PIDS=""
+if [ -n "$MAP_YAML" ]; then
+  echo "=== [5b/6] MAP DA LUU: $(basename "$MAP_YAML") -> MAP SERVER + AMCL + NAV2 ==="
+  # Vung ve tren Web: cam vao (keepout) + gioi han toc do (speed)
+  ros2 launch "$SCRIPT_DIR/nav2/zone_filters_launch.py" \
+    map_name:="$(basename "${MAP_YAML%.yaml}")" use_sim_time:=True &
+  MASK_PIDS="$!"
+  ros2 launch "$SCRIPT_DIR/nav2/navigation_launch.py" map:="$MAP_YAML" use_sim_time:=True simulation:=true \
+    params_file:="$SCRIPT_DIR/nav2/nav2_params.yaml" autostart:=True &
+  NAV_PID=$!
+
+  # AMCL can vi tri dau: doi AMCL active roi gui /initialpose (INIT_X/Y/YAW, mac dinh 0 0 0).
+  for _ in $(seq 1 60); do
+    timeout 5 ros2 lifecycle get /amcl 2>/dev/null | grep -q "^active" && break
+    sleep 1
+  done
+  read -r QZ QW < <(python3 -c "import math,sys; y=float(sys.argv[1]); print(math.sin(y/2), math.cos(y/2))" "${INIT_YAW:-0}")
+  timeout 15 ros2 topic pub --once -w 1 /initialpose geometry_msgs/msg/PoseWithCovarianceStamped \
+    "{header: {frame_id: map}, pose: {pose: {position: {x: ${INIT_X:-0}, y: ${INIT_Y:-0}}, orientation: {z: $QZ, w: $QW}},
+      covariance: [0.0625, 0, 0, 0, 0, 0, 0, 0.0625, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                   0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.0685]}}" >/dev/null \
+    && echo " Da dat vi tri dau AMCL: (${INIT_X:-0}, ${INIT_Y:-0}, yaw ${INIT_YAW:-0})" \
+    || echo " CANH BAO: chua gui duoc /initialpose - dat tay bang Foxglove 'Publish pose estimate'."
+fi
+
 cleanup() {
   echo ">> Dang tat mo phong..."
-  kill $EXPLORE_PID $NAV_PID $SLAM_PID $WS_PID $FOX_PID $TF_PID $WATCHDOG_PID $BRIDGE_PID $GUI_PID $GZ_PID 2>/dev/null || true
+  kill $EXPLORE_PID $NAV_PID $MASK_PIDS $SLAM_PID $WS_PID $FOX_PID $TF_PID $WATCHDOG_PID $BRIDGE_PID $GUI_PID $GZ_PID 2>/dev/null || true
   pkill -9 -f "gz sim" 2>/dev/null || true
   pkill -9 -f "parameter_bridge" 2>/dev/null || true
 }
@@ -143,7 +191,11 @@ trap cleanup EXIT INT TERM
 echo "=========================================================="
 echo " [6/6] MO PHONG SAN SANG - XE THAT KHONG BI DIEU KHIEN"
 echo "  Foxglove : ws://127.0.0.1:8765"
-echo "    - 3D panel: Fixed frame = map (hoac odom neu SLAM=0)"
+echo "    - 3D panel: Fixed frame = map (hoac odom neu SLAM=0 va khong co MAP)"
+if [ -n "$MAP_YAML" ]; then
+echo "    - Costmap: /global_costmap/costmap /local_costmap/costmap /plan /keepout_filter_mask /speed_limit"
+echo "    - Gui dich: publish /goal_pose (Foxglove 'Publish pose')"
+fi
 echo "    - Teleop panel: topic /cmd_vel de lai xe ao"
 echo "  Web Admin: ROS 2 Gia Lap (ws://127.0.0.1:9090)"
 echo "  Luu map ao: bash $SCRIPT_DIR/save_ros2_map.sh ten_map --no-pause"

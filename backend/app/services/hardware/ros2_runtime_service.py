@@ -402,77 +402,149 @@ class Ros2RuntimeService:
         mask_dir = self.maps_dir / "keepout"
         return mask_dir / f"{safe_name}.yaml", mask_dir / f"{safe_name}.pgm"
 
-    def write_keepout_mask(self, raw_name: str, zones: list[dict], robot_radius: float = 0.16) -> dict:
-        """
-        Tao mask Keepout Filter cho Nav2 tu cac vung KEEP_OUT cua map (cung kich thuoc/goc voi map).
-        O trong vung (noi rong them ban kinh robot) = den (0, vat can) => Nav2 khong lap duong vao.
-        """
+    def speed_mask_paths(self, safe_name: str) -> tuple[Path, Path]:
+        mask_dir = self.maps_dir / "speed"
+        return mask_dir / f"{safe_name}.yaml", mask_dir / f"{safe_name}.pgm"
+
+    def _map_grid(self, safe_name: str) -> tuple[int, int, float, float, float]:
+        """(rong, cao, do phan giai, goc x, goc y) cua map da luu - mask phai trung khit map."""
         import yaml
 
-        safe_name = self.normalize_map_name(raw_name)
         map_yaml = self.maps_dir / f"{safe_name}.yaml"
         if not map_yaml.is_file():
             raise Ros2RuntimeError(f"Chưa có bản đồ '{safe_name}'.")
         meta = yaml.safe_load(map_yaml.read_text(encoding="utf-8")) or {}
         stats = self._read_pgm_stats(map_yaml.parent / str(meta.get("image", f"{safe_name}.pgm")))
-        width, height = stats["width"], stats["height"]
-        res = float(meta.get("resolution", 0.05))
         origin = meta.get("origin") or [0.0, 0.0, 0.0]
-        ox, oy = float(origin[0]), float(origin[1])
+        return (stats["width"], stats["height"], float(meta.get("resolution", 0.05)),
+                float(origin[0]), float(origin[1]))
 
-        pixels = bytearray([254]) * (width * height)
-        keepout = [z for z in zones if str(z.get("type", "")).upper() == "KEEP_OUT"]
-        for z in keepout:
-            half_w = float(z.get("width") or 0.0) / 2.0 + robot_radius
-            half_h = float(z.get("height") or 0.0) / 2.0 + robot_radius
-            zx, zy = float(z.get("x") or 0.0), float(z.get("y") or 0.0)
-            x0 = max(0, int((zx - half_w - ox) / res))
-            x1 = min(width - 1, int((zx + half_w - ox) / res))
-            y0 = max(0, int((zy - half_h - oy) / res))
-            y1 = min(height - 1, int((zy + half_h - oy) / res))
-            for gy in range(y0, y1 + 1):
-                row = (height - 1 - gy) * width  # PGM: hang 0 la dinh anh (y lon nhat)
-                for gx in range(x0, x1 + 1):
-                    pixels[row + gx] = 0
+    @staticmethod
+    def _zone_pixel_indices(zone: dict, robot_radius: float, grid: tuple[int, int, float, float, float]):
+        """Chi so diem anh PGM cua vung chu nhat (tam x, y) noi rong them robot_radius."""
+        width, height, res, ox, oy = grid
+        half_w = float(zone.get("width") or 0.0) / 2.0 + robot_radius
+        half_h = float(zone.get("height") or 0.0) / 2.0 + robot_radius
+        zx, zy = float(zone.get("x") or 0.0), float(zone.get("y") or 0.0)
+        x0 = max(0, int((zx - half_w - ox) / res))
+        x1 = min(width - 1, int((zx + half_w - ox) / res))
+        y0 = max(0, int((zy - half_h - oy) / res))
+        y1 = min(height - 1, int((zy + half_h - oy) / res))
+        for gy in range(y0, y1 + 1):
+            row = (height - 1 - gy) * width  # PGM: hang 0 la dinh anh (y lon nhat)
+            for gx in range(x0, x1 + 1):
+                yield row + gx
 
-        mask_yaml, mask_pgm = self.keepout_mask_paths(safe_name)
+    @staticmethod
+    def _write_mask(paths: tuple[Path, Path], grid: tuple[int, int, float, float, float],
+                    pixels: bytearray, mode: str) -> None:
+        width, height, res, ox, oy = grid
+        mask_yaml, mask_pgm = paths
         mask_yaml.parent.mkdir(parents=True, exist_ok=True)
         mask_pgm.write_bytes(f"P5\n{width} {height}\n255\n".encode("ascii") + bytes(pixels))
         mask_yaml.write_text(
-            f"image: {mask_pgm.name}\nmode: trinary\nresolution: {res}\n"
+            f"image: {mask_pgm.name}\nmode: {mode}\nresolution: {res}\n"
             f"origin: [{ox}, {oy}, 0.0]\nnegate: 0\noccupied_thresh: 0.65\nfree_thresh: 0.25\n",
             encoding="utf-8",
         )
-        logger.info("Keepout mask '%s': %d vùng KEEP_OUT", safe_name, len(keepout))
-        return {"map_name": safe_name, "keepout_zones": len(keepout), "mask_yaml": str(mask_yaml)}
 
-    def reload_keepout_mask(self, raw_name: str) -> bool:
-        """Nav2 dang chay thi nap lai mask ngay (khong can khoi dong lai Navigation)."""
+    def write_keepout_mask(self, raw_name: str, zones: list[dict], robot_radius: float = 0.16) -> dict:
+        """
+        Tao mask Keepout Filter cho Nav2 tu cac vung KEEP_OUT cua map (cung kich thuoc/goc voi map).
+        O trong vung (noi rong them ban kinh robot) = den (0, vat can) => Nav2 khong lap duong vao.
+        """
+        safe_name = self.normalize_map_name(raw_name)
+        grid = self._map_grid(safe_name)
+        pixels = bytearray([254]) * (grid[0] * grid[1])
+        keepout = [z for z in zones if str(z.get("type", "")).upper() == "KEEP_OUT"]
+        for z in keepout:
+            for i in self._zone_pixel_indices(z, robot_radius, grid):
+                pixels[i] = 0
+
+        paths = self.keepout_mask_paths(safe_name)
+        self._write_mask(paths, grid, pixels, "trinary")
+        logger.info("Keepout mask '%s': %d vùng KEEP_OUT", safe_name, len(keepout))
+        return {"map_name": safe_name, "keepout_zones": len(keepout), "mask_yaml": str(paths[0])}
+
+    def write_speed_mask(self, raw_name: str, zones: list[dict], robot_radius: float = 0.16) -> dict:
+        """
+        Tao mask Speed Filter cho Nav2 tu cac vung SPEED_ZONE (mode raw: gia tri o = diem anh 0..100).
+        speed_filter_info_server (nav2/zone_filter_params.yaml): type 2, base 0.0, multiplier 0.01
+        => toc do toi da = gia tri / 100 m/s; 0 = khong gioi han. Vung chong nhau lay gioi han cham hon.
+        Noi rong ban kinh robot: SpeedFilter xet tam xe, noi rong de xe cham lai truoc khi than xe vao vung.
+        """
+        safe_name = self.normalize_map_name(raw_name)
+        grid = self._map_grid(safe_name)
+        pixels = bytearray(grid[0] * grid[1])
+        count = 0
+        for z in zones:
+            if str(z.get("type", "")).upper() != "SPEED_ZONE":
+                continue
+            try:
+                limit = float(z.get("speed_limit") or 0.0)
+            except (TypeError, ValueError):
+                limit = 0.0
+            if limit <= 0.0:
+                logger.warning("Bỏ vùng giới hạn tốc độ '%s': speed_limit=%r không hợp lệ",
+                               z.get("name") or z.get("id"), z.get("speed_limit"))
+                continue
+            value = max(1, min(100, round(limit * 100)))
+            count += 1
+            for i in self._zone_pixel_indices(z, robot_radius, grid):
+                if pixels[i] == 0 or value < pixels[i]:
+                    pixels[i] = value
+
+        paths = self.speed_mask_paths(safe_name)
+        self._write_mask(paths, grid, pixels, "raw")
+        logger.info("Speed mask '%s': %d vùng SPEED_ZONE", safe_name, count)
+        return {"map_name": safe_name, "speed_zones": count, "speed_mask_yaml": str(paths[0])}
+
+    def write_zone_masks(self, raw_name: str, zones: list[dict]) -> dict:
+        """Ghi ca mask vung cam (KEEP_OUT) va mask gioi han toc do (SPEED_ZONE) cho Nav2."""
+        return {**self.write_keepout_mask(raw_name, zones), **self.write_speed_mask(raw_name, zones)}
+
+    def reload_zone_masks(self, raw_name: str) -> dict:
+        """Nav2 dang chay thi nap lai cac mask ngay (khong can khoi dong lai Navigation)."""
+        safe_name = self.normalize_map_name(raw_name)
+        servers = {
+            "keepout": ("filter_mask_server", self.keepout_mask_paths(safe_name)[0]),
+            "speed": ("speed_mask_server", self.speed_mask_paths(safe_name)[0]),
+        }
+        reloaded = {key: False for key in servers}
         if self._detect_mode() != "NAVIGATION":
-            return False
-        mask_yaml, _ = self.keepout_mask_paths(self.normalize_map_name(raw_name))
+            return reloaded
+        calls = [
+            f"echo '##{server}'; timeout 10 ros2 service call /{server}/load_map nav2_msgs/srv/LoadMap "
+            f"\"{{map_url: '{self._to_wsl_path(mask_yaml)}'}}\""
+            for server, mask_yaml in servers.values() if mask_yaml.is_file()
+        ]
+        if not calls:
+            return reloaded
         command = [
             "wsl.exe", "-d", self.distro, "--", "bash", "-lc",
-            "source /opt/ros/jazzy/setup.bash && ros2 service call /filter_mask_server/load_map "
-            f"nav2_msgs/srv/LoadMap \"{{map_url: '{self._to_wsl_path(mask_yaml)}'}}\"",
+            "source /opt/ros/jazzy/setup.bash; " + "; ".join(calls),
         ]
         try:
             result = subprocess.run(
-                command, capture_output=True, text=True, timeout=20, creationflags=self._creation_flags
+                command, capture_output=True, text=True, timeout=30, creationflags=self._creation_flags
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
-            logger.warning("Không nạp lại được keepout mask: %s", exc)
-            return False
-        return result.returncode == 0 and "result=0" in result.stdout.replace(" ", "")
+            logger.warning("Không nạp lại được mask vùng: %s", exc)
+            return reloaded
+        sections = {}
+        for chunk in result.stdout.split("##")[1:]:
+            name, _, body = chunk.partition("\n")
+            sections[name.strip()] = "result=0" in body.replace(" ", "")
+        return {key: sections.get(server, False) for key, (server, _) in servers.items()}
 
-    def start_navigation(self, raw_name: str, keepout_zones: Optional[list[dict]] = None,
+    def start_navigation(self, raw_name: str, zones: Optional[list[dict]] = None,
                          pi_ip: Optional[str] = None) -> dict:
         safe_name = self.normalize_map_name(raw_name)
         yaml_path = self.maps_dir / f"{safe_name}.yaml"
         if not yaml_path.is_file():
             raise Ros2RuntimeError(f"Chưa có bản đồ '{safe_name}'. Hãy quét và lưu map trước.")
-        if keepout_zones is not None:
-            self.write_keepout_mask(safe_name, keepout_zones)
+        if zones is not None:
+            self.write_zone_masks(safe_name, zones)
 
         env = {"PI5_IP": pi_ip or os.environ["PI5_IP"]} if pi_ip or os.getenv("PI5_IP") else None
         pid = self._spawn(

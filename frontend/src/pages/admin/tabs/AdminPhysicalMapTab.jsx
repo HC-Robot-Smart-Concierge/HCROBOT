@@ -26,6 +26,12 @@ import {
 import { buildCostmapImage, pathMsgToPoints } from './physicalMapCostmap';
 import { composeMapPose, laserPointToMap, sendNav2Endpoint } from './physicalMapNavigation';
 import {
+  endpointZoneViolation,
+  resizeZoneFromCorner,
+  zoneCorners,
+  zoneFromCorners,
+} from './physicalMapZones';
+import {
   OTTO_ENDPOINT_TEMPLATES,
   getEndpointTemplateInfo,
 } from './studio/studioConstants';
@@ -322,6 +328,10 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
   // Keo tha tren Canvas
   const [dragState, setDragState] = useState(null);
   const isDraggingRef = useRef(false);
+
+  // Ve vung bang chuot: chon loai vung roi keo hinh chu nhat tren map
+  const [zoneDrawType, setZoneDrawType] = useState(null); // null | 'KEEP_OUT' | 'SPEED_ZONE' | 'NO_STOP'
+  const [zoneDraft, setZoneDraft] = useState(null); // { type, a: {x,y}, b: {x,y} } toa do the gioi
 
   // Ban do dang chon (thong so tu .yaml) va anh map (.pgm giai ma thanh canvas)
   const [mapLayouts, setMapLayouts] = useState([]);
@@ -829,7 +839,8 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     setSelectedEndpoint(ep);
     setSelectedZone(null);
     setNavigatingEndpointId(ep.id);
-    handleSendGoal(Number(ep.x) || 0.0, Number(ep.y) || 0.0, Number(ep.yaw) || 0.0);
+    // Bi tu choi (vung cam, chua dinh vi...) thi giu nguyen thong bao loi cua handleSendGoal.
+    if (!handleSendGoal(Number(ep.x) || 0.0, Number(ep.y) || 0.0, Number(ep.yaw) || 0.0)) return;
     setNavStatus(`Bấm chọn '${ep.name}' → Đang điều hướng robot tới (${Number(ep.x).toFixed(2)}, ${Number(ep.y).toFixed(2)})...`);
   };
 
@@ -900,18 +911,37 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
   // ==========================================
   // QUAN LY ZONES (VUNG CHUC NANG)
   // ==========================================
-  const handleAddZone = (type = 'KEEP_OUT') => {
+  // Luu 1 vung vao CSDL roi tao lai mask Nav2 (vung cam + gioi han toc do): Nav2 dang chay
+  // thi ap dung ngay, khong can bam "Lưu".
+  const persistZone = (zone, nextList, prefix) => {
+    saveZone({ ...zone, map_id: mapConfig.mapId })
+      .then(() => refreshNav2Keepout(prefix))
+      .catch((err) => {
+        console.warn('Lỗi lưu zone vào backend:', err.message);
+        setHasUnsavedZones(true);
+        setNavStatus(`Chưa lưu được vùng "${zone.name}" vào CSDL: ${err.message}`);
+      });
+    if (rosClientRef.current?.isConnected) {
+      rosClientRef.current.publish('/hotel_zones', 'std_msgs/String', createZoneSyncMsg(nextList));
+    }
+  };
+
+  // rect = { x, y, width, height } (vung ve bang chuot); khong co thi dat 1x1 m giua map.
+  const handleAddZone = (type = 'KEEP_OUT', rect = null) => {
     const tmpl = ZONE_TEMPLATES.find((t) => t.type === type) || ZONE_TEMPLATES[0];
     const count = zones.length + 1;
     const prefix = type === 'KEEP_OUT' ? 'Cấm Vào' : type === 'SPEED_ZONE' ? 'Giới Hạn Tốc Độ' : 'Cấm Dừng';
+    const geometry = rect || {
+      x: Number((mapConfig.originX + mapConfig.widthMeters / 2).toFixed(2)),
+      y: Number((mapConfig.originY + mapConfig.heightMeters / 2).toFixed(2)),
+      width: 1.0,
+      height: 1.0,
+    };
     const newZone = {
       id: `zone-${Date.now().toString(36)}`,
       name: `${prefix} #${count}`,
       type,
-      x: 2.00,
-      y: 0.00,
-      width: 1.00,
-      height: 1.00,
+      ...geometry,
       speed_limit: tmpl.defaultSpeed,
       description: tmpl.description,
       map_id: mapConfig.mapId,
@@ -920,16 +950,16 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     setZones(nextList);
     setSelectedZone(newZone);
     setSelectedEndpoint(null);
-    setHasUnsavedZones(true);
     setActiveRightTab('ZONES');
+    persistZone(newZone, nextList, `Đã tạo vùng "${newZone.name}" (${newZone.width} x ${newZone.height} m)`);
+  };
 
-    saveZone(newZone).catch((err) => {
-      console.warn('Lỗi lưu zone vào backend:', err.message);
-    });
-
-    if (rosClientRef.current?.isConnected) {
-      rosClientRef.current.publish('/hotel_zones', 'std_msgs/String', createZoneSyncMsg(nextList));
-    }
+  const toggleZoneDraw = (type) => {
+    setZoneDraft(null);
+    setZoneDrawType((cur) => (cur === type ? null : type));
+    setIsAddEndpointMode(false);
+    setIsPoseSetMode(false);
+    setActiveRightTab('ZONES');
   };
 
   const handleUpdateSelectedZone = (field, value) => {
@@ -945,18 +975,22 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     }
   };
 
-  // Vung KEEP_OUT -> mask Keepout Filter cua Nav2 (robot/maps/keepout/<map>.pgm); Nav2 dang
-  // chay thi nap lai ngay, khong thi dung khi bat Navigation lan sau.
+  // KEEP_OUT -> mask Keepout Filter, SPEED_ZONE -> mask Speed Filter cua Nav2
+  // (robot/maps/keepout|speed/<map>.pgm); Nav2 dang chay thi nap lai ngay, khong thi dung khi
+  // bat Navigation lan sau. NO_STOP khong co mask: chan endpoint ngay tren Web (handleSendGoal).
   const refreshNav2Keepout = (prefix) => {
     updateRos2KeepoutMask(mapConfig.mapId)
       .then((res) =>
         setNavStatus(
-          `${prefix} • Nav2: ${res?.keepout_zones ?? 0} vùng cấm ${
+          `${prefix} • Nav2: ${res?.keepout_zones ?? 0} vùng cấm, ${res?.speed_zones ?? 0} vùng giới hạn tốc độ ${
             res?.reloaded ? 'đã nạp lại ngay' : 'sẽ áp dụng khi bật Navigation'
           }`
         )
       )
-      .catch((err) => console.warn('[AdminPhysicalMapTab] Cập nhật keepout mask lỗi:', err.message));
+      .catch((err) => {
+        console.warn('[AdminPhysicalMapTab] Cập nhật mask vùng lỗi:', err.message);
+        setNavStatus(`${prefix} • Chưa cập nhật được vùng cho Nav2: ${err.message}`);
+      });
   };
 
   const handleSaveZones = async () => {
@@ -1154,6 +1188,31 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
         ctx.textAlign = 'center';
         ctx.fillText(labelText.length > 20 ? labelText.slice(0, 18) + '...' : labelText, tl.x + 3 + textW / 2, tl.y + 13);
       }
+    }
+
+    // 4b. Vung dang ve bang chuot (chua tha): khung net dut + kich thuoc
+    if (zoneDraft) {
+      const { a, b } = zoneDraft;
+      const tl = worldToCanvas(Math.min(a.x, b.x), Math.max(a.y, b.y), width, height);
+      const br = worldToCanvas(Math.max(a.x, b.x), Math.min(a.y, b.y), width, height);
+      const tmpl = ZONE_TEMPLATES.find((t) => t.type === zoneDraft.type) || ZONE_TEMPLATES[0];
+      ctx.save();
+      ctx.fillStyle = tmpl.bgColor;
+      ctx.fillRect(tl.x, tl.y, br.x - tl.x, br.y - tl.y);
+      ctx.strokeStyle = tmpl.color;
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 4]);
+      ctx.strokeRect(tl.x, tl.y, br.x - tl.x, br.y - tl.y);
+      ctx.setLineDash([]);
+      ctx.font = 'bold 10px sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillStyle = tmpl.color;
+      ctx.fillText(
+        `${tmpl.badge} ${Math.abs(a.x - b.x).toFixed(2)} x ${Math.abs(a.y - b.y).toFixed(2)} m`,
+        tl.x + 4,
+        Math.max(12, tl.y - 5)
+      );
+      ctx.restore();
     }
 
     // 5. Ve tia Laser RPLiDAR thoi gian thuc
@@ -1428,6 +1487,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     isNavigating,
     navigatingEndpointId,
     hoveredEndpointId,
+    zoneDraft,
   ]);
 
   // ==========================================
@@ -1453,6 +1513,30 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     if (isAddEndpointMode) {
       handleAddEndpoint(addEndpointType, { x: worldX, y: worldY });
       return;
+    }
+
+    // 0c. Che do Ve vung: nhan chuot = 1 goc, keo toi goc doi dien, tha chuot = tao vung
+    if (zoneDrawType) {
+      const p = { x: worldX, y: worldY };
+      setZoneDraft({ type: zoneDrawType, a: p, b: p });
+      setDragState({ type: 'ZONE_DRAW' });
+      isDraggingRef.current = true;
+      return;
+    }
+
+    // 0d. Vung dang chon: nhan trung o vuong o goc (<= 8px) => keo de doi kich thuoc
+    if (showZones && selectedZone) {
+      const corners = zoneCorners(selectedZone);
+      const hit = Object.keys(corners).find((key) => {
+        const c = worldToCanvas(corners[key].x, corners[key].y, canvas.width, canvas.height);
+        return Math.hypot(canvasX - c.x, canvasY - c.y) <= 8;
+      });
+      if (hit) {
+        clickStartRef.current = { type: 'ZONE', startX: canvasX, startY: canvasY, hasMoved: false };
+        setDragState({ type: 'ZONE_RESIZE', id: selectedZone.id, corner: hit });
+        isDraggingRef.current = true;
+        return;
+      }
     }
 
     // 1. Kiem tra click trúng Endpoint (r <= 18px)
@@ -1564,6 +1648,21 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
       return;
     }
 
+    if (dragState.type === 'ZONE_DRAW' || dragState.type === 'ZONE_RESIZE') {
+      const { worldX, worldY } = canvasToWorld(canvasX, canvasY, canvas.width, canvas.height);
+      if (dragState.type === 'ZONE_DRAW') {
+        setZoneDraft((prev) => (prev ? { ...prev, b: { x: worldX, y: worldY } } : prev));
+      } else if (selectedZone) {
+        const updated = {
+          ...selectedZone,
+          ...resizeZoneFromCorner(selectedZone, dragState.corner, { x: worldX, y: worldY }),
+        };
+        setSelectedZone(updated);
+        setZones((prev) => prev.map((z) => (z.id === dragState.id ? updated : z)));
+      }
+      return;
+    }
+
     const { scale } = transformWorldToCanvas(0, 0, canvas.width, canvas.height, mapConfig);
     const dxMeters = (canvasX - dragState.mouseStartX) / scale;
     const dyMeters = -(canvasY - dragState.mouseStartY) / scale;
@@ -1581,17 +1680,39 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
       const updated = { ...selectedZone, x: newX, y: newY };
       setSelectedZone(updated);
       setZones((prev) => prev.map((z) => (z.id === dragState.id ? updated : z)));
-      setHasUnsavedZones(true);
     }
   };
 
   const handleCanvasMouseUp = () => {
-    const wasPoseDrag = dragState?.type === 'POSE';
+    const finishedDrag = dragState;
+    const wasPoseDrag = finishedDrag?.type === 'POSE';
     const clickCandidate = clickStartRef.current;
 
     setDragState(null);
     isDraggingRef.current = false;
     clickStartRef.current = null;
+
+    // Tha chuot sau khi ve: tao vung (qua nho = bam nham, bo qua) va thoat che do ve
+    if (finishedDrag?.type === 'ZONE_DRAW') {
+      const draft = zoneDraft;
+      setZoneDraft(null);
+      setZoneDrawType(null);
+      const rect = draft && zoneFromCorners(draft.a, draft.b);
+      if (rect) {
+        handleAddZone(draft.type, rect);
+      } else {
+        setNavStatus('Vùng quá nhỏ: nhấn giữ chuột rồi kéo thành hình chữ nhật trên bản đồ (mỗi cạnh tối thiểu 20 cm).');
+      }
+      return;
+    }
+
+    // Keo/doi kich thuoc vung xong: luu ngay + cap nhat Nav2
+    if ((finishedDrag?.type === 'ZONE' || finishedDrag?.type === 'ZONE_RESIZE') && clickCandidate?.hasMoved) {
+      const zone = zones.find((z) => z.id === finishedDrag.id);
+      if (zone) {
+        persistZone(zone, zones, `Đã cập nhật vùng "${zone.name}" (${zone.width} x ${zone.height} m)`);
+      }
+    }
 
     if (wasPoseDrag && poseDraft) {
       handleApplyInitialPose(poseDraft.x, poseDraft.y, poseDraft.yaw);
@@ -1663,8 +1784,13 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
   };
 
   // Every endpoint uses map-frame localization and Nav2's live obstacle costmap.
+  // Tra ve true neu da gui goal toi Nav2.
   const handleSendGoal = (gx, gy, gyaw = 0.0) => {
     try {
+      // KEEP_OUT: Nav2 da coi la vat can (mask), nhung bao ro ten vung. NO_STOP: chi duoc di
+      // ngang qua => khong nhan dich ben trong (Nav2 khong co khai niem "cam dung").
+      const zoneReason = endpointZoneViolation({ x: gx, y: gy }, zones);
+      if (zoneReason) throw new Error(zoneReason);
       sendNav2Endpoint(rosClientRef.current, {
         runtime: nav2Runtime, mapId: mapConfig.mapId, physical: connectionMode === 'pi5',
         localized: localizationRef.current.confirmed && localizationRef.current.mapId === mapConfig.mapId,
@@ -1675,11 +1801,13 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
       setIsNavigating(true);
       setNavPath([]);
       setNavStatus(`Nav2 đang lập đường tránh vật cản tới (${gx.toFixed(2)}, ${gy.toFixed(2)})...`);
+      return true;
     } catch (err) {
       setNavStatus(err.message);
       setIsNavigating(false);
       setSelectedGoal(null);
       setNavigatingEndpointId(null);
+      return false;
     }
   };
 
@@ -1738,6 +1866,13 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
     const handleKeyDown = (e) => {
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
       const key = e.key.toLowerCase();
+      if (key === 'escape') {
+        // Huy ve vung dang do dang
+        setZoneDrawType(null);
+        setZoneDraft(null);
+        setDragState((cur) => (cur?.type === 'ZONE_DRAW' ? null : cur));
+        return;
+      }
       if (key === 'w' || key === 'arrowup') {
         e.preventDefault();
         sendTeleopCommand('forward', maxLinearSpeed, 0.0);
@@ -2054,7 +2189,9 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
             onMouseUp={handleCanvasMouseUp}
             onMouseLeave={() => setHoveredEndpointId(null)}
             className={`w-full h-full max-w-[960px] max-h-[640px] rounded-xl border border-slate-800 shadow-2xl bg-slate-900 object-contain ${
-              dragState
+              zoneDrawType
+                ? 'cursor-crosshair'
+                : dragState
                 ? 'cursor-grabbing'
                 : isPoseSetMode
                 ? 'cursor-crosshair'
@@ -2063,8 +2200,22 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
                 : hoveredEndpointId
                 ? 'cursor-pointer'
                 : 'cursor-default'
-            } ${isPoseSetMode ? 'ring-2 ring-emerald-500/70' : isAddEndpointMode ? 'ring-2 ring-blue-500/70' : ''}`}
+            } ${
+              zoneDrawType
+                ? 'ring-2 ring-amber-500/70'
+                : isPoseSetMode
+                ? 'ring-2 ring-emerald-500/70'
+                : isAddEndpointMode
+                ? 'ring-2 ring-blue-500/70'
+                : ''
+            }`}
           />
+
+          {zoneDrawType && (
+            <div className="absolute top-16 left-1/2 -translate-x-1/2 z-10 px-3 py-1.5 rounded-lg bg-amber-950/90 border border-amber-700 text-[11px] font-semibold text-amber-200 shadow-xl">
+              Vẽ vùng {ZONE_TEMPLATES.find((t) => t.type === zoneDrawType)?.badge}: nhấn giữ chuột ở 1 góc → kéo tới góc đối diện → thả chuột (Esc để hủy)
+            </div>
+          )}
 
           {isPoseSetMode && (
             <div className="absolute top-16 left-1/2 -translate-x-1/2 z-10 px-3 py-1.5 rounded-lg bg-emerald-950/90 border border-emerald-700 text-[11px] font-semibold text-emerald-300 shadow-xl">
@@ -2131,6 +2282,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
                     step="0.05"
                     min="0.05"
                     max="0.5"
+                    title="Tốc độ tối đa trong vùng (Nav2 Speed Filter). Xe thật chạy chậm nhất ~0.14 m/s (sàn PWM), đặt thấp hơn thì xe vẫn chạy ~0.14 m/s."
                     value={selectedZone.speed_limit || 0.12}
                     onChange={(e) => handleUpdateSelectedZone('speed_limit', parseFloat(e.target.value) || 0.12)}
                     className="w-12 px-1 py-0.5 rounded text-center font-bold bg-slate-900 border border-slate-700 text-amber-400 text-xs focus:outline-none"
@@ -2693,28 +2845,34 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-1">
                   <button
-                    onClick={() => handleAddZone('KEEP_OUT')}
-                    className="px-2 py-1 rounded bg-rose-600/80 hover:bg-rose-600 text-white text-[10px] font-bold cursor-pointer transition-colors flex items-center gap-1"
-                    title="Thêm khu vực cấm vào"
+                    onClick={() => toggleZoneDraw('KEEP_OUT')}
+                    className={`px-2 py-1 rounded text-white text-[10px] font-bold cursor-pointer transition-colors flex items-center gap-1 ${
+                      zoneDrawType === 'KEEP_OUT' ? 'bg-rose-600 ring-2 ring-white/70' : 'bg-rose-600/80 hover:bg-rose-600'
+                    }`}
+                    title="Vẽ khu vực cấm vào: kéo chuột trên bản đồ. Nav2 sẽ đi đường vòng, không nhận endpoint bên trong."
                   >
                     <Plus className="w-3 h-3" />
-                    <span>Cấm Vào</span>
+                    <span>{zoneDrawType === 'KEEP_OUT' ? 'Đang Vẽ...' : 'Cấm Vào'}</span>
                   </button>
                   <button
-                    onClick={() => handleAddZone('SPEED_ZONE')}
-                    className="px-2 py-1 rounded bg-amber-600/80 hover:bg-amber-600 text-white text-[10px] font-bold cursor-pointer transition-colors flex items-center gap-1"
-                    title="Thêm vùng giới hạn tốc độ"
+                    onClick={() => toggleZoneDraw('SPEED_ZONE')}
+                    className={`px-2 py-1 rounded text-white text-[10px] font-bold cursor-pointer transition-colors flex items-center gap-1 ${
+                      zoneDrawType === 'SPEED_ZONE' ? 'bg-amber-600 ring-2 ring-white/70' : 'bg-amber-600/80 hover:bg-amber-600'
+                    }`}
+                    title="Vẽ vùng giới hạn tốc độ: kéo chuột trên bản đồ. Robot tự chạy chậm lại khi vào vùng."
                   >
                     <Plus className="w-3 h-3" />
-                    <span>Tốc Độ</span>
+                    <span>{zoneDrawType === 'SPEED_ZONE' ? 'Đang Vẽ...' : 'Tốc Độ'}</span>
                   </button>
                   <button
-                    onClick={() => handleAddZone('NO_STOP')}
-                    className="px-2 py-1 rounded bg-pink-600/80 hover:bg-pink-600 text-white text-[10px] font-bold cursor-pointer transition-colors flex items-center gap-1"
-                    title="Thêm vùng cấm dừng"
+                    onClick={() => toggleZoneDraw('NO_STOP')}
+                    className={`px-2 py-1 rounded text-white text-[10px] font-bold cursor-pointer transition-colors flex items-center gap-1 ${
+                      zoneDrawType === 'NO_STOP' ? 'bg-pink-600 ring-2 ring-white/70' : 'bg-pink-600/80 hover:bg-pink-600'
+                    }`}
+                    title="Vẽ vùng cấm dừng: kéo chuột trên bản đồ. Robot được đi ngang qua nhưng không nhận endpoint bên trong."
                   >
                     <Plus className="w-3 h-3" />
-                    <span>Cấm Dừng</span>
+                    <span>{zoneDrawType === 'NO_STOP' ? 'Đang Vẽ...' : 'Cấm Dừng'}</span>
                   </button>
                 </div>
 

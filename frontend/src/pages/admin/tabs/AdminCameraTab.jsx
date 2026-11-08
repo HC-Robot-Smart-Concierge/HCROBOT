@@ -23,6 +23,9 @@ import {
 
 const DEFAULT_STREAM_URL = 'http://100.99.72.51:8554/stream';
 const HEALTH_CHECK_INTERVAL_MS = 5000;
+// Pi dừng động cơ nếu quá HCROBOT_UDP_CMD_TIMEOUT (mặc định 1.0 s) không có lệnh chạy mới
+// (robot/udp_command_watchdog.py) -> phải gửi lại lệnh nhanh hơn ngưỡng đó khi đang giữ phím.
+const MOTION_RESEND_INTERVAL_MS = 250;
 
 const MOTION_CONFIG = {
   w: { label: 'Tiến', eng: 'Forward', icon: ArrowUp, color: 'text-emerald-400' },
@@ -337,6 +340,50 @@ export const AdminCameraTab = ({ currentUser }) => {
       }
     },
     [controlIp]
+  );
+
+  // Đang giữ phím/nút -> gửi lại lệnh hiện tại định kỳ để watchdog trên Pi không cắt động cơ.
+  // Nhả tay -> activeMotion = 'stop' -> ngừng gửi.
+  useEffect(() => {
+    if (activeMotion === 'stop') return undefined;
+
+    const isSpin = activeMotion === 'a' || activeMotion === 'd';
+    let inFlight = false;
+    let cancelled = false;
+
+    const post = (command, speedVal) =>
+      fetch('/api/v1/operations/robot/control', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command, target_ip: controlIp, port: 9999, speed: speedVal }),
+      });
+
+    const intervalId = setInterval(() => {
+      if (inFlight) return; // mạng chậm: không dồn request
+      inFlight = true;
+      post(activeMotion, isSpin ? turnSpeedRef.current : speedRef.current)
+        .catch(() => {})
+        .finally(() => {
+          inFlight = false;
+          // Lệnh gửi lại có thể tới Pi SAU lệnh 'stop' -> gửi 'stop' thêm lần nữa.
+          if (cancelled && activeMotionRef.current === 'stop') {
+            post('stop', speedRef.current).catch(() => {});
+          }
+        });
+    }, MOTION_RESEND_INTERVAL_MS);
+
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+    };
+  }, [activeMotion, controlIp]);
+
+  // Kéo chuột ra khỏi nút D-pad khi vẫn đang nhấn -> không có mouseup trên nút -> phải dừng.
+  const stopIfDragOut = useCallback(
+    (e) => {
+      if (e.buttons & 1) sendControlCommand('stop');
+    },
+    [sendControlCommand]
   );
 
   useEffect(() => {
@@ -1011,6 +1058,7 @@ export const AdminCameraTab = ({ currentUser }) => {
             <button
               onMouseDown={() => sendControlCommand('w')}
               onMouseUp={() => sendControlCommand('stop')}
+              onMouseLeave={stopIfDragOut}
               onTouchStart={() => sendControlCommand('w')}
               onTouchEnd={() => sendControlCommand('stop')}
               className={`absolute top-0 w-9 h-9 rounded-xl flex flex-col items-center justify-center transition-all cursor-pointer border ${
@@ -1028,6 +1076,7 @@ export const AdminCameraTab = ({ currentUser }) => {
             <button
               onMouseDown={() => sendControlCommand('a')}
               onMouseUp={() => sendControlCommand('stop')}
+              onMouseLeave={stopIfDragOut}
               onTouchStart={() => sendControlCommand('a')}
               onTouchEnd={() => sendControlCommand('stop')}
               className={`absolute left-0 w-9 h-9 rounded-xl flex items-center justify-center gap-0.5 transition-all cursor-pointer border ${
@@ -1058,6 +1107,7 @@ export const AdminCameraTab = ({ currentUser }) => {
             <button
               onMouseDown={() => sendControlCommand('d')}
               onMouseUp={() => sendControlCommand('stop')}
+              onMouseLeave={stopIfDragOut}
               onTouchStart={() => sendControlCommand('d')}
               onTouchEnd={() => sendControlCommand('stop')}
               className={`absolute right-0 w-9 h-9 rounded-xl flex items-center justify-center gap-0.5 transition-all cursor-pointer border ${
@@ -1075,6 +1125,7 @@ export const AdminCameraTab = ({ currentUser }) => {
             <button
               onMouseDown={() => sendControlCommand('s')}
               onMouseUp={() => sendControlCommand('stop')}
+              onMouseLeave={stopIfDragOut}
               onTouchStart={() => sendControlCommand('s')}
               onTouchEnd={() => sendControlCommand('stop')}
               className={`absolute bottom-0 w-9 h-9 rounded-xl flex flex-col items-center justify-center transition-all cursor-pointer border ${

@@ -59,6 +59,95 @@ def test_export_pgm_to_json_uses_bottom_row_as_origin(tmp_path: Path):
     assert (data["origin_x"], data["origin_y"], data["resolution"]) == (-1.0, -2.0, 0.05)
 
 
+def _zone_service(tmp_path: Path) -> Ros2RuntimeService:
+    """Map 4 x 2 m, 0.1 m/o, goc (0, 0)."""
+    service = Ros2RuntimeService(project_root=tmp_path)
+    service.maps_dir.mkdir(parents=True)
+    _write_pgm(service.maps_dir / "zmap.pgm", 40, 20, bytes([254] * 800))
+    (service.maps_dir / "zmap.yaml").write_text(
+        "image: zmap.pgm\nresolution: 0.1\norigin: [0.0, 0.0, 0.0]\n", encoding="utf-8"
+    )
+    return service
+
+
+def _mask_value(pgm: Path, x: float, y: float, res: float = 0.1) -> int:
+    magic, size, _maxval, pixels = pgm.read_bytes().split(b"\n", 3)
+    assert magic == b"P5"
+    width, height = (int(v) for v in size.split())
+    gx, gy = int(x / res), int(y / res)
+    return pixels[(height - 1 - gy) * width + gx]  # PGM hang 0 = dinh anh
+
+
+def test_speed_mask_encodes_limit_and_keeps_slowest_overlap(tmp_path: Path):
+    service = _zone_service(tmp_path)
+    zones = [
+        {"type": "SPEED_ZONE", "x": 1.0, "y": 1.0, "width": 0.6, "height": 0.6, "speed_limit": 0.12},
+        {"type": "SPEED_ZONE", "x": 1.5, "y": 1.0, "width": 0.6, "height": 0.6, "speed_limit": 0.30},
+        {"type": "KEEP_OUT", "x": 3.0, "y": 1.0, "width": 0.4, "height": 0.4, "speed_limit": 0.0},
+        {"type": "NO_STOP", "x": 3.0, "y": 0.5, "width": 0.4, "height": 0.4, "speed_limit": 0.15},
+    ]
+    result = service.write_speed_mask("zmap", zones, robot_radius=0.0)
+    mask_yaml, mask_pgm = service.speed_mask_paths("zmap")
+
+    assert result["speed_zones"] == 2
+    # raw: gia tri o = diem anh (0..100) -> SpeedFilter: speed = 0.0 + 0.01 * gia tri (m/s), 0 = khong gioi han
+    assert "mode: raw" in mask_yaml.read_text(encoding="utf-8")
+    assert _mask_value(mask_pgm, 0.85, 1.0) == 12
+    assert _mask_value(mask_pgm, 1.65, 1.0) == 30
+    assert _mask_value(mask_pgm, 1.25, 1.0) == 12  # chong nhau -> lay vung cham hon
+    assert _mask_value(mask_pgm, 3.05, 1.05) == 0  # KEEP_OUT/NO_STOP khong nam trong mask toc do
+    assert _mask_value(mask_pgm, 0.25, 0.25) == 0
+
+
+def test_speed_mask_skips_non_positive_limit_and_caps_at_one_mps(tmp_path: Path):
+    service = _zone_service(tmp_path)
+    zones = [
+        {"type": "SPEED_ZONE", "x": 1.0, "y": 1.0, "width": 0.6, "height": 0.6, "speed_limit": 0.0},
+        {"type": "SPEED_ZONE", "x": 3.0, "y": 1.0, "width": 0.6, "height": 0.6, "speed_limit": 2.5},
+    ]
+    result = service.write_speed_mask("zmap", zones, robot_radius=0.0)
+    _, mask_pgm = service.speed_mask_paths("zmap")
+    assert result["speed_zones"] == 1
+    assert _mask_value(mask_pgm, 1.0, 1.0) == 0
+    assert _mask_value(mask_pgm, 3.0, 1.0) == 100
+
+
+def test_write_zone_masks_writes_keepout_and_speed_masks(tmp_path: Path):
+    service = _zone_service(tmp_path)
+    zones = [
+        {"type": "KEEP_OUT", "x": 3.0, "y": 1.0, "width": 0.4, "height": 0.4},
+        {"type": "SPEED_ZONE", "x": 1.0, "y": 1.0, "width": 0.6, "height": 0.6, "speed_limit": 0.12},
+    ]
+    result = service.write_zone_masks("zmap", zones)
+    assert result["keepout_zones"] == 1 and result["speed_zones"] == 1
+    for yaml_path, pgm_path in (service.keepout_mask_paths("zmap"), service.speed_mask_paths("zmap")):
+        assert yaml_path.is_file() and pgm_path.is_file()
+    assert _mask_value(service.keepout_mask_paths("zmap")[1], 3.0, 1.0) == 0  # keepout = den
+
+
+def test_reload_zone_masks_loads_both_masks_when_navigation_runs(tmp_path: Path, monkeypatch):
+    service = _zone_service(tmp_path)
+    service.write_zone_masks("zmap", [])
+    ran = []
+
+    def fake_run(command, **kwargs):
+        ran.append(command[-1])
+
+        class R:
+            returncode, stderr = 0, ""
+            stdout = "##filter_mask_server\nresponse: result=0\n##speed_mask_server\nresponse: result=0\n"
+
+        return R()
+
+    monkeypatch.setattr(service, "_detect_mode", lambda: "NAVIGATION")
+    monkeypatch.setattr("app.services.hardware.ros2_runtime_service.subprocess.run", fake_run)
+    assert service.reload_zone_masks("zmap") == {"keepout": True, "speed": True}
+    assert "/filter_mask_server/load_map" in ran[0] and "/speed_mask_server/load_map" in ran[0]
+
+    monkeypatch.setattr(service, "_detect_mode", lambda: "MAPPING")
+    assert service.reload_zone_masks("zmap") == {"keepout": False, "speed": False}
+
+
 def _fake_scripts(tmp_path: Path) -> Ros2RuntimeService:
     service = Ros2RuntimeService(project_root=tmp_path)
     service.scripts_dir.mkdir(parents=True)

@@ -59,6 +59,28 @@ class TestFindFrontiers(unittest.TestCase):
         data, w, h = grid_from_rows(rows)
         self.assertEqual(len(find_frontiers(data, w, h, RES, (0, 0), min_cluster_cells=2)), 2)
 
+    def test_ring_cluster_around_robot_still_gives_far_goals(self):
+        # Gazebo 07/11: xe dung yen, LiDAR thua o xa => mot cum frontier khong lo bao quanh xe,
+        # them khe "bong" chua biet chay toi sat xe. Tam cum ~ chinh xe => dich cu cach xe 0.3 m,
+        # choose_frontier bo (qua gan) => explorer dung "chua toi duoc frontier nao".
+        n, r, c = 61, 25, 30  # 6.1 x 6.1 m, dia trong ban kinh 2.5 m, xe o tam (3.05, 3.05)
+        data = [-1] * (n * n)
+        for y in range(n):
+            for x in range(n):
+                if (x - c) ** 2 + (y - c) ** 2 <= r * r:
+                    data[y * n + x] = 0
+        for y in range(c + 3, n):  # khe bong phia tren xe
+            data[y * n + c] = -1
+        robot = ((c + 0.5) * RES, (c + 0.5) * RES)
+        fronts = find_frontiers(data, n, n, RES, (0, 0))
+        self.assertGreater(len(fronts), 1, "cum lon phai duoc chia thanh nhieu dich")
+        best = choose_frontier(fronts, robot)
+        self.assertIsNotNone(best)
+        self.assertGreaterEqual(math.hypot(best.goal[0] - robot[0], best.goal[1] - robot[1]), 0.3)
+        for f in fronts:
+            gx, gy = int(f.goal[0] / RES), int(f.goal[1] / RES)
+            self.assertEqual(data[gy * n + gx], 0, "dich phai la o trong")
+
 
 class TestChooseFrontier(unittest.TestCase):
     def setUp(self):

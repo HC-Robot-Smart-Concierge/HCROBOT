@@ -17,3 +17,5 @@ global_costmap:
       footprint_padding: 0.04
       keepout_filter:
         enabled: false
+      speed_filter:
+        enabled: false

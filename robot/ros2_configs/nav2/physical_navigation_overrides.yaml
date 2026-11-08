@@ -4,6 +4,12 @@ controller_server:
     FollowPath:
       critics: [RotateToGoal, Oscillation, BaseObstacle, ObstacleFootprint, GoalAlign, PathAlign, PathDist, GoalDist]
       ObstacleFootprint.scale: 0.02
+      # Xe that (cmd_vel mode "straight"): vua chay vua cua chi quay ~5 do/s (log 07/11:
+      # Nav2 w=-0.8 -> drive:49:35 -> do 3-8 do/s), xoay tai cho ~24 do/s. Voi 0.8 rad/s
+      # DWB chon cung gat xe khong theo kip -> lech duong, ca hong vao vat can, ket.
+      # Gioi han cung DWB ve muc xe lam duoc; re > ~20 do thi RotationShim xoay tai cho.
+      max_vel_theta: 0.15
+      angular_dist_threshold: 0.35
 local_costmap:
   local_costmap:
     ros__parameters:

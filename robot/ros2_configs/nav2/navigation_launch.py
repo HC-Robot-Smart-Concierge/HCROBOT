@@ -27,6 +27,7 @@ def _launch_setup(context, *args, **kwargs):
     use_sim_time = LaunchConfiguration("use_sim_time")
     autostart = LaunchConfiguration("autostart")
     with_slam = LaunchConfiguration("slam").perform(context).strip().lower() in ("true", "1", "yes")
+    simulation = LaunchConfiguration("simulation").perform(context).strip().lower() in ("true", "1", "yes")
 
     common_params = [params_file, {"use_sim_time": use_sim_time}]
     if with_slam:
@@ -35,6 +36,8 @@ def _launch_setup(context, *args, **kwargs):
         common_params.insert(1, os.path.join(os.path.dirname(__file__), "mapping_filter_overrides.yaml"))
     else:
         common_params.insert(1, os.path.join(os.path.dirname(__file__), "physical_navigation_overrides.yaml"))
+        if simulation:
+            common_params.insert(2, os.path.join(os.path.dirname(__file__), "sim_navigation_overrides.yaml"))
     actions = []
     managed_nodes = []
 
@@ -56,12 +59,19 @@ def _launch_setup(context, *args, **kwargs):
         managed_nodes += ["map_server", "amcl"]
 
     for package, name in NAV_NODES:
+        node_params = common_params
+        if name == "bt_navigator" and not with_slam:
+            # Xe that theo map da luu: recovery lui-thoat-ket + khong huy goal khi TF nghen
+            # (xem physical_navigate.xml). Tu quet (slam) van dung BT mac dinh/explore.
+            node_params = common_params + [{
+                "default_nav_to_pose_bt_xml": os.path.join(os.path.dirname(__file__), "physical_navigate.xml"),
+            }]
         actions.append(Node(
             package=package,
             executable=name,
             name=name,
             output="screen",
-            parameters=common_params,
+            parameters=node_params,
         ))
         managed_nodes.append(name)
 
@@ -86,5 +96,6 @@ def generate_launch_description():
         DeclareLaunchArgument("use_sim_time", default_value="false"),
         DeclareLaunchArgument("autostart", default_value="true"),
         DeclareLaunchArgument("slam", default_value="false"),
+        DeclareLaunchArgument("simulation", default_value="false"),
         OpaqueFunction(function=_launch_setup),
     ])

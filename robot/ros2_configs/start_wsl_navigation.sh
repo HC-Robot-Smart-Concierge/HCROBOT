@@ -21,8 +21,7 @@ if [ ! -f "$MAP_YAML" ]; then
     exit 2
 fi
 
-RSP_PID=""; BRIDGE_PID=""; FOXGLOVE_PID=""; LIDAR_PID=""; NAV2_PID=""
-MASK_PID=""; FILTER_INFO_PID=""; FILTER_LM_PID=""
+RSP_PID=""; BRIDGE_PID=""; FOXGLOVE_PID=""; LIDAR_PID=""; NAV2_PID=""; ZONE_PID=""
 stop_robot() {
     for _ in 1 2 3; do
         echo -n stop > "/dev/udp/${PI5_IP:-100.99.72.51}/9999" 2>/dev/null || true
@@ -32,7 +31,7 @@ stop_robot() {
 cleanup() {
     kill $NAV2_PID 2>/dev/null || true
     stop_robot
-    kill $RSP_PID $BRIDGE_PID $FOXGLOVE_PID $LIDAR_PID $MASK_PID $FILTER_INFO_PID $FILTER_LM_PID 2>/dev/null || true
+    kill $RSP_PID $BRIDGE_PID $FOXGLOVE_PID $LIDAR_PID $ZONE_PID 2>/dev/null || true
     stop_robot
 }
 trap cleanup EXIT INT TERM
@@ -47,6 +46,7 @@ killall -q rosbridge_websocket foxglove_bridge async_slam_toolbox_node robot_sta
 pkill -f "[r]os2 launch rosbridge_server" 2>/dev/null || true
 pkill -f "[r]os2 launch foxglove_bridge" 2>/dev/null || true
 pkill -f "lidar_ws_to_ros2.py" 2>/dev/null || true
+pkill -f "[z]one_filters_launch.py" 2>/dev/null || true
 pkill -f "costmap_filter_info_server" 2>/dev/null || true
 pkill -f "lifecycle_manager_costmap_filters" 2>/dev/null || true
 fuser -k 9090/tcp 2>/dev/null || true
@@ -80,28 +80,12 @@ python3 "$SCRIPT_DIR/lidar_ws_to_ros2.py" &
 LIDAR_PID=$!
 sleep 2
 
-echo "=== [4b/6] KEEPOUT FILTER (VUNG CAM TU WEB ADMIN) ==="
-# Mask do backend tao: POST /api/v1/map/ros2/keepout_mask/<map> (tu dong khi bat Navigation tu Web)
-MAP_BASENAME="$(basename "${MAP_YAML%.yaml}")"
-MASK_YAML="$MAPS_DIR/keepout/$MAP_BASENAME.yaml"
-MASK_PID=""; FILTER_INFO_PID=""; FILTER_LM_PID=""
-if [ -f "$MASK_YAML" ]; then
-    FILTER_PARAMS="$SCRIPT_DIR/nav2/keepout_filter_params.yaml"
-    ros2 run nav2_map_server map_server --ros-args -r __node:=filter_mask_server \
-      --params-file "$FILTER_PARAMS" -p yaml_filename:="$MASK_YAML" &
-    MASK_PID=$!
-    ros2 run nav2_map_server costmap_filter_info_server --ros-args \
-      -r __node:=costmap_filter_info_server --params-file "$FILTER_PARAMS" &
-    FILTER_INFO_PID=$!
-    ros2 run nav2_lifecycle_manager lifecycle_manager --ros-args \
-      -r __node:=lifecycle_manager_costmap_filters -p use_sim_time:=false -p autostart:=true \
-      -p "node_names:=['filter_mask_server','costmap_filter_info_server']" &
-    FILTER_LM_PID=$!
-    echo " Keepout mask: $MASK_YAML"
-else
-    echo " Chua co mask vung cam ($MASK_YAML): Nav2 chay KHONG co vung KEEP_OUT."
-    echo " Tao mask: luu Vung tren Web Admin, hoac bat Navigation tu Web."
-fi
+echo "=== [4b/6] VUNG TU WEB ADMIN: CAM VAO (KEEPOUT) + GIOI HAN TOC DO (SPEED) ==="
+# Mask do backend tao tu CSDL (luu/xoa vung tren Web, hoac bat Navigation tu Web). Chua co mask
+# thi server cho load_map: ve vung tren Web luc Nav2 dang chay van ap dung ngay.
+ros2 launch "$SCRIPT_DIR/nav2/zone_filters_launch.py" \
+  map_name:="$(basename "${MAP_YAML%.yaml}")" use_sim_time:=False &
+ZONE_PID=$!
 sleep 1
 
 echo "=== [5/6] MAP SERVER + AMCL + NAV2 ==="

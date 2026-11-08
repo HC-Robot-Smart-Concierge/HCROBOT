@@ -312,6 +312,31 @@ Vi du ep tat SLAM noi bo: `sudo HCROBOT_PI_INTERNAL_SLAM=off python3 main.py`
 
 Foxglove la cong cu xem du lieu ROS 2 (thay cho RViz), ket noi vao `foxglove_bridge` o cong **8765**. Bridge da duoc bat san trong `start_wsl_slam.sh` va `start_wsl_navigation.sh`, khong can chay rieng.
 
+### Chay world explore_room + map da quet trong Gazebo
+
+Huong dan day du: [Mo world/map, ket noi Foxglove va chi diem cho robot](robot/maps/README_explore_room.md).
+
+Mo WSL bang `wsl -d Ubuntu-24.04`, sau do chay **trong WSL**:
+
+```bash
+cd "/mnt/d/FPT MATERIALS/9th Semeter (Final)/HCROBOT"
+WORLD="$PWD/robot/worlds/explore_room.world" \
+MAP=explore_room GZ_GUI=1 \
+bash robot/ros2_configs/start_sim_foxglove.sh
+```
+
+Giu terminal mo. Ket noi Foxglove toi `ws://localhost:8765`, them panel **3D**,
+chon **Fixed frame = map** va bat `/map`, `/scan`, `/plan`.
+De robot di: dung **Publish Pose / 2D Pose** voi topic `/goal_pose`, bam giu tai
+diem dich, keo chon huong roi tha chuot. **Publish Point** (`/clicked_point`)
+khong gui lenh dieu huong cho stack nay. **Pose Estimate** dung `/initialpose`.
+
+Chi xem map, khong chay robot Gazebo, thi dung lenh nay thay cho lenh tren:
+
+```bash
+bash robot/ros2_configs/view_map_foxglove.sh explore_room
+```
+
 ### 7.1 Cai dat (lam mot lan)
 1. Kiem tra goi bridge trong WSL (neu chua co thi cai):
    ```bash

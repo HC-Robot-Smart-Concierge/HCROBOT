@@ -3,6 +3,8 @@
 Frontier = ô TRỐNG (0) có ít nhất một ô kề 4 hướng CHƯA BIẾT (-1). Các ô frontier
 liền nhau (8 hướng) gom thành cụm; cụm quá nhỏ (nhiễu) bị bỏ. Đích của mỗi cụm là
 ô frontier gần tâm cụm nhất (luôn là ô trống => Nav2 lập đường tới được).
+Cụm quá lớn (vd. tia LiDAR thưa bao quanh xe đứng yên) được chia theo ô vuông
+split_tile_m: tâm cụm hình vành khăn nằm ngay tại xe => đích sát xe bị bỏ.
 """
 
 from __future__ import annotations
@@ -29,6 +31,8 @@ def find_frontiers(
     resolution: float,
     origin: Point,
     min_cluster_cells: int = 8,
+    split_cluster_cells: int = 150,
+    split_tile_m: float = 1.0,
 ) -> List[Frontier]:
     def is_frontier(i: int) -> bool:
         if data[i] != 0:
@@ -64,14 +68,23 @@ def find_frontiers(
                             queue.append(j)
         if len(cluster) < min_cluster_cells:
             continue
-        mx = sum(i % width for i in cluster) / len(cluster)
-        my = sum(i // width for i in cluster) / len(cluster)
-        best = min(cluster, key=lambda i: (i % width - mx) ** 2 + (i // width - my) ** 2)
-        frontiers.append(Frontier(
-            goal=(ox + (best % width + 0.5) * resolution, oy + (best // width + 0.5) * resolution),
-            size=len(cluster),
-            centroid=(ox + (mx + 0.5) * resolution, oy + (my + 0.5) * resolution),
-        ))
+        if len(cluster) > split_cluster_cells:
+            tile = max(1, round(split_tile_m / resolution))
+            tiles = {}
+            for i in cluster:
+                tiles.setdefault(((i % width) // tile, (i // width) // tile), []).append(i)
+            parts = [p for p in tiles.values() if len(p) >= min_cluster_cells]
+        else:
+            parts = [cluster]
+        for part in parts:
+            mx = sum(i % width for i in part) / len(part)
+            my = sum(i // width for i in part) / len(part)
+            best = min(part, key=lambda i: (i % width - mx) ** 2 + (i // width - my) ** 2)
+            frontiers.append(Frontier(
+                goal=(ox + (best % width + 0.5) * resolution, oy + (best // width + 0.5) * resolution),
+                size=len(part),
+                centroid=(ox + (mx + 0.5) * resolution, oy + (my + 0.5) * resolution),
+            ))
     return frontiers
 
 

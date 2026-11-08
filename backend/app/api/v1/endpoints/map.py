@@ -572,7 +572,7 @@ async def save_ros2_map(request: Ros2MapRequest):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
 
-async def _keepout_zones_for(repo: MapRepository, map_name: str) -> List[dict]:
+async def _nav2_zones_for(repo: MapRepository, map_name: str) -> List[dict]:
     zones = await repo.list_zones(ros2_runtime_service.normalize_map_name(map_name))
     return [_zone_out(z).model_dump() for z in zones]
 
@@ -580,22 +580,27 @@ async def _keepout_zones_for(repo: MapRepository, map_name: str) -> List[dict]:
 @router.post("/ros2/start_navigation", summary="Bật Map Server, AMCL, Nav2 và Foxglove")
 async def start_ros2_navigation(request: Ros2MapRequest, repo: MapRepository = Depends(get_map_repository)):
     try:
-        zones = await _keepout_zones_for(repo, request.name)
+        zones = await _nav2_zones_for(repo, request.name)
         kwargs = {"pi_ip": str(request.pi_ip)} if request.pi_ip is not None else {}
         return await asyncio.to_thread(ros2_runtime_service.start_navigation, request.name, zones, **kwargs)
     except Ros2RuntimeError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
 
-@router.post("/ros2/keepout_mask/{map_name}", summary="Tạo lại mask vùng cấm (Keepout Filter) cho Nav2 từ CSDL")
+@router.post(
+    "/ros2/keepout_mask/{map_name}",
+    summary="Tạo lại mask vùng cấm (Keepout Filter) và giới hạn tốc độ (Speed Filter) cho Nav2 từ CSDL",
+)
 async def update_ros2_keepout_mask(map_name: str, repo: MapRepository = Depends(get_map_repository)):
-    """Gọi sau khi lưu vùng: ghi mask mới và nạp lại ngay nếu Nav2 đang chạy."""
+    """Gọi sau khi lưu/xóa vùng: ghi các mask mới và nạp lại ngay nếu Nav2 đang chạy."""
     try:
-        zones = await _keepout_zones_for(repo, map_name)
-        result = await asyncio.to_thread(ros2_runtime_service.write_keepout_mask, map_name, zones)
+        zones = await _nav2_zones_for(repo, map_name)
+        result = await asyncio.to_thread(ros2_runtime_service.write_zone_masks, map_name, zones)
     except Ros2RuntimeError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
-    result["reloaded"] = await asyncio.to_thread(ros2_runtime_service.reload_keepout_mask, map_name)
+    reloaded = await asyncio.to_thread(ros2_runtime_service.reload_zone_masks, map_name)
+    result["reloaded_masks"] = reloaded
+    result["reloaded"] = all(reloaded.values())
     return {"status": "SUCCESS", **result}
 
 

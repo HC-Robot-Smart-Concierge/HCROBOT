@@ -63,6 +63,7 @@ controller_server:
   ros__parameters:
     use_sim_time: false
     controller_frequency: 10.0
+    speed_limit_topic: /speed_limit   # tu speed_filter (global_costmap) - vung SPEED_ZONE
     min_x_velocity_threshold: 0.001
     min_y_velocity_threshold: 0.5
     min_theta_velocity_threshold: 0.001
@@ -171,7 +172,7 @@ local_costmap:
       plugins:
       - obstacle_layer
       - inflation_layer
-      # Vung KEEP_OUT tu Web Admin (mask do filter_mask_server phat, xem keepout_filter_params.yaml)
+      # Vung KEEP_OUT tu Web Admin (mask do filter_mask_server phat, xem zone_filter_params.yaml)
       filters:
       - keepout_filter
       keepout_filter:
@@ -219,13 +220,21 @@ global_costmap:
       - static_layer
       - obstacle_layer
       - inflation_layer
-      # Vung KEEP_OUT tu Web Admin => planner khong lap duong di vao
+      # Vung KEEP_OUT tu Web Admin => planner khong lap duong di vao.
+      # Vung SPEED_ZONE => SpeedFilter phat /speed_limit (m/s) khi tam xe nam trong vung, controller
+      # ha toc do toi da. Mask + info server: nav2/zone_filters_launch.py (zone_filter_params.yaml).
       filters:
       - keepout_filter
+      - speed_filter
       keepout_filter:
         plugin: nav2_costmap_2d::KeepoutFilter
         enabled: true
         filter_info_topic: /costmap_filter_info
+      speed_filter:
+        plugin: nav2_costmap_2d::SpeedFilter
+        enabled: true
+        filter_info_topic: /speed_filter_info
+        speed_limit_topic: /speed_limit   # tuyet doi: node costmap nam trong namespace /global_costmap
       obstacle_layer:
         plugin: nav2_costmap_2d::ObstacleLayer
         enabled: true

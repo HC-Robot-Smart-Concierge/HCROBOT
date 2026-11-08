@@ -4,7 +4,7 @@
   - BO Wait 5 s: xe dung im vo ich, explorer tu doi frontier khac khi het gio.
   - BO Spin 90 do: sat tuong thi Pi (sonar) chan lenh xoay, Spin luon het 10 s roi that bai.
   - Giu xoa costmap + lui 15 cm de thoat khoi tuong (Pi chi can phia sau > 18 cm).
-  Dieu huong thuong (waypoint) van dung BT mac dinh, khong bi anh huong.
+  Dieu huong theo map da luu dung physical_navigate.xml (navigation_launch.py slam:=false).
 -->
 <root BTCPP_format="4" main_tree_to_execute="MainTree">
   <BehaviorTree ID="MainTree">

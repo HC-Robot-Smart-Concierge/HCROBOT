@@ -2,7 +2,7 @@
 <html lang="vi">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=3.0, user-scalable=yes">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>Chỉ Dẫn Lối Đi · Aurora Grand Hotel</title>
   <link rel="icon" href="/hcrobot-icon.svg" type="image/svg+xml">
   <style>
@@ -1125,31 +1125,40 @@
       updateStepView();
     }
 
+    function clampZoom(z) {
+      return Math.min(3.2, Math.max(0.65, Number(z.toFixed(3))));
+    }
+
+    function clampPanX(x, z = currentZoom) {
+      const limit = Math.round(540 * Math.max(1, z * 0.85));
+      return Math.max(-limit, Math.min(limit, Number(x.toFixed(2))));
+    }
+
+    function clampPanY(y, z = currentZoom) {
+      const limit = Math.round(660 * Math.max(1, z * 0.85));
+      return Math.max(-limit, Math.min(limit, Number(y.toFixed(2))));
+    }
+
     function zoom(delta) {
-      currentZoom = Math.min(2.6, Math.max(0.75, Number((currentZoom + delta).toFixed(2))));
+      const nextZoom = clampZoom(currentZoom + delta);
+      const ratio = nextZoom / currentZoom;
+      currentZoom = nextZoom;
+      panX = clampPanX(panX * ratio, nextZoom);
+      panY = clampPanY(panY * ratio, nextZoom);
       applyGpuTransform(true);
     }
 
-    // Kéo bản đồ mượt 60-120fps bằng GPU translate3d + requestAnimationFrame (Không đụng vào SVG DOM khi kéo)
+    // Engine Cảm ứng Đa điểm (1 ngón kéo + 2 ngón Pinch-to-Zoom bám đúng tâm 2 ngón tay chuẩn Google Maps)
     const mapContainer = document.getElementById('mapContainer');
-    mapContainer.addEventListener('pointerdown', (e) => {
-      if (e.target.closest('button')) return;
-      isDragging = true;
-      dragStartX = e.clientX;
-      dragStartY = e.clientY;
-      startPanX = panX;
-      startPanY = panY;
-      const gpuLayer = document.getElementById('gpuCameraLayer');
-      if (gpuLayer) gpuLayer.classList.remove('smooth-cam');
-      try { mapContainer.setPointerCapture(e.pointerId); } catch (_) {}
-    });
+    let isPinching = false;
+    let pinchStartDist = 0;
+    let pinchStartZoom = 1;
+    let pinchStartPanX = 0;
+    let pinchStartPanY = 0;
+    let pinchStartMidX = 0;
+    let pinchStartMidY = 0;
 
-    mapContainer.addEventListener('pointermove', (e) => {
-      if (!isDragging) return;
-      const nextX = startPanX + (e.clientX - dragStartX);
-      const nextY = startPanY + (e.clientY - dragStartY);
-      panX = Math.max(-520, Math.min(520, Math.round(nextX)));
-      panY = Math.max(-620, Math.min(620, Math.round(nextY)));
+    function scheduleFrameUpdate() {
       if (!rafId) {
         rafId = requestAnimationFrame(() => {
           rafId = 0;
@@ -1159,20 +1168,140 @@
           }
         });
       }
+    }
+
+    function disableSmoothTransition() {
+      const gpuLayer = document.getElementById('gpuCameraLayer');
+      if (gpuLayer) gpuLayer.classList.remove('smooth-cam');
+    }
+
+    function getTouchMetrics(t1, t2) {
+      const rect = mapContainer.getBoundingClientRect();
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
+      const dx = t2.clientX - t1.clientX;
+      const dy = t2.clientY - t1.clientY;
+      return {
+        dist: Math.max(12, Math.hypot(dx, dy)),
+        midX: (t1.clientX + t2.clientX) / 2 - centerX,
+        midY: (t1.clientY + t2.clientY) / 2 - centerY
+      };
+    }
+
+    // 1. Touch Events chuyên biệt cho điện thoại (1 ngón pan + 2 ngón pinch-zoom mượt theo tay)
+    mapContainer.addEventListener('touchstart', (e) => {
+      if (e.target.closest('button')) return;
+      disableSmoothTransition();
+
+      if (e.touches.length === 1) {
+        isDragging = true;
+        isPinching = false;
+        dragStartX = e.touches[0].clientX;
+        dragStartY = e.touches[0].clientY;
+        startPanX = panX;
+        startPanY = panY;
+      } else if (e.touches.length >= 2) {
+        e.preventDefault();
+        isDragging = false;
+        isPinching = true;
+        const m = getTouchMetrics(e.touches[0], e.touches[1]);
+        pinchStartDist = m.dist;
+        pinchStartZoom = currentZoom;
+        pinchStartPanX = panX;
+        pinchStartPanY = panY;
+        pinchStartMidX = m.midX;
+        pinchStartMidY = m.midY;
+      }
+    }, { passive: false });
+
+    mapContainer.addEventListener('touchmove', (e) => {
+      if (e.touches.length >= 2 && isPinching) {
+        e.preventDefault();
+        const m = getTouchMetrics(e.touches[0], e.touches[1]);
+        const nextZoom = clampZoom(pinchStartZoom * (m.dist / pinchStartDist));
+        const zoomRatio = nextZoom / pinchStartZoom;
+
+        // Giữ nguyên điểm bản đồ nằm ngay dưới tâm 2 ngón tay vừa zoom vừa di chuyển theo 2 ngón
+        const nextPanX = m.midX - (pinchStartMidX - pinchStartPanX) * zoomRatio;
+        const nextPanY = m.midY - (pinchStartMidY - pinchStartPanY) * zoomRatio;
+
+        currentZoom = nextZoom;
+        panX = clampPanX(nextPanX, nextZoom);
+        panY = clampPanY(nextPanY, nextZoom);
+        scheduleFrameUpdate();
+      } else if (e.touches.length === 1 && isDragging && !isPinching) {
+        e.preventDefault();
+        const nextX = startPanX + (e.touches[0].clientX - dragStartX);
+        const nextY = startPanY + (e.touches[0].clientY - dragStartY);
+        panX = clampPanX(nextX, currentZoom);
+        panY = clampPanY(nextY, currentZoom);
+        scheduleFrameUpdate();
+      }
+    }, { passive: false });
+
+    const handleTouchEnd = (e) => {
+      if (e.touches.length === 1) {
+        // Khi nhấc 1 ngón tay ra sau khi pinch, neo lại tọa độ ngón còn lại để không bị giật nhảy
+        isPinching = false;
+        isDragging = true;
+        dragStartX = e.touches[0].clientX;
+        dragStartY = e.touches[0].clientY;
+        startPanX = panX;
+        startPanY = panY;
+      } else if (e.touches.length === 0) {
+        isPinching = false;
+        isDragging = false;
+      }
+    };
+    mapContainer.addEventListener('touchend', handleTouchEnd, { passive: true });
+    mapContainer.addEventListener('touchcancel', handleTouchEnd, { passive: true });
+
+    // 2. Hỗ trợ chuột & con lăn trên máy tính (chỉ kích hoạt với chuột để không xung đột cảm ứng)
+    mapContainer.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'touch' || e.target.closest('button')) return;
+      isDragging = true;
+      dragStartX = e.clientX;
+      dragStartY = e.clientY;
+      startPanX = panX;
+      startPanY = panY;
+      disableSmoothTransition();
+      try { mapContainer.setPointerCapture(e.pointerId); } catch (_) {}
     });
 
-    const stopDrag = (e) => {
+    mapContainer.addEventListener('pointermove', (e) => {
+      if (e.pointerType === 'touch' || !isDragging) return;
+      const nextX = startPanX + (e.clientX - dragStartX);
+      const nextY = startPanY + (e.clientY - dragStartY);
+      panX = clampPanX(nextX, currentZoom);
+      panY = clampPanY(nextY, currentZoom);
+      scheduleFrameUpdate();
+    });
+
+    const stopMouseDrag = (e) => {
+      if (e.pointerType === 'touch') return;
       if (isDragging) {
         isDragging = false;
-        if (rafId) {
-          cancelAnimationFrame(rafId);
-          rafId = 0;
-        }
         try { mapContainer.releasePointerCapture(e.pointerId); } catch (_) {}
       }
     };
-    mapContainer.addEventListener('pointerup', stopDrag);
-    mapContainer.addEventListener('pointercancel', stopDrag);
+    mapContainer.addEventListener('pointerup', stopMouseDrag);
+    mapContainer.addEventListener('pointercancel', stopMouseDrag);
+
+    mapContainer.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      disableSmoothTransition();
+      const rect = mapContainer.getBoundingClientRect();
+      const cursorX = e.clientX - (rect.left + rect.width / 2);
+      const cursorY = e.clientY - (rect.top + rect.height / 2);
+      const factor = e.deltaY < 0 ? 1.12 : 0.89;
+      const nextZoom = clampZoom(currentZoom * factor);
+      const zoomRatio = nextZoom / currentZoom;
+
+      panX = clampPanX(cursorX - (cursorX - panX) * zoomRatio, nextZoom);
+      panY = clampPanY(cursorY - (cursorY - panY) * zoomRatio, nextZoom);
+      currentZoom = nextZoom;
+      scheduleFrameUpdate();
+    }, { passive: false });
 
     // Khởi tạo
     updateControlButtonsUI();

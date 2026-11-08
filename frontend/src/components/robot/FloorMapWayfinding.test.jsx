@@ -299,15 +299,17 @@ describe('FloorMap Wayfinding Logic & Contract Tests', () => {
     expect(headingLeg1.rotZ).toBe(-90);
     expect(Math.abs(headingLeg1.rotZ) % 90).toBe(0);
 
-    // Chặng 2 (Từ Thang máy A 1715,560 đi chéo xuống Karaoke 450,820) vẫn phải xoay chuẩn vuông góc +90 độ để không bao giờ bị méo tường
+    // Chặng 2 (Từ Thang máy A 1715,560 đi tới Phòng VIP Karaoke 1450,880 hoặc Phòng 301 1656,220)
+    // luôn phải xoay chuẩn +90 độ (Thang máy ở dưới đáy nhìn thẳng lên trên)
     const karaokeLeg2 = computeSmartRouteFrame(
-      'M 1715 560 L 1465 560 L 1465 820 L 450 820',
+      'M 1715 560 L 1490 560 L 1450 600 L 1450 880',
       { x: 1715, y: 560 },
-      { x: 450, y: 820 },
+      { x: 1450, y: 880 },
       'heading'
     );
     expect(karaokeLeg2.rotZ).toBe(90);
-    expect(computeOrthogonalHeadingAngle({ x: 1715, y: 560 }, { x: 450, y: 820 })).toBe(90);
+    expect(computeOrthogonalHeadingAngle({ x: 1715, y: 560 })).toBe(90);
+    expect(computeOrthogonalHeadingAngle({ x: 350, y: 580 })).toBe(-90);
 
     const flat2d = computeSmartRouteFrame(pathStr, startPt, endPt, 'flat2d');
     expect(flat2d.tiltX).toBe(0);

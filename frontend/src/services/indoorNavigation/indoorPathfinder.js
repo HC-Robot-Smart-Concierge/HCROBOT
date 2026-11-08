@@ -163,6 +163,16 @@ export const smoothPathWithClearance = (rawPoints, floorGeometry, clearance) => 
     let furthest = i + 1;
     // Look ahead from the end of the path backwards
     for (let j = rawPoints.length - 1; j > i + 1; j--) {
+      // Do not skip across designated doorway or portal waypoints
+      let skipsDoorway = false;
+      for (let m = i + 1; m < j; m++) {
+        if (rawPoints[m]?.isDoorway) {
+          skipsDoorway = true;
+          break;
+        }
+      }
+      if (skipsDoorway) continue;
+
       if (isLineOfSightClear(smoothed[smoothed.length - 1], rawPoints[j], floorGeometry, clearance)) {
         furthest = j;
         break;
@@ -288,7 +298,15 @@ export const calculateFloorRoute = (from, to, floorId, options = {}) => {
     };
   }
 
-  const rawPoints = keyPath.map((k) => nodes[k]);
+  const rawPoints = keyPath.map((k) => {
+    const pt = nodes[k];
+    const isDoorway =
+      k.includes('DOOR') ||
+      k.includes('PORTAL') ||
+      (floorGeometry.doorways &&
+        floorGeometry.doorways.some((d) => Math.hypot(pt.x - d.position.x, pt.y - d.position.y) < 15));
+    return { ...pt, isDoorway };
+  });
   const cleanRaw = [];
   for (const pt of rawPoints) {
     if (cleanRaw.length === 0 || Math.hypot(pt.x - cleanRaw[cleanRaw.length - 1].x, pt.y - cleanRaw[cleanRaw.length - 1].y) > 2) {
@@ -299,7 +317,7 @@ export const calculateFloorRoute = (from, to, floorId, options = {}) => {
   const finalPoints = [];
   for (const pt of smoothedPoints) {
     if (finalPoints.length === 0 || Math.hypot(pt.x - finalPoints[finalPoints.length - 1].x, pt.y - finalPoints[finalPoints.length - 1].y) > 2) {
-      finalPoints.push(pt);
+      finalPoints.push({ x: pt.x, y: pt.y });
     }
   }
   const pathString = formatSvgPath(finalPoints, options);

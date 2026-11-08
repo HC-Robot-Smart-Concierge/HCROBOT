@@ -64,10 +64,10 @@ describe('Indoor Navigation Pathfinding Engine & Validation Tests', () => {
   // 4. Doorway Traversal Allowance
   it('Scenario 4: permits route segments that traverse through an authorized doorway opening', () => {
     const floorGeo = getFloorGeometry('7'); // Floor 5
-    // Double doors are at { x: 758, y: 628 } with width 80
+    // Double doors are at { x: 758, y: 745 } with opening y=665..825
     const crossingThroughDoor = [
-      { x: 700, y: 628 },
-      { x: 820, y: 628 },
+      { x: 700, y: 745 },
+      { x: 820, y: 745 },
     ];
 
     const validation = validateNavigationRoute(crossingThroughDoor, floorGeo, { allowDoorwayExceptions: true });
@@ -186,5 +186,23 @@ describe('Indoor Navigation Pathfinding Engine & Validation Tests', () => {
     });
   });
 
+  // 13. Floor 5 & 6 Doorway Clearance & Room Entry Precision
+  it('Scenario 13: strictly guarantees Floor 5 Infinity Pool route passes through double doors and pool door without cutting walls', () => {
+    const floor5Geo = getFloorGeometry('7');
+    const poolRoute = HOTEL_DESTINATIONS.infinity_pool.routeTarget;
+    const validation = validateNavigationRoute(poolRoute, floor5Geo);
+    expect(validation.isValid).toBe(true);
+    expect(validation.errors.length).toBe(0);
+
+    const points = parseSvgPathToPoints(poolRoute);
+    // Path should have points passing west of central wall
+    const minX = Math.min(...points.map((p) => p.x));
+    expect(minX).toBeLessThanOrEqual(380);
+
+    // Verify dynamic route calculation also passes through pool door
+    const dynamicRoute = calculateFloorRoute('ELEVATOR', { x: 380, y: 230 }, '7');
+    expect(dynamicRoute.isValid).toBe(true);
+    expect(dynamicRoute.points.some((p) => p.x === 600 && p.y === 458)).toBe(true);
+  });
 });
 

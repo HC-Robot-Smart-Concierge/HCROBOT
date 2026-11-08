@@ -275,35 +275,37 @@ const createAmenitiesFloor = (floorId, floorLevel, names) => ({
     box('STAIRWELL_FAR_EAST', 1720, 1840, 715, 1174),
   ],
   walls: [
-    // Central dividing vertical wall: x = 758 with double doors at y = 590..665
-    wall('DIVIDING_WALL_TOP', 758, 0, 758, 590),
-    wall('DIVIDING_WALL_BOT', 758, 665, 758, 1174),
+    // Central dividing vertical wall: x = 758 with double doors at y = 665..825 (door center y = 745)
+    wall('DIVIDING_WALL_TOP', 758, 0, 758, 665),
+    wall('DIVIDING_WALL_BOT', 758, 825, 758, 1174),
     // Spa East boundary wall (x = 1400)
     wall('SPA_EAST_WALL', 1400, 0, 1400, 458),
     // Top-room bottom walls (y = 458)
-    wall('POOL_BOT_WALL_L', 0, 458, 480, 458),
-    wall('POOL_BOT_WALL_R', 580, 458, 758, 458), // door at x=480..580
+    wall('POOL_BOT_WALL_L', 0, 458, 525, 458),
+    wall('POOL_BOT_WALL_R', 640, 458, 758, 458), // door at x=525..640
+    wall('POOL_DOOR_LEAF', 525, 340, 525, 458), // door leaf swung open inside pool
     wall('SPA_BOT_WALL_L', 758, 458, 1030, 458),
     wall('SPA_BOT_WALL_R', 1130, 458, 1400, 458), // door at x=1030..1130
-    // Locker East wall (x = 370)
-    wall('LOCKER_EAST_WALL_T', 370, 458, 370, 590),
-    wall('LOCKER_EAST_WALL_B', 370, 680, 370, 1174), // door at y=590..680
+    wall('SPA_DOOR_LEAF', 1130, 350, 1130, 458), // door leaf inside spa
+    // Locker East wall (x = 375)
+    wall('LOCKER_EAST_WALL_T', 375, 458, 375, 640),
+    wall('LOCKER_EAST_WALL_B', 375, 715, 375, 1174), // door at y=640..715
     // Gym top wall (y = 715)
-    wall('GYM_TOP_WALL_L', 1080, 715, 1390, 715),
-    wall('GYM_TOP_WALL_R', 1510, 715, 1840, 715), // door at x=1390..1510
+    wall('GYM_TOP_WALL_L', 1080, 715, 1380, 715),
+    wall('GYM_TOP_WALL_R', 1500, 715, 1840, 715), // door at x=1380..1500
     wall('GYM_WEST_WALL', 1080, 715, 1080, 1174),
   ],
   doorways: [
-    // Central double doors
-    { id: 'door_central_double', position: { x: 758, y: 628 }, width: 80 },
+    // Central double doors: opening y = 665..825, center y = 745
+    { id: 'door_central_double', position: { x: 758, y: 745 }, width: 160 },
     // Gym door on top wall
-    { id: 'door_gym', position: { x: 1450, y: 715 }, width: 100 },
+    { id: 'door_gym', position: { x: 1450, y: 715 }, width: 120 },
     // Spa door on bottom wall
     { id: 'door_spa', position: { x: 1080, y: 458 }, width: 100 },
     // Pool door on bottom wall
-    { id: 'door_pool', position: { x: 530, y: 458 }, width: 100 },
+    { id: 'door_pool', position: { x: 600, y: 458 }, width: 115 },
     // Locker door on east wall
-    { id: 'door_locker', position: { x: 370, y: 635 }, width: 90 },
+    { id: 'door_locker', position: { x: 375, y: 670 }, width: 75 },
   ],
   walkableNodes: {
     ELEVATOR: { x: 1715, y: 560 },
@@ -314,14 +316,16 @@ const createAmenitiesFloor = (floorId, floorLevel, names) => ({
     EAST_HALL_SPA_APPROACH: { x: 1080, y: 560 },
     SPA_DOOR: { x: 1080, y: 458 },
     SPA_INSIDE: { x: 1080, y: 230 },
-    DOUBLE_DOOR_EAST: { x: 840, y: 628 },
-    DOUBLE_DOOR_CENTER: { x: 758, y: 628 },
-    DOUBLE_DOOR_WEST: { x: 670, y: 628 },
-    WEST_HALL_MID: { x: 530, y: 628 },
-    WEST_HALL_NORTH: { x: 530, y: 540 },
-    POOL_DOOR: { x: 530, y: 458 },
+    DOUBLE_DOOR_APPROACH: { x: 880, y: 650 },
+    DOUBLE_DOOR_EAST: { x: 840, y: 745 },
+    DOUBLE_DOOR_CENTER: { x: 758, y: 745 },
+    DOUBLE_DOOR_WEST: { x: 670, y: 745 },
+    WEST_HALL_SOUTH: { x: 600, y: 745 },
+    WEST_HALL_MID: { x: 600, y: 560 },
+    POOL_DOOR: { x: 600, y: 458 },
+    POOL_ENTRY_CLEAR: { x: 600, y: 360 },
     POOL_INSIDE: { x: 380, y: 230 },
-    LOCKER_DOOR: { x: 370, y: 635 },
+    LOCKER_DOOR: { x: 375, y: 670 },
     LOCKER_INSIDE: { x: 200, y: 750 },
   },
   walkableEdges: [
@@ -332,15 +336,17 @@ const createAmenitiesFloor = (floorId, floorLevel, names) => ({
     ['EAST_HALL_GYM_APPROACH', 'EAST_HALL_SPA_APPROACH'],
     ['EAST_HALL_SPA_APPROACH', 'SPA_DOOR'],
     ['SPA_DOOR', 'SPA_INSIDE'],
-    ['EAST_HALL_SPA_APPROACH', 'DOUBLE_DOOR_EAST'],
+    ['EAST_HALL_SPA_APPROACH', 'DOUBLE_DOOR_APPROACH'],
+    ['DOUBLE_DOOR_APPROACH', 'DOUBLE_DOOR_EAST'],
     ['DOUBLE_DOOR_EAST', 'DOUBLE_DOOR_CENTER'],
     ['DOUBLE_DOOR_CENTER', 'DOUBLE_DOOR_WEST'],
-    ['DOUBLE_DOOR_WEST', 'WEST_HALL_MID'],
-    ['WEST_HALL_MID', 'LOCKER_DOOR'],
+    ['DOUBLE_DOOR_WEST', 'WEST_HALL_SOUTH'],
+    ['WEST_HALL_SOUTH', 'LOCKER_DOOR'],
     ['LOCKER_DOOR', 'LOCKER_INSIDE'],
-    ['WEST_HALL_MID', 'WEST_HALL_NORTH'],
-    ['WEST_HALL_NORTH', 'POOL_DOOR'],
-    ['POOL_DOOR', 'POOL_INSIDE'],
+    ['WEST_HALL_SOUTH', 'WEST_HALL_MID'],
+    ['WEST_HALL_MID', 'POOL_DOOR'],
+    ['POOL_DOOR', 'POOL_ENTRY_CLEAR'],
+    ['POOL_ENTRY_CLEAR', 'POOL_INSIDE'],
   ],
 });
 

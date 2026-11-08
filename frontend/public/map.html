@@ -14,8 +14,8 @@
     }
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      background-color: #0b0f17;
-      color: #f1f5f9;
+      background-color: #FAF8F5;
+      color: #1C1917;
       min-height: 100vh;
       display: flex;
       flex-direction: column;
@@ -23,9 +23,9 @@
       -webkit-font-smoothing: antialiased;
     }
     header {
-      background: rgba(18, 24, 38, 0.95);
-      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-      padding: 10px 14px;
+      background: rgba(253, 252, 247, 0.95);
+      border-bottom: 1px solid #E3DFD5;
+      padding: 11px 16px;
       position: sticky;
       top: 0;
       z-index: 50;
@@ -37,116 +37,126 @@
     .brand {
       display: flex;
       align-items: center;
-      gap: 9px;
+      gap: 10px;
+      min-width: 0;
     }
     .brand-icon {
-      width: 32px;
-      height: 32px;
-      border-radius: 9px;
-      background: linear-gradient(135deg, #10b981, #047857);
+      width: 34px;
+      height: 34px;
+      border-radius: 11px;
+      background: #1C1917;
+      color: #FFFFFF;
       display: flex;
       align-items: center;
       justify-content: center;
-      box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+      box-shadow: 0 3px 8px rgba(28, 25, 23, 0.18);
+      flex-shrink: 0;
+      font-size: 15px;
     }
     .brand-title {
       font-size: 10px;
       font-weight: 800;
       letter-spacing: 1.5px;
       text-transform: uppercase;
-      color: #34d399;
+      color: #78716C;
     }
     .brand-sub {
-      font-size: 13px;
+      font-size: 13.5px;
       font-weight: 800;
-      color: #ffffff;
+      color: #1C1917;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      max-width: 190px;
+      max-width: 200px;
     }
     .badge-status {
-      font-size: 10px;
+      font-size: 10.5px;
       font-weight: 700;
-      padding: 4px 8px;
+      padding: 4px 10px;
       border-radius: 999px;
-      background: rgba(16, 185, 129, 0.15);
-      color: #34d399;
-      border: 1px solid rgba(16, 185, 129, 0.3);
+      background: #EFECE4;
+      color: #1C1917;
+      border: 1px solid #E3DFD5;
       display: flex;
       align-items: center;
-      gap: 4px;
+      gap: 6px;
+      flex-shrink: 0;
     }
     .pulse-dot {
-      width: 6px;
-      height: 6px;
+      width: 7px;
+      height: 7px;
       border-radius: 50%;
-      background: #34d399;
-      animation: pulse 1.5s infinite;
+      background: #10B981;
+      animation: pulse 1.6s infinite;
     }
     @keyframes pulse {
       0%, 100% { opacity: 1; transform: scale(1); }
-      50% { opacity: 0.4; transform: scale(0.85); }
+      50% { opacity: 0.35; transform: scale(0.85); }
     }
     main {
       flex: 1;
       width: 100%;
-      max-width: 540px;
+      max-width: 560px;
       margin: 0 auto;
-      padding: 12px;
+      padding: 12px 14px;
       display: flex;
       flex-direction: column;
       gap: 12px;
     }
     .step-switch {
       display: flex;
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: #EFECE4;
+      border: 1px solid #E3DFD5;
       border-radius: 14px;
       padding: 4px;
       gap: 4px;
     }
     .step-btn {
       flex: 1;
-      padding: 10px 8px;
+      padding: 9px 8px;
       border-radius: 11px;
       border: none;
       background: transparent;
-      color: #94a3b8;
+      color: #78716C;
       font-size: 12px;
       font-weight: 700;
       cursor: pointer;
-      transition: all 0.2s ease;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
       display: flex;
       align-items: center;
       justify-content: center;
       gap: 6px;
     }
     .step-btn.active {
-      background: linear-gradient(135deg, #10b981, #059669);
-      color: #ffffff;
-      box-shadow: 0 4px 14px rgba(16, 185, 129, 0.35);
+      background: #1C1917;
+      color: #FFFFFF;
+      box-shadow: 0 3px 10px rgba(28, 25, 23, 0.16);
     }
     .step-num {
       width: 18px;
       height: 18px;
       border-radius: 50%;
-      background: rgba(0, 0, 0, 0.25);
+      background: rgba(120, 113, 108, 0.2);
       display: flex;
       align-items: center;
       justify-content: center;
       font-size: 10px;
+      font-weight: 800;
+    }
+    .step-btn.active .step-num {
+      background: rgba(255, 255, 255, 0.25);
+      color: #FFFFFF;
     }
     .map-container {
       width: 100%;
-      aspect-ratio: 16 / 9;
+      aspect-ratio: 1840 / 1174;
       height: auto;
-      background: #05070a;
+      background: #FFFFFF;
       border-radius: 20px;
-      border: 1px solid rgba(255, 255, 255, 0.1);
+      border: 1px solid #E3DFD5;
       overflow: hidden;
       position: relative;
-      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.6);
+      box-shadow: 0 8px 30px rgba(28, 25, 23, 0.05);
       touch-action: none;
       cursor: grab;
     }
@@ -170,6 +180,7 @@
       object-fit: contain;
       pointer-events: none;
       display: block;
+      image-rendering: -webkit-optimize-contrast;
     }
     .map-svg-overlay {
       position: absolute;
@@ -185,129 +196,140 @@
       z-index: 20;
       display: flex;
       flex-direction: column;
-      gap: 6px;
-      background: rgba(15, 23, 42, 0.85);
+      gap: 5px;
+      background: rgba(255, 255, 255, 0.92);
       padding: 4px;
       border-radius: 12px;
-      border: 1px solid rgba(255, 255, 255, 0.12);
+      border: 1px solid #E3DFD5;
       backdrop-filter: blur(8px);
+      box-shadow: 0 4px 12px rgba(28, 25, 23, 0.06);
     }
     .zoom-btn {
-      width: 32px;
-      height: 32px;
+      width: 30px;
+      height: 30px;
       border-radius: 8px;
-      border: none;
-      background: rgba(255, 255, 255, 0.08);
-      color: #fff;
-      font-size: 16px;
+      border: 1px solid #E3DFD5;
+      background: #F8F6F1;
+      color: #1C1917;
+      font-size: 15px;
       font-weight: 700;
       display: flex;
       align-items: center;
       justify-content: center;
       cursor: pointer;
+      transition: all 0.15s ease;
     }
     .zoom-btn:active {
-      background: rgba(16, 185, 129, 0.4);
+      background: #EFECE4;
+      transform: scale(0.95);
     }
     .floor-badge {
       position: absolute;
       top: 10px;
       left: 10px;
       z-index: 20;
-      background: rgba(15, 23, 42, 0.85);
-      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(255, 255, 255, 0.92);
+      border: 1px solid #E3DFD5;
       border-radius: 10px;
-      padding: 5px 9px;
+      padding: 5px 10px;
       font-size: 11px;
       font-weight: 800;
-      color: #34d399;
+      color: #1C1917;
       backdrop-filter: blur(8px);
+      box-shadow: 0 2px 8px rgba(28, 25, 23, 0.05);
     }
     .instruction-card {
-      background: rgba(18, 24, 38, 0.85);
-      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: #FFFFFF;
+      border: 1px solid #E3DFD5;
       border-radius: 18px;
-      padding: 14px;
+      padding: 14px 16px;
       display: flex;
       flex-direction: column;
       gap: 10px;
-      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.25);
+      box-shadow: 0 4px 18px rgba(28, 25, 23, 0.03);
     }
     .card-title {
-      font-size: 12px;
+      font-size: 11px;
       font-weight: 800;
       text-transform: uppercase;
       letter-spacing: 0.8px;
-      color: #94a3b8;
+      color: #78716C;
       display: flex;
       align-items: center;
       justify-content: space-between;
     }
+    .dest-badge {
+      font-size: 10px;
+      font-weight: 800;
+      padding: 3px 8px;
+      border-radius: 6px;
+      background: #EFECE4;
+      color: #1C1917;
+      border: 1px solid #E3DFD5;
+    }
     .inst-box {
-      background: rgba(255, 255, 255, 0.04);
+      background: #F8F6F1;
       border-radius: 12px;
-      padding: 11px 13px;
+      padding: 12px 14px;
       display: flex;
       align-items: flex-start;
-      gap: 11px;
-      border-left: 3px solid #10b981;
+      gap: 12px;
+      border-left: 3.5px solid #1C1917;
     }
     .inst-num {
       width: 22px;
       height: 22px;
       border-radius: 50%;
-      background: #10b981;
-      color: #fff;
+      background: #1C1917;
+      color: #FFFFFF;
       display: flex;
       align-items: center;
       justify-content: center;
       font-size: 11px;
       font-weight: 800;
-      shrink: 0;
+      flex-shrink: 0;
       margin-top: 1px;
     }
     .inst-text {
-      font-size: 13px;
+      font-size: 13.5px;
       font-weight: 600;
       line-height: 1.45;
-      color: #e2e8f0;
+      color: #292524;
     }
     footer {
-      background: rgba(18, 24, 38, 0.95);
-      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(253, 252, 247, 0.95);
+      border-top: 1px solid #E3DFD5;
       padding: 10px 14px;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      max-width: 540px;
+      max-width: 560px;
       width: 100%;
       margin: 0 auto;
       position: sticky;
       bottom: 0;
       backdrop-filter: blur(12px);
     }
-    .call-btn {
-      padding: 9px 14px;
-      border-radius: 12px;
-      background: linear-gradient(135deg, #10b981, #059669);
-      color: #fff;
-      font-size: 12px;
-      font-weight: 700;
-      text-decoration: none;
+    .dismiss-btn {
+      width: 100%;
+      padding: 12px 16px;
+      font-size: 13px;
+      font-weight: 800;
+      background: #1C1917;
+      border: 1px solid #1C1917;
+      border-radius: 14px;
+      color: #FFFFFF;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      box-shadow: 0 4px 14px rgba(28, 25, 23, 0.14);
       display: flex;
       align-items: center;
+      justify-content: center;
       gap: 6px;
-      box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
     }
-    .dismiss-btn {
-      padding: 9px 14px;
-      border-radius: 12px;
-      background: rgba(255, 255, 255, 0.08);
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      color: #cbd5e1;
-      font-size: 12px;
-      font-weight: 700;
-      cursor: pointer;
+    .dismiss-btn:active {
+      transform: scale(0.98);
+      background: #292524;
     }
 
     /* Modal Hết Hạn */
@@ -316,7 +338,7 @@
       position: fixed;
       inset: 0;
       z-index: 100;
-      background: #0b0f17;
+      background: #FAF8F5;
       padding: 24px;
       flex-direction: column;
       align-items: center;
@@ -324,38 +346,38 @@
       text-align: center;
     }
     .expired-card {
-      background: #141923;
-      border: 1px solid rgba(239, 68, 68, 0.3);
+      background: #FFFFFF;
+      border: 1px solid #E3DFD5;
       border-radius: 24px;
-      padding: 28px 20px;
+      padding: 32px 24px;
       max-width: 360px;
       display: flex;
       flex-direction: column;
       align-items: center;
       gap: 14px;
-      box-shadow: 0 15px 35px rgba(0, 0, 0, 0.5);
+      box-shadow: 0 15px 40px rgba(28, 25, 23, 0.08);
     }
     .expired-icon {
       width: 56px;
       height: 56px;
       border-radius: 50%;
-      background: rgba(239, 68, 68, 0.15);
-      border: 2px solid rgba(239, 68, 68, 0.4);
+      background: #F8F6F1;
+      border: 1.5px solid #E3DFD5;
       display: flex;
       align-items: center;
       justify-content: center;
-      color: #f87171;
-      font-size: 26px;
+      color: #1C1917;
+      font-size: 24px;
     }
 
     /* Animation đường lộ trình dash */
     .route-path {
-      stroke-dasharray: 8 6;
-      animation: dashMove 1.2s linear infinite;
+      stroke-dasharray: 10 7;
+      animation: dashMove 1.4s linear infinite;
     }
     @keyframes dashMove {
       to {
-        stroke-dashoffset: -28;
+        stroke-dashoffset: -34;
       }
     }
   </style>
@@ -393,28 +415,30 @@
 
     <!-- Khung Bản Đồ -->
     <div class="map-container" id="mapContainer">
-      <div class="floor-badge" id="floorBadge">SẢNH TRỆT (LOBBY)</div>
+      <div class="floor-badge" id="floorBadge">TẦNG TRỆT · SẢNH & TIẾP TÂN</div>
 
       <div class="zoom-controls">
-        <button class="zoom-btn" onclick="zoom(0.2)">+</button>
-        <button class="zoom-btn" onclick="zoom(-0.2)">−</button>
-        <button class="zoom-btn" onclick="resetZoom()" style="font-size:12px;">↺</button>
+        <button class="zoom-btn" onclick="zoom(0.2)" title="Phóng to">+</button>
+        <button class="zoom-btn" onclick="zoom(-0.2)" title="Thu nhỏ">−</button>
+        <button class="zoom-btn" onclick="resetZoom()" title="Vừa màn hình" style="font-size:12px;">↺</button>
       </div>
 
       <div class="map-viewport" id="mapViewport">
-        <img id="floorImage" src="/maps/3.png" alt="Sơ đồ tầng">
-        <svg class="map-svg-overlay" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid meet">
+        <img id="floorImage" src="/maps/floor_1.png" alt="Sơ đồ tầng">
+        <svg class="map-svg-overlay" viewBox="0 0 1840 1174" preserveAspectRatio="xMidYMid meet">
           <defs>
             <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
-              <feDropShadow dx="0" dy="0" stdDeviation="6" flood-color="#10b981" flood-opacity="0.9" />
+              <feDropShadow dx="0" dy="0" stdDeviation="6" flood-color="#38BDF8" flood-opacity="0.6" />
             </filter>
           </defs>
-          <path id="svgHalo" d="" fill="none" stroke="#34d399" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" opacity="0.4" />
-          <path id="svgRoute" class="route-path" d="" fill="none" stroke="#10b981" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" />
-          <!-- Điểm bắt đầu -->
-          <circle id="startDot" cx="796" cy="545" r="16" fill="#10b981" stroke="#ffffff" stroke-width="4" />
-          <!-- Điểm kết thúc -->
-          <circle id="destDot" cx="1232" cy="415" r="18" fill="#f59e0b" stroke="#ffffff" stroke-width="4" />
+          <!-- Đường phát quang nền -->
+          <path id="svgHalo" d="" fill="none" stroke="#38BDF8" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" opacity="0.35" />
+          <!-- Tuyến đường nét đứt chính -->
+          <path id="svgRoute" class="route-path" d="" fill="none" stroke="#0EA5E9" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round" />
+          <!-- Điểm bắt đầu (Đen than viền trắng) -->
+          <circle id="startDot" cx="350" cy="580" r="14" fill="#1C1917" stroke="#FFFFFF" stroke-width="3.5" />
+          <!-- Điểm kết thúc (Xanh cyan viền trắng) -->
+          <circle id="destDot" cx="1715" cy="560" r="14" fill="#0EA5E9" stroke="#FFFFFF" stroke-width="3.5" />
         </svg>
       </div>
     </div>
@@ -423,13 +447,13 @@
     <div class="instruction-card">
       <div class="card-title">
         <span>Lộ trình chi tiết</span>
-        <span id="destFloorBadge" style="color:#34d399; font-weight:800;">TẦNG 4</span>
+        <span id="destFloorBadge" class="dest-badge">TẦNG 5</span>
       </div>
 
       <div class="inst-box">
         <div class="inst-num" id="currentStepIcon">1</div>
         <div class="inst-text" id="stepInstructionText">
-          Đi thẳng từ sảnh tiếp tân ra Thang máy A ở góc sảnh và bấm nút lên tầng.
+          Đi từ sảnh Lobby đến Thang máy A và bấm lên tầng mục tiêu.
         </div>
       </div>
     </div>
@@ -437,8 +461,8 @@
 
   <!-- Footer -->
   <footer>
-    <button class="dismiss-btn" onclick="finishTicket()" style="width:100%; padding:12px; font-size:13px; font-weight:800; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.15); border-radius:14px; color:#f1f5f9; cursor:pointer;">
-      ✓ Tôi đã nhớ đường · Đóng chỉ dẫn
+    <button class="dismiss-btn" onclick="finishTicket()">
+      <span>✓ Tôi đã nhớ đường · Đóng chỉ dẫn</span>
     </button>
   </footer>
 
@@ -446,57 +470,167 @@
   <div id="expiredScreen">
     <div class="expired-card">
       <div class="expired-icon">⏱️</div>
-      <h3 style="font-size:17px; font-weight:800; color:#fff;">Chỉ Dẫn Đã Hết Hạn</h3>
-      <p style="font-size:13px; color:#94a3b8; line-height:1.5;">
-        Vé chỉ đường này có hiệu lực 1 lần để đảm bảo an ninh. Quý khách vui lòng hỏi lại <strong>Robot Concierge Rora</strong> tại sảnh khách sạn nhé ạ!
+      <h3 style="font-size:17px; font-weight:800; color:#1C1917;">Chỉ Dẫn Đã Hết Hạn</h3>
+      <p style="font-size:13px; color:#78716C; line-height:1.5;">
+        Vé chỉ đường này có hiệu lực 15 phút để đảm bảo an ninh và riêng tư. Quý khách vui lòng hỏi lại <strong>Robot Concierge Rora</strong> tại sảnh khách sạn nhé ạ!
       </p>
     </div>
   </div>
 
   <script>
-    // === DỮ LIỆU ĐIỂM ĐẾN KHÁCH SẠN AURORA (Chuẩn tọa độ 1920x1080) ===
-    // Tuyến đi từ Robot Lobby đi thẳng qua cửa sảnh (x=908, y=545) rồi mới lượn lên hành lang thang máy, hoàn toàn không chạm tường
-    const ROUTE_GROUND_TO_ELEVATOR = 'M 796 545 L 930 545 C 960 545, 980 480, 1020 480 L 1232 480 L 1232 415';
+    // === DỮ LIỆU BẢN ĐỒ & ĐIỂM ĐẾN (Chuẩn hệ tọa độ thống nhất 1840x1174) ===
+    const FLOOR_IMAGES = {
+      '1': '/maps/floor_b2.png',
+      '2': '/maps/floor_b1.png',
+      '3': '/maps/floor_1.png',
+      '4': '/maps/floor_2.png',
+      '5': '/maps/floor_3.png',
+      '6': '/maps/floor_4.png',
+      '7': '/maps/floor_5.png',
+      '8': '/maps/floor_6.png',
+    };
+
+    // Chặng 1 chuẩn từ vị trí Robot (x=350, y=580) đến Thang máy A (x=1715, y=560)
+    const ROUTE_GROUND_TO_ELEVATOR = 'M 350 580 L 350 860 Q 350 880, 370 880 L 1330 880 Q 1350 880, 1362 864 L 1568 576 Q 1580 560, 1600 560 L 1715 560';
 
     const DESTINATIONS = {
-      // === TẦNG 3: PHÒNG NGHỈ 301 - 309 ===
-      room_301: { name: 'Phòng Nghỉ 301', floorId: '5', floorLevel: 'TẦNG 3', isDiff: true, step1: 'Đi từ sảnh ra Thang máy A và bấm lên Tầng 3.', step2: 'Ra khỏi thang máy, rẽ phải vào hành lang tới phòng 301 cạnh thang máy.', coords: {x: 1100, y: 420}, route: 'M 1232 415 L 1232 540 L 1100 540 L 1100 420' },
-      room_302: { name: 'Phòng Nghỉ 302', floorId: '5', floorLevel: 'TẦNG 3', isDiff: true, step1: 'Đi từ sảnh ra Thang máy A và bấm lên Tầng 3.', step2: 'Ra khỏi thang máy, đi theo hành lang bên phải tới phòng 302.', coords: {x: 938, y: 420}, route: 'M 1232 415 L 1232 540 L 938 540 L 938 420' },
-      room_303: { name: 'Phòng Nghỉ 303', floorId: '5', floorLevel: 'TẦNG 3', isDiff: true, step1: 'Đi từ sảnh ra Thang máy A và bấm lên Tầng 3.', step2: 'Đi theo hành lang tầng 3 tới phòng 303 dãy bên phải.', coords: {x: 778, y: 420}, route: 'M 1232 415 L 1232 540 L 778 540 L 778 420' },
-      room_304: { name: 'Phòng Nghỉ 304', floorId: '5', floorLevel: 'TẦNG 3', isDiff: true, step1: 'Đi từ sảnh ra Thang máy A và bấm lên Tầng 3.', step2: 'Đi thẳng tới cuối hành lang phải vào phòng 304 góc cuối dãy.', coords: {x: 618, y: 420}, route: 'M 1232 415 L 1232 540 L 618 540 L 618 420' },
-      room_305: { name: 'Phòng Nghỉ 305', floorId: '5', floorLevel: 'TẦNG 3', isDiff: true, step1: 'Đi từ sảnh ra Thang máy A và bấm lên Tầng 3.', step2: 'Đi thẳng tới cuối hành lang rẽ sang dãy trái vào phòng 305.', coords: {x: 624, y: 660}, route: 'M 1232 415 L 1232 540 L 624 540 L 624 660' },
-      room_306: { name: 'Phòng Nghỉ 306', floorId: '5', floorLevel: 'TẦNG 3', isDiff: true, step1: 'Đi từ sảnh ra Thang máy A và bấm lên Tầng 3.', step2: 'Ra khỏi thang máy, đi dọc hành lang bên trái tới phòng 306.', coords: {x: 795, y: 660}, route: 'M 1232 415 L 1232 540 L 795 540 L 795 660' },
-      room_307: { name: 'Phòng Nghỉ 307', floorId: '5', floorLevel: 'TẦNG 3', isDiff: true, step1: 'Đi từ sảnh ra Thang máy A và bấm lên Tầng 3.', step2: 'Đi theo hành lang tầng 3 tới phòng 307 dãy bên trái.', coords: {x: 964, y: 660}, route: 'M 1232 415 L 1232 540 L 964 540 L 964 660' },
-      room_308: { name: 'Phòng Nghỉ 308', floorId: '5', floorLevel: 'TẦNG 3', isDiff: true, step1: 'Đi từ sảnh ra Thang máy A và bấm lên Tầng 3.', step2: 'Ra khỏi thang máy, rẽ sang dãy bên trái tới phòng 308.', coords: {x: 1133, y: 660}, route: 'M 1232 415 L 1232 540 L 1133 540 L 1133 660' },
-      room_309: { name: 'Phòng Nghỉ 309', floorId: '5', floorLevel: 'TẦNG 3', isDiff: true, step1: 'Đi từ sảnh ra Thang máy A và bấm lên Tầng 3.', step2: 'Phòng 309 nằm ngay đối diện khu thang máy A.', coords: {x: 1299, y: 660}, route: 'M 1232 415 L 1232 540 L 1299 540 L 1299 660' },
-
-      // === TẦNG 4: PHÒNG NGHỈ 401 - 409 ===
-      room_401: { name: 'Phòng Nghỉ 401', floorId: '6', floorLevel: 'TẦNG 4', isDiff: true, step1: 'Đi từ sảnh ra Thang máy A và bấm lên Tầng 4.', step2: 'Ra khỏi thang máy, rẽ phải vào hành lang tới phòng 401 cạnh thang máy.', coords: {x: 1100, y: 420}, route: 'M 1232 415 L 1232 540 L 1100 540 L 1100 420' },
-      room_402: { name: 'Phòng Nghỉ 402', floorId: '6', floorLevel: 'TẦNG 4', isDiff: true, step1: 'Đi từ sảnh ra Thang máy A và bấm lên Tầng 4.', step2: 'Ra khỏi thang máy, đi theo hành lang bên phải tới phòng 402.', coords: {x: 938, y: 420}, route: 'M 1232 415 L 1232 540 L 938 540 L 938 420' },
-      room_403: { name: 'Phòng Nghỉ 403', floorId: '6', floorLevel: 'TẦNG 4', isDiff: true, step1: 'Đi từ sảnh ra Thang máy A và bấm lên Tầng 4.', step2: 'Đi theo hành lang tầng 4 tới phòng 403 dãy bên phải.', coords: {x: 778, y: 420}, route: 'M 1232 415 L 1232 540 L 778 540 L 778 420' },
-      room_404: { name: 'Phòng Nghỉ 404', floorId: '6', floorLevel: 'TẦNG 4', isDiff: true, step1: 'Đi từ sảnh ra Thang máy A và bấm lên Tầng 4.', step2: 'Đi thẳng tới cuối hành lang phải vào phòng 404 góc cuối dãy.', coords: {x: 618, y: 420}, route: 'M 1232 415 L 1232 540 L 618 540 L 618 420' },
-      room_405: { name: 'Phòng Nghỉ 405', floorId: '6', floorLevel: 'TẦNG 4', isDiff: true, step1: 'Đi từ sảnh ra Thang máy A và bấm lên Tầng 4.', step2: 'Đi thẳng tới cuối hành lang rẽ sang dãy trái vào phòng 405.', coords: {x: 624, y: 660}, route: 'M 1232 415 L 1232 540 L 624 540 L 624 660' },
-      room_406: { name: 'Phòng Nghỉ 406', floorId: '6', floorLevel: 'TẦNG 4', isDiff: true, step1: 'Đi từ sảnh ra Thang máy A và bấm lên Tầng 4.', step2: 'Ra khỏi thang máy, đi dọc hành lang bên trái tới phòng 406.', coords: {x: 795, y: 660}, route: 'M 1232 415 L 1232 540 L 795 540 L 795 660' },
-      room_407: { name: 'Phòng Nghỉ 407', floorId: '6', floorLevel: 'TẦNG 4', isDiff: true, step1: 'Đi từ sảnh ra Thang máy A và bấm lên Tầng 4.', step2: 'Đi theo hành lang tầng 4 tới phòng 407 dãy bên trái.', coords: {x: 964, y: 660}, route: 'M 1232 415 L 1232 540 L 964 540 L 964 660' },
-      room_408: { name: 'Phòng Nghỉ 408', floorId: '6', floorLevel: 'TẦNG 4', isDiff: true, step1: 'Đi từ sảnh ra Thang máy A và bấm lên Tầng 4.', step2: 'Ra khỏi thang máy, rẽ sang dãy bên trái tới phòng 408.', coords: {x: 1133, y: 660}, route: 'M 1232 415 L 1232 540 L 1133 540 L 1133 660' },
-      room_409: { name: 'Phòng Nghỉ 409', floorId: '6', floorLevel: 'TẦNG 4', isDiff: true, step1: 'Đi từ sảnh ra Thang máy A và bấm lên Tầng 4.', step2: 'Phòng 409 nằm ngay đối diện khu thang máy A.', coords: {x: 1299, y: 660}, route: 'M 1232 415 L 1232 540 L 1299 540 L 1299 660' },
+      // === TẦNG 5: HỒ BƠI, SPA & GYM ===
+      infinity_pool: {
+        name: 'Hồ Bơi Vô Cực (Infinity Pool)',
+        floorId: '7',
+        floorLevel: 'TẦNG 5',
+        isDiff: true,
+        step1: 'Chặng 1: Đi từ sảnh Lobby đến Thang máy A và bấm lên Tầng 5.',
+        step2: 'Chặng 2: Ra khỏi thang máy, rẽ trái đi hết hành lang qua cửa kính là đến Hồ bơi vô cực.',
+        coords: { x: 380, y: 230 },
+        route: 'M 1715 560 L 1005 560 Q 940 560, 900 620 L 870 700 Q 855 745, 820 745 L 680 745 Q 600 745, 600 680 L 600 360 Q 600 270, 520 250 L 380 230'
+      },
+      gym: {
+        name: 'Fitness & Gym Center',
+        floorId: '7',
+        floorLevel: 'TẦNG 5',
+        isDiff: true,
+        step1: 'Chặng 1: Đi tới Thang máy A và bấm lên Tầng 5.',
+        step2: 'Chặng 2: Ra khỏi thang máy, đi thẳng xuống phía dưới để vào Phòng Gym.',
+        coords: { x: 1450, y: 880 },
+        route: 'M 1715 560 L 1490 560 Q 1450 560, 1450 600 L 1450 715 L 1450 880'
+      },
+      spa: {
+        name: 'Thảo Mộc Spa & Massage',
+        floorId: '7',
+        floorLevel: 'TẦNG 5',
+        isDiff: true,
+        step1: 'Chặng 1: Đi tới Thang máy A và bấm lên Tầng 5.',
+        step2: 'Chặng 2: Ra khỏi thang máy, rẽ trái 15m vào cửa phòng Spa.',
+        coords: { x: 1080, y: 230 },
+        route: 'M 1715 560 L 1120 560 Q 1080 560, 1080 520 L 1080 458 L 1080 230'
+      },
 
       // === TẦNG 2: BẾP & NHÀ HÀNG ===
-      restaurant: { name: 'Nhà Hàng & Quầy Nhận Món', floorId: '4', floorLevel: 'TẦNG 2', isDiff: true, step1: 'Đi từ sảnh tiếp tân ra Thang máy A và bấm lên Tầng 2.', step2: 'Ra khỏi thang máy, đi thẳng theo hành lang vào Nhà hàng.', coords: {x: 965, y: 420}, route: 'M 1232 415 L 1232 520 L 965 520 L 965 420' },
-      kitchen: { name: 'Khu Bếp Chính (Kitchen)', floorId: '4', floorLevel: 'TẦNG 2', isDiff: true, step1: 'Đi từ sảnh tiếp tân ra Thang máy A và bấm lên Tầng 2.', step2: 'Dọc hành lang bên phải rẽ vào cửa Khu Bếp Chính.', coords: {x: 860, y: 660}, route: 'M 1232 415 L 1232 520 L 860 520 L 860 660' },
-      preparation_area: { name: 'Khu Sơ Chế Thực Phẩm', floorId: '4', floorLevel: 'TẦNG 2', isDiff: true, step1: 'Đi tới Thang máy A và bấm lên Tầng 2.', step2: 'Đi qua sảnh nhận món sang phòng sơ chế góc bên trái.', coords: {x: 642, y: 420}, route: 'M 1232 415 L 1232 520 L 642 520 L 642 420' },
-      warehouse: { name: 'Kho Thực Phẩm & Nguyên Liệu', floorId: '4', floorLevel: 'TẦNG 2', isDiff: true, step1: 'Đi tới Thang máy A và bấm lên Tầng 2.', step2: 'Ra thang máy, đi thẳng vào kho thực phẩm bên phải.', coords: {x: 1315, y: 560}, route: 'M 1232 415 L 1232 520 L 1315 520 L 1315 560' },
+      restaurant: {
+        name: 'Nhà Hàng & Quầy Nhận Món (Pickup Area)',
+        floorId: '4',
+        floorLevel: 'TẦNG 2',
+        isDiff: true,
+        step1: 'Chặng 1: Đi từ sảnh tiếp tân ra Thang máy A và bấm lên Tầng 2.',
+        step2: 'Chặng 2: Ra khỏi thang máy, đi thẳng theo hành lang vào Quầy Nhận Món & Nhà hàng.',
+        coords: { x: 1080, y: 230 },
+        route: 'M 1715 560 L 1080 560 Q 1080 530, 1080 480 L 1080 230'
+      },
+      kitchen: {
+        name: 'Khu Bếp Chính (Kitchen Area)',
+        floorId: '4',
+        floorLevel: 'TẦNG 2',
+        isDiff: true,
+        step1: 'Chặng 1: Đi từ sảnh tiếp tân ra Thang máy A và bấm lên Tầng 2.',
+        step2: 'Chặng 2: Ra khỏi thang máy, đi dọc hành lang bên phải rẽ vào cửa Khu Bếp Chính.',
+        coords: { x: 1450, y: 880 },
+        route: 'M 1715 560 L 1450 560 Q 1450 630, 1450 720 L 1450 880'
+      },
+      warehouse: {
+        name: 'Kho Thực Phẩm & Nguyên Liệu',
+        floorId: '4',
+        floorLevel: 'TẦNG 2',
+        isDiff: true,
+        step1: 'Chặng 1: Đi tới Thang máy A và bấm lên Tầng 2.',
+        step2: 'Chặng 2: Ra khỏi thang máy, đi thẳng theo hành lang vào Kho thực phẩm bên tay phải.',
+        coords: { x: 1560, y: 190 },
+        route: 'M 1715 560 L 1560 560 Q 1560 500, 1560 400 L 1560 190'
+      },
 
-      // === TẦNG 5: HỒ BƠI, SPA & GYM ===
-      // Tuyến đi từ Thang máy qua hành lang, xuyên qua cửa kính ra sàn hồ bơi (hoàn toàn không đâm qua tường)
-      infinity_pool: { name: 'Hồ Bơi Vô Cực (Sky Pool)', floorId: '7', floorLevel: 'TẦNG 5', isDiff: true, step1: 'Đi từ sảnh ra Thang máy A và bấm lên Tầng 5.', step2: 'Ra khỏi thang máy, đi dọc hành lang qua cửa kính ra sàn hồ bơi.', coords: {x: 806, y: 420}, route: 'M 1232 415 L 1232 525 L 806 525 L 806 420' },
-      spa: { name: 'Aurora Luxury Spa', floorId: '7', floorLevel: 'TẦNG 5', isDiff: true, step1: 'Đi tới Thang máy A và bấm lên Tầng 5.', step2: 'Ra khỏi thang máy, đi theo hành lang rẽ vào cửa phòng Aurora Spa.', coords: {x: 1054, y: 420}, route: 'M 1232 415 L 1232 525 L 1054 525 L 1054 420' },
-      luxury_spa: { name: 'Aurora Luxury Spa', floorId: '7', floorLevel: 'TẦNG 5', isDiff: true, step1: 'Đi tới Thang máy A và bấm lên Tầng 5.', step2: 'Ra khỏi thang máy, đi theo hành lang rẽ vào cửa phòng Aurora Spa.', coords: {x: 1054, y: 420}, route: 'M 1232 415 L 1232 525 L 1054 525 L 1054 420' },
-      gym: { name: 'Fitness & Gym Center', floorId: '7', floorLevel: 'TẦNG 5', isDiff: true, step1: 'Đi tới Thang máy A và bấm lên Tầng 5.', step2: 'Ra khỏi thang máy, đi thẳng xuống phía dưới để vào Phòng Gym.', coords: {x: 1180, y: 650}, route: 'M 1232 415 L 1232 525 L 1180 525 L 1180 650' },
-      sky_bar: { name: 'Skyline Lounge & Bar', floorId: '7', floorLevel: 'TẦNG 5', isDiff: true, step1: 'Đi tới Thang máy A và bấm lên Tầng 5.', step2: 'Ra khỏi thang máy, rẽ phải theo hành lang vào quầy bar Skyline.', coords: {x: 880, y: 620}, route: 'M 1232 415 L 1232 525 L 880 525 L 880 620' },
+      // === TẦNG 3: PHÒNG NGHỈ 301 - 310 ===
+      room_301: { name: 'Phòng Nghỉ 301', floorId: '5', floorLevel: 'TẦNG 3', isDiff: true, step1: 'Chặng 1: Đi tới Thang máy A và bấm lên Tầng 3.', step2: 'Chặng 2: Ra khỏi thang máy, rẽ vào hành lang và bước vào Phòng 301 ngay cạnh thang máy.', coords: { x: 1450, y: 230 }, route: 'M 1715 560 L 1450 560 Q 1450 500, 1450 420 L 1450 230' },
+      room_302: { name: 'Phòng Nghỉ 302', floorId: '5', floorLevel: 'TẦNG 3', isDiff: true, step1: 'Chặng 1: Đi tới Thang máy A và bấm lên Tầng 3.', step2: 'Chặng 2: Ra khỏi thang máy, đi dọc hành lang rẽ vào Phòng 302 dãy bên phải.', coords: { x: 1200, y: 230 }, route: 'M 1715 560 L 1200 560 Q 1200 500, 1200 420 L 1200 230' },
+      room_303: { name: 'Phòng Nghỉ 303', floorId: '5', floorLevel: 'TẦNG 3', isDiff: true, step1: 'Chặng 1: Đi tới Thang máy A và bấm lên Tầng 3.', step2: 'Chặng 2: Ra khỏi thang máy, đi thẳng theo hành lang tới Phòng 303 bên tay phải.', coords: { x: 950, y: 230 }, route: 'M 1715 560 L 950 560 Q 950 500, 950 420 L 950 230' },
+      room_304: { name: 'Phòng Nghỉ 304', floorId: '5', floorLevel: 'TẦNG 3', isDiff: true, step1: 'Chặng 1: Đi tới Thang máy A và bấm lên Tầng 3.', step2: 'Chặng 2: Ra khỏi thang máy, đi hết hành lang tới Phòng 304 góc bên phải cuối dãy.', coords: { x: 700, y: 230 }, route: 'M 1715 560 L 700 560 Q 700 500, 700 420 L 700 230' },
+      room_305: { name: 'Phòng Nghỉ 305', floorId: '5', floorLevel: 'TẦNG 3', isDiff: true, step1: 'Chặng 1: Đi tới Thang máy A và bấm lên Tầng 3.', step2: 'Chặng 2: Ra khỏi thang máy, đi hết hành lang sang góc trái dãy dưới là Phòng 305.', coords: { x: 700, y: 880 }, route: 'M 1715 560 L 700 560 Q 700 630, 700 720 L 700 880' },
+      room_306: { name: 'Phòng Nghỉ 306', floorId: '5', floorLevel: 'TẦNG 3', isDiff: true, step1: 'Chặng 1: Đi tới Thang máy A và bấm lên Tầng 3.', step2: 'Chặng 2: Ra khỏi thang máy, đi dọc hành lang rẽ vào Phòng 306.', coords: { x: 950, y: 880 }, route: 'M 1715 560 L 950 560 Q 950 630, 950 720 L 950 880' },
+      room_307: { name: 'Phòng Nghỉ 307', floorId: '5', floorLevel: 'TẦNG 3', isDiff: true, step1: 'Chặng 1: Đi tới Thang máy A và bấm lên Tầng 3.', step2: 'Chặng 2: Ra khỏi thang máy, đi dọc hành lang rẽ vào Phòng 307 dãy đối diện.', coords: { x: 1200, y: 880 }, route: 'M 1715 560 L 1200 560 Q 1200 630, 1200 720 L 1200 880' },
+      room_308: { name: 'Phòng Nghỉ 308', floorId: '5', floorLevel: 'TẦNG 3', isDiff: true, step1: 'Chặng 1: Đi tới Thang máy A và bấm lên Tầng 3.', step2: 'Chặng 2: Ra khỏi thang máy, đi thẳng xuống dãy phòng đối diện để vào Phòng 308.', coords: { x: 1450, y: 880 }, route: 'M 1715 560 L 1450 560 Q 1450 630, 1450 720 L 1450 880' },
 
-      // === TẦNG TRỆT: QUẦY TIẾP TÂN ===
-      front_desk: { name: 'Quầy Lễ Tân (Front Desk)', floorId: '3', floorLevel: 'GROUND', isDiff: false, step1: 'Đi thẳng qua cửa kính sảnh chính, quầy lễ tân nằm ngay bên tay phải bạn.', step2: '', coords: {x: 995, y: 620}, route: 'M 796 545 L 930 545 C 960 545, 970 620, 995 620' }
+      // === TẦNG 4: PHÒNG NGHỈ 401 - 410 ===
+      room_401: { name: 'Phòng Nghỉ 401', floorId: '6', floorLevel: 'TẦNG 4', isDiff: true, step1: 'Chặng 1: Đi tới Thang máy A và bấm lên Tầng 4.', step2: 'Chặng 2: Ra khỏi thang máy, rẽ vào hành lang và bước vào Phòng 401 ngay cạnh thang máy.', coords: { x: 1450, y: 230 }, route: 'M 1715 560 L 1450 560 Q 1450 500, 1450 420 L 1450 230' },
+      room_402: { name: 'Phòng Nghỉ 402', floorId: '6', floorLevel: 'TẦNG 4', isDiff: true, step1: 'Chặng 1: Đi tới Thang máy A và bấm lên Tầng 4.', step2: 'Chặng 2: Ra khỏi thang máy, đi dọc hành lang rẽ vào Phòng 402 dãy bên phải.', coords: { x: 1200, y: 230 }, route: 'M 1715 560 L 1200 560 Q 1200 500, 1200 420 L 1200 230' },
+      room_403: { name: 'Phòng Nghỉ 403', floorId: '6', floorLevel: 'TẦNG 4', isDiff: true, step1: 'Chặng 1: Đi tới Thang máy A và bấm lên Tầng 4.', step2: 'Chặng 2: Ra khỏi thang máy, đi thẳng theo hành lang tới Phòng 403 bên tay phải.', coords: { x: 950, y: 230 }, route: 'M 1715 560 L 950 560 Q 950 500, 950 420 L 950 230' },
+      room_404: { name: 'Phòng Nghỉ 404', floorId: '6', floorLevel: 'TẦNG 4', isDiff: true, step1: 'Chặng 1: Đi tới Thang máy A và bấm lên Tầng 4.', step2: 'Chặng 2: Ra khỏi thang máy, đi hết hành lang tới Phòng 404 góc bên phải cuối dãy.', coords: { x: 700, y: 230 }, route: 'M 1715 560 L 700 560 Q 700 500, 700 420 L 700 230' },
+      room_405: { name: 'Phòng Nghỉ 405', floorId: '6', floorLevel: 'TẦNG 4', isDiff: true, step1: 'Chặng 1: Đi tới Thang máy A và bấm lên Tầng 4.', step2: 'Chặng 2: Ra khỏi thang máy, đi hết hành lang sang góc trái dãy dưới là Phòng 405.', coords: { x: 700, y: 880 }, route: 'M 1715 560 L 700 560 Q 700 630, 700 720 L 700 880' },
+      room_406: { name: 'Phòng Nghỉ 406', floorId: '6', floorLevel: 'TẦNG 4', isDiff: true, step1: 'Chặng 1: Đi tới Thang máy A và bấm lên Tầng 4.', step2: 'Chặng 2: Ra khỏi thang máy, đi dọc hành lang rẽ vào Phòng 406.', coords: { x: 950, y: 880 }, route: 'M 1715 560 L 950 560 Q 950 630, 950 720 L 950 880' },
+      room_407: { name: 'Phòng Nghỉ 407', floorId: '6', floorLevel: 'TẦNG 4', isDiff: true, step1: 'Chặng 1: Đi tới Thang máy A và bấm lên Tầng 4.', step2: 'Chặng 2: Ra khỏi thang máy, đi dọc hành lang rẽ vào Phòng 407 dãy đối diện.', coords: { x: 1200, y: 880 }, route: 'M 1715 560 L 1200 560 Q 1200 630, 1200 720 L 1200 880' },
+      room_408: { name: 'Phòng Nghỉ 408', floorId: '6', floorLevel: 'TẦNG 4', isDiff: true, step1: 'Chặng 1: Đi tới Thang máy A và bấm lên Tầng 4.', step2: 'Chặng 2: Ra khỏi thang máy, đi thẳng xuống dãy phòng đối diện để vào Phòng 408.', coords: { x: 1450, y: 880 }, route: 'M 1715 560 L 1450 560 Q 1450 630, 1450 720 L 1450 880' },
+
+      // === TẦNG 6: ROOFTOP & BAR ===
+      rooftop_coffee: {
+        name: 'Rooftop Coffee & Lounge',
+        floorId: '8',
+        floorLevel: 'TẦNG 6',
+        isDiff: true,
+        step1: 'Chặng 1: Di chuyển tới Thang máy A và bấm lên Tầng 6 (Cao nhất).',
+        step2: 'Chặng 2: Ra khỏi thang máy, đi thẳng theo hành lang qua cửa trung tâm vào khu vực Rooftop Coffee.',
+        coords: { x: 380, y: 230 },
+        route: 'M 1715 560 L 1005 560 Q 940 560, 900 620 L 870 700 Q 855 745, 820 745 L 680 745 Q 600 745, 600 680 L 600 360 Q 600 270, 520 250 L 380 230'
+      },
+      bar: {
+        name: 'Sky Lounge Bar',
+        floorId: '8',
+        floorLevel: 'TẦNG 6',
+        isDiff: true,
+        step1: 'Chặng 1: Đi tới Thang máy A và bấm lên Tầng 6.',
+        step2: 'Chặng 2: Ra khỏi thang máy, đi dọc hành lang rẽ vào Quầy Bar ở giữa.',
+        coords: { x: 1080, y: 230 },
+        route: 'M 1715 560 L 1120 560 Q 1080 560, 1080 520 L 1080 458 L 1080 230'
+      },
+      karaoke: {
+        name: 'Phòng VIP Karaoke',
+        floorId: '8',
+        floorLevel: 'TẦNG 6',
+        isDiff: true,
+        step1: 'Chặng 1: Đi tới Thang máy A và bấm lên Tầng 6.',
+        step2: 'Chặng 2: Ra khỏi thang máy, rẽ trái theo hành lang vào Phòng VIP Karaoke.',
+        coords: { x: 1450, y: 880 },
+        route: 'M 1715 560 L 1490 560 Q 1450 560, 1450 600 L 1450 715 L 1450 880'
+      },
+
+      // === TẦNG TRỆT: TIẾP TÂN & WC ===
+      front_desk: {
+        name: 'Quầy Lễ Tân (Front Desk)',
+        floorId: '3',
+        floorLevel: 'GROUND',
+        isDiff: false,
+        step1: 'Từ sảnh chính, rẽ phải vào quầy Lễ tân ở khu vực trung tâm sảnh.',
+        step2: '',
+        coords: { x: 1070, y: 570 },
+        route: 'M 350 580 L 350 860 Q 350 880, 370 880 L 1070 880 Q 1070 800, 1070 700 L 1070 570'
+      },
+      restroom_ground: {
+        name: 'Nhà Vệ Sinh Tầng Trệt',
+        floorId: '3',
+        floorLevel: 'GROUND',
+        isDiff: false,
+        step1: 'Đi về phía thang máy A, nhà vệ sinh nằm ở góc sảnh bên phải.',
+        step2: '',
+        coords: { x: 1715, y: 700 },
+        route: 'M 350 580 L 350 860 Q 350 880, 370 880 L 1330 880 Q 1350 880, 1362 864 L 1568 700 L 1715 700'
+      }
     };
 
     // Parse Token hoặc Query
@@ -525,8 +659,7 @@
     const dest = DESTINATIONS[currentDestKey] || DESTINATIONS.infinity_pool;
     let activeStep = dest.isDiff ? 1 : 2;
 
-    // Tự động zoom 140% (1.4x) mặc định theo yêu cầu
-    let currentZoom = 1.4;
+    let currentZoom = 1.0;
     let panX = 0;
     let panY = 0;
     let isDragging = false;
@@ -538,7 +671,6 @@
       const now = Date.now();
       const timeLeft = expiresAt - now;
 
-      // Đã đánh dấu xem xong trong localStorage
       if (ticketId && localStorage.getItem('aurora_finished_ticket_' + ticketId)) {
         showExpired();
         return;
@@ -597,32 +729,32 @@
       if (activeStep === 1) {
         btn1.classList.add('active');
         btn2.classList.remove('active');
-        floorImg.src = '/maps/3.png';
-        floorBadge.innerText = 'SẢNH TRỆT (LOBBY)';
+        floorImg.src = FLOOR_IMAGES['3'];
+        floorBadge.innerText = 'TẦNG TRỆT · SẢNH & TIẾP TÂN';
         halo.setAttribute('d', ROUTE_GROUND_TO_ELEVATOR);
         route.setAttribute('d', ROUTE_GROUND_TO_ELEVATOR);
 
-        startDot.setAttribute('cx', 796);
-        startDot.setAttribute('cy', 545);
-        destDot.setAttribute('cx', 1232);
-        destDot.setAttribute('cy', 415);
+        startDot.setAttribute('cx', 350);
+        startDot.setAttribute('cy', 580);
+        destDot.setAttribute('cx', 1715);
+        destDot.setAttribute('cy', 560);
 
         instNum.innerText = '1';
-        instText.innerText = dest.step1 || 'Đi từ vị trí Robot tiếp tân tới Thang máy A ở góc sảnh.';
+        instText.innerText = dest.step1 || 'Đi từ sảnh Lobby đến Thang máy A và bấm lên tầng mục tiêu.';
       } else {
         btn2.classList.add('active');
         btn1.classList.remove('active');
-        floorImg.src = `/maps/${dest.floorId}.png`;
+        floorImg.src = FLOOR_IMAGES[dest.floorId] || `/maps/floor_${dest.floorId}.png`;
         floorBadge.innerText = `${dest.floorLevel} · ${dest.name}`;
         halo.setAttribute('d', dest.route);
         route.setAttribute('d', dest.route);
 
         if (dest.isDiff) {
-          startDot.setAttribute('cx', 1232);
-          startDot.setAttribute('cy', 415);
+          startDot.setAttribute('cx', 1715);
+          startDot.setAttribute('cy', 560);
         } else {
-          startDot.setAttribute('cx', 796);
-          startDot.setAttribute('cy', 545);
+          startDot.setAttribute('cx', 350);
+          startDot.setAttribute('cy', 580);
         }
         destDot.setAttribute('cx', dest.coords.x);
         destDot.setAttribute('cy', dest.coords.y);
@@ -641,12 +773,12 @@
     }
 
     function zoom(delta) {
-      currentZoom = Math.min(3.0, Math.max(0.9, Number((currentZoom + delta).toFixed(2))));
+      currentZoom = Math.min(3.0, Math.max(0.8, Number((currentZoom + delta).toFixed(2))));
       applyTransform(true);
     }
 
     function resetZoom() {
-      currentZoom = 1.4;
+      currentZoom = 1.0;
       panX = 0;
       panY = 0;
       applyTransform(true);
@@ -658,7 +790,7 @@
       vp.style.transform = `translate(${panX}px, ${panY}px) scale(${currentZoom})`;
     }
 
-    // Hỗ trợ chạm kéo (touch pan / mouse drag) mượt mà trên điện thoại
+    // Chạm kéo (touch pan / mouse drag) mượt mà trên Safari mobile
     const mapContainer = document.getElementById('mapContainer');
     mapContainer.addEventListener('pointerdown', (e) => {
       isDragging = true;
@@ -671,7 +803,7 @@
       if (!isDragging) return;
       panX = e.clientX - startX;
       panY = e.clientY - startY;
-      const maxPan = 220 * currentZoom;
+      const maxPan = 280 * currentZoom;
       panX = Math.max(-maxPan, Math.min(maxPan, panX));
       panY = Math.max(-maxPan, Math.min(maxPan, panY));
       applyTransform(false);

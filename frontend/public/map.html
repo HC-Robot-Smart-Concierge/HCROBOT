@@ -481,6 +481,22 @@
   </div>
 
   <script>
+    // Xóa cache Service Worker cũ trên điện thoại để tránh bị kẹt redirect về trang chủ
+    try {
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function(regs) {
+          regs.forEach(function(r) { r.update(); });
+        }).catch(function() {});
+      }
+      if (window.caches) {
+        window.caches.keys().then(function(keys) {
+          keys.forEach(function(k) {
+            if (k !== 'hc-robot-app-cache-v3') window.caches.delete(k);
+          });
+        }).catch(function() {});
+      }
+    } catch (e) {}
+
     // === DỮ LIỆU BẢN ĐỒ & ĐIỂM ĐẾN (Chuẩn hệ tọa độ thống nhất 1840x1174) ===
     const FLOOR_IMAGES = {
       '1': '/maps/floor_b2.png',

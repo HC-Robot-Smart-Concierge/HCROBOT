@@ -98,10 +98,17 @@ export const parseGuestMapParams = (searchStr = '') => {
 };
 
 export const GuestMapPage = () => {
-  const initialTicket = useMemo(
-    () => parseGuestMapParams(typeof window !== 'undefined' ? window.location.search : ''),
-    []
-  );
+  const initialTicket = useMemo(() => {
+    let rawSearch = '';
+    try {
+      if (typeof window !== 'undefined') {
+        rawSearch = window.location.search || sessionStorage.getItem('aurora_qr_search') || '';
+      }
+    } catch {
+      rawSearch = '';
+    }
+    return parseGuestMapParams(rawSearch);
+  }, []);
 
   const [currentDestKey, setCurrentDestKey] = useState(initialTicket.destKey);
   const [expiresAt] = useState(initialTicket.expiresAt);

@@ -108,7 +108,14 @@ export const AppRoutes = () => {
   }, [location.pathname, location.search]);
 
   // Handle legacy query params e.g. ?view=robot_display & QR guest map alternative flows
-  const queryParams = new URLSearchParams(location.search);
+  const savedQrSearch = (() => {
+    try {
+      return typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('aurora_qr_search') || '' : '';
+    } catch {
+      return '';
+    }
+  })();
+  const queryParams = new URLSearchParams(location.search || savedQrSearch);
   const requestedView = queryParams.get('view');
   const hasGuestMapTicket = Boolean(
     queryParams.get('t') || queryParams.get('token') || queryParams.get('dest')

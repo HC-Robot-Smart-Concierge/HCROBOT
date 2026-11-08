@@ -24,6 +24,7 @@ const RobotScreenPage = lazy(() => import('../pages/robot/RobotScreenPage').then
 const RobotFoodMenuScreen = lazy(() => import('../components/robot/RobotFoodMenuScreen').then(m => ({ default: m.RobotFoodMenuScreen })));
 const AdminPortal = lazy(() => import('../pages/admin/AdminPortal').then(m => ({ default: m.AdminPortal })));
 const AdminLidarPage = lazy(() => import('../pages/admin/AdminLidarPage').then(m => ({ default: m.AdminLidarPage })));
+const GuestMapPage = lazy(() => import('../pages/guest/GuestMapPage').then(m => ({ default: m.GuestMapPage })));
 
 // Staff Dashboard Pages (Lazy-loaded)
 const ReceptionDashboard = lazy(() => import('../pages/dashboard/ReceptionDashboard').then(m => ({ default: m.ReceptionDashboard })));
@@ -106,9 +107,29 @@ export const AppRoutes = () => {
     }
   }, [location.pathname, location.search]);
 
-  // Handle legacy query params e.g. ?view=robot_display
+  // Handle legacy query params e.g. ?view=robot_display & QR guest map alternative flows
   const queryParams = new URLSearchParams(location.search);
   const requestedView = queryParams.get('view');
+  const hasGuestMapTicket = Boolean(
+    queryParams.get('t') || queryParams.get('token') || queryParams.get('dest')
+  );
+  const isGuestMapPath =
+    location.pathname === '/map.html' ||
+    location.pathname.endsWith('/map.html') ||
+    location.pathname === '/map' ||
+    location.pathname === '/guest/map';
+
+  if (
+    requestedView === 'guest_map' ||
+    isGuestMapPath ||
+    (location.pathname === '/' && hasGuestMapTicket)
+  ) {
+    return (
+      <Suspense fallback={<PageLoadingFallback />}>
+        <GuestMapPage />
+      </Suspense>
+    );
+  }
   if (requestedView === 'robot_display') {
     return <Navigate to="/robot" replace />;
   }
@@ -201,7 +222,7 @@ export const AppRoutes = () => {
         }
       />
 
-      {/* 3. Robot Screens */}
+      {/* 3. Robot Screens & Guest QR Wayfinding Alternative Routes */}
       <Route
         path="/robot"
         element={<RobotScreenPage onLogout={handleLogout} />}
@@ -210,6 +231,9 @@ export const AppRoutes = () => {
         path="/food-menu"
         element={<RobotFoodMenuScreen onClose={() => navigate('/robot')} />}
       />
+      <Route path="/map.html" element={<GuestMapPage />} />
+      <Route path="/map" element={<GuestMapPage />} />
+      <Route path="/guest/map" element={<GuestMapPage />} />
 
 
       {/* 4. Admin Command Portal & LiDAR */}

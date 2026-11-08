@@ -2,6 +2,41 @@ import { defineConfig, createLogger } from 'vite';
 import react from '@vitejs/plugin-react';
 import basicSsl from '@vitejs/plugin-basic-ssl';
 import path from 'path';
+import os from 'os';
+
+const detectHostNetworkIps = () => {
+  let tailscaleIp = '';
+  let lanIp = '';
+  try {
+    const interfaces = os.networkInterfaces();
+    for (const [name, addrs] of Object.entries(interfaces)) {
+      if (!Array.isArray(addrs)) continue;
+      for (const addr of addrs) {
+        if (!addr || addr.internal || addr.family !== 'IPv4') continue;
+        const ip = addr.address;
+        if (ip.startsWith('100.') || name.toLowerCase().includes('tailscale')) {
+          if (!tailscaleIp) tailscaleIp = ip;
+        } else if (
+          ip.startsWith('192.168.') ||
+          ip.startsWith('10.') ||
+          /^172\.(1[6-9]|2\d|3[0-1])\./.test(ip)
+        ) {
+          if (!lanIp || name.toLowerCase().includes('wi-fi') || name.toLowerCase().includes('wlan')) {
+            lanIp = ip;
+          }
+        }
+      }
+    }
+  } catch {
+    // ignore network detection error
+  }
+  return {
+    tailscaleIp: tailscaleIp || '100.64.240.42',
+    lanIp: lanIp || '192.168.1.149',
+  };
+};
+
+const detectedIps = detectHostNetworkIps();
 
 const customLogger = createLogger();
 const originalError = customLogger.error.bind(customLogger);
@@ -55,6 +90,10 @@ const preventEconnresetPlugin = () => ({
 
 export default defineConfig({
   customLogger,
+  define: {
+    __DETECTED_TAILSCALE_IP__: JSON.stringify(detectedIps.tailscaleIp),
+    __DETECTED_LAN_IP__: JSON.stringify(detectedIps.lanIp),
+  },
   plugins: [react(), basicSsl(), preventEconnresetPlugin()],
   resolve: {
     alias: {

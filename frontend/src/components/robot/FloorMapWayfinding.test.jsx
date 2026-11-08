@@ -48,13 +48,30 @@ describe('FloorMap Wayfinding Logic & Contract Tests', () => {
 
 
 
-  it('generates a valid, mobile-optimized standalone QR map URL for guest handoff', () => {
+  it('generates a valid, mobile-optimized standalone QR map URL for guest handoff with redundant dest fallback', async () => {
 
     const url = getMobileGuestMapUrl('infinity_pool');
 
     expect(url).toBeDefined();
 
     expect(url).toContain('map.html?t=');
+    expect(url).toContain('&dest=infinity_pool');
+
+    const { parseGuestMapParams } = await import('../../pages/guest/GuestMapPage');
+    const queryStr = url.split('?')[1] || '';
+    const parsed = parseGuestMapParams(`?${queryStr}`);
+    expect(parsed.destKey).toBe('infinity_pool');
+    expect(parsed.expiresAt).toBeGreaterThan(Date.now());
+    expect(parsed.ticketId.length).toBeGreaterThan(0);
+
+    // Alternative flow 1: Corrupted token falls back to &dest=
+    const fallbackParsed = parseGuestMapParams('?t=corrupted_base64_&&dest=gym');
+    expect(fallbackParsed.destKey).toBe('gym');
+
+    // Alternative flow 2: Alias destination keys normalize properly
+    expect(parseGuestMapParams('?dest=luxury_spa').destKey).toBe('spa');
+    expect(parseGuestMapParams('?dest=sky_bar').destKey).toBe('bar');
+    expect(parseGuestMapParams('?dest=pool').destKey).toBe('infinity_pool');
 
   });
 

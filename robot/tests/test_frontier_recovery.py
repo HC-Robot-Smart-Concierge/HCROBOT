@@ -10,7 +10,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "ros2_configs"))
 from retreat_logic import RetreatTrail, ReverseFollower, body_scan, reverse_clear, turn_clear
-from frontier_logic import MotionWatchdog, choose_unstick_direction
+from frontier_logic import MotionWatchdog, choose_unstick_direction, exploration_result
 from recovery_costmap import CostmapGrid, grid_sweep_clear, scan_sweep_clear
 
 
@@ -30,7 +30,7 @@ def explorer_class():
                  "turn_clear": turn_clear, "MotionWatchdog": MotionWatchdog,
                  "choose_unstick_direction": choose_unstick_direction,
                  "CostmapGrid": CostmapGrid, "grid_sweep_clear": grid_sweep_clear,
-                 "scan_sweep_clear": scan_sweep_clear}
+                 "scan_sweep_clear": scan_sweep_clear, "exploration_result": exploration_result}
     yaw_helper = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "_yaw_from_quat")
     exec(compile(ast.Module(body=[yaw_helper, cls], type_ignores=[]), str(source), "exec"), namespace)
     return namespace["FrontierExplorer"]
@@ -53,6 +53,9 @@ class TestFrontierRecovery(unittest.TestCase):
         n.memory.record_failure.return_value = False
         n.get_logger = Mock()
         n._now = Mock(return_value=10.0)
+        n.exit_at = None  # chua bao ket qua /explore/status
+        n._report_and_exit = Mock()
+        n.stuck_count = 0
         n.settle_sec = 2.0
         n.settle = None
         n.visited = 0
@@ -214,6 +217,9 @@ class TestFrontierRecovery(unittest.TestCase):
         self.assertIsNone(n.maneuver)
         handle.cancel_goal_async.assert_called_once()
         n._publish_motion.assert_called_with(0.0, 0.0)
+        # Bao Web "da dung" roi tu thoat de backend ve MAPPING (Web hien bang luu map)
+        n._report_and_exit.assert_called_once()
+        self.assertEqual(n._report_and_exit.call_args[0][0]["state"], "STOPPED")
         n._tick()
 
     def test_motor_block_without_translation_replans_instead_of_looping(self):

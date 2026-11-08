@@ -1,5 +1,43 @@
 import { createGoalPoseMsg, ROS_MSG_TYPES, ROS_TOPICS } from '../../../services/rosbridgeService';
 
+export function amclPoseIsReliable(msg) {
+  const pose = msg?.pose?.pose;
+  const covariance = msg?.pose?.covariance;
+  if (!pose || !Array.isArray(covariance) || covariance.length !== 36
+      || ![pose.position?.x, pose.position?.y, pose.orientation?.z, pose.orientation?.w,
+        covariance[0], covariance[1], covariance[6], covariance[7], covariance[35]].every(Number.isFinite)
+      || covariance[0] < 0 || covariance[7] < 0 || covariance[35] < 0) return false;
+  const xy = (covariance[1] + covariance[6]) / 2;
+  // Bound uncertainty along the worst horizontal axis, including x/y correlation.
+  const maxVariance = (covariance[0] + covariance[7]
+    + Math.hypot(covariance[0] - covariance[7], 2 * xy)) / 2;
+  if (xy * xy > covariance[0] * covariance[7] + 1e-12) return false;
+  return maxVariance <= 0.25 ** 2 && covariance[35] <= (20 * Math.PI / 180) ** 2;
+}
+
+// Trang thai tu localization_manager.py tren robot (/localization/state, phat 1 Hz). Co tin moi
+// => Web CHI hien thi trang thai nay (manager da so LiDAR voi map, khong chi covariance). Im lang
+// qua lau (stack cu khong co manager) => fresh=false, Web dung kiem tra AMCL rieng.
+export const LOCALIZATION_STALE_MS = 5000;
+
+export function localizationFromManager(msg, receivedAt, now = Date.now()) {
+  if (!msg || !receivedAt || now - receivedAt > LOCALIZATION_STALE_MS) {
+    return { fresh: false, localized: false, label: '', reason: '', tone: 'neutral' };
+  }
+  const match = Number.isFinite(msg.score) ? ` · LiDAR khớp ${Math.round(msg.score * 100)}%` : '';
+  const reason = msg.reason || '';
+  switch (msg.state) {
+    case 'LOCALIZED':
+      return { fresh: true, localized: true, label: `Đã định vị${match}`, reason, tone: 'good' };
+    case 'LOCALIZING':
+      return { fresh: true, localized: false, label: `Đang xác minh vị trí${match}`, reason, tone: 'busy' };
+    case 'LOCALIZATION_LOST':
+      return { fresh: true, localized: false, label: 'Mất định vị', reason, tone: 'bad' };
+    default:
+      return { fresh: true, localized: false, label: 'Chưa định vị', reason, tone: 'bad' };
+  }
+}
+
 export function composeMapPose(mapToOdom, odom) {
   if (!mapToOdom || !odom) return null;
   const c = Math.cos(mapToOdom.yaw);
@@ -23,12 +61,15 @@ export function laserPointToMap(point, pose) {
   };
 }
 
-export function navigationBlockingReason({ connected, runtime, mapId, physical, localized,
+export function navigationBlockingReason({ connected, runtime, mapId, physical, localized, localizationReason,
   poseAt = 0, costmapAt = 0, health, healthAt = 0, now = Date.now() }) {
   if (!connected) return 'Chưa kết nối Nav2 trên laptop. Bấm “Bật Nav2 với map này”.';
   if (runtime.mode !== 'NAVIGATION') return `Nav2 chưa sẵn sàng (${runtime.mode}). Bật Navigation với map đang chọn trước.`;
   if (runtime.activeMap !== mapId) return 'Map Nav2 chưa khớp map đang chọn. Bật Nav2 với map này.';
-  if (physical && !localized) return 'Hãy đặt vị trí ban đầu bằng “Chọn trên map” hoặc “Đặt tại Dock”, rồi đợi AMCL xác nhận.';
+  if (physical && !localized) {
+    return localizationReason
+      || 'Hãy đặt vị trí ban đầu bằng “Chọn trên map” hoặc “Đặt tại Dock”, rồi đợi AMCL xác nhận.';
+  }
   if (!poseAt || now - poseAt > 2000) return 'Chưa có vị trí robot mới trong hệ tọa độ map. Kiểm tra AMCL/TF.';
   if (!costmapAt || now - costmapAt > 3000) return 'Chưa nhận costmap Nav2 mới. Đợi Navigation khởi động xong.';
   if (physical && (!healthAt || now - healthAt > 3000 || !health?.pi_ws_connected || !health?.lidar_live

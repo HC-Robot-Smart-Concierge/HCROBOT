@@ -193,3 +193,6 @@ mobile/ios/Runner/GeneratedPluginRegistrant.*
 key.properties
 **/key.properties
 
+
+# Vi tri cuoi cua robot (localization_manager.py) - trang thai luc chay, khong commit
+robot/maps/last_pose/

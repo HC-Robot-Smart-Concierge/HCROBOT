@@ -24,7 +24,9 @@ import {
   updateRos2KeepoutMask,
 } from '../../../services/workflowApi';
 import { buildCostmapImage, pathMsgToPoints } from './physicalMapCostmap';
-import { composeMapPose, laserPointToMap, sendNav2Endpoint } from './physicalMapNavigation';
+import {
+  amclPoseIsReliable, composeMapPose, laserPointToMap, localizationFromManager, sendNav2Endpoint,
+} from './physicalMapNavigation';
 import {
   endpointZoneViolation,
   resizeZoneFromCorner,
@@ -249,6 +251,9 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
   const isWsConnected = connectionMode === 'pi5' ? isPiConnected : isRosConnected;
   const [localizationReady, setLocalizationReady] = useState(false);
   const localizationRef = useRef({ mapId: null, requestedAt: 0, confirmed: false });
+  // /localization/state tu localization_manager.py tren robot (co thi uu tien hon kiem tra AMCL o Web)
+  const [locManager, setLocManager] = useState({ msg: null, at: 0 });
+  const locManagerRef = useRef({ msg: null, at: 0 });
   const navigationRef = useRef({ poseAt: 0, costmapAt: 0, costmap: null, healthAt: 0, health: null });
   const [hardwareInfo, setHardwareInfo] = useState({
     model: 'RPLiDAR A1M8',
@@ -339,6 +344,8 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
   const [mapImage, setMapImage] = useState(null);
   const isLegacyMap = mapConfig.mapId === LAYOUT2_CONFIG.mapId;
   const navigationMapReady = isRosConnected && nav2Runtime.mode === 'NAVIGATION' && nav2Runtime.activeMap === mapConfig.mapId;
+  const managerLoc = localizationFromManager(locManager.msg, locManager.at);
+  const isLocalized = managerLoc.fresh ? managerLoc.localized : localizationReady;
   const dockEndpoint = endpoints.find((ep) => ep.id === 'dock' || ['CHARGER', 'dock'].includes(ep.type));
 
   // Danh sach map SLAM da luu (robot/maps/*.yaml) cho o chon map
@@ -621,24 +628,24 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
       (msg) => {
         if (stripSlash(msg?.header?.frame_id) !== 'map') return;
         const pos = msg?.pose?.pose?.position;
-        const ori = msg?.pose?.pose?.orientation;
         if (pos) {
-          navigationRef.current.poseAt = Date.now();
           const request = localizationRef.current;
           const stamp = Number(msg?.header?.stamp?.sec || 0) * 1000 + Number(msg?.header?.stamp?.nanosec || 0) / 1e6;
-          if (!request.confirmed && request.mapId === mapConfig.mapId && request.requestedAt && stamp >= request.requestedAt - 50) {
-            request.confirmed = true;
-            setLocalizationReady(true);
-            setNavStatus('AMCL đã xác nhận vị trí trên map. Có thể chọn endpoint để đi.');
+          // Robot co localization_manager => no quyet dinh (so ca LiDAR voi map), Web khong tu danh gia.
+          const managerActive = localizationFromManager(locManagerRef.current.msg, locManagerRef.current.at).fresh;
+          if (!managerActive && request.mapId === mapConfig.mapId && request.requestedAt && stamp >= request.requestedAt - 50) {
+            const reliable = amclPoseIsReliable(msg);
+            if (reliable !== request.confirmed) {
+              request.confirmed = reliable;
+              setLocalizationReady(reliable);
+              setNavStatus(reliable
+                ? 'AMCL có độ bất định thấp. Kiểm tra laser khớp tường trước khi chọn endpoint.'
+                : 'AMCL chưa ổn định. Kiểm tra vị trí/hướng ban đầu và LiDAR khớp tường trước khi đi.');
+            }
           }
-          const yaw = quaternionToYaw(ori?.z ?? 0, ori?.w ?? 1);
-          setRobotPose((prev) => ({
-            ...prev,
-            x: pos.x,
-            y: pos.y,
-            yaw,
-          }));
-          setTrail((prev) => [...prev.slice(-150), { x: pos.x, y: pos.y }]);
+          // AMCL reports the pose at a scan's timestamp. Do not alternate it with
+          // the current TF + odometry pose: delayed scans make the marker jump
+          // backwards. Only updateMapPose owns the displayed pose and freshness.
         }
       },
       { throttleRate: 50 }
@@ -648,7 +655,22 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
       try {
         navigationRef.current.health = JSON.parse(msg.data);
         navigationRef.current.healthAt = Date.now();
+        if (!navigationRef.current.health.pi_ws_connected || !navigationRef.current.health.lidar_live) {
+          localizationRef.current.confirmed = false;
+          setLocalizationReady(false);
+        }
       } catch { /* Wait for a valid health sample. */ }
+    });
+
+    // Gac cong dinh vi tren robot: UNLOCALIZED / LOCALIZING / LOCALIZED / LOCALIZATION_LOST + ly do.
+    client.subscribe('/localization/state', ROS_MSG_TYPES.STRING, (msg) => {
+      try {
+        const data = JSON.parse(msg.data);
+        const previous = locManagerRef.current.msg?.state;
+        locManagerRef.current = { msg: data, at: Date.now() };
+        setLocManager(locManagerRef.current);
+        if (previous && previous !== data.state && data.reason) setNavStatus(data.reason);
+      } catch { /* bo qua goi tin hong */ }
     });
 
     client.subscribe(
@@ -1791,9 +1813,13 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
       // ngang qua => khong nhan dich ben trong (Nav2 khong co khai niem "cam dung").
       const zoneReason = endpointZoneViolation({ x: gx, y: gy }, zones);
       if (zoneReason) throw new Error(zoneReason);
+      const loc = localizationFromManager(locManagerRef.current.msg, locManagerRef.current.at);
       sendNav2Endpoint(rosClientRef.current, {
         runtime: nav2Runtime, mapId: mapConfig.mapId, physical: connectionMode === 'pi5',
-        localized: localizationRef.current.confirmed && localizationRef.current.mapId === mapConfig.mapId,
+        localized: loc.fresh
+          ? loc.localized
+          : localizationRef.current.confirmed && localizationRef.current.mapId === mapConfig.mapId,
+        localizationReason: loc.fresh ? loc.reason : undefined,
         ...navigationRef.current,
       }, { x: gx, y: gy, yaw: gyaw }, mapConfig, navigationRef.current.costmap);
       lastGoalSentAtRef.current = Date.now();
@@ -2517,7 +2543,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
                   isNavigating ? 'bg-amber-950 text-amber-400 border border-amber-800' : 'bg-slate-800 text-slate-400'
                 }`}
               >
-                {isNavigating ? 'Đang Di Chuyển' : navigationMapReady && localizationReady ? 'Đã Định Vị' : 'Chưa Sẵn Sàng Đi'}
+                {isNavigating ? 'Đang Di Chuyển' : navigationMapReady && isLocalized ? 'Đã Định Vị' : 'Chưa Sẵn Sàng Đi'}
               </span>
             </div>
 
@@ -2633,9 +2659,24 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
             </div>
 
             <div className="flex items-center justify-between gap-2">
-              <span className={`flex items-center gap-1.5 text-[11px] ${localizationReady ? 'text-emerald-400' : 'text-slate-400'}`}>
+              <span
+                className={`flex items-center gap-1.5 text-[11px] ${
+                  isLocalized
+                    ? 'text-emerald-400'
+                    : managerLoc.tone === 'busy'
+                    ? 'text-amber-400'
+                    : managerLoc.tone === 'bad'
+                    ? 'text-rose-400'
+                    : 'text-slate-400'
+                }`}
+                title={managerLoc.fresh ? managerLoc.reason : undefined}
+              >
                 <ShieldCheck className="w-3 h-3" />
-                {localizationReady ? 'AMCL đã định vị bằng LiDAR' : 'Chưa xác nhận vị trí trên map'}
+                {managerLoc.fresh
+                  ? managerLoc.label
+                  : localizationReady
+                  ? 'AMCL đã định vị bằng LiDAR'
+                  : 'Chưa xác nhận vị trí trên map'}
               </span>
               <button
                 type="button"

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import re
 import socket
@@ -15,6 +16,15 @@ from pathlib import Path
 from typing import Optional
 
 logger = logging.getLogger(__name__)
+
+# Vung ve tren Web -> mask Nav2: phan CAM HAN / GIOI HAN TOC DO chi rong hon hinh ve vai cm
+# (sai so dinh vi + lam tron o 5 cm). Truoc day noi 16 cm moi phia - nguoi dung thay "luu rong hon".
+ZONE_HARD_MARGIN_M = 0.05
+# Dai chi phi mem quanh vung cam (thay inflation, xem _keepout_value): ngay sat mep 99 trong
+# KEEPOUT_NEAR_M (~nua be ngang xe 8.5 cm), giam dan, het hieu luc sau KEEPOUT_SOFT_BAND_M.
+KEEPOUT_NEAR_M = 0.08
+KEEPOUT_SOFT_BAND_M = 0.25
+KEEPOUT_SOFT_DECAY = 8.0  # 1/m
 
 
 class Ros2RuntimeError(RuntimeError):
@@ -420,20 +430,46 @@ class Ros2RuntimeService:
                 float(origin[0]), float(origin[1]))
 
     @staticmethod
-    def _zone_pixel_indices(zone: dict, robot_radius: float, grid: tuple[int, int, float, float, float]):
-        """Chi so diem anh PGM cua vung chu nhat (tam x, y) noi rong them robot_radius."""
+    def _zone_cells(zone: dict, reach_m: float, grid: tuple[int, int, float, float, float]):
+        """(chi so diem anh PGM, khoang cach m tu TAM o toi vung ve) cho moi o cach vung <= reach_m.
+
+        Xet tam o (khong phai "o cham vao vung") => lam tron chi lech +-nua o, khong nuot them ca o.
+        """
         width, height, res, ox, oy = grid
-        half_w = float(zone.get("width") or 0.0) / 2.0 + robot_radius
-        half_h = float(zone.get("height") or 0.0) / 2.0 + robot_radius
+        half_w = float(zone.get("width") or 0.0) / 2.0
+        half_h = float(zone.get("height") or 0.0) / 2.0
         zx, zy = float(zone.get("x") or 0.0), float(zone.get("y") or 0.0)
-        x0 = max(0, int((zx - half_w - ox) / res))
-        x1 = min(width - 1, int((zx + half_w - ox) / res))
-        y0 = max(0, int((zy - half_h - oy) / res))
-        y1 = min(height - 1, int((zy + half_h - oy) / res))
+        x0 = max(0, math.floor((zx - half_w - reach_m - ox) / res))
+        x1 = min(width - 1, math.floor((zx + half_w + reach_m - ox) / res))
+        y0 = max(0, math.floor((zy - half_h - reach_m - oy) / res))
+        y1 = min(height - 1, math.floor((zy + half_h + reach_m - oy) / res))
         for gy in range(y0, y1 + 1):
+            dy = max(abs(oy + (gy + 0.5) * res - zy) - half_h, 0.0)
+            if dy > reach_m:
+                continue
             row = (height - 1 - gy) * width  # PGM: hang 0 la dinh anh (y lon nhat)
             for gx in range(x0, x1 + 1):
-                yield row + gx
+                d = math.hypot(max(abs(ox + (gx + 0.5) * res - zx) - half_w, 0.0), dy)
+                if d <= reach_m:
+                    yield row + gx, d
+
+    @staticmethod
+    def _keepout_value(distance_m: float, margin_m: float) -> int:
+        """Gia tri mask (raw) theo khoang cach toi vung ve: 100 = cam han, 1..99 = chi phi mem, 0 = tu do.
+
+        KeepoutFilter KHONG duoc lop inflation boc quanh nhu tuong (filter chay sau inflation), nen
+        neu chi co phan cam han thi planner lap duong sat mep vung roi DWB (xet ca than xe) ket.
+        Dai mem nay thay inflation: sat mep 99 (~nua be ngang xe), roi giam dan; xe van di qua duoc.
+        Do tren Nav2 Jazzy 08/11: mask 100 -> costmap 100 (lethal), 99 -> 97, 75 -> 74, 50 -> 49.
+        """
+        if distance_m <= margin_m:
+            return 100
+        s = distance_m - margin_m
+        if s <= KEEPOUT_NEAR_M:
+            return 99
+        if s <= KEEPOUT_SOFT_BAND_M:
+            return max(1, round(99 * math.exp(-KEEPOUT_SOFT_DECAY * (s - KEEPOUT_NEAR_M))))
+        return 0
 
     @staticmethod
     def _write_mask(paths: tuple[Path, Path], grid: tuple[int, int, float, float, float],
@@ -448,30 +484,34 @@ class Ros2RuntimeService:
             encoding="utf-8",
         )
 
-    def write_keepout_mask(self, raw_name: str, zones: list[dict], robot_radius: float = 0.16) -> dict:
+    def write_keepout_mask(self, raw_name: str, zones: list[dict], margin_m: float = ZONE_HARD_MARGIN_M) -> dict:
         """
-        Tao mask Keepout Filter cho Nav2 tu cac vung KEEP_OUT cua map (cung kich thuoc/goc voi map).
-        O trong vung (noi rong them ban kinh robot) = den (0, vat can) => Nav2 khong lap duong vao.
+        Tao mask Keepout Filter cho Nav2 tu cac vung KEEP_OUT cua map (cung kich thuoc/goc voi map),
+        mode raw (gia tri o = diem anh 0..100). Vung ve + margin_m = 100 (cam han: planner khong lap
+        duong vao, endpoint bi tu choi); ngoai do la dai chi phi mem (_keepout_value). Chong nhau: lay max.
         """
         safe_name = self.normalize_map_name(raw_name)
         grid = self._map_grid(safe_name)
-        pixels = bytearray([254]) * (grid[0] * grid[1])
+        pixels = bytearray(grid[0] * grid[1])
         keepout = [z for z in zones if str(z.get("type", "")).upper() == "KEEP_OUT"]
+        reach = margin_m + KEEPOUT_SOFT_BAND_M
         for z in keepout:
-            for i in self._zone_pixel_indices(z, robot_radius, grid):
-                pixels[i] = 0
+            for i, d in self._zone_cells(z, reach, grid):
+                value = self._keepout_value(d, margin_m)
+                if value > pixels[i]:
+                    pixels[i] = value
 
         paths = self.keepout_mask_paths(safe_name)
-        self._write_mask(paths, grid, pixels, "trinary")
+        self._write_mask(paths, grid, pixels, "raw")
         logger.info("Keepout mask '%s': %d vùng KEEP_OUT", safe_name, len(keepout))
         return {"map_name": safe_name, "keepout_zones": len(keepout), "mask_yaml": str(paths[0])}
 
-    def write_speed_mask(self, raw_name: str, zones: list[dict], robot_radius: float = 0.16) -> dict:
+    def write_speed_mask(self, raw_name: str, zones: list[dict], margin_m: float = ZONE_HARD_MARGIN_M) -> dict:
         """
         Tao mask Speed Filter cho Nav2 tu cac vung SPEED_ZONE (mode raw: gia tri o = diem anh 0..100).
         speed_filter_info_server (nav2/zone_filter_params.yaml): type 2, base 0.0, multiplier 0.01
         => toc do toi da = gia tri / 100 m/s; 0 = khong gioi han. Vung chong nhau lay gioi han cham hon.
-        Noi rong ban kinh robot: SpeedFilter xet tam xe, noi rong de xe cham lai truoc khi than xe vao vung.
+        Chi noi rong margin_m (vai cm) cho sai so dinh vi: SpeedFilter xet tam xe.
         """
         safe_name = self.normalize_map_name(raw_name)
         grid = self._map_grid(safe_name)
@@ -490,7 +530,7 @@ class Ros2RuntimeService:
                 continue
             value = max(1, min(100, round(limit * 100)))
             count += 1
-            for i in self._zone_pixel_indices(z, robot_radius, grid):
+            for i, _d in self._zone_cells(z, margin_m, grid):
                 if pixels[i] == 0 or value < pixels[i]:
                     pixels[i] = value
 

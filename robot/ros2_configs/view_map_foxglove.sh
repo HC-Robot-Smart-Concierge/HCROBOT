@@ -35,6 +35,7 @@ trap cleanup EXIT INT TERM
 
 echo "=== [0/4] TAT STACK CU (xe that / mo phong) ==="
 pkill -f "[f]rontier_explorer.py" 2>/dev/null || true
+pkill -INT -f "[l]ocalization_manager.py" 2>/dev/null || true
 pkill -f "[n]avigation_launch.py" 2>/dev/null || true
 pkill -f "lidar_ws_to_ros2.py" 2>/dev/null || true
 killall -q rosbridge_websocket foxglove_bridge async_slam_toolbox_node robot_state_publisher \

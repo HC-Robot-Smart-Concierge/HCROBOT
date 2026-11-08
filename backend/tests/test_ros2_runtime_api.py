@@ -59,13 +59,14 @@ def test_export_pgm_to_json_uses_bottom_row_as_origin(tmp_path: Path):
     assert (data["origin_x"], data["origin_y"], data["resolution"]) == (-1.0, -2.0, 0.05)
 
 
-def _zone_service(tmp_path: Path) -> Ros2RuntimeService:
-    """Map 4 x 2 m, 0.1 m/o, goc (0, 0)."""
+def _zone_service(tmp_path: Path, res: float = 0.1) -> Ros2RuntimeService:
+    """Map 4 x 2 m, goc (0, 0), do phan giai res (m/o)."""
     service = Ros2RuntimeService(project_root=tmp_path)
     service.maps_dir.mkdir(parents=True)
-    _write_pgm(service.maps_dir / "zmap.pgm", 40, 20, bytes([254] * 800))
+    w, h = round(4.0 / res), round(2.0 / res)
+    _write_pgm(service.maps_dir / "zmap.pgm", w, h, bytes([254] * (w * h)))
     (service.maps_dir / "zmap.yaml").write_text(
-        "image: zmap.pgm\nresolution: 0.1\norigin: [0.0, 0.0, 0.0]\n", encoding="utf-8"
+        f"image: zmap.pgm\nresolution: {res}\norigin: [0.0, 0.0, 0.0]\n", encoding="utf-8"
     )
     return service
 
@@ -78,6 +79,65 @@ def _mask_value(pgm: Path, x: float, y: float, res: float = 0.1) -> int:
     return pixels[(height - 1 - gy) * width + gx]  # PGM hang 0 = dinh anh
 
 
+def _row_outward(pgm: Path, x_edge: float, y: float, res: float, max_m: float = 0.6) -> list[tuple[float, int]]:
+    """(khoang cach tam o toi canh vung, gia tri mask) theo chieu +x tu canh vung ra ngoai."""
+    out = []
+    gx = int(x_edge / res)
+    while (gx + 0.5) * res - x_edge <= max_m:
+        d = (gx + 0.5) * res - x_edge
+        if d > 0:
+            out.append((d, _mask_value(pgm, (gx + 0.5) * res, y, res)))
+        gx += 1
+    return out
+
+
+def test_keepout_mask_forbids_drawn_zone_plus_only_a_few_cm(tmp_path: Path):
+    service = _zone_service(tmp_path, res=0.01)
+    zone = {"type": "KEEP_OUT", "x": 2.0, "y": 1.0, "width": 0.4, "height": 0.4}  # x 1.8..2.2
+    service.write_keepout_mask("zmap", [zone])
+    mask_yaml, mask_pgm = service.keepout_mask_paths("zmap")
+    # raw: gia tri o = diem anh. KeepoutFilter: 100 = cam han, 1..99 = ton chi phi (van di duoc)
+    assert "mode: raw" in mask_yaml.read_text(encoding="utf-8")
+    assert _mask_value(mask_pgm, 2.005, 1.005, 0.01) == 100  # trong vung ve
+    hard = [d for d, v in _row_outward(mask_pgm, 2.2, 1.005, 0.01) if v == 100]
+    assert hard and 0.04 <= max(hard) <= 0.06  # cam han chi rong them ~5 cm (truoc day 16 cm)
+
+
+def test_keepout_soft_band_is_passable_and_fades_out(tmp_path: Path):
+    service = _zone_service(tmp_path, res=0.01)
+    service.write_keepout_mask("zmap", [{"type": "KEEP_OUT", "x": 2.0, "y": 1.0, "width": 0.4, "height": 0.4}])
+    row = _row_outward(service.keepout_mask_paths("zmap")[1], 2.2, 1.005, 0.01)
+    band = [(d, v) for d, v in row if 0 < v < 100]
+    assert band, "phai co dai chi phi mem quanh vung de planner khong di sat mep"
+    assert band[0][1] == 99  # sat mep: gan nhu cam (planner ne), nhung khong cam han
+    values = [v for _d, v in band]
+    assert values == sorted(values, reverse=True)  # giam dan ra ngoai
+    assert max(d for d, _v in band) <= 0.32  # dai mem ket thuc trong ~30 cm
+    assert row[-1][1] == 0  # xa hon thi khong anh huong
+
+
+def test_keepout_overlap_keeps_the_stronger_value(tmp_path: Path):
+    service = _zone_service(tmp_path, res=0.01)
+    zones = [
+        {"type": "KEEP_OUT", "x": 1.0, "y": 1.0, "width": 0.4, "height": 0.4},   # x 0.8..1.2
+        {"type": "KEEP_OUT", "x": 1.45, "y": 1.0, "width": 0.2, "height": 0.4},  # x 1.35..1.55
+    ]
+    service.write_keepout_mask("zmap", zones)
+    _, pgm = service.keepout_mask_paths("zmap")
+    assert _mask_value(pgm, 1.355, 1.005, 0.01) == 100  # vung 2 van cam du nam trong dai mem vung 1
+    assert _mask_value(pgm, 1.275, 1.005, 0.01) >= 99   # giua 2 vung: gia tri lon hon cua 2 dai mem
+
+
+def test_speed_mask_adds_only_a_few_cm(tmp_path: Path):
+    service = _zone_service(tmp_path, res=0.01)
+    service.write_speed_mask("zmap", [{"type": "SPEED_ZONE", "x": 2.0, "y": 1.0, "width": 0.4,
+                                       "height": 0.4, "speed_limit": 0.12}])
+    row = _row_outward(service.speed_mask_paths("zmap")[1], 2.2, 1.005, 0.01, max_m=0.2)
+    limited = [d for d, v in row if v == 12]
+    assert limited and 0.04 <= max(limited) <= 0.06
+    assert all(v in (0, 12) for _d, v in row)
+
+
 def test_speed_mask_encodes_limit_and_keeps_slowest_overlap(tmp_path: Path):
     service = _zone_service(tmp_path)
     zones = [
@@ -86,7 +146,7 @@ def test_speed_mask_encodes_limit_and_keeps_slowest_overlap(tmp_path: Path):
         {"type": "KEEP_OUT", "x": 3.0, "y": 1.0, "width": 0.4, "height": 0.4, "speed_limit": 0.0},
         {"type": "NO_STOP", "x": 3.0, "y": 0.5, "width": 0.4, "height": 0.4, "speed_limit": 0.15},
     ]
-    result = service.write_speed_mask("zmap", zones, robot_radius=0.0)
+    result = service.write_speed_mask("zmap", zones, margin_m=0.0)
     mask_yaml, mask_pgm = service.speed_mask_paths("zmap")
 
     assert result["speed_zones"] == 2
@@ -105,7 +165,7 @@ def test_speed_mask_skips_non_positive_limit_and_caps_at_one_mps(tmp_path: Path)
         {"type": "SPEED_ZONE", "x": 1.0, "y": 1.0, "width": 0.6, "height": 0.6, "speed_limit": 0.0},
         {"type": "SPEED_ZONE", "x": 3.0, "y": 1.0, "width": 0.6, "height": 0.6, "speed_limit": 2.5},
     ]
-    result = service.write_speed_mask("zmap", zones, robot_radius=0.0)
+    result = service.write_speed_mask("zmap", zones, margin_m=0.0)
     _, mask_pgm = service.speed_mask_paths("zmap")
     assert result["speed_zones"] == 1
     assert _mask_value(mask_pgm, 1.0, 1.0) == 0
@@ -122,7 +182,7 @@ def test_write_zone_masks_writes_keepout_and_speed_masks(tmp_path: Path):
     assert result["keepout_zones"] == 1 and result["speed_zones"] == 1
     for yaml_path, pgm_path in (service.keepout_mask_paths("zmap"), service.speed_mask_paths("zmap")):
         assert yaml_path.is_file() and pgm_path.is_file()
-    assert _mask_value(service.keepout_mask_paths("zmap")[1], 3.0, 1.0) == 0  # keepout = den
+    assert _mask_value(service.keepout_mask_paths("zmap")[1], 3.0, 1.0) == 100  # raw: 100 = cam han
 
 
 def test_reload_zone_masks_loads_both_masks_when_navigation_runs(tmp_path: Path, monkeypatch):

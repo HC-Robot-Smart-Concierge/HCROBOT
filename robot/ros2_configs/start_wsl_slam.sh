@@ -35,6 +35,8 @@ pkill -f "lidar_ws_to_ros2.py" 2>/dev/null || true
 pkill -f "static_transform_publisher" 2>/dev/null || true
 pkill -f "async_slam_toolbox_node" 2>/dev/null || true
 pkill -f "frontier_explorer.py" 2>/dev/null || true
+# Gac cong dinh vi cua che do Navigation con sot se HUY moi goal cua bo tu quet => tat.
+pkill -INT -f "[l]ocalization_manager.py" 2>/dev/null || true
 pkill -f "[n]avigation_launch.py" 2>/dev/null || true
 fuser -k 9090/tcp 2>/dev/null || true
 fuser -k 8765/tcp 2>/dev/null || true
@@ -136,9 +138,15 @@ if [ "$EXPLORE" = "1" ] && [ "$SLAM_READY" = "1" ]; then
     sleep 8
     echo "!!! XE THAT SE TU CHAY SAU 10 GIAY. Dung xa xe ra. Ctrl+C de huy/dung bat ky luc nao."
     for i in 10 9 8 7 6 5 4 3 2 1; do echo "   $i..."; sleep 1; done
-    # EXPLORE_SAVE khong dat -> ten tu dong; dat rong (EXPLORE_SAVE=) -> quet xong KHONG luu.
-    python3 "$SCRIPT_DIR/frontier_explorer.py" \
-      --ros-args -p save_map_name:="${EXPLORE_SAVE-auto_map_$(date +%Y_%m_%d_%H%M)}" &
+    # EXPLORE_SAVE khong dat -> ten tu dong; dat rong (EXPLORE_SAVE=, Web) -> quet xong KHONG tu
+    # luu, Web hoi ten roi luu. Khong truyen "-p save_map_name:=" rong: rcl khong parse duoc gia
+    # tri rong => explorer chet ngay luc khoi dong, xe khong bao gio tu chay.
+    EXPLORE_SAVE_NAME="${EXPLORE_SAVE-auto_map_$(date +%Y_%m_%d_%H%M)}"
+    EXPLORE_ARGS=()
+    if [ -n "$EXPLORE_SAVE_NAME" ]; then
+      EXPLORE_ARGS=(--ros-args -p "save_map_name:=$EXPLORE_SAVE_NAME")
+    fi
+    python3 "$SCRIPT_DIR/frontier_explorer.py" "${EXPLORE_ARGS[@]}" &
     EXPLORE_PID=$!
   fi
 fi

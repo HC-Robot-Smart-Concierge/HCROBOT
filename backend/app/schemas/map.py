@@ -1,5 +1,6 @@
 from typing import List, Optional
-from pydantic import BaseModel, Field
+import math
+from pydantic import BaseModel, Field, model_validator
 
 
 class Pose2D(BaseModel):
@@ -32,6 +33,15 @@ class ZoneSchema(BaseModel):
     floor: str = "Sảnh Tầng 1"
     description: Optional[str] = None
     map_id: Optional[str] = Field(None, description="Tên map SLAM chứa vùng này (vd: layout2)")
+
+    @model_validator(mode='after')
+    def validate_speed_zone(self):
+        if self.type.upper() in ('SPEED_ZONE', 'SLOW_SPEED'):
+            if self.speed_limit is None or not math.isfinite(self.speed_limit) or not 0.01 <= self.speed_limit <= 1.0:
+                raise ValueError('Giới hạn tốc độ phải từ 0.01 đến 1.00 m/s.')
+            if not all(math.isfinite(v) for v in (self.x, self.y, self.width, self.height)) or self.width <= 0 or self.height <= 0:
+                raise ValueError('Vùng tốc độ phải có tọa độ hữu hạn và kích thước dương.')
+        return self
 
 
 class MapMetaData(BaseModel):

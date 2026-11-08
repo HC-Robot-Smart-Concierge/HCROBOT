@@ -13,15 +13,21 @@ Chống kẹt (xe thật: sonar trên Pi chặn lệnh khi sát vật cản, Nav
 - Quay/rẽ qua kiểm tra vùng quét của LiDAR + local costmap; vướng thì chọn đường khác.
 - Thiếu cảm biến/costmap kéo dài: dừng tự hành và báo lý do.
 
+Kết thúc (xong / không tới được frontier nào / bị dừng): phát kết quả JSON lên /explore/status
+(latched) rồi THOÁT tiến trình sau vài giây => backend chuyển về MAPPING (SLAM vẫn chạy, giữ
+map) và Web hiện bảng đặt tên + lưu map.
+
 Chạy (đã có SLAM Toolbox + Nav2 slam:=true):
   python3 frontier_explorer.py --ros-args -p use_sim_time:=true -p save_map_name:=map_ao
 """
 
+import json
 import math
 import os
 import subprocess
 import sys
 import threading
+import time
 
 import rclpy
 from rclpy.action import ActionClient
@@ -32,14 +38,17 @@ from nav_msgs.msg import OccupancyGrid
 from nav2_msgs.action import NavigateToPose
 from geometry_msgs.msg import PoseStamped, Twist
 from sensor_msgs.msg import LaserScan
-from std_msgs.msg import Empty
+from std_msgs.msg import Empty, String
 from tf2_ros import Buffer, TransformListener
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from frontier_logic import (  # noqa: E402
-    FrontierMemory, MotionWatchdog, choose_frontier, choose_unstick_direction, find_frontiers,
-    frontier_still_open, safe_goal, scan_to_points,
+    FrontierMemory, MotionWatchdog, choose_frontier, choose_unstick_direction, exploration_result,
+    find_frontiers, frontier_still_open, safe_goal, scan_to_points,
 )
+
+# Phat ket qua roi cho them chut cho rosbridge/Web nhan truoc khi thoat tien trinh.
+EXIT_DELAY_SEC = 3.0
 from robot_status import lidar_clearances  # noqa: E402
 from retreat_logic import (  # noqa: E402
     RetreatTrail, ReverseFollower, body_scan, turn_clear,
@@ -127,16 +136,38 @@ class FrontierExplorer(Node):
         self.create_subscription(LaserScan, "/scan", self._on_scan,
                                  QoSProfile(depth=1, reliability=ReliabilityPolicy.BEST_EFFORT))
         self.cmd_pub = self.create_publisher(Twist, "/cmd_vel", 10)
+        # Ket qua phien tu quet cho Web (latched: Web ket noi muon van nhan duoc).
+        self.status_pub = self.create_publisher(String, "/explore/status", map_qos)
+        self.exit_at = None  # time.monotonic() luc thoat tien trinh sau khi bao ket qua
+        self.exit_requested = False
         self.create_subscription(Empty, "/robot/nav_cancel", self._on_stop, 10)
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
         self.nav = ActionClient(self, NavigateToPose, "navigate_to_pose")
         self.create_timer(1.0, self._tick)
         self.create_timer(0.1, self._maneuver_step)
+        self.create_timer(0.5, self._exit_check)
+        self._publish_status({"state": "EXPLORING", "message": "Robot đang tự quét map."})
         self.get_logger().info(
             f"🧭 Frontier explorer sẵn sàng (đích cách vật cản ≥ {self.goal_clearance_m:.2f} m, "
             f"đứng yên {self.stuck_timeout_sec:.0f} s là thoát kẹt), chờ /map và Nav2..."
         )
+
+    def _publish_status(self, result):
+        self.status_pub.publish(String(data=json.dumps(result, ensure_ascii=False)))
+
+    def _report_and_exit(self, result):
+        """Bao ket qua len Web roi thoat: backend thay explorer tat => MAPPING => Web hoi ten luu map."""
+        self._publish_status(result)
+        self.get_logger().info(
+            f"📣 /explore/status = {result['state']}; thoát explorer sau {EXIT_DELAY_SEC:.0f} s "
+            "(SLAM vẫn chạy, lưu map trên Web hoặc save_ros2_map.sh)"
+        )
+        self.exit_at = time.monotonic() + EXIT_DELAY_SEC
+
+    def _exit_check(self):
+        if self.exit_at is not None and time.monotonic() >= self.exit_at:
+            self.exit_requested = True
 
     # ------------------------------------------------------------------ tiện ích
     def _now(self):
@@ -198,6 +229,8 @@ class FrontierExplorer(Node):
             self.goal_handle.cancel_goal_async()
         self._publish_vx(0.0)
         self.get_logger().info("Đã dừng tự quét và lùi thoát khe theo yêu cầu")
+        if self.exit_at is None:
+            self._report_and_exit(exploration_result(self.visited, self.stuck_count, [], stopped=True))
 
     def _on_scan(self, msg):
         self.scan_msg = msg
@@ -688,6 +721,7 @@ class FrontierExplorer(Node):
     def _finish(self, frontiers):
         self.finished = True
         left = ", ".join(f"({f.goal[0]:.2f}, {f.goal[1]:.2f})" for f in frontiers[:6])
+        result = exploration_result(self.visited, self.stuck_count, frontiers)
         if self.visited == 0:
             # Chưa tới được điểm nào: gần như chắc chắn Nav2/TF/motor có lỗi chứ không
             # phải đã quét xong. Không lưu để khỏi ghi đè bằng một map gần như trống.
@@ -695,15 +729,18 @@ class FrontierExplorer(Node):
                 f"❌ Dừng khám phá: chưa tới được frontier nào ({len(frontiers)} cụm còn lại: {left}). "
                 "Kiểm tra log Nav2 (controller_server/bt_navigator) và motor. KHÔNG lưu map."
             )
+            self._report_and_exit(result)
             return
         self.get_logger().info(
             f"🎉 Khám phá xong: đã thăm {self.visited} chỗ, thoát kẹt {self.stuck_count} lần, "
             f"còn {len(frontiers)} cụm không tới/không thấy được" + (f": {left}" if left else "")
         )
         if self.save_map_name:
-            self._save_map()
+            self._save_map(result)  # bao ket qua + thoat sau khi luu xong
+        else:
+            self._report_and_exit(result)
 
-    def _save_map(self):
+    def _save_map(self, result):
         """Lưu /map bằng map_saver_cli (danh sách đối số, không qua shell).
 
         Không dùng /slam_toolbox/save_map: SLAM Toolbox ghép đường dẫn vào lệnh shell
@@ -720,14 +757,18 @@ class FrontierExplorer(Node):
             ]
             try:
                 proc = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+                ok = proc.returncode == 0 and os.path.isfile(path + ".yaml") and os.path.isfile(path + ".pgm")
+                detail = " | ".join((proc.stderr or proc.stdout or "").strip().splitlines()[-3:])
             except (OSError, subprocess.TimeoutExpired) as exc:
-                logger.error(f"❌ Không lưu được map {path}: {exc}")
-                return
-            if proc.returncode == 0 and os.path.isfile(path + ".yaml") and os.path.isfile(path + ".pgm"):
+                ok, detail = False, str(exc)
+            if ok:
                 logger.info(f"💾 Đã lưu map: {path}.yaml / .pgm")
+                result["saved_map"] = self.save_map_name
+                result["message"] += f" Đã tự lưu map '{self.save_map_name}'."
             else:
-                tail = (proc.stderr or proc.stdout or "").strip().splitlines()[-3:]
-                logger.error(f"❌ Lưu map thất bại (mã {proc.returncode}): {' | '.join(tail)}")
+                logger.error(f"❌ Lưu map thất bại {path}: {detail}")
+                result["message"] += f" Tự lưu map '{self.save_map_name}' thất bại, hãy lưu trên Web."
+            self._report_and_exit(result)
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -736,11 +777,18 @@ def main():
     rclpy.init()
     node = FrontierExplorer()
     try:
-        rclpy.spin(node)
+        # Quet xong / bi dung => node tu dat exit_requested (sau khi bao /explore/status)
+        while rclpy.ok() and not node.exit_requested:
+            rclpy.spin_once(node, timeout_sec=0.2)
+        if node.exit_requested:
+            node.get_logger().info("👋 Thoát frontier explorer (SLAM vẫn chạy để lưu map)")
     except KeyboardInterrupt:
         pass
     finally:
-        node._publish_vx(0.0)
+        try:
+            node._publish_vx(0.0)
+        except Exception:  # context da tat (Ctrl+C) - khong con gi de dung
+            pass
         node.destroy_node()
         rclpy.try_shutdown()
 

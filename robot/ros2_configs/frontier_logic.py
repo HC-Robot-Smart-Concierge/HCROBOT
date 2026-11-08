@@ -88,6 +88,27 @@ def find_frontiers(
     return frontiers
 
 
+def exploration_result(visited: int, stuck_count: int, frontiers: Sequence[Frontier],
+                       stopped: bool = False) -> dict:
+    """Ket qua cuoi phien tu quet (phat /explore/status cho Web hien popup luu map).
+
+    DONE: da toi it nhat 1 frontier. FAILED: chua toi duoc frontier nao (Nav2/TF/motor
+    loi, map gan nhu chua quet). STOPPED: bi dung giua chung (/robot/nav_cancel).
+    """
+    left = len(frontiers)
+    if stopped:
+        state, message = "STOPPED", f"Đã dừng tự quét theo yêu cầu (đã thăm {visited} chỗ)."
+    elif visited == 0:
+        state = "FAILED"
+        message = (f"Robot chưa tới được điểm khám phá nào ({left} cụm còn lại): "
+                   "kiểm tra Nav2/motor, map có thể chưa đầy đủ.")
+    else:
+        state = "DONE"
+        message = f"Đã quét xong: thăm {visited} chỗ, thoát kẹt {stuck_count} lần"
+        message += f", còn {left} chỗ không tới được." if left else "."
+    return {"state": state, "visited": visited, "stuck": stuck_count, "frontiers_left": left, "message": message}
+
+
 def choose_frontier(
     frontiers: Iterable[Frontier],
     robot: Point,

@@ -19,6 +19,7 @@ import {
   parseLaserScan,
   quaternionToYaw,
 } from '../../services/rosbridgeService';
+import { defaultMapName, describeExploreResult } from './exploreResult';
 import {
   Activity,
   BatteryCharging,
@@ -137,9 +138,10 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
   // Frontier Exploration (Quet full phong tu dong bang SLAM)
   const [isExploring, setIsExploring] = useState(false);
   const [exploredCount, setExploredCount] = useState(0);
-  const [exploreAutoSave, setExploreAutoSave] = useState(true);
-  const [exploreSaveName, setExploreSaveName] = useState('auto_explored_map');
   const [isExploreModalOpen, setIsExploreModalOpen] = useState(false);
+  // Ket qua cuoi cua frontier_explorer (/explore/status) + bang Luu map mo ra vi quet xong
+  const [exploreResult, setExploreResult] = useState(null);
+  const [saveFromExplore, setSaveFromExplore] = useState(false);
 
   // Workflow Manager
   const [isWorkflowModalOpen, setIsWorkflowModalOpen] = useState(false);
@@ -256,8 +258,12 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
           setIsExploring(true);
         } else if (!waitingForExplorer) {
           if (exploreSeenRef.current && data?.mode === 'MAPPING') {
-            setNavNotification('Robot đã tự quét xong (hoặc dừng). Xem log terminal / Foxglove; map tự lưu nếu đã bật.');
-            setTimeout(() => setNavNotification(''), 8000);
+            // Explorer da bao ket qua va tu thoat; SLAM van giu map => hoi ten de luu ngay.
+            setMapMode('MAPPING');
+            setIsMapLocked(false);
+            setSaveMapName(defaultMapName());
+            setSaveFromExplore(true);
+            setIsSaveMapModalOpen(true);
           }
           exploreSeenRef.current = false;
           exploreStartedAtRef.current = 0;
@@ -493,6 +499,15 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
       }
     });
 
+    // 9. Ket qua tu quet (frontier_explorer phat roi tu thoat): noi dung bang Luu map
+    const unsubExplore = client.subscribe('/explore/status', 'std_msgs/String', (msg) => {
+      try {
+        setExploreResult(typeof msg.data === 'string' ? JSON.parse(msg.data) : msg.data);
+      } catch {
+        // bo qua goi tin hong
+      }
+    });
+
     return () => {
       unsubMap();
       unsubScan();
@@ -502,6 +517,7 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
       unsubGoal();
       unsubStatus();
       unsubSensorHealth();
+      unsubExplore();
       client.disconnect();
     };
   }, [rosbridgeUrl]);
@@ -678,7 +694,8 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
       setTimeout(() => setNavNotification(''), 6500);
       return;
     }
-    setSaveMapName(`map_${new Date().toISOString().slice(0, 10).replace(/-/g, '_')}_${Date.now().toString().slice(-4)}`);
+    setSaveMapName(defaultMapName());
+    setSaveFromExplore(false);
     setIsSaveMapModalOpen(true);
   };
 
@@ -1027,7 +1044,10 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
       setGridData(new Array(200 * 200).fill(-1));
       setScanPoints([]);
       setHasLiveRosMap(false);
-      const result = await startRos2Explore(exploreSaveName, exploreAutoSave);
+      setExploreResult(null);
+      setSaveFromExplore(false);
+      // Khong tu luu: quet xong Web hien bang de nguoi dung dat ten roi moi luu.
+      const result = await startRos2Explore('auto_explored_map', false);
       setExploredCount(0);
       exploreStartedAtRef.current = Date.now();
       exploreSeenRef.current = false;
@@ -1891,12 +1911,34 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
               </div>
               <button
                 type="button"
-                onClick={() => setIsSaveMapModalOpen(false)}
+                onClick={() => {
+                  setIsSaveMapModalOpen(false);
+                  setSaveFromExplore(false);
+                }}
                 className="text-stone-400 hover:text-stone-700 text-lg cursor-pointer"
               >
                 &times;
               </button>
             </div>
+
+            {/* Mo ra vi robot tu quet xong: bao ket qua truoc khi dat ten */}
+            {saveFromExplore && (() => {
+              const info = describeExploreResult(exploreResult);
+              const tone = info.tone === 'success'
+                ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                : info.tone === 'warning'
+                ? 'border-amber-200 bg-amber-50 text-amber-800'
+                : 'border-stone-200 bg-stone-50 text-stone-700';
+              return (
+                <div className={`p-3 rounded-lg border text-xs leading-relaxed ${tone}`}>
+                  <span className="font-bold block mb-0.5">{info.title}</span>
+                  {info.detail}
+                  <span className="block mt-1 opacity-80">
+                    Đặt tên rồi bấm Lưu. Bấm Hủy nếu muốn lái tay quét thêm (SLAM vẫn giữ bản đồ), lưu sau bằng nút “2. LƯU & KHÓA”.
+                  </span>
+                </div>
+              );
+            })()}
 
             <form onSubmit={handleSaveMap} className="space-y-3">
               <div>
@@ -1932,7 +1974,10 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
               <div className="flex justify-end gap-2 pt-3 border-t"style={{ borderColor: '#BFBFBD'}}>
                 <button
                   type="button"
-                  onClick={() => setIsSaveMapModalOpen(false)}
+                  onClick={() => {
+                    setIsSaveMapModalOpen(false);
+                    setSaveFromExplore(false);
+                  }}
                   className="px-4 py-2 rounded-lg text-xs font-semibold border cursor-pointer"
                   style={{ backgroundColor: '#FFFFFF', borderColor: '#BFBFBD', color: '#262626'}}
                 >
@@ -2095,28 +2140,12 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
               </div>
             </div>
 
-            <div className="space-y-3 pt-2">
-              <div>
-                <label className="block text-xs font-semibold text-stone-700 mb-1">Tên bản đồ sẽ lưu</label>
-                <input
-                  type="text"
-                  value={exploreSaveName}
-                  onChange={(e) => setExploreSaveName(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border text-xs bg-white text-stone-800 outline-none focus:border-emerald-500"
-                  style={{ borderColor: '#BFBFBD'}}
-                  placeholder="auto_explored_map"
-                />
-              </div>
-
-              <label className="flex items-center gap-2 cursor-pointer text-xs text-stone-700">
-                <input
-                  type="checkbox"
-                  checked={exploreAutoSave}
-                  onChange={(e) => setExploreAutoSave(e.target.checked)}
-                  className="rounded text-emerald-600"
-                />
-                <span>Tự động lưu file bản đồ khi hoàn thành quét full</span>
-              </label>
+            <div className="p-3 rounded-lg border border-emerald-200 bg-emerald-50 text-[11px] text-emerald-800 flex items-start gap-2">
+              <Save className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5"/>
+              <span>
+                Không cần đặt tên trước: khi robot quét xong (hoặc bị dừng), Web sẽ báo kết quả và hiện bảng
+                <strong> Lưu bản đồ</strong> để bạn đặt tên rồi lưu.
+              </span>
             </div>
 
             <div className="flex justify-end gap-2 pt-3 border-t"style={{ borderColor: '#BFBFBD'}}>

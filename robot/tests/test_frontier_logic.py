@@ -7,7 +7,8 @@ ROBOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(ROBOT_DIR, "ros2_configs"))
 
 from frontier_logic import (  # noqa: E402
-    Frontier, FrontierMemory, MotionWatchdog, choose_frontier, choose_unstick_direction, find_frontiers,
+    Frontier, FrontierMemory, MotionWatchdog, choose_frontier, choose_unstick_direction, exploration_result,
+    find_frontiers,
     frontier_still_open, safe_goal, scan_to_points,
 )
 
@@ -80,6 +81,26 @@ class TestFindFrontiers(unittest.TestCase):
         for f in fronts:
             gx, gy = int(f.goal[0] / RES), int(f.goal[1] / RES)
             self.assertEqual(data[gy * n + gx], 0, "dich phai la o trong")
+
+
+class TestExplorationResult(unittest.TestCase):
+    """Ket qua cuoi phien tu quet -> /explore/status -> Web hien popup luu map."""
+
+    def test_done_when_robot_visited_frontiers(self):
+        left = [Frontier(goal=(1.0, 2.0), size=9, centroid=(1.0, 2.0))]
+        r = exploration_result(visited=5, stuck_count=1, frontiers=left)
+        self.assertEqual(r["state"], "DONE")
+        self.assertEqual((r["visited"], r["stuck"], r["frontiers_left"]), (5, 1, 1))
+        self.assertIn("5", r["message"])
+
+    def test_failed_when_nothing_was_reached(self):
+        r = exploration_result(visited=0, stuck_count=0, frontiers=[])
+        self.assertEqual(r["state"], "FAILED")
+
+    def test_stopped_wins_over_counts(self):
+        r = exploration_result(visited=3, stuck_count=0, frontiers=[], stopped=True)
+        self.assertEqual(r["state"], "STOPPED")
+        self.assertEqual(r["visited"], 3)
 
 
 class TestChooseFrontier(unittest.TestCase):

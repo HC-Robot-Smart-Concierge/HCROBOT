@@ -1,5 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
-import { composeMapPose, laserPointToMap, navigationBlockingReason, sendNav2Endpoint } from './physicalMapNavigation';
+import {
+  amclPoseIsReliable, composeMapPose, laserPointToMap, localizationFromManager, navigationBlockingReason, sendNav2Endpoint,
+} from './physicalMapNavigation';
 
 const now = 10000;
 const config = { originX: -1, originY: -1, widthMeters: 4, heightMeters: 4 };
@@ -11,6 +13,40 @@ const ready = () => ({
 const grid = () => ({ header: { frame_id: 'map' }, info: { width: 40, height: 40, resolution: 0.1,
   origin: { position: { x: -1, y: -1 }, orientation: { z: 0, w: 1 } } }, data: Array(1600).fill(0) });
 const target = { x: 1, y: 1, yaw: 0.6 };
+
+describe('AMCL localization quality', () => {
+  const message = (xVariance = 0.01, yVariance = 0.01, yawVariance = 0.01) => {
+    const covariance = Array(36).fill(0);
+    covariance[0] = xVariance;
+    covariance[7] = yVariance;
+    covariance[35] = yawVariance;
+    return { pose: { pose: { position: { x: 1, y: 1 }, orientation: { z: 0, w: 1 } }, covariance } };
+  };
+
+  it('accepts a concentrated pose distribution', () => {
+    expect(amclPoseIsReliable(message())).toBe(true);
+  });
+  it('rejects the recorded uncertain pose even though AMCL published it', () => {
+    expect(amclPoseIsReliable(message(0.1909458, 0.4075255, 1.5188223))).toBe(false);
+  });
+  it.each([[0.07, 0.01, 0.01], [0.01, 0.07, 0.01], [0.01, 0.01, 0.2]])(
+    'rejects excessive uncertainty (%s, %s, %s)', (x, y, yaw) => {
+      expect(amclPoseIsReliable(message(x, y, yaw))).toBe(false);
+    });
+  it('accounts for the worst correlated horizontal direction', () => {
+    const msg = message(0.04, 0.04);
+    msg.pose.covariance[1] = msg.pose.covariance[6] = 0.03;
+    expect(amclPoseIsReliable(msg)).toBe(false);
+  });
+  it('rejects missing, malformed and non-finite measurements', () => {
+    expect(amclPoseIsReliable({})).toBe(false);
+    expect(amclPoseIsReliable(message(-1))).toBe(false);
+    expect(amclPoseIsReliable(message(NaN))).toBe(false);
+    const msg = message();
+    msg.pose.pose.position.x = Infinity;
+    expect(amclPoseIsReliable(msg)).toBe(false);
+  });
+});
 
 describe('Physical robot map-frame navigation', () => {
   it('does not present raw Pi odometry as map coordinates when TF is missing', () => {
@@ -77,5 +113,33 @@ describe('Physical robot map-frame navigation', () => {
     expect(() => sendNav2Endpoint(client, ready(), { ...target, x: 20 }, config, grid())).toThrow(/ngoài bản đồ/);
     expect(client.publish).not.toHaveBeenCalled();
     expect(() => sendNav2Endpoint(client, ready(), target, config, grid())).toThrow(/Mất kết nối/);
+  });
+
+  it('shows the localization manager reason when the robot is not localized', () => {
+    const reason = 'Mất định vị: LiDAR chỉ còn khớp 20% bản đồ. Đã dừng xe.';
+    expect(navigationBlockingReason({ ...ready(), localized: false, localizationReason: reason })).toBe(reason);
+  });
+});
+
+describe('localizationFromManager (/localization/state tu robot)', () => {
+  const at = 1_000_000;
+  const msg = (state, extra = {}) => ({ state, reason: `ly do ${state}`, score: 0.83, ...extra });
+
+  it('trusts only a recent LOCALIZED message', () => {
+    const loc = localizationFromManager(msg('LOCALIZED'), at, at + 1000);
+    expect(loc).toMatchObject({ fresh: true, localized: true, tone: 'good' });
+    expect(loc.label).toContain('83%');
+  });
+
+  it.each(['UNLOCALIZED', 'LOCALIZING', 'LOCALIZATION_LOST'])('blocks navigation while %s', (state) => {
+    const loc = localizationFromManager(msg(state), at, at + 1000);
+    expect(loc.fresh).toBe(true);
+    expect(loc.localized).toBe(false);
+    expect(loc.reason).toBe(`ly do ${state}`);
+  });
+
+  it('reports no manager when it is silent or absent (Web falls back to its own AMCL check)', () => {
+    expect(localizationFromManager(msg('LOCALIZED'), at, at + 6000).fresh).toBe(false);
+    expect(localizationFromManager(null, 0, at).fresh).toBe(false);
   });
 });

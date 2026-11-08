@@ -63,6 +63,7 @@ pkill -f "[r]os2 launch foxglove_bridge" 2>/dev/null || true
 pkill -f "[r]os2 launch slam_toolbox" 2>/dev/null || true
 pkill -f "static_transform_publisher" 2>/dev/null || true
 pkill -f "[n]avigation_launch.py" 2>/dev/null || true
+pkill -INT -f "[l]ocalization_manager.py" 2>/dev/null || true
 pkill -f "[z]one_filters_launch.py" 2>/dev/null || true
 pkill -f "costmap_filter_info_server" 2>/dev/null || true
 pkill -9 -f "gz sim" 2>/dev/null || true
@@ -162,6 +163,11 @@ if [ -n "$MAP_YAML" ]; then
   ros2 launch "$SCRIPT_DIR/nav2/zone_filters_launch.py" \
     map_name:="$(basename "${MAP_YAML%.yaml}")" use_sim_time:=True &
   MASK_PIDS="$!"
+  # Gac cong dinh vi giong xe that; KHONG luu/khoi phuc vi tri (persist_pose:=false) de khong
+  # ghi de file vi tri cua xe that cung ten map. Vi tri dau do script gui ben duoi.
+  python3 "$SCRIPT_DIR/localization_manager.py" --ros-args -p use_sim_time:=true \
+    -p map_name:="$(basename "${MAP_YAML%.yaml}")" -p persist_pose:=false &
+  MASK_PIDS="$MASK_PIDS $!"
   ros2 launch "$SCRIPT_DIR/nav2/navigation_launch.py" map:="$MAP_YAML" use_sim_time:=True simulation:=true \
     params_file:="$SCRIPT_DIR/nav2/nav2_params.yaml" autostart:=True &
   NAV_PID=$!
@@ -172,7 +178,8 @@ if [ -n "$MAP_YAML" ]; then
     sleep 1
   done
   read -r QZ QW < <(python3 -c "import math,sys; y=float(sys.argv[1]); print(math.sin(y/2), math.cos(y/2))" "${INIT_YAW:-0}")
-  timeout 15 ros2 topic pub --once -w 1 /initialpose geometry_msgs/msg/PoseWithCovarianceStamped \
+  # -w 2: cho ca AMCL va localization_manager nghe /initialpose roi moi gui (1 lan).
+  timeout 15 ros2 topic pub --once -w 2 /initialpose geometry_msgs/msg/PoseWithCovarianceStamped \
     "{header: {frame_id: map}, pose: {pose: {position: {x: ${INIT_X:-0}, y: ${INIT_Y:-0}}, orientation: {z: $QZ, w: $QW}},
       covariance: [0.0625, 0, 0, 0, 0, 0, 0, 0.0625, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.0685]}}" >/dev/null \

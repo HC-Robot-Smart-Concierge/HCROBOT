@@ -13,7 +13,10 @@ from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import LaserScan, JointState
 from nav_msgs.msg import Odometry, Path
-from geometry_msgs.msg import TransformStamped, PoseStamped, Twist
+from nav2_msgs.srv import ClearEntireCostmap
+from nav2_msgs.msg import SpeedLimit
+from geometry_msgs.msg import TransformStamped, PoseStamped, PoseWithCovarianceStamped, Twist
+from std_srvs.srv import Empty as EmptyService
 from std_msgs.msg import Empty, String
 from visualization_msgs.msg import Marker, MarkerArray
 from slam_toolbox.srv import Reset, SaveMap, Pause
@@ -28,6 +31,8 @@ from diff_drive import (  # noqa: E402
     DiffDriveConfig, StraightDriveConfig, twist_to_straight_command, twist_to_wheel_pwm,
 )
 from nav_result_tracker import NavResultTracker  # noqa: E402
+from localization_support import LocalizationWarmup, sensor_frame_is_fresh  # noqa: E402
+from speed_zone_logic import limit_wheel_pwm  # noqa: E402
 from robot_geometry import BODY_LENGTH_M, BODY_WIDTH_M, HALF_LENGTH_M  # noqa: E402
 from robot_status import (  # noqa: E402
     diagnose_stuck, format_status_line, lidar_clearances, threshold_warnings,
@@ -99,6 +104,8 @@ class LidarWsToRos2Bridge(Node):
         }
         self.scan_count = 0
         self.last_scan_time = 0.0
+        self.last_published_scan_time = 0.0
+        self.dropped_stale_scans = 0
         self.last_scan_points = 0
         self.pi_ws_connected = False
         self.encoder_packets = 0
@@ -110,6 +117,16 @@ class LidarWsToRos2Bridge(Node):
         if self.robot_mode not in ("MAPPING", "NAVIGATION"):
             self.robot_mode = "MAPPING"
 
+        self.localization_warmup = LocalizationWarmup()
+        self.nomotion_future = None
+        self.nomotion_client = self.create_client(EmptyService, '/request_nomotion_update')
+        self.relocalize_costmap_clients = [self.create_client(
+            ClearEntireCostmap, f'/{scope}_costmap/clear_entirely_{scope}_costmap')
+            for scope in ('local', 'global')]
+        self.initial_pose_sub = self.create_subscription(
+            PoseWithCovarianceStamped, '/initialpose', self.on_initial_pose, 10)
+        self.localization_timer = self.create_timer(0.25, self.update_localization)
+
         # Lắng nghe topic /cmd_vel để điều khiển xe và di chuyển robot trên RViz
         self.cmd_vel_sub = self.create_subscription(
             Twist,
@@ -117,6 +134,9 @@ class LidarWsToRos2Bridge(Node):
             self.on_cmd_vel_received,
             10
         )
+        self.zone_speed_limit = None
+        self.zone_speed_blocked = False
+        self.speed_limit_sub = self.create_subscription(SpeedLimit, '/speed_limit', self.on_speed_limit, 10)
 
         # Lắng nghe topic /robot/reset_map để reset sạch SLAM và đưa robot về (0,0)
         self.reset_sub = self.create_subscription(
@@ -346,7 +366,8 @@ class LidarWsToRos2Bridge(Node):
         """Publish truthful end-to-end mapping health, not just socket state."""
         now = time.monotonic()
         scan_age = None if self.last_scan_time <= 0.0 else max(0.0, now - self.last_scan_time)
-        lidar_live = scan_age is not None and scan_age < 1.5 and self.last_scan_points > 0
+        published_age = None if self.last_published_scan_time <= 0 else now - self.last_published_scan_time
+        lidar_live = published_age is not None and published_age < 1.5 and self.last_scan_points > 0
         reasons = []
         if not self.pi_ws_connected:
             reasons.append("PI_WEBSOCKET_OFFLINE")
@@ -360,9 +381,14 @@ class LidarWsToRos2Bridge(Node):
         msg = String()
         msg.data = json.dumps({
             "pi_ws_connected": self.pi_ws_connected,
+            "speed_limit_mps": self.zone_speed_limit,
+            "speed_limit_below_motor_floor": self.zone_speed_blocked,
+            "motor_min_linear_speed_mps": self.straight_cfg.min_pwm * self.straight_cfg.mps_per_pct,
             "lidar_live": lidar_live,
             "last_scan_age_sec": None if scan_age is None else round(scan_age, 2),
             "scan_points": self.last_scan_points,
+            "scans_dropped_stale": self.dropped_stale_scans,
+            "last_published_scan_age_sec": None if published_age is None else round(published_age, 3),
             "scan_packets": self.scan_count,
             "scans_dropped_while_turning": self.dropped_turn_scans,
             "scan_period_sec": round(self.scan_period_sec, 3),
@@ -829,6 +855,22 @@ class LidarWsToRos2Bridge(Node):
             # TF/odom chỉ do timer 30 Hz phát; không phát ở thread WebSocket để
             # tránh TF trùng/lệch timestamp.
 
+    def on_speed_limit(self, msg):
+        value = float(msg.speed_limit)
+        if not math.isfinite(value) or value < 0:
+            self.zone_speed_limit = 0.0
+            return
+        # Nav2 uses zero to restore the normal controller speed.
+        reference = float(os.getenv('HCROBOT_NAV_MAX_LINEAR_SPEED', '0.2'))
+        self.zone_speed_limit = None if value == 0 else (reference * value / 100 if msg.percentage else value)
+        self.zone_speed_blocked = False
+
+    def _limit_zone_pwm(self, left, right, config):
+        limited = limit_wheel_pwm(left, right, self.zone_speed_limit,
+                                 config.mps_per_pct, config.min_pwm)
+        self.zone_speed_blocked = (left != 0 or right != 0) and limited == (0, 0)
+        return limited
+
     def on_cmd_vel_received(self, msg: Twist):
         now = time.monotonic()
         was_active = (now - self.last_cmd_time) < 0.8 and (
@@ -842,6 +884,7 @@ class LidarWsToRos2Bridge(Node):
 
         if self.cmd_vel_mode == "diff":
             left, right = twist_to_wheel_pwm(msg.linear.x, msg.angular.z, self.diff_cfg)
+            left, right = self._limit_zone_pwm(left, right, self.diff_cfg)
             moving = left != 0 or right != 0
             self.desired_motion = "drive" if moving else "stop"
             self._turn_pulse_started = None
@@ -851,6 +894,11 @@ class LidarWsToRos2Bridge(Node):
         if self.cmd_vel_mode == "straight":
             kind, left, right = twist_to_straight_command(msg.linear.x, msg.angular.z, self.straight_cfg)
             if kind == "drive":
+                left, right = self._limit_zone_pwm(left, right, self.straight_cfg)
+                if left == 0 and right == 0:
+                    self.desired_motion = 'stop'
+                    self._send_udp_to_pi5('stop')
+                    return
                 self.desired_motion = "drive"
                 self._turn_pulse_started = None
                 self._send_udp_to_pi5(f"drive:{left}:{right}")
@@ -891,6 +939,12 @@ class LidarWsToRos2Bridge(Node):
         if motion != "stop":
             pwm = self.teleop_pwm_turn if motion in ("left", "right") else self.teleop_pwm_forward
             pwm = max(20, min(50, pwm))
+            if motion not in ('left', 'right'):
+                pwm, _ = self._limit_zone_pwm(pwm, pwm, self.straight_cfg)
+                if pwm == 0:
+                    self.desired_motion = 'stop'
+                    self._send_udp_to_pi5('stop')
+                    return
             self._send_udp_speed(pwm)
         self.desired_motion = motion
         self._send_udp_to_pi5(self._gate_turn_pulse(motion, self.last_cmd_time))
@@ -1013,13 +1067,13 @@ class LidarWsToRos2Bridge(Node):
             vx = self.measured_vx
             wz = self.measured_wz
 
-        # TF identity map->odom chỉ phát TRƯỚC scan đầu tiên để RobotModel hiện ngay
-        # lúc khởi động. Sau đó SLAM Toolbox (MAPPING) / AMCL (NAVIGATION) là nguồn
-        # map->odom duy nhất: phát chồng identity khi LiDAR chập chờn sẽ làm map
+        # Mapping: TF identity chỉ phát TRƯỚC scan đầu tiên để RobotModel hiện ngay.
+        # Navigation: AMCL luôn là nguồn map->odom duy nhất, kể cả trước scan đầu.
+        # Phát chồng identity khi LiDAR chập chờn sẽ làm map
         # nhảy về gốc. HCROBOT_IDENTITY_MAP_ODOM_ON_STALE=1 để dùng lại hành vi cũ.
         never_scanned = self.last_scan_time <= 0.0
         scan_stale = (now_mono - self.last_scan_time) > 1.5
-        if never_scanned or (self.identity_map_odom_on_stale and scan_stale):
+        if self.robot_mode == "MAPPING" and (never_scanned or (self.identity_map_odom_on_stale and scan_stale)):
             map_odom = TransformStamped()
             map_odom.header.stamp = self.get_clock().now().to_msg()
             map_odom.header.frame_id = "map"
@@ -1130,6 +1184,10 @@ class LidarWsToRos2Bridge(Node):
     def publish_scan(self, points, scan_age_sec=None, encoder_age_sec=None):
         if not points:
             return
+        # Never stamp old Pi sensor snapshots as current wall observations.
+        if not sensor_frame_is_fresh(scan_age_sec, encoder_age_sec):
+            self.dropped_stale_scans += 1
+            return
         # Khoang ho 4 phia cho dong trang thai (ke ca scan bi bo khi xoay).
         self.last_clearances = lidar_clearances(points)
 
@@ -1220,6 +1278,29 @@ class LidarWsToRos2Bridge(Node):
         # tra odom -> base_link tại đúng thời điểm đó từ lịch sử TF mà timer
         # 30 Hz phát. Phát pose hiện tại với stamp quá khứ sẽ làm sai lệch.
         self.publisher_.publish(msg)
+        self.last_published_scan_time = time.monotonic()
+
+    def on_initial_pose(self, msg):
+        if self.robot_mode == "NAVIGATION" and msg.header.frame_id.lstrip('/') == 'map':
+            self.localization_warmup.arm(time.monotonic())
+            # Remove old observations projected using the previous map pose.
+            # Static walls/keepout remain and fresh LiDAR repopulates obstacles.
+            for client in self.relocalize_costmap_clients:
+                if client.service_is_ready():
+                    client.call_async(ClearEntireCostmap.Request())
+
+    def update_localization(self):
+        if self.nomotion_future is not None and not self.nomotion_future.done():
+            return
+        now = time.monotonic()
+        if not self.localization_warmup.ready(
+                now, self.last_published_scan_time, self.desired_motion == 'stop',
+                self.measured_vx, self.measured_wz):
+            return
+        if self.nomotion_client.service_is_ready():
+            # This service only asks AMCL to process the next scan. No cmd_vel.
+            self.nomotion_future = self.nomotion_client.call_async(EmptyService.Request())
+            self.localization_warmup.sent(now, self.last_published_scan_time)
 
 
 async def ws_loop(node: LidarWsToRos2Bridge, ws_url="ws://100.99.72.51:8000/api/v1/map/ws?consumer=ros2"):

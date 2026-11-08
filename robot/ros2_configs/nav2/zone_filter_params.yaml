@@ -2,7 +2,8 @@
 # luu/xoa vung hoac bat Navigation tu Web (ros2_runtime_service.write_zone_masks) va nap lai
 # ngay bang service <server>/load_map neu Nav2 dang chay. Chay boi nav2/zone_filters_launch.py.
 #
-#   KEEP_OUT   -> robot/maps/keepout/<map>.yaml (trinary, den = cam) -> KeepoutFilter (2 costmap)
+#   KEEP_OUT   -> robot/maps/keepout/<map>.yaml (raw: 100 = cam han = vung ve + 5 cm, 1..99 = dai
+#                 chi phi mem ~25 cm de planner khong di sat mep) -> KeepoutFilter (2 costmap)
 #   SPEED_ZONE -> robot/maps/speed/<map>.yaml   (raw, diem anh = m/s x 100, 0 = khong gioi han)
 #                 -> SpeedFilter (global_costmap) -> /speed_limit -> controller_server
 #   NO_STOP    -> khong co mask: Web khong cho chon endpoint trong vung (chi duoc di ngang qua).

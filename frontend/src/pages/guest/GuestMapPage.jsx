@@ -47,16 +47,21 @@ const normalizeDestKey = (rawKey) => {
   return resolveKnownDestKey(rawKey) || 'infinity_pool';
 };
 
-export const computeOrthogonalHeadingAngle = (startPt, endPt) => {
-  const dx = endPt.x - startPt.x;
-  const dy = endPt.y - startPt.y;
-  if (Math.abs(dx) >= Math.abs(dy)) {
-    return dx >= 0 ? -90 : 90;
-  }
-  return dy <= 0 ? 0 : 180;
+export const computeOrthogonalHeadingAngle = (startPt) => {
+  return startPt && startPt.x >= 920 ? 90 : -90;
 };
 
-export const computeSmartRouteFrame = (pathStr, startPt, endPt, mode = 'focus25d') => {
+const projectPointToSvgScreen = (x, y, rotZ) => {
+  if (rotZ === -90) {
+    return { sx: y, sy: 1840 - x };
+  }
+  if (rotZ === 90) {
+    return { sx: 1174 - y, sy: x };
+  }
+  return { sx: x, sy: y };
+};
+
+export const computeSmartRouteFrame = (pathStr, startPt, endPt, mode = 'heading') => {
   const nums = (String(pathStr || '').match(/-?\d+(\.\d+)?/g) || []).map(Number);
   let minX = Math.min(startPt.x, endPt.x);
   let maxX = Math.max(startPt.x, endPt.x);
@@ -74,64 +79,67 @@ export const computeSmartRouteFrame = (pathStr, startPt, endPt, mode = 'focus25d
 
   const midX = Math.round((minX + maxX) / 2);
   const midY = Math.round((minY + maxY) / 2);
-  const spanW = Math.max(420, maxX - minX);
-  const spanH = Math.max(360, maxY - minY);
 
   const isHeading = mode === 'heading';
-  const rotZ = isHeading ? computeOrthogonalHeadingAngle(startPt, endPt) : 0;
-  const isRotated90 = Math.abs(rotZ) === 90;
-  const effSpanW = isRotated90 ? spanH : spanW;
-  const effSpanH = isRotated90 ? spanW : spanH;
+  const rotZ = isHeading ? computeOrthogonalHeadingAngle(startPt) : 0;
+  const svgW = rotZ === 0 ? 1840 : 1174;
+  const svgH = rotZ === 0 ? 1174 : 1840;
 
-  const baseW = Math.max(1050, Math.min(1840, effSpanW + 560));
-  const baseH = Math.max(950, Math.min(1650, effSpanH + 580));
+  const sStart = projectPointToSvgScreen(startPt.x, startPt.y, rotZ);
+  const sEnd = projectPointToSvgScreen(endPt.x, endPt.y, rotZ);
+  let minSX = Math.min(sStart.sx, sEnd.sx);
+  let maxSX = Math.max(sStart.sx, sEnd.sx);
+  let minSY = Math.min(sStart.sy, sEnd.sy);
+  let maxSY = Math.max(sStart.sy, sEnd.sy);
 
-  const normOffsetX = (920 - midX) / 1840;
-  const normOffsetY = (587 - midY) / 1174;
+  for (let i = 0; i < nums.length - 1; i += 2) {
+    const pt = projectPointToSvgScreen(nums[i], nums[i + 1], rotZ);
+    if (pt.sx < minSX) minSX = pt.sx;
+    if (pt.sx > maxSX) maxSX = pt.sx;
+    if (pt.sy < minSY) minSY = pt.sy;
+    if (pt.sy > maxSY) maxSY = pt.sy;
+  }
+
+  const midSX = (minSX + maxSX) / 2;
+  const midSY = (minSY + maxSY) / 2;
+  const spanSW = Math.max(340, maxSX - minSX);
+  const spanSH = Math.max(380, maxSY - minSY);
+
+  const cw = typeof window !== 'undefined' && window.innerWidth ? Math.min(window.innerWidth, 430) : 390;
+  const ch = typeof window !== 'undefined' && window.innerHeight ? window.innerHeight : 760;
+  const svgScale = Math.min(cw / svgW, ch / svgH);
+
+  const fitW = (cw * 0.82) / ((spanSW + 340) * svgScale);
+  const fitH = (ch * 0.62) / ((spanSH + 420) * svgScale);
+  const zoom = Number(Math.min(1.65, Math.max(1.06, Math.min(fitW, fitH))).toFixed(2));
+
+  const panX = Math.round((svgW / 2 - midSX) * svgScale * zoom);
+  const panY = Math.round((svgH / 2 - midSY) * svgScale * zoom);
 
   if (mode === 'flat2d') {
     return {
       midX,
       midY,
-      baseW,
-      baseH,
+      baseW: 1840,
+      baseH: 1174,
       zoom: 1.05,
-      panX: Math.round(normOffsetX * 70),
-      panY: Math.round(normOffsetY * 45),
+      panX,
+      panY,
       tiltX: 0,
       rotZ: 0,
-    };
-  }
-
-  const spanRatio = Math.max(effSpanW / 1840, effSpanH / 1174);
-  const smartZoom = Number(Math.min(1.52, Math.max(1.22, 1.56 - spanRatio * 0.42)).toFixed(2));
-  const panX = Math.max(-95, Math.min(95, Math.round(normOffsetX * 220)));
-  const panY = Math.max(-65, Math.min(65, Math.round(normOffsetY * 145)));
-
-  if (isHeading) {
-    return {
-      midX,
-      midY,
-      baseW,
-      baseH,
-      zoom: Number(Math.min(1.42, smartZoom).toFixed(2)),
-      panX: Math.round(panX * 0.6),
-      panY: Math.round(panY * 0.6),
-      tiltX: 20,
-      rotZ,
     };
   }
 
   return {
     midX,
     midY,
-    baseW,
-    baseH,
-    zoom: smartZoom,
+    baseW: svgW,
+    baseH: svgH,
+    zoom,
     panX,
     panY,
     tiltX: 20,
-    rotZ: 0,
+    rotZ,
   };
 };
 
@@ -227,12 +235,13 @@ export const GuestMapPage = () => {
   const [mockupOrientation, setMockupOrientation] = useState('portrait');
 
   // Trạng thái Camera chuẩn Google Maps:
-  // - isHeadingUp: Xoay bản đồ theo bội số vuông góc 90° gần nhất (0, 90, -90, 180) để không bao giờ méo tường
-  // - is3D: Bật/tắt góc nghiêng 3D nhẹ (20°) tách biệt ở lớp stage ngoài
-  const [isHeadingUp, setIsHeadingUp] = useState(false);
+  // - isHeadingUp = true (Mặc định):
+  //   + Chặng 1: Xoay -90° từ Sảnh nhìn thẳng lên Thang máy A
+  //   + Chặng 2: Xoay +90° từ Thang máy A nhìn thẳng lên hành lang & phòng đích
+  const [isHeadingUp, setIsHeadingUp] = useState(true);
   const [is3D, setIs3D] = useState(false);
-  const [userZoom, setUserZoom] = useState(1.0);
-  const [panSvg, setPanSvg] = useState({ x: 0, y: 0 });
+  const [zoomLevel, setZoomLevel] = useState(1.25);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
   const [dragState, setDragState] = useState(null);
 
   // Đếm ngược thời hạn vé 15 phút
@@ -312,17 +321,17 @@ export const GuestMapPage = () => {
     );
   }, [activeRoutePath, activeEndpoints, isHeadingUp]);
 
-  // Khi chuyển chặng hoặc đổi điểm đến -> reset zoom & pan về chính giữa lộ trình
+  // Khi chuyển chặng hoặc đổi điểm đến -> tự động căn giữa lộ trình bằng GPU
   useEffect(() => {
-    setUserZoom(1.0);
-    setPanSvg({ x: 0, y: 0 });
-  }, [activeLeg, currentDest, isHeadingUp]);
+    setZoomLevel(currentFrame.zoom);
+    setPan({ x: currentFrame.panX, y: currentFrame.panY });
+  }, [currentFrame]);
 
-  const handleZoomIn = () => setUserZoom((z) => Math.min(Number((z + 0.22).toFixed(2)), 2.6));
-  const handleZoomOut = () => setUserZoom((z) => Math.max(Number((z - 0.22).toFixed(2)), 0.65));
+  const handleZoomIn = () => setZoomLevel((z) => Math.min(Number((z + 0.22).toFixed(2)), 2.6));
+  const handleZoomOut = () => setZoomLevel((z) => Math.max(Number((z - 0.22).toFixed(2)), 0.75));
   const handleRecenter = () => {
-    setUserZoom(1.0);
-    setPanSvg({ x: 0, y: 0 });
+    setZoomLevel(currentFrame.zoom);
+    setPan({ x: currentFrame.panX, y: currentFrame.panY });
   };
 
   const handleFinishTicket = () => {
@@ -355,12 +364,14 @@ export const GuestMapPage = () => {
 
   const isExpired = remainingSeconds <= 0;
 
-  const vbW = Math.round(currentFrame.baseW / userZoom);
-  const vbH = Math.round(currentFrame.baseH / userZoom);
-  const vbX = Math.round(currentFrame.midX - vbW / 2 - panSvg.x);
-  const vbY = Math.round(currentFrame.midY - vbH / 2 - panSvg.y);
+  const worldTransform =
+    currentFrame.rotZ === -90
+      ? 'translate(0, 1840) rotate(-90)'
+      : currentFrame.rotZ === 90
+        ? 'translate(1174, 0) rotate(90)'
+        : 'translate(0, 0) rotate(0)';
 
-  // Giao diện Bản đồ Toàn màn hình chuẩn Google Maps (Bản đồ chiếm 100% diện tích, các nút nổi nhỏ gọn)
+  // Giao diện Bản đồ Toàn màn hình chuẩn Google Maps (Bản đồ chiếm 100% diện tích, GPU 60-120fps)
   const renderMobileContent = () => (
     <div className="w-full h-[100dvh] bg-[#EFECE6] text-[#1C1917] relative overflow-hidden font-sans select-none antialiased">
       {(isExpired || isManualDismissed) ? (
@@ -445,30 +456,30 @@ export const GuestMapPage = () => {
             </div>
           </div>
 
-          {/* 2. Bản Đồ Toàn Màn Hình (100% Diện Tích, Xoay Vuông Góc 90° Trong SVG Không Bao Giờ Méo) */}
+          {/* 2. Bản Đồ Toàn Màn Hình (100% Diện Tích, GPU translate3d 60-120fps) */}
           <div
             className="absolute inset-0 w-full h-full touch-none cursor-grab active:cursor-grabbing overflow-hidden"
             style={{
-              background: 'radial-gradient(circle at 50% 45%, #FAF8F5 0%, #EFECE6 75%, #E5E0D5 100%)',
+              backgroundImage:
+                'linear-gradient(to right, rgba(28, 25, 23, 0.04) 1px, transparent 1px), linear-gradient(to bottom, rgba(28, 25, 23, 0.04) 1px, transparent 1px)',
+              backgroundSize: '40px 40px',
             }}
             onPointerDown={(e) => {
               if (e.target.closest('button')) return;
               setDragState({
                 startX: e.clientX,
                 startY: e.clientY,
-                startPanX: panSvg.x,
-                startPanY: panSvg.y,
-                width: e.currentTarget.clientWidth || 375,
+                startPanX: pan.x,
+                startPanY: pan.y,
               });
             }}
             onPointerMove={(e) => {
               if (!dragState) return;
-              const scaleSvgPerPx = (currentFrame.baseW / userZoom) / dragState.width;
-              const dx = (e.clientX - dragState.startX) * scaleSvgPerPx;
-              const dy = (e.clientY - dragState.startY) * scaleSvgPerPx;
-              setPanSvg({
-                x: Math.max(-950, Math.min(950, dragState.startPanX + dx)),
-                y: Math.max(-750, Math.min(750, dragState.startPanY + dy)),
+              const dx = e.clientX - dragState.startX;
+              const dy = e.clientY - dragState.startY;
+              setPan({
+                x: Math.max(-520, Math.min(520, Math.round(dragState.startPanX + dx))),
+                y: Math.max(-620, Math.min(620, Math.round(dragState.startPanY + dy))),
               });
             }}
             onPointerUp={() => setDragState(null)}
@@ -481,154 +492,130 @@ export const GuestMapPage = () => {
                 transformOrigin: '50% 52%',
               }}
             >
-              <svg
-                viewBox={`${vbX} ${vbY} ${vbW} ${vbH}`}
-                className="w-full h-full block"
-                preserveAspectRatio="xMidYMid meet"
+              <div
+                className={`w-full h-full ${dragState ? '' : 'transition-transform duration-250 ease-out'}`}
+                style={{
+                  transform: `translate3d(${pan.x}px, ${pan.y}px, 0) scale(${zoomLevel})`,
+                  transformOrigin: '50% 50%',
+                  willChange: 'transform',
+                }}
               >
-                <defs>
-                  <pattern id="guestArchGrid" width="60" height="60" patternUnits="userSpaceOnUse">
-                    <path d="M 60 0 L 0 0 0 60" fill="none" stroke="rgba(28,25,23,0.045)" strokeWidth="1.5" />
-                  </pattern>
-                  <filter id="guest-sky-glow" x="-25%" y="-25%" width="150%" height="150%">
-                    <feDropShadow dx="0" dy="3" stdDeviation="6" floodColor="#0284C7" floodOpacity="0.45" />
-                  </filter>
-                  <filter id="guest-pin-shadow" x="-30%" y="-30%" width="160%" height="160%">
-                    <feDropShadow dx="0" dy="3" stdDeviation="4" floodColor="#1C1917" floodOpacity="0.26" />
-                  </filter>
-                  <filter id="guest-board-shadow" x="-10%" y="-10%" width="120%" height="120%">
-                    <feDropShadow dx="0" dy="14" stdDeviation="20" floodColor="#1C1917" floodOpacity="0.11" />
-                  </filter>
-                </defs>
-
-                <rect x="-3000" y="-3000" width="8000" height="8000" fill="url(#guestArchGrid)" />
-
-                <g transform={`rotate(${currentFrame.rotZ} ${currentFrame.midX} ${currentFrame.midY})`}>
-                  <rect
-                    x="0"
-                    y="0"
-                    width="1840"
-                    height="1174"
-                    rx="22"
-                    fill="#FFFFFF"
-                    stroke="#E3DFD5"
-                    strokeWidth="4"
-                    filter="url(#guest-board-shadow)"
-                  />
-                  <image
-                    href={activeFloor.image}
-                    x="0"
-                    y="0"
-                    width="1840"
-                    height="1174"
-                    preserveAspectRatio="none"
-                  />
-
-                  {/* 1. Lớp hào quang lộ trình */}
-                  <path
-                    d={activeRoutePath}
-                    fill="none"
-                    stroke="#38BDF8"
-                    strokeWidth="20"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    opacity="0.28"
-                    filter="url(#guest-sky-glow)"
-                  />
-                  {/* 2. Lớp nền lộ trình */}
-                  <path
-                    d={activeRoutePath}
-                    fill="none"
-                    stroke="#E0F2FE"
-                    strokeWidth="10"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    opacity="0.95"
-                  />
-                  {/* 3. Tuyến đường nét đứt chuyển động */}
-                  <path
-                    d={activeRoutePath}
-                    fill="none"
-                    stroke="#0284C7"
-                    strokeWidth="6.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeDasharray="14 10"
-                    className="animate-routeDash"
-                  />
-
-                  {/* 4. Hạt dẫn đường chuyển động dọc theo lộ trình */}
-                  <g filter="url(#guest-pin-shadow)">
-                    <circle r="14" fill="#0EA5E9" opacity="0.24" />
-                    <circle r="8.5" fill="#1C1917" stroke="#FFFFFF" strokeWidth="2.5" />
-                    <path d="M -2.5 -3 L 4 0 L -2.5 3 Z" fill="#FAF8F5" />
-                    <animateMotion
-                      key={`${activeLeg}-${currentDest.id}`}
-                      dur="3.4s"
-                      repeatCount="indefinite"
-                      rotate="auto"
-                      path={activeRoutePath}
+                <svg
+                  viewBox={currentFrame.rotZ === 0 ? '0 0 1840 1174' : '0 0 1174 1840'}
+                  className="w-full h-full block"
+                  preserveAspectRatio="xMidYMid meet"
+                >
+                  <g transform={worldTransform}>
+                    <rect
+                      x="0"
+                      y="0"
+                      width="1840"
+                      height="1174"
+                      rx="22"
+                      fill="#FFFFFF"
+                      stroke="#E3DFD5"
+                      strokeWidth="5"
                     />
-                  </g>
+                    <image
+                      href={activeFloor.image}
+                      x="0"
+                      y="0"
+                      width="1840"
+                      height="1174"
+                      preserveAspectRatio="none"
+                    />
 
-                  {/* 5. Điểm xuất phát + Nhãn nổi nhỏ gọn tự giữ chữ nằm ngang */}
-                  <g transform={`translate(${activeEndpoints.start.x}, ${activeEndpoints.start.y})`}>
-                    <circle r="10.5" fill="#1C1917" stroke="#FFFFFF" strokeWidth="3" filter="url(#guest-pin-shadow)" />
-                    <g transform={`rotate(${-currentFrame.rotZ})`}>
-                      <rect
-                        x="-56"
-                        y="-38"
-                        width="112"
-                        height="22"
-                        rx="11"
-                        fill="#1C1917"
-                        stroke="#FAF8F5"
-                        strokeWidth="1.8"
-                        filter="url(#guest-pin-shadow)"
-                      />
-                      <text
-                        x="0"
-                        y="-23"
-                        textAnchor="middle"
-                        fill="#FAF8F5"
-                        fontSize="10.5"
-                        fontWeight="800"
-                      >
-                        {activeEndpoints.start.label}
-                      </text>
+                    {/* 1. Lớp hào quang lộ trình nhẹ */}
+                    <path
+                      d={activeRoutePath}
+                      fill="none"
+                      stroke="#38BDF8"
+                      strokeWidth="24"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      opacity="0.28"
+                    />
+                    {/* 2. Lớp nền lộ trình */}
+                    <path
+                      d={activeRoutePath}
+                      fill="none"
+                      stroke="#0284C7"
+                      strokeWidth="11"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      opacity="0.92"
+                    />
+                    {/* 3. Tuyến đường nét đứt chuyển động */}
+                    <path
+                      d={activeRoutePath}
+                      fill="none"
+                      stroke="#E0F2FE"
+                      strokeWidth="5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeDasharray="14 10"
+                      className="animate-routeDash"
+                    />
+
+                    {/* 4. Điểm xuất phát + Nhãn nổi nhỏ gọn tự giữ chữ nằm ngang */}
+                    <g transform={`translate(${activeEndpoints.start.x}, ${activeEndpoints.start.y})`}>
+                      <circle r="18" fill="#1C1917" opacity="0.16" />
+                      <circle r="11" fill="#1C1917" stroke="#FFFFFF" strokeWidth="3.5" />
+                      <g transform={`rotate(${-currentFrame.rotZ})`}>
+                        <rect
+                          x="-58"
+                          y="-40"
+                          width="116"
+                          height="23"
+                          rx="11.5"
+                          fill="#1C1917"
+                          stroke="#FAF8F5"
+                          strokeWidth="2"
+                        />
+                        <text
+                          x="0"
+                          y="-25"
+                          textAnchor="middle"
+                          fill="#FAF8F5"
+                          fontSize="11"
+                          fontWeight="800"
+                        >
+                          {activeEndpoints.start.label}
+                        </text>
+                      </g>
+                    </g>
+
+                    {/* 5. Điểm kết thúc + Nhãn nổi nhỏ gọn tự giữ chữ nằm ngang */}
+                    <g transform={`translate(${activeEndpoints.end.x}, ${activeEndpoints.end.y})`}>
+                      <circle r="20" fill="#0284C7" opacity="0.2" />
+                      <circle r="12" fill="#0284C7" stroke="#FFFFFF" strokeWidth="3.5" />
+                      <circle r="4.5" fill="#FFFFFF" />
+                      <g transform={`rotate(${-currentFrame.rotZ})`}>
+                        <rect
+                          x="-74"
+                          y="-42"
+                          width="148"
+                          height="25"
+                          rx="12.5"
+                          fill="#FFFFFF"
+                          stroke="#1C1917"
+                          strokeWidth="2.2"
+                        />
+                        <text
+                          x="0"
+                          y="-26"
+                          textAnchor="middle"
+                          fill="#1C1917"
+                          fontSize="11"
+                          fontWeight="800"
+                        >
+                          {activeEndpoints.end.label}
+                        </text>
+                      </g>
                     </g>
                   </g>
-
-                  {/* 6. Điểm kết thúc + Nhãn nổi nhỏ gọn tự giữ chữ nằm ngang */}
-                  <g transform={`translate(${activeEndpoints.end.x}, ${activeEndpoints.end.y})`}>
-                    <circle r="11.5" fill="#0284C7" stroke="#FFFFFF" strokeWidth="3" filter="url(#guest-pin-shadow)" />
-                    <circle r="4" fill="#FFFFFF" />
-                    <g transform={`rotate(${-currentFrame.rotZ})`}>
-                      <rect
-                        x="-72"
-                        y="-40"
-                        width="144"
-                        height="24"
-                        rx="12"
-                        fill="#FFFFFF"
-                        stroke="#1C1917"
-                        strokeWidth="2"
-                        filter="url(#guest-pin-shadow)"
-                      />
-                      <text
-                        x="0"
-                        y="-24"
-                        textAnchor="middle"
-                        fill="#1C1917"
-                        fontSize="11"
-                        fontWeight="800"
-                      >
-                        {activeEndpoints.end.label}
-                      </text>
-                    </g>
-                  </g>
-                </g>
-              </svg>
+                </svg>
+              </div>
             </div>
           </div>
 

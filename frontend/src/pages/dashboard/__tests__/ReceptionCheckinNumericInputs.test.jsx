@@ -79,10 +79,14 @@ describe('Numeric Input Validation & Character Blocking Tests', () => {
   });
 
   it('verifies ConciergeDashboard numeric inputs for room number and party size', () => {
-    expect(conciergeContent).toContain("from '../../utils/numberInputHelper'");
-    expect(conciergeContent).toContain('handleNumericKeyDown');
-    expect(conciergeContent).toContain('sanitizeDigitsOnly(e.target.value, 6)');
-    expect(conciergeContent).toContain('handleNumberInputBlockExponent');
+    const taxiModalPath = path.resolve(__dirname, '../../../components/dashboard/concierge/ConciergeTaxiBookingModal.jsx');
+    const taxiModalContent = fs.existsSync(taxiModalPath) ? fs.readFileSync(taxiModalPath, 'utf8') : '';
+    const combinedContent = conciergeContent + taxiModalContent;
+
+    expect(combinedContent).toContain("numberInputHelper");
+    expect(combinedContent).toContain('handleNumericKeyDown');
+    expect(combinedContent).toContain('sanitizeDigitsOnly(e.target.value, 6)');
+    expect(combinedContent).toContain('handleNumberInputBlockExponent');
   });
 
   it('verifies exponent and sign key blocking on number inputs in menu pages and pagination', () => {

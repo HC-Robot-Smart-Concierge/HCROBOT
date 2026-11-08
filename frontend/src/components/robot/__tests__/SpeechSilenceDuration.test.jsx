@@ -7,6 +7,8 @@ import {
   SPEECH_FINAL_SILENCE_MS,
   INTERIM_FINALIZE_DEBOUNCE_MS,
   HARDWARE_VAD_SILENCE_MS,
+  EXTENDED_INCOMPLETE_SILENCE_MS,
+  getSemanticSilenceDebounce,
 } from '../../../hooks/useSpeechRecognition';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -48,6 +50,39 @@ describe('Speech Recognition Silence Duration & Anti-Cutoff Tests', () => {
     // Không còn dùng 650ms gây ngắt lời khách
     expect(content).not.toContain('}, 650);');
     expect(content).toContain('}, 1800);');
+  });
+
+  it('adaptively extends silence debounce for incomplete or hesitation utterances', () => {
+    // Các câu còn dở dang / cụm mở đầu / từ nối ngập ngừng phải chờ 2800ms
+    const incompleteQueries = [
+      'Cho tôi hỏi',
+      'Cho em hỏi',
+      'Em ơi',
+      'Tôi muốn',
+      'Tôi cần',
+      'Khách sạn có',
+      'Và',
+      'Phòng 401 bị',
+    ];
+
+    incompleteQueries.forEach((query) => {
+      expect(getSemanticSilenceDebounce(query, true)).toBe(EXTENDED_INCOMPLETE_SILENCE_MS);
+      expect(getSemanticSilenceDebounce(query, true)).toBe(2800);
+    });
+
+    // Các câu hỏi / mệnh lệnh hoàn chỉnh ngữ nghĩa chờ 1800ms (hoặc 2200ms cho interim)
+    const completeQueries = [
+      'Hồ bơi ở đâu',
+      'Cho tôi hỏi phòng gym ở đâu',
+      'Khách sạn có dịch vụ giặt ủi không',
+      'Mấy giờ phục vụ ăn sáng',
+      'Chỉ đường lên phòng 401 giúp tôi',
+    ];
+
+    completeQueries.forEach((query) => {
+      expect(getSemanticSilenceDebounce(query, true)).toBe(SPEECH_FINAL_SILENCE_MS);
+      expect(getSemanticSilenceDebounce(query, true)).toBe(1800);
+    });
   });
 
   it('ensures no emojis exist in modified speech recognition files', () => {

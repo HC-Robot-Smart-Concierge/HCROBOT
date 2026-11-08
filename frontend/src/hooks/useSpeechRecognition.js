@@ -66,6 +66,51 @@ function encodeWAV(samples, sampleRate = 16000) {
 export const SPEECH_FINAL_SILENCE_MS = 1800; // Khi trinh duyet bao isFinal: van cho 1.8s xem khach co noi tiep ve sau khong
 export const INTERIM_FINALIZE_DEBOUNCE_MS = 2200; // Khi chi co interim transcript (iOS/Safari): cho 2.2s im lang
 export const HARDWARE_VAD_SILENCE_MS = 2000; // Khi thu am truc tiep qua Micro (VAD/Whisper): cho 2.0s im lang
+export const EXTENDED_INCOMPLETE_SILENCE_MS = 2800; // Khi cau con do dang / tu noi / ngap ngung: cho 2.8s de lay hoi suy nghi
+
+/**
+ * Chuan hoa transcript giong noi khach san (STT Acoustic Normalization)
+ * Xu ly cac loi am vi pho bien cua Web Speech API, dac biet la "bar" bi nghe thanh "ba".
+ */
+export function normalizeHotelSpeechTranscript(rawText) {
+  if (!rawText) return '';
+  let clean = rawText;
+  // Sửa lỗi âm học tiếng Việt nhận diện "bar" thành "ba"
+  clean = clean.replace(/\b(?:quầy|quay|quán|quan|sky|rooftop)\s+ba\b/gi, 'quầy bar');
+  clean = clean.replace(/\b(?:lên|ra|đi|vào|uống ở)\s+ba\b/gi, 'lên bar');
+  clean = clean.replace(/\bba\s+(ở đâu|o dau|chỗ nào|cho nao|tầng mấy|tang may|hướng nào|huong nao|lối nào|loi nao)\b/gi, 'quầy bar $1');
+  clean = clean.replace(/^(?:cho tôi hỏi\s+)?ba\s+(?:ở đâu|o dau)\b/gi, 'quầy bar ở đâu');
+  return clean;
+}
+
+/**
+ * Tinh toan thoi gian cho im lang thich ung theo ngu nghia (Semantic-Aware Silence Duration)
+ * Nhan dien cau noi do dang / cum ngap ngung / mo dau de keo dai thoi gian cho (2800ms),
+ * tranh cuop loi khi khach lay hoi hoac suy nghi giua cau.
+ */
+export function getSemanticSilenceDebounce(text, isCurrentFinal = true) {
+  if (!text || !text.trim()) {
+    return isCurrentFinal ? SPEECH_FINAL_SILENCE_MS : INTERIM_FINALIZE_DEBOUNCE_MS;
+  }
+
+  const clean = text.trim().toLowerCase();
+  const words = clean.split(/\s+/).filter(Boolean);
+
+  // 1. Dau hieu cau con do dang / cum ngap ngung / tu noi:
+  // - Cum mo dau xin phep: "cho toi hoi", "cho em hoi", "cho anh hoi", "cho minh hoi", "em oi", "cho hoi"
+  // - Tu noi o cuoi cau: "va", "hoac", "thi", "la", "o", "tai", "trong", "ve", "voi", "nhung", "ma", "a", "oi", "nha", "nhe", "a", "um", "o", "ha"
+  // - Dong tu chua tron ven: "muon", "can", "giup", "hoi", "xem", "de"
+  const endsWithIncompleteWord = /(?:\b(?:cho\s+(?:tôi|toi|em|anh|chị|chi|mình|minh)?\s*(?:hỏi|hoi|xin hỏi|xin hoi)|em ơi|em oi|tôi muốn|toi muon|tôi cần|toi can|cho tôi|cho toi|làm sao|lam sao|và|va|hoặc|hoac|thì|thi|là|la|ở|o|tại|tai|trong|về|ve|với|voi|nhưng|nhung|mà|ma|ạ|a|ơi|oi|nha|nhé|nhe|à|ừm|ờ|hả|ha|muốn|muon|cần|can|giúp|giup|hỏi|hoi|xem|để|de)\b|[,\.\.\.\-])$/i.test(clean);
+
+  // Cau qua ngan (< 4 tu) va khong ket thuc bang cau hoi tron ven -> Rat de la khach moi bat dau noi
+  const isShortIncompleteUtterance = words.length < 4 && !/(\b(?:ở đâu|o dau|mấy giờ|may gio|bao nhiêu|bao nhieu|không|khong|chưa|chua|thế nào|the nao)\b|\?$)/i.test(clean);
+
+  if (endsWithIncompleteWord || isShortIncompleteUtterance) {
+    return EXTENDED_INCOMPLETE_SILENCE_MS;
+  }
+
+  return isCurrentFinal ? SPEECH_FINAL_SILENCE_MS : INTERIM_FINALIZE_DEBOUNCE_MS;
+}
 
 // ============================================================
 // Main Hook: useSpeechRecognition (Dual-Engine: Browser + Backend STT)
@@ -108,6 +153,7 @@ export const useSpeechRecognition = (callbacks = {}) => {
   const analyserInitPromiseRef = useRef(null);
   const isTranscribingRef = useRef(false);
   const webSpeechBlockedRef = useRef(false);
+  const noiseFloorRef = useRef(0.012);
 
   const clearSpeechFinalizeTimer = useCallback(() => {
     if (speechFinalizeTimerRef.current) {
@@ -342,23 +388,44 @@ export const useSpeechRecognition = (callbacks = {}) => {
               audioChunksRef.current.shift();
             }
 
-            // Tính RMS (Root Mean Square) chính xác theo biên độ sóng âm thanh thực tế
+            // Tinh RMS (Root Mean Square) chinh xac theo bien do song am thanh thuc te
             let sumSquares = 0;
             for (let i = 0; i < inputData.length; i++) {
               sumSquares += inputData[i] * inputData[i];
             }
             const rms = Math.sqrt(sumSquares / inputData.length);
-            // Âm lượng từ 0 đến 100
+            // Am luong tu 0 den 100
             const realVol = Math.min(100, Math.round(rms * 400));
             setVolumeLevel(realVol);
 
-            // VAD (Voice Activity Detection): Phát hiện khi khách nói (nhạy hơn: RMS > 0.008 hoặc realVol >= 3)
-            const isHumanSpeaking = rms > 0.008 || realVol >= 3;
+            // Chống Echo / Self-hearing: Nếu robot đang phát loa thì loại bỏ hoàn toàn tín hiệu micro thu được
+            if (callbacksRef.current?.isSpeaking) {
+              consecutiveVoiceFrames = 0;
+              hasDetectedVoiceRef.current = false;
+              if (silenceTimerRef.current) {
+                clearTimeout(silenceTimerRef.current);
+                silenceTimerRef.current = null;
+              }
+              clearSpeechFinalizeTimer();
+              setVolumeLevel(0);
+              return;
+            }
+
+            // Cap nhat muc on nen thich ung dong (Adaptive Noise Floor) trong moi truong sanh khach san
+            if (rms < 0.035) {
+              noiseFloorRef.current = Math.max(0.006, Math.min(0.040, noiseFloorRef.current * 0.96 + rms * 0.04));
+            }
+
+            // Nguong phat hien tieng nguoi thich ung (Adaptive Threshold) loai bo tap am phong, tieng nhac, vali keo
+            const adaptiveThreshold = Math.max(0.018, noiseFloorRef.current * 2.2);
+            const isHumanSpeaking = rms > adaptiveThreshold && realVol >= 6;
 
             if (isHumanSpeaking) {
               consecutiveVoiceFrames++;
-              if (consecutiveVoiceFrames >= 2) {
+              if (consecutiveVoiceFrames >= 3) {
                 hasDetectedVoiceRef.current = true;
+                // Khach van dang noi -> Ngat ngay bo dem chot cau de tranh bi cuop loi khi nghi lay hoi
+                clearSpeechFinalizeTimer();
                 if (silenceTimerRef.current) {
                   clearTimeout(silenceTimerRef.current);
                   silenceTimerRef.current = null;
@@ -367,12 +434,12 @@ export const useSpeechRecognition = (callbacks = {}) => {
             } else {
               consecutiveVoiceFrames = 0;
               if (hasDetectedVoiceRef.current) {
-                // Khách đã nói xong và im lặng HARDWARE_VAD_SILENCE_MS (2000ms)
+                // Khach da noi xong va im lang HARDWARE_VAD_SILENCE_MS (2000ms)
                 if (!silenceTimerRef.current) {
                   silenceTimerRef.current = setTimeout(() => {
                     silenceTimerRef.current = null;
-                    // Nếu sau khi nói mà trình duyệt không trả về chữ (do lỗi mạng Google Speech API hoặc không hỗ trợ)
-                    // Tự động chốt file gửi sang Backend Whisper
+                    // Neu sau khi noi ma trinh duyet khong tra ve chu (do loi mang Google Speech API hoac khong ho tro)
+                    // Tu dong chot file gui sang Backend Whisper
                     if (!lastFinalTranscriptRef.current || lastFinalTranscriptRef.current.trim().length === 0) {
                       processBackendSTT();
                     }
@@ -463,7 +530,8 @@ export const useSpeechRecognition = (callbacks = {}) => {
             fullTranscript += (fullTranscript ? ' ' : '') + piece.trim();
           }
         }
-        const trimmed = fullTranscript.trim();
+        const rawTrimmed = fullTranscript.trim();
+        const trimmed = normalizeHotelSpeechTranscript(rawTrimmed);
         if (trimmed) {
           setTranscript(trimmed);
           lastFinalTranscriptRef.current = trimmed;
@@ -491,14 +559,15 @@ export const useSpeechRecognition = (callbacks = {}) => {
           // Auto-Finalize Debounce: Tự động chốt câu khi người dùng thực sự ngừng nói.
           // Tuyệt đối KHÔNG chốt tức thì ngay khi isCurrentFinal = true vì Web Speech API thường
           // ngắt isFinal giữa các vế câu khi khách chỉ mới ngắt nghỉ lấy hơi 300ms - 500ms.
-          // Chờ đủ thời gian im lặng (1800ms cho isFinal hoặc 2200ms cho interim) trước khi kích hoạt onFinal.
+          // Áp dụng Semantic-Aware Silence Debounce: Câu dở dang/từ nối chờ 2800ms, câu hoàn chỉnh chờ 1800ms/2200ms.
           clearSpeechFinalizeTimer();
+          const effectiveDebounceMs = getSemanticSilenceDebounce(trimmed, isCurrentFinal);
           speechFinalizeTimerRef.current = setTimeout(() => {
             speechFinalizeTimerRef.current = null;
             if (shouldListenRef.current && lastFinalTranscriptRef.current?.trim()) {
               commitFinalTranscript(lastFinalTranscriptRef.current.trim());
             }
-          }, isCurrentFinal ? SPEECH_FINAL_SILENCE_MS : INTERIM_FINALIZE_DEBOUNCE_MS);
+          }, effectiveDebounceMs);
         }
       };
 

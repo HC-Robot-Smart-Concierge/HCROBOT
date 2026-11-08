@@ -52,6 +52,7 @@ class Settings(BaseSettings):
 
     # STT Streaming VAD Configuration (Wait 1.5s of silence before finalizing speech)
     VAD_SILENCE_MS: int = 2000  # Milliseconds of silence before triggering LLM processing
+    WHISPER_MODEL: str = "base"  # Options: 'base', 'tiny', 'small'
 
     # Pi5 Camera Stream Configuration (MJPEG over SSH Tunnel)
     PI5_CAMERA_STREAM_URL: str = "http://localhost:8554/stream"

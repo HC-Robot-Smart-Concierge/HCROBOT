@@ -105,24 +105,49 @@ def _detect_destination_poi(prompt: str, reply: str = "", room_number: str | Non
     is_short_location_utterance = len(p_words) <= 6 and any(
         k in p_lower for k in [
             "toilet", "tolet", "toa lét", "to lét", "toilét", "toalet", "tô lét", "toilette", "vệ sinh", "wc", "restroom", "washroom", "hồ bơi", "pool", "gym", "spa",
-"lễ tân", "reception", "bãi xe", "phòng"
+            "lễ tân", "reception", "bãi xe", "phòng", "bar", "quầy bar", "sky bar", "quán bar", "quầy ba", "sky ba", "rooftop ba", "quán ba", "lên ba", "đi ba", "ba ở đâu"
         ]
     )
 
     # Phân biệt yêu cầu dịch vụ / đặt món (có kèm số phòng) với câu hỏi đường lên phòng
     service_order_indicators = [
         "đặt", "dat", "gọi", "goi", "order", "mang", "giao", "lấy", "lay",
+        "đem", "gửi", "gui", "chuyển", "chuyen", "thêm", "them", "mượn", "muon",
         "dọn", "don", "sửa", "sua", "hỏng", "hong", "báo thức", "cần", "can",
-        "xin", "cho tôi", "cho toi", "làm phiền", "giúp tôi", "giup toi"
+        "làm phiền", "phục vụ", "phuc vu",
+        # Danh từ vật phẩm, tiện ích phòng và F&B
+        "nước", "nuoc", "chai nước", "nước suối", "nước khoáng", "nước lọc",
+        "khăn", "khan", "khăn tắm", "khăn mặt", "gối", "goi", "chăn", "chan", "mền", "men",
+        "nệm", "nem", "ga giường", "dép", "dep", "bàn ủi", "ban ui", "bàn là", "ban la",
+        "máy sấy", "may say", "bàn chải", "ban chai", "kem đánh răng", "dao cạo", "dao cao",
+        "dầu gội", "dau goi", "sữa tắm", "sua tam", "áo choàng", "ao choang",
+        "đồ ăn", "do an", "thức ăn", "thuc an", "món ăn", "mon an", "cơm", "phở", "pho", "mì", "mi",
+        "pizza", "bánh mì", "cà phê", "cafe", "trà", "tra", "đá lạnh", "da lanh",
+        "ly", "cốc", "coc", "chén", "chen", "bát", "bat", "dĩa", "dia", "đĩa", "muỗng", "muong", "thìa", "thia"
     ]
     explicit_nav_phrases = [
-        "ở đâu", "o dau", "chỗ nào", "cho nao", "chỉ đường", "chi duong",
-        "dẫn đường", "dan duong", "hướng dẫn đường", "lối đi", "loi di",
-        "đường đến", "duong den", "làm sao để đến", "lam sao de den", "cách đi",
-        "tìm phòng", "tim phong", "where is", "how do i get", "show me the way"
+        "ở đâu", "o dau", "chỗ nào", "cho nao", "nơi nào", "noi nao",
+        "hướng nào", "huong nao", "lối nào", "loi nao", "đường nào", "duong nao",
+        "đi hướng nào", "đi lối nào", "đi đường nào",
+        "chỉ đường", "chi duong", "dẫn đường", "dan duong", "hướng dẫn đường",
+        "lối đi", "loi di", "lối lên", "loi len", "lối xuống", "loi xuong",
+        "đường đến", "duong den", "đường đi", "duong di", "đường lên", "duong len", "đường về", "duong ve",
+        "cách đi", "cach di", "cách đến", "cach den", "làm sao để đến", "lam sao de den",
+        "tìm phòng", "tim phong", "tìm đường", "tim duong",
+        "where is", "where are", "where's", "which way", "which floor", "how do i get", "how to get", "show me the way", "directions to", "lead me to", "take me to"
     ]
-    is_service_order_context = any(w in p_lower for w in service_order_indicators)
+
+    has_item_order_pattern = bool(re.search(
+        r'(?:cho|gửi|mang|đem|giao)\s+(?:tôi|toi|em|anh|chị|chi|mình|minh)\s+(?:xin|mượn|muon|\d+|một|hai|ba|bốn|năm|vài|chai|ly|cốc|đĩa|bát|tô|phần|suất|khăn|gối|chăn|mền|bàn|máy|nước|đồ|cơm|phở)',
+        p_lower
+    ))
+    is_service_order_context = has_item_order_pattern or any(w in p_lower for w in service_order_indicators)
     has_explicit_nav = any(w in p_lower for w in explicit_nav_phrases)
+
+    # Khi có yêu cầu dịch vụ hoặc mang đồ lên phòng mà không có cụm từ hỏi đường tường minh -> Tuyệt đối không coi là Navigation tới phòng
+    if (room_4xx_match or room_3xx_match or is_general_room_query) and is_service_order_context and not has_explicit_nav:
+        return None
+
     room_nav_match = bool((room_4xx_match or room_3xx_match or is_general_room_query) and (not is_service_order_context or has_explicit_nav))
 
     has_nav_intent = (
@@ -156,8 +181,8 @@ def _detect_destination_poi(prompt: str, reply: str = "", room_number: str | Non
     if room_nav_match and room_3xx_match:
         return f"room_{room_3xx_match.group(1)}"
 
-    # 2b. Kiểm tra phản hồi của AI nếu có chứa số phòng cụ thể (không áp dụng khi hỏi chung chung)
-    if not is_general_room_query and r_lower:
+    # 2b. Kiểm tra phản hồi của AI nếu có chứa số phòng cụ thể (không áp dụng khi hỏi chung chung hoặc trong ngữ cảnh yêu cầu dịch vụ)
+    if not is_general_room_query and not is_service_order_context and r_lower:
         if "từ phòng" not in r_lower and "đến phòng" not in r_lower:
             if "từ 401" not in r_lower and "từ 301" not in r_lower:
                 r_4xx = re.search(r'\b(?:phòng|p\.?|phong)?\s*(?:số\s*)?(40[1-9]|410)\b', r_lower)
@@ -203,7 +228,10 @@ def _detect_destination_poi(prompt: str, reply: str = "", room_number: str | Non
         return "infinity_pool"
     if any(k in p_lower for k in ["rooftop", "cafe", "cà phê", "coffee"]):
         return "rooftop_coffee"
-    if any(k in p_lower for k in ["quầy bar", "quay bar", "sky bar", "sky lounge", "uống rượu"]):
+    if any(k in p_lower for k in [
+        "quầy bar", "quay bar", "sky bar", "sky lounge", "uống rượu", "bar",
+        "quầy ba", "quay ba", "quán ba", "quan ba", "sky ba", "rooftop ba", "ba ở đâu", "ba o dau", "lên ba", "len ba", "đi ba", "di ba", "uống ở ba"
+    ]):
         return "bar"
     if any(k in p_lower for k in ["karaoke", "hát karaoke", "phòng hát"]):
         return "karaoke"

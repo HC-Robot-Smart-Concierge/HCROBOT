@@ -781,24 +781,64 @@ export const detectDestinationPoi = (rawPrompt, activeRoomNumber = null) => {
   const words = p.split(/\s+/);
   const isShortLocation = words.length <= 6 && [
     'toilet', 'tolet', 'toa lét', 'to lét', 'toilét', 'toalet', 'tô lét', 'toilette', 'vệ sinh', 'wc', 'restroom', 'washroom', 'hồ bơi', 'pool', 'gym', 'spa',
-    'nhà hàng', 'buffet', 'lễ tân', 'reception', 'bãi xe', 'bar', 'cà phê', 'cafe', 'phòng'
+    'nhà hàng', 'buffet', 'lễ tân', 'reception', 'bãi xe', 'bar', 'quầy bar', 'sky bar', 'quán bar', 'quầy ba', 'sky ba', 'rooftop ba', 'quán ba', 'lên ba', 'đi ba', 'ba ở đâu', 'cà phê', 'cafe', 'phòng'
   ].some((k) => p.includes(k));
 
   const room4xxMatch = p.match(/\b(?:phòng|p\.?|phong)?\s*(?:số\s*)?(40[1-9]|410)\b/);
   const room3xxMatch = p.match(/\b(?:phòng|p\.?|phong)?\s*(?:số\s*)?(30[1-9]|310)\b/);
 
-  const hasNavIntent = Boolean(room4xxMatch || room3xxMatch || isGeneralRoomQuery) ||
+  // Phân biệt yêu cầu dịch vụ / buồng phòng / F&B (có kèm số phòng) với câu hỏi đường lên phòng
+  const serviceOrderIndicators = [
+    'đặt', 'dat', 'gọi', 'goi', 'order', 'mang', 'giao', 'lấy', 'lay',
+    'đem', 'gửi', 'gui', 'chuyển', 'chuyen', 'thêm', 'them', 'mượn', 'muon',
+    'dọn', 'don', 'sửa', 'sua', 'hỏng', 'hong', 'báo thức', 'cần', 'can',
+    'làm phiền', 'phục vụ', 'phuc vu',
+    // Danh từ vật phẩm, tiện ích phòng và F&B
+    'nước', 'nuoc', 'chai nước', 'nước suối', 'nước khoáng', 'nước lọc',
+    'khăn', 'khan', 'khăn tắm', 'khăn mặt', 'gối', 'goi', 'chăn', 'chan', 'mền', 'men',
+    'nệm', 'nem', 'ga giường', 'dép', 'dep', 'bàn ủi', 'ban ui', 'bàn là', 'ban la',
+    'máy sấy', 'may say', 'bàn chải', 'ban chai', 'kem đánh răng', 'dao cạo', 'dao cao',
+    'dầu gội', 'dau goi', 'sữa tắm', 'sua tam', 'áo choàng', 'ao choang',
+    'đồ ăn', 'do an', 'thức ăn', 'thuc an', 'món ăn', 'mon an', 'cơm', 'phở', 'pho', 'mì', 'mi',
+    'pizza', 'bánh mì', 'cà phê', 'cafe', 'trà', 'tra', 'đá lạnh', 'da lanh',
+    'ly', 'cốc', 'coc', 'chén', 'chen', 'bát', 'bat', 'dĩa', 'dia', 'đĩa', 'muỗng', 'muong', 'thìa', 'thia'
+  ];
+
+  const explicitNavPhrases = [
+    'ở đâu', 'o dau', 'chỗ nào', 'cho nao', 'nơi nào', 'noi nao',
+    'hướng nào', 'huong nao', 'lối nào', 'loi nao', 'đường nào', 'duong nao',
+    'đi hướng nào', 'đi lối nào', 'đi đường nào',
+    'chỉ đường', 'chi duong', 'dẫn đường', 'dan duong', 'hướng dẫn đường',
+    'lối đi', 'loi di', 'lối lên', 'loi len', 'lối xuống', 'loi xuong',
+    'đường đến', 'duong den', 'đường đi', 'duong di', 'đường lên', 'duong len', 'đường về', 'duong ve',
+    'cách đi', 'cach di', 'cách đến', 'cach den', 'làm sao để đến', 'lam sao de den',
+    'tìm phòng', 'tim phong', 'tìm đường', 'tim duong',
+    'where is', 'where are', "where's", 'which way', 'which floor', 'how do i get', 'how to get', 'show me the way', 'directions to', 'lead me to', 'take me to'
+  ];
+
+  const hasItemOrderPattern = /(?:cho|gửi|mang|đem|giao)\s+(?:tôi|toi|em|anh|chị|chi|mình|minh)\s+(?:xin|mượn|muon|\d+|một|hai|ba|bốn|năm|vài|chai|ly|cốc|đĩa|bát|tô|phần|suất|khăn|gối|chăn|mền|bàn|máy|nước|đồ|cơm|phở)/i.test(p);
+  const isServiceOrderContext = hasItemOrderPattern || serviceOrderIndicators.some((w) => p.includes(w));
+  const hasExplicitNav = explicitNavPhrases.some((w) => p.includes(w));
+
+  // Khi có yêu cầu dịch vụ hoặc mang đồ lên phòng mà không có cụm từ hỏi đường tường minh -> Tuyệt đối không coi là Navigation tới phòng
+  if ((room4xxMatch || room3xxMatch || isGeneralRoomQuery) && isServiceOrderContext && !hasExplicitNav) {
+    return null;
+  }
+
+  const roomNavMatch = Boolean((room4xxMatch || room3xxMatch || isGeneralRoomQuery) && (!isServiceOrderContext || hasExplicitNav));
+
+  const hasNavIntent = roomNavMatch ||
     navIntentKeywords.some((k) => p.includes(k)) ||
     directLocPhrases.some((k) => p.includes(k)) ||
     isShortLocation;
 
   if (!hasNavIntent) return null;
 
-  // 1. Nhận diện phòng 4xx (401 -> 409)
-  if (room4xxMatch) return `room_${room4xxMatch[1]}`;
+  // 1. Nhận diện phòng 4xx (401 -> 409) khi có ý định hỏi đường
+  if (roomNavMatch && room4xxMatch) return `room_${room4xxMatch[1]}`;
 
-  // 2. Nhận diện phòng 3xx (301 -> 309)
-  if (room3xxMatch) return `room_${room3xxMatch[1]}`;
+  // 2. Nhận diện phòng 3xx (301 -> 309) khi có ý định hỏi đường
+  if (roomNavMatch && room3xxMatch) return `room_${room3xxMatch[1]}`;
 
   // 3. Nhà vệ sinh (Chỉ kích hoạt khi hỏi nhà vệ sinh / đi vệ sinh, loại trừ đồ vệ sinh cá nhân, băng vệ sinh, dọn dẹp)
   const isToiletQuery = ['nhà vệ sinh', 'nha ve sinh', 'phòng vệ sinh', 'phong ve sinh', 'đi vệ sinh', 'di ve sinh', 'toilet', 'tolet', 'toa lét', 'to lét', 'toilét', 'toalet', 'tô lét', 'toilette', 'wc', 'restroom', 'rest room', 'washroom', 'đi toilet', 'đi tolet', 'đi toa lét', 'chỗ rửa tay', 'nơi rửa tay', 'chỗ đi vệ sinh', 'nơi đi vệ sinh'].some((k) => p.includes(k)) ||
@@ -818,7 +858,7 @@ export const detectDestinationPoi = (rawPrompt, activeRoomNumber = null) => {
   // 5. Tầng 5 & 6 tiện ích
   if (['hồ bơi', 'ho boi', 'bể bơi', 'pool', 'bơi'].some((k) => p.includes(k))) return 'infinity_pool';
   if (['rooftop', 'cafe', 'cà phê', 'coffee'].some((k) => p.includes(k))) return 'rooftop_coffee';
-  if (['quầy bar', 'quay bar', 'sky bar', 'sky lounge', 'uống rượu', 'bar'].some((k) => p.includes(k))) return 'bar';
+  if (['quầy bar', 'quay bar', 'sky bar', 'sky lounge', 'uống rượu', 'bar', 'quầy ba', 'quay ba', 'quán ba', 'quan ba', 'sky ba', 'rooftop ba', 'ba ở đâu', 'ba o dau', 'lên ba', 'len ba', 'đi ba', 'di ba', 'uống ở ba'].some((k) => p.includes(k))) return 'bar';
   if (['karaoke', 'hát karaoke', 'phòng hát'].some((k) => p.includes(k))) return 'karaoke';
   if (['gym', 'thể hình', 'the hinh', 'fitness', 'tập gym'].some((k) => p.includes(k))) return 'gym';
   if (['spa', 'massage', 'xông hơi', 'mát xa'].some((k) => p.includes(k))) return 'spa';
@@ -933,7 +973,7 @@ export const FloorMap = ({
   // Trạng thái Chặng:
   // 1: Chặng 1 (Tầng Trệt ra Thang Máy)
   // 2: Chặng 2 (Từ Thang Máy ra Điểm Đích trên tầng mục tiêu)
-  const [activeStep, setActiveStep] = useState(currentDest.isDifferentFloor ? 1 : 2);
+  const [activeStep, setActiveStep] = useState(currentDest.isDifferentFloor ? (currentStepExternal || 1) : 2);
   const [autoPlay, setAutoPlay] = useState(true);
   const [isHovering, setIsHovering] = useState(false);
 
@@ -983,8 +1023,9 @@ export const FloorMap = ({
 
   const activeFloor = HOTEL_FLOORS.find((f) => f.id === activeFloorId) || HOTEL_FLOORS[2];
 
-  // Tự động chuyển chặng từ 1 sang 2 sau 4.5 giây để khách thấy toàn bộ hành trình
+  // Tự động chuyển chặng từ 1 sang 2 sau 10 giây (nếu không có điều phối ngoài) để khách thấy toàn bộ hành trình
   useEffect(() => {
+    if (currentStepExternal != null) return;
     if (!currentDest.isDifferentFloor) {
       setActiveStep(2);
       return;
@@ -995,10 +1036,11 @@ export const FloorMap = ({
 
     const timer = setTimeout(() => {
       setActiveStep(2);
-    }, 4500);
+      onStepChange?.(2);
+    }, 10000);
 
     return () => clearTimeout(timer);
-  }, [selectedDestKey, autoPlay, currentDest.isDifferentFloor]);
+  }, [selectedDestKey, autoPlay, currentDest.isDifferentFloor, currentStepExternal, onStepChange]);
 
   // Sync zoom khi đổi điểm đến hoặc defaultZoom
   useEffect(() => {
@@ -1145,6 +1187,7 @@ export const FloorMap = ({
                 onClick={() => {
                   setActiveStep(1);
                   setAutoPlay(false);
+                  onStepChange?.(1);
                 }}
                 className={`w-6 h-6 rounded-full text-[11px] font-black transition-all cursor-pointer flex items-center justify-center ${
                   activeStep === 1
@@ -1164,6 +1207,7 @@ export const FloorMap = ({
                 onClick={() => {
                   setActiveStep(2);
                   setAutoPlay(false);
+                  onStepChange?.(2);
                 }}
                 className={`w-6 h-6 rounded-full text-[11px] font-black transition-all cursor-pointer flex items-center justify-center ${
                   activeStep === 2

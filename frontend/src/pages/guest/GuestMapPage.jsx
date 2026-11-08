@@ -327,8 +327,40 @@ export const GuestMapPage = () => {
     setPan({ x: currentFrame.panX, y: currentFrame.panY });
   }, [currentFrame]);
 
-  const handleZoomIn = () => setZoomLevel((z) => Math.min(Number((z + 0.22).toFixed(2)), 2.6));
-  const handleZoomOut = () => setZoomLevel((z) => Math.max(Number((z - 0.22).toFixed(2)), 0.75));
+  const clampZoom = (z) => Math.min(3.2, Math.max(0.65, Number(z.toFixed(3))));
+  const clampPanX = (x, z = zoomLevel) => {
+    const limit = Math.round(540 * Math.max(1, z * 0.85));
+    return Math.max(-limit, Math.min(limit, Number(x.toFixed(2))));
+  };
+  const clampPanY = (y, z = zoomLevel) => {
+    const limit = Math.round(660 * Math.max(1, z * 0.85));
+    return Math.max(-limit, Math.min(limit, Number(y.toFixed(2))));
+  };
+
+  const handleZoomIn = () => {
+    setZoomLevel((z) => {
+      const nextZoom = clampZoom(z + 0.22);
+      const ratio = nextZoom / z;
+      setPan((p) => ({
+        x: clampPanX(p.x * ratio, nextZoom),
+        y: clampPanY(p.y * ratio, nextZoom),
+      }));
+      return nextZoom;
+    });
+  };
+
+  const handleZoomOut = () => {
+    setZoomLevel((z) => {
+      const nextZoom = clampZoom(z - 0.22);
+      const ratio = nextZoom / z;
+      setPan((p) => ({
+        x: clampPanX(p.x * ratio, nextZoom),
+        y: clampPanY(p.y * ratio, nextZoom),
+      }));
+      return nextZoom;
+    });
+  };
+
   const handleRecenter = () => {
     setZoomLevel(currentFrame.zoom);
     setPan({ x: currentFrame.panX, y: currentFrame.panY });
@@ -464,9 +496,84 @@ export const GuestMapPage = () => {
                 'linear-gradient(to right, rgba(28, 25, 23, 0.04) 1px, transparent 1px), linear-gradient(to bottom, rgba(28, 25, 23, 0.04) 1px, transparent 1px)',
               backgroundSize: '40px 40px',
             }}
-            onPointerDown={(e) => {
+            onTouchStart={(e) => {
               if (e.target.closest('button')) return;
+              if (e.touches.length === 1) {
+                setDragState({
+                  mode: 'pan',
+                  startX: e.touches[0].clientX,
+                  startY: e.touches[0].clientY,
+                  startPanX: pan.x,
+                  startPanY: pan.y,
+                });
+              } else if (e.touches.length >= 2) {
+                const rect = e.currentTarget.getBoundingClientRect();
+                const centerX = rect.left + rect.width / 2;
+                const centerY = rect.top + rect.height / 2;
+                const t1 = e.touches[0];
+                const t2 = e.touches[1];
+                const dist = Math.max(12, Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY));
+                const midX = (t1.clientX + t2.clientX) / 2 - centerX;
+                const midY = (t1.clientY + t2.clientY) / 2 - centerY;
+                setDragState({
+                  mode: 'pinch',
+                  startDist: dist,
+                  startZoom: zoomLevel,
+                  startPanX: pan.x,
+                  startPanY: pan.y,
+                  startMidX: midX,
+                  startMidY: midY,
+                });
+              }
+            }}
+            onTouchMove={(e) => {
+              if (!dragState) return;
+              if (e.touches.length >= 2 && dragState.mode === 'pinch') {
+                const rect = e.currentTarget.getBoundingClientRect();
+                const centerX = rect.left + rect.width / 2;
+                const centerY = rect.top + rect.height / 2;
+                const t1 = e.touches[0];
+                const t2 = e.touches[1];
+                const dist = Math.max(12, Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY));
+                const midX = (t1.clientX + t2.clientX) / 2 - centerX;
+                const midY = (t1.clientY + t2.clientY) / 2 - centerY;
+                const nextZoom = clampZoom(dragState.startZoom * (dist / dragState.startDist));
+                const zoomRatio = nextZoom / dragState.startZoom;
+                const nextPanX = midX - (dragState.startMidX - dragState.startPanX) * zoomRatio;
+                const nextPanY = midY - (dragState.startMidY - dragState.startPanY) * zoomRatio;
+
+                setZoomLevel(nextZoom);
+                setPan({
+                  x: clampPanX(nextPanX, nextZoom),
+                  y: clampPanY(nextPanY, nextZoom),
+                });
+              } else if (e.touches.length === 1 && dragState.mode === 'pan') {
+                const dx = e.touches[0].clientX - dragState.startX;
+                const dy = e.touches[0].clientY - dragState.startY;
+                setPan({
+                  x: clampPanX(dragState.startPanX + dx, zoomLevel),
+                  y: clampPanY(dragState.startPanY + dy, zoomLevel),
+                });
+              }
+            }}
+            onTouchEnd={(e) => {
+              if (e.touches.length === 1) {
+                setDragState({
+                  mode: 'pan',
+                  startX: e.touches[0].clientX,
+                  startY: e.touches[0].clientY,
+                  startPanX: pan.x,
+                  startPanY: pan.y,
+                });
+              } else if (e.touches.length === 0) {
+                setDragState(null);
+              }
+            }}
+            onTouchCancel={() => setDragState(null)}
+            onPointerDown={(e) => {
+              if (e.pointerType === 'touch' || e.target.closest('button')) return;
               setDragState({
+                mode: 'mouse',
                 startX: e.clientX,
                 startY: e.clientY,
                 startPanX: pan.x,
@@ -474,16 +581,35 @@ export const GuestMapPage = () => {
               });
             }}
             onPointerMove={(e) => {
-              if (!dragState) return;
+              if (e.pointerType === 'touch' || !dragState || dragState.mode !== 'mouse') return;
               const dx = e.clientX - dragState.startX;
               const dy = e.clientY - dragState.startY;
               setPan({
-                x: Math.max(-520, Math.min(520, Math.round(dragState.startPanX + dx))),
-                y: Math.max(-620, Math.min(620, Math.round(dragState.startPanY + dy))),
+                x: clampPanX(dragState.startPanX + dx, zoomLevel),
+                y: clampPanY(dragState.startPanY + dy, zoomLevel),
               });
             }}
-            onPointerUp={() => setDragState(null)}
-            onPointerCancel={() => setDragState(null)}
+            onPointerUp={(e) => {
+              if (e.pointerType === 'touch') return;
+              setDragState(null);
+            }}
+            onPointerCancel={(e) => {
+              if (e.pointerType === 'touch') return;
+              setDragState(null);
+            }}
+            onWheel={(e) => {
+              const rect = e.currentTarget.getBoundingClientRect();
+              const cursorX = e.clientX - (rect.left + rect.width / 2);
+              const cursorY = e.clientY - (rect.top + rect.height / 2);
+              const factor = e.deltaY < 0 ? 1.12 : 0.89;
+              const nextZoom = clampZoom(zoomLevel * factor);
+              const zoomRatio = nextZoom / zoomLevel;
+              setZoomLevel(nextZoom);
+              setPan({
+                x: clampPanX(cursorX - (cursorX - pan.x) * zoomRatio, nextZoom),
+                y: clampPanY(cursorY - (cursorY - pan.y) * zoomRatio, nextZoom),
+              });
+            }}
           >
             <div
               className="w-full h-full transition-transform duration-300 ease-out"

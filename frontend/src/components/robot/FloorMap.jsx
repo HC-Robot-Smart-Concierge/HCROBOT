@@ -636,25 +636,27 @@ export const getMobileGuestMapUrl = (destKey, preferredHostIp = null) => {
   const safeDestKey = destKey || 'infinity_pool';
   const { tailscaleIp, lanIp } = getDetectedNetworkHosts();
 
-  let targetHostKey = 'origin';
-  let resolvedLanIp = tailscaleIp || lanIp;
+  // Mặc định ưu tiên Wi-Fi LAN (192.168.x.x) để điện thoại bắt Wi-Fi quét vào thẳng ngay lập tức
+  let resolvedHostIp = lanIp || tailscaleIp;
   try {
     if (preferredHostIp) {
-      resolvedLanIp = preferredHostIp;
+      resolvedHostIp = preferredHostIp;
     } else if (typeof localStorage !== 'undefined') {
-      const savedIp = localStorage.getItem('aurora_custom_lan_ip');
-      if (savedIp) resolvedLanIp = savedIp;
-    }
-    if (typeof window !== 'undefined') {
-      const hostname = window.location.hostname;
-      targetHostKey =
-        hostname === 'localhost' || hostname === '127.0.0.1' ? resolvedLanIp : window.location.origin;
+      const savedIp = localStorage.getItem('aurora_qr_network_ip');
+      if (savedIp) {
+        resolvedHostIp = savedIp;
+      } else if (typeof window !== 'undefined') {
+        const h = window.location.hostname;
+        if (h && h !== 'localhost' && h !== '127.0.0.1') {
+          resolvedHostIp = h;
+        }
+      }
     }
   } catch {
-    targetHostKey = resolvedLanIp;
+    resolvedHostIp = lanIp || tailscaleIp;
   }
 
-  const cacheKey = `${safeDestKey}__${targetHostKey}`;
+  const cacheKey = `${safeDestKey}__${resolvedHostIp}`;
   const now = Date.now();
   const cached = qrTicketCache.get(cacheKey);
   // Nếu đã tạo vé trong vòng 10 phút thì giữ nguyên mã QR để không bị giật/đổi hình
@@ -666,16 +668,24 @@ export const getMobileGuestMapUrl = (destKey, preferredHostIp = null) => {
   const encodedDest = encodeURIComponent(safeDestKey);
   let url = '';
   try {
-    const origin = window.location.origin;
-    const hostname = window.location.hostname;
-    if (hostname === 'localhost' || hostname === '127.0.0.1') {
-      const port = window.location.port ? `:${window.location.port}` : ':3000';
-      url = `${window.location.protocol}//${resolvedLanIp}${port}/map.html?t=${token}&dest=${encodedDest}`;
+    const currentHost = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
+    const isPrivateOrLocalHost =
+      !currentHost ||
+      currentHost === 'localhost' ||
+      currentHost === '127.0.0.1' ||
+      /^\d+\.\d+\.\d+\.\d+$/.test(currentHost);
+
+    if (isPrivateOrLocalHost) {
+      // Sử dụng cổng HTTP 8000 (FastAPI Static Guest Map) khi quét qua Wi-Fi / Tailscale nội bộ:
+      // 1. Tránh 100% lỗi cảnh báo chứng chỉ SSL tự ký (basicSsl) trên Safari / Chrome điện thoại
+      // 2. Tránh 100% Service Worker cũ ở port 3000 chặn request và đẩy về Trang chủ (/)
+      url = `http://${resolvedHostIp}:8000/map.html?t=${token}&dest=${encodedDest}`;
     } else {
-      url = `${origin}/map.html?t=${token}&dest=${encodedDest}`;
+      // Nếu chạy qua domain công khai / Cloudflare Tunnel / Ngrok thì giữ nguyên origin
+      url = `${window.location.origin}/map.html?t=${token}&dest=${encodedDest}`;
     }
   } catch {
-    url = `http://${resolvedLanIp}:3000/map.html?t=${token}&dest=${encodedDest}`;
+    url = `http://${resolvedHostIp}:8000/map.html?t=${token}&dest=${encodedDest}`;
   }
 
   qrTicketCache.set(cacheKey, { url, expiresAt: now + 15 * 60 * 1000 });
@@ -874,40 +884,46 @@ export const FloorMap = ({
   // Lấy dữ liệu điểm đến hiện tại
   const currentDest = HOTEL_DESTINATIONS[selectedDestKey] || HOTEL_DESTINATIONS.infinity_pool;
 
-  // Hỗ trợ chuyển đổi nhanh giữa Tailscale VPN và Wi-Fi LAN khi màn hình Robot mở trên localhost
+  // Hỗ trợ chuyển đổi nhanh giữa Wi-Fi LAN và Tailscale VPN trên màn hình Robot
   const networkHosts = useMemo(() => getDetectedNetworkHosts(), []);
-  const isLocalhostOrigin = useMemo(() => {
-    try {
-      if (typeof window === 'undefined') return false;
-      const h = window.location.hostname;
-      return h === 'localhost' || h === '127.0.0.1';
-    } catch {
-      return false;
-    }
-  }, []);
 
   const [preferredHostIp, setPreferredHostIp] = useState(() => {
     try {
       if (typeof localStorage !== 'undefined') {
-        const saved = localStorage.getItem('aurora_custom_lan_ip');
+        const saved = localStorage.getItem('aurora_qr_network_ip');
         if (saved) return saved;
+      }
+      if (typeof window !== 'undefined') {
+        const h = window.location.hostname;
+        if (h && h !== 'localhost' && h !== '127.0.0.1') return h;
       }
     } catch {
       // ignore storage error
     }
-    return networkHosts.tailscaleIp || networkHosts.lanIp;
+    return networkHosts.lanIp || networkHosts.tailscaleIp;
   });
 
   const handleSelectNetworkIp = (ip) => {
     setPreferredHostIp(ip);
     try {
       if (typeof localStorage !== 'undefined') {
-        localStorage.setItem('aurora_custom_lan_ip', ip);
+        localStorage.setItem('aurora_qr_network_ip', ip);
+      }
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('aurora-qr-ip-changed', { detail: ip }));
       }
     } catch {
       // ignore storage error
     }
   };
+
+  useEffect(() => {
+    const onIpChanged = (e) => {
+      if (e?.detail) setPreferredHostIp(e.detail);
+    };
+    window.addEventListener('aurora-qr-ip-changed', onIpChanged);
+    return () => window.removeEventListener('aurora-qr-ip-changed', onIpChanged);
+  }, []);
 
   // Giữ URL mã QR cố định trong suốt vòng đời của điểm đến này để mã QR không bị giật ma trận
   const qrMapUrl = useMemo(() => {
@@ -1350,34 +1366,32 @@ export const FloorMap = ({
                 Quét mã bằng camera điện thoại để xem bản đồ và chỉ dẫn đường đi trực tiếp.
               </p>
 
-              {isLocalhostOrigin && (
-                <div className="w-full flex items-center gap-1 pt-0.5">
-                  <button
-                    type="button"
-                    onClick={() => handleSelectNetworkIp(networkHosts.tailscaleIp)}
-                    className={`flex-1 py-1 px-2 rounded-lg text-[10px] font-bold border transition cursor-pointer ${
-                      preferredHostIp === networkHosts.tailscaleIp
-                        ? 'bg-[#1C1917] text-[#FAF8F5] border-[#1C1917]'
-                        : 'bg-[#FAF8F5] text-stone-600 border-[#E3DFD5] hover:bg-[#EFECE4]'
-                    }`}
-                    title={`Quét qua Tailscale (${networkHosts.tailscaleIp})`}
-                  >
-                    Tailscale ({networkHosts.tailscaleIp})
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleSelectNetworkIp(networkHosts.lanIp)}
-                    className={`flex-1 py-1 px-2 rounded-lg text-[10px] font-bold border transition cursor-pointer ${
-                      preferredHostIp === networkHosts.lanIp
-                        ? 'bg-[#1C1917] text-[#FAF8F5] border-[#1C1917]'
-                        : 'bg-[#FAF8F5] text-stone-600 border-[#E3DFD5] hover:bg-[#EFECE4]'
-                    }`}
-                    title={`Quét qua Wi-Fi nội bộ (${networkHosts.lanIp})`}
-                  >
-                    Wi-Fi ({networkHosts.lanIp})
-                  </button>
-                </div>
-              )}
+              <div className="w-full flex items-center gap-1 pt-0.5">
+                <button
+                  type="button"
+                  onClick={() => handleSelectNetworkIp(networkHosts.lanIp)}
+                  className={`flex-1 py-1 px-2 rounded-lg text-[10px] font-bold border transition cursor-pointer ${
+                    preferredHostIp === networkHosts.lanIp
+                      ? 'bg-[#1C1917] text-[#FAF8F5] border-[#1C1917]'
+                      : 'bg-[#FAF8F5] text-stone-600 border-[#E3DFD5] hover:bg-[#EFECE4]'
+                  }`}
+                  title={`Quét qua Wi-Fi nội bộ (${networkHosts.lanIp})`}
+                >
+                  Wi-Fi ({networkHosts.lanIp})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSelectNetworkIp(networkHosts.tailscaleIp)}
+                  className={`flex-1 py-1 px-2 rounded-lg text-[10px] font-bold border transition cursor-pointer ${
+                    preferredHostIp === networkHosts.tailscaleIp
+                      ? 'bg-[#1C1917] text-[#FAF8F5] border-[#1C1917]'
+                      : 'bg-[#FAF8F5] text-stone-600 border-[#E3DFD5] hover:bg-[#EFECE4]'
+                  }`}
+                  title={`Quét qua Tailscale (${networkHosts.tailscaleIp})`}
+                >
+                  Tailscale ({networkHosts.tailscaleIp})
+                </button>
+              </div>
 
               {qrCountdown !== null && qrCountdown >= 0 && (
                 <div className="px-2 py-0.5 rounded-full bg-[#EFECE4] text-stone-700 border border-[#E3DFD5] text-[10px] font-mono mt-0.5">

@@ -142,11 +142,26 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     }
   });
   const [navigationDestinationKey, setNavigationDestinationKey] = useState('infinity_pool');
+  const [preferredQrHostIp, setPreferredQrHostIp] = useState(() => {
+    try {
+      return typeof localStorage !== 'undefined' ? localStorage.getItem('aurora_qr_network_ip') : null;
+    } catch {
+      return null;
+    }
+  });
+
+  useEffect(() => {
+    const onIpChanged = (e) => {
+      if (e?.detail) setPreferredQrHostIp(e.detail);
+    };
+    window.addEventListener('aurora-qr-ip-changed', onIpChanged);
+    return () => window.removeEventListener('aurora-qr-ip-changed', onIpChanged);
+  }, []);
 
   // Giữ mã QR URL cố định để không bị giật ma trận khi đồng hồ 8s đếm ngược re-render
   const qrMapUrl = useMemo(() => {
-    return getMobileGuestMapUrl(navigationDestinationKey);
-  }, [navigationDestinationKey]);
+    return getMobileGuestMapUrl(navigationDestinationKey, preferredQrHostIp);
+  }, [navigationDestinationKey, preferredQrHostIp]);
 
   const [language, setLanguage] = useState('Tiếng Việt');
   const languageRef = useRef('Tiếng Việt');

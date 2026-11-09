@@ -1,5 +1,19 @@
 import { describe, it, expect } from 'vitest';
-import { defaultMapName, describeExploreResult } from './exploreResult';
+import { defaultMapName, describeExploreResult, piRequestErrorMessage } from './exploreResult';
+
+describe('piRequestErrorMessage (bam Quet ma Pi khong tra loi)', () => {
+  it('turns a network failure into instructions to start main.py on the Pi', () => {
+    for (const err of [new TypeError('Failed to fetch'), Object.assign(new Error('x'), { name: 'TimeoutError' })]) {
+      const msg = piRequestErrorMessage(err, '100.99.72.51');
+      expect(msg).toContain('100.99.72.51:8000');
+      expect(msg).toContain('sudo python3 main.py');
+    }
+  });
+
+  it('keeps a real error message from the Pi', () => {
+    expect(piRequestErrorMessage(new Error('RPLiDAR không phát dữ liệu scan.'), 'pi')).toBe('RPLiDAR không phát dữ liệu scan.');
+  });
+});
 
 describe('describeExploreResult (popup luu map sau khi tu quet)', () => {
   it('reports a finished scan with the explorer message', () => {

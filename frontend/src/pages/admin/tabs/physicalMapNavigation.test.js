@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
-  amclPoseIsReliable, composeMapPose, laserPointToMap, localizationFromManager, navigationBlockingReason, sendNav2Endpoint,
+  amclPoseIsReliable, composeMapPose, laserPointToMap, localizationFromManager, navigationBlockingReason,
+  obstacleClearanceAt, sendNav2Endpoint, TURN_CLEARANCE_M,
 } from './physicalMapNavigation';
 
 const now = 10000;
@@ -118,6 +119,40 @@ describe('Physical robot map-frame navigation', () => {
   it('shows the localization manager reason when the robot is not localized', () => {
     const reason = 'Mất định vị: LiDAR chỉ còn khớp 20% bản đồ. Đã dừng xe.';
     expect(navigationBlockingReason({ ...ready(), localized: false, localizationReason: reason })).toBe(reason);
+  });
+});
+
+describe('obstacleClearanceAt (endpoint co du cho quay dau?)', () => {
+  // costmap 0.05 m/o, goc (0, 0), 40 x 40 o; dat o lethal (100) tai toa do (x, y)
+  const costmapWith = (cells, value = 100) => {
+    const data = Array(1600).fill(0);
+    for (const [x, y] of cells) data[Math.floor(y / 0.05) * 40 + Math.floor(x / 0.05)] = value;
+    return { header: { frame_id: 'map' }, data,
+      info: { width: 40, height: 40, resolution: 0.05, origin: { position: { x: 0, y: 0 }, orientation: { w: 1 } } } };
+  };
+
+  it('needs about 25 cm around the robot to turn around', () => {
+    expect(TURN_CLEARANCE_M).toBeCloseTo(0.25);
+  });
+
+  it('measures the distance to the nearest wall cell', () => {
+    // o tuong co tam (1.225, 1.025); endpoint tai tam o (1.025, 1.025) => cach 0.20 m
+    const d = obstacleClearanceAt(costmapWith([[1.225, 1.025]]), 1.025, 1.025, TURN_CLEARANCE_M);
+    expect(d).toBeCloseTo(0.2);
+    expect(d < TURN_CLEARANCE_M).toBe(true);
+  });
+
+  it('reports open space when every wall is farther than the turning radius', () => {
+    expect(obstacleClearanceAt(costmapWith([[1.375, 1.025]]), 1.025, 1.025, TURN_CLEARANCE_M)).toBe(Infinity);
+    expect(obstacleClearanceAt(costmapWith([]), 1.0, 1.0, TURN_CLEARANCE_M)).toBe(Infinity);
+  });
+
+  it('only counts real obstacles, not the inflation cushion around them', () => {
+    expect(obstacleClearanceAt(costmapWith([[1.125, 1.025]], 99), 1.025, 1.025, TURN_CLEARANCE_M)).toBe(Infinity);
+  });
+
+  it('cannot judge without a costmap', () => {
+    expect(obstacleClearanceAt(null, 1, 1, TURN_CLEARANCE_M)).toBe(Infinity);
   });
 });
 

@@ -107,14 +107,24 @@ if [ "$EXPLORE" = "1" ] && [ "$SLAM_READY" = "1" ]; then
   # trong 60 s thi bo qua che do tu chay (xe dung yen, SLAM van chay de lai tay).
   READY=0
   for _ in $(seq 1 30); do
-    HEALTH="$(timeout 4 ros2 topic echo --once /robot/sensor_health std_msgs/msg/String 2>/dev/null || true)"
-    # ros2 topic echo in: data: '{"pi_ws_connected": true, "lidar_live": true, ...}'
-    if echo "$HEALTH" | grep -q '"pi_ws_connected": true' \
-       && echo "$HEALTH" | grep -q '"lidar_live": true' \
-       && ! echo "$HEALTH" | grep -q 'NO_ENCODER_TELEMETRY'; then
+    # --full-length: ros2 topic echo MAC DINH CAT chuoi o 128 ky tu. JSON suc khoe dai ~550 ky tu
+    # nen "lidar_live" nam o phan bi cat => truoc day script khong bao gio thay LiDAR san sang
+    # va xe khong bao gio tu chay (09/11). Phan tich JSON thay vi grep chuoi.
+    HEALTH="$(timeout 4 ros2 topic echo --once --full-length /robot/sensor_health std_msgs/msg/String 2>/dev/null || true)"
+    VERDICT="$(printf '%s' "$HEALTH" | python3 -c '
+import json, sys, yaml
+try:
+    d = json.loads(next(yaml.safe_load_all(sys.stdin.read()))["data"])
+except Exception:
+    print("WAIT chua nhan /robot/sensor_health tu bridge"); sys.exit()
+reasons = d.get("reasons") or []
+ok = d.get("pi_ws_connected") is True and d.get("lidar_live") is True and "NO_ENCODER_TELEMETRY" not in reasons
+print(("READY " if ok else "WAIT ") + (", ".join(reasons) or "-"))
+' 2>/dev/null || echo "WAIT khong doc duoc /robot/sensor_health")"
+    if [ "${VERDICT%% *}" = "READY" ]; then
       READY=1; break
     fi
-    echo "   ...cho Pi/LiDAR/encoder: $(echo "$HEALTH" | grep -o 'reasons[^]]*]' | tr -d '\\"')"
+    echo "   ...cho Pi/LiDAR/encoder: ${VERDICT#* }"
     sleep 1
   done
   if [ "$READY" != "1" ]; then

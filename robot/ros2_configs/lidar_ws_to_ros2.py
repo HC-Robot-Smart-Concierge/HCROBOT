@@ -35,7 +35,7 @@ from localization_support import LocalizationWarmup, sensor_frame_is_fresh  # no
 from speed_zone_logic import limit_wheel_pwm  # noqa: E402
 from robot_geometry import BODY_LENGTH_M, BODY_WIDTH_M, HALF_LENGTH_M  # noqa: E402
 from robot_status import (  # noqa: E402
-    diagnose_stuck, format_status_line, lidar_clearances, threshold_warnings,
+    describe_drive_block, diagnose_stuck, format_status_line, lidar_clearances, threshold_warnings,
 )
 
 
@@ -398,6 +398,9 @@ class LidarWsToRos2Bridge(Node):
             "ready_for_static_capture": lidar_live,
             "ready_for_mobile_mapping": lidar_live and self.encoder_motion_detected,
             "reasons": reasons,
+            # Xe dung yen >= 2 s du Nav2/lai tay dang ra lenh: vi sao (Pi chan huong nao, cam bien
+            # nao bao bao nhieu cm) + goi y. Web (tab Physical Map) hien thanh khung do.
+            "drive_block": self._drive_block(now),
         })
         self.sensor_health_pub.publish(msg)
 
@@ -531,10 +534,8 @@ class LidarWsToRos2Bridge(Node):
 
         threading.Thread(target=worker, daemon=True).start()
 
-    def print_drive_status(self):
-        if not self.status_log_enabled:
-            return
-        now = time.monotonic()
+    def _drive_state(self, now):
+        """(Nav2 dang ra lenh?, lenh gui Pi, so giay xe dung yen du dang co lenh chay)."""
         cmd_active = (now - self.last_cmd_time) < 0.8 and (
             abs(self.current_vx) > 0.02 or abs(self.current_wz) > 0.1
         )
@@ -544,6 +545,20 @@ class LidarWsToRos2Bridge(Node):
         stuck_for = 0.0
         if cmd_active and sending:
             stuck_for = now - max(self._last_moving_time, self._cmd_started)
+        return cmd_active, sent, stuck_for
+
+    def _drive_block(self, now):
+        """Ly do ket dang de Web hien (None = khong ket) - xem robot_status.describe_drive_block."""
+        _cmd_active, sent, stuck_for = self._drive_state(now)
+        pi_age = (now - self.pi_status_time) if self.pi_status is not None else None
+        encoder_fresh = self.has_prev_encoder_ticks and (now - self.last_encoder_time) < 0.5
+        return describe_drive_block(stuck_for, sent, encoder_fresh, self.pi_status, pi_age)
+
+    def print_drive_status(self):
+        if not self.status_log_enabled:
+            return
+        now = time.monotonic()
+        cmd_active, sent, stuck_for = self._drive_state(now)
         interval = 1.0 if cmd_active else 10.0
         if now - self._last_status_print < interval - 0.05:
             return

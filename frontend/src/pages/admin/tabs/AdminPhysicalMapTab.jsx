@@ -25,7 +25,8 @@ import {
 } from '../../../services/workflowApi';
 import { buildCostmapImage, pathMsgToPoints } from './physicalMapCostmap';
 import {
-  amclPoseIsReliable, composeMapPose, laserPointToMap, localizationFromManager, sendNav2Endpoint,
+  amclPoseIsReliable, composeMapPose, laserPointToMap, localizationFromManager, navigationBlockingReason,
+  obstacleClearanceAt, sendNav2Endpoint, TURN_CLEARANCE_M,
 } from './physicalMapNavigation';
 import {
   endpointZoneViolation,
@@ -254,6 +255,8 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
   // /localization/state tu localization_manager.py tren robot (co thi uu tien hon kiem tra AMCL o Web)
   const [locManager, setLocManager] = useState({ msg: null, at: 0 });
   const locManagerRef = useRef({ msg: null, at: 0 });
+  // Ly do xe dang ket (drive_block trong /robot/sensor_health) + luc nhan (ms)
+  const [driveBlock, setDriveBlock] = useState(null);
   const navigationRef = useRef({ poseAt: 0, costmapAt: 0, costmap: null, healthAt: 0, health: null });
   const [hardwareInfo, setHardwareInfo] = useState({
     model: 'RPLiDAR A1M8',
@@ -655,6 +658,19 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
       try {
         navigationRef.current.health = JSON.parse(msg.data);
         navigationRef.current.healthAt = Date.now();
+        // Xe ket (bridge: dung yen >= 2 s du co lenh chay) -> khung do + ly do. Giu them 15 s sau
+        // khi het ket (luc Nav2 dang Wait/lui khong ra lenh) de nguoi dung kip doc.
+        const block = navigationRef.current.health.drive_block;
+        const now = Date.now();
+        setDriveBlock((prev) => {
+          if (block) {
+            if (!prev || prev.code !== block.code || prev.message !== block.message) {
+              setNavStatus(`⛔ Xe kẹt: ${block.message} ${block.hint}`);
+            }
+            return { ...block, at: now };
+          }
+          return prev && now - prev.at > 15000 ? null : prev;
+        });
         if (!navigationRef.current.health.pi_ws_connected || !navigationRef.current.health.lidar_live) {
           localizationRef.current.confirmed = false;
           setLocalizationReady(false);
@@ -1297,6 +1313,27 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
         const tmpl = getEndpointTemplateInfo(ep.type);
         const epColor = tmpl.color || ep.color || '#3B82F6';
 
+        // Endpoint sat vat can (< 25 cm): ve vong quay dau mau vang => xe toi do khong xoay duoc
+        const epClearance = obstacleClearanceAt(navigationRef.current.costmap, ep.x, ep.y, TURN_CLEARANCE_M);
+        if (epClearance < TURN_CLEARANCE_M) {
+          const edge = worldToCanvas(ep.x + TURN_CLEARANCE_M, ep.y, width, height);
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(wpx, wpy, Math.max(10, Math.abs(edge.x - wpx)), 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(245, 158, 11, 0.10)';
+          ctx.fill();
+          ctx.strokeStyle = '#F59E0B';
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([3, 3]);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.font = 'bold 9px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillStyle = '#FBBF24';
+          ctx.fillText(`⚠ sát vật ${Math.round(epClearance * 100)}cm`, wpx, wpy + 26);
+          ctx.restore();
+        }
+
         // Halo khi dang di toi, hover hoac duoc chon
         if (isNavTarget) {
           ctx.beginPath();
@@ -1814,14 +1851,33 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
       const zoneReason = endpointZoneViolation({ x: gx, y: gy }, zones);
       if (zoneReason) throw new Error(zoneReason);
       const loc = localizationFromManager(locManagerRef.current.msg, locManagerRef.current.at);
-      sendNav2Endpoint(rosClientRef.current, {
+      const navState = {
         runtime: nav2Runtime, mapId: mapConfig.mapId, physical: connectionMode === 'pi5',
         localized: loc.fresh
           ? loc.localized
           : localizationRef.current.confirmed && localizationRef.current.mapId === mapConfig.mapId,
         localizationReason: loc.fresh ? loc.reason : undefined,
         ...navigationRef.current,
-      }, { x: gx, y: gy, yaw: gyaw }, mapConfig, navigationRef.current.costmap);
+      };
+      // Bao loi Nav2/dinh vi truoc, roi moi hoi ve cho quay dau (khong hoi xong lai bao loi khac).
+      const blocking = navigationBlockingReason({ ...navState, connected: !!rosClientRef.current?.isConnected });
+      if (blocking) throw new Error(blocking);
+      // Endpoint sat tuong: toi noi xe khong quay dau duoc (Pi chan xoay khi hong < 13 cm) => ket
+      // khi di endpoint tiep theo (log 08/11). Hoi truoc; endpoint Dock/tram sac sat tuong van di duoc.
+      const clearance = obstacleClearanceAt(navigationRef.current.costmap, gx, gy, TURN_CLEARANCE_M);
+      if (clearance < TURN_CLEARANCE_M) {
+        const cm = Math.round(clearance * 100);
+        const go = window.confirm(
+          `Endpoint chỉ cách tường/vật cản khoảng ${cm} cm (cần ≥ ${Math.round(TURN_CLEARANCE_M * 100)} cm để quay đầu).\n\n`
+          + 'Xe vẫn tới được, nhưng tới nơi có thể KHÔNG quay đầu được vì Pi chặn xoay khi hông sát vật '
+          + '=> dễ kẹt khi đi endpoint tiếp theo.\n\nVẫn đi tới endpoint này?'
+        );
+        if (!go) {
+          throw new Error(`Đã huỷ: endpoint quá sát vật cản (${cm} cm). Dời endpoint ra cách tường ≥ 25 cm (vòng tròn vàng trên map).`);
+        }
+      }
+      sendNav2Endpoint(rosClientRef.current, navState, { x: gx, y: gy, yaw: gyaw }, mapConfig,
+        navigationRef.current.costmap);
       lastGoalSentAtRef.current = Date.now();
       setSelectedGoal({ x: gx, y: gy });
       setIsNavigating(true);
@@ -2236,6 +2292,32 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
                 : ''
             }`}
           />
+
+          {driveBlock && (
+            <div
+              role="alert"
+              className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 w-[92%] max-w-2xl px-3 py-2 rounded-lg bg-red-950/95 border border-red-700 text-[11px] text-red-100 shadow-xl flex items-start gap-2"
+            >
+              <AlertTriangle className="w-4 h-4 shrink-0 text-red-400 mt-0.5" />
+              <div className="flex-1 leading-relaxed">
+                <div className="font-bold text-red-200">
+                  Xe kẹt {driveBlock.stuck_sec}s: {driveBlock.message}
+                </div>
+                <div className="text-red-100/90">{driveBlock.hint}</div>
+                {driveBlock.detail && (
+                  <div className="text-[10px] text-red-300/70 font-mono mt-0.5">Pi: {driveBlock.detail}</div>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setDriveBlock(null)}
+                className="text-red-300 hover:text-white font-bold text-xs cursor-pointer"
+                title="Ẩn"
+              >
+                ✕
+              </button>
+            </div>
+          )}
 
           {zoneDrawType && (
             <div className="absolute top-16 left-1/2 -translate-x-1/2 z-10 px-3 py-1.5 rounded-lg bg-amber-950/90 border border-amber-700 text-[11px] font-semibold text-amber-200 shadow-xl">

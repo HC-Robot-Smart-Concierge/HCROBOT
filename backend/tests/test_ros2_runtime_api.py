@@ -215,6 +215,42 @@ def _fake_scripts(tmp_path: Path) -> Ros2RuntimeService:
     return service
 
 
+def test_second_explore_press_while_starting_does_not_launch_again(tmp_path: Path, monkeypatch):
+    """09/11: bam lan 2 luc script con kiem tra cam bien -> 2 bo script tat cheo nhau, xe khong chay."""
+    service = _fake_scripts(tmp_path)
+    launches = []
+    procs = []
+    clock = {"t": 1000.0}
+
+    class FakePopen:
+        def __init__(self, command, **kwargs):
+            launches.append(command)
+            procs.append(self)
+            self.pid = 4000 + len(launches)
+            self.alive = True
+
+        def poll(self):
+            return None if self.alive else 0
+
+    monkeypatch.setattr("app.services.hardware.ros2_runtime_service.subprocess.Popen", FakePopen)
+    monkeypatch.setattr("app.services.hardware.ros2_runtime_service.time.monotonic", lambda: clock["t"])
+
+    first = service.start_exploration("ignored", auto_save=False)
+    clock["t"] += 60
+    second = service.start_exploration("ignored", auto_save=False)
+    assert len(launches) == 1
+    assert second["status"] == "ALREADY_STARTING" and second["pid"] == first["pid"]
+    assert "đang khởi động" in second["message"].lower()
+
+    clock["t"] += 200  # qua cua so khoi dong: cho bat lai (vd. lan truoc kiem tra cam bien that bai)
+    service.start_exploration("ignored", auto_save=False)
+    assert len(launches) == 2
+
+    procs[-1].alive = False  # script da thoat (loi) -> bat lai ngay duoc
+    service.start_exploration("ignored", auto_save=False)
+    assert len(launches) == 3
+
+
 def test_start_exploration_launches_slam_script_with_explore_env(tmp_path: Path, monkeypatch):
     service = _fake_scripts(tmp_path)
     launched = {}

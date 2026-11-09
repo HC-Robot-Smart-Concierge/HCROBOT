@@ -25,6 +25,8 @@ ZONE_HARD_MARGIN_M = 0.05
 KEEPOUT_NEAR_M = 0.08
 KEEPOUT_SOFT_BAND_M = 0.25
 KEEPOUT_SOFT_DECAY = 8.0  # 1/m
+# Tu quet: SLAM active + cho cam bien (toi 30 lan) + /map + Nav2 + dem nguoc 10 s ~ 1-2 phut.
+EXPLORE_START_GUARD_SEC = 150.0
 
 
 class Ros2RuntimeError(RuntimeError):
@@ -40,6 +42,8 @@ class Ros2RuntimeService:
         self.runtime_dir = self.project_root / "output" / "runtime"
         self._lock = threading.Lock()
         self._launcher: Optional[subprocess.Popen] = None
+        # (tien trinh, time.monotonic() luc bam) cua lan bat tu quet gan nhat - chan bam trung
+        self._explore_launch: Optional[tuple[subprocess.Popen, float]] = None
         self._last_mode = "OFFLINE"
         self._last_map: Optional[str] = None
 
@@ -97,6 +101,7 @@ class Ros2RuntimeService:
         command = self._wsl_command(script_name, *args, env=env)
 
         with self._lock:
+            self._explore_launch = None  # script moi (map/nav/quet) thay the phien tu quet cu
             stdout_handle = open(stdout_path, "a", encoding="utf-8")
             stderr_handle = open(stderr_path, "a", encoding="utf-8")
             try:
@@ -139,10 +144,30 @@ class Ros2RuntimeService:
         ngược 10 s rồi mới cho xe chạy; quét xong tự lưu map nếu có tên.
         """
         safe_name = self.normalize_map_name(raw_name) if auto_save else ""
+        # Bam lan 2 luc script con khoi dong (SLAM + kiem tra cam bien ~1-2 phut, xe chua chay):
+        # KHONG chay them script - buoc dau script moi tat tien trinh cua script cu, hai ben
+        # tat cheo nhau va xe khong bao gio chay (09/11). Qua cua so nay thi cho bat lai.
+        launch = self._explore_launch
+        if launch is not None:
+            proc, started_at = launch
+            elapsed = time.monotonic() - started_at
+            if proc.poll() is None and elapsed < EXPLORE_START_GUARD_SEC:
+                return {
+                    "status": "ALREADY_STARTING",
+                    "mode": "EXPLORING",
+                    "map_name": self._last_map,
+                    "pid": proc.pid,
+                    "message": (
+                        f"Robot đang khởi động tự quét từ lần bấm trước ({elapsed:.0f} s trước): bật SLAM, "
+                        "kiểm tra Pi/LiDAR/encoder rồi đếm ngược 10 s. Không khởi động lại - chờ thêm."
+                    ),
+                }
         env = {"EXPLORE": "1", "EXPLORE_SAVE": safe_name}
         if os.getenv("PI5_IP"):
             env["PI5_IP"] = os.environ["PI5_IP"]
         pid = self._spawn("start_wsl_slam.sh", log_prefix="explore-web", env=env)
+        if self._launcher is not None:
+            self._explore_launch = (self._launcher, time.monotonic())
         self._last_mode = "EXPLORING"
         self._last_map = safe_name or None
         return {
@@ -175,6 +200,7 @@ class Ros2RuntimeService:
 
         GIỮ SLAM + bridge chạy để map đang quét dở vẫn còn và lưu được.
         """
+        self._explore_launch = None  # da dung: lan bam "Quet" sau phai bat moi
         kill_cmd = (
             "pkill -f '[f]rontier_explorer.py'; "
             "pkill -f '[n]avigation_launch.py'; "

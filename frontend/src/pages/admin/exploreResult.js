@@ -20,6 +20,16 @@ export function describeExploreResult(result) {
   }
 }
 
+// fetch toi Pi that bai o tang mang (TypeError "Failed to fetch") hoac het gio => thuong la
+// main.py tren Pi chua chay (Pi vua khoi dong lai) - noi ro cach bat thay vi "Failed to fetch".
+export function piRequestErrorMessage(err, piIp) {
+  if (err instanceof TypeError || err?.name === 'TimeoutError' || err?.name === 'AbortError') {
+    return `Không kết nối được Pi (${piIp}:8000): main.py trên Pi chưa chạy hoặc Pi mất mạng. `
+      + 'SSH vào Pi rồi chạy: cd ~/HCROBOT/robot && sudo python3 main.py';
+  }
+  return err?.message || String(err);
+}
+
 export function defaultMapName(now = new Date()) {
   const p = (n) => String(n).padStart(2, '0');
   return `map_${now.getFullYear()}_${p(now.getMonth() + 1)}_${p(now.getDate())}_${p(now.getHours())}${p(now.getMinutes())}`;

@@ -61,6 +61,36 @@ export function laserPointToMap(point, pose) {
   };
 }
 
+// Xe 33 x 17 cm xoay tai cho quet vong ban kinh ~18.6 cm; Pi chi cho xoay khi sieu am ben quay
+// > 11 cm (mo khoa lai tu 13 cm) => tam xe can cach tuong ~21.5 cm. Lay 25 cm (= robot_geometry
+// TURN_CLEARANCE_RADIUS_M, frontier_explorer goal_clearance_m) cho ca sai so o costmap.
+export const TURN_CLEARANCE_M = 0.25;
+
+// Khoang cach (m) tu (x, y) toi TAM o vat can that (100 = tuong / vung cam han) gan nhat trong
+// ban kinh radiusM; khong co o nao (hoac khong co costmap) => Infinity. O 1..99 (dem inflation)
+// khong tinh: do chi la chi phi, khong phai vat can.
+export function obstacleClearanceAt(costmap, x, y, radiusM) {
+  if (!costmap?.info || (!Array.isArray(costmap.data) && !ArrayBuffer.isView(costmap.data))) return Infinity;
+  const { width, height, resolution: res, origin } = costmap.info;
+  const yaw = 2 * Math.atan2(origin.orientation?.z || 0, origin.orientation?.w ?? 1);
+  const dx = x - origin.position.x;
+  const dy = y - origin.position.y;
+  const lx = Math.cos(yaw) * dx + Math.sin(yaw) * dy; // toa do trong khung costmap
+  const ly = -Math.sin(yaw) * dx + Math.cos(yaw) * dy;
+  const r = Math.ceil(radiusM / res);
+  const cx = Math.floor(lx / res);
+  const cy = Math.floor(ly / res);
+  let best = Infinity;
+  for (let j = Math.max(0, cy - r); j <= Math.min(height - 1, cy + r); j += 1) {
+    for (let i = Math.max(0, cx - r); i <= Math.min(width - 1, cx + r); i += 1) {
+      if (costmap.data[j * width + i] < 100) continue;
+      const d = Math.hypot((i + 0.5) * res - lx, (j + 0.5) * res - ly);
+      if (d <= radiusM && d < best) best = d;
+    }
+  }
+  return best;
+}
+
 export function navigationBlockingReason({ connected, runtime, mapId, physical, localized, localizationReason,
   poseAt = 0, costmapAt = 0, health, healthAt = 0, now = Date.now() }) {
   if (!connected) return 'Chưa kết nối Nav2 trên laptop. Bấm “Bật Nav2 với map này”.';

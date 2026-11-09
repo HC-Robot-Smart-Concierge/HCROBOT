@@ -19,7 +19,7 @@ import {
   parseLaserScan,
   quaternionToYaw,
 } from '../../services/rosbridgeService';
-import { defaultMapName, describeExploreResult } from './exploreResult';
+import { defaultMapName, describeExploreResult, piRequestErrorMessage } from './exploreResult';
 import {
   Activity,
   BatteryCharging,
@@ -142,6 +142,7 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
   // Ket qua cuoi cua frontier_explorer (/explore/status) + bang Luu map mo ra vi quet xong
   const [exploreResult, setExploreResult] = useState(null);
   const [saveFromExplore, setSaveFromExplore] = useState(false);
+  const [exploreError, setExploreError] = useState('');
 
   // Workflow Manager
   const [isWorkflowModalOpen, setIsWorkflowModalOpen] = useState(false);
@@ -1032,11 +1033,18 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
     if (isRos2RuntimeBusy) return;
     setIsRos2RuntimeBusy(true);
     setIsExploreModalOpen(false);
-    setNavNotification('Đang bật SLAM + Nav2 để robot tự quét map...');
+    setExploreError('');
+    setNavNotification('Đang kiểm tra Pi rồi bật SLAM + Nav2 để robot tự quét map...');
+    let failed = false;
     try {
       // Tat bo tu quet cu tren Pi neu dang chay (bo qua loi neu Pi khong co).
-      await fetch(`${PI5_API}/map/explore/stop`, { method: 'POST' }).catch(() => null);
-      const lidarResponse = await fetch(`${PI5_API}/map/connect_lidar`, { method: 'POST' });
+      await fetch(`${PI5_API}/map/explore/stop`, { method: 'POST', signal: AbortSignal.timeout(4000) })
+        .catch(() => null);
+      const lidarResponse = await fetch(`${PI5_API}/map/connect_lidar`, {
+        method: 'POST', signal: AbortSignal.timeout(15000),
+      }).catch((err) => {
+        throw new Error(piRequestErrorMessage(err, PI5_IP));
+      });
       const lidarResult = await lidarResponse.json().catch(() => null);
       if (!lidarResponse.ok || lidarResult?.status !== 'SUCCESS') {
         throw new Error(lidarResult?.message || 'Pi đã mở cổng nhưng RPLiDAR không phát dữ liệu scan.');
@@ -1061,12 +1069,15 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
           || 'Robot sẽ TỰ CHẠY sau khi kiểm tra cảm biến và đếm ngược 10 giây. Đứng xa robot; bấm Dừng Quét / E-STOP để dừng.'
       );
     } catch (err) {
+      failed = true;
       exploreStartedAtRef.current = 0;
       setIsExploring(false);
-      setNavNotification(`Không bật được chế độ tự quét: ${err.message}`);
+      setNavNotification('');
+      // Loi hien bang do, giu toi khi nguoi dung tat (toast thuong tu mat sau 10 s - de bo lo)
+      setExploreError(`Không bật được chế độ tự quét: ${err.message}`);
     } finally {
       setIsRos2RuntimeBusy(false);
-      setTimeout(() => setNavNotification(''), 10000);
+      if (!failed) setTimeout(() => setNavNotification(''), 10000);
     }
   };
 
@@ -1490,8 +1501,21 @@ export const AdminLidarPage = ({ onSwitchToCamera }) => {
         </div>
       </div>
 
+      {/* Loi bat tu quet: do, giu nguyen toi khi bam X */}
+      {exploreError && (
+        <div
+          role="alert"
+          className="absolute top-14 left-1/2 -translate-x-1/2 z-50 max-w-xl px-4 py-2.5 rounded-lg shadow-lg border flex items-start gap-2 text-xs font-bold pointer-events-auto"
+          style={{ background: '#FEF2F2', borderColor: '#FCA5A5', color: '#991B1B'}}
+        >
+          <AlertTriangle className="w-4 h-4 shrink-0 text-red-600 mt-0.5"/>
+          <span className="leading-relaxed">{exploreError}</span>
+          <button onClick={() => setExploreError('')} className="ml-2 text-red-400 hover:text-red-700 font-bold text-xs cursor-pointer">✕</button>
+        </div>
+      )}
+
       {/* Floating Toast Notification (Absolute - Never shifts workspace layout height) */}
-      {navNotification && (
+      {navNotification && !exploreError && (
         <div className="absolute top-14 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-lg shadow-md border flex items-center gap-2 text-xs font-bold font-mono pointer-events-auto backdrop-blur-xs"
           style={{ background: 'rgba(250, 248, 245, 0.95)', borderColor: '#BFBFBD', color: '#262626'}}>
           <Radio className="w-3.5 h-3.5 shrink-0 text-amber-600 animate-pulse"/>

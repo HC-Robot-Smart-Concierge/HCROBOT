@@ -57,6 +57,61 @@ export function resizeZoneFromCorner(zone, corner, point, minSize = MIN_ZONE_SIZ
   return rectFromBounds(minX, maxX, minY, maxY);
 }
 
+// Trang thai vung giam toc cho dong ho toc do tren map. Su that la gioi han Nav2 dang ap
+// (health.speed_limit_mps tu bridge, null = khong gioi han); hinh hoc vung chi de biet ten vung
+// va phat hien vung ve tren Web ma Nav2 chua ap (chua Luu / Nav2 chay map khac).
+const SPEED_ZONE_EDGE_M = 0.1; // sat mep: Nav2 xet tam xe + tin 1 Hz => khong bao "chua ap" o day
+
+export function speedZoneStatus(pose, zones, health) {
+  const limit = Number.isFinite(health?.speed_limit_mps) ? health.speed_limit_mps : null;
+  const zone = (zones || []).find((z) => z.type === 'SPEED_ZONE' && isPointInZone(pose.x, pose.y, z)) || null;
+  const name = zone ? ` “${zone.name || zone.id}”` : '';
+  if (limit !== null) {
+    const floor = health?.motor_min_linear_speed_mps;
+    const warning = health?.speed_limit_below_motor_floor && Number.isFinite(floor)
+      ? `Vùng đặt ${limit.toFixed(2)} m/s thấp hơn mức xe chạy được: xe chạy chậm nhất ~${floor.toFixed(2)} m/s.`
+      : '';
+    return { active: true, limitMps: limit, zone, label: `VÙNG GIẢM TỐC${name} · tối đa ${limit.toFixed(2)} m/s`, warning };
+  }
+  let warning = '';
+  if (zone) {
+    const { minX, maxX, minY, maxY } = zoneBounds(zone);
+    const depth = Math.min(pose.x - minX, maxX - pose.x, pose.y - minY, maxY - pose.y);
+    if (depth >= SPEED_ZONE_EDGE_M) {
+      warning = `Xe đang ở vùng${name} nhưng Nav2 chưa áp giới hạn tốc độ: bấm Lưu vùng, hoặc bật lại Nav2 với đúng map này.`;
+    }
+  }
+  return { active: false, limitMps: null, zone, label: '', warning };
+}
+
+// Vung khong duoc co endpoint ben trong: cam dung (chi di ngang qua) va cam vao (khong toi duoc).
+// SPEED_ZONE van cho dat endpoint. Backend (map.py) giu cung luat cho API.
+export const NO_ENDPOINT_ZONE_TYPES = ['NO_STOP', 'KEEP_OUT'];
+const ZONE_KIND_VI = { NO_STOP: 'cấm dừng', KEEP_OUT: 'cấm vào' };
+
+// Dat/doi endpoint toi diem nay co hop le? null = duoc; chuoi = ly do (hien cho admin).
+export function endpointPlacementViolation(point, zones) {
+  const zone = (zones || []).find((z) => NO_ENDPOINT_ZONE_TYPES.includes(z.type) && isPointInZone(point.x, point.y, z));
+  if (!zone) return null;
+  return `Không thể đặt endpoint trong vùng ${ZONE_KIND_VI[zone.type]} “${zone.name || zone.id}”: `
+    + (zone.type === 'NO_STOP' ? 'robot chỉ được đi ngang qua, không được dừng ở đây. ' : 'robot không được vào vùng này. ')
+    + 'Chọn chỗ khác ngoài vùng.';
+}
+
+// Vung (moi ve / vua doi / doi loai) de len endpoint co san? null = khong; con lai = danh sach
+// endpoint bi de + thong bao bat xoa endpoint truoc.
+export function zoneEndpointConflict(zone, endpoints) {
+  if (!NO_ENDPOINT_ZONE_TYPES.includes(zone?.type)) return null;
+  const covered = (endpoints || []).filter((ep) => isPointInZone(Number(ep.x), Number(ep.y), zone));
+  if (covered.length === 0) return null;
+  const names = covered.map((ep) => `“${ep.name || ep.id}”`).join(', ');
+  return {
+    endpoints: covered,
+    message: `Không thể đặt vùng ${ZONE_KIND_VI[zone.type]}${zone.name ? ` “${zone.name}”` : ''} đè lên endpoint ${names}. `
+      + 'Hãy xóa endpoint đó trước (tab Điểm Mốc), rồi vẽ lại vùng.',
+  };
+}
+
 // Ly do khong duoc chon endpoint nay (null = hop le). KEEP_OUT uu tien hon NO_STOP.
 export function endpointZoneViolation(target, zones) {
   const inside = (zones || []).filter((z) => isPointInZone(target.x, target.y, z));

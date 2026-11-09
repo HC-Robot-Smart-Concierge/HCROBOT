@@ -185,6 +185,35 @@ def is_point_in_zone(px: float, py: float, z) -> bool:
     return (zx - half_w) <= px <= (zx + half_w) and (zy - half_h) <= py <= (zy + half_h)
 
 
+# Vung khong duoc co endpoint ben trong (cung luat voi Web: physicalMapZones.js).
+# NO_STOP: robot chi duoc di ngang qua, moi endpoint deu la cho dung => cam moi loai endpoint.
+NO_ENDPOINT_ZONE_TYPES = ("KEEP_OUT", "NO_STOP")
+
+
+def _waypoint_zone_violation(x: float, y: float, zones) -> Optional[str]:
+    for z in zones:
+        if z.type == "KEEP_OUT" and is_point_in_zone(x, y, z):
+            return f"Tọa độ ({x:.2f}, {y:.2f}) nằm trong Khu vực cấm vào (Keep-out Zone) '{z.name}'!"
+        if z.type == "NO_STOP" and is_point_in_zone(x, y, z):
+            return (f"Tọa độ ({x:.2f}, {y:.2f}) nằm trong Khu vực cấm dừng (No-Stop Zone) '{z.name}': "
+                    "robot chỉ được đi ngang qua, không thể đặt endpoint/điểm dừng tại đây!")
+    return None
+
+
+async def _zone_endpoint_conflict(zone: "ZoneSchema", repo: MapRepository) -> Optional[str]:
+    """Vung cam dung/cam vao de len endpoint co san cua CUNG map => ly do tu choi (bat xoa truoc)."""
+    if (zone.type or "KEEP_OUT") not in NO_ENDPOINT_ZONE_TYPES or not zone.map_id:
+        return None  # khong ro map (du lieu cu) thi khong doan endpoint cua map nao
+    waypoints = await repo.list_waypoints(zone.map_id)
+    covered = [w for w in waypoints if is_point_in_zone(w.x, w.y, zone)]
+    if not covered:
+        return None
+    kind = "cấm dừng" if zone.type == "NO_STOP" else "cấm vào"
+    names = ", ".join(f"'{w.name or w.id}'" for w in covered)
+    return (f"Không thể đặt vùng {kind} '{zone.name}' đè lên endpoint {names}. "
+            "Hãy xóa endpoint đó trước, rồi vẽ lại vùng.")
+
+
 async def ensure_default_waypoints(repo: MapRepository):
     if not DEFAULT_WAYPOINTS:
         return
@@ -398,18 +427,9 @@ def sync_waypoint_to_world_and_sim(wp_id: str, name: str, wp_type: str, x: float
 
 @router.post("/waypoints", response_model=Waypoint, summary="Tạo mới hoặc cập nhật tọa độ Waypoint / Endpoint")
 async def save_waypoint(wp: Waypoint, repo: MapRepository = Depends(get_map_repository)):
-    active_zones = await repo.list_zones(wp.map_id)
-    for z in active_zones:
-        if z.type == "KEEP_OUT" and is_point_in_zone(wp.x, wp.y, z):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Tọa độ ({wp.x:.2f}, {wp.y:.2f}) nằm trong Khu vực cấm vào (Keep-out Zone) '{z.name}'!",
-            )
-        if z.type == "NO_STOP" and (wp.type or "").upper() in ("PARK", "PARKING_SPOT", "CHARGER", "DOCKING_TARGET") and is_point_in_zone(wp.x, wp.y, z):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Tọa độ ({wp.x:.2f}, {wp.y:.2f}) nằm trong Khu vực cấm dừng (No-Stop Zone) '{z.name}'. Không thể tạo điểm đỗ/chờ tại đây!",
-            )
+    violation = _waypoint_zone_violation(wp.x, wp.y, await repo.list_zones(wp.map_id))
+    if violation:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=violation)
 
     saved = await repo.save_or_update_waypoint(
         id=wp.id,
@@ -432,18 +452,9 @@ async def update_waypoint(waypoint_id: str, wp: Waypoint, repo: MapRepository = 
     if not existing:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy Waypoint")
 
-    active_zones = await repo.list_zones(wp.map_id or existing.map_id)
-    for z in active_zones:
-        if z.type == "KEEP_OUT" and is_point_in_zone(wp.x, wp.y, z):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Tọa độ ({wp.x:.2f}, {wp.y:.2f}) nằm trong Khu vực cấm vào (Keep-out Zone) '{z.name}'!",
-            )
-        if z.type == "NO_STOP" and (wp.type or "").upper() in ("PARK", "PARKING_SPOT", "CHARGER", "DOCKING_TARGET") and is_point_in_zone(wp.x, wp.y, z):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Tọa độ ({wp.x:.2f}, {wp.y:.2f}) nằm trong Khu vực cấm dừng (No-Stop Zone) '{z.name}'. Không thể tạo điểm đỗ/chờ tại đây!",
-            )
+    violation = _waypoint_zone_violation(wp.x, wp.y, await repo.list_zones(wp.map_id or existing.map_id))
+    if violation:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=violation)
 
     saved = await repo.save_or_update_waypoint(
         id=waypoint_id,
@@ -485,6 +496,9 @@ async def get_zones(map_id: Optional[str] = None, repo: MapRepository = Depends(
 
 @router.post("/zones", response_model=ZoneSchema, summary="Tạo mới hoặc cập nhật Vùng Chức Năng (Zone)")
 async def save_zone(zone: ZoneSchema, repo: MapRepository = Depends(get_map_repository)):
+    conflict = await _zone_endpoint_conflict(zone, repo)
+    if conflict:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=conflict)
     saved = await repo.save_or_update_zone(
         id=zone.id,
         name=zone.name,
@@ -506,6 +520,9 @@ async def update_zone(zone_id: str, zone: ZoneSchema, repo: MapRepository = Depe
     existing = await repo.get_zone_by_id(zone_id)
     if not existing:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy Vùng Chức Năng")
+    conflict = await _zone_endpoint_conflict(zone, repo)
+    if conflict:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=conflict)
 
     saved = await repo.save_or_update_zone(
         id=zone_id,

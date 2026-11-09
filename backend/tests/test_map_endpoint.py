@@ -120,6 +120,46 @@ async def test_waypoints_and_zones_filter_by_map_id():
 
 
 @pytest.mark.asyncio
+async def test_no_stop_zone_and_endpoints_exclude_each_other():
+    """Vung cam dung (va cam vao) khong duoc chua endpoint: dat endpoint vao vung bi tu choi, va
+    vung ve/doi de len endpoint co san bi tu choi kem ten endpoint can xoa."""
+    import uuid
+
+    await init_db()
+    map_id = f"pytest_nostop_{uuid.uuid4().hex[:8]}"
+    wp_id, zone_id = f"wp-{map_id}", f"zone-{map_id}"
+    zone = {"id": zone_id, "name": "Hành lang", "type": "NO_STOP", "x": 1.0, "y": 1.0,
+            "width": 1.0, "height": 1.0, "speed_limit": 0.15, "map_id": map_id}
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        try:
+            wp = {"id": wp_id, "name": "Bàn A", "type": "WAYPOINT", "x": 1.0, "y": 1.0, "yaw": 0.0, "map_id": map_id}
+            assert (await client.post("/api/v1/map/waypoints", json=wp)).status_code == 200
+
+            # Ve vung cam dung de len endpoint co san -> 400, bao ten endpoint, bat xoa truoc
+            res = await client.post("/api/v1/map/zones", json=zone)
+            assert res.status_code == 400
+            assert "Bàn A" in res.json()["detail"] and "xóa" in res.json()["detail"].lower()
+
+            # Vung o cho khac thi duoc; vung giam toc de len endpoint van duoc
+            assert (await client.post("/api/v1/map/zones", json={**zone, "x": 3.0})).status_code == 200
+            speed = {**zone, "id": zone_id + "-speed", "type": "SPEED_ZONE"}
+            assert (await client.post("/api/v1/map/zones", json=speed)).status_code == 200
+            await client.delete(f"/api/v1/map/zones/{zone_id}-speed")
+
+            # Dat endpoint THUONG (khong chi diem do) vao vung cam dung -> 400
+            inside = {**wp, "id": wp_id + "-b", "name": "B", "x": 3.0}
+            res = await client.post("/api/v1/map/waypoints", json=inside)
+            assert res.status_code == 400 and "cấm dừng" in res.json()["detail"]
+
+            # Doi vung (PUT) de len endpoint -> 400
+            res = await client.put(f"/api/v1/map/zones/{zone_id}", json=zone)
+            assert res.status_code == 400 and "Bàn A" in res.json()["detail"]
+        finally:
+            await client.delete(f"/api/v1/map/waypoints/{wp_id}")
+            await client.delete(f"/api/v1/map/zones/{zone_id}")
+
+
+@pytest.mark.asyncio
 async def test_hotel_zone_rules_and_navigation_rejection():
     """Test các ràng buộc an toàn của Hotel Zones: cấm vào (KEEP_OUT) và cấm dừng (NO_STOP)."""
     await init_db()

@@ -25,12 +25,23 @@ class TestMotorSpeedCap(unittest.TestCase):
             self.assertLessEqual(abs(left+right) * 0.5 * 0.0048, 0.18)
             self.assertEqual(math.copysign(1, left), sign)
 
-    def test_never_raises_speed_to_motor_floor(self):
-        self.assertEqual(limit_wheel_pwm(35, 35, 0.12, 0.0048, 35), (0, 0))
+    def test_cap_below_motor_floor_crawls_at_floor_instead_of_stopping(self):
+        # Vung giam toc la de di CHAM, khong phai chan duong (09/11: 0.12 m/s lam xe dung han).
+        self.assertEqual(limit_wheel_pwm(35, 35, 0.12, 0.0048, 35), (35, 35))
+        self.assertEqual(limit_wheel_pwm(57, 57, 0.12, 0.0035, 35), (35, 35))  # 0.20 m/s -> san
         self.assertEqual(limit_wheel_pwm(35, 35, 0.18, 0.0048, 35), (35, 35))
 
-    def test_stops_if_curvature_cannot_be_preserved_above_floor(self):
-        self.assertEqual(limit_wheel_pwm(35, 49, 0.18, 0.0048, 35), (0, 0))
+    def test_floor_crawl_keeps_the_turn_curvature(self):
+        self.assertEqual(limit_wheel_pwm(35, 49, 0.18, 0.0048, 35), (35, 49))  # da la cung cham nhat
+        left, right = limit_wheel_pwm(40, 56, 0.12, 0.0035, 35)
+        self.assertEqual((left, right), (35, 49))
+        self.assertAlmostEqual(right / left, 56 / 40, places=2)
+        self.assertEqual(limit_wheel_pwm(-40, -56, 0.12, 0.0035, 35), (-35, -49))
+
+    def test_zone_cap_between_floor_and_normal_speed_is_applied_exactly(self):
+        left, right = limit_wheel_pwm(57, 57, 0.15, 0.0035, 35)  # 0.20 -> 0.15 m/s
+        self.assertEqual((left, right), (42, 42))
+        self.assertLessEqual((left + right) * 0.5 * 0.0035, 0.15)
 
     def test_invalid_cap_stops_translation(self):
         for limit in (0, -1, math.nan, math.inf):
@@ -63,7 +74,8 @@ class TestMotorSpeedCap(unittest.TestCase):
         command = SimpleNamespace(linear=SimpleNamespace(x=0.12), angular=SimpleNamespace(z=0.0))
         node.on_speed_limit(SimpleNamespace(speed_limit=0.12, percentage=False))
         node.on_cmd_vel_received(command)
-        node._send_udp_to_pi5.assert_called_with('stop')
+        # Gioi han 0.12 < san motor (35% x 0.0048 = 0.168): xe bo o san thay vi dung, va bao Web
+        node._send_udp_to_pi5.assert_called_with('drive:35:35')
         self.assertTrue(node.zone_speed_blocked)
         node.on_speed_limit(SimpleNamespace(speed_limit=0, percentage=False))
         node.on_cmd_vel_received(command)

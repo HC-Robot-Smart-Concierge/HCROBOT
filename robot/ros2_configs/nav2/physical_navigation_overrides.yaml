@@ -27,6 +27,10 @@ controller_server:
       # Gioi han cung DWB ve muc xe lam duoc; re > ~20 do thi RotationShim xoay tai cho.
       max_vel_theta: 0.15
       angular_dist_threshold: 0.35
+      # Demo vung giam toc (10/11): binh thuong 0.25 m/s, vung giam toc 0.12 m/s (san motor, cham
+      # hon khong lan deu) => trong vung con mot nua toc do, nhin thay ro. Bridge: tran PWM 72%.
+      max_vel_x: 0.25
+      max_speed_xy: 0.25
 local_costmap:
   local_costmap:
     ros__parameters:

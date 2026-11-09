@@ -14,13 +14,20 @@ export async function fetchWaypoints(mapId = null) {
 /**
  * Save (create or upsert) a waypoint coordinate
  */
+// Loi tu backend (vd. 400 "nam trong vung cam dung ... xoa endpoint truoc"): dung nguyen loi giai thich.
+async function errorFromResponse(res, fallback) {
+  const body = await res.json().catch(() => null);
+  const detail = typeof body?.detail === 'string' ? body.detail : null;
+  return new Error(detail || fallback);
+}
+
 export async function saveWaypoint(waypoint) {
   const res = await fetch(`${API_BASE}/map/waypoints`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(waypoint),
   });
-  if (!res.ok) throw new Error('Lỗi khi lưu Waypoint');
+  if (!res.ok) throw await errorFromResponse(res, 'Lỗi khi lưu Waypoint');
   return res.json();
 }
 
@@ -33,7 +40,7 @@ export async function updateWaypoint(waypointId, waypoint) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(waypoint),
   });
-  if (!res.ok) throw new Error('Lỗi khi cập nhật Endpoint');
+  if (!res.ok) throw await errorFromResponse(res, 'Lỗi khi cập nhật Endpoint');
   return res.json();
 }
 
@@ -184,7 +191,7 @@ export async function saveZone(zone) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(zone),
   });
-  if (!res.ok) throw new Error('Lỗi khi lưu Vùng Chức Năng');
+  if (!res.ok) throw await errorFromResponse(res, 'Lỗi khi lưu Vùng Chức Năng');
   return res.json();
 }
 

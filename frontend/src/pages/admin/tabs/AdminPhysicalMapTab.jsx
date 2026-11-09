@@ -29,8 +29,12 @@ import {
   obstacleClearanceAt, sendNav2Endpoint, TURN_CLEARANCE_M,
 } from './physicalMapNavigation';
 import {
+  endpointPlacementViolation,
   endpointZoneViolation,
+  isPointInZone,
   resizeZoneFromCorner,
+  speedZoneStatus,
+  zoneEndpointConflict,
   zoneCorners,
   zoneFromCorners,
 } from './physicalMapZones';
@@ -257,6 +261,9 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
   const locManagerRef = useRef({ msg: null, at: 0 });
   // Ly do xe dang ket (drive_block trong /robot/sensor_health) + luc nhan (ms)
   const [driveBlock, setDriveBlock] = useState(null);
+  // Ban sao /robot/sensor_health (1 Hz) de ve lai dong ho toc do + huy hieu vung giam toc
+  const [healthState, setHealthState] = useState(null);
+  const speedEmaRef = useRef(0);
   const navigationRef = useRef({ poseAt: 0, costmapAt: 0, costmap: null, healthAt: 0, health: null });
   const [hardwareInfo, setHardwareInfo] = useState({
     model: 'RPLiDAR A1M8',
@@ -349,6 +356,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
   const navigationMapReady = isRosConnected && nav2Runtime.mode === 'NAVIGATION' && nav2Runtime.activeMap === mapConfig.mapId;
   const managerLoc = localizationFromManager(locManager.msg, locManager.at);
   const isLocalized = managerLoc.fresh ? managerLoc.localized : localizationReady;
+  const speedStatus = speedZoneStatus(robotPose, zones, healthState);
   const dockEndpoint = endpoints.find((ep) => ep.id === 'dock' || ['CHARGER', 'dock'].includes(ep.type));
 
   // Danh sach map SLAM da luu (robot/maps/*.yaml) cho o chon map
@@ -617,9 +625,12 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
         const pos = msg?.pose?.pose?.position;
         const ori = msg?.pose?.pose?.orientation;
         if (!pos || stripSlash(msg?.header?.frame_id) !== 'odom') return;
+        // Toc do do bang encoder, lam muot (EMA) cho dong ho toc do khoi nhay so
+        const rawSpeed = msg?.twist?.twist?.linear?.x || 0;
+        speedEmaRef.current = 0.7 * speedEmaRef.current + 0.3 * rawSpeed;
         odom = { x: pos.x, y: pos.y, yaw: quaternionToYaw(ori?.z ?? 0, ori?.w ?? 1),
           receivedAt: Date.now(),
-          linearVelocity: msg?.twist?.twist?.linear?.x || 0, angularVelocity: msg?.twist?.twist?.angular?.z || 0 };
+          linearVelocity: speedEmaRef.current, angularVelocity: msg?.twist?.twist?.angular?.z || 0 };
         updateMapPose();
       },
       { throttleRate: 50 }
@@ -658,6 +669,7 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
       try {
         navigationRef.current.health = JSON.parse(msg.data);
         navigationRef.current.healthAt = Date.now();
+        setHealthState(navigationRef.current.health);
         // Xe ket (bridge: dung yen >= 2 s du co lenh chay) -> khung do + ly do. Giu them 15 s sau
         // khi het ket (luc Nav2 dang Wait/lui khong ra lenh) de nguoi dung kip doc.
         const block = navigationRef.current.health.drive_block;
@@ -841,10 +853,21 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
   // ==========================================
   // QUAN LY ENDPOINTS (WAYPOINTS)
   // ==========================================
+  // Vi pham luat vung cam dung/cam vao <-> endpoint: hop thoai (de admin khong bo lo) + dong trang thai
+  const rejectZoneRule = (message) => {
+    setNavStatus(`⛔ ${message}`);
+    window.alert(message);
+  };
+
   const handleAddEndpoint = (type = 'WAYPOINT', customCoords = null) => {
     const tmpl = getEndpointTemplateInfo(type);
     const count = endpoints.length + 1;
     const typeLabel = type === 'CHARGER' ? 'Trạm Sạc' : type === 'PARK' ? 'Điểm Đỗ' : 'Điểm Mốc';
+    const placement = endpointPlacementViolation(customCoords || { x: 1.5, y: 0.0 }, zones);
+    if (placement) {
+      rejectZoneRule(placement);
+      return;
+    }
     const newEp = {
       id: `wp-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
       name: `${typeLabel} #${count}`,
@@ -885,6 +908,13 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
   const handleUpdateSelectedEndpoint = (field, value) => {
     if (!selectedEndpoint) return;
     const updated = { ...selectedEndpoint, [field]: value };
+    if (field === 'x' || field === 'y') {
+      const placement = endpointPlacementViolation({ x: Number(updated.x), y: Number(updated.y) }, zones);
+      if (placement) {
+        rejectZoneRule(placement);
+        return;
+      }
+    }
     if (field === 'type') {
       const tmpl = getEndpointTemplateInfo(value);
       updated.color = tmpl.color || updated.color;
@@ -984,6 +1014,11 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
       description: tmpl.description,
       map_id: mapConfig.mapId,
     };
+    const conflict = zoneEndpointConflict(newZone, endpoints);
+    if (conflict) {
+      rejectZoneRule(conflict.message);
+      return;
+    }
     const nextList = [...zones, newZone];
     setZones(nextList);
     setSelectedZone(newZone);
@@ -1003,6 +1038,14 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
   const handleUpdateSelectedZone = (field, value) => {
     if (!selectedZone) return;
     const updated = { ...selectedZone, [field]: value };
+    // Doi loai sang cam dung/cam vao, hoac doi tam/kich thuoc bang o nhap => de len endpoint?
+    // (Doi ten/mo ta thi khong xet, de vung cu lo de endpoint van sua ten duoc.)
+    const geometryChange = ['type', 'x', 'y', 'width', 'height'].includes(field);
+    const conflict = geometryChange && zoneEndpointConflict(updated, endpoints);
+    if (conflict) {
+      rejectZoneRule(conflict.message);
+      return;
+    }
     setSelectedZone(updated);
     const nextList = zones.map((z) => (z.id === updated.id ? updated : z));
     setZones(nextList);
@@ -1171,9 +1214,19 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
           ? 'rgba(245, 158, 11, 0.16)'
           : 'rgba(244, 63, 94, 0.16)';
 
-        // Nen vung
-        ctx.fillStyle = fill;
+        // Nen vung. Xe dang trong vung giam toc => sang len + vien phat sang (de khan gia thay)
+        const robotInsideSpeedZone = isSpeed && isPointInZone(robotPose.x, robotPose.y, zone);
+        ctx.fillStyle = robotInsideSpeedZone ? 'rgba(245, 158, 11, 0.42)' : fill;
         ctx.fillRect(tl.x, tl.y, zw, zh);
+        if (robotInsideSpeedZone) {
+          ctx.save();
+          ctx.shadowColor = '#F59E0B';
+          ctx.shadowBlur = 18;
+          ctx.strokeStyle = '#FBBF24';
+          ctx.lineWidth = 3;
+          ctx.strokeRect(tl.x, tl.y, zw, zh);
+          ctx.restore();
+        }
 
         // Pattern soc chéo
         ctx.save();
@@ -1592,7 +1645,10 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
       });
       if (hit) {
         clickStartRef.current = { type: 'ZONE', startX: canvasX, startY: canvasY, hasMoved: false };
-        setDragState({ type: 'ZONE_RESIZE', id: selectedZone.id, corner: hit });
+        setDragState({
+          type: 'ZONE_RESIZE', id: selectedZone.id, corner: hit,
+          orig: { x: selectedZone.x, y: selectedZone.y, width: selectedZone.width, height: selectedZone.height },
+        });
         isDraggingRef.current = true;
         return;
       }
@@ -1765,11 +1821,33 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
       return;
     }
 
-    // Keo/doi kich thuoc vung xong: luu ngay + cap nhat Nav2
+    // Keo/doi kich thuoc vung xong: de len endpoint => tra ve cho cu + bao; khong thi luu + cap nhat Nav2
     if ((finishedDrag?.type === 'ZONE' || finishedDrag?.type === 'ZONE_RESIZE') && clickCandidate?.hasMoved) {
       const zone = zones.find((z) => z.id === finishedDrag.id);
-      if (zone) {
+      const conflict = zone && zoneEndpointConflict(zone, endpoints);
+      if (conflict) {
+        const orig = finishedDrag.type === 'ZONE'
+          ? { x: finishedDrag.initX, y: finishedDrag.initY }
+          : finishedDrag.orig;
+        const reverted = { ...zone, ...orig };
+        setZones((prev) => prev.map((z) => (z.id === zone.id ? reverted : z)));
+        setSelectedZone(reverted);
+        rejectZoneRule(conflict.message);
+      } else if (zone) {
         persistZone(zone, zones, `Đã cập nhật vùng "${zone.name}" (${zone.width} x ${zone.height} m)`);
+      }
+    }
+
+    // Keo endpoint vao vung cam dung/cam vao => tra ve cho cu + bao
+    if (finishedDrag?.type === 'ENDPOINT' && clickCandidate?.hasMoved) {
+      const ep = endpoints.find((e) => e.id === finishedDrag.id);
+      const placement = ep && endpointPlacementViolation({ x: Number(ep.x), y: Number(ep.y) }, zones);
+      if (placement) {
+        const reverted = { ...ep, x: finishedDrag.initX, y: finishedDrag.initY };
+        setEndpoints((prev) => prev.map((e) => (e.id === ep.id ? reverted : e)));
+        setSelectedEndpoint(reverted);
+        rejectZoneRule(placement);
+        return;
       }
     }
 
@@ -2293,6 +2371,32 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
             }`}
           />
 
+          {/* Dong ho toc do (encoder) + huy hieu vung giam toc - de demo thay xe cham lai */}
+          {isRosConnected && (
+            <div
+              className={`absolute top-3 right-3 z-20 px-3 py-2 rounded-lg border shadow-xl text-right transition-colors duration-300 ${
+                speedStatus.active
+                  ? 'bg-amber-950/95 border-amber-500 text-amber-100'
+                  : 'bg-slate-950/90 border-slate-700 text-slate-100'
+              }`}
+              style={{ minWidth: 150 }}
+            >
+              <div className="text-[10px] uppercase tracking-wide opacity-70">Tốc độ xe</div>
+              <div className="font-mono font-bold text-2xl leading-tight">
+                {Math.abs(robotPose.linearVelocity || 0).toFixed(2)}
+                <span className="text-xs font-semibold ml-1 opacity-70">m/s</span>
+              </div>
+              {speedStatus.active ? (
+                <div className="mt-1 text-[11px] font-bold text-amber-300 animate-pulse">{speedStatus.label}</div>
+              ) : (
+                <div className="mt-1 text-[10px] opacity-60">Không giới hạn (bình thường ~0.25 m/s)</div>
+              )}
+              {speedStatus.warning && (
+                <div className="mt-1 max-w-[260px] text-[10px] leading-snug text-left text-rose-300">{speedStatus.warning}</div>
+              )}
+            </div>
+          )}
+
           {driveBlock && (
             <div
               role="alert"
@@ -2387,10 +2491,10 @@ export const AdminPhysicalMapTab = ({ currentUser }) => {
                   <span className="text-[10px] text-amber-400 font-semibold">Tối đa:</span>
                   <input
                     type="number"
-                    step="0.05"
-                    min="0.05"
-                    max="0.5"
-                    title="Tốc độ tối đa trong vùng (Nav2 Speed Filter). Xe thật chạy chậm nhất ~0.14 m/s (sàn PWM), đặt thấp hơn thì xe vẫn chạy ~0.14 m/s."
+                    step="0.01"
+                    min="0.12"
+                    max="0.25"
+                    title="Tốc độ tối đa trong vùng (Nav2 Speed Filter). Xe thật: bình thường ~0.25 m/s, chậm nhất ~0.12 m/s (thấp hơn motor không lăn). Đặt 0.12 để demo thấy rõ nhất (còn một nửa tốc độ); đặt thấp hơn thì xe vẫn chạy ~0.12 m/s, từ 0.25 trở lên thì không thấy chậm lại."
                     value={selectedZone.speed_limit || 0.12}
                     onChange={(e) => handleUpdateSelectedZone('speed_limit', parseFloat(e.target.value) || 0.12)}
                     className="w-12 px-1 py-0.5 rounded text-center font-bold bg-slate-900 border border-slate-700 text-amber-400 text-xs focus:outline-none"

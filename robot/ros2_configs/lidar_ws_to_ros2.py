@@ -883,7 +883,13 @@ class LidarWsToRos2Bridge(Node):
     def _limit_zone_pwm(self, left, right, config):
         limited = limit_wheel_pwm(left, right, self.zone_speed_limit,
                                  config.mps_per_pct, config.min_pwm)
-        self.zone_speed_blocked = (left != 0 or right != 0) and limited == (0, 0)
+        # Gioi han vung thap hon toc do cham nhat xe chay duoc (san PWM): xe bo o san (khong dung
+        # han), bao Web qua speed_limit_below_motor_floor. Dung sai 5 mm/s: 0.12 vs san 0.1225 = OK.
+        floor_mps = config.min_pwm * config.mps_per_pct
+        self.zone_speed_blocked = (
+            (left != 0 or right != 0) and self.zone_speed_limit is not None
+            and self.zone_speed_limit + 0.005 < floor_mps
+        )
         return limited
 
     def on_cmd_vel_received(self, msg: Twist):

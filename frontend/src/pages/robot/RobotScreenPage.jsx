@@ -2,13 +2,18 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { RobotFace } from '../../components/robot/RobotFace';
 import { AudioWave } from '../../components/robot/AudioWave';
 import { FloorMap, HOTEL_DESTINATIONS, getMobileGuestMapUrl, detectDestinationPoi } from '../../components/robot/FloorMap';
-import { PhoneCall, Sparkles, RefreshCw, Smartphone, QrCode, Clock, Utensils, ConciergeBell, Star, Building, Navigation, Film, Menu, Globe, Check, Volume2, X, Mic, Car, LogOut } from 'lucide-react';
+import { PhoneCall, Sparkles, RefreshCw, Smartphone, QrCode, Clock, Utensils, ConciergeBell, Star, Building, Navigation, Film, Menu, Globe, Check, Volume2, X, Mic, Car, LogOut, UserCheck } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { CameraPreview } from '../../components/robot/CameraPreview';
 import { MobileRobotScreen } from '../../components/robot/MobileRobotScreen';
 import { RobotFoodMenuScreen } from '../../components/robot/RobotFoodMenuScreen';
 import { RobotRoomServiceScreen } from '../../components/robot/RobotRoomServiceScreen';
-import { RobotTaxiModal } from '../../components/robot/RobotTaxiModal';
+import {
+  RobotTaxiModal,
+  isSelfBookingVoiceIntent,
+  isConciergeVoiceIntent,
+  isDismissVoiceIntent,
+} from '../../components/robot/RobotTaxiModal';
 import { guestRequestPhase } from '../../utils/workflowGuestRequest';
 import { WorkflowGuestRequestPanel } from '../admin/tabs/workflow/WorkflowGuestRequestPanel';
 import { useWorkflowRunner } from '../../hooks/useWorkflowRunner';
@@ -181,6 +186,23 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   });
   const [isRoomServiceMenuOpen, setIsRoomServiceMenuOpen] = useState(false);
   const [isTaxiModalOpen, setIsTaxiModalOpen] = useState(false);
+  const isTaxiModalOpenRef = useRef(false);
+  useEffect(() => {
+    isTaxiModalOpenRef.current = isTaxiModalOpen;
+  }, [isTaxiModalOpen]);
+
+  const [taxiFlowStage, setTaxiFlowStageState] = useState(null); // null | 'asking_room' | 'choosing_option'
+  const taxiFlowStageRef = useRef(null);
+  const setTaxiFlowStage = useCallback((stage) => {
+    taxiFlowStageRef.current = stage;
+    setTaxiFlowStageState(stage);
+  }, []);
+  const handleStartTalkRef = useRef(null);
+  const handleStopTalkAndProcessRef = useRef(null);
+  const hasSpokenTaxiPromptRef = useRef(false);
+
+  const [taxiModalInitialMode, setTaxiModalInitialMode] = useState('self_booking');
+  const [taxiVoiceInput, setTaxiVoiceInput] = useState('');
 
   // Auto-Listen Hands-Free State
   const [isAutoListen, setIsAutoListen] = useState(true);
@@ -618,6 +640,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     setIsFoodMenuOpen(false);
     setIsRoomServiceMenuOpen(false);
     setIsTaxiModalOpen(false);
+    setTaxiFlowStage(null);
     setIsFacilitiesModalOpen(false);
     setIsFeedbackModalOpen(false);
     setIsAutoQrModalOpen(false);
@@ -711,6 +734,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
           setIsFoodMenuOpen(false);
           setIsRoomServiceMenuOpen(false);
           setIsTaxiModalOpen(false);
+          setTaxiFlowStage(null);
           setIsFacilitiesModalOpen(false);
           setIsFeedbackModalOpen(false);
           setIsAutoQrModalOpen(false);
@@ -914,7 +938,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   const handleStartTalk = (options = {}) => {
     try { if (prime) prime(); } catch (e) {}
     const isSilent = Boolean(options?.silent);
-    if (requestPhase || isVideoCallOpen || isVideoCallOpenRef.current || isPinModalOpen || isPinModalOpenRef.current) return;
+    if (requestPhase || isVideoCallOpenRef.current || isPinModalOpenRef.current) return;
     // Pin yếu: khách đang trò chuyện được nói tiếp; không mở phiên mới, và dưới 10% thì không nghe nữa
     if (batteryGuard.mode === BATTERY_MODE.CRITICAL || (!batteryGuard.canStartGuestSession && currentState === 'RT-01')) {
       if (!isSilent) announceLowBattery();
@@ -945,58 +969,223 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         if (finalText && finalText.trim().length > 0) {
           setIsStandby(false);
           lastInteractionTimeRef.current = Date.now();
-          handleStopTalkAndProcess(finalText.trim());
+          if (handleStopTalkAndProcessRef.current) {
+            handleStopTalkAndProcessRef.current(finalText.trim());
+          }
         }
       },
     });
   };
+  handleStartTalkRef.current = handleStartTalk;
+
+  // Đảm bảo sau khi Robot giới thiệu 2 phương án đặt xe, hỏi số phòng, hoặc khi đang mở Modal Đặt Xe mà Robot không nói thì tự động bật lắng nghe
+  useEffect(() => {
+    if (taxiFlowStage === 'asking_room' || taxiFlowStage === 'choosing_option') {
+      if (isSpeaking) {
+        hasSpokenTaxiPromptRef.current = true;
+      } else if (hasSpokenTaxiPromptRef.current && !isListening && !isPinModalOpen && !isTaxiModalOpen) {
+        const timer = setTimeout(() => {
+          if (
+            (taxiFlowStageRef.current === 'asking_room' || taxiFlowStageRef.current === 'choosing_option') &&
+            !isSpeakingRef.current &&
+            !isPinModalOpenRef.current &&
+            !isTaxiModalOpenRef.current
+          ) {
+            hasSpokenTaxiPromptRef.current = false;
+            handleStartTalkRef.current?.({ silent: true });
+          }
+        }, 200);
+        return () => clearTimeout(timer);
+      }
+    } else {
+      hasSpokenTaxiPromptRef.current = false;
+    }
+  }, [isSpeaking, taxiFlowStage, isListening, isPinModalOpen, isTaxiModalOpen]);
+
+  // Đảm bảo khi Modal Đặt Xe (RobotTaxiModal) đang mở và Robot đã nói xong thì micro luôn tự động bật để nghe "Cảm ơn" hoặc thông tin đặt xe
+  useEffect(() => {
+    if (!isTaxiModalOpen || isSpeaking || isListening || isPinModalOpen || isVideoCallOpen) return;
+    const timer = setTimeout(() => {
+      if (
+        isTaxiModalOpenRef.current &&
+        !isSpeakingRef.current &&
+        !isPinModalOpenRef.current &&
+        !isVideoCallOpenRef.current
+      ) {
+        handleStartTalkRef.current?.({ silent: true });
+      }
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [isTaxiModalOpen, isSpeaking, isListening, isPinModalOpen, isVideoCallOpen]);
+
+  // Khi có transcript mới trực tiếp từ micro, xóa taxiVoiceInput cũ để lastVoiceTranscript luôn nhận diện được câu nói mới nhất
+  useEffect(() => {
+    if (transcript && taxiVoiceInput) {
+      setTaxiVoiceInput('');
+    }
+  }, [transcript, taxiVoiceInput]);
+
+  const handleCloseTaxiModal = useCallback(() => {
+    isTaxiModalOpenRef.current = false;
+    setIsTaxiModalOpen(false);
+    setTaxiFlowStage(null);
+    setTaxiVoiceInput('');
+    stopSpeaking();
+    resetTranscript();
+    setAiResponseText('');
+    setCurrentState('RT-02');
+    setTimeout(() => {
+      if (!isPinModalOpenRef.current && !isVideoCallOpenRef.current && !isTaxiModalOpenRef.current) {
+        handleStartTalkRef.current?.({ silent: true });
+      }
+    }, 150);
+  }, [setTaxiFlowStage, stopSpeaking, resetTranscript]);
 
   // Tự động bật mic khi mở màn hình robot (khi vừa vào)
   useEffect(() => {
     const timer = setTimeout(() => {
       if (!isVideoCallOpen && !isPinModalOpen && !isListening && !isSpeaking && !isProcessing && currentState !== 'RT-05' && !isStandby) {
-        handleStartTalk();
+        handleStartTalkRef.current?.();
       }
     }, 700);
 
     return () => clearTimeout(timer);
   }, [isVideoCallOpen]);
 
-  // Kích hoạt luồng đặt xe taxi: kiểm tra session phòng, nếu chưa có thì hỏi số phòng & PIN, nếu có rồi thì hiển thị 2 option
+  // Xử lý các lựa chọn đặt xe (Lựa chọn 1: Hotline tự gọi, Lựa chọn 2: Nhờ Concierge đặt giùm)
+  const handleSelectTaxiSelfBooking = useCallback(() => {
+    setTaxiFlowStage(null);
+    setTaxiVoiceInput('');
+    stopListening();
+    resetTranscript();
+    setTaxiModalInitialMode('self_booking');
+    setIsTaxiModalOpen(true);
+    isTaxiModalOpenRef.current = true;
+    setIsFoodMenuOpen(false);
+    setIsRoomServiceMenuOpen(false);
+    const msg = 'Dạ, đây là danh bạ hotline các hãng taxi uy tín tại Đà Nẵng ạ.';
+    setAiResponseText('');
+    speak(msg, 'vi-VN', () => {
+      setTimeout(() => handleStartTalkRef.current?.({ silent: true }), 120);
+    });
+  }, [speak, setTaxiFlowStage, stopListening, resetTranscript]);
+
+  const handleSelectTaxiConciergeBooking = useCallback(() => {
+    setTaxiFlowStage(null);
+    setTaxiVoiceInput('');
+    stopListening();
+    resetTranscript();
+    setAiResponseText('');
+    setTaxiModalInitialMode('concierge_booking');
+    setIsTaxiModalOpen(true);
+    isTaxiModalOpenRef.current = true;
+    setIsFoodMenuOpen(false);
+    setIsRoomServiceMenuOpen(false);
+  }, [setTaxiFlowStage, stopListening, resetTranscript]);
+
+  const handleCancelTaxiFlow = useCallback(() => {
+    setTaxiFlowStage(null);
+    setTaxiVoiceInput('');
+    stopListening();
+    resetTranscript();
+    const cancelMsg = 'Dạ em đã hủy yêu cầu đặt xe. Quý khách cần em hỗ trợ gì thêm không ạ?';
+    setAiResponseText(cancelMsg);
+    speak(cancelMsg, 'vi-VN', () => {
+      setTimeout(() => handleStartTalkRef.current?.({ silent: true }), 120);
+    });
+  }, [speak, setTaxiFlowStage, stopListening, resetTranscript]);
+
+  // Xử lý khi nhận được số phòng hợp lệ cho luồng đặt xe taxi (chỉ lưu phiên phòng sau khi nhập đúng mã PIN)
+  const handleTaxiRoomProvided = useCallback((rawRoom) => {
+    const cleanRoom = String(rawRoom || '').trim();
+    if (cleanRoom && isValidHotelRoom(cleanRoom)) {
+      setTaxiFlowStage(null);
+      setPinModalRoomNumber(cleanRoom);
+      setPinModalAction('book_taxi');
+      setPinModalItems('Yêu cầu đặt xe Taxi');
+      setIsPinModalOpen(true);
+      isPinModalOpenRef.current = true;
+      const isEn = language === 'English';
+      const msg = isEn
+        ? `Room ${cleanRoom}. Please enter your 4-digit PIN on the screen to verify.`
+        : `Dạ phòng ${cleanRoom}. Quý khách vui lòng nhập mã PIN xác thực trên màn hình ạ.`;
+      setAiResponseText('');
+      setCurrentState('RT-02');
+      speak(msg, isEn ? 'en-US' : 'vi-VN');
+    } else if (cleanRoom) {
+      const isEn = language === 'English';
+      const msg = isEn
+        ? 'Hotel rooms are from 301 to 310, and 401 to 410. Which room are you staying in?'
+        : 'Dạ khách sạn hiện chỉ có các phòng từ 301 đến 310 và 401 đến 410. Quý khách vui lòng nói lại số phòng của mình ạ.';
+      setAiResponseText(msg);
+      speak(msg, isEn ? 'en-US' : 'vi-VN', () => {
+        setTimeout(() => handleStartTalkRef.current?.({ silent: true }), 120);
+      });
+    }
+  }, [language, speak, setTaxiFlowStage]);
+
+  // Kích hoạt luồng đặt xe taxi: kiểm tra session phòng, nếu chưa có thì hỏi số phòng qua giọng nói (KHÔNG hiện popup chọn phòng), nếu có rồi thì nói 2 option
   const handleTriggerTaxiBooking = useCallback((specifiedRoom = null) => {
     const requested = typeof specifiedRoom === 'string' ? specifiedRoom.trim() : '';
-    const currentRoom = requested || authenticatedRoom || activeRoomNumber;
+    const currentRoom = requested || authenticatedRoom;
     if (authenticatedRoom) {
       if (!requested || requested === String(authenticatedRoom)) {
-        // Đã trong session: không hỏi lại mã PIN, mở thẳng modal với 2 option
-        setIsTaxiModalOpen(true);
+        // Đã trong session: không hỏi lại mã PIN, Robot thông báo 2 option bằng giọng nói
         setIsFoodMenuOpen(false);
         setIsRoomServiceMenuOpen(false);
+        setIsTaxiModalOpen(false);
+        isTaxiModalOpenRef.current = false;
+        hasSpokenTaxiPromptRef.current = false;
+        setTaxiFlowStage('choosing_option');
         const isEn = language === 'English';
         const msg = isEn
-          ? `Room ${authenticatedRoom}. Would you like our partner taxi hotlines to book directly, or would you like Concierge to arrange a taxi for you?`
-          : `Dạ phòng ${authenticatedRoom}. Quý khách muốn tự gọi xe taxi theo số điện thoại đối tác hay nhờ bộ phận Concierge đặt xe giùm quý khách ạ?`;
+          ? `Room ${authenticatedRoom} is confirmed. I have 2 options: Option 1 is to call our partner taxi hotlines directly; Option 2 is to have Concierge arrange a taxi for you. Which option would you like?`
+          : `Dạ phòng ${authenticatedRoom} đã được xác thực thành công. Em có 2 lựa chọn: Lựa chọn 1 là quý khách tự gọi xe theo danh bạ hotline các hãng taxi; Lựa chọn 2 là nhờ Concierge đặt xe giùm. Quý khách muốn chọn phương án nào ạ?`;
         setAiResponseText(msg);
         setCurrentState('RT-02');
-        speak(msg, isEn ? 'en-US' : 'vi-VN');
+        speak(msg, isEn ? 'en-US' : 'vi-VN', () => {
+          setTimeout(() => handleStartTalkRef.current?.({ silent: true }), 120);
+        });
         return;
       }
     }
 
-    // Chưa trong session: hỏi lại số phòng và mã PIN
-    setPinModalRoomNumber(currentRoom || '');
+    // Nếu chưa biết số phòng: Robot hỏi số phòng bằng giọng nói, TUYỆT ĐỐI KHÔNG mở popup chọn phòng
+    if (!currentRoom) {
+      setIsRoomPickerOpen(false);
+      isRoomPickerOpenRef.current = false;
+      setIsPinModalOpen(false);
+      isPinModalOpenRef.current = false;
+      setIsTaxiModalOpen(false);
+      isTaxiModalOpenRef.current = false;
+      hasSpokenTaxiPromptRef.current = false;
+      setTaxiFlowStage('asking_room');
+      const isEn = language === 'English';
+      const msg = isEn
+        ? 'To assist with taxi booking, which room are you staying in?'
+        : 'Dạ để hỗ trợ đặt xe taxi, quý khách đang ở phòng bao nhiêu ạ?';
+      setAiResponseText(msg);
+      setCurrentState('RT-02');
+      speak(msg, isEn ? 'en-US' : 'vi-VN', () => {
+        setTimeout(() => handleStartTalkRef.current?.({ silent: true }), 120);
+      });
+      return;
+    }
+
+    // Đã có số phòng nhưng chưa xác thực mã PIN -> Mở PIN pad trực tiếp cho phòng đó (roomNumber đã có sẵn nên không hiện popup chọn phòng)
+    setPinModalRoomNumber(currentRoom);
     setPinModalAction('book_taxi');
     setPinModalItems('Yêu cầu đặt xe Taxi');
     setIsPinModalOpen(true);
     isPinModalOpenRef.current = true;
     const isEn = language === 'English';
     const msg = isEn
-      ? 'To assist with taxi booking, please enter your room number and PIN on the screen.'
-      : 'Dạ để hỗ trợ đặt xe taxi, quý khách vui lòng nhập số phòng và mã PIN xác thực trên màn hình ạ.';
-    setAiResponseText(msg);
+      ? `To assist with taxi booking for room ${currentRoom}, please enter your PIN on the screen.`
+      : `Dạ để hỗ trợ đặt xe taxi cho phòng ${currentRoom}, quý khách vui lòng nhập mã PIN xác thực trên màn hình ạ.`;
+    setAiResponseText('');
     setCurrentState('RT-02');
     speak(msg, isEn ? 'en-US' : 'vi-VN');
-  }, [authenticatedRoom, activeRoomNumber, language, speak]);
+  }, [authenticatedRoom, activeRoomNumber, language, speak, setTaxiFlowStage]);
 
   // 2. Gửi tới Ollama RAG Backend
   const handleStopTalkAndProcess = async (userText, options = {}) => {
@@ -1038,6 +1227,86 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       if (currentState !== 'RT-05') {
         setCurrentState('RT-02');
       }
+      return;
+    }
+
+    // 1. Chuyển giọng nói trực tiếp cho Modal Đặt Xe xử lý nếu modal đang mở
+    if (isTaxiModalOpen || isTaxiModalOpenRef.current) {
+      resetTranscript();
+      if (isDismissVoiceIntent(query)) {
+        handleCloseTaxiModal();
+        isProcessingRef.current = false;
+        setIsProcessing(false);
+        return;
+      }
+      setTaxiVoiceInput(query);
+      isProcessingRef.current = false;
+      setIsProcessing(false);
+      return;
+    }
+
+    const currentTaxiStage = taxiFlowStageRef.current || taxiFlowStage;
+
+    // 2. Nếu đang ở bước Robot hỏi số phòng để đặt xe taxi (không có popup chọn phòng)
+    if (currentTaxiStage === 'asking_room') {
+      stopListening();
+      resetTranscript();
+      const lowerQuery = query.toLowerCase().trim();
+      if (isDismissVoiceIntent(lowerQuery) || /^(hủy|thôi|dừng|quay lại|cancel|close)/i.test(lowerQuery)) {
+        handleCancelTaxiFlow();
+        isProcessingRef.current = false;
+        setIsProcessing(false);
+        return;
+      }
+
+      const detectedRoom = extractSpokenRoomNumber(query);
+      if (detectedRoom) {
+        handleTaxiRoomProvided(detectedRoom);
+      } else {
+        const isEn = language === 'English';
+        const msg = isEn
+          ? "I didn't catch your room number. Could you please say your room number again, for example room 301?"
+          : 'Dạ em chưa nghe rõ số phòng. Quý khách vui lòng nói lại số phòng, ví dụ như phòng 301 ạ?';
+        setAiResponseText(msg);
+        speak(msg, isEn ? 'en-US' : 'vi-VN', () => {
+          setTimeout(() => handleStartTalkRef.current?.({ silent: true }), 120);
+        });
+      }
+      isProcessingRef.current = false;
+      setIsProcessing(false);
+      return;
+    }
+
+    // 3. Nếu đang ở bước Robot nói 2 option đặt xe và lắng nghe khách chọn
+    if (currentTaxiStage === 'choosing_option') {
+      stopListening();
+      resetTranscript();
+      const lowerQuery = query.toLowerCase().trim();
+      if (isSelfBookingVoiceIntent(lowerQuery)) {
+        handleSelectTaxiSelfBooking();
+        isProcessingRef.current = false;
+        setIsProcessing(false);
+        return;
+      }
+      if (isConciergeVoiceIntent(lowerQuery)) {
+        handleSelectTaxiConciergeBooking();
+        isProcessingRef.current = false;
+        setIsProcessing(false);
+        return;
+      }
+      if (isDismissVoiceIntent(lowerQuery) || /^(hủy|thôi|dừng|quay lại|cancel|close)/i.test(lowerQuery)) {
+        handleCancelTaxiFlow();
+        isProcessingRef.current = false;
+        setIsProcessing(false);
+        return;
+      }
+      const retryMsg = 'Dạ em có 2 lựa chọn: Lựa chọn 1 là danh bạ hotline tự gọi; Lựa chọn 2 là nhờ Concierge đặt xe giùm. Quý khách muốn chọn phương án nào ạ?';
+      setAiResponseText(retryMsg);
+      speak(retryMsg, 'vi-VN', () => {
+        setTimeout(() => handleStartTalkRef.current?.({ silent: true }), 120);
+      });
+      isProcessingRef.current = false;
+      setIsProcessing(false);
       return;
     }
 
@@ -1184,10 +1453,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     // Trích xuất số phòng trực tiếp từ giọng nói (hỗ trợ cả chữ số và số nói tiếng Việt)
     const rawSpokenRoom = extractSpokenRoomNumber(query);
     const spokenRoomDetected = (rawSpokenRoom && isValidHotelRoom(rawSpokenRoom)) ? rawSpokenRoom : null;
-    if (spokenRoomDetected) {
-      setActiveRoomNumber(spokenRoomDetected);
-    }
-    const effectiveRoomNumber = spokenRoomDetected || (isValidHotelRoom(activeRoomNumber) ? activeRoomNumber : null);
+    const effectiveRoomNumber = spokenRoomDetected || (isValidHotelRoom(authenticatedRoom) ? authenticatedRoom : (isValidHotelRoom(activeRoomNumber) ? activeRoomNumber : null));
 
     // SINGLE SOURCE OF TRUTH: Không mở Modal UI trước khi Backend phản hồi để tránh tranh chấp Regex
     // Backend (concierge_graph / scenario_service) sẽ phân loại ý định chính xác và trả về trigger_menu hoặc action.
@@ -1277,7 +1543,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
             else detectedQueryType = 'general';
           }
           updateStatusQueryType(detectedQueryType);
-          const shouldAskRoom = (chatRes.missing_room_number || isAskRoomQuestion) && !activeRoomNumber && !updatedRoom;
+          const isTaxiIntent = isTaxiQuery || ['book_taxi', 'taxi', 'taxi_booking'].includes(chatRes.action) || ['book_taxi', 'taxi', 'taxi_booking'].includes(chatRes.pending_service_action);
+          const shouldAskRoom = !isTaxiIntent && (chatRes.missing_room_number || isAskRoomQuestion) && !activeRoomNumber && !updatedRoom;
           if (shouldAskRoom) {
             isWaitingRoomForStatusQueryRef.current = true;
             isRoomPickerOpenRef.current = true;
@@ -1287,7 +1554,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
             isRoomPickerOpenRef.current = false;
             setIsRoomPickerOpen(false);
           }
-        } else if (updatedRoom) {
+        } else if (updatedRoom && !chatRes.require_room_pin && !['book_taxi', 'taxi', 'taxi_booking'].includes(chatRes.action) && !['book_taxi', 'taxi', 'taxi_booking'].includes(chatRes.pending_service_action)) {
           isWaitingRoomForStatusQueryRef.current = false;
           setActiveRoomNumber(updatedRoom);
         }
@@ -1306,31 +1573,36 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
         // Tự động mở modal xác thực mã PIN phòng nếu yêu cầu từ AI Backend
         if (chatRes.require_room_pin) {
-          const targetRoom = chatRes.target_room_number || updatedRoom || activeRoomNumber || '';
-          const hasActiveRoom = activeRoomNumber && String(activeRoomNumber).trim();
-          const isSameRoom = hasActiveRoom && (!targetRoom || String(targetRoom).trim() === String(activeRoomNumber).trim());
+          const targetRoom = chatRes.target_room_number || updatedRoom || authenticatedRoom || activeRoomNumber || '';
+          const hasAuthRoom = authenticatedRoom && String(authenticatedRoom).trim();
+          const isSameRoom = hasAuthRoom && (!targetRoom || String(targetRoom).trim() === String(authenticatedRoom).trim());
 
           if (isSameRoom) {
             // Phiên đã có phòng xác thực PIN -> Bỏ qua PIN modal
             const actionToExecute = chatRes.pending_service_action || chatRes.action || 'room_service';
             const itemsToExecute = chatRes.pending_service_items || query;
             if (['taxi', 'book_taxi', 'taxi_booking'].includes(actionToExecute)) {
-              handleTriggerTaxiBooking(activeRoomNumber);
+              handleTriggerTaxiBooking(authenticatedRoom);
             } else if (actionToExecute !== 'query_order_status' && actionToExecute !== 'query_service_status' && actionToExecute !== 'query_taxi_status') {
               createConciergeRequest({
                 title: `Yêu cầu ${actionToExecute} từ giọng nói Robot`,
-                room_number: String(activeRoomNumber).trim(),
+                room_number: String(authenticatedRoom).trim(),
                 guest_name: 'Khách lưu trú',
                 description: `Khách yêu cầu qua giọng nói: ${itemsToExecute}`,
                 department: actionToExecute,
               }).catch(() => {});
             }
           } else {
-            setPinModalRoomNumber(targetRoom);
-            setPinModalAction(chatRes.pending_service_action || 'room_service');
-            setPinModalItems(chatRes.pending_service_items || query);
-            isPinModalOpenRef.current = true;
-            setIsPinModalOpen(true);
+            const actionToExecute = chatRes.pending_service_action || chatRes.action || 'room_service';
+            if (['taxi', 'book_taxi', 'taxi_booking'].includes(actionToExecute)) {
+              handleTriggerTaxiBooking(targetRoom);
+            } else {
+              setPinModalRoomNumber(targetRoom);
+              setPinModalAction(actionToExecute);
+              setPinModalItems(chatRes.pending_service_items || query);
+              isPinModalOpenRef.current = true;
+              setIsPinModalOpen(true);
+            }
           }
         } else if (!isStatusAction) {
           if (chatRes.trigger_menu === 'food_menu' || chatRes.action === 'open_food_menu') {
@@ -1780,6 +2052,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       );
     }
   };
+  handleStopTalkAndProcessRef.current = handleStopTalkAndProcess;
 
 
   // Xử lý khi khách chọn số phòng từ bảng RoomPickerModal để kiểm tra đơn món hoặc dịch vụ
@@ -1820,16 +2093,21 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
 
     // Nếu hành động trước đó là đặt taxi:
     if (['book_taxi', 'taxi', 'taxi_booking'].includes(pinModalAction)) {
-      setIsTaxiModalOpen(true);
       setIsFoodMenuOpen(false);
       setIsRoomServiceMenuOpen(false);
+      setIsTaxiModalOpen(false);
+      isTaxiModalOpenRef.current = false;
+      hasSpokenTaxiPromptRef.current = false;
+      setTaxiFlowStage('choosing_option');
       const isEn = language === 'English';
       const taxiPrompt = isEn
-        ? `Room ${verifiedRoom} confirmed. Would you like our partner taxi hotlines to book directly, or have Concierge arrange a taxi for you?`
-        : `Dạ phòng ${verifiedRoom} đã được xác thực. Quý khách muốn tự gọi xe taxi theo số hotline đối tác hay nhờ bộ phận Concierge đặt xe giùm quý khách ạ?`;
+        ? `Room ${verifiedRoom} confirmed. I have 2 options: Option 1 is to call our partner taxi hotlines directly; Option 2 is to have Concierge arrange a taxi for you. Which option would you like?`
+        : `Dạ phòng ${verifiedRoom} đã được xác thực thành công. Em có 2 lựa chọn: Lựa chọn 1 là quý khách tự gọi xe theo danh bạ hotline các hãng taxi; Lựa chọn 2 là nhờ Concierge đặt xe giùm. Quý khách muốn chọn phương án nào ạ?`;
       setAiResponseText(taxiPrompt);
       setCurrentState('RT-02');
-      speak(taxiPrompt, isEn ? 'en-US' : 'vi-VN');
+      speak(taxiPrompt, isEn ? 'en-US' : 'vi-VN', () => {
+        setTimeout(() => handleStartTalkRef.current?.({ silent: true }), 120);
+      });
       return;
     }
 
@@ -1850,10 +2128,10 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     setCurrentState('RT-02');
     speak(finalMsg, isEn ? 'en-US' : 'vi-VN', () => {
       setTimeout(() => {
-        handleStartTalk();
+        handleStartTalkRef.current?.({ silent: true });
       }, 300);
     });
-  }, [language, speak, pinModalRoomNumber, pinModalAction, updateStatusQueryType]);
+  }, [language, speak, pinModalRoomNumber, pinModalAction, updateStatusQueryType, setTaxiFlowStage]);
 
   const handlePinNotCheckedIn = useCallback((info) => {
     const notCheckedInMsg = info?.message || `Dạ phòng ${info?.roomNumber || ''} hiện chưa làm thủ tục nhận phòng. Quý khách vui lòng qua quầy Lễ tân để check-in rồi mới được đặt món nhé ạ.`;
@@ -2239,6 +2517,21 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
           stopSpeaking();
           setIsRoomServiceMenuOpen(true);
         }}
+        onOpenTaxiBooking={() => {
+          activeChatRequestIdRef.current += 1;
+          if (chatAbortControllerRef.current) {
+            try { chatAbortControllerRef.current.abort(); } catch (e) { }
+            chatAbortControllerRef.current = null;
+          }
+          clearRouteGuidanceTimers();
+          stopSpeaking();
+          handleTriggerTaxiBooking();
+        }}
+        taxiFlowStage={taxiFlowStage}
+        onSelectTaxiSelfBooking={handleSelectTaxiSelfBooking}
+        onSelectTaxiConciergeBooking={handleSelectTaxiConciergeBooking}
+        onCancelTaxiFlow={handleCancelTaxiFlow}
+        onSubmitTaxiRoomNumber={handleTaxiRoomProvided}
         onCloseAiResponse={() => setAiResponseText('')}
         navigationDestinationKey={navigationDestinationKey}
         onSelectDestination={setNavigationDestinationKey}
@@ -3160,21 +3453,13 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       {/* MODAL ĐẶT XE & GỌI TAXI NHANH (FAST-PATH & TOUCH KIOSK) */}
       <RobotTaxiModal
         isOpen={isTaxiModalOpen}
-        onClose={() => setIsTaxiModalOpen(false)}
+        onClose={handleCloseTaxiModal}
+        initialMode={taxiModalInitialMode}
         activeRoomNumber={authenticatedRoom || activeRoomNumber}
-        lastVoiceTranscript={transcript}
+        lastVoiceTranscript={taxiVoiceInput || transcript}
         speak={speak}
-        onSuccess={() => {
-          setTimeout(() => {
-            const isEn = language === 'English';
-            triggerFollowUpPrompt(
-              isEn
-                ? 'Your taxi request has been confirmed. Do you need any further assistance?'
-                : 'Dạ yêu cầu gọi xe của quý khách đã được xác nhận. Quý khách có cần Rora hỗ trợ thêm gì nữa không ạ?',
-              isEn
-            );
-          }, 3500);
-        }}
+        onStartTalk={handleStartTalk}
+        onSuccess={() => {}}
       />
     </div>
   );

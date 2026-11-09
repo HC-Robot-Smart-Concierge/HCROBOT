@@ -60,15 +60,12 @@ describe('Concierge Taxi Reception & Calling Workflow Tests', () => {
     expect(conciergeContent).toContain('feedbackPage');
   });
 
-  it('verifies guest feedback filtering, search, and sorting mechanisms are integrated', () => {
+  it('verifies guest feedback filtering mechanisms are integrated with 3 rating pills', () => {
     expect(conciergeContent).toContain('feedbackRatingFilter');
-    expect(conciergeContent).toContain('feedbackSearchQuery');
-    expect(conciergeContent).toContain('feedbackSortOrder');
     expect(conciergeContent).toContain('filteredFeedbacks');
+    expect(conciergeContent).toContain('Tất cả');
     expect(conciergeContent).toContain('Cần can thiệp');
     expect(conciergeContent).toContain('Hài lòng (4-5 sao)');
-    expect(conciergeContent).toContain('Điểm thấp trước');
-    expect(conciergeContent).toContain('Điểm cao trước');
   });
 });
 

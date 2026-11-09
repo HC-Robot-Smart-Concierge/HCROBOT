@@ -18,6 +18,8 @@ import {
   ConciergeBell,
   Sparkles,
   LogOut,
+  Car,
+  UserCheck,
 } from 'lucide-react';
 
 const getRobotMode = (state, isSpeaking = false, isProcessing = false, isListening = false) => {
@@ -65,9 +67,8 @@ const MobileCinemaSubtitle = ({ fullText, isSpeaking, onClose }) => {
     >
       <div className="absolute left-3 flex items-center gap-1.5 opacity-60">
         <span
-          className={`w-2 h-2 rounded-full transition-colors ${
-            isSpeaking ? 'bg-stone-300 animate-pulse' : 'bg-stone-500'
-          }`}
+          className={`w-2 h-2 rounded-full transition-colors ${isSpeaking ? 'bg-stone-300 animate-pulse' : 'bg-stone-500'
+            }`}
         />
         {sentences.length > 1 && (
           <span className="text-[9px] font-mono text-stone-400">
@@ -128,6 +129,12 @@ export const MobileRobotScreen = ({
   onOpenRoomService,
   onOpenOrderStatus,
   onOpenServiceStatus,
+  onOpenTaxiBooking = null,
+  taxiFlowStage = null,
+  onSelectTaxiSelfBooking = null,
+  onSelectTaxiConciergeBooking = null,
+  onCancelTaxiFlow = null,
+  onSubmitTaxiRoomNumber = null,
   navigationDestinationKey = 'infinity_pool',
   onSelectDestination,
   availableWorkflows = [],
@@ -273,11 +280,10 @@ export const MobileRobotScreen = ({
                   setIsUtilitiesMenuOpen(false);
                 }}
                 onPointerDown={(e) => e.stopPropagation()}
-                className={`w-7 h-7 rounded-full border flex items-center justify-center active:scale-95 shadow-sm cursor-pointer transition-all touch-manipulation ${
-                  isLangMenuOpen
+                className={`w-7 h-7 rounded-full border flex items-center justify-center active:scale-95 shadow-sm cursor-pointer transition-all touch-manipulation ${isLangMenuOpen
                     ? 'bg-stone-900 text-white border-stone-900'
                     : 'bg-stone-900/90 hover:bg-stone-800 text-stone-300 hover:text-white border-stone-700/80'
-                }`}
+                  }`}
                 title={isEn ? 'Switch Language' : 'Chọn ngôn ngữ'}
                 aria-label={isEn ? 'Switch Language' : 'Chọn ngôn ngữ'}
               >
@@ -292,11 +298,10 @@ export const MobileRobotScreen = ({
                 setIsUtilitiesMenuOpen((prev) => !prev);
                 setIsLangMenuOpen(false);
               }}
-              className={`w-7 h-7 rounded-full border flex items-center justify-center active:scale-95 shadow-sm cursor-pointer transition-all touch-manipulation ${
-                isUtilitiesMenuOpen || isNavigating
+              className={`w-7 h-7 rounded-full border flex items-center justify-center active:scale-95 shadow-sm cursor-pointer transition-all touch-manipulation ${isUtilitiesMenuOpen || isNavigating
                   ? 'bg-stone-900 text-white border-stone-900 shadow-sm'
                   : 'bg-stone-900/90 hover:bg-stone-800 text-stone-300 hover:text-white border-stone-700/80'
-              }`}
+                }`}
               title={isEn ? 'Utilities Menu' : 'Menu Dịch vụ và Tiện ích'}
               aria-label={isEn ? 'Utilities Menu' : 'Menu Dịch vụ và Tiện ích'}
             >
@@ -348,11 +353,10 @@ export const MobileRobotScreen = ({
                     onToggleLanguage('Tiếng Việt');
                     setIsLangMenuOpen(false);
                   }}
-                  className={`w-full p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex items-center justify-between active:scale-[0.98] ${
-                    !isEn
+                  className={`w-full p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex items-center justify-between active:scale-[0.98] ${!isEn
                       ? 'bg-stone-800/90 border-stone-500 ring-2 ring-stone-400/40 text-white shadow-lg'
                       : 'bg-stone-800/40 border-stone-700/60 hover:bg-stone-800/70 text-stone-300 hover:text-white'
-                  }`}
+                    }`}
                 >
                   <div className="flex items-center gap-3">
                     <svg viewBox="0 0 32 24" className="w-10 h-7 rounded-md overflow-hidden shadow-xs border border-rose-800/60 shrink-0">
@@ -377,11 +381,10 @@ export const MobileRobotScreen = ({
                     onToggleLanguage('English');
                     setIsLangMenuOpen(false);
                   }}
-                  className={`w-full p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex items-center justify-between active:scale-[0.98] ${
-                    isEn
+                  className={`w-full p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex items-center justify-between active:scale-[0.98] ${isEn
                       ? 'bg-stone-800/90 border-stone-500 ring-2 ring-stone-400/40 text-white shadow-lg'
                       : 'bg-stone-800/40 border-stone-700/60 hover:bg-stone-800/70 text-stone-300 hover:text-white'
-                  }`}
+                    }`}
                 >
                   <div className="flex items-center gap-3">
                     <svg viewBox="0 0 32 24" className="w-10 h-7 rounded-md overflow-hidden shadow-xs border border-blue-900/60 shrink-0">
@@ -576,7 +579,32 @@ export const MobileRobotScreen = ({
                   </button>
                 )}
 
-                                {/* 5. Kiểm tra trạng thái món ăn */}
+                {/* 4b. Đặt Xe & Taxi Sảnh */}
+                {onOpenTaxiBooking && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onOpenTaxiBooking();
+                      setIsUtilitiesMenuOpen(false);
+                    }}
+                    className="p-3 sm:p-3.5 rounded-2xl bg-white hover:bg-stone-50 active:scale-[0.98] border border-[#E3DFD5] hover:border-stone-400 transition-all cursor-pointer flex items-center gap-3.5 group text-left shadow-xs hover:shadow-md min-h-[64px]"
+                  >
+                    <div className="w-11 h-11 rounded-xl bg-[#EFECE4] border border-[#E3DFD5] text-stone-700 flex items-center justify-center shrink-0 group-hover:bg-[#1A1917] group-hover:text-white group-hover:scale-105 transition-all">
+                      <Car className="w-5 h-5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs sm:text-sm font-extrabold text-stone-900 group-hover:text-black transition-colors truncate">
+                        {isEn ? 'Book Taxi & Lobby Ride' : 'Đặt xe & Gọi taxi'}
+                      </p>
+                      <p className="text-[10px] sm:text-[11px] text-stone-600 font-medium group-hover:text-stone-800 transition-colors truncate mt-0.5">
+                        {isEn ? '4 - 7 seater cars, hotlines & airport shuttle' : 'Xe 4 - 7 chỗ, hotline & đưa đón sân bay'}
+                      </p>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-stone-400 group-hover:text-stone-700 group-hover:translate-x-0.5 transition-all shrink-0" />
+                  </button>
+                )}
+
+                {/* 5. Kiểm tra trạng thái món ăn */}
                 {onOpenOrderStatus && (
                   <button
                     type="button"
@@ -686,8 +714,8 @@ export const MobileRobotScreen = ({
                   <span className="text-xs font-semibold text-stone-100 truncate">
                     {currentDestination.isDifferentFloor
                       ? (navActiveStep === 1
-                          ? `${currentDestination.step1Text || 'Chặng 1: Đi tới Thang máy A và bấm lên tầng mục tiêu.'}`
-                          : `${currentDestination.step2Text || `Chặng 2: Ra khỏi thang máy tới ${currentDestination.name}.`}`)
+                        ? `${currentDestination.step1Text || 'Chặng 1: Đi tới Thang máy A và bấm lên tầng mục tiêu.'}`
+                        : `${currentDestination.step2Text || `Chặng 2: Ra khỏi thang máy tới ${currentDestination.name}.`}`)
                       : `${currentDestination.step1Text || `Đi theo hành lang tới ${currentDestination.name}`}`}
                   </span>
                 </div>
@@ -742,7 +770,9 @@ export const MobileRobotScreen = ({
                   isSpeaking={isSpeaking}
                   onClose={onCloseAiResponse}
                 />
-              ) : currentState === 'RT-03' || isListening ? (
+              ) : null}
+
+              {!displayText && (currentState === 'RT-03' || isListening) ? (
                 /* 2. Khi đang nghe: Dock âm thanh sóng AudioWave tinh giản tối đa từ ngữ */
                 <div className="mt-2.5 flex flex-col items-center gap-1.5 animate-fadeIn">
                   <div

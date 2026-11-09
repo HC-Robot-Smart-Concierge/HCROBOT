@@ -4,11 +4,16 @@ import { fileURLToPath } from 'url';
 import { describe, it, expect } from 'vitest';
 import {
   AUTO_CLOSE_SECONDS,
+  CONFIRMED_AUTO_CLOSE_SECONDS,
   POPULAR_DESTINATIONS,
   TAXI_PARTNERS,
   isDismissVoiceIntent,
   isSelfBookingVoiceIntent,
   isConciergeVoiceIntent,
+  isConfirmVoiceIntent,
+  isEditVoiceIntent,
+  extractDestinationFromVoice,
+  extractVehicleAndPartyFromVoice,
   buildTaxiBookingPayload,
 } from '../RobotTaxiModal';
 
@@ -16,8 +21,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 describe('RobotTaxiModal Component & Logic Tests', () => {
-  it('cấu hình thời gian tự tắt màn hình danh bạ taxi chính xác là 45 giây', () => {
+  it('cấu hình thời gian tự tắt màn hình danh bạ taxi chính xác là 45 giây và màn hình hoàn tất đặt xe là 5 giây', () => {
     expect(AUTO_CLOSE_SECONDS).toBe(45);
+    expect(CONFIRMED_AUTO_CLOSE_SECONDS).toBe(5);
   });
 
   it('danh sách đối tác taxi Đà Nẵng đầy đủ 4 hãng uy tín kèm số hotline chính xác', () => {
@@ -43,11 +49,14 @@ describe('RobotTaxiModal Component & Logic Tests', () => {
 
   it('nhận diện chính xác câu nói tắt màn hình hoặc cảm ơn (isDismissVoiceIntent)', () => {
     expect(isDismissVoiceIntent('cảm ơn em')).toBe(true);
+    expect(isDismissVoiceIntent('cám ơn')).toBe(true);
     expect(isDismissVoiceIntent('cam on')).toBe(true);
+    expect(isDismissVoiceIntent('thank you')).toBe(true);
     expect(isDismissVoiceIntent('tắt đi')).toBe(true);
     expect(isDismissVoiceIntent('tat man hinh')).toBe(true);
     expect(isDismissVoiceIntent('đóng lại')).toBe(true);
     expect(isDismissVoiceIntent('xong rồi')).toBe(true);
+    expect(isDismissVoiceIntent('được rồi')).toBe(true);
     expect(isDismissVoiceIntent('thôi')).toBe(true);
     expect(isDismissVoiceIntent('close')).toBe(true);
 
@@ -76,6 +85,54 @@ describe('RobotTaxiModal Component & Logic Tests', () => {
     expect(isConciergeVoiceIntent('hai')).toBe(true);
 
     expect(isConciergeVoiceIntent('tôi tự đặt xe')).toBe(false);
+  });
+
+  it('nhận diện ý định khách xác nhận thông tin đúng (isConfirmVoiceIntent)', () => {
+    expect(isConfirmVoiceIntent('đúng rồi')).toBe(true);
+    expect(isConfirmVoiceIntent('chính xác')).toBe(true);
+    expect(isConfirmVoiceIntent('xác nhận')).toBe(true);
+    expect(isConfirmVoiceIntent('gửi đi')).toBe(true);
+    expect(isConfirmVoiceIntent('ok')).toBe(true);
+    expect(isConfirmVoiceIntent('chuẩn rồi em')).toBe(true);
+    expect(isConfirmVoiceIntent('gửi yêu cầu')).toBe(true);
+
+    expect(isConfirmVoiceIntent('chưa đúng')).toBe(false);
+    expect(isConfirmVoiceIntent('sai rồi')).toBe(false);
+  });
+
+  it('nhận diện ý định khách muốn chỉnh sửa lại thông tin (isEditVoiceIntent)', () => {
+    expect(isEditVoiceIntent('chưa đúng')).toBe(true);
+    expect(isEditVoiceIntent('sai rồi')).toBe(true);
+    expect(isEditVoiceIntent('sửa lại')).toBe(true);
+    expect(isEditVoiceIntent('thay đổi thông tin')).toBe(true);
+    expect(isEditVoiceIntent('chọn lại')).toBe(true);
+
+    expect(isEditVoiceIntent('đúng rồi')).toBe(false);
+    expect(isEditVoiceIntent('xác nhận')).toBe(false);
+  });
+
+  it('trích xuất điểm đến chuẩn xác từ giọng nói khách (extractDestinationFromVoice)', () => {
+    expect(extractDestinationFromVoice('tôi muốn đi Sân bay')).toBe('Sân bay Quốc tế Đà Nẵng (DAD)');
+    expect(extractDestinationFromVoice('cho tôi đi Hội An')).toBe('Phố cổ Hội An');
+    expect(extractDestinationFromVoice('đi Bà Nà')).toBe('Bà Nà Hills & Cầu Vàng');
+    expect(extractDestinationFromVoice('đến Bán đảo Sơn Trà')).toBe('Bán đảo Sơn Trà & Chùa Linh Ứng');
+    expect(extractDestinationFromVoice('ra Bãi biển Mỹ Khê')).toBe('Bãi biển Mỹ Khê');
+    expect(extractDestinationFromVoice('đi Cầu Rồng')).toBe('Cầu Rồng Đà Nẵng');
+    expect(extractDestinationFromVoice('đi Vinpearl Resort')).toBe('Vinpearl Resort');
+  });
+
+  it('trích xuất loại xe và số lượng khách từ giọng nói (extractVehicleAndPartyFromVoice)', () => {
+    const res1 = extractVehicleAndPartyFromVoice('xe 4 chỗ 2 người');
+    expect(res1?.vehicleType).toBe('4-Seater Sedan');
+    expect(res1?.partySize).toBe(2);
+
+    const res2 = extractVehicleAndPartyFromVoice('tôi muốn xe 7 chỗ 4 khách');
+    expect(res2?.vehicleType).toBe('7-Seater SUV');
+    expect(res2?.partySize).toBe(4);
+
+    const res3 = extractVehicleAndPartyFromVoice('đi 5 người');
+    expect(res3?.partySize).toBe(5);
+    expect(res3?.vehicleType).toBe('7-Seater SUV');
   });
 
   it('tạo payload đặt xe chính xác có gắn số phòng của session hiện tại', () => {
@@ -110,10 +167,24 @@ describe('RobotTaxiModal Component & Logic Tests', () => {
     // Phải xử lý pinModalAction cho book_taxi / taxi
     expect(sourceCode).toMatch(/['"]book_taxi['"].*pinModalAction|pinModalAction.*['"]book_taxi['"]/);
 
-    // Phải truyền lastVoiceTranscript={transcript} cho RobotTaxiModal
-    expect(sourceCode).toContain('lastVoiceTranscript={transcript}');
+    // Phải truyền lastVoiceTranscript cho RobotTaxiModal
+    expect(sourceCode).toContain('lastVoiceTranscript={taxiVoiceInput || transcript}');
+
+    // Phải có callback handleSelectTaxiSelfBooking và handleSelectTaxiConciergeBooking
+    expect(sourceCode).toContain('handleSelectTaxiSelfBooking');
+    expect(sourceCode).toContain('handleSelectTaxiConciergeBooking');
 
     // Phải mở modal taxi với activeRoomNumber từ authenticatedRoom
     expect(sourceCode).toContain('activeRoomNumber={authenticatedRoom || activeRoomNumber}');
+
+    // Phải có handleCloseTaxiModal để đóng modal và quay về màn hình robot khi khách nói cảm ơn
+    expect(sourceCode).toContain('handleCloseTaxiModal');
+    expect(sourceCode).toContain('onClose={handleCloseTaxiModal}');
+
+    // Giao diện RobotTaxiModal không hiển thị "(Nói hoặc bấm chọn)" và không hiển thị mục "3. Số khách"
+    const modalPath = path.resolve(__dirname, '../RobotTaxiModal.jsx');
+    const modalSource = fs.readFileSync(modalPath, 'utf-8');
+    expect(modalSource).not.toContain('(Nói hoặc bấm chọn)');
+    expect(modalSource).not.toContain('3. Số khách');
   });
 });

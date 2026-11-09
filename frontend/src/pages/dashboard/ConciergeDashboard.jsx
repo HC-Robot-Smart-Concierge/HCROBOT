@@ -20,9 +20,6 @@ import {
   Star,
   AlertCircle,
   MessageCircle,
-  Search,
-  Filter,
-  X,
 } from 'lucide-react';
 import {
   fetchConciergeDashboard,
@@ -98,15 +95,13 @@ export const ConciergeDashboard = ({
   const [taxiPage, setTaxiPage] = useState(1);
   const [feedbackPage, setFeedbackPage] = useState(1);
 
-  // Guest Feedback filter & search states
+  // Guest Feedback filter states
   const [feedbackRatingFilter, setFeedbackRatingFilter] = useState('all');
-  const [feedbackSearchQuery, setFeedbackSearchQuery] = useState('');
-  const [feedbackSortOrder, setFeedbackSortOrder] = useState('newest');
 
   const totalRecordingsPages = Math.max(1, Math.ceil(recordedSessions.length / pageSize));
   const totalTaxiPages = Math.max(1, Math.ceil(taxiRequests.length / pageSize));
 
-  // Filter & sort feedbacks
+  // Filter feedbacks by 3 rating tabs (Tất cả, Cần can thiệp <= 3 sao, Hài lòng >= 4 sao)
   const filteredFeedbacks = useMemo(() => {
     let list = feedbacks;
 
@@ -117,44 +112,14 @@ export const ConciergeDashboard = ({
       list = list.filter((f) => (f.rating || 5) >= 4);
     }
 
-    // 2. Search query (session id, room, guest, comment, category)
-    if (feedbackSearchQuery.trim()) {
-      const q = feedbackSearchQuery.toLowerCase().trim();
-      list = list.filter((f) => {
-        const idMatch = (f.id || '').toLowerCase().includes(q);
-        const sessionMatch = (f.chat_session_id || '').toLowerCase().includes(q);
-        const nameMatch = (f.guest_name || '').toLowerCase().includes(q);
-        const roomMatch = (f.room_number || '').toLowerCase().includes(q);
-        const commentMatch = (f.comment || '').toLowerCase().includes(q);
-        const categoryMatch = (f.category || '').toLowerCase().includes(q);
-        return idMatch || sessionMatch || nameMatch || roomMatch || commentMatch || categoryMatch;
-      });
-    }
-
-    // 3. Sorting
-    return [...list].sort((a, b) => {
-      if (feedbackSortOrder === 'oldest') {
-        return new Date(a.created_at || 0) - new Date(b.created_at || 0);
-      }
-      if (feedbackSortOrder === 'rating_asc') {
-        const rateDiff = (a.rating || 5) - (b.rating || 5);
-        if (rateDiff !== 0) return rateDiff;
-        return new Date(b.created_at || 0) - new Date(a.created_at || 0);
-      }
-      if (feedbackSortOrder === 'rating_desc') {
-        const rateDiff = (b.rating || 5) - (a.rating || 5);
-        if (rateDiff !== 0) return rateDiff;
-        return new Date(b.created_at || 0) - new Date(a.created_at || 0);
-      }
-      return new Date(b.created_at || 0) - new Date(a.created_at || 0);
-    });
-  }, [feedbacks, feedbackRatingFilter, feedbackSearchQuery, feedbackSortOrder]);
+    return [...list].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+  }, [feedbacks, feedbackRatingFilter]);
 
   const totalFeedbackPages = Math.max(1, Math.ceil(filteredFeedbacks.length / pageSize));
 
   useEffect(() => {
     setFeedbackPage(1);
-  }, [feedbackRatingFilter, feedbackSearchQuery, feedbackSortOrder]);
+  }, [feedbackRatingFilter]);
 
   useEffect(() => {
     if (recordingsPage > totalRecordingsPages) setRecordingsPage(totalRecordingsPages);
@@ -1019,13 +984,9 @@ export const ConciergeDashboard = ({
                 </h3>
                 <div className="flex items-center gap-2 text-xs font-mono text-palette-slate">
                   <span>Hiển thị <strong>{filteredFeedbacks.length}</strong> / {feedbacks.length} phản hồi</span>
-                  {(feedbackRatingFilter !== 'all' || feedbackSearchQuery) && (
+                  {feedbackRatingFilter !== 'all' && (
                     <button
-                      onClick={() => {
-                        setFeedbackRatingFilter('all');
-                        setFeedbackSearchQuery('');
-                        setFeedbackSortOrder('newest');
-                      }}
+                      onClick={() => setFeedbackRatingFilter('all')}
                       className="text-[11px] text-sky-700 hover:underline font-semibold cursor-pointer"
                     >
                       (Xóa bộ lọc)
@@ -1034,83 +995,42 @@ export const ConciergeDashboard = ({
                 </div>
               </div>
 
-              {/* Filter Controls: Search & Rating Pills & Sort */}
-              <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 bg-palette-stone/40 border border-palette-silver/60 rounded-xl p-3">
-                {/* Search Bar */}
-                <div className="relative flex-1 min-w-[200px]">
-                  <Search className="w-3.5 h-3.5 text-palette-slate absolute left-3 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="text"
-                    value={feedbackSearchQuery}
-                    onChange={(e) => setFeedbackSearchQuery(e.target.value)}
-                    placeholder="Tìm theo mã phiên, phòng, tên khách, nhận xét..."
-                    className="w-full pl-8 pr-8 py-1.5 rounded-lg bg-white border border-palette-silver text-xs text-palette-charcoal placeholder:text-palette-slate/60 outline-none focus:border-palette-charcoal transition-all"
-                  />
-                  {feedbackSearchQuery && (
+              {/* Rating Filter Pills */}
+              <div className="flex items-center gap-2 overflow-x-auto custom-scrollbar pb-1 sm:pb-0">
+                {[
+                  { id: 'all', label: 'Tất cả', count: feedbacks.length },
+                  { id: 'recovery', label: 'Cần can thiệp', count: feedbacks.filter((f) => (f.rating || 5) <= 3).length, isWarning: true },
+                  { id: 'satisfied', label: 'Hài lòng (4-5 sao)', count: feedbacks.filter((f) => (f.rating || 5) >= 4).length },
+                ].map((tab) => {
+                  const isSelected = feedbackRatingFilter === tab.id;
+                  return (
                     <button
-                      onClick={() => setFeedbackSearchQuery('')}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-palette-slate hover:text-palette-charcoal cursor-pointer"
-                      title="Xóa tìm kiếm"
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setFeedbackRatingFilter(tab.id)}
+                      className={`px-3.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap transition-all cursor-pointer flex items-center gap-2 border ${
+                        isSelected
+                          ? tab.isWarning
+                            ? 'bg-rose-700 text-white border-transparent shadow-xs'
+                            : 'bg-palette-charcoal text-white border-transparent shadow-xs'
+                          : 'bg-white text-palette-charcoal border-palette-silver hover:bg-palette-stone/40'
+                      }`}
                     >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
-
-                {/* Rating Filter Pills */}
-                <div className="flex items-center gap-1.5 overflow-x-auto custom-scrollbar shrink-0 pb-1 lg:pb-0">
-                  {[
-                    { id: 'all', label: 'Tất cả', count: feedbacks.length },
-                    { id: 'recovery', label: 'Cần can thiệp', count: feedbacks.filter((f) => (f.rating || 5) <= 3).length, isWarning: true },
-                    { id: 'satisfied', label: 'Hài lòng (4-5 sao)', count: feedbacks.filter((f) => (f.rating || 5) >= 4).length },
-                  ].map((tab) => {
-                    const isSelected = feedbackRatingFilter === tab.id;
-                    return (
-                      <button
-                        key={tab.id}
-                        type="button"
-                        onClick={() => setFeedbackRatingFilter(tab.id)}
-                        className={`px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
+                      <span>{tab.label}</span>
+                      <span
+                        className={`text-[11px] px-2 py-0.5 rounded-full font-bold ${
                           isSelected
                             ? tab.isWarning
-                              ? 'bg-rose-700 text-white shadow-xs'
-                              : 'bg-palette-charcoal text-white shadow-xs'
-                            : tab.isWarning && tab.count > 0
-                            ? 'bg-rose-50 text-rose-800 border border-rose-200 hover:bg-rose-100'
-                            : 'bg-white text-palette-slate border border-palette-silver hover:bg-palette-stone hover:text-palette-charcoal'
+                              ? 'bg-black/20 text-white'
+                              : 'bg-white/20 text-white'
+                            : 'bg-palette-stone text-palette-charcoal'
                         }`}
                       >
-                        <span>{tab.label}</span>
-                        <span
-                          className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
-                            isSelected
-                              ? 'bg-white/20 text-white'
-                              : tab.isWarning && tab.count > 0
-                              ? 'bg-rose-200 text-rose-900'
-                              : 'bg-palette-stone text-palette-charcoal'
-                          }`}
-                        >
-                          {tab.count}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* Sort Dropdown */}
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <Filter className="w-3.5 h-3.5 text-palette-slate shrink-0" />
-                  <select
-                    value={feedbackSortOrder}
-                    onChange={(e) => setFeedbackSortOrder(e.target.value)}
-                    className="px-2.5 py-1.5 rounded-lg bg-white border border-palette-silver text-xs font-medium text-palette-charcoal outline-none cursor-pointer focus:border-palette-charcoal"
-                  >
-                    <option value="newest">Mới nhất</option>
-                    <option value="oldest">Cũ nhất</option>
-                    <option value="rating_asc">Điểm thấp trước (ưu tiên xử lý)</option>
-                    <option value="rating_desc">Điểm cao trước</option>
-                  </select>
-                </div>
+                        {tab.count}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
 
               {filteredFeedbacks.length === 0 ? (
@@ -1122,11 +1042,7 @@ export const ConciergeDashboard = ({
                   </p>
                   {feedbacks.length > 0 && (
                     <button
-                      onClick={() => {
-                        setFeedbackRatingFilter('all');
-                        setFeedbackSearchQuery('');
-                        setFeedbackSortOrder('newest');
-                      }}
+                      onClick={() => setFeedbackRatingFilter('all')}
                       className="px-3 py-1 rounded-lg bg-palette-charcoal text-white text-xs font-semibold hover:bg-neutral-800 transition-all cursor-pointer"
                     >
                       Đặt lại bộ lọc

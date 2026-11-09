@@ -154,6 +154,8 @@ export const useSpeechRecognition = (callbacks = {}) => {
   const isTranscribingRef = useRef(false);
   const webSpeechBlockedRef = useRef(false);
   const noiseFloorRef = useRef(0.012);
+  const resultOffsetRef = useRef(0);
+  const latestResultsLengthRef = useRef(0);
 
   const clearSpeechFinalizeTimer = useCallback(() => {
     if (speechFinalizeTimerRef.current) {
@@ -516,6 +518,8 @@ export const useSpeechRecognition = (callbacks = {}) => {
 
       recognition.onstart = () => {
         liveRef.current = true;
+        resultOffsetRef.current = 0;
+        latestResultsLengthRef.current = 0;
         setIsListening(true);
         setMicLive(true);
         setError(null);
@@ -523,8 +527,10 @@ export const useSpeechRecognition = (callbacks = {}) => {
 
       recognition.onresult = (event) => {
         if (!shouldListenRef.current) return;
+        latestResultsLengthRef.current = event.results.length;
+        const startIdx = Math.min(resultOffsetRef.current, event.results.length);
         let fullTranscript = '';
-        for (let i = 0; i < event.results.length; i++) {
+        for (let i = startIdx; i < event.results.length; i++) {
           const piece = event.results[i][0]?.transcript || '';
           if (piece.trim()) {
             fullTranscript += (fullTranscript ? ' ' : '') + piece.trim();
@@ -706,6 +712,7 @@ export const useSpeechRecognition = (callbacks = {}) => {
     lastFinalTranscriptRef.current = '';
     audioChunksRef.current = [];
     hasDetectedVoiceRef.current = false;
+    resultOffsetRef.current = latestResultsLengthRef.current;
 
     if (inlineCallbacks && typeof inlineCallbacks === 'object') {
       inlineCallbacksRef.current = inlineCallbacks;
@@ -785,6 +792,7 @@ export const useSpeechRecognition = (callbacks = {}) => {
     audioChunksRef.current = [];
     hasDetectedVoiceRef.current = false;
     utteranceCommittedRef.current = false;
+    resultOffsetRef.current = latestResultsLengthRef.current;
   }, [clearSpeechFinalizeTimer]);
 
   // Kích hoạt chốt giọng nói ngay lập tức (dùng khi bấm "Gửi ngay" hoặc "Nói xong")

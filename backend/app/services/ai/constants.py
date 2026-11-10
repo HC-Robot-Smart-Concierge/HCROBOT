@@ -43,9 +43,16 @@ SERVICE_KEYWORDS: Dict[str, List[str]] = {
         "mang đồ", "xách đồ", "luggage", "bag", "mang hành lý", "gửi hành lý"
     ],
     "maintenance": [
-        "hỏng", "hong", "sửa", "sua", "điều hòa", "dieu hoa", "bóng đèn", "bong den",
+        "hư", "hu", "bị hư", "bi hu", "hư hỏng", "hu hong", "hư đồ", "hu do", "đồ bị hư", "do bi hu",
+        "phòng bị hư", "phong bi hu", "phòng tôi bị hư", "phong toi bi hu",
+        "phòng bị hỏng", "phong bi hong", "phòng tôi bị hỏng", "phong toi bi hong",
+        "báo hư", "bao hu", "hỏng", "hong", "bị hỏng", "bi hong", "sửa", "sua",
+        "điều hòa", "dieu hoa", "bóng đèn", "bong den",
         "nước rò", "nuoc ro", "máy lạnh", "may lanh", "tủ lạnh", "tu lanh", "kẹt", "ket",
-        "fix", "repair", "vòi sen", "vòi nước", "bồn cầu", "tắc", "mất điện", "không lạnh", "cháy bóng"
+        "fix", "repair", "vòi sen", "vòi nước", "bồn cầu", "tắc", "mất điện", "không lạnh", "cháy bóng",
+        "báo hỏng", "báo sự cố", "bảo trì", "bao tri", "sửa chữa", "sua chua", "hỏng hóc", "hong hoc",
+        "menu bảo trì", "menu sua chua", "báo sửa", "maintenance menu", "open maintenance", "repair menu",
+        "broken", "not working", "chập điện", "hỏng điện", "không sáng", "bị nghẹt", "bị tắc"
     ],
     "restaurant": [
         "đặt bàn", "dat ban", "bàn ăn", "ban an", "nhà hàng", "table", "restaurant"
@@ -104,6 +111,16 @@ SERVICE_KEYWORDS: Dict[str, List[str]] = {
         "tiến độ room service", "tien do room service", "room service tới đâu", "room service xong chưa",
         "tình trạng phục vụ phòng", "tinh trang phuc vu phong", "tình trạng dọn phòng", "tinh trang don phong",
         "housekeeping status", "room cleaning status",
+        # Bảo trì & Kỹ thuật (Maintenance & Repair status query)
+        "sửa chữa tới đâu", "sua chua toi dau", "bảo trì tới đâu", "bao tri toi dau",
+        "sửa điều hòa tới đâu", "sua dieu hoa toi dau", "sửa máy lạnh tới đâu", "sua may lanh toi dau",
+        "tiến độ sửa chữa", "tien do sua chua", "tiến độ bảo trì", "tien do bao tri",
+        "sửa xong chưa", "sua xong chua", "bảo trì xong chưa", "bao tri xong chua",
+        "kỹ thuật lên chưa", "ky thuat len chua", "thợ tới chưa", "tho toi chua", "thợ lên chưa", "tho len chua",
+        "kỹ thuật viên tới chưa", "ky thuat vien toi chua", "tình trạng sửa chữa", "tinh trang sua chua",
+        "tình trạng bảo trì", "tinh trang bao tri", "trạng thái bảo trì", "trang thai bao tri",
+        "maintenance status", "repair status", "fix status", "is technician coming",
+        "repair progress", "maintenance progress", "how is my repair", "how is the repair", "is it fixed", "repaired yet", "is the repair done",
         "giao chưa", "giao chua", "đang giao chưa", "đem lên chưa", "mang lên chưa",
         "tới phòng chưa", "toi phong chua", "đến phòng chưa", "den phong chua",
         "đã tới phòng chưa", "da toi phong chua", "đã đến phòng chưa", "da den phong chua",
@@ -133,3 +150,64 @@ SERVICE_KEYWORDS: Dict[str, List[str]] = {
         "gia hạn phòng", "mất chìa khóa", "khóa phòng"
     ],
 }
+
+import re
+
+# Menu trigger keyword sets (Single Source of Truth)
+MAINTENANCE_MENU_TRIGGER_KEYWORDS: List[str] = sorted(list(set([
+    "menu bảo trì", "menu bao tri", "menu sửa chữa", "menu sua chua",
+    "danh mục bảo trì", "danh muc bao tri", "danh mục sửa chữa", "danh muc sua chua",
+    "danh mục sự cố", "danh muc su co", "mở bảo trì", "mo bao tri",
+    "báo hỏng", "bao hong", "báo sự cố", "bao su co",
+    "báo hư", "bao hu",
+    "hỏng hóc", "hong hoc", "kỹ thuật phòng", "ky thuat phong",
+    "bị hư", "bi hu", "hư", "hu", "hư hỏng", "hu hong", "hư đồ", "hu do", "đồ bị hư", "do bi hu",
+    "phòng bị hư", "phong bi hu", "phòng tôi bị hư", "phong toi bi hu",
+    "phòng bị hỏng", "phong bi hong", "phòng tôi bị hỏng", "phong toi bi hong",
+    "bị hỏng", "bi hong",
+    "maintenance menu", "repair menu", "open maintenance", "fix issue", "report issue"
+])))
+
+ROOM_SERVICE_MENU_TRIGGER_KEYWORDS: List[str] = sorted(list(set(
+    SERVICE_KEYWORDS["housekeeping"] + [
+        "dịch vụ phòng", "dich vu phong", "room service", "tiện ích phòng", "tien ich phong",
+        "menu dịch vụ", "menu dich vu", "open room service"
+    ]
+)))
+
+FOOD_MENU_TRIGGER_KEYWORDS: List[str] = sorted(list(set(
+    SERVICE_KEYWORDS["room_service"] + [
+        "menu đồ ăn", "thực đơn", "menu món ăn", "food menu", "đặt món", "gọi món", "order món", "open food menu"
+    ]
+)))
+
+
+def build_keyword_regex(keywords: List[str]) -> re.Pattern:
+    """Build a fast, case-insensitive, boundary-aware regex from a list of keywords."""
+    escaped = [re.escape(k) for k in sorted(keywords, key=len, reverse=True) if k]
+    return re.compile(rf"(?<!\w)({'|'.join(escaped)})(?!\w)", re.IGNORECASE)
+
+
+MAINTENANCE_REGEX: re.Pattern = build_keyword_regex(SERVICE_KEYWORDS["maintenance"])
+HOUSEKEEPING_REGEX: re.Pattern = build_keyword_regex(SERVICE_KEYWORDS["housekeeping"])
+ROOM_SERVICE_FOOD_REGEX: re.Pattern = build_keyword_regex(SERVICE_KEYWORDS["room_service"])
+STATUS_QUERY_REGEX: re.Pattern = build_keyword_regex(SERVICE_KEYWORDS["query_order_status"])
+TAXI_REGEX: re.Pattern = build_keyword_regex(SERVICE_KEYWORDS["taxi"])
+CANCEL_SERVICE_REGEX: re.Pattern = build_keyword_regex(SERVICE_KEYWORDS["cancel_service"])
+
+# Compiled exclusion regex for wayfinding / map routing to NEVER intercept orders or maintenance requests
+ORDER_OR_SERVICE_EXCLUSION_KEYWORDS: List[str] = sorted(list(set(
+    SERVICE_KEYWORDS["maintenance"] +
+    SERVICE_KEYWORDS["housekeeping"] +
+    SERVICE_KEYWORDS["room_service"] +
+    SERVICE_KEYWORDS["laundry"] +
+    SERVICE_KEYWORDS["cancel_service"] +
+    [
+        "đặt", "dat", "order", "gọi món", "goi mon", "gọi", "goi", "mang", "giao",
+        "lấy", "lay", "đem", "gửi", "thêm", "mượn", "cần", "can", "muốn", "xin",
+        "cho tôi", "cho mình", "cho em", "yêu cầu", "sự cố", "broken", "repair", "fix"
+    ]
+)))
+
+ORDER_OR_SERVICE_EXCLUSION_REGEX: re.Pattern = build_keyword_regex(ORDER_OR_SERVICE_EXCLUSION_KEYWORDS)
+

@@ -238,6 +238,10 @@ All floors are directly connected via **Elevator A** and the main staircase posi
 - **Guest Questions:** *"How do I get to room 405?", "Which floor is room 302 on?"*
 - **Robot Response:** *"Rooms 301 through 310 are located on the **3rd Floor**, and rooms 401 through 410 are on the **4th Floor**. Simply take Elevator A up to your floor, and as you step out, follow the corridor directional signs directly to your room door!"*
 
+### Inquiries regarding Maintenance & Technical Repairs (Bảo trì & Sửa chữa):
+- **Guest Questions:** *"Who do I contact if the air conditioner is broken?", "AC not cooling", "Light bulb is out", "Leaking tap / plumbing issue", "TV not turning on", "Door lock stuck", "Does the hotel have repair service?", "Is room maintenance free?", "How long for technician to arrive?", "Check repair progress", "How is my maintenance request?"*
+- **Robot Response:** *"Aurora Grand Hotel provides 24/7 on-call Maintenance & Engineering support. All standard room facility repairs (air conditioning, lighting, plumbing, door lock, TV, Wi-Fi) are complimentary and attended within 15 to 30 minutes. You can tap 'Repairs & Maintenance' directly on the robot screen to report an issue or track progress, ask me by voice, or dial 0 on your room telephone for immediate assistance!"*
+
 ---
 
 ## 12. Essential RAG-Ready Facts for Prompt Answering
@@ -256,3 +260,4 @@ All floors are directly connected via **Elevator A** and the main staircase posi
 12. **Parking:** Motorbikes at Basement 1 (B1), Cars at Basement 2 (B2); both 24/7 and free for guests.
 13. **Primary Transit Route:** Take Elevator A located at the upper-right corner of the Ground Floor Lobby.
 14. **Security Boundary:** Ground floor "Staff Only", 2nd floor "Kitchen", "Prep Area", and "Warehouse" are strictly restricted back-of-house areas.
+15. **Maintenance & Room Repairs:** Maintenance & Engineering operates 24/7. In-room repairs (AC, lights, plumbing, door lock, TV/Wi-Fi) are free and serviced within 15-30 minutes. Report via Robot Kiosk 'Repairs & Maintenance' menu, voice command, or dial 0 on room phone.

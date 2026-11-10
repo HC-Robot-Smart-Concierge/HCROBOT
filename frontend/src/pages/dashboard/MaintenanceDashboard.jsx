@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Pagination } from '../../components/common/Pagination';
 import { StaffPageHeader } from '../../components/dashboard/RoomServiceFrame';
+import { MaintenanceCatalogModal } from '../../components/dashboard/MaintenanceCatalogModal';
 import { INITIAL_MAINTENANCE_DATA } from '../../data/mockHotelData';
 import {
   fetchMaintenanceDashboard,
@@ -8,6 +9,7 @@ import {
 } from '../../services/operationsApi';
 import { useLanguage } from '../../context/LanguageContext';
 import { staffStatusLabel, useStaffText } from '../../context/StaffLanguage';
+import { Wrench } from 'lucide-react';
 
 const normalizeRequest = (request) => ({
   ...request,
@@ -33,6 +35,7 @@ export const MaintenanceDashboard = ({ currentUser, onNotify = () => {} }) => {
   });
   const [filter, setFilter] = useState('All');
   const [currentPage, setCurrentPage] = useState(1);
+  const [isCatalogModalOpen, setIsCatalogModalOpen] = useState(false);
   const pageSize = 10;
   const [sortNewestFirst, setSortNewestFirst] = useState(true);
 
@@ -176,12 +179,20 @@ export const MaintenanceDashboard = ({ currentUser, onNotify = () => {} }) => {
     <div className="staff-page-body maintenance-dashboard flex-1 overflow-y-auto custom-scrollbar font-sans">
       <div className="staff-page-container">
         <StaffPageHeader>
-          <div>
+          <div className="flex-1">
             <h2 className="text-[15px] font-semibold text-[#282522]">{t('mnTitle')}</h2>
             <p className="mt-0.5 text-[12px] text-[#69645F]">
               {t('mnSubtitle')}
             </p>
           </div>
+          <button
+            type="button"
+            onClick={() => setIsCatalogModalOpen(true)}
+            className="px-3 py-1.5 rounded-xl border border-stone-300 bg-white hover:bg-stone-50 text-stone-700 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shrink-0"
+          >
+            <Wrench className="w-3.5 h-3.5" />
+            <span>{language === 'English' ? 'Issue Catalog' : 'Danh mục sự cố'}</span>
+          </button>
         </StaffPageHeader>
 
         <section className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -348,6 +359,11 @@ export const MaintenanceDashboard = ({ currentUser, onNotify = () => {} }) => {
         </section>
       </div>
 
+      <MaintenanceCatalogModal
+        isOpen={isCatalogModalOpen}
+        onClose={() => setIsCatalogModalOpen(false)}
+        onNotify={onNotify}
+      />
     </div>
   );
 };

@@ -2,12 +2,13 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { RobotFace } from '../../components/robot/RobotFace';
 import { AudioWave } from '../../components/robot/AudioWave';
 import { FloorMap, HOTEL_DESTINATIONS, getMobileGuestMapUrl, detectDestinationPoi } from '../../components/robot/FloorMap';
-import { PhoneCall, Sparkles, RefreshCw, Smartphone, QrCode, Clock, Utensils, ConciergeBell, Star, Building, Navigation, Film, Menu, Globe, Check, Volume2, X, Mic, Car, LogOut, UserCheck } from 'lucide-react';
+import { PhoneCall, Sparkles, RefreshCw, Smartphone, QrCode, Clock, Utensils, ConciergeBell, Star, Building, Navigation, Film, Menu, Globe, Check, Volume2, X, Mic, Car, LogOut, UserCheck, Wrench } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { CameraPreview } from '../../components/robot/CameraPreview';
 import { MobileRobotScreen } from '../../components/robot/MobileRobotScreen';
 import { RobotFoodMenuScreen } from '../../components/robot/RobotFoodMenuScreen';
 import { RobotRoomServiceScreen } from '../../components/robot/RobotRoomServiceScreen';
+import { RobotMaintenanceMenuScreen } from '../../components/robot/RobotMaintenanceMenuScreen';
 import {
   RobotTaxiModal,
   isSelfBookingVoiceIntent,
@@ -185,6 +186,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     }
   });
   const [isRoomServiceMenuOpen, setIsRoomServiceMenuOpen] = useState(false);
+  const [isMaintenanceMenuOpen, setIsMaintenanceMenuOpen] = useState(false);
   const [isTaxiModalOpen, setIsTaxiModalOpen] = useState(false);
   const isTaxiModalOpenRef = useRef(false);
   useEffect(() => {
@@ -522,7 +524,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   useEffect(() => {
     if (guestPresent || currentState !== 'RT-01' || isWorkflowRunning || !batteryGuard.canStartGuestSession ||
         isProcessing || isSpeaking || isVideoCallOpen || isPinModalOpen || isTaxiModalOpen ||
-        isFoodMenuOpen || isRoomServiceMenuOpen || isFeedbackModalOpen || activeRoomNumber) return;
+        isFoodMenuOpen || isRoomServiceMenuOpen || isMaintenanceMenuOpen || isFeedbackModalOpen || activeRoomNumber) return;
     const checkpoint = pausedPromo.current;
     if (!checkpoint) return;
     pausedPromo.current = null;
@@ -530,7 +532,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     startWorkflow(checkpoint.workflow, checkpoint.index ?? 0);
   }, [guestPresent, currentState, isStandby, isWorkflowRunning, batteryGuard.canStartGuestSession,
       isProcessing, isSpeaking, isVideoCallOpen, isPinModalOpen, isTaxiModalOpen, isFoodMenuOpen,
-      isRoomServiceMenuOpen, isFeedbackModalOpen, activeRoomNumber]);
+      isRoomServiceMenuOpen, isMaintenanceMenuOpen, isFeedbackModalOpen, activeRoomNumber]);
 
   const lowBatteryNoticeAtRef = useRef(0);
   const announceLowBattery = () => {
@@ -1133,6 +1135,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         // Đã trong session: không hỏi lại mã PIN, Robot thông báo 2 option bằng giọng nói
         setIsFoodMenuOpen(false);
         setIsRoomServiceMenuOpen(false);
+        setIsMaintenanceMenuOpen(false);
         setIsTaxiModalOpen(false);
         isTaxiModalOpenRef.current = false;
         hasSpokenTaxiPromptRef.current = false;
@@ -1583,7 +1586,16 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
             const itemsToExecute = chatRes.pending_service_items || query;
             if (['taxi', 'book_taxi', 'taxi_booking'].includes(actionToExecute)) {
               handleTriggerTaxiBooking(authenticatedRoom);
-            } else if (actionToExecute !== 'query_order_status' && actionToExecute !== 'query_service_status' && actionToExecute !== 'query_taxi_status') {
+            } else if (actionToExecute === 'maintenance') {
+              createMaintenanceRequest({
+                title: itemsToExecute || 'Yêu cầu bảo trì phòng qua giọng nói',
+                category: 'general',
+                location: String(authenticatedRoom).trim(),
+                description: `Khách yêu cầu qua giọng nói: ${itemsToExecute}`,
+                source: 'HCRobot Voice AI (Session Authenticated)',
+                priority: 'NORMAL',
+              }).catch(() => {});
+            } else if (actionToExecute !== 'query_order_status' && actionToExecute !== 'query_service_status' && actionToExecute !== 'query_taxi_status' && actionToExecute !== 'query_maintenance_status') {
               createConciergeRequest({
                 title: `Yêu cầu ${actionToExecute} từ giọng nói Robot`,
                 room_number: String(authenticatedRoom).trim(),
@@ -1611,6 +1623,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
             }
             setIsFoodMenuOpen(true);
             setIsRoomServiceMenuOpen(false);
+            setIsMaintenanceMenuOpen(false);
             setIsTaxiModalOpen(false);
             setIsFacilitiesModalOpen(false);
           } else if (
@@ -1625,6 +1638,20 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
               setActiveRoomNumber(updatedRoom);
             }
             setIsRoomServiceMenuOpen(true);
+            setIsMaintenanceMenuOpen(false);
+            setIsFoodMenuOpen(false);
+            setIsTaxiModalOpen(false);
+            setIsFacilitiesModalOpen(false);
+          } else if (
+            chatRes.trigger_menu === 'maintenance' ||
+            chatRes.action === 'open_maintenance_menu'
+          ) {
+            // Tự động mở menu báo hỏng & sửa chữa kỹ thuật
+            if (updatedRoom) {
+              setActiveRoomNumber(updatedRoom);
+            }
+            setIsMaintenanceMenuOpen(true);
+            setIsRoomServiceMenuOpen(false);
             setIsFoodMenuOpen(false);
             setIsTaxiModalOpen(false);
             setIsFacilitiesModalOpen(false);
@@ -1639,6 +1666,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
               }
               setIsFoodMenuOpen(true);
               setIsRoomServiceMenuOpen(false);
+              setIsMaintenanceMenuOpen(false);
               setIsTaxiModalOpen(false);
               setIsFacilitiesModalOpen(false);
             }
@@ -1646,6 +1674,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
             setIsFacilitiesModalOpen(true);
             setIsFoodMenuOpen(false);
             setIsRoomServiceMenuOpen(false);
+            setIsMaintenanceMenuOpen(false);
             setIsTaxiModalOpen(false);
           }
         }
@@ -1654,8 +1683,12 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         const isStatusInquiry = isStatusAction || isStatusQueryPrompt || isWaitingRoomForStatusQueryRef.current;
         const isServiceAction = [
           'room_service', 'housekeeping', 'laundry', 'maintenance',
+          'open_maintenance_menu', 'open_food_menu', 'open_room_service_menu',
           'book_taxi', 'taxi', 'taxi_booking', 'query_order_status'
-        ].includes(chatRes.action) || Boolean(chatRes.require_room_pin) || Boolean(chatRes.pending_service_action);
+        ].includes(chatRes.action) ||
+        ['maintenance', 'food_menu', 'room_service'].includes(chatRes.trigger_menu) ||
+        Boolean(chatRes.require_room_pin) ||
+        Boolean(chatRes.pending_service_action);
 
         const isRoomDirectionQuery = !isStatusInquiry && !isServiceAction && ['phòng', 'room', 'lên phòng', 'về phòng', 'đến phòng', 'tìm phòng'].some(k => lowerQuery.includes(k));
         const roomFallbackKey = isRoomDirectionQuery
@@ -1671,6 +1704,17 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
           if (!isValidHotelRoom(rNum)) {
             navTargetKey = null;
           }
+        }
+        // Nếu hành động mở menu bảo trì / món ăn / dịch vụ phòng thì TUYỆT ĐỐI không bật chỉ đường bản đồ
+        if (
+          chatRes.action === 'open_maintenance_menu' ||
+          chatRes.trigger_menu === 'maintenance' ||
+          chatRes.action === 'open_food_menu' ||
+          chatRes.trigger_menu === 'food_menu' ||
+          chatRes.action === 'open_room_service_menu' ||
+          chatRes.trigger_menu === 'room_service'
+        ) {
+          navTargetKey = null;
         }
         const isRouteGuidance = Boolean(navTargetKey);
 
@@ -2071,6 +2115,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     let promptText;
     if (currentQType === 'service') {
       promptText = `Kiểm tra tiến độ dọn phòng và dịch vụ phòng ${roomNum}`;
+    } else if (currentQType === 'maintenance') {
+      promptText = `Kiểm tra tiến độ sửa chữa kỹ thuật phòng ${roomNum}`;
     } else if (currentQType === 'taxi') {
       promptText = `Kiểm tra trạng thái đặt taxi phòng ${roomNum}`;
     } else if (currentQType === 'food') {
@@ -2111,9 +2157,13 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
       return;
     }
 
-    // Nếu hành động trước đó là tra cứu tiến độ đơn món / dịch vụ phòng / taxi:
-    if (pinModalAction === 'query_order_status' || pinModalAction === 'query_service_status' || pinModalAction === 'query_taxi_status') {
-      const qType = pinModalAction === 'query_service_status' ? 'service' : (pinModalAction === 'query_taxi_status' ? 'taxi' : 'food');
+    // Nếu hành động trước đó là tra cứu tiến độ đơn món / dịch vụ phòng / bảo trì / taxi:
+    if (pinModalAction === 'query_order_status' || pinModalAction === 'query_service_status' || pinModalAction === 'query_taxi_status' || pinModalAction === 'query_maintenance_status') {
+      const qType = pinModalAction === 'query_service_status'
+        ? 'service'
+        : (pinModalAction === 'query_taxi_status'
+            ? 'taxi'
+            : (pinModalAction === 'query_maintenance_status' ? 'maintenance' : 'food'));
       updateStatusQueryType(qType);
       handleRoomPickerSelect(verifiedRoom);
       return;
@@ -2344,6 +2394,43 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     );
   }
 
+  if (isMaintenanceMenuOpen) {
+    return (
+      <RobotMaintenanceMenuScreen
+        activeRoomNumber={activeRoomNumber || ''}
+        authenticatedRoom={authenticatedRoom}
+        onPinVerifiedSuccess={(room) => {
+          setAuthenticatedRoom(room);
+          setActiveRoomNumber(room);
+        }}
+        onRoomChange={(room) => {
+          setActiveRoomNumber(room);
+          if (authenticatedRoom && String(authenticatedRoom).trim() !== String(room).trim()) {
+            setAuthenticatedRoom(null);
+          }
+        }}
+        onClose={() => setIsMaintenanceMenuOpen(false)}
+        onRequestSuccess={(req) => {
+          setIsMaintenanceMenuOpen(false);
+          isWaitingRoomForStatusQueryRef.current = false;
+          isRoomPickerOpenRef.current = false;
+          setIsRoomPickerOpen(false);
+          const roomToMention = req?.room_number || req?.location || activeRoomNumber;
+          if (roomToMention) {
+            setActiveRoomNumber(roomToMention);
+            setAuthenticatedRoom(roomToMention);
+          }
+          const isEn = language === 'English';
+          const msg = isEn
+            ? `Your maintenance request for Room ${roomToMention ? roomToMention : 'your room'} has been sent to our Technical Team. Do you need any further assistance?`
+            : `Dạ yêu cầu bảo trì cho Phòng ${roomToMention ? roomToMention : 'của quý khách'} đã được chuyển đến bộ phận Kỹ thuật rồi ạ. Quý khách có cần Rora hỗ trợ thêm gì nữa không ạ?`;
+          triggerFollowUpPrompt(msg, isEn);
+        }}
+        onNotCheckedIn={handlePinNotCheckedIn}
+      />
+    );
+  }
+
   if (isRoomServiceMenuOpen) {
     return (
       <RobotRoomServiceScreen
@@ -2497,6 +2584,18 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
             setIsPinModalOpen(true);
           }
         }}
+        onOpenMaintenanceStatus={() => {
+          updateStatusQueryType('maintenance');
+          if (activeRoomNumber) {
+            handleRoomPickerSelect(activeRoomNumber);
+          } else {
+            setPinModalRoomNumber('');
+            setPinModalAction('query_maintenance_status');
+            setPinModalItems('Kiểm tra tiến độ sửa chữa kỹ thuật');
+            isPinModalOpenRef.current = true;
+            setIsPinModalOpen(true);
+          }
+        }}
         onOpenFoodMenu={() => {
           activeChatRequestIdRef.current += 1;
           if (chatAbortControllerRef.current) {
@@ -2506,6 +2605,10 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
           clearRouteGuidanceTimers();
           stopSpeaking();
           setIsFoodMenuOpen(true);
+          setIsRoomServiceMenuOpen(false);
+          setIsMaintenanceMenuOpen(false);
+          setIsTaxiModalOpen(false);
+          setIsFacilitiesModalOpen(false);
         }}
         onOpenRoomService={() => {
           activeChatRequestIdRef.current += 1;
@@ -2516,6 +2619,24 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
           clearRouteGuidanceTimers();
           stopSpeaking();
           setIsRoomServiceMenuOpen(true);
+          setIsFoodMenuOpen(false);
+          setIsMaintenanceMenuOpen(false);
+          setIsTaxiModalOpen(false);
+          setIsFacilitiesModalOpen(false);
+        }}
+        onOpenMaintenance={() => {
+          activeChatRequestIdRef.current += 1;
+          if (chatAbortControllerRef.current) {
+            try { chatAbortControllerRef.current.abort(); } catch (e) { }
+            chatAbortControllerRef.current = null;
+          }
+          clearRouteGuidanceTimers();
+          stopSpeaking();
+          setIsMaintenanceMenuOpen(true);
+          setIsFoodMenuOpen(false);
+          setIsRoomServiceMenuOpen(false);
+          setIsTaxiModalOpen(false);
+          setIsFacilitiesModalOpen(false);
         }}
         onOpenTaxiBooking={() => {
           activeChatRequestIdRef.current += 1;
@@ -2728,6 +2849,10 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                     e.stopPropagation();
                     setShowQuickMenu(false);
                     setIsFoodMenuOpen(true);
+                    setIsRoomServiceMenuOpen(false);
+                    setIsMaintenanceMenuOpen(false);
+                    setIsTaxiModalOpen(false);
+                    setIsFacilitiesModalOpen(false);
                   }}
                   className="w-full p-2.5 rounded-xl text-left hover:bg-stone-800/90 transition-all cursor-pointer flex items-center gap-3 group active:scale-[0.99]"
                 >
@@ -2747,6 +2872,10 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                     e.stopPropagation();
                     setShowQuickMenu(false);
                     setIsRoomServiceMenuOpen(true);
+                    setIsFoodMenuOpen(false);
+                    setIsMaintenanceMenuOpen(false);
+                    setIsTaxiModalOpen(false);
+                    setIsFacilitiesModalOpen(false);
                   }}
                   className="w-full p-2.5 rounded-xl text-left hover:bg-stone-800/90 transition-all cursor-pointer flex items-center gap-3 group active:scale-[0.99]"
                 >
@@ -2756,6 +2885,28 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-bold text-stone-200 group-hover:text-white transition-colors">Dịch vụ phòng</p>
                     <p className="text-[10px] text-stone-400 group-hover:text-stone-300 transition-colors">Khăn tắm, gối chăn, massage tại phòng & giặt ủi</p>
+                  </div>
+                </button>
+
+                {/* 3b2. Báo hỏng & Sửa chữa kỹ thuật */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowQuickMenu(false);
+                    setIsMaintenanceMenuOpen(true);
+                    setIsFoodMenuOpen(false);
+                    setIsRoomServiceMenuOpen(false);
+                    setIsTaxiModalOpen(false);
+                  }}
+                  className="w-full p-2.5 rounded-xl text-left hover:bg-stone-800/90 transition-all cursor-pointer flex items-center gap-3 group active:scale-[0.99]"
+                >
+                  <div className="w-8 h-8 rounded-lg bg-stone-800 border border-stone-700/80 text-stone-300 flex items-center justify-center shrink-0 group-hover:bg-stone-700 group-hover:text-stone-100 group-hover:scale-105 transition-all">
+                    <Wrench className="w-4 h-4 text-stone-300 group-hover:text-stone-100" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-bold text-stone-200 group-hover:text-white transition-colors">Báo hỏng & Sửa chữa</p>
+                    <p className="text-[10px] text-stone-400 group-hover:text-stone-300 transition-colors">Điều hòa, điện nước, khóa phòng & tra cứu tiến độ</p>
                   </div>
                 </button>
 
@@ -2777,6 +2928,27 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-bold text-stone-200 group-hover:text-white transition-colors">Tiến độ dọn phòng & dịch vụ</p>
                     <p className="text-[10px] text-stone-400 group-hover:text-stone-300 transition-colors">Tra cứu tiến độ dọn phòng, thêm khăn & massage</p>
+                  </div>
+                </button>
+
+                {/* 3c2. Kiểm tra tiến độ sửa chữa kỹ thuật */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowQuickMenu(false);
+                    updateStatusQueryType('maintenance');
+                    isRoomPickerOpenRef.current = true;
+                    setIsRoomPickerOpen(true);
+                  }}
+                  className="w-full p-2.5 rounded-xl text-left hover:bg-stone-800/90 transition-all cursor-pointer flex items-center gap-3 group active:scale-[0.99]"
+                >
+                  <div className="w-8 h-8 rounded-lg bg-stone-800 border border-stone-700/80 text-stone-300 flex items-center justify-center shrink-0 group-hover:bg-stone-700 group-hover:text-stone-100 group-hover:scale-105 transition-all">
+                    <Wrench className="w-4 h-4 text-stone-300 group-hover:text-stone-100" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-bold text-stone-200 group-hover:text-white transition-colors">Tiến độ sửa chữa kỹ thuật</p>
+                    <p className="text-[10px] text-stone-400 group-hover:text-stone-300 transition-colors">Tra cứu trạng thái xử lý sự cố thiết bị phòng</p>
                   </div>
                 </button>
 
@@ -3403,6 +3575,8 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         onOpenFoodMenu={() => {
           setIsFacilitiesModalOpen(false);
           setIsFoodMenuOpen(true);
+          setIsMaintenanceMenuOpen(false);
+          setIsRoomServiceMenuOpen(false);
         }}
         onSpeak={(text) => speak(text)}
       />
@@ -3418,18 +3592,22 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         title={
           statusQueryType === 'service'
             ? (language === 'English' ? 'Check Housekeeping & Room Service Status' : 'Kiểm Tra Tiến Độ Dịch Vụ & Dọn Phòng')
-            : (statusQueryType === 'food'
-                ? (language === 'English' ? 'Check Food Order Status' : 'Kiểm Tra Trạng Thái Món Ăn')
-                : (language === 'English' ? 'Check Order & Service Status' : 'Kiểm Tra Tiến Độ Đơn Hàng & Dịch Vụ'))
+            : (statusQueryType === 'maintenance'
+                ? (language === 'English' ? 'Check Technical Repair Status' : 'Kiểm Tra Tiến Độ Sửa Chữa Kỹ Thuật')
+                : (statusQueryType === 'food'
+                    ? (language === 'English' ? 'Check Food Order Status' : 'Kiểm Tra Trạng Thái Món Ăn')
+                    : (language === 'English' ? 'Check Order & Service Status' : 'Kiểm Tra Tiến Độ Đơn Hàng & Dịch Vụ')))
         }
         subtitle={
           statusQueryType === 'service'
             ? (language === 'English' ? 'Please choose your room number so Rora can check housekeeping progress' : 'Quý khách vui lòng chọn số phòng để Rora báo tiến độ dọn phòng và dịch vụ phòng ạ')
-            : (statusQueryType === 'food'
-                ? (language === 'English' ? 'Please choose your room number so Rora can check cooking progress' : 'Quý khách vui lòng chọn số phòng để Rora báo tiến độ đơn món ngay ạ')
-                : (language === 'English' ? 'Please choose your room number so Rora can check your order and request progress' : 'Quý khách vui lòng chọn số phòng để Rora kiểm tra tiến độ ngay ạ'))
+            : (statusQueryType === 'maintenance'
+                ? (language === 'English' ? 'Please choose your room number so Rora can check technical repair progress' : 'Quý khách vui lòng chọn số phòng để Rora báo tiến độ sửa chữa thiết bị ạ')
+                : (statusQueryType === 'food'
+                    ? (language === 'English' ? 'Please choose your room number so Rora can check cooking progress' : 'Quý khách vui lòng chọn số phòng để Rora báo tiến độ đơn món ngay ạ')
+                    : (language === 'English' ? 'Please choose your room number so Rora can check your order and request progress' : 'Quý khách vui lòng chọn số phòng để Rora kiểm tra tiến độ ngay ạ')))
         }
-        iconType={statusQueryType === 'service' ? 'concierge' : (statusQueryType === 'food' ? 'utensils' : 'concierge')}
+        iconType={statusQueryType === 'service' ? 'concierge' : (statusQueryType === 'maintenance' ? 'wrench' : (statusQueryType === 'food' ? 'utensils' : 'concierge'))}
       />
 
       {/* ROOM PIN VERIFICATION MODAL (KIOSK TOUCH NUMPAD) */}

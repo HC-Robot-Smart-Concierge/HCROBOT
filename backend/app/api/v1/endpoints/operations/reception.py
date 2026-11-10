@@ -257,9 +257,31 @@ async def verify_room_pin(
     )
     if should_create_ticket:
         code_num = random.randint(1000, 99999)
-        dept_id = "DEP-ROOMSERVICE" if any(k in payload.action for k in ["room", "fb", "food", "dining"]) else "DEP-HOUSEKEEPING"
-        svc_id = "ST-ROOM-SERVICE" if dept_id == "DEP-ROOMSERVICE" else "ST-HOUSEKEEPING"
-        prefix = "ORD" if dept_id == "DEP-ROOMSERVICE" else "REQ"
+        act_lower = (payload.action or "").lower()
+        if any(k in act_lower for k in ["maintenance", "bảo trì", "sửa", "hong"]):
+            dept_id = "DEP-MAINTENANCE"
+            svc_id = "ST-MAINTENANCE"
+            prefix = "MN"
+            dept_name_str = "Maintenance"
+            req_type_str = "maintenance"
+        elif any(k in act_lower for k in ["room", "fb", "food", "dining"]):
+            dept_id = "DEP-ROOMSERVICE"
+            svc_id = "ST-ROOM-SERVICE"
+            prefix = "ORD"
+            dept_name_str = "Room Service"
+            req_type_str = "room_service"
+        elif any(k in act_lower for k in ["bell", "hành lý"]):
+            dept_id = "DEP-BELLMAN"
+            svc_id = "ST-BELLMAN"
+            prefix = "BEL"
+            dept_name_str = "Bellman"
+            req_type_str = "bellman"
+        else:
+            dept_id = "DEP-HOUSEKEEPING"
+            svc_id = "ST-HOUSEKEEPING"
+            prefix = "REQ"
+            dept_name_str = "Housekeeping"
+            req_type_str = "housekeeping"
         ticket_code = f"{prefix}-{code_num}"
 
         items_str = payload.items or payload.note or "Yêu cầu dịch vụ phòng qua Kiosk"
@@ -280,11 +302,11 @@ async def verify_room_pin(
 
         await create_department_notification(
             db,
-            department="Room Service" if dept_id == "DEP-ROOMSERVICE" else "Housekeeping",
+            department=dept_name_str,
             title=f"Đơn mới #{ticket_code} (Đã xác thực {verification_type})",
             description=f"Phòng {room.room_number} ({room.current_guest_name}): {items_str}",
             request_id=new_req.id,
-            request_type="room_service" if dept_id == "DEP-ROOMSERVICE" else "housekeeping",
+            request_type=req_type_str,
         )
         await db.commit()
 
@@ -373,9 +395,31 @@ async def verify_room_nfc(
     )
     if should_create_ticket:
         code_num = random.randint(1000, 99999)
-        dept_id = "DEP-ROOMSERVICE" if any(k in payload.action for k in ["room", "fb", "food", "dining"]) else "DEP-HOUSEKEEPING"
-        svc_id = "ST-ROOM-SERVICE" if dept_id == "DEP-ROOMSERVICE" else "ST-HOUSEKEEPING"
-        prefix = "ORD" if dept_id == "DEP-ROOMSERVICE" else "REQ"
+        act_lower = (payload.action or "").lower()
+        if any(k in act_lower for k in ["maintenance", "bảo trì", "sửa", "hong"]):
+            dept_id = "DEP-MAINTENANCE"
+            svc_id = "ST-MAINTENANCE"
+            prefix = "MN"
+            dept_name_str = "Maintenance"
+            req_type_str = "maintenance"
+        elif any(k in act_lower for k in ["room", "fb", "food", "dining"]):
+            dept_id = "DEP-ROOMSERVICE"
+            svc_id = "ST-ROOM-SERVICE"
+            prefix = "ORD"
+            dept_name_str = "Room Service"
+            req_type_str = "room_service"
+        elif any(k in act_lower for k in ["bell", "hành lý"]):
+            dept_id = "DEP-BELLMAN"
+            svc_id = "ST-BELLMAN"
+            prefix = "BEL"
+            dept_name_str = "Bellman"
+            req_type_str = "bellman"
+        else:
+            dept_id = "DEP-HOUSEKEEPING"
+            svc_id = "ST-HOUSEKEEPING"
+            prefix = "REQ"
+            dept_name_str = "Housekeeping"
+            req_type_str = "housekeeping"
         ticket_code = f"{prefix}-{code_num}"
 
         items_str = payload.items or payload.note or "Yêu cầu dịch vụ phòng qua Kiosk (Thẻ NFC)"
@@ -396,11 +440,11 @@ async def verify_room_nfc(
 
         await create_department_notification(
             db,
-            department="Room Service" if dept_id == "DEP-ROOMSERVICE" else "Housekeeping",
+            department=dept_name_str,
             title=f"Đơn mới #{ticket_code} (Đã quẹt thẻ NFC)",
             description=f"Phòng {matched_room.room_number} ({matched_room.current_guest_name}): {items_str}",
             request_id=new_req.id,
-            request_type="room_service" if dept_id == "DEP-ROOMSERVICE" else "housekeeping",
+            request_type=req_type_str,
         )
         await db.commit()
 

@@ -14,6 +14,8 @@ class DialogueScenarioBase(BaseModel):
     action_payload: Optional[Any] = Field(None, description="Du lieu phu cho hanh dong (vi du: destination_key)")
     is_fast_path: bool = Field(True, description="True neu tra loi tuc thi <1ms ma khong goi LLM")
     is_active: bool = Field(True, description="Trang thai kich hoat")
+    is_system: bool = Field(False, description="True neu la kich ban he thong cot loi")
+    is_custom_edited: bool = Field(False, description="True neu da tung duoc Admin tuy chinh qua UI")
     priority: int = Field(0, description="Do uu tien doi soat (so cang lon cang uu tien truoc)")
 
 
@@ -32,6 +34,8 @@ class DialogueScenarioUpdate(BaseModel):
     action_payload: Optional[Any] = None
     is_fast_path: Optional[bool] = None
     is_active: Optional[bool] = None
+    is_system: Optional[bool] = None
+    is_custom_edited: Optional[bool] = None
     priority: Optional[int] = None
 
 

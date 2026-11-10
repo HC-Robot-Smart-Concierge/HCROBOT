@@ -434,6 +434,69 @@ class MaintenanceRequestResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class MaintenanceCatalogItemCreate(BaseModel):
+    name_vi: str = Field(..., description="Tên sự cố tiếng Việt", min_length=2, max_length=150)
+    name_en: str = Field(..., description="Tên sự cố tiếng Anh", min_length=2, max_length=150)
+    category: str = Field("hvac", description="Phân loại: hvac, plumbing, electrical, door_lock, media_network, appliance, other")
+    priority: str = Field("NORMAL", description="Mức độ ưu tiên: LOW, NORMAL, HIGH, URGENT")
+    description_vi: Optional[str] = None
+    description_en: Optional[str] = None
+    estimated_fix_time: int = Field(15, description="Thời gian xử lý ước tính (phút)")
+    is_active: bool = True
+    display_order: int = 0
+
+
+class MaintenanceCatalogItemUpdate(BaseModel):
+    name_vi: Optional[str] = None
+    name_en: Optional[str] = None
+    category: Optional[str] = None
+    priority: Optional[str] = None
+    description_vi: Optional[str] = None
+    description_en: Optional[str] = None
+    estimated_fix_time: Optional[int] = None
+    is_active: Optional[bool] = None
+    display_order: Optional[int] = None
+
+
+class MaintenanceCatalogItemResponse(BaseModel):
+    id: str
+    name_vi: str
+    name_en: str
+    category: str
+    priority: str
+    description_vi: Optional[str] = None
+    description_en: Optional[str] = None
+    estimated_fix_time: int
+    is_active: bool
+    display_order: int
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class RoomMaintenanceRequestItem(BaseModel):
+    id: str
+    ticket_code: str
+    title: str
+    category: str
+    status: str
+    priority: str
+    assigned_to: Optional[str] = None
+    created_at: datetime
+    est_completion: Optional[str] = None
+    description: Optional[str] = None
+
+
+class RoomMaintenanceStatusResponse(BaseModel):
+    room_number: str
+    total_requests: int
+    pending_count: int
+    in_progress_count: int
+    completed_count: int
+    requests: List[RoomMaintenanceRequestItem]
+
+
 # ---------------------------------------------------------
 # Management Directive Schemas
 # ---------------------------------------------------------

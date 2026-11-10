@@ -725,12 +725,7 @@ class OllamaService:
 
         clean_items = re.sub(r'(?:phòng|room|p\.)\s*[0-9]{3,4}', '', user_speech, flags=re.IGNORECASE).strip()
 
-        SERVICE_KEYWORDS = {
-            "housekeeping": ["khăn", "dọn", "gối", "chăn", "nệm", "dọn phòng", "towel", "clean", "pillow", "blanket", "housekeeping"],
-            "maintenance": ["hỏng", "sửa", "hư", "máy lạnh", "điều hòa", "bóng đèn", "vòi nước", "kẹt", "tivi", "remote", "broken", "repair", "ac", "air conditioner"],
-            "bellman": ["hành lý", "vali", "xách đồ", "chở đồ", "xe đẩy", "luggage", "baggage", "bellman"],
-            "room_service": ["đồ ăn", "nước uống", "thức ăn", "gọi món", "menu", "cơm", "phở", "bánh mì", "nước suối", "food", "drink", "room service"],
-        }
+        from app.services.ai.constants import SERVICE_KEYWORDS
 
         intent_prompt = f"""Bạn là bộ định tuyến AI của khách sạn Aurora Grand.
 Hãy phân tích yêu cầu của khách: "{user_speech}"

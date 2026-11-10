@@ -305,7 +305,7 @@ export const createMaintenanceRequest = async (requestData) => {
 
 export const updateMaintenanceStatus = async (requestId, status, assignedTo = null) => {
   return await fetchWithFallback(
-    `${BASE_URL}/tasks/${encodeURIComponent(requestId)}`,
+    `${BASE_URL}/maintenance/requests/${encodeURIComponent(requestId)}`,
     {
       method: 'PATCH',
       body: JSON.stringify({
@@ -323,6 +323,96 @@ export const fetchMaintenanceRequestById = async (requestId) => {
     {},
     null
   );
+};
+
+export const fetchMaintenanceCatalog = async ({ category = null, is_active = null } = {}) => {
+  try {
+    const params = new URLSearchParams();
+    if (category) params.append('category', category);
+    if (is_active !== null && is_active !== undefined) params.append('is_active', is_active);
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    return await fetchWithFallback(`${BASE_URL}/maintenance/catalog${qs}`, {}, []);
+  } catch (error) {
+    console.warn('[OperationsAPI] Error fetching maintenance catalog:', error.message);
+    return [];
+  }
+};
+
+export const createMaintenanceCatalogItem = async (itemData) => {
+  try {
+    return await fetchWithFallback(
+      `${BASE_URL}/maintenance/catalog`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(itemData),
+      },
+      { id: `MNT-${Date.now()}`, ...itemData, is_active: true }
+    );
+  } catch (error) {
+    console.error('[OperationsAPI] Error creating maintenance catalog item:', error.message);
+    throw error;
+  }
+};
+
+export const updateMaintenanceCatalogItem = async (itemId, updateData) => {
+  try {
+    return await fetchWithFallback(
+      `${BASE_URL}/maintenance/catalog/${encodeURIComponent(itemId)}`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updateData),
+      },
+      { id: itemId, ...updateData }
+    );
+  } catch (error) {
+    console.error('[OperationsAPI] Error updating maintenance catalog item:', error.message);
+    throw error;
+  }
+};
+
+export const deleteMaintenanceCatalogItem = async (itemId) => {
+  try {
+    return await fetchWithFallback(
+      `${BASE_URL}/maintenance/catalog/${encodeURIComponent(itemId)}`,
+      {
+        method: 'DELETE',
+      },
+      { message: 'Deleted', id: itemId }
+    );
+  } catch (error) {
+    console.error('[OperationsAPI] Error deleting maintenance catalog item:', error.message);
+    throw error;
+  }
+};
+
+export const toggleMaintenanceCatalogItem = async (itemId) => {
+  try {
+    return await fetchWithFallback(
+      `${BASE_URL}/maintenance/catalog/${encodeURIComponent(itemId)}/toggle`,
+      {
+        method: 'PATCH',
+      },
+      { id: itemId, is_active: true }
+    );
+  } catch (error) {
+    console.error('[OperationsAPI] Error toggling maintenance catalog item:', error.message);
+    throw error;
+  }
+};
+
+export const fetchRoomMaintenanceStatus = async (roomNumber) => {
+  try {
+    return await fetchWithFallback(
+      `${BASE_URL}/maintenance/rooms/${encodeURIComponent(roomNumber)}/status`,
+      {},
+      { room_number: roomNumber, total_requests: 0, pending_count: 0, in_progress_count: 0, completed_count: 0, requests: [] }
+    );
+  } catch (error) {
+    console.warn('[OperationsAPI] Error fetching room maintenance status:', error.message);
+    return { room_number: roomNumber, total_requests: 0, pending_count: 0, in_progress_count: 0, completed_count: 0, requests: [] };
+  }
 };
 
 // ---------------------------------------------------------

@@ -1,0 +1,815 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SWP490_FA26SE905_R2_DesignBrief</title>
+<style>
+  @page {
+    size: A4;
+    margin: 2cm;
+  }
+  body {
+    font-family: Arial, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 11pt;
+    line-height: 1.35;
+    color: #202124;
+    background-color: #ffffff;
+    max-width: 21cm;
+    margin: 0 auto;
+    padding: 2cm;
+  }
+  .doc-banner {
+    font-size: 10pt;
+    font-weight: bold;
+    color: #14233a;
+    margin-bottom: 4px;
+    letter-spacing: 0.5px;
+  }
+  h1 {
+    font-size: 18pt;
+    color: #14233a;
+    margin-top: 6px;
+    margin-bottom: 8px;
+    font-weight: bold;
+  }
+  h2 {
+    font-size: 13pt;
+    color: #14233a;
+    margin-top: 18px;
+    margin-bottom: 6px;
+    font-weight: bold;
+    border-bottom: 1px solid #edf2f7;
+    padding-bottom: 4px;
+  }
+  h3 {
+    font-size: 11.5pt;
+    color: #14233a;
+    margin-top: 12px;
+    margin-bottom: 4px;
+    font-weight: bold;
+  }
+  .guidance {
+    font-size: 9.5pt;
+    font-style: italic;
+    color: #5f6368;
+    margin-top: 2px;
+    margin-bottom: 8px;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 6px;
+    margin-bottom: 14px;
+    font-size: 9.5pt;
+  }
+  th {
+    background-color: #14233a;
+    color: #ffffff;
+    font-weight: bold;
+    text-align: left;
+    padding: 7px 10px;
+    border: 1px solid #d6d3cb;
+  }
+  td {
+    padding: 6px 10px;
+    border: 1px solid #d6d3cb;
+    vertical-align: top;
+    background-color: #ffffff;
+  }
+  .kv-table td:first-child {
+    background-color: #edf2f7;
+    color: #14233a;
+    font-weight: bold;
+    width: 35%;
+  }
+  code {
+    font-family: Consolas, monospace;
+    font-size: 9pt;
+    background-color: #f1f3f4;
+    padding: 1px 4px;
+    border-radius: 3px;
+  }
+  .page-break {
+    page-break-before: always;
+    margin-top: 24px;
+  }
+</style>
+</head>
+<body>
+<div class="doc-banner">SEP490 · CAPSTONE PROJECT · REVIEW 2 · BM01</div>
+<h1>Design Brief – Review 2</h1>
+<div class="guidance">Form BM01. Sections 0–8: maximum 4 A4 pages (font 11, margins 2 cm). Appendix A is not counted. Remove all grey guidance text and example rows, then export to PDF. File name: SWP490_FA26SE905_R2_DesignBrief.pdf</div>
+<h2>0. Header</h2>
+<table class="kv-table">
+  <tr>
+    <td>Project code</td>
+    <td>FA26SE905</td>
+  </tr>
+  <tr>
+    <td><strong>Project name</strong></td>
+    <td>Intelligent Hotel Concierge Robot (HC-Robot)</td>
+  </tr>
+  <tr>
+    <td><strong>Team</strong></td>
+    <td></td>
+  </tr>
+  <tr>
+    <td><strong>Supervisor</strong></td>
+    <td></td>
+  </tr>
+  <tr>
+    <td><strong>Repository link (tag review-2)</strong></td>
+    <td>https://github.com/hoangcv-work/HC-Robot/tree/review-2</td>
+  </tr>
+  <tr>
+    <td><strong>Version</strong></td>
+    <td>2.0</td>
+  </tr>
+  <tr>
+    <td><strong>Date</strong></td>
+    <td>November 9, 2026</td>
+  </tr>
+</table>
+<h2>1. Scope</h2>
+<h3>1.1 Registration Changes</h3>
+<table class="">
+  <tr>
+    <th>Section</th>
+    <th>Current</th>
+    <th>Proposed</th>
+    <th>Reason</th>
+  </tr>
+  <tr>
+    <td>Core Workflows</td>
+    <td>Fragmented single-action flows (MOVE, GREET, FEEDBACK) centered solely on robot.</td>
+    <td>5 standardized workflows: Admin Configuration, Guest Info & Recommendation, Service Request Handling, Robot-to-Human Handoff, and Robot Monitoring & Incident Handling.</td>
+    <td>Replace micro-actions with comprehensive multi-actor SOPs covering guest service, administration, and incident recovery.</td>
+  </tr>
+  <tr>
+    <td>Robot Monitoring & Telemetry</td>
+    <td>Basic status indicator without centralized telemetry.</td>
+    <td>Real-time monitoring tracking Cartesian pose (x, y, yaw), velocity, LiDAR scans, and hardware health (COM/ultrasonic/Pi 5).</td>
+    <td>Fulfill supervisor requirement for live fleet localization and device health tracking.</td>
+  </tr>
+  <tr>
+    <td>Battery Buffer Strategy</td>
+    <td>Single low-battery trigger without operational buffers.</td>
+    <td>Dual-buffer policy: 20% Warning Buffer (drain current task, show banner, block new sessions), 10% Critical Cut-off (abort task, alert modal, auto-dock, alert maintenance), and 80% resume hysteresis.</td>
+    <td>Fulfill supervisor requirement for explicit buffer thresholds for guest notices, UI warnings, and auto-docking.</td>
+  </tr>
+</table>
+<h3>1.2 Out of Scope</h3>
+<table class="">
+  <tr>
+    <th>Item</th>
+    <th>Reason</th>
+  </tr>
+  <tr>
+    <td>Restaurant Dine-In & Table POS</td>
+    <td>System handles Hotel Kitchen room-service ticket dispatch (<code>kitchen.py</code>); on-premise table seating and dine-in POS are excluded.</td>
+  </tr>
+  <tr>
+    <td>Multi-Floor Elevator Integration</td>
+    <td>Hardware navigation is restricted to single-floor lobby, lounge, and reception areas for Review 2 defense.</td>
+  </tr>
+  <tr>
+    <td>Physical Luggage Transportation</td>
+    <td>Robot scope is information and escort concierge; heavy luggage is handled by bell staff.</td>
+  </tr>
+  <tr>
+    <td>Autonomous Outdoor Navigation</td>
+    <td>LiDAR and ultrasonic safety ranges are calibrated exclusively for indoor hotel flooring.</td>
+  </tr>
+</table>
+<h2>2. System at a Glance</h2>
+<p>HC-Robot is an autonomous concierge resolving lobby congestion and service delays. Serving Guests, Front Desk, Department Leads, Kitchen, Maintenance, and Admins, it provides <2s bilingual voice AI (Groq/Gemini LLM with local ChromaDB RAG and EdgeTTS), autonomous lobby escorting via 2D LiDAR SLAM, and hotel service ticketing with head lead confirmation. A 2 Hz WebSocket dashboard monitors fleet pose, sensor health, and battery buffer safety. (Architecture ref: <code>docs/02-Architecture.md</code>).</p>
+<h2>3. Key Design Decisions</h2>
+<table class="">
+  <tr>
+    <th>ID</th>
+    <th>Decision</th>
+    <th>Options considered</th>
+    <th>Chosen option and rationale</th>
+    <th>Owner</th>
+    <th>Related FR / diagram</th>
+  </tr>
+  <tr>
+    <td><em>D1</em></td>
+    <td>Multi-Tier Hybrid AI Voice Pipeline</td>
+    <td>(A) Local Ollama; (B) Cloud LLM; (C) Tier 1 Groq / Tier 2 Gemini + Local RAG factsheets + EdgeTTS.</td>
+    <td>Option C. Reduces conversational latency from 15s to <2s on edge hardware with offline factsheet fallback.</td>
+    <td></td>
+    <td>FR-AI-01 / Architecture Fig 2.1</td>
+  </tr>
+  <tr>
+    <td><em>D2</em></td>
+    <td>Dual-Threshold Battery Buffer & Docking</td>
+    <td>(A) Single 15% threshold; (B) Dual buffer (20% warning drain, 10% critical cut-off, 80% recharge hysteresis).</td>
+    <td>Option B. Prevents mid-lobby stalls while avoiding abrupt session termination at safe battery levels.</td>
+    <td></td>
+    <td>FR-PWR-02 / Battery State Machine</td>
+  </tr>
+  <tr>
+    <td><em>D3</em></td>
+    <td>2 Hz Telemetry & Hardware Health Stream</td>
+    <td>(A) 5s REST polling; (B) 2-5 Hz WebSocket broadcasting pose, LiDAR scans, velocities, and hardware bus health.</td>
+    <td>Option B. Enables zero-latency map tracking and immediate detection of sensor/COM disconnects.</td>
+    <td></td>
+    <td>FR-MON-01 / Telemetry Flowchart</td>
+  </tr>
+  <tr>
+    <td><em>D4</em></td>
+    <td>Standardized Core Workflows (WF-01..05)</td>
+    <td>(A) 10 micro-actions; (B) 5 standardized operational workflows (Admin Config, Guest Info, Request Handling, Handoff, Monitoring).</td>
+    <td>Option B. Establishes realistic operational procedures directly aligned with presentation slides and defense targets.</td>
+    <td></td>
+    <td>FR-WF-01..05 / Core Workflows</td>
+  </tr>
+  <tr>
+    <td><em>D5</em></td>
+    <td>Robot-to-Human Handoff with Translation</td>
+    <td>(A) Text ticket; (B) 2-way WebRTC screen call with live speech translation (EN, VN) triggered by request or bad expression.</td>
+    <td>Option B. Enables instant front-desk takeover when guest requests staff or displays frustration.</td>
+    <td></td>
+    <td>FR-CALL-01 / Handoff Architecture</td>
+  </tr>
+</table>
+<h2>4. Top Risks</h2>
+<table class="">
+  <tr>
+    <th>ID</th>
+    <th>Risk</th>
+    <th>Impact</th>
+    <th>How we verify or mitigate</th>
+    <th>Owner</th>
+  </tr>
+  <tr>
+    <td><em>R1</em></td>
+    <td>Battery exhaustion during guest escort.</td>
+    <td>Robot stalls mid-corridor, blocking lobby passage.</td>
+    <td>20% warning blocks new tasks; 10% critical cut-off aborts task, plays voice apology, auto-docks, and alerts maintenance.</td>
+    <td></td>
+  </tr>
+  <tr>
+    <td><em>R2</em></td>
+    <td>Sensor disconnect (LiDAR COM port / ultrasonic).</td>
+    <td>Blind navigation, collision hazard, lost pose.</td>
+    <td>Watchdog halts motors (PWM=0, EMERGENCY_STOP) if packets drop >1.0s; triggers red alert on Admin Portal.</td>
+    <td></td>
+  </tr>
+  <tr>
+    <td><em>R3</em></td>
+    <td>High LLM latency or cloud API outage.</td>
+    <td>Dialogue stalls with dead silence.</td>
+    <td>Earcon turn chime, visual thinking indicator, barge-in voice interruption, and auto-fallback to local cached factsheets.</td>
+    <td></td>
+  </tr>
+</table>
+<h2>5. Known Gaps</h2>
+<table class="">
+  <tr>
+    <th>ID</th>
+    <th>Gap</th>
+    <th>Location</th>
+    <th>Plan</th>
+    <th>Owner</th>
+    <th>Due</th>
+  </tr>
+  <tr>
+    <td><em>G-01</em></td>
+    <td>Battery buffer logic in frontend was unaligned with backend robot model.</td>
+    <td><code>frontend/.../batteryPolicy.js</code> vs <code>backend/app/models/robot.py</code></td>
+    <td>Align <code>Robot.status</code> flags with 20% LOW and 10% CRITICAL thresholds; verify via integration test.</td>
+    <td></td>
+    <td>2026-11-12</td>
+  </tr>
+  <tr>
+    <td><em>G-02</em></td>
+    <td>Fleet telemetry stream lacked structured hardware health metrics.</td>
+    <td><code>backend/app/api/v1/endpoints/map.py</code></td>
+    <td>Add structured <code>device_health</code> (LiDAR COM, ultrasonic clearances) to WebSocket stream.</td>
+    <td></td>
+    <td>2026-11-13</td>
+  </tr>
+  <tr>
+    <td><em>G-03</em></td>
+    <td>Kiosk UI lacked persistent warning banner in 10-20% buffer zone.</td>
+    <td><code>frontend/src/pages/guest/RobotScreenPage.jsx</code></td>
+    <td>Implement top warning notification bar informing guests of upcoming recharge return.</td>
+    <td></td>
+    <td>2026-11-14</td>
+  </tr>
+</table>
+<h2>6. Proposed Mandatory Features</h2>
+<table class="">
+  <tr>
+    <th>ID</th>
+    <th>Feature</th>
+    <th>Actor</th>
+    <th>Acceptance criteria (testable)</th>
+    <th>Test</th>
+    <th>Status</th>
+  </tr>
+  <tr>
+    <td><em>F-01</em></td>
+    <td>Admin Knowledge & Configuration</td>
+    <td>Hotel Admin</td>
+    <td>Admin logs in, updates knowledge files, FAQs, promotions, and expressions, syncs to robot, and verifies deployment in < 3.0s.</td>
+    <td>TC-F01-01..03</td>
+    <td>Done</td>
+  </tr>
+  <tr>
+    <td><em>F-02</em></td>
+    <td>Guest Info & Recommendation</td>
+    <td>Hotel Guest</td>
+    <td>Detects guest approach, prompts language, answers queries via AI voice in < 2.0s, provides recommendations, and collects rating.</td>
+    <td>TC-F02-01..03</td>
+    <td>Done</td>
+  </tr>
+  <tr>
+    <td><em>F-03</em></td>
+    <td>Service Request Handling & Routing</td>
+    <td>Hotel Guest / Head Lead / Staff</td>
+    <td>Classifies service requests from kiosk, routes ticket to target department, and updates fulfillment status to guest in real time.</td>
+    <td>TC-F03-01..03</td>
+    <td>Done</td>
+  </tr>
+  <tr>
+    <td><em>F-04</em></td>
+    <td>Robot-to-Human Handoff & Translation</td>
+    <td>Hotel Guest / Front Desk Staff</td>
+    <td>Triggers on guest request or bad expression detection; connects 2-way screen call with live EN-VN translation.</td>
+    <td>TC-F04-01..03</td>
+    <td>Done</td>
+  </tr>
+  <tr>
+    <td><em>F-05</em></td>
+    <td>Robot Monitoring & Incident Handling</td>
+    <td>Operations Staff / Admin</td>
+    <td>Tracks live pose, velocity, battery %, and LiDAR scans at ≥ 2 Hz; engages emergency stop and alerts staff upon anomaly.</td>
+    <td>TC-F05-01..03</td>
+    <td>Done</td>
+  </tr>
+  <tr>
+    <td><em>F-06</em></td>
+    <td>Multi-Tier Battery Buffer & Auto-Docking</td>
+    <td>Concierge Robot / Maintenance Staff</td>
+    <td>Blocks new sessions and displays banner at ≤ 20%; aborts session, shows modal, docks, and creates ticket at ≤ 10%; resumes at ≥ 80%.</td>
+    <td>TC-F06-01..04</td>
+    <td>In progress</td>
+  </tr>
+</table>
+<h2>7. Non-Functional Requirements</h2>
+<table class="">
+  <tr>
+    <th>ID</th>
+    <th>Quality attribute</th>
+    <th>Metric</th>
+    <th>Threshold</th>
+    <th>Measurement method</th>
+  </tr>
+  <tr>
+    <td><em>NFR-01</em></td>
+    <td>Performance (Voice Latency)</td>
+    <td>End-to-end voice query response (STT + LLM RAG + TTS)</td>
+    <td>≤ 2.0 seconds</td>
+    <td>Timestamp delta between speech end and audio playback start across 50 sample queries.</td>
+  </tr>
+  <tr>
+    <td><em>NFR-02</em></td>
+    <td>Safety (Battery Buffer)</td>
+    <td>Autonomous docking before complete power loss</td>
+    <td>0 mid-lobby stalls; auto-dock triggers at ≥ 10%</td>
+    <td>Automated discharge stress test repeating escort runs until 20% and 10% triggers.</td>
+  </tr>
+  <tr>
+    <td><em>NFR-03</em></td>
+    <td>Telemetry Freshness</td>
+    <td>WebSocket update frequency and latency to Admin</td>
+    <td>≥ 2 Hz; latency ≤ 500 ms</td>
+    <td>Client-side packet arrival timestamp delta during active navigation.</td>
+  </tr>
+  <tr>
+    <td><em>NFR-04</em></td>
+    <td>Navigation Safety</td>
+    <td>Collision avoidance emergency stop distance</td>
+    <td>Stop distance ≤ 0.3 meters at 0.35 m/s</td>
+    <td>Physical sudden-obstacle insertion in trajectory; ultrasonic and LiDAR reaction test.</td>
+  </tr>
+  <tr>
+    <td><em>NFR-05</em></td>
+    <td>System Reliability</td>
+    <td>Service uptime during lobby operating hours (07:00 - 22:00)</td>
+    <td>≥ 99.0% uptime</td>
+    <td>Server heartbeat logs and error rate tracking over 7 consecutive operational days.</td>
+  </tr>
+  <tr>
+    <td><em>NFR-06</em></td>
+    <td>Knowledge Sync Latency</td>
+    <td>Admin configuration to robot active knowledge sync</td>
+    <td>≤ 3.0 seconds</td>
+    <td>Timestamp delta between admin save and robot RAG vector index reload.</td>
+  </tr>
+</table>
+<h2>8. Ownership Map</h2>
+<table class="">
+  <tr>
+    <th>Member</th>
+    <th>Role</th>
+    <th>Owned parts (2–3)</th>
+    <th>Main workflow owned</th>
+    <th>Key decisions / PRs</th>
+  </tr>
+  <tr>
+    <td></td>
+    <td>Fullstack & QA Engineer</td>
+    <td>Admin Portal, Expression / Promotion / FAQ Config, Knowledge Base Management</td>
+    <td>WF-01: Admin Configuration</td>
+    <td>D4 (Standardized Workflows), PR #31 (Admin Config & CI Test Suite)</td>
+  </tr>
+  <tr>
+    <td></td>
+    <td>AI & NLP Engineer</td>
+    <td>Human Approach Detection, Voice Recommendation, Hotel Info / Instructions</td>
+    <td>WF-02: Guest Information & Recommendation</td>
+    <td>D1 (Hybrid AI Voice Pipeline), PR #22 (Groq/Gemini Multi-Tier Engine)</td>
+  </tr>
+  <tr>
+    <td></td>
+    <td>Fullstack Developer</td>
+    <td>Department Ticket Routing, Room Service Dispatch, Head Lead Approval Flow</td>
+    <td>WF-03: Guest Service Request Handling</td>
+    <td>D4 (Service Dispatch), PR #15 (Ticketing & Notification System)</td>
+  </tr>
+  <tr>
+    <td></td>
+    <td>Frontend & WebRTC Engineer</td>
+    <td>Kiosk Touchscreen, 2-Way Screen Video Call, Live Speech Translation (EN, VN)</td>
+    <td>WF-04: Robot-to-Human Handoff</td>
+    <td>D5 (Handoff & Video Translation), PR #27 (Video Call & Audio Stream)</td>
+  </tr>
+  <tr>
+    <td></td>
+    <td>Robotics & Embedded Lead</td>
+    <td>ROS2 Navigation, Fleet Telemetry, LiDAR Watchdog & Battery Buffer Docking</td>
+    <td>WF-05: Robot Monitoring & Incident Handling</td>
+    <td>D2 (Battery Policy), D3 (Telemetry WebSocket), PR #18 (Fleet Monitor)</td>
+  </tr>
+</table>
+<div class="page-break"></div>
+<h1>Appendix A – Defense 1.1 Targets</h1>
+<h3>A1. Main Workflows</h3>
+<table class="">
+  <tr>
+    <th>ID</th>
+    <th>Workflow</th>
+    <th>Actors</th>
+    <th>Trigger</th>
+    <th>Business outcome</th>
+    <th>Features</th>
+    <th>Entity states</th>
+    <th>Owner</th>
+  </tr>
+  <tr>
+    <td><em>WF-01</em></td>
+    <td>Admin Configuration</td>
+    <td>Hotel Admin, Backend, Robot</td>
+    <td>Admin Login on management portal</td>
+    <td>Login → Update knowledge base, FAQ, promotions, expressions → Synchronize → Verify deployment on robot.</td>
+    <td>F-01</td>
+    <td><code>AdminSession</code>: AUTHENTICATED;<br/><code>KnowledgeBase.status</code>: DRAFT → PUBLISHED;<br/><code>Robot</code>: SYNCED</td>
+    <td></td>
+  </tr>
+  <tr>
+    <td><em>WF-02</em></td>
+    <td>Guest Information & Recommendation</td>
+    <td>Hotel Guest, Concierge Robot</td>
+    <td>Human approach detection (camera / touchscreen tap)</td>
+    <td>Detect guest → Greet & select language → Q&A, service recommendations → Collect guest rating/feedback.</td>
+    <td>F-02</td>
+    <td><code>Robot.status</code>: IDLE → INTERACTING → IDLE;<br/><code>Feedback.rating</code>: recorded</td>
+    <td></td>
+  </tr>
+  <tr>
+    <td><em>WF-03</em></td>
+    <td>Guest Service Request Handling</td>
+    <td>Hotel Guest, Robot, Department Staff, Head Lead</td>
+    <td>Guest submits service request (Room Service, Taxi, Housekeeping)</td>
+    <td>Guest submits request → Classify & route to target department → Staff receives & fulfills → Update status to guest.</td>
+    <td>F-03</td>
+    <td><code>SupportRequest.status</code>: NEW → ASSIGNED → IN_PROGRESS → COMPLETED</td>
+    <td></td>
+  </tr>
+  <tr>
+    <td><em>WF-04</em></td>
+    <td>Robot-to-Human Handoff</td>
+    <td>Hotel Guest, Concierge Robot, Front Desk Staff</td>
+    <td>Guest requests staff OR robot detects bad expression</td>
+    <td>Guest requests assistance → Notify staff → Staff answers call → Communicate through robot screen with translation → End session.</td>
+    <td>F-04</td>
+    <td><code>ChatSession.status</code>: AI_ACTIVE → ESCALATED_HUMAN;<br/><code>SupportRequest.status</code>: PENDING → RESOLVED</td>
+    <td></td>
+  </tr>
+  <tr>
+    <td><em>WF-05</em></td>
+    <td>Robot Monitoring & Incident Handling</td>
+    <td>Operations Staff, Maintenance, Robot, Backend</td>
+    <td>Periodic 2 Hz telemetry stream OR detected anomaly (LiDAR drop / low battery)</td>
+    <td>Monitor status → Detect anomaly (battery ≤ 10%, LiDAR drop) → Alert staff → Staff handles incident → Update status and log history.</td>
+    <td>F-05, F-06</td>
+    <td><code>Robot.status</code>: IDLE / NAVIGATING → EMERGENCY_STOP / CHARGING;<br/><code>IncidentLog.status</code>: LOGGED → RESOLVED</td>
+    <td></td>
+  </tr>
+</table>
+<h3>A2. Demo Scenarios</h3>
+<table class="">
+  <tr>
+    <th>ID</th>
+    <th>Workflow</th>
+    <th>Type</th>
+    <th>Preconditions and data</th>
+    <th>Main steps</th>
+    <th>Expected result</th>
+    <th>Presenter</th>
+  </tr>
+  <tr>
+    <td><em>DS-01</em></td>
+    <td>WF-01</td>
+    <td>Main</td>
+    <td>Admin logs into portal; new promotion and FAQ items prepared.</td>
+    <td>1. Admin logs into management portal.<br/>2. Updates FAQ entries, promotions, and robot expressions.<br/>3. Clicks "Synchronize to Robot".<br/>4. Verifies updated content on robot kiosk screen.</td>
+    <td>New FAQs and promotions immediately synced and rendered on robot without system downtime.</td>
+    <td></td>
+  </tr>
+  <tr>
+    <td><em>DS-02</em></td>
+    <td>WF-01</td>
+    <td>Exception</td>
+    <td>Admin uploads unsupported or corrupted document file.</td>
+    <td>1. Admin uploads invalid document file.<br/>2. System validates and rejects document.<br/>3. Validation error displayed; sync aborted.<br/>4. Robot maintains existing valid knowledge base.</td>
+    <td>Rejection alert shown; robot continues running on previous stable knowledge base.</td>
+    <td></td>
+  </tr>
+  <tr>
+    <td><em>DS-03</em></td>
+    <td>WF-02</td>
+    <td>Main</td>
+    <td>Robot idle in lobby; guest approaches kiosk.</td>
+    <td>1. Human approach detection triggers.<br/>2. Robot greets guest and prompts language selection.<br/>3. Guest asks questions and receives amenity recommendations.<br/>4. Guest submits 5-star rating on screen.</td>
+    <td>Smooth conversational flow, personalized recommendations displayed, rating persisted.</td>
+    <td></td>
+  </tr>
+  <tr>
+    <td><em>DS-04</em></td>
+    <td>WF-02</td>
+    <td>Exception</td>
+    <td>Guest walks away mid-conversation without rating (15s inactivity).</td>
+    <td>1. Interaction active on screen.<br/>2. Guest walks away without completing survey.<br/>3. Inactivity timer reaches 15s without touch/voice.<br/>4. Session auto-closes and resets to idle screensaver.</td>
+    <td>Session auto-recovers cleanly without getting stuck on active conversation.</td>
+    <td></td>
+  </tr>
+  <tr>
+    <td><em>DS-05</em></td>
+    <td>WF-03</td>
+    <td>Main</td>
+    <td>Guest submits room service request (Room 402) on kiosk.</td>
+    <td>1. Guest selects service request on kiosk.<br/>2. System classifies request and routes to target department.<br/>3. Department staff receives and accepts request.<br/>4. Head Lead confirms and updates status to completed.</td>
+    <td>Ticket lifecycle completes (NEW → ASSIGNED → COMPLETED); guest notified on screen.</td>
+    <td></td>
+  </tr>
+  <tr>
+    <td><em>DS-06</em></td>
+    <td>WF-03</td>
+    <td>Exception</td>
+    <td>Guest requests service during department off-hours.</td>
+    <td>1. Guest submits off-hours service request.<br/>2. System detects target department unavailable.<br/>3. Robot prompts scheduled morning booking.<br/>4. Ticket queued with scheduled status.</td>
+    <td>Clear instructions given to guest; ticket properly scheduled without being lost.</td>
+    <td></td>
+  </tr>
+  <tr>
+    <td><em>DS-07</em></td>
+    <td>WF-04</td>
+    <td>Main</td>
+    <td>Guest during normal communication asks to speak with staff.</td>
+    <td>1. Guest speaks: "I want to talk to front desk".<br/>2. Robot alerts staff & displays waiting screen.<br/>3. Staff picks up call; screen communication connects.<br/>4. Live speech translation active (English, VN).</td>
+    <td>Successful 2-way screen communication with synchronized bilingual subtitles.</td>
+    <td></td>
+  </tr>
+  <tr>
+    <td><em>DS-08</em></td>
+    <td>WF-04</td>
+    <td>Exception</td>
+    <td>Guest displays frustration during interaction.</td>
+    <td>1. Normal communication in progress.<br/>2. Robot detects guest's bad expression.<br/>3. Robot automatically alerts staff.<br/>4. Staff picks up call to assist guest directly.</td>
+    <td>Automated escalation without requiring guest to manually find or tap help buttons.</td>
+    <td></td>
+  </tr>
+  <tr>
+    <td><em>DS-09</em></td>
+    <td>WF-05</td>
+    <td>Main</td>
+    <td>Operations staff monitors fleet on Admin Portal.</td>
+    <td>1. Open Admin Physical Map tab.<br/>2. Observe live pose and 360° LiDAR scan overlay.<br/>3. Verify hardware indicators (Battery, LiDAR, Ultrasonic, Speed).</td>
+    <td>Robot marker moves synchronously at ≥ 2 Hz; all hardware status pills display nominal green.</td>
+    <td></td>
+  </tr>
+  <tr>
+    <td><em>DS-10</em></td>
+    <td>WF-05</td>
+    <td>Exception</td>
+    <td>Sensor disconnect (LiDAR COM port) or critical battery (≤ 10%).</td>
+    <td>1. Sensor packet drop > 1.0s or battery hits 10%.<br/>2. Watchdog triggers EMERGENCY_STOP / auto-dock.<br/>3. Red alert banner and audio chime fire on portal.<br/>4. Staff receives alert, resolves incident, updates log.</td>
+    <td>Emergency halt/docking executes safely; incident logged in audit history.</td>
+    <td></td>
+  </tr>
+</table>
+<h3>A3. Functional Test Case Target</h3>
+<table class="">
+  <tr>
+    <th>Source</th>
+    <th>Count</th>
+    <th>Minimum per item</th>
+    <th>Subtotal</th>
+  </tr>
+  <tr>
+    <td><em>Mandatory features</em></td>
+    <td>6</td>
+    <td>3</td>
+    <td>18</td>
+  </tr>
+  <tr>
+    <td><em>Main workflows (end-to-end)</em></td>
+    <td>5</td>
+    <td>2</td>
+    <td>10</td>
+  </tr>
+  <tr>
+    <td><em>State transitions of main entities</em></td>
+    <td>5</td>
+    <td>2</td>
+    <td>10</td>
+  </tr>
+  <tr>
+    <td><em>Agreed NFRs</em></td>
+    <td>6</td>
+    <td>2</td>
+    <td>12</td>
+  </tr>
+  <tr>
+    <td><em>Committed total</em></td>
+    <td>22</td>
+    <td></td>
+    <td>50</td>
+  </tr>
+</table>
+<p>Automated in CI: at least 50% of the committed total (26/50 automated test cases via Pytest & Vitest in GitHub Actions).</p>
+<h3>A4. Key Design Decisions & Core Workflow Diagrams (Mermaid)</h3>
+<div class="guidance">(Full PlantUML & Mermaid specification available in [SWP490_R2_System_Diagrams.md](file:///f:/DoAn/HC-Robot/docs/SWP490_R2_System_Diagrams.md))</div>
+<p>#### <strong>A4.1. Decision D1: Multi-Tier Hybrid AI Voice Pipeline (FR-AI-01 / Architecture Fig 2.1)</strong></p>
+<p>```mermaid</p>
+<p>flowchart TD</p>
+<p>Guest(["Guest Voice Input"]) --> VAD["Web Audio VAD & Silence Detection"]</p>
+<p>VAD --> STT["Azure / Whisper STT Engine"]</p>
+<p>STT --> QueryNorm["Query Normalization & Intent Routing"]</p>
+<p>QueryNorm --> CacheCheck{"Pre-cached Local<br/>Factsheet Hit?"}</p>
+<p>CacheCheck -- Yes --> QuickResp["Instant Local Facts / Map Data (< 0.3s)"]</p>
+<p>CacheCheck -- No --> Tier1["Tier 1: Groq Cloud LLM (Llama 3.3 70B Fast Path)"]</p>
+<p>Tier1 -- Success --> RAGMerge["Merge with ChromaDB RAG Context"]</p>
+<p>Tier1 -- Timeout > 2s --> Tier2["Tier 2: Gemini Flash LLM Fallback"]</p>
+<p>Tier2 -- Success --> RAGMerge</p>
+<p>Tier2 -- Offline --> RuleFallback["Rule-Based Fallback Generator"]</p>
+<p>RAGMerge --> TextOutput["Final Answer Text"]</p>
+<p>RuleFallback --> TextOutput</p>
+<p>QuickResp --> TextOutput</p>
+<p>TextOutput --> TTS["Microsoft EdgeTTS (HoaiMy / Jenny)"]</p>
+<p>TTS --> AudioStream["MP3 Base64 Streaming Chunk"]</p>
+<p>AudioStream --> AudioContext["Browser Web Audio API & Subtitle Sync"]</p>
+<p>AudioContext --> Speaker(["Robot Speaker & Kiosk Screen"])</p>
+<p>```</p>
+<p>#### <strong>A4.2. Decision D2: Multi-Tier Battery Buffer & Auto-Docking (FR-PWR-02 / Battery State Machine)</strong></p>
+<p>```mermaid</p>
+<p>stateDiagram-v2</p>
+<p>[*] --> STATE_OK: Battery > 20% (Normal Operation)</p>
+<p>STATE_OK --> STATE_LOW_WARNING: Battery <= 20% (Warning Buffer)</p>
+<p>state STATE_LOW_WARNING {</p>
+<p>[*] --> FINISH_ACTIVE_TASK: Reject new guests</p>
+<p>FINISH_ACTIVE_TASK --> SHOW_LOW_BANNER: Display warning banner</p>
+<p>SHOW_LOW_BANNER --> PREPARE_DOCK: Polite voice farewell</p>
+<p>}</p>
+<p>STATE_LOW_WARNING --> STATE_CRITICAL_CUTOFF: Battery <= 10% (Emergency Buffer)</p>
+<p>STATE_OK --> STATE_CRITICAL_CUTOFF: Sudden drop <= 10%</p>
+<p>state STATE_CRITICAL_CUTOFF {</p>
+<p>[*] --> EMERGENCY_ABORT: Hard task abort</p>
+<p>EMERGENCY_ABORT --> SHOW_CRITICAL_MODAL: Alert modal & Voice apology</p>
+<p>SHOW_CRITICAL_MODAL --> DISPATCH_URGENT_TICKET: Alert maintenance staff</p>
+<p>}</p>
+<p>PREPARE_DOCK --> NAVIGATING_TO_DOCK: Normal route</p>
+<p>STATE_CRITICAL_CUTOFF --> NAVIGATING_TO_DOCK: Priority route</p>
+<p>NAVIGATING_TO_DOCK --> WAITING_FOR_STAFF_PLUG: Arrived at dock</p>
+<p>state WAITING_FOR_STAFF_PLUG {</p>
+<p>[*] --> CHARGING_STATUS_SCREEN: "Waiting for staff plug"</p>
+<p>CHARGING_STATUS_SCREEN --> BATTERY_CHARGING: Staff connects charger</p>
+<p>}</p>
+<p>state BATTERY_CHARGING {</p>
+<p>[*] --> HYSTERESIS_CHECK</p>
+<p>HYSTERESIS_CHECK --> HYSTERESIS_CHECK: Battery < 80% (Unavailable)</p>
+<p>}</p>
+<p>BATTERY_CHARGING --> STATE_OK: Battery >= 80% (Resume)</p>
+<p>```</p>
+<p>#### <strong>A4.3. Decision D3: Real-Time Fleet Telemetry & Sensor Health (FR-MON-01 / Telemetry Flowchart)</strong></p>
+<p>```mermaid</p>
+<p>flowchart TD</p>
+<p>subgraph SENSORS["Hardware Sensor Bus"]</p>
+<p>LiDAR["RPLiDAR A1/A2 (360° Scans)"]</p>
+<p>Encoders["Wheel Encoders (Odometry)"]</p>
+<p>Ultrasonic["HC-SR04 (Safety Clearances)"]</p>
+<p>end</p>
+<p>subgraph PI5["Edge Controller: Raspberry Pi 5 (ROS2)"]</p>
+<p>OdomNode["ros2_control & Odometry Pub"]</p>
+<p>Watchdog{"Watchdog Monitor:<br/>LiDAR packets in 1.0s?"}</p>
+<p>EMG_Stop["Clamp PWM = 0<br/>EMERGENCY_STOP"]</p>
+<p>PacketBuilder["Assemble Telemetry Packet:<br/>pose(x,y,yaw), speed, battery, health"]</p>
+<p>end</p>
+<p>subgraph BACKEND["FastAPI Gateway (map.py)"]</p>
+<p>WSHub["WebSocket Hub (/ws/map)<br/>2 Hz Broadcast"]</p>
+<p>end</p>
+<p>subgraph ADMIN_UI["Admin Portal (AdminPhysicalMapTab.jsx)"]</p>
+<p>MapCanvas["2D Live Map & Scan Points"]</p>
+<p>HealthPills["Hardware Indicators (Green/Red)"]</p>
+<p>AlertModal["Red Alert Banner & Warning Chime"]</p>
+<p>end</p>
+<p>LiDAR --> Watchdog</p>
+<p>Encoders --> OdomNode</p>
+<p>Ultrasonic --> PacketBuilder</p>
+<p>Watchdog -- Yes --> PacketBuilder</p>
+<p>Watchdog -- Timeout > 1s --> EMG_Stop --> PacketBuilder</p>
+<p>OdomNode --> PacketBuilder</p>
+<p>PacketBuilder --> WSHub</p>
+<p>WSHub --> MapCanvas</p>
+<p>WSHub --> HealthPills</p>
+<p>WSHub -- On Sensor Disconnect --> AlertModal</p>
+<p>```</p>
+<p>#### <strong>A4.4. Decision D4: Standardized Core Workflows (WF-01..05)</strong></p>
+<p>##### <strong>A4.4.1. WF-01: Admin Configuration</strong></p>
+<p>```mermaid</p>
+<p>flowchart LR</p>
+<p>Login["Admin Login"] --> Update["Update knowledge, FAQ,<br/>promotions, expressions"]</p>
+<p>Update --> Sync["Synchronize to Robot"]</p>
+<p>Sync --> Verify["Verify deployment on robot"]</p>
+<p>```</p>
+<p>##### <strong>A4.4.2. WF-02: Guest Information & Recommendation</strong></p>
+<p>```mermaid</p>
+<p>flowchart LR</p>
+<p>Detect["Detect guest"] --> Greet["Greet & Select language"]</p>
+<p>Greet --> QA["Q&A & Service recommendation"]</p>
+<p>QA --> Feedback["Collect guest rating/feedback"]</p>
+<p>```</p>
+<p>##### <strong>A4.4.3. WF-03: Guest Service Request Handling</strong></p>
+<p>```mermaid</p>
+<p>flowchart LR</p>
+<p>Req["Guest submits request"] --> Route["Classify & Route to department"]</p>
+<p>Route --> Process["Staff receives & processes"]</p>
+<p>Process --> Status["Update status to guest"]</p>
+<p>```</p>
+<p>##### <strong>A4.4.4. WF-04: Robot-to-Human Handoff</strong></p>
+<p>```mermaid</p>
+<p>flowchart LR</p>
+<p>Ask["Guest requests assistance<br/>OR bad expression"] --> Alert["Notify staff"]</p>
+<p>Alert --> Pick["Staff answers call"]</p>
+<p>Pick --> Call["Communicate with translation (EN-VN)"]</p>
+<p>Call --> End["End session"]</p>
+<p>```</p>
+<p>##### <strong>A4.4.5. WF-05: Robot Monitoring & Incident Handling</strong></p>
+<p>```mermaid</p>
+<p>flowchart LR</p>
+<p>Monitor["Monitor telemetry & status"] --> Anomaly["Detect anomaly<br/>(Battery / LiDAR disconnect)"]</p>
+<p>Anomaly --> Warn["Alert staff"]</p>
+<p>Warn --> Resolve["Staff handles incident"]</p>
+<p>Resolve --> Log["Update status & log history"]</p>
+<p>```</p>
+<p>#### <strong>A4.5. Decision D5: Robot-to-Human WebRTC Video & Translation Architecture (FR-CALL-01 / Handoff Architecture)</strong></p>
+<p>```mermaid</p>
+<p>sequenceDiagram</p>
+<p>autonumber</p>
+<p>actor Guest as Hotel Guest</p>
+<p>participant Kiosk as Robot Kiosk UI (MessengerVideoCallModal.jsx)</p>
+<p>participant WSHub as VideoCallManager WebSocket Hub</p>
+<p>participant StaffDesk as Front Desk Screen (Receptionist Portal)</p>
+<p>actor Staff as Front Desk Staff</p>
+<p>Guest->>Kiosk: Taps "Call Front Desk" OR Bad expression detected</p>
+<p>Kiosk->>WSHub: send call_request {robot_id: "RC-001", location: "Lobby"}</p>
+<p>WSHub->>StaffDesk: Trigger incoming video call ring with chime</p>
+<p>Staff->>StaffDesk: Click "Accept Video Call"</p>
+<p>StaffDesk->>WSHub: send call_accepted</p>
+<p>WSHub->>Kiosk: Initialize WebRTC PeerConnection (SDP Offer/Answer)</p>
+<p>Kiosk<<->>StaffDesk: P2P WebRTC Media Stream (Video 720p + Audio)</p>
+<p>Guest->>Kiosk: Speaks in English: "Can I request late checkout tomorrow?"</p>
+<p>Kiosk->>StaffDesk: Push Translated Subtitle: "Khách hỏi thủ tục trả phòng trễ."</p>
+<p>Staff->>StaffDesk: Speaks in Vietnamese: "Dạ được ạ, miễn phí đến 14h chiều."</p>
+<p>StaffDesk->>Kiosk: Push Subtitle & EdgeTTS: "Yes, late checkout is free until 2:00 PM."</p>
+<p>Kiosk->>Guest: Voice audio playback + English subtitles displayed</p>
+<p>Staff->>StaffDesk: Click "End Call" -> Record resolved ticket</p>
+<p>StaffDesk->>WSHub: Terminate WebRTC session</p>
+<p>```</p>
+</body>
+</html>

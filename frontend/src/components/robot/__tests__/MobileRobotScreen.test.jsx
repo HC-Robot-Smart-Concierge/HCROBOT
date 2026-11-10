@@ -191,4 +191,51 @@ describe('MobileRobotScreen Component & UX Tests', () => {
     expect(robotPageContent).toContain('setActiveRoomNumber(verifiedRoom)');
     expect(robotPageContent).toContain('setAuthenticatedRoom(verifiedRoom)');
   });
+
+  it('guarantees all lucide-react icons used in MobileRobotScreen JSX are properly imported', () => {
+    const mobileScreenPath = path.resolve(__dirname, '../MobileRobotScreen.jsx');
+    const content = fs.readFileSync(mobileScreenPath, 'utf8');
+
+    const lucideImportMatch = content.match(/import\s*\{([^}]*)\}\s*from\s*['"]lucide-react['"]/);
+    expect(lucideImportMatch).toBeTruthy();
+
+    const importedIcons = lucideImportMatch[1]
+      .split(',')
+      .map((s) => s.trim().replace(/^.*as\s+/, '').replace(/\r|\n/g, ''))
+      .filter(Boolean);
+
+    expect(importedIcons).toContain('Wrench');
+    expect(importedIcons).toContain('Utensils');
+    expect(importedIcons).toContain('ConciergeBell');
+    expect(importedIcons).toContain('Building');
+    expect(importedIcons).toContain('Clock');
+    expect(importedIcons).toContain('Menu');
+    expect(importedIcons).toContain('Globe');
+  });
+
+  it('removes cluttered quick action chips below subtitle on idle screen to prevent clipping in mobile landscape', () => {
+    const mobileScreenPath = path.resolve(__dirname, '../MobileRobotScreen.jsx');
+    const content = fs.readFileSync(mobileScreenPath, 'utf8');
+
+    // Không còn hàng chip thao tác nhanh dưới nút micro / subtitle gây chật chội và tràn viền
+    expect(content).not.toContain('Fast Menu Action Chips trên màn hình ngang');
+    expect(content).not.toMatch(/title=\{isEn \? 'Repairs' : 'Báo hỏng & Sửa chữa'\}[\s\S]*?<span>\{isEn \? 'Repairs' : 'Báo hỏng'\}<\/span>/);
+
+    // Nút chạm nói vẫn được giữ nguyên tinh gọn
+    expect(content).toContain('Chạm hoặc nói');
+    expect(content).toContain('<Mic className="w-3.5 h-3.5 text-stone-300 group-hover:text-white" />');
+  });
+
+  it('integrates mic action into subtitle right side and ensures subtitle and idle dock are mutually exclusive', () => {
+    const mobileScreenPath = path.resolve(__dirname, '../MobileRobotScreen.jsx');
+    const content = fs.readFileSync(mobileScreenPath, 'utf8');
+
+    // Nút micro được tích hợp tinh gọn ngay bên phải của thanh subtitle
+    expect(content).toContain('Cụm công cụ bên phải subtitle: Nút Micro & Nút Đóng');
+    expect(content).toContain('onStartTalk && (');
+    expect(content).toMatch(/<Mic className="w-3 h-3 text-stone-300" \/>/);
+
+    // Chuỗi ternary loại trừ lẫn nhau: displayText không để rơi xuống trạng thái idle bên dưới
+    expect(content).toMatch(/\{displayText \? \([\s\S]*?<MobileCinemaSubtitle[\s\S]*?\)\s*:\s*currentState === 'RT-03'/);
+  });
 });

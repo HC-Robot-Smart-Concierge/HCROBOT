@@ -18,6 +18,15 @@ from app.models.scenario import DialogueScenario
 from app.services.ai.session_manager import is_valid_hotel_room, extract_room_number
 
 from app.schemas.scenario import DialogueScenarioCreate, DialogueScenarioUpdate
+from app.services.ai.constants import (
+    SERVICE_KEYWORDS,
+    MAINTENANCE_MENU_TRIGGER_KEYWORDS,
+    ROOM_SERVICE_MENU_TRIGGER_KEYWORDS,
+    FOOD_MENU_TRIGGER_KEYWORDS,
+    ORDER_OR_SERVICE_EXCLUSION_REGEX,
+    MAINTENANCE_REGEX,
+    STATUS_QUERY_REGEX,
+)
 
 
 
@@ -368,23 +377,27 @@ DEFAULT_SEED_SCENARIOS = [
 
         "category": "service",
 
-        "match_keywords": ['bị hỏng', 'hỏng hóc', 'đèn không sáng', 'tivi không lên', 'tivi hỏng', 'vòi nước hỏng', 'nước không chảy', 'nghẹt cống', 'tắc cống', 'máy lạnh không lạnh', 'điều hòa không mát', 'sửa chữa', 'kỹ thuật phòng', 'bảo trì phòng', 'bi hong', 'hong hoc', 'den khong sang', 'tivi khong len', 'voi nuoc hong', 'sua chua', 'broken', 'not working', 'maintenance', 'repair', 'light not working', 'ac not cooling', 'leaking tap'],
+        "match_keywords": MAINTENANCE_MENU_TRIGGER_KEYWORDS,
 
         "match_type": "keyword",
 
-        "response_vi": "Dạ em rất xin lỗi vì sự bất tiện này trong phòng của mình ạ! Quý khách vui lòng cho em biết số phòng và thiết bị gặp sự cố, hoặc bấm phím số 0 trên điện thoại phòng để báo Lễ tân; đội ngũ kỹ thuật viên khách sạn sẽ có mặt tận phòng trong vòng 10 phút để kiểm tra và khắc phục ngay cho quý khách ạ.",
+        "response_vi": "Dạ em rất xin lỗi vì sự bất tiện này trong phòng của mình ạ! Em đã mở danh mục Báo hỏng & Sửa chữa trên màn hình rồi ạ. Quý khách vui lòng chọn sự cố hoặc tra cứu tiến độ nhé ạ.",
 
-        "response_en": "We sincerely apologize for this inconvenience! Please let me know your room number and the affected item, or dial '0' from your room telephone. Our maintenance engineering team will arrive within 10 minutes to inspect and resolve it immediately.",
+        "response_en": "We sincerely apologize for this inconvenience! I have opened the Maintenance & Repair screen for you. Please select the issue you are experiencing or track your repair progress.",
 
-        "action_type": "none",
+        "action_type": "open_maintenance_menu",
 
-        "action_payload": {'eye_expression': 'look_around'},
+        "action_payload": {'trigger_menu': 'maintenance', 'destination_key': None, 'eye_expression': 'attentive'},
 
         "is_fast_path": True,
 
         "is_active": True,
 
-        "priority": 90,
+        "is_system": True,
+
+        "is_custom_edited": False,
+
+        "priority": 98,
 
     },
 
@@ -1282,7 +1295,7 @@ DEFAULT_SEED_SCENARIOS = [
 
         "category": "service",
 
-        "match_keywords": ["thực đơn", "menu", "đặt món", "gọi món", "thực đơn phòng", "menu phòng", "ăn gì", "thuc don", "dat mon", "goi mon", "room service menu", "in room dining", "food menu", "xem menu", "xem thực đơn"],
+        "match_keywords": FOOD_MENU_TRIGGER_KEYWORDS,
 
         "match_type": "keyword",
 
@@ -1298,6 +1311,10 @@ DEFAULT_SEED_SCENARIOS = [
 
         "is_active": True,
 
+        "is_system": True,
+
+        "is_custom_edited": False,
+
         "priority": 95,
 
     },
@@ -1310,7 +1327,7 @@ DEFAULT_SEED_SCENARIOS = [
 
         "category": "service",
 
-        "match_keywords": ["dịch vụ phòng", "tiện ích phòng", "tiện ích buồng phòng", "yêu cầu tiện ích", "xem tiện ích", "danh mục tiện ích", "dich vu phong", "tien ich phong", "tien ich buong phong", "room service", "room amenities", "housekeeping service"],
+        "match_keywords": ROOM_SERVICE_MENU_TRIGGER_KEYWORDS,
 
         "match_type": "keyword",
 
@@ -1326,7 +1343,43 @@ DEFAULT_SEED_SCENARIOS = [
 
         "is_active": True,
 
+        "is_system": True,
+
+        "is_custom_edited": False,
+
         "priority": 94,
+
+    },
+
+    {
+
+        "id": "scn-maintenance-menu",
+
+        "title": "Báo hỏng & Bảo trì kỹ thuật (Maintenance & Repair Menu)",
+
+        "category": "service",
+
+        "match_keywords": MAINTENANCE_MENU_TRIGGER_KEYWORDS,
+
+        "match_type": "keyword",
+
+        "response_vi": "Dạ em đã mở danh mục báo sự cố kỹ thuật và bảo trì trên màn hình. Quý khách vui lòng chọn sự cố để bộ phận kỹ thuật hỗ trợ nhanh nhất ạ!",
+
+        "response_en": "I have opened the maintenance and repair menu on the screen. Please select your issue so our technical team can assist you promptly!",
+
+        "action_type": "open_maintenance_menu",
+
+        "action_payload": {'trigger_menu': 'maintenance', 'destination_key': None, 'eye_expression': 'attentive'},
+
+        "is_fast_path": True,
+
+        "is_active": True,
+
+        "is_system": True,
+
+        "is_custom_edited": False,
+
+        "priority": 98,
 
     },
 
@@ -2157,7 +2210,7 @@ DEFAULT_SEED_SCENARIOS = [
 
         "category": "facility",
 
-        "match_keywords": ["điều hòa", "máy lạnh", "chỉnh nhiệt độ", "máy lạnh không mát", "bật điều hòa", "tắt điều hòa", "dieu hoa", "may lanh", "chinh nhiet do", "may lanh khong mat", "air conditioner", "ac", "air conditioning", "climate control", "room temperature", "ac remote"],
+        "match_keywords": ["điều hòa", "máy lạnh", "chỉnh nhiệt độ", "bật điều hòa", "tắt điều hòa", "dieu hoa", "may lanh", "chinh nhiet do", "air conditioner", "ac", "air conditioning", "climate control", "room temperature", "ac remote"],
 
         "match_type": "keyword",
 
@@ -2984,34 +3037,81 @@ class ScenarioService:
                 "tự giới thiệu", "tu gioi thieu", "giới thiệu rora", "gioi thieu rora",
                 "introduce yourself", "tell me about yourself", "can you introduce yourself"
             ]
-            cleaned_keywords_map = {
-                "scn-pool": ["hồ bơi", "bể bơi", "swimming pool", "hồ bơi ở đâu", "ho boi", "be boi", "ho boi o dau", "tắm hồ bơi", "tắm bơi", "hồ bơi mở cửa", "bể bơi ở đâu", "hồ bơi vô cực", "infinity pool"],
-                "scn-karaoke": ["karaoke", "phòng karaoke", "hát karaoke", "phòng hát", "vip karaoke"],
-                "scn-gift-shop": ["cửa hàng lưu niệm", "quà lưu niệm", "lưu niệm", "gift shop", "mua quà", "mua quà lưu niệm", "souvenir"],
-                "scn-who-are-you": who_are_you_keywords,
-            }
+            records_by_id = {r.id: r for r in records}
             has_db_updates = False
+
+            # B. Phân định quyền giữa Database và Code (System vs Custom Scenarios):
+            # 1. Kịch bản hệ thống trong code chưa có trong DB -> Tự động nạp mới với is_system=True, is_custom_edited=False
+            # 2. Kịch bản đã có trong DB nhưng CHƯA bị Admin sửa tay (is_custom_edited=False) -> Đồng bộ cập nhật từ code
+            # 3. Kịch bản đã bị Admin chỉnh sửa tay (is_custom_edited=True) -> Tuyệt đối bảo tồn cấu hình Admin, KHÔNG ghi đè!
+            for seed in DEFAULT_SEED_SCENARIOS:
+                seed_id = seed["id"]
+                existing = records_by_id.get(seed_id)
+                if not existing:
+                    new_item = DialogueScenario(
+                        id=seed_id,
+                        title=seed["title"],
+                        category=seed.get("category", "service"),
+                        match_keywords=seed.get("match_keywords", []),
+                        match_type=seed.get("match_type", "keyword"),
+                        response_vi=seed.get("response_vi", ""),
+                        response_en=seed.get("response_en"),
+                        action_type=seed.get("action_type", "none"),
+                        action_payload=seed.get("action_payload"),
+                        is_fast_path=seed.get("is_fast_path", True),
+                        is_active=seed.get("is_active", True),
+                        is_system=True,
+                        is_custom_edited=False,
+                        priority=seed.get("priority", 0),
+                    )
+                    db.add(new_item)
+                    records.append(new_item)
+                    records_by_id[seed_id] = new_item
+                    has_db_updates = True
+                else:
+                    if not getattr(existing, "is_system", False):
+                        existing.is_system = True
+                        has_db_updates = True
+
+                    # Admin đã tùy biến qua UI -> Giữ nguyên cấu hình của Admin
+                    if getattr(existing, "is_custom_edited", False):
+                        continue
+
+                    # Kịch bản hệ thống chuẩn chưa bị sửa tay -> Đồng bộ định kỳ với SSOT trong code
+                    needs_update = False
+                    if existing.priority != seed.get("priority", 0):
+                        existing.priority = seed.get("priority", 0)
+                        needs_update = True
+                    if existing.action_type != seed.get("action_type", "none"):
+                        existing.action_type = seed.get("action_type", "none")
+                        needs_update = True
+                    if existing.action_payload != seed.get("action_payload"):
+                        existing.action_payload = seed.get("action_payload")
+                        needs_update = True
+                    if set(existing.match_keywords or []) != set(seed.get("match_keywords") or []):
+                        existing.match_keywords = seed.get("match_keywords", [])
+                        needs_update = True
+                    if existing.response_vi != seed.get("response_vi", ""):
+                        existing.response_vi = seed.get("response_vi", "")
+                        needs_update = True
+                    if existing.response_en != seed.get("response_en"):
+                        existing.response_en = seed.get("response_en")
+                        needs_update = True
+                    if needs_update:
+                        has_db_updates = True
+
+            # Dọn dẹp kịch bản scn-lost-keycard nếu còn kích hoạt
             for r in records:
-                if r.id == "scn-lost-keycard":
-                    if r.is_active or r.is_fast_path:
-                        r.is_active = False
-                        r.is_fast_path = False
-                        has_db_updates = True
-                elif r.id == "scn-who-are-you":
-                    if not any(k in (r.match_keywords or []) for k in ["giới thiệu bản thân", "bạn giới thiệu bản thân được không"]):
-                        r.match_keywords = who_are_you_keywords
-                        r.response_vi = "Dạ em là Rora, trợ lý Robot Concierge thông minh của khách sạn 5 sao Aurora Grand. Rất hân hạnh được phục vụ và đồng hành cùng quý khách ạ!"
-                        has_db_updates = True
-                elif r.id in cleaned_keywords_map:
-                    target_kw = cleaned_keywords_map[r.id]
-                    if r.match_keywords != target_kw and any(bad in (r.match_keywords or []) for bad in ["bơi lội", "hát", "đặc sản"]):
-                        r.match_keywords = target_kw
-                        has_db_updates = True
+                if r.id == "scn-lost-keycard" and (r.is_active or r.is_fast_path):
+                    r.is_active = False
+                    r.is_fast_path = False
+                    has_db_updates = True
+
             if has_db_updates:
                 try:
                     await db.commit()
                 except Exception as e_commit:
-                    logger.warning(f"[ScenarioService] Error updating sanitized keywords in DB: {e_commit}")
+                    logger.warning(f"[ScenarioService] Error committing synchronized scenarios to DB: {e_commit}")
 
             cache_list = []
 
@@ -3042,6 +3142,10 @@ class ScenarioService:
                         "is_fast_path": r.is_fast_path,
 
                         "is_active": r.is_active,
+
+                        "is_system": getattr(r, "is_system", False),
+
+                        "is_custom_edited": getattr(r, "is_custom_edited", False),
 
                         "priority": r.priority,
 
@@ -3175,17 +3279,8 @@ class ScenarioService:
 
 
 
-            # Bypass fast-path chi duong neu khach dang goi do / dat mon / yeu cau dich vu len phong
-
-            is_order_or_service = bool(re.search(
-
-                r'(đặt|dat|order|gọi món|goi mon|gọi|goi|mang|giao|lấy|lay|đem|gửi|thêm|mượn|cần|can|muốn|xin|cho (tôi|mình|em)|yêu cầu)',
-
-                normalized,
-
-                re.IGNORECASE
-
-            ))
+            # Bypass fast-path chi duong neu khach dang goi do / dat mon / yeu cau dich vu len phong (C. Quy tac phan tang kiem soat)
+            is_order_or_service = bool(ORDER_OR_SERVICE_EXCLUSION_REGEX.search(normalized))
 
             has_in_room_request = bool(re.search(
 
@@ -3240,6 +3335,18 @@ class ScenarioService:
                     re.IGNORECASE
                 ))
                 if is_taxi_status_check:
+                    continue
+
+            # Neu kich ban la open_food_menu (nhu scn-in-room-dining), bo qua neu khach dang noi ve bao tri, sua chua, bao hong
+            if scn.get("action_type") == "open_food_menu":
+                is_mnt_intent = bool(MAINTENANCE_REGEX.search(normalized))
+                if is_mnt_intent:
+                    continue
+
+            # Neu kich ban la open_maintenance_menu hoac scn-room-maintenance, bo qua neu khach dang hoi kiem tra tien do / trang thai sua chua
+            if scn.get("action_type") == "open_maintenance_menu" or scn.get("id") in ["scn-maintenance-menu", "scn-room-maintenance"]:
+                is_maintenance_status_check = bool(STATUS_QUERY_REGEX.search(normalized))
+                if is_maintenance_status_check:
                     continue
 
             if scn.get("id") == "scn-rooms-general":
@@ -3332,7 +3439,7 @@ class ScenarioService:
 
                 raw_payload = scn.get("action_payload")
 
-                action_payload: Optional[Dict[str, Any]] = raw_payload if isinstance(raw_payload, dict) else None
+                action_payload: Optional[Dict[str, Any]] = dict(raw_payload) if isinstance(raw_payload, dict) else None
 
                 # Xu ly dac thu cho kich ban chuyen doi ngon ngu
                 if action_type == "switch_language":
@@ -3358,8 +3465,20 @@ class ScenarioService:
                     else:
                         response_text = str(scn.get("response_vi") or "Dạ vâng, em đã chuyển sang Tiếng Việt rồi ạ.")
 
-
                 resp_text = str((scn.get("response_en") if is_en and scn.get("response_en") else scn.get("response_vi")) or scn.get("response_vi") or "")
+
+                # Xu ly dac thu cho kich ban mo menu bao tri & sua chua phong
+                if action_type == "open_maintenance_menu":
+                    if not isinstance(action_payload, dict):
+                        action_payload = {}
+                    action_payload["trigger_menu"] = "maintenance"
+                    action_payload["destination_key"] = None
+                    if room_candidate and is_valid_hotel_room(room_candidate):
+                        action_payload["target_room_number"] = room_candidate
+                        if is_en:
+                            resp_text = f"We sincerely apologize for this inconvenience! I have opened the Maintenance & Repair screen for Room {room_candidate}. Please select the issue you are experiencing or track your repair progress."
+                        else:
+                            resp_text = f"Dạ em rất xin lỗi vì sự bất tiện này trong phòng {room_candidate} ạ! Em đã mở danh mục Báo hỏng & Sửa chữa trên màn hình cho phòng mình rồi ạ. Quý khách vui lòng chọn sự cố hoặc tra cứu tiến độ nhé ạ."
 
                 logger.info(f"[ScenarioService FastPath Hit] Matched scenario '{scn.get('id')}' - '{scn.get('title')}' in <1ms")
 
@@ -3557,6 +3676,10 @@ class ScenarioService:
 
                 is_active=data.is_active,
 
+                is_system=False,
+
+                is_custom_edited=True,
+
                 priority=data.priority,
 
             )
@@ -3632,6 +3755,8 @@ class ScenarioService:
 
 
             update_dict = data.model_dump(exclude_unset=True)
+            # Admin chinh sua qua UI -> Danh dau is_custom_edited = True de initialize_cache khong bao gio tu y ghi de
+            update_dict["is_custom_edited"] = True
 
             for k, v in update_dict.items():
 

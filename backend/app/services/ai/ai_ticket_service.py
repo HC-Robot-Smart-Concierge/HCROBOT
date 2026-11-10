@@ -642,7 +642,7 @@ async def background_extract_and_create_ticket(
         return
 
     # Không tạo ticket nếu là chào hỏi, giới thiệu phòng hoặc câu hỏi thông tin chung
-    if action in ["provide_room_number", "chitchat", "conversation", "faq", "fast_path", "unknown", "query_order_status"]:
+    if action in ["provide_room_number", "chitchat", "conversation", "faq", "fast_path", "unknown", "query_order_status", "open_food_menu", "open_room_service_menu", "open_maintenance_menu"]:
         return
 
     items_desc_check = (items or prompt or "").lower()

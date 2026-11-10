@@ -431,7 +431,7 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
     elif require_pin:
         # Tạm dừng tạo ticket tự động - chờ khách bấm xác thực PIN trên màn hình Kiosk
         logger.info(f"[AIChatService] Service request '{act}' for Room {target_room} requires Touch PIN verification.")
-    elif act and act not in ["chitchat", "conversation", "faq", "fast_path", "provide_room_number", "query_order_status", "unknown", "taxi", "book_taxi", "taxi_booking"]:
+    elif act and act not in ["chitchat", "conversation", "faq", "fast_path", "provide_room_number", "query_order_status", "unknown", "taxi", "book_taxi", "taxi_booking", "open_food_menu", "open_room_service_menu", "open_maintenance_menu"]:
         # Chỉ tạo ticket khi đã có số phòng và không cần PIN
         if not missing_room and current_room:
             asyncio.create_task(
@@ -456,7 +456,7 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
     eye_expression = graph_result.get("eye_expression")
 
     # Lưu kết quả vào Redis Cache (bỏ qua nếu là câu hỏi tra cứu trạng thái đơn món, yêu cầu dịch vụ hoặc có số phòng)
-    if act not in ["query_order_status", "open_food_menu", "open_room_service_menu", "room_service", "housekeeping", "laundry"] and not has_room_in_prompt and not is_menu_action:
+    if act not in ["query_order_status", "open_food_menu", "open_room_service_menu", "open_maintenance_menu", "room_service", "housekeeping", "laundry", "maintenance"] and not has_room_in_prompt and not is_menu_action:
         try:
             await redis_service.set_ai_cache(
                 request.prompt,
@@ -579,7 +579,7 @@ async def generate_chat_stream(request: ChatRequest) -> AsyncGenerator[str, None
             fsm_items = router_state.get("items") or request.prompt
 
             # CHỈ TẠO TICKET KHI ĐÃ CÓ ĐẦY ĐỦ SỐ PHÒNG
-            if not is_call and not missing_room and effective_room and action not in ["provide_room_number", "unknown", "chitchat", "conversation", "faq", "fast_path", "query_order_status", "taxi", "book_taxi", "taxi_booking"]:
+            if not is_call and not missing_room and effective_room and action not in ["provide_room_number", "unknown", "chitchat", "conversation", "faq", "fast_path", "query_order_status", "taxi", "book_taxi", "taxi_booking", "open_food_menu", "open_room_service_menu", "open_maintenance_menu"]:
                 asyncio.create_task(
                     background_extract_and_create_ticket(fsm_items, effective_room, action, fsm_items)
                 )

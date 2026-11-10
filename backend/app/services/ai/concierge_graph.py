@@ -128,6 +128,18 @@ from langgraph.checkpoint.memory import MemorySaver
 
 
 from app.services.ai.session_manager import session_manager, extract_room_number, is_valid_hotel_room
+from app.services.ai.constants import (
+    SERVICE_KEYWORDS,
+    MAINTENANCE_MENU_TRIGGER_KEYWORDS,
+    ROOM_SERVICE_MENU_TRIGGER_KEYWORDS,
+    FOOD_MENU_TRIGGER_KEYWORDS,
+    MAINTENANCE_REGEX,
+    HOUSEKEEPING_REGEX,
+    ROOM_SERVICE_FOOD_REGEX,
+    STATUS_QUERY_REGEX,
+    TAXI_REGEX,
+    CANCEL_SERVICE_REGEX,
+)
 
 
 
@@ -1058,9 +1070,15 @@ async def fast_path_node(state: ConciergeState) -> Dict[str, Any]:
 
         elif action_type == "open_room_service_menu":
 
-
-
             trigger_menu = "room_service"
+
+        elif action_type == "open_maintenance_menu":
+
+            trigger_menu = "maintenance"
+
+        elif isinstance(action_payload, dict) and action_payload.get("trigger_menu"):
+
+            trigger_menu = action_payload.get("trigger_menu")
 
         elif action_type == "switch_language":
 
@@ -1169,6 +1187,8 @@ async def fast_path_node(state: ConciergeState) -> Dict[str, Any]:
 
 
             "missing_room_number": False,
+            "room_number": (action_payload.get("target_room_number") if isinstance(action_payload, dict) else None) or state.get("room_number"),
+            "target_room_number": (action_payload.get("target_room_number") if isinstance(action_payload, dict) else None) or state.get("room_number"),
 
 
 
@@ -4136,7 +4156,7 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
 
 
 
-        inquiry_text = f"{items or ''} {state.get('prompt') or ''}".lower().strip()
+        inquiry_text = f"{items or ''} {state.get('prompt') or state.get('current_query') or ''}".lower().strip()
 
 
 
@@ -4168,103 +4188,13 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
 
 
 
-        is_svc_regex = bool(re.search(
-
-
-
-
-
-
-
-            r'\b(dọn|don|dọn dẹp|vệ sinh|ve sinh|khăn|khan|khăn tắm|gối|goi|chăn|chan|buồng|buong|housekeeping|room service|dịch vụ|dich vu|giặt|giat|giặt ủi|massage|mát xa|mat xa|spa|nệm|nem|tiện ích|tien ich)\b',
-
-
-
-
-
-
-
-            inquiry_text,
-
-
-
-
-
-
-
-            re.IGNORECASE
-
-
-
-
-
-
-
-        ))
-
-
-
-
-
-
-
-        is_food_regex = bool(re.search(
-
-
-
-
-
-
-
-            r'\b(món|mon|món ăn|mon an|bếp|bep|nấu|nau|chế biến|đồ ăn|do an|cơm|com|phở|pho|pizza|thực đơn|thuc don|thức ăn|thuc an|đồ uống|do uong)\b',
-
-
-
-
-
-
-
-            inquiry_text,
-
-
-
-
-
-
-
-            re.IGNORECASE
-
-
-
-
-
-
-
-        )) or bool(re.search(r'\b(ăn|uống|nước|thức uống)\b', inquiry_text, re.IGNORECASE))
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-        is_asking_service = (query_type_state == "service") or (is_svc_regex and not is_food_regex)
-
-
-
-
-
-
-
-        is_asking_food = (query_type_state == "food") or (is_food_regex and not is_svc_regex)
+        is_svc_regex = bool(HOUSEKEEPING_REGEX.search(inquiry_text))
+        is_food_regex = bool(ROOM_SERVICE_FOOD_REGEX.search(inquiry_text)) or bool(re.search(r'\b(ăn|uống|thức uống)\b', inquiry_text, re.IGNORECASE))
+        is_mnt_regex = bool(MAINTENANCE_REGEX.search(inquiry_text))
+
+        is_asking_maintenance = (query_type_state == "maintenance") or (is_mnt_regex and not is_food_regex)
+        is_asking_service = (query_type_state == "service") or (is_svc_regex and not is_food_regex and not is_mnt_regex)
+        is_asking_food = (query_type_state == "food") or (is_food_regex and not is_svc_regex and not is_mnt_regex)
 
 
 
@@ -4289,53 +4219,14 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
 
 
             if is_en:
-
-
-
-
-
-
-
-                if is_asking_service:
-
-
-
-
-
-
-
-                    ask_reply = "Certainly! Could you please let me know your room number so I can check your housekeeping and room service status right away?"
-
-
-
-
-
-
-
+                if is_asking_maintenance:
+                    ask_reply = "Certainly! Could you please let me know your room number so I can check your maintenance and repair status right away?"
                     final_q_type = "service"
-
-
-
-
-
-
-
+                elif is_asking_service:
+                    ask_reply = "Certainly! Could you please let me know your room number so I can check your housekeeping and room service status right away?"
+                    final_q_type = "service"
                 elif is_asking_food:
-
-
-
-
-
-
-
                     ask_reply = "Certainly! Could you please let me know your room number so I can check your food order status right away?"
-
-
-
-
-
-
-
                     final_q_type = "food"
 
 
@@ -4369,53 +4260,14 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
 
 
             else:
-
-
-
-
-
-
-
-                if is_asking_service:
-
-
-
-
-
-
-
-                    ask_reply = "Dạ quý khách cho Rora biết mình đang ở phòng bao nhiêu để em kiểm tra tiến độ dọn phòng và dịch vụ phòng giúp quý khách ngay ạ?"
-
-
-
-
-
-
-
+                if is_asking_maintenance:
+                    ask_reply = "Dạ quý khách cho Rora biết mình đang ở phòng bao nhiêu để em kiểm tra tiến độ sửa chữa và bảo trì giúp quý khách ngay ạ?"
                     final_q_type = "service"
-
-
-
-
-
-
-
+                elif is_asking_service:
+                    ask_reply = "Dạ quý khách cho Rora biết mình đang ở phòng bao nhiêu để em kiểm tra tiến độ dọn phòng và dịch vụ phòng giúp quý khách ngay ạ?"
+                    final_q_type = "service"
                 elif is_asking_food:
-
-
-
-
-
-
-
                     ask_reply = "Dạ quý khách cho Rora biết mình đang ở phòng bao nhiêu để em kiểm tra tiến độ đơn món ăn giúp quý khách ngay ạ?"
-
-
-
-
-
-
-
                     final_q_type = "food"
 
 
@@ -4787,6 +4639,16 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
                     matched_by_taxi = s_cand
                     break
 
+        is_maintenance_inquiry = bool(re.search(r'\b(sửa|sua|sửa chữa|sua chua|bảo trì|bao tri|hỏng|hong|hư|hu|kỹ thuật|ky thuat|điều hòa|dieu hoa|máy lạnh|may lanh|vòi nước|voi nuoc|thợ|tho|cửa|khoá|khóa|điện|mất điện|maintenance|repair|fix)\b', inquiry_text, re.IGNORECASE))
+        matched_by_maintenance = None
+        if is_maintenance_inquiry:
+            for s_cand in (room_info.get("service_orders") or []):
+                s_sum = (s_cand.get("items_summary") or "").lower()
+                s_num = (s_cand.get("order_number") or "").lower()
+                if "mn-" in s_num or any(k in s_sum for k in ["sửa", "sua", "bảo trì", "bao tri", "kỹ thuật", "điều hòa", "máy lạnh", "nước", "điện", "khóa", "maintenance"]):
+                    matched_by_maintenance = s_cand
+                    break
+
         if is_reject_inquiry:
             rej_food = next((f for f in (room_info.get("food_orders") or []) if (f.get("status") or "").lower() in ("rejected", "cancelled")), None)
             rej_svc = next((s for s in (room_info.get("service_orders") or []) if (s.get("status") or "").lower() in ("rejected", "cancelled")), None)
@@ -4796,6 +4658,9 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
 
         if target_ord is not None:
             pass
+        elif matched_by_maintenance:
+            target_ord = matched_by_maintenance
+            is_service_mode = True
         elif matched_by_taxi:
             target_ord = matched_by_taxi
             is_service_mode = True
@@ -5242,6 +5107,14 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
                 items_desc = f" ({items_summary})" if items_summary else ""
                 raw_rej = (target_ord.get("reject_reason") or target_ord.get("note") or "").strip()
 
+                is_maintenance_item = bool(
+                    is_maintenance_inquiry
+                    or matched_by_maintenance
+                    or "mn-" in str(target_ord.get("order_number") or "").lower()
+                    or "mn-" in str(target_ord.get("ticket_code") or "").lower()
+                    or any(k in str(items_summary).lower() for k in ["sửa", "bảo trì", "kỹ thuật", "điều hòa", "máy lạnh", "nước", "điện", "khóa", "maintenance", "repair"])
+                )
+
                 is_taxi_item = bool(
                     is_taxi_inquiry
                     or matched_by_taxi
@@ -5251,7 +5124,38 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
                     or "taxi" in str(target_ord.get("title") or "").lower()
                 )
 
-                if is_taxi_item:
+                if is_maintenance_item:
+                    if is_en:
+                        mnt_st_map_en = {
+                            "pending": f"Your maintenance request for Room {current_room}{items_desc} has been received and is queued for our Technical Team.",
+                            "waiting": f"Your maintenance request for Room {current_room}{items_desc} is waiting to be processed by our Technical Team.",
+                            "unassigned": f"Your maintenance request for Room {current_room}{items_desc} is waiting for technician assignment.",
+                            "in progress": f"Our Maintenance technician has been dispatched and is currently handling the repair for Room {current_room}{items_desc}.",
+                            "in_progress": f"Our Maintenance technician has been dispatched and is currently handling the repair for Room {current_room}{items_desc}.",
+                            "assigned": f"Our Maintenance technician has been dispatched and is currently handling the repair for Room {current_room}{items_desc}.",
+                            "completed": f"The maintenance and repair for Room {current_room}{items_desc} has been successfully completed by our Technical Team!",
+                            "success": f"The maintenance and repair for Room {current_room}{items_desc} has been successfully completed by our Technical Team!",
+                            "done": f"The maintenance and repair for Room {current_room}{items_desc} has been successfully completed by our Technical Team!",
+                            "cancelled": f"Your maintenance request for Room {current_room}{items_desc} was cancelled.",
+                            "rejected": f"Your maintenance request for Room {current_room}{items_desc} could not be fulfilled at this time.",
+                        }
+                        status_reply = mnt_st_map_en.get(st, f"Your maintenance request for Room {current_room}{items_desc} is currently {st}.")
+                    else:
+                        mnt_st_map_vn = {
+                            "pending": f"Dạ yêu cầu bảo trì sửa chữa của phòng {current_room}{items_desc} đã được tiếp nhận và đang chờ đội kỹ thuật phân công nhân viên lên xử lý ạ.",
+                            "waiting": f"Dạ yêu cầu bảo trì sửa chữa của phòng {current_room}{items_desc} đang chờ kỹ thuật viên tiếp nhận xử lý ạ.",
+                            "unassigned": f"Dạ yêu cầu bảo trì của phòng {current_room}{items_desc} đang chờ kỹ thuật viên tiếp nhận xử lý ạ.",
+                            "in progress": f"Dạ kỹ thuật viên đã tiếp nhận và đang tiến hành kiểm tra, sửa chữa cho phòng {current_room}{items_desc} rồi ạ.",
+                            "in_progress": f"Dạ kỹ thuật viên đã tiếp nhận và đang tiến hành kiểm tra, sửa chữa cho phòng {current_room}{items_desc} rồi ạ.",
+                            "assigned": f"Dạ kỹ thuật viên đã tiếp nhận và đang tiến hành kiểm tra, sửa chữa cho phòng {current_room}{items_desc} rồi ạ.",
+                            "completed": f"Dạ sự cố kỹ thuật của phòng {current_room}{items_desc} đã được nhân viên kỹ thuật hoàn tất sửa chữa thành công rồi ạ!",
+                            "success": f"Dạ sự cố kỹ thuật của phòng {current_room}{items_desc} đã được nhân viên kỹ thuật hoàn tất sửa chữa thành công rồi ạ!",
+                            "done": f"Dạ sự cố kỹ thuật của phòng {current_room}{items_desc} đã được hoàn tất sửa chữa thành công rồi ạ!",
+                            "cancelled": f"Dạ yêu cầu bảo trì của phòng {current_room}{items_desc} đã được hủy rồi ạ.",
+                            "rejected": f"Dạ yêu cầu bảo trì của phòng {current_room}{items_desc} tạm thời chưa được đáp ứng. Quý khách vui lòng liên hệ Lễ tân nhé ạ.",
+                        }
+                        status_reply = mnt_st_map_vn.get(st, f"Dạ yêu cầu bảo trì của phòng {current_room}{items_desc} hiện đang ở trạng thái: {st} ạ.")
+                elif is_taxi_item:
                     if is_en:
                         taxi_st_map_en = {
                             "pending": f"Your taxi request for Room {current_room} has been received and is waiting for Concierge to call the taxi.",
@@ -5621,13 +5525,26 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
 
 
             "require_room_pin": False,
+        }
 
+    # 3. Kiểm tra yêu cầu mở menu / danh mục Báo hỏng & Sửa chữa kỹ thuật (Maintenance & Repair Menu)
+    user_p_text = (state.get("prompt") or state.get("current_query") or "").lower()
+    is_general_mnt_menu_request = any(k in user_p_text for k in MAINTENANCE_MENU_TRIGGER_KEYWORDS) or \
+                                  (action == "maintenance" and any(k in (items or "").lower() for k in MAINTENANCE_MENU_TRIGGER_KEYWORDS))
 
-
-
-
-
-
+    if action == "maintenance" and is_general_mnt_menu_request:
+        if lang_code == "en-US":
+            mnt_reply = f"Certainly! I have opened our Maintenance & Repair menu on screen{f' for Room {current_room}' if current_room else ''}. Please select the issue you are experiencing or track your repair progress!"
+        else:
+            mnt_reply = f"Dạ em đã mở danh mục Báo hỏng & Sửa chữa trên màn hình{f' cho Phòng {current_room}' if current_room else ''} rồi ạ. Quý khách chạm chọn sự cố hoặc tra cứu tiến độ nhé ạ!"
+        return {
+            "missing_room_number": False,
+            "room_number": current_room,
+            "target_room_number": current_room,
+            "response": mnt_reply,
+            "trigger_menu": "maintenance",
+            "action": "open_maintenance_menu",
+            "require_room_pin": False,
         }
 
 
@@ -5829,20 +5746,21 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
 
 
     # Trường hợp 4: Yêu cầu dịch vụ liên quan phòng nhưng CHƯA CÓ SỐ PHÒNG -> Bắt buộc hỏi khách số phòng!
-
-
-
-
-
-
-
     if not current_room:
-
-
-
-
-
-
+        if action == "maintenance":
+            if is_en:
+                mnt_ask_reply = "I have opened the Maintenance & Repair menu on screen for you. Please select the issue you are experiencing and enter your room number!"
+            else:
+                mnt_ask_reply = "Dạ em đã mở danh mục Báo hỏng & Sửa chữa trên màn hình rồi ạ. Quý khách vui lòng chạm chọn sự cố và nhập số phòng của mình nhé ạ!"
+            return {
+                "missing_room_number": True,
+                "room_number": None,
+                "target_room_number": None,
+                "response": mnt_ask_reply,
+                "trigger_menu": "maintenance",
+                "action": "open_maintenance_menu",
+                "require_room_pin": False,
+            }
 
         if is_en:
 

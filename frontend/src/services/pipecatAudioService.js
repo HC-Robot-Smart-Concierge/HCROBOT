@@ -28,6 +28,8 @@ class PipecatAudioClient {
     this._audioChunksInCurrentStream = 0;
     this._isStreamDone = true;
     this._currentSource = null;
+    this._streamEpoch = 0;
+    this._messagePromise = Promise.resolve();
   }
 
   prime() {
@@ -82,21 +84,32 @@ class PipecatAudioClient {
         console.log(`[PipecatClient] Connected to Pipecat WebSocket stream (${wsUrl})`);
       };
 
-      this.socket.onmessage = async (event) => {
+      this.socket.onmessage = (event) => {
         try {
           if (event.data instanceof Blob) {
-            // Binary Frame → Audio chunk từ Streaming Pipeline
-            const arrayBuffer = await event.data.arrayBuffer();
-            if (arrayBuffer.byteLength > 0) {
-              this._audioChunksInCurrentStream += 1;
-              this._enqueueAudioChunk(arrayBuffer);
-            }
+            // Binary Frame → Audio chunk từ Streaming Pipeline (xử lý tuần tự blob)
+            const currentEpoch = this._streamEpoch;
+            this._messagePromise = this._messagePromise.then(async () => {
+              if (this._streamEpoch !== currentEpoch) return;
+              try {
+                const arrayBuffer = await event.data.arrayBuffer();
+                if (this._streamEpoch !== currentEpoch) return;
+                if (arrayBuffer.byteLength > 0) {
+                  this._audioChunksInCurrentStream += 1;
+                  this._enqueueAudioChunk(arrayBuffer);
+                }
+              } catch (e) {
+                console.warn('[PipecatClient] Error reading audio blob:', e);
+              }
+            });
             return;
           }
 
+          // JSON Control Frame: Xử lý ngay lập tức, không bị chặn bởi các blob đang đọc
           const data = JSON.parse(event.data);
 
           if (data.event === 'interrupted') {
+            this._streamEpoch += 1;
             this._stopAudioQueue();
             if (this.audioRef) {
               this.audioRef.pause();
@@ -108,6 +121,7 @@ class PipecatAudioClient {
           } else if (data.event === 'stt_interim_echo') {
             if (this.onSTTInterimEchoCallback) this.onSTTInterimEchoCallback(data.text);
           } else if (data.event === 'stt_processing') {
+            this._streamEpoch += 1;
             this._audioChunksInCurrentStream = 0;
             this._isStreamDone = false;
             if (this.onSTTProcessingCallback) this.onSTTProcessingCallback(data.text);
@@ -117,21 +131,25 @@ class PipecatAudioClient {
           } else if (data.event === 'text' || data.event === 'text_chunk') {
             if (this.onTextChunkCallback) this.onTextChunkCallback(data);
           } else if (data.event === 'stream_done') {
-            this._isStreamDone = true;
-            data.audioChunksCount = this._audioChunksInCurrentStream;
-            if (this.onStreamDoneCallback) this.onStreamDoneCallback(data);
-            if (!this._isPlaying && this._audioQueue.length === 0) {
-              if (this.onAudioEndedCallback) this.onAudioEndedCallback();
-            } else {
-              clearTimeout(this._streamPlaybackSafetyTimer);
-              this._streamPlaybackSafetyTimer = setTimeout(() => {
-                if (this._isPlaying) {
-                  console.warn('[PipecatClient] Stream playback safety timer expired, forcing audio end');
-                  this._stopAudioQueue();
-                  if (this.onAudioEndedCallback) this.onAudioEndedCallback();
-                }
-              }, 20000);
-            }
+            const currentEpoch = this._streamEpoch;
+            this._messagePromise = this._messagePromise.then(() => {
+              if (this._streamEpoch !== currentEpoch) return;
+              this._isStreamDone = true;
+              data.audioChunksCount = this._audioChunksInCurrentStream;
+              if (this.onStreamDoneCallback) this.onStreamDoneCallback(data);
+              if (!this._isPlaying && this._audioQueue.length === 0) {
+                if (this.onAudioEndedCallback) this.onAudioEndedCallback();
+              } else {
+                clearTimeout(this._streamPlaybackSafetyTimer);
+                this._streamPlaybackSafetyTimer = setTimeout(() => {
+                  if (this._isPlaying) {
+                    console.warn('[PipecatClient] Stream playback safety timer expired, forcing audio end');
+                    this._stopAudioQueue();
+                    if (this.onAudioEndedCallback) this.onAudioEndedCallback();
+                  }
+                }, 20000);
+              }
+            });
           } else if (data.event === 'error') {
             console.warn('[PipecatClient] Server error:', data.message);
             if (this.onErrorCallback) this.onErrorCallback(data);
@@ -163,6 +181,7 @@ class PipecatAudioClient {
   }
 
   sendBargeIn() {
+    this._streamEpoch += 1;
     this._stopAudioQueue();
 
     if (this.audioRef) {

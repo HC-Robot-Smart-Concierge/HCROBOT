@@ -83,14 +83,31 @@ async def submit_guest_feedback(db: AsyncSession, fb_in: FeedbackCreate) -> Feed
     return new_fb
 
 
+from sqlalchemy import func
+
+
 async def get_feedbacks(
     db: AsyncSession,
     category: Optional[str] = None,
-    limit: int = 50
+    limit: int = 50,
+    skip: int = 0,
 ) -> List[Feedback]:
-    """Lấy danh sách đánh giá của khách hàng từ cơ sở dữ liệu."""
-    stmt = select(Feedback).order_by(Feedback.created_at.desc()).limit(limit)
+    """Lấy danh sách đánh giá của khách hàng từ cơ sở dữ liệu với SQL offset/limit pagination."""
+    stmt = select(Feedback)
+    if category:
+        stmt = stmt.where(Feedback.category == category)
+    stmt = stmt.order_by(Feedback.created_at.desc()).offset(skip).limit(limit)
+    res = await db.execute(stmt)
+    return list(res.scalars().all())
+
+
+async def count_feedbacks(
+    db: AsyncSession,
+    category: Optional[str] = None,
+) -> int:
+    """Trả về tổng số đánh giá khách hàng."""
+    stmt = select(func.count(Feedback.id))
     if category:
         stmt = stmt.where(Feedback.category == category)
     res = await db.execute(stmt)
-    return list(res.scalars().all())
+    return res.scalar() or 0

@@ -24,6 +24,9 @@ class RoomServiceOrder(Base):
     id: Mapped[str] = mapped_column(String(50), primary_key=True, default=lambda: f"ORD-{uuid.uuid4().hex[:8].upper()}")
     order_number: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
     room_number: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    guest_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    guest_phone: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    room_phone: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     
     room_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("rooms.id", ondelete="SET NULL"), nullable=True, index=True)
     account_id: Mapped[Optional[str]] = mapped_column(String(50), ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True, index=True)
@@ -99,3 +102,26 @@ class OrderItem(Base):
     order: Mapped["RoomServiceOrder"] = relationship("RoomServiceOrder", back_populates="order_items")
     menu_item: Mapped[Optional["MenuItem"]] = relationship("MenuItem")
     food_item: Mapped[Optional["FoodItem"]] = relationship("FoodItem")
+
+
+class RoomServiceCatalogItem(Base):
+    """
+    Danh mục dịch vụ phòng & tiện ích buồng phòng (Room Service & Amenities Catalog).
+    Cho phép nhân viên Room Service thêm, sửa, xóa, bật/tắt phục vụ hiển thị trên Robot Kiosk & Mobile.
+    """
+    __tablename__ = "room_service_catalog_items"
+
+    id: Mapped[str] = mapped_column(String(50), primary_key=True, default=lambda: f"SVC-{uuid.uuid4().hex[:6].upper()}")
+    name: Mapped[str] = mapped_column(String(150), nullable=False, index=True)
+    category: Mapped[str] = mapped_column(String(50), default="bath", index=True)  # 'bath', 'spa', 'bedding', 'housekeeping', 'laundry'
+    price: Mapped[float] = mapped_column(Float, default=0.0)
+    unit: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)  # e.g. "Chiếc", "Bộ (2 khăn)", "Suất 60 phút"
+    prep_time: Mapped[int] = mapped_column(Integer, default=10)  # phút
+    badge: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)  # "Miễn phí", "Phổ biến", "Được yêu thích"
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    image_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    is_available: Mapped[bool] = mapped_column(Boolean, default=True)
+    display_order: Mapped[int] = mapped_column(Integer, default=0)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

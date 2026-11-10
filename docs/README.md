@@ -1,49 +1,110 @@
-# HỆ THỐNG TÀI LIỆU KỸ THUẬT HC-ROBOT (DOCUMENTATION)
+# HỆ THỐNG TÀI LIỆU KỸ THUẬT HC-ROBOT (DOCUMENTATION HUB)
 
-Chào mừng bạn đến với trung tâm tài liệu kỹ thuật của dự án **HC-Robot**. Tất cả tài liệu hướng dẫn chuyên sâu, kiến trúc hệ thống và quy trình triển khai được chuẩn hóa và quản lý tập trung tại đây.
+Chào mừng bạn đến với trung tâm tài liệu kỹ thuật của dự án **HC-Robot (Smart Hotel Assistant Robot)**. Tất cả tài liệu hướng dẫn chuyên sâu, kiến trúc hệ thống, quy trình triển khai và bản đồ mã nguồn được chuẩn hóa và quản lý tập trung tại đây.
 
 ---
 
-## 📑 Danh Mục Tài Liệu
+## 🚀 Thứ Tự Đọc Cho Người Mới Tiếp Nhận (Onboarding Path)
 
-### 1. Kiến Trúc & Robot ROS 2 (Hardware & Edge)
-* **[Kiến Trúc Mạng ROS 2 Phân Tán (Distributed ROS 2)](guides/distributed_ros2.md)**:
-  * Hướng dẫn thiết lập mạng phân tán giữa Laptop (NUC/Workstation) và Raspberry Pi 5.
-  * Cấu hình CycloneDDS, VPN Tailscale, đồng bộ ROS 2 nodes, Nav2 & SLAM Toolbox.
-* **[Cấu Hình Cảm Biến Siêu Âm HC-SR04 & ESP32](guides/ultrasonic_setup.md)**:
-  * Sơ đồ nối dây phần cứng giữa ESP32, L298N và 4 cảm biến siêu âm HC-SR04.
-  * Giao thức truyền dữ liệu Serial nhị phân/chuỗi và cơ chế an toàn tránh va chạm thời gian thực.
+Để nhanh chóng nắm bắt toàn bộ kiến trúc và bắt đầu phát triển dự án mà không bị ngợp, hãy đọc tài liệu theo trình tự 5 bước khuyến nghị sau:
 
-### 2. Trí Tuệ Nhân Tạo & Kiểm Thử (AI & Testing)
-* **[Nhật Ký Tối Ưu AI Voice Pipeline & LangGraph Harness](guides/nhat_ky_toi_uu_ai_voice_harness.md)**:
-  * Chi tiết giải pháp chuyển về Llama 3.2 3B, tích hợp Harness vào `/chat/stream` (<20ms).
-  * Khắc phục triệt để lỗi robot khựng/ngắt quãng tại dấu phẩy và dấu câu trong phát âm thanh.
-* **[Tối Ưu Hóa AI & Audio Pipeline](guides/ai_optimization.md)**:
-  * Kiến trúc xử lý đa phương tiện tốc độ cao: Fast Whisper (STT), VieNeu-TTS / EdgeTTS, Ollama LLM.
-  * Tối ưu hóa độ trễ xử lý Voice Conversational và luồng RAG tri thức khách sạn.
-* **[Test Harness & Đánh Giá LangGraph](guides/langgraph_harness.md)**:
-  * Framework kiểm thử tự động hộp đen/hộp trắng cho LangGraph Concierge State Machine.
-  * Kịch bản benchmark độ chính xác định tuyến ý định (Intent Routing) và trích xuất tham số slot.
-* **[Kiến Trúc Thu Thập Đánh Giá & Vòng Đời Hội Thoại (Feedback & Session Lifecycle)](guides/robot_feedback_architecture.md)**:
-  * Cơ chế nút kết thúc hội thoại, Modal đánh giá 5 sao chuẩn Kiosk 3 giây.
-  * Quy trình lưu trữ hội thoại End-of-Session và cảnh báo đánh giá tệ (≤ 3 sao) tới Concierge.
-* **[Cơ Chế Bảo Mật Thoát Kiosk: Secret Multi-Tap Gesture (Kiosk Exit Architecture)](guides/kiosk_security_exit.md)**:
-  * Quy trình ẩn hoàn toàn nút đăng xuất khỏi khách hàng (Zero-Exposure UI).
-  * Cơ chế Secret Multi-Tap (Gõ 5 lần liên tiếp trong 2 giây vào Logo hoặc góc bí mật) trên Web & App Mobile.
-  * Phím tắt bảo mật (`Ctrl + Shift + L` / `Escape` x3) và lớp xác thực mật khẩu nhân viên.
+```mermaid
+flowchart LR
+    Step1["1. Bản Đồ Source<br/>(01-File-Map)"] --> Step2["2. Kiến Trúc Tổng Thể<br/>(02-Architecture)"]
+    Step2 --> Step3["3. Hội Thoại Voice AI<br/>(Voice Pipeline)"]
+    Step3 --> Step4["4. Live Video Call<br/>(Phiên Dịch 2 Chiều)"]
+    Step4 --> Step5["5. Stepflows & Hardware<br/>(Kịch Bản & ROS 2)"]
+```
 
-### 3. Kịch Bản Tương Tác & Tự Động Hóa (Workflows)
-* **[Đặc Tả 7 Core Workflows (Stepflow)](workflows/stepflow.md)**:
-  * Quy chuẩn chi tiết 7 kịch bản nghiệp vụ cốt lõi: Đón tiếp (Reception), Dẫn đường (Escort), Dọn phòng (Housekeeping), Gọi taxi, Phục vụ món (Room Service), Tuần tra & Phản hồi.
-  * Cấu trúc khối lệnh (Action Blocks), tham số runtime và điều kiện chuyển trạng thái.
-* **[Biên Bản Bàn Giao & Triển Khai Step Workflows](workflows/workflow_handover.md)**:
-  * Báo cáo tiến độ triển khai tính năng Scratch-like Builder, Simulator giả lập và tích hợp cơ sở dữ liệu.
+1. **Bước 1: Nắm cấu trúc dự án & vị trí file:** Đọc **[[01-File-Map|Bản Đồ Kiểm Kê Source Code (01-File-Map.md)]]** để biết từng file nằm ở đâu, do ai phụ trách và mức độ xác minh thực tế.
+2. **Bước 2: Nắm kiến trúc phân tầng & luồng dữ liệu:** Đọc **[[02-Architecture|Tổng Quan Kiến Trúc Hệ Thống (02-Architecture.md)]]** để hiểu 4 tầng phân tán từ ROS 2 Edge, FastAPI Backend, Robot Kiosk đến Dashboards.
+3. **Bước 3: Hiểu luồng giọng nói AI phản xạ tức thì:** Đọc **[[ROBOT_CONVERSATION_FLOW_REPORT|Báo Cáo Tối Ưu Hội Thoại Robot]]** và **[[guides/langgraph_harness|LangGraph Agent Harness]]** để hiểu cơ chế VAD 1800ms, Groq Cloud LLM cascade và Audio Caching.
+4. **Bước 4: Hiểu luồng gọi video call có phụ đề & giọng dịch:** Đọc **[[guides/video_call_flow|Luồng Phiên Dịch Video Call (Staff ⇄ Robot)]]** (và tài liệu chi tiết tại [video-call-flow.md](../frontend/src/docs/video-call-flow.md)) để nắm cơ chế WebRTC signaling, STT nhận diện song ngữ và hàng đợi âm thanh.
+5. **Bước 5: Vận hành kịch bản khách sạn & phần cứng:** Đọc **[[workflows/stepflow|Đặc Tả 7 Core Workflows (Stepflow)]]** và **[[guides/distributed_ros2|Kiến Trúc Mạng ROS 2 Phân Tán]]**.
 
-### 4. Cơ Sở Dữ Liệu & Backend (Database & Backend)
-* **[Hướng Dẫn Quản Lý Database Migration Với Alembic](guides/alembic_guide.md)**:
+---
+
+## 📑 Danh Mục Tài Liệu Chi Tiết Theo Phân Hệ
+
+### 1. Tổng Quan Hệ Thống & Bản Đồ Mã Nguồn
+* **[[01-File-Map|Bản Đồ Kiểm Kê Source Code (01-File-Map.md)]]**:
+  * Kiểm kê chi tiết 100% file source code: đường dẫn, trách nhiệm, thành phần chính, nơi sử dụng, note liên quan và mức độ xác minh đối chiếu từ mã nguồn.
+* **[[02-Architecture|Tổng Quan Kiến Trúc Hệ Thống (02-Architecture.md)]]**:
+  * Mô hình phân tầng (Tier 1: ROS 2 Hardware $\rightarrow$ Tier 2: FastAPI Backend $\rightarrow$ Tier 3: Robot Kiosk $\rightarrow$ Tier 4: Operations Dashboards).
+  * Sơ đồ tuần tự tương tác giọng nói, sơ đồ phiên dịch video call hai chiều, vòng đời phiếu nghiệp vụ và chiến lược dự phòng chịu lỗi (Graceful Degradation).
+
+---
+
+### 2. Trí Tuệ Nhân Tạo & Xử Lý Giọng Nói (AI & Voice Pipeline)
+* **[[ROBOT_CONVERSATION_FLOW_REPORT|Báo Cáo Nâng Cấp Luồng Hội Thoại Robot (ROBOT_CONVERSATION_FLOW_REPORT.md)]]**:
+  * Báo cáo toàn diện khắc phục lỗi nghẽn Ollama, lỗi gọi đúp TTS, triệt tiêu giọng máy iPhone và chống kẹt màn hình Mobile.
+  * Phân tầng LLM Cascade (Tier 1 Groq Cloud $\rightarrow$ Tier 2 Gemini Flash $\rightarrow$ Tier 3 Ollama Local $\rightarrow$ Tier 4 Factsheet).
+* **[[guides/langgraph_harness|LangGraph Agent Harness & Tối Ưu Voice Pipeline (guides/langgraph_harness.md)]]**:
+  * Kiến trúc StateGraph 5 node (`fast_path`, `intent_router`, `service_fsm`, `retrieval`, `generator`).
+  * Chuẩn hóa VAD Silence Detection **1800ms** (`SPEECH_FINAL_SILENCE_MS = 1800`) chống cướp lời khách hàng.
+  * Multi-tier Audio Caching (RAM LRU + Disk Cache tại `backend/static/audio_cache/`) truy xuất âm thanh trong 0.6ms.
+  * Cơ chế xác thực số phòng và mã PIN (thay thế thẻ NFC cũ).
+* **[[guides/ai_optimization|Hướng Dẫn Tối Ưu Tốc Độ Phản Hồi AI (guides/ai_optimization.md)]]**:
+  * Phân biệt giữa thiết kế dự kiến ban đầu (Chunked Streaming RFC) và triển khai thực tế hiện tại (Groq LLM + Audio Cache).
+* **[[guides/nhat_ky_toi_uu_ai_voice_harness|Nhật Ký Tối Ưu AI Voice Pipeline (guides/nhat_ky_toi_uu_ai_voice_harness.md)]]**:
+  * Ghi chép lịch sử tinh chỉnh Llama 3.2 3B và khắc phục lỗi khựng âm thanh tại dấu ngắt câu.
+* **[[guides/robot_feedback_architecture|Kiến Trúc Thu Thập Đánh Giá & Vòng Đời Hội Thoại (guides/robot_feedback_architecture.md)]]**:
+  * Modal đánh giá 5 sao tức thì (3 giây) khi kết thúc phiên hỗ trợ.
+  * Tự động cảnh báo tới Concierge Desk khi nhận đánh giá tiêu cực ($\le 3$ sao).
+
+---
+
+### 3. Phiên Dịch Trực Tiếp & Video Call Hai Chiều (WebRTC Live Call)
+* **[[guides/video_call_flow|Luồng Phiên Dịch & Âm Thanh Video Call Staff ⇄ Robot]]** (Xem thêm tài liệu chi tiết tại [frontend/src/docs/video-call-flow.md](../frontend/src/docs/video-call-flow.md)):
+  * Kiến trúc Signaling WebSocket Hub (`VideoCallManager` tại `operations/concierge.py`).
+  * Chuỗi bước chẩn đoán một câu thoại: `STT_STARTED` $\rightarrow$ `COMMITTED` $\rightarrow$ `TRANSLATE_REQUEST` $\rightarrow$ `TRANSLATED` $\rightarrow$ `SUBTITLE_SENT` $\rightarrow$ `TTS_REQUEST` $\rightarrow$ `TTS_READY` $\rightarrow$ `AUDIO_RECEIVED` $\rightarrow$ `PLAY_STARTED` $\rightarrow$ `PLAY_ENDED`.
+  * **Call Audio Stream STT Adapter:** Ghi âm PCM WAV 16kHz gửi lên `/api/v1/ai/stt/transcribe` khắc phục lỗi microphone Web Speech API bị hủy trên thiết bị di động.
+  * Phân biệt rõ Input Language (ngôn ngữ câu nói) và Target Language (ngôn ngữ đích của người nghe): Nếu khách nói tiếng Việt cho Staff nghe tiếng Việt thì giữ nguyên, không dịch vòng và không ép đổi chế độ cuộc gọi.
+  * Xử lý lỗi `TTS_EMPTY`, cơ chế tự động nhảy tuần tự gói âm thanh (`advanceExpectedSeqOnFailure`) và khóa bảo vệ hàng đợi (`playbackWatchdogRef` 400ms).
+
+---
+
+### 4. Giao Diện Kiosk & Cơ Chế Bảo Mật
+* **[[guides/kiosk_security_exit|Cơ Chế Bảo Mật Thoát Kiosk: Secret Multi-Tap (guides/kiosk_security_exit.md)]]**:
+  * Triết lý Zero-Exposure UI: Ẩn hoàn toàn nút đăng xuất/thoát ứng dụng khỏi khách hàng thông thường.
+  * Cử chỉ bảo mật: Gõ nhanh 5 lần trong vòng 2 giây vào Logo hoặc góc màn hình để kích hoạt Modal xác thực mật khẩu nhân viên.
+  * Hỗ trợ phím tắt khẩn cấp: `Ctrl + Shift + L` hoặc `Escape` x3 lần.
+
+---
+
+### 5. Kịch Bản Tương Tác & Tự Động Hóa (Workflows & Operations)
+* **[[workflows/stepflow|Đặc Tả 7 Core Workflows (workflows/stepflow.md)]]**:
+  * Định nghĩa 8 Action Blocks chuẩn: `MOVE`, `GREET`, `SPEAK`, `SHOW`, `LISTEN`, `RECOMMEND`, `CREATE_REQUEST`, `FEEDBACK`.
+  * Đặc tả chi tiết 7 kịch bản vận hành khách sạn: Đón tiếp sảnh, Dẫn đường tới vị trí, Dọn buồng phòng, Đặt xe taxi, Phục vụ món tại phòng, Tuần tra an ninh, Thu thập phản hồi.
+* **[[workflows/workflow_handover|Biên Bản Bàn Giao & Triển Khai Step Workflows (workflows/workflow_handover.md)]]**:
+  * Kiến trúc trình tạo kịch bản trực quan Scratch-like Builder, bộ giả lập Simulator và đồng bộ dữ liệu vào cơ sở dữ liệu.
+
+---
+
+### 6. Điều Hướng Bản Đồ & Phần Cứng ROS 2 (Hardware & Edge)
+* **[[guides/hardware_architecture|Đặc Tả Phần Cứng & ROS 2 Edge (guides/hardware_architecture.md)]]**:
+  * Bản vẽ kỹ thuật & sơ đồ đấu dây chi tiết: Raspberry Pi 5, ESP32 DevKitC, L298N, 4 Encoders JGA25-370, 4 Cảm biến siêu âm HC-SR04, IMU MPU-9250 và RPLiDAR A1.
+  * Phân tách 3 đường nguồn độc lập & tiếp đất sao (Common Star Ground).
+  * Giao thức truyền tin Serial JSON Lines 115200 baud giữa ESP32 và Pi 5.
+  * Danh mục các ROS 2 Nodes: `odom_encoder_node`, `safety_controller_node` (phanh khẩn cấp $\le 0.5$m), `motor_driver_node`, `person_detection_node` (YOLOv8n) và `person_fusion_tracker`.
+* **[[guides/static-map-navigation|Hướng Dẫn Điều Hướng Bản Đồ Tĩnh (guides/static-map-navigation.md)]]**:
+  * Tích hợp bản đồ 2D sảnh khách sạn và quản lý danh sách Waypoints / POIs định danh (Lobby, Reception, Elevator, Restroom, Sofa,...).
+* **[[guides/bao-cao-tinh-hinh-du-an-2026-10-29|Báo Cáo SLAM, Odometry & Điều Khiển 29/10 (guides/bao-cao-tinh-hinh-du-an-2026-10-29.md)]]**:
+  * Phân tích nguyên nhân và giải pháp triệt tiêu bản đồ xoay nan quạt (chuẩn hóa dấu encoder), tối ưu hóa tải mạng Foxglove và nâng PWM xoay Teleop.
+* **[[robot-slam-navigation-audit-2026-10-24|Báo Cáo Đánh Giá SLAM Navigation (robot-slam-navigation-audit-2026-10-24.md)]]**:
+  * Phân tích hiện trạng thuật toán SLAM Toolbox, chất lượng point cloud LiDAR và độ chính xác bám quỹ đạo Nav2.
+* **[[guides/distributed_ros2|Kiến Trúc Mạng ROS 2 Phân Tán (guides/distributed_ros2.md)]]**:
+  * Cấu hình CycloneDDS, VPN Tailscale kết nối giữa Laptop NUC và Raspberry Pi 5.
+* **[[guides/ultrasonic_setup|Cấu Hình Cảm Biến Siêu Âm HC-SR04 & ESP32 (guides/ultrasonic_setup.md)]]**:
+  * Sơ đồ phần cứng giữa ESP32, L298N và cảm biến siêu âm tránh va chạm khẩn cấp thời gian thực.
+
+---
+
+### 7. Cơ Sở Dữ Liệu & Backend
+* **[[guides/alembic_guide|Hướng Dẫn Quản Lý Database Migration Với Alembic (guides/alembic_guide.md)]]**:
   * Quy trình tạo, kiểm tra và chạy database migrations với Alembic & SQLAlchemy.
-  * Xử lý xung đột schema, rollback và best practices khi cập nhật model PostgreSQL.
+  * Đồng bộ models với PostgreSQL và xử lý xung đột schema.
 
 ---
 
-> 💡 **Lưu ý:** Dữ liệu tri thức khách sạn phục vụ RAG của AI Concierge được quản lý riêng tại [backend/knowledge_vault/danh_sach_co_so_vat_chat.md](../backend/knowledge_vault/danh_sach_co_so_vat_chat.md).
+> 💡 **Lưu ý:** Dữ liệu tri thức khách sạn phục vụ tra cứu thông tin (RAG Knowledge Base) của AI Concierge được quản lý riêng tại [backend/knowledge_vault/hotel_facilities_floor_layout_vi.md](../backend/knowledge_vault/hotel_facilities_floor_layout_vi.md).

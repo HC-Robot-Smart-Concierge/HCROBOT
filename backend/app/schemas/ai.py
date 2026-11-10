@@ -29,6 +29,9 @@ class ChatResponse(BaseModel):
     pending_service_action: Optional[str] = Field(None, description="Hành động dịch vụ đang chờ xác thực: room_service, housekeeping...")
     pending_service_items: Optional[str] = Field(None, description="Chi tiết các món đồ đang chờ xác thực")
     eye_expression: Optional[str] = Field(None, description="Biểu cảm cử động mắt của Robot (look_up, look_left, look_right, look_around, happy)")
+    action: Optional[str] = Field(None, description="Tên action/intent dịch vụ được phân loại: query_order_status, room_service, ...")
+    status_query_type: Optional[str] = Field(None, description="Loại tra cứu trạng thái: service | food")
+    trigger_menu: Optional[str] = Field(None, description="Tên menu tự động kích hoạt trên Kiosk: food_menu | room_service")
 
 
 class IntentRequest(BaseModel):
@@ -63,6 +66,8 @@ class TTSResponse(BaseModel):
     audio_base64: str = Field(..., description="Dữ liệu âm thanh MP3 mã hóa Base64")
     mime_type: str = Field("audio/mp3", description="MIME type của âm thanh")
     provider_used: str = Field("edge", description="Provider TTS đã được sử dụng thực tế (edge, elevenlabs, openai, browser)")
+    error_code: Optional[str] = Field(None, description="Mã lỗi chuẩn hóa khi TTS không tạo được audio (TTS_INPUT_EMPTY, TTS_TIMEOUT, TTS_PROVIDER_ERROR, TTS_AUDIO_EMPTY)")
+    error_detail: Optional[str] = Field(None, description="Chi tiết lỗi cụ thể từ provider TTS")
 
 
 class VoiceSettingsRequest(BaseModel):
@@ -115,4 +120,5 @@ class QuickTranslateResponse(BaseModel):
     target_lang: str = Field(..., description="Ngôn ngữ đích ('vi' hoặc 'en')")
     needs_translation: bool = Field(..., description="True nếu đã dịch, False nếu cùng ngôn ngữ nên bypass")
     audio_base64: Optional[str] = Field(None, description="Âm thanh đọc TTS MP3 Base64 của câu dịch (nếu có)")
-
+    tts_error_code: Optional[str] = Field(None, description="Mã lỗi TTS nếu có")
+    tts_error_detail: Optional[str] = Field(None, description="Chi tiết lỗi TTS nếu có")

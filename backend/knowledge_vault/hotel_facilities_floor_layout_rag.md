@@ -21,8 +21,8 @@ Aurora Grand Hotel is structured into 8 functional levels:
 - **Basement 1 (B1):** Motorbike, Scooter & Bicycle Parking (Open 24/7).
 - **Ground Floor (G):** Main Lobby, Reception & Front Desk, Restrooms, Staff Only Office.
 - **2nd Floor:** Central Culinary Operations & In-Room Dining Kitchen (Staff Only) — Note: The hotel does NOT have a dine-in restaurant or breakfast buffet. All food and beverage service is provided exclusively via 24/7 In-Room Dining (Room Service).
-- **3rd Floor:** Standard Guest Rooms (9 rooms: Room 301 to Room 309).
-- **4th Floor:** Deluxe Guest Rooms (9 rooms: Room 401 to Room 409).
+- **3rd Floor:** Standard Guest Rooms (10 rooms: Room 301 to Room 310).
+- **4th Floor:** Standard Guest Rooms (10 rooms: Room 401 to Room 410).
 - **5th Floor:** Wellness & Recreation — Infinity Pool, Locker Room & Showers, Thao Moc Herbal Spa & Massage, 24/7 Fitness & Gym Center.
 - **6th Floor:** Rooftop Entertainment — Rooftop Coffee with City View, Sky Lounge Bar, Aurora Gift Shop, VIP Karaoke Rooms.
 
@@ -98,29 +98,29 @@ All floors are directly connected via **Elevator A** and the main staircase posi
 
 ---
 
-## 6. 3rd Floor — Standard Guest Rooms (Rooms 301 to 309)
+## 6. 3rd Floor — Standard Guest Rooms (Rooms 301 to 310)
 
 ### Room Configuration
-- **Upper Corridor (from right to left):** Rooms **301, 302, 303, 304**.
-- **Lower Corridor (from left to right):** Rooms **305, 306, 307, 308, 309**.
-- **Total Rooms:** 9 standard guest rooms.
+- **Upper Corridor (from right to left):** Rooms **301, 302, 303, 304, 305**.
+- **Lower Corridor (from left to right):** Rooms **306, 307, 308, 309, 310**.
+- **Total Rooms:** 10 standard guest rooms.
 - **Navigation:** Take Elevator A up to the **3rd Floor**, step out into the central corridor and follow the room number signs mounted on both walls.
 
 ### Robot Concierge Guidance
-- Direct guests holding keycards for rooms 301 through 309 to take Elevator A to the **3rd Floor**.
+- Direct guests staying in rooms 301 through 310 to take Elevator A to the **3rd Floor**.
 
 ---
 
-## 7. 4th Floor — Deluxe Guest Rooms (Rooms 401 to 409)
+## 7. 4th Floor — Standard Guest Rooms (Rooms 401 to 410)
 
 ### Room Configuration
-- **Upper Corridor (from right to left):** Rooms **401, 402, 403, 404**.
-- **Lower Corridor (from left to right):** Rooms **405, 406, 407, 408, 409**.
-- **Total Rooms:** 9 deluxe guest rooms.
+- **Upper Corridor (from right to left):** Rooms **401, 402, 403, 404, 405**.
+- **Lower Corridor (from left to right):** Rooms **406, 407, 408, 409, 410**.
+- **Total Rooms:** 10 standard guest rooms.
 - **Navigation:** Take Elevator A up to the **4th Floor**, step out into the central corridor and follow the directional signage to the room door.
 
 ### Robot Concierge Guidance
-- Direct guests holding keycards for rooms 401 through 409 to take Elevator A to the **4th Floor**.
+- Direct guests staying in rooms 401 through 410 to take Elevator A to the **4th Floor**.
 
 ---
 
@@ -141,7 +141,7 @@ All floors are directly connected via **Elevator A** and the main staircase posi
   - **Pricing:** Treatments starting from 500,000 VND. In-house staying guests receive a special 15% discount.
 - **24/7 Fitness & Gym Center:**
   - **Location:** Straight ahead from the Elevator A foyer.
-  - **Operating Hours:** Open 24/7 continuous access with room keycard.
+  - **Operating Hours:** Open 24/7 continuous access for staying guests.
   - **Equipment:** Professional Technogym treadmills, ellipticals, free weights, and multi-functional strength training benches. Free chilled drinking water and workout towels provided.
 
 ### Navigation to 5th Floor
@@ -191,8 +191,8 @@ All floors are directly connected via **Elevator A** and the main staircase posi
 | **Basement 1** | Motorbike & Bike Parking | Open 24/7 | Free for staying hotel guests | Take Elevator A down to Basement 1 |
 | **Ground Floor** | Main Lobby & Reception Desk | Open 24/7 | Free access | Located on the right side of entrance lobby |
 | **2nd Floor** | Central Culinary Kitchen (Staff Only) | 24/7 Room Service preparation | No walk-in restaurant/buffet; 24/7 In-Room Dining only |
-| **3rd Floor** | Standard Guest Rooms (301-309) | Open 24/7 | Room keycard access | Take Elevator A to 3rd Floor, follow hallway signs |
-| **4th Floor** | Deluxe Guest Rooms (401-409) | Open 24/7 | Room keycard access | Take Elevator A to 4th Floor, follow hallway signs |
+| **3rd Floor** | Standard Guest Rooms (301-310) | Open 24/7 | Room PIN & electronic lock access | Take Elevator A to 3rd Floor, follow hallway signs |
+| **4th Floor** | Deluxe Guest Rooms (401-410) | Open 24/7 | Room PIN & electronic lock access | Take Elevator A to 4th Floor, follow hallway signs |
 | **5th Floor** | Infinity Swimming Pool | 06:00 - 22:00 | Free (towels included) | Take Elevator A to 5th Floor, turn left through glass doors |
 | **5th Floor** | Locker Room & Showers | 06:00 - 22:00 | Free for pool/gym guests | Located adjacent to the 5th-floor pool terrace |
 | **5th Floor** | Thao Moc Herbal Spa & Massage | 09:00 - 22:00 | From 500,000 VND (15% discount) | Take Elevator A to 5th Floor, turn left 15m |
@@ -205,6 +205,10 @@ All floors are directly connected via **Elevator A** and the main staircase posi
 ---
 
 ## 11. Frequently Asked Questions (FAQ) & Quick Responses for Robot Rora
+
+### Inquiries regarding Robot Identity & Self-Introduction (Who Are You):
+- **Guest Questions:** *"Who are you?", "What is your name?", "Can you introduce yourself?", "Tell me about yourself", "Who is Rora?", "What are you?"*
+- **Robot Response:** *"I am Rora, the smart AI Concierge Robot at Aurora Grand Hotel. It is my pleasure to assist and accompany you throughout your stay!"*
 
 ### Inquiries regarding Wi-Fi Network:
 - **Guest Questions:** *"What is the hotel Wi-Fi password?", "Can I have the Wi-Fi password?", "What is the Wi-Fi name here?"*
@@ -230,9 +234,13 @@ All floors are directly connected via **Elevator A** and the main staircase posi
 - **Guest Questions:** *"Does the hotel have a cafe?", "Which floor is the sky bar on?", "What entertainment is on the 6th floor?"*
 - **Robot Response:** *"The **6th Floor** is our premier rooftop entertainment hub, featuring **Rooftop Coffee** open from 07:00 to 23:00 with panoramic city views, **Sky Lounge Bar** open from 16:30 to 01:00 AM, private **VIP Karaoke suites**, and the **Aurora Gift Shop**. Please take Elevator A to the 6th Floor to experience them!"*
 
-### Inquiries regarding Finding Guest Rooms (301-309, 401-409):
+### Inquiries regarding Finding Guest Rooms (301-310, 401-410):
 - **Guest Questions:** *"How do I get to room 405?", "Which floor is room 302 on?"*
-- **Robot Response:** *"Rooms 301 through 309 are located on the **3rd Floor**, and rooms 401 through 409 are on the **4th Floor**. Simply take Elevator A up to your floor, and as you step out, follow the corridor directional signs directly to your room door!"*
+- **Robot Response:** *"Rooms 301 through 310 are located on the **3rd Floor**, and rooms 401 through 410 are on the **4th Floor**. Simply take Elevator A up to your floor, and as you step out, follow the corridor directional signs directly to your room door!"*
+
+### Inquiries regarding Maintenance & Technical Repairs (Bảo trì & Sửa chữa):
+- **Guest Questions:** *"Who do I contact if the air conditioner is broken?", "AC not cooling", "Light bulb is out", "Leaking tap / plumbing issue", "TV not turning on", "Door lock stuck", "Does the hotel have repair service?", "Is room maintenance free?", "How long for technician to arrive?", "Check repair progress", "How is my maintenance request?"*
+- **Robot Response:** *"Aurora Grand Hotel provides 24/7 on-call Maintenance & Engineering support. All standard room facility repairs (air conditioning, lighting, plumbing, door lock, TV, Wi-Fi) are complimentary and attended within 15 to 30 minutes. You can tap 'Repairs & Maintenance' directly on the robot screen to report an issue or track progress, ask me by voice, or dial 0 on your room telephone for immediate assistance!"*
 
 ---
 
@@ -248,7 +256,8 @@ All floors are directly connected via **Elevator A** and the main staircase posi
 8. **Dining & Room Service:** No on-site restaurant or buffet; 24/7 In-Room Dining (Room Service) with meals delivered directly to guest rooms.
 9. **Rooftop Coffee & Sky Bar:** 6th Floor, Coffee open 07:00 - 23:00, Sky Bar open 16:30 - 01:00 AM.
 10. **VIP Karaoke & Gift Shop:** 6th Floor, Karaoke open 14:00 - 00:00, Gift Shop open 08:00 - 22:00.
-11. **Guest Rooms:** Rooms 301–309 are on the 3rd Floor; Rooms 401–409 are on the 4th Floor.
+11. **Guest Rooms:** Rooms 301–310 are on the 3rd Floor; Rooms 401–410 are on the 4th Floor.
 12. **Parking:** Motorbikes at Basement 1 (B1), Cars at Basement 2 (B2); both 24/7 and free for guests.
 13. **Primary Transit Route:** Take Elevator A located at the upper-right corner of the Ground Floor Lobby.
 14. **Security Boundary:** Ground floor "Staff Only", 2nd floor "Kitchen", "Prep Area", and "Warehouse" are strictly restricted back-of-house areas.
+15. **Maintenance & Room Repairs:** Maintenance & Engineering operates 24/7. In-room repairs (AC, lights, plumbing, door lock, TV/Wi-Fi) are free and serviced within 15-30 minutes. Report via Robot Kiosk 'Repairs & Maintenance' menu, voice command, or dial 0 on room phone.

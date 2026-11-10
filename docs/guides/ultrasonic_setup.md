@@ -57,7 +57,7 @@ mpremote connect PORT reset
 
 ## 4. ESP32 MicroPython
 
-Firmware mới gồm [`esp32/main.py`](esp32/main.py), [`esp32/mpu.py`](esp32/mpu.py) và [`esp32/ultrasonic.py`](esp32/ultrasonic.py). File `esp32_ultrasonic.py` được giữ làm firmware ultrasonic-only cũ. Các đặc điểm:
+Firmware mới gồm [`esp32/main.py`](../../robot/esp32/main.py), [`esp32/mpu.py`](../../robot/esp32/mpu.py) và [`esp32/ultrasonic.py`](../../robot/esp32/ultrasonic.py). File `esp32_ultrasonic.py` được giữ làm firmware ultrasonic-only cũ. Các đặc điểm:
 
 - Dùng `machine.Pin` và `machine.time_pulse_us` với timeout 30ms.
 - Đọc FRONT → REAR → LEFT → RIGHT, nghỉ 18ms giữa sensor để giảm cross-talk.
@@ -70,7 +70,7 @@ Firmware mới gồm [`esp32/main.py`](esp32/main.py), [`esp32/mpu.py`](esp32/mp
 
 ## 5. Raspberry Pi Serial reader
 
-Code đầy đủ ở [`ultrasonic_serial.py`](ultrasonic_serial.py). Reader chạy nền, tự tìm Espressif/CP210x/CH340/FTDI hoặc `/dev/ttyUSB*`, `/dev/ttyACM*`, tự reconnect và bỏ packet lỗi mà không crash.
+Code đầy đủ ở [`ultrasonic_serial.py`](../../robot/ultrasonic_serial.py). Reader chạy nền, tự tìm Espressif/CP210x/CH340/FTDI hoặc `/dev/ttyUSB*`, `/dev/ttyACM*`, tự reconnect và bỏ packet lỗi mà không crash.
 
 Packet hợp lệ:
 
@@ -82,7 +82,7 @@ Packet hợp lệ:
 
 ## 6. L298N motor controller
 
-Code đầy đủ ở [`motor_controller.py`](motor_controller.py). Mapping cố định mặc định:
+Code đầy đủ ở [`motor_controller.py`](../../robot/motor_controller.py). Mapping cố định mặc định:
 
 - Trái/channel A: GPIO17→IN1, GPIO27→IN2.
 - Phải/channel B: GPIO22→IN3, GPIO23→IN4.
@@ -94,7 +94,7 @@ Nếu thay đổi cách lắp motor, có thể bật/tắt hai tùy chọn đả
 
 ## 7. Main + obstacle safety
 
-Code tích hợp đầy đủ ở [`main.py`](main.py), logic fail-safe ở [`obstacle_safety.py`](obstacle_safety.py).
+Code tích hợp đầy đủ ở [`main.py`](../../robot/main.py), logic fail-safe ở [`obstacle_safety.py`](../../robot/obstacle_safety.py).
 
 - Forward kiểm tra FRONT; backward kiểm tra REAR. Khi quay, code kiểm tra cảm biến bên quay và cả FRONT/REAR vì đầu và đuôi xe quét theo vòng cung.
 - Ngưỡng mặc định đã bù quán tính: FRONT/REAR 65cm, LEFT/RIGHT 25cm; khoảng trống FRONT/REAR khi quay là 25cm.
@@ -103,7 +103,7 @@ Code tích hợp đầy đủ ở [`main.py`](main.py), logic fail-safe ở [`ob
 - Trong lúc motor đang chạy, safety được kiểm tra liên tục, không chỉ lúc bấm phím.
 - `--motor-only` là chế độ test chủ động bỏ qua sensor và có cảnh báo rõ ràng.
 
-Ngưỡng nằm trong [`settings.yaml`](settings.yaml) và có thể override bằng CLI.
+Ngưỡng nằm trong [`settings.yaml`](../../robot/config/settings.yaml) và có thể override bằng CLI.
 
 ## 8. Package trên Raspberry Pi
 

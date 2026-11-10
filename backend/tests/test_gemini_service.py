@@ -125,3 +125,30 @@ async def test_ollama_service_uses_llama_when_provider_is_ollama():
 
         assert mock_ollama_chat.called
         assert "Llama" in reply
+
+
+@pytest.mark.asyncio
+async def test_gemini_falls_back_to_groq_when_gemini_fails():
+    """Kiểm tra khi toàn bộ model Gemini gặp sự cố, GeminiService tự động fallback sang Groq."""
+    service = GeminiService()
+
+    with patch.object(settings, "GROQ_API_KEY", "mock-groq-key"), \
+         patch.object(service, "candidate_models", ["gemini-2.5-flash"]), \
+         patch.object(service, "_call_groq_fallback", new_callable=AsyncMock) as mock_groq:
+        mock_groq.return_value = "Em là Rora, phản hồi từ Groq fallback!"
+
+        mock_fail_resp = MagicMock()
+        mock_fail_resp.status_code = 503
+        mock_fail_resp.text = "Service Unavailable"
+
+        with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
+            mock_post.return_value = mock_fail_resp
+
+            reply, lang_name, lang_code = await service.generate_response(
+                prompt="Xin chào",
+                language="Tiếng Việt"
+            )
+
+            assert mock_groq.called
+            assert "Groq" in reply
+            assert lang_code == "vi-VN"

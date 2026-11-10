@@ -84,8 +84,10 @@ export const fetchReceptionRequestById = async (requestId) => {
 // ---------------------------------------------------------
 // 1. Room Service / F&B
 // ---------------------------------------------------------
-export const fetchRoomServiceDashboard = async () => {
-  return await fetchWithFallback(`${BASE_URL}/dashboard/room-service`, {}, INITIAL_ROOM_SERVICE_DATA);
+export const fetchRoomServiceDashboard = async (params = {}) => {
+  const query = new URLSearchParams(params).toString();
+  const url = query ? `${BASE_URL}/dashboard/room-service?${query}` : `${BASE_URL}/dashboard/room-service`;
+  return await fetchWithFallback(url, {}, INITIAL_ROOM_SERVICE_DATA);
 };
 
 export const createRoomServiceOrder = async (orderData) => {
@@ -129,6 +131,84 @@ export const fetchRoomOrdersHistory = async (roomNumber) => {
 export const fetchRoomOrderedItemsSummary = async (roomNumber) => {
   const history = await fetchRoomOrdersHistory(roomNumber);
   return history?.ordered_items_summary || [];
+};
+
+// ---------------------------------------------------------
+// 1B. Room Service Catalog Management (Thực đơn / Dịch vụ phòng)
+// ---------------------------------------------------------
+export const fetchRoomServiceCatalog = async ({ category = null, is_available = null } = {}) => {
+  try {
+    const params = new URLSearchParams();
+    if (category && category !== 'All') params.append('category', category);
+    if (is_available !== null && is_available !== undefined) params.append('is_available', is_available);
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    return await fetchWithFallback(`${BASE_URL}/room-service/services${qs}`, {}, []);
+  } catch (error) {
+    console.warn('[OperationsAPI] Error fetching room service catalog:', error.message);
+    return [];
+  }
+};
+
+export const createRoomServiceCatalogItem = async (itemData) => {
+  try {
+    return await fetchWithFallback(
+      `${BASE_URL}/room-service/services`,
+      {
+        method: 'POST',
+        body: JSON.stringify(itemData),
+      },
+      { id: `SVC-${Date.now()}`, ...itemData }
+    );
+  } catch (error) {
+    console.error('[OperationsAPI] Error creating room service item:', error.message);
+    throw error;
+  }
+};
+
+export const updateRoomServiceCatalogItem = async (itemId, updateData) => {
+  try {
+    return await fetchWithFallback(
+      `${BASE_URL}/room-service/services/${encodeURIComponent(itemId)}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify(updateData),
+      },
+      { id: itemId, ...updateData }
+    );
+  } catch (error) {
+    console.error('[OperationsAPI] Error updating room service item:', error.message);
+    throw error;
+  }
+};
+
+export const deleteRoomServiceCatalogItem = async (itemId) => {
+  try {
+    return await fetchWithFallback(
+      `${BASE_URL}/room-service/services/${encodeURIComponent(itemId)}`,
+      {
+        method: 'DELETE',
+      },
+      { id: itemId, detail: 'Đã xóa dịch vụ' }
+    );
+  } catch (error) {
+    console.error('[OperationsAPI] Error deleting room service item:', error.message);
+    throw error;
+  }
+};
+
+export const toggleRoomServiceCatalogItem = async (itemId) => {
+  try {
+    return await fetchWithFallback(
+      `${BASE_URL}/room-service/services/${encodeURIComponent(itemId)}/toggle`,
+      {
+        method: 'PATCH',
+      },
+      { id: itemId }
+    );
+  } catch (error) {
+    console.error('[OperationsAPI] Error toggling room service item:', error.message);
+    throw error;
+  }
 };
 
 // ---------------------------------------------------------
@@ -225,7 +305,7 @@ export const createMaintenanceRequest = async (requestData) => {
 
 export const updateMaintenanceStatus = async (requestId, status, assignedTo = null) => {
   return await fetchWithFallback(
-    `${BASE_URL}/tasks/${encodeURIComponent(requestId)}`,
+    `${BASE_URL}/maintenance/requests/${encodeURIComponent(requestId)}`,
     {
       method: 'PATCH',
       body: JSON.stringify({
@@ -243,6 +323,96 @@ export const fetchMaintenanceRequestById = async (requestId) => {
     {},
     null
   );
+};
+
+export const fetchMaintenanceCatalog = async ({ category = null, is_active = null } = {}) => {
+  try {
+    const params = new URLSearchParams();
+    if (category) params.append('category', category);
+    if (is_active !== null && is_active !== undefined) params.append('is_active', is_active);
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    return await fetchWithFallback(`${BASE_URL}/maintenance/catalog${qs}`, {}, []);
+  } catch (error) {
+    console.warn('[OperationsAPI] Error fetching maintenance catalog:', error.message);
+    return [];
+  }
+};
+
+export const createMaintenanceCatalogItem = async (itemData) => {
+  try {
+    return await fetchWithFallback(
+      `${BASE_URL}/maintenance/catalog`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(itemData),
+      },
+      { id: `MNT-${Date.now()}`, ...itemData, is_active: true }
+    );
+  } catch (error) {
+    console.error('[OperationsAPI] Error creating maintenance catalog item:', error.message);
+    throw error;
+  }
+};
+
+export const updateMaintenanceCatalogItem = async (itemId, updateData) => {
+  try {
+    return await fetchWithFallback(
+      `${BASE_URL}/maintenance/catalog/${encodeURIComponent(itemId)}`,
+      {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updateData),
+      },
+      { id: itemId, ...updateData }
+    );
+  } catch (error) {
+    console.error('[OperationsAPI] Error updating maintenance catalog item:', error.message);
+    throw error;
+  }
+};
+
+export const deleteMaintenanceCatalogItem = async (itemId) => {
+  try {
+    return await fetchWithFallback(
+      `${BASE_URL}/maintenance/catalog/${encodeURIComponent(itemId)}`,
+      {
+        method: 'DELETE',
+      },
+      { message: 'Deleted', id: itemId }
+    );
+  } catch (error) {
+    console.error('[OperationsAPI] Error deleting maintenance catalog item:', error.message);
+    throw error;
+  }
+};
+
+export const toggleMaintenanceCatalogItem = async (itemId) => {
+  try {
+    return await fetchWithFallback(
+      `${BASE_URL}/maintenance/catalog/${encodeURIComponent(itemId)}/toggle`,
+      {
+        method: 'PATCH',
+      },
+      { id: itemId, is_active: true }
+    );
+  } catch (error) {
+    console.error('[OperationsAPI] Error toggling maintenance catalog item:', error.message);
+    throw error;
+  }
+};
+
+export const fetchRoomMaintenanceStatus = async (roomNumber) => {
+  try {
+    return await fetchWithFallback(
+      `${BASE_URL}/maintenance/rooms/${encodeURIComponent(roomNumber)}/status`,
+      {},
+      { room_number: roomNumber, total_requests: 0, pending_count: 0, in_progress_count: 0, completed_count: 0, requests: [] }
+    );
+  } catch (error) {
+    console.warn('[OperationsAPI] Error fetching room maintenance status:', error.message);
+    return { room_number: roomNumber, total_requests: 0, pending_count: 0, in_progress_count: 0, completed_count: 0, requests: [] };
+  }
 };
 
 // ---------------------------------------------------------
@@ -719,7 +889,7 @@ export const removeKitchenMenuItem = async (menuId, menuItemId) => {
 /**
  * Xác thực mã PIN 4 số hoặc 4 số cuối CCCD/Hộ chiếu hoặc thẻ NFC tại Robot Kiosk
  */
-export const verifyRoomPin = async (roomNumber, pin = null, action = null, items = null, note = null, tagCode = null) => {
+export const verifyRoomPin = async (roomNumber, pin = null, action = null, items = null, note = null, tagCode = null, skipTicketCreation = false, sessionId = null) => {
   const response = await fetch(`${BASE_URL}/rooms/verify-pin`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -732,12 +902,22 @@ export const verifyRoomPin = async (roomNumber, pin = null, action = null, items
       action,
       items,
       note,
+      skip_ticket_creation: Boolean(skipTicketCreation),
+      create_ticket: !skipTicketCreation,
+      session_id: sessionId ? String(sessionId) : null,
     }),
   });
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.detail || 'Mã PIN, 4 số CCCD hoặc thẻ NFC không chính xác.');
+    const detail = errorData.detail;
+    const msg = typeof detail === 'object' && detail ? detail.message : (detail || 'Mã PIN phòng không chính xác. Quý khách vui lòng thử lại sau.');
+    const err = new Error(msg);
+    err.data = typeof detail === 'object' ? detail : errorData;
+    err.not_checked_in = Boolean(err.data?.not_checked_in);
+    err.destination_key = err.data?.destination_key || (err.not_checked_in ? 'front_desk' : null);
+    err.room_number = err.data?.room_number || roomNumber;
+    throw err;
   }
 
   return await response.json();
@@ -746,7 +926,7 @@ export const verifyRoomPin = async (roomNumber, pin = null, action = null, items
 /**
  * Xác thực bằng thẻ từ NFC / NDEF tagCode tại Robot Kiosk (Hỗ trợ quẹt tự động không cần nhập số phòng)
  */
-export const verifyRoomNfc = async (tagCode, roomNumber = null, action = null, items = null, note = null) => {
+export const verifyRoomNfc = async (tagCode, roomNumber = null, action = null, items = null, note = null, skipTicketCreation = false, sessionId = null) => {
   const response = await fetch(`${BASE_URL}/rooms/verify-nfc`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -758,6 +938,9 @@ export const verifyRoomNfc = async (tagCode, roomNumber = null, action = null, i
       action,
       items,
       note,
+      skip_ticket_creation: Boolean(skipTicketCreation),
+      create_ticket: !skipTicketCreation,
+      session_id: sessionId ? String(sessionId) : null,
     }),
   });
 
@@ -806,6 +989,23 @@ export const checkOutRoom = async (roomId) => {
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
     throw new Error(errorData.detail || 'Lỗi khi thực hiện Check-out.');
+  }
+
+  return await response.json();
+};
+
+/**
+ * Đồng bộ danh sách phòng trực tiếp từ file RAG hệ thống
+ */
+export const syncRoomsFromRAG = async () => {
+  const response = await fetch(`${BASE_URL}/rooms/sync-rag`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.detail || 'Lỗi khi đồng bộ phòng từ file RAG.');
   }
 
   return await response.json();

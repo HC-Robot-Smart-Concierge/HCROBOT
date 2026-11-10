@@ -24,6 +24,7 @@ import { Kiosk2DMapPreview } from './Kiosk2DMapPreview';
 import { KioskMediaPromo } from './KioskMediaPromo';
 import { KioskWayfindingQR } from './KioskWayfindingQR';
 import { KioskDiningMenu } from './KioskDiningMenu';
+import { KioskChoicePrompt } from './KioskChoicePrompt';
 
 export const KioskDisplayPreview = ({
   activeStep,
@@ -31,6 +32,9 @@ export const KioskDisplayPreview = ({
   isListening = false,
   silenceRemaining = 30,
   onNextStep = () => {},
+  choiceRemaining = null,
+  onChooseOption = () => {},
+  onCancelChoice = () => {},
 }) => {
   const [feedbackRating, setFeedbackRating] = useState(5);
   const [hasRated, setHasRated] = useState(false);
@@ -62,6 +66,17 @@ export const KioskDisplayPreview = ({
 
   return (
     <div className="flex-1 min-h-0 flex flex-col p-3 sm:p-4 bg-gradient-to-br from-stone-50 via-white to-amber-50/40 rounded-2xl border border-stone-200/90 shadow-inner overflow-y-auto select-none">
+
+      {/* 0. CHOICE: KHÁCH CHỌN NHÁNH TIẾP THEO */}
+      {activeStep.type === 'CHOICE' && (
+        <KioskChoicePrompt
+          step={activeStep}
+          remainingSec={choiceRemaining}
+          transcript={isListening ? transcript : ''}
+          onChoose={onChooseOption}
+          onCancel={onCancelChoice}
+        />
+      )}
 
       {/* 1. MOVE: MEDIA PROMO, CHỈ ĐƯỜNG QR HOẶC 2D MINI MAP */}
       {activeStep.type === 'MOVE' && (

@@ -1,4 +1,4 @@
-import { Move, Smile, Volume2, Monitor, Mic, Sliders, Send, Star, MessagesSquare } from 'lucide-react';
+import { Move, Smile, Volume2, Monitor, Mic, Sliders, Send, Star, MessagesSquare, GitBranch } from 'lucide-react';
 
 /**
  * Standard Otto Step Types for Hotel Concierge Robot
@@ -14,8 +14,8 @@ export const OTTO_STEP_TYPES = [
       target_waypoint_id: 'FRONT_DESK',
       target_value: 'FRONT_DESK',
       waypoint_name: 'Trước Quầy Lễ Tân (Front Desk)',
-      target_x: 5.2,
-      target_y: 2.0,
+      target_x: 11.44,
+      target_y: 2.8,
       speed: 0.35,
       timeout_sec: 30,
     },
@@ -107,6 +107,21 @@ export const OTTO_STEP_TYPES = [
       thank_you_message: 'Cảm ơn quý khách đã đánh giá! Chúc quý khách kỳ nghỉ vui vẻ.',
     },
   },
+  {
+    type: 'CHOICE',
+    label: '9. CHOICE (Chờ khách chọn & rẽ nhánh)',
+    desc: 'Hiện các nút lựa chọn, nghe khách nói tên lựa chọn và chuyển tới bước tương ứng; có nhánh riêng khi hết giờ hoặc khách hủy',
+    defaultParams: {
+      prompt: 'Quý khách muốn em hỗ trợ theo cách nào ạ?',
+      timeout_sec: 30,
+      options: [
+        { id: 'option-1', label: 'Lựa chọn 1', keywords: [], next_step_id: '' },
+        { id: 'option-2', label: 'Lựa chọn 2', keywords: [], next_step_id: '' },
+      ],
+      timeout_next_step_id: 'END',
+      cancel_next_step_id: 'END',
+    },
+  },
 ];
 
 /**
@@ -122,6 +137,7 @@ export const STEP_SCRATCH_THEMES = {
   RECOMMEND: { label: 'Logic', bg: '#ffffff', border: '#cbd5e1', accent: '#334155', icon: Sliders },
   CREATE_REQUEST: { label: 'Dispatch', bg: '#ffffff', border: '#cbd5e1', accent: '#475569', icon: Send },
   FEEDBACK: { label: 'Feedback', bg: '#ffffff', border: '#cbd5e1', accent: '#334155', icon: Star },
+  CHOICE: { label: 'Branch', bg: '#ffffff', border: '#fcd34d', accent: '#b45309', icon: GitBranch },
 };
 
 /**

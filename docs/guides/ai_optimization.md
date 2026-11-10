@@ -1,6 +1,8 @@
-# HUONG DAN TOI UU TOC DO PHAN HOI CHO HE THONG AI (HC-ROBOT)
+# HƯỚNG DẪN TỐI ƯU TỐC ĐỘ PHẢN HỒI CHO HỆ THỐNG AI (HC-ROBOT)
 
-Tai lieu nay phan tich nguyen nhan gay tre (latency) trong he thong hien tai va huong dan cac giai phap ky thuat de giam thoi gian phan hoi giong noi tu 5 - 8 giay xuong duoi 1 giay, dua tren nguyen ly Streaming Pipeline cua cac he thong toc do cao nhu Xiaozhi ESP32.
+> **TRẠNG THÁI TRIỂN KHAI:**
+> - **Thiết kế dự kiến ban đầu (RFC):** Đề xuất kiến trúc Chunked Streaming qua WebSocket binary frames tương tự Xiaozhi ESP32 (Mục 2 & Mục 3).
+> - **Triển khai thực tế trên Production:** Do yêu cầu ổn định của trình duyệt Kiosk và hạ tầng mạng khách sạn, hệ thống đã chuẩn hóa và đưa vào vận hành kiến trúc **LangGraph Harness + 4-Tier LLM Cascade (Groq Cloud Llama 3.3/3.1 $\rightarrow$ Gemini Flash $\rightarrow$ Ollama $\rightarrow$ Factsheet) + Multi-Tier Audio Cache (RAM/Disk)**. Xem báo cáo đo đạc chi tiết tại [[ROBOT_CONVERSATION_FLOW_REPORT|Báo cáo Hội thoại Voice Pipeline]] và [[langgraph_harness|LangGraph Agent Harness]].
 
 ---
 

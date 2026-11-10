@@ -20,6 +20,21 @@ from app.core.config import settings
 
 router = APIRouter()
 
+def _trigger_background_room_sync():
+    """Kích hoạt đồng bộ phòng khách sạn theo file RAG trong background task."""
+    try:
+        import asyncio
+        from app.core.database import AsyncSessionLocal
+        from app.services.rag.room_sync_service import sync_rooms_with_rag
+        async def _do_sync():
+            async with AsyncSessionLocal() as session:
+                await sync_rooms_with_rag(session)
+        asyncio.create_task(_do_sync())
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Không thể kích hoạt đồng bộ phòng từ RAG: {e}")
+
+
 
 @router.get("/stats", response_model=RAGStatsResponse, summary="Thống kê tổng quan tri thức RAG")
 def get_rag_stats():
@@ -144,6 +159,7 @@ def save_source_file(payload: dict):
         # Tái đồng bộ Obsidian Vault ngay lập tức
         from app.services.rag.obsidian_service import obsidian_service
         obsidian_service.sync_vault_to_chroma()
+        _trigger_background_room_sync()
 
         return RAGActionResponse(
             message=f"Đã lưu file {filename} xuống đĩa và tái đồng bộ ChromaDB thành công!",
@@ -165,6 +181,7 @@ def sync_bilingual_sources():
     try:
         from app.services.rag.obsidian_service import obsidian_service
         res = obsidian_service.sync_vault_to_chroma()
+        _trigger_background_room_sync()
         return RAGActionResponse(
             message=f"Đã đồng bộ song ngữ và nạp {res.get('chunks_upserted', 0)} đoạn tri thức vào Robot memory!",
             id="bilingual_sync",
@@ -326,6 +343,7 @@ def sync_obsidian_vault():
     try:
         from app.services.rag.obsidian_service import obsidian_service
         result = obsidian_service.sync_vault_to_chroma()
+        _trigger_background_room_sync()
         return {
             "message": "Đồng bộ Obsidian Vault vào ChromaDB thành công!",
             "result": result,

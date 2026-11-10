@@ -68,7 +68,7 @@ WAYPOINTS = [
     (7.2, 9.6, "1. Vị Trí Chờ Robot Sảnh (Phía Bắc)", "PARK", "ROBOT_STANDBY"),
     (6.0, 9.6, "2. Trạm Sạc Robot Sảnh", "CHARGER", "CHARGER_STATION"),
     (3.6, 7.2, "3. Khu Sofa Khách Chờ Sảnh (Lobby Lounge)", "WAYPOINT", "LOBBY_LOUNGE"),
-    (8.4, 2.0, "4. Cửa Chính Ra Vào Sảnh (Main Entrance)", "WAYPOINT", "MAIN_ENTRANCE"),
+    (0.90, 6.25, "4. Cửa Chính Ra Vào Sảnh (Main Entrance)", "WAYPOINT", "MAIN_ENTRANCE"),
     (11.44, 2.8, "5. Trước Quầy Tiếp Tân (Front Desk)", "WAYPOINT", "FRONT_DESK"),
     (11.44, 6.4, "6. Trước Phòng Nội Bộ (Staff Only)", "WAYPOINT", "STAFF_ONLY"),
     (15.6, 6.96, "7. Cụm Thang Máy Tầng 1 (Elevator)", "WAYPOINT", "ELEVATOR"),
@@ -462,6 +462,11 @@ class AutonomousNavigator(Node):
         goal = (float(target_x), float(target_y))
 
         obstacles = [
+            # Clearance around the two openings in hotel_room.world.
+            (0.00, 0.25, 0.00, 5.75, "WEST_SOUTH"),
+            (0.00, 0.25, 6.75, 12.60, "WEST_NORTH"),
+            (19.35, 19.60, 0.00, 3.00, "EAST_SOUTH"),
+            (19.35, 19.60, 4.06, 12.60, "EAST_NORTH"),
             (9.70, 13.10, 4.00, 8.65, "RECEPTION"),
             (5.60, 7.45, 5.35, 7.15, "PLANT_POT"),
             (12.50, 12.85, 11.00, 12.60, "PART_TOP"),
@@ -469,8 +474,8 @@ class AutonomousNavigator(Node):
             (0.00, 2.30, 8.30, 12.60, "SOFA_TL"),
             (0.00, 4.70, 0.00, 1.60, "SOFA_BL"),
             (15.30, 19.60, 7.60, 10.00, "SOFA_TR"),
-            (17.80, 19.60, 4.80, 7.80, "ELEV_EXIT"),
-            (17.80, 19.60, 0.00, 3.55, "WC_EAST"),
+            (17.80, 19.60, 4.06, 7.80, "ELEV_EXIT"),
+            (17.80, 19.60, 0.00, 3.00, "WC_EAST"),
             (15.30, 18.00, 0.00, 1.90, "WC_SOUTH"),
         ]
 
@@ -493,6 +498,8 @@ class AutonomousNavigator(Node):
             return True
 
         nav_nodes = {
+            'W_ENTRY':     (0.90,  6.25, "Lối vào cửa trước"),
+            'E_EXIT':      (17.30, 3.53, "Lối ra cửa sau"),
             'W_NORTH':     (7.20,  9.60,  "Hành lang Bắc Tây (Standby)"),
             'W_NORTH_L':   (4.80,  9.60,  "Hành lang Tây Bắc"),
             'W_MID_L':     (4.20,  7.20,  "Khu Sofa Khách Chờ Sảnh"),
@@ -510,6 +517,7 @@ class AutonomousNavigator(Node):
         }
 
         nav_edges = [
+            ('W_ENTRY', 'W_MID_L'), ('E_EXIT', 'E_SOUTH'),
             ('W_NORTH', 'W_NORTH_L'),
             ('W_NORTH_L', 'W_MID_L'),
             ('W_MID_L', 'W_MID_POT_W'),

@@ -18,16 +18,29 @@ class SupportSessionRepository(BaseRepository[HumanSupportSession]):
     async def list_sessions(
         self,
         limit: int = 50,
+        skip: int = 0,
         status: Optional[str] = None,
         status_filter: Optional[str] = None,
     ) -> Sequence[HumanSupportSession]:
-        """Fetch human support sessions ordered by creation date."""
+        """Fetch human support sessions ordered by creation date with SQL offset/limit pagination."""
         active_status = status_filter if status_filter is not None else status
-        stmt = select(HumanSupportSession).order_by(desc(HumanSupportSession.created_at)).limit(limit)
+        stmt = select(HumanSupportSession).order_by(desc(HumanSupportSession.created_at))
         if active_status and active_status.lower() != "all":
             stmt = stmt.where(HumanSupportSession.status.ilike(f"%{active_status}%"))
+        stmt = stmt.offset(skip).limit(limit)
         res = await self.db.execute(stmt)
         return res.scalars().all()
+
+    async def count_sessions(
+        self,
+        status_filter: Optional[str] = None,
+    ) -> int:
+        """Returns total count of human support sessions."""
+        stmt = select(func.count(HumanSupportSession.id))
+        if status_filter and status_filter.lower() != "all":
+            stmt = stmt.where(HumanSupportSession.status.ilike(f"%{status_filter}%"))
+        res = await self.db.execute(stmt)
+        return res.scalar() or 0
 
     async def get_by_id_or_code(self, identifier: str) -> Optional[HumanSupportSession]:
         """Fetch session by ID, session_code, or linked_request_id."""

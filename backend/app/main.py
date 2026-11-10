@@ -3,7 +3,9 @@ import logging
 import os
 from contextlib import asynccontextmanager
 
+from pathlib import Path
 from fastapi import FastAPI
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
@@ -16,7 +18,12 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    from app.services.hardware.rplidar_service import rplidar_service
+    rplidar_service = None
+    try:
+        from app.services.hardware.rplidar_service import rplidar_service as _rplidar_service
+        rplidar_service = _rplidar_service
+    except Exception as e_lidar:
+        logger.warning(f"[WARN] RPLidarService unavailable at startup: {e_lidar}")
     from app.core.database import init_db
 
     # 1. Initialize tables only. Seed data is loaded explicitly from scripts/.
@@ -26,8 +33,10 @@ async def lifespan(app: FastAPI):
         from app.core.database import AsyncSessionLocal
         from app.services.ai.scenario_service import scenario_service
         from app.services.ai.tts_service import tts_service
+        from app.services.rag.room_sync_service import sync_rooms_with_rag
         async with AsyncSessionLocal() as db_session:
             await scenario_service.initialize_cache(db_session)
+            await sync_rooms_with_rag(db_session)
         asyncio.create_task(tts_service.warm_up_common_phrases())
     except Exception as e:
         logger.warning(f"[WARN] Could not auto-initialize DB on startup (is PostgreSQL running?): {e}")
@@ -41,7 +50,21 @@ async def lifespan(app: FastAPI):
     logger.info("=" * 60)
 
     yield
-    rplidar_service.stop()
+    try:
+        from app.services.cache.redis_service import redis_service
+        await redis_service.close()
+    except Exception as e_redis_close:
+        logger.debug(f"Redis shutdown close: {e_redis_close}")
+    try:
+        from app.services.ai.translation_service import translation_service
+        await translation_service.close()
+    except Exception as e_trans_close:
+        logger.debug(f"Translation service shutdown close: {e_trans_close}")
+    if rplidar_service is not None:
+        try:
+            rplidar_service.stop()
+        except Exception:
+            pass
 
 
 tags_metadata = [
@@ -84,6 +107,24 @@ register_middlewares(app)
 # Mount Static Files for Uploads and Media
 os.makedirs("static/uploads", exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# Mount Guest Map static assets (/maps/*.png & /map.html) over clean HTTP (Port 8000)
+# Giúp điện thoại quét QR qua Wi-Fi / Tailscale mở thẳng bản đồ tức thì, không bị cảnh báo SSL tự ký hay kẹt Service Worker cũ ở port 3000
+_FRONTEND_PUBLIC_DIR = Path(__file__).resolve().parents[2] / "frontend" / "public"
+_MAPS_DIR = _FRONTEND_PUBLIC_DIR / "maps"
+_MAP_HTML_FILE = _FRONTEND_PUBLIC_DIR / "map.html"
+if _MAPS_DIR.is_dir():
+    app.mount("/maps", StaticFiles(directory=str(_MAPS_DIR)), name="guest_maps")
+
+
+@app.api_route("/map.html", methods=["GET", "HEAD"], include_in_schema=False)
+@app.api_route("/map", methods=["GET", "HEAD"], include_in_schema=False)
+async def serve_guest_qr_map():
+    return FileResponse(
+        str(_MAP_HTML_FILE),
+        media_type="text/html; charset=utf-8",
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"},
+    )
 
 # Attach Routers
 app.include_router(api_router, prefix="/api/v1")

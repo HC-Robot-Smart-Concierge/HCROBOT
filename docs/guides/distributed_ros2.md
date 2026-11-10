@@ -1,7 +1,12 @@
 # HƯỚNG DẪN VẬN HÀNH HỆ THỐNG ROS 2 PHÂN TÁN (PI 5 & LAPTOP)
 
+> **Tài liệu liên quan:**
+> - Bản đồ code: [[../01-File-Map|01-File-Map (Bản đồ source code)]]
+> - Kiến trúc hệ thống: [[../02-Architecture|02-Architecture (Kiến trúc tổng thể)]]
+> - Đặc tả phần cứng: [[hardware_architecture|Đặc Tả Phần Cứng & ROS 2 Edge]]
+
 Hệ thống phân tán gồm 3 thành phần liên kết qua **Tailscale VPN** bằng **CycloneDDS Unicast**:
-- **Raspberry Pi 5 (`100.99.72.51`):** Chạy RPLiDAR A1M8, phát TF `base_link -> laser`, nhận `/cmd_vel` điều khiển Motor.
+- **Raspberry Pi 5 (`100.99.72.51`):** Chạy RPLiDAR A1M8, phát TF `base_link -> laser`, nhận `/cmd_vel` điều khiển Motor qua `safety_controller_node`.
 - **Laptop WSL2 (`100.92.82.61`):** Chạy SLAM Toolbox, Nav2, Explore_lite, và Rosbridge WebSocket port `9090`.
 - **Web Frontend (`React`):** Kết nối tới `ws://100.92.82.61:9090` để hiển thị `/map` và điều khiển xe.
 
@@ -11,7 +16,7 @@ Hệ thống phân tán gồm 3 thành phần liên kết qua **Tailscale VPN** 
 
 1. SSH vào Pi 5:
    ```bash
-   ssh phuc@100.99.72.51
+   ssh <user>@100.99.72.51
    ```
 2. Chạy script cài đặt tự động:
    ```bash
@@ -31,7 +36,7 @@ Hệ thống phân tán gồm 3 thành phần liên kết qua **Tailscale VPN** 
 
 1. Mở terminal Ubuntu WSL trên Laptop:
    ```bash
-   cd /mnt/f/DoAn/HC-Robot/robot/ros2_configs
+   cd <workspace_root>/robot/ros2_configs
    chmod +x setup_laptop_ros2.sh
    ./setup_laptop_ros2.sh
    source ~/.bashrc

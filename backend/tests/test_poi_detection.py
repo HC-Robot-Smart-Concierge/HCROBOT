@@ -10,6 +10,10 @@ def test_detect_destination_poi_nav_intent():
     assert _detect_destination_poi("Đi vệ sinh", "Dạ lối đi vệ sinh phía bên kia sảnh ạ.") == "restroom_ground"
     assert _detect_destination_poi("Chỉ đường cho tôi lên phòng gym", "Dạ phòng gym tại tầng 6 ạ.") == "gym"
     assert _detect_destination_poi("Where is the swimming pool?", "The pool is located on the 5th floor.") == "infinity_pool"
+    assert _detect_destination_poi("bar ở đâu") == "bar"
+    assert _detect_destination_poi("ba ở đâu") == "bar"
+    assert _detect_destination_poi("quầy ba") == "bar"
+    assert _detect_destination_poi("sky ba") == "bar"
 
 
 def test_detect_destination_poi_non_nav_queries():
@@ -95,3 +99,32 @@ def test_detect_destination_poi_sanitary_and_cleaning_disambiguation():
     assert _detect_destination_poi("Nhà vệ sinh ở đâu") == "restroom_ground"
     assert _detect_destination_poi("Đi vệ sinh") == "restroom_ground"
     assert _detect_destination_poi("Toilet tầng 2 ở đâu") == "restroom_f2"
+
+
+def test_detect_destination_poi_service_order_vs_navigation():
+    # 7. Phân biệt rõ rệt giữa Yêu cầu dịch vụ buồng phòng / đồ dùng / F&B và Hỏi đường
+    # Khi khách yêu cầu mang đồ lên phòng -> TUYỆT ĐỐI không bật bản đồ chỉ đường
+    assert _detect_destination_poi("Cho tôi 2 chai nước lên phòng 401", "Dạ em đã ghi nhận mang 2 chai nước lên phòng 401 cho quý khách rồi ạ.") is None
+    assert _detect_destination_poi("Mang 2 chai nước lên phòng 401") is None
+    assert _detect_destination_poi("Giao 2 chai nước suối lên phòng 401") is None
+    assert _detect_destination_poi("Cho anh 2 khăn tắm lên phòng 402") is None
+    assert _detect_destination_poi("Tôi cần mượn bàn ủi phòng 305") is None
+    assert _detect_destination_poi("Dọn phòng 401 giúp tôi") is None
+    assert _detect_destination_poi("Giao 1 tô phở lên phòng 408") is None
+
+    # Nhưng khi hỏi đường rõ ràng tới phòng -> Bật bản đồ bình thường
+    assert _detect_destination_poi("Chỉ đường lên phòng 401") == "room_401"
+    assert _detect_destination_poi("Phòng 401 ở đâu") == "room_401"
+    assert _detect_destination_poi("Cho tôi hỏi đường lên phòng 401") == "room_401"
+    assert _detect_destination_poi("Lối đi lên phòng 302") == "room_302"
+
+
+def test_detect_destination_poi_general_knowledge_and_entities():
+    # 6. Các câu hỏi về nhân vật, vận động viên, ca sĩ, kiến thức chung -> TUYỆT ĐỐI không kích hoạt POI hay bản đồ
+    assert _detect_destination_poi("vận động viên bơi lội nổi tiếng nhất hiện nay là ai") is None
+    assert _detect_destination_poi("ai là người bơi giỏi nhất thế giới", "Michael Phelps là kình ngư vĩ đại nhất.") is None
+    assert _detect_destination_poi("cầu thủ bóng đá xuất sắc nhất hiện nay", "Lionel Messi và Cristiano Ronaldo.") is None
+    assert _detect_destination_poi("Michael Phelps là ai", "Ông là vận động viên bơi lội nổi tiếng người Mỹ.") is None
+    assert _detect_destination_poi("ca sĩ nào hát bài này hay nhất") is None
+    assert _detect_destination_poi("tại sao nước biển lại mặn") is None
+    assert _detect_destination_poi("bộ phim nào đạt giải oscar năm nay") is None

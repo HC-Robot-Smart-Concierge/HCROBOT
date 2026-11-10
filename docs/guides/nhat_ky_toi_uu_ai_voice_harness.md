@@ -3,7 +3,8 @@
 > **Thời gian thực hiện:** Ngày 09/10/2026 - 10/10/2026  
 > **Dự án:** HC-Robot Smart Concierge (FastAPI Backend + React Frontend + Ollama Local LLM)  
 > **Người thực hiện:** Antigravity Pairing Assistant & Kỹ sư phát triển hệ thống  
-> **Trạng thái kiểm thử:** 🟢 **100% Passed (2/2 Tests Verified)**
+> **Trạng thái kiểm thử:** 🟢 **100% Passed (2/2 Tests Verified)**  
+> **Lưu ý tiến hóa mã nguồn:** Nhật ký này ghi lại giai đoạn tối ưu hóa ban đầu vào 10/10/2026. Ở các bản cập nhật sau (cuối tháng 10/2026), VAD đã được nâng lên **1800ms** (`SPEECH_FINAL_SILENCE_MS = 1800`) để tránh cắt lời khách, và LLM được nâng cấp lên mô hình 4-Tier Cascade (Groq Cloud Llama-3.3/3.1 $\rightarrow$ Gemini Flash $\rightarrow$ Ollama $\rightarrow$ Factsheet). Chi tiết xem tại [[langgraph_harness|LangGraph Agent Harness]] và [[../ROBOT_CONVERSATION_FLOW_REPORT|Báo Cáo Tối Ưu Hội Thoại]].
 
 ---
 
@@ -19,18 +20,18 @@ Buổi làm việc tập trung vào việc giải quyết 3 bài toán kỹ thu�
 ## 🛠️ 2. CHI TIẾT CÁC CÔNG VIỆC ĐÃ TRIỂN KHAI
 
 ### 2.1. Đổi Model sang Llama 3.2 3B & Tối Ưu VAD Timeout
-* **File chỉnh sửa:** [`backend/.env`](file:///d:/FPT%20MATERIALS/9th%20Semeter%20%28Final%29/HCROBOT/backend/.env)
+* **File cấu hình:** `backend/.env`
 * **Vấn đề trước khi sửa:**
   * Hệ thống được cấu hình `LLM_PROVIDER=gemini` với API key không hợp lệ, khiến backend thử liên tục 5 candidate models của Gemini, gặp timeout mạng và mất hơn 20 giây mới fallback sang Ollama.
   * Tham số chờ ngừng nói của micro (`VAD_SILENCE_MS`) để ở mức 500ms – 1.500ms tạo cảm giác robot phản ứng chậm chạp.
 * **Thay đổi kỹ thuật:**
   * Chuyển `LLM_PROVIDER=ollama` và giữ `OLLAMA_MODEL=llama3.2:3b`.
-  * Điều chỉnh `VAD_SILENCE_MS=400` (giảm xuống 400ms để robot xử lý ngay sau khi khách dứt lời 0.4s).
+  * Điều chỉnh `VAD_SILENCE_MS=400` (giảm xuống 400ms để robot xử lý ngay sau khi khách dứt lời 0.4s). *(Lưu ý: Sau này đã tăng lên 1800ms trên Kiosk để tránh cắt ngang câu của khách).*
 
 ---
 
 ### 2.2. Mở Rộng Mega Fast-Path & Tối Ưu Tham Số Ollama Trên CPU
-* **File chỉnh sửa:** [`backend/app/services/ai/ollama_service.py`](file:///d:/FPT%20MATERIALS/9th%20Semeter%20%28Final%29/HCROBOT/backend/app/services/ai/ollama_service.py)
+* **File chỉnh sửa:** `backend/app/services/ai/ollama_service.py`
 * **Các cải tiến chính:**
   1. **Mở rộng tập quy tắc Fast-Path:**
      * Bổ sung nhận diện tức thì cho **12 nhóm FAQ khách sạn cốt lõi** (chào hỏi theo buổi sáng/trưa/tối, cảm ơn, tạm biệt, pass Wifi `Aurora_Guest`/`aurora2026`, giờ nhận phòng 14h, trả phòng 12h, hồ bơi Tầng 4, nhà hàng & buffet Tầng 2, phòng Gym Tầng 4, spa Tầng 5, WC sảnh, bãi đỗ xe B1, giới thiệu robot Rora).
@@ -43,7 +44,7 @@ Buổi làm việc tập trung vào việc giải quyết 3 bài toán kỹ thu�
 ---
 
 ### 2.3. Tích Hợp LangGraph Harness Vào Endpoint Streaming (`/chat/stream`)
-* **File chỉnh sửa:** [`backend/app/api/v1/endpoints/ai.py`](file:///d:/FPT%20MATERIALS/9th%20Semeter%20%28Final%29/HCROBOT/backend/app/api/v1/endpoints/ai.py)
+* **File chỉnh sửa:** `backend/app/api/v1/endpoints/ai.py`
 * **Vấn đề trước khi sửa:**
   * Màn hình robot (`RobotScreenPage.jsx`) gọi vào `/chat/stream` nhưng endpoint này bỏ qua hoàn toàn LangGraph Harness, chuyển thẳng câu nói vào Ollama khiến máy mất vài giây suy nghĩ cho cả những câu đơn giản như "pass wifi là gì".
 * **Kiến trúc mới sau khi tích hợp:**
@@ -73,9 +74,9 @@ Buổi làm việc tập trung vào việc giải quyết 3 bài toán kỹ thu�
 
 ### 2.4. Sửa Dứt Điểm Lỗi Giọng Robot Bị Khựng / Ngắt Quãng Ở Dấu Câu
 * **Files chỉnh sửa:**
-  * Frontend: [`frontend/src/pages/robot/RobotScreenPage.jsx`](file:///d:/FPT%20MATERIALS/9th%20Semeter%20%28Final%29/HCROBOT/frontend/src/pages/robot/RobotScreenPage.jsx)
-  * Backend: [`backend/app/services/ai/pipecat_service.py`](file:///d:/FPT%20MATERIALS/9th%20Semeter%20%28Final%29/HCROBOT/backend/app/services/ai/pipecat_service.py)
-  * API Layer: [`frontend/src/services/aiApi.js`](file:///d:/FPT%20MATERIALS/9th%20Semeter%20%28Final%29/HCROBOT/frontend/src/services/aiApi.js)
+  * Frontend: `frontend/src/pages/robot/RobotScreenPage.jsx`
+  * Backend: `backend/app/services/ai/pipecat_service.py`
+  * API Layer: `frontend/src/services/aiApi.js`
 * **Nguyên nhân gốc rễ gây lỗi:**
   * Trước đây, frontend sử dụng regex `CLAUSE_DELIMITERS = /([,.;:!?\n]+)/` cắt câu tại **cả dấu phẩy (`,`), chấm phẩy (`;`), hai chấm (`:`)**.
   * Ngoài ra, có logic tự động cắt vụn câu sau mỗi **2 – 4 từ** (`threshold: 3`, `takeWords: 2`).
@@ -123,10 +124,10 @@ backend\tests\test_harness.py::test_conversational_generator_harness PASSED [100
 
 ## 📁 5. DANH MỤC CÁC FILE LIÊN QUAN
 
-1. [`backend/.env`](file:///d:/FPT%20MATERIALS/9th%20Semeter%20%28Final%29/HCROBOT/backend/.env): Cấu hình môi trường (`LLM_PROVIDER=ollama`, `VAD_SILENCE_MS=400`).
-2. [`backend/app/api/v1/endpoints/ai.py`](file:///d:/FPT%20MATERIALS/9th%20Semeter%20%28Final%29/HCROBOT/backend/app/api/v1/endpoints/ai.py): Tích hợp LangGraph Harness vào `/chat/stream`.
-3. [`backend/app/services/ai/ollama_service.py`](file:///d:/FPT%20MATERIALS/9th%20Semeter%20%28Final%29/HCROBOT/backend/app/services/ai/ollama_service.py): Mở rộng Mega Fast-Path FAQ & Tối ưu Ollama `num_ctx=1024`, `num_predict=70`.
-4. [`backend/app/services/ai/pipecat_service.py`](file:///d:/FPT%20MATERIALS/9th%20Semeter%20%28Final%29/HCROBOT/backend/app/services/ai/pipecat_service.py): Chuẩn hóa `SENTENCE_DELIMITERS` cho Pipecat Voice Pipeline.
-5. [`frontend/src/pages/robot/RobotScreenPage.jsx`](file:///d:/FPT%20MATERIALS/9th%20Semeter%20%28Final%29/HCROBOT/frontend/src/pages/robot/RobotScreenPage.jsx): Khử triệt để ngắt câu ở dấu phẩy và xóa bỏ cắt từ vụn vặt.
-6. [`frontend/src/services/aiApi.js`](file:///d:/FPT%20MATERIALS/9th%20Semeter%20%28Final%29/HCROBOT/frontend/src/services/aiApi.js): Truyền metadata FSM (`trigger_video_call`, `action`) qua callback `onDone`.
-7. [`backend/tests/test_harness.py`](file:///d:/FPT%20MATERIALS/9th%20Semeter%20%28Final%29/HCROBOT/backend/tests/test_harness.py): Bộ kiểm thử tự động LangGraph Harness.
+1. `backend/.env`: Cấu hình môi trường (`LLM_PROVIDER=ollama`).
+2. `backend/app/api/v1/endpoints/ai.py`: Tích hợp LangGraph Harness vào `/chat/stream`.
+3. `backend/app/services/ai/ollama_service.py`: Mở rộng Mega Fast-Path FAQ & Tối ưu Ollama `num_ctx=1024`, `num_predict=70`.
+4. `backend/app/services/ai/pipecat_service.py`: Chuẩn hóa `SENTENCE_DELIMITERS` cho Pipecat Voice Pipeline.
+5. `frontend/src/pages/robot/RobotScreenPage.jsx`: Khử triệt để ngắt câu ở dấu phẩy và xóa bỏ cắt từ vụn vặt.
+6. `frontend/src/services/aiApi.js`: Truyền metadata FSM (`trigger_video_call`, `action`) qua callback `onDone`.
+7. `backend/tests/test_harness.py`: Bộ kiểm thử tự động LangGraph Harness.

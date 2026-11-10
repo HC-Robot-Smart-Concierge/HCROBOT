@@ -1,5 +1,6 @@
 import React from 'react';
 import {
+  ConciergeBell,
   LayoutDashboard,
   Inbox,
   ClipboardCheck,
@@ -53,6 +54,23 @@ export const AuroraSidebar = ({
     roleLower.includes('admin') ||
     usernameLower === 'admin';
 
+  const isRoomService =
+    activeView === 'room_service' ||
+    activeView === 'room-service' ||
+    deptLower.includes('room service') ||
+    deptLower.includes('roomservice') ||
+    deptLower.includes('phục vụ phòng') ||
+    deptLower.includes('phuc vu phong') ||
+    roleLower.includes('room service') ||
+    roleLower.includes('roomservice') ||
+    usernameLower.includes('roomservice') ||
+    usernameLower.includes('room_service') ||
+    defaultDashLower === 'room_service' ||
+    defaultDashLower === 'room-service' ||
+    deptLower.includes('executive') ||
+    roleLower.includes('admin') ||
+    usernameLower === 'admin';
+
   const staffNavItems = isConcierge
     ? [
         { id: 'LiveCalls', label: 'Live Call Center', icon: PhoneCall },
@@ -62,6 +80,7 @@ export const AuroraSidebar = ({
         { id: 'Requests', label: t('menuRequests'), icon: Inbox },
         { id: 'MyTasks', label: t('menuMyTasks'), icon: ClipboardCheck },
         ...(isKitchen ? [{ id: 'KitchenMenu', label: t('menuKitchenMenu'), icon: UtensilsCrossed }] : []),
+        ...(isRoomService ? [{ id: 'RoomServiceMenu', label: t('menuRoomServiceMenu'), icon: ConciergeBell }] : []),
         { id: 'History', label: t('menuHistory'), icon: History },
         { id: 'Notifications', label: t('menuNotifications'), icon: Bell },
         { id: 'Profile', label: t('menuProfile'), icon: User },
@@ -71,6 +90,7 @@ export const AuroraSidebar = ({
         { id: 'Requests', label: t('menuRequests'), icon: Inbox },
         { id: 'MyTasks', label: t('menuMyTasks'), icon: ClipboardCheck },
         ...(isKitchen ? [{ id: 'KitchenMenu', label: t('menuKitchenMenu'), icon: UtensilsCrossed }] : []),
+        ...(isRoomService ? [{ id: 'RoomServiceMenu', label: t('menuRoomServiceMenu'), icon: ConciergeBell }] : []),
         { id: 'Notifications', label: t('menuNotifications'), icon: Bell },
         { id: 'Profile', label: t('menuProfile'), icon: User },
       ];

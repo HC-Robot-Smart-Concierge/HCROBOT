@@ -1,5 +1,10 @@
 # Quét map một lần và chạy Navigation bằng map tĩnh
 
+> **Tài liệu liên quan:**
+> - Bản đồ code: [[../01-File-Map|01-File-Map (Bản đồ source code)]]
+> - Kiến trúc hệ thống: [[../02-Architecture|02-Architecture (Kiến trúc tổng thể)]]
+> - Đặc tả phần cứng & ROS 2: [[hardware_architecture|Đặc Tả Phần Cứng & ROS 2 Edge]]
+
 HC-Robot có hai chế độ tách biệt. Không chạy đồng thời hai chế độ này:
 
 - `MAPPING`: Slam Toolbox nhận `/scan` và cập nhật `/map`. Chỉ dùng khi đang quét bản đồ mới.
@@ -22,7 +27,7 @@ http://localhost:6080/vnc.html?autoconnect=true&resize=scale
 Điều khiển robot chậm, tránh quay hoặc tăng tốc đột ngột, và đi khép kín một vòng để Slam Toolbox có thể loop-close. Khi map đạt yêu cầu, lưu đúng một lần:
 
 ```powershell
-wsl -d Ubuntu-24.04 bash /mnt/d/do_an_fptu/HCROBOT/robot/ros2_configs/save_ros2_map.sh ten_map
+wsl -d Ubuntu-24.04 bash ./robot/ros2_configs/save_ros2_map.sh ten_map
 ```
 
 Lệnh lưu tạo `robot/maps/ten_map.yaml` và `robot/maps/ten_map.pgm`, rồi khóa phiên mapping.

@@ -14,16 +14,37 @@ export class ErrorBoundary extends React.Component {
     console.error('Unhandled React Error caught by ErrorBoundary:', error, errorInfo);
   }
 
-  handleReset = () => {
-    localStorage.removeItem('aurora_active_view');
-    localStorage.removeItem('aurora_active_menu');
+  handleReset = async () => {
+    try {
+      localStorage.removeItem('aurora_active_view');
+      localStorage.removeItem('aurora_active_menu');
+      if (typeof window !== 'undefined' && 'caches' in window) {
+        const cacheNames = await caches.keys();
+        await Promise.all(cacheNames.map((name) => caches.delete(name)));
+      }
+    } catch {
+      // Ignored
+    }
     this.setState({ hasError: false, error: null });
-    window.location.reload();
+    window.location.replace(window.location.pathname);
   };
 
-  handleLogoutAndReset = () => {
-    localStorage.clear();
-    window.location.reload();
+  handleLogoutAndReset = async () => {
+    try {
+      localStorage.clear();
+      sessionStorage.clear();
+      if (typeof window !== 'undefined' && 'caches' in window) {
+        const cacheNames = await caches.keys();
+        await Promise.all(cacheNames.map((name) => caches.delete(name)));
+      }
+      if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(registrations.map((reg) => reg.unregister()));
+      }
+    } catch {
+      // Ignored
+    }
+    window.location.replace(window.location.pathname);
   };
 
   render() {

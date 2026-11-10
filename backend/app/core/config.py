@@ -23,13 +23,13 @@ class Settings(BaseSettings):
 
 
     # LLM Engine Configuration ('gemini' or 'ollama')
-    LLM_PROVIDER: str = "ollama"
+    LLM_PROVIDER: str = "groq"
     GEMINI_API_KEY: Optional[str] = None
     GEMINI_MODEL: str = "gemini-2.5-flash"
 
     # Ollama Configuration (Llama / Qwen local)
     # Ollama Configuration (Default for all team members)
-    AI_PROVIDER: str = "ollama"  # Options: 'ollama' (default local) | 'groq' (cloud fallback/low-spec test)
+    AI_PROVIDER: str = "groq"  # Options: 'ollama' (default local) | 'groq' (cloud fallback/low-spec test)
     OLLAMA_HOST: str = "http://127.0.0.1:11434"
     OLLAMA_MODEL: str = "llama3.2:3b"
     OLLAMA_EMBED_MODEL: Optional[str] = None
@@ -51,7 +51,8 @@ class Settings(BaseSettings):
     PIPECAT_SAMPLE_RATE: int = 16000
 
     # STT Streaming VAD Configuration (Wait 1.5s of silence before finalizing speech)
-    VAD_SILENCE_MS: int = 1500  # Milliseconds of silence before triggering LLM processing
+    VAD_SILENCE_MS: int = 2000  # Milliseconds of silence before triggering LLM processing
+    WHISPER_MODEL: str = "base"  # Options: 'base', 'tiny', 'small'
 
     # Pi5 Camera Stream Configuration (MJPEG over SSH Tunnel)
     PI5_CAMERA_STREAM_URL: str = "http://localhost:8554/stream"
@@ -78,6 +79,11 @@ class Settings(BaseSettings):
     def is_gemini_active(self) -> bool:
         """Kiểm tra xem Gemini có đang được kích hoạt và có API key hay không."""
         return self.LLM_PROVIDER.lower() == "gemini" and bool(self.GEMINI_API_KEY)
+
+    @property
+    def is_groq_active(self) -> bool:
+        """Kiểm tra xem Groq Cloud có đang được cấu hình API key hay không."""
+        return bool(self.GROQ_API_KEY)
 
     @property
     def active_llm_model(self) -> str:

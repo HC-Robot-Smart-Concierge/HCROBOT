@@ -5,32 +5,45 @@ import { ErrorBoundary } from './components/common/ErrorBoundary.jsx';
 import { LanguageProvider } from './context/LanguageContext.jsx';
 import './index.css';
 
-// Production builds and HTTPS tunnels both need a service worker for installation.
-const localHostnames = new Set(['localhost', '127.0.0.1', '[::1]']);
-const shouldEnablePwa = import.meta.env.PROD
-  || (window.isSecureContext && !localHostnames.has(window.location.hostname));
+// Chỉ bật Service Worker ở bản build Production; ở môi trường Dev (npm run dev), tự động gỡ SW cũ và xóa cache để tránh kẹt trang chủ trên điện thoại.
+const shouldEnablePwa = Boolean(import.meta.env.PROD);
 
-if ('serviceWorker' in navigator && shouldEnablePwa) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).then((registration) => {
-      registration.update();
-      if (registration.waiting) {
-        registration.waiting.postMessage({ type: 'SKIP_WAITING' });
-      }
-      registration.addEventListener('updatefound', () => {
-        const newWorker = registration.installing;
-        if (newWorker) {
-          newWorker.addEventListener('statechange', () => {
-            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-              newWorker.postMessage({ type: 'SKIP_WAITING' });
-            }
-          });
+if ('serviceWorker' in navigator) {
+  if (!shouldEnablePwa) {
+    navigator.serviceWorker.getRegistrations().then((registrations) => {
+      let hadController = Boolean(navigator.serviceWorker.controller);
+      Promise.all(registrations.map((reg) => reg.unregister())).then((results) => {
+        if (window.caches) {
+          window.caches.keys().then((keys) => keys.forEach((k) => window.caches.delete(k)));
+        }
+        if (hadController && results.some(Boolean) && !sessionStorage.getItem('aurora_sw_purged')) {
+          sessionStorage.setItem('aurora_sw_purged', '1');
+          window.location.reload();
         }
       });
-    }).catch((err) => {
-      console.warn('PWA SW registration failed:', err);
+    }).catch(() => {});
+  } else {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).then((registration) => {
+        registration.update();
+        if (registration.waiting) {
+          registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+        }
+        registration.addEventListener('updatefound', () => {
+          const newWorker = registration.installing;
+          if (newWorker) {
+            newWorker.addEventListener('statechange', () => {
+              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                newWorker.postMessage({ type: 'SKIP_WAITING' });
+              }
+            });
+          }
+        });
+      }).catch((err) => {
+        console.warn('PWA SW registration failed:', err);
+      });
     });
-  });
+  }
 }
 
 ReactDOM.createRoot(document.getElementById('root')).render(

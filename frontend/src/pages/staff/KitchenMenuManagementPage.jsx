@@ -36,6 +36,7 @@ import {
   updateKitchenMenuItem,
   removeKitchenMenuItem,
 } from '../../services/operationsApi';
+import { handleNumberInputBlockExponent } from '../../utils/numberInputHelper';
 
 export const KitchenMenuManagementPage = ({ currentUser, onNotify = () => {}, onNavigate = () => {} }) => {
   const staffName = currentUser?.full_name || currentUser?.name || 'Đầu Bếp Trực Ca';
@@ -126,7 +127,7 @@ export const KitchenMenuManagementPage = ({ currentUser, onNotify = () => {}, on
       }
     } catch (err) {
       console.error('Error loading kitchen menu data:', err);
-      onNotify('⚠️ Không thể tải dữ liệu thực đơn từ máy chủ');
+      onNotify('Không thể tải dữ liệu thực đơn từ máy chủ');
     } finally {
       setIsLoading(false);
     }
@@ -231,7 +232,7 @@ export const KitchenMenuManagementPage = ({ currentUser, onNotify = () => {}, on
   const handleSaveFoodItem = async (e) => {
     e.preventDefault();
     if (!foodForm.name.trim()) {
-      onNotify('⚠️ Vui lòng nhập tên món ăn');
+      onNotify('Vui lòng nhập tên món ăn');
       return;
     }
 
@@ -240,17 +241,17 @@ export const KitchenMenuManagementPage = ({ currentUser, onNotify = () => {}, on
         // Update
         const updated = await updateKitchenFoodItem(editingFood.id, foodForm);
         setFoodItems((prev) => prev.map((f) => (f.id === editingFood.id ? { ...f, ...updated } : f)));
-        onNotify(`✅ Đã cập nhật món: ${foodForm.name}`);
+        onNotify(`Đã cập nhật món: ${foodForm.name}`);
       } else {
         // Create
         const created = await createKitchenFoodItem(foodForm);
         setFoodItems((prev) => [created, ...prev]);
-        onNotify(`✅ Đã thêm món mới vào kho gốc: ${foodForm.name}`);
+        onNotify(`Đã thêm món mới vào kho gốc: ${foodForm.name}`);
       }
       setFoodModalOpen(false);
     } catch (err) {
       console.error('Error saving food item:', err);
-      onNotify('❌ Lỗi khi lưu món ăn. Vui lòng thử lại!');
+      onNotify('Lỗi khi lưu món ăn. Vui lòng thử lại!');
     }
   };
 
@@ -261,9 +262,9 @@ export const KitchenMenuManagementPage = ({ currentUser, onNotify = () => {}, on
       setFoodItems((prev) =>
         prev.map((f) => (f.id === food.id ? { ...f, is_available: nextVal } : f))
       );
-      onNotify(`${nextVal ? '🟢 Mở phục vụ' : '🔴 Tạm ngưng món'}: ${food.name}`);
+      onNotify(`${nextVal ? 'Mở phục vụ' : 'Tạm ngưng món'}: ${food.name}`);
     } catch {
-      onNotify('⚠️ Lỗi khi cập nhật trạng thái món ăn');
+      onNotify('Lỗi khi cập nhật trạng thái món ăn');
     }
   };
 
@@ -271,10 +272,10 @@ export const KitchenMenuManagementPage = ({ currentUser, onNotify = () => {}, on
     try {
       await deleteKitchenFoodItem(foodId);
       setFoodItems((prev) => prev.filter((f) => f.id !== foodId));
-      onNotify('🗑️ Đã xóa món ăn khỏi kho dữ liệu gốc');
+      onNotify('Đã xóa món ăn khỏi kho dữ liệu gốc');
       setDeleteConfirm(null);
     } catch {
-      onNotify('⚠️ Không thể xóa món ăn');
+      onNotify('Không thể xóa món ăn');
     }
   };
 
@@ -305,7 +306,7 @@ export const KitchenMenuManagementPage = ({ currentUser, onNotify = () => {}, on
   const handleSaveMenu = async (e) => {
     e.preventDefault();
     if (!menuForm.name.trim()) {
-      onNotify('⚠️ Vui lòng nhập tên thực đơn');
+      onNotify('Vui lòng nhập tên thực đơn');
       return;
     }
 
@@ -313,16 +314,16 @@ export const KitchenMenuManagementPage = ({ currentUser, onNotify = () => {}, on
       if (editingMenu) {
         const updated = await updateKitchenMenu(editingMenu.id, menuForm);
         setMenus((prev) => prev.map((m) => (m.id === editingMenu.id ? { ...m, ...updated } : m)));
-        onNotify(`✅ Đã cập nhật thực đơn: ${menuForm.name}`);
+        onNotify(`Đã cập nhật thực đơn: ${menuForm.name}`);
       } else {
         const created = await createKitchenMenu(menuForm);
         setMenus((prev) => [...prev, created]);
         setSelectedMenuId(created.id);
-        onNotify(`✅ Đã tạo thực đơn mới: ${menuForm.name}`);
+        onNotify(`Đã tạo thực đơn mới: ${menuForm.name}`);
       }
       setMenuModalOpen(false);
     } catch {
-      onNotify('❌ Lỗi khi lưu thực đơn');
+      onNotify('Lỗi khi lưu thực đơn');
     }
   };
 
@@ -333,9 +334,9 @@ export const KitchenMenuManagementPage = ({ currentUser, onNotify = () => {}, on
       setMenus((prev) =>
         prev.map((m) => (m.id === menu.id ? { ...m, is_active: nextVal } : m))
       );
-      onNotify(`${nextVal ? '🟢 Kích hoạt' : '⏸️ Tạm dừng thực đơn'}: ${menu.name}`);
+      onNotify(`${nextVal ? 'Kích hoạt' : 'Tạm dừng thực đơn'}: ${menu.name}`);
     } catch {
-      onNotify('⚠️ Lỗi khi cập nhật trạng thái thực đơn');
+      onNotify('Lỗi khi cập nhật trạng thái thực đơn');
     }
   };
 
@@ -347,10 +348,10 @@ export const KitchenMenuManagementPage = ({ currentUser, onNotify = () => {}, on
       if (selectedMenuId === menuId) {
         setSelectedMenuId(remaining.length > 0 ? remaining[0].id : '');
       }
-      onNotify('🗑️ Đã xóa thực đơn');
+      onNotify('Đã xóa thực đơn');
       setDeleteConfirm(null);
     } catch {
-      onNotify('⚠️ Lỗi khi xóa thực đơn');
+      onNotify('Lỗi khi xóa thực đơn');
     }
   };
 
@@ -359,7 +360,7 @@ export const KitchenMenuManagementPage = ({ currentUser, onNotify = () => {}, on
   // -------------------------------------------------------------
   const handleOpenAssignModal = () => {
     if (!selectedMenuId) {
-      onNotify('⚠️ Vui lòng chọn một thực đơn trước');
+      onNotify('Vui lòng chọn một thực đơn trước');
       return;
     }
     setAssignForm({
@@ -375,7 +376,7 @@ export const KitchenMenuManagementPage = ({ currentUser, onNotify = () => {}, on
   const handleAssignFoodToMenu = async (e) => {
     e.preventDefault();
     if (!assignForm.food_item_id) {
-      onNotify('⚠️ Vui lòng chọn món ăn từ kho gốc');
+      onNotify('Vui lòng chọn món ăn từ kho gốc');
       return;
     }
 
@@ -389,10 +390,10 @@ export const KitchenMenuManagementPage = ({ currentUser, onNotify = () => {}, on
 
       // Reload items for current menu
       await loadMenuItemsForCurrentMenu(selectedMenuId);
-      onNotify(`✅ Đã gán món vào thực đơn: ${currentMenu?.name}`);
+      onNotify(`Đã gán món vào thực đơn: ${currentMenu?.name}`);
       setAssignModalOpen(false);
     } catch {
-      onNotify('❌ Lỗi khi gán món vào thực đơn');
+      onNotify('Lỗi khi gán món vào thực đơn');
     }
   };
 
@@ -428,10 +429,10 @@ export const KitchenMenuManagementPage = ({ currentUser, onNotify = () => {}, on
             : it
         )
       );
-      onNotify('✅ Đã cập nhật giá và thông tin món trong thực đơn');
+      onNotify('Đã cập nhật giá và thông tin món trong thực đơn');
       setEditingMenuItem(null);
     } catch {
-      onNotify('❌ Lỗi khi cập nhật món trong thực đơn');
+      onNotify('Lỗi khi cập nhật món trong thực đơn');
     }
   };
 
@@ -442,9 +443,9 @@ export const KitchenMenuManagementPage = ({ currentUser, onNotify = () => {}, on
       setMenuItems((prev) =>
         prev.map((it) => (it.id === item.id ? { ...it, is_available: nextVal } : it))
       );
-      onNotify(`${nextVal ? '🟢 Mở phục vụ' : '🔴 Tạm dừng phục vụ món'}: ${item.name || item.food_item?.name}`);
+      onNotify(`${nextVal ? 'Mở phục vụ' : 'Tạm dừng phục vụ món'}: ${item.name || item.food_item?.name}`);
     } catch {
-      onNotify('⚠️ Lỗi cập nhật trạng thái món');
+      onNotify('Lỗi cập nhật trạng thái món');
     }
   };
 
@@ -452,10 +453,10 @@ export const KitchenMenuManagementPage = ({ currentUser, onNotify = () => {}, on
     try {
       await removeKitchenMenuItem(selectedMenuId, menuItemId);
       setMenuItems((prev) => prev.filter((it) => it.id !== menuItemId));
-      onNotify('🗑️ Đã gỡ món khỏi thực đơn');
+      onNotify('Đã gỡ món khỏi thực đơn');
       setDeleteConfirm(null);
     } catch {
-      onNotify('⚠️ Lỗi khi gỡ món khỏi thực đơn');
+      onNotify('Lỗi khi gỡ món khỏi thực đơn');
     }
   };
 
@@ -1107,7 +1108,8 @@ export const KitchenMenuManagementPage = ({ currentUser, onNotify = () => {}, on
                     min="1"
                     max="180"
                     value={foodForm.prep_time_minutes}
-                    onChange={(e) => setFoodForm({ ...foodForm, prep_time_minutes: Number(e.target.value) })}
+                    onKeyDown={(e) => handleNumberInputBlockExponent(e, { allowDecimal: false })}
+                    onChange={(e) => setFoodForm({ ...foodForm, prep_time_minutes: Math.max(1, Number(e.target.value) || 1) })}
                     className="w-full px-3.5 py-2 rounded-xl bg-[#FAF8F5] border border-stone-300 text-xs font-semibold text-stone-900 outline-none"
                   />
                 </div>
@@ -1312,7 +1314,8 @@ export const KitchenMenuManagementPage = ({ currentUser, onNotify = () => {}, on
                     required
                     placeholder="Ví dụ: 85000"
                     value={assignForm.price}
-                    onChange={(e) => setAssignForm({ ...assignForm, price: Number(e.target.value) })}
+                    onKeyDown={(e) => handleNumberInputBlockExponent(e)}
+                    onChange={(e) => setAssignForm({ ...assignForm, price: Math.max(0, Number(e.target.value) || 0) })}
                     className="w-full px-3.5 py-2 rounded-xl bg-[#FAF8F5] border border-stone-300 text-xs font-bold text-amber-900 outline-none"
                   />
                 </div>
@@ -1323,7 +1326,8 @@ export const KitchenMenuManagementPage = ({ currentUser, onNotify = () => {}, on
                     type="number"
                     min="0"
                     value={assignForm.display_order}
-                    onChange={(e) => setAssignForm({ ...assignForm, display_order: Number(e.target.value) })}
+                    onKeyDown={(e) => handleNumberInputBlockExponent(e, { allowDecimal: false })}
+                    onChange={(e) => setAssignForm({ ...assignForm, display_order: Math.max(0, Number(e.target.value) || 0) })}
                     className="w-full px-3.5 py-2 rounded-xl bg-[#FAF8F5] border border-stone-300 text-xs font-semibold text-stone-900 outline-none"
                   />
                 </div>
@@ -1396,7 +1400,8 @@ export const KitchenMenuManagementPage = ({ currentUser, onNotify = () => {}, on
                   step="1000"
                   required
                   value={editItemForm.price}
-                  onChange={(e) => setEditItemForm({ ...editItemForm, price: Number(e.target.value) })}
+                  onKeyDown={(e) => handleNumberInputBlockExponent(e)}
+                  onChange={(e) => setEditItemForm({ ...editItemForm, price: Math.max(0, Number(e.target.value) || 0) })}
                   className="w-full px-3.5 py-2 rounded-xl bg-[#FAF8F5] border border-stone-300 text-sm font-black text-amber-900 outline-none"
                 />
               </div>
@@ -1407,7 +1412,8 @@ export const KitchenMenuManagementPage = ({ currentUser, onNotify = () => {}, on
                   type="number"
                   min="0"
                   value={editItemForm.display_order}
-                  onChange={(e) => setEditItemForm({ ...editItemForm, display_order: Number(e.target.value) })}
+                  onKeyDown={(e) => handleNumberInputBlockExponent(e, { allowDecimal: false })}
+                  onChange={(e) => setEditItemForm({ ...editItemForm, display_order: Math.max(0, Number(e.target.value) || 0) })}
                   className="w-full px-3.5 py-2 rounded-xl bg-[#FAF8F5] border border-stone-300 text-xs font-semibold text-stone-900 outline-none"
                 />
               </div>
@@ -1465,7 +1471,7 @@ export const KitchenMenuManagementPage = ({ currentUser, onNotify = () => {}, on
                 <>
                   Bạn có chắc chắn muốn gỡ món <strong className="text-stone-900">"{deleteConfirm.name}"</strong> khỏi thực đơn này?{' '}
                   <span className="block mt-1 text-emerald-700 font-medium">
-                    ✓ Món ăn trong <strong>Kho Món Ăn Gốc</strong> vẫn được giữ nguyên.
+                    - Món ăn trong <strong>Kho Món Ăn Gốc</strong> vẫn được giữ nguyên.
                   </span>
                 </>
               ) : (

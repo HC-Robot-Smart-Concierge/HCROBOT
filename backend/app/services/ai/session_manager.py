@@ -5,6 +5,33 @@ from typing import Dict, Any, List, Optional
 
 logger = logging.getLogger(__name__)
 
+WORD_TO_DIGIT = {
+    'không': '0', 'khong': '0', 'linh': '0', 'lẻ': '0', 'le': '0',
+    'một': '1', 'mot': '1', 'mốt': '1', '1': '1',
+    'hai': '2', '2': '2',
+    'ba': '3', '3': '3',
+    'bốn': '4', 'bon': '4', 'tư': '4', 'tu': '4', '4': '4',
+    'năm': '5', 'nam': '5', 'lăm': '5', 'lam': '5', '5': '5',
+    'sáu': '6', 'sau': '6', '6': '6',
+    'bảy': '7', 'bay': '7', 'bẩy': '7', '7': '7',
+    'tám': '8', 'tam': '8', '8': '8',
+    'chín': '9', 'chin': '9', '9': '9',
+}
+
+# Danh sách chuẩn 20 phòng lưu trú của khách sạn Aurora Grand (Tầng 3: 301-310, Tầng 4: 401-410)
+VALID_HOTEL_ROOMS = {
+    "301", "302", "303", "304", "305", "306", "307", "308", "309", "310",
+    "401", "402", "403", "404", "405", "406", "407", "408", "409", "410"
+}
+
+
+def is_valid_hotel_room(room_number: Optional[str]) -> bool:
+    """Kiểm tra xem số phòng có tồn tại hợp lệ trong danh mục phòng lưu trú của khách sạn hay không."""
+    if not room_number:
+        return False
+    return str(room_number).strip() in VALID_HOTEL_ROOMS
+
+
 
 def extract_room_number(text: str, is_answering_room: bool = False) -> Optional[str]:
     """
@@ -47,7 +74,31 @@ def extract_room_number(text: str, is_answering_room: bool = False) -> Optional[
     if pattern_stay:
         return pattern_stay.group(1)
 
-    # 4. Khi đang trong trạng thái chờ khách bổ sung số phòng (is_answering_room=True)
+    # 4. Nhận diện số phòng bằng chữ nói tiếng Việt: "ba lẻ một", "ba lẻ 1", "ba không một", "ba trăm lẻ một", "bốn lẻ hai", "năm linh ba"
+    pat_spoken1 = re.search(
+        r'(?:phòng|phong|room|p\.|p)?\s*(?:số|so)?\s*\b(một|hai|ba|bốn|tư|năm|sáu|bảy|bẩy|tám|chín|[1-9])\s+(?:trăm\s+)?(?:lẻ|linh|không|khong|le)\s+(một|mốt|hai|ba|bốn|tư|năm|lăm|sáu|bảy|bẩy|tám|chín|[0-9])\b',
+        clean,
+        re.IGNORECASE
+    )
+    if pat_spoken1:
+        d1 = WORD_TO_DIGIT.get(pat_spoken1.group(1).lower())
+        d2 = WORD_TO_DIGIT.get(pat_spoken1.group(2).lower())
+        if d1 and d2:
+            return f"{d1}0{d2}"
+
+    pat_spoken2 = re.search(
+        r'(?:phòng|phong|room|p\.|p)\s*(?:số|so)?\s*\b(một|hai|ba|bốn|tư|năm|sáu|bảy|bẩy|tám|chín|[1-9])\s+(không|khong|linh|một|hai|ba|bốn|tư|năm|sáu|bảy|bẩy|tám|chín|[0-9])\s+(một|mốt|hai|ba|bốn|tư|năm|lăm|sáu|bảy|bẩy|tám|chín|[0-9])\b',
+        clean,
+        re.IGNORECASE
+    )
+    if pat_spoken2:
+        d1 = WORD_TO_DIGIT.get(pat_spoken2.group(1).lower())
+        d2 = WORD_TO_DIGIT.get(pat_spoken2.group(2).lower())
+        d3 = WORD_TO_DIGIT.get(pat_spoken2.group(3).lower())
+        if d1 and d2 and d3:
+            return f"{d1}{d2}{d3}"
+
+    # 5. Khi đang trong trạng thái chờ khách bổ sung số phòng (is_answering_room=True)
     if is_answering_room:
         # Bắt số 3-4 chữ số trong câu (ngoại trừ các năm dương lịch 2020-2035)
         matches = re.findall(r'\b([1-9][0-9]{2,3})\b', clean)
@@ -91,8 +142,11 @@ class SessionMemoryManager:
             self._sessions[session_id] = {
                 "chat_history": [],
                 "room_number": None,
+                "authenticated_room": None,
+                "is_room_authenticated": False,
                 "guest_name": None,
                 "pending_intent": None,
+                "language": None,
                 "last_active": now,
             }
         else:
@@ -244,15 +298,47 @@ class SessionMemoryManager:
             return False
 
         clean_room = str(room_number).strip()
+        # Chặn tuyệt đối không lưu phòng không tồn tại vào phiên hội thoại
+        if not is_valid_hotel_room(clean_room):
+            logger.warning(f"[SessionMemory] Refusing to set non-existent room '{clean_room}' in session '{session_id}'")
+            return False
+
         session = self.get_session(session_id)
         old_room = session.get("room_number")
 
         if clean_room != old_room:
             logger.info(f"[SessionMemory] Room set/updated in session '{session_id}': {old_room} -> {clean_room}")
             session["room_number"] = clean_room
+            if session.get("authenticated_room") != clean_room:
+                session["is_room_authenticated"] = False
             return True
 
         return False
+
+    def is_room_authenticated(self, session_id: str = "default_session", room_number: Optional[str] = None) -> bool:
+        """Kiểm tra xem phòng đã được xác thực PIN trong session hay chưa."""
+        session = self.get_session(session_id)
+        auth_room = session.get("authenticated_room")
+        is_auth = bool(session.get("is_room_authenticated", False))
+        if not auth_room or not is_auth:
+            return False
+        if room_number:
+            return str(auth_room).strip() == str(room_number).strip()
+        return True
+
+    def set_room_authenticated(self, session_id: str, room_number: str):
+        """Đánh dấu phòng đã xác thực PIN thành công trong session."""
+        session = self.get_session(session_id)
+        clean = str(room_number).strip()
+        session["authenticated_room"] = clean
+        session["is_room_authenticated"] = True
+        logger.info(f"[SessionMemory] Room '{clean}' authenticated in session '{session_id}'")
+
+    def clear_room_authentication(self, session_id: str = "default_session"):
+        """Xóa trạng thái xác thực PIN phòng trong session."""
+        session = self.get_session(session_id)
+        session["authenticated_room"] = None
+        session["is_room_authenticated"] = False
 
     def get_pending_intent(self, session_id: str = "default_session") -> Optional[Dict[str, Any]]:
         """Lấy ý định dịch vụ đang chờ bổ sung số phòng."""
@@ -272,6 +358,20 @@ class SessionMemoryManager:
         """Xóa ý định dịch vụ chờ sau khi đã xử lý xong hoặc tạo ticket."""
         session = self.get_session(session_id)
         session["pending_intent"] = None
+
+    def get_language(self, session_id: str = "default_session") -> Optional[str]:
+        """Lấy ngôn ngữ giao tiếp đã được lưu cho phiên (nếu có)."""
+        session = self.get_session(session_id)
+        return session.get("language")
+
+    def set_language(self, session_id: str, language: str):
+        """Cập nhật ngôn ngữ giao tiếp cho phiên hội thoại (VD: 'English', 'Tiếng Việt')."""
+        if not language:
+            return
+        clean_lang = str(language).strip()
+        session = self.get_session(session_id)
+        session["language"] = clean_lang
+        logger.info(f"[SessionMemory] Session '{session_id}' language set to '{clean_lang}'")
 
     def reset_session(self, session_id: str = "default_session"):
         """Xoá sạch bộ nhớ phiên (Dùng khi bấm nút Khách Mới / Đổi Phòng)."""

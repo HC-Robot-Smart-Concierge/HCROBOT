@@ -25,17 +25,18 @@ import {
   Map as MapIcon,
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
+import { calculateFloorRoute } from '../../services/indoorNavigation/index.js';
 
 // Danh sách cấu hình 8 Tầng trong khách sạn
 export const HOTEL_FLOORS = [
-  { id: '1', level: 'B2', name: 'Hầm B2 · Bãi Đỗ Xe Ô Tô', image: '/maps/1.png' },
-  { id: '2', level: 'B1', name: 'Hầm B1 · Bãi Xe Máy', image: '/maps/2.png' },
-  { id: '3', level: 'Ground', name: 'Tầng Trệt · Sảnh & Tiếp Tân', image: '/maps/3.png' },
-  { id: '4', level: 'Tầng 2', name: 'Tầng 2 · Bếp & Nhà Hàng (Kitchen & Pickup)', image: '/maps/4.png' },
-  { id: '5', level: 'Tầng 3', name: 'Tầng 3 · Phòng Nghỉ (301-309)', image: '/maps/5.png' },
-  { id: '6', level: 'Tầng 4', name: 'Tầng 4 · Phòng Nghỉ (401-409)', image: '/maps/6.png' },
-  { id: '7', level: 'Tầng 5', name: 'Tầng 5 · Hồ Bơi, Spa & Gym', image: '/maps/7.png' },
-  { id: '8', level: 'Tầng 6', name: 'Tầng 6 · Rooftop Coffee & Bar', image: '/maps/8.png' },
+  { id: '1', level: 'B2', name: 'Hầm B2 · Bãi Đỗ Xe Ô Tô', image: '/maps/floor_b2.png', width: 1840, height: 1174 },
+  { id: '2', level: 'B1', name: 'Hầm B1 · Bãi Xe Máy', image: '/maps/floor_b1.png', width: 1840, height: 1174 },
+  { id: '3', level: 'Ground', name: 'Tầng Trệt · Sảnh & Tiếp Tân', image: '/maps/floor_1.png', width: 1840, height: 1174 },
+  { id: '4', level: 'Tầng 2', name: 'Tầng 2 · Bếp & Nhà Hàng (Kitchen & Pickup)', image: '/maps/floor_2.png', width: 1840, height: 1174 },
+  { id: '5', level: 'Tầng 3', name: 'Tầng 3 · Phòng Nghỉ (301-310)', image: '/maps/floor_3.png', width: 1840, height: 1174 },
+  { id: '6', level: 'Tầng 4', name: 'Tầng 4 · Phòng Nghỉ (401-410)', image: '/maps/floor_4.png', width: 1840, height: 1174 },
+  { id: '7', level: 'Tầng 5', name: 'Tầng 5 · Hồ Bơi, Spa & Gym', image: '/maps/floor_5.png', width: 1840, height: 1174 },
+  { id: '8', level: 'Tầng 6', name: 'Tầng 6 · Rooftop Coffee & Bar', image: '/maps/floor_6.png', width: 1840, height: 1174 },
 ];
 
 // Danh bạ các điểm đến (POI) nổi bật
@@ -53,8 +54,8 @@ export const HOTEL_DESTINATIONS = {
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Đi từ sảnh Lobby đến Thang máy A và bấm lên Tầng 5.',
     step2Text: 'Chặng 2: Ra khỏi thang máy, rẽ trái đi hết hành lang qua cửa kính là đến Hồ bơi vô cực.',
-    coords: { x: 806, y: 420 },
-    routeTarget: 'M 1232 415 L 1232 525 L 806 525 L 806 420',
+    coords: { x: 380, y: 230 },
+    routeTarget: 'M 1715 560 L 1005 560 Q 940 560, 900 620 L 870 700 Q 855 745, 820 745 L 680 745 Q 600 745, 600 680 L 600 360 Q 600 270, 520 250 L 380 230',
   },
   gym: {
     id: 'gym',
@@ -68,8 +69,8 @@ export const HOTEL_DESTINATIONS = {
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Đi tới Thang máy A và bấm lên Tầng 5.',
     step2Text: 'Chặng 2: Ra khỏi thang máy, đi thẳng xuống phía dưới để vào Phòng Gym.',
-    coords: { x: 1180, y: 650 },
-    routeTarget: 'M 1232 415 L 1232 525 L 1180 525 L 1180 650',
+    coords: { x: 1450, y: 880 },
+    routeTarget: 'M 1715 560 L 1490 560 Q 1450 560, 1450 600 L 1450 715 L 1450 880',
   },
   spa: {
     id: 'spa',
@@ -83,8 +84,8 @@ export const HOTEL_DESTINATIONS = {
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Đi tới Thang máy A và bấm lên Tầng 5.',
     step2Text: 'Chặng 2: Ra khỏi thang máy, rẽ trái 15m vào cửa phòng Spa.',
-    coords: { x: 1054, y: 420 },
-    routeTarget: 'M 1232 415 L 1232 525 L 1054 525 L 1054 420',
+    coords: { x: 1080, y: 230 },
+    routeTarget: 'M 1715 560 L 1120 560 Q 1080 560, 1080 520 L 1080 458 L 1080 230',
   },
 
   // === TẦNG 2: BẾP, NHÀ HÀNG & F&B (MAP 4.PNG MỚI) ===
@@ -100,8 +101,8 @@ export const HOTEL_DESTINATIONS = {
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Đi từ sảnh tiếp tân ra Thang máy A và bấm lên Tầng 2.',
     step2Text: 'Chặng 2: Ra khỏi thang máy, đi thẳng theo hành lang vào Quầy Nhận Món & Nhà hàng.',
-    coords: { x: 965, y: 412 },
-    routeTarget: 'M 1249 410 L 1249 470 C 1249 480, 1220 480, 1180 480 L 1120 480 C 1060 480, 1000 450, 965 412',
+    coords: { x: 800, y: 260 },
+    routeTarget: 'M 1715 560 L 1391 322 Q 1375 310, 1356 304 L 1239 266 Q 1220 260, 1200 260 L 800 260',
   },
   kitchen: {
     id: 'kitchen',
@@ -115,8 +116,8 @@ export const HOTEL_DESTINATIONS = {
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Đi từ sảnh tiếp tân ra Thang máy A và bấm lên Tầng 2.',
     step2Text: 'Chặng 2: Ra khỏi thang máy, đi dọc hành lang bên phải rẽ vào cửa Khu Bếp Chính.',
-    coords: { x: 860, y: 660 },
-    routeTarget: 'M 1249 410 L 1249 536 C 1249 550, 1220 560, 1150 560 L 980 560 C 920 560, 890 600, 860 660',
+    coords: { x: 680, y: 850 },
+    routeTarget: 'M 1715 560 L 1393 711 Q 1375 720, 1355 722 L 1120 748 Q 1100 750, 1081 755 L 680 850',
   },
   preparation_area: {
     id: 'preparation_area',
@@ -130,8 +131,8 @@ export const HOTEL_DESTINATIONS = {
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Đi tới Thang máy A và bấm lên Tầng 2.',
     step2Text: 'Chặng 2: Đi qua sảnh nhận món sang phòng sơ chế thực phẩm góc bên trái.',
-    coords: { x: 642, y: 412 },
-    routeTarget: 'M 1249 410 L 1249 470 L 1150 470 L 965 470 L 780 470 C 730 470, 680 450, 642 412',
+    coords: { x: 180, y: 260 },
+    routeTarget: 'M 1715 560 L 1391 322 Q 1375 310, 1356 304 L 1239 266 Q 1220 260, 1200 260 L 375 260 Q 355 260, 335 260 L 180 260',
   },
   warehouse: {
     id: 'warehouse',
@@ -145,8 +146,8 @@ export const HOTEL_DESTINATIONS = {
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Đi tới Thang máy A và bấm lên Tầng 2.',
     step2Text: 'Chặng 2: Ra khỏi thang máy, đi thẳng theo hành lang vào Kho thực phẩm bên tay phải.',
-    coords: { x: 1315, y: 560 },
-    routeTarget: 'M 1249 410 L 1249 560 L 1315 560',
+    coords: { x: 1600, y: 160 },
+    routeTarget: 'M 1715 560 L 1561 327 Q 1550 310, 1556 291 L 1600 160',
   },
   restroom_f2: {
     id: 'restroom_f2',
@@ -160,8 +161,8 @@ export const HOTEL_DESTINATIONS = {
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Đi tới Thang máy A và bấm lên Tầng 2.',
     step2Text: 'Chặng 2: Ra khỏi thang máy, đi thẳng xuống cuối hành lang để vào Nhà Vệ Sinh Nam/Nữ.',
-    coords: { x: 1315, y: 735 },
-    routeTarget: 'M 1249 410 L 1249 735 L 1315 735',
+    coords: { x: 1650, y: 960 },
+    routeTarget: 'M 1715 560 L 1654 850 Q 1650 870, 1650 890 L 1650 960',
   },
 
   // === TẦNG 3: PHÒNG NGHỈ 301 - 309 (MAP 5.PNG) ===
@@ -177,8 +178,8 @@ export const HOTEL_DESTINATIONS = {
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 3.',
     step2Text: 'Chặng 2: Ra khỏi thang máy, rẽ vào hành lang và bước vào Phòng 301 ngay cạnh thang máy.',
-    coords: { x: 1105, y: 370 },
-    routeTarget: 'M 1249 410 L 1249 540 L 1105 540 L 1105 390',
+    coords: { x: 1656, y: 220 },
+    routeTarget: 'M 1715 560 L 1676 560 Q 1656 560, 1656 540 L 1656 220',
   },
   room_302: {
     id: 'room_302',
@@ -192,8 +193,8 @@ export const HOTEL_DESTINATIONS = {
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 3.',
     step2Text: 'Chặng 2: Ra khỏi thang máy, đi dọc hành lang rẽ vào Phòng 302 dãy bên phải.',
-    coords: { x: 945, y: 370 },
-    routeTarget: 'M 1249 410 L 1249 540 L 945 540 L 945 390',
+    coords: { x: 1288, y: 220 },
+    routeTarget: 'M 1715 560 L 1676 560 Q 1656 560, 1656 540 L 1656 240 Q 1656 220, 1636 220 L 1288 220',
   },
   room_303: {
     id: 'room_303',
@@ -207,8 +208,8 @@ export const HOTEL_DESTINATIONS = {
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 3.',
     step2Text: 'Chặng 2: Ra khỏi thang máy, đi thẳng theo hành lang tới Phòng 303 bên tay phải.',
-    coords: { x: 785, y: 370 },
-    routeTarget: 'M 1249 410 L 1249 540 L 785 540 L 785 390',
+    coords: { x: 920, y: 220 },
+    routeTarget: 'M 1715 560 L 1676 560 Q 1656 560, 1656 540 L 1656 240 Q 1656 220, 1636 220 L 920 220',
   },
   room_304: {
     id: 'room_304',
@@ -222,8 +223,8 @@ export const HOTEL_DESTINATIONS = {
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 3.',
     step2Text: 'Chặng 2: Ra khỏi thang máy, đi hết hành lang tới Phòng 304 góc bên phải cuối dãy.',
-    coords: { x: 620, y: 370 },
-    routeTarget: 'M 1249 410 L 1249 540 L 620 540 L 620 390',
+    coords: { x: 552, y: 220 },
+    routeTarget: 'M 1715 560 L 1676 560 Q 1656 560, 1656 540 L 1656 240 Q 1656 220, 1636 220 L 552 220',
   },
   room_305: {
     id: 'room_305',
@@ -237,8 +238,8 @@ export const HOTEL_DESTINATIONS = {
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 3.',
     step2Text: 'Chặng 2: Ra khỏi thang máy, đi hết hành lang sang góc trái dãy dưới là Phòng 305.',
-    coords: { x: 622, y: 705 },
-    routeTarget: 'M 1249 410 L 1249 540 L 622 540 L 622 690',
+    coords: { x: 184, y: 220 },
+    routeTarget: 'M 1715 560 L 1676 560 Q 1656 560, 1656 540 L 1656 240 Q 1656 220, 1636 220 L 184 220',
   },
   room_306: {
     id: 'room_306',
@@ -252,8 +253,8 @@ export const HOTEL_DESTINATIONS = {
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 3.',
     step2Text: 'Chặng 2: Ra khỏi thang máy, đi dọc hành lang rẽ vào Phòng 306.',
-    coords: { x: 790, y: 705 },
-    routeTarget: 'M 1249 410 L 1249 540 L 790 540 L 790 690',
+    coords: { x: 184, y: 920 },
+    routeTarget: 'M 1715 560 L 1676 560 Q 1656 560, 1656 580 L 1656 900 Q 1656 920, 1636 920 L 184 920',
   },
   room_307: {
     id: 'room_307',
@@ -267,8 +268,8 @@ export const HOTEL_DESTINATIONS = {
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 3.',
     step2Text: 'Chặng 2: Ra khỏi thang máy, đi dọc hành lang rẽ vào Phòng 307 dãy đối diện.',
-    coords: { x: 960, y: 705 },
-    routeTarget: 'M 1249 410 L 1249 540 L 960 540 L 960 690',
+    coords: { x: 552, y: 920 },
+    routeTarget: 'M 1715 560 L 1676 560 Q 1656 560, 1656 580 L 1656 900 Q 1656 920, 1636 920 L 552 920',
   },
   room_308: {
     id: 'room_308',
@@ -282,8 +283,8 @@ export const HOTEL_DESTINATIONS = {
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 3.',
     step2Text: 'Chặng 2: Ra khỏi thang máy, đi thẳng xuống dãy phòng đối diện để vào Phòng 308.',
-    coords: { x: 1128, y: 705 },
-    routeTarget: 'M 1249 410 L 1249 540 L 1128 540 L 1128 690',
+    coords: { x: 920, y: 920 },
+    routeTarget: 'M 1715 560 L 1676 560 Q 1656 560, 1656 580 L 1656 900 Q 1656 920, 1636 920 L 920 920',
   },
   room_309: {
     id: 'room_309',
@@ -297,11 +298,27 @@ export const HOTEL_DESTINATIONS = {
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 3.',
     step2Text: 'Chặng 2: Ra khỏi thang máy, đi thẳng xuống góc phải dãy phòng đối diện là Phòng 309.',
-    coords: { x: 1296, y: 705 },
-    routeTarget: 'M 1249 410 L 1249 540 L 1296 540 L 1296 690',
+    coords: { x: 1288, y: 920 },
+    routeTarget: 'M 1715 560 L 1676 560 Q 1656 560, 1656 580 L 1656 900 Q 1656 920, 1636 920 L 1288 920',
   },
 
-  // === TẦNG 4: PHÒNG NGHỈ 401 - 409 (MAP 6.PNG) ===
+  room_310: {
+    id: 'room_310',
+    name: 'Phòng Nghỉ 310',
+    floorId: '5',
+    floorLevel: 'TẦNG 3',
+    category: 'Phòng Khách',
+    icon: '',
+    time: '2 Phút',
+    distance: '85m',
+    isDifferentFloor: true,
+    step1Text: 'Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 3.',
+    step2Text: 'Chặng 2: Ra khỏi thang máy, rẽ vào Phòng 310 ngay cạnh thang máy dãy đối diện.',
+    coords: { x: 1656, y: 920 },
+    routeTarget: 'M 1715 560 L 1676 560 Q 1656 560, 1656 580 L 1656 920',
+  },
+
+  // === TẦNG 4: PHÒNG NGHỈ 401 - 410 (MAP 6.PNG) ===
   room_401: {
     id: 'room_401',
     name: 'Phòng Nghỉ 401',
@@ -314,8 +331,8 @@ export const HOTEL_DESTINATIONS = {
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 4.',
     step2Text: 'Chặng 2: Ra khỏi thang máy, rẽ vào hành lang và bước vào Phòng 401 ngay cạnh thang máy.',
-    coords: { x: 1105, y: 370 },
-    routeTarget: 'M 1249 410 L 1249 540 L 1105 540 L 1105 390',
+    coords: { x: 1656, y: 220 },
+    routeTarget: 'M 1715 560 L 1676 560 Q 1656 560, 1656 540 L 1656 220',
   },
   room_402: {
     id: 'room_402',
@@ -329,8 +346,8 @@ export const HOTEL_DESTINATIONS = {
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 4.',
     step2Text: 'Chặng 2: Ra khỏi thang máy, đi dọc hành lang rẽ vào Phòng 402 dãy bên phải.',
-    coords: { x: 945, y: 370 },
-    routeTarget: 'M 1249 410 L 1249 540 L 945 540 L 945 390',
+    coords: { x: 1288, y: 220 },
+    routeTarget: 'M 1715 560 L 1676 560 Q 1656 560, 1656 540 L 1656 240 Q 1656 220, 1636 220 L 1288 220',
   },
   room_403: {
     id: 'room_403',
@@ -344,8 +361,8 @@ export const HOTEL_DESTINATIONS = {
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 4.',
     step2Text: 'Chặng 2: Ra khỏi thang máy, đi thẳng theo hành lang tới Phòng 403 bên tay phải.',
-    coords: { x: 785, y: 370 },
-    routeTarget: 'M 1249 410 L 1249 540 L 785 540 L 785 390',
+    coords: { x: 920, y: 220 },
+    routeTarget: 'M 1715 560 L 1676 560 Q 1656 560, 1656 540 L 1656 240 Q 1656 220, 1636 220 L 920 220',
   },
   room_404: {
     id: 'room_404',
@@ -359,8 +376,8 @@ export const HOTEL_DESTINATIONS = {
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 4.',
     step2Text: 'Chặng 2: Ra khỏi thang máy, đi hết hành lang tới Phòng 404 góc bên phải cuối dãy.',
-    coords: { x: 620, y: 370 },
-    routeTarget: 'M 1249 410 L 1249 540 L 620 540 L 620 390',
+    coords: { x: 552, y: 220 },
+    routeTarget: 'M 1715 560 L 1676 560 Q 1656 560, 1656 540 L 1656 240 Q 1656 220, 1636 220 L 552 220',
   },
   room_405: {
     id: 'room_405',
@@ -374,8 +391,8 @@ export const HOTEL_DESTINATIONS = {
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 4.',
     step2Text: 'Chặng 2: Ra khỏi thang máy, đi hết hành lang sang góc trái dãy dưới là Phòng 405.',
-    coords: { x: 622, y: 705 },
-    routeTarget: 'M 1249 410 L 1249 540 L 622 540 L 622 690',
+    coords: { x: 184, y: 220 },
+    routeTarget: 'M 1715 560 L 1676 560 Q 1656 560, 1656 540 L 1656 240 Q 1656 220, 1636 220 L 184 220',
   },
   room_406: {
     id: 'room_406',
@@ -389,8 +406,8 @@ export const HOTEL_DESTINATIONS = {
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 4.',
     step2Text: 'Chặng 2: Ra khỏi thang máy, đi dọc hành lang rẽ vào Phòng 406.',
-    coords: { x: 790, y: 705 },
-    routeTarget: 'M 1249 410 L 1249 540 L 790 540 L 790 690',
+    coords: { x: 184, y: 920 },
+    routeTarget: 'M 1715 560 L 1676 560 Q 1656 560, 1656 580 L 1656 900 Q 1656 920, 1636 920 L 184 920',
   },
   room_407: {
     id: 'room_407',
@@ -404,8 +421,8 @@ export const HOTEL_DESTINATIONS = {
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 4.',
     step2Text: 'Chặng 2: Ra khỏi thang máy, đi dọc hành lang rẽ vào Phòng 407 dãy đối diện.',
-    coords: { x: 960, y: 705 },
-    routeTarget: 'M 1249 410 L 1249 540 L 960 540 L 960 690',
+    coords: { x: 552, y: 920 },
+    routeTarget: 'M 1715 560 L 1676 560 Q 1656 560, 1656 580 L 1656 900 Q 1656 920, 1636 920 L 552 920',
   },
   room_408: {
     id: 'room_408',
@@ -419,8 +436,8 @@ export const HOTEL_DESTINATIONS = {
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 4.',
     step2Text: 'Chặng 2: Ra khỏi thang máy, đi thẳng xuống dãy phòng đối diện để vào Phòng 408.',
-    coords: { x: 1128, y: 705 },
-    routeTarget: 'M 1249 410 L 1249 540 L 1128 540 L 1128 690',
+    coords: { x: 920, y: 920 },
+    routeTarget: 'M 1715 560 L 1676 560 Q 1656 560, 1656 580 L 1656 900 Q 1656 920, 1636 920 L 920 920',
   },
   room_409: {
     id: 'room_409',
@@ -434,11 +451,26 @@ export const HOTEL_DESTINATIONS = {
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 4.',
     step2Text: 'Chặng 2: Ra khỏi thang máy, đi thẳng xuống góc phải dãy phòng đối diện là Phòng 409.',
-    coords: { x: 1296, y: 705 },
-    routeTarget: 'M 1249 410 L 1249 540 L 1296 540 L 1296 690',
+    coords: { x: 1288, y: 920 },
+    routeTarget: 'M 1715 560 L 1676 560 Q 1656 560, 1656 580 L 1656 900 Q 1656 920, 1636 920 L 1288 920',
+  },
+  room_410: {
+    id: 'room_410',
+    name: 'Phòng Nghỉ 410',
+    floorId: '6',
+    floorLevel: 'TẦNG 4',
+    category: 'Phòng Khách',
+    icon: '',
+    time: '2.5 Phút',
+    distance: '85m',
+    isDifferentFloor: true,
+    step1Text: 'Chặng 1: Ra Thang máy A tại sảnh và bấm lên Tầng 4.',
+    step2Text: 'Chặng 2: Ra khỏi thang máy, rẽ vào Phòng 410 ngay cạnh thang máy dãy đối diện.',
+    coords: { x: 1656, y: 920 },
+    routeTarget: 'M 1715 560 L 1676 560 Q 1656 560, 1656 580 L 1656 920',
   },
 
-  // === TẦNG 6 ===
+  // === TẦNG 6: ROOFTOP COFFEE, BAR, GIFT SHOP & KARAOKE (MAP 8.PNG) ===
   rooftop_coffee: {
     id: 'rooftop_coffee',
     name: 'Rooftop Coffee & View',
@@ -450,9 +482,9 @@ export const HOTEL_DESTINATIONS = {
     distance: '130m',
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Di chuyển tới Thang máy A và bấm lên Tầng 6 (Cao nhất).',
-    step2Text: 'Chặng 2: Rẽ trái theo hành lang sang khu vực cafe view toàn cảnh thành phố.',
-    coords: { x: 740, y: 380 },
-    routeTarget: 'M 1249 410 L 1249 470 C 1249 480, 1235 480, 1220 480 L 960 480 C 930 480, 915 510, 908 560 C 900 600, 850 590, 820 560 L 820 450 C 820 420, 790 390, 740 380',
+    step2Text: 'Chặng 2: Ra khỏi thang máy, đi thẳng theo hành lang qua cửa trung tâm vào khu vực Rooftop Coffee.',
+    coords: { x: 380, y: 230 },
+    routeTarget: 'M 1715 560 L 1005 560 Q 940 560, 900 620 L 870 700 Q 855 745, 820 745 L 680 745 Q 600 745, 600 680 L 600 360 Q 600 270, 520 250 L 380 230',
   },
   bar: {
     id: 'bar',
@@ -465,9 +497,9 @@ export const HOTEL_DESTINATIONS = {
     distance: '120m',
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Đi tới Thang máy A và bấm lên Tầng 6.',
-    step2Text: 'Chặng 2: Ra khỏi thang máy, rẽ trái 10m là đến Quầy Bar.',
-    coords: { x: 1040, y: 380 },
-    routeTarget: 'M 1249 410 L 1249 470 C 1249 480, 1235 480, 1220 480 L 1080 480 C 1080 450, 1060 420, 1040 380',
+    step2Text: 'Chặng 2: Ra khỏi thang máy, đi dọc hành lang rẽ vào Quầy Bar ở giữa.',
+    coords: { x: 1080, y: 230 },
+    routeTarget: 'M 1715 560 L 1120 560 Q 1080 560, 1080 520 L 1080 458 L 1080 230',
   },
   karaoke: {
     id: 'karaoke',
@@ -480,9 +512,9 @@ export const HOTEL_DESTINATIONS = {
     distance: '125m',
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Đi tới Thang máy A và bấm lên Tầng 6.',
-    step2Text: 'Chặng 2: Ra khỏi thang máy, đi thẳng xuống cuối hành lang vào Phòng Karaoke.',
-    coords: { x: 1140, y: 680 },
-    routeTarget: 'M 1249 410 L 1249 550 C 1249 570, 1230 600, 1200 630 L 1140 680',
+    step2Text: 'Chặng 2: Ra khỏi thang máy, rẽ trái theo hành lang vào Phòng VIP Karaoke.',
+    coords: { x: 1450, y: 880 },
+    routeTarget: 'M 1715 560 L 1490 560 Q 1450 560, 1450 600 L 1450 715 L 1450 880',
   },
 
   // === TẦNG TRỆT & HẦM ===
@@ -498,8 +530,8 @@ export const HOTEL_DESTINATIONS = {
     isDifferentFloor: false,
     step1Text: 'Đi thẳng qua cửa kính sảnh chính, quầy lễ tân nằm ngay bên tay phải bạn.',
     step2Text: '',
-    coords: { x: 995, y: 620 },
-    routeTarget: 'M 796 545 L 930 545 C 960 545, 970 620, 995 620',
+    coords: { x: 880, y: 570 },
+    routeTarget: 'M 350 580 L 350 860 Q 350 880, 370 880 L 780 880 Q 800 880, 805 861 L 880 570',
   },
   restroom_ground: {
     id: 'restroom_ground',
@@ -513,8 +545,8 @@ export const HOTEL_DESTINATIONS = {
     isDifferentFloor: false,
     step1Text: 'Từ sảnh chính, đi về phía tay phải sau quầy lễ tân để vào Nhà Vệ Sinh.',
     step2Text: '',
-    coords: { x: 1045, y: 640 },
-    routeTarget: 'M 796 545 L 930 545 C 960 545, 970 620, 1045 640',
+    coords: { x: 1600, y: 1000 },
+    routeTarget: 'M 350 580 L 350 860 Q 350 880, 370 882 L 1600 1000',
   },
   parking_car: {
     id: 'parking_car',
@@ -527,9 +559,9 @@ export const HOTEL_DESTINATIONS = {
     distance: '90m',
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Di chuyển tới Thang máy A và bấm xuống Hầm B2.',
-    step2Text: 'Chặng 2: Ra khỏi thang máy, rẽ trái để vào khu vực đỗ xe ô tô.',
-    coords: { x: 950, y: 520 },
-    routeTarget: 'M 1249 410 L 1249 470 C 1249 480, 1220 480, 1150 480 L 950 520',
+    step2Text: 'Chặng 2: Ra khỏi thang máy, đi thẳng theo hành lang tới khu vực đỗ xe ô tô Hầm B2.',
+    coords: { x: 880, y: 850 },
+    routeTarget: 'M 1715 560 L 880 850',
   },
   parking_bike: {
     id: 'parking_bike',
@@ -542,9 +574,9 @@ export const HOTEL_DESTINATIONS = {
     distance: '85m',
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Di chuyển tới Thang máy A và bấm xuống Hầm B1.',
-    step2Text: 'Chặng 2: Ra khỏi thang máy, rẽ phải vào khu vực giữ xe máy an toàn.',
-    coords: { x: 950, y: 520 },
-    routeTarget: 'M 1249 410 L 1249 470 C 1249 480, 1220 480, 1150 480 L 950 520',
+    step2Text: 'Chặng 2: Ra khỏi thang máy, đi thẳng theo làn di chuyển vào Bãi đỗ xe máy Hầm B1.',
+    coords: { x: 920, y: 500 },
+    routeTarget: 'M 1715 560 L 920 500',
   },
   gift_shop: {
     id: 'gift_shop',
@@ -557,14 +589,14 @@ export const HOTEL_DESTINATIONS = {
     distance: '120m',
     isDifferentFloor: true,
     step1Text: 'Chặng 1: Di chuyển tới Thang máy A và bấm lên Tầng 6.',
-    step2Text: 'Chặng 2: Ra khỏi thang máy, rẽ trái đi vào sảnh trung tâm là đến Quầy quà lưu niệm.',
-    coords: { x: 950, y: 420 },
-    routeTarget: 'M 1249 410 L 1249 470 C 1249 480, 1220 480, 1150 480 L 950 420',
+    step2Text: 'Chặng 2: Ra khỏi thang máy, đi qua cửa trung tâm và rẽ vào Cửa Hàng Lưu Niệm bên trái.',
+    coords: { x: 200, y: 750 },
+    routeTarget: 'M 1715 560 L 390 634 Q 370 635, 353 646 L 200 750',
   },
 };
 
-// Tuyến đường chuẩn chặng 1: Từ Lobby (Ground) -> Thang máy A (đi thẳng qua cửa sảnh x=908 rồi mới lượn lên hành lang thang máy, hoàn toàn không chạm tường)
-export const ROUTE_GROUND_TO_ELEVATOR = 'M 796 545 L 930 545 C 960 545, 980 480, 1020 480 L 1232 480 L 1232 415';
+// Tuyến đường chuẩn chặng 1: Từ Lobby (Ground) -> Thang máy A (đi vòng tránh bồn cây và quầy lễ tân)
+export const ROUTE_GROUND_TO_ELEVATOR = 'M 350 580 L 350 860 Q 350 880, 370 880 L 1330 880 Q 1350 880, 1362 864 L 1568 576 Q 1580 560, 1600 560 L 1715 560';
 
 // Tạo vé chỉ đường dùng 1 lần (Ephemeral One-time Ticket có thời hạn 15 phút)
 export const createEphemeralTicket = (destKey) => {
@@ -582,35 +614,81 @@ export const createEphemeralTicket = (destKey) => {
   }
 };
 
-// Cache URL vé QR theo destinationKey để mã QR ổn định, không bị render lại giật giật khi đếm ngược
+// Lấy danh sách IP mạng khả dụng của máy chủ (Tailscale VPN & Wi-Fi LAN) để tránh lỗi localhost trên điện thoại
+export const getDetectedNetworkHosts = () => {
+  const tailscaleIp =
+    typeof __DETECTED_TAILSCALE_IP__ !== 'undefined' && __DETECTED_TAILSCALE_IP__
+      ? __DETECTED_TAILSCALE_IP__
+      : '100.64.240.42';
+  const lanIp =
+    typeof __DETECTED_LAN_IP__ !== 'undefined' && __DETECTED_LAN_IP__
+      ? __DETECTED_LAN_IP__
+      : '192.168.1.149';
+  return { tailscaleIp, lanIp };
+};
+
+// Cache URL vé QR theo destinationKey + host để mã QR ổn định, không bị render lại giật giật khi đếm ngược
 const qrTicketCache = new Map();
 
 // Hàm tạo URL chỉ đường di động siêu nhẹ (Standalone 15KB map.html) tối ưu cho quét QR
-export const getMobileGuestMapUrl = (destKey) => {
+// Kèm theo tham số dự phòng &dest= để đảm bảo Alternative Flow luôn đọc được điểm đến
+export const getMobileGuestMapUrl = (destKey, preferredHostIp = null) => {
+  const safeDestKey = destKey || 'infinity_pool';
+  const { tailscaleIp, lanIp } = getDetectedNetworkHosts();
+
+  // Mặc định ưu tiên Wi-Fi LAN (192.168.x.x) để điện thoại bắt Wi-Fi quét vào thẳng ngay lập tức
+  let resolvedHostIp = lanIp || tailscaleIp;
+  try {
+    if (preferredHostIp) {
+      resolvedHostIp = preferredHostIp;
+    } else if (typeof localStorage !== 'undefined') {
+      const savedIp = localStorage.getItem('aurora_qr_network_ip');
+      if (savedIp) {
+        resolvedHostIp = savedIp;
+      } else if (typeof window !== 'undefined') {
+        const h = window.location.hostname;
+        if (h && h !== 'localhost' && h !== '127.0.0.1') {
+          resolvedHostIp = h;
+        }
+      }
+    }
+  } catch {
+    resolvedHostIp = lanIp || tailscaleIp;
+  }
+
+  const cacheKey = `${safeDestKey}__${resolvedHostIp}`;
   const now = Date.now();
-  const cached = qrTicketCache.get(destKey);
+  const cached = qrTicketCache.get(cacheKey);
   // Nếu đã tạo vé trong vòng 10 phút thì giữ nguyên mã QR để không bị giật/đổi hình
   if (cached && cached.expiresAt > now + 60 * 1000) {
     return cached.url;
   }
 
-  const token = createEphemeralTicket(destKey);
+  const token = createEphemeralTicket(safeDestKey);
+  const encodedDest = encodeURIComponent(safeDestKey);
   let url = '';
   try {
-    const origin = window.location.origin;
-    const hostname = window.location.hostname;
-    if (hostname === 'localhost' || hostname === '127.0.0.1') {
-      const port = window.location.port ? `:${window.location.port}` : ':5173';
-      const lanIp = localStorage.getItem('aurora_custom_lan_ip') || '192.168.1.149';
-      url = `${window.location.protocol}//${lanIp}${port}/map.html?t=${token}`;
+    const currentHost = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
+    const isPrivateOrLocalHost =
+      !currentHost ||
+      currentHost === 'localhost' ||
+      currentHost === '127.0.0.1' ||
+      /^\d+\.\d+\.\d+\.\d+$/.test(currentHost);
+
+    if (isPrivateOrLocalHost) {
+      // Sử dụng cổng HTTP 8000 (FastAPI Static Guest Map) khi quét qua Wi-Fi / Tailscale nội bộ:
+      // 1. Tránh 100% lỗi cảnh báo chứng chỉ SSL tự ký (basicSsl) trên Safari / Chrome điện thoại
+      // 2. Tránh 100% Service Worker cũ ở port 3000 chặn request và đẩy về Trang chủ (/)
+      url = `http://${resolvedHostIp}:8000/map.html?t=${token}&dest=${encodedDest}`;
     } else {
-      url = `${origin}/map.html?t=${token}`;
+      // Nếu chạy qua domain công khai / Cloudflare Tunnel / Ngrok thì giữ nguyên origin
+      url = `${window.location.origin}/map.html?t=${token}&dest=${encodedDest}`;
     }
   } catch {
-    url = `http://192.168.1.149:5173/map.html?t=${token}`;
+    url = `http://${resolvedHostIp}:8000/map.html?t=${token}&dest=${encodedDest}`;
   }
 
-  qrTicketCache.set(destKey, { url, expiresAt: now + 15 * 60 * 1000 });
+  qrTicketCache.set(cacheKey, { url, expiresAt: now + 15 * 60 * 1000 });
   return url;
 };
 
@@ -621,6 +699,24 @@ export const getMobileGuestMapUrl = (destKey) => {
 export const detectDestinationPoi = (rawPrompt, activeRoomNumber = null) => {
   if (!rawPrompt || typeof rawPrompt !== 'string') return null;
   const p = rawPrompt.toLowerCase().trim();
+
+  // Tuyệt đối không điều hướng bản đồ khi người dùng đang đặt dịch vụ phòng hoặc hỏi tiến độ
+  const serviceOrderPhrases = ['đặt dịch vụ', 'dat dich vu', 'dịch vụ lên phòng', 'dich vu len phong', 'đặt thêm dịch vụ', 'dat them dich vu', 'muốn đặt dịch vụ', 'muon dat dich vu'];
+  if (serviceOrderPhrases.some((k) => p.includes(k))) return null;
+
+  // Tuyệt đối không điều hướng bản đồ khi người dùng đang hỏi về tiến độ / trạng thái đơn món & dịch vụ
+  const orderStatusPhrases = [
+    'tình trạng', 'tinh trang', 'tiến độ', 'tien do', 'làm món', 'lam mon',
+    'món ăn', 'mon an', 'đồ ăn', 'do an', 'thức ăn', 'thuc an',
+    'làm tới đâu', 'lam toi dau', 'đến đâu rồi', 'den dau roi', 'tới đâu rồi', 'toi dau roi',
+    'xong chưa', 'xong chua', 'làm xong chưa', 'lam xong chua', 'nấu xong chưa', 'chế biến',
+    'giao chưa', 'giao chua', 'kiểm tra đơn', 'kiem tra don', 'kiểm tra món', 'kiem tra mon',
+    'tới phòng chưa', 'toi phong chua', 'đến phòng chưa', 'den phong chua', 'lên phòng chưa', 'len phong chua',
+    'tới chưa', 'toi chua', 'đến chưa', 'den chua', 'mang tới chưa', 'mang toi chua', 'giao tới chưa', 'giao toi chua',
+    'có chưa', 'co chua',
+    'đơn hàng', 'don hang', 'order status', 'food status'
+  ];
+  if (orderStatusPhrases.some((k) => p.includes(k))) return null;
 
   // Bỏ qua các địa điểm ngoại vi khách sạn
   const externalPlaces = [
@@ -634,7 +730,7 @@ export const detectDestinationPoi = (rawPrompt, activeRoomNumber = null) => {
   // Ý định hỏi đường / điều hướng / tìm vị trí
   const navIntentKeywords = [
     'ở đâu', 'o dau', 'chỗ nào', 'cho nao', 'nơi nào', 'noi nao',
-    'tầng mấy', 'tang may', 'ở tầng', 'o tang', 'hướng nào', 'huong nao',
+    'tầng mấy', 'tang may', 'ở tầng', 'o tang', 'tầng 1', 'tầng 2', 'tầng 3', 'tầng 4', 'tầng 5', 'tầng 6', 'lầu 1', 'lầu 2', 'tang 1', 'tang 2', 'floor 1', 'floor 2', 'floor 3', 'floor 4', 'floor 5', 'floor 6', 'f1', 'f2', 'f3', 'f4', 'f5', 'f6', 'hướng nào', 'huong nao',
     'đường đi', 'duong di', 'đường đến', 'duong den', 'đường ra', 'duong ra',
     'chỉ đường', 'chi duong', 'dẫn đường', 'dan duong', 'hướng dẫn đường',
     'lối đi', 'loi di', 'lối lên', 'loi len', 'lối xuống', 'loi xuong',
@@ -650,7 +746,7 @@ export const detectDestinationPoi = (rawPrompt, activeRoomNumber = null) => {
   ];
 
   const directLocPhrases = [
-    'đi vệ sinh', 'di ve sinh', 'đi toilet', 'di toilet', 'đi wc', 'di wc',
+    'đi vệ sinh', 'di ve sinh', 'đi toilet', 'di toilet', 'đi tolet', 'đi toa lét', 'đi to lét', 'đi wc', 'di wc',
     'ra lễ tân', 'ra quầy', 'lên hồ bơi', 'ra hồ bơi', 'xuống bãi xe',
     'vào thang máy', 'lên phòng gym', 'đi massage', 'đi spa'
   ];
@@ -683,33 +779,73 @@ export const detectDestinationPoi = (rawPrompt, activeRoomNumber = null) => {
   if (generalOverviewKeywords.some((k) => p.includes(k)) && !isGeneralRoomQuery) return null;
 
   const words = p.split(/\s+/);
-  const isShortLocation = words.length <= 4 && [
-    'toilet', 'vệ sinh', 'wc', 'hồ bơi', 'pool', 'gym', 'spa',
-    'nhà hàng', 'buffet', 'lễ tân', 'reception', 'bãi xe', 'bar', 'cà phê', 'cafe', 'phòng'
+  const isShortLocation = words.length <= 6 && [
+    'toilet', 'tolet', 'toa lét', 'to lét', 'toilét', 'toalet', 'tô lét', 'toilette', 'vệ sinh', 'wc', 'restroom', 'washroom', 'hồ bơi', 'pool', 'gym', 'spa',
+    'nhà hàng', 'buffet', 'lễ tân', 'reception', 'bãi xe', 'bar', 'quầy bar', 'sky bar', 'quán bar', 'quầy ba', 'sky ba', 'rooftop ba', 'quán ba', 'lên ba', 'đi ba', 'ba ở đâu', 'cà phê', 'cafe', 'phòng'
   ].some((k) => p.includes(k));
 
-  const room4xxMatch = p.match(/\b(?:phòng|p\.?|phong)?\s*(?:số\s*)?(40[1-9])\b/);
-  const room3xxMatch = p.match(/\b(?:phòng|p\.?|phong)?\s*(?:số\s*)?(30[1-9])\b/);
+  const room4xxMatch = p.match(/\b(?:phòng|p\.?|phong)?\s*(?:số\s*)?(40[1-9]|410)\b/);
+  const room3xxMatch = p.match(/\b(?:phòng|p\.?|phong)?\s*(?:số\s*)?(30[1-9]|310)\b/);
 
-  const hasNavIntent = Boolean(room4xxMatch || room3xxMatch || isGeneralRoomQuery) ||
+  // Phân biệt yêu cầu dịch vụ / buồng phòng / F&B (có kèm số phòng) với câu hỏi đường lên phòng
+  const serviceOrderIndicators = [
+    'đặt', 'dat', 'gọi', 'goi', 'order', 'mang', 'giao', 'lấy', 'lay',
+    'đem', 'gửi', 'gui', 'chuyển', 'chuyen', 'thêm', 'them', 'mượn', 'muon',
+    'dọn', 'don', 'sửa', 'sua', 'hỏng', 'hong', 'báo thức', 'cần', 'can',
+    'làm phiền', 'phục vụ', 'phuc vu',
+    // Danh từ vật phẩm, tiện ích phòng và F&B
+    'nước', 'nuoc', 'chai nước', 'nước suối', 'nước khoáng', 'nước lọc',
+    'khăn', 'khan', 'khăn tắm', 'khăn mặt', 'gối', 'goi', 'chăn', 'chan', 'mền', 'men',
+    'nệm', 'nem', 'ga giường', 'dép', 'dep', 'bàn ủi', 'ban ui', 'bàn là', 'ban la',
+    'máy sấy', 'may say', 'bàn chải', 'ban chai', 'kem đánh răng', 'dao cạo', 'dao cao',
+    'dầu gội', 'dau goi', 'sữa tắm', 'sua tam', 'áo choàng', 'ao choang',
+    'đồ ăn', 'do an', 'thức ăn', 'thuc an', 'món ăn', 'mon an', 'cơm', 'phở', 'pho', 'mì', 'mi',
+    'pizza', 'bánh mì', 'cà phê', 'cafe', 'trà', 'tra', 'đá lạnh', 'da lanh',
+    'ly', 'cốc', 'coc', 'chén', 'chen', 'bát', 'bat', 'dĩa', 'dia', 'đĩa', 'muỗng', 'muong', 'thìa', 'thia'
+  ];
+
+  const explicitNavPhrases = [
+    'ở đâu', 'o dau', 'chỗ nào', 'cho nao', 'nơi nào', 'noi nao',
+    'hướng nào', 'huong nao', 'lối nào', 'loi nao', 'đường nào', 'duong nao',
+    'đi hướng nào', 'đi lối nào', 'đi đường nào',
+    'chỉ đường', 'chi duong', 'dẫn đường', 'dan duong', 'hướng dẫn đường',
+    'lối đi', 'loi di', 'lối lên', 'loi len', 'lối xuống', 'loi xuong',
+    'đường đến', 'duong den', 'đường đi', 'duong di', 'đường lên', 'duong len', 'đường về', 'duong ve',
+    'cách đi', 'cach di', 'cách đến', 'cach den', 'làm sao để đến', 'lam sao de den',
+    'tìm phòng', 'tim phong', 'tìm đường', 'tim duong',
+    'where is', 'where are', "where's", 'which way', 'which floor', 'how do i get', 'how to get', 'show me the way', 'directions to', 'lead me to', 'take me to'
+  ];
+
+  const hasItemOrderPattern = /(?:cho|gửi|mang|đem|giao)\s+(?:tôi|toi|em|anh|chị|chi|mình|minh)\s+(?:xin|mượn|muon|\d+|một|hai|ba|bốn|năm|vài|chai|ly|cốc|đĩa|bát|tô|phần|suất|khăn|gối|chăn|mền|bàn|máy|nước|đồ|cơm|phở)/i.test(p);
+  const isServiceOrderContext = hasItemOrderPattern || serviceOrderIndicators.some((w) => p.includes(w));
+  const hasExplicitNav = explicitNavPhrases.some((w) => p.includes(w));
+
+  // Khi có yêu cầu dịch vụ hoặc mang đồ lên phòng mà không có cụm từ hỏi đường tường minh -> Tuyệt đối không coi là Navigation tới phòng
+  if ((room4xxMatch || room3xxMatch || isGeneralRoomQuery) && isServiceOrderContext && !hasExplicitNav) {
+    return null;
+  }
+
+  const roomNavMatch = Boolean((room4xxMatch || room3xxMatch || isGeneralRoomQuery) && (!isServiceOrderContext || hasExplicitNav));
+
+  const hasNavIntent = roomNavMatch ||
     navIntentKeywords.some((k) => p.includes(k)) ||
     directLocPhrases.some((k) => p.includes(k)) ||
     isShortLocation;
 
   if (!hasNavIntent) return null;
 
-  // 1. Nhận diện phòng 4xx (401 -> 409)
-  if (room4xxMatch) return `room_${room4xxMatch[1]}`;
+  // 1. Nhận diện phòng 4xx (401 -> 409) khi có ý định hỏi đường
+  if (roomNavMatch && room4xxMatch) return `room_${room4xxMatch[1]}`;
 
-  // 2. Nhận diện phòng 3xx (301 -> 309)
-  if (room3xxMatch) return `room_${room3xxMatch[1]}`;
+  // 2. Nhận diện phòng 3xx (301 -> 309) khi có ý định hỏi đường
+  if (roomNavMatch && room3xxMatch) return `room_${room3xxMatch[1]}`;
 
   // 3. Nhà vệ sinh (Chỉ kích hoạt khi hỏi nhà vệ sinh / đi vệ sinh, loại trừ đồ vệ sinh cá nhân, băng vệ sinh, dọn dẹp)
-  const isToiletQuery = ['nhà vệ sinh', 'nha ve sinh', 'phòng vệ sinh', 'phong ve sinh', 'đi vệ sinh', 'di ve sinh', 'toilet', 'wc', 'restroom', 'washroom', 'đi toilet', 'chỗ rửa tay'].some((k) => p.includes(k)) ||
-    ((p.includes('vệ sinh') || p.includes('ve sinh')) && ['đi', 'di', 'lối', 'loi', 'hướng', 'huong'].some((w) => p.includes(w)) && !['băng', 'bang', 'đồ', 'do', 'dọn', 'don', 'mua', 'bán', 'ban', 'cá nhân', 'ca nhan', 'tạp hóa', 'siêu thị', 'tampon', 'giấy'].some((neg) => p.includes(neg)));
+  const isToiletQuery = ['nhà vệ sinh', 'nha ve sinh', 'phòng vệ sinh', 'phong ve sinh', 'đi vệ sinh', 'di ve sinh', 'toilet', 'tolet', 'toa lét', 'to lét', 'toilét', 'toalet', 'tô lét', 'toilette', 'wc', 'restroom', 'rest room', 'washroom', 'đi toilet', 'đi tolet', 'đi toa lét', 'chỗ rửa tay', 'nơi rửa tay', 'chỗ đi vệ sinh', 'nơi đi vệ sinh'].some((k) => p.includes(k)) ||
+    ((p.includes('vệ sinh') || p.includes('ve sinh')) && ['đi', 'di', 'lối', 'loi', 'hướng', 'huong', 'tầng', 'tang', 'lầu', 'lau', 'ở đâu', 'o dau', 'chỗ', 'cho', 'nơi', 'noi'].some((w) => p.includes(w)) && !['băng', 'bang', 'đồ', 'do', 'dọn', 'don', 'mua', 'bán', 'ban', 'cá nhân', 'ca nhan', 'tạp hóa', 'siêu thị', 'tampon', 'giấy'].some((neg) => p.includes(neg)));
 
   if (isToiletQuery) {
-    if (['tầng 2', 'nhà hàng', 'bếp', 'kho'].some((k) => p.includes(k))) return 'restroom_f2';
+    if (['tầng 2', 'tang 2', 'lầu 2', 'lau 2', 'f2', 'floor 2', 'nhà hàng', 'bếp', 'kho'].some((k) => p.includes(k))) return 'restroom_f2';
     return 'restroom_ground';
   }
 
@@ -722,7 +858,7 @@ export const detectDestinationPoi = (rawPrompt, activeRoomNumber = null) => {
   // 5. Tầng 5 & 6 tiện ích
   if (['hồ bơi', 'ho boi', 'bể bơi', 'pool', 'bơi'].some((k) => p.includes(k))) return 'infinity_pool';
   if (['rooftop', 'cafe', 'cà phê', 'coffee'].some((k) => p.includes(k))) return 'rooftop_coffee';
-  if (['quầy bar', 'quay bar', 'sky bar', 'sky lounge', 'uống rượu', 'bar'].some((k) => p.includes(k))) return 'bar';
+  if (['quầy bar', 'quay bar', 'sky bar', 'sky lounge', 'uống rượu', 'bar', 'quầy ba', 'quay ba', 'quán ba', 'quan ba', 'sky ba', 'rooftop ba', 'ba ở đâu', 'ba o dau', 'lên ba', 'len ba', 'đi ba', 'di ba', 'uống ở ba'].some((k) => p.includes(k))) return 'bar';
   if (['karaoke', 'hát karaoke', 'phòng hát'].some((k) => p.includes(k))) return 'karaoke';
   if (['gym', 'thể hình', 'the hinh', 'fitness', 'tập gym'].some((k) => p.includes(k))) return 'gym';
   if (['spa', 'massage', 'xông hơi', 'mát xa'].some((k) => p.includes(k))) return 'spa';
@@ -735,8 +871,14 @@ export const detectDestinationPoi = (rawPrompt, activeRoomNumber = null) => {
 
   // 7. Nếu người dùng hỏi đường về phòng chung chung (không có số phòng cụ thể)
   if (isGeneralRoomQuery) {
-    if (activeRoomNumber && /^(?:40[1-9]|30[1-9])$/.test(String(activeRoomNumber).trim())) {
-      return `room_${String(activeRoomNumber).trim()}`;
+    const explicitNavWords = [
+      'chỉ đường', 'chi duong', 'đường lên', 'duong len', 'đường về', 'duong ve',
+      'dẫn tôi', 'dan toi', 'lối lên', 'loi len', 'hướng dẫn lên', 'về phòng', 'lên phòng'
+    ];
+    if (explicitNavWords.some((w) => p.includes(w))) {
+      if (activeRoomNumber && /^(?:40[1-9]|410|30[1-9]|310)$/.test(String(activeRoomNumber).trim())) {
+        return `room_${String(activeRoomNumber).trim()}`;
+      }
     }
     return null; // Không hardcode bất kỳ phòng nào, để robot hỏi lại số phòng
   }
@@ -765,10 +907,11 @@ export const FloorMap = ({
   onSelectDestination,
   className = '',
   onClose,
-  defaultZoom = 2.2,
+  defaultZoom = 1.0,
   showQrModalExternal = false,
   qrCountdown = null,
   onCloseQrModal = null,
+  onStepChange = null,
 }) => {
   // Điểm đến được chọn (hỗ trợ chuyển đổi nhanh trực tiếp giữa các cơ sở vật chất)
   const [selectedDestKey, setSelectedDestKey] = useState(destinationKey);
@@ -781,17 +924,81 @@ export const FloorMap = ({
   // Lấy dữ liệu điểm đến hiện tại
   const currentDest = HOTEL_DESTINATIONS[selectedDestKey] || HOTEL_DESTINATIONS.infinity_pool;
 
+  // Hỗ trợ chuyển đổi nhanh giữa Wi-Fi LAN và Tailscale VPN trên màn hình Robot
+  const networkHosts = useMemo(() => getDetectedNetworkHosts(), []);
+
+  const [preferredHostIp, setPreferredHostIp] = useState(() => {
+    try {
+      if (typeof localStorage !== 'undefined') {
+        const saved = localStorage.getItem('aurora_qr_network_ip');
+        if (saved) return saved;
+      }
+      if (typeof window !== 'undefined') {
+        const h = window.location.hostname;
+        if (h && h !== 'localhost' && h !== '127.0.0.1') return h;
+      }
+    } catch {
+      // ignore storage error
+    }
+    return networkHosts.lanIp || networkHosts.tailscaleIp;
+  });
+
+  const handleSelectNetworkIp = (ip) => {
+    setPreferredHostIp(ip);
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('aurora_qr_network_ip', ip);
+      }
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('aurora-qr-ip-changed', { detail: ip }));
+      }
+    } catch {
+      // ignore storage error
+    }
+  };
+
+  useEffect(() => {
+    const onIpChanged = (e) => {
+      if (e?.detail) setPreferredHostIp(e.detail);
+    };
+    window.addEventListener('aurora-qr-ip-changed', onIpChanged);
+    return () => window.removeEventListener('aurora-qr-ip-changed', onIpChanged);
+  }, []);
+
   // Giữ URL mã QR cố định trong suốt vòng đời của điểm đến này để mã QR không bị giật ma trận
   const qrMapUrl = useMemo(() => {
-    return getMobileGuestMapUrl(currentDest.id);
-  }, [currentDest.id]);
+    return getMobileGuestMapUrl(currentDest.id, preferredHostIp);
+  }, [currentDest.id, preferredHostIp]);
 
   // Trạng thái Chặng:
   // 1: Chặng 1 (Tầng Trệt ra Thang Máy)
   // 2: Chặng 2 (Từ Thang Máy ra Điểm Đích trên tầng mục tiêu)
-  const [activeStep, setActiveStep] = useState(currentDest.isDifferentFloor ? 1 : 2);
+  const [activeStep, setActiveStep] = useState(currentDest.isDifferentFloor ? (currentStepExternal || 1) : 2);
   const [autoPlay, setAutoPlay] = useState(true);
   const [isHovering, setIsHovering] = useState(false);
+
+  // Thông báo thay đổi chặng lên component cha (Mobile / Kiosk)
+  useEffect(() => {
+    if (onStepChange) {
+      onStepChange(activeStep);
+    }
+  }, [activeStep, onStepChange]);
+
+  // Tính toán lộ trình động thông minh với wall-clearance & graph-search
+  const activeRoute = useMemo(() => {
+    if (activeStep === 1) {
+      return { pathString: ROUTE_GROUND_TO_ELEVATOR, isValid: true };
+    }
+    if (currentDest.routeTarget) {
+      return { pathString: currentDest.routeTarget, isValid: true };
+    }
+    const r = calculateFloorRoute(
+      currentDest.isDifferentFloor ? 'ELEVATOR' : 'STANDBY',
+      currentDest.coords,
+      currentDest.floorId
+    );
+    return { pathString: r.pathString || currentDest.routeTarget, isValid: r.isValid };
+  }, [activeStep, currentDest]);
 
   // Zoom & Pan state để phóng to loại bỏ viền trắng thừa của Canva
   const [zoomLevel, setZoomLevel] = useState(defaultZoom);
@@ -816,8 +1023,9 @@ export const FloorMap = ({
 
   const activeFloor = HOTEL_FLOORS.find((f) => f.id === activeFloorId) || HOTEL_FLOORS[2];
 
-  // Tự động chuyển chặng từ 1 sang 2 sau 4.5 giây để khách thấy toàn bộ hành trình
+  // Tự động chuyển chặng từ 1 sang 2 sau 10 giây (nếu không có điều phối ngoài) để khách thấy toàn bộ hành trình
   useEffect(() => {
+    if (currentStepExternal != null) return;
     if (!currentDest.isDifferentFloor) {
       setActiveStep(2);
       return;
@@ -828,10 +1036,11 @@ export const FloorMap = ({
 
     const timer = setTimeout(() => {
       setActiveStep(2);
-    }, 4500);
+      onStepChange?.(2);
+    }, 10000);
 
     return () => clearTimeout(timer);
-  }, [selectedDestKey, autoPlay, currentDest.isDifferentFloor]);
+  }, [selectedDestKey, autoPlay, currentDest.isDifferentFloor, currentStepExternal, onStepChange]);
 
   // Sync zoom khi đổi điểm đến hoặc defaultZoom
   useEffect(() => {
@@ -939,8 +1148,10 @@ export const FloorMap = ({
             <button
               type="button"
               onClick={() => {
-                if (onCloseQrModal) onCloseQrModal();
                 setActiveMode('map');
+                if (onCloseQrModal) {
+                  try { onCloseQrModal(); } catch (e) { }
+                }
               }}
               className={`px-2.5 sm:px-3 py-1 rounded-full text-[10px] sm:text-xs font-bold transition-all cursor-pointer flex items-center gap-1 ${
                 activeMode === 'map'
@@ -976,6 +1187,7 @@ export const FloorMap = ({
                 onClick={() => {
                   setActiveStep(1);
                   setAutoPlay(false);
+                  onStepChange?.(1);
                 }}
                 className={`w-6 h-6 rounded-full text-[11px] font-black transition-all cursor-pointer flex items-center justify-center ${
                   activeStep === 1
@@ -995,6 +1207,7 @@ export const FloorMap = ({
                 onClick={() => {
                   setActiveStep(2);
                   setAutoPlay(false);
+                  onStepChange?.(2);
                 }}
                 className={`w-6 h-6 rounded-full text-[11px] font-black transition-all cursor-pointer flex items-center justify-center ${
                   activeStep === 2
@@ -1046,16 +1259,18 @@ export const FloorMap = ({
               transformOrigin: 'center center',
             }}
           >
-            {/* Ảnh mặt bằng gốc của tầng */}
+            {/* Ảnh mặt bằng gốc của tầng - key bắt buộc để mobile Safari render lại texture khi đổi tầng */}
             <img
+              key={activeFloor.image}
               src={activeFloor.image}
               alt={activeFloor.name}
               className="w-full h-full object-contain pointer-events-none select-none"
+              style={{ imageRendering: '-webkit-optimize-contrast' }}
             />
 
-            {/* Lớp SVG Chỉ Đường: Tập trung vào đường đi, không nhảy nhót */}
+            {/* Lớp SVG Chỉ Đường: Đồng bộ viewBox với kích thước thực tế */}
             <svg
-              viewBox="0 0 1920 1080"
+              viewBox={`0 0 ${activeFloor.width || 1840} ${activeFloor.height || 1174}`}
               className="absolute inset-0 w-full h-full pointer-events-none z-10"
               preserveAspectRatio="xMidYMid meet"
             >
@@ -1070,7 +1285,7 @@ export const FloorMap = ({
               {activeStep === 1 && (
                 <g className="animate-fadeIn">
                   <path
-                    d={ROUTE_GROUND_TO_ELEVATOR}
+                    d={activeRoute.pathString || ROUTE_GROUND_TO_ELEVATOR}
                     fill="none"
                     stroke="#7DD3FC"
                     strokeWidth="12"
@@ -1080,7 +1295,7 @@ export const FloorMap = ({
                     filter="url(#sky-glow)"
                   />
                   <path
-                    d={ROUTE_GROUND_TO_ELEVATOR}
+                    d={activeRoute.pathString || ROUTE_GROUND_TO_ELEVATOR}
                     fill="none"
                     stroke="#38BDF8"
                     strokeWidth="7"
@@ -1090,12 +1305,12 @@ export const FloorMap = ({
                     className="animate-routeDash"
                   />
                   {/* Điểm xuất phát tĩnh (Chấm xanh nhạt tinh gọn) */}
-                  <g transform="translate(796, 545)">
+                  <g transform="translate(350, 580)">
                     <circle r="14" fill="#38BDF8" opacity="0.25" />
                     <circle r="8" fill="#0EA5E9" stroke="#ffffff" strokeWidth="2.5" />
                   </g>
                   {/* Điểm thang máy đích chặng 1 */}
-                  <g transform="translate(1232, 415)">
+                  <g transform="translate(1715, 560)">
                     <circle r="14" fill="#38BDF8" opacity="0.25" />
                     <circle r="8" fill="#38BDF8" stroke="#ffffff" strokeWidth="2.5" />
                   </g>
@@ -1106,7 +1321,7 @@ export const FloorMap = ({
               {activeStep === 2 && (
                 <g className="animate-fadeIn">
                   <path
-                    d={currentDest.routeTarget}
+                    d={activeRoute.pathString || currentDest.routeTarget}
                     fill="none"
                     stroke="#7DD3FC"
                     strokeWidth="12"
@@ -1116,7 +1331,7 @@ export const FloorMap = ({
                     filter="url(#sky-glow)"
                   />
                   <path
-                    d={currentDest.routeTarget}
+                    d={activeRoute.pathString || currentDest.routeTarget}
                     fill="none"
                     stroke="#38BDF8"
                     strokeWidth="7"
@@ -1127,12 +1342,12 @@ export const FloorMap = ({
                   />
                   {/* Điểm xuất phát chặng 2: chấm xanh nhạt tinh gọn */}
                   {currentDest.isDifferentFloor ? (
-                    <g transform="translate(1232, 415)">
+                    <g transform="translate(1715, 560)">
                       <circle r="14" fill="#38BDF8" opacity="0.25" />
                       <circle r="8" fill="#0EA5E9" stroke="#ffffff" strokeWidth="2.5" />
                     </g>
                   ) : (
-                    <g transform="translate(796, 545)">
+                    <g transform="translate(350, 580)">
                       <circle r="14" fill="#38BDF8" opacity="0.25" />
                       <circle r="8" fill="#0EA5E9" stroke="#ffffff" strokeWidth="2.5" />
                     </g>
@@ -1195,6 +1410,33 @@ export const FloorMap = ({
                 Quét mã bằng camera điện thoại để xem bản đồ và chỉ dẫn đường đi trực tiếp.
               </p>
 
+              <div className="w-full flex items-center gap-1 pt-0.5">
+                <button
+                  type="button"
+                  onClick={() => handleSelectNetworkIp(networkHosts.lanIp)}
+                  className={`flex-1 py-1 px-2 rounded-lg text-[10px] font-bold border transition cursor-pointer ${
+                    preferredHostIp === networkHosts.lanIp
+                      ? 'bg-[#1C1917] text-[#FAF8F5] border-[#1C1917]'
+                      : 'bg-[#FAF8F5] text-stone-600 border-[#E3DFD5] hover:bg-[#EFECE4]'
+                  }`}
+                  title={`Quét qua Wi-Fi nội bộ (${networkHosts.lanIp})`}
+                >
+                  Wi-Fi ({networkHosts.lanIp})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSelectNetworkIp(networkHosts.tailscaleIp)}
+                  className={`flex-1 py-1 px-2 rounded-lg text-[10px] font-bold border transition cursor-pointer ${
+                    preferredHostIp === networkHosts.tailscaleIp
+                      ? 'bg-[#1C1917] text-[#FAF8F5] border-[#1C1917]'
+                      : 'bg-[#FAF8F5] text-stone-600 border-[#E3DFD5] hover:bg-[#EFECE4]'
+                  }`}
+                  title={`Quét qua Tailscale (${networkHosts.tailscaleIp})`}
+                >
+                  Tailscale ({networkHosts.tailscaleIp})
+                </button>
+              </div>
+
               {qrCountdown !== null && qrCountdown >= 0 && (
                 <div className="px-2 py-0.5 rounded-full bg-[#EFECE4] text-stone-700 border border-[#E3DFD5] text-[10px] font-mono mt-0.5">
                   Tự động đóng sau {qrCountdown}s
@@ -1205,8 +1447,10 @@ export const FloorMap = ({
                 <button
                   type="button"
                   onClick={() => {
-                    if (onCloseQrModal) onCloseQrModal();
                     setActiveMode('map');
+                    if (onCloseQrModal) {
+                      try { onCloseQrModal(); } catch (e) { }
+                    }
                   }}
                   className="w-full py-2 px-3 rounded-xl bg-[#EFECE4] hover:bg-stone-200 text-stone-800 text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 border border-[#E3DFD5] active:scale-95"
                 >

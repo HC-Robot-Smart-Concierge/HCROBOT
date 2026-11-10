@@ -161,7 +161,7 @@ class OllamaService:
     def detect_language(text: str) -> Tuple[str, str]:
         """
         Tự động phân tích câu nói của khách để nhận diện ngôn ngữ và mã lang_code cho TTS.
-        Hỗ trợ song ngữ chuẩn xác 100%: Tiếng Việt (vi-VN), Tiếng Anh (en-US), Tiếng Trung (zh-CN), Tiếng Nhật (ja-JP).
+        Chỉ hỗ trợ song ngữ chuẩn xác: Tiếng Việt (vi-VN) và Tiếng Anh (en-US).
         """
         if not text or not text.strip():
             return "Tiếng Việt", "vi-VN"
@@ -169,16 +169,6 @@ class OllamaService:
         # 1. Ký tự có dấu tiếng Việt đặc trưng -> 100% Tiếng Việt
         if re.search(r'[àáảãạâầấẩẫậăằắẳẵặèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ]', text, re.IGNORECASE):
             return "Tiếng Việt", "vi-VN"
-
-        # 2. Tiếng Trung (Chữ Hán)
-        cjk_chars = re.findall(r'[一-鿿]', text)
-        latin_chars = re.findall(r'[a-zA-Z]', text)
-        if len(cjk_chars) > 0 and len(cjk_chars) > len(latin_chars):
-            return "Tiếng Trung", "zh-CN"
-
-        # 3. Tiếng Nhật (Hiragana / Katakana)
-        if re.search(r'[぀-ヿ]', text):
-            return "Tiếng Nhật", "ja-JP"
 
         lower_text = text.lower().strip()
         words = re.findall(r'[a-zA-Z]+', lower_text)
@@ -200,36 +190,7 @@ class OllamaService:
             if re.search(p, lower_text):
                 return "English", "en-US"
 
-        return "Tiếng Việt", "vi-VN"
-
-        # 1. Ký tự có dấu tiếng Việt đặc trưng -> 100% Tiếng Việt
-        if re.search(r'[àáảãạâầấẩẫậăằắẳẵặèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ]', text, re.IGNORECASE):
-            return "Tiếng Việt", "vi-VN"
-
-        lower_text = text.lower().strip()
-
-        # 2. Tiếng Trung (Chữ Hán)
-        cjk_chars = re.findall(r'[\u4e00-\u9fff]', text)
-        latin_chars = re.findall(r'[a-zA-Z]', text)
-        if len(cjk_chars) > 0 and len(cjk_chars) > len(latin_chars):
-            return "Tiếng Trung", "zh-CN"
-
-        # 3. Tiếng Nhật (Hiragana / Katakana)
-        if re.search(r'[\u3040-\u30ff]', text):
-            return "Tiếng Nhật", "ja-JP"
-
-        # 4. Tiếng Việt không dấu (các cụm từ / từ vựng đặc trưng tránh trùng với tiếng Anh)
-        vi_phrases = [
-            r'\bphong\s*[0-9]', r'\bphong\b', r'\btoi\b', r'\bmuon\b', r'\bkhan\s*tam\b',
-            r'\bdon\s*phong\b', r'\bo\s*dau\b', r'\bkhach\s*san\b', r'\ble\s*tan\b',
-            r'\bbao\s*tri\b', r'\bcam\s*on\b', r'\bchao\s*em\b', r'\bxin\s*chao\b',
-            r'\bquy\s*khach\b', r'\btra\s*phong\b', r'\bnhan\s*phong\b',
-            r'\bgoi\s*xe\b', r'\bthang\s*may\b', r'\bho\s*boi\b', r'\bbe\s*boi\b'
-        ]
-        if any(re.search(pattern, lower_text) for pattern in vi_phrases):
-            return "Tiếng Việt", "vi-VN"
-
-        # 5. Tiếng Anh: kiểm tra các mẫu câu và tập từ vựng tiếng Anh thông dụng
+        # Kiểm tra cụm từ tiếng Anh thông dụng
         english_patterns = [
             r'\b(where|what|when|why|who|how|which|whose)\b',
             r'\b(can|could|would|should|will|do|does|did|is|are|was|were|have|has|had)\b',
@@ -237,10 +198,7 @@ class OllamaService:
             r'\b(hello|hi|hey|good\s+morning|good\s+afternoon|good\s+evening|goodbye|bye)\b',
             r'\b(thank\s+you|thanks|please|excuse\s+me|sorry|pardon)\b',
             r'\b(hotel|room|pool|swimming|wifi|password|breakfast|checkout|checkin|gym|spa)\b',
-            r'\b(luggage|baggage|towel|water|food|drink|restaurant|taxi|airport|service|help|need|want)\b',
-            r'\b(show|tell|guide|find|open|close|order|call|bring|get|take|clean|go|see|look|give|pay|cost|price|menu)\b',
-            r'\b(coffee|tea|beer|bar|cocktail|floor|lobby|elevator|lift|toilet|restroom|bathroom|door|card|key|bill)\b',
-            r'\b(now|today|tonight|tomorrow|time|later|yes|no|ok|okay|sure|fine|sir|madam|assist|recommend|direction)\b'
+            r'\b(luggage|baggage|towel|water|food|drink|restaurant|taxi|airport|service|help|need|want)\b'
         ]
         if any(re.search(pattern, lower_text) for pattern in english_patterns):
             return "English", "en-US"
@@ -326,6 +284,12 @@ class OllamaService:
         if re.search(r"^(xin chào|xin chao|chào em|chao em|chào robot|chao robot|chào bạn|chao ban|chào rora|chao rora|hello|hi|hey|good morning|good afternoon|good evening)[\?\.\!\s]*$", prompt_lower):
             return (time_greeting_en if is_en else time_greeting_vi), lang_name, lang_code, None, None
 
+        # 3. Fast-Path Danh tính Robot / Giới thiệu bản thân (Who Are You / Self Introduction)
+        if re.search(r"\b(bạn là ai|ban la ai|em là ai|em la ai|mày là ai|may la ai|rora là ai|rora la ai|robot là ai|robot la ai|tên bạn là gì|ten ban la gi|tên em là gì|ten em la gi|bạn tên gì|ban ten gi|em tên gì|em ten gi|giới thiệu bản thân|gioi thieu ban than|giới thiệu về bản thân|gioi thieu ve ban than|giới thiệu về bạn|gioi thieu ve ban|giới thiệu về em|gioi thieu ve em|giới thiệu về mình|gioi thieu ve minh|bạn giới thiệu bản thân được không|ban gioi thieu ban than duoc khong|bạn có thể giới thiệu bản thân|ban co the gioi thieu ban than|bạn có thể giới thiệu về bản thân|ban co the gioi thieu ve ban than|tự giới thiệu|tu gioi thieu|giới thiệu rora|gioi thieu rora|who are you|what is your name|who is rora|tell me about yourself|introduce yourself)\b", prompt_lower):
+            intro_vi = "Dạ em là Rora, trợ lý Robot Concierge thông minh của khách sạn 5 sao Aurora Grand. Rất hân hạnh được phục vụ và đồng hành cùng quý khách ạ!"
+            intro_en = "I am Rora, the smart AI Concierge Robot at Aurora Grand Hotel. It is my pleasure to assist and accompany you!"
+            return (intro_en if is_en else intro_vi), lang_name, lang_code, "conversation", {"eye_expression": "happy"}
+
         return None
 
     @staticmethod
@@ -392,7 +356,7 @@ class OllamaService:
             prompt = (
                 "Bạn là Rora - Trợ lý Robot Concierge thông minh, lễ phép, duyên dáng và hiếu khách tại khách sạn 5 sao Aurora Grand Hotel.\n"
                 "PHONG CÁCH GIAO TIẾP VÀ TRÒ CHUYỆN TỰ NHIÊN:\n"
-                "1. Luôn xưng 'Dạ em' hoặc 'Rora' và gọi người trò chuyện là 'quý khách' hoặc 'anh/chị'.\n"
+                "1. Xưng là 'em' hoặc 'Rora' và gọi người trò chuyện là 'quý khách' hoặc 'anh/chị'. Giao tiếp tự nhiên, lịch sự, có thể mở đầu lời chào bằng 'Dạ' khi phù hợp nhưng tuyệt đối không lặp lại từ 'Dạ' ở đầu mỗi câu tiếp theo.\n"
                 "2. Trò chuyện một cách tự nhiên, gần gũi, ấm áp, lưu loát như một nhân viên lễ tân 5 sao chuyên nghiệp.\n"
                 "3. Trả lời đúng trọng tâm, súc tích trong 2 đến 3 câu văn gãy gọn, hoàn chỉnh để phát giọng đọc mượt mà và người nghe dễ nắm bắt nhất.\n"
                 "4. BẮT BUỘC dùng 100% tiếng Việt tự nhiên, chuẩn mực. Tuyệt đối không chèn từ ngoại ngữ vô nghĩa.\n"
@@ -674,7 +638,7 @@ class OllamaService:
                     },
                     keep_alive="30m"
                 ),
-                timeout=25.0
+                timeout=4.0
             )
 
             raw_reply = response["message"]["content"].strip()
@@ -714,29 +678,32 @@ class OllamaService:
         p_lower = prompt.lower().strip()
         is_en = lang_code == "en-US"
 
-        # 0. Ưu tiên Fast-Path động do Admin quản lý từ DB
-        fast_hit = scenario_service.match_fast_path(prompt, lang_code)
-        if fast_hit:
-            return fast_hit[0]
-
-        # 0.1. Ưu tiên dữ liệu từ RAG (ChromaDB / Knowledge Vault) nếu có hoặc tự động truy vấn RAG
-        if not rag_context:
-            try:
-                from app.services.rag.chroma import get_concierge_collection
-                col = get_concierge_collection("concierge_kb")
-                res = col.query(query_texts=[prompt], n_results=1)
-                if res and res.get("documents") and len(res["documents"]) > 0:
-                    docs = res["documents"][0]
-                    if docs and len(docs[0].strip()) > 15:
-                        rag_context = docs[0].strip()
-            except Exception as e_rag:
-                logger.debug(f"[Offline RAG Query Error]: {e_rag}")
-
+        # 0. Ưu tiên dữ liệu từ RAG (ChromaDB / Knowledge Vault) nếu caller đã truyền sẵn
         if rag_context and len(rag_context.strip()) > 20:
             clean_ctx = re.sub(r'[*#_`]', '', rag_context).strip()
             sentences = [s.strip() for s in clean_ctx.split('.') if len(s.strip()) > 15]
             if sentences:
                 return f"Dạ theo thông tin khách sạn: {sentences[0]} ạ." if not is_en else f"According to hotel info: {sentences[0]}."
+
+        # 1. Ưu tiên Fast-Path động do Admin quản lý từ DB
+        fast_hit = scenario_service.match_fast_path(prompt, lang_code)
+        if fast_hit:
+            return fast_hit[0]
+
+        # 2. Tự động truy vấn RAG nếu chưa có rag_context
+        try:
+            from app.services.rag.chroma import get_concierge_collection
+            col = get_concierge_collection("concierge_kb")
+            res = col.query(query_texts=[prompt], n_results=1)
+            if res and res.get("documents") and len(res["documents"]) > 0:
+                docs = res["documents"][0]
+                if docs and len(docs[0].strip()) > 15:
+                    clean_ctx = re.sub(r'[*#_`]', '', docs[0].strip()).strip()
+                    sentences = [s.strip() for s in clean_ctx.split('.') if len(s.strip()) > 15]
+                    if sentences:
+                        return f"Dạ theo thông tin khách sạn: {sentences[0]} ạ." if not is_en else f"According to hotel info: {sentences[0]}."
+        except Exception as e_rag:
+            logger.debug(f"[Offline RAG Query Error]: {e_rag}")
 
         # 1. Fallback nhã nhặn khi thông tin không có trong cả Fast-Path lẫn RAG
         return (
@@ -758,12 +725,7 @@ class OllamaService:
 
         clean_items = re.sub(r'(?:phòng|room|p\.)\s*[0-9]{3,4}', '', user_speech, flags=re.IGNORECASE).strip()
 
-        SERVICE_KEYWORDS = {
-            "housekeeping": ["khăn", "dọn", "gối", "chăn", "nệm", "dọn phòng", "towel", "clean", "pillow", "blanket", "housekeeping"],
-            "maintenance": ["hỏng", "sửa", "hư", "máy lạnh", "điều hòa", "bóng đèn", "vòi nước", "kẹt", "tivi", "remote", "broken", "repair", "ac", "air conditioner"],
-            "bellman": ["hành lý", "vali", "xách đồ", "chở đồ", "xe đẩy", "luggage", "baggage", "bellman"],
-            "room_service": ["đồ ăn", "nước uống", "thức ăn", "gọi món", "menu", "cơm", "phở", "bánh mì", "nước suối", "food", "drink", "room service"],
-        }
+        from app.services.ai.constants import SERVICE_KEYWORDS
 
         intent_prompt = f"""Bạn là bộ định tuyến AI của khách sạn Aurora Grand.
 Hãy phân tích yêu cầu của khách: "{user_speech}"

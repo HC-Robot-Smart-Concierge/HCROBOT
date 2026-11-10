@@ -3,7 +3,14 @@ import json
 import logging
 import re
 from typing import Optional, Any, Dict
-import redis.asyncio as aioredis
+
+try:
+    import redis.asyncio as aioredis
+    HAS_REDIS = True
+except ImportError:
+    aioredis = None
+    HAS_REDIS = False
+
 from app.core.config import settings
 
 logger = logging.getLogger("app.services.cache.redis_service")
@@ -20,15 +27,17 @@ class RedisService:
 
     def __init__(self):
         self.redis_url = settings.REDIS_URL
-        self.enabled = bool(settings.ENABLE_REDIS and self.redis_url)
+        self.enabled = bool(HAS_REDIS and settings.ENABLE_REDIS and self.redis_url)
         self.default_ttl = settings.REDIS_CACHE_TTL or 86400  # 24 giờ
-        self._client: Optional[aioredis.Redis] = None
+        self._client: Optional[Any] = None
         self._is_connected = False
         self._connection_warned = False
+        if not HAS_REDIS and settings.ENABLE_REDIS and self.redis_url:
+            logger.warning("[RedisService] Thư viện 'redis' chưa được cài đặt. Tự động tắt Redis Cloud cache và chuyển sang dùng LRU RAM & Disk cache cục bộ.")
 
-    def get_client(self) -> Optional[aioredis.Redis]:
+    def get_client(self) -> Optional[Any]:
         """Khởi tạo hoặc trả về client async Redis với connection pool tối ưu."""
-        if not self.enabled:
+        if not self.enabled or not HAS_REDIS:
             return None
 
         if self._client is None and self.redis_url:
@@ -47,6 +56,16 @@ class RedisService:
                 self._client = None
                 self._is_connected = False
         return self._client
+
+    async def close(self):
+        """Đóng an toàn connection pool khi tắt server."""
+        if self._client is not None:
+            try:
+                await self._client.aclose()
+            except Exception:
+                pass
+            self._client = None
+            self._is_connected = False
 
     async def ping(self) -> bool:
         """Kiểm tra kết nối tới Redis Cloud."""

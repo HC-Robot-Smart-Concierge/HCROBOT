@@ -1,619 +1,1026 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+
 import {
+
   Lock,
+
   Delete,
+
   CheckCircle2,
+
   AlertCircle,
+
   X,
+
   ShieldCheck,
+
   KeyRound,
+
   CreditCard,
+
   Radio,
-  RefreshCw,
+
 } from 'lucide-react';
+
 import { verifyRoomPin, verifyRoomNfc } from '../../services/operationsApi';
 
-/**
- * RoomPinModal - Modal Xác Thực Khách Lưu Trú Kiosk 5 Sao
- * - Chế độ Quẹt Thẻ NFC Thực Tế (Web NFC NDEFReader + USB RFID Reader)
- * - Tự động nhận diện số phòng và xác thực không chạm ngay khi chạm thẻ
- * - Hiển thị phản hồi thời gian thực chi tiết từng bước (Đọc thẻ -> Gửi API -> Phản hồi Supabase)
- */
+
+
+
+export const PIN_LOCKOUT_MAX_ATTEMPTS = 5;
+export const PIN_LOCKOUT_DURATION_SEC = 60;
+export const DEFAULT_WRONG_PIN_ERROR_MSG = 'Mã PIN phòng không chính xác. Quý khách vui lòng thử lại sau.';
+
+export const getRoomLockoutState = (roomNumber) => {
+  if (!roomNumber || typeof window === 'undefined' || typeof sessionStorage === 'undefined') return { count: 0, lockedUntil: 0 };
+  try {
+    const raw = sessionStorage.getItem(`room_pin_lock_${roomNumber}`);
+    if (raw) {
+      const data = JSON.parse(raw);
+      if (data && typeof data.lockedUntil === 'number' && data.lockedUntil > Date.now()) {
+        return data;
+      }
+    }
+  } catch (e) { }
+  return { count: 0, lockedUntil: 0 };
+};
+
+export const setRoomLockoutState = (roomNumber, state) => {
+  if (!roomNumber || typeof window === 'undefined' || typeof sessionStorage === 'undefined') return;
+  try {
+    sessionStorage.setItem(`room_pin_lock_${roomNumber}`, JSON.stringify(state));
+  } catch (e) { }
+};
+
+export const clearRoomLockoutState = (roomNumber) => {
+  if (!roomNumber || typeof window === 'undefined' || typeof sessionStorage === 'undefined') return;
+  try {
+    sessionStorage.removeItem(`room_pin_lock_${roomNumber}`);
+  } catch (e) { }
+};
+
+export const OFFICIAL_ROOMS = {
+
+  floor3: ['301', '302', '303', '304', '305', '306', '307', '308', '309', '310'],
+
+  floor4: ['401', '402', '403', '404', '405', '406', '407', '408', '409', '410'],
+
+};
+
+
+
 export const RoomPinModal = ({
+
   isOpen,
+
   onClose,
-  roomNumber,
+
+  roomNumber = '',
+
+  onRoomSelect,
+
   pendingAction = 'room_service',
+
   pendingItems = 'Yêu cầu dịch vụ phòng',
+
   onVerifiedSuccess,
+
+  onNotCheckedIn,
+
+  onForgotPin,
+
+  initialTab = 'pin',
+
+  isSelectingRoomInitial = false,
+
+  skipTicketCreation = true,
+  sessionId = null,
 }) => {
-  const [activeTab, setActiveTab] = useState('nfc'); // 'nfc' | 'pin'
+
+  const [selectedRoom, setSelectedRoom] = useState(roomNumber || '');
+
+  const [isSelectingRoom, setIsSelectingRoom] = useState(Boolean(isSelectingRoomInitial || !roomNumber));
+
+  const [isForgotPinView, setIsForgotPinView] = useState(false);
+
+  const [roomFloorTab, setRoomFloorTab] = useState(() => {
+
+    if (roomNumber && String(roomNumber).startsWith('4')) return '4';
+
+    return '3';
+
+  });
+
+
+
+  const [activeTab, setActiveTab] = useState(initialTab || 'pin');
+
   const [pin, setPin] = useState('');
+
   const [isLoading, setIsLoading] = useState(false);
+
   const [errorMessage, setErrorMessage] = useState('');
+
   const [isSuccess, setIsSuccess] = useState(false);
+
   const [successInfo, setSuccessInfo] = useState(null);
+
   const [isShaking, setIsShaking] = useState(false);
+  const [lockoutRemaining, setLockoutRemaining] = useState(0);
 
-  // Debug & Thông tin đọc thẻ thời gian thực
-  const [nfcStatus, setNfcStatus] = useState('idle'); // 'idle' | 'starting' | 'scanning' | 'read_detected' | 'unsupported' | 'error'
-  const [nfcStatusMsg, setNfcStatusMsg] = useState('');
-  const [lastScannedUid, setLastScannedUid] = useState(null);
-
-  const nfcAbortControllerRef = useRef(null);
-  const keyBufferRef = useRef('');
-  const lastKeyTimeRef = useRef(0);
-
-  // Ref cho hàm xác thực NFC qua USB HID Reader
-  const handleVerifyNfcRef = useRef(null);
-
-  // =========================================================================
-  // 1. WEB NFC API (NDEFReader) - CHẠY TRỰC TIẾP CHUẨN XÁC 100% NHƯ /nfc-test
-  // =========================================================================
-  const startWebNfcScan = useCallback(async () => {
-    if (typeof window === 'undefined') return;
-
-    if (!('NDEFReader' in window)) {
-      console.warn('[WebNFC] NDEFReader is not supported in this browser/device.');
-      setNfcStatus('unsupported');
-      setNfcStatusMsg('Trình duyệt chưa hỗ trợ Web NFC. Cần dùng Google Chrome trên Android.');
-      alert('Trình duyệt này không hỗ trợ Web NFC. Vui lòng mở bằng Google Chrome trên Android.');
+  // Dong bo trang thai lockout khi selectedRoom thay doi hoac modal mo
+  useEffect(() => {
+    if (!selectedRoom || !isOpen) {
+      setLockoutRemaining(0);
       return;
     }
+    const state = getRoomLockoutState(selectedRoom);
+    if (state.lockedUntil > Date.now()) {
+      const remainingSec = Math.ceil((state.lockedUntil - Date.now()) / 1000);
+      setLockoutRemaining(remainingSec);
+      setErrorMessage(`Quý khách đã nhập sai mã PIN 5 lần. Hệ thống tạm khóa 1 phút. Quý khách vui lòng thử lại sau (${remainingSec}s).`);
+    } else {
+      setLockoutRemaining(0);
+    }
+  }, [selectedRoom, isOpen]);
+
+  // Bo dem giam dan lockout 1 phut (60s)
+  useEffect(() => {
+    if (lockoutRemaining <= 0) return;
+    const timer = setInterval(() => {
+      setLockoutRemaining((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          clearRoomLockoutState(selectedRoom);
+          setErrorMessage('');
+          return 0;
+        }
+        const next = prev - 1;
+        setErrorMessage(`Quý khách đã nhập sai mã PIN 5 lần. Hệ thống tạm khóa 1 phút. Quý khách vui lòng thử lại sau (${next}s).`);
+        return next;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [lockoutRemaining, selectedRoom]);
+
+
+
+  const [nfcStatus, setNfcStatus] = useState('idle');
+
+  const [nfcStatusMsg, setNfcStatusMsg] = useState('');
+
+
+
+  const nfcAbortControllerRef = useRef(null);
+
+  const keyBufferRef = useRef('');
+
+  const lastKeyTimeRef = useRef(0);
+
+  const handleVerifyNfcRef = useRef(null);
+
+
+
+  const startWebNfcScan = useCallback(async () => {
+
+    if (typeof window === 'undefined') return;
+
+
+
+    if (!('NDEFReader' in window)) {
+
+      setNfcStatus('unsupported');
+
+      setNfcStatusMsg('Trình duyệt chưa hỗ trợ Web NFC. Cần dùng Google Chrome trên Android.');
+
+      return;
+
+    }
+
+
 
     try {
+
       if (nfcAbortControllerRef.current) {
+
         try { nfcAbortControllerRef.current.abort(); } catch (e) { }
+
       }
 
+
+
       const controller = new AbortController();
+
       nfcAbortControllerRef.current = controller;
+
       const ndef = new window.NDEFReader();
 
+
+
       setNfcStatus('starting');
+
       setNfcStatusMsg('Đang kích hoạt đầu đọc thẻ NFC...');
 
+
+
       ndef.onreading = async (event) => {
-        console.log('[WebNFC] Reading event fired! serialNumber:', event.serialNumber, event);
 
         let ndefText = '';
+
         if (event.message && event.message.records && event.message.records.length > 0) {
+
           for (const record of event.message.records) {
-            console.log('[WebNFC] Record type:', record.recordType);
+
             try {
+
               if (record.recordType === 'text') {
+
                 const textDecoder = new TextDecoder(record.encoding || 'utf-8');
+
                 ndefText = textDecoder.decode(record.data);
+
                 break;
-              } else if (record.recordType === 'url') {
+
+              } else if (record.recordType === 'url' || record.data) {
+
                 const textDecoder = new TextDecoder();
+
                 ndefText = textDecoder.decode(record.data);
+
                 break;
-              } else if (record.data) {
-                const textDecoder = new TextDecoder();
-                ndefText = textDecoder.decode(record.data);
-                break;
+
               }
+
             } catch (decErr) {
+
               console.warn('[WebNFC] Decode error:', decErr);
+
             }
+
           }
+
         }
 
-        // Ưu tiên chuỗi dữ liệu NDEF ghi trong thẻ (ndefText), nếu rỗng thì lấy UID phần cứng
+
+
         const tagCode = (ndefText || '').trim() || event.serialNumber;
-        console.log(`[WebNFC] Decoded NDEF: '${ndefText}' -> Tag code: '${tagCode}'`);
 
         if (tagCode) {
-          setLastScannedUid(tagCode);
+
           setNfcStatus('read_detected');
+
           setNfcStatusMsg(`Đã nhận diện thẻ: ${tagCode}. Đang đối chiếu...`);
+
           setIsLoading(true);
+
           setErrorMessage('');
 
-          // Rung điện thoại
+
+
           if (typeof navigator !== 'undefined' && navigator.vibrate) {
+
             try { navigator.vibrate([100, 50, 100]); } catch (e) { }
+
           }
+
+
 
           try {
+
             const res = await verifyRoomNfc(
+
               tagCode,
-              null, // Để thẻ tự nhận diện phòng từ CSDL
+
+              selectedRoom || null,
+
               pendingAction,
-              pendingItems
+
+              pendingItems,
+
+              null,
+
+              (skipTicketCreation || ["taxi", "book_taxi", "taxi_booking", "query_order_status", "query_service_status", "query_taxi_status"].includes(pendingAction))
+
             );
-            console.log(`[WebNFC] Backend response 200 OK! Room: ${res.room_number} (${res.guest_name})`);
+
             setIsSuccess(true);
+
             setSuccessInfo(res);
+
             setIsLoading(false);
+
             setNfcStatusMsg(`Xác thực thành công phòng ${res.room_number} (${res.guest_name})!`);
 
+
+
             if (onVerifiedSuccess) {
-              onVerifiedSuccess(res);
+
+              onVerifiedSuccess(res, res.room_number || selectedRoom);
+
             }
+
             setTimeout(() => {
+
               onClose();
-            }, 1400);
+
+            }, 1000);
+
           } catch (err) {
+
             console.error('[RoomPinModal] verify-nfc error:', err);
+
             setIsLoading(false);
+
             setNfcStatus('error');
+
             setErrorMessage(err.message || 'Thẻ NFC không hợp lệ hoặc phòng chưa check-in.');
+
             setIsShaking(true);
+
             setTimeout(() => setIsShaking(false), 500);
+
           }
+
         } else {
+
           setErrorMessage('Thẻ không trả về dữ liệu NDEF hoặc mã UID.');
+
         }
+
       };
 
-      ndef.onreadingerror = (event) => {
-        console.warn('[WebNFC] Reading error fired:', event);
-        setNfcStatusMsg('Lỗi đọc: Thẻ không thể giải mã NDEF hoặc bị dời quá nhanh. Hãy giữ yên thẻ 1-2 giây.');
+
+
+      ndef.onreadingerror = () => {
+
+        setNfcStatusMsg('Lỗi đọc: Hãy giữ yên thẻ NFC trong 1-2 giây.');
+
       };
+
+
 
       await ndef.scan({ signal: controller.signal });
 
       setNfcStatus('scanning');
-      setNfcStatusMsg('Đầu đọc NFC đang lắng nghe... Hãy áp thẻ vào mặt lưng điện thoại.');
+
+      setNfcStatusMsg('Đang lắng nghe thẻ NFC... Vui lòng áp thẻ vào mặt lưng thiết bị.');
+
     } catch (err) {
-      console.error('[WebNFC] Scan failed:', err);
+
+      console.warn('[WebNFC] Scan error:', err);
+
       setNfcStatus('error');
+
       if (err.name === 'NotAllowedError') {
-        setNfcStatusMsg('Chrome chưa được cấp quyền NFC hoặc cần tương tác người dùng.');
-      } else if (err.name === 'NotReadableError') {
-        setNfcStatusMsg('Chức năng NFC trên điện thoại đang TẮT. Hãy bật NFC trong Cài đặt Android.');
-      } else if (err.name === 'SecurityError') {
-        setNfcStatusMsg('Web NFC yêu cầu kết nối bảo mật HTTPS.');
+
+        setNfcStatusMsg('Quyền truy cập NFC bị từ chối.');
+
       } else {
-        setNfcStatusMsg(err.message || 'Lỗi khi kích hoạt đầu đọc thẻ NFC.');
+
+        setNfcStatusMsg(`Lỗi kích hoạt NFC: ${err.message || 'Không thể mở đầu đọc'}`);
+
       }
+
     }
-  }, [pendingAction, pendingItems, onVerifiedSuccess, onClose]);
 
-  // Hàm xác thực NFC cho USB HID Reader (gọi từ keydown handler)
-  const handleVerifyNfc = useCallback(async (tagCode) => {
-    if (!tagCode) return;
-    console.log(`[USB-NFC] Verifying scanned UID: '${tagCode}'`);
-    setLastScannedUid(tagCode);
-    setNfcStatus('read_detected');
-    setNfcStatusMsg(`Đã nhận diện thẻ: ${tagCode}. Đang đối chiếu...`);
-    setIsLoading(true);
-    setErrorMessage('');
+  }, [selectedRoom, pendingAction, pendingItems, onVerifiedSuccess, onClose]);
 
-    try {
-      const res = await verifyRoomNfc(
-        tagCode,
-        null,
-        pendingAction,
-        pendingItems
-      );
-      console.log(`[USB-NFC] Backend response 200 OK! Room: ${res.room_number} (${res.guest_name})`);
-      setIsSuccess(true);
-      setSuccessInfo(res);
-      setIsLoading(false);
-      setNfcStatusMsg(`Xác thực thành công phòng ${res.room_number} (${res.guest_name})!`);
 
-      if (onVerifiedSuccess) {
-        onVerifiedSuccess(res);
-      }
-      setTimeout(() => {
-        onClose();
-      }, 1400);
-    } catch (err) {
-      console.error('[RoomPinModal] USB verify-nfc error:', err);
-      setIsLoading(false);
-      setNfcStatus('error');
-      setErrorMessage(err.message || 'Thẻ NFC không hợp lệ hoặc phòng chưa check-in.');
-      setIsShaking(true);
-      setTimeout(() => setIsShaking(false), 500);
-    }
-  }, [pendingAction, pendingItems, onVerifiedSuccess, onClose]);
 
-  // Đồng bộ ref cho USB HID handler
-  useEffect(() => {
-    handleVerifyNfcRef.current = handleVerifyNfc;
-  }, [handleVerifyNfc]);
+  const handleVerifyNfc = useCallback(
 
-  // Reset khi mở modal (không tự ý scan trên mount để tránh vi phạm User Gesture của Chrome)
-  useEffect(() => {
-    if (isOpen) {
-      setPin('');
+    async (scannedCode) => {
+
+      if (!scannedCode || isLoading || isSuccess) return;
+
+
+
+      setIsLoading(true);
+
       setErrorMessage('');
-      setIsLoading(false);
-      setIsSuccess(false);
-      setSuccessInfo(null);
-      setIsShaking(false);
-      setActiveTab('nfc');
-      setLastScannedUid(null);
-      setNfcStatus('idle');
-      setNfcStatusMsg('Bấm nút bên dưới để bật đầu đọc NFC.');
-      keyBufferRef.current = '';
-    } else {
-      if (nfcAbortControllerRef.current) {
-        try { nfcAbortControllerRef.current.abort(); } catch (e) { }
-        nfcAbortControllerRef.current = null;
+
+      setNfcStatus('read_detected');
+
+      setNfcStatusMsg(`Nhận diện thẻ USB: ${scannedCode}. Đang xác thực...`);
+
+
+
+      try {
+
+        const res = await verifyRoomNfc(
+          scannedCode,
+          selectedRoom || null,
+          pendingAction,
+          pendingItems,
+          null,
+          (skipTicketCreation || ["taxi", "book_taxi", "taxi_booking", "query_order_status", "query_service_status", "query_taxi_status"].includes(pendingAction)),
+          sessionId
+        );
+
+        setIsSuccess(true);
+
+        setSuccessInfo(res);
+
+        setIsLoading(false);
+
+        setNfcStatusMsg(`Xác thực thành công phòng ${res.room_number} (${res.guest_name})!`);
+
+
+
+        if (onVerifiedSuccess) {
+
+          onVerifiedSuccess(res, res.room_number || selectedRoom);
+
+        }
+
+
+
+        setTimeout(() => {
+
+          onClose();
+
+        }, 1000);
+
+      } catch (err) {
+
+        console.error('[RoomPinModal] USB verify-nfc error:', err);
+
+        setIsLoading(false);
+
+        setNfcStatus('error');
+
+        setErrorMessage(err.message || 'Thẻ phòng không khớp hoặc chưa làm thủ tục nhận phòng.');
+
+        setIsShaking(true);
+
+        setTimeout(() => setIsShaking(false), 500);
+
       }
+
+    },
+
+    [isLoading, isSuccess, selectedRoom, pendingAction, pendingItems, onVerifiedSuccess, onClose]
+
+  );
+
+
+
+  handleVerifyNfcRef.current = handleVerifyNfc;
+
+
+
+  useEffect(() => {
+
+    if (isOpen) {
+
+      setIsForgotPinView(false);
+
+      setPin('');
+
+      setErrorMessage('');
+
+      setIsSuccess(false);
+
+      setSuccessInfo(null);
+
+      setIsShaking(false);
+
+      setNfcStatus('idle');
+
+      setNfcStatusMsg('');
+
+      setSelectedRoom(roomNumber || '');
+
+      setIsSelectingRoom(Boolean(isSelectingRoomInitial || !roomNumber));
+
+      if (roomNumber && String(roomNumber).startsWith('4')) {
+
+        setRoomFloorTab('4');
+
+      } else {
+
+        setRoomFloorTab('3');
+
+      }
+
+      setActiveTab(initialTab || 'pin');
+
+    } else {
+
+      if (nfcAbortControllerRef.current) {
+
+        try { nfcAbortControllerRef.current.abort(); } catch (e) { }
+
+        nfcAbortControllerRef.current = null;
+
+      }
+
     }
+
+
 
     return () => {
-      if (nfcAbortControllerRef.current) {
-        try { nfcAbortControllerRef.current.abort(); } catch (e) { }
-        nfcAbortControllerRef.current = null;
-      }
-    };
-  }, [isOpen]);
 
-  // =========================================================================
-  // 2. HỖ TRỢ ĐẦU ĐỌC THẺ NFC USB (Dạng USB HID Keyboard Emulation)
-  // =========================================================================
+      if (nfcAbortControllerRef.current) {
+
+        try { nfcAbortControllerRef.current.abort(); } catch (e) { }
+
+        nfcAbortControllerRef.current = null;
+
+      }
+
+    };
+
+  }, [isOpen, roomNumber, initialTab, isSelectingRoomInitial]);
+
+
+
   useEffect(() => {
+
     if (!isOpen || activeTab !== 'nfc') return;
 
+
+
     const handleKeyDown = (e) => {
+
       const now = Date.now();
+
       if (now - lastKeyTimeRef.current > 150) {
+
         keyBufferRef.current = '';
+
       }
+
       lastKeyTimeRef.current = now;
 
+
+
       if (e.key === 'Enter') {
+
         const scannedUid = keyBufferRef.current.trim();
+
         if (scannedUid.length >= 6) {
-          console.log('[USB-NFC] Scanned UID:', scannedUid);
+
           handleVerifyNfcRef.current(scannedUid);
+
         }
+
         keyBufferRef.current = '';
+
       } else if (e.key.length === 1) {
+
         keyBufferRef.current += e.key;
+
       }
+
     };
 
+
+
     window.addEventListener('keydown', handleKeyDown);
+
     return () => window.removeEventListener('keydown', handleKeyDown);
+
   }, [isOpen, activeTab]);
 
-  // =========================================================================
-  // 3. XỬ LÝ NHẬP MÃ PIN DỰ PHÒNG
-  // =========================================================================
+
+
   const handleKeyPress = useCallback((digit) => {
-    if (isLoading || isSuccess) return;
+
+    if (isLoading || isSuccess || lockoutRemaining > 0) return;
+
     setErrorMessage('');
+
     setPin((prev) => (prev.length < 4 ? prev + digit : prev));
-  }, [isLoading, isSuccess]);
+
+  }, [isLoading, isSuccess, lockoutRemaining]);
+
+
 
   const handleDelete = useCallback(() => {
-    if (isLoading || isSuccess) return;
+
+    if (isLoading || isSuccess || lockoutRemaining > 0) return;
+
     setErrorMessage('');
+
     setPin((prev) => prev.slice(0, -1));
-  }, [isLoading, isSuccess]);
+
+  }, [isLoading, isSuccess, lockoutRemaining]);
+
+
 
   const handleClear = useCallback(() => {
-    if (isLoading || isSuccess) return;
-    setErrorMessage('');
-    setPin('');
-  }, [isLoading, isSuccess]);
 
-  // Tự động submit khi nhập đủ 4 số PIN
+    if (isLoading || isSuccess || lockoutRemaining > 0) return;
+
+    setErrorMessage('');
+
+    setPin('');
+
+  }, [isLoading, isSuccess, lockoutRemaining]);
+
+
+
   useEffect(() => {
-    if (pin.length === 4 && !isLoading && !isSuccess && activeTab === 'pin') {
+
+    if (pin.length === 4 && !isLoading && !isSuccess && activeTab === 'pin' && selectedRoom && !isSelectingRoom) {
+
       const submitPin = async () => {
+
         setIsLoading(true);
+
         setErrorMessage('');
+
         try {
+
           const res = await verifyRoomPin(
-            roomNumber,
+            selectedRoom,
             pin,
             pendingAction,
-            pendingItems
+            pendingItems,
+            null,
+            null,
+            (skipTicketCreation || ["taxi", "book_taxi", "taxi_booking", "query_order_status", "query_service_status", "query_taxi_status"].includes(pendingAction)),
+            sessionId
           );
+
+          // Xoa trang thai lockout va dem loi khi xac thuc thanh cong
+          clearRoomLockoutState(selectedRoom);
+          setLockoutRemaining(0);
+
           setIsSuccess(true);
+
           setSuccessInfo(res);
+
           setIsLoading(false);
+
+
 
           if (onVerifiedSuccess) {
-            onVerifiedSuccess(res);
+
+            onVerifiedSuccess(res, selectedRoom);
+
           }
 
+
+
           setTimeout(() => {
+
             onClose();
-          }, 1300);
+
+          }, 1000);
+
         } catch (err) {
+
           setIsLoading(false);
-          setErrorMessage(err.message || 'Mã PIN hoặc 4 số cuối CCCD không chính xác.');
+
+          if (err.not_checked_in) {
+
+            setErrorMessage(err.message || 'Phòng chưa làm thủ tục nhận phòng. Đang chuyển tới quầy Lễ tân...');
+
+            setIsShaking(true);
+
+            if (onNotCheckedIn) {
+
+              setTimeout(() => {
+
+                onNotCheckedIn({
+
+                  roomNumber: err.room_number || selectedRoom,
+
+                  destination_key: err.destination_key || 'front_desk',
+
+                  message: err.message,
+
+                });
+
+                onClose();
+
+              }, 1200);
+
+            }
+
+            return;
+
+          }
+
+          // Xu ly neu backend tra ve HTTP 429 lockout
+          if (err.data?.status === 429 || err.message?.includes('khóa 1 phút') || err.message?.includes('spam')) {
+            const lockedUntil = Date.now() + PIN_LOCKOUT_DURATION_SEC * 1000;
+            setRoomLockoutState(selectedRoom, { count: PIN_LOCKOUT_MAX_ATTEMPTS, lockedUntil });
+            setLockoutRemaining(PIN_LOCKOUT_DURATION_SEC);
+            setErrorMessage(err.message || `Quý khách đã nhập sai mã PIN 5 lần. Hệ thống tạm khóa 1 phút. Quý khách vui lòng thử lại sau (${PIN_LOCKOUT_DURATION_SEC}s).`);
+            setIsShaking(true);
+            setTimeout(() => setIsShaking(false), 500);
+            setPin('');
+            return;
+          }
+
+          // Cap nhat so lan nhap sai cho phong dang chon (Mã PIN 4 số không chính xác (4 số cuối CCCD))
+          const currentLock = getRoomLockoutState(selectedRoom);
+          const nextCount = (currentLock.count || 0) + 1;
+
+          if (nextCount >= PIN_LOCKOUT_MAX_ATTEMPTS) {
+            const lockedUntil = Date.now() + PIN_LOCKOUT_DURATION_SEC * 1000;
+            setRoomLockoutState(selectedRoom, { count: nextCount, lockedUntil });
+            setLockoutRemaining(PIN_LOCKOUT_DURATION_SEC);
+            setErrorMessage(`Quý khách đã nhập sai mã PIN 5 lần. Hệ thống tạm khóa 1 phút. Quý khách vui lòng thử lại sau (${PIN_LOCKOUT_DURATION_SEC}s).`);
+          } else {
+            setRoomLockoutState(selectedRoom, { count: nextCount, lockedUntil: 0 });
+            setErrorMessage(err.message || DEFAULT_WRONG_PIN_ERROR_MSG);
+          }
+
           setIsShaking(true);
+
           setTimeout(() => setIsShaking(false), 500);
+
           setPin('');
+
         }
+
       };
 
+
+
       submitPin();
+
     }
-  }, [pin, isLoading, isSuccess, activeTab, roomNumber, pendingAction, pendingItems, onVerifiedSuccess, onClose]);
+
+  }, [pin, isLoading, isSuccess, activeTab, selectedRoom, isSelectingRoom, pendingAction, pendingItems, onVerifiedSuccess, onNotCheckedIn, onClose]);
+
+
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150 select-none overscroll-contain">
       <div
-        className={`relative w-full max-w-md p-6 sm:p-8 rounded-3xl bg-stone-900/95 border border-stone-700/80 shadow-2xl backdrop-blur-2xl text-white transition-all ${
+        className={`relative w-full max-w-[340px] sm:max-w-sm max-h-[92vh] overflow-y-auto p-5 sm:p-6 rounded-3xl bg-white border border-[#E3DFD5] shadow-2xl text-stone-900 transition-all ${
           isShaking ? 'animate-shake' : ''
-        } ${isSuccess ? 'border-emerald-500/80 shadow-emerald-500/30' : ''}`}
+        } ${isSuccess ? 'border-emerald-500/60' : ''}`}
       >
         {/* Nút đóng */}
         <button
+          type="button"
           onClick={onClose}
           disabled={isLoading || isSuccess}
-          className="absolute top-5 right-5 p-2 rounded-full bg-stone-800/80 hover:bg-stone-700 text-stone-400 hover:text-white transition-colors"
-          title="Đóng modal"
+          className="absolute top-3.5 right-3.5 z-10 w-8 h-8 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-500 hover:text-stone-800 transition-colors flex items-center justify-center cursor-pointer"
+          title="Đóng"
         >
-          <X className="w-5 h-5" />
+          <X className="w-4 h-4" />
         </button>
 
-        {/* Tiêu đề & Trạng thái */}
-        <div className="text-center mb-5">
-          <div
-            className={`inline-flex items-center justify-center w-16 h-16 rounded-2xl mb-3 shadow-lg transition-colors ${
-              isSuccess
-                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
-                : activeTab === 'nfc'
-                ? 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/40'
-                : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
-            }`}
-          >
-            {isSuccess ? (
-              <CheckCircle2 className="w-10 h-10 animate-bounce" />
-            ) : activeTab === 'nfc' ? (
-              <Radio className="w-8 h-8 animate-pulse text-indigo-400" />
-            ) : (
-              <KeyRound className="w-8 h-8 text-amber-400" />
-            )}
+        {/* 1. MÀN HÌNH THÀNH CÔNG */}
+        {isSuccess ? (
+          <div className="text-center py-6 space-y-3">
+            <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-600 mx-auto">
+              <CheckCircle2 className="w-7 h-7" />
+            </div>
+            <div>
+              <h3 className="text-base sm:text-lg font-extrabold text-stone-900">
+                Xác Thực Thành Công
+              </h3>
+              <p className="mt-1 text-xs text-stone-600">
+                Chào mừng {successInfo?.guest_name || 'quý khách'}! Đã xác nhận phòng {successInfo?.room_number || selectedRoom}.
+              </p>
+            </div>
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-stone-100 border border-stone-200 text-[11px] font-semibold text-stone-700">
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Đang gửi yêu cầu...</span>
+            </div>
           </div>
-
-          <h3 className="text-xl sm:text-2xl font-bold tracking-tight text-stone-100">
-            {isSuccess
-              ? 'Xác Thực Thành Công!'
-              : activeTab === 'nfc'
-              ? 'Chạm Thẻ Phòng NFC'
-              : roomNumber
-              ? `Nhập Mã PIN Phòng ${roomNumber}`
-              : 'Nhập Mã PIN Phòng'}
-          </h3>
-
-          <p className="mt-1 text-xs sm:text-sm text-stone-400">
-            {isSuccess
-              ? `Chào mừng ${successInfo?.guest_name || 'quý khách'}! Đã khởi tạo #${successInfo?.ticket_code || 'REQ'}`
-              : activeTab === 'nfc'
-              ? 'Áp thẻ phòng vào mặt lưng điện thoại để hệ thống tự nhận diện'
-              : 'Nhập mã PIN 4 số của phòng hoặc 4 số cuối CCCD'}
-          </p>
-
-          {/* Chi tiết yêu cầu phục vụ */}
-          {pendingItems && !isSuccess && (
-            <div className="mt-2.5 px-3 py-1.5 rounded-xl bg-stone-800/70 border border-stone-700/60 text-xs text-amber-300 font-medium inline-block max-w-full truncate">
-              {pendingItems}
+        ) : isForgotPinView ? (
+          /* 2. FALLBACK: QUÊN MÃ PIN PHÒNG -> HƯỚNG DẪN RA LỄ TÂN */
+          <div className="space-y-4 py-2 text-center">
+            <div className="w-12 h-12 rounded-2xl mx-auto bg-stone-100 border border-stone-200 text-stone-700 flex items-center justify-center">
+              <ShieldCheck className="w-6 h-6" />
             </div>
-          )}
-        </div>
 
-        {/* Thông báo trạng thái hoặc lỗi */}
-        <div className="min-h-[24px] mb-3 text-center">
-          {isLoading && (
-            <span className="text-xs text-amber-400 animate-pulse font-medium">
-              Đang đối chiếu thẻ với máy chủ Supabase...
-            </span>
-          )}
-          {errorMessage && !isLoading && (
-            <div className="flex items-center justify-center gap-1.5 text-xs text-rose-400 font-medium animate-in fade-in">
-              <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
-              <span>{errorMessage}</span>
-            </div>
-          )}
-          {isSuccess && (
-            <div className="flex items-center justify-center gap-1.5 text-xs text-emerald-400 font-semibold animate-in fade-in">
-              <ShieldCheck className="w-4 h-4 flex-shrink-0" />
-              <span>Đã xác nhận phòng {successInfo?.room_number}!</span>
-            </div>
-          )}
-        </div>
-
-        {/* NỘI DUNG CHÍNH: QUÉT THẺ NFC THẬT */}
-        {activeTab === 'nfc' && !isSuccess && (
-          <div className="space-y-4">
-            {/* Vùng quét thẻ cảm ứng sóng radar */}
-            <div
-              onClick={() => {
-                if (nfcStatus !== 'scanning') {
-                  startWebNfcScan();
-                }
-              }}
-              className={`relative overflow-hidden rounded-3xl border p-6 text-center flex flex-col items-center justify-center cursor-pointer select-none active:scale-[0.98] transition-all ${
-                nfcStatus === 'scanning'
-                  ? 'bg-gradient-to-b from-emerald-950/40 to-stone-900/80 border-emerald-500/50 shadow-lg shadow-emerald-500/10'
-                  : 'bg-gradient-to-b from-indigo-950/40 to-stone-900/80 border-indigo-500/30 hover:border-indigo-400/60'
-              }`}
-            >
-              <div className="relative mb-3 flex items-center justify-center">
-                {/* Vòng sóng radar lan tỏa */}
-                {nfcStatus === 'scanning' && (
-                  <>
-                    <span className="absolute w-28 h-28 rounded-full bg-emerald-500/20 animate-ping" />
-                    <span className="absolute w-20 h-20 rounded-full bg-emerald-500/30 animate-pulse" />
-                  </>
-                )}
-                <div
-                  className={`relative w-16 h-16 rounded-2xl flex items-center justify-center shadow-xl transition-all ${
-                    nfcStatus === 'scanning'
-                      ? 'bg-emerald-600/30 border border-emerald-400/60 text-emerald-300 scale-105'
-                      : 'bg-indigo-600/40 border border-indigo-400/60 text-indigo-300'
-                  }`}
-                >
-                  <CreditCard className="w-8 h-8" />
-                </div>
-              </div>
-
-              {/* Chỉ báo trạng thái phần cứng thực tế */}
-              {nfcStatus === 'scanning' && (
-                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-xs text-emerald-300 font-semibold animate-pulse">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-                  <span>ĐẦU ĐỌC ĐANG LẮNG NGHE THẺ</span>
-                </div>
-              )}
-
-              {nfcStatus === 'read_detected' && (
-                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/20 border border-indigo-500/40 text-xs text-indigo-300 font-medium animate-pulse">
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                  <span>Đã bắt được thẻ: {lastScannedUid}</span>
-                </div>
-              )}
-
-              {nfcStatus === 'starting' && (
-                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/20 border border-amber-500/40 text-xs text-amber-300 font-medium">
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                  <span>Đang khởi động NFC...</span>
-                </div>
-              )}
-
-              {nfcStatus === 'error' && (
-                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-rose-500/20 border border-rose-500/40 text-xs text-rose-300 font-medium">
-                  <AlertCircle className="w-3.5 h-3.5" />
-                  <span>Chạm vào đây để kích hoạt lại</span>
-                </div>
-              )}
-
-              {nfcStatus === 'idle' && (
-                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/20 border border-indigo-500/40 text-xs text-indigo-300 font-medium">
-                  <Radio className="w-3.5 h-3.5 animate-pulse" />
-                  <span>Bấm nút bên dưới để bật quét</span>
-                </div>
-              )}
-
-              <p className="mt-2.5 text-xs text-stone-300 max-w-xs leading-relaxed">
-                {nfcStatusMsg || 'Áp thẻ phòng NFC vào mặt lưng điện thoại để tự động kích hoạt'}
+            <div>
+              <h3 className="text-base font-extrabold text-stone-900">
+                Quên Mã PIN Phòng?
+              </h3>
+              <p className="text-xs text-stone-600 mt-2 leading-relaxed px-1">
+                Vì lý do bảo mật, Robot không được phép cấp lại mã PIN. Quý khách vui lòng liên hệ quầy Lễ tân tại sảnh chính để được nhân viên hỗ trợ cấp lại mã PIN nhé ạ.
               </p>
             </div>
 
-            {/* NÚT BẤM BẬT QUÉT TO RÕ RÀNG (ĐẢM BẢO 100% USER GESTURE CHO CHROME) */}
-            <button
-              type="button"
-              onClick={() => startWebNfcScan()}
-              disabled={isLoading || isSuccess || nfcStatus === 'scanning'}
-              className={`w-full py-3.5 px-4 rounded-2xl font-bold flex items-center justify-center gap-2.5 shadow-xl active:scale-[0.98] transition-all ${
-                nfcStatus === 'scanning'
-                  ? 'bg-emerald-600/30 border border-emerald-500/60 text-emerald-300 shadow-emerald-900/20'
-                  : 'bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white shadow-indigo-600/40 ring-1 ring-white/20'
-              }`}
-            >
-              <Radio className={`w-5 h-5 ${nfcStatus === 'scanning' ? 'animate-spin text-emerald-300' : 'animate-pulse'}`} />
-              <span className="text-sm font-semibold tracking-wide">
-                {nfcStatus === 'scanning'
-                  ? 'ĐANG LẮNG NGHE (ÁP THẺ VÀO LƯNG)...'
-                  : 'BẬT ĐẦU ĐỌC QUÉT THẺ'}
-              </span>
-            </button>
-
-
-            {/* Nút chuyển sang nhập mã PIN nếu khách quên mang thẻ */}
-            <div className="text-center pt-1">
+            <div className="flex flex-col gap-2 pt-2">
               <button
                 type="button"
                 onClick={() => {
-                  setActiveTab('pin');
-                  setErrorMessage('');
+                  if (onForgotPin) {
+                    onForgotPin({ destination_key: 'front_desk', roomNumber: selectedRoom });
+                  }
+                  onClose();
                 }}
-                className="text-xs text-stone-400 hover:text-amber-300 underline underline-offset-4 transition-colors"
+                className="w-full py-2.5 px-4 rounded-2xl bg-[#1A1917] hover:bg-stone-800 text-white font-bold text-xs sm:text-sm shadow-md transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-1.5"
               >
-                Không mang thẻ? Nhập mã PIN 4 số hoặc 4 số cuối CCCD
+                <span>Chỉ đường đến Quầy Lễ Tân</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsForgotPinView(false)}
+                className="w-full py-2 px-4 rounded-2xl bg-stone-100 hover:bg-stone-200 text-stone-700 text-xs font-semibold transition-all cursor-pointer"
+              >
+                Quay lại nhập mã PIN
               </button>
             </div>
           </div>
-        )}
+        ) : isSelectingRoom ? (
+          /* 3. BƯỚC 1: CHỌN SỐ PHÒNG (MINIMAL TOUCH UI SÁNG) */
+          <div className="space-y-3.5">
+            <div className="text-center">
+              <h3 className="text-sm sm:text-base font-extrabold text-stone-900">
+                Chọn Số Phòng Lưu Trú
+              </h3>
+              <p className="text-[11px] text-stone-500 mt-0.5">
+                Chạm chọn số phòng của quý khách
+              </p>
+            </div>
 
-        {/* NỘI DUNG DỰ PHÒNG: BÀN PHÍM PIN CẢM ỨNG (NUMPAD) */}
-        {activeTab === 'pin' && !isSuccess && (
-          <div>
-            {/* 4 Ô chỉ báo mã PIN (● ● ○ ○) */}
-            <div className="flex justify-center items-center gap-4 mb-5">
+            {/* Tab chuyển tầng 3 và tầng 4 */}
+            <div className="grid grid-cols-2 gap-1.5 p-1 bg-stone-100 border border-stone-200 rounded-xl">
+              <button
+                type="button"
+                onClick={() => setRoomFloorTab('3')}
+                className={`py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                  roomFloorTab === '3'
+                    ? 'bg-white text-stone-900 shadow-xs'
+                    : 'text-stone-600 hover:text-stone-900'
+                }`}
+              >
+                Tầng 3 (P.301 - 310)
+              </button>
+              <button
+                type="button"
+                onClick={() => setRoomFloorTab('4')}
+                className={`py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                  roomFloorTab === '4'
+                    ? 'bg-white text-stone-900 shadow-xs'
+                    : 'text-stone-600 hover:text-stone-900'
+                }`}
+              >
+                Tầng 4 (P.401 - 410)
+              </button>
+            </div>
+
+            {/* Grid 10 phòng / tầng */}
+            <div className="grid grid-cols-5 gap-1.5">
+              {(roomFloorTab === '3' ? OFFICIAL_ROOMS.floor3 : OFFICIAL_ROOMS.floor4).map((rNum) => {
+                const isSelected = selectedRoom === rNum;
+                return (
+                  <button
+                    key={rNum}
+                    type="button"
+                    onClick={() => {
+                      setSelectedRoom(rNum);
+                      if (onRoomSelect) onRoomSelect(rNum);
+                      setIsSelectingRoom(false);
+                      setPin('');
+                      setErrorMessage('');
+                    }}
+                    className={`py-2 rounded-xl font-bold text-xs sm:text-sm transition-all cursor-pointer select-none active:scale-95 ${
+                      isSelected
+                        ? 'bg-[#1A1917] text-white shadow-sm'
+                        : 'bg-stone-50 hover:bg-stone-100 text-stone-900 border border-stone-200/80'
+                    }`}
+                  >
+                    {rNum}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          /* 4. BƯỚC 2: NHẬP MÃ PIN 4 SỐ (TỐI GIẢN ICON & CHỮ, TONE SÁNG) */
+          <div className="space-y-3">
+            {/* Header thông tin ngắn gọn */}
+            <div className="flex flex-col items-center text-center">
+              <h3 className="text-base sm:text-lg font-extrabold text-stone-900">
+                {selectedRoom ? `Mã PIN Phòng ${selectedRoom}` : 'Nhập Mã PIN Phòng'}
+              </h3>
+
+              <p className="text-xs text-stone-500 mt-0.5">
+                4 số cuối CCCD của khách lưu trú
+              </p>
+
+              {/* Thanh hiển thị phòng đang chọn kèm nút đổi phòng */}
+              <div className="mt-2 w-full flex items-center justify-between px-3 py-1.5 rounded-2xl bg-stone-50 border border-stone-200">
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                  <span className="text-xs font-bold text-stone-900">
+                    Phòng {selectedRoom}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSelectingRoom(true);
+                    setPin('');
+                    setErrorMessage('');
+                  }}
+                  className="text-[11px] font-semibold text-stone-700 hover:text-stone-900 px-2 py-0.5 rounded-lg bg-stone-200 hover:bg-stone-300 transition-colors cursor-pointer"
+                >
+                  Đổi phòng
+                </button>
+              </div>
+
+              {/* Trạng thái / lỗi */}
+              <div className="min-h-[16px] mt-1 text-center">
+                {isLoading && (
+                  <span className="text-[11px] text-stone-600 animate-pulse font-medium">
+                    Đang xác thực mã PIN...
+                  </span>
+                )}
+                {lockoutRemaining > 0 && !isLoading && (
+                  <div className="flex items-center justify-center gap-1.5 text-[11px] text-rose-600 font-bold bg-rose-50 border border-rose-200/80 rounded-xl py-1.5 px-2.5">
+                    <Lock className="w-3.5 h-3.5 flex-shrink-0 text-rose-600" />
+                    <span>Đã khóa 1 phút: Thử lại sau {lockoutRemaining}s</span>
+                  </div>
+                )}
+                {errorMessage && !isLoading && lockoutRemaining <= 0 && (
+                  <div className="flex items-center justify-center gap-1 text-[11px] text-rose-500 font-semibold">
+                    <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                    <span className="line-clamp-2">{errorMessage}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* 4 Ô chỉ báo mã PIN */}
+            <div className="flex justify-center items-center gap-2.5 py-1">
               {[0, 1, 2, 3].map((index) => {
                 const isFilled = pin.length > index;
                 return (
                   <div
                     key={index}
-                    className={`w-4 h-4 sm:w-5 sm:h-5 rounded-full transition-all duration-200 ${
+                    className={`w-3.5 h-3.5 rounded-full transition-all duration-150 ${
                       isFilled
-                        ? 'bg-amber-400 ring-4 ring-amber-500/30 scale-110'
-                        : 'bg-stone-800 border-2 border-stone-600'
+                        ? 'bg-stone-900 ring-2 ring-stone-900/20 scale-105'
+                        : 'bg-stone-200 border border-stone-300'
                     }`}
                   />
                 );
               })}
             </div>
 
-            {/* Bàn phím số Numpad cảm ứng (Touch Buttons) */}
-            <div className="grid grid-cols-3 gap-2.5 max-w-xs mx-auto">
+            {/* Bàn phím số Numpad cảm ứng tone sáng */}
+            <div className="grid grid-cols-3 gap-2 w-full max-w-[240px] mx-auto pt-1">
               {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
                 <button
                   key={num}
+                  type="button"
                   onClick={() => handleKeyPress(String(num))}
-                  disabled={isLoading || isSuccess}
-                  className="h-12 sm:h-14 rounded-2xl bg-stone-800/90 hover:bg-stone-700/90 active:bg-amber-500/20 active:border-amber-400/50 border border-stone-700/60 text-xl font-semibold text-stone-100 shadow-md active:scale-95 transition-all flex items-center justify-center select-none"
+                  disabled={isLoading || isSuccess || lockoutRemaining > 0}
+                  className="h-11 rounded-2xl bg-stone-50 hover:bg-stone-100 active:bg-stone-200 border border-stone-200/90 text-lg font-bold text-stone-900 shadow-2xs active:scale-95 transition-all flex items-center justify-center select-none cursor-pointer"
                 >
                   {num}
                 </button>
               ))}
 
-              {/* Phím Clear/Xóa hết */}
               <button
+                type="button"
                 onClick={handleClear}
-                disabled={isLoading || isSuccess || pin.length === 0}
-                className="h-12 sm:h-14 rounded-2xl bg-stone-800/50 hover:bg-stone-700/50 border border-stone-700/40 text-xs font-semibold text-stone-400 hover:text-white uppercase tracking-wider active:scale-95 transition-all flex items-center justify-center select-none disabled:opacity-30"
+                disabled={isLoading || isSuccess || pin.length === 0 || lockoutRemaining > 0}
+                className="h-11 rounded-2xl bg-stone-100/70 hover:bg-stone-100 border border-stone-200/50 text-[11px] font-bold text-stone-500 hover:text-stone-800 uppercase tracking-wider active:scale-95 transition-all flex items-center justify-center select-none disabled:opacity-30 cursor-pointer"
               >
                 Xóa
               </button>
 
-              {/* Phím 0 */}
               <button
+                type="button"
                 onClick={() => handleKeyPress('0')}
-                disabled={isLoading || isSuccess}
-                className="h-12 sm:h-14 rounded-2xl bg-stone-800/90 hover:bg-stone-700/90 active:bg-amber-500/20 active:border-amber-400/50 border border-stone-700/60 text-xl font-semibold text-stone-100 shadow-md active:scale-95 transition-all flex items-center justify-center select-none"
+                disabled={isLoading || isSuccess || lockoutRemaining > 0}
+                className="h-11 rounded-2xl bg-stone-50 hover:bg-stone-100 active:bg-stone-200 border border-stone-200/90 text-lg font-bold text-stone-900 shadow-2xs active:scale-95 transition-all flex items-center justify-center select-none cursor-pointer"
               >
                 0
               </button>
 
-              {/* Phím Backspace */}
               <button
+                type="button"
                 onClick={handleDelete}
-                disabled={isLoading || isSuccess || pin.length === 0}
-                className="h-12 sm:h-14 rounded-2xl bg-stone-800/50 hover:bg-stone-700/50 border border-stone-700/40 text-stone-300 hover:text-white active:scale-95 transition-all flex items-center justify-center select-none disabled:opacity-30"
+                disabled={isLoading || isSuccess || pin.length === 0 || lockoutRemaining > 0}
+                className="h-11 rounded-2xl bg-stone-100/70 hover:bg-stone-100 border border-stone-200/50 text-stone-600 hover:text-stone-900 active:scale-95 transition-all flex items-center justify-center select-none disabled:opacity-30 cursor-pointer"
+                title="Xóa lùi"
               >
-                <Delete className="w-5 h-5" />
+                <Delete className="w-4 h-4" />
               </button>
             </div>
 
-            {/* Quay lại quét thẻ NFC */}
-            <div className="text-center mt-4">
+            {/* Quên PIN tinh giản */}
+            <div className="flex items-center justify-center pt-2">
               <button
                 type="button"
-                onClick={() => {
-                  setActiveTab('nfc');
-                  setErrorMessage('');
-                }}
-                className="text-xs text-stone-400 hover:text-indigo-300 underline underline-offset-4 transition-colors"
+                onClick={() => setIsForgotPinView(true)}
+                className="text-xs text-stone-500 hover:text-stone-900 underline underline-offset-4 transition-colors cursor-pointer font-semibold"
               >
-                ← Quay lại chế độ Quét thẻ NFC
+                Quên mã PIN?
               </button>
             </div>
           </div>
         )}
-
-        {/* Chú thích chân modal */}
-        <div className="mt-5 text-center">
-          <p className="text-[11px] text-stone-400 flex items-center justify-center gap-1.5">
-            <Lock className="w-3 h-3 text-stone-400" />
-            <span>Xác thực định danh bảo vệ quyền riêng tư phòng khách lưu trú</span>
-          </p>
-        </div>
       </div>
     </div>
   );

@@ -1,8 +1,7 @@
 // Service Worker for HC-Robot PWA
-const CACHE_NAME = 'hc-robot-app-cache';
+const CACHE_NAME = 'hc-robot-app-cache-v3';
 const ASSETS_TO_CACHE = [
-  '/',
-  '/index.html',
+  '/map.html',
   '/manifest.json',
   '/manifest-login.json'
 ];
@@ -11,7 +10,7 @@ self.addEventListener('install', (event) => {
   self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(ASSETS_TO_CACHE);
+      return cache.addAll(ASSETS_TO_CACHE).catch(() => {});
     })
   );
 });
@@ -22,7 +21,6 @@ self.addEventListener('activate', (event) => {
       return Promise.all(
         keys.map((key) => {
           if (key !== CACHE_NAME) {
-            console.log('[SW] Deleting old cache:', key);
             return caches.delete(key);
           }
         })
@@ -43,21 +41,37 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin || url.pathname.startsWith('/api/')) return;
 
-  // Network-First strategy: Luôn ưu tiên lấy bản mới nhất từ Server khi online
+  // Không bao giờ cache các module Vite dev (/src/, /node_modules/, /@vite/) để tránh lỗi giữ code cũ trên mobile
+  if (
+    url.pathname.startsWith('/src/') ||
+    url.pathname.startsWith('/node_modules/') ||
+    url.pathname.startsWith('/@')
+  ) {
+    return;
+  }
+
+  const isStandaloneMap =
+    url.pathname === '/map.html' ||
+    url.pathname.endsWith('/map.html') ||
+    url.searchParams.has('t') ||
+    url.searchParams.has('dest');
+
   event.respondWith(
     fetch(event.request)
       .then((response) => {
-        if (response && response.status === 200) {
+        if (response && response.status === 200 && isStandaloneMap && url.pathname.endsWith('/map.html')) {
           const copy = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+          caches.open(CACHE_NAME).then((cache) => cache.put('/map.html', copy));
         }
         return response;
       })
       .catch(async () => {
-        // Chỉ fallback về cache nếu mất mạng (Offline)
+        if (isStandaloneMap) {
+          const cachedMap = await caches.match('/map.html', { ignoreSearch: true });
+          if (cachedMap) return cachedMap;
+        }
         const cached = await caches.match(event.request);
         if (cached) return cached;
-        if (event.request.mode === 'navigate') return caches.match('/index.html');
         return Response.error();
       })
   );

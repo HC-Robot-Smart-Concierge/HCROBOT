@@ -48,13 +48,30 @@ describe('FloorMap Wayfinding Logic & Contract Tests', () => {
 
 
 
-  it('generates a valid, mobile-optimized standalone QR map URL for guest handoff', () => {
+  it('generates a valid, mobile-optimized standalone QR map URL for guest handoff with redundant dest fallback', async () => {
 
     const url = getMobileGuestMapUrl('infinity_pool');
 
     expect(url).toBeDefined();
 
     expect(url).toContain('map.html?t=');
+    expect(url).toContain('&dest=infinity_pool');
+
+    const { parseGuestMapParams } = await import('../../pages/guest/GuestMapPage');
+    const queryStr = url.split('?')[1] || '';
+    const parsed = parseGuestMapParams(`?${queryStr}`);
+    expect(parsed.destKey).toBe('infinity_pool');
+    expect(parsed.expiresAt).toBeGreaterThan(Date.now());
+    expect(parsed.ticketId.length).toBeGreaterThan(0);
+
+    // Alternative flow 1: Corrupted token falls back to &dest=
+    const fallbackParsed = parseGuestMapParams('?t=corrupted_base64_&&dest=gym');
+    expect(fallbackParsed.destKey).toBe('gym');
+
+    // Alternative flow 2: Alias destination keys normalize properly
+    expect(parseGuestMapParams('?dest=luxury_spa').destKey).toBe('spa');
+    expect(parseGuestMapParams('?dest=sky_bar').destKey).toBe('bar');
+    expect(parseGuestMapParams('?dest=pool').destKey).toBe('infinity_pool');
 
   });
 
@@ -184,6 +201,16 @@ describe('FloorMap Wayfinding Logic & Contract Tests', () => {
 
     expect(detectDestinationPoi('Hãy giới thiệu cho tôi về hồ bơi')).toBe('infinity_pool');
 
+    expect(detectDestinationPoi('Chỉ đường lên Rooftop Coffee')).toBe('rooftop_coffee');
+    expect(detectDestinationPoi('Quầy bar ở đâu')).toBe('bar');
+    expect(detectDestinationPoi('bar ở đâu')).toBe('bar');
+    expect(detectDestinationPoi('ba ở đâu')).toBe('bar');
+    expect(detectDestinationPoi('quầy ba')).toBe('bar');
+    expect(detectDestinationPoi('sky ba')).toBe('bar');
+    expect(detectDestinationPoi('Phòng karaoke ở tầng mấy')).toBe('karaoke');
+    expect(detectDestinationPoi('Cửa hàng lưu niệm ở đâu')).toBe('gift_shop');
+    expect(detectDestinationPoi('Bãi giữ xe máy ở đâu')).toBe('parking_bike');
+
 
 
     // Không kích hoạt với địa điểm bên ngoài khách sạn
@@ -257,6 +284,40 @@ describe('FloorMap Wayfinding Logic & Contract Tests', () => {
 
     expect(detectDestinationPoi('402')).toBe('room_402');
 
+  });
+
+  it('computes smart camera auto-focus and distortion-free orthogonal heading-up rotation for QR mobile wayfinding', async () => {
+    const { computeSmartRouteFrame, computeOrthogonalHeadingAngle } = await import('../../pages/guest/GuestMapPage');
+
+    const pathStr = 'M 350 580 L 1165 580 L 1165 410 L 1465 410';
+    const startPt = { x: 350, y: 580 };
+    const endPt = { x: 1465, y: 410 };
+
+    const focus25d = computeSmartRouteFrame(pathStr, startPt, endPt, 'focus25d');
+    expect(focus25d.tiltX).toBe(20);
+    expect(focus25d.rotZ).toBe(0);
+    expect(focus25d.midX).toBeGreaterThan(800);
+    expect(focus25d.baseW).toBeGreaterThanOrEqual(1050);
+
+    const headingLeg1 = computeSmartRouteFrame(pathStr, startPt, endPt, 'heading');
+    expect(headingLeg1.rotZ).toBe(-90);
+    expect(Math.abs(headingLeg1.rotZ) % 90).toBe(0);
+
+    // Chặng 2 (Từ Thang máy A 1715,560 đi tới Phòng VIP Karaoke 1450,880 hoặc Phòng 301 1656,220)
+    // luôn phải xoay chuẩn +90 độ (Thang máy ở dưới đáy nhìn thẳng lên trên)
+    const karaokeLeg2 = computeSmartRouteFrame(
+      'M 1715 560 L 1490 560 L 1450 600 L 1450 880',
+      { x: 1715, y: 560 },
+      { x: 1450, y: 880 },
+      'heading'
+    );
+    expect(karaokeLeg2.rotZ).toBe(90);
+    expect(computeOrthogonalHeadingAngle({ x: 1715, y: 560 })).toBe(90);
+    expect(computeOrthogonalHeadingAngle({ x: 350, y: 580 })).toBe(-90);
+
+    const flat2d = computeSmartRouteFrame(pathStr, startPt, endPt, 'flat2d');
+    expect(flat2d.tiltX).toBe(0);
+    expect(flat2d.rotZ).toBe(0);
   });
 
 });

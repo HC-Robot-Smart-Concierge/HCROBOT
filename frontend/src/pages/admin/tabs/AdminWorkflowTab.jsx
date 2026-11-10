@@ -20,9 +20,12 @@ import { WorkflowBuilderModal } from './workflow/WorkflowBuilderModal';
 import { WorkflowSimulatorModal } from './workflow/WorkflowSimulatorModal';
 import { WorkflowSimulatorStudio } from './workflow/WorkflowSimulatorStudio';
 
+import { useRobotControlText } from '../../../context/RobotControlLanguage';
+
 export { OTTO_STEP_TYPES };
 
 export const AdminWorkflowTab = () => {
+  const rc = useRobotControlText();
   const [workflows, setWorkflows] = useState([]);
   const [waypoints, setWaypoints] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -189,13 +192,13 @@ export const AdminWorkflowTab = () => {
       step_id: `step-${Date.now()}`,
       type: stepDef.type,
       title: stepDef.label,
-      params: { ...stepDef.defaultParams },
+      params: JSON.parse(JSON.stringify(stepDef.defaultParams)),
     };
 
-    setEditingWorkflow({
-      ...editingWorkflow,
-      steps: [...(editingWorkflow.steps || []), newStep],
-    });
+    setEditingWorkflow((prev) => ({
+      ...prev,
+      steps: [...(prev.steps || []), newStep],
+    }));
   };
 
   const handleRemoveStep = (index) => {
@@ -214,16 +217,19 @@ export const AdminWorkflowTab = () => {
     setEditingWorkflow({ ...editingWorkflow, steps: updated });
   };
 
+  // Functional update: one edit may change several params in a row (e.g. picking a MOVE target)
   const handleStepParamChange = (stepIndex, paramKey, val) => {
-    const updated = [...editingWorkflow.steps];
-    updated[stepIndex] = {
-      ...updated[stepIndex],
-      params: {
-        ...(updated[stepIndex].params || {}),
-        [paramKey]: val,
-      },
-    };
-    setEditingWorkflow({ ...editingWorkflow, steps: updated });
+    setEditingWorkflow((prev) => {
+      const updated = [...prev.steps];
+      updated[stepIndex] = {
+        ...updated[stepIndex],
+        params: {
+          ...(updated[stepIndex].params || {}),
+          [paramKey]: val,
+        },
+      };
+      return { ...prev, steps: updated };
+    });
   };
 
   const handleWorkflowMetaChange = (key, val) => {
@@ -232,9 +238,7 @@ export const AdminWorkflowTab = () => {
 
   return (
     <div
-      className={`w-full flex flex-col ${
-        activeView === 'simulator' ? 'h-[calc(100vh-75px)] overflow-hidden' : 'min-h-full pb-4'
-      }`}
+      className="flex h-full min-h-0 w-full flex-col overflow-hidden"
       style={{ color: '#262626' }}
     >
       {/* Toast Notification */}
@@ -249,12 +253,13 @@ export const AdminWorkflowTab = () => {
 
       {/* Thanh Điều Hướng 2 Tab: Danh Sách Kịch Bản & Giả Lập */}
       <div
-        className="h-12 px-4 border-b flex items-center justify-between gap-3 shrink-0 sticky top-0 z-20 select-none"
-        style={{ backgroundColor: '#E9E5DC', borderColor: '#BFBFBD' }}
+        className="px-3 sm:px-5 border-b flex items-center justify-between gap-2 shrink-0 select-none"
+        style={{ height: 'var(--admin-header-height, 4rem)', backgroundColor: '#F2EFE9', borderColor: 'var(--admin-header-border, #BFBFBD)' }}
       >
-        <div className="flex items-center gap-1.5">
+        <div role="group" aria-label={rc('Workflow views')} className="flex items-center gap-1.5">
           <button
             type="button"
+            aria-pressed={activeView === 'list'}
             onClick={() => setActiveView('list')}
             className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
               activeView === 'list'
@@ -262,7 +267,7 @@ export const AdminWorkflowTab = () => {
                 : 'text-[#262626] hover:bg-[#F2EFE9] border border-transparent hover:border-[#BFBFBD]'
             }`}
           >
-            <span>Danh sách kịch bản</span>
+            <span>{rc('Workflow list')}</span>
             <span
               className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full ${
                 activeView === 'list'
@@ -276,6 +281,7 @@ export const AdminWorkflowTab = () => {
 
           <button
             type="button"
+            aria-pressed={activeView === 'simulator'}
             onClick={() => setActiveView('simulator')}
             className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
               activeView === 'simulator'
@@ -283,26 +289,26 @@ export const AdminWorkflowTab = () => {
                 : 'text-[#262626] hover:bg-[#F2EFE9] border border-transparent hover:border-[#BFBFBD]'
             }`}
           >
-            <span>Giả lập</span>
+            <span>{rc('Simulator')}</span>
           </button>
         </div>
 
         {activeView === 'list' && (
           <button
             type="button"
-            onClick={handleOpenCreate}
+            onClick={handleOpenCreate} title={rc('New workflow')} aria-label={rc('New workflow')}
             className="px-3.5 py-1.5 rounded-lg text-xs font-bold border cursor-pointer transition-colors whitespace-nowrap shrink-0 flex items-center gap-1.5 shadow-2xs hover:bg-[#363636]"
             style={{ backgroundColor: '#262626', color: '#FFFFFF', borderColor: '#262626' }}
           >
             <Plus className="w-3.5 h-3.5" />
-            <span>Tạo kịch bản mới</span>
+            <span className="hidden sm:inline">{rc('New workflow')}</span>
           </button>
         )}
       </div>
 
       {/* Content Body: Simulator Studio hoặc Workflow Cards Grid */}
       {activeView === 'simulator' ? (
-        <div className="flex-1 min-h-0 h-full overflow-hidden">
+        <div className="flex-1 min-h-0 overflow-hidden">
           <WorkflowSimulatorStudio
             workflows={workflows}
             initialWorkflowId={simulatingWorkflow?.id || (workflows.length > 0 ? workflows[0].id : null)}
@@ -320,7 +326,7 @@ export const AdminWorkflowTab = () => {
           />
         </div>
       ) : (
-        <div className="p-5 space-y-4 min-h-[calc(100vh-75px)]" style={{ backgroundColor: '#F2EFE9' }}>
+        <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-4 sm:p-5 space-y-4" style={{ backgroundColor: '#F2EFE9' }}>
         {/* Workflow Cards Grid - 2 Cột rộng rãi, màu xám #E9E5DC đồng bộ */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {workflows.length === 0 ? (
@@ -405,7 +411,7 @@ export const AdminWorkflowTab = () => {
                         title="Chạy thử mô phỏng kịch bản"
                       >
                         <Play className="w-3 h-3 fill-[#262626] text-[#262626]" />
-                        <span>Giả lập</span>
+                        <span>{rc('Simulator')}</span>
                       </button>
                       <button
                         type="button"

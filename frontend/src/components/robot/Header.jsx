@@ -1,5 +1,5 @@
 import React from 'react';
-import { UserCheck, RotateCcw, Lock, Globe } from 'lucide-react';
+import { UserCheck, LogOut, Lock, Globe } from 'lucide-react';
 
 export const Header = ({
   currentLanguage = 'Tiếng Việt',
@@ -25,25 +25,22 @@ export const Header = ({
         </div>
       </div>
 
-      {/* Center: Active Room Session Badge / Status */}
+      {/* Center: Active Room Session Badge / Status (Ẩn hoàn toàn khi Idle, chỉ hiện nút Thoát phiên khi đang có session) */}
       <div className="flex items-center gap-3">
-        {activeRoomNumber ? (
-          <div className="px-3.5 py-1.5 rounded-full bg-emerald-950/90 text-emerald-300 border border-emerald-700/80 shadow-md flex items-center gap-2 text-xs font-semibold backdrop-blur-md animate-fadeIn">
-            <UserCheck className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Hỗ trợ: Phòng {activeRoomNumber}</span>
+        {activeRoomNumber && (
+          <div className="px-3.5 py-1.5 rounded-full bg-stone-800/90 text-stone-200 border border-stone-600 shadow-md flex items-center gap-2 text-xs font-semibold backdrop-blur-md animate-fadeIn">
+            <UserCheck className="w-3.5 h-3.5 text-stone-300" />
+            <span>Phòng {activeRoomNumber}</span>
             <button
+              type="button"
               onClick={onResetSession}
-              title="Đổi phòng / Khách mới"
-              className="ml-1 px-2 py-0.5 rounded-full bg-emerald-800/90 hover:bg-emerald-700 text-white text-[11px] flex items-center gap-1 transition-all cursor-pointer"
+              title="Thoát phiên hiện tại"
+              aria-label="Thoát phiên"
+              className="ml-1 px-2.5 py-1 rounded-full bg-rose-950/70 hover:bg-rose-900 text-rose-200 border border-rose-800/60 text-[11px] font-medium flex items-center gap-1.5 transition-all cursor-pointer touch-manipulation active:scale-95"
             >
-              <RotateCcw className="w-3 h-3" />
-              <span>Đổi phòng</span>
+              <LogOut className="w-3 h-3 text-rose-400" />
+              <span>Thoát phiên</span>
             </button>
-          </div>
-        ) : (
-          <div className="px-3.5 py-1.5 rounded-full bg-stone-900/80 text-stone-300 border border-stone-700/60 shadow-sm flex items-center gap-2 text-xs font-medium backdrop-blur-md">
-            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-            <span>Sẵn sàng phục vụ</span>
           </div>
         )}
       </div>

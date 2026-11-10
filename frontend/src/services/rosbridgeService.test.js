@@ -1,3 +1,12 @@
+if (typeof globalThis.WebSocket === 'undefined') {
+  globalThis.WebSocket = {
+    CONNECTING: 0,
+    OPEN: 1,
+    CLOSING: 2,
+    CLOSED: 3,
+  };
+}
+
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { parseLaserScan, RosbridgeClient } from './rosbridgeService';
 

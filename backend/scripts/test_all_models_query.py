@@ -10,7 +10,7 @@ from app.models import (
     Staff, Department, ServiceType, SupportRequest, RoomServiceOrder, 
     OrderItem, Robot, Job, JobStep, JobEvent, ManagementDirective, 
     HumanSupportSession, ChatSession, ChatMessage, LogEvent, AuditLog, 
-    Notification, Hotel, Floor, Room, Amenity, Event, Map, Zone, 
+    Notification, Hotel, Floor, Room, Amenity, Event, Zone, 
     Endpoint, EndpointGroup, EndpointGroupMember, Menu, MenuItem, 
     FoodItem, Feedback, Schedule, RobotWorkflow, DialogueScenario
 )
@@ -23,7 +23,7 @@ async def test_models():
             Staff, Department, ServiceType, SupportRequest, RoomServiceOrder, 
             OrderItem, Robot, Job, JobStep, JobEvent, ManagementDirective, 
             HumanSupportSession, ChatSession, ChatMessage, LogEvent, AuditLog, 
-            Notification, Hotel, Floor, Room, Amenity, Event, Map, Zone, 
+            Notification, Hotel, Floor, Room, Amenity, Event, Zone, 
             Endpoint, EndpointGroup, EndpointGroupMember, Menu, MenuItem, 
             FoodItem, Feedback, Schedule, RobotWorkflow, DialogueScenario
         ]

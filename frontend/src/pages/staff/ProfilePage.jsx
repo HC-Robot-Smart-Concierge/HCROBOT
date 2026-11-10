@@ -1,3 +1,5 @@
+import { useStaffText, staffDepartmentLabel } from '../../context/StaffLanguage';
+import { StaffPageHeader } from '../../components/dashboard/RoomServiceFrame';
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -32,32 +34,32 @@ import { useAuth } from '../../context/AuthContext';
 const AVATAR_PRESETS = [
   {
     id: 'p1',
-    label: 'Nữ 1',
+    label: "Woman 1",
     url: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=200&auto=format&fit=crop&q=80',
   },
   {
     id: 'p2',
-    label: 'Nam 1',
+    label: "Man 1",
     url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&auto=format&fit=crop&q=80',
   },
   {
     id: 'p3',
-    label: 'Nữ 2',
+    label: "Woman 2",
     url: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200&auto=format&fit=crop&q=80',
   },
   {
     id: 'p4',
-    label: 'Nam 2',
+    label: "Man 2",
     url: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=200&auto=format&fit=crop&q=80',
   },
   {
     id: 'p5',
-    label: 'Nữ 3',
+    label: "Woman 3",
     url: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=200&auto=format&fit=crop&q=80',
   },
   {
     id: 'p6',
-    label: 'Nam 3',
+    label: "Man 3",
     url: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=200&auto=format&fit=crop&q=80',
   },
 ];
@@ -69,19 +71,20 @@ export const ProfilePage = ({
   onLogout,
   onNotify = () => {},
 }) => {
+  const st = useStaffText();
   const { logout } = useAuth();
   const navigate = useNavigate();
 
   const handleUserSync = onUpdateUser || onUserUpdated || (() => {});
-  const staffUsername = currentUser?.username || 'housekeeping';
-  const staffDept = currentUser?.department || 'Housekeeping';
+  const staffUsername = currentUser?.username || '';
+  const staffDept = currentUser?.department || st('Staff');
   const fileInputRef = useRef(null);
 
   // Personal info form state
   const [fullName, setFullName] = useState(
     currentUser?.full_name || currentUser?.name || 'Maria Santos'
   );
-  const [role, setRole] = useState(currentUser?.role || 'Housekeeping Lead');
+  const [role, setRole] = useState(currentUser?.role || '');
   const [code, setCode] = useState(currentUser?.code || 'MS-01');
   const [location, setLocation] = useState(currentUser?.location || 'Tầng 4 & 5');
   const [avatarUrl, setAvatarUrl] = useState(
@@ -139,12 +142,12 @@ export const ProfilePage = ({
     if (!file) return;
 
     if (!file.type.startsWith('image/')) {
-      onNotify('Vui lòng chọn tệp hình ảnh hợp lệ (PNG, JPG, WEBP, GIF)!');
+      onNotify(st("Choose a valid image file (PNG, JPG, WEBP or GIF)."));
       return;
     }
 
     if (file.size > 5 * 1024 * 1024) {
-      onNotify('Kích thước ảnh tối đa là 5MB!');
+      onNotify(st("The maximum image size is 5 MB."));
       return;
     }
 
@@ -152,7 +155,7 @@ export const ProfilePage = ({
     reader.onload = (event) => {
       const base64 = event.target.result;
       setAvatarUrl(base64);
-      onNotify('Đã tải ảnh lên! Hãy nhấn "Lưu Thay Đổi Thông Tin" để hoàn tất.');
+      onNotify(st("Picture uploaded. Select Save profile to finish."));
     };
     reader.readAsDataURL(file);
   };
@@ -161,7 +164,7 @@ export const ProfilePage = ({
   const handleSaveProfile = async (e) => {
     e.preventDefault();
     if (!fullName.trim()) {
-      onNotify('Vui lòng nhập họ và tên!');
+      onNotify(st("Enter your full name."));
       return;
     }
 
@@ -195,22 +198,22 @@ export const ProfilePage = ({
     updateStoredUser(updatedUser);
     handleUserSync(updatedUser);
 
-    onNotify('Đã cập nhật thông tin cá nhân thành công!');
+    onNotify(st("Profile updated."));
   };
 
   // Action: Change Password (3-field validation)
   const handlePasswordChange = async (e) => {
     e.preventDefault();
     if (!currentPassword) {
-      onNotify('Vui lòng nhập mật khẩu hiện tại!');
+      onNotify(st("Enter your current password."));
       return;
     }
     if (!newPassword || newPassword.length < 6) {
-      onNotify('Mật khẩu mới phải có ít nhất 6 ký tự!');
+      onNotify(st("The new password must contain at least 6 characters."));
       return;
     }
     if (newPassword !== confirmPassword) {
-      onNotify('Mật khẩu mới và xác nhận mật khẩu không trùng khớp!');
+      onNotify(st("The new password and confirmation do not match."));
       return;
     }
 
@@ -223,9 +226,9 @@ export const ProfilePage = ({
       setNewPassword('');
       setConfirmPassword('');
       setIsChangingPassword(false);
-      onNotify('Đã cập nhật mật khẩu mới thành công!');
+      onNotify(st("Password updated."));
     } else {
-      onNotify(res?.detail || 'Mật khẩu hiện tại không đúng. Vui lòng thử lại.');
+      onNotify(res?.detail || st("The current password is incorrect. Please try again."));
     }
   };
 
@@ -237,7 +240,7 @@ export const ProfilePage = ({
         return;
       }
       await logout();
-      onNotify('Đã đăng xuất khỏi phiên làm việc thành công.');
+      onNotify(st("Signed out successfully."));
       navigate('/');
     } catch (err) {
       console.error('[ProfilePage] Logout error:', err);
@@ -246,17 +249,15 @@ export const ProfilePage = ({
   };
 
   return (
-    <div className="flex-1 overflow-y-auto custom-scrollbar bg-[#F8F7F4] font-sans p-4 sm:p-6 lg:p-8 pb-28 lg:pb-10 select-none">
-      <div className="max-w-4xl mx-auto space-y-6">
+    <div className="staff-page-body flex-1 overflow-y-auto custom-scrollbar bg-[#F8F7F4] font-sans p-4 sm:p-6 lg:p-8 pb-28 lg:pb-10 select-none">
+      <div className="staff-page-container max-w-4xl mx-auto space-y-6">
         {/* Top Header */}
-        <div>
-          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-zinc-900">
-            Hồ Sơ Nhân Viên & Cài Đặt
-          </h1>
-          <p className="text-xs sm:text-sm text-zinc-500 mt-1">
-            Quản lý thông tin ca trực, phân quyền thiết bị robot và thông tin cá nhân.
-          </p>
-        </div>
+        <StaffPageHeader>
+          <div>
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-zinc-900">{st("Staff profile")} </h1>
+          <p className="text-xs sm:text-sm text-zinc-500 mt-1">{st("Manage your shift, robot permissions and personal details.")} </p>
+          </div>
+        </StaffPageHeader>
 
         {/* 1. Header Card (Employee Profile Overview) */}
         <div className="bg-white rounded-2xl border border-stone-200/80 shadow-xs p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-5 transition-all">
@@ -284,10 +285,10 @@ export const ProfilePage = ({
                 }`}
                 title={
                   shiftStatus === 'available'
-                    ? 'Đang Trực Ca'
+                    ? st("On duty")
                     : shiftStatus === 'busy'
-                    ? 'Đang Xử Lý Việc'
-                    : 'Nghỉ Ca'
+                    ? st("Busy")
+                    : st("Off duty")
                 }
               />
             </div>
@@ -299,19 +300,16 @@ export const ProfilePage = ({
               <p className="text-xs sm:text-sm font-medium text-zinc-500 flex items-center gap-1.5 flex-wrap">
                 <span>{role}</span>
                 <span className="text-stone-300">•</span>
-                <span className="text-zinc-900 font-semibold">{staffDept}</span>
+                <span className="text-zinc-900 font-semibold">{st(staffDepartmentLabel(staffDept))}</span>
               </p>
 
               {/* Badges / Tags */}
               <div className="flex flex-wrap items-center gap-2 pt-1">
-                <span className="px-2.5 py-1 rounded-lg bg-stone-50 border border-stone-200/80 text-xs font-mono text-zinc-600">
-                  Mã NV: <strong className="font-semibold text-zinc-900">{code || '---'}</strong>
+                <span className="px-2.5 py-1 rounded-lg bg-stone-50 border border-stone-200/80 text-xs font-mono text-zinc-600">{st("Staff ID:")} <strong className="font-semibold text-zinc-900">{code || '---'}</strong>
                 </span>
-                <span className="px-2.5 py-1 rounded-lg bg-stone-50 border border-stone-200/80 text-xs font-mono text-zinc-600">
-                  Tài khoản: <strong className="font-semibold text-zinc-900">{staffUsername}</strong>
+                <span className="px-2.5 py-1 rounded-lg bg-stone-50 border border-stone-200/80 text-xs font-mono text-zinc-600">{st("Account:")} <strong className="font-semibold text-zinc-900">{staffUsername}</strong>
                 </span>
-                <span className="px-2.5 py-1 rounded-lg bg-stone-50 border border-stone-200/80 text-xs text-zinc-600">
-                  Khu vực: <strong className="font-semibold text-zinc-900">{location || 'Chưa phân công'}</strong>
+                <span className="px-2.5 py-1 rounded-lg bg-stone-50 border border-stone-200/80 text-xs text-zinc-600">{st("Area:")} <strong className="font-semibold text-zinc-900">{location || st("Unassigned")}</strong>
                 </span>
               </div>
             </div>
@@ -339,10 +337,10 @@ export const ProfilePage = ({
               />
               <span>
                 {shiftStatus === 'available'
-                  ? 'Đang Trực Ca'
+                  ? st("On duty")
                   : shiftStatus === 'busy'
-                  ? 'Đang Xử Lý Việc'
-                  : 'Nghỉ Ca'}
+                  ? st("Busy")
+                  : st("Off duty")}
               </span>
             </span>
 
@@ -370,7 +368,7 @@ export const ProfilePage = ({
               }`}
             >
               <Edit3 className="w-4 h-4" />
-              <span>{isEditingProfile ? 'Đóng Chỉnh Sửa' : 'Chỉnh Sửa Thông Tin'}</span>
+              <span>{isEditingProfile ? st("Close editor") : st("Edit profile")}</span>
             </button>
           </div>
         </div>
@@ -383,17 +381,13 @@ export const ProfilePage = ({
                 <div className="w-8 h-8 rounded-lg bg-zinc-100 text-zinc-900 flex items-center justify-center shrink-0">
                   <Edit3 className="w-4 h-4" />
                 </div>
-                <h3 className="font-semibold text-zinc-900 text-sm sm:text-base">
-                  Chỉnh Sửa Thông Tin Cá Nhân
-                </h3>
+                <h3 className="font-semibold text-zinc-900 text-sm sm:text-base">{st("Edit personal details")} </h3>
               </div>
               <button
                 type="button"
                 onClick={handleCancelEdit}
                 className="text-stone-400 hover:text-zinc-800 text-xs font-semibold px-2 py-1 rounded-lg hover:bg-stone-100 transition-colors cursor-pointer"
-              >
-                ✕ Đóng
-              </button>
+              >{st("✕ Close")} </button>
             </div>
 
             <form onSubmit={handleSaveProfile} className="space-y-5">
@@ -402,11 +396,11 @@ export const ProfilePage = ({
                 <div>
                   <label className="block text-xs font-semibold text-zinc-600 mb-1.5 flex items-center gap-1.5">
                     <User className="w-3.5 h-3.5 text-zinc-400" />
-                    <span>Họ và Tên</span>
+                    <span>{st("Full name")}</span>
                   </label>
                   <input
                     type="text"
-                    placeholder="Nhập họ và tên đầy đủ"
+                    placeholder={st("Enter your full name")}
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
                     className="w-full h-10 px-3.5 rounded-xl bg-stone-50 border border-stone-200/90 text-sm font-medium text-zinc-900 focus:bg-white focus:border-zinc-900 focus:ring-1 focus:ring-zinc-900 outline-none transition-all placeholder:text-zinc-400"
@@ -418,11 +412,11 @@ export const ProfilePage = ({
                 <div>
                   <label className="block text-xs font-semibold text-zinc-600 mb-1.5 flex items-center gap-1.5">
                     <Briefcase className="w-3.5 h-3.5 text-zinc-400" />
-                    <span>Chức Danh / Vai Trò</span>
+                    <span>{st("Job title / role")}</span>
                   </label>
                   <input
                     type="text"
-                    placeholder="Ví dụ: Front Desk Staff, Shift Leader..."
+                    placeholder={st("e.g. Room Service Staff, Shift Leader...")}
                     value={role}
                     onChange={(e) => setRole(e.target.value)}
                     className="w-full h-10 px-3.5 rounded-xl bg-stone-50 border border-stone-200/90 text-sm font-medium text-zinc-900 focus:bg-white focus:border-zinc-900 focus:ring-1 focus:ring-zinc-900 outline-none transition-all placeholder:text-zinc-400"
@@ -433,11 +427,11 @@ export const ProfilePage = ({
                 <div>
                   <label className="block text-xs font-semibold text-zinc-600 mb-1.5 flex items-center gap-1.5">
                     <Hash className="w-3.5 h-3.5 text-zinc-400" />
-                    <span>Mã Nhân Viên</span>
+                    <span>{st("Staff ID")}</span>
                   </label>
                   <input
                     type="text"
-                    placeholder="Ví dụ: RCP-01, MS-01..."
+                    placeholder={st("e.g. RCP-01, MS-01...")}
                     value={code}
                     onChange={(e) => setCode(e.target.value)}
                     className="w-full h-10 px-3.5 rounded-xl bg-stone-50 border border-stone-200/90 text-sm font-mono font-semibold text-zinc-900 focus:bg-white focus:border-zinc-900 focus:ring-1 focus:ring-zinc-900 outline-none transition-all placeholder:text-zinc-400"
@@ -448,11 +442,11 @@ export const ProfilePage = ({
                 <div>
                   <label className="block text-xs font-semibold text-zinc-600 mb-1.5 flex items-center gap-1.5">
                     <MapPin className="w-3.5 h-3.5 text-zinc-400" />
-                    <span>Khu Vực Trực Ca / Vị Trí</span>
+                    <span>{st("Assigned area / location")}</span>
                   </label>
                   <input
                     type="text"
-                    placeholder="Ví dụ: Quầy Lễ tân Sảnh chính, Tầng 4 & 5..."
+                    placeholder={st("e.g. Main lobby, Floors 4 & 5...")}
                     value={location}
                     onChange={(e) => setLocation(e.target.value)}
                     className="w-full h-10 px-3.5 rounded-xl bg-stone-50 border border-stone-200/90 text-sm font-medium text-zinc-900 focus:bg-white focus:border-zinc-900 focus:ring-1 focus:ring-zinc-900 outline-none transition-all placeholder:text-zinc-400"
@@ -463,7 +457,7 @@ export const ProfilePage = ({
                 <div className="sm:col-span-2 space-y-3">
                   <label className="block text-xs font-semibold text-zinc-600 flex items-center gap-1.5">
                     <Camera className="w-3.5 h-3.5 text-zinc-400" />
-                    <span>Ảnh Đại Diện (Chọn tệp từ máy hoặc chọn ảnh mẫu)</span>
+                    <span>{st("Profile picture (upload or choose a preset)")}</span>
                   </label>
 
                   <div className="p-4 rounded-xl bg-stone-50 border border-stone-200/80 space-y-3">
@@ -485,7 +479,7 @@ export const ProfilePage = ({
                           type="button"
                           onClick={() => fileInputRef.current?.click()}
                           className="absolute inset-0 bg-black/40 text-white rounded-xl opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity cursor-pointer"
-                          title="Bấm để đổi ảnh"
+                          title={st("Change picture")}
                         >
                           <Camera className="w-4 h-4" />
                         </button>
@@ -507,7 +501,7 @@ export const ProfilePage = ({
                             className="h-9 px-3.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-medium transition-all shadow-xs flex items-center gap-1.5 cursor-pointer active:scale-95"
                           >
                             <Upload className="w-3.5 h-3.5" />
-                            <span>Chọn Ảnh Từ Máy Tính</span>
+                            <span>{st("Upload picture")}</span>
                           </button>
 
                           {avatarUrl && (
@@ -515,26 +509,22 @@ export const ProfilePage = ({
                               type="button"
                               onClick={() => {
                                 setAvatarUrl('');
-                                onNotify('Đã gỡ ảnh đại diện.');
+                                onNotify(st("Profile picture removed."));
                               }}
                               className="h-9 px-3.5 rounded-xl bg-white hover:bg-red-50 text-red-600 border border-red-200 text-xs font-medium transition-all flex items-center gap-1 cursor-pointer"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
-                              <span>Gỡ Ảnh</span>
+                              <span>{st("Remove picture")}</span>
                             </button>
                           )}
                         </div>
-                        <p className="text-[11px] text-zinc-500">
-                          Hỗ trợ định dạng JPG, PNG, WEBP hoặc GIF (Tối đa 5MB)
-                        </p>
+                        <p className="text-[11px] text-zinc-500">{st("JPG, PNG, WEBP or GIF, up to 5 MB")} </p>
                       </div>
                     </div>
 
                     {/* Presets Gallery */}
                     <div className="pt-3 border-t border-stone-200/60">
-                      <p className="text-[11px] font-semibold text-zinc-600 mb-2">
-                        Hoặc chọn nhanh từ bộ ảnh mẫu:
-                      </p>
+                      <p className="text-[11px] font-semibold text-zinc-600 mb-2">{st("Or choose a preset:")} </p>
                       <div className="flex flex-wrap items-center gap-2">
                         {AVATAR_PRESETS.map((preset) => {
                           const isSelected = avatarUrl === preset.url;
@@ -544,18 +534,18 @@ export const ProfilePage = ({
                               type="button"
                               onClick={() => {
                                 setAvatarUrl(preset.url);
-                                onNotify(`Đã chọn ảnh mẫu ${preset.label}`);
+                                onNotify(st("Selected picture: {0}", st(preset.label)));
                               }}
                               className={`relative w-10 h-10 rounded-xl overflow-hidden border-2 transition-all cursor-pointer ${
                                 isSelected
                                   ? 'border-zinc-900 scale-105 shadow-xs ring-2 ring-zinc-300'
                                   : 'border-stone-200 hover:border-stone-400 opacity-75 hover:opacity-100'
                               }`}
-                              title={`Chọn ${preset.label}`}
+                              title={st("Choose {0}", st(preset.label))}
                             >
                               <img
                                 src={preset.url}
-                                alt={preset.label}
+                                alt={st(preset.label)}
                                 className="w-full h-full object-cover"
                               />
                               {isSelected && (
@@ -573,14 +563,12 @@ export const ProfilePage = ({
 
                 {/* Trạng thái ca trực */}
                 <div className="sm:col-span-2">
-                  <label className="block text-xs font-semibold text-zinc-600 mb-1.5">
-                    Trạng Thái Làm Việc Hiện Tại
-                  </label>
+                  <label className="block text-xs font-semibold text-zinc-600 mb-1.5">{st("Current work status")} </label>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                     {[
-                      { id: 'available', label: '🟢 Sẵn Sàng (Trực Ca)' },
-                      { id: 'busy', label: '🟡 Đang Bận (Xử Lý Việc)' },
-                      { id: 'off_shift', label: '⚪ Nghỉ Ca' },
+                      { id: 'available', label: st("Available (on duty)") },
+                      { id: 'busy', label: st("Busy (working on a task)") },
+                      { id: 'off_shift', label: st("Off shift") },
                     ].map((s) => (
                       <button
                         key={s.id}
@@ -604,16 +592,14 @@ export const ProfilePage = ({
                   type="button"
                   onClick={handleCancelEdit}
                   className="h-10 px-4 rounded-xl bg-stone-100 hover:bg-stone-200 text-zinc-700 text-sm font-medium transition-all cursor-pointer"
-                >
-                  Hủy Bỏ
-                </button>
+                >{st("Discard")} </button>
                 <button
                   type="submit"
                   disabled={isSavingProfile}
                   className="h-10 px-5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-white text-sm font-medium transition-all shadow-xs flex items-center gap-2 cursor-pointer active:scale-[0.98] disabled:opacity-50"
                 >
                   <Save className="w-4 h-4" />
-                  <span>{isSavingProfile ? 'Đang lưu...' : 'Lưu Thay Đổi Thông Tin'}</span>
+                  <span>{isSavingProfile ? st("Saving...") : st("Save profile")}</span>
                 </button>
               </div>
             </form>
@@ -628,32 +614,26 @@ export const ProfilePage = ({
               <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
                 <Clock className="w-4 h-4" />
               </div>
-              <h3 className="font-semibold text-zinc-900 text-sm sm:text-base">
-                Lịch Trình & Ca Trực
-              </h3>
+              <h3 className="font-semibold text-zinc-900 text-sm sm:text-base">{st("Schedule & shifts")} </h3>
             </div>
 
             <div className="divide-y divide-stone-100 text-sm">
               <div className="flex items-center justify-between py-3 gap-4">
-                <span className="text-zinc-500 text-sm min-w-0">Ca trực hiện tại:</span>
-                <span className="font-semibold text-zinc-900 text-right shrink-0 whitespace-nowrap">
-                  Ca sáng (06:00 - 14:30)
-                </span>
+                <span className="text-zinc-500 text-sm min-w-0">{st("Current shift:")}</span>
+                <span className="font-semibold text-zinc-900 text-right shrink-0 whitespace-nowrap">{st("Morning shift (06:00 - 14:30)")} </span>
               </div>
               <div className="flex items-center justify-between py-3 gap-4">
-                <span className="text-zinc-500 text-sm min-w-0">Khu vực phân công:</span>
+                <span className="text-zinc-500 text-sm min-w-0">{st("Assigned area:")}</span>
                 <span className="font-semibold text-zinc-900 text-right truncate">
-                  {location || 'Quầy Lễ tân Sảnh chính'}
+                  {location || st("Main lobby reception")}
                 </span>
               </div>
               <div className="flex items-center justify-between py-3 gap-4">
-                <span className="text-zinc-500 text-sm min-w-0">Tổng giờ làm tuần này:</span>
-                <span className="font-semibold text-zinc-900 text-right shrink-0 whitespace-nowrap">
-                  38.5 giờ
-                </span>
+                <span className="text-zinc-500 text-sm min-w-0">{st("Hours worked this week:")}</span>
+                <span className="font-semibold text-zinc-900 text-right shrink-0 whitespace-nowrap">{st("38.5 hours")} </span>
               </div>
               <div className="flex items-center justify-between py-3 gap-4">
-                <span className="text-zinc-500 text-sm min-w-0">Đánh giá chất lượng:</span>
+                <span className="text-zinc-500 text-sm min-w-0">{st("Service rating:")}</span>
                 <span className="font-semibold text-emerald-700 text-right shrink-0 whitespace-nowrap">
                   ★★★★★ 4.95 / 5.0
                 </span>
@@ -667,32 +647,26 @@ export const ProfilePage = ({
               <div className="w-8 h-8 rounded-lg bg-sky-50 text-sky-600 flex items-center justify-center shrink-0">
                 <Bot className="w-4 h-4" />
               </div>
-              <h3 className="font-semibold text-zinc-900 text-sm sm:text-base">
-                Quyền Hạn Robot & Hệ Thống
-              </h3>
+              <h3 className="font-semibold text-zinc-900 text-sm sm:text-base">{st("Robot & system permissions")} </h3>
             </div>
 
             <div className="divide-y divide-stone-100 text-sm">
               <div className="flex items-center justify-between py-3 gap-4">
-                <span className="text-zinc-500 text-sm min-w-0">Điều phối xe tự hành HCRobot:</span>
-                <span className="shrink-0 whitespace-nowrap px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200/70 text-xs font-semibold">
-                  Được cấp phép
-                </span>
+                <span className="text-zinc-500 text-sm min-w-0">{st("HCRobot dispatch:")}</span>
+                <span className="shrink-0 whitespace-nowrap px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200/70 text-xs font-semibold">{st("Authorized")} </span>
               </div>
               <div className="flex items-center justify-between py-3 gap-4">
-                <span className="text-zinc-500 text-sm min-w-0">Truy cập bản đồ LiDAR SLAM:</span>
-                <span className="shrink-0 whitespace-nowrap px-2.5 py-1 rounded-lg bg-sky-50 text-sky-700 border border-sky-200/70 text-xs font-semibold">
-                  Toàn quyền xem
-                </span>
+                <span className="text-zinc-500 text-sm min-w-0">{st("LiDAR SLAM map access:")}</span>
+                <span className="shrink-0 whitespace-nowrap px-2.5 py-1 rounded-lg bg-sky-50 text-sky-700 border border-sky-200/70 text-xs font-semibold">{st("Full viewing access")} </span>
               </div>
               <div className="flex items-center justify-between py-3 gap-4">
-                <span className="text-zinc-500 text-sm min-w-0">Chỉ thị khẩn cấp:</span>
+                <span className="text-zinc-500 text-sm min-w-0">{st("Emergency commands:")}</span>
                 <span className="shrink-0 whitespace-nowrap px-2.5 py-1 rounded-lg bg-stone-100 text-zinc-700 border border-stone-200/80 text-xs font-semibold">
-                  {staffDept === 'Executive' ? 'Có quyền phát lệnh' : 'Quyền nhận lệnh'}
+                  {staffDept === 'Executive' ? st("Can issue commands") : st("Can receive commands")}
                 </span>
               </div>
               <div className="flex items-center justify-between py-3 gap-4">
-                <span className="text-zinc-500 text-sm min-w-0">Xác thực bảo mật:</span>
+                <span className="text-zinc-500 text-sm min-w-0">{st("Authentication:")}</span>
                 <span className="shrink-0 whitespace-nowrap font-mono text-xs sm:text-sm font-semibold text-zinc-800 text-right">
                   JWT Bearer HS256
                 </span>
@@ -709,12 +683,8 @@ export const ProfilePage = ({
                 <KeyRound className="w-5 h-5" />
               </div>
               <div className="min-w-0">
-                <h3 className="text-sm font-semibold text-zinc-900">
-                  Bảo Mật & Đổi Mật Khẩu Đăng Nhập
-                </h3>
-                <p className="text-xs text-zinc-500 mt-0.5">
-                  Cập nhật mật khẩu định kỳ để bảo vệ tài khoản tác vụ.
-                </p>
+                <h3 className="text-sm font-semibold text-zinc-900">{st("Security & password")} </h3>
+                <p className="text-xs text-zinc-500 mt-0.5">{st("Update your password regularly to protect your account.")} </p>
               </div>
             </div>
 
@@ -735,7 +705,7 @@ export const ProfilePage = ({
               }`}
             >
               <KeyRound className="w-4 h-4" />
-              <span>{isChangingPassword ? 'Đóng Lại' : 'Đổi Mật Khẩu'}</span>
+              <span>{isChangingPassword ? st("Close form") : st("Change password")}</span>
             </button>
           </div>
 
@@ -749,13 +719,11 @@ export const ProfilePage = ({
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   {/* 1. Mật khẩu hiện tại */}
                   <div>
-                    <label className="block text-xs font-semibold text-zinc-600 mb-1.5">
-                      Mật khẩu hiện tại
-                    </label>
+                    <label className="block text-xs font-semibold text-zinc-600 mb-1.5">{st("Current password")} </label>
                     <div className="relative">
                       <input
                         type={showCurrentPassword ? 'text' : 'password'}
-                        placeholder="Nhập mật khẩu hiện tại"
+                        placeholder={st("Enter your current password")}
                         value={currentPassword}
                         onChange={(e) => setCurrentPassword(e.target.value)}
                         className="w-full h-10 pl-3.5 pr-10 rounded-xl bg-white border border-stone-200/90 text-sm font-medium text-zinc-900 focus:border-zinc-900 focus:ring-1 focus:ring-zinc-900 outline-none transition-all placeholder:text-zinc-400"
@@ -765,7 +733,7 @@ export const ProfilePage = ({
                         type="button"
                         onClick={() => setShowCurrentPassword(!showCurrentPassword)}
                         className="absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-400 hover:text-zinc-700 p-1 cursor-pointer transition-colors"
-                        title={showCurrentPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                        title={showCurrentPassword ? st("Hide password") : st("Show password")}
                       >
                         {showCurrentPassword ? (
                           <EyeOff className="w-4 h-4" />
@@ -778,13 +746,11 @@ export const ProfilePage = ({
 
                   {/* 2. Mật khẩu mới */}
                   <div>
-                    <label className="block text-xs font-semibold text-zinc-600 mb-1.5">
-                      Mật khẩu mới
-                    </label>
+                    <label className="block text-xs font-semibold text-zinc-600 mb-1.5">{st("New password")} </label>
                     <div className="relative">
                       <input
                         type={showNewPassword ? 'text' : 'password'}
-                        placeholder="Tối thiểu 6 ký tự"
+                        placeholder={st("At least 6 characters")}
                         value={newPassword}
                         onChange={(e) => setNewPassword(e.target.value)}
                         className="w-full h-10 pl-3.5 pr-10 rounded-xl bg-white border border-stone-200/90 text-sm font-medium text-zinc-900 focus:border-zinc-900 focus:ring-1 focus:ring-zinc-900 outline-none transition-all placeholder:text-zinc-400"
@@ -794,7 +760,7 @@ export const ProfilePage = ({
                         type="button"
                         onClick={() => setShowNewPassword(!showNewPassword)}
                         className="absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-400 hover:text-zinc-700 p-1 cursor-pointer transition-colors"
-                        title={showNewPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                        title={showNewPassword ? st("Hide password") : st("Show password")}
                       >
                         {showNewPassword ? (
                           <EyeOff className="w-4 h-4" />
@@ -807,13 +773,11 @@ export const ProfilePage = ({
 
                   {/* 3. Xác nhận mật khẩu mới */}
                   <div>
-                    <label className="block text-xs font-semibold text-zinc-600 mb-1.5">
-                      Xác nhận mật khẩu mới
-                    </label>
+                    <label className="block text-xs font-semibold text-zinc-600 mb-1.5">{st("Confirm new password")} </label>
                     <div className="relative">
                       <input
                         type={showConfirmPassword ? 'text' : 'password'}
-                        placeholder="Nhập lại mật khẩu mới"
+                        placeholder={st("Re-enter your new password")}
                         value={confirmPassword}
                         onChange={(e) => setConfirmPassword(e.target.value)}
                         className="w-full h-10 pl-3.5 pr-10 rounded-xl bg-white border border-stone-200/90 text-sm font-medium text-zinc-900 focus:border-zinc-900 focus:ring-1 focus:ring-zinc-900 outline-none transition-all placeholder:text-zinc-400"
@@ -823,7 +787,7 @@ export const ProfilePage = ({
                         type="button"
                         onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                         className="absolute right-2.5 top-1/2 -translate-y-1/2 text-stone-400 hover:text-zinc-700 p-1 cursor-pointer transition-colors"
-                        title={showConfirmPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                        title={showConfirmPassword ? st("Hide password") : st("Show password")}
                       >
                         {showConfirmPassword ? (
                           <EyeOff className="w-4 h-4" />
@@ -845,16 +809,14 @@ export const ProfilePage = ({
                       setConfirmPassword('');
                     }}
                     className="h-10 px-4 rounded-xl bg-white hover:bg-stone-100 text-zinc-700 border border-stone-200 text-sm font-medium transition-all cursor-pointer"
-                  >
-                    Hủy Bỏ
-                  </button>
+                  >{st("Discard")} </button>
                   <button
                     type="submit"
                     disabled={isSavingPassword}
                     className="h-10 px-5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-white text-sm font-medium transition-all shadow-xs flex items-center gap-2 cursor-pointer active:scale-[0.98] disabled:opacity-50"
                   >
                     <Save className="w-4 h-4" />
-                    <span>{isSavingPassword ? 'Đang lưu...' : 'Lưu Thay Đổi Mật Khẩu'}</span>
+                    <span>{isSavingPassword ? st("Saving...") : st("Save password")}</span>
                   </button>
                 </div>
               </form>
@@ -865,12 +827,8 @@ export const ProfilePage = ({
         {/* 4. Khối Đăng Xuất (Danger Zone) */}
         <div className="bg-red-50/50 border border-red-200/75 rounded-2xl p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all">
           <div className="min-w-0">
-            <h3 className="text-sm font-semibold text-red-950">
-              Đăng Xuất Khỏi Thiết Bị
-            </h3>
-            <p className="text-xs sm:text-sm text-red-700/80 mt-0.5">
-              Kết thúc phiên làm việc hiện tại và đóng kết nối điều khiển trạm HCRobot.
-            </p>
+            <h3 className="text-sm font-semibold text-red-950">{st("Sign out of this device")} </h3>
+            <p className="text-xs sm:text-sm text-red-700/80 mt-0.5">{st("End your current session and disconnect from the HCRobot control station.")} </p>
           </div>
 
           <button
@@ -879,7 +837,7 @@ export const ProfilePage = ({
             className="w-full sm:w-auto h-10 px-5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-sm font-medium shadow-xs transition-all flex items-center justify-center gap-2 shrink-0 cursor-pointer active:scale-[0.98]"
           >
             <LogOut className="w-4 h-4" />
-            <span>Đăng Xuất</span>
+            <span>{st("Sign out")}</span>
           </button>
         </div>
       </div>

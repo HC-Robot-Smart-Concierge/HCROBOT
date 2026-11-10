@@ -74,6 +74,42 @@ class NotificationConnectionManager:
         }
         await self.broadcast_to_department(department, payload)
 
+    async def broadcast_status_update(
+        self,
+        task_data: Dict[str, Any],
+        department: Optional[str] = "All"
+    ):
+        """Phát sóng cập nhật trạng thái tác vụ / đơn hàng tới toàn bộ các bên liên quan."""
+        payload = {
+            "type": "TASK_STATUS_UPDATED",
+            "data": task_data,
+        }
+        await self.broadcast_to_department(department, payload)
+
+    async def broadcast_order_created(
+        self,
+        order_data: Dict[str, Any],
+        department: Optional[str] = "All"
+    ):
+        """Phát sóng sự kiện tạo mới đơn gọi món / dịch vụ phòng."""
+        payload = {
+            "type": "NEW_ORDER_CREATED",
+            "data": order_data,
+        }
+        await self.broadcast_to_department(department, payload)
+
+    async def broadcast_request_created(
+        self,
+        request_data: Dict[str, Any],
+        department: Optional[str] = "All"
+    ):
+        """Phát sóng sự kiện tạo mới yêu cầu vận hành (buồng phòng, kỹ thuật, bellman...)."""
+        payload = {
+            "type": "NEW_REQUEST_CREATED",
+            "data": request_data,
+        }
+        await self.broadcast_to_department(department, payload)
+
     async def broadcast_to_department(
         self,
         target_department: Optional[str],
@@ -82,23 +118,26 @@ class NotificationConnectionManager:
         """Phát sóng payload JSON tới các client phù hợp."""
         target_sockets: Set[WebSocket] = set()
 
-        # 1. Các client kết nối dạng 'All' nhận broadcast toàn hệ thống (không bao gồm admin)
-        for super_dept in ["All", "all"]:
-            if super_dept in self.department_connections:
-                target_sockets.update(self.department_connections[super_dept])
+        if not target_department or str(target_department).strip().lower() in ["all", "toàn bộ", "*"]:
+            target_sockets.update(self.all_connections)
+        else:
+            # 1. Các client kết nối dạng 'All' nhận broadcast toàn hệ thống (không bao gồm admin)
+            for super_dept in ["All", "all"]:
+                if super_dept in self.department_connections:
+                    target_sockets.update(self.department_connections[super_dept])
 
-        # 2. Bộ phận Lễ tân (Reception) là trung tâm điều phối, nhận bản sao mọi thông báo
-        for rec_dept in ["Reception", "reception"]:
-            if rec_dept in self.department_connections:
-                target_sockets.update(self.department_connections[rec_dept])
+            # 2. Bộ phận Lễ tân (Reception) là trung tâm điều phối, nhận bản sao mọi thông báo
+            for rec_dept in ["Reception", "reception"]:
+                if rec_dept in self.department_connections:
+                    target_sockets.update(self.department_connections[rec_dept])
 
-        # 3. Bộ phận đích cụ thể (Hỗ trợ so khớp linh hoạt ví dụ: 'Concierge' khớp với 'Concierge & Live Support')
-        if target_department:
-            target_clean = target_department.lower().strip()
-            for dept_key, ws_set in self.department_connections.items():
-                k = dept_key.lower().strip()
-                if k == target_clean or target_clean in k or k in target_clean:
-                    target_sockets.update(ws_set)
+            # 3. Bộ phận đích cụ thể (Hỗ trợ so khớp linh hoạt ví dụ: 'Concierge' khớp với 'Concierge & Live Support')
+            if target_department:
+                target_clean = target_department.lower().strip()
+                for dept_key, ws_set in self.department_connections.items():
+                    k = dept_key.lower().strip()
+                    if k == target_clean or target_clean in k or k in target_clean:
+                        target_sockets.update(ws_set)
 
         if not target_sockets:
             logger.debug(f"[NotificationWS] No active subscribers for department '{target_department}'")

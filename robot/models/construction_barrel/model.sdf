@@ -1,0 +1,68 @@
+<?xml version="1.0" ?>
+<sdf version="1.8">
+  <!-- Thung phuy cong trinh: vanh de den, than soc cam/trang, den canh bao tren
+       nap. Cao ~0.95 m (tinh ca den). -->
+  <model name="construction_barrel">
+    <static>true</static>
+    <link name="link">
+
+      <collision name="col_body">
+        <pose>0 0 0.45 0 0 0</pose>
+        <geometry><cylinder><radius>0.28</radius><length>0.90</length></cylinder></geometry>
+      </collision>
+
+      <!-- Vanh de den (rong hon than) -->
+      <visual name="base_ring">
+        <pose>0 0 0.03 0 0 0</pose>
+        <geometry><cylinder><radius>0.34</radius><length>0.06</length></cylinder></geometry>
+        <material>
+          <ambient>0.05 0.05 0.05 1</ambient>
+          <diffuse>0.08 0.08 0.08 1</diffuse>
+        </material>
+      </visual>
+
+      <!-- Than: 5 soc cam/trang xen ke -->
+      <visual name="band1_orange">
+        <pose>0 0 0.18 0 0 0</pose>
+        <geometry><cylinder><radius>0.28</radius><length>0.24</length></cylinder></geometry>
+        <material><ambient>1.0 0.35 0.0 1</ambient><diffuse>1.0 0.35 0.0 1</diffuse></material>
+      </visual>
+      <visual name="band2_white">
+        <pose>0 0 0.36 0 0 0</pose>
+        <geometry><cylinder><radius>0.282</radius><length>0.12</length></cylinder></geometry>
+        <material><ambient>0.95 0.95 0.95 1</ambient><diffuse>0.95 0.95 0.95 1</diffuse></material>
+      </visual>
+      <visual name="band3_orange">
+        <pose>0 0 0.50 0 0 0</pose>
+        <geometry><cylinder><radius>0.28</radius><length>0.16</length></cylinder></geometry>
+        <material><ambient>1.0 0.35 0.0 1</ambient><diffuse>1.0 0.35 0.0 1</diffuse></material>
+      </visual>
+      <visual name="band4_white">
+        <pose>0 0 0.64 0 0 0</pose>
+        <geometry><cylinder><radius>0.282</radius><length>0.12</length></cylinder></geometry>
+        <material><ambient>0.95 0.95 0.95 1</ambient><diffuse>0.95 0.95 0.95 1</diffuse></material>
+      </visual>
+      <visual name="band5_orange">
+        <pose>0 0 0.80 0 0 0</pose>
+        <geometry><cylinder><radius>0.27</radius><length>0.20</length></cylinder></geometry>
+        <material><ambient>1.0 0.35 0.0 1</ambient><diffuse>1.0 0.35 0.0 1</diffuse></material>
+      </visual>
+
+      <!-- Den canh bao tren nap -->
+      <visual name="lamp_post">
+        <pose>0 0 0.92 0 0 0</pose>
+        <geometry><box><size>0.04 0.04 0.06</size></box></geometry>
+        <material><ambient>0.1 0.1 0.1 1</ambient><diffuse>0.1 0.1 0.1 1</diffuse></material>
+      </visual>
+      <visual name="lamp">
+        <pose>0 0 0.97 1.5708 0 0</pose>
+        <geometry><cylinder><radius>0.06</radius><length>0.03</length></cylinder></geometry>
+        <material>
+          <ambient>1.0 0.55 0.0 1</ambient>
+          <diffuse>1.0 0.55 0.0 1</diffuse>
+          <emissive>0.8 0.4 0.0 1</emissive>
+        </material>
+      </visual>
+    </link>
+  </model>
+</sdf>

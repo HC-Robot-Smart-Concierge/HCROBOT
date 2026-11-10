@@ -69,15 +69,15 @@ flowchart TD
 
 ### Thông số SLAM Toolbox (`slam_toolbox_params.yaml`)
 - `mode: mapping`
-- `resolution: 0.025` (2.5 cm/cell)
+- `resolution: 0.05` (5 cm/cell)
 - `correlation_search_space_dimension: 0.5` (m)
 - `coarse_search_angle_offset: 0.349` ($\approx 20^\circ$)
 - `coarse_angle_resolution: 0.0349` ($\approx 2^\circ$)
-- `fine_search_angle_offset: 0.0349` ($\approx 2^\circ$)
+- `fine_search_angle_offset: 0.00349` ($\approx 0.2^\circ$)
 - `angle_variance_penalty: 1.0`
 - `distance_variance_penalty: 0.5`
-- `minimum_travel_distance: 0.05` (5 cm)
-- `minimum_travel_heading: 0.05` (~2.8°)
+- `minimum_travel_distance: 0.15` (15 cm)
+- `minimum_travel_heading: 0.15` (~8.6°)
 - `do_loop_closing: true`
 
 ---

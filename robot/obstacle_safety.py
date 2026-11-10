@@ -18,6 +18,25 @@ DEFAULT_THRESHOLDS_CM = {
 }
 
 
+def classify_wheel_motion(left: int, right: int) -> str:
+    """Quy lệnh vi sai (PWM có dấu hai bên) về hướng rời rạc để áp cùng luật an toàn.
+
+    Cùng quy ước với MotorController: forward_left = trái dừng/phải tiến, ...
+    Rẽ cung hai bên cùng dấu vẫn coi là forward/backward (kiểm tra trước/sau).
+    """
+    if left == 0 and right == 0:
+        return "stop"
+    if left > 0 and right > 0:
+        return "forward"
+    if left < 0 and right < 0:
+        return "backward"
+    if left == 0:
+        return "forward_left" if right > 0 else "backward_left"
+    if right == 0:
+        return "forward_right" if left > 0 else "backward_right"
+    return "left" if right > 0 else "right"
+
+
 @dataclass(frozen=True)
 class SafetyDecision:
     allowed: bool
@@ -71,6 +90,8 @@ class ObstacleSafetyController:
         self.ignored_sensors = set(ignored_sensors or ())
 
         self.motion = "stop"
+        # Lan chan gan nhat (monotonic, huong, ly do) de gui ve laptop hien len terminal.
+        self.last_block = None
         self._sensor_states = {name: _SensorState() for name in SENSOR_NAMES}
         self._last_snapshot_key = None
         self._blocked_motions = set()
@@ -321,6 +342,7 @@ class ObstacleSafetyController:
             self._blocked_motions.add(motion)
             if not was_blocked:
                 self._clear_streak[motion] = 0
+            self._note_block(motion, decision.reason)
             logger.warning("SAFETY BLOCK %s: %s", motion.upper(), decision.reason)
             return False
 
@@ -340,6 +362,38 @@ class ObstacleSafetyController:
         logger.info("SAFETY ALLOW %s: %s", motion.upper(), decision.reason)
         return True
 
+    def drive(self, left: int, right: int) -> bool:
+        """Lệnh vi sai (Nav2): kiểm tra an toàn theo hướng tương đương rồi đặt PWM từng bên.
+
+        Cùng hướng với lệnh trước thì chỉ cập nhật tốc độ (enforce() vẫn giám sát
+        liên tục); đổi hướng thì đánh giá lại như command().
+        """
+        motion = classify_wheel_motion(int(left), int(right))
+        if motion == "stop":
+            self.stop()
+            return True
+        if not hasattr(self.motor, "drive_wheels"):
+            return self.command(motion)
+
+        if motion != self.motion:
+            was_blocked = motion in self._blocked_motions
+            decision = self.evaluate(motion)
+            if not decision.allowed:
+                self.motor.stop()
+                self.motion = "stop"
+                self._blocked_motions.add(motion)
+                if not was_blocked:
+                    self._clear_streak[motion] = 0
+                self._note_block(motion, decision.reason)
+                logger.warning("SAFETY BLOCK DRIVE %s: %s", motion.upper(), decision.reason)
+                return False
+            self._blocked_motions.discard(motion)
+            logger.info("SAFETY ALLOW DRIVE %s: %s", motion.upper(), decision.reason)
+
+        self.motor.drive_wheels(int(left), int(right))
+        self.motion = motion
+        return True
+
     def enforce(self) -> bool:
         """Gọi liên tục; dừng motor nếu vật cản hoặc dữ liệu không còn an toàn."""
         self.update()
@@ -355,12 +409,33 @@ class ObstacleSafetyController:
         self.motion = "stop"
         self._blocked_motions.add(stopped_motion)
         self._clear_streak[stopped_motion] = 0
+        self._note_block(stopped_motion, decision.reason)
         logger.error("SAFETY STOP %s: %s", stopped_motion.upper(), decision.reason)
         return False
 
     def stop(self):
         self.motor.stop()
         self.motion = "stop"
+
+    def _note_block(self, motion: str, reason: str):
+        self.last_block = (time.monotonic(), motion, reason)
+
+    def status(self, now: Optional[float] = None) -> dict:
+        """Trang thai gon cho laptop: huong dang chay, so do sonar (cm), lan chan gan nhat."""
+        now = time.monotonic() if now is None else now
+        snapshot = self.sensor_reader.latest() if self.sensor_reader else None
+        sonar = {name: (snapshot.distance(name) if snapshot else None) for name in SENSOR_NAMES}
+        block = None
+        if self.last_block is not None:
+            at, motion, reason = self.last_block
+            block = {"motion": motion, "reason": reason, "age": round(now - at, 2)}
+        return {
+            "motion": self.motion,
+            "sonar": sonar,
+            "sonar_age": round(snapshot.age_seconds(now), 2) if snapshot else None,
+            "block": block,
+            "thresholds": {**self.thresholds_cm, "turn_clearance": self.turn_clearance_cm},
+        }
 
     def set_speed(self, speed_percent: int) -> int:
         """Cài đặt mức vận tốc xuống motor."""

@@ -1,0 +1,86 @@
+{
+  "configById": {
+    "3D!hcrobot-sim-map": {
+      "cameraState": {
+        "distance": 14,
+        "perspective": false,
+        "phi": 0,
+        "thetaOffset": 0,
+        "target": [0, 0, 0],
+        "targetOffset": [0, 0, 0],
+        "targetOrientation": [0, 0, 0, 1],
+        "fovy": 45,
+        "near": 0.01,
+        "far": 5000
+      },
+      "fixedFrame": "map",
+      "followTf": "base_link",
+      "followMode": "follow-position",
+      "scene": {
+        "backgroundColor": "#e5e7eb",
+        "enableStats": false,
+        "transforms": {
+          "visible": true,
+          "showLabel": true,
+          "axisScale": 2,
+          "editable": false
+        }
+      },
+      "transforms": {
+        "frame:base_link": { "visible": true },
+        "frame:map": { "visible": false },
+        "frame:odom": { "visible": false },
+        "frame:laser_frame": { "visible": false }
+      },
+      "topics": {
+        "/map": {
+          "visible": true,
+          "colorMode": "map",
+          "alpha": 1,
+          "drawBehind": true,
+          "frameLocked": false
+        },
+        "/scan": {
+          "visible": true,
+          "pointSize": 3,
+          "pointShape": "square",
+          "decayTime": 0,
+          "colorMode": "flat",
+          "flatColor": "#e11d48",
+          "frameLocked": true
+        }
+      },
+      "layers": {},
+      "publish": {
+        "type": "pose",
+        "poseTopic": "/goal_pose",
+        "pointTopic": "/clicked_point",
+        "poseEstimateTopic": "/initialpose",
+        "poseEstimateXDeviation": 0.5,
+        "poseEstimateYDeviation": 0.5,
+        "poseEstimateThetaDeviation": 0.26179939
+      }
+    },
+    "Teleop!hcrobot-sim-drive": {
+      "topic": "/cmd_vel",
+      "publishRate": 10,
+      "upButton": { "field": "linear-x", "value": 0.2 },
+      "downButton": { "field": "linear-x", "value": -0.2 },
+      "leftButton": { "field": "angular-z", "value": 0.5 },
+      "rightButton": { "field": "angular-z", "value": -0.5 }
+    }
+  },
+  "globalVariables": {},
+  "userNodes": {},
+  "linkedGlobalVariables": [],
+  "playbackConfig": {
+    "speed": 1,
+    "messageOrder": "receiveTime"
+  },
+  "layout": {
+    "first": "3D!hcrobot-sim-map",
+    "second": "Teleop!hcrobot-sim-drive",
+    "direction": "row",
+    "splitPercentage": 75
+  }
+}

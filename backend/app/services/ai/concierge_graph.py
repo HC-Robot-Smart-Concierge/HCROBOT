@@ -1,6 +1,8 @@
 import re
 from datetime import datetime, timedelta
 
+from app.services.maintenance_request_service import is_fault_report
+
 
 
 
@@ -2295,6 +2297,10 @@ async def intent_router_node(state: ConciergeState) -> Dict[str, Any]:
             if any(re.search(rf"\b{re.escape(k)}\b", prompt_lower) for k in kws) or any(k in prompt_lower for k in kws):
                 action = act
                 break
+        # Device + symptom ("tivi không lên hình", "điều hòa chảy nước") is a repair even when
+        # food/amenity words such as "nước" also match.
+        if action in (None, "room_service", "housekeeping") and is_fault_report(clean_prompt):
+            action = "maintenance"
 
 
 

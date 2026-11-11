@@ -6,6 +6,8 @@ import {
   updateBellRequestStatus,
 } from '../../services/operationsApi';
 import { useLanguage } from '../../context/LanguageContext';
+import { useStaffText, staffStatusLabel } from '../../context/StaffLanguage';
+import { StaffPageHeader } from '../../components/dashboard/RoomServiceFrame';
 
 const normalizeRequest = (request) => ({
   ...request,
@@ -24,6 +26,7 @@ const getStatusLabel = (status) => {
 
 export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
   const { t } = useLanguage();
+  const st = useStaffText();
   const staffName = currentUser?.full_name || currentUser?.name || 'Marcus T.';
   const [data, setData] = useState({
     ...INITIAL_BELL_SERVICES_DATA,
@@ -104,7 +107,7 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
     );
     if (activeTask) {
       onNotify(
-        `⚠️ Bạn đang có nhiệm vụ đang xử lý (${activeTask.title || activeTask.id}). Vui lòng hoàn thành công việc hiện tại trước khi nhận thêm nhiệm vụ mới!`
+        st('Complete your current task ({0}) before claiming another request.', activeTask.title || activeTask.id)
       );
       return;
     }
@@ -114,7 +117,7 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
       status: 'In Progress',
       assigned_to: staffName,
     });
-    onNotify(`Đã nhận xử lý yêu cầu ${requestId}`);
+    onNotify(st('Request {0} claimed.', requestId));
   };
 
   const handleComplete = async (requestId) => {
@@ -123,7 +126,7 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
       status: 'Completed',
       assigned_to: staffName,
     });
-    onNotify(`Đã hoàn tất yêu cầu ${requestId}`);
+    onNotify(st('Request {0} completed.', requestId));
   };
 
   const metrics = [
@@ -146,42 +149,41 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
   ];
 
   return (
-    <main className="flex-1 overflow-y-auto custom-scrollbar bg-[#FCFAF7] font-sans">
-      <div className="w-full max-w-[1180px] mx-auto px-4 md:px-8 pt-3 pb-8">
-        <div className="flex items-center gap-3">
-          <h2 className="text-[15px] font-semibold text-[#1A1917]">{t('bsTitle')}</h2>
-          <span className="rounded bg-[#F0EEEB] px-2.5 py-1 text-[10px] font-bold text-[#77736E]">
+    <div className="staff-page-body flex-1 overflow-y-auto custom-scrollbar font-sans">
+      <div className="staff-page-container">
+        <StaffPageHeader className="flex items-center justify-between gap-3 mb-4">
+          <div>
+            <h1>{t('bsTitle')}</h1>
+            <p>{st('Coordinate luggage assistance, guest requests and the Bell Services team.')}</p>
+          </div>
+          <span className="staff-header-details rounded border border-[#BFBFBD] bg-white px-2.5 py-1 text-[10px] font-semibold text-[#77736E]">
             {t('bsActiveOps')}
           </span>
-        </div>
+        </StaffPageHeader>
 
-        <section className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
+        <section className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {metrics.map(({ label, value }) => (
             <article
               key={label}
               className="rounded-xl bg-white px-5 py-4 border border-[#E8E5E0]"
             >
-              <span className="text-[11px] font-semibold text-[#666]">{label}</span>
-              <p className="mt-2 text-[18px] font-bold text-[#222]">{value}</p>
+              <p className="text-[11px] font-semibold uppercase text-[#8C8C8C]">{label}</p>
+              <p className="mt-2 text-[22px] font-bold text-[#262626]">{value}</p>
             </article>
           ))}
         </section>
 
-        <section className="grid grid-cols-1 lg:grid-cols-[minmax(0,2.08fr)_minmax(220px,1fr)] gap-5 mt-8">
+        <section className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_300px] gap-4 mt-4">
           <div className="min-w-0">
-            <div className="h-8 mb-3 flex items-center justify-between gap-4">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
               <h3 className="text-[13px] font-semibold text-[#403D39]">{t('activeRequests')}</h3>
-              <div className="flex items-center gap-1 flex-wrap">
+              <div className="staff-request-filters" role="group" aria-label={t('activeRequests')}>
                 {['All', 'Pending', 'In Progress', 'Completed'].map((tab) => (
                   <button
                     key={tab}
                     type="button"
                     onClick={() => setFilter(tab)}
-                    className={`rounded-lg px-3 py-1 text-[11px] font-semibold transition-colors cursor-pointer ${
-                      filter === tab
-                        ? 'bg-[#EAE8E4] text-[#494540]'
-                        : 'text-[#77726D] hover:bg-[#F0EEEA]'
-                    }`}
+                    aria-pressed={filter === tab}
                   >
                     {tab === 'All'
                       ? t('all')
@@ -197,7 +199,7 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
 
             <div className="space-y-3">
               {filteredRequests.length === 0 ? (
-                <div className="rounded-xl bg-white px-6 py-10 text-center text-[12px] text-[#777] border border-[#E8E5E0]">
+                <div className="rounded-xl bg-white px-6 py-10 text-center text-[12px] text-[#777] border border-[#BFBFBD]">
                   {t('noDataMatch')}
                 </div>
               ) : (
@@ -209,18 +211,18 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
                   return (
                     <article
                       key={request.id}
-                      className="rounded-xl bg-white p-4 border border-[#E8E5E0]"
+                      className="rounded-xl bg-white px-5 py-4 border border-[#BFBFBD]"
                     >
-                      <div className="flex items-start justify-between gap-4">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
                         <div className="min-w-0 flex-1">
-                          <h4 className="text-[13px] font-semibold text-[#3F3B38]">
+                          <h4 className="text-[13px] font-semibold text-[#3F3B38] break-words">
                             {request.title}
                           </h4>
-                          <p className="mt-0.5 text-[12px] text-[#666]">
+                          <p className="mt-1 text-[12px] text-[#666] break-words">
                             {request.location}
-                            {request.guestName && ` • Guest: ${request.guestName}`}
+                            {request.guestName && <> • {st('Guest:')} {request.guestName}</>}
                           </p>
-                          <p className="mt-2 text-[12px] leading-relaxed text-[#444]">
+                          <p className="mt-2 text-[12px] leading-relaxed text-[#444] break-words">
                             {request.description}
                           </p>
                         </div>
@@ -230,12 +232,12 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
                         </span>
                       </div>
 
-                      <div className="mt-4 pt-3 border-t border-[#F0ECE6] flex items-center justify-end gap-3">
+                      <div className="mt-4 pt-3 border-t border-[#E9E5DC] flex flex-wrap items-center justify-end gap-3">
                         {isPending && (
                           <button
                             type="button"
                             onClick={() => handleAccept(request.id)}
-                            className="rounded-lg bg-black px-4 py-1.5 text-[11px] font-bold text-white hover:bg-[#252525] cursor-pointer"
+                            className="rounded-lg bg-[#262626] px-4 py-1.5 text-[11px] font-bold text-white hover:bg-[#404040] cursor-pointer"
                           >
                             {t('acceptTask')}
                           </button>
@@ -270,14 +272,14 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
                 totalItems={filteredRequests.length}
                 pageSize={pageSize}
                 onPageChange={setCurrentPage}
-                itemName="yêu cầu"
-                className="mt-3 rounded-2xl border border-[#E5E1D8] shadow-xs bg-white"
+                itemName={st('requests')}
+                className="mt-3 rounded-xl border border-[#BFBFBD]"
               />
             )}
           </div>
 
           <aside className="min-w-0 space-y-4">
-            <section className="rounded-xl bg-[#F4F3F0] p-4 border border-[#E8E5E0]">
+            <section className="rounded-xl bg-white p-4 border border-[#BFBFBD]">
               <h3 className="text-[11px] font-bold uppercase tracking-wider text-[#403D39]">{t('bsTeamStatus')}</h3>
 
               <div className="mt-3 space-y-2">
@@ -286,11 +288,17 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
                     key={member.id || member.name}
                     className="flex items-center justify-between text-[11px] py-1 border-b border-[#E1DEDA] last:border-0"
                   >
-                    <div>
-                      <p className="font-semibold text-[#333]">{member.name}</p>
-                      <p className="text-[10px] text-[#777]">{member.role}</p>
+                    <div className="min-w-0">
+                      <p className="font-semibold text-[#333] break-words">{member.name}</p>
+                      <p className="text-[10px] text-[#777]">{st(member.role)}</p>
                     </div>
-                    <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                    {member.status && <span className="ml-3 inline-flex shrink-0 items-center gap-1.5 text-[10px] text-[#777]">
+                      <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${
+                        staffStatusLabel(member.status) === 'Available' ? 'bg-emerald-500'
+                          : staffStatusLabel(member.status) === 'Busy' ? 'bg-amber-500' : 'bg-stone-400'
+                      }`} />
+                      {st(staffStatusLabel(member.status))}
+                    </span>}
                   </div>
                 ))}
               </div>
@@ -298,6 +306,6 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
           </aside>
         </section>
       </div>
-    </main>
+    </div>
   );
 };

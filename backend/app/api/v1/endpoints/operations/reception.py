@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.models import SupportRequest
 from app.models.hotel import Room
+from app.services.maintenance_request_service import get_or_create_maintenance_request, duplicate_maintenance_message, merged_maintenance_message
 from app.schemas.operations import (
     ReceptionRequestCreate,
     ReceptionRequestUpdate,
@@ -243,6 +244,8 @@ async def verify_room_pin(
 
     # Khởi tạo ticket SupportRequest nếu có action / items và không có cờ bỏ qua tạo ticket
     ticket_code = None
+    duplicate = False
+    merged = False
     should_create_ticket = (
         not getattr(payload, "skip_ticket_creation", False)
         and getattr(payload, "create_ticket", True) is not False
@@ -297,17 +300,23 @@ async def verify_room_pin(
             source=f"Robot Kiosk ({verification_type} Verified)",
             status="Pending",
         )
-        db.add(new_req)
-        await db.flush()
+        if dept_id == "DEP-MAINTENANCE":
+            new_req, created, merged = await get_or_create_maintenance_request(db, new_req)
+            duplicate = not created and not merged
+            ticket_code = new_req.ticket_code
+        else:
+            db.add(new_req)
+            await db.flush()
 
-        await create_department_notification(
-            db,
-            department=dept_name_str,
-            title=f"Đơn mới #{ticket_code} (Đã xác thực {verification_type})",
-            description=f"Phòng {room.room_number} ({room.current_guest_name}): {items_str}",
-            request_id=new_req.id,
-            request_type=req_type_str,
-        )
+        if not duplicate:
+            await create_department_notification(
+                db,
+                department=dept_name_str,
+                title=f"Bổ sung sự cố #{ticket_code}" if merged else f"Đơn mới #{ticket_code} (Đã xác thực {verification_type})",
+                description=f"Phòng {room.room_number} ({room.current_guest_name}): {items_str}",
+                request_id=new_req.id,
+                request_type=req_type_str,
+            )
         await db.commit()
 
     session_id = getattr(payload, "session_id", None)
@@ -334,7 +343,9 @@ async def verify_room_pin(
         ticket_code=ticket_code,
         verification_type=verification_type,
         tag_code=room.tag_code,
-        message=pin_success_msg
+        duplicate=duplicate,
+        merged=merged,
+        message=merged_maintenance_message(ticket_code) if merged else duplicate_maintenance_message(ticket_code) if duplicate else pin_success_msg
     )
 
 
@@ -381,6 +392,8 @@ async def verify_room_nfc(
 
     # Khởi tạo ticket SupportRequest nếu có action / items và không có cờ bỏ qua tạo ticket
     ticket_code = None
+    duplicate = False
+    merged = False
     should_create_ticket = (
         not getattr(payload, "skip_ticket_creation", False)
         and getattr(payload, "create_ticket", True) is not False
@@ -435,17 +448,23 @@ async def verify_room_nfc(
             source="Robot Kiosk (NFC Verified)",
             status="Pending",
         )
-        db.add(new_req)
-        await db.flush()
+        if dept_id == "DEP-MAINTENANCE":
+            new_req, created, merged = await get_or_create_maintenance_request(db, new_req)
+            duplicate = not created and not merged
+            ticket_code = new_req.ticket_code
+        else:
+            db.add(new_req)
+            await db.flush()
 
-        await create_department_notification(
-            db,
-            department=dept_name_str,
-            title=f"Đơn mới #{ticket_code} (Đã quẹt thẻ NFC)",
-            description=f"Phòng {matched_room.room_number} ({matched_room.current_guest_name}): {items_str}",
-            request_id=new_req.id,
-            request_type=req_type_str,
-        )
+        if not duplicate:
+            await create_department_notification(
+                db,
+                department=dept_name_str,
+                title=f"Bổ sung sự cố #{ticket_code}" if merged else f"Đơn mới #{ticket_code} (Đã quẹt thẻ NFC)",
+                description=f"Phòng {matched_room.room_number} ({matched_room.current_guest_name}): {items_str}",
+                request_id=new_req.id,
+                request_type=req_type_str,
+            )
         await db.commit()
 
     session_id = getattr(payload, "session_id", None)
@@ -472,7 +491,9 @@ async def verify_room_nfc(
         ticket_code=ticket_code,
         verification_type="NFC",
         tag_code=matched_room.tag_code,
-        message=nfc_success_msg
+        duplicate=duplicate,
+        merged=merged,
+        message=merged_maintenance_message(ticket_code) if merged else duplicate_maintenance_message(ticket_code) if duplicate else nfc_success_msg
     )
 
 

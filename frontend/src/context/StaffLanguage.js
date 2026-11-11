@@ -5,6 +5,13 @@ import { receptionVietnamese } from './ReceptionLanguage';
 // Display text only. API statuses, category IDs and guest-entered content stay unchanged.
 export const staffVietnamese = {
   ...receptionVietnamese,
+  'Refresh': 'Làm mới',
+  'Urgent': 'Khẩn cấp',
+  'Mark urgent': 'Đánh dấu khẩn cấp',
+  'Remove urgency': 'Bỏ đánh dấu khẩn cấp',
+  'Repair priority updated.': 'Đã cập nhật mức ưu tiên sửa chữa.',
+  'Could not update repair priority. Please refresh and try again.': 'Không cập nhật được mức ưu tiên. Vui lòng làm mới và thử lại.',
+  'Urgent repairs first, then oldest requests. Additional reports keep the original queue position.': 'Phiếu khẩn cấp được xếp trước, sau đó theo thời gian chờ lâu nhất. Bổ sung sự cố không đổi vị trí trong hàng đợi.',
   'RECEPTION PORTAL': 'CỔNG LỄ TÂN',
   'Reception navigation': 'Điều hướng lễ tân',
   'Reception staff': 'Nhân viên lễ tân',
@@ -13,6 +20,16 @@ export const staffVietnamese = {
   'Maintenance navigation': 'Điều hướng kỹ thuật',
   'Maintenance staff': 'Nhân viên kỹ thuật',
   'Display preferences for the Maintenance portal.': 'Tùy chỉnh hiển thị cho cổng kỹ thuật.',
+  'BELL SERVICES PORTAL': 'CỔNG HÀNH LÝ',
+  'Bell Services navigation': 'Điều hướng hành lý',
+  'Bell Services staff': 'Nhân viên hành lý',
+  'Display preferences for the Bell Services portal.': 'Tùy chỉnh hiển thị cho cổng hành lý.',
+  'Coordinate luggage assistance, guest requests and the Bell Services team.': 'Điều phối hỗ trợ hành lý, yêu cầu của khách và đội ngũ nhân viên hành lý.',
+  'Guest:': 'Khách:',
+  'Bellman Staff': 'Nhân viên hành lý',
+  'Bell Captain': 'Trưởng bộ phận hành lý',
+  'Attendant': 'Nhân viên hỗ trợ',
+  'Automated Cart': 'Xe vận chuyển tự động',
   'Complete your current task ({0}) before claiming another request.': 'Vui lòng hoàn thành nhiệm vụ đang xử lý ({0}) trước khi nhận yêu cầu mới.',
   'Request {0} claimed.': 'Đã nhận xử lý yêu cầu {0}.',
   'Request {0} declined.': 'Đã từ chối yêu cầu {0}.',
@@ -410,6 +427,7 @@ export function translateStaffText(language, text, ...values) {
 
 export function staffDepartmentLabel(department) {
   const value = String(department || '').toLowerCase().replace(/[_-]/g, ' ').trim();
+  if (['bell', 'bellman', 'bell service', 'bell services', 'hành lý', 'bộ phận hành lý'].includes(value)) return 'Bell Services';
   if (['housekeeping', 'buồng phòng', 'room service', 'roomservice', 'phục vụ phòng', 'f&b'].includes(value)) return 'Room Service';
   if (['reception', 'front desk', 'front desk & reception', 'lễ tân', 'lễ tân & tiền sảnh'].includes(value)) return 'Reception';
   if (['maintenance', 'kỹ thuật', 'bảo trì', 'kỹ thuật & bảo trì', 'kỹ thuật và bảo trì'].includes(value)) return 'Maintenance';

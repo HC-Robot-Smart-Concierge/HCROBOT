@@ -1,4 +1,4 @@
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Literal
 from datetime import datetime
 from pydantic import BaseModel, Field, ConfigDict, model_validator, field_validator
 
@@ -408,6 +408,7 @@ class BellRequestResponse(BaseModel):
 # ---------------------------------------------------------
 class MaintenanceRequestCreate(BaseModel):
     title: str
+    catalog_item_id: Optional[str] = Field(None, max_length=50)
     category: str = "general"
     location: str
     description: Optional[str] = None
@@ -418,8 +419,14 @@ class MaintenanceRequestStatusUpdate(BaseModel):
     assigned_to: Optional[str] = None
     assigned_technician: Optional[str] = None
 
+class MaintenanceRequestPriorityUpdate(BaseModel):
+    priority: Literal["Normal", "Urgent"]
+
 class MaintenanceRequestResponse(BaseModel):
     id: str
+    duplicate: bool = False
+    merged: bool = False
+    priority: str = "Normal"
     ticket_code: str
     title: str
     category: str
@@ -952,6 +959,8 @@ class RoomNfcVerifyRequest(BaseModel):
 
 class RoomPinVerifyResponse(BaseModel):
     verified: bool = Field(..., description="True nếu mã PIN/CCCD/NFC chính xác")
+    duplicate: bool = False
+    merged: bool = False
     success: bool = Field(True, description="True nếu xác thực thành công")
     room_number: str = Field(..., description="Số phòng")
     guest_name: Optional[str] = Field(None, description="Tên khách đang ở")

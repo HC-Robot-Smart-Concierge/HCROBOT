@@ -342,6 +342,67 @@ async def get_human_support_sessions(
 
 
 @router.get(
+    "/concierge/video-calls/metrics",
+    tags=TAG_CONCIERGE,
+    summary="Thống kê số liệu Video Call & Bản ghi WF-04 phục vụ Admin và Quản trị",
+)
+async def get_video_calls_metrics(
+    start_date: Optional[str] = Query(None, description="ISO format: YYYY-MM-DD hoặc YYYY-MM-DDTHH:MM:SS"),
+    end_date: Optional[str] = Query(None, description="ISO format: YYYY-MM-DD hoặc YYYY-MM-DDTHH:MM:SS"),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Thống kê số liệu thực tế từ Database cho WF-04:
+    - total_calls: Tổng số phiên gọi duy nhất
+    - ready_recordings: Số bản ghi sẵn sàng (sẵn link xem)
+    - saving_recordings: Số bản ghi đang lưu ngầm
+    - failed_recordings: Số bản ghi lưu thất bại
+    - no_recordings: Số phiên không có bản ghi
+    """
+    stmt = select(HumanSupportSession)
+    if start_date:
+        try:
+            s_dt = datetime.fromisoformat(start_date.replace("Z", "+00:00")).replace(tzinfo=None)
+            stmt = stmt.where(HumanSupportSession.created_at >= s_dt)
+        except Exception:
+            pass
+    if end_date:
+        try:
+            e_dt = datetime.fromisoformat(end_date.replace("Z", "+00:00")).replace(tzinfo=None)
+            stmt = stmt.where(HumanSupportSession.created_at <= e_dt)
+        except Exception:
+            pass
+
+    res = await db.execute(stmt)
+    sessions = res.scalars().all()
+    total_calls = len(sessions)
+    ready_count = 0
+    saving_count = 0
+    failed_count = 0
+    no_rec_count = 0
+
+    for s in sessions:
+        r_stat = (s.recording_status or "").lower()
+        has_url = bool(s.recording_url and s.recording_url.strip())
+        if r_stat == "saving":
+            saving_count += 1
+        elif r_stat == "failed":
+            failed_count += 1
+        elif has_url or r_stat == "ready":
+            ready_count += 1
+        else:
+            no_rec_count += 1
+
+    return {
+        "total_calls": total_calls,
+        "ready_recordings": ready_count,
+        "saving_recordings": saving_count,
+        "failed_recordings": failed_count,
+        "no_recordings": no_rec_count,
+    }
+
+
+@router.get(
     "/concierge/sessions/{session_id}",
     response_model=HumanSupportSessionItem,
     tags=TAG_CONCIERGE,

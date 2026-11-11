@@ -7,8 +7,6 @@ import {
   INITIAL_RECEPTION_DATA,
   INITIAL_ROOM_SERVICE_DATA,
   INITIAL_HOUSEKEEPING_DATA,
-  INITIAL_BELL_SERVICES_DATA,
-  INITIAL_MAINTENANCE_DATA,
 } from '../data/mockHotelData';
 
 const BASE_URL = '/api/v1/operations';
@@ -251,18 +249,34 @@ export const fetchHousekeepingRequestById = async (requestId) => {
 // ---------------------------------------------------------
 // 3. Bell Services
 // ---------------------------------------------------------
+// Returns null when the backend is unreachable, so staff never see mock requests as real ones.
 export const fetchBellServicesDashboard = async () => {
-  return await fetchWithFallback(`${BASE_URL}/dashboard/bell-services`, {}, INITIAL_BELL_SERVICES_DATA);
+  return await fetchWithFallback(`${BASE_URL}/dashboard/bell-services`, {}, null);
 };
 
+// Throws on failure: a guest or staff member must not be told a request was sent when it was not.
 export const createBellRequest = async (requestData) => {
-  return await fetchWithFallback(
-    `${BASE_URL}/bell-services/requests`,
-    {
-      method: 'POST',
-      body: JSON.stringify(requestData),
+  const token = localStorage.getItem('aurora_jwt_token');
+  const response = await fetch(`${BASE_URL}/bell-services/requests`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    { id: `BS-${Date.now()}`, ...requestData, status: 'Pending' }
+    body: JSON.stringify(requestData),
+  });
+  const result = await response.json().catch(() => null);
+  if (!response.ok || !result?.id || !result?.ticket_code) {
+    throw new Error('Unable to create Bell Services request');
+  }
+  return result;
+};
+
+export const fetchRoomBellStatus = async (roomNumber) => {
+  return await fetchWithFallback(
+    `${BASE_URL}/bell-services/rooms/${encodeURIComponent(roomNumber)}/status`,
+    {},
+    { room_number: roomNumber, pending_count: 0, in_progress_count: 0, completed_count: 0, requests: [] }
   );
 };
 
@@ -289,18 +303,24 @@ export const fetchBellRequestById = async (requestId) => {
 // 4. Maintenance
 // ---------------------------------------------------------
 export const fetchMaintenanceDashboard = async () => {
-  return await fetchWithFallback(`${BASE_URL}/dashboard/maintenance`, {}, INITIAL_MAINTENANCE_DATA);
+  return await fetchWithFallback(`${BASE_URL}/dashboard/maintenance`, {}, null);
 };
 
 export const createMaintenanceRequest = async (requestData) => {
-  return await fetchWithFallback(
-    `${BASE_URL}/maintenance/requests`,
-    {
-      method: 'POST',
-      body: JSON.stringify(requestData),
+  const token = localStorage.getItem('aurora_jwt_token');
+  const response = await fetch(`${BASE_URL}/maintenance/requests`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    { id: `MN-${Date.now()}`, ...requestData, status: 'Pending' }
-  );
+    body: JSON.stringify(requestData),
+  });
+  const result = await response.json();
+  if (!response.ok || !result?.id || !result?.ticket_code) {
+    throw new Error('Unable to create maintenance request');
+  }
+  return result;
 };
 
 export const updateMaintenanceStatus = async (requestId, status, assignedTo = null) => {
@@ -315,6 +335,20 @@ export const updateMaintenanceStatus = async (requestId, status, assignedTo = nu
     },
     { id: requestId, status, assigned_to: assignedTo }
   );
+};
+
+export const updateMaintenancePriority = async (requestId, priority) => {
+  const token = localStorage.getItem('aurora_jwt_token');
+  const response = await fetch(`${BASE_URL}/maintenance/requests/${encodeURIComponent(requestId)}/priority`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ priority }),
+  });
+  if (!response.ok) throw new Error('Could not update repair priority');
+  return response.json();
 };
 
 export const fetchMaintenanceRequestById = async (requestId) => {

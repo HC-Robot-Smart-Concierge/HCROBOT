@@ -2,14 +2,14 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Pagination } from '../../components/common/Pagination';
 import { StaffPageHeader } from '../../components/dashboard/RoomServiceFrame';
 import { MaintenanceCatalogModal } from '../../components/dashboard/MaintenanceCatalogModal';
-import { INITIAL_MAINTENANCE_DATA } from '../../data/mockHotelData';
 import {
   fetchMaintenanceDashboard,
   updateMaintenanceStatus,
+  updateMaintenancePriority,
 } from '../../services/operationsApi';
 import { useLanguage } from '../../context/LanguageContext';
 import { staffStatusLabel, useStaffText } from '../../context/StaffLanguage';
-import { Wrench } from 'lucide-react';
+import { RefreshCw, Wrench } from 'lucide-react';
 
 const normalizeRequest = (request) => ({
   ...request,
@@ -30,41 +30,40 @@ export const MaintenanceDashboard = ({ currentUser, onNotify = () => {} }) => {
   const st = useStaffText();
   const staffName = currentUser?.full_name || currentUser?.name || 'James D.';
   const [data, setData] = useState({
-    ...INITIAL_MAINTENANCE_DATA,
-    requests: INITIAL_MAINTENANCE_DATA.requests.map(normalizeRequest),
+    kpis: { availableTechs: { count: 0 } }, requests: [], staffAvailability: [],
   });
   const [filter, setFilter] = useState('All');
   const [currentPage, setCurrentPage] = useState(1);
   const [isCatalogModalOpen, setIsCatalogModalOpen] = useState(false);
   const pageSize = 10;
-  const [sortNewestFirst, setSortNewestFirst] = useState(true);
+  const [priorityUpdating, setPriorityUpdating] = useState(null);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     setCurrentPage(1);
   }, [filter]);
 
   useEffect(() => {
+    let cancelled = false;
+    let timer;
     const loadData = async () => {
       const response = await fetchMaintenanceDashboard();
-      if (!response?.requests) return;
-      const hasLiveRequests = response.requests.length > 0;
-
-      setData((previous) => ({
-        ...previous,
-        kpis: hasLiveRequests && response.kpis ? response.kpis : previous.kpis,
-        requests: hasLiveRequests
-          ? response.requests.map(normalizeRequest)
-          : previous.requests,
-        staffAvailability:
-          response.staff_availability?.length >= 3
-            ? response.staff_availability
-            : previous.staffAvailability,
-        facilityMap: response.facility_map || previous.facilityMap,
-      }));
+      if (cancelled) return;
+      if (response?.requests) {
+        setData((previous) => ({
+          ...previous,
+          kpis: response.kpis || previous.kpis,
+          requests: response.requests.map(normalizeRequest),
+          staffAvailability: response.staff_availability || [],
+          facilityMap: response.facility_map || previous.facilityMap,
+        }));
+      }
+      timer = setTimeout(loadData, 15000);
     };
 
     loadData();
-  }, []);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [refreshKey]);
 
   const visibleRequests = useMemo(() => {
     const filtered = (data.requests || []).filter((request) => {
@@ -75,8 +74,19 @@ export const MaintenanceDashboard = ({ currentUser, onNotify = () => {} }) => {
       if (filter === 'Completed') return s === 'completed';
       return request.status === filter;
     });
-    return sortNewestFirst ? filtered : [...filtered].reverse();
-  }, [data.requests, filter, sortNewestFirst]);
+    const terminal = new Set(['completed', 'resolved', 'done', 'closed', 'cancelled', 'canceled', 'declined', 'rejected', 'delivered', 'missed', 'hoàn tất', 'đã hoàn thành', 'đã hoàn tất', 'đã hủy', 'hủy', 'đã từ chối']);
+    return filtered.sort((a, b) => {
+      const closedA = terminal.has((a.status || '').trim().toLowerCase());
+      const closedB = terminal.has((b.status || '').trim().toLowerCase());
+      if (closedA !== closedB) return Number(closedA) - Number(closedB);
+      const timeA = Date.parse(a.created_at) || 0;
+      const timeB = Date.parse(b.created_at) || 0;
+      if (closedA) return timeB - timeA;
+      const urgentA = (a.priority || '').toUpperCase() === 'URGENT';
+      const urgentB = (b.priority || '').toUpperCase() === 'URGENT';
+      return Number(urgentB) - Number(urgentA) || timeA - timeB || a.id.localeCompare(b.id);
+    });
+  }, [data.requests, filter]);
 
   const totalPages = Math.max(1, Math.ceil(visibleRequests.length / pageSize));
 
@@ -132,6 +142,25 @@ export const MaintenanceDashboard = ({ currentUser, onNotify = () => {} }) => {
     onNotify(st('Request {0} completed.', requestId));
   };
 
+  const handlePriority = async (request) => {
+    if (priorityUpdating) return;
+    setPriorityUpdating(request.id);
+    try {
+      const priority = (request.priority || '').toUpperCase() === 'URGENT' ? 'Normal' : 'Urgent';
+      const updated = await updateMaintenancePriority(request.id, priority);
+      setData((previous) => ({
+        ...previous,
+        requests: previous.requests.map((item) => item.id === request.id ? normalizeRequest(updated) : item),
+      }));
+      setRefreshKey((value) => value + 1);
+      onNotify(st('Repair priority updated.'));
+    } catch {
+      onNotify(st('Could not update repair priority. Please refresh and try again.'));
+    } finally {
+      setPriorityUpdating(null);
+    }
+  };
+
   // Localize known server labels at render time without changing request data.
   const reportedTimeLabel = (value) => {
     const text = String(value || '').trim();
@@ -185,13 +214,17 @@ export const MaintenanceDashboard = ({ currentUser, onNotify = () => {} }) => {
               {t('mnSubtitle')}
             </p>
           </div>
+          <button type="button" onClick={() => setRefreshKey((value) => value + 1)}
+            className="px-3 py-1.5 rounded-xl border border-stone-300 bg-white text-xs flex items-center gap-1.5 cursor-pointer">
+            <RefreshCw className="w-3.5 h-3.5" /> {st('Refresh')}
+          </button>
           <button
             type="button"
             onClick={() => setIsCatalogModalOpen(true)}
             className="px-3 py-1.5 rounded-xl border border-stone-300 bg-white hover:bg-stone-50 text-stone-700 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shrink-0"
           >
             <Wrench className="w-3.5 h-3.5" />
-            <span>{language === 'English' ? 'Issue Catalog' : 'Danh mục sự cố'}</span>
+            <span>{language === 'VI' ? 'Danh mục sự cố' : 'Issue Catalog'}</span>
           </button>
         </StaffPageHeader>
 
@@ -233,6 +266,7 @@ export const MaintenanceDashboard = ({ currentUser, onNotify = () => {} }) => {
               </div>
             </div>
 
+            <p className="mb-3 text-[11px] text-[#777]">{st('Urgent repairs first, then oldest requests. Additional reports keep the original queue position.')}</p>
             <div className="space-y-3">
               {paginatedRequests.map((request) => {
                 const status = request.status || 'Pending';
@@ -252,8 +286,11 @@ export const MaintenanceDashboard = ({ currentUser, onNotify = () => {} }) => {
                         <div className="flex flex-wrap items-center gap-2">
                           <h4 className="text-[13px] font-semibold text-[#3F3B38] break-words">{request.title}</h4>
                           <span className="text-[10px] text-[#888] font-mono">[{request.id}]</span>
+                          {(request.priority || '').toUpperCase() === 'URGENT' && (
+                            <span className="rounded bg-rose-50 text-rose-700 px-2 py-0.5 text-[10px] font-semibold">{st('Urgent')}</span>
+                          )}
                         </div>
-                        <p className="mt-1 text-[12px] leading-relaxed text-[#666] break-words">
+                        <p className="mt-1 text-[12px] leading-relaxed text-[#666] break-words whitespace-pre-line">
                           {request.location} • {request.description}
                         </p>
                       </div>
@@ -271,6 +308,13 @@ export const MaintenanceDashboard = ({ currentUser, onNotify = () => {} }) => {
                       <span className="text-[11px] text-[#777]">
                         {sourceLabel(request.source)}
                       </span>
+
+                      {(isPending || isInProgress) && (
+                        <button type="button" disabled={Boolean(priorityUpdating)} onClick={() => handlePriority(request)}
+                          className="rounded-lg border border-[#DDD] px-3 py-1.5 text-[11px] font-semibold hover:bg-stone-50 disabled:opacity-50 cursor-pointer">
+                          {(request.priority || '').toUpperCase() === 'URGENT' ? st('Remove urgency') : st('Mark urgent')}
+                        </button>
+                      )}
 
                       {isPending && (
                         <div className="flex items-center gap-2">

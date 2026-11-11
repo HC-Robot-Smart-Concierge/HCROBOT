@@ -1,0 +1,41 @@
+# Costmap filter cho cac VUNG ve tren Web Admin (tab Physical Map). Backend ghi mask moi khi
+# luu/xoa vung hoac bat Navigation tu Web (ros2_runtime_service.write_zone_masks) va nap lai
+# ngay bang service <server>/load_map neu Nav2 dang chay. Chay boi nav2/zone_filters_launch.py.
+#
+#   KEEP_OUT   -> robot/maps/keepout/<map>.yaml (raw: 100 = cam han = vung ve + 5 cm, 1..99 = dai
+#                 chi phi mem ~25 cm de planner khong di sat mep) -> KeepoutFilter (2 costmap)
+#   SPEED_ZONE -> robot/maps/speed/<map>.yaml   (raw, diem anh = m/s x 100, 0 = khong gioi han)
+#                 -> SpeedFilter (global_costmap) -> /speed_limit -> controller_server
+#   NO_STOP    -> khong co mask: Web khong cho chon endpoint trong vung (chi duoc di ngang qua).
+
+filter_mask_server:
+  ros__parameters:
+    use_sim_time: false
+    frame_id: "map"
+    topic_name: "/keepout_filter_mask"
+    yaml_filename: ""   # zone_filters_launch.py truyen mask neu co; rong = cho load_map
+
+costmap_filter_info_server:
+  ros__parameters:
+    use_sim_time: false
+    type: 0             # 0 = KeepoutFilter
+    filter_info_topic: "/costmap_filter_info"
+    mask_topic: "/keepout_filter_mask"
+    base: 0.0
+    multiplier: 1.0
+
+speed_mask_server:
+  ros__parameters:
+    use_sim_time: false
+    frame_id: "map"
+    topic_name: "/speed_filter_mask"
+    yaml_filename: ""
+
+speed_filter_info_server:
+  ros__parameters:
+    use_sim_time: false
+    type: 2             # 2 = SpeedFilter, toc do tuyet doi (m/s)
+    filter_info_topic: "/speed_filter_info"
+    mask_topic: "/speed_filter_mask"
+    base: 0.0
+    multiplier: 0.01    # toc do toi da = 0.0 + 0.01 * gia tri o mask (0 = khong gioi han)

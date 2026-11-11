@@ -1,4 +1,4 @@
-# 🎓 Hướng Dẫn & Bài Giảng: LangGraph Agent Harness & Tối Ưu Toàn Diện Voice Pipeline Cho HCROBOT
+# Hướng Dẫn Kỹ Thuật: LangGraph Agent Harness & Tối Ưu Toàn Diện Voice Pipeline Cho HCROBOT
 
 > Tài liệu giảng dạy và ghi chép kỹ thuật về **LangGraph**, **Agent Harness**, và toàn bộ quy trình tối ưu hóa **Voice Pipeline** giúp Robot Concierge đạt phản xạ giọng nói tức thì (< 0.5s) với mô hình **Qwen 2.5 3B**.
 
@@ -20,28 +20,28 @@ Mô hình nhỏ như Qwen 3B rất nhạy và nhanh, nhưng nếu bắt nó gán
 [Khách nói câu thoại]
          │
          ▼
-[Node 1: fast_path] ────────(Khớp FAQ/Wifi)────────> ⚡ Trả lời ngay: 1.07 ms
+[Node 1: fast_path] ────────(Khớp FAQ/Wifi)────────> Trả lời ngay: 1.07 ms
          │
          │ (Không khớp)
          ▼
 [Node 2: intent_router]
          │
-         ├─── (Yêu cầu dịch vụ) ───> [Node 3: service_fsm] ────> ⚡ Xử lý: 4.27 ms
+         ├─── (Yêu cầu dịch vụ) ───> [Node 3: service_fsm] ────> Xử lý: 4.27 ms
          │                                                        (Hỏi số phòng hoặc tạo đơn)
          ├─── (Tra cứu tiện ích) ──> [Node 4: retrieval] 
          │                                  │ (Cắt gọt RAG < 300 ký tự)
          │                                  ▼
-         └─── (Trò chuyện chung) ──> [Node 5: generator] ──────> ⚡ Qwen 3B sinh từ < 800 ms
+         └─── (Trò chuyện chung) ──> [Node 5: generator] ──────> Qwen 3B sinh từ < 800 ms
 ```
 
 ---
 
 ## 3. Bí Mật Đằng Sau Độ Trễ Giao Tiếp Giọng Nói & Cách Giải Quyết
 
-### 🔍 Điểm nghẽn đo đạc thực tế:
+### Điểm nghẽn đo đạc thực tế:
 Khi nói chuyện với robot, không phải AI chậm mà là **Microsoft EdgeTTS** tải file âm thanh qua mạng mất tới **`2.320 ms` (hơn 2.3 giây)**!
 
-### 💡 Các giải pháp đã triển khai:
+### Các giải pháp đã triển khai:
 1. **Multi-Tier Audio Caching (`tts_service.py`):**
    - Lưu trữ vĩnh viễn các file MP3 giọng Hoài My vào thư mục `backend/static/audio_cache/`.
    - Lần sau khách hỏi: Lấy file âm thanh ra trong **`0.07 ms - 0.6 ms`** (gần như 0 giây).
@@ -66,11 +66,11 @@ Khi nói chuyện với robot, không phải AI chậm mà là **Microsoft EdgeT
 
 | Tình huống tương tác | Trước khi tối ưu | Sau khi tối ưu | Tốc độ cải thiện | Giọng đọc |
 | :--- | :--- | :--- | :--- | :--- |
-| **Chào khi khách tới gần** | 2.500 ms - 4.000 ms | **0.6 ms** *(Disk Cache)* | 🚀 **Tức thì** | Hoài My 100% |
-| **Pass Wifi / Tiện ích kịch bản** | 4.500 ms | **~1.800 ms** *(Bao gồm 1800ms VAD chuẩn)* | 🚀 **Tức thì sau dứt câu** | Hoài My 100% |
-| **Yêu cầu dịch vụ (FSM)** | 4.200 ms | **~1.800 ms** *(FSM 4ms + Audio Cache)* | 🚀 **Tức thì sau dứt câu** | Hoài My 100% |
-| **Hỏi tiện ích khách sạn** | 5.000 ms | **~1.800 ms** *(File âm thanh từ cache)* | 🚀 **Tức thì sau dứt câu** | Hoài My 100% |
-| **Câu hỏi tra cứu mới ngoài kịch bản** | 5.500 ms | **~2.200 ms - 2.800 ms** *(Groq Cloud + TTS)* | 🚀 **Nhanh gấp 2.5 lần** | Hoài My Neural |
+| **Chào khi khách tới gần** | 2.500 ms - 4.000 ms | **0.6 ms** *(Disk Cache)* | **Tức thì** | Hoài My 100% |
+| **Pass Wifi / Tiện ích kịch bản** | 4.500 ms | **~1.800 ms** *(Bao gồm 1800ms VAD chuẩn)* | **Tức thì sau dứt câu** | Hoài My 100% |
+| **Yêu cầu dịch vụ (FSM)** | 4.200 ms | **~1.800 ms** *(FSM 4ms + Audio Cache)* | **Tức thì sau dứt câu** | Hoài My 100% |
+| **Hỏi tiện ích khách sạn** | 5.000 ms | **~1.800 ms** *(File âm thanh từ cache)* | **Tức thì sau dứt câu** | Hoài My 100% |
+| **Câu hỏi tra cứu mới ngoài kịch bản** | 5.500 ms | **~2.200 ms - 2.800 ms** *(Groq Cloud + TTS)* | **Nhanh gấp 2.5 lần** | Hoài My Neural |
 
 ---
 

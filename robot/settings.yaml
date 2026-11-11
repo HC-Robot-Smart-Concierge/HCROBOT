@@ -15,33 +15,37 @@ robot:
     right_forward: 22    # GPIO22 -> IN3
     right_backward: 23   # GPIO23 -> IN4
 
-    # Đảo chiều motor để tiến đúng hướng FRONT của robot
-    invert_left_direction: true
-    invert_right_direction: false
+    # Đảo chiều motor để tiến đúng hướng FRONT của robot (phía ngược dây cáp LiDAR).
+    # Kiểm tra bằng: sudo python3 main.py --drive-test forward (kê bánh lên trước).
+    # Cả hai bên quay lùi -> đảo cả hai cờ; chỉ một bên quay lùi -> đảo cờ bên đó.
+    invert_left_direction: false
+    invert_right_direction: true
 
   ultrasonic_serial:
     port: "auto"          # Hoặc /dev/ttyUSB0, /dev/ttyACM0
     baudrate: 115200
 
   safety:
-    # Ngưỡng khoảng cách phanh dừng trong nhà/phòng hẹp (cm)
-    front_stop_cm: 30
-    rear_stop_cm: 18
-    left_stop_cm: 15
-    right_stop_cm: 15
-    turn_clearance_cm: 12.0
-    resume_margin_cm: 2.5
-    right_stop_cm: 20
-    # Khi quay tại chỗ:
-    turn_clearance_cm: 20
+    # Sonar là lớp PHANH KHẨN CẤP cuối cùng; tránh vật cản thường ngày do Nav2 + LiDAR lo.
+    # Xe đo thực tế dài 33 x rộng 17 cm (cả bánh), xoay quanh tâm: góc xe
+    # quét bán kính ~18.6 cm = lố ~10.1 cm ra ngoài hông, ~2.1 cm ngoài đầu/đuôi) + dư.
+    # Ngưỡng to hơn mức xe thật cần => Pi chặn lệnh Nav2 cho là an toàn => xe đứng yên
+    # tới hết timeout (log 05/11: trước 27 < 30 chặn tiến, phải 18 < 20 chặn xoay...).
+    front_stop_cm: 15
+    rear_stop_cm: 12
+    # Hông chỉ dùng khi XOAY / rẽ một bên (góc xe lố ~10 cm ra ngoài hông).
+    left_stop_cm: 11
+    right_stop_cm: 11
+    # Khi quay tại chỗ: ngoài bên quay, đầu/đuôi xe phải trống hơn mức này.
+    turn_clearance_cm: 6
 
     # Cho phép tối đa 4 packet null nếu số đo hợp lệ gần nhất chưa quá 0.6 giây.
     allowed_null_packets: 4
     invalid_grace_seconds: 0.6
     stale_timeout_seconds: 0.8
 
-    # Sau khi bị chặn, chỉ cần 2 packet sạch cao hơn ngưỡng dừng 5 cm.
-    resume_margin_cm: 5
+    # Sau khi bị chặn, chỉ cần 2 packet sạch cao hơn ngưỡng dừng 2 cm.
+    resume_margin_cm: 2
     resume_valid_packets: 2
 
 topics:

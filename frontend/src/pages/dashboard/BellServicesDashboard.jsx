@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Luggage,
   SearchCheck,
@@ -15,13 +15,23 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { Pagination } from '../../components/common/Pagination';
-import { INITIAL_BELL_SERVICES_DATA } from '../../data/mockHotelData';
 import {
   fetchBellServicesDashboard,
   createBellRequest,
   updateBellRequestStatus,
 } from '../../services/operationsApi';
 import { useLanguage } from '../../context/LanguageContext';
+import { useStaffText, staffStatusLabel } from '../../context/StaffLanguage';
+import { StaffPageHeader } from '../../components/dashboard/RoomServiceFrame';
+
+// English labels, translated by useStaffText. Keys match backend BELL_SERVICES.
+const BELL_SERVICE_LABELS = {
+  luggage_delivery: 'Bring luggage to room',
+  luggage_pickup: 'Take luggage down to lobby',
+  luggage_storage: 'Store luggage',
+  luggage_retrieval: 'Retrieve stored luggage',
+  room_move: 'Room move assistance',
+};
 
 const inferFlowType = (request) => {
   const rawType = (request.request_type || request.type || '').toLowerCase();
@@ -56,6 +66,7 @@ const normalizeRequest = (request) => {
     id: request.ticket_code || request.id,
     type: flowType,
     request_type: flowType,
+    serviceKey: request.bell_service || null,
     guestName: request.guest_name || request.guestName || 'Hotel Guest',
     assignedTo: request.assigned_to || request.assignedTo || null,
   };
@@ -66,6 +77,16 @@ const getStatusLabel = (status) => {
   if (normalized === 'in progress' || normalized === 'on job') return 'In Progress';
   if (normalized === 'completed') return 'Completed';
   return 'Pending';
+};
+
+const createdTime = (request) => new Date(request.created_at || 0).getTime();
+
+// Open requests first and oldest first (FIFO); completed history newest first.
+const queueOrder = (a, b) => {
+  const aDone = getStatusLabel(a.status) === 'Completed';
+  const bDone = getStatusLabel(b.status) === 'Completed';
+  if (aDone !== bDone) return aDone ? 1 : -1;
+  return aDone ? createdTime(b) - createdTime(a) : createdTime(a) - createdTime(b);
 };
 
 const FLOW_TABS = [
@@ -94,12 +115,16 @@ const FLOW_TABS = [
 
 export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
   const { t } = useLanguage();
+  const st = useStaffText();
   const staffName = currentUser?.full_name || currentUser?.name || 'Marcus T.';
   const [data, setData] = useState({
-    ...INITIAL_BELL_SERVICES_DATA,
-    requests: INITIAL_BELL_SERVICES_DATA.requests.map(normalizeRequest),
+    kpis: { pending: 0, onJob: 0, completed: 0, activeFleet: 0 },
+    requests: [],
+    teamStatus: [],
   });
   const [activeFlow, setActiveFlow] = useState('all');
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
   const [filter, setFilter] = useState('All');
   const [currentPage, setCurrentPage] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
@@ -118,35 +143,42 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const loadData = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const response = await fetchBellServicesDashboard();
-      if (!response?.requests) return;
-      const hasLiveRequests = response.requests.length > 0;
-
-      setData((previous) => ({
-        ...previous,
-        kpis: hasLiveRequests && response.kpis ? response.kpis : previous.kpis,
-        requests: hasLiveRequests
-          ? response.requests.map(normalizeRequest)
-          : previous.requests,
-        teamStatus:
-          response.team_status?.length > 0
-            ? response.team_status
-            : previous.teamStatus,
-        announcement: response.announcement || previous.announcement,
-      }));
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
+  // Poll every 15 s after each load completes; an empty queue stays empty (no mock data).
   useEffect(() => {
+    let cancelled = false;
+    let timer;
+    const loadData = async () => {
+      setIsLoading(true);
+      try {
+        const response = await fetchBellServicesDashboard();
+        if (cancelled) return;
+        setLoadFailed(!response?.requests);
+        if (response?.requests) {
+          setData((previous) => ({
+            ...previous,
+            kpis: response.kpis || previous.kpis,
+            requests: response.requests.map(normalizeRequest),
+            teamStatus:
+              response.team_status?.length > 0
+                ? response.team_status
+                : previous.teamStatus,
+            announcement: response.announcement || previous.announcement,
+          }));
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+          timer = setTimeout(loadData, 15000);
+        }
+      }
+    };
+
     loadData();
-    const timer = setInterval(loadData, 5000);
-    return () => clearInterval(timer);
-  }, [loadData]);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [refreshKey]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -172,7 +204,7 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
   }, [data.requests]);
 
   const filteredRequests = useMemo(() => {
-    const list = data.requests || [];
+    const list = [...(data.requests || [])].sort(queueOrder);
     return list.filter((r) => {
       // 1. Filter by Bellman workflow tab
       if (activeFlow === 'luggage' && r.type !== 'luggage' && r.type !== 'room_move') {
@@ -228,7 +260,7 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
       );
       if (activeTask) {
         onNotify(
-          `Bạn đang có nhiệm vụ đang xử lý (${activeTask.title || activeTask.id}). Vui lòng hoàn thành công việc hiện tại trước khi nhận thêm nhiệm vụ mới!`
+          st('Complete your current task ({0}) before claiming another request.', activeTask.title || activeTask.id)
         );
         return;
       }
@@ -245,8 +277,9 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
     } else if (targetReq?.type === 'emotion_alert') {
       onNotify(`Đã tiếp nhận xử lý khẩn trường hợp khách khó chịu (${requestId})`);
     } else {
-      onNotify(`Đã nhận xử lý yêu cầu hỗ trợ hành lý ${requestId}`);
+      onNotify(st('Request {0} claimed.', requestId));
     }
+    setRefreshKey((key) => key + 1);
   };
 
   const handleComplete = async (requestId) => {
@@ -262,8 +295,9 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
     } else if (targetReq?.type === 'emotion_alert') {
       onNotify(`Đã xoa dịu và hỗ trợ thành công khách hàng (${requestId})`);
     } else {
-      onNotify(`Đã hoàn tất bàn giao hành lý ${requestId}`);
+      onNotify(st('Request {0} completed.', requestId));
     }
+    setRefreshKey((key) => key + 1);
   };
 
   const openCreateModal = (flowType) => {
@@ -343,7 +377,10 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
       }));
       setActiveFlow(modalFlow);
       setModalFlow(null);
+      setRefreshKey((key) => key + 1);
       onNotify(`Đã tiếp nhận phiếu mới: ${normalizedCreated.id}`);
+    } catch {
+      onNotify(st('Could not load live requests. Showing the last update.'));
     } finally {
       setIsSubmitting(false);
     }
@@ -419,33 +456,41 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
   ];
 
   return (
-    <main className="flex-1 overflow-y-auto custom-scrollbar bg-[#FCFAF7] font-sans">
-      <div className="w-full max-w-[1180px] mx-auto px-4 md:px-8 pt-4 pb-8 space-y-6">
-        {/* Header + Quick Action Buttons for the 3 Bellman Flows */}
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-3">
-              <h2 className="text-[16px] font-bold text-[#1A1917]">{t('bsTitle')}</h2>
-              <span className="rounded bg-[#F0EEEB] px-2.5 py-1 text-[10px] font-bold text-[#77736E]">
-                {t('bsActiveOps')}
-              </span>
-            </div>
-            <p className="text-[12px] text-[#666] mt-1">
-              Điều phối 3 luồng nghiệp vụ Bellman: Hỗ trợ hành lý, Báo cáo đồ thất lạc (Lost &amp; Found) và Xử lý khi khách có biểu cảm khó chịu từ Robot Kiosk.
-            </p>
+    <div className="staff-page-body flex-1 overflow-y-auto custom-scrollbar font-sans">
+      <div className="staff-page-container space-y-5">
+        <StaffPageHeader className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <div className="min-w-0">
+            <h1>{t('bsTitle')}</h1>
+            <p>{st('Coordinate luggage assistance, guest requests and the Bell Services team.')}</p>
           </div>
-
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-2">
+            <span className="staff-header-details rounded border border-[#BFBFBD] bg-white px-2.5 py-1 text-[10px] font-semibold text-[#77736E]">
+              {t('bsActiveOps')}
+            </span>
             <button
               type="button"
-              onClick={loadData}
+              onClick={() => setRefreshKey((key) => key + 1)}
               disabled={isLoading}
-              className="rounded-lg bg-white border border-[#DEDAD2] px-3 py-1.5 text-[11px] font-semibold text-[#403D39] hover:bg-[#F4F2EE] flex items-center gap-1.5 cursor-pointer"
+              className="inline-flex items-center gap-1.5 rounded border border-[#BFBFBD] bg-white px-2.5 py-1 text-[11px] font-semibold text-[#403D39] hover:bg-[#F0EFEC] cursor-pointer"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-              <span>Làm mới</span>
+              <span>{st('Refresh')}</span>
             </button>
+          </div>
+        </StaffPageHeader>
 
+        {loadFailed && (
+          <p role="alert" className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[12px] text-amber-900">
+            {st('Could not load live requests. Showing the last update.')}
+          </p>
+        )}
+
+        {/* Quick Action Buttons for the 3 Bellman Workflows */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-[12px] text-[#666]">
+            Điều phối 3 luồng nghiệp vụ Bellman: Hỗ trợ hành lý, Báo cáo đồ thất lạc (Lost &amp; Found) và Xử lý khi khách có biểu cảm khó chịu từ Robot Kiosk.
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={() => openCreateModal('luggage')}
@@ -521,7 +566,7 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
         )}
 
         {/* KPI Cards */}
-        <section className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <section className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {metrics.map(({ label, subLabel, value, flowId, isUrgent }) => {
             const isSelected = activeFlow === flowId;
             return (
@@ -546,7 +591,7 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
                     </span>
                   )}
                 </div>
-                <p className={`mt-2 text-[20px] font-bold ${isUrgent ? 'text-rose-700' : 'text-[#222]'}`}>
+                <p className={`mt-2 text-[22px] font-bold ${isUrgent ? 'text-rose-700' : 'text-[#262626]'}`}>
                   {value}
                 </p>
                 {subLabel && (
@@ -594,29 +639,30 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
           })}
         </section>
 
-        <section className="grid grid-cols-1 lg:grid-cols-[minmax(0,2.08fr)_minmax(240px,1fr)] gap-5">
+        <section className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_300px] gap-4">
           <div className="min-w-0">
-            <div className="min-h-8 mb-3 flex flex-wrap items-center justify-between gap-3">
-              <h3 className="text-[13px] font-semibold text-[#403D39]">
-                {activeFlow === 'luggage'
-                  ? 'Danh sách Yêu cầu Hỗ trợ Hành lý & Chuyển phòng'
-                  : activeFlow === 'lost_found'
-                  ? 'Danh sách Báo cáo Đồ thất lạc (Lost & Found)'
-                  : activeFlow === 'emotion_alert'
-                  ? 'Danh sách Cảnh báo & Xử lý Khách có biểu cảm khó chịu'
-                  : t('activeRequests')}
-              </h3>
-              <div className="flex items-center gap-1 flex-wrap">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="text-[13px] font-semibold text-[#403D39]">
+                  {activeFlow === 'luggage'
+                    ? 'Danh sách Yêu cầu Hỗ trợ Hành lý & Chuyển phòng'
+                    : activeFlow === 'lost_found'
+                    ? 'Danh sách Báo cáo Đồ thất lạc (Lost & Found)'
+                    : activeFlow === 'emotion_alert'
+                    ? 'Danh sách Cảnh báo & Xử lý Khách có biểu cảm khó chịu'
+                    : t('activeRequests')}
+                </h3>
+                <p className="text-[11px] text-[#77736E]">
+                  {st('Open requests first, oldest first. Updates every 15 seconds.')}
+                </p>
+              </div>
+              <div className="staff-request-filters" role="group" aria-label={t('activeRequests')}>
                 {['All', 'Pending', 'In Progress', 'Completed'].map((tab) => (
                   <button
                     key={tab}
                     type="button"
                     onClick={() => setFilter(tab)}
-                    className={`rounded-lg px-3 py-1 text-[11px] font-semibold transition-colors cursor-pointer ${
-                      filter === tab
-                        ? 'bg-[#EAE8E4] text-[#494540]'
-                        : 'text-[#77726D] hover:bg-[#F0EEEA]'
-                    }`}
+                    aria-pressed={filter === tab}
                   >
                     {tab === 'All'
                       ? t('all')
@@ -632,7 +678,7 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
 
             <div className="space-y-3">
               {filteredRequests.length === 0 ? (
-                <div className="rounded-xl bg-white px-6 py-10 text-center text-[12px] text-[#777] border border-[#E8E5E0]">
+                <div className="rounded-xl bg-white px-6 py-10 text-center text-[12px] text-[#777] border border-[#BFBFBD]">
                   {t('noDataMatch')}
                 </div>
               ) : (
@@ -642,21 +688,25 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
                   const isInProgress = status === 'In Progress';
                   const badge = getFlowBadge(request.type);
                   const BadgeIcon = badge.icon;
+                  const displayTitle =
+                    request.serviceKey && BELL_SERVICE_LABELS[request.serviceKey]
+                      ? st(BELL_SERVICE_LABELS[request.serviceKey])
+                      : request.title;
 
                   return (
                     <article
                       key={request.id}
-                      className={`rounded-xl bg-white p-4 border transition-all ${
+                      className={`rounded-xl bg-white px-5 py-4 border transition-all ${
                         request.type === 'emotion_alert' && status !== 'Completed'
                           ? 'border-rose-300 bg-rose-50/20'
-                          : 'border-[#E8E5E0]'
+                          : 'border-[#BFBFBD]'
                       }`}
                     >
-                      <div className="flex items-start justify-between gap-4">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center gap-2 mb-1.5">
                             <span className="font-mono text-[11px] font-bold text-[#1A1917] bg-[#F4F3F0] px-2 py-0.5 rounded border border-[#E2DFD9]">
-                              {request.id}
+                              #{request.id}
                             </span>
                             <span
                               className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${badge.className}`}
@@ -670,26 +720,26 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
                             </span>
                           </div>
 
-                          <h4 className="text-[14px] font-bold text-[#2B2927]">
-                            {request.title}
+                          <h4 className="text-[14px] font-bold text-[#2B2927] break-words">
+                            {displayTitle}
                           </h4>
 
-                          <p className="mt-1 text-[12px] text-[#666] flex flex-wrap items-center gap-2">
+                          <p className="mt-1 text-[12px] text-[#666] flex flex-wrap items-center gap-2 break-words">
                             <span className="inline-flex items-center gap-1 font-medium text-[#3F3B38]">
                               <User className="w-3.5 h-3.5 text-[#777]" />
-                              <span>Khách: {request.guestName}</span>
+                              <span>{st('Guest:')} {request.guestName}</span>
                             </span>
                             {request.reporter && (
                               <span className="text-[#888]">• Nguồn: {request.reporter}</span>
                             )}
                             {request.assignedTo && (
                               <span className="text-emerald-700 font-semibold">
-                                • Phụ trách: {request.assignedTo}
+                                • {st('Assigned:')} {request.assignedTo}
                               </span>
                             )}
                           </p>
 
-                          <p className="mt-2 text-[12px] leading-relaxed text-[#444] bg-[#FAF9F6] p-2.5 rounded-lg border border-[#EFECE6]">
+                          <p className="mt-2 text-[12px] leading-relaxed text-[#444] bg-[#FAF9F6] p-2.5 rounded-lg border border-[#EFECE6] break-words">
                             {request.description}
                           </p>
                         </div>
@@ -711,9 +761,9 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
                         </span>
                       </div>
 
-                      <div className="mt-4 pt-3 border-t border-[#F0ECE6] flex items-center justify-between gap-3">
+                      <div className="mt-4 pt-3 border-t border-[#E9E5DC] flex flex-wrap items-center justify-between gap-3">
                         <span className="text-[11px] text-[#777] flex items-center gap-1">
-                          <Clock className="w-3.5 h-3.5" />
+                          <Clock className="w-3.5 h-3.5 shrink-0" />
                           <span>
                             {request.type === 'lost_found'
                               ? isPending
@@ -745,7 +795,7 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
                                   ? 'bg-rose-600 hover:bg-rose-700'
                                   : request.type === 'lost_found'
                                   ? 'bg-amber-600 hover:bg-amber-700'
-                                  : 'bg-black hover:bg-[#252525]'
+                                  : 'bg-[#262626] hover:bg-[#404040]'
                               }`}
                             >
                               {getAcceptButtonLabel(request.type)}
@@ -783,14 +833,14 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
                 totalItems={filteredRequests.length}
                 pageSize={pageSize}
                 onPageChange={setCurrentPage}
-                itemName="yêu cầu"
-                className="mt-3 rounded-2xl border border-[#E5E1D8] shadow-xs bg-white"
+                itemName={st('requests')}
+                className="mt-3 rounded-xl border border-[#BFBFBD]"
               />
             )}
           </div>
 
           <aside className="min-w-0 space-y-4">
-            <section className="rounded-xl bg-[#F4F3F0] p-4 border border-[#E8E5E0]">
+            <section className="rounded-xl bg-white p-4 border border-[#BFBFBD]">
               <h3 className="text-[11px] font-bold uppercase tracking-wider text-[#403D39]">
                 {t('bsTeamStatus')}
               </h3>
@@ -801,18 +851,32 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
                     key={member.id || member.name}
                     className="flex items-center justify-between text-[11px] py-1.5 border-b border-[#E1DEDA] last:border-0"
                   >
-                    <div>
-                      <p className="font-semibold text-[#333]">{member.name}</p>
-                      <p className="text-[10px] text-[#777]">{member.role}</p>
+                    <div className="min-w-0">
+                      <p className="font-semibold text-[#333] break-words">{member.name}</p>
+                      <p className="text-[10px] text-[#777]">{st(member.role)}</p>
                     </div>
-                    <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                    {member.status && (
+                      <span className="ml-3 inline-flex shrink-0 items-center gap-1.5 text-[10px] text-[#777]">
+                        <span
+                          aria-hidden="true"
+                          className={`h-1.5 w-1.5 rounded-full ${
+                            staffStatusLabel(member.status) === 'Available'
+                              ? 'bg-emerald-500'
+                              : staffStatusLabel(member.status) === 'Busy'
+                              ? 'bg-amber-500'
+                              : 'bg-stone-400'
+                          }`}
+                        />
+                        {st(staffStatusLabel(member.status))}
+                      </span>
+                    )}
                   </div>
                 ))}
               </div>
             </section>
 
             {/* Quick Guide Card for the 3 Bellman Workflows */}
-            <section className="rounded-xl bg-white p-4 border border-[#E8E5E0] space-y-3">
+            <section className="rounded-xl bg-white p-4 border border-[#BFBFBD] space-y-3">
               <h3 className="text-[11px] font-bold uppercase tracking-wider text-[#403D39]">
                 Quy chuẩn 3 Luồng Nghiệp vụ Bellman
               </h3>
@@ -1011,6 +1075,6 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
           </div>
         </div>
       )}
-    </main>
+    </div>
   );
 };

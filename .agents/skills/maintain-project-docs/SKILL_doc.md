@@ -92,7 +92,7 @@ Mọi nhận định kỹ thuật trọng yếu phải truy được về `đư�
 
 Ưu tiên vault và quy ước hiện có. Không tự di chuyển cả bộ docs vào một thư mục mới. Nếu chưa có cấu trúc, dùng `docs/` làm gốc vault đề xuất và chỉ tạo note cần thiết:
 
-- `00-Home.md`: tổng quan, liên kết và thứ tự đọc.
+- `README.md`: tổng quan, liên kết và thứ tự đọc.
 - `01-File-Map.md`: bản đồ file và trạng thái đọc/xác minh.
 - `02-Architecture.md`: trách nhiệm các thành phần và quan hệ phụ thuộc.
 - `Modules/`: note theo module hoặc tính năng, bao gồm luồng xử lý.

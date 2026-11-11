@@ -1,4 +1,4 @@
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Literal
 from datetime import datetime
 from pydantic import BaseModel, Field, ConfigDict, model_validator, field_validator
 
@@ -381,6 +381,10 @@ class BellRequestCreate(BaseModel):
     reporter: Optional[str] = None
     description: Optional[str] = None
     request_type: str = "luggage"
+    # Robot kiosk: a key from bell_request_service.BELL_SERVICES, or "auto" to classify the
+    # guest's words. Either enables duplicate protection; staff quick requests omit it.
+    service_key: Optional[str] = Field(None, max_length=50)
+    source: Optional[str] = Field(None, max_length=100)
 
 class BellRequestStatusUpdate(BaseModel):
     status: Optional[str] = None # 'Pending', 'In Progress', 'Completed'
@@ -399,8 +403,18 @@ class BellRequestResponse(BaseModel):
     status: str
     assigned_to: Optional[str]
     created_at: datetime
+    bell_service: Optional[str] = None
+    duplicate: bool = False
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class BellRoomStatusResponse(BaseModel):
+    room_number: str
+    pending_count: int
+    in_progress_count: int
+    completed_count: int
+    requests: List[BellRequestResponse]
 
 
 # ---------------------------------------------------------
@@ -408,6 +422,7 @@ class BellRequestResponse(BaseModel):
 # ---------------------------------------------------------
 class MaintenanceRequestCreate(BaseModel):
     title: str
+    catalog_item_id: Optional[str] = Field(None, max_length=50)
     category: str = "general"
     location: str
     description: Optional[str] = None
@@ -418,8 +433,14 @@ class MaintenanceRequestStatusUpdate(BaseModel):
     assigned_to: Optional[str] = None
     assigned_technician: Optional[str] = None
 
+class MaintenanceRequestPriorityUpdate(BaseModel):
+    priority: Literal["Normal", "Urgent"]
+
 class MaintenanceRequestResponse(BaseModel):
     id: str
+    duplicate: bool = False
+    merged: bool = False
+    priority: str = "Normal"
     ticket_code: str
     title: str
     category: str
@@ -952,6 +973,8 @@ class RoomNfcVerifyRequest(BaseModel):
 
 class RoomPinVerifyResponse(BaseModel):
     verified: bool = Field(..., description="True nếu mã PIN/CCCD/NFC chính xác")
+    duplicate: bool = False
+    merged: bool = False
     success: bool = Field(True, description="True nếu xác thực thành công")
     room_number: str = Field(..., description="Số phòng")
     guest_name: Optional[str] = Field(None, description="Tên khách đang ở")

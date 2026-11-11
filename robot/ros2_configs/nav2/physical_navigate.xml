@@ -1,0 +1,51 @@
+<!--
+  BT cho dieu huong XE THAT theo map da luu (start_wsl_navigation.sh -> navigation_launch.py
+  slam:=false nap lam default_nav_to_pose_bt_xml). Dua tren
+  navigate_to_pose_w_replanning_and_recovery.xml cua Nav2 Jazzy, khac:
+  - BO cong WouldAControllerRecoveryHelp/WouldAPlannerRecoveryHelp: ban goc KHONG chay
+    recovery khi loi TF_ERROR (log 07/11 22:29: LiDAR tu Pi nghen ~11 s qua mang ->
+    AMCL ngung cap nhat map->odom -> "Transform data too old" -> huy goal ngay) va khi
+    START_OCCUPIED (xe ket sat vat). O day moi loi deu duoc thu recovery roi lam lai.
+  - Recovery: xoa costmap + LUI 15 cm truoc tien (xe ket: truoc 15 cm, hong 9 cm -> Pi chan
+    tien va xoay, chi lui duoc; Pi van tu chan lui khi phia sau < rear_stop_cm). Lui that
+    bai (sau bi chan) thi Wait 3 s (cho mang/nguoi di qua) roi lap lai.
+  - BO Spin: sat tuong Pi chan lenh xoay, Spin luon het gio roi that bai (giong
+    explore_navigate.xml). Cho thoang thi RotationShim tu xoay tai cho.
+-->
+<root BTCPP_format="4" main_tree_to_execute="MainTree">
+  <BehaviorTree ID="MainTree">
+    <RecoveryNode number_of_retries="6" name="NavigateRecovery">
+      <PipelineSequence name="NavigateWithReplanning">
+        <ControllerSelector selected_controller="{selected_controller}" default_controller="FollowPath" topic_name="controller_selector"/>
+        <PlannerSelector selected_planner="{selected_planner}" default_planner="GridBased" topic_name="planner_selector"/>
+        <RateController hz="1.0">
+          <RecoveryNode number_of_retries="1" name="ComputePathToPose">
+            <ComputePathToPose goal="{goal}" path="{path}" planner_id="{selected_planner}" error_code_id="{compute_path_error_code}"/>
+            <ClearEntireCostmap name="ClearGlobalCostmap-Context" service_name="global_costmap/clear_entirely_global_costmap" server_timeout="1000"/>
+          </RecoveryNode>
+        </RateController>
+        <RecoveryNode number_of_retries="1" name="FollowPath">
+          <FollowPath path="{path}" controller_id="{selected_controller}" error_code_id="{follow_path_error_code}"/>
+          <ClearEntireCostmap name="ClearLocalCostmap-Context" service_name="local_costmap/clear_entirely_local_costmap" server_timeout="1000"/>
+        </RecoveryNode>
+      </PipelineSequence>
+      <ReactiveFallback name="RecoveryFallback">
+        <GoalUpdated/>
+        <RoundRobin name="RecoveryActions">
+          <!-- Xoa costmap that bai/tre (log 08/11: "timed out" voi server_timeout mac dinh 20 ms du
+               costmap van xoa) KHONG duoc chan buoc lui: ForceSuccess + cho 1 s. -->
+          <Sequence name="ClearAndBackUp">
+            <ForceSuccess>
+              <ClearEntireCostmap name="ClearLocalCostmap-Subtree" service_name="local_costmap/clear_entirely_local_costmap" server_timeout="1000"/>
+            </ForceSuccess>
+            <ForceSuccess>
+              <ClearEntireCostmap name="ClearGlobalCostmap-Subtree" service_name="global_costmap/clear_entirely_global_costmap" server_timeout="1000"/>
+            </ForceSuccess>
+            <BackUp backup_dist="0.15" backup_speed="0.10" error_code_id="{backup_code_id}"/>
+          </Sequence>
+          <Wait wait_duration="3.0"/>
+        </RoundRobin>
+      </ReactiveFallback>
+    </RecoveryNode>
+  </BehaviorTree>
+</root>

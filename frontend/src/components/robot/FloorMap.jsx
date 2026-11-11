@@ -911,6 +911,7 @@ export const FloorMap = ({
   showQrModalExternal = false,
   qrCountdown = null,
   onCloseQrModal = null,
+  currentStepExternal = null,
   onStepChange = null,
 }) => {
   // Điểm đến được chọn (hỗ trợ chuyển đổi nhanh trực tiếp giữa các cơ sở vật chất)
@@ -1025,7 +1026,10 @@ export const FloorMap = ({
 
   // Tự động chuyển chặng từ 1 sang 2 sau 10 giây (nếu không có điều phối ngoài) để khách thấy toàn bộ hành trình
   useEffect(() => {
-    if (currentStepExternal != null) return;
+    if (currentStepExternal != null) {
+      setActiveStep(currentDest.isDifferentFloor ? currentStepExternal : 2);
+      return;
+    }
     if (!currentDest.isDifferentFloor) {
       setActiveStep(2);
       return;

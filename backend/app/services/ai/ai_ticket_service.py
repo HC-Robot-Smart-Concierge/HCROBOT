@@ -6,9 +6,84 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.support_request import SupportRequest
 from app.models.support import HumanSupportSession
+from app.services.maintenance_request_service import get_or_create_maintenance_request
+from app.services.bell_request_service import get_or_create_bell_request, BELL_DEPARTMENT_ID, BELL_SERVICE_TYPE_ID
+from app.services.ai.constants import is_lost_found_text
 from app.api.v1.endpoints.operations.shared import create_department_notification
 
 logger = logging.getLogger(__name__)
+
+
+async def create_maintenance_voice_ticket(db: AsyncSession, room_number: str, items: str) -> tuple[str, bool, bool]:
+    request = SupportRequest(
+        ticket_code=f"MN-{random.randint(1000, 99999)}",
+        source="HCRobot Concierge AI Chat",
+        title=f"Sự cố kỹ thuật Phòng {room_number}: {items}",
+        room_number=room_number,
+        description=items,
+        guest_name=f"Guest (Room {room_number})",
+        department_id="DEP-MAINTENANCE",
+        service_type_id="ST-MAINTENANCE",
+        status="Pending",
+    )
+    request, created, merged = await get_or_create_maintenance_request(db, request)
+    if created or merged:
+        for department in ("Maintenance", "Reception"):
+            await create_department_notification(
+                db=db, department=department,
+                title=f"Robot AI: Bổ sung sự cố #{request.ticket_code}" if merged else f"Robot AI: Yêu cầu Kỹ thuật mới #{request.ticket_code}",
+                description=f"Phòng {room_number}: {items}",
+                request_id=request.id, request_type="maintenance", type="Request",
+            )
+    ticket_code = request.ticket_code
+    await db.commit()
+    return ticket_code, created, merged
+
+
+async def create_bell_voice_ticket(db: AsyncSession, room_number: str, items: str) -> tuple[SupportRequest, bool]:
+    if is_lost_found_text(items):
+        ticket_code = f"BS-{random.randint(1000, 99999)}"
+        req = SupportRequest(
+            ticket_code=ticket_code,
+            source="HCRobot Concierge AI Chat",
+            title=f"Báo cáo đồ thất lạc Phòng {room_number}: {items}",
+            room_number=room_number,
+            guest_name=f"Guest (Room {room_number})",
+            description=items,
+            department_id=BELL_DEPARTMENT_ID,
+            service_type_id=BELL_SERVICE_TYPE_ID,
+            status="Pending",
+            request_type="lost_found",
+        )
+        db.add(req)
+        await db.flush()
+        await create_department_notification(
+            db=db,
+            department="Bell Services",
+            title=f"Robot AI: Báo cáo Đồ thất lạc #{ticket_code}",
+            description=f"Phòng {room_number}: {items}",
+            request_id=req.id,
+            request_type="bell_service",
+            type="Request",
+        )
+        await create_department_notification(
+            db=db,
+            department="Reception",
+            title=f"Robot AI: Yêu cầu Bellman từ Khách Phòng {room_number}",
+            description=f"Phiếu #{ticket_code}: {items}",
+            request_id=req.id,
+            request_type="bell_service",
+            type="Request",
+        )
+        await db.commit()
+        return req, True
+
+    request, created = await get_or_create_bell_request(
+        db, room_number=room_number, description=items,
+        source="HCRobot Concierge AI Chat", notify_reception=True,
+    )
+    await db.commit()
+    return request, created
 
 
 async def create_live_call_session(
@@ -319,54 +394,8 @@ async def auto_create_ticket(
             return ticket_code
 
         elif action == "bellman":
-            ticket_code = f"BS-{random.randint(1000, 99999)}"
-            items_lower = (items or "").lower()
-            is_lost_found = any(k in items_lower for k in ["thất lạc", "that lac", "mất đồ", "mat do", "quên đồ", "quen do", "rơi đồ", "roi do", "lost", "missing", "forgot"])
-            is_room_move = any(k in items_lower for k in ["đổi phòng", "chuyển phòng", "chuyen phong", "room move"])
-            req_type = "lost_found" if is_lost_found else ("room_move" if is_room_move else "luggage")
-            req_title = (
-                f"Báo cáo đồ thất lạc Phòng {rm}: {items}"
-                if is_lost_found
-                else f"Khách phòng {rm} hỗ trợ hành lý: {items}"
-            )
-            req = SupportRequest(
-                ticket_code=ticket_code,
-                source="HCRobot Concierge AI Chat",
-                title=req_title,
-                room_number=rm,
-                guest_name=f"Guest (Room {rm})",
-                description=items,
-                department_id="DEP-BELL",
-                service_type_id="ST-BELL",
-                status="Pending",
-                request_type=req_type,
-            )
-            db.add(req)
-            notif_title_bell = (
-                f"Robot AI: Báo cáo Đồ thất lạc #{ticket_code}"
-                if is_lost_found
-                else f"Robot AI: Yêu cầu Hành lý mới #{ticket_code}"
-            )
-            await create_department_notification(
-                db=db,
-                department="Bell Services",
-                title=notif_title_bell,
-                description=f"Phòng {rm}: {items}",
-                request_id=req.id,
-                request_type="bell_service",
-                type="Request",
-            )
-            await create_department_notification(
-                db=db,
-                department="Reception",
-                title=f"Robot AI: Yêu cầu Bellman từ Khách Phòng {rm}",
-                description=f"Phiếu #{ticket_code}: {items}",
-                request_id=req.id,
-                request_type="bell_service",
-                type="Request",
-            )
-            await db.commit()
-            return ticket_code
+            req, _ = await create_bell_voice_ticket(db, rm, items)
+            return req.ticket_code
 
         elif action == "emotion_alert":
             loc = rm if (rm and rm != "General") else "Main Lobby Kiosk"
@@ -397,38 +426,7 @@ async def auto_create_ticket(
             return ticket_code
 
         elif action == "maintenance":
-            ticket_code = f"MN-{random.randint(1000, 99999)}"
-            req = SupportRequest(
-                ticket_code=ticket_code,
-                source="HCRobot Concierge AI Chat",
-                title=f"Sự cố kỹ thuật Phòng {rm}: {items}",
-                room_number=rm,
-                description=items,
-                guest_name=f"Guest (Room {rm})",
-                department_id="DEP-MAINTENANCE",
-                service_type_id="ST-MAINTENANCE",
-                status="Pending",
-            )
-            db.add(req)
-            await create_department_notification(
-                db=db,
-                department="Maintenance",
-                title=f"Robot AI: Yêu cầu Kỹ thuật mới #{ticket_code}",
-                description=f"Phòng {rm}: {items}",
-                request_id=req.id,
-                request_type="maintenance",
-                type="Request",
-            )
-            await create_department_notification(
-                db=db,
-                department="Reception",
-                title=f"Robot AI: Yêu cầu Bảo trì từ Khách Phòng {rm}",
-                description=f"Phiếu #{ticket_code}: {items}",
-                request_id=req.id,
-                request_type="maintenance",
-                type="Request",
-            )
-            await db.commit()
+            ticket_code, _, _ = await create_maintenance_voice_ticket(db, rm, items)
             return ticket_code
 
         elif action == "taxi":
@@ -687,7 +685,7 @@ async def background_extract_and_create_ticket(
         return
 
     # Không tạo ticket nếu là chào hỏi, giới thiệu phòng hoặc câu hỏi thông tin chung
-    if action in ["provide_room_number", "chitchat", "conversation", "faq", "fast_path", "unknown", "query_order_status", "open_food_menu", "open_room_service_menu", "open_maintenance_menu"]:
+    if action in ["provide_room_number", "chitchat", "conversation", "faq", "fast_path", "unknown", "query_order_status", "open_food_menu", "open_room_service_menu", "open_maintenance_menu", "open_bellman_menu"]:
         return
 
     items_desc_check = (items or prompt or "").lower()

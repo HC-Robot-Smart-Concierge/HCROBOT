@@ -21,6 +21,7 @@ import {
   Car,
   UserCheck,
   Wrench,
+  Luggage,
 } from 'lucide-react';
 
 const getRobotMode = (state, isSpeaking = false, isProcessing = false, isListening = false) => {
@@ -162,6 +163,7 @@ export const MobileRobotScreen = ({
   onOpenFoodMenu,
   onOpenRoomService,
   onOpenMaintenance = null,
+  onOpenBellman = null,
   onOpenMaintenanceStatus = null,
   onOpenOrderStatus,
   onOpenServiceStatus,
@@ -609,6 +611,31 @@ export const MobileRobotScreen = ({
                       </p>
                       <p className="text-[10px] sm:text-[11px] text-stone-600 font-medium group-hover:text-stone-800 transition-colors truncate mt-0.5">
                         {isEn ? 'Towels, extra bedding, in-room spa massage' : 'Thêm khăn tắm, gối chăn, massage tại phòng'}
+                      </p>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-stone-400 group-hover:text-stone-700 group-hover:translate-x-0.5 transition-all shrink-0" />
+                  </button>
+                )}
+
+                {/* 3z. Hành lý & Bellman (Bellman Menu) */}
+                {onOpenBellman && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onOpenBellman();
+                      setIsUtilitiesMenuOpen(false);
+                    }}
+                    className="p-3 sm:p-3.5 rounded-2xl bg-white hover:bg-stone-50 active:scale-[0.98] border border-[#E3DFD5] hover:border-stone-400 transition-all cursor-pointer flex items-center gap-3.5 group text-left shadow-xs hover:shadow-md min-h-[64px]"
+                  >
+                    <div className="w-11 h-11 rounded-xl bg-[#EFECE4] border border-[#E3DFD5] text-stone-700 flex items-center justify-center shrink-0 group-hover:bg-[#1A1917] group-hover:text-white group-hover:scale-105 transition-all">
+                      <Luggage className="w-5 h-5" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs sm:text-sm font-extrabold text-stone-900 group-hover:text-black transition-colors truncate">
+                        {isEn ? 'Luggage & Bellman' : 'Hành lý & Bellman'}
+                      </p>
+                      <p className="text-[10px] sm:text-[11px] text-stone-600 font-medium group-hover:text-stone-800 transition-colors truncate mt-0.5">
+                        {isEn ? 'Bring, store & retrieve bags, room moves' : 'Mang, gửi giữ hành lý & chuyển đồ sang phòng mới'}
                       </p>
                     </div>
                     <ChevronRight className="w-4 h-4 text-stone-400 group-hover:text-stone-700 group-hover:translate-x-0.5 transition-all shrink-0" />

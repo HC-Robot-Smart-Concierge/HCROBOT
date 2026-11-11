@@ -220,6 +220,11 @@ class SupportRequest(Base):
         self.extra_data = extra
 
     @property
+    def bell_service(self) -> Optional[str]:
+        """Bellman service key (luggage_delivery, room_move, ...) set by bell_request_service."""
+        return (self.extra_data or {}).get("bell_service")
+
+    @property
     def category(self) -> str:
         if getattr(self, "_category", None):
             return self._category

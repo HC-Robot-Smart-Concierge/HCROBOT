@@ -13,14 +13,30 @@ from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import LaserScan, JointState
 from nav_msgs.msg import Odometry, Path
-from geometry_msgs.msg import TransformStamped, PoseStamped, Twist
+from nav2_msgs.srv import ClearEntireCostmap
+from nav2_msgs.msg import SpeedLimit
+from geometry_msgs.msg import TransformStamped, PoseStamped, PoseWithCovarianceStamped, Twist
+from std_srvs.srv import Empty as EmptyService
 from std_msgs.msg import Empty, String
 from visualization_msgs.msg import Marker, MarkerArray
 from slam_toolbox.srv import Reset, SaveMap, Pause
-from nav2_msgs.action import NavigateToPose
-from rclpy.action import ActionClient
+from action_msgs.msg import GoalStatusArray
+from action_msgs.srv import CancelGoal
 from tf2_ros import TransformBroadcaster
 from tf2_ros.static_transform_broadcaster import StaticTransformBroadcaster
+
+import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from diff_drive import (  # noqa: E402
+    DiffDriveConfig, StraightDriveConfig, twist_to_straight_command, twist_to_wheel_pwm,
+)
+from nav_result_tracker import NavResultTracker  # noqa: E402
+from localization_support import LocalizationWarmup, sensor_frame_is_fresh  # noqa: E402
+from speed_zone_logic import limit_wheel_pwm  # noqa: E402
+from robot_geometry import BODY_LENGTH_M, BODY_WIDTH_M, HALF_LENGTH_M  # noqa: E402
+from robot_status import (  # noqa: E402
+    describe_drive_block, diagnose_stuck, format_status_line, lidar_clearances, threshold_warnings,
+)
 
 
 class LidarWsToRos2Bridge(Node):
@@ -69,6 +85,11 @@ class LidarWsToRos2Bridge(Node):
         # yaw ROS. Đo 2026-10-29: lệnh quay trái, LiDAR thấy +87° còn gyro -87.5°.
         # Đặt 1 nếu lắp lại IMU đúng chiều hoặc đã sửa ROBOT_AXIS_MAP trong firmware.
         self.gyro_sign = float(os.getenv("HCROBOT_GYRO_SIGN", "-1"))
+        # ESP32 chỉ hiệu chỉnh bias gyro một lần lúc boot; bias còn sót / trôi
+        # theo nhiệt làm yaw tự xoay khi xe đứng yên. Khi đứng yên (không lệnh,
+        # encoder không nhích) thì không tích phân yaw và học lại bias bằng EMA.
+        self.gyro_bias_dps = 0.0
+        self.gyro_bias_alpha = float(os.getenv("HCROBOT_GYRO_BIAS_ALPHA", "0.02"))
         self.imu_seen = False
         self.last_encoder_sample_time = None
         self.encoder_cpr = float(os.getenv("HCROBOT_ENCODER_CPR", "330.0"))
@@ -83,6 +104,8 @@ class LidarWsToRos2Bridge(Node):
         }
         self.scan_count = 0
         self.last_scan_time = 0.0
+        self.last_published_scan_time = 0.0
+        self.dropped_stale_scans = 0
         self.last_scan_points = 0
         self.pi_ws_connected = False
         self.encoder_packets = 0
@@ -94,6 +117,16 @@ class LidarWsToRos2Bridge(Node):
         if self.robot_mode not in ("MAPPING", "NAVIGATION"):
             self.robot_mode = "MAPPING"
 
+        self.localization_warmup = LocalizationWarmup()
+        self.nomotion_future = None
+        self.nomotion_client = self.create_client(EmptyService, '/request_nomotion_update')
+        self.relocalize_costmap_clients = [self.create_client(
+            ClearEntireCostmap, f'/{scope}_costmap/clear_entirely_{scope}_costmap')
+            for scope in ('local', 'global')]
+        self.initial_pose_sub = self.create_subscription(
+            PoseWithCovarianceStamped, '/initialpose', self.on_initial_pose, 10)
+        self.localization_timer = self.create_timer(0.25, self.update_localization)
+
         # Lắng nghe topic /cmd_vel để điều khiển xe và di chuyển robot trên RViz
         self.cmd_vel_sub = self.create_subscription(
             Twist,
@@ -101,6 +134,9 @@ class LidarWsToRos2Bridge(Node):
             self.on_cmd_vel_received,
             10
         )
+        self.zone_speed_limit = None
+        self.zone_speed_blocked = False
+        self.speed_limit_sub = self.create_subscription(SpeedLimit, '/speed_limit', self.on_speed_limit, 10)
 
         # Lắng nghe topic /robot/reset_map để reset sạch SLAM và đưa robot về (0,0)
         self.reset_sub = self.create_subscription(
@@ -118,13 +154,30 @@ class LidarWsToRos2Bridge(Node):
             10
         )
 
-        # Lắng nghe topic /goal_pose từ RViz2 (2D Goal Pose) hoặc Web Admin
+        # /goal_pose (Web Admin, Foxglove 2D Goal Pose): bt_navigator Jazzy TU nhan topic nay
+        # va tu gui goal. Bridge chi ghi log, khong gui them goal (truoc day gui trung => moi
+        # lan bam "Toi" Nav2 nhan 2 goal, goal sau huy goal truoc).
         self.goal_sub = self.create_subscription(
             PoseStamped,
             '/goal_pose',
             self.on_goal_pose_received,
             10
         )
+        # Ket qua goal Nav2 (moi nguon goal) -> /robot/nav_result cho Web Admin.
+        self.nav_result_tracker = NavResultTracker()
+        self.nav_result_pub = self.create_publisher(String, '/robot/nav_result', 10)
+        self.goal_reached_pub = self.create_publisher(String, '/goal_reached', 10)
+        self.nav_status_sub = self.create_subscription(
+            GoalStatusArray,
+            '/navigate_to_pose/_action/status',
+            self.on_nav2_status,
+            QoSProfile(depth=10, reliability=ReliabilityPolicy.RELIABLE,
+                       durability=DurabilityPolicy.TRANSIENT_LOCAL),
+        )
+        # Nut "Dung" tren Web (che do ROS 2): huy MOI goal Nav2. Chi gui /cmd_vel=0 thi
+        # controller van phat lenh 10 Hz va xe chay tiep.
+        self.nav_cancel_client = self.create_client(CancelGoal, '/navigate_to_pose/_action/cancel_goal')
+        self.nav_cancel_sub = self.create_subscription(Empty, '/robot/nav_cancel', self.on_nav_cancel, 10)
 
         # Service Clients kết nối tới SLAM Toolbox
         self.slam_reset_client = self.create_client(Reset, '/slam_toolbox/reset')
@@ -142,6 +195,18 @@ class LidarWsToRos2Bridge(Node):
         self.map_status_pub = self.create_publisher(String, '/robot/mapping_status', 10)
         self.status_timer = self.create_timer(1.0, self.publish_map_status)
         self.sensor_health_timer = self.create_timer(1.0, self.publish_sensor_health)
+
+        # Dong trang thai len terminal (1 s khi dang co lenh, 10 s khi ranh): lenh Nav2 ->
+        # lenh gui Pi -> xe do duoc chay -> khoang ho LiDAR 4 phia -> sonar + lan chan cua Pi.
+        # HCROBOT_STATUS_LOG=0 de tat.
+        self.status_log_enabled = os.getenv("HCROBOT_STATUS_LOG", "1") != "0"
+        self.pi_status = None
+        self.pi_status_time = 0.0
+        self.last_clearances = {}
+        self._last_moving_time = 0.0
+        self._cmd_started = 0.0
+        self._last_status_print = 0.0
+        self.drive_status_timer = self.create_timer(1.0, self.print_drive_status)
 
         # Lưu trạng thái vị trí robot và quỹ đạo đường đi
         self.current_pose = {'x': 0.0, 'y': 0.0, 'yaw': 0.0}
@@ -185,6 +250,29 @@ class LidarWsToRos2Bridge(Node):
         self.scan_max_turn_dps = float(os.getenv("HCROBOT_SCAN_MAX_TURN_DPS", "15" if is_mapping else "0"))
         self.scan_extra_latency_sec = float(os.getenv("HCROBOT_SCAN_EXTRA_LATENCY_SEC", "0.0"))
         self.desired_motion = "stop"
+        # Cách đổi /cmd_vel thành lệnh motor:
+        # - diff (mặc định NAVIGATION): PWM riêng từng bên theo vận tốc Nav2, rẽ cung mượt.
+        # - discrete (mặc định MAPPING): tiến/xoay/dừng + cắt xung xoay để scan không méo.
+        # - straight (tự quét xe thật): xoay tại chỗ (như lái tay, có cắt xung) khi Nav2 chỉ
+        #   muốn xoay; còn lại chạy tiến/lùi hai bên >= sàn PWM, lệch tốc nhẹ để rẽ cung.
+        self.cmd_vel_mode = os.getenv(
+            "HCROBOT_CMD_VEL_MODE", "discrete" if is_mapping else "diff"
+        ).strip().lower()
+        self.straight_cfg = StraightDriveConfig(
+            track_m=self.yaw_track,
+            mps_per_pct=float(os.getenv("HCROBOT_DIFF_MPS_PER_PCT", "0.0048")),
+            min_pwm=int(os.getenv("HCROBOT_STRAIGHT_MIN_PWM", str(self.teleop_pwm_forward))),
+            max_pwm=int(os.getenv("HCROBOT_DIFF_MAX_PWM", "50")),
+            spin_radius_m=float(os.getenv("HCROBOT_STRAIGHT_SPIN_RADIUS", "0.15")),
+        )
+        self.diff_cfg = DiffDriveConfig(
+            track_m=self.yaw_track,
+            mps_per_pct=float(os.getenv("HCROBOT_DIFF_MPS_PER_PCT", "0.0048")),
+            min_pwm=int(os.getenv("HCROBOT_DIFF_MIN_PWM", "22")),
+            spin_min_pwm=int(os.getenv("HCROBOT_DIFF_SPIN_MIN_PWM", "38")),
+            max_pwm=int(os.getenv("HCROBOT_DIFF_MAX_PWM", "50")),
+        )
+        self.identity_map_odom_on_stale = os.getenv("HCROBOT_IDENTITY_MAP_ODOM_ON_STALE", "0") == "1"
         self._turn_pulse_started = None
         self._last_fast_turn_time = 0.0
         self.dropped_turn_scans = 0
@@ -194,7 +282,8 @@ class LidarWsToRos2Bridge(Node):
         self.pi5_ip = os.getenv("PI5_IP", "100.99.72.51")
         self.pi5_port = int(os.getenv("PI5_PORT", "9999"))
         self.udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.nav2_client = ActionClient(self, NavigateToPose, '/navigate_to_pose')
+        # Bind cong tam ngay de luong nhan pi_status (Pi tra loi ve dung cong nguon cua lenh).
+        self.udp_sock.bind(("0.0.0.0", 0))
 
         # Timer 30Hz tính toán di chuyển Dead Reckoning
         self.kinematics_timer = self.create_timer(1.0 / 30.0, self.update_kinematics)
@@ -204,6 +293,7 @@ class LidarWsToRos2Bridge(Node):
 
         # Khởi động UDP listener nhận tín hiệu từ main.py trên Pi 5 (port 9998)
         self.start_pi5_telemetry_udp_server()
+        self.start_pi_status_receiver()
 
         self.get_logger().info(
             f"🚀 LidarWsToRos2Bridge san sang - mode={self.robot_mode}, "
@@ -258,8 +348,8 @@ class LidarWsToRos2Bridge(Node):
             return marker
 
         marker_array.markers = [
-            cube(0, 'body', (0.0, 0.0, 0.08), (0.40, 0.30, 0.16), (1.0, 0.30, 0.05, 1.0)),
-            cube(1, 'front', (0.225, 0.0, 0.09), (0.05, 0.14, 0.06), (0.90, 0.05, 0.05, 1.0)),
+            cube(0, 'body', (0.0, 0.0, 0.08), (BODY_LENGTH_M, BODY_WIDTH_M, 0.16), (1.0, 0.30, 0.05, 1.0)),
+            cube(1, 'front', (HALF_LENGTH_M - 0.025, 0.0, 0.09), (0.05, 0.14, 0.06), (0.90, 0.05, 0.05, 1.0)),
             cube(2, 'lidar', (0.08, 0.0, 0.19), (0.08, 0.08, 0.04), (0.05, 0.05, 0.05, 1.0)),
         ]
         self.foxglove_marker_pub.publish(marker_array)
@@ -276,7 +366,8 @@ class LidarWsToRos2Bridge(Node):
         """Publish truthful end-to-end mapping health, not just socket state."""
         now = time.monotonic()
         scan_age = None if self.last_scan_time <= 0.0 else max(0.0, now - self.last_scan_time)
-        lidar_live = scan_age is not None and scan_age < 1.5 and self.last_scan_points > 0
+        published_age = None if self.last_published_scan_time <= 0 else now - self.last_published_scan_time
+        lidar_live = published_age is not None and published_age < 1.5 and self.last_scan_points > 0
         reasons = []
         if not self.pi_ws_connected:
             reasons.append("PI_WEBSOCKET_OFFLINE")
@@ -290,17 +381,26 @@ class LidarWsToRos2Bridge(Node):
         msg = String()
         msg.data = json.dumps({
             "pi_ws_connected": self.pi_ws_connected,
+            "speed_limit_mps": self.zone_speed_limit,
+            "speed_limit_below_motor_floor": self.zone_speed_blocked,
+            "motor_min_linear_speed_mps": self.straight_cfg.min_pwm * self.straight_cfg.mps_per_pct,
             "lidar_live": lidar_live,
             "last_scan_age_sec": None if scan_age is None else round(scan_age, 2),
             "scan_points": self.last_scan_points,
+            "scans_dropped_stale": self.dropped_stale_scans,
+            "last_published_scan_age_sec": None if published_age is None else round(published_age, 3),
             "scan_packets": self.scan_count,
             "scans_dropped_while_turning": self.dropped_turn_scans,
             "scan_period_sec": round(self.scan_period_sec, 3),
             "encoder_packets": self.encoder_packets,
+            "last_encoder_age_sec": None if self.last_encoder_time <= 0 else round(now - self.last_encoder_time, 3),
             "encoder_motion_detected": self.encoder_motion_detected,
             "ready_for_static_capture": lidar_live,
             "ready_for_mobile_mapping": lidar_live and self.encoder_motion_detected,
             "reasons": reasons,
+            # Xe dung yen >= 2 s du Nav2/lai tay dang ra lenh: vi sao (Pi chan huong nao, cam bien
+            # nao bao bao nhieu cm) + goi y. Web (tab Physical Map) hien thanh khung do.
+            "drive_block": self._drive_block(now),
         })
         self.sensor_health_pub.publish(msg)
 
@@ -396,42 +496,113 @@ class LidarWsToRos2Bridge(Node):
             self.get_logger().warn("⚠️ Service /slam_toolbox/pause_new_measurements chưa sẵn sàng!")
 
     def on_goal_pose_received(self, msg: PoseStamped):
-        """Nhận mục tiêu điều hướng từ 2D Goal Pose (RViz2) hoặc Web Admin và kích hoạt tự hành."""
+        """Chi ghi log: bt_navigator tu nhan /goal_pose va gui goal NavigateToPose."""
         tx = float(msg.pose.position.x)
         ty = float(msg.pose.position.y)
-        self.get_logger().info(f"🎯 [NAV2 GOAL] Nhận mục tiêu tự hành mới: X={tx:.2f}m, Y={ty:.2f}m")
-
         if self.robot_mode != "NAVIGATION":
-            self.get_logger().warn("⚠️ Bỏ qua goal: hãy lưu map và chạy chế độ NAVIGATION trước.")
+            self.get_logger().warn(
+                f"⚠️ Nhận /goal_pose ({tx:.2f}, {ty:.2f}) nhưng bridge không ở chế độ NAVIGATION."
+            )
             return
+        self.get_logger().info(f"🎯 [NAV2 GOAL] /goal_pose X={tx:.2f}m, Y={ty:.2f}m (bt_navigator xử lý)")
 
-        goal = NavigateToPose.Goal()
-        goal.pose = msg
-        goal.pose.header.frame_id = 'map'
-        goal.pose.header.stamp = self.get_clock().now().to_msg()
-
-        if self.nav2_client.wait_for_server(timeout_sec=0.5):
-            send_future = self.nav2_client.send_goal_async(goal)
-            send_future.add_done_callback(self._on_nav2_goal_response)
-            return
-
-        self.get_logger().warn("⚠️ Nav2 action server chưa sẵn sàng; không gửi lệnh chuyển động thay thế để tránh xung đột bộ điều khiển.")
-
-    def _on_nav2_goal_response(self, future):
-        goal_handle = future.result()
-        if not goal_handle.accepted:
-            self.get_logger().warn("⚠️ Nav2 từ chối mục tiêu.")
-            return
-        self.get_logger().info("✅ Nav2 đã nhận mục tiêu; planner đang tính đường trên static map.")
-        goal_handle.get_result_async().add_done_callback(self._on_nav2_result)
-
-    def _on_nav2_result(self, future):
+    def _handle_pi_status(self, raw: str) -> bool:
+        """Goi JSON 'pi_status' tu main.py tren Pi. True neu da xu ly (khong phai lenh chu)."""
+        if not raw.startswith("{"):
+            return False
         try:
-            status = future.result().status
-            self.get_logger().info(f"🏁 Nav2 kết thúc mục tiêu, status={status}")
-        except Exception as exc:
-            self.get_logger().warn(f"⚠️ Không đọc được kết quả Nav2: {exc}")
+            status = json.loads(raw)
+        except ValueError:
+            return True
+        if isinstance(status, dict) and status.get("type") == "pi_status":
+            self.pi_status = status
+            self.pi_status_time = time.monotonic()
+        return True
 
+    def start_pi_status_receiver(self):
+        """Nghe pi_status tren chinh socket gui lenh (Pi tra ve dia chi + cong nguon)."""
+        def worker():
+            self.udp_sock.settimeout(0.5)
+            while rclpy.ok():
+                try:
+                    data, _ = self.udp_sock.recvfrom(4096)
+                except socket.timeout:
+                    continue
+                except OSError:
+                    break
+                self._handle_pi_status(data.decode("utf-8", errors="ignore").strip())
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _drive_state(self, now):
+        """(Nav2 dang ra lenh?, lenh gui Pi, so giay xe dung yen du dang co lenh chay)."""
+        cmd_active = (now - self.last_cmd_time) < 0.8 and (
+            abs(self.current_vx) > 0.02 or abs(self.current_wz) > 0.1
+        )
+        turning = self.desired_motion in ("left", "right")
+        sent = self.desired_motion if turning else self.last_sent_udp_motion
+        sending = turning or self.last_sent_udp_motion != "stop"
+        stuck_for = 0.0
+        if cmd_active and sending:
+            stuck_for = now - max(self._last_moving_time, self._cmd_started)
+        return cmd_active, sent, stuck_for
+
+    def _drive_block(self, now):
+        """Ly do ket dang de Web hien (None = khong ket) - xem robot_status.describe_drive_block."""
+        _cmd_active, sent, stuck_for = self._drive_state(now)
+        pi_age = (now - self.pi_status_time) if self.pi_status is not None else None
+        encoder_fresh = self.has_prev_encoder_ticks and (now - self.last_encoder_time) < 0.5
+        return describe_drive_block(stuck_for, sent, encoder_fresh, self.pi_status, pi_age)
+
+    def print_drive_status(self):
+        if not self.status_log_enabled:
+            return
+        now = time.monotonic()
+        cmd_active, sent, stuck_for = self._drive_state(now)
+        interval = 1.0 if cmd_active else 10.0
+        if now - self._last_status_print < interval - 0.05:
+            return
+        self._last_status_print = now
+
+        pi_age = (now - self.pi_status_time) if self.pi_status is not None else None
+        fresh_pi = self.pi_status if pi_age is not None and pi_age < 3.0 else None
+        line = format_status_line(
+            self.current_vx, self.current_wz, cmd_active, sent,
+            self.measured_vx, self.measured_wz, self.last_clearances, self.pi_status, pi_age,
+        )
+        warn = threshold_warnings(self.last_clearances, fresh_pi)
+        self.get_logger().info("🩺 " + line + (f" | ⚠ {warn}" if warn else ""))
+        if stuck_for >= 2.0:
+            encoder_fresh = self.has_prev_encoder_ticks and (now - self.last_encoder_time) < 0.5
+            self.get_logger().warn(
+                f"⛔ XE ĐỨNG YÊN {stuck_for:.0f}s dù có lệnh chạy -> "
+                + diagnose_stuck(encoder_fresh, self.pi_status, pi_age, sent)
+            )
+
+    def on_nav_cancel(self, _msg=None):
+        self.get_logger().warn("🛑 Web yêu cầu DỪNG: huỷ mọi goal Nav2 + dừng motor")
+        if self.nav_cancel_client.service_is_ready():
+            # goal_info rong (uuid 0, stamp 0) = huy tat ca goal dang chay
+            self.nav_cancel_client.call_async(CancelGoal.Request())
+        else:
+            self.get_logger().warn("⚠️ Nav2 chưa chạy (không có cancel_goal), chỉ dừng motor")
+        self.current_vx = 0.0
+        self.current_wz = 0.0
+        self.desired_motion = "stop"
+        self._turn_pulse_started = None
+        self._send_udp_to_pi5("stop")
+
+    def on_nav2_status(self, msg: GoalStatusArray):
+        statuses = [(bytes(s.goal_info.goal_id.uuid), int(s.status)) for s in msg.status_list]
+        for _uuid, result in self.nav_result_tracker.update(statuses):
+            self.get_logger().info(f"🏁 Nav2 kết thúc goal: {result}")
+            out = String()
+            out.data = json.dumps({"status": result, "stamp": time.time()})
+            self.nav_result_pub.publish(out)
+            if result == "SUCCEEDED":
+                reached = String()
+                reached.data = "Nav2"
+                self.goal_reached_pub.publish(reached)
 
     def broadcast_static_laser_tf(self):
         # Alias static transform laser_frame -> laser (tương thích cả 2 tên frame)
@@ -658,8 +829,23 @@ class LidarWsToRos2Bridge(Node):
             # Gyro là nguồn yaw chính: đo trực tiếp, không bị trượt bánh skid-steer.
             # Không ép dấu theo lệnh điều khiển; nếu gyro ngược chiều xe thật thì
             # chỉnh HCROBOT_GYRO_SIGN hoặc ROBOT_AXIS_MAP trong firmware.
-            if use_gyro:
-                delta_yaw = math.radians(gyro_rate) * dt if abs(gyro_rate) > self.gyro_deadband_dps else 0.0
+            is_stationary = (
+                self.desired_motion == "stop"
+                and abs(delta_left_ticks) < 1.0
+                and abs(delta_right_ticks) < 1.0
+            )
+            if use_gyro and is_stationary:
+                # Zero-velocity update: xe đứng yên thì yaw không đổi; mọi số đo
+                # gyro lúc này là bias, dùng để học bias trừ đi khi xe chạy.
+                self.gyro_bias_dps += self.gyro_bias_alpha * (gyro_rate - self.gyro_bias_dps)
+                delta_yaw = 0.0
+            elif use_gyro:
+                corrected_rate = gyro_rate - self.gyro_bias_dps
+                delta_yaw = (
+                    math.radians(corrected_rate) * dt
+                    if abs(corrected_rate) > self.gyro_deadband_dps
+                    else 0.0
+                )
             else:
                 delta_yaw = (delta_right_m - delta_left_m) / max(self.yaw_track, 0.05)
 
@@ -684,10 +870,66 @@ class LidarWsToRos2Bridge(Node):
             # TF/odom chỉ do timer 30 Hz phát; không phát ở thread WebSocket để
             # tránh TF trùng/lệch timestamp.
 
+    def on_speed_limit(self, msg):
+        value = float(msg.speed_limit)
+        if not math.isfinite(value) or value < 0:
+            self.zone_speed_limit = 0.0
+            return
+        # Nav2 uses zero to restore the normal controller speed.
+        reference = float(os.getenv('HCROBOT_NAV_MAX_LINEAR_SPEED', '0.2'))
+        self.zone_speed_limit = None if value == 0 else (reference * value / 100 if msg.percentage else value)
+        self.zone_speed_blocked = False
+
+    def _limit_zone_pwm(self, left, right, config):
+        limited = limit_wheel_pwm(left, right, self.zone_speed_limit,
+                                 config.mps_per_pct, config.min_pwm)
+        # Gioi han vung thap hon toc do cham nhat xe chay duoc (san PWM): xe bo o san (khong dung
+        # han), bao Web qua speed_limit_below_motor_floor. Dung sai 5 mm/s: 0.12 vs san 0.1225 = OK.
+        floor_mps = config.min_pwm * config.mps_per_pct
+        self.zone_speed_blocked = (
+            (left != 0 or right != 0) and self.zone_speed_limit is not None
+            and self.zone_speed_limit + 0.005 < floor_mps
+        )
+        return limited
+
     def on_cmd_vel_received(self, msg: Twist):
-        self.last_cmd_time = time.monotonic()
+        now = time.monotonic()
+        was_active = (now - self.last_cmd_time) < 0.8 and (
+            abs(self.current_vx) > 0.02 or abs(self.current_wz) > 0.1
+        )
+        if not was_active:
+            self._cmd_started = now
+        self.last_cmd_time = now
         self.current_vx = msg.linear.x
         self.current_wz = msg.angular.z
+
+        if self.cmd_vel_mode == "diff":
+            left, right = twist_to_wheel_pwm(msg.linear.x, msg.angular.z, self.diff_cfg)
+            left, right = self._limit_zone_pwm(left, right, self.diff_cfg)
+            moving = left != 0 or right != 0
+            self.desired_motion = "drive" if moving else "stop"
+            self._turn_pulse_started = None
+            self._send_udp_to_pi5(f"drive:{left}:{right}" if moving else "stop")
+            return
+
+        if self.cmd_vel_mode == "straight":
+            kind, left, right = twist_to_straight_command(msg.linear.x, msg.angular.z, self.straight_cfg)
+            if kind == "drive":
+                left, right = self._limit_zone_pwm(left, right, self.straight_cfg)
+                if left == 0 and right == 0:
+                    self.desired_motion = 'stop'
+                    self._send_udp_to_pi5('stop')
+                    return
+                self.desired_motion = "drive"
+                self._turn_pulse_started = None
+                self._send_udp_to_pi5(f"drive:{left}:{right}")
+                return
+            if kind in ("left", "right"):
+                # Xoay tai cho dung lenh roi rac nhu lai tay (PWM xoay da kiem chung + cat xung).
+                self._send_udp_speed(max(20, min(50, self.teleop_pwm_turn)))
+            self.desired_motion = kind
+            self._send_udp_to_pi5(self._gate_turn_pulse(kind, self.last_cmd_time))
+            return
 
         # Phân loại lệnh di chuyển để gửi UDP sang Pi 5
         motion = "stop"
@@ -718,6 +960,12 @@ class LidarWsToRos2Bridge(Node):
         if motion != "stop":
             pwm = self.teleop_pwm_turn if motion in ("left", "right") else self.teleop_pwm_forward
             pwm = max(20, min(50, pwm))
+            if motion not in ('left', 'right'):
+                pwm, _ = self._limit_zone_pwm(pwm, pwm, self.straight_cfg)
+                if pwm == 0:
+                    self.desired_motion = 'stop'
+                    self._send_udp_to_pi5('stop')
+                    return
             self._send_udp_speed(pwm)
         self.desired_motion = motion
         self._send_udp_to_pi5(self._gate_turn_pulse(motion, self.last_cmd_time))
@@ -774,6 +1022,8 @@ class LidarWsToRos2Bridge(Node):
 
     def update_kinematics(self):
         now_mono = time.monotonic()
+        if abs(self.measured_vx) > 0.01 or abs(self.measured_wz) > math.radians(3.0):
+            self._last_moving_time = now_mono
         dt = now_mono - self.last_kinematics_time
         self.last_kinematics_time = now_mono
 
@@ -838,9 +1088,13 @@ class LidarWsToRos2Bridge(Node):
             vx = self.measured_vx
             wz = self.measured_wz
 
-        # Khi LiDAR/SLAM chưa publish map->odom, phát TF identity để RobotModel không biến mất.
-        scan_stale = self.last_scan_time <= 0.0 or (now_mono - self.last_scan_time) > 1.5
-        if scan_stale:
+        # Mapping: TF identity chỉ phát TRƯỚC scan đầu tiên để RobotModel hiện ngay.
+        # Navigation: AMCL luôn là nguồn map->odom duy nhất, kể cả trước scan đầu.
+        # Phát chồng identity khi LiDAR chập chờn sẽ làm map
+        # nhảy về gốc. HCROBOT_IDENTITY_MAP_ODOM_ON_STALE=1 để dùng lại hành vi cũ.
+        never_scanned = self.last_scan_time <= 0.0
+        scan_stale = (now_mono - self.last_scan_time) > 1.5
+        if self.robot_mode == "MAPPING" and (never_scanned or (self.identity_map_odom_on_stale and scan_stale)):
             map_odom = TransformStamped()
             map_odom.header.stamp = self.get_clock().now().to_msg()
             map_odom.header.frame_id = "map"
@@ -888,8 +1142,11 @@ class LidarWsToRos2Bridge(Node):
 
             while rclpy.ok():
                 try:
-                    data, _ = sock.recvfrom(1024)
-                    cmd = data.decode("utf-8", errors="ignore").strip().lower()
+                    data, _ = sock.recvfrom(4096)
+                    raw = data.decode("utf-8", errors="ignore").strip()
+                    if self._handle_pi_status(raw):
+                        continue
+                    cmd = raw.lower()
                     if cmd in motion_to_vel:
                         vx, wz = motion_to_vel[cmd]
                         self.current_vx = vx
@@ -948,6 +1205,12 @@ class LidarWsToRos2Bridge(Node):
     def publish_scan(self, points, scan_age_sec=None, encoder_age_sec=None):
         if not points:
             return
+        # Never stamp old Pi sensor snapshots as current wall observations.
+        if not sensor_frame_is_fresh(scan_age_sec, encoder_age_sec):
+            self.dropped_stale_scans += 1
+            return
+        # Khoang ho 4 phia cho dong trang thai (ke ca scan bi bo khi xoay).
+        self.last_clearances = lidar_clearances(points)
 
         now_mono = time.monotonic()
         self.scan_count += 1
@@ -976,8 +1239,11 @@ class LidarWsToRos2Bridge(Node):
 
         # 360 do: tu 0 den 2*PI, do phan giai 1 do (360 bins)
         num_bins = 360
-        msg.angle_min = 0.0
         msg.angle_increment = (2.0 * math.pi) / num_bins
+        # Bin b gom các điểm có góc trong [b°, b+1°) (int() làm tròn xuống), nên
+        # góc đại diện là tâm bin b+0.5°. Đặt angle_min = 0 sẽ xoay cả scan lệch
+        # -0.5° so với thực tế (sai số cố định như lắp LiDAR lệch góc).
+        msg.angle_min = 0.5 * msg.angle_increment
         # angle_max là góc của tia CUỐI: (n-1)*increment. Đặt 2π sẽ làm
         # slam_toolbox suy ra 361 tia trong khi ranges chỉ có 360.
         msg.angle_max = msg.angle_min + (num_bins - 1) * msg.angle_increment
@@ -1016,7 +1282,7 @@ class LidarWsToRos2Bridge(Node):
 
         if in_room:
             for b in range(num_bins):
-                ray_angle = (ryaw_rad + (b * msg.angle_increment)) % (2.0 * math.pi)
+                ray_angle = (ryaw_rad + msg.angle_min + (b * msg.angle_increment)) % (2.0 * math.pi)
                 d_wall = self._ray_box_dist(rx, ry, ray_angle, xmin, xmax, ymin, ymax)
                 if d_wall is not None:
                     if ranges[b] > d_wall:
@@ -1033,6 +1299,29 @@ class LidarWsToRos2Bridge(Node):
         # tra odom -> base_link tại đúng thời điểm đó từ lịch sử TF mà timer
         # 30 Hz phát. Phát pose hiện tại với stamp quá khứ sẽ làm sai lệch.
         self.publisher_.publish(msg)
+        self.last_published_scan_time = time.monotonic()
+
+    def on_initial_pose(self, msg):
+        if self.robot_mode == "NAVIGATION" and msg.header.frame_id.lstrip('/') == 'map':
+            self.localization_warmup.arm(time.monotonic())
+            # Remove old observations projected using the previous map pose.
+            # Static walls/keepout remain and fresh LiDAR repopulates obstacles.
+            for client in self.relocalize_costmap_clients:
+                if client.service_is_ready():
+                    client.call_async(ClearEntireCostmap.Request())
+
+    def update_localization(self):
+        if self.nomotion_future is not None and not self.nomotion_future.done():
+            return
+        now = time.monotonic()
+        if not self.localization_warmup.ready(
+                now, self.last_published_scan_time, self.desired_motion == 'stop',
+                self.measured_vx, self.measured_wz):
+            return
+        if self.nomotion_client.service_is_ready():
+            # This service only asks AMCL to process the next scan. No cmd_vel.
+            self.nomotion_future = self.nomotion_client.call_async(EmptyService.Request())
+            self.localization_warmup.sent(now, self.last_published_scan_time)
 
 
 async def ws_loop(node: LidarWsToRos2Bridge, ws_url="ws://100.99.72.51:8000/api/v1/map/ws?consumer=ros2"):
@@ -1082,7 +1371,9 @@ async def ws_loop(node: LidarWsToRos2Bridge, ws_url="ws://100.99.72.51:8000/api/
 
 
 def start_asyncio_loop(node):
-    asyncio.run(ws_loop(node))
+    # Cung IP voi lenh motor UDP (PI5_IP): truoc day WS ghi cung IP Tailscale nen
+    # dat PI5_IP=<IP LAN> thi xe nhan lenh chay nhung laptop khong nhan scan/encoder.
+    asyncio.run(ws_loop(node, f"ws://{node.pi5_ip}:8000/api/v1/map/ws?consumer=ros2"))
 
 
 def main(args=None):

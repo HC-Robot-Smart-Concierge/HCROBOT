@@ -16,18 +16,18 @@ from test_ultrasonic_safety import FakeMotor, FakeReader, snapshot  # noqa: E402
 
 class TestLidarClearances(unittest.TestCase):
     def test_edges_account_for_body_and_lidar_offset(self):
-        # LiDAR +0.08 m; measured half-body 0.165 x 0.085 m.
+        # LiDAR at body centre; measured half-body 0.165 x 0.085 m.
         pts = [
             {"angle": 0.0, "distance": 0.38},
             {"angle": 90.0, "distance": 0.20},   # hong trai: 11.5 cm
             {"angle": 270.0, "distance": 0.50},  # hong phai: 41.5 cm
-            {"angle": 180.0, "distance": 0.50},  # sau: 25.5 cm
+            {"angle": 180.0, "distance": 0.50},  # sau: 33.5 cm
         ]
         c = lidar_clearances(pts)
-        self.assertAlmostEqual(c["front"], 29.5)
+        self.assertAlmostEqual(c["front"], 21.5)
         self.assertAlmostEqual(c["left"], 11.5)
         self.assertAlmostEqual(c["right"], 41.5)
-        self.assertAlmostEqual(c["rear"], 25.5)
+        self.assertAlmostEqual(c["rear"], 33.5)
 
     def test_empty_side_is_none(self):
         c = lidar_clearances([{"angle": 0.0, "distance": 1.0}])

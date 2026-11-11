@@ -1,5 +1,5 @@
-// Hinh hoc vung chuc nang tren map (tab Physical Map). Vung = hinh chu nhat thang truc,
-// x/y la TAM (m, khung map), width/height (m) - cung quy uoc voi backend (mask Nav2).
+// x/y = centre (map metres), width/height = local dimensions, yaw = CCW degrees.
+// Missing yaw means zero for existing zones; backend and robot use the same convention.
 //   KEEP_OUT   : Nav2 KeepoutFilter -> planner tu di duong vong; khong nhan endpoint ben trong.
 //   SPEED_ZONE : Nav2 SpeedFilter -> /speed_limit (m/s) khi xe o trong vung.
 //   NO_STOP    : duoc di ngang qua, KHONG duoc dung => khong nhan endpoint ben trong.
@@ -7,28 +7,50 @@
 export const MIN_ZONE_SIZE_M = 0.2;
 
 const round2 = (v) => Math.round(v * 100) / 100;
+export const normalizeZoneYaw = (value) => ((Number(value) || 0) % 360 + 540) % 360 - 180;
+
+export function zoneLocalPoint(zone, point) {
+  const a = normalizeZoneYaw(zone.yaw) * Math.PI / 180;
+  const dx = point.x - Number(zone.x || 0), dy = point.y - Number(zone.y || 0);
+  return { x: dx * Math.cos(a) + dy * Math.sin(a), y: -dx * Math.sin(a) + dy * Math.cos(a) };
+}
+
+export function zoneWorldPoint(zone, point) {
+  const a = normalizeZoneYaw(zone.yaw) * Math.PI / 180;
+  return { x: Number(zone.x || 0) + point.x * Math.cos(a) - point.y * Math.sin(a),
+    y: Number(zone.y || 0) + point.x * Math.sin(a) + point.y * Math.cos(a) };
+}
 
 export function zoneBounds(zone) {
-  const halfW = (Number(zone.width) || 0) / 2;
-  const halfH = (Number(zone.height) || 0) / 2;
-  const x = Number(zone.x) || 0;
-  const y = Number(zone.y) || 0;
-  return { minX: x - halfW, maxX: x + halfW, minY: y - halfH, maxY: y + halfH };
+  const points = Object.values(zoneCorners(zone));
+  return { minX: Math.min(...points.map((p) => p.x)), maxX: Math.max(...points.map((p) => p.x)),
+    minY: Math.min(...points.map((p) => p.y)), maxY: Math.max(...points.map((p) => p.y)) };
 }
 
 export function zoneCorners(zone) {
-  const { minX, maxX, minY, maxY } = zoneBounds(zone);
+  const w = Number(zone.width || 0) / 2, h = Number(zone.height || 0) / 2;
   return {
-    nw: { x: minX, y: maxY },
-    ne: { x: maxX, y: maxY },
-    sw: { x: minX, y: minY },
-    se: { x: maxX, y: minY },
+    nw: zoneWorldPoint(zone, { x: -w, y: h }),
+    ne: zoneWorldPoint(zone, { x: w, y: h }),
+    sw: zoneWorldPoint(zone, { x: -w, y: -h }),
+    se: zoneWorldPoint(zone, { x: w, y: -h }),
   };
 }
 
+export function zoneRotationHandle(zone, offsetM) {
+  return zoneWorldPoint(zone, { x: 0, y: Number(zone.height) / 2 + offsetM });
+}
+
+export function rotateZoneFromPointer(zone, start, point, snap = false) {
+  const startAngle = Math.atan2(start.y - zone.y, start.x - zone.x);
+  const angle = Math.atan2(point.y - zone.y, point.x - zone.x);
+  const yaw = normalizeZoneYaw(Number(zone.yaw || 0) + (angle - startAngle) * 180 / Math.PI);
+  return { yaw: normalizeZoneYaw(snap ? Math.round(yaw / 15) * 15 : Math.round(yaw * 10) / 10) };
+}
+
 export function isPointInZone(x, y, zone) {
-  const { minX, maxX, minY, maxY } = zoneBounds(zone);
-  return x >= minX && x <= maxX && y >= minY && y <= maxY;
+  const p = zoneLocalPoint(zone, { x, y });
+  return Math.abs(p.x) <= Number(zone.width) / 2 + 1e-9 && Math.abs(p.y) <= Number(zone.height) / 2 + 1e-9;
 }
 
 function rectFromBounds(minX, maxX, minY, maxY) {
@@ -49,12 +71,13 @@ export function zoneFromCorners(a, b, minSize = MIN_ZONE_SIZE_M) {
 // Keo 1 goc ('nw' | 'ne' | 'sw' | 'se', n = phia y lon) toi point; goc doi dien dung yen.
 // Khong cho lat vung hay nho hon minSize.
 export function resizeZoneFromCorner(zone, corner, point, minSize = MIN_ZONE_SIZE_M) {
-  let { minX, maxX, minY, maxY } = zoneBounds(zone);
-  if (corner.includes('e')) maxX = Math.max(point.x, minX + minSize);
-  else minX = Math.min(point.x, maxX - minSize);
-  if (corner.includes('n')) maxY = Math.max(point.y, minY + minSize);
-  else minY = Math.min(point.y, maxY - minSize);
-  return rectFromBounds(minX, maxX, minY, maxY);
+  const p = zoneLocalPoint(zone, point);
+  const sx = corner.includes('e') ? 1 : -1, sy = corner.includes('n') ? 1 : -1;
+  const anchor = { x: -sx * Number(zone.width) / 2, y: -sy * Number(zone.height) / 2 };
+  const width = Math.max(minSize, sx * (p.x - anchor.x));
+  const height = Math.max(minSize, sy * (p.y - anchor.y));
+  const centre = zoneWorldPoint(zone, { x: anchor.x + sx * width / 2, y: anchor.y + sy * height / 2 });
+  return { x: centre.x, y: centre.y, width, height, yaw: normalizeZoneYaw(zone.yaw) };
 }
 
 // Trang thai vung giam toc cho dong ho toc do tren map. Su that la gioi han Nav2 dang ap
@@ -75,8 +98,8 @@ export function speedZoneStatus(pose, zones, health) {
   }
   let warning = '';
   if (zone) {
-    const { minX, maxX, minY, maxY } = zoneBounds(zone);
-    const depth = Math.min(pose.x - minX, maxX - pose.x, pose.y - minY, maxY - pose.y);
+    const p = zoneLocalPoint(zone, pose);
+    const depth = Math.min(Number(zone.width) / 2 - Math.abs(p.x), Number(zone.height) / 2 - Math.abs(p.y));
     if (depth >= SPEED_ZONE_EDGE_M) {
       warning = `Xe đang ở vùng${name} nhưng Nav2 chưa áp giới hạn tốc độ: bấm Lưu vùng, hoặc bật lại Nav2 với đúng map này.`;
     }

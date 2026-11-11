@@ -9,6 +9,10 @@ import {
   zoneCorners,
   zoneEndpointConflict,
   zoneFromCorners,
+  zoneBounds,
+  zoneWorldPoint,
+  zoneRotationHandle,
+  rotateZoneFromPointer,
 } from './physicalMapZones';
 
 describe('vung cam dung/cam vao va endpoint loai tru nhau', () => {
@@ -131,6 +135,67 @@ describe('resizeZoneFromCorner (keo goc vung)', () => {
     expect(c.ne.y).toBeCloseTo(1.25);
     expect(r.width).toBeCloseTo(MIN_ZONE_SIZE_M);
     expect(r.height).toBeCloseTo(MIN_ZONE_SIZE_M);
+  });
+});
+
+describe('rotated zone editing and navigation use the same rectangle', () => {
+  const zone = { id: 'rotated', type: 'KEEP_OUT', x: 2, y: -1, width: 2, height: .4, yaw: 90 };
+
+  it('selects the rotated body rather than its old axis-aligned rectangle', () => {
+    expect(isPointInZone(2, -.2, zone)).toBe(true);
+    expect(isPointInZone(2.8, -1, zone)).toBe(false);
+    expect(endpointPlacementViolation({ x: 2, y: -.2 }, [zone])).toMatch(/cấm vào/);
+    expect(zoneEndpointConflict(zone, [{ id: 'inside', x: 2, y: -.2 }]).endpoints).toHaveLength(1);
+    const bounds = zoneBounds(zone);
+    expect(bounds.minX).toBeCloseTo(1.8);
+    expect(bounds.maxX).toBeCloseTo(2.2);
+    expect(bounds.minY).toBeCloseTo(-2);
+    expect(bounds.maxY).toBeCloseTo(0);
+  });
+
+  it.each(['ne', 'nw', 'se', 'sw'])('resizes %s along rotated axes, keeping the opposite corner fixed', (corner) => {
+    const original = { ...zone, yaw: 37 };
+    const opposite = { ne: 'sw', nw: 'se', se: 'nw', sw: 'ne' }[corner];
+    const sx = corner.includes('e') ? 1 : -1, sy = corner.includes('n') ? 1 : -1;
+    const point = zoneWorldPoint(original, { x: sx * 1.5, y: sy * .6 });
+    const resized = resizeZoneFromCorner(original, corner, point);
+    expect(resized.yaw).toBe(37);
+    expect(resized.width).toBeCloseTo(2.5);
+    expect(resized.height).toBeCloseTo(.8);
+    expect(zoneCorners(resized)[opposite].x).toBeCloseTo(zoneCorners(original)[opposite].x, 8);
+    expect(zoneCorners(resized)[opposite].y).toBeCloseTo(zoneCorners(original)[opposite].y, 8);
+  });
+
+  it('keeps the anchor fixed when shrinking past it at a non-zero angle', () => {
+    const original = { ...zone, yaw: -48 };
+    const resized = resizeZoneFromCorner(original, 'ne', zoneWorldPoint(original, { x: -5, y: -5 }));
+    expect(resized.width).toBeCloseTo(MIN_ZONE_SIZE_M);
+    expect(resized.height).toBeCloseTo(MIN_ZONE_SIZE_M);
+    expect(zoneCorners(resized).sw.x).toBeCloseTo(zoneCorners(original).sw.x, 8);
+    expect(zoneCorners(resized).sw.y).toBeCloseTo(zoneCorners(original).sw.y, 8);
+  });
+
+  it('rotates by the pointer delta and supports Shift snapping to 15 degrees', () => {
+    const original = { ...zone, yaw: 0 };
+    const start = zoneRotationHandle(original, .3);
+    const point = zoneWorldPoint({ ...original, yaw: 37 }, { x: 0, y: .5 });
+    expect(rotateZoneFromPointer(original, start, point).yaw).toBe(37);
+    expect(rotateZoneFromPointer(original, start, point, true).yaw).toBe(30);
+    expect(original).toMatchObject({ x: 2, y: -1, width: 2, height: .4, yaw: 0 });
+  });
+
+  it('handles crossing the +/-180 degree boundary without flipping the rectangle', () => {
+    const original = { ...zone, yaw: 170 };
+    const start = zoneRotationHandle(original, .3);
+    const end = zoneRotationHandle({ ...original, yaw: -170 }, .3);
+    expect(rotateZoneFromPointer(original, start, end).yaw).toBe(-170);
+  });
+
+  it('uses local edge distance for speed-zone feedback after rotation', () => {
+    const slow = { ...zone, type: 'SPEED_ZONE', yaw: 45, height: 1 };
+    const nearEdge = zoneWorldPoint(slow, { x: 0, y: .45 });
+    expect(speedZoneStatus(nearEdge, [slow], null).warning).toBe('');
+    expect(speedZoneStatus(slow, [slow], null).warning).toMatch(/Nav2 chưa áp/);
   });
 });
 

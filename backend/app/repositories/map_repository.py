@@ -123,6 +123,7 @@ class MapRepository(BaseRepository[RobotWaypoint]):
         floor: str = "Sảnh Tầng 1",
         description: str = "",
         map_id: Optional[str] = None,
+        yaw: float = 0.0,
     ) -> RobotZone:
         """Create or update a functional zone (map_id=None keeps the current map)."""
         existing = await self.get_zone_by_id(id)
@@ -133,6 +134,7 @@ class MapRepository(BaseRepository[RobotWaypoint]):
             existing.y = y
             existing.width = width
             existing.height = height
+            existing.yaw = yaw
             existing.speed_limit = speed_limit
             existing.floor = floor
             existing.description = description
@@ -150,6 +152,7 @@ class MapRepository(BaseRepository[RobotWaypoint]):
                 y=y,
                 width=width,
                 height=height,
+                yaw=yaw,
                 speed_limit=speed_limit,
                 floor=floor,
                 description=description,

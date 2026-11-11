@@ -465,18 +465,22 @@ class Ros2RuntimeService:
         half_w = float(zone.get("width") or 0.0) / 2.0
         half_h = float(zone.get("height") or 0.0) / 2.0
         zx, zy = float(zone.get("x") or 0.0), float(zone.get("y") or 0.0)
-        x0 = max(0, math.floor((zx - half_w - reach_m - ox) / res))
-        x1 = min(width - 1, math.floor((zx + half_w + reach_m - ox) / res))
-        y0 = max(0, math.floor((zy - half_h - reach_m - oy) / res))
-        y1 = min(height - 1, math.floor((zy + half_h + reach_m - oy) / res))
+        angle = math.radians(float(zone.get("yaw") or 0.0))
+        co, si = math.cos(angle), math.sin(angle)
+        extent_x = abs(co) * half_w + abs(si) * half_h
+        extent_y = abs(si) * half_w + abs(co) * half_h
+        x0 = max(0, math.floor((zx - extent_x - reach_m - ox) / res))
+        x1 = min(width - 1, math.floor((zx + extent_x + reach_m - ox) / res))
+        y0 = max(0, math.floor((zy - extent_y - reach_m - oy) / res))
+        y1 = min(height - 1, math.floor((zy + extent_y + reach_m - oy) / res))
         for gy in range(y0, y1 + 1):
-            dy = max(abs(oy + (gy + 0.5) * res - zy) - half_h, 0.0)
-            if dy > reach_m:
-                continue
+            wy = oy + (gy + 0.5) * res - zy
             row = (height - 1 - gy) * width  # PGM: hang 0 la dinh anh (y lon nhat)
             for gx in range(x0, x1 + 1):
-                d = math.hypot(max(abs(ox + (gx + 0.5) * res - zx) - half_w, 0.0), dy)
-                if d <= reach_m:
+                wx = ox + (gx + 0.5) * res - zx
+                local_x, local_y = wx * co + wy * si, -wx * si + wy * co
+                d = math.hypot(max(abs(local_x) - half_w, 0.0), max(abs(local_y) - half_h, 0.0))
+                if d <= reach_m + 1e-9:
                     yield row + gx, d
 
     @staticmethod

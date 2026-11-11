@@ -67,11 +67,17 @@ describe('Physical robot map-frame navigation', () => {
     expect(pose.y).toBeCloseTo(4);
   });
 
-  it('draws ROS laser degrees/distance with the measured laser offset', () => {
+  it('draws ROS laser degrees/distance from the measured body centre', () => {
     const hit = laserPointToMap({ angle: 90, distance: 1 }, { x: 2, y: 3, yaw: Math.PI / 2 });
     expect(hit.x).toBeCloseTo(1);
-    expect(hit.y).toBeCloseTo(3.08);
+    expect(hit.y).toBeCloseTo(3);
     expect(laserPointToMap({ angle: 0, distance: null }, { x: 0, y: 0, yaw: 0 })).toBeNull();
+  });
+
+  it.each([0, Math.PI / 2, Math.PI, -Math.PI / 2])('keeps a stationary wall fixed when the centred robot turns to %s radians', (yaw) => {
+    const hit = laserPointToMap({ angle: -yaw * 180 / Math.PI, distance: 1 }, { x: 2, y: 3, yaw });
+    expect(hit.x).toBeCloseTo(3);
+    expect(hit.y).toBeCloseTo(3);
   });
 
   it('publishes a physical endpoint exactly once through Nav2 in map frame', () => {

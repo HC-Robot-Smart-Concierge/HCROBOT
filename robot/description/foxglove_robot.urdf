@@ -54,7 +54,7 @@
     </visual>
 
     <visual name="lidar">
-      <origin xyz="0.08 0 0.19" rpy="0 0 0"/>
+      <origin xyz="0 0 0.19" rpy="0 0 0"/>
       <geometry>
         <cylinder radius="0.045" length="0.04"/>
       </geometry>

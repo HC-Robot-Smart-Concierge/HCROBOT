@@ -160,7 +160,7 @@ export const AdminVideoCallsTab = ({ currentUser }) => {
           </div>
           <div>
             <h1 className="text-base md:text-lg font-semibold tracking-tight text-neutral-900">
-              Theo dõi cuộc gọi & Bản ghi Video Call (WF-04)
+              Video Calls & Call Recordings (WF-04)
             </h1>
             <p className="text-xs text-neutral-500">
               Giám sát phiên gọi Kiosk, nhân viên lễ tân và kho lưu trữ video Cloudinary / Local

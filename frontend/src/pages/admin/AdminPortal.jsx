@@ -174,7 +174,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
     { id: 'Knowledge',     label: t('adminKnowledge') },
     { id: 'Advertisements',label: t('adminAdvertisements') },
     { id: 'Department',    label: t('adminDepartment') },
-    { id: 'Video Calls',   label: 'Theo dõi cuộc gọi' },
+    { id: 'Video Calls',   label: 'Video Calls' },
     { id: 'Account',       label: t('adminAccount') },
     { id: 'Logs',          label: t('adminLogs') },
   ];

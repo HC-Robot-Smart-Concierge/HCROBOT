@@ -102,6 +102,53 @@ class CloudinaryService:
         # Fallback lưu trữ local để đảm bảo hệ thống không bao giờ bị lỗi gián đoạn
         return await self._save_locally(file_bytes, filename, duration)
 
+    async def list_video_recordings(
+        self,
+        folder: Optional[str] = None,
+        max_results: int = 100,
+    ) -> list[Dict[str, Any]]:
+        """
+        Lấy danh sách các video recording đã lưu trên Cloudinary trong folder quy định (Hướng 1).
+        Trả về: list[dict] gồm: public_id, secure_url, duration, created_at, format, filename
+        """
+        if not self._is_configured:
+            logger.warning("CloudinaryService: Chưa cấu hình Cloudinary nên không thể list resources.")
+            return []
+
+        import asyncio
+        target_folder = folder or settings.CLOUDINARY_FOLDER or "hcrobot/call_recordings"
+
+        def _do_list():
+            import cloudinary.api
+            try:
+                res = cloudinary.api.resources(
+                    resource_type="video",
+                    type="upload",
+                    prefix=target_folder,
+                    max_results=max_results,
+                )
+                items = res.get("resources", [])
+                result = []
+                for item in items:
+                    pub_id = item.get("public_id", "")
+                    sec_url = item.get("secure_url", "")
+                    base_name = pub_id.split("/")[-1] if "/" in pub_id else pub_id
+                    result.append({
+                        "public_id": pub_id,
+                        "secure_url": sec_url,
+                        "duration": int(item.get("duration") or 0),
+                        "created_at": item.get("created_at"),
+                        "format": item.get("format"),
+                        "bytes": item.get("bytes"),
+                        "filename": base_name,
+                    })
+                return result
+            except Exception as e:
+                logger.error(f"CloudinaryService: Lỗi list_video_recordings: {e}")
+                return []
+
+        return await asyncio.to_thread(_do_list)
+
     async def _save_locally(self, file_bytes: bytes, filename: str, duration: Optional[int] = None) -> Dict[str, Any]:
         """Lưu video ghi hình vào thư mục local ./uploaded_recordings."""
         import asyncio

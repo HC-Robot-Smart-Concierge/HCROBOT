@@ -64,3 +64,72 @@ async def test_other_services_not_affected():
     result_hk = await concierge_graph.ainvoke(state_hk, config=config_hk)
     assert result_hk.get("action") == "housekeeping"
     assert result_hk.get("trigger_video_call") is not True
+
+
+@pytest.mark.asyncio
+async def test_sync_cloudinary_recordings_endpoint(monkeypatch):
+    import random
+    from httpx import AsyncClient, ASGITransport
+    from app.main import app
+    from app.core.database import init_db, AsyncSessionLocal
+    from app.services.cloudinary_service import cloudinary_service
+    from app.repositories.support_session_repository import SupportSessionRepository
+    from app.models.support import HumanSupportSession
+
+    await init_db()
+
+    # 1. Tạo session mẫu mới chưa có recording
+    rand_id = random.randint(10000, 99999)
+    test_code = f"SYNC-TEST-{rand_id}"
+    sup_id = f"SUP-SYNC-{rand_id}"
+    async with AsyncSessionLocal() as db:
+        repo = SupportSessionRepository(db)
+        new_session = HumanSupportSession(
+            id=sup_id,
+            session_code=test_code,
+            room_number="Room 501",
+            guest_name="Test Cloudinary Guest",
+            category="Video Call Support",
+            status="Resolved",
+            recording_status="none",
+            recording_url=None,
+        )
+        await repo.create(new_session)
+        await repo.commit()
+
+    # 2. Mock cloudinary_service
+    monkeypatch.setattr(cloudinary_service, "_is_configured", True)
+    sample_resources = [
+        {
+            "public_id": f"hcrobot/call_recordings/call_{test_code}",
+            "secure_url": f"https://res.cloudinary.com/test-cloud/video/upload/v1/hcrobot/call_recordings/call_{test_code}.webm",
+            "duration": 42,
+            "created_at": "2026-11-11T00:00:00Z",
+            "format": "webm",
+            "filename": f"call_{test_code}",
+        }
+    ]
+
+    async def mock_list(folder=None, max_results=100):
+        return sample_resources
+
+    monkeypatch.setattr(cloudinary_service, "list_video_recordings", mock_list)
+
+    # 3. Gọi endpoint POST /api/v1/operations/concierge/recordings/sync-cloudinary
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+        res = await ac.post("/api/v1/operations/concierge/recordings/sync-cloudinary")
+        assert res.status_code == 200
+        data = res.json()
+        assert data["success"] is True
+        assert data["synced_count"] >= 1
+        assert data["total_found"] == 1
+
+    # 4. Xác minh session trong CSDL đã được cập nhật thành công
+    async with AsyncSessionLocal() as db:
+        repo = SupportSessionRepository(db)
+        updated = await repo.get_by_id_or_code(test_code)
+        assert updated is not None
+        assert updated.recording_url == f"https://res.cloudinary.com/test-cloud/video/upload/v1/hcrobot/call_recordings/call_{test_code}.webm"
+        assert updated.recording_status == "ready"
+        assert updated.recording_duration == 42
+

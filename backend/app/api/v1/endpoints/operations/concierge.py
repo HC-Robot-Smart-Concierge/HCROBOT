@@ -477,6 +477,82 @@ async def _background_upload_video(
 
 
 @router.post(
+    "/concierge/recordings/sync-cloudinary",
+    tags=TAG_CONCIERGE,
+    summary="Đồng bộ các bản ghi video có sẵn từ Cloudinary về CSDL (Hướng 1)",
+)
+async def sync_cloudinary_recordings(
+    session_repo: SupportSessionRepository = Depends(get_support_session_repository),
+):
+    """
+    Quét kho lưu trữ Cloudinary trong folder quy định (hcrobot/call_recordings),
+    tìm các file video đã có và liên kết/cập nhật vào các phiên HumanSupportSession tương ứng trong CSDL.
+    """
+    if not cloudinary_service.is_configured:
+        raise HTTPException(
+            status_code=400,
+            detail="Cloudinary chưa được cấu hình (thiếu CLOUDINARY_CLOUD_NAME / API_KEY / API_SECRET trong .env).",
+        )
+
+    # 1. Quét danh sách video từ Cloudinary
+    cloud_resources = await cloudinary_service.list_video_recordings()
+    if not cloud_resources:
+        return {
+            "success": True,
+            "total_found": 0,
+            "synced_count": 0,
+            "message": "Không tìm thấy video nào trên Cloudinary trong thư mục chỉ định.",
+        }
+
+    # 2. Lấy danh sách session từ DB để đối soát
+    sessions = await session_repo.list_sessions(limit=500)
+    synced_count = 0
+
+    for res in cloud_resources:
+        pub_id = res.get("public_id", "")
+        sec_url = res.get("secure_url", "")
+        fname = res.get("filename", "")
+        duration = res.get("duration", 0)
+
+        # Trích xuất token từ tên file (ví dụ: call_REQ-D88056C9 -> REQ-D88056C9, call_LIVE-1234 -> LIVE-1234)
+        clean_token = fname
+        if clean_token.startswith("call_"):
+            clean_token = clean_token[5:]
+        if "." in clean_token:
+            clean_token = clean_token.rsplit(".", 1)[0]
+
+        matched_session = None
+        for s in sessions:
+            if (
+                (s.session_code and (s.session_code == clean_token or s.session_code in pub_id))
+                or (s.linked_request_id and (s.linked_request_id == clean_token or s.linked_request_id in pub_id))
+                or (s.id and (s.id == clean_token or s.id in pub_id))
+            ):
+                matched_session = s
+                break
+
+        if matched_session:
+            if matched_session.recording_url != sec_url:
+                matched_session.recording_url = sec_url
+                matched_session.recording_public_id = pub_id
+                if duration and (not matched_session.recording_duration or matched_session.recording_duration == 0):
+                    matched_session.recording_duration = duration
+                matched_session.thumbnail_url = sec_url.rsplit(".", 1)[0] + ".jpg" if "." in sec_url else sec_url
+                matched_session.recording_status = "ready"
+                synced_count += 1
+
+    if synced_count > 0:
+        await session_repo.commit()
+
+    return {
+        "success": True,
+        "total_found": len(cloud_resources),
+        "synced_count": synced_count,
+        "message": f"Đã quét {len(cloud_resources)} video trên Cloudinary, đồng bộ thành công {synced_count} bản ghi vào hệ thống.",
+    }
+
+
+@router.post(
     "/concierge/recordings/{session_id}",
     response_model=RecordingUploadResponse,
     status_code=status.HTTP_202_ACCEPTED,

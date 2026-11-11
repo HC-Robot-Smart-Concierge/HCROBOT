@@ -134,7 +134,7 @@
 | `frontend/src/utils/numberInputHelper.js` | Chuẩn hóa dữ liệu số (giá tiền, số điện thoại, số lượng) và chặn nhập ký tự lạ | `formatNumber()`, `sanitizeNumericInput()` | Form đặt xe, form thanh toán | [Stepflow](workflows/stepflow.md) | `[Đã đối chiếu code]`, `[Đã kiểm tra bằng test]` |
 | `frontend/src/utils/roomHelper.js` | Kiểm tra tính hợp lệ của số phòng khách sạn dựa trên danh sách tầng và phòng hoạt động | `isValidRoom()`, `getRoomFloor()` | `RoomPickerModal.jsx`, `RobotScreenPage.jsx` | [Stepflow](workflows/stepflow.md) | `[Đã đối chiếu code]`, `[Đã kiểm tra bằng test]` |
 | `frontend/src/utils/markdownTableHelper.js` | Phân tích cú pháp và dựng bảng Markdown chuẩn hiển thị trong Modal tri thức hoặc tin nhắn | `parseMarkdownTable()`, `renderMarkdownTable()` | `KnowledgeTableEditor.jsx` | [Kiến trúc](02-Architecture.md) | `[Đã đối chiếu code]`, `[Đã kiểm tra bằng test]` |
-| `frontend/src/utils/slamTeleop.js` | Điều khiển di chuyển robot thủ công từ giao diện web qua ROSBridge WebSocket | `sendTwistCommand()` | `RobotManualControls.jsx` | [Distributed ROS 2](guides/distributed_ros2.md) | `[Đã đối chiếu code]` |
+| `frontend/src/utils/slamTeleop.js` | Điều khiển di chuyển robot thủ công từ giao diện web qua ROSBridge WebSocket | `sendTwistCommand()` | `RobotManualControls.jsx` | [Lệnh Di Chuyển](guides/robot_movement_commands.md), [Distributed ROS 2](guides/distributed_ros2.md) | `[Đã đối chiếu code]` |
 
 ---
 

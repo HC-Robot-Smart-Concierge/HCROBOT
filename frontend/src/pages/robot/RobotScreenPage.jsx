@@ -2422,6 +2422,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   if (isMaintenanceMenuOpen) {
     return (
       <RobotMaintenanceMenuScreen
+        language={language}
         activeRoomNumber={activeRoomNumber || ''}
         authenticatedRoom={authenticatedRoom}
         onPinVerifiedSuccess={(room) => {

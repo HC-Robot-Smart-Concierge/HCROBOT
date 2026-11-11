@@ -795,10 +795,12 @@ Toàn bộ tài liệu chuyên sâu được phân loại và quản lý tập t
   * [Kiến Trúc Thu Thập Đánh Giá Feedback 5 Sao](docs/guides/robot_feedback_architecture.md)
   * [Cơ Chế Bảo Mật Thoát Kiosk (Secret Multi-Tap Gesture)](docs/guides/kiosk_security_exit.md)
 * ⚙️ **Kịch Bản & Nghiệp Vụ (Workflows)**:
-  * [Đặc Tả 7 Core Workflows (Stepflow)](docs/workflows/stepflow.md)
-  * [Báo Cáo Tiến Độ & Bàn Giao Workflow](docs/workflows/workflow_handover.md)
+  * [Đặc Tả 8 Action Blocks & Kịch Bản Stepflows](docs/workflows/stepflow.md)
 * 🗄️ **Cơ Sở Dữ Liệu & Backend**:
   * [Hướng Dẫn Quản Lý Database Migration Với Alembic](docs/guides/alembic_guide.md)
+* 📜 **Nhật Ký Phát Triển & Biên Bản Kỹ Thuật (Dev Logs)**:
+  * [Kho Nhật Ký Phát Triển & Audit (Dev Logs Hub)](docs/dev-logs/README.md)
+  * [Lưu Trữ Biên Bản Bàn Giao Kịch Bản Stepflows](docs/dev-logs/workflow-handover-archive.md)
 
 ---
 

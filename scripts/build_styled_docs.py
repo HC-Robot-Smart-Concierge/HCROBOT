@@ -598,13 +598,11 @@ def build_html_preview(md_path: str, output_path: str):
 if __name__ == "__main__":
     src_md = r"f:\DoAn\HC-Robot\docs\SWP490_FA26SE905_R2_DesignBrief.md"
     out_docx_1 = r"f:\DoAn\HC-Robot\docs\SWP490_FA26SE905_R2_DesignBrief.docx"
-    out_docx_2 = r"f:\DoAn\HC-Robot\docs\FA26SE905_Intelligent Hotel Concierge Robot_NhanDT35.docx"
     out_docx_3 = r"c:\Users\user\Downloads\SWP490_FA26SE905_R2_DesignBrief_Styled.docx"
     out_html_1 = r"f:\DoAn\HC-Robot\docs\SWP490_FA26SE905_R2_DesignBrief.html"
     out_html_2 = r"c:\Users\user\Downloads\SWP490_FA26SE905_R2_DesignBrief.html"
 
     build_docx_from_markdown(src_md, out_docx_1)
-    build_docx_from_markdown(src_md, out_docx_2)
     build_docx_from_markdown(src_md, out_docx_3)
     build_html_preview(src_md, out_html_1)
     build_html_preview(src_md, out_html_2)

@@ -45,8 +45,8 @@ flowchart LR
   * Multi-tier Audio Caching (RAM LRU + Disk Cache tại `backend/static/audio_cache/`) truy xuất âm thanh trong 0.6ms.
   * Cơ chế xác thực số phòng và mã PIN (thay thế thẻ NFC cũ).
 * **[[guides/ai_optimization|Hướng Dẫn Tối Ưu Tốc Độ Phản Hồi AI (guides/ai_optimization.md)]]**:
-  * Phân biệt giữa thiết kế dự kiến ban đầu (Chunked Streaming RFC) và triển khai thực tế hiện tại (Groq LLM + Audio Cache).
-* **[[guides/nhat_ky_toi_uu_ai_voice_harness|Nhật Ký Tối Ưu AI Voice Pipeline (guides/nhat_ky_toi_uu_ai_voice_harness.md)]]**:
+  * Phân tầng 4-Tier LLM Cascade (Groq $\rightarrow$ Gemini $\rightarrow$ Ollama $\rightarrow$ Factsheet), chuẩn hóa VAD 1800ms và bộ đệm âm thanh RAM/Disk.
+* **[[dev-logs/ai-voice-harness-optimization-log|Nhật Ký Tối Ưu AI Voice Pipeline (dev-logs/ai-voice-harness-optimization-log.md)]]**:
   * Ghi chép lịch sử tinh chỉnh Llama 3.2 3B và khắc phục lỗi khựng âm thanh tại dấu ngắt câu.
 * **[[guides/robot_feedback_architecture|Kiến Trúc Thu Thập Đánh Giá & Vòng Đời Hội Thoại (guides/robot_feedback_architecture.md)]]**:
   * Modal đánh giá 5 sao tức thì (3 giây) khi kết thúc phiên hỗ trợ.
@@ -72,12 +72,13 @@ flowchart LR
 
 ---
 
-### 5. Kịch Bản Tương Tác & Tự Động Hóa (Workflows & Operations)
-* **[[workflows/stepflow|Đặc Tả 7 Core Workflows (workflows/stepflow.md)]]**:
+### 5. Kịch Bản Tương Tác & Nghiệp Vụ Khách Sạn (Workflows & Operations)
+* **[[workflows/stepflow|Đặc Tả 8 Action Blocks & Kịch Bản Stepflows (workflows/stepflow.md)]]**:
   * Định nghĩa 8 Action Blocks chuẩn: `MOVE`, `GREET`, `SPEAK`, `SHOW`, `LISTEN`, `RECOMMEND`, `CREATE_REQUEST`, `FEEDBACK`.
-  * Đặc tả chi tiết 7 kịch bản vận hành khách sạn: Đón tiếp sảnh, Dẫn đường tới vị trí, Dọn buồng phòng, Đặt xe taxi, Phục vụ món tại phòng, Tuần tra an ninh, Thu thập phản hồi.
-* **[[workflows/workflow_handover|Biên Bản Bàn Giao & Triển Khai Step Workflows (workflows/workflow_handover.md)]]**:
-  * Kiến trúc trình tạo kịch bản trực quan Scratch-like Builder, bộ giả lập Simulator và đồng bộ dữ liệu vào cơ sở dữ liệu.
+  * Đặc tả chi tiết các kịch bản vận hành khách sạn: Đón tiếp sảnh, Dẫn đường tới vị trí, Dọn buồng phòng, Đặt xe taxi, Phục vụ món tại phòng (Room Service), Báo hỏng & Sửa chữa kỹ thuật (Maintenance), Tuần tra an ninh và Thu thập phản hồi.
+  * Kiến trúc SSOT Service Keywords (`constants.py`) đồng bộ danh mục từ khóa giữa kịch bản hệ thống và LangGraph Fast-path.
+* **[[dev-logs/workflow-handover-archive|Biên Bản Bàn Giao Kịch Bản Stepflows (dev-logs/workflow-handover-archive.md)]]**:
+  * Lưu trữ tài liệu bàn giao các kịch bản sơ khai và trình tạo kịch bản Simulator trước giai đoạn Review 2.
 
 ---
 
@@ -89,12 +90,10 @@ flowchart LR
   * Danh mục các ROS 2 Nodes: `odom_encoder_node`, `safety_controller_node` (phanh khẩn cấp $\le 0.5$m), `motor_driver_node`, `person_detection_node` (YOLOv8n) và `person_fusion_tracker`.
 * **[[guides/static-map-navigation|Hướng Dẫn Điều Hướng Bản Đồ Tĩnh (guides/static-map-navigation.md)]]**:
   * Tích hợp bản đồ 2D sảnh khách sạn và quản lý danh sách Waypoints / POIs định danh (Lobby, Reception, Elevator, Restroom, Sofa,...).
-* **[[guides/bao-cao-tinh-hinh-du-an-2026-10-29|Báo Cáo SLAM, Odometry & Điều Khiển 29/10 (guides/bao-cao-tinh-hinh-du-an-2026-10-29.md)]]**:
-  * Phân tích nguyên nhân và giải pháp triệt tiêu bản đồ xoay nan quạt (chuẩn hóa dấu encoder), tối ưu hóa tải mạng Foxglove và nâng PWM xoay Teleop.
-* **[[robot-slam-navigation-audit-2026-10-24|Báo Cáo Đánh Giá SLAM Navigation (robot-slam-navigation-audit-2026-10-24.md)]]**:
-  * Phân tích hiện trạng thuật toán SLAM Toolbox, chất lượng point cloud LiDAR và độ chính xác bám quỹ đạo Nav2.
 * **[[guides/distributed_ros2|Kiến Trúc Mạng ROS 2 Phân Tán (guides/distributed_ros2.md)]]**:
   * Cấu hình CycloneDDS, VPN Tailscale kết nối giữa Laptop NUC và Raspberry Pi 5.
+* **[[guides/tailscale_hybrid_deployment_pi5_guide|Hướng Dẫn Triển Khai Tailscale Hybrid Pi 5 (guides/tailscale_hybrid_deployment_pi5_guide.md)]]**:
+  * Thiết lập mạng riêng WireGuard P2P (< 5ms) kết hợp Tailscale Funnel phục vụ bản đồ tĩnh ra ngoài Internet qua mã QR.
 * **[[guides/ultrasonic_setup|Cấu Hình Cảm Biến Siêu Âm HC-SR04 & ESP32 (guides/ultrasonic_setup.md)]]**:
   * Sơ đồ phần cứng giữa ESP32, L298N và cảm biến siêu âm tránh va chạm khẩn cấp thời gian thực.
 
@@ -104,6 +103,16 @@ flowchart LR
 * **[[guides/alembic_guide|Hướng Dẫn Quản Lý Database Migration Với Alembic (guides/alembic_guide.md)]]**:
   * Quy trình tạo, kiểm tra và chạy database migrations với Alembic & SQLAlchemy.
   * Đồng bộ models với PostgreSQL và xử lý xung đột schema.
+
+---
+
+### 8. Nhật Ký Phát Triển & Biên Bản Kỹ Thuật (Dev Logs & Audits)
+Toàn bộ nhật ký, báo cáo rà soát định kỳ và biên bản bàn giao theo từng mốc thời gian được phân loại tại thư mục **[[dev-logs/README|dev-logs/]]**:
+* **[[dev-logs/slam-navigation-audit-2026-10-24|Báo Cáo Đánh Giá SLAM Navigation (24/10/2026)]]**: Phân tích hiện trạng thuật toán SLAM Toolbox, chất lượng point cloud LiDAR và độ chính xác bám quỹ đạo Nav2.
+* **[[dev-logs/project-status-2026-10-29|Báo Cáo SLAM, Odometry & Điều Khiển (29/10/2026)]]**: Phân tích nguyên nhân và giải pháp triệt tiêu bản đồ xoay nan quạt (chuẩn hóa dấu encoder), tối ưu hóa tải mạng Foxglove và nâng PWM xoay Teleop.
+* **[[dev-logs/daily-summary-2026-11-06|Tổng Kết Công Việc Kịch Bản & Pin (06/11/2026)]]**: Tối ưu hóa các điểm đích di chuyển, phân nhánh rẽ kịch bản CHOICE và chu trình bảo vệ pin 20%/10%.
+* **[[dev-logs/ai-voice-harness-optimization-log|Nhật Ký Tối Ưu AI Voice Pipeline (Tháng 11/2026)]]**: Lịch sử tinh chỉnh Llama 3.2 3B và cấu hình VAD ngắt câu.
+* **[[dev-logs/workflow-handover-archive|Biên Bản Bàn Giao Kịch Bản Stepflows]]**: Lưu trữ kịch bản ban đầu.
 
 ---
 

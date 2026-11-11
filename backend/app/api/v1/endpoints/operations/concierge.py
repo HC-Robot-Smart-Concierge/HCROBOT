@@ -505,7 +505,7 @@ async def sync_cloudinary_recordings(
         }
 
     # 2. Lấy danh sách session từ DB để đối soát
-    sessions = await session_repo.list_sessions(limit=500)
+    sessions = list(await session_repo.list_sessions(limit=500))
     synced_count = 0
 
     for res in cloud_resources:
@@ -524,7 +524,9 @@ async def sync_cloudinary_recordings(
         matched_session = None
         for s in sessions:
             if (
-                (s.session_code and (s.session_code == clean_token or s.session_code in pub_id))
+                (s.recording_public_id and s.recording_public_id == pub_id)
+                or (s.recording_url and s.recording_url == sec_url)
+                or (s.session_code and (s.session_code == clean_token or s.session_code in pub_id))
                 or (s.linked_request_id and (s.linked_request_id == clean_token or s.linked_request_id in pub_id))
                 or (s.id and (s.id == clean_token or s.id in pub_id))
             ):
@@ -532,7 +534,7 @@ async def sync_cloudinary_recordings(
                 break
 
         if matched_session:
-            if matched_session.recording_url != sec_url:
+            if matched_session.recording_url != sec_url or matched_session.recording_status != "ready":
                 matched_session.recording_url = sec_url
                 matched_session.recording_public_id = pub_id
                 if duration and (not matched_session.recording_duration or matched_session.recording_duration == 0):
@@ -540,6 +542,67 @@ async def sync_cloudinary_recordings(
                 matched_session.thumbnail_url = sec_url.rsplit(".", 1)[0] + ".jpg" if "." in sec_url else sec_url
                 matched_session.recording_status = "ready"
                 synced_count += 1
+        else:
+            # Video này là bản ghi cũ trên Cloudinary nhưng chưa từng có phiên trong CSDL (trước khi làm chức năng tracking)
+            # Tự động tạo phiên HumanSupportSession mới với đúng ngày tạo gốc để Admin có thể xem lại ngay lập tức!
+            created_dt = None
+            raw_created = res.get("created_at")
+            if raw_created:
+                try:
+                    clean_iso = str(raw_created).replace("Z", "").split("+")[0]
+                    created_dt = datetime.fromisoformat(clean_iso).replace(tzinfo=None)
+                except Exception:
+                    pass
+
+            code_suffix = clean_token if clean_token and len(clean_token) <= 30 else f"REC-{random.randint(1000, 9999)}"
+            session_code = code_suffix
+            new_id = f"SUP-{code_suffix}" if not code_suffix.startswith("SUP-") else code_suffix
+
+            new_session = HumanSupportSession(
+                id=new_id,
+                session_code=session_code,
+                linked_request_id=clean_token if clean_token.startswith("REQ-") else None,
+                room_number="Kiosk Sảnh (Lưu trữ Cloud)",
+                guest_name="Khách lưu trú",
+                category="Video Call Support",
+                status="Resolved",
+                recording_url=sec_url,
+                recording_public_id=pub_id,
+                recording_duration=duration or 0,
+                thumbnail_url=sec_url.rsplit(".", 1)[0] + ".jpg" if "." in sec_url else sec_url,
+                recording_status="ready",
+                created_at=created_dt or datetime.utcnow(),
+            )
+            await session_repo.create(new_session)
+            sessions.append(new_session)
+            synced_count += 1
+
+    # 3. Quét thêm thư mục lưu trữ cục bộ ./uploaded_recordings/ phòng trường hợp video cũ lưu local trước đây
+    local_dir = os.path.join(os.getcwd(), "uploaded_recordings")
+    if os.path.exists(local_dir):
+        for f in os.listdir(local_dir):
+            if f.endswith((".webm", ".mp4")) and not f.startswith("temp_"):
+                local_url = f"/api/v1/operations/concierge/recordings/local/{f}"
+                has_session = any(s.recording_url == local_url for s in sessions)
+                if not has_session:
+                    clean_f = f.replace("rec_", "").split(".")[0]
+                    new_local_session = HumanSupportSession(
+                        id=f"SUP-LOC-{clean_f[:25]}",
+                        session_code=f"LIVE-LOC-{clean_f[:20]}",
+                        room_number="Kiosk Sảnh (Lưu trữ Local)",
+                        guest_name="Khách lưu trú",
+                        category="Video Call Support",
+                        status="Resolved",
+                        recording_url=local_url,
+                        recording_public_id=f"local_{f}",
+                        recording_duration=0,
+                        thumbnail_url=None,
+                        recording_status="ready",
+                        created_at=datetime.utcnow(),
+                    )
+                    await session_repo.create(new_local_session)
+                    sessions.append(new_local_session)
+                    synced_count += 1
 
     if synced_count > 0:
         await session_repo.commit()

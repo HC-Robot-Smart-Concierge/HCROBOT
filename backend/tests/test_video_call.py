@@ -97,7 +97,8 @@ async def test_sync_cloudinary_recordings_endpoint(monkeypatch):
         await repo.create(new_session)
         await repo.commit()
 
-    # 2. Mock cloudinary_service
+    # 2. Mock cloudinary_service với 2 video: 1 video khớp session có sẵn, 1 video cũ không có session trước đó
+    old_orphan_code = f"HIST-OLD-{random.randint(10000, 99999)}"
     monkeypatch.setattr(cloudinary_service, "_is_configured", True)
     sample_resources = [
         {
@@ -107,7 +108,15 @@ async def test_sync_cloudinary_recordings_endpoint(monkeypatch):
             "created_at": "2026-11-11T00:00:00Z",
             "format": "webm",
             "filename": f"call_{test_code}",
-        }
+        },
+        {
+            "public_id": f"hcrobot/call_recordings/call_{old_orphan_code}",
+            "secure_url": f"https://res.cloudinary.com/test-cloud/video/upload/v1/hcrobot/call_recordings/call_{old_orphan_code}.webm",
+            "duration": 65,
+            "created_at": "2026-10-25T10:00:00Z",
+            "format": "webm",
+            "filename": f"call_{old_orphan_code}",
+        },
     ]
 
     async def mock_list(folder=None, max_results=100):
@@ -121,10 +130,10 @@ async def test_sync_cloudinary_recordings_endpoint(monkeypatch):
         assert res.status_code == 200
         data = res.json()
         assert data["success"] is True
-        assert data["synced_count"] >= 1
-        assert data["total_found"] == 1
+        assert data["synced_count"] >= 2
+        assert data["total_found"] == 2
 
-    # 4. Xác minh session trong CSDL đã được cập nhật thành công
+    # 4. Xác minh session có sẵn đã cập nhật URL
     async with AsyncSessionLocal() as db:
         repo = SupportSessionRepository(db)
         updated = await repo.get_by_id_or_code(test_code)
@@ -132,4 +141,11 @@ async def test_sync_cloudinary_recordings_endpoint(monkeypatch):
         assert updated.recording_url == f"https://res.cloudinary.com/test-cloud/video/upload/v1/hcrobot/call_recordings/call_{test_code}.webm"
         assert updated.recording_status == "ready"
         assert updated.recording_duration == 42
+
+        # 5. Xác minh video cũ chưa từng có session đã được tự động khởi tạo thành công
+        orphan_session = await repo.get_by_id_or_code(old_orphan_code)
+        assert orphan_session is not None
+        assert orphan_session.recording_url == f"https://res.cloudinary.com/test-cloud/video/upload/v1/hcrobot/call_recordings/call_{old_orphan_code}.webm"
+        assert orphan_session.recording_status == "ready"
+        assert orphan_session.recording_duration == 65
 

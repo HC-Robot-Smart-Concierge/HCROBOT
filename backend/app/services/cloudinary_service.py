@@ -121,6 +121,7 @@ class CloudinaryService:
         def _do_list():
             import cloudinary.api
             try:
+                # 1. Quét video theo target_folder (ví dụ hcrobot/call_recordings)
                 res = cloudinary.api.resources(
                     resource_type="video",
                     type="upload",
@@ -128,6 +129,22 @@ class CloudinaryService:
                     max_results=max_results,
                 )
                 items = res.get("resources", [])
+
+                # 2. Quét thêm toàn bộ video trên Cloudinary để không bỏ sót các video cũ trước đây
+                try:
+                    res_all = cloudinary.api.resources(
+                        resource_type="video",
+                        type="upload",
+                        max_results=max_results,
+                    )
+                    all_items = res_all.get("resources", [])
+                    existing_pub_ids = {it.get("public_id") for it in items}
+                    for it in all_items:
+                        if it.get("public_id") not in existing_pub_ids:
+                            items.append(it)
+                except Exception as ex_all:
+                    logger.debug(f"CloudinaryService: scan all videos fallback note: {ex_all}")
+
                 result = []
                 for item in items:
                     pub_id = item.get("public_id", "")

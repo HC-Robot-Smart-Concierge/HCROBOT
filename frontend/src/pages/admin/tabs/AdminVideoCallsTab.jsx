@@ -13,12 +13,19 @@ import {
   FileVideo,
   RefreshCw,
   Search,
+  Cloud,
 } from 'lucide-react';
-import { fetchHumanSupportSessions, fetchVideoCallMetrics } from '../../../services/conciergeApi';
+import {
+  fetchHumanSupportSessions,
+  fetchVideoCallMetrics,
+  syncCloudinaryRecordings,
+} from '../../../services/conciergeApi';
 
 export const AdminVideoCallsTab = ({ currentUser }) => {
   const [sessions, setSessions] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState(null);
   const [error, setError] = useState(null);
 
   // Filters
@@ -126,10 +133,26 @@ export const AdminVideoCallsTab = ({ currentUser }) => {
     setCurrentPage(1);
   };
 
+  const handleSyncCloudinary = async () => {
+    setIsSyncing(true);
+    setSyncMessage(null);
+    try {
+      const res = await syncCloudinaryRecordings();
+      setSyncMessage(res.message || `Đã đồng bộ ${res.synced_count} bản ghi từ Cloudinary.`);
+      await loadData();
+    } catch (err) {
+      console.error('[AdminVideoCalls] Sync error:', err);
+      setSyncMessage(err.message || 'Lỗi khi đồng bộ bản ghi từ Cloudinary.');
+    } finally {
+      setIsSyncing(false);
+      setTimeout(() => setSyncMessage(null), 6000);
+    }
+  };
+
   return (
     <div className="w-full p-4 md:p-6 space-y-4">
       {/* 1. Minimal Header */}
-      <div className="flex items-center justify-between gap-3 pb-3 border-b border-neutral-200">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-neutral-200">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-full bg-neutral-100 flex items-center justify-center text-neutral-700">
             <Video className="w-4 h-4" />
@@ -144,17 +167,45 @@ export const AdminVideoCallsTab = ({ currentUser }) => {
           </div>
         </div>
 
-        {/* Minimal Google-style Refresh Button */}
-        <button
-          onClick={loadData}
-          disabled={isLoading}
-          title="Làm mới dữ liệu"
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-full text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 border border-neutral-200 transition-colors cursor-pointer"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-          <span className="hidden sm:inline">Làm mới</span>
-        </button>
+        {/* Minimal Google-style Action Buttons */}
+        <div className="flex items-center gap-2 self-end sm:self-auto">
+          <button
+            onClick={handleSyncCloudinary}
+            disabled={isSyncing || isLoading}
+            title="Đồng bộ các bản ghi cũ từ Cloudinary về hệ thống"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-full text-sky-800 bg-sky-50 hover:bg-sky-100 border border-sky-200/80 transition-colors cursor-pointer disabled:opacity-50"
+          >
+            <Cloud className={`w-3.5 h-3.5 ${isSyncing ? 'animate-bounce text-sky-600' : ''}`} />
+            <span>{isSyncing ? 'Đang đồng bộ...' : 'Đồng bộ Cloudinary'}</span>
+          </button>
+
+          <button
+            onClick={loadData}
+            disabled={isLoading || isSyncing}
+            title="Làm mới dữ liệu"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-full text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 border border-neutral-200 transition-colors cursor-pointer"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+            <span className="hidden sm:inline">Làm mới</span>
+          </button>
+        </div>
       </div>
+
+      {/* Sync Status Notification Banner */}
+      {syncMessage && (
+        <div className="px-3.5 py-2 rounded-xl bg-sky-50 border border-sky-200/80 text-sky-800 text-xs flex items-center justify-between animate-fade-in">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-sky-600 shrink-0" />
+            <span>{syncMessage}</span>
+          </div>
+          <button
+            onClick={() => setSyncMessage(null)}
+            className="p-1 rounded-full hover:bg-sky-100 text-sky-600 transition-colors cursor-pointer"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* 2. Compact Metrics Bar (Google Cloud style) */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">

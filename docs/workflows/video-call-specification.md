@@ -1,7 +1,7 @@
 # TÀI LIỆU KỸ THUẬT: VIDEO CALL (ROBOT-TO-HUMAN ESCALATION & AUTO-TRANSLATION)
 
 > **Mã quy trình (Workflow):** `WF-04` (Robot-to-Human Handoff & Remote Assistance)  
-> **Phiên bản:** v2.2.0  
+> **Phiên bản:** v2.3.0  
 > **Cập nhật ngày:** 11/11/2026  
 > **Phân hệ phụ trách:** Frontend (Kiosk/Dashboard/Admin), Backend (FastAPI WebRTC Signaling, Cloudinary Storage & AI Auto-Translate)
 
@@ -43,8 +43,9 @@ Tính năng **Video Call** cung cấp kênh giao tiếp âm thanh và hình ản
   - Tiếp nhận cuộc gọi đến từ Kiosk.
   - Quản lý lịch sử bản ghi cuộc gọi với các trạng thái: `Đang lưu bản ghi...` (`saving`), `Xem Bản Ghi` (`ready`), và `Lưu thất bại` (`failed`).
 - [`frontend/src/pages/admin/tabs/AdminVideoCallsTab.jsx`](file:///d:/FPT_Learning2026/FPT_Ky9/Đồ%20Án/repo/HCROBOT/frontend/src/pages/admin/tabs/AdminVideoCallsTab.jsx):
-  - Tab "Theo dõi cuộc gọi" chuyên biệt dành cho Admin Portal.
+  - Tab "Theo dõi cuộc gọi" chuyên biệt dành cho Admin Portal (Google-style minimal layout).
   - 4 Cards chỉ số: Tổng cuộc gọi, Có thể xem, Đang lưu ngầm, Lưu thất bại.
+  - Nút "Đồng bộ Cloudinary" tự động quét và map video có sẵn trên Cloud về CSDL.
   - Bộ lọc khoảng ngày (Từ ngày - Đến ngày), lọc trạng thái bản ghi và tìm kiếm phiên gọi.
   - Modal phát video tích hợp kèm thanh tua và liên kết CDN trực tiếp.
 
@@ -53,10 +54,12 @@ Tính năng **Video Call** cung cấp kênh giao tiếp âm thanh và hình ản
 - [`api/v1/endpoints/operations/concierge.py`](file:///d:/FPT_Learning2026/FPT_Ky9/Đồ%20Án/repo/HCROBOT/backend/app/api/v1/endpoints/operations/concierge.py):
   - WebSocket `/ws/video-call/{session_id}`: Trao đổi gói tin SDP/ICE, live subtitles, audio sync.
   - `POST /concierge/recordings/{session_id}`: Tiếp nhận file video bất đồng bộ (`HTTP 202 Accepted`), đẩy vào `BackgroundTasks`.
+  - `POST /concierge/recordings/sync-cloudinary`: Quét và đồng bộ các video có sẵn trên Cloudinary về DB (Hướng 1).
   - `GET /concierge/video-calls/metrics`: API thống kê toàn cục 4 chỉ số video call cho Admin.
   - `GET /concierge/recordings/local/{filename}`: Phục vụ stream video từ thư mục `./uploaded_recordings/` khi chạy local fallback.
 - [`services/cloudinary_service.py`](file:///d:/FPT_Learning2026/FPT_Ky9/Đồ%20Án/repo/HCROBOT/backend/app/services/cloudinary_service.py):
-  - Upload video lên Cloudinary folder `hcrobot/call_recordings`.
+  - `upload_video_recording()`: Upload video lên Cloudinary folder `hcrobot/call_recordings`.
+  - `list_video_recordings()`: Quét danh sách video đã lưu trên Cloudinary theo tiền tố thư mục.
   - Tự động sinh thumbnail `.jpg`.
   - Cơ chế tự động fallback `_save_locally()` khi Cloudinary hết quota hoặc mất mạng.
 - [`services/ai/translation_service.py`](file:///d:/FPT_Learning2026/FPT_Ky9/Đồ%20Án/repo/HCROBOT/backend/app/services/ai/translation_service.py):

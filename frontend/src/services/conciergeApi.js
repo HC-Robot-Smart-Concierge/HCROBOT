@@ -106,6 +106,27 @@ export async function fetchVideoCallMetrics(startDate = null, endDate = null) {
 }
 
 /**
+ * 4.2 Dong bo cac ban ghi video cu tu Cloudinary ve CSDL (Huong 1)
+ */
+export async function syncCloudinaryRecordings() {
+  const token = localStorage.getItem('aurora_jwt_token');
+  const response = await fetch(`${BASE_URL}/recordings/sync-cloudinary`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+
+  if (!response.ok) {
+    const errData = await response.json().catch(() => ({}));
+    throw new Error(errData.detail || `Đồng bộ thất bại (mã lỗi: ${response.status})`);
+  }
+
+  return await response.json();
+}
+
+/**
  * 5. Upload video ghi hinh cuoc goi (WebM/MP4) len Cloudinary qua Backend
  */
 export async function uploadCallRecording(sessionId, videoBlob, duration = 0, startedAt = null, endedAt = null, messages = null) {

@@ -45,4 +45,10 @@ describe('AdminVideoCallsTab (WF-04 Call Monitoring & Video Tab)', () => {
     expect(componentContent).toContain('playingVideo.recording_url');
     expect(componentContent).toContain('Mở file gốc');
   });
+
+  it('verifies Cloudinary sync button and handler', () => {
+    expect(componentContent).toContain('handleSyncCloudinary');
+    expect(componentContent).toContain('syncCloudinaryRecordings');
+    expect(componentContent).toContain('Đồng bộ Cloudinary');
+  });
 });

@@ -55,7 +55,7 @@ export const AdminVideoCallsTab = ({ currentUser }) => {
     setError(null);
     try {
       const [sessionsData, metricsData] = await Promise.all([
-        fetchHumanSupportSessions(null, 200, 0),
+        fetchHumanSupportSessions(null, 100, 0),
         fetchVideoCallMetrics(startDate || null, endDate || null),
       ]);
       setSessions(Array.isArray(sessionsData) ? sessionsData : []);

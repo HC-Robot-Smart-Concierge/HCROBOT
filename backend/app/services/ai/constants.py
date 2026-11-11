@@ -2,8 +2,9 @@ from typing import Dict, List
 
 # Tập trung toàn bộ từ khóa phân loại ý định dịch vụ khách sạn (DRY Principle)
 SERVICE_KEYWORDS: Dict[str, List[str]] = {
+    # No bare "huy": the router also substring-matches, and "chuyển" contains "huy".
     "cancel_service": [
-        "hủy", "huy", "hủy yêu cầu", "huy yeu cau", "hủy phòng", "huy phong",
+        "hủy", "hủy yêu cầu", "huy yeu cau", "hủy phòng", "huy phong",
         "hủy đơn", "huy don", "hủy món", "huy mon", "không cần nữa", "khong can nua",
         "thôi không cần", "thoi khong can", "không lấy nữa", "khong lay nua",
         "bỏ yêu cầu", "bo yeu cau", "cancel", "cancellation", "cancel request",
@@ -38,9 +39,13 @@ SERVICE_KEYWORDS: Dict[str, List[str]] = {
         "thêm dịch vụ", "them dich vu", "room service", "tiện ích phòng", "tien ich phong",
         "ly", "tách", "muỗng", "nĩa", "chén", "đĩa", "đá lạnh", "xô đá", "tableware", "ice"
     ],
+    # Bare "túi"/"tui" were removed: "tui" is Southern for "tôi" ("tui muốn ăn cơm"),
+    # and "mang đồ" also matched food ("mang đồ ăn lên phòng"). A bare "chuyển phòng"
+    # (changing rooms) belongs to Reception; Bellman only moves the guest's belongings.
     "bellman": [
-        "hành lý", "hanh ly", "vali", "túi", "tui", "chuyển phòng", "chuyen phong",
-        "mang đồ", "xách đồ", "luggage", "bag", "mang hành lý", "gửi hành lý"
+        "hành lý", "hanh ly", "hành lí", "hanh li", "vali", "túi xách", "xách túi", "chuyển đồ", "chuyen do",
+        "xách đồ", "luggage", "bag", "bags", "baggage", "suitcase", "mang hành lý", "gửi hành lý", "giữ hành lý",
+        "gửi giữ", "lấy lại hành lý", "chuyển hành lý", "khuân", "bellman", "bellboy", "porter"
     ],
     "maintenance": [
         "hư", "hu", "bị hư", "bi hu", "hư hỏng", "hu hong", "hư đồ", "hu do", "đồ bị hư", "do bi hu",
@@ -142,7 +147,11 @@ SERVICE_KEYWORDS: Dict[str, List[str]] = {
         "tại sao bị hủy", "tai sao bi huy", "sao bị hủy", "sao bi huy", "lý do hủy", "ly do huy", "lý do bị hủy",
         "why was it rejected", "why was my order rejected", "reason for rejection", "why declined", "why rejected",
         "order status", "food status", "status of my order", "where is my order", "is my order ready",
-        "check my order", "check order"
+        "check my order", "check order",
+        # Bellman progress (English); phrased as questions so they never read as a new request.
+        "arrived yet", "here yet", "up yet", "delivered yet", "brought up yet", "on its way",
+        "on their way", "where is my luggage", "where are my bags", "where is my suitcase",
+        "luggage status", "status of my luggage"
     ],
     "reception": [
         "lễ tân", "check out", "checkout", "check in", "checkin",
@@ -168,6 +177,14 @@ MAINTENANCE_MENU_TRIGGER_KEYWORDS: List[str] = sorted(list(set([
     "maintenance menu", "repair menu", "open maintenance", "fix issue", "report issue"
 ])))
 
+# Phrases that ask for the Bellman menu itself rather than one specific luggage task.
+BELLMAN_MENU_TRIGGER_KEYWORDS: List[str] = [
+    "menu hành lý", "menu hanh ly", "menu bellman", "dịch vụ hành lý", "dich vu hanh ly",
+    "dịch vụ bellman", "hỗ trợ hành lý", "ho tro hanh ly", "danh mục hành lý",
+    "luggage menu", "bellman menu", "luggage service", "luggage services", "luggage assistance",
+    "luggage help", "bell service", "bell services",
+]
+
 ROOM_SERVICE_MENU_TRIGGER_KEYWORDS: List[str] = sorted(list(set(
     SERVICE_KEYWORDS["housekeeping"] + [
         "dịch vụ phòng", "dich vu phong", "room service", "tiện ích phòng", "tien ich phong",
@@ -180,6 +197,18 @@ FOOD_MENU_TRIGGER_KEYWORDS: List[str] = sorted(list(set(
         "menu đồ ăn", "thực đơn", "menu món ăn", "food menu", "đặt món", "gọi món", "order món", "open food menu"
     ]
 )))
+
+
+def contains_keyword(text: str, keywords: List[str]) -> bool:
+    """Match keywords as whole words; only longer ones may also match inside a phrase.
+
+    Short keywords (<= 3 chars) are word-boundary only: "hu" (= "hư") is inside
+    "chuyển", "hư" inside "như" and "ăn" inside "xe lăn".
+    """
+    return any(
+        re.search(rf"(?<!\w){re.escape(k)}(?!\w)", text) or (len(k) > 3 and k in text)
+        for k in keywords if k
+    )
 
 
 def build_keyword_regex(keywords: List[str]) -> re.Pattern:

@@ -11,6 +11,9 @@ from app.core.database import get_db
 from app.models import SupportRequest
 from app.models.hotel import Room
 from app.services.maintenance_request_service import get_or_create_maintenance_request, duplicate_maintenance_message, merged_maintenance_message
+from app.services.bell_request_service import (
+    BELL_DEPARTMENT_ID, BELL_SERVICE_TYPE_ID, bell_request_message, get_or_create_bell_request,
+)
 from app.schemas.operations import (
     ReceptionRequestCreate,
     ReceptionRequestUpdate,
@@ -246,6 +249,7 @@ async def verify_room_pin(
     ticket_code = None
     duplicate = False
     merged = False
+    bell_ticket = None
     should_create_ticket = (
         not getattr(payload, "skip_ticket_creation", False)
         and getattr(payload, "create_ticket", True) is not False
@@ -274,11 +278,11 @@ async def verify_room_pin(
             dept_name_str = "Room Service"
             req_type_str = "room_service"
         elif any(k in act_lower for k in ["bell", "hành lý"]):
-            dept_id = "DEP-BELLMAN"
-            svc_id = "ST-BELLMAN"
-            prefix = "BEL"
-            dept_name_str = "Bellman"
-            req_type_str = "bellman"
+            dept_id = BELL_DEPARTMENT_ID
+            svc_id = BELL_SERVICE_TYPE_ID
+            prefix = "BS"
+            dept_name_str = "Bell Services"
+            req_type_str = "bell_service"
         else:
             dept_id = "DEP-HOUSEKEEPING"
             svc_id = "ST-HOUSEKEEPING"
@@ -304,11 +308,19 @@ async def verify_room_pin(
             new_req, created, merged = await get_or_create_maintenance_request(db, new_req)
             duplicate = not created and not merged
             ticket_code = new_req.ticket_code
+        elif dept_id == BELL_DEPARTMENT_ID:
+            # Notifies Bell Services itself; a repeated open request returns its ticket.
+            new_req, created = await get_or_create_bell_request(
+                db, room_number=room.room_number, description=items_str,
+                source=f"Robot Kiosk ({verification_type} Verified)",
+                guest_name=room.current_guest_name, room_id=room.id,
+            )
+            duplicate, bell_ticket, ticket_code = not created, new_req, new_req.ticket_code
         else:
             db.add(new_req)
             await db.flush()
 
-        if not duplicate:
+        if not duplicate and not bell_ticket:
             await create_department_notification(
                 db,
                 department=dept_name_str,
@@ -345,7 +357,11 @@ async def verify_room_pin(
         tag_code=room.tag_code,
         duplicate=duplicate,
         merged=merged,
-        message=merged_maintenance_message(ticket_code) if merged else duplicate_maintenance_message(ticket_code) if duplicate else pin_success_msg
+        message=(
+            bell_request_message(bell_ticket, created=not duplicate) if bell_ticket
+            else merged_maintenance_message(ticket_code) if merged
+            else duplicate_maintenance_message(ticket_code) if duplicate else pin_success_msg
+        )
     )
 
 
@@ -394,6 +410,7 @@ async def verify_room_nfc(
     ticket_code = None
     duplicate = False
     merged = False
+    bell_ticket = None
     should_create_ticket = (
         not getattr(payload, "skip_ticket_creation", False)
         and getattr(payload, "create_ticket", True) is not False
@@ -422,11 +439,11 @@ async def verify_room_nfc(
             dept_name_str = "Room Service"
             req_type_str = "room_service"
         elif any(k in act_lower for k in ["bell", "hành lý"]):
-            dept_id = "DEP-BELLMAN"
-            svc_id = "ST-BELLMAN"
-            prefix = "BEL"
-            dept_name_str = "Bellman"
-            req_type_str = "bellman"
+            dept_id = BELL_DEPARTMENT_ID
+            svc_id = BELL_SERVICE_TYPE_ID
+            prefix = "BS"
+            dept_name_str = "Bell Services"
+            req_type_str = "bell_service"
         else:
             dept_id = "DEP-HOUSEKEEPING"
             svc_id = "ST-HOUSEKEEPING"
@@ -452,11 +469,19 @@ async def verify_room_nfc(
             new_req, created, merged = await get_or_create_maintenance_request(db, new_req)
             duplicate = not created and not merged
             ticket_code = new_req.ticket_code
+        elif dept_id == BELL_DEPARTMENT_ID:
+            # Notifies Bell Services itself; a repeated open request returns its ticket.
+            new_req, created = await get_or_create_bell_request(
+                db, room_number=matched_room.room_number, description=items_str,
+                source="Robot Kiosk (NFC Verified)",
+                guest_name=matched_room.current_guest_name, room_id=matched_room.id,
+            )
+            duplicate, bell_ticket, ticket_code = not created, new_req, new_req.ticket_code
         else:
             db.add(new_req)
             await db.flush()
 
-        if not duplicate:
+        if not duplicate and not bell_ticket:
             await create_department_notification(
                 db,
                 department=dept_name_str,
@@ -493,7 +518,11 @@ async def verify_room_nfc(
         tag_code=matched_room.tag_code,
         duplicate=duplicate,
         merged=merged,
-        message=merged_maintenance_message(ticket_code) if merged else duplicate_maintenance_message(ticket_code) if duplicate else nfc_success_msg
+        message=(
+            bell_request_message(bell_ticket, created=not duplicate) if bell_ticket
+            else merged_maintenance_message(ticket_code) if merged
+            else duplicate_maintenance_message(ticket_code) if duplicate else nfc_success_msg
+        )
     )
 
 

@@ -7,7 +7,6 @@ import {
   INITIAL_RECEPTION_DATA,
   INITIAL_ROOM_SERVICE_DATA,
   INITIAL_HOUSEKEEPING_DATA,
-  INITIAL_BELL_SERVICES_DATA,
 } from '../data/mockHotelData';
 
 const BASE_URL = '/api/v1/operations';
@@ -250,18 +249,34 @@ export const fetchHousekeepingRequestById = async (requestId) => {
 // ---------------------------------------------------------
 // 3. Bell Services
 // ---------------------------------------------------------
+// Returns null when the backend is unreachable, so staff never see mock requests as real ones.
 export const fetchBellServicesDashboard = async () => {
-  return await fetchWithFallback(`${BASE_URL}/dashboard/bell-services`, {}, INITIAL_BELL_SERVICES_DATA);
+  return await fetchWithFallback(`${BASE_URL}/dashboard/bell-services`, {}, null);
 };
 
+// Throws on failure: a guest or staff member must not be told a request was sent when it was not.
 export const createBellRequest = async (requestData) => {
-  return await fetchWithFallback(
-    `${BASE_URL}/bell-services/requests`,
-    {
-      method: 'POST',
-      body: JSON.stringify(requestData),
+  const token = localStorage.getItem('aurora_jwt_token');
+  const response = await fetch(`${BASE_URL}/bell-services/requests`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    { id: `BS-${Date.now()}`, ...requestData, status: 'Pending' }
+    body: JSON.stringify(requestData),
+  });
+  const result = await response.json().catch(() => null);
+  if (!response.ok || !result?.id || !result?.ticket_code) {
+    throw new Error('Unable to create Bell Services request');
+  }
+  return result;
+};
+
+export const fetchRoomBellStatus = async (roomNumber) => {
+  return await fetchWithFallback(
+    `${BASE_URL}/bell-services/rooms/${encodeURIComponent(roomNumber)}/status`,
+    {},
+    { room_number: roomNumber, pending_count: 0, in_progress_count: 0, completed_count: 0, requests: [] }
   );
 };
 

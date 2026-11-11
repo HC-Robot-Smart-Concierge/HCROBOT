@@ -1,31 +1,79 @@
-# NHẬT KÝ PHÁT TRIỂN & BIÊN BẢN KỸ THUẬT (DEV LOGS & AUDIT ARCHIVE)
+# QUY CHUẨN VÀ HƯỚNG DẪN GHI CHÉP NHẬT KÝ PHÁT TRIỂN (DEVLOG GUIDE)
 
-Thư mục này lưu trữ tập trung toàn bộ **nhật ký kỹ thuật (developer logs)**, **báo cáo rà soát định kỳ (technical audits)**, và **biên bản bàn giao theo từng mốc thời gian (handover & progress reports)** trong suốt quá trình nghiên cứu, phát triển và thử nghiệm hệ thống **HC-Robot (Intelligent Hotel Concierge Robot)**.
-
-> **Lưu ý:** 
-> - Các tài liệu hướng dẫn vận hành, đặc tả kiến trúc và quy chuẩn hệ thống chính thức đang hoạt động được quản lý tại:
->   - [[../01-File-Map|Bản Đồ Kiểm Kê Mã Nguồn (01-File-Map.md)]]
->   - [[../02-Architecture|Tổng Quan Kiến Trúc Hệ Thống (02-Architecture.md)]]
->   - [[../guides/hardware_architecture|Đặc Tả Phần Cứng & ROS 2 Edge]]
->   - [[../workflows/stepflow|Đặc Tả 8 Action Blocks & Kịch Bản Stepflows]]
-> - Thư mục `dev-logs/` phục vụ mục đích tra cứu lịch sử quyết định kỹ thuật, đối chiếu quá trình tối ưu và truy vết log phát triển qua các phiên bản.
+Thư mục này được sử dụng làm không gian lưu trữ các bản ghi nhật ký phát triển (developer logs), ghi chú thử nghiệm kỹ thuật (experimental notes), biên bản debug sự cố (debugging post-mortems) và báo cáo kiểm thử định kỳ của đội ngũ kỹ thuật dự án **HC-Robot (Intelligent Hotel Concierge Robot)**.
 
 ---
 
-## 📅 Danh Mục Nhật Ký & Báo Cáo Theo Mốc Thời Gian
+## 1. Mục Đích Của Thư Mục Devlog
 
-| Thời Gian | Tên Tài Liệu | Nội Dung Trọng Tâm | Phân Hệ Liên Quan |
-| :--- | :--- | :--- | :--- |
-| **24/10/2026** | [[slam-navigation-audit-2026-10-24|Báo Cáo Audit SLAM Navigation]] | Đánh giá độ trôi Odometry, tần số quét LiDAR A1M8, cấu hình SLAM Toolbox online async và TF tree `map -> odom -> base_link`. | ROS 2 Edge, SLAM, Hardware |
-| **29/10/2026** | [[project-status-2026-10-29|Báo Cáo Tiến Độ Dự Án (29/10)]] | Tổng hợp tình trạng vận hành 3 tầng: Pi 5 sensor hub, WSL2 ROS 2 Core, Web Admin; đối chiếu thông số encoder 330 CPR và cảm biến siêu âm. | Architecture, Pi 5, ESP32 |
-| **06/11/2026** | [[daily-summary-2026-11-06|Tổng Kết Công Việc (06/11)]] | Tối ưu hóa các điểm đích điều hướng (Move Targets), cơ chế phân nhánh rẽ nhánh CHOICE trong kịch bản và chu trình cảnh báo bảo vệ pin 20%/10%. | Workflow Engine, Battery Policy |
-| **Tháng 11/2026** | [[ai-voice-harness-optimization-log|Nhật Ký Tối Ưu AI Voice Pipeline]] | Ghi chép quá trình chuyển dịch từ sequential blocking sang LangGraph StateGraph, tích hợp Groq LLM cascade và Audio Caching RAM/Disk. | AI Core, Voice VAD, EdgeTTS |
-| **Lưu trữ** | [[workflow-handover-archive|Biên Bản Bàn Giao Kịch Bản Cũ]] | Tài liệu ghi nhận các kịch bản stepflow ban đầu trước khi chuẩn hóa sang chuẩn 8 Action Blocks và 5 kịch bản SOP Review 2. | Workflow Archive |
+1. **Lưu vết tiến trình kỹ thuật:** Ghi lại quá trình giải quyết các bài toán phức tạp (như điều chỉnh thuật toán SLAM, tối ưu hóa độ trễ âm thanh Web Audio, cấu hình mạng ROS 2 phân tán qua Tailscale).
+2. **Lưu giữ quyết định thiết kế (Design Decisions):** Ghi rõ lý do chọn hoặc bỏ một giải pháp công nghệ để các thành viên khác hoặc người tiếp nhận sau này không phải thử nghiệm lại từ đầu các phương án đã thất bại.
+3. **Phân tách rõ ràng với tài liệu chính thức:** Giữ cho thư mục tài liệu kiến trúc và hướng dẫn vận hành (`docs/`, `docs/guides/`, `docs/workflows/`) luôn tinh gọn, mang tính hệ thống và phản ánh chính xác trạng thái production, không bị lẫn với các ghi chú làm việc cá nhân hàng ngày.
 
 ---
 
-## 🔍 Hướng Dẫn Tra Cứu Cho Developer
+## 2. Quy Chuẩn Đặt Tên File (Naming Convention)
 
-1. **Khi gặp vấn đề về điều hướng, SLAM hoặc lệch tọa độ:** Đọc [[slam-navigation-audit-2026-10-24|slam-navigation-audit-2026-10-24.md]] để xem các bài test thực tế về ma sát bánh, drift odometry và giải pháp khắc phục bằng dynamic TF.
-2. **Khi tối ưu độ trễ âm thanh và hội thoại giọng nói:** Đọc [[ai-voice-harness-optimization-log|ai-voice-harness-optimization-log.md]] kết hợp [[../ROBOT_CONVERSATION_FLOW_REPORT|ROBOT_CONVERSATION_FLOW_REPORT.md]] để nắm rõ các cạm bẫy đã được giải quyết (lỗi ngắt lời sớm, lỗi double-speech, lỗi voice Safari).
-3. **Khi cần đối chiếu lại logic kịch bản ban đầu:** Đọc [[workflow-handover-archive|workflow-handover-archive.md]] và [[daily-summary-2026-11-06|daily-summary-2026-11-06.md]].
+Tất cả các file devlog mới được tạo trong thư mục này phải tuân thủ quy tắc đặt tên thống nhất:
+
+```text
+YYYY-MM-DD_<tieu-de-ky-thuat-ngan-gon>.md
+```
+
+Trong đó:
+- `YYYY-MM-DD`: Ngày lập bản ghi (ví dụ: `2026-11-12`).
+- `<tieu-de-ky-thuat-ngan-gon>`: Mô tả ngắn về tính năng, module hoặc sự cố kỹ thuật được xử lý. Dùng chữ thường, không dấu, phân tách bằng dấu gạch ngang (`-`).
+
+**Ví dụ:**
+- `2026-11-12_toi-uu-lidar-filter.md`
+- `2026-11-15_debug-webrtc-ice-candidate-drop.md`
+- `2026-11-20_kiem-thu-cam-bien-sieu-am-esp32.md`
+
+---
+
+## 3. Mẫu Chuẩn Cho Bản Ghi Devlog (Devlog Template)
+
+Khi tạo một file devlog mới, hãy sao chép và điền theo cấu trúc chuẩn dưới đây:
+
+```markdown
+# [TIÊU ĐỀ BẢN GHI KỸ THUẬT]
+
+- Ngày thực hiện: YYYY-MM-DD
+- Người thực hiện: [Tên / Username]
+- Phân hệ liên quan: [AI Core / ROS 2 Navigation / Frontend Kiosk / Backend Operations / Hardware]
+- Nhánh Git: [Tên nhánh, ví dụ: development hoặc feature/xyz]
+
+---
+
+## 1. Vấn Đề Kỹ Thuật (Problem Statement)
+Mô tả ngắn gọn, cụ thể hiện tượng lỗi, nút thắt hiệu năng hoặc tính năng mới cần triển khai.
+Đính kèm log lỗi thực tế hoặc chỉ số đo đạc ban đầu nếu có.
+
+## 2. Các Phương Án Đã Xem Xét (Alternative Approaches)
+- Phương án A: [Mô tả ngắn] - Ưu/Nhược điểm - Lý do chọn/loại.
+- Phương án B: [Mô tả ngắn] - Ưu/Nhược điểm - Lý do chọn/loại.
+
+## 3. Chi Tiết Triển Khai (Implementation Details)
+- Các file đã sửa đổi:
+  - `path/to/file_1.py`: [Tóm tắt thay đổi chính]
+  - `path/to/file_2.jsx`: [Tóm tắt thay đổi chính]
+- Thuật toán / Logic cốt lõi: Giải thích phương pháp kỹ thuật đã áp dụng.
+
+## 4. Kết Quả Kiểm Thử (Verification & Test Results)
+- Test tự động (Pytest / Vitest): [Ví dụ: 10/10 passed]
+- Đo đạc thực nghiệm: [Ví dụ: Latency giảm từ 250ms xuống 45ms, CPU giảm 30%]
+- Trạng thái biên dịch: [Ví dụ: Vite production build thành công]
+
+## 5. Lưu Ý & Công Việc Kế Tiếp (Caveats & Next Steps)
+- Các trường hợp biên (edge cases) cần chú ý thêm.
+- Các đầu việc tiếp theo cần phối hợp với các phân hệ khác.
+```
+
+---
+
+## 4. Các Nguyên Tắc Bắt Buộc Khi Viết Devlog
+
+1. **Không sử dụng emoji:** Giữ văn phong kỹ thuật nghiêm túc, tối giản, chuyên nghiệp trong toàn bộ tiêu đề, nội dung và bảng biểu.
+2. **Trung thực về số liệu:** Mọi chỉ số về độ trễ (latency), tần số (Hz), tỷ lệ lỗi (%) phải xuất phát từ log thực nghiệm hoặc kết quả test tự động, không đưa ra giả định thiếu căn cứ.
+3. **Giữ nguyên thuật ngữ kỹ thuật tiếng Anh:** Sử dụng thuật ngữ chuyên môn chính xác (như `Odometry`, `Barge-In`, `VAD`, `StateGraph`, `Signaling`, `TF Tree`, `Payload`).
+4. **Không để lại thông tin nhạy cảm:** Tuyệt đối không commit API keys, token bí mật, mật khẩu cơ sở dữ liệu hoặc thông tin cá nhân vào nội dung devlog.

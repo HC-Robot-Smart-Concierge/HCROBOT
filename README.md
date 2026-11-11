@@ -799,8 +799,7 @@ Toàn bộ tài liệu chuyên sâu được phân loại và quản lý tập t
 * 🗄️ **Cơ Sở Dữ Liệu & Backend**:
   * [Hướng Dẫn Quản Lý Database Migration Với Alembic](docs/guides/alembic_guide.md)
 * 📜 **Nhật Ký Phát Triển & Biên Bản Kỹ Thuật (Dev Logs)**:
-  * [Kho Nhật Ký Phát Triển & Audit (Dev Logs Hub)](docs/dev-logs/README.md)
-  * [Lưu Trữ Biên Bản Bàn Giao Kịch Bản Stepflows](docs/dev-logs/workflow-handover-archive.md)
+  * [Hướng Dẫn Ghi Chép Devlog (Devlog Guide)](docs/dev-logs/README.md)
 
 ---
 

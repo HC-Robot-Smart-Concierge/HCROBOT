@@ -4,7 +4,7 @@
 > - Báo cáo luồng hội thoại: [[../ROBOT_CONVERSATION_FLOW_REPORT|Báo Cáo Nâng Cấp Luồng Hội Thoại Robot (ROBOT_CONVERSATION_FLOW_REPORT.md)]]
 > - Thiết kế LangGraph: [[langgraph_harness|LangGraph Agent Harness & Tối Ưu Voice Pipeline]]
 > - Kiến trúc hệ thống: [[../02-Architecture|Tổng Quan Kiến Trúc Hệ Thống (02-Architecture.md)]]
-> - Nhật ký tối ưu chi tiết: [[../dev-logs/ai-voice-harness-optimization-log|Nhật Ký Tối Ưu Llama 3.2 & Voice Pipeline]]
+> - Hướng dẫn ghi chép devlog: [[../dev-logs/README|Quy Chuẩn Ghi Chép Devlog (dev-logs/README.md)]]
 
 ---
 

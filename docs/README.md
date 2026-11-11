@@ -46,8 +46,6 @@ flowchart LR
   * Cơ chế xác thực số phòng và mã PIN (thay thế thẻ NFC cũ).
 * **[[guides/ai_optimization|Hướng Dẫn Tối Ưu Tốc Độ Phản Hồi AI (guides/ai_optimization.md)]]**:
   * Phân tầng 4-Tier LLM Cascade (Groq $\rightarrow$ Gemini $\rightarrow$ Ollama $\rightarrow$ Factsheet), chuẩn hóa VAD 1800ms và bộ đệm âm thanh RAM/Disk.
-* **[[dev-logs/ai-voice-harness-optimization-log|Nhật Ký Tối Ưu AI Voice Pipeline (dev-logs/ai-voice-harness-optimization-log.md)]]**:
-  * Ghi chép lịch sử tinh chỉnh Llama 3.2 3B và khắc phục lỗi khựng âm thanh tại dấu ngắt câu.
 * **[[guides/robot_feedback_architecture|Kiến Trúc Thu Thập Đánh Giá & Vòng Đời Hội Thoại (guides/robot_feedback_architecture.md)]]**:
   * Modal đánh giá 5 sao tức thì (3 giây) khi kết thúc phiên hỗ trợ.
   * Tự động cảnh báo tới Concierge Desk khi nhận đánh giá tiêu cực ($\le 3$ sao).
@@ -77,8 +75,6 @@ flowchart LR
   * Định nghĩa 8 Action Blocks chuẩn: `MOVE`, `GREET`, `SPEAK`, `SHOW`, `LISTEN`, `RECOMMEND`, `CREATE_REQUEST`, `FEEDBACK`.
   * Đặc tả chi tiết các kịch bản vận hành khách sạn: Đón tiếp sảnh, Dẫn đường tới vị trí, Dọn buồng phòng, Đặt xe taxi, Phục vụ món tại phòng (Room Service), Báo hỏng & Sửa chữa kỹ thuật (Maintenance), Tuần tra an ninh và Thu thập phản hồi.
   * Kiến trúc SSOT Service Keywords (`constants.py`) đồng bộ danh mục từ khóa giữa kịch bản hệ thống và LangGraph Fast-path.
-* **[[dev-logs/workflow-handover-archive|Biên Bản Bàn Giao Kịch Bản Stepflows (dev-logs/workflow-handover-archive.md)]]**:
-  * Lưu trữ tài liệu bàn giao các kịch bản sơ khai và trình tạo kịch bản Simulator trước giai đoạn Review 2.
 
 ---
 
@@ -106,13 +102,10 @@ flowchart LR
 
 ---
 
-### 8. Nhật Ký Phát Triển & Biên Bản Kỹ Thuật (Dev Logs & Audits)
-Toàn bộ nhật ký, báo cáo rà soát định kỳ và biên bản bàn giao theo từng mốc thời gian được phân loại tại thư mục **[[dev-logs/README|dev-logs/]]**:
-* **[[dev-logs/slam-navigation-audit-2026-10-24|Báo Cáo Đánh Giá SLAM Navigation (24/10/2026)]]**: Phân tích hiện trạng thuật toán SLAM Toolbox, chất lượng point cloud LiDAR và độ chính xác bám quỹ đạo Nav2.
-* **[[dev-logs/project-status-2026-10-29|Báo Cáo SLAM, Odometry & Điều Khiển (29/10/2026)]]**: Phân tích nguyên nhân và giải pháp triệt tiêu bản đồ xoay nan quạt (chuẩn hóa dấu encoder), tối ưu hóa tải mạng Foxglove và nâng PWM xoay Teleop.
-* **[[dev-logs/daily-summary-2026-11-06|Tổng Kết Công Việc Kịch Bản & Pin (06/11/2026)]]**: Tối ưu hóa các điểm đích di chuyển, phân nhánh rẽ kịch bản CHOICE và chu trình bảo vệ pin 20%/10%.
-* **[[dev-logs/ai-voice-harness-optimization-log|Nhật Ký Tối Ưu AI Voice Pipeline (Tháng 11/2026)]]**: Lịch sử tinh chỉnh Llama 3.2 3B và cấu hình VAD ngắt câu.
-* **[[dev-logs/workflow-handover-archive|Biên Bản Bàn Giao Kịch Bản Stepflows]]**: Lưu trữ kịch bản ban đầu.
+### 8. Hướng Dẫn Ghi Chép Nhật Ký Phát Triển (Dev Logs)
+* **[[dev-logs/README|Quy Chuẩn & Hướng Dẫn Ghi Chép Devlog (dev-logs/README.md)]]**:
+  * Không gian lưu trữ nhật ký kỹ thuật, quá trình debug và ghi chú thử nghiệm của lập trình viên.
+  * Quy chuẩn đặt tên file theo mốc thời gian `YYYY-MM-DD_<tieu-de>.md` và template bản ghi chuẩn.
 
 ---
 

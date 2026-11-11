@@ -1503,6 +1503,32 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         return;
       }
 
+      // The client may already have a verified room before the AI session does.
+      // Wait for the actual ticket result before speaking a success message.
+      const pendingMaintenance = (chatRes.pending_service_action || chatRes.action) === 'maintenance';
+      const maintenanceRoom = chatRes.target_room_number || chatRes.current_room_number || spokenRoomDetected || authenticatedRoom;
+      if (chatRes.require_room_pin && pendingMaintenance && authenticatedRoom && String(maintenanceRoom).trim() === String(authenticatedRoom).trim()) {
+        const english = chatRes.detected_language === 'English';
+        try {
+          const items = chatRes.pending_service_items || query;
+          const result = await createMaintenanceRequest({
+            title: items, category: 'general', location: String(authenticatedRoom).trim(),
+            description: items, source: 'HCRobot Voice AI (Session Authenticated)',
+          });
+          chatRes.ticket_code = result.ticket_code;
+          chatRes.response = result.merged
+            ? (english ? `The additional issue was added to repair request #${result.ticket_code}. No new ticket was created.` : `Đã bổ sung sự cố vào phiếu sửa chữa #${result.ticket_code}. Không tạo thêm phiếu mới.`)
+            : result.duplicate
+              ? (english ? `This issue already has an open request #${result.ticket_code}. No new ticket was created.` : `Sự cố này đã có phiếu #${result.ticket_code} đang xử lý. Không tạo thêm phiếu mới.`)
+              : (english ? `Your repair request #${result.ticket_code} has been sent to Maintenance.` : `Phiếu sửa chữa #${result.ticket_code} đã được gửi tới bộ phận kỹ thuật.`);
+        } catch {
+          chatRes.response = english ? 'Could not submit the repair request. Please try again.' : 'Chưa gửi được yêu cầu sửa chữa. Vui lòng thử lại.';
+        }
+        chatRes.require_room_pin = false;
+        chatRes.audio_base64 = null;
+        if (currentChatId !== activeChatRequestIdRef.current) return;
+      }
+
       hasReceivedResponse = true;
       if (fillerTimerRef.current) {
         clearTimeout(fillerTimerRef.current);
@@ -1586,16 +1612,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
             const itemsToExecute = chatRes.pending_service_items || query;
             if (['taxi', 'book_taxi', 'taxi_booking'].includes(actionToExecute)) {
               handleTriggerTaxiBooking(authenticatedRoom);
-            } else if (actionToExecute === 'maintenance') {
-              createMaintenanceRequest({
-                title: itemsToExecute || 'Yêu cầu bảo trì phòng qua giọng nói',
-                category: 'general',
-                location: String(authenticatedRoom).trim(),
-                description: `Khách yêu cầu qua giọng nói: ${itemsToExecute}`,
-                source: 'HCRobot Voice AI (Session Authenticated)',
-                priority: 'NORMAL',
-              }).catch(() => {});
-            } else if (actionToExecute !== 'query_order_status' && actionToExecute !== 'query_service_status' && actionToExecute !== 'query_taxi_status' && actionToExecute !== 'query_maintenance_status') {
+            } else if (actionToExecute !== 'maintenance' && actionToExecute !== 'query_order_status' && actionToExecute !== 'query_service_status' && actionToExecute !== 'query_taxi_status' && actionToExecute !== 'query_maintenance_status') {
               createConciergeRequest({
                 title: `Yêu cầu ${actionToExecute} từ giọng nói Robot`,
                 room_number: String(authenticatedRoom).trim(),
@@ -2170,7 +2187,15 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
     }
 
     const isEn = language === 'English';
-    const baseMsg = result?.message || (isEn ? 'Room verified successfully!' : 'Xác thực phòng thành công!');
+    const baseMsg = result?.merged
+      ? (isEn
+        ? `The additional issue was added to your open repair request #${result.ticket_code} for the same equipment. No new ticket was created.`
+        : `Đã bổ sung sự cố vào phiếu sửa chữa #${result.ticket_code} đang mở cho cùng thiết bị. Không tạo thêm phiếu mới.`)
+      : result?.duplicate
+      ? (isEn
+        ? `This issue already has an open request #${result.ticket_code} for your room. Please track that request; no new ticket was created.`
+        : `Sự cố này của phòng đã có phiếu #${result.ticket_code} đang chờ hoặc đang xử lý. Quý khách vui lòng theo dõi phiếu hiện có; hệ thống không tạo phiếu mới.`)
+      : result?.message || (isEn ? 'Room verified successfully!' : 'Xác thực phòng thành công!');
     const finalMsg = isEn
       ? `${baseMsg} Do you need any further assistance?`
       : `${baseMsg} Quý khách có cần Rora hỗ trợ thêm gì nữa không ạ?`;

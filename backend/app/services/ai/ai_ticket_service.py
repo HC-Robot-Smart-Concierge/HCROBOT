@@ -6,9 +6,36 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.support_request import SupportRequest
 from app.models.support import HumanSupportSession
+from app.services.maintenance_request_service import get_or_create_maintenance_request
 from app.api.v1.endpoints.operations.shared import create_department_notification
 
 logger = logging.getLogger(__name__)
+
+
+async def create_maintenance_voice_ticket(db: AsyncSession, room_number: str, items: str) -> tuple[str, bool, bool]:
+    request = SupportRequest(
+        ticket_code=f"MN-{random.randint(1000, 99999)}",
+        source="HCRobot Concierge AI Chat",
+        title=f"Sự cố kỹ thuật Phòng {room_number}: {items}",
+        room_number=room_number,
+        description=items,
+        guest_name=f"Guest (Room {room_number})",
+        department_id="DEP-MAINTENANCE",
+        service_type_id="ST-MAINTENANCE",
+        status="Pending",
+    )
+    request, created, merged = await get_or_create_maintenance_request(db, request)
+    if created or merged:
+        for department in ("Maintenance", "Reception"):
+            await create_department_notification(
+                db=db, department=department,
+                title=f"Robot AI: Bổ sung sự cố #{request.ticket_code}" if merged else f"Robot AI: Yêu cầu Kỹ thuật mới #{request.ticket_code}",
+                description=f"Phòng {room_number}: {items}",
+                request_id=request.id, request_type="maintenance", type="Request",
+            )
+    ticket_code = request.ticket_code
+    await db.commit()
+    return ticket_code, created, merged
 
 
 async def create_live_call_session(
@@ -354,38 +381,7 @@ async def auto_create_ticket(
             return ticket_code
 
         elif action == "maintenance":
-            ticket_code = f"MN-{random.randint(1000, 99999)}"
-            req = SupportRequest(
-                ticket_code=ticket_code,
-                source="HCRobot Concierge AI Chat",
-                title=f"Sự cố kỹ thuật Phòng {rm}: {items}",
-                room_number=rm,
-                description=items,
-                guest_name=f"Guest (Room {rm})",
-                department_id="DEP-MAINTENANCE",
-                service_type_id="ST-MAINTENANCE",
-                status="Pending",
-            )
-            db.add(req)
-            await create_department_notification(
-                db=db,
-                department="Maintenance",
-                title=f"Robot AI: Yêu cầu Kỹ thuật mới #{ticket_code}",
-                description=f"Phòng {rm}: {items}",
-                request_id=req.id,
-                request_type="maintenance",
-                type="Request",
-            )
-            await create_department_notification(
-                db=db,
-                department="Reception",
-                title=f"Robot AI: Yêu cầu Bảo trì từ Khách Phòng {rm}",
-                description=f"Phiếu #{ticket_code}: {items}",
-                request_id=req.id,
-                request_type="maintenance",
-                type="Request",
-            )
-            await db.commit()
+            ticket_code, _, _ = await create_maintenance_voice_ticket(db, rm, items)
             return ticket_code
 
         elif action == "taxi":

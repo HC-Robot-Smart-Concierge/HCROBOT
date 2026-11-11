@@ -2,16 +2,19 @@ import random
 import uuid
 from datetime import datetime
 from typing import List, Dict, Any, Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Body, Response
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, delete
+from sqlalchemy import select, update, delete, or_, func
 
 from app.core.database import get_db
 from app.models import Staff, SupportRequest
 from app.models.maintenance import MaintenanceCatalogItem
+from app.services.maintenance_request_service import get_or_create_maintenance_request, maintenance_room_filter, normalize_room, maintenance_queue_order, TERMINAL_STATUSES
+from app.api.v1.endpoints.auth import get_current_user
 from app.schemas.operations import (
     MaintenanceRequestCreate,
     MaintenanceRequestStatusUpdate,
+    MaintenanceRequestPriorityUpdate,
     MaintenanceRequestResponse,
     MaintenanceDashboardResponse,
     MaintenanceCatalogItemCreate,
@@ -201,11 +204,12 @@ async def get_maintenance_dashboard(
     Truy vấn bảng điều khiển của bộ phận **Kỹ thuật & Bảo trì (Facility Maintenance)**.
     Dữ liệu được truy vấn trực tiếp từ bảng chuẩn hóa `support_requests` có `service_type_id = 'ST-MAINTENANCE'` hoặc `department_id = 'DEP-MAINTENANCE'`.
     """
-    requests = await sr_repo.get_recent_by_department(
-        department_ids=["DEP-MAINTENANCE"],
-        service_type_ids=["ST-MAINTENANCE"],
-        limit=100,
-    )
+    department_filter = or_(SupportRequest.department_id == "DEP-MAINTENANCE", SupportRequest.service_type_id == "ST-MAINTENANCE")
+    closed = func.lower(func.trim(func.coalesce(SupportRequest.status, "Pending"))).in_(TERMINAL_STATUSES)
+    # Do not hide old waiting tickets behind the latest 100 completed tickets.
+    active = (await sr_repo.db.execute(select(SupportRequest).where(department_filter, ~closed).order_by(*maintenance_queue_order()))).scalars().all()
+    history = (await sr_repo.db.execute(select(SupportRequest).where(department_filter, closed).order_by(SupportRequest.created_at.desc()).limit(100))).scalars().all()
+    requests = [*active, *history]
 
     pending_count = sum(1 for r in requests if r.status in ["Pending", "Unassigned"])
     in_prog_count = sum(1 for r in requests if r.status == "In Progress")
@@ -263,6 +267,7 @@ async def get_maintenance_dashboard(
 )
 async def create_maintenance_request(
     req_in: MaintenanceRequestCreate,
+    response: Response,
     sr_repo: SupportRequestRepository = Depends(get_support_request_repository),
     db: AsyncSession = Depends(get_db),
 ):
@@ -282,11 +287,16 @@ async def create_maintenance_request(
         service_type_id="ST-MAINTENANCE",
         status="Pending",
     )
-    await sr_repo.create(new_req)
+    new_req, created, merged = await get_or_create_maintenance_request(db, new_req, req_in.catalog_item_id)
+    if not created and not merged:
+        result = MaintenanceRequestResponse.model_validate(new_req).model_copy(update={"duplicate": True})
+        await db.commit()
+        response.status_code = status.HTTP_200_OK
+        return result
     await create_department_notification(
         db=db,
         department="Maintenance",
-        title=f"Yêu cầu Kỹ thuật mới: {req_in.title}",
+        title=f"Bổ sung sự cố #{new_req.ticket_code}: {req_in.title}" if merged else f"Yêu cầu Kỹ thuật mới: {req_in.title}",
         description=f"{req_in.location}: {req_in.description or 'Cần bảo trì kỹ thuật'}",
         request_id=new_req.id,
         request_type="maintenance",
@@ -294,6 +304,9 @@ async def create_maintenance_request(
     )
     await sr_repo.commit()
     await sr_repo.refresh(new_req)
+    if merged:
+        response.status_code = status.HTTP_200_OK
+        return MaintenanceRequestResponse.model_validate(new_req).model_copy(update={"merged": True})
     return new_req
 
 
@@ -348,6 +361,34 @@ async def update_maintenance_request_status(
     if update_in.assigned_to or update_in.assigned_technician:
         req.assigned_staff_name = update_in.assigned_to or update_in.assigned_technician
 
+    req.updated_at = datetime.utcnow()
+    await sr_repo.commit()
+    await sr_repo.refresh(req)
+    return req
+
+
+@router.patch(
+    "/maintenance/requests/{request_id}/priority",
+    response_model=MaintenanceRequestResponse,
+    tags=TAG_MNT,
+)
+async def update_maintenance_request_priority(
+    request_id: str,
+    update_in: MaintenanceRequestPriorityUpdate,
+    current_user=Depends(get_current_user),
+    sr_repo: SupportRequestRepository = Depends(get_support_request_repository),
+):
+    if current_user.default_dashboard not in ("maintenance", "admin_portal"):
+        raise HTTPException(status_code=403, detail="Only maintenance staff or administrators can set repair priority")
+    req = await sr_repo.get_by_id_or_code(request_id)
+    if not req or not (req.department_id == "DEP-MAINTENANCE" or req.service_type_id == "ST-MAINTENANCE"):
+        raise HTTPException(status_code=404, detail="Maintenance request not found")
+    # Serialize with incoming symptom updates before changing shared metadata.
+    await sr_repo.db.refresh(req, with_for_update=True)
+    if (req.status or "").strip().lower() in TERMINAL_STATUSES:
+        raise HTTPException(status_code=409, detail="This repair request is already closed")
+    req.priority = update_in.priority
+    req.extra_data = {**(req.extra_data or {}), "priority_set_by": current_user.id}
     req.updated_at = datetime.utcnow()
     await sr_repo.commit()
     await sr_repo.refresh(req)
@@ -541,23 +582,13 @@ async def get_room_maintenance_status(
     - Số lượng đang chờ, đang sửa, đã hoàn thành
     - Danh sách chi tiết các ticket kèm kỹ thuật viên phụ trách
     """
-    clean_room = room_number.strip()
-    if clean_room.lower().startswith("room "):
-        clean_room = clean_room[5:].strip()
-
-    all_dept_reqs = await sr_repo.get_recent_by_department(
-        department_ids=["DEP-MAINTENANCE"],
-        service_type_ids=["ST-MAINTENANCE"],
-        limit=100,
-    )
-
-    room_reqs = []
-    for r in all_dept_reqs:
-        r_num = str(r.room_number or "").strip()
-        if r_num.lower().startswith("room "):
-            r_num = r_num[5:].strip()
-        if r_num.lower() == clean_room.lower() or clean_room.lower() in str(r.room_number or "").lower():
-            room_reqs.append(r)
+    clean_room = normalize_room(room_number)
+    room_reqs = (await sr_repo.db.execute(
+        select(SupportRequest).where(
+            or_(SupportRequest.department_id == "DEP-MAINTENANCE", SupportRequest.service_type_id == "ST-MAINTENANCE"),
+            maintenance_room_filter(clean_room),
+        ).order_by(SupportRequest.created_at.desc())
+    )).scalars().all()
 
     pending_count = sum(1 for r in room_reqs if r.status in ["Pending", "Unassigned", "Pending Action"])
     in_prog_count = sum(1 for r in room_reqs if r.status in ["In Progress", "In Preparation", "Assigned"])

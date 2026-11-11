@@ -12,10 +12,26 @@ from app.services.ai.session_manager import session_manager, extract_room_number
 from app.services.ai.concierge_graph import concierge_graph, intent_router_node, service_fsm_node, retrieval_node
 from app.services.ai.tts_service import tts_service
 from app.services.ai.ollama_service import ollama_service
-from app.services.ai.ai_ticket_service import create_live_call_session, background_extract_and_create_ticket
+from app.services.ai.ai_ticket_service import create_live_call_session, background_extract_and_create_ticket, create_maintenance_voice_ticket
+from app.services.maintenance_request_service import duplicate_maintenance_message, merged_maintenance_message
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+
+async def _submit_maintenance_for_chat(db, room_number, items, english):
+    try:
+        code, created, merged = await create_maintenance_voice_ticket(db, room_number, items)
+        if merged:
+            return code, merged_maintenance_message(code, english)
+        return code, None if created else duplicate_maintenance_message(code, english)
+    except Exception:
+        await db.rollback()
+        logger.exception("[AIChatService] Maintenance request was not saved")
+        return None, (
+            "I couldn't submit your maintenance request. Please try again."
+            if english else "Em chưa gửi được yêu cầu bảo trì. Quý khách vui lòng thử lại."
+        )
 
 
 def _detect_destination_poi(prompt: str, reply: str = "", room_number: str | None = None) -> str | None:
@@ -434,9 +450,15 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
     elif act and act not in ["chitchat", "conversation", "faq", "fast_path", "provide_room_number", "query_order_status", "unknown", "taxi", "book_taxi", "taxi_booking", "open_food_menu", "open_room_service_menu", "open_maintenance_menu"]:
         # Chỉ tạo ticket khi đã có số phòng và không cần PIN
         if not missing_room and current_room:
-            asyncio.create_task(
-                background_extract_and_create_ticket(items, current_room, act, items)
-            )
+            if act == "maintenance":
+                call_ticket_code, notice = await _submit_maintenance_for_chat(db, current_room, items, lang_code.startswith("en"))
+                if notice:
+                    reply = notice
+                    audio_b64 = None  # Do not play the earlier "new ticket" response.
+            else:
+                asyncio.create_task(
+                    background_extract_and_create_ticket(items, current_room, act, items)
+                )
             logger.info(f"[AIChatService] Dispatched ticket creation for '{act}' (Room {current_room}): {items}")
         else:
             logger.info(f"[AIChatService] Service request '{act}' is waiting for room number from guest.")
@@ -568,6 +590,8 @@ async def generate_chat_stream(request: ChatRequest) -> AsyncGenerator[str, None
 
             fsm_state = await service_fsm_node({
                 "action": action,
+                "session_id": sid,
+                "is_room_authenticated": session_manager.is_room_authenticated(sid, effective_room),
                 "room_number": effective_room,
                 "items": router_state.get("items"),
                 "lang_code": "en-US" if request.language and "en" in request.language.lower() else "vi-VN",
@@ -579,10 +603,20 @@ async def generate_chat_stream(request: ChatRequest) -> AsyncGenerator[str, None
             fsm_items = router_state.get("items") or request.prompt
 
             # CHỈ TẠO TICKET KHI ĐÃ CÓ ĐẦY ĐỦ SỐ PHÒNG
-            if not is_call and not missing_room and effective_room and action not in ["provide_room_number", "unknown", "chitchat", "conversation", "faq", "fast_path", "query_order_status", "taxi", "book_taxi", "taxi_booking", "open_food_menu", "open_room_service_menu", "open_maintenance_menu"]:
-                asyncio.create_task(
-                    background_extract_and_create_ticket(fsm_items, effective_room, action, fsm_items)
-                )
+            ticket_code = None
+            if not is_call and not missing_room and not fsm_state.get("require_room_pin") and effective_room and action not in ["provide_room_number", "unknown", "chitchat", "conversation", "faq", "fast_path", "query_order_status", "taxi", "book_taxi", "taxi_booking", "open_food_menu", "open_room_service_menu", "open_maintenance_menu"]:
+                if action == "maintenance":
+                    from app.core.database import AsyncSessionLocal
+                    async with AsyncSessionLocal() as ticket_db:
+                        ticket_code, notice = await _submit_maintenance_for_chat(
+                            ticket_db, effective_room, fsm_items, bool(request.language and "en" in request.language.lower()),
+                        )
+                    if notice:
+                        fsm_reply = notice
+                else:
+                    asyncio.create_task(
+                        background_extract_and_create_ticket(fsm_items, effective_room, action, fsm_items)
+                    )
                 logger.info(f"[AIChatStream] Dispatched ticket creation for '{action}' (Room {effective_room}): {fsm_items}")
 
             logger.info(f"[AIChatStream FSM] Trả lời FSM tức thì <2ms cho action: '{action}'")
@@ -600,6 +634,11 @@ async def generate_chat_stream(request: ChatRequest) -> AsyncGenerator[str, None
             done_payload = {
                 "event": "done",
                 "full_text": fsm_reply,
+                "ticket_code": ticket_code,
+                "require_room_pin": bool(fsm_state.get("require_room_pin")),
+                "target_room_number": fsm_state.get("target_room_number"),
+                "pending_service_action": fsm_state.get("pending_service_action"),
+                "pending_service_items": fsm_state.get("pending_service_items"),
                 "lang_code": final_lang_code,
                 "room_number": effective_room,
                 "missing_room_number": missing_room,

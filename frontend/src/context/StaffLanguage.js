@@ -5,6 +5,13 @@ import { receptionVietnamese } from './ReceptionLanguage';
 // Display text only. API statuses, category IDs and guest-entered content stay unchanged.
 export const staffVietnamese = {
   ...receptionVietnamese,
+  'Refresh': 'Làm mới',
+  'Urgent': 'Khẩn cấp',
+  'Mark urgent': 'Đánh dấu khẩn cấp',
+  'Remove urgency': 'Bỏ đánh dấu khẩn cấp',
+  'Repair priority updated.': 'Đã cập nhật mức ưu tiên sửa chữa.',
+  'Could not update repair priority. Please refresh and try again.': 'Không cập nhật được mức ưu tiên. Vui lòng làm mới và thử lại.',
+  'Urgent repairs first, then oldest requests. Additional reports keep the original queue position.': 'Phiếu khẩn cấp được xếp trước, sau đó theo thời gian chờ lâu nhất. Bổ sung sự cố không đổi vị trí trong hàng đợi.',
   'RECEPTION PORTAL': 'CỔNG LỄ TÂN',
   'Reception navigation': 'Điều hướng lễ tân',
   'Reception staff': 'Nhân viên lễ tân',

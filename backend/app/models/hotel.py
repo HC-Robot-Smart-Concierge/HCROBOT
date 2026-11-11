@@ -87,6 +87,14 @@ class Room(Base):
     def floor(self, val: str):
         pass
 
+    @property
+    def identity_number(self) -> Optional[str]:
+        return getattr(self, "_identity_number", None)
+
+    @identity_number.setter
+    def identity_number(self, val: Optional[str]):
+        self._identity_number = val
+
 
 
 class Amenity(Base):

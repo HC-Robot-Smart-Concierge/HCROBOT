@@ -304,9 +304,9 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
     )
     is_menu_action = any(k in prompt_lower_req for k in ["menu", "thực đơn", "thuc don", "đặt món", "gọi món", "order", "đồ ăn", "thức ăn", "dịch vụ phòng", "room service"])
 
+    from app.services.cache.redis_service import redis_service
     cached_ai = None
     if not pending_intent_exist and not is_status_query_req and not has_room_in_prompt and not is_actionable_service and not is_menu_action:
-        from app.services.cache.redis_service import redis_service
         cached_ai = await redis_service.get_ai_cache(request.prompt, request.language or "vi")
     if cached_ai and cached_ai.get("full_text"):
         reply = cached_ai["full_text"]
@@ -423,6 +423,18 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
     status_q_type = graph_result.get("status_query_type")
     support_session_id = None
     call_ticket_code = None
+
+    emotion_lower = (request.emotion or "").strip().lower()
+    if emotion_lower in ["unhappy", "annoyed", "angry", "upset", "frustrated", "khó chịu", "kho chiu"]:
+        alert_loc = current_room or "Main Lobby Kiosk"
+        asyncio.create_task(
+            background_extract_and_create_ticket(
+                request.prompt,
+                alert_loc,
+                "emotion_alert",
+                f"Khách có biểu cảm khó chịu ({request.emotion}) khi giao tiếp tại Kiosk: {request.prompt}",
+            )
+        )
 
     if is_video_call:
         support_session_id, call_ticket_code = await create_live_call_session(

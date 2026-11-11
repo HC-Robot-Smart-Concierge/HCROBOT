@@ -270,12 +270,17 @@ async def verify_room_pin(
             prefix = "ORD"
             dept_name_str = "Room Service"
             req_type_str = "room_service"
-        elif any(k in act_lower for k in ["bell", "hành lý"]):
-            dept_id = "DEP-BELLMAN"
-            svc_id = "ST-BELLMAN"
-            prefix = "BEL"
-            dept_name_str = "Bellman"
-            req_type_str = "bellman"
+        elif any(k in act_lower for k in ["bell", "hành lý", "thất lạc", "mất đồ", "quên đồ", "lost"]):
+            dept_id = "DEP-BELL"
+            svc_id = "ST-BELL"
+            prefix = "BS"
+            dept_name_str = "Bell Services"
+            items_check = f"{act_lower} {(payload.items or payload.note or '').lower()}"
+            req_type_str = (
+                "lost_found"
+                if any(k in items_check for k in ["thất lạc", "mất đồ", "quên đồ", "rơi đồ", "lost", "missing", "forgot"])
+                else "luggage"
+            )
         else:
             dept_id = "DEP-HOUSEKEEPING"
             svc_id = "ST-HOUSEKEEPING"
@@ -285,9 +290,16 @@ async def verify_room_pin(
         ticket_code = f"{prefix}-{code_num}"
 
         items_str = payload.items or payload.note or "Yêu cầu dịch vụ phòng qua Kiosk"
+        req_title = (
+            f"Báo cáo đồ thất lạc Phòng {room.room_number}: {items_str}"
+            if req_type_str == "lost_found"
+            else f"Hỗ trợ hành lý Phòng {room.room_number}: {items_str}"
+            if dept_id == "DEP-BELL"
+            else f"Yêu cầu từ Kiosk (Phòng {room.room_number})"
+        )
         new_req = SupportRequest(
             ticket_code=ticket_code,
-            title=f"Yêu cầu từ Kiosk (Phòng {room.room_number})",
+            title=req_title,
             description=items_str,
             department_id=dept_id,
             service_type_id=svc_id,
@@ -296,6 +308,7 @@ async def verify_room_pin(
             guest_name=room.current_guest_name or "Hotel Guest",
             source=f"Robot Kiosk ({verification_type} Verified)",
             status="Pending",
+            request_type=req_type_str,
         )
         db.add(new_req)
         await db.flush()
@@ -329,11 +342,12 @@ async def verify_room_pin(
 
     return RoomPinVerifyResponse(
         verified=True,
+        success=True,
         room_number=room.room_number,
         guest_name=room.current_guest_name,
         ticket_code=ticket_code,
         verification_type=verification_type,
-        tag_code=room.tag_code,
+        tagCode=room.tag_code,
         message=pin_success_msg
     )
 
@@ -408,12 +422,17 @@ async def verify_room_nfc(
             prefix = "ORD"
             dept_name_str = "Room Service"
             req_type_str = "room_service"
-        elif any(k in act_lower for k in ["bell", "hành lý"]):
-            dept_id = "DEP-BELLMAN"
-            svc_id = "ST-BELLMAN"
-            prefix = "BEL"
-            dept_name_str = "Bellman"
-            req_type_str = "bellman"
+        elif any(k in act_lower for k in ["bell", "hành lý", "thất lạc", "mất đồ", "quên đồ", "lost"]):
+            dept_id = "DEP-BELL"
+            svc_id = "ST-BELL"
+            prefix = "BS"
+            dept_name_str = "Bell Services"
+            items_check = f"{act_lower} {(payload.items or payload.note or '').lower()}"
+            req_type_str = (
+                "lost_found"
+                if any(k in items_check for k in ["thất lạc", "mất đồ", "quên đồ", "rơi đồ", "lost", "missing", "forgot"])
+                else "luggage"
+            )
         else:
             dept_id = "DEP-HOUSEKEEPING"
             svc_id = "ST-HOUSEKEEPING"
@@ -423,9 +442,16 @@ async def verify_room_nfc(
         ticket_code = f"{prefix}-{code_num}"
 
         items_str = payload.items or payload.note or "Yêu cầu dịch vụ phòng qua Kiosk (Thẻ NFC)"
+        req_title_nfc = (
+            f"Báo cáo đồ thất lạc Phòng {matched_room.room_number} (NFC): {items_str}"
+            if req_type_str == "lost_found"
+            else f"Hỗ trợ hành lý Phòng {matched_room.room_number} (NFC): {items_str}"
+            if dept_id == "DEP-BELL"
+            else f"Yêu cầu từ Kiosk (Phòng {matched_room.room_number} - Thẻ NFC)"
+        )
         new_req = SupportRequest(
             ticket_code=ticket_code,
-            title=f"Yêu cầu từ Kiosk (Phòng {matched_room.room_number} - Thẻ NFC)",
+            title=req_title_nfc,
             description=items_str,
             department_id=dept_id,
             service_type_id=svc_id,
@@ -434,6 +460,7 @@ async def verify_room_nfc(
             guest_name=matched_room.current_guest_name or "Hotel Guest",
             source="Robot Kiosk (NFC Verified)",
             status="Pending",
+            request_type=req_type_str,
         )
         db.add(new_req)
         await db.flush()
@@ -467,11 +494,12 @@ async def verify_room_nfc(
 
     return RoomPinVerifyResponse(
         verified=True,
+        success=True,
         room_number=matched_room.room_number,
         guest_name=matched_room.current_guest_name,
         ticket_code=ticket_code,
         verification_type="NFC",
-        tag_code=matched_room.tag_code,
+        tagCode=matched_room.tag_code,
         message=nfc_success_msg
     )
 

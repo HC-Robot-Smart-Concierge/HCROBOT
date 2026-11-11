@@ -31,7 +31,7 @@ import { MessengerVideoCallModal } from '../../components/video/MessengerVideoCa
 import { RobotQuickFeedbackModal } from '../../components/robot/RobotQuickFeedbackModal';
 import { RobotFacilitiesModal } from '../../components/robot/RobotFacilitiesModal';
 import { createConciergeRequest } from '../../services/conciergeApi';
-import { createMaintenanceRequest } from '../../services/operationsApi';
+import { createMaintenanceRequest, createBellRequest } from '../../services/operationsApi';
 import { useRobotBattery } from '../../hooks/useRobotBattery';
 import { useLowBatteryGuard } from '../../hooks/useLowBatteryGuard';
 import {
@@ -424,6 +424,30 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
   }, [language]);
 
   const [guestEmotion, setGuestEmotion] = useState('neutral');
+  const lastUnhappyAlertTimeRef = useRef(0);
+
+  const handleGuestEmotionDetected = useCallback(
+    (emotion) => {
+      setGuestEmotion(emotion);
+      if (emotion === 'unhappy') {
+        const now = Date.now();
+        if (now - lastUnhappyAlertTimeRef.current > 90000) {
+          lastUnhappyAlertTimeRef.current = now;
+          const roomLoc = activeRoomNumber ? `Room ${activeRoomNumber}` : 'Main Lobby Kiosk';
+          createBellRequest({
+            title: `Cảnh báo AI: Khách có biểu cảm khó chịu tại ${roomLoc}`,
+            location: roomLoc,
+            guest_name: activeRoomNumber ? `Guest (Room ${activeRoomNumber})` : 'Khách tại Sảnh Kiosk',
+            reporter: 'HCRobot Emotion AI',
+            description:
+              'Camera AI phát hiện khách hàng có biểu cảm khó chịu (Unhappy) khi tương tác tại Kiosk. Cần nhân viên Bellman tiếp cận hỗ trợ trực tiếp ngay.',
+            request_type: 'emotion_alert',
+          }).catch(() => {});
+        }
+      }
+    },
+    [activeRoomNumber]
+  );
 
   // Load available workflows for AUTO_DETECT trigger & manual launcher
   useEffect(() => {
@@ -1595,6 +1619,23 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
                 source: 'HCRobot Voice AI (Session Authenticated)',
                 priority: 'NORMAL',
               }).catch(() => {});
+            } else if (actionToExecute === 'bellman' || actionToExecute === 'lost_found') {
+              const lowerItems = String(itemsToExecute || '').toLowerCase();
+              const isLostFound =
+                actionToExecute === 'lost_found' ||
+                ['thất lạc', 'mất đồ', 'quên đồ', 'rơi đồ', 'lost', 'missing', 'forgot'].some((k) =>
+                  lowerItems.includes(k)
+                );
+              createBellRequest({
+                title: isLostFound
+                  ? `Báo cáo đồ thất lạc Phòng ${String(authenticatedRoom).trim()}: ${itemsToExecute}`
+                  : `Yêu cầu hỗ trợ hành lý Phòng ${String(authenticatedRoom).trim()}: ${itemsToExecute}`,
+                location: `Room ${String(authenticatedRoom).trim()}`,
+                guest_name: `Guest (Room ${String(authenticatedRoom).trim()})`,
+                reporter: 'HCRobot Voice AI (Session Authenticated)',
+                description: `Khách yêu cầu qua giọng nói: ${itemsToExecute}`,
+                request_type: isLostFound ? 'lost_found' : 'luggage',
+              }).catch(() => {});
             } else if (actionToExecute !== 'query_order_status' && actionToExecute !== 'query_service_status' && actionToExecute !== 'query_taxi_status' && actionToExecute !== 'query_maintenance_status') {
               createConciergeRequest({
                 title: `Yêu cầu ${actionToExecute} từ giọng nói Robot`,
@@ -2510,7 +2551,7 @@ export const RobotScreenPage = ({ onLogout = () => { } }) => {
         controlsClassName="robot-camera-control"
         onGuestApproached={handleGuestApproached}
         onGuestLeft={handleGuestLeft}
-        onEmotionChange={(emotion) => setGuestEmotion(emotion)}
+        onEmotionChange={handleGuestEmotionDetected}
         source={import.meta.env.VITE_CAMERA_SOURCE || 'local'}
         streamUrl={import.meta.env.VITE_PI5_CAMERA_URL || 'http://localhost:8554/stream'}
         defaultMinimized={true}

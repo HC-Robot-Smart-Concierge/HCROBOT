@@ -802,7 +802,7 @@ async def fast_path_node(state: ConciergeState) -> Dict[str, Any]:
 
 
 
-    )) or any(k in prompt_lower_fp for k in ['đặt dịch vụ', 'dat dich vu', 'dịch vụ lên phòng', 'dich vu len phong', 'thêm dịch vụ', 'them dich vu', 'dịch vụ phòng', 'dich vu phong'])
+    )) or any(k in prompt_lower_fp for k in ['đặt dịch vụ', 'dat dich vu', 'dịch vụ lên phòng', 'dich vu len phong', 'thêm dịch vụ', 'them dich vu', 'dịch vụ phòng', 'dich vu phong', 'hỗ trợ hành lý', 'ho tro hanh ly', 'mang hành lý', 'gửi hành lý', 'xách đồ', 'chuyển phòng', 'báo mất đồ', 'bao mat do', 'đồ thất lạc', 'do that lac', 'thất lạc', 'that lac', 'mất đồ', 'mat do', 'quên đồ', 'quen do', 'rơi đồ', 'roi do', 'lost item', 'lost and found', 'luggage assistance'])
 
 
 
@@ -3313,7 +3313,7 @@ async def query_room_order_status_db(room_num: str, is_en: bool = False, is_reje
 
 
 
-                        (RoomServiceOrder.room_id == room.id) if room.id else False,
+                        (RoomServiceOrder.room_id == room.id) if room.id else (RoomServiceOrder.room_id == -1),
 
 
 
@@ -3377,7 +3377,7 @@ async def query_room_order_status_db(room_num: str, is_en: bool = False, is_reje
 
 
 
-                        (SupportRequest.room_id == room.id) if room.id else False,
+                        (SupportRequest.room_id == room.id) if room.id else (SupportRequest.room_id == -1),
 
 
 
@@ -4613,6 +4613,7 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
 
 
         target_ord = None
+        is_service_mode = False
 
         # Ưu tiên khớp đúng món ăn khách hỏi đích danh trong câu thoại
         inquiry_lower = inquiry_text.lower()
@@ -4736,11 +4737,11 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
 
 
 
-                t_f = latest_food.get("created_at") or datetime.min
+                t_f = (latest_food.get("created_at") if latest_food else None) or datetime.min
 
 
 
-                t_s = latest_service.get("created_at") or datetime.min
+                t_s = (latest_service.get("created_at") if latest_service else None) or datetime.min
 
 
 
@@ -5585,7 +5586,7 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
 
 
 
-        room_check = await query_room_order_status_db(current_room, is_en=is_en)
+        room_check = await query_room_order_status_db(current_room or "", is_en=is_en)
 
 
 
@@ -5866,7 +5867,7 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
 
 
 
-            action_en = action_en_map.get(action, "this service")
+            action_en = "lost and found item report" if (action == "bellman" and any(k in (items or "").lower() for k in ["thất lạc", "that lac", "mất đồ", "mat do", "quên đồ", "quen do", "rơi đồ", "roi do", "lost", "missing", "forgot"])) else action_en_map.get(action, "this service")
 
 
 
@@ -5986,7 +5987,7 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
 
 
 
-            action_vn = action_vn_map.get(action, "dịch vụ")
+            action_vn = "báo cáo và tìm kiếm đồ thất lạc" if (action == "bellman" and any(k in (items or "").lower() for k in ["thất lạc", "that lac", "mất đồ", "mat do", "quên đồ", "quen do", "rơi đồ", "roi do", "lost", "missing", "forgot"])) else action_vn_map.get(action, "dịch vụ")
 
 
 
@@ -6632,7 +6633,7 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
 
 
 
-    dept_name = (DEPT_MAP_EN if lang_code == "en-US" else DEPT_MAP_VI).get(action, "chuyên trách")
+    dept_name = ("Lost & Found / Bell Services Department" if lang_code == "en-US" else "báo cáo đồ thất lạc và hỗ trợ tiền sảnh") if (action == "bellman" and any(k in (items or "").lower() for k in ["thất lạc", "that lac", "mất đồ", "mat do", "quên đồ", "quen do", "rơi đồ", "roi do", "lost", "missing", "forgot"])) else (DEPT_MAP_EN if lang_code == "en-US" else DEPT_MAP_VI).get(action, "chuyên trách")
 
 
 

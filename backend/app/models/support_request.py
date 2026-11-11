@@ -81,8 +81,12 @@ class SupportRequest(Base):
         if "request_type" in kwargs:
             self._request_type = kwargs.pop("request_type")
 
-        # Handle specialized flags like is_service_request or image_url
-        extra = kwargs.get("extra_data") or {}
+        # Handle specialized flags like is_service_request, image_url, or request_type
+        extra = dict(kwargs.get("extra_data") or {})
+        if getattr(self, "_request_type", None):
+            extra["request_type"] = self._request_type
+        if getattr(self, "_category", None):
+            extra["category"] = self._category
         if "is_service_request" in kwargs:
             extra["is_service_request"] = kwargs.pop("is_service_request")
         if "image_url" in kwargs:
@@ -170,7 +174,7 @@ class SupportRequest(Base):
 
     @reporter.setter
     def reporter(self, val: Optional[str]):
-        self.guest_name = val
+        self.guest_name = val or "Staff / Guest"
 
     @property
     def time_label(self) -> str:
@@ -180,11 +184,21 @@ class SupportRequest(Base):
     def request_type(self) -> str:
         if getattr(self, "_request_type", None):
             return self._request_type
+        if isinstance(self.extra_data, dict) and self.extra_data.get("request_type"):
+            return str(self.extra_data["request_type"])
+        st = str(self.service_type_id or "").upper()
+        dep = str(self.department_id or "").upper()
+        if "BELL" in st or "LUGGAGE" in st or "BELL" in dep:
+            text_blob = f"{self.title or ''} {self.description or ''}".lower()
+            if any(k in text_blob for k in ["thất lạc", "quên đồ", "mất đồ", "rơi đồ", "lost", "missing", "forgot"]):
+                return "lost_found"
+            if any(k in text_blob for k in ["khó chịu", "biểu cảm", "bực", "tức giận", "unhappy", "frustrated", "emotion"]):
+                return "emotion_alert"
+            if any(k in text_blob for k in ["đổi phòng", "chuyển phòng", "room move"]):
+                return "room_move"
+            return "luggage"
         if self.service_type_id:
-            st = str(self.service_type_id).upper()
-            if "BELL" in st:
-                return "luggage"
-            elif "HOUSEKEEPING" in st:
+            if "HOUSEKEEPING" in st:
                 return "cleaning"
             elif "TAXI" in st:
                 return "taxi"
@@ -201,6 +215,9 @@ class SupportRequest(Base):
     @request_type.setter
     def request_type(self, val: str):
         self._request_type = val
+        extra = dict(self.extra_data or {})
+        extra["request_type"] = val
+        self.extra_data = extra
 
     @property
     def category(self) -> str:

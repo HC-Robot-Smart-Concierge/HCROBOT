@@ -529,7 +529,7 @@ async def get_room_orders_history(
         total_orders=len(orders),
         total_amount=total_amount,
         ordered_items_summary=ordered_items_summary,
-        orders=orders,
+        orders=[RoomServiceOrderResponse.model_validate(o) for o in orders],
     )
 
 

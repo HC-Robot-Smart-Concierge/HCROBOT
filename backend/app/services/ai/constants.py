@@ -40,7 +40,12 @@ SERVICE_KEYWORDS: Dict[str, List[str]] = {
     ],
     "bellman": [
         "hành lý", "hanh ly", "vali", "túi", "tui", "chuyển phòng", "chuyen phong",
-        "mang đồ", "xách đồ", "luggage", "bag", "mang hành lý", "gửi hành lý"
+        "mang đồ", "xách đồ", "luggage", "bag", "mang hành lý", "gửi hành lý",
+        "hỗ trợ hành lý", "ho tro hanh ly", "xách vali", "mang vali", "kéo vali", "bellman", "bellboy",
+        "đồ thất lạc", "do that lac", "thất lạc", "that lac", "báo mất đồ", "bao mat do",
+        "mất đồ", "mat do", "quên đồ", "quen do", "để quên đồ", "de quen do",
+        "rơi đồ", "roi do", "tìm đồ", "tim do", "bỏ quên đồ", "bo quen do",
+        "lost and found", "lost item", "missing item", "forgot item", "lost property"
     ],
     "maintenance": [
         "hư", "hu", "bị hư", "bi hu", "hư hỏng", "hu hong", "hư đồ", "hu do", "đồ bị hư", "do bi hu",

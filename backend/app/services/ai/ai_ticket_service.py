@@ -320,22 +320,37 @@ async def auto_create_ticket(
 
         elif action == "bellman":
             ticket_code = f"BS-{random.randint(1000, 99999)}"
+            items_lower = (items or "").lower()
+            is_lost_found = any(k in items_lower for k in ["thất lạc", "that lac", "mất đồ", "mat do", "quên đồ", "quen do", "rơi đồ", "roi do", "lost", "missing", "forgot"])
+            is_room_move = any(k in items_lower for k in ["đổi phòng", "chuyển phòng", "chuyen phong", "room move"])
+            req_type = "lost_found" if is_lost_found else ("room_move" if is_room_move else "luggage")
+            req_title = (
+                f"Báo cáo đồ thất lạc Phòng {rm}: {items}"
+                if is_lost_found
+                else f"Khách phòng {rm} hỗ trợ hành lý: {items}"
+            )
             req = SupportRequest(
                 ticket_code=ticket_code,
                 source="HCRobot Concierge AI Chat",
-                title=f"Khách phòng {rm} hỗ trợ hành lý: {items}",
+                title=req_title,
                 room_number=rm,
                 guest_name=f"Guest (Room {rm})",
                 description=items,
                 department_id="DEP-BELL",
                 service_type_id="ST-BELL",
                 status="Pending",
+                request_type=req_type,
             )
             db.add(req)
+            notif_title_bell = (
+                f"Robot AI: Báo cáo Đồ thất lạc #{ticket_code}"
+                if is_lost_found
+                else f"Robot AI: Yêu cầu Hành lý mới #{ticket_code}"
+            )
             await create_department_notification(
                 db=db,
                 department="Bell Services",
-                title=f"Robot AI: Yêu cầu Hành lý mới #{ticket_code}",
+                title=notif_title_bell,
                 description=f"Phòng {rm}: {items}",
                 request_id=req.id,
                 request_type="bell_service",
@@ -349,6 +364,34 @@ async def auto_create_ticket(
                 request_id=req.id,
                 request_type="bell_service",
                 type="Request",
+            )
+            await db.commit()
+            return ticket_code
+
+        elif action == "emotion_alert":
+            loc = rm if (rm and rm != "General") else "Main Lobby Kiosk"
+            ticket_code = f"BS-{random.randint(1000, 99999)}"
+            req = SupportRequest(
+                ticket_code=ticket_code,
+                source="HCRobot Emotion AI",
+                title=f"Cảnh báo AI: Khách có biểu cảm khó chịu tại {loc}",
+                room_number=loc,
+                guest_name=f"Guest ({loc})" if rm else "Khách tại Sảnh Kiosk",
+                description=items or "Camera AI phát hiện khách có biểu cảm khó chịu trong khi giao tiếp với Robot Kiosk.",
+                department_id="DEP-BELL",
+                service_type_id="ST-BELL",
+                status="Pending",
+                request_type="emotion_alert",
+            )
+            db.add(req)
+            await create_department_notification(
+                db=db,
+                department="Bell Services",
+                title=f"Cảnh báo Khẩn #{ticket_code}: Khách có biểu cảm khó chịu",
+                description=f"Vị trí {loc}: {items}",
+                request_id=req.id,
+                request_type="bell_service",
+                type="Alert",
             )
             await db.commit()
             return ticket_code
@@ -477,12 +520,14 @@ async def auto_create_ticket(
 
                     # Đồng bộ sang RoomServiceOrder nếu đây là đơn phòng/ẩm thực
                     try:
+                        from sqlalchemy import or_
+                        from app.models import RoomServiceOrder
                         clean_t_code = (active_req.ticket_code or "").replace("ORD-", "").replace("REQ-", "").strip()
                         stmt_rs = select(RoomServiceOrder).where(
                             or_(
                                 RoomServiceOrder.support_request_id == active_req.id,
                                 RoomServiceOrder.id == active_req.id,
-                                (RoomServiceOrder.order_number == clean_t_code) if clean_t_code else False,
+                                (RoomServiceOrder.order_number == clean_t_code) if clean_t_code else (RoomServiceOrder.id == active_req.id),
                             )
                         )
                         res_rs = await db.execute(stmt_rs)

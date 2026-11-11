@@ -380,8 +380,8 @@ class OllamaService:
             prompt += f"\n[Thông tin phòng]: Quý khách ở phòng {stored_room_number}."
 
         emotion_str = (emotion or "").lower()
-        if emotion_str in ["annoyed", "angry", "upset"]:
-            prompt += "\n[Cảm xúc khách]: Khách đang chưa hài lòng, hãy phản hồi với thái độ xin lỗi và xoa dịu ân cần."
+        if emotion_str in ["annoyed", "angry", "upset", "unhappy", "frustrated", "khó chịu", "kho chiu"]:
+            prompt += "\n[Cảm xúc khách]: Khách đang có biểu cảm khó chịu hoặc chưa hài lòng, hãy phản hồi với thái độ xin lỗi chân thành, xoa dịu ân cần và cho biết nhân viên Bellman tại sảnh sẽ hỗ trợ ngay."
         elif emotion_str in ["happy", "pleased"]:
             prompt += "\n[Cảm xúc khách]: Khách đang rất vui vẻ, hãy phản hồi tươi vui và nhiệt tình."
 

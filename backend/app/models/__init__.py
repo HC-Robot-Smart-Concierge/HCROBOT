@@ -6,7 +6,7 @@ from app.models.service_type import ServiceType
 from app.models.support_request import SupportRequest, HousekeepingRequest, BellRequest, MaintenanceRequest, ReceptionRequest
 from app.models.room_service import RoomServiceOrder, OrderItem, RoomServiceCatalogItem
 from app.models.maintenance import MaintenanceCatalogItem
-from app.models.robot import Robot
+from app.models.robot import Robot, RobotMaintenanceSchedule
 from app.models.job import Job, JobStep, JobEvent
 from app.models.directive import ManagementDirective, ManageDirective
 from app.models.support import HumanSupportSession
@@ -38,6 +38,7 @@ __all__ = [
     "RoomServiceCatalogItem",
     "MaintenanceCatalogItem",
     "Robot",
+    "RobotMaintenanceSchedule",
     "Job",
     "JobStep",
     "JobEvent",

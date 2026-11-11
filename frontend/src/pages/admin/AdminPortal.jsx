@@ -9,6 +9,7 @@ import { AdminStaffTab } from './tabs/AdminStaffTab';
 import { AdminSettingsTab } from './tabs/AdminSettingsTab';
 import { AdminLogsTab } from './tabs/AdminLogsTab';
 import { AdminAdvertisementsTab } from './tabs/AdminAdvertisementsTab';
+import { AdminVideoCallsTab } from './tabs/AdminVideoCallsTab';
 import { useLanguage } from '../../context/LanguageContext';
 import {
   fetchNotifications,
@@ -33,6 +34,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
         'Department',
         'Account',
         'Staff',
+        'Video Calls',
         'Logs',
         'Settings',
       ];
@@ -172,6 +174,7 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
     { id: 'Knowledge',     label: t('adminKnowledge') },
     { id: 'Advertisements',label: t('adminAdvertisements') },
     { id: 'Department',    label: t('adminDepartment') },
+    { id: 'Video Calls',   label: 'Theo dõi cuộc gọi' },
     { id: 'Account',       label: t('adminAccount') },
     { id: 'Logs',          label: t('adminLogs') },
   ];
@@ -524,6 +527,10 @@ export const AdminPortal = ({ currentUser, onLogout = () => {}, onNotify = () =>
 
           {activeMenu === 'Department' && (
             <AdminDepartmentTab currentUser={currentUser} />
+          )}
+
+          {activeMenu === 'Video Calls' && (
+            <AdminVideoCallsTab currentUser={currentUser} />
           )}
 
           {(activeMenu === 'Account' || activeMenu === 'Staff') && (

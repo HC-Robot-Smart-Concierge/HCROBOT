@@ -4,10 +4,10 @@
 > **Ngày cập nhật đối chiếu:** 06/11/2026.
 > **Tài liệu tham chiếu liên quan:**
 > - Bản đồ file: [[01-File-Map|Bản đồ source code (File Map)]]
-> - Báo cáo tối ưu hội thoại: [[ROBOT_CONVERSATION_FLOW_REPORT|Báo cáo Hội thoại Voice Pipeline]]
+> - Báo cáo tối ưu hội thoại: [[guides/ai_optimization|Hướng Dẫn Tối Ưu Voice Pipeline]]
 > - Đặc tả LangGraph: [[guides/langgraph_harness|LangGraph Agent Harness]]
 > - Đặc tả phần cứng & ROS 2: [[guides/hardware_architecture|Đặc Tả Phần Cứng & ROS 2 Edge]]
-> - Luồng Video Call 2 chiều: [[guides/video_call_flow|Luồng Phiên dịch Video Call (Staff ⇄ Robot)]] (Chi tiết mã nguồn: [video-call-flow.md](../frontend/src/docs/video-call-flow.md))
+> - Luồng Video Call 2 chiều: [[guides/video_call_flow|Luồng Phiên dịch Video Call (Staff <-> Robot)]]
 > - Quy chuẩn 7 Stepflows: [[workflows/stepflow|Kịch bản Stepflow Robot]]
 
 ---

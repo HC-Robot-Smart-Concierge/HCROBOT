@@ -43,11 +43,11 @@ Alembic là công cụ quản lý phiên bản cơ sở dữ liệu (Database Mi
 
 Mỗi khi thêm bảng mới, đổi tên cột, thêm trường dữ liệu hoặc thay đổi quan hệ (relationship), hãy làm theo 5 bước sau:
 
-### 🔹 Bước 1: Chỉnh sửa Model trong code
+### Bước 1: Chỉnh sửa Model trong code
 
 Thêm hoặc sửa class model trong thư mục `backend/app/models/` (ví dụ: `bell_service.py`, `staff.py`, v.v.).
 
-### 🔹 Bước 2: Khai báo vào `app/models/__init__.py` ⚠️ (Bắt buộc)
+### Bước 2: Khai báo vào pp/models/__init__.py (Bắt buộc)
 
 Nếu tạo **file model mới**, bạn **bắt buộc** phải import vào `backend/app/models/__init__.py` để Alembic có thể quét thấy:
 
@@ -61,7 +61,7 @@ __all__ = [
 ]
 ```
 
-### 🔹 Bước 3: Tạo file Migration tự động
+### Bước 3: Tạo file Migration tự động
 
 Chạy lệnh tạo migration:
 
@@ -72,7 +72,7 @@ alembic revision --autogenerate -m "add_column_priority_to_bell_requests"
 Alembic sẽ tạo một file Python mới trong thư mục:
 `backend/alembic/versions/<revision_id>_add_column_priority_to_bell_requests.py`
 
-### 🔹 Bước 4: Kiểm tra lại file Migration (Code Review)
+### Bước 4: Kiểm tra lại file Migration (Code Review)
 
 Mở file vừa sinh ra trong thư mục `alembic/versions/` và kiểm tra 2 hàm:
 
@@ -81,7 +81,7 @@ Mở file vừa sinh ra trong thư mục `alembic/versions/` và kiểm tra 2 h�
 
 > **Mẹo:** `autogenerate` rất thông minh nhưng đôi khi có thể bỏ sót việc đổi tên cột (thường bị nhận nhầm thành DROP cột cũ + ADD cột mới làm mất data). Hãy luôn rà soát trước khi apply.
 
-### 🔹 Bước 5: Thực thi cập nhật vào Database
+### Bước 5: Thực thi cập nhật vào Database
 
 Áp dụng thay đổi vào PostgreSQL:
 
@@ -139,7 +139,7 @@ Nếu vừa chạy `alembic upgrade head` nhưng phát hiện lỗi hoặc muố
   2. Model không kế thừa từ `Base` (`from app.core.database import Base`).
   3. Quên lưu file code trước khi gõ lệnh.
 
-### 🔴 Lỗi 3: Lỗi kết nối Database (`Connection refused` hoặc `password authentication failed`)
+### Lỗi 3: Lỗi kết nối Database (`Connection refused` hoặc `password authentication failed`)
 
 - **Nguyên nhân:** File `backend/.env` chưa có hoặc thông số kết nối PostgreSQL sai.
 - **Cách xử lý:**

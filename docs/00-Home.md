@@ -14,6 +14,7 @@ Chào mừng bạn đến với Obsidian Vault của dự án **HC-Robot**.
 4. **Luồng Phiên Dịch Video Call:** [[guides/video_call_flow|guides/video_call_flow.md]] - Phiên dịch 2 chiều WebRTC (Staff ⇄ Robot).
 5. **Quy Chuẩn Kịch Bản Robot:** [[workflows/stepflow|workflows/stepflow.md]] - Đặc tả 8 Action Blocks và các kịch bản vận hành khách sạn.
 6. **Đặc Tả Phần Cứng & ROS 2 Edge:** [[guides/hardware_architecture|guides/hardware_architecture.md]] - Sơ đồ đấu dây, pinout ESP32/Pi 5, nguồn và các ROS 2 nodes.
+7. **Kho Nhật Ký Kỹ Thuật (Dev Logs):** [[dev-logs/README|dev-logs/README.md]] - Nhật ký kỹ thuật, audit SLAM, và biên bản tiến độ theo mốc thời gian.
 
 ---
 

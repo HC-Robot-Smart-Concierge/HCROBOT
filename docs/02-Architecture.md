@@ -219,7 +219,12 @@ stateDiagram-v2
 - **Phục vụ phòng (Room Service):** Xác thực số phòng và mã PIN khách hàng qua `RoomPickerModal.jsx` (đã bỏ cơ chế quẹt thẻ NFC cũ), chuyển yêu cầu giao đồ ăn/dụng cụ lên phòng.
 - **Vận chuyển & Đặt xe (Taxi Services):** Hỗ trợ khách đặt taxi 4 chỗ/7 chỗ, ước tính thời gian đón và hãng xe đối tác.
 - **Hành lý (Bell Services):** Hỗ trợ mang vác hành lý lên phòng hoặc gửi đồ tại sảnh.
-- **Kỹ thuật & Bảo trì (Maintenance):** Báo hỏng điều hòa, bóng đèn, khóa cửa phòng.
+- **Kỹ thuật & Bảo trì (Maintenance):** Quản lý danh mục sự cố kỹ thuật qua `MaintenanceCatalogModal.jsx`, tiếp nhận báo hỏng qua `RobotMaintenanceMenuScreen.jsx` với giao diện Touch-First, tra cứu tiến độ độc lập bảo mật bằng mã PIN.
+
+### Kiến trúc Single Source of Truth (SSOT) & Bảo mật Phiên phòng (Room Session):
+1. **SSOT Service Keywords:** Toàn bộ từ khóa kích hoạt menu dịch vụ (`SERVICE_KEYWORDS`) được khai báo duy nhất tại `backend/app/services/ai/constants.py`. Cả kịch bản hệ thống (`DEFAULT_SEED_SCENARIOS`) và các bộ lọc Regex của LangGraph đều nạp trực tiếp từ constants, đảm bảo không bao giờ xảy ra tình trạng mâu thuẫn từ ngữ giữa Database và Code.
+2. **Zero-Keyboard Touch UX:** Quy trình báo hỏng và đặt dịch vụ trên màn hình Kiosk / Mobile PWA tích hợp `RoomPickerModal` (chọn phòng theo tầng dạng lưới phím lớn) và `RoomPinModal` (bàn phím số cảm ứng 10 phím). Khách hàng không bao giờ phải sử dụng bàn phím ảo của thiết bị di động, tránh tràn giao diện khi xoay ngang màn hình.
+3. **Room Session Persistence:** Khi khách xác thực PIN hoặc gửi yêu cầu thành công, hệ thống lưu tự động `activeRoomNumber` và `authenticatedRoom`. Header hiển thị badge số phòng kèm nút `[Thoát phiên]`, và khách không cần nhập lại mã PIN nếu tiếp tục thao tác trong cùng một lượt tương tác (session timeout 30s).
 
 ### 8 Khối lệnh Stepflow cốt lõi (Workflow Builder):
 1. **MOVE:** Điều khiển Robot tự hành tới điểm đích (Waypoints: Lobby, Reception, Restroom, Sofa,...) bằng ROS 2 Nav2.

@@ -15,6 +15,7 @@ from fastapi import (
     UploadFile,
     File,
     Form,
+    BackgroundTasks,
 )
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict
@@ -58,6 +59,7 @@ class HumanSupportSessionItem(BaseModel):
     recording_url: Optional[str] = None
     recording_public_id: Optional[str] = None
     recording_duration: Optional[int] = None
+    recording_status: Optional[str] = "ready"
     thumbnail_url: Optional[str] = None
     call_started_at: Optional[datetime] = None
     call_ended_at: Optional[datetime] = None
@@ -69,12 +71,13 @@ class HumanSupportSessionItem(BaseModel):
 
 class RecordingUploadResponse(BaseModel):
     session_id: str
-    recording_url: str
+    recording_url: Optional[str] = None
     public_id: Optional[str] = None
-    duration: int
+    duration: int = 0
     thumbnail_url: Optional[str] = None
-    storage_provider: str
-    status: str
+    storage_provider: str = "pending"
+    status: str = "Saving"
+    recording_status: str = "saving"
     message: str
 
 
@@ -354,14 +357,74 @@ async def get_human_support_session_detail(
     return session_item
 
 
+async def _background_upload_video(
+    session_id: str,
+    temp_file_path: str,
+    filename: str,
+    duration: int,
+):
+    """
+    Task chạy ngầm: Tải file từ vùng nhớ tạm lên Cloudinary (có fallback local) và cập nhật CSDL.
+    Sau khi hoàn thành, tự động dọn sạch file tạm.
+    """
+    from app.core.database import AsyncSessionLocal
+    from app.repositories.support_session_repository import SupportSessionRepository
+
+    try:
+        if not os.path.exists(temp_file_path):
+            logger.error(f"[BackgroundRecording] Temp file does not exist: {temp_file_path}")
+            return
+
+        with open(temp_file_path, "rb") as f:
+            file_bytes = f.read()
+
+        cloud_result = await cloudinary_service.upload_video_recording(
+            file_bytes=file_bytes,
+            filename=filename,
+            duration=duration,
+        )
+
+        async with AsyncSessionLocal() as db_session:
+            repo = SupportSessionRepository(db_session)
+            h_session = await repo.get_by_id_or_code(session_id)
+            if h_session:
+                h_session.recording_url = cloud_result.get("secure_url")
+                h_session.recording_public_id = cloud_result.get("public_id")
+                h_session.recording_duration = cloud_result.get("duration") or duration
+                h_session.thumbnail_url = cloud_result.get("thumbnail_url")
+                h_session.recording_status = "ready" if cloud_result.get("secure_url") else "failed"
+                await repo.commit()
+                logger.info(f"[BackgroundRecording] Successfully stored session {session_id} to {cloud_result.get('storage_provider')}")
+    except Exception as ex:
+        logger.error(f"[BackgroundRecording] Error processing background recording for {session_id}: {ex}")
+        try:
+            async with AsyncSessionLocal() as db_session:
+                repo = SupportSessionRepository(db_session)
+                h_session = await repo.get_by_id_or_code(session_id)
+                if h_session:
+                    h_session.recording_status = "failed"
+                    await repo.commit()
+        except Exception:
+            pass
+    finally:
+        # Dọn sạch file tạm
+        try:
+            if os.path.exists(temp_file_path):
+                os.remove(temp_file_path)
+        except Exception:
+            pass
+
+
 @router.post(
     "/concierge/recordings/{session_id}",
     response_model=RecordingUploadResponse,
+    status_code=status.HTTP_202_ACCEPTED,
     tags=TAG_CONCIERGE,
-    summary="Tải video ghi hình cuộc gọi lên Cloudinary và lưu vào HumanSupportSession",
+    summary="Tiếp nhận video ghi hình cuộc gọi bất đồng bộ (Background Cloudinary Upload)",
 )
 async def upload_call_recording(
     session_id: str,
+    background_tasks: BackgroundTasks,
     video_file: UploadFile = File(..., description="File video ghi hình cuộc gọi (.webm / .mp4)"),
     duration: int = Form(0, description="Thời lượng cuộc gọi tính bằng giây"),
     call_started_at: Optional[str] = Form(None),
@@ -371,27 +434,35 @@ async def upload_call_recording(
     sr_repo: SupportRequestRepository = Depends(get_support_request_repository),
 ):
     """
-    ### Nghiệp vụ Ghi hình Cuộc gọi & Cloudinary:
-    1. Nhận file video Blob từ WebRTC MediaRecorder client.
-    2. Upload video lên Cloudinary (thư mục hcrobot/call_recordings) lấy URL an toàn & thumbnail.
-    3. Lưu `recording_url`, `recording_public_id`, `recording_duration`, `thumbnail_url` vào bảng `HumanSupportSession`.
-    4. Cập nhật trạng thái phiên thành `Resolved` và ticket `SupportRequest` liên quan thành `Completed`.
+    ### Nghiệp vụ Ghi hình Cuộc gọi Bất đồng bộ (Async Background Storage):
+    1. Tiếp nhận file video Blob (< 100MB) từ WebRTC MediaRecorder client.
+    2. Lưu tạm vào thư mục `./uploaded_recordings/temp/`.
+    3. Cập nhật ngay trạng thái phiên là `Resolved`, `recording_status='saving'`.
+    4. Phản hồi HTTP 202 Accepted ngay lập tức để Kiosk đóng giao diện không bị giật lag.
+    5. Đẩy tác vụ tải Cloudinary (hoặc local fallback) vào BackgroundTasks xử lý ngầm.
     """
+    # 1. Kiểm tra kích thước và loại file
+    content_type = video_file.content_type or ""
+    if content_type and not any(ct in content_type for ct in ("video", "octet-stream")):
+        raise HTTPException(status_code=400, detail="Định dạng file không hợp lệ, yêu cầu file video")
+
     file_bytes = await video_file.read()
     if not file_bytes:
         raise HTTPException(status_code=400, detail="File video trống không có dữ liệu")
 
-    # 1. Upload lên Cloudinary (hoặc local fallback nếu chưa nhập Cloudinary API key)
-    cloud_result = await cloudinary_service.upload_video_recording(
-        file_bytes=file_bytes,
-        filename=video_file.filename or f"call_{session_id}.webm",
-        duration=duration,
-    )
+    if len(file_bytes) > 100 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="File video vượt quá giới hạn 100MB")
 
-    # 2. Tìm HumanSupportSession tương ứng
+    # 2. Lưu file tạm vào vùng lưu trữ an toàn
+    temp_dir = os.path.join(os.getcwd(), "uploaded_recordings", "temp")
+    os.makedirs(temp_dir, exist_ok=True)
+    temp_filename = f"temp_{int(time.time())}_{random.randint(1000, 9999)}_{video_file.filename or 'call.webm'}"
+    temp_path = os.path.join(temp_dir, temp_filename)
+    with open(temp_path, "wb") as f:
+        f.write(file_bytes)
+
+    # 3. Tìm hoặc khởi tạo HumanSupportSession
     h_session = await session_repo.get_by_id_or_code(session_id)
-
-    # Nếu chưa có bản ghi (ví dụ cuộc gọi trực tiếp từ test/modal), tự động tạo mới
     if not h_session:
         h_session = HumanSupportSession(
             id=session_id if session_id.startswith("SUP-") else None,
@@ -400,15 +471,14 @@ async def upload_call_recording(
             guest_name="Hotel Guest",
             category="Video Call Support",
             status="Resolved",
+            recording_status="saving",
         )
         await session_repo.create(h_session)
+    else:
+        h_session.status = "Resolved"
+        h_session.recording_status = "saving"
 
-    # 3. Ghi nhận dữ liệu video và tin nhắn phụ đề hội thoại vào CSDL
-    h_session.recording_url = cloud_result["secure_url"]
-    h_session.recording_public_id = cloud_result["public_id"]
-    h_session.recording_duration = cloud_result["duration"] or duration
-    h_session.thumbnail_url = cloud_result.get("thumbnail_url")
-    h_session.status = "Resolved"
+    h_session.recording_duration = duration
     h_session.call_ended_at = datetime.utcnow()
 
     if messages:
@@ -425,7 +495,7 @@ async def upload_call_recording(
         except Exception:
             pass
 
-    # 4. Cập nhật ticket SupportRequest liên kết nếu có
+    # 4. Cập nhật ticket SupportRequest liên kết
     if h_session.linked_request_id:
         req = await sr_repo.get_by_id_or_code(h_session.linked_request_id)
         if req:
@@ -435,26 +505,25 @@ async def upload_call_recording(
     await session_repo.commit()
     await session_repo.refresh(h_session)
 
-    return {
-        "session_id": h_session.id,
-        "recording_url": h_session.recording_url,
-        "public_id": h_session.recording_public_id,
-        "duration": h_session.recording_duration or 0,
-        "thumbnail_url": h_session.thumbnail_url,
-        "storage_provider": cloud_result.get("storage_provider", "cloudinary"),
-        "status": "Resolved",
-        "message": "Ghi hình cuộc gọi đã được lưu trữ thành công vào Cloudinary và CSDL!",
-    }
+    # 5. Đẩy tác vụ upload ngầm vào BackgroundTasks
+    background_tasks.add_task(
+        _background_upload_video,
+        session_id=h_session.id,
+        temp_file_path=temp_path,
+        filename=video_file.filename or f"call_{session_id}.webm",
+        duration=duration,
+    )
 
     return {
         "session_id": h_session.id,
         "recording_url": h_session.recording_url,
         "public_id": h_session.recording_public_id,
-        "duration": h_session.recording_duration or 0,
+        "duration": h_session.recording_duration or duration,
         "thumbnail_url": h_session.thumbnail_url,
-        "storage_provider": cloud_result.get("storage_provider", "cloudinary"),
+        "storage_provider": "pending",
         "status": "Resolved",
-        "message": "Ghi hình cuộc gọi đã được lưu trữ thành công vào Cloudinary và CSDL!",
+        "recording_status": "saving",
+        "message": "Video đã được tiếp nhận và đang tiến hành lưu ngầm vào Cloudinary!",
     }
 
 

@@ -38,6 +38,7 @@ class HumanSupportSession(Base):
     recording_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     recording_public_id: Mapped[Optional[str]] = mapped_column(String(150), nullable=True)
     recording_duration: Mapped[Optional[int]] = mapped_column(Integer, nullable=True) # Thời lượng (giây)
+    recording_status: Mapped[str] = mapped_column(String(30), default="ready") # 'saving', 'ready', 'failed'
     thumbnail_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     call_started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     call_ended_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)

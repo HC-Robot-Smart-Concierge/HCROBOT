@@ -67,6 +67,7 @@ async def init_db() -> None:
             await conn.execute(text("ALTER TABLE human_support_sessions ADD COLUMN IF NOT EXISTS recording_url TEXT;"))
             await conn.execute(text("ALTER TABLE human_support_sessions ADD COLUMN IF NOT EXISTS recording_public_id VARCHAR(150);"))
             await conn.execute(text("ALTER TABLE human_support_sessions ADD COLUMN IF NOT EXISTS recording_duration INTEGER;"))
+            await conn.execute(text("ALTER TABLE human_support_sessions ADD COLUMN IF NOT EXISTS recording_status VARCHAR(30) DEFAULT 'ready';"))
             await conn.execute(text("ALTER TABLE human_support_sessions ADD COLUMN IF NOT EXISTS thumbnail_url TEXT;"))
             await conn.execute(text("ALTER TABLE human_support_sessions ADD COLUMN IF NOT EXISTS call_started_at TIMESTAMP;"))
             await conn.execute(text("ALTER TABLE human_support_sessions ADD COLUMN IF NOT EXISTS call_ended_at TIMESTAMP;"))

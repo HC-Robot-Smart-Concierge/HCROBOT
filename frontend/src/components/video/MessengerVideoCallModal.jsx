@@ -271,7 +271,7 @@ export const MessengerVideoCallModal = ({
     }
   };
 
-  // 3. Khởi tạo ghi hình cuộc gọi (MediaRecorder hỗ trợ cả video/mp4 trên Safari)
+  // 3. Khởi tạo ghi hình cuộc gọi (Ưu tiên WebM VP8/Opus bitrate 600kbps tiết kiệm băng thông)
   const startRecording = (stream) => {
     try {
       if (!window.MediaRecorder) {
@@ -281,10 +281,10 @@ export const MessengerVideoCallModal = ({
       recordedChunksRef.current = [];
       let mimeType = '';
       if (typeof MediaRecorder.isTypeSupported === 'function') {
-        if (MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')) {
-          mimeType = 'video/webm;codecs=vp9,opus';
-        } else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) {
+        if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) {
           mimeType = 'video/webm;codecs=vp8,opus';
+        } else if (MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')) {
+          mimeType = 'video/webm;codecs=vp9,opus';
         } else if (MediaRecorder.isTypeSupported('video/webm')) {
           mimeType = 'video/webm';
         } else if (MediaRecorder.isTypeSupported('video/mp4')) {
@@ -292,7 +292,14 @@ export const MessengerVideoCallModal = ({
         }
       }
 
-      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+      const recorderOptions = {
+        videoBitsPerSecond: 600000, // 600 Kbps - rõ nét chuẩn web nhưng siêu nhẹ dung lượng
+      };
+      if (mimeType) {
+        recorderOptions.mimeType = mimeType;
+      }
+
+      const recorder = new MediaRecorder(stream, recorderOptions);
       recorder.ondataavailable = (event) => {
         if (event.data && event.data.size > 0) {
           recordedChunksRef.current.push(event.data);
@@ -313,31 +320,42 @@ export const MessengerVideoCallModal = ({
     }
   };
 
-  // 4. Dừng ghi hình và tự động lưu trong nền
-  const stopRecordingAndUpload = async () => {
+  // 4. Dừng ghi hình và tự động gửi lưu ngầm độc lập với vòng đời đóng UI
+  const stopRecordingAndUpload = () => {
     if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
 
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+    const recorder = mediaRecorderRef.current;
+    const durationSec = recordingDuration;
+    const startedAt = callStartTimeRef.current;
+    const endedAt = new Date().toISOString();
+    const transcripts = callTranscriptsRef.current ? [...callTranscriptsRef.current] : [];
+
+    const finalizeAndSend = () => {
+      if (recordedChunksRef.current && recordedChunksRef.current.length > 0) {
+        const mime = recorder?.mimeType || 'video/webm';
+        const blob = new Blob(recordedChunksRef.current, { type: mime });
+        uploadCallRecording(sessionId, blob, durationSec, startedAt, endedAt, transcripts)
+          .then((uploadRes) => {
+            console.log('[VideoCall] Background recording upload accepted (HTTP 202):', uploadRes);
+            if (typeof onCallEnded === 'function') {
+              onCallEnded(uploadRes);
+            }
+          })
+          .catch((upErr) => {
+            console.warn('[VideoCall] Background upload notice:', upErr?.message || upErr);
+          });
+      }
+    };
+
+    if (recorder && recorder.state !== 'inactive') {
       try {
-        mediaRecorderRef.current.stop();
-      } catch (e) {}
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, 300));
-
-    if (recordedChunksRef.current.length > 0) {
-      const blob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
-      const durationSec = recordingDuration;
-      const startedAt = callStartTimeRef.current;
-      const endedAt = new Date().toISOString();
-
-      uploadCallRecording(sessionId, blob, durationSec, startedAt, endedAt, callTranscriptsRef.current)
-        .then((uploadRes) => {
-          onCallEnded(uploadRes);
-        })
-        .catch((upErr) => {
-          console.warn('[VideoCall] Background upload notice:', upErr);
-        });
+        recorder.addEventListener('stop', finalizeAndSend, { once: true });
+        recorder.stop();
+      } catch (e) {
+        finalizeAndSend();
+      }
+    } else {
+      finalizeAndSend();
     }
   };
 
@@ -1949,16 +1967,17 @@ export const MessengerVideoCallModal = ({
 
     setCallStatus('ended');
 
+    // 1. Kích hoạt thu chunk cuối và gửi lưu ngầm
+    stopRecordingAndUpload();
+
+    // 2. Giải phóng MediaStream tracks
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach((track) => track.stop());
     }
 
-    stopRecordingAndUpload();
-
-    setTimeout(() => {
-      cleanUpResources();
-      onClose();
-    }, 1200);
+    // 3. Đóng giao diện tức thì (không bắt người dùng phải đợi upload Cloudinary)
+    cleanUpResources();
+    onClose();
   };
 
   // Bật/tắt Loa

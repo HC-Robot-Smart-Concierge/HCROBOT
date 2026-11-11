@@ -636,7 +636,16 @@ export const ConciergeDashboard = ({
                       </div>
 
                       <div className="flex items-center gap-2">
-                        {session.recording_url ? (
+                        {session.recording_status === 'saving' ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200 animate-pulse">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                            Đang lưu bản ghi...
+                          </span>
+                        ) : session.recording_status === 'failed' ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-rose-50 text-rose-700 border border-rose-200">
+                            Lưu thất bại
+                          </span>
+                        ) : session.recording_url ? (
                           <>
                             <button
                               onClick={() => setPlayingVideo(session)}

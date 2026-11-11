@@ -6,7 +6,8 @@
 - Nhánh đang làm: `maintenance-ticket-grouping`.
 - Commit `3445829`: chống tạo phiếu trùng, gộp triệu chứng theo thiết bị và sắp xếp hàng đợi Maintenance; đã đẩy lên origin.
 - HEAD khi viết tài liệu: `810fc92`. Commit này còn bao gồm các chỉnh sửa Bellman, FloorMap và xóa các file test trước đó.
-- Phần sửa ngôn ngữ trong lần bàn giao này và tài liệu này đang ở working tree, chưa commit/push.
+- Phần sửa ngôn ngữ đã commit ở `a630cf0`.
+- Phần sửa nhận diện báo triệu chứng bằng giọng nói (mục 2b) và tài liệu này đang ở working tree, chưa commit/push.
 - Không tạo file test mới. Phần nghiệm thu UI bằng giọng nói và trên iPhone X để người dùng thực hiện.
 
 ## 2. Lỗi nói tiếng Việt nhưng menu hiện tiếng Anh
@@ -34,6 +35,24 @@ Một số nhãn như “Kỹ Thuật”, “Về Robot”, số phòng và đơ
 |---|---|
 | `frontend/src/pages/robot/RobotScreenPage.jsx` | Truyền ngôn ngữ cuộc hội thoại vào menu Maintenance |
 | `frontend/src/components/robot/RobotMaintenanceMenuScreen.jsx` | Dùng ngôn ngữ nhận từ robot; hoàn thiện các nhãn song ngữ trong menu |
+
+## 2b. Báo thêm triệu chứng bằng giọng nói bị trả lời giới thiệu thiết bị
+
+### Nguyên nhân
+
+Khi phòng đã xác thực và đang có phiếu điều hòa, khách nói “điều hòa phòng tôi còn bị chảy nước nữa” thì robot trả lời kịch bản Fast-Path `scn-air-conditioner` (vị trí bảng điều khiển). Bộ lọc chỉ bỏ qua Fast-Path khi câu có động từ yêu cầu như “sửa/cần/muốn/xin”. Câu chỉ mô tả triệu chứng không có các từ này nên khớp từ khóa “điều hòa” của kịch bản giới thiệu.
+
+### Đã sửa
+
+- `maintenance_request_service.py`: thêm `is_fault_report()` = có tên thiết bị (dùng chung `DEVICE_PATTERNS`) và có triệu chứng (chảy nước, rò rỉ, không mát, không lên, kêu to, chập chờn, tắc, yếu, leaking, not working…).
+- `ollama_service.py`: câu báo hỏng bỏ qua Fast-Path, áp dụng cho cả `/chat` và `/chat/stream`.
+- `concierge_graph.py`: câu báo hỏng được phân loại `maintenance`, kể cả khi có từ như “nước” vốn thuộc room service.
+- `ai_chat_service.py`: câu báo hỏng không dùng Redis cache.
+- Câu hỏi thông tin như “điều hòa”, “chỉnh điều hòa thế nào”, “wifi password là gì” vẫn trả lời bằng Fast-Path như cũ.
+
+### Kiểm tra trong bộ nhớ
+
+11 câu báo hỏng tiếng Việt/English đều vào `maintenance`; 8 câu không phải báo hỏng (kể cả “phòng có tivi hông”, “đồ ăn không nóng”) không bị nhận nhầm. Câu “điều hòa phòng tôi còn bị chảy nước nữa” nhận đúng thiết bị `air_conditioner` nên được gộp vào phiếu điều hòa đang mở. Không ghi DB, không tạo file test trong repo.
 
 ## 3. Chống spam phiếu Maintenance đã hoàn thành trước đó
 
@@ -98,16 +117,18 @@ Dashboard có nút đánh dấu/bỏ khẩn cấp, nút làm mới và tự tả
 
 1. Chọn một phòng đã xác thực, báo “Điều hòa không mát”. Ghi lại mã phiếu.
 2. Báo thêm “Điều hòa chảy nước” trong cùng phòng: phải bổ sung vào cùng mã phiếu, có đủ hai mô tả.
-3. Gửi lại sự cố vừa chọn: không thêm phiếu và không thêm thông báo trùng.
-4. Báo lỗi Wi-Fi rồi lỗi TV: phải là hai phiếu khác nhau.
-5. Trên Dashboard Maintenance, đánh dấu một phiếu đang chờ là khẩn cấp: phiếu lên nhóm ưu tiên. Bỏ khẩn cấp: phiếu trở về vị trí theo thời gian tạo.
-6. Hoàn thành phiếu điều hòa, sau đó báo hỏng lại: phải được tạo phiếu mới.
+3. Nói với robot “Điều hòa phòng tôi còn bị chảy nước nữa”: robot phải báo đã bổ sung vào phiếu đang mở, không giới thiệu bảng điều khiển điều hòa.
+4. Gửi lại sự cố vừa chọn: không thêm phiếu và không thêm thông báo trùng.
+5. Báo lỗi Wi-Fi rồi lỗi TV: phải là hai phiếu khác nhau.
+6. Trên Dashboard Maintenance, đánh dấu một phiếu đang chờ là khẩn cấp: phiếu lên nhóm ưu tiên. Bỏ khẩn cấp: phiếu trở về vị trí theo thời gian tạo.
+7. Hoàn thành phiếu điều hòa, sau đó báo hỏng lại: phải được tạo phiếu mới.
 
 ## 7. Giới hạn và việc cần tiếp tục
 
 - Các phiếu trùng đã tồn tại từ trước không tự động bị xóa hay hợp nhất lịch sử.
-- Hiện nhận diện theo loại thiết bị trong một phòng; chưa có mã tài sản riêng để phân biệt hai máy điều hòa hoặc hai TV khác nhau trong cùng phòng.
+- Theo thiết kế, mỗi phòng chỉ có 1 điều hòa và 1 TV, nên nhận diện theo loại thiết bị là đủ cho hai thiết bị này. Đèn, ổ cắm, vòi nước, thoát nước có thể có nhiều cái trong phòng nhưng được gộp chung theo loại: triệu chứng khác nhau vào cùng một phiếu để kỹ thuật viên xử lý trong một lượt; chọn lại đúng cùng một sự cố trong danh mục được coi là gửi lặp.
 - Nội dung tự do không nhận diện rõ một thiết bị duy nhất chỉ áp dụng chống trùng theo nội dung; tránh gộp nhầm nhiều thiết bị.
 - `RoomPinModal` và `RoomPickerModal` còn có nhãn tiếng Việt cố định. Nếu cần toàn bộ luồng xác thực/chọn phòng bằng English, cần rà soát riêng các component dùng chung này. Lần sửa này xử lý nguồn ngôn ngữ và các nhãn của menu Maintenance.
 - Cần người dùng nghiệm thu giọng nói tiếng Việt và thao tác thật trên iPhone X theo mục 6.
-- Sau khi nghiệm thu, commit/push phần sửa ngôn ngữ và tài liệu trên nhánh `maintenance-ticket-grouping`.
+- Câu báo hỏng kèm từ hỏi đường/thông tin (ví dụ có “đến”, “thế nào”) vẫn bị bộ phân loại coi là câu hỏi FAQ và trả lời bằng LLM, không tạo phiếu.
+- Sau khi nghiệm thu, commit/push phần sửa nhận diện báo triệu chứng và tài liệu trên nhánh `maintenance-ticket-grouping`.

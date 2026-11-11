@@ -13,7 +13,7 @@ from app.services.ai.concierge_graph import concierge_graph, intent_router_node,
 from app.services.ai.tts_service import tts_service
 from app.services.ai.ollama_service import ollama_service
 from app.services.ai.ai_ticket_service import create_live_call_session, background_extract_and_create_ticket, create_maintenance_voice_ticket
-from app.services.maintenance_request_service import duplicate_maintenance_message, merged_maintenance_message
+from app.services.maintenance_request_service import duplicate_maintenance_message, is_fault_report, merged_maintenance_message
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -317,7 +317,7 @@ async def process_chat_request(db: AsyncSession, request: ChatRequest) -> ChatRe
         any(re.search(rf'\b{re.escape(k)}\b', prompt_lower_req) for k in kws)
         for act_key, kws in SERVICE_KEYWORDS.items()
         if act_key not in ["chitchat", "faq"]
-    )
+    ) or is_fault_report(request.prompt)
     is_menu_action = any(k in prompt_lower_req for k in ["menu", "thực đơn", "thuc don", "đặt món", "gọi món", "order", "đồ ăn", "thức ăn", "dịch vụ phòng", "room service"])
 
     cached_ai = None

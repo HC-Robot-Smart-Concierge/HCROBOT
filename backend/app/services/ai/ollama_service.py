@@ -9,6 +9,7 @@ import ollama
 
 from app.core.config import settings
 from app.services.ai.scenario_service import scenario_service
+from app.services.maintenance_request_service import is_fault_report
 
 logger = logging.getLogger(__name__)
 
@@ -260,7 +261,8 @@ class OllamaService:
         ]
         has_action_verb = any(v in prompt_lower for v in service_action_verbs)
         has_service_noun = any(n in prompt_lower for n in service_nouns)
-        if has_action_verb and has_service_noun:
+        # "Điều hòa còn bị chảy nước nữa" has no request verb but is still a repair report.
+        if (has_action_verb and has_service_noun) or is_fault_report(prompt):
             logger.info(f"[OllamaService Fast-Path Bypass] Service action intent detected, skipping fast-path for: '{prompt[:40]}'")
             return None
 

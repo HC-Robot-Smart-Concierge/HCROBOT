@@ -42,6 +42,31 @@ def normalize_text(value: str) -> str:
     return " ".join(re.findall(r"[a-z0-9]+", value))
 
 
+# Guests often report a fault without a request verb ("điều hòa còn bị chảy nước
+# nữa"). Matched on the accented text so "hông" (= "không") is not read as "hỏng".
+SYMPTOM_PATTERN = re.compile(
+    r"(?<!\w)(?:"
+    r"hư|hỏng|bị lỗi|bi loi|trục trặc|truc trac|có vấn đề|co van de|yếu|"
+    r"chảy nước|chay nuoc|rò nước|ro nuoc|rò rỉ|ro ri|rỉ nước|ri nuoc|nhỏ giọt|nho giot|đọng nước|dong nuoc|"
+    r"không (?:mát|lạnh|nóng|chạy|hoạt động|bật được|tắt được|lên|sáng|vào|kết nối|có điện|có sóng|có hình|có tiếng|xả được|thoát nước|mở được|khóa được)|"
+    r"khong (?:mat|lanh|nong|chay|hoat dong|bat duoc|tat duoc|len|sang|vao|ket noi|co dien|co song|co hinh|co tieng|xa duoc|thoat nuoc|mo duoc|khoa duoc)|"
+    r"kêu to|keu to|kêu ồn|keu on|ồn quá|tiếng ồn|tieng on|bốc mùi|boc mui|có mùi|co mui|"
+    r"chập chờn|chap chon|chập điện|chap dien|mất điện|mat dien|cúp điện|cup dien|tự tắt|tu tat|tắc|nghẹt|nghet|"
+    r"leak(?:s|ing)?|drip(?:s|ping)?|broken|noisy|clogged|blocked|no (?:power|signal|hot water)|"
+    r"not (?:working|cooling|heating|draining)|(?:does not|doesn[’']t|won[’']t|will not|can[’']t|cannot) (?:work|turn on|connect|cool|drain)"
+    r")(?!\w)",
+    re.IGNORECASE,
+)
+
+
+def is_fault_report(text: str) -> bool:
+    """A named device plus a symptom is a repair report, not an amenity question."""
+    if not text or not SYMPTOM_PATTERN.search(str(text).lower()):
+        return False
+    normalized = normalize_text(text)
+    return any(re.search(pattern, normalized) for pattern in DEVICE_PATTERNS.values())
+
+
 def normalize_room(value: str) -> str:
     return re.sub(r"^(?:room|phong|p)\s*(?=\d)", "", normalize_text(value)).strip()
 

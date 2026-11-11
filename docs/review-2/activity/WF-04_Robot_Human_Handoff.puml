@@ -1,0 +1,115 @@
+@startuml WF-04_Robot_Human_Handoff
+title WF-04: Robot-to-Human Handoff (Feature F-04 | Scenarios DS-07, DS-08)\nProject: Intelligent Hotel Concierge Robot (HC-Robot) - FA26SE905 | Baseline: review-2
+
+skinparam monochrome false
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 12
+skinparam ActivityBackgroundColor #F8FAFC
+skinparam ActivityBorderColor #334155
+skinparam ActivityDiamondBackgroundColor #FEF3C7
+skinparam ActivityDiamondBorderColor #D97706
+skinparam NoteBackgroundColor #EFF6FF
+skinparam NoteBorderColor #3B82F6
+skinparam SwimlaneTitleFontSize 13
+skinparam SwimlaneBorderColor #64748B
+
+|Hotel Guest|
+start
+:Interact with Concierge Robot during active AI session;
+
+|Concierge Robot|
+:Maintain AI conversation context and monitor handoff triggers;
+note right
+  **Initial Entity State**
+  BM01 Intended: ChatSession.status = **AI_ACTIVE**
+  (DB Implementation: ChatSession.is_active = **True**)
+end note
+
+if (Which handoff trigger condition occurs?) then (DS-07: Guest explicitly requests human staff)
+  |Hotel Guest|
+  :Tap "Call Staff" button or ask voice assistant\nfor a human operator;
+else (DS-08: Negative guest expression detected)
+  |Concierge Robot|
+  :Detect negative or frustrated guest expression\nduring interaction;
+  note right
+    **Design-to-Implementation Gap (DS-08)**
+    BM01 specifies camera-based negative expression trigger.
+    In baseline `review-2`, `guestEmotion` defaults to `'neutral'`
+    and `concierge_graph.py` only sets `trigger_video_call=True`
+    on explicit guest request/keyword (no active facial classifier).
+  end note
+endif
+
+|Concierge Robot|
+:Initiate human escalation process, create live call session,\nand log Concierge support request;
+note right
+  **Entity State Transition**
+  BM01 Intended:
+  • ChatSession.status: **AI_ACTIVE -> ESCALATED_HUMAN**
+  • SupportRequest.status = **PENDING**
+  (DB Implementation: HumanSupportSession.status = **"Active"**,
+  SupportRequest.status = **"Pending"**)
+end note
+
+fork
+  |Concierge Robot|
+  :Display waiting/ringing video call modal to guest;
+fork again
+  |Front Desk Staff|
+  :Receive real-time incoming call notification\nand audible ring alert on Concierge Dashboard;
+end fork
+
+|Front Desk Staff|
+if (Front Desk Staff accepts incoming call before timeout?) then (No - Staff unavailable or call unanswered)
+  |Concierge Robot|
+  :Display staff unavailable / unanswered notification\nand preserve pending support request for follow-up;
+  note right
+    **Unanswered Call Handling (SRS 3.3.6 / DS-04c)**
+    SupportRequest.status remains **PENDING** ("Pending")
+    so Front Desk Staff can review and follow up.
+  end note
+  |Hotel Guest|
+  :View unanswered message and close call modal;
+  stop
+
+else (Yes - Staff accepts call)
+  |Front Desk Staff|
+  :Accept video call and join WebRTC signaling room;
+
+  |Concierge Robot|
+  :Establish two-way WebRTC audio/video connection\nand start call session recording;
+
+  repeat
+    |Hotel Guest|
+    :Speak in preferred language (e.g., English) during live call;
+
+    |Concierge Robot|
+    :Capture audio stream, perform STT transcription,\ntranslate EN <-> VN, and broadcast bilingual subtitles & TTS;
+
+    |Front Desk Staff|
+    :Read live translated subtitles and provide assistance\nin staff language (e.g., Vietnamese);
+  repeat while (Two-way assisted communication continues?) is (Yes - Conversation active) not (No - Assistance completed)
+
+  |Front Desk Staff|
+  :End live video call session;
+
+  |Concierge Robot|
+  :Stop media tracks, upload call recording,\nand update session & support request states;
+  note right
+    **Entity State Transition**
+    BM01 Intended:
+    • SupportRequest.status: **PENDING -> RESOLVED**
+    • ChatSession: **CLOSED**
+    (DB Implementation: HumanSupportSession.status = **"Resolved"**
+    with recording_url; SupportRequest.status = **"Completed"**;
+    ChatSession.is_active = **False**)
+  end note
+
+  |Hotel Guest|
+  :View call completion summary and return to main screen;
+  stop
+endif
+
+@enduml
+

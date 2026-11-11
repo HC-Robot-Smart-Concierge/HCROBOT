@@ -1,0 +1,150 @@
+@startuml WF-05_Robot_Monitoring_Incident_Handling
+title WF-05: Robot Monitoring & Incident Handling (Features F-05, F-06 | Scenarios DS-09, DS-10)\nProject: Intelligent Hotel Concierge Robot (HC-Robot) - FA26SE905 | Baseline: review-2
+
+skinparam monochrome false
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 12
+skinparam ActivityBackgroundColor #F8FAFC
+skinparam ActivityBorderColor #334155
+skinparam ActivityDiamondBackgroundColor #FEF3C7
+skinparam ActivityDiamondBorderColor #D97706
+skinparam NoteBackgroundColor #EFF6FF
+skinparam NoteBorderColor #3B82F6
+skinparam SwimlaneTitleFontSize 13
+skinparam SwimlaneBorderColor #64748B
+
+|Robot|
+start
+repeat
+  :Publish periodic telemetry stream (2 Hz)\n(Cartesian pose [x, y, yaw], velocity, battery_level,\nLiDAR scan & COM health, ultrasonic sensor status);
+  note right
+    **Normal Operating State (DS-09)**
+    Robot.status = **IDLE** or **NAVIGATING**
+  end note
+
+  |Backend|
+  :Receive telemetry payload, update fleet status,\nand stream live data over WebSocket;
+
+  |Operations Staff|
+  :Monitor live robot position on 2D floor map,\nLiDAR point cloud, and hardware health indicators;
+
+  |Backend|
+  :Evaluate hardware/sensor health and multi-tier battery thresholds;
+
+  if (Hardware or battery condition?) then (Normal [DS-09]: Sensors healthy AND Battery > 20%)
+    :Maintain normal telemetry monitoring status;
+
+  elseif (Branch A [DS-10]: LiDAR / safety-critical sensor failure?) then (Sensor failure or LiDAR timeout > 1.0s)
+    |Robot|
+    :Detect LiDAR disconnection or safety sensor fault\nand trigger navigation safety override;
+    :Command immediate zero velocity (PWM = 0)\nand halt all unsafe movement;
+    note right
+      **Branch A State Transition (Sensor Failure)**
+      BM01 / ROS2 Node: Robot.status: **IDLE / NAVIGATING -> EMERGENCY_STOP**
+      (Backend model comment lists `'ERROR'` alongside ROS2 `'EMERGENCY_STOP'`)
+    end note
+
+    |Backend|
+    fork
+      :Record hardware fault in incident log;
+      note right
+        **Entity State Transition**
+        BM01 Intended: IncidentLog.status = **LOGGED**
+        (DB Implementation: LogEvent(category="ROBOT",
+        level="CRITICAL") & Notification(type="Warning"))
+      end note
+    fork again
+      :Broadcast emergency alert banner and audio alarm\nto Operations & Maintenance dashboards;
+    end fork
+
+    |Operations Staff|
+    :Receive sensor failure alert and dispatch Maintenance;
+
+    |Maintenance|
+    :Inspect LiDAR / sensor hardware, restore serial/USB link,\nand run safety verification checks;
+
+    |Robot|
+    :Verify healthy sensor stream and clear emergency lock;
+    note right
+      **Recovery State Transition**
+      Robot.status: **EMERGENCY_STOP -> IDLE**
+    end note
+
+    |Backend|
+    :Update incident record and log recovery history;
+    note right
+      **Entity State Transition**
+      BM01 Intended: IncidentLog.status: **LOGGED -> RESOLVED**
+    end note
+
+  else (Branch B [DS-10]: Low or Critical Battery [Battery <= 20%])
+    |Robot|
+    if (Battery level threshold?) then (Warning Buffer: 10% < Battery <= 20% [BATTERY_MODE.LOW])
+      :Display low-battery warning banner on screen\nand block new guest sessions;
+      if (Currently serving an active guest session?) then (Yes - Serving guest)
+        :Allow safe completion of current guest interaction;
+      else (No - Idle)
+      endif
+      :Initiate scheduled return-to-charger navigation\n(Move to CHARGER_STATION);
+
+    else (Critical Cut-off: Battery <= 10% [BATTERY_MODE.CRITICAL])
+      :Immediately abort active guest session or navigation task;
+      :Play voice apology, display critical battery warning,\nand initiate emergency docking to CHARGER_STATION;
+    endif
+
+    :Arrive at CHARGER_STATION, lock guest interaction,\nand enter charging state;
+    note right
+      **Branch B State Transition (Battery Policy)**
+      Robot.status: **IDLE / NAVIGATING -> CHARGING**
+      (batteryPolicy.js: waitingForCharge = True)
+    end note
+
+    |Backend|
+    fork
+      :Log low-battery incident and create charging ticket\n(service_type = "ROBOT_CHARGING");
+      note right
+        **Entity State Transition**
+        BM01 Intended: IncidentLog.status = **LOGGED**
+        (DB Implementation: SupportRequest.status = **"Pending"**
+        assigned to Maintenance + LogEvent)
+      end note
+    fork again
+      :Send high-urgency charging alert to Maintenance\nand Operations Staff;
+    end fork
+
+    |Maintenance|
+    :Receive charging alert, connect power supply at dock,\nand confirm charging initiation;
+
+    |Robot|
+    repeat
+      :Monitor battery charge percentage while docked;
+    repeat while (Battery >= 80% recovery threshold?) is (No - Battery < 80% [Continue charging]) not (Yes - Battery >= 80% [BATTERY_RESUME_PERCENT])
+
+    |Maintenance|
+    :Disconnect charger, perform post-charge checks,\nand authorize operational resumption;
+
+    |Robot|
+    :Clear charging lock and resume lobby standby operation;
+    note right
+      **Recovery State Transition (80% Hysteresis)**
+      Robot.status: **CHARGING -> IDLE**
+      (batteryPolicy.js: BATTERY_MODE.OK)
+    end note
+
+    |Backend|
+    :Mark charging incident and maintenance ticket as resolved;
+    note right
+      **Entity State Transition**
+      BM01 Intended: IncidentLog.status: **LOGGED -> RESOLVED**
+      (DB Implementation: SupportRequest.status = **"Completed"**)
+    end note
+  endif
+
+  |Backend|
+repeat while (Active fleet monitoring session continues?) is (Yes - Next telemetry cycle) not (No - Monitoring session ended)
+
+stop
+
+@enduml
+

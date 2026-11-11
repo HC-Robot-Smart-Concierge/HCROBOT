@@ -1,0 +1,100 @@
+@startuml WF-01_Admin_Configuration
+title WF-01: Admin Configuration (Feature F-01 | Scenarios DS-01, DS-02)\nProject: Intelligent Hotel Concierge Robot (HC-Robot) - FA26SE905 | Baseline: review-2
+
+skinparam monochrome false
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 12
+skinparam ActivityBackgroundColor #F8FAFC
+skinparam ActivityBorderColor #334155
+skinparam ActivityDiamondBackgroundColor #FEF3C7
+skinparam ActivityDiamondBorderColor #D97706
+skinparam NoteBackgroundColor #EFF6FF
+skinparam NoteBorderColor #3B82F6
+skinparam SwimlaneTitleFontSize 13
+skinparam SwimlaneBorderColor #64748B
+
+|Hotel Admin|
+start
+:Access Management Portal and submit login credentials;
+
+|Backend|
+:Verify account credentials and role permissions;
+
+if (Credentials valid and account active?) then (No - Authentication failed)
+  :Reject login attempt and return authentication error;
+  |Hotel Admin|
+  :View authentication error message;
+  stop
+else (Yes - Authenticated)
+  |Backend|
+  :Issue JWT access token and record LOGIN audit log;
+  note right
+    **Entity State Transition**
+    AdminSession = **AUTHENTICATED**
+    (AuditLog.action = "LOGIN")
+  end note
+endif
+
+|Hotel Admin|
+:Open configuration workspace and submit updates\n(Knowledge .md files, FAQs/Scenarios, Promotions/Ads, or Robot Expressions);
+
+|Backend|
+:Validate file extension (.md), structure, and configuration schema;
+
+if (Submitted document and configuration valid?) then (No - DS-02: Unsupported or corrupted document)
+  :Reject invalid submission without modifying active data;
+  note right
+    **Exception Scenario DS-02**
+    Existing valid KnowledgeBase remains **PUBLISHED**.
+    Corrupted or unsupported file (e.g., non-.md) is discarded.
+  end note
+  :Return validation error details to Management Portal;
+
+  |Hotel Admin|
+  :Review validation error alert and retain current active configuration;
+  stop
+
+else (Yes - DS-01: Valid configuration update)
+  |Backend|
+  :Save updated records and stage knowledge content for publication;
+  note right
+    **Entity State Transition**
+    KnowledgeBase.status = **DRAFT**
+    (Saved to Obsidian Vault / PostgreSQL tables)
+  end note
+
+  |Hotel Admin|
+  :Review staged changes and initiate "Synchronize to Robot";
+
+  |Backend|
+  fork
+    :Chunk Markdown files, generate embeddings,\nand synchronize ChromaDB vector store;
+  fork again
+    :Reload in-memory AI dialogue scenario cache\nand publish active promotions & expressions;
+  end fork
+  :Mark configuration package as published and dispatch sync payload;
+  note right
+    **Entity State Transition**
+    KnowledgeBase.status: **DRAFT -> PUBLISHED**
+    (AuditLog recorded for configuration sync)
+  end note
+
+  |Robot|
+  :Receive synchronized configuration and activate updated\nKnowledge Base, FAQs, promotions, and expressions;
+  note right
+    **Entity State Transition**
+    Robot configuration = **SYNCED**
+  end note
+  :Report synchronization completion status to Backend;
+
+  |Backend|
+  :Update synchronization status and notify Management Portal;
+
+  |Hotel Admin|
+  :Verify live deployment on portal and robot kiosk interface;
+  stop
+endif
+
+@enduml
+

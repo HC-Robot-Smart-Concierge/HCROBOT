@@ -1,0 +1,111 @@
+@startuml WF-02_Guest_Information_Recommendation
+title WF-02: Guest Information & Recommendation (Feature F-02 | Scenarios DS-03, DS-04)\nProject: Intelligent Hotel Concierge Robot (HC-Robot) - FA26SE905 | Baseline: review-2
+
+skinparam monochrome false
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 12
+skinparam ActivityBackgroundColor #F8FAFC
+skinparam ActivityBorderColor #334155
+skinparam ActivityDiamondBackgroundColor #FEF3C7
+skinparam ActivityDiamondBorderColor #D97706
+skinparam NoteBackgroundColor #EFF6FF
+skinparam NoteBorderColor #3B82F6
+skinparam SwimlaneTitleFontSize 13
+skinparam SwimlaneBorderColor #64748B
+
+|Concierge Robot|
+start
+:Monitor lobby in standby screensaver mode;
+note right
+  **Initial Entity State**
+  Robot.status = **IDLE**
+end note
+
+|Hotel Guest|
+:Approach robot detection zone or tap touchscreen;
+
+|Concierge Robot|
+:Detect guest presence and initialize interaction session;
+note right
+  **Entity State Transition**
+  Robot.status: **IDLE -> INTERACTING**
+  ChatSession.is_active = **True**
+end note
+:Play welcome greeting and display language selection\n(Vietnamese / English);
+
+|Hotel Guest|
+if (Guest selects language within 15s inactivity window?) then (Yes - Language selected)
+  :Select preferred language (VI or EN);
+
+  |Concierge Robot|
+  :Configure active session language and start listening;
+
+  repeat
+    |Hotel Guest|
+    if (Guest provides voice or touch query within 15s?) then (Yes - DS-03: Query submitted)
+      :Ask question about hotel facilities, services,\npromotions, or indoor directions;
+
+      |Concierge Robot|
+      :Transcribe input and process query via Hybrid AI\nand RAG Knowledge Base;
+      :Speak response and display hotel information,\nrecommendations, or interactive wayfinding map/QR;
+
+      |Hotel Guest|
+    else (No - DS-04: Inactivity >= 15s during conversation)
+      |Concierge Robot|
+      :Detect 15-second conversation inactivity timeout;
+      note right
+        **Exception Scenario DS-04**
+        Guest abandoned conversation mid-session.
+        No feedback rating is forced or recorded.
+      end note
+      :Cancel active listening, flush conversation context,\nand close session without recording feedback;
+      :Return to lobby screensaver mode;
+      note right
+        **Entity State Transition**
+        Robot.status: **INTERACTING -> IDLE**
+      end note
+      stop
+    endif
+  repeat while (Guest continues asking another question?) is (Yes - Continue interaction) not (No - End of questions)
+
+  |Concierge Robot|
+  :Display feedback prompt (1 to 5 stars);
+
+  |Hotel Guest|
+  if (Guest submits rating before 15s timeout?) then (Yes - DS-03: Rating submitted)
+    :Select star rating and submit feedback;
+
+    |Concierge Robot|
+    :Persist guest rating and display thank-you message;
+    note right
+      **Entity State Transition**
+      Feedback.rating = **RECORDED (1..5)**
+      (Linked to session_id in feedbacks table)
+    end note
+  else (No - DS-04: Guest leaves or dismisses without rating)
+    |Concierge Robot|
+    :Detect feedback timeout / dismissal and skip rating creation;
+    note right
+      **Exception Scenario DS-04**
+      Feedback.rating is **NOT created**
+      when guest leaves without submitting.
+    end note
+  endif
+
+else (No - DS-04: Guest walks away before selecting language [>= 15s])
+  |Concierge Robot|
+  :Detect 15-second inactivity timeout before interaction starts;
+endif
+
+|Concierge Robot|
+:Flush conversation session memory and reset kiosk UI;
+:Transition back to standby mode;
+note right
+  **Entity State Transition**
+  Robot.status: **INTERACTING -> IDLE**
+end note
+stop
+
+@enduml
+

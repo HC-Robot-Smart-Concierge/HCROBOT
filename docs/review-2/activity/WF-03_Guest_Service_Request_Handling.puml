@@ -1,0 +1,122 @@
+@startuml WF-03_Guest_Service_Request_Handling
+title WF-03: Guest Service Request Handling (Feature F-03 | Scenarios DS-05, DS-06)\nProject: Intelligent Hotel Concierge Robot (HC-Robot) - FA26SE905 | Baseline: review-2
+
+skinparam monochrome false
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 12
+skinparam ActivityBackgroundColor #F8FAFC
+skinparam ActivityBorderColor #334155
+skinparam ActivityDiamondBackgroundColor #FEF3C7
+skinparam ActivityDiamondBorderColor #D97706
+skinparam NoteBackgroundColor #EFF6FF
+skinparam NoteBorderColor #3B82F6
+skinparam SwimlaneTitleFontSize 13
+skinparam SwimlaneBorderColor #64748B
+
+|Hotel Guest|
+start
+:Initiate service request via voice or touch menu\n(Room Service, Taxi Assistance, or Housekeeping);
+
+|Concierge Robot|
+:Prompt guest and collect required details\n(Room number / PIN verification, service items, or pickup notes);
+
+|Hotel Guest|
+:Provide service details and confirm submission;
+
+|Concierge Robot|
+:Validate input fields, classify service type,\nand create support request ticket;
+
+if (Service request details valid?) then (No - Missing or invalid room/PIN/items)
+  :Display validation error and prompt guest to correct details;
+  |Hotel Guest|
+  :Review validation message;
+  stop
+else (Yes - Valid service request)
+  |Concierge Robot|
+  :Persist newly created support request record;
+  note right
+    **Entity State Transition**
+    BM01 Intended: SupportRequest.status = **NEW**
+    (DB Implementation: status = **"Pending"**, progress = 0%)
+  end note
+endif
+
+if (Target department available within operating hours?) then (No - DS-06: Department unavailable / Off-hours)
+  |Concierge Robot|
+  :Inform guest that department is currently off-hours\nand offer scheduled booking for next available shift;
+
+  |Hotel Guest|
+  if (Guest confirms scheduled booking for next shift?) then (Yes - Schedule request)
+    :Confirm scheduled time slot;
+    |Concierge Robot|
+    :Queue request for next available department shift\nand display scheduled booking confirmation;
+    note right
+      **Exception Scenario DS-06 (Design vs DB Note)**
+      BM01 Intended: SupportRequest.status = **SCHEDULED**
+      DB Implementation: Stored as status = **"Pending"**
+      with scheduled time in description/extra_data
+      (No dedicated SCHEDULED enum in support_requests).
+    end note
+    |Hotel Guest|
+    :Receive scheduled booking notification on screen;
+    stop
+  else (No - Cancel request)
+    |Concierge Robot|
+    :Cancel unsubmitted off-hours request and return to menu;
+    stop
+  endif
+
+else (Yes - DS-05: Department available)
+  |Concierge Robot|
+  :Assign request to target department\nand broadcast real-time notification;
+  note right
+    **Entity State Transition**
+    BM01 Intended: SupportRequest.status = **ASSIGNED**
+    (DB Implementation: routed via department_id,
+    Notification broadcast over WebSocket)
+  end note
+
+  |Department Staff|
+  :Receive real-time request alert on Department Dashboard;
+
+  if (Requires Head Lead dispatch override or SLA escalation (>5 min)?) then (Yes - Escalation or priority dispatch)
+    |Head Lead|
+    :Review unacknowledged or priority request,\nissue management directive, and assign/confirm staff;
+  else (No - Standard department handling)
+  endif
+
+  |Department Staff|
+  :Accept request and begin fulfilling service task\n(e.g., prepare F&B order, dispatch housekeeping, or book taxi);
+  note right
+    **Entity State Transition**
+    BM01 Intended: SupportRequest.status = **IN_PROGRESS**
+    (DB Implementation: status = **"In Progress"**,
+    assigned_staff_name recorded, progress = 25%..85%)
+  end note
+
+  if (Requires Head Lead supervisor confirmation for completion?) then (Yes - Supervisor review required)
+    |Head Lead|
+    :Verify service fulfillment quality and confirm completion;
+  else (No - Standard staff completion)
+  endif
+
+  |Department Staff|
+  :Mark service request as completed;
+  note right
+    **Entity State Transition**
+    BM01 Intended: SupportRequest.status = **COMPLETED**
+    (DB Implementation: status = **"Completed"** / **"Delivered"**,
+    progress = 100%)
+  end note
+
+  |Concierge Robot|
+  :Receive status update and display completion notification;
+
+  |Hotel Guest|
+  :Receive real-time service completion notification;
+  stop
+endif
+
+@enduml
+

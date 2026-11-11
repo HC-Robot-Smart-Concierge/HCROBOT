@@ -24,7 +24,30 @@ export const STT_SKIP_REASONS = {
   ECHO_MATCHES_LAST_TTS: 'ECHO_MATCHES_LAST_TTS',
   ECHO_POST_TTS_TAIL: 'ECHO_POST_TTS_TAIL',
   DUPLICATE_UTTERANCE: 'DUPLICATE_UTTERANCE',
+  FOREIGN_SCRIPT_REJECTED: 'FOREIGN_SCRIPT_REJECTED',
 };
+
+// Regex phát hiện chữ tượng hình ngoại lai (CJK: Hán tự, Hiragana, Katakana, Hangul)
+const CJK_REGEX = /[\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af]/;
+
+/**
+ * Chuẩn hóa mã ngôn ngữ về chuẩn song ngữ duy nhất: 'vi' hoặc 'en'.
+ * Bất kỳ mã ngoại lai nào khác (ja, zh, ko, es...) hoặc mã rỗng đều trả về null (hoặc defaultLang).
+ */
+export function normalizeLanguageCode(lang, defaultLang = null) {
+  if (!lang || typeof lang !== 'string') return defaultLang;
+  const clean = lang.toLowerCase().trim();
+  if (!clean || clean === 'auto' || clean === 'bilingual' || clean === 'neutral' || clean === 'none') {
+    return defaultLang;
+  }
+  if (clean.startsWith('vi') || clean.includes('việt') || clean.includes('viet')) {
+    return 'vi';
+  }
+  if (clean.startsWith('en') || clean.includes('anh') || clean.includes('eng')) {
+    return 'en';
+  }
+  return defaultLang;
+}
 
 /**
  * Chuẩn hóa chuỗi để so sánh tương đồng (bỏ dấu câu, chữ thường, gộp khoảng trắng)
@@ -81,6 +104,11 @@ export function evaluateSpokenTextCommit({
 
   if (callStatus !== 'connected') {
     return { allowed: false, reason: STT_SKIP_REASONS.CALL_NOT_CONNECTED, cleanText };
+  }
+
+  // Chặn các transcript bị lỗi nhận diện thành chữ tượng hình ngoại lai (CJK)
+  if (CJK_REGEX.test(cleanText)) {
+    return { allowed: false, reason: STT_SKIP_REASONS.FOREIGN_SCRIPT_REJECTED, cleanText };
   }
 
   // 1. Khi loa AI đang thực sự phát âm thanh ra ngoài -> chặn thu âm phản xạ

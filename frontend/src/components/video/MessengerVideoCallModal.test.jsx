@@ -8,6 +8,7 @@ import {
   advanceExpectedSeqOnFailure,
   calculateFrameRms,
   encodeWavBlobFromFloat32,
+  normalizeLanguageCode,
 } from './videoCallTranslationHelpers';
 
 describe('Video Call Auto-Translate & TTS Pipeline (Staff ⇄ Robot)', () => {
@@ -332,6 +333,44 @@ describe('Video Call Auto-Translate & TTS Pipeline (Staff ⇄ Robot)', () => {
       expect(sttRes.success).toBe(true);
       expect(sttRes.detected_language).toBe('vi');
       expect(sttRes.text).toBe('Cho tôi hỏi phòng ăn sáng ở đâu');
+    });
+  });
+
+  describe('5. Strict Binary Language Normalization (Only EN & VI)', () => {
+    it('should normalize valid language codes to vi or en', () => {
+      expect(normalizeLanguageCode('vi-VN')).toBe('vi');
+      expect(normalizeLanguageCode('vi')).toBe('vi');
+      expect(normalizeLanguageCode('Tiếng Việt')).toBe('vi');
+      expect(normalizeLanguageCode('en-US')).toBe('en');
+      expect(normalizeLanguageCode('en-GB')).toBe('en');
+      expect(normalizeLanguageCode('English')).toBe('en');
+    });
+
+    it('should reject foreign language codes and return fallback without corrupting session', () => {
+      expect(normalizeLanguageCode('ja')).toBeNull();
+      expect(normalizeLanguageCode('zh-CN')).toBeNull();
+      expect(normalizeLanguageCode('ko')).toBeNull();
+      expect(normalizeLanguageCode('es')).toBeNull();
+      expect(normalizeLanguageCode('ja', 'en')).toBe('en');
+      expect(normalizeLanguageCode('zh', 'vi')).toBe('vi');
+    });
+
+    it('should reject transcript containing foreign CJK script to prevent incorrect TTS/translation', () => {
+      const res = evaluateSpokenTextCommit({
+        text: 'こんにちは',
+        isAiSpeaking: false,
+      });
+      expect(res.allowed).toBe(false);
+      expect(res.reason).toBe(STT_SKIP_REASONS.FOREIGN_SCRIPT_REJECTED);
+    });
+
+    it('should allow Vietnamese with English loanwords or room names without rejection', () => {
+      const res = evaluateSpokenTextCommit({
+        text: 'Khách ở phòng VIP 402 cần check in và lấy key card',
+        isAiSpeaking: false,
+      });
+      expect(res.allowed).toBe(true);
+      expect(res.reason).toBeNull();
     });
   });
 });

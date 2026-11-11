@@ -23,6 +23,7 @@ import {
   advanceExpectedSeqOnFailure,
   calculateFrameRms,
   encodeWavBlobFromFloat32,
+  normalizeLanguageCode,
 } from './videoCallTranslationHelpers';
 
 const ICE_SERVERS = {
@@ -1576,10 +1577,10 @@ export const MessengerVideoCallModal = ({
         return;
       }
 
-      // 2. XÁC ĐỊNH NGÔN NGỮ NGUỒN CỦA CÂU NÓI (THEO TỪNG CÂU, KHÔNG KHÓA CỨNG THEO VAI TRÒ)
-      const hintLang = meta.detectedLang && meta.detectedLang !== 'auto'
-        ? meta.detectedLang
-        : (inputLangModeRef.current !== 'auto' ? inputLangModeRef.current : 'auto');
+      // 2. XÁC ĐỊNH NGÔN NGỮ NGUỒN CỦA CÂU NÓI (CHUẨN HÓA DUY NHẤT 'vi' HOẶC 'en')
+      const normalizedMetaLang = normalizeLanguageCode(meta.detectedLang);
+      const normalizedInputMode = normalizeLanguageCode(inputLangModeRef.current);
+      const hintLang = normalizedMetaLang || normalizedInputMode || 'auto';
 
       const utteranceId = `utt_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
       const seqRef = role === 'staff' ? staffTtsSeqRef : guestTtsSeqRef;
@@ -1598,7 +1599,8 @@ export const MessengerVideoCallModal = ({
         withAudio: false,
       });
 
-      const resolvedSourceLang = res.source_lang || (hintLang !== 'auto' ? hintLang : (role === 'staff' ? 'vi' : 'en'));
+      const normalizedResSource = normalizeLanguageCode(res.source_lang);
+      const resolvedSourceLang = normalizedResSource || (hintLang !== 'auto' ? hintLang : (role === 'staff' ? 'vi' : 'en'));
       const needsTranslation = Boolean(res.needs_translation) && resolvedSourceLang !== targetLang;
       const finalTranslatedText = needsTranslation ? (res.translated_text || cleanText) : cleanText;
 

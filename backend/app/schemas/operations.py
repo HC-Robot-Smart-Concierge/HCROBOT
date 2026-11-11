@@ -381,6 +381,10 @@ class BellRequestCreate(BaseModel):
     reporter: Optional[str] = None
     description: Optional[str] = None
     request_type: str = "luggage"
+    # Robot kiosk: a key from bell_request_service.BELL_SERVICES, or "auto" to classify the
+    # guest's words. Either enables duplicate protection; staff quick requests omit it.
+    service_key: Optional[str] = Field(None, max_length=50)
+    source: Optional[str] = Field(None, max_length=100)
 
 class BellRequestStatusUpdate(BaseModel):
     status: Optional[str] = None # 'Pending', 'In Progress', 'Completed'
@@ -399,8 +403,18 @@ class BellRequestResponse(BaseModel):
     status: str
     assigned_to: Optional[str]
     created_at: datetime
+    bell_service: Optional[str] = None
+    duplicate: bool = False
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class BellRoomStatusResponse(BaseModel):
+    room_number: str
+    pending_count: int
+    in_progress_count: int
+    completed_count: int
+    requests: List[BellRequestResponse]
 
 
 # ---------------------------------------------------------

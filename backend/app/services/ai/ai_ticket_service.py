@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.support_request import SupportRequest
 from app.models.support import HumanSupportSession
 from app.services.maintenance_request_service import get_or_create_maintenance_request
+from app.services.bell_request_service import get_or_create_bell_request
 from app.api.v1.endpoints.operations.shared import create_department_notification
 
 logger = logging.getLogger(__name__)
@@ -36,6 +37,15 @@ async def create_maintenance_voice_ticket(db: AsyncSession, room_number: str, it
     ticket_code = request.ticket_code
     await db.commit()
     return ticket_code, created, merged
+
+
+async def create_bell_voice_ticket(db: AsyncSession, room_number: str, items: str) -> tuple[SupportRequest, bool]:
+    request, created = await get_or_create_bell_request(
+        db, room_number=room_number, description=items,
+        source="HCRobot Concierge AI Chat", notify_reception=True,
+    )
+    await db.commit()
+    return request, created
 
 
 async def create_live_call_session(
@@ -346,39 +356,8 @@ async def auto_create_ticket(
             return ticket_code
 
         elif action == "bellman":
-            ticket_code = f"BS-{random.randint(1000, 99999)}"
-            req = SupportRequest(
-                ticket_code=ticket_code,
-                source="HCRobot Concierge AI Chat",
-                title=f"Khách phòng {rm} hỗ trợ hành lý: {items}",
-                room_number=rm,
-                guest_name=f"Guest (Room {rm})",
-                description=items,
-                department_id="DEP-BELL",
-                service_type_id="ST-BELL",
-                status="Pending",
-            )
-            db.add(req)
-            await create_department_notification(
-                db=db,
-                department="Bell Services",
-                title=f"Robot AI: Yêu cầu Hành lý mới #{ticket_code}",
-                description=f"Phòng {rm}: {items}",
-                request_id=req.id,
-                request_type="bell_service",
-                type="Request",
-            )
-            await create_department_notification(
-                db=db,
-                department="Reception",
-                title=f"Robot AI: Yêu cầu Bellman từ Khách Phòng {rm}",
-                description=f"Phiếu #{ticket_code}: {items}",
-                request_id=req.id,
-                request_type="bell_service",
-                type="Request",
-            )
-            await db.commit()
-            return ticket_code
+            req, _ = await create_bell_voice_ticket(db, rm, items)
+            return req.ticket_code
 
         elif action == "maintenance":
             ticket_code, _, _ = await create_maintenance_voice_ticket(db, rm, items)
@@ -638,7 +617,7 @@ async def background_extract_and_create_ticket(
         return
 
     # Không tạo ticket nếu là chào hỏi, giới thiệu phòng hoặc câu hỏi thông tin chung
-    if action in ["provide_room_number", "chitchat", "conversation", "faq", "fast_path", "unknown", "query_order_status", "open_food_menu", "open_room_service_menu", "open_maintenance_menu"]:
+    if action in ["provide_room_number", "chitchat", "conversation", "faq", "fast_path", "unknown", "query_order_status", "open_food_menu", "open_room_service_menu", "open_maintenance_menu", "open_bellman_menu"]:
         return
 
     items_desc_check = (items or prompt or "").lower()

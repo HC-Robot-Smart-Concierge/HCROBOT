@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { RefreshCw } from 'lucide-react';
 import { Pagination } from '../../components/common/Pagination';
-import { INITIAL_BELL_SERVICES_DATA } from '../../data/mockHotelData';
 import {
   fetchBellServicesDashboard,
   updateBellRequestStatus,
@@ -9,10 +9,20 @@ import { useLanguage } from '../../context/LanguageContext';
 import { useStaffText, staffStatusLabel } from '../../context/StaffLanguage';
 import { StaffPageHeader } from '../../components/dashboard/RoomServiceFrame';
 
+// English labels, translated by useStaffText. Keys match backend BELL_SERVICES.
+const BELL_SERVICE_LABELS = {
+  luggage_delivery: 'Bring luggage to room',
+  luggage_pickup: 'Take luggage down to lobby',
+  luggage_storage: 'Store luggage',
+  luggage_retrieval: 'Retrieve stored luggage',
+  room_move: 'Room move assistance',
+};
+
 const normalizeRequest = (request) => ({
   ...request,
   id: request.ticket_code || request.id,
   type: request.request_type || request.type,
+  serviceKey: request.bell_service || null,
   guestName: request.guest_name || request.guestName,
   assignedTo: request.assigned_to || request.assignedTo,
 });
@@ -24,14 +34,27 @@ const getStatusLabel = (status) => {
   return 'Pending';
 };
 
+const createdTime = (request) => new Date(request.created_at || 0).getTime();
+
+// Open requests first and oldest first (FIFO); completed history newest first.
+const queueOrder = (a, b) => {
+  const aDone = getStatusLabel(a.status) === 'Completed';
+  const bDone = getStatusLabel(b.status) === 'Completed';
+  if (aDone !== bDone) return aDone ? 1 : -1;
+  return aDone ? createdTime(b) - createdTime(a) : createdTime(a) - createdTime(b);
+};
+
 export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
   const { t } = useLanguage();
   const st = useStaffText();
   const staffName = currentUser?.full_name || currentUser?.name || 'Marcus T.';
   const [data, setData] = useState({
-    ...INITIAL_BELL_SERVICES_DATA,
-    requests: INITIAL_BELL_SERVICES_DATA.requests.map(normalizeRequest),
+    kpis: { pending: 0, onJob: 0, completed: 0, activeFleet: 0 },
+    requests: [],
+    teamStatus: [],
   });
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
   const [filter, setFilter] = useState('All');
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 10;
@@ -41,7 +64,7 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
   }, [filter]);
 
   const filteredRequests = useMemo(() => {
-    const list = data.requests || [];
+    const list = [...(data.requests || [])].sort(queueOrder);
     if (filter === 'All') return list;
     return list.filter((r) => {
       const s = getStatusLabel(r.status);
@@ -64,29 +87,31 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
     return filteredRequests.slice(start, start + pageSize);
   }, [filteredRequests, currentPage, pageSize]);
 
+  // Poll every 15 s after each load completes; an empty queue stays empty (no mock data).
   useEffect(() => {
+    let cancelled = false;
+    let timer;
     const loadData = async () => {
       const response = await fetchBellServicesDashboard();
-      if (!response?.requests) return;
-      const hasLiveRequests = response.requests.length > 0;
-
-      setData((previous) => ({
-        ...previous,
-        kpis: hasLiveRequests && response.kpis ? response.kpis : previous.kpis,
-        requests:
-          hasLiveRequests
-            ? response.requests.map(normalizeRequest)
-            : previous.requests,
-        teamStatus:
-          response.team_status?.length > 0
-            ? response.team_status
-            : previous.teamStatus,
-        announcement: response.announcement || previous.announcement,
-      }));
+      if (cancelled) return;
+      setLoadFailed(!response?.requests);
+      if (response?.requests) {
+        setData((previous) => ({
+          ...previous,
+          kpis: response.kpis || previous.kpis,
+          requests: response.requests.map(normalizeRequest),
+          teamStatus: response.team_status?.length > 0 ? response.team_status : previous.teamStatus,
+        }));
+      }
+      timer = setTimeout(loadData, 15000);
     };
 
     loadData();
-  }, []);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [refreshKey]);
 
   const updateRequestLocally = (requestId, status, assignedTo) => {
     setData((previous) => ({
@@ -118,6 +143,7 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
       assigned_to: staffName,
     });
     onNotify(st('Request {0} claimed.', requestId));
+    setRefreshKey((key) => key + 1);
   };
 
   const handleComplete = async (requestId) => {
@@ -127,6 +153,7 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
       assigned_to: staffName,
     });
     onNotify(st('Request {0} completed.', requestId));
+    setRefreshKey((key) => key + 1);
   };
 
   const metrics = [
@@ -156,10 +183,25 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
             <h1>{t('bsTitle')}</h1>
             <p>{st('Coordinate luggage assistance, guest requests and the Bell Services team.')}</p>
           </div>
-          <span className="staff-header-details rounded border border-[#BFBFBD] bg-white px-2.5 py-1 text-[10px] font-semibold text-[#77736E]">
-            {t('bsActiveOps')}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="staff-header-details rounded border border-[#BFBFBD] bg-white px-2.5 py-1 text-[10px] font-semibold text-[#77736E]">
+              {t('bsActiveOps')}
+            </span>
+            <button
+              type="button"
+              onClick={() => setRefreshKey((key) => key + 1)}
+              className="inline-flex items-center gap-1.5 rounded border border-[#BFBFBD] bg-white px-2.5 py-1 text-[11px] font-semibold text-[#403D39] hover:bg-[#F0EFEC] cursor-pointer"
+            >
+              <RefreshCw className="w-3.5 h-3.5" /> {st('Refresh')}
+            </button>
+          </div>
         </StaffPageHeader>
+
+        {loadFailed && (
+          <p role="alert" className="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-[12px] text-amber-900">
+            {st('Could not load live requests. Showing the last update.')}
+          </p>
+        )}
 
         <section className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {metrics.map(({ label, value }) => (
@@ -176,7 +218,10 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
         <section className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_300px] gap-4 mt-4">
           <div className="min-w-0">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-              <h3 className="text-[13px] font-semibold text-[#403D39]">{t('activeRequests')}</h3>
+              <div>
+                <h3 className="text-[13px] font-semibold text-[#403D39]">{t('activeRequests')}</h3>
+                <p className="text-[11px] text-[#77736E]">{st('Open requests first, oldest first. Updates every 15 seconds.')}</p>
+              </div>
               <div className="staff-request-filters" role="group" aria-label={t('activeRequests')}>
                 {['All', 'Pending', 'In Progress', 'Completed'].map((tab) => (
                   <button
@@ -216,7 +261,8 @@ export const BellServicesDashboard = ({ currentUser, onNotify = () => {} }) => {
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div className="min-w-0 flex-1">
                           <h4 className="text-[13px] font-semibold text-[#3F3B38] break-words">
-                            {request.title}
+                            {BELL_SERVICE_LABELS[request.serviceKey] ? st(BELL_SERVICE_LABELS[request.serviceKey]) : request.title}
+                            <span className="ml-2 text-[11px] font-normal text-[#8C8C8C]">#{request.id}</span>
                           </h4>
                           <p className="mt-1 text-[12px] text-[#666] break-words">
                             {request.location}

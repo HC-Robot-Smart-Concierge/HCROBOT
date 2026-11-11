@@ -9,6 +9,8 @@ import ollama
 
 from app.core.config import settings
 from app.services.ai.scenario_service import scenario_service
+from app.services.ai.constants import BELLMAN_MENU_TRIGGER_KEYWORDS, SERVICE_KEYWORDS
+from app.services.bell_request_service import classify_bell_request
 from app.services.maintenance_request_service import is_fault_report
 
 logger = logging.getLogger(__name__)
@@ -261,8 +263,13 @@ class OllamaService:
         ]
         has_action_verb = any(v in prompt_lower for v in service_action_verbs)
         has_service_noun = any(n in prompt_lower for n in service_nouns)
-        # "Điều hòa còn bị chảy nước nữa" has no request verb but is still a repair report.
-        if (has_action_verb and has_service_noun) or is_fault_report(prompt):
+        # "Điều hòa còn bị chảy nước nữa" has no request verb but is still a repair report;
+        # "menu hành lý" or a specific luggage task ("chuyển hành lý sang phòng mới") must
+        # reach the Bellman flow instead of the luggage-storage FAQ.
+        is_bell_task = any(k in prompt_lower for k in SERVICE_KEYWORDS["bellman"]) and bool(classify_bell_request(prompt))
+        if (has_action_verb and has_service_noun) or is_fault_report(prompt) or is_bell_task or any(
+            k in prompt_lower for k in BELLMAN_MENU_TRIGGER_KEYWORDS
+        ):
             logger.info(f"[OllamaService Fast-Path Bypass] Service action intent detected, skipping fast-path for: '{prompt[:40]}'")
             return None
 

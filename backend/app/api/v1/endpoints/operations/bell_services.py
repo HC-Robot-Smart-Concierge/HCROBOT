@@ -2,6 +2,7 @@ import random
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -10,8 +11,15 @@ from app.schemas.operations import (
     BellRequestCreate,
     BellRequestStatusUpdate,
     BellRequestResponse,
+    BellRoomStatusResponse,
     BellServicesDashboardResponse,
 )
+from app.services.bell_request_service import (
+    BELL_DEPARTMENT_ID,
+    BELL_SERVICE_TYPE_ID,
+    get_or_create_bell_request,
+)
+from app.services.maintenance_request_service import maintenance_room_filter, normalize_room
 from app.repositories import (
     SupportRequestRepository,
     get_support_request_repository,
@@ -124,7 +132,26 @@ async def create_bell_request(
     ### Mô tả nghiệp vụ:
     Tiếp nhận yêu cầu dịch vụ Bellman (chuyển hành lý, nhận đồ tại sảnh, hỗ trợ đổi phòng).
     Bản ghi được tự động lưu vào bảng `support_requests` với `department_id = 'DEP-BELL'` và `service_type_id = 'ST-BELL'`.
+
+    Menu Bellman trên robot gửi kèm `service_key`: nếu phòng đã có yêu cầu cùng dịch vụ đang mở,
+    API trả lại phiếu đó với `duplicate = true` và không tạo phiếu mới.
     """
+    if req_in.service_key:
+        try:
+            req, created = await get_or_create_bell_request(
+                db,
+                room_number=req_in.location,
+                description=req_in.description or req_in.title,
+                source=req_in.source or req_in.reporter or "HCRobot Kiosk Screen",
+                service_key=req_in.service_key,
+                guest_name=req_in.guest_name,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        await db.commit()
+        await db.refresh(req)
+        return BellRequestResponse.model_validate(req).model_copy(update={"duplicate": not created})
+
     ticket_code = f"BS-{random.randint(504, 9999)}"
     new_req = SupportRequest(
         ticket_code=ticket_code,
@@ -177,5 +204,30 @@ async def get_bell_request(
     if not req:
         raise HTTPException(status_code=404, detail="Không tìm thấy yêu cầu Bell Services")
     return req
+
+
+@router.get(
+    "/bell-services/rooms/{room_number}/status",
+    response_model=BellRoomStatusResponse,
+    tags=TAG_BELL,
+    summary="Tra cứu tiến độ các yêu cầu Bellman của một phòng",
+)
+async def get_room_bell_status(room_number: str, db: AsyncSession = Depends(get_db)):
+    """Robot kiosk (sau khi xác thực PIN phòng) xem các yêu cầu hành lý / chuyển phòng của phòng, mới nhất trước."""
+    clean_room = normalize_room(room_number)
+    room_reqs = (await db.execute(
+        select(SupportRequest).where(
+            or_(SupportRequest.department_id == BELL_DEPARTMENT_ID, SupportRequest.service_type_id == BELL_SERVICE_TYPE_ID),
+            maintenance_room_filter(clean_room),
+        ).order_by(SupportRequest.created_at.desc()).limit(30)
+    )).scalars().all()
+    statuses = [(r.status or "Pending").strip().lower() for r in room_reqs]
+    return {
+        "room_number": clean_room,
+        "pending_count": sum(s in ("pending", "unassigned") for s in statuses),
+        "in_progress_count": sum(s in ("in progress", "assigned") for s in statuses),
+        "completed_count": sum(s in ("completed", "resolved", "done") for s in statuses),
+        "requests": room_reqs,
+    }
 
 

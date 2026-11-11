@@ -45,6 +45,8 @@ export const AdminVideoCallsTab = ({ currentUser }) => {
 
   // Video Player Modal
   const [playingVideo, setPlayingVideo] = useState(null);
+  const [videoError, setVideoError] = useState(false);
+  const [useMp4Fallback, setUseMp4Fallback] = useState(false);
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -108,10 +110,9 @@ export const AdminVideoCallsTab = ({ currentUser }) => {
       if (searchTerm.trim()) {
         const term = searchTerm.toLowerCase().trim();
         const codeMatch = (session.session_code || '').toLowerCase().includes(term);
-        const roomMatch = (session.room_number || '').toLowerCase().includes(term);
-        const guestMatch = (session.guest_name || '').toLowerCase().includes(term);
+        const robotMatch = (session.origin_robot_code || '').toLowerCase().includes(term);
         const ticketMatch = (session.linked_request_id || '').toLowerCase().includes(term);
-        if (!codeMatch && !roomMatch && !guestMatch && !ticketMatch) return false;
+        if (!codeMatch && !robotMatch && !ticketMatch) return false;
       }
 
       return true;
@@ -344,7 +345,7 @@ export const AdminVideoCallsTab = ({ currentUser }) => {
               <thead>
                 <tr className="bg-neutral-50/70 border-b border-neutral-200/70 text-neutral-500 font-medium text-[11px] uppercase tracking-wider">
                   <th className="py-2.5 px-3.5">Mã phiên / Ticket</th>
-                  <th className="py-2.5 px-3.5">Vị trí & Khách</th>
+                  <th className="py-2.5 px-3.5">Kênh gọi & Thiết bị</th>
                   <th className="py-2.5 px-3.5">Thời điểm</th>
                   <th className="py-2.5 px-3.5">Thời lượng</th>
                   <th className="py-2.5 px-3.5">Cuộc gọi</th>
@@ -397,8 +398,8 @@ export const AdminVideoCallsTab = ({ currentUser }) => {
                         )}
                       </td>
                       <td className="py-2.5 px-3.5">
-                        <div className="font-medium text-neutral-900">{session.room_number || 'Kiosk Sảnh'}</div>
-                        <div className="text-[11px] text-neutral-500">{session.guest_name || 'Khách lưu trú'}</div>
+                        <div className="font-medium text-neutral-900">Robot Kiosk ⇄ Lễ tân</div>
+                        <div className="text-[11px] text-neutral-500 font-mono">{session.origin_robot_code || 'RC-001 (Main Lobby)'}</div>
                       </td>
                       <td className="py-2.5 px-3.5 text-neutral-500">
                         <div className="flex items-center gap-1">
@@ -424,7 +425,11 @@ export const AdminVideoCallsTab = ({ currentUser }) => {
                           <div className="inline-flex items-center justify-end gap-1">
                             {/* Minimal Google-style Play Button */}
                             <button
-                              onClick={() => setPlayingVideo(session)}
+                              onClick={() => {
+                                setPlayingVideo(session);
+                                setVideoError(false);
+                                setUseMp4Fallback(false);
+                              }}
                               title="Xem video bản ghi"
                               className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium text-neutral-800 bg-neutral-100 hover:bg-neutral-200 transition-colors cursor-pointer"
                             >
@@ -489,11 +494,11 @@ export const AdminVideoCallsTab = ({ currentUser }) => {
               <div className="flex items-center gap-2 truncate pr-2">
                 <Play className="w-3.5 h-3.5 text-emerald-400 fill-current shrink-0" />
                 <span className="text-xs font-medium text-neutral-200 truncate">
-                  {playingVideo.session_code || playingVideo.id} — {playingVideo.room_number || 'Kiosk'} ({playingVideo.guest_name || 'Khách'})
+                  {playingVideo.session_code || playingVideo.id} — Robot Kiosk ⇄ Nhân viên lễ tân
                 </span>
               </div>
               <button
-                onClick={() => setPlayingVideo(null)}
+                onClick={() => { setPlayingVideo(null); setVideoError(false); }}
                 title="Đóng xem video"
                 className="p-1 rounded-full hover:bg-white/10 text-neutral-400 hover:text-white transition-colors cursor-pointer"
               >
@@ -503,14 +508,53 @@ export const AdminVideoCallsTab = ({ currentUser }) => {
 
             {/* Maximized Video Display */}
             <div className="bg-black flex-1 flex items-center justify-center relative aspect-video max-h-[70vh]">
-              <video
-                src={playingVideo.recording_url}
-                controls
-                autoPlay
-                className="w-full h-full max-h-[70vh] object-contain"
-              >
-                Trình duyệt không hỗ trợ phát video WebM/MP4.
-              </video>
+              {videoError ? (
+                <div className="p-6 text-center text-xs text-neutral-300 flex flex-col items-center justify-center gap-3">
+                  <AlertCircle className="w-8 h-8 text-amber-400" />
+                  <div>
+                    <p className="font-semibold text-white">Trình duyệt không thể giải mã trực tiếp định dạng video này</p>
+                    <p className="text-[11px] text-neutral-400 mt-1">Video có thể sử dụng codec WebM chưa tương thích với phần cứng/trình duyệt.</p>
+                  </div>
+                  <div className="flex items-center gap-2 mt-2">
+                    {!useMp4Fallback && (playingVideo.recording_url || '').includes('.webm') && (
+                      <button
+                        onClick={() => {
+                          setUseMp4Fallback(true);
+                          setVideoError(false);
+                        }}
+                        className="px-3 py-1.5 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs cursor-pointer"
+                      >
+                        Thử phát dạng MP4
+                      </button>
+                    )}
+                    <a
+                      href={playingVideo.recording_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="px-3 py-1.5 rounded-full bg-neutral-800 hover:bg-neutral-700 text-white font-medium text-xs inline-flex items-center gap-1.5"
+                    >
+                      <span>Mở file gốc trên tab mới</span>
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
+                </div>
+              ) : (
+                <video
+                  key={`${playingVideo.recording_url}-${useMp4Fallback}`}
+                  src={useMp4Fallback ? (playingVideo.recording_url || '').replace(/\.webm(\?.*)?$/i, '.mp4$1') : playingVideo.recording_url}
+                  controls
+                  autoPlay
+                  playsInline
+                  onError={() => setVideoError(true)}
+                  className="w-full h-full max-h-[70vh] object-contain"
+                >
+                  <source
+                    src={useMp4Fallback ? (playingVideo.recording_url || '').replace(/\.webm(\?.*)?$/i, '.mp4$1') : playingVideo.recording_url}
+                    type={useMp4Fallback ? 'video/mp4' : 'video/webm'}
+                  />
+                  Trình duyệt không hỗ trợ phát video WebM/MP4.
+                </video>
+              )}
             </div>
 
             {/* Modal Footer with Direct Source */}

@@ -4,8 +4,6 @@ import {
   Play,
   ExternalLink,
   Clock,
-  Disc,
-  Cloud,
   Calendar,
   Filter,
   CheckCircle2,
@@ -15,7 +13,6 @@ import {
   FileVideo,
   RefreshCw,
   Search,
-  Maximize2
 } from 'lucide-react';
 import { fetchHumanSupportSessions, fetchVideoCallMetrics } from '../../../services/conciergeApi';
 
@@ -130,187 +127,178 @@ export const AdminVideoCallsTab = ({ currentUser }) => {
   };
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl mx-auto">
-      {/* 1. Header Banner */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-2 border-b border-palette-silver">
-        <div>
-          <div className="flex items-center gap-2">
-            <Video className="w-6 h-6 text-palette-charcoal" />
-            <h1 className="text-xl font-bold tracking-tight text-palette-charcoal">
+    <div className="w-full p-4 md:p-6 space-y-4">
+      {/* 1. Minimal Header */}
+      <div className="flex items-center justify-between gap-3 pb-3 border-b border-neutral-200">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-full bg-neutral-100 flex items-center justify-center text-neutral-700">
+            <Video className="w-4 h-4" />
+          </div>
+          <div>
+            <h1 className="text-base md:text-lg font-semibold tracking-tight text-neutral-900">
               Theo dõi cuộc gọi & Bản ghi Video Call (WF-04)
             </h1>
+            <p className="text-xs text-neutral-500">
+              Giám sát phiên gọi Kiosk, nhân viên lễ tân và kho lưu trữ video Cloudinary / Local
+            </p>
           </div>
-          <p className="text-xs text-palette-slate mt-1">
-            Giám sát toàn bộ các phiên hỗ trợ khẩn cấp, bàn giao Kiosk sang nhân viên lễ tân và kho lưu trữ video Cloudinary / Local.
-          </p>
         </div>
 
+        {/* Minimal Google-style Refresh Button */}
         <button
           onClick={loadData}
           disabled={isLoading}
-          className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-semibold rounded-lg bg-white border border-palette-silver hover:bg-neutral-50 text-palette-charcoal shadow-xs transition-all cursor-pointer"
+          title="Làm mới dữ liệu"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-full text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 border border-neutral-200 transition-colors cursor-pointer"
         >
           <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
-          Làm mới
+          <span className="hidden sm:inline">Làm mới</span>
         </button>
       </div>
 
-      {/* 2. Basic Metrics Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      {/* 2. Compact Metrics Bar (Google Cloud style) */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
         {/* Total Calls */}
-        <div className="p-4 rounded-xl bg-white border border-palette-silver shadow-xs flex items-center justify-between">
+        <div className="px-4 py-2.5 rounded-xl bg-white border border-neutral-200/80 shadow-xs flex items-center justify-between">
           <div>
-            <div className="text-[11px] font-semibold text-palette-slate uppercase tracking-wider">Tổng cuộc gọi</div>
-            <div className="text-2xl font-bold text-palette-charcoal mt-1">{metrics.total_calls}</div>
-            <div className="text-[10px] text-palette-slate mt-0.5">Phiên đàm thoại duy nhất</div>
+            <div className="text-[11px] font-medium text-neutral-500">Tổng cuộc gọi</div>
+            <div className="text-xl font-semibold text-neutral-900 mt-0.5">{metrics.total_calls}</div>
           </div>
-          <div className="w-10 h-10 rounded-lg bg-neutral-100 flex items-center justify-center text-palette-charcoal">
-            <Disc className="w-5 h-5 text-palette-charcoal" />
-          </div>
+          <span className="text-[10px] text-neutral-500 bg-neutral-100 px-2 py-0.5 rounded-full font-medium">
+            Phiên đàm thoại
+          </span>
         </div>
 
         {/* Ready Recordings */}
-        <div className="p-4 rounded-xl bg-white border border-palette-silver shadow-xs flex items-center justify-between">
+        <div className="px-4 py-2.5 rounded-xl bg-white border border-neutral-200/80 shadow-xs flex items-center justify-between">
           <div>
-            <div className="text-[11px] font-semibold text-emerald-700 uppercase tracking-wider">Có thể xem</div>
-            <div className="text-2xl font-bold text-emerald-700 mt-1">{metrics.ready_recordings}</div>
-            <div className="text-[10px] text-palette-slate mt-0.5">Sẵn sàng phát video</div>
+            <div className="text-[11px] font-medium text-emerald-700">Có thể xem</div>
+            <div className="text-xl font-semibold text-emerald-700 mt-0.5">{metrics.ready_recordings}</div>
           </div>
-          <div className="w-10 h-10 rounded-lg bg-emerald-50 flex items-center justify-center text-emerald-700">
-            <CheckCircle2 className="w-5 h-5" />
-          </div>
+          <span className="inline-flex items-center gap-1 text-[10px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full font-medium">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+            Sẵn sàng
+          </span>
         </div>
 
         {/* Saving Recordings */}
-        <div className="p-4 rounded-xl bg-white border border-palette-silver shadow-xs flex items-center justify-between">
+        <div className="px-4 py-2.5 rounded-xl bg-white border border-neutral-200/80 shadow-xs flex items-center justify-between">
           <div>
-            <div className="text-[11px] font-semibold text-amber-700 uppercase tracking-wider">Đang lưu ngầm</div>
-            <div className="text-2xl font-bold text-amber-700 mt-1">{metrics.saving_recordings}</div>
-            <div className="text-[10px] text-palette-slate mt-0.5">Background upload</div>
+            <div className="text-[11px] font-medium text-amber-700">Đang lưu ngầm</div>
+            <div className="text-xl font-semibold text-amber-700 mt-0.5">{metrics.saving_recordings}</div>
           </div>
-          <div className="w-10 h-10 rounded-lg bg-amber-50 flex items-center justify-center text-amber-700">
-            <Loader2 className="w-5 h-5 animate-spin" />
-          </div>
+          <span className="inline-flex items-center gap-1 text-[10px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full font-medium">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+            Xử lý
+          </span>
         </div>
 
         {/* Failed Recordings */}
-        <div className="p-4 rounded-xl bg-white border border-palette-silver shadow-xs flex items-center justify-between">
+        <div className="px-4 py-2.5 rounded-xl bg-white border border-neutral-200/80 shadow-xs flex items-center justify-between">
           <div>
-            <div className="text-[11px] font-semibold text-rose-700 uppercase tracking-wider">Lưu thất bại</div>
-            <div className="text-2xl font-bold text-rose-700 mt-1">{metrics.failed_recordings}</div>
-            <div className="text-[10px] text-palette-slate mt-0.5">Lỗi hoặc quá hạn</div>
+            <div className="text-[11px] font-medium text-rose-700">Lưu thất bại</div>
+            <div className="text-xl font-semibold text-rose-700 mt-0.5">{metrics.failed_recordings}</div>
           </div>
-          <div className="w-10 h-10 rounded-lg bg-rose-50 flex items-center justify-center text-rose-700">
-            <AlertCircle className="w-5 h-5" />
-          </div>
+          <span className="inline-flex items-center gap-1 text-[10px] text-rose-700 bg-rose-50 px-2 py-0.5 rounded-full font-medium">
+            <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
+            Lỗi
+          </span>
         </div>
       </div>
 
-      {/* 3. Filter Bar */}
-      <div className="p-4 rounded-xl bg-white border border-palette-silver shadow-xs space-y-3">
-        <div className="flex flex-wrap items-center gap-3">
-          {/* Search box */}
-          <div className="relative flex-1 min-w-[200px]">
-            <Search className="w-4 h-4 text-palette-slate absolute left-3 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
-              placeholder="Tìm mã phiên, số phòng, tên khách, mã ticket..."
-              className="w-full pl-9 pr-3 py-1.5 text-xs rounded-lg border border-palette-silver focus:outline-hidden focus:ring-1 focus:ring-palette-charcoal bg-neutral-50"
-            />
-          </div>
-
-          {/* Start Date */}
-          <div className="flex items-center gap-1.5 text-xs text-palette-slate">
-            <Calendar className="w-3.5 h-3.5 text-palette-slate" />
-            <span>Từ:</span>
-            <input
-              type="date"
-              value={startDate}
-              onChange={(e) => { setStartDate(e.target.value); setCurrentPage(1); }}
-              className="px-2.5 py-1.5 text-xs rounded-lg border border-palette-silver bg-neutral-50 focus:outline-hidden focus:ring-1 focus:ring-palette-charcoal"
-            />
-          </div>
-
-          {/* End Date */}
-          <div className="flex items-center gap-1.5 text-xs text-palette-slate">
-            <span>Đến:</span>
-            <input
-              type="date"
-              value={endDate}
-              onChange={(e) => { setEndDate(e.target.value); setCurrentPage(1); }}
-              className="px-2.5 py-1.5 text-xs rounded-lg border border-palette-silver bg-neutral-50 focus:outline-hidden focus:ring-1 focus:ring-palette-charcoal"
-            />
-          </div>
-
-          {/* Status Select */}
-          <div className="flex items-center gap-1.5 text-xs text-palette-slate">
-            <Filter className="w-3.5 h-3.5 text-palette-slate" />
-            <span>Bản ghi:</span>
-            <select
-              value={recordingStatusFilter}
-              onChange={(e) => { setRecordingStatusFilter(e.target.value); setCurrentPage(1); }}
-              className="px-2.5 py-1.5 text-xs rounded-lg border border-palette-silver bg-neutral-50 focus:outline-hidden focus:ring-1 focus:ring-palette-charcoal"
-            >
-              <option value="all">Tất cả trạng thái</option>
-              <option value="ready">Có thể xem</option>
-              <option value="saving">Đang lưu</option>
-              <option value="failed">Lưu thất bại</option>
-              <option value="none">Không có bản ghi</option>
-            </select>
-          </div>
-
-          {(startDate || endDate || recordingStatusFilter !== 'all' || searchTerm) && (
-            <button
-              onClick={handleResetFilters}
-              className="px-3 py-1.5 text-xs font-medium text-palette-slate hover:text-palette-charcoal underline cursor-pointer"
-            >
-              Xóa bộ lọc
-            </button>
-          )}
+      {/* 3. Google-style Streamlined Filter Toolbar */}
+      <div className="p-2 rounded-xl bg-white border border-neutral-200/80 shadow-xs flex flex-wrap items-center gap-2">
+        {/* Search Input */}
+        <div className="relative flex-1 min-w-[220px]">
+          <Search className="w-3.5 h-3.5 text-neutral-400 absolute left-3 top-1/2 -translate-y-1/2" />
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
+            placeholder="Tìm theo mã phiên, phòng, tên khách, ticket..."
+            className="w-full pl-8 pr-3 py-1.5 text-xs rounded-full bg-neutral-100/70 hover:bg-neutral-100 focus:bg-white border border-transparent focus:border-neutral-300 focus:outline-hidden transition-all text-neutral-800 placeholder:text-neutral-400"
+          />
         </div>
 
-        {/* Filter Summary Label */}
-        <div className="text-[11px] text-palette-slate flex items-center justify-between border-t border-neutral-100 pt-2">
-          <div>
-            Đang hiển thị <strong>{filteredSessions.length}</strong> phiên phù hợp
-            {startDate && ` từ ngày ${startDate}`}
-            {endDate && ` đến ngày ${endDate}`}
-          </div>
-          <div>Sắp xếp: Mới nhất trước</div>
+        {/* Start Date */}
+        <div className="flex items-center gap-1 px-2.5 py-1 text-xs text-neutral-600 bg-neutral-50 rounded-full border border-neutral-200/70">
+          <Calendar className="w-3 h-3 text-neutral-400" />
+          <span className="text-[11px] text-neutral-400">Từ:</span>
+          <input
+            type="date"
+            value={startDate}
+            onChange={(e) => { setStartDate(e.target.value); setCurrentPage(1); }}
+            className="bg-transparent text-xs text-neutral-700 focus:outline-hidden cursor-pointer"
+          />
         </div>
+
+        {/* End Date */}
+        <div className="flex items-center gap-1 px-2.5 py-1 text-xs text-neutral-600 bg-neutral-50 rounded-full border border-neutral-200/70">
+          <span className="text-[11px] text-neutral-400">Đến:</span>
+          <input
+            type="date"
+            value={endDate}
+            onChange={(e) => { setEndDate(e.target.value); setCurrentPage(1); }}
+            className="bg-transparent text-xs text-neutral-700 focus:outline-hidden cursor-pointer"
+          />
+        </div>
+
+        {/* Status Select */}
+        <div className="flex items-center gap-1 px-2.5 py-1 text-xs text-neutral-600 bg-neutral-50 rounded-full border border-neutral-200/70">
+          <Filter className="w-3 h-3 text-neutral-400" />
+          <select
+            value={recordingStatusFilter}
+            onChange={(e) => { setRecordingStatusFilter(e.target.value); setCurrentPage(1); }}
+            className="bg-transparent text-xs text-neutral-700 focus:outline-hidden cursor-pointer pr-1"
+          >
+            <option value="all">Tất cả trạng thái</option>
+            <option value="ready">Có thể xem</option>
+            <option value="saving">Đang lưu</option>
+            <option value="failed">Lưu thất bại</option>
+            <option value="none">Không có bản ghi</option>
+          </select>
+        </div>
+
+        {/* Reset filter button */}
+        {(startDate || endDate || recordingStatusFilter !== 'all' || searchTerm) && (
+          <button
+            onClick={handleResetFilters}
+            className="px-2.5 py-1 text-xs font-medium text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100 rounded-full transition-colors cursor-pointer"
+          >
+            Xóa bộ lọc
+          </button>
+        )}
       </div>
 
-      {/* 4. Table */}
-      <div className="bg-white rounded-xl border border-palette-silver shadow-xs overflow-hidden">
+      {/* 4. Table / List with Optimized Viewing Space */}
+      <div className="bg-white rounded-xl border border-neutral-200/80 shadow-xs overflow-hidden">
         {isLoading ? (
-          <div className="py-16 text-center text-xs text-palette-slate flex flex-col items-center justify-center gap-3">
-            <Loader2 className="w-6 h-6 animate-spin text-palette-charcoal" />
+          <div className="py-16 text-center text-xs text-neutral-500 flex flex-col items-center justify-center gap-2">
+            <Loader2 className="w-5 h-5 animate-spin text-neutral-600" />
             <span>Đang tải danh sách lịch sử cuộc gọi...</span>
           </div>
         ) : error ? (
           <div className="py-16 text-center text-xs text-rose-600 flex flex-col items-center justify-center gap-2">
-            <AlertCircle className="w-6 h-6" />
+            <AlertCircle className="w-5 h-5" />
             <span>{error}</span>
           </div>
         ) : paginatedSessions.length === 0 ? (
-          <div className="py-16 text-center text-xs text-palette-slate flex flex-col items-center justify-center gap-2">
-            <FileVideo className="w-8 h-8 text-neutral-300" />
+          <div className="py-16 text-center text-xs text-neutral-500 flex flex-col items-center justify-center gap-2">
+            <FileVideo className="w-7 h-7 text-neutral-300" />
             <span>Không tìm thấy cuộc gọi hoặc bản ghi nào phù hợp với bộ lọc.</span>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse text-xs">
               <thead>
-                <tr className="bg-neutral-50/80 border-b border-palette-silver text-palette-slate font-semibold uppercase text-[10px] tracking-wider">
-                  <th className="py-3 px-4">Mã phiên / Ticket</th>
-                  <th className="py-3 px-4">Vị trí & Khách</th>
-                  <th className="py-3 px-4">Thời điểm</th>
-                  <th className="py-3 px-4">Thời lượng</th>
-                  <th className="py-3 px-4">Cuộc gọi</th>
-                  <th className="py-3 px-4">Trạng thái bản ghi</th>
-                  <th className="py-3 px-4 text-right">Thao tác</th>
+                <tr className="bg-neutral-50/70 border-b border-neutral-200/70 text-neutral-500 font-medium text-[11px] uppercase tracking-wider">
+                  <th className="py-2.5 px-3.5">Mã phiên / Ticket</th>
+                  <th className="py-2.5 px-3.5">Vị trí & Khách</th>
+                  <th className="py-2.5 px-3.5">Thời điểm</th>
+                  <th className="py-2.5 px-3.5">Thời lượng</th>
+                  <th className="py-2.5 px-3.5">Cuộc gọi</th>
+                  <th className="py-2.5 px-3.5">Trạng thái bản ghi</th>
+                  <th className="py-2.5 px-3.5 text-right">Thao tác</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-100">
@@ -319,28 +307,28 @@ export const AdminVideoCallsTab = ({ currentUser }) => {
                   const hasUrl = Boolean(session.recording_url && session.recording_url.trim());
 
                   let statusBadge = (
-                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-neutral-100 text-neutral-600">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] text-neutral-500 bg-neutral-100">
                       Không có bản ghi
                     </span>
                   );
 
                   if (rStat === 'saving') {
                     statusBadge = (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-50 text-amber-700 border border-amber-200 animate-pulse">
-                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                      <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-50 text-amber-700">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
                         Đang lưu
                       </span>
                     );
                   } else if (rStat === 'failed') {
                     statusBadge = (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-rose-50 text-rose-700 border border-rose-200">
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-rose-50 text-rose-700">
                         <AlertCircle className="w-3 h-3" />
                         Lưu thất bại
                       </span>
                     );
                   } else if (hasUrl || rStat === 'ready') {
                     statusBadge = (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-700">
                         <CheckCircle2 className="w-3 h-3" />
                         Có thể xem
                       </span>
@@ -348,60 +336,63 @@ export const AdminVideoCallsTab = ({ currentUser }) => {
                   }
 
                   return (
-                    <tr key={session.id || session.session_code} className="hover:bg-neutral-50/60 transition-colors">
-                      <td className="py-3 px-4 font-mono font-medium text-palette-charcoal">
-                        <div>{session.session_code || session.id}</div>
+                    <tr key={session.id || session.session_code} className="hover:bg-neutral-50/70 transition-colors">
+                      <td className="py-2.5 px-3.5 font-mono text-neutral-800">
+                        <div className="font-semibold">{session.session_code || session.id}</div>
                         {session.linked_request_id && (
-                          <div className="text-[10px] text-palette-slate font-sans">
+                          <div className="text-[10px] text-neutral-400 font-sans">
                             Ticket: <span className="font-mono">{session.linked_request_id}</span>
                           </div>
                         )}
                       </td>
-                      <td className="py-3 px-4">
-                        <div className="font-semibold text-palette-charcoal">{session.room_number || 'Kiosk Sảnh'}</div>
-                        <div className="text-[11px] text-palette-slate">{session.guest_name || 'Khách lưu trú'}</div>
+                      <td className="py-2.5 px-3.5">
+                        <div className="font-medium text-neutral-900">{session.room_number || 'Kiosk Sảnh'}</div>
+                        <div className="text-[11px] text-neutral-500">{session.guest_name || 'Khách lưu trú'}</div>
                       </td>
-                      <td className="py-3 px-4 text-palette-slate">
+                      <td className="py-2.5 px-3.5 text-neutral-500">
                         <div className="flex items-center gap-1">
-                          <Clock className="w-3 h-3" />
+                          <Clock className="w-3 h-3 text-neutral-400" />
                           <span>{session.created_at ? new Date(session.created_at).toLocaleString('vi-VN') : '—'}</span>
                         </div>
                       </td>
-                      <td className="py-3 px-4 font-semibold text-palette-charcoal">
+                      <td className="py-2.5 px-3.5 font-medium text-neutral-800">
                         {typeof session.recording_duration === 'number' && session.recording_duration > 0
                           ? `${session.recording_duration}s`
                           : '—'}
                       </td>
-                      <td className="py-3 px-4">
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-neutral-100 text-palette-charcoal">
+                      <td className="py-2.5 px-3.5">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-neutral-100 text-neutral-700">
                           {session.status || 'Resolved'}
                         </span>
                       </td>
-                      <td className="py-3 px-4">
+                      <td className="py-2.5 px-3.5">
                         {statusBadge}
                       </td>
-                      <td className="py-3 px-4 text-right">
+                      <td className="py-2.5 px-3.5 text-right">
                         {hasUrl ? (
-                          <div className="inline-flex items-center gap-1.5">
+                          <div className="inline-flex items-center justify-end gap-1">
+                            {/* Minimal Google-style Play Button */}
                             <button
                               onClick={() => setPlayingVideo(session)}
-                              className="px-2.5 py-1 rounded-md bg-palette-charcoal hover:bg-neutral-800 text-white text-xs font-semibold inline-flex items-center gap-1 transition-all cursor-pointer shadow-xs"
+                              title="Xem video bản ghi"
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium text-neutral-800 bg-neutral-100 hover:bg-neutral-200 transition-colors cursor-pointer"
                             >
-                              <Play className="w-3 h-3 fill-current" />
-                              Xem
+                              <Play className="w-3 h-3 fill-current text-neutral-700" />
+                              <span>Xem</span>
                             </button>
+                            {/* Minimal Ghost External Link Button */}
                             <a
                               href={session.recording_url}
                               target="_blank"
                               rel="noreferrer"
-                              className="p-1 rounded-md border border-palette-silver hover:bg-neutral-100 text-palette-slate hover:text-palette-charcoal transition-all"
                               title="Mở tab mới"
+                              className="p-1 rounded-full text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100 transition-colors"
                             >
                               <ExternalLink className="w-3.5 h-3.5" />
                             </a>
                           </div>
                         ) : (
-                          <span className="text-neutral-400 text-xs italic">—</span>
+                          <span className="text-neutral-300 text-xs">—</span>
                         )}
                       </td>
                     </tr>
@@ -412,24 +403,24 @@ export const AdminVideoCallsTab = ({ currentUser }) => {
           </div>
         )}
 
-        {/* Pagination Footer */}
+        {/* Minimalist Pagination */}
         {totalPages > 1 && (
-          <div className="p-3 border-t border-neutral-100 flex items-center justify-between text-xs text-palette-slate">
+          <div className="px-4 py-2 border-t border-neutral-100 flex items-center justify-between text-xs text-neutral-500">
             <div>
-              Trang {currentPage} / {totalPages}
+              Trang {currentPage} / {totalPages} (Tổng {filteredSessions.length} phiên)
             </div>
             <div className="flex items-center gap-1">
               <button
                 disabled={currentPage <= 1}
                 onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                className="px-2.5 py-1 rounded border border-palette-silver disabled:opacity-40 hover:bg-neutral-50 cursor-pointer"
+                className="px-2.5 py-1 rounded-full text-xs text-neutral-600 hover:bg-neutral-100 disabled:opacity-30 disabled:hover:bg-transparent cursor-pointer transition-colors"
               >
                 Trước
               </button>
               <button
                 disabled={currentPage >= totalPages}
                 onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                className="px-2.5 py-1 rounded border border-palette-silver disabled:opacity-40 hover:bg-neutral-50 cursor-pointer"
+                className="px-2.5 py-1 rounded-full text-xs text-neutral-600 hover:bg-neutral-100 disabled:opacity-30 disabled:hover:bg-transparent cursor-pointer transition-colors"
               >
                 Sau
               </button>
@@ -438,47 +429,52 @@ export const AdminVideoCallsTab = ({ currentUser }) => {
         )}
       </div>
 
-      {/* 5. Video Player Modal */}
+      {/* 5. Maximized Video Player Modal (Google Meet / YouTube Theater style) */}
       {playingVideo && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 animate-fade-in">
-          <div className="bg-white rounded-2xl max-w-3xl w-full overflow-hidden shadow-2xl border border-palette-silver flex flex-col">
-            <div className="px-5 py-3.5 bg-palette-charcoal text-white flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Play className="w-4 h-4 text-emerald-400 fill-current" />
-                <span className="text-xs font-bold">
-                  Bản ghi cuộc gọi — {playingVideo.session_code || playingVideo.id} ({playingVideo.room_number})
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-3 md:p-6 animate-fade-in">
+          <div className="bg-neutral-900 text-white rounded-2xl max-w-4xl w-full max-h-[92vh] overflow-hidden shadow-2xl border border-neutral-800 flex flex-col">
+            {/* Modal Header */}
+            <div className="px-4 py-3 bg-neutral-950/80 border-b border-neutral-800 flex items-center justify-between">
+              <div className="flex items-center gap-2 truncate pr-2">
+                <Play className="w-3.5 h-3.5 text-emerald-400 fill-current shrink-0" />
+                <span className="text-xs font-medium text-neutral-200 truncate">
+                  {playingVideo.session_code || playingVideo.id} — {playingVideo.room_number || 'Kiosk'} ({playingVideo.guest_name || 'Khách'})
                 </span>
               </div>
               <button
                 onClick={() => setPlayingVideo(null)}
-                className="p-1 rounded-lg hover:bg-white/10 text-white/70 hover:text-white transition-all cursor-pointer"
+                title="Đóng xem video"
+                className="p-1 rounded-full hover:bg-white/10 text-neutral-400 hover:text-white transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="bg-black aspect-video flex items-center justify-center relative">
+            {/* Maximized Video Display */}
+            <div className="bg-black flex-1 flex items-center justify-center relative aspect-video max-h-[70vh]">
               <video
                 src={playingVideo.recording_url}
                 controls
                 autoPlay
-                className="w-full h-full object-contain"
+                className="w-full h-full max-h-[70vh] object-contain"
               >
                 Trình duyệt không hỗ trợ phát video WebM/MP4.
               </video>
             </div>
 
-            <div className="p-4 bg-neutral-50 text-xs text-palette-slate flex items-center justify-between border-t border-neutral-200">
-              <div className="truncate max-w-[80%]">
-                <span className="font-semibold text-palette-charcoal">Nguồn phát:</span> {playingVideo.recording_url}
+            {/* Modal Footer with Direct Source */}
+            <div className="px-4 py-2.5 bg-neutral-950 border-t border-neutral-800 text-xs text-neutral-400 flex items-center justify-between">
+              <div className="truncate max-w-[70%] text-[11px]">
+                <span className="text-neutral-500">Nguồn:</span> {playingVideo.recording_url}
               </div>
               <a
                 href={playingVideo.recording_url}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center gap-1 text-sky-700 hover:underline font-semibold"
+                className="inline-flex items-center gap-1 text-xs text-neutral-200 hover:text-white hover:underline transition-colors shrink-0"
               >
-                Mở file gốc <ExternalLink className="w-3.5 h-3.5" />
+                <span>Mở file gốc</span>
+                <ExternalLink className="w-3 h-3 text-neutral-400" />
               </a>
             </div>
           </div>

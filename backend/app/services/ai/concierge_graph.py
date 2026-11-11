@@ -1,5 +1,5 @@
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 
 from app.services.bell_request_service import bell_status_reply, classify_bell_request, is_bell_inquiry
 from app.services.maintenance_request_service import is_fault_report
@@ -58,7 +58,7 @@ Quản lý luồng xử lý tinh gọn (Fast-Path -> Direct Conversational Gener
 
 
 
-import asyncio
+
 
 
 
@@ -130,20 +130,15 @@ from langgraph.checkpoint.memory import MemorySaver
 
 
 
-from app.services.ai.session_manager import session_manager, extract_room_number, is_valid_hotel_room
+from app.services.ai.session_manager import session_manager, extract_room_number
 from app.services.ai.constants import (
     SERVICE_KEYWORDS,
     MAINTENANCE_MENU_TRIGGER_KEYWORDS,
     BELLMAN_MENU_TRIGGER_KEYWORDS,
     is_lost_found_text,
-    ROOM_SERVICE_MENU_TRIGGER_KEYWORDS,
-    FOOD_MENU_TRIGGER_KEYWORDS,
     MAINTENANCE_REGEX,
     HOUSEKEEPING_REGEX,
     ROOM_SERVICE_FOOD_REGEX,
-    STATUS_QUERY_REGEX,
-    TAXI_REGEX,
-    CANCEL_SERVICE_REGEX,
     contains_keyword,
 )
 
@@ -234,6 +229,7 @@ class ConciergeState(TypedDict, total=False):
 
 
     prompt: str
+    current_query: Optional[str]
 
 
 
@@ -694,14 +690,6 @@ async def fast_path_node(state: ConciergeState) -> Dict[str, Any]:
 
 
     # Nếu khách yêu cầu dịch vụ phòng thực tế (Actionable Service Request) -> Bỏ qua fast-path để intent_router & service_fsm xử lý
-
-
-
-
-
-
-
-    from app.services.ai.constants import SERVICE_KEYWORDS
 
 
 
@@ -1527,14 +1515,6 @@ async def intent_router_node(state: ConciergeState) -> Dict[str, Any]:
 
 
     # 2. Heuristic nhận diện dịch vụ khách sạn (< 0.1ms) từ centralized constants
-
-
-
-
-
-
-
-    from app.services.ai.constants import SERVICE_KEYWORDS
 
 
 
@@ -3483,12 +3463,12 @@ async def query_room_order_status_db(room_num: str, is_en: bool = False, is_reje
                         try:
                             if ord_item.status != req_st:
                                 ord_item.status = req_st
-                                ord_item.updated_at = datetime.utcnow()
+                                ord_item.updated_at = datetime.now(timezone.utc).replace(tzinfo=None)
                         except Exception:
                             pass
 
                 # Lọc đơn chờ quá hạn (> 12 giờ): đơn pending từ hôm qua xem như hết hạn/hủy
-                now_utc = datetime.utcnow()
+                now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
                 if ord_item.created_at and (now_utc - ord_item.created_at).total_seconds() > 12 * 3600:
                     if cur_status.lower() in ("pending", "waiting", "unassigned"):
                         cur_status = "Cancelled"
@@ -3498,7 +3478,7 @@ async def query_room_order_status_db(room_num: str, is_en: bool = False, is_reje
                     "status": cur_status,
                     "created_at": ord_item.created_at,
                     "items_summary": items_summary,
-                    "is_service_request": bool(ord_item.is_service_request),
+                    "is_service_request": ord_item.is_service_request,
                     "progress": ord_item.progress or 0,
                     "note": ord_item.note or "",
                     "reject_reason": reject_reason,
@@ -3565,11 +3545,11 @@ async def query_room_order_status_db(room_num: str, is_en: bool = False, is_reje
 
 
 
-                if req_item.items and isinstance(req_item.items, list):
+                if req_item.items and isinstance(cast(Any, req_item.items), list):
 
 
 
-                    it_names = [f"{it.get('qty', 1)}x {it.get('name', '')}" for it in req_item.items if isinstance(it, dict) and it.get('name')]
+                    it_names = [f"{it.get('qty', 1)}x {it.get('name', '')}" for it in req_item.items if isinstance(cast(Any, it), dict) and it.get('name')]
 
 
 
@@ -4645,7 +4625,7 @@ async def service_fsm_node(state: ConciergeState) -> Dict[str, Any]:
 
 
 
-        latest_req = room_info.get("latest_request")
+
 
 
 

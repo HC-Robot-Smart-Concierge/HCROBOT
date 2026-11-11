@@ -65,7 +65,6 @@ def _detect_destination_poi(prompt: str, reply: str = "", room_number: str | Non
     """
     p_lower = (prompt or "").lower().strip()
     r_lower = (reply or "").lower().strip()
-    combined = f"{p_lower} {r_lower}".strip()
 
     # Neu cau hoi nhac toi phong khong ton tai hoac phan hoi thong bao phong khong ton tai -> Tuyet doi khong bat ban do
     cand_room = extract_room_number(p_lower)
@@ -186,7 +185,7 @@ def _detect_destination_poi(prompt: str, reply: str = "", room_number: str | Non
     if (room_4xx_match or room_3xx_match or is_general_room_query) and is_service_order_context and not has_explicit_nav:
         return None
 
-    room_nav_match = bool((room_4xx_match or room_3xx_match or is_general_room_query) and (not is_service_order_context or has_explicit_nav))
+    room_nav_match = (room_4xx_match is not None or room_3xx_match is not None or is_general_room_query) and (not is_service_order_context or has_explicit_nav)
 
     has_nav_intent = (
         room_nav_match or
@@ -295,7 +294,7 @@ def _detect_destination_poi(prompt: str, reply: str = "", room_number: str | Non
     # 7. Nếu khách hỏi đường lên phòng nghỉ chung chung (không trùng các tiện ích trên)
     if is_general_room_query:
         if room_number:
-            clean_rn = str(room_number).strip()
+            clean_rn = room_number.strip()
             if re.match(r'^(?:40[1-9]|30[1-9])$', clean_rn):
                 return f"room_{clean_rn}"
         return None
@@ -585,7 +584,7 @@ async def generate_chat_stream(request: ChatRequest) -> AsyncGenerator[str, None
         )) and any(k in prompt_l for k in ["khăn", "khan", "gối", "chăn", "nệm", "dép", "bàn chải", "dầu gội", "sữa tắm", "massage", "giặt ủi", "dọn phòng", "món", "cơm", "nước", "đồ ăn"])
         fast_hit = None if is_action_svc else ollama_service.check_fast_path_full(request.prompt, request.language)
         if fast_hit:
-            reply, lang_name, lang_code, act_type, act_payload = fast_hit
+            reply, _lang_name, lang_code, act_type, act_payload = fast_hit
             dest_key = act_payload.get("destination_key") if isinstance(act_payload, dict) else None
             if not dest_key and act_type != "none":
                 dest_key = _detect_destination_poi(request.prompt, reply, current_room)

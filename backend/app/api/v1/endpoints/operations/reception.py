@@ -1,9 +1,7 @@
 import time
-import re
 import random
-from datetime import datetime
 from typing import Optional, List, Dict, Any
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,7 +15,6 @@ from app.services.bell_request_service import (
 from app.services.ai.constants import is_lost_found_text
 from app.schemas.operations import (
     ReceptionRequestCreate,
-    ReceptionRequestUpdate,
     ReceptionRequestResponse,
     ReceptionDashboardResponse,
     RoomPinVerifyRequest,
@@ -41,7 +38,7 @@ def normalize_nfc_uid(uid: Optional[str]) -> str:
     """Chuẩn hóa mã UID thẻ NFC: xóa dấu :, gạch ngang, khoảng trắng và chuyển chữ thường."""
     if not uid:
         return ""
-    return str(uid).replace(":", "").replace("-", "").replace(" ", "").strip().lower()
+    return uid.replace(":", "").replace("-", "").replace(" ", "").strip().lower()
 
 
 # =====================================================================
@@ -365,13 +362,13 @@ async def verify_room_pin(
         guest_name=room.current_guest_name,
         ticket_code=ticket_code,
         verification_type=verification_type,
-        tag_code=room.tag_code,
+        tagCode=room.tag_code,
         duplicate=duplicate,
         merged=merged,
         message=(
             bell_request_message(bell_ticket, created=not duplicate) if bell_ticket
-            else merged_maintenance_message(ticket_code) if merged
-            else duplicate_maintenance_message(ticket_code) if duplicate else pin_success_msg
+            else merged_maintenance_message(ticket_code or "") if merged
+            else duplicate_maintenance_message(ticket_code or "") if duplicate else pin_success_msg
         )
     )
 
@@ -536,13 +533,13 @@ async def verify_room_nfc(
         guest_name=matched_room.current_guest_name,
         ticket_code=ticket_code,
         verification_type="NFC",
-        tag_code=matched_room.tag_code,
+        tagCode=matched_room.tag_code,
         duplicate=duplicate,
         merged=merged,
         message=(
             bell_request_message(bell_ticket, created=not duplicate) if bell_ticket
-            else merged_maintenance_message(ticket_code) if merged
-            else duplicate_maintenance_message(ticket_code) if duplicate else nfc_success_msg
+            else merged_maintenance_message(ticket_code or "") if merged
+            else duplicate_maintenance_message(ticket_code or "") if duplicate else nfc_success_msg
         )
     )
 
